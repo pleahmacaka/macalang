@@ -93,6 +93,9 @@ struct Checker {
     globals: HashMap<String, Scheme>,
     records: HashMap<String, BTreeMap<String, Ty>>,
     sums: HashMap<String, Vec<String>>,
+    /// User-declared function name -> (fixed param count, is variadic). Used to
+    /// catch call-arity mistakes; variadic functions are exempt.
+    fn_arity: HashMap<String, (usize, bool)>,
     type_decls: HashSet<usize>, // item indices that are type declarations
     local_names: HashSet<String>,
     diags: Vec<Diagnostic>,
@@ -106,6 +109,7 @@ impl Checker {
             globals: HashMap::new(),
             records: HashMap::new(),
             sums: HashMap::new(),
+            fn_arity: HashMap::new(),
             type_decls: HashSet::new(),
             local_names: HashSet::new(),
             diags: Vec::new(),
@@ -143,6 +147,8 @@ impl Checker {
                     let scheme = self.sig_scheme(f);
                     self.globals.insert(f.name.clone(), scheme);
                     self.local_names.insert(f.name.clone());
+                    let variadic = f.params.iter().any(|p| p.variadic);
+                    self.fn_arity.insert(f.name.clone(), (f.params.len(), variadic));
                 }
                 Stmt::Bind(b) => {
                     if let Expr::Ident(name) = &b.target {
@@ -472,6 +478,20 @@ impl Checker {
                 Ty::Con(name.clone(), vec![])
             }
             Expr::Call { callee, args } => {
+                // Arity: a direct call of a user function (not shadowed by a
+                // local of the same name) must pass the declared number of
+                // arguments unless the function is variadic.
+                if let Expr::Ident(name) = &**callee
+                    && lookup(env, name).is_none()
+                    && let Some(&(arity, variadic)) = self.fn_arity.get(name)
+                    && !variadic
+                    && args.len() != arity
+                {
+                    self.diag(
+                        DiagKind::TypeMismatch,
+                        format!("call to `{name}` expects {arity} argument(s), got {}", args.len()),
+                    );
+                }
                 let ct = self.infer(env, callee);
                 let ats: Vec<Ty> = args.iter().map(|a| self.infer_arg(env, a)).collect();
                 match self.inf.resolve(&ct) {
@@ -508,7 +528,9 @@ impl Checker {
                 let _ = self.inf.unify(&ct, &Ty::Bool);
                 let tt = self.infer(env, then);
                 let et = self.infer(env, els);
-                let _ = self.inf.unify(&tt, &et);
+                if let Err(e) = self.inf.unify(&tt, &et) {
+                    self.diag(DiagKind::TypeMismatch, format!("ternary branches disagree: {e}"));
+                }
                 tt
             }
             Expr::If { cond, then, els } => {
@@ -517,7 +539,12 @@ impl Checker {
                 let tt = self.infer_block(env, then);
                 if let Some(e) = els {
                     let et = self.infer_block(env, e);
-                    let _ = self.inf.unify(&tt, &et);
+                    if let Err(err) = self.inf.unify(&tt, &et) {
+                        self.diag(
+                            DiagKind::TypeMismatch,
+                            format!("`if` branches disagree: {err}"),
+                        );
+                    }
                     tt
                 } else {
                     Ty::Unit

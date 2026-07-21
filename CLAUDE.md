@@ -102,7 +102,10 @@ sources (`RUNTIME_H`/`RUNTIME_C`); grow them alongside the backend.
   sigs generalize into `Scheme`s (`ty::is_type_var_name` treats lowercase names
   as type vars) and instantiate per call; concrete arg/param clashes now report
   `TypeMismatch` (`examples/generic.maca` good, `examples/bad/arg_mismatch.maca`
-  bad). Full row unification + backend monomorphization of generics still to do.
+  bad). Also caught (all `TypeMismatch`): call **arity** vs a user fn's param
+  count (variadics exempt, `bad/arity.maca`) and disagreeing **if/ternary
+  branches** (`bad/branch_mismatch.maca`). Full row unification + backend
+  monomorphization of generics still to do.
 - **P0** workspace + `maca --version`.
 - **P1** `maca-lexer`: full tokenizer (significant newlines, path literals,
   string interpolation, `x?` vs `? :`). Golden token dumps in

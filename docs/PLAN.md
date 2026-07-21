@@ -105,3 +105,10 @@ against a declared parameter surface as `TypeMismatch`
 (`examples/bad/arg_mismatch.maca`). Native lowering of a polymorphic function
 across value-typed instantiations still needs monomorphization in the C backend
 (future hardening); `generic.maca` is gated at the parse + typecheck layers.
+
+Three more real error classes now surface as `TypeMismatch` (previously
+swallowed): call **arity** against a user function's declared parameter count —
+variadic functions exempt (`examples/bad/arity.maca`) — and disagreeing
+**`if` / ternary branch** types (`examples/bad/branch_mismatch.maca`). All stay
+safe under the gradual rule: `any`/type-variables never clash, so unknown-stdlib
+code is untouched.

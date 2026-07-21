@@ -76,3 +76,13 @@ fn arg_mismatch_rejected() {
     // Calling `double(n: int)` with a string is a concrete argument clash.
     assert_has("examples/bad/arg_mismatch.maca", Mode::Program, DiagKind::TypeMismatch);
 }
+#[test]
+fn arity_rejected() {
+    // `greet(name: str)` called with two arguments.
+    assert_has("examples/bad/arity.maca", Mode::Program, DiagKind::TypeMismatch);
+}
+#[test]
+fn branch_mismatch_rejected() {
+    // Ternary branches with disagreeing types (int vs str).
+    assert_has("examples/bad/branch_mismatch.maca", Mode::Program, DiagKind::TypeMismatch);
+}
