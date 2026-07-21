@@ -1,0 +1,18 @@
+[package]
+name = "maca-driver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "maca"
+path = "src/main.rs"
+
+[dependencies]
+maca-parser = { path = "../parser" }
+maca-core = { path = "../core" }
+maca-backend-c = { path = "../backend_c" }
+maca-backend-llvm = { path = "../backend_llvm" }
+maca-backend-nix = { path = "../backend_nix" }
+maca-backend-js = { path = "../backend_js" }
+maca-runtime = { path = "../runtime" }

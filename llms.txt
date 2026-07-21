@@ -1,0 +1,86 @@
+# Maca
+
+> One typed language for programs **and** infrastructure config. General programs compile to native (C-tier binary), BEAM, or JS; infra config compiles to Nix. Minimal, rule-based syntax — write correct Maca from this file alone.
+
+Everything a user writes is `.maca` or `maca.toml`. Verify generated code with the `maca.check` MCP tool (or `maca lint`) and fix diagnostics before finishing.
+
+## Symbols (1:1, no exceptions to memorize)
+
+- `:` type / base relation (`x: int`, `zed: Program : base`) and ternary-else.
+- `=` value binding (record fields, args included).
+- `=>` lambda / match arrow / single-expression function body.
+- `{}` block (statements) or record (values); `Name { = }` is a constructor.
+- `?` attached `x?` propagates an error; spaced `c ? x : y` is the ternary.
+- `/` path-join or division (by type/spacing). `++` list concat. `|>` pipe.
+- `T[]` list type, `T?` nullable, `...rest: T` variadic.
+
+## Rules (what models get wrong)
+
+- No `fn`, no `type`, no `Result`/`Ok`, no `<>` generics.
+- Field `:` = type, `=` = value. Bracketless comma lists. Significant newlines.
+- Functions: `f(x: T) -> R { body }` or `=> expr`. `main() -> int`.
+- Ternary is spaced `c ? x : y`; error-propagate is attached `x?`; raise with `fail e`.
+- Generics are lowercase type vars, applied by juxtaposition (`Map k v`).
+- Effects (inferred): `io · net · os · async · exn`. Config mode is pure `<>`.
+- Sum types are nominal; `match` must be exhaustive (or have `_`).
+
+## Modes
+
+- **General mode** → native / BEAM / JS. Entry `main`. Effects allowed.
+- **Config mode** → Nix. Root module is the configuration; must be pure `<>`.
+  `system.*` routes to NixOS, `user.*` to home-manager. Blocks imply `enable = true`.
+
+## Examples (all pass `maca.check`)
+
+Hello:
+
+```maca
+main() -> int {
+    info("Hello, World")
+    0
+}
+```
+
+Sum type + exhaustive match:
+
+```maca
+Color = Red | Green | Blue
+
+name(c: Color) -> str => match c {
+    Red   => "red"
+    Green => "green"
+    Blue  => "blue"
+}
+```
+
+Record + constructor, list, propagation:
+
+```maca
+Task = {
+    id:    int
+    title: str
+}
+
+first(ts: Task[]) -> str => match ts {
+    t, ..rest => t.title
+    _         => "empty"
+}
+```
+
+Config (pure, routed to NixOS/home-manager):
+
+```maca
+networking.hostName = "rigel"
+system.stateVersion = "24.11"
+system.packages     = git, curl, ripgrep
+```
+
+## Verify
+
+Always run `maca.check` (MCP) or `maca lint` on generated code and fix every
+diagnostic (type-mismatch, non-exhaustive, effect-in-config, unknown-option).
+
+## Links
+
+- `docs/PLAN.md` — authoritative plan + phase gates.
+- `SKILL.md` — agent skill (rules + the verify habit).

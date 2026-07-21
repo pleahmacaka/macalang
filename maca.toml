@@ -1,0 +1,22 @@
+# Maca self-manifest — dogfooded as features land.
+[package]
+name = "maca"
+version = "0.1.0"
+
+[format]
+indent = 4
+width = 80
+
+[lint]
+strict = true
+
+[build]
+target = "native"
+
+[scripts]
+hello = "maca run examples/hello.maca"
+taskr = "maca run examples/taskr.maca"
+
+[[bin]]
+name = "taskr"
+path = "examples/taskr.maca"

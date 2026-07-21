@@ -1,0 +1,2 @@
+// `netwrking` is a typo — not a known NixOS option namespace.
+netwrking.hostName = "rigel"

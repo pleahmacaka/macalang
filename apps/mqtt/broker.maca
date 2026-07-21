@@ -1,0 +1,10 @@
+import c "mqtt.h"
+
+// std/mqtt engine (threaded broker: CONNECT/SUBSCRIBE/PUBLISH, +/# wildcards).
+mqtt_broker_run(port: int) -> int
+
+main() -> int {
+    info("maca mqtt broker on 1883")
+    mqtt_broker_run(1883)
+    0
+}

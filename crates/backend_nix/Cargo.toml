@@ -1,0 +1,8 @@
+[package]
+name = "maca-backend-nix"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+maca-parser = { path = "../parser" }

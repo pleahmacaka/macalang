@@ -1,0 +1,6 @@
+import nix "./answer.nix"
+
+main() -> int {
+    info(str(answer))
+    0
+}

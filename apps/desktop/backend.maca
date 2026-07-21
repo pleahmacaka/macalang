@@ -1,0 +1,6 @@
+// Maca native backend — the `greet` command the UI invokes.
+main(args: str[]) -> int {
+    let name = args.join(" ")
+    info("Hello, {name}!")
+    0
+}

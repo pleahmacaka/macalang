@@ -1,0 +1,2 @@
+// The declared return type is int, but the body is a string.
+bad() -> int => "not an int"

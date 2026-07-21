@@ -1,0 +1,17 @@
+import c "sqlite3.h"
+
+// Foreign declarations (bodyless) — bound to the sqlite3.h binding glue.
+sqlite_open(path: str) -> int
+sqlite_exec(sql: str) -> int
+sqlite_query1(sql: str) -> str
+sqlite_close() -> int
+
+main() -> int {
+    sqlite_open(":memory:")
+    sqlite_exec("CREATE TABLE t(x TEXT)")
+    sqlite_exec("INSERT INTO t VALUES('hi from sqlite')")
+    let row = sqlite_query1("SELECT x FROM t")
+    info(row)
+    sqlite_close()
+    0
+}

@@ -1,0 +1,3 @@
+// Config mode must be pure `<>`, but `info` carries the io effect.
+networking.hostName = "host"
+system.motd = info("hello")
