@@ -91,3 +91,17 @@ as future hardening.
 Verbatim from the spec, under `examples/`:
 `hello.maca` · `taskr.maca` (CLI) · `system.maca` (config) · `counter.maca` (UI)
 · `dot.maca` (SIMD), plus `examples/bad/*.maca` for diagnostics.
+`generic.maca` (parse + typecheck golden) exercises let-polymorphism.
+
+## P3 hardening — let-polymorphism
+
+The gradual checker now generalizes function signatures into rank-1 type
+schemes and instantiates them per call site. Lowercase, single-segment type
+names (`a`, `k`, `value`) are type variables by convention — nominal types are
+capitalized, primitives are keywords, and sized-numeric / SIMD lane types
+(`i32`, `f32x8`) stay nominal. This removes false-positive mismatches on
+generic calls (e.g. `let n: int = id(5)`) and lets a concrete argument clash
+against a declared parameter surface as `TypeMismatch`
+(`examples/bad/arg_mismatch.maca`). Native lowering of a polymorphic function
+across value-typed instantiations still needs monomorphization in the C backend
+(future hardening); `generic.maca` is gated at the parse + typecheck layers.

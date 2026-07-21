@@ -46,6 +46,12 @@ fn dot_ok() {
 fn system_ok() {
     assert_clean("examples/system.maca", Mode::Config);
 }
+#[test]
+fn generic_ok() {
+    // Polymorphic functions instantiate per use: `id(5): int` and
+    // `id("hello"): str` must both check with no false-positive mismatch.
+    assert_clean("examples/generic.maca", Mode::Program);
+}
 
 // ---- bad examples are rejected with the right diagnostic -----------------
 
@@ -64,4 +70,9 @@ fn effect_in_config_rejected() {
 #[test]
 fn unknown_option_rejected() {
     assert_has("examples/bad/unknown_option.maca", Mode::Config, DiagKind::UnknownOption);
+}
+#[test]
+fn arg_mismatch_rejected() {
+    // Calling `double(n: int)` with a string is a concrete argument clash.
+    assert_has("examples/bad/arg_mismatch.maca", Mode::Program, DiagKind::TypeMismatch);
 }

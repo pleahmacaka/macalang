@@ -1,0 +1,8 @@
+// `double` declares an `int` parameter but is called with a string; the
+// concrete/concrete clash is a genuine argument type mismatch.
+double(n: int) -> int => n + n
+
+main() -> int {
+    double("not a number")
+    0
+}

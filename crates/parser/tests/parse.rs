@@ -43,6 +43,10 @@ fn roundtrip_counter() {
     roundtrip("counter.maca");
 }
 #[test]
+fn roundtrip_generic() {
+    roundtrip("generic.maca");
+}
+#[test]
 fn roundtrip_dot() {
     roundtrip("dot.maca");
 }

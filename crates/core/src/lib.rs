@@ -7,13 +7,17 @@
 //!   * non-exhaustive `match` on a nominal sum,
 //!   * effects used in config mode (must be pure `<>`),
 //!   * unknown NixOS option root in config mode.
-//! Full HM generalization + real row unification is future hardening.
+//!
+//! Function signatures are generalized into rank-1 type schemes and
+//! instantiated per call site, so generics like `id(x: a) -> a` are usable at
+//! many types. Full HM generalization over inferred (un-annotated) bindings and
+//! real row unification are future hardening.
 
 mod ty;
 
 use maca_parser::ast::*;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use ty::{EffSet, Infer, Ty, EXN, IO, NET, OS};
+use ty::{EffSet, Infer, Scheme, Ty, EXN, IO, NET, OS};
 
 pub use ty::show;
 
@@ -86,7 +90,7 @@ type Env = Vec<(String, Ty)>;
 struct Checker {
     mode: Mode,
     inf: Infer,
-    globals: HashMap<String, Ty>,
+    globals: HashMap<String, Scheme>,
     records: HashMap<String, BTreeMap<String, Ty>>,
     sums: HashMap<String, Vec<String>>,
     type_decls: HashSet<usize>, // item indices that are type declarations
@@ -116,7 +120,7 @@ impl Checker {
 
     fn collect(&mut self, m: &Module) {
         for f in IO_FNS {
-            self.globals.insert((*f).into(), Ty::Fn(vec![Ty::Any], Box::new(Ty::Unit)));
+            self.globals.insert((*f).into(), Scheme::mono(Ty::Fn(vec![Ty::Any], Box::new(Ty::Unit))));
         }
         for (n, t) in [
             ("int", Ty::Fn(vec![Ty::Any], Box::new(Ty::Int))),
@@ -125,21 +129,19 @@ impl Checker {
             ("len", Ty::Fn(vec![Ty::Any], Box::new(Ty::Int))),
             ("input", Ty::Fn(vec![], Box::new(Ty::Str))),
         ] {
-            self.globals.insert(n.into(), t);
+            self.globals.insert(n.into(), Scheme::mono(t));
         }
 
         for (i, item) in m.items.iter().enumerate() {
             match item {
                 Stmt::Import(im) => self.collect_import(im),
                 Stmt::Alias { name, .. } => {
-                    self.globals.insert(name.clone(), Ty::Any);
+                    self.globals.insert(name.clone(), Scheme::mono(Ty::Any));
                     self.local_names.insert(name.clone());
                 }
                 Stmt::Fn(f) => {
-                    let params =
-                        f.params.iter().map(|p| p.ty.as_ref().map_or(Ty::Any, ast_ty)).collect();
-                    let ret = f.ret.as_ref().map_or(Ty::Any, ast_ty);
-                    self.globals.insert(f.name.clone(), Ty::Fn(params, Box::new(ret)));
+                    let scheme = self.sig_scheme(f);
+                    self.globals.insert(f.name.clone(), scheme);
                     self.local_names.insert(f.name.clone());
                 }
                 Stmt::Bind(b) => {
@@ -148,14 +150,15 @@ impl Checker {
                         if let Some(vars) = sum_variants(&b.value) {
                             self.sums.insert(name.clone(), vars.clone());
                             for v in vars {
-                                self.globals.insert(v, Ty::Con(name.clone(), vec![]));
+                                self.globals
+                                    .insert(v, Scheme::mono(Ty::Con(name.clone(), vec![])));
                             }
                             self.type_decls.insert(i);
                         } else if let Some(fields) = record_type(&b.value) {
                             self.records.insert(name.clone(), fields);
                             self.type_decls.insert(i);
                         } else {
-                            self.globals.insert(name.clone(), Ty::Any);
+                            self.globals.insert(name.clone(), Scheme::mono(Ty::Any));
                         }
                     }
                 }
@@ -166,7 +169,7 @@ impl Checker {
 
     fn collect_import(&mut self, im: &Import) {
         fn bind(c: &mut Checker, n: String) {
-            c.globals.insert(n.clone(), Ty::Any);
+            c.globals.insert(n.clone(), Scheme::mono(Ty::Any));
             c.local_names.insert(n);
         }
         match im {
@@ -182,6 +185,42 @@ impl Checker {
             }
             Import::Bare(n) | Import::Foreign { lang: n, .. } => bind(self, n.clone()),
             Import::Path(_) => {}
+        }
+    }
+
+    /// Generalize a function signature into a polymorphic scheme: each distinct
+    /// lowercase type-variable name (`a`, `k`, `value`) becomes one fresh
+    /// inference variable shared across every occurrence, and all such variables
+    /// are quantified.
+    fn sig_scheme(&mut self, f: &FnDef) -> Scheme {
+        let mut vars: HashMap<String, Ty> = HashMap::new();
+        let params: Vec<Ty> = f
+            .params
+            .iter()
+            .map(|p| p.ty.as_ref().map_or(Ty::Any, |t| self.ast_ty_v(t, &mut vars)))
+            .collect();
+        let ret = f.ret.as_ref().map_or(Ty::Any, |t| self.ast_ty_v(t, &mut vars));
+        let ids = vars.values().filter_map(|t| if let Ty::Var(i) = t { Some(*i) } else { None }).collect();
+        Scheme { vars: ids, ty: Ty::Fn(params, Box::new(ret)) }
+    }
+
+    /// Like [`ast_ty`] but maps type-variable names through `vars`, minting one
+    /// fresh inference variable per distinct name.
+    fn ast_ty_v(&mut self, t: &Type, vars: &mut HashMap<String, Ty>) -> Ty {
+        match t {
+            Type::Name(segs) if segs.len() == 1 && ty::is_type_var_name(&segs[0]) => {
+                vars.entry(segs[0].clone()).or_insert_with(|| self.inf.fresh()).clone()
+            }
+            Type::Apply(h, args) => match &**h {
+                Type::Name(segs) => {
+                    Ty::Con(segs.join("."), args.iter().map(|a| self.ast_ty_v(a, vars)).collect())
+                }
+                _ => Ty::Any,
+            },
+            Type::Array(inner) => Ty::array(self.ast_ty_v(inner, vars)),
+            Type::Opt(inner) => Ty::Opt(Box::new(self.ast_ty_v(inner, vars))),
+            Type::Paren(inner) => self.ast_ty_v(inner, vars),
+            Type::Name(_) => ast_ty(t),
         }
     }
 
@@ -410,9 +449,13 @@ impl Checker {
                 }
                 Ty::Str
             }
-            Expr::Ident(n) => {
-                lookup(env, n).or_else(|| self.globals.get(n).cloned()).unwrap_or(Ty::Any)
-            }
+            Expr::Ident(n) => match lookup(env, n) {
+                Some(t) => t,
+                None => match self.globals.get(n).cloned() {
+                    Some(s) => self.inf.instantiate(&s),
+                    None => Ty::Any,
+                },
+            },
             Expr::List(es) => {
                 let el = self.inf.fresh();
                 for x in es {
@@ -433,8 +476,17 @@ impl Checker {
                 let ats: Vec<Ty> = args.iter().map(|a| self.infer_arg(env, a)).collect();
                 match self.inf.resolve(&ct) {
                     Ty::Fn(params, ret) => {
-                        for (p, a) in params.iter().zip(&ats) {
-                            let _ = self.inf.unify(p, a);
+                        // A concrete/concrete clash between a declared parameter
+                        // and its argument is a real error (`Any`/vars never
+                        // clash, so unknown-stdlib calls stay silent).
+                        for (i, (p, a)) in params.iter().zip(&ats).enumerate() {
+                            if let Err(e) = self.inf.unify(p, a) {
+                                let name = target_name(callee);
+                                self.diag(
+                                    DiagKind::TypeMismatch,
+                                    format!("in call to `{name}` (argument {}): {e}", i + 1),
+                                );
+                            }
                         }
                         *ret
                     }
@@ -701,6 +753,9 @@ fn ast_ty(t: &Type) -> Ty {
                 "bool" => Ty::Bool,
                 "bytes" => Ty::Bytes,
                 "unit" | "()" => Ty::Unit,
+                // Outside a generalizing signature, an un-bound type variable is
+                // treated gradually (`any`) rather than as a nominal type.
+                _ if segs.len() == 1 && ty::is_type_var_name(&n) => Ty::Any,
                 _ => Ty::Con(n, vec![]),
             }
         }

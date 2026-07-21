@@ -98,7 +98,11 @@ sources (`RUNTIME_H`/`RUNTIME_C`); grow them alongside the backend.
   hatch for unknown stdlib, strict on the 4 acceptance diagnostics
   (`DiagKind`: TypeMismatch / NonExhaustive / EffectInConfig / UnknownOption).
   `check(module, Mode)`; `Mode::Program|Config`. Good examples typecheck, the
-  four `examples/bad/*.maca` are rejected. Not full HM/row yet (future harden).
+  four `examples/bad/*.maca` are rejected. **Let-polymorphism landed**: function
+  sigs generalize into `Scheme`s (`ty::is_type_var_name` treats lowercase names
+  as type vars) and instantiate per call; concrete arg/param clashes now report
+  `TypeMismatch` (`examples/generic.maca` good, `examples/bad/arg_mismatch.maca`
+  bad). Full row unification + backend monomorphization of generics still to do.
 - **P0** workspace + `maca --version`.
 - **P1** `maca-lexer`: full tokenizer (significant newlines, path literals,
   string interpolation, `x?` vs `? :`). Golden token dumps in
