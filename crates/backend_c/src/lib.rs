@@ -192,6 +192,17 @@ impl<'a> Cx<'a> {
     }
 
     fn collect(&mut self) {
+        // register record names up front so both sum payload types and (later)
+        // record field types can reference a record declared anywhere in the file
+        for item in &self.m.items {
+            if let Stmt::Bind(b) = item {
+                if let Expr::Ident(name) = &b.target {
+                    if is_record_value(&b.value) {
+                        self.records.entry(name.clone()).or_default();
+                    }
+                }
+            }
+        }
         // first pass: sums + records + modules + fn signatures + lets
         for item in &self.m.items {
             match item {
@@ -443,6 +454,60 @@ impl<'a> Cx<'a> {
             self.topo_visit(&n, &mut seen);
         }
     }
+
+    /// Combined dependency order over both records and tagged sums: a node is
+    /// emitted only after every record / tagged-sum it references by value.
+    /// (Plain sums are enums with no struct dependency and are excluded.)
+    fn struct_order(&self) -> Vec<String> {
+        let mut seen = HashSet::new();
+        let mut order = Vec::new();
+        // deterministic node set (BTreeMap key order): records then tagged sums
+        for n in self.records.keys() {
+            self.struct_visit(n, &mut seen, &mut order);
+        }
+        for n in self.sums.keys() {
+            if self.is_tagged(n) {
+                self.struct_visit(n, &mut seen, &mut order);
+            }
+        }
+        order
+    }
+    fn struct_visit(&self, n: &str, seen: &mut HashSet<String>, order: &mut Vec<String>) {
+        if seen.contains(n) {
+            return;
+        }
+        seen.insert(n.to_string());
+        for d in self.struct_deps(n) {
+            if self.records.contains_key(&d) || self.is_tagged(&d) {
+                self.struct_visit(&d, seen, order);
+            }
+        }
+        order.push(n.to_string());
+    }
+    /// Names of records / tagged sums referenced by value in a node's fields
+    /// (record) or variant payloads (tagged sum).
+    fn struct_deps(&self, n: &str) -> Vec<String> {
+        let mut deps = Vec::new();
+        if let Some(fields) = self.records.get(n) {
+            for (_, t) in fields {
+                if let Some(d) = struct_dep(t) {
+                    deps.push(d);
+                }
+            }
+        }
+        if let Some(vars) = self.sums.get(n) {
+            for v in vars {
+                if let Some(p) = self.variant_payloads.get(v) {
+                    for t in p {
+                        if let Some(d) = struct_dep(t) {
+                            deps.push(d);
+                        }
+                    }
+                }
+            }
+        }
+        deps
+    }
     fn topo_visit(&mut self, n: &str, seen: &mut HashSet<String>) {
         if seen.contains(n) {
             return;
@@ -521,20 +586,76 @@ impl<'a> Cx<'a> {
             self.push("");
         }
 
-        // sums: a plain C enum, or a tagged struct+union when any variant has a
-        // payload. to_str/from_str are emitted for both (json codegen needs them;
-        // for tagged sums the payload is dropped — a documented limitation).
+        // Plain (nullary-only) sums are C enums with no struct dependencies, so
+        // emit them up front. Tagged sums (payloads) and records are structs that
+        // may reference each other by value, so they are emitted together in
+        // dependency order below; their to_str/from_str follow.
         let sums: Vec<(String, Vec<String>)> =
             self.sums.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         for (name, vars) in &sums {
-            if self.is_tagged(name) {
-                self.emit_tagged_sum(name, vars);
-            } else {
+            if !self.is_tagged(name) {
                 let variants =
                     vars.iter().map(|v| format!("{name}_{v}")).collect::<Vec<_>>().join(", ");
                 self.push(&format!("typedef enum {{ {variants} }} {name};"));
             }
         }
+        self.push("");
+
+        // primitive-element arrays
+        let mut emitted_arr: HashSet<CTy> = HashSet::new();
+        let elems: Vec<CTy> = self.arr_elems.iter().cloned().collect();
+        for e in &elems {
+            if !matches!(e, CTy::Rec(_)) {
+                self.push(&format!("MACA_DEFINE_ARRAY({}, {})", arr_name(e), c_type(e)));
+                emitted_arr.insert(e.clone());
+            }
+        }
+        self.push("");
+
+        // Records and tagged sums are structs that may reference each other by
+        // value (a sum payload holds a record, a record field holds a sum), so
+        // they are emitted together in one dependency order. Record-element
+        // arrays are interleaved just before the struct that first needs them
+        // (the element type must be defined before MACA_DEFINE_ARRAY, which uses
+        // `sizeof(Elem)`). Plain (nullary) sums were emitted as enums above and
+        // carry no struct dependency.
+        let struct_order = self.struct_order();
+        for name in &struct_order {
+            // emit any record/sum-element arrays this struct references first
+            let field_ctys: Vec<CTy> = if let Some(fs) = self.records.get(name) {
+                fs.iter().map(|(_, t)| t.clone()).collect()
+            } else {
+                self.sums[name]
+                    .iter()
+                    .flat_map(|v| self.variant_payloads.get(v).cloned().unwrap_or_default())
+                    .collect()
+            };
+            for t in &field_ctys {
+                if let CTy::Arr(e) = t {
+                    if matches!(**e, CTy::Rec(_) | CTy::Sum(_)) && !emitted_arr.contains(e) {
+                        self.push(&format!("MACA_DEFINE_ARRAY({}, {})", arr_name(e), c_type(e)));
+                        emitted_arr.insert((**e).clone());
+                    }
+                }
+            }
+            if self.records.contains_key(name) {
+                let fields = self.records[name].clone();
+                self.push("typedef struct {");
+                for (fname, t) in &fields {
+                    self.push(&format!("    {} {fname};", c_type(t)));
+                }
+                self.push(&format!("}} {name};"));
+            } else {
+                let vars = self.sums[name].clone();
+                self.emit_tagged_sum(name, &vars);
+            }
+        }
+        self.push("");
+
+        // sum to_str/from_str (json codegen needs them). Plain and tagged sums
+        // both get them; for tagged sums the payload is dropped in from_str — a
+        // documented limitation. Emitted after the struct block so tagged-sum
+        // constructors are already defined.
         for (name, vars) in &sums {
             let tagged = self.is_tagged(name);
             self.push(&format!("static maca_str {name}_to_str({name} v) {{"));
@@ -548,8 +669,6 @@ impl<'a> Cx<'a> {
             self.push("}");
             self.push(&format!("static {name} {name}_from_str(maca_str s) {{"));
             if tagged {
-                // match nullary variants by name; fall back to the first variant
-                // with zero-initialized payload (payload json is not modeled)
                 for v in vars {
                     if self.variant_payloads.get(v).is_none_or(|p| p.is_empty()) {
                         self.push(&format!("    if (maca_str_eq(s, \"{v}\")) return {name}_{v}();"));
@@ -572,38 +691,8 @@ impl<'a> Cx<'a> {
         }
         self.push("");
 
-        // primitive-element arrays
-        let mut emitted_arr: HashSet<CTy> = HashSet::new();
-        let elems: Vec<CTy> = self.arr_elems.iter().cloned().collect();
-        for e in &elems {
-            if !matches!(e, CTy::Rec(_)) {
-                self.push(&format!("MACA_DEFINE_ARRAY({}, {})", arr_name(e), c_type(e)));
-                emitted_arr.insert(e.clone());
-            }
-        }
-        self.push("");
-
-        // records in topo order, interleaving record-element arrays
+        // json forward decls + defs (records only; sums use to_str/from_str)
         let order = self.rec_order.clone();
-        for name in &order {
-            let fields = self.records[name].clone();
-            for (_, t) in &fields {
-                if let CTy::Arr(e) = t {
-                    if matches!(**e, CTy::Rec(_)) && !emitted_arr.contains(e) {
-                        self.push(&format!("MACA_DEFINE_ARRAY({}, {})", arr_name(e), c_type(e)));
-                        emitted_arr.insert((**e).clone());
-                    }
-                }
-            }
-            self.push(&format!("typedef struct {{"));
-            for (fname, t) in &fields {
-                self.push(&format!("    {} {fname};", c_type(t)));
-            }
-            self.push(&format!("}} {name};"));
-        }
-        self.push("");
-
-        // json forward decls + defs
         for name in &order {
             self.push(&format!("static maca_str {name}_to_json({name} v);"));
             self.push(&format!("static {name} {name}_from_json(maca_json* j);"));
@@ -2035,6 +2124,17 @@ fn rec_dep(t: &CTy) -> Option<String> {
     match t {
         CTy::Rec(n) => Some(n.clone()),
         CTy::Arr(e) => rec_dep(e),
+        _ => None,
+    }
+}
+
+/// Struct-shaped dependency: a record or a sum referenced by value (the caller
+/// filters plain sums, which need no ordering). Recurses through arrays since
+/// `MACA_DEFINE_ARRAY` embeds `sizeof(Elem)`.
+fn struct_dep(t: &CTy) -> Option<String> {
+    match t {
+        CTy::Rec(n) | CTy::Sum(n) => Some(n.clone()),
+        CTy::Arr(e) => struct_dep(e),
         _ => None,
     }
 }

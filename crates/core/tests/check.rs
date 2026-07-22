@@ -57,6 +57,12 @@ fn generic_ok() {
     // `id("hello"): str` must both check with no false-positive mismatch.
     assert_clean("examples/generic.maca", Mode::Program);
 }
+#[test]
+fn sum_record_ok() {
+    // A sum whose payload is a record declared later in the file type-checks;
+    // the payload binds at the record's real type inside the match arm.
+    assert_clean("examples/sum_record.maca", Mode::Program);
+}
 
 // ---- bad examples are rejected with the right diagnostic -----------------
 

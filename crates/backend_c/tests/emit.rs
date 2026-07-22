@@ -158,6 +158,30 @@ fn payload_sum_is_a_tagged_union() {
 }
 
 #[test]
+fn tagged_sum_with_record_payload_orders_record_first() {
+    // A sum carrying a record payload must have the record's struct defined
+    // *before* the tagged-sum struct, even when the sum is declared first in
+    // source (regression: combined records+sums topo order).
+    let out = c("Shape = Dot | At(P)\nP = {\n    x: int\n    y: int\n}\nf(s: Shape) -> int {\n    match s {\n        At(p) => p.x\n        Dot => 0\n    }\n}\n");
+    let p_at = out.find("} P;").expect("no P struct");
+    let shape_at = out.find("} Shape;").expect("no Shape struct");
+    assert!(p_at < shape_at, "record P must be emitted before Shape:\n{out}");
+    // the payload field is the record by value, not int64_t
+    assert!(out.contains("P _0;"), "payload not typed as record P:\n{out}");
+}
+
+#[test]
+fn record_with_tagged_sum_field_orders_sum_first() {
+    // The reverse dependency: a record field whose type is a tagged sum must
+    // have the sum struct defined before the record struct.
+    let out = c("Holder = {\n    shape: Shape\n}\nShape = Dot | At(int)\n");
+    let shape_at = out.find("} Shape;").expect("no Shape struct");
+    let holder_at = out.find("} Holder;").expect("no Holder struct");
+    assert!(shape_at < holder_at, "sum Shape must be emitted before Holder:\n{out}");
+    assert!(out.contains("Shape shape;"), "field not typed as sum Shape:\n{out}");
+}
+
+#[test]
 fn reify_installs_a_handler() {
     let out = c("boom() -> int {\n    fail \"x\"\n    0\n}\nmain() -> int {\n    try boom()\n    0\n}\n");
     assert!(out.contains("maca_try_push("), "no handler push:\n{out}");

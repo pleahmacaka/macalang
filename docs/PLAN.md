@@ -65,7 +65,10 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   are typed as functions (`Circle(10)`), payloads bind in patterns
   (`Circle(r) => r * r`). Native lowering is a tagged struct/union with a
   per-variant constructor; plain (nullary-only) enums are unchanged. Parses with
-  no stage-0 front-end change. (`examples/payload_sum.maca`.)
+  no stage-0 front-end change. (`examples/payload_sum.maca`.) A payload may be a
+  record, in either declaration order — the C backend emits records and tagged
+  sums in one combined dependency order, so the record struct is defined before a
+  sum that carries it (and vice-versa). (`examples/sum_record.maca`.)
 - Arithmetic operators: `%` (modulo) and `<<` / `>>` (shifts) join
   `+ - * /`; all integer-only, checked and lowered on every backend.
   (`examples/fizzbuzz.maca`.)

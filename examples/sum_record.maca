@@ -1,0 +1,23 @@
+// A sum type carrying a record payload, with the sum declared *before* the
+// record it references — the C backend emits records and tagged sums in one
+// combined dependency order, so `P` is defined before `Shape`.
+
+Shape = Dot | At(P)
+
+P = {
+    x: int
+    y: int
+}
+
+f(s: Shape) -> int {
+    match s {
+        At(p) => p.x + p.y
+        Dot => 0
+    }
+}
+
+main() -> int {
+    info("{f(At(P { x = 7, y = 5 }))}")
+    info("{f(Dot)}")
+    0
+}

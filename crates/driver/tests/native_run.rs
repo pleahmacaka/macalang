@@ -222,3 +222,25 @@ fn record_patterns_and_ops_run_natively() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_eq!(stdout.lines().collect::<Vec<_>>(), vec!["4", "true", "side: right"], "stdout: {stdout}");
 }
+
+#[test]
+fn sum_with_record_payload_runs_natively() {
+    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    // sum declared before the record it carries: the combined topo order must
+    // define the record struct first, or the C won't compile.
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &example("sum_record.maca")])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(
+        stdout.lines().collect::<Vec<_>>(),
+        vec!["12", "0"],
+        "stdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
