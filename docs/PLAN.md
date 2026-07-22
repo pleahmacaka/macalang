@@ -158,9 +158,13 @@ capitalized, primitives are keywords, and sized-numeric / SIMD lane types
 (`i32`, `f32x8`) stay nominal. This removes false-positive mismatches on
 generic calls (e.g. `let n: int = id(5)`) and lets a concrete argument clash
 against a declared parameter surface as `TypeMismatch`
-(`examples/bad/arg_mismatch.maca`). Native lowering of a polymorphic function
-across value-typed instantiations still needs monomorphization in the C backend
-(future hardening); `generic.maca` is gated at the parse + typecheck layers.
+(`examples/bad/arg_mismatch.maca`). Native lowering monomorphizes generics: the
+C backend emits one specialized function per distinct concrete argument tuple
+(`id__int`, `id__str`, `id__Box`) and rewrites calls to the mangled name, so
+`generic.maca` and record instantiations compile and run natively
+(`examples/generic_record.maca`). Deferred: return-only polymorphism, nested
+generic forwarding, and closures (need the checker to hand resolved types to the
+backend).
 
 Three more real error classes now surface as `TypeMismatch` (previously
 swallowed): call **arity** against a user function's declared parameter count —

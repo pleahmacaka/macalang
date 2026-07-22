@@ -179,3 +179,16 @@ fn capturing_lambda_is_flagged_not_miscompiled() {
     let out = c("main() -> int {\n    let k = 3\n    let xs = 1, 2\n    let ys = xs.parallel(v => v * k)\n    0\n}\n");
     assert!(out.contains("unsupported: capturing lambda"), "capture not flagged:\n{out}");
 }
+
+#[test]
+fn generic_fn_is_monomorphized() {
+    let out = c("id(x: a) -> a => x\nBox = {\n    v: int\n}\nmain() -> int {\n    let n: int = id(42)\n    let b: Box = id(Box { v = 7 })\n    let s: str = id(\"hi\")\n    0\n}\n");
+    // one specialized copy per distinct instantiation, each with the right C type
+    assert!(out.contains("int64_t id__int(int64_t x)"), "no int specialization:\n{out}");
+    assert!(out.contains("maca_str id__str(maca_str x)"), "no str specialization:\n{out}");
+    assert!(out.contains("Box id__Box(Box x)"), "no record specialization:\n{out}");
+    // calls are rewritten to the mangled names
+    assert!(out.contains("id__int(42)"), "int call not rewritten:\n{out}");
+    // the generic template itself is not emitted as a single int64_t function
+    assert!(!out.contains("int64_t id(int64_t x)"), "generic emitted monomorphically:\n{out}");
+}

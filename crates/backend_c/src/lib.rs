@@ -97,6 +97,10 @@ struct Cx<'a> {
     hoisted_decls: Vec<String>,
     hoisted_defs: Vec<String>,
     lambda_count: usize,
+    // generic functions, monomorphized per concrete instantiation
+    generics: HashMap<String, FnDef>,
+    spec_pending: Vec<(String, Vec<CTy>)>,     // instantiations to emit
+    spec_done: HashSet<(String, Vec<CTy>)>,    // already emitted
 }
 
 impl<'a> Cx<'a> {
@@ -119,6 +123,9 @@ impl<'a> Cx<'a> {
             hoisted_decls: Vec::new(),
             hoisted_defs: Vec::new(),
             lambda_count: 0,
+            generics: HashMap::new(),
+            spec_pending: Vec::new(),
+            spec_done: HashSet::new(),
         }
     }
 
@@ -223,15 +230,21 @@ impl<'a> Cx<'a> {
         for item in &self.m.items {
             match item {
                 Stmt::Fn(f) => {
-                    let params = f.params.iter().map(|p| self.cty_opt(&p.ty)).collect::<Vec<_>>();
-                    let ret = f.ret.as_ref().map_or(CTy::Unit, |t| self.cty(t));
-                    for p in &params {
-                        self.note_arr(p);
-                        self.note_vec(p);
+                    // a generic function (type-variable params/ret) is not emitted
+                    // as one C function — it is monomorphized per call site.
+                    if fn_is_generic(f) {
+                        self.generics.insert(f.name.clone(), f.clone());
+                    } else {
+                        let params = f.params.iter().map(|p| self.cty_opt(&p.ty)).collect::<Vec<_>>();
+                        let ret = f.ret.as_ref().map_or(CTy::Unit, |t| self.cty(t));
+                        for p in &params {
+                            self.note_arr(p);
+                            self.note_vec(p);
+                        }
+                        self.note_arr(&ret);
+                        self.note_vec(&ret);
+                        self.fns.insert(f.name.clone(), (params, ret));
                     }
-                    self.note_arr(&ret);
-                    self.note_vec(&ret);
-                    self.fns.insert(f.name.clone(), (params, ret));
                 }
                 Stmt::Bind(b) => {
                     if let Expr::Ident(name) = &b.target {
@@ -604,7 +617,8 @@ impl<'a> Cx<'a> {
         // they are declared `extern` here and skipped in the def loop)
         for item in &self.m.items {
             if let Stmt::Fn(f) = item {
-                if f.name == "main" {
+                // generic fns are emitted per-instantiation, not once
+                if f.name == "main" || self.generics.contains_key(&f.name) {
                     continue;
                 }
                 // bodyless fns are foreign (FFI) declarations; SIMD kernels live
@@ -625,11 +639,19 @@ impl<'a> Cx<'a> {
         let saved = std::mem::take(&mut self.out);
         for item in self.m.items.clone() {
             if let Stmt::Fn(f) = &item {
-                if f.body.is_some() && !self.is_simd_fn(&f.name) {
+                if f.body.is_some() && !self.is_simd_fn(&f.name) && !self.generics.contains_key(&f.name) {
                     self.emit_fn(f);
                     self.push("");
                 }
             }
+        }
+        // drain the monomorphization worklist: emitting a specialization may
+        // request further ones (generic calling generic), so loop until empty.
+        while let Some((name, ctys)) = self.spec_pending.pop() {
+            if !self.spec_done.insert((name.clone(), ctys.clone())) {
+                continue;
+            }
+            self.emit_specialization(&name, &ctys);
         }
         let defs = std::mem::replace(&mut self.out, saved);
         for d in self.hoisted_decls.clone() {
@@ -1199,6 +1221,77 @@ impl<'a> Cx<'a> {
         (name, CTy::Unknown)
     }
 
+    /// Emit one monomorphized copy of a generic function for a concrete tuple of
+    /// argument types (mangled name, concrete param/ret types). The body flows
+    /// concrete types via the env, so type-variable references resolve correctly.
+    fn emit_specialization(&mut self, name: &str, arg_ctys: &[CTy]) {
+        let genf = self.generics[name].clone();
+        let subst = self.build_subst(&genf, arg_ctys);
+        let ret = genf.ret.as_ref().map_or(CTy::Unit, |t| self.subst_cty(t, &subst));
+        let mangled = mangle_name(name, arg_ctys);
+        let param_ctys: Vec<CTy> =
+            genf.params.iter().enumerate().map(|(i, _)| arg_ctys.get(i).cloned().unwrap_or(CTy::Unknown)).collect();
+        let mut env: Env =
+            genf.params.iter().zip(&param_ctys).map(|(p, t)| (p.name.clone(), t.clone())).collect();
+        let ps: Vec<String> =
+            genf.params.iter().zip(&param_ctys).map(|(p, t)| format!("{} {}", c_type(t), p.name)).collect();
+        let sig =
+            format!("{} {mangled}({})", c_type(&ret), if ps.is_empty() { "void".into() } else { ps.join(", ") });
+        self.hoisted_decls.push(format!("static {sig};"));
+        let saved = std::mem::take(&mut self.out);
+        self.push(&format!("static {sig} {{"));
+        match &genf.body {
+            Some(FnBody::Block(stmts)) => {
+                let sink = if ret == CTy::Unit { Sink::Discard } else { Sink::Return(ret.clone()) };
+                self.block(&mut env, stmts, &sink, 1);
+            }
+            Some(FnBody::Expr(e)) => {
+                let (c, _) = self.expr(&mut env, e, Some(&ret));
+                if ret == CTy::Unit {
+                    self.push(&format!("    (void)({c});"));
+                } else {
+                    self.push(&format!("    return {c};"));
+                }
+            }
+            None => {}
+        }
+        self.push("}");
+        let def = std::mem::replace(&mut self.out, saved);
+        self.hoisted_defs.push(def);
+    }
+
+    /// type-variable name → concrete `CTy`, from a generic fn's params vs. the
+    /// concrete argument types at a call.
+    fn build_subst(&self, genf: &FnDef, arg_ctys: &[CTy]) -> HashMap<String, CTy> {
+        let mut m = HashMap::new();
+        for (p, cty) in genf.params.iter().zip(arg_ctys) {
+            if let Some(Type::Name(segs)) = &p.ty {
+                if segs.len() == 1 && is_tyvar(&segs[0]) {
+                    m.insert(segs[0].clone(), cty.clone());
+                }
+            }
+        }
+        m
+    }
+
+    /// A declared type with type variables resolved via `subst`.
+    fn subst_cty(&self, t: &Type, subst: &HashMap<String, CTy>) -> CTy {
+        match t {
+            Type::Name(segs) if segs.len() == 1 => {
+                subst.get(&segs[0]).cloned().unwrap_or_else(|| self.cty(t))
+            }
+            Type::Array(inner) => CTy::Arr(Box::new(self.subst_cty(inner, subst))),
+            Type::Opt(inner) => self.subst_cty(inner, subst),
+            Type::Paren(inner) => self.subst_cty(inner, subst),
+            _ => self.cty(t),
+        }
+    }
+
+    fn spec_ret(&self, genf: &FnDef, arg_ctys: &[CTy]) -> CTy {
+        let subst = self.build_subst(genf, arg_ctys);
+        genf.ret.as_ref().map_or(CTy::Unit, |t| self.subst_cty(t, &subst))
+    }
+
     /// Names that resolve globally (so referencing them isn't a capture).
     fn is_known_global(&self, n: &str) -> bool {
         self.fns.contains_key(n)
@@ -1295,6 +1388,23 @@ impl<'a> Cx<'a> {
                     CTy::Str => (format!("atoll({c})"), CTy::Int),
                     _ => (format!("((int64_t)({c}))"), CTy::Int),
                 };
+            }
+            // a generic function → monomorphize per concrete argument types
+            if let Some(genf) = self.generics.get(name).cloned() {
+                let lowered: Vec<(String, CTy)> =
+                    args.iter().map(|x| self.arg_typed(env, x)).collect();
+                let arg_ctys: Vec<CTy> = lowered.iter().map(|(_, t)| t.clone()).collect();
+                let key = (name.to_string(), arg_ctys.clone());
+                if !self.spec_done.contains(&key) && !self.spec_pending.contains(&key) {
+                    self.spec_pending.push(key);
+                }
+                let ret = self.spec_ret(&genf, &arg_ctys);
+                let code = format!(
+                    "{}({})",
+                    mangle_name(name, &arg_ctys),
+                    lowered.iter().map(|(c, _)| c.clone()).collect::<Vec<_>>().join(", ")
+                );
+                return (code, ret);
             }
             // a payload sum constructor: `Circle(5)` → `Shape_Circle(5)`
             if let Some(sum) = self.variant_of.get(name).cloned() {
@@ -1797,6 +1907,51 @@ fn sum_variants(e: &Expr) -> Option<Vec<(String, Vec<Type>)>> {
 fn arg_expr(a: &Arg) -> &Expr {
     match a {
         Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
+    }
+}
+
+/// A function is generic if any parameter or the return type mentions a
+/// type variable.
+fn fn_is_generic(f: &FnDef) -> bool {
+    f.params.iter().any(|p| p.ty.as_ref().is_some_and(type_has_tyvar)) || f.ret.as_ref().is_some_and(type_has_tyvar)
+}
+
+fn type_has_tyvar(t: &Type) -> bool {
+    match t {
+        Type::Name(segs) => segs.len() == 1 && is_tyvar(&segs[0]),
+        Type::Array(i) | Type::Opt(i) | Type::Paren(i) => type_has_tyvar(i),
+        Type::Apply(h, args) => type_has_tyvar(h) || args.iter().any(type_has_tyvar),
+    }
+}
+
+/// A lowercase single-word type name that isn't a primitive is a type variable.
+fn is_tyvar(n: &str) -> bool {
+    let b = n.as_bytes();
+    !b.is_empty()
+        && b[0].is_ascii_lowercase()
+        && !matches!(n, "int" | "float" | "str" | "bool" | "bytes" | "unit")
+        && !(matches!(b[0], b'i' | b'u' | b'f') && b.get(1).is_some_and(u8::is_ascii_digit))
+}
+
+/// A generic function's specialized C name for a concrete argument tuple, e.g.
+/// `id__int`, `id__str`, `id__Box`.
+fn mangle_name(name: &str, ctys: &[CTy]) -> String {
+    let tags: Vec<String> = ctys.iter().map(cty_tag).collect();
+    format!("{name}__{}", tags.join("_"))
+}
+
+fn cty_tag(t: &CTy) -> String {
+    match t {
+        CTy::Int => "int".into(),
+        CTy::Float => "f64".into(),
+        CTy::F32 => "f32".into(),
+        CTy::Str => "str".into(),
+        CTy::Bool => "bool".into(),
+        CTy::Unit => "unit".into(),
+        CTy::Rec(n) | CTy::Sum(n) => n.clone(),
+        CTy::Arr(e) => format!("arr{}", cty_tag(e)),
+        CTy::Vec { name, .. } => name.clone(),
+        CTy::Unknown => "any".into(),
     }
 }
 
