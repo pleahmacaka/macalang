@@ -96,3 +96,19 @@ fn fail_exits_cleanly_with_message() {
     assert!(stderr.contains("error: negative input"), "stderr: {stderr}");
     assert_eq!(out.status.code(), Some(1), "fail should exit 1, got {:?}", out.status.code());
 }
+
+#[test]
+fn match_guards_run_natively() {
+    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &example("match_guard.maca")])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines, vec!["negative", "zero", "small", "big", "two"], "stdout: {stdout}");
+}

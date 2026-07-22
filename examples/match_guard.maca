@@ -1,0 +1,27 @@
+// `match` with guards (`pat if cond`) and integer-literal patterns.
+
+classify(n: int) -> str {
+    match n {
+        x if x < 0 => "negative"
+        0 => "zero"
+        x if x < 10 => "small"
+        _ => "big"
+    }
+}
+
+name(n: int) -> str {
+    match n {
+        1 => "one"
+        2 => "two"
+        _ => "many"
+    }
+}
+
+main() -> int {
+    info(classify(0 - 5))
+    info(classify(0))
+    info(classify(7))
+    info(classify(100))
+    info(name(2))
+    0
+}
