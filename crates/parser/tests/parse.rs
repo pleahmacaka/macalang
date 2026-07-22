@@ -163,3 +163,8 @@ fn roundtrip_payload_sum() {
 fn roundtrip_catch() {
     roundtrip("catch.maca");
 }
+
+#[test]
+fn roundtrip_lambda() {
+    roundtrip("lambda.maca");
+}

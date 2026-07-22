@@ -93,6 +93,10 @@ struct Cx<'a> {
     arr_elems: HashSet<CTy>,                  // array element types to instantiate
     vecs: BTreeSet<(String, String, usize)>, // SIMD vector types (name, scalar_c, lanes)
     tmp: usize,
+    // non-capturing lambdas hoisted to top-level `static` functions
+    hoisted_decls: Vec<String>,
+    hoisted_defs: Vec<String>,
+    lambda_count: usize,
 }
 
 impl<'a> Cx<'a> {
@@ -112,6 +116,9 @@ impl<'a> Cx<'a> {
             arr_elems: HashSet::new(),
             vecs: BTreeSet::new(),
             tmp: 0,
+            hoisted_decls: Vec::new(),
+            hoisted_defs: Vec::new(),
+            lambda_count: 0,
         }
     }
 
@@ -611,7 +618,11 @@ impl<'a> Cx<'a> {
         }
         self.push("");
 
-        // user fn defs (skip SIMD kernels — the LLVM backend defines them)
+        // user fn defs (skip SIMD kernels — the LLVM backend defines them).
+        // Emit into a scratch buffer first: lowering a body may hoist lambdas to
+        // top-level `static` functions, which must be declared/defined *before*
+        // the functions that take their address.
+        let saved = std::mem::take(&mut self.out);
         for item in self.m.items.clone() {
             if let Stmt::Fn(f) = &item {
                 if f.body.is_some() && !self.is_simd_fn(&f.name) {
@@ -620,6 +631,14 @@ impl<'a> Cx<'a> {
                 }
             }
         }
+        let defs = std::mem::replace(&mut self.out, saved);
+        for d in self.hoisted_decls.clone() {
+            self.push(&d);
+        }
+        for d in self.hoisted_defs.clone() {
+            self.out.push_str(&d);
+        }
+        self.out.push_str(&defs);
     }
 
     fn fn_sig(&self, f: &FnDef) -> String {
@@ -1106,6 +1125,7 @@ impl<'a> Cx<'a> {
             // `try e` / `reify e` — run `e` under a failure handler; the value is
             // the caught message (a `str`), or "" on success. setjmp must be
             // inline (not wrapped in a helper), so a GNU statement-expression.
+            Expr::Lambda { params, body } => self.emit_lambda(env, params, body),
             Expr::Reify(x) => {
                 let jb = self.fresh();
                 let r = self.fresh();
@@ -1145,6 +1165,48 @@ impl<'a> Cx<'a> {
             return (format!("mv_{n}()"), ty);
         }
         (n.to_string(), CTy::Unknown)
+    }
+
+    /// Lower a lambda by hoisting it to a top-level `static int64_t` function
+    /// whose address is the value. Increment 1: only *non-capturing* lambdas
+    /// with a *simple-expression* body (the shape `.parallel` and other
+    /// function-value sites consume); anything else is flagged unsupported so
+    /// no broken C is emitted.
+    fn emit_lambda(&mut self, _env: &Env, params: &[Param], body: &Expr) -> (String, CTy) {
+        let mut refs = HashSet::new();
+        if !simple_free(body, &mut refs) {
+            return ("0 /* unsupported: complex lambda body */".into(), CTy::Unknown);
+        }
+        let param_names: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
+        let captures = refs.iter().any(|n| !param_names.contains(n) && !self.is_known_global(n));
+        if captures {
+            return ("0 /* unsupported: capturing lambda */".into(), CTy::Unknown);
+        }
+        let name = format!("_lam{}", self.lambda_count);
+        self.lambda_count += 1;
+        let ps: Vec<String> = params.iter().map(|p| format!("int64_t {}", p.name)).collect();
+        let sig =
+            format!("static int64_t {name}({})", if ps.is_empty() { "void".into() } else { ps.join(", ") });
+        self.hoisted_decls.push(format!("{sig};"));
+        let saved = std::mem::take(&mut self.out);
+        self.push(&format!("{sig} {{"));
+        let mut lenv: Env = params.iter().map(|p| (p.name.clone(), CTy::Int)).collect();
+        let (c, _) = self.expr(&mut lenv, body, Some(&CTy::Int));
+        self.push(&format!("    return {c};"));
+        self.push("}");
+        let def = std::mem::replace(&mut self.out, saved);
+        self.hoisted_defs.push(def);
+        (name, CTy::Unknown)
+    }
+
+    /// Names that resolve globally (so referencing them isn't a capture).
+    fn is_known_global(&self, n: &str) -> bool {
+        self.fns.contains_key(n)
+            || self.let_names.contains(n)
+            || self.variant_of.contains_key(n)
+            || self.modules.contains(n)
+            || console_fn(n).is_some()
+            || matches!(n, "str" | "int" | "float" | "print" | "info" | "len" | "true" | "false")
     }
 
     fn ctor(&mut self, env: &mut Env, name: &str, fields: &[Field]) -> (String, CTy) {
@@ -1735,6 +1797,37 @@ fn sum_variants(e: &Expr) -> Option<Vec<(String, Vec<Type>)>> {
 fn arg_expr(a: &Arg) -> &Expr {
     match a {
         Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
+    }
+}
+
+/// Collect the identifiers a *simple-expression* lambda body references, into
+/// `out`. Returns false if the body uses a form this increment doesn't hoist
+/// (blocks, control flow, records, …) — the caller then declines to hoist,
+/// which keeps capture analysis sound (no identifier can be missed).
+fn simple_free(e: &Expr, out: &mut HashSet<String>) -> bool {
+    match e {
+        Expr::Ident(n) => {
+            out.insert(n.clone());
+            true
+        }
+        Expr::Int(_) | Expr::Float(_) | Expr::Bool(_) | Expr::Unit | Expr::Path(_) => true,
+        Expr::Str(parts) => parts.iter().all(|p| match p {
+            StrPart::Interp(x) => simple_free(x, out),
+            _ => true,
+        }),
+        Expr::Unary { expr, .. } | Expr::Try(expr) | Expr::Fail(expr) | Expr::Reify(expr) => {
+            simple_free(expr, out)
+        }
+        Expr::Field { base, .. } => simple_free(base, out),
+        Expr::Binary { lhs, rhs, .. } => simple_free(lhs, out) && simple_free(rhs, out),
+        Expr::Ternary { cond, then, els } => {
+            simple_free(cond, out) && simple_free(then, out) && simple_free(els, out)
+        }
+        Expr::Call { callee, args } => {
+            simple_free(callee, out) && args.iter().all(|a| simple_free(arg_expr(a), out))
+        }
+        Expr::List(es) => es.iter().all(|e| simple_free(e, out)),
+        _ => false,
     }
 }
 
