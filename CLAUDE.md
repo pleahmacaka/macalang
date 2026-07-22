@@ -103,7 +103,12 @@ nix|js|jvm|embedded`, `--mcu`, `--cp`), `run`, `dev` (dev-shell flake), `watch`,
 
 Language surface beyond the original cheatsheet: operator overloading;
 `while`/`break`/`continue` + reassignment; `%`, `<<`, `>>` operators;
-hex/binary/octal integer literals with `_` separators.
+hex/binary/octal integer literals with `_` separators; list/string subscripting
+`xs[i]` with lvalue assignment (`xs[i] = v`, `p.f = v`); functional record update
+`base with { f = v }`; `len(x)`; recursive sum types (`Tree`, `List`) via boxed
+payloads; a bracketless comma list as an arrow-fn body (`f() -> int[] => 1, 2`);
+and C-keyword-safe identifiers (a Maca `double`/`new`/`class` compiles). See
+`examples/{indexing,record_update,tree,sum_record,keywords}.maca`.
 
 **Codegen note (C backend):** control-flow expressions (`if`/`match`/block)
 work in value position via a `Sink` (Discard/Return/Assign) threaded through
