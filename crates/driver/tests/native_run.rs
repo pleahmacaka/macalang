@@ -51,3 +51,23 @@ fn recursion_and_arithmetic_run_natively() {
     let _ = PathBuf::from(&f);
     assert!(stdout.contains("6765"), "fib(20) should be 6765, got: {stdout}");
 }
+
+#[test]
+fn operator_overloading_runs_natively() {
+    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    // (1,2)+(3,4) = (4,6); *2 = (8,12)
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &example("operators.maca")])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("8,12"),
+        "operator overloading wrong.\nstdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}

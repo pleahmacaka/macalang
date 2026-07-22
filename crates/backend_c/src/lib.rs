@@ -1024,6 +1024,19 @@ impl<'a> Cx<'a> {
     fn binary(&mut self, env: &mut Env, op: BinOp, lhs: &Expr, rhs: &Expr) -> (String, CTy) {
         let (lc, lt) = self.expr(env, lhs, None);
         let (rc, _rt) = self.expr(env, rhs, None);
+
+        // Operator overloading: when the left operand is a user type (record /
+        // sum) and a function with the operator's canonical name exists, the
+        // operator desugars to a call — `a + b` → `add(a, b)`. Primitives keep
+        // the native operator.
+        if matches!(lt, CTy::Rec(_) | CTy::Sum(_)) {
+            if let Some(name) = overload_name(op) {
+                if let Some((_, ret)) = self.fns.get(name).cloned() {
+                    return (format!("{name}({lc}, {rc})"), ret);
+                }
+            }
+        }
+
         use BinOp::*;
         match op {
             Div if matches!(lt, CTy::Str) => (format!("maca_path_join({lc}, {rc})"), CTy::Str),
@@ -1262,6 +1275,25 @@ fn console_fn(name: &str) -> Option<&'static str> {
         "info" => "maca_info",
         "debug" => "maca_debug",
         "print" => "maca_print",
+        _ => return None,
+    })
+}
+
+/// The canonical function name an operator overloads to for user types
+/// (`a + b` → `add(a, b)`), or `None` for operators that never overload.
+fn overload_name(op: BinOp) -> Option<&'static str> {
+    Some(match op {
+        BinOp::Add => "add",
+        BinOp::Sub => "sub",
+        BinOp::Mul => "mul",
+        BinOp::Div => "div",
+        BinOp::Concat => "concat",
+        BinOp::Eq => "eq",
+        BinOp::Ne => "ne",
+        BinOp::Lt => "lt",
+        BinOp::Gt => "gt",
+        BinOp::Le => "le",
+        BinOp::Ge => "ge",
         _ => return None,
     })
 }

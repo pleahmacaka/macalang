@@ -49,6 +49,9 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - Generics: lowercase type vars, applied by juxtaposition (`Map k v`), postfix
   `T[]` / `T?`. Nullable `T?` = `T | None`.
 - Ternary is spaced `c ? x : y`; error-propagation is attached `x?`.
+- Operator overloading (no new syntax): on a user type, an operator resolves to
+  a same-named function — `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
+  `concat`, etc. Primitives keep the native operator. (`examples/operators.maca`.)
 - Paths are literals: `/tmp` `./x` `../x` `~/x`, joined with `p / "seg"`.
 - SIMD vectors are first-class value types: `f32x8`, `i32x4`, … (native only).
 - UI: elements are functions (`div(class=..., ...children)`); Svelte-style

@@ -661,6 +661,19 @@ impl Checker {
 
     fn binary_ty(&mut self, op: BinOp, lt: Ty, rt: Ty) -> Ty {
         use BinOp::*;
+        // Operator overloading: on a user type (record/sum), an operator resolves
+        // to a same-named function (`a + b` → `add`), taking its return type.
+        if let Ty::Con(n, _) = self.inf.resolve(&lt) {
+            if (self.records.contains_key(&n) || self.sums.contains_key(&n))
+                && let Some(name) = overload_fn_name(op)
+                && let Some(scheme) = self.globals.get(name).cloned()
+            {
+                let t = self.inf.instantiate(&scheme);
+                if let Ty::Fn(_, ret) = self.inf.resolve(&t) {
+                    return *ret;
+                }
+            }
+        }
         match op {
             Eq | Ne | Lt | Gt | Le | Ge | And | Or => Ty::Bool,
             Add | Sub | Mul | Div | Concat => {
@@ -764,6 +777,25 @@ fn cover(p: &Pattern, variants: &[String], covered: &mut HashSet<String>, catcha
 }
 
 // ---- helpers -------------------------------------------------------------
+
+/// Operator → overload function name for user types (mirror of the C backend).
+fn overload_fn_name(op: BinOp) -> Option<&'static str> {
+    use BinOp::*;
+    Some(match op {
+        Add => "add",
+        Sub => "sub",
+        Mul => "mul",
+        Div => "div",
+        Concat => "concat",
+        Eq => "eq",
+        Ne => "ne",
+        Lt => "lt",
+        Gt => "gt",
+        Le => "le",
+        Ge => "ge",
+        _ => return None,
+    })
+}
 
 fn lookup(env: &Env, name: &str) -> Option<Ty> {
     env.iter().rev().find(|(n, _)| n == name).map(|(_, t)| t.clone())

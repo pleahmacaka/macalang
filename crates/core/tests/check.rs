@@ -47,6 +47,11 @@ fn system_ok() {
     assert_clean("examples/system.maca", Mode::Config);
 }
 #[test]
+fn operators_ok() {
+    // Operator overloading on a user type (`Vec2 + Vec2` → `add`) type-checks.
+    assert_clean("examples/operators.maca", Mode::Program);
+}
+#[test]
 fn generic_ok() {
     // Polymorphic functions instantiate per use: `id(5): int` and
     // `id("hello"): str` must both check with no false-positive mismatch.
