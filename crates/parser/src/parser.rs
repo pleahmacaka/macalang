@@ -251,11 +251,15 @@ impl Parser {
         let mut ps = Vec::new();
         self.skip_seps();
         while !self.at(Tok::RParen) && !self.at_eof() {
+            let before = self.i;
             let variadic = self.eat(Tok::Ellipsis);
             let name = self.ident();
             let ty = if self.eat(Tok::Colon) { Some(self.parse_type()) } else { None };
             ps.push(Param { name, ty, variadic });
             self.skip_seps();
+            if self.i == before {
+                self.bump(); // guarantee progress on malformed params (no infinite loop)
+            }
         }
         ps
     }
@@ -264,8 +268,12 @@ impl Parser {
         self.expect(Tok::Lt, "'<'");
         let mut effs = Vec::new();
         while !self.at(Tok::Gt) && !self.at_eof() {
+            let before = self.i;
             effs.push(self.ident());
             self.eat(Tok::Comma);
+            if self.i == before {
+                self.bump(); // guarantee progress on a malformed effect row
+            }
         }
         self.expect(Tok::Gt, "'>'");
         effs
@@ -723,7 +731,9 @@ impl Parser {
 
     fn parse_arm(&mut self) -> Arm {
         let pat = self.parse_pattern_top();
-        let guard = if self.eat(Tok::If) { Some(self.parse_expr()) } else { None };
+        // A guard is a boolean expression; parse it at ternary level so the
+        // arm's own `=>` isn't mistaken for a lambda arrow (`_ if c => body`).
+        let guard = if self.eat(Tok::If) { Some(self.parse_ternary()) } else { None };
         self.expect(Tok::FatArrow, "'=>'");
         let body = if self.at(Tok::LBrace) {
             Expr::Block(self.parse_block())

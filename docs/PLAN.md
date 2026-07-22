@@ -86,6 +86,26 @@ clients (`apps/mqtt`), and the Tauri desktop UI↔backend round-trip
 io_uring, clang header-parse FFI, packaged Tauri window) are marked in the code
 as future hardening.
 
+## Phase 13 — self-hosting (Rust frozen, compiler in Maca)
+
+The Rust workspace is now the **stage-0 bootstrap**, frozen in scope. New
+compiler work is written in Maca under `selfhost/` and compiled by stage-0; the
+target is a stage-1 Maca compiler that rebuilds itself (see `docs/BOOTSTRAP.md`).
+Type-system hardening that would have grown `maca-core` (full HM over inferred
+bindings, real row unification, generic monomorphization) is deferred into
+`selfhost/check.maca` so it is written once, in Maca.
+
+Landed: `selfhost/token.maca`, `selfhost/lexer.maca`, `selfhost/main.maca` — a
+character-level lexer, gated by the stage-0 front-end (`crates/driver/tests/
+selfhost.rs`: every file parses, the concatenated module type-checks clean).
+Two stage-0 parser robustness bugs surfaced and were fixed while writing it: an
+infinite loop on malformed parameter/effect lists, and a match **guard** (`_ if
+c => …`) whose condition swallowed the arm's `=>` as a lambda arrow.
+
+A browser **playground** (`playground/`) runs the whole stage-0 front-end via
+`crates/wasm` (compiled to `wasm32-unknown-unknown`, no wasm-bindgen) with a
+Monaco editor and Maca syntax highlighting (`editor/maca.tmLanguage.json`).
+
 ## Golden examples (regression set)
 
 Verbatim from the spec, under `examples/`:

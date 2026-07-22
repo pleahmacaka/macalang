@@ -1,0 +1,60 @@
+// selfhost/token — the token model for the Maca-in-Maca compiler (stage 1).
+//
+// Written in Maca. Compiled by the stage-0 Rust `maca` today; the goal is for a
+// built stage-1 to compile this same source. Gated in CI by the stage-0
+// parser + checker (see crates/driver/tests/selfhost.rs).
+
+// Token kinds. Nominal sum; nullary variants only, so it lowers to a C enum.
+Kind =
+    TInt | TFloat | TIdent | TStr | TPath
+    | KwLet | KwIf | KwElse | KwFor | KwIn | KwMatch
+    | KwImport | KwFrom | KwWith | KwFail | KwTry | KwAlias
+    | KwTrue | KwFalse
+    | LParen | RParen | LBracket | RBracket | LBrace | RBrace
+    | Comma | Colon | Dot | Arrow | FatArrow
+    | Eq | EqEq | NotEq | Lt | Gt | Le | Ge
+    | Plus | Minus | Star | Slash | PlusPlus | Bar
+    | Question | QuestionPost
+    | Newline | Eof
+
+Token = {
+    kind: Kind
+    text: str
+    pos:  int
+}
+
+// Map a bare word to its keyword kind, or TIdent when it is an ordinary name.
+keyword_kind(w: str) -> Kind =>
+    match w {
+        "let"    => KwLet
+        "if"     => KwIf
+        "else"   => KwElse
+        "for"    => KwFor
+        "in"     => KwIn
+        "match"  => KwMatch
+        "import" => KwImport
+        "from"   => KwFrom
+        "with"   => KwWith
+        "fail"   => KwFail
+        "try"    => KwTry
+        "alias"  => KwAlias
+        "true"   => KwTrue
+        "false"  => KwFalse
+        _        => TIdent
+    }
+
+// A short human label for a kind — used by the token dumper and error messages.
+kind_name(k: Kind) -> str =>
+    match k {
+        TInt    => "int"
+        TFloat  => "float"
+        TIdent  => "ident"
+        TStr    => "str"
+        TPath   => "path"
+        Newline => "newline"
+        Eof     => "eof"
+        _       => "punct"
+    }
+
+mk_token(kind: Kind, text: str, pos: int) -> Token =>
+    Token { kind, text, pos }

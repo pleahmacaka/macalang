@@ -43,9 +43,21 @@ Virtual workspace; members are `crates/*`.
 | `maca-lsp` | tower-lsp language server |
 | `maca-mcp` | Maca MCP server (LLM-native tools) |
 | `maca-driver` | the `maca` CLI |
+| `maca-wasm` | `wasm32` front-end for the browser playground (no wasm-bindgen) |
 
 Non-crate dirs: `std/` (Maca-source stdlib), `examples/` (golden `.maca`
-programs + `examples/bad/`), `apps/` (capstones), `editor/`, `docs/`.
+programs + `examples/bad/`), `apps/` (capstones), `selfhost/` (the Maca compiler
+written in Maca — stage 1), `playground/` (Monaco web playground), `editor/`,
+`docs/`.
+
+## Self-hosting (current direction)
+
+Rust (`crates/*`) is the **frozen stage-0 bootstrap** — keep it minimal. New
+compiler work is written in Maca under `selfhost/` and gated by the stage-0
+front-end (`crates/driver/tests/selfhost.rs`). See `docs/BOOTSTRAP.md`. When a
+change is needed, prefer adding it to `selfhost/*.maca` over growing the Rust
+crates; only touch stage-0 for genuine bootstrap bugs (e.g. a parser that hangs
+or mis-parses valid surface syntax).
 
 ## How to work here
 
