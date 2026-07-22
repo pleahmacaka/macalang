@@ -28,7 +28,8 @@ jobs:
       # clang + lld back the native `cc` fallback and the embedded target so
       # those (otherwise-skipped) integration tests actually run in CI.
       - name: Install C / LLVM toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang lld
+        # llvm provides llvm-objcopy/llvm-size used by the embedded target
+        run: sudo apt-get update && sudo apt-get install -y clang lld llvm
 
       - name: Build
         run: cargo build --workspace
