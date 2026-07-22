@@ -86,6 +86,7 @@ pub enum Expr {
     Ctor { name: Ident, fields: Vec<Field> },
     Call { callee: Box<Expr>, args: Vec<Arg> },
     Field { base: Box<Expr>, name: Ident },
+    Index { base: Box<Expr>, index: Box<Expr> }, // `xs[i]`
     Unary { op: UnOp, expr: Box<Expr> },
     Binary { op: BinOp, lhs: Box<Expr>, rhs: Box<Expr> },
     Ternary { cond: Box<Expr>, then: Box<Expr>, els: Box<Expr> },

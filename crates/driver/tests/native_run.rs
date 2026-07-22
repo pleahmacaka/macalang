@@ -224,6 +224,26 @@ fn record_patterns_and_ops_run_natively() {
 }
 
 #[test]
+fn indexing_runs_natively() {
+    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &example("indexing.maca")])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(
+        stdout.lines().collect::<Vec<_>>(),
+        vec!["10 30", "m", "99", "42 2"],
+        "stdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
 fn record_update_runs_natively() {
     let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
     if wsl || !have("cc") {

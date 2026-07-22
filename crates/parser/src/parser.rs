@@ -442,6 +442,14 @@ impl Parser {
                     self.bump();
                     e = Expr::Try(Box::new(e));
                 }
+                Tok::LBracket => {
+                    // postfix subscript `base[index]` (a `[` in primary position
+                    // is a bracketed list literal, handled in parse_primary)
+                    self.bump();
+                    let index = self.parse_expr();
+                    self.expect(Tok::RBracket, "']'");
+                    e = Expr::Index { base: Box::new(e), index: Box::new(index) };
+                }
                 Tok::With => {
                     self.bump();
                     let fields = self.parse_brace_fields();

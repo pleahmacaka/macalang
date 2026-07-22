@@ -369,6 +369,7 @@ impl Checker {
             // `reify`/`try` catches failures, so it discharges the `exn` effect
             Expr::Reify(x) => acc = EffSet(self.eff(x).0 & !EXN),
             Expr::Field { base, .. } => acc = self.eff(base),
+            Expr::Index { base, index } => acc = self.eff(base).union(self.eff(index)),
             Expr::Binary { lhs, rhs, .. } => acc = self.eff(lhs).union(self.eff(rhs)),
             Expr::Unary { expr, .. } => acc = self.eff(expr),
             Expr::Ternary { cond, then, els } => {
@@ -551,6 +552,18 @@ impl Checker {
             Expr::Field { base, name } => {
                 let bt = self.infer(env, base);
                 self.field_ty(&bt, name)
+            }
+            Expr::Index { base, index } => {
+                let bt = self.infer(env, base);
+                let it = self.infer(env, index);
+                let _ = self.inf.unify(&it, &Ty::Int);
+                match self.inf.resolve(&bt) {
+                    Ty::Con(n, args) if n == "Array" && args.len() == 1 => args[0].clone(),
+                    // `str[i]` yields a single-character `str`; unknown/gradual
+                    // bases stay `any` so foreign collections aren't rejected
+                    Ty::Con(n, _) if n == "str" || n == "bytes" => Ty::Con(n, vec![]),
+                    _ => Ty::Any,
+                }
             }
             Expr::Unary { expr, .. } => self.infer(env, expr),
             Expr::Binary { op, lhs, rhs } => {

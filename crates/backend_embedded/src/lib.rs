@@ -246,6 +246,7 @@ fn cexpr(e: &Expr) -> String {
         }
         Expr::Call { callee, args } => ccall(callee, args),
         Expr::Field { base, name } => format!("{}.{name}", cexpr(base)),
+        Expr::Index { base, index } => format!("{}[{}]", cexpr(base), cexpr(index)),
         _ => "0u".into(),
     }
 }

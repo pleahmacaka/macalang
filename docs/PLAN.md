@@ -93,6 +93,13 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   `Pos(x,y,z)` → `new Pos(...)`; `obj.m(a)`/`Blocks.STONE` pass through. An
   unknown capitalized annotation is a foreign type → gradual `any`. Enables
   Minecraft (Fabric) modding in Maca — `apps/mcmod`.
+- Subscripting: `xs[i]` reads a list element or a one-character `str` from a
+  string; `xs[i] = v` and `p.field = v` assign through the lvalue. Arrays lower
+  to the runtime buffer (`arr.data[i]`), strings to `maca_str_at`; JS/JVM/embedded
+  use their native subscript. (`examples/indexing.maca`.)
+- Functional record update: `base with { field = value }` yields a copy of a
+  record with the named fields overwritten, leaving the original binding
+  unchanged (C: struct copy; JS: object spread). (`examples/record_update.maca`.)
 - Paths are literals: `/tmp` `./x` `../x` `~/x`, joined with `p / "seg"`.
 - SIMD vectors are first-class value types: `f32x8`, `i32x4`, … (native only).
 - UI: elements are functions (`div(class=..., ...children)`); Svelte-style

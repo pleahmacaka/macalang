@@ -650,6 +650,15 @@ impl<'a> Cx<'a> {
                 self.emit_tagged_sum(name, &vars);
             }
         }
+        // record/sum-element arrays that aren't a struct field but arise
+        // elsewhere (e.g. a top-level `let xs = R{}, R{}` or an index target):
+        // now that every struct is defined, emit their MACA_DEFINE_ARRAY.
+        for e in &elems {
+            if matches!(e, CTy::Rec(_) | CTy::Sum(_)) && !emitted_arr.contains(e) {
+                self.push(&format!("MACA_DEFINE_ARRAY({}, {})", arr_name(e), c_type(e)));
+                emitted_arr.insert(e.clone());
+            }
+        }
         self.push("");
 
         // sum to_str/from_str (json codegen needs them). Plain and tagged sums
@@ -882,8 +891,9 @@ impl<'a> Cx<'a> {
                         }
                     }
                 }
-                // reassignment: a non-`let` bind to an in-scope name (`i = i + 1`),
-                // which makes counters and `while` loops usable.
+                // reassignment: a non-`let` bind to an in-scope lvalue — a bare
+                // name (`i = i + 1`, drives counters/`while`), an element
+                // (`xs[i] = v`), or a field (`p.x = v`).
                 Stmt::Bind(b) => {
                     if let Expr::Ident(name) = &b.target {
                         if let Some(ty) = lookup(env, name) {
@@ -891,6 +901,10 @@ impl<'a> Cx<'a> {
                             self.indent(ind);
                             self.push(&format!("{name} = {code};"));
                         }
+                    } else if let Some((lv, ty)) = self.lvalue(env, &b.target) {
+                        let (code, _) = self.expr(env, &b.value, ty.as_ref());
+                        self.indent(ind);
+                        self.push(&format!("{lv} = {code};"));
                     }
                 }
                 Stmt::Expr(e) => {
@@ -1246,6 +1260,7 @@ impl<'a> Cx<'a> {
             Expr::List(es) => self.list(env, es, expected),
             Expr::Call { callee, args } => self.call(env, callee, args, expected),
             Expr::Field { base, name } => self.field(env, base, name),
+            Expr::Index { base, index } => self.index(env, base, index),
             Expr::Unary { op, expr } => {
                 let (c, t) = self.expr(env, expr, None);
                 let op = match op {
@@ -1633,6 +1648,49 @@ impl<'a> Cx<'a> {
                 )
             }
             _ => (format!("{method}({rc}{}{})", if a.is_empty() { "" } else { ", " }, a.join(", ")), CTy::Unknown),
+        }
+    }
+
+    /// A writable location for `target = value`: a nested `xs[i]` / `p.field`
+    /// chain resolved to its C lvalue plus (optionally) the element type. Bare
+    /// identifiers are handled directly by the caller. Returns `None` for
+    /// non-assignable targets, which are then ignored (as before).
+    fn lvalue(&mut self, env: &mut Env, target: &Expr) -> Option<(String, Option<CTy>)> {
+        match target {
+            Expr::Index { base, index } => {
+                let (bc, bty) = self.expr(env, base, None);
+                let (ic, _) = self.expr(env, index, Some(&CTy::Int));
+                let ety = match bty {
+                    CTy::Arr(e) => Some(*e),
+                    _ => None,
+                };
+                Some((format!("({bc}).data[{ic}]"), ety))
+            }
+            Expr::Field { base, name } => {
+                let (bc, bty) = self.expr(env, base, None);
+                let fty = match &bty {
+                    CTy::Rec(r) => self
+                        .records
+                        .get(r)
+                        .and_then(|fs| fs.iter().find(|(n, _)| n == name))
+                        .map(|(_, t)| t.clone()),
+                    _ => None,
+                };
+                Some((format!("({bc}).{name}"), fty))
+            }
+            _ => None,
+        }
+    }
+
+    /// `base[index]` — element access. Arrays index the backing buffer
+    /// (`arr.data[i]`); strings yield a one-character `str` via `maca_str_at`.
+    fn index(&mut self, env: &mut Env, base: &Expr, idx: &Expr) -> (String, CTy) {
+        let (bc, bty) = self.expr(env, base, None);
+        let (ic, _) = self.expr(env, idx, Some(&CTy::Int));
+        match bty {
+            CTy::Arr(e) => (format!("({bc}).data[{ic}]"), *e),
+            CTy::Str => (format!("maca_str_at({bc}, {ic})"), CTy::Str),
+            _ => (format!("({bc}).data[{ic}]"), CTy::Unknown),
         }
     }
 

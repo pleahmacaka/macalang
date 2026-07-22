@@ -218,6 +218,30 @@ fn generic_fn_is_monomorphized() {
 }
 
 #[test]
+fn list_index_reads_backing_buffer() {
+    let body = func("f(xs: int[]) -> int => xs[1]\n", "f");
+    assert!(body.contains(".data[1]"), "index not lowered to buffer access:\n{body}");
+    assert!(!body.contains("unsupported"), "still unsupported:\n{body}");
+}
+
+#[test]
+fn string_index_uses_str_at() {
+    let body = func("f(s: str) -> str => s[0]\n", "f");
+    assert!(body.contains("maca_str_at("), "string index not lowered:\n{body}");
+}
+
+#[test]
+fn index_and_field_assignment_are_lvalues() {
+    // `xs[i] = v` and `p.f = v` must write through the lvalue, not no-op
+    let body = func(
+        "P = {\n    x: int\n}\nf(xs: int[], p: P) -> int {\n    xs[0] = 9\n    p.x = 5\n    0\n}\n",
+        "f",
+    );
+    assert!(body.contains(".data[0] = 9;"), "element assign missing:\n{body}");
+    assert!(body.contains(".x = 5;"), "field assign missing:\n{body}");
+}
+
+#[test]
 fn record_update_copies_and_overwrites() {
     // `base with { … }` must copy the struct and assign only the named fields,
     // not miscompile to `0 /* unsupported */`.

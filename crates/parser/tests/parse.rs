@@ -193,3 +193,27 @@ fn malformed_input_does_not_hang() {
 fn roundtrip_record_pattern() {
     roundtrip("record_pattern.maca");
 }
+
+#[test]
+fn roundtrip_record_update() {
+    roundtrip("record_update.maca");
+}
+
+#[test]
+fn roundtrip_sum_record() {
+    roundtrip("sum_record.maca");
+}
+
+#[test]
+fn roundtrip_indexing() {
+    roundtrip("indexing.maca");
+}
+
+#[test]
+fn index_is_postfix_not_a_list() {
+    // `xs[i]` after an expression is a subscript; a leading `[..]` is a list
+    let m = clean("f(xs: int[]) -> int => xs[0]\n");
+    let maca_parser::Stmt::Fn(f) = &m.items[0] else { panic!("not a fn") };
+    let Some(maca_parser::FnBody::Expr(e)) = &f.body else { panic!("no expr body") };
+    assert!(matches!(&**e, maca_parser::Expr::Index { .. }), "not an Index: {e:?}");
+}

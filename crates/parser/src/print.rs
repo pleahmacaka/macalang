@@ -189,6 +189,12 @@ fn expr(s: &mut String, e: &Expr) {
             operand(s, base);
             let _ = write!(s, ".{name}");
         }
+        Expr::Index { base, index } => {
+            operand(s, base);
+            s.push('[');
+            expr(s, index);
+            s.push(']');
+        }
         Expr::Unary { op, expr: e } => {
             s.push_str(match op {
                 UnOp::Neg => "-",

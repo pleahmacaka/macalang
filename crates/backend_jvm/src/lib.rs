@@ -243,6 +243,7 @@ fn jexpr(e: &Expr) -> String {
         }
         Expr::Call { callee, args } => jcall(callee, args),
         Expr::Field { base, name } => format!("{}.{name}", jexpr(base)),
+        Expr::Index { base, index } => format!("{}.get({})", jexpr(base), jexpr(index)),
         Expr::Record(fields) | Expr::Ctor { fields, .. } => jctor(e, fields),
         Expr::List(es) => {
             format!("java.util.List.of({})", es.iter().map(jexpr).collect::<Vec<_>>().join(", "))

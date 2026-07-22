@@ -63,6 +63,7 @@ maca_str maca_from_float(double d);
 maca_str maca_from_bool(bool b);
 bool maca_str_eq(maca_str a, maca_str b);
 maca_str maca_join(maca_str* data, int64_t len, maca_str sep);
+maca_str maca_str_at(maca_str s, int64_t i); /* single-char str at byte i ("" if OOB) */
 
 /* ---- growable string builder ---- */
 typedef struct { char* buf; size_t len; size_t cap; } maca_sb;
@@ -236,6 +237,12 @@ maca_str maca_concat(maca_str a, maca_str b) {
     size_t la = strlen(a), lb = strlen(b);
     char* r = (char*)xmalloc(la + lb + 1);
     memcpy(r, a, la); memcpy(r + la, b, lb); r[la + lb] = '\0';
+    return r;
+}
+maca_str maca_str_at(maca_str s, int64_t i) {
+    if (!s || i < 0 || (size_t)i >= strlen(s)) return "";
+    char* r = (char*)xmalloc(2);
+    r[0] = s[i]; r[1] = '\0';
     return r;
 }
 maca_str maca_from_int(int64_t n) {

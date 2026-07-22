@@ -114,7 +114,8 @@ fn jblock_ret(stmts: &[Stmt], ret: bool) -> String {
                     let kw = if b.is_let { "let " } else { "" };
                     out.push_str(&format!("  {kw}{n} = {};\n", jexpr(&b.value)));
                 } else {
-                    out.push_str(&format!("  {};\n", jexpr(&b.value)));
+                    // lvalue assignment: `xs[i] = v`, `p.field = v`
+                    out.push_str(&format!("  {} = {};\n", jexpr(&b.target), jexpr(&b.value)));
                 }
             }
             Stmt::Expr(Expr::While { cond, body }) => {
@@ -156,6 +157,7 @@ fn jexpr(e: &Expr) -> String {
         }
         Expr::Call { callee, args } => jcall(callee, args),
         Expr::Field { base, name } => format!("{}.{name}", jexpr(base)),
+        Expr::Index { base, index } => format!("{}[{}]", jexpr(base), jexpr(index)),
         Expr::Record(fields) | Expr::Ctor { fields, .. } => jrecord(fields),
         Expr::List(es) => {
             format!("[{}]", es.iter().map(jexpr).collect::<Vec<_>>().join(", "))

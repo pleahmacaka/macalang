@@ -36,6 +36,13 @@ fn while_break_continue() {
 }
 
 #[test]
+fn index_read_and_write() {
+    let out = js("f(xs: int[]) -> int {\n    xs[0] = 9\n    xs[1]\n}\n");
+    assert!(out.contains("xs[0] = 9"), "index write missing:\n{out}");
+    assert!(out.contains("xs[1]"), "index read missing:\n{out}");
+}
+
+#[test]
 fn record_update_is_object_spread() {
     let out = js("P = {\n    x: int\n    y: int\n}\nf(p: P) -> P => p with { x = 9 }\n");
     // the update lowers to an object spread; the base is copied, `x` overwritten
