@@ -168,3 +168,8 @@ fn roundtrip_catch() {
 fn roundtrip_lambda() {
     roundtrip("lambda.maca");
 }
+
+#[test]
+fn roundtrip_generic_record() {
+    roundtrip("generic_record.maca");
+}

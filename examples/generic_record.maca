@@ -1,0 +1,19 @@
+// A generic function monomorphized across value types — including a record,
+// which requires real specialization (a single `int64_t` stamp can't carry a
+// struct). Each call emits a specialized copy: id__int, id__str, id__Box.
+
+id(x: a) -> a => x
+
+Box = {
+    v: int
+}
+
+main() -> int {
+    let n: int = id(42)
+    let b: Box = id(Box { v = 7 })
+    let s: str = id("hello")
+    info(s)
+    info("{n}")
+    info("{b.v}")
+    0
+}

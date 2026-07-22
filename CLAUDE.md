@@ -126,7 +126,8 @@ sources (`RUNTIME_H`/`RUNTIME_C`).
   bad). Also caught (all `TypeMismatch`): call **arity** vs a user fn's param
   count (variadics exempt, `bad/arity.maca`) and disagreeing **if/ternary
   branches** (`bad/branch_mismatch.maca`). Full row unification + backend
-  monomorphization of generics still to do.
+  monomorphization of generics landed (backend emits one specialized C fn per
+  concrete instantiation). Full row unification still to do.
 - **P0** workspace + `maca --version`.
 - **P1** `maca-lexer`: full tokenizer (significant newlines, path literals,
   string interpolation, `x?` vs `? :`). Golden token dumps in

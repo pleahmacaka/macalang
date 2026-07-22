@@ -191,3 +191,19 @@ fn lambda_runs_natively() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_eq!(stdout.lines().collect::<Vec<_>>(), vec!["1", "4", "9", "16"], "stdout: {stdout}");
 }
+
+#[test]
+fn generics_monomorphize_and_run_natively() {
+    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    // record instantiation is the case a single-int64_t stamp cannot compile
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &example("generic_record.maca")])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(stdout.lines().collect::<Vec<_>>(), vec!["hello", "42", "7"], "stdout: {stdout}");
+}
