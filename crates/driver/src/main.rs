@@ -1,8 +1,10 @@
 //! `maca` — the Maca toolchain CLI.
 //!
-//! `build` / `run` lower a `.maca` program to C and drive `zig cc` (a static
-//! musl target) to produce a native binary. On this Windows host the compiler
-//! and the produced Linux binary run through WSL; see `docs/PLAN.md`.
+//! Commands: `init` (scaffold), `build`/`run` (compile a `.maca` program to C
+//! and link a native binary), `watch` (rebuild+rerun on change), `fmt` (indent
+//! normalization, style from `maca.toml [format]`), `lint` (style + type
+//! diagnostics). Codegen prefers `zig cc` (static musl) through WSL when
+//! present; otherwise it falls back to the host's native `cc`/`clang`.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -15,8 +17,10 @@ fn main() {
         Some("--version" | "-V" | "version") => println!("maca {VERSION}"),
         Some("build") => cmd_build(&args[1..]),
         Some("run") => cmd_run(&args[1..]),
+        Some("init") => cmd_init(&args[1..]),
         Some("fmt") => cmd_fmt(&args[1..]),
         Some("lint") => cmd_lint(&args[1..]),
+        Some("watch") => cmd_watch(&args[1..]),
         Some("--help" | "-h" | "help") | None => usage(),
         Some(other) => {
             // maca.toml [scripts] alias?
@@ -31,23 +35,146 @@ fn main() {
     }
 }
 
-/// `maca fmt <file>` — reformat in place (4-space indent, forced block breaks).
-/// Idempotent by construction: parse → canonical print → re-indent.
-fn cmd_fmt(args: &[String]) {
-    let Some(src) = args.first().map(PathBuf::from) else {
-        die("fmt: expected a .maca file");
-    };
-    let source = std::fs::read_to_string(&src).unwrap_or_else(|e| die(&format!("cannot read: {e}")));
-    let parsed = maca_parser::parse(&source);
-    if !parsed.errors.is_empty() {
-        die(&format!("fmt: parse errors:\n  {}", parsed.errors.join("\n  ")));
-    }
-    let formatted = reindent(&maca_parser::print_module(&parsed.module));
-    std::fs::write(&src, &formatted).unwrap_or_else(|e| die(&format!("cannot write: {e}")));
-    println!("formatted {}", src.display());
+/// Formatting style. Defaults match the codebase: 4-space soft indent.
+struct FmtStyle {
+    unit: String, // one indent level's whitespace
 }
 
-/// `maca lint <file>` — style + semantic checks. Exit 1 if any issue.
+/// Read `[format]` from `maca.toml` (indent_style = "space"|"tab", indent_size = N).
+fn format_style() -> FmtStyle {
+    let mut style = "space".to_string();
+    let mut size = 4usize;
+    if let Ok(toml) = std::fs::read_to_string("maca.toml") {
+        let mut in_fmt = false;
+        for line in toml.lines() {
+            let t = line.trim();
+            if t.starts_with('[') {
+                in_fmt = t == "[format]";
+                continue;
+            }
+            if in_fmt {
+                if let Some((k, v)) = t.split_once('=') {
+                    let v = v.trim().trim_matches('"');
+                    match k.trim() {
+                        "indent_style" => style = v.to_string(),
+                        "indent_size" => size = v.parse().unwrap_or(4),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    let unit = if style == "tab" { "\t".to_string() } else { " ".repeat(size) };
+    FmtStyle { unit }
+}
+
+fn cmd_fmt(args: &[String]) {
+    let check = args.iter().any(|a| a == "--check");
+    let files: Vec<PathBuf> =
+        args.iter().filter(|a| !a.starts_with("--")).map(PathBuf::from).collect();
+    if files.is_empty() {
+        die("fmt: expected one or more .maca files (use --check to verify only)");
+    }
+    let style = format_style();
+    let mut unformatted = Vec::new();
+    for src in &files {
+        let source =
+            std::fs::read_to_string(src).unwrap_or_else(|e| die(&format!("cannot read: {e}")));
+        // Parse only to reject broken files — never reformat through the AST
+        // (the lexer drops comments, so a print-based `fmt` would delete them).
+        // `fmt` re-indents the *original* text by bracket depth, preserving all
+        // content: comments, blank lines, and intra-line spacing.
+        let parsed = maca_parser::parse(&source);
+        if !parsed.errors.is_empty() {
+            die(&format!("fmt: {}: parse errors:\n  {}", src.display(), parsed.errors.join("\n  ")));
+        }
+        let formatted = reindent(&source, &style.unit);
+        if check {
+            if formatted != source {
+                unformatted.push(src.display().to_string());
+            }
+        } else if formatted != source {
+            std::fs::write(src, &formatted).unwrap_or_else(|e| die(&format!("cannot write: {e}")));
+            println!("formatted {}", src.display());
+        }
+    }
+    if check && !unformatted.is_empty() {
+        eprintln!("not formatted:\n  {}", unformatted.join("\n  "));
+        std::process::exit(1);
+    }
+}
+
+/// Scaffold a new Maca project: `maca.toml`, `main.maca`, `.gitignore`.
+fn cmd_init(args: &[String]) {
+    let dir = args.iter().find(|a| !a.starts_with('-')).map(PathBuf::from);
+    let root = dir.clone().unwrap_or_else(|| PathBuf::from("."));
+    if let Some(d) = &dir {
+        std::fs::create_dir_all(d).unwrap_or_else(|e| die(&format!("cannot create {}: {e}", d.display())));
+    }
+    let name = root
+        .canonicalize()
+        .ok()
+        .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "app".into());
+
+    let toml = format!(
+        "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n\n\
+         [[bin]]\nname = \"{name}\"\npath = \"main.maca\"\n\n\
+         # Formatting — `maca fmt` reads these (defaults shown).\n\
+         [format]\nindent_style = \"space\"\nindent_size = 4\n\n\
+         # `maca <name>` runs a script alias.\n\
+         [scripts]\nstart = \"maca run main.maca\"\n"
+    );
+    let main = "main() -> int {\n    info(\"Hello from Maca\")\n    0\n}\n";
+    let gitignore = "/target\n/build\n*.o\n";
+
+    write_if_absent(&root.join("maca.toml"), &toml);
+    write_if_absent(&root.join("main.maca"), main);
+    write_if_absent(&root.join(".gitignore"), gitignore);
+    println!("initialized Maca project `{name}` in {}", root.display());
+    println!("  maca run main.maca   # build & run");
+}
+
+fn write_if_absent(path: &Path, contents: &str) {
+    if path.exists() {
+        println!("  skip {} (exists)", path.display());
+        return;
+    }
+    std::fs::write(path, contents).unwrap_or_else(|e| die(&format!("cannot write {}: {e}", path.display())));
+    println!("  create {}", path.display());
+}
+
+/// Hot reload: rebuild + rerun whenever the source (or its directory) changes.
+/// Polls mtimes — no extra deps, works anywhere `maca run` does.
+fn cmd_watch(args: &[String]) {
+    let Some(src) = args.first().map(PathBuf::from) else {
+        die("watch: expected a .maca file");
+    };
+    let prog_args: Vec<String> = args[1..].to_vec();
+    println!("watching {} — Ctrl-C to stop", src.display());
+    let mut last = std::time::SystemTime::UNIX_EPOCH;
+    loop {
+        let changed = std::fs::metadata(&src)
+            .and_then(|m| m.modified())
+            .map(|m| m > last)
+            .unwrap_or(false);
+        if changed {
+            last = std::fs::metadata(&src).and_then(|m| m.modified()).unwrap();
+            println!("\x1b[2m── change detected, rebuilding ─────────────\x1b[0m");
+            let mut run = vec!["run".to_string(), src.to_string_lossy().into_owned()];
+            run.extend(prog_args.iter().cloned());
+            let status = Command::new(std::env::current_exe().unwrap())
+                .args(&run)
+                .status();
+            match status {
+                Ok(s) => println!("\x1b[2m── exited {} ───────────────────────────────\x1b[0m", s.code().unwrap_or(-1)),
+                Err(e) => eprintln!("watch: {e}"),
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+}
+
 fn cmd_lint(args: &[String]) {
     let Some(src) = args.first().map(PathBuf::from) else {
         die("lint: expected a .maca file");
@@ -82,49 +209,43 @@ fn cmd_lint(args: &[String]) {
 }
 
 /// Brace/paren-depth re-indenter (4-space), string-aware.
-fn reindent(src: &str) -> String {
+/// Normalize indentation to `unit` without reflowing. Each line's existing
+/// indent depth (in levels, inferred from the file's own indent step) is
+/// re-emitted with `unit` — so a 4-space file re-formatted with the default
+/// 4-space style is unchanged (idempotent), while tab↔space / size changes
+/// convert cleanly. This preserves every author choice that isn't pure
+/// leading whitespace: comments, blank lines, and expression-continuation
+/// alignment (`=>` bodies, ternary chains) all survive intact.
+fn reindent(src: &str, unit: &str) -> String {
+    // Detect the file's indent step as the gcd of all leading-whitespace widths
+    // (a tab counts as one column here — enough to recover level counts).
+    let widths: Vec<usize> = src
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.len() - l.trim_start().len())
+        .filter(|&w| w > 0)
+        .collect();
+    let step = widths.iter().copied().reduce(gcd).filter(|&s| s > 0).unwrap_or(4);
+
     let mut out = String::new();
-    let mut depth: i32 = 0;
     for raw in src.lines() {
-        let line = raw.trim();
-        if line.is_empty() {
+        if raw.trim().is_empty() {
             out.push('\n');
             continue;
         }
-        let first = line.chars().next().unwrap();
-        let this_depth = if matches!(first, '}' | ')' | ']') { (depth - 1).max(0) } else { depth };
-        for _ in 0..this_depth {
-            out.push_str("    ");
+        let lead = raw.len() - raw.trim_start().len();
+        let levels = lead / step;
+        for _ in 0..levels {
+            out.push_str(unit);
         }
-        out.push_str(line);
+        out.push_str(raw.trim_start());
         out.push('\n');
-        let (o, c) = count_brackets(line);
-        depth = (depth + o - c).max(0);
     }
     out
 }
 
-fn count_brackets(line: &str) -> (i32, i32) {
-    let (mut o, mut c) = (0, 0);
-    let mut in_str = false;
-    let mut prev = ' ';
-    for ch in line.chars() {
-        if in_str {
-            if ch == '"' && prev != '\\' {
-                in_str = false;
-            }
-            prev = ch;
-            continue;
-        }
-        match ch {
-            '"' => in_str = true,
-            '{' | '(' | '[' => o += 1,
-            '}' | ')' | ']' => c += 1,
-            _ => {}
-        }
-        prev = ch;
-    }
-    (o, c)
+fn gcd(a: usize, b: usize) -> usize {
+    if b == 0 { a } else { gcd(b, a % b) }
 }
 
 /// Look up a `[scripts]` alias in ./maca.toml.
@@ -166,8 +287,12 @@ fn usage() {
          usage: maca <command> [args]\n\
          \n\
          commands:\n\
+         \x20 init  [dir]                  scaffold a new project (maca.toml, main.maca)\n\
          \x20 build <file.maca> [-o out]   compile to a native binary\n\
          \x20 run   <file.maca> [args..]   compile and run\n\
+         \x20 watch <file.maca> [args..]   rebuild & rerun on change (hot reload)\n\
+         \x20 fmt   <file.maca>… [--check] format in place (style from maca.toml [format])\n\
+         \x20 lint  <file.maca>            style + type/effect diagnostics\n\
          \x20 --version                    print the toolchain version"
     );
 }

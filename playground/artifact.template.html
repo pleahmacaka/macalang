@@ -1,0 +1,398 @@
+<title>Maca Playground</title>
+<style>
+  :root {
+    --bg: #14131b; --panel: #1b1a24; --panel-2: #211f2c; --border: #2c2a3a;
+    --fg: #e6e3f0; --muted: #9a95b0; --accent: #9b83e8; --accent-2: #57c9d5;
+    --ok: #57c98b; --err: #e5749a; --warn: #e3c37a;
+    --kw: #c39bf0; --type: #6fd0c0; --str: #e7a07a; --num: #b7d98a;
+    --path: #cbb0ff; --com: #6d6a86; --op: #b8b3cc; --fn: #8fb8f0;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f5fb; --panel: #ffffff; --panel-2: #f1eef8; --border: #e4dff0;
+      --fg: #241f30; --muted: #6b6580; --accent: #6c4fd0; --accent-2: #1a8b98;
+      --ok: #1f9d63; --err: #c8365f; --warn: #8a6d17;
+      --kw: #8a3fd0; --type: #157f76; --str: #b0512a; --num: #4a7d1e;
+      --path: #6d3fd0; --com: #8b86a0; --op: #4a465c; --fn: #2f63b0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14131b; --panel: #1b1a24; --panel-2: #211f2c; --border: #2c2a3a;
+    --fg: #e6e3f0; --muted: #9a95b0; --accent: #9b83e8; --accent-2: #57c9d5;
+    --ok: #57c98b; --err: #e5749a; --warn: #e3c37a;
+    --kw: #c39bf0; --type: #6fd0c0; --str: #e7a07a; --num: #b7d98a;
+    --path: #cbb0ff; --com: #6d6a86; --op: #b8b3cc; --fn: #8fb8f0;
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f5fb; --panel: #ffffff; --panel-2: #f1eef8; --border: #e4dff0;
+    --fg: #241f30; --muted: #6b6580; --accent: #6c4fd0; --accent-2: #1a8b98;
+    --ok: #1f9d63; --err: #c8365f; --warn: #8a6d17;
+    --kw: #8a3fd0; --type: #157f76; --str: #b0512a; --num: #4a7d1e;
+    --path: #6d3fd0; --com: #8b86a0; --op: #4a465c; --fn: #2f63b0;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, monospace; }
+
+  header {
+    display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1rem;
+    background: var(--panel); border-bottom: 1px solid var(--border); flex: 0 0 auto;
+  }
+  .brand { font-family: ui-monospace, monospace; font-size: 1rem; letter-spacing: 0.02em; display: flex; align-items: baseline; gap: 0.5rem; }
+  .brand .mark { color: var(--accent); font-size: 1.1rem; }
+  .brand b { font-weight: 700; }
+  .brand .tag { color: var(--muted); font-weight: 400; font-size: 0.82rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  .controls { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .controls label { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  select, .btn {
+    background: var(--panel-2); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 7px; padding: 0.3rem 0.5rem; font-size: 0.8rem; font-family: inherit;
+  }
+  .btn { cursor: pointer; }
+  .btn.primary { background: var(--accent); color: #16131f; border-color: transparent; font-weight: 650; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.ghost { color: var(--muted); }
+
+  main { flex: 1 1 auto; display: grid; grid-template-columns: 1fr 1fr; min-height: 0; }
+  .pane { min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .editor-pane { border-right: 1px solid var(--border); }
+
+  .editor-wrap { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+  .editor-wrap pre, .editor-wrap textarea {
+    margin: 0; position: absolute; inset: 0; padding: 0.9rem 1rem;
+    font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+    font-size: 13.5px; line-height: 1.55; tab-size: 4; white-space: pre;
+    overflow: auto; border: 0;
+  }
+  #hl { pointer-events: none; color: var(--fg); z-index: 1; }
+  #code {
+    z-index: 2; background: transparent; color: transparent; caret-color: var(--accent);
+    resize: none; outline: none; -webkit-text-fill-color: transparent;
+  }
+  #code::selection { background: color-mix(in srgb, var(--accent) 32%, transparent); }
+
+  .tok-kw { color: var(--kw); font-weight: 600; }
+  .tok-type { color: var(--type); }
+  .tok-str { color: var(--str); }
+  .tok-num { color: var(--num); }
+  .tok-path { color: var(--path); }
+  .tok-com { color: var(--com); font-style: italic; }
+  .tok-op { color: var(--op); }
+  .tok-fn { color: var(--fn); }
+  .tok-const { color: var(--accent-2); }
+
+  .output-pane { background: var(--panel); }
+  .tabs { display: flex; gap: 0.2rem; padding: 0.4rem 0.6rem 0; border-bottom: 1px solid var(--border); flex: 0 0 auto; overflow-x: auto; }
+  .tab { padding: 0.32rem 0.7rem; font-size: 0.78rem; color: var(--muted); border: 1px solid transparent; border-bottom: none; border-radius: 7px 7px 0 0; cursor: pointer; white-space: nowrap; }
+  .tab.active { color: var(--fg); background: var(--bg); border-color: var(--border); }
+  .tab .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-left: 0.4rem; vertical-align: middle; }
+  .dot.err { background: var(--err); } .dot.ok { background: var(--ok); }
+  .tabview { flex: 1 1 auto; min-height: 0; position: relative; }
+  .panel { display: none; position: absolute; inset: 0; overflow: auto; padding: 0.9rem 1rem; margin: 0; }
+  .panel.active { display: block; }
+  pre.code-out { font-family: ui-monospace, monospace; font-size: 12.5px; line-height: 1.5; white-space: pre; color: var(--fg); }
+
+  .diag { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.55rem 0.65rem; border-radius: 9px; margin-bottom: 0.5rem; background: var(--bg); border: 1px solid var(--border); }
+  .diag .kind { font-size: 0.66rem; font-weight: 700; padding: 0.12rem 0.42rem; border-radius: 5px; white-space: nowrap; letter-spacing: 0.03em; }
+  .diag.error .kind { background: color-mix(in srgb, var(--err) 20%, transparent); color: var(--err); }
+  .diag.parse .kind { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
+  .diag .msg { font-family: ui-monospace, monospace; font-size: 0.8rem; }
+  .clean { color: var(--ok); display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+
+  /* benchmark strip */
+  .bench { flex: 0 0 auto; border-top: 1px solid var(--border); background: var(--panel); padding: 0.6rem 1rem 0.8rem; }
+  .bench h3 { margin: 0 0 0.1rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+  .bench .cap { font-size: 0.7rem; color: var(--muted); margin: 0 0 0.5rem; }
+  .bench-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.9rem; }
+  .bench-card { }
+  .bench-card .title { font-family: ui-monospace, monospace; font-size: 0.74rem; color: var(--fg); margin-bottom: 0.35rem; }
+  .bar-row { display: grid; grid-template-columns: 62px 1fr auto; align-items: center; gap: 0.4rem; margin-bottom: 0.22rem; font-size: 0.68rem; }
+  .bar-row .lang { color: var(--muted); text-align: right; }
+  .bar-track { height: 12px; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; }
+  .bar-row .val { font-family: ui-monospace, monospace; color: var(--fg); font-variant-numeric: tabular-nums; min-width: 58px; text-align: right; }
+
+  footer { flex: 0 0 auto; display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 1rem; font-size: 0.72rem; color: var(--muted); background: var(--panel); border-top: 1px solid var(--border); }
+  footer .sp { flex: 1; }
+  footer .mono { color: var(--muted); }
+
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+    .editor-pane { border-right: none; border-bottom: 1px solid var(--border); }
+    .bench-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<header>
+  <div class="brand"><span class="mark">◆</span> <b>Maca</b> <span class="tag">playground</span></div>
+  <div class="controls">
+    <label>Example <select id="example"></select></label>
+    <label>Mode <select id="mode"><option value="0">program</option><option value="1">config</option></select></label>
+    <button class="btn ghost" id="theme" title="Toggle theme">◑</button>
+    <button class="btn primary" id="run" title="Ctrl/Cmd+Enter">Run ▶</button>
+  </div>
+</header>
+
+<main>
+  <section class="pane editor-pane">
+    <div class="editor-wrap">
+      <pre id="hl" class="mono" aria-hidden="true"></pre>
+      <textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+    </div>
+  </section>
+  <section class="pane output-pane">
+    <div class="tabs" id="tabs"></div>
+    <div class="tabview">
+      <div id="diagnostics" class="panel"></div>
+      <pre id="output" class="panel code-out"></pre>
+    </div>
+    <div class="bench">
+      <h3>Native speed — median run time, lower is better</h3>
+      <p class="cap">Same kernels in each language; Maca is built Maca → C → <span class="mono">cc -O2</span>. Bars are relative within each kernel.</p>
+      <div class="bench-grid" id="bench"></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span id="status">booting…</span>
+  <span class="sp"></span>
+  <span class="mono" id="version"></span>
+</footer>
+
+<script id="wasm-b64" type="application/octet-stream">__WASM_B64__</script>
+<script>
+"use strict";
+
+// ---- embedded benchmark results (bench/results.json) ----------------------
+const BENCH = {
+  "fib(40)":        { Maca: 168.0, C: 166.6, "JS": 975.7,  Python: 11194.1 },
+  "tak(32,16,8)":   { Maca: 65.1,  C: 58.6,  "JS": 193.4,  Python: 1680.1 },
+  "ackermann(3,10)":{ Maca: 18.6,  C: 19.7,  "JS": 234.0,  Python: 4476.6 },
+};
+const BENCH_COLORS = { Maca: "var(--accent)", C: "var(--accent-2)", JS: "var(--warn)", Python: "var(--err)" };
+
+// ---- examples -------------------------------------------------------------
+const EXAMPLES = {
+  "hello": { mode: 0, src: `main() -> int {\n    info("Hello, World")\n    0\n}\n` },
+  "generic (polymorphism)": { mode: 0, src: `// Each use of \`id\` instantiates fresh type variables.\nid(x: a) -> a => x\n\npick(cond: bool, x: a, y: a) -> a =>\n    cond ? x : y\n\nmain() -> int {\n    let n: int = id(5)\n    let s: str = id("hello")\n    let m: int = pick(true, n, 7)\n    info(s)\n    m\n}\n` },
+  "taskr (records + sums)": { mode: 0, src: `Status = Todo | Doing | Done\n\nTask = {\n    id:     int\n    title:  str\n    status: Status\n}\n\nrender(t: Task) -> str {\n    let box = t.status == Done ? "[x]" : "[ ]"\n    "{box} #{t.id}  {t.title}"\n}\n\nmain() -> int {\n    let t = Task { id = 1, title = "ship it", status = Todo }\n    info(render(t))\n    0\n}\n` },
+  "fib (benchmark)": { mode: 0, src: `// Tree recursion — the native benchmark kernel.\nfib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\n\nmain() -> int {\n    info("{fib(30)}")\n    0\n}\n` },
+  "bad: type mismatch": { mode: 0, src: `// Declared return is int, body is a string.\nbad() -> int => "not an int"\n` },
+  "bad: call arity": { mode: 0, src: `greet(name: str) -> str => "hi {name}"\n\nmain() -> int {\n    greet("ada", "extra")\n    0\n}\n` },
+  "system (config → Nix)": { mode: 1, src: `networking.hostName = "rigel"\nsystem.stateVersion = "24.11"\n\nservices.openssh = {\n    passwordAuthentication = false\n}\n` },
+  "bad: effect in config": { mode: 1, src: `// Config must be pure; logging is an io effect.\ngreeting = info("hi")\n` },
+};
+
+// ---- Maca syntax highlighter (regex tokenizer) ----------------------------
+const KW = new Set(["let","if","else","for","in","match","import","from","with","fail","try","alias"]);
+const PRIM = new Set(["int","float","str","bool","bytes","unit","f32","f64","i8","i16","i32","i64","u8","u16","u32","u64"]);
+const TOKEN_RE = new RegExp([
+  "(?<com>\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/)",
+  "(?<str>\"(?:[^\"\\\\]|\\\\.)*\")",
+  "(?<path>(?:\\.\\.\\/|\\.\\/|~\\/|\\/)[A-Za-z_][\\w.\\/-]*)",
+  "(?<num>\\b\\d+(?:\\.\\d+)?\\b)",
+  "(?<fn>\\b[a-z_][A-Za-z0-9_]*(?=\\s*\\())",
+  "(?<word>\\b[A-Za-z_][A-Za-z0-9_]*\\b)",
+  "(?<op>->|=>|\\+\\+|\\|>|==|!=|<=|>=|&&|\\|\\||[-+*/<>=|?:.])",
+].join("|"), "g");
+
+function esc(s) { return s.replace(/[&<>]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c])); }
+
+function highlight(src) {
+  let out = "", last = 0, m;
+  TOKEN_RE.lastIndex = 0;
+  while ((m = TOKEN_RE.exec(src))) {
+    out += esc(src.slice(last, m.index));
+    const g = m.groups;
+    let cls = null, text = m[0];
+    if (g.com) cls = "tok-com";
+    else if (g.str) cls = "tok-str";
+    else if (g.path) cls = "tok-path";
+    else if (g.num) cls = "tok-num";
+    else if (g.fn) cls = "tok-fn";
+    else if (g.op) cls = "tok-op";
+    else if (g.word) {
+      if (KW.has(text)) cls = "tok-kw";
+      else if (text === "true" || text === "false") cls = "tok-const";
+      else if (PRIM.has(text) || /^[iuf](?:8|16|32|64)(?:x\d+)?$/.test(text)) cls = "tok-type";
+      else if (/^[A-Z]/.test(text)) cls = "tok-type";
+    }
+    out += cls ? `<span class="${cls}">${esc(text)}</span>` : esc(text);
+    last = m.index + text.length;
+  }
+  out += esc(src.slice(last));
+  return out;
+}
+
+// ---- wasm bridge ----------------------------------------------------------
+let ex = null;
+function b64ToBytes(b64) {
+  const bin = atob(b64.trim());
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+}
+function mem() { return new Uint8Array(ex.memory.buffer); }
+function readPacked(packed) {
+  const ptr = Number(packed >> 32n), len = Number(packed & 0xffffffffn);
+  const out = new TextDecoder().decode(mem().slice(ptr, ptr + len));
+  ex.dealloc(ptr, len);
+  return out;
+}
+function wasmRun(src, mode) {
+  const bytes = new TextEncoder().encode(src);
+  const p = ex.alloc(bytes.length);
+  mem().set(bytes, p);
+  const json = readPacked(ex.run(p, bytes.length, mode));
+  ex.dealloc(p, bytes.length);
+  return JSON.parse(json);
+}
+
+// ---- UI --------------------------------------------------------------------
+const $ = id => document.getElementById(id);
+let currentTab = "Diagnostics", lastResult = null;
+
+function sync() { $("hl").innerHTML = highlight($("code").value); }
+function scrollSync() { $("hl").scrollTop = $("code").scrollTop; $("hl").scrollLeft = $("code").scrollLeft; }
+
+function renderTabs(r) {
+  const el = $("tabs"); el.innerHTML = "";
+  const n = (r?.parseErrors?.length || 0) + (r?.diagnostics?.length || 0);
+  const names = ["Diagnostics", ...(r?.outputs ? Object.keys(r.outputs) : [])];
+  if (!names.includes(currentTab)) currentTab = "Diagnostics";
+  for (const name of names) {
+    const t = document.createElement("div");
+    t.className = "tab" + (name === currentTab ? " active" : "");
+    t.textContent = name;
+    if (name === "Diagnostics") {
+      const d = document.createElement("span");
+      d.className = "dot " + (n ? "err" : "ok");
+      t.appendChild(d);
+    }
+    t.onclick = () => { currentTab = name; showTab(r); };
+    el.appendChild(t);
+  }
+}
+function showTab(r) {
+  renderTabs(r);
+  $("diagnostics").classList.toggle("active", currentTab === "Diagnostics");
+  $("output").classList.toggle("active", currentTab !== "Diagnostics");
+  if (currentTab === "Diagnostics") renderDiag(r);
+  else $("output").textContent = r?.outputs?.[currentTab] ?? "";
+}
+function renderDiag(r) {
+  const el = $("diagnostics"); el.innerHTML = "";
+  const pe = r?.parseErrors || [], di = r?.diagnostics || [];
+  if (!pe.length && !di.length) {
+    el.innerHTML = `<div class="clean">✓ parsed and type-checked clean</div>`;
+    return;
+  }
+  for (const e of pe) el.appendChild(row("parse", "ParseError", e));
+  for (const d of di) el.appendChild(row("error", d.kind, d.msg));
+}
+function row(cls, kind, msg) {
+  const r = document.createElement("div"); r.className = "diag " + cls;
+  const k = document.createElement("span"); k.className = "kind"; k.textContent = kind;
+  const m = document.createElement("span"); m.className = "msg"; m.textContent = msg;
+  r.append(k, m); return r;
+}
+
+function run() {
+  if (!ex) return;
+  try {
+    lastResult = wasmRun($("code").value, parseInt($("mode").value, 10));
+    $("status").textContent = "compiled";
+  } catch (e) {
+    lastResult = { parseErrors: ["internal: " + e.message], diagnostics: [], outputs: {} };
+    $("status").textContent = "error";
+  }
+  showTab(lastResult);
+}
+let deb = null;
+function schedule() { clearTimeout(deb); deb = setTimeout(run, 250); }
+
+function loadExample(name) {
+  const ex2 = EXAMPLES[name]; if (!ex2) return;
+  $("mode").value = String(ex2.mode);
+  $("code").value = ex2.src; sync(); run();
+}
+
+function renderBench() {
+  const host = $("bench"); host.innerHTML = "";
+  for (const [kernel, langs] of Object.entries(BENCH)) {
+    const max = Math.max(...Object.values(langs));
+    const card = document.createElement("div"); card.className = "bench-card";
+    card.innerHTML = `<div class="title">${kernel}</div>`;
+    for (const [lang, ms] of Object.entries(langs)) {
+      const r = document.createElement("div"); r.className = "bar-row";
+      const pct = Math.max(2, (ms / max) * 100);
+      const label = ms >= 1000 ? (ms / 1000).toFixed(1) + " s" : ms.toFixed(0) + " ms";
+      r.innerHTML = `<span class="lang">${lang}</span>`
+        + `<span class="bar-track"><span class="bar-fill" style="width:${pct}%;background:${BENCH_COLORS[lang]}"></span></span>`
+        + `<span class="val">${label}</span>`;
+      card.appendChild(r);
+    }
+    host.appendChild(card);
+  }
+}
+
+function setTheme(t) {
+  document.documentElement.setAttribute("data-theme", t);
+  try { localStorage.setItem("maca-theme", t); } catch (e) {}
+}
+
+// ---- boot ------------------------------------------------------------------
+(async function boot() {
+  // theme
+  let saved = null;
+  try { saved = localStorage.getItem("maca-theme"); } catch (e) {}
+  if (saved) setTheme(saved);
+  $("theme").onclick = () => {
+    const cur = document.documentElement.getAttribute("data-theme")
+      || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    setTheme(cur === "dark" ? "light" : "dark");
+  };
+
+  // examples
+  const sel = $("example");
+  for (const name of Object.keys(EXAMPLES)) {
+    const o = document.createElement("option"); o.value = name; o.textContent = name; sel.appendChild(o);
+  }
+  sel.onchange = () => loadExample(sel.value);
+  $("mode").onchange = run;
+  $("run").onclick = run;
+  $("code").addEventListener("input", () => { sync(); schedule(); });
+  $("code").addEventListener("scroll", scrollSync);
+  $("code").addEventListener("keydown", e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); run(); }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const t = e.target, s = t.selectionStart, en = t.selectionEnd;
+      t.value = t.value.slice(0, s) + "    " + t.value.slice(en);
+      t.selectionStart = t.selectionEnd = s + 4; sync();
+    }
+  });
+
+  renderBench();
+
+  // wasm
+  try {
+    const bytes = b64ToBytes($("wasm-b64").textContent);
+    const { instance } = await WebAssembly.instantiate(bytes, {});
+    ex = instance.exports;
+    $("version").textContent = "maca " + readPacked(ex.version()) + " · wasm";
+    $("status").textContent = "ready";
+    $("code").value = EXAMPLES["hello"].src; sync(); run();
+  } catch (e) {
+    $("status").textContent = "wasm failed: " + e.message;
+    $("code").value = EXAMPLES["hello"].src; sync();
+  }
+})();
+</script>
