@@ -1,0 +1,23 @@
+// Maca identifiers that happen to be C reserved words (`double`, `new`, `long`,
+// `default`, `class`, …) compile correctly — the native backend escapes them so
+// the emitted C stays valid. UFCS method calls resolve their real return type.
+
+Config = {
+    default: int
+    class: str
+}
+
+double(n: int) -> int => n * 2
+
+main() -> int {
+    let new = 5
+    let long = double(new)
+    info("{long}")
+    info("{new.double().double()}")
+
+    let c = Config { default = 7, class = "hi" }
+    info("{c.default} {c.class}")
+    let c2 = c with { default = 99 }
+    info("{c2.default}")
+    0
+}

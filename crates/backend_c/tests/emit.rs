@@ -236,6 +236,30 @@ fn generic_fn_is_monomorphized() {
 }
 
 #[test]
+fn c_keyword_identifiers_are_escaped() {
+    // a fn/param/var/field named like a C keyword must not emit invalid C
+    let out = c("Config = {\n    default: int\n}\ndouble(n: int) -> int => n * 2\nmain() -> int {\n    let new = 5\n    let c = Config { default = double(new) }\n    info(\"{c.default}\")\n    0\n}\n");
+    // the keyword `double` is escaped at definition and call sites
+    assert!(out.contains("double_mc("), "fn name not escaped:\n{out}");
+    assert!(!out.contains("int64_t double("), "raw C keyword fn emitted:\n{out}");
+    // the field `default` and the var `new` are escaped
+    assert!(out.contains("default_mc"), "field/var not escaped:\n{out}");
+    assert!(out.contains("new_mc"), "var not escaped:\n{out}");
+    // ordinary names are untouched
+    assert!(out.contains("Config"), "type name should be unchanged:\n{out}");
+}
+
+#[test]
+fn ufcs_call_resolves_return_type() {
+    // `x.f()` where `f` returns int must be usable as an int (interpolation
+    // wraps it), not fall back to an unknown type
+    let out = c("twice(n: int) -> int => n * 2\nmain() -> int {\n    let x = 3\n    info(\"{x.twice()}\")\n    0\n}\n");
+    // the int return flows into maca_from_int (string interpolation), proving the
+    // UFCS call resolved to int rather than an unknown type
+    assert!(out.contains("maca_from_int(twice(x))"), "UFCS int result not formatted:\n{out}");
+}
+
+#[test]
 fn len_lowers_to_array_len_or_strlen() {
     let al = func("f(xs: int[]) -> int => len(xs)\n", "f");
     assert!(al.contains("(xs).len"), "array len not lowered:\n{al}");

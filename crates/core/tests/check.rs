@@ -58,6 +58,11 @@ fn generic_ok() {
     assert_clean("examples/generic.maca", Mode::Program);
 }
 #[test]
+fn keywords_ok() {
+    // identifiers that are C keywords are valid Maca and type-check normally.
+    assert_clean("examples/keywords.maca", Mode::Program);
+}
+#[test]
 fn indexing_ok() {
     // `xs[i]` (list/string subscript) and lvalue assignment type-check.
     assert_clean("examples/indexing.maca", Mode::Program);

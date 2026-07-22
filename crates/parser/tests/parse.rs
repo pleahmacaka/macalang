@@ -215,6 +215,11 @@ fn roundtrip_tree() {
 }
 
 #[test]
+fn roundtrip_keywords() {
+    roundtrip("keywords.maca");
+}
+
+#[test]
 fn index_is_postfix_not_a_list() {
     // `xs[i]` after an expression is a subscript; a leading `[..]` is a list
     let m = clean("f(xs: int[]) -> int => xs[0]\n");
