@@ -14,6 +14,8 @@
 
 use maca_core::{DiagKind, Mode};
 
+mod interp;
+
 /// Hand ownership of `bytes` (as an exact-length boxed slice) to the caller and
 /// return `(ptr << 32) | len`. Exact length matters: [`dealloc`] frees using
 /// `len` as the allocation size, so the box must be sized exactly `len`.
@@ -157,6 +159,44 @@ fn compile_json(src: &str, mode: u32) -> String {
     }
     out.push(']');
 
+    // run the program (Program mode only) — captured stdout + an execution
+    // profile, so the playground can show real output and where the time went.
+    if parsed.errors.is_empty() && matches!(mode_of(mode), Mode::Program) {
+        let r = interp::run(&parsed.module);
+        out.push_str(",\"run\":{\"output\":");
+        push_json_str(&mut out, &r.output);
+        out.push_str(",\"error\":");
+        match &r.error {
+            Some(e) => push_json_str(&mut out, e),
+            None => out.push_str("null"),
+        }
+        out.push_str(",\"exit\":");
+        match r.exit {
+            Some(n) => out.push_str(&n.to_string()),
+            None => out.push_str("null"),
+        }
+        out.push_str(",\"profile\":{\"totalCalls\":");
+        out.push_str(&r.profile.total_calls.to_string());
+        out.push_str(",\"maxDepth\":");
+        out.push_str(&r.profile.max_depth.to_string());
+        out.push_str(",\"steps\":");
+        out.push_str(&r.profile.steps.to_string());
+        out.push_str(",\"truncated\":");
+        out.push_str(if r.profile.truncated { "true" } else { "false" });
+        out.push_str(",\"functions\":[");
+        for (i, (name, calls)) in r.profile.calls.iter().take(12).enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            out.push_str("{\"name\":");
+            push_json_str(&mut out, name);
+            out.push_str(",\"calls\":");
+            out.push_str(&calls.to_string());
+            out.push('}');
+        }
+        out.push_str("]}}");
+    }
+
     out.push('}');
     out
 }
@@ -201,5 +241,41 @@ mod tests {
     fn config_mode_emits_nix() {
         let json = compile_json("networking.hostName = \"rigel\"\n", 1);
         assert!(json.contains("\"Nix\":"), "{json}");
+    }
+
+    #[test]
+    fn program_runs_and_captures_output() {
+        let json = compile_json("main() -> int {\n    info(\"hi\")\n    0\n}\n", 0);
+        assert!(json.contains("\"run\":"), "no run block: {json}");
+        assert!(json.contains("\"output\":\"hi\\n\""), "output not captured: {json}");
+        assert!(json.contains("\"exit\":0"), "exit code missing: {json}");
+    }
+
+    #[test]
+    fn profile_counts_function_calls() {
+        // fib(10): fib is called 177 times
+        let json =
+            compile_json("fib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\nmain() -> int {\n    info(\"{fib(10)}\")\n    0\n}\n", 0);
+        assert!(json.contains("\"output\":\"55\\n\""), "fib(10) wrong: {json}");
+        assert!(json.contains("\"name\":\"fib\",\"calls\":177"), "fib call count wrong: {json}");
+        assert!(json.contains("\"maxDepth\":"), "no depth: {json}");
+    }
+
+    #[test]
+    fn recursive_sum_runs() {
+        let json = compile_json(
+            "Tree = Leaf(int) | Node(Tree, Tree)\ntotal(t: Tree) -> int {\n    match t {\n        Leaf(n) => n\n        Node(l, r) => total(l) + total(r)\n    }\n}\nmain() -> int {\n    info(\"{total(Node(Leaf(1), Node(Leaf(2), Leaf(3))))}\")\n    0\n}\n",
+            0,
+        );
+        assert!(json.contains("\"output\":\"6\\n\""), "tree total wrong: {json}");
+    }
+
+    #[test]
+    fn indexing_and_update_run() {
+        let json = compile_json(
+            "main() -> int {\n    let xs = 10, 20, 30\n    xs[0] = 99\n    info(\"{xs[0]} {len(xs)}\")\n    0\n}\n",
+            0,
+        );
+        assert!(json.contains("\"output\":\"99 3\\n\""), "indexing wrong: {json}");
     }
 }

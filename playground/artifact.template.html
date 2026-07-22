@@ -105,18 +105,26 @@
   .diag .msg { font-family: ui-monospace, monospace; font-size: 0.8rem; }
   .clean { color: var(--ok); display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
 
-  /* benchmark strip */
-  .bench { flex: 0 0 auto; border-top: 1px solid var(--border); background: var(--panel); padding: 0.6rem 1rem 0.8rem; }
-  .bench h3 { margin: 0 0 0.1rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
-  .bench .cap { font-size: 0.7rem; color: var(--muted); margin: 0 0 0.5rem; }
-  .bench-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.9rem; }
-  .bench-card { }
-  .bench-card .title { font-family: ui-monospace, monospace; font-size: 0.74rem; color: var(--fg); margin-bottom: 0.35rem; }
-  .bar-row { display: grid; grid-template-columns: 62px 1fr auto; align-items: center; gap: 0.4rem; margin-bottom: 0.22rem; font-size: 0.68rem; }
-  .bar-row .lang { color: var(--muted); text-align: right; }
-  .bar-track { height: 12px; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 4px; }
-  .bar-row .val { font-family: ui-monospace, monospace; color: var(--fg); font-variant-numeric: tabular-nums; min-width: 58px; text-align: right; }
+  /* profiler strip */
+  .prof { flex: 0 0 auto; border-top: 1px solid var(--border); background: var(--panel); padding: 0.6rem 1rem 0.8rem; max-height: 42%; overflow: auto; }
+  .prof-head { display: flex; align-items: baseline; gap: 0.7rem; margin-bottom: 0.55rem; }
+  .prof h3 { margin: 0; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+  .prof-sum { font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  /* summary stat tiles */
+  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.55rem; margin-bottom: 0.7rem; }
+  .stat { background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 0.45rem 0.6rem; }
+  .stat .n { font-family: ui-monospace, monospace; font-size: 1.02rem; font-weight: 650; color: var(--fg); font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .stat .n.warn { color: var(--warn); }
+  .stat .l { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-top: 0.1rem; }
+  /* per-function call-count bars */
+  .prof-fns { display: flex; flex-direction: column; gap: 0.28rem; }
+  .fn-row { display: grid; grid-template-columns: minmax(64px, 30%) 1fr auto; align-items: center; gap: 0.5rem; font-size: 0.72rem; }
+  .fn-row .fn-name { font-family: ui-monospace, monospace; color: var(--fn); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fn-track { height: 11px; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
+  .fn-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+  .fn-row .fn-val { font-family: ui-monospace, monospace; color: var(--fg); font-variant-numeric: tabular-nums; min-width: 62px; text-align: right; }
+  .prof-empty { font-size: 0.75rem; color: var(--muted); }
+  .prof-note { font-size: 0.68rem; color: var(--warn); margin-top: 0.5rem; }
 
   footer { flex: 0 0 auto; display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 1rem; font-size: 0.72rem; color: var(--muted); background: var(--panel); border-top: 1px solid var(--border); }
   footer .sp { flex: 1; }
@@ -125,7 +133,7 @@
   @media (max-width: 860px) {
     main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
     .editor-pane { border-right: none; border-bottom: 1px solid var(--border); }
-    .bench-grid { grid-template-columns: 1fr; }
+    .stat-row { grid-template-columns: repeat(2, 1fr); }
   }
 </style>
 
@@ -150,12 +158,15 @@
     <div class="tabs" id="tabs"></div>
     <div class="tabview">
       <div id="diagnostics" class="panel"></div>
+      <pre id="console" class="panel code-out"></pre>
       <pre id="output" class="panel code-out"></pre>
     </div>
-    <div class="bench">
-      <h3>Native speed — median run time, lower is better</h3>
-      <p class="cap">Same kernels in each language; Maca is built Maca → C → <span class="mono">cc -O2</span>. Bars are relative within each kernel.</p>
-      <div class="bench-grid" id="bench"></div>
+    <div class="prof">
+      <div class="prof-head">
+        <h3>Profiler</h3>
+        <span class="prof-sum mono" id="prof-sum">run a program to profile it</span>
+      </div>
+      <div class="prof-body" id="prof-body"></div>
     </div>
   </section>
 </main>
@@ -169,14 +180,6 @@
 <script id="wasm-b64" type="application/octet-stream">__WASM_B64__</script>
 <script>
 "use strict";
-
-// ---- embedded benchmark results (bench/results.json) ----------------------
-const BENCH = {
-  "fib(40)":        { Maca: 168.0, C: 166.6, "JS": 975.7,  Python: 11194.1 },
-  "tak(32,16,8)":   { Maca: 65.1,  C: 58.6,  "JS": 193.4,  Python: 1680.1 },
-  "ackermann(3,10)":{ Maca: 18.6,  C: 19.7,  "JS": 234.0,  Python: 4476.6 },
-};
-const BENCH_COLORS = { Maca: "var(--accent)", C: "var(--accent-2)", JS: "var(--warn)", Python: "var(--err)" };
 
 // ---- examples -------------------------------------------------------------
 const EXAMPLES = {
@@ -264,10 +267,14 @@ let currentTab = "Diagnostics", lastResult = null;
 function sync() { $("hl").innerHTML = highlight($("code").value); }
 function scrollSync() { $("hl").scrollTop = $("code").scrollTop; $("hl").scrollLeft = $("code").scrollLeft; }
 
+function tabNames(r) {
+  const codegen = r?.outputs ? Object.keys(r.outputs) : [];
+  return ["Diagnostics", ...(r?.run ? ["Console"] : []), ...codegen];
+}
 function renderTabs(r) {
   const el = $("tabs"); el.innerHTML = "";
   const n = (r?.parseErrors?.length || 0) + (r?.diagnostics?.length || 0);
-  const names = ["Diagnostics", ...(r?.outputs ? Object.keys(r.outputs) : [])];
+  const names = tabNames(r);
   if (!names.includes(currentTab)) currentTab = "Diagnostics";
   for (const name of names) {
     const t = document.createElement("div");
@@ -277,6 +284,10 @@ function renderTabs(r) {
       const d = document.createElement("span");
       d.className = "dot " + (n ? "err" : "ok");
       t.appendChild(d);
+    } else if (name === "Console" && r?.run?.error) {
+      const d = document.createElement("span");
+      d.className = "dot err";
+      t.appendChild(d);
     }
     t.onclick = () => { currentTab = name; showTab(r); };
     el.appendChild(t);
@@ -284,10 +295,23 @@ function renderTabs(r) {
 }
 function showTab(r) {
   renderTabs(r);
-  $("diagnostics").classList.toggle("active", currentTab === "Diagnostics");
-  $("output").classList.toggle("active", currentTab !== "Diagnostics");
-  if (currentTab === "Diagnostics") renderDiag(r);
-  else $("output").textContent = r?.outputs?.[currentTab] ?? "";
+  const isDiag = currentTab === "Diagnostics";
+  const isCon = currentTab === "Console";
+  $("diagnostics").classList.toggle("active", isDiag);
+  $("console").classList.toggle("active", isCon);
+  $("output").classList.toggle("active", !isDiag && !isCon);
+  renderConsole(r); // keep it fresh even while hidden
+  if (isDiag) renderDiag(r);
+  else if (!isCon) $("output").textContent = r?.outputs?.[currentTab] ?? "";
+}
+function renderConsole(r) {
+  const el = $("console");
+  const run = r?.run;
+  if (!run) { el.textContent = ""; return; }
+  let body = run.output || "";
+  if (run.error) body += (body && !body.endsWith("\n") ? "\n" : "") + "⚠ " + run.error + "\n";
+  if (!body) body = "(no output — the program printed nothing)";
+  el.textContent = body;
 }
 function renderDiag(r) {
   const el = $("diagnostics"); el.innerHTML = "";
@@ -306,42 +330,87 @@ function row(cls, kind, msg) {
   r.append(k, m); return r;
 }
 
-function run() {
+let lastMs = 0;
+function run(focusConsole) {
   if (!ex) return;
   try {
+    const t0 = performance.now();
     lastResult = wasmRun($("code").value, parseInt($("mode").value, 10));
+    lastMs = performance.now() - t0;
     $("status").textContent = "compiled";
   } catch (e) {
     lastResult = { parseErrors: ["internal: " + e.message], diagnostics: [], outputs: {} };
+    lastMs = 0;
     $("status").textContent = "error";
   }
+  // an explicit Run jumps to the program's output; auto-run keeps your place
+  if (focusConsole && lastResult.run) currentTab = "Console";
   showTab(lastResult);
+  renderProfile(lastResult);
 }
 let deb = null;
-function schedule() { clearTimeout(deb); deb = setTimeout(run, 250); }
+function schedule() { clearTimeout(deb); deb = setTimeout(() => run(false), 250); }
 
 function loadExample(name) {
   const ex2 = EXAMPLES[name]; if (!ex2) return;
   $("mode").value = String(ex2.mode);
-  $("code").value = ex2.src; sync(); run();
+  $("code").value = ex2.src; sync(); run(false);
 }
 
-function renderBench() {
-  const host = $("bench"); host.innerHTML = "";
-  for (const [kernel, langs] of Object.entries(BENCH)) {
-    const max = Math.max(...Object.values(langs));
-    const card = document.createElement("div"); card.className = "bench-card";
-    card.innerHTML = `<div class="title">${kernel}</div>`;
-    for (const [lang, ms] of Object.entries(langs)) {
-      const r = document.createElement("div"); r.className = "bar-row";
-      const pct = Math.max(2, (ms / max) * 100);
-      const label = ms >= 1000 ? (ms / 1000).toFixed(1) + " s" : ms.toFixed(0) + " ms";
-      r.innerHTML = `<span class="lang">${lang}</span>`
-        + `<span class="bar-track"><span class="bar-fill" style="width:${pct}%;background:${BENCH_COLORS[lang]}"></span></span>`
-        + `<span class="val">${label}</span>`;
-      card.appendChild(r);
+function fmtN(n) {
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
+  return String(n);
+}
+function renderProfile(r) {
+  const body = $("prof-body"), sum = $("prof-sum");
+  body.innerHTML = "";
+  const p = r?.run?.profile;
+  if (!p) {
+    const errs = (r?.parseErrors?.length || 0) + (r?.diagnostics?.length || 0);
+    const isConfig = r && !r.run && !errs;
+    sum.textContent = errs ? "fix the errors to run" : isConfig ? "config mode — nothing to run" : "run a program to profile it";
+    body.innerHTML = `<div class="prof-empty">The profiler runs your program and reports where the work went — call counts per function, recursion depth, and total steps. Use “program” mode and Run.</div>`;
+    return;
+  }
+  const lines = (r.run.output.match(/\n/g) || []).length;
+  sum.textContent = `${lastMs.toFixed(lastMs < 10 ? 2 : 0)} ms · ${fmtN(p.steps)} steps`;
+
+  // summary stat tiles
+  const tiles = [
+    ["calls", fmtN(p.totalCalls), false],
+    ["max depth", fmtN(p.maxDepth), p.maxDepth >= 4000],
+    ["eval steps", fmtN(p.steps), p.truncated],
+    ["output lines", fmtN(lines), false],
+  ];
+  const row = document.createElement("div"); row.className = "stat-row";
+  for (const [l, n, warn] of tiles) {
+    const s = document.createElement("div"); s.className = "stat";
+    s.innerHTML = `<div class="n${warn ? " warn" : ""}">${n}</div><div class="l">${l}</div>`;
+    row.appendChild(s);
+  }
+  body.appendChild(row);
+
+  // per-function call counts
+  const fns = p.functions || [];
+  if (fns.length) {
+    const max = Math.max(...fns.map(f => f.calls), 1);
+    const wrap = document.createElement("div"); wrap.className = "prof-fns";
+    for (const f of fns) {
+      const pct = Math.max(3, (f.calls / max) * 100);
+      const el = document.createElement("div"); el.className = "fn-row";
+      el.innerHTML = `<span class="fn-name" title="${f.name}">${f.name}</span>`
+        + `<span class="fn-track"><span class="fn-fill" style="width:${pct}%"></span></span>`
+        + `<span class="fn-val">${fmtN(f.calls)}</span>`;
+      wrap.appendChild(el);
     }
-    host.appendChild(card);
+    body.appendChild(wrap);
+  }
+  if (p.truncated) {
+    const note = document.createElement("div"); note.className = "prof-note";
+    note.textContent = "⚠ stopped at the step limit — the profile is partial (possible infinite loop).";
+    body.appendChild(note);
   }
 }
 
@@ -368,12 +437,12 @@ function setTheme(t) {
     const o = document.createElement("option"); o.value = name; o.textContent = name; sel.appendChild(o);
   }
   sel.onchange = () => loadExample(sel.value);
-  $("mode").onchange = run;
-  $("run").onclick = run;
+  $("mode").onchange = () => run(true);
+  $("run").onclick = () => run(true);
   $("code").addEventListener("input", () => { sync(); schedule(); });
   $("code").addEventListener("scroll", scrollSync);
   $("code").addEventListener("keydown", e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); run(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); run(true); }
     if (e.key === "Tab") {
       e.preventDefault();
       const t = e.target, s = t.selectionStart, en = t.selectionEnd;
@@ -382,7 +451,7 @@ function setTheme(t) {
     }
   });
 
-  renderBench();
+  renderProfile(null);
 
   // wasm
   try {
@@ -391,7 +460,7 @@ function setTheme(t) {
     ex = instance.exports;
     $("version").textContent = "maca " + readPacked(ex.version()) + " · wasm";
     $("status").textContent = "ready";
-    $("code").value = EXAMPLES["hello"].src; sync(); run();
+    $("code").value = EXAMPLES["hello"].src; sync(); run(true);
   } catch (e) {
     $("status").textContent = "wasm failed: " + e.message;
     $("code").value = EXAMPLES["hello"].src; sync();
