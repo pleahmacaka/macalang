@@ -143,3 +143,8 @@ fn roundtrip_loops() {
 fn roundtrip_fizzbuzz() {
     roundtrip("fizzbuzz.maca");
 }
+
+#[test]
+fn roundtrip_match_guard() {
+    roundtrip("match_guard.maca");
+}

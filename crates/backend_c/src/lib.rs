@@ -811,6 +811,46 @@ impl<'a> Cx<'a> {
             CTy::Arr(e) => (**e).clone(),
             _ => CTy::Unknown,
         };
+        // A guard can fail after its pattern matches, so the arm must be able to
+        // fall through to the next one — an `if/else if` chain can't express
+        // that. Only when some arm has a guard do we switch to independent `if`
+        // blocks with a `goto` past the rest once an arm fully matches.
+        if arms.iter().any(|a| a.guard.is_some()) {
+            let end = format!("_m{}", self.fresh());
+            for arm in arms {
+                let (cond, binds) = self.pattern_cond(&sv, &sty, &elem, &arm.pat);
+                self.indent(ind);
+                self.push(&format!("if ({cond}) {{"));
+                let mut env2 = env.clone();
+                for (bname, bcode, bty) in binds {
+                    self.indent(ind + 1);
+                    self.push(&bcode);
+                    env2.push((bname, bty));
+                }
+                let body_ind = if let Some(g) = &arm.guard {
+                    let (gc, _) = self.expr(&mut env2, g, None);
+                    self.indent(ind + 1);
+                    self.push(&format!("if ({gc}) {{"));
+                    ind + 2
+                } else {
+                    ind + 1
+                };
+                self.stmt_expr(&mut env2, body_as_block(&arm.body), sink, body_ind);
+                self.indent(body_ind);
+                self.push(&format!("goto {end};"));
+                if arm.guard.is_some() {
+                    self.indent(ind + 1);
+                    self.push("}");
+                }
+                self.indent(ind);
+                self.push("}");
+            }
+            self.indent(ind);
+            self.push(&format!("{end}: ;"));
+            self.indent(ind);
+            self.push("}");
+            return;
+        }
         for (i, arm) in arms.iter().enumerate() {
             let (cond, binds) = self.pattern_cond(&sv, &sty, &elem, &arm.pat);
             let kw = if i == 0 { "if" } else { "else if" };
@@ -844,6 +884,9 @@ impl<'a> Cx<'a> {
     ) -> (String, Vec<(String, String, CTy)>) {
         match p {
             Pattern::Wild => ("1".into(), vec![]),
+            // literal patterns → an equality test against the scrutinee
+            Pattern::Int(n) => (format!("{sv} == {n}"), vec![]),
+            Pattern::Bool(b) => (format!("{sv} == {}", if *b { "true" } else { "false" }), vec![]),
             // A nullary variant may reach here as a bare `Bind` (bare `Red`) or a
             // `Ctor` (`Red()`); against a sum scrutinee it is a tag test, not a
             // binding — mirror the checker's `is_variant` disambiguation.

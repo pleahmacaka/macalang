@@ -106,3 +106,17 @@ fn fail_lowers_to_maca_fail_not_abort() {
     assert!(out.contains("maca_fail("), "fail should call maca_fail:\n{out}");
     assert!(!out.contains("abort()"), "fail must not abort:\n{out}");
 }
+
+#[test]
+fn match_guard_and_int_patterns() {
+    let body = func(
+        "classify(n: int) -> str {\n    match n {\n        x if x < 0 => \"neg\"\n        0 => \"zero\"\n        _ => \"other\"\n    }\n}\n",
+        "classify",
+    );
+    // the guard condition is emitted (not dropped)
+    assert!(body.contains("< 0)"), "guard condition missing:\n{body}");
+    // an integer-literal pattern lowers to an equality test, not a catch-all
+    assert!(body.contains("== 0"), "int pattern not tested:\n{body}");
+    // guarded matches fall through via goto
+    assert!(body.contains("goto"), "no fall-through for guards:\n{body}");
+}
