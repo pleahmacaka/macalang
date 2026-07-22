@@ -71,3 +71,28 @@ fn operator_overloading_runs_natively() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+#[test]
+fn fail_exits_cleanly_with_message() {
+    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-fail-test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("fail.maca");
+    // `fail msg` must print "error: <msg>" to stderr and exit 1 (not SIGABRT)
+    std::fs::write(
+        &f,
+        "check(n: int) -> int {\n    if n < 0 {\n        fail \"negative input\"\n    }\n    n\n}\n\nmain() -> int {\n    info(\"{check(0 - 1)}\")\n    0\n}\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &f.to_string_lossy()])
+        .output()
+        .expect("spawn maca");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("error: negative input"), "stderr: {stderr}");
+    assert_eq!(out.status.code(), Some(1), "fail should exit 1, got {:?}", out.status.code());
+}

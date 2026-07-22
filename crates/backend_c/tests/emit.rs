@@ -99,3 +99,10 @@ fn modulo_and_shift_operators() {
     assert!(body.contains("(n << 2)"), "no shl:\n{body}");
     assert!(body.contains("(n >> 1)"), "no shr:\n{body}");
 }
+
+#[test]
+fn fail_lowers_to_maca_fail_not_abort() {
+    let out = c("g(n: int) -> int {\n    if n < 0 { fail \"bad\" }\n    n\n}\n");
+    assert!(out.contains("maca_fail("), "fail should call maca_fail:\n{out}");
+    assert!(!out.contains("abort()"), "fail must not abort:\n{out}");
+}
