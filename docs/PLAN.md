@@ -52,6 +52,10 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - Operator overloading (no new syntax): on a user type, an operator resolves to
   a same-named function — `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
   `concat`, etc. Primitives keep the native operator. (`examples/operators.maca`.)
+- Imperative loops: `while cond { … }` with `break`/`continue`, plus
+  reassignment of an in-scope binding (`i = i + 1`) alongside `let`. The `while`
+  condition must be `bool`. Lowered to native C, embedded C, and JS.
+  (`examples/loops.maca`; `examples/bad/while_cond.maca` is rejected.)
 - Dev environments in Maca (`maca dev`): `dev.maca` (config mode) → a self-
   contained `flake.nix` devShell via the Nix backend's `emit_flake`. `dev.name`,
   `dev.packages = a, b`, `dev.env = { K = "v" }`, `dev.shellHook`. Replaces a

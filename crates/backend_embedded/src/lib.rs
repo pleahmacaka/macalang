@@ -161,12 +161,19 @@ fn cblock(stmts: &[Stmt], wants_value: bool, ind: usize) -> String {
         match s {
             Stmt::Bind(b) => {
                 if let Expr::Ident(n) = &b.target {
-                    out.push_str(&format!("{pad}uint32_t {n} = {};\n", cexpr(&b.value)));
+                    // `let x =` declares; a bare `x =` reassigns (loop counters)
+                    let decl = if b.is_let { "uint32_t " } else { "" };
+                    out.push_str(&format!("{pad}{decl}{n} = {};\n", cexpr(&b.value)));
                 } else {
                     out.push_str(&format!("{pad}{};\n", cexpr(&b.value)));
                 }
             }
             Stmt::Expr(Expr::For { pat, iter, body }) => out.push_str(&cfor(pat, iter, body, ind)),
+            Stmt::Expr(Expr::While { cond, body }) => {
+                out.push_str(&format!("{pad}while ({}) {{\n{}{pad}}}\n", cexpr(cond), cblock(body, false, ind + 1)));
+            }
+            Stmt::Expr(Expr::Break) => out.push_str(&format!("{pad}break;\n")),
+            Stmt::Expr(Expr::Continue) => out.push_str(&format!("{pad}continue;\n")),
             Stmt::Expr(e @ Expr::If { .. }) => out.push_str(&cif(e, ind)),
             Stmt::Expr(e) => {
                 if last && wants_value {

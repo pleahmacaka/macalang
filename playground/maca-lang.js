@@ -3,7 +3,7 @@
 // in `editor/maca.tmLanguage.json`. `registerMaca(monaco)` wires it all up.
 
 export const MACA_KEYWORDS = [
-  'let', 'if', 'else', 'for', 'in', 'match',
+  'let', 'if', 'else', 'for', 'in', 'while', 'break', 'continue', 'match',
   'import', 'from', 'with', 'fail', 'try', 'alias',
 ];
 

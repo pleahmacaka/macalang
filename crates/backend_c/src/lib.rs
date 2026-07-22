@@ -290,6 +290,10 @@ impl<'a> Cx<'a> {
                 self.walk_expr(iter);
                 self.walk_stmts(body);
             }
+            Expr::While { cond, body } => {
+                self.walk_expr(cond);
+                self.walk_stmts(body);
+            }
             Expr::Lambda { body, .. } => self.walk_expr(body),
             Expr::With { base, fields } => {
                 self.walk_expr(base);
@@ -661,6 +665,17 @@ impl<'a> Cx<'a> {
                         }
                     }
                 }
+                // reassignment: a non-`let` bind to an in-scope name (`i = i + 1`),
+                // which makes counters and `while` loops usable.
+                Stmt::Bind(b) => {
+                    if let Expr::Ident(name) = &b.target {
+                        if let Some(ty) = lookup(env, name) {
+                            let (code, _) = self.expr(env, &b.value, Some(&ty));
+                            self.indent(ind);
+                            self.push(&format!("{name} = {code};"));
+                        }
+                    }
+                }
                 Stmt::Expr(e) => {
                     let cur = if last { sink } else { &Sink::Discard };
                     if is_control(e) {
@@ -745,6 +760,23 @@ impl<'a> Cx<'a> {
                 self.block(&mut env2, body, &Sink::Discard, ind + 1);
                 self.indent(ind);
                 self.push("} }");
+            }
+            Expr::While { cond, body } => {
+                let (cc, _) = self.expr(env, cond, None);
+                self.indent(ind);
+                self.push(&format!("while ({cc}) {{"));
+                let mut e2 = env.clone();
+                self.block(&mut e2, body, &Sink::Discard, ind + 1);
+                self.indent(ind);
+                self.push("}");
+            }
+            Expr::Break => {
+                self.indent(ind);
+                self.push("break;");
+            }
+            Expr::Continue => {
+                self.indent(ind);
+                self.push("continue;");
             }
             Expr::Match { scrut, arms } => self.match_stmt(env, scrut, arms, sink, ind),
             Expr::If { cond, then, els } => {
@@ -1293,7 +1325,16 @@ fn body_as_block(e: &Expr) -> &Expr {
 }
 
 fn is_control(e: &Expr) -> bool {
-    matches!(e, Expr::For { .. } | Expr::Match { .. } | Expr::If { .. } | Expr::Block(_))
+    matches!(
+        e,
+        Expr::For { .. }
+            | Expr::While { .. }
+            | Expr::Break
+            | Expr::Continue
+            | Expr::Match { .. }
+            | Expr::If { .. }
+            | Expr::Block(_)
+    )
 }
 
 /// The tail (last) expression of a statement block, if any — the value it yields.

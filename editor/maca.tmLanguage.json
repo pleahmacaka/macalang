@@ -57,7 +57,7 @@
       "patterns": [
         {
           "name": "keyword.control.maca",
-          "match": "\\b(if|else|for|in|match|with|try|fail|return)\\b"
+          "match": "\\b(if|else|for|in|while|break|continue|match|with|try|fail|return)\\b"
         },
         {
           "name": "keyword.other.maca",

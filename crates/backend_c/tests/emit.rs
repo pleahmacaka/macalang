@@ -70,3 +70,24 @@ fn needs_async_detection() {
     let plain = c("main() -> int { 0 }");
     assert!(!maca_backend_c::needs_async(&plain), "plain program should not need async");
 }
+
+#[test]
+fn while_loop_and_reassignment() {
+    let body = func(
+        "sum_to(n: int) -> int {\n    let acc = 0\n    let i = 1\n    while i <= n {\n        acc = acc + i\n        i = i + 1\n    }\n    acc\n}\n",
+        "sum_to",
+    );
+    assert!(body.contains("while ((i <= n))"), "no while:\n{body}");
+    assert!(body.contains("acc = (acc + i);"), "no reassignment:\n{body}");
+    assert!(body.contains("i = (i + 1);"), "counter not updated:\n{body}");
+}
+
+#[test]
+fn break_and_continue() {
+    let body = func(
+        "f() -> int {\n    let i = 0\n    while i < 10 {\n        i = i + 1\n        if i < 3 { continue }\n        break\n    }\n    i\n}\n",
+        "f",
+    );
+    assert!(body.contains("break;"), "no break:\n{body}");
+    assert!(body.contains("continue;"), "no continue:\n{body}");
+}

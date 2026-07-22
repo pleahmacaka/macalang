@@ -98,19 +98,32 @@ fn emit_fn(f: &FnDef) -> String {
 
 /// A block of statements → JS, returning the value of the final expression.
 fn jblock(stmts: &[Stmt]) -> String {
+    jblock_ret(stmts, true)
+}
+
+/// `ret` = whether the final expression is `return`ed (function body) or emitted
+/// as a bare statement (loop body).
+fn jblock_ret(stmts: &[Stmt], ret: bool) -> String {
     let mut out = String::new();
     for (i, s) in stmts.iter().enumerate() {
         let last = i + 1 == stmts.len();
         match s {
             Stmt::Bind(b) => {
                 if let Expr::Ident(n) = &b.target {
-                    out.push_str(&format!("  let {n} = {};\n", jexpr(&b.value)));
+                    // `let x =` declares; a bare `x =` reassigns
+                    let kw = if b.is_let { "let " } else { "" };
+                    out.push_str(&format!("  {kw}{n} = {};\n", jexpr(&b.value)));
                 } else {
                     out.push_str(&format!("  {};\n", jexpr(&b.value)));
                 }
             }
+            Stmt::Expr(Expr::While { cond, body }) => {
+                out.push_str(&format!("  while ({}) {{\n{}  }}\n", jexpr(cond), jblock_ret(body, false)));
+            }
+            Stmt::Expr(Expr::Break) => out.push_str("  break;\n"),
+            Stmt::Expr(Expr::Continue) => out.push_str("  continue;\n"),
             Stmt::Expr(e) => {
-                if last {
+                if last && ret {
                     out.push_str(&format!("  return {};\n", jexpr(e)));
                 } else {
                     out.push_str(&format!("  {};\n", jexpr(e)));

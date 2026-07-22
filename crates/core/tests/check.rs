@@ -91,3 +91,13 @@ fn branch_mismatch_rejected() {
     // Ternary branches with disagreeing types (int vs str).
     assert_has("examples/bad/branch_mismatch.maca", Mode::Program, DiagKind::TypeMismatch);
 }
+
+#[test]
+fn loops_ok() {
+    assert_clean("examples/loops.maca", Mode::Program);
+}
+
+#[test]
+fn while_cond_must_be_bool() {
+    assert_has("examples/bad/while_cond.maca", Mode::Program, DiagKind::TypeMismatch);
+}

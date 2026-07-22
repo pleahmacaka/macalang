@@ -242,6 +242,14 @@ fn expr(s: &mut String, e: &Expr) {
             s.push(' ');
             block(s, body);
         }
+        Expr::While { cond, body } => {
+            s.push_str("while ");
+            expr(s, cond);
+            s.push(' ');
+            block(s, body);
+        }
+        Expr::Break => s.push_str("break"),
+        Expr::Continue => s.push_str("continue"),
         Expr::Lambda { params, body } => {
             if params.len() == 1 && !params[0].variadic && params[0].ty.is_none() {
                 s.push_str(&params[0].name);

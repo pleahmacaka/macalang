@@ -381,6 +381,7 @@ impl Checker {
                 }
             }
             Expr::For { iter, body, .. } => acc = self.eff(iter).union(self.eff_stmts(body)),
+            Expr::While { cond, body } => acc = self.eff(cond).union(self.eff_stmts(body)),
             Expr::Lambda { body, .. } => acc = self.eff(body),
             Expr::With { base, fields } => {
                 acc = self.eff(base);
@@ -597,6 +598,17 @@ impl Checker {
                 env.truncate(base);
                 Ty::Unit
             }
+            Expr::While { cond, body } => {
+                let ct = self.infer(env, cond);
+                if let Err(e) = self.inf.unify(&ct, &Ty::Bool) {
+                    self.diag(DiagKind::TypeMismatch, format!("`while` condition: {e}"));
+                }
+                let base = env.len();
+                self.infer_block(env, body);
+                env.truncate(base);
+                Ty::Unit
+            }
+            Expr::Break | Expr::Continue => Ty::Unit,
             Expr::Lambda { params, body } => {
                 let base = env.len();
                 let pts: Vec<Ty> = params

@@ -480,6 +480,15 @@ impl Parser {
             Tok::If => self.parse_if(),
             Tok::Match => self.parse_match(),
             Tok::For => self.parse_for(),
+            Tok::While => self.parse_while(),
+            Tok::Break => {
+                self.bump();
+                Expr::Break
+            }
+            Tok::Continue => {
+                self.bump();
+                Expr::Continue
+            }
             Tok::Fail => {
                 self.bump();
                 Expr::Fail(Box::new(self.parse_expr()))
@@ -706,6 +715,16 @@ impl Parser {
         self.no_brace = save;
         let body = self.parse_block();
         Expr::For { pat, iter: Box::new(iter), body }
+    }
+
+    fn parse_while(&mut self) -> Expr {
+        self.bump(); // while
+        let save = self.no_brace;
+        self.no_brace = true;
+        let cond = self.parse_expr();
+        self.no_brace = save;
+        let body = self.parse_block();
+        Expr::While { cond: Box::new(cond), body }
     }
 
     fn parse_match(&mut self) -> Expr {

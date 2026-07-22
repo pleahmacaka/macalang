@@ -133,3 +133,8 @@ fn ui_directive_arg() {
     assert_eq!(*kind, Dir::Bind);
     assert_eq!(prop, "value");
 }
+
+#[test]
+fn roundtrip_loops() {
+    roundtrip("loops.maca");
+}
