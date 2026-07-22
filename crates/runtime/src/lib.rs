@@ -41,6 +41,11 @@ void maca_warn(maca_str s);
 void maca_notice(maca_str s);
 void maca_info(maca_str s);
 void maca_debug(maca_str s);
+/* `fail msg` — print "error: <msg>" to stderr and exit(1) (unhandled error) */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noreturn))
+#endif
+void maca_fail(maca_str s);
 void maca_print(maca_str s);
 maca_str maca_input(void);
 
@@ -186,6 +191,12 @@ void maca_err(maca_str s)    { line(stderr, s); }
 void maca_warn(maca_str s)   { line(stderr, s); }
 void maca_notice(maca_str s) { line(stdout, s); }
 void maca_info(maca_str s)   { line(stdout, s); }
+void maca_fail(maca_str s) {
+    fputs("error: ", stderr);
+    fputs(s ? s : "", stderr);
+    fputc('\n', stderr);
+    exit(1);
+}
 void maca_debug(maca_str s)  { line(stdout, s); }
 void maca_print(maca_str s)  { fputs(s ? s : "", stdout); }
 maca_str maca_input(void) {

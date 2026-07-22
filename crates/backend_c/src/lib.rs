@@ -4,8 +4,9 @@
 //! enums, `T[]` becomes a monomorphized dynamic array (via the runtime's
 //! `MACA_DEFINE_ARRAY` macro), and `std/json` encode/decode are generated
 //! per record/sum type. Strings are heap `maca_str`; interpolation folds to
-//! `maca_concat`. `match` lowers to an if-else chain, `?` is transparent (the
-//! runtime file/JSON helpers abort on failure — real Result/exn comes later).
+//! `maca_concat`. `match` lowers to an if-else chain, `?` is transparent, and
+//! `fail msg` calls `maca_fail` — a clean stderr message + `exit(1)` (the
+//! runtime file/JSON helpers still abort; catch-via-`reify` comes later).
 //!
 //! GNU statement expressions (`({ ...; v; })`, supported by `zig cc`/clang) are
 //! used for inline list literals.
@@ -933,7 +934,13 @@ impl<'a> Cx<'a> {
                 (format!("({c} ? {t} : {e2})"), expected.cloned().unwrap_or(tt))
             }
             Expr::Try(x) => self.expr(env, x, expected),
-            Expr::Fail(_) => ("(abort(), 0)".into(), expected.cloned().unwrap_or(CTy::Unit)),
+            // `fail msg` — a clean error exit with the message (was a bare abort()
+            // that discarded the message and raised SIGABRT). `maca_fail` is
+            // noreturn; the trailing `0` only keeps the expression well-typed.
+            Expr::Fail(msg) => {
+                let (mc, _) = self.expr(env, msg, Some(&CTy::Str));
+                (format!("(maca_fail({mc}), 0)"), expected.cloned().unwrap_or(CTy::Unit))
+            }
             _ => ("0 /* unsupported */".into(), CTy::Unknown),
         }
     }
