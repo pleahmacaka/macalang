@@ -148,3 +148,8 @@ fn roundtrip_fizzbuzz() {
 fn roundtrip_match_guard() {
     roundtrip("match_guard.maca");
 }
+
+#[test]
+fn roundtrip_or_patterns() {
+    roundtrip("or_patterns.maca");
+}

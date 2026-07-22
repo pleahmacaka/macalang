@@ -130,3 +130,17 @@ fn string_literal_match_uses_str_eq() {
     assert!(body.contains("maca_str_eq"), "string pattern not compared:\n{body}");
     assert!(body.contains("if ("), "first arm must be a real if, not else:\n{body}");
 }
+
+#[test]
+fn or_patterns_combine_with_logical_or() {
+    let out = c("C = A | B | D\nf(c: C) -> int {\n    match c {\n        A | B => 1\n        D => 2\n    }\n}\n");
+    // an or-pattern's alternatives are OR'd (each a tag test)
+    assert!(out.contains("== C_A") && out.contains("== C_B"), "or alts missing:\n{out}");
+    assert!(out.contains("||"), "alternatives not combined with ||:\n{out}");
+}
+
+#[test]
+fn float_literal_pattern() {
+    let body = func("f(x: float) -> int {\n    match x {\n        1.5 => 1\n        _ => 0\n    }\n}\n", "f");
+    assert!(body.contains("== 1.5"), "float pattern not compared:\n{body}");
+}

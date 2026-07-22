@@ -1,0 +1,25 @@
+// `A | B` or-patterns in `match`, over enum variants and integer literals.
+
+Color = Red | Green | Blue
+
+warmth(c: Color) -> str {
+    match c {
+        Red | Green => "warm"
+        Blue => "cold"
+    }
+}
+
+grade(n: int) -> str {
+    match n {
+        1 | 2 | 3 => "low"
+        _ => "high"
+    }
+}
+
+main() -> int {
+    info(warmth(Red))
+    info(warmth(Blue))
+    info(grade(2))
+    info(grade(9))
+    0
+}
