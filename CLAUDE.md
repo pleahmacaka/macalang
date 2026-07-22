@@ -88,21 +88,28 @@ or mis-parses valid surface syntax).
 
 ## Status
 
-Phases 0–3 complete (front-end + semantic analysis). Phase 4 (C backend) in
-progress: **`hello.maca` compiles and runs end-to-end** (parse→check→C→`zig cc`
-static-musl via WSL→execute), 11.7 KB stripped binary, gated by a real
-build+run test (`crates/driver/tests/run.rs`, skips without WSL). Whole
-workspace green.
+Front-end (0–3) and the C backend (4) are complete: whole programs
+(non-`main` functions, records→structs, sum types→tagged enums, lists,
+string interpolation, `match` lowering incl. list patterns, UFCS) compile and
+run end-to-end (parse→check→C→`cc`/`zig cc`→execute). Additional backends and
+capabilities have since landed — see `docs/PLAN.md` for the authoritative,
+per-phase status. Whole workspace green.
 
-**Phase 4 remaining — extend the C backend to `taskr`** (`crates/backend_c`,
-currently a `main`-only slice). Needs, roughly in order: emit non-`main`
-functions with C types; records → structs; sum types → tagged enums; lists
-(`T[]`) → a small dynamic-array runtime; string interpolation → a `maca_fmt`
-builder; `match` → switch/if lowering incl. list patterns; `?` propagation;
-UFCS methods; then `std/json` (encode/decode for the Store/Task types),
-`std/dirs` + file read/write. That's essentially the runtime + a stdlib slice
-in C — a large chunk, size comparable to the parser. `maca-runtime` holds the C
-sources (`RUNTIME_H`/`RUNTIME_C`); grow them alongside the backend.
+Backends: native C (default), LLVM (SIMD span), Nix (config mode), JS
+(reactive UI), JVM (Java source / Minecraft-Fabric interop), and embedded
+(freestanding C for Cortex-M / RISC-V). Driver: `build` (`--target
+nix|js|jvm|embedded`, `--mcu`, `--cp`), `run`, `dev` (dev-shell flake), `watch`,
+`fmt`, `lint`, `profile`, `init`.
+
+Language surface beyond the original cheatsheet: operator overloading;
+`while`/`break`/`continue` + reassignment; `%`, `<<`, `>>` operators;
+hex/binary/octal integer literals with `_` separators.
+
+**Codegen note (C backend):** control-flow expressions (`if`/`match`/block)
+work in value position via a `Sink` (Discard/Return/Assign) threaded through
+`block`/`stmt_expr`/`match_stmt`; nullary enum-variant patterns lower to tag
+tests (mirroring the checker's `is_variant`). `maca-runtime` holds the C
+sources (`RUNTIME_H`/`RUNTIME_C`).
 
 - **P4 driver** `maca build <f> [-o out]` / `maca run <f> [args]`. Compiles via
   `wsl nix shell nixpkgs#zig -c zig cc … -target x86_64-linux-musl -static -s`;
