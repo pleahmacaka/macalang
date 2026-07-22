@@ -1,11 +1,15 @@
 //! `maca` — the Maca toolchain CLI.
 //!
-//! `build` / `run` lower a `.maca` program to C and drive `zig cc` (a static
-//! musl target) to produce a native binary. On this Windows host the compiler
-//! and the produced Linux binary run through WSL; see `docs/PLAN.md`.
+//! Commands: `init` (scaffold), `build`/`run` (compile a `.maca` program to C
+//! and link a native binary), `watch` (rebuild+rerun on change), `fmt` (indent
+//! normalization, style from `maca.toml [format]`), `lint` (style + type
+//! diagnostics). Codegen prefers `zig cc` (static musl) through WSL when
+//! present; otherwise it falls back to the host's native `cc`/`clang`.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+mod profile;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -15,8 +19,12 @@ fn main() {
         Some("--version" | "-V" | "version") => println!("maca {VERSION}"),
         Some("build") => cmd_build(&args[1..]),
         Some("run") => cmd_run(&args[1..]),
+        Some("init") => cmd_init(&args[1..]),
         Some("fmt") => cmd_fmt(&args[1..]),
         Some("lint") => cmd_lint(&args[1..]),
+        Some("watch") => cmd_watch(&args[1..]),
+        Some("profile") => cmd_profile(&args[1..]),
+        Some("dev") => cmd_dev(&args[1..]),
         Some("--help" | "-h" | "help") | None => usage(),
         Some(other) => {
             // maca.toml [scripts] alias?
@@ -31,23 +39,221 @@ fn main() {
     }
 }
 
-/// `maca fmt <file>` — reformat in place (4-space indent, forced block breaks).
-/// Idempotent by construction: parse → canonical print → re-indent.
+/// Formatting style. Defaults match the codebase: 4-space soft indent.
+struct FmtStyle {
+    unit: String, // one indent level's whitespace
+}
+
+/// Read `[format]` from `maca.toml` (indent_style = "space"|"tab", indent_size = N).
+fn format_style() -> FmtStyle {
+    let mut style = "space".to_string();
+    let mut size = 4usize;
+    if let Ok(toml) = std::fs::read_to_string("maca.toml") {
+        let mut in_fmt = false;
+        for line in toml.lines() {
+            let t = line.trim();
+            if t.starts_with('[') {
+                in_fmt = t == "[format]";
+                continue;
+            }
+            if in_fmt {
+                if let Some((k, v)) = t.split_once('=') {
+                    let v = v.trim().trim_matches('"');
+                    match k.trim() {
+                        "indent_style" => style = v.to_string(),
+                        "indent_size" => size = v.parse().unwrap_or(4),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    let unit = if style == "tab" { "\t".to_string() } else { " ".repeat(size) };
+    FmtStyle { unit }
+}
+
 fn cmd_fmt(args: &[String]) {
-    let Some(src) = args.first().map(PathBuf::from) else {
-        die("fmt: expected a .maca file");
-    };
+    let check = args.iter().any(|a| a == "--check");
+    let files: Vec<PathBuf> =
+        args.iter().filter(|a| !a.starts_with("--")).map(PathBuf::from).collect();
+    if files.is_empty() {
+        die("fmt: expected one or more .maca files (use --check to verify only)");
+    }
+    let style = format_style();
+    let mut unformatted = Vec::new();
+    for src in &files {
+        let source =
+            std::fs::read_to_string(src).unwrap_or_else(|e| die(&format!("cannot read: {e}")));
+        // Parse only to reject broken files — never reformat through the AST
+        // (the lexer drops comments, so a print-based `fmt` would delete them).
+        // `fmt` re-indents the *original* text by bracket depth, preserving all
+        // content: comments, blank lines, and intra-line spacing.
+        let parsed = maca_parser::parse(&source);
+        if !parsed.errors.is_empty() {
+            die(&format!("fmt: {}: parse errors:\n  {}", src.display(), parsed.errors.join("\n  ")));
+        }
+        let formatted = reindent(&source, &style.unit);
+        if check {
+            if formatted != source {
+                unformatted.push(src.display().to_string());
+            }
+        } else if formatted != source {
+            std::fs::write(src, &formatted).unwrap_or_else(|e| die(&format!("cannot write: {e}")));
+            println!("formatted {}", src.display());
+        }
+    }
+    if check && !unformatted.is_empty() {
+        eprintln!("not formatted:\n  {}", unformatted.join("\n  "));
+        std::process::exit(1);
+    }
+}
+
+/// Scaffold a new Maca project: `maca.toml`, `main.maca`, `.gitignore`.
+fn cmd_init(args: &[String]) {
+    let dir = args.iter().find(|a| !a.starts_with('-')).map(PathBuf::from);
+    let root = dir.clone().unwrap_or_else(|| PathBuf::from("."));
+    if let Some(d) = &dir {
+        std::fs::create_dir_all(d).unwrap_or_else(|e| die(&format!("cannot create {}: {e}", d.display())));
+    }
+    let name = root
+        .canonicalize()
+        .ok()
+        .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "app".into());
+
+    let toml = format!(
+        "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n\n\
+         [[bin]]\nname = \"{name}\"\npath = \"main.maca\"\n\n\
+         # Formatting — `maca fmt` reads these (defaults shown).\n\
+         [format]\nindent_style = \"space\"\nindent_size = 4\n\n\
+         # `maca <name>` runs a script alias.\n\
+         [scripts]\nstart = \"maca run main.maca\"\n"
+    );
+    let main = "main() -> int {\n    info(\"Hello from Maca\")\n    0\n}\n";
+    let gitignore = "/target\n/build\n*.o\n";
+
+    write_if_absent(&root.join("maca.toml"), &toml);
+    write_if_absent(&root.join("main.maca"), main);
+    write_if_absent(&root.join(".gitignore"), gitignore);
+    println!("initialized Maca project `{name}` in {}", root.display());
+    println!("  maca run main.maca   # build & run");
+}
+
+fn write_if_absent(path: &Path, contents: &str) {
+    if path.exists() {
+        println!("  skip {} (exists)", path.display());
+        return;
+    }
+    std::fs::write(path, contents).unwrap_or_else(|e| die(&format!("cannot write {}: {e}", path.display())));
+    println!("  create {}", path.display());
+}
+
+/// `maca profile <file> [-o out.svg]` — run under Callgrind and render a flame
+/// graph SVG (+ a text profile on stdout). Native-only (needs `cc` + `valgrind`).
+fn cmd_profile(args: &[String]) {
+    let mut src = None;
+    let mut out_svg = None;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "-o" => out_svg = it.next().map(PathBuf::from),
+            _ => src = Some(PathBuf::from(a)),
+        }
+    }
+    let Some(src) = src else { die("profile: expected a .maca file") };
+    if !have("cc") {
+        die("profile: needs a native C compiler (cc) on PATH");
+    }
+    if !have("valgrind") {
+        die("profile: needs valgrind on PATH (uses --tool=callgrind)");
+    }
+
+    // front-end + emit C
     let source = std::fs::read_to_string(&src).unwrap_or_else(|e| die(&format!("cannot read: {e}")));
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
-        die(&format!("fmt: parse errors:\n  {}", parsed.errors.join("\n  ")));
+        die(&format!("profile: parse errors:\n  {}", parsed.errors.join("\n  ")));
     }
-    let formatted = reindent(&maca_parser::print_module(&parsed.module));
-    std::fs::write(&src, &formatted).unwrap_or_else(|e| die(&format!("cannot write: {e}")));
-    println!("formatted {}", src.display());
+    let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
+    if !diags.is_empty() {
+        let msgs: Vec<_> = diags.iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect();
+        die(&format!("profile: type errors:\n  {}", msgs.join("\n  ")));
+    }
+    let c_src = maca_backend_c::emit(&parsed.module);
+    let dir = build_dir(&src);
+    std::fs::create_dir_all(&dir).unwrap_or_else(|e| die(&e.to_string()));
+    std::fs::write(dir.join("main.c"), &c_src).unwrap_or_else(|e| die(&e.to_string()));
+    maca_runtime::write_to(&dir).unwrap_or_else(|e| die(&e.to_string()));
+
+    // build with debug info (no strip), instrumentation-friendly
+    let bin = dir.join(stem(&src));
+    let build = Command::new("cc")
+        .args(["-O2", "-g", "-fno-omit-frame-pointer"])
+        .arg(dir.join("main.c"))
+        .arg(dir.join("maca_runtime.c"))
+        .arg("-I")
+        .arg(&dir)
+        .arg("-o")
+        .arg(&bin)
+        .output()
+        .unwrap_or_else(|e| die(&format!("cc: {e}")));
+    if !build.status.success() {
+        die(&format!("profile build failed:\n{}", String::from_utf8_lossy(&build.stderr)));
+    }
+
+    // run under callgrind
+    let cg = dir.join("callgrind.out");
+    eprintln!("profiling under callgrind (this is slower than a normal run)…");
+    let run = Command::new("valgrind")
+        .arg("--tool=callgrind")
+        .arg(format!("--callgrind-out-file={}", cg.display()))
+        .arg(&bin)
+        .output()
+        .unwrap_or_else(|e| die(&format!("valgrind: {e}")));
+    if !run.status.success() && !cg.exists() {
+        die(&format!("callgrind failed:\n{}", String::from_utf8_lossy(&run.stderr)));
+    }
+    let cg_text = std::fs::read_to_string(&cg).unwrap_or_else(|e| die(&format!("read callgrind: {e}")));
+
+    // text profile + flame graph
+    print!("{}", profile::text_profile(&cg_text));
+    let svg = profile::flamegraph_svg(&cg_text);
+    let out = out_svg.unwrap_or_else(|| PathBuf::from(format!("{}.svg", stem(&src))));
+    std::fs::write(&out, &svg).unwrap_or_else(|e| die(&format!("write svg: {e}")));
+    println!("\nflame graph → {}", out.display());
 }
 
-/// `maca lint <file>` — style + semantic checks. Exit 1 if any issue.
+/// Hot reload: rebuild + rerun whenever the source (or its directory) changes.
+/// Polls mtimes — no extra deps, works anywhere `maca run` does.
+fn cmd_watch(args: &[String]) {
+    let Some(src) = args.first().map(PathBuf::from) else {
+        die("watch: expected a .maca file");
+    };
+    let prog_args: Vec<String> = args[1..].to_vec();
+    println!("watching {} — Ctrl-C to stop", src.display());
+    let mut last = std::time::SystemTime::UNIX_EPOCH;
+    loop {
+        let changed = std::fs::metadata(&src)
+            .and_then(|m| m.modified())
+            .map(|m| m > last)
+            .unwrap_or(false);
+        if changed {
+            last = std::fs::metadata(&src).and_then(|m| m.modified()).unwrap();
+            println!("\x1b[2m── change detected, rebuilding ─────────────\x1b[0m");
+            let mut run = vec!["run".to_string(), src.to_string_lossy().into_owned()];
+            run.extend(prog_args.iter().cloned());
+            let status = Command::new(std::env::current_exe().unwrap())
+                .args(&run)
+                .status();
+            match status {
+                Ok(s) => println!("\x1b[2m── exited {} ───────────────────────────────\x1b[0m", s.code().unwrap_or(-1)),
+                Err(e) => eprintln!("watch: {e}"),
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+}
+
 fn cmd_lint(args: &[String]) {
     let Some(src) = args.first().map(PathBuf::from) else {
         die("lint: expected a .maca file");
@@ -82,49 +288,43 @@ fn cmd_lint(args: &[String]) {
 }
 
 /// Brace/paren-depth re-indenter (4-space), string-aware.
-fn reindent(src: &str) -> String {
+/// Normalize indentation to `unit` without reflowing. Each line's existing
+/// indent depth (in levels, inferred from the file's own indent step) is
+/// re-emitted with `unit` — so a 4-space file re-formatted with the default
+/// 4-space style is unchanged (idempotent), while tab↔space / size changes
+/// convert cleanly. This preserves every author choice that isn't pure
+/// leading whitespace: comments, blank lines, and expression-continuation
+/// alignment (`=>` bodies, ternary chains) all survive intact.
+fn reindent(src: &str, unit: &str) -> String {
+    // Detect the file's indent step as the gcd of all leading-whitespace widths
+    // (a tab counts as one column here — enough to recover level counts).
+    let widths: Vec<usize> = src
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.len() - l.trim_start().len())
+        .filter(|&w| w > 0)
+        .collect();
+    let step = widths.iter().copied().reduce(gcd).filter(|&s| s > 0).unwrap_or(4);
+
     let mut out = String::new();
-    let mut depth: i32 = 0;
     for raw in src.lines() {
-        let line = raw.trim();
-        if line.is_empty() {
+        if raw.trim().is_empty() {
             out.push('\n');
             continue;
         }
-        let first = line.chars().next().unwrap();
-        let this_depth = if matches!(first, '}' | ')' | ']') { (depth - 1).max(0) } else { depth };
-        for _ in 0..this_depth {
-            out.push_str("    ");
+        let lead = raw.len() - raw.trim_start().len();
+        let levels = lead / step;
+        for _ in 0..levels {
+            out.push_str(unit);
         }
-        out.push_str(line);
+        out.push_str(raw.trim_start());
         out.push('\n');
-        let (o, c) = count_brackets(line);
-        depth = (depth + o - c).max(0);
     }
     out
 }
 
-fn count_brackets(line: &str) -> (i32, i32) {
-    let (mut o, mut c) = (0, 0);
-    let mut in_str = false;
-    let mut prev = ' ';
-    for ch in line.chars() {
-        if in_str {
-            if ch == '"' && prev != '\\' {
-                in_str = false;
-            }
-            prev = ch;
-            continue;
-        }
-        match ch {
-            '"' => in_str = true,
-            '{' | '(' | '[' => o += 1,
-            '}' | ')' | ']' => c += 1,
-            _ => {}
-        }
-        prev = ch;
-    }
-    (o, c)
+fn gcd(a: usize, b: usize) -> usize {
+    if b == 0 { a } else { gcd(b, a % b) }
 }
 
 /// Look up a `[scripts]` alias in ./maca.toml.
@@ -166,9 +366,18 @@ fn usage() {
          usage: maca <command> [args]\n\
          \n\
          commands:\n\
-         \x20 build <file.maca> [-o out]   compile to a native binary\n\
+         \x20 init  [dir]                  scaffold a new project (maca.toml, main.maca)\n\
+         \x20 build <file.maca> [-o out]   compile (native | --target nix|js|jvm|embedded)\n\
          \x20 run   <file.maca> [args..]   compile and run\n\
-         \x20 --version                    print the toolchain version"
+         \x20 dev   [dev.maca] [-o flake]  generate a dev-shell flake.nix from Maca\n\
+         \x20 watch <file.maca> [args..]   rebuild & rerun on change (hot reload)\n\
+         \x20 fmt   <file.maca>… [--check] format in place (style from maca.toml [format])\n\
+         \x20 lint  <file.maca>            style + type/effect diagnostics\n\
+         \x20 profile <file.maca> [-o svg] run under callgrind, render a flame graph\n\
+         \x20 --version                    print the toolchain version\n\
+         \n\
+         build targets: native (default), --target nix | js | jvm | embedded\n\
+         \x20 embedded also takes --mcu cortex-m0|m3|m4|riscv32; jvm takes --cp <jars>"
     );
 }
 
@@ -176,11 +385,15 @@ fn cmd_build(args: &[String]) {
     let mut src = None;
     let mut out = None;
     let mut target = "native".to_string();
+    let mut classpath = None;
+    let mut mcu = String::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "-o" => out = it.next().map(PathBuf::from),
             "--target" => target = it.next().cloned().unwrap_or_else(|| "native".into()),
+            "--cp" | "--classpath" => classpath = it.next().cloned(),
+            "--mcu" => mcu = it.next().cloned().unwrap_or_default(),
             _ => src = Some(PathBuf::from(a)),
         }
     }
@@ -199,6 +412,20 @@ fn cmd_build(args: &[String]) {
         let out = out.unwrap_or_else(|| PathBuf::from(format!("{}-web", stem(&src))));
         match build_js(&src, &out) {
             Ok(()) => println!("built {}/", out.display()),
+            Err(e) => die(&e),
+        }
+        return;
+    }
+    if target == "jvm" || target == "java" {
+        match build_jvm(&src, out.as_deref(), classpath.as_deref()) {
+            Ok(msg) => println!("{msg}"),
+            Err(e) => die(&e),
+        }
+        return;
+    }
+    if target == "embedded" || target == "baremetal" || target == "mcu" {
+        match build_embedded(&src, out.as_deref(), &mcu) {
+            Ok(msg) => println!("{msg}"),
             Err(e) => die(&e),
         }
         return;
@@ -227,6 +454,169 @@ fn build_nix(src: &Path, out: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// JVM target → Java source (and `javac` to `.class` when a JDK is present).
+/// The class name is the file stem, capitalized. `out` names the output dir.
+fn build_jvm(src: &Path, out: Option<&Path>, classpath: Option<&str>) -> Result<String, String> {
+    let source = std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let parsed = maca_parser::parse(&source);
+    if !parsed.errors.is_empty() {
+        return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
+    }
+    let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
+    if !diags.is_empty() {
+        let msgs: Vec<_> = diags.iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect();
+        return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
+    }
+    let class = capitalize(&stem(src));
+    let java = maca_backend_jvm::emit(&parsed.module, &class, None);
+
+    let out_dir = out.map(PathBuf::from).unwrap_or_else(|| PathBuf::from(format!("{}-jvm", stem(src))));
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    let java_path = out_dir.join(format!("{class}.java"));
+    std::fs::write(&java_path, &java).map_err(|e| e.to_string())?;
+
+    if have("javac") {
+        let mut cmd = Command::new("javac");
+        cmd.arg(&java_path).arg("-d").arg(&out_dir);
+        if let Some(cp) = classpath {
+            cmd.arg("-cp").arg(cp);
+        }
+        let o = cmd.output().map_err(|e| format!("javac: {e}"))?;
+        if !o.status.success() {
+            // Interop code often needs external jars (e.g. the Minecraft/Fabric
+            // API) that aren't on the CLI classpath — keep the emitted .java and
+            // warn rather than fail; a Gradle build compiles it with its deps.
+            return Ok(format!(
+                "emitted {} (javac could not resolve all types — pass --cp, or build via Gradle):\n{}",
+                java_path.display(),
+                String::from_utf8_lossy(&o.stderr).trim()
+            ));
+        }
+        Ok(format!(
+            "built {} and compiled to {}/{class}.class\n  run: java -cp {} {class}",
+            java_path.display(),
+            out_dir.display(),
+            out_dir.display()
+        ))
+    } else {
+        Ok(format!("emitted {} (no javac on PATH to compile)", java_path.display()))
+    }
+}
+
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_ascii_uppercase().to_string() + c.as_str(),
+        None => "Main".into(),
+    }
+}
+
+/// `maca dev [dev.maca] [-o flake.nix]` — compile a Maca-defined dev
+/// environment to a `flake.nix` devShell, replacing a hand-written flake.
+fn cmd_dev(args: &[String]) {
+    let mut src = PathBuf::from("dev.maca");
+    let mut out = PathBuf::from("flake.nix");
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "-o" => out = it.next().map(PathBuf::from).unwrap_or(out),
+            _ => src = PathBuf::from(a),
+        }
+    }
+    let source = match std::fs::read_to_string(&src) {
+        Ok(s) => s,
+        Err(e) => die(&format!("cannot read {}: {e}", src.display())),
+    };
+    let parsed = maca_parser::parse(&source);
+    if !parsed.errors.is_empty() {
+        die(&format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
+    }
+    // dev config is pure (no effects) — check in Config mode
+    let diags = maca_core::check(&parsed.module, maca_core::Mode::Config);
+    let real: Vec<_> = diags
+        .iter()
+        // `dev.*` isn't a NixOS option namespace; that diagnostic is expected here
+        .filter(|d| !matches!(d.kind, maca_core::DiagKind::UnknownOption))
+        .collect();
+    if !real.is_empty() {
+        let msgs: Vec<_> = real.iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect();
+        die(&format!("config errors:\n  {}", msgs.join("\n  ")));
+    }
+    let flake = maca_backend_nix::emit_flake(&parsed.module);
+    if let Err(e) = std::fs::write(&out, flake) {
+        die(&e.to_string());
+    }
+    println!("wrote {} — run `nix develop` to enter the shell", out.display());
+}
+
+/// Embedded target → freestanding C + startup + linker script, cross-compiled
+/// to a bare-metal firmware image (ELF + raw .bin) with clang/lld.
+fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<String, String> {
+    let source = std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let parsed = maca_parser::parse(&source);
+    if !parsed.errors.is_empty() {
+        return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
+    }
+    let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
+    if !diags.is_empty() {
+        let msgs: Vec<_> = diags.iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect();
+        return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
+    }
+    let mcu = maca_backend_embedded::Mcu::resolve(mcu_name)
+        .ok_or_else(|| format!("unknown --mcu {mcu_name:?} (try cortex-m0/m3/m4, riscv32)"))?;
+
+    let out_dir = out.map(PathBuf::from).unwrap_or_else(|| PathBuf::from(format!("{}-fw", stem(src))));
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    let c_path = out_dir.join("firmware.c");
+    let ld_path = out_dir.join("link.ld");
+    std::fs::write(&c_path, maca_backend_embedded::emit_c(&parsed.module)).map_err(|e| e.to_string())?;
+    std::fs::write(&ld_path, maca_backend_embedded::linker_script(&mcu)).map_err(|e| e.to_string())?;
+
+    if !have("clang") {
+        return Ok(format!(
+            "emitted {} + {} for {} (no clang on PATH to cross-compile)",
+            c_path.display(),
+            ld_path.display(),
+            mcu.name
+        ));
+    }
+    let elf = out_dir.join("firmware.elf");
+    let o = Command::new("clang")
+        .args([&format!("--target={}", mcu.triple), &format!("-mcpu={}", mcu.cpu)])
+        .args(["-ffreestanding", "-nostdlib", "-Os", "-ffunction-sections", "-fdata-sections"])
+        .arg("-fuse-ld=lld")
+        .arg(format!("-Wl,-T,{}", ld_path.display()))
+        .arg("-Wl,--gc-sections")
+        .arg("-o")
+        .arg(&elf)
+        .arg(&c_path)
+        .output()
+        .map_err(|e| format!("clang: {e}"))?;
+    if !o.status.success() {
+        return Err(format!("cross-compile failed:\n{}", String::from_utf8_lossy(&o.stderr)));
+    }
+    // raw binary + size report
+    let bin = out_dir.join("firmware.bin");
+    if have("llvm-objcopy") {
+        let _ = Command::new("llvm-objcopy").args(["-O", "binary"]).arg(&elf).arg(&bin).status();
+    }
+    let size = if have("llvm-size") {
+        String::from_utf8_lossy(&Command::new("llvm-size").arg(&elf).output().map(|o| o.stdout).unwrap_or_default())
+            .trim()
+            .to_string()
+    } else {
+        String::new()
+    };
+    Ok(format!(
+        "built firmware for {} → {}\n{}\n  flash: 0x{:08X}  ram: 0x{:08X}",
+        mcu.name,
+        elf.display(),
+        size,
+        mcu.flash_origin,
+        mcu.ram_origin
+    ))
+}
+
 /// UI mode → JS + HTML + CSS in an output directory.
 fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
     let source = std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
@@ -252,12 +642,13 @@ fn cmd_run(args: &[String]) {
     if let Err(e) = compile(&src, &out) {
         die(&e);
     }
-    // Run the produced Linux binary through WSL, forwarding stdio.
-    let status = Command::new("wsl")
-        .arg(to_wsl(&out))
-        .args(prog_args)
-        .status()
-        .unwrap_or_else(|e| die(&format!("failed to launch binary: {e}")));
+    // Run the produced binary — natively when there's no WSL, else through WSL.
+    let status = if have_wsl() {
+        Command::new("wsl").arg(to_wsl(&out)).args(prog_args).status()
+    } else {
+        Command::new(&out).args(prog_args).status()
+    }
+    .unwrap_or_else(|e| die(&format!("failed to launch binary: {e}")));
     std::process::exit(status.code().unwrap_or(1));
 }
 
@@ -357,6 +748,11 @@ fn compile(src: &Path, out: &Path) -> Result<(), String> {
     }
     if use_simd {
         std::fs::write(dir.join("simd.ll"), &llvm.ir).map_err(|e| e.to_string())?;
+    }
+
+    // No WSL/zig? Link with the host's native cc (plain builds only).
+    if !have_wsl() {
+        return link_native(&dir, out, use_async, use_mqtt, use_simd);
     }
 
     // Only the async translation unit is linked when needed, so a sequential
@@ -468,6 +864,50 @@ fn nix_out(attr: &str) -> Result<String, String> {
 
 fn stem(p: &Path) -> String {
     p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "out".into())
+}
+
+/// Is a working WSL available? The default toolchain shells out to
+/// `wsl … zig cc` (NixOS side); when there's no WSL we fall back to a native
+/// `cc`/`clang` so `maca build`/`run` work on a plain Linux host too.
+fn have_wsl() -> bool {
+    Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false)
+}
+
+/// Is a command available on PATH (responds to `--version`)?
+fn have(cmd: &str) -> bool {
+    Command::new(cmd).arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
+}
+
+/// Link the plain (no-FFI) build with the host's native C compiler. `clang` is
+/// used when SIMD IR is present (it compiles `.ll`); otherwise `cc`.
+fn link_native(
+    dir: &Path,
+    out: &Path,
+    use_async: bool,
+    use_mqtt: bool,
+    use_simd: bool,
+) -> Result<(), String> {
+    let cc = if use_simd { "clang" } else { "cc" };
+    let mut cmd = Command::new(cc);
+    cmd.arg(dir.join("main.c")).arg(dir.join("maca_runtime.c"));
+    if use_async {
+        cmd.arg(dir.join("maca_async.c"));
+    }
+    if use_mqtt {
+        cmd.arg(dir.join("maca_ffi_mqtt.c"));
+    }
+    if use_async || use_mqtt {
+        cmd.arg("-pthread");
+    }
+    if use_simd {
+        cmd.arg(dir.join("simd.ll")).arg("-mavx2");
+    }
+    cmd.arg("-I").arg(dir).arg("-O2").arg("-s").arg("-o").arg(out);
+    let output = cmd.output().map_err(|e| format!("failed to run {cc}: {e}"))?;
+    if !output.status.success() {
+        return Err(format!("{cc} failed:\n{}", String::from_utf8_lossy(&output.stderr)));
+    }
+    Ok(())
 }
 
 /// `C:\a\b` → `/mnt/c/a/b` for passing paths across the WSL boundary.

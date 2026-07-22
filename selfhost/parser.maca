@@ -1,0 +1,70 @@
+// selfhost/parser — a recursive-descent parser slice, written in Maca.
+//
+// Consumes the `Token[]` from lexer.maca and produces `Expr` nodes from
+// ast.maca. Maca surface has no tuples, so a parse step threads its result as a
+// `PExpr { node, next }` record — the parsed node plus the next token index.
+//
+// This slice covers primaries (int / str / ident / parenthesized), a
+// single-argument call, and left-associative `+`/`-`. It is the seed the
+// stage-1 parser grows from; gated by the stage-0 front-end.
+
+import selfhost/token
+import selfhost/ast
+
+// Result of a parse step: the node plus the next index to read.
+PExpr = {
+    node: Expr
+    next: int
+}
+
+mk_pexpr(node: Expr, next: int) -> PExpr =>
+    PExpr { node, next }
+
+// expr := primary (('+' | '-') primary)*    — left associative
+parse_expr(ts: Token[], i: int) -> PExpr {
+    let lhs = parse_primary(ts, i)
+    parse_binary_tail(ts, lhs)
+}
+
+parse_binary_tail(ts: Token[], lhs: PExpr) -> PExpr {
+    let op = ts.get(lhs.next).kind
+    op == Plus || op == Minus
+        ? continue_binary(ts, lhs, ts.get(lhs.next).text)
+        : lhs
+}
+
+continue_binary(ts: Token[], lhs: PExpr, op: str) -> PExpr {
+    let rhs = parse_primary(ts, lhs.next + 1)
+    let node = e_binary(op, lhs.node, rhs.node)
+    parse_binary_tail(ts, mk_pexpr(node, rhs.next))
+}
+
+// primary := int | str | ident [call] | '(' expr ')'
+parse_primary(ts: Token[], i: int) -> PExpr {
+    let t = ts.get(i)
+    match t.kind {
+        TInt   => mk_pexpr(e_int(int(t.text)), i + 1)
+        TStr   => mk_pexpr(e_str(t.text), i + 1)
+        TIdent => parse_call_or_ident(ts, i)
+        LParen => parse_paren(ts, i)
+        _      => mk_pexpr(e_ident("?"), i + 1)
+    }
+}
+
+parse_paren(ts: Token[], i: int) -> PExpr {
+    let inner = parse_expr(ts, i + 1)
+    mk_pexpr(inner.node, inner.next + 1)   // skip the closing ')'
+}
+
+parse_call_or_ident(ts: Token[], i: int) -> PExpr {
+    let name = ts.get(i).text
+    ts.get(i + 1).kind == LParen
+        ? parse_call(ts, i, name)
+        : mk_pexpr(e_ident(name), i + 1)
+}
+
+// `name ( arg )` — one argument in this slice
+parse_call(ts: Token[], i: int, name: str) -> PExpr {
+    let arg = parse_expr(ts, i + 2)
+    mk_pexpr(e_call(name, [arg.node]), arg.next + 1)
+}

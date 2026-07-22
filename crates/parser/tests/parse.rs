@@ -43,6 +43,14 @@ fn roundtrip_counter() {
     roundtrip("counter.maca");
 }
 #[test]
+fn roundtrip_operators() {
+    roundtrip("operators.maca");
+}
+#[test]
+fn roundtrip_generic() {
+    roundtrip("generic.maca");
+}
+#[test]
 fn roundtrip_dot() {
     roundtrip("dot.maca");
 }
@@ -67,6 +75,20 @@ fn ctor_vs_for_header_brace() {
 }
 
 #[test]
+fn malformed_params_terminate() {
+    // A function-type annotation isn't surface syntax; the parser must report
+    // errors and *terminate* rather than spin forever (regression: the param
+    // loop used to make no progress and OOM). The playground parses arbitrary
+    // user input, so robustness here matters.
+    let p = parse("f(pred: (str) -> bool) -> int => 0\n");
+    assert!(!p.errors.is_empty(), "expected parse errors");
+
+    // an unclosed / stray param list must also terminate
+    let _ = parse("g(a: , , ->) {}\n");
+    let _ = parse("h(/ <io,,, > ) => 0\n");
+}
+
+#[test]
 fn ternary_is_not_propagate() {
     use maca_parser::{Expr, Stmt};
     let m = clean("x = c ? a : b");
@@ -76,6 +98,19 @@ fn ternary_is_not_propagate() {
     let m = clean("y = f()?");
     let Stmt::Bind(bind) = &m.items[0] else { panic!() };
     assert!(matches!(bind.value, Expr::Try(_)));
+}
+
+#[test]
+fn match_guard_arm() {
+    use maca_parser::{Expr, Stmt};
+    // `_ if cond => body` — the guard must not swallow the arm's `=>` as a
+    // lambda arrow.
+    let m = clean("f(x: int) -> int =>\n    match true {\n        _ if x > 0 => 1\n        _ => 0\n    }\n");
+    let Stmt::Fn(f) = &m.items[0] else { panic!() };
+    let Some(maca_parser::FnBody::Expr(e)) = &f.body else { panic!() };
+    let Expr::Match { arms, .. } = &**e else { panic!("expected match, got {e:?}") };
+    assert_eq!(arms.len(), 2);
+    assert!(arms[0].guard.is_some(), "first arm should carry a guard");
 }
 
 #[test]
@@ -97,4 +132,14 @@ fn ui_directive_arg() {
     let Arg::Directive { kind, prop, .. } = &args[0] else { panic!("expected directive") };
     assert_eq!(*kind, Dir::Bind);
     assert_eq!(prop, "value");
+}
+
+#[test]
+fn roundtrip_loops() {
+    roundtrip("loops.maca");
+}
+
+#[test]
+fn roundtrip_fizzbuzz() {
+    roundtrip("fizzbuzz.maca");
 }

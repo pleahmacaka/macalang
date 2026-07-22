@@ -19,8 +19,10 @@ module.exports = grammar({
     block: $ => seq('{', repeat($._expr), '}'),
     _expr: $ => choice($.ident, $.number, $.string, $.block),
     ident: $ => /[A-Za-z_][A-Za-z0-9_]*(-[A-Za-z][A-Za-z0-9_]*)*/,
-    number: $ => /[0-9]+(\.[0-9]+)?/,
-    string: $ => /"([^"\]|\.)*"/,
-    comment: $ => token(seq('//', /.*/)),
+    // decimal (with `_` separators) or hex / binary / octal radix literals
+    number: $ => /0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|[0-9][0-9_]*(\.[0-9_]+)?/,
+    string: $ => /"([^"\\]|\\.)*"/,
+    // line `//` and block `/* … */` comments
+    comment: $ => choice(token(seq('//', /.*/)), token(seq('/*', /[^*]*\*+([^/*][^*]*\*+)*/, '/'))),
   }
 });

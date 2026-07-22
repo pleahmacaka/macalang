@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Maca Playground</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◆</span> <b>Maca</b> <span class="sub">playground</span>
+    </div>
+    <div class="controls">
+      <label>Example
+        <select id="example"></select>
+      </label>
+      <label>Mode
+        <select id="mode">
+          <option value="0">program</option>
+          <option value="1">config</option>
+        </select>
+      </label>
+      <label>Theme
+        <select id="theme">
+          <option value="maca-dark">dark</option>
+          <option value="maca-light">light</option>
+        </select>
+      </label>
+      <button id="run" title="Ctrl/Cmd+Enter">Run ▶</button>
+    </div>
+  </header>
+
+  <main class="split">
+    <section class="pane editor-pane">
+      <div id="editor"></div>
+    </section>
+    <section class="pane output-pane">
+      <div class="tabs" id="tabs"></div>
+      <div class="tabview">
+        <div id="diagnostics" class="tabpanel"></div>
+        <pre id="output" class="tabpanel code"></pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <span id="status">booting…</span>
+    <span class="spacer"></span>
+    <span id="version"></span>
+  </footer>
+
+  <script src="./vendor/vs/loader.js"></script>
+  <script src="./playground.js"></script>
+</body>
+</html>

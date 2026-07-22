@@ -16,7 +16,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "maca-backend-embedded"
+version = "0.1.0"
+dependencies = [
+ "maca-parser",
+]
+
+[[package]]
 name = "maca-backend-js"
+version = "0.1.0"
+dependencies = [
+ "maca-parser",
+]
+
+[[package]]
+name = "maca-backend-jvm"
 version = "0.1.0"
 dependencies = [
  "maca-parser",
@@ -48,7 +62,9 @@ name = "maca-driver"
 version = "0.1.0"
 dependencies = [
  "maca-backend-c",
+ "maca-backend-embedded",
  "maca-backend-js",
+ "maca-backend-jvm",
  "maca-backend-llvm",
  "maca-backend-nix",
  "maca-core",
@@ -66,6 +82,7 @@ version = "0.1.0"
 dependencies = [
  "maca-core",
  "maca-parser",
+ "serde_json",
 ]
 
 [[package]]
@@ -91,6 +108,17 @@ dependencies = [
 [[package]]
 name = "maca-runtime"
 version = "0.1.0"
+
+[[package]]
+name = "maca-wasm"
+version = "0.1.0"
+dependencies = [
+ "maca-backend-c",
+ "maca-backend-js",
+ "maca-backend-nix",
+ "maca-core",
+ "maca-parser",
+]
 
 [[package]]
 name = "memchr"

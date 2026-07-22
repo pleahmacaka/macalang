@@ -1,0 +1,16 @@
+// selfhost/main — the stage-1 driver entry (lexer demo for now).
+//
+// Once the stage-0 C backend can lower this whole directory, the bootstrap is:
+//   maca build selfhost/main.maca -o maca1     # stage-0 (Rust) builds stage-1
+//   ./maca1 build selfhost/main.maca -o maca2  # stage-1 builds itself
+//   diff maca1-output maca2-output             # fixed point ⇒ self-hosted
+//
+// Today `main` scans a sample and reports the token count — a runnable slice
+// that exercises token.maca + lexer.maca end to end.
+
+main() -> int {
+    let sample = "add(x: int) -> int => x + 1"
+    let toks = lex(sample)
+    info("scanned {toks.length()} tokens from {sample.length()} chars")
+    0
+}

@@ -251,11 +251,15 @@ impl Parser {
         let mut ps = Vec::new();
         self.skip_seps();
         while !self.at(Tok::RParen) && !self.at_eof() {
+            let before = self.i;
             let variadic = self.eat(Tok::Ellipsis);
             let name = self.ident();
             let ty = if self.eat(Tok::Colon) { Some(self.parse_type()) } else { None };
             ps.push(Param { name, ty, variadic });
             self.skip_seps();
+            if self.i == before {
+                self.bump(); // guarantee progress on malformed params (no infinite loop)
+            }
         }
         ps
     }
@@ -264,8 +268,12 @@ impl Parser {
         self.expect(Tok::Lt, "'<'");
         let mut effs = Vec::new();
         while !self.at(Tok::Gt) && !self.at_eof() {
+            let before = self.i;
             effs.push(self.ident());
             self.eat(Tok::Comma);
+            if self.i == before {
+                self.bump(); // guarantee progress on a malformed effect row
+            }
         }
         self.expect(Tok::Gt, "'>'");
         effs
@@ -389,10 +397,13 @@ impl Parser {
             Tok::Le => (BinOp::Le, 4),
             Tok::Ge => (BinOp::Ge, 4),
             Tok::PlusPlus => (BinOp::Concat, 5),
+            Tok::Shl => (BinOp::Shl, 5),
+            Tok::Shr => (BinOp::Shr, 5),
             Tok::Plus => (BinOp::Add, 6),
             Tok::Minus => (BinOp::Sub, 6),
             Tok::Star => (BinOp::Mul, 7),
             Tok::Slash => (BinOp::Div, 7),
+            Tok::Percent => (BinOp::Mod, 7),
             _ => return None,
         })
     }
@@ -472,6 +483,15 @@ impl Parser {
             Tok::If => self.parse_if(),
             Tok::Match => self.parse_match(),
             Tok::For => self.parse_for(),
+            Tok::While => self.parse_while(),
+            Tok::Break => {
+                self.bump();
+                Expr::Break
+            }
+            Tok::Continue => {
+                self.bump();
+                Expr::Continue
+            }
             Tok::Fail => {
                 self.bump();
                 Expr::Fail(Box::new(self.parse_expr()))
@@ -700,6 +720,16 @@ impl Parser {
         Expr::For { pat, iter: Box::new(iter), body }
     }
 
+    fn parse_while(&mut self) -> Expr {
+        self.bump(); // while
+        let save = self.no_brace;
+        self.no_brace = true;
+        let cond = self.parse_expr();
+        self.no_brace = save;
+        let body = self.parse_block();
+        Expr::While { cond: Box::new(cond), body }
+    }
+
     fn parse_match(&mut self) -> Expr {
         self.bump(); // match
         let save = self.no_brace;
@@ -723,7 +753,9 @@ impl Parser {
 
     fn parse_arm(&mut self) -> Arm {
         let pat = self.parse_pattern_top();
-        let guard = if self.eat(Tok::If) { Some(self.parse_expr()) } else { None };
+        // A guard is a boolean expression; parse it at ternary level so the
+        // arm's own `=>` isn't mistaken for a lambda arrow (`_ if c => body`).
+        let guard = if self.eat(Tok::If) { Some(self.parse_ternary()) } else { None };
         self.expect(Tok::FatArrow, "'=>'");
         let body = if self.at(Tok::LBrace) {
             Expr::Block(self.parse_block())

@@ -1,0 +1,14 @@
+// Polymorphic identity used at two distinct types in one program: each use is
+// instantiated with fresh type variables, so `int` and `str` don't collide.
+id(x: a) -> a => x
+
+pick(cond: bool, x: a, y: a) -> a =>
+    cond ? x : y
+
+main() -> int {
+    let n: int = id(5)
+    let s: str = id("hello")
+    let m: int = pick(true, n, 7)
+    info(s)
+    m
+}

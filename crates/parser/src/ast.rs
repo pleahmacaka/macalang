@@ -92,6 +92,9 @@ pub enum Expr {
     If { cond: Box<Expr>, then: Vec<Stmt>, els: Option<Vec<Stmt>> },
     Match { scrut: Box<Expr>, arms: Vec<Arm> },
     For { pat: Pattern, iter: Box<Expr>, body: Vec<Stmt> },
+    While { cond: Box<Expr>, body: Vec<Stmt> },
+    Break,
+    Continue,
     Lambda { params: Vec<Param>, body: Box<Expr> },
     With { base: Box<Expr>, fields: Vec<Field> },
     Try(Box<Expr>),  // postfix `x?`
@@ -161,6 +164,9 @@ pub enum BinOp {
     Sub,
     Mul,
     Div,
+    Mod,    // %
+    Shl,    // <<
+    Shr,    // >>
     Concat, // ++
     Eq,
     Ne,

@@ -7,13 +7,17 @@
 //!   * non-exhaustive `match` on a nominal sum,
 //!   * effects used in config mode (must be pure `<>`),
 //!   * unknown NixOS option root in config mode.
-//! Full HM generalization + real row unification is future hardening.
+//!
+//! Function signatures are generalized into rank-1 type schemes and
+//! instantiated per call site, so generics like `id(x: a) -> a` are usable at
+//! many types. Full HM generalization over inferred (un-annotated) bindings and
+//! real row unification are future hardening.
 
 mod ty;
 
 use maca_parser::ast::*;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use ty::{EffSet, Infer, Ty, EXN, IO, NET, OS};
+use ty::{EffSet, Infer, Scheme, Ty, EXN, IO, NET, OS};
 
 pub use ty::show;
 
@@ -86,9 +90,12 @@ type Env = Vec<(String, Ty)>;
 struct Checker {
     mode: Mode,
     inf: Infer,
-    globals: HashMap<String, Ty>,
+    globals: HashMap<String, Scheme>,
     records: HashMap<String, BTreeMap<String, Ty>>,
     sums: HashMap<String, Vec<String>>,
+    /// User-declared function name -> (fixed param count, is variadic). Used to
+    /// catch call-arity mistakes; variadic functions are exempt.
+    fn_arity: HashMap<String, (usize, bool)>,
     type_decls: HashSet<usize>, // item indices that are type declarations
     local_names: HashSet<String>,
     diags: Vec<Diagnostic>,
@@ -102,6 +109,7 @@ impl Checker {
             globals: HashMap::new(),
             records: HashMap::new(),
             sums: HashMap::new(),
+            fn_arity: HashMap::new(),
             type_decls: HashSet::new(),
             local_names: HashSet::new(),
             diags: Vec::new(),
@@ -116,7 +124,7 @@ impl Checker {
 
     fn collect(&mut self, m: &Module) {
         for f in IO_FNS {
-            self.globals.insert((*f).into(), Ty::Fn(vec![Ty::Any], Box::new(Ty::Unit)));
+            self.globals.insert((*f).into(), Scheme::mono(Ty::Fn(vec![Ty::Any], Box::new(Ty::Unit))));
         }
         for (n, t) in [
             ("int", Ty::Fn(vec![Ty::Any], Box::new(Ty::Int))),
@@ -125,22 +133,22 @@ impl Checker {
             ("len", Ty::Fn(vec![Ty::Any], Box::new(Ty::Int))),
             ("input", Ty::Fn(vec![], Box::new(Ty::Str))),
         ] {
-            self.globals.insert(n.into(), t);
+            self.globals.insert(n.into(), Scheme::mono(t));
         }
 
         for (i, item) in m.items.iter().enumerate() {
             match item {
                 Stmt::Import(im) => self.collect_import(im),
                 Stmt::Alias { name, .. } => {
-                    self.globals.insert(name.clone(), Ty::Any);
+                    self.globals.insert(name.clone(), Scheme::mono(Ty::Any));
                     self.local_names.insert(name.clone());
                 }
                 Stmt::Fn(f) => {
-                    let params =
-                        f.params.iter().map(|p| p.ty.as_ref().map_or(Ty::Any, ast_ty)).collect();
-                    let ret = f.ret.as_ref().map_or(Ty::Any, ast_ty);
-                    self.globals.insert(f.name.clone(), Ty::Fn(params, Box::new(ret)));
+                    let scheme = self.sig_scheme(f);
+                    self.globals.insert(f.name.clone(), scheme);
                     self.local_names.insert(f.name.clone());
+                    let variadic = f.params.iter().any(|p| p.variadic);
+                    self.fn_arity.insert(f.name.clone(), (f.params.len(), variadic));
                 }
                 Stmt::Bind(b) => {
                     if let Expr::Ident(name) = &b.target {
@@ -148,14 +156,15 @@ impl Checker {
                         if let Some(vars) = sum_variants(&b.value) {
                             self.sums.insert(name.clone(), vars.clone());
                             for v in vars {
-                                self.globals.insert(v, Ty::Con(name.clone(), vec![]));
+                                self.globals
+                                    .insert(v, Scheme::mono(Ty::Con(name.clone(), vec![])));
                             }
                             self.type_decls.insert(i);
                         } else if let Some(fields) = record_type(&b.value) {
                             self.records.insert(name.clone(), fields);
                             self.type_decls.insert(i);
                         } else {
-                            self.globals.insert(name.clone(), Ty::Any);
+                            self.globals.insert(name.clone(), Scheme::mono(Ty::Any));
                         }
                     }
                 }
@@ -166,7 +175,7 @@ impl Checker {
 
     fn collect_import(&mut self, im: &Import) {
         fn bind(c: &mut Checker, n: String) {
-            c.globals.insert(n.clone(), Ty::Any);
+            c.globals.insert(n.clone(), Scheme::mono(Ty::Any));
             c.local_names.insert(n);
         }
         match im {
@@ -182,6 +191,42 @@ impl Checker {
             }
             Import::Bare(n) | Import::Foreign { lang: n, .. } => bind(self, n.clone()),
             Import::Path(_) => {}
+        }
+    }
+
+    /// Generalize a function signature into a polymorphic scheme: each distinct
+    /// lowercase type-variable name (`a`, `k`, `value`) becomes one fresh
+    /// inference variable shared across every occurrence, and all such variables
+    /// are quantified.
+    fn sig_scheme(&mut self, f: &FnDef) -> Scheme {
+        let mut vars: HashMap<String, Ty> = HashMap::new();
+        let params: Vec<Ty> = f
+            .params
+            .iter()
+            .map(|p| p.ty.as_ref().map_or(Ty::Any, |t| self.ast_ty_v(t, &mut vars)))
+            .collect();
+        let ret = f.ret.as_ref().map_or(Ty::Any, |t| self.ast_ty_v(t, &mut vars));
+        let ids = vars.values().filter_map(|t| if let Ty::Var(i) = t { Some(*i) } else { None }).collect();
+        Scheme { vars: ids, ty: Ty::Fn(params, Box::new(ret)) }
+    }
+
+    /// Like [`ast_ty`] but maps type-variable names through `vars`, minting one
+    /// fresh inference variable per distinct name.
+    fn ast_ty_v(&mut self, t: &Type, vars: &mut HashMap<String, Ty>) -> Ty {
+        match t {
+            Type::Name(segs) if segs.len() == 1 && ty::is_type_var_name(&segs[0]) => {
+                vars.entry(segs[0].clone()).or_insert_with(|| self.inf.fresh()).clone()
+            }
+            Type::Apply(h, args) => match &**h {
+                Type::Name(segs) => {
+                    Ty::Con(segs.join("."), args.iter().map(|a| self.ast_ty_v(a, vars)).collect())
+                }
+                _ => Ty::Any,
+            },
+            Type::Array(inner) => Ty::array(self.ast_ty_v(inner, vars)),
+            Type::Opt(inner) => Ty::Opt(Box::new(self.ast_ty_v(inner, vars))),
+            Type::Paren(inner) => self.ast_ty_v(inner, vars),
+            Type::Name(_) => ast_ty(t),
         }
     }
 
@@ -214,10 +259,28 @@ impl Checker {
             FnBody::Expr(e) => self.infer(&mut env, e),
         };
         if let Some(ret) = &f.ret {
-            let rt = ast_ty(ret);
+            let rt = self.relax_ann(ast_ty(ret));
             if let Err(e) = self.inf.unify(&bty, &rt) {
                 self.diag(DiagKind::TypeMismatch, format!("in `{}`: {e}", f.name));
             }
+        }
+    }
+
+    /// Relax an *annotation* type: a bare, capitalized nominal that isn't a
+    /// declared record/sum is a foreign / interop type (a Java interface, a Nix
+    /// value, …) — treat it gradually as `any` rather than a strict nominal, so
+    /// `Mod : ModInitializer = { … }` type-checks.
+    fn relax_ann(&self, t: Ty) -> Ty {
+        match &t {
+            Ty::Con(n, args)
+                if args.is_empty()
+                    && !self.records.contains_key(n)
+                    && !self.sums.contains_key(n)
+                    && n.chars().next().is_some_and(|c| c.is_ascii_uppercase()) =>
+            {
+                Ty::Any
+            }
+            _ => t,
         }
     }
 
@@ -230,7 +293,7 @@ impl Checker {
         let mut env: Env = Vec::new();
         let vty = self.infer(&mut env, &b.value);
         if let Some(t) = b.tys.first() {
-            let at = ast_ty(t);
+            let at = self.relax_ann(ast_ty(t));
             if let Err(e) = self.inf.unify(&vty, &at) {
                 let name = target_name(&b.target);
                 self.diag(DiagKind::TypeMismatch, format!("in binding `{name}`: {e}"));
@@ -318,6 +381,7 @@ impl Checker {
                 }
             }
             Expr::For { iter, body, .. } => acc = self.eff(iter).union(self.eff_stmts(body)),
+            Expr::While { cond, body } => acc = self.eff(cond).union(self.eff_stmts(body)),
             Expr::Lambda { body, .. } => acc = self.eff(body),
             Expr::With { base, fields } => {
                 acc = self.eff(base);
@@ -368,7 +432,7 @@ impl Checker {
                 Stmt::Bind(b) => {
                     let vty = self.infer(env, &b.value);
                     if let Some(t) = b.tys.first() {
-                        let at = ast_ty(t);
+                        let at = self.relax_ann(ast_ty(t));
                         if let Err(e) = self.inf.unify(&vty, &at) {
                             let name = target_name(&b.target);
                             self.diag(DiagKind::TypeMismatch, format!("in `{name}`: {e}"));
@@ -410,9 +474,13 @@ impl Checker {
                 }
                 Ty::Str
             }
-            Expr::Ident(n) => {
-                lookup(env, n).or_else(|| self.globals.get(n).cloned()).unwrap_or(Ty::Any)
-            }
+            Expr::Ident(n) => match lookup(env, n) {
+                Some(t) => t,
+                None => match self.globals.get(n).cloned() {
+                    Some(s) => self.inf.instantiate(&s),
+                    None => Ty::Any,
+                },
+            },
             Expr::List(es) => {
                 let el = self.inf.fresh();
                 for x in es {
@@ -429,12 +497,35 @@ impl Checker {
                 Ty::Con(name.clone(), vec![])
             }
             Expr::Call { callee, args } => {
+                // Arity: a direct call of a user function (not shadowed by a
+                // local of the same name) must pass the declared number of
+                // arguments unless the function is variadic.
+                if let Expr::Ident(name) = &**callee
+                    && lookup(env, name).is_none()
+                    && let Some(&(arity, variadic)) = self.fn_arity.get(name)
+                    && !variadic
+                    && args.len() != arity
+                {
+                    self.diag(
+                        DiagKind::TypeMismatch,
+                        format!("call to `{name}` expects {arity} argument(s), got {}", args.len()),
+                    );
+                }
                 let ct = self.infer(env, callee);
                 let ats: Vec<Ty> = args.iter().map(|a| self.infer_arg(env, a)).collect();
                 match self.inf.resolve(&ct) {
                     Ty::Fn(params, ret) => {
-                        for (p, a) in params.iter().zip(&ats) {
-                            let _ = self.inf.unify(p, a);
+                        // A concrete/concrete clash between a declared parameter
+                        // and its argument is a real error (`Any`/vars never
+                        // clash, so unknown-stdlib calls stay silent).
+                        for (i, (p, a)) in params.iter().zip(&ats).enumerate() {
+                            if let Err(e) = self.inf.unify(p, a) {
+                                let name = target_name(callee);
+                                self.diag(
+                                    DiagKind::TypeMismatch,
+                                    format!("in call to `{name}` (argument {}): {e}", i + 1),
+                                );
+                            }
                         }
                         *ret
                     }
@@ -456,7 +547,9 @@ impl Checker {
                 let _ = self.inf.unify(&ct, &Ty::Bool);
                 let tt = self.infer(env, then);
                 let et = self.infer(env, els);
-                let _ = self.inf.unify(&tt, &et);
+                if let Err(e) = self.inf.unify(&tt, &et) {
+                    self.diag(DiagKind::TypeMismatch, format!("ternary branches disagree: {e}"));
+                }
                 tt
             }
             Expr::If { cond, then, els } => {
@@ -465,7 +558,12 @@ impl Checker {
                 let tt = self.infer_block(env, then);
                 if let Some(e) = els {
                     let et = self.infer_block(env, e);
-                    let _ = self.inf.unify(&tt, &et);
+                    if let Err(err) = self.inf.unify(&tt, &et) {
+                        self.diag(
+                            DiagKind::TypeMismatch,
+                            format!("`if` branches disagree: {err}"),
+                        );
+                    }
                     tt
                 } else {
                     Ty::Unit
@@ -500,6 +598,17 @@ impl Checker {
                 env.truncate(base);
                 Ty::Unit
             }
+            Expr::While { cond, body } => {
+                let ct = self.infer(env, cond);
+                if let Err(e) = self.inf.unify(&ct, &Ty::Bool) {
+                    self.diag(DiagKind::TypeMismatch, format!("`while` condition: {e}"));
+                }
+                let base = env.len();
+                self.infer_block(env, body);
+                env.truncate(base);
+                Ty::Unit
+            }
+            Expr::Break | Expr::Continue => Ty::Unit,
             Expr::Lambda { params, body } => {
                 let base = env.len();
                 let pts: Vec<Ty> = params
@@ -582,11 +691,30 @@ impl Checker {
 
     fn binary_ty(&mut self, op: BinOp, lt: Ty, rt: Ty) -> Ty {
         use BinOp::*;
+        // Operator overloading: on a user type (record/sum), an operator resolves
+        // to a same-named function (`a + b` → `add`), taking its return type.
+        if let Ty::Con(n, _) = self.inf.resolve(&lt) {
+            if (self.records.contains_key(&n) || self.sums.contains_key(&n))
+                && let Some(name) = overload_fn_name(op)
+                && let Some(scheme) = self.globals.get(name).cloned()
+            {
+                let t = self.inf.instantiate(&scheme);
+                if let Ty::Fn(_, ret) = self.inf.resolve(&t) {
+                    return *ret;
+                }
+            }
+        }
         match op {
             Eq | Ne | Lt | Gt | Le | Ge | And | Or => Ty::Bool,
             Add | Sub | Mul | Div | Concat => {
                 let _ = self.inf.unify(&lt, &rt);
                 self.inf.resolve(&lt)
+            }
+            // integer-only operators
+            Mod | Shl | Shr => {
+                let _ = self.inf.unify(&lt, &Ty::Int);
+                let _ = self.inf.unify(&rt, &Ty::Int);
+                Ty::Int
             }
             Union | Pipe => Ty::Any,
         }
@@ -686,6 +814,25 @@ fn cover(p: &Pattern, variants: &[String], covered: &mut HashSet<String>, catcha
 
 // ---- helpers -------------------------------------------------------------
 
+/// Operator → overload function name for user types (mirror of the C backend).
+fn overload_fn_name(op: BinOp) -> Option<&'static str> {
+    use BinOp::*;
+    Some(match op {
+        Add => "add",
+        Sub => "sub",
+        Mul => "mul",
+        Div => "div",
+        Concat => "concat",
+        Eq => "eq",
+        Ne => "ne",
+        Lt => "lt",
+        Gt => "gt",
+        Le => "le",
+        Ge => "ge",
+        _ => return None,
+    })
+}
+
 fn lookup(env: &Env, name: &str) -> Option<Ty> {
     env.iter().rev().find(|(n, _)| n == name).map(|(_, t)| t.clone())
 }
@@ -701,6 +848,9 @@ fn ast_ty(t: &Type) -> Ty {
                 "bool" => Ty::Bool,
                 "bytes" => Ty::Bytes,
                 "unit" | "()" => Ty::Unit,
+                // Outside a generalizing signature, an un-bound type variable is
+                // treated gradually (`any`) rather than as a nominal type.
+                _ if segs.len() == 1 && ty::is_type_var_name(&n) => Ty::Any,
                 _ => Ty::Con(n, vec![]),
             }
         }

@@ -1,0 +1,10 @@
+// Takeuchi function — heavy integer recursion.
+tak(x: int, y: int, z: int) -> int =>
+    y < x
+        ? tak(tak(x - 1, y, z), tak(y - 1, z, x), tak(z - 1, x, y))
+        : z
+
+main() -> int {
+    info("{tak(32, 16, 8)}")
+    0
+}

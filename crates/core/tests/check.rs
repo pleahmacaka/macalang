@@ -46,6 +46,17 @@ fn dot_ok() {
 fn system_ok() {
     assert_clean("examples/system.maca", Mode::Config);
 }
+#[test]
+fn operators_ok() {
+    // Operator overloading on a user type (`Vec2 + Vec2` → `add`) type-checks.
+    assert_clean("examples/operators.maca", Mode::Program);
+}
+#[test]
+fn generic_ok() {
+    // Polymorphic functions instantiate per use: `id(5): int` and
+    // `id("hello"): str` must both check with no false-positive mismatch.
+    assert_clean("examples/generic.maca", Mode::Program);
+}
 
 // ---- bad examples are rejected with the right diagnostic -----------------
 
@@ -64,4 +75,29 @@ fn effect_in_config_rejected() {
 #[test]
 fn unknown_option_rejected() {
     assert_has("examples/bad/unknown_option.maca", Mode::Config, DiagKind::UnknownOption);
+}
+#[test]
+fn arg_mismatch_rejected() {
+    // Calling `double(n: int)` with a string is a concrete argument clash.
+    assert_has("examples/bad/arg_mismatch.maca", Mode::Program, DiagKind::TypeMismatch);
+}
+#[test]
+fn arity_rejected() {
+    // `greet(name: str)` called with two arguments.
+    assert_has("examples/bad/arity.maca", Mode::Program, DiagKind::TypeMismatch);
+}
+#[test]
+fn branch_mismatch_rejected() {
+    // Ternary branches with disagreeing types (int vs str).
+    assert_has("examples/bad/branch_mismatch.maca", Mode::Program, DiagKind::TypeMismatch);
+}
+
+#[test]
+fn loops_ok() {
+    assert_clean("examples/loops.maca", Mode::Program);
+}
+
+#[test]
+fn while_cond_must_be_bool() {
+    assert_has("examples/bad/while_cond.maca", Mode::Program, DiagKind::TypeMismatch);
 }

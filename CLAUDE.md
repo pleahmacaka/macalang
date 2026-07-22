@@ -40,12 +40,26 @@ Virtual workspace; members are `crates/*`.
 | `maca-backend-js` | core IR → JS + reactive UI + Tailwind |
 | `maca-runtime` | Perceus RC + colorblind async (C runtime sources) |
 | `maca-options` | `options.json` → Maca option types |
-| `maca-lsp` | tower-lsp language server |
+| `maca-lsp` | language server: `lib.rs` (analysis fns) + `main.rs` (LSP stdio server) |
 | `maca-mcp` | Maca MCP server (LLM-native tools) |
 | `maca-driver` | the `maca` CLI |
+| `maca-backend-jvm` | core IR → Java source (JVM interop; Minecraft/Fabric) |
+| `maca-backend-embedded` | freestanding C for bare-metal MCUs (Cortex-M/RISC-V) |
+| `maca-wasm` | `wasm32` front-end for the browser playground (no wasm-bindgen) |
 
 Non-crate dirs: `std/` (Maca-source stdlib), `examples/` (golden `.maca`
-programs + `examples/bad/`), `apps/` (capstones), `editor/`, `docs/`.
+programs + `examples/bad/`), `apps/` (capstones), `selfhost/` (the Maca compiler
+written in Maca — stage 1), `playground/` (Monaco web playground), `editor/`,
+`docs/`.
+
+## Self-hosting (current direction)
+
+Rust (`crates/*`) is the **frozen stage-0 bootstrap** — keep it minimal. New
+compiler work is written in Maca under `selfhost/` and gated by the stage-0
+front-end (`crates/driver/tests/selfhost.rs`). See `docs/BOOTSTRAP.md`. When a
+change is needed, prefer adding it to `selfhost/*.maca` over growing the Rust
+crates; only touch stage-0 for genuine bootstrap bugs (e.g. a parser that hangs
+or mis-parses valid surface syntax).
 
 ## How to work here
 
@@ -74,21 +88,28 @@ programs + `examples/bad/`), `apps/` (capstones), `editor/`, `docs/`.
 
 ## Status
 
-Phases 0–3 complete (front-end + semantic analysis). Phase 4 (C backend) in
-progress: **`hello.maca` compiles and runs end-to-end** (parse→check→C→`zig cc`
-static-musl via WSL→execute), 11.7 KB stripped binary, gated by a real
-build+run test (`crates/driver/tests/run.rs`, skips without WSL). Whole
-workspace green.
+Front-end (0–3) and the C backend (4) are complete: whole programs
+(non-`main` functions, records→structs, sum types→tagged enums, lists,
+string interpolation, `match` lowering incl. list patterns, UFCS) compile and
+run end-to-end (parse→check→C→`cc`/`zig cc`→execute). Additional backends and
+capabilities have since landed — see `docs/PLAN.md` for the authoritative,
+per-phase status. Whole workspace green.
 
-**Phase 4 remaining — extend the C backend to `taskr`** (`crates/backend_c`,
-currently a `main`-only slice). Needs, roughly in order: emit non-`main`
-functions with C types; records → structs; sum types → tagged enums; lists
-(`T[]`) → a small dynamic-array runtime; string interpolation → a `maca_fmt`
-builder; `match` → switch/if lowering incl. list patterns; `?` propagation;
-UFCS methods; then `std/json` (encode/decode for the Store/Task types),
-`std/dirs` + file read/write. That's essentially the runtime + a stdlib slice
-in C — a large chunk, size comparable to the parser. `maca-runtime` holds the C
-sources (`RUNTIME_H`/`RUNTIME_C`); grow them alongside the backend.
+Backends: native C (default), LLVM (SIMD span), Nix (config mode), JS
+(reactive UI), JVM (Java source / Minecraft-Fabric interop), and embedded
+(freestanding C for Cortex-M / RISC-V). Driver: `build` (`--target
+nix|js|jvm|embedded`, `--mcu`, `--cp`), `run`, `dev` (dev-shell flake), `watch`,
+`fmt`, `lint`, `profile`, `init`.
+
+Language surface beyond the original cheatsheet: operator overloading;
+`while`/`break`/`continue` + reassignment; `%`, `<<`, `>>` operators;
+hex/binary/octal integer literals with `_` separators.
+
+**Codegen note (C backend):** control-flow expressions (`if`/`match`/block)
+work in value position via a `Sink` (Discard/Return/Assign) threaded through
+`block`/`stmt_expr`/`match_stmt`; nullary enum-variant patterns lower to tag
+tests (mirroring the checker's `is_variant`). `maca-runtime` holds the C
+sources (`RUNTIME_H`/`RUNTIME_C`).
 
 - **P4 driver** `maca build <f> [-o out]` / `maca run <f> [args]`. Compiles via
   `wsl nix shell nixpkgs#zig -c zig cc … -target x86_64-linux-musl -static -s`;
@@ -98,7 +119,14 @@ sources (`RUNTIME_H`/`RUNTIME_C`); grow them alongside the backend.
   hatch for unknown stdlib, strict on the 4 acceptance diagnostics
   (`DiagKind`: TypeMismatch / NonExhaustive / EffectInConfig / UnknownOption).
   `check(module, Mode)`; `Mode::Program|Config`. Good examples typecheck, the
-  four `examples/bad/*.maca` are rejected. Not full HM/row yet (future harden).
+  four `examples/bad/*.maca` are rejected. **Let-polymorphism landed**: function
+  sigs generalize into `Scheme`s (`ty::is_type_var_name` treats lowercase names
+  as type vars) and instantiate per call; concrete arg/param clashes now report
+  `TypeMismatch` (`examples/generic.maca` good, `examples/bad/arg_mismatch.maca`
+  bad). Also caught (all `TypeMismatch`): call **arity** vs a user fn's param
+  count (variadics exempt, `bad/arity.maca`) and disagreeing **if/ternary
+  branches** (`bad/branch_mismatch.maca`). Full row unification + backend
+  monomorphization of generics still to do.
 - **P0** workspace + `maca --version`.
 - **P1** `maca-lexer`: full tokenizer (significant newlines, path literals,
   string interpolation, `x?` vs `? :`). Golden token dumps in

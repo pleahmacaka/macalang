@@ -1,0 +1,68 @@
+{
+  "fib": {
+    "Maca": {
+      "ms": 168.007,
+      "output": "102334155",
+      "ok": true
+    },
+    "C": {
+      "ms": 166.608,
+      "output": "102334155",
+      "ok": true
+    },
+    "Python": {
+      "ms": 11194.082,
+      "output": "102334155",
+      "ok": true
+    },
+    "JS (node)": {
+      "ms": 975.728,
+      "output": "102334155",
+      "ok": true
+    }
+  },
+  "tak": {
+    "Maca": {
+      "ms": 65.135,
+      "output": "9",
+      "ok": true
+    },
+    "C": {
+      "ms": 58.65,
+      "output": "9",
+      "ok": true
+    },
+    "Python": {
+      "ms": 1680.115,
+      "output": "9",
+      "ok": true
+    },
+    "JS (node)": {
+      "ms": 193.358,
+      "output": "9",
+      "ok": true
+    }
+  },
+  "ackermann": {
+    "Maca": {
+      "ms": 18.551,
+      "output": "8189",
+      "ok": true
+    },
+    "C": {
+      "ms": 19.654,
+      "output": "8189",
+      "ok": true
+    },
+    "Python": {
+      "ms": 4476.612,
+      "output": "8189",
+      "ok": true
+    },
+    "JS (node)": {
+      "ms": 234.016,
+      "output": "8189",
+      "ok": true
+    }
+  }
+}

@@ -290,6 +290,10 @@ impl<'a> Cx<'a> {
                 self.walk_expr(iter);
                 self.walk_stmts(body);
             }
+            Expr::While { cond, body } => {
+                self.walk_expr(cond);
+                self.walk_stmts(body);
+            }
             Expr::Lambda { body, .. } => self.walk_expr(body),
             Expr::With { base, fields } => {
                 self.walk_expr(base);
@@ -572,7 +576,7 @@ impl<'a> Cx<'a> {
                 self.push(&format!("    for (int _i = 1; _i < argc; _i++) {}_push(&{pname}, argv[_i]);", arr_name(&CTy::Str)));
             }
             match &f.body {
-                Some(FnBody::Block(stmts)) => self.block(&mut env, stmts, Some(&CTy::Int), 1),
+                Some(FnBody::Block(stmts)) => self.block(&mut env, stmts, &Sink::Return(CTy::Int), 1),
                 Some(FnBody::Expr(e)) => {
                     let (c, _) = self.expr(&mut env, e, Some(&CTy::Int));
                     self.push(&format!("    return {c};"));
@@ -586,7 +590,10 @@ impl<'a> Cx<'a> {
 
         self.push(&format!("{} {{", self.fn_sig(f)));
         match &f.body {
-            Some(FnBody::Block(stmts)) => self.block(&mut env, stmts, Some(&ret), 1),
+            Some(FnBody::Block(stmts)) => {
+                let sink = if ret == CTy::Unit { Sink::Discard } else { Sink::Return(ret.clone()) };
+                self.block(&mut env, stmts, &sink, 1);
+            }
             Some(FnBody::Expr(e)) => {
                 let (c, _) = self.expr(&mut env, e, Some(&ret));
                 if ret == CTy::Unit {
@@ -607,6 +614,25 @@ fn lookup(env: &Env, n: &str) -> Option<CTy> {
     env.iter().rev().find(|(k, _)| k == n).map(|(_, t)| t.clone())
 }
 
+/// Where the value of a block / control-flow expression goes. This is what lets
+/// `if`/`match`/block be used in value position (`let x = if c { … } else { … }`):
+/// each branch tail is lowered against the same sink.
+#[derive(Clone)]
+enum Sink {
+    Discard,             // statement position — value ignored
+    Return(CTy),         // tail of a value-returning function
+    Assign(String, CTy), // assign the result into an existing variable
+}
+
+impl Sink {
+    fn cty(&self) -> Option<&CTy> {
+        match self {
+            Sink::Discard => None,
+            Sink::Return(t) | Sink::Assign(_, t) => Some(t),
+        }
+    }
+}
+
 impl<'a> Cx<'a> {
     fn indent(&mut self, n: usize) {
         for _ in 0..n {
@@ -614,7 +640,7 @@ impl<'a> Cx<'a> {
         }
     }
 
-    fn block(&mut self, env: &mut Env, stmts: &[Stmt], ret: Option<&CTy>, ind: usize) {
+    fn block(&mut self, env: &mut Env, stmts: &[Stmt], sink: &Sink, ind: usize) {
         let base = env.len();
         for (i, s) in stmts.iter().enumerate() {
             let last = i + 1 == stmts.len();
@@ -622,24 +648,41 @@ impl<'a> Cx<'a> {
                 Stmt::Bind(b) if b.is_let => {
                     if let Expr::Ident(name) = &b.target {
                         let ann = b.tys.first().map(|t| self.cty(t));
-                        let (code, cty) = self.expr(env, &b.value, ann.as_ref());
-                        let ty = ann.unwrap_or(cty);
-                        self.indent(ind);
-                        self.push(&format!("{} {name} = {code};", c_type(&ty)));
-                        env.push((name.clone(), ty));
+                        if is_control(&b.value) {
+                            // `let x = if/match/block …` — declare, then assign
+                            // the result in each branch tail via an Assign sink.
+                            let ty = ann.clone().unwrap_or_else(|| self.result_cty(env, &b.value));
+                            self.indent(ind);
+                            self.push(&format!("{} {name};", c_type(&ty)));
+                            env.push((name.clone(), ty.clone()));
+                            self.stmt_expr(env, &b.value, &Sink::Assign(name.clone(), ty), ind);
+                        } else {
+                            let (code, cty) = self.expr(env, &b.value, ann.as_ref());
+                            let ty = ann.unwrap_or(cty);
+                            self.indent(ind);
+                            self.push(&format!("{} {name} = {code};", c_type(&ty)));
+                            env.push((name.clone(), ty));
+                        }
+                    }
+                }
+                // reassignment: a non-`let` bind to an in-scope name (`i = i + 1`),
+                // which makes counters and `while` loops usable.
+                Stmt::Bind(b) => {
+                    if let Expr::Ident(name) = &b.target {
+                        if let Some(ty) = lookup(env, name) {
+                            let (code, _) = self.expr(env, &b.value, Some(&ty));
+                            self.indent(ind);
+                            self.push(&format!("{name} = {code};"));
+                        }
                     }
                 }
                 Stmt::Expr(e) => {
+                    let cur = if last { sink } else { &Sink::Discard };
                     if is_control(e) {
-                        self.stmt_expr(env, e, ind);
-                    } else if last && ret.is_some() && ret != Some(&CTy::Unit) {
-                        let (code, _) = self.expr(env, e, ret);
-                        self.indent(ind);
-                        self.push(&format!("return {code};"));
+                        self.stmt_expr(env, e, cur, ind);
                     } else {
-                        let (code, _) = self.expr(env, e, None);
-                        self.indent(ind);
-                        self.push(&format!("{code};"));
+                        let (code, _) = self.expr(env, e, cur.cty());
+                        self.emit_sink(cur, &code, ind);
                     }
                 }
                 _ => {}
@@ -648,11 +691,57 @@ impl<'a> Cx<'a> {
         env.truncate(base);
     }
 
-    /// Emit a control-flow expression (for/match/if/block) in statement position.
-    fn stmt_expr(&mut self, env: &mut Env, e: &Expr, ind: usize) {
+    /// Emit a simple (already-lowered) value against a sink.
+    fn emit_sink(&mut self, sink: &Sink, code: &str, ind: usize) {
+        self.indent(ind);
+        match sink {
+            Sink::Discard => self.push(&format!("{code};")),
+            Sink::Return(_) => self.push(&format!("return {code};")),
+            Sink::Assign(v, _) => self.push(&format!("{v} = {code};")),
+        }
+    }
+
+    /// Infer the C type of a control-flow expression used in value position, by
+    /// looking at a branch tail. Leaves are type-inferred by a dry lowering
+    /// (emitted code is rolled back). Falls back to `int64_t` via `Unknown`.
+    fn result_cty(&mut self, env: &Env, e: &Expr) -> CTy {
         match e {
-            Expr::Block(stmts) => self.block(env, stmts, None, ind),
+            Expr::If { then, els, .. } => {
+                let t = tail_expr(then).map(|e| self.result_cty(env, e)).unwrap_or(CTy::Unknown);
+                if !matches!(t, CTy::Unknown) {
+                    return t;
+                }
+                els.as_ref()
+                    .and_then(|e| tail_expr(e))
+                    .map(|e| self.result_cty(env, e))
+                    .unwrap_or(CTy::Unknown)
+            }
+            Expr::Match { arms, .. } => arms
+                .iter()
+                .map(|a| self.result_cty(env, &a.body))
+                .find(|t| !matches!(t, CTy::Unknown))
+                .unwrap_or(CTy::Unknown),
+            Expr::Block(stmts) => {
+                tail_expr(stmts).map(|e| self.result_cty(env, e)).unwrap_or(CTy::Unit)
+            }
+            leaf => {
+                let save = self.out.len();
+                let tmp = self.tmp;
+                let (_, t) = self.expr(&mut env.clone(), leaf, None);
+                self.out.truncate(save);
+                self.tmp = tmp;
+                t
+            }
+        }
+    }
+
+    /// Emit a control-flow expression (for/match/if/block), routing its value to
+    /// `sink` (Discard in statement position, Return/Assign in value position).
+    fn stmt_expr(&mut self, env: &mut Env, e: &Expr, sink: &Sink, ind: usize) {
+        match e {
+            Expr::Block(stmts) => self.block(env, stmts, sink, ind),
             Expr::For { pat, iter, body } => {
+                // a `for` loop has no value; its body is always in statement position
                 let (ic, ity) = self.expr(env, iter, None);
                 let elem = match ity {
                     CTy::Arr(e) => *e,
@@ -668,35 +757,51 @@ impl<'a> Cx<'a> {
                 self.push(&format!("{} {var} = {it}.data[{idx}];", c_type(&elem)));
                 let mut env2 = env.clone();
                 env2.push((var, elem));
-                self.block(&mut env2, body, None, ind + 1);
+                self.block(&mut env2, body, &Sink::Discard, ind + 1);
                 self.indent(ind);
                 self.push("} }");
             }
-            Expr::Match { scrut, arms } => self.match_stmt(env, scrut, arms, ind),
+            Expr::While { cond, body } => {
+                let (cc, _) = self.expr(env, cond, None);
+                self.indent(ind);
+                self.push(&format!("while ({cc}) {{"));
+                let mut e2 = env.clone();
+                self.block(&mut e2, body, &Sink::Discard, ind + 1);
+                self.indent(ind);
+                self.push("}");
+            }
+            Expr::Break => {
+                self.indent(ind);
+                self.push("break;");
+            }
+            Expr::Continue => {
+                self.indent(ind);
+                self.push("continue;");
+            }
+            Expr::Match { scrut, arms } => self.match_stmt(env, scrut, arms, sink, ind),
             Expr::If { cond, then, els } => {
                 let (cc, _) = self.expr(env, cond, None);
                 self.indent(ind);
                 self.push(&format!("if ({cc}) {{"));
                 let mut e1 = env.clone();
-                self.block(&mut e1, then, None, ind + 1);
+                self.block(&mut e1, then, sink, ind + 1);
                 if let Some(e) = els {
                     self.indent(ind);
                     self.push("} else {");
                     let mut e2 = env.clone();
-                    self.block(&mut e2, e, None, ind + 1);
+                    self.block(&mut e2, e, sink, ind + 1);
                 }
                 self.indent(ind);
                 self.push("}");
             }
             _ => {
-                let (code, _) = self.expr(env, e, None);
-                self.indent(ind);
-                self.push(&format!("{code};"));
+                let (code, _) = self.expr(env, e, sink.cty());
+                self.emit_sink(sink, &code, ind);
             }
         }
     }
 
-    fn match_stmt(&mut self, env: &mut Env, scrut: &Expr, arms: &[Arm], ind: usize) {
+    fn match_stmt(&mut self, env: &mut Env, scrut: &Expr, arms: &[Arm], sink: &Sink, ind: usize) {
         let (sc, sty) = self.expr(env, scrut, None);
         let sv = self.fresh();
         self.indent(ind);
@@ -720,7 +825,7 @@ impl<'a> Cx<'a> {
                 self.push(&bcode);
                 env2.push((bname, bty));
             }
-            self.stmt_expr(&mut env2, body_as_block(&arm.body), ind + 1);
+            self.stmt_expr(&mut env2, body_as_block(&arm.body), sink, ind + 1);
             self.indent(ind);
             self.push("}");
         }
@@ -738,6 +843,15 @@ impl<'a> Cx<'a> {
     ) -> (String, Vec<(String, String, CTy)>) {
         match p {
             Pattern::Wild => ("1".into(), vec![]),
+            // A nullary variant may reach here as a bare `Bind` (bare `Red`) or a
+            // `Ctor` (`Red()`); against a sum scrutinee it is a tag test, not a
+            // binding — mirror the checker's `is_variant` disambiguation.
+            Pattern::Bind(n) | Pattern::Ctor { name: n, args: _ }
+                if matches!(sty, CTy::Sum(s) if self.sums.get(s).is_some_and(|vs| vs.iter().any(|v| v == n))) =>
+            {
+                let CTy::Sum(s) = sty else { unreachable!() };
+                (format!("{sv} == {s}_{n}"), vec![])
+            }
             Pattern::Bind(n) => {
                 // bind whole scrutinee
                 (
@@ -1024,6 +1138,19 @@ impl<'a> Cx<'a> {
     fn binary(&mut self, env: &mut Env, op: BinOp, lhs: &Expr, rhs: &Expr) -> (String, CTy) {
         let (lc, lt) = self.expr(env, lhs, None);
         let (rc, _rt) = self.expr(env, rhs, None);
+
+        // Operator overloading: when the left operand is a user type (record /
+        // sum) and a function with the operator's canonical name exists, the
+        // operator desugars to a call — `a + b` → `add(a, b)`. Primitives keep
+        // the native operator.
+        if matches!(lt, CTy::Rec(_) | CTy::Sum(_)) {
+            if let Some(name) = overload_name(op) {
+                if let Some((_, ret)) = self.fns.get(name).cloned() {
+                    return (format!("{name}({lc}, {rc})"), ret);
+                }
+            }
+        }
+
         use BinOp::*;
         match op {
             Div if matches!(lt, CTy::Str) => (format!("maca_path_join({lc}, {rc})"), CTy::Str),
@@ -1034,7 +1161,7 @@ impl<'a> Cx<'a> {
                 });
                 (format!("{an}_concat({lc}, {rc})"), lt)
             }
-            Add | Sub | Mul | Div => {
+            Add | Sub | Mul | Div | Mod | Shl | Shr => {
                 let o = bin_op(op);
                 (format!("({lc} {o} {rc})"), lt)
             }
@@ -1198,7 +1325,24 @@ fn body_as_block(e: &Expr) -> &Expr {
 }
 
 fn is_control(e: &Expr) -> bool {
-    matches!(e, Expr::For { .. } | Expr::Match { .. } | Expr::If { .. } | Expr::Block(_))
+    matches!(
+        e,
+        Expr::For { .. }
+            | Expr::While { .. }
+            | Expr::Break
+            | Expr::Continue
+            | Expr::Match { .. }
+            | Expr::If { .. }
+            | Expr::Block(_)
+    )
+}
+
+/// The tail (last) expression of a statement block, if any — the value it yields.
+fn tail_expr(stmts: &[Stmt]) -> Option<&Expr> {
+    match stmts.last() {
+        Some(Stmt::Expr(e)) => Some(e),
+        _ => None,
+    }
 }
 
 fn c_type(t: &CTy) -> String {
@@ -1266,12 +1410,34 @@ fn console_fn(name: &str) -> Option<&'static str> {
     })
 }
 
+/// The canonical function name an operator overloads to for user types
+/// (`a + b` → `add(a, b)`), or `None` for operators that never overload.
+fn overload_name(op: BinOp) -> Option<&'static str> {
+    Some(match op {
+        BinOp::Add => "add",
+        BinOp::Sub => "sub",
+        BinOp::Mul => "mul",
+        BinOp::Div => "div",
+        BinOp::Concat => "concat",
+        BinOp::Eq => "eq",
+        BinOp::Ne => "ne",
+        BinOp::Lt => "lt",
+        BinOp::Gt => "gt",
+        BinOp::Le => "le",
+        BinOp::Ge => "ge",
+        _ => return None,
+    })
+}
+
 fn bin_op(op: BinOp) -> &'static str {
     match op {
         BinOp::Add => "+",
         BinOp::Sub => "-",
         BinOp::Mul => "*",
         BinOp::Div => "/",
+        BinOp::Mod => "%",
+        BinOp::Shl => "<<",
+        BinOp::Shr => ">>",
         BinOp::Eq => "==",
         BinOp::Ne => "!=",
         BinOp::Lt => "<",

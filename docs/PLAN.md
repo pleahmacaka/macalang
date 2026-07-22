@@ -49,6 +49,33 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - Generics: lowercase type vars, applied by juxtaposition (`Map k v`), postfix
   `T[]` / `T?`. Nullable `T?` = `T | None`.
 - Ternary is spaced `c ? x : y`; error-propagation is attached `x?`.
+- Operator overloading (no new syntax): on a user type, an operator resolves to
+  a same-named function — `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
+  `concat`, etc. Primitives keep the native operator. (`examples/operators.maca`.)
+- Arithmetic operators: `%` (modulo) and `<<` / `>>` (shifts) join
+  `+ - * /`; all integer-only, checked and lowered on every backend.
+  (`examples/fizzbuzz.maca`.)
+- Imperative loops: `while cond { … }` with `break`/`continue`, plus
+  reassignment of an in-scope binding (`i = i + 1`) alongside `let`. The `while`
+  condition must be `bool`. Lowered to native C, embedded C, and JS.
+  (`examples/loops.maca`; `examples/bad/while_cond.maca` is rejected.)
+- Dev environments in Maca (`maca dev`): `dev.maca` (config mode) → a self-
+  contained `flake.nix` devShell via the Nix backend's `emit_flake`. `dev.name`,
+  `dev.packages = a, b`, `dev.env = { K = "v" }`, `dev.shellHook`. Replaces a
+  hand-written flake; the repo's own `flake.nix` is generated from `dev.maca`.
+  See `docs/DEVENV.md`.
+- Embedded (`maca build --target embedded --mcu cortex-m4`): Maca → freestanding
+  C + a Cortex-M/RISC-V startup (vector table, reset handler) + linker script,
+  cross-compiled with clang/lld to `firmware.elf`/`.bin`. `int` = 32-bit word;
+  MMIO intrinsics `mmio_write/read`, `set_bits/clear_bits/toggle_bits`, `bit`,
+  `shl/shr/bit_or/bit_and`, `delay`, `nop`; `for _ in forever()` = super-loop.
+  Hex/binary/octal literals with `_` separators (`0x4002_0C00`). `apps/blink`.
+- JVM interop (`maca build --target jvm`): Maca → Java source. `import java
+  "pkg.Class"` → a Java import; `Name : Iface = { m = () => … }` → a class
+  implementing `Iface` (a Fabric `ModInitializer`); a capitalized call
+  `Pos(x,y,z)` → `new Pos(...)`; `obj.m(a)`/`Blocks.STONE` pass through. An
+  unknown capitalized annotation is a foreign type → gradual `any`. Enables
+  Minecraft (Fabric) modding in Maca — `apps/mcmod`.
 - Paths are literals: `/tmp` `./x` `../x` `~/x`, joined with `p / "seg"`.
 - SIMD vectors are first-class value types: `f32x8`, `i32x4`, … (native only).
 - UI: elements are functions (`div(class=..., ...children)`); Svelte-style
@@ -86,8 +113,49 @@ clients (`apps/mqtt`), and the Tauri desktop UI↔backend round-trip
 io_uring, clang header-parse FFI, packaged Tauri window) are marked in the code
 as future hardening.
 
+## Phase 13 — self-hosting (Rust frozen, compiler in Maca)
+
+The Rust workspace is now the **stage-0 bootstrap**, frozen in scope. New
+compiler work is written in Maca under `selfhost/` and compiled by stage-0; the
+target is a stage-1 Maca compiler that rebuilds itself (see `docs/BOOTSTRAP.md`).
+Type-system hardening that would have grown `maca-core` (full HM over inferred
+bindings, real row unification, generic monomorphization) is deferred into
+`selfhost/check.maca` so it is written once, in Maca.
+
+Landed: `selfhost/token.maca`, `selfhost/lexer.maca`, `selfhost/main.maca` — a
+character-level lexer, gated by the stage-0 front-end (`crates/driver/tests/
+selfhost.rs`: every file parses, the concatenated module type-checks clean).
+Two stage-0 parser robustness bugs surfaced and were fixed while writing it: an
+infinite loop on malformed parameter/effect lists, and a match **guard** (`_ if
+c => …`) whose condition swallowed the arm's `=>` as a lambda arrow.
+
+A browser **playground** (`playground/`) runs the whole stage-0 front-end via
+`crates/wasm` (compiled to `wasm32-unknown-unknown`, no wasm-bindgen) with a
+Monaco editor and Maca syntax highlighting (`editor/maca.tmLanguage.json`).
+
 ## Golden examples (regression set)
 
 Verbatim from the spec, under `examples/`:
 `hello.maca` · `taskr.maca` (CLI) · `system.maca` (config) · `counter.maca` (UI)
 · `dot.maca` (SIMD), plus `examples/bad/*.maca` for diagnostics.
+`generic.maca` (parse + typecheck golden) exercises let-polymorphism.
+
+## P3 hardening — let-polymorphism
+
+The gradual checker now generalizes function signatures into rank-1 type
+schemes and instantiates them per call site. Lowercase, single-segment type
+names (`a`, `k`, `value`) are type variables by convention — nominal types are
+capitalized, primitives are keywords, and sized-numeric / SIMD lane types
+(`i32`, `f32x8`) stay nominal. This removes false-positive mismatches on
+generic calls (e.g. `let n: int = id(5)`) and lets a concrete argument clash
+against a declared parameter surface as `TypeMismatch`
+(`examples/bad/arg_mismatch.maca`). Native lowering of a polymorphic function
+across value-typed instantiations still needs monomorphization in the C backend
+(future hardening); `generic.maca` is gated at the parse + typecheck layers.
+
+Three more real error classes now surface as `TypeMismatch` (previously
+swallowed): call **arity** against a user function's declared parameter count —
+variadic functions exempt (`examples/bad/arity.maca`) — and disagreeing
+**`if` / ternary branch** types (`examples/bad/branch_mismatch.maca`). All stay
+safe under the gradual rule: `any`/type-variables never clash, so unknown-stdlib
+code is untouched.

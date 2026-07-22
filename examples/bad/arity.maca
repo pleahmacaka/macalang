@@ -1,0 +1,7 @@
+// `greet` takes one argument but is called with two.
+greet(name: str) -> str => "hi {name}"
+
+main() -> int {
+    greet("ada", "extra")
+    0
+}

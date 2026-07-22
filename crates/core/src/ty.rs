@@ -33,6 +33,44 @@ impl Ty {
     }
 }
 
+/// A (rank-1) polymorphic type scheme: `ty` with `vars` universally quantified.
+/// Function signatures are generalized into schemes at declaration and
+/// *instantiated* with fresh variables at each use site — that is what makes a
+/// generic like `id(x: a) -> a` usable at `int` and `str` in the same program
+/// without the two uses colliding.
+#[derive(Clone, Debug)]
+pub struct Scheme {
+    pub vars: Vec<u32>,
+    pub ty: Ty,
+}
+
+impl Scheme {
+    /// A monomorphic scheme — nothing quantified.
+    pub fn mono(ty: Ty) -> Self {
+        Scheme { vars: Vec::new(), ty }
+    }
+}
+
+/// Is `n` a type *variable* by the language's naming convention? Nominal types
+/// are capitalized (`Task`, `Array`), primitives are keywords (`int`, `str`),
+/// and sized-numeric / SIMD lane types start with `i`/`u`/`f` + a digit
+/// (`i32`, `f32x8`). Everything else lowercase (`a`, `k`, `value`) is a
+/// type variable.
+pub fn is_type_var_name(n: &str) -> bool {
+    let b = n.as_bytes();
+    if b.is_empty() || !b[0].is_ascii_lowercase() {
+        return false;
+    }
+    if matches!(n, "int" | "float" | "str" | "bool" | "bytes" | "unit") {
+        return false;
+    }
+    // Sized-numeric / SIMD lane types (`i32`, `u8`, `f32x8`) are nominal.
+    if matches!(b[0], b'i' | b'u' | b'f') && b.get(1).is_some_and(u8::is_ascii_digit) {
+        return false;
+    }
+    true
+}
+
 /// Union-find inference context.
 #[derive(Default)]
 pub struct Infer {
@@ -44,6 +82,20 @@ impl Infer {
         let id = self.subst.len() as u32;
         self.subst.push(None);
         Ty::Var(id)
+    }
+
+    /// Instantiate a scheme: give each quantified variable a fresh copy so a
+    /// polymorphic function can be used at many types independently.
+    pub fn instantiate(&mut self, s: &Scheme) -> Ty {
+        if s.vars.is_empty() {
+            return s.ty.clone();
+        }
+        let mut map = BTreeMap::new();
+        for &v in &s.vars {
+            let fresh = self.fresh();
+            map.insert(v, fresh);
+        }
+        subst(&s.ty, &map)
     }
 
     /// Follow variable bindings one-or-more hops to the representative type.
@@ -110,6 +162,23 @@ impl Infer {
             }
             (x, y) => Err(format!("type mismatch: expected {}, found {}", show(&x), show(&y))),
         }
+    }
+}
+
+/// Substitute variables named in `map` throughout `t` (used by instantiation).
+fn subst(t: &Ty, map: &BTreeMap<u32, Ty>) -> Ty {
+    match t {
+        Ty::Var(i) => map.get(i).cloned().unwrap_or(Ty::Var(*i)),
+        Ty::Con(n, args) => Ty::Con(n.clone(), args.iter().map(|a| subst(a, map)).collect()),
+        Ty::Fn(ps, r) => {
+            Ty::Fn(ps.iter().map(|a| subst(a, map)).collect(), Box::new(subst(r, map)))
+        }
+        Ty::Rec { fields, open } => Ty::Rec {
+            fields: fields.iter().map(|(k, v)| (k.clone(), subst(v, map))).collect(),
+            open: *open,
+        },
+        Ty::Opt(a) => Ty::Opt(Box::new(subst(a, map))),
+        _ => t.clone(),
     }
 }
 

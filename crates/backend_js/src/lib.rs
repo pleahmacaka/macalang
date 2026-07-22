@@ -13,6 +13,8 @@ pub struct JsOut {
     pub js: String,
     pub html: String,
     pub css: String,
+    /// Names of top-level functions transpiled to callable JS (for `import`).
+    pub exports: Vec<String>,
 }
 
 pub fn emit(m: &Module) -> JsOut {
@@ -53,10 +55,176 @@ pub fn emit(m: &Module) -> JsOut {
         }
     };
 
-    let js = cx.finish(&build_body, &root_var);
+    let mut js = cx.finish(&build_body, &root_var);
+
+    // Transpile top-level functions to callable JS (skip `main`, which is the
+    // UI/entry). These make `import "x.maca"` usable from JS/Bun.
+    let mut exports = Vec::new();
+    let mut fn_defs = String::new();
+    for item in &m.items {
+        if let Stmt::Fn(f) = item {
+            if f.name == "main" || f.body.is_none() {
+                continue;
+            }
+            fn_defs.push_str(&emit_fn(f));
+            fn_defs.push('\n');
+            exports.push(f.name.clone());
+        }
+    }
+    if !fn_defs.is_empty() {
+        js.push_str("\n// ---- transpiled functions ----\n");
+        js.push_str(&fn_defs);
+        let names = exports.join(", ");
+        js.push_str(&format!(
+            "if (typeof module !== \"undefined\") Object.assign(module.exports, {{ {names} }});\n"
+        ));
+    }
+
     let css = cx.css();
     let html = HTML.into();
-    JsOut { js, html, css }
+    JsOut { js, html, css, exports }
+}
+
+/// Transpile one top-level function to a JS function declaration.
+fn emit_fn(f: &FnDef) -> String {
+    let params = f.params.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", ");
+    let body = match &f.body {
+        Some(FnBody::Expr(e)) => format!("  return {};", jexpr(e)),
+        Some(FnBody::Block(stmts)) => jblock(stmts),
+        None => String::new(),
+    };
+    format!("function {}({params}) {{\n{body}\n}}", f.name)
+}
+
+/// A block of statements → JS, returning the value of the final expression.
+fn jblock(stmts: &[Stmt]) -> String {
+    jblock_ret(stmts, true)
+}
+
+/// `ret` = whether the final expression is `return`ed (function body) or emitted
+/// as a bare statement (loop body).
+fn jblock_ret(stmts: &[Stmt], ret: bool) -> String {
+    let mut out = String::new();
+    for (i, s) in stmts.iter().enumerate() {
+        let last = i + 1 == stmts.len();
+        match s {
+            Stmt::Bind(b) => {
+                if let Expr::Ident(n) = &b.target {
+                    // `let x =` declares; a bare `x =` reassigns
+                    let kw = if b.is_let { "let " } else { "" };
+                    out.push_str(&format!("  {kw}{n} = {};\n", jexpr(&b.value)));
+                } else {
+                    out.push_str(&format!("  {};\n", jexpr(&b.value)));
+                }
+            }
+            Stmt::Expr(Expr::While { cond, body }) => {
+                out.push_str(&format!("  while ({}) {{\n{}  }}\n", jexpr(cond), jblock_ret(body, false)));
+            }
+            Stmt::Expr(Expr::Break) => out.push_str("  break;\n"),
+            Stmt::Expr(Expr::Continue) => out.push_str("  continue;\n"),
+            Stmt::Expr(e) => {
+                if last && ret {
+                    out.push_str(&format!("  return {};\n", jexpr(e)));
+                } else {
+                    out.push_str(&format!("  {};\n", jexpr(e)));
+                }
+            }
+            Stmt::Fn(f) => out.push_str(&emit_fn(f)),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Lower a Maca expression to a JS expression (the functional core).
+fn jexpr(e: &Expr) -> String {
+    match e {
+        Expr::Int(n) => n.to_string(),
+        Expr::Float(f) => format!("{f}"),
+        Expr::Bool(b) => b.to_string(),
+        Expr::Unit => "null".into(),
+        Expr::Str(parts) => jstr(parts),
+        Expr::Path(p) => format!("{p:?}"),
+        Expr::Ident(n) => n.clone(),
+        Expr::Unary { op, expr } => {
+            let o = if matches!(op, UnOp::Not) { "!" } else { "-" };
+            format!("{o}({})", jexpr(expr))
+        }
+        Expr::Binary { op, lhs, rhs } => jbinary(*op, lhs, rhs),
+        Expr::Ternary { cond, then, els } => {
+            format!("({} ? {} : {})", jexpr(cond), jexpr(then), jexpr(els))
+        }
+        Expr::Call { callee, args } => jcall(callee, args),
+        Expr::Field { base, name } => format!("{}.{name}", jexpr(base)),
+        Expr::Record(fields) | Expr::Ctor { fields, .. } => jrecord(fields),
+        Expr::List(es) => {
+            format!("[{}]", es.iter().map(jexpr).collect::<Vec<_>>().join(", "))
+        }
+        Expr::If { cond, then, els } => {
+            let e = els.as_ref().map(|s| jblock_expr(s)).unwrap_or_else(|| "null".into());
+            format!("({} ? {} : {})", jexpr(cond), jblock_expr(then), e)
+        }
+        Expr::Block(stmts) => jblock_expr(stmts),
+        Expr::Try(x) => jexpr(x),
+        _ => "null".into(),
+    }
+}
+
+/// A block used in expression position → an IIFE returning its value.
+fn jblock_expr(stmts: &[Stmt]) -> String {
+    format!("(() => {{\n{}\n}})()", jblock(stmts))
+}
+
+fn jbinary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
+    use BinOp::*;
+    let (l, r) = (jexpr(lhs), jexpr(rhs));
+    let o = match op {
+        Add => "+", Sub => "-", Mul => "*", Div => "/", Mod => "%",
+        Shl => "<<", Shr => ">>",
+        Eq => "===", Ne => "!==", Lt => "<", Gt => ">", Le => "<=", Ge => ">=",
+        And => "&&", Or => "||",
+        Concat => return format!("({l}).concat({r})"),
+        Union | Pipe => return l,
+    };
+    format!("({l} {o} {r})")
+}
+
+fn jcall(callee: &Expr, args: &[Arg]) -> String {
+    let a: Vec<String> = args.iter().map(|x| jexpr(&arg_expr(x))).collect();
+    match callee {
+        Expr::Ident(f) if f == "int" => format!("Math.trunc(Number({}))", a.first().cloned().unwrap_or_default()),
+        Expr::Ident(f) if f == "float" => format!("Number({})", a.first().cloned().unwrap_or_default()),
+        Expr::Ident(f) if f == "str" => format!("String({})", a.first().cloned().unwrap_or_default()),
+        Expr::Ident(f) if f == "len" => format!("({}).length", a.first().cloned().unwrap_or_default()),
+        Expr::Ident(f) => format!("{f}({})", a.join(", ")),
+        Expr::Field { base, name } => format!("{}.{name}({})", jexpr(base), a.join(", ")),
+        _ => format!("{}({})", jexpr(callee), a.join(", ")),
+    }
+}
+
+fn jrecord(fields: &[Field]) -> String {
+    let mut out = Vec::new();
+    for f in fields {
+        match f {
+            Field::Value { name, value } => out.push(format!("{name}: {}", jexpr(value))),
+            Field::Shorthand(n) => out.push(format!("{n}: {n}")),
+            _ => {}
+        }
+    }
+    format!("{{ {} }}", out.join(", "))
+}
+
+/// String with interpolation → a JS template literal.
+fn jstr(parts: &[StrPart]) -> String {
+    let mut out = String::from("`");
+    for p in parts {
+        match p {
+            StrPart::Text(t) => out.push_str(&t.replace('\\', "\\\\").replace('`', "\\`").replace('$', "\\$")),
+            StrPart::Interp(e) => out.push_str(&format!("${{{}}}", jexpr(e))),
+        }
+    }
+    out.push('`');
+    out
 }
 
 #[derive(Default)]

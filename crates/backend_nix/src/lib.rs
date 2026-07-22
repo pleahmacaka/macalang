@@ -17,6 +17,75 @@ pub fn emit(m: &Module) -> String {
     emit_for_user(m, "alice")
 }
 
+/// Config-mode → a **dev-environment flake** (`flake.nix`), replacing a
+/// hand-written flake. Reads `dev.*` bindings:
+///   * `dev.name = "…"`        → shell description
+///   * `dev.packages = a, b`   → `mkShell { packages = [ pkgs.a pkgs.b ]; }`
+///   * `dev.env = { K = "v" }` → shell environment variables
+///   * `dev.shellHook = "…"`   → `shellHook`
+///
+/// The flake is self-contained (nixpkgs input only, multi-system via
+/// `genAttrs`) so `nix develop` works with no extra inputs.
+pub fn emit_flake(m: &Module) -> String {
+    let mut name = "dev".to_string();
+    let mut packages = String::from("[ ]");
+    let mut env: Vec<String> = Vec::new();
+    let mut shell_hook: Option<String> = None;
+
+    for item in &m.items {
+        let Stmt::Bind(b) = item else { continue };
+        let path = path_of(&b.target);
+        match path.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+            ["dev", "name"] => {
+                if let Expr::Str(parts) = &b.value {
+                    name = plain_text(parts);
+                }
+            }
+            ["dev", "packages"] => packages = pkg_list(&b.value),
+            ["dev", "env"] => {
+                if let Expr::Record(fields) = &b.value {
+                    for f in record_fields(fields) {
+                        env.push(f);
+                    }
+                }
+            }
+            ["dev", "shellHook"] | ["dev", "shell_hook"] => {
+                if let Expr::Str(parts) = &b.value {
+                    shell_hook = Some(nix_string(parts));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut shell = String::new();
+    shell.push_str(&format!("          packages = {packages};\n"));
+    for e in &env {
+        shell.push_str(&format!("          {e}\n"));
+    }
+    if let Some(h) = &shell_hook {
+        shell.push_str(&format!("          shellHook = {h};\n"));
+    }
+
+    format!(
+        "{{\n\
+         \x20 description = \"{name} dev environment — generated from dev.maca by `maca dev`\";\n\n\
+         \x20 inputs.nixpkgs.url = \"github:NixOS/nixpkgs/nixos-unstable\";\n\n\
+         \x20 outputs = {{ self, nixpkgs }}:\n\
+         \x20\x20\x20 let\n\
+         \x20\x20\x20\x20\x20 systems = [ \"x86_64-linux\" \"aarch64-linux\" \"x86_64-darwin\" \"aarch64-darwin\" ];\n\
+         \x20\x20\x20\x20\x20 forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${{system}});\n\
+         \x20\x20\x20 in {{\n\
+         \x20\x20\x20\x20\x20 devShells = forAllSystems (pkgs: {{\n\
+         \x20\x20\x20\x20\x20\x20\x20 default = pkgs.mkShell {{\n\
+         {shell}\
+         \x20\x20\x20\x20\x20\x20\x20 }};\n\
+         \x20\x20\x20\x20\x20 }});\n\
+         \x20\x20\x20 }};\n\
+         }}\n"
+    )
+}
+
 /// `user` is the home-manager username (from `maca.toml [hosts.X] user = …`).
 pub fn emit_for_user(m: &Module, user: &str) -> String {
     let mut top: Vec<String> = Vec::new();
