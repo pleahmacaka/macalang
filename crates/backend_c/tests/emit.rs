@@ -164,3 +164,18 @@ fn reify_installs_a_handler() {
     assert!(out.contains("setjmp("), "no setjmp:\n{out}");
     assert!(out.contains("maca_last_fail()"), "no caught-message read:\n{out}");
 }
+
+#[test]
+fn non_capturing_lambda_is_hoisted() {
+    let out = c("main() -> int {\n    let xs = 1, 2, 3\n    let ys = xs.parallel(v => v + 1)\n    0\n}\n");
+    assert!(out.contains("static int64_t _lam0(int64_t v)"), "lambda not hoisted:\n{out}");
+    assert!(out.contains("return (v + 1);"), "lambda body wrong:\n{out}");
+    assert!(out.contains("_lam0, 4)") || out.contains("_lam0,4)"), "lambda not passed to parallel:\n{out}");
+    assert!(!out.contains("unsupported"), "should be supported:\n{out}");
+}
+
+#[test]
+fn capturing_lambda_is_flagged_not_miscompiled() {
+    let out = c("main() -> int {\n    let k = 3\n    let xs = 1, 2\n    let ys = xs.parallel(v => v * k)\n    0\n}\n");
+    assert!(out.contains("unsupported: capturing lambda"), "capture not flagged:\n{out}");
+}
