@@ -52,6 +52,10 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - Operator overloading (no new syntax): on a user type, an operator resolves to
   a same-named function — `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
   `concat`, etc. Primitives keep the native operator. (`examples/operators.maca`.)
+- Error model: `fail msg` raises (prints + `exit(1)` if unhandled); `try e` /
+  `reify e` catches a failure via runtime setjmp/longjmp and yields the caught
+  message (`str`, `""` on success), discharging the `exn` effect; execution
+  continues past a caught failure. (`examples/catch.maca`.)
 - Sum types with payloads: `Shape = Circle(int) | Rect(int, int)`. Constructors
   are typed as functions (`Circle(10)`), payloads bind in patterns
   (`Circle(r) => r * r`). Native lowering is a tagged struct/union with a

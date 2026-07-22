@@ -17,6 +17,7 @@ pub const RUNTIME_H: &str = r##"#ifndef MACA_RUNTIME_H
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <setjmp.h>
 
 typedef const char* maca_str;
 
@@ -41,11 +42,17 @@ void maca_warn(maca_str s);
 void maca_notice(maca_str s);
 void maca_info(maca_str s);
 void maca_debug(maca_str s);
-/* `fail msg` — print "error: <msg>" to stderr and exit(1) (unhandled error) */
+/* `fail msg` — longjmp to the nearest `try` handler, else print "error: <msg>"
+   to stderr and exit(1) (an unhandled failure). */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((noreturn))
 #endif
 void maca_fail(maca_str s);
+/* try/catch scaffolding: push returns a jmp_buf for the caller to `setjmp` on;
+   `maca_fail` longjmps to the top handler; `maca_last_fail` is the caught msg. */
+jmp_buf* maca_try_push(void);
+void maca_try_pop(void);
+maca_str maca_last_fail(void);
 void maca_print(maca_str s);
 maca_str maca_input(void);
 
@@ -191,7 +198,23 @@ void maca_err(maca_str s)    { line(stderr, s); }
 void maca_warn(maca_str s)   { line(stderr, s); }
 void maca_notice(maca_str s) { line(stdout, s); }
 void maca_info(maca_str s)   { line(stdout, s); }
+/* try/catch: a thread-local stack of setjmp handlers + the last caught msg */
+static _Thread_local jmp_buf g_handlers[256];
+static _Thread_local int g_handler_top = 0;
+static _Thread_local maca_str g_last_fail = "";
+
+jmp_buf* maca_try_push(void) {
+    if (g_handler_top >= 256) die("try nesting too deep");
+    return &g_handlers[g_handler_top++];
+}
+void maca_try_pop(void) { if (g_handler_top > 0) g_handler_top--; }
+maca_str maca_last_fail(void) { return g_last_fail; }
+
 void maca_fail(maca_str s) {
+    if (g_handler_top > 0) {
+        g_last_fail = s ? s : "";
+        longjmp(g_handlers[--g_handler_top], 1); /* consume the handler as it fires */
+    }
     fputs("error: ", stderr);
     fputs(s ? s : "", stderr);
     fputc('\n', stderr);

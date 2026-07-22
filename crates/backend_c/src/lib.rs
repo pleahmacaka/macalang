@@ -6,7 +6,8 @@
 //! per record/sum type. Strings are heap `maca_str`; interpolation folds to
 //! `maca_concat`. `match` lowers to an if-else chain, `?` is transparent, and
 //! `fail msg` calls `maca_fail` — a clean stderr message + `exit(1)` (the
-//! runtime file/JSON helpers still abort; catch-via-`reify` comes later).
+//! runtime file/JSON helpers still abort). `reify`/`try e` catches a
+//! failure via setjmp/longjmp, yielding the caught message (or "").
 //!
 //! GNU statement expressions (`({ ...; v; })`, supported by `zig cc`/clang) are
 //! used for inline list literals.
@@ -1101,6 +1102,22 @@ impl<'a> Cx<'a> {
             Expr::Fail(msg) => {
                 let (mc, _) = self.expr(env, msg, Some(&CTy::Str));
                 (format!("(maca_fail({mc}), 0)"), expected.cloned().unwrap_or(CTy::Unit))
+            }
+            // `try e` / `reify e` — run `e` under a failure handler; the value is
+            // the caught message (a `str`), or "" on success. setjmp must be
+            // inline (not wrapped in a helper), so a GNU statement-expression.
+            Expr::Reify(x) => {
+                let jb = self.fresh();
+                let r = self.fresh();
+                let (xc, _) = self.expr(env, x, None);
+                (
+                    format!(
+                        "({{ jmp_buf* {jb} = maca_try_push(); maca_str {r}; \
+                         if (setjmp(*{jb}) == 0) {{ (void)({xc}); maca_try_pop(); {r} = \"\"; }} \
+                         else {{ {r} = maca_last_fail(); }} {r}; }})"
+                    ),
+                    CTy::Str,
+                )
             }
             _ => ("0 /* unsupported */".into(), CTy::Unknown),
         }
