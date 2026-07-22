@@ -91,3 +91,11 @@ fn break_and_continue() {
     assert!(body.contains("break;"), "no break:\n{body}");
     assert!(body.contains("continue;"), "no continue:\n{body}");
 }
+
+#[test]
+fn modulo_and_shift_operators() {
+    let body = func("f(n: int) -> int {\n    let a = n % 3\n    let b = n << 2\n    let c = n >> 1\n    a + b + c\n}\n", "f");
+    assert!(body.contains("(n % 3)"), "no modulo:\n{body}");
+    assert!(body.contains("(n << 2)"), "no shl:\n{body}");
+    assert!(body.contains("(n >> 1)"), "no shr:\n{body}");
+}

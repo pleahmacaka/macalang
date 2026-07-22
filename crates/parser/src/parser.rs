@@ -397,10 +397,13 @@ impl Parser {
             Tok::Le => (BinOp::Le, 4),
             Tok::Ge => (BinOp::Ge, 4),
             Tok::PlusPlus => (BinOp::Concat, 5),
+            Tok::Shl => (BinOp::Shl, 5),
+            Tok::Shr => (BinOp::Shr, 5),
             Tok::Plus => (BinOp::Add, 6),
             Tok::Minus => (BinOp::Sub, 6),
             Tok::Star => (BinOp::Mul, 7),
             Tok::Slash => (BinOp::Div, 7),
+            Tok::Percent => (BinOp::Mod, 7),
             _ => return None,
         })
     }

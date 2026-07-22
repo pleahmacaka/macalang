@@ -233,6 +233,7 @@ fn cexpr(e: &Expr) -> String {
         Expr::Binary { op, lhs, rhs } => {
             let o = match op {
                 BinOp::Add => "+", BinOp::Sub => "-", BinOp::Mul => "*", BinOp::Div => "/",
+                BinOp::Mod => "%", BinOp::Shl => "<<", BinOp::Shr => ">>",
                 BinOp::Eq => "==", BinOp::Ne => "!=", BinOp::Lt => "<", BinOp::Gt => ">",
                 BinOp::Le => "<=", BinOp::Ge => ">=", BinOp::And => "&&", BinOp::Or => "||",
                 BinOp::Union => "|", // surface `|` as bit-or in embedded

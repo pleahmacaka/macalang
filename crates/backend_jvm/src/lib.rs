@@ -266,7 +266,8 @@ fn jbinary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
     use BinOp::*;
     let (l, r) = (jexpr(lhs), jexpr(rhs));
     let o = match op {
-        Add => "+", Sub => "-", Mul => "*", Div => "/",
+        Add => "+", Sub => "-", Mul => "*", Div => "/", Mod => "%",
+        Shl => "<<", Shr => ">>",
         Eq => "==", Ne => "!=", Lt => "<", Gt => ">", Le => "<=", Ge => ">=",
         And => "&&", Or => "||",
         // string / value concat and everything else

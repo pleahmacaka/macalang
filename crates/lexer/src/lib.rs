@@ -77,6 +77,9 @@ pub enum Tok {
     Minus,
     Star,
     Slash,
+    Percent,  // %
+    Shl,      // <<
+    Shr,      // >>
     PlusPlus, // ++
     Bar,      // |
     BarBar,   // ||
@@ -382,10 +385,13 @@ impl<'a> Lexer<'a> {
             '=' if self.peek_n(1) == '=' => self.take(2, Tok::EqEq, start),
             '=' => self.take(1, Tok::Eq, start),
             '!' if self.peek_n(1) == '=' => self.take(2, Tok::NotEq, start),
+            '<' if self.peek_n(1) == '<' => self.take(2, Tok::Shl, start),
             '<' if self.peek_n(1) == '=' => self.take(2, Tok::Le, start),
             '<' => self.take(1, Tok::Lt, start),
+            '>' if self.peek_n(1) == '>' => self.take(2, Tok::Shr, start),
             '>' if self.peek_n(1) == '=' => self.take(2, Tok::Ge, start),
             '>' => self.take(1, Tok::Gt, start),
+            '%' => self.take(1, Tok::Percent, start),
             '|' if self.peek_n(1) == '>' => self.take(2, Tok::PipeGt, start),
             '|' if self.peek_n(1) == '|' => self.take(2, Tok::BarBar, start),
             '|' => self.take(1, Tok::Bar, start),

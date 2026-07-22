@@ -710,6 +710,12 @@ impl Checker {
                 let _ = self.inf.unify(&lt, &rt);
                 self.inf.resolve(&lt)
             }
+            // integer-only operators
+            Mod | Shl | Shr => {
+                let _ = self.inf.unify(&lt, &Ty::Int);
+                let _ = self.inf.unify(&rt, &Ty::Int);
+                Ty::Int
+            }
             Union | Pipe => Ty::Any,
         }
     }

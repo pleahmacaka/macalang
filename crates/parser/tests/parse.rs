@@ -138,3 +138,8 @@ fn ui_directive_arg() {
 fn roundtrip_loops() {
     roundtrip("loops.maca");
 }
+
+#[test]
+fn roundtrip_fizzbuzz() {
+    roundtrip("fizzbuzz.maca");
+}

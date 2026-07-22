@@ -1161,7 +1161,7 @@ impl<'a> Cx<'a> {
                 });
                 (format!("{an}_concat({lc}, {rc})"), lt)
             }
-            Add | Sub | Mul | Div => {
+            Add | Sub | Mul | Div | Mod | Shl | Shr => {
                 let o = bin_op(op);
                 (format!("({lc} {o} {rc})"), lt)
             }
@@ -1435,6 +1435,9 @@ fn bin_op(op: BinOp) -> &'static str {
         BinOp::Sub => "-",
         BinOp::Mul => "*",
         BinOp::Div => "/",
+        BinOp::Mod => "%",
+        BinOp::Shl => "<<",
+        BinOp::Shr => ">>",
         BinOp::Eq => "==",
         BinOp::Ne => "!=",
         BinOp::Lt => "<",

@@ -52,6 +52,9 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - Operator overloading (no new syntax): on a user type, an operator resolves to
   a same-named function — `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
   `concat`, etc. Primitives keep the native operator. (`examples/operators.maca`.)
+- Arithmetic operators: `%` (modulo) and `<<` / `>>` (shifts) join
+  `+ - * /`; all integer-only, checked and lowered on every backend.
+  (`examples/fizzbuzz.maca`.)
 - Imperative loops: `while cond { … }` with `break`/`continue`, plus
   reassignment of an in-scope binding (`i = i + 1`) alongside `let`. The `while`
   condition must be `bool`. Lowered to native C, embedded C, and JS.

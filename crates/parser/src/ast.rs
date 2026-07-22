@@ -164,6 +164,9 @@ pub enum BinOp {
     Sub,
     Mul,
     Div,
+    Mod,    // %
+    Shl,    // <<
+    Shr,    // >>
     Concat, // ++
     Eq,
     Ne,
