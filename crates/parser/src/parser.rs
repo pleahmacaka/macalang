@@ -245,7 +245,9 @@ impl Parser {
         let body = if self.at(Tok::LBrace) {
             Some(FnBody::Block(self.parse_block()))
         } else if self.eat(Tok::FatArrow) {
-            Some(FnBody::Expr(Box::new(self.parse_expr())))
+            // a bracketless comma list is a valid arrow body (`make() -> int[] =>
+            // 1, 2, 3`); a single expression parses unchanged.
+            Some(FnBody::Expr(Box::new(self.parse_list_expr())))
         } else {
             None
         };

@@ -220,6 +220,16 @@ fn roundtrip_keywords() {
 }
 
 #[test]
+fn arrow_body_can_be_a_comma_list() {
+    // `make() -> int[] => 1, 2, 3` — a bracketless list is a valid arrow body
+    let m = clean("make() -> int[] => 1, 2, 3\n");
+    let maca_parser::Stmt::Fn(f) = &m.items[0] else { panic!("not a fn") };
+    let Some(maca_parser::FnBody::Expr(e)) = &f.body else { panic!("no expr body") };
+    let maca_parser::Expr::List(es) = &**e else { panic!("body is not a list: {e:?}") };
+    assert_eq!(es.len(), 3, "expected 3 elements");
+}
+
+#[test]
 fn index_is_postfix_not_a_list() {
     // `xs[i]` after an expression is a subscript; a leading `[..]` is a list
     let m = clean("f(xs: int[]) -> int => xs[0]\n");
