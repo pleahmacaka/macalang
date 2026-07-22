@@ -31,3 +31,25 @@ fn routing_and_injections() {
     assert!(nix.contains("xdg.userDirs = {") && nix.contains("createDirectories = true"), "{nix}");
     assert!(nix.contains("download = \"$HOME/Downloads\""), "{nix}");
 }
+
+#[test]
+fn dev_flake_from_maca() {
+    let src = "import nixpkgs\n\
+               dev.name = \"proj\"\n\
+               dev.packages = rustc, cargo, clang\n\
+               dev.env = {\n    RUST_BACKTRACE = \"1\"\n}\n\
+               dev.shellHook = \"echo hi\"\n";
+    let parsed = maca_parser::parse(src);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let flake = maca_backend_nix::emit_flake(&parsed.module);
+    assert!(flake.contains("description = \"proj dev environment"), "{flake}");
+    assert!(flake.contains("inputs.nixpkgs.url"), "{flake}");
+    assert!(flake.contains("devShells = forAllSystems"), "{flake}");
+    assert!(flake.contains("packages = [ pkgs.rustc pkgs.cargo pkgs.clang ];"), "{flake}");
+    assert!(flake.contains("RUST_BACKTRACE = \"1\";"), "{flake}");
+    assert!(flake.contains("shellHook = \"echo hi\";"), "{flake}");
+    assert!(flake.contains("legacyPackages.${system}"), "{flake}");
+    // balanced braces/brackets — a cheap validity check
+    assert_eq!(flake.matches('{').count(), flake.matches('}').count(), "unbalanced braces");
+    assert_eq!(flake.matches('[').count(), flake.matches(']').count(), "unbalanced brackets");
+}

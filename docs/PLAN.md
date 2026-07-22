@@ -52,6 +52,11 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - Operator overloading (no new syntax): on a user type, an operator resolves to
   a same-named function — `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
   `concat`, etc. Primitives keep the native operator. (`examples/operators.maca`.)
+- Dev environments in Maca (`maca dev`): `dev.maca` (config mode) → a self-
+  contained `flake.nix` devShell via the Nix backend's `emit_flake`. `dev.name`,
+  `dev.packages = a, b`, `dev.env = { K = "v" }`, `dev.shellHook`. Replaces a
+  hand-written flake; the repo's own `flake.nix` is generated from `dev.maca`.
+  See `docs/DEVENV.md`.
 - Embedded (`maca build --target embedded --mcu cortex-m4`): Maca → freestanding
   C + a Cortex-M/RISC-V startup (vector table, reset handler) + linker script,
   cross-compiled with clang/lld to `firmware.elf`/`.bin`. `int` = 32-bit word;

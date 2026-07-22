@@ -24,6 +24,7 @@ fn main() {
         Some("lint") => cmd_lint(&args[1..]),
         Some("watch") => cmd_watch(&args[1..]),
         Some("profile") => cmd_profile(&args[1..]),
+        Some("dev") => cmd_dev(&args[1..]),
         Some("--help" | "-h" | "help") | None => usage(),
         Some(other) => {
             // maca.toml [scripts] alias?
@@ -366,13 +367,17 @@ fn usage() {
          \n\
          commands:\n\
          \x20 init  [dir]                  scaffold a new project (maca.toml, main.maca)\n\
-         \x20 build <file.maca> [-o out]   compile to a native binary\n\
+         \x20 build <file.maca> [-o out]   compile (native | --target nix|js|jvm|embedded)\n\
          \x20 run   <file.maca> [args..]   compile and run\n\
+         \x20 dev   [dev.maca] [-o flake]  generate a dev-shell flake.nix from Maca\n\
          \x20 watch <file.maca> [args..]   rebuild & rerun on change (hot reload)\n\
          \x20 fmt   <file.maca>… [--check] format in place (style from maca.toml [format])\n\
          \x20 lint  <file.maca>            style + type/effect diagnostics\n\
          \x20 profile <file.maca> [-o svg] run under callgrind, render a flame graph\n\
-         \x20 --version                    print the toolchain version"
+         \x20 --version                    print the toolchain version\n\
+         \n\
+         build targets: native (default), --target nix | js | jvm | embedded\n\
+         \x20 embedded also takes --mcu cortex-m0|m3|m4|riscv32; jvm takes --cp <jars>"
     );
 }
 
@@ -504,6 +509,44 @@ fn capitalize(s: &str) -> String {
         Some(f) => f.to_ascii_uppercase().to_string() + c.as_str(),
         None => "Main".into(),
     }
+}
+
+/// `maca dev [dev.maca] [-o flake.nix]` — compile a Maca-defined dev
+/// environment to a `flake.nix` devShell, replacing a hand-written flake.
+fn cmd_dev(args: &[String]) {
+    let mut src = PathBuf::from("dev.maca");
+    let mut out = PathBuf::from("flake.nix");
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "-o" => out = it.next().map(PathBuf::from).unwrap_or(out),
+            _ => src = PathBuf::from(a),
+        }
+    }
+    let source = match std::fs::read_to_string(&src) {
+        Ok(s) => s,
+        Err(e) => die(&format!("cannot read {}: {e}", src.display())),
+    };
+    let parsed = maca_parser::parse(&source);
+    if !parsed.errors.is_empty() {
+        die(&format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
+    }
+    // dev config is pure (no effects) — check in Config mode
+    let diags = maca_core::check(&parsed.module, maca_core::Mode::Config);
+    let real: Vec<_> = diags
+        .iter()
+        // `dev.*` isn't a NixOS option namespace; that diagnostic is expected here
+        .filter(|d| !matches!(d.kind, maca_core::DiagKind::UnknownOption))
+        .collect();
+    if !real.is_empty() {
+        let msgs: Vec<_> = real.iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect();
+        die(&format!("config errors:\n  {}", msgs.join("\n  ")));
+    }
+    let flake = maca_backend_nix::emit_flake(&parsed.module);
+    if let Err(e) = std::fs::write(&out, flake) {
+        die(&e.to_string());
+    }
+    println!("wrote {} — run `nix develop` to enter the shell", out.display());
 }
 
 /// Embedded target → freestanding C + startup + linker script, cross-compiled
