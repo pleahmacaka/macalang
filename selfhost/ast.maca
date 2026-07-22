@@ -1,0 +1,66 @@
+// selfhost/ast — the AST for the Maca-in-Maca compiler (stage 1).
+//
+// Surface Maca sums are nullary today (no payload-carrying variants), so the
+// AST uses the classic bootstrap shape: a `kind` tag (a nullary sum → C enum)
+// plus a record that carries every possible field. Unused fields stay zero /
+// empty per node. When stage-1 gains real algebraic data types this collapses
+// into a proper tagged union — but this form compiles under stage-0 today.
+
+import selfhost/token
+
+// ---- expression kinds -----------------------------------------------------
+
+ExprKind =
+    EInt | EFloat | EStr | EBool | EIdent
+    | ECall | EField | EBinary | EUnary | ETernary
+    | EList | ERecord | ELambda | EBlock
+
+// One expression node. `children` holds sub-expressions (call args, operands,
+// list elements); `text` names idents/operators; `ival` carries int literals.
+Expr = {
+    kind:     ExprKind
+    text:     str
+    ival:     int
+    children: Expr[]
+}
+
+// ---- statement kinds ------------------------------------------------------
+
+StmtKind = SExpr | SBind | SFn
+
+// One top-level or block statement. A function packs its params (as ident
+// exprs) into `params` and its body statements into `body`.
+Stmt = {
+    kind:   StmtKind
+    name:   str
+    value:  Expr
+    params: Expr[]
+    body:   Stmt[]
+}
+
+Module = {
+    items: Stmt[]
+}
+
+// ---- constructors ---------------------------------------------------------
+
+e_int(n: int) -> Expr =>
+    Expr { kind = EInt, text = "", ival = n, children = [] }
+
+e_ident(name: str) -> Expr =>
+    Expr { kind = EIdent, text = name, ival = 0, children = [] }
+
+e_str(s: str) -> Expr =>
+    Expr { kind = EStr, text = s, ival = 0, children = [] }
+
+e_call(callee: str, args: Expr[]) -> Expr =>
+    Expr { kind = ECall, text = callee, ival = 0, children = args }
+
+e_binary(op: str, lhs: Expr, rhs: Expr) -> Expr =>
+    Expr { kind = EBinary, text = op, ival = 0, children = [lhs, rhs] }
+
+s_expr(value: Expr) -> Stmt =>
+    Stmt { kind = SExpr, name = "", value, params = [], body = [] }
+
+s_fn(name: str, params: Expr[], body: Stmt[]) -> Stmt =>
+    Stmt { kind = SFn, name, value = e_ident(name), params, body }

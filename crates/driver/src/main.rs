@@ -252,12 +252,13 @@ fn cmd_run(args: &[String]) {
     if let Err(e) = compile(&src, &out) {
         die(&e);
     }
-    // Run the produced Linux binary through WSL, forwarding stdio.
-    let status = Command::new("wsl")
-        .arg(to_wsl(&out))
-        .args(prog_args)
-        .status()
-        .unwrap_or_else(|e| die(&format!("failed to launch binary: {e}")));
+    // Run the produced binary — natively when there's no WSL, else through WSL.
+    let status = if have_wsl() {
+        Command::new("wsl").arg(to_wsl(&out)).args(prog_args).status()
+    } else {
+        Command::new(&out).args(prog_args).status()
+    }
+    .unwrap_or_else(|e| die(&format!("failed to launch binary: {e}")));
     std::process::exit(status.code().unwrap_or(1));
 }
 
@@ -357,6 +358,11 @@ fn compile(src: &Path, out: &Path) -> Result<(), String> {
     }
     if use_simd {
         std::fs::write(dir.join("simd.ll"), &llvm.ir).map_err(|e| e.to_string())?;
+    }
+
+    // No WSL/zig? Link with the host's native cc (plain builds only).
+    if !have_wsl() {
+        return link_native(&dir, out, use_async, use_mqtt, use_simd);
     }
 
     // Only the async translation unit is linked when needed, so a sequential
@@ -468,6 +474,45 @@ fn nix_out(attr: &str) -> Result<String, String> {
 
 fn stem(p: &Path) -> String {
     p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "out".into())
+}
+
+/// Is a working WSL available? The default toolchain shells out to
+/// `wsl … zig cc` (NixOS side); when there's no WSL we fall back to a native
+/// `cc`/`clang` so `maca build`/`run` work on a plain Linux host too.
+fn have_wsl() -> bool {
+    Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false)
+}
+
+/// Link the plain (no-FFI) build with the host's native C compiler. `clang` is
+/// used when SIMD IR is present (it compiles `.ll`); otherwise `cc`.
+fn link_native(
+    dir: &Path,
+    out: &Path,
+    use_async: bool,
+    use_mqtt: bool,
+    use_simd: bool,
+) -> Result<(), String> {
+    let cc = if use_simd { "clang" } else { "cc" };
+    let mut cmd = Command::new(cc);
+    cmd.arg(dir.join("main.c")).arg(dir.join("maca_runtime.c"));
+    if use_async {
+        cmd.arg(dir.join("maca_async.c"));
+    }
+    if use_mqtt {
+        cmd.arg(dir.join("maca_ffi_mqtt.c"));
+    }
+    if use_async || use_mqtt {
+        cmd.arg("-pthread");
+    }
+    if use_simd {
+        cmd.arg(dir.join("simd.ll")).arg("-mavx2");
+    }
+    cmd.arg("-I").arg(dir).arg("-O2").arg("-s").arg("-o").arg(out);
+    let output = cmd.output().map_err(|e| format!("failed to run {cc}: {e}"))?;
+    if !output.status.success() {
+        return Err(format!("{cc} failed:\n{}", String::from_utf8_lossy(&output.stderr)));
+    }
+    Ok(())
 }
 
 /// `C:\a\b` → `/mnt/c/a/b` for passing paths across the WSL boundary.

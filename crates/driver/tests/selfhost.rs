@@ -11,7 +11,8 @@ use std::fs;
 use std::path::PathBuf;
 
 /// Source order: definitions before use.
-const SELFHOST_FILES: &[&str] = &["token.maca", "lexer.maca", "main.maca"];
+const SELFHOST_FILES: &[&str] =
+    &["token.maca", "ast.maca", "lexer.maca", "parser.maca", "main.maca"];
 
 fn selfhost_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost")
