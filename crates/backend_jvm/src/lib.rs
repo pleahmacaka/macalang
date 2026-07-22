@@ -243,7 +243,8 @@ fn jexpr(e: &Expr) -> String {
         }
         Expr::Call { callee, args } => jcall(callee, args),
         Expr::Field { base, name } => format!("{}.{name}", jexpr(base)),
-        Expr::Index { base, index } => format!("{}.get({})", jexpr(base), jexpr(index)),
+        // List.get needs an int index; Maca ints are Java longs, so narrow it
+        Expr::Index { base, index } => format!("{}.get((int)({}))", jexpr(base), jexpr(index)),
         Expr::Record(fields) | Expr::Ctor { fields, .. } => jctor(e, fields),
         Expr::List(es) => {
             format!("java.util.List.of({})", es.iter().map(jexpr).collect::<Vec<_>>().join(", "))
@@ -524,6 +525,14 @@ mod tests {
         let j = java("Status = Todo | Doing | Done\nVec2 = {\n    x: int\n    y: int\n}\n");
         assert!(j.contains("enum Status { Todo, Doing, Done }"), "{j}");
         assert!(j.contains("record Vec2(long x, long y)"), "{j}");
+    }
+
+    #[test]
+    fn index_narrows_to_int() {
+        // Java List.get takes an int; Maca ints are longs, so the subscript
+        // must narrow the index or javac rejects it.
+        let j = java("f(xs: int[]) -> int => xs[1]\n");
+        assert!(j.contains(".get((int)("), "index not narrowed to int:\n{j}");
     }
 
     #[test]
