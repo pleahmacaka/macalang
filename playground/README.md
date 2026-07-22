@@ -44,3 +44,11 @@ for editors like VS Code) and the lexer's keyword/type model.
 
 `maca_wasm.wasm` is a build artifact and is git-ignored — run `./build.sh`
 after changing the compiler.
+
+## Self-contained build
+
+`./build-artifact.sh` embeds the wasm as base64 into a single HTML file (the
+shareable playground). It is a build artifact, so it is written under the cache
+directory (`$XDG_CACHE_HOME/maca/playground/`, else `~/.cache/…`) — never into
+the repo — and stale builds there are pruned automatically. The script echoes
+the final path on its last line; pass `-o <path>` to override.

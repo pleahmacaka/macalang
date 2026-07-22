@@ -1,7 +1,15 @@
 /target
 
-# playground build artifact
+# generated dev-shell flake — regenerate locally with `maca dev` (source is dev.maca)
+/flake.nix
+
+# generated build artifacts (compiler/toolchain outputs never live in the repo)
 playground/maca_wasm.wasm
 playground/maca-playground.html
 playground/vendor/
 packages/macalang/maca_wasm.wasm
+
+# per-file build outputs from `maca build --target js|jvm|embedded` run in-tree
+*.js/
+*-jvm/
+*-fw/
