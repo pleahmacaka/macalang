@@ -21,12 +21,17 @@ bindir="$prefix/bin"
 command -v cargo >/dev/null || { echo "error: cargo not found — install Rust from https://rustup.rs"; exit 1; }
 command -v cc >/dev/null || echo "warning: no 'cc' on PATH — 'maca build/run' needs a C compiler"
 
-echo "building maca (release)…"
-cargo build --release -p maca-driver --manifest-path "$here/Cargo.toml"
+echo "building maca + maca-lsp (release)…"
+cargo build --release -p maca-driver -p maca-lsp --manifest-path "$here/Cargo.toml"
 
 mkdir -p "$bindir"
 install -m 0755 "$here/target/release/maca" "$bindir/maca"
 echo "installed maca → $bindir/maca"
+# the language server (used by the editor extensions) sits next to `maca`
+if [ -f "$here/target/release/maca-lsp" ]; then
+  install -m 0755 "$here/target/release/maca-lsp" "$bindir/maca-lsp"
+  echo "installed maca-lsp → $bindir/maca-lsp"
+fi
 
 case ":$PATH:" in
   *":$bindir:"*) : ;;

@@ -12,3 +12,9 @@ repository = "https://github.com/pleahmacaka/macalang"
 repository = "https://github.com/pleahmacaka/macalang"
 path = "editor/tree-sitter-maca"
 commit = "HEAD"
+
+# The Maca language server (crates/lsp → the `maca-lsp` binary). The extension's
+# Rust code (src/lib.rs) resolves it from the worktree PATH.
+[language_servers.maca-lsp]
+name = "Maca Language Server"
+languages = ["Maca"]

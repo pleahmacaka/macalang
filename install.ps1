@@ -27,13 +27,19 @@ if (-not (Get-Command cc    -ErrorAction SilentlyContinue) -and
     Write-Warning "no C compiler (clang/cl) on PATH - 'maca build/run' needs one"
 }
 
-Write-Host "building maca (release)..."
-cargo build --release -p maca-driver --manifest-path (Join-Path $here "Cargo.toml")
+Write-Host "building maca + maca-lsp (release)..."
+cargo build --release -p maca-driver -p maca-lsp --manifest-path (Join-Path $here "Cargo.toml")
 
 New-Item -ItemType Directory -Force -Path $bindir | Out-Null
 $exe = Join-Path $bindir "maca.exe"
 Copy-Item -Force (Join-Path $here "target\release\maca.exe") $exe
 Write-Host "installed maca -> $exe"
+# the language server (used by the editor extensions) sits next to maca.exe
+$lsp = Join-Path $here "target\release\maca-lsp.exe"
+if (Test-Path $lsp) {
+    Copy-Item -Force $lsp (Join-Path $bindir "maca-lsp.exe")
+    Write-Host "installed maca-lsp -> $(Join-Path $bindir 'maca-lsp.exe')"
+}
 
 $paths = ($env:PATH -split ';')
 if ($paths -notcontains $bindir) {

@@ -82,6 +82,7 @@ version = "0.1.0"
 dependencies = [
  "maca-core",
  "maca-parser",
+ "serde_json",
 ]
 
 [[package]]

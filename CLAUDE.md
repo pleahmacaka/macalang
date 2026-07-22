@@ -40,7 +40,7 @@ Virtual workspace; members are `crates/*`.
 | `maca-backend-js` | core IR → JS + reactive UI + Tailwind |
 | `maca-runtime` | Perceus RC + colorblind async (C runtime sources) |
 | `maca-options` | `options.json` → Maca option types |
-| `maca-lsp` | tower-lsp language server |
+| `maca-lsp` | language server: `lib.rs` (analysis fns) + `main.rs` (LSP stdio server) |
 | `maca-mcp` | Maca MCP server (LLM-native tools) |
 | `maca-driver` | the `maca` CLI |
 | `maca-backend-jvm` | core IR → Java source (JVM interop; Minecraft/Fabric) |

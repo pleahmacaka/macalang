@@ -38,6 +38,64 @@ pub fn hover(src: &str, byte_offset: usize) -> Option<String> {
     }
 }
 
+/// Whether a source should be checked in config (Nix) mode — heuristic: it
+/// imports nixpkgs or drives a top-level NixOS/home option namespace.
+pub fn is_config_source(src: &str) -> bool {
+    src.lines().any(|l| {
+        let t = l.trim();
+        t.starts_with("import nixpkgs")
+            || t.starts_with("system.")
+            || t.starts_with("services.")
+            || t.starts_with("networking.")
+            || t.starts_with("user.")
+            || t.starts_with("dev.")
+    })
+}
+
+/// LSP (0-based line, character) → byte offset into `src`. Character is treated
+/// as a UTF-8 column (exact for ASCII source, which Maca overwhelmingly is).
+pub fn position_to_offset(src: &str, line: usize, character: usize) -> usize {
+    let mut off = 0;
+    for (i, l) in src.split_inclusive('\n').enumerate() {
+        if i == line {
+            // clamp character to the line's content length (excl. newline)
+            let content = l.strip_suffix('\n').unwrap_or(l);
+            let col = character.min(content.len());
+            return off + col;
+        }
+        off += l.len();
+    }
+    off.min(src.len())
+}
+
+/// The identifier prefix immediately before `offset` (for completion).
+pub fn prefix_at(src: &str, offset: usize) -> String {
+    let bytes = src.as_bytes();
+    let mut start = offset.min(bytes.len());
+    let is_word = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'.';
+    while start > 0 && is_word(bytes[start - 1]) {
+        start -= 1;
+    }
+    src[start..offset.min(src.len())].to_string()
+}
+
+/// Program-mode completion: user-defined top-level function names plus the
+/// builtin type names, filtered by `prefix`.
+pub fn program_completions(src: &str, prefix: &str) -> Vec<String> {
+    let parsed = parse(src);
+    let mut names: Vec<String> = parsed
+        .module
+        .items
+        .iter()
+        .filter_map(|it| match it {
+            Stmt::Fn(f) => Some(f.name.clone()),
+            _ => None,
+        })
+        .collect();
+    names.extend(["int", "float", "str", "bool", "bytes"].iter().map(|s| s.to_string()));
+    names.into_iter().filter(|n| n.starts_with(prefix)).collect()
+}
+
 /// Config-mode completion: NixOS option namespaces matching `prefix`.
 pub fn config_completions(prefix: &str) -> Vec<String> {
     const ROOTS: &[&str] = &[

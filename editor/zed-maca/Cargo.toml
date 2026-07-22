@@ -1,0 +1,16 @@
+# Zed extension crate — compiled to wasm by Zed, NOT part of the main
+# `crates/*` workspace. The empty `[workspace]` table detaches it so a plain
+# `cargo build` at the repo root ignores it.
+[workspace]
+
+[package]
+name = "zed-maca"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+zed_extension_api = "0.1.0"
