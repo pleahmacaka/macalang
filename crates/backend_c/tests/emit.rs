@@ -120,3 +120,13 @@ fn match_guard_and_int_patterns() {
     // guarded matches fall through via goto
     assert!(body.contains("goto"), "no fall-through for guards:\n{body}");
 }
+
+#[test]
+fn string_literal_match_uses_str_eq() {
+    let body = func(
+        "route(cmd: str) -> int {\n    match cmd {\n        \"add\" => 1\n        _ => 0\n    }\n}\n",
+        "route",
+    );
+    assert!(body.contains("maca_str_eq"), "string pattern not compared:\n{body}");
+    assert!(body.contains("if ("), "first arm must be a real if, not else:\n{body}");
+}

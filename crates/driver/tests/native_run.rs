@@ -112,3 +112,19 @@ fn match_guards_run_natively() {
     let lines: Vec<&str> = stdout.lines().collect();
     assert_eq!(lines, vec!["negative", "zero", "small", "big", "two"], "stdout: {stdout}");
 }
+
+#[test]
+fn string_match_runs_natively() {
+    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-strmatch-test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("m.maca");
+    std::fs::write(&f, "route(c: str) -> int {\n    match c {\n        \"add\" => 1\n        \"del\" => 2\n        _ => 0\n    }\n}\n\nmain() -> int {\n    let a = route(\"add\")\n    let b = route(\"del\")\n    let z = route(\"x\")\n    info(\"{a} {b} {z}\")\n    0\n}\n").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_maca")).args(["run", &f.to_string_lossy()]).output().expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("1 2 0"), "stdout: {stdout}");
+}
