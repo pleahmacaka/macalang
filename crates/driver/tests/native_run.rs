@@ -158,3 +158,21 @@ fn payload_sums_run_natively() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_eq!(stdout.lines().collect::<Vec<_>>(), vec!["100", "12"], "stdout: {stdout}");
 }
+
+#[test]
+fn try_catches_failure_natively() {
+    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &example("catch.maca")])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // the failure is caught: execution continues and exits cleanly
+    assert!(stdout.contains("recovered"), "stdout: {stdout}");
+    assert_eq!(out.status.code(), Some(0), "try should catch and exit 0, got {:?}", out.status.code());
+    assert!(String::from_utf8_lossy(&out.stderr).is_empty(), "no error should be printed");
+}

@@ -366,7 +366,8 @@ impl Checker {
             }
             Expr::Try(x) => acc = self.eff(x).union(EffSet::of(EXN)),
             Expr::Fail(x) => acc = self.eff(x).union(EffSet::of(EXN)),
-            Expr::Reify(x) => acc = self.eff(x),
+            // `reify`/`try` catches failures, so it discharges the `exn` effect
+            Expr::Reify(x) => acc = EffSet(self.eff(x).0 & !EXN),
             Expr::Field { base, .. } => acc = self.eff(base),
             Expr::Binary { lhs, rhs, .. } => acc = self.eff(lhs).union(self.eff(rhs)),
             Expr::Unary { expr, .. } => acc = self.eff(expr),

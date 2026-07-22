@@ -156,3 +156,11 @@ fn payload_sum_is_a_tagged_union() {
     assert!(out.contains(".tag == Shape_tag_Circle"), "no tag test:\n{out}");
     assert!(out.contains(".as.Circle._0"), "no payload extraction:\n{out}");
 }
+
+#[test]
+fn reify_installs_a_handler() {
+    let out = c("boom() -> int {\n    fail \"x\"\n    0\n}\nmain() -> int {\n    try boom()\n    0\n}\n");
+    assert!(out.contains("maca_try_push("), "no handler push:\n{out}");
+    assert!(out.contains("setjmp("), "no setjmp:\n{out}");
+    assert!(out.contains("maca_last_fail()"), "no caught-message read:\n{out}");
+}

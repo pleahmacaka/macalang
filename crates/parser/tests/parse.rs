@@ -158,3 +158,8 @@ fn roundtrip_or_patterns() {
 fn roundtrip_payload_sum() {
     roundtrip("payload_sum.maca");
 }
+
+#[test]
+fn roundtrip_catch() {
+    roundtrip("catch.maca");
+}
