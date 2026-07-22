@@ -1,0 +1,10 @@
+// Ackermann(3, n) — deep non-primitive recursion.
+ack(m: int, n: int) -> int =>
+    m == 0
+        ? n + 1
+        : (n == 0 ? ack(m - 1, 1) : ack(m - 1, ack(m, n - 1)))
+
+main() -> int {
+    info("{ack(3, 10)}")
+    0
+}
