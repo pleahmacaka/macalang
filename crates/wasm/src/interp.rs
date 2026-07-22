@@ -9,6 +9,7 @@
 //! lowering), so `let q = p; q.x = 1` never disturbs `p`.
 
 use maca_parser::ast::*;
+use maca_profile::FnCost;
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
@@ -42,7 +43,9 @@ enum Signal {
 type Eval = Result<Value, Signal>;
 
 pub struct Profile {
-    pub calls: Vec<(String, u64)>,
+    /// the flame graph, rendered by the shared `maca-profile` renderer (the same
+    /// one `maca profile` uses natively; here fed by interpreter step counts).
+    pub flame_svg: String,
     pub total_calls: u64,
     pub max_depth: u64,
     pub steps: u64,
@@ -80,14 +83,26 @@ pub fn run(module: &Module) -> RunResult {
         },
     }
 
-    let mut calls: Vec<(String, u64)> = it.call_counts.into_iter().collect();
-    calls.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    // assemble the shared cost model: self cost per function + inclusive cost
+    // per call edge, then render the same flame graph the native profiler draws.
+    let mut fns: HashMap<String, FnCost> = HashMap::new();
+    for (name, self_c) in &it.self_steps {
+        fns.entry(name.clone()).or_default().self_cost = *self_c;
+    }
+    for (caller, edges) in &it.edges {
+        let fc = fns.entry(caller.clone()).or_default();
+        for (callee, cost) in edges {
+            fc.calls.insert(callee.clone(), *cost);
+        }
+    }
+    let flame_svg = maca_profile::flamegraph_svg_from(&fns, "steps");
+
     RunResult {
         output: it.out,
         error,
         exit,
         profile: Profile {
-            calls,
+            flame_svg,
             total_calls: it.total_calls,
             max_depth: it.max_depth,
             steps: it.steps,
@@ -101,10 +116,14 @@ struct Interp<'a> {
     /// variant name → arity (0 for a nullary variant like `Nil`)
     variants: HashMap<String, usize>,
     out: String,
-    call_counts: HashMap<String, u64>,
     total_calls: u64,
     max_depth: u64,
     steps: u64,
+    // profiling: an active-frame stack (name + self-step counter), plus the
+    // accumulated self cost per function and inclusive cost per call edge.
+    stack: Vec<(String, u64)>,
+    self_steps: HashMap<String, u64>,
+    edges: HashMap<String, HashMap<String, u64>>,
 }
 
 type Scope = Vec<(String, Value)>;
@@ -130,11 +149,25 @@ impl<'a> Interp<'a> {
                 _ => {}
             }
         }
-        Interp { fns, variants, out: String::new(), call_counts: HashMap::new(), total_calls: 0, max_depth: 0, steps: 0 }
+        Interp {
+            fns,
+            variants,
+            out: String::new(),
+            total_calls: 0,
+            max_depth: 0,
+            steps: 0,
+            stack: Vec::new(),
+            self_steps: HashMap::new(),
+            edges: HashMap::new(),
+        }
     }
 
     fn tick(&mut self) -> Result<(), Signal> {
         self.steps += 1;
+        // attribute this step to the function currently executing (self cost)
+        if let Some(top) = self.stack.last_mut() {
+            top.1 += 1;
+        }
         if self.steps >= STEP_LIMIT {
             return Err(Signal::Limit("execution step limit reached — possible infinite loop".into()));
         }
@@ -149,17 +182,28 @@ impl<'a> Interp<'a> {
         if depth > self.max_depth {
             self.max_depth = depth;
         }
-        *self.call_counts.entry(f.name.clone()).or_insert(0) += 1;
 
         let mut scope: Scope = Vec::new();
         for (p, v) in f.params.iter().zip(args) {
             scope.push((p.name.clone(), v));
         }
-        match &f.body {
+        // profiling: push a frame, run, then fold its self cost and the
+        // inclusive cost of this activation onto the caller's call edge.
+        let before = self.steps;
+        self.stack.push((f.name.clone(), 0));
+        let result = match &f.body {
             Some(FnBody::Expr(e)) => self.eval(e, &mut scope, depth),
             Some(FnBody::Block(stmts)) => self.block(stmts, &mut scope, depth),
             None => Ok(Value::Unit),
+        };
+        let self_c = self.stack.pop().map(|(_, c)| c).unwrap_or(0);
+        *self.self_steps.entry(f.name.clone()).or_default() += self_c;
+        let incl = self.steps - before;
+        if let Some((caller, _)) = self.stack.last() {
+            let caller = caller.clone();
+            *self.edges.entry(caller).or_default().entry(f.name.clone()).or_default() += incl;
         }
+        result
     }
 
     /// Evaluate a block; its value is the last expression (or Unit).

@@ -1,26 +1,33 @@
-//! `maca profile` — run a program under Callgrind and render a flame graph SVG.
+//! Shared flame-graph renderer for Maca profiles.
 //!
-//! Callgrind records the call graph with per-call inclusive costs (instruction
-//! reads, `Ir`). We parse that, reconstruct a call tree rooted at `main`, and
-//! draw a classic flame graph — each frame's width is its share of `Ir`, depth
-//! is call nesting. Self-recursive frames (e.g. `fib`) are collapsed so the
-//! chart stays readable.
+//! `maca profile` records a program's call graph with Callgrind (per-call
+//! inclusive instruction reads, `Ir`) and renders a classic flame graph — each
+//! frame's width is its share of the cost, depth is call nesting, and
+//! self-recursive frames (e.g. `fib`) are collapsed so the chart stays readable.
+//!
+//! The renderer is factored so the *same* flame graph is produced from any cost
+//! model, not just Callgrind: the browser playground drives it from an
+//! interpreter's per-function step counts (see `crates/wasm`). Native passes
+//! Callgrind `Ir`; the playground passes eval `steps` — same picture, different
+//! unit label.
 
 use std::collections::HashMap;
 
-/// One function's cost profile from a Callgrind dump.
+/// One function's cost profile: its own cost plus the inclusive cost of each
+/// call it makes (`callee -> inclusive cost`). This is the model both the
+/// Callgrind parser and the interpreter populate.
 #[derive(Default, Clone)]
-struct FnCost {
-    self_ir: u64,
-    /// callee -> inclusive Ir attributed to calls into it from this function
-    calls: HashMap<String, u64>,
+pub struct FnCost {
+    pub self_cost: u64,
+    /// callee -> inclusive cost attributed to calls into it from this function
+    pub calls: HashMap<String, u64>,
 }
 
-/// Parse a `callgrind.out` file. Returns (per-function costs, total Ir).
+/// Parse a `callgrind.out` file. Returns (per-function costs, total).
 ///
 /// Handles Callgrind name compression: `fn=(12) name` defines id 12 = name,
 /// and a later `fn=(12)` refers back to it.
-fn parse_callgrind(text: &str) -> (HashMap<String, FnCost>, u64) {
+pub fn parse_callgrind(text: &str) -> (HashMap<String, FnCost>, u64) {
     let mut fns: HashMap<String, FnCost> = HashMap::new();
     let mut names: HashMap<String, String> = HashMap::new(); // compression id -> name
     let mut cur: Option<String> = None;
@@ -44,7 +51,7 @@ fn parse_callgrind(text: &str) -> (HashMap<String, FnCost>, u64) {
             if let Some(callee) = pending_callee.take() {
                 *fns.get_mut(f).unwrap().calls.entry(callee).or_default() += ir;
             } else {
-                fns.get_mut(f).unwrap().self_ir += ir;
+                fns.get_mut(f).unwrap().self_cost += ir;
                 total += ir;
             }
         }
@@ -78,27 +85,36 @@ struct Frame {
     children: Vec<Frame>,
 }
 
-/// Inclusive cost = a function's own Ir plus the inclusive cost of every call
-/// it makes (call edges already carry the callee's inclusive Ir).
-fn inclusive(name: &str, fns: &HashMap<String, FnCost>) -> u64 {
+/// Inclusive cost = a function's own cost plus the inclusive cost of every call
+/// it makes (call edges already carry the callee's inclusive cost).
+pub fn inclusive(name: &str, fns: &HashMap<String, FnCost>) -> u64 {
     let Some(fc) = fns.get(name) else { return 0 };
-    fc.self_ir + fc.calls.values().sum::<u64>()
+    fc.self_cost + fc.calls.values().sum::<u64>()
 }
 
 fn build(name: &str, value: u64, depth: usize, x: u64, fns: &HashMap<String, FnCost>, path: &mut Vec<String>) -> Frame {
     let mut children = Vec::new();
-    // avoid infinite recursion: collapse a function that already appears on the path
-    if !path.contains(&name.to_string()) && depth < 40 {
+    if depth < 40 {
         path.push(name.to_string());
         if let Some(fc) = fns.get(name) {
             let mut kids: Vec<(&String, &u64)> = fc.calls.iter().collect();
-            kids.sort_by(|a, b| b.1.cmp(a.1));
+            kids.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
             let mut cx = x;
             for (callee, ir) in kids {
                 if *ir == 0 {
                     continue;
                 }
-                let cv = *ir;
+                // collapse recursion: a callee already on the call path would
+                // otherwise be drawn with its summed-over-all-frames inclusive
+                // cost, which can exceed the parent's width. Skip it.
+                if path.contains(callee) {
+                    continue;
+                }
+                // a child can't be wider than its parent's remaining span
+                let cv = (*ir).min(value.saturating_sub(cx.saturating_sub(x)));
+                if cv == 0 {
+                    continue;
+                }
                 children.push(build(callee, cv, depth + 1, cx, fns, path));
                 cx += cv;
             }
@@ -115,18 +131,23 @@ fn flatten<'a>(f: &'a Frame, out: &mut Vec<&'a Frame>) {
     }
 }
 
-/// Render a flame graph SVG for the program at `binary` using Callgrind.
+/// Render a flame graph SVG for a Callgrind dump.
 pub fn flamegraph_svg(cg_text: &str) -> String {
     let (fns, _total) = parse_callgrind(cg_text);
+    flamegraph_svg_from(&fns, "Ir")
+}
 
-    // root: prefer `main`, else the costliest function
+/// Render a flame graph SVG from any cost model (`unit` labels the metric,
+/// e.g. `Ir` for Callgrind, `steps` for the interpreter). Rooted at `main`, or
+/// the costliest function when there is no `main`.
+pub fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String {
     let root_name = if fns.contains_key("main") {
         "main".to_string()
     } else {
-        fns.iter().max_by_key(|(_, c)| c.self_ir).map(|(n, _)| n.clone()).unwrap_or_default()
+        fns.iter().max_by_key(|(_, c)| c.self_cost).map(|(n, _)| n.clone()).unwrap_or_default()
     };
-    let root_val = inclusive(&root_name, &fns).max(1);
-    let root = build(&root_name, root_val, 0, 0, &fns, &mut Vec::new());
+    let root_val = inclusive(&root_name, fns).max(1);
+    let root = build(&root_name, root_val, 0, 0, fns, &mut Vec::new());
 
     let mut frames = Vec::new();
     flatten(&root, &mut frames);
@@ -140,11 +161,12 @@ pub fn flamegraph_svg(cg_text: &str) -> String {
     let mut svg = String::new();
     svg.push_str(&format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" \
+         viewBox=\"0 0 {width:.0} {height:.0}\" \
          font-family=\"ui-monospace, monospace\" font-size=\"11\">\n"
     ));
     svg.push_str(&format!(
         "<rect width=\"{width:.0}\" height=\"{height:.0}\" fill=\"#1b1a24\"/>\n\
-         <text x=\"8\" y=\"16\" fill=\"#e6e3f0\" font-size=\"13\">maca flame graph — {} samples (Ir)</text>\n",
+         <text x=\"8\" y=\"16\" fill=\"#e6e3f0\" font-size=\"13\">maca flame graph — {} samples ({unit})</text>\n",
         root_val
     ));
     for (i, f) in frames.iter().enumerate() {
@@ -166,7 +188,7 @@ pub fn flamegraph_svg(cg_text: &str) -> String {
             String::new()
         };
         svg.push_str(&format!(
-            "<g><title>{} — {} Ir ({:.1}%)</title>\
+            "<g><title>{} — {} {unit} ({:.1}%)</title>\
              <rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"1\" \
              fill=\"hsl({hue},55%,62%)\" stroke=\"#1b1a24\" stroke-width=\"0.5\"/>{label}</g>\n",
             xml_escape(&f.name),
@@ -192,6 +214,21 @@ fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
+/// A compact text profile (top functions by self cost) for stdout.
+pub fn text_profile(cg_text: &str) -> String {
+    let (fns, total) = parse_callgrind(cg_text);
+    let mut rows: Vec<(&String, u64)> = fns.iter().map(|(n, c)| (n, c.self_cost)).collect();
+    rows.sort_by(|a, b| b.1.cmp(&a.1));
+    let mut out = String::from("  self%     Ir  function\n");
+    for (name, ir) in rows.iter().take(12) {
+        if *ir == 0 {
+            continue;
+        }
+        out.push_str(&format!("  {:5.1}  {:>9}  {}\n", *ir as f64 / total as f64 * 100.0, ir, name));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,9 +248,9 @@ fn=(2) fib
     #[test]
     fn parses_compressed_names_and_costs() {
         let (fns, total) = parse_callgrind(SAMPLE);
-        assert_eq!(fns["main"].self_ir, 5);
+        assert_eq!(fns["main"].self_cost, 5);
         assert_eq!(fns["main"].calls["fib"], 100);
-        assert_eq!(fns["fib"].self_ir, 100);
+        assert_eq!(fns["fib"].self_cost, 100);
         assert_eq!(total, 105);
         assert_eq!(inclusive("main", &fns), 105);
     }
@@ -226,19 +263,14 @@ fn=(2) fib
         assert!(svg.contains("main"));
         assert!(svg.contains("fib"));
     }
-}
 
-/// A compact text profile (top functions by self Ir) for stdout.
-pub fn text_profile(cg_text: &str) -> String {
-    let (fns, total) = parse_callgrind(cg_text);
-    let mut rows: Vec<(&String, u64)> = fns.iter().map(|(n, c)| (n, c.self_ir)).collect();
-    rows.sort_by(|a, b| b.1.cmp(&a.1));
-    let mut out = String::from("  self%     Ir  function\n");
-    for (name, ir) in rows.iter().take(12) {
-        if *ir == 0 {
-            continue;
-        }
-        out.push_str(&format!("  {:5.1}  {:>9}  {}\n", *ir as f64 / total as f64 * 100.0, ir, name));
+    #[test]
+    fn flamegraph_from_costs_uses_unit_label() {
+        let mut fns = HashMap::new();
+        fns.insert("main".to_string(), FnCost { self_cost: 5, calls: HashMap::from([("fib".to_string(), 100)]) });
+        fns.insert("fib".to_string(), FnCost { self_cost: 100, calls: HashMap::new() });
+        let svg = flamegraph_svg_from(&fns, "steps");
+        assert!(svg.contains("samples (steps)"), "{svg}");
+        assert!(svg.contains("main") && svg.contains("fib"));
     }
-    out
 }

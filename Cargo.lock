@@ -69,6 +69,7 @@ dependencies = [
  "maca-backend-nix",
  "maca-core",
  "maca-parser",
+ "maca-profile",
  "maca-runtime",
 ]
 
@@ -106,6 +107,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "maca-profile"
+version = "0.1.0"
+
+[[package]]
 name = "maca-runtime"
 version = "0.1.0"
 
@@ -118,6 +123,7 @@ dependencies = [
  "maca-backend-nix",
  "maca-core",
  "maca-parser",
+ "maca-profile",
 ]
 
 [[package]]

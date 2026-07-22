@@ -183,18 +183,9 @@ fn compile_json(src: &str, mode: u32) -> String {
         out.push_str(&r.profile.steps.to_string());
         out.push_str(",\"truncated\":");
         out.push_str(if r.profile.truncated { "true" } else { "false" });
-        out.push_str(",\"functions\":[");
-        for (i, (name, calls)) in r.profile.calls.iter().take(12).enumerate() {
-            if i > 0 {
-                out.push(',');
-            }
-            out.push_str("{\"name\":");
-            push_json_str(&mut out, name);
-            out.push_str(",\"calls\":");
-            out.push_str(&calls.to_string());
-            out.push('}');
-        }
-        out.push_str("]}}");
+        out.push_str(",\"flameSvg\":");
+        push_json_str(&mut out, &r.profile.flame_svg);
+        out.push_str("}}");
     }
 
     out.push('}');
@@ -252,12 +243,14 @@ mod tests {
     }
 
     #[test]
-    fn profile_counts_function_calls() {
-        // fib(10): fib is called 177 times
+    fn profile_renders_flame_graph() {
         let json =
             compile_json("fib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\nmain() -> int {\n    info(\"{fib(10)}\")\n    0\n}\n", 0);
         assert!(json.contains("\"output\":\"55\\n\""), "fib(10) wrong: {json}");
-        assert!(json.contains("\"name\":\"fib\",\"calls\":177"), "fib call count wrong: {json}");
+        // the shared flame-graph renderer produces an SVG rooted at main, with fib
+        assert!(json.contains("\"flameSvg\":\"<svg"), "no flame svg: {json}");
+        assert!(json.contains("flame graph"), "not the shared renderer: {json}");
+        assert!(json.contains("fib"), "fib frame missing: {json}");
         assert!(json.contains("\"maxDepth\":"), "no depth: {json}");
     }
 

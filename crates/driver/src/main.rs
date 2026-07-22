@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-mod profile;
+use maca_profile as profile;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

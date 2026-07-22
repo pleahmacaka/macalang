@@ -18,3 +18,4 @@ maca-backend-js = { path = "../backend_js" }
 maca-backend-jvm = { path = "../backend_jvm" }
 maca-backend-embedded = { path = "../backend_embedded" }
 maca-runtime = { path = "../runtime" }
+maca-profile = { path = "../profile" }

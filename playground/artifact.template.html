@@ -110,19 +110,9 @@
   .prof-head { display: flex; align-items: baseline; gap: 0.7rem; margin-bottom: 0.55rem; }
   .prof h3 { margin: 0; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
   .prof-sum { font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-  /* summary stat tiles */
-  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.55rem; margin-bottom: 0.7rem; }
-  .stat { background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 0.45rem 0.6rem; }
-  .stat .n { font-family: ui-monospace, monospace; font-size: 1.02rem; font-weight: 650; color: var(--fg); font-variant-numeric: tabular-nums; line-height: 1.2; }
-  .stat .n.warn { color: var(--warn); }
-  .stat .l { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-top: 0.1rem; }
-  /* per-function call-count bars */
-  .prof-fns { display: flex; flex-direction: column; gap: 0.28rem; }
-  .fn-row { display: grid; grid-template-columns: minmax(64px, 30%) 1fr auto; align-items: center; gap: 0.5rem; font-size: 0.72rem; }
-  .fn-row .fn-name { font-family: ui-monospace, monospace; color: var(--fn); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .fn-track { height: 11px; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
-  .fn-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
-  .fn-row .fn-val { font-family: ui-monospace, monospace; color: var(--fg); font-variant-numeric: tabular-nums; min-width: 62px; text-align: right; }
+  /* flame graph — the native profiler's SVG, scaled to the panel width */
+  .flame { border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: #1b1a24; }
+  .flame svg { display: block; width: 100%; height: auto; }
   .prof-empty { font-size: 0.75rem; color: var(--muted); }
   .prof-note { font-size: 0.68rem; color: var(--warn); margin-top: 0.5rem; }
 
@@ -133,7 +123,6 @@
   @media (max-width: 860px) {
     main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
     .editor-pane { border-right: none; border-bottom: 1px solid var(--border); }
-    .stat-row { grid-template-columns: repeat(2, 1fr); }
   }
 </style>
 
@@ -374,42 +363,21 @@ function renderProfile(r) {
     body.innerHTML = `<div class="prof-empty">The profiler runs your program and reports where the work went — call counts per function, recursion depth, and total steps. Use “program” mode and Run.</div>`;
     return;
   }
-  const lines = (r.run.output.match(/\n/g) || []).length;
-  sum.textContent = `${lastMs.toFixed(lastMs < 10 ? 2 : 0)} ms · ${fmtN(p.steps)} steps`;
+  sum.textContent = `${lastMs.toFixed(lastMs < 10 ? 2 : 0)} ms · ${fmtN(p.steps)} steps · ${fmtN(p.totalCalls)} calls · depth ${fmtN(p.maxDepth)}`;
 
-  // summary stat tiles
-  const tiles = [
-    ["calls", fmtN(p.totalCalls), false],
-    ["max depth", fmtN(p.maxDepth), p.maxDepth >= 4000],
-    ["eval steps", fmtN(p.steps), p.truncated],
-    ["output lines", fmtN(lines), false],
-  ];
-  const row = document.createElement("div"); row.className = "stat-row";
-  for (const [l, n, warn] of tiles) {
-    const s = document.createElement("div"); s.className = "stat";
-    s.innerHTML = `<div class="n${warn ? " warn" : ""}">${n}</div><div class="l">${l}</div>`;
-    row.appendChild(s);
-  }
-  body.appendChild(row);
-
-  // per-function call counts
-  const fns = p.functions || [];
-  if (fns.length) {
-    const max = Math.max(...fns.map(f => f.calls), 1);
-    const wrap = document.createElement("div"); wrap.className = "prof-fns";
-    for (const f of fns) {
-      const pct = Math.max(3, (f.calls / max) * 100);
-      const el = document.createElement("div"); el.className = "fn-row";
-      el.innerHTML = `<span class="fn-name" title="${f.name}">${f.name}</span>`
-        + `<span class="fn-track"><span class="fn-fill" style="width:${pct}%"></span></span>`
-        + `<span class="fn-val">${fmtN(f.calls)}</span>`;
-      wrap.appendChild(el);
-    }
-    body.appendChild(wrap);
+  // flame graph — the same SVG the native `maca profile` renders, here driven
+  // by interpreter step counts. Frames: width = share of steps, depth = call
+  // nesting; hover a frame for its exact cost.
+  if (p.flameSvg) {
+    const flame = document.createElement("div"); flame.className = "flame";
+    flame.innerHTML = p.flameSvg;
+    body.appendChild(flame);
+  } else {
+    body.innerHTML = `<div class="prof-empty">No call activity to chart.</div>`;
   }
   if (p.truncated) {
     const note = document.createElement("div"); note.className = "prof-note";
-    note.textContent = "⚠ stopped at the step limit — the profile is partial (possible infinite loop).";
+    note.textContent = "⚠ stopped at the step limit — the flame graph is partial (possible infinite loop).";
     body.appendChild(note);
   }
 }
