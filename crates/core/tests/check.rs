@@ -101,3 +101,8 @@ fn loops_ok() {
 fn while_cond_must_be_bool() {
     assert_has("examples/bad/while_cond.maca", Mode::Program, DiagKind::TypeMismatch);
 }
+
+#[test]
+fn payload_sum_ok() {
+    assert_clean("examples/payload_sum.maca", Mode::Program);
+}

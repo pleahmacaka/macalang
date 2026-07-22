@@ -143,3 +143,18 @@ fn or_patterns_run_natively() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_eq!(stdout.lines().collect::<Vec<_>>(), vec!["warm", "cold", "low", "high"], "stdout: {stdout}");
 }
+
+#[test]
+fn payload_sums_run_natively() {
+    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &example("payload_sum.maca")])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(stdout.lines().collect::<Vec<_>>(), vec!["100", "12"], "stdout: {stdout}");
+}
