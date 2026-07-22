@@ -52,6 +52,12 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - Operator overloading (no new syntax): on a user type, an operator resolves to
   a same-named function — `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
   `concat`, etc. Primitives keep the native operator. (`examples/operators.maca`.)
+- JVM interop (`maca build --target jvm`): Maca → Java source. `import java
+  "pkg.Class"` → a Java import; `Name : Iface = { m = () => … }` → a class
+  implementing `Iface` (a Fabric `ModInitializer`); a capitalized call
+  `Pos(x,y,z)` → `new Pos(...)`; `obj.m(a)`/`Blocks.STONE` pass through. An
+  unknown capitalized annotation is a foreign type → gradual `any`. Enables
+  Minecraft (Fabric) modding in Maca — `apps/mcmod`.
 - Paths are literals: `/tmp` `./x` `../x` `~/x`, joined with `p / "seg"`.
 - SIMD vectors are first-class value types: `f32x8`, `i32x4`, … (native only).
 - UI: elements are functions (`div(class=..., ...children)`); Svelte-style

@@ -23,6 +23,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "maca-backend-jvm"
+version = "0.1.0"
+dependencies = [
+ "maca-parser",
+]
+
+[[package]]
 name = "maca-backend-llvm"
 version = "0.1.0"
 dependencies = [
@@ -49,6 +56,7 @@ version = "0.1.0"
 dependencies = [
  "maca-backend-c",
  "maca-backend-js",
+ "maca-backend-jvm",
  "maca-backend-llvm",
  "maca-backend-nix",
  "maca-core",

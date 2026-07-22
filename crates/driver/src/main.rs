@@ -380,11 +380,13 @@ fn cmd_build(args: &[String]) {
     let mut src = None;
     let mut out = None;
     let mut target = "native".to_string();
+    let mut classpath = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "-o" => out = it.next().map(PathBuf::from),
             "--target" => target = it.next().cloned().unwrap_or_else(|| "native".into()),
+            "--cp" | "--classpath" => classpath = it.next().cloned(),
             _ => src = Some(PathBuf::from(a)),
         }
     }
@@ -403,6 +405,13 @@ fn cmd_build(args: &[String]) {
         let out = out.unwrap_or_else(|| PathBuf::from(format!("{}-web", stem(&src))));
         match build_js(&src, &out) {
             Ok(()) => println!("built {}/", out.display()),
+            Err(e) => die(&e),
+        }
+        return;
+    }
+    if target == "jvm" || target == "java" {
+        match build_jvm(&src, out.as_deref(), classpath.as_deref()) {
+            Ok(msg) => println!("{msg}"),
             Err(e) => die(&e),
         }
         return;
@@ -429,6 +438,63 @@ fn build_nix(src: &Path, out: &Path) -> Result<(), String> {
     let nix = maca_backend_nix::emit(&parsed.module);
     std::fs::write(out, nix).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// JVM target → Java source (and `javac` to `.class` when a JDK is present).
+/// The class name is the file stem, capitalized. `out` names the output dir.
+fn build_jvm(src: &Path, out: Option<&Path>, classpath: Option<&str>) -> Result<String, String> {
+    let source = std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let parsed = maca_parser::parse(&source);
+    if !parsed.errors.is_empty() {
+        return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
+    }
+    let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
+    if !diags.is_empty() {
+        let msgs: Vec<_> = diags.iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect();
+        return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
+    }
+    let class = capitalize(&stem(src));
+    let java = maca_backend_jvm::emit(&parsed.module, &class, None);
+
+    let out_dir = out.map(PathBuf::from).unwrap_or_else(|| PathBuf::from(format!("{}-jvm", stem(src))));
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    let java_path = out_dir.join(format!("{class}.java"));
+    std::fs::write(&java_path, &java).map_err(|e| e.to_string())?;
+
+    if have("javac") {
+        let mut cmd = Command::new("javac");
+        cmd.arg(&java_path).arg("-d").arg(&out_dir);
+        if let Some(cp) = classpath {
+            cmd.arg("-cp").arg(cp);
+        }
+        let o = cmd.output().map_err(|e| format!("javac: {e}"))?;
+        if !o.status.success() {
+            // Interop code often needs external jars (e.g. the Minecraft/Fabric
+            // API) that aren't on the CLI classpath — keep the emitted .java and
+            // warn rather than fail; a Gradle build compiles it with its deps.
+            return Ok(format!(
+                "emitted {} (javac could not resolve all types — pass --cp, or build via Gradle):\n{}",
+                java_path.display(),
+                String::from_utf8_lossy(&o.stderr).trim()
+            ));
+        }
+        Ok(format!(
+            "built {} and compiled to {}/{class}.class\n  run: java -cp {} {class}",
+            java_path.display(),
+            out_dir.display(),
+            out_dir.display()
+        ))
+    } else {
+        Ok(format!("emitted {} (no javac on PATH to compile)", java_path.display()))
+    }
+}
+
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_ascii_uppercase().to_string() + c.as_str(),
+        None => "Main".into(),
+    }
 }
 
 /// UI mode → JS + HTML + CSS in an output directory.

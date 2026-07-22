@@ -259,10 +259,28 @@ impl Checker {
             FnBody::Expr(e) => self.infer(&mut env, e),
         };
         if let Some(ret) = &f.ret {
-            let rt = ast_ty(ret);
+            let rt = self.relax_ann(ast_ty(ret));
             if let Err(e) = self.inf.unify(&bty, &rt) {
                 self.diag(DiagKind::TypeMismatch, format!("in `{}`: {e}", f.name));
             }
+        }
+    }
+
+    /// Relax an *annotation* type: a bare, capitalized nominal that isn't a
+    /// declared record/sum is a foreign / interop type (a Java interface, a Nix
+    /// value, …) — treat it gradually as `any` rather than a strict nominal, so
+    /// `Mod : ModInitializer = { … }` type-checks.
+    fn relax_ann(&self, t: Ty) -> Ty {
+        match &t {
+            Ty::Con(n, args)
+                if args.is_empty()
+                    && !self.records.contains_key(n)
+                    && !self.sums.contains_key(n)
+                    && n.chars().next().is_some_and(|c| c.is_ascii_uppercase()) =>
+            {
+                Ty::Any
+            }
+            _ => t,
         }
     }
 
@@ -275,7 +293,7 @@ impl Checker {
         let mut env: Env = Vec::new();
         let vty = self.infer(&mut env, &b.value);
         if let Some(t) = b.tys.first() {
-            let at = ast_ty(t);
+            let at = self.relax_ann(ast_ty(t));
             if let Err(e) = self.inf.unify(&vty, &at) {
                 let name = target_name(&b.target);
                 self.diag(DiagKind::TypeMismatch, format!("in binding `{name}`: {e}"));
@@ -413,7 +431,7 @@ impl Checker {
                 Stmt::Bind(b) => {
                     let vty = self.infer(env, &b.value);
                     if let Some(t) = b.tys.first() {
-                        let at = ast_ty(t);
+                        let at = self.relax_ann(ast_ty(t));
                         if let Err(e) = self.inf.unify(&vty, &at) {
                             let name = target_name(&b.target);
                             self.diag(DiagKind::TypeMismatch, format!("in `{name}`: {e}"));

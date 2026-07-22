@@ -43,6 +43,7 @@ Virtual workspace; members are `crates/*`.
 | `maca-lsp` | tower-lsp language server |
 | `maca-mcp` | Maca MCP server (LLM-native tools) |
 | `maca-driver` | the `maca` CLI |
+| `maca-backend-jvm` | core IR → Java source (JVM interop; Minecraft/Fabric) |
 | `maca-wasm` | `wasm32` front-end for the browser playground (no wasm-bindgen) |
 
 Non-crate dirs: `std/` (Maca-source stdlib), `examples/` (golden `.maca`
