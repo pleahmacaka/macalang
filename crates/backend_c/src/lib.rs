@@ -886,6 +886,7 @@ impl<'a> Cx<'a> {
             Pattern::Wild => ("1".into(), vec![]),
             // literal patterns → an equality test against the scrutinee
             Pattern::Int(n) => (format!("{sv} == {n}"), vec![]),
+            Pattern::Float(f) => (format!("{sv} == {f}"), vec![]),
             Pattern::Bool(b) => (format!("{sv} == {}", if *b { "true" } else { "false" }), vec![]),
             // a string literal against a string scrutinee (vs. the list-of-chars
             // case handled below for array scrutinees)
@@ -946,6 +947,24 @@ impl<'a> Cx<'a> {
                     }
                 }
                 (conds.join(" && "), binds)
+            }
+            // `A | B => …` — any alternative matches; bindings come from the
+            // first alternative (mirrors the checker's bind_pattern).
+            Pattern::Or(alts) => {
+                let mut conds = Vec::new();
+                let mut binds = Vec::new();
+                for (i, a) in alts.iter().enumerate() {
+                    let (c, b) = self.pattern_cond(sv, sty, elem, a);
+                    conds.push(c);
+                    if i == 0 {
+                        binds = b;
+                    }
+                }
+                if conds.is_empty() {
+                    ("1".into(), binds)
+                } else {
+                    (format!("({})", conds.join(" || ")), binds)
+                }
             }
             _ => ("1".into(), vec![]),
         }
