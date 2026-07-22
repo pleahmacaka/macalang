@@ -1,0 +1,28 @@
+{
+  "name": "macalang",
+  "version": "0.1.0",
+  "description": "Compile and import Maca (.maca) from JavaScript — the Maca compiler front-end as WebAssembly.",
+  "type": "module",
+  "main": "./index.js",
+  "module": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./bun": "./bun-plugin.js"
+  },
+  "files": [
+    "index.js",
+    "bun-plugin.js",
+    "maca_wasm.wasm",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "bash ./build.sh",
+    "test": "node ./test.mjs"
+  },
+  "keywords": ["maca", "macalang", "compiler", "wasm", "language", "bun"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pleahmacaka/macalang"
+  }
+}

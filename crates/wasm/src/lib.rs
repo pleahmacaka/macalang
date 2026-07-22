@@ -119,6 +119,7 @@ fn compile_json(src: &str, mode: u32) -> String {
     out.push(']');
 
     // backend outputs (only when the source parses)
+    let mut js_exports: Vec<String> = Vec::new();
     out.push_str(",\"outputs\":{");
     if parsed.errors.is_empty() {
         match mode_of(mode) {
@@ -130,6 +131,7 @@ fn compile_json(src: &str, mode: u32) -> String {
                 out.push_str("\"C\":");
                 push_json_str(&mut out, &maca_backend_c::emit(&parsed.module));
                 let js = maca_backend_js::emit(&parsed.module);
+                js_exports = js.exports.clone();
                 out.push_str(",\"JS\":");
                 push_json_str(&mut out, &js.js);
                 if !js.html.is_empty() {
@@ -144,6 +146,16 @@ fn compile_json(src: &str, mode: u32) -> String {
         }
     }
     out.push('}');
+
+    // callable function names in the emitted JS (for `import` interop)
+    out.push_str(",\"jsExports\":[");
+    for (i, n) in js_exports.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        push_json_str(&mut out, n);
+    }
+    out.push(']');
 
     out.push('}');
     out
