@@ -1273,6 +1273,9 @@ impl<'a> Cx<'a> {
             // the caught message (a `str`), or "" on success. setjmp must be
             // inline (not wrapped in a helper), so a GNU statement-expression.
             Expr::Lambda { params, body } => self.emit_lambda(env, params, body),
+            // `base with { f = v, … }` — functional record update: copy the base
+            // struct (a value type) and overwrite the named fields.
+            Expr::With { base, fields } => self.with_update(env, base, fields),
             Expr::Reify(x) => {
                 let jb = self.fresh();
                 let r = self.fresh();
@@ -1448,6 +1451,32 @@ impl<'a> Cx<'a> {
             parts.push(format!(".{fname} = {code}"));
         }
         (format!("(({name}){{ {} }})", parts.join(", ")), CTy::Rec(name.into()))
+    }
+
+    /// `base with { f = v }` → `({ T _t = base; _t.f = v; _t; })`. The base's
+    /// record type supplies each overwritten field's C type (for coercion).
+    fn with_update(&mut self, env: &mut Env, base: &Expr, fields: &[Field]) -> (String, CTy) {
+        let (bc, bt) = self.expr(env, base, None);
+        let CTy::Rec(rname) = bt else {
+            return ("0 /* unsupported: `with` on non-record */".into(), CTy::Unknown);
+        };
+        let decl = self.records.get(&rname).cloned().unwrap_or_default();
+        let t = self.fresh();
+        let mut assigns = Vec::new();
+        for f in fields {
+            let (fname, val) = match f {
+                Field::Value { name, value } => (name.clone(), value.clone()),
+                Field::Shorthand(name) => (name.clone(), Expr::Ident(name.clone())),
+                _ => continue,
+            };
+            let fty = decl.iter().find(|(n, _)| *n == fname).map(|(_, t)| t.clone());
+            let code = self.expr(env, &val, fty.as_ref()).0;
+            assigns.push(format!("{t}.{fname} = {code};"));
+        }
+        (
+            format!("({{ {rname} {t} = {bc}; {} {t}; }})", assigns.join(" ")),
+            CTy::Rec(rname),
+        )
     }
 
     fn list(&mut self, env: &mut Env, es: &[Expr], expected: Option<&CTy>) -> (String, CTy) {

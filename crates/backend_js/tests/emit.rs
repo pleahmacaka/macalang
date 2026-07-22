@@ -36,6 +36,18 @@ fn while_break_continue() {
 }
 
 #[test]
+fn record_update_is_object_spread() {
+    let out = js("P = {\n    x: int\n    y: int\n}\nf(p: P) -> P => p with { x = 9 }\n");
+    // the update lowers to an object spread; the base is copied, `x` overwritten
+    assert!(out.contains("...p"), "base not spread:\n{out}");
+    assert!(out.contains("x: 9"), "field not overwritten:\n{out}");
+    // the function body itself must not be the `null` unsupported fallback
+    let body = out.split("function f(p)").nth(1).unwrap_or("");
+    let body = &body[..body.find('}').map(|i| i + 1).unwrap_or(body.len())];
+    assert!(!body.contains("null"), "function body is unsupported null:\n{body}");
+}
+
+#[test]
 fn string_concat_uses_plus_or_concat() {
     let out = js("greet(n: str) -> str => \"hi {n}\"\n");
     assert!(out.contains("hi"), "interpolation dropped:\n{out}");

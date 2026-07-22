@@ -58,6 +58,11 @@ fn generic_ok() {
     assert_clean("examples/generic.maca", Mode::Program);
 }
 #[test]
+fn record_update_ok() {
+    // `base with { field = value }` type-checks to the base record's type.
+    assert_clean("examples/record_update.maca", Mode::Program);
+}
+#[test]
 fn sum_record_ok() {
     // A sum whose payload is a record declared later in the file type-checks;
     // the payload binds at the record's real type inside the match arm.

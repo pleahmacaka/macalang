@@ -218,6 +218,20 @@ fn generic_fn_is_monomorphized() {
 }
 
 #[test]
+fn record_update_copies_and_overwrites() {
+    // `base with { … }` must copy the struct and assign only the named fields,
+    // not miscompile to `0 /* unsupported */`.
+    let body = func(
+        "P = {\n    x: int\n    y: int\n}\nf(p: P) -> P => p with { x = 9 }\n",
+        "f",
+    );
+    assert!(body.contains("P _t"), "no struct copy temp:\n{body}");
+    assert!(body.contains(".x = 9;"), "field not overwritten:\n{body}");
+    assert!(!body.contains(".y ="), "untouched field must not be assigned:\n{body}");
+    assert!(!body.contains("unsupported"), "still unsupported:\n{body}");
+}
+
+#[test]
 fn record_pattern_binds_fields() {
     let body = func("P = {\n    x: int\n    y: int\n}\nf(p: P) -> int {\n    match p {\n        { x, y } => x + y\n    }\n}\n", "f");
     assert!(body.contains(".x;") && body.contains(".y;"), "fields not extracted:\n{body}");

@@ -166,6 +166,11 @@ fn jexpr(e: &Expr) -> String {
         }
         Expr::Block(stmts) => jblock_expr(stmts),
         Expr::Try(x) => jexpr(x),
+        // `base with { … }` → object spread with the named fields overwritten.
+        Expr::With { base, fields } => {
+            let upd = jrecord(fields);
+            format!("{{ ...{}, ...{} }}", jexpr(base), upd)
+        }
         _ => "null".into(),
     }
 }
