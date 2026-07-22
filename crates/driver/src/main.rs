@@ -9,6 +9,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod profile;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
@@ -21,6 +23,7 @@ fn main() {
         Some("fmt") => cmd_fmt(&args[1..]),
         Some("lint") => cmd_lint(&args[1..]),
         Some("watch") => cmd_watch(&args[1..]),
+        Some("profile") => cmd_profile(&args[1..]),
         Some("--help" | "-h" | "help") | None => usage(),
         Some(other) => {
             // maca.toml [scripts] alias?
@@ -142,6 +145,81 @@ fn write_if_absent(path: &Path, contents: &str) {
     }
     std::fs::write(path, contents).unwrap_or_else(|e| die(&format!("cannot write {}: {e}", path.display())));
     println!("  create {}", path.display());
+}
+
+/// `maca profile <file> [-o out.svg]` — run under Callgrind and render a flame
+/// graph SVG (+ a text profile on stdout). Native-only (needs `cc` + `valgrind`).
+fn cmd_profile(args: &[String]) {
+    let mut src = None;
+    let mut out_svg = None;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "-o" => out_svg = it.next().map(PathBuf::from),
+            _ => src = Some(PathBuf::from(a)),
+        }
+    }
+    let Some(src) = src else { die("profile: expected a .maca file") };
+    if !have("cc") {
+        die("profile: needs a native C compiler (cc) on PATH");
+    }
+    if !have("valgrind") {
+        die("profile: needs valgrind on PATH (uses --tool=callgrind)");
+    }
+
+    // front-end + emit C
+    let source = std::fs::read_to_string(&src).unwrap_or_else(|e| die(&format!("cannot read: {e}")));
+    let parsed = maca_parser::parse(&source);
+    if !parsed.errors.is_empty() {
+        die(&format!("profile: parse errors:\n  {}", parsed.errors.join("\n  ")));
+    }
+    let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
+    if !diags.is_empty() {
+        let msgs: Vec<_> = diags.iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect();
+        die(&format!("profile: type errors:\n  {}", msgs.join("\n  ")));
+    }
+    let c_src = maca_backend_c::emit(&parsed.module);
+    let dir = build_dir(&src);
+    std::fs::create_dir_all(&dir).unwrap_or_else(|e| die(&e.to_string()));
+    std::fs::write(dir.join("main.c"), &c_src).unwrap_or_else(|e| die(&e.to_string()));
+    maca_runtime::write_to(&dir).unwrap_or_else(|e| die(&e.to_string()));
+
+    // build with debug info (no strip), instrumentation-friendly
+    let bin = dir.join(stem(&src));
+    let build = Command::new("cc")
+        .args(["-O2", "-g", "-fno-omit-frame-pointer"])
+        .arg(dir.join("main.c"))
+        .arg(dir.join("maca_runtime.c"))
+        .arg("-I")
+        .arg(&dir)
+        .arg("-o")
+        .arg(&bin)
+        .output()
+        .unwrap_or_else(|e| die(&format!("cc: {e}")));
+    if !build.status.success() {
+        die(&format!("profile build failed:\n{}", String::from_utf8_lossy(&build.stderr)));
+    }
+
+    // run under callgrind
+    let cg = dir.join("callgrind.out");
+    eprintln!("profiling under callgrind (this is slower than a normal run)…");
+    let run = Command::new("valgrind")
+        .arg("--tool=callgrind")
+        .arg(format!("--callgrind-out-file={}", cg.display()))
+        .arg(&bin)
+        .output()
+        .unwrap_or_else(|e| die(&format!("valgrind: {e}")));
+    if !run.status.success() && !cg.exists() {
+        die(&format!("callgrind failed:\n{}", String::from_utf8_lossy(&run.stderr)));
+    }
+    let cg_text = std::fs::read_to_string(&cg).unwrap_or_else(|e| die(&format!("read callgrind: {e}")));
+
+    // text profile + flame graph
+    print!("{}", profile::text_profile(&cg_text));
+    let svg = profile::flamegraph_svg(&cg_text);
+    let out = out_svg.unwrap_or_else(|| PathBuf::from(format!("{}.svg", stem(&src))));
+    std::fs::write(&out, &svg).unwrap_or_else(|e| die(&format!("write svg: {e}")));
+    println!("\nflame graph → {}", out.display());
 }
 
 /// Hot reload: rebuild + rerun whenever the source (or its directory) changes.
@@ -293,6 +371,7 @@ fn usage() {
          \x20 watch <file.maca> [args..]   rebuild & rerun on change (hot reload)\n\
          \x20 fmt   <file.maca>… [--check] format in place (style from maca.toml [format])\n\
          \x20 lint  <file.maca>            style + type/effect diagnostics\n\
+         \x20 profile <file.maca> [-o svg] run under callgrind, render a flame graph\n\
          \x20 --version                    print the toolchain version"
     );
 }
@@ -606,6 +685,11 @@ fn stem(p: &Path) -> String {
 /// `cc`/`clang` so `maca build`/`run` work on a plain Linux host too.
 fn have_wsl() -> bool {
     Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false)
+}
+
+/// Is a command available on PATH (responds to `--version`)?
+fn have(cmd: &str) -> bool {
+    Command::new(cmd).arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
 }
 
 /// Link the plain (no-FFI) build with the host's native C compiler. `clang` is
