@@ -75,6 +75,11 @@ impl Parser {
         } else {
             let found = self.peek().clone();
             self.err(format!("expected identifier, found {found:?}"));
+            // consume the offending token so callers that loop on `ident()`
+            // (record fields/patterns, params) can't stall on it forever
+            if !self.at_eof() {
+                self.bump();
+            }
             "?".into()
         }
     }
@@ -412,6 +417,9 @@ impl Parser {
         if self.at(Tok::Minus) {
             self.bump();
             Expr::Unary { op: UnOp::Neg, expr: Box::new(self.parse_unary()) }
+        } else if self.at(Tok::Bang) {
+            self.bump();
+            Expr::Unary { op: UnOp::Not, expr: Box::new(self.parse_unary()) }
         } else {
             self.parse_postfix()
         }

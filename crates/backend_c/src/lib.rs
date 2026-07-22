@@ -216,7 +216,18 @@ impl<'a> Cx<'a> {
                 _ => {}
             }
         }
-        // records need the sum set to classify field types
+        // records need the sum set to classify field types. Register all record
+        // names first (with empty fields) so a field can reference a record
+        // declared later in the file, then resolve field types.
+        for item in &self.m.items {
+            if let Stmt::Bind(b) = item {
+                if let Expr::Ident(name) = &b.target {
+                    if is_record_value(&b.value) {
+                        self.records.insert(name.clone(), Vec::new());
+                    }
+                }
+            }
+        }
         for item in &self.m.items {
             if let Stmt::Bind(b) = item {
                 if let Expr::Ident(name) = &b.target {
@@ -971,7 +982,9 @@ impl<'a> Cx<'a> {
             let (cond, binds) = self.pattern_cond(&sv, &sty, &elem, &arm.pat);
             let kw = if i == 0 { "if" } else { "else if" };
             self.indent(ind);
-            if cond == "1" {
+            // a catch-all (`cond == "1"`) is `else {` only after a prior arm —
+            // as the first arm it must stay a real `if (1) {`
+            if cond == "1" && i > 0 {
                 self.push("else {");
             } else {
                 self.push(&format!("{kw} ({cond}) {{"));
@@ -1037,6 +1050,29 @@ impl<'a> Cx<'a> {
                 } else {
                     (format!("{sv} == {s}_{n}"), vec![])
                 }
+            }
+            // a record pattern `{ x, y }` is irrefutable (always matches) but
+            // binds each field: `x` = `sv.x`. Shorthand (`x`) and `x: name` bind.
+            Pattern::Record(fields) if matches!(sty, CTy::Rec(_)) => {
+                let CTy::Rec(rname) = sty else { unreachable!() };
+                let decl = self.records.get(rname).cloned().unwrap_or_default();
+                let mut binds = Vec::new();
+                for (fname, sub) in fields {
+                    let fty = decl
+                        .iter()
+                        .find(|(n, _)| n == fname)
+                        .map(|(_, t)| t.clone())
+                        .unwrap_or(CTy::Unknown);
+                    let bn = match sub {
+                        None => Some(fname.clone()),
+                        Some(Pattern::Bind(b)) => Some(b.clone()),
+                        _ => None, // nested destructuring inside a field — deferred
+                    };
+                    if let Some(bn) = bn {
+                        binds.push((bn.clone(), format!("{} {bn} = {sv}.{fname};", c_type(&fty)), fty));
+                    }
+                }
+                ("1".into(), binds)
             }
             Pattern::Bind(n) => {
                 // bind whole scrutinee
@@ -1506,7 +1542,7 @@ impl<'a> Cx<'a> {
 
     fn binary(&mut self, env: &mut Env, op: BinOp, lhs: &Expr, rhs: &Expr) -> (String, CTy) {
         let (lc, lt) = self.expr(env, lhs, None);
-        let (rc, _rt) = self.expr(env, rhs, None);
+        let (rc, rt) = self.expr(env, rhs, None);
 
         // Operator overloading: when the left operand is a user type (record /
         // sum) and a function with the operator's canonical name exists, the
@@ -1523,6 +1559,10 @@ impl<'a> Cx<'a> {
         use BinOp::*;
         match op {
             Div if matches!(lt, CTy::Str) => (format!("maca_path_join({lc}, {rc})"), CTy::Str),
+            // `++` is string concat on strings, array concat on arrays
+            Concat if matches!(lt, CTy::Str) || matches!(rt, CTy::Str) => {
+                (format!("maca_concat({lc}, {rc})"), CTy::Str)
+            }
             Concat => {
                 let an = arr_name(match &lt {
                     CTy::Arr(e) => e,
@@ -1908,6 +1948,11 @@ fn arg_expr(a: &Arg) -> &Expr {
     match a {
         Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
     }
+}
+
+/// Whether a bind value is a record type declaration (`{ x: int, y: str }`).
+fn is_record_value(e: &Expr) -> bool {
+    matches!(e, Expr::Record(fs) if !fs.is_empty() && fs.iter().all(|f| matches!(f, Field::Type { .. })))
 }
 
 /// A function is generic if any parameter or the return type mentions a

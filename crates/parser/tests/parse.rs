@@ -173,3 +173,23 @@ fn roundtrip_lambda() {
 fn roundtrip_generic_record() {
     roundtrip("generic_record.maca");
 }
+
+#[test]
+fn malformed_input_does_not_hang() {
+    // a reserved word where a field name is expected used to loop forever
+    for src in [
+        "f(p: P) -> int { match p { { from } => 1 } }\n",
+        "R = {\n    from: int\n}\n",
+        "main() -> int {\n    let x = {\n    0\n}\n",
+        "x = ) ( } {\n",
+    ] {
+        let p = parse(src);
+        // it must terminate and report errors, not run out of memory
+        assert!(!p.errors.is_empty(), "expected parse errors for {src:?}");
+    }
+}
+
+#[test]
+fn roundtrip_record_pattern() {
+    roundtrip("record_pattern.maca");
+}

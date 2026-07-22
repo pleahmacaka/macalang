@@ -52,6 +52,11 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - Operator overloading (no new syntax): on a user type, an operator resolves to
   a same-named function — `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
   `concat`, etc. Primitives keep the native operator. (`examples/operators.maca`.)
+- Pattern & codegen completeness: record patterns (`match p { { x, y } => … }`),
+  the `!` (logical-not) prefix operator, `++` string concat (vs. array concat),
+  and record fields that reference a record declared later in the file all work
+  natively. The parser no longer hangs on malformed input (a stalled `ident()`
+  now advances). (`examples/record_pattern.maca`.)
 - Error model: `fail msg` raises (prints + `exit(1)` if unhandled); `try e` /
   `reify e` catches a failure via runtime setjmp/longjmp and yields the caught
   message (`str`, `""` on success), discharging the `exn` effect; execution

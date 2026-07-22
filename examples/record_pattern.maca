@@ -1,0 +1,30 @@
+// Destructuring a record with a match pattern, unary `!`, and `++` string
+// concat — plus a record field whose type is declared later in the file.
+
+Line = {
+    head: Point
+    tail: Point
+}
+
+Point = {
+    x: int
+    y: int
+}
+
+dx(l: Line) -> int {
+    match l {
+        { head, tail } => tail.x - head.x
+    }
+}
+
+flip(b: bool) -> bool => !b
+
+label(pos: bool) -> str => "side: " ++ (pos ? "right" : "left")
+
+main() -> int {
+    let l = Line { head = Point { x = 1, y = 0 }, tail = Point { x = 5, y = 0 } }
+    info("{dx(l)}")
+    info("{flip(false)}")
+    info(label(true))
+    0
+}

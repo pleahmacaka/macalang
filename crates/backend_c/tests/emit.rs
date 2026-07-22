@@ -192,3 +192,24 @@ fn generic_fn_is_monomorphized() {
     // the generic template itself is not emitted as a single int64_t function
     assert!(!out.contains("int64_t id(int64_t x)"), "generic emitted monomorphically:\n{out}");
 }
+
+#[test]
+fn record_pattern_binds_fields() {
+    let body = func("P = {\n    x: int\n    y: int\n}\nf(p: P) -> int {\n    match p {\n        { x, y } => x + y\n    }\n}\n", "f");
+    assert!(body.contains(".x;") && body.contains(".y;"), "fields not extracted:\n{body}");
+    assert!(body.contains("if (1)"), "irrefutable first arm must be if(1), not else:\n{body}");
+}
+
+#[test]
+fn string_concat_uses_maca_concat() {
+    let out = c("g(n: str) -> str => \"hi \" ++ n\n");
+    assert!(out.contains("maca_concat("), "string ++ should use maca_concat:\n{out}");
+    assert!(!out.contains("IntArr_concat"), "must not be array concat:\n{out}");
+}
+
+#[test]
+fn unary_not_and_forward_record() {
+    let out = c("A = {\n    b: B\n}\nB = {\n    v: int\n}\nf(x: bool) -> bool => !x\nmain() -> int {\n    let a = A { b = B { v = 1 } }\n    0\n}\n");
+    assert!(out.contains("(!x)"), "no unary not:\n{out}");
+    assert!(out.contains("B b;"), "forward record field not resolved to struct:\n{out}");
+}

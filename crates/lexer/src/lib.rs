@@ -67,6 +67,7 @@ pub enum Tok {
     Eq,
     EqEq,
     NotEq,
+    Bang, // ! (logical not)
     Lt,
     Gt,
     Le,
@@ -385,6 +386,7 @@ impl<'a> Lexer<'a> {
             '=' if self.peek_n(1) == '=' => self.take(2, Tok::EqEq, start),
             '=' => self.take(1, Tok::Eq, start),
             '!' if self.peek_n(1) == '=' => self.take(2, Tok::NotEq, start),
+            '!' => self.take(1, Tok::Bang, start),
             '<' if self.peek_n(1) == '<' => self.take(2, Tok::Shl, start),
             '<' if self.peek_n(1) == '=' => self.take(2, Tok::Le, start),
             '<' => self.take(1, Tok::Lt, start),
