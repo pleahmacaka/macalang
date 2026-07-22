@@ -381,12 +381,14 @@ fn cmd_build(args: &[String]) {
     let mut out = None;
     let mut target = "native".to_string();
     let mut classpath = None;
+    let mut mcu = String::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "-o" => out = it.next().map(PathBuf::from),
             "--target" => target = it.next().cloned().unwrap_or_else(|| "native".into()),
             "--cp" | "--classpath" => classpath = it.next().cloned(),
+            "--mcu" => mcu = it.next().cloned().unwrap_or_default(),
             _ => src = Some(PathBuf::from(a)),
         }
     }
@@ -411,6 +413,13 @@ fn cmd_build(args: &[String]) {
     }
     if target == "jvm" || target == "java" {
         match build_jvm(&src, out.as_deref(), classpath.as_deref()) {
+            Ok(msg) => println!("{msg}"),
+            Err(e) => die(&e),
+        }
+        return;
+    }
+    if target == "embedded" || target == "baremetal" || target == "mcu" {
+        match build_embedded(&src, out.as_deref(), &mcu) {
             Ok(msg) => println!("{msg}"),
             Err(e) => die(&e),
         }
@@ -495,6 +504,74 @@ fn capitalize(s: &str) -> String {
         Some(f) => f.to_ascii_uppercase().to_string() + c.as_str(),
         None => "Main".into(),
     }
+}
+
+/// Embedded target → freestanding C + startup + linker script, cross-compiled
+/// to a bare-metal firmware image (ELF + raw .bin) with clang/lld.
+fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<String, String> {
+    let source = std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let parsed = maca_parser::parse(&source);
+    if !parsed.errors.is_empty() {
+        return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
+    }
+    let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
+    if !diags.is_empty() {
+        let msgs: Vec<_> = diags.iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect();
+        return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
+    }
+    let mcu = maca_backend_embedded::Mcu::resolve(mcu_name)
+        .ok_or_else(|| format!("unknown --mcu {mcu_name:?} (try cortex-m0/m3/m4, riscv32)"))?;
+
+    let out_dir = out.map(PathBuf::from).unwrap_or_else(|| PathBuf::from(format!("{}-fw", stem(src))));
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    let c_path = out_dir.join("firmware.c");
+    let ld_path = out_dir.join("link.ld");
+    std::fs::write(&c_path, maca_backend_embedded::emit_c(&parsed.module)).map_err(|e| e.to_string())?;
+    std::fs::write(&ld_path, maca_backend_embedded::linker_script(&mcu)).map_err(|e| e.to_string())?;
+
+    if !have("clang") {
+        return Ok(format!(
+            "emitted {} + {} for {} (no clang on PATH to cross-compile)",
+            c_path.display(),
+            ld_path.display(),
+            mcu.name
+        ));
+    }
+    let elf = out_dir.join("firmware.elf");
+    let o = Command::new("clang")
+        .args([&format!("--target={}", mcu.triple), &format!("-mcpu={}", mcu.cpu)])
+        .args(["-ffreestanding", "-nostdlib", "-Os", "-ffunction-sections", "-fdata-sections"])
+        .arg("-fuse-ld=lld")
+        .arg(format!("-Wl,-T,{}", ld_path.display()))
+        .arg("-Wl,--gc-sections")
+        .arg("-o")
+        .arg(&elf)
+        .arg(&c_path)
+        .output()
+        .map_err(|e| format!("clang: {e}"))?;
+    if !o.status.success() {
+        return Err(format!("cross-compile failed:\n{}", String::from_utf8_lossy(&o.stderr)));
+    }
+    // raw binary + size report
+    let bin = out_dir.join("firmware.bin");
+    if have("llvm-objcopy") {
+        let _ = Command::new("llvm-objcopy").args(["-O", "binary"]).arg(&elf).arg(&bin).status();
+    }
+    let size = if have("llvm-size") {
+        String::from_utf8_lossy(&Command::new("llvm-size").arg(&elf).output().map(|o| o.stdout).unwrap_or_default())
+            .trim()
+            .to_string()
+    } else {
+        String::new()
+    };
+    Ok(format!(
+        "built firmware for {} → {}\n{}\n  flash: 0x{:08X}  ram: 0x{:08X}",
+        mcu.name,
+        elf.display(),
+        size,
+        mcu.flash_origin,
+        mcu.ram_origin
+    ))
 }
 
 /// UI mode → JS + HTML + CSS in an output directory.

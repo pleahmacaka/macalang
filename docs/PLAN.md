@@ -52,6 +52,12 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - Operator overloading (no new syntax): on a user type, an operator resolves to
   a same-named function — `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
   `concat`, etc. Primitives keep the native operator. (`examples/operators.maca`.)
+- Embedded (`maca build --target embedded --mcu cortex-m4`): Maca → freestanding
+  C + a Cortex-M/RISC-V startup (vector table, reset handler) + linker script,
+  cross-compiled with clang/lld to `firmware.elf`/`.bin`. `int` = 32-bit word;
+  MMIO intrinsics `mmio_write/read`, `set_bits/clear_bits/toggle_bits`, `bit`,
+  `shl/shr/bit_or/bit_and`, `delay`, `nop`; `for _ in forever()` = super-loop.
+  Hex/binary/octal literals with `_` separators (`0x4002_0C00`). `apps/blink`.
 - JVM interop (`maca build --target jvm`): Maca → Java source. `import java
   "pkg.Class"` → a Java import; `Name : Iface = { m = () => … }` → a class
   implementing `Iface` (a Fabric `ModInitializer`); a capitalized call

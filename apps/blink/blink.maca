@@ -1,0 +1,33 @@
+// Bare-metal LED blink for an ARM Cortex-M microcontroller, in Maca.
+//
+//   maca build --target embedded --mcu cortex-m4 blink.maca -o build
+//
+// Produces a freestanding firmware image (build/firmware.elf + .bin) with a
+// Cortex-M vector table — flash it with openocd/probe-rs. Register addresses
+// below follow an STM32F4-style GPIO port; adjust for your board.
+
+// GPIO port D registers (mode + output data)
+gpiod_moder : int = 0x40020C00
+gpiod_odr   : int = 0x40020C14
+// RCC clock enable for GPIOD
+rcc_ahb1enr : int = 0x40023830
+
+setup() {
+    // clock the GPIO port, then set pin 12 to output mode (2 bits per pin)
+    set_bits(rcc_ahb1enr, bit(3))
+    mmio_write(gpiod_moder, shl(1, 24))
+}
+
+blink() {
+    for _ in forever() {
+        set_bits(gpiod_odr, bit(12))     // LED on
+        delay(800000)
+        clear_bits(gpiod_odr, bit(12))   // LED off
+        delay(800000)
+    }
+}
+
+main() {
+    setup()
+    blink()
+}

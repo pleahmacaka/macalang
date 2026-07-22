@@ -16,6 +16,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "maca-backend-embedded"
+version = "0.1.0"
+dependencies = [
+ "maca-parser",
+]
+
+[[package]]
 name = "maca-backend-js"
 version = "0.1.0"
 dependencies = [
@@ -55,6 +62,7 @@ name = "maca-driver"
 version = "0.1.0"
 dependencies = [
  "maca-backend-c",
+ "maca-backend-embedded",
  "maca-backend-js",
  "maca-backend-jvm",
  "maca-backend-llvm",

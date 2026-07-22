@@ -44,6 +44,7 @@ Virtual workspace; members are `crates/*`.
 | `maca-mcp` | Maca MCP server (LLM-native tools) |
 | `maca-driver` | the `maca` CLI |
 | `maca-backend-jvm` | core IR → Java source (JVM interop; Minecraft/Fabric) |
+| `maca-backend-embedded` | freestanding C for bare-metal MCUs (Cortex-M/RISC-V) |
 | `maca-wasm` | `wasm32` front-end for the browser playground (no wasm-bindgen) |
 
 Non-crate dirs: `std/` (Maca-source stdlib), `examples/` (golden `.maca`

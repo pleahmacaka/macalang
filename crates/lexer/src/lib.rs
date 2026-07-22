@@ -454,9 +454,44 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_number(&mut self, start: usize) {
+        // Radix prefixes: 0x / 0b / 0o (with optional `_` digit separators),
+        // essential for register addresses and bit masks.
+        if self.peek() == '0' {
+            let (radix, valid): (u32, fn(char) -> bool) = match self.peek_n(1) {
+                'x' | 'X' => (16, |c| c.is_ascii_hexdigit()),
+                'b' | 'B' => (2, |c| c == '0' || c == '1'),
+                'o' | 'O' => (8, |c| ('0'..='7').contains(&c)),
+                _ => (0, |_| false),
+            };
+            if radix != 0 && (valid(self.peek_n(2)) || self.peek_n(2) == '_') {
+                self.bump(); // 0
+                self.bump(); // x/b/o
+                let mut digits = String::new();
+                while valid(self.peek()) || self.peek() == '_' {
+                    let c = self.bump();
+                    if c != '_' {
+                        digits.push(c);
+                    }
+                }
+                let span = (start, self.byte());
+                match i64::from_str_radix(&digits, radix) {
+                    Ok(n) => self.push(Tok::Int(n), span),
+                    // hardware addresses can exceed i64::MAX (e.g. 0xFFFF_FFFF fits,
+                    // but wider masks may not); fall back to the bit pattern.
+                    Err(_) => match u64::from_str_radix(&digits, radix) {
+                        Ok(u) => self.push(Tok::Int(u as i64), span),
+                        Err(_) => self.error(format!("integer 0x{digits} out of range"), span),
+                    },
+                }
+                return;
+            }
+        }
         let mut s = String::new();
-        while self.peek().is_ascii_digit() {
-            s.push(self.bump());
+        while self.peek().is_ascii_digit() || self.peek() == '_' {
+            let c = self.bump();
+            if c != '_' {
+                s.push(c);
+            }
         }
         let is_float = self.peek() == '.' && self.peek_n(1).is_ascii_digit();
         if is_float {
