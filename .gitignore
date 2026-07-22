@@ -2,5 +2,6 @@
 
 # playground build artifact
 playground/maca_wasm.wasm
+playground/maca-playground.html
 playground/vendor/
 packages/macalang/maca_wasm.wasm
