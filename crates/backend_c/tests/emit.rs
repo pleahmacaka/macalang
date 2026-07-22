@@ -236,6 +236,15 @@ fn generic_fn_is_monomorphized() {
 }
 
 #[test]
+fn len_lowers_to_array_len_or_strlen() {
+    let al = func("f(xs: int[]) -> int => len(xs)\n", "f");
+    assert!(al.contains("(xs).len"), "array len not lowered:\n{al}");
+    let sl = func("g(s: str) -> int => len(s)\n", "g");
+    assert!(sl.contains("strlen(s)"), "string len not lowered:\n{sl}");
+    assert!(!c("f(xs: int[]) -> int => len(xs)\n").contains("undefined"), "len must resolve");
+}
+
+#[test]
 fn list_index_reads_backing_buffer() {
     let body = func("f(xs: int[]) -> int => xs[1]\n", "f");
     assert!(body.contains(".data[1]"), "index not lowered to buffer access:\n{body}");

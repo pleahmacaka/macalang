@@ -9,9 +9,11 @@ Point = {
 main() -> int {
     let xs = 10, 20, 30
     info("{xs[0]} {xs[2]}")
+    info("{len(xs)}")
 
     let s = "maca"
     info(s[0])
+    info("{len(s)}")
 
     xs[1] = 99
     info("{xs[1]}")

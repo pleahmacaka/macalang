@@ -237,7 +237,7 @@ fn indexing_runs_natively() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_eq!(
         stdout.lines().collect::<Vec<_>>(),
-        vec!["10 30", "m", "99", "42 2"],
+        vec!["10 30", "3", "m", "4", "99", "42 2"],
         "stdout: {stdout}\nstderr: {}",
         String::from_utf8_lossy(&out.stderr)
     );

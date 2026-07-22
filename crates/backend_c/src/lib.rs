@@ -1647,6 +1647,14 @@ impl<'a> Cx<'a> {
                     _ => (format!("((int64_t)({c}))"), CTy::Int),
                 };
             }
+            // `len(x)` — array length (the backing `.len`) or string byte length
+            if name == "len" && args.len() == 1 {
+                let (c, t) = self.arg_typed(env, &args[0]);
+                return match t {
+                    CTy::Str => (format!("((int64_t)strlen({c}))"), CTy::Int),
+                    _ => (format!("({c}).len"), CTy::Int),
+                };
+            }
             // a generic function → monomorphize per concrete argument types
             if let Some(genf) = self.generics.get(name).cloned() {
                 let lowered: Vec<(String, CTy)> =
