@@ -887,6 +887,11 @@ impl<'a> Cx<'a> {
             // literal patterns → an equality test against the scrutinee
             Pattern::Int(n) => (format!("{sv} == {n}"), vec![]),
             Pattern::Bool(b) => (format!("{sv} == {}", if *b { "true" } else { "false" }), vec![]),
+            // a string literal against a string scrutinee (vs. the list-of-chars
+            // case handled below for array scrutinees)
+            Pattern::Str(lit) if matches!(sty, CTy::Str) => {
+                (format!("maca_str_eq({sv}, {})", c_str(lit)), vec![])
+            }
             // A nullary variant may reach here as a bare `Bind` (bare `Red`) or a
             // `Ctor` (`Red()`); against a sum scrutinee it is a tag test, not a
             // binding — mirror the checker's `is_variant` disambiguation.
