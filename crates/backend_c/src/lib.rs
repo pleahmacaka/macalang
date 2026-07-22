@@ -150,33 +150,59 @@ impl<'a> Cx<'a> {
     /// Emit a payload-bearing sum as `{ tag; union { … } as; }` plus a
     /// constructor `Sum_Variant(payload…)` per variant.
     fn emit_tagged_sum(&mut self, name: &str, vars: &[String]) {
+        // recursive sums are named structs (forward-declared elsewhere) so a
+        // self-referential payload can be stored as a `Name*` pointer.
+        let recursive = self.sum_is_recursive(name);
         let tags = vars.iter().map(|v| format!("{name}_tag_{v}")).collect::<Vec<_>>().join(", ");
         self.push(&format!("typedef enum {{ {tags} }} {name}_tag;"));
-        self.push(&format!("typedef struct {{ {name}_tag tag; union {{"));
+        if recursive {
+            self.push(&format!("struct {name} {{ {name}_tag tag; union {{"));
+        } else {
+            self.push(&format!("typedef struct {{ {name}_tag tag; union {{"));
+        }
         for v in vars {
             let p = self.variant_payloads.get(v).cloned().unwrap_or_default();
             if !p.is_empty() {
                 let fields = p
                     .iter()
                     .enumerate()
-                    .map(|(i, t)| format!("{} _{i};", c_type(t)))
+                    .map(|(i, t)| {
+                        let cty = c_type(t);
+                        if self.is_boxed(name, t) {
+                            format!("{cty}* _{i};")
+                        } else {
+                            format!("{cty} _{i};")
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join(" ");
                 self.push(&format!("    struct {{ {fields} }} {v};"));
             }
         }
-        self.push(&format!("}} as; }} {name};"));
+        if recursive {
+            // plain string (not format!): one brace closes the union, one the struct
+            self.push("} as; };");
+        } else {
+            self.push(&format!("}} as; }} {name};"));
+        }
         for v in vars {
             let p = self.variant_payloads.get(v).cloned().unwrap_or_default();
             let params = if p.is_empty() {
                 "void".to_string()
             } else {
+                // constructors take payloads by value; boxing is internal
                 p.iter().enumerate().map(|(i, t)| format!("{} _{i}", c_type(t))).collect::<Vec<_>>().join(", ")
             };
             self.push(&format!("static {name} {name}_{v}({params}) {{"));
             self.push(&format!("    {name} _v; _v.tag = {name}_tag_{v};"));
-            for i in 0..p.len() {
-                self.push(&format!("    _v.as.{v}._{i} = _{i};"));
+            for (i, t) in p.iter().enumerate() {
+                if self.is_boxed(name, t) {
+                    let cty = c_type(t);
+                    self.push(&format!("    _v.as.{v}._{i} = ({cty}*)maca_alloc(sizeof({cty}));"));
+                    self.push(&format!("    *_v.as.{v}._{i} = _{i};"));
+                } else {
+                    self.push(&format!("    _v.as.{v}._{i} = _{i};"));
+                }
             }
             self.push("    return _v;");
             self.push("}");
@@ -203,7 +229,10 @@ impl<'a> Cx<'a> {
                 }
             }
         }
-        // first pass: sums + records + modules + fn signatures + lets
+        // Types can reference each other (and themselves) in any order, so
+        // register every sum and record *name* before resolving any payload or
+        // field type. Otherwise a self-referential payload (`Tree = Node(Tree,
+        // Tree)`) or a forward reference resolves to `Unknown` → `int64_t`.
         for item in &self.m.items {
             match item {
                 Stmt::Import(im) => {
@@ -215,34 +244,29 @@ impl<'a> Cx<'a> {
                     if let Expr::Ident(name) = &b.target {
                         if let Some(vars) = sum_variants(&b.value) {
                             let names: Vec<String> = vars.iter().map(|(n, _)| n.clone()).collect();
-                            for (v, ptys) in &vars {
+                            for (v, _) in &vars {
                                 self.variant_of.insert(v.clone(), name.clone());
-                                let ctys: Vec<CTy> = ptys.iter().map(|t| self.cty(t)).collect();
-                                self.variant_payloads.insert(v.clone(), ctys);
                             }
                             self.sums.insert(name.clone(), names);
+                        } else if is_record_value(&b.value) {
+                            self.records.insert(name.clone(), Vec::new());
                         }
                     }
                 }
                 _ => {}
             }
         }
-        // records need the sum set to classify field types. Register all record
-        // names first (with empty fields) so a field can reference a record
-        // declared later in the file, then resolve field types.
+        // now every type name is known: resolve sum payloads and record fields.
         for item in &self.m.items {
             if let Stmt::Bind(b) = item {
                 if let Expr::Ident(name) = &b.target {
-                    if is_record_value(&b.value) {
-                        self.records.insert(name.clone(), Vec::new());
-                    }
-                }
-            }
-        }
-        for item in &self.m.items {
-            if let Stmt::Bind(b) = item {
-                if let Expr::Ident(name) = &b.target {
-                    if let Some(fields) = self.record_fields(&b.value) {
+                    if let Some(vars) = sum_variants(&b.value) {
+                        for (v, ptys) in &vars {
+                            let ctys: Vec<CTy> = ptys.iter().map(|t| self.cty(t)).collect();
+                            self.variant_payloads.insert(v.clone(), ctys);
+                        }
+                        let _ = name;
+                    } else if let Some(fields) = self.record_fields(&b.value) {
                         self.records.insert(name.clone(), fields);
                     }
                 }
@@ -484,6 +508,55 @@ impl<'a> Cx<'a> {
         }
         order.push(n.to_string());
     }
+    /// Names referenced strictly *by value* (arrays are heap pointers and so
+    /// break value cycles). Used for recursion detection.
+    fn value_deps(&self, n: &str) -> Vec<String> {
+        let mut deps = Vec::new();
+        if let Some(fields) = self.records.get(n) {
+            for (_, t) in fields {
+                if let Some(d) = value_dep(t) {
+                    deps.push(d);
+                }
+            }
+        }
+        if let Some(vars) = self.sums.get(n) {
+            for v in vars {
+                if let Some(p) = self.variant_payloads.get(v) {
+                    for t in p {
+                        if let Some(d) = value_dep(t) {
+                            deps.push(d);
+                        }
+                    }
+                }
+            }
+        }
+        deps
+    }
+    /// Can `from` reach `to` following only by-value type references?
+    fn reaches(&self, from: &str, to: &str) -> bool {
+        let mut stack = self.value_deps(from);
+        let mut seen = HashSet::new();
+        while let Some(n) = stack.pop() {
+            if n == to {
+                return true;
+            }
+            if seen.insert(n.clone()) {
+                stack.extend(self.value_deps(&n));
+            }
+        }
+        false
+    }
+    /// A tagged sum is recursive when it can reach itself by value.
+    fn sum_is_recursive(&self, name: &str) -> bool {
+        self.reaches(name, name)
+    }
+    /// A payload slot is boxed (stored behind a pointer) when it is a sum that
+    /// can reach the enclosing sum — the value cycle that would make the struct
+    /// infinitely sized. Records-in-cycles are not boxed (a documented limit).
+    fn is_boxed(&self, sum: &str, t: &CTy) -> bool {
+        matches!(t, CTy::Sum(n) if self.reaches(n, sum))
+    }
+
     /// Names of records / tagged sums referenced by value in a node's fields
     /// (record) or variant payloads (tagged sum).
     fn struct_deps(&self, n: &str) -> Vec<String> {
@@ -499,6 +572,12 @@ impl<'a> Cx<'a> {
             for v in vars {
                 if let Some(p) = self.variant_payloads.get(v) {
                     for t in p {
+                        // a boxed slot is a pointer — it needs only a forward
+                        // declaration, not the full definition, so it is not an
+                        // ordering dependency (this breaks the value cycle).
+                        if self.is_boxed(n, t) {
+                            continue;
+                        }
                         if let Some(d) = struct_dep(t) {
                             deps.push(d);
                         }
@@ -597,6 +676,13 @@ impl<'a> Cx<'a> {
                 let variants =
                     vars.iter().map(|v| format!("{name}_{v}")).collect::<Vec<_>>().join(", ");
                 self.push(&format!("typedef enum {{ {variants} }} {name};"));
+            }
+        }
+        // recursive tagged sums are named structs, forward-declared so a
+        // self-referential payload can hold a `Name*`.
+        for (name, _) in &sums {
+            if self.is_tagged(name) && self.sum_is_recursive(name) {
+                self.push(&format!("typedef struct {name} {name};"));
             }
         }
         self.push("");
@@ -1141,9 +1227,12 @@ impl<'a> Cx<'a> {
                         for (i, a) in args.iter().enumerate() {
                             if let Pattern::Bind(bn) = a {
                                 let bty = ptys.get(i).cloned().unwrap_or(CTy::Unknown);
+                                // a boxed (recursive) payload is a pointer — deref
+                                // to bind the value.
+                                let deref = if self.is_boxed(s, &bty) { "*" } else { "" };
                                 binds.push((
                                     bn.clone(),
-                                    format!("{} {bn} = {sv}.as.{n}._{i};", c_type(&bty)),
+                                    format!("{} {bn} = {deref}{sv}.as.{n}._{i};", c_type(&bty)),
                                     bty,
                                 ));
                             }
@@ -2222,6 +2311,15 @@ fn struct_dep(t: &CTy) -> Option<String> {
     match t {
         CTy::Rec(n) | CTy::Sum(n) => Some(n.clone()),
         CTy::Arr(e) => struct_dep(e),
+        _ => None,
+    }
+}
+
+/// A strictly by-value type reference (arrays are heap pointers, so they do NOT
+/// propagate a value cycle). Used for recursion detection / boxing.
+fn value_dep(t: &CTy) -> Option<String> {
+    match t {
+        CTy::Rec(n) | CTy::Sum(n) => Some(n.clone()),
         _ => None,
     }
 }

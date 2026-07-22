@@ -264,6 +264,27 @@ fn record_update_runs_natively() {
 }
 
 #[test]
+fn recursive_sum_types_run_natively() {
+    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    // boxed recursive payloads: tree fold + list length
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &example("tree.maca")])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(
+        stdout.lines().collect::<Vec<_>>(),
+        vec!["6", "3"],
+        "stdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
 fn sum_with_record_payload_runs_natively() {
     let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
     if wsl || !have("cc") {

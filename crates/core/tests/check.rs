@@ -68,6 +68,12 @@ fn record_update_ok() {
     assert_clean("examples/record_update.maca", Mode::Program);
 }
 #[test]
+fn recursive_sum_ok() {
+    // Recursive sum types (tree, linked list) type-check; the recursive payload
+    // binds at the sum's own type inside match arms.
+    assert_clean("examples/tree.maca", Mode::Program);
+}
+#[test]
 fn sum_record_ok() {
     // A sum whose payload is a record declared later in the file type-checks;
     // the payload binds at the record's real type inside the match arm.

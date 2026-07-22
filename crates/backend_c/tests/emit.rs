@@ -158,6 +158,24 @@ fn payload_sum_is_a_tagged_union() {
 }
 
 #[test]
+fn recursive_sum_boxes_self_referential_payload() {
+    // `Tree = Leaf(int) | Node(Tree, Tree)` — the recursive payload must be a
+    // pointer (`Tree*`), heap-allocated in the constructor, and dereferenced
+    // when a match binds it. Otherwise the struct is infinitely sized.
+    let out = c("Tree = Leaf(int) | Node(Tree, Tree)\ntotal(t: Tree) -> int {\n    match t {\n        Leaf(n) => n\n        Node(l, r) => total(l) + total(r)\n    }\n}\n");
+    // named forward-declared struct (so a self-pointer is legal)
+    assert!(out.contains("typedef struct Tree Tree;"), "no forward decl:\n{out}");
+    assert!(out.contains("struct Tree {"), "not a named struct:\n{out}");
+    // the payload slot is a pointer, allocated in the constructor
+    assert!(out.contains("Tree* _0;") && out.contains("Tree* _1;"), "payload not boxed:\n{out}");
+    assert!(out.contains("maca_alloc(sizeof(Tree))"), "box not heap-allocated:\n{out}");
+    // a bound recursive payload is dereferenced
+    assert!(out.contains("= *"), "boxed bind not dereferenced:\n{out}");
+    // a non-recursive int payload stays by value
+    assert!(out.contains("int64_t _0;"), "int payload should be by value:\n{out}");
+}
+
+#[test]
 fn tagged_sum_with_record_payload_orders_record_first() {
     // A sum carrying a record payload must have the record's struct defined
     // *before* the tagged-sum struct, even when the sum is declared first in

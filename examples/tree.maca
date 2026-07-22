@@ -1,0 +1,29 @@
+// Recursive sum types: a binary tree and a linked list. Self-referential
+// payloads are boxed (heap pointers) so the tagged union stays finite; pattern
+// matches transparently dereference them.
+
+Tree = Leaf(int) | Node(Tree, Tree)
+
+total(t: Tree) -> int {
+    match t {
+        Leaf(n) => n
+        Node(l, r) => total(l) + total(r)
+    }
+}
+
+List = Nil | Cons(int, List)
+
+length(l: List) -> int {
+    match l {
+        Nil => 0
+        Cons(x, rest) => 1 + length(rest)
+    }
+}
+
+main() -> int {
+    let t = Node(Leaf(1), Node(Leaf(2), Leaf(3)))
+    info("{total(t)}")
+    let xs = Cons(10, Cons(20, Cons(30, Nil)))
+    info("{length(xs)}")
+    0
+}

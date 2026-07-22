@@ -68,7 +68,12 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   no stage-0 front-end change. (`examples/payload_sum.maca`.) A payload may be a
   record, in either declaration order — the C backend emits records and tagged
   sums in one combined dependency order, so the record struct is defined before a
-  sum that carries it (and vice-versa). (`examples/sum_record.maca`.)
+  sum that carries it (and vice-versa). (`examples/sum_record.maca`.) Sums may be
+  **recursive** (`Tree = Leaf(int) | Node(Tree, Tree)`, `List = Nil | Cons(int,
+  List)`): a self-referential payload is boxed (a heap pointer) so the tagged
+  union stays finite; the native backend emits a named, forward-declared struct,
+  allocates the box in the constructor, and dereferences it when a match binds it.
+  (`examples/tree.maca`.)
 - Arithmetic operators: `%` (modulo) and `<<` / `>>` (shifts) join
   `+ - * /`; all integer-only, checked and lowered on every backend.
   (`examples/fizzbuzz.maca`.)
