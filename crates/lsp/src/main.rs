@@ -7,7 +7,7 @@
 
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::io::{self, BufRead, Read as _, Write};
+use std::io::{self, BufRead, Write};
 
 fn main() {
     let stdin = io::stdin();

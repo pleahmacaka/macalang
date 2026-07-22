@@ -11,13 +11,22 @@ See [`docs/PLAN.md`](docs/PLAN.md) for the authoritative spec and phase plan.
 
 ### macOS / Linux
 
+One line — downloads the prebuilt `maca` + `maca-lsp` for your platform:
+
 ```sh
-./install.sh                     # → ~/.local/bin/maca
-PREFIX=/usr/local ./install.sh   # → /usr/local/bin/maca (may need sudo)
+curl -fsSL https://raw.githubusercontent.com/pleahmacaka/macalang/main/install.sh | bash
 ```
 
-Requires a Rust toolchain (`cargo`) and a C compiler (`cc`/`clang`) for the
-native path.
+Or from a checkout (`PREFIX` sets the install root, default `~/.local`):
+
+```sh
+./install.sh                     # → ~/.local/bin
+PREFIX=/usr/local ./install.sh   # → /usr/local/bin (may need sudo)
+```
+
+With no prebuilt release asset it builds from source — that path needs a Rust
+toolchain (`cargo`); a C compiler (`cc`/`clang`) is needed either way for
+`maca build/run`.
 
 **Nix (optional).** `maca dev` and Nix builds need [Nix](https://nixos.org). If
 it's missing, the installer offers to install it via the
@@ -27,8 +36,16 @@ with `MACA_INSTALL_NIX=1` (install) or `MACA_INSTALL_NIX=0` (skip).
 
 ### Windows
 
+One line in PowerShell:
+
 ```powershell
-./install.ps1                    # → %USERPROFILE%\.local\bin\maca.exe
+irm https://raw.githubusercontent.com/pleahmacaka/macalang/main/install.ps1 | iex
+```
+
+Or from a checkout:
+
+```powershell
+./install.ps1                    # → %USERPROFILE%\.local\bin
 $env:PREFIX = "C:\tools"; ./install.ps1
 ```
 
@@ -71,6 +88,17 @@ Nix — `maca dev` compiles it to `flake.nix`. See [`docs/DEVENV.md`](docs/DEVEN
 maca dev        # dev.maca → flake.nix
 nix develop     # enter the shell
 ```
+
+## Editor support
+
+The installer places a language server, `maca-lsp`, next to `maca` — it gives
+live diagnostics, hover, and completion over LSP (stdio). Editor integrations:
+
+- **Zed** — [`editor/zed-maca`](editor/zed-maca): tree-sitter highlighting +
+  the `maca-lsp` server. Install as a dev extension (Zed → Extensions → Install
+  Dev Extension → pick `editor/zed-maca`).
+- **TextMate / VS Code grammar** — [`editor/maca.tmLanguage.json`](editor/maca.tmLanguage.json).
+- **Monaco (playground)** — [`playground/maca-lang.js`](playground/maca-lang.js).
 
 ## Build from source
 
