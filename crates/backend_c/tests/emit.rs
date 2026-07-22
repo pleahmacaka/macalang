@@ -144,3 +144,15 @@ fn float_literal_pattern() {
     let body = func("f(x: float) -> int {\n    match x {\n        1.5 => 1\n        _ => 0\n    }\n}\n", "f");
     assert!(body.contains("== 1.5"), "float pattern not compared:\n{body}");
 }
+
+#[test]
+fn payload_sum_is_a_tagged_union() {
+    let out = c("Shape = Circle(int) | Rect(int, int)\narea(s: Shape) -> int {\n    match s {\n        Circle(r) => r * r\n        Rect(w, h) => w * h\n    }\n}\n");
+    // tagged struct + tag enum + per-variant constructor
+    assert!(out.contains("Shape_tag"), "no tag enum:\n{out}");
+    assert!(out.contains("union"), "no union:\n{out}");
+    assert!(out.contains("static Shape Shape_Circle(int64_t _0)"), "no ctor:\n{out}");
+    // match extracts payload from the union and tag-tests
+    assert!(out.contains(".tag == Shape_tag_Circle"), "no tag test:\n{out}");
+    assert!(out.contains(".as.Circle._0"), "no payload extraction:\n{out}");
+}

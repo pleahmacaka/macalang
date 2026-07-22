@@ -52,6 +52,11 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - Operator overloading (no new syntax): on a user type, an operator resolves to
   a same-named function — `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
   `concat`, etc. Primitives keep the native operator. (`examples/operators.maca`.)
+- Sum types with payloads: `Shape = Circle(int) | Rect(int, int)`. Constructors
+  are typed as functions (`Circle(10)`), payloads bind in patterns
+  (`Circle(r) => r * r`). Native lowering is a tagged struct/union with a
+  per-variant constructor; plain (nullary-only) enums are unchanged. Parses with
+  no stage-0 front-end change. (`examples/payload_sum.maca`.)
 - Arithmetic operators: `%` (modulo) and `<<` / `>>` (shifts) join
   `+ - * /`; all integer-only, checked and lowered on every backend.
   (`examples/fizzbuzz.maca`.)

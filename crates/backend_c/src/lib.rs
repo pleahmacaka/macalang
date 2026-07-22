@@ -82,6 +82,7 @@ struct Cx<'a> {
     // declarations
     sums: BTreeMap<String, Vec<String>>,     // sum name -> variants
     variant_of: HashMap<String, String>,     // variant -> sum name
+    variant_payloads: HashMap<String, Vec<CTy>>, // variant -> payload field types
     records: BTreeMap<String, Vec<(String, CTy)>>, // record name -> ordered fields
     rec_order: Vec<String>,                  // topo order
     modules: HashSet<String>,                // imported module names (json, dirs, …)
@@ -100,6 +101,7 @@ impl<'a> Cx<'a> {
             out: String::new(),
             sums: BTreeMap::new(),
             variant_of: HashMap::new(),
+            variant_payloads: HashMap::new(),
             records: BTreeMap::new(),
             rec_order: Vec::new(),
             modules: HashSet::new(),
@@ -130,6 +132,50 @@ impl<'a> Cx<'a> {
 
     // ---- collection -------------------------------------------------------
 
+    /// Emit a payload-bearing sum as `{ tag; union { … } as; }` plus a
+    /// constructor `Sum_Variant(payload…)` per variant.
+    fn emit_tagged_sum(&mut self, name: &str, vars: &[String]) {
+        let tags = vars.iter().map(|v| format!("{name}_tag_{v}")).collect::<Vec<_>>().join(", ");
+        self.push(&format!("typedef enum {{ {tags} }} {name}_tag;"));
+        self.push(&format!("typedef struct {{ {name}_tag tag; union {{"));
+        for v in vars {
+            let p = self.variant_payloads.get(v).cloned().unwrap_or_default();
+            if !p.is_empty() {
+                let fields = p
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| format!("{} _{i};", c_type(t)))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                self.push(&format!("    struct {{ {fields} }} {v};"));
+            }
+        }
+        self.push(&format!("}} as; }} {name};"));
+        for v in vars {
+            let p = self.variant_payloads.get(v).cloned().unwrap_or_default();
+            let params = if p.is_empty() {
+                "void".to_string()
+            } else {
+                p.iter().enumerate().map(|(i, t)| format!("{} _{i}", c_type(t))).collect::<Vec<_>>().join(", ")
+            };
+            self.push(&format!("static {name} {name}_{v}({params}) {{"));
+            self.push(&format!("    {name} _v; _v.tag = {name}_tag_{v};"));
+            for i in 0..p.len() {
+                self.push(&format!("    _v.as.{v}._{i} = _{i};"));
+            }
+            self.push("    return _v;");
+            self.push("}");
+        }
+    }
+
+    /// A sum with at least one payload-carrying variant → a tagged struct/union
+    /// (as opposed to a plain C enum).
+    fn is_tagged(&self, sum: &str) -> bool {
+        self.sums.get(sum).is_some_and(|vs| {
+            vs.iter().any(|v| self.variant_payloads.get(v).is_some_and(|p| !p.is_empty()))
+        })
+    }
+
     fn collect(&mut self) {
         // first pass: sums + records + modules + fn signatures + lets
         for item in &self.m.items {
@@ -142,10 +188,13 @@ impl<'a> Cx<'a> {
                 Stmt::Bind(b) => {
                     if let Expr::Ident(name) = &b.target {
                         if let Some(vars) = sum_variants(&b.value) {
-                            for v in &vars {
+                            let names: Vec<String> = vars.iter().map(|(n, _)| n.clone()).collect();
+                            for (v, ptys) in &vars {
                                 self.variant_of.insert(v.clone(), name.clone());
+                                let ctys: Vec<CTy> = ptys.iter().map(|t| self.cty(t)).collect();
+                                self.variant_payloads.insert(v.clone(), ctys);
                             }
-                            self.sums.insert(name.clone(), vars);
+                            self.sums.insert(name.clone(), names);
                         }
                     }
                 }
@@ -440,28 +489,53 @@ impl<'a> Cx<'a> {
             self.push("");
         }
 
-        // enums + to_str/from_str
+        // sums: a plain C enum, or a tagged struct+union when any variant has a
+        // payload. to_str/from_str are emitted for both (json codegen needs them;
+        // for tagged sums the payload is dropped — a documented limitation).
         let sums: Vec<(String, Vec<String>)> =
             self.sums.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         for (name, vars) in &sums {
-            let variants =
-                vars.iter().map(|v| format!("{name}_{v}")).collect::<Vec<_>>().join(", ");
-            self.push(&format!("typedef enum {{ {variants} }} {name};"));
+            if self.is_tagged(name) {
+                self.emit_tagged_sum(name, vars);
+            } else {
+                let variants =
+                    vars.iter().map(|v| format!("{name}_{v}")).collect::<Vec<_>>().join(", ");
+                self.push(&format!("typedef enum {{ {variants} }} {name};"));
+            }
         }
         for (name, vars) in &sums {
+            let tagged = self.is_tagged(name);
             self.push(&format!("static maca_str {name}_to_str({name} v) {{"));
-            self.push("    switch (v) {");
+            self.push(&format!("    switch (v{}) {{", if tagged { ".tag" } else { "" }));
             for v in vars {
-                self.push(&format!("        case {name}_{v}: return \"{v}\";"));
+                let tag = if tagged { format!("{name}_tag_{v}") } else { format!("{name}_{v}") };
+                self.push(&format!("        case {tag}: return \"{v}\";"));
             }
             self.push("    }");
             self.push("    return \"\";");
             self.push("}");
             self.push(&format!("static {name} {name}_from_str(maca_str s) {{"));
-            for v in vars {
-                self.push(&format!("    if (maca_str_eq(s, \"{v}\")) return {name}_{v};"));
+            if tagged {
+                // match nullary variants by name; fall back to the first variant
+                // with zero-initialized payload (payload json is not modeled)
+                for v in vars {
+                    if self.variant_payloads.get(v).is_none_or(|p| p.is_empty()) {
+                        self.push(&format!("    if (maca_str_eq(s, \"{v}\")) return {name}_{v}();"));
+                    }
+                }
+                let first = &vars[0];
+                let zeros = self
+                    .variant_payloads
+                    .get(first)
+                    .map(|p| p.iter().map(|t| format!("({}){{0}}", c_type(t))).collect::<Vec<_>>().join(", "))
+                    .unwrap_or_default();
+                self.push(&format!("    (void)s; return {name}_{first}({zeros});"));
+            } else {
+                for v in vars {
+                    self.push(&format!("    if (maca_str_eq(s, \"{v}\")) return {name}_{v};"));
+                }
+                self.push(&format!("    return {name}_{};", vars[0]));
             }
-            self.push(&format!("    return {name}_{};", vars[0]));
             self.push("}");
         }
         self.push("");
@@ -893,14 +967,34 @@ impl<'a> Cx<'a> {
             Pattern::Str(lit) if matches!(sty, CTy::Str) => {
                 (format!("maca_str_eq({sv}, {})", c_str(lit)), vec![])
             }
-            // A nullary variant may reach here as a bare `Bind` (bare `Red`) or a
-            // `Ctor` (`Red()`); against a sum scrutinee it is a tag test, not a
-            // binding — mirror the checker's `is_variant` disambiguation.
+            // A variant may reach here as a bare `Bind` (bare `Red`) or a `Ctor`
+            // (`Red()` / `Circle(x)`); against a sum scrutinee it is a tag test,
+            // not a binding — mirror the checker's `is_variant` disambiguation.
             Pattern::Bind(n) | Pattern::Ctor { name: n, args: _ }
                 if matches!(sty, CTy::Sum(s) if self.sums.get(s).is_some_and(|vs| vs.iter().any(|v| v == n))) =>
             {
                 let CTy::Sum(s) = sty else { unreachable!() };
-                (format!("{sv} == {s}_{n}"), vec![])
+                if self.is_tagged(s) {
+                    let cond = format!("{sv}.tag == {s}_tag_{n}");
+                    // extract payload bindings from a `Circle(x, y)` pattern
+                    let mut binds = Vec::new();
+                    if let Pattern::Ctor { args, .. } = p {
+                        let ptys = self.variant_payloads.get(n).cloned().unwrap_or_default();
+                        for (i, a) in args.iter().enumerate() {
+                            if let Pattern::Bind(bn) = a {
+                                let bty = ptys.get(i).cloned().unwrap_or(CTy::Unknown);
+                                binds.push((
+                                    bn.clone(),
+                                    format!("{} {bn} = {sv}.as.{n}._{i};", c_type(&bty)),
+                                    bty,
+                                ));
+                            }
+                        }
+                    }
+                    (cond, binds)
+                } else {
+                    (format!("{sv} == {s}_{n}"), vec![])
+                }
             }
             Pattern::Bind(n) => {
                 // bind whole scrutinee
@@ -1017,6 +1111,11 @@ impl<'a> Cx<'a> {
             return (n.to_string(), t);
         }
         if let Some(sum) = self.variant_of.get(n).cloned() {
+            // a tagged sum's nullary variant is a constructor call `Sum_n()`;
+            // a plain enum's variant is the enum constant `Sum_n`.
+            if self.is_tagged(&sum) {
+                return (format!("{sum}_{n}()"), CTy::Sum(sum));
+            }
             return (format!("{sum}_{n}"), CTy::Sum(sum));
         }
         if self.let_names.contains(n) {
@@ -1117,6 +1216,13 @@ impl<'a> Cx<'a> {
                     CTy::Str => (format!("atoll({c})"), CTy::Int),
                     _ => (format!("((int64_t)({c}))"), CTy::Int),
                 };
+            }
+            // a payload sum constructor: `Circle(5)` → `Shape_Circle(5)`
+            if let Some(sum) = self.variant_of.get(name).cloned() {
+                if self.is_tagged(&sum) {
+                    let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
+                    return (format!("{sum}_{name}({})", a.join(", ")), CTy::Sum(sum));
+                }
             }
             let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
             if let Some(cfn) = console_fn(name) {
@@ -1560,12 +1666,42 @@ fn import_name(im: &Import) -> Option<String> {
     }
 }
 
-fn sum_variants(e: &Expr) -> Option<Vec<String>> {
-    fn go(e: &Expr, out: &mut Vec<String>) -> bool {
+/// `A | Circle(int) | Rect(int, int)` → variants with payload types (bare ident
+/// = nullary, `Name(T, …)` = a payload-carrying variant).
+fn sum_variants(e: &Expr) -> Option<Vec<(String, Vec<Type>)>> {
+    fn arg_ty(e: &Expr) -> Type {
+        fn path(e: &Expr, out: &mut Vec<String>) {
+            match e {
+                Expr::Ident(n) => out.push(n.clone()),
+                Expr::Field { base, name } => {
+                    path(base, out);
+                    out.push(name.clone());
+                }
+                _ => {}
+            }
+        }
+        let mut segs = Vec::new();
+        path(e, &mut segs);
+        if segs.is_empty() {
+            Type::Name(vec!["any".into()])
+        } else {
+            Type::Name(segs)
+        }
+    }
+    fn go(e: &Expr, out: &mut Vec<(String, Vec<Type>)>) -> bool {
         match e {
             Expr::Ident(n) => {
-                out.push(n.clone());
+                out.push((n.clone(), vec![]));
                 true
+            }
+            Expr::Call { callee, args } => {
+                if let Expr::Ident(n) = &**callee {
+                    let tys = args.iter().map(|a| arg_ty(arg_expr(a))).collect();
+                    out.push((n.clone(), tys));
+                    true
+                } else {
+                    false
+                }
             }
             Expr::Binary { op: BinOp::Union, lhs, rhs } => go(lhs, out) && go(rhs, out),
             _ => false,
@@ -1575,6 +1711,13 @@ fn sum_variants(e: &Expr) -> Option<Vec<String>> {
     match e {
         Expr::Binary { op: BinOp::Union, .. } if go(e, &mut out) => Some(out),
         _ => None,
+    }
+}
+
+/// The `Expr` a call argument carries.
+fn arg_expr(a: &Arg) -> &Expr {
+    match a {
+        Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
     }
 }
 

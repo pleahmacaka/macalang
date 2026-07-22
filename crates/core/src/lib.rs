@@ -93,6 +93,8 @@ struct Checker {
     globals: HashMap<String, Scheme>,
     records: HashMap<String, BTreeMap<String, Ty>>,
     sums: HashMap<String, Vec<String>>,
+    /// sum variant -> its payload field types (empty for a nullary variant)
+    variant_payloads: HashMap<String, Vec<Ty>>,
     /// User-declared function name -> (fixed param count, is variadic). Used to
     /// catch call-arity mistakes; variadic functions are exempt.
     fn_arity: HashMap<String, (usize, bool)>,
@@ -109,6 +111,7 @@ impl Checker {
             globals: HashMap::new(),
             records: HashMap::new(),
             sums: HashMap::new(),
+            variant_payloads: HashMap::new(),
             fn_arity: HashMap::new(),
             type_decls: HashSet::new(),
             local_names: HashSet::new(),
@@ -154,10 +157,22 @@ impl Checker {
                     if let Expr::Ident(name) = &b.target {
                         self.local_names.insert(name.clone());
                         if let Some(vars) = sum_variants(&b.value) {
-                            self.sums.insert(name.clone(), vars.clone());
-                            for v in vars {
-                                self.globals
-                                    .insert(v, Scheme::mono(Ty::Con(name.clone(), vec![])));
+                            self.sums.insert(
+                                name.clone(),
+                                vars.iter().map(|(n, _)| n.clone()).collect(),
+                            );
+                            let sum = Ty::Con(name.clone(), vec![]);
+                            for (v, ptys) in vars {
+                                let payloads: Vec<Ty> = ptys.iter().map(ast_ty).collect();
+                                // a payload variant is a constructor *function*;
+                                // a nullary variant is just a value of the sum
+                                let scheme = if payloads.is_empty() {
+                                    Scheme::mono(sum.clone())
+                                } else {
+                                    Scheme::mono(Ty::Fn(payloads.clone(), Box::new(sum.clone())))
+                                };
+                                self.globals.insert(v.clone(), scheme);
+                                self.variant_payloads.insert(v, payloads);
                             }
                             self.type_decls.insert(i);
                         } else if let Some(fields) = record_type(&b.value) {
@@ -728,9 +743,11 @@ impl Checker {
                 }
                 env.push((n.clone(), scrut.clone()));
             }
-            Pattern::Ctor { args, .. } => {
-                for a in args {
-                    self.bind_pattern(env, a, &Ty::Any);
+            Pattern::Ctor { name, args } => {
+                // bind each payload sub-pattern at the variant's declared type
+                let tys = self.variant_payloads.get(name).cloned().unwrap_or_default();
+                for (i, a) in args.iter().enumerate() {
+                    self.bind_pattern(env, a, tys.get(i).unwrap_or(&Ty::Any));
                 }
             }
             Pattern::Record(fields) => {
@@ -864,13 +881,24 @@ fn ast_ty(t: &Type) -> Ty {
     }
 }
 
-/// `A | B | C` where every leaf is an identifier → sum variant list.
-fn sum_variants(e: &Expr) -> Option<Vec<String>> {
-    fn go(e: &Expr, out: &mut Vec<String>) -> bool {
+/// `A | Circle(int) | Rect(int, int)` → variants with their payload types.
+/// A leaf is either a bare ident (nullary) or a call `Name(T, …)` whose args
+/// are type names.
+fn sum_variants(e: &Expr) -> Option<Vec<(String, Vec<Type>)>> {
+    fn go(e: &Expr, out: &mut Vec<(String, Vec<Type>)>) -> bool {
         match e {
             Expr::Ident(n) => {
-                out.push(n.clone());
+                out.push((n.clone(), vec![]));
                 true
+            }
+            Expr::Call { callee, args } => {
+                if let Expr::Ident(n) = &**callee {
+                    let tys = args.iter().map(|a| type_of_arg(arg_value(a))).collect();
+                    out.push((n.clone(), tys));
+                    true
+                } else {
+                    false
+                }
             }
             Expr::Binary { op: BinOp::Union, lhs, rhs } => go(lhs, out) && go(rhs, out),
             _ => false,
@@ -880,6 +908,34 @@ fn sum_variants(e: &Expr) -> Option<Vec<String>> {
     match e {
         Expr::Binary { op: BinOp::Union, .. } if go(e, &mut out) => Some(out),
         _ => None,
+    }
+}
+
+/// The `Expr` carried by a call argument (positional / named / directive).
+fn arg_value(a: &Arg) -> &Expr {
+    match a {
+        Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
+    }
+}
+
+/// A payload type written as a name (`int`, `str`, `Foo`, `mod.Bar`) → `Type`.
+fn type_of_arg(e: &Expr) -> Type {
+    fn path(e: &Expr, out: &mut Vec<String>) {
+        match e {
+            Expr::Ident(n) => out.push(n.clone()),
+            Expr::Field { base, name } => {
+                path(base, out);
+                out.push(name.clone());
+            }
+            _ => {}
+        }
+    }
+    let mut segs = Vec::new();
+    path(e, &mut segs);
+    if segs.is_empty() {
+        Type::Name(vec!["any".into()])
+    } else {
+        Type::Name(segs)
     }
 }
 
