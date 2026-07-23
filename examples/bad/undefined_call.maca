@@ -1,0 +1,8 @@
+// `slugify` is never defined — a direct call to it would emit a broken-C link
+// error, so the checker flags it as an undefined function up front.
+main() -> int {
+    title = "Hello World"
+    s = slugify(title)
+    info(s)
+    0
+}

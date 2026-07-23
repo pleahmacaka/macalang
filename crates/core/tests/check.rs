@@ -160,3 +160,23 @@ fn mutable_reassign_ok() {
     // a bare lowercase binding is mutable — declare then reassign stays clean.
     assert_clean("examples/loops.maca", Mode::Program);
 }
+
+#[test]
+fn undefined_call_rejected() {
+    // calling a name that is defined nowhere is caught as a clean diagnostic
+    // instead of leaking a broken-C link error out of codegen.
+    assert_has("examples/bad/undefined_call.maca", Mode::Program, DiagKind::UndefinedName);
+}
+
+#[test]
+fn ui_element_tags_are_not_undefined() {
+    // the reactive-UI DSL calls open-ended HTML tags (`div`, `input`, …) that
+    // are intentionally undefined-looking; they must not be flagged.
+    let src = "main() -> Element =>\n    div(\n        button(\"ok\")\n        input(placeholder=\"name\")\n    )\n";
+    let parsed = maca_parser::parse(src);
+    let d = check(&parsed.module, Mode::Program);
+    assert!(
+        !d.iter().any(|x| x.kind == DiagKind::UndefinedName),
+        "UI tags wrongly flagged: {d:?}"
+    );
+}

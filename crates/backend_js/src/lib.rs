@@ -512,17 +512,10 @@ fn arg_expr(a: &Arg) -> Expr {
 }
 
 /// Is `name` an HTML element tag (so `name(...)` in a view builds a DOM node),
-/// as opposed to a text-returning function call used as a child?
+/// as opposed to a text-returning function call used as a child? Delegates to
+/// the canonical list in `maca-parser`, shared with the type checker.
 fn is_html_tag(name: &str) -> bool {
-    matches!(
-        name,
-        "div" | "span" | "p" | "pre" | "code" | "a" | "button" | "input" | "textarea" | "select"
-            | "option" | "label" | "form" | "header" | "footer" | "main" | "section" | "article"
-            | "nav" | "aside" | "ul" | "ol" | "li" | "table" | "thead" | "tbody" | "tr" | "td"
-            | "th" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "img" | "svg" | "canvas" | "small"
-            | "strong" | "em" | "b" | "i" | "hr" | "br" | "figure" | "figcaption" | "details"
-            | "summary" | "dialog" | "progress" | "meter" | "video" | "audio"
-    )
+    maca_parser::is_ui_element_tag(name)
 }
 
 const HTML: &str = "<!doctype html>\n\

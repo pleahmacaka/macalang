@@ -37,6 +37,10 @@ pub enum DiagKind {
     /// `let x = 1` binding is mutable, so a later `x = 2` on a bare binding is
     /// an error.
     Immutable,
+    /// A direct call to a name that is not defined anywhere — no local, no
+    /// user function, no import/alias, no builtin. Caught here so it surfaces
+    /// as a clean diagnostic instead of a broken-C link error at codegen.
+    UndefinedName,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -565,6 +569,24 @@ impl Checker {
                     self.diag(
                         DiagKind::TypeMismatch,
                         format!("call to `{name}` expects {arity} argument(s), got {}", args.len()),
+                    );
+                }
+                // Undefined direct call: a bare lowercase `foo(...)` that is
+                // neither a local, a user function, an import/alias, nor a
+                // builtin resolves to nothing the native backend can emit — it
+                // would become a broken-C call. Flag it here as a clean error.
+                // (Capitalized names are constructors; UFCS `x.m(...)` and calls
+                // through a value stay gradual.)
+                if self.mode == Mode::Program
+                    && let Expr::Ident(name) = &**callee
+                    && name.chars().next().is_some_and(|c| c.is_lowercase() || c == '_')
+                    && lookup(env, name).is_none()
+                    && !self.globals.contains_key(name)
+                    && !maca_parser::is_ui_element_tag(name)
+                {
+                    self.diag(
+                        DiagKind::UndefinedName,
+                        format!("call to undefined function `{name}`"),
                     );
                 }
                 let ct = self.infer(env, callee);
