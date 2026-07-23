@@ -443,8 +443,8 @@ mod tests {
         let json =
             compile_json("fib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\nmain() -> int {\n    info(\"{fib(10)}\")\n    0\n}\n", 0);
         assert!(json.contains("\"output\":\"55\\n\""), "fib(10) wrong: {json}");
-        // the shared flame-graph renderer produces an SVG rooted at main, with fib
-        assert!(json.contains("\"flameSvg\":\"<svg"), "no flame svg: {json}");
+        // the shared renderer produces an HTML flame graph rooted at main, with fib
+        assert!(json.contains("\"flameSvg\":\"<div"), "no flame html: {json}");
         assert!(json.contains("flame graph"), "not the shared renderer: {json}");
         assert!(json.contains("fib"), "fib frame missing: {json}");
         assert!(json.contains("\"maxDepth\":"), "no depth: {json}");

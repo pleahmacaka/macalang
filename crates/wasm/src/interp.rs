@@ -95,7 +95,9 @@ pub fn run(module: &Module) -> RunResult {
             fc.calls.insert(callee.clone(), *cost);
         }
     }
-    let flame_svg = maca_profile::flamegraph_svg_from(&fns, "steps");
+    // HTML (percentage widths) so it fills the playground panel exactly — no
+    // fixed intrinsic width, no horizontal scroll — while rows stay tall.
+    let flame_svg = maca_profile::flamegraph_html_from(&fns, "steps");
 
     RunResult {
         output: it.out,

@@ -193,10 +193,6 @@ pub fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String 
         let y = title_band + (max_depth - f.depth) as f64 * row;
         let fh = row - gap;
         let pct = f.value as f64 / root_val as f64 * 100.0;
-        // warm flame palette: hue swept through red→amber, lightness rising with
-        // depth so upper frames read a touch brighter.
-        let hue = 12 + (i as u32 * 13) % 36; // 12–48°
-        let light = 52 + (f.depth.min(8) as u32) * 2; // 52–68%
         let label = if w > 46.0 {
             let room = ((w - 8.0) / 6.6) as usize;
             let text = if w > 120.0 {
@@ -205,7 +201,7 @@ pub fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String 
                 elide(&f.name, room)
             };
             format!(
-                "<text x=\"{:.1}\" y=\"{:.1}\" fill=\"#2a1403\" font-weight=\"500\">{}</text>",
+                "<text x=\"{:.1}\" y=\"{:.1}\" fill=\"{FRAME_TEXT}\" font-weight=\"600\">{}</text>",
                 x + 5.0,
                 y + fh / 2.0 + 4.0,
                 xml_escape(&text)
@@ -216,16 +212,104 @@ pub fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String 
         svg.push_str(&format!(
             "<g><title>{} — {} {unit} ({:.1}%)</title>\
              <rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"3\" \
-             fill=\"hsl({hue},78%,{light}%)\" stroke=\"#0e0e14\" stroke-width=\"1\"/>{label}</g>\n",
+             fill=\"{}\" stroke=\"#0e0e14\" stroke-width=\"1\"/>{label}</g>\n",
             xml_escape(&f.name),
             f.value,
             pct,
             x, y, w, fh,
+            frame_fill(i),
         ));
     }
     svg.push_str("</svg>\n");
     svg
 }
+
+/// Render the same flame graph as a self-contained **HTML** fragment (inline
+/// styles, no classes) rather than SVG. Frame widths/offsets are percentages, so
+/// it fills its container exactly — no fixed intrinsic width, hence no horizontal
+/// scroll — while row height stays fixed (no shrink-to-a-strip). Used by the
+/// browser playground, which injects it with `innerHTML`; the native `maca
+/// profile` still emits SVG.
+pub fn flamegraph_html_from(fns: &HashMap<String, FnCost>, unit: &str) -> String {
+    let root_name = if fns.contains_key("main") {
+        "main".to_string()
+    } else {
+        fns.iter().max_by_key(|(_, c)| c.self_cost).map(|(n, _)| n.clone()).unwrap_or_default()
+    };
+    let root_val = inclusive(&root_name, fns).max(1);
+    let root = build(&root_name, root_val, 0, 0, fns, &mut Vec::new());
+
+    let mut frames = Vec::new();
+    flatten(&root, &mut frames);
+    let max_depth = frames.iter().map(|f| f.depth).max().unwrap_or(0);
+
+    let row = 28.0_f64; // px pitch per level
+    let gap = 3.0_f64;
+    let plot_h = (max_depth as f64 + 1.0) * row;
+
+    let mut h = String::new();
+    // header + a relative, full-width plot the frames position into by percent
+    h.push_str(&format!(
+        "<div style=\"font-family:Pretendard,ui-monospace,monospace;background:#0e0e14;\
+         color:#f4f2fb;padding:10px 12px 12px;font-size:12px\">\
+         <div style=\"font-weight:600;font-size:13px\">{} flame graph</div>\
+         <div style=\"color:#8b8a99;font-size:11px;margin-bottom:8px\">{} {unit} · depth {}</div>\
+         <div style=\"position:relative;width:100%;height:{:.0}px\">",
+        html_escape(&root_name),
+        root_val,
+        max_depth + 1,
+        plot_h,
+    ));
+    for (i, f) in frames.iter().enumerate() {
+        if f.value == 0 {
+            continue;
+        }
+        let left = f.x as f64 / root_val as f64 * 100.0;
+        let wpct = (f.value as f64 / root_val as f64 * 100.0).max(0.15);
+        let top = (max_depth - f.depth) as f64 * row;
+        let fh = row - gap;
+        let pct = f.value as f64 / root_val as f64 * 100.0;
+        h.push_str(&format!(
+            "<div title=\"{} — {} {unit} ({:.1}%)\" style=\"position:absolute;\
+             left:{:.3}%;width:{:.3}%;top:{:.0}px;height:{:.0}px;\
+             background:{};border-radius:3px;box-sizing:border-box;\
+             padding:0 5px;line-height:{:.0}px;color:{FRAME_TEXT};font-weight:600;overflow:hidden;\
+             white-space:nowrap;text-overflow:ellipsis\">{}</div>",
+            html_escape(&f.name),
+            f.value,
+            pct,
+            left,
+            wpct,
+            top,
+            fh,
+            frame_fill(i),
+            fh,
+            html_escape(&f.name),
+        ));
+    }
+    h.push_str("</div></div>");
+    h
+}
+
+/// A vivid, high-contrast frame colour cycled by index — chosen so adjacent
+/// frames read as clearly distinct on the dark panel (with near-black text),
+/// rather than a muddy warm ramp. Shared by the SVG and HTML renderers.
+fn frame_fill(i: usize) -> &'static str {
+    const PALETTE: [&str; 8] = [
+        "#f78166", // coral
+        "#ffa657", // orange
+        "#e3b341", // gold
+        "#7ee787", // green
+        "#56d4dd", // cyan
+        "#a5b4ff", // periwinkle
+        "#ff9bce", // pink
+        "#d2a8ff", // lilac
+    ];
+    PALETTE[i % PALETTE.len()]
+}
+
+/// Near-black text drawn on top of any [`frame_fill`] colour.
+const FRAME_TEXT: &str = "#10121a";
 
 fn elide(s: &str, max: usize) -> String {
     if s.chars().count() <= max || max < 2 {
@@ -238,6 +322,12 @@ fn elide(s: &str, max: usize) -> String {
 
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+/// Like [`xml_escape`] but also escapes `"` — safe for both element text and
+/// double-quoted HTML attribute values (the flame-graph `title=`).
+fn html_escape(s: &str) -> String {
+    xml_escape(s).replace('"', "&quot;")
 }
 
 /// A compact text profile (top functions by self cost) for stdout.
@@ -299,5 +389,21 @@ fn=(2) fib
         assert!(svg.contains("flame graph"), "{svg}");
         assert!(svg.contains("steps"), "unit label missing: {svg}");
         assert!(svg.contains("main") && svg.contains("fib"));
+    }
+
+    #[test]
+    fn flamegraph_html_fills_width_no_fixed_size() {
+        let mut fns = HashMap::new();
+        fns.insert("main".to_string(), FnCost { self_cost: 5, calls: HashMap::from([("fib".to_string(), 100)]) });
+        fns.insert("fib".to_string(), FnCost { self_cost: 100, calls: HashMap::new() });
+        let html = flamegraph_html_from(&fns, "steps");
+        assert!(html.starts_with("<div"), "{html}");
+        assert!(html.contains("flame graph") && html.contains("steps"), "{html}");
+        assert!(html.contains("main") && html.contains("fib"));
+        // percentage widths (fills the container — no fixed intrinsic width, so
+        // no horizontal scroll) and no <svg>.
+        assert!(html.contains("width:100%"), "container not full-width: {html}");
+        assert!(html.contains('%'), "frames should use percentage widths: {html}");
+        assert!(!html.contains("<svg"), "should be HTML, not SVG: {html}");
     }
 }

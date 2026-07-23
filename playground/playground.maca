@@ -358,7 +358,7 @@ main() -> Element =>
                             span(class="text-2xl font-semibold tabular-nums text-violet-300", mcMs())
                         )
                         div(class="text-xs text-zinc-500 tabular-nums mb-3", mcStats())
-                        div(class="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950", html=mcFlame())
+                        div(class="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950", html=mcFlame())
                     )
                 )
             )
