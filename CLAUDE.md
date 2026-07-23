@@ -99,6 +99,12 @@ Backends: native C (default), LLVM (SIMD span), Nix (config mode), JS
 nix|js|jvm|embedded`, `--mcu`, `--cp`), `run`, `dev` (dev-shell flake), `watch`,
 `fmt`, `lint`, `profile`, `init`.
 
+`maca dev` also emits `.maca/dev/{setup,activate}.ps1` when the config declares
+`scoop.*`/`choco.*`/`winget.*` packages (see `dev.maca`): Windows hosts (no nix)
+get a portable, project-local toolchain under `.maca\dev\`, and the flake
+ignores those namespaces so Nix/Linux hosts are unaffected (`emit_windows_dev`
+in `maca-backend-nix`).
+
 Bindings (no `let` keyword): a bare lowercase `x = e` binds a **mutable**
 variable; `const x = e`, `x = e as const`, or a **Capitalized** name binds a
 **constant** (`is_const`). Reassigning a constant is a compile error
@@ -108,8 +114,11 @@ constant works but `maca lint` nudges toward explicit `const`. (Runtime: a bare
 
 Type checker (`maca-core`): gradual unification with an `any` escape hatch for
 unknown stdlib, strict on the acceptance diagnostics (`DiagKind`:
-TypeMismatch / NonExhaustive / EffectInConfig / UnknownOption / Immutable —
-the last flags reassignment of a bare (constant) binding). Function
+TypeMismatch / NonExhaustive / EffectInConfig / UnknownOption / Immutable /
+UndefinedName — the last flags a direct call to a name defined nowhere (no
+local/user-fn/import/builtin), so a typo surfaces as a clean diagnostic
+instead of a broken-C link error; UI element tags and embedded intrinsics are
+exempt via `maca_parser::is_backend_intrinsic`). Function
 signatures generalize into `Scheme`s (lowercase names are type vars) and
 instantiate per call; the C backend monomorphizes generics (one specialized fn
 per concrete instantiation). Call **arity** and disagreeing **if/ternary
@@ -122,11 +131,14 @@ hex/binary/octal integer literals with `_` separators; list/string subscripting
 `xs[i]` with lvalue assignment (`xs[i] = v`, `p.f = v`); functional record update
 `base with { f = v }`; `len(x)`; recursive sum types (`Tree`, `List`) via boxed
 payloads; a bracketless comma list as an arrow-fn body (`f() -> int[] => 1, 2`);
-C-keyword-safe identifiers (a Maca `double`/`new`/`class` compiles); and raw
-triple-quoted strings (`"""…"""`) with `import js`/`import css` foreign blocks
-that let a `.maca` UI carry its own host glue and styles inline (see
+C-keyword-safe identifiers (a Maca `double`/`new`/`class` compiles); a string
+stdlib as UFCS methods on `str` (`split`→`str[]`, `trim`, `upper`/`lower`,
+`contains`, `starts_with`/`ends_with`, `replace`, `substr`, `index_of`; byte
+semantics, implemented in the runtime, C backend, and playground interpreter);
+and raw triple-quoted strings (`"""…"""`) with `import js`/`import css` foreign
+blocks that let a `.maca` UI carry its own host glue and styles inline (see
 `playground/playground.maca`). Examples:
-`examples/{indexing,record_update,tree,sum_record,keywords}.maca`.
+`examples/{indexing,record_update,tree,sum_record,keywords,strings}.maca`.
 
 **Codegen note (C backend):** control-flow expressions (`if`/`match`/block)
 work in value position via a `Sink` (Discard/Return/Assign) threaded through
