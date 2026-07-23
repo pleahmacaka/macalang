@@ -150,13 +150,13 @@ fn range_end_must_be_int() {
 }
 
 #[test]
-fn reassign_without_let_rejected() {
-    // `count = 0` with no prior `let count` is an undeclared-name error.
-    assert_has("examples/bad/reassign_no_let.maca", Mode::Program, DiagKind::Undefined);
+fn reassign_constant_rejected() {
+    // a bare `count = 0` binds a constant; reassigning it is an error.
+    assert_has("examples/bad/reassign_const.maca", Mode::Program, DiagKind::Immutable);
 }
 
 #[test]
 fn let_then_reassign_ok() {
-    // the legitimate pattern — declare with `let`, then reassign — stays clean.
+    // the mutable pattern — declare with `let`, then reassign — stays clean.
     assert_clean("examples/loops.maca", Mode::Program);
 }

@@ -984,7 +984,13 @@ impl<'a> Cx<'a> {
         for (i, s) in stmts.iter().enumerate() {
             let last = i + 1 == stmts.len();
             match s {
-                Stmt::Bind(b) if b.is_let => {
+                // a declaration: `let x = e`, or a bare `x = e` that first
+                // introduces `x` (a constant). A bare assignment to a name
+                // already in scope is a reassignment (handled below).
+                Stmt::Bind(b)
+                    if b.is_let
+                        || matches!(&b.target, Expr::Ident(n) if lookup(env, n).is_none()) =>
+                {
                     if let Expr::Ident(name) = &b.target {
                         let ann = b.tys.first().map(|t| self.cty(t));
                         if is_control(&b.value) {

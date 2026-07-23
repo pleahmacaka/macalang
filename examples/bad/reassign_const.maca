@@ -1,0 +1,8 @@
+// A bare `x = e` binds a *constant*; only a `let` binding is mutable. So
+// reassigning `count` here is an error — declare it `let count = 0` instead.
+main() -> int {
+    count = 0
+    count = count + 1
+    info("{count}")
+    0
+}

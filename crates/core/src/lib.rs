@@ -33,9 +33,10 @@ pub enum DiagKind {
     NonExhaustive,
     EffectInConfig,
     UnknownOption,
-    /// Use of / assignment to a name that was never declared (`x = 1` with no
-    /// prior `let x`, or a reference to an unknown local).
-    Undefined,
+    /// Reassignment of a constant. A bare `x = 1` binds a constant; only a
+    /// `let x = 1` binding is mutable, so a later `x = 2` on a bare binding is
+    /// an error.
+    Immutable,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -103,6 +104,10 @@ struct Checker {
     fn_arity: HashMap<String, (usize, bool)>,
     type_decls: HashSet<usize>, // item indices that are type declarations
     local_names: HashSet<String>,
+    /// Per-function mutability of local names: `let x` → true, bare `x = e` →
+    /// false (a constant). Reassigning a `false` entry is an error. Cleared and
+    /// restored around each function body.
+    mut_of: HashMap<String, bool>,
     diags: Vec<Diagnostic>,
 }
 
@@ -118,6 +123,7 @@ impl Checker {
             fn_arity: HashMap::new(),
             type_decls: HashSet::new(),
             local_names: HashSet::new(),
+            mut_of: HashMap::new(),
             diags: Vec::new(),
         }
     }
@@ -272,10 +278,16 @@ impl Checker {
             .iter()
             .map(|p| (p.name.clone(), p.ty.as_ref().map_or(Ty::Any, ast_ty)))
             .collect();
+        // fresh mutability scope for this body; params are exempt (mutable).
+        let saved_mut = std::mem::take(&mut self.mut_of);
+        for p in &f.params {
+            self.mut_of.insert(p.name.clone(), true);
+        }
         let bty = match body {
             FnBody::Block(stmts) => self.infer_block(&mut env, stmts),
             FnBody::Expr(e) => self.infer(&mut env, e),
         };
+        self.mut_of = saved_mut;
         if let Some(ret) = &f.ret {
             let rt = self.relax_ann(ast_ty(ret));
             if let Err(e) = self.inf.unify(&bty, &rt) {
@@ -451,16 +463,26 @@ impl Checker {
         for s in stmts {
             match s {
                 Stmt::Bind(b) => {
-                    // Reassignment (`x = e`, no `let`, no type annotation) requires
-                    // `x` to already be in scope — a local (let/param) or a global.
-                    // Otherwise it's a typo or a missing `let`.
-                    if !b.is_let && b.tys.is_empty() {
-                        if let Expr::Ident(n) = &b.target {
-                            if lookup(env, n).is_none() && !self.globals.contains_key(n) {
-                                self.diag(
-                                    DiagKind::Undefined,
-                                    format!("`{n}` is not defined — use `let {n} = …` to declare it"),
-                                );
+                    // Mutability: `let x = e` binds a mutable local; a bare
+                    // `x = e` binds a *constant*. A later bare `x = e` reassigns
+                    // — allowed only if `x` is mutable (a `let`), else it's an
+                    // error. A bare assignment to an unseen name binds a new
+                    // constant; reassigning a global is left to the global.
+                    if let Expr::Ident(n) = &b.target {
+                        if b.is_let {
+                            self.mut_of.insert(n.clone(), true);
+                        } else if b.tys.is_empty() {
+                            match self.mut_of.get(n) {
+                                Some(false) => self.diag(
+                                    DiagKind::Immutable,
+                                    format!("cannot reassign constant `{n}` — declare it with `let {n} = …` to make it mutable"),
+                                ),
+                                Some(true) => {} // reassigning a mutable local
+                                None => {
+                                    if !self.globals.contains_key(n) {
+                                        self.mut_of.insert(n.clone(), false); // new constant
+                                    }
+                                }
                             }
                         }
                     }
@@ -784,6 +806,9 @@ impl Checker {
                     return;
                 }
                 env.push((n.clone(), scrut.clone()));
+                // a pattern-bound name (loop var, match capture) is exempt from
+                // the constant rule — treat it as mutable.
+                self.mut_of.insert(n.clone(), true);
             }
             Pattern::Ctor { name, args } => {
                 // bind each payload sub-pattern at the variant's declared type

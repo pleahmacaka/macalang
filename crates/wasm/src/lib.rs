@@ -94,7 +94,7 @@ fn kind_str(k: DiagKind) -> &'static str {
         DiagKind::NonExhaustive => "NonExhaustive",
         DiagKind::EffectInConfig => "EffectInConfig",
         DiagKind::UnknownOption => "UnknownOption",
-        DiagKind::Undefined => "Undefined",
+        DiagKind::Immutable => "Immutable",
     }
 }
 

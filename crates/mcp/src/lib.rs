@@ -31,7 +31,7 @@ fn kind_name(k: DiagKind) -> &'static str {
         DiagKind::NonExhaustive => "non-exhaustive",
         DiagKind::EffectInConfig => "effect-in-config",
         DiagKind::UnknownOption => "unknown-option",
-        DiagKind::Undefined => "undefined",
+        DiagKind::Immutable => "immutable",
     }
 }
 

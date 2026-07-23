@@ -217,12 +217,14 @@ impl<'a> Interp<'a> {
             match s {
                 Stmt::Bind(b) => {
                     let v = self.eval(&b.value, scope, depth)?;
-                    if b.is_let {
-                        if let Expr::Ident(n) = &b.target {
+                    match &b.target {
+                        // `let x = e`, or a bare `x = e` that first introduces x
+                        // (a constant), declares a new binding; a bare `x = e`
+                        // for an existing name reassigns it.
+                        Expr::Ident(n) if b.is_let || !scope.iter().any(|(k, _)| k == n) => {
                             scope.push((n.clone(), v));
                         }
-                    } else {
-                        self.assign(&b.target, v, scope, depth)?;
+                        _ => self.assign(&b.target, v, scope, depth)?,
                     }
                     last = Value::Unit;
                 }

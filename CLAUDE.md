@@ -99,10 +99,16 @@ Backends: native C (default), LLVM (SIMD span), Nix (config mode), JS
 nix|js|jvm|embedded`, `--mcu`, `--cp`), `run`, `dev` (dev-shell flake), `watch`,
 `fmt`, `lint`, `profile`, `init`.
 
+Bindings: a bare `x = e` binds a **constant**; only `let x = e` is **mutable**
+(reassignable). Reassigning a bare binding is a compile error
+(`DiagKind::Immutable`), caught by the compiler and the LSP. (Runtime: a bare
+`x = e` that first introduces a name declares it; a later bare `x = e` on an
+existing mutable name reassigns.)
+
 Type checker (`maca-core`): gradual unification with an `any` escape hatch for
 unknown stdlib, strict on the acceptance diagnostics (`DiagKind`:
-TypeMismatch / NonExhaustive / EffectInConfig / UnknownOption / Undefined —
-the last flags `x = e` reassignment with no prior `let x`). Function
+TypeMismatch / NonExhaustive / EffectInConfig / UnknownOption / Immutable —
+the last flags reassignment of a bare (constant) binding). Function
 signatures generalize into `Scheme`s (lowercase names are type vars) and
 instantiate per call; the C backend monomorphizes generics (one specialized fn
 per concrete instantiation). Call **arity** and disagreeing **if/ternary
