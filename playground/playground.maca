@@ -171,20 +171,24 @@ import js """
     }
     return out;
   }
+  const HL_DEC = new TextDecoder();
   window.mcHighlight = function (src) {
     src = src == null ? "" : String(src);
     const toks = (last && last.tokens) || [];
+    // token spans are BYTE offsets (from the Rust lexer) — slice the UTF-8 bytes,
+    // not the UTF-16 string, so non-ASCII (comments, strings) can't desync it.
+    const bytes = new TextEncoder().encode(src);
     let html = "", pos = 0;
     for (const t of toks) {
       const start = t[0], len = t[1], kind = t[2];
-      if (start < pos || start + len > src.length) continue; // stale tokens → skip
-      html += gap(src.slice(pos, start));
-      const piece = esc(src.slice(start, start + len));
+      if (start < pos || start + len > bytes.length) continue; // stale tokens → skip
+      html += gap(HL_DEC.decode(bytes.subarray(pos, start)));
+      const piece = esc(HL_DEC.decode(bytes.subarray(start, start + len)));
       const cls = KIND_CLS[kind];
       html += cls ? '<span class="' + cls + '">' + piece + "</span>" : piece;
       pos = start + len;
     }
-    html += gap(src.slice(pos));
+    html += gap(HL_DEC.decode(bytes.subarray(pos)));
     return html + "\n"; // trailing line keeps the overlay tall enough
   };
 
@@ -307,8 +311,10 @@ tabClass(name: str) -> str =>
 
 ex = "px-2 py-1 text-sm rounded border border-zinc-700 text-zinc-300 cursor-pointer"
 
-// both editor layers share these so glyphs line up exactly under the caret
-edFont = "font-mono text-sm leading-normal p-4 whitespace-pre"
+// both editor layers share these so glyphs line up exactly under the caret:
+// identical font/size/leading/padding, zeroed UA margin (pre) and border
+// (textarea), the same border-box model, and no wrapping.
+edFont = "font-mono text-sm leading-normal p-4 m-0 border-0 box-border whitespace-pre"
 
 // ---- view (styled with Maca's integrated Tailwind) -----------------------
 main() -> Element =>
@@ -334,7 +340,7 @@ main() -> Element =>
                 // ---- editor: a transparent textarea over a highlight layer --
                 div(class="relative min-h-0 overflow-hidden border-r border-zinc-800 bg-zinc-900"
                     pre(id="hl", class=edFont ++ " tok-hl absolute inset-0 overflow-auto pointer-events-none text-zinc-200", html=mcHighlight(source))
-                    textarea(id="ed", class=edFont ++ " absolute inset-0 overflow-auto bg-transparent text-transparent caret-zinc-100 resize-none outline-none", spellcheck="false", bind:value=source, on:input=run, on:keyup=caret, on:click=caret)
+                    textarea(id="ed", class=edFont ++ " absolute inset-0 overflow-auto bg-transparent text-transparent caret-zinc-100 resize-none outline-none", spellcheck="false", wrap="off", bind:value=source, on:input=run, on:keyup=caret, on:click=caret)
                 )
                 // ---- results: diagnostics / console / C / JS + profiler -----
                 div(class="flex flex-col min-w-0 min-h-0 bg-zinc-950"

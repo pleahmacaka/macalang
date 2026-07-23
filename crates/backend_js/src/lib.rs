@@ -609,6 +609,8 @@ fn tailwind(class: &str) -> Option<String> {
         "pointer-events-none" => "pointer-events:none",
         "pointer-events-auto" => "pointer-events:auto",
         "select-none" => "user-select:none",
+        "box-border" => "box-sizing:border-box",
+        "box-content" => "box-sizing:content-box",
         "tabular-nums" => "font-variant-numeric:tabular-nums",
         "w-full" => "width:100%",
         "h-full" => "height:100%",
