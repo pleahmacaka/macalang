@@ -612,6 +612,48 @@ fn cmd_dev(args: &[String]) {
         die(&e.to_string());
     }
     println!("wrote {} — run `nix develop` to enter the shell", out.display());
+
+    // Windows: also emit native dev-env scripts under .maca/dev/ (scoop/choco/
+    // winget). The flake above ignores scoop.*/choco.*/winget.*, so Nix hosts
+    // are unaffected; Windows hosts get a portable, project-local toolchain.
+    if let Some(win) = maca_backend_nix::emit_windows_dev(&parsed.module) {
+        let dir = PathBuf::from(".maca").join("dev");
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            die(&format!("cannot create {}: {e}", dir.display()));
+        }
+        let setup = dir.join("setup.ps1");
+        let activate = dir.join("activate.ps1");
+        if let Err(e) = std::fs::write(&setup, &win.setup) {
+            die(&e.to_string());
+        }
+        if let Err(e) = std::fs::write(&activate, &win.activate) {
+            die(&e.to_string());
+        }
+        println!(
+            "wrote {} + {} — Windows native dev env ({})",
+            setup.display(),
+            activate.display(),
+            win.managers.join(", ")
+        );
+        // On Windows, provision the toolchain immediately (portable scoop into
+        // .maca\dev); elsewhere the scripts are emitted for the target host.
+        if cfg!(windows) {
+            println!("provisioning… (running setup.ps1)");
+            let status = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+                .arg(&setup)
+                .status();
+            match status {
+                Ok(s) if s.success() => {
+                    println!("done — activate with:  . .\\.maca\\dev\\activate.ps1");
+                }
+                Ok(s) => eprintln!("setup.ps1 exited with {s} — inspect {}", setup.display()),
+                Err(e) => eprintln!("could not run powershell: {e}"),
+            }
+        } else {
+            println!("on Windows, run:  powershell -File {}", setup.display());
+        }
+    }
 }
 
 /// Embedded target → freestanding C + startup + linker script, cross-compiled

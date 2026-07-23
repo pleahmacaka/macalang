@@ -470,7 +470,7 @@ fn read_lock() -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut cur = String::new();
     let mut name = String::new();
-    let mut flush = |name: &mut String, cur: &mut String, out: &mut Vec<(String, String)>| {
+    let flush = |name: &mut String, cur: &mut String, out: &mut Vec<(String, String)>| {
         if !name.is_empty() {
             out.push((std::mem::take(name), std::mem::take(cur)));
         } else {

@@ -53,3 +53,46 @@ fn dev_flake_from_maca() {
     assert_eq!(flake.matches('{').count(), flake.matches('}').count(), "unbalanced braces");
     assert_eq!(flake.matches('[').count(), flake.matches(']').count(), "unbalanced brackets");
 }
+
+#[test]
+fn windows_dev_scripts_from_maca() {
+    let src = "dev.name = \"proj\"\n\
+               dev.env = {\n    RUST_BACKTRACE = \"1\"\n}\n\
+               scoop.buckets = main, java\n\
+               scoop.packages = main.rust, java.temurin21-jdk\n\
+               choco.packages = git\n\
+               winget.packages = \"Nix.Nix\"\n";
+    let parsed = maca_parser::parse(src);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let win = maca_backend_nix::emit_windows_dev(&parsed.module).expect("some windows dev");
+    assert_eq!(win.managers, vec!["scoop", "choco", "winget"]);
+
+    // setup.ps1: portable scoop under .maca\dev, bucket-qualified installs
+    assert!(win.setup.contains("$env:SCOOP = Join-Path $dev \"scoop\""), "{}", win.setup);
+    assert!(win.setup.contains("scoop bucket add main"), "{}", win.setup);
+    assert!(win.setup.contains("scoop bucket add java"), "{}", win.setup);
+    assert!(win.setup.contains("scoop install main/rust java/temurin21-jdk"), "{}", win.setup);
+    assert!(win.setup.contains("choco install git -y"), "{}", win.setup);
+    assert!(win.setup.contains("winget install --id Nix.Nix"), "{}", win.setup);
+
+    // activate.ps1: PATH, env injection, JDK auto-detect for JAVA_HOME
+    assert!(win.activate.contains("$env:PATH = \"$env:SCOOP\\shims;$env:PATH\""), "{}", win.activate);
+    assert!(win.activate.contains("$env:RUST_BACKTRACE = \"1\""), "{}", win.activate);
+    assert!(win.activate.contains("$env:JAVA_HOME"), "{}", win.activate);
+    assert!(win.activate.contains("temurin"), "{}", win.activate);
+
+    // the flake ignores scoop/choco/winget entirely — Nix hosts see none of it
+    let flake = maca_backend_nix::emit_flake(&parsed.module);
+    assert!(!flake.contains("scoop"), "{flake}");
+    assert!(!flake.contains("choco"), "{flake}");
+    assert!(!flake.contains("winget"), "{flake}");
+    assert!(!flake.contains("temurin"), "{flake}");
+}
+
+#[test]
+fn no_windows_config_means_no_scripts() {
+    let src = "dev.name = \"proj\"\ndev.packages = rustc, cargo\n";
+    let parsed = maca_parser::parse(src);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    assert!(maca_backend_nix::emit_windows_dev(&parsed.module).is_none());
+}
