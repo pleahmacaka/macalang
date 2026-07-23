@@ -1,35 +1,48 @@
 #!/usr/bin/env bash
-# Build the compiler front-end to wasm and drop it next to the playground.
-# No wasm-bindgen / wasm-pack needed — just the wasm32 target:
-#   rustup target add wasm32-unknown-unknown
+# Build the Maca playground — a single self-contained HTML — from ONE .maca file.
+#
+# playground.maca carries everything (UI, styles, host runtime) via `import
+# css`/`import js` blocks; Maca's JS backend compiles it to app.js + app.css.
+# This script only wraps that output with the wasm compiler (base64) — the sole
+# other input, which is the compiler binary itself, not a source file.
+#
+# Output goes to the cache dir (never the repo); the final path is echoed last.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
-MONACO_VERSION="0.52.2"
+wasm="$root/target/wasm32-unknown-unknown/release/maca_wasm.wasm"
+maca="$root/target/debug/maca"
 
-# 1. vendor Monaco locally (no CDN at runtime) via `npm pack`
-if [ ! -f "$here/vendor/vs/loader.js" ]; then
-  echo "vendoring monaco-editor@${MONACO_VERSION}…"
-  tmp="$(mktemp -d)"
-  ( cd "$tmp" && npm pack "monaco-editor@${MONACO_VERSION}" >/dev/null )
-  mkdir -p "$here/vendor"
-  tar -xzf "$tmp"/monaco-editor-*.tgz -C "$here/vendor" package/min/vs
-  rm -rf "$here/vendor/vs"
-  mv "$here/vendor/package/min/vs" "$here/vendor/vs"
-  rm -rf "$here/vendor/package" "$tmp"
-  echo "wrote $here/vendor/vs ($(du -sh "$here/vendor/vs" | cut -f1))"
-else
-  echo "monaco already vendored at vendor/vs"
-fi
+[ -x "$maca" ] || { echo "building maca…" >&2; cargo build -p maca-driver --manifest-path "$root/Cargo.toml" >&2; }
+[ -f "$wasm" ] || { echo "building maca-wasm…" >&2; cargo build -p maca-wasm --target wasm32-unknown-unknown --release --manifest-path "$root/Cargo.toml" >&2; }
 
-# 2. build the compiler front-end to wasm
-echo "building maca-wasm (release, wasm32-unknown-unknown)…"
-cargo build -p maca-wasm --target wasm32-unknown-unknown --release --manifest-path "$root/Cargo.toml"
+# compile the single .maca file → app.js + app.css
+build="$(mktemp -d)"
+trap 'rm -rf "$build"' EXIT
+"$maca" build --target js "$here/playground.maca" -o "$build/app" >&2
 
-cp "$root/target/wasm32-unknown-unknown/release/maca_wasm.wasm" "$here/maca_wasm.wasm"
-echo "wrote $here/maca_wasm.wasm ($(wc -c < "$here/maca_wasm.wasm") bytes)"
-echo
-echo "now serve this folder, e.g.:"
-echo "  python3 -m http.server -d \"$here\" 8000"
-echo "  open http://localhost:8000/"
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/maca/playground"
+mkdir -p "$cache"
+find "$cache" -maxdepth 1 -name 'maca-playground*.html' -mtime +1 -delete 2>/dev/null || true
+out="$cache/maca-playground.html"
+if [ "${1:-}" = "-o" ] && [ -n "${2:-}" ]; then out="$2"; fi
+
+python3 - "$build/app/app.js" "$build/app/app.css" "$wasm" "$out" <<'PY' >&2
+import base64, sys
+appjs, appcss, wasmp, outp = sys.argv[1:5]
+app = open(appjs).read()
+css = open(appcss).read()
+b64 = base64.b64encode(open(wasmp, "rb").read()).decode()
+# wasm-b64 comes before app.js so the embedded boot can read it synchronously.
+page = (
+    "<title>Maca Playground (in Maca)</title>\n"
+    f"<style>\n{css}\n</style>\n"
+    '<div id="app"></div>\n'
+    f'<script id="wasm-b64" type="application/octet-stream">{b64}</script>\n'
+    f"<script>\n{app}\n</script>\n"
+)
+open(outp, "w").write(page)
+print(f"wrote {outp} ({len(page)} bytes)")
+PY
+echo "$out"

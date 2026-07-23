@@ -34,6 +34,14 @@ pub fn emit(m: &Module) -> JsOut {
     cx.state_names = state_names.clone();
     set_state_names(&state_names);
 
+    // Collect Tailwind class candidates from every string literal in the module
+    // (not just `class=` attributes), so classes returned from a helper — e.g.
+    // `tab(n) => n == active ? "px-2 bg-zinc-800" : "px-2"` — still emit CSS.
+    // Non-class tokens simply resolve to nothing and are dropped.
+    for item in &m.items {
+        collect_class_strings(item, &mut cx.classes);
+    }
+
     // main() -> Element body
     let root_expr = m.items.iter().find_map(|it| match it {
         Stmt::Fn(f) if f.name == "main" => match &f.body {
@@ -476,7 +484,10 @@ impl Cx {
     }
 
     fn css(&self) -> String {
-        let mut out = String::from("/* generated Tailwind subset (tree-shaken) */\n");
+        let mut out = String::from(
+            "/* generated Tailwind subset (tree-shaken) */\n\
+             *,*::before,*::after{box-sizing:border-box}\nhtml,body{margin:0}\n",
+        );
         for c in &self.classes {
             if let Some(rule) = tailwind(c) {
                 out.push_str(&format!(".{} {{ {rule} }}\n", css_escape(c)));
@@ -521,38 +532,275 @@ fn js_init(e: &Expr) -> String {
     }
 }
 
-/// A tiny, extensible Tailwind subset. Returns the CSS body for a utility class.
-fn tailwind(class: &str) -> Option<&'static str> {
-    Some(match class {
-        "flex" => "display: flex;",
-        "flex-col" => "flex-direction: column;",
-        "flex-row" => "flex-direction: row;",
-        "grid" => "display: grid;",
-        "block" => "display: block;",
-        "inline" => "display: inline;",
-        "hidden" => "display: none;",
-        "text-center" => "text-align: center;",
-        "text-left" => "text-align: left;",
-        "text-right" => "text-align: right;",
-        "items-center" => "align-items: center;",
-        "justify-center" => "justify-content: center;",
-        "justify-between" => "justify-content: space-between;",
-        "w-full" => "width: 100%;",
-        "h-full" => "height: 100%;",
-        "font-bold" => "font-weight: 700;",
-        "rounded" => "border-radius: 0.25rem;",
-        "gap-2" => "gap: 0.5rem;",
-        "gap-4" => "gap: 1rem;",
-        "p-2" => "padding: 0.5rem;",
-        "p-4" => "padding: 1rem;",
-        "m-2" => "margin: 0.5rem;",
-        "m-4" => "margin: 1rem;",
+/// Maca's integrated Tailwind: turn a utility class into its CSS body. Covers
+/// the common utilities (display/flex/grid, spacing, sizing, text, colors,
+/// borders, rounding, overflow, position) generatively — a compact but real
+/// engine, not a fixed table. Unknown classes return `None` and are dropped.
+fn tailwind(class: &str) -> Option<String> {
+    // fixed keywords first
+    let fixed = match class {
+        "flex" => "display:flex",
+        "inline-flex" => "display:inline-flex",
+        "grid" => "display:grid",
+        "block" => "display:block",
+        "inline" => "display:inline",
+        "inline-block" => "display:inline-block",
+        "hidden" => "display:none",
+        "flex-col" => "flex-direction:column",
+        "flex-row" => "flex-direction:row",
+        "flex-wrap" => "flex-wrap:wrap",
+        "flex-1" => "flex:1 1 0%",
+        "flex-auto" => "flex:1 1 auto",
+        "flex-none" => "flex:none",
+        "items-center" => "align-items:center",
+        "items-start" => "align-items:flex-start",
+        "items-end" => "align-items:flex-end",
+        "items-baseline" => "align-items:baseline",
+        "items-stretch" => "align-items:stretch",
+        "justify-center" => "justify-content:center",
+        "justify-between" => "justify-content:space-between",
+        "justify-start" => "justify-content:flex-start",
+        "justify-end" => "justify-content:flex-end",
+        "justify-around" => "justify-content:space-around",
+        "self-start" => "align-self:flex-start",
+        "self-end" => "align-self:flex-end",
+        "self-center" => "align-self:center",
+        "self-stretch" => "align-self:stretch",
+        "text-center" => "text-align:center",
+        "text-left" => "text-align:left",
+        "text-right" => "text-align:right",
+        "font-bold" => "font-weight:700",
+        "font-semibold" => "font-weight:600",
+        "font-medium" => "font-weight:500",
+        "font-normal" => "font-weight:400",
+        "font-sans" => "font-family:'Pretendard',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif",
+        "font-mono" => "font-family:'Pretendard',ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace",
+        "uppercase" => "text-transform:uppercase",
+        "lowercase" => "text-transform:lowercase",
+        "italic" => "font-style:italic",
+        "underline" => "text-decoration-line:underline",
+        "whitespace-pre" => "white-space:pre",
+        "whitespace-pre-wrap" => "white-space:pre-wrap",
+        "whitespace-nowrap" => "white-space:nowrap",
+        "whitespace-normal" => "white-space:normal",
+        "truncate" => "overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
+        "break-words" => "overflow-wrap:break-word",
+        "break-all" => "word-break:break-all",
+        "overflow-auto" => "overflow:auto",
+        "overflow-hidden" => "overflow:hidden",
+        "overflow-x-auto" => "overflow-x:auto",
+        "overflow-y-auto" => "overflow-y:auto",
+        "relative" => "position:relative",
+        "absolute" => "position:absolute",
+        "fixed" => "position:fixed",
+        "sticky" => "position:sticky",
+        "inset-0" => "top:0;right:0;bottom:0;left:0",
+        "cursor-pointer" => "cursor:pointer",
+        "cursor-default" => "cursor:default",
+        "resize-none" => "resize:none",
+        "outline-none" => "outline:none",
+        "tabular-nums" => "font-variant-numeric:tabular-nums",
+        "w-full" => "width:100%",
+        "h-full" => "height:100%",
+        "w-screen" => "width:100vw",
+        "h-screen" => "height:100vh",
+        "w-auto" => "width:auto",
+        "h-auto" => "height:auto",
+        "min-h-0" => "min-height:0",
+        "min-w-0" => "min-width:0",
+        "max-w-full" => "max-width:100%",
+        "rounded-none" => "border-radius:0",
+        "rounded" => "border-radius:0.25rem",
+        "rounded-md" => "border-radius:0.375rem",
+        "rounded-lg" => "border-radius:0.5rem",
+        "rounded-xl" => "border-radius:0.75rem",
+        "rounded-full" => "border-radius:9999px",
+        "border" => "border-width:1px;border-style:solid",
+        "border-0" => "border-width:0",
+        "border-t" => "border-top-width:1px;border-top-style:solid",
+        "border-b" => "border-bottom-width:1px;border-bottom-style:solid",
+        "border-l" => "border-left-width:1px;border-left-style:solid",
+        "border-r" => "border-right-width:1px;border-right-style:solid",
+        _ => "",
+    };
+    if !fixed.is_empty() {
+        return Some(format!("{fixed};"));
+    }
+
+    // compound-prefix utilities (the prefix itself contains a hyphen)
+    if let Some(v) = class.strip_prefix("min-h-") {
+        return Some(format!("min-height:{};", size(v)?));
+    }
+    if let Some(v) = class.strip_prefix("min-w-") {
+        return Some(format!("min-width:{};", size(v)?));
+    }
+    if let Some(v) = class.strip_prefix("max-w-") {
+        return Some(format!("max-width:{};", size(v)?));
+    }
+    if let Some(v) = class.strip_prefix("max-h-") {
+        return Some(format!("max-height:{};", size(v)?));
+    }
+    if let Some(v) = class.strip_prefix("gap-x-") {
+        return Some(format!("column-gap:{};", space(v)?));
+    }
+    if let Some(v) = class.strip_prefix("gap-y-") {
+        return Some(format!("row-gap:{};", space(v)?));
+    }
+    if let Some(v) = class.strip_prefix("grid-cols-") {
+        return Some(format!("grid-template-columns:repeat({},minmax(0,1fr));", v.parse::<u32>().ok()?));
+    }
+
+    // patterned utilities: <prefix>-<value> (split on the first hyphen so color
+    // shades like `zinc-900` stay intact as the value)
+    let (prefix, val) = class.split_once('-')?;
+    let css = match prefix {
+        // spacing
+        "p" => format!("padding:{}", space(val)?),
+        "px" => format!("padding-left:{v};padding-right:{v}", v = space(val)?),
+        "py" => format!("padding-top:{v};padding-bottom:{v}", v = space(val)?),
+        "pt" => format!("padding-top:{}", space(val)?),
+        "pr" => format!("padding-right:{}", space(val)?),
+        "pb" => format!("padding-bottom:{}", space(val)?),
+        "pl" => format!("padding-left:{}", space(val)?),
+        "m" => format!("margin:{}", space(val)?),
+        "mx" => format!("margin-left:{v};margin-right:{v}", v = space(val)?),
+        "my" => format!("margin-top:{v};margin-bottom:{v}", v = space(val)?),
+        "mt" => format!("margin-top:{}", space(val)?),
+        "mr" => format!("margin-right:{}", space(val)?),
+        "mb" => format!("margin-bottom:{}", space(val)?),
+        "ml" => format!("margin-left:{}", space(val)?),
+        "gap" => format!("gap:{}", space(val)?),
+        // sizing
+        "w" => format!("width:{}", size(val)?),
+        "h" => format!("height:{}", size(val)?),
+        "basis" => format!("flex-basis:{}", size(val)?),
+        // text size / leading / tracking / weight / opacity / z / rounding side
+        "text" => {
+            if let Some(sz) = text_size(val) {
+                format!("font-size:{sz}")
+            } else {
+                format!("color:{}", color(val)?)
+            }
+        }
+        "leading" => format!("line-height:{}", leading(val)?),
+        "tracking" => format!("letter-spacing:{}", tracking(val)?),
+        "opacity" => format!("opacity:{}", val.parse::<f32>().ok()? / 100.0),
+        "z" => format!("z-index:{}", val.parse::<i32>().ok()?),
+        // colors
+        "bg" => format!("background-color:{}", color(val)?),
+        "border" => format!("border-color:{}", color(val)?),
+        "rounded" if val == "sm" => "border-radius:0.125rem".into(),
+        _ => return None,
+    };
+    Some(format!("{css};"))
+}
+
+/// Tailwind spacing scale → a rem/px length (`4` → `1rem`, `0.5` → `0.125rem`).
+fn space(v: &str) -> Option<String> {
+    Some(match v {
+        "0" => "0".into(),
+        "px" => "1px".into(),
+        _ => {
+            let n: f32 = v.parse().ok()?;
+            format!("{}rem", n * 0.25)
+        }
+    })
+}
+
+/// Width/height value: spacing scale, plus `full`/`screen`/`auto`/fractions.
+fn size(v: &str) -> Option<String> {
+    Some(match v {
+        "full" => "100%".into(),
+        "screen" => "100vh".into(),
+        "auto" => "auto".into(),
+        "min" => "min-content".into(),
+        "max" => "max-content".into(),
+        "fit" => "fit-content".into(),
+        _ if v.contains('/') => {
+            let (a, b) = v.split_once('/')?;
+            let (a, b): (f32, f32) = (a.parse().ok()?, b.parse().ok()?);
+            format!("{:.4}%", a / b * 100.0)
+        }
+        _ => space(v)?,
+    })
+}
+
+fn text_size(v: &str) -> Option<&'static str> {
+    Some(match v {
+        "xs" => "0.75rem",
+        "sm" => "0.875rem",
+        "base" => "1rem",
+        "lg" => "1.125rem",
+        "xl" => "1.25rem",
+        "2xl" => "1.5rem",
+        "3xl" => "1.875rem",
         _ => return None,
     })
 }
 
+fn leading(v: &str) -> Option<&'static str> {
+    Some(match v {
+        "none" => "1",
+        "tight" => "1.25",
+        "snug" => "1.375",
+        "normal" => "1.5",
+        "relaxed" => "1.625",
+        "loose" => "2",
+        _ => return None,
+    })
+}
+
+fn tracking(v: &str) -> Option<&'static str> {
+    Some(match v {
+        "tight" => "-0.025em",
+        "normal" => "0",
+        "wide" => "0.025em",
+        "wider" => "0.05em",
+        "widest" => "0.1em",
+        _ => return None,
+    })
+}
+
+/// A compact color palette (name → hex). Covers `white`/`black`/`transparent`
+/// and the shades used across the UI (zinc neutrals, a violet accent, and the
+/// semantic hues). `text-`/`bg-`/`border-` all resolve through here.
+fn color(v: &str) -> Option<&'static str> {
+    Some(match v {
+        "white" => "#ffffff",
+        "black" => "#000000",
+        "transparent" => "transparent",
+        "current" => "currentColor",
+        "zinc-50" => "#fafafa",
+        "zinc-100" => "#f4f4f5",
+        "zinc-200" => "#e4e4e7",
+        "zinc-300" => "#d4d4d8",
+        "zinc-400" => "#a1a1aa",
+        "zinc-500" => "#71717a",
+        "zinc-600" => "#52525b",
+        "zinc-700" => "#3f3f46",
+        "zinc-800" => "#27272a",
+        "zinc-850" => "#1f1f23",
+        "zinc-900" => "#18181b",
+        "zinc-950" => "#0d0d0f",
+        "violet-300" => "#c4b5fd",
+        "violet-400" => "#a78bfa",
+        "violet-500" => "#8b5cf6",
+        "violet-600" => "#7c3aed",
+        "cyan-400" => "#22d3ee",
+        "emerald-400" => "#34d399",
+        "emerald-500" => "#10b981",
+        "rose-400" => "#fb7185",
+        "rose-500" => "#f43f5e",
+        "amber-400" => "#fbbf24",
+        "amber-500" => "#f59e0b",
+        "sky-400" => "#38bdf8",
+        _ => return None,
+    })
+}
+
+/// Escape a class name for a CSS selector (`/` in `w-1/2`, `.` in `p-1.5`).
 fn css_escape(c: &str) -> String {
-    c.to_string()
+    c.replace('/', "\\/").replace('.', "\\.").replace(':', "\\:")
 }
 
 fn plain_text(parts: &[StrPart]) -> String {
@@ -563,6 +811,94 @@ fn plain_text(parts: &[StrPart]) -> String {
             _ => None,
         })
         .collect()
+}
+
+/// Walk a statement collecting whitespace-separated tokens of every string
+/// literal as Tailwind class candidates.
+fn collect_class_strings(s: &Stmt, out: &mut BTreeSet<String>) {
+    match s {
+        Stmt::Fn(f) => match &f.body {
+            Some(FnBody::Expr(e)) => collect_class_expr(e, out),
+            Some(FnBody::Block(stmts)) => stmts.iter().for_each(|s| collect_class_strings(s, out)),
+            None => {}
+        },
+        Stmt::Bind(b) => collect_class_expr(&b.value, out),
+        Stmt::Expr(e) => collect_class_expr(e, out),
+        _ => {}
+    }
+}
+fn collect_class_expr(e: &Expr, out: &mut BTreeSet<String>) {
+    match e {
+        Expr::Str(parts) => {
+            for c in plain_text(parts).split_whitespace() {
+                out.insert(c.to_string());
+            }
+            for p in parts {
+                if let StrPart::Interp(x) = p {
+                    collect_class_expr(x, out);
+                }
+            }
+        }
+        Expr::Call { callee, args } => {
+            collect_class_expr(callee, out);
+            for a in args {
+                collect_class_expr(&arg_expr(a), out);
+            }
+        }
+        Expr::Ternary { cond, then, els } => {
+            collect_class_expr(cond, out);
+            collect_class_expr(then, out);
+            collect_class_expr(els, out);
+        }
+        Expr::Binary { lhs, rhs, .. } => {
+            collect_class_expr(lhs, out);
+            collect_class_expr(rhs, out);
+        }
+        Expr::Unary { expr, .. } | Expr::Field { base: expr, .. } | Expr::Try(expr)
+        | Expr::Fail(expr) | Expr::Reify(expr) => collect_class_expr(expr, out),
+        Expr::Index { base, index } => {
+            collect_class_expr(base, out);
+            collect_class_expr(index, out);
+        }
+        Expr::If { cond, then, els } => {
+            collect_class_expr(cond, out);
+            then.iter().for_each(|s| collect_class_strings(s, out));
+            if let Some(e) = els {
+                e.iter().for_each(|s| collect_class_strings(s, out));
+            }
+        }
+        Expr::Match { scrut, arms } => {
+            collect_class_expr(scrut, out);
+            for a in arms {
+                collect_class_expr(&a.body, out);
+            }
+        }
+        Expr::Block(stmts) | Expr::For { body: stmts, .. } | Expr::While { body: stmts, .. } => {
+            stmts.iter().for_each(|s| collect_class_strings(s, out))
+        }
+        Expr::Lambda { body, .. } => collect_class_expr(body, out),
+        Expr::List(es) => es.iter().for_each(|x| collect_class_expr(x, out)),
+        Expr::With { base, fields } => {
+            collect_class_expr(base, out);
+            for f in fields {
+                if let Field::Value { value, .. } = f {
+                    collect_class_expr(value, out);
+                }
+            }
+        }
+        Expr::Record(fields) | Expr::Ctor { fields, .. } => {
+            for f in fields {
+                if let Field::Value { value, .. } = f {
+                    collect_class_expr(value, out);
+                }
+            }
+        }
+        Expr::Assign { target, value } => {
+            collect_class_expr(target, out);
+            collect_class_expr(value, out);
+        }
+        _ => {}
+    }
 }
 
 fn is_record_type(e: &Expr) -> bool {

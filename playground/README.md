@@ -1,54 +1,38 @@
 # Maca playground
 
-A browser playground for Maca: a [Monaco](https://microsoft.github.io/monaco-editor/)
-editor with Maca syntax highlighting, plus the compiler front-end (lexer →
-parser → type/effect checker → C/JS/Nix emitters) compiled to WebAssembly so
-checking and codegen run entirely client-side.
+The browser playground for Maca — **written in Maca**. The whole page is one
+file, `playground.maca`: the UI, state, and event handlers are Maca, styled with
+Maca's integrated Tailwind (the JS backend generates the CSS from the utility
+classes). The only inline foreign code is the WebAssembly-bridge runtime (an
+`import js` block that instantiates the compiler and reads its result out of
+linear memory) and the Pretendard `@font-face` (an `import css` font asset).
 
-## Run it
+The compiler front-end + emitters run entirely client-side, compiled to
+WebAssembly (`crates/wasm`), so checking, codegen, and *running* programs (via
+the interpreter, with a flame-graph profile) all happen in the browser.
 
-```sh
-./build.sh                       # vendors Monaco + builds maca_wasm.wasm here
-python3 -m http.server 8000      # or any static server, from this folder
-# open http://localhost:8000/
-```
-
-`build.sh` needs the wasm target once, and `npm` on PATH (to vendor Monaco):
+## Build
 
 ```sh
-rustup target add wasm32-unknown-unknown
+./build.sh          # compiles playground.maca and wraps it with the wasm
 ```
 
-Everything is served locally — **no CDN at runtime**. Monaco is vendored into
-`vendor/vs` and the `.wasm` sits next to the page. There is no bundler; the app
-is plain ES modules + Monaco's AMD loader.
+`build.sh` runs `maca build --target js playground.maca` (UI → `app.js` +
+`app.css`) and inlines the wasm compiler as base64 into a single self-contained
+HTML. The output is a build artifact, so it is written under the cache dir
+(`$XDG_CACHE_HOME/maca/playground/`, else `~/.cache/…`) — never the repo — and
+the final path is printed on the last line (`-o <path>` to override). Needs the
+wasm target once: `rustup target add wasm32-unknown-unknown`.
 
-## Layout
+## How it hangs together
 
-| file | role |
+| piece | where |
 |---|---|
-| `index.html` | page shell |
-| `maca-lang.js` | Monaco Monarch tokenizer, language config, and themes for Maca |
-| `playground.js` | editor boot, wasm bridge, examples, run/output wiring |
-| `style.css` | layout + theme |
-| `build.sh` | builds `maca_wasm.wasm` from `crates/wasm` |
+| UI, state, handlers | `playground.maca` (Maca) |
+| styling | Tailwind utility classes → CSS by the JS backend (`crates/backend_js`) |
+| host runtime (wasm bridge, examples) | `import js """…"""` block inside `playground.maca` |
+| font | `import css """@font-face…"""` block (Pretendard, subset, inline) |
+| compiler | `crates/wasm` → `maca_wasm.wasm`, embedded as base64 at build |
 
-The wasm ABI (see `crates/wasm/src/lib.rs`) is three raw exports over linear
-memory — `alloc`, `dealloc`, `run(ptr,len,mode) -> (ptr<<32)|len` — returning a
-JSON blob of `{ parseErrors, diagnostics, outputs }`. No `wasm-bindgen`.
-
-The Monarch grammar mirrors `editor/maca.tmLanguage.json` (the TextMate grammar
-for editors like VS Code) and the lexer's keyword/type model.
-
-## Regenerating
-
-`maca_wasm.wasm` is a build artifact and is git-ignored — run `./build.sh`
-after changing the compiler.
-
-## Self-contained build
-
-`./build-artifact.sh` embeds the wasm as base64 into a single HTML file (the
-shareable playground). It is a build artifact, so it is written under the cache
-directory (`$XDG_CACHE_HOME/maca/playground/`, else `~/.cache/…`) — never into
-the repo — and stale builds there are pruned automatically. The script echoes
-the final path on its last line; pass `-o <path>` to override.
+No hand-written `.html`/`.js`/`.css` files — everything is generated from the
+one `.maca` source.

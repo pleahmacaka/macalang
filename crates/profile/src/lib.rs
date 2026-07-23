@@ -165,7 +165,7 @@ pub fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String 
     let mut svg = String::new();
     svg.push_str(&format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" \
-         viewBox=\"0 0 {width:.0} {height:.0}\" \
+         viewBox=\"0 0 {width:.0} {height:.0}\" style=\"display:block;width:100%;height:auto\" \
          font-family=\"Pretendard, ui-monospace, monospace\" font-size=\"11\">\n"
     ));
     svg.push_str(&format!(
