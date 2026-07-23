@@ -36,3 +36,26 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+  js-package:
+    name: macalang (npm/bun)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust + wasm target
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup target add wasm32-unknown-unknown
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # build the compiler wasm into the package, then exercise the JS API
+      # (compile / loadModule / loadFile / toJS) so it can't silently break.
+      - name: Build wasm into the package
+        run: bash packages/macalang/build.sh
+
+      - name: Test the package
+        run: node packages/macalang/test.mjs

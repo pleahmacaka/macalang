@@ -79,6 +79,23 @@ maca profile <file.maca> [-o svg] run under callgrind, render a flame graph
 Worked examples: [`apps/mcmod`](apps/mcmod) (a Fabric mod in Maca),
 [`apps/blink`](apps/blink) (Cortex-M firmware), [`examples/`](examples).
 
+## Use from JavaScript / Bun
+
+The compiler front-end also ships as an npm package,
+[`macalang`](packages/macalang) — compile and **import `.maca` from JS**, all in
+WebAssembly (no native toolchain):
+
+```js
+import { loadModule } from "macalang";
+const { add } = loadModule("add(a: int, b: int) -> int => a + b\n");
+add(2, 3); // 5
+```
+
+```toml
+# bunfig.toml — import .maca files directly
+preload = ["macalang/bun"]
+```
+
 ## Dev environment in Maca
 
 The repo's own dev shell is defined in [`dev.maca`](dev.maca), not hand-written
