@@ -175,3 +175,17 @@ fn unterminated_string_reports_error() {
     let l = lex("\"oops");
     assert!(!l.errors.is_empty());
 }
+
+#[test]
+fn raw_triple_quoted_string_is_verbatim() {
+    // a raw string keeps braces and quotes literally, no interpolation
+    let lexed = maca_lexer::lex("x = \"\"\"a { b } \"c\" {d}\"\"\"\n");
+    let texts: Vec<String> = lexed
+        .tokens
+        .iter()
+        .filter_map(|t| if let maca_lexer::Tok::StrText(s) = &t.tok { Some(s.clone()) } else { None })
+        .collect();
+    assert_eq!(texts, vec!["a { b } \"c\" {d}".to_string()], "raw text not verbatim: {texts:?}");
+    // no interpolation tokens were produced
+    assert!(!lexed.tokens.iter().any(|t| matches!(t.tok, maca_lexer::Tok::InterpStart)), "raw string interpolated");
+}

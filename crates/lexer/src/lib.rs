@@ -404,9 +404,39 @@ impl<'a> Lexer<'a> {
                 self.push(tok, (start, self.byte()));
             }
             '"' => {
-                self.bump();
-                self.push(Tok::StrOpen, (start, self.byte()));
-                self.mode = Mode::Str;
+                // raw triple-quoted string `"""…"""`: everything verbatim until
+                // the closing `"""` — no interpolation, no escapes. For embedding
+                // foreign source (CSS/JS) in a `.maca` file.
+                if self.peek_n(1) == '"' && self.peek_n(2) == '"' {
+                    self.bump();
+                    self.bump();
+                    self.bump();
+                    self.push(Tok::StrOpen, (start, self.byte()));
+                    let ts = self.byte();
+                    let mut s = String::new();
+                    loop {
+                        if self.at_end() {
+                            self.error("unterminated raw string", (start, self.byte()));
+                            break;
+                        }
+                        if self.peek() == '"' && self.peek_n(1) == '"' && self.peek_n(2) == '"' {
+                            break;
+                        }
+                        s.push(self.bump());
+                    }
+                    if !s.is_empty() {
+                        self.push(Tok::StrText(s), (ts, self.byte()));
+                    }
+                    let q = self.byte();
+                    self.bump();
+                    self.bump();
+                    self.bump();
+                    self.push(Tok::StrClose, (q, self.byte()));
+                } else {
+                    self.bump();
+                    self.push(Tok::StrOpen, (start, self.byte()));
+                    self.mode = Mode::Str;
+                }
             }
             c if is_ident_start(c) => self.lex_ident(start),
             c if c.is_ascii_digit() => self.lex_number(start),

@@ -93,3 +93,17 @@ fn html_attribute_sets_inner_html() {
     assert!(out.contains(".innerHTML = state.svg"), "html= not lowered to innerHTML:\n{out}");
     assert!(out.contains("_binds.push(() => { "), "innerHTML not reactive:\n{out}");
 }
+
+#[test]
+fn foreign_import_blocks_embed_js_and_css() {
+    // `import js`/`import css` with a raw triple-quoted block embed verbatim:
+    // the JS is prepended (so its helpers exist before the app mounts), the CSS
+    // appended to the stylesheet.
+    let out = maca_backend_js::emit(&maca_parser::parse(
+        "import css \"\"\"\n.x { color: red }\n\"\"\"\nimport js \"\"\"\nwindow.hi = () => 1;\n\"\"\"\ng = \"\"\nmain() -> Element => div(class=\"x\", g)\n",
+    ).module);
+    assert!(out.js.contains("window.hi = () => 1;"), "js not embedded:\n{}", out.js);
+    // embedded js comes before the app's state/mount
+    assert!(out.js.find("window.hi").unwrap() < out.js.find("const state").unwrap(), "js not prepended:\n{}", out.js);
+    assert!(out.css.contains(".x { color: red }"), "css not embedded:\n{}", out.css);
+}

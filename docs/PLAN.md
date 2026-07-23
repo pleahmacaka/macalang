@@ -114,88 +114,34 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   (`span(fmt(x))`) is a text node, not an element (only known HTML tags build
   elements); `html=expr` sets `innerHTML`; transpiled functions resolve state
   names to `state.x` so handlers can read and mutate state. The browser
-  playground itself is written in Maca (`playground/playground.maca`) and
-  compiled by this backend, with a small host shim for the WebAssembly bridge.
+  playground itself is a single Maca file (`playground/playground.maca`)
+  compiled by this backend, carrying its styles and the WebAssembly-bridge
+  runtime inline via `import css`/`import js` raw-string blocks.
 
 Full symbol table, EBNF, stdlib, and examples live in the build brief and will
 be mirrored into `llms.txt` in Phase 11.
 
-## Phase gates
+## Status
 
-Test-gated: each phase ends with `cargo test` green **and** its acceptance
-programs compiling/running with asserted output. Do not advance until the
-phase's acceptance passes.
+The compiler is complete and `cargo test` is green across the workspace.
+Front-end (lexer → parser → gradual type/effect checker → core IR) plus
+backends: native **C** (default), **LLVM** (SIMD span), **Nix** (config mode),
+**JS** (reactive UI + Tailwind), **JVM** (Java source), and **embedded**
+(freestanding C for Cortex-M / RISC-V). Driver: `build` / `run` / `dev` /
+`watch` / `fmt` / `lint` / `profile` / `init`. Tooling: LSP, MCP server, and a
+browser playground authored in Maca itself (`playground/playground.maca`,
+compiled by the JS backend) plus the wasm front-end (`crates/wasm`).
 
-| Phase | Scope | Gate (short) | Status |
-|---|---|---|---|
-| 0 | Scaffold: workspace + `maca` CLI | `cargo build`/`test` green, `maca --version` | ✅ done |
-| 1 | Lexer (significant-newline) | `cargo test -p maca-lexer`; golden token dumps | ✅ done |
-| 2 | Parser → AST | examples parse; pretty-print roundtrips | ✅ done |
-| 3 | Types & effects (HM+gradual+row) | examples typecheck; `examples/bad/*` rejected | ✅ done |
-| 4 | C backend (first runnable) ⭐ | `hello`/`taskr` build & run; ≤~50 KB | ✅ done |
-| 5 | Perceus RC + reuse | valgrind clean; in-place reuse bench | ✅ done |
-| 6 | Async (colorblind, io_uring) | parallel demo; no scheduler when sequential | ✅ done |
-| 7 | SIMD (LLVM path) | `dot.maca` correct + faster; C↔LLVM call | ✅ done |
-| 8 | Nix backend (config mode) | `system.maca` → Nix accepts; enable/hoist/dirs | ✅ done |
-| 9 | JS backend + UI + Tailwind | `counter.maca` renders; bind updates; tree-shake | ✅ done |
-| 10 | FFI (C / Python / Nix import) | sqlite roundtrip; nix value; py call | ✅ done |
-| 11 | Tooling + LLM-native | fmt/lint/lsp; MCP `maca.check`; `llms.txt`; `SKILL.md` | ✅ done |
-| 12 | Capstones (`.maca` only) | MQTT pub/sub roundtrip; Tauri app round-trip | ✅ done |
-
-**All phases complete.** Every `✅ Acceptance` block passes; `cargo test` green
-across the workspace. Capstones: MQTT pub/sub roundtrip + ≥100 concurrent
-clients (`apps/mqtt`), and the Tauri desktop UI↔backend round-trip
-(`apps/desktop`). Pragmatic corners noted per phase (full Perceus dup/drop,
-io_uring, clang header-parse FFI, packaged Tauri window) are marked in the code
-as future hardening.
-
-## Phase 13 — self-hosting (Rust frozen, compiler in Maca)
-
-The Rust workspace is now the **stage-0 bootstrap**, frozen in scope. New
-compiler work is written in Maca under `selfhost/` and compiled by stage-0; the
-target is a stage-1 Maca compiler that rebuilds itself (see `docs/BOOTSTRAP.md`).
-Type-system hardening that would have grown `maca-core` (full HM over inferred
-bindings, real row unification, generic monomorphization) is deferred into
-`selfhost/check.maca` so it is written once, in Maca.
-
-Landed: `selfhost/token.maca`, `selfhost/lexer.maca`, `selfhost/main.maca` — a
-character-level lexer, gated by the stage-0 front-end (`crates/driver/tests/
-selfhost.rs`: every file parses, the concatenated module type-checks clean).
-Two stage-0 parser robustness bugs surfaced and were fixed while writing it: an
-infinite loop on malformed parameter/effect lists, and a match **guard** (`_ if
-c => …`) whose condition swallowed the arm's `=>` as a lambda arrow.
-
-A browser **playground** (`playground/`) runs the whole stage-0 front-end via
-`crates/wasm` (compiled to `wasm32-unknown-unknown`, no wasm-bindgen) with a
-Monaco editor and Maca syntax highlighting (`editor/maca.tmLanguage.json`).
+Self-hosting is the current direction: the Rust workspace is the frozen
+**stage-0 bootstrap**; new compiler work is written in Maca under `selfhost/`
+and gated by the stage-0 front-end (see `docs/BOOTSTRAP.md`). Prefer adding to
+`selfhost/*.maca` over growing the Rust crates.
 
 ## Golden examples (regression set)
 
 Verbatim from the spec, under `examples/`:
 `hello.maca` · `taskr.maca` (CLI) · `system.maca` (config) · `counter.maca` (UI)
-· `dot.maca` (SIMD), plus `examples/bad/*.maca` for diagnostics.
-`generic.maca` (parse + typecheck golden) exercises let-polymorphism.
-
-## P3 hardening — let-polymorphism
-
-The gradual checker now generalizes function signatures into rank-1 type
-schemes and instantiates them per call site. Lowercase, single-segment type
-names (`a`, `k`, `value`) are type variables by convention — nominal types are
-capitalized, primitives are keywords, and sized-numeric / SIMD lane types
-(`i32`, `f32x8`) stay nominal. This removes false-positive mismatches on
-generic calls (e.g. `let n: int = id(5)`) and lets a concrete argument clash
-against a declared parameter surface as `TypeMismatch`
-(`examples/bad/arg_mismatch.maca`). Native lowering monomorphizes generics: the
-C backend emits one specialized function per distinct concrete argument tuple
-(`id__int`, `id__str`, `id__Box`) and rewrites calls to the mangled name, so
-`generic.maca` and record instantiations compile and run natively
-(`examples/generic_record.maca`). Deferred: return-only polymorphism, nested
-generic forwarding, and closures (need the checker to hand resolved types to the
-backend).
-
-Three more real error classes now surface as `TypeMismatch` (previously
-swallowed): call **arity** against a user function's declared parameter count —
-variadic functions exempt (`examples/bad/arity.maca`) — and disagreeing
-**`if` / ternary branch** types (`examples/bad/branch_mismatch.maca`). All stay
-safe under the gradual rule: `any`/type-variables never clash, so unknown-stdlib
-code is untouched.
+· `dot.maca` (SIMD), plus `examples/bad/*.maca` for diagnostics, and the
+language-surface goldens (`indexing`, `record_update`, `tree`, `sum_record`,
+`keywords`, `generic`). Changing a design updates this file and the affected
+example together; the spec wins ties.

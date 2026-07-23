@@ -81,7 +81,30 @@ pub fn emit(m: &Module) -> JsOut {
         ));
     }
 
-    let css = cx.css();
+    // foreign blocks embedded in the .maca source: `import js """…"""` carries
+    // raw JS (the host/runtime glue a UI app needs), `import css """…"""` raw
+    // CSS. This lets a single .maca file carry everything it needs. The JS is
+    // *prepended* so any helpers it defines exist before the app first mounts.
+    let mut css = cx.css();
+    let mut foreign_js = String::new();
+    for item in &m.items {
+        if let Stmt::Import(Import::Foreign { lang, spec }) = item {
+            match lang.as_str() {
+                "js" => {
+                    foreign_js.push_str("// ---- embedded (import js) ----\n");
+                    foreign_js.push_str(spec);
+                    foreign_js.push('\n');
+                }
+                "css" => {
+                    css.push_str("\n/* ---- embedded (import css) ---- */\n");
+                    css.push_str(spec);
+                    css.push('\n');
+                }
+                _ => {}
+            }
+        }
+    }
+    let js = if foreign_js.is_empty() { js } else { format!("{foreign_js}\n{js}") };
     let html = HTML.into();
     JsOut { js, html, css, exports }
 }

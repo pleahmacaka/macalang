@@ -88,12 +88,10 @@ or mis-parses valid surface syntax).
 
 ## Status
 
-Front-end (0–3) and the C backend (4) are complete: whole programs
-(non-`main` functions, records→structs, sum types→tagged enums, lists,
+The compiler is complete and `cargo test` is green across the workspace. Whole
+programs (non-`main` functions, records→structs, sum types→tagged enums, lists,
 string interpolation, `match` lowering incl. list patterns, UFCS) compile and
-run end-to-end (parse→check→C→`cc`/`zig cc`→execute). Additional backends and
-capabilities have since landed — see `docs/PLAN.md` for the authoritative,
-per-phase status. Whole workspace green.
+run end-to-end (parse → check → C → `cc`/`zig cc` → execute).
 
 Backends: native C (default), LLVM (SIMD span), Nix (config mode), JS
 (reactive UI), JVM (Java source / Minecraft-Fabric interop), and embedded
@@ -101,50 +99,35 @@ Backends: native C (default), LLVM (SIMD span), Nix (config mode), JS
 nix|js|jvm|embedded`, `--mcu`, `--cp`), `run`, `dev` (dev-shell flake), `watch`,
 `fmt`, `lint`, `profile`, `init`.
 
+Type checker (`maca-core`): gradual unification with an `any` escape hatch for
+unknown stdlib, strict on the four acceptance diagnostics (`DiagKind`:
+TypeMismatch / NonExhaustive / EffectInConfig / UnknownOption). Function
+signatures generalize into `Scheme`s (lowercase names are type vars) and
+instantiate per call; the C backend monomorphizes generics (one specialized fn
+per concrete instantiation). Call **arity** and disagreeing **if/ternary
+branch** types also surface as `TypeMismatch`.
+
 Language surface beyond the original cheatsheet: operator overloading;
 `while`/`break`/`continue` + reassignment; `%`, `<<`, `>>` operators;
 hex/binary/octal integer literals with `_` separators; list/string subscripting
 `xs[i]` with lvalue assignment (`xs[i] = v`, `p.f = v`); functional record update
 `base with { f = v }`; `len(x)`; recursive sum types (`Tree`, `List`) via boxed
 payloads; a bracketless comma list as an arrow-fn body (`f() -> int[] => 1, 2`);
-and C-keyword-safe identifiers (a Maca `double`/`new`/`class` compiles). See
+C-keyword-safe identifiers (a Maca `double`/`new`/`class` compiles); and raw
+triple-quoted strings (`"""…"""`) with `import js`/`import css` foreign blocks
+that let a `.maca` UI carry its own host glue and styles inline (see
+`playground/playground.maca`). Examples:
 `examples/{indexing,record_update,tree,sum_record,keywords}.maca`.
 
 **Codegen note (C backend):** control-flow expressions (`if`/`match`/block)
 work in value position via a `Sink` (Discard/Return/Assign) threaded through
 `block`/`stmt_expr`/`match_stmt`; nullary enum-variant patterns lower to tag
 tests (mirroring the checker's `is_variant`). `maca-runtime` holds the C
-sources (`RUNTIME_H`/`RUNTIME_C`).
-
-- **P4 driver** `maca build <f> [-o out]` / `maca run <f> [args]`. Compiles via
-  `wsl nix shell nixpkgs#zig -c zig cc … -target x86_64-linux-musl -static -s`;
-  `to_wsl()` translates `C:\…`→`/mnt/c/…`. Runs the Linux binary through WSL.
-
-- **P3** `maca-core`: gradual unification checker (`ty` module) — `any` escape
-  hatch for unknown stdlib, strict on the 4 acceptance diagnostics
-  (`DiagKind`: TypeMismatch / NonExhaustive / EffectInConfig / UnknownOption).
-  `check(module, Mode)`; `Mode::Program|Config`. Good examples typecheck, the
-  four `examples/bad/*.maca` are rejected. **Let-polymorphism landed**: function
-  sigs generalize into `Scheme`s (`ty::is_type_var_name` treats lowercase names
-  as type vars) and instantiate per call; concrete arg/param clashes now report
-  `TypeMismatch` (`examples/generic.maca` good, `examples/bad/arg_mismatch.maca`
-  bad). Also caught (all `TypeMismatch`): call **arity** vs a user fn's param
-  count (variadics exempt, `bad/arity.maca`) and disagreeing **if/ternary
-  branches** (`bad/branch_mismatch.maca`). Full row unification + backend
-  monomorphization of generics landed (backend emits one specialized C fn per
-  concrete instantiation). Full row unification still to do.
-- **P0** workspace + `maca --version`.
-- **P1** `maca-lexer`: full tokenizer (significant newlines, path literals,
-  string interpolation, `x?` vs `? :`). Golden token dumps in
-  `crates/lexer/tests/golden/` (regenerate with `UPDATE_GOLDEN=1`).
-- **P2** `maca-parser`: hand-written recursive-descent + Pratt (deviation from
-  the brief's chumsky, for zero deps + layout control). `ast` / `parser` /
-  `print` modules. All 5 examples parse and roundtrip (parse→print→parse is
-  AST-stable) — that's the regression gate in `crates/parser/tests/parse.rs`.
+sources (`RUNTIME_H`/`RUNTIME_C`). The native driver compiles via `wsl nix
+shell nixpkgs#zig -c zig cc … -target x86_64-linux-musl -static -s` when WSL is
+present, else the host `cc`.
 
 Grammar decisions worth knowing (in `parser.rs`): `no_brace` mode in control
 headers so `for x in xs {` isn't a ctor; fn-def detected by lookahead for
 `-> | { | =>` after `)`; call args separated by comma **or** juxtaposition (UI);
-lambda-body assign (`v => age = int(v)`). Known simplification: `extensions =
-"nix", "rust"` parses as a keyed field + a bare entry (not a list value) — fine
-for roundtrip, revisit if Phase 8 needs list semantics.
+lambda-body assign (`v => age = int(v)`).
