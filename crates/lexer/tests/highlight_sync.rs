@@ -43,3 +43,45 @@ fn textmate_grammar_names_every_keyword() {
         assert!(tm.contains(kw), "TextMate grammar missing keyword `{kw}`");
     }
 }
+
+/// The Monarch grammar (embedded in `playground/playground.maca`) and the Zed
+/// tree-sitter queries (`highlights.scm`) also name every keyword.
+#[test]
+fn monarch_and_zed_grammars_name_every_keyword() {
+    let monarch = repo("playground/playground.maca");
+    let zed = repo("editor/zed-maca/languages/maca/highlights.scm");
+    assert!(!monarch.is_empty(), "playground.maca missing");
+    assert!(!zed.is_empty(), "highlights.scm missing");
+    for kw in LEXER_KEYWORDS {
+        // `import`/`from` are matched by dedicated rules in the Zed grammar, so
+        // they may not appear in the ident-keyword alternation — check Monarch
+        // for those and both for the rest.
+        assert!(monarch.contains(&format!("\"{kw}\"")), "Monarch grammar missing keyword `{kw}`");
+        if *kw != "import" && *kw != "from" {
+            assert!(zed.contains(kw), "Zed grammar missing keyword `{kw}`");
+        }
+    }
+}
+
+/// Words that are NOT Maca keywords must lex as plain identifiers — a guard so
+/// no grammar re-introduces a phantom `let`/`return`/`fn`/`type` keyword that
+/// the language does not actually have.
+#[test]
+fn phantom_keywords_are_not_reserved() {
+    for word in ["let", "return", "fn", "type", "def", "var"] {
+        let first = &lex(word).tokens[0].tok;
+        assert!(
+            matches!(first, Tok::Ident(_)),
+            "`{word}` is not a Maca keyword but lexed as {first:?}"
+        );
+    }
+    // and no editor grammar should list them as keywords/reserved words
+    let tm = repo("editor/maca.tmLanguage.json");
+    let zed = repo("editor/zed-maca/languages/maca/highlights.scm");
+    for phantom in ["let", "return"] {
+        assert!(!tm.contains(&format!("|{phantom})")), "TextMate lists phantom keyword `{phantom}`");
+        assert!(!tm.contains(&format!("({phantom}|")), "TextMate lists phantom keyword `{phantom}`");
+        assert!(!zed.contains(&format!("^({phantom}|")), "Zed lists phantom keyword `{phantom}`");
+        assert!(!zed.contains(&format!("|{phantom}|")), "Zed lists phantom keyword `{phantom}`");
+    }
+}

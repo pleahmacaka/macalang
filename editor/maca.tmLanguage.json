@@ -12,6 +12,7 @@
     { "include": "#numbers" },
     { "include": "#types" },
     { "include": "#function-def" },
+    { "include": "#identifiers" },
     { "include": "#operators" }
   ],
   "repository": {
@@ -57,7 +58,7 @@
       "patterns": [
         {
           "name": "keyword.control.maca",
-          "match": "\\b(if|else|for|in|while|break|continue|match|with|try|fail|return)\\b"
+          "match": "\\b(if|else|for|in|while|break|continue|match|with|try|fail)\\b"
         },
         {
           "name": "keyword.other.maca",
@@ -71,8 +72,11 @@
     },
     "numbers": {
       "patterns": [
-        { "name": "constant.numeric.float.maca", "match": "\\b[0-9]+\\.[0-9]+\\b" },
-        { "name": "constant.numeric.integer.maca", "match": "\\b[0-9]+\\b" }
+        { "name": "constant.numeric.hex.maca", "match": "\\b0[xX][0-9a-fA-F][0-9a-fA-F_]*\\b" },
+        { "name": "constant.numeric.binary.maca", "match": "\\b0[bB][01][01_]*\\b" },
+        { "name": "constant.numeric.octal.maca", "match": "\\b0[oO][0-7][0-7_]*\\b" },
+        { "name": "constant.numeric.float.maca", "match": "\\b[0-9][0-9_]*\\.[0-9][0-9_]*\\b" },
+        { "name": "constant.numeric.integer.maca", "match": "\\b[0-9][0-9_]*\\b" }
       ]
     },
     "types": {
@@ -94,6 +98,11 @@
     "function-def": {
       "match": "\\b([a-z_][A-Za-z0-9_]*)\\s*(?=\\()",
       "captures": { "1": { "name": "entity.name.function.maca" } }
+    },
+    "identifiers": {
+      "comment": "Idents may carry Nix-style internal hyphens (rust-analyzer, home-manager); matching them as one token keeps the '-' from reading as an operator.",
+      "name": "variable.other.maca",
+      "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?:-[A-Za-z0-9_]+)*\\b"
     },
     "operators": {
       "name": "keyword.operator.maca",
