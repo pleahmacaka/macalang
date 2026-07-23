@@ -326,3 +326,14 @@ fn unary_not_and_forward_record() {
     assert!(out.contains("(!x)"), "no unary not:\n{out}");
     assert!(out.contains("B b;"), "forward record field not resolved to struct:\n{out}");
 }
+
+#[test]
+fn float_and_int_coercions_lower_to_casts() {
+    // `float(x)` / `int(x)` are builtin coercions, not calls to a user function
+    // (a missing `float` builtin used to emit an undefined `float_mc` reference).
+    let out = c("f(px: int, n: int) -> float => float(px) / float(n)\n");
+    assert!(out.contains("(double)"), "float() not a cast:\n{out}");
+    assert!(!out.contains("float_mc"), "float() mangled to a call:\n{out}");
+    let out2 = c("g(x: float) -> int => int(x)\n");
+    assert!(out2.contains("(int64_t)"), "int() not a cast:\n{out2}");
+}

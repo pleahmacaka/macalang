@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Benchmark harness: Maca vs C vs Python vs JS on recursion-heavy kernels.
+"""Benchmark harness: Maca vs C / Rust / Go / JS / Python across algorithms.
 
-Each program computes the same result; we compile the compiled languages once,
-then time execution (median of N runs). Maca is built through the `maca` CLI
-(→ C → native cc -O2), so it should land in C's ballpark — the point of the
-"C-tier" claim — while staying far ahead of interpreted Python and JIT'd JS on
-call-bound code.
+Two families of workload:
+  * recursion-bound integer kernels  (fib, tak, ackermann) — call overhead
+  * compute-bound loops/arrays/float (sieve, mandel, matmul)
+
+Every implementation computes the *same* result (verified against EXPECTED).
+Compiled languages are built once at -O2/-O; then we time execution (median of
+N runs, one warmup). Maca goes through the `maca` CLI (Maca → C → `cc -O2`), so
+it should land in C's ballpark — the "C-tier native" claim — while staying far
+ahead of interpreted Python and JIT'd JS on call-bound code.
 
 Usage:  python3 bench/run.py [--runs N]
 Writes: bench/results.json, bench/results.md
@@ -24,11 +28,42 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BENCH = os.path.join(ROOT, "bench")
 REF = os.path.join(BENCH, "ref")
 TMP = "/tmp/maca-bench"
-MACA = os.path.join(ROOT, "target", "release", "maca")
 
-ALGOS = ["fib", "tak", "ackermann"]
-EXPECTED = {"fib": "102334155", "tak": "9", "ackermann": "8189"}
 
+def find_maca():
+    for prof in ("release", "debug"):
+        p = os.path.join(ROOT, "target", prof, "maca")
+        if os.path.exists(p):
+            return p
+    sys.exit("no `maca` binary — run `cargo build -p maca-driver`")
+
+
+MACA = find_maca()
+
+# families and their parameters (shown in the report)
+RECURSION = ["fib", "tak", "ackermann"]
+COMPUTE = ["sieve", "mandel", "matmul"]
+ALGOS = RECURSION + COMPUTE
+
+EXPECTED = {
+    "fib": "102334155",
+    "tak": "9",
+    "ackermann": "8189",
+    "sieve": "664579",
+    "mandel": "141554306",
+    "matmul": "163198950",
+}
+PARAMS = {
+    "fib": "fib(40)",
+    "tak": "tak(32,16,8)",
+    "ackermann": "ack(3,10)",
+    "sieve": "primes ≤ 10⁷",
+    "mandel": "800×800, ≤1000 it",
+    "matmul": "400×400 int",
+}
+
+# order languages fastest-family-first for the table
+LANGS = ["Maca", "C", "Rust", "Go", "JS (node)", "Python"]
 # node needs a bigger stack for the deep ackermann recursion
 NODE = ["node", "--stack-size=8000"]
 
@@ -38,7 +73,7 @@ def sh(cmd, **kw):
 
 
 def time_cmd(cmd, runs):
-    """Return (median_ms, stdout) over `runs` timed executions (1 warmup)."""
+    """Median wall-clock ms over `runs` executions (after one warmup)."""
     sh(cmd)  # warmup
     times = []
     out = ""
@@ -66,32 +101,55 @@ def build_c(algo):
     return [out]
 
 
+def build_rust(algo):
+    out = os.path.join(TMP, f"{algo}_rs")
+    r = sh(["rustc", "-O", os.path.join(REF, f"{algo}.rs"), "-o", out])
+    if r.returncode != 0:
+        sys.exit(f"rustc {algo} failed:\n{r.stderr}")
+    return [out]
+
+
+def build_go(algo):
+    out = os.path.join(TMP, f"{algo}_go")
+    env = dict(os.environ, GOCACHE=os.path.join(TMP, "gocache"))
+    r = sh(["go", "build", "-o", out, os.path.join(REF, f"{algo}.go")], env=env)
+    if r.returncode != 0:
+        sys.exit(f"go build {algo} failed:\n{r.stderr}")
+    return [out]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=5)
     args = ap.parse_args()
     os.makedirs(TMP, exist_ok=True)
 
-    have_node = shutil.which("node") is not None
-    have_py = shutil.which("python3") is not None
+    have = {
+        "Rust": shutil.which("rustc") is not None,
+        "Go": shutil.which("go") is not None,
+        "JS (node)": shutil.which("node") is not None,
+        "Python": shutil.which("python3") is not None,
+    }
 
     results = {}
     for algo in ALGOS:
-        langs = {
-            "Maca": build_maca(algo),
-            "C": build_c(algo),
-        }
-        if have_py:
-            langs["Python"] = ["python3", os.path.join(REF, f"{algo}.py")]
-        if have_node:
-            langs["JS (node)"] = NODE + [os.path.join(REF, f"{algo}.js")]
+        cmds = {"Maca": build_maca(algo), "C": build_c(algo)}
+        if have["Rust"]:
+            cmds["Rust"] = build_rust(algo)
+        if have["Go"]:
+            cmds["Go"] = build_go(algo)
+        if have["JS (node)"]:
+            cmds["JS (node)"] = NODE + [os.path.join(REF, f"{algo}.js")]
+        if have["Python"]:
+            cmds["Python"] = ["python3", os.path.join(REF, f"{algo}.py")]
 
         results[algo] = {}
-        for lang, cmd in langs.items():
+        for lang, cmd in cmds.items():
             ms, out = time_cmd(cmd, args.runs)
             ok = out == EXPECTED[algo]
             results[algo][lang] = {"ms": round(ms, 3), "output": out, "ok": ok}
-            print(f"{algo:10} {lang:10} {ms:9.2f} ms  out={out} {'ok' if ok else 'MISMATCH'}")
+            flag = "ok" if ok else f"MISMATCH (got {out}, want {EXPECTED[algo]})"
+            print(f"{algo:10} {lang:10} {ms:10.2f} ms  {flag}")
 
     with open(os.path.join(BENCH, "results.json"), "w") as f:
         json.dump(results, f, indent=2)
@@ -99,35 +157,50 @@ def main():
     print(f"\nwrote {BENCH}/results.json and results.md")
 
 
-def write_markdown(results):
-    langs = ["Maca", "C", "JS (node)", "Python"]
-    lines = [
-        "# Benchmarks — Maca vs C vs JS vs Python",
-        "",
-        "Recursion-heavy integer kernels. Median execution time (ms); lower is",
-        "better. `×C` is the slowdown relative to C. Maca is built through the",
-        "`maca` CLI (Maca → C → `cc -O2`); C is `cc -O2`; Python is CPython 3;",
-        "JS is Node. See `bench/run.py`.",
-        "",
-        "| kernel | " + " | ".join(langs) + " |",
-        "|" + "---|" * (len(langs) + 1),
-    ]
-    for algo in ALGOS:
-        row = [algo]
+def cell(results, algo, lang, base):
+    c = results[algo].get(lang)
+    if not c:
+        return "—"
+    ms = c["ms"]
+    mult = f" (×{ms / base:.1f})" if base and base > 0 else ""
+    return f"{ms:.1f}{mult}"
+
+
+def table(results, algos, title, note):
+    lines = [f"### {title}", "", note, ""]
+    lines.append("| kernel | params | " + " | ".join(LANGS) + " |")
+    lines.append("|" + "---|" * (len(LANGS) + 2))
+    for algo in algos:
         base = results[algo].get("C", {}).get("ms")
-        for lang in langs:
-            cell = results[algo].get(lang)
-            if not cell:
-                row.append("—")
-            else:
-                ms = cell["ms"]
-                mult = f" (×{ms / base:.1f})" if base else ""
-                row.append(f"{ms:.1f} ms{mult}")
+        row = [algo, PARAMS[algo]] + [cell(results, algo, l, base) for l in LANGS]
         lines.append("| " + " | ".join(row) + " |")
-    lines += [
+    lines.append("")
+    return lines
+
+
+def write_markdown(results):
+    u = os.uname()
+    lines = [
+        "# Benchmarks — Maca vs C / Rust / Go / JS / Python",
         "",
-        f"_Params: fib(40), tak(32,16,8), ackermann(3,10). "
-        f"Host: {os.uname().sysname} {os.uname().machine}._",
+        "Median execution time in **ms** (lower is better); `×N` is the slowdown",
+        "vs C. Maca is `maca build` (Maca → C → `cc -O2`); C is `cc -O2`; Rust is",
+        "`rustc -O`; Go is `go build`; JS is Node; Python is CPython 3. Every",
+        "column computes the same verified result. Reproduce with `python3",
+        "bench/run.py`.",
+        "",
+    ]
+    lines += table(
+        results, RECURSION, "Recursion-bound (call overhead)",
+        "Tree/nested recursion — dominated by function-call cost.",
+    )
+    lines += table(
+        results, COMPUTE, "Compute-bound (loops, arrays, float)",
+        "Tight loops over arrays and floating point — dominated by the inner loop.",
+    )
+    lines += [
+        f"_Host: {u.sysname} {u.machine}, {u.release}. Times are wall-clock "
+        f"medians including process startup._",
         "",
     ]
     with open(os.path.join(BENCH, "results.md"), "w") as f:

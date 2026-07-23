@@ -1,0 +1,31 @@
+// Mandelbrot — total escape-iteration count over a size×size grid (f64, so the
+// integer total is identical across languages). Floating-point inner loop.
+mandel(size: int) -> int {
+    total = 0
+    py = 0
+    while py < size {
+        px = 0
+        while px < size {
+            x0 = float(px) / float(size) * 3.5 - 2.5
+            y0 = float(py) / float(size) * 2.0 - 1.0
+            x = 0.0
+            y = 0.0
+            iter = 0
+            while iter < 1000 && x * x + y * y <= 4.0 {
+                xt = x * x - y * y + x0
+                y = 2.0 * x * y + y0
+                x = xt
+                iter = iter + 1
+            }
+            total = total + iter
+            px = px + 1
+        }
+        py = py + 1
+    }
+    total
+}
+
+main() -> int {
+    info("{mandel(800)}")
+    0
+}

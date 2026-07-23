@@ -1718,6 +1718,13 @@ impl<'a> Cx<'a> {
                     _ => (format!("((int64_t)({c}))"), CTy::Int),
                 };
             }
+            if name == "float" {
+                let (c, t) = self.arg_typed(env, &args[0]);
+                return match t {
+                    CTy::Str => (format!("atof({c})"), CTy::Float),
+                    _ => (format!("((double)({c}))"), CTy::Float),
+                };
+            }
             // `len(x)` — array length (the backing `.len`) or string byte length
             if name == "len" && args.len() == 1 {
                 let (c, t) = self.arg_typed(env, &args[0]);

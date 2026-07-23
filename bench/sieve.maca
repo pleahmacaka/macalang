@@ -1,0 +1,24 @@
+// Sieve of Eratosthenes — count primes ≤ N. Array writes + tight loops.
+// `marks[i] == i` means "not yet crossed out"; a composite is zeroed.
+count_primes(n: int) -> int {
+    marks = 0..n
+    count = 0
+    i = 2
+    while i <= n {
+        if marks[i] == i {
+            count = count + 1
+            j = i + i
+            while j <= n {
+                marks[j] = 0
+                j = j + i
+            }
+        }
+        i = i + 1
+    }
+    count
+}
+
+main() -> int {
+    info("{count_primes(10000000)}")
+    0
+}
