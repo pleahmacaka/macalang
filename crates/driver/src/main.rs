@@ -617,7 +617,12 @@ fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<Stri
     ))
 }
 
-/// UI mode → JS + HTML + CSS in an output directory.
+/// UI mode → one self-contained, deployable `index.html`.
+///
+/// Styles and the transpiled app are inlined; any `import wasm "path"` asset the
+/// program declares is read and embedded as a base64 `<script>` (with id
+/// `wasm-b64`) before the app, so a browser playground ships as a single file
+/// with no external requests. `maca build --target js app.maca` → deploy it.
 fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
     let source = std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
     let parsed = maca_parser::parse(&source);
@@ -625,11 +630,55 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
         return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
     }
     let out = maca_backend_js::emit(&parsed.module);
+
+    // embed declared binary assets: `import wasm "relpath"` → a base64 script.
+    let base = src.parent().unwrap_or(Path::new("."));
+    let mut assets = String::new();
+    for item in &parsed.module.items {
+        if let maca_parser::Stmt::Import(maca_parser::Import::Foreign { lang, spec }) = item {
+            if lang == "wasm" {
+                let path = base.join(spec);
+                let bytes = std::fs::read(&path)
+                    .map_err(|e| format!("import wasm {}: {e}", path.display()))?;
+                assets.push_str(&format!(
+                    "<script id=\"wasm-b64\" type=\"application/octet-stream\">{}</script>\n",
+                    base64(&bytes)
+                ));
+            }
+        }
+    }
+
+    let title = stem(src);
+    let page = format!(
+        "<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n\
+         <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n\
+         <title>{title}</title>\n<style>\n{}\n</style>\n</head>\n\
+         <body>\n<div id=\"app\"></div>\n{assets}<script>\n{}\n</script>\n</body>\n</html>\n",
+        out.css, out.js
+    );
+
     std::fs::create_dir_all(out_dir).map_err(|e| e.to_string())?;
-    std::fs::write(out_dir.join("app.js"), out.js).map_err(|e| e.to_string())?;
-    std::fs::write(out_dir.join("index.html"), out.html).map_err(|e| e.to_string())?;
-    std::fs::write(out_dir.join("app.css"), out.css).map_err(|e| e.to_string())?;
+    std::fs::write(out_dir.join("index.html"), page).map_err(|e| e.to_string())?;
+    // also emit the modules separately (for non-inline hosting / tooling); the
+    // self-contained index.html above is the single-file deployable.
+    std::fs::write(out_dir.join("app.js"), &out.js).map_err(|e| e.to_string())?;
+    std::fs::write(out_dir.join("app.css"), &out.css).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Minimal base64 (standard alphabet, padded) — no external dep.
+fn base64(data: &[u8]) -> String {
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
+        out.push(A[(n >> 18 & 63) as usize] as char);
+        out.push(A[(n >> 12 & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { A[(n >> 6 & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { A[(n & 63) as usize] as char } else { '=' });
+    }
+    out
 }
 
 fn cmd_run(args: &[String]) {

@@ -98,7 +98,8 @@ live diagnostics, hover, and completion over LSP (stdio). Editor integrations:
   the `maca-lsp` server. Install as a dev extension (Zed → Extensions → Install
   Dev Extension → pick `editor/zed-maca`).
 - **TextMate / VS Code grammar** — [`editor/maca.tmLanguage.json`](editor/maca.tmLanguage.json).
-- **Monaco (playground)** — [`playground/maca-lang.js`](playground/maca-lang.js).
+- **Playground** — [`playground/playground.maca`](playground/playground.maca): the
+  browser playground, itself written in Maca and compiled by the JS backend.
 
 ## Build from source
 

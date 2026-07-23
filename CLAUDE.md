@@ -49,8 +49,8 @@ Virtual workspace; members are `crates/*`.
 
 Non-crate dirs: `std/` (Maca-source stdlib), `examples/` (golden `.maca`
 programs + `examples/bad/`), `apps/` (capstones), `selfhost/` (the Maca compiler
-written in Maca — stage 1), `playground/` (Monaco web playground), `editor/`,
-`docs/`.
+written in Maca — stage 1), `playground/` (the browser playground, itself a
+single `.maca` file compiled by the JS backend), `editor/`, `docs/`.
 
 ## Self-hosting (current direction)
 

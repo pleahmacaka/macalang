@@ -46,6 +46,5 @@ wasm, builds the tree-sitter grammar from `extension.toml`, applies the
   types the highlighter needs. Full significant-newline layout is delegated to
   an external scanner (a future addition) — highlighting works today; structural
   features (folds, indents from the grammar) grow with it.
-- The same token model backs the Monarch grammar used by the web playground
-  (`playground/maca-lang.js`) and the TextMate grammar (`editor/maca.tmLanguage.json`),
-  all kept in sync with the lexer by `crates/lexer/tests/highlight_sync.rs`.
+- The same token model backs the TextMate grammar (`editor/maca.tmLanguage.json`),
+  kept in sync with the lexer by `crates/lexer/tests/highlight_sync.rs`.

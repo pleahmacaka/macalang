@@ -4,6 +4,10 @@
 // Pretendard @font-face (`import css`) — a font asset, not layout CSS.
 // Build:  maca build --target js playground.maca
 
+// the compiler itself — embedded as base64 into the built index.html by
+// `maca build --target js` (read by the bridge below via id "wasm-b64")
+import wasm "../target/wasm32-unknown-unknown/release/maca_wasm.wasm"
+
 import css """
 @font-face {
   font-family: 'Pretendard';
