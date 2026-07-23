@@ -94,6 +94,7 @@ fn kind_str(k: DiagKind) -> &'static str {
         DiagKind::NonExhaustive => "NonExhaustive",
         DiagKind::EffectInConfig => "EffectInConfig",
         DiagKind::UnknownOption => "UnknownOption",
+        DiagKind::Undefined => "Undefined",
     }
 }
 
@@ -126,21 +127,30 @@ fn compile_json(src: &str, mode: u32) -> String {
     out.push(']');
 
     // type/effect diagnostics
+    let diags = if parsed.errors.is_empty() {
+        maca_core::check(&parsed.module, mode_of(mode))
+    } else {
+        Vec::new()
+    };
     out.push_str(",\"diagnostics\":[");
-    if parsed.errors.is_empty() {
-        let diags = maca_core::check(&parsed.module, mode_of(mode));
-        for (i, d) in diags.iter().enumerate() {
-            if i > 0 {
-                out.push(',');
-            }
-            out.push_str("{\"kind\":");
-            push_json_str(&mut out, kind_str(d.kind));
-            out.push_str(",\"msg\":");
-            push_json_str(&mut out, &d.msg);
-            out.push('}');
+    for (i, d) in diags.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
         }
+        out.push_str("{\"kind\":");
+        push_json_str(&mut out, kind_str(d.kind));
+        out.push_str(",\"msg\":");
+        push_json_str(&mut out, &d.msg);
+        out.push('}');
     }
     out.push(']');
+
+    // editor markers (Monaco-ready 1-based line/col spans) so the LSP can draw
+    // squiggles on the offending token. Parse errors carry a real byte span;
+    // semantic diagnostics anchor on the first `backticked` name in the message
+    // (usually the offending identifier), falling back to the file start.
+    out.push_str(",\"markers\":");
+    out.push_str(&markers_json(src, &parsed.errors, &diags));
 
     // backend outputs (only when the source parses)
     let mut js_exports: Vec<String> = Vec::new();
@@ -386,6 +396,103 @@ fn find_line(src: &str, name: &str) -> usize {
         }
     }
     0
+}
+
+/// Byte offset → Monaco (1-based line, 1-based column).
+fn line_col(src: &str, byte: usize) -> (usize, usize) {
+    let b = byte.min(src.len());
+    let mut line = 1usize;
+    let mut col = 1usize;
+    for (i, ch) in src.char_indices() {
+        if i >= b {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
+}
+
+/// Pull `(start, end)` and the trailing message out of a flattened parse-error
+/// string like `parse (12, 15): unexpected token`.
+fn parse_error_span(s: &str) -> Option<((usize, usize), &str)> {
+    let open = s.find('(')?;
+    let close = open + s[open..].find(')')?;
+    let (a, b) = s[open + 1..close].split_once(',')?;
+    let start = a.trim().parse().ok()?;
+    let end = b.trim().parse().ok()?;
+    let msg = s[close + 1..].trim_start_matches(':').trim();
+    Some(((start, end), msg))
+}
+
+/// The first `` `name` `` token in a message, if any.
+fn first_backtick(msg: &str) -> Option<&str> {
+    let a = msg.find('`')? + 1;
+    let rest = &msg[a..];
+    let b = rest.find('`')?;
+    Some(&rest[..b])
+}
+
+/// First whole-word occurrence of `name` in `src` as a byte span.
+fn find_word(src: &str, name: &str) -> Option<(usize, usize)> {
+    if name.is_empty() {
+        return None;
+    }
+    let bytes = src.as_bytes();
+    let is_word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let mut from = 0;
+    while let Some(off) = src[from..].find(name) {
+        let at = from + off;
+        let end = at + name.len();
+        let before_ok = at == 0 || !is_word(bytes[at - 1]);
+        let after_ok = end >= bytes.len() || !is_word(bytes[end]);
+        if before_ok && after_ok {
+            return Some((at, end));
+        }
+        from = end;
+    }
+    None
+}
+
+/// Build the `markers` array: precise spans for parse errors, best-effort spans
+/// for semantic diagnostics. All are `error` severity (the compiler rejects
+/// every one of them).
+fn markers_json(src: &str, parse_errors: &[String], diags: &[maca_core::Diagnostic]) -> String {
+    let mut out = String::from("[");
+    let mut first = true;
+    let mut emit = |out: &mut String, sb: usize, eb: usize, msg: &str| {
+        let (l, c) = line_col(src, sb);
+        let (el, ec) = line_col(src, eb.max(sb + 1));
+        if !first {
+            out.push(',');
+        }
+        first = false;
+        out.push_str(&format!(
+            "{{\"severity\":\"error\",\"line\":{l},\"col\":{c},\"endLine\":{el},\"endCol\":{ec},\"message\":"
+        ));
+        push_json_str(out, msg);
+        out.push('}');
+    };
+
+    for e in parse_errors {
+        match parse_error_span(e) {
+            Some(((s, en), msg)) => emit(&mut out, s, en, msg),
+            None => emit(&mut out, 0, 1, e),
+        }
+    }
+    for d in diags {
+        let span = first_backtick(&d.msg).and_then(|n| find_word(src, n));
+        match span {
+            Some((s, e)) => emit(&mut out, s, e, &d.msg),
+            None => emit(&mut out, 0, 1, &d.msg),
+        }
+    }
+    out.push(']');
+    out
 }
 
 /// Append `s` as a JSON string literal (quotes + escapes) to `out`.

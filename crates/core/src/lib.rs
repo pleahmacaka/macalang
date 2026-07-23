@@ -33,6 +33,9 @@ pub enum DiagKind {
     NonExhaustive,
     EffectInConfig,
     UnknownOption,
+    /// Use of / assignment to a name that was never declared (`x = 1` with no
+    /// prior `let x`, or a reference to an unknown local).
+    Undefined,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -448,6 +451,19 @@ impl Checker {
         for s in stmts {
             match s {
                 Stmt::Bind(b) => {
+                    // Reassignment (`x = e`, no `let`, no type annotation) requires
+                    // `x` to already be in scope — a local (let/param) or a global.
+                    // Otherwise it's a typo or a missing `let`.
+                    if !b.is_let && b.tys.is_empty() {
+                        if let Expr::Ident(n) = &b.target {
+                            if lookup(env, n).is_none() && !self.globals.contains_key(n) {
+                                self.diag(
+                                    DiagKind::Undefined,
+                                    format!("`{n}` is not defined — use `let {n} = …` to declare it"),
+                                );
+                            }
+                        }
+                    }
                     let vty = self.infer(env, &b.value);
                     if let Some(t) = b.tys.first() {
                         let at = self.relax_ann(ast_ty(t));

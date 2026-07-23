@@ -449,7 +449,14 @@ impl<'a> Cx<'a> {
                 self.variant_of.get(n).map(|s| CTy::Sum(s.clone())).unwrap_or(CTy::Unknown)
             }
             Expr::Call { callee, .. } => match &**callee {
-                Expr::Ident(n) => self.fns.get(n).map(|(_, r)| r.clone()).unwrap_or(CTy::Unknown),
+                // a constructor call like `Circle(2.0)` has the sum's type — so a
+                // list of them (`Circle(x), Rect(w, h)`) registers `ShapeArr`.
+                Expr::Ident(n) => self
+                    .variant_of
+                    .get(n)
+                    .map(|s| CTy::Sum(s.clone()))
+                    .or_else(|| self.fns.get(n).map(|(_, r)| r.clone()))
+                    .unwrap_or(CTy::Unknown),
                 _ => CTy::Unknown,
             },
             _ => CTy::Unknown,
@@ -694,11 +701,13 @@ impl<'a> Cx<'a> {
         }
         self.push("");
 
-        // primitive-element arrays
+        // primitive-element arrays. Record- and sum-element arrays are structs
+        // themselves, so they wait until their element type is defined (emitted
+        // with / after the struct block below).
         let mut emitted_arr: HashSet<CTy> = HashSet::new();
         let elems: Vec<CTy> = self.arr_elems.iter().cloned().collect();
         for e in &elems {
-            if !matches!(e, CTy::Rec(_)) {
+            if !matches!(e, CTy::Rec(_) | CTy::Sum(_)) {
                 self.push(&format!("MACA_DEFINE_ARRAY({}, {})", arr_name(e), c_type(e)));
                 emitted_arr.insert(e.clone());
             }
@@ -897,6 +906,9 @@ impl<'a> Cx<'a> {
             }
             match &f.body {
                 Some(FnBody::Block(stmts)) => self.block(&mut env, stmts, &Sink::Return(CTy::Int), 1),
+                Some(FnBody::Expr(e)) if is_control(e) => {
+                    self.stmt_expr(&mut env, e, &Sink::Return(CTy::Int), 1);
+                }
                 Some(FnBody::Expr(e)) => {
                     let (c, _) = self.expr(&mut env, e, Some(&CTy::Int));
                     self.push(&format!("    return {c};"));
@@ -913,6 +925,13 @@ impl<'a> Cx<'a> {
             Some(FnBody::Block(stmts)) => {
                 let sink = if ret == CTy::Unit { Sink::Discard } else { Sink::Return(ret.clone()) };
                 self.block(&mut env, stmts, &sink, 1);
+            }
+            // an arrow body that is itself a control-flow expression (a `match`,
+            // `if`, or block returning a value) routes through the Sink like a
+            // block body would, instead of the value-only `expr()` path.
+            Some(FnBody::Expr(e)) if is_control(e) => {
+                let sink = if ret == CTy::Unit { Sink::Discard } else { Sink::Return(ret.clone()) };
+                self.stmt_expr(&mut env, e, &sink, 1);
             }
             Some(FnBody::Expr(e)) => {
                 let (c, _) = self.expr(&mut env, e, Some(&ret));

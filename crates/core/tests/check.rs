@@ -140,6 +140,23 @@ fn range_ok() {
 }
 
 #[test]
+fn tour_ok() {
+    assert_clean("examples/tour.maca", Mode::Program);
+}
+
+#[test]
 fn range_end_must_be_int() {
     assert_has("examples/bad/range_end.maca", Mode::Program, DiagKind::TypeMismatch);
+}
+
+#[test]
+fn reassign_without_let_rejected() {
+    // `count = 0` with no prior `let count` is an undeclared-name error.
+    assert_has("examples/bad/reassign_no_let.maca", Mode::Program, DiagKind::Undefined);
+}
+
+#[test]
+fn let_then_reassign_ok() {
+    // the legitimate pattern — declare with `let`, then reassign — stays clean.
+    assert_clean("examples/loops.maca", Mode::Program);
 }

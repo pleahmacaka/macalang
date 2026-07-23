@@ -100,8 +100,9 @@ nix|js|jvm|embedded`, `--mcu`, `--cp`), `run`, `dev` (dev-shell flake), `watch`,
 `fmt`, `lint`, `profile`, `init`.
 
 Type checker (`maca-core`): gradual unification with an `any` escape hatch for
-unknown stdlib, strict on the four acceptance diagnostics (`DiagKind`:
-TypeMismatch / NonExhaustive / EffectInConfig / UnknownOption). Function
+unknown stdlib, strict on the acceptance diagnostics (`DiagKind`:
+TypeMismatch / NonExhaustive / EffectInConfig / UnknownOption / Undefined —
+the last flags `x = e` reassignment with no prior `let x`). Function
 signatures generalize into `Scheme`s (lowercase names are type vars) and
 instantiate per call; the C backend monomorphizes generics (one specialized fn
 per concrete instantiation). Call **arity** and disagreeing **if/ternary

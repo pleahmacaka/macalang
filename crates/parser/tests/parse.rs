@@ -80,6 +80,11 @@ fn roundtrip_range() {
 }
 
 #[test]
+fn roundtrip_tour() {
+    roundtrip("tour.maca");
+}
+
+#[test]
 fn range_binds_looser_than_arithmetic() {
     use maca_parser::{BinOp, Expr, Stmt};
     // `0..n - 1` must read as `0 .. (n - 1)`, not `(0..n) - 1`.

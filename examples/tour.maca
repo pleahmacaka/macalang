@@ -1,0 +1,63 @@
+// A tour of Maca surface syntax — one small program that exercises most of the
+// language and type-checks clean. (`examples/bad/*` show what gets rejected.)
+
+/* Block comments work too. */
+
+// a tagged sum type and a record type
+Shape = Circle(float) | Rect(float, float)
+Point = {
+    x: int
+    y: int
+}
+
+// arrow-body function + `match` over a sum, with binding patterns
+area(s: Shape) -> float =>
+    match s {
+        Circle(r) => 3.14 * r * r
+        Rect(w, h) => w * h
+    }
+
+// block body: let + reassignment, while, break/continue, operators, ternary
+collatz_steps(start: int) -> int {
+    let n = start
+    let steps = 0
+    while n > 1 {
+        n = n % 2 == 0 ? n / 2 : 3 * n + 1
+        steps = steps + 1
+        if steps > 1000 {
+            break
+        }
+    }
+    steps
+}
+
+// recursion
+fib(n: int) -> int =>
+    n < 2 ? n : fib(n - 1) + fib(n - 2)
+
+// UFCS: `x.double()` is sugar for `double(x)`
+double(n: int) -> int => n * 2
+
+main() -> int {
+    // inclusive ranges, for-loops, list indexing + lvalue assignment
+    let xs = 1..5
+    xs[0] = 10
+    let acc = 0
+    for i in 0..len(xs) - 1 {
+        acc = acc + xs[i]
+    }
+    info("acc = {acc}, len = {len(xs)}")
+
+    // records: literal, field access, functional update with `with`
+    let p = Point { x = 1, y = 2 }
+    let q = p with { y = 9 }
+    info("p.y = {p.y}, q.y = {q.y}, q.double = {q.y.double()}")
+
+    // sum values, constructors, and `match` (via area)
+    info("circle = {area(Circle(2.0))}, rect = {area(Rect(3.0, 4.0))}")
+
+    // boolean / comparison operators
+    let ok = acc > 0 && len(xs) == 5
+    info("ok = {ok}, collatz(27) = {collatz_steps(27)}, fib(10) = {fib(10)}")
+    0
+}

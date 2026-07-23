@@ -1,0 +1,8 @@
+// Assigning to a name that was never declared with `let` is an error —
+// it's almost always a typo or a forgotten `let`.
+main() -> int {
+    count = 0
+    count = count + 1
+    info("{count}")
+    0
+}

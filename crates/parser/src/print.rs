@@ -156,7 +156,13 @@ fn expr(s: &mut String, e: &Expr) {
             let _ = write!(s, "{n}");
         }
         Expr::Float(f) => {
-            let _ = write!(s, "{f}");
+            // keep the decimal point so a whole-number float (`2.0`) doesn't
+            // print as `2` and re-parse as an `int`.
+            if f.fract() == 0.0 && f.is_finite() {
+                let _ = write!(s, "{f:.1}");
+            } else {
+                let _ = write!(s, "{f}");
+            }
         }
         Expr::Bool(b) => s.push_str(if *b { "true" } else { "false" }),
         Expr::Unit => s.push_str("()"),
@@ -389,7 +395,11 @@ fn pattern(s: &mut String, p: &Pattern) {
             let _ = write!(s, "{n}");
         }
         Pattern::Float(f) => {
-            let _ = write!(s, "{f}");
+            if f.fract() == 0.0 && f.is_finite() {
+                let _ = write!(s, "{f:.1}");
+            } else {
+                let _ = write!(s, "{f}");
+            }
         }
         Pattern::Bool(b) => s.push_str(if *b { "true" } else { "false" }),
         Pattern::Str(t) => {
