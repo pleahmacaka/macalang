@@ -81,6 +81,10 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   reassignment of an in-scope binding (`i = i + 1`) alongside `let`. The `while`
   condition must be `bool`. Lowered to native C, embedded C, and JS.
   (`examples/loops.maca`; `examples/bad/while_cond.maca` is rejected.)
+- Half-open integer ranges `lo..hi` (counts `lo … hi-1`), an `int[]` value.
+  `for i in lo..hi` lowers to a counting loop in C (no array materialized);
+  in value position (`let xs = 0..n`) it materializes the array. Endpoints must
+  be `int`. (`examples/range.maca`; `examples/bad/range_end.maca` is rejected.)
 - Dev environments in Maca (`maca dev`): `dev.maca` (config mode) → a self-
   contained `flake.nix` devShell via the Nix backend's `emit_flake`. `dev.name`,
   `dev.packages = a, b`, `dev.env = { K = "v" }`, `dev.shellHook`. Replaces a

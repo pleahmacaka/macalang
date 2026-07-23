@@ -75,6 +75,23 @@ fn ctor_vs_for_header_brace() {
 }
 
 #[test]
+fn roundtrip_range() {
+    roundtrip("range.maca");
+}
+
+#[test]
+fn range_binds_looser_than_arithmetic() {
+    use maca_parser::{BinOp, Expr, Stmt};
+    // `0..n - 1` must read as `0 .. (n - 1)`, not `(0..n) - 1`.
+    let m = clean("f(n: int) => 0..n - 1");
+    let Stmt::Fn(f) = &m.items[0] else { panic!() };
+    let Some(maca_parser::FnBody::Expr(e)) = &f.body else { panic!() };
+    let Expr::Range { lo, hi } = &**e else { panic!("expected range, got {e:?}") };
+    assert!(matches!(&**lo, Expr::Int(0)));
+    assert!(matches!(&**hi, Expr::Binary { op: BinOp::Sub, .. }), "hi should be n - 1");
+}
+
+#[test]
 fn malformed_params_terminate() {
     // A function-type annotation isn't surface syntax; the parser must report
     // errors and *terminate* rather than spin forever (regression: the param

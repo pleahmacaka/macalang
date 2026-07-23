@@ -1,0 +1,7 @@
+// A range endpoint must be an `int` — a string end is a type error.
+main() -> int {
+    for i in 0.."ten" {
+        info("{i}")
+    }
+    0
+}

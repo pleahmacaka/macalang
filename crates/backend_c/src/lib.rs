@@ -385,6 +385,13 @@ impl<'a> Cx<'a> {
                 self.walk_expr(lhs);
                 self.walk_expr(rhs);
             }
+            Expr::Range { lo, hi } => {
+                // a range materialized in value position is an `int[]`; register
+                // the array type so its typedef/ops are emitted.
+                self.note_arr(&CTy::Arr(Box::new(CTy::Int)));
+                self.walk_expr(lo);
+                self.walk_expr(hi);
+            }
             Expr::Ternary { cond, then, els } => {
                 self.walk_expr(cond);
                 self.walk_expr(then);
@@ -1058,6 +1065,23 @@ impl<'a> Cx<'a> {
     fn stmt_expr(&mut self, env: &mut Env, e: &Expr, sink: &Sink, ind: usize) {
         match e {
             Expr::Block(stmts) => self.block(env, stmts, sink, ind),
+            Expr::For { pat, iter, body } if matches!(&**iter, Expr::Range { .. }) => {
+                // `for i in lo..hi` — a counting loop, no array materialized.
+                let Expr::Range { lo, hi } = &**iter else { unreachable!() };
+                let (lc, _) = self.expr(env, lo, Some(&CTy::Int));
+                let (hc, _) = self.expr(env, hi, Some(&CTy::Int));
+                let var = if let Pattern::Bind(n) = pat { n.clone() } else { self.fresh() };
+                let hv = self.fresh();
+                self.indent(ind);
+                self.push(&format!(
+                    "{{ int64_t {hv} = {hc}; for (int64_t {var} = {lc}; {var} < {hv}; {var}++) {{"
+                ));
+                let mut env2 = env.clone();
+                env2.push((var, CTy::Int));
+                self.block(&mut env2, body, &Sink::Discard, ind + 1);
+                self.indent(ind);
+                self.push("} }");
+            }
             Expr::For { pat, iter, body } => {
                 // a `for` loop has no value; its body is always in statement position
                 let (ic, ity) = self.expr(env, iter, None);
@@ -1355,6 +1379,22 @@ impl<'a> Cx<'a> {
             Expr::Call { callee, args } => self.call(env, callee, args, expected),
             Expr::Field { base, name } => self.field(env, base, name),
             Expr::Index { base, index } => self.index(env, base, index),
+            Expr::Range { lo, hi } => {
+                // materialize `lo..hi` as an `int[]` (value position, e.g.
+                // `let xs = 0..n`); `for i in lo..hi` uses a counting loop instead.
+                let (lc, _) = self.expr(env, lo, Some(&CTy::Int));
+                let (hc, _) = self.expr(env, hi, Some(&CTy::Int));
+                let an = arr_name(&CTy::Int);
+                let i = self.fresh();
+                let hv = self.fresh();
+                (
+                    format!(
+                        "({{ {an} _a = {an}_new(); int64_t {hv} = {hc}; \
+                         for (int64_t {i} = {lc}; {i} < {hv}; {i}++) {an}_push(&_a, {i}); _a; }})"
+                    ),
+                    CTy::Arr(Box::new(CTy::Int)),
+                )
+            }
             Expr::Unary { op, expr } => {
                 let (c, t) = self.expr(env, expr, None);
                 let op = match op {

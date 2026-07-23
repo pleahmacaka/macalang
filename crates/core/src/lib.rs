@@ -370,6 +370,7 @@ impl Checker {
             Expr::Reify(x) => acc = EffSet(self.eff(x).0 & !EXN),
             Expr::Field { base, .. } => acc = self.eff(base),
             Expr::Index { base, index } => acc = self.eff(base).union(self.eff(index)),
+            Expr::Range { lo, hi } => acc = self.eff(lo).union(self.eff(hi)),
             Expr::Binary { lhs, rhs, .. } => acc = self.eff(lhs).union(self.eff(rhs)),
             Expr::Unary { expr, .. } => acc = self.eff(expr),
             Expr::Ternary { cond, then, els } => {
@@ -564,6 +565,17 @@ impl Checker {
                     Ty::Con(n, _) if n == "str" || n == "bytes" => Ty::Con(n, vec![]),
                     _ => Ty::Any,
                 }
+            }
+            Expr::Range { lo, hi } => {
+                let lt = self.infer(env, lo);
+                let rt = self.infer(env, hi);
+                if let Err(e) = self.inf.unify(&lt, &Ty::Int) {
+                    self.diag(DiagKind::TypeMismatch, format!("range start must be `int`: {e}"));
+                }
+                if let Err(e) = self.inf.unify(&rt, &Ty::Int) {
+                    self.diag(DiagKind::TypeMismatch, format!("range end must be `int`: {e}"));
+                }
+                Ty::array(Ty::Int)
             }
             Expr::Unary { expr, .. } => self.infer(env, expr),
             Expr::Binary { op, lhs, rhs } => {

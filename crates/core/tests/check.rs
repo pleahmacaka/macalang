@@ -133,3 +133,13 @@ fn while_cond_must_be_bool() {
 fn payload_sum_ok() {
     assert_clean("examples/payload_sum.maca", Mode::Program);
 }
+
+#[test]
+fn range_ok() {
+    assert_clean("examples/range.maca", Mode::Program);
+}
+
+#[test]
+fn range_end_must_be_int() {
+    assert_has("examples/bad/range_end.maca", Mode::Program, DiagKind::TypeMismatch);
+}

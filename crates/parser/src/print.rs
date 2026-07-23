@@ -136,6 +136,7 @@ fn compound(e: &Expr) -> bool {
             | Expr::With { .. }
             | Expr::Fail(_)
             | Expr::Reify(_)
+            | Expr::Range { .. }
     )
 }
 
@@ -194,6 +195,11 @@ fn expr(s: &mut String, e: &Expr) {
             s.push('[');
             expr(s, index);
             s.push(']');
+        }
+        Expr::Range { lo, hi } => {
+            operand(s, lo);
+            s.push_str("..");
+            operand(s, hi);
         }
         Expr::Unary { op, expr: e } => {
             s.push_str(match op {

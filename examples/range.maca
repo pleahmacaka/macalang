@@ -1,0 +1,13 @@
+// Half-open integer ranges: `lo..hi` counts lo, lo+1, …, hi-1.
+main() -> int {
+    let sum = 0
+    for i in 0..100 {
+        sum = sum + i
+    }
+    info("sum 0..100 = {sum}")
+
+    // ranges are `int[]` values too — usable anywhere a list is
+    let xs = 1..5
+    info("1..5 has {len(xs)} elements, first {xs[0]}")
+    0
+}

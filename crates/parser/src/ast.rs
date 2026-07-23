@@ -87,6 +87,7 @@ pub enum Expr {
     Call { callee: Box<Expr>, args: Vec<Arg> },
     Field { base: Box<Expr>, name: Ident },
     Index { base: Box<Expr>, index: Box<Expr> }, // `xs[i]`
+    Range { lo: Box<Expr>, hi: Box<Expr> },      // `lo..hi` (half-open: lo..hi-1)
     Unary { op: UnOp, expr: Box<Expr> },
     Binary { op: BinOp, lhs: Box<Expr>, rhs: Box<Expr> },
     Ternary { cond: Box<Expr>, then: Box<Expr>, els: Box<Expr> },

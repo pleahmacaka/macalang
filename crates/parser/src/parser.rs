@@ -367,7 +367,7 @@ impl Parser {
     }
 
     fn parse_ternary(&mut self) -> Expr {
-        let cond = self.parse_binary(0);
+        let cond = self.parse_range();
         if self.eat(Tok::Question) {
             let then = self.parse_ternary();
             self.expect(Tok::Colon, "':' in ternary");
@@ -375,6 +375,19 @@ impl Parser {
             Expr::Ternary { cond: Box::new(cond), then: Box::new(then), els: Box::new(els) }
         } else {
             cond
+        }
+    }
+
+    /// `lo..hi` — a half-open integer range, one notch looser than the binary
+    /// operators so `0..n - 1` reads as `0..(n - 1)`. Non-associative: a range
+    /// isn't itself a range endpoint.
+    fn parse_range(&mut self) -> Expr {
+        let lo = self.parse_binary(0);
+        if self.eat(Tok::DotDot) {
+            let hi = self.parse_binary(0);
+            Expr::Range { lo: Box::new(lo), hi: Box::new(hi) }
+        } else {
+            lo
         }
     }
 
