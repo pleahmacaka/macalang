@@ -52,31 +52,44 @@ pub fn is_config_source(src: &str) -> bool {
     })
 }
 
-/// LSP (0-based line, character) → byte offset into `src`. Character is treated
-/// as a UTF-8 column (exact for ASCII source, which Maca overwhelmingly is).
+/// LSP (0-based line, character) → byte offset into `src`. `character` is a
+/// UTF-16 code-unit index (the LSP/Monaco convention), mapped to a byte offset
+/// that always lands on a char boundary — even for multibyte (CJK/emoji) source.
 pub fn position_to_offset(src: &str, line: usize, character: usize) -> usize {
     let mut off = 0;
     for (i, l) in src.split_inclusive('\n').enumerate() {
         if i == line {
-            // clamp character to the line's content length (excl. newline)
             let content = l.strip_suffix('\n').unwrap_or(l);
-            let col = character.min(content.len());
-            return off + col;
+            // consume `character` UTF-16 code units, returning the byte offset
+            let mut u16s = 0usize;
+            for (b, ch) in content.char_indices() {
+                if u16s >= character {
+                    return off + b;
+                }
+                u16s += ch.len_utf16();
+            }
+            return off + content.len();
         }
         off += l.len();
     }
     off.min(src.len())
 }
 
-/// The identifier prefix immediately before `offset` (for completion).
+/// The identifier prefix immediately before `offset` (for completion). Snaps
+/// `offset` down to a char boundary first, so it never panics on multibyte
+/// source (the running LSP feeds arbitrary offsets here on every keystroke).
 pub fn prefix_at(src: &str, offset: usize) -> String {
     let bytes = src.as_bytes();
-    let mut start = offset.min(bytes.len());
+    let mut end = offset.min(src.len());
+    while end > 0 && !src.is_char_boundary(end) {
+        end -= 1;
+    }
     let is_word = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'.';
+    let mut start = end;
     while start > 0 && is_word(bytes[start - 1]) {
         start -= 1;
     }
-    src[start..offset.min(src.len())].to_string()
+    src[start..end].to_string()
 }
 
 /// Program-mode completion: user-defined top-level function names plus the

@@ -54,3 +54,29 @@ fn prefix_at_reads_dotted_identifier() {
     let src = "system.pa";
     assert_eq!(maca_lsp::prefix_at(src, src.len()), "system.pa");
 }
+
+#[test]
+fn prefix_at_never_panics_on_multibyte_offsets() {
+    // Every byte offset (incl. mid-char) must be safe — the running LSP feeds
+    // arbitrary completion offsets here. Regression for the mid-char slice panic.
+    let src = "한글 = 1\n// 주석 comment\nmsg = \"안녕 world\"\n";
+    for off in 0..=src.len() {
+        let _ = maca_lsp::prefix_at(src, off); // must not panic
+    }
+    // off past the end is clamped, not a crash
+    let _ = maca_lsp::prefix_at(src, src.len() + 50);
+}
+
+#[test]
+fn position_to_offset_maps_utf16_columns() {
+    // 한글 is two 3-byte chars (one UTF-16 unit each); `=` is column 3 → byte 7.
+    let src = "한글 = 1\n";
+    assert_eq!(maca_lsp::position_to_offset(src, 0, 0), 0); // before 한
+    assert_eq!(maca_lsp::position_to_offset(src, 0, 2), 6); // before the space
+    assert_eq!(maca_lsp::position_to_offset(src, 0, 3), 7); // at '=' — a char boundary
+    // the returned offset is always a valid char boundary (never mid-char)
+    for col in 0..10 {
+        let off = maca_lsp::position_to_offset(src, 0, col);
+        assert!(src.is_char_boundary(off), "col {col} -> non-boundary byte {off}");
+    }
+}

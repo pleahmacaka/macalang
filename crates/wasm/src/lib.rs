@@ -387,18 +387,28 @@ fn dotted_path(e: &Expr) -> String {
 /// char (top-level defs begin at column 0), or 0 if not found. The AST is
 /// span-free, so the outline recovers positions by matching the source.
 fn find_line(src: &str, name: &str) -> usize {
+    let matches = |s: &str| -> bool {
+        s.strip_prefix(name).is_some_and(|rest| {
+            rest.chars().next().is_none_or(|c| !c.is_alphanumeric() && c != '_' && c != '.')
+        })
+    };
+    // Top-level defs begin at column 0. Prefer an un-indented match so a call
+    // above the definition (indented) doesn't shadow it; fall back to a trimmed
+    // match only if nothing starts at column 0.
+    let mut fallback = 0;
     for (i, line) in src.lines().enumerate() {
-        let t = line.trim_start();
-        if let Some(rest) = t.strip_prefix(name) {
-            if rest.chars().next().is_none_or(|c| !c.is_alphanumeric() && c != '_' && c != '.') {
-                return i + 1;
-            }
+        if matches(line) {
+            return i + 1;
+        }
+        if fallback == 0 && matches(line.trim_start()) {
+            fallback = i + 1;
         }
     }
-    0
+    fallback
 }
 
-/// Byte offset → Monaco (1-based line, 1-based column).
+/// Byte offset → Monaco (1-based line, 1-based column). Column counts UTF-16
+/// code units (Monaco's convention): an astral char (emoji) is two units.
 fn line_col(src: &str, byte: usize) -> (usize, usize) {
     let b = byte.min(src.len());
     let mut line = 1usize;
@@ -411,7 +421,7 @@ fn line_col(src: &str, byte: usize) -> (usize, usize) {
             line += 1;
             col = 1;
         } else {
-            col += 1;
+            col += ch.len_utf16();
         }
     }
     (line, col)
@@ -437,23 +447,45 @@ fn first_backtick(msg: &str) -> Option<&str> {
     Some(&rest[..b])
 }
 
-/// First whole-word occurrence of `name` in `src` as a byte span.
+/// First whole-word occurrence of `name` in *code* — skipping `//` comments and
+/// `"…"` string literals — as a byte span. Anchoring a diagnostic marker on a
+/// mention inside a comment/string would draw the squiggle in the wrong place.
 fn find_word(src: &str, name: &str) -> Option<(usize, usize)> {
     if name.is_empty() {
         return None;
     }
     let bytes = src.as_bytes();
     let is_word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
-    let mut from = 0;
-    while let Some(off) = src[from..].find(name) {
-        let at = from + off;
-        let end = at + name.len();
-        let before_ok = at == 0 || !is_word(bytes[at - 1]);
-        let after_ok = end >= bytes.len() || !is_word(bytes[end]);
-        if before_ok && after_ok {
-            return Some((at, end));
+    let n = name.len();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            // line comment — skip to end of line
+            b'/' if bytes.get(i + 1) == Some(&b'/') => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            // string literal — skip to the closing quote (respecting \" escapes)
+            b'"' => {
+                i += 1;
+                while i < bytes.len() && bytes[i] != b'"' {
+                    i += if bytes[i] == b'\\' { 2 } else { 1 };
+                }
+                i += 1;
+            }
+            _ => {
+                if bytes[i..].starts_with(name.as_bytes()) {
+                    let end = i + n;
+                    let before_ok = i == 0 || !is_word(bytes[i - 1]);
+                    let after_ok = end >= bytes.len() || !is_word(bytes[end]);
+                    if before_ok && after_ok {
+                        return Some((i, end));
+                    }
+                }
+                i += 1;
+            }
         }
-        from = end;
     }
     None
 }
@@ -583,5 +615,30 @@ mod tests {
             0,
         );
         assert!(json.contains("\"output\":\"99 3\\n\""), "indexing wrong: {json}");
+    }
+
+    #[test]
+    fn find_line_prefers_definition_over_earlier_call() {
+        // `helper` is called (indented) before it is defined at column 0.
+        let src = "main() -> int {\n    helper()\n    0\n}\nhelper() -> int => 1\n";
+        assert_eq!(find_line(src, "helper"), 5, "should point at the def, not the call");
+    }
+
+    #[test]
+    fn line_col_counts_utf16_units() {
+        // 😀 is one scalar but two UTF-16 units; the `x` after it is column 3.
+        let src = "😀x";
+        let bx = src.char_indices().nth(1).unwrap().0;
+        assert_eq!(line_col(src, bx), (1, 3));
+    }
+
+    #[test]
+    fn find_word_skips_comments_and_strings() {
+        // `foo` appears in a comment and a string before the real definition.
+        let src = "// foo is broken\nmsg = \"foo\"\nfoo() -> int => 1\n";
+        let (a, b) = find_word(src, "foo").expect("should find the code occurrence");
+        assert_eq!(&src[a..b], "foo");
+        // the match must be the def on line 3, not the comment/string mentions
+        assert!(a > src.find("\"foo\"").unwrap(), "anchored on comment/string, not code");
     }
 }
