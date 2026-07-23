@@ -229,6 +229,13 @@ fn jexpr(e: &Expr) -> String {
         Expr::List(es) => {
             format!("[{}]", es.iter().map(jexpr).collect::<Vec<_>>().join(", "))
         }
+        // `lo..hi` — half-open integer range as a JS array.
+        Expr::Range { lo, hi } => format!(
+            "Array.from({{length: Math.max(0, ({}) - ({}))}}, (_, _i) => _i + ({}))",
+            jexpr(hi),
+            jexpr(lo),
+            jexpr(lo)
+        ),
         Expr::If { cond, then, els } => {
             let e = els.as_ref().map(|s| jblock_expr(s)).unwrap_or_else(|| "null".into());
             format!("({} ? {} : {})", jexpr(cond), jblock_expr(then), e)
@@ -599,6 +606,9 @@ fn tailwind(class: &str) -> Option<String> {
         "cursor-default" => "cursor:default",
         "resize-none" => "resize:none",
         "outline-none" => "outline:none",
+        "pointer-events-none" => "pointer-events:none",
+        "pointer-events-auto" => "pointer-events:auto",
+        "select-none" => "user-select:none",
         "tabular-nums" => "font-variant-numeric:tabular-nums",
         "w-full" => "width:100%",
         "h-full" => "height:100%",
@@ -689,6 +699,7 @@ fn tailwind(class: &str) -> Option<String> {
         // colors
         "bg" => format!("background-color:{}", color(val)?),
         "border" => format!("border-color:{}", color(val)?),
+        "caret" => format!("caret-color:{}", color(val)?),
         "rounded" if val == "sm" => "border-radius:0.125rem".into(),
         _ => return None,
     };

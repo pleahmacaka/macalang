@@ -13,6 +13,7 @@
 //! `mode`: 0 = program (native/JS), 1 = config (Nix).
 
 use maca_core::{DiagKind, Mode};
+use maca_parser::ast::*;
 
 mod interp;
 
@@ -66,6 +67,20 @@ pub extern "C" fn version() -> u64 {
     leak_bytes(env!("CARGO_PKG_VERSION").as_bytes().to_vec())
 }
 
+/// LSP hover at `off` (byte offset): the signature/type of the identifier under
+/// the caret, or "" if none. Reuses the same analysis as the native `maca-lsp`.
+/// `(ptr<<32)|len`.
+///
+/// # Safety
+/// `ptr`/`len` must describe a valid UTF-8 buffer from [`alloc`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hover(ptr: *const u8, len: usize, off: usize) -> u64 {
+    let src = unsafe { core::slice::from_raw_parts(ptr, len) };
+    let src = core::str::from_utf8(src).unwrap_or("");
+    let h = maca_lsp::hover(src, off.min(src.len())).unwrap_or_default();
+    leak_bytes(h.into_bytes())
+}
+
 fn mode_of(m: u32) -> Mode {
     match m {
         1 => Mode::Config,
@@ -93,8 +108,15 @@ fn compile_json(src: &str, mode: u32) -> String {
     let parsed = maca_parser::parse(src);
     let mut out = String::from("{");
 
+    // syntax-highlight tokens (from the real lexer, so they survive parse
+    // errors) and the definition outline (from the parsed module).
+    out.push_str("\"tokens\":");
+    out.push_str(&tokens_json(src));
+    out.push_str(",\"symbols\":");
+    out.push_str(&symbols_json(src, &parsed.module));
+
     // parse errors
-    out.push_str("\"parseErrors\":[");
+    out.push_str(",\"parseErrors\":[");
     for (i, e) in parsed.errors.iter().enumerate() {
         if i > 0 {
             out.push(',');
@@ -192,6 +214,180 @@ fn compile_json(src: &str, mode: u32) -> String {
     out
 }
 
+/// A syntax-highlight kind for a token. Kept as small integers the JS bridge
+/// maps to CSS classes: 0 punct, 1 keyword, 2 number, 3 string, 4 ident,
+/// 5 type/constructor (capitalized), 6 operator.
+fn tok_kind(t: &maca_lexer::Tok) -> u8 {
+    use maca_lexer::Tok::*;
+    match t {
+        Int(_) | Float(_) => 2,
+        StrOpen | StrText(_) | StrClose | Path(_) => 3,
+        True | False | Let | If | Else | For | In | While | Break | Continue | Match | Import
+        | From | With | Fail | Try | Alias => 1,
+        Ident(s) => {
+            if s.chars().next().is_some_and(|c| c.is_uppercase()) {
+                5
+            } else {
+                4
+            }
+        }
+        Eq | EqEq | NotEq | Bang | Lt | Gt | Le | Ge | Arrow | FatArrow | Plus | Minus | Star
+        | Slash | Percent | Shl | Shr | PlusPlus | Bar | BarBar | PipeGt | AmpAmp | Question
+        | QuestionPost | DotDot | Ellipsis => 6,
+        _ => 0,
+    }
+}
+
+/// Tokens as `[[start, len, kind], …]` (byte offsets). Newline/Eof layout
+/// tokens are dropped; the JS highlighter fills the gaps (whitespace, comments)
+/// itself.
+fn tokens_json(src: &str) -> String {
+    let lexed = maca_lexer::lex(src);
+    let mut out = String::from("[");
+    let mut first = true;
+    for t in &lexed.tokens {
+        if matches!(t.tok, maca_lexer::Tok::Newline | maca_lexer::Tok::Eof) {
+            continue;
+        }
+        let (s, e) = t.span;
+        if e <= s {
+            continue;
+        }
+        if !first {
+            out.push(',');
+        }
+        first = false;
+        out.push_str(&format!("[{},{},{}]", s, e - s, tok_kind(&t.tok)));
+    }
+    out.push(']');
+    out
+}
+
+/// The definition outline: top-level functions, type declarations, named
+/// values, and (config mode) option paths, each with a 1-based source line.
+fn symbols_json(src: &str, module: &Module) -> String {
+    let mut out = String::from("[");
+    let mut first = true;
+    for item in &module.items {
+        let (name, kind, detail) = match item {
+            Stmt::Fn(f) => (f.name.clone(), "fn", fn_signature(f)),
+            Stmt::Bind(b) => match &b.target {
+                Expr::Ident(n) if n.chars().next().is_some_and(|c| c.is_uppercase()) => {
+                    (n.clone(), "type", type_detail(&b.value))
+                }
+                Expr::Ident(n) => (n.clone(), "value", String::new()),
+                Expr::Field { .. } => (dotted_path(&b.target), "option", String::new()),
+                _ => continue,
+            },
+            _ => continue,
+        };
+        if name.is_empty() {
+            continue;
+        }
+        if !first {
+            out.push(',');
+        }
+        first = false;
+        out.push_str("{\"name\":");
+        push_json_str(&mut out, &name);
+        out.push_str(",\"kind\":");
+        push_json_str(&mut out, kind);
+        out.push_str(",\"detail\":");
+        push_json_str(&mut out, &detail);
+        out.push_str(&format!(",\"line\":{}}}", find_line(src, &name)));
+    }
+    out.push(']');
+    out
+}
+
+/// `name(p: T, …) -> R` for the outline detail column.
+fn fn_signature(f: &FnDef) -> String {
+    let params: Vec<String> = f
+        .params
+        .iter()
+        .map(|p| {
+            let ty = p.ty.as_ref().map(ty_name).unwrap_or_else(|| "any".into());
+            format!("{}{}: {ty}", if p.variadic { "..." } else { "" }, p.name)
+        })
+        .collect();
+    let ret = f.ret.as_ref().map(ty_name).unwrap_or_else(|| "()".into());
+    format!("({}) -> {ret}", params.join(", "))
+}
+
+fn ty_name(t: &Type) -> String {
+    match t {
+        Type::Name(segs) => segs.join("."),
+        Type::Array(t) => format!("{}[]", ty_name(t)),
+        Type::Opt(t) => format!("{}?", ty_name(t)),
+        Type::Apply(h, args) => {
+            format!("{} {}", ty_name(h), args.iter().map(ty_name).collect::<Vec<_>>().join(" "))
+        }
+        Type::Paren(t) => format!("({})", ty_name(t)),
+    }
+}
+
+/// A one-line summary of a type declaration's right-hand side: variant tags for
+/// a sum, field names for a record.
+fn type_detail(value: &Expr) -> String {
+    fn ctors(e: &Expr, out: &mut Vec<String>) {
+        match e {
+            Expr::Binary { op: BinOp::Union | BinOp::Or, lhs, rhs } => {
+                ctors(lhs, out);
+                ctors(rhs, out);
+            }
+            Expr::Ident(n) => out.push(n.clone()),
+            Expr::Call { callee, .. } => {
+                if let Expr::Ident(n) = callee.as_ref() {
+                    out.push(n.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    match value {
+        Expr::Record(fields) => {
+            let names: Vec<String> = fields
+                .iter()
+                .filter_map(|f| match f {
+                    Field::Type { name, .. } | Field::Value { name, .. } => Some(name.clone()),
+                    Field::Shorthand(n) => Some(n.clone()),
+                    _ => None,
+                })
+                .collect();
+            format!("{{ {} }}", names.join(", "))
+        }
+        _ => {
+            let mut cs = Vec::new();
+            ctors(value, &mut cs);
+            cs.join(" | ")
+        }
+    }
+}
+
+/// A dotted config target (`networking.hostName`) rendered back to a string.
+fn dotted_path(e: &Expr) -> String {
+    match e {
+        Expr::Ident(n) => n.clone(),
+        Expr::Field { base, name } => format!("{}.{name}", dotted_path(base)),
+        _ => String::new(),
+    }
+}
+
+/// First 1-based line whose trimmed start is `name` followed by a non-identifier
+/// char (top-level defs begin at column 0), or 0 if not found. The AST is
+/// span-free, so the outline recovers positions by matching the source.
+fn find_line(src: &str, name: &str) -> usize {
+    for (i, line) in src.lines().enumerate() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix(name) {
+            if rest.chars().next().is_none_or(|c| !c.is_alphanumeric() && c != '_' && c != '.') {
+                return i + 1;
+            }
+        }
+    }
+    0
+}
+
 /// Append `s` as a JSON string literal (quotes + escapes) to `out`.
 fn push_json_str(out: &mut String, s: &str) {
     out.push('"');
@@ -252,6 +448,16 @@ mod tests {
         assert!(json.contains("flame graph"), "not the shared renderer: {json}");
         assert!(json.contains("fib"), "fib frame missing: {json}");
         assert!(json.contains("\"maxDepth\":"), "no depth: {json}");
+    }
+
+    #[test]
+    fn range_for_loop_runs() {
+        // `for i in 0..100` sums to 4950; `1..5` is a 4-element int[].
+        let json = compile_json(
+            "main() -> int {\n    let sum = 0\n    for i in 0..100 {\n        sum = sum + i\n    }\n    let xs = 1..5\n    info(\"{sum} {len(xs)} {xs[0]}\")\n    0\n}\n",
+            0,
+        );
+        assert!(json.contains("\"output\":\"4950 4 1\\n\""), "range wrong: {json}");
     }
 
     #[test]

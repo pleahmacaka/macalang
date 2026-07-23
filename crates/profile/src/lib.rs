@@ -153,54 +153,74 @@ pub fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String 
     flatten(&root, &mut frames);
     let max_depth = frames.iter().map(|f| f.depth).max().unwrap_or(0);
 
-    let width = 1200.0_f64;
-    let row = 20.0_f64;
-    // reserve a band at the top for the title so it never overlaps the first
-    // frame (which happened for shallow graphs), and a little bottom padding.
-    let title_band = 26.0_f64;
-    let bottom_pad = 8.0_f64;
+    // A generously-sized, readable chart. It renders at intrinsic size (no
+    // shrink-to-a-strip): the host scrolls if it's wider than its panel. Rows
+    // are tall enough that even a two-frame graph reads as a proper chart.
+    let width = 1080.0_f64;
+    let pad_x = 10.0_f64;
+    let plot_w = width - pad_x * 2.0;
+    let row = 30.0_f64; // per-level pitch; the frame itself is `row - gap` tall
+    let gap = 3.0_f64;
+    let title_band = 40.0_f64;
+    let bottom_pad = 12.0_f64;
     let height = title_band + (max_depth as f64 + 1.0) * row + bottom_pad;
-    let scale = width / root_val as f64;
+    let scale = plot_w / root_val as f64;
 
     let mut svg = String::new();
     svg.push_str(&format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" \
-         viewBox=\"0 0 {width:.0} {height:.0}\" style=\"display:block;width:100%;height:auto\" \
-         font-family=\"Pretendard, ui-monospace, monospace\" font-size=\"11\">\n"
+         viewBox=\"0 0 {width:.0} {height:.0}\" style=\"display:block\" \
+         font-family=\"Pretendard, ui-monospace, monospace\" font-size=\"12\">\n"
     ));
+    // backdrop + header (name of the root, sample total, depth)
     svg.push_str(&format!(
-        "<rect width=\"{width:.0}\" height=\"{height:.0}\" fill=\"#1b1a24\"/>\n\
-         <text x=\"8\" y=\"16\" fill=\"#e6e3f0\" font-size=\"13\">maca flame graph — {} samples ({unit})</text>\n",
-        root_val
+        "<rect width=\"{width:.0}\" height=\"{height:.0}\" fill=\"#0e0e14\"/>\n\
+         <text x=\"{pad_x:.0}\" y=\"18\" fill=\"#f4f2fb\" font-size=\"13\" font-weight=\"600\">\
+         {} flame graph</text>\n\
+         <text x=\"{pad_x:.0}\" y=\"33\" fill=\"#8b8a99\" font-size=\"11\">\
+         {} {unit} · depth {}</text>\n",
+        xml_escape(&root_name),
+        root_val,
+        max_depth + 1,
     ));
     for (i, f) in frames.iter().enumerate() {
         if f.value == 0 {
             continue;
         }
-        let x = f.x as f64 * scale;
-        let w = (f.value as f64 * scale).max(0.4);
-        // root (depth 0) sits at the bottom; children stack upward, all below
-        // the title band.
+        let x = pad_x + f.x as f64 * scale;
+        let w = (f.value as f64 * scale).max(1.5);
+        // root (depth 0) at the bottom; children stack upward under the header.
         let y = title_band + (max_depth - f.depth) as f64 * row;
-        let hue = (i as u32 * 47) % 360;
-        let label = if w > 42.0 {
+        let fh = row - gap;
+        let pct = f.value as f64 / root_val as f64 * 100.0;
+        // warm flame palette: hue swept through red→amber, lightness rising with
+        // depth so upper frames read a touch brighter.
+        let hue = 12 + (i as u32 * 13) % 36; // 12–48°
+        let light = 52 + (f.depth.min(8) as u32) * 2; // 52–68%
+        let label = if w > 46.0 {
+            let room = ((w - 8.0) / 6.6) as usize;
+            let text = if w > 120.0 {
+                format!("{} · {:.1}%", elide(&f.name, room.saturating_sub(8)), pct)
+            } else {
+                elide(&f.name, room)
+            };
             format!(
-                "<text x=\"{:.1}\" y=\"{:.1}\" fill=\"#14131b\">{}</text>",
-                x + 3.0,
-                y + 14.0,
-                xml_escape(&elide(&f.name, (w / 6.5) as usize))
+                "<text x=\"{:.1}\" y=\"{:.1}\" fill=\"#2a1403\" font-weight=\"500\">{}</text>",
+                x + 5.0,
+                y + fh / 2.0 + 4.0,
+                xml_escape(&text)
             )
         } else {
             String::new()
         };
         svg.push_str(&format!(
             "<g><title>{} — {} {unit} ({:.1}%)</title>\
-             <rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"1\" \
-             fill=\"hsl({hue},55%,62%)\" stroke=\"#1b1a24\" stroke-width=\"0.5\"/>{label}</g>\n",
+             <rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"3\" \
+             fill=\"hsl({hue},78%,{light}%)\" stroke=\"#0e0e14\" stroke-width=\"1\"/>{label}</g>\n",
             xml_escape(&f.name),
             f.value,
-            f.value as f64 / root_val as f64 * 100.0,
-            x, y, w, row - 1.0,
+            pct,
+            x, y, w, fh,
         ));
     }
     svg.push_str("</svg>\n");
@@ -276,7 +296,8 @@ fn=(2) fib
         fns.insert("main".to_string(), FnCost { self_cost: 5, calls: HashMap::from([("fib".to_string(), 100)]) });
         fns.insert("fib".to_string(), FnCost { self_cost: 100, calls: HashMap::new() });
         let svg = flamegraph_svg_from(&fns, "steps");
-        assert!(svg.contains("samples (steps)"), "{svg}");
+        assert!(svg.contains("flame graph"), "{svg}");
+        assert!(svg.contains("steps"), "unit label missing: {svg}");
         assert!(svg.contains("main") && svg.contains("fib"));
     }
 }

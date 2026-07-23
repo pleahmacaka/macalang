@@ -18,6 +18,37 @@ import css """
 }
 """
 
+// Styles the generated-Tailwind classes can't express: the token colours for
+// the highlight overlay and the definition-outline rows. Small, scoped, and
+// data-free — the layout itself stays in Maca's integrated Tailwind.
+import css """
+.tok-hl { color: #d7d3e6; tab-size: 4; }
+.tok-hl .k { color: #c792ea; }              /* keyword     */
+.tok-hl .t { color: #ffcb6b; }              /* type / ctor */
+.tok-hl .i { color: #d7d3e6; }              /* identifier  */
+.tok-hl .n { color: #f78c6c; }              /* number      */
+.tok-hl .s { color: #c3e88d; }              /* string      */
+.tok-hl .o { color: #89ddff; }              /* operator    */
+.tok-hl .c { color: #5f6577; font-style: italic; } /* comment */
+#ed { tab-size: 4; }
+#ed::selection { background: #3b3564; }
+#ed::-moz-selection { background: #3b3564; }
+
+.ol-item { display: flex; align-items: baseline; gap: .4rem; padding: .2rem .5rem;
+  border-radius: .3rem; cursor: pointer; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.ol-item:hover { background: #1c1c22; }
+.ol-name { color: #e6e3f0; }
+.ol-detail { color: #6b6b78; font-size: .72rem; }
+.ol-kind { font-size: .58rem; text-transform: uppercase; letter-spacing: .04em;
+  padding: .05rem .32rem; border-radius: .25rem; font-weight: 600; flex: none; }
+.ol-fn { background: #2a2350; color: #c4b5fd; }
+.ol-type { background: #3a2a12; color: #fbbf24; }
+.ol-value { background: #0f2f28; color: #34d399; }
+.ol-option { background: #102a3a; color: #38bdf8; }
+.ol-empty { color: #5f6577; padding: .4rem .5rem; font-size: .8rem; }
+"""
+
 import js """
 "use strict";
 // Host shim for the Maca-authored playground (playground.maca → app.js).
@@ -40,6 +71,7 @@ import js """
     tree:     "// Recursive sum types — self-referential payloads are boxed.\nTree = Leaf(int) | Node(Tree, Tree)\n\ntotal(t: Tree) -> int {\n    match t {\n        Leaf(n) => n\n        Node(l, r) => total(l) + total(r)\n    }\n}\n\nmain() -> int {\n    let t = Node(Leaf(1), Node(Leaf(2), Leaf(3)))\n    info(\"{total(t)}\")\n    0\n}\n",
     indexing: "// Subscripting, lvalue assignment, and functional record update.\nConfig = {\n    host: str\n    port: int\n}\n\nmain() -> int {\n    let xs = 10, 20, 30\n    info(\"{xs[1]} of {len(xs)}\")\n    xs[0] = 99\n    info(\"{xs[0]}\")\n    let base = Config { host = \"localhost\", port = 80 }\n    let secure = base with { port = 443 }\n    info(\"{base.port} -> {secure.port}\")\n    0\n}\n",
     config:   "networking.hostName = \"rigel\"\nsystem.stateVersion = \"24.11\"\n\nservices.openssh = {\n    passwordAuthentication = false\n}\n",
+    range:    "// Half-open integer ranges: 0..n counts 0, 1, …, n-1.\nfactorial(n: int) -> int {\n    let acc = 1\n    for i in 1..n + 1 {\n        acc = acc * i\n    }\n    acc\n}\n\nmain() -> int {\n    let sum = 0\n    for i in 0..100 {\n        sum = sum + i\n    }\n    info(\"sum 0..100 = {sum}\")\n\n    let xs = 1..6\n    info(\"1..6 has {len(xs)} elements, last {xs[len(xs) - 1]}\")\n    info(\"6! = {factorial(6)}\")\n    0\n}\n",
   };
 
   // ---- wasm bridge ---------------------------------------------------------
@@ -120,6 +152,105 @@ import js """
   window.mcVersion = function () { return version ? "maca " + version + " · wasm" : ""; };
   window.mcExample = function (name) { return EXAMPLES[name] || ""; };
 
+  // ---- syntax highlighting (real lexer tokens from the wasm result) --------
+  function esc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  const KIND_CLS = { 1: "k", 2: "n", 3: "s", 4: "i", 5: "t", 6: "o" };
+  // colour the trivia the lexer drops (comments) inside a plain-text gap
+  function gap(t) {
+    let out = "", i = 0;
+    while (i < t.length) {
+      if (t[i] === "/" && t[i + 1] === "/") {
+        let j = t.indexOf("\n", i); if (j < 0) j = t.length;
+        out += '<span class="c">' + esc(t.slice(i, j)) + "</span>"; i = j;
+      } else if (t[i] === "/" && t[i + 1] === "*") {
+        let j = t.indexOf("*/", i); j = j < 0 ? t.length : j + 2;
+        out += '<span class="c">' + esc(t.slice(i, j)) + "</span>"; i = j;
+      } else { out += esc(t[i]); i++; }
+    }
+    return out;
+  }
+  window.mcHighlight = function (src) {
+    src = src == null ? "" : String(src);
+    const toks = (last && last.tokens) || [];
+    let html = "", pos = 0;
+    for (const t of toks) {
+      const start = t[0], len = t[1], kind = t[2];
+      if (start < pos || start + len > src.length) continue; // stale tokens → skip
+      html += gap(src.slice(pos, start));
+      const piece = esc(src.slice(start, start + len));
+      const cls = KIND_CLS[kind];
+      html += cls ? '<span class="' + cls + '">' + piece + "</span>" : piece;
+      pos = start + len;
+    }
+    html += gap(src.slice(pos));
+    return html + "\n"; // trailing line keeps the overlay tall enough
+  };
+
+  // ---- definition outline (document symbols) -------------------------------
+  window.mcOutline = function () {
+    const syms = (last && last.symbols) || [];
+    if (!syms.length) return '<div class="ol-empty">no definitions</div>';
+    let html = "";
+    for (const s of syms) {
+      const detail = s.detail ? '<span class="ol-detail">' + esc(s.detail) + "</span>" : "";
+      html +=
+        '<div class="ol-item" onclick="mcGoto(' + (s.line | 0) + ')">' +
+        '<span class="ol-kind ol-' + s.kind + '">' + esc(s.kind) + "</span>" +
+        '<span class="ol-name">' + esc(s.name) + "</span>" + detail + "</div>";
+    }
+    return html;
+  };
+  window.mcGoto = function (line) {
+    const ta = document.getElementById("ed");
+    if (!ta || line < 1) return;
+    const lines = ta.value.split("\n");
+    let off = 0;
+    for (let i = 0; i < line - 1 && i < lines.length; i++) off += lines[i].length + 1;
+    ta.focus();
+    ta.setSelectionRange(off, off);
+    const lh = parseFloat(getComputedStyle(ta).lineHeight) || 20;
+    ta.scrollTop = Math.max(0, (line - 1) * lh - ta.clientHeight / 2);
+    syncScroll();
+    if (typeof update === "function") update();
+  };
+
+  // ---- LSP hover (signature/type of the identifier under the caret) --------
+  window.mcHover = function () {
+    if (!ex) return "";
+    const ta = document.getElementById("ed");
+    if (!ta || document.activeElement !== ta) return "";
+    const src = ta.value;
+    const boff = new TextEncoder().encode(src.slice(0, ta.selectionStart | 0)).length;
+    try {
+      const bytes = new TextEncoder().encode(src);
+      const p = ex.alloc(bytes.length);
+      mem().set(bytes, p);
+      const out = readPacked(ex.hover(p, bytes.length, boff));
+      ex.dealloc(p, bytes.length);
+      return out ? "ⓘ " + out : "";
+    } catch (e) { return ""; }
+  };
+
+  // ---- profiler split: a prominent wall-clock, then the counters -----------
+  window.mcMs = function () {
+    if (!last || !last.run) return "—";
+    return lastMs.toFixed(lastMs < 10 ? 2 : 1) + " ms";
+  };
+  window.mcStats = function () {
+    const p = last && last.run && last.run.profile;
+    if (!p) return "run a program to profile it";
+    const t = p.truncated ? " · truncated" : "";
+    return `${fmtN(p.steps)} steps · ${fmtN(p.totalCalls)} calls · depth ${fmtN(p.maxDepth)}${t}`;
+  };
+
+  // keep the highlight layer scrolled in lock-step with the textarea
+  window.syncScroll = function () {
+    const ta = document.getElementById("ed"), hl = document.getElementById("hl");
+    if (ta && hl) { hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; }
+  };
+
   // ---- boot: load the wasm compiler, then let the Maca app render ----------
   (async function boot() {
     try {
@@ -131,6 +262,9 @@ import js """
       // run() and update() are globals defined by the Maca-compiled app.js.
       if (typeof run === "function") run();
       else if (typeof update === "function") update();
+      // keep the colour overlay glued to the textarea as it scrolls
+      const ta = document.getElementById("ed");
+      if (ta) ta.addEventListener("scroll", window.syncScroll);
     } catch (e) {
       statusText = "wasm failed: " + e.message;
       if (typeof update === "function") update();
@@ -150,6 +284,10 @@ run() {
     update()
 }
 
+// caret moved — refresh the reactive nodes so the hover bar re-reads the
+// identifier under the cursor (mcHover reads the live textarea selection).
+caret() { update() }
+
 showDiag()    { tab = "Diagnostics"  update() }
 showConsole() { tab = "Console"      update() }
 showC()       { tab = "C"            update() }
@@ -158,6 +296,7 @@ showJs()      { tab = "JS"           update() }
 loadHello()    { source = mcExample("hello")     mode = 0  run() }
 loadTree()     { source = mcExample("tree")      mode = 0  run() }
 loadIndexing() { source = mcExample("indexing")  mode = 0  run() }
+loadRange()    { source = mcExample("range")     mode = 0  run() }
 loadConfig()   { source = mcExample("config")    mode = 1  run() }
 
 // a tab's classes reflect whether it is active — pure Tailwind, toggled by state
@@ -167,6 +306,9 @@ tabClass(name: str) -> str =>
         : "px-3 py-1 text-sm rounded cursor-pointer text-zinc-400"
 
 ex = "px-2 py-1 text-sm rounded border border-zinc-700 text-zinc-300 cursor-pointer"
+
+// both editor layers share these so glyphs line up exactly under the caret
+edFont = "font-mono text-sm leading-normal p-4 whitespace-pre"
 
 // ---- view (styled with Maca's integrated Tailwind) -----------------------
 main() -> Element =>
@@ -178,31 +320,47 @@ main() -> Element =>
             button(class=ex, on:click=loadHello,    "hello")
             button(class=ex, on:click=loadTree,     "tree")
             button(class=ex, on:click=loadIndexing, "indexing")
+            button(class=ex, on:click=loadRange,    "range")
             button(class=ex, on:click=loadConfig,   "config")
             button(class="px-3 py-1 text-sm font-semibold rounded bg-violet-500 text-zinc-950 cursor-pointer", on:click=run, "Run ▶")
         )
-        div(class="flex-1 min-h-0 grid grid-cols-2"
-            textarea(class="p-4 min-h-0 bg-zinc-900 text-zinc-100 font-mono text-sm border-r border-zinc-800 resize-none outline-none whitespace-pre overflow-auto", spellcheck="false", bind:value=source, on:input=run)
-            div(class="flex flex-col min-w-0 min-h-0 bg-zinc-950"
-                div(class="flex gap-1 px-2 pt-2 border-b border-zinc-800 overflow-x-auto"
-                    button(class=tabClass("Diagnostics"), on:click=showDiag,    "Diagnostics")
-                    button(class=tabClass("Console"),     on:click=showConsole, "Console")
-                    button(class=tabClass("C"),           on:click=showC,       "C")
-                    button(class=tabClass("JS"),          on:click=showJs,      "JS")
+        div(class="flex-1 min-h-0 flex"
+            // ---- definition outline (document symbols) ----------------------
+            aside(class="w-56 flex-none min-h-0 flex flex-col border-r border-zinc-800 bg-zinc-950"
+                div(class="px-3 py-2 text-xs uppercase tracking-wide text-zinc-500 font-semibold border-b border-zinc-800", "Definitions")
+                div(class="flex-1 min-h-0 overflow-auto p-1", html=mcOutline())
+            )
+            div(class="flex-1 min-w-0 grid grid-cols-2"
+                // ---- editor: a transparent textarea over a highlight layer --
+                div(class="relative min-h-0 overflow-hidden border-r border-zinc-800 bg-zinc-900"
+                    pre(id="hl", class=edFont ++ " tok-hl absolute inset-0 overflow-auto pointer-events-none text-zinc-200", html=mcHighlight(source))
+                    textarea(id="ed", class=edFont ++ " absolute inset-0 overflow-auto bg-transparent text-transparent caret-zinc-100 resize-none outline-none", spellcheck="false", bind:value=source, on:input=run, on:keyup=caret, on:click=caret)
                 )
-                pre(class="flex-1 min-h-0 overflow-auto p-4 font-mono text-sm whitespace-pre-wrap break-words text-zinc-200", mcTab(tab))
-                div(class="border-t border-zinc-800 p-4 overflow-auto"
-                    div(class="flex items-baseline gap-3 mb-2"
-                        span(class="text-xs uppercase tracking-wide text-zinc-500 font-semibold", "Profiler")
-                        span(class="text-xs text-zinc-500 tabular-nums", mcSummary())
+                // ---- results: diagnostics / console / C / JS + profiler -----
+                div(class="flex flex-col min-w-0 min-h-0 bg-zinc-950"
+                    div(class="flex gap-1 px-2 pt-2 border-b border-zinc-800 overflow-x-auto"
+                        button(class=tabClass("Diagnostics"), on:click=showDiag,    "Diagnostics")
+                        button(class=tabClass("Console"),     on:click=showConsole, "Console")
+                        button(class=tabClass("C"),           on:click=showC,       "C")
+                        button(class=tabClass("JS"),          on:click=showJs,      "JS")
                     )
-                    div(class="border border-zinc-800 rounded-lg overflow-hidden", html=mcFlame())
+                    pre(class="flex-1 min-h-0 overflow-auto p-4 font-mono text-sm whitespace-pre-wrap break-words text-zinc-200", mcTab(tab))
+                    div(class="flex-none border-t border-zinc-800 p-4"
+                        div(class="flex items-baseline gap-2 mb-2"
+                            span(class="text-xs uppercase tracking-wide text-zinc-500 font-semibold", "Profiler")
+                            div(class="flex-1")
+                            span(class="text-2xl font-semibold tabular-nums text-violet-300", mcMs())
+                        )
+                        div(class="text-xs text-zinc-500 tabular-nums mb-3", mcStats())
+                        div(class="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950", html=mcFlame())
+                    )
                 )
             )
         )
-        footer(class="flex items-center gap-3 px-4 py-2 text-xs text-zinc-500 border-t border-zinc-800 bg-zinc-950"
-            span(mcStatus())
+        footer(class="flex items-center gap-3 px-4 py-2 text-xs border-t border-zinc-800 bg-zinc-950"
+            span(class="font-mono text-zinc-400 truncate", mcHover())
             div(class="flex-1")
-            span(class="font-mono", mcVersion())
+            span(class="text-zinc-500", mcStatus())
+            span(class="font-mono text-zinc-500", mcVersion())
         )
     )

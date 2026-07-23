@@ -122,6 +122,8 @@ dependencies = [
  "maca-backend-js",
  "maca-backend-nix",
  "maca-core",
+ "maca-lexer",
+ "maca-lsp",
  "maca-parser",
  "maca-profile",
 ]
