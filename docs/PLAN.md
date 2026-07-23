@@ -109,6 +109,13 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - SIMD vectors are first-class value types: `f32x8`, `i32x4`, … (native only).
 - UI: elements are functions (`div(class=..., ...children)`); Svelte-style
   compile-time reactivity; `bind:` / `on:` directives; Tailwind first-class.
+  Reactive nodes update on `update()`: a text/attribute/`class` child that reads
+  state (or calls a function) re-renders; a text-returning call used as a child
+  (`span(fmt(x))`) is a text node, not an element (only known HTML tags build
+  elements); `html=expr` sets `innerHTML`; transpiled functions resolve state
+  names to `state.x` so handlers can read and mutate state. The browser
+  playground itself is written in Maca (`playground/playground.maca`) and
+  compiled by this backend, with a small host shim for the WebAssembly bridge.
 
 Full symbol table, EBNF, stdlib, and examples live in the build brief and will
 be mirrored into `llms.txt` in Phase 11.

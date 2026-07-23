@@ -31,7 +31,8 @@ pub fn emit(m: &Module) -> JsOut {
         }
     }
     let state_names: BTreeSet<String> = cx.state.iter().map(|(n, _)| n.clone()).collect();
-    cx.state_names = state_names;
+    cx.state_names = state_names.clone();
+    set_state_names(&state_names);
 
     // main() -> Element body
     let root_expr = m.items.iter().find_map(|it| match it {
@@ -110,9 +111,13 @@ fn jblock_ret(stmts: &[Stmt], ret: bool) -> String {
         match s {
             Stmt::Bind(b) => {
                 if let Expr::Ident(n) = &b.target {
-                    // `let x =` declares; a bare `x =` reassigns
-                    let kw = if b.is_let { "let " } else { "" };
-                    out.push_str(&format!("  {kw}{n} = {};\n", jexpr(&b.value)));
+                    // `let x =` declares a local; a bare `x =` reassigns (state
+                    // names resolve to `state.x`)
+                    if b.is_let {
+                        out.push_str(&format!("  let {n} = {};\n", jexpr(&b.value)));
+                    } else {
+                        out.push_str(&format!("  {} = {};\n", jname(n), jexpr(&b.value)));
+                    }
                 } else {
                     // lvalue assignment: `xs[i] = v`, `p.field = v`
                     out.push_str(&format!("  {} = {};\n", jexpr(&b.target), jexpr(&b.value)));
@@ -137,6 +142,37 @@ fn jblock_ret(stmts: &[Stmt], ret: bool) -> String {
     out
 }
 
+thread_local! {
+    /// Top-level reactive-state names, consulted so a reference to `x` lowers to
+    /// `state.x` everywhere (view text, attributes, and transpiled functions).
+    static STATE: std::cell::RefCell<BTreeSet<String>> = const { std::cell::RefCell::new(BTreeSet::new()) };
+}
+fn set_state_names(names: &BTreeSet<String>) {
+    STATE.with(|s| *s.borrow_mut() = names.clone());
+}
+/// A bare identifier → `state.x` when it names reactive state, else itself.
+fn jname(n: &str) -> String {
+    if STATE.with(|s| s.borrow().contains(n)) {
+        format!("state.{n}")
+    } else {
+        n.to_string()
+    }
+}
+/// Does an expression read reactive state or call a function (so a text/attr
+/// node bound to it must be refreshed on `update()`)?
+fn is_dynamic(e: &Expr) -> bool {
+    match e {
+        Expr::Ident(n) => STATE.with(|s| s.borrow().contains(n)),
+        Expr::Call { .. } => true,
+        Expr::Str(parts) => parts.iter().any(|p| matches!(p, StrPart::Interp(x) if is_dynamic(x))),
+        Expr::Binary { lhs, rhs, .. } => is_dynamic(lhs) || is_dynamic(rhs),
+        Expr::Unary { expr, .. } | Expr::Field { base: expr, .. } => is_dynamic(expr),
+        Expr::Index { base, index } => is_dynamic(base) || is_dynamic(index),
+        Expr::Ternary { cond, then, els } => is_dynamic(cond) || is_dynamic(then) || is_dynamic(els),
+        _ => false,
+    }
+}
+
 /// Lower a Maca expression to a JS expression (the functional core).
 fn jexpr(e: &Expr) -> String {
     match e {
@@ -146,7 +182,7 @@ fn jexpr(e: &Expr) -> String {
         Expr::Unit => "null".into(),
         Expr::Str(parts) => jstr(parts),
         Expr::Path(p) => format!("{p:?}"),
-        Expr::Ident(n) => n.clone(),
+        Expr::Ident(n) => jname(n),
         Expr::Unary { op, expr } => {
             let o = if matches!(op, UnOp::Not) { "!" } else { "-" };
             format!("{o}({})", jexpr(expr))
@@ -251,15 +287,23 @@ impl Cx {
 
     /// Emit code that builds `expr` (an element call), returning its var name.
     fn element(&mut self, e: &Expr, out: &mut String) -> String {
-        let Expr::Call { callee, args } = e else {
-            // a bare string/expr child → text node
+        // A call to a known HTML tag (`div(...)`) builds an element; anything
+        // else — a literal, an identifier, or a call to a *text-returning*
+        // function like `mcTab(tab)` — is a (reactive) text node.
+        let is_element = matches!(
+            e,
+            Expr::Call { callee, .. } if matches!(callee.as_ref(), Expr::Ident(t) if is_html_tag(t))
+        );
+        if !is_element {
             let v = self.fresh();
-            out.push_str(&format!(
-                "  const {v} = document.createTextNode({});\n",
-                self.value(e, None)
-            ));
+            let expr = jexpr(e);
+            out.push_str(&format!("  const {v} = document.createTextNode({expr});\n"));
+            if is_dynamic(e) {
+                out.push_str(&format!("  _binds.push(() => {{ {v}.textContent = {expr}; }});\n"));
+            }
             return v;
-        };
+        }
+        let Expr::Call { callee, args } = e else { unreachable!() };
         let tag = match callee.as_ref() {
             Expr::Ident(t) => t.clone(),
             _ => "div".into(),
@@ -269,19 +313,35 @@ impl Cx {
 
         for a in args {
             match a {
+                Arg::Named { name, value } if name == "html" => {
+                    // `html=expr` sets innerHTML (reactively) — for pre-rendered
+                    // markup like the flame-graph SVG or highlighted source.
+                    let expr = jexpr(value);
+                    out.push_str(&format!("  {v}.innerHTML = {expr};\n"));
+                    if is_dynamic(value) {
+                        out.push_str(&format!("  _binds.push(() => {{ {v}.innerHTML = {expr}; }});\n"));
+                    }
+                }
                 Arg::Named { name, value } if name == "class" => {
                     if let Expr::Str(parts) = value {
                         for c in plain_text(parts).split_whitespace() {
                             self.classes.insert(c.to_string());
                         }
                     }
-                    out.push_str(&format!("  {v}.className = {};\n", self.value(value, None)));
+                    let expr = jexpr(value);
+                    out.push_str(&format!("  {v}.className = {expr};\n"));
+                    if is_dynamic(value) {
+                        out.push_str(&format!("  _binds.push(() => {{ {v}.className = {expr}; }});\n"));
+                    }
                 }
                 Arg::Named { name, value } => {
-                    out.push_str(&format!(
-                        "  {v}.setAttribute(\"{name}\", {});\n",
-                        self.value(value, None)
-                    ));
+                    let expr = jexpr(value);
+                    out.push_str(&format!("  {v}.setAttribute(\"{name}\", {expr});\n"));
+                    if is_dynamic(value) {
+                        out.push_str(&format!(
+                            "  _binds.push(() => {{ {v}.setAttribute(\"{name}\", {expr}); }});\n"
+                        ));
+                    }
                 }
                 Arg::Directive { kind: Dir::Bind, prop, value } => {
                     let (getter, setter) = self.bind(value);
@@ -290,12 +350,16 @@ impl Cx {
                         "  {v}.addEventListener(\"input\", (e) => {{ {} ; update(); }});\n",
                         setter.replace("$v", "e.target.value")
                     ));
-                    out.push_str(&format!("  _binds.push(() => {{ {v}.{prop} = {getter}; }});\n"));
+                    // don't clobber an input the user is actively editing (avoids
+                    // the caret jumping to the end on every re-render).
+                    out.push_str(&format!(
+                        "  _binds.push(() => {{ if (document.activeElement !== {v}) {v}.{prop} = {getter}; }});\n"
+                    ));
                 }
                 Arg::Directive { kind: Dir::On, prop, value } => {
                     out.push_str(&format!(
                         "  {v}.addEventListener(\"{prop}\", {});\n",
-                        self.value(value, None)
+                        jexpr(value)
                     ));
                 }
                 Arg::Pos(child) => {
@@ -403,6 +467,20 @@ fn arg_expr(a: &Arg) -> Expr {
     match a {
         Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e.clone(),
     }
+}
+
+/// Is `name` an HTML element tag (so `name(...)` in a view builds a DOM node),
+/// as opposed to a text-returning function call used as a child?
+fn is_html_tag(name: &str) -> bool {
+    matches!(
+        name,
+        "div" | "span" | "p" | "pre" | "code" | "a" | "button" | "input" | "textarea" | "select"
+            | "option" | "label" | "form" | "header" | "footer" | "main" | "section" | "article"
+            | "nav" | "aside" | "ul" | "ol" | "li" | "table" | "thead" | "tbody" | "tr" | "td"
+            | "th" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "img" | "svg" | "canvas" | "small"
+            | "strong" | "em" | "b" | "i" | "hr" | "br" | "figure" | "figcaption" | "details"
+            | "summary" | "dialog" | "progress" | "meter" | "video" | "audio"
+    )
 }
 
 const HTML: &str = "<!doctype html>\n\

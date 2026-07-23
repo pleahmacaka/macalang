@@ -1,0 +1,74 @@
+// The Maca playground — written in Maca, compiled to the browser by Maca's own
+// JS/UI backend (`maca build --target js`).
+//
+// This file owns the whole UI: the reactive state, the view tree, and the
+// event handlers. The browser-API glue it can't express itself — instantiating
+// the WebAssembly compiler, reading its packed return value out of linear
+// memory, and rendering the flame-graph SVG — lives in a small host shim
+// (`host.js`) exposed as the `mc*` functions called below. That split mirrors
+// the native compiler, whose programs call into a small C runtime.
+
+// ---- reactive state -------------------------------------------------------
+source = "main() -> int {{\n    info(\"Hello from Maca\")\n    0\n}}\n"
+mode   = 0            // 0 = program, 1 = config
+tab    = "Console"    // active output tab
+
+// ---- handlers -------------------------------------------------------------
+// `run` compiles + runs the current source through the wasm front-end, then
+// asks the framework to re-render (every `mc*`-bound node re-reads its value).
+run() {
+    mcCompile(source, mode)
+    update()
+}
+
+showDiag()    { tab = "Diagnostics"  update() }
+showConsole() { tab = "Console"      update() }
+showC()       { tab = "C"            update() }
+showJs()      { tab = "JS"           update() }
+
+loadHello()    { source = mcExample("hello")     mode = 0  run() }
+loadTree()     { source = mcExample("tree")      mode = 0  run() }
+loadIndexing() { source = mcExample("indexing")  mode = 0  run() }
+loadConfig()   { source = mcExample("config")    mode = 1  run() }
+
+// a tab button's class reflects whether it is the active tab
+tabClass(name: str) -> str => name == tab ? "tab on" : "tab"
+
+// ---- view -----------------------------------------------------------------
+main() -> Element =>
+    div(class="app"
+        header(class="bar"
+            span(class="brand", "◆ Maca playground")
+            span(class="sub", "written in Maca")
+            div(class="sp")
+            button(class="ex", on:click=loadHello,    "hello")
+            button(class="ex", on:click=loadTree,     "tree")
+            button(class="ex", on:click=loadIndexing, "indexing")
+            button(class="ex", on:click=loadConfig,   "config")
+            button(class="run", on:click=run, "Run ▶")
+        )
+        div(class="cols"
+            textarea(class="editor", spellcheck="false", bind:value=source, on:input=run)
+            div(class="out"
+                div(class="tabs"
+                    button(class=tabClass("Diagnostics"), on:click=showDiag,    "Diagnostics")
+                    button(class=tabClass("Console"),     on:click=showConsole, "Console")
+                    button(class=tabClass("C"),           on:click=showC,       "C")
+                    button(class=tabClass("JS"),          on:click=showJs,      "JS")
+                )
+                pre(class="panel", mcTab(tab))
+                div(class="prof"
+                    div(class="prof-head"
+                        span(class="prof-title", "Profiler")
+                        span(class="prof-sum", mcSummary())
+                    )
+                    div(class="flame", html=mcFlame())
+                )
+            )
+        )
+        footer(class="foot"
+            span(class="status", mcStatus())
+            div(class="sp")
+            span(class="ver", mcVersion())
+        )
+    )

@@ -59,3 +59,37 @@ fn string_concat_uses_plus_or_concat() {
     let out = js("greet(n: str) -> str => \"hi {n}\"\n");
     assert!(out.contains("hi"), "interpolation dropped:\n{out}");
 }
+
+#[test]
+fn reactive_ui_binds_state_and_calls() {
+    // a UI where a text child reads state and a text-returning function call is
+    // used as a child (not an element), plus a state-mutating handler.
+    let out = js(
+        "count = 0\n\
+         shown(n: int) -> str => \"n={n}\"\n\
+         bump() { count = count + 1  update() }\n\
+         main() -> Element =>\n\
+             div(\n\
+                 button(on:click=bump, \"+\")\n\
+                 span(shown(count))\n\
+             )\n",
+    );
+    // state reference resolves to state.count everywhere
+    assert!(out.contains("state.count = (state.count + 1)"), "handler not state-aware:\n{out}");
+    // a text-returning call is a reactive text node, not a <shown> element
+    assert!(out.contains("createTextNode(shown(state.count))"), "call child not text:\n{out}");
+    assert!(!out.contains("createElement(\"shown\")"), "text call became an element:\n{out}");
+    assert!(out.contains("_binds.push(() => { "), "no reactive updater registered:\n{out}");
+    // the click handler is the bare function reference
+    assert!(out.contains("addEventListener(\"click\", bump)"), "handler not wired:\n{out}");
+}
+
+#[test]
+fn html_attribute_sets_inner_html() {
+    let out = js(
+        "svg = \"<svg></svg>\"\n\
+         main() -> Element => div(html=svg)\n",
+    );
+    assert!(out.contains(".innerHTML = state.svg"), "html= not lowered to innerHTML:\n{out}");
+    assert!(out.contains("_binds.push(() => { "), "innerHTML not reactive:\n{out}");
+}
