@@ -155,14 +155,18 @@ pub fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String 
 
     let width = 1200.0_f64;
     let row = 20.0_f64;
-    let height = (max_depth as f64 + 1.0) * row + 40.0;
+    // reserve a band at the top for the title so it never overlaps the first
+    // frame (which happened for shallow graphs), and a little bottom padding.
+    let title_band = 26.0_f64;
+    let bottom_pad = 8.0_f64;
+    let height = title_band + (max_depth as f64 + 1.0) * row + bottom_pad;
     let scale = width / root_val as f64;
 
     let mut svg = String::new();
     svg.push_str(&format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" \
          viewBox=\"0 0 {width:.0} {height:.0}\" \
-         font-family=\"ui-monospace, monospace\" font-size=\"11\">\n"
+         font-family=\"Pretendard, ui-monospace, monospace\" font-size=\"11\">\n"
     ));
     svg.push_str(&format!(
         "<rect width=\"{width:.0}\" height=\"{height:.0}\" fill=\"#1b1a24\"/>\n\
@@ -175,7 +179,9 @@ pub fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String 
         }
         let x = f.x as f64 * scale;
         let w = (f.value as f64 * scale).max(0.4);
-        let y = height - 30.0 - (f.depth as f64 + 1.0) * row;
+        // root (depth 0) sits at the bottom; children stack upward, all below
+        // the title band.
+        let y = title_band + (max_depth - f.depth) as f64 * row;
         let hue = (i as u32 * 47) % 360;
         let label = if w > 42.0 {
             format!(
