@@ -199,6 +199,12 @@ def write_markdown(results):
         "Tight loops over arrays and floating point — dominated by the inner loop.",
     )
     lines += [
+        "On recursion and float/loop work Maca lands right on C (it *is* C, at",
+        "`-O2`). `sieve` is the one gap: Maca's only array type is 64-bit `int[]`,",
+        "so a sieve over 10⁷ touches ~80 MB where C's `char` array touches ~10 MB —",
+        "it's memory-bound, not a codegen deficit (a compact byte array would close",
+        "it).",
+        "",
         f"_Host: {u.sysname} {u.machine}, {u.release}. Times are wall-clock "
         f"medians including process startup._",
         "",

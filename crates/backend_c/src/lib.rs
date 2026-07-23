@@ -1405,18 +1405,24 @@ impl<'a> Cx<'a> {
             Expr::Field { base, name } => self.field(env, base, name),
             Expr::Index { base, index } => self.index(env, base, index),
             Expr::Range { lo, hi } => {
-                // materialize `lo..hi` as an `int[]` (value position, e.g.
-                // `let xs = 0..n`); `for i in lo..hi` uses a counting loop instead.
-                // Ranges are inclusive of `hi`, so the guard is `<=`.
+                // materialize `lo..hi` (inclusive) as an `int[]` in value position
+                // (e.g. `xs = 0..n`); `for i in lo..hi` uses a counting loop with
+                // no array at all. The whole span is sized in one allocation and
+                // filled in a tight loop — no per-element push/realloc.
                 let (lc, _) = self.expr(env, lo, Some(&CTy::Int));
                 let (hc, _) = self.expr(env, hi, Some(&CTy::Int));
                 let an = arr_name(&CTy::Int);
-                let i = self.fresh();
+                let lv = self.fresh();
                 let hv = self.fresh();
+                let n = self.fresh();
+                let i = self.fresh();
                 (
                     format!(
-                        "({{ {an} _a = {an}_new(); int64_t {hv} = {hc}; \
-                         for (int64_t {i} = {lc}; {i} <= {hv}; {i}++) {an}_push(&_a, {i}); _a; }})"
+                        "({{ int64_t {lv} = {lc}, {hv} = {hc}; {an} _a = {an}_new(); \
+                         int64_t {n} = {hv} >= {lv} ? {hv} - {lv} + 1 : 0; \
+                         if ({n} > 0) {{ _a.data = (int64_t*)maca_realloc(0, (size_t){n} * sizeof(int64_t)); \
+                         _a.len = {n}; _a.cap = {n}; \
+                         for (int64_t {i} = 0; {i} < {n}; {i}++) _a.data[{i}] = {lv} + {i}; }} _a; }})"
                     ),
                     CTy::Arr(Box::new(CTy::Int)),
                 )
