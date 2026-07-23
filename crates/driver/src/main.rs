@@ -11,6 +11,7 @@ use std::process::Command;
 
 use maca_profile as profile;
 
+mod build_cache;
 mod deps;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -766,10 +767,42 @@ fn cmd_run(args: &[String]) {
 }
 
 /// Read → parse → typecheck → emit C → `zig cc` → binary at `out`.
+/// Compile `src` to a native binary at `out`, backed by the content-addressed
+/// build cache: an unchanged source is copied straight from the cache (skipping
+/// the whole pipeline), and a fresh build is stored back.
+/// A fingerprint that changes whenever the compiler itself does — its version
+/// plus its binary's mtime — so a rebuilt/upgraded `maca` invalidates the cache
+/// even though the crate version string is unchanged during development.
+fn compiler_fingerprint() -> String {
+    let mtime = std::env::current_exe()
+        .ok()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{VERSION}-{mtime}")
+}
+
 fn compile(src: &Path, out: &Path) -> Result<(), String> {
     let source = std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let key = build_cache::artifact_key(&source, &compiler_fingerprint(), "native");
+    if let Some(cached) = build_cache::get(&key) {
+        // transparent: `run` must stay silent, and stderr clean for callers that
+        // check it. Set MACA_VERBOSE=1 to see cache hits.
+        build_cache::place(&cached, out)?;
+        if std::env::var("MACA_VERBOSE").is_ok() {
+            eprintln!("  reused cached build [{key}]");
+        }
+        return Ok(());
+    }
+    compile_inner(src, &source, out)?;
+    build_cache::put(&key, out);
+    Ok(())
+}
 
-    let mut parsed = maca_parser::parse(&source);
+fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
+    let mut parsed = maca_parser::parse(source);
     if !parsed.errors.is_empty() {
         return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
     }
@@ -1001,8 +1034,32 @@ fn link_native(
     use_simd: bool,
 ) -> Result<(), String> {
     let cc = if use_simd { "clang" } else { "cc" };
+
+    // The C runtime is invariant per compiler version, so compile it once to a
+    // cached object and reuse it — a changed program only recompiles its own
+    // `main.c`, not the whole runtime.
+    let rt_c = dir.join("maca_runtime.c");
+    let rt_src = std::fs::read(&rt_c).unwrap_or_default();
+    let rt_key =
+        build_cache::hash(&[&rt_src, compiler_fingerprint().as_bytes(), cc.as_bytes(), b"native-O2"]);
+    let rt_o = build_cache::object(&rt_key, &dir.join("maca_runtime.o"), |o| {
+        let out = Command::new(cc)
+            .args(["-O2", "-c"])
+            .arg(&rt_c)
+            .arg("-I")
+            .arg(dir)
+            .arg("-o")
+            .arg(o)
+            .output()
+            .map_err(|e| format!("failed to run {cc}: {e}"))?;
+        if !out.status.success() {
+            return Err(format!("{cc} (runtime) failed:\n{}", String::from_utf8_lossy(&out.stderr)));
+        }
+        Ok(())
+    })?;
+
     let mut cmd = Command::new(cc);
-    cmd.arg(dir.join("main.c")).arg(dir.join("maca_runtime.c"));
+    cmd.arg(dir.join("main.c")).arg(&rt_o);
     if use_async {
         cmd.arg(dir.join("maca_async.c"));
     }

@@ -1,0 +1,281 @@
+// microkernel — a message-passing microkernel, simulated in Maca.
+//
+// It's a real stress test for the compiler (sum types, records, ranges, `match`,
+// nested loops, dozens of functions) and a faithful model of a small L4-style
+// kernel: a round-robin priority scheduler over a struct-of-arrays task table, a
+// bump allocator, synchronous IPC through per-task mailboxes, and a capability-
+// checked syscall dispatch. It runs entirely in userland — `maca run` boots it,
+// schedules the tasks to completion, and prints the trace.
+//
+// State that the scheduler mutates lives in `main`'s local arrays (Maca values
+// are copied, so helpers stay pure); the many helpers do the decision-making.
+
+// ---- constants -----------------------------------------------------------
+NTASKS   = 6 as const
+QUANTUM  = 3 as const     // scheduler time-slice, in ticks
+HEAP_CAP = 4096 as const  // bytes in the simulated kernel heap
+MAX_TICK = 400 as const   // safety bound on the boot loop
+
+// task states
+READY   = 0 as const
+RUNNING = 1 as const
+BLOCKED = 2 as const
+ZOMBIE  = 3 as const
+
+// ---- syscalls (a capability-tagged request a running task makes) ---------
+Syscall = Compute(int) | Send(int) | Recv | Yield | Exit
+
+// classify a syscall for the trace / capability check
+syscall_name(s: Syscall) -> str =>
+    match s {
+        Compute(n) => "compute"
+        Send(to) => "send"
+        Recv => "recv"
+        Yield => "yield"
+        Exit => "exit"
+    }
+
+// a capability mask: bit per syscall class a task is allowed to make
+CAP_COMPUTE = 1 as const
+CAP_SEND    = 2 as const
+CAP_RECV    = 4 as const
+CAP_WORKER  = 3 as const   // compute | send
+CAP_SERVER  = 5 as const   // compute | recv
+CAP_ALL     = 15 as const
+
+syscall_cap(s: Syscall) -> int =>
+    match s {
+        Compute(_) => CAP_COMPUTE
+        Send(_) => CAP_SEND
+        Recv => CAP_RECV
+        Yield => 0
+        Exit => 0
+    }
+
+// is a capability present in a mask?
+has_cap(mask: int, cap: int) -> bool =>
+    cap == 0 ? true : mask % (cap * 2) >= cap
+
+// ---- scheduler decisions (pure) ------------------------------------------
+is_ready(state: int) -> bool => state == READY
+
+state_name(state: int) -> str =>
+    match state {
+        0 => "ready"
+        1 => "run"
+        2 => "block"
+        _ => "dead"
+    }
+
+// round-robin among READY tasks, highest priority first, starting after `last`
+pick_next(states: int[], prios: int[], n: int, last: int) -> int {
+    best = 0 - 1
+    best_prio = 0 - 1
+    for step in 1..n {
+        i = (last + step) % n
+        if is_ready(states[i]) {
+            if prios[i] > best_prio {
+                best = i
+                best_prio = prios[i]
+            }
+        }
+    }
+    best
+}
+
+count_state(states: int[], n: int, want: int) -> int {
+    c = 0
+    for i in 0..n - 1 {
+        if states[i] == want {
+            c = c + 1
+        }
+    }
+    c
+}
+
+all_dead(states: int[], n: int) -> bool =>
+    count_state(states, n, ZOMBIE) == n
+
+// ---- bump allocator (pure math over the current break) -------------------
+align_up(x: int, a: int) -> int => (x + a - 1) / a * a
+
+can_alloc(brk: int, size: int) -> bool =>
+    align_up(brk, 8) + size <= HEAP_CAP
+
+next_brk(brk: int, size: int) -> int => align_up(brk, 8) + size
+
+// ---- the "work" a task performs while it holds the CPU --------------------
+// each compute step is a little CPU burn so the profile has something to show
+burn(seed: int, rounds: int) -> int {
+    acc = seed
+    for _ in 1..rounds {
+        acc = (acc * 1103515245 + 12345) % 2147483647
+    }
+    acc
+}
+
+// decide what syscall a task makes this quantum, from its remaining work.
+// kind 1 = worker (sends to a server, else computes), 2 = server (drains its
+// mailbox, else computes), 0 = compute-only.
+decide(kind: int, work_left: int, inbox: int) -> Syscall =>
+    work_left <= 0
+        ? Exit
+        : kind == 2
+            ? (inbox > 0 ? Recv : Compute(work_left))
+            : kind == 1 && work_left % 2 == 0
+                ? Send(1 + (work_left / 2) % 2 * 3)
+                : Compute(work_left)
+
+// ---- IPC ------------------------------------------------------------------
+mailbox_gain(cur: int) -> int => cur + 1
+mailbox_drain(cur: int) -> int => cur > 0 ? cur - 1 : 0
+
+// ---- reporting ------------------------------------------------------------
+pct(part: int, whole: int) -> int => whole == 0 ? 0 : part * 100 / whole
+
+bar(n: int) -> str {
+    s = ""
+    for _ in 1..n {
+        s = s ++ "#"
+    }
+    s
+}
+
+banner(title: str) {
+    info("┌────────────────────────────────────────────┐")
+    info("│  {title}")
+    info("└────────────────────────────────────────────┘")
+}
+
+// ---- boot -----------------------------------------------------------------
+main() -> int {
+    banner("maca microkernel — boot")
+
+    // struct-of-arrays task table. task kinds: 1 = worker (sends), 2 = server
+    // (receives), 0 = compute-only. priorities and work budgets vary.
+    // task 3 is a worker whose capability is missing SEND — when it tries to
+    // send, the kernel refuses the syscall and reaps it (a capability fault).
+    kinds  = 1, 2, 0, 1, 2, 0
+    prios  = 5, 9, 3, 5, 9, 2
+    caps   = CAP_WORKER, CAP_SERVER, CAP_COMPUTE, CAP_COMPUTE, CAP_SERVER, CAP_COMPUTE
+    states = READY, READY, READY, READY, READY, READY
+    work   = 6, 4, 8, 5, 4, 7
+    inbox  = 0, 0, 0, 0, 0, 0
+    quanta = 0, 0, 0, 0, 0, 0
+
+    info("tasks online: {NTASKS}, heap: {HEAP_CAP}B, quantum: {QUANTUM} ticks")
+    for i in 0..NTASKS - 1 {
+        info("  task {i}: kind={kinds[i]} prio={prios[i]} work={work[i]} cap={caps[i]}")
+    }
+
+    banner("scheduler")
+
+    tick = 0
+    last = 0
+    switches = 0
+    brk = 0
+    allocs = 0
+    denied = 0
+    ipc_sent = 0
+    completed = 0
+    acc = 12345
+
+    while tick < MAX_TICK && !all_dead(states, NTASKS) {
+        cur = pick_next(states, prios, NTASKS, last)
+        if cur < 0 {
+            // nobody READY — unblock everyone waiting on IPC (timer wakeup)
+            for i in 0..NTASKS - 1 {
+                if states[i] == BLOCKED {
+                    states[i] = READY
+                }
+            }
+            tick = tick + 1
+            continue
+        }
+        switches = switches + 1
+        last = cur
+        states[cur] = RUNNING
+
+        // run the task for up to QUANTUM ticks
+        slice = 0
+        while slice < QUANTUM && states[cur] == RUNNING {
+            sc = decide(kinds[cur], work[cur], inbox[cur])
+            cap = syscall_cap(sc)
+
+            // capability check — a task without the cap is refused and killed
+            if !has_cap(caps[cur], cap) {
+                info("t{tick} task {cur}: DENIED {syscall_name(sc)} (cap fault)")
+                denied = denied + 1
+                states[cur] = ZOMBIE
+                continue
+            }
+
+            match sc {
+                Compute(rem) => {
+                    acc = burn(acc + cur, 200)
+                    work[cur] = work[cur] - 1
+                    if can_alloc(brk, 16) {
+                        brk = next_brk(brk, 16)
+                        allocs = allocs + 1
+                    }
+                    info("t{tick} task {cur}: compute (work {rem}→{work[cur]}, brk {brk}B)")
+                }
+                Send(to) => {
+                    inbox[to] = mailbox_gain(inbox[to])
+                    if states[to] == BLOCKED {
+                        states[to] = READY
+                    }
+                    work[cur] = work[cur] - 1
+                    ipc_sent = ipc_sent + 1
+                    info("t{tick} task {cur}: send → task {to} (inbox {inbox[to]})")
+                }
+                Recv => {
+                    if inbox[cur] > 0 {
+                        inbox[cur] = mailbox_drain(inbox[cur])
+                        work[cur] = work[cur] - 1
+                        info("t{tick} task {cur}: recv (inbox {inbox[cur]})")
+                    } else {
+                        states[cur] = BLOCKED
+                        info("t{tick} task {cur}: recv → BLOCKED (empty inbox)")
+                    }
+                }
+                Yield => {
+                    states[cur] = READY
+                }
+                Exit => {
+                    states[cur] = ZOMBIE
+                    completed = completed + 1
+                    info("t{tick} task {cur}: exit (retired)")
+                }
+            }
+            slice = slice + 1
+            tick = tick + 1
+        }
+        quanta[cur] = quanta[cur] + 1
+        // a still-RUNNING task is preempted back to READY at quantum end
+        if states[cur] == RUNNING {
+            states[cur] = READY
+        }
+    }
+
+    banner("halt — kernel statistics")
+    info("ticks elapsed  : {tick}")
+    info("context switches: {switches}")
+    info("tasks retired  : {completed}/{NTASKS}")
+    info("cap faults     : {denied}")
+    info("ipc messages   : {ipc_sent}")
+    info("heap used      : {brk}/{HEAP_CAP}B ({pct(brk, HEAP_CAP)}%), {allocs} allocs")
+    info("entropy        : {acc}")
+
+    info("cpu time per task (quanta):")
+    total_q = 0
+    for i in 0..NTASKS - 1 {
+        total_q = total_q + quanta[i]
+    }
+    for i in 0..NTASKS - 1 {
+        share = pct(quanta[i], total_q)
+        info("  task {i} [{state_name(states[i])}] {bar(quanta[i])} {quanta[i]}q ({share}%)")
+    }
+
+    all_dead(states, NTASKS) ? 0 : 1
+}

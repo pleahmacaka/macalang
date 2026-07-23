@@ -96,8 +96,18 @@ serves both. `maca upgrade` self-updates the toolchain from its GitHub releases.
 | `--target jvm` | Java source (+ `javac`) | JVM interop; Minecraft/Fabric mods — `--cp <jars>` |
 | `--target embedded` | bare-metal firmware (ELF + `.bin`) | Cortex-M / RISC-V — `--mcu cortex-m0\|m3\|m4\|riscv32` |
 
-Worked examples: [`apps/mcmod`](apps/mcmod) (a Fabric mod in Maca),
+Worked examples: [`apps/microkernel`](apps/microkernel) (a message-passing
+microkernel, simulated), [`apps/mcmod`](apps/mcmod) (a Fabric mod in Maca),
 [`apps/blink`](apps/blink) (Cortex-M firmware), [`examples/`](examples).
+
+## Incremental builds
+
+Native builds are content-addressed: a build is a pure function of
+`(source, compiler, target)`, so an unchanged `maca build`/`run` copies the
+cached binary and skips the whole pipeline (parse → check → emit → link) — a
+cold build of the microkernel (~0.4s) drops to ~3ms warm. A *changed* source
+still reuses the cached C runtime object. `MACA_NO_CACHE=1` forces a full build;
+`MACA_VERBOSE=1` logs cache hits.
 
 ## Use from JavaScript / Bun
 

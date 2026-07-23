@@ -325,3 +325,24 @@ fn sum_with_record_payload_runs_natively() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+#[test]
+fn microkernel_boots_natively() {
+    // the capstone stress test: a whole microkernel simulation must compile and
+    // run end to end (and exercises the build cache on the second CI build).
+    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let src = format!("{}/../../apps/microkernel/kernel.maca", env!("CARGO_MANIFEST_DIR"));
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &src])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("maca microkernel — boot"), "no boot banner:\n{stdout}");
+    assert!(stdout.contains("cap fault"), "capability check missing:\n{stdout}");
+    assert!(stdout.contains("tasks retired  : 5/6"), "unexpected scheduler outcome:\n{stdout}");
+    assert_eq!(out.status.code(), Some(0), "kernel should halt cleanly");
+}
