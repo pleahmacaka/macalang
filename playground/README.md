@@ -8,16 +8,24 @@ instantiates the compiler and reads its result out of linear memory) and a small
 `import css` block (the Pretendard `@font-face` plus the token/outline colours).
 The compiler itself is pulled in with `import wasm`.
 
-It's a real editor, all driven by the same in-browser compiler:
+It's a real editor — the **Monaco** editor (the one behind VS Code), loaded from
+a CDN, with a Maca language mode wired to the in-browser compiler:
 
-- **Syntax highlighting** from the actual lexer tokens (a transparent
-  `textarea` over a coloured highlight layer — no separate grammar to drift).
+- **Syntax highlighting** (a Monaco/Monarch grammar) and **tab-to-indent**,
+  bracket matching, and the rest of Monaco's editing.
+- **LSP hover** — the signature/type of the identifier under the caret, from the
+  same analysis as the native `maca-lsp` (a `hover` wasm export).
+- **Autocomplete** — keywords, builtin types/functions, and the program's own
+  top-level definitions.
+- **Diagnostics** as editor markers, plus the full text in the Diagnostics tab.
 - **A definition outline** (document symbols: functions, types, values, config
   options) — click to jump to the definition.
-- **LSP hover** — the signature/type of the identifier under the caret, from the
-  same analysis as the native `maca-lsp`.
 - **A flame-graph profiler** with the wall-clock time, reusing the native
   `maca profile` renderer (`maca-profile`) fed by the interpreter's step counts.
+
+If the Monaco CDN can't be reached (offline, or a strict-CSP host like a
+claude.ai artifact), the editor falls back to a plain monospace textarea that
+still recompiles on input and indents with Tab — so the page always works.
 
 ## Build & deploy
 

@@ -18,22 +18,10 @@ import css """
 }
 """
 
-// Styles the generated-Tailwind classes can't express: the token colours for
-// the highlight overlay and the definition-outline rows. Small, scoped, and
-// data-free — the layout itself stays in Maca's integrated Tailwind.
+// Styles the generated-Tailwind classes can't express: the definition-outline
+// rows. Small, scoped, data-free — the layout stays in Maca's integrated
+// Tailwind, and the editor (Monaco) carries its own theme.
 import css """
-.tok-hl { color: #d7d3e6; tab-size: 4; }
-.tok-hl .k { color: #c792ea; }              /* keyword     */
-.tok-hl .t { color: #ffcb6b; }              /* type / ctor */
-.tok-hl .i { color: #d7d3e6; }              /* identifier  */
-.tok-hl .n { color: #f78c6c; }              /* number      */
-.tok-hl .s { color: #c3e88d; }              /* string      */
-.tok-hl .o { color: #89ddff; }              /* operator    */
-.tok-hl .c { color: #5f6577; font-style: italic; } /* comment */
-#ed { tab-size: 4; }
-#ed::selection { background: #3b3564; }
-#ed::-moz-selection { background: #3b3564; }
-
 .ol-item { display: flex; align-items: baseline; gap: .4rem; padding: .2rem .5rem;
   border-radius: .3rem; cursor: pointer; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; }
@@ -126,6 +114,7 @@ import js """
       last = { parseErrors: ["internal: " + e.message], diagnostics: [], outputs: {} };
       statusText = "error";
     }
+    if (window.mcMarkers) window.mcMarkers();
   };
   window.mcTab = function (tab) {
     if (!last) return "";
@@ -152,45 +141,39 @@ import js """
   window.mcVersion = function () { return version ? "maca " + version + " · wasm" : ""; };
   window.mcExample = function (name) { return EXAMPLES[name] || ""; };
 
-  // ---- syntax highlighting (real lexer tokens from the wasm result) --------
+  // ---- shared helpers ------------------------------------------------------
   function esc(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
-  const KIND_CLS = { 1: "k", 2: "n", 3: "s", 4: "i", 5: "t", 6: "o" };
-  // colour the trivia the lexer drops (comments) inside a plain-text gap
-  function gap(t) {
-    let out = "", i = 0;
-    while (i < t.length) {
-      if (t[i] === "/" && t[i + 1] === "/") {
-        let j = t.indexOf("\n", i); if (j < 0) j = t.length;
-        out += '<span class="c">' + esc(t.slice(i, j)) + "</span>"; i = j;
-      } else if (t[i] === "/" && t[i + 1] === "*") {
-        let j = t.indexOf("*/", i); j = j < 0 ? t.length : j + 2;
-        out += '<span class="c">' + esc(t.slice(i, j)) + "</span>"; i = j;
-      } else { out += esc(t[i]); i++; }
-    }
-    return out;
-  }
-  const HL_DEC = new TextDecoder();
-  window.mcHighlight = function (src) {
-    src = src == null ? "" : String(src);
-    const toks = (last && last.tokens) || [];
-    // token spans are BYTE offsets (from the Rust lexer) — slice the UTF-8 bytes,
-    // not the UTF-16 string, so non-ASCII (comments, strings) can't desync it.
-    const bytes = new TextEncoder().encode(src);
-    let html = "", pos = 0;
-    for (const t of toks) {
-      const start = t[0], len = t[1], kind = t[2];
-      if (start < pos || start + len > bytes.length) continue; // stale tokens → skip
-      html += gap(HL_DEC.decode(bytes.subarray(pos, start)));
-      const piece = esc(HL_DEC.decode(bytes.subarray(start, start + len)));
-      const cls = KIND_CLS[kind];
-      html += cls ? '<span class="' + cls + '">' + piece + "</span>" : piece;
-      pos = start + len;
-    }
-    html += gap(HL_DEC.decode(bytes.subarray(pos)));
-    return html + "\n"; // trailing line keeps the overlay tall enough
+
+  // The active editor is Monaco when its CDN is reachable, else a plain
+  // textarea (offline / strict-CSP fallback). These two accessors hide which.
+  let editor = null, monaco = null;
+  let PENDING_SRC = EXAMPLES.hello;
+  window.mcSource = function () {
+    if (editor) return editor.getValue();
+    const ta = document.getElementById("ed");
+    return ta ? ta.value : PENDING_SRC;
   };
+  window.mcSetSource = function (text) {
+    PENDING_SRC = text || "";
+    if (editor) editor.setValue(PENDING_SRC);
+    else { const ta = document.getElementById("ed"); if (ta) ta.value = PENDING_SRC; }
+  };
+
+  // LSP hover from the wasm (byte offset — Maca source is ASCII, but convert
+  // the prefix length for safety).
+  function wasmHover(src, off) {
+    if (!ex) return "";
+    try {
+      const bytes = new TextEncoder().encode(src);
+      const boff = new TextEncoder().encode(src.slice(0, off)).length;
+      const p = ex.alloc(bytes.length); mem().set(bytes, p);
+      const out = readPacked(ex.hover(p, bytes.length, boff));
+      ex.dealloc(p, bytes.length);
+      return out;
+    } catch (e) { return ""; }
+  }
 
   // ---- definition outline (document symbols) -------------------------------
   window.mcOutline = function () {
@@ -207,34 +190,37 @@ import js """
     return html;
   };
   window.mcGoto = function (line) {
-    const ta = document.getElementById("ed");
-    if (!ta || line < 1) return;
-    const lines = ta.value.split("\n");
-    let off = 0;
-    for (let i = 0; i < line - 1 && i < lines.length; i++) off += lines[i].length + 1;
-    ta.focus();
-    ta.setSelectionRange(off, off);
-    const lh = parseFloat(getComputedStyle(ta).lineHeight) || 20;
-    ta.scrollTop = Math.max(0, (line - 1) * lh - ta.clientHeight / 2);
-    syncScroll();
+    if (line < 1) return;
+    if (editor) {
+      editor.revealLineInCenterIfOutsideViewport(line);
+      editor.setPosition({ lineNumber: line, column: 1 });
+      editor.focus();
+    } else {
+      const ta = document.getElementById("ed");
+      if (!ta) return;
+      const lines = ta.value.split("\n");
+      let off = 0;
+      for (let i = 0; i < line - 1 && i < lines.length; i++) off += lines[i].length + 1;
+      ta.focus();
+      ta.setSelectionRange(off, off);
+    }
     if (typeof update === "function") update();
   };
 
   // ---- LSP hover (signature/type of the identifier under the caret) --------
   window.mcHover = function () {
-    if (!ex) return "";
-    const ta = document.getElementById("ed");
-    if (!ta || document.activeElement !== ta) return "";
-    const src = ta.value;
-    const boff = new TextEncoder().encode(src.slice(0, ta.selectionStart | 0)).length;
-    try {
-      const bytes = new TextEncoder().encode(src);
-      const p = ex.alloc(bytes.length);
-      mem().set(bytes, p);
-      const out = readPacked(ex.hover(p, bytes.length, boff));
-      ex.dealloc(p, bytes.length);
-      return out ? "ⓘ " + out : "";
-    } catch (e) { return ""; }
+    const src = window.mcSource();
+    let off = 0;
+    if (editor) {
+      const pos = editor.getPosition();
+      if (pos) off = editor.getModel().getOffsetAt(pos);
+    } else {
+      const ta = document.getElementById("ed");
+      if (!ta || document.activeElement !== ta) return "";
+      off = ta.selectionStart | 0;
+    }
+    const info = wasmHover(src, off);
+    return info ? "ⓘ " + info : "";
   };
 
   // ---- profiler split: a prominent wall-clock, then the counters -----------
@@ -249,13 +235,180 @@ import js """
     return `${fmtN(p.steps)} steps · ${fmtN(p.totalCalls)} calls · depth ${fmtN(p.maxDepth)}${t}`;
   };
 
-  // keep the highlight layer scrolled in lock-step with the textarea
-  window.syncScroll = function () {
-    const ta = document.getElementById("ed"), hl = document.getElementById("hl");
-    if (ta && hl) { hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; }
-  };
+  // ---- diagnostics as editor markers --------------------------------------
+  // (line info isn't carried on diagnostics yet, so they anchor at the top; the
+  // Diagnostics tab has the full text.)
+  function setMarkers() {
+    if (!editor || !monaco || !last) return;
+    const ms = [];
+    for (const e of (last.parseErrors || [])) {
+      ms.push({ severity: monaco.MarkerSeverity.Error, message: e, startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 2 });
+    }
+    for (const d of (last.diagnostics || [])) {
+      ms.push({ severity: monaco.MarkerSeverity.Warning, message: d.kind + ": " + d.msg, startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 2 });
+    }
+    monaco.editor.setModelMarkers(editor.getModel(), "maca", ms);
+  }
+  window.mcMarkers = setMarkers;
 
-  // ---- boot: load the wasm compiler, then let the Maca app render ----------
+  // ---- register the Maca language, theme, and LSP providers with Monaco ----
+  function defineMacaLanguage(m) {
+    m.languages.register({ id: "maca" });
+    m.languages.setLanguageConfiguration("maca", {
+      comments: { lineComment: "//", blockComment: ["/*", "*/"] },
+      brackets: [["{", "}"], ["[", "]"], ["(", ")"]],
+      autoClosingPairs: [
+        { open: "{", close: "}" }, { open: "[", close: "]" },
+        { open: "(", close: ")" }, { open: '"', close: '"' },
+      ],
+    });
+    m.languages.setMonarchTokensProvider("maca", {
+      keywords: ["let", "if", "else", "for", "in", "while", "break", "continue", "match", "import", "from", "with", "fail", "try", "alias", "true", "false"],
+      typeKeywords: ["int", "float", "str", "bool", "bytes"],
+      tokenizer: {
+        root: [
+          [/\/\/.*$/, "comment"],
+          [/\/\*/, "comment", "@block"],
+          [/"{3}/, "string", "@raw"],
+          [/"/, "string", "@str"],
+          [/\b\d[\d_]*\.\d[\d_]*\b/, "number.float"],
+          [/\b0[xXbBoO][0-9a-fA-F_]+\b/, "number.hex"],
+          [/\b\d[\d_]*\b/, "number"],
+          [/[A-Z]\w*/, "type"],
+          [/[a-z_]\w*/, { cases: { "@keywords": "keyword", "@typeKeywords": "type", "@default": "identifier" } }],
+          [/[{}()\[\]]/, "@brackets"],
+          [/->|=>|\.\.|[-+*/%<>=!&|?:]+/, "operator"],
+        ],
+        block: [[/[^*/]+/, "comment"], [/\*\//, "comment", "@pop"], [/[*/]/, "comment"]],
+        str: [[/[^\\"{]+/, "string"], [/\{/, "delimiter", "@interp"], [/\\./, "string.escape"], [/"/, "string", "@pop"]],
+        interp: [[/\}/, "delimiter", "@pop"], [/[A-Z]\w*/, "type"], [/[a-z_]\w*/, "identifier"], [/[^}]/, ""]],
+        raw: [[/"{3}/, "string", "@pop"], [/[^"]+/, "string"], [/"/, "string"]],
+      },
+    });
+    m.editor.defineTheme("maca-dark", {
+      base: "vs-dark", inherit: true,
+      rules: [
+        { token: "comment", foreground: "7d8590", fontStyle: "italic" },
+        { token: "keyword", foreground: "c792ea" },
+        { token: "type", foreground: "ffcb6b" },
+        { token: "string", foreground: "c3e88d" },
+        { token: "string.escape", foreground: "89ddff" },
+        { token: "number", foreground: "f78c6c" },
+        { token: "operator", foreground: "89ddff" },
+        { token: "delimiter", foreground: "89ddff" },
+        { token: "identifier", foreground: "e6e3f0" },
+      ],
+      colors: {
+        "editor.background": "#18181b",
+        "editor.foreground": "#e6e3f0",
+        "editorLineNumber.foreground": "#3f3f46",
+        "editorCursor.foreground": "#a78bfa",
+        "editor.selectionBackground": "#3b3564",
+        "editor.lineHighlightBackground": "#1f1f23",
+      },
+    });
+    m.languages.registerHoverProvider("maca", {
+      provideHover: function (model, pos) {
+        const info = wasmHover(model.getValue(), model.getOffsetAt(pos));
+        return info ? { contents: [{ value: "```maca\n" + info + "\n```" }] } : null;
+      },
+    });
+    m.languages.registerCompletionItemProvider("maca", {
+      provideCompletionItems: function (model, pos) {
+        const w = model.getWordUntilPosition(pos);
+        const range = { startLineNumber: pos.lineNumber, endLineNumber: pos.lineNumber, startColumn: w.startColumn, endColumn: w.endColumn };
+        const K = m.languages.CompletionItemKind, items = [];
+        const add = (label, kind, detail) => items.push({ label, kind, insertText: label, range, detail });
+        ["let", "if", "else", "for", "in", "while", "break", "continue", "match", "import", "with", "fail", "try", "true", "false"].forEach(k => add(k, K.Keyword));
+        ["int", "float", "str", "bool", "bytes"].forEach(t => add(t, K.TypeParameter, "type"));
+        ["info", "warn", "err", "print", "len", "str", "int", "float"].forEach(b => add(b, K.Function, "builtin"));
+        for (const s of (last && last.symbols || [])) {
+          add(s.name, s.kind === "type" ? K.Struct : s.kind === "fn" ? K.Function : K.Variable, s.detail || s.kind);
+        }
+        return { suggestions: items };
+      },
+    });
+  }
+
+  // ---- mount Monaco (from CDN); fall back to a plain textarea if it can't ---
+  const MONACO_CDN = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
+  function mountMonaco() {
+    const host = document.getElementById("editor");
+    if (!host) return;
+    // cross-domain worker proxy (the worker imports the real one from the CDN)
+    window.MonacoEnvironment = {
+      getWorkerUrl: function () {
+        return "data:text/javascript;charset=utf-8," + encodeURIComponent(
+          "self.MonacoEnvironment={baseUrl:'" + MONACO_CDN + "/'};importScripts('" + MONACO_CDN + "/base/worker/workerMain.js');"
+        );
+      },
+    };
+    // if the CDN can't be reached (offline / strict CSP), fall back to a plain
+    // textarea so there's always a usable editor.
+    let fell = false;
+    const fallback = function () {
+      if (fell || editor) return;
+      fell = true;
+      buildFallback(host);
+      if (typeof run === "function") run();
+    };
+    const timer = setTimeout(fallback, 6000);
+    const s = document.createElement("script");
+    s.src = MONACO_CDN + "/loader.js";
+    s.onload = function () {
+      require.config({ paths: { vs: MONACO_CDN } });
+      require(["vs/editor/editor.main"], function () {
+        if (fell) return;
+        clearTimeout(timer);
+        monaco = window.monaco;
+        defineMacaLanguage(monaco);
+        editor = monaco.editor.create(host, {
+          value: PENDING_SRC, language: "maca", theme: "maca-dark",
+          fontFamily: "ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace",
+          fontSize: 13, tabSize: 4, insertSpaces: true, minimap: { enabled: false },
+          automaticLayout: true, scrollBeyondLastLine: false, smoothScrolling: true,
+          padding: { top: 12, bottom: 12 }, renderLineHighlight: "line",
+        });
+        let t;
+        editor.onDidChangeModelContent(function () {
+          clearTimeout(t);
+          t = setTimeout(function () { if (typeof run === "function") run(); }, 120);
+        });
+        editor.onDidChangeCursorPosition(function () { if (typeof update === "function") update(); });
+        statusText = "ready · monaco";
+        if (typeof run === "function") run();
+      });
+    };
+    s.onerror = function () { clearTimeout(timer); fallback(); };
+    document.head.appendChild(s);
+  }
+
+  // Plain-textarea fallback: real monospace, tab-to-indent, recompiles on input.
+  function buildFallback(host) {
+    host.innerHTML = "";
+    const ta = document.createElement("textarea");
+    ta.id = "ed"; ta.spellcheck = false; ta.value = PENDING_SRC; ta.setAttribute("wrap", "off");
+    ta.style.cssText = "position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;" +
+      "margin:0;border:0;padding:16px;resize:none;outline:none;background:#18181b;color:#e6e3f0;" +
+      "font-family:ui-monospace,'JetBrains Mono',Menlo,monospace;font-size:13px;line-height:1.55;" +
+      "white-space:pre;tab-size:4;overflow:auto;caret-color:#a78bfa";
+    ta.addEventListener("input", function () { if (typeof run === "function") run(); });
+    ta.addEventListener("keyup", function () { if (typeof update === "function") update(); });
+    ta.addEventListener("click", function () { if (typeof update === "function") update(); });
+    ta.addEventListener("keydown", function (e) {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const a = ta.selectionStart, b = ta.selectionEnd;
+        ta.value = ta.value.slice(0, a) + "    " + ta.value.slice(b);
+        ta.selectionStart = ta.selectionEnd = a + 4;
+        if (typeof run === "function") run();
+      }
+    });
+    host.appendChild(ta);
+    statusText = "ready · textarea";
+  }
+
+  // ---- boot: load the wasm compiler, mount the editor, render --------------
   (async function boot() {
     try {
       const bytes = b64ToBytes(document.getElementById("wasm-b64").textContent);
@@ -263,12 +416,10 @@ import js """
       ex = instance.exports;
       version = readPacked(ex.version());
       statusText = "ready";
-      // run() and update() are globals defined by the Maca-compiled app.js.
-      if (typeof run === "function") run();
-      else if (typeof update === "function") update();
-      // keep the colour overlay glued to the textarea as it scrolls
-      const ta = document.getElementById("ed");
-      if (ta) ta.addEventListener("scroll", window.syncScroll);
+      // by now (post-await) the Maca app has mounted, so #editor exists and
+      // run()/update() are defined.
+      mountMonaco();
+      if (typeof update === "function") update();
     } catch (e) {
       statusText = "wasm failed: " + e.message;
       if (typeof update === "function") update();
@@ -278,30 +429,27 @@ import js """
 """
 
 // ---- reactive state ------------------------------------------------------
-source = "main() -> int {{\n    info(\"Hello from Maca\")\n    0\n}}\n"
-mode   = 0
-tab    = "Console"
+// the editor (Monaco or the textarea fallback) owns the source text; the bridge
+// exposes it via mcSource()/mcSetSource(). Here we only track mode and the tab.
+mode = 0
+tab  = "Console"
 
 // ---- handlers ------------------------------------------------------------
 run() {
-    mcCompile(source, mode)
+    mcCompile(mcSource(), mode)
     update()
 }
-
-// caret moved — refresh the reactive nodes so the hover bar re-reads the
-// identifier under the cursor (mcHover reads the live textarea selection).
-caret() { update() }
 
 showDiag()    { tab = "Diagnostics"  update() }
 showConsole() { tab = "Console"      update() }
 showC()       { tab = "C"            update() }
 showJs()      { tab = "JS"           update() }
 
-loadHello()    { source = mcExample("hello")     mode = 0  run() }
-loadTree()     { source = mcExample("tree")      mode = 0  run() }
-loadIndexing() { source = mcExample("indexing")  mode = 0  run() }
-loadRange()    { source = mcExample("range")     mode = 0  run() }
-loadConfig()   { source = mcExample("config")    mode = 1  run() }
+loadHello()    { mcSetSource(mcExample("hello"))     mode = 0  run() }
+loadTree()     { mcSetSource(mcExample("tree"))      mode = 0  run() }
+loadIndexing() { mcSetSource(mcExample("indexing"))  mode = 0  run() }
+loadRange()    { mcSetSource(mcExample("range"))     mode = 0  run() }
+loadConfig()   { mcSetSource(mcExample("config"))    mode = 1  run() }
 
 // a tab's classes reflect whether it is active — pure Tailwind, toggled by state
 tabClass(name: str) -> str =>
@@ -310,11 +458,6 @@ tabClass(name: str) -> str =>
         : "px-3 py-1 text-sm rounded cursor-pointer text-zinc-400"
 
 ex = "px-2 py-1 text-sm rounded border border-zinc-700 text-zinc-300 cursor-pointer"
-
-// both editor layers share these so glyphs line up exactly under the caret:
-// identical font/size/leading/padding, zeroed UA margin (pre) and border
-// (textarea), the same border-box model, and no wrapping.
-edFont = "font-mono text-sm leading-normal p-4 m-0 border-0 box-border whitespace-pre"
 
 // ---- view (styled with Maca's integrated Tailwind) -----------------------
 main() -> Element =>
@@ -337,11 +480,8 @@ main() -> Element =>
                 div(class="flex-1 min-h-0 overflow-auto p-1", html=mcOutline())
             )
             div(class="flex-1 min-w-0 grid grid-cols-2"
-                // ---- editor: a transparent textarea over a highlight layer --
-                div(class="relative min-h-0 overflow-hidden border-r border-zinc-800 bg-zinc-900"
-                    pre(id="hl", class=edFont ++ " tok-hl absolute inset-0 overflow-auto pointer-events-none text-zinc-200", html=mcHighlight(source))
-                    textarea(id="ed", class=edFont ++ " absolute inset-0 overflow-auto bg-transparent text-transparent caret-zinc-100 resize-none outline-none", spellcheck="false", wrap="off", bind:value=source, on:input=run, on:keyup=caret, on:click=caret)
-                )
+                // ---- editor: Monaco mounts here (textarea fallback offline) --
+                div(id="editor", class="relative min-h-0 h-full overflow-hidden border-r border-zinc-800 bg-zinc-900")
                 // ---- results: diagnostics / console / C / JS + profiler -----
                 div(class="flex flex-col min-w-0 min-h-0 bg-zinc-950"
                     div(class="flex gap-1 px-2 pt-2 border-b border-zinc-800 overflow-x-auto"
@@ -355,9 +495,9 @@ main() -> Element =>
                         div(class="flex items-baseline gap-2 mb-2"
                             span(class="text-xs uppercase tracking-wide text-zinc-500 font-semibold", "Profiler")
                             div(class="flex-1")
-                            span(class="text-2xl font-semibold tabular-nums text-violet-300", mcMs())
+                            span(class="text-sm font-semibold tabular-nums text-violet-300", mcMs())
+                            span(class="text-xs text-zinc-500 tabular-nums", mcStats())
                         )
-                        div(class="text-xs text-zinc-500 tabular-nums mb-3", mcStats())
                         div(class="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950", html=mcFlame())
                     )
                 )
