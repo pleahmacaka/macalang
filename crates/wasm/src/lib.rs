@@ -232,8 +232,8 @@ fn tok_kind(t: &maca_lexer::Tok) -> u8 {
     match t {
         Int(_) | Float(_) => 2,
         StrOpen | StrText(_) | StrClose | Path(_) => 3,
-        True | False | Let | If | Else | For | In | While | Break | Continue | Match | Import
-        | From | With | Fail | Try | Alias => 1,
+        True | False | Const | As | If | Else | For | In | While | Break | Continue | Match
+        | Import | From | With | Fail | Try | Alias => 1,
         Ident(s) => {
             if s.chars().next().is_some_and(|c| c.is_uppercase()) {
                 5
@@ -561,7 +561,7 @@ mod tests {
     fn range_for_loop_runs() {
         // inclusive: `1..100` sums to 5050; `1..5` is a 5-element int[].
         let json = compile_json(
-            "main() -> int {\n    let sum = 0\n    for i in 1..100 {\n        sum = sum + i\n    }\n    let xs = 1..5\n    info(\"{sum} {len(xs)} {xs[0]}\")\n    0\n}\n",
+            "main() -> int {\n    sum = 0\n    for i in 1..100 {\n        sum = sum + i\n    }\n    xs = 1..5\n    info(\"{sum} {len(xs)} {xs[0]}\")\n    0\n}\n",
             0,
         );
         assert!(json.contains("\"output\":\"5050 5 1\\n\""), "range wrong: {json}");
@@ -579,7 +579,7 @@ mod tests {
     #[test]
     fn indexing_and_update_run() {
         let json = compile_json(
-            "main() -> int {\n    let xs = 10, 20, 30\n    xs[0] = 99\n    info(\"{xs[0]} {len(xs)}\")\n    0\n}\n",
+            "main() -> int {\n    xs = 10, 20, 30\n    xs[0] = 99\n    info(\"{xs[0]} {len(xs)}\")\n    0\n}\n",
             0,
         );
         assert!(json.contains("\"output\":\"99 3\\n\""), "indexing wrong: {json}");

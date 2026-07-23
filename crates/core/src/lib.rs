@@ -463,25 +463,25 @@ impl Checker {
         for s in stmts {
             match s {
                 Stmt::Bind(b) => {
-                    // Mutability: `let x = e` binds a mutable local; a bare
-                    // `x = e` binds a *constant*. A later bare `x = e` reassigns
-                    // — allowed only if `x` is mutable (a `let`), else it's an
-                    // error. A bare assignment to an unseen name binds a new
-                    // constant; reassigning a global is left to the global.
+                    // Mutability: a bare lowercase `x = e` binds a mutable local;
+                    // `const x`, `x = e as const`, or a Capitalized name binds a
+                    // constant (`is_const`). Reassigning a constant is an error;
+                    // reassigning a mutable is fine. A bare reassignment of a
+                    // global is left to the global.
                     if let Expr::Ident(n) = &b.target {
-                        if b.is_let {
-                            self.mut_of.insert(n.clone(), true);
-                        } else if b.tys.is_empty() {
-                            match self.mut_of.get(n) {
-                                Some(false) => self.diag(
-                                    DiagKind::Immutable,
-                                    format!("cannot reassign constant `{n}` — declare it with `let {n} = …` to make it mutable"),
-                                ),
-                                Some(true) => {} // reassigning a mutable local
-                                None => {
-                                    if !self.globals.contains_key(n) {
-                                        self.mut_of.insert(n.clone(), false); // new constant
-                                    }
+                        match self.mut_of.get(n).copied() {
+                            Some(false) => self.diag(
+                                DiagKind::Immutable,
+                                format!("cannot reassign constant `{n}` — declare it mutable with `{n} = …` (no `const`)"),
+                            ),
+                            Some(true) => {
+                                if b.is_const {
+                                    self.mut_of.insert(n.clone(), false); // re-bound as const
+                                }
+                            }
+                            None => {
+                                if b.is_const || !self.globals.contains_key(n) {
+                                    self.mut_of.insert(n.clone(), !b.is_const);
                                 }
                             }
                         }

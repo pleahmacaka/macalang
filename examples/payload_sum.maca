@@ -10,8 +10,8 @@ area(s: Shape) -> int {
 }
 
 main() -> int {
-    let c = Circle(10)
-    let r = Rect(3, 4)
+    c = Circle(10)
+    r = Rect(3, 4)
     info("{area(c)}")
     info("{area(r)}")
     0

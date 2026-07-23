@@ -218,10 +218,10 @@ impl<'a> Interp<'a> {
                 Stmt::Bind(b) => {
                     let v = self.eval(&b.value, scope, depth)?;
                     match &b.target {
-                        // `let x = e`, or a bare `x = e` that first introduces x
-                        // (a constant), declares a new binding; a bare `x = e`
-                        // for an existing name reassigns it.
-                        Expr::Ident(n) if b.is_let || !scope.iter().any(|(k, _)| k == n) => {
+                        // a bare `x = e` first introducing `x` declares a new
+                        // binding (mutable or const); an assignment to an existing
+                        // name reassigns it (the checker rejects const reassigns).
+                        Expr::Ident(n) if !scope.iter().any(|(k, _)| k == n) => {
                             scope.push((n.clone(), v));
                         }
                         _ => self.assign(&b.target, v, scope, depth)?,

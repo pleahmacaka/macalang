@@ -114,7 +114,7 @@ impl Parser {
         match self.peek() {
             Tok::Import => Stmt::Import(self.parse_import()),
             Tok::Alias => self.parse_alias(),
-            Tok::Let => {
+            Tok::Const => {
                 self.bump();
                 let target = self.parse_expr();
                 Stmt::Bind(self.finish_bind(true, target))
@@ -131,14 +131,24 @@ impl Parser {
         }
     }
 
-    fn finish_bind(&mut self, is_let: bool, target: Expr) -> Bind {
+    fn finish_bind(&mut self, const_kw: bool, target: Expr) -> Bind {
         let mut tys = Vec::new();
         while self.eat(Tok::Colon) {
             tys.push(self.parse_type());
         }
         self.expect(Tok::Eq, "'=' in binding");
         let value = self.parse_list_expr();
-        Bind { is_let, target, tys, value }
+        // A binding is a constant if it used `const`, a trailing `as const`, or a
+        // Capitalized name (the convention — the linter nudges toward explicit).
+        let as_const = self.at(Tok::As) && matches!(self.peekn(1), Tok::Const);
+        if as_const {
+            self.bump();
+            self.bump();
+        }
+        let capital =
+            matches!(&target, Expr::Ident(n) if n.chars().next().is_some_and(|c| c.is_uppercase()));
+        let is_const = const_kw || as_const || capital;
+        Bind { is_const, target, tys, value }
     }
 
     /// `ident ( ... )` followed by `->`, `{`, or `=>` is a function definition.

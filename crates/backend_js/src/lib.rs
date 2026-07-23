@@ -142,12 +142,13 @@ fn jblock_ret(stmts: &[Stmt], ret: bool) -> String {
         match s {
             Stmt::Bind(b) => {
                 if let Expr::Ident(n) = &b.target {
-                    // `let x =` declares a local; a bare `x =` reassigns (state
-                    // names resolve to `state.x`)
-                    if b.is_let {
-                        out.push_str(&format!("  let {n} = {};\n", jexpr(&b.value)));
-                    } else {
+                    // reactive state resolves to `state.x`; a local is declared
+                    // with `var` (which, unlike `let`, tolerates the redeclaration
+                    // a bare `x =` reassignment would otherwise produce).
+                    if STATE.with(|s| s.borrow().contains(n)) {
                         out.push_str(&format!("  {} = {};\n", jname(n), jexpr(&b.value)));
+                    } else {
+                        out.push_str(&format!("  var {n} = {};\n", jexpr(&b.value)));
                     }
                 } else {
                     // lvalue assignment: `xs[i] = v`, `p.field = v`

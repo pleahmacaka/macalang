@@ -2,8 +2,8 @@
 // top-level function natively — no named helper needed (cf. examples/parallel.maca).
 
 main() -> int {
-    let xs = 1, 2, 3, 4
-    let ys = xs.parallel(v => v * v)
+    xs = 1, 2, 3, 4
+    ys = xs.parallel(v => v * v)
     for y in ys {
         info("{y}")
     }

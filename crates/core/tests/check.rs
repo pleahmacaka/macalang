@@ -156,7 +156,7 @@ fn reassign_constant_rejected() {
 }
 
 #[test]
-fn let_then_reassign_ok() {
-    // the mutable pattern — declare with `let`, then reassign — stays clean.
+fn mutable_reassign_ok() {
+    // a bare lowercase binding is mutable — declare then reassign stays clean.
     assert_clean("examples/loops.maca", Mode::Program);
 }

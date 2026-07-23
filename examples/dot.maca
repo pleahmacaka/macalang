@@ -1,6 +1,6 @@
 dot8(a: f32x8, b: f32x8) -> f32 => (a * b).sum()
 
 scale(xs: f32[], k: f32) -> f32[] {
-    let kv = f32x8.splat(k)
+    kv = f32x8.splat(k)
     xs.simd_map(8, v => v * kv)
 }

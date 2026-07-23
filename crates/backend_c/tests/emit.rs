@@ -25,7 +25,7 @@ fn func(src: &str, name: &str) -> String {
 fn value_position_if_declares_then_assigns() {
     // regression: `let x = if …` must not silently become `x = 0`
     let body = func(
-        "pick(c: bool) -> int {\n    let b = if c { 100 } else { 200 }\n    b\n}\n",
+        "pick(c: bool) -> int {\n    b = if c { 100 } else { 200 }\n    b\n}\n",
         "pick",
     );
     assert!(body.contains("int64_t b;"), "temp not declared:\n{body}");
@@ -35,7 +35,7 @@ fn value_position_if_declares_then_assigns() {
 
 #[test]
 fn value_position_ternary() {
-    let body = func("f(c: bool) -> int {\n    let a = c ? 10 : 20\n    a\n}\n", "f");
+    let body = func("f(c: bool) -> int {\n    a = c ? 10 : 20\n    a\n}\n", "f");
     assert!(body.contains("int64_t a = (c ? 10 : 20);"), "{body}");
 }
 
@@ -60,7 +60,7 @@ fn sum_and_record_types() {
 
 #[test]
 fn string_interpolation_builds_a_string() {
-    let out = c("main() -> int {\n    let n = 5\n    info(\"n is {n}\")\n    0\n}\n");
+    let out = c("main() -> int {\n    n = 5\n    info(\"n is {n}\")\n    0\n}\n");
     // interpolation lowers through the maca_str / fmt runtime, not a bare literal
     assert!(out.contains("maca_") && out.contains("n is"), "{out}");
 }
@@ -74,7 +74,7 @@ fn needs_async_detection() {
 #[test]
 fn while_loop_and_reassignment() {
     let body = func(
-        "sum_to(n: int) -> int {\n    let acc = 0\n    let i = 1\n    while i <= n {\n        acc = acc + i\n        i = i + 1\n    }\n    acc\n}\n",
+        "sum_to(n: int) -> int {\n    acc = 0\n    i = 1\n    while i <= n {\n        acc = acc + i\n        i = i + 1\n    }\n    acc\n}\n",
         "sum_to",
     );
     assert!(body.contains("while ((i <= n))"), "no while:\n{body}");
@@ -85,7 +85,7 @@ fn while_loop_and_reassignment() {
 #[test]
 fn break_and_continue() {
     let body = func(
-        "f() -> int {\n    let i = 0\n    while i < 10 {\n        i = i + 1\n        if i < 3 { continue }\n        break\n    }\n    i\n}\n",
+        "f() -> int {\n    i = 0\n    while i < 10 {\n        i = i + 1\n        if i < 3 { continue }\n        break\n    }\n    i\n}\n",
         "f",
     );
     assert!(body.contains("break;"), "no break:\n{body}");
@@ -94,7 +94,7 @@ fn break_and_continue() {
 
 #[test]
 fn modulo_and_shift_operators() {
-    let body = func("f(n: int) -> int {\n    let a = n % 3\n    let b = n << 2\n    let c = n >> 1\n    a + b + c\n}\n", "f");
+    let body = func("f(n: int) -> int {\n    a = n % 3\n    b = n << 2\n    c = n >> 1\n    a + b + c\n}\n", "f");
     assert!(body.contains("(n % 3)"), "no modulo:\n{body}");
     assert!(body.contains("(n << 2)"), "no shl:\n{body}");
     assert!(body.contains("(n >> 1)"), "no shr:\n{body}");
@@ -209,7 +209,7 @@ fn reify_installs_a_handler() {
 
 #[test]
 fn non_capturing_lambda_is_hoisted() {
-    let out = c("main() -> int {\n    let xs = 1, 2, 3\n    let ys = xs.parallel(v => v + 1)\n    0\n}\n");
+    let out = c("main() -> int {\n    xs = 1, 2, 3\n    ys = xs.parallel(v => v + 1)\n    0\n}\n");
     assert!(out.contains("static int64_t _lam0(int64_t v)"), "lambda not hoisted:\n{out}");
     assert!(out.contains("return (v + 1);"), "lambda body wrong:\n{out}");
     assert!(out.contains("_lam0, 4)") || out.contains("_lam0,4)"), "lambda not passed to parallel:\n{out}");
@@ -218,13 +218,13 @@ fn non_capturing_lambda_is_hoisted() {
 
 #[test]
 fn capturing_lambda_is_flagged_not_miscompiled() {
-    let out = c("main() -> int {\n    let k = 3\n    let xs = 1, 2\n    let ys = xs.parallel(v => v * k)\n    0\n}\n");
+    let out = c("main() -> int {\n    k = 3\n    xs = 1, 2\n    ys = xs.parallel(v => v * k)\n    0\n}\n");
     assert!(out.contains("unsupported: capturing lambda"), "capture not flagged:\n{out}");
 }
 
 #[test]
 fn generic_fn_is_monomorphized() {
-    let out = c("id(x: a) -> a => x\nBox = {\n    v: int\n}\nmain() -> int {\n    let n: int = id(42)\n    let b: Box = id(Box { v = 7 })\n    let s: str = id(\"hi\")\n    0\n}\n");
+    let out = c("id(x: a) -> a => x\nBox = {\n    v: int\n}\nmain() -> int {\n    n: int = id(42)\n    b: Box = id(Box { v = 7 })\n    s: str = id(\"hi\")\n    0\n}\n");
     // one specialized copy per distinct instantiation, each with the right C type
     assert!(out.contains("int64_t id__int(int64_t x)"), "no int specialization:\n{out}");
     assert!(out.contains("maca_str id__str(maca_str x)"), "no str specialization:\n{out}");
@@ -238,7 +238,7 @@ fn generic_fn_is_monomorphized() {
 #[test]
 fn c_keyword_identifiers_are_escaped() {
     // a fn/param/var/field named like a C keyword must not emit invalid C
-    let out = c("Config = {\n    default: int\n}\ndouble(n: int) -> int => n * 2\nmain() -> int {\n    let new = 5\n    let c = Config { default = double(new) }\n    info(\"{c.default}\")\n    0\n}\n");
+    let out = c("Config = {\n    default: int\n}\ndouble(n: int) -> int => n * 2\nmain() -> int {\n    new = 5\n    c = Config { default = double(new) }\n    info(\"{c.default}\")\n    0\n}\n");
     // the keyword `double` is escaped at definition and call sites
     assert!(out.contains("double_mc("), "fn name not escaped:\n{out}");
     assert!(!out.contains("int64_t double("), "raw C keyword fn emitted:\n{out}");
@@ -253,7 +253,7 @@ fn c_keyword_identifiers_are_escaped() {
 fn ufcs_call_resolves_return_type() {
     // `x.f()` where `f` returns int must be usable as an int (interpolation
     // wraps it), not fall back to an unknown type
-    let out = c("twice(n: int) -> int => n * 2\nmain() -> int {\n    let x = 3\n    info(\"{x.twice()}\")\n    0\n}\n");
+    let out = c("twice(n: int) -> int => n * 2\nmain() -> int {\n    x = 3\n    info(\"{x.twice()}\")\n    0\n}\n");
     // the int return flows into maca_from_int (string interpolation), proving the
     // UFCS call resolved to int rather than an unknown type
     assert!(out.contains("maca_from_int(twice(x))"), "UFCS int result not formatted:\n{out}");
@@ -322,7 +322,7 @@ fn string_concat_uses_maca_concat() {
 
 #[test]
 fn unary_not_and_forward_record() {
-    let out = c("A = {\n    b: B\n}\nB = {\n    v: int\n}\nf(x: bool) -> bool => !x\nmain() -> int {\n    let a = A { b = B { v = 1 } }\n    0\n}\n");
+    let out = c("A = {\n    b: B\n}\nB = {\n    v: int\n}\nf(x: bool) -> bool => !x\nmain() -> int {\n    a = A { b = B { v = 1 } }\n    0\n}\n");
     assert!(out.contains("(!x)"), "no unary not:\n{out}");
     assert!(out.contains("B b;"), "forward record field not resolved to struct:\n{out}");
 }

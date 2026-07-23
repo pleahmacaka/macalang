@@ -99,11 +99,12 @@ Backends: native C (default), LLVM (SIMD span), Nix (config mode), JS
 nix|js|jvm|embedded`, `--mcu`, `--cp`), `run`, `dev` (dev-shell flake), `watch`,
 `fmt`, `lint`, `profile`, `init`.
 
-Bindings: a bare `x = e` binds a **constant**; only `let x = e` is **mutable**
-(reassignable). Reassigning a bare binding is a compile error
-(`DiagKind::Immutable`), caught by the compiler and the LSP. (Runtime: a bare
-`x = e` that first introduces a name declares it; a later bare `x = e` on an
-existing mutable name reassigns.)
+Bindings (no `let` keyword): a bare lowercase `x = e` binds a **mutable**
+variable; `const x = e`, `x = e as const`, or a **Capitalized** name binds a
+**constant** (`is_const`). Reassigning a constant is a compile error
+(`DiagKind::Immutable`), caught by the compiler and the LSP. A Capitalized
+constant works but `maca lint` nudges toward explicit `const`. (Runtime: a bare
+`x = e` that first introduces a name declares it; a later `x = e` reassigns.)
 
 Type checker (`maca-core`): gradual unification with an `any` escape hatch for
 unknown stdlib, strict on the acceptance diagnostics (`DiagKind`:

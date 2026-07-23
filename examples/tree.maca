@@ -21,9 +21,9 @@ length(l: List) -> int {
 }
 
 main() -> int {
-    let t = Node(Leaf(1), Node(Leaf(2), Leaf(3)))
+    t = Node(Leaf(1), Node(Leaf(2), Leaf(3)))
     info("{total(t)}")
-    let xs = Cons(10, Cons(20, Cons(30, Nil)))
+    xs = Cons(10, Cons(20, Cons(30, Nil)))
     info("{length(xs)}")
     0
 }

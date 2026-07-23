@@ -61,7 +61,7 @@
         },
         {
           "name": "keyword.other.maca",
-          "match": "\\b(let|import|from|alias)\\b"
+          "match": "\\b(const|as|import|from|alias)\\b"
         }
       ]
     },

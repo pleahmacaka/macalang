@@ -25,14 +25,15 @@ fn arithmetic_and_ternary() {
 #[test]
 fn while_break_continue() {
     let out = js(
-        "f(n: int) -> int {\n    let i = 0\n    while i < n {\n        i = i + 1\n        if i < 2 { continue }\n        break\n    }\n    i\n}\n",
+        "f(n: int) -> int {\n    i = 0\n    while i < n {\n        i = i + 1\n        if i < 2 { continue }\n        break\n    }\n    i\n}\n",
     );
     assert!(out.contains("while ("), "no while:\n{out}");
     assert!(out.contains("break;"), "no break:\n{out}");
     assert!(out.contains("continue;"), "no continue:\n{out}");
-    // `let i` declares, bare `i =` reassigns (no second `let`)
-    assert!(out.contains("let i = 0"), "no let:\n{out}");
-    assert!(out.contains("i = (i + 1)") && !out.contains("let i = (i + 1)"), "reassignment wrong:\n{out}");
+    // locals are declared with `var` (tolerates the redeclaration a bare
+    // reassignment produces); no `let` keyword remains in the surface language
+    assert!(out.contains("var i = 0"), "no var decl:\n{out}");
+    assert!(out.contains("i = (i + 1)"), "reassignment missing:\n{out}");
 }
 
 #[test]

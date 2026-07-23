@@ -2,8 +2,8 @@
 // Returns a code per number: 0 = plain, 1 = Fizz, 2 = Buzz, 3 = FizzBuzz.
 
 code(n: int) -> int {
-    let by3 = n % 3 == 0
-    let by5 = n % 5 == 0
+    by3 = n % 3 == 0
+    by5 = n % 5 == 0
     if by3 {
         if by5 {
             3
@@ -20,8 +20,8 @@ code(n: int) -> int {
 }
 
 run(upto: int) -> int {
-    let hits = 0
-    let i = 1
+    hits = 0
+    i = 1
     while i <= upto {
         if code(i) > 0 {
             hits = hits + 1

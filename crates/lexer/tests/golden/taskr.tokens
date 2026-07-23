@@ -46,7 +46,6 @@ Colon
 Ident "int"
 RBrace
 Newline
-Let
 Ident "store"
 Eq
 Ident "dirs"
@@ -106,7 +105,6 @@ RParen
 Arrow
 Ident "Store"
 LBrace
-Let
 Ident "t"
 Eq
 Ident "Task"
@@ -155,7 +153,6 @@ RParen
 Arrow
 Ident "str"
 LBrace
-Let
 Ident "box"
 Eq
 Ident "t"
@@ -202,7 +199,6 @@ RParen
 Arrow
 Ident "int"
 LBrace
-Let
 Ident "s"
 Eq
 Ident "load"
@@ -221,7 +217,6 @@ DotDot
 Ident "rest"
 FatArrow
 LBrace
-Let
 Ident "title"
 Eq
 Ident "rest"

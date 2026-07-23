@@ -156,13 +156,15 @@ fn emit_fn(f: &FnDef) -> String {
 fn cblock(stmts: &[Stmt], wants_value: bool, ind: usize) -> String {
     let pad = "    ".repeat(ind);
     let mut out = String::new();
+    // names declared in this block: first `x =` declares (with a type), a later
+    // `x =` reassigns (C forbids re-declaring in the same scope).
+    let mut declared: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (i, s) in stmts.iter().enumerate() {
         let last = i + 1 == stmts.len();
         match s {
             Stmt::Bind(b) => {
                 if let Expr::Ident(n) = &b.target {
-                    // `let x =` declares; a bare `x =` reassigns (loop counters)
-                    let decl = if b.is_let { "uint32_t " } else { "" };
+                    let decl = if declared.insert(n.clone()) { "uint32_t " } else { "" };
                     out.push_str(&format!("{pad}{decl}{n} = {};\n", cexpr(&b.value)));
                 } else {
                     out.push_str(&format!("{pad}{};\n", cexpr(&b.value)));

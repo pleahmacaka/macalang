@@ -22,7 +22,7 @@ flip(b: bool) -> bool => !b
 label(pos: bool) -> str => "side: " ++ (pos ? "right" : "left")
 
 main() -> int {
-    let l = Line { head = Point { x = 1, y = 0 }, tail = Point { x = 5, y = 0 } }
+    l = Line { head = Point { x = 1, y = 0 }, tail = Point { x = 5, y = 0 } }
     info("{dx(l)}")
     info("{flip(false)}")
     info(label(true))

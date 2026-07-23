@@ -36,7 +36,8 @@ pub enum Tok {
     StrClose,
     Path(String),
     // keywords
-    Let,
+    Const,
+    As,
     If,
     Else,
     For,
@@ -285,7 +286,7 @@ impl<'a> Lexer<'a> {
                 t,
                 Comma | Eq | EqEq | NotEq | Lt | Gt | Le | Ge | Arrow | FatArrow | Plus | Minus
                     | Star | Slash | PlusPlus | Bar | BarBar | PipeGt | AmpAmp | Colon | Dot
-                    | DotDot | Ellipsis | Question | LParen | LBracket | LBrace | Let | If | Else
+                    | DotDot | Ellipsis | Question | LParen | LBracket | LBrace | Const | If | Else
                     | For | In | Match | Import | From | With | Fail | Try | Alias
             ),
         }
@@ -475,7 +476,8 @@ impl<'a> Lexer<'a> {
             }
         }
         let tok = match s.as_str() {
-            "let" => Tok::Let,
+            "const" => Tok::Const,
+            "as" => Tok::As,
             "if" => Tok::If,
             "else" => Tok::Else,
             "for" => Tok::For,

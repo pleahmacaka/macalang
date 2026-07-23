@@ -1,7 +1,7 @@
-// A bare `x = e` binds a *constant*; only a `let` binding is mutable. So
-// reassigning `count` here is an error — declare it `let count = 0` instead.
+// A `const` binding is immutable; reassigning it is an error. (A bare lowercase
+// `count = 0` would be a mutable variable — drop the `const` to allow this.)
 main() -> int {
-    count = 0
+    const count = 0
     count = count + 1
     info("{count}")
     0

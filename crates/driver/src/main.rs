@@ -261,6 +261,50 @@ fn cmd_watch(args: &[String]) {
     }
 }
 
+/// Warn on a Capitalized *local* binding (`A = 1`) — it's a constant by
+/// convention, but `const a = …` is clearer. Recurses into nested blocks.
+fn lint_capital_consts(stmts: &[maca_parser::Stmt], src: &Path, issues: &mut Vec<String>) {
+    use maca_parser::{Expr, Stmt};
+    for s in stmts {
+        match s {
+            Stmt::Bind(b) => {
+                if let Expr::Ident(n) = &b.target {
+                    if n.chars().next().is_some_and(|c| c.is_uppercase()) {
+                        issues.push(format!(
+                            "{}: style: `{n}` is a Capitalized constant — prefer `const {} = …` (or lowercase for a variable)",
+                            src.display(),
+                            n.to_lowercase()
+                        ));
+                    }
+                }
+            }
+            Stmt::Expr(e) => lint_capital_consts_expr(e, src, issues),
+            _ => {}
+        }
+    }
+}
+
+fn lint_capital_consts_expr(e: &maca_parser::Expr, src: &Path, issues: &mut Vec<String>) {
+    use maca_parser::Expr;
+    match e {
+        Expr::If { then, els, .. } => {
+            lint_capital_consts(then, src, issues);
+            if let Some(e) = els {
+                lint_capital_consts(e, src, issues);
+            }
+        }
+        Expr::For { body, .. } | Expr::While { body, .. } | Expr::Block(body) => {
+            lint_capital_consts(body, src, issues)
+        }
+        Expr::Match { arms, .. } => {
+            for a in arms {
+                lint_capital_consts_expr(&a.body, src, issues);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn cmd_lint(args: &[String]) {
     let Some(src) = args.first().map(PathBuf::from) else {
         die("lint: expected a .maca file");
@@ -282,6 +326,16 @@ fn cmd_lint(args: &[String]) {
     let parsed = maca_parser::parse(&source);
     for d in maca_core::check(&parsed.module, maca_core::Mode::Program) {
         issues.push(format!("{}: {:?}: {}", src.display(), d.kind, d.msg));
+    }
+
+    // style: a Capitalized local binding is a constant by convention, but the
+    // explicit `const` reads better. (Type/constructor names stay capitalized.)
+    for item in &parsed.module.items {
+        if let maca_parser::Stmt::Fn(f) = item {
+            if let Some(maca_parser::FnBody::Block(stmts)) = &f.body {
+                lint_capital_consts(stmts, &src, &mut issues);
+            }
+        }
     }
 
     if issues.is_empty() {
@@ -886,7 +940,7 @@ fn inject_nix_imports(m: &mut maca_parser::Module, src: &Path) -> Result<(), Str
                     Expr::Str(vec![StrPart::Text(text)])
                 };
                 injected.push(Stmt::Bind(Bind {
-                    is_let: false,
+                    is_const: false,
                     target: Expr::Ident(name),
                     tys: vec![],
                     value: expr,

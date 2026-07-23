@@ -14,7 +14,7 @@ Store = {
     next_id: int
 }
 
-let store = dirs.data / "store.json"
+store = dirs.data / "store.json"
 
 load() -> Store =>
     store.exists()
@@ -22,20 +22,20 @@ load() -> Store =>
         : Store { tasks = [], next_id = 1 }
 
 add(s: Store, title: str) -> Store {
-    let t = Task { id = s.next_id, title, status = Todo }
+    t = Task { id = s.next_id, title, status = Todo }
     Store { tasks = s.tasks ++ [t], next_id = s.next_id + 1 }
 }
 
 render(t: Task) -> str {
-    let box = t.status == Done ? "[x]" : "[ ]"
+    box = t.status == Done ? "[x]" : "[ ]"
     "{box} #{t.id}  {t.title}"
 }
 
 main(args: str[]) -> int {
-    let s = load()?
+    s = load()?
     match args {
         "add", ..rest => {
-            let title = rest.join(" ")
+            title = rest.join(" ")
             store.write(json.encode(add(s, title)))?
             info("added: {title}")
         }

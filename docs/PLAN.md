@@ -77,13 +77,17 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - Arithmetic operators: `%` (modulo) and `<<` / `>>` (shifts) join
   `+ - * /`; all integer-only, checked and lowered on every backend.
   (`examples/fizzbuzz.maca`.)
+- Bindings (no `let`): a bare lowercase `x = e` is a mutable variable;
+  `const x = e`, `x = e as const`, or a Capitalized name is a constant.
+  Reassigning a constant is rejected (`DiagKind::Immutable`); a Capitalized
+  constant works but `maca lint` warns. (`examples/bad/reassign_const.maca`.)
 - Imperative loops: `while cond { … }` with `break`/`continue`, plus
-  reassignment of an in-scope binding (`i = i + 1`) alongside `let`. The `while`
-  condition must be `bool`. Lowered to native C, embedded C, and JS.
+  reassignment of a mutable binding (`i = i + 1`). The `while` condition must be
+  `bool`. Lowered to native C, embedded C, and JS.
   (`examples/loops.maca`; `examples/bad/while_cond.maca` is rejected.)
 - Inclusive integer ranges `lo..hi` (counts `lo … hi`, both ends), an `int[]`
   value. `for i in lo..hi` lowers to a counting loop in C (no array
-  materialized); in value position (`let xs = 1..n`) it materializes the array.
+  materialized); in value position (`xs = 1..n`) it materializes the array.
   Endpoints must be `int`. (`examples/range.maca`; `examples/bad/range_end.maca`
   is rejected.)
 - Dev environments in Maca (`maca dev`): `dev.maca` (config mode) → a self-

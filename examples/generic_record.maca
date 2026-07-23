@@ -9,9 +9,9 @@ Box = {
 }
 
 main() -> int {
-    let n: int = id(42)
-    let b: Box = id(Box { v = 7 })
-    let s: str = id("hello")
+    n: int = id(42)
+    b: Box = id(Box { v = 7 })
+    s: str = id("hello")
     info(s)
     info("{n}")
     info("{b.v}")

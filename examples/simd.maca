@@ -1,8 +1,8 @@
 dot8(a: f32x8, b: f32x8) -> f32 => (a * b).sum()
 
 main() -> int {
-    let a = f32x8.splat(2.0)
-    let b = f32x8.splat(3.0)
+    a = f32x8.splat(2.0)
+    b = f32x8.splat(3.0)
     info(str(dot8(a, b)))
     0
 }

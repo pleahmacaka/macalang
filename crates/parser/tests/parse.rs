@@ -202,7 +202,7 @@ fn malformed_input_does_not_hang() {
     for src in [
         "f(p: P) -> int { match p { { from } => 1 } }\n",
         "R = {\n    from: int\n}\n",
-        "main() -> int {\n    let x = {\n    0\n}\n",
+        "main() -> int {\n    x = {\n    0\n}\n",
         "x = ) ( } {\n",
     ] {
         let p = parse(src);

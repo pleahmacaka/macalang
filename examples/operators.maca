@@ -11,10 +11,10 @@ mul(a: Vec2, k: int) -> Vec2 =>
     Vec2 { x = a.x * k, y = a.y * k }
 
 main() -> int {
-    let p = Vec2 { x = 1, y = 2 }
-    let q = Vec2 { x = 3, y = 4 }
-    let r = p + q
-    let s = r * 2
+    p = Vec2 { x = 1, y = 2 }
+    q = Vec2 { x = 3, y = 4 }
+    r = p + q
+    s = r * 2
     info("{s.x},{s.y}")
     0
 }

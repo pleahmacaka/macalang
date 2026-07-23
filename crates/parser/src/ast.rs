@@ -32,10 +32,13 @@ pub enum Import {
     Foreign { lang: Ident, spec: String },
 }
 
-/// `[let] target [: T [: Base ...]] = value`
+/// `[const] target [: T [: Base ...]] = value [as const]`
+///
+/// A bare lowercase `x = e` binds a *mutable* variable; `const x = e`,
+/// `x = e as const`, or a Capitalized name binds a *constant* (`is_const`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Bind {
-    pub is_let: bool,
+    pub is_const: bool,
     pub target: Expr, // Ident or dotted Field path (config: networking.hostName)
     pub tys: Vec<Type>,
     pub value: Expr,

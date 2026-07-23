@@ -10,9 +10,9 @@ Config = {
 with_port(c: Config, p: int) -> Config => c with { port = p }
 
 main() -> int {
-    let base = Config { host = "localhost", port = 80, tls = false }
-    let secure = base with { port = 443, tls = true }
-    let moved = with_port(base, 8080)
+    base = Config { host = "localhost", port = 80, tls = false }
+    secure = base with { port = 443, tls = true }
+    moved = with_port(base, 8080)
     info("{base.host}:{base.port} tls={base.tls}")
     info("{secure.host}:{secure.port} tls={secure.tls}")
     info("{moved.host}:{moved.port} tls={moved.tls}")

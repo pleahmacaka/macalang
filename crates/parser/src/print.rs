@@ -52,8 +52,13 @@ fn import(s: &mut String, im: &Import) {
 }
 
 fn bind(s: &mut String, b: &Bind) {
-    if b.is_let {
-        s.push_str("let ");
+    // Re-emit const-ness so it re-parses identically: a Capitalized name is
+    // already a constant by convention (no keyword); a lowercase constant needs
+    // an explicit `const `; a mutable binding is bare.
+    let capital =
+        matches!(&b.target, Expr::Ident(n) if n.chars().next().is_some_and(|c| c.is_uppercase()));
+    if b.is_const && !capital {
+        s.push_str("const ");
     }
     expr(s, &b.target);
     for t in &b.tys {
