@@ -582,7 +582,7 @@ impl Checker {
                     && name.chars().next().is_some_and(|c| c.is_lowercase() || c == '_')
                     && lookup(env, name).is_none()
                     && !self.globals.contains_key(name)
-                    && !maca_parser::is_ui_element_tag(name)
+                    && !maca_parser::is_backend_intrinsic(name)
                 {
                     self.diag(
                         DiagKind::UndefinedName,

@@ -65,6 +65,18 @@ bool maca_str_eq(maca_str a, maca_str b);
 maca_str maca_join(maca_str* data, int64_t len, maca_str sep);
 maca_str maca_str_at(maca_str s, int64_t i); /* single-char str at byte i ("" if OOB) */
 
+/* ---- string stdlib (UFCS methods on `str`) ---- */
+maca_str maca_trim(maca_str s);                       /* strip leading/trailing ASCII space */
+maca_str maca_upper(maca_str s);
+maca_str maca_lower(maca_str s);
+bool maca_contains(maca_str s, maca_str sub);
+bool maca_starts_with(maca_str s, maca_str prefix);
+bool maca_ends_with(maca_str s, maca_str suffix);
+maca_str maca_replace(maca_str s, maca_str from, maca_str to); /* all occurrences */
+maca_str maca_substr(maca_str s, int64_t start, int64_t len);  /* byte range, clamped */
+int64_t maca_index_of(maca_str s, maca_str sub);      /* byte index, or -1 */
+maca_str* maca_split(maca_str s, maca_str sep, int64_t* out_len); /* malloc'd maca_str[] */
+
 /* ---- growable string builder ---- */
 typedef struct { char* buf; size_t len; size_t cap; } maca_sb;
 void maca_sb_init(maca_sb* sb);
@@ -130,6 +142,7 @@ maca_str maca_json_str(maca_json* j);
 pub const RUNTIME_C: &str = r##"#define _GNU_SOURCE
 #include "maca_runtime.h"
 #include <stdio.h>
+#include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -268,6 +281,102 @@ maca_str maca_join(maca_str* data, int64_t len, maca_str sep) {
         maca_sb_puts(&sb, data[i]);
     }
     return maca_sb_finish(&sb);
+}
+
+/* ---- string stdlib ---- */
+maca_str maca_trim(maca_str s) {
+    if (!s) return "";
+    const char* a = s;
+    while (*a == ' ' || *a == '\t' || *a == '\n' || *a == '\r') a++;
+    const char* b = s + strlen(s);
+    while (b > a && (b[-1] == ' ' || b[-1] == '\t' || b[-1] == '\n' || b[-1] == '\r')) b--;
+    size_t n = (size_t)(b - a);
+    char* r = (char*)xmalloc(n + 1);
+    memcpy(r, a, n); r[n] = '\0';
+    return r;
+}
+maca_str maca_upper(maca_str s) {
+    if (!s) return "";
+    size_t n = strlen(s); char* r = (char*)xmalloc(n + 1);
+    for (size_t i = 0; i < n; i++) r[i] = (char)toupper((unsigned char)s[i]);
+    r[n] = '\0'; return r;
+}
+maca_str maca_lower(maca_str s) {
+    if (!s) return "";
+    size_t n = strlen(s); char* r = (char*)xmalloc(n + 1);
+    for (size_t i = 0; i < n; i++) r[i] = (char)tolower((unsigned char)s[i]);
+    r[n] = '\0'; return r;
+}
+bool maca_contains(maca_str s, maca_str sub) {
+    if (!s) s = ""; if (!sub) sub = "";
+    return strstr(s, sub) != NULL;
+}
+bool maca_starts_with(maca_str s, maca_str prefix) {
+    if (!s) s = ""; if (!prefix) prefix = "";
+    size_t lp = strlen(prefix);
+    return strlen(s) >= lp && memcmp(s, prefix, lp) == 0;
+}
+bool maca_ends_with(maca_str s, maca_str suffix) {
+    if (!s) s = ""; if (!suffix) suffix = "";
+    size_t ls = strlen(s), lx = strlen(suffix);
+    return ls >= lx && memcmp(s + ls - lx, suffix, lx) == 0;
+}
+int64_t maca_index_of(maca_str s, maca_str sub) {
+    if (!s) s = ""; if (!sub) sub = "";
+    const char* p = strstr(s, sub);
+    return p ? (int64_t)(p - s) : -1;
+}
+maca_str maca_replace(maca_str s, maca_str from, maca_str to) {
+    if (!s) return "";
+    if (!from || !*from) return s; /* empty needle: no-op (avoid infinite loop) */
+    if (!to) to = "";
+    size_t lf = strlen(from);
+    maca_sb sb; maca_sb_init(&sb);
+    const char* p = s;
+    for (;;) {
+        const char* hit = strstr(p, from);
+        if (!hit) { maca_sb_puts(&sb, p); break; }
+        for (const char* q = p; q < hit; q++) maca_sb_putc(&sb, *q);
+        maca_sb_puts(&sb, to);
+        p = hit + lf;
+    }
+    return maca_sb_finish(&sb);
+}
+maca_str maca_substr(maca_str s, int64_t start, int64_t len) {
+    if (!s) return "";
+    int64_t n = (int64_t)strlen(s);
+    if (start < 0) start = 0;
+    if (start > n) start = n;
+    if (len < 0) len = 0;
+    if (start + len > n) len = n - start;
+    char* r = (char*)xmalloc((size_t)len + 1);
+    memcpy(r, s + start, (size_t)len); r[len] = '\0';
+    return r;
+}
+maca_str* maca_split(maca_str s, maca_str sep, int64_t* out_len) {
+    if (!s) s = "";
+    size_t cap = 8, n = 0;
+    maca_str* out = (maca_str*)xmalloc(cap * sizeof(maca_str));
+    /* empty separator: split into whole string as one element */
+    if (!sep || !*sep) {
+        out[n++] = s;
+        *out_len = (int64_t)n;
+        return out;
+    }
+    size_t ls = strlen(sep);
+    const char* p = s;
+    for (;;) {
+        const char* hit = strstr(p, sep);
+        size_t seglen = hit ? (size_t)(hit - p) : strlen(p);
+        char* seg = (char*)xmalloc(seglen + 1);
+        memcpy(seg, p, seglen); seg[seglen] = '\0';
+        if (n == cap) { cap *= 2; out = (maca_str*)maca_realloc(out, cap * sizeof(maca_str)); if (!out) die("out of memory"); }
+        out[n++] = seg;
+        if (!hit) break;
+        p = hit + ls;
+    }
+    *out_len = (int64_t)n;
+    return out;
 }
 
 /* ---- string builder ---- */

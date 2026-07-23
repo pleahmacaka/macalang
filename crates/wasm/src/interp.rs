@@ -621,6 +621,52 @@ impl<'a> Interp<'a> {
                     _ => 0.0,
                 }));
             }
+            // string stdlib (UFCS on `str`) — byte-oriented, mirroring the C
+            // backend so the playground and native builds agree on ASCII text.
+            "trim" => return Ok(Value::Str(str_of(vals.first()).trim().to_string())),
+            "upper" => return Ok(Value::Str(str_of(vals.first()).to_uppercase())),
+            "lower" => return Ok(Value::Str(str_of(vals.first()).to_lowercase())),
+            "contains" => {
+                return Ok(Value::Bool(str_of(vals.first()).contains(&str_of(vals.get(1)))));
+            }
+            "starts_with" => {
+                return Ok(Value::Bool(str_of(vals.first()).starts_with(&str_of(vals.get(1)))));
+            }
+            "ends_with" => {
+                return Ok(Value::Bool(str_of(vals.first()).ends_with(&str_of(vals.get(1)))));
+            }
+            "index_of" => {
+                let (h, n) = (str_of(vals.first()), str_of(vals.get(1)));
+                return Ok(Value::Int(h.find(&n).map(|b| b as i64).unwrap_or(-1)));
+            }
+            "replace" => {
+                let (s, from, to) = (str_of(vals.first()), str_of(vals.get(1)), str_of(vals.get(2)));
+                let out = if from.is_empty() { s } else { s.replace(&from, &to) };
+                return Ok(Value::Str(out));
+            }
+            "substr" => {
+                let s = str_of(vals.first());
+                let start = int_of(vals.get(1));
+                let len = int_of(vals.get(2));
+                return Ok(Value::Str(byte_substr(&s, start, len)));
+            }
+            "split" => {
+                let (s, sep) = (str_of(vals.first()), str_of(vals.get(1)));
+                let parts: Vec<Value> = if sep.is_empty() {
+                    vec![Value::Str(s)]
+                } else {
+                    s.split(&sep).map(|p| Value::Str(p.to_string())).collect()
+                };
+                return Ok(Value::List(parts));
+            }
+            "join" => {
+                let sep = str_of(vals.get(1));
+                if let Some(Value::List(xs)) = vals.first() {
+                    let joined = xs.iter().map(display).collect::<Vec<_>>().join(&sep);
+                    return Ok(Value::Str(joined));
+                }
+                return Ok(Value::Str(String::new()));
+            }
             _ => {}
         }
         // sum constructor
@@ -806,6 +852,37 @@ fn to_f64(v: &Value) -> f64 {
 }
 
 /// Render a value the way `str(...)` / string interpolation would.
+/// A `Value` as its string form, for the string-stdlib builtins (`str`
+/// receivers/args stringify; non-strings fall back to their display form).
+fn str_of(v: Option<&Value>) -> String {
+    v.map(display).unwrap_or_default()
+}
+
+/// An `int` argument for the string-stdlib builtins (0 if absent/non-int).
+fn int_of(v: Option<&Value>) -> i64 {
+    match v {
+        Some(Value::Int(n)) => *n,
+        Some(Value::Float(f)) => *f as i64,
+        _ => 0,
+    }
+}
+
+/// `substr` over a byte range, clamped and snapped to char boundaries so it
+/// never panics on multibyte input (exact byte semantics for ASCII, matching C).
+fn byte_substr(s: &str, start: i64, len: i64) -> String {
+    let n = s.len() as i64;
+    let start = start.clamp(0, n);
+    let len = len.max(0).min(n - start);
+    let (mut a, mut e) = (start as usize, (start + len) as usize);
+    while a < s.len() && !s.is_char_boundary(a) {
+        a += 1;
+    }
+    while e < s.len() && !s.is_char_boundary(e) {
+        e += 1;
+    }
+    s[a..e.max(a)].to_string()
+}
+
 fn display(v: &Value) -> String {
     match v {
         Value::Int(n) => n.to_string(),

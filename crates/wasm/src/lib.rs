@@ -95,6 +95,7 @@ fn kind_str(k: DiagKind) -> &'static str {
         DiagKind::EffectInConfig => "EffectInConfig",
         DiagKind::UnknownOption => "UnknownOption",
         DiagKind::Immutable => "Immutable",
+        DiagKind::UndefinedName => "UndefinedName",
     }
 }
 
@@ -630,6 +631,30 @@ mod tests {
         let src = "😀x";
         let bx = src.char_indices().nth(1).unwrap().0;
         assert_eq!(line_col(src, bx), (1, 3));
+    }
+
+    #[test]
+    fn string_stdlib_runs_in_interp() {
+        // split/trim/lower/upper/contains/replace/substr/index_of all run in the
+        // playground interpreter and agree with the native C backend.
+        let src = "main() -> int {\n\
+            \x20   row = \"a, B ,c\"\n\
+            \x20   parts = row.split(\",\")\n\
+            \x20   t = \"Hello World\"\n\
+            \x20   mid = parts[1].trim().lower()\n\
+            \x20   up = t.upper()\n\
+            \x20   has = t.contains(\"World\")\n\
+            \x20   rep = t.replace(\"World\", \"Maca\")\n\
+            \x20   sub = t.substr(0, 5)\n\
+            \x20   idx = t.index_of(\"World\")\n\
+            \x20   info(\"{len(parts)} {mid} {up} {has} {rep} {sub} {idx}\")\n\
+            \x20   0\n\
+            }\n";
+        let json = compile_json(src, 0);
+        assert!(
+            json.contains("\"output\":\"3 b HELLO WORLD true Hello Maca Hello 6\\n\""),
+            "string stdlib output wrong: {json}"
+        );
     }
 
     #[test]

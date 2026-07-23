@@ -73,6 +73,31 @@ fn operator_overloading_runs_natively() {
 }
 
 #[test]
+fn string_stdlib_runs_natively() {
+    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &example("strings.maca")])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // split → 3 cols; trim/lower normalize; upper/contains/replace/substr/index_of
+    for want in [
+        "cols: 3", "name", "age", "city", "EMPLOYEES TABLE", "has Table: true",
+        "prefix true suffix true", "Employees View", "Employees", "index 10",
+    ] {
+        assert!(
+            stdout.contains(want),
+            "missing {want:?}.\nstdout: {stdout}\nstderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
+#[test]
 fn fail_exits_cleanly_with_message() {
     let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
     if wsl || !have("cc") {

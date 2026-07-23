@@ -30,6 +30,20 @@ pub fn is_ui_element_tag(name: &str) -> bool {
     )
 }
 
+/// Is `name` a backend intrinsic the checker must not treat as an undefined
+/// call? Covers the embedded target's MMIO/bit primitives (lowered by
+/// `maca-backend-embedded`, not user-defined) and the UI element tags. Shared
+/// so the type checker's undefined-call diagnostic stays in sync with what the
+/// backends actually resolve.
+pub fn is_backend_intrinsic(name: &str) -> bool {
+    is_ui_element_tag(name)
+        || matches!(
+            name,
+            "mmio_write" | "mmio_read" | "set_bits" | "clear_bits" | "toggle_bits" | "bit" | "shl"
+                | "shr" | "bit_or" | "bit_and" | "delay" | "nop" | "forever"
+        )
+}
+
 #[derive(Debug)]
 pub struct Parsed {
     pub module: Module,

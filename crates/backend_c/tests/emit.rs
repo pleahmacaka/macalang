@@ -337,3 +337,17 @@ fn float_and_int_coercions_lower_to_casts() {
     let out2 = c("g(x: float) -> int => int(x)\n");
     assert!(out2.contains("(int64_t)"), "int() not a cast:\n{out2}");
 }
+
+#[test]
+fn string_stdlib_lowers_to_runtime_calls() {
+    // UFCS string methods lower to the maca_* runtime helpers; `split` builds a
+    // StrArr from the returned buffer and registers the StrArr typedef.
+    let out = c("main() -> int {\n    s = \"a,b\"\n    parts = s.split(\",\")\n    x = s.trim().upper()\n    y = s.contains(\"a\")\n    z = s.replace(\"a\", \"b\")\n    w = s.substr(0, 1)\n    i = s.index_of(\"b\")\n    0\n}\n");
+    assert!(out.contains("maca_split("), "split not lowered:\n{out}");
+    assert!(out.contains("MACA_DEFINE_ARRAY(StrArr, maca_str)"), "StrArr not defined:\n{out}");
+    assert!(out.contains("maca_trim(") && out.contains("maca_upper("), "trim/upper not lowered:\n{out}");
+    assert!(out.contains("maca_contains("), "contains not lowered:\n{out}");
+    assert!(out.contains("maca_replace("), "replace not lowered:\n{out}");
+    assert!(out.contains("maca_substr("), "substr not lowered:\n{out}");
+    assert!(out.contains("maca_index_of("), "index_of not lowered:\n{out}");
+}

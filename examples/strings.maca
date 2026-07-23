@@ -1,0 +1,28 @@
+// String stdlib — the everyday text operations a data/DB tool leans on:
+// split a header row, normalize names, test and rewrite labels.
+
+main() -> int {
+    row = "  Name , AGE ,  City  "
+    parts = row.split(",")
+    info("cols: {len(parts)}")
+    for p in parts {
+        info(p.trim().lower())
+    }
+
+    title = "Employees Table"
+    info(title.upper())
+
+    has = title.contains("Table")
+    info("has Table: {has}")
+
+    pre = title.starts_with("Emp")
+    suf = title.ends_with("le")
+    info("prefix {pre} suffix {suf}")
+
+    info(title.replace("Table", "View"))
+    info(title.substr(0, 9))
+
+    idx = title.index_of("Table")
+    info("index {idx}")
+    0
+}

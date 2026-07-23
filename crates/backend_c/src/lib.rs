@@ -362,6 +362,11 @@ impl<'a> Cx<'a> {
                             }
                         }
                     }
+                    // `s.split(sep)` yields a `str[]` — register `StrArr` so its
+                    // typedef/ops are emitted before any function body uses it.
+                    if name == "split" {
+                        self.note_arr(&CTy::Arr(Box::new(CTy::Str)));
+                    }
                 }
                 self.walk_expr(callee);
                 for a in args {
@@ -1809,15 +1814,39 @@ impl<'a> Cx<'a> {
         }
     }
 
-    fn ufcs(&self, rc: &str, rty: &CTy, method: &str, a: &[String]) -> (String, CTy) {
+    fn ufcs(&mut self, rc: &str, rty: &CTy, method: &str, a: &[String]) -> (String, CTy) {
+        let arg0 = || a.first().cloned().unwrap_or_default();
+        let arg1 = || a.get(1).cloned().unwrap_or_default();
         match (rty, method) {
             (_, "read") => (format!("maca_read({rc})"), CTy::Str),
             (_, "exists") => (format!("maca_path_exists({rc})"), CTy::Bool),
-            (_, "write") => (format!("(maca_write({rc}, {}), 0)", a.first().cloned().unwrap_or_default()), CTy::Unit),
+            (_, "write") => (format!("(maca_write({rc}, {}), 0)", arg0()), CTy::Unit),
             (CTy::Arr(e), "join") if matches!(**e, CTy::Str) => (
-                format!("maca_join({rc}.data, {rc}.len, {})", a.first().cloned().unwrap_or_default()),
+                format!("maca_join({rc}.data, {rc}.len, {})", arg0()),
                 CTy::Str,
             ),
+            // string stdlib — UFCS methods on `str` (gradual `Unknown` receivers
+            // too, since foreign/inferred strings often land as Unknown).
+            (CTy::Str | CTy::Unknown, "trim") => (format!("maca_trim({rc})"), CTy::Str),
+            (CTy::Str | CTy::Unknown, "upper") => (format!("maca_upper({rc})"), CTy::Str),
+            (CTy::Str | CTy::Unknown, "lower") => (format!("maca_lower({rc})"), CTy::Str),
+            (CTy::Str | CTy::Unknown, "contains") => (format!("maca_contains({rc}, {})", arg0()), CTy::Bool),
+            (CTy::Str | CTy::Unknown, "starts_with") => (format!("maca_starts_with({rc}, {})", arg0()), CTy::Bool),
+            (CTy::Str | CTy::Unknown, "ends_with") => (format!("maca_ends_with({rc}, {})", arg0()), CTy::Bool),
+            (CTy::Str | CTy::Unknown, "index_of") => (format!("maca_index_of({rc}, {})", arg0()), CTy::Int),
+            (CTy::Str | CTy::Unknown, "replace") => (format!("maca_replace({rc}, {}, {})", arg0(), arg1()), CTy::Str),
+            (CTy::Str | CTy::Unknown, "substr") => (format!("maca_substr({rc}, {}, {})", arg0(), arg1()), CTy::Str),
+            (CTy::Str | CTy::Unknown, "split") => {
+                self.note_arr(&CTy::Arr(Box::new(CTy::Str)));
+                let sep = arg0();
+                (
+                    format!(
+                        "({{ int64_t _sn; maca_str* _sd = maca_split({rc}, {sep}, &_sn); \
+                         StrArr _sr = StrArr_new(); for (int64_t _si = 0; _si < _sn; _si++) StrArr_push(&_sr, _sd[_si]); _sr; }})"
+                    ),
+                    CTy::Arr(Box::new(CTy::Str)),
+                )
+            }
             (CTy::Arr(e), "parallel") if matches!(**e, CTy::Int) => {
                 let f = a.first().cloned().unwrap_or_default();
                 (
