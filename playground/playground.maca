@@ -60,6 +60,7 @@ import js """
     indexing: "// Subscripting, lvalue assignment, and functional record update.\nConfig = {\n    host: str\n    port: int\n}\n\nmain() -> int {\n    let xs = 10, 20, 30\n    info(\"{xs[1]} of {len(xs)}\")\n    xs[0] = 99\n    info(\"{xs[0]}\")\n    let base = Config { host = \"localhost\", port = 80 }\n    let secure = base with { port = 443 }\n    info(\"{base.port} -> {secure.port}\")\n    0\n}\n",
     config:   "networking.hostName = \"rigel\"\nsystem.stateVersion = \"24.11\"\n\nservices.openssh = {\n    passwordAuthentication = false\n}\n",
     range:    "// Inclusive integer ranges: 1..n counts 1, 2, …, n (both ends).\nfactorial(n: int) -> int {\n    let acc = 1\n    for i in 1..n {\n        acc = acc * i\n    }\n    acc\n}\n\nmain() -> int {\n    let sum = 0\n    for i in 1..100 {\n        sum = sum + i\n    }\n    info(\"sum 1..100 = {sum}\")\n\n    let xs = 1..6\n    info(\"1..6 has {len(xs)} elements, last {xs[len(xs) - 1]}\")\n    info(\"6! = {factorial(6)}\")\n    0\n}\n",
+    tour:     "// A tour of Maca surface syntax — one small program that exercises most of the\n// language and type-checks clean. (`examples/bad/*` show what gets rejected.)\n\n/* Block comments work too. */\n\n// a tagged sum type and a record type\nShape = Circle(float) | Rect(float, float)\nPoint = {\n    x: int\n    y: int\n}\n\n// arrow-body function + `match` over a sum, with binding patterns\narea(s: Shape) -> float =>\n    match s {\n        Circle(r) => 3.14 * r * r\n        Rect(w, h) => w * h\n    }\n\n// block body: let + reassignment, while, break/continue, operators, ternary\ncollatz_steps(start: int) -> int {\n    let n = start\n    let steps = 0\n    while n > 1 {\n        n = n % 2 == 0 ? n / 2 : 3 * n + 1\n        steps = steps + 1\n        if steps > 1000 {\n            break\n        }\n    }\n    steps\n}\n\n// recursion\nfib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\n\n// UFCS: `x.double()` is sugar for `double(x)`\ndouble(n: int) -> int => n * 2\n\nmain() -> int {\n    // inclusive ranges, for-loops, list indexing + lvalue assignment\n    let xs = 1..5\n    xs[0] = 10\n    let acc = 0\n    for i in 0..len(xs) - 1 {\n        acc = acc + xs[i]\n    }\n    info(\"acc = {acc}, len = {len(xs)}\")\n\n    // records: literal, field access, functional update with `with`\n    let p = Point { x = 1, y = 2 }\n    let q = p with { y = 9 }\n    info(\"p.y = {p.y}, q.y = {q.y}, q.double = {q.y.double()}\")\n\n    // sum values, constructors, and `match` (via area)\n    info(\"circle = {area(Circle(2.0))}, rect = {area(Rect(3.0, 4.0))}\")\n\n    // boolean / comparison operators\n    let ok = acc > 0 && len(xs) == 5\n    info(\"ok = {ok}, collatz(27) = {collatz_steps(27)}, fib(10) = {fib(10)}\")\n    0\n}\n",
   };
 
   // ---- wasm bridge ---------------------------------------------------------
@@ -235,18 +236,24 @@ import js """
     return `${fmtN(p.steps)} steps · ${fmtN(p.totalCalls)} calls · depth ${fmtN(p.maxDepth)}${t}`;
   };
 
-  // ---- diagnostics as editor markers --------------------------------------
-  // (line info isn't carried on diagnostics yet, so they anchor at the top; the
-  // Diagnostics tab has the full text.)
+  // ---- diagnostics as editor markers (squiggles) --------------------------
+  // the wasm returns Monaco-ready spans (precise for parse errors, best-effort
+  // for semantic diagnostics), all as errors — the compiler rejects them all.
   function setMarkers() {
     if (!editor || !monaco || !last) return;
-    const ms = [];
-    for (const e of (last.parseErrors || [])) {
-      ms.push({ severity: monaco.MarkerSeverity.Error, message: e, startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 2 });
-    }
-    for (const d of (last.diagnostics || [])) {
-      ms.push({ severity: monaco.MarkerSeverity.Warning, message: d.kind + ": " + d.msg, startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 2 });
-    }
+    const sev = {
+      error: monaco.MarkerSeverity.Error,
+      warning: monaco.MarkerSeverity.Warning,
+      info: monaco.MarkerSeverity.Info,
+    };
+    const ms = (last.markers || []).map(function (m) {
+      return {
+        severity: sev[m.severity] || monaco.MarkerSeverity.Error,
+        message: m.message,
+        startLineNumber: m.line, startColumn: m.col,
+        endLineNumber: m.endLine, endColumn: m.endCol,
+      };
+    });
     monaco.editor.setModelMarkers(editor.getModel(), "maca", ms);
   }
   window.mcMarkers = setMarkers;
@@ -445,6 +452,7 @@ showConsole() { tab = "Console"      update() }
 showC()       { tab = "C"            update() }
 showJs()      { tab = "JS"           update() }
 
+loadTour()     { mcSetSource(mcExample("tour"))      mode = 0  run() }
 loadHello()    { mcSetSource(mcExample("hello"))     mode = 0  run() }
 loadTree()     { mcSetSource(mcExample("tree"))      mode = 0  run() }
 loadIndexing() { mcSetSource(mcExample("indexing"))  mode = 0  run() }
@@ -466,6 +474,7 @@ main() -> Element =>
             span(class="font-mono font-bold text-violet-400", "◆ Maca playground")
             span(class="text-xs text-zinc-500 uppercase tracking-wide", "written in Maca")
             div(class="flex-1")
+            button(class=ex, on:click=loadTour,     "tour")
             button(class=ex, on:click=loadHello,    "hello")
             button(class=ex, on:click=loadTree,     "tree")
             button(class=ex, on:click=loadIndexing, "indexing")
