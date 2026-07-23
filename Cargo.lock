@@ -71,6 +71,7 @@ dependencies = [
  "maca-parser",
  "maca-profile",
  "maca-runtime",
+ "serde_json",
 ]
 
 [[package]]

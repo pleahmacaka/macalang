@@ -11,3 +11,4 @@ packages/macalang/maca_wasm.wasm
 *.js/
 *-jvm/
 *-fw/
+/maca_modules/

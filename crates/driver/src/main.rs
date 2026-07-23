@@ -11,6 +11,8 @@ use std::process::Command;
 
 use maca_profile as profile;
 
+mod deps;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
@@ -25,6 +27,9 @@ fn main() {
         Some("watch") => cmd_watch(&args[1..]),
         Some("profile") => cmd_profile(&args[1..]),
         Some("dev") => cmd_dev(&args[1..]),
+        Some("add") => deps::cmd_add(&args[1..]),
+        Some("update") => deps::cmd_update(&args[1..]),
+        Some("upgrade") => deps::cmd_upgrade(&args[1..]),
         Some("--help" | "-h" | "help") | None => usage(),
         Some(other) => {
             // maca.toml [scripts] alias?
@@ -124,13 +129,15 @@ fn cmd_init(args: &[String]) {
     let toml = format!(
         "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n\n\
          [[bin]]\nname = \"{name}\"\npath = \"main.maca\"\n\n\
+         # Dependencies — `maca add npm:pkg | git+url | name@ver`.\n\
+         [dependencies]\n\n\
          # Formatting — `maca fmt` reads these (defaults shown).\n\
          [format]\nindent_style = \"space\"\nindent_size = 4\n\n\
          # `maca <name>` runs a script alias.\n\
          [scripts]\nstart = \"maca run main.maca\"\n"
     );
     let main = "main() -> int {\n    info(\"Hello from Maca\")\n    0\n}\n";
-    let gitignore = "/target\n/build\n*.o\n";
+    let gitignore = "/target\n/build\n*.o\n/maca_modules\n";
 
     write_if_absent(&root.join("maca.toml"), &toml);
     write_if_absent(&root.join("main.maca"), main);
@@ -374,6 +381,9 @@ fn usage() {
          \x20 fmt   <file.maca>… [--check] format in place (style from maca.toml [format])\n\
          \x20 lint  <file.maca>            style + type/effect diagnostics\n\
          \x20 profile <file.maca> [-o svg] run under callgrind, render a flame graph\n\
+         \x20 add   <spec>…               add a dependency (npm:pkg | git+url | name@ver)\n\
+         \x20 update                      re-resolve dependencies to latest\n\
+         \x20 upgrade                     self-update the maca toolchain\n\
          \x20 --version                    print the toolchain version\n\
          \n\
          build targets: native (default), --target nix | js | jvm | embedded\n\

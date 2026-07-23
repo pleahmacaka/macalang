@@ -64,7 +64,27 @@ maca watch <file.maca> [args..]  rebuild & rerun on change (hot reload)
 maca fmt   <file.maca>… [--check] format (style from maca.toml [format])
 maca lint  <file.maca>           style + type/effect diagnostics
 maca profile <file.maca> [-o svg] run under callgrind, render a flame graph
+maca add   <spec>…               add a dependency (npm:pkg | git+url | name@ver)
+maca update                      re-resolve dependencies to the latest
+maca upgrade                     self-update the maca toolchain
 ```
+
+## Dependencies
+
+Dependencies live in `maca.toml` under `[dependencies]` and are fetched into
+`maca_modules/` (git-ignored); resolved versions are pinned in `maca.lock`.
+`maca add` takes three kinds of spec:
+
+```sh
+maca add npm:axios                        # the npm registry, verbatim
+maca add git+https://github.com/u/lib#main # any git remote (optional #ref)
+maca add utils@^1.2.0                       # the maca registry
+```
+
+`maca update` re-resolves every dependency to the latest matching version. The
+maca registry speaks the same JSON protocol as npm (`GET <registry>/<name>` →
+`dist-tags` + `versions`, each with a `dist.tarball`), so the one resolver
+serves both. `maca upgrade` self-updates the toolchain from its GitHub releases.
 
 ## Build targets
 
