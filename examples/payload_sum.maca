@@ -1,0 +1,18 @@
+// Sum types with payloads (tagged unions): each variant can carry data.
+
+Shape = Circle(int) | Rect(int, int)
+
+area(s: Shape) -> int {
+    match s {
+        Circle(r) => r * r
+        Rect(w, h) => w * h
+    }
+}
+
+main() -> int {
+    let c = Circle(10)
+    let r = Rect(3, 4)
+    info("{area(c)}")
+    info("{area(r)}")
+    0
+}

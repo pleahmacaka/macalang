@@ -1,0 +1,20 @@
+// Operator overloading: `+` on a user type desugars to `add`.
+Vec2 = {
+    x: int
+    y: int
+}
+
+add(a: Vec2, b: Vec2) -> Vec2 =>
+    Vec2 { x = a.x + b.x, y = a.y + b.y }
+
+mul(a: Vec2, k: int) -> Vec2 =>
+    Vec2 { x = a.x * k, y = a.y * k }
+
+main() -> int {
+    let p = Vec2 { x = 1, y = 2 }
+    let q = Vec2 { x = 3, y = 4 }
+    let r = p + q
+    let s = r * 2
+    info("{s.x},{s.y}")
+    0
+}

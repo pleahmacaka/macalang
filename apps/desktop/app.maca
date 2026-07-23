@@ -1,0 +1,8 @@
+// Maca UI front — a name field, a Greet button, and a result area.
+main() -> Element =>
+    div(
+        class="flex flex-col gap-2"
+        input(id="name" class="border" placeholder="your name")
+        button(id="go" class="btn" "Greet")
+        div(id="result" class="result")
+    )

@@ -1,0 +1,4 @@
+main() -> int {
+    info("Hello, World")
+    0
+}

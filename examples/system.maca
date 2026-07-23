@@ -1,0 +1,24 @@
+import nixpkgs
+alias user = system.user
+
+networking.hostName = "rigel"
+system.stateVersion = "24.11"
+
+system.packages = git, curl, htop, ripgrep
+system.fonts    = nixpkgs.d2coding, nixpkgs.noto-fonts
+
+services.openssh = {
+    passwordAuthentication = false
+}
+
+user.packages = nixpkgs.fish, nixpkgs.eza, nixpkgs.bat
+
+zed: Program : nixpkgs.zed = {
+    settings = {
+        buffer_font_family = nixpkgs.d2coding
+        buffer_font_size   = 15
+    }
+    extensions = "nix", "rust"
+}
+
+user.home.dirs = "Downloads", "Documents", "Desktop"

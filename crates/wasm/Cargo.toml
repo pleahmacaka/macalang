@@ -1,0 +1,15 @@
+[package]
+name = "maca-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+maca-parser = { path = "../parser" }
+maca-core = { path = "../core" }
+maca-backend-c = { path = "../backend_c" }
+maca-backend-js = { path = "../backend_js" }
+maca-backend-nix = { path = "../backend_nix" }

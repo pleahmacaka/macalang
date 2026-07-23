@@ -1,0 +1,48 @@
+import std/json
+import std/dirs
+
+Status = Todo | Doing | Done
+
+Task = {
+    id:     int
+    title:  str
+    status: Status
+}
+
+Store = {
+    tasks:   Task[]
+    next_id: int
+}
+
+let store = dirs.data / "store.json"
+
+load() -> Store =>
+    store.exists()
+        ? json.decode(store.read()?)
+        : Store { tasks = [], next_id = 1 }
+
+add(s: Store, title: str) -> Store {
+    let t = Task { id = s.next_id, title, status = Todo }
+    Store { tasks = s.tasks ++ [t], next_id = s.next_id + 1 }
+}
+
+render(t: Task) -> str {
+    let box = t.status == Done ? "[x]" : "[ ]"
+    "{box} #{t.id}  {t.title}"
+}
+
+main(args: str[]) -> int {
+    let s = load()?
+    match args {
+        "add", ..rest => {
+            let title = rest.join(" ")
+            store.write(json.encode(add(s, title)))?
+            info("added: {title}")
+        }
+        "list" => for t in s.tasks {
+            info(render(t))
+        }
+        _      => info("usage: taskr [add <title> | list]")
+    }
+    0
+}

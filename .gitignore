@@ -1,0 +1,6 @@
+/target
+
+# playground build artifact
+playground/maca_wasm.wasm
+playground/vendor/
+packages/macalang/maca_wasm.wasm

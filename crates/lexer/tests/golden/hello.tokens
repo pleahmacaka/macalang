@@ -1,0 +1,16 @@
+Ident "main"
+LParen
+RParen
+Arrow
+Ident "int"
+LBrace
+Ident "info"
+LParen
+StrOpen
+StrText "Hello, World"
+StrClose
+RParen
+Newline
+Int 0
+RBrace
+Eof

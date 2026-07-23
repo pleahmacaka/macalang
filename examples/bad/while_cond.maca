@@ -1,0 +1,7 @@
+// `while` condition must be bool, not int.
+main() -> int {
+    while 5 {
+        info("x")
+    }
+    0
+}

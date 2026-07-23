@@ -1,0 +1,13 @@
+{
+  "productName": "maca-desktop",
+  "version": "0.1.0",
+  "identifier": "dev.maca.desktop",
+  "build": {
+    "frontendDist": "../web"
+  },
+  "app": {
+    "windows": [
+      { "title": "Maca Desktop", "width": 480, "height": 320, "resizable": true }
+    ]
+  }
+}

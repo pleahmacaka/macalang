@@ -1,0 +1,7 @@
+Status = Todo | Doing | Done
+
+// Missing the `Done` case and no wildcard: not exhaustive.
+describe(s: Status) -> str => match s {
+    Todo  => "todo"
+    Doing => "doing"
+}

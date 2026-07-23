@@ -1,0 +1,8 @@
+// Naive Fibonacci — tree recursion (classic benchmark-game workload).
+fib(n: int) -> int =>
+    n < 2 ? n : fib(n - 1) + fib(n - 2)
+
+main() -> int {
+    info("{fib(40)}")
+    0
+}

@@ -1,0 +1,25 @@
+import c "mqtt.h"
+
+mqtt_connect(host: str, port: int) -> int
+mqtt_subscribe(fd: int, topic: str) -> int
+mqtt_publish(fd: int, topic: str, payload: str) -> int
+mqtt_receive(fd: int) -> str
+mqtt_disconnect(fd: int) -> int
+
+main(args: str[]) -> int {
+    match args {
+        "sub", ..rest => {
+            let fd = mqtt_connect("127.0.0.1", 1883)
+            mqtt_subscribe(fd, "test/#")
+            info(mqtt_receive(fd))
+            mqtt_disconnect(fd)
+        }
+        "pub", ..rest => {
+            let fd = mqtt_connect("127.0.0.1", 1883)
+            mqtt_publish(fd, "test/x", rest.join(" "))
+            mqtt_disconnect(fd)
+        }
+        _ => info("usage: client sub | client pub <msg>")
+    }
+    0
+}

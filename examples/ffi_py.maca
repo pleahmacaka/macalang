@@ -1,0 +1,8 @@
+import py "platform"
+
+py_call(module: str, func: str) -> str
+
+main() -> int {
+    info(py_call("platform", "python_version"))
+    0
+}

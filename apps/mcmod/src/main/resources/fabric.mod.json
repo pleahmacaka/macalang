@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "maca_example",
+  "version": "0.1.0",
+  "name": "Maca Example Mod",
+  "description": "A Minecraft Fabric mod whose logic is written in Maca and transpiled to Java.",
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.example.Mod$ExampleMod"]
+  },
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "~1.21"
+  }
+}

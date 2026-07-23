@@ -1,0 +1,9 @@
+name = ""
+age  = 0
+
+main() -> Element =>
+    div(
+        class="flex flex-col"
+        input(class="text-center" placeholder="name" bind:value=name)
+        input(class="text-center" placeholder="age" bind:value=(v => age = int(v)))
+    )
