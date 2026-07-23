@@ -1067,6 +1067,7 @@ impl<'a> Cx<'a> {
             Expr::Block(stmts) => self.block(env, stmts, sink, ind),
             Expr::For { pat, iter, body } if matches!(&**iter, Expr::Range { .. }) => {
                 // `for i in lo..hi` — a counting loop, no array materialized.
+                // Ranges are inclusive of `hi`, so the guard is `<=`.
                 let Expr::Range { lo, hi } = &**iter else { unreachable!() };
                 let (lc, _) = self.expr(env, lo, Some(&CTy::Int));
                 let (hc, _) = self.expr(env, hi, Some(&CTy::Int));
@@ -1074,7 +1075,7 @@ impl<'a> Cx<'a> {
                 let hv = self.fresh();
                 self.indent(ind);
                 self.push(&format!(
-                    "{{ int64_t {hv} = {hc}; for (int64_t {var} = {lc}; {var} < {hv}; {var}++) {{"
+                    "{{ int64_t {hv} = {hc}; for (int64_t {var} = {lc}; {var} <= {hv}; {var}++) {{"
                 ));
                 let mut env2 = env.clone();
                 env2.push((var, CTy::Int));
@@ -1382,6 +1383,7 @@ impl<'a> Cx<'a> {
             Expr::Range { lo, hi } => {
                 // materialize `lo..hi` as an `int[]` (value position, e.g.
                 // `let xs = 0..n`); `for i in lo..hi` uses a counting loop instead.
+                // Ranges are inclusive of `hi`, so the guard is `<=`.
                 let (lc, _) = self.expr(env, lo, Some(&CTy::Int));
                 let (hc, _) = self.expr(env, hi, Some(&CTy::Int));
                 let an = arr_name(&CTy::Int);
@@ -1390,7 +1392,7 @@ impl<'a> Cx<'a> {
                 (
                     format!(
                         "({{ {an} _a = {an}_new(); int64_t {hv} = {hc}; \
-                         for (int64_t {i} = {lc}; {i} < {hv}; {i}++) {an}_push(&_a, {i}); _a; }})"
+                         for (int64_t {i} = {lc}; {i} <= {hv}; {i}++) {an}_push(&_a, {i}); _a; }})"
                     ),
                     CTy::Arr(Box::new(CTy::Int)),
                 )

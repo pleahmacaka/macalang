@@ -378,9 +378,9 @@ impl Parser {
         }
     }
 
-    /// `lo..hi` — a half-open integer range, one notch looser than the binary
-    /// operators so `0..n - 1` reads as `0..(n - 1)`. Non-associative: a range
-    /// isn't itself a range endpoint.
+    /// `lo..hi` — an inclusive integer range (lo … hi), one notch looser than
+    /// the binary operators so `1..n - 1` reads as `1..(n - 1)`. Non-associative:
+    /// a range isn't itself a range endpoint.
     fn parse_range(&mut self) -> Expr {
         let lo = self.parse_binary(0);
         if self.eat(Tok::DotDot) {

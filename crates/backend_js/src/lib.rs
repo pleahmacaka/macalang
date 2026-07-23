@@ -229,9 +229,9 @@ fn jexpr(e: &Expr) -> String {
         Expr::List(es) => {
             format!("[{}]", es.iter().map(jexpr).collect::<Vec<_>>().join(", "))
         }
-        // `lo..hi` — half-open integer range as a JS array.
+        // `lo..hi` — inclusive integer range as a JS array (lo … hi).
         Expr::Range { lo, hi } => format!(
-            "Array.from({{length: Math.max(0, ({}) - ({}))}}, (_, _i) => _i + ({}))",
+            "Array.from({{length: Math.max(0, ({}) - ({}) + 1)}}, (_, _i) => _i + ({}))",
             jexpr(hi),
             jexpr(lo),
             jexpr(lo)

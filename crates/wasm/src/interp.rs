@@ -373,11 +373,12 @@ impl<'a> Interp<'a> {
                 })
             }
             Expr::Range { lo, hi } => {
+                // inclusive: lo..hi counts lo, lo+1, …, hi
                 let a = to_i64(&self.eval(lo, scope, depth)?);
                 let b = to_i64(&self.eval(hi, scope, depth)?);
                 let mut xs = Vec::new();
                 let mut i = a;
-                while i < b {
+                while i <= b {
                     self.tick()?; // per-element, so a runaway range trips the step limit cleanly
                     xs.push(Value::Int(i));
                     i += 1;

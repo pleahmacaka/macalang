@@ -452,12 +452,12 @@ mod tests {
 
     #[test]
     fn range_for_loop_runs() {
-        // `for i in 0..100` sums to 4950; `1..5` is a 4-element int[].
+        // inclusive: `1..100` sums to 5050; `1..5` is a 5-element int[].
         let json = compile_json(
-            "main() -> int {\n    let sum = 0\n    for i in 0..100 {\n        sum = sum + i\n    }\n    let xs = 1..5\n    info(\"{sum} {len(xs)} {xs[0]}\")\n    0\n}\n",
+            "main() -> int {\n    let sum = 0\n    for i in 1..100 {\n        sum = sum + i\n    }\n    let xs = 1..5\n    info(\"{sum} {len(xs)} {xs[0]}\")\n    0\n}\n",
             0,
         );
-        assert!(json.contains("\"output\":\"4950 4 1\\n\""), "range wrong: {json}");
+        assert!(json.contains("\"output\":\"5050 5 1\\n\""), "range wrong: {json}");
     }
 
     #[test]
