@@ -12,3 +12,4 @@ packages/macalang/maca_wasm.wasm
 *-jvm/
 *-fw/
 /maca_modules/
+__pycache__/
