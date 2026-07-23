@@ -9,13 +9,13 @@ mqtt_disconnect(fd: int) -> int
 main(args: str[]) -> int {
     match args {
         "sub", ..rest => {
-            let fd = mqtt_connect("127.0.0.1", 1883)
+            fd = mqtt_connect("127.0.0.1", 1883)
             mqtt_subscribe(fd, "test/#")
             info(mqtt_receive(fd))
             mqtt_disconnect(fd)
         }
         "pub", ..rest => {
-            let fd = mqtt_connect("127.0.0.1", 1883)
+            fd = mqtt_connect("127.0.0.1", 1883)
             mqtt_publish(fd, "test/x", rest.join(" "))
             mqtt_disconnect(fd)
         }

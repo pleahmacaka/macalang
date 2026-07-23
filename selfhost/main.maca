@@ -9,8 +9,8 @@
 // that exercises token.maca + lexer.maca end to end.
 
 main() -> int {
-    let sample = "add(x: int) -> int => x + 1"
-    let toks = lex(sample)
+    sample = "add(x: int) -> int => x + 1"
+    toks = lex(sample)
     info("scanned {toks.length()} tokens from {sample.length()} chars")
     0
 }

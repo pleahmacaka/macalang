@@ -22,26 +22,26 @@ mk_pexpr(node: Expr, next: int) -> PExpr =>
 
 // expr := primary (('+' | '-') primary)*    — left associative
 parse_expr(ts: Token[], i: int) -> PExpr {
-    let lhs = parse_primary(ts, i)
+    lhs = parse_primary(ts, i)
     parse_binary_tail(ts, lhs)
 }
 
 parse_binary_tail(ts: Token[], lhs: PExpr) -> PExpr {
-    let op = ts.get(lhs.next).kind
+    op = ts.get(lhs.next).kind
     op == Plus || op == Minus
         ? continue_binary(ts, lhs, ts.get(lhs.next).text)
         : lhs
 }
 
 continue_binary(ts: Token[], lhs: PExpr, op: str) -> PExpr {
-    let rhs = parse_primary(ts, lhs.next + 1)
-    let node = e_binary(op, lhs.node, rhs.node)
+    rhs = parse_primary(ts, lhs.next + 1)
+    node = e_binary(op, lhs.node, rhs.node)
     parse_binary_tail(ts, mk_pexpr(node, rhs.next))
 }
 
 // primary := int | str | ident [call] | '(' expr ')'
 parse_primary(ts: Token[], i: int) -> PExpr {
-    let t = ts.get(i)
+    t = ts.get(i)
     match t.kind {
         TInt   => mk_pexpr(e_int(int(t.text)), i + 1)
         TStr   => mk_pexpr(e_str(t.text), i + 1)
@@ -52,12 +52,12 @@ parse_primary(ts: Token[], i: int) -> PExpr {
 }
 
 parse_paren(ts: Token[], i: int) -> PExpr {
-    let inner = parse_expr(ts, i + 1)
+    inner = parse_expr(ts, i + 1)
     mk_pexpr(inner.node, inner.next + 1)   // skip the closing ')'
 }
 
 parse_call_or_ident(ts: Token[], i: int) -> PExpr {
-    let name = ts.get(i).text
+    name = ts.get(i).text
     ts.get(i + 1).kind == LParen
         ? parse_call(ts, i, name)
         : mk_pexpr(e_ident(name), i + 1)
@@ -65,6 +65,6 @@ parse_call_or_ident(ts: Token[], i: int) -> PExpr {
 
 // `name ( arg )` — one argument in this slice
 parse_call(ts: Token[], i: int, name: str) -> PExpr {
-    let arg = parse_expr(ts, i + 2)
+    arg = parse_expr(ts, i + 2)
     mk_pexpr(e_call(name, [arg.node]), arg.next + 1)
 }

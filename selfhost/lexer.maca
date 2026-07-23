@@ -28,7 +28,7 @@ run_end(cs: str[], i: int, pred) -> int =>
 // ---- the scanner ----------------------------------------------------------
 
 lex(src: str) -> Token[] {
-    let cs = src.chars()
+    cs = src.chars()
     scan(cs, 0, [])
 }
 
@@ -38,7 +38,7 @@ scan(cs: str[], i: int, out: Token[]) -> Token[] =>
         : step(cs, i, out)
 
 step(cs: str[], i: int, out: Token[]) -> Token[] {
-    let c = cs.get(i)
+    c = cs.get(i)
     match true {
         _ if is_space(c) => scan(cs, i + 1, out)
         _ if is_digit(c) => lex_number(cs, i, out)
@@ -48,19 +48,19 @@ step(cs: str[], i: int, out: Token[]) -> Token[] {
 }
 
 lex_word(cs: str[], i: int, out: Token[]) -> Token[] {
-    let j = run_end(cs, i, is_alnum)
-    let text = cs.slice(i, j)
+    j = run_end(cs, i, is_alnum)
+    text = cs.slice(i, j)
     scan(cs, j, out ++ [mk_token(keyword_kind(text), text, i)])
 }
 
 lex_number(cs: str[], i: int, out: Token[]) -> Token[] {
-    let j = run_end(cs, i, is_digit)
-    let text = cs.slice(i, j)
+    j = run_end(cs, i, is_digit)
+    text = cs.slice(i, j)
     scan(cs, j, out ++ [mk_token(TInt, text, i)])
 }
 
 lex_punct(cs: str[], i: int, out: Token[], c: str) -> Token[] {
-    let kind = punct_kind(c)
+    kind = punct_kind(c)
     scan(cs, i + 1, out ++ [mk_token(kind, c, i)])
 }
 
