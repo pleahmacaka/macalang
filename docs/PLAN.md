@@ -54,6 +54,14 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   the eventual target. Playground interp runs it eagerly.)
 - Generics: lowercase type vars, applied by juxtaposition (`Map k v`), postfix
   `T[]` / `T?`. Nullable `T?` = `T | None`.
+- **Closures / first-class functions.** A lambda `v => …` captures its enclosing
+  scope; lowered to a `maca_closure` (code pointer + heap env), one ABI for
+  capturing and non-capturing lambdas, callable as a value (`f = v => …; f(x)`).
+- **List stdlib (UFCS on `T[]`):** `map`/`filter`/`reduce`/`fold` (closures
+  typed by the element), `sort`/`reverse`/`push`/`pop`/`contains`/`index_of`/
+  `sum`/`min`/`max`/`first`/`last`. String stdlib on `str`
+  (`split`/`trim`/`upper`/…). Math prelude (`sqrt`/`pow`/`abs`/`min`/`max`/
+  `clamp`/`gcd`/…), always available. (`examples/{collections,strings,math}.maca`.)
 - Ternary is spaced `c ? x : y`; error-propagation is attached `x?`.
 - Operator overloading (no new syntax): on a user type, an operator resolves to
   a same-named function — `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →

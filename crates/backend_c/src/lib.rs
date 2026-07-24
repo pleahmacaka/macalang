@@ -120,7 +120,7 @@ struct Cx<'a> {
     arr_elems: HashSet<CTy>,               // array element types to instantiate
     vecs: BTreeSet<(String, String, usize)>, // SIMD vector types (name, scalar_c, lanes)
     tmp: usize,
-    // non-capturing lambdas hoisted to top-level `static` functions
+    // lambdas hoisted to top-level `static` functions (closures carry a heap env)
     hoisted_decls: Vec<String>,
     hoisted_defs: Vec<String>,
     lambda_count: usize,
