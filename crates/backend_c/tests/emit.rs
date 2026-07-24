@@ -603,3 +603,30 @@ fn closures_capture_and_list_methods_lower() {
         "closure/list method miscompiled:\n{out}"
     );
 }
+
+#[test]
+fn emit_checked_flags_unsupported_instead_of_silent_zero() {
+    // `with` on a non-record can't lower; emit_checked must report it, not emit
+    // a silently-wrong `0`.
+    let src = "main() -> int {\n    x = 5\n    y = x with { a = 1 }\n    0\n}\n";
+    let m = maca_parser::parse(src).module;
+    let res = maca_backend_c::emit_checked(&m);
+    assert!(
+        res.is_err(),
+        "unsupported `with` should be an error, got Ok"
+    );
+    assert!(
+        res.unwrap_err().iter().any(|p| p.contains("with")),
+        "wrong problem message"
+    );
+
+    // a normal program still succeeds
+    let ok = maca_parser::parse(
+        "main() -> int {\n    xs = 1, 2, 3\n    info(\"{xs.sum()}\")\n    0\n}\n",
+    )
+    .module;
+    assert!(
+        maca_backend_c::emit_checked(&ok).is_ok(),
+        "valid program wrongly rejected"
+    );
+}

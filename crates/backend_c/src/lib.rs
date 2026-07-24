@@ -22,6 +22,20 @@ pub fn emit(m: &Module) -> String {
     cx.out
 }
 
+/// Emit C, or the list of codegen limitations the module hit. The driver uses
+/// this so an unsupported construct surfaces as a clean error instead of
+/// silently-wrong C reaching the compiler.
+pub fn emit_checked(m: &Module) -> Result<String, Vec<String>> {
+    let mut cx = Cx::new(m);
+    cx.collect();
+    cx.emit_all();
+    if cx.problems.is_empty() {
+        Ok(cx.out)
+    } else {
+        Err(cx.problems)
+    }
+}
+
 /// Whether the generated C uses the async runtime (so the driver links it).
 pub fn needs_async(c_src: &str) -> bool {
     c_src.contains("maca_parallel_i64")
@@ -114,6 +128,9 @@ struct Cx<'a> {
     generics: HashMap<String, FnDef>,
     spec_pending: Vec<(String, Vec<CTy>)>, // instantiations to emit
     spec_done: HashSet<(String, Vec<CTy>)>, // already emitted
+    // codegen limitations hit while lowering — surfaced as clean errors instead
+    // of silently emitting wrong C.
+    problems: Vec<String>,
 }
 
 impl<'a> Cx<'a> {
@@ -139,7 +156,15 @@ impl<'a> Cx<'a> {
             generics: HashMap::new(),
             spec_pending: Vec::new(),
             spec_done: HashSet::new(),
+            problems: Vec::new(),
         }
+    }
+
+    /// Record a codegen limitation. The placeholder C keeps the output
+    /// well-formed for tests, but `emit_checked` turns any recorded problem into
+    /// a hard error so a real build never ships silently-wrong code.
+    fn problem(&mut self, msg: impl Into<String>) {
+        self.problems.push(msg.into());
     }
 
     fn note_vec(&mut self, t: &CTy) {
@@ -1641,16 +1666,21 @@ impl<'a> Cx<'a> {
                         CTy::Future,
                     )
                 }
-                _ => (
-                    "0 /* unsupported: spawn expects `spawn f(x)` */".into(),
-                    CTy::Unknown,
-                ),
+                _ => {
+                    self.problem("`spawn` expects a direct function call, e.g. `spawn f(x)`");
+                    ("0 /* unsupported: spawn */".into(), CTy::Unknown)
+                }
             },
             Expr::Await(inner) => {
                 let (fc, _) = self.expr(env, inner, None);
                 (format!("maca_await({fc})"), CTy::Int)
             }
-            _ => ("0 /* unsupported */".into(), CTy::Unknown),
+            other => {
+                self.problem(format!(
+                    "expression not supported by the native backend: {other:?}"
+                ));
+                ("0 /* unsupported */".into(), CTy::Unknown)
+            }
         }
     }
 
@@ -1976,6 +2006,7 @@ impl<'a> Cx<'a> {
     fn ctor(&mut self, env: &mut Env, name: &str, fields: &[Field]) -> (String, CTy) {
         let decl = self.records.get(name).cloned();
         let Some(decl) = decl else {
+            self.problem(format!("construction of unknown record type `{name}`"));
             return ("0 /* unknown ctor */".into(), CTy::Unknown);
         };
         let mut parts = Vec::new();
@@ -2002,6 +2033,7 @@ impl<'a> Cx<'a> {
     fn with_update(&mut self, env: &mut Env, base: &Expr, fields: &[Field]) -> (String, CTy) {
         let (bc, bt) = self.expr(env, base, None);
         let CTy::Rec(rname) = bt else {
+            self.problem("`with` update requires a record on the left");
             return (
                 "0 /* unsupported: `with` on non-record */".into(),
                 CTy::Unknown,
@@ -2238,8 +2270,10 @@ impl<'a> Cx<'a> {
                 return (format!("{}({})", cid(name), a.join(", ")), ret);
             }
             let _ = expected;
+            // an FFI/foreign function (declared, provided by C glue) — a direct call
             return (format!("{}({})", cid(name), a.join(", ")), CTy::Unknown);
         }
+        self.problem("call target is not a function name (higher-order call value unsupported)");
         ("0 /* unsupported call */".into(), CTy::Unknown)
     }
 

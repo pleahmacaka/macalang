@@ -1006,7 +1006,12 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
         return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
     }
 
-    let c_src = maca_backend_c::emit(&parsed.module);
+    let c_src = maca_backend_c::emit_checked(&parsed.module).map_err(|probs| {
+        format!(
+            "unsupported by the native backend:\n  {}",
+            probs.join("\n  ")
+        )
+    })?;
     let use_async = maca_backend_c::needs_async(&c_src);
     let llvm = maca_backend_llvm::emit(&parsed.module);
     let use_simd = !llvm.simd_fns.is_empty();
