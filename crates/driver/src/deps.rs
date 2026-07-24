@@ -228,16 +228,35 @@ fn resolve(src: &Source, registry: &str) -> Result<Resolved, String> {
     }
 }
 
-/// Resolve against an npm-compatible registry. `latest`/an exact version fetch
-/// the version manifest directly; anything else falls back to the `latest`
-/// dist-tag (a documented simplification — full semver ranges are future work).
+/// Resolve against an npm-compatible registry. `latest` and exact versions hit
+/// the version manifest directly; a semver *range* (`^1.2`, `~3`, `>=2 <3`,
+/// `1.x`) fetches the full package document and picks the highest published
+/// version that satisfies it.
 fn resolve_registry(base: &str, pkg: &str, req: &str) -> Result<Resolved, String> {
-    let is_exact = req.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false);
-    let tag = if req == "latest" || req.is_empty() || !is_exact { "latest" } else { req };
-    let url = format!("{base}/{}/{tag}", enc(pkg));
+    let exact = req == "latest" || req.is_empty() || parse_semver(req).is_some();
+    if exact {
+        let tag = if req.is_empty() { "latest" } else { req };
+        let url = format!("{base}/{}/{tag}", enc(pkg));
+        let body = http_get(url).map_err(|e| format!("registry fetch failed: {e}"))?;
+        let v: serde_json::Value =
+            serde_json::from_str(&body).map_err(|e| format!("bad registry JSON: {e}"))?;
+        return resolved_from_manifest(&v);
+    }
+    // a range: fetch the package document listing every version, pick the max
+    let url = format!("{base}/{}", enc(pkg));
     let body = http_get(url).map_err(|e| format!("registry fetch failed: {e}"))?;
-    let v: serde_json::Value =
+    let doc: serde_json::Value =
         serde_json::from_str(&body).map_err(|e| format!("bad registry JSON: {e}"))?;
+    let versions = doc.get("versions").and_then(|v| v.as_object()).ok_or("no `versions` in package document")?;
+    let best = versions
+        .keys()
+        .filter(|v| semver_satisfies(v, req))
+        .max_by(|a, b| cmp_semver(a, b))
+        .ok_or_else(|| format!("no published version of `{pkg}` satisfies `{req}`"))?;
+    resolved_from_manifest(&versions[best])
+}
+
+fn resolved_from_manifest(v: &serde_json::Value) -> Result<Resolved, String> {
     let version = v.get("version").and_then(|x| x.as_str()).ok_or("no `version` in manifest")?;
     let tarball = v.get("dist").and_then(|d| d.get("tarball")).and_then(|t| t.as_str());
     let integrity = v.get("dist").and_then(|d| d.get("integrity")).and_then(|t| t.as_str());
@@ -247,6 +266,92 @@ fn resolve_registry(base: &str, pkg: &str, req: &str) -> Result<Resolved, String
         integrity: integrity.map(str::to_string),
         git_sha: None,
     })
+}
+
+/// Parse `major.minor.patch` (a leading `v` and any `-prerelease`/`+build`
+/// suffix are ignored) into a comparable tuple. Returns `None` for non-versions.
+fn parse_semver(s: &str) -> Option<(u64, u64, u64)> {
+    let s = s.trim().trim_start_matches('v');
+    let core = s.split(['-', '+']).next().unwrap_or(s);
+    let mut it = core.split('.');
+    let major = it.next()?.parse().ok()?;
+    let minor = it.next().unwrap_or("0").parse().ok()?;
+    let patch = it.next().unwrap_or("0").parse().ok()?;
+    if it.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
+fn cmp_semver(a: &str, b: &str) -> std::cmp::Ordering {
+    parse_semver(a).unwrap_or((0, 0, 0)).cmp(&parse_semver(b).unwrap_or((0, 0, 0)))
+}
+
+/// Does version `ver` satisfy the semver range `range`? Supports `||` (or),
+/// space-separated comparators (and), `^`, `~`, `>=`/`>`/`<=`/`<`/`=`, exact
+/// versions, and `x`/`*` wildcards (`1.x`, `1.2.*`).
+fn semver_satisfies(ver: &str, range: &str) -> bool {
+    let Some(v) = parse_semver(ver) else { return false };
+    range.split("||").any(|clause| {
+        let clause = clause.trim();
+        clause.is_empty()
+            || clause == "*"
+            || clause.split_whitespace().all(|c| comparator_matches(v, c))
+    })
+}
+
+fn comparator_matches(v: (u64, u64, u64), c: &str) -> bool {
+    let c = c.trim();
+    if let Some(rest) = c.strip_prefix("^") {
+        if let Some(lo) = parse_semver(rest) {
+            let hi = if lo.0 > 0 {
+                (lo.0 + 1, 0, 0)
+            } else if lo.1 > 0 {
+                (0, lo.1 + 1, 0)
+            } else {
+                (0, 0, lo.2 + 1)
+            };
+            return v >= lo && v < hi;
+        }
+    }
+    if let Some(rest) = c.strip_prefix("~") {
+        if let Some(lo) = parse_semver(rest) {
+            let hi = (lo.0, lo.1 + 1, 0);
+            return v >= lo && v < hi;
+        }
+    }
+    for (op, len) in [(">=", 2), ("<=", 2), (">", 1), ("<", 1), ("=", 1)] {
+        if let Some(rest) = c.strip_prefix(op) {
+            let _ = len;
+            if let Some(w) = parse_semver(rest) {
+                return match op {
+                    ">=" => v >= w,
+                    "<=" => v <= w,
+                    ">" => v > w,
+                    "<" => v < w,
+                    _ => v == w,
+                };
+            }
+        }
+    }
+    // wildcards: `1.x`, `1.2.*`, `*`
+    if c == "*" || c == "x" {
+        return true;
+    }
+    if c.contains('x') || c.contains('*') {
+        let parts: Vec<&str> = c.split('.').collect();
+        let get = |i: usize| parts.get(i).copied().unwrap_or("*");
+        let wild = |s: &str| s == "x" || s == "*";
+        if !wild(get(0)) && get(0).parse::<u64>() != Ok(v.0) {
+            return false;
+        }
+        if parts.len() >= 2 && !wild(get(1)) && get(1).parse::<u64>() != Ok(v.1) {
+            return false;
+        }
+        return true;
+    }
+    // a bare version: exact match
+    parse_semver(c) == Some(v)
 }
 
 // ---- fetch ---------------------------------------------------------------
@@ -534,6 +639,34 @@ fn short(sha: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn semver_ranges_match() {
+        // caret: compatible-within-major
+        assert!(semver_satisfies("1.4.2", "^1.2.0"));
+        assert!(!semver_satisfies("2.0.0", "^1.2.0"));
+        assert!(semver_satisfies("0.2.9", "^0.2.1"));
+        assert!(!semver_satisfies("0.3.0", "^0.2.1"));
+        // tilde: patch-level within minor
+        assert!(semver_satisfies("1.2.9", "~1.2.3"));
+        assert!(!semver_satisfies("1.3.0", "~1.2.3"));
+        // comparators (and / or)
+        assert!(semver_satisfies("2.5.0", ">=2 <3"));
+        assert!(!semver_satisfies("3.0.0", ">=2 <3"));
+        assert!(semver_satisfies("4.1.0", "^1.0.0 || ^4.0.0"));
+        // wildcards + exact
+        assert!(semver_satisfies("1.9.9", "1.x"));
+        assert!(!semver_satisfies("2.0.0", "1.x"));
+        assert!(semver_satisfies("1.2.3", "1.2.3"));
+        assert!(!semver_satisfies("1.2.4", "1.2.3"));
+    }
+
+    #[test]
+    fn semver_picks_the_highest() {
+        let vers = ["1.0.0", "1.2.0", "1.4.9", "2.0.0"];
+        let best = vers.iter().filter(|v| semver_satisfies(v, "^1.1")).max_by(|a, b| cmp_semver(a, b));
+        assert_eq!(best, Some(&"1.4.9"));
+    }
 
     #[test]
     fn parse_npm_specs() {
