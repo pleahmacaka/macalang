@@ -47,10 +47,16 @@ Virtual workspace; members are `crates/*`.
 | `maca-backend-embedded` | freestanding C for bare-metal MCUs (Cortex-M/RISC-V) |
 | `maca-wasm` | `wasm32` front-end for the browser playground (no wasm-bindgen) |
 
-Non-crate dirs: `std/` (Maca-source stdlib), `examples/` (golden `.maca`
-programs + `examples/bad/`), `apps/` (capstones), `selfhost/` (the Maca compiler
-written in Maca — stage 1), `playground/` (the browser playground, itself a
-single `.maca` file compiled by the JS backend), `editor/`, `docs/`.
+Non-crate dirs: `std/` (prelude docs — most of the stdlib is compiler/runtime
+builtins), `examples/` (golden `.maca` programs + `examples/bad/`), `apps/`
+(capstones: `dbbrowser` — a SQLite browser, `mqtt`, `microkernel`, `blink`,
+`desktop`, `mcmod`), `selfhost/` (the Maca compiler written in Maca — stage 1),
+`playground/` (the browser playground, a single `.maca` file compiled by the JS
+backend), `editor/`, `docs/`.
+
+FFI (`import c "sqlite3.h"` / `import py "…"`) links the real library: through
+`wsl nix` when present, else the **host `cc`** with system headers/libs
+(`-lsqlite3`, `python3-config`), so FFI builds on a plain Linux dev machine.
 
 ## Self-hosting (current direction)
 
