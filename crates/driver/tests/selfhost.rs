@@ -133,6 +133,11 @@ fn selfhost_frontend_compiles_and_runs() {
         stdout.contains("parsed: ((add(1) + 2) - 3)"),
         "parser/AST output wrong: {stdout}"
     );
+    // precedence climbing: `*` binds tighter than `+`.
+    assert!(
+        stdout.contains("precedence: (2 + (3 * 4))"),
+        "operator precedence wrong: {stdout}"
+    );
     // checker (check.maca): the well-typed tree infers `int` with no errors,
     // and a `str + int` clash is reported as a type error.
     assert!(

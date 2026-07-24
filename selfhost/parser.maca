@@ -78,30 +78,34 @@ parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
         : parse_params(ts, after, nacc)
 }
 
-// expr := primary (binop primary)*    — left associative (flat precedence for
-// now: `a + b * c` parses as `(a + b) * c`; a precedence-climbing pass replaces
-// this as the checker/emitter grow).
-parse_expr(ts: Token[], i: int) -> PExpr {
-    lhs = parse_primary(ts, i)
-    parse_binary_tail(ts, lhs)
+// expr := precedence-climbing over primaries. `prec_of` gives each binary
+// operator its binding power (0 = not an operator); `parse_bin` consumes
+// operators of at least `min_prec`, recursing at `p + 1` for left-associative
+// binding — so `a + b * c` parses correctly as `a + (b * c)`.
+prec_of(k: Kind) -> int =>
+    k == Star || k == Slash
+        ? 3
+        : k == Plus || k == Minus || k == PlusPlus
+            ? 2
+            : k == EqEq || k == NotEq || k == Lt || k == Gt || k == Le || k == Ge
+                ? 1
+                : 0
+
+parse_expr(ts: Token[], i: int) -> PExpr =>
+    parse_bin(ts, parse_primary(ts, i), 1)
+
+parse_bin(ts: Token[], lhs: PExpr, min_prec: int) -> PExpr {
+    p = prec_of(ts.get(lhs.next).kind)
+    p < min_prec
+        ? lhs
+        : climb(ts, lhs, p, min_prec)
 }
 
-// A binary operator kind: the arithmetic, comparison, and logical operators the
-// scanner produces.
-is_binop(k: Kind) -> bool =>
-    k == Plus || k == Minus || k == Star || k == Slash ||
-    k == EqEq || k == NotEq || k == Lt || k == Gt || k == Le || k == Ge ||
-    k == PlusPlus
-
-parse_binary_tail(ts: Token[], lhs: PExpr) -> PExpr =>
-    is_binop(ts.get(lhs.next).kind)
-        ? continue_binary(ts, lhs, ts.get(lhs.next).text)
-        : lhs
-
-continue_binary(ts: Token[], lhs: PExpr, op: str) -> PExpr {
-    rhs = parse_primary(ts, lhs.next + 1)
+climb(ts: Token[], lhs: PExpr, p: int, min_prec: int) -> PExpr {
+    op = ts.get(lhs.next).text
+    rhs = parse_bin(ts, parse_primary(ts, lhs.next + 1), p + 1)
     node = e_binary(op, lhs.node, rhs.node)
-    parse_binary_tail(ts, mk_pexpr(node, rhs.next))
+    parse_bin(ts, mk_pexpr(node, rhs.next), min_prec)
 }
 
 // primary := int | str | ident [call] | '(' expr ')'

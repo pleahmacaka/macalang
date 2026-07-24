@@ -20,6 +20,9 @@ main() -> int {
     info("scanned {toks.length()} tokens from {sample.length()} chars")
     tree = parse_expr(toks, 0)
     info("parsed: {show(tree.node)}")
+    // precedence: `*` binds tighter than `+`.
+    prec = parse_expr(lex("2 + 3 * 4"), 0)
+    info("precedence: {show(prec.node)}")
     info("checked: type {type_of(tree.node)}, {count_errors(tree.node)} errors")
     info("emitted: {emit_unit(tree.node)}")
 
