@@ -66,3 +66,22 @@ fn scalar_only_module_emits_no_kernels() {
         out.simd_fns
     );
 }
+
+#[test]
+fn block_bodied_kernel_binds_intermediates() {
+    // a multi-statement kernel: bind `p = a * b`, then return `p.sum()`.
+    let out = maca_backend_llvm::emit(
+        &parse("dot(a: f32x8, b: f32x8) -> f32 {\n    p = a * b\n    p.sum()\n}\n").module,
+    );
+    assert!(
+        out.simd_fns.contains(&"dot".to_string()),
+        "block-bodied kernel not lowered: {:?}",
+        out.simd_fns
+    );
+    assert!(out.ir.contains("fmul"), "no multiply:\n{}", out.ir);
+    assert!(
+        out.ir.contains("llvm.vector.reduce.fadd"),
+        "no reduce over the bound intermediate:\n{}",
+        out.ir
+    );
+}

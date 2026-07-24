@@ -89,11 +89,7 @@ fn llvm_type(t: &Type) -> String {
 }
 
 fn emit_fn(f: &FnDef, decls: &mut BTreeSet<String>) -> Option<String> {
-    let body = match &f.body {
-        Some(FnBody::Expr(e)) => e.as_ref(),
-        Some(FnBody::Block(_)) => return None, // only single-expression SIMD kernels for now
-        None => return None,
-    };
+    f.body.as_ref()?;
     let ret = f
         .ret
         .as_ref()
@@ -127,7 +123,13 @@ fn emit_fn(f: &FnDef, decls: &mut BTreeSet<String>) -> Option<String> {
             (n.clone(), t.clone()),
         ));
     }
-    let (val, _) = cx.expr(body)?;
+    // single-expression kernel or a block that binds intermediates and ends in
+    // the return expression (`p = a * b; p.sum()`).
+    let (val, _) = match &f.body {
+        Some(FnBody::Expr(e)) => cx.expr(e)?,
+        Some(FnBody::Block(stmts)) => cx.block(stmts)?,
+        None => return None,
+    };
     let mut out = format!("define {ret} @{}({sig}) {{\nentry:\n", f.name);
     out.push_str(&cx.out);
     out.push_str(&format!("  ret {ret} {val}\n}}\n\n"));
@@ -146,6 +148,27 @@ impl<'a> Ctx<'a> {
     fn tmp(&mut self) -> String {
         self.n += 1;
         format!("%v{}", self.n)
+    }
+
+    /// A block body: each `x = e` binds an SSA local, and the block's value is
+    /// its last expression. SIMD kernels are pure, so non-final expression
+    /// statements carry no effects and are ignored.
+    fn block(&mut self, stmts: &[Stmt]) -> Option<(String, String)> {
+        let mut last = None;
+        for s in stmts {
+            match s {
+                Stmt::Bind(b) => {
+                    let Expr::Ident(n) = &b.target else {
+                        return None;
+                    };
+                    let v = self.expr(&b.value)?;
+                    self.env.push((n.clone(), v));
+                }
+                Stmt::Expr(e) => last = Some(self.expr(e)?),
+                _ => return None,
+            }
+        }
+        last
     }
 
     fn expr(&mut self, e: &Expr) -> Option<(String, String)> {
