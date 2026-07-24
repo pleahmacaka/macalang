@@ -80,6 +80,18 @@ module.exports = grammar({
     [$.bare_list, $.binary], [$.bare_list, $.range], [$.bare_list, $.ternary],
     [$.bare_list, $.with_update], [$.bare_list, $.try_post],
     [$.bare_list, $.call], [$.bare_list, $.field], [$.bare_list, $.index],
+    // a juxtaposed UI argument vs. continuing the previous arg as an expression.
+    [$._arg, $.binary], [$._arg, $.range], [$._arg, $.ternary],
+    [$._arg, $.with_update], [$._arg, $.try_post],
+    [$._arg, $.call], [$._arg, $.field], [$._arg, $.index],
+    [$.named_arg, $.binding], [$.directive, $._expr],
+    [$.named_arg, $.binary], [$.named_arg, $.range], [$.named_arg, $.ternary],
+    [$.named_arg, $.with_update], [$.named_arg, $.try_post],
+    [$.named_arg, $.call], [$.named_arg, $.field], [$.named_arg, $.index],
+    [$.directive, $.binary], [$.directive, $.range], [$.directive, $.ternary],
+    [$.directive, $.with_update], [$.directive, $.try_post],
+    [$.directive, $.call], [$.directive, $.field], [$.directive, $.index],
+    [$.field_value, $.bare_list],
   ],
 
   rules: {
@@ -141,10 +153,11 @@ module.exports = grammar({
     effect_row: $ => seq('/', '<', sepBy(',', $.ident), '>'),
 
     // ---- bindings ----
+    // `x = e`, `x: T = e`, or the config-mode layered form `name: Type: Base = e`.
     binding: $ => seq(
       optional('const'),
       field('target', $._lvalue),
-      optional(seq(':', $.type)),
+      repeat(seq(':', $.type)),
       '=',
       choice($._expr, $.bare_list),
       optional(seq('as', 'const')),
@@ -155,8 +168,10 @@ module.exports = grammar({
     _path: $ => seq($.ident, repeat(seq('.', $.ident))),
 
     // ---- types ----
+    // a name, a dotted module type (`nixpkgs.zed`), with `[]` / `?` suffixes.
     type: $ => prec.left(seq(
       choice($.type_ident, $.ident),
+      repeat(seq('.', choice($.type_ident, $.ident))),
       repeat(choice('[]', '?')),
     )),
 
@@ -218,11 +233,14 @@ module.exports = grammar({
     call: $ => prec.left('unary', seq(
       field('callee', $._postfix),
       '(',
-      optional(sepBy(',', $._arg)),
+      // arguments separated by commas or, in the reactive-UI DSL, juxtaposition.
+      optional(seq($._arg, repeat(seq(optional(','), $._arg)))),
       ')',
     )),
-    _arg: $ => choice($.named_arg, $._expr),
+    _arg: $ => choice($.directive, $.named_arg, $._expr),
     named_arg: $ => seq(field('name', $.ident), '=', $._expr),
+    // reactive-UI directives: `bind:value=x`, `on:click=handler`.
+    directive: $ => seq(field('kind', $.ident), ':', field('prop', $.ident), '=', $._expr),
     field: $ => prec.left('unary', seq($._postfix, '.', $.ident)),
     index: $ => prec.left('unary', seq($._postfix, '[', $._expr, ']')),
     with_update: $ => prec.left(seq($._postfix, 'with', $.record)),
@@ -257,8 +275,13 @@ module.exports = grammar({
       '=>',
       field('body', choice($._expr, $.block)),
     ),
-    // one pattern, or several joined by `|` (an or-pattern).
-    pattern: $ => seq($._pattern, repeat(seq('|', $._pattern))),
+    // an or-pattern (`A | B`), or a comma sequence with an optional `..rest`
+    // (`"add", ..rest`) as used by list/argument matches.
+    pattern: $ => choice(
+      seq($._pattern, repeat(seq('|', $._pattern))),
+      seq($._pattern, repeat(seq(',', $._pattern)), optional(seq(',', $.rest_pattern))),
+    ),
+    rest_pattern: $ => seq('..', optional($.ident)),
     _pattern: $ => choice(
       $.ctor_pattern,
       $.record_pattern,
@@ -275,8 +298,10 @@ module.exports = grammar({
     lambda: $ => prec.right(seq(
       choice($.ident, seq('(', optional($.params), ')')),
       '=>',
-      choice($._expr, $.block),
+      choice($.assign, $._expr, $.block),
     )),
+    // a UI setter used as a lambda body: `v => age = int(v)`.
+    assign: $ => prec.right(seq(field('target', $._lvalue), '=', $._expr)),
 
     record: $ => seq(
       optional(field('ctor', $.type_ident)),
@@ -285,7 +310,7 @@ module.exports = grammar({
       '}',
     ),
     _field: $ => choice($.field_value, $.ident),
-    field_value: $ => seq(field('name', $.ident), '=', $._expr),
+    field_value: $ => seq(field('name', $.ident), '=', choice($._expr, $.bare_list)),
 
     list: $ => seq('[', optional(sepBy(',', $._expr)), ']'),
 
@@ -296,9 +321,12 @@ module.exports = grammar({
     number: $ => /0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|[0-9][0-9_]*(\.[0-9_]+)?/,
     string: $ => choice(
       seq('"""', repeat(choice(/[^"]/, /"[^"]/, /""[^"]/)), '"""'),
-      seq('"', repeat(choice($._string_char, $.interpolation)), '"'),
+      seq('"', repeat(choice($._string_char, $._brace_escape, $.interpolation)), '"'),
     ),
-    _string_char: $ => token.immediate(prec(1, /([^"\\{]|\\.)+/)),
+    // literal text runs (excluding `"`, `\`, and braces), `\"`-style escapes,
+    // and the `{{` / `}}` doubled-brace escapes for a literal brace.
+    _string_char: $ => token.immediate(prec(1, /([^"\\{}]|\\.)+/)),
+    _brace_escape: $ => token.immediate(choice('{{', '}}')),
     interpolation: $ => seq('{', $._expr, '}'),
     comment: $ => token(choice(
       seq('//', /.*/),

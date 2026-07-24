@@ -66,3 +66,48 @@ pick(n: int) -> int =>
       cond: (binary (ident) (number))
       then: (number)
       else: (number))))
+
+==================
+reactive-UI directives and juxtaposed arguments
+==================
+
+view() -> Element =>
+    input(class="c" placeholder="name" bind:value=name)
+
+---
+
+(source_file
+  (function
+    name: (ident)
+    return: (type (type_ident))
+    (call
+      callee: (ident)
+      (named_arg name: (ident) (string))
+      (named_arg name: (ident) (string))
+      (directive kind: (ident) prop: (ident) (ident)))))
+
+==================
+list pattern with a rest binding
+==================
+
+run(args: str[]) -> int {
+    match args {
+        "add", ..rest => 1
+        _ => 0
+    }
+}
+
+---
+
+(source_file
+  (function
+    name: (ident)
+    (params (param name: (ident) (type (ident))))
+    return: (type (ident))
+    (block
+      (match
+        scrutinee: (ident)
+        (match_arm
+          pattern: (pattern (string) (rest_pattern (ident)))
+          body: (number))
+        (match_arm pattern: (pattern (wildcard)) body: (number))))))

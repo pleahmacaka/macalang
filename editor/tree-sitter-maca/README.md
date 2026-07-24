@@ -9,15 +9,17 @@ starts with an operator, `.`, a closing bracket, or `,`), so a multi-line
 ternary or operator chain parses as one expression.
 
 The grammar covers imports, functions (including body-less FFI/extern
-declarations), bindings, sum and record type declarations, control flow
-(`if` / `match` / `for` / `while`), patterns (literal, constructor, record,
-or-patterns), and the expression grammar (operators with precedence, ternary,
-calls, field/index, lambdas, ranges, string interpolation).
+declarations), bindings (with the config-mode `name: Type: Base =` layering),
+sum and record type declarations, control flow (`if` / `match` / `for` /
+`while`), patterns (literal, constructor, record, or-patterns, and list
+`..rest`), the reactive-UI DSL (`class="c"`, juxtaposed arguments, `bind:` /
+`on:` directives, assignment lambda bodies), and the expression grammar
+(operators with precedence, ternary, calls, field/index, lambdas, ranges,
+string interpolation with `{{`/`}}` brace escapes).
 
-30 of the 33 `examples/*.maca` parse with zero error nodes. The three that
-don't exercise corners the highlighter degrades gracefully on: the reactive-UI
-DSL's space-juxtaposed call arguments (`counter.maca`), config-mode double
-type-ascription (`system.maca`), and a list rest-pattern (`taskr.maca`).
+All 33 `examples/*.maca` and every `selfhost/*.maca` parse with zero error
+nodes. (The `apps/microkernel` freestanding-asm intrinsics and `apps/mcmod`
+JVM-annotation surface remain out of scope.)
 
 ## Build & test
 
