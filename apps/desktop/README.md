@@ -1,34 +1,41 @@
 # Maca desktop capstone (Tauri)
 
-Front end in Maca UI (`app.maca` → JS/HTML/CSS), back end in Maca native
-(`backend.maca` → binary). `bridge.js` is the Tauri glue that wires a UI action
-to the native command.
+A native desktop app: the front end is a Maca UI (`app.maca` → JS/HTML/CSS), the
+back end is a Maca native command (`backend.maca` → binary), and Tauri provides
+the cross-platform window + webview. The whole app is Maca — Tauri is just the
+shell, and `maca build --target tauri` generates it.
+
+## One-shot build
+
+```sh
+maca build --target tauri app.maca -o dist-tauri
+```
+
+This scaffolds a complete, `cargo tauri build`-able project:
+
+```
+dist-tauri/
+  dist/            the compiled UI (index.html, app.js, app.css) + bridge.js
+  src-tauri/
+    Cargo.toml     tauri v2 deps
+    tauri.conf.json  points the webview at ../dist
+    build.rs
+    src/main.rs    the shell — registers the `maca_run` command
+    bin/backend    the compiled backend.maca (run by maca_run)
+```
 
 ## Round-trip
 
-`app.maca` renders a name field, a **Greet** button, and a result area.
-Clicking **Greet** calls `invoke("greet", name)`, which runs the Maca native
-`backend` binary; its output (`Hello, <name>!`) is written back into the view.
-This is verified headlessly in `crates/driver/tests/desktop.rs` (a DOM stub +
-the real backend binary).
+`app.maca` renders a name field, a **Greet** button, and a result area, and
+carries its own glue in an `import js` block: clicking **Greet** calls
+`macaInvoke(name)`, which the generated `bridge.js` routes to the Tauri command
+`maca_run`, which runs the bundled `backend` binary; its output
+(`Hello, <name>!`) is written back into the view. Verified headlessly in
+`crates/driver/tests/desktop.rs` (a DOM + `__TAURI__` stub + the real backend).
 
-## Build
+## Package a window
 
+```sh
+cd dist-tauri/src-tauri
+cargo tauri build     # needs the Tauri CLI + a system webview (WebView2 / WKWebView / webkit2gtk)
 ```
-maca build --target js app.maca -o ../web     # UI → web/{index.html,app.js,app.css}
-maca build backend.maca -o backend            # native command binary
-```
-
-## Package a window (cross-platform)
-
-`tauri.conf.json` points Tauri at `../web`. A packaged build wraps the web
-front end in a native webview window and exposes `greet` as a Tauri command
-that shells out to the `backend` binary:
-
-```
-cargo tauri build     # needs the Tauri CLI + system webview (WebView2 / WKWebView / webkit2gtk)
-```
-
-Tauri provides the cross-platform window + webview; Maca provides the UI and the
-command. In real Tauri, `invoke` is `window.__TAURI__.invoke`; the headless test
-supplies an equivalent stub, so the same `bridge.js` runs unchanged.

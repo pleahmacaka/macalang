@@ -473,7 +473,7 @@ fn usage() {
          \n\
          commands:\n\
          \x20 init  [dir]                  scaffold a new project (maca.toml, main.maca)\n\
-         \x20 build <file.maca> [-o out]   compile (native | --target nix|js|jvm|embedded)\n\
+         \x20 build <file.maca> [-o out]   compile (native | --target nix|js|jvm|embedded|tauri)\n\
          \x20 run   <file.maca> [args..]   compile and run\n\
          \x20 dev   [dev.maca] [-o flake]  generate a dev-shell flake.nix from Maca\n\
          \x20 watch <file.maca> [args..]   rebuild & rerun on change (hot reload)\n\
@@ -485,7 +485,7 @@ fn usage() {
          \x20 upgrade                     self-update the maca toolchain\n\
          \x20 --version                    print the toolchain version\n\
          \n\
-         build targets: native (default), --target nix | js | jvm | embedded\n\
+         build targets: native (default), --target nix | js | jvm | embedded | tauri\n\
          \x20 embedded also takes --mcu cortex-m0|m3|m4|riscv32; jvm takes --cp <jars>"
     );
 }
@@ -534,6 +534,14 @@ fn cmd_build(args: &[String]) {
         let out = out.unwrap_or_else(|| PathBuf::from(format!("{}-web", stem(&src))));
         match build_js(&src, &out) {
             Ok(()) => println!("built {}/", out.display()),
+            Err(e) => die(&e),
+        }
+        return;
+    }
+    if target == "tauri" {
+        let out = out.unwrap_or_else(|| PathBuf::from(format!("{}-tauri", stem(&src))));
+        match build_tauri(&src, &out) {
+            Ok(msg) => println!("{msg}"),
             Err(e) => die(&e),
         }
         return;
@@ -903,6 +911,139 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
     std::fs::write(out_dir.join("app.js"), &out.js).map_err(|e| e.to_string())?;
     std::fs::write(out_dir.join("app.css"), &out.css).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// `maca build --target tauri app.maca -o out` — scaffold a complete,
+/// `cargo tauri build`-able Tauri v2 desktop app from a Maca UI. Emits:
+///   out/dist/         the compiled Maca UI (index.html, app.js, app.css) + a
+///                     bridge that exposes `macaInvoke(arg)` to the frontend
+///   out/src-tauri/    a Tauri v2 Rust shell (Cargo.toml, tauri.conf.json,
+///                     build.rs, src/main.rs) registering a `maca_run` command
+///   out/src-tauri/bin/backend   the native `backend.maca` (if present), run by
+///                     the command — so the whole app is Maca, Tauri just the shell.
+fn build_tauri(src: &Path, out: &Path) -> Result<String, String> {
+    let name = sanitize_ident(&stem(src));
+    let title = stem(src);
+    let dist = out.join("dist");
+
+    // 1. the UI (reuses the JS backend), plus the invoke bridge
+    build_js(src, &dist)?;
+    let bridge = "// Tauri bridge — call a Maca native command from the UI.\n\
+        // `macaInvoke(arg)` runs the bundled `backend` binary with `arg` and\n\
+        // resolves to its stdout. Works under Tauri v2; a no-op stub otherwise.\n\
+        globalThis.macaInvoke = async (arg) => {\n\
+        \x20 const t = globalThis.__TAURI__;\n\
+        \x20 if (t && t.core && t.core.invoke) return t.core.invoke('maca_run', { arg: String(arg) });\n\
+        \x20 if (t && t.invoke) return t.invoke('maca_run', { arg: String(arg) });\n\
+        \x20 return '(no tauri runtime)';\n\
+        };\n";
+    std::fs::write(dist.join("bridge.js"), bridge).map_err(|e| e.to_string())?;
+    // reference the bridge from index.html
+    let index = dist.join("index.html");
+    if let Ok(html) = std::fs::read_to_string(&index) {
+        let html = html.replace("</body>", "<script src=\"bridge.js\"></script>\n</body>");
+        std::fs::write(&index, html).map_err(|e| e.to_string())?;
+    }
+
+    // 2. the native backend command (sibling backend.maca, if any)
+    let backend = src.parent().unwrap_or(Path::new(".")).join("backend.maca");
+    let bin_dir = out.join("src-tauri").join("bin");
+    let mut has_backend = false;
+    if backend.exists() {
+        std::fs::create_dir_all(&bin_dir).map_err(|e| e.to_string())?;
+        compile(&backend, &bin_dir.join("backend"))?;
+        has_backend = true;
+    }
+
+    // 3. the Tauri v2 Rust shell
+    let st = out.join("src-tauri");
+    std::fs::create_dir_all(st.join("src")).map_err(|e| e.to_string())?;
+    std::fs::write(st.join("Cargo.toml"), tauri_cargo_toml(&name)).map_err(|e| e.to_string())?;
+    std::fs::write(
+        st.join("build.rs"),
+        "fn main() {\n    tauri_build::build()\n}\n",
+    )
+    .map_err(|e| e.to_string())?;
+    std::fs::write(st.join("tauri.conf.json"), tauri_conf(&name, &title))
+        .map_err(|e| e.to_string())?;
+    std::fs::write(st.join("src").join("main.rs"), tauri_main_rs()).map_err(|e| e.to_string())?;
+
+    let note = if has_backend {
+        ""
+    } else {
+        " (no backend.maca — add one for `maca_run`)"
+    };
+    Ok(format!(
+        "scaffolded Tauri app in {}{note}\n  cd {} && cargo tauri build   # needs the Tauri CLI + a system webview",
+        out.display(),
+        st.display()
+    ))
+}
+
+fn tauri_cargo_toml(name: &str) -> String {
+    format!(
+        "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n\
+         [build-dependencies]\ntauri-build = {{ version = \"2\", features = [] }}\n\n\
+         [dependencies]\ntauri = {{ version = \"2\", features = [] }}\n\n\
+         [[bin]]\nname = \"{name}\"\npath = \"src/main.rs\"\n"
+    )
+}
+
+fn tauri_conf(name: &str, title: &str) -> String {
+    format!(
+        "{{\n  \"productName\": \"{title}\",\n  \"version\": \"0.1.0\",\n  \
+         \"identifier\": \"dev.maca.{name}\",\n  \
+         \"build\": {{ \"frontendDist\": \"../dist\" }},\n  \
+         \"app\": {{\n    \"windows\": [{{ \"title\": \"{title}\", \"width\": 900, \"height\": 640, \"resizable\": true }}],\n    \
+         \"security\": {{ \"csp\": null }}\n  }},\n  \
+         \"bundle\": {{ \"active\": true, \"targets\": \"all\" }}\n}}\n"
+    )
+}
+
+fn tauri_main_rs() -> String {
+    "#![cfg_attr(not(debug_assertions), windows_subsystem = \"windows\")]\n\
+     use std::process::Command;\n\n\
+     // Run the bundled Maca `backend` binary with `arg`; return its stdout. The\n\
+     // whole app is Maca — this Rust shell only hosts the webview and the bridge.\n\
+     #[tauri::command]\n\
+     fn maca_run(arg: String) -> String {\n\
+     \x20   let exe = std::env::current_exe()\n\
+     \x20       .ok()\n\
+     \x20       .and_then(|p| p.parent().map(|d| d.join(\"bin\").join(\"backend\")))\n\
+     \x20       .unwrap_or_else(|| std::path::PathBuf::from(\"backend\"));\n\
+     \x20   match Command::new(&exe).arg(&arg).output() {\n\
+     \x20       Ok(o) => String::from_utf8_lossy(&o.stdout).trim().to_string(),\n\
+     \x20       Err(e) => format!(\"error: {e}\"),\n\
+     \x20   }\n\
+     }\n\n\
+     fn main() {\n\
+     \x20   tauri::Builder::default()\n\
+     \x20       .invoke_handler(tauri::generate_handler![maca_run])\n\
+     \x20       .run(tauri::generate_context!())\n\
+     \x20       .expect(\"error while running tauri application\");\n\
+     }\n"
+    .to_string()
+}
+
+/// A safe Rust/crate identifier from a file stem (lowercase, `_`-joined).
+fn sanitize_ident(s: &str) -> String {
+    let mut out: String = s
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if out.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        out.insert(0, '_');
+    }
+    if out.is_empty() {
+        out.push_str("app");
+    }
+    out
 }
 
 /// Minimal base64 (standard alphabet, padded) — no external dep.

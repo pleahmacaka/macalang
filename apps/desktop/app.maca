@@ -1,4 +1,19 @@
-// Maca UI front — a name field, a Greet button, and a result area.
+// Maca UI front — a name field, a Greet button, and a result area. The app
+// carries its own glue: clicking Greet calls the Maca native backend through
+// the Tauri bridge (`macaInvoke`, provided by `maca build --target tauri`) and
+// writes the result back into the view.
+import js """
+(function wire() {
+    const go = document.getElementById('go');
+    if (!go) return setTimeout(wire, 0);   // wait until the app has mounted
+    const name = document.getElementById('name');
+    const result = document.getElementById('result');
+    go.addEventListener('click', async () => {
+        result.textContent = await macaInvoke(name.value);
+    });
+})();
+"""
+
 main() -> Element =>
     div(
         class="flex flex-col gap-2"
