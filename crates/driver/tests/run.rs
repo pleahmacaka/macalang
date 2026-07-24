@@ -352,9 +352,11 @@ fn ffi_c_sqlite_roundtrip() {
         eprintln!("skipping ffi_c_sqlite_roundtrip: wsl not available");
         return;
     }
-    // import c "sqlite3.h": open :memory:, create, insert, select, print the row
+    // import c "sqlite3.h": open :memory:, create, insert, then iterate the
+    // full result set reading multiple columns per row.
     let out = run_example("ffi_sqlite.maca");
-    assert!(out.contains("hi from sqlite"), "sqlite roundtrip: {out}");
+    assert!(out.contains("ada is 36"), "sqlite row 1: {out}");
+    assert!(out.contains("alan is 41"), "sqlite row 2: {out}");
 }
 
 #[test]

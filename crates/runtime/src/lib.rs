@@ -748,35 +748,60 @@ pub fn write_async(dir: &std::path::Path) -> std::io::Result<()> {
 pub const SQLITE_GLUE: &str = r#"#include "maca_runtime.h"
 #include <sqlite3.h>
 
-static sqlite3* g_db = 0;
+/* Opaque handles: a db/stmt pointer round-trips through an int64, which the
+ * Maca surface can hold as a plain `int`. This gives multiple connections and
+ * full row/column iteration (a DB browser needs both). */
+static int64_t as_handle(void* p) { return (int64_t)(intptr_t)p; }
+static sqlite3* as_db(int64_t h) { return (sqlite3*)(intptr_t)h; }
+static sqlite3_stmt* as_stmt(int64_t h) { return (sqlite3_stmt*)(intptr_t)h; }
 
-int64_t sqlite_open(maca_str path) { return sqlite3_open(path, &g_db); }
+static maca_str dup_text(const unsigned char* t) {
+    if (!t) return "";
+    size_t n = strlen((const char*)t);
+    char* b = (char*)maca_alloc(n + 1);
+    memcpy(b, t, n + 1);
+    return b;
+}
 
-int64_t sqlite_exec(maca_str sql) {
+/* open a connection; returns a db handle (0 on failure) */
+int64_t sqlite_open(maca_str path) {
+    sqlite3* db = 0;
+    if (sqlite3_open(path, &db) != SQLITE_OK) { if (db) sqlite3_close(db); return 0; }
+    return as_handle(db);
+}
+int64_t sqlite_close(int64_t db) { return sqlite3_close(as_db(db)); }
+
+/* run a statement with no result set (CREATE/INSERT/UPDATE/…) */
+int64_t sqlite_exec(int64_t db, maca_str sql) {
     char* err = 0;
-    int rc = sqlite3_exec(g_db, sql, 0, 0, &err);
+    int rc = sqlite3_exec(as_db(db), sql, 0, 0, &err);
     if (err) sqlite3_free(err);
     return rc;
 }
 
-maca_str sqlite_query1(maca_str sql) {
+/* prepare a query; returns a stmt handle (0 on failure) */
+int64_t sqlite_prepare(int64_t db, maca_str sql) {
     sqlite3_stmt* st = 0;
-    if (sqlite3_prepare_v2(g_db, sql, -1, &st, 0) != SQLITE_OK) return "";
-    maca_str out = "";
-    if (sqlite3_step(st) == SQLITE_ROW) {
-        const unsigned char* t = sqlite3_column_text(st, 0);
-        if (t) {
-            size_t n = strlen((const char*)t);
-            char* b = (char*)maca_alloc(n + 1);
-            memcpy(b, t, n + 1);
-            out = b;
-        }
-    }
-    sqlite3_finalize(st);
+    if (sqlite3_prepare_v2(as_db(db), sql, -1, &st, 0) != SQLITE_OK) return 0;
+    return as_handle(st);
+}
+/* advance to the next row; true while a row is available */
+bool sqlite_step(int64_t st) { return sqlite3_step(as_stmt(st)) == SQLITE_ROW; }
+int64_t sqlite_column_count(int64_t st) { return sqlite3_column_count(as_stmt(st)); }
+maca_str sqlite_column_name(int64_t st, int64_t col) { return dup_text((const unsigned char*)sqlite3_column_name(as_stmt(st), (int)col)); }
+maca_str sqlite_column_text(int64_t st, int64_t col) { return dup_text(sqlite3_column_text(as_stmt(st), (int)col)); }
+int64_t sqlite_column_int(int64_t st, int64_t col) { return sqlite3_column_int64(as_stmt(st), (int)col); }
+double sqlite_column_float(int64_t st, int64_t col) { return sqlite3_column_double(as_stmt(st), (int)col); }
+int64_t sqlite_finalize(int64_t st) { return sqlite3_finalize(as_stmt(st)); }
+
+/* convenience: text of column 0 of the first row (or "") */
+maca_str sqlite_query1(int64_t db, maca_str sql) {
+    int64_t st = sqlite_prepare(db, sql);
+    if (!st) return "";
+    maca_str out = sqlite_step(st) ? sqlite_column_text(st, 0) : "";
+    sqlite_finalize(st);
     return out;
 }
-
-int64_t sqlite_close(void) { int rc = sqlite3_close(g_db); g_db = 0; return rc; }
 "#;
 
 pub fn write_sqlite_glue(dir: &std::path::Path) -> std::io::Result<()> {

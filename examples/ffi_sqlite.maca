@@ -1,17 +1,31 @@
 import c "sqlite3.h"
 
-// Foreign declarations (bodyless) — bound to the sqlite3.h binding glue.
+// Foreign declarations (bodyless) — bound to the sqlite3.h binding glue. Handles
+// (db, stmt) are opaque `int`s; queries iterate rows and read any column.
 sqlite_open(path: str) -> int
-sqlite_exec(sql: str) -> int
-sqlite_query1(sql: str) -> str
-sqlite_close() -> int
+sqlite_close(db: int) -> int
+sqlite_exec(db: int, sql: str) -> int
+sqlite_prepare(db: int, sql: str) -> int
+sqlite_step(st: int) -> bool
+sqlite_column_count(st: int) -> int
+sqlite_column_name(st: int, col: int) -> str
+sqlite_column_text(st: int, col: int) -> str
+sqlite_column_int(st: int, col: int) -> int
+sqlite_finalize(st: int) -> int
 
 main() -> int {
-    sqlite_open(":memory:")
-    sqlite_exec("CREATE TABLE t(x TEXT)")
-    sqlite_exec("INSERT INTO t VALUES('hi from sqlite')")
-    row = sqlite_query1("SELECT x FROM t")
-    info(row)
-    sqlite_close()
+    db = sqlite_open(":memory:")
+    sqlite_exec(db, "CREATE TABLE people(name TEXT, age INTEGER)")
+    sqlite_exec(db, "INSERT INTO people VALUES('ada', 36), ('alan', 41)")
+
+    // iterate every row, read each column by index — a real result set
+    st = sqlite_prepare(db, "SELECT name, age FROM people ORDER BY age")
+    while sqlite_step(st) {
+        name = sqlite_column_text(st, 0)
+        age = sqlite_column_int(st, 1)
+        info("{name} is {age}")
+    }
+    sqlite_finalize(st)
+    sqlite_close(db)
     0
 }
