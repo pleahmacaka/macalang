@@ -1920,6 +1920,57 @@ impl<'a> Cx<'a> {
                 let a = self.arg(env, &args[0]);
                 return (format!("(maca_sleep_ms({a}), 0)"), CTy::Unit);
             }
+            // ---- math prelude (always available; __builtin_* needs no -lm) ----
+            if args.len() == 1
+                && matches!(name.as_str(), "sqrt" | "floor" | "ceil" | "round" | "sin" | "cos" | "tan" | "log" | "exp")
+            {
+                let (c, _) = self.arg_typed(env, &args[0]);
+                return (format!("__builtin_{name}((double)({c}))"), CTy::Float);
+            }
+            if name == "pow" && args.len() == 2 {
+                let a = self.arg(env, &args[0]);
+                let b = self.arg(env, &args[1]);
+                return (format!("__builtin_pow((double)({a}), (double)({b}))"), CTy::Float);
+            }
+            if name == "abs" && args.len() == 1 {
+                let (c, t) = self.arg_typed(env, &args[0]);
+                return match t {
+                    CTy::Float | CTy::F32 => (format!("__builtin_fabs({c})"), CTy::Float),
+                    _ => (format!("__builtin_llabs({c})"), CTy::Int),
+                };
+            }
+            if (name == "min" || name == "max") && args.len() == 2 {
+                let (a, ta) = self.arg_typed(env, &args[0]);
+                let (b, _) = self.arg_typed(env, &args[1]);
+                let op = if name == "min" { "<" } else { ">" };
+                let ct = c_type(&ta);
+                return (
+                    format!("({{ {ct} _a = {a}; {ct} _b = {b}; _a {op} _b ? _a : _b; }})"),
+                    ta,
+                );
+            }
+            if name == "clamp" && args.len() == 3 {
+                let (x, tx) = self.arg_typed(env, &args[0]);
+                let lo = self.arg(env, &args[1]);
+                let hi = self.arg(env, &args[2]);
+                let ct = c_type(&tx);
+                return (
+                    format!("({{ {ct} _x = {x}, _lo = {lo}, _hi = {hi}; _x < _lo ? _lo : (_x > _hi ? _hi : _x); }})"),
+                    tx,
+                );
+            }
+            if name == "sign" && args.len() == 1 {
+                let (c, _) = self.arg_typed(env, &args[0]);
+                return (format!("({{ __typeof__({c}) _v = {c}; (int64_t)((_v > 0) - (_v < 0)); }})"), CTy::Int);
+            }
+            if name == "gcd" && args.len() == 2 {
+                let a = self.arg(env, &args[0]);
+                let b = self.arg(env, &args[1]);
+                return (
+                    format!("({{ int64_t _a = __builtin_llabs({a}), _b = __builtin_llabs({b}); while (_b) {{ int64_t _t = _a % _b; _a = _b; _b = _t; }} _a; }})"),
+                    CTy::Int,
+                );
+            }
             // `len(x)` — array length (the backing `.len`) or string byte length
             if name == "len" && args.len() == 1 {
                 let (c, t) = self.arg_typed(env, &args[0]);

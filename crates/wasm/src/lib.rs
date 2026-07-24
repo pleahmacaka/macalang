@@ -619,6 +619,13 @@ mod tests {
     }
 
     #[test]
+    fn math_prelude_runs_in_interp() {
+        let src = "main() -> int {\n    info(\"{sqrt(144.0)} {abs(0 - 7)} {min(4, 9)} {max(4, 9)} {gcd(54, 24)} {clamp(42, 0, 10)}\")\n    0\n}\n";
+        let json = compile_json(src, 0);
+        assert!(json.contains("\"output\":\"12.0 7 4 9 6 10\\n\""), "math interp wrong: {json}");
+    }
+
+    #[test]
     fn closures_and_list_methods_run_in_interp() {
         // capturing lambda + map/filter/reduce/sort/sum + first-class closure,
         // all in the playground interpreter (must match the native C backend).

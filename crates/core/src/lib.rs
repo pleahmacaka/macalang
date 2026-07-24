@@ -153,6 +153,23 @@ impl Checker {
             // `sleep_ms(ms)` — an async suspension point (the async effect is
             // added in `eff`); yields nothing.
             ("sleep_ms", Ty::Fn(vec![Ty::Int], Box::new(Ty::Unit))),
+            // math prelude (always available, no import)
+            ("sqrt", Ty::Fn(vec![Ty::Any], Box::new(Ty::Float))),
+            ("floor", Ty::Fn(vec![Ty::Any], Box::new(Ty::Float))),
+            ("ceil", Ty::Fn(vec![Ty::Any], Box::new(Ty::Float))),
+            ("round", Ty::Fn(vec![Ty::Any], Box::new(Ty::Float))),
+            ("sin", Ty::Fn(vec![Ty::Any], Box::new(Ty::Float))),
+            ("cos", Ty::Fn(vec![Ty::Any], Box::new(Ty::Float))),
+            ("tan", Ty::Fn(vec![Ty::Any], Box::new(Ty::Float))),
+            ("log", Ty::Fn(vec![Ty::Any], Box::new(Ty::Float))),
+            ("exp", Ty::Fn(vec![Ty::Any], Box::new(Ty::Float))),
+            ("pow", Ty::Fn(vec![Ty::Any, Ty::Any], Box::new(Ty::Float))),
+            ("abs", Ty::Fn(vec![Ty::Any], Box::new(Ty::Any))),
+            ("min", Ty::Fn(vec![Ty::Any, Ty::Any], Box::new(Ty::Any))),
+            ("max", Ty::Fn(vec![Ty::Any, Ty::Any], Box::new(Ty::Any))),
+            ("clamp", Ty::Fn(vec![Ty::Any, Ty::Any, Ty::Any], Box::new(Ty::Any))),
+            ("sign", Ty::Fn(vec![Ty::Any], Box::new(Ty::Int))),
+            ("gcd", Ty::Fn(vec![Ty::Int, Ty::Int], Box::new(Ty::Int))),
         ] {
             self.globals.insert(n.into(), Scheme::mono(t));
         }

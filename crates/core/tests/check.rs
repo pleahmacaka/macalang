@@ -162,6 +162,13 @@ fn mutable_reassign_ok() {
 }
 
 #[test]
+fn collections_and_math_examples_typecheck() {
+    assert_clean("examples/collections.maca", Mode::Program);
+    assert_clean("examples/math.maca", Mode::Program);
+    assert_clean("examples/dot.maca", Mode::Program);
+}
+
+#[test]
 fn async_example_typechecks() {
     // await/spawn/sleep_ms type-check with no `async` keyword.
     assert_clean("examples/async.maca", Mode::Program);

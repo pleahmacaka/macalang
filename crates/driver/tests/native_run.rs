@@ -72,6 +72,25 @@ fn operator_overloading_runs_natively() {
     );
 }
 
+
+#[test]
+fn math_prelude_runs_natively() {
+    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &example("math.maca")])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for want in ["sqrt(144)=12", "pow(2,10)=1024", "abs=7", "clamp=10", "gcd(54,24)=6"] {
+        assert!(stdout.contains(want), "missing {want:?}: {stdout}");
+    }
+}
+
+
 #[test]
 fn closures_and_collections_run_natively() {
     let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);

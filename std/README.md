@@ -1,32 +1,28 @@
-# std — Maca-source standard library
+# std — the Maca standard library
 
-Written in `.maca`, not Rust. Lands module-by-module as the backends come online.
+Most of the library ships as **compiler/runtime builtins** — always available,
+no `import` needed — rather than `.maca` source, because that's what a mature
+language surface wants (a prelude you can just use). What exists today:
 
-**Prelude (imported implicitly, unqualified):**
-- `minstd` — core types and functions
-- `minconsole` — syslog-level logging (`emerg`..`debug`) + `input`
+**Prelude (always available, unqualified):**
+- **console** — syslog-level logging `emerg`/`alert`/`crit`/`err`/`warn`/
+  `notice`/`info`/`debug`, plus `print` and `input`.
+- **conversions** — `int(x)`, `float(x)`, `str(x)`, `len(x)`.
+- **math** — `abs`, `min`, `max`, `clamp`, `sign`, `gcd`, `sqrt`, `floor`,
+  `ceil`, `round`, `pow`, `sin`, `cos`, `tan`, `log`, `exp`.
+- **async** — `spawn`/`await` (colorblind), `sleep_ms`.
 
-**Explicit `import`:**
-`std/os` · `std/net` · `std/json` · `std/path` · `std/dirs` · `std/collections` ·
-`std/str` · `std/html` · `std/mqtt`
+**String methods (UFCS on `str`):** `split`, `join`, `trim`, `upper`, `lower`,
+`contains`, `starts_with`, `ends_with`, `replace`, `substr`, `index_of`,
+subscripting `s[i]`.
 
-See `docs/PLAN.md` for the full stdlib table and effect rows.
+**List methods (UFCS on `T[]`):** `map`, `filter`, `reduce`/`fold`, `sort`,
+`reverse`, `push`, `pop`, `contains`, `index_of`, `sum`, `min`, `max`, `first`,
+`last`, `len`, subscripting `xs[i]`, functional update.
 
-## `std/str` — the contract the self-hosted compiler needs
+**FFI-backed modules:** `import c "sqlite3.h"` (open/exec/prepare/step/column_*/
+finalize/close), `import c "mqtt.h"`, `import py "…"`, and `import nixpkgs` for
+config mode.
 
-`selfhost/lexer.maca` (see `docs/BOOTSTRAP.md`) leans on these `str` operations.
-They must exist for the stage-0 C backend to lower the stage-1 compiler:
-
-| op (UFCS) | type | meaning |
-|---|---|---|
-| `s.length()` | `str -> int` | length in characters |
-| `s.chars()` | `str -> str[]` | explode into single-character strings |
-| `xs.get(i)` | `str[] i:int -> str` | element at `i` |
-| `s.slice(a, b)` | `str a:int b:int -> str` | substring `[a, b)` |
-| `c.is_whitespace()` | `str -> bool` | space / tab / newline |
-| `c.is_ascii_digit()` | `str -> bool` | `0`–`9` |
-| `c.is_alpha()` | `str -> bool` | ASCII letter |
-
-Under the stage-0 gradual checker these resolve to `any` (unknown stdlib), so
-the sources type-check today; the native implementations land with the C
-backend's string/list runtime.
+See `docs/PLAN.md` for the language cheatsheet and effect rows, and
+`examples/{collections,strings,async}.maca` for the prelude in use.

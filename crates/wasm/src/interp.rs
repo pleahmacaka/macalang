@@ -790,6 +790,60 @@ impl<'a> Interp<'a> {
             // async suspension point — a no-op in the synchronous playground
             // interpreter (results match; only real-time waiting is elided).
             "sleep_ms" => return Ok(Value::Unit),
+            // math prelude
+            "sqrt" => return Ok(Value::Float(to_f64(&vals[0]).sqrt())),
+            "floor" => return Ok(Value::Float(to_f64(&vals[0]).floor())),
+            "ceil" => return Ok(Value::Float(to_f64(&vals[0]).ceil())),
+            "round" => return Ok(Value::Float(to_f64(&vals[0]).round())),
+            "sin" => return Ok(Value::Float(to_f64(&vals[0]).sin())),
+            "cos" => return Ok(Value::Float(to_f64(&vals[0]).cos())),
+            "tan" => return Ok(Value::Float(to_f64(&vals[0]).tan())),
+            "log" => return Ok(Value::Float(to_f64(&vals[0]).ln())),
+            "exp" => return Ok(Value::Float(to_f64(&vals[0]).exp())),
+            "pow" => return Ok(Value::Float(to_f64(&vals[0]).powf(to_f64(&vals[1])))),
+            "abs" => {
+                return Ok(match vals.first() {
+                    Some(Value::Float(f)) => Value::Float(f.abs()),
+                    v => Value::Int(v.map(to_i64).unwrap_or(0).abs()),
+                });
+            }
+            "min" => {
+                return Ok(if cmp_values(&vals[0], &vals[1]) == std::cmp::Ordering::Greater {
+                    vals[1].clone()
+                } else {
+                    vals[0].clone()
+                });
+            }
+            "max" => {
+                return Ok(if cmp_values(&vals[0], &vals[1]) == std::cmp::Ordering::Less {
+                    vals[1].clone()
+                } else {
+                    vals[0].clone()
+                });
+            }
+            "clamp" => {
+                let (x, lo, hi) = (&vals[0], &vals[1], &vals[2]);
+                return Ok(if cmp_values(x, lo) == std::cmp::Ordering::Less {
+                    lo.clone()
+                } else if cmp_values(x, hi) == std::cmp::Ordering::Greater {
+                    hi.clone()
+                } else {
+                    x.clone()
+                });
+            }
+            "sign" => {
+                let x = to_f64(&vals[0]);
+                return Ok(Value::Int(if x > 0.0 { 1 } else if x < 0.0 { -1 } else { 0 }));
+            }
+            "gcd" => {
+                let (mut a, mut b) = (to_i64(&vals[0]).abs(), to_i64(&vals[1]).abs());
+                while b != 0 {
+                    let t = a % b;
+                    a = b;
+                    b = t;
+                }
+                return Ok(Value::Int(a));
+            }
             _ => {}
         }
         // sum constructor
