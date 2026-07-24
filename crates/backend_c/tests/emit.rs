@@ -695,6 +695,32 @@ fn str_and_array_scan_primitives_lower() {
 }
 
 #[test]
+fn higher_order_param_and_fn_value_lower_to_closures() {
+    // an unannotated param that is called is typed `maca_closure`; a fn passed
+    // by name is wrapped in a closure with a boxing thunk.
+    let src = "even(n: int) -> bool => n % 2 == 0\n\n\
+        apply(pred, x: int) -> bool => pred(x)\n\n\
+        main() -> int {\n    apply(even, 4) ? 0 : 1\n}\n";
+    let out = c(src);
+    // the callee param is a closure in `apply`'s signature
+    assert!(
+        out.contains("maca_closure") && out.contains("apply("),
+        "higher-order param not typed as a closure:\n{out}"
+    );
+    // `even` passed by name gets a boxing thunk and a closure literal
+    assert!(
+        out.contains("even__fnval"),
+        "fn value not wrapped in a thunk:\n{out}"
+    );
+    // and the param call goes through the closure ABI
+    let body = func(src, "apply");
+    assert!(
+        body.contains("maca_call1"),
+        "param call didn't use the closure ABI:\n{body}"
+    );
+}
+
+#[test]
 fn empty_list_argument_takes_its_element_type_from_the_callee() {
     // `seed([])` where `seed(xs: str[])` must build a StrArr, not the default
     // IntArr — the call threads the parameter type as the literal's expected.

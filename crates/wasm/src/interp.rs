@@ -361,6 +361,20 @@ impl<'a> Interp<'a> {
                         tag: n.clone(),
                         payload: vec![],
                     })
+                } else if let Some(f) = self.fns.get(n).copied() {
+                    // a top-level function referenced by name is a function
+                    // value → a closure over its definition (mirrors the C
+                    // backend, so higher-order params work in the playground).
+                    let body = match &f.body {
+                        Some(FnBody::Expr(e)) => (**e).clone(),
+                        Some(FnBody::Block(stmts)) => Expr::Block(stmts.clone()),
+                        None => Expr::Unit,
+                    };
+                    Ok(Value::Closure {
+                        params: f.params.clone(),
+                        body: Box::new(body),
+                        captured: vec![],
+                    })
                 } else {
                     Ok(Value::Unit)
                 }
@@ -1394,6 +1408,20 @@ mod tests {
         assert!(out.contains("4 4 a 1"), "scan lengths/access wrong: {out}");
         assert!(out.contains("true true true"), "char classes wrong: {out}");
         assert!(out.contains("a1"), "slice+join wrong: {out}");
+    }
+
+    #[test]
+    fn higher_order_fn_by_name() {
+        // a function passed by name to a `pred` parameter and called there.
+        let src = "even(n: int) -> bool => n % 2 == 0\n\n\
+            count_if(xs: int[], i: int, pred) -> int =>\n\
+                i >= xs.length() ? 0 : (pred(xs.get(i)) ? 1 : 0) + count_if(xs, i + 1, pred)\n\n\
+            main() -> int {\n\
+                xs = 1, 2, 3, 4, 5, 6\n\
+                info(\"{count_if(xs, 0, even)}\")\n\
+                0\n\
+            }\n";
+        assert!(output(src).contains('3'), "should count 3 evens");
     }
 
     #[test]

@@ -68,8 +68,12 @@ with a C forward declaration that breaks the struct/array definition cycle).
 - [x] multi-file builds — `maca build selfhost/main.maca` resolves the local
       `import selfhost/…` statements and inlines the modules in dependency
       order (the run gate builds from the real entry point, no concatenation)
-- [ ] the remaining backend growth for a full compiler (higher-order params
-      passed as values; the checker/emitter grown to the full language)
+- [x] higher-order parameters — a function passed by name (`run_end(cs, i,
+      is_alpha)`) is wrapped in a closure, and an unannotated param that is
+      called is typed as a function value; `lexer.maca` uses the single
+      predicate-taking `run_end` again
+- [ ] the checker/emitter grown to the full language (statements, records,
+      sums, generics — the rest of `maca-core` / `maca-backend-c`, in Maca)
 - [ ] two-stage fixed-point build in CI (once native runs are available)
 
 ## Why the Rust side stays minimal

@@ -173,7 +173,12 @@ semantics, implemented in the runtime, C backend, and playground interpreter);
 **closures / first-class functions** (a lambda `v => …` captures its enclosing
 scope; lowered to a `maca_closure` = code pointer + heap env, one uniform ABI
 for capturing and non-capturing lambdas; args/results box through `int64_t` —
-str via `intptr_t`, float bit-preserved via `maca_box_f64`); a **list stdlib**
+str via `intptr_t`, float bit-preserved via `maca_box_f64`); **higher-order
+parameters** — a top-level function referenced by name is a function value
+(wrapped in a `maca_closure` via a hoisted boxing thunk), and an unannotated
+parameter that is *called* in the body is typed as a closure, so
+`run_end(cs, i, is_alpha)` / `pred(cs.get(i))` work with no function-type
+syntax (native + interpreter); a **list stdlib**
 as UFCS methods on any `T[]` (`map`/`filter`/`reduce`/`fold` take closures typed
 by the element; `sort`/`reverse`/`push`/`pop`/`contains`/`index_of`/`sum`/`min`/
 `max`/`first`/`last`/`length`/`get`/`slice`; native + interpreter —

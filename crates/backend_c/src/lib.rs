@@ -124,6 +124,9 @@ struct Cx<'a> {
     hoisted_decls: Vec<String>,
     hoisted_defs: Vec<String>,
     lambda_count: usize,
+    /// top-level fns already wrapped as a closure value (`f` passed by name);
+    /// the boxing thunk is emitted once per fn.
+    fn_thunks: HashSet<String>,
     // generic functions, monomorphized per concrete instantiation
     generics: HashMap<String, FnDef>,
     spec_pending: Vec<(String, Vec<CTy>)>, // instantiations to emit
@@ -153,6 +156,7 @@ impl<'a> Cx<'a> {
             hoisted_decls: Vec::new(),
             hoisted_defs: Vec::new(),
             lambda_count: 0,
+            fn_thunks: HashSet::new(),
             generics: HashMap::new(),
             spec_pending: Vec::new(),
             spec_done: HashSet::new(),
@@ -334,10 +338,24 @@ impl<'a> Cx<'a> {
                     if fn_is_generic(f) {
                         self.generics.insert(f.name.clone(), f.clone());
                     } else {
+                        // an unannotated parameter that is *called* in the body
+                        // is a function value → `maca_closure` (surface Maca has
+                        // no function-type syntax, so this is how higher-order
+                        // parameters are recognized).
+                        let mut callees = HashSet::new();
+                        if let Some(body) = &f.body {
+                            callee_idents_body(body, &mut callees);
+                        }
                         let params = f
                             .params
                             .iter()
-                            .map(|p| self.cty_opt(&p.ty))
+                            .map(|p| {
+                                if p.ty.is_none() && callees.contains(&p.name) {
+                                    CTy::Closure
+                                } else {
+                                    self.cty_opt(&p.ty)
+                                }
+                            })
                             .collect::<Vec<_>>();
                         let ret = f.ret.as_ref().map_or(CTy::Unit, |t| self.cty(t));
                         for p in &params {
@@ -1800,7 +1818,55 @@ impl<'a> Cx<'a> {
                 .unwrap_or(CTy::Unknown);
             return (format!("mv_{n}()"), ty);
         }
+        // a top-level function referenced by name (not called) is a function
+        // *value* → wrap it in a `maca_closure` so it can be passed to a
+        // higher-order parameter (`run(cs, i, is_alpha)`).
+        if self.fns.contains_key(n) {
+            return self.fn_value_closure(n);
+        }
         (cid(n), CTy::Unknown)
+    }
+
+    /// A `maca_closure` that calls top-level fn `name`, boxing its argument(s)
+    /// and result across the uniform closure ABI. The boxing thunk is hoisted
+    /// once; capturing nothing, the closure's env is `NULL`.
+    fn fn_value_closure(&mut self, name: &str) -> (String, CTy) {
+        let (params, ret) = self.fns[name].clone();
+        let arity = params.len();
+        let thunk = format!("{}__fnval", cid(name));
+        if self.fn_thunks.insert(name.to_string()) {
+            let sig = if arity >= 2 {
+                format!("static int64_t {thunk}(void* _e, int64_t _a0, int64_t _a1)")
+            } else {
+                format!("static int64_t {thunk}(void* _e, int64_t _a0)")
+            };
+            let call_args = if arity >= 2 {
+                format!(
+                    "{}, {}",
+                    unbox_i64("_a0", &params[0]),
+                    unbox_i64("_a1", &params[1])
+                )
+            } else if arity == 1 {
+                unbox_i64("_a0", &params[0])
+            } else {
+                String::new()
+            };
+            let call = format!("{}({call_args})", cid(name));
+            self.hoisted_decls.push(format!("{sig};"));
+            self.hoisted_defs.push(format!(
+                "{sig} {{ (void)_e; return {}; }}",
+                box_i64(&call, &ret)
+            ));
+        }
+        let (ctype, cast) = if arity >= 2 {
+            ("maca_closure2", "(int64_t(*)(void*,int64_t,int64_t))")
+        } else {
+            ("maca_closure", "(int64_t(*)(void*,int64_t))")
+        };
+        (
+            format!("(({ctype}){{ {cast}{thunk}, NULL }})"),
+            CTy::Closure,
+        )
     }
 
     /// Lower a lambda in a function-value position: a `maca_closure` with
@@ -3288,6 +3354,113 @@ fn unbox_i64(code: &str, t: &CTy) -> String {
 /// Collect the free variables of `e` — identifiers referenced but not bound by
 /// an enclosing binder inside `e` (lambda params, `for`/`match` patterns, block
 /// bindings). Used to compute a lambda's captures.
+/// Collect the names invoked as a call callee anywhere in `e` (`f(x)` adds
+/// `f`). Used to recognize a higher-order parameter: an unannotated param that
+/// is called must hold a function value. A full structural walk mirroring
+/// `free_vars`' reach.
+fn callee_idents(e: &Expr, out: &mut HashSet<String>) {
+    match e {
+        Expr::Call { callee, args } => {
+            if let Expr::Ident(n) = &**callee {
+                out.insert(n.clone());
+            }
+            callee_idents(callee, out);
+            for a in args {
+                callee_idents(arg_expr(a), out);
+            }
+        }
+        Expr::Str(parts) => {
+            for p in parts {
+                if let StrPart::Interp(x) = p {
+                    callee_idents(x, out);
+                }
+            }
+        }
+        Expr::Unary { expr, .. }
+        | Expr::Try(expr)
+        | Expr::Fail(expr)
+        | Expr::Reify(expr)
+        | Expr::Await(expr)
+        | Expr::Spawn(expr)
+        | Expr::Field { base: expr, .. } => callee_idents(expr, out),
+        Expr::Index { base: a, index: b }
+        | Expr::Binary { lhs: a, rhs: b, .. }
+        | Expr::Assign {
+            target: a,
+            value: b,
+        }
+        | Expr::Range { lo: a, hi: b } => {
+            callee_idents(a, out);
+            callee_idents(b, out);
+        }
+        Expr::Ternary { cond, then, els } => {
+            callee_idents(cond, out);
+            callee_idents(then, out);
+            callee_idents(els, out);
+        }
+        Expr::List(es) => es.iter().for_each(|x| callee_idents(x, out)),
+        Expr::Record(fs) | Expr::Ctor { fields: fs, .. } => callee_field_idents(fs, out),
+        Expr::With { base, fields } => {
+            callee_idents(base, out);
+            callee_field_idents(fields, out);
+        }
+        Expr::Lambda { body, .. } => callee_idents(body, out),
+        Expr::If { cond, then, els } => {
+            callee_idents(cond, out);
+            callee_idents_stmts(then, out);
+            if let Some(e) = els {
+                callee_idents_stmts(e, out);
+            }
+        }
+        Expr::For { iter, body, .. } => {
+            callee_idents(iter, out);
+            callee_idents_stmts(body, out);
+        }
+        Expr::While { cond, body } => {
+            callee_idents(cond, out);
+            callee_idents_stmts(body, out);
+        }
+        Expr::Match { scrut, arms } => {
+            callee_idents(scrut, out);
+            for arm in arms {
+                if let Some(g) = &arm.guard {
+                    callee_idents(g, out);
+                }
+                callee_idents(&arm.body, out);
+            }
+        }
+        Expr::Block(stmts) => callee_idents_stmts(stmts, out),
+        _ => {}
+    }
+}
+
+fn callee_field_idents(fields: &[Field], out: &mut HashSet<String>) {
+    for f in fields {
+        match f {
+            Field::Value { value, .. } | Field::Bare(value) => callee_idents(value, out),
+            _ => {}
+        }
+    }
+}
+
+fn callee_idents_body(body: &FnBody, out: &mut HashSet<String>) {
+    match body {
+        FnBody::Expr(e) => callee_idents(e, out),
+        FnBody::Block(stmts) => callee_idents_stmts(stmts, out),
+    }
+}
+
+fn callee_idents_stmts(stmts: &[Stmt], out: &mut HashSet<String>) {
+    for s in stmts {
+        match s {
+            Stmt::Bind(b) => callee_idents(&b.value, out),
+            Stmt::Expr(e) => callee_idents(e, out),
+            Stmt::Alias { value, .. } => callee_idents(value, out),
+            _ => {}
+        }
+    }
+}
+
 fn free_vars(e: &Expr, bound: &HashSet<String>, out: &mut HashSet<String>) {
     match e {
         Expr::Ident(n) => {

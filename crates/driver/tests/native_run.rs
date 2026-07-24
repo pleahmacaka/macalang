@@ -100,6 +100,47 @@ fn multi_file_imports_resolve_and_run() {
 }
 
 #[test]
+fn higher_order_params_run_natively() {
+    // A function passed by name to an unannotated `pred` parameter, then called
+    // inside the callee — the C backend wraps the fn in a closure and lowers the
+    // param call through the closure ABI.
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-higher-order");
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("ho.maca");
+    std::fs::write(
+        &f,
+        "even(n: int) -> bool => n % 2 == 0\n\
+         count_if(xs: int[], i: int, pred) -> int =>\n\
+             i >= xs.length() ? 0 : (pred(xs.get(i)) ? 1 : 0) + count_if(xs, i + 1, pred)\n\n\
+         main() -> int {\n\
+             xs = 1, 2, 3, 4, 5, 6\n\
+             info(\"evens={count_if(xs, 0, even)}\")\n\
+             0\n\
+         }\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &f.to_string_lossy()])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("evens=3"),
+        "higher-order param wrong: stdout {stdout}\nstderr {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
 fn recursive_record_runs_natively() {
     // A recursive record (`Tree { kids: Tree[] }`) compiles through the C
     // backend's forward-declaration path and walks correctly at run time.
