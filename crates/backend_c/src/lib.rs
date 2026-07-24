@@ -61,6 +61,8 @@ enum CTy {
     /// A concurrent computation handle (`spawn e`), awaited with `await`.
     /// Lowers to `maca_future*`; its result is boxed as `int64_t` for the slice.
     Future,
+    /// A first-class function value (a lambda). Lowers to `maca_closure`.
+    Closure,
     Unknown,
 }
 
@@ -1532,36 +1534,103 @@ impl<'a> Cx<'a> {
         (cid(n), CTy::Unknown)
     }
 
-    /// Lower a lambda by hoisting it to a top-level `static int64_t` function
-    /// whose address is the value. Increment 1: only *non-capturing* lambdas
-    /// with a *simple-expression* body (the shape `.parallel` and other
-    /// function-value sites consume); anything else is flagged unsupported so
-    /// no broken C is emitted.
-    fn emit_lambda(&mut self, _env: &Env, params: &[Param], body: &Expr) -> (String, CTy) {
+    /// Lower a lambda in a function-value position: a `maca_closure` with
+    /// default `int` parameters (the shape `.parallel`/first-class calls use).
+    fn emit_lambda(&mut self, env: &Env, params: &[Param], body: &Expr) -> (String, CTy) {
+        let ptys = vec![CTy::Int; params.len()];
+        let (val, _ret) = self.emit_closure(env, params, body, &ptys);
+        (val, CTy::Closure)
+    }
+
+    /// Lower a lambda to a `maca_closure`: a hoisted function plus a heap
+    /// environment holding the captured free variables. Supports capturing and
+    /// non-capturing lambdas with any body shape. `param_tys` gives the (known)
+    /// parameter types — higher-order methods pass the element type; other sites
+    /// default to `int`. Returns `(closure-value, body-result-type)`; boundary
+    /// values (params/result) are boxed as `int64_t` (a str/pointer fits).
+    fn emit_closure(
+        &mut self,
+        env: &Env,
+        params: &[Param],
+        body: &Expr,
+        param_tys: &[CTy],
+    ) -> (String, CTy) {
+        // free variables captured from the enclosing scope
+        let mut bound: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
         let mut refs = HashSet::new();
-        if !simple_free(body, &mut refs) {
-            return ("0 /* unsupported: complex lambda body */".into(), CTy::Unknown);
-        }
-        let param_names: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
-        let captures = refs.iter().any(|n| !param_names.contains(n) && !self.is_known_global(n));
-        if captures {
-            return ("0 /* unsupported: capturing lambda */".into(), CTy::Unknown);
-        }
-        let name = format!("_lam{}", self.lambda_count);
+        free_vars(body, &bound, &mut refs);
+        bound.clear();
+        let mut caps: Vec<(String, CTy)> = refs
+            .into_iter()
+            .filter(|n| !self.is_known_global(n) && self.variant_of.get(n).is_none())
+            .map(|n| {
+                let t = self.cap_ty(env, &n);
+                (n, t)
+            })
+            .collect();
+        caps.sort_by(|a, b| a.0.cmp(&b.0)); // deterministic layout
+
+        let id = self.lambda_count;
         self.lambda_count += 1;
-        let ps: Vec<String> = params.iter().map(|p| format!("int64_t {}", cid(&p.name))).collect();
-        let sig =
-            format!("static int64_t {name}({})", if ps.is_empty() { "void".into() } else { ps.join(", ") });
+        let fname = format!("_lam{id}");
+        let ename = format!("_lam{id}_env");
+        let two = params.len() >= 2;
+
+        if !caps.is_empty() {
+            let fields =
+                caps.iter().map(|(n, t)| format!("{} {};", c_type(t), cid(n))).collect::<Vec<_>>().join(" ");
+            self.hoisted_decls.push(format!("typedef struct {{ {fields} }} {ename};"));
+        }
+        let sig = if two {
+            format!("static int64_t {fname}(void* _envp, int64_t _a0, int64_t _a1)")
+        } else {
+            format!("static int64_t {fname}(void* _envp, int64_t _a0)")
+        };
         self.hoisted_decls.push(format!("{sig};"));
+
         let saved = std::mem::take(&mut self.out);
         self.push(&format!("{sig} {{"));
-        let mut lenv: Env = params.iter().map(|p| (p.name.clone(), CTy::Int)).collect();
-        let (c, _) = self.expr(&mut lenv, body, Some(&CTy::Int));
-        self.push(&format!("    return {c};"));
+        let mut lenv: Env = Vec::new();
+        if caps.is_empty() {
+            self.push("    (void)_envp;");
+        } else {
+            self.push(&format!("    {ename}* _e = ({ename}*)_envp;"));
+            for (n, t) in &caps {
+                self.push(&format!("    {} {} = _e->{};", c_type(t), cid(n), cid(n)));
+                lenv.push((n.clone(), t.clone()));
+            }
+        }
+        for (i, p) in params.iter().enumerate() {
+            let pt = param_tys.get(i).cloned().unwrap_or(CTy::Int);
+            let arg = format!("_a{i}");
+            self.push(&format!("    {} {} = {};", c_type(&pt), cid(&p.name), unbox_i64(&arg, &pt)));
+            lenv.push((p.name.clone(), pt));
+        }
+        let (bc, bt) = self.expr(&mut lenv, body, None);
+        let ret = if bt == CTy::Unknown { CTy::Int } else { bt };
+        self.push(&format!("    return {};", box_i64(&bc, &ret)));
         self.push("}");
         let def = std::mem::replace(&mut self.out, saved);
         self.hoisted_defs.push(def);
-        (name, CTy::Unknown)
+
+        let (ctype, cast) = if two {
+            ("maca_closure2", "(int64_t(*)(void*,int64_t,int64_t))")
+        } else {
+            ("maca_closure", "(int64_t(*)(void*,int64_t))")
+        };
+        let val = if caps.is_empty() {
+            format!("(({ctype}){{ {cast}{fname}, NULL }})")
+        } else {
+            let mut fills = String::new();
+            for (n, _) in &caps {
+                let (outer, _) = self.ident(env, n);
+                fills.push_str(&format!("_e->{} = {}; ", cid(n), outer));
+            }
+            format!(
+                "({{ {ename}* _e = ({ename}*)maca_alloc(sizeof({ename})); {fills}({ctype}){{ {cast}{fname}, _e }}; }})"
+            )
+        };
+        (val, ret)
     }
 
     /// Emit one monomorphized copy of a generic function for a concrete tuple of
@@ -1633,6 +1702,70 @@ impl<'a> Cx<'a> {
     fn spec_ret(&self, genf: &FnDef, arg_ctys: &[CTy]) -> CTy {
         let subst = self.build_subst(genf, arg_ctys);
         genf.ret.as_ref().map_or(CTy::Unit, |t| self.subst_cty(t, &subst))
+    }
+
+    /// The C type of a captured free variable (a function-local of the enclosing
+    /// scope). Top-level lets are globals (excluded upstream), so this only sees
+    /// locals, which live in `env`.
+    fn cap_ty(&self, env: &Env, n: &str) -> CTy {
+        lookup(env, n).unwrap_or(CTy::Unknown)
+    }
+
+    /// Higher-order list methods whose lambda argument must be lowered with the
+    /// element type as its parameter type: `.map`, `.filter`, `.reduce`. Returns
+    /// `None` (fall through to the generic UFCS path) if the shape doesn't match.
+    fn list_hof(
+        &mut self,
+        env: &mut Env,
+        rc: &str,
+        elem: &CTy,
+        method: &str,
+        args: &[Arg],
+    ) -> Option<(String, CTy)> {
+        let src = arr_name(elem);
+        let lambda = |a: Option<&Arg>| match a {
+            Some(Arg::Pos(Expr::Lambda { params, body })) => Some((params.clone(), (**body).clone())),
+            _ => None,
+        };
+        match method {
+            "map" => {
+                let (params, body) = lambda(args.first())?;
+                let (clos, ret) = self.emit_closure(env, &params, &body, &[elem.clone()]);
+                self.note_arr(&CTy::Arr(Box::new(ret.clone())));
+                let dst = arr_name(&ret);
+                let boxed = box_i64("_s.data[_i]", elem);
+                let unboxed = unbox_i64("_v", &ret);
+                let code = format!(
+                    "({{ {src} _s = {rc}; {dst} _r = {dst}_new(); maca_closure _f = {clos}; \
+                     for (int64_t _i = 0; _i < _s.len; _i++) {{ int64_t _v = maca_call1(_f, {boxed}); {dst}_push(&_r, {unboxed}); }} _r; }})"
+                );
+                Some((code, CTy::Arr(Box::new(ret))))
+            }
+            "filter" => {
+                let (params, body) = lambda(args.first())?;
+                let (clos, _) = self.emit_closure(env, &params, &body, &[elem.clone()]);
+                let boxed = box_i64("_s.data[_i]", elem);
+                let code = format!(
+                    "({{ {src} _s = {rc}; {src} _r = {src}_new(); maca_closure _f = {clos}; \
+                     for (int64_t _i = 0; _i < _s.len; _i++) if (maca_call1(_f, {boxed})) {src}_push(&_r, _s.data[_i]); _r; }})"
+                );
+                Some((code, CTy::Arr(Box::new(elem.clone()))))
+            }
+            "reduce" | "fold" => {
+                let (initc, acc_ty) = self.arg_typed(env, args.first()?);
+                let (params, body) = lambda(args.get(1))?;
+                let (clos, _) = self.emit_closure(env, &params, &body, &[acc_ty.clone(), elem.clone()]);
+                let init_boxed = box_i64(&initc, &acc_ty);
+                let elem_boxed = box_i64("_s.data[_i]", elem);
+                let result = unbox_i64("_acc", &acc_ty);
+                let code = format!(
+                    "({{ {src} _s = {rc}; maca_closure2 _f = {clos}; int64_t _acc = {init_boxed}; \
+                     for (int64_t _i = 0; _i < _s.len; _i++) _acc = maca_call2(_f, _acc, {elem_boxed}); {result}; }})"
+                );
+                Some((code, acc_ty))
+            }
+            _ => None,
+        }
     }
 
     /// Names that resolve globally (so referencing them isn't a capture).
@@ -1742,10 +1875,26 @@ impl<'a> Cx<'a> {
             }
             // UFCS: receiver.method(args)
             let (rc, rty) = self.expr(env, base, None);
+            // higher-order list methods lower their lambda with the element type
+            if let CTy::Arr(elem) = &rty {
+                if let Some(res) = self.list_hof(env, &rc, elem, name, args) {
+                    return res;
+                }
+            }
             let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
             return self.ufcs(&rc, &rty, name, &a);
         }
         if let Expr::Ident(name) = callee {
+            // calling a local that holds a closure value: `f = v => …; f(x)`
+            if matches!(lookup(env, name), Some(CTy::Closure)) {
+                let boxed: Vec<(String, CTy)> = args.iter().map(|x| self.arg_typed(env, x)).collect();
+                let bx: Vec<String> = boxed.iter().map(|(c, t)| box_i64(c, t)).collect();
+                if bx.len() >= 2 {
+                    return (format!("maca_call2({}, {}, {})", cid(name), bx[0], bx[1]), CTy::Int);
+                }
+                let a0 = bx.first().cloned().unwrap_or_else(|| "0".into());
+                return (format!("maca_call1({}, {a0})", cid(name)), CTy::Int);
+            }
             // coercions need the argument type
             if name == "str" {
                 let (c, t) = self.arg_typed(env, &args[0]);
@@ -1860,6 +2009,91 @@ impl<'a> Cx<'a> {
                 format!("maca_join({rc}.data, {rc}.len, {})", arg0()),
                 CTy::Str,
             ),
+            // ---- list methods (closure-free; map/filter/reduce are in list_hof) ----
+            (CTy::Arr(e), "sort") if matches!(**e, CTy::Int | CTy::Float | CTy::Str) => {
+                let an = arr_name(e);
+                let sorter = match **e {
+                    CTy::Float => "maca_sort_f64",
+                    CTy::Str => "maca_sort_str",
+                    _ => "maca_sort_i64",
+                };
+                (
+                    format!("({{ {an} _s = {an}_concat({rc}, {an}_new()); {sorter}(_s.data, _s.len); _s; }})"),
+                    CTy::Arr(e.clone()),
+                )
+            }
+            (CTy::Arr(e), "reverse") => {
+                let an = arr_name(e);
+                (
+                    format!("({{ {an} _s = {rc}; {an} _r = {an}_new(); for (int64_t _i = _s.len - 1; _i >= 0; _i--) {an}_push(&_r, _s.data[_i]); _r; }})"),
+                    CTy::Arr(e.clone()),
+                )
+            }
+            (CTy::Arr(e), "push") => {
+                let an = arr_name(e);
+                (
+                    format!("({{ {an} _s = {an}_concat({rc}, {an}_new()); {an}_push(&_s, {}); _s; }})", arg0()),
+                    CTy::Arr(e.clone()),
+                )
+            }
+            (CTy::Arr(e), "pop") => {
+                let an = arr_name(e);
+                (
+                    format!("({{ {an} _s = {an}_concat({rc}, {an}_new()); if (_s.len > 0) _s.len--; _s; }})"),
+                    CTy::Arr(e.clone()),
+                )
+            }
+            (CTy::Arr(e), "contains") => {
+                let an = arr_name(e);
+                let eq = if matches!(**e, CTy::Str) {
+                    format!("maca_str_eq(_s.data[_i], {})", arg0())
+                } else {
+                    format!("_s.data[_i] == ({})", arg0())
+                };
+                (
+                    format!("({{ {an} _s = {rc}; bool _f = false; for (int64_t _i = 0; _i < _s.len; _i++) if ({eq}) {{ _f = true; break; }} _f; }})"),
+                    CTy::Bool,
+                )
+            }
+            (CTy::Arr(e), "index_of") => {
+                let an = arr_name(e);
+                let eq = if matches!(**e, CTy::Str) {
+                    format!("maca_str_eq(_s.data[_i], {})", arg0())
+                } else {
+                    format!("_s.data[_i] == ({})", arg0())
+                };
+                (
+                    format!("({{ {an} _s = {rc}; int64_t _r = -1; for (int64_t _i = 0; _i < _s.len; _i++) if ({eq}) {{ _r = _i; break; }} _r; }})"),
+                    CTy::Int,
+                )
+            }
+            (CTy::Arr(e), "sum") if matches!(**e, CTy::Int | CTy::Float | CTy::F32) => {
+                let an = arr_name(e);
+                let z = if matches!(**e, CTy::Float) { "0.0" } else { "0" };
+                (
+                    format!("({{ {an} _s = {rc}; {} _acc = {z}; for (int64_t _i = 0; _i < _s.len; _i++) _acc += _s.data[_i]; _acc; }})", c_type(e)),
+                    (**e).clone(),
+                )
+            }
+            (CTy::Arr(e), "min") if matches!(**e, CTy::Int | CTy::Float | CTy::F32) => {
+                let an = arr_name(e);
+                (
+                    format!("({{ {an} _s = {rc}; {ct} _acc = _s.len > 0 ? _s.data[0] : 0; for (int64_t _i = 1; _i < _s.len; _i++) if (_s.data[_i] < _acc) _acc = _s.data[_i]; _acc; }})", ct = c_type(e)),
+                    (**e).clone(),
+                )
+            }
+            (CTy::Arr(e), "max") if matches!(**e, CTy::Int | CTy::Float | CTy::F32) => {
+                let an = arr_name(e);
+                (
+                    format!("({{ {an} _s = {rc}; {ct} _acc = _s.len > 0 ? _s.data[0] : 0; for (int64_t _i = 1; _i < _s.len; _i++) if (_s.data[_i] > _acc) _acc = _s.data[_i]; _acc; }})", ct = c_type(e)),
+                    (**e).clone(),
+                )
+            }
+            (CTy::Arr(e), "first") => (format!("({rc}).data[0]"), (**e).clone()),
+            (CTy::Arr(e), "last") => {
+                let an = arr_name(e);
+                (format!("({{ {an} _s = {rc}; _s.data[_s.len - 1]; }})"), (**e).clone())
+            }
             // string stdlib — UFCS methods on `str` (gradual `Unknown` receivers
             // too, since foreign/inferred strings often land as Unknown).
             (CTy::Str | CTy::Unknown, "trim") => (format!("maca_trim({rc})"), CTy::Str),
@@ -2097,7 +2331,7 @@ impl<'a> Cx<'a> {
                 self.push("    }");
                 self.push("    maca_sb_putc(&sb, ']');");
             }
-            CTy::Unit | CTy::Unknown | CTy::Vec { .. } | CTy::Future => {
+            CTy::Unit | CTy::Unknown | CTy::Vec { .. } | CTy::Future | CTy::Closure => {
                 self.push("    maca_sb_puts(&sb, \"null\");")
             }
         }
@@ -2136,7 +2370,7 @@ impl<'a> Cx<'a> {
                 self.push("      }");
                 self.push(&format!("      {dest} = _acc; }}"));
             }
-            CTy::Unit | CTy::Unknown | CTy::Vec { .. } | CTy::Future => {
+            CTy::Unit | CTy::Unknown | CTy::Vec { .. } | CTy::Future | CTy::Closure => {
                 self.push(&format!("    {dest} = 0;"))
             }
         }
@@ -2195,6 +2429,7 @@ fn c_type(t: &CTy) -> String {
         CTy::Arr(e) => arr_name(e),
         CTy::Vec { name, .. } => name.clone(),
         CTy::Future => "maca_future*".into(),
+        CTy::Closure => "maca_closure".into(),
         CTy::Unknown => "int64_t".into(),
     }
 }
@@ -2209,7 +2444,7 @@ fn arr_name(elem: &CTy) -> String {
         CTy::Rec(n) | CTy::Sum(n) => format!("{n}Arr"),
         CTy::Vec { name, .. } => format!("{name}Arr"),
         CTy::Arr(e) => format!("{}Arr", arr_name(e)),
-        CTy::Unit | CTy::Unknown | CTy::Future => "IntArr".into(),
+        CTy::Unit | CTy::Unknown | CTy::Future | CTy::Closure => "IntArr".into(),
     }
 }
 
@@ -2449,6 +2684,7 @@ fn cty_tag(t: &CTy) -> String {
         CTy::Arr(e) => format!("arr{}", cty_tag(e)),
         CTy::Vec { name, .. } => name.clone(),
         CTy::Future => "future".into(),
+        CTy::Closure => "closure".into(),
         CTy::Unknown => "any".into(),
     }
 }
@@ -2457,30 +2693,183 @@ fn cty_tag(t: &CTy) -> String {
 /// `out`. Returns false if the body uses a form this increment doesn't hoist
 /// (blocks, control flow, records, …) — the caller then declines to hoist,
 /// which keeps capture analysis sound (no identifier can be missed).
-fn simple_free(e: &Expr, out: &mut HashSet<String>) -> bool {
+/// Box a C value of type `t` into an `int64_t` for the closure-call boundary.
+/// A `str` (pointer) fits via `intptr_t`; a `float`/`double` is bit-preserved.
+fn box_i64(code: &str, t: &CTy) -> String {
+    match t {
+        CTy::Str => format!("(int64_t)(intptr_t)({code})"),
+        CTy::Float => format!("maca_box_f64({code})"),
+        CTy::F32 => format!("maca_box_f64((double)({code}))"),
+        _ => format!("(int64_t)({code})"),
+    }
+}
+/// Unbox an `int64_t` boundary value back to a C value of type `t`.
+fn unbox_i64(code: &str, t: &CTy) -> String {
+    match t {
+        CTy::Str => format!("(maca_str)(intptr_t)({code})"),
+        CTy::Bool => format!("(bool)({code})"),
+        CTy::Float => format!("maca_unbox_f64({code})"),
+        CTy::F32 => format!("(float)maca_unbox_f64({code})"),
+        _ => format!("(int64_t)({code})"),
+    }
+}
+
+/// Collect the free variables of `e` — identifiers referenced but not bound by
+/// an enclosing binder inside `e` (lambda params, `for`/`match` patterns, block
+/// bindings). Used to compute a lambda's captures.
+fn free_vars(e: &Expr, bound: &HashSet<String>, out: &mut HashSet<String>) {
     match e {
         Expr::Ident(n) => {
-            out.insert(n.clone());
-            true
+            if !bound.contains(n) {
+                out.insert(n.clone());
+            }
         }
-        Expr::Int(_) | Expr::Float(_) | Expr::Bool(_) | Expr::Unit | Expr::Path(_) => true,
-        Expr::Str(parts) => parts.iter().all(|p| match p {
-            StrPart::Interp(x) => simple_free(x, out),
-            _ => true,
-        }),
-        Expr::Unary { expr, .. } | Expr::Try(expr) | Expr::Fail(expr) | Expr::Reify(expr) => {
-            simple_free(expr, out)
+        Expr::Int(_)
+        | Expr::Float(_)
+        | Expr::Bool(_)
+        | Expr::Unit
+        | Expr::Path(_)
+        | Expr::Break
+        | Expr::Continue => {}
+        Expr::Str(parts) => {
+            for p in parts {
+                if let StrPart::Interp(x) = p {
+                    free_vars(x, bound, out);
+                }
+            }
         }
-        Expr::Field { base, .. } => simple_free(base, out),
-        Expr::Binary { lhs, rhs, .. } => simple_free(lhs, out) && simple_free(rhs, out),
+        Expr::Unary { expr, .. }
+        | Expr::Try(expr)
+        | Expr::Fail(expr)
+        | Expr::Reify(expr)
+        | Expr::Await(expr)
+        | Expr::Spawn(expr) => free_vars(expr, bound, out),
+        Expr::Field { base, .. } => free_vars(base, bound, out),
+        Expr::Index { base, index } => {
+            free_vars(base, bound, out);
+            free_vars(index, bound, out);
+        }
+        Expr::Binary { lhs, rhs, .. } | Expr::Assign { target: lhs, value: rhs } => {
+            free_vars(lhs, bound, out);
+            free_vars(rhs, bound, out);
+        }
+        Expr::Range { lo, hi } => {
+            free_vars(lo, bound, out);
+            free_vars(hi, bound, out);
+        }
         Expr::Ternary { cond, then, els } => {
-            simple_free(cond, out) && simple_free(then, out) && simple_free(els, out)
+            free_vars(cond, bound, out);
+            free_vars(then, bound, out);
+            free_vars(els, bound, out);
         }
         Expr::Call { callee, args } => {
-            simple_free(callee, out) && args.iter().all(|a| simple_free(arg_expr(a), out))
+            free_vars(callee, bound, out);
+            for a in args {
+                free_vars(arg_expr(a), bound, out);
+            }
         }
-        Expr::List(es) => es.iter().all(|e| simple_free(e, out)),
-        _ => false,
+        Expr::List(es) => es.iter().for_each(|x| free_vars(x, bound, out)),
+        Expr::Record(fs) | Expr::Ctor { fields: fs, .. } => free_field_vars(fs, bound, out),
+        Expr::With { base, fields } => {
+            free_vars(base, bound, out);
+            free_field_vars(fields, bound, out);
+        }
+        Expr::Lambda { params, body } => {
+            let mut b = bound.clone();
+            for p in params {
+                b.insert(p.name.clone());
+            }
+            free_vars(body, &b, out);
+        }
+        Expr::If { cond, then, els } => {
+            free_vars(cond, bound, out);
+            free_vars_stmts(then, bound, out);
+            if let Some(e) = els {
+                free_vars_stmts(e, bound, out);
+            }
+        }
+        Expr::For { pat, iter, body } => {
+            free_vars(iter, bound, out);
+            let mut b = bound.clone();
+            bind_pat(pat, &mut b);
+            free_vars_stmts(body, &b, out);
+        }
+        Expr::While { cond, body } => {
+            free_vars(cond, bound, out);
+            free_vars_stmts(body, bound, out);
+        }
+        Expr::Match { scrut, arms } => {
+            free_vars(scrut, bound, out);
+            for a in arms {
+                let mut b = bound.clone();
+                bind_pat(&a.pat, &mut b);
+                if let Some(g) = &a.guard {
+                    free_vars(g, &b, out);
+                }
+                free_vars(&a.body, &b, out);
+            }
+        }
+        Expr::Block(stmts) => free_vars_stmts(stmts, bound, out),
+    }
+}
+
+fn free_field_vars(fs: &[Field], bound: &HashSet<String>, out: &mut HashSet<String>) {
+    for f in fs {
+        match f {
+            Field::Value { value, .. } | Field::Bare(value) => free_vars(value, bound, out),
+            Field::Shorthand(n) => {
+                if !bound.contains(n) {
+                    out.insert(n.clone());
+                }
+            }
+            Field::Type { .. } => {}
+        }
+    }
+}
+
+fn free_vars_stmts(stmts: &[Stmt], bound: &HashSet<String>, out: &mut HashSet<String>) {
+    let mut b = bound.clone();
+    for s in stmts {
+        match s {
+            Stmt::Bind(bd) => {
+                free_vars(&bd.value, &b, out);
+                if let Expr::Ident(n) = &bd.target {
+                    b.insert(n.clone());
+                }
+            }
+            Stmt::Expr(e) | Stmt::Alias { value: e, .. } => free_vars(e, &b, out),
+            Stmt::Fn(f) => {
+                b.insert(f.name.clone());
+            }
+            Stmt::Import(_) => {}
+        }
+    }
+}
+
+fn bind_pat(p: &Pattern, set: &mut HashSet<String>) {
+    match p {
+        Pattern::Bind(n) => {
+            set.insert(n.clone());
+        }
+        Pattern::Ctor { args, .. } => args.iter().for_each(|a| bind_pat(a, set)),
+        Pattern::List { elems, rest } => {
+            elems.iter().for_each(|e| bind_pat(e, set));
+            if let Some(r) = rest {
+                bind_pat(r, set);
+            }
+        }
+        Pattern::Record(fields) => {
+            for (n, sub) in fields {
+                match sub {
+                    Some(p) => bind_pat(p, set),
+                    None => {
+                        set.insert(n.clone());
+                    }
+                }
+            }
+        }
+        Pattern::Or(alts) => alts.iter().for_each(|a| bind_pat(a, set)),
+        _ => {}
     }
 }
 

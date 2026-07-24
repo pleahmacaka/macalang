@@ -247,6 +247,11 @@ fn roundtrip_async() {
 }
 
 #[test]
+fn roundtrip_collections() {
+    roundtrip("collections.maca");
+}
+
+#[test]
 fn await_and_spawn_bind_tighter_than_binary() {
     // `await a + await b` must parse as `(await a) + (await b)`.
     let m = parse("f() -> int => await a + await b\n").module;

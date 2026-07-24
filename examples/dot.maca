@@ -1,6 +1,14 @@
+// SIMD dot product over 8-lane f32 vectors (the LLVM span), alongside a
+// closure-based `.map` on the C path — two ways Maca goes fast.
 dot8(a: f32x8, b: f32x8) -> f32 => (a * b).sum()
 
-scale(xs: f32[], k: f32) -> f32[] {
-    kv = f32x8.splat(k)
-    xs.simd_map(8, v => v * kv)
+main() -> int {
+    a = f32x8.splat(2.0)
+    b = f32x8.splat(3.0)
+    d = dot8(a, b)                  // 8 lanes of 2*3 = 48.0
+
+    xs = 1, 2, 3, 4, 5
+    scaled = xs.map(v => v * 2)     // capturing-capable closures + map
+    info("dot8={str(d)} scaled_sum={scaled.sum()}")
+    0
 }

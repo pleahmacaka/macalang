@@ -77,6 +77,25 @@ maca_str maca_substr(maca_str s, int64_t start, int64_t len);  /* byte range, cl
 int64_t maca_index_of(maca_str s, maca_str sub);      /* byte index, or -1 */
 maca_str* maca_split(maca_str s, maca_str sep, int64_t* out_len); /* malloc'd maca_str[] */
 
+/* ---- closures ----
+ * A first-class function value: a code pointer plus a heap environment holding
+ * the captured variables. All lambdas lower to this uniform representation, so
+ * capturing and non-capturing lambdas (and higher-order stdlib methods like
+ * `.map`/`.filter`/`.reduce`) share one ABI. Arguments and results cross the
+ * boundary boxed as int64_t (a str/pointer fits; the caller casts back). */
+typedef struct { int64_t (*fn)(void*, int64_t); void* env; } maca_closure;
+typedef struct { int64_t (*fn)(void*, int64_t, int64_t); void* env; } maca_closure2;
+static inline int64_t maca_call1(maca_closure c, int64_t x) { return c.fn(c.env, x); }
+static inline int64_t maca_call2(maca_closure2 c, int64_t a, int64_t b) { return c.fn(c.env, a, b); }
+/* box/unbox a double across the int64 closure boundary (bit-preserving) */
+static inline int64_t maca_box_f64(double d) { int64_t r; memcpy(&r, &d, sizeof(r)); return r; }
+static inline double maca_unbox_f64(int64_t i) { double d; memcpy(&d, &i, sizeof(d)); return d; }
+
+/* in-place ascending sort helpers used by `xs.sort()` */
+void maca_sort_i64(int64_t* data, int64_t n);
+void maca_sort_f64(double* data, int64_t n);
+void maca_sort_str(maca_str* data, int64_t n);
+
 /* ---- growable string builder ---- */
 typedef struct { char* buf; size_t len; size_t cap; } maca_sb;
 void maca_sb_init(maca_sb* sb);
@@ -353,6 +372,22 @@ maca_str maca_substr(maca_str s, int64_t start, int64_t len) {
     memcpy(r, s + start, (size_t)len); r[len] = '\0';
     return r;
 }
+static int maca_cmp_i64(const void* a, const void* b) {
+    int64_t x = *(const int64_t*)a, y = *(const int64_t*)b;
+    return (x > y) - (x < y);
+}
+static int maca_cmp_f64(const void* a, const void* b) {
+    double x = *(const double*)a, y = *(const double*)b;
+    return (x > y) - (x < y);
+}
+static int maca_cmp_str(const void* a, const void* b) {
+    maca_str x = *(const maca_str*)a, y = *(const maca_str*)b;
+    return strcmp(x ? x : "", y ? y : "");
+}
+void maca_sort_i64(int64_t* data, int64_t n) { if (n > 1) qsort(data, (size_t)n, sizeof(int64_t), maca_cmp_i64); }
+void maca_sort_f64(double* data, int64_t n) { if (n > 1) qsort(data, (size_t)n, sizeof(double), maca_cmp_f64); }
+void maca_sort_str(maca_str* data, int64_t n) { if (n > 1) qsort(data, (size_t)n, sizeof(maca_str), maca_cmp_str); }
+
 maca_str* maca_split(maca_str s, maca_str sep, int64_t* out_len) {
     if (!s) s = "";
     size_t cap = 8, n = 0;
@@ -571,9 +606,11 @@ maca_str maca_json_str(maca_json* j) { return j && j->kind == MJ_STR && j->str ?
 pub const ASYNC_H: &str = r##"#ifndef MACA_ASYNC_H
 #define MACA_ASYNC_H
 #include <stdint.h>
+#include "maca_runtime.h"
 
-/* bounded parallel map over int64: ordered results, at most `max_conc` threads */
-int64_t* maca_parallel_i64(int64_t* xs, int64_t n, int64_t (*f)(int64_t), int max_conc);
+/* bounded parallel map over int64: ordered results, at most `max_conc` threads.
+ * `f` is a closure (see maca_runtime.h) so it may capture. */
+int64_t* maca_parallel_i64(int64_t* xs, int64_t n, maca_closure f, int max_conc);
 
 /* structured cancellation: workers poll a token; a demo proves they stop. */
 typedef struct { volatile int flag; } maca_cancel;
@@ -604,13 +641,13 @@ pub const ASYNC_C: &str = r##"#include "maca_async.h"
 
 #define MACA_MAX_THREADS 64
 
-typedef struct { int64_t* xs; int64_t* out; int64_t from, to; int64_t (*f)(int64_t); } pslice;
+typedef struct { int64_t* xs; int64_t* out; int64_t from, to; maca_closure f; } pslice;
 static void* pworker(void* arg) {
     pslice* s = (pslice*)arg;
-    for (int64_t i = s->from; i < s->to; i++) s->out[i] = s->f(s->xs[i]);
+    for (int64_t i = s->from; i < s->to; i++) s->out[i] = maca_call1(s->f, s->xs[i]);
     return NULL;
 }
-int64_t* maca_parallel_i64(int64_t* xs, int64_t n, int64_t (*f)(int64_t), int max_conc) {
+int64_t* maca_parallel_i64(int64_t* xs, int64_t n, maca_closure f, int max_conc) {
     int64_t* out = (int64_t*)maca_alloc((size_t)(n > 0 ? n : 1) * sizeof(int64_t));
     if (n <= 0) return out;
     int t = max_conc < 1 ? 1 : max_conc;

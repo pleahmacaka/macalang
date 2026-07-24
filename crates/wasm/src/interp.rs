@@ -29,6 +29,8 @@ pub enum Value {
     List(Vec<Value>),
     Record(Vec<(String, Value)>),
     Variant { tag: String, payload: Vec<Value> },
+    /// A closure: a lambda plus the scope it captured at creation time.
+    Closure { params: Vec<Param>, body: Box<Expr>, captured: Vec<(String, Value)> },
 }
 
 /// Non-local control flow: loop control, a raised failure, or the step/depth
@@ -510,8 +512,29 @@ impl<'a> Interp<'a> {
             // the value. Results match the concurrent runtime; only interleaving
             // (which the interpreter doesn't model) differs.
             Expr::Spawn(x) | Expr::Await(x) => self.eval(x, scope, depth),
-            Expr::Lambda { .. } => Ok(Value::Unit),
+            // a lambda captures its enclosing scope by value
+            Expr::Lambda { params, body } => Ok(Value::Closure {
+                params: params.clone(),
+                body: Box::new((**body).clone()),
+                captured: scope.clone(),
+            }),
         }
+    }
+
+    /// Apply a closure value to arguments (used by first-class calls and the
+    /// higher-order list methods).
+    fn call_closure(&mut self, c: &Value, args: Vec<Value>, depth: u64) -> Eval {
+        let Value::Closure { params, body, captured } = c else {
+            return Ok(Value::Unit);
+        };
+        if depth > DEPTH_LIMIT {
+            return Err(Signal::Limit("recursion too deep".into()));
+        }
+        let mut sc: Scope = captured.clone();
+        for (i, p) in params.iter().enumerate() {
+            sc.push((p.name.clone(), args.get(i).cloned().unwrap_or(Value::Unit)));
+        }
+        self.eval(body, &mut sc, depth + 1)
     }
 
     fn binary(&mut self, op: BinOp, lhs: &Expr, rhs: &Expr, scope: &mut Scope, depth: u64) -> Eval {
@@ -582,12 +605,104 @@ impl<'a> Interp<'a> {
             for a in args {
                 vals.push(self.eval(arg_expr(a), scope, depth)?);
             }
+            // a local holding a closure value: `f = v => …; f(x)`
+            if let Some((_, c @ Value::Closure { .. })) = scope.iter().rev().find(|(k, _)| k == name) {
+                let c = c.clone();
+                return self.call_closure(&c, vals, depth);
+            }
             return self.apply_named(name, vals, depth);
         }
         Ok(Value::Unit)
     }
 
+    /// Higher-order list methods: the receiver is `vals[0]` (a List) and the
+    /// callback/value is `vals[1]`. Returns `None` if `name` isn't one.
+    fn list_method(&mut self, name: &str, vals: &[Value], depth: u64) -> Option<Eval> {
+        let list = match vals.first() {
+            Some(Value::List(xs)) => xs.clone(),
+            _ => return None,
+        };
+        let f = vals.get(1).cloned();
+        let run = |me: &mut Self, c: &Value, x: Value| me.call_closure(c, vec![x], depth);
+        let out: Eval = match name {
+            "map" => {
+                let Some(c) = &f else { return Some(Ok(Value::List(list))) };
+                let mut r = Vec::with_capacity(list.len());
+                for x in list {
+                    match run(self, c, x) {
+                        Ok(v) => r.push(v),
+                        Err(e) => return Some(Err(e)),
+                    }
+                }
+                Ok(Value::List(r))
+            }
+            "filter" => {
+                let Some(c) = &f else { return Some(Ok(Value::List(list))) };
+                let mut r = Vec::new();
+                for x in list {
+                    match run(self, c, x.clone()) {
+                        Ok(v) => {
+                            if truthy(&v) {
+                                r.push(x);
+                            }
+                        }
+                        Err(e) => return Some(Err(e)),
+                    }
+                }
+                Ok(Value::List(r))
+            }
+            "reduce" | "fold" => {
+                let mut acc = f.clone().unwrap_or(Value::Unit);
+                let Some(c) = vals.get(2).cloned() else { return Some(Ok(acc)) };
+                for x in list {
+                    match self.call_closure(&c, vec![acc.clone(), x], depth) {
+                        Ok(v) => acc = v,
+                        Err(e) => return Some(Err(e)),
+                    }
+                }
+                Ok(acc)
+            }
+            "sort" => {
+                let mut r = list;
+                r.sort_by(cmp_values);
+                Ok(Value::List(r))
+            }
+            "reverse" => {
+                let mut r = list;
+                r.reverse();
+                Ok(Value::List(r))
+            }
+            "push" => {
+                let mut r = list;
+                if let Some(x) = f {
+                    r.push(x);
+                }
+                Ok(Value::List(r))
+            }
+            "pop" => {
+                let mut r = list;
+                r.pop();
+                Ok(Value::List(r))
+            }
+            "contains" => Ok(Value::Bool(f.map(|x| list.iter().any(|e| equal(e, &x))).unwrap_or(false))),
+            "index_of" => Ok(Value::Int(
+                f.and_then(|x| list.iter().position(|e| equal(e, &x))).map(|i| i as i64).unwrap_or(-1),
+            )),
+            "sum" => Ok(fold_num(&list, 0.0, |a, b| a + b)),
+            "min" => Ok(fold_minmax(&list, true)),
+            "max" => Ok(fold_minmax(&list, false)),
+            "first" => Ok(list.first().cloned().unwrap_or(Value::Unit)),
+            "last" => Ok(list.last().cloned().unwrap_or(Value::Unit)),
+            _ => return None,
+        };
+        Some(out)
+    }
+
     fn apply_named(&mut self, name: &str, vals: Vec<Value>, depth: u64) -> Eval {
+        // higher-order + list methods (UFCS on a List receiver)
+        if let Some(res) = self.list_method(name, &vals, depth) {
+            return res;
+        }
         // builtins
         match name {
             "info" | "warn" | "err" | "notice" | "debug" | "crit" | "alert" | "emerg" | "panic" => {
@@ -821,6 +936,44 @@ fn compare(op: BinOp, l: &Value, r: &Value) -> Value {
     })
 }
 
+/// Total order for `.sort()` — numeric by value, strings lexicographically.
+fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
+    match (a, b) {
+        (Value::Str(x), Value::Str(y)) => x.cmp(y),
+        _ => to_f64(a).partial_cmp(&to_f64(b)).unwrap_or(std::cmp::Ordering::Equal),
+    }
+}
+
+/// `.sum()` — Int if every element is an Int, else Float.
+fn fold_num(xs: &[Value], init: f64, op: fn(f64, f64) -> f64) -> Value {
+    let all_int = xs.iter().all(|v| matches!(v, Value::Int(_)));
+    let acc = xs.iter().fold(init, |a, v| op(a, to_f64(v)));
+    if all_int {
+        Value::Int(acc as i64)
+    } else {
+        Value::Float(acc)
+    }
+}
+
+/// `.min()` / `.max()` — preserves the element's own type; Unit on empty.
+fn fold_minmax(xs: &[Value], is_min: bool) -> Value {
+    let mut best: Option<&Value> = None;
+    for v in xs {
+        best = Some(match best {
+            None => v,
+            Some(b) => {
+                let take = if is_min {
+                    cmp_values(v, b) == std::cmp::Ordering::Less
+                } else {
+                    cmp_values(v, b) == std::cmp::Ordering::Greater
+                };
+                if take { v } else { b }
+            }
+        });
+    }
+    best.cloned().unwrap_or(Value::Unit)
+}
+
 fn equal(l: &Value, r: &Value) -> bool {
     match (l, r) {
         (Value::Int(a), Value::Int(b)) => a == b,
@@ -941,6 +1094,7 @@ fn display(v: &Value) -> String {
                 s
             }
         }
+        Value::Closure { .. } => "<closure>".to_string(),
     }
 }
 

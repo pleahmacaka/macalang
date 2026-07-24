@@ -208,18 +208,24 @@ fn reify_installs_a_handler() {
 }
 
 #[test]
-fn non_capturing_lambda_is_hoisted() {
+fn non_capturing_lambda_is_a_closure() {
     let out = c("main() -> int {\n    xs = 1, 2, 3\n    ys = xs.parallel(v => v + 1)\n    0\n}\n");
-    assert!(out.contains("static int64_t _lam0(int64_t v)"), "lambda not hoisted:\n{out}");
-    assert!(out.contains("return (v + 1);"), "lambda body wrong:\n{out}");
-    assert!(out.contains("_lam0, 4)") || out.contains("_lam0,4)"), "lambda not passed to parallel:\n{out}");
+    // a lambda lowers to a hoisted fn taking the closure env + a boxed arg
+    assert!(out.contains("static int64_t _lam0(void* _envp, int64_t _a0)"), "lambda not a closure:\n{out}");
+    assert!(out.contains("(v + 1)"), "lambda body wrong:\n{out}");
+    // non-capturing → a NULL environment
+    assert!(out.contains("NULL }"), "non-capturing closure should have a null env:\n{out}");
     assert!(!out.contains("unsupported"), "should be supported:\n{out}");
 }
 
 #[test]
-fn capturing_lambda_is_flagged_not_miscompiled() {
+fn capturing_lambda_builds_an_environment() {
+    // a captured outer variable `k` is stored in a heap env, not miscompiled.
     let out = c("main() -> int {\n    k = 3\n    xs = 1, 2\n    ys = xs.parallel(v => v * k)\n    0\n}\n");
-    assert!(out.contains("unsupported: capturing lambda"), "capture not flagged:\n{out}");
+    assert!(!out.contains("unsupported"), "capture wrongly flagged unsupported:\n{out}");
+    assert!(out.contains("_lam0_env"), "no capture env struct:\n{out}");
+    assert!(out.contains("_e->k = k;"), "capture not stored into the env:\n{out}");
+    assert!(out.contains("maca_alloc(sizeof(_lam0_env))"), "env not heap-allocated:\n{out}");
 }
 
 #[test]
@@ -362,4 +368,17 @@ fn spawn_and_await_lower_to_runtime_futures() {
     assert!(out.contains("maca_sleep_ms(1)"), "sleep_ms not lowered:\n{out}");
     assert!(out.contains("maca_future*"), "future type not emitted:\n{out}");
     assert!(!out.contains("unsupported"), "async miscompiled to unsupported:\n{out}");
+}
+
+#[test]
+fn closures_capture_and_list_methods_lower() {
+    // a capturing lambda becomes a heap env + maca_closure; map/filter/reduce
+    // lower to closure calls; sort/sum use the runtime/inline helpers.
+    let out = c("main() -> int {\n    xs = 1, 2, 3\n    k = 10\n    a = xs.map(v => v + k)\n    b = xs.filter(v => v > 1)\n    t = xs.reduce(0, (acc, x) => acc + x)\n    s = xs.sort()\n    info(\"{a[0]} {len(b)} {t} {s[0]} {xs.sum()}\")\n    0\n}\n");
+    assert!(out.contains("maca_closure"), "no closure type:\n{out}");
+    assert!(out.contains("_env"), "no capture env struct:\n{out}");
+    assert!(out.contains("maca_call1("), "map/filter don't call the closure:\n{out}");
+    assert!(out.contains("maca_call2("), "reduce doesn't use a 2-arg closure:\n{out}");
+    assert!(out.contains("maca_sort_i64"), "sort not lowered:\n{out}");
+    assert!(!out.contains("unsupported"), "closure/list method miscompiled:\n{out}");
 }

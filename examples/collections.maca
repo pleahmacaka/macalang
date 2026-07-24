@@ -1,0 +1,35 @@
+// First-class functions + the list stdlib. Lambdas capture their environment
+// (`k` below), and `.map`/`.filter`/`.reduce`/`.sort` and friends are UFCS
+// methods on any array.
+
+square(n: int) -> int => n * n
+
+main() -> int {
+    xs = 5, 3, 1, 4, 2
+
+    // map / filter / reduce (reduce's lambda takes two params)
+    k = 10
+    shifted = xs.map(v => v + k)          // capturing closure
+    squares = xs.map(v => square(v))
+    evens = xs.filter(v => v % 2 == 0)
+    total = xs.reduce(0, (acc, v) => acc + v)
+
+    // ordering + membership + folds
+    sorted = xs.sort()
+    reversed = xs.reverse()
+
+    info("shifted0={shifted[0]} sq2={squares[2]} evens={len(evens)} total={total}")
+    info("sorted={sorted[0]}{sorted[4]} rev={reversed[0]} sum={xs.sum()} min={xs.min()} max={xs.max()}")
+    info("has4={xs.contains(4)} idx1={xs.index_of(1)} first={xs.first()} last={xs.last()}")
+
+    // strings compose too: split → map(trim) → sort → join
+    names = "  bob , ALICE ,  eve ".split(",").map(s => s.trim().lower()).sort()
+    joined = names.join(", ")
+    info("names={joined}")
+
+    // first-class closure value
+    inc = n => n + 1
+    got = inc(41)
+    info("inc(41)={got}")
+    0
+}

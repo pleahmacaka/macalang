@@ -146,6 +146,13 @@ C-keyword-safe identifiers (a Maca `double`/`new`/`class` compiles); a string
 stdlib as UFCS methods on `str` (`split`→`str[]`, `trim`, `upper`/`lower`,
 `contains`, `starts_with`/`ends_with`, `replace`, `substr`, `index_of`; byte
 semantics, implemented in the runtime, C backend, and playground interpreter);
+**closures / first-class functions** (a lambda `v => …` captures its enclosing
+scope; lowered to a `maca_closure` = code pointer + heap env, one uniform ABI
+for capturing and non-capturing lambdas; args/results box through `int64_t` —
+str via `intptr_t`, float bit-preserved via `maca_box_f64`); a **list stdlib**
+as UFCS methods on any `T[]` (`map`/`filter`/`reduce`/`fold` take closures typed
+by the element; `sort`/`reverse`/`push`/`pop`/`contains`/`index_of`/`sum`/`min`/
+`max`/`first`/`last`; native + interpreter — `examples/collections.maca`);
 and raw triple-quoted strings (`"""…"""`) with `import js`/`import css` foreign
 blocks that let a `.maca` UI carry its own host glue and styles inline (see
 `playground/playground.maca`). Examples:

@@ -619,6 +619,26 @@ mod tests {
     }
 
     #[test]
+    fn closures_and_list_methods_run_in_interp() {
+        // capturing lambda + map/filter/reduce/sort/sum + first-class closure,
+        // all in the playground interpreter (must match the native C backend).
+        let src = "main() -> int {\n\
+            \x20   xs = 5, 3, 1, 4, 2\n\
+            \x20   k = 10\n\
+            \x20   shifted = xs.map(v => v + k)\n\
+            \x20   evens = xs.filter(v => v % 2 == 0)\n\
+            \x20   total = xs.reduce(0, (a, v) => a + v)\n\
+            \x20   sorted = xs.sort()\n\
+            \x20   inc = n => n + 1\n\
+            \x20   g = inc(41)\n\
+            \x20   info(\"{shifted[0]} {len(evens)} {total} {sorted[0]} {xs.sum()} {xs.max()} {g}\")\n\
+            \x20   0\n\
+            }\n";
+        let json = compile_json(src, 0);
+        assert!(json.contains("\"output\":\"15 2 15 1 15 5 42\\n\""), "closures interp wrong: {json}");
+    }
+
+    #[test]
     fn async_spawn_await_runs_in_interp() {
         // The playground interpreter runs colorblind async eagerly; results match
         // the concurrent native runtime (20 + 40 = 60).
