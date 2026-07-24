@@ -248,13 +248,111 @@ fn jexpr(e: &Expr) -> String {
             let upd = jrecord(fields);
             format!("{{ ...{}, ...{} }}", jexpr(base), upd)
         }
+        Expr::Assign { target, value } => format!("({} = {})", jexpr(target), jexpr(value)),
+        // JS is single-threaded in the UI; colorblind async runs eagerly (the
+        // event loop still interleaves), matching the playground interpreter.
+        Expr::Await(x) | Expr::Spawn(x) => jexpr(x),
+        Expr::Lambda { params, body } => {
+            let ps = params.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", ");
+            format!("(({ps}) => {})", jexpr(body))
+        }
+        Expr::Fail(x) => format!("(() => {{ throw new Error(String({})); }})()", jexpr(x)),
+        Expr::Reify(x) => format!("(() => {{ try {{ {}; return \"\"; }} catch (_e) {{ return String(_e.message); }} }})()", jexpr(x)),
+        Expr::Match { scrut, arms } => jmatch(scrut, arms),
         _ => "null".into(),
+    }
+}
+
+/// `match` in expression position → an IIFE with an if-chain. Handles literal,
+/// bind, wildcard, and or-patterns (primitives — what a UI handler needs);
+/// constructor patterns fall through to a binding (JS sum values are untagged).
+fn jmatch(scrut: &Expr, arms: &[Arm]) -> String {
+    let mut body = format!("(() => {{ const _s = {};", jexpr(scrut));
+    for a in arms {
+        let (cond, binds) = jpattern(&a.pat);
+        let guard = a.guard.as_ref().map(|g| format!(" && ({})", jexpr(g))).unwrap_or_default();
+        body.push_str(&format!(" if ({cond}{guard}) {{ {binds}return {}; }}", jexpr(&a.body)));
+    }
+    body.push_str(" })()");
+    body
+}
+
+/// (condition, binding-statements) for matching `_s` against `pat`.
+fn jpattern(pat: &Pattern) -> (String, String) {
+    match pat {
+        Pattern::Wild => ("true".into(), String::new()),
+        Pattern::Bind(n) => ("true".into(), format!("const {n} = _s; ")),
+        Pattern::Int(n) => (format!("_s === {n}"), String::new()),
+        Pattern::Float(f) => (format!("_s === {f}"), String::new()),
+        Pattern::Bool(b) => (format!("_s === {b}"), String::new()),
+        Pattern::Str(s) => (format!("_s === {s:?}"), String::new()),
+        Pattern::Or(alts) => {
+            let conds: Vec<String> = alts.iter().map(|p| jpattern(p).0).collect();
+            (format!("({})", conds.join(" || ")), String::new())
+        }
+        // untagged sum values: best effort — bind the scrutinee, always match
+        _ => ("true".into(), String::new()),
     }
 }
 
 /// A block used in expression position → an IIFE returning its value.
 fn jblock_expr(stmts: &[Stmt]) -> String {
     format!("(() => {{\n{}\n}})()", jblock(stmts))
+}
+
+/// Clone `e`, replacing every free reference to `from` with `Ident(to)`. Used to
+/// substitute a UI-handler lambda's parameter with the event value sentinel.
+fn subst_ident(e: &Expr, from: &str, to: &str) -> Expr {
+    let go = |x: &Expr| Box::new(subst_ident(x, from, to));
+    let field = |f: &Field| match f {
+        Field::Value { name, value } => Field::Value { name: name.clone(), value: subst_ident(value, from, to) },
+        Field::Bare(v) => Field::Bare(subst_ident(v, from, to)),
+        other => other.clone(),
+    };
+    match e {
+        Expr::Ident(n) if n == from => Expr::Ident(to.to_string()),
+        Expr::Str(parts) => Expr::Str(
+            parts
+                .iter()
+                .map(|p| match p {
+                    StrPart::Interp(x) => StrPart::Interp(subst_ident(x, from, to)),
+                    t => t.clone(),
+                })
+                .collect(),
+        ),
+        Expr::Unary { op, expr } => Expr::Unary { op: *op, expr: go(expr) },
+        Expr::Binary { op, lhs, rhs } => Expr::Binary { op: *op, lhs: go(lhs), rhs: go(rhs) },
+        Expr::Ternary { cond, then, els } => Expr::Ternary { cond: go(cond), then: go(then), els: go(els) },
+        Expr::Call { callee, args } => Expr::Call {
+            callee: go(callee),
+            args: args
+                .iter()
+                .map(|a| match a {
+                    Arg::Pos(x) => Arg::Pos(subst_ident(x, from, to)),
+                    Arg::Named { name, value } => Arg::Named { name: name.clone(), value: subst_ident(value, from, to) },
+                    Arg::Directive { kind, prop, value } => Arg::Directive { kind: *kind, prop: prop.clone(), value: subst_ident(value, from, to) },
+                })
+                .collect(),
+        },
+        Expr::Field { base, name } => Expr::Field { base: go(base), name: name.clone() },
+        Expr::Index { base, index } => Expr::Index { base: go(base), index: go(index) },
+        Expr::Assign { target, value } => Expr::Assign { target: go(target), value: go(value) },
+        Expr::List(es) => Expr::List(es.iter().map(|x| subst_ident(x, from, to)).collect()),
+        Expr::Record(fs) => Expr::Record(fs.iter().map(field).collect()),
+        Expr::Ctor { name, fields } => Expr::Ctor { name: name.clone(), fields: fields.iter().map(field).collect() },
+        Expr::With { base, fields } => Expr::With { base: go(base), fields: fields.iter().map(field).collect() },
+        Expr::Range { lo, hi } => Expr::Range { lo: go(lo), hi: go(hi) },
+        Expr::Try(x) => Expr::Try(go(x)),
+        Expr::Fail(x) => Expr::Fail(go(x)),
+        Expr::Reify(x) => Expr::Reify(go(x)),
+        Expr::Await(x) => Expr::Await(go(x)),
+        Expr::Spawn(x) => Expr::Spawn(go(x)),
+        // a nested lambda that rebinds `from` shadows it; otherwise descend
+        Expr::Lambda { params, body } if !params.iter().any(|p| p.name == from) => {
+            Expr::Lambda { params: params.clone(), body: go(body) }
+        }
+        other => other.clone(),
+    }
 }
 
 fn jbinary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
@@ -429,42 +527,14 @@ impl Cx {
         }
     }
 
-    /// JS for a value expression. `subst` replaces a lambda parameter.
+    /// JS for a value expression (event handlers, bindings, state init). Reuses
+    /// the full `jexpr` lowering, so handlers can call functions, do arithmetic,
+    /// index, match, etc. — not just literals. `subst` replaces a lambda
+    /// parameter (the event's `$v`) throughout the expression first.
     fn value(&self, e: &Expr, subst: Option<(&str, &str)>) -> String {
-        match e {
-            Expr::Str(parts) => format!("{:?}", plain_text(parts)),
-            Expr::Int(n) => n.to_string(),
-            Expr::Float(f) => format!("{f}"),
-            Expr::Bool(b) => b.to_string(),
-            Expr::Ident(n) => {
-                if let Some((p, v)) = subst {
-                    if n == p {
-                        return v.to_string();
-                    }
-                }
-                if self.state_names.contains(n) {
-                    format!("state.{n}")
-                } else {
-                    n.clone()
-                }
-            }
-            Expr::Call { callee, args } => match callee.as_ref() {
-                Expr::Ident(f) if f == "int" => {
-                    format!("(parseInt({}) || 0)", self.value(&arg_expr(&args[0]), subst))
-                }
-                Expr::Ident(f) if f == "str" => {
-                    format!("String({})", self.value(&arg_expr(&args[0]), subst))
-                }
-                _ => "null".into(),
-            },
-            Expr::Assign { target, value } => {
-                let t = match target.as_ref() {
-                    Expr::Ident(n) => format!("state.{n}"),
-                    _ => "_".into(),
-                };
-                format!("{t} = {}", self.value(value, subst))
-            }
-            _ => "null".into(),
+        match subst {
+            Some((from, to)) => jexpr(&subst_ident(e, from, to)),
+            None => jexpr(e),
         }
     }
 

@@ -108,3 +108,14 @@ fn foreign_import_blocks_embed_js_and_css() {
     assert!(out.js.find("window.hi").unwrap() < out.js.find("const state").unwrap(), "js not prepended:\n{}", out.js);
     assert!(out.css.contains(".x { color: red }"), "css not embedded:\n{}", out.css);
 }
+
+#[test]
+fn handlers_lower_full_expressions_not_null() {
+    // event handlers and bindings used to collapse to `null`; now they lower
+    // arithmetic, state reads, and the `$v` event value like any expression.
+    let out = js("count = 0\nstep = 2\nmain() -> Element =>\n    div(\n        button(on:click=(e => count = count + step) \"go\")\n        input(bind:value=(v => count = int(v) * 2))\n    )\n");
+    assert!(out.contains("state.count = (state.count + state.step)"), "click handler wrong:\n{out}");
+    assert!(out.contains("e.target.value"), "bind value not substituted:\n{out}");
+    // the `int(v) * 2` binding must compute, not collapse to a null assignment
+    assert!(!out.contains("state.count = null"), "handler collapsed to null:\n{out}");
+}
