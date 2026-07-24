@@ -4,11 +4,12 @@
 //!  1. Every `selfhost/*.maca` must parse with no errors, and the whole thing —
 //!     concatenated so cross-file references resolve — must type-/effect-check
 //!     clean under the stage-0 front-end.
-//!  2. Where a native toolchain is present, the concatenated front-end is
-//!     actually *compiled and run*: the Maca-written lexer → recursive-descent
-//!     parser → AST pretty-printer must produce the expected output. That is the
-//!     real self-hosting milestone — the compiler's own front-end, written in
-//!     Maca, executing as a native binary.
+//!  2. Where a native toolchain is present, the compiler is actually *compiled
+//!     and run*: the Maca-written lexer → parser (with precedence) → checker →
+//!     C emitter processes expressions, functions, and whole modules. As a
+//!     capstone, the complete program it emits is compiled by the host cc and
+//!     executed — its exit code proves the self-hosted compiler produced a
+//!     working executable, not just a plausible-looking string.
 
 use maca_core::{Mode, check};
 use std::fs;
@@ -178,5 +179,44 @@ fn selfhost_frontend_compiles_and_runs() {
     assert!(
         stdout.contains("block fn: int sq(int n) { int t = (n * n); return t;"),
         "block-body emission wrong: {stdout}"
+    );
+
+    // Capstone: compile and run the *complete program* the self-hosted compiler
+    // emitted. Extract the C between the markers, compile it with the host cc,
+    // run it, and check its exit code is `sq(9) == 81` — the Maca-written
+    // compiler produced a working executable.
+    let c_src = stdout
+        .split_once("=== emitted program ===")
+        .and_then(|(_, rest)| rest.split_once("=== end program ==="))
+        .map(|(prog, _)| prog.trim().to_string())
+        .expect("emitted-program markers present");
+    assert!(
+        c_src.contains("int sq(int n)") && c_src.contains("int main()"),
+        "emitted program missing functions:\n{c_src}"
+    );
+    let cfile = dir.join("emitted.c");
+    std::fs::write(&cfile, &c_src).unwrap();
+    let ebin = dir.join("emitted");
+    let cc = Command::new("cc")
+        .args([
+            &cfile.to_string_lossy().to_string(),
+            "-o",
+            &ebin.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn cc");
+    assert!(
+        cc.status.success(),
+        "self-host-emitted C failed to compile:\n{}\n--- source ---\n{c_src}",
+        String::from_utf8_lossy(&cc.stderr)
+    );
+    let code = Command::new(&ebin)
+        .status()
+        .expect("run emitted program")
+        .code();
+    assert_eq!(
+        code,
+        Some(81),
+        "self-host-emitted program returned {code:?}, expected sq(9) == 81"
     );
 }

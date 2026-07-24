@@ -45,9 +45,13 @@ The stage-1 **front-end now compiles and runs as a native binary.** The gate,
    lexer + parser turn `add(1) + 2 - 3` into the AST `((add(1) + 2) - 3)`, the
    Maca-written checker infers its type (`int`, no errors) and flags a
    `str + int` clash, and the Maca-written emitter lowers it back to C:
-   `int main(void) { return ((add(1) + 2) - 3); }`. It also parses and emits a
-   whole function — `add(x: int, y: int) -> int => x + y` becomes
-   `int add(int x, int y) { return (x + y); }`, valid C that compiles.
+   `int main(void) { return ((add(1) + 2) - 3); }`. It also parses and emits
+   whole functions (arrow and `{ … }` block bodies), applies operator
+   precedence (`2 + 3 * 4` → `(2 + (3 * 4))`), scans string literals, and
+   type-checks whole modules. As a capstone the gate compiles and **runs** the
+   program the self-hosted compiler emits for
+   `sq(n: int) -> int { t = n * n  t }  main() -> int { sq(9) }` — its exit
+   code (`sq(9) == 81`) proves the output is a working executable.
 
 Step 3 is the real milestone — the compiler's own pipeline, written in Maca,
 executing through the stage-0 C backend. Getting there grew the backend two
