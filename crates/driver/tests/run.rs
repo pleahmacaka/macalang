@@ -286,6 +286,21 @@ console.log(JSON.stringify({tag:root.tagName,cls:root.className,kids:root.childr
 "#;
 
 #[test]
+fn build_auto_detects_ui_target() {
+    // no --target on a view (`-> Element`) auto-selects js instead of failing
+    // on the native path with confusing linker errors.
+    let dir = std::env::temp_dir().join("maca-detect-ui");
+    let _ = std::fs::remove_dir_all(&dir);
+    let r = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["build", &example("counter.maca"), "-o", &dir.to_string_lossy()])
+        .output()
+        .expect("spawn maca");
+    let err = String::from_utf8_lossy(&r.stderr);
+    assert!(err.contains("--target js"), "no js auto-detect note:\n{err}");
+    assert!(r.status.success(), "auto-detected js build failed:\n{err}");
+}
+
+#[test]
 fn js_ui_renders_and_binds() {
     if !wsl_ready() {
         eprintln!("skipping js_ui_renders_and_binds: wsl not available");

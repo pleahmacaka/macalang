@@ -450,13 +450,17 @@ fn cmd_build(args: &[String]) {
     let mut src = None;
     let mut out = None;
     let mut target = "native".to_string();
+    let mut explicit_target = false;
     let mut classpath = None;
     let mut mcu = String::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "-o" => out = it.next().map(PathBuf::from),
-            "--target" => target = it.next().cloned().unwrap_or_else(|| "native".into()),
+            "--target" => {
+                target = it.next().cloned().unwrap_or_else(|| "native".into());
+                explicit_target = true;
+            }
             "--cp" | "--classpath" => classpath = it.next().cloned(),
             "--mcu" => mcu = it.next().cloned().unwrap_or_default(),
             _ => src = Some(PathBuf::from(a)),
@@ -465,6 +469,17 @@ fn cmd_build(args: &[String]) {
     let Some(src) = src else {
         die("build: expected a .maca file");
     };
+    // Auto-detect config (nix) / UI (js) sources so a bare `maca build` doesn't
+    // fall through to the native path and emit confusing cc/linker errors.
+    if !explicit_target {
+        if let Ok(source) = std::fs::read_to_string(&src) {
+            let parsed = maca_parser::parse(&source);
+            if let Some((detected, why)) = detect_target(&parsed.module) {
+                eprintln!("note: {why}; building --target {detected} (pass --target to override)");
+                target = detected.to_string();
+            }
+        }
+    }
     if target == "nix" {
         let out = out.unwrap_or_else(|| PathBuf::from(format!("{}.nix", stem(&src))));
         match build_nix(&src, &out) {
@@ -500,6 +515,31 @@ fn cmd_build(args: &[String]) {
         Ok(()) => println!("built {}", out.display()),
         Err(e) => die(&e),
     }
+}
+
+/// Infer a non-native build target from the source shape, so a bare
+/// `maca build` on a config or UI file does the right thing instead of failing
+/// on the native path. Only fires on unambiguous signals.
+fn detect_target(m: &maca_parser::Module) -> Option<(&'static str, &'static str)> {
+    use maca_parser::{Import, Stmt, Type};
+    // config mode: imports nixpkgs
+    let imports_nixpkgs = m.items.iter().any(|it| match it {
+        Stmt::Import(Import::Module(segs)) => segs.last().map(String::as_str) == Some("nixpkgs"),
+        Stmt::Import(Import::Bare(n)) => n == "nixpkgs",
+        _ => false,
+    });
+    if imports_nixpkgs {
+        return Some(("nix", "source imports nixpkgs (config mode)"));
+    }
+    // UI mode: a function returns `Element`
+    let returns_element = m.items.iter().any(|it| match it {
+        Stmt::Fn(f) => matches!(&f.ret, Some(Type::Name(segs)) if segs.last().map(String::as_str) == Some("Element")),
+        _ => false,
+    });
+    if returns_element {
+        return Some(("js", "a view returns Element (reactive-UI mode)"));
+    }
+    None
 }
 
 /// Config mode → a NixOS module. Checked in the pure `<>` config context.
