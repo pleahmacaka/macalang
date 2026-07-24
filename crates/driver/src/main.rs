@@ -1075,6 +1075,66 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
         return Ok(());
     }
 
+    // PostgreSQL FFI (`import c "libpq-fe.h"`): link libpq.
+    if c_imports
+        .iter()
+        .any(|h| h.contains("libpq") || h.contains("postgres"))
+    {
+        maca_runtime::write_pg_glue(&dir).map_err(|e| e.to_string())?;
+        // Plain Linux host: locate libpq via pg_config.
+        if !have_wsl() {
+            let inc = capture_cmd("pg_config", &["--includedir"])?;
+            let libdir = capture_cmd("pg_config", &["--libdir"])?;
+            let o = Command::new("cc")
+                .arg(dir.join("main.c"))
+                .arg(dir.join("maca_runtime.c"))
+                .arg(dir.join("maca_ffi_pg.c"))
+                .arg("-I")
+                .arg(&dir)
+                .arg(format!("-I{inc}"))
+                .arg(format!("-L{libdir}"))
+                .arg(format!("-Wl,-rpath,{libdir}"))
+                .args(["-lpq", "-O2", "-o"])
+                .arg(out)
+                .output()
+                .map_err(|e| format!("failed to run cc: {e}"))?;
+            if !o.status.success() {
+                return Err(format!(
+                    "pg ffi build (host cc) failed:\n{}",
+                    String::from_utf8_lossy(&o.stderr)
+                ));
+            }
+            return Ok(());
+        }
+        let dev = nix_out("nixpkgs#postgresql.dev")?;
+        let lib = nix_out("nixpkgs#postgresql.lib")?;
+        let mut args: Vec<String> = ["nix", "shell", "nixpkgs#zig", "-c", "zig", "cc"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        args.push(to_wsl(&dir.join("main.c")));
+        args.push(to_wsl(&dir.join("maca_runtime.c")));
+        args.push(to_wsl(&dir.join("maca_ffi_pg.c")));
+        args.push(format!("-I{dev}/include"));
+        args.push(format!("-L{lib}/lib"));
+        args.push("-lpq".into());
+        args.push(format!("-Wl,-rpath,{lib}/lib"));
+        args.push("-O2".into());
+        args.push("-o".into());
+        args.push(to_wsl(out));
+        let o = Command::new("wsl")
+            .args(&args)
+            .output()
+            .map_err(|e| format!("failed to run zig via wsl: {e}"))?;
+        if !o.status.success() {
+            return Err(format!(
+                "pg ffi build failed:\n{}",
+                String::from_utf8_lossy(&o.stderr)
+            ));
+        }
+        return Ok(());
+    }
+
     // Python FFI (feature-gated): embeds CPython.
     if parsed.module.items.iter().any(|it| {
         matches!(it, maca_parser::Stmt::Import(maca_parser::Import::Foreign { lang, .. }) if lang == "py")

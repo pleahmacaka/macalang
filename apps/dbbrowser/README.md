@@ -1,8 +1,23 @@
-# dbbrowser — a SQLite browser, in Maca
+# dbbrowser — a database browser, in Maca
 
-A small database browser (`browser.maca`) — the capstone the language grew its
-string/list stdlib, closures, and result-set FFI for. It opens a SQLite
-database, lists its tables, and prints query results as an aligned table.
+Database browsers over the C FFI — the capstone the language grew its string/
+list stdlib, closures, and result-set FFI for. They open a database, list its
+tables, and print query results as an aligned table. The browser logic is all
+Maca; only the thin binding is C.
+
+- **`pgbrowser.maca`** — **PostgreSQL** over libpq. A connection is opened with
+  an explicit **permission mode**: read-only (the *server* rejects every write)
+  or read-write. `pg_connect(dsn, readonly)` sets
+  `default_transaction_read_only`, so a read-only browser physically cannot
+  mutate the database — the write probe is refused with "cannot execute in a
+  read-only transaction". Connection info comes from libpq (`PGHOST`/`PGDATABASE`
+  /`PGUSER` env vars or an explicit DSN).
+
+  ```sh
+  maca run apps/dbbrowser/pgbrowser.maca   # needs libpq-dev + a reachable server
+  ```
+
+- **`browser.maca`** — **SQLite**, self-contained (in-memory demo).
 
 ```sh
 maca run apps/dbbrowser/browser.maca

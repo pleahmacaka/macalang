@@ -896,6 +896,59 @@ pub fn write_py_glue(dir: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// FFI binding glue for `import c "libpq-fe.h"` — a PostgreSQL client over
+/// libpq. Opaque `int` handles for the connection and result; row/column
+/// access mirrors the sqlite glue. A connection can be opened **read-only**
+/// (the server itself then rejects writes) or read-write.
+pub const PG_GLUE: &str = r#"#include <libpq-fe.h>
+#include "maca_runtime.h"
+
+static int64_t pg_h(void* p) { return (int64_t)(intptr_t)p; }
+static PGconn* pg_c(int64_t x) { return (PGconn*)(intptr_t)x; }
+static PGresult* pg_r(int64_t x) { return (PGresult*)(intptr_t)x; }
+static maca_str pg_dup(const char* t) {
+    if (!t) return "";
+    size_t n = strlen(t);
+    char* b = (char*)maca_alloc(n + 1);
+    memcpy(b, t, n + 1);
+    return b;
+}
+
+/* connect; `readonly` makes the whole session reject writes at the server.
+ * Returns a connection handle, or 0 on failure. */
+int64_t pg_connect(maca_str conninfo, bool readonly) {
+    PGconn* c = PQconnectdb(conninfo ? conninfo : "");
+    if (PQstatus(c) != CONNECTION_OK) { PQfinish(c); return 0; }
+    if (readonly) {
+        /* server-enforced read-only: any INSERT/UPDATE/DELETE/DDL now errors */
+        PQclear(PQexec(c, "SET default_transaction_read_only = on"));
+        PQclear(PQexec(c, "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY"));
+    }
+    return pg_h(c);
+}
+maca_str pg_error(int64_t c) { return pg_dup(PQerrorMessage(pg_c(c))); }
+int64_t pg_finish(int64_t c) { PQfinish(pg_c(c)); return 0; }
+
+/* run a statement; returns a result handle (query rows or command status) */
+int64_t pg_query(int64_t c, maca_str sql) { return pg_h(PQexec(pg_c(c), sql)); }
+/* true if the statement succeeded (tuples or command ok) */
+bool pg_ok(int64_t r) {
+    ExecStatusType s = PQresultStatus(pg_r(r));
+    return s == PGRES_TUPLES_OK || s == PGRES_COMMAND_OK;
+}
+maca_str pg_result_error(int64_t r) { return pg_dup(PQresultErrorMessage(pg_r(r))); }
+int64_t pg_ntuples(int64_t r) { return PQntuples(pg_r(r)); }
+int64_t pg_nfields(int64_t r) { return PQnfields(pg_r(r)); }
+maca_str pg_fname(int64_t r, int64_t col) { return pg_dup(PQfname(pg_r(r), (int)col)); }
+maca_str pg_getvalue(int64_t r, int64_t row, int64_t col) { return pg_dup(PQgetvalue(pg_r(r), (int)row, (int)col)); }
+int64_t pg_clear(int64_t r) { PQclear(pg_r(r)); return 0; }
+"#;
+
+pub fn write_pg_glue(dir: &std::path::Path) -> std::io::Result<()> {
+    std::fs::write(dir.join("maca_ffi_pg.c"), PG_GLUE)?;
+    Ok(())
+}
+
 /// `std/mqtt` engine (for `import c "mqtt.h"`): a minimal MQTT 3.1.1 broker +
 /// client over TCP — CONNECT/CONNACK, SUBSCRIBE/SUBACK, PUBLISH (QoS 0),
 /// PINGREQ, and `+`/`#` topic wildcards. Threaded (one thread per client) so

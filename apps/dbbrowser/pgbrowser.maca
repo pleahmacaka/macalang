@@ -1,0 +1,118 @@
+// pgbrowser — a PostgreSQL browser in Maca, over the libpq FFI. A connection
+// is opened with an explicit permission: read-only (the server rejects every
+// write) or read-write. The browser logic is all Maca; only the thin libpq
+// binding is C (`import c "libpq-fe.h"`, glue in maca-runtime).
+
+import c "libpq-fe.h"
+
+// connect with a permission mode: readonly=true → the whole session is
+// read-only and the server errors on any INSERT/UPDATE/DELETE/DDL.
+pg_connect(conninfo: str, readonly: bool) -> int
+pg_error(conn: int) -> str
+pg_finish(conn: int) -> int
+pg_query(conn: int, sql: str) -> int
+pg_ok(res: int) -> bool
+pg_result_error(res: int) -> str
+pg_ntuples(res: int) -> int
+pg_nfields(res: int) -> int
+pg_fname(res: int, col: int) -> str
+pg_getvalue(res: int, row: int, col: int) -> str
+pg_clear(res: int) -> int
+
+// left-justify `s` into a `w`-wide cell
+pad(s: str, w: int) -> str {
+    out = s
+    i = len(s)
+    while i < w {
+        out = "{out} "
+        i = i + 1
+    }
+    out
+}
+
+rule(w: int) -> str {
+    out = ""
+    i = 0
+    while i < w {
+        out = "{out}-"
+        i = i + 1
+    }
+    out
+}
+
+// run a query and print its result set as an aligned table
+browse(conn: int, sql: str) -> int {
+    res = pg_query(conn, sql)
+    if pg_ok(res) {
+        ncols = pg_nfields(res)
+        cell = 18
+
+        header = ""
+        j = 0
+        while j < ncols {
+            header = "{header}{pad(pg_fname(res, j), cell)}"
+            j = j + 1
+        }
+        info(header)
+        info(rule(ncols * cell))
+
+        nrows = pg_ntuples(res)
+        r = 0
+        while r < nrows {
+            line = ""
+            c = 0
+            while c < ncols {
+                line = "{line}{pad(pg_getvalue(res, r, c), cell)}"
+                c = c + 1
+            }
+            info(line)
+            r = r + 1
+        }
+        info("({nrows} rows)")
+    } else {
+        info("query error: {pg_result_error(res)}")
+    }
+    pg_clear(res)
+    0
+}
+
+// list the user tables in the public schema
+tables(conn: int) -> int {
+    info("tables:")
+    browse(conn, "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
+}
+
+// demonstrate the permission mode: attempt a write and report whether the
+// server allowed it (it won't, on a read-only connection).
+try_write(conn: int) -> int {
+    res = pg_query(conn, "CREATE TEMP TABLE _probe(x int)")
+    if pg_ok(res) {
+        info("write permission: read-write (probe table created)")
+    } else {
+        info("write permission: READ-ONLY (server refused: {pg_result_error(res)})")
+    }
+    pg_clear(res)
+    0
+}
+
+main() -> int {
+    // Read-only by default — a browser should look, not touch. Flip the flag
+    // to open read-write. Connection string comes from libpq (PG* env vars or
+    // an explicit DSN like "host=localhost dbname=mydb user=me").
+    readonly = true
+    mode = readonly ? "read-only" : "read-write"
+    conn = pg_connect("", readonly)
+
+    if conn == 0 {
+        info("could not connect: {pg_error(conn)}")
+        info("(set PGHOST/PGDATABASE/PGUSER or pass a DSN)")
+    } else {
+        info("connected ({mode})")
+        tables(conn)
+        info("")
+        try_write(conn)
+        pg_finish(conn)
+        info("done")
+    }
+    0
+}
