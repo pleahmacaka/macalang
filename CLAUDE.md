@@ -116,7 +116,9 @@ Backends: native C (default), LLVM (SIMD span), Nix (config mode), JS
 (reactive UI), JVM (Java source / Minecraft-Fabric interop), and embedded
 (freestanding C for Cortex-M / RISC-V). Driver: `build` (`--target
 nix|js|jvm|embedded|tauri`, `--mcu`, `--cp`), `run`, `dev` (dev-shell flake),
-`watch`, `fmt`, `lint`, `profile`, `init`. The native `build`/`run` path
+`watch`, `fmt`, `lint`, `profile`, `init`, `bindgen` (C header → Maca FFI
+declarations: `char*`→`str`, other pointers→opaque `int`, float family→`float`).
+The native `build`/`run` path
 resolves local imports: `import a/b` (and single-word `import a`) inlines a
 sibling `<a/b>.maca` / `<a>.maca` module, transitively, in dependency order, so
 a program can span files (`maca build selfhost/main.maca` builds the whole

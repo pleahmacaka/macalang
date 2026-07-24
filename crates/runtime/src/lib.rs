@@ -772,7 +772,8 @@ pub fn write_async(dir: &std::path::Path) -> std::io::Result<()> {
 /// FFI binding glue for `import c "sqlite3.h"`. These thin wrappers own the
 /// C-side pointers (`sqlite3*`, `sqlite3_stmt*`) that Maca surface syntax can't
 /// express, and expose plain `str`/`int` signatures. Real libsqlite3 does the
-/// work. (Auto-generating bindings from a clang header parse is future work.)
+/// work. (For a new library, `maca bindgen <header.h>` scaffolds the extern
+/// declarations from its prototypes.)
 pub const SQLITE_GLUE: &str = r#"#include "maca_runtime.h"
 #include <sqlite3.h>
 

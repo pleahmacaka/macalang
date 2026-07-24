@@ -11,6 +11,7 @@ use std::process::Command;
 
 use maca_profile as profile;
 
+mod bindgen;
 mod build_cache;
 mod deps;
 
@@ -31,6 +32,7 @@ fn main() {
         Some("add") => deps::cmd_add(&args[1..]),
         Some("update") => deps::cmd_update(&args[1..]),
         Some("upgrade") => deps::cmd_upgrade(&args[1..]),
+        Some("bindgen") => bindgen::cmd_bindgen(&args[1..]),
         Some("--help" | "-h" | "help") | None => usage(),
         Some(other) => {
             // maca.toml [scripts] alias?
@@ -483,6 +485,7 @@ fn usage() {
          \x20 add   <spec>…               add a dependency (npm:pkg | git+url | name@ver)\n\
          \x20 update                      re-resolve dependencies to latest\n\
          \x20 upgrade                     self-update the maca toolchain\n\
+         \x20 bindgen <header.h> [-o f]   generate Maca FFI declarations from a C header\n\
          \x20 --version                    print the toolchain version\n\
          \n\
          build targets: native (default), --target nix | js | jvm | embedded | tauri\n\
