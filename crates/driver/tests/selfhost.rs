@@ -21,6 +21,7 @@ const SELFHOST_FILES: &[&str] = &[
     "ast.maca",
     "lexer.maca",
     "parser.maca",
+    "check.maca",
     "main.maca",
 ];
 
@@ -128,5 +129,15 @@ fn selfhost_frontend_compiles_and_runs() {
     assert!(
         stdout.contains("parsed: ((add(1) + 2) - 3)"),
         "parser/AST output wrong: {stdout}"
+    );
+    // checker (check.maca): the well-typed tree infers `int` with no errors,
+    // and a `str + int` clash is reported as a type error.
+    assert!(
+        stdout.contains("checked: type int, 0 errors"),
+        "checker output wrong (good tree): {stdout}"
+    );
+    assert!(
+        stdout.contains("type error, 1 errors"),
+        "checker didn't flag the str+int clash: {stdout}"
     );
 }

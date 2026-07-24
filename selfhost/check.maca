@@ -1,0 +1,45 @@
+// selfhost/check — a coarse type checker over the AST, written in Maca.
+//
+// Infers a simple type for each expression and counts the mismatches. This is
+// the seed `check.maca` grows into: the full gradual checker (HM generalization,
+// row unification, effect rows) lands here, in Maca, not in the Rust stage-0.
+// Today it models the one rule the acceptance set cares about most —
+// arithmetic over disagreeing types is a `TypeMismatch` — with a gradual `any`
+// escape hatch for unknown bindings, mirroring `maca-core`.
+
+import selfhost/token
+import selfhost/ast
+
+// Coarse type of an expression: "int" | "str" | "bool" | "any" | "error".
+type_of(e: Expr) -> str =>
+    match e.kind {
+        EInt    => "int"
+        EFloat  => "float"
+        EStr    => "str"
+        EBool   => "bool"
+        EIdent  => "any"     // an unknown binding stays gradual
+        ECall   => "any"     // a call's result type isn't tracked in this slice
+        EBinary => binop_type(e)
+        _       => "any"
+    }
+
+// Arithmetic combines like numbers; a gradual `any` operand keeps the result
+// usable; anything else (e.g. `str + int`) is a type error.
+binop_type(e: Expr) -> str {
+    lt = type_of(e.children.get(0))
+    rt = type_of(e.children.get(1))
+    lt == "any" || rt == "any"
+        ? "int"
+        : lt == rt && (lt == "int" || lt == "float")
+            ? lt
+            : "error"
+}
+
+// Total mismatch count in the whole subtree.
+count_errors(e: Expr) -> int =>
+    (type_of(e) == "error" ? 1 : 0) + children_errors(e.children, 0)
+
+children_errors(xs: Expr[], i: int) -> int =>
+    i >= xs.length()
+        ? 0
+        : count_errors(xs.get(i)) + children_errors(xs, i + 1)

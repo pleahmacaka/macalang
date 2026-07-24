@@ -29,8 +29,8 @@ cmp maca1 maca2                             # fixed point ⇒ self-hosted
 | `ast.maca` | 1 | the recursive `Expr`/`Stmt`/`Module` AST + an AST pretty-printer |
 | `lexer.maca` | 1 | character-level scanner (`lex : str -> Token[]`) |
 | `parser.maca` | 1 | recursive-descent over the token stream → `Expr` |
-| `main.maca` | 1 | driver entry; lexes + parses + prints a sample |
-| `check.maca` | — | *next*: types + effects |
+| `check.maca` | 1 | a coarse type checker (infers `int`/`str`/…, counts mismatches) |
+| `main.maca` | 1 | driver entry; lexes + parses + checks a sample |
 | `emit_c.maca` | — | *next*: AST → C |
 
 ## What's proven today
@@ -42,7 +42,8 @@ The stage-1 **front-end now compiles and runs as a native binary.** The gate,
 2. the concatenated module **type-/effect-checks clean**, and
 3. where a native `cc` is available, the concatenated front-end **builds and
    runs**: the Maca-written lexer → recursive-descent parser → AST printer turns
-   `add(1) + 2 - 3` into `((add(1) + 2) - 3)`.
+   `add(1) + 2 - 3` into `((add(1) + 2) - 3)`, and the Maca-written checker
+   infers its type (`int`, no errors) while flagging a `str + int` clash.
 
 Step 3 is the real milestone — the compiler's own front-end, written in Maca,
 executing through the stage-0 C backend. Getting there grew the backend two
@@ -58,8 +59,8 @@ with a C forward declaration that breaks the struct/array definition cycle).
 - [x] `parser.maca` — recursive-descent over the token stream
 - [x] recursive AST (`ast.maca`) — the stage-0 backend lowers recursive records
 - [x] stage-1 front-end builds + runs natively (the `selfhost.rs` run gate)
-- [ ] `check.maca` — port the gradual checker (HM generalization, row
-      unification, monomorphization all land here, not in Rust)
+- [x] `check.maca` — a coarse type checker (int/str/float, gradual `any`,
+      mismatch counting); grows into full HM generalization + row unification
 - [ ] `emit_c.maca` — C emitter
 - [ ] the remaining backend growth for a full compiler (higher-order params,
       nested modules / multi-file builds)

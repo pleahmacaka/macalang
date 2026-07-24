@@ -68,9 +68,9 @@ crates; only touch stage-0 for genuine bootstrap bugs (e.g. a parser that hangs
 or mis-parses valid surface syntax).
 
 The stage-1 **front-end already runs natively**: the Maca-written lexer →
-recursive-descent parser → recursive-`Expr` AST + pretty-printer compiles
-through the stage-0 C backend and executes (the `selfhost.rs` run gate builds
-it with the host `cc` and checks the output). The two backend features that
+recursive-descent parser → recursive-`Expr` AST + pretty-printer → coarse type
+checker (`check.maca`) compiles through the stage-0 C backend and executes (the
+`selfhost.rs` run gate builds it with the host `cc` and checks the output). The two backend features that
 enabled it are shared by the whole language: the `std/str` scan primitives
 (`chars`/`length`/`at`/`get`/`slice` + `is_whitespace`/`is_ascii_digit`/
 `is_alpha`) and **recursive record types** (a self-referential field like
