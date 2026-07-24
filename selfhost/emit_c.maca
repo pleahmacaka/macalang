@@ -1,0 +1,40 @@
+// selfhost/emit_c — a C emitter over the AST, written in Maca.
+//
+// Turns an `Expr` into C source, mirroring the stage-0 C backend on the slice
+// the stage-1 parser covers: integer/string literals, idents, calls, and
+// binary operators. This is the back end of the self-hosted pipeline — with
+// lexer + parser + checker in front of it, `emit_c` closes lex → parse → check
+// → emit, all in Maca. It grows into the full `maca-backend-c` port.
+
+import selfhost/token
+import selfhost/ast
+
+// A double-quoted C string literal for `s` (kept out of interpolation so the
+// quoting stays legible).
+quoted(s: str) -> str =>
+    "\"" ++ s ++ "\""
+
+// Emit a C expression for one AST node.
+emit_expr(e: Expr) -> str =>
+    match e.kind {
+        EInt    => str(e.ival)
+        EStr    => quoted(e.text)
+        EIdent  => e.text
+        ECall   => "{e.text}({emit_args(e.children, 0)})"
+        EBinary => "({emit_expr(e.children.get(0))} {e.text} {emit_expr(e.children.get(1))})"
+        _       => "0"
+    }
+
+// Comma-join the emitted arguments from index `i` on.
+emit_args(xs: Expr[], i: int) -> str =>
+    i >= xs.length()
+        ? ""
+        : i == xs.length() - 1
+            ? emit_expr(xs.get(i))
+            : "{emit_expr(xs.get(i))}, {emit_args(xs, i + 1)}"
+
+// A whole translation unit: a `main` that returns the expression's value.
+// (Literal C braces are written `{{`/`}}` so they aren't read as Maca string
+// interpolation.)
+emit_unit(e: Expr) -> str =>
+    "int main(void) {{ return {emit_expr(e)}; }}"

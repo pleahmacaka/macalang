@@ -67,9 +67,10 @@ change is needed, prefer adding it to `selfhost/*.maca` over growing the Rust
 crates; only touch stage-0 for genuine bootstrap bugs (e.g. a parser that hangs
 or mis-parses valid surface syntax).
 
-The stage-1 **front-end already runs natively**: the Maca-written lexer →
-recursive-descent parser → recursive-`Expr` AST + pretty-printer → coarse type
-checker (`check.maca`) compiles through the stage-0 C backend and executes (the
+The stage-1 **compiler pipeline already runs natively**: the Maca-written lexer
+→ recursive-descent parser → recursive-`Expr` AST + pretty-printer → coarse type
+checker (`check.maca`) → C emitter (`emit_c.maca`) compiles through the stage-0
+C backend and executes the whole `lex → parse → check → emit` chain (the
 `selfhost.rs` run gate builds it with the host `cc` and checks the output). The two backend features that
 enabled it are shared by the whole language: the `std/str` scan primitives
 (`chars`/`length`/`at`/`get`/`slice` + `is_whitespace`/`is_ascii_digit`/

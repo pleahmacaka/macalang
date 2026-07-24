@@ -15,6 +15,7 @@ main() -> int {
     tree = parse_expr(toks, 0)
     info("parsed: {show(tree.node)}")
     info("checked: type {type_of(tree.node)}, {count_errors(tree.node)} errors")
+    info("emitted: {emit_unit(tree.node)}")
 
     // a deliberately ill-typed expression the checker must reject: `str + int`.
     bad = e_binary("+", e_str("hi"), e_int(1))

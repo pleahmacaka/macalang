@@ -22,6 +22,7 @@ const SELFHOST_FILES: &[&str] = &[
     "lexer.maca",
     "parser.maca",
     "check.maca",
+    "emit_c.maca",
     "main.maca",
 ];
 
@@ -139,5 +140,10 @@ fn selfhost_frontend_compiles_and_runs() {
     assert!(
         stdout.contains("type error, 1 errors"),
         "checker didn't flag the str+int clash: {stdout}"
+    );
+    // emitter (emit_c.maca): the AST lowers to a C translation unit.
+    assert!(
+        stdout.contains("emitted: int main(void) { return ((add(1) + 2) - 3); }"),
+        "emitter output wrong: {stdout}"
     );
 }

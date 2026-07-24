@@ -30,8 +30,8 @@ cmp maca1 maca2                             # fixed point ⇒ self-hosted
 | `lexer.maca` | 1 | character-level scanner (`lex : str -> Token[]`) |
 | `parser.maca` | 1 | recursive-descent over the token stream → `Expr` |
 | `check.maca` | 1 | a coarse type checker (infers `int`/`str`/…, counts mismatches) |
-| `main.maca` | 1 | driver entry; lexes + parses + checks a sample |
-| `emit_c.maca` | — | *next*: AST → C |
+| `emit_c.maca` | 1 | a C emitter over the AST (`Expr` → C source) |
+| `main.maca` | 1 | driver entry; lexes + parses + checks + emits a sample |
 
 ## What's proven today
 
@@ -40,12 +40,14 @@ The stage-1 **front-end now compiles and runs as a native binary.** The gate,
 
 1. every `selfhost/*.maca` **parses** with no errors,
 2. the concatenated module **type-/effect-checks clean**, and
-3. where a native `cc` is available, the concatenated front-end **builds and
-   runs**: the Maca-written lexer → recursive-descent parser → AST printer turns
-   `add(1) + 2 - 3` into `((add(1) + 2) - 3)`, and the Maca-written checker
-   infers its type (`int`, no errors) while flagging a `str + int` clash.
+3. where a native `cc` is available, the concatenated compiler **builds and
+   runs** the whole `lex → parse → check → emit` pipeline: the Maca-written
+   lexer + parser turn `add(1) + 2 - 3` into the AST `((add(1) + 2) - 3)`, the
+   Maca-written checker infers its type (`int`, no errors) and flags a
+   `str + int` clash, and the Maca-written emitter lowers it back to C:
+   `int main(void) { return ((add(1) + 2) - 3); }`.
 
-Step 3 is the real milestone — the compiler's own front-end, written in Maca,
+Step 3 is the real milestone — the compiler's own pipeline, written in Maca,
 executing through the stage-0 C backend. Getting there grew the backend two
 capabilities the rest of the language now shares: the **`std/str` scan
 primitives** (`chars`/`length`/`at`/`get`/`slice` + the `is_*` character
@@ -61,9 +63,11 @@ with a C forward declaration that breaks the struct/array definition cycle).
 - [x] stage-1 front-end builds + runs natively (the `selfhost.rs` run gate)
 - [x] `check.maca` — a coarse type checker (int/str/float, gradual `any`,
       mismatch counting); grows into full HM generalization + row unification
-- [ ] `emit_c.maca` — C emitter
+- [x] `emit_c.maca` — a C emitter over the AST slice (literals, idents, calls,
+      binary ops, a whole translation unit)
 - [ ] the remaining backend growth for a full compiler (higher-order params,
-      nested modules / multi-file builds)
+      nested modules / multi-file builds so `maca build selfhost/main.maca`
+      resolves the imports instead of the gate concatenating the files)
 - [ ] two-stage fixed-point build in CI (once native runs are available)
 
 ## Why the Rust side stays minimal
