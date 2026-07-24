@@ -284,7 +284,13 @@ maca_str maca_from_int(int64_t n) {
 }
 maca_str maca_from_float(double d) {
     char* r = (char*)xmalloc(32);
-    snprintf(r, 32, "%g", d);
+    /* a whole-valued float prints as "12.0" (so a float reads as a float, and
+     * native matches the playground interpreter); others use %g. */
+    if (d == (double)(long long)d && d < 1e15 && d > -1e15) {
+        snprintf(r, 32, "%.1f", d);
+    } else {
+        snprintf(r, 32, "%g", d);
+    }
     return r;
 }
 maca_str maca_from_bool(bool b) { return b ? "true" : "false"; }

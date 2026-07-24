@@ -108,8 +108,8 @@ fn math_prelude_runs_natively() {
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
     for want in [
-        "sqrt(144)=12",
-        "pow(2,10)=1024",
+        "sqrt(144)=12.0",
+        "pow(2,10)=1024.0",
         "abs=7",
         "clamp=10",
         "gcd(54,24)=6",
