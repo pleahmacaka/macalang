@@ -43,3 +43,23 @@ children_errors(xs: Expr[], i: int) -> int =>
     i >= xs.length()
         ? 0
         : count_errors(xs.get(i)) + children_errors(xs, i + 1)
+
+// ---- checking whole functions and modules ---------------------------------
+
+// Type errors in a function body (its expression statements).
+check_fn(s: Stmt) -> int =>
+    check_stmts(s.body, 0)
+
+check_stmts(stmts: Stmt[], i: int) -> int =>
+    i >= stmts.length()
+        ? 0
+        : count_errors(stmts.get(i).value) + check_stmts(stmts, i + 1)
+
+// Total type errors across every function in a module.
+check_module(m: Module) -> int =>
+    check_fns(m.items, 0)
+
+check_fns(fns: Stmt[], i: int) -> int =>
+    i >= fns.length()
+        ? 0
+        : check_fn(fns.get(i)) + check_fns(fns, i + 1)

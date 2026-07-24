@@ -40,5 +40,10 @@ main() -> int {
     mod = parse_module(lex(prog), 0, [])
     info("module ({mod.items.length()} fns):")
     info(emit_module(mod))
+
+    // whole-module type checking: one clean function, one `int + str` clash.
+    prog2 = "ok() -> int => 1 + 2 bad() -> int => 1 + \"x\""
+    mod2 = parse_module(lex(prog2), 0, [])
+    info("module check: {check_module(mod2)} type errors")
     0
 }

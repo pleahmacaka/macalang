@@ -167,4 +167,10 @@ fn selfhost_frontend_compiles_and_runs() {
             && stdout.contains("int dbl(int n) { return (n * 2); }"),
         "module emission wrong: {stdout}"
     );
+    // whole-module checking: the lexer scans string literals, and the checker
+    // finds the single `int + str` clash across the module's two functions.
+    assert!(
+        stdout.contains("module check: 1 type errors"),
+        "module type-check wrong: {stdout}"
+    );
 }
