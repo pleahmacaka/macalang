@@ -9,8 +9,10 @@
 // that exercises token.maca + lexer.maca end to end.
 
 main() -> int {
-    sample = "add(x: int) -> int => x + 1"
+    sample = "add(1) + 2 - 3"
     toks = lex(sample)
     info("scanned {toks.length()} tokens from {sample.length()} chars")
+    tree = parse_expr(toks, 0)
+    info("parsed: {show(tree.node)}")
     0
 }

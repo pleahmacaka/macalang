@@ -64,3 +64,25 @@ s_expr(value: Expr) -> Stmt =>
 
 s_fn(name: str, params: Expr[], body: Stmt[]) -> Stmt =>
     Stmt { kind = SFn, name, value = e_ident(name), params, body }
+
+// ---- pretty-printer (recursive over the AST) ------------------------------
+
+// Render an expression back to source-like text. Recurses over `children`,
+// exercising the recursive `Expr` type end to end.
+show(e: Expr) -> str =>
+    match e.kind {
+        EInt    => str(e.ival)
+        EStr    => e.text
+        EIdent  => e.text
+        ECall   => "{e.text}({show_args(e.children, 0)})"
+        EBinary => "({show(e.children.get(0))} {e.text} {show(e.children.get(1))})"
+        _       => "?"
+    }
+
+// Comma-join the rendered children from index `i` on.
+show_args(xs: Expr[], i: int) -> str =>
+    i >= xs.length()
+        ? ""
+        : i == xs.length() - 1
+            ? show(xs.get(i))
+            : "{show(xs.get(i))}, {show_args(xs, i + 1)}"

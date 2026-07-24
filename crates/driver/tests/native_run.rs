@@ -68,6 +68,31 @@ fn recursion_and_arithmetic_run_natively() {
 }
 
 #[test]
+fn recursive_record_runs_natively() {
+    // A recursive record (`Tree { kids: Tree[] }`) compiles through the C
+    // backend's forward-declaration path and walks correctly at run time.
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &example("recursive_record.maca")])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("tree has 5 nodes"),
+        "recursive record walk wrong.\nstdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
 fn operator_overloading_runs_natively() {
     let wsl = Command::new("wsl")
         .arg("true")

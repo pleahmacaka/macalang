@@ -1,0 +1,29 @@
+// A recursive *record* type: a node holds a list of child nodes of its own
+// type. The C backend forward-declares the struct so the `Tree`/`TreeArr`
+// definition cycle resolves. `size` walks the tree; `main` builds a small one.
+
+Tree = {
+    label: str
+    kids:  Tree[]
+}
+
+leaf(label: str) -> Tree =>
+    Tree { label, kids = [] }
+
+// total node count, counting this node plus every descendant.
+size(t: Tree) -> int =>
+    1 + kids_size(t.kids, 0)
+
+kids_size(xs: Tree[], i: int) -> int =>
+    i >= xs.length()
+        ? 0
+        : size(xs.get(i)) + kids_size(xs, i + 1)
+
+main() -> int {
+    root = Tree {
+        label = "root"
+        kids = [leaf("a"), Tree { label = "b", kids = [leaf("b1"), leaf("b2")] }]
+    }
+    info("tree has {size(root)} nodes")
+    0
+}

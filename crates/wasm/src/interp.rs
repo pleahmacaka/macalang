@@ -755,6 +755,23 @@ impl<'a> Interp<'a> {
             "max" => Ok(fold_minmax(&list, false)),
             "first" => Ok(list.first().cloned().unwrap_or(Value::Unit)),
             "last" => Ok(list.last().cloned().unwrap_or(Value::Unit)),
+            // index-walk primitives, mirroring the C backend (used by the
+            // self-hosted lexer/parser).
+            "length" => Ok(Value::Int(list.len() as i64)),
+            "get" => {
+                let i = int_of(vals.get(1));
+                Ok(if i >= 0 && (i as usize) < list.len() {
+                    list[i as usize].clone()
+                } else {
+                    Value::Unit
+                })
+            }
+            "slice" => {
+                let from = int_of(vals.get(1)).max(0) as usize;
+                let to = (int_of(vals.get(2)).max(0) as usize).min(list.len());
+                let from = from.min(to);
+                Ok(Value::List(list[from..to].to_vec()))
+            }
             _ => return None,
         };
         Some(out)
@@ -862,6 +879,37 @@ impl<'a> Interp<'a> {
                     return Ok(Value::Str(joined));
                 }
                 return Ok(Value::Str(String::new()));
+            }
+            // byte-length, per-byte access, and character classes — the scanner
+            // primitives (byte-oriented to match the C runtime on ASCII source).
+            "length" => return Ok(Value::Int(str_of(vals.first()).len() as i64)),
+            "at" => {
+                let s = str_of(vals.first());
+                return Ok(Value::Str(byte_substr(&s, int_of(vals.get(1)), 1)));
+            }
+            "chars" => {
+                let s = str_of(vals.first());
+                let cs = s
+                    .bytes()
+                    .map(|b| Value::Str((b as char).to_string()))
+                    .collect();
+                return Ok(Value::List(cs));
+            }
+            "is_whitespace" => {
+                let b = str_of(vals.first()).as_bytes().first().copied();
+                return Ok(Value::Bool(
+                    b.map(|c| c.is_ascii_whitespace()).unwrap_or(false),
+                ));
+            }
+            "is_ascii_digit" => {
+                let b = str_of(vals.first()).as_bytes().first().copied();
+                return Ok(Value::Bool(b.map(|c| c.is_ascii_digit()).unwrap_or(false)));
+            }
+            "is_alpha" => {
+                let b = str_of(vals.first()).as_bytes().first().copied();
+                return Ok(Value::Bool(
+                    b.map(|c| c.is_ascii_alphabetic()).unwrap_or(false),
+                ));
             }
             // async suspension point — a no-op in the synchronous playground
             // interpreter (results match; only real-time waiting is elided).
@@ -1318,5 +1366,49 @@ fn sum_variants(value: &Expr) -> Option<Vec<(String, usize)>> {
         Some(out)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn output(src: &str) -> String {
+        let m = maca_parser::parse(src).module;
+        run(&m).output
+    }
+
+    #[test]
+    fn scan_primitives_match_native() {
+        // the str/array scan methods the self-hosted lexer uses, exercised
+        // through the playground interpreter so it agrees with the C backend.
+        let src = "main() -> int {\n\
+            s = \"a1 b\"\n\
+            cs = s.chars()\n\
+            info(\"{s.length()} {cs.length()} {cs.get(0)} {cs.get(1)}\")\n\
+            info(\"{cs.get(0).is_alpha()} {cs.get(1).is_ascii_digit()} {cs.get(2).is_whitespace()}\")\n\
+            info(\"{cs.slice(0, 2).join(\"\")}\")\n\
+            0\n\
+        }\n";
+        let out = output(src);
+        assert!(out.contains("4 4 a 1"), "scan lengths/access wrong: {out}");
+        assert!(out.contains("true true true"), "char classes wrong: {out}");
+        assert!(out.contains("a1"), "slice+join wrong: {out}");
+    }
+
+    #[test]
+    fn recursive_record_walks() {
+        // a record holding a list of itself runs in the interpreter too.
+        let src = "Tree = {\n    label: str\n    kids: Tree[]\n}\n\n\
+            leaf(l: str) -> Tree => Tree { label = l, kids = [] }\n\n\
+            size(t: Tree) -> int => 1 + ks(t.kids, 0)\n\n\
+            ks(xs: Tree[], i: int) -> int =>\n\
+                i >= xs.length() ? 0 : size(xs.get(i)) + ks(xs, i + 1)\n\n\
+            main() -> int {\n\
+                r = Tree { label = \"r\", kids = [leaf(\"a\"), leaf(\"b\")] }\n\
+                info(\"{size(r)}\")\n\
+                0\n\
+            }\n";
+        assert!(output(src).contains('3'), "tree size should be 3");
     }
 }

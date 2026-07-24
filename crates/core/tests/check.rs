@@ -88,6 +88,12 @@ fn recursive_sum_ok() {
     assert_clean("examples/tree.maca", Mode::Program);
 }
 #[test]
+fn recursive_record_ok() {
+    // A record whose field is a list of its own type (`Tree { kids: Tree[] }`)
+    // type-checks; the recursive field resolves at the record's own type.
+    assert_clean("examples/recursive_record.maca", Mode::Program);
+}
+#[test]
 fn sum_record_ok() {
     // A sum whose payload is a record declared later in the file type-checks;
     // the payload binds at the record's real type inside the match arm.

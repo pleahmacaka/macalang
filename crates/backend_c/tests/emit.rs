@@ -630,3 +630,80 @@ fn emit_checked_flags_unsupported_instead_of_silent_zero() {
         "valid program wrongly rejected"
     );
 }
+
+#[test]
+fn recursive_record_forward_declares_to_break_the_array_cycle() {
+    // `Node { kids: Node[] }` is a definition cycle: the struct body needs the
+    // element-array type, the array's ops need the struct's size. The backend
+    // forward-declares the record and splits the array into struct-then-ops.
+    let out = c("Node = {\n    name: str\n    kids: Node[]\n}\n\nmain() -> int { 0 }\n");
+    assert!(
+        out.contains("typedef struct Node Node;"),
+        "no forward decl for recursive record:\n{out}"
+    );
+    assert!(
+        out.contains("MACA_ARRAY_STRUCT(NodeArr, Node)"),
+        "element array struct not declared before the body:\n{out}"
+    );
+    assert!(
+        out.contains("struct Node {"),
+        "recursive record body should be a named struct:\n{out}"
+    );
+    assert!(
+        out.contains("MACA_ARRAY_OPS(NodeArr, Node)"),
+        "element array ops not emitted after the body:\n{out}"
+    );
+    // ordering: forward decl < array struct < body < array ops
+    let fwd = out.find("typedef struct Node Node;").unwrap();
+    let arr_s = out.find("MACA_ARRAY_STRUCT(NodeArr").unwrap();
+    let body = out.find("struct Node {").unwrap();
+    let arr_o = out.find("MACA_ARRAY_OPS(NodeArr").unwrap();
+    assert!(
+        fwd < arr_s && arr_s < body && body < arr_o,
+        "recursive-record emission out of order: fwd={fwd} arr_struct={arr_s} body={body} arr_ops={arr_o}"
+    );
+}
+
+#[test]
+fn str_and_array_scan_primitives_lower() {
+    // the methods the self-hosted lexer scans source with.
+    let body = func(
+        "scan(s: str) -> int {\n    cs = s.chars()\n    n = cs.length()\n    c = cs.get(0)\n    ws = c.is_whitespace()\n    d = c.is_ascii_digit()\n    a = c.is_alpha()\n    l = s.length()\n    sub = cs.slice(0, 2)\n    n + l\n}\n",
+        "scan",
+    );
+    assert!(body.contains("maca_str_at"), "chars() not lowered:\n{body}");
+    assert!(
+        body.contains("maca_strlen"),
+        "length() not lowered:\n{body}"
+    );
+    assert!(
+        body.contains("maca_is_space"),
+        "is_whitespace not lowered:\n{body}"
+    );
+    assert!(
+        body.contains("maca_is_digit"),
+        "is_ascii_digit not lowered:\n{body}"
+    );
+    assert!(
+        body.contains("maca_is_alpha"),
+        "is_alpha not lowered:\n{body}"
+    );
+    assert!(
+        !body.contains("unsupported"),
+        "a scan primitive is unsupported:\n{body}"
+    );
+}
+
+#[test]
+fn empty_list_argument_takes_its_element_type_from_the_callee() {
+    // `seed([])` where `seed(xs: str[])` must build a StrArr, not the default
+    // IntArr — the call threads the parameter type as the literal's expected.
+    let body = func(
+        "seed(xs: str[]) -> int => xs.length()\n\nmain() -> int {\n    seed([])\n}\n",
+        "main",
+    );
+    assert!(
+        body.contains("StrArr_new()"),
+        "empty-list arg didn't take the parameter's element type:\n{body}"
+    );
+}

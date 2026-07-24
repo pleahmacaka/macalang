@@ -16,14 +16,24 @@ is_alnum(c: str) -> bool => is_alpha(c) || is_digit(c)
 
 // ---- span helpers ---------------------------------------------------------
 
-// Consume a run of characters matching `pred` starting at `i`; return the end
-// index (exclusive). `pred` is an unannotated higher-order parameter (a
-// predicate `str -> bool`); surface Maca has no function-type syntax yet, so it
-// stays untyped — the stage-1 parser will add that.
-run_end(cs: str[], i: int, pred) -> int =>
-    i < cs.length() && pred(cs.get(i))
-        ? run_end(cs, i + 1, pred)
+// Consume a run of characters starting at `i`; return the end index
+// (exclusive). Two concrete walks rather than one higher-order `run_end`: the
+// stage-0 native backend lowers direct recursion but not a predicate passed as
+// a value, so we keep the scanner first-order (the stage-1 parser will grow
+// function types and fold these back into one).
+run_alnum(cs: str[], i: int) -> int =>
+    i < cs.length() && is_alnum(cs.get(i))
+        ? run_alnum(cs, i + 1)
         : i
+
+run_digits(cs: str[], i: int) -> int =>
+    i < cs.length() && is_digit(cs.get(i))
+        ? run_digits(cs, i + 1)
+        : i
+
+// The source text between two indices, as a single string.
+span(cs: str[], i: int, j: int) -> str =>
+    cs.slice(i, j).join("")
 
 // ---- the scanner ----------------------------------------------------------
 
@@ -48,14 +58,14 @@ step(cs: str[], i: int, out: Token[]) -> Token[] {
 }
 
 lex_word(cs: str[], i: int, out: Token[]) -> Token[] {
-    j = run_end(cs, i, is_alnum)
-    text = cs.slice(i, j)
+    j = run_alnum(cs, i)
+    text = span(cs, i, j)
     scan(cs, j, out ++ [mk_token(keyword_kind(text), text, i)])
 }
 
 lex_number(cs: str[], i: int, out: Token[]) -> Token[] {
-    j = run_end(cs, i, is_digit)
-    text = cs.slice(i, j)
+    j = run_digits(cs, i)
+    text = span(cs, i, j)
     scan(cs, j, out ++ [mk_token(TInt, text, i)])
 }
 

@@ -67,6 +67,17 @@ change is needed, prefer adding it to `selfhost/*.maca` over growing the Rust
 crates; only touch stage-0 for genuine bootstrap bugs (e.g. a parser that hangs
 or mis-parses valid surface syntax).
 
+The stage-1 **front-end already runs natively**: the Maca-written lexer →
+recursive-descent parser → recursive-`Expr` AST + pretty-printer compiles
+through the stage-0 C backend and executes (the `selfhost.rs` run gate builds
+it with the host `cc` and checks the output). The two backend features that
+enabled it are shared by the whole language: the `std/str` scan primitives
+(`chars`/`length`/`at`/`get`/`slice` + `is_whitespace`/`is_ascii_digit`/
+`is_alpha`) and **recursive record types** (a self-referential field like
+`Expr { children: Expr[] }` is forward-declared in C so the struct/array
+definition cycle resolves — `MACA_ARRAY_STRUCT` before the body,
+`MACA_ARRAY_OPS` after).
+
 ## How to work here
 
 - **Bootstrap-first, test-gated.** Follow the phases in `docs/PLAN.md` in order.
@@ -147,7 +158,9 @@ Language surface beyond the original cheatsheet: operator overloading;
 hex/binary/octal integer literals with `_` separators; list/string subscripting
 `xs[i]` with lvalue assignment (`xs[i] = v`, `p.f = v`); functional record update
 `base with { f = v }`; `len(x)`; recursive sum types (`Tree`, `List`) via boxed
-payloads; a bracketless comma list as an arrow-fn body (`f() -> int[] => 1, 2`);
+payloads and **recursive record types** (`Expr { children: Expr[] }`, forward-
+declared in C to break the struct/array definition cycle); a bracketless comma
+list as an arrow-fn body (`f() -> int[] => 1, 2`);
 C-keyword-safe identifiers (a Maca `double`/`new`/`class` compiles); a string
 stdlib as UFCS methods on `str` (`split`→`str[]`, `trim`, `upper`/`lower`,
 `contains`, `starts_with`/`ends_with`, `replace`, `substr`, `index_of`; byte
@@ -158,7 +171,10 @@ for capturing and non-capturing lambdas; args/results box through `int64_t` —
 str via `intptr_t`, float bit-preserved via `maca_box_f64`); a **list stdlib**
 as UFCS methods on any `T[]` (`map`/`filter`/`reduce`/`fold` take closures typed
 by the element; `sort`/`reverse`/`push`/`pop`/`contains`/`index_of`/`sum`/`min`/
-`max`/`first`/`last`; native + interpreter — `examples/collections.maca`);
+`max`/`first`/`last`/`length`/`get`/`slice`; native + interpreter —
+`examples/collections.maca`); plus the `str` scan primitives
+`chars`/`length`/`at` and the char classes `is_whitespace`/`is_ascii_digit`/
+`is_alpha` (what `selfhost/lexer.maca` scans with);
 and raw triple-quoted strings (`"""…"""`) with `import js`/`import css` foreign
 blocks that let a `.maca` UI carry its own host glue and styles inline (see
 `playground/playground.maca`). Examples:

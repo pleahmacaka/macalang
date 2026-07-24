@@ -64,6 +64,11 @@ maca_str maca_from_bool(bool b);
 bool maca_str_eq(maca_str a, maca_str b);
 maca_str maca_join(maca_str* data, int64_t len, maca_str sep);
 maca_str maca_str_at(maca_str s, int64_t i); /* single-char str at byte i ("" if OOB) */
+int64_t maca_strlen(maca_str s);              /* byte length (0 if NULL) */
+/* character classes — inspect the first byte of a 1-char str (false if empty) */
+bool maca_is_space(maca_str c);
+bool maca_is_digit(maca_str c);
+bool maca_is_alpha(maca_str c);
 
 /* ---- string stdlib (UFCS methods on `str`) ---- */
 maca_str maca_trim(maca_str s);                       /* strip leading/trailing ASCII space */
@@ -130,8 +135,14 @@ bool maca_json_bool(maca_json* j);
 maca_str maca_json_str(maca_json* j);
 
 /* ---- typed dynamic array (monomorphized by generated code) ---- */
-#define MACA_DEFINE_ARRAY(Name, Elem)                                          \
-    typedef struct { Elem* data; int64_t len; int64_t cap; } Name;             \
+/* The array struct alone — only needs `Elem` forward-declared (it stores an
+   `Elem*`). Split out so a self-referential record (`Expr { children: Expr[] }`)
+   can declare its element array before the record body closes the cycle. */
+#define MACA_ARRAY_STRUCT(Name, Elem)                                          \
+    typedef struct { Elem* data; int64_t len; int64_t cap; } Name;
+/* The array operations — need `Elem` complete (they use `sizeof(Elem)`), so a
+   recursive record emits these only after its struct body is defined. */
+#define MACA_ARRAY_OPS(Name, Elem)                                             \
     static inline Name Name##_new(void) { Name a; a.data = NULL; a.len = 0;     \
         a.cap = 0; return a; }                                                 \
     static inline void Name##_push(Name* a, Elem x) {                          \
@@ -153,6 +164,11 @@ maca_str maca_json_str(maca_json* j);
         for (int64_t i = from; i < a.len; i++) Name##_push(&r, a.data[i]);     \
         return r;                                                              \
     }
+
+/* The common case: a non-recursive element — struct + ops together. */
+#define MACA_DEFINE_ARRAY(Name, Elem)                                          \
+    MACA_ARRAY_STRUCT(Name, Elem)                                              \
+    MACA_ARRAY_OPS(Name, Elem)
 
 #endif
 "##;
@@ -276,6 +292,12 @@ maca_str maca_str_at(maca_str s, int64_t i) {
     char* r = (char*)xmalloc(2);
     r[0] = s[i]; r[1] = '\0';
     return r;
+}
+int64_t maca_strlen(maca_str s) { return s ? (int64_t)strlen(s) : 0; }
+bool maca_is_space(maca_str c) { return c && c[0] && isspace((unsigned char)c[0]) != 0; }
+bool maca_is_digit(maca_str c) { return c && c[0] >= '0' && c[0] <= '9'; }
+bool maca_is_alpha(maca_str c) {
+    return c && ((c[0] >= 'a' && c[0] <= 'z') || (c[0] >= 'A' && c[0] <= 'Z'));
 }
 maca_str maca_from_int(int64_t n) {
     char* r = (char*)xmalloc(24);

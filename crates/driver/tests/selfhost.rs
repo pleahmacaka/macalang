@@ -1,14 +1,19 @@
 //! Gate for the Maca-in-Maca sources under `selfhost/`.
 //!
-//! We can't run them natively in CI (no zig/WSL here), but the stage-0
-//! front-end is exactly the tool that must accept them: every `selfhost/*.maca`
-//! must parse with no errors, and the whole thing — concatenated so cross-file
-//! references resolve — must type-/effect-check clean. That keeps the
-//! self-hosted compiler honest as it grows.
+//! Two levels of assurance:
+//!  1. Every `selfhost/*.maca` must parse with no errors, and the whole thing —
+//!     concatenated so cross-file references resolve — must type-/effect-check
+//!     clean under the stage-0 front-end.
+//!  2. Where a native toolchain is present, the concatenated front-end is
+//!     actually *compiled and run*: the Maca-written lexer → recursive-descent
+//!     parser → AST pretty-printer must produce the expected output. That is the
+//!     real self-hosting milestone — the compiler's own front-end, written in
+//!     Maca, executing as a native binary.
 
 use maca_core::{Mode, check};
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 /// Source order: definitions before use.
 const SELFHOST_FILES: &[&str] = &[
@@ -27,6 +32,31 @@ fn read(name: &str) -> String {
     fs::read_to_string(selfhost_dir().join(name)).unwrap_or_else(|e| panic!("read {name}: {e}"))
 }
 
+/// The whole front-end as one translation unit (the driver builds a single
+/// file; concatenation stands in for cross-file module resolution).
+fn concatenated() -> String {
+    SELFHOST_FILES
+        .iter()
+        .map(|n| read(n))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn have(cmd: &str) -> bool {
+    Command::new(cmd)
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+fn wsl() -> bool {
+    Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 #[test]
 fn every_selfhost_file_parses() {
     for name in SELFHOST_FILES {
@@ -42,13 +72,7 @@ fn every_selfhost_file_parses() {
 
 #[test]
 fn selfhost_module_typechecks() {
-    // Concatenate in dependency order so `lexer.maca`/`main.maca` see the
-    // `token.maca` declarations they reference.
-    let src: String = SELFHOST_FILES
-        .iter()
-        .map(|n| read(n))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let src = concatenated();
     let parsed = maca_parser::parse(&src);
     assert!(
         parsed.errors.is_empty(),
@@ -60,5 +84,49 @@ fn selfhost_module_typechecks() {
     assert!(
         diags.is_empty(),
         "selfhost should type-check clean, got: {diags:?}"
+    );
+}
+
+#[test]
+fn selfhost_frontend_compiles_and_runs() {
+    // Needs the host-cc native path (the C backend links with `cc` when there's
+    // no WSL/Nix). Skip cleanly where neither is available.
+    if wsl() || !have("cc") {
+        eprintln!("skipping selfhost native run: needs a host cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-selfhost-run");
+    let _ = std::fs::create_dir_all(&dir);
+    let src = dir.join("frontend.maca");
+    std::fs::write(&src, concatenated()).unwrap();
+    let bin = dir.join("frontend");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            &src.to_string_lossy(),
+            "-o",
+            &bin.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca build");
+    assert!(
+        build.status.success(),
+        "selfhost front-end failed to build:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let run = Command::new(&bin).output().expect("run selfhost front-end");
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    // lexer: `add(1) + 2 - 3` scans to 9 tokens (8 + Eof) over 14 chars.
+    assert!(
+        stdout.contains("scanned 9 tokens from 14 chars"),
+        "lexer output wrong: {stdout}"
+    );
+    // parser + AST printer: left-associative, call folded — the recursive
+    // `Expr` type round-trips through native codegen.
+    assert!(
+        stdout.contains("parsed: ((add(1) + 2) - 3)"),
+        "parser/AST output wrong: {stdout}"
     );
 }

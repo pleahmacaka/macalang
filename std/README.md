@@ -14,11 +14,14 @@ language surface wants (a prelude you can just use). What exists today:
 
 **String methods (UFCS on `str`):** `split`, `join`, `trim`, `upper`, `lower`,
 `contains`, `starts_with`, `ends_with`, `replace`, `substr`, `index_of`,
-subscripting `s[i]`.
+subscripting `s[i]`. Byte-level scanning: `length` (byte count), `at(i)` (the
+1-char string at byte `i`), `chars` (→ `str[]` of single bytes), and the
+character classes `is_whitespace` / `is_ascii_digit` / `is_alpha`.
 
 **List methods (UFCS on `T[]`):** `map`, `filter`, `reduce`/`fold`, `sort`,
 `reverse`, `push`, `pop`, `contains`, `index_of`, `sum`, `min`, `max`, `first`,
-`last`, `len`, subscripting `xs[i]`, functional update.
+`last`, `len`, `length`, `get(i)`, `slice(from, to)`, subscripting `xs[i]`,
+functional update.
 
 **FFI-backed modules:** `import c "sqlite3.h"` (open/exec/prepare/step/column_*/
 finalize/close), `import c "mqtt.h"`, `import py "…"`, and `import nixpkgs` for

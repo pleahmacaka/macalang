@@ -638,6 +638,27 @@ impl<'a> Cx<'a> {
     fn sum_is_recursive(&self, name: &str) -> bool {
         self.reaches(name, name)
     }
+    /// A record is recursive when it can reach itself through struct-shaped
+    /// references (which recurse through arrays). Since a record can never hold
+    /// another by value in a cycle (infinite size), any such cycle passes
+    /// through an array — e.g. `Expr { children: Expr[] }`. Such a record needs
+    /// a forward declaration so its element array can be declared first.
+    fn rec_is_recursive(&self, name: &str) -> bool {
+        if !self.records.contains_key(name) {
+            return false;
+        }
+        let mut stack = self.struct_deps(name);
+        let mut seen = HashSet::new();
+        while let Some(n) = stack.pop() {
+            if n == name {
+                return true;
+            }
+            if seen.insert(n.clone()) {
+                stack.extend(self.struct_deps(&n));
+            }
+        }
+        false
+    }
     /// A payload slot is boxed (stored behind a pointer) when it is a sum that
     /// can reach the enclosing sum — the value cycle that would make the struct
     /// infinitely sized. Records-in-cycles are not boxed (a documented limit).
@@ -802,6 +823,60 @@ impl<'a> Cx<'a> {
         }
         self.push("");
 
+        // Recursive records (`Expr { children: Expr[] }`) form a definition
+        // cycle: the record body needs its element-array type complete, but the
+        // array's ops need the record's `sizeof` — complete. We break it with a
+        // C forward declaration: name the record struct, declare the element
+        // array *struct* (a bare `Elem* data` needs only the forward decl), then
+        // close the record body, then emit the array *ops* once the record is
+        // sized. `cyclic_arr_elems` are the element types deferred this way.
+        let cyclic: HashSet<String> = self
+            .records
+            .keys()
+            .filter(|n| self.rec_is_recursive(n))
+            .cloned()
+            .collect();
+        let mut cyclic_arr_elems: Vec<CTy> = Vec::new();
+        if !cyclic.is_empty() {
+            for n in &cyclic {
+                self.push(&format!("typedef struct {n} {n};"));
+            }
+            // element arrays over any cyclic record, gathered from every field
+            // and every stray array use, declared (struct only) up front.
+            let mut want: Vec<CTy> = Vec::new();
+            let consider = |e: &CTy, want: &mut Vec<CTy>| {
+                if let CTy::Rec(r) = e
+                    && cyclic.contains(r)
+                    && !want.contains(e)
+                {
+                    want.push(e.clone());
+                }
+            };
+            for fs in self.records.values() {
+                for (_, t) in fs {
+                    if let CTy::Arr(e) = t {
+                        consider(e, &mut want);
+                    }
+                }
+            }
+            for e in &elems {
+                if let CTy::Arr(inner) = e {
+                    consider(inner, &mut want);
+                }
+                consider(e, &mut want);
+            }
+            for e in &want {
+                self.push(&format!(
+                    "MACA_ARRAY_STRUCT({}, {})",
+                    arr_name(e),
+                    c_type(e)
+                ));
+                emitted_arr.insert(e.clone());
+            }
+            cyclic_arr_elems = want;
+            self.push("");
+        }
+
         // Records and tagged sums are structs that may reference each other by
         // value (a sum payload holds a record, a record field holds a sum), so
         // they are emitted together in one dependency order. Record-element
@@ -835,15 +910,29 @@ impl<'a> Cx<'a> {
             }
             if self.records.contains_key(name) {
                 let fields = self.records[name].clone();
-                self.push("typedef struct {");
+                // a recursive record was forward-declared, so close its named
+                // struct; a plain record gets the usual anonymous typedef.
+                if cyclic.contains(name) {
+                    self.push(&format!("struct {name} {{"));
+                } else {
+                    self.push("typedef struct {");
+                }
                 for (fname, t) in &fields {
                     self.push(&format!("    {} {};", c_type(t), cid(fname)));
                 }
-                self.push(&format!("}} {name};"));
+                if cyclic.contains(name) {
+                    self.push("};");
+                } else {
+                    self.push(&format!("}} {name};"));
+                }
             } else {
                 let vars = self.sums[name].clone();
                 self.emit_tagged_sum(name, &vars);
             }
+        }
+        // now every record is sized: emit the deferred element-array ops.
+        for e in &cyclic_arr_elems {
+            self.push(&format!("MACA_ARRAY_OPS({}, {})", arr_name(e), c_type(e)));
         }
         // record/sum-element arrays that aren't a struct field but arise
         // elsewhere (e.g. a top-level `let xs = R{}, R{}` or an index target):
@@ -2262,12 +2351,20 @@ impl<'a> Cx<'a> {
                 let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
                 return (format!("{sum}_{name}({})", a.join(", ")), CTy::Sum(sum));
             }
+            // a known user function: lower each argument with the matching
+            // parameter type as its expected type (so `[]` and other
+            // context-typed literals resolve correctly).
+            if let Some((params, ret)) = self.fns.get(name).cloned() {
+                let a: Vec<String> = args
+                    .iter()
+                    .enumerate()
+                    .map(|(i, x)| self.arg_expected(env, x, params.get(i)).0)
+                    .collect();
+                return (format!("{}({})", cid(name), a.join(", ")), ret);
+            }
             let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
             if let Some(cfn) = console_fn(name) {
                 return (format!("{cfn}({})", a.join(", ")), CTy::Unit);
-            }
-            if let Some((_, ret)) = self.fns.get(name).cloned() {
-                return (format!("{}({})", cid(name), a.join(", ")), ret);
             }
             let _ = expected;
             // an FFI/foreign function (declared, provided by C glue) — a direct call
@@ -2439,6 +2536,29 @@ impl<'a> Cx<'a> {
                     (**e).clone(),
                 )
             }
+            // `.length()` and `.get(i)` — a method spelling of `len(xs)` / `xs[i]`,
+            // used by the self-hosted lexer's index-walk over a char array.
+            (CTy::Arr(_), "length") => (format!("({rc}).len"), CTy::Int),
+            (CTy::Arr(e), "get") => {
+                let an = arr_name(e);
+                (
+                    format!("({{ {an} _s = {rc}; _s.data[{}]; }})", arg0()),
+                    (**e).clone(),
+                )
+            }
+            // `.slice(from, to)` — a fresh sub-array over the half-open range.
+            (CTy::Arr(e), "slice") => {
+                let an = arr_name(e);
+                (
+                    format!(
+                        "({{ {an} _s = {rc}; {an} _r = {an}_new(); \
+                         for (int64_t _i = ({}); _i < ({}) && _i < _s.len; _i++) {an}_push(&_r, _s.data[_i]); _r; }})",
+                        arg0(),
+                        arg1()
+                    ),
+                    CTy::Arr(e.clone()),
+                )
+            }
             // string stdlib — UFCS methods on `str` (gradual `Unknown` receivers
             // too, since foreign/inferred strings often land as Unknown).
             (CTy::Str | CTy::Unknown, "trim") => (format!("maca_trim({rc})"), CTy::Str),
@@ -2475,6 +2595,27 @@ impl<'a> Cx<'a> {
                     CTy::Arr(Box::new(CTy::Str)),
                 )
             }
+            // byte-length + per-byte access + character classes: the primitives
+            // the self-hosted lexer scans source with (`std/str`).
+            (CTy::Str | CTy::Unknown, "length") => (format!("maca_strlen({rc})"), CTy::Int),
+            (CTy::Str | CTy::Unknown, "at") => (format!("maca_str_at({rc}, {})", arg0()), CTy::Str),
+            (CTy::Str | CTy::Unknown, "chars") => {
+                self.note_arr(&CTy::Arr(Box::new(CTy::Str)));
+                (
+                    format!(
+                        "({{ maca_str _cs = {rc}; int64_t _cn = maca_strlen(_cs); \
+                         StrArr _cr = StrArr_new(); for (int64_t _ci = 0; _ci < _cn; _ci++) StrArr_push(&_cr, maca_str_at(_cs, _ci)); _cr; }})"
+                    ),
+                    CTy::Arr(Box::new(CTy::Str)),
+                )
+            }
+            (CTy::Str | CTy::Unknown, "is_whitespace") => {
+                (format!("maca_is_space({rc})"), CTy::Bool)
+            }
+            (CTy::Str | CTy::Unknown, "is_ascii_digit") => {
+                (format!("maca_is_digit({rc})"), CTy::Bool)
+            }
+            (CTy::Str | CTy::Unknown, "is_alpha") => (format!("maca_is_alpha({rc})"), CTy::Bool),
             (CTy::Arr(e), "parallel") if matches!(**e, CTy::Int) => {
                 let f = a.first().cloned().unwrap_or_default();
                 (
@@ -2622,9 +2763,15 @@ impl<'a> Cx<'a> {
         self.arg_typed(env, a).0
     }
     fn arg_typed(&mut self, env: &mut Env, a: &Arg) -> (String, CTy) {
+        self.arg_expected(env, a, None)
+    }
+    /// Lower a call argument with an optional expected type — lets an empty
+    /// list literal `[]` take its element type from the callee's parameter
+    /// (e.g. `scan(cs, 0, [])` where the 3rd param is `Token[]`).
+    fn arg_expected(&mut self, env: &mut Env, a: &Arg, expected: Option<&CTy>) -> (String, CTy) {
         match a {
             Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => {
-                self.expr(env, e, None)
+                self.expr(env, e, expected)
             }
         }
     }
