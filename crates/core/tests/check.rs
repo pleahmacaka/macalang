@@ -162,6 +162,24 @@ fn mutable_reassign_ok() {
 }
 
 #[test]
+fn async_example_typechecks() {
+    // await/spawn/sleep_ms type-check with no `async` keyword.
+    assert_clean("examples/async.maca", Mode::Program);
+}
+
+#[test]
+fn async_effect_is_inferred_and_banned_in_config() {
+    // The async effect is inferred (never written); in config mode any effect is
+    // rejected, which is how we observe that `sleep_ms`/`spawn`/`await` carry it.
+    let src = "svc.value = spawn work(1)\n";
+    let parsed = maca_parser::parse(src);
+    let d = check(&parsed.module, Mode::Config);
+    let eff = d.iter().find(|x| x.kind == DiagKind::EffectInConfig);
+    assert!(eff.is_some(), "async effect not flagged in config: {d:?}");
+    assert!(eff.unwrap().msg.contains("async"), "effect name missing: {}", eff.unwrap().msg);
+}
+
+#[test]
 fn undefined_call_rejected() {
     // calling a name that is defined nowhere is caught as a clean diagnostic
     // instead of leaking a broken-C link error out of codegen.

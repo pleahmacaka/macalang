@@ -10,7 +10,7 @@ use std::path::PathBuf;
 /// The lexer's reserved words (mirrors the `match` in `lex_ident`).
 const LEXER_KEYWORDS: &[&str] = &[
     "const", "as", "if", "else", "for", "in", "while", "break", "continue", "match", "import",
-    "from", "with", "fail", "try", "alias",
+    "from", "with", "fail", "try", "alias", "await", "spawn",
 ];
 
 fn repo(rel: &str) -> String {

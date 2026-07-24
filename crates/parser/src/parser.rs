@@ -445,6 +445,16 @@ impl Parser {
         } else if self.at(Tok::Bang) {
             self.bump();
             Expr::Unary { op: UnOp::Not, expr: Box::new(self.parse_unary()) }
+        } else if self.at(Tok::Await) {
+            // `await e` binds tighter than binary ops: `await a + await b`
+            // is `(await a) + (await b)`. No `async` keyword — the async effect
+            // is inferred (colorblind async).
+            self.bump();
+            Expr::Await(Box::new(self.parse_unary()))
+        } else if self.at(Tok::Spawn) {
+            // `spawn e` runs `e` concurrently and yields a Future.
+            self.bump();
+            Expr::Spawn(Box::new(self.parse_unary()))
         } else {
             self.parse_postfix()
         }

@@ -351,3 +351,15 @@ fn string_stdlib_lowers_to_runtime_calls() {
     assert!(out.contains("maca_substr("), "substr not lowered:\n{out}");
     assert!(out.contains("maca_index_of("), "index_of not lowered:\n{out}");
 }
+
+#[test]
+fn spawn_and_await_lower_to_runtime_futures() {
+    // colorblind async: `spawn f(x)` -> maca_spawn, `await` -> maca_await, and
+    // `sleep_ms` -> maca_sleep_ms. No `async` keyword anywhere.
+    let out = c("work(n: int) -> int {\n    sleep_ms(1)\n    n * 2\n}\nmain() -> int {\n    a = spawn work(21)\n    x = await a\n    info(\"{x}\")\n    0\n}\n");
+    assert!(out.contains("maca_spawn((maca_task_fn)work, (int64_t)(21))"), "spawn not lowered:\n{out}");
+    assert!(out.contains("maca_await("), "await not lowered:\n{out}");
+    assert!(out.contains("maca_sleep_ms(1)"), "sleep_ms not lowered:\n{out}");
+    assert!(out.contains("maca_future*"), "future type not emitted:\n{out}");
+    assert!(!out.contains("unsupported"), "async miscompiled to unsupported:\n{out}");
+}

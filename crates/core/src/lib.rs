@@ -17,7 +17,7 @@ mod ty;
 
 use maca_parser::ast::*;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use ty::{EffSet, Infer, Scheme, Ty, EXN, IO, NET, OS};
+use ty::{EffSet, Infer, Scheme, Ty, ASYNC, EXN, IO, NET, OS};
 
 pub use ty::show;
 
@@ -63,6 +63,8 @@ const IO_FNS: &[&str] = &[
 ];
 /// UFCS method names treated as `io` (file/stdio side effects).
 const IO_METHODS: &[&str] = &["read", "write", "exists", "remove", "append", "create"];
+/// Prelude functions that carry the `async` effect (suspension points).
+const ASYNC_FNS: &[&str] = &["sleep_ms"];
 
 /// Top-level NixOS / home-manager option namespaces we recognize.
 const NIXOS_ROOTS: &[&str] = &[
@@ -148,6 +150,9 @@ impl Checker {
             ("str", Ty::Fn(vec![Ty::Any], Box::new(Ty::Str))),
             ("len", Ty::Fn(vec![Ty::Any], Box::new(Ty::Int))),
             ("input", Ty::Fn(vec![], Box::new(Ty::Str))),
+            // `sleep_ms(ms)` — an async suspension point (the async effect is
+            // added in `eff`); yields nothing.
+            ("sleep_ms", Ty::Fn(vec![Ty::Int], Box::new(Ty::Unit))),
         ] {
             self.globals.insert(n.into(), Scheme::mono(t));
         }
@@ -368,6 +373,9 @@ impl Checker {
                     Expr::Ident(n) if IO_FNS.contains(&n.as_str()) => {
                         acc = acc.union(EffSet::of(IO))
                     }
+                    Expr::Ident(n) if ASYNC_FNS.contains(&n.as_str()) => {
+                        acc = acc.union(EffSet::of(ASYNC))
+                    }
                     Expr::Field { name, .. } if IO_METHODS.contains(&name.as_str()) => {
                         acc = acc.union(EffSet::of(IO))
                     }
@@ -387,6 +395,9 @@ impl Checker {
             Expr::Fail(x) => acc = self.eff(x).union(EffSet::of(EXN)),
             // `reify`/`try` catches failures, so it discharges the `exn` effect
             Expr::Reify(x) => acc = EffSet(self.eff(x).0 & !EXN),
+            // colorblind async: `await`/`spawn` add the `async` effect (inferred,
+            // never written — there is no `async` keyword).
+            Expr::Await(x) | Expr::Spawn(x) => acc = self.eff(x).union(EffSet::of(ASYNC)),
             Expr::Field { base, .. } => acc = self.eff(base),
             Expr::Index { base, index } => acc = self.eff(base).union(self.eff(index)),
             Expr::Range { lo, hi } => acc = self.eff(lo).union(self.eff(hi)),
@@ -742,6 +753,20 @@ impl Checker {
             Expr::Reify(x) => {
                 self.infer(env, x);
                 Ty::Any
+            }
+            // `spawn e : Future a` where `e : a`; `await (Future a) : a`. No
+            // `async` keyword — the async effect is inferred by `eff` above.
+            Expr::Spawn(x) => {
+                let a = self.infer(env, x);
+                Ty::Con("Future".into(), vec![a])
+            }
+            Expr::Await(x) => {
+                let t = self.infer(env, x);
+                match self.inf.resolve(&t) {
+                    Ty::Con(n, args) if n == "Future" && args.len() == 1 => args[0].clone(),
+                    // gradual: awaiting an unknown/foreign value yields `any`
+                    _ => Ty::Any,
+                }
             }
             Expr::Assign { target, value } => {
                 self.infer(env, target);

@@ -141,6 +141,8 @@ fn compound(e: &Expr) -> bool {
             | Expr::With { .. }
             | Expr::Fail(_)
             | Expr::Reify(_)
+            | Expr::Await(_)
+            | Expr::Spawn(_)
             | Expr::Range { .. }
     )
 }
@@ -304,6 +306,14 @@ fn expr(s: &mut String, e: &Expr) {
         }
         Expr::Reify(e) => {
             s.push_str("try ");
+            operand(s, e);
+        }
+        Expr::Await(e) => {
+            s.push_str("await ");
+            operand(s, e);
+        }
+        Expr::Spawn(e) => {
+            s.push_str("spawn ");
             operand(s, e);
         }
         Expr::Assign { target, value } => {

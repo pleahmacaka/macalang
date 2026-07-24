@@ -105,6 +105,8 @@ pub enum Expr {
     Try(Box<Expr>),  // postfix `x?`
     Fail(Box<Expr>), // `fail e`
     Reify(Box<Expr>), // `try e`
+    Await(Box<Expr>), // `await e` — suspend until the future resolves
+    Spawn(Box<Expr>), // `spawn e` — run `e` concurrently, yields a Future
     Assign { target: Box<Expr>, value: Box<Expr> }, // UI setter `age = int(v)`
     Block(Vec<Stmt>),
 }

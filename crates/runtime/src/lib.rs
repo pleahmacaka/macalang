@@ -581,6 +581,16 @@ void maca_cancel_set(maca_cancel* c);
 int maca_cancel_check(maca_cancel* c);
 int64_t maca_cancel_demo(int64_t workers);
 
+/* colorblind async: `spawn f(x)` runs `f` concurrently and returns a future;
+ * `await fut` blocks until it resolves. A task is an ordinary `int64 -> int64`
+ * function — no `async` coloring, no ABI change. (POSIX threads back the model
+ * for now; stackful fibers + io_uring are the eventual target.) */
+typedef int64_t (*maca_task_fn)(int64_t);
+typedef struct maca_future maca_future;
+maca_future* maca_spawn(maca_task_fn fn, int64_t arg);
+int64_t maca_await(maca_future* f);
+void maca_sleep_ms(int64_t ms);
+
 #endif
 "##;
 
@@ -590,6 +600,7 @@ int64_t maca_cancel_demo(int64_t workers);
 pub const ASYNC_C: &str = r##"#include "maca_async.h"
 #include "maca_runtime.h"
 #include <pthread.h>
+#include <time.h>
 
 #define MACA_MAX_THREADS 64
 
@@ -644,6 +655,38 @@ int64_t maca_cancel_demo(int64_t workers) {
     int64_t total = 0;
     for (int64_t k = 0; k < workers; k++) total += w[k].iters;
     return total; /* > 0 (workers ran) and finite (they stopped on cancel) */
+}
+
+/* ---- futures: spawn / await ---- */
+struct maca_future {
+    pthread_t th;
+    maca_task_fn fn;
+    int64_t arg;
+    int64_t result;
+    int joined;
+};
+static void* maca_task_trampoline(void* p) {
+    maca_future* f = (maca_future*)p;
+    f->result = f->fn(f->arg);
+    return NULL;
+}
+maca_future* maca_spawn(maca_task_fn fn, int64_t arg) {
+    maca_future* f = (maca_future*)maca_alloc(sizeof(maca_future));
+    f->fn = fn; f->arg = arg; f->result = 0; f->joined = 0;
+    pthread_create(&f->th, NULL, maca_task_trampoline, f);
+    return f;
+}
+int64_t maca_await(maca_future* f) {
+    if (!f) return 0;
+    if (!f->joined) { pthread_join(f->th, NULL); f->joined = 1; }
+    return f->result;
+}
+void maca_sleep_ms(int64_t ms) {
+    if (ms < 0) ms = 0;
+    struct timespec ts;
+    ts.tv_sec = (time_t)(ms / 1000);
+    ts.tv_nsec = (long)((ms % 1000) * 1000000L);
+    nanosleep(&ts, NULL);
 }
 "##;
 

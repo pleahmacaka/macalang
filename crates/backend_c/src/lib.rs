@@ -24,7 +24,11 @@ pub fn emit(m: &Module) -> String {
 
 /// Whether the generated C uses the async runtime (so the driver links it).
 pub fn needs_async(c_src: &str) -> bool {
-    c_src.contains("maca_parallel_i64") || c_src.contains("maca_cancel")
+    c_src.contains("maca_parallel_i64")
+        || c_src.contains("maca_cancel")
+        || c_src.contains("maca_spawn")
+        || c_src.contains("maca_await")
+        || c_src.contains("maca_sleep_ms")
 }
 
 /// Header names from `import c "header.h"` (FFI). The driver provides bindings +
@@ -54,6 +58,9 @@ enum CTy {
     Arr(Box<CTy>),
     /// SIMD vector, e.g. `f32x8` → { name: "f32x8", scalar_c: "float", lanes: 8 }
     Vec { name: String, scalar_c: String, lanes: usize },
+    /// A concurrent computation handle (`spawn e`), awaited with `await`.
+    /// Lowers to `maca_future*`; its result is boxed as `int64_t` for the slice.
+    Future,
     Unknown,
 }
 
@@ -1475,6 +1482,28 @@ impl<'a> Cx<'a> {
                     CTy::Str,
                 )
             }
+            // colorblind async. `spawn f(x)` schedules `f(x)` on the runtime's
+            // worker pool and yields a `maca_future*`; `await fut` blocks the
+            // caller until it resolves, returning the (int64-boxed) result. No
+            // `async` keyword and no ABI change — an async fn is an ordinary fn.
+            Expr::Spawn(inner) => match &**inner {
+                Expr::Call { callee, args } if matches!(&**callee, Expr::Ident(_)) => {
+                    let Expr::Ident(f) = &**callee else { unreachable!() };
+                    let arg = args.first().map(|a| self.arg(env, a)).unwrap_or_else(|| "0".into());
+                    (
+                        format!("maca_spawn((maca_task_fn){}, (int64_t)({arg}))", cid(f)),
+                        CTy::Future,
+                    )
+                }
+                _ => (
+                    "0 /* unsupported: spawn expects `spawn f(x)` */".into(),
+                    CTy::Unknown,
+                ),
+            },
+            Expr::Await(inner) => {
+                let (fc, _) = self.expr(env, inner, None);
+                (format!("maca_await({fc})"), CTy::Int)
+            }
             _ => ("0 /* unsupported */".into(), CTy::Unknown),
         }
     }
@@ -1735,6 +1764,12 @@ impl<'a> Cx<'a> {
                     CTy::Str => (format!("atof({c})"), CTy::Float),
                     _ => (format!("((double)({c}))"), CTy::Float),
                 };
+            }
+            // `sleep_ms(ms)` — an async suspension point (the runtime yields the
+            // task for `ms`). Comma-expr with 0 keeps it a well-typed unit value.
+            if name == "sleep_ms" && args.len() == 1 {
+                let a = self.arg(env, &args[0]);
+                return (format!("(maca_sleep_ms({a}), 0)"), CTy::Unit);
             }
             // `len(x)` — array length (the backing `.len`) or string byte length
             if name == "len" && args.len() == 1 {
@@ -2062,7 +2097,7 @@ impl<'a> Cx<'a> {
                 self.push("    }");
                 self.push("    maca_sb_putc(&sb, ']');");
             }
-            CTy::Unit | CTy::Unknown | CTy::Vec { .. } => {
+            CTy::Unit | CTy::Unknown | CTy::Vec { .. } | CTy::Future => {
                 self.push("    maca_sb_puts(&sb, \"null\");")
             }
         }
@@ -2101,7 +2136,7 @@ impl<'a> Cx<'a> {
                 self.push("      }");
                 self.push(&format!("      {dest} = _acc; }}"));
             }
-            CTy::Unit | CTy::Unknown | CTy::Vec { .. } => {
+            CTy::Unit | CTy::Unknown | CTy::Vec { .. } | CTy::Future => {
                 self.push(&format!("    {dest} = 0;"))
             }
         }
@@ -2159,6 +2194,7 @@ fn c_type(t: &CTy) -> String {
         CTy::Rec(n) | CTy::Sum(n) => n.clone(),
         CTy::Arr(e) => arr_name(e),
         CTy::Vec { name, .. } => name.clone(),
+        CTy::Future => "maca_future*".into(),
         CTy::Unknown => "int64_t".into(),
     }
 }
@@ -2173,7 +2209,7 @@ fn arr_name(elem: &CTy) -> String {
         CTy::Rec(n) | CTy::Sum(n) => format!("{n}Arr"),
         CTy::Vec { name, .. } => format!("{name}Arr"),
         CTy::Arr(e) => format!("{}Arr", arr_name(e)),
-        CTy::Unit | CTy::Unknown => "IntArr".into(),
+        CTy::Unit | CTy::Unknown | CTy::Future => "IntArr".into(),
     }
 }
 
@@ -2412,6 +2448,7 @@ fn cty_tag(t: &CTy) -> String {
         CTy::Rec(n) | CTy::Sum(n) => n.clone(),
         CTy::Arr(e) => format!("arr{}", cty_tag(e)),
         CTy::Vec { name, .. } => name.clone(),
+        CTy::Future => "future".into(),
         CTy::Unknown => "any".into(),
     }
 }

@@ -619,6 +619,15 @@ mod tests {
     }
 
     #[test]
+    fn async_spawn_await_runs_in_interp() {
+        // The playground interpreter runs colorblind async eagerly; results match
+        // the concurrent native runtime (20 + 40 = 60).
+        let src = "work(n: int) -> int {\n    sleep_ms(1)\n    n * 2\n}\nmain() -> int {\n    a = spawn work(10)\n    b = spawn work(20)\n    info(\"{await a + await b}\")\n    0\n}\n";
+        let json = compile_json(src, 0);
+        assert!(json.contains("\"output\":\"60\\n\""), "async interp wrong: {json}");
+    }
+
+    #[test]
     fn find_line_prefers_definition_over_earlier_call() {
         // `helper` is called (indented) before it is defined at column 0.
         let src = "main() -> int {\n    helper()\n    0\n}\nhelper() -> int => 1\n";

@@ -52,6 +52,8 @@ pub enum Tok {
     Fail,
     Try,
     Alias,
+    Await,
+    Spawn,
     // grouping
     LParen,
     RParen,
@@ -492,6 +494,8 @@ impl<'a> Lexer<'a> {
             "fail" => Tok::Fail,
             "try" => Tok::Try,
             "alias" => Tok::Alias,
+            "await" => Tok::Await,
+            "spawn" => Tok::Spawn,
             "true" => Tok::True,
             "false" => Tok::False,
             _ => Tok::Ident(s),

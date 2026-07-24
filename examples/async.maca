@@ -1,0 +1,22 @@
+// Colorblind async: no `async` keyword. A task is an ordinary function; you
+// just `spawn` it to run concurrently and `await` the result. The async effect
+// is inferred, never written.
+
+// A "slow" job: wait, then double. `sleep_ms` is a suspension point.
+slow_double(n: int) -> int {
+    sleep_ms(50)
+    n * 2
+}
+
+main() -> int {
+    // Two jobs run concurrently — total wall time is ~50ms, not ~100ms.
+    a = spawn slow_double(10)
+    b = spawn slow_double(20)
+
+    // await suspends until each future resolves.
+    x = await a
+    y = await b
+
+    info("{x} + {y} = {x + y}")
+    0
+}

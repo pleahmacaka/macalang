@@ -242,6 +242,24 @@ fn roundtrip_keywords() {
 }
 
 #[test]
+fn roundtrip_async() {
+    roundtrip("async.maca");
+}
+
+#[test]
+fn await_and_spawn_bind_tighter_than_binary() {
+    // `await a + await b` must parse as `(await a) + (await b)`.
+    let m = parse("f() -> int => await a + await b\n").module;
+    let maca_parser::Stmt::Fn(f) = &m.items[0] else { panic!("not a fn") };
+    let Some(maca_parser::FnBody::Expr(e)) = &f.body else { panic!("no expr body") };
+    let maca_parser::Expr::Binary { lhs, rhs, .. } = &**e else {
+        panic!("expected a binary at the top, got {e:?}")
+    };
+    assert!(matches!(&**lhs, maca_parser::Expr::Await(_)), "lhs not await: {lhs:?}");
+    assert!(matches!(&**rhs, maca_parser::Expr::Await(_)), "rhs not await: {rhs:?}");
+}
+
+#[test]
 fn arrow_body_can_be_a_comma_list() {
     // `make() -> int[] => 1, 2, 3` — a bracketless list is a valid arrow body
     let m = clean("make() -> int[] => 1, 2, 3\n");

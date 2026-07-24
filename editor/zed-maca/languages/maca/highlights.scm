@@ -31,7 +31,7 @@
 
 ; language keywords that the scaffold grammar lexes as idents
 ((ident) @keyword
-  (#match? @keyword "^(const|as|if|else|for|in|while|break|continue|match|with|try|fail|alias)$"))
+  (#match? @keyword "^(const|as|if|else|for|in|while|break|continue|match|with|try|fail|alias|await|spawn)$"))
 
 ((ident) @constant.builtin
   (#match? @constant.builtin "^(true|false)$"))

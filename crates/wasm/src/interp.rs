@@ -505,6 +505,11 @@ impl<'a> Interp<'a> {
                 Err(Signal::Fail(m)) => Ok(Value::Str(m)),
                 Err(e) => Err(e),
             },
+            // The playground interpreter is single-threaded, so colorblind async
+            // runs eagerly: `spawn e` computes `e` now and `await` is a no-op on
+            // the value. Results match the concurrent runtime; only interleaving
+            // (which the interpreter doesn't model) differs.
+            Expr::Spawn(x) | Expr::Await(x) => self.eval(x, scope, depth),
             Expr::Lambda { .. } => Ok(Value::Unit),
         }
     }
@@ -667,6 +672,9 @@ impl<'a> Interp<'a> {
                 }
                 return Ok(Value::Str(String::new()));
             }
+            // async suspension point — a no-op in the synchronous playground
+            // interpreter (results match; only real-time waiting is elided).
+            "sleep_ms" => return Ok(Value::Unit),
             _ => {}
         }
         // sum constructor

@@ -82,7 +82,8 @@ or mis-parses valid surface syntax).
   Paths cross the boundary: a Windows path `C:\x` is `/mnt/c/x` in WSL (translate
   when shelling out).
 - **Maca surface syntax** (matters when writing `.maca` fixtures): no `fn`, no
-  `type`, no `Result`/`Ok`, no `<>` generics. Field `:` = type, `=` = value.
+  `type`, no `Result`/`Ok`, no `<>` generics, **no `async` keyword** (async is a
+  colorblind, inferred effect — see below). Field `:` = type, `=` = value.
   Bracketless comma lists. Ternary is spaced `c ? x : y`; error-propagate is
   attached `x?`. `main() -> int`.
 
@@ -123,6 +124,16 @@ signatures generalize into `Scheme`s (lowercase names are type vars) and
 instantiate per call; the C backend monomorphizes generics (one specialized fn
 per concrete instantiation). Call **arity** and disagreeing **if/ternary
 branch** types also surface as `TypeMismatch`.
+
+**Colorblind async (no `async` keyword):** async-ness is an inferred effect,
+not a function color. `spawn f(x)` runs `f` concurrently → `Future a`; `await
+fut : a` suspends until it resolves; `sleep_ms(ms)` is a suspension point. `eff`
+in `maca-core` adds the `ASYNC` effect for `await`/`spawn`/`sleep_ms` (so config
+mode rejects them as impure). C backend lowers to `maca_spawn`/`maca_await`/
+`maca_sleep_ms` (pthread-backed futures in `maca-runtime`'s `ASYNC_C`; an async
+fn is an ordinary fn — no ABI change). Playground interpreter runs it eagerly.
+`await`/`spawn` are unary-precedence prefix operators (`await a + await b` =
+`(await a) + (await b)`). Example: `examples/async.maca`.
 
 Language surface beyond the original cheatsheet: operator overloading;
 `while`/`break`/`continue` + reassignment; inclusive integer ranges `lo..hi`

@@ -46,6 +46,12 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - Errors are the inferred `exn` effect; propagate with `x?`, raise with `fail e`.
 - Effects (Koka-style, inferred): `io · net · os · async · exn`. Config mode
   forces `<>`.
+- **Colorblind async — no `async` keyword.** Any function can suspend; the
+  `async` effect is inferred, never written. `spawn f(x)` runs `f` concurrently
+  and yields a `Future`; `await fut` suspends until it resolves. `sleep_ms(ms)`
+  is a suspension point. A task is an ordinary function — no coloring, no ABI
+  change. (Native: POSIX-thread-backed for now; stackful fibers + io_uring are
+  the eventual target. Playground interp runs it eagerly.)
 - Generics: lowercase type vars, applied by juxtaposition (`Map k v`), postfix
   `T[]` / `T?`. Nullable `T?` = `T | None`.
 - Ternary is spaced `c ? x : y`; error-propagation is attached `x?`.

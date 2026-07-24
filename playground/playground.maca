@@ -270,7 +270,7 @@ import js """
       ],
     });
     m.languages.setMonarchTokensProvider("maca", {
-      keywords: ["const", "as", "if", "else", "for", "in", "while", "break", "continue", "match", "import", "from", "with", "fail", "try", "alias", "true", "false"],
+      keywords: ["const", "as", "if", "else", "for", "in", "while", "break", "continue", "match", "import", "from", "with", "fail", "try", "alias", "await", "spawn", "true", "false"],
       typeKeywords: ["int", "float", "str", "bool", "bytes"],
       tokenizer: {
         root: [
