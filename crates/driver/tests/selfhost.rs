@@ -99,14 +99,16 @@ fn selfhost_frontend_compiles_and_runs() {
     }
     let dir = std::env::temp_dir().join("maca-selfhost-run");
     let _ = std::fs::create_dir_all(&dir);
-    let src = dir.join("frontend.maca");
-    std::fs::write(&src, concatenated()).unwrap();
     let bin = dir.join("frontend");
 
+    // Build straight from the real entry point: the driver resolves the
+    // `import selfhost/…` statements to the sibling modules and inlines them in
+    // dependency order — no manual concatenation.
+    let entry = selfhost_dir().join("main.maca");
     let build = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args([
             "build",
-            &src.to_string_lossy(),
+            &entry.to_string_lossy(),
             "-o",
             &bin.to_string_lossy(),
         ])

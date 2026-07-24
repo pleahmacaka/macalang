@@ -6,6 +6,7 @@
 // stdlib contract the stage-1 compiler builds on — see std/README.md.
 
 import std/str
+import selfhost/token
 
 // ---- character classes ----------------------------------------------------
 

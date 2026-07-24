@@ -1114,9 +1114,79 @@ fn compiler_fingerprint() -> String {
     format!("{VERSION}-{mtime}")
 }
 
+/// Resolve `import a/b` to a sibling `.maca` file. `import std/foo` and other
+/// module imports that don't name a local file (the string/list/math stdlib is
+/// compiler builtins) resolve to nothing and are left for the backend. Two
+/// candidates are tried: a file named by the import's last segment next to the
+/// importer (`import selfhost/token` from `selfhost/main.maca` →
+/// `selfhost/token.maca`), and the whole dotted path from the working directory.
+fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> {
+    let last = segs.last()?;
+    let by_sibling = importer
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!("{last}.maca"));
+    if by_sibling.is_file() {
+        return Some(by_sibling);
+    }
+    let by_path = PathBuf::from(format!("{}.maca", segs.join("/")));
+    by_path.is_file().then_some(by_path)
+}
+
+/// Depth-first post-order over local `import`s: every module is emitted after
+/// the modules it depends on, each exactly once. Cycles terminate (a module is
+/// marked seen before its imports are walked).
+fn collect_module(
+    path: &Path,
+    seen: &mut std::collections::HashSet<PathBuf>,
+    order: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    let canon = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if !seen.insert(canon.clone()) {
+        return Ok(());
+    }
+    let src = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let parsed = maca_parser::parse(&src);
+    for item in &parsed.module.items {
+        // `import a/b` (Module) and a single-word `import a` (Bare) both name a
+        // local module when a matching `.maca` file exists; anything else (a
+        // foreign header, `nixpkgs`, a stdlib builtin) resolves to no file and
+        // is left for the backend.
+        let segs = match item {
+            maca_parser::ast::Stmt::Import(maca_parser::ast::Import::Module(segs)) => segs.clone(),
+            maca_parser::ast::Stmt::Import(maca_parser::ast::Import::Bare(name)) => {
+                vec![name.clone()]
+            }
+            _ => continue,
+        };
+        if let Some(dep) = resolve_module_path(&segs, path) {
+            collect_module(&dep, seen, order)?;
+        }
+    }
+    order.push(canon);
+    Ok(())
+}
+
+/// Read a program and inline every local module it imports (transitively), in
+/// dependency order, so `maca build a.maca` sees a single translation unit. A
+/// program with no local imports is just its own text.
+fn load_with_imports(entry: &Path) -> Result<String, String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut order = Vec::new();
+    collect_module(entry, &mut seen, &mut order)?;
+    let mut combined = String::new();
+    for p in &order {
+        combined.push_str(
+            &std::fs::read_to_string(p).map_err(|e| format!("cannot read {}: {e}", p.display()))?,
+        );
+        combined.push('\n');
+    }
+    Ok(combined)
+}
+
 fn compile(src: &Path, out: &Path) -> Result<(), String> {
-    let source =
-        std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let source = load_with_imports(src)?;
     let key = build_cache::artifact_key(&source, &compiler_fingerprint(), "native");
     if let Some(cached) = build_cache::get(&key) {
         // transparent: `run` must stay silent, and stderr clean for callers that

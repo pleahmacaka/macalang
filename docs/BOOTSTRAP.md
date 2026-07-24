@@ -65,9 +65,11 @@ with a C forward declaration that breaks the struct/array definition cycle).
       mismatch counting); grows into full HM generalization + row unification
 - [x] `emit_c.maca` — a C emitter over the AST slice (literals, idents, calls,
       binary ops, a whole translation unit)
-- [ ] the remaining backend growth for a full compiler (higher-order params,
-      nested modules / multi-file builds so `maca build selfhost/main.maca`
-      resolves the imports instead of the gate concatenating the files)
+- [x] multi-file builds — `maca build selfhost/main.maca` resolves the local
+      `import selfhost/…` statements and inlines the modules in dependency
+      order (the run gate builds from the real entry point, no concatenation)
+- [ ] the remaining backend growth for a full compiler (higher-order params
+      passed as values; the checker/emitter grown to the full language)
 - [ ] two-stage fixed-point build in CI (once native runs are available)
 
 ## Why the Rust side stays minimal

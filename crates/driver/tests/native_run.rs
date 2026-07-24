@@ -68,6 +68,38 @@ fn recursion_and_arithmetic_run_natively() {
 }
 
 #[test]
+fn multi_file_imports_resolve_and_run() {
+    // `maca build main.maca` inlines local `import` modules in dependency order.
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-multifile");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("mathlib.maca"), "twice(n: int) -> int => n * 2\n").unwrap();
+    std::fs::write(
+        dir.join("main.maca"),
+        "import mathlib\n\nmain() -> int {\n    info(\"{twice(21)}\")\n    0\n}\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &dir.join("main.maca").to_string_lossy()])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("42"),
+        "import didn't resolve: stdout {stdout}\nstderr {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
 fn recursive_record_runs_natively() {
     // A recursive record (`Tree { kids: Tree[] }`) compiles through the C
     // backend's forward-declaration path and walks correctly at run time.
