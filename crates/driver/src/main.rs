@@ -1025,6 +1025,27 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
     let c_imports = maca_backend_c::c_imports(&parsed.module);
     if c_imports.iter().any(|h| h.contains("sqlite")) {
         maca_runtime::write_sqlite_glue(&dir).map_err(|e| e.to_string())?;
+        // Plain Linux host (no WSL/nix): link the system sqlite with host cc.
+        if !have_wsl() {
+            let o = Command::new("cc")
+                .arg(dir.join("main.c"))
+                .arg(dir.join("maca_runtime.c"))
+                .arg(dir.join("maca_ffi_sqlite.c"))
+                .args(["-O2", "-lsqlite3", "-lpthread"])
+                .arg("-I")
+                .arg(&dir)
+                .arg("-o")
+                .arg(out)
+                .output()
+                .map_err(|e| format!("failed to run cc: {e}"))?;
+            if !o.status.success() {
+                return Err(format!(
+                    "ffi build (host cc) failed:\n{}",
+                    String::from_utf8_lossy(&o.stderr)
+                ));
+            }
+            return Ok(());
+        }
         let dev = nix_out("nixpkgs#sqlite.dev")?;
         let lib = nix_out("nixpkgs#sqlite.out")?;
         let mut args: Vec<String> = ["nix", "shell", "nixpkgs#zig", "-c", "zig", "cc"]

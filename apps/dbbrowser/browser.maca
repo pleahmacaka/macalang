@@ -1,0 +1,89 @@
+// dbbrowser — a small SQLite browser in Maca. Exercises the whole stack the
+// project grew for it: the C FFI (opaque db/stmt handles, row/column
+// iteration), the string stdlib (padding/formatting), inclusive ranges, and
+// while-loops. Build with `maca build apps/dbbrowser/browser.maca` (links
+// sqlite3 via the FFI glue).
+
+import c "sqlite3.h"
+
+sqlite_open(path: str) -> int
+sqlite_close(db: int) -> int
+sqlite_exec(db: int, sql: str) -> int
+sqlite_prepare(db: int, sql: str) -> int
+sqlite_step(st: int) -> bool
+sqlite_column_count(st: int) -> int
+sqlite_column_name(st: int, col: int) -> str
+sqlite_column_text(st: int, col: int) -> str
+sqlite_finalize(st: int) -> int
+
+// left-justify `s` into a `w`-wide cell
+pad(s: str, w: int) -> str {
+    out = s
+    i = len(s)
+    while i < w {
+        out = "{out} "
+        i = i + 1
+    }
+    out
+}
+
+// a horizontal rule `w` columns wide
+rule(w: int) -> str {
+    out = ""
+    i = 0
+    while i < w {
+        out = "{out}-"
+        i = i + 1
+    }
+    out
+}
+
+// print a query's result set as an aligned table
+browse(db: int, sql: str) -> int {
+    st = sqlite_prepare(db, sql)
+    ncols = sqlite_column_count(st)
+    cell = 14
+
+    header = ""
+    j = 0
+    while j < ncols {
+        header = "{header}{pad(sqlite_column_name(st, j), cell)}"
+        j = j + 1
+    }
+    info(header)
+    info(rule(ncols * cell))
+
+    rows = 0
+    while sqlite_step(st) {
+        line = ""
+        c = 0
+        while c < ncols {
+            line = "{line}{pad(sqlite_column_text(st, c), cell)}"
+            c = c + 1
+        }
+        info(line)
+        rows = rows + 1
+    }
+    sqlite_finalize(st)
+    info("({rows} rows)")
+    0
+}
+
+// list the user tables in the database
+tables(db: int) -> int {
+    info("tables:")
+    browse(db, "SELECT name FROM sqlite_master WHERE type='table'")
+}
+
+main() -> int {
+    db = sqlite_open(":memory:")
+    sqlite_exec(db, "CREATE TABLE people(id INTEGER, name TEXT, city TEXT)")
+    sqlite_exec(db, "INSERT INTO people VALUES(1,'ada','london'),(2,'alan','manchester'),(3,'grace','new york')")
+
+    tables(db)
+    info("")
+    browse(db, "SELECT id, name, city FROM people ORDER BY name")
+
+    sqlite_close(db)
+    0
+}

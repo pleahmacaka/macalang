@@ -92,6 +92,40 @@ fn operator_overloading_runs_natively() {
 }
 
 #[test]
+fn dbbrowser_runs_natively_with_system_sqlite() {
+    // Real C FFI: on a plain Linux host the driver links system sqlite with the
+    // host cc. Needs libsqlite3 headers; skip where they're absent.
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    let has_sqlite = std::path::Path::new("/usr/include/sqlite3.h").exists();
+    if wsl || !have("cc") || !has_sqlite {
+        eprintln!("skipping: needs a native cc + system sqlite3 and no wsl");
+        return;
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "run",
+            &format!(
+                "{}/../../apps/dbbrowser/browser.maca",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+        ])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for want in ["people", "ada", "grace", "(3 rows)"] {
+        assert!(
+            stdout.contains(want),
+            "missing {want:?}.\nstdout: {stdout}\nstderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
+#[test]
 fn math_prelude_runs_natively() {
     let wsl = Command::new("wsl")
         .arg("true")
