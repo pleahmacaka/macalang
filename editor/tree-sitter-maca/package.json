@@ -1,0 +1,7 @@
+{
+  "name": "tree-sitter-maca",
+  "version": "0.1.0",
+  "description": "Maca grammar for tree-sitter",
+  "main": "bindings/node",
+  "tree-sitter": [{ "scope": "source.maca", "file-types": ["maca"] }]
+}

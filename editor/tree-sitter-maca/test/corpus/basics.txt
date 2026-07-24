@@ -1,0 +1,68 @@
+==================
+arrow function with a binary body
+==================
+
+add(x: int) -> int => x + 1
+
+---
+
+(source_file
+  (function
+    name: (ident)
+    (params (param name: (ident) (type (ident))))
+    return: (type (ident))
+    (binary (ident) (number))))
+
+==================
+sum type and a match with constructor patterns
+==================
+
+Tree = Leaf(int) | Node(Tree, Tree)
+
+total(t: Tree) -> int {
+    match t {
+        Leaf(n) => n
+        Node(l, r) => total(l) + total(r)
+    }
+}
+
+---
+
+(source_file
+  (type_decl
+    name: (type_ident)
+    (sum_body
+      (variant (type_ident) (type (ident)))
+      (variant (type_ident) (type (type_ident)) (type (type_ident)))))
+  (function
+    name: (ident)
+    (params (param name: (ident) (type (type_ident))))
+    return: (type (ident))
+    (block
+      (match
+        scrutinee: (ident)
+        (match_arm pattern: (pattern (ctor_pattern (type_ident) (ident))) body: (ident))
+        (match_arm
+          pattern: (pattern (ctor_pattern (type_ident) (ident) (ident)))
+          body: (binary (call callee: (ident) (ident)) (call callee: (ident) (ident))))))))
+
+==================
+multi-line ternary continuation
+==================
+
+pick(n: int) -> int =>
+    n > 0
+        ? 1
+        : 0
+
+---
+
+(source_file
+  (function
+    name: (ident)
+    (params (param name: (ident) (type (ident))))
+    return: (type (ident))
+    (ternary
+      cond: (binary (ident) (number))
+      then: (number)
+      else: (number))))
