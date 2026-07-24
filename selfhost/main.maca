@@ -31,5 +31,11 @@ main() -> int {
     fnsrc = "add(x: int, y: int) -> int => x + y"
     fst = parse_fn(lex(fnsrc), 0)
     info("fn: {emit_fn(fst.snode)}")
+
+    // a whole module (several functions) → a complete C translation unit.
+    prog = "inc(n: int) -> int => n + 1 dbl(n: int) -> int => n * 2"
+    mod = parse_module(lex(prog), 0, [])
+    info("module ({mod.items.length()} fns):")
+    info(emit_module(mod))
     0
 }

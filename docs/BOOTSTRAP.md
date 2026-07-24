@@ -66,7 +66,9 @@ with a C forward declaration that breaks the struct/array definition cycle).
 - [x] `check.maca` — a coarse type checker (int/str/float, gradual `any`,
       mismatch counting); grows into full HM generalization + row unification
 - [x] `emit_c.maca` — a C emitter over the AST slice (literals, idents, calls,
-      binary ops, a whole translation unit)
+      binary ops, whole functions, and a module → a complete C translation unit)
+- [x] `parse_fn` / `parse_module` — function definitions and multi-function
+      modules (two-char operators, parameter lists, arrow bodies)
 - [x] multi-file builds — `maca build selfhost/main.maca` resolves the local
       `import selfhost/…` statements and inlines the modules in dependency
       order (the run gate builds from the real entry point, no concatenation)

@@ -50,6 +50,19 @@ parse_fn(ts: Token[], i: int) -> PStmt {
     mk_pstmt(s_fn(name, pp.params, [s_expr(be.node)]), be.next)
 }
 
+// A whole module: parse top-level function definitions until `Eof`. Whitespace
+// (including newlines) is skipped by the lexer, so functions sit back-to-back
+// in the token stream and each `parse_fn` returns where the next one begins.
+parse_module(ts: Token[], i: int, acc: Stmt[]) -> Module =>
+    ts.get(i).kind == Eof
+        ? Module { items = acc }
+        : parse_module_step(ts, i, acc)
+
+parse_module_step(ts: Token[], i: int, acc: Stmt[]) -> Module {
+    ps = parse_fn(ts, i)
+    parse_module(ts, ps.snext, acc ++ [ps.snode])
+}
+
 // Parse a comma-separated parameter list up to the closing `)`.
 parse_params(ts: Token[], i: int, acc: Expr[]) -> PParams =>
     ts.get(i).kind == RParen
@@ -65,18 +78,25 @@ parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
         : parse_params(ts, after, nacc)
 }
 
-// expr := primary (('+' | '-') primary)*    — left associative
+// expr := primary (binop primary)*    — left associative (flat precedence for
+// now: `a + b * c` parses as `(a + b) * c`; a precedence-climbing pass replaces
+// this as the checker/emitter grow).
 parse_expr(ts: Token[], i: int) -> PExpr {
     lhs = parse_primary(ts, i)
     parse_binary_tail(ts, lhs)
 }
 
-parse_binary_tail(ts: Token[], lhs: PExpr) -> PExpr {
-    op = ts.get(lhs.next).kind
-    op == Plus || op == Minus
+// A binary operator kind: the arithmetic, comparison, and logical operators the
+// scanner produces.
+is_binop(k: Kind) -> bool =>
+    k == Plus || k == Minus || k == Star || k == Slash ||
+    k == EqEq || k == NotEq || k == Lt || k == Gt || k == Le || k == Ge ||
+    k == PlusPlus
+
+parse_binary_tail(ts: Token[], lhs: PExpr) -> PExpr =>
+    is_binop(ts.get(lhs.next).kind)
         ? continue_binary(ts, lhs, ts.get(lhs.next).text)
         : lhs
-}
 
 continue_binary(ts: Token[], lhs: PExpr, op: str) -> PExpr {
     rhs = parse_primary(ts, lhs.next + 1)

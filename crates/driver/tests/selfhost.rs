@@ -155,4 +155,11 @@ fn selfhost_frontend_compiles_and_runs() {
         stdout.contains("fn: int add(int x, int y) { return (x + y); }"),
         "function emission wrong: {stdout}"
     );
+    // a whole module (several functions) lowers to a complete C translation unit.
+    assert!(
+        stdout.contains("module (2 fns):")
+            && stdout.contains("int inc(int n) { return (n + 1); }")
+            && stdout.contains("int dbl(int n) { return (n * 2); }"),
+        "module emission wrong: {stdout}"
+    );
 }
