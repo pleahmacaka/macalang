@@ -42,10 +42,11 @@ emit_unit(e: Expr) -> str =>
 // ---- function emission ----------------------------------------------------
 
 // Emit a C function definition from an `SFn` statement. Params and the return
-// type are `int` in this slice (the AST doesn't yet carry their types); the
-// arrow body is a single returned expression.
+// type are `int` in this slice (the AST doesn't yet carry their types). The
+// body is a statement sequence: bindings become locals and the final
+// expression becomes the `return`.
 emit_fn(s: Stmt) -> str =>
-    "int {s.name}({emit_params(s.params, 0)}) {{ return {emit_body(s.body)}; }}"
+    "int {s.name}({emit_params(s.params, 0)}) {{ {emit_stmts(s.body, 0)} }}"
 
 // `int a, int b` from the parameter ident nodes.
 emit_params(ps: Expr[], i: int) -> str =>
@@ -55,11 +56,19 @@ emit_params(ps: Expr[], i: int) -> str =>
             ? "int {ps.get(i).text}"
             : "int {ps.get(i).text}, {emit_params(ps, i + 1)}"
 
-// The body is a single expression statement; emit its expression.
-emit_body(body: Stmt[]) -> str =>
-    body.length() >= 1
-        ? emit_expr(body.get(0).value)
-        : "0"
+emit_stmts(body: Stmt[], i: int) -> str =>
+    i >= body.length()
+        ? ""
+        : "{emit_stmt(body.get(i), i == body.length() - 1)} {emit_stmts(body, i + 1)}"
+
+// A binding is a local `int x = e;`; the last expression statement is the
+// `return`, any earlier one is a bare expression statement.
+emit_stmt(s: Stmt, is_last: bool) -> str =>
+    s.kind == SBind
+        ? "int {s.name} = {emit_expr(s.value)};"
+        : is_last
+            ? "return {emit_expr(s.value)};"
+            : "{emit_expr(s.value)};"
 
 // A whole module: every function definition, one per line.
 emit_module(m: Module) -> str =>

@@ -62,6 +62,9 @@ e_binary(op: str, lhs: Expr, rhs: Expr) -> Expr =>
 s_expr(value: Expr) -> Stmt =>
     Stmt { kind = SExpr, name = "", value, params = [], body = [] }
 
+s_bind(name: str, value: Expr) -> Stmt =>
+    Stmt { kind = SBind, name, value, params = [], body = [] }
+
 s_fn(name: str, params: Expr[], body: Stmt[]) -> Stmt =>
     Stmt { kind = SFn, name, value = e_ident(name), params, body }
 

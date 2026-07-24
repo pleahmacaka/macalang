@@ -35,19 +35,59 @@ PParams = {
 mk_pparams(params: Expr[], pnext: int) -> PParams =>
     PParams { params, pnext }
 
+PBlock = {
+    bstmts: Stmt[]
+    bnext: int
+}
+mk_pblock(bstmts: Stmt[], bnext: int) -> PBlock =>
+    PBlock { bstmts, bnext }
+
 // ---- function definitions -------------------------------------------------
 
-// `name(p [: T], …) -> R => expr` — an arrow-bodied top-level function. Types
-// are skipped for now (the AST carries params as ident nodes); the body is one
-// expression. Grows into full block bodies + typed params.
+// `name(p [: T], …) -> R <body>` — a top-level function. The body is either an
+// arrow expression (`=> e`) or a brace block (`{ stmt* }`). Parameter types are
+// skipped for now (the AST carries params as ident nodes).
 parse_fn(ts: Token[], i: int) -> PStmt {
     name = ts.get(i).text
     pp = parse_params(ts, i + 2, [])   // i+1 is '(' ; params start at i+2
     afterp = pp.pnext + 1              // skip ')'
     afterret = ts.get(afterp).kind == Arrow ? afterp + 2 : afterp  // skip '-> R'
-    body_start = afterret + 1          // skip '=>'
-    be = parse_expr(ts, body_start)
-    mk_pstmt(s_fn(name, pp.params, [s_expr(be.node)]), be.next)
+    ts.get(afterret).kind == LBrace
+        ? mk_block_fn(ts, name, pp.params, afterret)
+        : mk_arrow_fn(ts, name, pp.params, afterret)
+}
+
+mk_arrow_fn(ts: Token[], name: str, params: Expr[], at: int) -> PStmt {
+    be = parse_expr(ts, at + 1)        // skip '=>'
+    mk_pstmt(s_fn(name, params, [s_expr(be.node)]), be.next)
+}
+
+mk_block_fn(ts: Token[], name: str, params: Expr[], at: int) -> PStmt {
+    pb = parse_block(ts, at + 1, [])   // skip '{'
+    mk_pstmt(s_fn(name, params, pb.bstmts), pb.bnext)
+}
+
+// A brace block: statements (a binding `x = e` or a bare expression) up to `}`.
+parse_block(ts: Token[], i: int, acc: Stmt[]) -> PBlock =>
+    ts.get(i).kind == RBrace
+        ? mk_pblock(acc, i + 1)        // skip '}'
+        : parse_block_step(ts, i, acc)
+
+parse_block_step(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
+    ts.get(i).kind == TIdent && ts.get(i + 1).kind == Eq
+        ? parse_bind_stmt(ts, i, acc)
+        : parse_expr_stmt(ts, i, acc)
+}
+
+parse_bind_stmt(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
+    name = ts.get(i).text
+    v = parse_expr(ts, i + 2)          // skip 'name ='
+    parse_block(ts, v.next, acc ++ [s_bind(name, v.node)])
+}
+
+parse_expr_stmt(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
+    e = parse_expr(ts, i)
+    parse_block(ts, e.next, acc ++ [s_expr(e.node)])
 }
 
 // A whole module: parse top-level function definitions until `Eof`. Whitespace

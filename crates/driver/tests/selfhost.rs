@@ -157,14 +157,14 @@ fn selfhost_frontend_compiles_and_runs() {
     // operator lexer (`->`, `=>`), parameter parsing, and function emission all
     // exercise together, producing compilable C.
     assert!(
-        stdout.contains("fn: int add(int x, int y) { return (x + y); }"),
+        stdout.contains("fn: int add(int x, int y) { return (x + y);"),
         "function emission wrong: {stdout}"
     );
     // a whole module (several functions) lowers to a complete C translation unit.
     assert!(
         stdout.contains("module (2 fns):")
-            && stdout.contains("int inc(int n) { return (n + 1); }")
-            && stdout.contains("int dbl(int n) { return (n * 2); }"),
+            && stdout.contains("int inc(int n) { return (n + 1);")
+            && stdout.contains("int dbl(int n) { return (n * 2);"),
         "module emission wrong: {stdout}"
     );
     // whole-module checking: the lexer scans string literals, and the checker
@@ -172,5 +172,11 @@ fn selfhost_frontend_compiles_and_runs() {
     assert!(
         stdout.contains("module check: 1 type errors"),
         "module type-check wrong: {stdout}"
+    );
+    // a block-bodied function: a local binding lowers to a C local, the trailing
+    // expression to the `return`.
+    assert!(
+        stdout.contains("block fn: int sq(int n) { int t = (n * n); return t;"),
+        "block-body emission wrong: {stdout}"
     );
 }

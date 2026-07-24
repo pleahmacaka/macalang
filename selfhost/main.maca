@@ -45,5 +45,10 @@ main() -> int {
     prog2 = "ok() -> int => 1 + 2 bad() -> int => 1 + \"x\""
     mod2 = parse_module(lex(prog2), 0, [])
     info("module check: {check_module(mod2)} type errors")
+
+    // a block-bodied function: a local binding plus a returned expression.
+    blk = "sq(n: int) -> int {{ t = n * n t }}"
+    bfn = parse_fn(lex(blk), 0)
+    info("block fn: {emit_fn(bfn.snode)}")
     0
 }
