@@ -64,10 +64,33 @@ lex_number(cs: str[], i: int, out: Token[]) -> Token[] {
     scan(cs, j, out ++ [mk_token(TInt, text, i)])
 }
 
+// A punctuator: try a two-character operator (`->`, `=>`, `==`, …) first, then
+// fall back to a single character. `is_two_char` gates the two-char consume so
+// we never mis-read `a - b` as one token.
 lex_punct(cs: str[], i: int, out: Token[], c: str) -> Token[] {
-    kind = punct_kind(c)
-    scan(cs, i + 1, out ++ [mk_token(kind, c, i)])
+    n = cs.length()
+    nxt = i + 1 < n ? cs.get(i + 1) : ""
+    two = c ++ nxt
+    is_two_char(two)
+        ? scan(cs, i + 2, out ++ [mk_token(two_char_kind(two), two, i)])
+        : scan(cs, i + 1, out ++ [mk_token(punct_kind(c), c, i)])
 }
+
+is_two_char(s: str) -> bool =>
+    s == "->" || s == "=>" || s == "==" || s == "!=" ||
+    s == "<=" || s == ">=" || s == "++"
+
+two_char_kind(s: str) -> Kind =>
+    match s {
+        "->" => Arrow
+        "=>" => FatArrow
+        "==" => EqEq
+        "!=" => NotEq
+        "<=" => Le
+        ">=" => Ge
+        "++" => PlusPlus
+        _    => TIdent
+    }
 
 punct_kind(c: str) -> Kind =>
     match c {
@@ -87,5 +110,7 @@ punct_kind(c: str) -> Kind =>
         "/" => Slash
         "|" => Bar
         "?" => Question
+        "<" => Lt
+        ">" => Gt
         _   => TIdent
     }

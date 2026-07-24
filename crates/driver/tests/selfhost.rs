@@ -148,4 +148,11 @@ fn selfhost_frontend_compiles_and_runs() {
         stdout.contains("emitted: int main(void) { return ((add(1) + 2) - 3); }"),
         "emitter output wrong: {stdout}"
     );
+    // a whole function definition through lex → parse → emit: the two-char
+    // operator lexer (`->`, `=>`), parameter parsing, and function emission all
+    // exercise together, producing compilable C.
+    assert!(
+        stdout.contains("fn: int add(int x, int y) { return (x + y); }"),
+        "function emission wrong: {stdout}"
+    );
 }

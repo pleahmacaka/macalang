@@ -38,3 +38,25 @@ emit_args(xs: Expr[], i: int) -> str =>
 // interpolation.)
 emit_unit(e: Expr) -> str =>
     "int main(void) {{ return {emit_expr(e)}; }}"
+
+// ---- function emission ----------------------------------------------------
+
+// Emit a C function definition from an `SFn` statement. Params and the return
+// type are `int` in this slice (the AST doesn't yet carry their types); the
+// arrow body is a single returned expression.
+emit_fn(s: Stmt) -> str =>
+    "int {s.name}({emit_params(s.params, 0)}) {{ return {emit_body(s.body)}; }}"
+
+// `int a, int b` from the parameter ident nodes.
+emit_params(ps: Expr[], i: int) -> str =>
+    i >= ps.length()
+        ? ""
+        : i == ps.length() - 1
+            ? "int {ps.get(i).text}"
+            : "int {ps.get(i).text}, {emit_params(ps, i + 1)}"
+
+// The body is a single expression statement; emit its expression.
+emit_body(body: Stmt[]) -> str =>
+    body.length() >= 1
+        ? emit_expr(body.get(0).value)
+        : "0"

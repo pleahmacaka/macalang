@@ -26,5 +26,10 @@ main() -> int {
     // a deliberately ill-typed expression the checker must reject: `str + int`.
     bad = e_binary("+", e_str("hi"), e_int(1))
     info("checked: {show(bad)} → type {type_of(bad)}, {count_errors(bad)} errors")
+
+    // a whole function definition through lex → parse → emit.
+    fnsrc = "add(x: int, y: int) -> int => x + y"
+    fst = parse_fn(lex(fnsrc), 0)
+    info("fn: {emit_fn(fst.snode)}")
     0
 }

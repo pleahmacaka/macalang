@@ -27,10 +27,10 @@ cmp maca1 maca2                             # fixed point ⇒ self-hosted
 |---|---|---|
 | `token.maca` | 1 | token kinds (a nullary sum → C enum), `Token`, `keyword_kind` |
 | `ast.maca` | 1 | the recursive `Expr`/`Stmt`/`Module` AST + an AST pretty-printer |
-| `lexer.maca` | 1 | character-level scanner (`lex : str -> Token[]`) |
-| `parser.maca` | 1 | recursive-descent over the token stream → `Expr` |
+| `lexer.maca` | 1 | character-level scanner incl. two-char operators (`lex : str -> Token[]`) |
+| `parser.maca` | 1 | recursive descent → `Expr` and function definitions (`parse_fn`) |
 | `check.maca` | 1 | a coarse type checker (infers `int`/`str`/…, counts mismatches) |
-| `emit_c.maca` | 1 | a C emitter over the AST (`Expr` → C source) |
+| `emit_c.maca` | 1 | a C emitter over the AST (`Expr` and whole functions → C source) |
 | `main.maca` | 1 | driver entry; lexes + parses + checks + emits a sample |
 
 ## What's proven today
@@ -45,7 +45,9 @@ The stage-1 **front-end now compiles and runs as a native binary.** The gate,
    lexer + parser turn `add(1) + 2 - 3` into the AST `((add(1) + 2) - 3)`, the
    Maca-written checker infers its type (`int`, no errors) and flags a
    `str + int` clash, and the Maca-written emitter lowers it back to C:
-   `int main(void) { return ((add(1) + 2) - 3); }`.
+   `int main(void) { return ((add(1) + 2) - 3); }`. It also parses and emits a
+   whole function — `add(x: int, y: int) -> int => x + y` becomes
+   `int add(int x, int y) { return (x + y); }`, valid C that compiles.
 
 Step 3 is the real milestone — the compiler's own pipeline, written in Maca,
 executing through the stage-0 C backend. Getting there grew the backend two

@@ -20,6 +20,51 @@ PExpr = {
 mk_pexpr(node: Expr, next: int) -> PExpr =>
     PExpr { node, next }
 
+// Result of parsing a statement / a parameter list (node + next index).
+PStmt = {
+    snode: Stmt
+    snext: int
+}
+mk_pstmt(snode: Stmt, snext: int) -> PStmt =>
+    PStmt { snode, snext }
+
+PParams = {
+    params: Expr[]
+    pnext: int
+}
+mk_pparams(params: Expr[], pnext: int) -> PParams =>
+    PParams { params, pnext }
+
+// ---- function definitions -------------------------------------------------
+
+// `name(p [: T], …) -> R => expr` — an arrow-bodied top-level function. Types
+// are skipped for now (the AST carries params as ident nodes); the body is one
+// expression. Grows into full block bodies + typed params.
+parse_fn(ts: Token[], i: int) -> PStmt {
+    name = ts.get(i).text
+    pp = parse_params(ts, i + 2, [])   // i+1 is '(' ; params start at i+2
+    afterp = pp.pnext + 1              // skip ')'
+    afterret = ts.get(afterp).kind == Arrow ? afterp + 2 : afterp  // skip '-> R'
+    body_start = afterret + 1          // skip '=>'
+    be = parse_expr(ts, body_start)
+    mk_pstmt(s_fn(name, pp.params, [s_expr(be.node)]), be.next)
+}
+
+// Parse a comma-separated parameter list up to the closing `)`.
+parse_params(ts: Token[], i: int, acc: Expr[]) -> PParams =>
+    ts.get(i).kind == RParen
+        ? mk_pparams(acc, i)
+        : parse_one_param(ts, i, acc)
+
+parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
+    pname = ts.get(i).text
+    nacc = acc ++ [e_ident(pname)]
+    after = ts.get(i + 1).kind == Colon ? i + 3 : i + 1   // skip optional ': T'
+    ts.get(after).kind == Comma
+        ? parse_params(ts, after + 1, nacc)
+        : parse_params(ts, after, nacc)
+}
+
 // expr := primary (('+' | '-') primary)*    — left associative
 parse_expr(ts: Token[], i: int) -> PExpr {
     lhs = parse_primary(ts, i)
