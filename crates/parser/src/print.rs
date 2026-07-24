@@ -37,7 +37,12 @@ fn import(s: &mut String, im: &Import) {
             let _ = write!(s, "import {}", segs.join("/"));
         }
         Import::Names { names, module } => {
-            let _ = write!(s, "import {{ {} }} from {}", names.join(", "), module.join("/"));
+            let _ = write!(
+                s,
+                "import {{ {} }} from {}",
+                names.join(", "),
+                module.join("/")
+            );
         }
         Import::Path(p) => {
             let _ = write!(s, "import {p}");

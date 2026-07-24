@@ -21,13 +21,12 @@ pub fn emit(m: &Module) -> LlvmOut {
     let mut decls = BTreeSet::new();
     let mut defs = String::new();
     for item in &m.items {
-        if let Stmt::Fn(f) = item {
-            if is_simd_fn(f) {
-                if let Some(def) = emit_fn(f, &mut decls) {
-                    simd_fns.push(f.name.clone());
-                    defs.push_str(&def);
-                }
-            }
+        if let Stmt::Fn(f) = item
+            && is_simd_fn(f)
+            && let Some(def) = emit_fn(f, &mut decls)
+        {
+            simd_fns.push(f.name.clone());
+            defs.push_str(&def);
         }
     }
     let mut ir = String::new();
@@ -44,7 +43,9 @@ pub fn emit(m: &Module) -> LlvmOut {
 
 /// A function is on the LLVM path iff any parameter or its return is a vector.
 pub fn is_simd_fn(f: &FnDef) -> bool {
-    f.params.iter().any(|p| p.ty.as_ref().is_some_and(is_vec_type))
+    f.params
+        .iter()
+        .any(|p| p.ty.as_ref().is_some_and(is_vec_type))
         || f.ret.as_ref().is_some_and(is_vec_type)
 }
 
@@ -69,20 +70,20 @@ fn parse_vec(name: &str) -> Option<(String, usize, String, bool)> {
 }
 
 fn llvm_type(t: &Type) -> String {
-    if let Type::Name(segs) = t {
-        if segs.len() == 1 {
-            if let Some((scal, lanes, _, _)) = parse_vec(&segs[0]) {
-                return format!("<{lanes} x {scal}>");
-            }
-            return match segs[0].as_str() {
-                "f32" => "float".into(),
-                "f64" | "float" => "double".into(),
-                "int" | "i64" => "i64".into(),
-                "i32" => "i32".into(),
-                "bool" => "i1".into(),
-                _ => "i64".into(),
-            };
+    if let Type::Name(segs) = t
+        && segs.len() == 1
+    {
+        if let Some((scal, lanes, _, _)) = parse_vec(&segs[0]) {
+            return format!("<{lanes} x {scal}>");
         }
+        return match segs[0].as_str() {
+            "f32" => "float".into(),
+            "f64" | "float" => "double".into(),
+            "int" | "i64" => "i64".into(),
+            "i32" => "i32".into(),
+            "bool" => "i1".into(),
+            _ => "i64".into(),
+        };
     }
     "i64".into()
 }
@@ -93,14 +94,38 @@ fn emit_fn(f: &FnDef, decls: &mut BTreeSet<String>) -> Option<String> {
         Some(FnBody::Block(_)) => return None, // only single-expression SIMD kernels for now
         None => return None,
     };
-    let ret = f.ret.as_ref().map(llvm_type).unwrap_or_else(|| "void".into());
-    let params: Vec<(String, String)> =
-        f.params.iter().map(|p| (format!("%{}", p.name), p.ty.as_ref().map(llvm_type).unwrap_or_else(|| "i64".into()))).collect();
-    let sig = params.iter().map(|(n, t)| format!("{t} {n}")).collect::<Vec<_>>().join(", ");
+    let ret = f
+        .ret
+        .as_ref()
+        .map(llvm_type)
+        .unwrap_or_else(|| "void".into());
+    let params: Vec<(String, String)> = f
+        .params
+        .iter()
+        .map(|p| {
+            (
+                format!("%{}", p.name),
+                p.ty.as_ref().map(llvm_type).unwrap_or_else(|| "i64".into()),
+            )
+        })
+        .collect();
+    let sig = params
+        .iter()
+        .map(|(n, t)| format!("{t} {n}"))
+        .collect::<Vec<_>>()
+        .join(", ");
 
-    let mut cx = Ctx { out: String::new(), n: 0, decls, env: Vec::new() };
+    let mut cx = Ctx {
+        out: String::new(),
+        n: 0,
+        decls,
+        env: Vec::new(),
+    };
     for (n, t) in &params {
-        cx.env.push((n.trim_start_matches('%').to_string(), (n.clone(), t.clone())));
+        cx.env.push((
+            n.trim_start_matches('%').to_string(),
+            (n.clone(), t.clone()),
+        ));
     }
     let (val, _) = cx.expr(body)?;
     let mut out = format!("define {ret} @{}({sig}) {{\nentry:\n", f.name);
@@ -125,25 +150,57 @@ impl<'a> Ctx<'a> {
 
     fn expr(&mut self, e: &Expr) -> Option<(String, String)> {
         match e {
-            Expr::Ident(n) => self.env.iter().rev().find(|(k, _)| k == n).map(|(_, v)| v.clone()),
+            Expr::Ident(n) => self
+                .env
+                .iter()
+                .rev()
+                .find(|(k, _)| k == n)
+                .map(|(_, v)| v.clone()),
             Expr::Binary { op, lhs, rhs } => {
                 let (lv, lt) = self.expr(lhs)?;
                 let (rv, _) = self.expr(rhs)?;
                 let is_f = lt.contains("float") || lt.contains("double");
                 let inst = match op {
-                    BinOp::Mul => if is_f { "fmul" } else { "mul" },
-                    BinOp::Add => if is_f { "fadd" } else { "add" },
-                    BinOp::Sub => if is_f { "fsub" } else { "sub" },
-                    BinOp::Div => if is_f { "fdiv" } else { "sdiv" },
+                    BinOp::Mul => {
+                        if is_f {
+                            "fmul"
+                        } else {
+                            "mul"
+                        }
+                    }
+                    BinOp::Add => {
+                        if is_f {
+                            "fadd"
+                        } else {
+                            "add"
+                        }
+                    }
+                    BinOp::Sub => {
+                        if is_f {
+                            "fsub"
+                        } else {
+                            "sub"
+                        }
+                    }
+                    BinOp::Div => {
+                        if is_f {
+                            "fdiv"
+                        } else {
+                            "sdiv"
+                        }
+                    }
                     _ => return None,
                 };
                 let t = self.tmp();
-                self.out.push_str(&format!("  {t} = {inst} {lt} {lv}, {rv}\n"));
+                self.out
+                    .push_str(&format!("  {t} = {inst} {lt} {lv}, {rv}\n"));
                 Some((t, lt))
             }
             // reductions: `(v).sum()` / `(v).max()`
             Expr::Call { callee, args } if args.is_empty() => {
-                let Expr::Field { base, name } = callee.as_ref() else { return None };
+                let Expr::Field { base, name } = callee.as_ref() else {
+                    return None;
+                };
                 let (rv, rt) = self.expr(base)?;
                 let (lanes, scal, mang, is_f) = parse_vec_llvm(&rt)?;
                 let (op, needs_start) = match name.as_str() {
@@ -156,13 +213,15 @@ impl<'a> Ctx<'a> {
                 let intr = format!("llvm.vector.reduce.{op}.v{lanes}{mang}");
                 let t = self.tmp();
                 if needs_start {
-                    self.decls.insert(format!("declare {scal} @{intr}({scal}, {rt})"));
+                    self.decls
+                        .insert(format!("declare {scal} @{intr}({scal}, {rt})"));
                     self.out.push_str(&format!(
                         "  {t} = call {scal} @{intr}({scal} 0.000000e+00, {rt} {rv})\n"
                     ));
                 } else {
                     self.decls.insert(format!("declare {scal} @{intr}({rt})"));
-                    self.out.push_str(&format!("  {t} = call {scal} @{intr}({rt} {rv})\n"));
+                    self.out
+                        .push_str(&format!("  {t} = call {scal} @{intr}({rt} {rv})\n"));
                 }
                 Some((t, scal))
             }

@@ -22,12 +22,12 @@ pub fn emit(m: &Module) -> JsOut {
 
     // top-level state bindings
     for item in &m.items {
-        if let Stmt::Bind(b) = item {
-            if let Expr::Ident(name) = &b.target {
-                if sum_variants(&b.value).is_none() && !is_record_type(&b.value) {
-                    cx.state.push((name.clone(), js_init(&b.value)));
-                }
-            }
+        if let Stmt::Bind(b) = item
+            && let Expr::Ident(name) = &b.target
+            && sum_variants(&b.value).is_none()
+            && !is_record_type(&b.value)
+        {
+            cx.state.push((name.clone(), js_init(&b.value)));
         }
     }
     let state_names: BTreeSet<String> = cx.state.iter().map(|(n, _)| n.clone()).collect();
@@ -112,14 +112,28 @@ pub fn emit(m: &Module) -> JsOut {
             }
         }
     }
-    let js = if foreign_js.is_empty() { js } else { format!("{foreign_js}\n{js}") };
+    let js = if foreign_js.is_empty() {
+        js
+    } else {
+        format!("{foreign_js}\n{js}")
+    };
     let html = HTML.into();
-    JsOut { js, html, css, exports }
+    JsOut {
+        js,
+        html,
+        css,
+        exports,
+    }
 }
 
 /// Transpile one top-level function to a JS function declaration.
 fn emit_fn(f: &FnDef) -> String {
-    let params = f.params.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", ");
+    let params = f
+        .params
+        .iter()
+        .map(|p| p.name.clone())
+        .collect::<Vec<_>>()
+        .join(", ");
     let body = match &f.body {
         Some(FnBody::Expr(e)) => format!("  return {};", jexpr(e)),
         Some(FnBody::Block(stmts)) => jblock(stmts),
@@ -156,7 +170,11 @@ fn jblock_ret(stmts: &[Stmt], ret: bool) -> String {
                 }
             }
             Stmt::Expr(Expr::While { cond, body }) => {
-                out.push_str(&format!("  while ({}) {{\n{}  }}\n", jexpr(cond), jblock_ret(body, false)));
+                out.push_str(&format!(
+                    "  while ({}) {{\n{}  }}\n",
+                    jexpr(cond),
+                    jblock_ret(body, false)
+                ));
             }
             Stmt::Expr(Expr::Break) => out.push_str("  break;\n"),
             Stmt::Expr(Expr::Continue) => out.push_str("  continue;\n"),
@@ -196,11 +214,15 @@ fn is_dynamic(e: &Expr) -> bool {
     match e {
         Expr::Ident(n) => STATE.with(|s| s.borrow().contains(n)),
         Expr::Call { .. } => true,
-        Expr::Str(parts) => parts.iter().any(|p| matches!(p, StrPart::Interp(x) if is_dynamic(x))),
+        Expr::Str(parts) => parts
+            .iter()
+            .any(|p| matches!(p, StrPart::Interp(x) if is_dynamic(x))),
         Expr::Binary { lhs, rhs, .. } => is_dynamic(lhs) || is_dynamic(rhs),
         Expr::Unary { expr, .. } | Expr::Field { base: expr, .. } => is_dynamic(expr),
         Expr::Index { base, index } => is_dynamic(base) || is_dynamic(index),
-        Expr::Ternary { cond, then, els } => is_dynamic(cond) || is_dynamic(then) || is_dynamic(els),
+        Expr::Ternary { cond, then, els } => {
+            is_dynamic(cond) || is_dynamic(then) || is_dynamic(els)
+        }
         _ => false,
     }
 }
@@ -238,7 +260,10 @@ fn jexpr(e: &Expr) -> String {
             jexpr(lo)
         ),
         Expr::If { cond, then, els } => {
-            let e = els.as_ref().map(|s| jblock_expr(s)).unwrap_or_else(|| "null".into());
+            let e = els
+                .as_ref()
+                .map(|s| jblock_expr(s))
+                .unwrap_or_else(|| "null".into());
             format!("({} ? {} : {})", jexpr(cond), jblock_expr(then), e)
         }
         Expr::Block(stmts) => jblock_expr(stmts),
@@ -253,11 +278,18 @@ fn jexpr(e: &Expr) -> String {
         // event loop still interleaves), matching the playground interpreter.
         Expr::Await(x) | Expr::Spawn(x) => jexpr(x),
         Expr::Lambda { params, body } => {
-            let ps = params.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", ");
+            let ps = params
+                .iter()
+                .map(|p| p.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
             format!("(({ps}) => {})", jexpr(body))
         }
         Expr::Fail(x) => format!("(() => {{ throw new Error(String({})); }})()", jexpr(x)),
-        Expr::Reify(x) => format!("(() => {{ try {{ {}; return \"\"; }} catch (_e) {{ return String(_e.message); }} }})()", jexpr(x)),
+        Expr::Reify(x) => format!(
+            "(() => {{ try {{ {}; return \"\"; }} catch (_e) {{ return String(_e.message); }} }})()",
+            jexpr(x)
+        ),
         Expr::Match { scrut, arms } => jmatch(scrut, arms),
         _ => "null".into(),
     }
@@ -270,8 +302,15 @@ fn jmatch(scrut: &Expr, arms: &[Arm]) -> String {
     let mut body = format!("(() => {{ const _s = {};", jexpr(scrut));
     for a in arms {
         let (cond, binds) = jpattern(&a.pat);
-        let guard = a.guard.as_ref().map(|g| format!(" && ({})", jexpr(g))).unwrap_or_default();
-        body.push_str(&format!(" if ({cond}{guard}) {{ {binds}return {}; }}", jexpr(&a.body)));
+        let guard = a
+            .guard
+            .as_ref()
+            .map(|g| format!(" && ({})", jexpr(g)))
+            .unwrap_or_default();
+        body.push_str(&format!(
+            " if ({cond}{guard}) {{ {binds}return {}; }}",
+            jexpr(&a.body)
+        ));
     }
     body.push_str(" })()");
     body
@@ -305,7 +344,10 @@ fn jblock_expr(stmts: &[Stmt]) -> String {
 fn subst_ident(e: &Expr, from: &str, to: &str) -> Expr {
     let go = |x: &Expr| Box::new(subst_ident(x, from, to));
     let field = |f: &Field| match f {
-        Field::Value { name, value } => Field::Value { name: name.clone(), value: subst_ident(value, from, to) },
+        Field::Value { name, value } => Field::Value {
+            name: name.clone(),
+            value: subst_ident(value, from, to),
+        },
         Field::Bare(v) => Field::Bare(subst_ident(v, from, to)),
         other => other.clone(),
     };
@@ -320,37 +362,74 @@ fn subst_ident(e: &Expr, from: &str, to: &str) -> Expr {
                 })
                 .collect(),
         ),
-        Expr::Unary { op, expr } => Expr::Unary { op: *op, expr: go(expr) },
-        Expr::Binary { op, lhs, rhs } => Expr::Binary { op: *op, lhs: go(lhs), rhs: go(rhs) },
-        Expr::Ternary { cond, then, els } => Expr::Ternary { cond: go(cond), then: go(then), els: go(els) },
+        Expr::Unary { op, expr } => Expr::Unary {
+            op: *op,
+            expr: go(expr),
+        },
+        Expr::Binary { op, lhs, rhs } => Expr::Binary {
+            op: *op,
+            lhs: go(lhs),
+            rhs: go(rhs),
+        },
+        Expr::Ternary { cond, then, els } => Expr::Ternary {
+            cond: go(cond),
+            then: go(then),
+            els: go(els),
+        },
         Expr::Call { callee, args } => Expr::Call {
             callee: go(callee),
             args: args
                 .iter()
                 .map(|a| match a {
                     Arg::Pos(x) => Arg::Pos(subst_ident(x, from, to)),
-                    Arg::Named { name, value } => Arg::Named { name: name.clone(), value: subst_ident(value, from, to) },
-                    Arg::Directive { kind, prop, value } => Arg::Directive { kind: *kind, prop: prop.clone(), value: subst_ident(value, from, to) },
+                    Arg::Named { name, value } => Arg::Named {
+                        name: name.clone(),
+                        value: subst_ident(value, from, to),
+                    },
+                    Arg::Directive { kind, prop, value } => Arg::Directive {
+                        kind: *kind,
+                        prop: prop.clone(),
+                        value: subst_ident(value, from, to),
+                    },
                 })
                 .collect(),
         },
-        Expr::Field { base, name } => Expr::Field { base: go(base), name: name.clone() },
-        Expr::Index { base, index } => Expr::Index { base: go(base), index: go(index) },
-        Expr::Assign { target, value } => Expr::Assign { target: go(target), value: go(value) },
+        Expr::Field { base, name } => Expr::Field {
+            base: go(base),
+            name: name.clone(),
+        },
+        Expr::Index { base, index } => Expr::Index {
+            base: go(base),
+            index: go(index),
+        },
+        Expr::Assign { target, value } => Expr::Assign {
+            target: go(target),
+            value: go(value),
+        },
         Expr::List(es) => Expr::List(es.iter().map(|x| subst_ident(x, from, to)).collect()),
         Expr::Record(fs) => Expr::Record(fs.iter().map(field).collect()),
-        Expr::Ctor { name, fields } => Expr::Ctor { name: name.clone(), fields: fields.iter().map(field).collect() },
-        Expr::With { base, fields } => Expr::With { base: go(base), fields: fields.iter().map(field).collect() },
-        Expr::Range { lo, hi } => Expr::Range { lo: go(lo), hi: go(hi) },
+        Expr::Ctor { name, fields } => Expr::Ctor {
+            name: name.clone(),
+            fields: fields.iter().map(field).collect(),
+        },
+        Expr::With { base, fields } => Expr::With {
+            base: go(base),
+            fields: fields.iter().map(field).collect(),
+        },
+        Expr::Range { lo, hi } => Expr::Range {
+            lo: go(lo),
+            hi: go(hi),
+        },
         Expr::Try(x) => Expr::Try(go(x)),
         Expr::Fail(x) => Expr::Fail(go(x)),
         Expr::Reify(x) => Expr::Reify(go(x)),
         Expr::Await(x) => Expr::Await(go(x)),
         Expr::Spawn(x) => Expr::Spawn(go(x)),
         // a nested lambda that rebinds `from` shadows it; otherwise descend
-        Expr::Lambda { params, body } if !params.iter().any(|p| p.name == from) => {
-            Expr::Lambda { params: params.clone(), body: go(body) }
-        }
+        Expr::Lambda { params, body } if !params.iter().any(|p| p.name == from) => Expr::Lambda {
+            params: params.clone(),
+            body: go(body),
+        },
         other => other.clone(),
     }
 }
@@ -359,10 +438,21 @@ fn jbinary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
     use BinOp::*;
     let (l, r) = (jexpr(lhs), jexpr(rhs));
     let o = match op {
-        Add => "+", Sub => "-", Mul => "*", Div => "/", Mod => "%",
-        Shl => "<<", Shr => ">>",
-        Eq => "===", Ne => "!==", Lt => "<", Gt => ">", Le => "<=", Ge => ">=",
-        And => "&&", Or => "||",
+        Add => "+",
+        Sub => "-",
+        Mul => "*",
+        Div => "/",
+        Mod => "%",
+        Shl => "<<",
+        Shr => ">>",
+        Eq => "===",
+        Ne => "!==",
+        Lt => "<",
+        Gt => ">",
+        Le => "<=",
+        Ge => ">=",
+        And => "&&",
+        Or => "||",
         Concat => return format!("({l}).concat({r})"),
         Union | Pipe => return l,
     };
@@ -372,10 +462,19 @@ fn jbinary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
 fn jcall(callee: &Expr, args: &[Arg]) -> String {
     let a: Vec<String> = args.iter().map(|x| jexpr(&arg_expr(x))).collect();
     match callee {
-        Expr::Ident(f) if f == "int" => format!("Math.trunc(Number({}))", a.first().cloned().unwrap_or_default()),
-        Expr::Ident(f) if f == "float" => format!("Number({})", a.first().cloned().unwrap_or_default()),
-        Expr::Ident(f) if f == "str" => format!("String({})", a.first().cloned().unwrap_or_default()),
-        Expr::Ident(f) if f == "len" => format!("({}).length", a.first().cloned().unwrap_or_default()),
+        Expr::Ident(f) if f == "int" => format!(
+            "Math.trunc(Number({}))",
+            a.first().cloned().unwrap_or_default()
+        ),
+        Expr::Ident(f) if f == "float" => {
+            format!("Number({})", a.first().cloned().unwrap_or_default())
+        }
+        Expr::Ident(f) if f == "str" => {
+            format!("String({})", a.first().cloned().unwrap_or_default())
+        }
+        Expr::Ident(f) if f == "len" => {
+            format!("({}).length", a.first().cloned().unwrap_or_default())
+        }
         Expr::Ident(f) => format!("{f}({})", a.join(", ")),
         Expr::Field { base, name } => format!("{}.{name}({})", jexpr(base), a.join(", ")),
         _ => format!("{}({})", jexpr(callee), a.join(", ")),
@@ -399,7 +498,11 @@ fn jstr(parts: &[StrPart]) -> String {
     let mut out = String::from("`");
     for p in parts {
         match p {
-            StrPart::Text(t) => out.push_str(&t.replace('\\', "\\\\").replace('`', "\\`").replace('$', "\\$")),
+            StrPart::Text(t) => out.push_str(
+                &t.replace('\\', "\\\\")
+                    .replace('`', "\\`")
+                    .replace('$', "\\$"),
+            ),
             StrPart::Interp(e) => out.push_str(&format!("${{{}}}", jexpr(e))),
         }
     }
@@ -436,17 +539,23 @@ impl Cx {
             let expr = jexpr(e);
             out.push_str(&format!("  const {v} = document.createTextNode({expr});\n"));
             if is_dynamic(e) {
-                out.push_str(&format!("  _binds.push(() => {{ {v}.textContent = {expr}; }});\n"));
+                out.push_str(&format!(
+                    "  _binds.push(() => {{ {v}.textContent = {expr}; }});\n"
+                ));
             }
             return v;
         }
-        let Expr::Call { callee, args } = e else { unreachable!() };
+        let Expr::Call { callee, args } = e else {
+            unreachable!()
+        };
         let tag = match callee.as_ref() {
             Expr::Ident(t) => t.clone(),
             _ => "div".into(),
         };
         let v = self.fresh();
-        out.push_str(&format!("  const {v} = document.createElement(\"{tag}\");\n"));
+        out.push_str(&format!(
+            "  const {v} = document.createElement(\"{tag}\");\n"
+        ));
 
         for a in args {
             match a {
@@ -456,7 +565,9 @@ impl Cx {
                     let expr = jexpr(value);
                     out.push_str(&format!("  {v}.innerHTML = {expr};\n"));
                     if is_dynamic(value) {
-                        out.push_str(&format!("  _binds.push(() => {{ {v}.innerHTML = {expr}; }});\n"));
+                        out.push_str(&format!(
+                            "  _binds.push(() => {{ {v}.innerHTML = {expr}; }});\n"
+                        ));
                     }
                 }
                 Arg::Named { name, value } if name == "class" => {
@@ -468,7 +579,9 @@ impl Cx {
                     let expr = jexpr(value);
                     out.push_str(&format!("  {v}.className = {expr};\n"));
                     if is_dynamic(value) {
-                        out.push_str(&format!("  _binds.push(() => {{ {v}.className = {expr}; }});\n"));
+                        out.push_str(&format!(
+                            "  _binds.push(() => {{ {v}.className = {expr}; }});\n"
+                        ));
                     }
                 }
                 Arg::Named { name, value } => {
@@ -480,7 +593,11 @@ impl Cx {
                         ));
                     }
                 }
-                Arg::Directive { kind: Dir::Bind, prop, value } => {
+                Arg::Directive {
+                    kind: Dir::Bind,
+                    prop,
+                    value,
+                } => {
                     let (getter, setter) = self.bind(value);
                     out.push_str(&format!("  {v}.{prop} = {getter};\n"));
                     out.push_str(&format!(
@@ -493,7 +610,11 @@ impl Cx {
                         "  _binds.push(() => {{ if (document.activeElement !== {v}) {v}.{prop} = {getter}; }});\n"
                     ));
                 }
-                Arg::Directive { kind: Dir::On, prop, value } => {
+                Arg::Directive {
+                    kind: Dir::On,
+                    prop,
+                    value,
+                } => {
                     out.push_str(&format!(
                         "  {v}.addEventListener(\"{prop}\", {});\n",
                         jexpr(value)
@@ -515,11 +636,11 @@ impl Cx {
             Expr::Lambda { params, body } => {
                 // `v => age = int(v)` — bound var is the assignment target
                 let pv = params.first().map(|p| p.name.as_str()).unwrap_or("v");
-                if let Expr::Assign { target: t, value } = body.as_ref() {
-                    if let Expr::Ident(x) = t.as_ref() {
-                        let set = format!("state.{x} = {}", self.value(value, Some((pv, "$v"))));
-                        return (format!("state.{x}"), set);
-                    }
+                if let Expr::Assign { target: t, value } = body.as_ref()
+                    && let Expr::Ident(x) = t.as_ref()
+                {
+                    let set = format!("state.{x} = {}", self.value(value, Some((pv, "$v"))));
+                    return (format!("state.{x}"), set);
                 }
                 ("\"\"".into(), String::new())
             }
@@ -644,8 +765,12 @@ fn tailwind(class: &str) -> Option<String> {
         "font-semibold" => "font-weight:600",
         "font-medium" => "font-weight:500",
         "font-normal" => "font-weight:400",
-        "font-sans" => "font-family:'Pretendard',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif",
-        "font-mono" => "font-family:'Pretendard',ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace",
+        "font-sans" => {
+            "font-family:'Pretendard',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif"
+        }
+        "font-mono" => {
+            "font-family:'Pretendard',ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace"
+        }
         "uppercase" => "text-transform:uppercase",
         "lowercase" => "text-transform:lowercase",
         "italic" => "font-style:italic",
@@ -723,7 +848,10 @@ fn tailwind(class: &str) -> Option<String> {
         return Some(format!("row-gap:{};", space(v)?));
     }
     if let Some(v) = class.strip_prefix("grid-cols-") {
-        return Some(format!("grid-template-columns:repeat({},minmax(0,1fr));", v.parse::<u32>().ok()?));
+        return Some(format!(
+            "grid-template-columns:repeat({},minmax(0,1fr));",
+            v.parse::<u32>().ok()?
+        ));
     }
 
     // patterned utilities: <prefix>-<value> (split on the first hyphen so color
@@ -877,7 +1005,9 @@ fn color(v: &str) -> Option<&'static str> {
 
 /// Escape a class name for a CSS selector (`/` in `w-1/2`, `.` in `p-1.5`).
 fn css_escape(c: &str) -> String {
-    c.replace('/', "\\/").replace('.', "\\.").replace(':', "\\:")
+    c.replace('/', "\\/")
+        .replace('.', "\\.")
+        .replace(':', "\\:")
 }
 
 fn plain_text(parts: &[StrPart]) -> String {
@@ -931,8 +1061,11 @@ fn collect_class_expr(e: &Expr, out: &mut BTreeSet<String>) {
             collect_class_expr(lhs, out);
             collect_class_expr(rhs, out);
         }
-        Expr::Unary { expr, .. } | Expr::Field { base: expr, .. } | Expr::Try(expr)
-        | Expr::Fail(expr) | Expr::Reify(expr) => collect_class_expr(expr, out),
+        Expr::Unary { expr, .. }
+        | Expr::Field { base: expr, .. }
+        | Expr::Try(expr)
+        | Expr::Fail(expr)
+        | Expr::Reify(expr) => collect_class_expr(expr, out),
         Expr::Index { base, index } => {
             collect_class_expr(base, out);
             collect_class_expr(index, out);
@@ -983,5 +1116,12 @@ fn is_record_type(e: &Expr) -> bool {
 }
 
 fn sum_variants(e: &Expr) -> Option<()> {
-    matches!(e, Expr::Binary { op: BinOp::Union, .. }).then_some(())
+    matches!(
+        e,
+        Expr::Binary {
+            op: BinOp::Union,
+            ..
+        }
+    )
+    .then_some(())
 }

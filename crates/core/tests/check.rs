@@ -1,16 +1,22 @@
-use maca_core::{check, DiagKind, Mode};
+use maca_core::{DiagKind, Mode, check};
 use std::fs;
 use std::path::PathBuf;
 
 fn read(rel: &str) -> String {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(rel);
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(rel);
     fs::read_to_string(p).unwrap()
 }
 
 fn diags(rel: &str, mode: Mode) -> Vec<maca_core::Diagnostic> {
     let src = read(rel);
     let parsed = maca_parser::parse(&src);
-    assert!(parsed.errors.is_empty(), "{rel} parse errors: {:?}", parsed.errors);
+    assert!(
+        parsed.errors.is_empty(),
+        "{rel} parse errors: {:?}",
+        parsed.errors
+    );
     check(&parsed.module, mode)
 }
 
@@ -21,7 +27,10 @@ fn assert_clean(rel: &str, mode: Mode) {
 
 fn assert_has(rel: &str, mode: Mode, kind: DiagKind) {
     let d = diags(rel, mode);
-    assert!(d.iter().any(|x| x.kind == kind), "{rel} expected {kind:?}, got: {d:?}");
+    assert!(
+        d.iter().any(|x| x.kind == kind),
+        "{rel} expected {kind:?}, got: {d:?}"
+    );
 }
 
 // ---- good examples typecheck --------------------------------------------
@@ -89,34 +98,62 @@ fn sum_record_ok() {
 
 #[test]
 fn type_mismatch_rejected() {
-    assert_has("examples/bad/type_mismatch.maca", Mode::Program, DiagKind::TypeMismatch);
+    assert_has(
+        "examples/bad/type_mismatch.maca",
+        Mode::Program,
+        DiagKind::TypeMismatch,
+    );
 }
 #[test]
 fn nonexhaustive_rejected() {
-    assert_has("examples/bad/nonexhaustive.maca", Mode::Program, DiagKind::NonExhaustive);
+    assert_has(
+        "examples/bad/nonexhaustive.maca",
+        Mode::Program,
+        DiagKind::NonExhaustive,
+    );
 }
 #[test]
 fn effect_in_config_rejected() {
-    assert_has("examples/bad/effect_in_config.maca", Mode::Config, DiagKind::EffectInConfig);
+    assert_has(
+        "examples/bad/effect_in_config.maca",
+        Mode::Config,
+        DiagKind::EffectInConfig,
+    );
 }
 #[test]
 fn unknown_option_rejected() {
-    assert_has("examples/bad/unknown_option.maca", Mode::Config, DiagKind::UnknownOption);
+    assert_has(
+        "examples/bad/unknown_option.maca",
+        Mode::Config,
+        DiagKind::UnknownOption,
+    );
 }
 #[test]
 fn arg_mismatch_rejected() {
     // Calling `double(n: int)` with a string is a concrete argument clash.
-    assert_has("examples/bad/arg_mismatch.maca", Mode::Program, DiagKind::TypeMismatch);
+    assert_has(
+        "examples/bad/arg_mismatch.maca",
+        Mode::Program,
+        DiagKind::TypeMismatch,
+    );
 }
 #[test]
 fn arity_rejected() {
     // `greet(name: str)` called with two arguments.
-    assert_has("examples/bad/arity.maca", Mode::Program, DiagKind::TypeMismatch);
+    assert_has(
+        "examples/bad/arity.maca",
+        Mode::Program,
+        DiagKind::TypeMismatch,
+    );
 }
 #[test]
 fn branch_mismatch_rejected() {
     // Ternary branches with disagreeing types (int vs str).
-    assert_has("examples/bad/branch_mismatch.maca", Mode::Program, DiagKind::TypeMismatch);
+    assert_has(
+        "examples/bad/branch_mismatch.maca",
+        Mode::Program,
+        DiagKind::TypeMismatch,
+    );
 }
 
 #[test]
@@ -126,7 +163,11 @@ fn loops_ok() {
 
 #[test]
 fn while_cond_must_be_bool() {
-    assert_has("examples/bad/while_cond.maca", Mode::Program, DiagKind::TypeMismatch);
+    assert_has(
+        "examples/bad/while_cond.maca",
+        Mode::Program,
+        DiagKind::TypeMismatch,
+    );
 }
 
 #[test]
@@ -146,13 +187,21 @@ fn tour_ok() {
 
 #[test]
 fn range_end_must_be_int() {
-    assert_has("examples/bad/range_end.maca", Mode::Program, DiagKind::TypeMismatch);
+    assert_has(
+        "examples/bad/range_end.maca",
+        Mode::Program,
+        DiagKind::TypeMismatch,
+    );
 }
 
 #[test]
 fn reassign_constant_rejected() {
     // a bare `count = 0` binds a constant; reassigning it is an error.
-    assert_has("examples/bad/reassign_const.maca", Mode::Program, DiagKind::Immutable);
+    assert_has(
+        "examples/bad/reassign_const.maca",
+        Mode::Program,
+        DiagKind::Immutable,
+    );
 }
 
 #[test]
@@ -183,14 +232,22 @@ fn async_effect_is_inferred_and_banned_in_config() {
     let d = check(&parsed.module, Mode::Config);
     let eff = d.iter().find(|x| x.kind == DiagKind::EffectInConfig);
     assert!(eff.is_some(), "async effect not flagged in config: {d:?}");
-    assert!(eff.unwrap().msg.contains("async"), "effect name missing: {}", eff.unwrap().msg);
+    assert!(
+        eff.unwrap().msg.contains("async"),
+        "effect name missing: {}",
+        eff.unwrap().msg
+    );
 }
 
 #[test]
 fn undefined_call_rejected() {
     // calling a name that is defined nowhere is caught as a clean diagnostic
     // instead of leaking a broken-C link error out of codegen.
-    assert_has("examples/bad/undefined_call.maca", Mode::Program, DiagKind::UndefinedName);
+    assert_has(
+        "examples/bad/undefined_call.maca",
+        Mode::Program,
+        DiagKind::UndefinedName,
+    );
 }
 
 #[test]

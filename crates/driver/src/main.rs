@@ -62,26 +62,31 @@ fn format_style() -> FmtStyle {
                 in_fmt = t == "[format]";
                 continue;
             }
-            if in_fmt {
-                if let Some((k, v)) = t.split_once('=') {
-                    let v = v.trim().trim_matches('"');
-                    match k.trim() {
-                        "indent_style" => style = v.to_string(),
-                        "indent_size" => size = v.parse().unwrap_or(4),
-                        _ => {}
-                    }
+            if in_fmt && let Some((k, v)) = t.split_once('=') {
+                let v = v.trim().trim_matches('"');
+                match k.trim() {
+                    "indent_style" => style = v.to_string(),
+                    "indent_size" => size = v.parse().unwrap_or(4),
+                    _ => {}
                 }
             }
         }
     }
-    let unit = if style == "tab" { "\t".to_string() } else { " ".repeat(size) };
+    let unit = if style == "tab" {
+        "\t".to_string()
+    } else {
+        " ".repeat(size)
+    };
     FmtStyle { unit }
 }
 
 fn cmd_fmt(args: &[String]) {
     let check = args.iter().any(|a| a == "--check");
-    let files: Vec<PathBuf> =
-        args.iter().filter(|a| !a.starts_with("--")).map(PathBuf::from).collect();
+    let files: Vec<PathBuf> = args
+        .iter()
+        .filter(|a| !a.starts_with("--"))
+        .map(PathBuf::from)
+        .collect();
     if files.is_empty() {
         die("fmt: expected one or more .maca files (use --check to verify only)");
     }
@@ -96,7 +101,11 @@ fn cmd_fmt(args: &[String]) {
         // content: comments, blank lines, and intra-line spacing.
         let parsed = maca_parser::parse(&source);
         if !parsed.errors.is_empty() {
-            die(&format!("fmt: {}: parse errors:\n  {}", src.display(), parsed.errors.join("\n  ")));
+            die(&format!(
+                "fmt: {}: parse errors:\n  {}",
+                src.display(),
+                parsed.errors.join("\n  ")
+            ));
         }
         let formatted = reindent(&source, &style.unit);
         if check {
@@ -119,7 +128,8 @@ fn cmd_init(args: &[String]) {
     let dir = args.iter().find(|a| !a.starts_with('-')).map(PathBuf::from);
     let root = dir.clone().unwrap_or_else(|| PathBuf::from("."));
     if let Some(d) = &dir {
-        std::fs::create_dir_all(d).unwrap_or_else(|e| die(&format!("cannot create {}: {e}", d.display())));
+        std::fs::create_dir_all(d)
+            .unwrap_or_else(|e| die(&format!("cannot create {}: {e}", d.display())));
     }
     let name = root
         .canonicalize()
@@ -152,7 +162,8 @@ fn write_if_absent(path: &Path, contents: &str) {
         println!("  skip {} (exists)", path.display());
         return;
     }
-    std::fs::write(path, contents).unwrap_or_else(|e| die(&format!("cannot write {}: {e}", path.display())));
+    std::fs::write(path, contents)
+        .unwrap_or_else(|e| die(&format!("cannot write {}: {e}", path.display())));
     println!("  create {}", path.display());
 }
 
@@ -168,7 +179,9 @@ fn cmd_profile(args: &[String]) {
             _ => src = Some(PathBuf::from(a)),
         }
     }
-    let Some(src) = src else { die("profile: expected a .maca file") };
+    let Some(src) = src else {
+        die("profile: expected a .maca file")
+    };
     if !have("cc") {
         die("profile: needs a native C compiler (cc) on PATH");
     }
@@ -177,14 +190,21 @@ fn cmd_profile(args: &[String]) {
     }
 
     // front-end + emit C
-    let source = std::fs::read_to_string(&src).unwrap_or_else(|e| die(&format!("cannot read: {e}")));
+    let source =
+        std::fs::read_to_string(&src).unwrap_or_else(|e| die(&format!("cannot read: {e}")));
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
-        die(&format!("profile: parse errors:\n  {}", parsed.errors.join("\n  ")));
+        die(&format!(
+            "profile: parse errors:\n  {}",
+            parsed.errors.join("\n  ")
+        ));
     }
     let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
     if !diags.is_empty() {
-        let msgs: Vec<_> = diags.iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect();
+        let msgs: Vec<_> = diags
+            .iter()
+            .map(|d| format!("{:?}: {}", d.kind, d.msg))
+            .collect();
         die(&format!("profile: type errors:\n  {}", msgs.join("\n  ")));
     }
     let c_src = maca_backend_c::emit(&parsed.module);
@@ -206,7 +226,10 @@ fn cmd_profile(args: &[String]) {
         .output()
         .unwrap_or_else(|e| die(&format!("cc: {e}")));
     if !build.status.success() {
-        die(&format!("profile build failed:\n{}", String::from_utf8_lossy(&build.stderr)));
+        die(&format!(
+            "profile build failed:\n{}",
+            String::from_utf8_lossy(&build.stderr)
+        ));
     }
 
     // run under callgrind
@@ -219,9 +242,13 @@ fn cmd_profile(args: &[String]) {
         .output()
         .unwrap_or_else(|e| die(&format!("valgrind: {e}")));
     if !run.status.success() && !cg.exists() {
-        die(&format!("callgrind failed:\n{}", String::from_utf8_lossy(&run.stderr)));
+        die(&format!(
+            "callgrind failed:\n{}",
+            String::from_utf8_lossy(&run.stderr)
+        ));
     }
-    let cg_text = std::fs::read_to_string(&cg).unwrap_or_else(|e| die(&format!("read callgrind: {e}")));
+    let cg_text =
+        std::fs::read_to_string(&cg).unwrap_or_else(|e| die(&format!("read callgrind: {e}")));
 
     // text profile + flame graph
     print!("{}", profile::text_profile(&cg_text));
@@ -254,7 +281,10 @@ fn cmd_watch(args: &[String]) {
                 .args(&run)
                 .status();
             match status {
-                Ok(s) => println!("\x1b[2m── exited {} ───────────────────────────────\x1b[0m", s.code().unwrap_or(-1)),
+                Ok(s) => println!(
+                    "\x1b[2m── exited {} ───────────────────────────────\x1b[0m",
+                    s.code().unwrap_or(-1)
+                ),
                 Err(e) => eprintln!("watch: {e}"),
             }
         }
@@ -269,14 +299,14 @@ fn lint_capital_consts(stmts: &[maca_parser::Stmt], src: &Path, issues: &mut Vec
     for s in stmts {
         match s {
             Stmt::Bind(b) => {
-                if let Expr::Ident(n) = &b.target {
-                    if n.chars().next().is_some_and(|c| c.is_uppercase()) {
-                        issues.push(format!(
+                if let Expr::Ident(n) = &b.target
+                    && n.chars().next().is_some_and(|c| c.is_uppercase())
+                {
+                    issues.push(format!(
                             "{}: style: `{n}` is a Capitalized constant — prefer `const {} = …` (or lowercase for a variable)",
                             src.display(),
                             n.to_lowercase()
                         ));
-                    }
                 }
             }
             Stmt::Expr(e) => lint_capital_consts_expr(e, src, issues),
@@ -310,17 +340,27 @@ fn cmd_lint(args: &[String]) {
     let Some(src) = args.first().map(PathBuf::from) else {
         die("lint: expected a .maca file");
     };
-    let source = std::fs::read_to_string(&src).unwrap_or_else(|e| die(&format!("cannot read: {e}")));
+    let source =
+        std::fs::read_to_string(&src).unwrap_or_else(|e| die(&format!("cannot read: {e}")));
     let mut issues: Vec<String> = Vec::new();
 
     // style: line width (strings excluded from the count is future; flag raw >80)
     for (i, line) in source.lines().enumerate() {
         if line.chars().count() > 80 && !line.trim_start().starts_with("//") {
-            issues.push(format!("{}:{}: line exceeds 80 columns", src.display(), i + 1));
+            issues.push(format!(
+                "{}:{}: line exceeds 80 columns",
+                src.display(),
+                i + 1
+            ));
         }
         // forced block breaks: no single-line statement block `if c { .. }`
-        if line.contains("if ") && line.contains('{') && line.contains('}') && !line.contains("? ") {
-            issues.push(format!("{}:{}: single-line `if` block; break it across lines", src.display(), i + 1));
+        if line.contains("if ") && line.contains('{') && line.contains('}') && !line.contains("? ")
+        {
+            issues.push(format!(
+                "{}:{}: single-line `if` block; break it across lines",
+                src.display(),
+                i + 1
+            ));
         }
     }
     // semantic diagnostics
@@ -332,10 +372,10 @@ fn cmd_lint(args: &[String]) {
     // style: a Capitalized local binding is a constant by convention, but the
     // explicit `const` reads better. (Type/constructor names stay capitalized.)
     for item in &parsed.module.items {
-        if let maca_parser::Stmt::Fn(f) = item {
-            if let Some(maca_parser::FnBody::Block(stmts)) = &f.body {
-                lint_capital_consts(stmts, &src, &mut issues);
-            }
+        if let maca_parser::Stmt::Fn(f) = item
+            && let Some(maca_parser::FnBody::Block(stmts)) = &f.body
+        {
+            lint_capital_consts(stmts, &src, &mut issues);
         }
     }
 
@@ -366,7 +406,12 @@ fn reindent(src: &str, unit: &str) -> String {
         .map(|l| l.len() - l.trim_start().len())
         .filter(|&w| w > 0)
         .collect();
-    let step = widths.iter().copied().reduce(gcd).filter(|&s| s > 0).unwrap_or(4);
+    let step = widths
+        .iter()
+        .copied()
+        .reduce(gcd)
+        .filter(|&s| s > 0)
+        .unwrap_or(4);
 
     let mut out = String::new();
     for raw in src.lines() {
@@ -399,12 +444,11 @@ fn script_alias(name: &str) -> Option<String> {
             in_scripts = t == "[scripts]";
             continue;
         }
-        if in_scripts {
-            if let Some((k, v)) = t.split_once('=') {
-                if k.trim() == name {
-                    return Some(v.trim().trim_matches('"').to_string());
-                }
-            }
+        if in_scripts
+            && let Some((k, v)) = t.split_once('=')
+            && k.trim() == name
+        {
+            return Some(v.trim().trim_matches('"').to_string());
         }
     }
     None
@@ -471,13 +515,11 @@ fn cmd_build(args: &[String]) {
     };
     // Auto-detect config (nix) / UI (js) sources so a bare `maca build` doesn't
     // fall through to the native path and emit confusing cc/linker errors.
-    if !explicit_target {
-        if let Ok(source) = std::fs::read_to_string(&src) {
-            let parsed = maca_parser::parse(&source);
-            if let Some((detected, why)) = detect_target(&parsed.module) {
-                eprintln!("note: {why}; building --target {detected} (pass --target to override)");
-                target = detected.to_string();
-            }
+    if !explicit_target && let Ok(source) = std::fs::read_to_string(&src) {
+        let parsed = maca_parser::parse(&source);
+        if let Some((detected, why)) = detect_target(&parsed.module) {
+            eprintln!("note: {why}; building --target {detected} (pass --target to override)");
+            target = detected.to_string();
         }
     }
     if target == "nix" {
@@ -544,14 +586,18 @@ fn detect_target(m: &maca_parser::Module) -> Option<(&'static str, &'static str)
 
 /// Config mode → a NixOS module. Checked in the pure `<>` config context.
 fn build_nix(src: &Path, out: &Path) -> Result<(), String> {
-    let source = std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let source =
+        std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
         return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
     }
     let diags = maca_core::check(&parsed.module, maca_core::Mode::Config);
     if !diags.is_empty() {
-        let msgs: Vec<_> = diags.iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect();
+        let msgs: Vec<_> = diags
+            .iter()
+            .map(|d| format!("{:?}: {}", d.kind, d.msg))
+            .collect();
         return Err(format!("config errors:\n  {}", msgs.join("\n  ")));
     }
     let nix = maca_backend_nix::emit(&parsed.module);
@@ -562,20 +608,26 @@ fn build_nix(src: &Path, out: &Path) -> Result<(), String> {
 /// JVM target → Java source (and `javac` to `.class` when a JDK is present).
 /// The class name is the file stem, capitalized. `out` names the output dir.
 fn build_jvm(src: &Path, out: Option<&Path>, classpath: Option<&str>) -> Result<String, String> {
-    let source = std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let source =
+        std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
         return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
     }
     let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
     if !diags.is_empty() {
-        let msgs: Vec<_> = diags.iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect();
+        let msgs: Vec<_> = diags
+            .iter()
+            .map(|d| format!("{:?}: {}", d.kind, d.msg))
+            .collect();
         return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
     }
     let class = capitalize(&stem(src));
     let java = maca_backend_jvm::emit(&parsed.module, &class, None);
 
-    let out_dir = out.map(PathBuf::from).unwrap_or_else(|| PathBuf::from(format!("{}-jvm", stem(src))));
+    let out_dir = out
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(format!("{}-jvm", stem(src))));
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
     let java_path = out_dir.join(format!("{class}.java"));
     std::fs::write(&java_path, &java).map_err(|e| e.to_string())?;
@@ -604,7 +656,10 @@ fn build_jvm(src: &Path, out: Option<&Path>, classpath: Option<&str>) -> Result<
             out_dir.display()
         ))
     } else {
-        Ok(format!("emitted {} (no javac on PATH to compile)", java_path.display()))
+        Ok(format!(
+            "emitted {} (no javac on PATH to compile)",
+            java_path.display()
+        ))
     }
 }
 
@@ -644,14 +699,20 @@ fn cmd_dev(args: &[String]) {
         .filter(|d| !matches!(d.kind, maca_core::DiagKind::UnknownOption))
         .collect();
     if !real.is_empty() {
-        let msgs: Vec<_> = real.iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect();
+        let msgs: Vec<_> = real
+            .iter()
+            .map(|d| format!("{:?}: {}", d.kind, d.msg))
+            .collect();
         die(&format!("config errors:\n  {}", msgs.join("\n  ")));
     }
     let flake = maca_backend_nix::emit_flake(&parsed.module);
     if let Err(e) = std::fs::write(&out, flake) {
         die(&e.to_string());
     }
-    println!("wrote {} — run `nix develop` to enter the shell", out.display());
+    println!(
+        "wrote {} — run `nix develop` to enter the shell",
+        out.display()
+    );
 
     // Windows: also emit native dev-env scripts under .maca/dev/ (scoop/choco/
     // winget). The flake above ignores scoop.*/choco.*/winget.*, so Nix hosts
@@ -699,25 +760,33 @@ fn cmd_dev(args: &[String]) {
 /// Embedded target → freestanding C + startup + linker script, cross-compiled
 /// to a bare-metal firmware image (ELF + raw .bin) with clang/lld.
 fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<String, String> {
-    let source = std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let source =
+        std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
         return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
     }
     let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
     if !diags.is_empty() {
-        let msgs: Vec<_> = diags.iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect();
+        let msgs: Vec<_> = diags
+            .iter()
+            .map(|d| format!("{:?}: {}", d.kind, d.msg))
+            .collect();
         return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
     }
     let mcu = maca_backend_embedded::Mcu::resolve(mcu_name)
         .ok_or_else(|| format!("unknown --mcu {mcu_name:?} (try cortex-m0/m3/m4, riscv32)"))?;
 
-    let out_dir = out.map(PathBuf::from).unwrap_or_else(|| PathBuf::from(format!("{}-fw", stem(src))));
+    let out_dir = out
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(format!("{}-fw", stem(src))));
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
     let c_path = out_dir.join("firmware.c");
     let ld_path = out_dir.join("link.ld");
-    std::fs::write(&c_path, maca_backend_embedded::emit_c(&parsed.module)).map_err(|e| e.to_string())?;
-    std::fs::write(&ld_path, maca_backend_embedded::linker_script(&mcu)).map_err(|e| e.to_string())?;
+    std::fs::write(&c_path, maca_backend_embedded::emit_c(&parsed.module))
+        .map_err(|e| e.to_string())?;
+    std::fs::write(&ld_path, maca_backend_embedded::linker_script(&mcu))
+        .map_err(|e| e.to_string())?;
 
     if !have("clang") {
         return Ok(format!(
@@ -729,8 +798,17 @@ fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<Stri
     }
     let elf = out_dir.join("firmware.elf");
     let o = Command::new("clang")
-        .args([&format!("--target={}", mcu.triple), &format!("-mcpu={}", mcu.cpu)])
-        .args(["-ffreestanding", "-nostdlib", "-Os", "-ffunction-sections", "-fdata-sections"])
+        .args([
+            &format!("--target={}", mcu.triple),
+            &format!("-mcpu={}", mcu.cpu),
+        ])
+        .args([
+            "-ffreestanding",
+            "-nostdlib",
+            "-Os",
+            "-ffunction-sections",
+            "-fdata-sections",
+        ])
         .arg("-fuse-ld=lld")
         .arg(format!("-Wl,-T,{}", ld_path.display()))
         .arg("-Wl,--gc-sections")
@@ -740,17 +818,30 @@ fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<Stri
         .output()
         .map_err(|e| format!("clang: {e}"))?;
     if !o.status.success() {
-        return Err(format!("cross-compile failed:\n{}", String::from_utf8_lossy(&o.stderr)));
+        return Err(format!(
+            "cross-compile failed:\n{}",
+            String::from_utf8_lossy(&o.stderr)
+        ));
     }
     // raw binary + size report
     let bin = out_dir.join("firmware.bin");
     if have("llvm-objcopy") {
-        let _ = Command::new("llvm-objcopy").args(["-O", "binary"]).arg(&elf).arg(&bin).status();
+        let _ = Command::new("llvm-objcopy")
+            .args(["-O", "binary"])
+            .arg(&elf)
+            .arg(&bin)
+            .status();
     }
     let size = if have("llvm-size") {
-        String::from_utf8_lossy(&Command::new("llvm-size").arg(&elf).output().map(|o| o.stdout).unwrap_or_default())
-            .trim()
-            .to_string()
+        String::from_utf8_lossy(
+            &Command::new("llvm-size")
+                .arg(&elf)
+                .output()
+                .map(|o| o.stdout)
+                .unwrap_or_default(),
+        )
+        .trim()
+        .to_string()
     } else {
         String::new()
     };
@@ -771,7 +862,8 @@ fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<Stri
 /// `wasm-b64`) before the app, so a browser playground ships as a single file
 /// with no external requests. `maca build --target js app.maca` → deploy it.
 fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
-    let source = std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let source =
+        std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
         return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
@@ -782,16 +874,16 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
     let base = src.parent().unwrap_or(Path::new("."));
     let mut assets = String::new();
     for item in &parsed.module.items {
-        if let maca_parser::Stmt::Import(maca_parser::Import::Foreign { lang, spec }) = item {
-            if lang == "wasm" {
-                let path = base.join(spec);
-                let bytes = std::fs::read(&path)
-                    .map_err(|e| format!("import wasm {}: {e}", path.display()))?;
-                assets.push_str(&format!(
-                    "<script id=\"wasm-b64\" type=\"application/octet-stream\">{}</script>\n",
-                    base64(&bytes)
-                ));
-            }
+        if let maca_parser::Stmt::Import(maca_parser::Import::Foreign { lang, spec }) = item
+            && lang == "wasm"
+        {
+            let path = base.join(spec);
+            let bytes =
+                std::fs::read(&path).map_err(|e| format!("import wasm {}: {e}", path.display()))?;
+            assets.push_str(&format!(
+                "<script id=\"wasm-b64\" type=\"application/octet-stream\">{}</script>\n",
+                base64(&bytes)
+            ));
         }
     }
 
@@ -818,12 +910,24 @@ fn base64(data: &[u8]) -> String {
     const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
-        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
         let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
         out.push(A[(n >> 18 & 63) as usize] as char);
         out.push(A[(n >> 12 & 63) as usize] as char);
-        out.push(if chunk.len() > 1 { A[(n >> 6 & 63) as usize] as char } else { '=' });
-        out.push(if chunk.len() > 2 { A[(n & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 1 {
+            A[(n >> 6 & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            A[(n & 63) as usize] as char
+        } else {
+            '='
+        });
     }
     out
 }
@@ -840,7 +944,10 @@ fn cmd_run(args: &[String]) {
     }
     // Run the produced binary — natively when there's no WSL, else through WSL.
     let status = if have_wsl() {
-        Command::new("wsl").arg(to_wsl(&out)).args(prog_args).status()
+        Command::new("wsl")
+            .arg(to_wsl(&out))
+            .args(prog_args)
+            .status()
     } else {
         Command::new(&out).args(prog_args).status()
     }
@@ -867,7 +974,8 @@ fn compiler_fingerprint() -> String {
 }
 
 fn compile(src: &Path, out: &Path) -> Result<(), String> {
-    let source = std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let source =
+        std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
     let key = build_cache::artifact_key(&source, &compiler_fingerprint(), "native");
     if let Some(cached) = build_cache::get(&key) {
         // transparent: `run` must stay silent, and stderr clean for callers that
@@ -891,7 +999,10 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
     inject_nix_imports(&mut parsed.module, src)?;
     let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
     if !diags.is_empty() {
-        let msgs: Vec<_> = diags.iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect();
+        let msgs: Vec<_> = diags
+            .iter()
+            .map(|d| format!("{:?}: {}", d.kind, d.msg))
+            .collect();
         return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
     }
 
@@ -911,8 +1022,10 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
         maca_runtime::write_sqlite_glue(&dir).map_err(|e| e.to_string())?;
         let dev = nix_out("nixpkgs#sqlite.dev")?;
         let lib = nix_out("nixpkgs#sqlite.out")?;
-        let mut args: Vec<String> =
-            ["nix", "shell", "nixpkgs#zig", "-c", "zig", "cc"].iter().map(|s| s.to_string()).collect();
+        let mut args: Vec<String> = ["nix", "shell", "nixpkgs#zig", "-c", "zig", "cc"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         args.push(to_wsl(&dir.join("main.c")));
         args.push(to_wsl(&dir.join("maca_runtime.c")));
         args.push(to_wsl(&dir.join("maca_ffi_sqlite.c")));
@@ -928,7 +1041,10 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
             .output()
             .map_err(|e| format!("failed to run zig via wsl: {e}"))?;
         if !o.status.success() {
-            return Err(format!("ffi build failed:\n{}", String::from_utf8_lossy(&o.stderr)));
+            return Err(format!(
+                "ffi build failed:\n{}",
+                String::from_utf8_lossy(&o.stderr)
+            ));
         }
         return Ok(());
     }
@@ -1017,7 +1133,10 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
         .output()
         .map_err(|e| format!("failed to run zig via wsl: {e}"))?;
     if !output.status.success() {
-        return Err(format!("zig cc failed:\n{}", String::from_utf8_lossy(&output.stderr)));
+        return Err(format!(
+            "zig cc failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
     Ok(())
 }
@@ -1033,34 +1152,37 @@ fn inject_nix_imports(m: &mut maca_parser::Module, src: &Path) -> Result<(), Str
     let dir = src.parent().unwrap_or(Path::new("."));
     let mut injected = Vec::new();
     for item in &m.items {
-        if let Stmt::Import(Import::Foreign { lang, spec }) = item {
-            if lang == "nix" {
-                let path = dir.join(spec);
-                let out = Command::new("wsl")
-                    .args(["nix-instantiate", "--eval", &to_wsl(&path)])
-                    .output()
-                    .map_err(|e| format!("wsl nix-instantiate: {e}"))?;
-                if !out.status.success() {
-                    return Err(format!("nix eval {spec} failed:\n{}", String::from_utf8_lossy(&out.stderr)));
-                }
-                let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                let name = Path::new(spec)
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "nixval".into());
-                let expr = if let Ok(n) = val.parse::<i64>() {
-                    Expr::Int(n)
-                } else {
-                    let text = val.trim_matches('"').to_string();
-                    Expr::Str(vec![StrPart::Text(text)])
-                };
-                injected.push(Stmt::Bind(Bind {
-                    is_const: false,
-                    target: Expr::Ident(name),
-                    tys: vec![],
-                    value: expr,
-                }));
+        if let Stmt::Import(Import::Foreign { lang, spec }) = item
+            && lang == "nix"
+        {
+            let path = dir.join(spec);
+            let out = Command::new("wsl")
+                .args(["nix-instantiate", "--eval", &to_wsl(&path)])
+                .output()
+                .map_err(|e| format!("wsl nix-instantiate: {e}"))?;
+            if !out.status.success() {
+                return Err(format!(
+                    "nix eval {spec} failed:\n{}",
+                    String::from_utf8_lossy(&out.stderr)
+                ));
             }
+            let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            let name = Path::new(spec)
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "nixval".into());
+            let expr = if let Ok(n) = val.parse::<i64>() {
+                Expr::Int(n)
+            } else {
+                let text = val.trim_matches('"').to_string();
+                Expr::Str(vec![StrPart::Text(text)])
+            };
+            injected.push(Stmt::Bind(Bind {
+                is_const: false,
+                target: Expr::Ident(name),
+                tys: vec![],
+                value: expr,
+            }));
         }
     }
     for (i, b) in injected.into_iter().enumerate() {
@@ -1071,9 +1193,15 @@ fn inject_nix_imports(m: &mut maca_parser::Module, src: &Path) -> Result<(), Str
 
 /// Run a shell command in WSL and capture trimmed stdout.
 fn wsl_capture(cmd: &str) -> Result<String, String> {
-    let o = Command::new("wsl").args(["sh", "-c", cmd]).output().map_err(|e| format!("wsl: {e}"))?;
+    let o = Command::new("wsl")
+        .args(["sh", "-c", cmd])
+        .output()
+        .map_err(|e| format!("wsl: {e}"))?;
     if !o.status.success() {
-        return Err(format!("`{cmd}` failed:\n{}", String::from_utf8_lossy(&o.stderr)));
+        return Err(format!(
+            "`{cmd}` failed:\n{}",
+            String::from_utf8_lossy(&o.stderr)
+        ));
     }
     Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
@@ -1085,25 +1213,38 @@ fn nix_out(attr: &str) -> Result<String, String> {
         .output()
         .map_err(|e| format!("wsl nix: {e}"))?;
     if !o.status.success() {
-        return Err(format!("nix build {attr} failed:\n{}", String::from_utf8_lossy(&o.stderr)));
+        return Err(format!(
+            "nix build {attr} failed:\n{}",
+            String::from_utf8_lossy(&o.stderr)
+        ));
     }
     Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
 fn stem(p: &Path) -> String {
-    p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "out".into())
+    p.file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "out".into())
 }
 
 /// Is a working WSL available? The default toolchain shells out to
 /// `wsl … zig cc` (NixOS side); when there's no WSL we fall back to a native
 /// `cc`/`clang` so `maca build`/`run` work on a plain Linux host too.
 fn have_wsl() -> bool {
-    Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false)
+    Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 /// Is a command available on PATH (responds to `--version`)?
 fn have(cmd: &str) -> bool {
-    Command::new(cmd).arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
+    Command::new(cmd)
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 /// Link the plain (no-FFI) build with the host's native C compiler. `clang` is
@@ -1122,8 +1263,12 @@ fn link_native(
     // `main.c`, not the whole runtime.
     let rt_c = dir.join("maca_runtime.c");
     let rt_src = std::fs::read(&rt_c).unwrap_or_default();
-    let rt_key =
-        build_cache::hash(&[&rt_src, compiler_fingerprint().as_bytes(), cc.as_bytes(), b"native-O2"]);
+    let rt_key = build_cache::hash(&[
+        &rt_src,
+        compiler_fingerprint().as_bytes(),
+        cc.as_bytes(),
+        b"native-O2",
+    ]);
     let rt_o = build_cache::object(&rt_key, &dir.join("maca_runtime.o"), |o| {
         let out = Command::new(cc)
             .args(["-O2", "-c"])
@@ -1135,7 +1280,10 @@ fn link_native(
             .output()
             .map_err(|e| format!("failed to run {cc}: {e}"))?;
         if !out.status.success() {
-            return Err(format!("{cc} (runtime) failed:\n{}", String::from_utf8_lossy(&out.stderr)));
+            return Err(format!(
+                "{cc} (runtime) failed:\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            ));
         }
         Ok(())
     })?;
@@ -1154,10 +1302,20 @@ fn link_native(
     if use_simd {
         cmd.arg(dir.join("simd.ll")).arg("-mavx2");
     }
-    cmd.arg("-I").arg(dir).arg("-O2").arg("-s").arg("-o").arg(out);
-    let output = cmd.output().map_err(|e| format!("failed to run {cc}: {e}"))?;
+    cmd.arg("-I")
+        .arg(dir)
+        .arg("-O2")
+        .arg("-s")
+        .arg("-o")
+        .arg(out);
+    let output = cmd
+        .output()
+        .map_err(|e| format!("failed to run {cc}: {e}"))?;
     if !output.status.success() {
-        return Err(format!("{cc} failed:\n{}", String::from_utf8_lossy(&output.stderr)));
+        return Err(format!(
+            "{cc} failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
     Ok(())
 }

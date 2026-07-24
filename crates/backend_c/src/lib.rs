@@ -57,7 +57,11 @@ enum CTy {
     Sum(String),
     Arr(Box<CTy>),
     /// SIMD vector, e.g. `f32x8` → { name: "f32x8", scalar_c: "float", lanes: 8 }
-    Vec { name: String, scalar_c: String, lanes: usize },
+    Vec {
+        name: String,
+        scalar_c: String,
+        lanes: usize,
+    },
     /// A concurrent computation handle (`spawn e`), awaited with `await`.
     /// Lowers to `maca_future*`; its result is boxed as `int64_t` for the slice.
     Future,
@@ -90,16 +94,16 @@ struct Cx<'a> {
     m: &'a Module,
     out: String,
     // declarations
-    sums: BTreeMap<String, Vec<String>>,     // sum name -> variants
-    variant_of: HashMap<String, String>,     // variant -> sum name
+    sums: BTreeMap<String, Vec<String>>, // sum name -> variants
+    variant_of: HashMap<String, String>, // variant -> sum name
     variant_payloads: HashMap<String, Vec<CTy>>, // variant -> payload field types
     records: BTreeMap<String, Vec<(String, CTy)>>, // record name -> ordered fields
-    rec_order: Vec<String>,                  // topo order
-    modules: HashSet<String>,                // imported module names (json, dirs, …)
-    lets: Vec<(String, CTy, Expr)>,          // top-level `let`/value bindings
+    rec_order: Vec<String>,              // topo order
+    modules: HashSet<String>,            // imported module names (json, dirs, …)
+    lets: Vec<(String, CTy, Expr)>,      // top-level `let`/value bindings
     let_names: HashSet<String>,
-    fns: HashMap<String, (Vec<CTy>, CTy)>,   // fn name -> (param types, ret)
-    arr_elems: HashSet<CTy>,                  // array element types to instantiate
+    fns: HashMap<String, (Vec<CTy>, CTy)>, // fn name -> (param types, ret)
+    arr_elems: HashSet<CTy>,               // array element types to instantiate
     vecs: BTreeSet<(String, String, usize)>, // SIMD vector types (name, scalar_c, lanes)
     tmp: usize,
     // non-capturing lambdas hoisted to top-level `static` functions
@@ -108,8 +112,8 @@ struct Cx<'a> {
     lambda_count: usize,
     // generic functions, monomorphized per concrete instantiation
     generics: HashMap<String, FnDef>,
-    spec_pending: Vec<(String, Vec<CTy>)>,     // instantiations to emit
-    spec_done: HashSet<(String, Vec<CTy>)>,    // already emitted
+    spec_pending: Vec<(String, Vec<CTy>)>, // instantiations to emit
+    spec_done: HashSet<(String, Vec<CTy>)>, // already emitted
 }
 
 impl<'a> Cx<'a> {
@@ -139,7 +143,12 @@ impl<'a> Cx<'a> {
     }
 
     fn note_vec(&mut self, t: &CTy) {
-        if let CTy::Vec { name, scalar_c, lanes } = t {
+        if let CTy::Vec {
+            name,
+            scalar_c,
+            lanes,
+        } = t
+        {
             self.vecs.insert((name.clone(), scalar_c.clone(), *lanes));
         }
     }
@@ -162,7 +171,11 @@ impl<'a> Cx<'a> {
         // recursive sums are named structs (forward-declared elsewhere) so a
         // self-referential payload can be stored as a `Name*` pointer.
         let recursive = self.sum_is_recursive(name);
-        let tags = vars.iter().map(|v| format!("{name}_tag_{v}")).collect::<Vec<_>>().join(", ");
+        let tags = vars
+            .iter()
+            .map(|v| format!("{name}_tag_{v}"))
+            .collect::<Vec<_>>()
+            .join(", ");
         self.push(&format!("typedef enum {{ {tags} }} {name}_tag;"));
         if recursive {
             self.push(&format!("struct {name} {{ {name}_tag tag; union {{"));
@@ -200,14 +213,20 @@ impl<'a> Cx<'a> {
                 "void".to_string()
             } else {
                 // constructors take payloads by value; boxing is internal
-                p.iter().enumerate().map(|(i, t)| format!("{} _{i}", c_type(t))).collect::<Vec<_>>().join(", ")
+                p.iter()
+                    .enumerate()
+                    .map(|(i, t)| format!("{} _{i}", c_type(t)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             };
             self.push(&format!("static {name} {name}_{v}({params}) {{"));
             self.push(&format!("    {name} _v; _v.tag = {name}_tag_{v};"));
             for (i, t) in p.iter().enumerate() {
                 if self.is_boxed(name, t) {
                     let cty = c_type(t);
-                    self.push(&format!("    _v.as.{v}._{i} = ({cty}*)maca_alloc(sizeof({cty}));"));
+                    self.push(&format!(
+                        "    _v.as.{v}._{i} = ({cty}*)maca_alloc(sizeof({cty}));"
+                    ));
                     self.push(&format!("    *_v.as.{v}._{i} = _{i};"));
                 } else {
                     self.push(&format!("    _v.as.{v}._{i} = _{i};"));
@@ -222,7 +241,8 @@ impl<'a> Cx<'a> {
     /// (as opposed to a plain C enum).
     fn is_tagged(&self, sum: &str) -> bool {
         self.sums.get(sum).is_some_and(|vs| {
-            vs.iter().any(|v| self.variant_payloads.get(v).is_some_and(|p| !p.is_empty()))
+            vs.iter()
+                .any(|v| self.variant_payloads.get(v).is_some_and(|p| !p.is_empty()))
         })
     }
 
@@ -230,12 +250,11 @@ impl<'a> Cx<'a> {
         // register record names up front so both sum payload types and (later)
         // record field types can reference a record declared anywhere in the file
         for item in &self.m.items {
-            if let Stmt::Bind(b) = item {
-                if let Expr::Ident(name) = &b.target {
-                    if is_record_value(&b.value) {
-                        self.records.entry(name.clone()).or_default();
-                    }
-                }
+            if let Stmt::Bind(b) = item
+                && let Expr::Ident(name) = &b.target
+                && is_record_value(&b.value)
+            {
+                self.records.entry(name.clone()).or_default();
             }
         }
         // Types can reference each other (and themselves) in any order, so
@@ -267,17 +286,17 @@ impl<'a> Cx<'a> {
         }
         // now every type name is known: resolve sum payloads and record fields.
         for item in &self.m.items {
-            if let Stmt::Bind(b) = item {
-                if let Expr::Ident(name) = &b.target {
-                    if let Some(vars) = sum_variants(&b.value) {
-                        for (v, ptys) in &vars {
-                            let ctys: Vec<CTy> = ptys.iter().map(|t| self.cty(t)).collect();
-                            self.variant_payloads.insert(v.clone(), ctys);
-                        }
-                        let _ = name;
-                    } else if let Some(fields) = self.record_fields(&b.value) {
-                        self.records.insert(name.clone(), fields);
+            if let Stmt::Bind(b) = item
+                && let Expr::Ident(name) = &b.target
+            {
+                if let Some(vars) = sum_variants(&b.value) {
+                    for (v, ptys) in &vars {
+                        let ctys: Vec<CTy> = ptys.iter().map(|t| self.cty(t)).collect();
+                        self.variant_payloads.insert(v.clone(), ctys);
                     }
+                    let _ = name;
+                } else if let Some(fields) = self.record_fields(&b.value) {
+                    self.records.insert(name.clone(), fields);
                 }
             }
         }
@@ -290,7 +309,11 @@ impl<'a> Cx<'a> {
                     if fn_is_generic(f) {
                         self.generics.insert(f.name.clone(), f.clone());
                     } else {
-                        let params = f.params.iter().map(|p| self.cty_opt(&p.ty)).collect::<Vec<_>>();
+                        let params = f
+                            .params
+                            .iter()
+                            .map(|p| self.cty_opt(&p.ty))
+                            .collect::<Vec<_>>();
                         let ret = f.ret.as_ref().map_or(CTy::Unit, |t| self.cty(t));
                         for p in &params {
                             self.note_arr(p);
@@ -316,8 +339,12 @@ impl<'a> Cx<'a> {
             }
         }
         // array element types from record fields
-        let fields: Vec<CTy> =
-            self.records.values().flatten().map(|(_, t)| t.clone()).collect();
+        let fields: Vec<CTy> = self
+            .records
+            .values()
+            .flatten()
+            .map(|(_, t)| t.clone())
+            .collect();
         for t in fields {
             self.note_arr(&t);
         }
@@ -364,12 +391,11 @@ impl<'a> Cx<'a> {
             Expr::Call { callee, args } => {
                 // `f32x8.splat(k)` — register the vector type for its typedef
                 if let Expr::Field { base, name } = callee.as_ref() {
-                    if name == "splat" {
-                        if let Expr::Ident(v) = base.as_ref() {
-                            if let Some((sc, ln)) = parse_vec_c(v) {
-                                self.vecs.insert((v.clone(), sc, ln));
-                            }
-                        }
+                    if name == "splat"
+                        && let Expr::Ident(v) = base.as_ref()
+                        && let Some((sc, ln)) = parse_vec_c(v)
+                    {
+                        self.vecs.insert((v.clone(), sc, ln));
                     }
                     // `s.split(sep)` yields a `str[]` — register `StrArr` so its
                     // typedef/ops are emitted before any function body uses it.
@@ -380,9 +406,9 @@ impl<'a> Cx<'a> {
                 self.walk_expr(callee);
                 for a in args {
                     match a {
-                        Arg::Pos(x) | Arg::Named { value: x, .. } | Arg::Directive { value: x, .. } => {
-                            self.walk_expr(x)
-                        }
+                        Arg::Pos(x)
+                        | Arg::Named { value: x, .. }
+                        | Arg::Directive { value: x, .. } => self.walk_expr(x),
                     }
                 }
             }
@@ -393,9 +419,16 @@ impl<'a> Cx<'a> {
                     }
                 }
             }
-            Expr::Field { base, .. } | Expr::Unary { expr: base, .. } | Expr::Try(base)
-            | Expr::Fail(base) | Expr::Reify(base) => self.walk_expr(base),
-            Expr::Binary { lhs, rhs, .. } | Expr::Assign { target: lhs, value: rhs } => {
+            Expr::Field { base, .. }
+            | Expr::Unary { expr: base, .. }
+            | Expr::Try(base)
+            | Expr::Fail(base)
+            | Expr::Reify(base) => self.walk_expr(base),
+            Expr::Binary { lhs, rhs, .. }
+            | Expr::Assign {
+                target: lhs,
+                value: rhs,
+            } => {
                 self.walk_expr(lhs);
                 self.walk_expr(rhs);
             }
@@ -459,9 +492,11 @@ impl<'a> Cx<'a> {
             Expr::Bool(_) => CTy::Bool,
             Expr::Str(_) | Expr::Path(_) => CTy::Str,
             Expr::Ctor { name, .. } => CTy::Rec(name.clone()),
-            Expr::Ident(n) => {
-                self.variant_of.get(n).map(|s| CTy::Sum(s.clone())).unwrap_or(CTy::Unknown)
-            }
+            Expr::Ident(n) => self
+                .variant_of
+                .get(n)
+                .map(|s| CTy::Sum(s.clone()))
+                .unwrap_or(CTy::Unknown),
             Expr::Call { callee, .. } => match &**callee {
                 // a constructor call like `Circle(2.0)` has the sum's type — so a
                 // list of them (`Circle(x), Rect(w, h)`) registers `ShapeArr`.
@@ -640,7 +675,11 @@ impl<'a> Cx<'a> {
             Type::Name(segs) if segs.len() == 1 => {
                 let n = segs[0].as_str();
                 if let Some((scalar_c, lanes)) = parse_vec_c(n) {
-                    return CTy::Vec { name: n.into(), scalar_c, lanes };
+                    return CTy::Vec {
+                        name: n.into(),
+                        scalar_c,
+                        lanes,
+                    };
                 }
                 match n {
                     "int" | "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" => CTy::Int,
@@ -697,12 +736,18 @@ impl<'a> Cx<'a> {
         // emit them up front. Tagged sums (payloads) and records are structs that
         // may reference each other by value, so they are emitted together in
         // dependency order below; their to_str/from_str follow.
-        let sums: Vec<(String, Vec<String>)> =
-            self.sums.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let sums: Vec<(String, Vec<String>)> = self
+            .sums
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
         for (name, vars) in &sums {
             if !self.is_tagged(name) {
-                let variants =
-                    vars.iter().map(|v| format!("{name}_{v}")).collect::<Vec<_>>().join(", ");
+                let variants = vars
+                    .iter()
+                    .map(|v| format!("{name}_{v}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 self.push(&format!("typedef enum {{ {variants} }} {name};"));
             }
         }
@@ -722,7 +767,11 @@ impl<'a> Cx<'a> {
         let elems: Vec<CTy> = self.arr_elems.iter().cloned().collect();
         for e in &elems {
             if !matches!(e, CTy::Rec(_) | CTy::Sum(_)) {
-                self.push(&format!("MACA_DEFINE_ARRAY({}, {})", arr_name(e), c_type(e)));
+                self.push(&format!(
+                    "MACA_DEFINE_ARRAY({}, {})",
+                    arr_name(e),
+                    c_type(e)
+                ));
                 emitted_arr.insert(e.clone());
             }
         }
@@ -747,11 +796,16 @@ impl<'a> Cx<'a> {
                     .collect()
             };
             for t in &field_ctys {
-                if let CTy::Arr(e) = t {
-                    if matches!(**e, CTy::Rec(_) | CTy::Sum(_)) && !emitted_arr.contains(e) {
-                        self.push(&format!("MACA_DEFINE_ARRAY({}, {})", arr_name(e), c_type(e)));
-                        emitted_arr.insert((**e).clone());
-                    }
+                if let CTy::Arr(e) = t
+                    && matches!(**e, CTy::Rec(_) | CTy::Sum(_))
+                    && !emitted_arr.contains(e)
+                {
+                    self.push(&format!(
+                        "MACA_DEFINE_ARRAY({}, {})",
+                        arr_name(e),
+                        c_type(e)
+                    ));
+                    emitted_arr.insert((**e).clone());
                 }
             }
             if self.records.contains_key(name) {
@@ -771,7 +825,11 @@ impl<'a> Cx<'a> {
         // now that every struct is defined, emit their MACA_DEFINE_ARRAY.
         for e in &elems {
             if matches!(e, CTy::Rec(_) | CTy::Sum(_)) && !emitted_arr.contains(e) {
-                self.push(&format!("MACA_DEFINE_ARRAY({}, {})", arr_name(e), c_type(e)));
+                self.push(&format!(
+                    "MACA_DEFINE_ARRAY({}, {})",
+                    arr_name(e),
+                    c_type(e)
+                ));
                 emitted_arr.insert(e.clone());
             }
         }
@@ -784,9 +842,16 @@ impl<'a> Cx<'a> {
         for (name, vars) in &sums {
             let tagged = self.is_tagged(name);
             self.push(&format!("static maca_str {name}_to_str({name} v) {{"));
-            self.push(&format!("    switch (v{}) {{", if tagged { ".tag" } else { "" }));
+            self.push(&format!(
+                "    switch (v{}) {{",
+                if tagged { ".tag" } else { "" }
+            ));
             for v in vars {
-                let tag = if tagged { format!("{name}_tag_{v}") } else { format!("{name}_{v}") };
+                let tag = if tagged {
+                    format!("{name}_tag_{v}")
+                } else {
+                    format!("{name}_{v}")
+                };
                 self.push(&format!("        case {tag}: return \"{v}\";"));
             }
             self.push("    }");
@@ -796,19 +861,28 @@ impl<'a> Cx<'a> {
             if tagged {
                 for v in vars {
                     if self.variant_payloads.get(v).is_none_or(|p| p.is_empty()) {
-                        self.push(&format!("    if (maca_str_eq(s, \"{v}\")) return {name}_{v}();"));
+                        self.push(&format!(
+                            "    if (maca_str_eq(s, \"{v}\")) return {name}_{v}();"
+                        ));
                     }
                 }
                 let first = &vars[0];
                 let zeros = self
                     .variant_payloads
                     .get(first)
-                    .map(|p| p.iter().map(|t| format!("({}){{0}}", c_type(t))).collect::<Vec<_>>().join(", "))
+                    .map(|p| {
+                        p.iter()
+                            .map(|t| format!("({}){{0}}", c_type(t)))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
                     .unwrap_or_default();
                 self.push(&format!("    (void)s; return {name}_{first}({zeros});"));
             } else {
                 for v in vars {
-                    self.push(&format!("    if (maca_str_eq(s, \"{v}\")) return {name}_{v};"));
+                    self.push(&format!(
+                        "    if (maca_str_eq(s, \"{v}\")) return {name}_{v};"
+                    ));
                 }
                 self.push(&format!("    return {name}_{};", vars[0]));
             }
@@ -831,10 +905,17 @@ impl<'a> Cx<'a> {
         // top-level let accessors
         let lets = self.lets.clone();
         for (name, cty, init) in &lets {
-            let ret = if *cty == CTy::Unknown { infer_cty_shallow(init) } else { cty.clone() };
+            let ret = if *cty == CTy::Unknown {
+                infer_cty_shallow(init)
+            } else {
+                cty.clone()
+            };
             let mut env: Env = Vec::new();
             let (code, _) = self.expr(&mut env, init, None);
-            self.push(&format!("static {} mv_{name}(void) {{ return {code}; }}", c_type(&ret)));
+            self.push(&format!(
+                "static {} mv_{name}(void) {{ return {code}; }}",
+                c_type(&ret)
+            ));
         }
         self.push("");
 
@@ -863,11 +944,13 @@ impl<'a> Cx<'a> {
         // the functions that take their address.
         let saved = std::mem::take(&mut self.out);
         for item in self.m.items.clone() {
-            if let Stmt::Fn(f) = &item {
-                if f.body.is_some() && !self.is_simd_fn(&f.name) && !self.generics.contains_key(&f.name) {
-                    self.emit_fn(f);
-                    self.push("");
-                }
+            if let Stmt::Fn(f) = &item
+                && f.body.is_some()
+                && !self.is_simd_fn(&f.name)
+                && !self.generics.contains_key(&f.name)
+            {
+                self.emit_fn(f);
+                self.push("");
             }
         }
         // drain the monomorphization worklist: emitting a specialization may
@@ -896,7 +979,16 @@ impl<'a> Cx<'a> {
             .zip(params)
             .map(|(p, t)| format!("{} {}", c_type(t), cid(&p.name)))
             .collect();
-        format!("{} {}({})", c_type(ret), cid(&f.name), if ps.is_empty() { "void".into() } else { ps.join(", ") })
+        format!(
+            "{} {}({})",
+            c_type(ret),
+            cid(&f.name),
+            if ps.is_empty() {
+                "void".into()
+            } else {
+                ps.join(", ")
+            }
+        )
     }
 
     fn emit_fn(&mut self, f: &FnDef) {
@@ -915,11 +1007,20 @@ impl<'a> Cx<'a> {
             if let Some((pname, _)) = f.params.first().map(|p| (p.name.clone(), ())) {
                 env.push((pname.clone(), CTy::Arr(Box::new(CTy::Str))));
                 let pc = cid(&pname);
-                self.push(&format!("    {} {pc} = {}_new();", arr_name(&CTy::Str), arr_name(&CTy::Str)));
-                self.push(&format!("    for (int _i = 1; _i < argc; _i++) {}_push(&{pc}, argv[_i]);", arr_name(&CTy::Str)));
+                self.push(&format!(
+                    "    {} {pc} = {}_new();",
+                    arr_name(&CTy::Str),
+                    arr_name(&CTy::Str)
+                ));
+                self.push(&format!(
+                    "    for (int _i = 1; _i < argc; _i++) {}_push(&{pc}, argv[_i]);",
+                    arr_name(&CTy::Str)
+                ));
             }
             match &f.body {
-                Some(FnBody::Block(stmts)) => self.block(&mut env, stmts, &Sink::Return(CTy::Int), 1),
+                Some(FnBody::Block(stmts)) => {
+                    self.block(&mut env, stmts, &Sink::Return(CTy::Int), 1)
+                }
                 Some(FnBody::Expr(e)) if is_control(e) => {
                     self.stmt_expr(&mut env, e, &Sink::Return(CTy::Int), 1);
                 }
@@ -937,14 +1038,22 @@ impl<'a> Cx<'a> {
         self.push(&format!("{} {{", self.fn_sig(f)));
         match &f.body {
             Some(FnBody::Block(stmts)) => {
-                let sink = if ret == CTy::Unit { Sink::Discard } else { Sink::Return(ret.clone()) };
+                let sink = if ret == CTy::Unit {
+                    Sink::Discard
+                } else {
+                    Sink::Return(ret.clone())
+                };
                 self.block(&mut env, stmts, &sink, 1);
             }
             // an arrow body that is itself a control-flow expression (a `match`,
             // `if`, or block returning a value) routes through the Sink like a
             // block body would, instead of the value-only `expr()` path.
             Some(FnBody::Expr(e)) if is_control(e) => {
-                let sink = if ret == CTy::Unit { Sink::Discard } else { Sink::Return(ret.clone()) };
+                let sink = if ret == CTy::Unit {
+                    Sink::Discard
+                } else {
+                    Sink::Return(ret.clone())
+                };
                 self.stmt_expr(&mut env, e, &sink, 1);
             }
             Some(FnBody::Expr(e)) => {
@@ -964,7 +1073,10 @@ impl<'a> Cx<'a> {
 type Env = Vec<(String, CTy)>;
 
 fn lookup(env: &Env, n: &str) -> Option<CTy> {
-    env.iter().rev().find(|(k, _)| k == n).map(|(_, t)| t.clone())
+    env.iter()
+        .rev()
+        .find(|(k, _)| k == n)
+        .map(|(_, t)| t.clone())
 }
 
 /// Where the value of a block / control-flow expression goes. This is what lets
@@ -1001,15 +1113,15 @@ impl<'a> Cx<'a> {
                 // a declaration: a bare `x = e` that first introduces `x` (its
                 // const-ness is a checker concern). A bare assignment to a name
                 // already in scope is a reassignment (handled below).
-                Stmt::Bind(b)
-                    if matches!(&b.target, Expr::Ident(n) if lookup(env, n).is_none()) =>
-                {
+                Stmt::Bind(b) if matches!(&b.target, Expr::Ident(n) if lookup(env, n).is_none()) => {
                     if let Expr::Ident(name) = &b.target {
                         let ann = b.tys.first().map(|t| self.cty(t));
                         if is_control(&b.value) {
                             // `let x = if/match/block …` — declare, then assign
                             // the result in each branch tail via an Assign sink.
-                            let ty = ann.clone().unwrap_or_else(|| self.result_cty(env, &b.value));
+                            let ty = ann
+                                .clone()
+                                .unwrap_or_else(|| self.result_cty(env, &b.value));
                             self.indent(ind);
                             self.push(&format!("{} {};", c_type(&ty), cid(name)));
                             env.push((name.clone(), ty.clone()));
@@ -1070,7 +1182,9 @@ impl<'a> Cx<'a> {
     fn result_cty(&mut self, env: &Env, e: &Expr) -> CTy {
         match e {
             Expr::If { then, els, .. } => {
-                let t = tail_expr(then).map(|e| self.result_cty(env, e)).unwrap_or(CTy::Unknown);
+                let t = tail_expr(then)
+                    .map(|e| self.result_cty(env, e))
+                    .unwrap_or(CTy::Unknown);
                 if !matches!(t, CTy::Unknown) {
                     return t;
                 }
@@ -1084,9 +1198,9 @@ impl<'a> Cx<'a> {
                 .map(|a| self.result_cty(env, &a.body))
                 .find(|t| !matches!(t, CTy::Unknown))
                 .unwrap_or(CTy::Unknown),
-            Expr::Block(stmts) => {
-                tail_expr(stmts).map(|e| self.result_cty(env, e)).unwrap_or(CTy::Unit)
-            }
+            Expr::Block(stmts) => tail_expr(stmts)
+                .map(|e| self.result_cty(env, e))
+                .unwrap_or(CTy::Unit),
             leaf => {
                 let save = self.out.len();
                 let tmp = self.tmp;
@@ -1106,10 +1220,16 @@ impl<'a> Cx<'a> {
             Expr::For { pat, iter, body } if matches!(&**iter, Expr::Range { .. }) => {
                 // `for i in lo..hi` — a counting loop, no array materialized.
                 // Ranges are inclusive of `hi`, so the guard is `<=`.
-                let Expr::Range { lo, hi } = &**iter else { unreachable!() };
+                let Expr::Range { lo, hi } = &**iter else {
+                    unreachable!()
+                };
                 let (lc, _) = self.expr(env, lo, Some(&CTy::Int));
                 let (hc, _) = self.expr(env, hi, Some(&CTy::Int));
-                let var = if let Pattern::Bind(n) = pat { n.clone() } else { self.fresh() };
+                let var = if let Pattern::Bind(n) = pat {
+                    n.clone()
+                } else {
+                    self.fresh()
+                };
                 let hv = self.fresh();
                 self.indent(ind);
                 self.push(&format!(
@@ -1130,10 +1250,16 @@ impl<'a> Cx<'a> {
                 };
                 let it = self.fresh();
                 let idx = self.fresh();
-                let var = if let Pattern::Bind(n) = pat { n.clone() } else { self.fresh() };
+                let var = if let Pattern::Bind(n) = pat {
+                    n.clone()
+                } else {
+                    self.fresh()
+                };
                 let an = arr_name(&elem);
                 self.indent(ind);
-                self.push(&format!("{{ {an} {it} = {ic}; for (int64_t {idx} = 0; {idx} < {it}.len; {idx}++) {{"));
+                self.push(&format!(
+                    "{{ {an} {it} = {ic}; for (int64_t {idx} = 0; {idx} < {it}.len; {idx}++) {{"
+                ));
                 self.indent(ind + 1);
                 self.push(&format!("{} {var} = {it}.data[{idx}];", c_type(&elem)));
                 let mut env2 = env.clone();
@@ -1269,7 +1395,10 @@ impl<'a> Cx<'a> {
             // literal patterns → an equality test against the scrutinee
             Pattern::Int(n) => (format!("{sv} == {n}"), vec![]),
             Pattern::Float(f) => (format!("{sv} == {f}"), vec![]),
-            Pattern::Bool(b) => (format!("{sv} == {}", if *b { "true" } else { "false" }), vec![]),
+            Pattern::Bool(b) => (
+                format!("{sv} == {}", if *b { "true" } else { "false" }),
+                vec![],
+            ),
             // a string literal against a string scrutinee (vs. the list-of-chars
             // case handled below for array scrutinees)
             Pattern::Str(lit) if matches!(sty, CTy::Str) => {
@@ -1278,8 +1407,7 @@ impl<'a> Cx<'a> {
             // A variant may reach here as a bare `Bind` (bare `Red`) or a `Ctor`
             // (`Red()` / `Circle(x)`); against a sum scrutinee it is a tag test,
             // not a binding — mirror the checker's `is_variant` disambiguation.
-            Pattern::Bind(n) | Pattern::Ctor { name: n, args: _ }
-                if matches!(sty, CTy::Sum(s) if self.sums.get(s).is_some_and(|vs| vs.iter().any(|v| v == n))) =>
+            Pattern::Bind(n) | Pattern::Ctor { name: n, args: _ } if matches!(sty, CTy::Sum(s) if self.sums.get(s).is_some_and(|vs| vs.iter().any(|v| v == n))) =>
             {
                 let CTy::Sum(s) = sty else { unreachable!() };
                 if self.is_tagged(s) {
@@ -1296,7 +1424,11 @@ impl<'a> Cx<'a> {
                                 let deref = if self.is_boxed(s, &bty) { "*" } else { "" };
                                 binds.push((
                                     bn.clone(),
-                                    format!("{} {} = {deref}{sv}.as.{n}._{i};", c_type(&bty), cid(bn)),
+                                    format!(
+                                        "{} {} = {deref}{sv}.as.{n}._{i};",
+                                        c_type(&bty),
+                                        cid(bn)
+                                    ),
                                     bty,
                                 ));
                             }
@@ -1338,7 +1470,11 @@ impl<'a> Cx<'a> {
                 // bind whole scrutinee
                 (
                     "1".into(),
-                    vec![(n.clone(), format!("{} {} = {sv};", c_type(sty), cid(n)), sty.clone())],
+                    vec![(
+                        n.clone(),
+                        format!("{} {} = {sv};", c_type(sty), cid(n)),
+                        sty.clone(),
+                    )],
                 )
             }
             Pattern::Str(lit) if matches!(sty, CTy::Arr(_)) => (
@@ -1366,17 +1502,14 @@ impl<'a> Cx<'a> {
                         _ => {}
                     }
                 }
-                if let Some(r) = rest {
-                    if let Pattern::Bind(rn) = &**r {
-                        binds.push((
-                            rn.clone(),
-                            format!(
-                                "{an} {rn} = {an}_slice({sv}, {n});",
-                                an = arr_name(elem)
-                            ),
-                            CTy::Arr(Box::new(elem.clone())),
-                        ));
-                    }
+                if let Some(r) = rest
+                    && let Pattern::Bind(rn) = &**r
+                {
+                    binds.push((
+                        rn.clone(),
+                        format!("{an} {rn} = {an}_slice({sv}, {n});", an = arr_name(elem)),
+                        CTy::Arr(Box::new(elem.clone())),
+                    ));
                 }
                 (conds.join(" && "), binds)
             }
@@ -1454,7 +1587,10 @@ impl<'a> Cx<'a> {
                 let (c, _) = self.expr(env, cond, None);
                 let (t, tt) = self.expr(env, then, expected);
                 let (e2, _) = self.expr(env, els, expected);
-                (format!("({c} ? {t} : {e2})"), expected.cloned().unwrap_or(tt))
+                (
+                    format!("({c} ? {t} : {e2})"),
+                    expected.cloned().unwrap_or(tt),
+                )
             }
             Expr::Try(x) => self.expr(env, x, expected),
             // `fail msg` — a clean error exit with the message (was a bare abort()
@@ -1462,7 +1598,10 @@ impl<'a> Cx<'a> {
             // noreturn; the trailing `0` only keeps the expression well-typed.
             Expr::Fail(msg) => {
                 let (mc, _) = self.expr(env, msg, Some(&CTy::Str));
-                (format!("(maca_fail({mc}), 0)"), expected.cloned().unwrap_or(CTy::Unit))
+                (
+                    format!("(maca_fail({mc}), 0)"),
+                    expected.cloned().unwrap_or(CTy::Unit),
+                )
             }
             // `try e` / `reify e` — run `e` under a failure handler; the value is
             // the caught message (a `str`), or "" on success. setjmp must be
@@ -1490,8 +1629,13 @@ impl<'a> Cx<'a> {
             // `async` keyword and no ABI change — an async fn is an ordinary fn.
             Expr::Spawn(inner) => match &**inner {
                 Expr::Call { callee, args } if matches!(&**callee, Expr::Ident(_)) => {
-                    let Expr::Ident(f) = &**callee else { unreachable!() };
-                    let arg = args.first().map(|a| self.arg(env, a)).unwrap_or_else(|| "0".into());
+                    let Expr::Ident(f) = &**callee else {
+                        unreachable!()
+                    };
+                    let arg = args
+                        .first()
+                        .map(|a| self.arg(env, a))
+                        .unwrap_or_else(|| "0".into());
                     (
                         format!("maca_spawn((maca_task_fn){}, (int64_t)({arg}))", cid(f)),
                         CTy::Future,
@@ -1527,7 +1671,13 @@ impl<'a> Cx<'a> {
                 .lets
                 .iter()
                 .find(|(name, _, _)| name == n)
-                .map(|(_, t, init)| if *t == CTy::Unknown { infer_cty_shallow(init) } else { t.clone() })
+                .map(|(_, t, init)| {
+                    if *t == CTy::Unknown {
+                        infer_cty_shallow(init)
+                    } else {
+                        t.clone()
+                    }
+                })
                 .unwrap_or(CTy::Unknown);
             return (format!("mv_{n}()"), ty);
         }
@@ -1562,7 +1712,7 @@ impl<'a> Cx<'a> {
         bound.clear();
         let mut caps: Vec<(String, CTy)> = refs
             .into_iter()
-            .filter(|n| !self.is_known_global(n) && self.variant_of.get(n).is_none())
+            .filter(|n| !self.is_known_global(n) && !self.variant_of.contains_key(n))
             .map(|n| {
                 let t = self.cap_ty(env, &n);
                 (n, t)
@@ -1577,9 +1727,13 @@ impl<'a> Cx<'a> {
         let two = params.len() >= 2;
 
         if !caps.is_empty() {
-            let fields =
-                caps.iter().map(|(n, t)| format!("{} {};", c_type(t), cid(n))).collect::<Vec<_>>().join(" ");
-            self.hoisted_decls.push(format!("typedef struct {{ {fields} }} {ename};"));
+            let fields = caps
+                .iter()
+                .map(|(n, t)| format!("{} {};", c_type(t), cid(n)))
+                .collect::<Vec<_>>()
+                .join(" ");
+            self.hoisted_decls
+                .push(format!("typedef struct {{ {fields} }} {ename};"));
         }
         let sig = if two {
             format!("static int64_t {fname}(void* _envp, int64_t _a0, int64_t _a1)")
@@ -1603,7 +1757,12 @@ impl<'a> Cx<'a> {
         for (i, p) in params.iter().enumerate() {
             let pt = param_tys.get(i).cloned().unwrap_or(CTy::Int);
             let arg = format!("_a{i}");
-            self.push(&format!("    {} {} = {};", c_type(&pt), cid(&p.name), unbox_i64(&arg, &pt)));
+            self.push(&format!(
+                "    {} {} = {};",
+                c_type(&pt),
+                cid(&p.name),
+                unbox_i64(&arg, &pt)
+            ));
             lenv.push((p.name.clone(), pt));
         }
         let (bc, bt) = self.expr(&mut lenv, body, None);
@@ -1639,22 +1798,48 @@ impl<'a> Cx<'a> {
     fn emit_specialization(&mut self, name: &str, arg_ctys: &[CTy]) {
         let genf = self.generics[name].clone();
         let subst = self.build_subst(&genf, arg_ctys);
-        let ret = genf.ret.as_ref().map_or(CTy::Unit, |t| self.subst_cty(t, &subst));
+        let ret = genf
+            .ret
+            .as_ref()
+            .map_or(CTy::Unit, |t| self.subst_cty(t, &subst));
         let mangled = mangle_name(name, arg_ctys);
-        let param_ctys: Vec<CTy> =
-            genf.params.iter().enumerate().map(|(i, _)| arg_ctys.get(i).cloned().unwrap_or(CTy::Unknown)).collect();
-        let mut env: Env =
-            genf.params.iter().zip(&param_ctys).map(|(p, t)| (p.name.clone(), t.clone())).collect();
-        let ps: Vec<String> =
-            genf.params.iter().zip(&param_ctys).map(|(p, t)| format!("{} {}", c_type(t), cid(&p.name))).collect();
-        let sig =
-            format!("{} {mangled}({})", c_type(&ret), if ps.is_empty() { "void".into() } else { ps.join(", ") });
+        let param_ctys: Vec<CTy> = genf
+            .params
+            .iter()
+            .enumerate()
+            .map(|(i, _)| arg_ctys.get(i).cloned().unwrap_or(CTy::Unknown))
+            .collect();
+        let mut env: Env = genf
+            .params
+            .iter()
+            .zip(&param_ctys)
+            .map(|(p, t)| (p.name.clone(), t.clone()))
+            .collect();
+        let ps: Vec<String> = genf
+            .params
+            .iter()
+            .zip(&param_ctys)
+            .map(|(p, t)| format!("{} {}", c_type(t), cid(&p.name)))
+            .collect();
+        let sig = format!(
+            "{} {mangled}({})",
+            c_type(&ret),
+            if ps.is_empty() {
+                "void".into()
+            } else {
+                ps.join(", ")
+            }
+        );
         self.hoisted_decls.push(format!("static {sig};"));
         let saved = std::mem::take(&mut self.out);
         self.push(&format!("static {sig} {{"));
         match &genf.body {
             Some(FnBody::Block(stmts)) => {
-                let sink = if ret == CTy::Unit { Sink::Discard } else { Sink::Return(ret.clone()) };
+                let sink = if ret == CTy::Unit {
+                    Sink::Discard
+                } else {
+                    Sink::Return(ret.clone())
+                };
                 self.block(&mut env, stmts, &sink, 1);
             }
             Some(FnBody::Expr(e)) => {
@@ -1677,10 +1862,11 @@ impl<'a> Cx<'a> {
     fn build_subst(&self, genf: &FnDef, arg_ctys: &[CTy]) -> HashMap<String, CTy> {
         let mut m = HashMap::new();
         for (p, cty) in genf.params.iter().zip(arg_ctys) {
-            if let Some(Type::Name(segs)) = &p.ty {
-                if segs.len() == 1 && is_tyvar(&segs[0]) {
-                    m.insert(segs[0].clone(), cty.clone());
-                }
+            if let Some(Type::Name(segs)) = &p.ty
+                && segs.len() == 1
+                && is_tyvar(&segs[0])
+            {
+                m.insert(segs[0].clone(), cty.clone());
             }
         }
         m
@@ -1701,7 +1887,9 @@ impl<'a> Cx<'a> {
 
     fn spec_ret(&self, genf: &FnDef, arg_ctys: &[CTy]) -> CTy {
         let subst = self.build_subst(genf, arg_ctys);
-        genf.ret.as_ref().map_or(CTy::Unit, |t| self.subst_cty(t, &subst))
+        genf.ret
+            .as_ref()
+            .map_or(CTy::Unit, |t| self.subst_cty(t, &subst))
     }
 
     /// The C type of a captured free variable (a function-local of the enclosing
@@ -1724,13 +1912,16 @@ impl<'a> Cx<'a> {
     ) -> Option<(String, CTy)> {
         let src = arr_name(elem);
         let lambda = |a: Option<&Arg>| match a {
-            Some(Arg::Pos(Expr::Lambda { params, body })) => Some((params.clone(), (**body).clone())),
+            Some(Arg::Pos(Expr::Lambda { params, body })) => {
+                Some((params.clone(), (**body).clone()))
+            }
             _ => None,
         };
         match method {
             "map" => {
                 let (params, body) = lambda(args.first())?;
-                let (clos, ret) = self.emit_closure(env, &params, &body, &[elem.clone()]);
+                let (clos, ret) =
+                    self.emit_closure(env, &params, &body, std::slice::from_ref(elem));
                 self.note_arr(&CTy::Arr(Box::new(ret.clone())));
                 let dst = arr_name(&ret);
                 let boxed = box_i64("_s.data[_i]", elem);
@@ -1743,7 +1934,7 @@ impl<'a> Cx<'a> {
             }
             "filter" => {
                 let (params, body) = lambda(args.first())?;
-                let (clos, _) = self.emit_closure(env, &params, &body, &[elem.clone()]);
+                let (clos, _) = self.emit_closure(env, &params, &body, std::slice::from_ref(elem));
                 let boxed = box_i64("_s.data[_i]", elem);
                 let code = format!(
                     "({{ {src} _s = {rc}; {src} _r = {src}_new(); maca_closure _f = {clos}; \
@@ -1754,7 +1945,8 @@ impl<'a> Cx<'a> {
             "reduce" | "fold" => {
                 let (initc, acc_ty) = self.arg_typed(env, args.first()?);
                 let (params, body) = lambda(args.get(1))?;
-                let (clos, _) = self.emit_closure(env, &params, &body, &[acc_ty.clone(), elem.clone()]);
+                let (clos, _) =
+                    self.emit_closure(env, &params, &body, &[acc_ty.clone(), elem.clone()]);
                 let init_boxed = box_i64(&initc, &acc_ty);
                 let elem_boxed = box_i64("_s.data[_i]", elem);
                 let result = unbox_i64("_acc", &acc_ty);
@@ -1775,7 +1967,10 @@ impl<'a> Cx<'a> {
             || self.variant_of.contains_key(n)
             || self.modules.contains(n)
             || console_fn(n).is_some()
-            || matches!(n, "str" | "int" | "float" | "print" | "info" | "len" | "true" | "false")
+            || matches!(
+                n,
+                "str" | "int" | "float" | "print" | "info" | "len" | "true" | "false"
+            )
     }
 
     fn ctor(&mut self, env: &mut Env, name: &str, fields: &[Field]) -> (String, CTy) {
@@ -1787,9 +1982,7 @@ impl<'a> Cx<'a> {
         for (fname, fty) in &decl {
             let val = fields.iter().find_map(|f| match f {
                 Field::Value { name: n, value } if n == fname => Some((value.clone(), false)),
-                Field::Shorthand(n) if n == fname => {
-                    Some((Expr::Ident(n.clone()), true))
-                }
+                Field::Shorthand(n) if n == fname => Some((Expr::Ident(n.clone()), true)),
                 _ => None,
             });
             let code = match val {
@@ -1798,7 +1991,10 @@ impl<'a> Cx<'a> {
             };
             parts.push(format!(".{} = {code}", cid(fname)));
         }
-        (format!("(({name}){{ {} }})", parts.join(", ")), CTy::Rec(name.into()))
+        (
+            format!("(({name}){{ {} }})", parts.join(", ")),
+            CTy::Rec(name.into()),
+        )
     }
 
     /// `base with { f = v }` → `({ T _t = base; _t.f = v; _t; })`. The base's
@@ -1806,7 +2002,10 @@ impl<'a> Cx<'a> {
     fn with_update(&mut self, env: &mut Env, base: &Expr, fields: &[Field]) -> (String, CTy) {
         let (bc, bt) = self.expr(env, base, None);
         let CTy::Rec(rname) = bt else {
-            return ("0 /* unsupported: `with` on non-record */".into(), CTy::Unknown);
+            return (
+                "0 /* unsupported: `with` on non-record */".into(),
+                CTy::Unknown,
+            );
         };
         let decl = self.records.get(&rname).cloned().unwrap_or_default();
         let t = self.fresh();
@@ -1817,7 +2016,10 @@ impl<'a> Cx<'a> {
                 Field::Shorthand(name) => (name.clone(), Expr::Ident(name.clone())),
                 _ => continue,
             };
-            let fty = decl.iter().find(|(n, _)| *n == fname).map(|(_, t)| t.clone());
+            let fty = decl
+                .iter()
+                .find(|(n, _)| *n == fname)
+                .map(|(_, t)| t.clone());
             let code = self.expr(env, &val, fty.as_ref()).0;
             assigns.push(format!("{t}.{} = {code};", cid(&fname)));
         }
@@ -1858,16 +2060,20 @@ impl<'a> Cx<'a> {
         if let Expr::Field { base, name } = callee {
             if let Expr::Ident(m) = &**base {
                 // `f32x8.splat(k)` → a broadcast compound literal
-                if name == "splat" {
-                    if let Some((_, lanes)) = parse_vec_c(m) {
-                        let k = self.arg(env, &args[0]);
-                        let elems = vec![k.as_str(); lanes].join(", ");
-                        let (sc, ln) = parse_vec_c(m).unwrap();
-                        return (
-                            format!("(({m}){{ {elems} }})"),
-                            CTy::Vec { name: m.clone(), scalar_c: sc, lanes: ln },
-                        );
-                    }
+                if name == "splat"
+                    && let Some((_, lanes)) = parse_vec_c(m)
+                {
+                    let k = self.arg(env, &args[0]);
+                    let elems = vec![k.as_str(); lanes].join(", ");
+                    let (sc, ln) = parse_vec_c(m).unwrap();
+                    return (
+                        format!("(({m}){{ {elems} }})"),
+                        CTy::Vec {
+                            name: m.clone(),
+                            scalar_c: sc,
+                            lanes: ln,
+                        },
+                    );
                 }
                 if self.modules.contains(m) {
                     return self.module_call(env, m, name, args, expected);
@@ -1876,10 +2082,10 @@ impl<'a> Cx<'a> {
             // UFCS: receiver.method(args)
             let (rc, rty) = self.expr(env, base, None);
             // higher-order list methods lower their lambda with the element type
-            if let CTy::Arr(elem) = &rty {
-                if let Some(res) = self.list_hof(env, &rc, elem, name, args) {
-                    return res;
-                }
+            if let CTy::Arr(elem) = &rty
+                && let Some(res) = self.list_hof(env, &rc, elem, name, args)
+            {
+                return res;
             }
             let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
             return self.ufcs(&rc, &rty, name, &a);
@@ -1887,10 +2093,14 @@ impl<'a> Cx<'a> {
         if let Expr::Ident(name) = callee {
             // calling a local that holds a closure value: `f = v => …; f(x)`
             if matches!(lookup(env, name), Some(CTy::Closure)) {
-                let boxed: Vec<(String, CTy)> = args.iter().map(|x| self.arg_typed(env, x)).collect();
+                let boxed: Vec<(String, CTy)> =
+                    args.iter().map(|x| self.arg_typed(env, x)).collect();
                 let bx: Vec<String> = boxed.iter().map(|(c, t)| box_i64(c, t)).collect();
                 if bx.len() >= 2 {
-                    return (format!("maca_call2({}, {}, {})", cid(name), bx[0], bx[1]), CTy::Int);
+                    return (
+                        format!("maca_call2({}, {}, {})", cid(name), bx[0], bx[1]),
+                        CTy::Int,
+                    );
                 }
                 let a0 = bx.first().cloned().unwrap_or_else(|| "0".into());
                 return (format!("maca_call1({}, {a0})", cid(name)), CTy::Int);
@@ -1922,7 +2132,10 @@ impl<'a> Cx<'a> {
             }
             // ---- math prelude (always available; __builtin_* needs no -lm) ----
             if args.len() == 1
-                && matches!(name.as_str(), "sqrt" | "floor" | "ceil" | "round" | "sin" | "cos" | "tan" | "log" | "exp")
+                && matches!(
+                    name.as_str(),
+                    "sqrt" | "floor" | "ceil" | "round" | "sin" | "cos" | "tan" | "log" | "exp"
+                )
             {
                 let (c, _) = self.arg_typed(env, &args[0]);
                 return (format!("__builtin_{name}((double)({c}))"), CTy::Float);
@@ -1930,7 +2143,10 @@ impl<'a> Cx<'a> {
             if name == "pow" && args.len() == 2 {
                 let a = self.arg(env, &args[0]);
                 let b = self.arg(env, &args[1]);
-                return (format!("__builtin_pow((double)({a}), (double)({b}))"), CTy::Float);
+                return (
+                    format!("__builtin_pow((double)({a}), (double)({b}))"),
+                    CTy::Float,
+                );
             }
             if name == "abs" && args.len() == 1 {
                 let (c, t) = self.arg_typed(env, &args[0]);
@@ -1955,19 +2171,26 @@ impl<'a> Cx<'a> {
                 let hi = self.arg(env, &args[2]);
                 let ct = c_type(&tx);
                 return (
-                    format!("({{ {ct} _x = {x}, _lo = {lo}, _hi = {hi}; _x < _lo ? _lo : (_x > _hi ? _hi : _x); }})"),
+                    format!(
+                        "({{ {ct} _x = {x}, _lo = {lo}, _hi = {hi}; _x < _lo ? _lo : (_x > _hi ? _hi : _x); }})"
+                    ),
                     tx,
                 );
             }
             if name == "sign" && args.len() == 1 {
                 let (c, _) = self.arg_typed(env, &args[0]);
-                return (format!("({{ __typeof__({c}) _v = {c}; (int64_t)((_v > 0) - (_v < 0)); }})"), CTy::Int);
+                return (
+                    format!("({{ __typeof__({c}) _v = {c}; (int64_t)((_v > 0) - (_v < 0)); }})"),
+                    CTy::Int,
+                );
             }
             if name == "gcd" && args.len() == 2 {
                 let a = self.arg(env, &args[0]);
                 let b = self.arg(env, &args[1]);
                 return (
-                    format!("({{ int64_t _a = __builtin_llabs({a}), _b = __builtin_llabs({b}); while (_b) {{ int64_t _t = _a % _b; _a = _b; _b = _t; }} _a; }})"),
+                    format!(
+                        "({{ int64_t _a = __builtin_llabs({a}), _b = __builtin_llabs({b}); while (_b) {{ int64_t _t = _a % _b; _a = _b; _b = _t; }} _a; }})"
+                    ),
                     CTy::Int,
                 );
             }
@@ -1992,16 +2215,20 @@ impl<'a> Cx<'a> {
                 let code = format!(
                     "{}({})",
                     mangle_name(name, &arg_ctys),
-                    lowered.iter().map(|(c, _)| c.clone()).collect::<Vec<_>>().join(", ")
+                    lowered
+                        .iter()
+                        .map(|(c, _)| c.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 );
                 return (code, ret);
             }
             // a payload sum constructor: `Circle(5)` → `Shape_Circle(5)`
-            if let Some(sum) = self.variant_of.get(name).cloned() {
-                if self.is_tagged(&sum) {
-                    let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
-                    return (format!("{sum}_{name}({})", a.join(", ")), CTy::Sum(sum));
-                }
+            if let Some(sum) = self.variant_of.get(name).cloned()
+                && self.is_tagged(&sum)
+            {
+                let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
+                return (format!("{sum}_{name}({})", a.join(", ")), CTy::Sum(sum));
             }
             let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
             if let Some(cfn) = console_fn(name) {
@@ -2036,15 +2263,19 @@ impl<'a> Cx<'a> {
             ("json", "decode") => {
                 let (c, _) = self.arg_typed(env, &args[0]);
                 match expected {
-                    Some(CTy::Rec(r)) => {
-                        (format!("{r}_from_json(maca_json_parse({c}))"), CTy::Rec(r.clone()))
-                    }
+                    Some(CTy::Rec(r)) => (
+                        format!("{r}_from_json(maca_json_parse({c}))"),
+                        CTy::Rec(r.clone()),
+                    ),
                     _ => (format!("maca_json_parse({c})"), CTy::Unknown),
                 }
             }
             _ => {
                 let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
-                (format!("/* {module}.{member} */ ({})", a.join(", ")), CTy::Unknown)
+                (
+                    format!("/* {module}.{member} */ ({})", a.join(", ")),
+                    CTy::Unknown,
+                )
             }
         }
     }
@@ -2069,28 +2300,37 @@ impl<'a> Cx<'a> {
                     _ => "maca_sort_i64",
                 };
                 (
-                    format!("({{ {an} _s = {an}_concat({rc}, {an}_new()); {sorter}(_s.data, _s.len); _s; }})"),
+                    format!(
+                        "({{ {an} _s = {an}_concat({rc}, {an}_new()); {sorter}(_s.data, _s.len); _s; }})"
+                    ),
                     CTy::Arr(e.clone()),
                 )
             }
             (CTy::Arr(e), "reverse") => {
                 let an = arr_name(e);
                 (
-                    format!("({{ {an} _s = {rc}; {an} _r = {an}_new(); for (int64_t _i = _s.len - 1; _i >= 0; _i--) {an}_push(&_r, _s.data[_i]); _r; }})"),
+                    format!(
+                        "({{ {an} _s = {rc}; {an} _r = {an}_new(); for (int64_t _i = _s.len - 1; _i >= 0; _i--) {an}_push(&_r, _s.data[_i]); _r; }})"
+                    ),
                     CTy::Arr(e.clone()),
                 )
             }
             (CTy::Arr(e), "push") => {
                 let an = arr_name(e);
                 (
-                    format!("({{ {an} _s = {an}_concat({rc}, {an}_new()); {an}_push(&_s, {}); _s; }})", arg0()),
+                    format!(
+                        "({{ {an} _s = {an}_concat({rc}, {an}_new()); {an}_push(&_s, {}); _s; }})",
+                        arg0()
+                    ),
                     CTy::Arr(e.clone()),
                 )
             }
             (CTy::Arr(e), "pop") => {
                 let an = arr_name(e);
                 (
-                    format!("({{ {an} _s = {an}_concat({rc}, {an}_new()); if (_s.len > 0) _s.len--; _s; }})"),
+                    format!(
+                        "({{ {an} _s = {an}_concat({rc}, {an}_new()); if (_s.len > 0) _s.len--; _s; }})"
+                    ),
                     CTy::Arr(e.clone()),
                 )
             }
@@ -2102,7 +2342,9 @@ impl<'a> Cx<'a> {
                     format!("_s.data[_i] == ({})", arg0())
                 };
                 (
-                    format!("({{ {an} _s = {rc}; bool _f = false; for (int64_t _i = 0; _i < _s.len; _i++) if ({eq}) {{ _f = true; break; }} _f; }})"),
+                    format!(
+                        "({{ {an} _s = {rc}; bool _f = false; for (int64_t _i = 0; _i < _s.len; _i++) if ({eq}) {{ _f = true; break; }} _f; }})"
+                    ),
                     CTy::Bool,
                 )
             }
@@ -2114,48 +2356,80 @@ impl<'a> Cx<'a> {
                     format!("_s.data[_i] == ({})", arg0())
                 };
                 (
-                    format!("({{ {an} _s = {rc}; int64_t _r = -1; for (int64_t _i = 0; _i < _s.len; _i++) if ({eq}) {{ _r = _i; break; }} _r; }})"),
+                    format!(
+                        "({{ {an} _s = {rc}; int64_t _r = -1; for (int64_t _i = 0; _i < _s.len; _i++) if ({eq}) {{ _r = _i; break; }} _r; }})"
+                    ),
                     CTy::Int,
                 )
             }
             (CTy::Arr(e), "sum") if matches!(**e, CTy::Int | CTy::Float | CTy::F32) => {
                 let an = arr_name(e);
-                let z = if matches!(**e, CTy::Float) { "0.0" } else { "0" };
+                let z = if matches!(**e, CTy::Float) {
+                    "0.0"
+                } else {
+                    "0"
+                };
                 (
-                    format!("({{ {an} _s = {rc}; {} _acc = {z}; for (int64_t _i = 0; _i < _s.len; _i++) _acc += _s.data[_i]; _acc; }})", c_type(e)),
+                    format!(
+                        "({{ {an} _s = {rc}; {} _acc = {z}; for (int64_t _i = 0; _i < _s.len; _i++) _acc += _s.data[_i]; _acc; }})",
+                        c_type(e)
+                    ),
                     (**e).clone(),
                 )
             }
             (CTy::Arr(e), "min") if matches!(**e, CTy::Int | CTy::Float | CTy::F32) => {
                 let an = arr_name(e);
                 (
-                    format!("({{ {an} _s = {rc}; {ct} _acc = _s.len > 0 ? _s.data[0] : 0; for (int64_t _i = 1; _i < _s.len; _i++) if (_s.data[_i] < _acc) _acc = _s.data[_i]; _acc; }})", ct = c_type(e)),
+                    format!(
+                        "({{ {an} _s = {rc}; {ct} _acc = _s.len > 0 ? _s.data[0] : 0; for (int64_t _i = 1; _i < _s.len; _i++) if (_s.data[_i] < _acc) _acc = _s.data[_i]; _acc; }})",
+                        ct = c_type(e)
+                    ),
                     (**e).clone(),
                 )
             }
             (CTy::Arr(e), "max") if matches!(**e, CTy::Int | CTy::Float | CTy::F32) => {
                 let an = arr_name(e);
                 (
-                    format!("({{ {an} _s = {rc}; {ct} _acc = _s.len > 0 ? _s.data[0] : 0; for (int64_t _i = 1; _i < _s.len; _i++) if (_s.data[_i] > _acc) _acc = _s.data[_i]; _acc; }})", ct = c_type(e)),
+                    format!(
+                        "({{ {an} _s = {rc}; {ct} _acc = _s.len > 0 ? _s.data[0] : 0; for (int64_t _i = 1; _i < _s.len; _i++) if (_s.data[_i] > _acc) _acc = _s.data[_i]; _acc; }})",
+                        ct = c_type(e)
+                    ),
                     (**e).clone(),
                 )
             }
             (CTy::Arr(e), "first") => (format!("({rc}).data[0]"), (**e).clone()),
             (CTy::Arr(e), "last") => {
                 let an = arr_name(e);
-                (format!("({{ {an} _s = {rc}; _s.data[_s.len - 1]; }})"), (**e).clone())
+                (
+                    format!("({{ {an} _s = {rc}; _s.data[_s.len - 1]; }})"),
+                    (**e).clone(),
+                )
             }
             // string stdlib — UFCS methods on `str` (gradual `Unknown` receivers
             // too, since foreign/inferred strings often land as Unknown).
             (CTy::Str | CTy::Unknown, "trim") => (format!("maca_trim({rc})"), CTy::Str),
             (CTy::Str | CTy::Unknown, "upper") => (format!("maca_upper({rc})"), CTy::Str),
             (CTy::Str | CTy::Unknown, "lower") => (format!("maca_lower({rc})"), CTy::Str),
-            (CTy::Str | CTy::Unknown, "contains") => (format!("maca_contains({rc}, {})", arg0()), CTy::Bool),
-            (CTy::Str | CTy::Unknown, "starts_with") => (format!("maca_starts_with({rc}, {})", arg0()), CTy::Bool),
-            (CTy::Str | CTy::Unknown, "ends_with") => (format!("maca_ends_with({rc}, {})", arg0()), CTy::Bool),
-            (CTy::Str | CTy::Unknown, "index_of") => (format!("maca_index_of({rc}, {})", arg0()), CTy::Int),
-            (CTy::Str | CTy::Unknown, "replace") => (format!("maca_replace({rc}, {}, {})", arg0(), arg1()), CTy::Str),
-            (CTy::Str | CTy::Unknown, "substr") => (format!("maca_substr({rc}, {}, {})", arg0(), arg1()), CTy::Str),
+            (CTy::Str | CTy::Unknown, "contains") => {
+                (format!("maca_contains({rc}, {})", arg0()), CTy::Bool)
+            }
+            (CTy::Str | CTy::Unknown, "starts_with") => {
+                (format!("maca_starts_with({rc}, {})", arg0()), CTy::Bool)
+            }
+            (CTy::Str | CTy::Unknown, "ends_with") => {
+                (format!("maca_ends_with({rc}, {})", arg0()), CTy::Bool)
+            }
+            (CTy::Str | CTy::Unknown, "index_of") => {
+                (format!("maca_index_of({rc}, {})", arg0()), CTy::Int)
+            }
+            (CTy::Str | CTy::Unknown, "replace") => (
+                format!("maca_replace({rc}, {}, {})", arg0(), arg1()),
+                CTy::Str,
+            ),
+            (CTy::Str | CTy::Unknown, "substr") => (
+                format!("maca_substr({rc}, {}, {})", arg0(), arg1()),
+                CTy::Str,
+            ),
             (CTy::Str | CTy::Unknown, "split") => {
                 self.note_arr(&CTy::Arr(Box::new(CTy::Str)));
                 let sep = arg0();
@@ -2180,9 +2454,18 @@ impl<'a> Cx<'a> {
             // a user function called UFCS-style: `x.f(y)` → `f(x, y)`. Resolve
             // its real return type and escape a C-keyword name.
             _ => {
-                let ret = self.fns.get(method).map(|(_, r)| r.clone()).unwrap_or(CTy::Unknown);
+                let ret = self
+                    .fns
+                    .get(method)
+                    .map(|(_, r)| r.clone())
+                    .unwrap_or(CTy::Unknown);
                 (
-                    format!("{}({rc}{}{})", cid(method), if a.is_empty() { "" } else { ", " }, a.join(", ")),
+                    format!(
+                        "{}({rc}{}{})",
+                        cid(method),
+                        if a.is_empty() { "" } else { ", " },
+                        a.join(", ")
+                    ),
                     ret,
                 )
             }
@@ -2233,13 +2516,13 @@ impl<'a> Cx<'a> {
     }
 
     fn field(&mut self, env: &mut Env, base: &Expr, name: &str) -> (String, CTy) {
-        if let Expr::Ident(m) = base {
-            if self.modules.contains(m) {
-                if m == "dirs" && name == "data" {
-                    return ("maca_dirs_data()".into(), CTy::Str);
-                }
-                return (format!("/* {m}.{name} */ \"\""), CTy::Unknown);
+        if let Expr::Ident(m) = base
+            && self.modules.contains(m)
+        {
+            if m == "dirs" && name == "data" {
+                return ("maca_dirs_data()".into(), CTy::Str);
             }
+            return (format!("/* {m}.{name} */ \"\""), CTy::Unknown);
         }
         let (bc, bty) = self.expr(env, base, None);
         let fty = match &bty {
@@ -2262,12 +2545,11 @@ impl<'a> Cx<'a> {
         // sum) and a function with the operator's canonical name exists, the
         // operator desugars to a call — `a + b` → `add(a, b)`. Primitives keep
         // the native operator.
-        if matches!(lt, CTy::Rec(_) | CTy::Sum(_)) {
-            if let Some(name) = overload_name(op) {
-                if let Some((_, ret)) = self.fns.get(name).cloned() {
-                    return (format!("{}({lc}, {rc})", cid(name)), ret);
-                }
-            }
+        if matches!(lt, CTy::Rec(_) | CTy::Sum(_))
+            && let Some(name) = overload_name(op)
+            && let Some((_, ret)) = self.fns.get(name).cloned()
+        {
+            return (format!("{}({lc}, {rc})", cid(name)), ret);
         }
 
         use BinOp::*;
@@ -2317,10 +2599,10 @@ impl<'a> Cx<'a> {
         if parts.is_empty() {
             return "\"\"".into();
         }
-        if parts.len() == 1 {
-            if let StrPart::Text(t) = &parts[0] {
-                return c_str(t);
-            }
+        if parts.len() == 1
+            && let StrPart::Text(t) = &parts[0]
+        {
+            return c_str(t);
         }
         let mut acc: Option<String> = None;
         for p in parts {
@@ -2360,16 +2642,16 @@ impl<'a> Cx<'a> {
     fn emit_json_value(&mut self, access: &str, t: &CTy) {
         match t {
             CTy::Int => self.push(&format!("    maca_sb_puts(&sb, maca_from_int({access}));")),
-            CTy::Float | CTy::F32 => {
-                self.push(&format!("    maca_sb_puts(&sb, maca_from_float({access}));"))
-            }
-            CTy::Bool => {
-                self.push(&format!("    maca_sb_puts(&sb, {access} ? \"true\" : \"false\");"))
-            }
+            CTy::Float | CTy::F32 => self.push(&format!(
+                "    maca_sb_puts(&sb, maca_from_float({access}));"
+            )),
+            CTy::Bool => self.push(&format!(
+                "    maca_sb_puts(&sb, {access} ? \"true\" : \"false\");"
+            )),
             CTy::Str => self.push(&format!("    maca_sb_put_json_str(&sb, {access});")),
-            CTy::Sum(s) => {
-                self.push(&format!("    maca_sb_put_json_str(&sb, {s}_to_str({access}));"))
-            }
+            CTy::Sum(s) => self.push(&format!(
+                "    maca_sb_put_json_str(&sb, {s}_to_str({access}));"
+            )),
             CTy::Rec(r) => self.push(&format!("    maca_sb_puts(&sb, {r}_to_json({access}));")),
             CTy::Arr(e) => {
                 let idx = self.fresh();
@@ -2406,15 +2688,15 @@ impl<'a> Cx<'a> {
             CTy::Float | CTy::F32 => self.push(&format!("    {dest} = maca_json_float({get});")),
             CTy::Bool => self.push(&format!("    {dest} = maca_json_bool({get});")),
             CTy::Str => self.push(&format!("    {dest} = maca_json_str({get});")),
-            CTy::Sum(s) => {
-                self.push(&format!("    {dest} = {s}_from_str(maca_json_str({get}));"))
-            }
+            CTy::Sum(s) => self.push(&format!("    {dest} = {s}_from_str(maca_json_str({get}));")),
             CTy::Rec(r) => self.push(&format!("    {dest} = {r}_from_json({get});")),
             CTy::Arr(e) => {
                 let an = arr_name(e);
                 let a = self.fresh();
                 let idx = self.fresh();
-                self.push(&format!("    {{ maca_json* {a} = {get}; {an} _acc = {an}_new();"));
+                self.push(&format!(
+                    "    {{ maca_json* {a} = {get}; {an} _acc = {an}_new();"
+                ));
                 self.push(&format!("      if ({a} && {a}->kind == MJ_ARR) for (int64_t {idx} = 0; {idx} < {a}->arr.len; {idx}++) {{"));
                 let elem_read = json_read_inline(&format!("{a}->arr.items[{idx}]"), e);
                 self.push(&format!("        {an}_push(&_acc, {elem_read});"));
@@ -2582,13 +2864,60 @@ fn bin_op(op: BinOp) -> &'static str {
 /// original (unescaped) name.
 fn cid(name: &str) -> String {
     const KW: &[&str] = &[
-        "auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else",
-        "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long", "register",
-        "restrict", "return", "short", "signed", "sizeof", "static", "struct", "switch", "typedef",
-        "union", "unsigned", "void", "volatile", "while", "bool", "complex", "imaginary",
+        "auto",
+        "break",
+        "case",
+        "char",
+        "const",
+        "continue",
+        "default",
+        "do",
+        "double",
+        "else",
+        "enum",
+        "extern",
+        "float",
+        "for",
+        "goto",
+        "if",
+        "inline",
+        "int",
+        "long",
+        "register",
+        "restrict",
+        "return",
+        "short",
+        "signed",
+        "sizeof",
+        "static",
+        "struct",
+        "switch",
+        "typedef",
+        "union",
+        "unsigned",
+        "void",
+        "volatile",
+        "while",
+        "bool",
+        "complex",
+        "imaginary",
         // common C++ keywords (some C compilers / headers reserve them too)
-        "new", "delete", "class", "this", "template", "namespace", "operator", "try", "catch",
-        "throw", "public", "private", "protected", "virtual", "friend", "using",
+        "new",
+        "delete",
+        "class",
+        "this",
+        "template",
+        "namespace",
+        "operator",
+        "try",
+        "catch",
+        "throw",
+        "public",
+        "private",
+        "protected",
+        "virtual",
+        "friend",
+        "using",
     ];
     if KW.contains(&name) {
         format!("{name}_mc")
@@ -2670,13 +2999,19 @@ fn sum_variants(e: &Expr) -> Option<Vec<(String, Vec<Type>)>> {
                     false
                 }
             }
-            Expr::Binary { op: BinOp::Union, lhs, rhs } => go(lhs, out) && go(rhs, out),
+            Expr::Binary {
+                op: BinOp::Union,
+                lhs,
+                rhs,
+            } => go(lhs, out) && go(rhs, out),
             _ => false,
         }
     }
     let mut out = Vec::new();
     match e {
-        Expr::Binary { op: BinOp::Union, .. } if go(e, &mut out) => Some(out),
+        Expr::Binary {
+            op: BinOp::Union, ..
+        } if go(e, &mut out) => Some(out),
         _ => None,
     }
 }
@@ -2696,7 +3031,10 @@ fn is_record_value(e: &Expr) -> bool {
 /// A function is generic if any parameter or the return type mentions a
 /// type variable.
 fn fn_is_generic(f: &FnDef) -> bool {
-    f.params.iter().any(|p| p.ty.as_ref().is_some_and(type_has_tyvar)) || f.ret.as_ref().is_some_and(type_has_tyvar)
+    f.params
+        .iter()
+        .any(|p| p.ty.as_ref().is_some_and(type_has_tyvar))
+        || f.ret.as_ref().is_some_and(type_has_tyvar)
 }
 
 fn type_has_tyvar(t: &Type) -> bool {
@@ -2708,6 +3046,7 @@ fn type_has_tyvar(t: &Type) -> bool {
 }
 
 /// A lowercase single-word type name that isn't a primitive is a type variable.
+#[allow(clippy::nonminimal_bool)] // the positive conjunction reads clearer
 fn is_tyvar(n: &str) -> bool {
     let b = n.as_bytes();
     !b.is_empty()
@@ -2800,7 +3139,11 @@ fn free_vars(e: &Expr, bound: &HashSet<String>, out: &mut HashSet<String>) {
             free_vars(base, bound, out);
             free_vars(index, bound, out);
         }
-        Expr::Binary { lhs, rhs, .. } | Expr::Assign { target: lhs, value: rhs } => {
+        Expr::Binary { lhs, rhs, .. }
+        | Expr::Assign {
+            target: lhs,
+            value: rhs,
+        } => {
             free_vars(lhs, bound, out);
             free_vars(rhs, bound, out);
         }

@@ -21,12 +21,60 @@ pub use print::print_module;
 pub fn is_ui_element_tag(name: &str) -> bool {
     matches!(
         name,
-        "div" | "span" | "p" | "pre" | "code" | "a" | "button" | "input" | "textarea" | "select"
-            | "option" | "label" | "form" | "header" | "footer" | "main" | "section" | "article"
-            | "nav" | "aside" | "ul" | "ol" | "li" | "table" | "thead" | "tbody" | "tr" | "td"
-            | "th" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "img" | "svg" | "canvas" | "small"
-            | "strong" | "em" | "b" | "i" | "hr" | "br" | "figure" | "figcaption" | "details"
-            | "summary" | "dialog" | "progress" | "meter" | "video" | "audio"
+        "div"
+            | "span"
+            | "p"
+            | "pre"
+            | "code"
+            | "a"
+            | "button"
+            | "input"
+            | "textarea"
+            | "select"
+            | "option"
+            | "label"
+            | "form"
+            | "header"
+            | "footer"
+            | "main"
+            | "section"
+            | "article"
+            | "nav"
+            | "aside"
+            | "ul"
+            | "ol"
+            | "li"
+            | "table"
+            | "thead"
+            | "tbody"
+            | "tr"
+            | "td"
+            | "th"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "img"
+            | "svg"
+            | "canvas"
+            | "small"
+            | "strong"
+            | "em"
+            | "b"
+            | "i"
+            | "hr"
+            | "br"
+            | "figure"
+            | "figcaption"
+            | "details"
+            | "summary"
+            | "dialog"
+            | "progress"
+            | "meter"
+            | "video"
+            | "audio"
     )
 }
 
@@ -39,8 +87,19 @@ pub fn is_backend_intrinsic(name: &str) -> bool {
     is_ui_element_tag(name)
         || matches!(
             name,
-            "mmio_write" | "mmio_read" | "set_bits" | "clear_bits" | "toggle_bits" | "bit" | "shl"
-                | "shr" | "bit_or" | "bit_and" | "delay" | "nop" | "forever"
+            "mmio_write"
+                | "mmio_read"
+                | "set_bits"
+                | "clear_bits"
+                | "toggle_bits"
+                | "bit"
+                | "shl"
+                | "shr"
+                | "bit_or"
+                | "bit_and"
+                | "delay"
+                | "nop"
+                | "forever"
         )
 }
 
@@ -54,8 +113,11 @@ pub struct Parsed {
 /// empty list means a clean parse.
 pub fn parse(src: &str) -> Parsed {
     let lexed = maca_lexer::lex(src);
-    let mut errors: Vec<String> =
-        lexed.errors.iter().map(|e| format!("lex {:?}: {}", e.span, e.msg)).collect();
+    let mut errors: Vec<String> = lexed
+        .errors
+        .iter()
+        .map(|e| format!("lex {:?}: {}", e.span, e.msg))
+        .collect();
     let mut p = Parser::new(lexed.tokens);
     let module = p.parse_module();
     for e in &p.errors {

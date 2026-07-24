@@ -11,8 +11,15 @@ pub fn diagnostics(src: &str, config: bool) -> Vec<String> {
     if !parsed.errors.is_empty() {
         return parsed.errors.clone();
     }
-    let m = if config { maca_core::Mode::Config } else { maca_core::Mode::Program };
-    maca_core::check(&parsed.module, m).iter().map(|d| format!("{:?}: {}", d.kind, d.msg)).collect()
+    let m = if config {
+        maca_core::Mode::Config
+    } else {
+        maca_core::Mode::Program
+    };
+    maca_core::check(&parsed.module, m)
+        .iter()
+        .map(|d| format!("{:?}: {}", d.kind, d.msg))
+        .collect()
 }
 
 /// A diagnostic with a byte span into `src`, so the editor can squiggle the
@@ -35,18 +42,30 @@ pub fn diagnostics_located(src: &str, config: bool) -> Vec<Located> {
             .iter()
             .map(|m| {
                 let (start, end) = span_in_message(m).unwrap_or((0, 1));
-                Located { start, end, message: m.clone() }
+                Located {
+                    start,
+                    end,
+                    message: m.clone(),
+                }
             })
             .collect();
     }
-    let mode = if config { maca_core::Mode::Config } else { maca_core::Mode::Program };
+    let mode = if config {
+        maca_core::Mode::Config
+    } else {
+        maca_core::Mode::Program
+    };
     maca_core::check(&parsed.module, mode)
         .iter()
         .map(|d| {
             let (start, end) = first_backtick(&d.msg)
                 .and_then(|name| code_word_span(src, name))
                 .unwrap_or((0, 1));
-            Located { start, end, message: format!("{:?}: {}", d.kind, d.msg) }
+            Located {
+                start,
+                end,
+                message: format!("{:?}: {}", d.kind, d.msg),
+            }
         })
         .collect()
 }
@@ -73,7 +92,10 @@ pub fn document_symbols(src: &str) -> Vec<Symbol> {
                 Expr::Ident(n) => {
                     // a Capitalized binding to a sum/record is a type declaration
                     let is_type = n.chars().next().is_some_and(|c| c.is_uppercase())
-                        && matches!(&b.value, Expr::Record(_) | Expr::Binary { .. } | Expr::Ctor { .. });
+                        && matches!(
+                            &b.value,
+                            Expr::Record(_) | Expr::Binary { .. } | Expr::Ctor { .. }
+                        );
                     (n.clone(), if is_type { 23 } else { 13 })
                 }
                 _ => continue,
@@ -81,7 +103,12 @@ pub fn document_symbols(src: &str) -> Vec<Symbol> {
             _ => continue,
         };
         if let Some((start, end)) = top_level_span(src, &name) {
-            out.push(Symbol { name, kind, start, end });
+            out.push(Symbol {
+                name,
+                kind,
+                start,
+                end,
+            });
         }
     }
     out
@@ -91,7 +118,10 @@ pub fn document_symbols(src: &str) -> Vec<Symbol> {
 /// top-level function, type, or binding.
 pub fn definition(src: &str, byte_offset: usize) -> Option<(usize, usize)> {
     let word = word_at(src, byte_offset)?;
-    document_symbols(src).into_iter().find(|s| s.name == word).map(|s| (s.start, s.end))
+    document_symbols(src)
+        .into_iter()
+        .find(|s| s.name == word)
+        .map(|s| (s.start, s.end))
 }
 
 /// Byte offset → (0-based line, 0-based UTF-16 character) — the inverse of
@@ -173,10 +203,13 @@ fn code_word_span(src: &str, name: &str) -> Option<(usize, usize)> {
 fn top_level_span(src: &str, name: &str) -> Option<(usize, usize)> {
     let mut off = 0;
     for line in src.split_inclusive('\n') {
-        if let Some(rest) = line.strip_prefix(name) {
-            if rest.chars().next().is_none_or(|c| !c.is_alphanumeric() && c != '_' && c != '.') {
-                return Some((off, off + name.len()));
-            }
+        if let Some(rest) = line.strip_prefix(name)
+            && rest
+                .chars()
+                .next()
+                .is_none_or(|c| !c.is_alphanumeric() && c != '_' && c != '.')
+        {
+            return Some((off, off + name.len()));
         }
         off += line.len();
     }
@@ -191,10 +224,10 @@ pub fn hover(src: &str, byte_offset: usize) -> Option<String> {
         match item {
             Stmt::Fn(f) if f.name == word => return Some(fn_sig(f)),
             Stmt::Bind(b) => {
-                if let Expr::Ident(n) = &b.target {
-                    if *n == word {
-                        return Some(format!("{word}: value"));
-                    }
+                if let Expr::Ident(n) = &b.target
+                    && *n == word
+                {
+                    return Some(format!("{word}: value"));
                 }
             }
             _ => {}
@@ -273,17 +306,44 @@ pub fn program_completions(src: &str, prefix: &str) -> Vec<String> {
             _ => None,
         })
         .collect();
-    names.extend(["int", "float", "str", "bool", "bytes"].iter().map(|s| s.to_string()));
-    names.into_iter().filter(|n| n.starts_with(prefix)).collect()
+    names.extend(
+        ["int", "float", "str", "bool", "bytes"]
+            .iter()
+            .map(|s| s.to_string()),
+    );
+    names
+        .into_iter()
+        .filter(|n| n.starts_with(prefix))
+        .collect()
 }
 
 /// Config-mode completion: NixOS option namespaces matching `prefix`.
 pub fn config_completions(prefix: &str) -> Vec<String> {
     const ROOTS: &[&str] = &[
-        "networking", "system", "services", "users", "user", "environment", "programs", "fonts",
-        "boot", "hardware", "security", "nix", "systemd", "i18n", "time", "xdg", "home", "console",
+        "networking",
+        "system",
+        "services",
+        "users",
+        "user",
+        "environment",
+        "programs",
+        "fonts",
+        "boot",
+        "hardware",
+        "security",
+        "nix",
+        "systemd",
+        "i18n",
+        "time",
+        "xdg",
+        "home",
+        "console",
     ];
-    ROOTS.iter().filter(|r| r.starts_with(prefix)).map(|r| r.to_string()).collect()
+    ROOTS
+        .iter()
+        .filter(|r| r.starts_with(prefix))
+        .map(|r| r.to_string())
+        .collect()
 }
 
 fn fn_sig(f: &FnDef) -> String {
@@ -305,7 +365,11 @@ fn ty_str(t: &Type) -> String {
         Type::Array(t) => format!("{}[]", ty_str(t)),
         Type::Opt(t) => format!("{}?", ty_str(t)),
         Type::Apply(h, args) => {
-            format!("{} {}", ty_str(h), args.iter().map(ty_str).collect::<Vec<_>>().join(" "))
+            format!(
+                "{} {}",
+                ty_str(h),
+                args.iter().map(ty_str).collect::<Vec<_>>().join(" ")
+            )
         }
         Type::Paren(t) => format!("({})", ty_str(t)),
     }

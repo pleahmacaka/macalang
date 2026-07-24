@@ -23,7 +23,10 @@ pub enum Import {
     /// `import std/json` → `["std", "json"]`
     Module(Vec<Ident>),
     /// `import { a, b } from m`
-    Names { names: Vec<Ident>, module: Vec<Ident> },
+    Names {
+        names: Vec<Ident>,
+        module: Vec<Ident>,
+    },
     /// `import ./x.maca`
     Path(String),
     /// `import nixpkgs`
@@ -86,28 +89,77 @@ pub enum Expr {
     Ident(Ident),
     List(Vec<Expr>),
     Record(Vec<Field>),
-    Ctor { name: Ident, fields: Vec<Field> },
-    Call { callee: Box<Expr>, args: Vec<Arg> },
-    Field { base: Box<Expr>, name: Ident },
-    Index { base: Box<Expr>, index: Box<Expr> }, // `xs[i]`
-    Range { lo: Box<Expr>, hi: Box<Expr> },      // `lo..hi` (inclusive: lo … hi)
-    Unary { op: UnOp, expr: Box<Expr> },
-    Binary { op: BinOp, lhs: Box<Expr>, rhs: Box<Expr> },
-    Ternary { cond: Box<Expr>, then: Box<Expr>, els: Box<Expr> },
-    If { cond: Box<Expr>, then: Vec<Stmt>, els: Option<Vec<Stmt>> },
-    Match { scrut: Box<Expr>, arms: Vec<Arm> },
-    For { pat: Pattern, iter: Box<Expr>, body: Vec<Stmt> },
-    While { cond: Box<Expr>, body: Vec<Stmt> },
+    Ctor {
+        name: Ident,
+        fields: Vec<Field>,
+    },
+    Call {
+        callee: Box<Expr>,
+        args: Vec<Arg>,
+    },
+    Field {
+        base: Box<Expr>,
+        name: Ident,
+    },
+    Index {
+        base: Box<Expr>,
+        index: Box<Expr>,
+    }, // `xs[i]`
+    Range {
+        lo: Box<Expr>,
+        hi: Box<Expr>,
+    }, // `lo..hi` (inclusive: lo … hi)
+    Unary {
+        op: UnOp,
+        expr: Box<Expr>,
+    },
+    Binary {
+        op: BinOp,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+    },
+    Ternary {
+        cond: Box<Expr>,
+        then: Box<Expr>,
+        els: Box<Expr>,
+    },
+    If {
+        cond: Box<Expr>,
+        then: Vec<Stmt>,
+        els: Option<Vec<Stmt>>,
+    },
+    Match {
+        scrut: Box<Expr>,
+        arms: Vec<Arm>,
+    },
+    For {
+        pat: Pattern,
+        iter: Box<Expr>,
+        body: Vec<Stmt>,
+    },
+    While {
+        cond: Box<Expr>,
+        body: Vec<Stmt>,
+    },
     Break,
     Continue,
-    Lambda { params: Vec<Param>, body: Box<Expr> },
-    With { base: Box<Expr>, fields: Vec<Field> },
-    Try(Box<Expr>),  // postfix `x?`
-    Fail(Box<Expr>), // `fail e`
+    Lambda {
+        params: Vec<Param>,
+        body: Box<Expr>,
+    },
+    With {
+        base: Box<Expr>,
+        fields: Vec<Field>,
+    },
+    Try(Box<Expr>),   // postfix `x?`
+    Fail(Box<Expr>),  // `fail e`
     Reify(Box<Expr>), // `try e`
     Await(Box<Expr>), // `await e` — suspend until the future resolves
     Spawn(Box<Expr>), // `spawn e` — run `e` concurrently, yields a Future
-    Assign { target: Box<Expr>, value: Box<Expr> }, // UI setter `age = int(v)`
+    Assign {
+        target: Box<Expr>,
+        value: Box<Expr>,
+    }, // UI setter `age = int(v)`
     Block(Vec<Stmt>),
 }
 
@@ -153,9 +205,15 @@ pub enum Pattern {
     Bool(bool),
     Str(String),
     Bind(Ident),
-    Ctor { name: Ident, args: Vec<Pattern> },
+    Ctor {
+        name: Ident,
+        args: Vec<Pattern>,
+    },
     Record(Vec<(Ident, Option<Pattern>)>),
-    List { elems: Vec<Pattern>, rest: Option<Box<Pattern>> },
+    List {
+        elems: Vec<Pattern>,
+        rest: Option<Box<Pattern>>,
+    },
     Or(Vec<Pattern>),
 }
 

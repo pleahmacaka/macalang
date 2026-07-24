@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust
-        run: rustup toolchain install stable --profile minimal --no-self-update
+        run: rustup toolchain install stable --profile minimal --no-self-update --component clippy rustfmt
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -30,6 +30,12 @@ jobs:
       - name: Install C / LLVM toolchain
         # llvm provides llvm-objcopy/llvm-size used by the embedded target
         run: sudo apt-get update && sudo apt-get install -y clang lld llvm
+
+      - name: Format check
+        run: cargo fmt --all --check
+
+      - name: Clippy (warnings are errors)
+        run: cargo clippy --workspace -- -D warnings
 
       - name: Build
         run: cargo build --workspace

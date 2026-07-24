@@ -2,7 +2,7 @@
 //! LLM-native tools (`maca.check`, `maca.fmt`, `maca.stdlib`, `maca.options`,
 //! `maca.spec`) so an agent can run the generate → verify → fix loop.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 
 fn main() {
@@ -13,7 +13,9 @@ fn main() {
         if line.trim().is_empty() {
             continue;
         }
-        let Ok(req) = serde_json::from_str::<Value>(&line) else { continue };
+        let Ok(req) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
         let has_id = req.get("id").is_some();
         let id = req.get("id").cloned().unwrap_or(Value::Null);
         let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
@@ -27,7 +29,9 @@ fn main() {
                     "serverInfo": { "name": "maca", "version": "0.1.0" }
                 }
             }),
-            "tools/list" => json!({ "jsonrpc": "2.0", "id": id, "result": { "tools": tool_defs() } }),
+            "tools/list" => {
+                json!({ "jsonrpc": "2.0", "id": id, "result": { "tools": tool_defs() } })
+            }
             "tools/call" => {
                 let params = req.get("params").cloned().unwrap_or(Value::Null);
                 let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");

@@ -42,10 +42,15 @@ fn full_session_over_stdio() {
 
     // initialize
     stdin
-        .write_all(frame(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#).as_bytes())
+        .write_all(
+            frame(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#).as_bytes(),
+        )
         .unwrap();
     let init = read_frame(&mut stdout);
-    assert!(init.contains("hoverProvider"), "initialize response: {init}");
+    assert!(
+        init.contains("hoverProvider"),
+        "initialize response: {init}"
+    );
 
     // didOpen a program with a type error
     let open = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///t.maca","text":"f() -> int => \"bad\"\n"}}}"#;
@@ -62,11 +67,18 @@ fn full_session_over_stdio() {
 
     // shutdown + exit
     stdin
-        .write_all(frame(r#"{"jsonrpc":"2.0","id":3,"method":"shutdown","params":null}"#).as_bytes())
+        .write_all(
+            frame(r#"{"jsonrpc":"2.0","id":3,"method":"shutdown","params":null}"#).as_bytes(),
+        )
         .unwrap();
     let _ = read_frame(&mut stdout);
-    stdin.write_all(frame(r#"{"jsonrpc":"2.0","method":"exit"}"#).as_bytes()).unwrap();
+    stdin
+        .write_all(frame(r#"{"jsonrpc":"2.0","method":"exit"}"#).as_bytes())
+        .unwrap();
 
     let status = child.wait().expect("wait");
-    assert!(status.success() || status.code().is_none(), "server exited abnormally: {status:?}");
+    assert!(
+        status.success() || status.code().is_none(),
+        "server exited abnormally: {status:?}"
+    );
 }

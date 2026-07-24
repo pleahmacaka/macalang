@@ -24,7 +24,10 @@ fn examples_are_already_formatted() {
     for p in examples() {
         args.push(p.to_string_lossy().into_owned());
     }
-    let out = Command::new(maca()).args(&args).output().expect("spawn maca");
+    let out = Command::new(maca())
+        .args(&args)
+        .output()
+        .expect("spawn maca");
     assert!(
         out.status.success(),
         "fmt --check should pass on the golden examples\nstderr: {}",
@@ -42,15 +45,34 @@ fn fmt_preserves_comments_and_is_idempotent() {
 
     // format twice
     for _ in 0..2 {
-        let out = Command::new(maca()).args(["fmt", &f.to_string_lossy()]).output().unwrap();
-        assert!(out.status.success(), "fmt failed: {}", String::from_utf8_lossy(&out.stderr));
+        let out = Command::new(maca())
+            .args(["fmt", &f.to_string_lossy()])
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "fmt failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
     let after = std::fs::read_to_string(&f).unwrap();
-    assert!(after.contains("// a leading comment"), "leading comment dropped:\n{after}");
-    assert!(after.contains("// inline note"), "inline comment dropped:\n{after}");
+    assert!(
+        after.contains("// a leading comment"),
+        "leading comment dropped:\n{after}"
+    );
+    assert!(
+        after.contains("// inline note"),
+        "inline comment dropped:\n{after}"
+    );
     // the ternary continuation indentation is preserved (not flattened)
-    assert!(after.contains("        ? x"), "continuation indent lost:\n{after}");
+    assert!(
+        after.contains("        ? x"),
+        "continuation indent lost:\n{after}"
+    );
     // idempotent: a --check now passes
-    let chk = Command::new(maca()).args(["fmt", "--check", &f.to_string_lossy()]).output().unwrap();
+    let chk = Command::new(maca())
+        .args(["fmt", "--check", &f.to_string_lossy()])
+        .output()
+        .unwrap();
     assert!(chk.status.success(), "fmt not idempotent");
 }

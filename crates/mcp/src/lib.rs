@@ -9,14 +9,18 @@
 //!
 //! The stdio JSON-RPC transport (`src/main.rs`) is a thin wrapper over these.
 
-use maca_core::{check as core_check, DiagKind, Mode};
+use maca_core::{DiagKind, Mode, check as core_check};
 use maca_parser::{parse, print_module};
 
 /// `maca.check` — return human-readable diagnostics. Empty = clean.
 pub fn check(code: &str, config: bool) -> Vec<String> {
     let parsed = parse(code);
     if !parsed.errors.is_empty() {
-        return parsed.errors.iter().map(|e| format!("parse: {e}")).collect();
+        return parsed
+            .errors
+            .iter()
+            .map(|e| format!("parse: {e}"))
+            .collect();
     }
     let mode = if config { Mode::Config } else { Mode::Program };
     core_check(&parsed.module, mode)
@@ -65,18 +69,46 @@ pub fn stdlib(query: &str) -> Vec<String> {
         "str[].join(sep: str) -> str",
         "int[].parallel(f) -> int[] / <async>",
     ];
-    SIGS.iter().filter(|s| query.is_empty() || s.contains(query)).map(|s| s.to_string()).collect()
+    SIGS.iter()
+        .filter(|s| query.is_empty() || s.contains(query))
+        .map(|s| s.to_string())
+        .collect()
 }
 
 /// `maca.options` — known NixOS option namespaces matching a prefix.
 pub fn options(prefix: &str) -> Vec<String> {
-    NIXOS_ROOTS.iter().filter(|r| r.starts_with(prefix)).map(|r| r.to_string()).collect()
+    NIXOS_ROOTS
+        .iter()
+        .filter(|r| r.starts_with(prefix))
+        .map(|r| r.to_string())
+        .collect()
 }
 
 pub const NIXOS_ROOTS: &[&str] = &[
-    "networking", "system", "services", "users", "user", "environment", "programs", "fonts",
-    "boot", "hardware", "security", "nix", "nixpkgs", "virtualisation", "systemd", "i18n", "time",
-    "sound", "xdg", "home", "console", "powerManagement", "documentation", "location",
+    "networking",
+    "system",
+    "services",
+    "users",
+    "user",
+    "environment",
+    "programs",
+    "fonts",
+    "boot",
+    "hardware",
+    "security",
+    "nix",
+    "nixpkgs",
+    "virtualisation",
+    "systemd",
+    "i18n",
+    "time",
+    "sound",
+    "xdg",
+    "home",
+    "console",
+    "powerManagement",
+    "documentation",
+    "location",
 ];
 
 /// `maca.spec` — a short reference for a section name.
@@ -89,9 +121,17 @@ Ternary is spaced `c ? x : y`; error-propagate is attached `x?`. `fail e` raises
 Bracketless comma lists; significant newlines; records newline/comma separated.\n\
 Generics: lowercase type vars, applied by juxtaposition; postfix `T[]` / `T?`."
             .into(),
-        "effects" => "Koka-style, inferred: io · net · os · async · exn. Config mode forces `<>`.".into(),
-        "modes" => "General mode → native/BEAM/JS (`main`). Config mode → Nix (root module, pure `<>`).".into(),
-        "types" => "Gradual · structural · row-polymorphic. HM + `any` boundary. Sums nominal, exhaustive.".into(),
+        "effects" => {
+            "Koka-style, inferred: io · net · os · async · exn. Config mode forces `<>`.".into()
+        }
+        "modes" => {
+            "General mode → native/BEAM/JS (`main`). Config mode → Nix (root module, pure `<>`)."
+                .into()
+        }
+        "types" => {
+            "Gradual · structural · row-polymorphic. HM + `any` boundary. Sums nominal, exhaustive."
+                .into()
+        }
         _ => "sections: syntax | effects | modes | types".into(),
     }
 }

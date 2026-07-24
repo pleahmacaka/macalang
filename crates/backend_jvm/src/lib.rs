@@ -103,7 +103,9 @@ impl Cx {
     }
 
     fn emit_record(&self, name: &str, value: &Expr) -> String {
-        let Expr::Record(fields) = value else { return String::new() };
+        let Expr::Record(fields) = value else {
+            return String::new();
+        };
         let ps: Vec<String> = fields
             .iter()
             .filter_map(|f| match f {
@@ -114,12 +116,23 @@ impl Cx {
         format!("record {name}({}) {{}}\n\n", ps.join(", "))
     }
 
-    fn emit_class(&mut self, name: &str, iface: &Type, methods: &[(String, Vec<Param>, Expr)]) -> String {
+    fn emit_class(
+        &mut self,
+        name: &str,
+        iface: &Type,
+        methods: &[(String, Vec<Param>, Expr)],
+    ) -> String {
         let mut ms = String::new();
         for (mname, params, body) in methods {
             let ps: Vec<String> = params
                 .iter()
-                .map(|p| format!("{} {}", p.ty.as_ref().map(jtype).unwrap_or_else(|| "Object".into()), p.name))
+                .map(|p| {
+                    format!(
+                        "{} {}",
+                        p.ty.as_ref().map(jtype).unwrap_or_else(|| "Object".into()),
+                        p.name
+                    )
+                })
                 .collect();
             // interface method return types are unknown here → void; a call/expr
             // body is emitted as a statement.
@@ -129,7 +142,11 @@ impl Cx {
                 jexpr(body)
             ));
         }
-        format!("public static class {name} implements {} {{\n{}}}\n\n", type_name(iface), indent(&ms, 1))
+        format!(
+            "public static class {name} implements {} {{\n{}}}\n\n",
+            type_name(iface),
+            indent(&ms, 1)
+        )
     }
 
     fn emit_method(&self, f: &FnDef, modifiers: &str) -> String {
@@ -137,7 +154,13 @@ impl Cx {
         let params: Vec<String> = f
             .params
             .iter()
-            .map(|p| format!("{} {}", p.ty.as_ref().map(jtype).unwrap_or_else(|| "Object".into()), p.name))
+            .map(|p| {
+                format!(
+                    "{} {}",
+                    p.ty.as_ref().map(jtype).unwrap_or_else(|| "Object".into()),
+                    p.name
+                )
+            })
             .collect();
         let body = match &f.body {
             Some(FnBody::Expr(e)) => {
@@ -150,7 +173,11 @@ impl Cx {
             Some(FnBody::Block(stmts)) => jblock(stmts, ret != "void"),
             None => String::new(),
         };
-        format!("{modifiers}{ret} {}({}) {{\n{body}}}\n\n", f.name, params.join(", "))
+        format!(
+            "{modifiers}{ret} {}({}) {{\n{body}}}\n\n",
+            f.name,
+            params.join(", ")
+        )
     }
 
     fn emit_main(&self, f: &FnDef) -> String {
@@ -203,12 +230,22 @@ fn jfor(pat: &Pattern, iter: &Expr, body: &[Stmt]) -> String {
         Pattern::Bind(n) => n.clone(),
         _ => "_it".into(),
     };
-    format!("    for (var {var} : {}) {{\n{}    }}\n", jexpr(iter), indent(&jblock(body, false), 1))
+    format!(
+        "    for (var {var} : {}) {{\n{}    }}\n",
+        jexpr(iter),
+        indent(&jblock(body, false), 1)
+    )
 }
 
 fn jif_stmt(e: &Expr) -> String {
-    let Expr::If { cond, then, els } = e else { return String::new() };
-    let mut out = format!("    if ({}) {{\n{}    }}", jexpr(cond), indent(&jblock(then, false), 1));
+    let Expr::If { cond, then, els } = e else {
+        return String::new();
+    };
+    let mut out = format!(
+        "    if ({}) {{\n{}    }}",
+        jexpr(cond),
+        indent(&jblock(then, false), 1)
+    );
     if let Some(e) = els {
         out.push_str(&format!(" else {{\n{}    }}", indent(&jblock(e, false), 1)));
     }
@@ -238,7 +275,10 @@ fn jexpr(e: &Expr) -> String {
         Expr::If { cond, then, els } => {
             // if-expression → ternary (branch is the last expr of each block)
             let t = block_value(then);
-            let e = els.as_ref().map(|s| block_value(s)).unwrap_or_else(|| "null".into());
+            let e = els
+                .as_ref()
+                .map(|s| block_value(s))
+                .unwrap_or_else(|| "null".into());
             format!("({} ? {} : {})", jexpr(cond), t, e)
         }
         Expr::Call { callee, args } => jcall(callee, args),
@@ -247,7 +287,10 @@ fn jexpr(e: &Expr) -> String {
         Expr::Index { base, index } => format!("{}.get((int)({}))", jexpr(base), jexpr(index)),
         Expr::Record(fields) | Expr::Ctor { fields, .. } => jctor(e, fields),
         Expr::List(es) => {
-            format!("java.util.List.of({})", es.iter().map(jexpr).collect::<Vec<_>>().join(", "))
+            format!(
+                "java.util.List.of({})",
+                es.iter().map(jexpr).collect::<Vec<_>>().join(", ")
+            )
         }
         Expr::Match { scrut, arms } => jmatch(scrut, arms),
         Expr::Block(stmts) => block_value(stmts),
@@ -268,10 +311,21 @@ fn jbinary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
     use BinOp::*;
     let (l, r) = (jexpr(lhs), jexpr(rhs));
     let o = match op {
-        Add => "+", Sub => "-", Mul => "*", Div => "/", Mod => "%",
-        Shl => "<<", Shr => ">>",
-        Eq => "==", Ne => "!=", Lt => "<", Gt => ">", Le => "<=", Ge => ">=",
-        And => "&&", Or => "||",
+        Add => "+",
+        Sub => "-",
+        Mul => "*",
+        Div => "/",
+        Mod => "%",
+        Shl => "<<",
+        Shr => ">>",
+        Eq => "==",
+        Ne => "!=",
+        Lt => "<",
+        Gt => ">",
+        Le => "<=",
+        Ge => ">=",
+        And => "&&",
+        Or => "||",
         // string / value concat and everything else
         Concat => return format!("({l} + {r})"),
         Union | Pipe => return l,
@@ -288,12 +342,23 @@ fn jcall(callee: &Expr, args: &[Arg]) -> String {
     let a: Vec<String> = args.iter().map(|x| jexpr(&arg_expr(x))).collect();
     match callee {
         Expr::Ident(f) if f == "info" || f == "print" => {
-            format!("System.out.println({})", a.first().cloned().unwrap_or_default())
+            format!(
+                "System.out.println({})",
+                a.first().cloned().unwrap_or_default()
+            )
         }
-        Expr::Ident(f) if f == "int" => format!("(long)({})", a.first().cloned().unwrap_or_default()),
-        Expr::Ident(f) if f == "float" => format!("(double)({})", a.first().cloned().unwrap_or_default()),
-        Expr::Ident(f) if f == "str" => format!("String.valueOf({})", a.first().cloned().unwrap_or_default()),
-        Expr::Ident(f) if f == "len" => format!("({}).size()", a.first().cloned().unwrap_or_default()),
+        Expr::Ident(f) if f == "int" => {
+            format!("(long)({})", a.first().cloned().unwrap_or_default())
+        }
+        Expr::Ident(f) if f == "float" => {
+            format!("(double)({})", a.first().cloned().unwrap_or_default())
+        }
+        Expr::Ident(f) if f == "str" => {
+            format!("String.valueOf({})", a.first().cloned().unwrap_or_default())
+        }
+        Expr::Ident(f) if f == "len" => {
+            format!("({}).size()", a.first().cloned().unwrap_or_default())
+        }
         // Capitalized target → constructor (`Pos(1,2)` → `new Pos(1, 2)`)
         Expr::Ident(f) if f.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
             format!("new {f}({})", a.join(", "))
@@ -319,7 +384,7 @@ fn jctor(e: &Expr, fields: &[Field]) -> String {
         .collect();
     if name.is_empty() {
         // structural record literal — no Java type; fall back to a comment
-        format!("/* record */ null")
+        "/* record */ null".to_string()
     } else {
         format!("new {name}({})", vals.join(", "))
     }
@@ -373,7 +438,9 @@ fn jtype(t: &Type) -> String {
         Type::Name(segs) => {
             let n = segs.join(".");
             match n.as_str() {
-                "int" | "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" => "long".into(),
+                "int" | "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" => {
+                    "long".into()
+                }
                 "f32" => "float".into(),
                 "float" | "f64" => "double".into(),
                 "str" | "bytes" => "String".into(),
@@ -415,6 +482,7 @@ fn type_name(t: &Type) -> String {
     }
 }
 
+#[allow(clippy::nonminimal_bool)]
 fn is_type_var(n: &str) -> bool {
     let b = n.as_bytes();
     !b.is_empty()
@@ -460,7 +528,16 @@ fn arg_expr(a: &Arg) -> Expr {
 
 fn indent(s: &str, levels: usize) -> String {
     let pad = "    ".repeat(levels);
-    s.lines().map(|l| if l.is_empty() { String::new() } else { format!("{pad}{l}") }).collect::<Vec<_>>().join("\n")
+    s.lines()
+        .map(|l| {
+            if l.is_empty() {
+                String::new()
+            } else {
+                format!("{pad}{l}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
         + if s.ends_with('\n') { "\n" } else { "" }
 }
 
@@ -469,11 +546,11 @@ fn lambda_fields(e: &Expr) -> Option<Vec<(String, Vec<Param>, Expr)>> {
     let Expr::Record(fields) = e else { return None };
     let mut out = Vec::new();
     for f in fields {
-        if let Field::Value { name, value } = f {
-            if let Expr::Lambda { params, body } = value {
-                out.push((name.clone(), params.clone(), (**body).clone()));
-                continue;
-            }
+        if let Field::Value { name, value } = f
+            && let Expr::Lambda { params, body } = value
+        {
+            out.push((name.clone(), params.clone(), (**body).clone()));
+            continue;
         }
         return None;
     }
@@ -491,13 +568,19 @@ fn sum_variants(e: &Expr) -> Option<Vec<String>> {
                 out.push(n.clone());
                 true
             }
-            Expr::Binary { op: BinOp::Union, lhs, rhs } => go(lhs, out) && go(rhs, out),
+            Expr::Binary {
+                op: BinOp::Union,
+                lhs,
+                rhs,
+            } => go(lhs, out) && go(rhs, out),
             _ => false,
         }
     }
     let mut out = Vec::new();
     match e {
-        Expr::Binary { op: BinOp::Union, .. } if go(e, &mut out) => Some(out),
+        Expr::Binary {
+            op: BinOp::Union, ..
+        } if go(e, &mut out) => Some(out),
         _ => None,
     }
 }
@@ -514,7 +597,9 @@ mod tests {
 
     #[test]
     fn functions_and_main() {
-        let j = java("fib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\n\nmain() -> int {\n    info(\"{fib(10)}\")\n    0\n}\n");
+        let j = java(
+            "fib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\n\nmain() -> int {\n    info(\"{fib(10)}\")\n    0\n}\n",
+        );
         assert!(j.contains("static long fib(long n)"), "{j}");
         assert!(j.contains("public static void main(String[] args)"), "{j}");
         assert!(j.contains("System.out.println"), "{j}");
@@ -541,7 +626,10 @@ mod tests {
             "import java \"net.fabricmc.api.ModInitializer\"\n\nExampleMod : ModInitializer = {\n    onInitialize = () => info(\"Maca mod loaded\")\n}\n",
         );
         assert!(j.contains("import net.fabricmc.api.ModInitializer;"), "{j}");
-        assert!(j.contains("class ExampleMod implements ModInitializer"), "{j}");
+        assert!(
+            j.contains("class ExampleMod implements ModInitializer"),
+            "{j}"
+        );
         assert!(j.contains("public void onInitialize()"), "{j}");
         assert!(j.contains("System.out.println"), "{j}");
     }

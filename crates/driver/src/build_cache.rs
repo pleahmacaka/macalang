@@ -26,7 +26,10 @@ fn unique_tmp(dst: &Path, ext: &str) -> PathBuf {
 
 /// Whether the build cache is enabled (default on; `MACA_NO_CACHE=1` disables).
 pub fn enabled() -> bool {
-    !matches!(std::env::var("MACA_NO_CACHE").as_deref(), Ok("1") | Ok("true"))
+    !matches!(
+        std::env::var("MACA_NO_CACHE").as_deref(),
+        Ok("1") | Ok("true")
+    )
 }
 
 /// The cache root directory, created on demand.

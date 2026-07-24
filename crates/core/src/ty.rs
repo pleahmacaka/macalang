@@ -21,7 +21,10 @@ pub enum Ty {
     Fn(Vec<Ty>, Box<Ty>),
     /// Structural record. `open` records tolerate extra/missing fields (row
     /// polymorphism, lightweight): field access always yields an open record.
-    Rec { fields: BTreeMap<String, Ty>, open: bool },
+    Rec {
+        fields: BTreeMap<String, Ty>,
+        open: bool,
+    },
     Opt(Box<Ty>),
     Var(u32),
     Any,
@@ -47,7 +50,10 @@ pub struct Scheme {
 impl Scheme {
     /// A monomorphic scheme — nothing quantified.
     pub fn mono(ty: Ty) -> Self {
-        Scheme { vars: Vec::new(), ty }
+        Scheme {
+            vars: Vec::new(),
+            ty,
+        }
     }
 }
 
@@ -145,7 +151,16 @@ impl Infer {
                 }
                 self.unify(&r1, &r2)
             }
-            (Ty::Rec { fields: f1, open: o1 }, Ty::Rec { fields: f2, open: o2 }) => {
+            (
+                Ty::Rec {
+                    fields: f1,
+                    open: o1,
+                },
+                Ty::Rec {
+                    fields: f2,
+                    open: o2,
+                },
+            ) => {
                 for (k, v) in &f1 {
                     match f2.get(k) {
                         Some(w) => self.unify(v, w)?,
@@ -160,7 +175,11 @@ impl Infer {
                 }
                 Ok(())
             }
-            (x, y) => Err(format!("type mismatch: expected {}, found {}", show(&x), show(&y))),
+            (x, y) => Err(format!(
+                "type mismatch: expected {}, found {}",
+                show(&x),
+                show(&y)
+            )),
         }
     }
 }
@@ -170,11 +189,15 @@ fn subst(t: &Ty, map: &BTreeMap<u32, Ty>) -> Ty {
     match t {
         Ty::Var(i) => map.get(i).cloned().unwrap_or(Ty::Var(*i)),
         Ty::Con(n, args) => Ty::Con(n.clone(), args.iter().map(|a| subst(a, map)).collect()),
-        Ty::Fn(ps, r) => {
-            Ty::Fn(ps.iter().map(|a| subst(a, map)).collect(), Box::new(subst(r, map)))
-        }
+        Ty::Fn(ps, r) => Ty::Fn(
+            ps.iter().map(|a| subst(a, map)).collect(),
+            Box::new(subst(r, map)),
+        ),
         Ty::Rec { fields, open } => Ty::Rec {
-            fields: fields.iter().map(|(k, v)| (k.clone(), subst(v, map))).collect(),
+            fields: fields
+                .iter()
+                .map(|(k, v)| (k.clone(), subst(v, map)))
+                .collect(),
             open: *open,
         },
         Ty::Opt(a) => Ty::Opt(Box::new(subst(a, map))),
@@ -203,13 +226,23 @@ pub fn show(t: &Ty) -> String {
         Ty::Unit => "()".into(),
         Ty::Con(n, args) if args.is_empty() => n.clone(),
         Ty::Con(n, args) => {
-            format!("{n} {}", args.iter().map(show).collect::<Vec<_>>().join(" "))
+            format!(
+                "{n} {}",
+                args.iter().map(show).collect::<Vec<_>>().join(" ")
+            )
         }
         Ty::Fn(ps, r) => {
-            format!("({}) -> {}", ps.iter().map(show).collect::<Vec<_>>().join(", "), show(r))
+            format!(
+                "({}) -> {}",
+                ps.iter().map(show).collect::<Vec<_>>().join(", "),
+                show(r)
+            )
         }
         Ty::Rec { fields, .. } => {
-            let fs: Vec<_> = fields.iter().map(|(k, v)| format!("{k}: {}", show(v))).collect();
+            let fs: Vec<_> = fields
+                .iter()
+                .map(|(k, v)| format!("{k}: {}", show(v)))
+                .collect();
             format!("{{ {} }}", fs.join(", "))
         }
         Ty::Opt(t) => format!("{}?", show(t)),

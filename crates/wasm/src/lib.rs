@@ -331,7 +331,11 @@ fn ty_name(t: &Type) -> String {
         Type::Array(t) => format!("{}[]", ty_name(t)),
         Type::Opt(t) => format!("{}?", ty_name(t)),
         Type::Apply(h, args) => {
-            format!("{} {}", ty_name(h), args.iter().map(ty_name).collect::<Vec<_>>().join(" "))
+            format!(
+                "{} {}",
+                ty_name(h),
+                args.iter().map(ty_name).collect::<Vec<_>>().join(" ")
+            )
         }
         Type::Paren(t) => format!("({})", ty_name(t)),
     }
@@ -342,7 +346,11 @@ fn ty_name(t: &Type) -> String {
 fn type_detail(value: &Expr) -> String {
     fn ctors(e: &Expr, out: &mut Vec<String>) {
         match e {
-            Expr::Binary { op: BinOp::Union | BinOp::Or, lhs, rhs } => {
+            Expr::Binary {
+                op: BinOp::Union | BinOp::Or,
+                lhs,
+                rhs,
+            } => {
                 ctors(lhs, out);
                 ctors(rhs, out);
             }
@@ -390,7 +398,9 @@ fn dotted_path(e: &Expr) -> String {
 fn find_line(src: &str, name: &str) -> usize {
     let matches = |s: &str| -> bool {
         s.strip_prefix(name).is_some_and(|rest| {
-            rest.chars().next().is_none_or(|c| !c.is_alphanumeric() && c != '_' && c != '.')
+            rest.chars()
+                .next()
+                .is_none_or(|c| !c.is_alphanumeric() && c != '_' && c != '.')
         })
     };
     // Top-level defs begin at column 0. Prefer an un-indented match so a call
@@ -574,18 +584,32 @@ mod tests {
     fn program_runs_and_captures_output() {
         let json = compile_json("main() -> int {\n    info(\"hi\")\n    0\n}\n", 0);
         assert!(json.contains("\"run\":"), "no run block: {json}");
-        assert!(json.contains("\"output\":\"hi\\n\""), "output not captured: {json}");
+        assert!(
+            json.contains("\"output\":\"hi\\n\""),
+            "output not captured: {json}"
+        );
         assert!(json.contains("\"exit\":0"), "exit code missing: {json}");
     }
 
     #[test]
     fn profile_renders_flame_graph() {
-        let json =
-            compile_json("fib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\nmain() -> int {\n    info(\"{fib(10)}\")\n    0\n}\n", 0);
-        assert!(json.contains("\"output\":\"55\\n\""), "fib(10) wrong: {json}");
+        let json = compile_json(
+            "fib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\nmain() -> int {\n    info(\"{fib(10)}\")\n    0\n}\n",
+            0,
+        );
+        assert!(
+            json.contains("\"output\":\"55\\n\""),
+            "fib(10) wrong: {json}"
+        );
         // the shared renderer produces an HTML flame graph rooted at main, with fib
-        assert!(json.contains("\"flameSvg\":\"<div"), "no flame html: {json}");
-        assert!(json.contains("flame graph"), "not the shared renderer: {json}");
+        assert!(
+            json.contains("\"flameSvg\":\"<div"),
+            "no flame html: {json}"
+        );
+        assert!(
+            json.contains("flame graph"),
+            "not the shared renderer: {json}"
+        );
         assert!(json.contains("fib"), "fib frame missing: {json}");
         assert!(json.contains("\"maxDepth\":"), "no depth: {json}");
     }
@@ -597,7 +621,10 @@ mod tests {
             "main() -> int {\n    sum = 0\n    for i in 1..100 {\n        sum = sum + i\n    }\n    xs = 1..5\n    info(\"{sum} {len(xs)} {xs[0]}\")\n    0\n}\n",
             0,
         );
-        assert!(json.contains("\"output\":\"5050 5 1\\n\""), "range wrong: {json}");
+        assert!(
+            json.contains("\"output\":\"5050 5 1\\n\""),
+            "range wrong: {json}"
+        );
     }
 
     #[test]
@@ -606,7 +633,10 @@ mod tests {
             "Tree = Leaf(int) | Node(Tree, Tree)\ntotal(t: Tree) -> int {\n    match t {\n        Leaf(n) => n\n        Node(l, r) => total(l) + total(r)\n    }\n}\nmain() -> int {\n    info(\"{total(Node(Leaf(1), Node(Leaf(2), Leaf(3))))}\")\n    0\n}\n",
             0,
         );
-        assert!(json.contains("\"output\":\"6\\n\""), "tree total wrong: {json}");
+        assert!(
+            json.contains("\"output\":\"6\\n\""),
+            "tree total wrong: {json}"
+        );
     }
 
     #[test]
@@ -615,14 +645,20 @@ mod tests {
             "main() -> int {\n    xs = 10, 20, 30\n    xs[0] = 99\n    info(\"{xs[0]} {len(xs)}\")\n    0\n}\n",
             0,
         );
-        assert!(json.contains("\"output\":\"99 3\\n\""), "indexing wrong: {json}");
+        assert!(
+            json.contains("\"output\":\"99 3\\n\""),
+            "indexing wrong: {json}"
+        );
     }
 
     #[test]
     fn math_prelude_runs_in_interp() {
         let src = "main() -> int {\n    info(\"{sqrt(144.0)} {abs(0 - 7)} {min(4, 9)} {max(4, 9)} {gcd(54, 24)} {clamp(42, 0, 10)}\")\n    0\n}\n";
         let json = compile_json(src, 0);
-        assert!(json.contains("\"output\":\"12.0 7 4 9 6 10\\n\""), "math interp wrong: {json}");
+        assert!(
+            json.contains("\"output\":\"12.0 7 4 9 6 10\\n\""),
+            "math interp wrong: {json}"
+        );
     }
 
     #[test]
@@ -642,7 +678,10 @@ mod tests {
             \x20   0\n\
             }\n";
         let json = compile_json(src, 0);
-        assert!(json.contains("\"output\":\"15 2 15 1 15 5 42\\n\""), "closures interp wrong: {json}");
+        assert!(
+            json.contains("\"output\":\"15 2 15 1 15 5 42\\n\""),
+            "closures interp wrong: {json}"
+        );
     }
 
     #[test]
@@ -651,14 +690,21 @@ mod tests {
         // the concurrent native runtime (20 + 40 = 60).
         let src = "work(n: int) -> int {\n    sleep_ms(1)\n    n * 2\n}\nmain() -> int {\n    a = spawn work(10)\n    b = spawn work(20)\n    info(\"{await a + await b}\")\n    0\n}\n";
         let json = compile_json(src, 0);
-        assert!(json.contains("\"output\":\"60\\n\""), "async interp wrong: {json}");
+        assert!(
+            json.contains("\"output\":\"60\\n\""),
+            "async interp wrong: {json}"
+        );
     }
 
     #[test]
     fn find_line_prefers_definition_over_earlier_call() {
         // `helper` is called (indented) before it is defined at column 0.
         let src = "main() -> int {\n    helper()\n    0\n}\nhelper() -> int => 1\n";
-        assert_eq!(find_line(src, "helper"), 5, "should point at the def, not the call");
+        assert_eq!(
+            find_line(src, "helper"),
+            5,
+            "should point at the def, not the call"
+        );
     }
 
     #[test]
@@ -700,6 +746,9 @@ mod tests {
         let (a, b) = find_word(src, "foo").expect("should find the code occurrence");
         assert_eq!(&src[a..b], "foo");
         // the match must be the def on line 3, not the comment/string mentions
-        assert!(a > src.find("\"foo\"").unwrap(), "anchored on comment/string, not code");
+        assert!(
+            a > src.find("\"foo\"").unwrap(),
+            "anchored on comment/string, not code"
+        );
     }
 }

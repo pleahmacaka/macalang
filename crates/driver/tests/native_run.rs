@@ -5,7 +5,11 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn have(cmd: &str) -> bool {
-    Command::new(cmd).arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
+    Command::new(cmd)
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 fn example(name: &str) -> String {
@@ -15,7 +19,11 @@ fn example(name: &str) -> String {
 #[test]
 fn hello_runs_natively() {
     // Only meaningful on a plain Linux host (no WSL) with a C compiler.
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -34,7 +42,11 @@ fn hello_runs_natively() {
 
 #[test]
 fn recursion_and_arithmetic_run_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -49,12 +61,19 @@ fn recursion_and_arithmetic_run_natively() {
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
     let _ = PathBuf::from(&f);
-    assert!(stdout.contains("6765"), "fib(20) should be 6765, got: {stdout}");
+    assert!(
+        stdout.contains("6765"),
+        "fib(20) should be 6765, got: {stdout}"
+    );
 }
 
 #[test]
 fn operator_overloading_runs_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -72,10 +91,13 @@ fn operator_overloading_runs_natively() {
     );
 }
 
-
 #[test]
 fn math_prelude_runs_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -85,15 +107,24 @@ fn math_prelude_runs_natively() {
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    for want in ["sqrt(144)=12", "pow(2,10)=1024", "abs=7", "clamp=10", "gcd(54,24)=6"] {
+    for want in [
+        "sqrt(144)=12",
+        "pow(2,10)=1024",
+        "abs=7",
+        "clamp=10",
+        "gcd(54,24)=6",
+    ] {
         assert!(stdout.contains(want), "missing {want:?}: {stdout}");
     }
 }
 
-
 #[test]
 fn closures_and_collections_run_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -103,7 +134,13 @@ fn closures_and_collections_run_natively() {
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    for want in ["shifted0=15", "total=15", "names=alice, bob, eve", "inc(41)=42", "has4=true"] {
+    for want in [
+        "shifted0=15",
+        "total=15",
+        "names=alice, bob, eve",
+        "inc(41)=42",
+        "has4=true",
+    ] {
         assert!(
             stdout.contains(want),
             "missing {want:?}.\nstdout: {stdout}\nstderr: {}",
@@ -114,7 +151,11 @@ fn closures_and_collections_run_natively() {
 
 #[test]
 fn async_spawn_await_runs_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -134,7 +175,11 @@ fn async_spawn_await_runs_natively() {
 
 #[test]
 fn string_stdlib_runs_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -146,8 +191,16 @@ fn string_stdlib_runs_natively() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     // split → 3 cols; trim/lower normalize; upper/contains/replace/substr/index_of
     for want in [
-        "cols: 3", "name", "age", "city", "EMPLOYEES TABLE", "has Table: true",
-        "prefix true suffix true", "Employees View", "Employees", "index 10",
+        "cols: 3",
+        "name",
+        "age",
+        "city",
+        "EMPLOYEES TABLE",
+        "has Table: true",
+        "prefix true suffix true",
+        "Employees View",
+        "Employees",
+        "index 10",
     ] {
         assert!(
             stdout.contains(want),
@@ -159,7 +212,11 @@ fn string_stdlib_runs_natively() {
 
 #[test]
 fn fail_exits_cleanly_with_message() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -179,12 +236,21 @@ fn fail_exits_cleanly_with_message() {
         .expect("spawn maca");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("error: negative input"), "stderr: {stderr}");
-    assert_eq!(out.status.code(), Some(1), "fail should exit 1, got {:?}", out.status.code());
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "fail should exit 1, got {:?}",
+        out.status.code()
+    );
 }
 
 #[test]
 fn match_guards_run_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -195,12 +261,20 @@ fn match_guards_run_natively() {
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
     let lines: Vec<&str> = stdout.lines().collect();
-    assert_eq!(lines, vec!["negative", "zero", "small", "big", "two"], "stdout: {stdout}");
+    assert_eq!(
+        lines,
+        vec!["negative", "zero", "small", "big", "two"],
+        "stdout: {stdout}"
+    );
 }
 
 #[test]
 fn string_match_runs_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -209,14 +283,21 @@ fn string_match_runs_natively() {
     std::fs::create_dir_all(&dir).unwrap();
     let f = dir.join("m.maca");
     std::fs::write(&f, "route(c: str) -> int {\n    match c {\n        \"add\" => 1\n        \"del\" => 2\n        _ => 0\n    }\n}\n\nmain() -> int {\n    a = route(\"add\")\n    b = route(\"del\")\n    z = route(\"x\")\n    info(\"{a} {b} {z}\")\n    0\n}\n").unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_maca")).args(["run", &f.to_string_lossy()]).output().expect("spawn maca");
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &f.to_string_lossy()])
+        .output()
+        .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("1 2 0"), "stdout: {stdout}");
 }
 
 #[test]
 fn or_patterns_run_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -226,12 +307,20 @@ fn or_patterns_run_natively() {
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(stdout.lines().collect::<Vec<_>>(), vec!["warm", "cold", "low", "high"], "stdout: {stdout}");
+    assert_eq!(
+        stdout.lines().collect::<Vec<_>>(),
+        vec!["warm", "cold", "low", "high"],
+        "stdout: {stdout}"
+    );
 }
 
 #[test]
 fn payload_sums_run_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -241,12 +330,20 @@ fn payload_sums_run_natively() {
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(stdout.lines().collect::<Vec<_>>(), vec!["100", "12"], "stdout: {stdout}");
+    assert_eq!(
+        stdout.lines().collect::<Vec<_>>(),
+        vec!["100", "12"],
+        "stdout: {stdout}"
+    );
 }
 
 #[test]
 fn try_catches_failure_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -258,13 +355,25 @@ fn try_catches_failure_natively() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     // the failure is caught: execution continues and exits cleanly
     assert!(stdout.contains("recovered"), "stdout: {stdout}");
-    assert_eq!(out.status.code(), Some(0), "try should catch and exit 0, got {:?}", out.status.code());
-    assert!(String::from_utf8_lossy(&out.stderr).is_empty(), "no error should be printed");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "try should catch and exit 0, got {:?}",
+        out.status.code()
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stderr).is_empty(),
+        "no error should be printed"
+    );
 }
 
 #[test]
 fn lambda_runs_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -274,12 +383,20 @@ fn lambda_runs_natively() {
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(stdout.lines().collect::<Vec<_>>(), vec!["1", "4", "9", "16"], "stdout: {stdout}");
+    assert_eq!(
+        stdout.lines().collect::<Vec<_>>(),
+        vec!["1", "4", "9", "16"],
+        "stdout: {stdout}"
+    );
 }
 
 #[test]
 fn generics_monomorphize_and_run_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -290,12 +407,20 @@ fn generics_monomorphize_and_run_natively() {
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(stdout.lines().collect::<Vec<_>>(), vec!["hello", "42", "7"], "stdout: {stdout}");
+    assert_eq!(
+        stdout.lines().collect::<Vec<_>>(),
+        vec!["hello", "42", "7"],
+        "stdout: {stdout}"
+    );
 }
 
 #[test]
 fn record_patterns_and_ops_run_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -305,12 +430,20 @@ fn record_patterns_and_ops_run_natively() {
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(stdout.lines().collect::<Vec<_>>(), vec!["4", "true", "side: right"], "stdout: {stdout}");
+    assert_eq!(
+        stdout.lines().collect::<Vec<_>>(),
+        vec!["4", "true", "side: right"],
+        "stdout: {stdout}"
+    );
 }
 
 #[test]
 fn c_keyword_identifiers_run_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -330,7 +463,11 @@ fn c_keyword_identifiers_run_natively() {
 
 #[test]
 fn indexing_runs_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -350,7 +487,11 @@ fn indexing_runs_natively() {
 
 #[test]
 fn record_update_runs_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -362,7 +503,11 @@ fn record_update_runs_natively() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_eq!(
         stdout.lines().collect::<Vec<_>>(),
-        vec!["localhost:80 tls=false", "localhost:443 tls=true", "localhost:8080 tls=false"],
+        vec![
+            "localhost:80 tls=false",
+            "localhost:443 tls=true",
+            "localhost:8080 tls=false"
+        ],
         "stdout: {stdout}\nstderr: {}",
         String::from_utf8_lossy(&out.stderr)
     );
@@ -370,7 +515,11 @@ fn record_update_runs_natively() {
 
 #[test]
 fn recursive_sum_types_run_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -391,7 +540,11 @@ fn recursive_sum_types_run_natively() {
 
 #[test]
 fn sum_with_record_payload_runs_natively() {
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
@@ -415,19 +568,35 @@ fn sum_with_record_payload_runs_natively() {
 fn microkernel_boots_natively() {
     // the capstone stress test: a whole microkernel simulation must compile and
     // run end to end (and exercises the build cache on the second CI build).
-    let wsl = Command::new("wsl").arg("true").output().map(|o| o.status.success()).unwrap_or(false);
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     if wsl || !have("cc") {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
     }
-    let src = format!("{}/../../apps/microkernel/kernel.maca", env!("CARGO_MANIFEST_DIR"));
+    let src = format!(
+        "{}/../../apps/microkernel/kernel.maca",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args(["run", &src])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("maca microkernel — boot"), "no boot banner:\n{stdout}");
-    assert!(stdout.contains("cap fault"), "capability check missing:\n{stdout}");
-    assert!(stdout.contains("tasks retired  : 5/6"), "unexpected scheduler outcome:\n{stdout}");
+    assert!(
+        stdout.contains("maca microkernel — boot"),
+        "no boot banner:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("cap fault"),
+        "capability check missing:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("tasks retired  : 5/6"),
+        "unexpected scheduler outcome:\n{stdout}"
+    );
     assert_eq!(out.status.code(), Some(0), "kernel should halt cleanly");
 }

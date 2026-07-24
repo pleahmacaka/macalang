@@ -28,9 +28,16 @@ pub enum Value {
     Unit,
     List(Vec<Value>),
     Record(Vec<(String, Value)>),
-    Variant { tag: String, payload: Vec<Value> },
+    Variant {
+        tag: String,
+        payload: Vec<Value>,
+    },
     /// A closure: a lambda plus the scope it captured at creation time.
-    Closure { params: Vec<Param>, body: Box<Expr>, captured: Vec<(String, Value)> },
+    Closure {
+        params: Vec<Param>,
+        body: Box<Expr>,
+        captured: Vec<(String, Value)>,
+    },
 }
 
 /// Non-local control flow: loop control, a raised failure, or the step/depth
@@ -142,11 +149,11 @@ impl<'a> Interp<'a> {
                     fns.insert(f.name.clone(), f);
                 }
                 Stmt::Bind(b) => {
-                    if let Expr::Ident(_) = &b.target {
-                        if let Some(vs) = sum_variants(&b.value) {
-                            for (name, arity) in vs {
-                                variants.insert(name, arity);
-                            }
+                    if let Expr::Ident(_) = &b.target
+                        && let Some(vs) = sum_variants(&b.value)
+                    {
+                        for (name, arity) in vs {
+                            variants.insert(name, arity);
                         }
                     }
                 }
@@ -173,7 +180,9 @@ impl<'a> Interp<'a> {
             top.1 += 1;
         }
         if self.steps >= STEP_LIMIT {
-            return Err(Signal::Limit("execution step limit reached — possible infinite loop".into()));
+            return Err(Signal::Limit(
+                "execution step limit reached — possible infinite loop".into(),
+            ));
         }
         Ok(())
     }
@@ -205,7 +214,12 @@ impl<'a> Interp<'a> {
         let incl = self.steps - before;
         if let Some((caller, _)) = self.stack.last() {
             let caller = caller.clone();
-            *self.edges.entry(caller).or_default().entry(f.name.clone()).or_default() += incl;
+            *self
+                .edges
+                .entry(caller)
+                .or_default()
+                .entry(f.name.clone())
+                .or_default() += incl;
         }
         result
     }
@@ -243,7 +257,13 @@ impl<'a> Interp<'a> {
         Ok(last)
     }
 
-    fn assign(&mut self, target: &Expr, v: Value, scope: &mut Scope, depth: u64) -> Result<(), Signal> {
+    fn assign(
+        &mut self,
+        target: &Expr,
+        v: Value,
+        scope: &mut Scope,
+        depth: u64,
+    ) -> Result<(), Signal> {
         match target {
             Expr::Ident(n) => {
                 if let Some(slot) = scope.iter_mut().rev().find(|(k, _)| k == n) {
@@ -257,10 +277,11 @@ impl<'a> Interp<'a> {
                     _ => 0,
                 };
                 let loc = self.lvalue(base, scope, depth)?;
-                if let Some(Value::List(xs)) = loc {
-                    if i >= 0 && (i as usize) < xs.len() {
-                        xs[i as usize] = v;
-                    }
+                if let Some(Value::List(xs)) = loc
+                    && i >= 0
+                    && (i as usize) < xs.len()
+                {
+                    xs[i as usize] = v;
                 }
                 Ok(())
             }
@@ -280,7 +301,12 @@ impl<'a> Interp<'a> {
     }
 
     /// A mutable reference to the storage a target denotes (for in-place writes).
-    fn lvalue<'s>(&mut self, target: &Expr, scope: &'s mut Scope, depth: u64) -> Result<Option<&'s mut Value>, Signal> {
+    fn lvalue<'s>(
+        &mut self,
+        target: &Expr,
+        scope: &'s mut Scope,
+        depth: u64,
+    ) -> Result<Option<&'s mut Value>, Signal> {
         match target {
             Expr::Ident(n) => Ok(scope.iter_mut().rev().find(|(k, _)| k == n).map(|(_, v)| v)),
             Expr::Field { base, name } => {
@@ -331,7 +357,10 @@ impl<'a> Interp<'a> {
                 if let Some((_, v)) = scope.iter().rev().find(|(k, _)| k == n) {
                     Ok(v.clone())
                 } else if self.variants.get(n) == Some(&0) {
-                    Ok(Value::Variant { tag: n.clone(), payload: vec![] })
+                    Ok(Value::Variant {
+                        tag: n.clone(),
+                        payload: vec![],
+                    })
                 } else {
                     Ok(Value::Unit)
                 }
@@ -359,7 +388,11 @@ impl<'a> Interp<'a> {
             Expr::Field { base, name } => {
                 let b = self.eval(base, scope, depth)?;
                 Ok(match b {
-                    Value::Record(fs) => fs.into_iter().find(|(k, _)| k == name).map(|(_, v)| v).unwrap_or(Value::Unit),
+                    Value::Record(fs) => fs
+                        .into_iter()
+                        .find(|(k, _)| k == name)
+                        .map(|(_, v)| v)
+                        .unwrap_or(Value::Unit),
                     _ => Value::Unit,
                 })
             }
@@ -372,7 +405,11 @@ impl<'a> Interp<'a> {
                 };
                 Ok(match b {
                     Value::List(xs) if i >= 0 && (i as usize) < xs.len() => xs[i as usize].clone(),
-                    Value::Str(s) => s.chars().nth(i.max(0) as usize).map(|c| Value::Str(c.to_string())).unwrap_or(Value::Str(String::new())),
+                    Value::Str(s) => s
+                        .chars()
+                        .nth(i.max(0) as usize)
+                        .map(|c| Value::Str(c.to_string()))
+                        .unwrap_or(Value::Str(String::new())),
                     _ => Value::Unit,
                 })
             }
@@ -478,8 +515,12 @@ impl<'a> Interp<'a> {
                 if let Value::Record(fs) = &mut b {
                     for f in fields {
                         let (name, val) = match f {
-                            Field::Value { name, value } => (name.clone(), self.eval(value, scope, depth)?),
-                            Field::Shorthand(n) => (n.clone(), self.eval(&Expr::Ident(n.clone()), scope, depth)?),
+                            Field::Value { name, value } => {
+                                (name.clone(), self.eval(value, scope, depth)?)
+                            }
+                            Field::Shorthand(n) => {
+                                (n.clone(), self.eval(&Expr::Ident(n.clone()), scope, depth)?)
+                            }
                             _ => continue,
                         };
                         if let Some(slot) = fs.iter_mut().find(|(k, _)| *k == name) {
@@ -524,7 +565,12 @@ impl<'a> Interp<'a> {
     /// Apply a closure value to arguments (used by first-class calls and the
     /// higher-order list methods).
     fn call_closure(&mut self, c: &Value, args: Vec<Value>, depth: u64) -> Eval {
-        let Value::Closure { params, body, captured } = c else {
+        let Value::Closure {
+            params,
+            body,
+            captured,
+        } = c
+        else {
             return Ok(Value::Unit);
         };
         if depth > DEPTH_LIMIT {
@@ -563,18 +609,21 @@ impl<'a> Interp<'a> {
 
         // operator overloading: a user function named for the operator, when the
         // left operand is a record or variant.
-        if matches!(l, Value::Record(_) | Value::Variant { .. }) {
-            if let Some(name) = overload_name(op) {
-                if let Some(f) = self.fns.get(name).copied() {
-                    return self.call_fn(f, vec![l, r], depth + 1);
-                }
-            }
+        if matches!(l, Value::Record(_) | Value::Variant { .. })
+            && let Some(name) = overload_name(op)
+            && let Some(f) = self.fns.get(name).copied()
+        {
+            return self.call_fn(f, vec![l, r], depth + 1);
         }
 
         Ok(match op {
-            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod | BinOp::Shl | BinOp::Shr => {
-                arith(op, &l, &r)
-            }
+            BinOp::Add
+            | BinOp::Sub
+            | BinOp::Mul
+            | BinOp::Div
+            | BinOp::Mod
+            | BinOp::Shl
+            | BinOp::Shr => arith(op, &l, &r),
             BinOp::Concat => match (&l, &r) {
                 (Value::List(a), Value::List(b)) => {
                     let mut v = a.clone();
@@ -606,7 +655,9 @@ impl<'a> Interp<'a> {
                 vals.push(self.eval(arg_expr(a), scope, depth)?);
             }
             // a local holding a closure value: `f = v => …; f(x)`
-            if let Some((_, c @ Value::Closure { .. })) = scope.iter().rev().find(|(k, _)| k == name) {
+            if let Some((_, c @ Value::Closure { .. })) =
+                scope.iter().rev().find(|(k, _)| k == name)
+            {
                 let c = c.clone();
                 return self.call_closure(&c, vals, depth);
             }
@@ -626,7 +677,9 @@ impl<'a> Interp<'a> {
         let run = |me: &mut Self, c: &Value, x: Value| me.call_closure(c, vec![x], depth);
         let out: Eval = match name {
             "map" => {
-                let Some(c) = &f else { return Some(Ok(Value::List(list))) };
+                let Some(c) = &f else {
+                    return Some(Ok(Value::List(list)));
+                };
                 let mut r = Vec::with_capacity(list.len());
                 for x in list {
                     match run(self, c, x) {
@@ -637,7 +690,9 @@ impl<'a> Interp<'a> {
                 Ok(Value::List(r))
             }
             "filter" => {
-                let Some(c) = &f else { return Some(Ok(Value::List(list))) };
+                let Some(c) = &f else {
+                    return Some(Ok(Value::List(list)));
+                };
                 let mut r = Vec::new();
                 for x in list {
                     match run(self, c, x.clone()) {
@@ -653,7 +708,9 @@ impl<'a> Interp<'a> {
             }
             "reduce" | "fold" => {
                 let mut acc = f.clone().unwrap_or(Value::Unit);
-                let Some(c) = vals.get(2).cloned() else { return Some(Ok(acc)) };
+                let Some(c) = vals.get(2).cloned() else {
+                    return Some(Ok(acc));
+                };
                 for x in list {
                     match self.call_closure(&c, vec![acc.clone(), x], depth) {
                         Ok(v) => acc = v,
@@ -684,9 +741,14 @@ impl<'a> Interp<'a> {
                 r.pop();
                 Ok(Value::List(r))
             }
-            "contains" => Ok(Value::Bool(f.map(|x| list.iter().any(|e| equal(e, &x))).unwrap_or(false))),
+            "contains" => Ok(Value::Bool(
+                f.map(|x| list.iter().any(|e| equal(e, &x)))
+                    .unwrap_or(false),
+            )),
             "index_of" => Ok(Value::Int(
-                f.and_then(|x| list.iter().position(|e| equal(e, &x))).map(|i| i as i64).unwrap_or(-1),
+                f.and_then(|x| list.iter().position(|e| equal(e, &x)))
+                    .map(|i| i as i64)
+                    .unwrap_or(-1),
             )),
             "sum" => Ok(fold_num(&list, 0.0, |a, b| a + b)),
             "min" => Ok(fold_minmax(&list, true)),
@@ -747,21 +809,35 @@ impl<'a> Interp<'a> {
             "upper" => return Ok(Value::Str(str_of(vals.first()).to_uppercase())),
             "lower" => return Ok(Value::Str(str_of(vals.first()).to_lowercase())),
             "contains" => {
-                return Ok(Value::Bool(str_of(vals.first()).contains(&str_of(vals.get(1)))));
+                return Ok(Value::Bool(
+                    str_of(vals.first()).contains(&str_of(vals.get(1))),
+                ));
             }
             "starts_with" => {
-                return Ok(Value::Bool(str_of(vals.first()).starts_with(&str_of(vals.get(1)))));
+                return Ok(Value::Bool(
+                    str_of(vals.first()).starts_with(&str_of(vals.get(1))),
+                ));
             }
             "ends_with" => {
-                return Ok(Value::Bool(str_of(vals.first()).ends_with(&str_of(vals.get(1)))));
+                return Ok(Value::Bool(
+                    str_of(vals.first()).ends_with(&str_of(vals.get(1))),
+                ));
             }
             "index_of" => {
                 let (h, n) = (str_of(vals.first()), str_of(vals.get(1)));
                 return Ok(Value::Int(h.find(&n).map(|b| b as i64).unwrap_or(-1)));
             }
             "replace" => {
-                let (s, from, to) = (str_of(vals.first()), str_of(vals.get(1)), str_of(vals.get(2)));
-                let out = if from.is_empty() { s } else { s.replace(&from, &to) };
+                let (s, from, to) = (
+                    str_of(vals.first()),
+                    str_of(vals.get(1)),
+                    str_of(vals.get(2)),
+                );
+                let out = if from.is_empty() {
+                    s
+                } else {
+                    s.replace(&from, &to)
+                };
                 return Ok(Value::Str(out));
             }
             "substr" => {
@@ -808,18 +884,22 @@ impl<'a> Interp<'a> {
                 });
             }
             "min" => {
-                return Ok(if cmp_values(&vals[0], &vals[1]) == std::cmp::Ordering::Greater {
-                    vals[1].clone()
-                } else {
-                    vals[0].clone()
-                });
+                return Ok(
+                    if cmp_values(&vals[0], &vals[1]) == std::cmp::Ordering::Greater {
+                        vals[1].clone()
+                    } else {
+                        vals[0].clone()
+                    },
+                );
             }
             "max" => {
-                return Ok(if cmp_values(&vals[0], &vals[1]) == std::cmp::Ordering::Less {
-                    vals[1].clone()
-                } else {
-                    vals[0].clone()
-                });
+                return Ok(
+                    if cmp_values(&vals[0], &vals[1]) == std::cmp::Ordering::Less {
+                        vals[1].clone()
+                    } else {
+                        vals[0].clone()
+                    },
+                );
             }
             "clamp" => {
                 let (x, lo, hi) = (&vals[0], &vals[1], &vals[2]);
@@ -833,7 +913,13 @@ impl<'a> Interp<'a> {
             }
             "sign" => {
                 let x = to_f64(&vals[0]);
-                return Ok(Value::Int(if x > 0.0 { 1 } else if x < 0.0 { -1 } else { 0 }));
+                return Ok(Value::Int(if x > 0.0 {
+                    1
+                } else if x < 0.0 {
+                    -1
+                } else {
+                    0
+                }));
             }
             "gcd" => {
                 let (mut a, mut b) = (to_i64(&vals[0]).abs(), to_i64(&vals[1]).abs());
@@ -849,7 +935,10 @@ impl<'a> Interp<'a> {
         // sum constructor
         if let Some(&arity) = self.variants.get(name) {
             let _ = arity;
-            return Ok(Value::Variant { tag: name.to_string(), payload: vals });
+            return Ok(Value::Variant {
+                tag: name.to_string(),
+                payload: vals,
+            });
         }
         // user function
         if let Some(f) = self.fns.get(name).copied() {
@@ -883,14 +972,20 @@ impl<'a> Interp<'a> {
                     if args.len() != payload.len() {
                         return false;
                     }
-                    args.iter().zip(payload).all(|(p, pv)| self.matches(p, pv, scope))
+                    args.iter()
+                        .zip(payload)
+                        .all(|(p, pv)| self.matches(p, pv, scope))
                 }
                 _ => false,
             },
             Pattern::Record(fields) => match v {
                 Value::Record(fs) => {
                     for (fname, sub) in fields {
-                        let fv = fs.iter().find(|(k, _)| k == fname).map(|(_, v)| v.clone()).unwrap_or(Value::Unit);
+                        let fv = fs
+                            .iter()
+                            .find(|(k, _)| k == fname)
+                            .map(|(_, v)| v.clone())
+                            .unwrap_or(Value::Unit);
                         match sub {
                             None => scope.push((fname.clone(), fv)),
                             Some(p) => {
@@ -978,7 +1073,9 @@ fn arith(op: BinOp, l: &Value, r: &Value) -> Value {
 fn compare(op: BinOp, l: &Value, r: &Value) -> Value {
     let ord = match (l, r) {
         (Value::Str(a), Value::Str(b)) => a.cmp(b),
-        _ => to_f64(l).partial_cmp(&to_f64(r)).unwrap_or(std::cmp::Ordering::Equal),
+        _ => to_f64(l)
+            .partial_cmp(&to_f64(r))
+            .unwrap_or(std::cmp::Ordering::Equal),
     };
     use std::cmp::Ordering::*;
     Value::Bool(match op {
@@ -994,7 +1091,9 @@ fn compare(op: BinOp, l: &Value, r: &Value) -> Value {
 fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
     match (a, b) {
         (Value::Str(x), Value::Str(y)) => x.cmp(y),
-        _ => to_f64(a).partial_cmp(&to_f64(b)).unwrap_or(std::cmp::Ordering::Equal),
+        _ => to_f64(a)
+            .partial_cmp(&to_f64(b))
+            .unwrap_or(std::cmp::Ordering::Equal),
     }
 }
 
@@ -1035,14 +1134,27 @@ fn equal(l: &Value, r: &Value) -> bool {
         (Value::Bool(a), Value::Bool(b)) => a == b,
         (Value::Str(a), Value::Str(b)) => a == b,
         (Value::Unit, Value::Unit) => true,
-        (Value::List(a), Value::List(b)) => a.len() == b.len() && a.iter().zip(b).all(|(x, y)| equal(x, y)),
+        (Value::List(a), Value::List(b)) => {
+            a.len() == b.len() && a.iter().zip(b).all(|(x, y)| equal(x, y))
+        }
         (Value::Record(a), Value::Record(b)) => {
             a.len() == b.len()
-                && a.iter().all(|(k, v)| b.iter().find(|(k2, _)| k2 == k).is_some_and(|(_, v2)| equal(v, v2)))
+                && a.iter().all(|(k, v)| {
+                    b.iter()
+                        .find(|(k2, _)| k2 == k)
+                        .is_some_and(|(_, v2)| equal(v, v2))
+                })
         }
-        (Value::Variant { tag: t1, payload: p1 }, Value::Variant { tag: t2, payload: p2 }) => {
-            t1 == t2 && p1.len() == p2.len() && p1.iter().zip(p2).all(|(x, y)| equal(x, y))
-        }
+        (
+            Value::Variant {
+                tag: t1,
+                payload: p1,
+            },
+            Value::Variant {
+                tag: t2,
+                payload: p2,
+            },
+        ) => t1 == t2 && p1.len() == p2.len() && p1.iter().zip(p2).all(|(x, y)| equal(x, y)),
         _ => false,
     }
 }
@@ -1180,19 +1292,21 @@ fn arg_expr(a: &Arg) -> &Expr {
 fn sum_variants(value: &Expr) -> Option<Vec<(String, usize)>> {
     fn collect(e: &Expr, out: &mut Vec<(String, usize)>) -> bool {
         match e {
-            Expr::Binary { op: BinOp::Union | BinOp::Or, lhs, rhs } => {
-                collect(lhs, out) && collect(rhs, out)
-            }
+            Expr::Binary {
+                op: BinOp::Union | BinOp::Or,
+                lhs,
+                rhs,
+            } => collect(lhs, out) && collect(rhs, out),
             Expr::Ident(n) if n.chars().next().is_some_and(|c| c.is_uppercase()) => {
                 out.push((n.clone(), 0));
                 true
             }
             Expr::Call { callee, args } => {
-                if let Expr::Ident(n) = callee.as_ref() {
-                    if n.chars().next().is_some_and(|c| c.is_uppercase()) {
-                        out.push((n.clone(), args.len()));
-                        return true;
-                    }
+                if let Expr::Ident(n) = callee.as_ref()
+                    && n.chars().next().is_some_and(|c| c.is_uppercase())
+                {
+                    out.push((n.clone(), args.len()));
+                    return true;
                 }
                 false
             }

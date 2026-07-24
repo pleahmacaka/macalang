@@ -3,7 +3,9 @@ use std::fs;
 use std::path::PathBuf;
 
 fn example(name: &str) -> String {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples").join(name);
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples")
+        .join(name);
     fs::read_to_string(p).unwrap()
 }
 
@@ -11,7 +13,11 @@ fn example(name: &str) -> String {
 fn roundtrip(name: &str) {
     let src = example(name);
     let first = parse(&src);
-    assert!(first.errors.is_empty(), "{name} parse errors: {:?}", first.errors);
+    assert!(
+        first.errors.is_empty(),
+        "{name} parse errors: {:?}",
+        first.errors
+    );
 
     let printed = print_module(&first.module);
     let second = parse(&printed);
@@ -69,9 +75,16 @@ fn ctor_vs_for_header_brace() {
     // `for t in xs { .. }` — the `{` is the body, not `xs { .. }` ctor.
     let m = clean("f() {\n    for t in xs {\n        g(t)\n    }\n}");
     let Stmt::Fn(f) = &m.items[0] else { panic!() };
-    let Some(maca_parser::FnBody::Block(b)) = &f.body else { panic!() };
-    let Stmt::Expr(Expr::For { iter, .. }) = &b[0] else { panic!("expected for, got {:?}", b[0]) };
-    assert!(matches!(&**iter, Expr::Ident(n) if n == "xs"), "iter should be plain xs");
+    let Some(maca_parser::FnBody::Block(b)) = &f.body else {
+        panic!()
+    };
+    let Stmt::Expr(Expr::For { iter, .. }) = &b[0] else {
+        panic!("expected for, got {:?}", b[0])
+    };
+    assert!(
+        matches!(&**iter, Expr::Ident(n) if n == "xs"),
+        "iter should be plain xs"
+    );
 }
 
 #[test]
@@ -90,10 +103,17 @@ fn range_binds_looser_than_arithmetic() {
     // `0..n - 1` must read as `0 .. (n - 1)`, not `(0..n) - 1`.
     let m = clean("f(n: int) => 0..n - 1");
     let Stmt::Fn(f) = &m.items[0] else { panic!() };
-    let Some(maca_parser::FnBody::Expr(e)) = &f.body else { panic!() };
-    let Expr::Range { lo, hi } = &**e else { panic!("expected range, got {e:?}") };
+    let Some(maca_parser::FnBody::Expr(e)) = &f.body else {
+        panic!()
+    };
+    let Expr::Range { lo, hi } = &**e else {
+        panic!("expected range, got {e:?}")
+    };
     assert!(matches!(&**lo, Expr::Int(0)));
-    assert!(matches!(&**hi, Expr::Binary { op: BinOp::Sub, .. }), "hi should be n - 1");
+    assert!(
+        matches!(&**hi, Expr::Binary { op: BinOp::Sub, .. }),
+        "hi should be n - 1"
+    );
 }
 
 #[test]
@@ -114,11 +134,15 @@ fn malformed_params_terminate() {
 fn ternary_is_not_propagate() {
     use maca_parser::{Expr, Stmt};
     let m = clean("x = c ? a : b");
-    let Stmt::Bind(bind) = &m.items[0] else { panic!() };
+    let Stmt::Bind(bind) = &m.items[0] else {
+        panic!()
+    };
     assert!(matches!(bind.value, Expr::Ternary { .. }));
 
     let m = clean("y = f()?");
-    let Stmt::Bind(bind) = &m.items[0] else { panic!() };
+    let Stmt::Bind(bind) = &m.items[0] else {
+        panic!()
+    };
     assert!(matches!(bind.value, Expr::Try(_)));
 }
 
@@ -127,10 +151,16 @@ fn match_guard_arm() {
     use maca_parser::{Expr, Stmt};
     // `_ if cond => body` — the guard must not swallow the arm's `=>` as a
     // lambda arrow.
-    let m = clean("f(x: int) -> int =>\n    match true {\n        _ if x > 0 => 1\n        _ => 0\n    }\n");
+    let m = clean(
+        "f(x: int) -> int =>\n    match true {\n        _ if x > 0 => 1\n        _ => 0\n    }\n",
+    );
     let Stmt::Fn(f) = &m.items[0] else { panic!() };
-    let Some(maca_parser::FnBody::Expr(e)) = &f.body else { panic!() };
-    let Expr::Match { arms, .. } = &**e else { panic!("expected match, got {e:?}") };
+    let Some(maca_parser::FnBody::Expr(e)) = &f.body else {
+        panic!()
+    };
+    let Expr::Match { arms, .. } = &**e else {
+        panic!("expected match, got {e:?}")
+    };
     assert_eq!(arms.len(), 2);
     assert!(arms[0].guard.is_some(), "first arm should carry a guard");
 }
@@ -140,7 +170,9 @@ fn bracketless_list_binding() {
     use maca_parser::{Expr, Stmt};
     let m = clean("pkgs = a, b, c");
     let Stmt::Bind(b) = &m.items[0] else { panic!() };
-    let Expr::List(es) = &b.value else { panic!("expected list, got {:?}", b.value) };
+    let Expr::List(es) = &b.value else {
+        panic!("expected list, got {:?}", b.value)
+    };
     assert_eq!(es.len(), 3);
 }
 
@@ -149,9 +181,15 @@ fn ui_directive_arg() {
     use maca_parser::{Arg, Dir, Expr, Stmt};
     let m = clean("v() -> Element => input(bind:value=name)");
     let Stmt::Fn(f) = &m.items[0] else { panic!() };
-    let Some(maca_parser::FnBody::Expr(e)) = &f.body else { panic!() };
-    let Expr::Call { args, .. } = &**e else { panic!() };
-    let Arg::Directive { kind, prop, .. } = &args[0] else { panic!("expected directive") };
+    let Some(maca_parser::FnBody::Expr(e)) = &f.body else {
+        panic!()
+    };
+    let Expr::Call { args, .. } = &**e else {
+        panic!()
+    };
+    let Arg::Directive { kind, prop, .. } = &args[0] else {
+        panic!("expected directive")
+    };
     assert_eq!(*kind, Dir::Bind);
     assert_eq!(prop, "value");
 }
@@ -255,22 +293,38 @@ fn roundtrip_collections() {
 fn await_and_spawn_bind_tighter_than_binary() {
     // `await a + await b` must parse as `(await a) + (await b)`.
     let m = parse("f() -> int => await a + await b\n").module;
-    let maca_parser::Stmt::Fn(f) = &m.items[0] else { panic!("not a fn") };
-    let Some(maca_parser::FnBody::Expr(e)) = &f.body else { panic!("no expr body") };
+    let maca_parser::Stmt::Fn(f) = &m.items[0] else {
+        panic!("not a fn")
+    };
+    let Some(maca_parser::FnBody::Expr(e)) = &f.body else {
+        panic!("no expr body")
+    };
     let maca_parser::Expr::Binary { lhs, rhs, .. } = &**e else {
         panic!("expected a binary at the top, got {e:?}")
     };
-    assert!(matches!(&**lhs, maca_parser::Expr::Await(_)), "lhs not await: {lhs:?}");
-    assert!(matches!(&**rhs, maca_parser::Expr::Await(_)), "rhs not await: {rhs:?}");
+    assert!(
+        matches!(&**lhs, maca_parser::Expr::Await(_)),
+        "lhs not await: {lhs:?}"
+    );
+    assert!(
+        matches!(&**rhs, maca_parser::Expr::Await(_)),
+        "rhs not await: {rhs:?}"
+    );
 }
 
 #[test]
 fn arrow_body_can_be_a_comma_list() {
     // `make() -> int[] => 1, 2, 3` — a bracketless list is a valid arrow body
     let m = clean("make() -> int[] => 1, 2, 3\n");
-    let maca_parser::Stmt::Fn(f) = &m.items[0] else { panic!("not a fn") };
-    let Some(maca_parser::FnBody::Expr(e)) = &f.body else { panic!("no expr body") };
-    let maca_parser::Expr::List(es) = &**e else { panic!("body is not a list: {e:?}") };
+    let maca_parser::Stmt::Fn(f) = &m.items[0] else {
+        panic!("not a fn")
+    };
+    let Some(maca_parser::FnBody::Expr(e)) = &f.body else {
+        panic!("no expr body")
+    };
+    let maca_parser::Expr::List(es) = &**e else {
+        panic!("body is not a list: {e:?}")
+    };
     assert_eq!(es.len(), 3, "expected 3 elements");
 }
 
@@ -278,7 +332,14 @@ fn arrow_body_can_be_a_comma_list() {
 fn index_is_postfix_not_a_list() {
     // `xs[i]` after an expression is a subscript; a leading `[..]` is a list
     let m = clean("f(xs: int[]) -> int => xs[0]\n");
-    let maca_parser::Stmt::Fn(f) = &m.items[0] else { panic!("not a fn") };
-    let Some(maca_parser::FnBody::Expr(e)) = &f.body else { panic!("no expr body") };
-    assert!(matches!(&**e, maca_parser::Expr::Index { .. }), "not an Index: {e:?}");
+    let maca_parser::Stmt::Fn(f) = &m.items[0] else {
+        panic!("not a fn")
+    };
+    let Some(maca_parser::FnBody::Expr(e)) = &f.body else {
+        panic!("no expr body")
+    };
+    assert!(
+        matches!(&**e, maca_parser::Expr::Index { .. }),
+        "not an Index: {e:?}"
+    );
 }

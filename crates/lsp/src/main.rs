@@ -5,14 +5,16 @@
 //!
 //! Editors launch this binary and talk JSON-RPC to it — see `editor/zed-maca`.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 
 fn main() {
     let stdin = io::stdin();
     let stdout = io::stdout();
-    let mut server = Server { docs: HashMap::new() };
+    let mut server = Server {
+        docs: HashMap::new(),
+    };
     server.run(&mut stdin.lock(), &mut stdout.lock());
 }
 
@@ -60,7 +62,10 @@ impl Server {
                 None
             }
             "textDocument/didChange" => {
-                let uri = req.pointer("/params/textDocument/uri")?.as_str()?.to_string();
+                let uri = req
+                    .pointer("/params/textDocument/uri")?
+                    .as_str()?
+                    .to_string();
                 // Full sync: the last content change holds the whole document.
                 let changes = req.pointer("/params/contentChanges")?.as_array()?;
                 let text = changes.last()?.get("text")?.as_str()?.to_string();
@@ -72,14 +77,25 @@ impl Server {
                 let text = self.doc_at(req)?;
                 let off = self.offset_at(req, &text)?;
                 let value = maca_lsp::hover(&text, off).unwrap_or_default();
-                Some(reply(id, json!({ "contents": { "kind": "plaintext", "value": value } })))
+                Some(reply(
+                    id,
+                    json!({ "contents": { "kind": "plaintext", "value": value } }),
+                ))
             }
             "textDocument/completion" => {
                 let text = self.doc_at(req).unwrap_or_default();
                 let off = self.offset_at(req, &text).unwrap_or(0);
                 let prefix = maca_lsp::prefix_at(&text, off);
                 let items = self.completions(&text, &prefix);
-                Some(reply(id, json!(items.into_iter().map(|l| json!({ "label": l })).collect::<Vec<_>>())))
+                Some(reply(
+                    id,
+                    json!(
+                        items
+                            .into_iter()
+                            .map(|l| json!({ "label": l }))
+                            .collect::<Vec<_>>()
+                    ),
+                ))
             }
             "textDocument/documentSymbol" => {
                 let text = self.doc_at(req).unwrap_or_default();
@@ -97,7 +113,10 @@ impl Server {
                 let off = self.offset_at(req, &text)?;
                 let uri = req.pointer("/params/textDocument/uri")?.as_str()?;
                 match maca_lsp::definition(&text, off) {
-                    Some((s, e)) => Some(reply(id, json!({ "uri": uri, "range": range(&text, s, e) }))),
+                    Some((s, e)) => Some(reply(
+                        id,
+                        json!({ "uri": uri, "range": range(&text, s, e) }),
+                    )),
                     None => Some(reply(id, Value::Null)),
                 }
             }
@@ -234,18 +253,29 @@ mod tests {
 
     #[test]
     fn initialize_advertises_capabilities() {
-        let mut s = Server { docs: HashMap::new() };
+        let mut s = Server {
+            docs: HashMap::new(),
+        };
         let mut out = Vec::new();
         let resp = s
-            .handle(&json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }), &mut out)
+            .handle(
+                &json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }),
+                &mut out,
+            )
             .unwrap();
         assert_eq!(resp["result"]["capabilities"]["hoverProvider"], true);
-        assert!(resp["result"]["capabilities"].get("completionProvider").is_some());
+        assert!(
+            resp["result"]["capabilities"]
+                .get("completionProvider")
+                .is_some()
+        );
     }
 
     #[test]
     fn didopen_publishes_diagnostics_for_bad_code() {
-        let mut s = Server { docs: HashMap::new() };
+        let mut s = Server {
+            docs: HashMap::new(),
+        };
         let mut out = Vec::new();
         // a type error: return type int, body is a string
         let src = "f() -> int => \"oops\"\n";
@@ -258,13 +288,21 @@ mod tests {
             &mut out,
         );
         let text = String::from_utf8(out).unwrap();
-        assert!(text.contains("publishDiagnostics"), "no diagnostics notification: {text}");
-        assert!(text.contains("TypeMismatch"), "expected a type error: {text}");
+        assert!(
+            text.contains("publishDiagnostics"),
+            "no diagnostics notification: {text}"
+        );
+        assert!(
+            text.contains("TypeMismatch"),
+            "expected a type error: {text}"
+        );
     }
 
     #[test]
     fn hover_returns_a_signature() {
-        let mut s = Server { docs: HashMap::new() };
+        let mut s = Server {
+            docs: HashMap::new(),
+        };
         let mut out = Vec::new();
         let src = "add(a: int, b: int) -> int => a + b\n";
         s.handle(
@@ -294,19 +332,26 @@ mod tests {
 
     #[test]
     fn diagnostics_point_at_the_offending_code() {
-        let mut s = Server { docs: HashMap::new() };
+        let mut s = Server {
+            docs: HashMap::new(),
+        };
         let mut out = Vec::new();
         // `slugify` is undefined; the marker must land on line 1, not line 0.
         let src = "main() -> int {\n    x = slugify(1)\n    0\n}\n";
         open(&mut s, &mut out, "file:///t.maca", src);
         let text = String::from_utf8(out).unwrap();
         assert!(text.contains("UndefinedName"), "no diagnostic: {text}");
-        assert!(text.contains("\"line\":1"), "diagnostic not anchored on line 1: {text}");
+        assert!(
+            text.contains("\"line\":1"),
+            "diagnostic not anchored on line 1: {text}"
+        );
     }
 
     #[test]
     fn document_symbols_lists_definitions() {
-        let mut s = Server { docs: HashMap::new() };
+        let mut s = Server {
+            docs: HashMap::new(),
+        };
         let mut out = Vec::new();
         let src = "helper() -> int => 1\nPoint = {\n    x: int\n}\nmain() -> int => 0\n";
         open(&mut s, &mut out, "file:///t.maca", src);
@@ -323,13 +368,18 @@ mod tests {
             .iter()
             .map(|s| s["name"].as_str().unwrap().to_string())
             .collect();
-        assert!(names.contains(&"helper".into()) && names.contains(&"main".into()), "{names:?}");
+        assert!(
+            names.contains(&"helper".into()) && names.contains(&"main".into()),
+            "{names:?}"
+        );
         assert!(names.contains(&"Point".into()), "type missing: {names:?}");
     }
 
     #[test]
     fn definition_jumps_to_the_defining_line() {
-        let mut s = Server { docs: HashMap::new() };
+        let mut s = Server {
+            docs: HashMap::new(),
+        };
         let mut out = Vec::new();
         // `helper` is called on line 1 and defined on line 4.
         let src = "main() -> int {\n    helper()\n    0\n}\nhelper() -> int => 1\n";
@@ -341,12 +391,17 @@ mod tests {
                 &mut out,
             )
             .unwrap();
-        assert_eq!(resp["result"]["range"]["start"]["line"], 4, "def not on line 4: {resp}");
+        assert_eq!(
+            resp["result"]["range"]["start"]["line"], 4,
+            "def not on line 4: {resp}"
+        );
     }
 
     #[test]
     fn formatting_returns_a_full_document_edit() {
-        let mut s = Server { docs: HashMap::new() };
+        let mut s = Server {
+            docs: HashMap::new(),
+        };
         let mut out = Vec::new();
         // messy spacing the canonical printer will normalize
         let src = "main( )   ->int=>0\n";
@@ -360,12 +415,17 @@ mod tests {
             .unwrap();
         let edits = resp["result"].as_array().unwrap();
         assert!(!edits.is_empty(), "no formatting edit produced");
-        assert!(edits[0]["newText"].as_str().unwrap().contains("main()"), "not normalized: {resp}");
+        assert!(
+            edits[0]["newText"].as_str().unwrap().contains("main()"),
+            "not normalized: {resp}"
+        );
     }
 
     #[test]
     fn config_completion_after_import() {
-        let mut s = Server { docs: HashMap::new() };
+        let mut s = Server {
+            docs: HashMap::new(),
+        };
         let mut out = Vec::new();
         let src = "import nixpkgs\nsys";
         s.handle(

@@ -35,20 +35,40 @@ impl Mcu {
     pub fn resolve(name: &str) -> Option<Mcu> {
         Some(match name {
             "cortex-m0" | "cortex-m0plus" => Mcu {
-                name: "cortex-m0", triple: "thumbv6m-none-eabi", cpu: "cortex-m0",
-                flash_origin: 0x0800_0000, flash_len_k: 64, ram_origin: 0x2000_0000, ram_len_k: 8,
+                name: "cortex-m0",
+                triple: "thumbv6m-none-eabi",
+                cpu: "cortex-m0",
+                flash_origin: 0x0800_0000,
+                flash_len_k: 64,
+                ram_origin: 0x2000_0000,
+                ram_len_k: 8,
             },
             "cortex-m3" => Mcu {
-                name: "cortex-m3", triple: "thumbv7m-none-eabi", cpu: "cortex-m3",
-                flash_origin: 0x0800_0000, flash_len_k: 256, ram_origin: 0x2000_0000, ram_len_k: 64,
+                name: "cortex-m3",
+                triple: "thumbv7m-none-eabi",
+                cpu: "cortex-m3",
+                flash_origin: 0x0800_0000,
+                flash_len_k: 256,
+                ram_origin: 0x2000_0000,
+                ram_len_k: 64,
             },
             "cortex-m4" | "" | "default" => Mcu {
-                name: "cortex-m4", triple: "thumbv7em-none-eabi", cpu: "cortex-m4",
-                flash_origin: 0x0800_0000, flash_len_k: 512, ram_origin: 0x2000_0000, ram_len_k: 128,
+                name: "cortex-m4",
+                triple: "thumbv7em-none-eabi",
+                cpu: "cortex-m4",
+                flash_origin: 0x0800_0000,
+                flash_len_k: 512,
+                ram_origin: 0x2000_0000,
+                ram_len_k: 128,
             },
             "riscv32" => Mcu {
-                name: "riscv32", triple: "riscv32-none-elf", cpu: "generic-rv32",
-                flash_origin: 0x2000_0000, flash_len_k: 512, ram_origin: 0x8000_0000, ram_len_k: 128,
+                name: "riscv32",
+                triple: "riscv32-none-elf",
+                cpu: "generic-rv32",
+                flash_origin: 0x2000_0000,
+                flash_len_k: 512,
+                ram_origin: 0x8000_0000,
+                ram_len_k: 128,
             },
             _ => return None,
         })
@@ -63,11 +83,14 @@ pub fn emit_c(m: &Module) -> String {
     // top-level bindings → const globals (register addresses, masks, …)
     let mut had_const = false;
     for it in &m.items {
-        if let Stmt::Bind(b) = it {
-            if let Expr::Ident(name) = &b.target {
-                out.push_str(&format!("static const uint32_t {name} = {};\n", cexpr(&b.value)));
-                had_const = true;
-            }
+        if let Stmt::Bind(b) = it
+            && let Expr::Ident(name) = &b.target
+        {
+            out.push_str(&format!(
+                "static const uint32_t {name} = {};\n",
+                cexpr(&b.value)
+            ));
+            had_const = true;
         }
     }
     if had_const {
@@ -132,13 +155,23 @@ void (* const g_vectors[])(void) = {
 
 fn emit_fn(f: &FnDef) -> String {
     let ret = if f.ret.is_some() { "uint32_t" } else { "void" };
-    let params: Vec<String> = f.params.iter().map(|p| format!("uint32_t {}", p.name)).collect();
-    let ps = if params.is_empty() { "void".into() } else { params.join(", ") };
+    let params: Vec<String> = f
+        .params
+        .iter()
+        .map(|p| format!("uint32_t {}", p.name))
+        .collect();
+    let ps = if params.is_empty() {
+        "void".into()
+    } else {
+        params.join(", ")
+    };
     let body = match &f.body {
         Some(FnBody::Block(stmts)) => cblock(stmts, ret != "void", 1),
         // `name() => { … }` parses as an expression body holding a block
         Some(FnBody::Expr(e)) if matches!(&**e, Expr::Block(_)) => {
-            let Expr::Block(stmts) = &**e else { unreachable!() };
+            let Expr::Block(stmts) = &**e else {
+                unreachable!()
+            };
             cblock(stmts, ret != "void", 1)
         }
         Some(FnBody::Expr(e)) => {
@@ -164,7 +197,11 @@ fn cblock(stmts: &[Stmt], wants_value: bool, ind: usize) -> String {
         match s {
             Stmt::Bind(b) => {
                 if let Expr::Ident(n) = &b.target {
-                    let decl = if declared.insert(n.clone()) { "uint32_t " } else { "" };
+                    let decl = if declared.insert(n.clone()) {
+                        "uint32_t "
+                    } else {
+                        ""
+                    };
                     out.push_str(&format!("{pad}{decl}{n} = {};\n", cexpr(&b.value)));
                 } else {
                     out.push_str(&format!("{pad}{};\n", cexpr(&b.value)));
@@ -172,7 +209,11 @@ fn cblock(stmts: &[Stmt], wants_value: bool, ind: usize) -> String {
             }
             Stmt::Expr(Expr::For { pat, iter, body }) => out.push_str(&cfor(pat, iter, body, ind)),
             Stmt::Expr(Expr::While { cond, body }) => {
-                out.push_str(&format!("{pad}while ({}) {{\n{}{pad}}}\n", cexpr(cond), cblock(body, false, ind + 1)));
+                out.push_str(&format!(
+                    "{pad}while ({}) {{\n{}{pad}}}\n",
+                    cexpr(cond),
+                    cblock(body, false, ind + 1)
+                ));
             }
             Stmt::Expr(Expr::Break) => out.push_str(&format!("{pad}break;\n")),
             Stmt::Expr(Expr::Continue) => out.push_str(&format!("{pad}continue;\n")),
@@ -193,10 +234,13 @@ fn cblock(stmts: &[Stmt], wants_value: bool, ind: usize) -> String {
 fn cfor(pat: &Pattern, iter: &Expr, body: &[Stmt], ind: usize) -> String {
     let pad = "    ".repeat(ind);
     // `for _ in forever()` → an infinite loop
-    if let Expr::Call { callee, .. } = iter {
-        if matches!(&**callee, Expr::Ident(n) if n == "forever") {
-            return format!("{pad}while (1) {{\n{}{pad}}}\n", cblock(body, false, ind + 1));
-        }
+    if let Expr::Call { callee, .. } = iter
+        && matches!(&**callee, Expr::Ident(n) if n == "forever")
+    {
+        return format!(
+            "{pad}while (1) {{\n{}{pad}}}\n",
+            cblock(body, false, ind + 1)
+        );
     }
     // otherwise treat the iterator as a count: `for i in N` → 0..N
     let v = match pat {
@@ -211,9 +255,15 @@ fn cfor(pat: &Pattern, iter: &Expr, body: &[Stmt], ind: usize) -> String {
 }
 
 fn cif(e: &Expr, ind: usize) -> String {
-    let Expr::If { cond, then, els } = e else { return String::new() };
+    let Expr::If { cond, then, els } = e else {
+        return String::new();
+    };
     let pad = "    ".repeat(ind);
-    let mut out = format!("{pad}if ({}) {{\n{}{pad}}}", cexpr(cond), cblock(then, false, ind + 1));
+    let mut out = format!(
+        "{pad}if ({}) {{\n{}{pad}}}",
+        cexpr(cond),
+        cblock(then, false, ind + 1)
+    );
     if let Some(els) = els {
         out.push_str(&format!(" else {{\n{}{pad}}}", cblock(els, false, ind + 1)));
     }
@@ -234,10 +284,21 @@ fn cexpr(e: &Expr) -> String {
         }
         Expr::Binary { op, lhs, rhs } => {
             let o = match op {
-                BinOp::Add => "+", BinOp::Sub => "-", BinOp::Mul => "*", BinOp::Div => "/",
-                BinOp::Mod => "%", BinOp::Shl => "<<", BinOp::Shr => ">>",
-                BinOp::Eq => "==", BinOp::Ne => "!=", BinOp::Lt => "<", BinOp::Gt => ">",
-                BinOp::Le => "<=", BinOp::Ge => ">=", BinOp::And => "&&", BinOp::Or => "||",
+                BinOp::Add => "+",
+                BinOp::Sub => "-",
+                BinOp::Mul => "*",
+                BinOp::Div => "/",
+                BinOp::Mod => "%",
+                BinOp::Shl => "<<",
+                BinOp::Shr => ">>",
+                BinOp::Eq => "==",
+                BinOp::Ne => "!=",
+                BinOp::Lt => "<",
+                BinOp::Gt => ">",
+                BinOp::Le => "<=",
+                BinOp::Ge => ">=",
+                BinOp::And => "&&",
+                BinOp::Or => "||",
                 BinOp::Union => "|", // surface `|` as bit-or in embedded
                 _ => "+",
             };
@@ -278,7 +339,10 @@ fn ccall(callee: &Expr, args: &[Arg]) -> String {
 }
 
 fn is_pure(e: &Expr) -> bool {
-    matches!(e, Expr::Int(_) | Expr::Bool(_) | Expr::Ident(_) | Expr::Unit)
+    matches!(
+        e,
+        Expr::Int(_) | Expr::Bool(_) | Expr::Ident(_) | Expr::Unit
+    )
 }
 
 fn arg_expr(a: &Arg) -> Expr {
@@ -299,7 +363,9 @@ mod tests {
 
     #[test]
     fn mmio_and_forever() {
-        let j = c("blink() {\n    for _ in forever() {\n        set_bits(0x48000014, bit(5))\n        delay(1000)\n    }\n}\n\nmain() {\n    blink()\n}\n");
+        let j = c(
+            "blink() {\n    for _ in forever() {\n        set_bits(0x48000014, bit(5))\n        delay(1000)\n    }\n}\n\nmain() {\n    blink()\n}\n",
+        );
         assert!(j.contains("while (1)"), "{j}");
         assert!(j.contains("volatile uint32_t *"), "{j}");
         assert!(j.contains("|= (uint32_t)((1u << (5u)))"), "{j}");
@@ -310,7 +376,9 @@ mod tests {
 
     #[test]
     fn mmio_write_and_read() {
-        let j = c("cfg(a: int, v: int) => mmio_write(a, v)\nget(a: int) -> int => mmio_read(a)\nmain() => cfg(0x40020000, 1)\n");
+        let j = c(
+            "cfg(a: int, v: int) => mmio_write(a, v)\nget(a: int) -> int => mmio_read(a)\nmain() => cfg(0x40020000, 1)\n",
+        );
         assert!(j.contains("void cfg(uint32_t a, uint32_t v)"), "{j}");
         assert!(j.contains("uint32_t get(uint32_t a)"), "{j}");
         assert!(j.contains("= (uint32_t)(v))"), "{j}");
@@ -318,7 +386,10 @@ mod tests {
 
     #[test]
     fn mcu_resolves() {
-        assert_eq!(Mcu::resolve("cortex-m4").unwrap().triple, "thumbv7em-none-eabi");
+        assert_eq!(
+            Mcu::resolve("cortex-m4").unwrap().triple,
+            "thumbv7em-none-eabi"
+        );
         assert_eq!(Mcu::resolve("").unwrap().cpu, "cortex-m4");
         assert!(Mcu::resolve("cortex-m0").unwrap().triple.contains("v6m"));
         assert!(Mcu::resolve("nonsense").is_none());

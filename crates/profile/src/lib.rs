@@ -47,7 +47,11 @@ pub fn parse_callgrind(text: &str) -> (HashMap<String, FnCost>, u64) {
         {
             // cost line: "<pos> <Ir> …". Position may be absolute (`1346`),
             // same (`*`), or relative (`+99` / `-13`); the Ir is the next token.
-            let ir = line.split_whitespace().nth(1).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+            let ir = line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0);
             if let Some(callee) = pending_callee.take() {
                 *fns.get_mut(f).unwrap().calls.entry(callee).or_default() += ir;
             } else {
@@ -63,16 +67,16 @@ pub fn parse_callgrind(text: &str) -> (HashMap<String, FnCost>, u64) {
 /// the compression table, recording new `id -> name` mappings.
 fn resolve_name(spec: &str, names: &mut HashMap<String, String>) -> String {
     let spec = spec.trim();
-    if let Some(rest) = spec.strip_prefix('(') {
-        if let Some((id, name)) = rest.split_once(')') {
-            let id = id.trim().to_string();
-            let name = name.trim();
-            if name.is_empty() {
-                return names.get(&id).cloned().unwrap_or_default();
-            }
-            names.insert(id, name.to_string());
-            return name.to_string();
+    if let Some(rest) = spec.strip_prefix('(')
+        && let Some((id, name)) = rest.split_once(')')
+    {
+        let id = id.trim().to_string();
+        let name = name.trim();
+        if name.is_empty() {
+            return names.get(&id).cloned().unwrap_or_default();
         }
+        names.insert(id, name.to_string());
+        return name.to_string();
     }
     spec.to_string()
 }
@@ -92,7 +96,14 @@ pub fn inclusive(name: &str, fns: &HashMap<String, FnCost>) -> u64 {
     fc.self_cost + fc.calls.values().sum::<u64>()
 }
 
-fn build(name: &str, value: u64, depth: usize, x: u64, fns: &HashMap<String, FnCost>, path: &mut Vec<String>) -> Frame {
+fn build(
+    name: &str,
+    value: u64,
+    depth: usize,
+    x: u64,
+    fns: &HashMap<String, FnCost>,
+    path: &mut Vec<String>,
+) -> Frame {
     let mut children = Vec::new();
     if depth < 40 {
         path.push(name.to_string());
@@ -121,7 +132,13 @@ fn build(name: &str, value: u64, depth: usize, x: u64, fns: &HashMap<String, FnC
         }
         path.pop();
     }
-    Frame { name: name.to_string(), value, depth, x, children }
+    Frame {
+        name: name.to_string(),
+        value,
+        depth,
+        x,
+        children,
+    }
 }
 
 fn flatten<'a>(f: &'a Frame, out: &mut Vec<&'a Frame>) {
@@ -144,7 +161,10 @@ pub fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String 
     let root_name = if fns.contains_key("main") {
         "main".to_string()
     } else {
-        fns.iter().max_by_key(|(_, c)| c.self_cost).map(|(n, _)| n.clone()).unwrap_or_default()
+        fns.iter()
+            .max_by_key(|(_, c)| c.self_cost)
+            .map(|(n, _)| n.clone())
+            .unwrap_or_default()
     };
     let root_val = inclusive(&root_name, fns).max(1);
     let root = build(&root_name, root_val, 0, 0, fns, &mut Vec::new());
@@ -216,7 +236,10 @@ pub fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String 
             xml_escape(&f.name),
             f.value,
             pct,
-            x, y, w, fh,
+            x,
+            y,
+            w,
+            fh,
             frame_fill(i),
         ));
     }
@@ -234,7 +257,10 @@ pub fn flamegraph_html_from(fns: &HashMap<String, FnCost>, unit: &str) -> String
     let root_name = if fns.contains_key("main") {
         "main".to_string()
     } else {
-        fns.iter().max_by_key(|(_, c)| c.self_cost).map(|(n, _)| n.clone()).unwrap_or_default()
+        fns.iter()
+            .max_by_key(|(_, c)| c.self_cost)
+            .map(|(n, _)| n.clone())
+            .unwrap_or_default()
     };
     let root_val = inclusive(&root_name, fns).max(1);
     let root = build(&root_name, root_val, 0, 0, fns, &mut Vec::new());
@@ -321,7 +347,9 @@ fn elide(s: &str, max: usize) -> String {
 }
 
 fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// Like [`xml_escape`] but also escapes `"` — safe for both element text and
@@ -340,7 +368,12 @@ pub fn text_profile(cg_text: &str) -> String {
         if *ir == 0 {
             continue;
         }
-        out.push_str(&format!("  {:5.1}  {:>9}  {}\n", *ir as f64 / total as f64 * 100.0, ir, name));
+        out.push_str(&format!(
+            "  {:5.1}  {:>9}  {}\n",
+            *ir as f64 / total as f64 * 100.0,
+            ir,
+            name
+        ));
     }
     out
 }
@@ -383,8 +416,20 @@ fn=(2) fib
     #[test]
     fn flamegraph_from_costs_uses_unit_label() {
         let mut fns = HashMap::new();
-        fns.insert("main".to_string(), FnCost { self_cost: 5, calls: HashMap::from([("fib".to_string(), 100)]) });
-        fns.insert("fib".to_string(), FnCost { self_cost: 100, calls: HashMap::new() });
+        fns.insert(
+            "main".to_string(),
+            FnCost {
+                self_cost: 5,
+                calls: HashMap::from([("fib".to_string(), 100)]),
+            },
+        );
+        fns.insert(
+            "fib".to_string(),
+            FnCost {
+                self_cost: 100,
+                calls: HashMap::new(),
+            },
+        );
         let svg = flamegraph_svg_from(&fns, "steps");
         assert!(svg.contains("flame graph"), "{svg}");
         assert!(svg.contains("steps"), "unit label missing: {svg}");
@@ -394,16 +439,37 @@ fn=(2) fib
     #[test]
     fn flamegraph_html_fills_width_no_fixed_size() {
         let mut fns = HashMap::new();
-        fns.insert("main".to_string(), FnCost { self_cost: 5, calls: HashMap::from([("fib".to_string(), 100)]) });
-        fns.insert("fib".to_string(), FnCost { self_cost: 100, calls: HashMap::new() });
+        fns.insert(
+            "main".to_string(),
+            FnCost {
+                self_cost: 5,
+                calls: HashMap::from([("fib".to_string(), 100)]),
+            },
+        );
+        fns.insert(
+            "fib".to_string(),
+            FnCost {
+                self_cost: 100,
+                calls: HashMap::new(),
+            },
+        );
         let html = flamegraph_html_from(&fns, "steps");
         assert!(html.starts_with("<div"), "{html}");
-        assert!(html.contains("flame graph") && html.contains("steps"), "{html}");
+        assert!(
+            html.contains("flame graph") && html.contains("steps"),
+            "{html}"
+        );
         assert!(html.contains("main") && html.contains("fib"));
         // percentage widths (fills the container — no fixed intrinsic width, so
         // no horizontal scroll) and no <svg>.
-        assert!(html.contains("width:100%"), "container not full-width: {html}");
-        assert!(html.contains('%'), "frames should use percentage widths: {html}");
+        assert!(
+            html.contains("width:100%"),
+            "container not full-width: {html}"
+        );
+        assert!(
+            html.contains('%'),
+            "frames should use percentage widths: {html}"
+        );
         assert!(!html.contains("<svg"), "should be HTML, not SVG: {html}");
     }
 }

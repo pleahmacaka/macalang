@@ -35,7 +35,12 @@ pub fn emit_flake(m: &Module) -> String {
     for item in &m.items {
         let Stmt::Bind(b) = item else { continue };
         let path = path_of(&b.target);
-        match path.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+        match path
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .as_slice()
+        {
             ["dev", "name"] => {
                 if let Expr::Str(parts) = &b.value {
                     name = plain_text(parts);
@@ -112,7 +117,12 @@ pub fn emit_windows_dev(m: &Module) -> Option<WindowsDev> {
 
     for item in &m.items {
         let Stmt::Bind(b) = item else { continue };
-        match path_of(&b.target).iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+        match path_of(&b.target)
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .as_slice()
+        {
             ["dev", "name"] => {
                 if let Expr::Str(p) = &b.value {
                     name = plain_text(p);
@@ -203,9 +213,15 @@ pub fn emit_windows_dev(m: &Module) -> Option<WindowsDev> {
              if ($jdk) { $env:JAVA_HOME = Join-Path $jdk.FullName \"current\"; $env:PATH = \"$env:JAVA_HOME\\bin;$env:PATH\" }\n",
         );
     }
-    a.push_str(&format!("Write-Host \"maca dev — {name} (native, .maca\\dev)\"\n"));
+    a.push_str(&format!(
+        "Write-Host \"maca dev — {name} (native, .maca\\dev)\"\n"
+    ));
 
-    Some(WindowsDev { setup: s, activate: a, managers })
+    Some(WindowsDev {
+        setup: s,
+        activate: a,
+        managers,
+    })
 }
 
 /// Bare package names from a `pkg, pkg, …` list (idents or strings); a dotted
@@ -234,7 +250,10 @@ fn env_pairs(fields: &[Field]) -> Vec<(String, String)> {
     fields
         .iter()
         .filter_map(|f| match f {
-            Field::Value { name, value: Expr::Str(p) } => Some((name.clone(), plain_text(p))),
+            Field::Value {
+                name,
+                value: Expr::Str(p),
+            } => Some((name.clone(), plain_text(p))),
             _ => None,
         })
         .collect()
@@ -282,23 +301,29 @@ fn emit_bind(b: &Bind, top: &mut Vec<String>, hm: &mut Vec<String>) {
 
     // `name: Program : pkg = { .. }` — a typed program merge
     if !b.tys.is_empty() && p.len() == 1 {
-        hm.push(format!("programs.{} = {};", p[0], record_with_enable(&b.value)));
+        hm.push(format!(
+            "programs.{} = {};",
+            p[0],
+            record_with_enable(&b.value)
+        ));
         return;
     }
 
     match p.as_slice() {
-        ["system", "packages"] => {
-            top.push(format!("environment.systemPackages = {};", pkg_list(&b.value)))
-        }
+        ["system", "packages"] => top.push(format!(
+            "environment.systemPackages = {};",
+            pkg_list(&b.value)
+        )),
         ["system", "fonts"] => {
             // smart value: fonts hoist to fonts.packages
             top.push(format!("fonts.packages = {};", pkg_list(&b.value)))
         }
         ["user", "packages"] => hm.push(format!("home.packages = {};", pkg_list(&b.value))),
         ["user", "home", "dirs"] => hm.push(xdg_user_dirs(&b.value)),
-        ["services", svc] => {
-            top.push(format!("services.{svc} = {};", record_with_enable(&b.value)))
-        }
+        ["services", svc] => top.push(format!(
+            "services.{svc} = {};",
+            record_with_enable(&b.value)
+        )),
         _ => {
             // generic: networking.hostName, system.stateVersion, …
             top.push(format!("{} = {};", path.join("."), value(&b.value)));

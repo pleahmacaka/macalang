@@ -51,7 +51,13 @@ pub fn parse_spec(spec: &str) -> Result<(String, Source), String> {
         let (pkg, req) = split_version(rest);
         // a scoped package keeps its `@scope/` — the bare name is the last segment
         let name = pkg.rsplit('/').next().unwrap_or(pkg).to_string();
-        return Ok((name, Source::Npm { pkg: pkg.to_string(), req }));
+        return Ok((
+            name,
+            Source::Npm {
+                pkg: pkg.to_string(),
+                req,
+            },
+        ));
     }
     if let Some(rest) = spec.strip_prefix("git+") {
         let (url, reff) = match rest.split_once('#') {
@@ -61,16 +67,22 @@ pub fn parse_spec(spec: &str) -> Result<(String, Source), String> {
         return Ok((git_name(&url), Source::Git { url, reff }));
     }
     let (name, req) = split_version(spec);
-    Ok((name.to_string(), Source::Registry { name: name.to_string(), req }))
+    Ok((
+        name.to_string(),
+        Source::Registry {
+            name: name.to_string(),
+            req,
+        },
+    ))
 }
 
 /// Split `name[@version]`, honouring a leading `@scope`. Missing version →
 /// `latest`.
 fn split_version(s: &str) -> (&str, String) {
-    if let Some(idx) = s.rfind('@') {
-        if idx > 0 {
-            return (&s[..idx], s[idx + 1..].to_string());
-        }
+    if let Some(idx) = s.rfind('@')
+        && idx > 0
+    {
+        return (&s[..idx], s[idx + 1..].to_string());
     }
     (s, "latest".to_string())
 }
@@ -104,7 +116,9 @@ fn registry_url() -> String {
 pub fn cmd_add(args: &[String]) {
     let specs: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
     if specs.is_empty() {
-        eprintln!("usage: maca add <spec>…\n  e.g. maca add npm:axios\n       maca add git+https://github.com/u/lib#main\n       maca add utils@^1.2.0");
+        eprintln!(
+            "usage: maca add <spec>…\n  e.g. maca add npm:axios\n       maca add git+https://github.com/u/lib#main\n       maca add utils@^1.2.0"
+        );
         std::process::exit(2);
     }
     ensure_manifest();
@@ -165,11 +179,15 @@ pub fn cmd_update(_args: &[String]) {
 /// `maca upgrade` — self-update the `maca` toolchain from GitHub releases.
 pub fn cmd_upgrade(_args: &[String]) {
     let cur = env!("CARGO_PKG_VERSION");
-    let body = match http_get("https://api.github.com/repos/".to_string() + REPO + "/releases/latest") {
+    let body = match http_get(
+        "https://api.github.com/repos/".to_string() + REPO + "/releases/latest",
+    ) {
         Ok(b) => b,
         Err(e) => {
             eprintln!("maca upgrade: cannot reach GitHub releases: {e}");
-            eprintln!("  install manually: curl -fsSL https://raw.githubusercontent.com/{REPO}/main/install.sh | bash");
+            eprintln!(
+                "  install manually: curl -fsSL https://raw.githubusercontent.com/{REPO}/main/install.sh | bash"
+            );
             std::process::exit(1);
         }
     };
@@ -177,7 +195,9 @@ pub fn cmd_upgrade(_args: &[String]) {
     let tag = json.get("tag_name").and_then(|v| v.as_str()).unwrap_or("");
     if tag.is_empty() {
         eprintln!("maca upgrade: no published release yet");
-        eprintln!("  install from source: curl -fsSL https://raw.githubusercontent.com/{REPO}/main/install.sh | bash");
+        eprintln!(
+            "  install from source: curl -fsSL https://raw.githubusercontent.com/{REPO}/main/install.sh | bash"
+        );
         std::process::exit(1);
     }
     let want = tag.trim_start_matches('v');
@@ -191,13 +211,19 @@ pub fn cmd_upgrade(_args: &[String]) {
         .and_then(|a| a.as_array())
         .and_then(|arr| {
             arr.iter().find(|x| {
-                x.get("name").and_then(|n| n.as_str()).map(|n| n.starts_with(&asset)).unwrap_or(false)
+                x.get("name")
+                    .and_then(|n| n.as_str())
+                    .map(|n| n.starts_with(&asset))
+                    .unwrap_or(false)
             })
         })
         .and_then(|x| x.get("browser_download_url"))
         .and_then(|u| u.as_str());
     let Some(url) = url else {
-        eprintln!("maca upgrade: release {tag} has no asset for {} — build from source:", target_triple());
+        eprintln!(
+            "maca upgrade: release {tag} has no asset for {} — build from source:",
+            target_triple()
+        );
         eprintln!("  curl -fsSL https://raw.githubusercontent.com/{REPO}/main/install.sh | bash");
         std::process::exit(1);
     };
@@ -247,7 +273,10 @@ fn resolve_registry(base: &str, pkg: &str, req: &str) -> Result<Resolved, String
     let body = http_get(url).map_err(|e| format!("registry fetch failed: {e}"))?;
     let doc: serde_json::Value =
         serde_json::from_str(&body).map_err(|e| format!("bad registry JSON: {e}"))?;
-    let versions = doc.get("versions").and_then(|v| v.as_object()).ok_or("no `versions` in package document")?;
+    let versions = doc
+        .get("versions")
+        .and_then(|v| v.as_object())
+        .ok_or("no `versions` in package document")?;
     let best = versions
         .keys()
         .filter(|v| semver_satisfies(v, req))
@@ -257,9 +286,18 @@ fn resolve_registry(base: &str, pkg: &str, req: &str) -> Result<Resolved, String
 }
 
 fn resolved_from_manifest(v: &serde_json::Value) -> Result<Resolved, String> {
-    let version = v.get("version").and_then(|x| x.as_str()).ok_or("no `version` in manifest")?;
-    let tarball = v.get("dist").and_then(|d| d.get("tarball")).and_then(|t| t.as_str());
-    let integrity = v.get("dist").and_then(|d| d.get("integrity")).and_then(|t| t.as_str());
+    let version = v
+        .get("version")
+        .and_then(|x| x.as_str())
+        .ok_or("no `version` in manifest")?;
+    let tarball = v
+        .get("dist")
+        .and_then(|d| d.get("tarball"))
+        .and_then(|t| t.as_str());
+    let integrity = v
+        .get("dist")
+        .and_then(|d| d.get("integrity"))
+        .and_then(|t| t.as_str());
     Ok(Resolved {
         version: version.to_string(),
         tarball: tarball.map(str::to_string),
@@ -284,14 +322,18 @@ fn parse_semver(s: &str) -> Option<(u64, u64, u64)> {
 }
 
 fn cmp_semver(a: &str, b: &str) -> std::cmp::Ordering {
-    parse_semver(a).unwrap_or((0, 0, 0)).cmp(&parse_semver(b).unwrap_or((0, 0, 0)))
+    parse_semver(a)
+        .unwrap_or((0, 0, 0))
+        .cmp(&parse_semver(b).unwrap_or((0, 0, 0)))
 }
 
 /// Does version `ver` satisfy the semver range `range`? Supports `||` (or),
 /// space-separated comparators (and), `^`, `~`, `>=`/`>`/`<=`/`<`/`=`, exact
 /// versions, and `x`/`*` wildcards (`1.x`, `1.2.*`).
 fn semver_satisfies(ver: &str, range: &str) -> bool {
-    let Some(v) = parse_semver(ver) else { return false };
+    let Some(v) = parse_semver(ver) else {
+        return false;
+    };
     range.split("||").any(|clause| {
         let clause = clause.trim();
         clause.is_empty()
@@ -302,23 +344,23 @@ fn semver_satisfies(ver: &str, range: &str) -> bool {
 
 fn comparator_matches(v: (u64, u64, u64), c: &str) -> bool {
     let c = c.trim();
-    if let Some(rest) = c.strip_prefix("^") {
-        if let Some(lo) = parse_semver(rest) {
-            let hi = if lo.0 > 0 {
-                (lo.0 + 1, 0, 0)
-            } else if lo.1 > 0 {
-                (0, lo.1 + 1, 0)
-            } else {
-                (0, 0, lo.2 + 1)
-            };
-            return v >= lo && v < hi;
-        }
+    if let Some(rest) = c.strip_prefix("^")
+        && let Some(lo) = parse_semver(rest)
+    {
+        let hi = if lo.0 > 0 {
+            (lo.0 + 1, 0, 0)
+        } else if lo.1 > 0 {
+            (0, lo.1 + 1, 0)
+        } else {
+            (0, 0, lo.2 + 1)
+        };
+        return v >= lo && v < hi;
     }
-    if let Some(rest) = c.strip_prefix("~") {
-        if let Some(lo) = parse_semver(rest) {
-            let hi = (lo.0, lo.1 + 1, 0);
-            return v >= lo && v < hi;
-        }
+    if let Some(rest) = c.strip_prefix("~")
+        && let Some(lo) = parse_semver(rest)
+    {
+        let hi = (lo.0, lo.1 + 1, 0);
+        return v >= lo && v < hi;
     }
     for (op, len) in [(">=", 2), ("<=", 2), (">", 1), ("<", 1), ("=", 1)] {
         if let Some(rest) = c.strip_prefix(op) {
@@ -376,7 +418,13 @@ fn download_tgz(url: &str, dir: &Path) -> Result<(), String> {
     run("curl", &["-fsSL", "-o", &tmp.to_string_lossy(), url])?;
     run(
         "tar",
-        &["-xzf", &tmp.to_string_lossy(), "-C", &dir.to_string_lossy(), "--strip-components=1"],
+        &[
+            "-xzf",
+            &tmp.to_string_lossy(),
+            "-C",
+            &dir.to_string_lossy(),
+            "--strip-components=1",
+        ],
     )?;
     let _ = std::fs::remove_file(&tmp);
     Ok(())
@@ -385,7 +433,10 @@ fn download_tgz(url: &str, dir: &Path) -> Result<(), String> {
 fn git_fetch_into(url: &str, sha: Option<&str>, dir: &Path) -> Result<(), String> {
     run("git", &["clone", "--quiet", url, &dir.to_string_lossy()])?;
     if let Some(sha) = sha {
-        run("git", &["-C", &dir.to_string_lossy(), "checkout", "--quiet", sha])?;
+        run(
+            "git",
+            &["-C", &dir.to_string_lossy(), "checkout", "--quiet", sha],
+        )?;
     }
     let _ = std::fs::remove_dir_all(dir.join(".git"));
     Ok(())
@@ -397,7 +448,10 @@ fn git_ls_remote(url: &str, reff: Option<&str>) -> Result<String, String> {
         .output()
         .map_err(|e| format!("git: {e}"))?;
     if !out.status.success() {
-        return Err(format!("git ls-remote failed: {}", String::from_utf8_lossy(&out.stderr).trim()));
+        return Err(format!(
+            "git ls-remote failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
     }
     String::from_utf8_lossy(&out.stdout)
         .lines()
@@ -450,7 +504,9 @@ fn ensure_manifest() {
 
 /// Read `[dependencies]` as `(name, spec)` pairs.
 pub fn manifest_deps() -> Vec<(String, String)> {
-    let Ok(toml) = std::fs::read_to_string(MANIFEST) else { return Vec::new() };
+    let Ok(toml) = std::fs::read_to_string(MANIFEST) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     let mut in_deps = false;
     for line in toml.lines() {
@@ -459,13 +515,11 @@ pub fn manifest_deps() -> Vec<(String, String)> {
             in_deps = t == "[dependencies]";
             continue;
         }
-        if in_deps {
-            if let Some((k, v)) = t.split_once('=') {
-                let k = k.trim();
-                let v = v.trim().trim_matches('"');
-                if !k.is_empty() && !v.is_empty() {
-                    out.push((k.to_string(), v.to_string()));
-                }
+        if in_deps && let Some((k, v)) = t.split_once('=') {
+            let k = k.trim();
+            let v = v.trim().trim_matches('"');
+            if !k.is_empty() && !v.is_empty() {
+                out.push((k.to_string(), v.to_string()));
             }
         }
     }
@@ -490,8 +544,9 @@ fn manifest_put(name: &str, spec: &str) -> Result<(), String> {
                 .unwrap_or(lines.len());
             // replace an existing `name = …` in the section, else insert
             let key = format!("{name} =");
-            if let Some(i) =
-                lines[start + 1..end].iter().position(|l| l.trim().starts_with(&key))
+            if let Some(i) = lines[start + 1..end]
+                .iter()
+                .position(|l| l.trim().starts_with(&key))
             {
                 lines[start + 1 + i] = line;
             } else {
@@ -522,12 +577,11 @@ fn read_toml_value(section: &str, key: &str) -> Option<String> {
             in_sec = t == header;
             continue;
         }
-        if in_sec {
-            if let Some((k, v)) = t.split_once('=') {
-                if k.trim() == key {
-                    return Some(v.trim().trim_matches('"').to_string());
-                }
-            }
+        if in_sec
+            && let Some((k, v)) = t.split_once('=')
+            && k.trim() == key
+        {
+            return Some(v.trim().trim_matches('"').to_string());
         }
     }
     None
@@ -561,7 +615,8 @@ fn lock_put(name: &str, spec: &str, src: &Source, r: &Resolved) -> Result<(), St
     entries.push((name.to_string(), block));
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let mut out = String::from("# maca.lock — generated by `maca add`/`maca update`; do not edit.\n");
+    let mut out =
+        String::from("# maca.lock — generated by `maca add`/`maca update`; do not edit.\n");
     for (_, block) in &entries {
         out.push_str("\n[[package]]\n");
         out.push_str(block);
@@ -571,7 +626,9 @@ fn lock_put(name: &str, spec: &str, src: &Source, r: &Resolved) -> Result<(), St
 
 /// Parse `maca.lock` into `(name, raw-block)` entries.
 fn read_lock() -> Vec<(String, String)> {
-    let Ok(text) = std::fs::read_to_string(LOCK_FILE) else { return Vec::new() };
+    let Ok(text) = std::fs::read_to_string(LOCK_FILE) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     let mut cur = String::new();
     let mut name = String::new();
@@ -615,9 +672,15 @@ fn http_get(url: impl AsRef<str>) -> Result<String, String> {
 }
 
 fn run(cmd: &str, args: &[&str]) -> Result<(), String> {
-    let out = Command::new(cmd).args(args).output().map_err(|e| format!("{cmd}: {e}"))?;
+    let out = Command::new(cmd)
+        .args(args)
+        .output()
+        .map_err(|e| format!("{cmd}: {e}"))?;
     if !out.status.success() {
-        return Err(format!("{cmd} failed: {}", String::from_utf8_lossy(&out.stderr).trim()));
+        return Err(format!(
+            "{cmd} failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
     }
     Ok(())
 }
@@ -664,7 +727,10 @@ mod tests {
     #[test]
     fn semver_picks_the_highest() {
         let vers = ["1.0.0", "1.2.0", "1.4.9", "2.0.0"];
-        let best = vers.iter().filter(|v| semver_satisfies(v, "^1.1")).max_by(|a, b| cmp_semver(a, b));
+        let best = vers
+            .iter()
+            .filter(|v| semver_satisfies(v, "^1.1"))
+            .max_by(|a, b| cmp_semver(a, b));
         assert_eq!(best, Some(&"1.4.9"));
     }
 
@@ -672,16 +738,34 @@ mod tests {
     fn parse_npm_specs() {
         assert_eq!(
             parse_spec("npm:axios").unwrap(),
-            ("axios".into(), Source::Npm { pkg: "axios".into(), req: "latest".into() })
+            (
+                "axios".into(),
+                Source::Npm {
+                    pkg: "axios".into(),
+                    req: "latest".into()
+                }
+            )
         );
         assert_eq!(
             parse_spec("npm:axios@1.6.0").unwrap(),
-            ("axios".into(), Source::Npm { pkg: "axios".into(), req: "1.6.0".into() })
+            (
+                "axios".into(),
+                Source::Npm {
+                    pkg: "axios".into(),
+                    req: "1.6.0".into()
+                }
+            )
         );
         // scoped package: name is the last segment, req split off the trailing @
         assert_eq!(
             parse_spec("npm:@scope/pkg@2.0.0").unwrap(),
-            ("pkg".into(), Source::Npm { pkg: "@scope/pkg".into(), req: "2.0.0".into() })
+            (
+                "pkg".into(),
+                Source::Npm {
+                    pkg: "@scope/pkg".into(),
+                    req: "2.0.0".into()
+                }
+            )
         );
     }
 
@@ -689,13 +773,22 @@ mod tests {
     fn parse_git_specs() {
         assert_eq!(
             parse_spec("git+https://github.com/u/lib.git").unwrap(),
-            ("lib".into(), Source::Git { url: "https://github.com/u/lib.git".into(), reff: None })
+            (
+                "lib".into(),
+                Source::Git {
+                    url: "https://github.com/u/lib.git".into(),
+                    reff: None
+                }
+            )
         );
         assert_eq!(
             parse_spec("git+https://github.com/u/lib#main").unwrap(),
             (
                 "lib".into(),
-                Source::Git { url: "https://github.com/u/lib".into(), reff: Some("main".into()) }
+                Source::Git {
+                    url: "https://github.com/u/lib".into(),
+                    reff: Some("main".into())
+                }
             )
         );
     }
@@ -704,11 +797,23 @@ mod tests {
     fn parse_registry_specs() {
         assert_eq!(
             parse_spec("utils").unwrap(),
-            ("utils".into(), Source::Registry { name: "utils".into(), req: "latest".into() })
+            (
+                "utils".into(),
+                Source::Registry {
+                    name: "utils".into(),
+                    req: "latest".into()
+                }
+            )
         );
         assert_eq!(
             parse_spec("utils@^1.2.0").unwrap(),
-            ("utils".into(), Source::Registry { name: "utils".into(), req: "^1.2.0".into() })
+            (
+                "utils".into(),
+                Source::Registry {
+                    name: "utils".into(),
+                    req: "^1.2.0".into()
+                }
+            )
         );
     }
 

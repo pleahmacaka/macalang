@@ -9,7 +9,11 @@ fn maca() -> &'static str {
 }
 
 fn have_clang() -> bool {
-    Command::new("clang").arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
+    Command::new("clang")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 #[test]
@@ -29,7 +33,11 @@ fn blink_builds_a_cortex_m_image() {
         .arg(&out)
         .output()
         .expect("spawn maca");
-    assert!(build.status.success(), "build failed: {}", String::from_utf8_lossy(&build.stderr));
+    assert!(
+        build.status.success(),
+        "build failed: {}",
+        String::from_utf8_lossy(&build.stderr)
+    );
 
     let elf = out.join("firmware.elf");
     let bin = out.join("firmware.bin");
@@ -48,9 +56,16 @@ fn blink_builds_a_cortex_m_image() {
     let sp = u32::from_le_bytes([img[0], img[1], img[2], img[3]]);
     let reset = u32::from_le_bytes([img[4], img[5], img[6], img[7]]);
     // RAM origin 0x20000000 + 128K
-    assert_eq!(sp, 0x2002_0000, "initial SP should be top of RAM, got {sp:#010x}");
+    assert_eq!(
+        sp, 0x2002_0000,
+        "initial SP should be top of RAM, got {sp:#010x}"
+    );
     assert_eq!(reset & 1, 1, "reset vector must have the Thumb bit set");
-    assert_eq!(reset >> 24, 0x08, "reset vector should point into flash (0x08…)");
+    assert_eq!(
+        reset >> 24,
+        0x08,
+        "reset vector should point into flash (0x08…)"
+    );
 }
 
 #[test]
@@ -75,6 +90,9 @@ fn mmio_lowers_to_read_modify_write() {
     let c = std::fs::read_to_string(out.join("firmware.c")).unwrap();
     // set_bits(odr, bit(12)) → volatile |= (1 << 12)
     assert!(c.contains("volatile uint32_t"), "no MMIO in emitted C");
-    assert!(c.contains("|= (uint32_t)((1u << (12u)))"), "set_bits not lowered:\n{c}");
+    assert!(
+        c.contains("|= (uint32_t)((1u << (12u)))"),
+        "set_bits not lowered:\n{c}"
+    );
     assert!(c.contains("Reset_Handler"), "no reset handler");
 }

@@ -19,7 +19,10 @@ fn config_option_completion() {
 #[test]
 fn diagnostics_surface() {
     let bad = diagnostics("bad() -> int => \"x\"\n", false);
-    assert!(bad.iter().any(|d| d.contains("TypeMismatch")), "diag: {bad:?}");
+    assert!(
+        bad.iter().any(|d| d.contains("TypeMismatch")),
+        "diag: {bad:?}"
+    );
     let good = diagnostics("main() -> int {\n    0\n}\n", false);
     assert!(good.is_empty(), "good: {good:?}");
 }
@@ -36,7 +39,9 @@ fn position_to_offset_maps_line_col() {
 
 #[test]
 fn is_config_source_detects_nix_mode() {
-    assert!(maca_lsp::is_config_source("import nixpkgs\nsystem.stateVersion = \"24.11\"\n"));
+    assert!(maca_lsp::is_config_source(
+        "import nixpkgs\nsystem.stateVersion = \"24.11\"\n"
+    ));
     assert!(maca_lsp::is_config_source("dev.name = \"x\"\n"));
     assert!(!maca_lsp::is_config_source("main() -> int { 0 }\n"));
 }
@@ -45,8 +50,14 @@ fn is_config_source_detects_nix_mode() {
 fn program_completions_offers_user_functions() {
     let src = "helper() -> int => 1\nhelium() -> int => 2\nmain() -> int => 0\n";
     let got = maca_lsp::program_completions(src, "hel");
-    assert!(got.contains(&"helper".to_string()) && got.contains(&"helium".to_string()), "{got:?}");
-    assert!(!got.contains(&"main".to_string()), "prefix filter failed: {got:?}");
+    assert!(
+        got.contains(&"helper".to_string()) && got.contains(&"helium".to_string()),
+        "{got:?}"
+    );
+    assert!(
+        !got.contains(&"main".to_string()),
+        "prefix filter failed: {got:?}"
+    );
 }
 
 #[test]
@@ -77,6 +88,9 @@ fn position_to_offset_maps_utf16_columns() {
     // the returned offset is always a valid char boundary (never mid-char)
     for col in 0..10 {
         let off = maca_lsp::position_to_offset(src, 0, col);
-        assert!(src.is_char_boundary(off), "col {col} -> non-boundary byte {off}");
+        assert!(
+            src.is_char_boundary(off),
+            "col {col} -> non-boundary byte {off}"
+        );
     }
 }

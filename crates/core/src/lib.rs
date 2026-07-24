@@ -17,7 +17,7 @@ mod ty;
 
 use maca_parser::ast::*;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use ty::{EffSet, Infer, Scheme, Ty, ASYNC, EXN, IO, NET, OS};
+use ty::{ASYNC, EXN, EffSet, IO, Infer, NET, OS, Scheme, Ty};
 
 pub use ty::show;
 
@@ -135,14 +135,20 @@ impl Checker {
     }
 
     fn diag(&mut self, kind: DiagKind, msg: impl Into<String>) {
-        self.diags.push(Diagnostic { kind, msg: msg.into() });
+        self.diags.push(Diagnostic {
+            kind,
+            msg: msg.into(),
+        });
     }
 
     // ---- pass 1: collect declarations ------------------------------------
 
     fn collect(&mut self, m: &Module) {
         for f in IO_FNS {
-            self.globals.insert((*f).into(), Scheme::mono(Ty::Fn(vec![Ty::Any], Box::new(Ty::Unit))));
+            self.globals.insert(
+                (*f).into(),
+                Scheme::mono(Ty::Fn(vec![Ty::Any], Box::new(Ty::Unit))),
+            );
         }
         for (n, t) in [
             ("int", Ty::Fn(vec![Ty::Any], Box::new(Ty::Int))),
@@ -167,7 +173,10 @@ impl Checker {
             ("abs", Ty::Fn(vec![Ty::Any], Box::new(Ty::Any))),
             ("min", Ty::Fn(vec![Ty::Any, Ty::Any], Box::new(Ty::Any))),
             ("max", Ty::Fn(vec![Ty::Any, Ty::Any], Box::new(Ty::Any))),
-            ("clamp", Ty::Fn(vec![Ty::Any, Ty::Any, Ty::Any], Box::new(Ty::Any))),
+            (
+                "clamp",
+                Ty::Fn(vec![Ty::Any, Ty::Any, Ty::Any], Box::new(Ty::Any)),
+            ),
             ("sign", Ty::Fn(vec![Ty::Any], Box::new(Ty::Int))),
             ("gcd", Ty::Fn(vec![Ty::Int, Ty::Int], Box::new(Ty::Int))),
         ] {
@@ -186,7 +195,8 @@ impl Checker {
                     self.globals.insert(f.name.clone(), scheme);
                     self.local_names.insert(f.name.clone());
                     let variadic = f.params.iter().any(|p| p.variadic);
-                    self.fn_arity.insert(f.name.clone(), (f.params.len(), variadic));
+                    self.fn_arity
+                        .insert(f.name.clone(), (f.params.len(), variadic));
                 }
                 Stmt::Bind(b) => {
                     if let Expr::Ident(name) = &b.target {
@@ -253,24 +263,38 @@ impl Checker {
         let params: Vec<Ty> = f
             .params
             .iter()
-            .map(|p| p.ty.as_ref().map_or(Ty::Any, |t| self.ast_ty_v(t, &mut vars)))
+            .map(|p| {
+                p.ty.as_ref()
+                    .map_or(Ty::Any, |t| self.ast_ty_v(t, &mut vars))
+            })
             .collect();
-        let ret = f.ret.as_ref().map_or(Ty::Any, |t| self.ast_ty_v(t, &mut vars));
-        let ids = vars.values().filter_map(|t| if let Ty::Var(i) = t { Some(*i) } else { None }).collect();
-        Scheme { vars: ids, ty: Ty::Fn(params, Box::new(ret)) }
+        let ret = f
+            .ret
+            .as_ref()
+            .map_or(Ty::Any, |t| self.ast_ty_v(t, &mut vars));
+        let ids = vars
+            .values()
+            .filter_map(|t| if let Ty::Var(i) = t { Some(*i) } else { None })
+            .collect();
+        Scheme {
+            vars: ids,
+            ty: Ty::Fn(params, Box::new(ret)),
+        }
     }
 
     /// Like [`ast_ty`] but maps type-variable names through `vars`, minting one
     /// fresh inference variable per distinct name.
     fn ast_ty_v(&mut self, t: &Type, vars: &mut HashMap<String, Ty>) -> Ty {
         match t {
-            Type::Name(segs) if segs.len() == 1 && ty::is_type_var_name(&segs[0]) => {
-                vars.entry(segs[0].clone()).or_insert_with(|| self.inf.fresh()).clone()
-            }
+            Type::Name(segs) if segs.len() == 1 && ty::is_type_var_name(&segs[0]) => vars
+                .entry(segs[0].clone())
+                .or_insert_with(|| self.inf.fresh())
+                .clone(),
             Type::Apply(h, args) => match &**h {
-                Type::Name(segs) => {
-                    Ty::Con(segs.join("."), args.iter().map(|a| self.ast_ty_v(a, vars)).collect())
-                }
+                Type::Name(segs) => Ty::Con(
+                    segs.join("."),
+                    args.iter().map(|a| self.ast_ty_v(a, vars)).collect(),
+                ),
                 _ => Ty::Any,
             },
             Type::Array(inner) => Ty::array(self.ast_ty_v(inner, vars)),
@@ -364,17 +388,26 @@ impl Checker {
         if !effs.is_empty() {
             self.diag(
                 DiagKind::EffectInConfig,
-                format!("config must be pure but this uses effect(s): {}", effs.names().join(", ")),
+                format!(
+                    "config must be pure but this uses effect(s): {}",
+                    effs.names().join(", ")
+                ),
             );
         }
     }
 
     fn check_option_root(&mut self, b: &Bind) {
-        let Expr::Field { .. } = &b.target else { return };
-        if let Some(r) = root_ident(&b.target) {
-            if !NIXOS_ROOTS.contains(&r.as_str()) && !self.local_names.contains(&r) {
-                self.diag(DiagKind::UnknownOption, format!("unknown NixOS option namespace `{r}`"));
-            }
+        let Expr::Field { .. } = &b.target else {
+            return;
+        };
+        if let Some(r) = root_ident(&b.target)
+            && !NIXOS_ROOTS.contains(&r.as_str())
+            && !self.local_names.contains(&r)
+        {
+            self.diag(
+                DiagKind::UnknownOption,
+                format!("unknown NixOS option namespace `{r}`"),
+            );
         }
     }
 
@@ -533,8 +566,11 @@ impl Checker {
                 }
                 Stmt::Expr(e) => last = self.infer(env, e),
                 Stmt::Fn(f) => {
-                    let params =
-                        f.params.iter().map(|p| p.ty.as_ref().map_or(Ty::Any, ast_ty)).collect();
+                    let params = f
+                        .params
+                        .iter()
+                        .map(|p| p.ty.as_ref().map_or(Ty::Any, ast_ty))
+                        .collect();
                     let ret = f.ret.as_ref().map_or(Ty::Any, ast_ty);
                     env.push((f.name.clone(), Ty::Fn(params, Box::new(ret))));
                     self.check_fn(f);
@@ -596,7 +632,10 @@ impl Checker {
                 {
                     self.diag(
                         DiagKind::TypeMismatch,
-                        format!("call to `{name}` expects {arity} argument(s), got {}", args.len()),
+                        format!(
+                            "call to `{name}` expects {arity} argument(s), got {}",
+                            args.len()
+                        ),
                     );
                 }
                 // Undefined direct call: a bare lowercase `foo(...)` that is
@@ -607,7 +646,10 @@ impl Checker {
                 // through a value stay gradual.)
                 if self.mode == Mode::Program
                     && let Expr::Ident(name) = &**callee
-                    && name.chars().next().is_some_and(|c| c.is_lowercase() || c == '_')
+                    && name
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_lowercase() || c == '_')
                     && lookup(env, name).is_none()
                     && !self.globals.contains_key(name)
                     && !maca_parser::is_backend_intrinsic(name)
@@ -658,10 +700,16 @@ impl Checker {
                 let lt = self.infer(env, lo);
                 let rt = self.infer(env, hi);
                 if let Err(e) = self.inf.unify(&lt, &Ty::Int) {
-                    self.diag(DiagKind::TypeMismatch, format!("range start must be `int`: {e}"));
+                    self.diag(
+                        DiagKind::TypeMismatch,
+                        format!("range start must be `int`: {e}"),
+                    );
                 }
                 if let Err(e) = self.inf.unify(&rt, &Ty::Int) {
-                    self.diag(DiagKind::TypeMismatch, format!("range end must be `int`: {e}"));
+                    self.diag(
+                        DiagKind::TypeMismatch,
+                        format!("range end must be `int`: {e}"),
+                    );
                 }
                 Ty::array(Ty::Int)
             }
@@ -677,7 +725,10 @@ impl Checker {
                 let tt = self.infer(env, then);
                 let et = self.infer(env, els);
                 if let Err(e) = self.inf.unify(&tt, &et) {
-                    self.diag(DiagKind::TypeMismatch, format!("ternary branches disagree: {e}"));
+                    self.diag(
+                        DiagKind::TypeMismatch,
+                        format!("ternary branches disagree: {e}"),
+                    );
                 }
                 tt
             }
@@ -819,15 +870,20 @@ impl Checker {
                 map.insert(k, t);
             }
         }
-        Ty::Rec { fields: map, open: true }
+        Ty::Rec {
+            fields: map,
+            open: true,
+        }
     }
 
     fn field_ty(&self, base: &Ty, name: &str) -> Ty {
         match self.inf.resolve(base) {
             Ty::Rec { fields, .. } => fields.get(name).cloned().unwrap_or(Ty::Any),
-            Ty::Con(n, _) => {
-                self.records.get(&n).and_then(|fs| fs.get(name).cloned()).unwrap_or(Ty::Any)
-            }
+            Ty::Con(n, _) => self
+                .records
+                .get(&n)
+                .and_then(|fs| fs.get(name).cloned())
+                .unwrap_or(Ty::Any),
             _ => Ty::Any,
         }
     }
@@ -836,15 +892,14 @@ impl Checker {
         use BinOp::*;
         // Operator overloading: on a user type (record/sum), an operator resolves
         // to a same-named function (`a + b` → `add`), taking its return type.
-        if let Ty::Con(n, _) = self.inf.resolve(&lt) {
-            if (self.records.contains_key(&n) || self.sums.contains_key(&n))
-                && let Some(name) = overload_fn_name(op)
-                && let Some(scheme) = self.globals.get(name).cloned()
-            {
-                let t = self.inf.instantiate(&scheme);
-                if let Ty::Fn(_, ret) = self.inf.resolve(&t) {
-                    return *ret;
-                }
+        if let Ty::Con(n, _) = self.inf.resolve(&lt)
+            && (self.records.contains_key(&n) || self.sums.contains_key(&n))
+            && let Some(name) = overload_fn_name(op)
+            && let Some(scheme) = self.globals.get(name).cloned()
+        {
+            let t = self.inf.instantiate(&scheme);
+            if let Ty::Fn(_, ret) = self.inf.resolve(&t) {
+                return *ret;
             }
         }
         match op {
@@ -915,8 +970,12 @@ impl Checker {
     }
 
     fn check_exhaustive(&mut self, scrut: &Ty, arms: &[Arm]) {
-        let Ty::Con(name, _) = self.inf.resolve(scrut) else { return };
-        let Some(variants) = self.sums.get(&name).cloned() else { return };
+        let Ty::Con(name, _) = self.inf.resolve(scrut) else {
+            return;
+        };
+        let Some(variants) = self.sums.get(&name).cloned() else {
+            return;
+        };
         let mut covered: HashSet<String> = HashSet::new();
         let mut catchall = false;
         for a in arms {
@@ -926,12 +985,18 @@ impl Checker {
             cover(&a.pat, &variants, &mut covered, &mut catchall);
         }
         if !catchall {
-            let missing: Vec<_> =
-                variants.iter().filter(|v| !covered.contains(*v)).cloned().collect();
+            let missing: Vec<_> = variants
+                .iter()
+                .filter(|v| !covered.contains(*v))
+                .cloned()
+                .collect();
             if !missing.is_empty() {
                 self.diag(
                     DiagKind::NonExhaustive,
-                    format!("match on `{name}` is not exhaustive; missing: {}", missing.join(", ")),
+                    format!(
+                        "match on `{name}` is not exhaustive; missing: {}",
+                        missing.join(", ")
+                    ),
                 );
             }
         }
@@ -982,7 +1047,10 @@ fn overload_fn_name(op: BinOp) -> Option<&'static str> {
 }
 
 fn lookup(env: &Env, name: &str) -> Option<Ty> {
-    env.iter().rev().find(|(n, _)| n == name).map(|(_, t)| t.clone())
+    env.iter()
+        .rev()
+        .find(|(n, _)| n == name)
+        .map(|(_, t)| t.clone())
 }
 
 fn ast_ty(t: &Type) -> Ty {
@@ -1031,13 +1099,19 @@ fn sum_variants(e: &Expr) -> Option<Vec<(String, Vec<Type>)>> {
                     false
                 }
             }
-            Expr::Binary { op: BinOp::Union, lhs, rhs } => go(lhs, out) && go(rhs, out),
+            Expr::Binary {
+                op: BinOp::Union,
+                lhs,
+                rhs,
+            } => go(lhs, out) && go(rhs, out),
             _ => false,
         }
     }
     let mut out = Vec::new();
     match e {
-        Expr::Binary { op: BinOp::Union, .. } if go(e, &mut out) => Some(out),
+        Expr::Binary {
+            op: BinOp::Union, ..
+        } if go(e, &mut out) => Some(out),
         _ => None,
     }
 }

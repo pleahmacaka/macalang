@@ -17,7 +17,10 @@ fn fmt_is_idempotent_and_indented() {
     std::fs::write(&tmp, &src).unwrap();
 
     let run = || {
-        Command::new(maca()).args(["fmt", &tmp.to_string_lossy()]).status().unwrap();
+        Command::new(maca())
+            .args(["fmt", &tmp.to_string_lossy()])
+            .status()
+            .unwrap();
         std::fs::read_to_string(&tmp).unwrap()
     };
     let once = run();
@@ -36,8 +39,14 @@ fn lint_flags_long_line() {
     let long = format!("x = \"{}\"\n", "a".repeat(100));
     let tmp = std::env::temp_dir().join("maca-lint-test.maca");
     std::fs::write(&tmp, long).unwrap();
-    let out = Command::new(maca()).args(["lint", &tmp.to_string_lossy()]).output().unwrap();
-    assert!(!out.status.success(), "lint should exit nonzero on a seeded issue");
+    let out = Command::new(maca())
+        .args(["lint", &tmp.to_string_lossy()])
+        .output()
+        .unwrap();
+    assert!(
+        !out.status.success(),
+        "lint should exit nonzero on a seeded issue"
+    );
     assert!(
         String::from_utf8_lossy(&out.stderr).contains("80 columns"),
         "expected an 80-column diagnostic"
@@ -48,8 +57,16 @@ fn lint_flags_long_line() {
 fn script_alias_runs() {
     let dir = std::env::temp_dir().join("maca-script-test");
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("maca.toml"), "[scripts]\ngo = \"echo maca-script-ok\"\n").unwrap();
-    let out = Command::new(maca()).current_dir(&dir).arg("go").output().unwrap();
+    std::fs::write(
+        dir.join("maca.toml"),
+        "[scripts]\ngo = \"echo maca-script-ok\"\n",
+    )
+    .unwrap();
+    let out = Command::new(maca())
+        .current_dir(&dir)
+        .arg("go")
+        .output()
+        .unwrap();
     assert!(
         String::from_utf8_lossy(&out.stdout).contains("maca-script-ok"),
         "script alias should run its command; stdout: {}",

@@ -5,7 +5,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn wsl_ready() -> bool {
-    Command::new("wsl").arg("true").status().map(|s| s.success()).unwrap_or(false)
+    Command::new("wsl")
+        .arg("true")
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 fn to_wsl(p: &Path) -> String {
     let s = p.to_string_lossy().replace('\\', "/");
@@ -25,11 +29,21 @@ impl BuildLock {
         let p = std::env::temp_dir().join("maca-it-build.lock");
         for _ in 0..1200 {
             if let Ok(m) = std::fs::metadata(&p) {
-                if m.modified().ok().and_then(|t| t.elapsed().ok()).map(|e| e.as_secs() > 300).unwrap_or(false) {
+                if m.modified()
+                    .ok()
+                    .and_then(|t| t.elapsed().ok())
+                    .map(|e| e.as_secs() > 300)
+                    .unwrap_or(false)
+                {
                     let _ = std::fs::remove_file(&p);
                 }
             }
-            if std::fs::OpenOptions::new().write(true).create_new(true).open(&p).is_ok() {
+            if std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&p)
+                .is_ok()
+            {
                 return BuildLock(p);
             }
             std::thread::sleep(std::time::Duration::from_millis(300));
@@ -50,7 +64,11 @@ fn build(app_file: &str, out_name: &str) -> PathBuf {
         .args(["build", &app(app_file), "-o", &out.to_string_lossy()])
         .output()
         .expect("spawn maca");
-    assert!(r.status.success(), "build {app_file}: {}", String::from_utf8_lossy(&r.stderr));
+    assert!(
+        r.status.success(),
+        "build {app_file}: {}",
+        String::from_utf8_lossy(&r.stderr)
+    );
     out
 }
 
@@ -86,7 +104,10 @@ kill $BR 2>/dev/null || true
     );
     // `-e` runs the command directly; backgrounded broker persists across the
     // script's steps (plain `wsl sh -c` tears it down).
-    let out = Command::new("wsl").args(["-e", "sh", "-c", &script]).output().expect("wsl");
+    let out = Command::new("wsl")
+        .args(["-e", "sh", "-c", &script])
+        .output()
+        .expect("wsl");
     let log = String::from_utf8_lossy(&out.stdout);
 
     assert!(
@@ -99,5 +120,8 @@ kill $BR 2>/dev/null || true
         .find_map(|l| l.strip_prefix("CONCURRENT: "))
         .and_then(|n| n.trim().parse().ok())
         .unwrap_or(0);
-    assert!(count >= 100, "broker should serve ≥100 concurrent clients, got {count}\n{log}");
+    assert!(
+        count >= 100,
+        "broker should serve ≥100 concurrent clients, got {count}\n{log}"
+    );
 }

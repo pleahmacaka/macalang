@@ -4,7 +4,7 @@
 //! keywords. If a keyword is added to / removed from the lexer without updating
 //! the grammar (or vice versa), this fails.
 
-use maca_lexer::{lex, Tok};
+use maca_lexer::{Tok, lex};
 use std::path::PathBuf;
 
 /// The lexer's reserved words (mirrors the `match` in `lex_ident`).
@@ -14,7 +14,9 @@ const LEXER_KEYWORDS: &[&str] = &[
 ];
 
 fn repo(rel: &str) -> String {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(rel);
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(rel);
     std::fs::read_to_string(p).unwrap_or_default()
 }
 
@@ -56,7 +58,10 @@ fn monarch_and_zed_grammars_name_every_keyword() {
         // `import`/`from` are matched by dedicated rules in the Zed grammar, so
         // they may not appear in the ident-keyword alternation — check Monarch
         // for those and both for the rest.
-        assert!(monarch.contains(&format!("\"{kw}\"")), "Monarch grammar missing keyword `{kw}`");
+        assert!(
+            monarch.contains(&format!("\"{kw}\"")),
+            "Monarch grammar missing keyword `{kw}`"
+        );
         if *kw != "import" && *kw != "from" {
             assert!(zed.contains(kw), "Zed grammar missing keyword `{kw}`");
         }
@@ -79,9 +84,21 @@ fn phantom_keywords_are_not_reserved() {
     let tm = repo("editor/maca.tmLanguage.json");
     let zed = repo("editor/zed-maca/languages/maca/highlights.scm");
     for phantom in ["let", "return"] {
-        assert!(!tm.contains(&format!("|{phantom})")), "TextMate lists phantom keyword `{phantom}`");
-        assert!(!tm.contains(&format!("({phantom}|")), "TextMate lists phantom keyword `{phantom}`");
-        assert!(!zed.contains(&format!("^({phantom}|")), "Zed lists phantom keyword `{phantom}`");
-        assert!(!zed.contains(&format!("|{phantom}|")), "Zed lists phantom keyword `{phantom}`");
+        assert!(
+            !tm.contains(&format!("|{phantom})")),
+            "TextMate lists phantom keyword `{phantom}`"
+        );
+        assert!(
+            !tm.contains(&format!("({phantom}|")),
+            "TextMate lists phantom keyword `{phantom}`"
+        );
+        assert!(
+            !zed.contains(&format!("^({phantom}|")),
+            "Zed lists phantom keyword `{phantom}`"
+        );
+        assert!(
+            !zed.contains(&format!("|{phantom}|")),
+            "Zed lists phantom keyword `{phantom}`"
+        );
     }
 }

@@ -81,14 +81,14 @@ pub enum Tok {
     Minus,
     Star,
     Slash,
-    Percent,  // %
-    Shl,      // <<
-    Shr,      // >>
-    PlusPlus, // ++
-    Bar,      // |
-    BarBar,   // ||
-    PipeGt,   // |>
-    AmpAmp,   // &&
+    Percent,      // %
+    Shl,          // <<
+    Shr,          // >>
+    PlusPlus,     // ++
+    Bar,          // |
+    BarBar,       // ||
+    PipeGt,       // |>
+    AmpAmp,       // &&
     Question,     // spaced ternary `?`
     QuestionPost, // attached postfix `x?`
     // layout
@@ -204,11 +204,18 @@ impl<'a> Lexer<'a> {
         self.tokens.push(Token { tok, span });
     }
     fn error(&mut self, msg: impl Into<String>, span: Span) {
-        self.errors.push(LexError { msg: msg.into(), span });
+        self.errors.push(LexError {
+            msg: msg.into(),
+            span,
+        });
     }
 
     fn last_sig(&self) -> Option<&Tok> {
-        self.tokens.iter().rev().find(|t| t.tok != Tok::Newline).map(|t| &t.tok)
+        self.tokens
+            .iter()
+            .rev()
+            .find(|t| t.tok != Tok::Newline)
+            .map(|t| &t.tok)
     }
 
     // ---- driver -----------------------------------------------------------
@@ -235,7 +242,10 @@ impl<'a> Lexer<'a> {
             }
         }
         self.push(Tok::Eof, (self.end, self.end));
-        Lexed { tokens: self.tokens, errors: self.errors }
+        Lexed {
+            tokens: self.tokens,
+            errors: self.errors,
+        }
     }
 
     fn suppressed(&self) -> bool {
@@ -243,6 +253,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Skip spaces, comments, and newlines. Returns whether a newline was seen.
+    #[allow(clippy::nonminimal_bool)] // the positive form reads clearer here
     fn skip_trivia(&mut self) -> bool {
         self.leading_ws = false;
         let mut saw_nl = false;
@@ -286,10 +297,45 @@ impl<'a> Lexer<'a> {
             None => true, // suppress leading newlines at file start
             Some(t) => matches!(
                 t,
-                Comma | Eq | EqEq | NotEq | Lt | Gt | Le | Ge | Arrow | FatArrow | Plus | Minus
-                    | Star | Slash | PlusPlus | Bar | BarBar | PipeGt | AmpAmp | Colon | Dot
-                    | DotDot | Ellipsis | Question | LParen | LBracket | LBrace | Const | If | Else
-                    | For | In | Match | Import | From | With | Fail | Try | Alias
+                Comma
+                    | Eq
+                    | EqEq
+                    | NotEq
+                    | Lt
+                    | Gt
+                    | Le
+                    | Ge
+                    | Arrow
+                    | FatArrow
+                    | Plus
+                    | Minus
+                    | Star
+                    | Slash
+                    | PlusPlus
+                    | Bar
+                    | BarBar
+                    | PipeGt
+                    | AmpAmp
+                    | Colon
+                    | Dot
+                    | DotDot
+                    | Ellipsis
+                    | Question
+                    | LParen
+                    | LBracket
+                    | LBrace
+                    | Const
+                    | If
+                    | Else
+                    | For
+                    | In
+                    | Match
+                    | Import
+                    | From
+                    | With
+                    | Fail
+                    | Try
+                    | Alias
             ),
         }
     }
@@ -331,8 +377,17 @@ impl<'a> Lexer<'a> {
             None => true,
             Some(t) => !matches!(
                 t,
-                Ident(_) | Int(_) | Float(_) | True | False | Path(_) | StrClose | RParen
-                    | RBracket | RBrace | QuestionPost
+                Ident(_)
+                    | Int(_)
+                    | Float(_)
+                    | True
+                    | False
+                    | Path(_)
+                    | StrClose
+                    | RParen
+                    | RBracket
+                    | RBrace
+                    | QuestionPost
             ),
         }
     }
@@ -352,7 +407,9 @@ impl<'a> Lexer<'a> {
             '(' => self.one(Tok::LParen, |l| l.group_depth += 1),
             ')' => self.one(Tok::RParen, |l| l.group_depth = (l.group_depth - 1).max(0)),
             '[' => self.one(Tok::LBracket, |l| l.group_depth += 1),
-            ']' => self.one(Tok::RBracket, |l| l.group_depth = (l.group_depth - 1).max(0)),
+            ']' => self.one(Tok::RBracket, |l| {
+                l.group_depth = (l.group_depth - 1).max(0)
+            }),
             '{' => {
                 self.bump();
                 self.braces.push(Brace::Code);
@@ -403,7 +460,11 @@ impl<'a> Lexer<'a> {
             '&' if self.peek_n(1) == '&' => self.take(2, Tok::AmpAmp, start),
             '?' => {
                 self.bump();
-                let tok = if self.leading_ws { Tok::Question } else { Tok::QuestionPost };
+                let tok = if self.leading_ws {
+                    Tok::Question
+                } else {
+                    Tok::QuestionPost
+                };
                 self.push(tok, (start, self.byte()));
             }
             '"' => {

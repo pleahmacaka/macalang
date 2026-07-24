@@ -6,7 +6,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn wsl_ready() -> bool {
-    Command::new("wsl").arg("true").status().map(|s| s.success()).unwrap_or(false)
+    Command::new("wsl")
+        .arg("true")
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 fn to_wsl(p: &Path) -> String {
     let s = p.to_string_lossy().replace('\\', "/");
@@ -27,11 +31,21 @@ impl BuildLock {
         let p = std::env::temp_dir().join("maca-it-build.lock");
         for _ in 0..1200 {
             if let Ok(m) = std::fs::metadata(&p) {
-                if m.modified().ok().and_then(|t| t.elapsed().ok()).map(|e| e.as_secs() > 300).unwrap_or(false) {
+                if m.modified()
+                    .ok()
+                    .and_then(|t| t.elapsed().ok())
+                    .map(|e| e.as_secs() > 300)
+                    .unwrap_or(false)
+                {
                     let _ = std::fs::remove_file(&p);
                 }
             }
-            if std::fs::OpenOptions::new().write(true).create_new(true).open(&p).is_ok() {
+            if std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&p)
+                .is_ok()
+            {
                 return BuildLock(p);
             }
             std::thread::sleep(std::time::Duration::from_millis(300));
@@ -79,17 +93,37 @@ fn desktop_ui_backend_roundtrip() {
     // Maca UI → web/, Maca backend → native binary
     let web = std::env::temp_dir().join("maca-desktop-web");
     let r = Command::new(maca)
-        .args(["build", "--target", "js", &app_path("app.maca"), "-o", &web.to_string_lossy()])
+        .args([
+            "build",
+            "--target",
+            "js",
+            &app_path("app.maca"),
+            "-o",
+            &web.to_string_lossy(),
+        ])
         .output()
         .expect("build ui");
-    assert!(r.status.success(), "ui build: {}", String::from_utf8_lossy(&r.stderr));
+    assert!(
+        r.status.success(),
+        "ui build: {}",
+        String::from_utf8_lossy(&r.stderr)
+    );
 
     let backend = std::env::temp_dir().join("maca-desktop-backend");
     let r = Command::new(maca)
-        .args(["build", &app_path("backend.maca"), "-o", &backend.to_string_lossy()])
+        .args([
+            "build",
+            &app_path("backend.maca"),
+            "-o",
+            &backend.to_string_lossy(),
+        ])
         .output()
         .expect("build backend");
-    assert!(r.status.success(), "backend build: {}", String::from_utf8_lossy(&r.stderr));
+    assert!(
+        r.status.success(),
+        "backend build: {}",
+        String::from_utf8_lossy(&r.stderr)
+    );
 
     // bring the Tauri glue + harness into the web dir
     std::fs::copy(app_path("bridge.js"), web.join("bridge.js")).unwrap();
@@ -100,10 +134,17 @@ fn desktop_ui_backend_roundtrip() {
     let cmd = format!(
         "cd {wsl_web} && BACKEND={wsl_backend} nix shell nixpkgs#nodejs -c node harness.js"
     );
-    let out = Command::new("wsl").args(["-e", "sh", "-c", &cmd]).output().expect("node");
+    let out = Command::new("wsl")
+        .args(["-e", "sh", "-c", &cmd])
+        .output()
+        .expect("node");
     let s = String::from_utf8_lossy(&out.stdout);
     let line = s.lines().find(|l| l.contains("\"result\"")).unwrap_or("");
-    assert!(line.contains("\"tag\":\"DIV\""), "UI should render a div: {s}\nerr {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        line.contains("\"tag\":\"DIV\""),
+        "UI should render a div: {s}\nerr {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(
         line.contains("Hello, Alfo!"),
         "UI action should round-trip to the Maca backend and update the view: {s}\nerr {}",

@@ -9,17 +9,25 @@ fn js(src: &str) -> String {
 
 #[test]
 fn function_becomes_js_and_is_exported() {
-    let out = maca_backend_js::emit(&maca_parser::parse("add(a: int, b: int) -> int => a + b\n").module);
+    let out =
+        maca_backend_js::emit(&maca_parser::parse("add(a: int, b: int) -> int => a + b\n").module);
     assert!(out.js.contains("function add"), "no function:\n{}", out.js);
     assert!(out.js.contains("(a + b)"), "no body:\n{}", out.js);
-    assert!(out.exports.contains(&"add".to_string()), "not exported: {:?}", out.exports);
+    assert!(
+        out.exports.contains(&"add".to_string()),
+        "not exported: {:?}",
+        out.exports
+    );
 }
 
 #[test]
 fn arithmetic_and_ternary() {
     let out = js("f(c: bool) -> int => c ? 1 + 2 : 3\n");
     assert!(out.contains("(1 + 2)"), "{out}");
-    assert!(out.contains("? ") && out.contains(" : "), "no ternary:\n{out}");
+    assert!(
+        out.contains("? ") && out.contains(" : "),
+        "no ternary:\n{out}"
+    );
 }
 
 #[test]
@@ -52,7 +60,10 @@ fn record_update_is_object_spread() {
     // the function body itself must not be the `null` unsupported fallback
     let body = out.split("function f(p)").nth(1).unwrap_or("");
     let body = &body[..body.find('}').map(|i| i + 1).unwrap_or(body.len())];
-    assert!(!body.contains("null"), "function body is unsupported null:\n{body}");
+    assert!(
+        !body.contains("null"),
+        "function body is unsupported null:\n{body}"
+    );
 }
 
 #[test]
@@ -65,34 +76,51 @@ fn string_concat_uses_plus_or_concat() {
 fn reactive_ui_binds_state_and_calls() {
     // a UI where a text child reads state and a text-returning function call is
     // used as a child (not an element), plus a state-mutating handler.
-    let out = js(
-        "count = 0\n\
+    let out = js("count = 0\n\
          shown(n: int) -> str => \"n={n}\"\n\
          bump() { count = count + 1  update() }\n\
          main() -> Element =>\n\
              div(\n\
                  button(on:click=bump, \"+\")\n\
                  span(shown(count))\n\
-             )\n",
-    );
+             )\n");
     // state reference resolves to state.count everywhere
-    assert!(out.contains("state.count = (state.count + 1)"), "handler not state-aware:\n{out}");
+    assert!(
+        out.contains("state.count = (state.count + 1)"),
+        "handler not state-aware:\n{out}"
+    );
     // a text-returning call is a reactive text node, not a <shown> element
-    assert!(out.contains("createTextNode(shown(state.count))"), "call child not text:\n{out}");
-    assert!(!out.contains("createElement(\"shown\")"), "text call became an element:\n{out}");
-    assert!(out.contains("_binds.push(() => { "), "no reactive updater registered:\n{out}");
+    assert!(
+        out.contains("createTextNode(shown(state.count))"),
+        "call child not text:\n{out}"
+    );
+    assert!(
+        !out.contains("createElement(\"shown\")"),
+        "text call became an element:\n{out}"
+    );
+    assert!(
+        out.contains("_binds.push(() => { "),
+        "no reactive updater registered:\n{out}"
+    );
     // the click handler is the bare function reference
-    assert!(out.contains("addEventListener(\"click\", bump)"), "handler not wired:\n{out}");
+    assert!(
+        out.contains("addEventListener(\"click\", bump)"),
+        "handler not wired:\n{out}"
+    );
 }
 
 #[test]
 fn html_attribute_sets_inner_html() {
-    let out = js(
-        "svg = \"<svg></svg>\"\n\
-         main() -> Element => div(html=svg)\n",
+    let out = js("svg = \"<svg></svg>\"\n\
+         main() -> Element => div(html=svg)\n");
+    assert!(
+        out.contains(".innerHTML = state.svg"),
+        "html= not lowered to innerHTML:\n{out}"
     );
-    assert!(out.contains(".innerHTML = state.svg"), "html= not lowered to innerHTML:\n{out}");
-    assert!(out.contains("_binds.push(() => { "), "innerHTML not reactive:\n{out}");
+    assert!(
+        out.contains("_binds.push(() => { "),
+        "innerHTML not reactive:\n{out}"
+    );
 }
 
 #[test]
@@ -103,19 +131,42 @@ fn foreign_import_blocks_embed_js_and_css() {
     let out = maca_backend_js::emit(&maca_parser::parse(
         "import css \"\"\"\n.x { color: red }\n\"\"\"\nimport js \"\"\"\nwindow.hi = () => 1;\n\"\"\"\ng = \"\"\nmain() -> Element => div(class=\"x\", g)\n",
     ).module);
-    assert!(out.js.contains("window.hi = () => 1;"), "js not embedded:\n{}", out.js);
+    assert!(
+        out.js.contains("window.hi = () => 1;"),
+        "js not embedded:\n{}",
+        out.js
+    );
     // embedded js comes before the app's state/mount
-    assert!(out.js.find("window.hi").unwrap() < out.js.find("const state").unwrap(), "js not prepended:\n{}", out.js);
-    assert!(out.css.contains(".x { color: red }"), "css not embedded:\n{}", out.css);
+    assert!(
+        out.js.find("window.hi").unwrap() < out.js.find("const state").unwrap(),
+        "js not prepended:\n{}",
+        out.js
+    );
+    assert!(
+        out.css.contains(".x { color: red }"),
+        "css not embedded:\n{}",
+        out.css
+    );
 }
 
 #[test]
 fn handlers_lower_full_expressions_not_null() {
     // event handlers and bindings used to collapse to `null`; now they lower
     // arithmetic, state reads, and the `$v` event value like any expression.
-    let out = js("count = 0\nstep = 2\nmain() -> Element =>\n    div(\n        button(on:click=(e => count = count + step) \"go\")\n        input(bind:value=(v => count = int(v) * 2))\n    )\n");
-    assert!(out.contains("state.count = (state.count + state.step)"), "click handler wrong:\n{out}");
-    assert!(out.contains("e.target.value"), "bind value not substituted:\n{out}");
+    let out = js(
+        "count = 0\nstep = 2\nmain() -> Element =>\n    div(\n        button(on:click=(e => count = count + step) \"go\")\n        input(bind:value=(v => count = int(v) * 2))\n    )\n",
+    );
+    assert!(
+        out.contains("state.count = (state.count + state.step)"),
+        "click handler wrong:\n{out}"
+    );
+    assert!(
+        out.contains("e.target.value"),
+        "bind value not substituted:\n{out}"
+    );
     // the `int(v) * 2` binding must compute, not collapse to a null assignment
-    assert!(!out.contains("state.count = null"), "handler collapsed to null:\n{out}");
+    assert!(
+        !out.contains("state.count = null"),
+        "handler collapsed to null:\n{out}"
+    );
 }

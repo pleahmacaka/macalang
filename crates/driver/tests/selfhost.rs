@@ -6,13 +6,18 @@
 //! references resolve — must type-/effect-check clean. That keeps the
 //! self-hosted compiler honest as it grows.
 
-use maca_core::{check, Mode};
+use maca_core::{Mode, check};
 use std::fs;
 use std::path::PathBuf;
 
 /// Source order: definitions before use.
-const SELFHOST_FILES: &[&str] =
-    &["token.maca", "ast.maca", "lexer.maca", "parser.maca", "main.maca"];
+const SELFHOST_FILES: &[&str] = &[
+    "token.maca",
+    "ast.maca",
+    "lexer.maca",
+    "parser.maca",
+    "main.maca",
+];
 
 fn selfhost_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost")
@@ -27,7 +32,11 @@ fn every_selfhost_file_parses() {
     for name in SELFHOST_FILES {
         let src = read(name);
         let parsed = maca_parser::parse(&src);
-        assert!(parsed.errors.is_empty(), "selfhost/{name} parse errors: {:?}", parsed.errors);
+        assert!(
+            parsed.errors.is_empty(),
+            "selfhost/{name} parse errors: {:?}",
+            parsed.errors
+        );
     }
 }
 
@@ -35,10 +44,21 @@ fn every_selfhost_file_parses() {
 fn selfhost_module_typechecks() {
     // Concatenate in dependency order so `lexer.maca`/`main.maca` see the
     // `token.maca` declarations they reference.
-    let src: String = SELFHOST_FILES.iter().map(|n| read(n)).collect::<Vec<_>>().join("\n");
+    let src: String = SELFHOST_FILES
+        .iter()
+        .map(|n| read(n))
+        .collect::<Vec<_>>()
+        .join("\n");
     let parsed = maca_parser::parse(&src);
-    assert!(parsed.errors.is_empty(), "selfhost parse errors: {:?}", parsed.errors);
+    assert!(
+        parsed.errors.is_empty(),
+        "selfhost parse errors: {:?}",
+        parsed.errors
+    );
 
     let diags = check(&parsed.module, Mode::Program);
-    assert!(diags.is_empty(), "selfhost should type-check clean, got: {diags:?}");
+    assert!(
+        diags.is_empty(),
+        "selfhost should type-check clean, got: {diags:?}"
+    );
 }

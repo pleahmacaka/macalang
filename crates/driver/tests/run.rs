@@ -6,7 +6,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn wsl_ready() -> bool {
-    Command::new("wsl").arg("true").status().map(|s| s.success()).unwrap_or(false)
+    Command::new("wsl")
+        .arg("true")
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 /// Cross-process build lock: nix/zig can't be hammered by ~a dozen concurrent
@@ -28,7 +32,12 @@ impl BuildLock {
                     let _ = std::fs::remove_file(&p);
                 }
             }
-            if std::fs::OpenOptions::new().write(true).create_new(true).open(&p).is_ok() {
+            if std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&p)
+                .is_ok()
+            {
                 return BuildLock(p);
             }
             std::thread::sleep(std::time::Duration::from_millis(300));
@@ -79,8 +88,15 @@ fn taskr(args: &[&str]) -> String {
     let _lk = BuildLock::acquire();
     let mut a = vec!["run".to_string(), example("taskr.maca")];
     a.extend(args.iter().map(|s| s.to_string()));
-    let out = Command::new(env!("CARGO_BIN_EXE_maca")).args(&a).output().expect("spawn maca");
-    assert!(out.status.success(), "taskr {args:?} failed: {}", String::from_utf8_lossy(&out.stderr));
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(&a)
+        .output()
+        .expect("spawn maca");
+    assert!(
+        out.status.success(),
+        "taskr {args:?} failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
@@ -92,7 +108,11 @@ fn taskr_add_list_roundtrip() {
     }
     // isolated, deterministic store
     Command::new("wsl")
-        .args(["sh", "-c", "rm -f \"${XDG_DATA_HOME:-$HOME/.local/share}/store.json\""])
+        .args([
+            "sh",
+            "-c",
+            "rm -f \"${XDG_DATA_HOME:-$HOME/.local/share}/store.json\"",
+        ])
         .status()
         .ok();
 
@@ -111,7 +131,11 @@ fn taskr_add_list_roundtrip() {
     assert!(l2.contains("#1") && l2.contains("buy milk"), "list2: {l2}");
     assert!(l2.contains("#2") && l2.contains("walk dog"), "list2: {l2}");
     // exactly two tasks
-    assert_eq!(l2.lines().filter(|x| x.contains('#')).count(), 2, "expected 2 tasks: {l2}");
+    assert_eq!(
+        l2.lines().filter(|x| x.contains('#')).count(),
+        2,
+        "expected 2 tasks: {l2}"
+    );
 }
 
 #[test]
@@ -126,7 +150,12 @@ fn parallel_runs() {
         .expect("spawn maca");
     let s = String::from_utf8_lossy(&out.stdout);
     let got: Vec<&str> = s.lines().collect();
-    assert_eq!(got, vec!["1", "4", "9", "16"], "stdout: {s}\nstderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        got,
+        vec!["1", "4", "9", "16"],
+        "stdout: {s}\nstderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 /// Compile an example WITHOUT stripping (keeps symbols for nm/objdump). Mirrors
@@ -151,8 +180,10 @@ fn build_unstripped(name: &str) -> PathBuf {
         std::fs::write(dir.join("simd.ll"), &llvm.ir).unwrap();
     }
     let out: PathBuf = dir.join("prog");
-    let mut args: Vec<String> =
-        ["nix", "shell", "nixpkgs#zig", "-c", "zig", "cc"].iter().map(|s| s.to_string()).collect();
+    let mut args: Vec<String> = ["nix", "shell", "nixpkgs#zig", "-c", "zig", "cc"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     args.push(to_wsl(&dir.join("main.c")));
     args.push(to_wsl(&dir.join("maca_runtime.c")));
     if use_async {
@@ -171,14 +202,22 @@ fn build_unstripped(name: &str) -> PathBuf {
         args.push(f.into());
     }
     let r = Command::new("wsl").args(&args).output().unwrap();
-    assert!(r.status.success(), "compile {name}: {}", String::from_utf8_lossy(&r.stderr));
+    assert!(
+        r.status.success(),
+        "compile {name}: {}",
+        String::from_utf8_lossy(&r.stderr)
+    );
     out
 }
 
 fn nm_symbols(name: &str) -> String {
     let bin = build_unstripped(name);
     let nm = Command::new("wsl")
-        .args(["sh", "-c", &format!("nix shell nixpkgs#binutils -c nm {}", to_wsl(&bin))])
+        .args([
+            "sh",
+            "-c",
+            &format!("nix shell nixpkgs#binutils -c nm {}", to_wsl(&bin)),
+        ])
         .output()
         .unwrap();
     String::from_utf8_lossy(&nm.stdout).into_owned()
@@ -187,7 +226,11 @@ fn nm_symbols(name: &str) -> String {
 fn objdump(name: &str) -> String {
     let bin = build_unstripped(name);
     let out = Command::new("wsl")
-        .args(["sh", "-c", &format!("nix shell nixpkgs#binutils -c objdump -d {}", to_wsl(&bin))])
+        .args([
+            "sh",
+            "-c",
+            &format!("nix shell nixpkgs#binutils -c objdump -d {}", to_wsl(&bin)),
+        ])
         .output()
         .unwrap();
     String::from_utf8_lossy(&out.stdout).into_owned()
@@ -205,7 +248,10 @@ fn sequential_binary_has_no_scheduler() {
         "sequential binary should carry no scheduler symbols"
     );
     let par = nm_symbols("parallel.maca");
-    assert!(par.contains("maca_parallel_i64"), "parallel binary should link the scheduler");
+    assert!(
+        par.contains("maca_parallel_i64"),
+        "parallel binary should link the scheduler"
+    );
 }
 
 #[test]
@@ -221,7 +267,12 @@ fn simd_hybrid_correct() {
         .output()
         .expect("spawn maca");
     let s = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(s.trim(), "48", "stdout: {s}\nstderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        s.trim(),
+        "48",
+        "stdout: {s}\nstderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 #[test]
@@ -239,7 +290,10 @@ fn simd_uses_llvm_vector_instructions() {
     );
     // and the C path alone (no SIMD) must not
     let hello = objdump(&"hello.maca");
-    assert!(!hello.contains("%ymm"), "scalar binary should have no 256-bit vector ops");
+    assert!(
+        !hello.contains("%ymm"),
+        "scalar binary should have no 256-bit vector ops"
+    );
 }
 
 #[test]
@@ -251,22 +305,44 @@ fn nix_config_accepted() {
     let _lk = BuildLock::acquire();
     let out = std::env::temp_dir().join("maca-system.nix");
     let r = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["build", "--target", "nix", &example("system.maca"), "-o", &out.to_string_lossy()])
+        .args([
+            "build",
+            "--target",
+            "nix",
+            &example("system.maca"),
+            "-o",
+            &out.to_string_lossy(),
+        ])
         .output()
         .expect("spawn maca");
-    assert!(r.status.success(), "build --target nix failed: {}", String::from_utf8_lossy(&r.stderr));
+    assert!(
+        r.status.success(),
+        "build --target nix failed: {}",
+        String::from_utf8_lossy(&r.stderr)
+    );
 
     let nix = std::fs::read_to_string(&out).unwrap();
     assert!(nix.contains("enable = true"), "missing injected enable");
-    assert!(nix.contains("fonts.packages"), "missing hoisted fonts.packages");
+    assert!(
+        nix.contains("fonts.packages"),
+        "missing hoisted fonts.packages"
+    );
     assert!(nix.contains("xdg.userDirs"), "missing xdg.userDirs");
 
     // nix-instantiate must accept the generated module
     let ni = Command::new("wsl")
-        .args(["sh", "-c", &format!("nix-instantiate --parse {}", to_wsl(&out))])
+        .args([
+            "sh",
+            "-c",
+            &format!("nix-instantiate --parse {}", to_wsl(&out)),
+        ])
         .output()
         .expect("nix-instantiate");
-    assert!(ni.status.success(), "nix-instantiate rejected:\n{}", String::from_utf8_lossy(&ni.stderr));
+    assert!(
+        ni.status.success(),
+        "nix-instantiate rejected:\n{}",
+        String::from_utf8_lossy(&ni.stderr)
+    );
 }
 
 const JS_HARNESS: &str = r#"
@@ -292,11 +368,19 @@ fn build_auto_detects_ui_target() {
     let dir = std::env::temp_dir().join("maca-detect-ui");
     let _ = std::fs::remove_dir_all(&dir);
     let r = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["build", &example("counter.maca"), "-o", &dir.to_string_lossy()])
+        .args([
+            "build",
+            &example("counter.maca"),
+            "-o",
+            &dir.to_string_lossy(),
+        ])
         .output()
         .expect("spawn maca");
     let err = String::from_utf8_lossy(&r.stderr);
-    assert!(err.contains("--target js"), "no js auto-detect note:\n{err}");
+    assert!(
+        err.contains("--target js"),
+        "no js auto-detect note:\n{err}"
+    );
     assert!(r.status.success(), "auto-detected js build failed:\n{err}");
 }
 
@@ -309,31 +393,55 @@ fn js_ui_renders_and_binds() {
     let _lk = BuildLock::acquire();
     let dir = std::env::temp_dir().join("maca-counter-web");
     let r = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["build", "--target", "js", &example("counter.maca"), "-o", &dir.to_string_lossy()])
+        .args([
+            "build",
+            "--target",
+            "js",
+            &example("counter.maca"),
+            "-o",
+            &dir.to_string_lossy(),
+        ])
         .output()
         .expect("spawn maca");
-    assert!(r.status.success(), "build --target js failed: {}", String::from_utf8_lossy(&r.stderr));
+    assert!(
+        r.status.success(),
+        "build --target js failed: {}",
+        String::from_utf8_lossy(&r.stderr)
+    );
 
     // tree-shaken Tailwind: only used classes ship
     let css = std::fs::read_to_string(dir.join("app.css")).unwrap();
     for used in [".flex ", ".flex-col ", ".text-center "] {
         assert!(css.contains(used), "css missing {used}: {css}");
     }
-    assert!(!css.contains(".grid ") && !css.contains(".hidden "), "css shipped unused classes: {css}");
+    assert!(
+        !css.contains(".grid ") && !css.contains(".hidden "),
+        "css shipped unused classes: {css}"
+    );
 
     // headless render + reactivity via Node with a DOM stub
     std::fs::write(dir.join("harness.js"), JS_HARNESS).unwrap();
     let wsl_dir = to_wsl(&dir);
     let out = Command::new("wsl")
-        .args(["sh", "-c", &format!("cd {wsl_dir} && nix shell nixpkgs#nodejs -c node harness.js")])
+        .args([
+            "sh",
+            "-c",
+            &format!("cd {wsl_dir} && nix shell nixpkgs#nodejs -c node harness.js"),
+        ])
         .output()
         .expect("node");
     let s = String::from_utf8_lossy(&out.stdout);
     let line = s.lines().find(|l| l.contains("\"tag\"")).unwrap_or("");
     assert!(line.contains("\"tag\":\"DIV\""), "expected a div root: {s}");
     assert!(line.contains("\"kids\":2"), "expected two inputs: {s}");
-    assert!(line.contains("\"name\":\"Alfo\""), "bind:value should update name state: {s}");
-    assert!(line.contains("\"age\":42"), "bind:value setter should update age state: {s}");
+    assert!(
+        line.contains("\"name\":\"Alfo\""),
+        "bind:value should update name state: {s}"
+    );
+    assert!(
+        line.contains("\"age\":42"),
+        "bind:value setter should update age state: {s}"
+    );
 }
 
 fn run_example(name: &str) -> String {
@@ -342,7 +450,11 @@ fn run_example(name: &str) -> String {
         .args(["run", &example(name)])
         .output()
         .expect("spawn maca");
-    assert!(out.status.success(), "{name} failed: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{name} failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 

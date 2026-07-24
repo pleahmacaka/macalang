@@ -24,7 +24,12 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(toks: Vec<Token>) -> Self {
-        Parser { toks, i: 0, errors: Vec::new(), no_brace: false }
+        Parser {
+            toks,
+            i: 0,
+            errors: Vec::new(),
+            no_brace: false,
+        }
     }
 
     // ---- cursor -----------------------------------------------------------
@@ -66,7 +71,10 @@ impl Parser {
         }
     }
     fn err(&mut self, msg: impl Into<String>) {
-        self.errors.push(ParseError { msg: msg.into(), span: self.span() });
+        self.errors.push(ParseError {
+            msg: msg.into(),
+            span: self.span(),
+        });
     }
     fn ident(&mut self) -> Ident {
         if let Tok::Ident(s) = self.peek().clone() {
@@ -148,7 +156,12 @@ impl Parser {
         let capital =
             matches!(&target, Expr::Ident(n) if n.chars().next().is_some_and(|c| c.is_uppercase()));
         let is_const = const_kw || as_const || capital;
-        Bind { is_const, target, tys, value }
+        Bind {
+            is_const,
+            target,
+            tys,
+            value,
+        }
     }
 
     /// `ident ( ... )` followed by `->`, `{`, or `=>` is a function definition.
@@ -245,7 +258,11 @@ impl Parser {
         self.expect(Tok::LParen, "'('");
         let params = self.parse_params();
         self.expect(Tok::RParen, "')'");
-        let ret = if self.eat(Tok::Arrow) { Some(self.parse_type()) } else { None };
+        let ret = if self.eat(Tok::Arrow) {
+            Some(self.parse_type())
+        } else {
+            None
+        };
         let effects = if self.at(Tok::Slash) && matches!(self.peekn(1), Tok::Lt) {
             self.bump(); // /
             Some(self.parse_effect_row())
@@ -261,7 +278,13 @@ impl Parser {
         } else {
             None
         };
-        FnDef { name, params, ret, effects, body }
+        FnDef {
+            name,
+            params,
+            ret,
+            effects,
+            body,
+        }
     }
 
     fn parse_params(&mut self) -> Vec<Param> {
@@ -271,7 +294,11 @@ impl Parser {
             let before = self.i;
             let variadic = self.eat(Tok::Ellipsis);
             let name = self.ident();
-            let ty = if self.eat(Tok::Colon) { Some(self.parse_type()) } else { None };
+            let ty = if self.eat(Tok::Colon) {
+                Some(self.parse_type())
+            } else {
+                None
+            };
             ps.push(Param { name, ty, variadic });
             self.skip_seps();
             if self.i == before {
@@ -355,7 +382,10 @@ impl Parser {
         let lhs = self.parse_ternary();
         if self.eat(Tok::FatArrow) {
             let params = self.expr_to_params(lhs);
-            Expr::Lambda { params, body: Box::new(self.parse_lambda_body()) }
+            Expr::Lambda {
+                params,
+                body: Box::new(self.parse_lambda_body()),
+            }
         } else {
             lhs
         }
@@ -367,10 +397,16 @@ impl Parser {
         let lhs = self.parse_ternary();
         if self.eat(Tok::FatArrow) {
             let params = self.expr_to_params(lhs);
-            Expr::Lambda { params, body: Box::new(self.parse_lambda_body()) }
+            Expr::Lambda {
+                params,
+                body: Box::new(self.parse_lambda_body()),
+            }
         } else if self.at(Tok::Eq) {
             self.bump();
-            Expr::Assign { target: Box::new(lhs), value: Box::new(self.parse_lambda_body()) }
+            Expr::Assign {
+                target: Box::new(lhs),
+                value: Box::new(self.parse_lambda_body()),
+            }
         } else {
             lhs
         }
@@ -382,7 +418,11 @@ impl Parser {
             let then = self.parse_ternary();
             self.expect(Tok::Colon, "':' in ternary");
             let els = self.parse_ternary();
-            Expr::Ternary { cond: Box::new(cond), then: Box::new(then), els: Box::new(els) }
+            Expr::Ternary {
+                cond: Box::new(cond),
+                then: Box::new(then),
+                els: Box::new(els),
+            }
         } else {
             cond
         }
@@ -395,7 +435,10 @@ impl Parser {
         let lo = self.parse_binary(0);
         if self.eat(Tok::DotDot) {
             let hi = self.parse_binary(0);
-            Expr::Range { lo: Box::new(lo), hi: Box::new(hi) }
+            Expr::Range {
+                lo: Box::new(lo),
+                hi: Box::new(hi),
+            }
         } else {
             lo
         }
@@ -409,7 +452,11 @@ impl Parser {
             }
             self.bump();
             let rhs = self.parse_binary(bp + 1);
-            lhs = Expr::Binary { op, lhs: Box::new(lhs), rhs: Box::new(rhs) };
+            lhs = Expr::Binary {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            };
         }
         lhs
     }
@@ -441,10 +488,16 @@ impl Parser {
     fn parse_unary(&mut self) -> Expr {
         if self.at(Tok::Minus) {
             self.bump();
-            Expr::Unary { op: UnOp::Neg, expr: Box::new(self.parse_unary()) }
+            Expr::Unary {
+                op: UnOp::Neg,
+                expr: Box::new(self.parse_unary()),
+            }
         } else if self.at(Tok::Bang) {
             self.bump();
-            Expr::Unary { op: UnOp::Not, expr: Box::new(self.parse_unary()) }
+            Expr::Unary {
+                op: UnOp::Not,
+                expr: Box::new(self.parse_unary()),
+            }
         } else if self.at(Tok::Await) {
             // `await e` binds tighter than binary ops: `await a + await b`
             // is `(await a) + (await b)`. No `async` keyword — the async effect
@@ -467,11 +520,17 @@ impl Parser {
                 Tok::Dot => {
                     self.bump();
                     let name = self.ident();
-                    e = Expr::Field { base: Box::new(e), name };
+                    e = Expr::Field {
+                        base: Box::new(e),
+                        name,
+                    };
                 }
                 Tok::LParen => {
                     let args = self.parse_args();
-                    e = Expr::Call { callee: Box::new(e), args };
+                    e = Expr::Call {
+                        callee: Box::new(e),
+                        args,
+                    };
                 }
                 Tok::QuestionPost => {
                     self.bump();
@@ -483,12 +542,18 @@ impl Parser {
                     self.bump();
                     let index = self.parse_expr();
                     self.expect(Tok::RBracket, "']'");
-                    e = Expr::Index { base: Box::new(e), index: Box::new(index) };
+                    e = Expr::Index {
+                        base: Box::new(e),
+                        index: Box::new(index),
+                    };
                 }
                 Tok::With => {
                     self.bump();
                     let fields = self.parse_brace_fields();
-                    e = Expr::With { base: Box::new(e), fields };
+                    e = Expr::With {
+                        base: Box::new(e),
+                        fields,
+                    };
                 }
                 _ => break,
             }
@@ -599,7 +664,10 @@ impl Parser {
         let mut es = vec![first];
         while self.eat(Tok::Comma) {
             self.skip_newlines();
-            if matches!(self.peek(), Tok::RParen | Tok::RBracket | Tok::RBrace | Tok::Eof) {
+            if matches!(
+                self.peek(),
+                Tok::RParen | Tok::RBracket | Tok::RBrace | Tok::Eof
+            ) {
                 break; // trailing comma
             }
             es.push(self.parse_expr());
@@ -628,12 +696,18 @@ impl Parser {
                 Tok::Eq => {
                     self.bump();
                     self.bump();
-                    Field::Value { name, value: self.parse_expr() }
+                    Field::Value {
+                        name,
+                        value: self.parse_expr(),
+                    }
                 }
                 Tok::Colon => {
                     self.bump();
                     self.bump();
-                    Field::Type { name, ty: self.parse_type() }
+                    Field::Type {
+                        name,
+                        ty: self.parse_type(),
+                    }
                 }
                 Tok::Comma | Tok::Newline | Tok::RBrace => {
                     self.bump();
@@ -673,12 +747,19 @@ impl Parser {
                 let prop = self.ident();
                 self.bump(); // =
                 let kind = if n == "bind" { Dir::Bind } else { Dir::On };
-                return Arg::Directive { kind, prop, value: self.parse_expr() };
+                return Arg::Directive {
+                    kind,
+                    prop,
+                    value: self.parse_expr(),
+                };
             }
             if matches!(self.peekn(1), Tok::Eq) {
                 self.bump(); // name
                 self.bump(); // =
-                return Arg::Named { name: n, value: self.parse_expr() };
+                return Arg::Named {
+                    name: n,
+                    value: self.parse_expr(),
+                };
             }
         }
         Arg::Pos(self.parse_expr())
@@ -756,7 +837,11 @@ impl Parser {
         } else {
             None
         };
-        Expr::If { cond: Box::new(cond), then, els }
+        Expr::If {
+            cond: Box::new(cond),
+            then,
+            els,
+        }
     }
 
     fn parse_for(&mut self) -> Expr {
@@ -768,7 +853,11 @@ impl Parser {
         let iter = self.parse_expr();
         self.no_brace = save;
         let body = self.parse_block();
-        Expr::For { pat, iter: Box::new(iter), body }
+        Expr::For {
+            pat,
+            iter: Box::new(iter),
+            body,
+        }
     }
 
     fn parse_while(&mut self) -> Expr {
@@ -778,7 +867,10 @@ impl Parser {
         let cond = self.parse_expr();
         self.no_brace = save;
         let body = self.parse_block();
-        Expr::While { cond: Box::new(cond), body }
+        Expr::While {
+            cond: Box::new(cond),
+            body,
+        }
     }
 
     fn parse_match(&mut self) -> Expr {
@@ -799,14 +891,21 @@ impl Parser {
             self.skip_newlines();
         }
         self.expect(Tok::RBrace, "'}'");
-        Expr::Match { scrut: Box::new(scrut), arms }
+        Expr::Match {
+            scrut: Box::new(scrut),
+            arms,
+        }
     }
 
     fn parse_arm(&mut self) -> Arm {
         let pat = self.parse_pattern_top();
         // A guard is a boolean expression; parse it at ternary level so the
         // arm's own `=>` isn't mistaken for a lambda arrow (`_ if c => body`).
-        let guard = if self.eat(Tok::If) { Some(self.parse_ternary()) } else { None };
+        let guard = if self.eat(Tok::If) {
+            Some(self.parse_ternary())
+        } else {
+            None
+        };
         self.expect(Tok::FatArrow, "'=>'");
         let body = if self.at(Tok::LBrace) {
             Expr::Block(self.parse_block())
@@ -937,15 +1036,27 @@ impl Parser {
 
     fn expr_to_params(&mut self, e: Expr) -> Vec<Param> {
         match e {
-            Expr::Ident(name) => vec![Param { name, ty: None, variadic: false }],
+            Expr::Ident(name) => vec![Param {
+                name,
+                ty: None,
+                variadic: false,
+            }],
             Expr::Unit => Vec::new(),
             Expr::List(es) => es
                 .into_iter()
                 .map(|x| match x {
-                    Expr::Ident(name) => Param { name, ty: None, variadic: false },
+                    Expr::Ident(name) => Param {
+                        name,
+                        ty: None,
+                        variadic: false,
+                    },
                     _ => {
                         self.err("lambda parameters must be identifiers");
-                        Param { name: "?".into(), ty: None, variadic: false }
+                        Param {
+                            name: "?".into(),
+                            ty: None,
+                            variadic: false,
+                        }
                     }
                 })
                 .collect(),

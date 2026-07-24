@@ -31,7 +31,10 @@ fn llm_docs_examples_check_clean() {
         assert!(!blocks.is_empty(), "{file}: no ```maca blocks found");
         for (i, b) in blocks.iter().enumerate() {
             let d = check(b, false);
-            assert!(d.is_empty(), "{file} block #{i} failed maca.check: {d:?}\n---\n{b}");
+            assert!(
+                d.is_empty(),
+                "{file} block #{i} failed maca.check: {d:?}\n---\n{b}"
+            );
         }
     }
 }
