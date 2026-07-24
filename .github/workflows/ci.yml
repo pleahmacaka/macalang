@@ -29,7 +29,7 @@ jobs:
       # those (otherwise-skipped) integration tests actually run in CI.
       - name: Install C / LLVM toolchain
         # llvm provides llvm-objcopy/llvm-size used by the embedded target
-        run: sudo apt-get update && sudo apt-get install -y clang lld llvm libsqlite3-dev
+        run: sudo apt-get update && sudo apt-get install -y clang lld llvm libsqlite3-dev python3-dev
 
       - name: Format check
         run: cargo fmt --all --check

@@ -822,26 +822,69 @@ pub const PY_GLUE: &str = r#"#define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include "maca_runtime.h"
 
+/* str(result) as a maca_str (owns a fresh copy) */
+static maca_str py_str_result(PyObject* r) {
+    maca_str out = "<py error>";
+    if (!r) return out;
+    PyObject* s = PyObject_Str(r);
+    if (s) {
+        const char* c = PyUnicode_AsUTF8(s);
+        if (c) { size_t n = strlen(c); char* b = (char*)maca_alloc(n + 1); memcpy(b, c, n + 1); out = b; }
+        Py_DECREF(s);
+    }
+    return out;
+}
+
+/* resolve module.func into a callable (borrowed refs freed by the caller) */
+static PyObject* py_lookup(maca_str module, maca_str func) {
+    PyObject* m = PyImport_ImportModule(module);
+    if (!m) return 0;
+    PyObject* f = PyObject_GetAttrString(m, func);
+    Py_DECREF(m);
+    if (f && PyCallable_Check(f)) return f;
+    Py_XDECREF(f);
+    return 0;
+}
+
 maca_str py_call(maca_str module, maca_str func) {
     Py_Initialize();
     maca_str out = "<py error>";
-    PyObject* m = PyImport_ImportModule(module);
-    if (m) {
-        PyObject* f = PyObject_GetAttrString(m, func);
-        if (f && PyCallable_Check(f)) {
-            PyObject* r = PyObject_CallObject(f, 0);
-            if (r) {
-                PyObject* s = PyObject_Str(r);
-                if (s) {
-                    const char* c = PyUnicode_AsUTF8(s);
-                    if (c) { size_t n = strlen(c); char* b = (char*)maca_alloc(n + 1); memcpy(b, c, n + 1); out = b; }
-                    Py_DECREF(s);
-                }
-                Py_DECREF(r);
-            }
-            Py_XDECREF(f);
-        }
-        Py_DECREF(m);
+    PyObject* f = py_lookup(module, func);
+    if (f) {
+        PyObject* r = PyObject_CallObject(f, 0);
+        out = py_str_result(r);
+        Py_XDECREF(r);
+        Py_DECREF(f);
+    }
+    Py_Finalize();
+    return out;
+}
+
+/* call module.func(arg) with a single string argument */
+maca_str py_call_s(maca_str module, maca_str func, maca_str arg) {
+    Py_Initialize();
+    maca_str out = "<py error>";
+    PyObject* f = py_lookup(module, func);
+    if (f) {
+        PyObject* r = PyObject_CallFunction(f, "s", arg ? arg : "");
+        out = py_str_result(r);
+        Py_XDECREF(r);
+        Py_DECREF(f);
+    }
+    Py_Finalize();
+    return out;
+}
+
+/* call module.func(n) with a single integer argument */
+maca_str py_call_i(maca_str module, maca_str func, int64_t n) {
+    Py_Initialize();
+    maca_str out = "<py error>";
+    PyObject* f = py_lookup(module, func);
+    if (f) {
+        PyObject* r = PyObject_CallFunction(f, "L", (long long)n);
+        out = py_str_result(r);
+        Py_XDECREF(r);
+        Py_DECREF(f);
     }
     Py_Finalize();
     return out;

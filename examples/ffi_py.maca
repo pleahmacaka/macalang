@@ -1,8 +1,15 @@
 import py "platform"
 
+// Foreign declarations, bound to the CPython glue. `py_call` is no-arg;
+// `py_call_s`/`py_call_i` pass a single string/int argument.
 py_call(module: str, func: str) -> str
+py_call_s(module: str, func: str, arg: str) -> str
+py_call_i(module: str, func: str, n: int) -> str
 
 main() -> int {
     info(py_call("platform", "python_version"))
+    // math.sqrt(144) and os.path.basename("/a/b/c.txt")
+    info(py_call_i("math", "sqrt", 144))
+    info(py_call_s("os.path", "basename", "/a/b/c.txt"))
     0
 }

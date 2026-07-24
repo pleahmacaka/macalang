@@ -1080,6 +1080,27 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
         matches!(it, maca_parser::Stmt::Import(maca_parser::Import::Foreign { lang, .. }) if lang == "py")
     }) {
         maca_runtime::write_py_glue(&dir).map_err(|e| e.to_string())?;
+        // Plain Linux host: use python3-config to find the embed flags.
+        if !have_wsl() {
+            let includes = capture_cmd("python3-config", &["--includes"])?;
+            let ldflags = capture_cmd("python3-config", &["--ldflags", "--embed"])
+                .or_else(|_| capture_cmd("python3-config", &["--ldflags"]))?;
+            let mut cc = Command::new("cc");
+            cc.arg(dir.join("main.c"))
+                .arg(dir.join("maca_runtime.c"))
+                .arg(dir.join("maca_ffi_py.c"))
+                .arg("-I")
+                .arg(&dir)
+                .args(includes.split_whitespace())
+                .args(ldflags.split_whitespace())
+                .args(["-O2", "-o"])
+                .arg(out);
+            let o = cc.output().map_err(|e| format!("failed to run cc: {e}"))?;
+            if !o.status.success() {
+                return Err(format!("py ffi build (host cc) failed:\n{}", String::from_utf8_lossy(&o.stderr)));
+            }
+            return Ok(());
+        }
         let py = nix_out("nixpkgs#python3")?;
         let inc = wsl_capture(&format!("ls -d {py}/include/python3* | head -1"))?;
         let lname = wsl_capture(&format!(
@@ -1265,6 +1286,22 @@ fn have_wsl() -> bool {
 }
 
 /// Is a command available on PATH (responds to `--version`)?
+/// Run a host command and capture its trimmed stdout (for `python3-config` etc.).
+fn capture_cmd(cmd: &str, args: &[&str]) -> Result<String, String> {
+    let o = Command::new(cmd)
+        .args(args)
+        .output()
+        .map_err(|e| format!("failed to run {cmd}: {e}"))?;
+    if !o.status.success() {
+        return Err(format!(
+            "{cmd} {}: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&o.stderr)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
+}
+
 fn have(cmd: &str) -> bool {
     Command::new(cmd)
         .arg("--version")

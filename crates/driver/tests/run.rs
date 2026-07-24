@@ -483,17 +483,31 @@ fn ffi_nix_value() {
 }
 
 #[test]
-#[ignore = "feature-gated: embeds CPython (libpython, large binary). Run with `--ignored`."]
 fn ffi_py_calls_python() {
-    if !wsl_ready() {
-        eprintln!("skipping ffi_py_calls_python: wsl not available");
+    // On a plain Linux host the driver links libpython via `python3-config`;
+    // on the WSL/Nix path it pulls `nixpkgs#python3`. Skip if neither is usable.
+    let has_pyconfig = Command::new("python3-config")
+        .arg("--includes")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !wsl_ready() && !has_pyconfig {
+        eprintln!("skipping ffi_py_calls_python: no python3-config and no wsl");
         return;
     }
-    // import py "platform": call platform.python_version() → a version string
+    // python_version() → a version string; sqrt(144) and basename() pass args
     let out = run_example("ffi_py.maca");
-    let v = out.trim();
+    let first = out.lines().next().unwrap_or("").trim();
     assert!(
-        v.split('.').count() >= 2 && v.chars().next().is_some_and(|c| c.is_ascii_digit()),
-        "expected a python version, got: {v}"
+        first.split('.').count() >= 2 && first.chars().next().is_some_and(|c| c.is_ascii_digit()),
+        "expected a python version, got: {first}"
+    );
+    assert!(
+        out.contains("12.0"),
+        "py_call_i(math, sqrt, 144) wrong:\n{out}"
+    );
+    assert!(
+        out.contains("c.txt"),
+        "py_call_s(os.path, basename, …) wrong:\n{out}"
     );
 }
