@@ -66,7 +66,7 @@ impl Cx {
                 if let Some(vars) = sum_variants(&b.value) {
                     self.sums.insert(name.clone());
                     for v in vars {
-                        self.variant_of.insert(v, name.clone());
+                        self.variant_of.insert(v.name, name.clone());
                     }
                 } else if record_fields(&b.value).is_some() {
                     self.records.insert(name.clone());
@@ -125,7 +125,10 @@ impl Cx {
     }
 
     fn emit_struct(&mut self, name: &str, fields: &[(String, Type)]) -> String {
-        let mut out = format!("#[derive(Clone, Debug)]\n#[allow(dead_code)]\nstruct {name} {{\n");
+        // `PartialEq` matches the enum derive so a sum variant can carry a
+        // record payload (`Rows(Grid)`) — the derive cascades to field types.
+        let mut out =
+            format!("#[derive(Clone, Debug, PartialEq)]\n#[allow(dead_code)]\nstruct {name} {{\n");
         for (fname, ty) in fields {
             out.push_str(&format!("    {}: {},\n", ident(fname), rust_ty(ty)));
         }
@@ -304,6 +307,18 @@ impl Cx {
     fn call(&mut self, callee: &Expr, args: &[Arg]) -> (String, bool) {
         let argv: Vec<(String, bool)> = args.iter().map(|a| self.expr(arg_expr(a))).collect();
         let a0 = argv.first().map(|(c, _)| c.clone()).unwrap_or_default();
+        // By-value user calls *move* their arguments in Rust, but Maca values are
+        // freely reusable — so a local variable passed by value is `.clone()`d
+        // (a no-op for `Copy` scalars). Fresh temporaries (literals, calls, ctors)
+        // aren't moved from anything, so they're passed as-is.
+        let cloned: Vec<String> = args
+            .iter()
+            .zip(&argv)
+            .map(|(a, (c, _))| match arg_expr(a) {
+                Expr::Ident(n) if self.declared.contains(n) => format!("{c}.clone()"),
+                _ => c.clone(),
+            })
+            .collect();
         if let Expr::Ident(name) = callee {
             match name.as_str() {
                 "info" | "print" | "err" | "warn" | "debug" | "notice" => {
@@ -320,23 +335,22 @@ impl Cx {
                 "len" => return (format!("(maca_len(&{a0}))"), false),
                 _ => {}
             }
-            let joined = argv
-                .iter()
-                .map(|(c, _)| c.clone())
-                .collect::<Vec<_>>()
-                .join(", ");
-            // a constructor call `Point(1, 2)` when the name is a known record;
-            // otherwise a plain function / foreign call.
+            let joined = cloned.join(", ");
+            // a payload sum-variant constructor `Circle(5)` → `Shape::Circle(5)`.
+            if let Some(enom) = self.variant_of.get(name) {
+                return if joined.is_empty() {
+                    (format!("{enom}::{}", ident(name)), false)
+                } else {
+                    (format!("{enom}::{}({joined})", ident(name)), false)
+                };
+            }
+            // otherwise a plain function / foreign call (or a record ctor call).
             return (format!("{}({joined})", ident(name)), false);
         }
         // UFCS / method call: `recv.method(args)`
         if let Expr::Field { base, name } = callee {
             let (b, _) = self.expr(base);
-            let joined = argv
-                .iter()
-                .map(|(c, _)| c.clone())
-                .collect::<Vec<_>>()
-                .join(", ");
+            let joined = cloned.join(", ");
             return (format!("{b}.{}({joined})", ident(name)), false);
         }
         ("Default::default()".into(), false)
@@ -444,55 +458,104 @@ impl Cx {
 
 // ---- free helpers ---------------------------------------------------------
 
-/// The variant names of a nullary sum (`A | B | C`), or `None`.
-fn sum_variants(e: &Expr) -> Option<Vec<String>> {
-    fn go(e: &Expr, out: &mut Vec<String>) -> bool {
+/// One variant of a sum type: its name and (possibly empty) payload types.
+struct Variant {
+    name: String,
+    payload: Vec<String>, // Rust types
+}
+
+/// The variants of a sum-type declaration — `A | B(x) | C(x, y)` — or `None` if
+/// the value isn't a top-level union of variant forms. Each leaf is either a
+/// bare name (a nullary variant) or a call on a capitalized name whose argument
+/// "expressions" are really the payload types (`Circle(int)` parses as a call
+/// because the whole `T = …` right-hand side is parsed in expression position).
+fn sum_variants(e: &Expr) -> Option<Vec<Variant>> {
+    fn leaf(e: &Expr, out: &mut Vec<Variant>) -> bool {
         match e {
             Expr::Ident(n) => {
-                out.push(n.clone());
+                out.push(Variant {
+                    name: n.clone(),
+                    payload: vec![],
+                });
                 true
             }
+            Expr::Call { callee, args } => match &**callee {
+                Expr::Ident(n) => {
+                    out.push(Variant {
+                        name: n.clone(),
+                        payload: args.iter().map(|a| expr_as_rust_ty(arg_expr(a))).collect(),
+                    });
+                    true
+                }
+                _ => false,
+            },
             Expr::Binary {
                 op: BinOp::Union,
                 lhs,
                 rhs,
-            } => go(lhs, out) && go(rhs, out),
+            } => leaf(lhs, out) && leaf(rhs, out),
             _ => false,
         }
     }
-    let mut out = Vec::new();
     match e {
         Expr::Binary {
             op: BinOp::Union, ..
-        } if go(e, &mut out) => Some(out),
+        } => {
+            let mut out = Vec::new();
+            leaf(e, &mut out).then_some(out)
+        }
         _ => None,
     }
 }
 
-fn emit_enum(name: &str, vars: &[String]) -> String {
+fn emit_enum(name: &str, vars: &[Variant]) -> String {
+    let body: Vec<String> = vars
+        .iter()
+        .map(|v| {
+            if v.payload.is_empty() {
+                v.name.clone()
+            } else {
+                format!("{}({})", v.name, v.payload.join(", "))
+            }
+        })
+        .collect();
     format!(
         "#[derive(Clone, Debug, PartialEq)]\n#[allow(dead_code)]\nenum {name} {{ {} }}\n\n",
-        vars.join(", ")
+        body.join(", ")
     )
+}
+
+/// Map a payload/type "expression" (from a ctor declaration) to a Rust type.
+fn expr_as_rust_ty(e: &Expr) -> String {
+    match e {
+        Expr::Ident(n) => scalar_ty(n),
+        // `T[]` payloads parse as an index expression; recover the element type.
+        Expr::Index { base, .. } => format!("Vec<{}>", expr_as_rust_ty(base)),
+        _ => "i64".into(),
+    }
+}
+
+/// A scalar/type name → its Rust spelling; unknown capitalized names (a user
+/// record/sum, or a foreign Rust type) pass through verbatim.
+fn scalar_ty(n: &str) -> String {
+    match n {
+        "int" | "i64" => "i64",
+        "i32" => "i32",
+        "float" | "f64" => "f64",
+        "f32" => "f32",
+        "str" | "bytes" => "String",
+        "bool" => "bool",
+        "unit" | "()" => "()",
+        other => other,
+    }
+    .into()
 }
 
 /// Map a Maca type to a Rust type. Unknown capitalized names pass through
 /// verbatim (a user record/sum, or later a foreign Rust type).
 fn rust_ty(t: &Type) -> String {
     match t {
-        Type::Name(segs) => {
-            let n = segs.last().map(String::as_str).unwrap_or("");
-            match n {
-                "int" | "i64" => "i64".into(),
-                "i32" => "i32".into(),
-                "float" | "f64" => "f64".into(),
-                "f32" => "f32".into(),
-                "str" | "bytes" => "String".into(),
-                "bool" => "bool".into(),
-                "unit" | "()" => "()".into(),
-                other => other.into(),
-            }
-        }
+        Type::Name(segs) => scalar_ty(segs.last().map(String::as_str).unwrap_or("")),
         Type::Array(e) => format!("Vec<{}>", rust_ty(e)),
         Type::Opt(e) => format!("Option<{}>", rust_ty(e)),
         Type::Paren(e) => rust_ty(e),

@@ -73,4 +73,16 @@ fn hello_and_recursion_and_loops_run_via_rust() {
     );
     assert!(out.contains("warmth=1 sum=15 px=3"), "core stdout: {out}");
     assert_eq!(code, Some(15), "main exit code should be sum_to(5)=15");
+
+    // payload sum (data-carrying variants), incl. a record payload and value
+    // reuse — the shape gpql needs (`Outcome = Rows(Grid) | Affected(int)`).
+    let (out, code) = build_and_run(
+        "payload_sum",
+        "Grid = {\n    rows: int\n    cols: int\n}\n\
+         Outcome = Rows(Grid) | Affected(int)\n\
+         describe(o: Outcome) -> int =>\n    match o {\n        Rows(g) => g.rows\n        Affected(n) => n\n    }\n\n\
+         main() -> int {\n    r = Rows(Grid { rows = 7, cols = 3 })\n    a = Affected(42)\n    info(\"rows={describe(r)} affected={describe(a)}\")\n    describe(r)\n}\n",
+    );
+    assert!(out.contains("rows=7 affected=42"), "payload_sum stdout: {out}");
+    assert_eq!(code, Some(7), "main exit code should be describe(r)=7");
 }
