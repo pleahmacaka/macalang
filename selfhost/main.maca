@@ -52,10 +52,15 @@ main() -> int {
     bfn = parse_fn(lex(blk), 0)
     info("block fn: {emit_fn(bfn.snode)}")
 
-    // a COMPLETE program compiled end to end: a helper plus a `main` that calls
-    // it. The emitted C between the markers compiles and runs (its exit code is
-    // `sq(9) == 81`) — the self-hosted compiler produces a working executable.
-    program = "sq(n: int) -> int {{ t = n * n t }} main() -> int {{ sq(9) }}"
+    // multi-argument calls: `add(1, 2)` parses to a two-arg call node.
+    two = parse_expr(lex("add(1, 2)"), 0)
+    info("multi-arg: {show(two.node)}")
+
+    // a COMPLETE program compiled end to end: a two-argument helper plus a
+    // `main` that calls it. The emitted C between the markers compiles and runs
+    // (its exit code is `add(40, 2) == 42`) — the self-hosted compiler produces
+    // a working executable, exercising multi-argument params and call args.
+    program = "add(a: int, b: int) -> int => a + b main() -> int {{ add(40, 2) }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))

@@ -182,17 +182,23 @@ fn selfhost_frontend_compiles_and_runs() {
         "block-body emission wrong: {stdout}"
     );
 
+    // multi-argument call: `add(1, 2)` parses to a two-argument call node.
+    assert!(
+        stdout.contains("multi-arg: add(1, 2)"),
+        "multi-argument call parse wrong: {stdout}"
+    );
+
     // Capstone: compile and run the *complete program* the self-hosted compiler
     // emitted. Extract the C between the markers, compile it with the host cc,
-    // run it, and check its exit code is `sq(9) == 81` — the Maca-written
-    // compiler produced a working executable.
+    // run it, and check its exit code is `add(40, 2) == 42` — the Maca-written
+    // compiler produced a working executable (multi-arg params + call args).
     let c_src = stdout
         .split_once("=== emitted program ===")
         .and_then(|(_, rest)| rest.split_once("=== end program ==="))
         .map(|(prog, _)| prog.trim().to_string())
         .expect("emitted-program markers present");
     assert!(
-        c_src.contains("int sq(int n)") && c_src.contains("int main()"),
+        c_src.contains("int add(int a, int b)") && c_src.contains("int main()"),
         "emitted program missing functions:\n{c_src}"
     );
     let cfile = dir.join("emitted.c");
@@ -217,8 +223,8 @@ fn selfhost_frontend_compiles_and_runs() {
         .code();
     assert_eq!(
         code,
-        Some(81),
-        "self-host-emitted program returned {code:?}, expected sq(9) == 81"
+        Some(42),
+        "self-host-emitted program returned {code:?}, expected add(40, 2) == 42"
     );
 
     // Capstone #2: the *same* program through the Maca-written Rust back end
@@ -235,7 +241,7 @@ fn selfhost_frontend_compiles_and_runs() {
         .map(|(prog, _)| prog.trim().to_string())
         .expect("emitted-rust markers present");
     assert!(
-        rs_src.contains("fn sq(n: i64) -> i64") && rs_src.contains("fn __maca_main() -> i64"),
+        rs_src.contains("fn add(a: i64, b: i64) -> i64") && rs_src.contains("fn __maca_main() -> i64"),
         "emitted Rust missing functions:\n{rs_src}"
     );
     let rsfile = dir.join("emitted.rs");
@@ -262,7 +268,7 @@ fn selfhost_frontend_compiles_and_runs() {
         .code();
     assert_eq!(
         rcode,
-        Some(81),
-        "self-host-emitted Rust program returned {rcode:?}, expected sq(9) == 81"
+        Some(42),
+        "self-host-emitted Rust program returned {rcode:?}, expected add(40, 2) == 42"
     );
 }

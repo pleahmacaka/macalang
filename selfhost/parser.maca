@@ -42,6 +42,14 @@ PBlock = {
 mk_pblock(bstmts: Stmt[], bnext: int) -> PBlock =>
     PBlock { bstmts, bnext }
 
+// Result of parsing a call's argument list (the args + the index past `)`).
+PArgs = {
+    aitems: Expr[]
+    anext: int
+}
+mk_pargs(aitems: Expr[], anext: int) -> PArgs =>
+    PArgs { aitems, anext }
+
 // ---- function definitions -------------------------------------------------
 
 // `name(p [: T], …) -> R <body>` — a top-level function. The body is either an
@@ -172,8 +180,22 @@ parse_call_or_ident(ts: Token[], i: int) -> PExpr {
         : mk_pexpr(e_ident(name), i + 1)
 }
 
-// `name ( arg )` — one argument in this slice
+// `name ( arg, … )` — a comma-separated argument list (zero or more).
 parse_call(ts: Token[], i: int, name: str) -> PExpr {
-    arg = parse_expr(ts, i + 2)
-    mk_pexpr(e_call(name, [arg.node]), arg.next + 1)
+    a = parse_args(ts, i + 2, [])      // i+1 is '(' ; args start at i+2
+    mk_pexpr(e_call(name, a.aitems), a.anext)
+}
+
+// Collect call arguments up to the closing `)`, which `parse_args` skips.
+parse_args(ts: Token[], i: int, acc: Expr[]) -> PArgs =>
+    ts.get(i).kind == RParen
+        ? mk_pargs(acc, i + 1)          // skip ')'
+        : parse_one_arg(ts, i, acc)
+
+parse_one_arg(ts: Token[], i: int, acc: Expr[]) -> PArgs {
+    a = parse_expr(ts, i)
+    nacc = acc ++ [a.node]
+    ts.get(a.next).kind == Comma
+        ? parse_args(ts, a.next + 1, nacc)
+        : parse_args(ts, a.next, nacc)
 }
