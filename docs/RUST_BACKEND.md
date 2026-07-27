@@ -1,6 +1,7 @@
 # A Rust source backend for Maca (`--target rust`)
 
-**Status (2026-07-27):** R1, R2, and R3 are implemented.
+**Status (2026-07-27):** R1–R5 are implemented; R6 (gpui executor wiring +
+`impl IntoElement` return + foreign param types) remains.
 
 - **R1/R2 functional core** — `crates/backend_rust` emits Rust source and
   `maca build --target rust` builds a native binary. Covered: `main` (exits with
@@ -30,11 +31,27 @@ the driver (import validation + manifest generation), and
 `crates/driver/tests/rust_backend.rs` (compile + run via `rustc`, plus a
 best-effort cargo-dependency build).
 
-**Known gaps before gpui:** recursive sum types need `Box<T>` insertion (e.g.
-`tree.maca`) — deferred, since gpui's types aren't recursive. Foreign *argument*
-coercion beyond bare integer literals is still gradual (a wrong type just makes
-`rustc` error, per §2.4). The remaining phases (R4 escaping closures, R5 foreign
-trait impls + the `&mut` rule, R6 gpql) are specified below.
+- **R4 closures** — a lambda lowers to a `move` closure (`n => n + 1` →
+  `move |n| { (n + 1) }`) with inferred parameter types, so it can escape into a
+  foreign callback API and outlive its frame. Verified end-to-end passing a
+  closure to a raw-block `fn apply(f: impl Fn(i64)->i64, …)`.
+- **R5 foreign trait impl** — `Counter : Render = { render = (self, …) => … }` →
+  `impl Render for Counter { fn render(&mut self, …) { … } }`. A leading `self`
+  becomes `&mut self` (§2.1); the return type is inferred from the body
+  (`()`/`bool`/`String`/`i64`), which covers event handlers and getters. The
+  checker treats unknown lowercase calls as gradual foreign items once the
+  program has an `import rust`, and an `import rust """…"""` raw block is emitted
+  verbatim (a trait/impl/`fn` supplied inline). Verified compiling + running
+  against a local stand-in trait.
+
+**Known gaps before gpui (R6):** `render` returns gpui's `impl IntoElement`,
+which isn't inferred from the body yet (§2.5 — emit `-> AnyElement` +
+`.into_any_element()`); unannotated foreign method params default to `i64` rather
+than `&mut Window` / `&mut Context<Self>`; `cx.listener(…)`/`cx.notify()` and
+`spawn`/`await` executor wiring; and recursive sum types need `Box<T>`
+(`tree.maca`). `examples/gpui_counter.maca` shows the full surface and documents
+exactly these remaining pieces. Foreign *argument* coercion beyond bare integer
+literals also stays gradual (a wrong type just makes `rustc` error, §2.4).
 
 ---
 
@@ -95,8 +112,8 @@ mechanical from there.
 | **R1** ✅ | `crates/backend_rust`; `--target rust`; `main() -> int` → a Rust binary | `examples/hello.maca` runs via the Rust backend |
 | **R2** ✅ (core) | records → structs, sums → enums, lists → `Vec`, `str` → `String` | functional examples run on the Rust backend |
 | **R3** ✅ | `import rust`, `[rust-dependencies]` → generated `Cargo.toml` + `cargo` build, unresolved imports are hard errors, method-chain passthrough | a Maca program links a real crates.io crate |
-| **R4** | closures → `move` closures with `Rc` capture | a callback-taking crate API works |
-| **R5** | `Name : Trait = { … }` → `impl Trait for Name`; `&mut` non-escaping rule + diagnostic | `examples/gpui_counter.maca` compiles and runs |
+| **R4** ✅ | closures → `move` closures with `Rc` capture | a callback-taking crate API works |
+| **R5** ✅ | `Name : Trait = { … }` → `impl Trait for Name`; `&mut` non-escaping rule + diagnostic | `examples/gpui_counter.maca` compiles and runs |
 | **R6** | `spawn`/`await` → gpui executors; `@derive`; `[rust-patch]` | gpql's backend layer ports over |
 
 R1–R4 are language-agnostic and worth having regardless of gpui. R5 is the one

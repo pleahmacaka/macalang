@@ -109,6 +109,57 @@ fn instance_method_stays_dotted() {
 }
 
 #[test]
+fn closures_lower_to_move_closures() {
+    // R4: a lambda escapes into a (foreign) callback, so it must be a `move`
+    // closure with inferred parameter types.
+    let out = rs("main() -> int {\n    f = (n) => n + 1\n    0\n}\n");
+    assert!(out.contains("move |n| {"), "closure not `move`: {out}");
+    assert!(out.contains("(n + 1i64)"), "closure body: {out}");
+}
+
+#[test]
+fn foreign_trait_impl_lowers_to_impl_block() {
+    // R5: `Name : Trait = { m = (self, …) => … }` → `impl Trait for Name`, a
+    // leading `self` becomes `&mut self`, and the return type is inferred (a
+    // getter → i64, a mutation → unit).
+    let out = rs("Counter = {\n    count: int\n}\n\
+         Counter : Greet = {\n    value = (self) => self.count + 1\n    bump = (self) => self.count = self.count + 1\n}\n");
+    assert!(
+        out.contains("impl Greet for Counter {"),
+        "no impl block: {out}"
+    );
+    assert!(
+        out.contains("fn value(&mut self) -> i64 {"),
+        "self→&mut self / getter return: {out}"
+    );
+    assert!(
+        out.contains("fn bump(&mut self) {"),
+        "a mutating method returns unit: {out}"
+    );
+    assert!(
+        !out.contains("static COUNTER"),
+        "impl mis-emitted as a constant: {out}"
+    );
+}
+
+#[test]
+fn import_rust_raw_block_is_verbatim() {
+    // a raw block passes through unwrapped; a bare path becomes a `use`.
+    let out = rs(
+        "import rust \"\"\"\nfn helper() -> i64 { 1 }\n\"\"\"\nimport rust \"std::process\"\nmain() -> int => 0\n",
+    );
+    assert!(
+        out.contains("fn helper() -> i64 { 1 }"),
+        "raw block not verbatim: {out}"
+    );
+    assert!(out.contains("use std::process;"), "path not a use: {out}");
+    assert!(
+        !out.contains("use fn helper"),
+        "raw block wrongly wrapped: {out}"
+    );
+}
+
+#[test]
 fn variant_reference_is_qualified() {
     // a bare `Green` must emit `Color::Green`, and a match arm likewise.
     let out = rs(

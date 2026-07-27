@@ -111,6 +111,44 @@ fn foreign_std_type_compiles_and_runs() {
     assert_eq!(code, Some(5), "exit code should be as_secs()=5");
 }
 
+#[test]
+fn closure_passed_to_a_callback_api_runs() {
+    if !have("rustc") {
+        eprintln!("skipping: no rustc on PATH");
+        return;
+    }
+    // R4: a Maca closure escapes into a foreign higher-order function (defined in
+    // an `import rust` raw block) and is invoked there.
+    let (out, code) = build_and_run(
+        "closure",
+        "import rust \"\"\"\nfn apply(f: impl Fn(i64) -> i64, x: i64) -> i64 { f(x) }\n\"\"\"\n\n\
+         main() -> int {\n    r = apply(n => n + 1, 41)\n    info(\"apply = {r}\")\n    r\n}\n",
+    );
+    assert!(out.contains("apply = 42"), "closure stdout: {out}");
+    assert_eq!(code, Some(42), "closure result should be 42");
+}
+
+#[test]
+fn foreign_trait_impl_runs() {
+    if !have("rustc") {
+        eprintln!("skipping: no rustc on PATH");
+        return;
+    }
+    // R5: `Counter : Greet = { … }` → `impl Greet for Counter`. The trait is
+    // supplied locally via a raw block (real gpui isn't available offline), which
+    // is exactly the shape `examples/gpui_counter.maca` uses against gpui's
+    // `Render`. A leading `self` → `&mut self`; a mutating method returns unit.
+    let (out, code) = build_and_run(
+        "trait_impl",
+        "import rust \"\"\"\ntrait Greet {\n    fn value(&mut self) -> i64;\n    fn bump(&mut self);\n}\n\"\"\"\n\n\
+         Counter = {\n    count: int\n}\n\
+         Counter : Greet = {\n    value = (self) => self.count + 1\n    bump = (self) => self.count = self.count + 100\n}\n\n\
+         main() -> int {\n    c = Counter { count = 41 }\n    v = c.value()\n    info(\"value = {v}\")\n    v\n}\n",
+    );
+    assert!(out.contains("value = 42"), "trait impl stdout: {out}");
+    assert_eq!(code, Some(42), "value() should be 42");
+}
+
 /// `[rust-dependencies]` → a generated Cargo project. Verifies the manifest is
 /// written correctly and, when the crate is resolvable (cargo present + crate
 /// cached/online), that the dependency builds and links. Skips gracefully in a

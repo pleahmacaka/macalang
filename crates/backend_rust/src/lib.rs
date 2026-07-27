@@ -30,16 +30,24 @@ pub fn rust_imports(m: &Module) -> Vec<String> {
         .collect()
 }
 
-/// Turn an `import rust` spec into a `use` item. A spec that already looks like
-/// a full item (`use …`, an attribute, or a multi-line raw block) is emitted
-/// verbatim; a bare path (`gpui::div`, `std::process`) is wrapped in `use …;`.
+/// Turn an `import rust` spec into a `use` item. A bare path (`gpui::div`,
+/// `std::process`) is wrapped in `use …;`; anything that isn't a plain path — a
+/// raw Rust block (`fn …`, a `trait …`, an attribute) — is emitted verbatim.
 fn use_line(spec: &str) -> String {
     let s = spec.trim();
-    if s.contains('\n') || s.starts_with("use ") || s.starts_with('#') {
-        format!("{s}\n")
-    } else {
+    if is_rust_path(s) {
         format!("use {s};\n")
+    } else {
+        format!("{s}\n")
     }
+}
+
+/// A bare `a::b::c` crate path (only identifier chars, `::`, and raw `#`), as
+/// opposed to a raw Rust code block.
+fn is_rust_path(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == ':' || c == '#')
 }
 
 /// Emit a Rust compilation unit for `m`.
@@ -64,6 +72,12 @@ pub fn emit(m: &Module) -> String {
                 if let Expr::Ident(name) = &b.target {
                     if let Some(vars) = sum_variants(&b.value) {
                         out.push_str(&emit_enum(name, &vars));
+                    } else if let (Some(trait_ty), Some(methods)) =
+                        (b.tys.first(), lambda_fields(&b.value))
+                    {
+                        // R5: `Name : Trait = { m = (self, …) => … }` →
+                        // `impl Trait for Name { fn m(&mut self, …) { … } }`.
+                        out.push_str(&cx.emit_impl(name, trait_ty, &methods));
                     } else if let Some(fields) = record_fields(&b.value) {
                         out.push_str(&cx.emit_struct(name, &fields));
                     } else {
@@ -168,6 +182,46 @@ impl Cx {
         }
         out.push_str("}\n\n");
         out
+    }
+
+    /// R5: a foreign trait implementation. `Name : Trait = { m = (self, p: T) => body }`
+    /// → `impl Trait for Name { fn m(&mut self, p: T) -> Ret { body } }`. A leading
+    /// `self` parameter becomes `&mut self` (§2.1: a foreign type parameter is a
+    /// non-escaping mutable borrow); the return type is inferred from the body
+    /// (`()`/`bool`/`String`/`i64`), which covers event handlers and getters.
+    fn emit_impl(
+        &mut self,
+        name: &str,
+        trait_ty: &Type,
+        methods: &[(String, Vec<Param>, Expr)],
+    ) -> String {
+        let mut ms = String::new();
+        for (mname, params, body) in methods {
+            self.declared.clear();
+            let mut ps = Vec::new();
+            for (i, p) in params.iter().enumerate() {
+                if i == 0 && p.name == "self" {
+                    ps.push("&mut self".to_string());
+                } else {
+                    self.declared.insert(p.name.clone());
+                    let ty = p.ty.as_ref().map(rust_ty).unwrap_or_else(|| "i64".into());
+                    ps.push(format!("mut {}: {}", ident(&p.name), ty));
+                }
+            }
+            let (b, is_str) = self.expr(body);
+            let ret = guess_ret(body, is_str);
+            let arrow = if ret == "()" {
+                String::new()
+            } else {
+                format!(" -> {ret}")
+            };
+            ms.push_str(&format!(
+                "    fn {}({}){arrow} {{ {b} }}\n",
+                ident(mname),
+                ps.join(", ")
+            ));
+        }
+        format!("impl {} for {name} {{\n{ms}}}\n\n", rust_ty(trait_ty))
     }
 
     // ---- statements -------------------------------------------------------
@@ -296,6 +350,14 @@ impl Cx {
             Expr::Ctor { name, fields } => (self.ctor(name, fields), false),
             Expr::Record(fields) => (self.ctor("", fields), false),
             Expr::Call { callee, args } => self.call(callee, args),
+            // R4: a closure. `move` so it can escape into a foreign callback and
+            // outlive this frame (§2.3); params are untyped so Rust infers them
+            // from the expected `Fn`/`FnMut` signature at the call site.
+            Expr::Lambda { params, body } => {
+                let ps: Vec<String> = params.iter().map(|p| ident(&p.name)).collect();
+                let (b, _) = self.expr(body);
+                (format!("move |{}| {{ {b} }}", ps.join(", ")), false)
+            }
             _ => ("Default::default()".into(), false),
         }
     }
@@ -608,6 +670,51 @@ fn emit_enum(name: &str, vars: &[Variant]) -> String {
     )
 }
 
+/// A record whose every field is `name = (params) => body` → the methods of a
+/// trait impl. `None` if any field isn't a lambda (so it's a plain record/const).
+fn lambda_fields(e: &Expr) -> Option<Vec<(String, Vec<Param>, Expr)>> {
+    let Expr::Record(fields) = e else { return None };
+    let mut out = Vec::new();
+    for f in fields {
+        if let Field::Value { name, value } = f
+            && let Expr::Lambda { params, body } = value
+        {
+            out.push((name.clone(), params.clone(), (**body).clone()));
+            continue;
+        }
+        return None;
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// Best-effort return type for a trait-impl method body (Maca lambdas carry no
+/// return annotation). Covers the common shapes: a mutation/loop/unit body → `()`
+/// (a gpui-style event handler), a comparison/`!` → `bool`, a string → `String`,
+/// otherwise `i64`. A body needing a foreign return type (`impl IntoElement`) is
+/// not yet inferred — that is the R5→R6 boundary.
+fn guess_ret(body: &Expr, is_str: bool) -> String {
+    use BinOp::*;
+    if is_str {
+        return "String".into();
+    }
+    match body {
+        Expr::Unit | Expr::Assign { .. } | Expr::While { .. } | Expr::For { .. } => "()".into(),
+        Expr::Bool(_)
+        | Expr::Unary { op: UnOp::Not, .. }
+        | Expr::Binary {
+            op: Eq | Ne | Lt | Gt | Le | Ge | And | Or,
+            ..
+        } => "bool".into(),
+        Expr::Block(stmts) => match stmts.last() {
+            // a block whose last statement is a bare value returns that value;
+            // anything else (a bind / assignment) leaves the block at unit.
+            Some(Stmt::Expr(e)) => guess_ret(e, false),
+            _ => "()".into(),
+        },
+        _ => "i64".into(),
+    }
+}
+
 /// Map a payload/type "expression" (from a ctor declaration) to a Rust type.
 fn expr_as_rust_ty(e: &Expr) -> String {
     match e {
@@ -684,11 +791,14 @@ fn record_fields(e: &Expr) -> Option<Vec<(String, Type)>> {
 
 /// Escape a Maca identifier that collides with a Rust keyword.
 fn ident(n: &str) -> String {
+    // `self`/`Self`/`super`/`crate` are keywords that *cannot* be raw-escaped, and
+    // as the trait-impl receiver `self` must pass through verbatim — so they're
+    // deliberately absent from this list.
     const KW: &[&str] = &[
-        "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn",
-        "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref",
-        "return", "self", "static", "struct", "super", "trait", "true", "type", "unsafe", "use",
-        "where", "while", "async", "await", "dyn", "box", "final",
+        "as", "break", "const", "continue", "else", "enum", "extern", "false", "fn", "for", "if",
+        "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return",
+        "static", "struct", "trait", "true", "type", "unsafe", "use", "where", "while", "async",
+        "await", "dyn", "box", "final",
     ];
     if KW.contains(&n) {
         format!("r#{n}")

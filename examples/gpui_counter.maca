@@ -1,0 +1,55 @@
+// A gpui counter in Maca -- the R5 target for the Rust source backend.
+//
+// Build with `maca build --target rust examples/gpui_counter.maca`, alongside a
+// maca.toml declaring the crate:
+//
+//   [rust-dependencies]
+//   gpui = { git = "https://github.com/zed-industries/zed" }
+//
+// What the Rust backend lowers today (verified against a local stand-in trait
+// in crates/driver/tests/rust_backend.rs::foreign_trait_impl_runs):
+//   * `Counter : Render = { ... }`     -> `impl Render for Counter { ... }`  (R5)
+//   * a leading `self` parameter        -> `&mut self`                        (2.1)
+//   * a mutating method (`count = ...`) -> returns `()` (an event handler)
+//   * `n => n + 1`                       -> a `move |n| ...` closure           (R4)
+//   * `div().flex().child(x)`            -> method-chain passthrough
+//   * `Duration.from_secs(5)` etc.       -> `Type::assoc(...)` without `::`
+//
+// The one piece still pending before this compiles against real gpui is the
+// `render` return type: gpui wants `-> impl IntoElement`, which the backend
+// can't infer from the body yet (2.5 -- emit `-> AnyElement` + `.into_any_element()`).
+// That, plus `cx.listener(...)` / `cx.notify()` executor wiring, is R6.
+
+import rust "gpui::div"
+import rust "gpui::Render"
+import rust "gpui::IntoElement"
+import rust "gpui::Context"
+import rust "gpui::Window"
+
+Counter = {
+    count: int
+}
+
+Counter : Render = {
+    // `self` -> `&mut self`; the builder chain passes through as-is. The return
+    // is gpui's `impl IntoElement` (the 2.5 piece still to land).
+    render = (self, window, cx) =>
+        div()
+            .flex()
+            .gap_2()
+            .child("Count: {self.count}")
+            .child(
+                div()
+                    .id("inc")
+                    .child("increment")
+                    .on_click(ev => self.count = self.count + 1)
+            )
+}
+
+main() -> int {
+    // A headless smoke of the state + handler the UI drives (no window needed):
+    // constructing the model and mutating it through the same value path.
+    c = Counter { count = 41 }
+    info("counter starts at {c.count}")
+    0
+}

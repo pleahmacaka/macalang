@@ -694,6 +694,17 @@ fn validate_rust_imports(m: &maca_parser::Module, deps: &[(String, String)]) -> 
         };
         match lang.as_str() {
             "rust" => {
+                // A raw Rust block (`import rust """…"""`) — anything that isn't a
+                // bare `a::b::c` path — is emitted verbatim, not a crate reference,
+                // so it needs no `[rust-dependencies]` entry.
+                let is_path = !spec.trim().is_empty()
+                    && spec
+                        .trim()
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || c == '_' || c == ':' || c == '#');
+                if !is_path {
+                    continue;
+                }
                 // first path segment = the crate root.
                 let krate = spec
                     .trim()

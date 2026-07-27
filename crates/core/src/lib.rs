@@ -114,6 +114,10 @@ struct Checker {
     /// false (a constant). Reassigning a `false` entry is an error. Cleared and
     /// restored around each function body.
     mut_of: HashMap<String, bool>,
+    /// The program pulls in Rust via `import rust` (a path or a raw block whose
+    /// contents the checker can't see), so unknown lowercase calls are treated as
+    /// gradual foreign items rather than `UndefinedName` (§2.4).
+    gradual_foreign: bool,
     diags: Vec<Diagnostic>,
 }
 
@@ -130,6 +134,7 @@ impl Checker {
             type_decls: HashSet::new(),
             local_names: HashSet::new(),
             mut_of: HashMap::new(),
+            gradual_foreign: false,
             diags: Vec::new(),
         }
     }
@@ -249,7 +254,15 @@ impl Checker {
                     bind(self, n.clone());
                 }
             }
-            Import::Bare(n) | Import::Foreign { lang: n, .. } => bind(self, n.clone()),
+            Import::Foreign { lang, .. } => {
+                // `import rust` brings in items the checker can't see (a crate
+                // path or a raw block), so relax undefined-name checking.
+                if lang == "rust" {
+                    self.gradual_foreign = true;
+                }
+                bind(self, lang.clone());
+            }
+            Import::Bare(n) => bind(self, n.clone()),
             Import::Path(_) => {}
         }
     }
@@ -643,6 +656,7 @@ impl Checker {
                 // (Capitalized names are constructors; UFCS `x.m(...)` and calls
                 // through a value stay gradual.)
                 if self.mode == Mode::Program
+                    && !self.gradual_foreign
                     && let Expr::Ident(name) = &**callee
                     && name
                         .chars()
