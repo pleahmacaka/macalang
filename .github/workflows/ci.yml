@@ -1,67 +1,83 @@
 name: ci
 
+# Runs on every branch push (so feature branches get CI, not just main), on
+# pull requests, and on manual dispatch.
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
+# A newer push to the same ref cancels the in-flight run, so only the latest
+# commit spends runner time.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Incremental compilation only helps across local edits; in CI it bloats the
+  # cache and slows cold builds, so turn it off.
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: "1"
+
 jobs:
+  # fmt + clippy: pure Rust, no C/LLVM toolchain needed (the compiler emits C at
+  # run time, it doesn't link it to build). Runs in parallel with the tests.
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal --no-self-update --component clippy --component rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: lint
+      - name: Format check
+        run: cargo fmt --all --check
+      - name: Clippy (warnings are errors)
+        run: cargo clippy --workspace --locked -- -D warnings
+
   test:
     name: cargo test
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-
       - name: Install Rust
-        run: rustup toolchain install stable --profile minimal --no-self-update --component clippy --component rustfmt
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+        run: rustup toolchain install stable --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
+          key: test
       # clang + lld back the native `cc` fallback and the embedded target so
-      # those (otherwise-skipped) integration tests actually run in CI.
+      # those (otherwise-skipped) integration tests actually run in CI; llvm
+      # provides llvm-objcopy/llvm-size for the embedded target; libsqlite3 /
+      # python3 back the FFI examples.
       - name: Install C / LLVM toolchain
-        # llvm provides llvm-objcopy/llvm-size used by the embedded target
         run: sudo apt-get update && sudo apt-get install -y clang lld llvm libsqlite3-dev python3-dev
-
-      - name: Format check
-        run: cargo fmt --all --check
-
-      - name: Clippy (warnings are errors)
-        run: cargo clippy --workspace -- -D warnings
-
-      - name: Build
-        run: cargo build --workspace
-
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
 
   js-package:
     name: macalang (npm/bun)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
       - name: Install Rust + wasm target
         run: |
           rustup toolchain install stable --profile minimal --no-self-update
           rustup target add wasm32-unknown-unknown
-
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: wasm
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-
       # build the compiler wasm into the package, then exercise the JS API
       # (compile / loadModule / loadFile / toJS) so it can't silently break.
       - name: Build wasm into the package
         run: bash packages/macalang/build.sh
-
       - name: Test the package
         run: node packages/macalang/test.mjs
