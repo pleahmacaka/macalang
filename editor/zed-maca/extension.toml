@@ -7,11 +7,12 @@ description = "Maca language support for Zed — syntax highlighting, comments, 
 repository = "https://github.com/pleahmacaka/macalang"
 
 # The tree-sitter grammar lives in this repo under editor/tree-sitter-maca.
-# Update `commit` to the revision you want Zed to build.
+# `commit` must point at a revision that contains the generated src/parser.c
+# (Zed compiles it directly). Bump it whenever the grammar is regenerated.
 [grammars.maca]
 repository = "https://github.com/pleahmacaka/macalang"
 path = "editor/tree-sitter-maca"
-commit = "HEAD"
+commit = "caeea09b61ba400d1949289667218444eb6009f8"
 
 # The Maca language server (crates/lsp → the `maca-lsp` binary). The extension's
 # Rust code (src/lib.rs) resolves it from the worktree PATH.
