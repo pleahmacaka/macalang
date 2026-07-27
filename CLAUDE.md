@@ -44,6 +44,7 @@ Virtual workspace; members are `crates/*`.
 | `maca-mcp` | Maca MCP server (LLM-native tools) |
 | `maca-driver` | the `maca` CLI |
 | `maca-backend-jvm` | core IR → Java source (JVM interop; Minecraft/Fabric) |
+| `maca-backend-rust` | core IR → Rust source (crates.io interop; `--target rust`) |
 | `maca-backend-embedded` | freestanding C for bare-metal MCUs (Cortex-M/RISC-V) |
 | `maca-wasm` | `wasm32` front-end for the browser playground (no wasm-bindgen) |
 
@@ -116,7 +117,7 @@ run end-to-end (parse → check → C → `cc`/`zig cc` → execute).
 Backends: native C (default), LLVM (SIMD span), Nix (config mode), JS
 (reactive UI), JVM (Java source / Minecraft-Fabric interop), and embedded
 (freestanding C for Cortex-M / RISC-V). Driver: `build` (`--target
-nix|js|jvm|embedded|tauri`, `--mcu`, `--cp`), `run`, `dev` (dev-shell flake),
+nix|js|jvm|rust|embedded|tauri`, `--mcu`, `--cp`), `run`, `dev` (dev-shell flake),
 `watch`, `fmt`, `lint`, `profile`, `init`, `bindgen` (C header → Maca FFI
 declarations: `char*`→`str`, other pointers→opaque `int`, float family→`float`).
 The native `build`/`run` path

@@ -51,6 +51,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "maca-backend-rust"
+version = "0.1.0"
+dependencies = [
+ "maca-parser",
+]
+
+[[package]]
 name = "maca-core"
 version = "0.1.0"
 dependencies = [
@@ -67,6 +74,7 @@ dependencies = [
  "maca-backend-jvm",
  "maca-backend-llvm",
  "maca-backend-nix",
+ "maca-backend-rust",
  "maca-core",
  "maca-parser",
  "maca-profile",

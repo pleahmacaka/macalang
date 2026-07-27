@@ -475,7 +475,7 @@ fn usage() {
          \n\
          commands:\n\
          \x20 init  [dir]                  scaffold a new project (maca.toml, main.maca)\n\
-         \x20 build <file.maca> [-o out]   compile (native | --target nix|js|jvm|embedded|tauri)\n\
+         \x20 build <file.maca> [-o out]   compile (native | --target nix|js|jvm|rust|embedded|tauri)\n\
          \x20 run   <file.maca> [args..]   compile and run\n\
          \x20 dev   [dev.maca] [-o flake]  generate a dev-shell flake.nix from Maca\n\
          \x20 watch <file.maca> [args..]   rebuild & rerun on change (hot reload)\n\
@@ -488,7 +488,7 @@ fn usage() {
          \x20 bindgen <header.h> [-o f]   generate Maca FFI declarations from a C header\n\
          \x20 --version                    print the toolchain version\n\
          \n\
-         build targets: native (default), --target nix | js | jvm | embedded | tauri\n\
+         build targets: native (default), --target nix | js | jvm | rust | embedded | tauri\n\
          \x20 embedded also takes --mcu cortex-m0|m3|m4|riscv32; jvm takes --cp <jars>"
     );
 }
@@ -556,6 +556,14 @@ fn cmd_build(args: &[String]) {
         }
         return;
     }
+    if target == "rust" || target == "rs" {
+        let out = out.unwrap_or_else(|| PathBuf::from(stem(&src)));
+        match build_rust(&src, &out) {
+            Ok(msg) => println!("{msg}"),
+            Err(e) => die(&e),
+        }
+        return;
+    }
     if target == "embedded" || target == "baremetal" || target == "mcu" {
         match build_embedded(&src, out.as_deref(), &mcu) {
             Ok(msg) => println!("{msg}"),
@@ -614,6 +622,48 @@ fn build_nix(src: &Path, out: &Path) -> Result<(), String> {
     let nix = maca_backend_nix::emit(&parsed.module);
     std::fs::write(out, nix).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Rust target → Rust source, then `rustc` to a native binary at `out`. Emits
+/// the `.rs` next to `out` and keeps it (a `cargo`-based build with real
+/// crate dependencies grows on top of this).
+fn build_rust(src: &Path, out: &Path) -> Result<String, String> {
+    let source = load_with_imports(src)?;
+    let parsed = maca_parser::parse(&source);
+    if !parsed.errors.is_empty() {
+        return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
+    }
+    let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
+    if !diags.is_empty() {
+        let msgs: Vec<_> = diags
+            .iter()
+            .map(|d| format!("{:?}: {}", d.kind, d.msg))
+            .collect();
+        return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
+    }
+    let rs = maca_backend_rust::emit(&parsed.module);
+    let rs_path = out.with_extension("rs");
+    std::fs::write(&rs_path, &rs).map_err(|e| e.to_string())?;
+
+    if !have("rustc") {
+        return Ok(format!(
+            "emitted {} (no rustc on PATH to compile)",
+            rs_path.display()
+        ));
+    }
+    let o = Command::new("rustc")
+        .arg(&rs_path)
+        .args(["--edition", "2021", "-O", "-o"])
+        .arg(out)
+        .output()
+        .map_err(|e| format!("rustc: {e}"))?;
+    if !o.status.success() {
+        return Err(format!(
+            "rustc failed:\n{}",
+            String::from_utf8_lossy(&o.stderr)
+        ));
+    }
+    Ok(format!("built {}", out.display()))
 }
 
 /// JVM target → Java source (and `javac` to `.class` when a JDK is present).
