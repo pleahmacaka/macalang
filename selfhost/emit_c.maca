@@ -73,11 +73,21 @@ emit_stmts(body: Stmt[], i: int) -> str =>
         ? ""
         : "{emit_stmt(body.get(i), i == body.length() - 1)} {emit_stmts(body, i + 1)}"
 
-// A binding is a local `int x = e;`; the last expression statement is the
+// The C type of a local binding, inferred from the value's shape — a string /
+// float / bool literal picks its own type; anything else defaults to `int`.
+// (Rust's `let` infers this on its own, so only C needs it.)
+local_c_type(e: Expr) -> str =>
+    match e.kind {
+        EStr   => "const char*"
+        EFloat => "double"
+        _      => "int"
+    }
+
+// A binding is a local `<type> x = e;`; the last expression statement is the
 // `return`, any earlier one is a bare expression statement.
 emit_stmt(s: Stmt, is_last: bool) -> str =>
     s.kind == SBind
-        ? "int {s.name} = {emit_expr(s.value)};"
+        ? "{local_c_type(s.value)} {s.name} = {emit_expr(s.value)};"
         : is_last
             ? "return {emit_expr(s.value)};"
             : "{emit_expr(s.value)};"

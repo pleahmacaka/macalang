@@ -97,12 +97,14 @@ main() -> int {
     info("float fn Rust: {remit_fn(ffn.snode)}")
 
     // a COMPLETE, multi-function program compiled end to end: `half` (division),
-    // `guard` (comparison + `&&` + ternary), a `str`-typed `tag`, a `-> bool`
-    // `flag`, and a `main` that composes them — `flag() ? tag("ok", guard(half(84))) : 0`.
-    // The emitted C / Rust between the markers compiles and runs, exit `42`,
-    // exercising typed signatures, string + bool literals, division, boolean
-    // logic, conditionals, and nested calls.
-    program = "half(n: int) -> int => n / 2 guard(x: int) -> int => x > 0 && x < 100 ? x : 0 tag(s: str, n: int) -> int => n flag() -> bool => true main() -> int {{ flag() ? tag(\"ok\", guard(half(84))) : 0 }}"
+    // `guard` (comparison + `&&` + ternary), `tag` (a block body with a
+    // `str`-typed local `label` — inferred `const char*` in C, `let` in Rust),
+    // a `-> bool` `flag`, and a `main` that composes them —
+    // `flag() ? tag("ok", guard(half(84))) : 0`. The emitted C / Rust between the
+    // markers compiles and runs, exit `42`, exercising typed signatures,
+    // string + bool literals, a typed local binding, division, boolean logic,
+    // conditionals, and nested calls.
+    program = "half(n: int) -> int => n / 2 guard(x: int) -> int => x > 0 && x < 100 ? x : 0 tag(s: str, n: int) -> int {{ label = \"ok\" n }} flag() -> bool => true main() -> int {{ flag() ? tag(\"ok\", guard(half(84))) : 0 }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))

@@ -265,6 +265,10 @@ fn selfhost_frontend_compiles_and_runs() {
             && c_src.contains("int main()"),
         "emitted program missing functions:\n{c_src}"
     );
+    assert!(
+        c_src.contains("const char* label = \"ok\";"),
+        "C local binding not typed from its value:\n{c_src}"
+    );
     let cfile = dir.join("emitted.c");
     std::fs::write(&cfile, &c_src).unwrap();
     let ebin = dir.join("emitted");
