@@ -73,11 +73,13 @@ main() -> int {
     logic = parse_expr(lex("a < b && c || d"), 0)
     info("logic: {show(logic.node)}")
 
-    // a COMPLETE program compiled end to end: a `grade` helper combining two
-    // comparisons with `&&` inside a ternary, plus a `main` that calls it. The
-    // emitted C / Rust between the markers compiles and runs, exit
-    // `grade(95) == 42` — comparison, boolean logic, and conditionals together.
-    program = "grade(x: int) -> int => x >= 90 && x < 100 ? 42 : 0 main() -> int {{ grade(95) }}"
+    // a COMPLETE, multi-function program compiled end to end: `half` (division),
+    // `guard` (comparison + `&&` + ternary), and a `main` that composes them
+    // with a nested call `guard(half(84))`. The emitted C / Rust between the
+    // markers compiles and runs, exit `guard(half(84)) == 42` — proving the
+    // Maca-written compiler emits a working *multi-function* executable through
+    // both back ends, not just a single function.
+    program = "half(n: int) -> int => n / 2 guard(x: int) -> int => x > 0 && x < 100 ? x : 0 main() -> int {{ guard(half(84)) }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))

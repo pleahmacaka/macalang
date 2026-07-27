@@ -217,14 +217,17 @@ fn selfhost_frontend_compiles_and_runs() {
     // Capstone: compile and run the *complete program* the self-hosted compiler
     // emitted. Extract the C between the markers, compile it with the host cc,
     // run it, and check its exit code is `add(40, 2) == 42` — the Maca-written
-    // compiler produced a working executable (multi-arg params + call args).
+    // compiler produced a working *multi-function* executable (division, `&&`,
+    // ternary, and a nested call composed across three functions).
     let c_src = stdout
         .split_once("=== emitted program ===")
         .and_then(|(_, rest)| rest.split_once("=== end program ==="))
         .map(|(prog, _)| prog.trim().to_string())
         .expect("emitted-program markers present");
     assert!(
-        c_src.contains("int grade(int x)") && c_src.contains("int main()"),
+        c_src.contains("int half(int n)")
+            && c_src.contains("int guard(int x)")
+            && c_src.contains("int main()"),
         "emitted program missing functions:\n{c_src}"
     );
     let cfile = dir.join("emitted.c");
@@ -250,7 +253,7 @@ fn selfhost_frontend_compiles_and_runs() {
     assert_eq!(
         code,
         Some(42),
-        "self-host-emitted program returned {code:?}, expected grade(95) == 42"
+        "self-host-emitted program returned {code:?}, expected guard(half(84)) == 42"
     );
 
     // Capstone #2: the *same* program through the Maca-written Rust back end
@@ -267,7 +270,9 @@ fn selfhost_frontend_compiles_and_runs() {
         .map(|(prog, _)| prog.trim().to_string())
         .expect("emitted-rust markers present");
     assert!(
-        rs_src.contains("fn grade(x: i64) -> i64") && rs_src.contains("fn __maca_main() -> i64"),
+        rs_src.contains("fn half(n: i64) -> i64")
+            && rs_src.contains("fn guard(x: i64) -> i64")
+            && rs_src.contains("fn __maca_main() -> i64"),
         "emitted Rust missing functions:\n{rs_src}"
     );
     let rsfile = dir.join("emitted.rs");
@@ -295,6 +300,6 @@ fn selfhost_frontend_compiles_and_runs() {
     assert_eq!(
         rcode,
         Some(42),
-        "self-host-emitted Rust program returned {rcode:?}, expected grade(95) == 42"
+        "self-host-emitted Rust program returned {rcode:?}, expected guard(half(84)) == 42"
     );
 }
