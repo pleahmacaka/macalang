@@ -362,7 +362,7 @@ fn html_escape(s: &str) -> String {
 pub fn text_profile(cg_text: &str) -> String {
     let (fns, total) = parse_callgrind(cg_text);
     let mut rows: Vec<(&String, u64)> = fns.iter().map(|(n, c)| (n, c.self_cost)).collect();
-    rows.sort_by(|a, b| b.1.cmp(&a.1));
+    rows.sort_by_key(|r| std::cmp::Reverse(r.1));
     let mut out = String::from("  self%     Ir  function\n");
     for (name, ir) in rows.iter().take(12) {
         if *ir == 0 {

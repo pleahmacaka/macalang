@@ -311,10 +311,8 @@ impl Checker {
             match item {
                 Stmt::Fn(f) => self.check_fn(f),
                 Stmt::Bind(b) if !self.type_decls.contains(&i) => self.check_bind(b),
-                Stmt::Alias { value, .. } => {
-                    if self.mode == Mode::Config {
-                        self.check_config_effects(value);
-                    }
+                Stmt::Alias { value, .. } if self.mode == Mode::Config => {
+                    self.check_config_effects(value);
                 }
                 _ => {}
             }
