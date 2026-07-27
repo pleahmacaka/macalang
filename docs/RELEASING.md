@@ -1,11 +1,12 @@
 # Releasing
 
 Releases are produced by GitHub Actions ([`.github/workflows/release.yml`](../.github/workflows/release.yml)),
-triggered by pushing a `v*` tag:
+triggered by pushing a plain semver tag — **no `v` prefix** (`0.1.0`, not
+`v0.1.0`); pre-releases like `0.1.0-rc1` also match:
 
 ```sh
-git tag -a v0.1.0 -m "maca v0.1.0"
-git push origin v0.1.0
+git tag -a 0.1.0 -m "maca 0.1.0"
+git push origin 0.1.0
 ```
 
 On that tag the workflow:

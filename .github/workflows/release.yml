@@ -1,9 +1,13 @@
 name: release
 
-# Cut a release by pushing a tag:  git tag v0.1.0 && git push origin v0.1.0
+# Cut a release by pushing a plain semver tag (no `v` prefix):
+#   git tag 0.1.0 && git push origin 0.1.0
 on:
   push:
-    tags: ["v*"]
+    # `0.1.0` and pre-releases like `0.1.0-rc1` — not `v`-prefixed.
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+.[0-9]+-*"
   workflow_dispatch:
 
 permissions:
