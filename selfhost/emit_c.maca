@@ -22,6 +22,7 @@ emit_expr(e: Expr) -> str =>
         EIdent  => e.text
         ECall   => "{e.text}({emit_args(e.children, 0)})"
         EBinary => "({emit_expr(e.children.get(0))} {e.text} {emit_expr(e.children.get(1))})"
+        ETernary => "({emit_expr(e.children.get(0))} ? {emit_expr(e.children.get(1))} : {emit_expr(e.children.get(2))})"
         _       => "0"
     }
 

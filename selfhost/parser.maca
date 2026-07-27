@@ -139,8 +139,20 @@ prec_of(k: Kind) -> int =>
                 ? 1
                 : 0
 
-parse_expr(ts: Token[], i: int) -> PExpr =>
-    parse_bin(ts, parse_primary(ts, i), 1)
+// expr := binary [ '?' expr ':' expr ] — a trailing ternary is lowest-
+// precedence and right-associative (its branches recurse through parse_expr).
+parse_expr(ts: Token[], i: int) -> PExpr {
+    lhs = parse_bin(ts, parse_primary(ts, i), 1)
+    ts.get(lhs.next).kind == Question
+        ? parse_ternary(ts, lhs)
+        : lhs
+}
+
+parse_ternary(ts: Token[], cond: PExpr) -> PExpr {
+    then = parse_expr(ts, cond.next + 1)      // skip '?'
+    els = parse_expr(ts, then.next + 1)       // skip ':'
+    mk_pexpr(e_ternary(cond.node, then.node, els.node), els.next)
+}
 
 parse_bin(ts: Token[], lhs: PExpr, min_prec: int) -> PExpr {
     p = prec_of(ts.get(lhs.next).kind)

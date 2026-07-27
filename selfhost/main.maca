@@ -56,11 +56,15 @@ main() -> int {
     two = parse_expr(lex("add(1, 2)"), 0)
     info("multi-arg: {show(two.node)}")
 
-    // a COMPLETE program compiled end to end: a two-argument helper plus a
-    // `main` that calls it. The emitted C between the markers compiles and runs
-    // (its exit code is `add(40, 2) == 42`) — the self-hosted compiler produces
-    // a working executable, exercising multi-argument params and call args.
-    program = "add(a: int, b: int) -> int => a + b main() -> int {{ add(40, 2) }}"
+    // ternary: `a > b ? a : b` parses to a conditional node.
+    tern = parse_expr(lex("a > b ? a : b"), 0)
+    info("ternary: {show(tern.node)}")
+
+    // a COMPLETE program compiled end to end: a `max` helper (comparison +
+    // ternary) plus a `main` that calls it with two arguments. The emitted C /
+    // Rust between the markers compiles and runs, exit `max(40, 42) == 42` —
+    // exercising multi-arg params, call args, comparison, and conditionals.
+    program = "max(a: int, b: int) -> int => a > b ? a : b main() -> int {{ max(40, 42) }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))

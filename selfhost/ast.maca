@@ -59,6 +59,9 @@ e_call(callee: str, args: Expr[]) -> Expr =>
 e_binary(op: str, lhs: Expr, rhs: Expr) -> Expr =>
     Expr { kind = EBinary, text = op, ival = 0, children = [lhs, rhs] }
 
+e_ternary(cond: Expr, then: Expr, els: Expr) -> Expr =>
+    Expr { kind = ETernary, text = "", ival = 0, children = [cond, then, els] }
+
 s_expr(value: Expr) -> Stmt =>
     Stmt { kind = SExpr, name = "", value, params = [], body = [] }
 
@@ -79,6 +82,7 @@ show(e: Expr) -> str =>
         EIdent  => e.text
         ECall   => "{e.text}({show_args(e.children, 0)})"
         EBinary => "({show(e.children.get(0))} {e.text} {show(e.children.get(1))})"
+        ETernary => "({show(e.children.get(0))} ? {show(e.children.get(1))} : {show(e.children.get(2))})"
         _       => "?"
     }
 
