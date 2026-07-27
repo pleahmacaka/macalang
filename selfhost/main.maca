@@ -60,11 +60,16 @@ main() -> int {
     tern = parse_expr(lex("a > b ? a : b"), 0)
     info("ternary: {show(tern.node)}")
 
-    // a COMPLETE program compiled end to end: a `max` helper (comparison +
-    // ternary) plus a `main` that calls it with two arguments. The emitted C /
-    // Rust between the markers compiles and runs, exit `max(40, 42) == 42` —
-    // exercising multi-arg params, call args, comparison, and conditionals.
-    program = "max(a: int, b: int) -> int => a > b ? a : b main() -> int {{ max(40, 42) }}"
+    // unary minus: `-n` parses to a negation node (prefix, binds tight).
+    neg = parse_expr(lex("0 - -n"), 0)
+    info("unary: {show(neg.node)}")
+
+    // a COMPLETE program compiled end to end: an `abs` helper (comparison +
+    // ternary + unary minus) plus a `main` that calls it with a negative
+    // literal. The emitted C / Rust between the markers compiles and runs, exit
+    // `abs(-42) == 42` — exercising comparison, conditionals, unary negation,
+    // and multi-arg calls together, all in Maca.
+    program = "abs(n: int) -> int => n < 0 ? -n : n main() -> int {{ abs(-42) }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))

@@ -168,16 +168,24 @@ climb(ts: Token[], lhs: PExpr, p: int, min_prec: int) -> PExpr {
     parse_bin(ts, mk_pexpr(node, rhs.next), min_prec)
 }
 
-// primary := int | str | ident [call] | '(' expr ')'
+// primary := '-' primary | int | str | ident [call] | '(' expr ')'
 parse_primary(ts: Token[], i: int) -> PExpr {
     t = ts.get(i)
     match t.kind {
+        Minus  => parse_neg(ts, i)
         TInt   => mk_pexpr(e_int(int(t.text)), i + 1)
         TStr   => mk_pexpr(e_str(t.text), i + 1)
         TIdent => parse_call_or_ident(ts, i)
         LParen => parse_paren(ts, i)
         _      => mk_pexpr(e_ident("?"), i + 1)
     }
+}
+
+// Prefix negation: `-e` binds tighter than any binary operator, so it wraps the
+// following primary.
+parse_neg(ts: Token[], i: int) -> PExpr {
+    operand = parse_primary(ts, i + 1)
+    mk_pexpr(e_unary("-", operand.node), operand.next)
 }
 
 parse_paren(ts: Token[], i: int) -> PExpr {

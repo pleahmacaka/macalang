@@ -29,6 +29,7 @@ remit_expr(e: Expr) -> str =>
         ECall   => "{e.text}({remit_args(e.children, 0)})"
         EBinary => "({remit_expr(e.children.get(0))} {e.text} {remit_expr(e.children.get(1))})"
         ETernary => "(if {remit_expr(e.children.get(0))} {{ {remit_expr(e.children.get(1))} }} else {{ {remit_expr(e.children.get(2))} }})"
+        EUnary  => "({e.text}{remit_expr(e.children.get(0))})"
         _       => "0i64"
     }
 
