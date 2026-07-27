@@ -1,7 +1,10 @@
 name: release
 
-# Cut a release by pushing a plain semver tag (no `v` prefix):
+# Cut a release either by pushing a plain semver tag (no `v` prefix) —
 #   git tag 0.1.0 && git push origin 0.1.0
+# — or by running this workflow manually with a `version` input, which creates
+# the tag + release from the current commit (used when tag pushes aren't
+# available). Either way the tag name is the bare version, e.g. `0.1.0`.
 on:
   push:
     # `0.1.0` and pre-releases like `0.1.0-rc1` — not `v`-prefixed.
@@ -9,6 +12,11 @@ on:
       - "[0-9]+.[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+.[0-9]+-*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (bare semver, e.g. 0.1.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -62,6 +70,9 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
+          # a tag push carries the version in `ref_name`; a manual dispatch
+          # passes it as `version` and the tag is created from this commit.
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
           files: dist/${{ matrix.asset }}
 
   scripts:
@@ -72,6 +83,7 @@ jobs:
       - name: Upload install scripts to release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
           files: |
             install.sh
             install.ps1

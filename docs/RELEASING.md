@@ -9,6 +9,10 @@ git tag -a 0.1.0 -m "maca 0.1.0"
 git push origin 0.1.0
 ```
 
+Alternatively, run the **release** workflow manually (Actions → release → Run
+workflow) with a `version` input (e.g. `0.1.0`); it creates the tag and release
+from the current commit. Use this when a tag push isn't available.
+
 On that tag the workflow:
 
 1. builds `maca` + `maca-lsp` in release mode on five targets —
