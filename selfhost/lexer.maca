@@ -72,10 +72,20 @@ lex_word(cs: str[], i: int, out: Token[]) -> Token[] {
     scan(cs, j, out ++ [mk_token(keyword_kind(text), text, i)])
 }
 
+// A number: integer digits, and — when a `.` is immediately followed by another
+// digit — a fractional part, making it a float (`1.5`). A trailing dot with no
+// digit after it (`1.`) stays an int and leaves the `.` for the next token.
 lex_number(cs: str[], i: int, out: Token[]) -> Token[] {
     j = run_end(cs, i, is_digit)
-    text = span(cs, i, j)
-    scan(cs, j, out ++ [mk_token(TInt, text, i)])
+    is_float = j + 1 < cs.length() && cs.get(j) == "." && is_digit(cs.get(j + 1))
+    is_float
+        ? lex_float(cs, i, j, out)
+        : scan(cs, j, out ++ [mk_token(TInt, span(cs, i, j), i)])
+}
+
+lex_float(cs: str[], i: int, dot: int, out: Token[]) -> Token[] {
+    k = run_end(cs, dot + 1, is_digit)   // fractional digits after the '.'
+    scan(cs, k, out ++ [mk_token(TFloat, span(cs, i, k), i)])
 }
 
 // A punctuator: try a two-character operator (`->`, `=>`, `==`, …) first, then

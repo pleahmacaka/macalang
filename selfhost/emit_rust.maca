@@ -24,6 +24,7 @@ rust_str(s: str) -> str =>
 remit_expr(e: Expr) -> str =>
     match e.kind {
         EInt    => rust_int(e.ival)
+        EFloat  => "{e.text}_f64"
         EStr    => rust_str(e.text)
         EBool   => e.text
         EIdent  => e.text

@@ -65,6 +65,11 @@ e_str(s: str) -> Expr =>
 e_bool(text: str) -> Expr =>
     Expr { kind = EBool, text, ival = 0, ty = "", children = [] }
 
+// A float literal; the source spelling is kept verbatim in `text` (it doesn't
+// fit `ival`), e.g. "1.5".
+e_float(text: str) -> Expr =>
+    Expr { kind = EFloat, text, ival = 0, ty = "", children = [] }
+
 e_call(callee: str, args: Expr[]) -> Expr =>
     Expr { kind = ECall, text = callee, ival = 0, ty = "", children = args }
 
@@ -93,6 +98,7 @@ s_fn(name: str, ret: str, params: Expr[], body: Stmt[]) -> Stmt =>
 show(e: Expr) -> str =>
     match e.kind {
         EInt    => str(e.ival)
+        EFloat  => e.text
         EStr    => e.text
         EBool   => e.text
         EIdent  => e.text

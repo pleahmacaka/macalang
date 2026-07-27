@@ -89,6 +89,13 @@ main() -> int {
     info("bool fn C:    {emit_fn(bfn.snode)}")
     info("bool fn Rust: {remit_fn(bfn.snode)}")
 
+    // float: the lexer scans `2.0` as one float token; the type threads to
+    // `double` (C) / `f64` (Rust), and the literal keeps its spelling (Rust
+    // suffixes `_f64`).
+    ffn = parse_fn(lex("scale(x: float) -> float => x * 2.0"), 0)
+    info("float fn C:    {emit_fn(ffn.snode)}")
+    info("float fn Rust: {remit_fn(ffn.snode)}")
+
     // a COMPLETE, multi-function program compiled end to end: `half` (division),
     // `guard` (comparison + `&&` + ternary), a `str`-typed `tag`, a `-> bool`
     // `flag`, and a `main` that composes them — `flag() ? tag("ok", guard(half(84))) : 0`.

@@ -185,6 +185,7 @@ parse_primary(ts: Token[], i: int) -> PExpr {
     match t.kind {
         Minus   => parse_neg(ts, i)
         TInt    => mk_pexpr(e_int(int(t.text)), i + 1)
+        TFloat  => mk_pexpr(e_float(t.text), i + 1)
         TStr    => mk_pexpr(e_str(t.text), i + 1)
         KwTrue  => mk_pexpr(e_bool("true"), i + 1)
         KwFalse => mk_pexpr(e_bool("false"), i + 1)

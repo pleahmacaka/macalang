@@ -236,6 +236,17 @@ fn selfhost_frontend_compiles_and_runs() {
         "Rust bool typing wrong: {stdout}"
     );
 
+    // float: the lexer scans `2.0` as one token; the type threads to `double`
+    // (C) / `f64` (Rust), and the literal keeps its spelling (Rust suffixes it).
+    assert!(
+        stdout.contains("float fn C:    double scale(double x) { return (x * 2.0);"),
+        "C float lowering wrong: {stdout}"
+    );
+    assert!(
+        stdout.contains("float fn Rust: fn scale(x: f64) -> f64 { (x * 2.0_f64)"),
+        "Rust float lowering wrong: {stdout}"
+    );
+
     // Capstone: compile and run the *complete program* the self-hosted compiler
     // emitted. Extract the C between the markers, compile it with the host cc,
     // run it, and check its exit code is `add(40, 2) == 42` — the Maca-written

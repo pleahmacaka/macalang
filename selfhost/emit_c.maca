@@ -18,6 +18,7 @@ quoted(s: str) -> str =>
 emit_expr(e: Expr) -> str =>
     match e.kind {
         EInt    => str(e.ival)
+        EFloat  => e.text
         EStr    => quoted(e.text)
         EBool   => e.text == "true" ? "1" : "0"
         EIdent  => e.text
