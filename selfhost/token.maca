@@ -14,7 +14,7 @@ Kind =
     | Comma | Colon | Dot | Arrow | FatArrow
     | Eq | EqEq | NotEq | Lt | Gt | Le | Ge | AmpAmp | PipePipe
     | Plus | Minus | Star | Slash | Percent | PlusPlus | Bar
-    | Question | QuestionPost
+    | Question | QuestionPost | Bang
     | Newline | Eof
 
 Token = {

@@ -137,6 +137,7 @@ punct_kind(c: str) -> Kind =>
         "%" => Percent
         "|" => Bar
         "?" => Question
+        "!" => Bang
         "<" => Lt
         ">" => Gt
         _   => TIdent

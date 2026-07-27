@@ -104,7 +104,7 @@ main() -> int {
     // markers compiles and runs, exit `42`, exercising typed signatures,
     // string + bool literals, a typed local binding, division, boolean logic,
     // conditionals, and nested calls.
-    program = "half(n: int) -> int => n / 2 guard(x: int) -> int => x > 0 && x < 100 ? x : 0 tag(s: str, n: int) -> int {{ label = \"ok\" n }} flag() -> bool => true main() -> int {{ flag() ? tag(\"ok\", guard(half(84))) : 0 }}"
+    program = "half(n: int) -> int => n / 2 guard(x: int) -> int => x > 0 && x < 100 ? x : 0 tag(s: str, n: int) -> int {{ label = \"ok\" n }} flag() -> bool => !false main() -> int {{ flag() ? tag(\"ok\", guard(half(84))) : 0 }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))

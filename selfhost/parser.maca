@@ -184,6 +184,7 @@ parse_primary(ts: Token[], i: int) -> PExpr {
     t = ts.get(i)
     match t.kind {
         Minus   => parse_neg(ts, i)
+        Bang    => parse_not(ts, i)
         TInt    => mk_pexpr(e_int(int(t.text)), i + 1)
         TFloat  => mk_pexpr(e_float(t.text), i + 1)
         TStr    => mk_pexpr(e_str(t.text), i + 1)
@@ -200,6 +201,12 @@ parse_primary(ts: Token[], i: int) -> PExpr {
 parse_neg(ts: Token[], i: int) -> PExpr {
     operand = parse_primary(ts, i + 1)
     mk_pexpr(e_unary("-", operand.node), operand.next)
+}
+
+// Prefix logical-not: `!e`, same tight binding as negation.
+parse_not(ts: Token[], i: int) -> PExpr {
+    operand = parse_primary(ts, i + 1)
+    mk_pexpr(e_unary("!", operand.node), operand.next)
 }
 
 parse_paren(ts: Token[], i: int) -> PExpr {
