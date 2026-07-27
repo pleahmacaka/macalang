@@ -1,17 +1,33 @@
 # A Rust source backend for Maca (`--target rust`)
 
-**Status (2026-07-27):** R1 and the R2 functional core are implemented —
-`crates/backend_rust` emits Rust source, and `maca build --target rust`
-compiles it with `rustc` to a native binary. Covered: `main` (exits with the
-returned code), functions, recursion, `int`/`float`/`str`/`bool`, records →
-structs, nullary sums → enums (variant references qualified `Enum::Variant`),
-`match`, lists → `Vec`, `if`/ternary/`while`/`for`, arithmetic/comparison,
-string interpolation → `format!`, and Maca's declare-then-reassign mutability.
-Gated by `crates/backend_rust/tests/emit.rs` (hermetic) and
-`crates/driver/tests/rust_backend.rs` (compile + run via `rustc`).
+**Status (2026-07-27):** R1, R2, and R3 are implemented.
 
-The remaining phases (R3 `import rust` + crate deps, R4 escaping closures, R5
-foreign trait impls + the `&mut` rule, R6 gpql) are specified below.
+- **R1/R2 functional core** — `crates/backend_rust` emits Rust source and
+  `maca build --target rust` builds a native binary. Covered: `main` (exits with
+  the returned code), functions, recursion, `int`/`float`/`str`/`bool`, records →
+  structs, **sums → enums including payload variants** (`Circle(int) | Rect(int,
+  int)` → `enum { Circle(i64), Rect(i64, i64) }`; construction and match arms
+  qualified `Enum::Variant`), `match`, lists → `Vec`, `if`/ternary/`while`/`for`,
+  arithmetic/comparison, string interpolation → `format!`, and declare-then-
+  reassign mutability. A local passed by value to a user call is `.clone()`d so
+  Maca's value semantics survive Rust's move checker.
+- **R3 crate dependencies** — `import rust "gpui::div"` → `use gpui::div;`;
+  `[rust-dependencies]` in `maca.toml` generates a throwaway Cargo project and
+  builds through `cargo` (a program with no external crates still takes the fast
+  single-file `rustc` path). An import that names an **undeclared crate**, or a
+  non-Rust foreign import (`import c`/`import py`) on the Rust target, is a **hard
+  error** — no more silent drops.
+
+Gated by `crates/backend_rust/tests/emit.rs` (hermetic), `rust_target_tests` in
+the driver (import validation + manifest generation), and
+`crates/driver/tests/rust_backend.rs` (compile + run via `rustc`, plus a
+best-effort cargo-dependency build).
+
+**Known gaps before gpui:** recursive sum types need `Box<T>` insertion (e.g.
+`tree.maca`); and there is no `::`-path / associated-function surface syntax yet
+(`Type::new()`), so *calling into* a crate beyond free functions and method
+chains waits on R5's foreign-type ergonomics. The remaining phases (R4 escaping
+closures, R5 foreign trait impls + the `&mut` rule, R6 gpql) are specified below.
 
 ---
 
@@ -71,7 +87,7 @@ mechanical from there.
 |---|---|---|
 | **R1** ✅ | `crates/backend_rust`; `--target rust`; `main() -> int` → a Rust binary | `examples/hello.maca` runs via the Rust backend |
 | **R2** ✅ (core) | records → structs, sums → enums, lists → `Vec`, `str` → `String` | functional examples run on the Rust backend |
-| **R3** | `import rust`, `[rust-dependencies]`, gradual `any` for foreign types, method-chain passthrough | a Maca program calls a real crates.io crate |
+| **R3** ✅ | `import rust`, `[rust-dependencies]` → generated `Cargo.toml` + `cargo` build, unresolved imports are hard errors, method-chain passthrough | a Maca program links a real crates.io crate |
 | **R4** | closures → `move` closures with `Rc` capture | a callback-taking crate API works |
 | **R5** | `Name : Trait = { … }` → `impl Trait for Name`; `&mut` non-escaping rule + diagnostic | `examples/gpui_counter.maca` compiles and runs |
 | **R6** | `spawn`/`await` → gpui executors; `@derive`; `[rust-patch]` | gpql's backend layer ports over |

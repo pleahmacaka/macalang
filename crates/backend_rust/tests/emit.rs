@@ -38,11 +38,9 @@ fn payload_sum_becomes_a_data_enum() {
     // A variant with a payload — `Circle(int)` — must become `Circle(i64)`, not
     // be mis-parsed as an addition of function calls. Construction and match
     // arms are both qualified `Enum::Variant`.
-    let out = rs(
-        "Shape = Circle(int) | Rect(int, int)\n\
+    let out = rs("Shape = Circle(int) | Rect(int, int)\n\
          area(s: Shape) -> int =>\n    match s {\n        Circle(r) => r * r\n        Rect(w, h) => w * h\n    }\n\n\
-         main() -> int { area(Circle(5)) }\n",
-    );
+         main() -> int { area(Circle(5)) }\n");
     assert!(
         out.contains("enum Shape { Circle(i64), Rect(i64, i64) }"),
         "payload not lowered to a data enum: {out}"
@@ -51,8 +49,14 @@ fn payload_sum_becomes_a_data_enum() {
         !out.contains("static SHAPE"),
         "type declaration mis-emitted as a constant: {out}"
     );
-    assert!(out.contains("Shape::Circle(5i64)"), "ctor not qualified: {out}");
-    assert!(out.contains("Shape::Rect(w, h) =>"), "pattern not qualified: {out}");
+    assert!(
+        out.contains("Shape::Circle(5i64)"),
+        "ctor not qualified: {out}"
+    );
+    assert!(
+        out.contains("Shape::Rect(w, h) =>"),
+        "pattern not qualified: {out}"
+    );
 }
 
 #[test]
@@ -60,12 +64,10 @@ fn record_payload_sum_and_value_reuse() {
     // A record-carrying variant (gpql's `Outcome = Rows(Grid) | Affected(int)`)
     // needs the struct to derive `PartialEq` too, and a value used twice must be
     // cloned rather than moved.
-    let out = rs(
-        "Grid = {\n    rows: int\n}\n\
+    let out = rs("Grid = {\n    rows: int\n}\n\
          Outcome = Rows(Grid) | Affected(int)\n\
          rows_of(o: Outcome) -> int =>\n    match o {\n        Rows(g) => g.rows\n        Affected(n) => n\n    }\n\n\
-         main() -> int {\n    r = Rows(Grid { rows = 7 })\n    info(\"{rows_of(r)}\")\n    rows_of(r)\n}\n",
-    );
+         main() -> int {\n    r = Rows(Grid { rows = 7 })\n    info(\"{rows_of(r)}\")\n    rows_of(r)\n}\n");
     assert!(
         out.contains("#[derive(Clone, Debug, PartialEq)]\n#[allow(dead_code)]\nstruct Grid"),
         "struct must derive PartialEq for an enum payload: {out}"

@@ -625,9 +625,10 @@ fn build_nix(src: &Path, out: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Rust target → Rust source, then `rustc` to a native binary at `out`. Emits
-/// the `.rs` next to `out` and keeps it (a `cargo`-based build with real
-/// crate dependencies grows on top of this).
+/// Rust target → Rust source, then a native binary at `out`. With no external
+/// crates this is a single-file `rustc` compile (fast); with `[rust-dependencies]`
+/// it generates a throwaway Cargo project and builds that (R3). The emitted
+/// `.rs` is written next to `out` and kept.
 fn build_rust(src: &Path, out: &Path) -> Result<String, String> {
     let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
@@ -642,29 +643,182 @@ fn build_rust(src: &Path, out: &Path) -> Result<String, String> {
             .collect();
         return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
     }
+
+    // Resolve foreign imports against `[rust-dependencies]`. An unresolved import
+    // is a hard error — silently dropping it (the pre-R3 behavior) let a program
+    // look like it compiled while its real crate call was simply missing.
+    let deps = rust_dependencies(src);
+    validate_rust_imports(&parsed.module, &deps)?;
+
     let rs = maca_backend_rust::emit(&parsed.module);
     let rs_path = out.with_extension("rs");
     std::fs::write(&rs_path, &rs).map_err(|e| e.to_string())?;
 
-    if !have("rustc") {
-        return Ok(format!(
-            "emitted {} (no rustc on PATH to compile)",
-            rs_path.display()
-        ));
+    if deps.is_empty() {
+        // No crates.io dependencies → a single-file `rustc` compile.
+        if !have("rustc") {
+            return Ok(format!(
+                "emitted {} (no rustc on PATH to compile)",
+                rs_path.display()
+            ));
+        }
+        let o = Command::new("rustc")
+            .arg(&rs_path)
+            .args(["--edition", "2021", "-O", "-o"])
+            .arg(out)
+            .output()
+            .map_err(|e| format!("rustc: {e}"))?;
+        if !o.status.success() {
+            return Err(format!(
+                "rustc failed:\n{}",
+                String::from_utf8_lossy(&o.stderr)
+            ));
+        }
+        return Ok(format!("built {}", out.display()));
     }
-    let o = Command::new("rustc")
-        .arg(&rs_path)
-        .args(["--edition", "2021", "-O", "-o"])
-        .arg(out)
+
+    // Dependencies present → build through Cargo.
+    build_rust_cargo(&rs, &deps, out)
+}
+
+/// Reject foreign imports the Rust target can't satisfy, and any `import rust`
+/// that names a crate not declared in `[rust-dependencies]`.
+fn validate_rust_imports(m: &maca_parser::Module, deps: &[(String, String)]) -> Result<(), String> {
+    use maca_parser::ast::{Import, Stmt};
+    // crate roots that need no declaration.
+    const BUILTIN: &[&str] = &["std", "core", "alloc", "crate", "self", "super"];
+    let declared: std::collections::HashSet<&str> = deps.iter().map(|(n, _)| n.as_str()).collect();
+    for it in &m.items {
+        let Stmt::Import(Import::Foreign { lang, spec }) = it else {
+            continue;
+        };
+        match lang.as_str() {
+            "rust" => {
+                // first path segment = the crate root.
+                let krate = spec
+                    .trim()
+                    .split("::")
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .trim_start_matches("r#");
+                if krate.is_empty() || BUILTIN.contains(&krate) {
+                    continue;
+                }
+                if !declared.contains(krate) {
+                    return Err(format!(
+                        "import rust \"{spec}\" refers to crate `{krate}`, which isn't \
+                         declared — add `{krate} = \"…\"` under [rust-dependencies] in maca.toml"
+                    ));
+                }
+            }
+            other => {
+                return Err(format!(
+                    "`import {other} \"{spec}\"` is not supported with --target rust \
+                     (there is no C ABI bridge on the Rust path); call a Rust crate via \
+                     `import rust` and [rust-dependencies] instead"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `[rust-dependencies]` from the `maca.toml` nearest `src` (searching upward),
+/// as `(name, raw-rhs)` pairs — the RHS is preserved verbatim so both a bare
+/// version (`"1"`) and a table (`{ git = "…" }`) round-trip into `Cargo.toml`.
+fn rust_dependencies(src: &Path) -> Vec<(String, String)> {
+    let Some(manifest) = find_manifest(src) else {
+        return Vec::new();
+    };
+    let Ok(toml) = std::fs::read_to_string(&manifest) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut in_section = false;
+    for line in toml.lines() {
+        let t = line.trim();
+        if t.starts_with('#') {
+            continue;
+        }
+        if t.starts_with('[') {
+            in_section = t == "[rust-dependencies]";
+            continue;
+        }
+        if in_section && let Some((k, v)) = t.split_once('=') {
+            let k = k.trim();
+            let v = v.trim();
+            if !k.is_empty() && !v.is_empty() {
+                out.push((k.to_string(), v.to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// Walk up from `src`'s directory looking for a `maca.toml`.
+fn find_manifest(src: &Path) -> Option<PathBuf> {
+    let mut dir = src
+        .parent()
+        .map(Path::to_path_buf)
+        .or_else(|| std::env::current_dir().ok())?;
+    loop {
+        let cand = dir.join("maca.toml");
+        if cand.is_file() {
+            return Some(cand);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
+}
+
+/// The `Cargo.toml` for the throwaway build project. Each dep RHS is re-emitted
+/// verbatim: a bare version string gets quoted, a `{ … }` table (git/path deps)
+/// or an already-quoted value passes through unchanged.
+fn cargo_manifest(deps: &[(String, String)]) -> String {
+    let mut deps_toml = String::new();
+    for (name, rhs) in deps {
+        let value = if rhs.starts_with('{') || rhs.starts_with('"') {
+            rhs.clone()
+        } else {
+            format!("\"{rhs}\"")
+        };
+        deps_toml.push_str(&format!("{name} = {value}\n"));
+    }
+    format!(
+        "[package]\nname = \"maca_app\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n\
+         [[bin]]\nname = \"maca_app\"\npath = \"src/main.rs\"\n\n\
+         [dependencies]\n{deps_toml}"
+    )
+}
+
+/// Build the emitted Rust through a throwaway Cargo project so `[rust-dependencies]`
+/// resolve. The generated `Cargo.toml` re-emits each dep RHS verbatim (a bare
+/// version gets quoted, a `{ … }` table is passed through).
+fn build_rust_cargo(rs: &str, deps: &[(String, String)], out: &Path) -> Result<String, String> {
+    if !have("cargo") {
+        return Err("no cargo on PATH to build [rust-dependencies]".into());
+    }
+    let proj = build_dir(out).join("cargo");
+    std::fs::create_dir_all(proj.join("src")).map_err(|e| e.to_string())?;
+    std::fs::write(proj.join("Cargo.toml"), cargo_manifest(deps)).map_err(|e| e.to_string())?;
+    std::fs::write(proj.join("src/main.rs"), rs).map_err(|e| e.to_string())?;
+
+    let o = Command::new("cargo")
+        .args(["build", "--release", "--quiet", "--manifest-path"])
+        .arg(proj.join("Cargo.toml"))
         .output()
-        .map_err(|e| format!("rustc: {e}"))?;
+        .map_err(|e| format!("cargo: {e}"))?;
     if !o.status.success() {
         return Err(format!(
-            "rustc failed:\n{}",
+            "cargo build failed:\n{}",
             String::from_utf8_lossy(&o.stderr)
         ));
     }
-    Ok(format!("built {}", out.display()))
+    let bin = proj.join("target/release/maca_app");
+    std::fs::copy(&bin, out).map_err(|e| format!("copy {}: {e}", bin.display()))?;
+    Ok(format!("built {} (via cargo)", out.display()))
 }
 
 /// JVM target → Java source (and `javac` to `.class` when a JDK is present).
@@ -1644,4 +1798,72 @@ fn to_wsl(p: &Path) -> String {
 fn die(msg: &str) -> ! {
     eprintln!("maca: {msg}");
     std::process::exit(1);
+}
+
+#[cfg(test)]
+mod rust_target_tests {
+    use super::*;
+
+    fn validate(src: &str, deps: &[(&str, &str)]) -> Result<(), String> {
+        let m = maca_parser::parse(src).module;
+        let deps: Vec<(String, String)> = deps
+            .iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect();
+        validate_rust_imports(&m, &deps)
+    }
+
+    #[test]
+    fn import_rust_std_needs_no_declaration() {
+        assert!(validate("import rust \"std::process\"\nmain() -> int => 0\n", &[]).is_ok());
+    }
+
+    #[test]
+    fn undeclared_crate_is_rejected() {
+        let err = validate(
+            "import rust \"serde::Serialize\"\nmain() -> int => 0\n",
+            &[],
+        )
+        .unwrap_err();
+        assert!(err.contains("serde"), "names the crate: {err}");
+        assert!(
+            err.contains("rust-dependencies"),
+            "points at the fix: {err}"
+        );
+    }
+
+    #[test]
+    fn declared_crate_is_accepted() {
+        assert!(
+            validate(
+                "import rust \"serde::Serialize\"\nmain() -> int => 0\n",
+                &[("serde", "1")]
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn c_import_is_rejected_on_rust_target() {
+        let err = validate("import c \"sqlite3.h\"\nmain() -> int => 0\n", &[]).unwrap_err();
+        assert!(err.contains("not supported with --target rust"), "{err}");
+    }
+
+    #[test]
+    fn cargo_manifest_quotes_versions_and_passes_tables() {
+        let m = cargo_manifest(&[
+            ("itoa".into(), "1".into()),
+            (
+                "gpui".into(),
+                "{ git = \"https://github.com/zed-industries/zed\" }".into(),
+            ),
+        ]);
+        assert!(m.contains("name = \"maca_app\""), "{m}");
+        assert!(m.contains("itoa = \"1\""), "bare version quoted: {m}");
+        assert!(
+            m.contains("gpui = { git = \"https://github.com/zed-industries/zed\" }"),
+            "table passed through: {m}"
+        );
+        assert!(m.contains("path = \"src/main.rs\""), "{m}");
+    }
 }

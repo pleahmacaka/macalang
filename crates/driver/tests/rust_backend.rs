@@ -83,6 +83,65 @@ fn hello_and_recursion_and_loops_run_via_rust() {
          describe(o: Outcome) -> int =>\n    match o {\n        Rows(g) => g.rows\n        Affected(n) => n\n    }\n\n\
          main() -> int {\n    r = Rows(Grid { rows = 7, cols = 3 })\n    a = Affected(42)\n    info(\"rows={describe(r)} affected={describe(a)}\")\n    describe(r)\n}\n",
     );
-    assert!(out.contains("rows=7 affected=42"), "payload_sum stdout: {out}");
+    assert!(
+        out.contains("rows=7 affected=42"),
+        "payload_sum stdout: {out}"
+    );
     assert_eq!(code, Some(7), "main exit code should be describe(r)=7");
+}
+
+/// `[rust-dependencies]` → a generated Cargo project. Verifies the manifest is
+/// written correctly and, when the crate is resolvable (cargo present + crate
+/// cached/online), that the dependency builds and links. Skips gracefully in a
+/// hermetic CI with no crate cache or network.
+#[test]
+fn rust_dependencies_drive_a_cargo_build() {
+    if !have("cargo") {
+        eprintln!("skipping: no cargo on PATH");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-rust-cargodep");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("maca.toml"),
+        "[package]\nname = \"app\"\n\n[rust-dependencies]\nitoa = \"1\"\n",
+    )
+    .unwrap();
+    let mca = dir.join("prog.maca");
+    std::fs::write(
+        &mca,
+        "import rust \"itoa\"\n\nmain() -> int {\n    info(\"cargo dep build\")\n    7\n}\n",
+    )
+    .unwrap();
+    let bin = dir.join("prog");
+    let build = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["build", "--target", "rust"])
+        .arg(&mca)
+        .arg("-o")
+        .arg(&bin)
+        .output()
+        .expect("spawn maca build --target rust");
+
+    // The Cargo.toml is written before cargo runs, so it exists whether or not
+    // the offline build resolves the crate.
+    let manifest = std::env::temp_dir()
+        .join("maca-build-prog")
+        .join("cargo/Cargo.toml");
+    if let Ok(toml) = std::fs::read_to_string(&manifest) {
+        assert!(
+            toml.contains("itoa = \"1\"") && toml.contains("[dependencies]"),
+            "generated Cargo.toml missing the dependency:\n{toml}"
+        );
+    }
+
+    if build.status.success() {
+        let run = Command::new(&bin).output().expect("run cargo-built binary");
+        assert!(String::from_utf8_lossy(&run.stdout).contains("cargo dep build"));
+        assert_eq!(run.status.code(), Some(7));
+    } else {
+        eprintln!(
+            "skipping run assertion: cargo build didn't resolve itoa (offline / no cache):\n{}",
+            String::from_utf8_lossy(&build.stderr)
+        );
+    }
 }

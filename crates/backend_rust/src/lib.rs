@@ -17,11 +17,45 @@
 use maca_parser::ast::*;
 use std::collections::BTreeSet;
 
+/// The `import rust "spec"` specs, in source order — the crates.io / std items a
+/// program pulls in. `import rust "gpui::div"` → the driver validates the crate
+/// against `[rust-dependencies]` and `emit` turns it into `use gpui::div;`.
+pub fn rust_imports(m: &Module) -> Vec<String> {
+    m.items
+        .iter()
+        .filter_map(|it| match it {
+            Stmt::Import(Import::Foreign { lang, spec }) if lang == "rust" => Some(spec.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Turn an `import rust` spec into a `use` item. A spec that already looks like
+/// a full item (`use …`, an attribute, or a multi-line raw block) is emitted
+/// verbatim; a bare path (`gpui::div`, `std::process`) is wrapped in `use …;`.
+fn use_line(spec: &str) -> String {
+    let s = spec.trim();
+    if s.contains('\n') || s.starts_with("use ") || s.starts_with('#') {
+        format!("{s}\n")
+    } else {
+        format!("use {s};\n")
+    }
+}
+
 /// Emit a Rust compilation unit for `m`.
 pub fn emit(m: &Module) -> String {
     let mut cx = Cx::default();
     cx.collect(m);
     let mut out = String::from("#![allow(warnings)]\n\n");
+    for spec in rust_imports(m) {
+        out.push_str(&use_line(&spec));
+    }
+    if m.items
+        .iter()
+        .any(|it| matches!(it, Stmt::Import(Import::Foreign { lang, .. }) if lang == "rust"))
+    {
+        out.push('\n');
+    }
     out.push_str(&cx.prelude());
 
     for it in &m.items {
