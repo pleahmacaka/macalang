@@ -80,6 +80,35 @@ fn record_payload_sum_and_value_reuse() {
 }
 
 #[test]
+fn foreign_type_calls_use_associated_path() {
+    // Maca has no `::` surface syntax: a call on a foreign (capitalized,
+    // non-local) type is its constructor, and `Type.assoc(a)` is an associated
+    // function. Integer literals in foreign-call position drop the `i64` suffix
+    // so Rust infers the parameter type (u64 here).
+    let out = rs("import rust \"std::time::Duration\"\n\n\
+         main() -> int {\n    d = Duration.from_secs(5)\n    b = Buffer()\n    0\n}\n");
+    assert!(out.contains("use std::time::Duration;"), "no use: {out}");
+    assert!(
+        out.contains("Duration::from_secs(5)") && !out.contains("Duration::from_secs(5i64)"),
+        "associated fn / literal suffix: {out}"
+    );
+    assert!(
+        out.contains("Buffer::new()"),
+        "ctor not mapped to ::new: {out}"
+    );
+}
+
+#[test]
+fn instance_method_stays_dotted() {
+    // a call on a *value* is still an instance method, not an associated path.
+    let out = rs("main() -> int {\n    xs = [1, 2, 3]\n    len(xs)\n}\n");
+    assert!(
+        !out.contains("xs::"),
+        "instance receiver mis-qualified: {out}"
+    );
+}
+
+#[test]
 fn variant_reference_is_qualified() {
     // a bare `Green` must emit `Color::Green`, and a match arm likewise.
     let out = rs(

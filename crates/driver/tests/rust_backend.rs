@@ -90,6 +90,27 @@ fn hello_and_recursion_and_loops_run_via_rust() {
     assert_eq!(code, Some(7), "main exit code should be describe(r)=7");
 }
 
+#[test]
+fn foreign_std_type_compiles_and_runs() {
+    if !have("rustc") {
+        eprintln!("skipping: no rustc on PATH");
+        return;
+    }
+    // `import rust "std::time::Duration"`, `Duration.from_secs(5)` (associated
+    // fn), `d.as_secs()` (instance method) — a real std type, no external crate,
+    // through the single-file rustc path.
+    let (out, code) = build_and_run(
+        "foreign_std",
+        "import rust \"std::time::Duration\"\n\n\
+         main() -> int {\n    d = Duration.from_secs(5)\n    total = d.as_secs()\n    info(\"duration = {total} secs\")\n    int(total)\n}\n",
+    );
+    assert!(
+        out.contains("duration = 5 secs"),
+        "foreign_std stdout: {out}"
+    );
+    assert_eq!(code, Some(5), "exit code should be as_secs()=5");
+}
+
 /// `[rust-dependencies]` → a generated Cargo project. Verifies the manifest is
 /// written correctly and, when the crate is resolvable (cargo present + crate
 /// cached/online), that the dependency builds and links. Skips gracefully in a

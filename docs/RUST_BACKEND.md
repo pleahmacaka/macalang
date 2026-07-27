@@ -17,6 +17,13 @@
   single-file `rustc` path). An import that names an **undeclared crate**, or a
   non-Rust foreign import (`import c`/`import py`) on the Rust target, is a **hard
   error** — no more silent drops.
+- **Foreign-type calls without `::` surface syntax** — Maca has no `::`, so a
+  call on a foreign (capitalized, non-local) type is its constructor
+  (`Buffer()` → `Buffer::new()`) and `Type.assoc(a)` is an associated function
+  (`Duration.from_secs(5)` → `Duration::from_secs(5)`); an instance receiver
+  stays `recv.method(a)`. Integer literals in a foreign-call argument drop the
+  `i64` suffix so `rustc` infers the parameter type (`u64`/`usize`/…). A real std
+  type (`std::time::Duration`) compiles and runs end-to-end this way.
 
 Gated by `crates/backend_rust/tests/emit.rs` (hermetic), `rust_target_tests` in
 the driver (import validation + manifest generation), and
@@ -24,10 +31,10 @@ the driver (import validation + manifest generation), and
 best-effort cargo-dependency build).
 
 **Known gaps before gpui:** recursive sum types need `Box<T>` insertion (e.g.
-`tree.maca`); and there is no `::`-path / associated-function surface syntax yet
-(`Type::new()`), so *calling into* a crate beyond free functions and method
-chains waits on R5's foreign-type ergonomics. The remaining phases (R4 escaping
-closures, R5 foreign trait impls + the `&mut` rule, R6 gpql) are specified below.
+`tree.maca`) — deferred, since gpui's types aren't recursive. Foreign *argument*
+coercion beyond bare integer literals is still gradual (a wrong type just makes
+`rustc` error, per §2.4). The remaining phases (R4 escaping closures, R5 foreign
+trait impls + the `&mut` rule, R6 gpql) are specified below.
 
 ---
 

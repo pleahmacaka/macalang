@@ -353,6 +353,18 @@ impl Cx {
                 _ => c.clone(),
             })
             .collect();
+        // For a *foreign* call the parameter type is unknown (u32/u64/usize/…),
+        // so a bare integer literal is emitted without the `i64` suffix and let
+        // Rust infer it from the signature; other args reuse the cloned forms.
+        let foreign_args: Vec<String> = args
+            .iter()
+            .zip(&argv)
+            .map(|(a, (c, _))| match arg_expr(a) {
+                Expr::Int(n) => n.to_string(),
+                Expr::Ident(nm) if self.declared.contains(nm) => format!("{c}.clone()"),
+                _ => c.clone(),
+            })
+            .collect();
         if let Expr::Ident(name) = callee {
             match name.as_str() {
                 "info" | "print" | "err" | "warn" | "debug" | "notice" => {
@@ -378,16 +390,53 @@ impl Cx {
                     (format!("{enom}::{}({joined})", ident(name)), false)
                 };
             }
+            // a call on a foreign (capitalized, non-local) type is its
+            // constructor: `Buffer()` → `Buffer::new()`. Maca has no `::` surface
+            // syntax, so `Type()` stands in for `Type::new()`.
+            if self.is_foreign_type(name) {
+                return (
+                    format!("{}::new({})", ident(name), foreign_args.join(", ")),
+                    false,
+                );
+            }
             // otherwise a plain function / foreign call (or a record ctor call).
             return (format!("{}({joined})", ident(name)), false);
         }
-        // UFCS / method call: `recv.method(args)`
+        // Method / associated-function call: `recv.method(args)`.
         if let Expr::Field { base, name } = callee {
-            let (b, _) = self.expr(base);
             let joined = cloned.join(", ");
+            // `Type.assoc(a)` on a foreign type → `Type::assoc(a)` (an associated
+            // function, e.g. `Duration.from_secs(5)`); an instance receiver stays
+            // `recv.method(a)`.
+            if let Expr::Ident(bn) = &**base
+                && self.is_foreign_type(bn)
+            {
+                return (
+                    format!(
+                        "{}::{}({})",
+                        ident(bn),
+                        ident(name),
+                        foreign_args.join(", ")
+                    ),
+                    false,
+                );
+            }
+            let (b, _) = self.expr(base);
             return (format!("{b}.{}({joined})", ident(name)), false);
         }
         ("Default::default()".into(), false)
+    }
+
+    /// A capitalized name that isn't a local record, sum, variant, or bound
+    /// variable — i.e. a type coming from an `import rust` crate. Such a name in
+    /// call position is an associated function / constructor (`Type::…`), not a
+    /// value.
+    fn is_foreign_type(&self, n: &str) -> bool {
+        n.chars().next().is_some_and(char::is_uppercase)
+            && !self.records.contains(n)
+            && !self.sums.contains(n)
+            && !self.variant_of.contains_key(n)
+            && !self.declared.contains(n)
     }
 
     fn ctor(&mut self, name: &str, fields: &[Field]) -> String {
