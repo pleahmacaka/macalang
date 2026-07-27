@@ -25,6 +25,7 @@ remit_expr(e: Expr) -> str =>
     match e.kind {
         EInt    => rust_int(e.ival)
         EStr    => rust_str(e.text)
+        EBool   => e.text
         EIdent  => e.text
         ECall   => "{e.text}({remit_args(e.children, 0)})"
         EBinary => "({remit_expr(e.children.get(0))} {e.text} {remit_expr(e.children.get(1))})"

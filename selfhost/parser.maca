@@ -183,12 +183,14 @@ climb(ts: Token[], lhs: PExpr, p: int, min_prec: int) -> PExpr {
 parse_primary(ts: Token[], i: int) -> PExpr {
     t = ts.get(i)
     match t.kind {
-        Minus  => parse_neg(ts, i)
-        TInt   => mk_pexpr(e_int(int(t.text)), i + 1)
-        TStr   => mk_pexpr(e_str(t.text), i + 1)
-        TIdent => parse_call_or_ident(ts, i)
-        LParen => parse_paren(ts, i)
-        _      => mk_pexpr(e_ident("?"), i + 1)
+        Minus   => parse_neg(ts, i)
+        TInt    => mk_pexpr(e_int(int(t.text)), i + 1)
+        TStr    => mk_pexpr(e_str(t.text), i + 1)
+        KwTrue  => mk_pexpr(e_bool("true"), i + 1)
+        KwFalse => mk_pexpr(e_bool("false"), i + 1)
+        TIdent  => parse_call_or_ident(ts, i)
+        LParen  => parse_paren(ts, i)
+        _       => mk_pexpr(e_ident("?"), i + 1)
     }
 }
 

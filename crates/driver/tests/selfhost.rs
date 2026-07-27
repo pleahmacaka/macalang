@@ -225,6 +225,17 @@ fn selfhost_frontend_compiles_and_runs() {
         "Rust parameter typing wrong: {stdout}"
     );
 
+    // bool: a `-> bool` function returning a literal — `true`/`false` lower to
+    // `1`/`0` in C but stay keywords in Rust, and the return type differs.
+    assert!(
+        stdout.contains("bool fn C:    int flag() { return 1;"),
+        "C bool lowering wrong: {stdout}"
+    );
+    assert!(
+        stdout.contains("bool fn Rust: fn flag() -> bool { true"),
+        "Rust bool typing wrong: {stdout}"
+    );
+
     // Capstone: compile and run the *complete program* the self-hosted compiler
     // emitted. Extract the C between the markers, compile it with the host cc,
     // run it, and check its exit code is `add(40, 2) == 42` — the Maca-written
@@ -239,6 +250,7 @@ fn selfhost_frontend_compiles_and_runs() {
         c_src.contains("int half(int n)")
             && c_src.contains("int guard(int x)")
             && c_src.contains("int tag(const char* s, int n)")
+            && c_src.contains("int flag()")
             && c_src.contains("int main()"),
         "emitted program missing functions:\n{c_src}"
     );
@@ -285,6 +297,7 @@ fn selfhost_frontend_compiles_and_runs() {
         rs_src.contains("fn half(n: i64) -> i64")
             && rs_src.contains("fn guard(x: i64) -> i64")
             && rs_src.contains("fn tag(s: String, n: i64) -> i64")
+            && rs_src.contains("fn flag() -> bool")
             && rs_src.contains("fn __maca_main() -> i64"),
         "emitted Rust missing functions:\n{rs_src}"
     );

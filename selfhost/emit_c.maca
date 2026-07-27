@@ -19,6 +19,7 @@ emit_expr(e: Expr) -> str =>
     match e.kind {
         EInt    => str(e.ival)
         EStr    => quoted(e.text)
+        EBool   => e.text == "true" ? "1" : "0"
         EIdent  => e.text
         ECall   => "{e.text}({emit_args(e.children, 0)})"
         EBinary => "({emit_expr(e.children.get(0))} {e.text} {emit_expr(e.children.get(1))})"

@@ -61,6 +61,10 @@ e_param(name: str, ty: str) -> Expr =>
 e_str(s: str) -> Expr =>
     Expr { kind = EStr, text = s, ival = 0, ty = "", children = [] }
 
+// A boolean literal; `text` is "true" or "false".
+e_bool(text: str) -> Expr =>
+    Expr { kind = EBool, text, ival = 0, ty = "", children = [] }
+
 e_call(callee: str, args: Expr[]) -> Expr =>
     Expr { kind = ECall, text = callee, ival = 0, ty = "", children = args }
 
@@ -90,6 +94,7 @@ show(e: Expr) -> str =>
     match e.kind {
         EInt    => str(e.ival)
         EStr    => e.text
+        EBool   => e.text
         EIdent  => e.text
         ECall   => "{e.text}({show_args(e.children, 0)})"
         EBinary => "({show(e.children.get(0))} {e.text} {show(e.children.get(1))})"
