@@ -224,14 +224,6 @@ fn collections_and_math_examples_typecheck() {
 }
 
 #[test]
-fn dbbrowser_apps_typecheck() {
-    // the SQLite and PostgreSQL browsers type-check (FFI decls resolve, the
-    // permission-mode ternary and while-loop bodies check clean).
-    assert_clean("apps/dbbrowser/browser.maca", Mode::Program);
-    assert_clean("apps/dbbrowser/pgbrowser.maca", Mode::Program);
-}
-
-#[test]
 fn async_example_typechecks() {
     // await/spawn/sleep_ms type-check with no `async` keyword.
     assert_clean("examples/async.maca", Mode::Program);

@@ -190,7 +190,7 @@ fn operator_overloading_runs_natively() {
 }
 
 #[test]
-fn dbbrowser_runs_natively_with_system_sqlite() {
+fn sqlite_ffi_runs_natively_with_system_sqlite() {
     // Real C FFI: on a plain Linux host the driver links system sqlite with the
     // host cc. Needs libsqlite3 headers; skip where they're absent.
     let wsl = Command::new("wsl")
@@ -204,17 +204,12 @@ fn dbbrowser_runs_natively_with_system_sqlite() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args([
-            "run",
-            &format!(
-                "{}/../../apps/dbbrowser/browser.maca",
-                env!("CARGO_MANIFEST_DIR")
-            ),
-        ])
+        .args(["run", &example("ffi_sqlite.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    for want in ["people", "ada", "grace", "(3 rows)"] {
+    // rows come back ordered by age: ada (36) then alan (41)
+    for want in ["ada is 36", "alan is 41"] {
         assert!(
             stdout.contains(want),
             "missing {want:?}.\nstdout: {stdout}\nstderr: {}",

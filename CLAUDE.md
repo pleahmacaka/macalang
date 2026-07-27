@@ -49,14 +49,15 @@ Virtual workspace; members are `crates/*`.
 
 Non-crate dirs: `std/` (prelude docs — most of the stdlib is compiler/runtime
 builtins), `examples/` (golden `.maca` programs + `examples/bad/`), `apps/`
-(capstones: `dbbrowser` — a SQLite browser, `mqtt`, `microkernel`, `blink`,
-`desktop`, `mcmod`), `selfhost/` (the Maca compiler written in Maca — stage 1),
-`playground/` (the browser playground, a single `.maca` file compiled by the JS
-backend), `editor/`, `docs/`.
+(capstones: `mqtt`, `microkernel`, `blink`, `desktop`, `mcmod`), `selfhost/`
+(the Maca compiler written in Maca — stage 1), `playground/` (the browser
+playground, a single `.maca` file compiled by the JS backend), `editor/`,
+`docs/`.
 
 FFI (`import c "sqlite3.h"` / `import py "…"`) links the real library: through
 `wsl nix` when present, else the **host `cc`** with system headers/libs
-(`-lsqlite3`, `python3-config`), so FFI builds on a plain Linux dev machine.
+(`-lsqlite3`, `python3-config`), so FFI builds on a plain Linux dev machine
+(`examples/ffi_sqlite.maca` iterates a real result set).
 
 ## Self-hosting (current direction)
 
