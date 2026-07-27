@@ -131,7 +131,7 @@ parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
 // operators of at least `min_prec`, recursing at `p + 1` for left-associative
 // binding — so `a + b * c` parses correctly as `a + (b * c)`.
 prec_of(k: Kind) -> int =>
-    k == Star || k == Slash
+    k == Star || k == Slash || k == Percent
         ? 3
         : k == Plus || k == Minus || k == PlusPlus
             ? 2

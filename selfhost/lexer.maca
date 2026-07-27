@@ -122,6 +122,7 @@ punct_kind(c: str) -> Kind =>
         "-" => Minus
         "*" => Star
         "/" => Slash
+        "%" => Percent
         "|" => Bar
         "?" => Question
         "<" => Lt

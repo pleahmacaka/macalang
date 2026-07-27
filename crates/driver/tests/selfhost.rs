@@ -6,10 +6,11 @@
 //!     clean under the stage-0 front-end.
 //!  2. Where a native toolchain is present, the compiler is actually *compiled
 //!     and run*: the Maca-written lexer → parser (with precedence) → checker →
-//!     C emitter processes expressions, functions, and whole modules. As a
-//!     capstone, the complete program it emits is compiled by the host cc and
-//!     executed — its exit code proves the self-hosted compiler produced a
-//!     working executable, not just a plausible-looking string.
+//!     two emitters (C and Rust) process expressions, functions, and whole
+//!     modules. As a capstone, the complete program it emits is compiled two
+//!     ways — the C by the host cc, the Rust by rustc — and both are executed;
+//!     the matching exit codes prove the self-hosted compiler produced a working
+//!     executable through each back end, not just a plausible-looking string.
 
 use maca_core::{Mode, check};
 use std::fs;
@@ -200,6 +201,12 @@ fn selfhost_frontend_compiles_and_runs() {
         "unary negation parse wrong: {stdout}"
     );
 
+    // modulo: `a % b` binds at precedence 3 (like `*`/`/`), tighter than `+`.
+    assert!(
+        stdout.contains("modulo: ((a % b) + 1)"),
+        "modulo precedence wrong: {stdout}"
+    );
+
     // Capstone: compile and run the *complete program* the self-hosted compiler
     // emitted. Extract the C between the markers, compile it with the host cc,
     // run it, and check its exit code is `add(40, 2) == 42` — the Maca-written
@@ -210,7 +217,7 @@ fn selfhost_frontend_compiles_and_runs() {
         .map(|(prog, _)| prog.trim().to_string())
         .expect("emitted-program markers present");
     assert!(
-        c_src.contains("int abs(int n)") && c_src.contains("int main()"),
+        c_src.contains("int mixed(int a, int b)") && c_src.contains("int main()"),
         "emitted program missing functions:\n{c_src}"
     );
     let cfile = dir.join("emitted.c");
@@ -236,7 +243,7 @@ fn selfhost_frontend_compiles_and_runs() {
     assert_eq!(
         code,
         Some(42),
-        "self-host-emitted program returned {code:?}, expected abs(-42) == 42"
+        "self-host-emitted program returned {code:?}, expected mixed(142, 100) == 42"
     );
 
     // Capstone #2: the *same* program through the Maca-written Rust back end
@@ -253,7 +260,7 @@ fn selfhost_frontend_compiles_and_runs() {
         .map(|(prog, _)| prog.trim().to_string())
         .expect("emitted-rust markers present");
     assert!(
-        rs_src.contains("fn abs(n: i64) -> i64") && rs_src.contains("fn __maca_main() -> i64"),
+        rs_src.contains("fn mixed(a: i64, b: i64) -> i64") && rs_src.contains("fn __maca_main() -> i64"),
         "emitted Rust missing functions:\n{rs_src}"
     );
     let rsfile = dir.join("emitted.rs");
@@ -281,6 +288,6 @@ fn selfhost_frontend_compiles_and_runs() {
     assert_eq!(
         rcode,
         Some(42),
-        "self-host-emitted Rust program returned {rcode:?}, expected abs(-42) == 42"
+        "self-host-emitted Rust program returned {rcode:?}, expected mixed(142, 100) == 42"
     );
 }

@@ -13,7 +13,7 @@ Kind =
     | LParen | RParen | LBracket | RBracket | LBrace | RBrace
     | Comma | Colon | Dot | Arrow | FatArrow
     | Eq | EqEq | NotEq | Lt | Gt | Le | Ge
-    | Plus | Minus | Star | Slash | PlusPlus | Bar
+    | Plus | Minus | Star | Slash | Percent | PlusPlus | Bar
     | Question | QuestionPost
     | Newline | Eof
 
