@@ -43,20 +43,28 @@ emit_unit(e: Expr) -> str =>
 
 // ---- function emission ----------------------------------------------------
 
-// Emit a C function definition from an `SFn` statement. Params and the return
-// type are `int` in this slice (the AST doesn't yet carry their types). The
-// body is a statement sequence: bindings become locals and the final
-// expression becomes the `return`.
-emit_fn(s: Stmt) -> str =>
-    "int {s.name}({emit_params(s.params, 0)}) {{ {emit_stmts(s.body, 0)} }}"
+// Map a Maca type name to its C spelling. An empty / unknown type (and `bool`,
+// which needs no <stdbool.h> here) stays `int`.
+type_c(ty: str) -> str =>
+    ty == "float"
+        ? "double"
+        : ty == "str"
+            ? "const char*"
+            : "int"
 
-// `int a, int b` from the parameter ident nodes.
+// Emit a C function definition from an `SFn` statement. Parameter and return
+// types come from the parsed signature (via `type_c`). The body is a statement
+// sequence: bindings become locals and the final expression the `return`.
+emit_fn(s: Stmt) -> str =>
+    "{type_c(s.ret)} {s.name}({emit_params(s.params, 0)}) {{ {emit_stmts(s.body, 0)} }}"
+
+// `int a, const char* b` from the typed parameter ident nodes.
 emit_params(ps: Expr[], i: int) -> str =>
     i >= ps.length()
         ? ""
         : i == ps.length() - 1
-            ? "int {ps.get(i).text}"
-            : "int {ps.get(i).text}, {emit_params(ps, i + 1)}"
+            ? "{type_c(ps.get(i).ty)} {ps.get(i).text}"
+            : "{type_c(ps.get(i).ty)} {ps.get(i).text}, {emit_params(ps, i + 1)}"
 
 emit_stmts(body: Stmt[], i: int) -> str =>
     i >= body.length()

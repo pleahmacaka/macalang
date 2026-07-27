@@ -43,23 +43,33 @@ remit_args(xs: Expr[], i: int) -> str =>
 
 // ---- function emission ----------------------------------------------------
 
+// Map a Maca type name to its Rust spelling; empty / unknown stays `i64`.
+rtype(ty: str) -> str =>
+    ty == "float"
+        ? "f64"
+        : ty == "str"
+            ? "String"
+            : ty == "bool"
+                ? "bool"
+                : "i64"
+
 // A function definition. `main` returns an exit code, so it is wrapped the way
 // `maca-backend-rust` does: the body becomes `__maca_main`, and a real `main`
-// exits with it. Every other function is `fn name(a: i64, …) -> i64 { … }`.
-// (Literal Rust braces are written `{{`/`}}` so they aren't read as Maca string
-// interpolation.)
+// exits with it. Every other function carries its declared parameter and return
+// types (via `rtype`). (Literal Rust braces are written `{{`/`}}` so they aren't
+// read as Maca string interpolation.)
 remit_fn(s: Stmt) -> str =>
     s.name == "main"
         ? "fn __maca_main() -> i64 {{ {remit_stmts(s.body, 0)} }}\nfn main() {{ std::process::exit(__maca_main() as i32); }}"
-        : "fn {s.name}({remit_params(s.params, 0)}) -> i64 {{ {remit_stmts(s.body, 0)} }}"
+        : "fn {s.name}({remit_params(s.params, 0)}) -> {rtype(s.ret)} {{ {remit_stmts(s.body, 0)} }}"
 
-// `a: i64, b: i64` from the parameter ident nodes.
+// `a: i64, b: String` from the typed parameter ident nodes.
 remit_params(ps: Expr[], i: int) -> str =>
     i >= ps.length()
         ? ""
         : i == ps.length() - 1
-            ? "{ps.get(i).text}: i64"
-            : "{ps.get(i).text}: i64, {remit_params(ps, i + 1)}"
+            ? "{ps.get(i).text}: {rtype(ps.get(i).ty)}"
+            : "{ps.get(i).text}: {rtype(ps.get(i).ty)}, {remit_params(ps, i + 1)}"
 
 remit_stmts(body: Stmt[], i: int) -> str =>
     i >= body.length()

@@ -73,13 +73,21 @@ main() -> int {
     logic = parse_expr(lex("a < b && c || d"), 0)
     info("logic: {show(logic.node)}")
 
+    // type threading: parameter and return types now flow from the signature to
+    // the emitted code. `tag` takes a `str` (→ `const char*` in C, `String` in
+    // Rust) and an `int`; its call passes a string literal, and the whole
+    // program still exits `42`, proving non-`int` parameter types compile
+    // through both back ends.
+    sig = parse_fn(lex("tag(s: str, n: int) -> int => n"), 0)
+    info("typed sig C:    {emit_fn(sig.snode)}")
+    info("typed sig Rust: {remit_fn(sig.snode)}")
+
     // a COMPLETE, multi-function program compiled end to end: `half` (division),
-    // `guard` (comparison + `&&` + ternary), and a `main` that composes them
-    // with a nested call `guard(half(84))`. The emitted C / Rust between the
-    // markers compiles and runs, exit `guard(half(84)) == 42` — proving the
-    // Maca-written compiler emits a working *multi-function* executable through
-    // both back ends, not just a single function.
-    program = "half(n: int) -> int => n / 2 guard(x: int) -> int => x > 0 && x < 100 ? x : 0 main() -> int {{ guard(half(84)) }}"
+    // `guard` (comparison + `&&` + ternary), a `tag` with a `str` parameter, and
+    // a `main` that composes them — `tag("ok", guard(half(84)))`. The emitted C /
+    // Rust between the markers compiles and runs, exit `42`, exercising typed
+    // signatures, string literals, division, boolean logic, and nested calls.
+    program = "half(n: int) -> int => n / 2 guard(x: int) -> int => x > 0 && x < 100 ? x : 0 tag(s: str, n: int) -> int => n main() -> int {{ tag(\"ok\", guard(half(84))) }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))

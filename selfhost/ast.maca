@@ -16,11 +16,13 @@ ExprKind =
     | EList | ERecord | ELambda | EBlock
 
 // One expression node. `children` holds sub-expressions (call args, operands,
-// list elements); `text` names idents/operators; `ival` carries int literals.
+// list elements); `text` names idents/operators; `ival` carries int literals;
+// `ty` carries a declared type name for a parameter ident (empty otherwise).
 Expr = {
     kind:     ExprKind
     text:     str
     ival:     int
+    ty:       str
     children: Expr[]
 }
 
@@ -29,11 +31,13 @@ Expr = {
 StmtKind = SExpr | SBind | SFn
 
 // One top-level or block statement. A function packs its params (as ident
-// exprs) into `params` and its body statements into `body`.
+// exprs carrying their declared type in `ty`) into `params`, its declared
+// return type into `ret`, and its body statements into `body`.
 Stmt = {
     kind:   StmtKind
     name:   str
     value:  Expr
+    ret:    str
     params: Expr[]
     body:   Stmt[]
 }
@@ -45,34 +49,38 @@ Module = {
 // ---- constructors ---------------------------------------------------------
 
 e_int(n: int) -> Expr =>
-    Expr { kind = EInt, text = "", ival = n, children = [] }
+    Expr { kind = EInt, text = "", ival = n, ty = "", children = [] }
 
 e_ident(name: str) -> Expr =>
-    Expr { kind = EIdent, text = name, ival = 0, children = [] }
+    Expr { kind = EIdent, text = name, ival = 0, ty = "", children = [] }
+
+// A parameter ident that carries its declared type name (`n: int` → ty "int").
+e_param(name: str, ty: str) -> Expr =>
+    Expr { kind = EIdent, text = name, ival = 0, ty, children = [] }
 
 e_str(s: str) -> Expr =>
-    Expr { kind = EStr, text = s, ival = 0, children = [] }
+    Expr { kind = EStr, text = s, ival = 0, ty = "", children = [] }
 
 e_call(callee: str, args: Expr[]) -> Expr =>
-    Expr { kind = ECall, text = callee, ival = 0, children = args }
+    Expr { kind = ECall, text = callee, ival = 0, ty = "", children = args }
 
 e_binary(op: str, lhs: Expr, rhs: Expr) -> Expr =>
-    Expr { kind = EBinary, text = op, ival = 0, children = [lhs, rhs] }
+    Expr { kind = EBinary, text = op, ival = 0, ty = "", children = [lhs, rhs] }
 
 e_ternary(cond: Expr, then: Expr, els: Expr) -> Expr =>
-    Expr { kind = ETernary, text = "", ival = 0, children = [cond, then, els] }
+    Expr { kind = ETernary, text = "", ival = 0, ty = "", children = [cond, then, els] }
 
 e_unary(op: str, operand: Expr) -> Expr =>
-    Expr { kind = EUnary, text = op, ival = 0, children = [operand] }
+    Expr { kind = EUnary, text = op, ival = 0, ty = "", children = [operand] }
 
 s_expr(value: Expr) -> Stmt =>
-    Stmt { kind = SExpr, name = "", value, params = [], body = [] }
+    Stmt { kind = SExpr, name = "", value, ret = "", params = [], body = [] }
 
 s_bind(name: str, value: Expr) -> Stmt =>
-    Stmt { kind = SBind, name, value, params = [], body = [] }
+    Stmt { kind = SBind, name, value, ret = "", params = [], body = [] }
 
-s_fn(name: str, params: Expr[], body: Stmt[]) -> Stmt =>
-    Stmt { kind = SFn, name, value = e_ident(name), params, body }
+s_fn(name: str, ret: str, params: Expr[], body: Stmt[]) -> Stmt =>
+    Stmt { kind = SFn, name, value = e_ident(name), ret, params, body }
 
 // ---- pretty-printer (recursive over the AST) ------------------------------
 

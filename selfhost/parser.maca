@@ -59,20 +59,22 @@ parse_fn(ts: Token[], i: int) -> PStmt {
     name = ts.get(i).text
     pp = parse_params(ts, i + 2, [])   // i+1 is '(' ; params start at i+2
     afterp = pp.pnext + 1              // skip ')'
-    afterret = ts.get(afterp).kind == Arrow ? afterp + 2 : afterp  // skip '-> R'
+    has_ret = ts.get(afterp).kind == Arrow
+    ret = has_ret ? ts.get(afterp + 1).text : ""   // the `R` in `-> R`
+    afterret = has_ret ? afterp + 2 : afterp       // skip '-> R'
     ts.get(afterret).kind == LBrace
-        ? mk_block_fn(ts, name, pp.params, afterret)
-        : mk_arrow_fn(ts, name, pp.params, afterret)
+        ? mk_block_fn(ts, name, ret, pp.params, afterret)
+        : mk_arrow_fn(ts, name, ret, pp.params, afterret)
 }
 
-mk_arrow_fn(ts: Token[], name: str, params: Expr[], at: int) -> PStmt {
+mk_arrow_fn(ts: Token[], name: str, ret: str, params: Expr[], at: int) -> PStmt {
     be = parse_expr(ts, at + 1)        // skip '=>'
-    mk_pstmt(s_fn(name, params, [s_expr(be.node)]), be.next)
+    mk_pstmt(s_fn(name, ret, params, [s_expr(be.node)]), be.next)
 }
 
-mk_block_fn(ts: Token[], name: str, params: Expr[], at: int) -> PStmt {
+mk_block_fn(ts: Token[], name: str, ret: str, params: Expr[], at: int) -> PStmt {
     pb = parse_block(ts, at + 1, [])   // skip '{'
-    mk_pstmt(s_fn(name, params, pb.bstmts), pb.bnext)
+    mk_pstmt(s_fn(name, ret, params, pb.bstmts), pb.bnext)
 }
 
 // A brace block: statements (a binding `x = e` or a bare expression) up to `}`.
@@ -119,8 +121,10 @@ parse_params(ts: Token[], i: int, acc: Expr[]) -> PParams =>
 
 parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
     pname = ts.get(i).text
-    nacc = acc ++ [e_ident(pname)]
-    after = ts.get(i + 1).kind == Colon ? i + 3 : i + 1   // skip optional ': T'
+    has_ty = ts.get(i + 1).kind == Colon
+    tyname = has_ty ? ts.get(i + 2).text : ""    // the `T` in `name: T`
+    nacc = acc ++ [e_param(pname, tyname)]
+    after = has_ty ? i + 3 : i + 1               // skip optional ': T'
     ts.get(after).kind == Comma
         ? parse_params(ts, after + 1, nacc)
         : parse_params(ts, after, nacc)
