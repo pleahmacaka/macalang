@@ -124,7 +124,11 @@ The native `build`/`run` path
 resolves local imports: `import a/b` (and single-word `import a`) inlines a
 sibling `<a/b>.maca` / `<a>.maca` module, transitively, in dependency order, so
 a program can span files (`maca build selfhost/main.maca` builds the whole
-self-hosted front-end from its imports).
+self-hosted front-end from its imports). **Selective import** —
+`import { foo, bar } from a/b` — inlines only the named top-level definitions
+plus the transitive closure of same-module definitions they reference (dead-code
+elimination at the module boundary); a name the module doesn't define is a clean
+error, not a dangling reference (`crates/driver/src/imports.rs`).
 
 `maca dev` also emits `.maca/dev/{setup,activate}.ps1` when the config declares
 `scoop.*`/`choco.*`/`winget.*` packages (see `dev.maca`): Windows hosts (no nix)
@@ -200,7 +204,11 @@ work in value position via a `Sink` (Discard/Return/Assign) threaded through
 tests (mirroring the checker's `is_variant`). `maca-runtime` holds the C
 sources (`RUNTIME_H`/`RUNTIME_C`). The native driver compiles via `wsl nix
 shell nixpkgs#zig -c zig cc … -target x86_64-linux-musl -static -s` when WSL is
-present, else the host `cc`.
+present, else the host `cc`. Both paths cache the invariant runtime as a compiled
+object (`build_cache::object`, keyed on runtime source + compiler + target), so a
+*changed* program relinks against the cached `maca_runtime.o` instead of
+recompiling the whole runtime — the zig path falls back to the original
+all-in-one invocation if the cached-object link fails, so it can't regress.
 
 Grammar decisions worth knowing (in `parser.rs`): `no_brace` mode in control
 headers so `for x in xs {` isn't a ctor; fn-def detected by lookahead for

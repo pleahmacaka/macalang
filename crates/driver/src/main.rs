@@ -14,6 +14,7 @@ use maca_profile as profile;
 mod bindgen;
 mod build_cache;
 mod deps;
+mod imports;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -1167,76 +1168,7 @@ fn compiler_fingerprint() -> String {
     format!("{VERSION}-{mtime}")
 }
 
-/// Resolve `import a/b` to a sibling `.maca` file. `import std/foo` and other
-/// module imports that don't name a local file (the string/list/math stdlib is
-/// compiler builtins) resolve to nothing and are left for the backend. Two
-/// candidates are tried: a file named by the import's last segment next to the
-/// importer (`import selfhost/token` from `selfhost/main.maca` →
-/// `selfhost/token.maca`), and the whole dotted path from the working directory.
-fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> {
-    let last = segs.last()?;
-    let by_sibling = importer
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(format!("{last}.maca"));
-    if by_sibling.is_file() {
-        return Some(by_sibling);
-    }
-    let by_path = PathBuf::from(format!("{}.maca", segs.join("/")));
-    by_path.is_file().then_some(by_path)
-}
-
-/// Depth-first post-order over local `import`s: every module is emitted after
-/// the modules it depends on, each exactly once. Cycles terminate (a module is
-/// marked seen before its imports are walked).
-fn collect_module(
-    path: &Path,
-    seen: &mut std::collections::HashSet<PathBuf>,
-    order: &mut Vec<PathBuf>,
-) -> Result<(), String> {
-    let canon = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    if !seen.insert(canon.clone()) {
-        return Ok(());
-    }
-    let src = std::fs::read_to_string(path)
-        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    let parsed = maca_parser::parse(&src);
-    for item in &parsed.module.items {
-        // `import a/b` (Module) and a single-word `import a` (Bare) both name a
-        // local module when a matching `.maca` file exists; anything else (a
-        // foreign header, `nixpkgs`, a stdlib builtin) resolves to no file and
-        // is left for the backend.
-        let segs = match item {
-            maca_parser::ast::Stmt::Import(maca_parser::ast::Import::Module(segs)) => segs.clone(),
-            maca_parser::ast::Stmt::Import(maca_parser::ast::Import::Bare(name)) => {
-                vec![name.clone()]
-            }
-            _ => continue,
-        };
-        if let Some(dep) = resolve_module_path(&segs, path) {
-            collect_module(&dep, seen, order)?;
-        }
-    }
-    order.push(canon);
-    Ok(())
-}
-
-/// Read a program and inline every local module it imports (transitively), in
-/// dependency order, so `maca build a.maca` sees a single translation unit. A
-/// program with no local imports is just its own text.
-fn load_with_imports(entry: &Path) -> Result<String, String> {
-    let mut seen = std::collections::HashSet::new();
-    let mut order = Vec::new();
-    collect_module(entry, &mut seen, &mut order)?;
-    let mut combined = String::new();
-    for p in &order {
-        combined.push_str(
-            &std::fs::read_to_string(p).map_err(|e| format!("cannot read {}: {e}", p.display()))?,
-        );
-        combined.push('\n');
-    }
-    Ok(combined)
-}
+use imports::load_with_imports;
 
 fn compile(src: &Path, out: &Path) -> Result<(), String> {
     let source = load_with_imports(src)?;
@@ -1410,39 +1342,90 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
         return link_native(&dir, out, use_async, use_mqtt, use_simd);
     }
 
-    // Only the async translation unit is linked when needed, so a sequential
-    // binary carries no scheduler symbols.
-    let mut args: Vec<String> = ["nix", "shell", "nixpkgs#zig", "-c", "zig", "cc"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    args.push(to_wsl(&dir.join("main.c")));
-    args.push(to_wsl(&dir.join("maca_runtime.c")));
+    // `zig cc` through WSL, with the invariant musl target flags.
+    let zig = |files: &[String]| -> Result<std::process::Output, String> {
+        let mut args: Vec<String> = ["nix", "shell", "nixpkgs#zig", "-c", "zig", "cc"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        args.extend(files.iter().cloned());
+        Command::new("wsl")
+            .args(&args)
+            .output()
+            .map_err(|e| format!("failed to run zig via wsl: {e}"))
+    };
+
+    // Extra translation units + link flags common to both the cached-object and
+    // the fallback all-in-one path.
+    let mut extras: Vec<String> = Vec::new();
     if use_async {
-        args.push(to_wsl(&dir.join("maca_async.c")));
+        extras.push(to_wsl(&dir.join("maca_async.c")));
     }
     if use_mqtt {
-        args.push(to_wsl(&dir.join("maca_ffi_mqtt.c")));
+        extras.push(to_wsl(&dir.join("maca_ffi_mqtt.c")));
     }
     if use_async || use_mqtt {
-        args.push("-pthread".into());
+        extras.push("-pthread".into());
     }
     if use_simd {
         // the LLVM IR object (clang compiles .ll directly); enable AVX
-        args.push(to_wsl(&dir.join("simd.ll")));
-        args.push("-mavx2".into());
+        extras.push(to_wsl(&dir.join("simd.ll")));
+        extras.push("-mavx2".into());
     }
-    args.push("-I".into());
-    args.push(to_wsl(&dir));
-    args.push("-o".into());
-    args.push(to_wsl(out));
-    for f in ["-O2", "-static", "-target", "x86_64-linux-musl", "-s"] {
-        args.push(f.into());
+    let target = ["-target", "x86_64-linux-musl"].map(String::from);
+
+    // Fast path: compile the invariant runtime to a cached object once (per
+    // compiler + target), so a *changed* program recompiles only its own
+    // main.c — the same trick `link_native` uses on the host. On any hiccup we
+    // fall through to the original all-in-one invocation, which cannot be slower
+    // or less correct than before this optimization existed.
+    let rt_c = dir.join("maca_runtime.c");
+    let rt_src = std::fs::read(&rt_c).unwrap_or_default();
+    let rt_key = build_cache::hash(&[&rt_src, compiler_fingerprint().as_bytes(), b"zig-musl-O2"]);
+    let cached_rt: Option<PathBuf> =
+        build_cache::object(&rt_key, &dir.join("maca_runtime.o"), |o| {
+            let mut a = vec![
+                "-c".to_string(),
+                to_wsl(&rt_c),
+                "-O2".into(),
+                "-I".into(),
+                to_wsl(&dir),
+                "-o".into(),
+                to_wsl(o),
+            ];
+            a.extend(target.iter().cloned());
+            let out = zig(&a)?;
+            if out.status.success() {
+                Ok(())
+            } else {
+                Err(String::from_utf8_lossy(&out.stderr).into_owned())
+            }
+        })
+        .ok();
+
+    if let Some(rt_o) = &cached_rt {
+        let mut files = vec![to_wsl(&dir.join("main.c")), to_wsl(rt_o)];
+        files.extend(extras.iter().cloned());
+        files.extend(["-I".into(), to_wsl(&dir), "-o".into(), to_wsl(out)]);
+        files.extend(["-O2", "-static", "-s"].map(String::from));
+        files.extend(target.iter().cloned());
+        if let Ok(out_link) = zig(&files)
+            && out_link.status.success()
+        {
+            return Ok(());
+        }
+        // Linking against the cached object failed — fall through and rebuild
+        // everything in one shot below.
     }
-    let output = Command::new("wsl")
-        .args(&args)
-        .output()
-        .map_err(|e| format!("failed to run zig via wsl: {e}"))?;
+
+    // Fallback (and the pre-optimization behavior): compile main.c + the runtime
+    // together in a single invocation.
+    let mut files = vec![to_wsl(&dir.join("main.c")), to_wsl(&rt_c)];
+    files.extend(extras);
+    files.extend(["-I".into(), to_wsl(&dir), "-o".into(), to_wsl(out)]);
+    files.extend(["-O2", "-static", "-s"].map(String::from));
+    files.extend(target.iter().cloned());
+    let output = zig(&files)?;
     if !output.status.success() {
         return Err(format!(
             "zig cc failed:\n{}",

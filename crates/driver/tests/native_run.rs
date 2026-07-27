@@ -100,6 +100,48 @@ fn multi_file_imports_resolve_and_run() {
 }
 
 #[test]
+fn selective_import_runs_and_drops_unused() {
+    // `import { name } from module` inlines only the named definition and its
+    // same-module dependency closure; everything else in the module is dropped.
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-selective-import");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("mathutil.maca"),
+        "square(x: int) -> int => x * x\n\
+         cube(x: int) -> int => square(x) * x\n\
+         boom(x: int) -> int => x / 0\n", // referencing this would divide by zero
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("main.maca"),
+        "import { cube } from mathutil\n\nmain() -> int {\n    info(\"cube(4)={cube(4)}\")\n    cube(4)\n}\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &dir.join("main.maca").to_string_lossy()])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("cube(4)=64"),
+        "selective import didn't resolve cube/square: stdout {stdout}\nstderr {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // `cube` exits with 64; had `boom` been inlined and reached it'd trap, but
+    // it's dropped entirely — the closure pulled in only cube + square.
+    assert_eq!(out.status.code(), Some(64), "exit code should be cube(4)");
+}
+
+#[test]
 fn higher_order_params_run_natively() {
     // A function passed by name to an unannotated `pred` parameter, then called
     // inside the callee — the C backend wraps the fn in a closure and lowers the
