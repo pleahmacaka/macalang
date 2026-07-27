@@ -71,9 +71,13 @@ or mis-parses valid surface syntax).
 
 The stage-1 **compiler pipeline already runs natively**: the Maca-written lexer
 → recursive-descent parser → recursive-`Expr` AST + pretty-printer → coarse type
-checker (`check.maca`) → C emitter (`emit_c.maca`) compiles through the stage-0
-C backend and executes the whole `lex → parse → check → emit` chain (the
-`selfhost.rs` run gate builds it with the host `cc` and checks the output). The two backend features that
+checker (`check.maca`) → **two back ends written in Maca** — `emit_c.maca` and
+`emit_rust.maca` (the `--target rust` backend, mirroring `maca-backend-rust` on
+the parsed slice) — compile through the stage-0 C backend and execute the whole
+`lex → parse → check → emit` chain (the `selfhost.rs` run gate builds it with the
+host `cc`, then compiles the *emitted* program two ways: the C capstone with
+`cc` and the Rust capstone with `rustc`, checking both exit `sq(9) == 81`). New
+backend work belongs here in Maca, not in the stage-0 crates. The two backend features that
 enabled it are shared by the whole language: the `std/str` scan primitives
 (`chars`/`length`/`at`/`get`/`slice` + `is_whitespace`/`is_ascii_digit`/
 `is_alpha`) and **recursive record types** (a self-referential field like

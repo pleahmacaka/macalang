@@ -13,6 +13,7 @@ import selfhost/lexer
 import selfhost/parser
 import selfhost/check
 import selfhost/emit_c
+import selfhost/emit_rust
 
 main() -> int {
     sample = "add(1) + 2 - 3"
@@ -59,5 +60,13 @@ main() -> int {
     info("=== emitted program ===")
     info(emit_module(prog_mod))
     info("=== end program ===")
+
+    // The same program through the Maca-written Rust back end (emit_rust.maca):
+    // the emitted Rust between the markers compiles with `rustc` and runs, its
+    // exit code again `sq(9) == 81` — the Rust backend written in Maca produces a
+    // working executable, alongside the C one.
+    info("=== emitted rust ===")
+    info(remit_module(prog_mod))
+    info("=== end rust ===")
     0
 }

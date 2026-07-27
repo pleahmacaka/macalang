@@ -1,0 +1,85 @@
+// selfhost/emit_rust — a Rust emitter over the AST, written in Maca.
+//
+// The Maca-written sibling of emit_c: it turns the stage-1 AST into Rust source
+// (the `--target rust` back end), so the Rust backend itself is written in Maca
+// rather than living only in the stage-0 crate. Mirrors `maca-backend-rust` on
+// the slice the stage-1 parser covers: integer/string literals, idents, calls,
+// binary operators, function definitions, bindings, and a `main` that exits
+// with its returned value. It grows into the full backend the way emit_c does.
+
+import selfhost/token
+import selfhost/ast
+
+// A Rust integer literal carries an `i64` suffix, so it isn't inferred as `i32`
+// and then clash with Maca's `int` = `i64` in arithmetic.
+rust_int(n: int) -> str =>
+    "{str(n)}i64"
+
+// An owned Rust string literal (`"…".to_string()`), kept out of interpolation
+// so the quoting stays legible.
+rust_str(s: str) -> str =>
+    "\"" ++ s ++ "\".to_string()"
+
+// Emit a Rust expression for one AST node.
+remit_expr(e: Expr) -> str =>
+    match e.kind {
+        EInt    => rust_int(e.ival)
+        EStr    => rust_str(e.text)
+        EIdent  => e.text
+        ECall   => "{e.text}({remit_args(e.children, 0)})"
+        EBinary => "({remit_expr(e.children.get(0))} {e.text} {remit_expr(e.children.get(1))})"
+        _       => "0i64"
+    }
+
+// Comma-join the emitted arguments from index `i` on.
+remit_args(xs: Expr[], i: int) -> str =>
+    i >= xs.length()
+        ? ""
+        : i == xs.length() - 1
+            ? remit_expr(xs.get(i))
+            : "{remit_expr(xs.get(i))}, {remit_args(xs, i + 1)}"
+
+// ---- function emission ----------------------------------------------------
+
+// A function definition. `main` returns an exit code, so it is wrapped the way
+// `maca-backend-rust` does: the body becomes `__maca_main`, and a real `main`
+// exits with it. Every other function is `fn name(a: i64, …) -> i64 { … }`.
+// (Literal Rust braces are written `{{`/`}}` so they aren't read as Maca string
+// interpolation.)
+remit_fn(s: Stmt) -> str =>
+    s.name == "main"
+        ? "fn __maca_main() -> i64 {{ {remit_stmts(s.body, 0)} }}\nfn main() {{ std::process::exit(__maca_main() as i32); }}"
+        : "fn {s.name}({remit_params(s.params, 0)}) -> i64 {{ {remit_stmts(s.body, 0)} }}"
+
+// `a: i64, b: i64` from the parameter ident nodes.
+remit_params(ps: Expr[], i: int) -> str =>
+    i >= ps.length()
+        ? ""
+        : i == ps.length() - 1
+            ? "{ps.get(i).text}: i64"
+            : "{ps.get(i).text}: i64, {remit_params(ps, i + 1)}"
+
+remit_stmts(body: Stmt[], i: int) -> str =>
+    i >= body.length()
+        ? ""
+        : "{remit_stmt(body.get(i), i == body.length() - 1)} {remit_stmts(body, i + 1)}"
+
+// A binding is a local `let x = e;`; the last expression is the block's tail
+// value (no semicolon — Rust returns it), any earlier one a statement.
+remit_stmt(s: Stmt, is_last: bool) -> str =>
+    s.kind == SBind
+        ? "let {s.name} = {remit_expr(s.value)};"
+        : is_last
+            ? remit_expr(s.value)
+            : "{remit_expr(s.value)};"
+
+// A whole module: every function definition, one per line.
+remit_module(m: Module) -> str =>
+    remit_fns(m.items, 0)
+
+remit_fns(fns: Stmt[], i: int) -> str =>
+    i >= fns.length()
+        ? ""
+        : i == fns.length() - 1
+            ? remit_fn(fns.get(i))
+            : "{remit_fn(fns.get(i))}\n{remit_fns(fns, i + 1)}"

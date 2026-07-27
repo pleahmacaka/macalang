@@ -24,6 +24,7 @@ const SELFHOST_FILES: &[&str] = &[
     "parser.maca",
     "check.maca",
     "emit_c.maca",
+    "emit_rust.maca",
     "main.maca",
 ];
 
@@ -218,5 +219,50 @@ fn selfhost_frontend_compiles_and_runs() {
         code,
         Some(81),
         "self-host-emitted program returned {code:?}, expected sq(9) == 81"
+    );
+
+    // Capstone #2: the *same* program through the Maca-written Rust back end
+    // (emit_rust.maca). Extract the emitted Rust, compile it with `rustc`, run
+    // it, and check the exit code is again `sq(9) == 81` — proving the Rust
+    // backend written in Maca produces a working executable, not just C.
+    if !have("rustc") {
+        eprintln!("skipping selfhost rust capstone: no rustc on PATH");
+        return;
+    }
+    let rs_src = stdout
+        .split_once("=== emitted rust ===")
+        .and_then(|(_, rest)| rest.split_once("=== end rust ==="))
+        .map(|(prog, _)| prog.trim().to_string())
+        .expect("emitted-rust markers present");
+    assert!(
+        rs_src.contains("fn sq(n: i64) -> i64") && rs_src.contains("fn __maca_main() -> i64"),
+        "emitted Rust missing functions:\n{rs_src}"
+    );
+    let rsfile = dir.join("emitted.rs");
+    std::fs::write(&rsfile, &rs_src).unwrap();
+    let rbin = dir.join("emitted_rs");
+    let rustc = Command::new("rustc")
+        .args([
+            &rsfile.to_string_lossy().to_string(),
+            "--edition",
+            "2021",
+            "-o",
+            &rbin.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn rustc");
+    assert!(
+        rustc.status.success(),
+        "self-host-emitted Rust failed to compile:\n{}\n--- source ---\n{rs_src}",
+        String::from_utf8_lossy(&rustc.stderr)
+    );
+    let rcode = Command::new(&rbin)
+        .status()
+        .expect("run emitted rust program")
+        .code();
+    assert_eq!(
+        rcode,
+        Some(81),
+        "self-host-emitted Rust program returned {rcode:?}, expected sq(9) == 81"
     );
 }
