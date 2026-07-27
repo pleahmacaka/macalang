@@ -130,14 +130,21 @@ parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
 // operator its binding power (0 = not an operator); `parse_bin` consumes
 // operators of at least `min_prec`, recursing at `p + 1` for left-associative
 // binding — so `a + b * c` parses correctly as `a + (b * c)`.
+// Binding power, tightest first: `* / %` > `+ - ++` > comparison > `&&` > `||`.
+// `parse_expr` starts at 1 so `||` (the loosest) is still consumed; a trailing
+// ternary, looser still, is handled after `parse_bin` returns.
 prec_of(k: Kind) -> int =>
     k == Star || k == Slash || k == Percent
-        ? 3
+        ? 5
         : k == Plus || k == Minus || k == PlusPlus
-            ? 2
+            ? 4
             : k == EqEq || k == NotEq || k == Lt || k == Gt || k == Le || k == Ge
-                ? 1
-                : 0
+                ? 3
+                : k == AmpAmp
+                    ? 2
+                    : k == PipePipe
+                        ? 1
+                        : 0
 
 // expr := binary [ '?' expr ':' expr ] — a trailing ternary is lowest-
 // precedence and right-associative (its branches recurse through parse_expr).

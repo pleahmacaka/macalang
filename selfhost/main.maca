@@ -64,15 +64,20 @@ main() -> int {
     neg = parse_expr(lex("0 - -n"), 0)
     info("unary: {show(neg.node)}")
 
-    // modulo: `a % b` binds like `*` / `/` (precedence 3).
+    // modulo: `a % b` binds like `*` / `/` (precedence 5).
     md = parse_expr(lex("a % b + 1"), 0)
     info("modulo: {show(md.node)}")
 
-    // a COMPLETE program compiled end to end: a `mixed` helper exercising
-    // modulo, comparison, ternary, and unary minus at once, plus a `main` that
-    // calls it with two arguments. The emitted C / Rust between the markers
-    // compiles and runs, exit `mixed(142, 100) == 42`.
-    program = "mixed(a: int, b: int) -> int => a % b > 0 ? a % b : -1 main() -> int {{ mixed(142, 100) }}"
+    // boolean operators: `&&` binds tighter than `||`, both looser than a
+    // comparison — so `a < b && c || d` groups as `((a < b && c) || d)`.
+    logic = parse_expr(lex("a < b && c || d"), 0)
+    info("logic: {show(logic.node)}")
+
+    // a COMPLETE program compiled end to end: a `grade` helper combining two
+    // comparisons with `&&` inside a ternary, plus a `main` that calls it. The
+    // emitted C / Rust between the markers compiles and runs, exit
+    // `grade(95) == 42` — comparison, boolean logic, and conditionals together.
+    program = "grade(x: int) -> int => x >= 90 && x < 100 ? 42 : 0 main() -> int {{ grade(95) }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))
