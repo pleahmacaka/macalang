@@ -22,7 +22,7 @@ emit_expr(e: Expr) -> str =>
         EStr    => quoted(e.text)
         EBool   => e.text == "true" ? "1" : "0"
         EIdent  => e.text
-        ECall   => "{e.text}({emit_args(e.children, 0)})"
+        ECall   => emit_call(e)
         EBinary => emit_binary(e)
         ETernary => "({emit_expr(e.children.get(0))} ? {emit_expr(e.children.get(1))} : {emit_expr(e.children.get(2))})"
         EUnary  => "({e.text}{emit_expr(e.children.get(0))})"
@@ -31,6 +31,16 @@ emit_expr(e: Expr) -> str =>
         EMatch  => emit_match(e)
         _       => "0"
     }
+
+// A call. `info`/`print` are the output builtins — a string argument prints
+// with a trailing newline (`info`) or without (`print`); every other call is a
+// plain `name(args)`.
+emit_call(e: Expr) -> str =>
+    e.text == "info"
+        ? "printf(\"%s\\n\", {emit_args(e.children, 0)})"
+        : e.text == "print"
+            ? "printf(\"%s\", {emit_args(e.children, 0)})"
+            : "{e.text}({emit_args(e.children, 0)})"
 
 // A binary operator. `++` is string concatenation (→ the `maca_cat` runtime
 // helper); `==`/`!=` with a string operand goes through `strcmp` (C `==` on
@@ -141,7 +151,7 @@ emit_stmt(s: Stmt, is_last: bool) -> str =>
 // definitions, one item per line (records appear first in source order, so a
 // struct is declared before a function uses it).
 c_preamble() -> str =>
-    "#include <string.h>\n#include <stdlib.h>\n" ++
+    "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n" ++
     "static char* maca_cat(const char* a, const char* b) {{ char* r = malloc(strlen(a) + strlen(b) + 1); strcpy(r, a); strcat(r, b); return r; }}\n"
 
 emit_module(m: Module) -> str =>

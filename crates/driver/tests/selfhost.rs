@@ -359,14 +359,18 @@ fn selfhost_frontend_compiles_and_runs() {
         "self-host-emitted C failed to compile:\n{}\n--- source ---\n{c_src}",
         String::from_utf8_lossy(&cc.stderr)
     );
-    let code = Command::new(&ebin)
-        .status()
-        .expect("run emitted program")
-        .code();
+    let run = Command::new(&ebin).output().expect("run emitted program");
     assert_eq!(
-        code,
+        run.status.code(),
         Some(42),
-        "self-host-emitted program returned {code:?}, expected sum(Point{{40,2}}) == 42"
+        "self-host-emitted program returned {:?}, expected 42",
+        run.status.code()
+    );
+    // the `info` builtin printed a line via the emitted `printf`.
+    assert!(
+        String::from_utf8_lossy(&run.stdout).contains("self-hosted!"),
+        "emitted program didn't print via info: {:?}",
+        String::from_utf8_lossy(&run.stdout)
     );
 
     // Capstone #2: the *same* program through the Maca-written Rust back end
@@ -413,13 +417,17 @@ fn selfhost_frontend_compiles_and_runs() {
         "self-host-emitted Rust failed to compile:\n{}\n--- source ---\n{rs_src}",
         String::from_utf8_lossy(&rustc.stderr)
     );
-    let rcode = Command::new(&rbin)
-        .status()
-        .expect("run emitted rust program")
-        .code();
+    let rrun = Command::new(&rbin).output().expect("run emitted rust program");
     assert_eq!(
-        rcode,
+        rrun.status.code(),
         Some(42),
-        "self-host-emitted Rust program returned {rcode:?}, expected sum(Point{{40,2}}) == 42"
+        "self-host-emitted Rust program returned {:?}, expected 42",
+        rrun.status.code()
+    );
+    // the `info` builtin printed a line via the emitted `println!`.
+    assert!(
+        String::from_utf8_lossy(&rrun.stdout).contains("self-hosted!"),
+        "emitted Rust program didn't print via info: {:?}",
+        String::from_utf8_lossy(&rrun.stdout)
     );
 }

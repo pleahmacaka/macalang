@@ -28,7 +28,7 @@ remit_expr(e: Expr) -> str =>
         EStr    => rust_str(e.text)
         EBool   => e.text
         EIdent  => e.text
-        ECall   => "{e.text}({remit_args(e.children, 0)})"
+        ECall   => remit_call(e)
         EBinary => remit_binary(e)
         ETernary => "(if {remit_expr(e.children.get(0))} {{ {remit_expr(e.children.get(1))} }} else {{ {remit_expr(e.children.get(2))} }})"
         EUnary  => "({e.text}{remit_expr(e.children.get(0))})"
@@ -37,6 +37,15 @@ remit_expr(e: Expr) -> str =>
         EMatch  => "match {remit_expr(e.children.get(0))} {{ {remit_arms(e.children, 1)} }}"
         _       => "0i64"
     }
+
+// A call. `info`/`print` are the output builtins → `println!`/`print!`; every
+// other call is a plain `name(args)`.
+remit_call(e: Expr) -> str =>
+    e.text == "info"
+        ? "println!(\"{{}}\", {remit_args(e.children, 0)})"
+        : e.text == "print"
+            ? "print!(\"{{}}\", {remit_args(e.children, 0)})"
+            : "{e.text}({remit_args(e.children, 0)})"
 
 // A binary operator. `++` is string concatenation → `format!("{}{}", a, b)`;
 // every other operator is emitted directly.

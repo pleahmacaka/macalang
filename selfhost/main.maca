@@ -141,8 +141,9 @@ main() -> int {
     // `typedef struct` / `typedef enum` and `match` to a ternary chain; Rust to a
     // `struct` / `enum` and a native `match`. Compiled and run, exit
     // `(fld(Point{40,9}) + code(Green)) * hi("hel", "lo")` = `(40 + 2) * 1` =
-    // `42`, where `hi` concatenates then compares — `(a ++ b) == "hello"`.
-    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} hi(a: str, b: str) -> int => (a ++ b) == \"hello\" ? 1 : 0 main() -> int {{ q = Point {{ x = 40, y = 9 }} (fld(q) + code(Green)) * hi(\"hel\", \"lo\") }}"
+    // `42`, where `hi` concatenates then compares — `(a ++ b) == "hello"`. `main`
+    // also prints a greeting via the `info` builtin (`printf` / `println!`).
+    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} hi(a: str, b: str) -> int => (a ++ b) == \"hello\" ? 1 : 0 main() -> int {{ q = Point {{ x = 40, y = 9 }} info(\"self-hosted!\") (fld(q) + code(Green)) * hi(\"hel\", \"lo\") }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))
