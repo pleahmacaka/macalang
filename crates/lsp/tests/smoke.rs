@@ -131,3 +131,40 @@ fn references_on_empty_position_is_empty() {
     let off = src.find(' ').unwrap();
     assert!(maca_lsp::references(src, off).is_empty());
 }
+
+#[test]
+fn signature_help_reports_active_parameter() {
+    let src = "add(a: int, b: int) -> int => a + b\nmain() -> int => add(1, 2)\n";
+    // cursor just after `add(` → first parameter
+    let off = src.rfind("add(").unwrap() + 4;
+    let (sig, params, active) = maca_lsp::signature_help(src, off).expect("signature help");
+    assert_eq!(sig, "add(a: int, b: int) -> int");
+    assert_eq!(params, vec!["a: int".to_string(), "b: int".to_string()]);
+    assert_eq!(active, 0);
+
+    // cursor after the comma → second parameter
+    let off2 = src.rfind(", 2").unwrap() + 2;
+    let (_, _, active2) = maca_lsp::signature_help(src, off2).expect("signature help");
+    assert_eq!(active2, 1);
+}
+
+#[test]
+fn signature_help_outside_a_call_is_none() {
+    let src = "add(a: int, b: int) -> int => a + b\nmain() -> int => 0\n";
+    let off = src.rfind("0").unwrap();
+    assert!(maca_lsp::signature_help(src, off).is_none());
+}
+
+#[test]
+fn signature_help_handles_nested_calls() {
+    let src = "inner(x: int) -> int => x\nouter(a: int, b: int) -> int => a + b\nmain() -> int => outer(inner(1), 2)\n";
+    // inside `inner(` — the innermost call wins
+    let off = src.rfind("inner(").unwrap() + 6;
+    let (sig, _, _) = maca_lsp::signature_help(src, off).expect("signature help");
+    assert_eq!(sig, "inner(x: int) -> int");
+    // after the nested call closes, we're back on `outer`'s second parameter
+    let off2 = src.rfind("), 2").unwrap() + 3;
+    let (sig2, _, active2) = maca_lsp::signature_help(src, off2).expect("signature help");
+    assert_eq!(sig2, "outer(a: int, b: int) -> int");
+    assert_eq!(active2, 1);
+}

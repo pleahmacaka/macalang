@@ -2,7 +2,7 @@
 //! `Content-Length` framing. Wraps the pure analysis functions in `lib.rs`:
 //! live diagnostics (parse + type/effect), hover (signatures/types), and
 //! completion (config option namespaces or top-level names), go-to-definition,
-//! document symbols, find-references, rename, and formatting.
+//! document symbols, find-references, rename, signature help, and formatting.
 //!
 //! Editors launch this binary and talk JSON-RPC to it — see `editor/zed-maca`.
 
@@ -51,6 +51,7 @@ impl Server {
                         "definitionProvider": true,
                         "referencesProvider": true,
                         "renameProvider": true,
+                        "signatureHelpProvider": { "triggerCharacters": ["(", ","] },
                         "documentFormattingProvider": true
                     },
                     "serverInfo": { "name": "maca-lsp", "version": env!("CARGO_PKG_VERSION") }
@@ -119,6 +120,27 @@ impl Server {
                     Some((s, e)) => Some(reply(
                         id,
                         json!({ "uri": uri, "range": range(&text, s, e) }),
+                    )),
+                    None => Some(reply(id, Value::Null)),
+                }
+            }
+            "textDocument/signatureHelp" => {
+                let text = self.doc_at(req)?;
+                let off = self.offset_at(req, &text)?;
+                match maca_lsp::signature_help(&text, off) {
+                    Some((sig, labels, active)) => Some(reply(
+                        id,
+                        json!({
+                            "signatures": [{
+                                "label": sig,
+                                "parameters": labels
+                                    .into_iter()
+                                    .map(|l| json!({ "label": l }))
+                                    .collect::<Vec<_>>()
+                            }],
+                            "activeSignature": 0,
+                            "activeParameter": active
+                        }),
                     )),
                     None => Some(reply(id, Value::Null)),
                 }

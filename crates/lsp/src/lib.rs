@@ -237,6 +237,51 @@ fn top_level_span(src: &str, name: &str) -> Option<(usize, usize)> {
 }
 
 /// Hover: the signature/type of the identifier at `byte_offset`, if known.
+/// Signature help for the call the cursor sits inside: the callee's signature,
+/// its parameter labels, and which parameter is being typed.
+///
+/// Scans backwards from the cursor for the innermost unclosed `(`, reads the
+/// identifier before it, and counts the top-level commas between there and the
+/// cursor to pick the active parameter.
+pub fn signature_help(src: &str, byte_offset: usize) -> Option<(String, Vec<String>, usize)> {
+    let b = src.as_bytes();
+    let off = byte_offset.min(b.len());
+    // walk back to the `(` that opens the innermost enclosing call
+    let mut depth = 0i32;
+    let mut commas = 0usize;
+    let mut i = off;
+    let open = loop {
+        if i == 0 {
+            return None;
+        }
+        i -= 1;
+        match b[i] {
+            b')' => depth += 1,
+            b'(' if depth == 0 => break i,
+            b'(' => depth -= 1,
+            b',' if depth == 0 => commas += 1,
+            b'\n' if depth == 0 => return None, // don't cross a line boundary
+            _ => {}
+        }
+    };
+    let name = word_at(src, open)?;
+    let f = parse(src).module.items.into_iter().find_map(|it| match it {
+        Stmt::Fn(f) if f.name == name => Some(f),
+        _ => None,
+    })?;
+    let labels: Vec<String> = f
+        .params
+        .iter()
+        .map(|p| {
+            let ty = p.ty.as_ref().map(ty_str).unwrap_or_else(|| "any".into());
+            format!("{}{}: {ty}", if p.variadic { "..." } else { "" }, p.name)
+        })
+        .collect();
+    // clamp: a variadic tail keeps highlighting its last parameter
+    let active = commas.min(labels.len().saturating_sub(1));
+    Some((fn_sig(&f), labels, active))
+}
+
 pub fn hover(src: &str, byte_offset: usize) -> Option<String> {
     let word = word_at(src, byte_offset)?;
     let parsed = parse(src);
