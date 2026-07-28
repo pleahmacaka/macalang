@@ -2794,6 +2794,21 @@ impl<'a> Cx<'a> {
                 ),
                 CTy::Str,
             ),
+            (CTy::Str | CTy::Unknown, "pad_center") => (
+                format!(
+                    "maca_pad_center({rc}, {}, {})",
+                    arg0(),
+                    if a.len() > 1 { arg1() } else { "\" \"".to_string() }
+                ),
+                CTy::Str,
+            ),
+            // `x.fixed(n)` — `x` with n decimal places. Written on a float, but
+            // an int receiver is accepted and widened, so `{n:.2}` works on any
+            // number rather than failing on the one case the user didn't expect.
+            (CTy::Float | CTy::Int | CTy::Unknown, "fixed") => (
+                format!("maca_fixed((double)({rc}), {})", arg0()),
+                CTy::Str,
+            ),
             (CTy::Str | CTy::Unknown, "split") => {
                 self.note_arr(&CTy::Arr(Box::new(CTy::Str)));
                 let sep = arg0();

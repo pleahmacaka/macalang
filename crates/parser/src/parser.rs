@@ -776,7 +776,11 @@ impl Parser {
                 }
                 Tok::InterpStart => {
                     self.bump();
-                    let e = self.parse_expr();
+                    let mut e = self.parse_expr();
+                    if let Tok::FmtSpec(spec) = self.peek().clone() {
+                        self.bump();
+                        e = self.apply_fmt_spec(e, &spec);
+                    }
                     self.expect(Tok::InterpEnd, "'}'");
                     parts.push(StrPart::Interp(e));
                 }
@@ -791,6 +795,71 @@ impl Parser {
             }
         }
         Expr::Str(parts)
+    }
+
+    /// Desugar `"{x:>8}"`'s spec into ordinary calls. A format spec is not a
+    /// new evaluation rule — it is spelling for things you could already write
+    /// by hand, so it lowers here and every back end gets it for free:
+    ///
+    /// ```text
+    ///   {x:.2}   →  x.fixed(2)
+    ///   {x:>8}   →  str(x).pad_start(8, " ")
+    ///   {x:<8}   →  str(x).pad_end(8, " ")
+    ///   {x:^8}   →  str(x).pad_center(8, " ")
+    ///   {x:08}   →  str(x).pad_start(8, "0")
+    /// ```
+    ///
+    /// Grammar: `[<|>|^] [0] width [. precision]`, every part optional.
+    fn apply_fmt_spec(&mut self, e: Expr, spec: &str) -> Expr {
+        let mut rest = spec;
+        let align = match rest.chars().next() {
+            Some(c @ ('<' | '>' | '^')) => {
+                rest = &rest[1..];
+                Some(c)
+            }
+            _ => None,
+        };
+        // a leading zero means zero-fill, and implies right alignment
+        let zero = rest.starts_with('0') && rest.len() > 1;
+        let (width, precision) = match rest.split_once('.') {
+            Some((w, p)) => (w, Some(p)),
+            None => (rest, None),
+        };
+
+        // precision first: it produces the text that padding then aligns
+        let mut out = match precision {
+            Some(p) => match p.parse::<i64>() {
+                Ok(n) => call_method(e, "fixed", vec![Expr::Int(n)]),
+                Err(_) => {
+                    self.err(format!("format spec `{spec}`: `.{p}` is not a number"));
+                    e
+                }
+            },
+            None => Expr::Call {
+                callee: Box::new(Expr::Ident("str".into())),
+                args: vec![Arg::Pos(e)],
+            },
+        };
+
+        if !width.is_empty() {
+            match width.parse::<i64>() {
+                Ok(w) => {
+                    let pad = if zero { "0" } else { " " };
+                    let how = match align {
+                        Some('<') => "pad_end",
+                        Some('^') => "pad_center",
+                        _ => "pad_start",
+                    };
+                    out = call_method(
+                        out,
+                        how,
+                        vec![Expr::Int(w), Expr::Str(vec![StrPart::Text(pad.into())])],
+                    );
+                }
+                Err(_) => self.err(format!("format spec `{spec}`: `{width}` is not a width")),
+            }
+        }
+        out
     }
 
     fn parse_string_literal(&mut self) -> String {
@@ -1090,5 +1159,17 @@ impl Parser {
                 Vec::new()
             }
         }
+    }
+}
+
+/// `recv.name(args…)` — a UFCS method call, which is a call whose callee is a
+/// field access.
+fn call_method(recv: Expr, name: &str, args: Vec<Expr>) -> Expr {
+    Expr::Call {
+        callee: Box::new(Expr::Field {
+            base: Box::new(recv),
+            name: name.into(),
+        }),
+        args: args.into_iter().map(Arg::Pos).collect(),
     }
 }

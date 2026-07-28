@@ -1069,6 +1069,7 @@ fn handbook_examples_all_run() {
         "try: caught, still running",                // `try`
         "strings: ababab 007 2",                     // repeat/pad_start/split
         "braces: {} {}",                             // both literal-brace escapes
+        "fmt: [3.14] [    42] [ok  ] [  ok  ] [007]", // interpolation format specs
     ] {
         assert!(
             stdout.contains(want),

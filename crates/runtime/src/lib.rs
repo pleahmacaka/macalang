@@ -88,6 +88,8 @@ bool maca_make_dir(maca_str path);                    /* mkdir -p; ok? */
 maca_str* maca_list_dir(maca_str path, int64_t* out_len); /* names, sorted; malloc'd */
 maca_str maca_pad_start(maca_str s, int64_t w, maca_str p); /* left-pad to width w */
 maca_str maca_pad_end(maca_str s, int64_t w, maca_str p);   /* right-pad to width w */
+maca_str maca_pad_center(maca_str s, int64_t w, maca_str p); /* centre within width w */
+maca_str maca_fixed(double x, int64_t n);             /* x with n decimal places */
 maca_str maca_substr(maca_str s, int64_t start, int64_t len);  /* byte range, clamped */
 int64_t maca_index_of(maca_str s, maca_str sub);      /* byte index, or -1 */
 maca_str* maca_split(maca_str s, maca_str sep, int64_t* out_len); /* malloc'd maca_str[] */
@@ -465,6 +467,29 @@ static maca_str maca_pad(maca_str s, int64_t w, maca_str p, bool at_start) {
 }
 maca_str maca_pad_start(maca_str s, int64_t w, maca_str p) { return maca_pad(s, w, p, true); }
 maca_str maca_pad_end(maca_str s, int64_t w, maca_str p) { return maca_pad(s, w, p, false); }
+/* Centre `s` in width `w`. An odd remainder goes on the right, so a column of
+   centred cells stays flush left — the same choice Python's `str.center` makes. */
+maca_str maca_pad_center(maca_str s, int64_t w, maca_str p) {
+    if (!s) s = "";
+    if (!p || !*p) p = " ";
+    size_t len = strlen(s);
+    if (w <= 0 || (size_t)w <= len) return s;
+    size_t fill = (size_t)w - len, left = fill / 2, plen = strlen(p);
+    char* r = (char*)xmalloc((size_t)w + 1);
+    for (size_t i = 0; i < left; i++) r[i] = p[i % plen];
+    memcpy(r + left, s, len);
+    for (size_t i = left + len; i < (size_t)w; i++) r[i] = p[(i - left - len) % plen];
+    r[(size_t)w] = '\0'; return r;
+}
+/* `x` with exactly `n` decimal places, as text. */
+maca_str maca_fixed(double x, int64_t n) {
+    if (n < 0) n = 0;
+    if (n > 17) n = 17;
+    int need = snprintf(NULL, 0, "%.*f", (int)n, x);
+    char* r = (char*)xmalloc((size_t)need + 1);
+    snprintf(r, (size_t)need + 1, "%.*f", (int)n, x);
+    return r;
+}
 bool maca_contains(maca_str s, maca_str sub) {
     if (!s) s = ""; if (!sub) sub = "";
     return strstr(s, sub) != NULL;

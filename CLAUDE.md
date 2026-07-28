@@ -222,6 +222,20 @@ blocks that let a `.maca` UI carry its own host glue and styles inline (see
 `playground/playground.maca`). Examples:
 `examples/{indexing,record_update,tree,sum_record,keywords,strings}.maca`.
 
+**Strings:** `{` opens an interpolation, so a literal brace is `\{`/`\}` or
+`{{`/`}}`. A `"…"` string may not span a line (write `\n`, or use `"""…"""`,
+which spans lines and interpolates nothing) — without that rule a stray `"{"`
+opened an interpolation the quote never closed and the file silently
+mis-compiled. An interpolation may carry a **format spec**:
+`{x:.2}`, `{x:>8}`, `{x:<8}`, `{x:^8}`, `{x:08}`, `{x:>10.3}` —
+`[align][0][width][.precision]`, all parts optional. It is pure sugar,
+desugared in the parser (`apply_fmt_spec`) to `x.fixed(n)` /
+`str(x).pad_start(w, p)` / `pad_end` / `pad_center`, so every back end gets it
+for free. A spec's `:` is *attached* and a ternary's is *spaced*, which is how
+the lexer tells `{x:>8}` from `{c ? a : b}` (`Tok::FmtSpec`, `fmt_spec_here`) —
+the same attached-vs-spaced rule as `x?` vs `c ? x : y`. New primitives behind
+it: `float.fixed(n) -> str` (int receiver widened) and `str.pad_center(w, p)`.
+
 **Codegen note (C backend):** control-flow expressions (`if`/`match`/block)
 work in value position via a `Sink` (Discard/Return/Assign) threaded through
 `block`/`stmt_expr`/`match_stmt`; nullary enum-variant patterns lower to tag

@@ -100,5 +100,9 @@ main() -> int {
     // ("{" alone would open an interpolation the quote never closes — an error).
     info("braces: {{}} \{\}")
 
+    // format specs: [align][0][width][.precision], desugared to ordinary calls
+    pi = 3.14159265
+    info("fmt: [{pi:.2}] [{42:>6}] [{"ok":<4}] [{"ok":^6}] [{7:03}]")
+
     0
 }

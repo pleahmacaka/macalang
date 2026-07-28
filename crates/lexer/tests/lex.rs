@@ -294,3 +294,50 @@ fn interpolation_and_raw_strings_still_work() {
     // a raw string is exempt — it may span lines and hold bare braces
     assert!(errs("x = \"\"\"a {\n} b\"\"\"").is_empty());
 }
+
+// ---- interpolation format specs --------------------------------------------
+//
+// `"{x:>8}"` ends in a format spec; `"{c ? a : b}"` ends in a ternary. Both use
+// a colon inside an interpolation, so the lexer separates them by attachment —
+// a spec's colon has no space before it, a ternary's does. That is the same
+// rule that already distinguishes `x?` from `c ? x : y`.
+
+fn specs(src: &str) -> Vec<String> {
+    maca_lexer::lex(src)
+        .tokens
+        .into_iter()
+        .filter_map(|t| match t.tok {
+            maca_lexer::Tok::FmtSpec(s) => Some(s),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_format_spec_is_lexed_as_one_token() {
+    assert_eq!(specs(r#""{pi:.2}""#), vec![".2"]);
+    assert_eq!(specs(r#""{x:>8}""#), vec![">8"]);
+    assert_eq!(specs(r#""{x:<8}""#), vec!["<8"]);
+    assert_eq!(specs(r#""{x:^8}""#), vec!["^8"]);
+    assert_eq!(specs(r#""{n:08}""#), vec!["08"]);
+    assert_eq!(specs(r#""{pi:>10.3}""#), vec![">10.3"]);
+    // the expression before it is lexed normally
+    assert_eq!(specs(r#""{a[0]:^5} {r.f:>2}""#), vec!["^5", ">2"]);
+}
+
+#[test]
+fn a_spaced_colon_is_still_a_ternary() {
+    let toks = maca_lexer::lex(r#""{c ? a : b}""#);
+    assert!(toks.errors.is_empty(), "{:?}", toks.errors);
+    assert!(specs(r#""{c ? a : b}""#).is_empty(), "ternary read as a spec");
+    assert!(toks.tokens.iter().any(|t| t.tok == maca_lexer::Tok::Colon));
+    // and a ternary whose arms are strings, as the handbook writes it
+    assert!(specs(r#""{n > 0 ? "yes" : "no"}""#).is_empty());
+}
+
+#[test]
+fn a_colon_outside_an_interpolation_is_not_a_spec() {
+    // type annotations are the common case
+    assert!(specs("f(x: int) -> int => x").is_empty());
+    assert!(specs("Point = {\n    x: int\n}").is_empty());
+}

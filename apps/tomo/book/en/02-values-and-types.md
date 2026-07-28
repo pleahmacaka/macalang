@@ -25,6 +25,32 @@ info("\{\}")           // the same, spelled with escapes
 Getting this wrong is a compile error, not a surprise: `"{"` starts an
 interpolation the closing quote never ends, and the compiler says so.
 
+### Format specs
+
+An interpolation can say how to render its value, after a `:`
+
+```
+info("{pi:.2}")        // 3.14        — two decimal places
+info("{n:>8}")         // "      42"  — right-align in 8 columns
+info("{name:<8}")      // "ok      "  — left-align
+info("{name:^8}")      // "   ok   "  — centre
+info("{n:08}")         // "00000042"  — zero-fill
+info("{pi:>10.3}")     // "     3.142" — both
+```
+
+The spec is `[align][0][width][.precision]`, every part optional. Nothing new
+happens at run time: a spec is spelling for calls you could write yourself —
+`{x:.2}` is `x.fixed(2)`, `{x:>8}` is `str(x).pad_start(8, " ")` — so the same
+specs work on every target.
+
+A ternary inside an interpolation still works, because Maca writes a ternary
+*spaced* (`c ? x : y`) and a format spec *attached* (`x:>8`) — the same
+distinction that separates `x?` from `c ? x : y`:
+
+```
+info("{score >= 60 ? "pass" : "fail"}")
+```
+
 A `"…"` string stays on one line — write `\n` for a newline. For text that
 really is multi-line, use a **raw** string, which spans lines and interpolates
 nothing, so braces inside it need no escaping:

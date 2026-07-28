@@ -32,6 +32,8 @@ pub enum Tok {
     StrOpen,
     StrText(String),
     InterpStart,
+    /// A format spec closing an interpolation: the `>8` of `"{name:>8}"`.
+    FmtSpec(String),
     InterpEnd,
     StrClose,
     Path(String),
@@ -426,6 +428,13 @@ impl<'a> Lexer<'a> {
                 }
             }
             ',' => self.one(Tok::Comma, |_| {}),
+            ':' if self.fmt_spec_here().is_some() => {
+                let spec = self.fmt_spec_here().unwrap();
+                for _ in 0..=spec.len() {
+                    self.bump(); // the `:` and the spec characters
+                }
+                self.push(Tok::FmtSpec(spec), (start, self.byte()));
+            }
             ':' => self.one(Tok::Colon, |_| {}),
             '.' => {
                 if self.peek_n(1) == '.' && self.peek_n(2) == '.' {
@@ -643,6 +652,35 @@ impl<'a> Lexer<'a> {
             s.push(self.bump());
         }
         self.push(Tok::Path(s), (start, self.byte()));
+    }
+
+    /// The format spec starting at the current `:`, if this colon closes an
+    /// interpolation rather than separating a ternary's arms.
+    ///
+    /// Three things must hold, and together they leave no ambiguity with
+    /// `"{c ? a : b}"`: we are directly inside a `{…}` interpolation, the colon
+    /// is *attached* to the expression before it (Maca writes a ternary spaced,
+    /// `c ? x : y` — the same attached-vs-spaced rule that distinguishes `x?`
+    /// from `c ? x : y`), and every character from here to the closing `}` is a
+    /// spec character. Returns the spec without its colon.
+    fn fmt_spec_here(&self) -> Option<String> {
+        if !matches!(self.braces.last(), Some(Brace::Interp)) {
+            return None;
+        }
+        let prev = self.src[..self.byte()].chars().next_back();
+        if matches!(prev, None | Some(' ') | Some('\t')) {
+            return None;
+        }
+        let mut spec = String::new();
+        let mut i = 1;
+        loop {
+            match self.peek_n(i) {
+                '}' => return (!spec.is_empty()).then_some(spec),
+                c @ ('<' | '>' | '^' | '.' | '0'..='9') => spec.push(c),
+                _ => return None,
+            }
+            i += 1;
+        }
     }
 
     // ---- strings ----------------------------------------------------------

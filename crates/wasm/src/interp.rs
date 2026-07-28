@@ -864,6 +864,28 @@ impl<'a> Interp<'a> {
                     s + &fill
                 }));
             }
+            // centre within a width; an odd remainder goes on the right, so a
+            // column of centred cells stays flush left.
+            "pad_center" => {
+                let s = str_of(vals.first());
+                let w = int_of(vals.get(1)).max(0) as usize;
+                let p = vals.get(2).map(|v| str_of(Some(v))).unwrap_or_else(|| " ".into());
+                let p = if p.is_empty() { " ".to_string() } else { p };
+                let n = s.chars().count();
+                if n >= w {
+                    return Ok(Value::Str(s));
+                }
+                let left: String = p.chars().cycle().take((w - n) / 2).collect();
+                let right: String = p.chars().cycle().take(w - n - (w - n) / 2).collect();
+                return Ok(Value::Str(left + &s + &right));
+            }
+            // `x.fixed(n)` — n decimal places. Accepts an int receiver too, so
+            // `{n:.2}` works on any number.
+            "fixed" => {
+                let x = float_of(vals.first());
+                let n = int_of(vals.get(1)).clamp(0, 17) as usize;
+                return Ok(Value::Str(format!("{x:.n$}")));
+            }
             "contains" => {
                 return Ok(Value::Bool(
                     str_of(vals.first()).contains(&str_of(vals.get(1))),
@@ -1278,6 +1300,16 @@ fn int_of(v: Option<&Value>) -> i64 {
         Some(Value::Int(n)) => *n,
         Some(Value::Float(f)) => *f as i64,
         _ => 0,
+    }
+}
+
+/// A `float` argument (0.0 if absent/non-numeric). An int is widened, so
+/// `x.fixed(n)` works on any number.
+fn float_of(v: Option<&Value>) -> f64 {
+    match v {
+        Some(Value::Float(f)) => *f,
+        Some(Value::Int(n)) => *n as f64,
+        _ => 0.0,
     }
 }
 
