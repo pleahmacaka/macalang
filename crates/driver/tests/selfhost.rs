@@ -247,32 +247,41 @@ fn selfhost_frontend_compiles_and_runs() {
         "Rust float lowering wrong: {stdout}"
     );
 
+    // records: a type declaration → a struct, a field access → member access.
+    assert!(
+        stdout.contains("record C:    struct Point { int x; int y;")
+            && stdout.contains("int sum(struct Point p) { return (p.x + p.y);"),
+        "C record lowering wrong: {stdout}"
+    );
+    assert!(
+        stdout.contains("struct Point { x: i64, y: i64 }")
+            && stdout.contains("fn sum(p: Point) -> i64 { (p.x + p.y)"),
+        "Rust record lowering wrong: {stdout}"
+    );
+
     // Capstone: compile and run the *complete program* the self-hosted compiler
     // emitted. Extract the C between the markers, compile it with the host cc,
-    // run it, and check its exit code is `add(40, 2) == 42` — the Maca-written
-    // compiler produced a working *multi-function* executable (division, `&&`,
-    // ternary, and a nested call composed across three functions).
+    // run it, and check its exit code is `sum(Point{40,2}) == 42` — the
+    // Maca-written compiler produced a working executable using a record type,
+    // a record literal, field access, and a record-typed parameter.
     let c_src = stdout
         .split_once("=== emitted program ===")
         .and_then(|(_, rest)| rest.split_once("=== end program ==="))
         .map(|(prog, _)| prog.trim().to_string())
         .expect("emitted-program markers present");
     assert!(
-        c_src.contains("int half(int n)")
-            && c_src.contains("int guard(int x)")
-            && c_src.contains("int tag(const char* s, int n)")
-            && c_src.contains("int flag()")
+        c_src.contains("struct Point { int x; int y;")
+            && c_src.contains("int sum(struct Point p)")
             && c_src.contains("int main()"),
-        "emitted program missing functions:\n{c_src}"
+        "emitted program missing record/functions:\n{c_src}"
     );
     assert!(
-        c_src.contains("const char* label = \"ok\";"),
-        "C local binding not typed from its value:\n{c_src}"
+        c_src.contains("(struct Point){ .x = 40, .y = 2 }"),
+        "C record literal (designated init) wrong:\n{c_src}"
     );
-    // logical not: `!false` → `(!0)` in C, `(!false)` in Rust.
     assert!(
-        c_src.contains("int flag() { return (!0);"),
-        "C logical-not lowering wrong:\n{c_src}"
+        c_src.contains("(p.x + p.y)"),
+        "C field access wrong:\n{c_src}"
     );
     let cfile = dir.join("emitted.c");
     std::fs::write(&cfile, &c_src).unwrap();
@@ -297,12 +306,12 @@ fn selfhost_frontend_compiles_and_runs() {
     assert_eq!(
         code,
         Some(42),
-        "self-host-emitted program returned {code:?}, expected guard(half(84)) == 42"
+        "self-host-emitted program returned {code:?}, expected sum(Point{{40,2}}) == 42"
     );
 
     // Capstone #2: the *same* program through the Maca-written Rust back end
     // (emit_rust.maca). Extract the emitted Rust, compile it with `rustc`, run
-    // it, and check the exit code is again `sq(9) == 81` — proving the Rust
+    // it, and check the exit code is again `42` — proving the Rust
     // backend written in Maca produces a working executable, not just C.
     if !have("rustc") {
         eprintln!("skipping selfhost rust capstone: no rustc on PATH");
@@ -314,12 +323,14 @@ fn selfhost_frontend_compiles_and_runs() {
         .map(|(prog, _)| prog.trim().to_string())
         .expect("emitted-rust markers present");
     assert!(
-        rs_src.contains("fn half(n: i64) -> i64")
-            && rs_src.contains("fn guard(x: i64) -> i64")
-            && rs_src.contains("fn tag(s: String, n: i64) -> i64")
-            && rs_src.contains("fn flag() -> bool")
+        rs_src.contains("struct Point { x: i64, y: i64 }")
+            && rs_src.contains("fn sum(p: Point) -> i64")
             && rs_src.contains("fn __maca_main() -> i64"),
-        "emitted Rust missing functions:\n{rs_src}"
+        "emitted Rust missing record/functions:\n{rs_src}"
+    );
+    assert!(
+        rs_src.contains("Point { x: 40i64, y: 2i64 }"),
+        "Rust record literal wrong:\n{rs_src}"
     );
     let rsfile = dir.join("emitted.rs");
     std::fs::write(&rsfile, &rs_src).unwrap();
@@ -346,6 +357,6 @@ fn selfhost_frontend_compiles_and_runs() {
     assert_eq!(
         rcode,
         Some(42),
-        "self-host-emitted Rust program returned {rcode:?}, expected guard(half(84)) == 42"
+        "self-host-emitted Rust program returned {rcode:?}, expected sum(Point{{40,2}}) == 42"
     );
 }

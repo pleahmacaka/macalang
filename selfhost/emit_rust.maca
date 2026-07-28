@@ -32,8 +32,18 @@ remit_expr(e: Expr) -> str =>
         EBinary => "({remit_expr(e.children.get(0))} {e.text} {remit_expr(e.children.get(1))})"
         ETernary => "(if {remit_expr(e.children.get(0))} {{ {remit_expr(e.children.get(1))} }} else {{ {remit_expr(e.children.get(2))} }})"
         EUnary  => "({e.text}{remit_expr(e.children.get(0))})"
+        ERecord => "{e.text} {{ {remit_lit_fields(e.children, 0)} }}"
+        EField  => "{remit_expr(e.children.get(0))}.{e.text}"
         _       => "0i64"
     }
+
+// Rust struct-literal fields `x: 40, y: 2`. Each rides as `EBinary("=", name, value)`.
+remit_lit_fields(fs: Expr[], i: int) -> str =>
+    i >= fs.length()
+        ? ""
+        : i == fs.length() - 1
+            ? "{fs.get(i).children.get(0).text}: {remit_expr(fs.get(i).children.get(1))}"
+            : "{fs.get(i).children.get(0).text}: {remit_expr(fs.get(i).children.get(1))}, {remit_lit_fields(fs, i + 1)}"
 
 // Comma-join the emitted arguments from index `i` on.
 remit_args(xs: Expr[], i: int) -> str =>
@@ -45,7 +55,8 @@ remit_args(xs: Expr[], i: int) -> str =>
 
 // ---- function emission ----------------------------------------------------
 
-// Map a Maca type name to its Rust spelling; empty / unknown stays `i64`.
+// Map a Maca type name to its Rust spelling. Scalars map directly; an empty
+// type defaults to `i64`; any other name is a record type used verbatim.
 rtype(ty: str) -> str =>
     ty == "float"
         ? "f64"
@@ -53,7 +64,9 @@ rtype(ty: str) -> str =>
             ? "String"
             : ty == "bool"
                 ? "bool"
-                : "i64"
+                : ty == "" || ty == "int"
+                    ? "i64"
+                    : ty
 
 // A function definition. `main` returns an exit code, so it is wrapped the way
 // `maca-backend-rust` does: the body becomes `__maca_main`, and a real `main`
@@ -87,13 +100,30 @@ remit_stmt(s: Stmt, is_last: bool) -> str =>
             ? remit_expr(s.value)
             : "{remit_expr(s.value)};"
 
-// A whole module: every function definition, one per line.
+// A whole module: record `struct` declarations and function definitions, one
+// item per line.
 remit_module(m: Module) -> str =>
-    remit_fns(m.items, 0)
+    remit_items(m.items, 0)
 
-remit_fns(fns: Stmt[], i: int) -> str =>
-    i >= fns.length()
+remit_items(items: Stmt[], i: int) -> str =>
+    i >= items.length()
         ? ""
-        : i == fns.length() - 1
-            ? remit_fn(fns.get(i))
-            : "{remit_fn(fns.get(i))}\n{remit_fns(fns, i + 1)}"
+        : i == items.length() - 1
+            ? remit_item(items.get(i))
+            : "{remit_item(items.get(i))}\n{remit_items(items, i + 1)}"
+
+remit_item(s: Stmt) -> str =>
+    s.kind == SRecord
+        ? remit_struct(s)
+        : remit_fn(s)
+
+// `#[derive(Clone)] struct Point { x: i64, y: i64 }` from a record declaration.
+remit_struct(s: Stmt) -> str =>
+    "#[derive(Clone)]\nstruct {s.name} {{ {remit_struct_fields(s.params, 0)} }}"
+
+remit_struct_fields(fs: Expr[], i: int) -> str =>
+    i >= fs.length()
+        ? ""
+        : i == fs.length() - 1
+            ? "{fs.get(i).text}: {rtype(fs.get(i).ty)}"
+            : "{fs.get(i).text}: {rtype(fs.get(i).ty)}, {remit_struct_fields(fs, i + 1)}"

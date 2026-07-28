@@ -108,9 +108,42 @@ parse_module(ts: Token[], i: int, acc: Stmt[]) -> Module =>
         ? Module { items = acc }
         : parse_module_step(ts, i, acc)
 
+// A top-level item is a record type declaration `Name = { field: T, … }` when
+// an ident is followed by `= {`, otherwise a function definition.
 parse_module_step(ts: Token[], i: int, acc: Stmt[]) -> Module {
+    is_record = ts.get(i).kind == TIdent && ts.get(i + 1).kind == Eq && ts.get(i + 2).kind == LBrace
+    is_record
+        ? parse_record_decl(ts, i, acc)
+        : parse_fn_item(ts, i, acc)
+}
+
+parse_fn_item(ts: Token[], i: int, acc: Stmt[]) -> Module {
     ps = parse_fn(ts, i)
     parse_module(ts, ps.snext, acc ++ [ps.snode])
+}
+
+// `Name = { x: int, y: int }` → a record type declaration (fields ride as typed
+// idents). `i` is on the name; fields start at `i + 3` (past `Name = {`).
+parse_record_decl(ts: Token[], i: int, acc: Stmt[]) -> Module {
+    name = ts.get(i).text
+    rf = parse_fields(ts, i + 3, [])
+    parse_module(ts, rf.pnext + 1, acc ++ [s_record(name, rf.params)])   // skip '}'
+}
+
+// Typed fields up to the closing `}` (its index is returned in `pnext`).
+parse_fields(ts: Token[], i: int, acc: Expr[]) -> PParams =>
+    ts.get(i).kind == RBrace
+        ? mk_pparams(acc, i)
+        : parse_one_field(ts, i, acc)
+
+parse_one_field(ts: Token[], i: int, acc: Expr[]) -> PParams {
+    fname = ts.get(i).text
+    ftype = ts.get(i + 2).text       // 'name : Type'
+    nacc = acc ++ [e_param(fname, ftype)]
+    after = i + 3
+    ts.get(after).kind == Comma
+        ? parse_fields(ts, after + 1, nacc)
+        : parse_fields(ts, after, nacc)
 }
 
 // Parse a comma-separated parameter list up to the closing `)`.
@@ -179,8 +212,19 @@ climb(ts: Token[], lhs: PExpr, p: int, min_prec: int) -> PExpr {
     parse_bin(ts, mk_pexpr(node, rhs.next), min_prec)
 }
 
-// primary := '-' primary | int | str | ident [call] | '(' expr ')'
-parse_primary(ts: Token[], i: int) -> PExpr {
+// primary := atom { '.' field } — an atom followed by zero or more field
+// accesses (`p.x.y`).
+parse_primary(ts: Token[], i: int) -> PExpr =>
+    parse_postfix(ts, parse_atom(ts, i))
+
+// Chain postfix `.field` accesses onto a base expression.
+parse_postfix(ts: Token[], e: PExpr) -> PExpr =>
+    ts.get(e.next).kind == Dot
+        ? parse_postfix(ts, mk_pexpr(e_field(e.node, ts.get(e.next + 1).text), e.next + 2))
+        : e
+
+// atom := '-'|'!' atom | int | float | str | bool | ident [call | record] | '(' expr ')'
+parse_atom(ts: Token[], i: int) -> PExpr {
     t = ts.get(i)
     match t.kind {
         Minus   => parse_neg(ts, i)
@@ -214,11 +258,37 @@ parse_paren(ts: Token[], i: int) -> PExpr {
     mk_pexpr(inner.node, inner.next + 1)   // skip the closing ')'
 }
 
+// An ident may head a call `name(...)`, a record literal `Name { f = v, … }`,
+// or stand alone.
 parse_call_or_ident(ts: Token[], i: int) -> PExpr {
     name = ts.get(i).text
-    ts.get(i + 1).kind == LParen
+    nk = ts.get(i + 1).kind
+    nk == LParen
         ? parse_call(ts, i, name)
-        : mk_pexpr(e_ident(name), i + 1)
+        : nk == LBrace
+            ? parse_record_lit(ts, i, name)
+            : mk_pexpr(e_ident(name), i + 1)
+}
+
+// `Name { field = value, … }` — a record literal; fields start at `i + 2`.
+parse_record_lit(ts: Token[], i: int, name: str) -> PExpr {
+    rf = parse_lit_fields(ts, i + 2, [])
+    mk_pexpr(e_record(name, rf.aitems), rf.anext)
+}
+
+parse_lit_fields(ts: Token[], i: int, acc: Expr[]) -> PArgs =>
+    ts.get(i).kind == RBrace
+        ? mk_pargs(acc, i + 1)          // skip '}'
+        : parse_one_lit_field(ts, i, acc)
+
+// Each `field = value` pair is stored as an `EBinary("=", field, value)`.
+parse_one_lit_field(ts: Token[], i: int, acc: Expr[]) -> PArgs {
+    fname = ts.get(i).text
+    v = parse_expr(ts, i + 2)           // 'field = value'
+    nacc = acc ++ [e_binary("=", e_ident(fname), v.node)]
+    ts.get(v.next).kind == Comma
+        ? parse_lit_fields(ts, v.next + 1, nacc)
+        : parse_lit_fields(ts, v.next, nacc)
 }
 
 // `name ( arg, … )` — a comma-separated argument list (zero or more).

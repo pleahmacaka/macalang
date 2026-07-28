@@ -26,8 +26,19 @@ emit_expr(e: Expr) -> str =>
         EBinary => "({emit_expr(e.children.get(0))} {e.text} {emit_expr(e.children.get(1))})"
         ETernary => "({emit_expr(e.children.get(0))} ? {emit_expr(e.children.get(1))} : {emit_expr(e.children.get(2))})"
         EUnary  => "({e.text}{emit_expr(e.children.get(0))})"
+        ERecord => "(struct {e.text}){{ {emit_lit_fields(e.children, 0)} }}"
+        EField  => "{emit_expr(e.children.get(0))}.{e.text}"
         _       => "0"
     }
+
+// Designated initializers `.x = 40, .y = 2` for a C compound literal. Each field
+// rides as an `EBinary("=", EIdent(name), value)`.
+emit_lit_fields(fs: Expr[], i: int) -> str =>
+    i >= fs.length()
+        ? ""
+        : i == fs.length() - 1
+            ? ".{fs.get(i).children.get(0).text} = {emit_expr(fs.get(i).children.get(1))}"
+            : ".{fs.get(i).children.get(0).text} = {emit_expr(fs.get(i).children.get(1))}, {emit_lit_fields(fs, i + 1)}"
 
 // Comma-join the emitted arguments from index `i` on.
 emit_args(xs: Expr[], i: int) -> str =>
@@ -45,14 +56,17 @@ emit_unit(e: Expr) -> str =>
 
 // ---- function emission ----------------------------------------------------
 
-// Map a Maca type name to its C spelling. An empty / unknown type (and `bool`,
-// which needs no <stdbool.h> here) stays `int`.
+// Map a Maca type name to its C spelling. Scalars map directly (`bool` needs no
+// <stdbool.h> here, so it stays `int`); an empty type defaults to `int`; any
+// other name is a record type → `struct Name`.
 type_c(ty: str) -> str =>
     ty == "float"
         ? "double"
         : ty == "str"
             ? "const char*"
-            : "int"
+            : ty == "" || ty == "int" || ty == "bool"
+                ? "int"
+                : "struct " ++ ty
 
 // Emit a C function definition from an `SFn` statement. Parameter and return
 // types come from the parsed signature (via `type_c`). The body is a statement
@@ -78,9 +92,10 @@ emit_stmts(body: Stmt[], i: int) -> str =>
 // (Rust's `let` infers this on its own, so only C needs it.)
 local_c_type(e: Expr) -> str =>
     match e.kind {
-        EStr   => "const char*"
-        EFloat => "double"
-        _      => "int"
+        EStr    => "const char*"
+        EFloat  => "double"
+        ERecord => "struct " ++ e.text
+        _       => "int"
     }
 
 // A binding is a local `<type> x = e;`; the last expression statement is the
@@ -92,13 +107,29 @@ emit_stmt(s: Stmt, is_last: bool) -> str =>
             ? "return {emit_expr(s.value)};"
             : "{emit_expr(s.value)};"
 
-// A whole module: every function definition, one per line.
+// A whole module: record `struct` declarations and function definitions, one
+// item per line (records appear first in source order, so a struct is declared
+// before a function uses it).
 emit_module(m: Module) -> str =>
-    emit_fns(m.items, 0)
+    emit_items(m.items, 0)
 
-emit_fns(fns: Stmt[], i: int) -> str =>
-    i >= fns.length()
+emit_items(items: Stmt[], i: int) -> str =>
+    i >= items.length()
         ? ""
-        : i == fns.length() - 1
-            ? emit_fn(fns.get(i))
-            : "{emit_fn(fns.get(i))}\n{emit_fns(fns, i + 1)}"
+        : i == items.length() - 1
+            ? emit_item(items.get(i))
+            : "{emit_item(items.get(i))}\n{emit_items(items, i + 1)}"
+
+emit_item(s: Stmt) -> str =>
+    s.kind == SRecord
+        ? emit_struct(s)
+        : emit_fn(s)
+
+// `struct Point { int x; int y; };` from a record declaration's typed fields.
+emit_struct(s: Stmt) -> str =>
+    "struct {s.name} {{ {emit_struct_fields(s.params, 0)} }};"
+
+emit_struct_fields(fs: Expr[], i: int) -> str =>
+    i >= fs.length()
+        ? ""
+        : "{type_c(fs.get(i).ty)} {fs.get(i).text}; {emit_struct_fields(fs, i + 1)}"

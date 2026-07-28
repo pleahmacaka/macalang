@@ -96,15 +96,18 @@ main() -> int {
     info("float fn C:    {emit_fn(ffn.snode)}")
     info("float fn Rust: {remit_fn(ffn.snode)}")
 
-    // a COMPLETE, multi-function program compiled end to end: `half` (division),
-    // `guard` (comparison + `&&` + ternary), `tag` (a block body with a
-    // `str`-typed local `label` — inferred `const char*` in C, `let` in Rust),
-    // a `-> bool` `flag`, and a `main` that composes them —
-    // `flag() ? tag("ok", guard(half(84))) : 0`. The emitted C / Rust between the
-    // markers compiles and runs, exit `42`, exercising typed signatures,
-    // string + bool literals, a typed local binding, division, boolean logic,
-    // conditionals, and nested calls.
-    program = "half(n: int) -> int => n / 2 guard(x: int) -> int => x > 0 && x < 100 ? x : 0 tag(s: str, n: int) -> int {{ label = \"ok\" n }} flag() -> bool => !false main() -> int {{ flag() ? tag(\"ok\", guard(half(84))) : 0 }}"
+    // records: a type declaration parses to a struct, a field access to member
+    // access, and a literal to a struct initializer.
+    rec = parse_module(lex("Point = {{ x: int, y: int }} sum(p: Point) -> int => p.x + p.y"), 0, [])
+    info("record C:    {emit_module(rec)}")
+    info("record Rust: {remit_module(rec)}")
+
+    // a COMPLETE program compiled end to end exercising records: a `Point` type,
+    // a `sum` that takes a `Point` parameter and reads its fields, and a `main`
+    // that builds a record literal and passes it. C lowers the type to a
+    // `struct Point`, Rust to a `struct`. The emitted program between the markers
+    // compiles and runs, exit `sum(Point{40,2}) == 42`.
+    program = "Point = {{ x: int, y: int }} sum(p: Point) -> int => p.x + p.y main() -> int {{ q = Point {{ x = 40, y = 2 }} sum(q) }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))

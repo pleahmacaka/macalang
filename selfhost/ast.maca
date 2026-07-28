@@ -28,7 +28,7 @@ Expr = {
 
 // ---- statement kinds ------------------------------------------------------
 
-StmtKind = SExpr | SBind | SFn
+StmtKind = SExpr | SBind | SFn | SRecord
 
 // One top-level or block statement. A function packs its params (as ident
 // exprs carrying their declared type in `ty`) into `params`, its declared
@@ -82,6 +82,16 @@ e_ternary(cond: Expr, then: Expr, els: Expr) -> Expr =>
 e_unary(op: str, operand: Expr) -> Expr =>
     Expr { kind = EUnary, text = op, ival = 0, ty = "", children = [operand] }
 
+// A record literal `Point { x = 3, y = 4 }`. `text` is the type name; each
+// field is an `EBinary("=", EIdent(field), value)` so the name/value pair rides
+// inside the flat AST.
+e_record(tyname: str, fields: Expr[]) -> Expr =>
+    Expr { kind = ERecord, text = tyname, ival = 0, ty = "", children = fields }
+
+// A field access `base.name`; `text` is the field name, `children` the base.
+e_field(base: Expr, name: str) -> Expr =>
+    Expr { kind = EField, text = name, ival = 0, ty = "", children = [base] }
+
 s_expr(value: Expr) -> Stmt =>
     Stmt { kind = SExpr, name = "", value, ret = "", params = [], body = [] }
 
@@ -90,6 +100,11 @@ s_bind(name: str, value: Expr) -> Stmt =>
 
 s_fn(name: str, ret: str, params: Expr[], body: Stmt[]) -> Stmt =>
     Stmt { kind = SFn, name, value = e_ident(name), ret, params, body }
+
+// A record type declaration `Point = { x: int, y: int }`. Fields ride in
+// `params` as typed idents (`e_param(field, type)`), reusing the fn machinery.
+s_record(name: str, fields: Expr[]) -> Stmt =>
+    Stmt { kind = SRecord, name, value = e_ident(name), ret = "", params = fields, body = [] }
 
 // ---- pretty-printer (recursive over the AST) ------------------------------
 
@@ -106,6 +121,8 @@ show(e: Expr) -> str =>
         EBinary => "({show(e.children.get(0))} {e.text} {show(e.children.get(1))})"
         ETernary => "({show(e.children.get(0))} ? {show(e.children.get(1))} : {show(e.children.get(2))})"
         EUnary  => "({e.text}{show(e.children.get(0))})"
+        ERecord => "{e.text} {{ {show_args(e.children, 0)} }}"
+        EField  => "{show(e.children.get(0))}.{e.text}"
         _       => "?"
     }
 
