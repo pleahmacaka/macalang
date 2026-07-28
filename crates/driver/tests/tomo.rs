@@ -55,12 +55,16 @@ fn tomo_renders_markdown_to_html() {
 
     // headings carry anchor ids (slugged) so the TOC can link to them
     assert!(html.contains("<h1 id=\"title\">Title</h1>"), "h1 wrong: {html}");
-    assert!(html.contains("<h2 id=\"section\">Section</h2>"), "h2 wrong: {html}");
+    // punctuation is dropped from the slug, so `Is it fast?` still anchors
+    assert!(
+        html.contains("<h2 id=\"is-it-fast\">Is it fast?</h2>"),
+        "h2 wrong: {html}"
+    );
     // a table of contents generated from the document's headings
     assert!(
         html.contains("<nav class=\"toc\">")
             && html.contains("<li><a href=\"#title\">Title</a></li>")
-            && html.contains("<li><a href=\"#section\">Section</a></li>"),
+            && html.contains("<li><a href=\"#is-it-fast\">Is it fast?</a></li>"),
         "toc wrong: {html}"
     );
     // inline bold + code + link
@@ -72,7 +76,23 @@ fn tomo_renders_markdown_to_html() {
         "inline formatting wrong: {html}"
     );
     // list items, including a nested one wrapped in its own <ul>
-    assert!(html.contains("<li>one</li>") && html.contains("<li>two</li>"), "list wrong: {html}");
+    // a list is wrapped in its own <ul>/<ol> — bare <li>s are invalid HTML and
+    // render without indent or markers
+    assert!(
+        html.contains("<ul>\n<li>one</li>") && html.contains("<li>two</li>\n</ul>"),
+        "unordered list wrong: {html}"
+    );
+    assert!(
+        html.contains("<ol>\n<li>first</li>\n<li>second</li>\n</ol>"),
+        "ordered list wrong: {html}"
+    );
+    // tables — the reference appendices are built out of these
+    assert!(
+        html.contains("<table>\n<thead>\n<tr><th>target</th><th>flag</th></tr>")
+            && html.contains("<tr><td>native</td><td><code>--target c</code></td></tr>")
+            && !html.contains("<td>--------</td>"),
+        "table wrong: {html}"
+    );
     assert!(
         html.contains("<ul><li>nested</li></ul>"),
         "nested list item wrong: {html}"
@@ -84,7 +104,7 @@ fn tomo_renders_markdown_to_html() {
     );
     // fenced code block, HTML-escaped content
     assert!(
-        html.contains("<pre><code>let x = 1\n</code></pre>"),
+        html.contains("<pre><code class=\"language-maca\">x = 1\n</code></pre>"),
         "code fence wrong: {html}"
     );
     // i18n page shell: a language switcher marking the current language and
@@ -184,6 +204,73 @@ fn tomo_builds_the_handbook_site() {
             && !last.contains("next &rarr;"),
         "last chapter's nav wrong"
     );
+}
+
+/// Every page carries the whole book: a sidebar listing each chapter with the
+/// current one marked, and a search box over a generated index. The index is a
+/// `<script>` rather than JSON the page fetches, so search works when the book
+/// is opened straight off disk — mdBook's needs a server.
+#[test]
+fn every_page_has_the_sidebar_and_a_working_search_index() {
+    if wsl() || !have("cc") {
+        eprintln!("skipping tomo sidebar test: needs a host cc and no wsl");
+        return;
+    }
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let site = repo.join("apps/tomo/site");
+    let dir = std::env::temp_dir().join("maca-tomo-side");
+    let _ = std::fs::create_dir_all(&dir);
+    let bin = dir.join("tomo");
+    let build = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            &repo.join("apps/tomo/tomo.maca").to_string_lossy(),
+            "-o",
+            &bin.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca build");
+    assert!(build.status.success(), "tomo build failed");
+    assert!(Command::new(&bin)
+        .current_dir(&repo)
+        .output()
+        .expect("run tomo")
+        .status
+        .success());
+
+    // a mid-book chapter lists every chapter, and marks itself
+    let mid = std::fs::read_to_string(site.join("en/03-functions-and-control-flow.html")).unwrap();
+    assert!(mid.contains("<div class=\"side\">"), "no sidebar");
+    assert!(
+        mid.contains("href=\"00-introduction.html\">Introduction</a>")
+            && mid.contains("href=\"07-errors-and-testing.html\">"),
+        "sidebar doesn't list the whole book"
+    );
+    assert!(
+        mid.contains("<a class=\"cur\" href=\"03-functions-and-control-flow.html\">"),
+        "sidebar doesn't mark the current chapter"
+    );
+    // the index page's sidebar marks nothing as current
+    let idx = std::fs::read_to_string(site.join("en/index.html")).unwrap();
+    assert!(idx.contains("<div class=\"side\">") && !idx.contains("class=\"cur\""));
+
+    // the search index is real JavaScript, one entry per heading, carrying the
+    // anchor a hit should jump to
+    let js = std::fs::read_to_string(site.join("en/search-index.js")).unwrap();
+    assert!(js.starts_with("window.TOMO_INDEX=["), "index isn't a script: {js:.80}");
+    assert!(
+        js.contains("\"u\":\"02-values-and-types.html#format-specs\""),
+        "index is missing a section anchor"
+    );
+    // section text is lowercased for matching, and HTML-unsafe characters are
+    // escaped as JSON — a stray quote would break the whole index
+    assert!(js.contains("\"x\":\""), "index has no body text");
+    assert!(!js.contains("\n\n"), "index rows should be one line");
+    // each language gets its own index, so search stays inside the language
+    let ko = std::fs::read_to_string(site.join("ko/search-index.js")).unwrap();
+    assert_ne!(js, ko, "both languages got the same search index");
+    // and every page loads it
+    assert!(mid.contains("<script src=\"search-index.js\">"), "search not wired up");
 }
 
 /// Tomo's point of difference from mdBook: a chapter that hasn't been

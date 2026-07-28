@@ -13,14 +13,24 @@ import std/str
 esc(s: str) -> str =>
     s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-// A URL anchor slug for a heading: lowercased, spaces to hyphens. (A light
-// version — dropping punctuation grows here.)
+// A URL anchor slug for a heading: lowercased, punctuation dropped, spaces to
+// hyphens. Headings like "To `fail` or not to `fail`?" have to produce a link
+// that works, so anything that isn't a letter, digit or hyphen goes.
 slug(text: str) -> str =>
-    text.lower().replace(" ", "-")
+    slug_chars(text.lower().chars(), 0, "")
+
+slug_chars(cs: str[], i: int, acc: str) -> str =>
+    i >= cs.length()
+        ? acc
+        : slug_chars(cs, i + 1, acc ++ slug_char(cs.get(i)))
+
+slug_char(c: str) -> str =>
+    c.is_alpha() || c.is_ascii_digit() ? c : (c == " " || c == "-" ? "-" : "")
 
 // `<hN id="slug">text</hN>` — the `id` lets the table of contents link to it.
 heading(level: str, text: str) -> str =>
-    "<h" ++ level ++ " id=\"" ++ slug(text) ++ "\">" ++ inline(esc(text)) ++ "</h" ++ level ++ ">\n"
+    "<h" ++ level ++ " id=\"" ++ slug(text) ++ "\">" ++ inline(esc(text))
+        ++ "</h" ++ level ++ ">\n"
 
 // Replace only the *first* occurrence of `from` with `to` (`std/str`'s
 // `replace` swaps every occurrence, so alternating open/close tags need this).
@@ -28,7 +38,9 @@ first_repl(s: str, pat: str, rep: str) -> str {
     idx = s.index_of(pat)
     idx < 0
         ? s
-        : s.substr(0, idx) ++ rep ++ s.substr(idx + pat.length(), s.length() - idx - pat.length())
+        : s.substr(0, idx) ++ rep
+              ++ s.substr(idx + pat.length(),
+                          s.length() - idx - pat.length())
 }
 
 // `index_of` from an offset — returns an absolute index, or -1.
@@ -82,41 +94,147 @@ render_lines(lines: str[], i: int, in_code: bool, acc: str) -> str =>
 render_line(lines: str[], i: int, in_code: bool, acc: str) -> str {
     line = lines.get(i)
     line.starts_with("```")
-        ? render_lines(lines, i + 1, !in_code, acc ++ (in_code ? "</code></pre>\n" : "<pre><code>"))
+        ? render_lines(lines, i + 1, !in_code,
+                       acc ++ (in_code ? "</code></pre>\n" : open_code(line)))
         : in_code
             ? render_lines(lines, i + 1, true, acc ++ esc(line) ++ "\n")
             : render_block(lines, i, acc, line)
 }
 
-// A non-code line: a heading, a list item, a blank separator, or a paragraph.
-// Headings and list items are one line each; a paragraph absorbs the following
-// soft-wrapped lines, so Markdown that wraps mid-sentence (and mid-`**bold**`)
-// renders as one `<p>` rather than several broken ones.
-render_block(lines: str[], i: int, acc: str, line: str) -> str =>
-    line.starts_with("### ")
-        ? render_lines(lines, i + 1, false, acc ++ heading("3", line.substr(4, line.length() - 4)))
-        : line.starts_with("## ")
-            ? render_lines(lines, i + 1, false, acc ++ heading("2", line.substr(3, line.length() - 3)))
-            : line.starts_with("# ")
-                ? render_lines(lines, i + 1, false, acc ++ heading("1", line.substr(2, line.length() - 2)))
-                : line.starts_with("- ") || line.starts_with("  - ")
-                    ? render_item(lines, i, acc, line)
-                    : line.starts_with("> ")
-                        ? render_quote(lines, i, acc)
-                        : line.trim() == ""
-                            ? render_lines(lines, i + 1, false, acc)
-                            : render_para(lines, i, acc)
+// ```` ```maca ```` carries its language through to a `language-maca` class, the
+// convention every highlighter reads. An unfenced language is fine too.
+open_code(fence: str) -> str {
+    lang = fence.substr(3, fence.length() - 3).trim()
+    lang.length() == 0
+        ? "<pre><code>"
+        : "<pre><code class=\"language-" ++ slug(lang) ++ "\">"
+}
 
-// A list item. Two leading spaces mark a nested item, which is wrapped in its
-// own `<ul>` so it indents under its parent.
-render_item(lines: str[], i: int, acc: str, line: str) -> str {
+// A non-code line: a heading, a table, a list, a quote, a blank separator, or
+// a paragraph. Headings are one line each; the rest absorb the run of lines
+// that belongs to them, so Markdown that wraps mid-sentence (and mid-`**bold**`)
+// renders as one block rather than several broken ones.
+render_block(lines: str[], i: int, acc: str, line: str) -> str =>
+    head_level(line) > 0
+        ? render_lines(lines, i + 1, false, acc ++ head_html(line))
+        : is_table(line)
+            ? render_table(lines, i, acc)
+            : is_item(line)
+                ? render_list(lines, i, acc)
+                : line.starts_with("> ")
+                    ? render_quote(lines, i, acc)
+                    : line.trim() == ""
+                        ? render_lines(lines, i + 1, false, acc)
+                        : render_para(lines, i, acc)
+
+// `#`, `##`, `###` → 1, 2, 3; 0 when the line is not a heading.
+head_level(line: str) -> int =>
+    line.starts_with("### ")
+        ? 3
+        : (line.starts_with("## ") ? 2 : (line.starts_with("# ") ? 1 : 0))
+
+head_html(line: str) -> str {
+    n = head_level(line)
+    heading(str(n), line.substr(n + 1, line.length() - n - 1))
+}
+
+// ---- lists ----------------------------------------------------------------
+
+is_bullet(line: str) -> bool =>
+    line.starts_with("- ") || line.starts_with("  - ")
+
+// `1. `, `2. `, … — a digit run then `. `.
+is_numbered(line: str) -> bool {
+    t = line.trim()
+    d = digits_at(t.chars(), 0)
+    d > 0 && t.substr(d, 2) == ". "
+}
+
+digits_at(cs: str[], i: int) -> int =>
+    i >= cs.length() || !cs.get(i).is_ascii_digit() ? i : digits_at(cs, i + 1)
+
+is_item(line: str) -> bool =>
+    is_bullet(line) || is_numbered(line)
+
+// A whole list: consecutive item lines, wrapped in one `<ul>`/`<ol>`. Emitting
+// bare `<li>`s (as this did before) is invalid HTML — browsers cope, but the
+// list gets no indent and no marker styling.
+render_list(lines: str[], i: int, acc: str) -> str {
+    ordered = is_numbered(lines.get(i))
+    stop = list_end(lines, i)
+    tag = ordered ? "ol" : "ul"
+    html = "<" ++ tag ++ ">\n" ++ list_items(lines, i, stop) ++ "</" ++ tag ++ ">\n"
+    render_lines(lines, stop, false, acc ++ html)
+}
+
+list_end(lines: str[], i: int) -> int =>
+    i >= lines.length() || !is_item(lines.get(i)) ? i : list_end(lines, i + 1)
+
+// Two leading spaces mark a nested item, which gets its own `<ul>` so it
+// indents under its parent.
+list_items(lines: str[], at: int, stop: int) -> str =>
+    at >= stop
+        ? ""
+        : one_item(lines.get(at)) ++ list_items(lines, at + 1, stop)
+
+one_item(line: str) -> str {
     nested = line.starts_with("  - ")
-    text = nested ? line.substr(4, line.length() - 4) : line.substr(2, line.length() - 2)
-    html = nested
+    text = item_text(line, nested)
+    nested
         ? "<ul><li>" ++ inline(esc(text)) ++ "</li></ul>\n"
         : "<li>" ++ inline(esc(text)) ++ "</li>\n"
-    render_lines(lines, i + 1, false, acc ++ html)
 }
+
+// Drop the marker: `- `, `  - `, or `12. `.
+item_text(line: str, nested: bool) -> str {
+    t = line.trim()
+    nested
+        ? line.substr(4, line.length() - 4)
+        : (is_numbered(line)
+            ? t.substr(digits_at(t.chars(), 0) + 2, t.length())
+            : t.substr(2, t.length() - 2))
+}
+
+// ---- tables ---------------------------------------------------------------
+
+// A table row: `| a | b |`. The appendices are mostly tables, so this is not
+// optional decoration.
+is_table(line: str) -> bool =>
+    line.trim().starts_with("|")
+
+// The `|---|:--:|` alignment row, which carries no content.
+is_rule_row(line: str) -> bool {
+    body = line.trim().replace("|", "").replace("-", "").replace(":", "").trim()
+    line.trim().starts_with("|") && line.contains("-") && body == ""
+}
+
+render_table(lines: str[], i: int, acc: str) -> str {
+    stop = table_end(lines, i)
+    head = "<thead>\n" ++ row(lines.get(i), "th") ++ "</thead>\n"
+    // skip the header row and, if present, the alignment rule under it
+    body_at = i + 1 < stop && is_rule_row(lines.get(i + 1)) ? i + 2 : i + 1
+    body = "<tbody>\n" ++ rows(lines, body_at, stop) ++ "</tbody>\n"
+    html = "<table>\n" ++ head ++ body ++ "</table>\n"
+    render_lines(lines, stop, false, acc ++ html)
+}
+
+table_end(lines: str[], i: int) -> int =>
+    i >= lines.length() || !is_table(lines.get(i)) ? i : table_end(lines, i + 1)
+
+rows(lines: str[], at: int, stop: int) -> str =>
+    at >= stop ? "" : row(lines.get(at), "td") ++ rows(lines, at + 1, stop)
+
+// One row. The leading and trailing `|` produce empty edge cells, which are
+// dropped by `cells` rather than by trimming the line, so an intentionally
+// empty cell in the middle survives.
+row(line: str, tag: str) -> str =>
+    "<tr>" ++ cells(line.trim().split("|"), 1, tag) ++ "</tr>\n"
+
+cells(parts: str[], i: int, tag: str) -> str =>
+    i >= parts.length() - 1
+        ? ""
+        : "<" ++ tag ++ ">" ++ inline(esc(parts.get(i).trim())) ++ "</" ++ tag ++ ">"
+              ++ cells(parts, i + 1, tag)
 
 // Gather the run of `> ` lines starting at `i` into one blockquote (a quote
 // wraps across lines the same way a paragraph does).
@@ -137,7 +255,8 @@ join_quote(lines: str[], at: int, stop: int) -> str =>
         ? ""
         : at == stop - 1
             ? lines.get(at).substr(2, lines.get(at).length() - 2).trim()
-            : lines.get(at).substr(2, lines.get(at).length() - 2).trim() ++ " " ++ join_quote(lines, at + 1, stop)
+            : lines.get(at).substr(2, lines.get(at).length() - 2).trim()
+                  ++ " " ++ join_quote(lines, at + 1, stop)
 
 // Gather the run of plain lines starting at `i` into a single paragraph.
 render_para(lines: str[], i: int, acc: str) -> str {
@@ -154,8 +273,8 @@ para_end(lines: str[], i: int) -> int =>
         : para_end(lines, i + 1)
 
 is_break(line: str) -> bool =>
-    line.trim() == "" || line.starts_with("#") || line.starts_with("- ")
-        || line.starts_with("  - ") || line.starts_with("> ") || line.starts_with("```")
+    line.trim() == "" || line.starts_with("#") || is_item(line) ||
+        line.starts_with("> ") || line.starts_with("```") || is_table(line)
 
 // Join `lines[from..to)` with single spaces (Markdown's soft-wrap semantics).
 join_range(lines: str[], at: int, stop: int) -> str =>
@@ -214,6 +333,32 @@ nav.toc{background:var(--code);border-radius:6px;padding:.6rem 1rem;margin:0 0 1
   font-family:ui-sans-serif,system-ui,sans-serif;font-size:.9rem}
 nav.toc ul{margin:0;padding-left:1.1rem}
 li{margin:.2rem 0}
+table{border-collapse:collapse;width:100%;margin:1.2rem 0;font-size:.94rem;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:.4rem .7rem;text-align:left;vertical-align:top}
+th{background:var(--code);font-family:ui-sans-serif,system-ui,sans-serif;font-size:.88rem}
+/* Sidebar: a column on wide screens, a collapsed block above the text on
+   narrow ones — the book has to read on a phone. */
+.wrap{display:grid;grid-template-columns:15rem minmax(0,44rem);gap:2.5rem;
+  max-width:62rem;margin:0 auto;padding:2rem 1.25rem 5rem}
+.side{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.85rem;position:sticky;
+  top:2rem;align-self:start;max-height:calc(100vh - 4rem);overflow-y:auto}
+.side ol{list-style:none;margin:.4rem 0 0;padding:0;counter-reset:ch}
+.side li{margin:.05rem 0}
+.side a{display:block;padding:.22rem .5rem;border-radius:4px;color:var(--mut);text-decoration:none}
+.side a:hover{background:var(--code);color:var(--fg)}
+.side a.cur{background:var(--code);color:var(--fg);font-weight:600}
+.side .bt{font-weight:600;color:var(--fg);text-decoration:none;font-size:.95rem}
+#q{width:100%;margin:.8rem 0 .2rem;padding:.35rem .5rem;border:1px solid var(--line);
+  border-radius:4px;background:var(--bg);color:var(--fg);font:inherit;font-size:.85rem}
+#hits{margin:.3rem 0 0;padding:0;list-style:none}
+#hits a{padding:.3rem .5rem}
+#hits .sec{color:var(--mut);font-size:.8rem}
+#hits .none{color:var(--mut);padding:.3rem .5rem;display:block}
+@media(max-width:56rem){
+  .wrap{display:block;max-width:46rem}
+  .side{position:static;max-height:none;border-bottom:1px solid var(--line);
+    padding-bottom:1rem;margin-bottom:1.5rem}
+}
 </style>
 """
 
@@ -224,16 +369,66 @@ chapter_nav(chs: str[], idx: int) -> str =>
     (idx + 1 < chs.length() ? "<a href=\"" ++ chs.get(idx + 1) ++ ".html\">next &rarr;</a>" : "<span></span>") ++
     "</nav>\n"
 
-// Wrap rendered chapter HTML in a page with the stylesheet and a language
-// switcher. `langs` is a comma-joined list of codes (e.g. "en,ko"); `cur` is
-// the active one.
-page(title: str, cur: str, langs: str, body: str) -> str =>
+// ---- sidebar and search ---------------------------------------------------
+
+// The persistent chapter list, on every page, with the current one marked —
+// a reader should always be able to see where they are in the book and jump
+// anywhere without going back to the index.
+sidebar(title: str, chs: str[], titles: str[], cur: str) -> str =>
+    "<div class=\"side\">\n<a class=\"bt\" href=\"index.html\">" ++ esc(title) ++ "</a>\n"
+        ++ search_box()
+        ++ "<ol>\n" ++ side_items(chs, titles, cur, 0) ++ "</ol>\n</div>\n"
+
+side_items(chs: str[], titles: str[], cur: str, i: int) -> str =>
+    i >= chs.length()
+        ? ""
+        : "<li><a class=\"" ++ (chs.get(i) == cur ? "cur" : "") ++ "\" href=\""
+              ++ chs.get(i) ++ ".html\">" ++ esc(titles.get(i)) ++ "</a></li>\n"
+              ++ side_items(chs, titles, cur, i + 1)
+
+// The search UI plus the code that drives it. The index is a plain `<script>`
+// (not `fetch`) so a built book still searches when opened straight off disk
+// as `file://…` — mdBook's search needs a server; this one doesn't.
+search_box() -> str =>
+    """<input id="q" type="search" placeholder="search" autocomplete="off">
+<ul id="hits"></ul>
+<script src="search-index.js"></script>
+<script>
+(function(){
+  var q=document.getElementById("q"),hits=document.getElementById("hits");
+  if(!q) return;
+  function esc(s){return s.replace(/[&<>"]/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
+  q.addEventListener("input",function(){
+    var t=q.value.trim().toLowerCase();
+    hits.innerHTML="";
+    if(t.length<2) return;
+    var idx=window.TOMO_INDEX||[],out=[],i;
+    for(i=0;i<idx.length&&out.length<12;i++){
+      var e=idx[i];
+      if(e.s.toLowerCase().indexOf(t)>=0||e.x.indexOf(t)>=0) out.push(e);
+    }
+    if(!out.length){hits.innerHTML='<li><span class="none">no matches</span></li>';return;}
+    hits.innerHTML=out.map(function(e){
+      return '<li><a href="'+esc(e.u)+'">'+esc(e.s)+
+             '<br><span class="sec">'+esc(e.c)+'</span></a></li>';
+    }).join("");
+  });
+})();
+</script>
+"""
+
+// Wrap rendered chapter HTML in a page with the stylesheet, a language
+// switcher and the sidebar. `langs` is a comma-joined list of codes
+// (e.g. "en,ko"); `cur` is the active one.
+page(title: str, cur: str, langs: str, side: str, body: str) -> str =>
     "<!doctype html>\n<html lang=\"" ++ cur ++ "\">\n<head><meta charset=\"utf-8\">\n" ++
     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n" ++
     "<title>" ++ esc(title) ++ "</title>\n" ++ style() ++ "</head>\n<body>\n" ++
+    "<div class=\"wrap\">\n" ++ side ++ "<main>\n" ++
     "<nav class=\"i18n\">" ++ lang_links(langs.split(","), 0, cur) ++ "</nav>\n" ++
     body ++
-    "</body>\n</html>\n"
+    "</main>\n</div>\n</body>\n</html>\n"
 
 lang_links(codes: str[], i: int, cur: str) -> str =>
     i >= codes.length()
@@ -285,35 +480,123 @@ build_book(root: str, out: str) -> int {
     title = conf_value(toml, "title")
     langs = conf_value(toml, "languages").replace(" ", "")
     chapters = conf_value(toml, "chapters").replace(" ", "")
-    build_langs(root, out, title, langs, langs.split(","), 0, chapters.split(","), 0)
+    build_langs(root, out, title, langs, langs.split(","), 0,
+                chapters.split(","), 0)
 }
 
-// Outer loop: one language at a time — its chapters, then its index page.
-build_langs(root: str, out: str, title: str, langs: str, codes: str[], li: int, chs: str[], acc: int) -> int =>
+// Outer loop: one language at a time.
+build_langs(root: str, out: str, title: str, langs: str, codes: str[],
+            li: int, chs: str[], acc: int) -> int =>
     li >= codes.length()
         ? acc
         : build_langs(root, out, title, langs, codes, li + 1, chs,
-                      acc + build_chapters(root, out, title, langs, codes.get(li), codes.get(0), chs, 0, 0)
-                          + write_index(root, out, title, langs, codes.get(li), codes.get(0), chs))
+                      acc + build_lang(root, out, title, langs,
+                                       codes.get(li), codes.get(0), chs))
+
+// One language: its chapter titles (resolved once, since the sidebar on every
+// page needs all of them), then its chapters, search index and index page.
+build_lang(root: str, out: str, title: str, langs: str, lang: str,
+           fallback: str, chs: str[]) -> int {
+    titles = chapter_titles(root, lang, fallback, chs, 0)
+    n = build_chapters(root, out, title, langs, lang, fallback, chs, titles,
+                       0, 0)
+    write_search_index(root, out, lang, fallback, chs, titles)
+    n + write_index(root, out, title, langs, lang, chs, titles)
+}
+
+// Every chapter's display title, in book order.
+chapter_titles(root: str, lang: str, fallback: str, chs: str[],
+               i: int) -> str[] =>
+    i >= chs.length()
+        ? []
+        : [chapter_title(root, lang, fallback, chs.get(i))]
+              ++ chapter_titles(root, lang, fallback, chs, i + 1)
 
 // The book's entry point: a table of contents linking every chapter, titled by
 // each chapter's own `# heading` (taken from the translation in use, so an
 // index in Korean lists Korean titles and falls back with the chapter).
-write_index(root: str, out: str, title: str, langs: str, lang: str, fallback: str, chs: str[]) -> int {
+write_index(root: str, out: str, title: str, langs: str, lang: str,
+            chs: str[], titles: str[]) -> int {
     dir = out ++ "/" ++ lang
     make_dir(dir)
-    body = "<h1>" ++ esc(title) ++ "</h1>\n<nav class=\"toc\">\n<ul>\n"
-           ++ index_items(root, lang, fallback, chs, 0) ++ "</ul>\n</nav>\n"
-    write_file(dir ++ "/index.html", page(title, lang, langs, body))
+    body = "<h1>" ++ esc(title) ++ "</h1>\n<nav class=\"toc\">\n<ol>\n"
+           ++ index_items(chs, titles, 0) ++ "</ol>\n</nav>\n"
+    side = sidebar(title, chs, titles, "")
+    write_file(dir ++ "/index.html", page(title, lang, langs, side, body))
     1
 }
 
-index_items(root: str, lang: str, fallback: str, chs: str[], i: int) -> str =>
+index_items(chs: str[], titles: str[], i: int) -> str =>
     i >= chs.length()
         ? ""
-        : "<li><a href=\"" ++ chs.get(i) ++ ".html\">"
-          ++ esc(chapter_title(root, lang, fallback, chs.get(i)))
-          ++ "</a></li>\n" ++ index_items(root, lang, fallback, chs, i + 1)
+        : "<li><a href=\"" ++ chs.get(i) ++ ".html\">" ++ esc(titles.get(i))
+              ++ "</a></li>\n" ++ index_items(chs, titles, i + 1)
+
+// ---- search index ---------------------------------------------------------
+
+// One entry per heading, holding that section's text lowercased. Emitted as a
+// `<script>` that assigns `window.TOMO_INDEX`, not as JSON the page fetches,
+// so search still works when the book is opened straight off disk.
+write_search_index(root: str, out: str, lang: str, fallback: str, chs: str[],
+                   titles: str[]) -> int {
+    dir = out ++ "/" ++ lang
+    make_dir(dir)
+    body = index_chapters(root, lang, fallback, chs, titles, 0)
+    write_file(dir ++ "/search-index.js",
+               "window.TOMO_INDEX=[" ++ body ++ "];\n")
+    0
+}
+
+index_chapters(root: str, lang: str, fallback: str, chs: str[], titles: str[],
+               i: int) -> str =>
+    i >= chs.length()
+        ? ""
+        : index_chapter(root, lang, fallback, chs.get(i), titles.get(i))
+              ++ index_chapters(root, lang, fallback, chs, titles, i + 1)
+
+index_chapter(root: str, lang: str, fallback: str, ch: str,
+              ctitle: str) -> str {
+    own = root ++ "/book/" ++ lang ++ "/" ++ ch ++ ".md"
+    src = file_exists(own)
+        ? own
+        : root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md"
+    file_exists(src)
+        ? sections(read_file(src).split("\n"), 0, ch ++ ".html", ctitle,
+                   "", "", "")
+        : ""
+}
+
+// Walk the lines, flushing an entry whenever a new heading starts.
+sections(lines: str[], i: int, url: str, ctitle: str, head: str, buf: str,
+         acc: str) -> str =>
+    i >= lines.length()
+        ? acc ++ entry(url, ctitle, head, buf)
+        : (head_text(lines.get(i)).length() > 0
+            ? sections(lines, i + 1, url, ctitle, head_text(lines.get(i)), "",
+                       acc ++ entry(url, ctitle, head, buf))
+            : sections(lines, i + 1, url, ctitle, head,
+                       buf ++ " " ++ lines.get(i), acc))
+
+head_text(line: str) -> str =>
+    line.starts_with("### ")
+        ? line.substr(4, line.length() - 4)
+        : (line.starts_with("## ")
+            ? line.substr(3, line.length() - 3)
+            : (line.starts_with("# ")
+                ? line.substr(2, line.length() - 2)
+                : ""))
+
+// Text before the first heading belongs to no section, so it is dropped.
+entry(url: str, ctitle: str, head: str, buf: str) -> str =>
+    head.length() == 0
+        ? ""
+        : "\{\"u\":" ++ jstr(url ++ "#" ++ slug(head)) ++ ",\"c\":"
+              ++ jstr(ctitle) ++ ",\"s\":" ++ jstr(head) ++ ",\"x\":"
+              ++ jstr(buf.lower()) ++ "\},"
+
+// A JSON string literal. Backslash first, so it doesn't escape its own escapes.
+jstr(s: str) -> str =>
+    "\"" ++ s.replace("\\", "\\\\").replace("\"", "\\\"") ++ "\""
 
 // A chapter's display title: its first `# ` heading, else the file stem.
 chapter_title(root: str, lang: str, fallback: str, ch: str) -> str {
@@ -330,42 +613,57 @@ first_heading(lines: str[], i: int, fallback: str) -> str =>
             : first_heading(lines, i + 1, fallback)
 
 // Inner loop: one chapter at a time, for a single language.
-build_chapters(root: str, out: str, title: str, langs: str, lang: str, fallback: str, chs: str[], ci: int, acc: int) -> int =>
+build_chapters(root: str, out: str, title: str, langs: str, lang: str,
+               fallback: str, chs: str[], titles: str[], ci: int,
+               acc: int) -> int =>
     ci >= chs.length()
         ? acc
-        : build_chapters(root, out, title, langs, lang, fallback, chs, ci + 1,
-                         acc + build_chapter(root, out, title, langs, lang, fallback, chs, ci))
+        : build_chapters(root, out, title, langs, lang, fallback, chs, titles,
+                         ci + 1,
+                         acc + build_chapter(root, out, title, langs, lang,
+                                             fallback, chs, titles, ci))
 
 // Render one chapter. Falls back to the default language when the translation
 // is missing; writes nothing (and counts nothing) if neither exists.
-build_chapter(root: str, out: str, title: str, langs: str, lang: str, fallback: str, chs: str[], ci: int) -> int {
+build_chapter(root: str, out: str, title: str, langs: str, lang: str,
+              fallback: str, chs: str[], titles: str[], ci: int) -> int {
     ch = chs.get(ci)
     own = root ++ "/book/" ++ lang ++ "/" ++ ch ++ ".md"
-    src = file_exists(own) ? own : root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md"
+    src = file_exists(own)
+        ? own
+        : root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md"
     file_exists(src)
-        ? write_chapter(out, title, langs, lang, chs, ci, read_file(src))
+        ? write_chapter(out, title, langs, lang, chs, titles, ci,
+                        read_file(src))
         : 0
 }
 
-write_chapter(out: str, title: str, langs: str, lang: str, chs: str[], ci: int, md: str) -> int {
+write_chapter(out: str, title: str, langs: str, lang: str, chs: str[],
+              titles: str[], ci: int, md: str) -> int {
     dir = out ++ "/" ++ lang
     make_dir(dir)
-    body = toc(md) ++ "<article>\n" ++ render(md) ++ "</article>\n" ++ chapter_nav(chs, ci)
-    write_file(dir ++ "/" ++ chs.get(ci) ++ ".html", page(title, lang, langs, body))
+    body = toc(md) ++ "<article>\n" ++ render(md) ++ "</article>\n"
+           ++ chapter_nav(chs, ci)
+    side = sidebar(title, chs, titles, chs.get(ci))
+    write_file(dir ++ "/" ++ chs.get(ci) ++ ".html",
+               page(title, lang, langs, side, body))
     1
 }
 
 // ---- self-check -----------------------------------------------------------
 
 main() -> int {
-    sample = "# Title\n\nA **bold** word and `code`, see [docs](guide.md).\n\n## Section\n\n- one\n  - nested\n- two\n\n> a quoted aside\n\n```\nlet x = 1\n```\n"
+    sample = "# Title\n\nA **bold** word and `code`, see [docs](guide.md).\n\n"
+        ++ "## Is it fast?\n\n- one\n  - nested\n- two\n\n1. first\n2. second\n\n"
+        ++ "| target | flag |\n|--------|------|\n| native | `--target c` |\n\n"
+        ++ "> a quoted aside\n\n```maca\nx = 1\n```\n"
     html = render(sample)
     info("=== rendered ===")
     info(html)
     info("=== toc ===")
     info(toc(sample))
     info("=== page ===")
-    info(page("Maca Handbook", "en", "en,ko", "<article>hi</article>\n"))
+    info(page("Maca Handbook", "en", "en,ko", "", "<article>hi</article>\n"))
 
     // Build the real book from this repository into `site/`.
     info("=== build ===")

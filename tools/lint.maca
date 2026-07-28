@@ -63,7 +63,11 @@ line_issues(path: str, no: int, line: str) -> str =>
     say(path, no, too_wide(line), "line exceeds 80 columns")
         ++ say(path, no, single_line_if(line),
                "single-line `if` block; break it across lines")
-        ++ say(path, no, has_trailing_space(line), "trailing whitespace")
+        ++ space_issues(path, no, line)
+
+// The rules that apply to any text, Maca or foreign.
+space_issues(path: str, no: int, line: str) -> str =>
+    say(path, no, has_trailing_space(line), "trailing whitespace")
         ++ say(path, no, line.contains("\t"),
                "hard tab; Maca indents with four spaces")
 
@@ -74,22 +78,41 @@ say(path: str, no: int, hit: bool, what: str) -> str =>
 at(path: str, no: int) -> str =>
     path ++ ":" ++ str(no) ++ ": "
 
-scan_lines(path: str, lines: str[], i: int, acc: str) -> str =>
+// Walk the file, threading whether we are inside a raw `"""…"""` block. Those
+// hold foreign text — the CSS and JS a `.maca` UI carries inline — so the two
+// rules about *Maca* code shape (width, single-line `if`) are suspended there,
+// for the same reason a long string literal is exempt. Whitespace hygiene
+// still applies: a trailing space is noise in any language.
+scan_lines(path: str, lines: str[], i: int, raw: bool, acc: str) -> str =>
     i >= lines.length()
         ? acc
-        : scan_lines(path, lines, i + 1,
-                     acc ++ line_issues(path, i + 1, lines.get(i)))
+        : scan_lines(path, lines, i + 1, raw != odd_fence(lines.get(i)),
+                     acc ++ (raw || odd_fence(lines.get(i))
+                                 ? space_issues(path, i + 1, lines.get(i))
+                                 : line_issues(path, i + 1, lines.get(i))))
+
+// Does this line open or close a raw block? An odd number of `"""` flips the
+// state; a one-line `"""x"""` has two and leaves it alone.
+odd_fence(line: str) -> bool =>
+    count_fences(line.chars(), 0, 0) % 2 == 1
+
+count_fences(cs: str[], i: int, n: int) -> int =>
+    i + 2 >= cs.length()
+        ? n
+        : (cs.get(i) == "\"" && cs.get(i + 1) == "\"" && cs.get(i + 2) == "\""
+            ? count_fences(cs, i + 3, n + 1)
+            : count_fences(cs, i + 1, n))
 
 lint_file(path: str) -> str =>
-    scan_lines(path, read_file(path).split("\n"), 0, "")
+    scan_lines(path, read_file(path).split("\n"), 0, false, "")
 
 // ---- a directory tree -----------------------------------------------------
 
 ends_with_maca(name: str) -> bool =>
     name.ends_with(".maca")
 
-// Lint every `.maca` file directly in `dir` (one level; the repo keeps its Maca
-// sources in flat directories).
+// Lint every `.maca` file under `dir`, recursively — `apps/` keeps each
+// capstone in its own subdirectory, so one level isn't enough.
 lint_dir(dir: str) -> str =>
     lint_entries(dir, list_dir(dir), 0, "")
 
@@ -97,9 +120,14 @@ lint_entries(dir: str, names: str[], i: int, acc: str) -> str =>
     i >= names.length()
         ? acc
         : lint_entries(dir, names, i + 1,
-                       acc ++ (ends_with_maca(names.get(i))
-                                   ? lint_file(dir ++ "/" ++ names.get(i))
-                                   : ""))
+                       acc ++ lint_entry(dir ++ "/" ++ names.get(i)))
+
+// A path is a directory exactly when `list_dir` finds something in it — there
+// is no `is_dir` primitive, and an empty directory has nothing to lint anyway.
+lint_entry(path: str) -> str =>
+    ends_with_maca(path)
+        ? lint_file(path)
+        : (list_dir(path).length() > 0 ? lint_dir(path) : "")
 
 // ---- counting -------------------------------------------------------------
 
@@ -115,8 +143,12 @@ count_nonempty(lines: str[], i: int) -> int =>
 // ---- entry point ----------------------------------------------------------
 
 // The repository's own Maca sources, when no path is given — Maca linting Maca.
+// `apps/` beyond tomo and `playground/` predate this linter and still carry
+// wide lines — mostly aligned UI markup. They are left out of the default set
+// rather than silently exempted: `maca run tools/lint.maca playground` still
+// reports them, and they come in as they are cleaned up.
 default_dirs() -> str[] =>
-    ["examples", "selfhost", "tools", "std"]
+    ["examples", "selfhost", "tools", "std", "apps/tomo"]
 
 lint_all(dirs: str[], i: int, acc: str) -> str =>
     i >= dirs.length()
