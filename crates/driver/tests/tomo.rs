@@ -50,9 +50,12 @@ fn tomo_renders_markdown_to_html() {
     // headings
     assert!(html.contains("<h1>Title</h1>"), "h1 wrong: {html}");
     assert!(html.contains("<h2>Section</h2>"), "h2 wrong: {html}");
-    // inline bold + code
+    // inline bold + code + link
     assert!(
-        html.contains("<p>A <strong>bold</strong> word and <code>code</code>.</p>"),
+        html.contains(
+            "<p>A <strong>bold</strong> word and <code>code</code>, \
+             see <a href=\"guide.md\">docs</a>.</p>"
+        ),
         "inline formatting wrong: {html}"
     );
     // list items

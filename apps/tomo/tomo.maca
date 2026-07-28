@@ -26,10 +26,29 @@ first_repl(s: str, pat: str, rep: str) -> str {
         : s.substr(0, idx) ++ rep ++ s.substr(idx + pat.length(), s.length() - idx - pat.length())
 }
 
-// Inline formatting within a line: **bold** and `code`. A light pass — each
-// marker pair becomes an open/close tag; it grows toward full inline markdown.
+// `index_of` from an offset — returns an absolute index, or -1.
+index_from(s: str, pat: str, start: int) -> int {
+    idx = s.substr(start, s.length() - start).index_of(pat)
+    idx < 0 ? -1 : idx + start
+}
+
+// Inline formatting within a line: links, then **bold**, then `code`.
 inline(s: str) -> str =>
-    bold(code(s))
+    link(bold(code(s)))
+
+// `[text](url)` -> `<a href="url">text</a>`, recursing on the remainder. A `[`
+// that doesn't open a well-formed link is left as-is.
+link(s: str) -> str {
+    open = s.index_of("[")
+    close = open < 0 ? -1 : index_from(s, "](", open)
+    urlend = close < 0 ? -1 : index_from(s, ")", close + 2)
+    urlend < 0
+        ? s
+        : s.substr(0, open)
+          ++ "<a href=\"" ++ s.substr(close + 2, urlend - close - 2) ++ "\">"
+          ++ s.substr(open + 1, close - open - 1) ++ "</a>"
+          ++ link(s.substr(urlend + 1, s.length() - urlend - 1))
+}
 
 // `` `x` `` -> `<code>x</code>` — the first two backticks become the open/close
 // tags; further pairs are handled by recursing.
@@ -102,7 +121,7 @@ lang_links(codes: str[], i: int, cur: str) -> str =>
 // ---- self-check -----------------------------------------------------------
 
 main() -> int {
-    sample = "# Title\n\nA **bold** word and `code`.\n\n## Section\n\n- one\n- two\n\n```\nlet x = 1\n```\n"
+    sample = "# Title\n\nA **bold** word and `code`, see [docs](guide.md).\n\n## Section\n\n- one\n- two\n\n```\nlet x = 1\n```\n"
     html = render(sample)
     info("=== rendered ===")
     info(html)
