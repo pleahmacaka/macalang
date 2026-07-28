@@ -15,4 +15,8 @@ chapters = [
     "00-introduction",
     "01-hello-world",
     "02-values-and-types",
+    "03-functions-and-control-flow",
+    "04-colorblind-async",
+    "05-config-mode",
+    "06-targets-and-tooling",
 ]
