@@ -153,6 +153,107 @@ fn styles_are_generated_and_tree_shaken() {
     assert!(!out.contains(".text-2xl"), "shipped an unused rule:\n{out}");
 }
 
+/// `data-*`, `aria-*`, `http-equiv` — the attributes a real document is full of
+/// and a Maca identifier cannot spell. Underscore stands in for the hyphen.
+///
+/// Without this, every structural hook and every accessibility attribute sends
+/// the program back to concatenating angle brackets, which is what the UI
+/// syntax exists to replace.
+#[test]
+fn underscores_in_attribute_names_become_hyphens() {
+    if wsl() || !have("cc") {
+        eprintln!("skipping: needs a host cc and no wsl");
+        return;
+    }
+    let (ok, out) = run(
+        "hyphen",
+        "main() -> int {\n\
+        \x20   info(nav(data_tomo=\"toc\", aria_label=\"Contents\", \"x\"))\n\
+        \x20   info(meta(http_equiv=\"refresh\", content=\"0\"))\n\
+        \x20   0\n\
+        }\n",
+    );
+    assert!(ok, "{out}");
+    assert!(
+        out.contains("<nav data-tomo=\"toc\" aria-label=\"Contents\">x</nav>"),
+        "hyphens wrong:\n{out}"
+    );
+    assert!(
+        out.contains("<meta http-equiv=\"refresh\" content=\"0\">"),
+        "http-equiv wrong:\n{out}"
+    );
+}
+
+/// A boolean attribute is present or absent — never `open="false"`.
+///
+/// HTML reads *any* value as true, `hidden="false"` included, so a bool has to
+/// control whether the attribute exists at all.
+#[test]
+fn a_bool_attribute_is_present_or_absent() {
+    if wsl() || !have("cc") {
+        eprintln!("skipping: needs a host cc and no wsl");
+        return;
+    }
+    let (ok, out) = run(
+        "flags",
+        "main() -> int {\n\
+        \x20   n = 3\n\
+        \x20   info(details(open=true, summary(\"s\") \"body\"))\n\
+        \x20   info(div(hidden=false, \"seen\"))\n\
+        \x20   info(div(hidden=n > 5, \"computed\"))\n\
+        \x20   0\n\
+        }\n",
+    );
+    assert!(ok, "{out}");
+    assert!(
+        out.contains("<details open><summary>s</summary>body</details>"),
+        "true flag wrong:\n{out}"
+    );
+    assert!(
+        out.contains("<div>seen</div>"),
+        "false flag still emitted:\n{out}"
+    );
+    assert!(
+        out.contains("<div>computed</div>"),
+        "computed flag wrong:\n{out}"
+    );
+}
+
+/// `element(tag, …)` — the tag as an expression.
+///
+/// A document generator picks its tags from its input: a heading's depth
+/// chooses `h1`…`h6`, a table row chooses `th` or `td`. Voidness is decided at
+/// run time, since that is when the tag is known.
+#[test]
+fn element_takes_its_tag_at_runtime() {
+    if wsl() || !have("cc") {
+        eprintln!("skipping: needs a host cc and no wsl");
+        return;
+    }
+    let (ok, out) = run(
+        "dyn_tag",
+        "head(level: int, text: str) -> str =>\n\
+        \x20   element(\"h\" ++ level, id=\"s\", text)\n\n\
+         main() -> int {\n\
+        \x20   info(head(1, \"Top\"))\n\
+        \x20   info(head(3, \"Deep\"))\n\
+        \x20   cell = \"th\"\n\
+        \x20   info(tr(element(cell, \"name\")))\n\
+        \x20   // a void tag chosen at run time still self-closes\n\
+        \x20   info(element(\"br\"))\n\
+        \x20   0\n\
+        }\n",
+    );
+    assert!(ok, "{out}");
+    assert!(out.contains("<h1 id=\"s\">Top</h1>"), "h1 wrong:\n{out}");
+    assert!(out.contains("<h3 id=\"s\">Deep</h3>"), "h3 wrong:\n{out}");
+    assert!(out.contains("<tr><th>name</th></tr>"), "cell wrong:\n{out}");
+    assert!(
+        out.contains("<br>") && !out.contains("</br>"),
+        "dynamic void tag wrong:\n{out}"
+    );
+}
+
 /// A DOM handler cannot work in a string, and says so rather than emitting
 /// markup that silently does nothing.
 #[test]

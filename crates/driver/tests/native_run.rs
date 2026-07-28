@@ -1208,3 +1208,48 @@ fn chars_registers_its_array_type() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+/// `++` converts a non-string operand instead of passing it through.
+///
+/// `"h" ++ level` used to emit `maca_concat("h", level)` — an `int64_t` handed
+/// to a `maca_str` parameter. C accepts it with a warning nobody reads, and the
+/// program segfaults dereferencing address 3. It compiled, so it looked like a
+/// language feature; it just crashed.
+#[test]
+fn concat_converts_a_non_string_operand() {
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-concat-coerce");
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("concat.maca");
+    std::fs::write(
+        &f,
+        "main() -> int {\n\
+        \x20   level = 3\n\
+        \x20   info(\"h\" ++ level)\n\
+        \x20   info(\"n=\" ++ 4 ++ \" f=\" ++ 1.5 ++ \" b=\" ++ true)\n\
+        \x20   info(7 ++ \" trailing\")\n\
+        \x20   0\n\
+        }\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &f.to_string_lossy()])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("h3")
+            && stdout.contains("n=4 f=1.5 b=true")
+            && stdout.contains("7 trailing"),
+        "`++` mis-lowered a non-string operand.\nstdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}

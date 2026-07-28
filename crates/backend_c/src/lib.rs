@@ -207,9 +207,12 @@ impl<'a> Cx<'a> {
         self.problems.push(msg.into());
     }
 
-    /// Record the utility names in a `class=` value. Only literal text can be
-    /// seen at compile time; a class assembled at run time won't be in the
-    /// generated stylesheet, which is the same limitation Tailwind itself has.
+    /// Record the utility names in a `class=` value.
+    ///
+    /// The value is often a call rather than a literal — `md_class("pre")` —
+    /// so the whole module is scanned separately (see `collect`); this catches
+    /// the direct case. A class assembled from run-time data can't be in the
+    /// sheet, which is the same limitation Tailwind itself has.
     fn note_classes(&mut self, value: &Expr) {
         if let Expr::Str(parts) = value {
             for p in parts {
@@ -327,6 +330,12 @@ impl<'a> Cx<'a> {
     }
 
     fn collect(&mut self) {
+        // Tailwind candidates from every string literal in the module, not just
+        // `class=` sites — a program that names its classes in a helper has the
+        // literals in that helper's body.
+        for item in &self.m.items {
+            maca_backend_js::collect_class_strings(item, &mut self.classes);
+        }
         // register record names up front so both sum payload types and (later)
         // record field types can reference a record declared anywhere in the file
         for item in &self.m.items {
@@ -2412,19 +2421,68 @@ impl<'a> Cx<'a> {
     /// put there. A generator that has to emit `<pre>` around code it escaped
     /// itself cannot have the renderer escape it again.
     fn html_element(&mut self, env: &mut Env, tag: &str, args: &[Arg]) -> (String, CTy) {
-        let mut attrs = String::new();
+        let (attrs, kids) = self.html_args(env, args);
+        // attributes are emitted by one runtime call per attribute, folded into
+        // the open tag
+        let open = attrs.into_iter().fold(format!("\"<{tag}\""), |acc, a| {
+            format!("maca_concat({acc}, {a})")
+        });
+        if is_void_html(tag) {
+            if !kids.is_empty() {
+                self.problem(format!("`{tag}` is a void element and takes no children"));
+            }
+            return (format!("maca_concat({open}, \">\")"), CTy::Str);
+        }
+        let inner = fold_concat(kids);
+        (
+            format!("maca_concat(maca_concat({open}, \">\"), maca_concat({inner}, \"</{tag}>\"))"),
+            CTy::Str,
+        )
+    }
+
+    /// `element(tag, attr=value, …, child, …)` — the same element, with the tag
+    /// itself an expression.
+    ///
+    /// A document generator picks tags from its input: a heading's depth chooses
+    /// `h1`…`h6`, a table row chooses `th` or `td`. The static form cannot say
+    /// that, and without this every such site falls back to string
+    /// concatenation. Voidness is settled in the runtime, since the tag isn't
+    /// known until then.
+    fn dynamic_element(&mut self, env: &mut Env, args: &[Arg]) -> (String, CTy) {
+        let Some((Arg::Pos(tag_expr), rest)) = args.split_first() else {
+            self.problem("`element` needs a tag name as its first argument".to_string());
+            return ("\"\"".to_string(), CTy::Str);
+        };
+        let (tag, tt) = self.expr(env, tag_expr, Some(&CTy::Str));
+        let tag = to_str(&tag, &tt);
+        let (attrs, kids) = self.html_args(env, rest);
+        let attrs = fold_concat(attrs);
+        let kids = fold_concat(kids);
+        (format!("maca_element({tag}, {attrs}, {kids})"), CTy::Str)
+    }
+
+    /// Lower an element call's arguments into (attribute exprs, child exprs).
+    fn html_args(&mut self, env: &mut Env, args: &[Arg]) -> (Vec<String>, Vec<String>) {
+        let mut attrs: Vec<String> = Vec::new();
         let mut kids: Vec<String> = Vec::new();
         for a in args {
             match a {
                 Arg::Named { name, value } => {
                     let (v, t) = self.expr(env, value, Some(&CTy::Str));
-                    let v = to_str(&v, &t);
                     // `class` is where Tailwind utilities are written, so its
                     // literals are collected for the generated stylesheet.
                     if name == "class" {
                         self.note_classes(value);
                     }
-                    attrs.push_str(&format!(" maca_attr(\"{}\", {v})", name.replace('"', "")));
+                    let key = maca_parser::attr_name(name).replace('"', "");
+                    // A bool decides whether the attribute *exists*. HTML reads
+                    // every value as true — `hidden="false"` still hides — so
+                    // `open=false` has to emit nothing at all.
+                    if t == CTy::Bool {
+                        attrs.push(format!("maca_flag(\"{key}\", {v})"));
+                    } else {
+                        attrs.push(format!("maca_attr(\"{key}\", {})", to_str(&v, &t)));
+                    }
                 }
                 // `on:click=…` is a DOM handler; there is no DOM in a string.
                 Arg::Directive { prop, .. } => {
@@ -2438,27 +2496,7 @@ impl<'a> Cx<'a> {
                 }
             }
         }
-        // attributes are emitted by one runtime call per attribute, folded into
-        // the open tag
-        let open = attrs
-            .split(" maca_attr")
-            .filter(|s| !s.is_empty())
-            .fold(format!("\"<{tag}\""), |acc, a| {
-                format!("maca_concat({acc}, maca_attr{a})")
-            });
-        if is_void_html(tag) {
-            if !kids.is_empty() {
-                self.problem(format!("`{tag}` is a void element and takes no children"));
-            }
-            return (format!("maca_concat({open}, \">\")"), CTy::Str);
-        }
-        let inner = kids.into_iter().fold("\"\"".to_string(), |acc, k| {
-            format!("maca_concat({acc}, {k})")
-        });
-        (
-            format!("maca_concat(maca_concat({open}, \">\"), maca_concat({inner}, \"</{tag}>\"))"),
-            CTy::Str,
-        )
+        (attrs, kids)
     }
 
     fn call(
@@ -2481,12 +2519,16 @@ impl<'a> Cx<'a> {
         // working programs (it broke `examples/record_pattern.maca`, which has
         // a `label(pos: bool) -> str`).
         if let Expr::Ident(tag) = callee
-            && maca_parser::is_ui_element_tag(tag)
+            && (maca_parser::is_ui_element_tag(tag) || tag == "element")
             && !self.fns.contains_key(tag)
             && !self.generics.contains_key(tag)
             && lookup(env, tag).is_none()
         {
-            return self.html_element(env, tag, args);
+            return if tag == "element" {
+                self.dynamic_element(env, args)
+            } else {
+                self.html_element(env, tag, args)
+            };
         }
         // module.member(...) and UFCS receiver.method(...)
         if let Expr::Field { base, name } = callee {
@@ -3120,10 +3162,19 @@ impl<'a> Cx<'a> {
         use BinOp::*;
         match op {
             Div if matches!(lt, CTy::Str) => (format!("maca_path_join({lc}, {rc})"), CTy::Str),
-            // `++` is string concat on strings, array concat on arrays
-            Concat if matches!(lt, CTy::Str) || matches!(rt, CTy::Str) => {
-                (format!("maca_concat({lc}, {rc})"), CTy::Str)
-            }
+            // `++` is string concat on strings, array concat on arrays.
+            //
+            // A non-string operand is converted, not passed through: `"h" ++ 3`
+            // used to hand an `int64_t` to a `maca_str` parameter, compile
+            // without complaint, and segfault at run time reading address 3.
+            Concat if matches!(lt, CTy::Str) || matches!(rt, CTy::Str) => (
+                format!(
+                    "maca_concat({}, {})",
+                    concat_operand(&lc, &lt),
+                    concat_operand(&rc, &rt)
+                ),
+                CTy::Str,
+            ),
             Concat => {
                 let an = arr_name(match &lt {
                     CTy::Arr(e) => e,
@@ -3977,6 +4028,27 @@ fn value_dep(t: &CTy) -> Option<String> {
         CTy::Rec(n) | CTy::Sum(n) => Some(n.clone()),
         _ => None,
     }
+}
+
+/// An operand of `++` where the other side is a string.
+///
+/// A *known* scalar is converted — `"h" ++ 3` used to hand an `int64_t` to a
+/// `maca_str` parameter, compile with a warning nobody reads, and segfault
+/// dereferencing address 3. A value of unknown type is passed through instead:
+/// in a concatenation it is a string (`greet(n) => "hi " ++ n` with no
+/// annotation on `n`), and rendering it as an integer would print its address.
+fn concat_operand(code: &str, t: &CTy) -> String {
+    match t {
+        CTy::Int | CTy::Float | CTy::F32 | CTy::Bool => to_str(code, t),
+        _ => code.to_string(),
+    }
+}
+
+/// Join already-lowered string expressions into one `maca_concat` chain.
+fn fold_concat(parts: Vec<String>) -> String {
+    parts.into_iter().fold("\"\"".to_string(), |acc, p| {
+        format!("maca_concat({acc}, {p})")
+    })
 }
 
 /// HTML elements that have no closing tag and take no children.

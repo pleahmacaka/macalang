@@ -90,6 +90,8 @@ maca_str maca_pad_start(maca_str s, int64_t w, maca_str p); /* left-pad to width
 maca_str maca_pad_end(maca_str s, int64_t w, maca_str p);   /* right-pad to width w */
 maca_str maca_pad_center(maca_str s, int64_t w, maca_str p); /* centre within width w */
 maca_str maca_attr(maca_str name, maca_str value);  /* ` name="escaped"` */
+maca_str maca_flag(maca_str name, bool on);         /* ` name` when on, else "" */
+maca_str maca_element(maca_str tag, maca_str attrs, maca_str kids); /* tag chosen at runtime */
 maca_str maca_fixed(double x, int64_t n);             /* x with n decimal places */
 maca_str maca_substr(maca_str s, int64_t start, int64_t len);  /* byte range, clamped */
 int64_t maca_index_of(maca_str s, maca_str sub);      /* byte index, or -1 */
@@ -493,6 +495,47 @@ maca_str maca_attr(maca_str name, maca_str value) {
         }
     }
     *w++ = '"'; *w = '\0';
+    return r;
+}
+/* A boolean attribute: present or absent, never `open="false"`. HTML reads any
+   value at all — including "false" — as true, so a bool has to control the
+   attribute's *existence* rather than its text. */
+maca_str maca_flag(maca_str name, bool on) {
+    if (!on || !name || !*name) return "";
+    size_t n = strlen(name);
+    char* r = (char*)xmalloc(n + 2);
+    r[0] = ' ';
+    memcpy(r + 1, name, n);
+    r[n + 1] = '\0';
+    return r;
+}
+static bool maca_void_tag(maca_str t) {
+    static const char* v[] = {"area","base","br","col","embed","hr","img","input",
+                              "link","meta","source","track","wbr",0};
+    for (int i = 0; v[i]; i++) if (strcmp(t, v[i]) == 0) return true;
+    return false;
+}
+/* An element whose tag is only known at run time — `<h1>`…`<h6>` from a depth,
+   `<th>` or `<td>` from which row is being written. The static form can't say
+   that, and a generator that walks a document needs to. Voidness is decided
+   here because it can't be decided at compile time. */
+maca_str maca_element(maca_str tag, maca_str attrs, maca_str kids) {
+    if (!tag || !*tag) return kids ? kids : "";
+    if (!attrs) attrs = "";
+    if (!kids) kids = "";
+    size_t t = strlen(tag), a = strlen(attrs), k = strlen(kids);
+    bool v = maca_void_tag(tag);
+    /* "<tag" attrs ">" kids "</tag>" */
+    char* r = (char*)xmalloc(t + a + k + t + 6);
+    char* w = r;
+    *w++ = '<'; memcpy(w, tag, t); w += t;
+    memcpy(w, attrs, a); w += a;
+    *w++ = '>';
+    if (!v) {
+        memcpy(w, kids, k); w += k;
+        *w++ = '<'; *w++ = '/'; memcpy(w, tag, t); w += t; *w++ = '>';
+    }
+    *w = '\0';
     return r;
 }
 maca_str maca_pad_center(maca_str s, int64_t w, maca_str p) {

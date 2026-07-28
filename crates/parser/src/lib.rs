@@ -13,6 +13,21 @@ pub use ast::*;
 pub use parser::{ParseError, Parser};
 pub use print::print_module;
 
+/// A named argument's identifier → the HTML attribute it writes.
+///
+/// Maca identifiers cannot contain `-`, but a great many real attributes do:
+/// `data-*`, `aria-*`, `http-equiv`, `accept-charset`. Without a rule here,
+/// every one of them forces the program back to hand-concatenated angle
+/// brackets — which is exactly what the UI syntax exists to avoid. No attribute
+/// in HTML contains an underscore, so `_` → `-` is unambiguous: write
+/// `data_tomo="nav"` and get `data-tomo="nav"`.
+///
+/// Shared by both back ends so the native and JS targets agree on what a
+/// program's markup means.
+pub fn attr_name(name: &str) -> String {
+    name.replace('_', "-")
+}
+
 /// Is `name` an HTML element tag? In a view, `name(...)` builds a DOM node
 /// rather than calling a function, so these open-ended tag names are valid
 /// undefined-looking calls (the reactive-UI DSL). The single source of truth,
@@ -77,6 +92,7 @@ pub fn is_ui_element_tag(name: &str) -> bool {
             | "i"
             | "hr"
             | "br"
+            | "blockquote"
             | "figure"
             | "figcaption"
             | "details"
@@ -115,6 +131,8 @@ pub fn is_backend_intrinsic(name: &str) -> bool {
                 // the stylesheet for the Tailwind utilities the module uses,
                 // generated at compile time by the back end
                 | "styles"
+                // an element whose tag is an expression: `element("h" ++ n, …)`
+                | "element"
                 | "read_file"
                 | "write_file"
                 | "file_exists"

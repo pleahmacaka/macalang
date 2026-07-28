@@ -38,21 +38,55 @@ slug_char(c: str) -> str =>
 is_drop(c: str) -> bool =>
     ".,?!:;`\"'()[]\{\}/\\*&<>=+|#@$%^~".contains(c)
 
-// `<hN id="slug">text</hN>` — the `id` lets the table of contents link to it.
-heading(level: str, text: str) -> str =>
-    "<h" ++ level ++ " id=\"" ++ slug(text) ++ "\">" ++ inline(esc(text))
-        ++ "</h" ++ level ++ ">\n"
+// ---- the look of rendered markdown ----------------------------------------
+//
+// Utilities cannot style a descendant, so every element the renderer emits
+// carries its own classes. That is the price of having no stylesheet, and it is
+// worth paying: the classes sit next to the markup that uses them, and only the
+// rules actually used are generated.
 
-// Replace only the *first* occurrence of `from` with `to` (`std/str`'s
-// `replace` swaps every occurrence, so alternating open/close tags need this).
-first_repl(s: str, pat: str, rep: str) -> str {
-    idx = s.index_of(pat)
-    idx < 0
-        ? s
-        : s.substr(0, idx) ++ rep
-              ++ s.substr(idx + pat.length(),
-                          s.length() - idx - pat.length())
-}
+md_class(kind: str) -> str =>
+    kind == "h1"
+        ? "font-sans text-[2rem] leading-tight mt-2 mb-3 font-bold"
+        : (kind == "h2"
+            ? "font-sans text-[1.4rem] leading-tight mt-9 mb-3 font-bold"
+            : (kind == "h3"
+                ? "font-sans text-[1.15rem] leading-tight mt-8 mb-3 font-bold"
+                : md_class2(kind)))
+
+md_class2(kind: str) -> str =>
+    kind == "p"
+        ? "my-4"
+        : (kind == "pre"
+            ? "bg-zinc-100 dark:bg-zinc-800 p-4 rounded-md overflow-x-auto"
+                  ++ " my-4"
+            : (kind == "quote"
+                ? "border-l-2 border-zinc-300 dark:border-zinc-600 pl-4 my-4"
+                      ++ " text-zinc-600 dark:text-zinc-400"
+                : md_class3(kind)))
+
+cell_class() -> str =>
+    "border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-left align-top"
+
+md_class3(kind: str) -> str =>
+    kind == "table"
+        ? "block overflow-x-auto border-collapse w-full my-5"
+              ++ " text-[0.94rem]"
+        : (kind == "th"
+            ? cell_class() ++ " font-sans text-[0.88rem]"
+                  ++ " bg-zinc-100 dark:bg-zinc-800"
+            : (kind == "td"
+                ? cell_class()
+                : (kind == "list" ? "my-4 pl-6" : "my-1")))
+
+// `<hN id="slug">text</hN>` — the `id` lets the table of contents link to it.
+//
+// The tag is `element(…)` rather than a literal, because the depth chooses it.
+heading(level: str, text: str) -> str =>
+    element("h" ++ level,
+            id=slug(text),
+            class=md_class("h" ++ level),
+            inline(esc(text))) ++ "\n"
 
 // `index_of` from an offset — returns an absolute index, or -1.
 index_from(s: str, pat: str, start: int) -> int {
@@ -60,22 +94,35 @@ index_from(s: str, pat: str, start: int) -> int {
     idx < 0 ? -1 : idx + start
 }
 
-// Inline formatting within a line: links, then **bold**, then `code`.
+// Inline formatting within a line: code spans, then **bold**, then links.
 inline(s: str) -> str =>
-    link(bold(code(s)))
+    link(bold(code_spans(s)))
 
-// `[text](url)` -> `<a href="url">text</a>`, recursing on the remainder. A `[`
-// that doesn't open a well-formed link is left as-is.
+// `[text](url)` -> `<a href="url">text</a>`, recursing on the remainder.
 link(s: str) -> str {
     open = s.index_of("[")
-    close = open < 0 ? -1 : index_from(s, "](", open)
+    open < 0 ? s : link_at(s, open)
+}
+
+// A link starting at the `[` at `open`.
+//
+// A `[` that doesn't open a well-formed link keeps its place and the scan
+// continues *after* it. Giving up on the whole remainder — which is what
+// returning `s` here used to do — silently killed every link later on the line,
+// and `code_spans` runs first, so any line with an inline code span carries a
+// `text-[0.88em]` class through this pass.
+link_at(s: str, open: int) -> str {
+    close = index_from(s, "](", open)
     urlend = close < 0 ? -1 : index_from(s, ")", close + 2)
-    urlend < 0
-        ? s
+    next = index_from(s, "[", open + 1)
+    urlend < 0 || (next >= 0 && next < close)
+        ? s.substr(0, open + 1)
+              ++ link(s.substr(open + 1, s.length() - open - 1))
         : s.substr(0, open)
-          ++ "<a href=\"" ++ href(s.substr(close + 2, urlend - close - 2))
-          ++ "\">"
-          ++ s.substr(open + 1, close - open - 1) ++ "</a>"
+          ++ a(class="text-inherit underline underline-offset-2"
+                     ++ " decoration-zinc-400",
+               href=href(s.substr(close + 2, urlend - close - 2)),
+               s.substr(open + 1, close - open - 1))
           ++ link(s.substr(urlend + 1, s.length() - urlend - 1))
 }
 
@@ -88,48 +135,77 @@ href(url: str) -> str =>
         ? url.substr(0, url.length() - 3) ++ ".html"
         : url
 
-// `` `x` `` -> `<code>x</code>` — the first two backticks become the open/close
-// tags; further pairs are handled by recursing.
-code(s: str) -> str =>
-    s.contains("`")
-        ? code(first_repl(first_repl(s, "`", "<code>"), "`", "</code>"))
-        : s
+// `` `x` `` -> `<code>x</code>`, recursing on what follows the closing
+// backtick. An unpaired backtick is left alone.
+code_spans(s: str) -> str {
+    open = s.index_of("`")
+    close = open < 0 ? -1 : index_from(s, "`", open + 1)
+    close < 0
+        ? s
+        : s.substr(0, open)
+          ++ code(class="bg-zinc-100 dark:bg-zinc-800 px-1 rounded-sm"
+                        ++ " font-mono text-[0.88em]",
+                  s.substr(open + 1, close - open - 1))
+          ++ code_spans(s.substr(close + 1, s.length() - close - 1))
+}
 
 // `**x**` -> `<strong>x</strong>`.
-bold(s: str) -> str =>
-    s.contains("**")
-        ? bold(first_repl(first_repl(s, "**", "<strong>"), "**", "</strong>"))
-        : s
+bold(s: str) -> str {
+    open = s.index_of("**")
+    close = open < 0 ? -1 : index_from(s, "**", open + 2)
+    close < 0
+        ? s
+        : s.substr(0, open)
+          ++ strong(s.substr(open + 2, close - open - 2))
+          ++ bold(s.substr(close + 2, s.length() - close - 2))
+}
 
 // Render a whole markdown document to HTML.
 render(md: str) -> str =>
-    render_lines(md.split("\n"), 0, false, "")
+    render_lines(md.split("\n"), 0, "")
 
-// Fold over the lines, threading `in_code` (inside a ``` fence) and the HTML
-// accumulator `acc`.
-render_lines(lines: str[], i: int, in_code: bool, acc: str) -> str =>
-    i >= lines.length()
-        ? (in_code ? acc ++ "</code></pre>\n" : acc)
-        : render_line(lines, i, in_code, acc)
+// Fold over the lines, threading the HTML accumulator `acc`.
+render_lines(lines: str[], i: int, acc: str) -> str =>
+    i >= lines.length() ? acc : render_line(lines, i, acc)
 
-render_line(lines: str[], i: int, in_code: bool, acc: str) -> str {
+render_line(lines: str[], i: int, acc: str) -> str {
     line = lines.get(i)
     line.starts_with("```")
-        ? render_lines(lines, i + 1, !in_code,
-                       acc ++ (in_code ? "</code></pre>\n" : open_code(line)))
-        : in_code
-            ? render_lines(lines, i + 1, true, acc ++ esc(line) ++ "\n")
-            : render_block(lines, i, acc, line)
+        ? render_fence(lines, i, acc, line)
+        : render_block(lines, i, acc, line)
 }
 
-// ```` ```maca ```` carries its language through to a `language-maca` class, the
-// convention every highlighter reads. An unfenced language is fine too.
-open_code(fence: str) -> str {
+// A fenced block, gathered whole and emitted as one element.
+//
+// Streaming it — open tag, then a line at a time, then a close tag — is why
+// this used to thread an `in_code` flag through every step of the fold, and it
+// meant the `<pre>` could only ever be written as raw text. Collecting the run
+// first costs one more pass and lets the markup be markup.
+//
+// ```` ```maca ```` carries its language through to a `language-maca` class,
+// the convention every highlighter reads. An unlabelled fence is fine too.
+render_fence(lines: str[], i: int, acc: str, fence: str) -> str {
+    stop = fence_end(lines, i + 1)
     lang = fence.substr(3, fence.length() - 3).trim()
-    lang.length() == 0
-        ? "<pre><code>"
-        : "<pre><code class=\"language-" ++ slug(lang) ++ "\">"
+    html = pre(class=md_class("pre"),
+               code(class=pre_code_class() ++ lang_class(lang),
+                    fence_body(lines, i + 1, stop)))
+    render_lines(lines, stop + 1, acc ++ html ++ "\n")
 }
+
+// The closing fence, or the end of the document if it is missing.
+fence_end(lines: str[], i: int) -> int =>
+    i >= lines.length() || lines.get(i).starts_with("```")
+        ? i
+        : fence_end(lines, i + 1)
+
+fence_body(lines: str[], at: int, stop: int) -> str =>
+    at >= stop
+        ? ""
+        : esc(lines.get(at)) ++ "\n" ++ fence_body(lines, at + 1, stop)
+
+lang_class(lang: str) -> str =>
+    lang.length() == 0 ? "" : " language-" ++ slug(lang)
 
 // A non-code line: a heading, a table, a list, a quote, a blank separator, or
 // a paragraph. Headings are one line each; the rest absorb the run of lines
@@ -137,7 +213,7 @@ open_code(fence: str) -> str {
 // renders as one block rather than several broken ones.
 render_block(lines: str[], i: int, acc: str, line: str) -> str =>
     head_level(line) > 0
-        ? render_lines(lines, i + 1, false, acc ++ head_html(line))
+        ? render_lines(lines, i + 1, acc ++ head_html(line))
         : is_table(line)
             ? render_table(lines, i, acc)
             : is_item(line)
@@ -145,7 +221,7 @@ render_block(lines: str[], i: int, acc: str, line: str) -> str =>
                 : line.starts_with("> ")
                     ? render_quote(lines, i, acc)
                     : line.trim() == ""
-                        ? render_lines(lines, i + 1, false, acc)
+                        ? render_lines(lines, i + 1, acc)
                         : render_para(lines, i, acc)
 
 // `#`, `##`, `###` → 1, 2, 3; 0 when the line is not a heading.
@@ -181,11 +257,12 @@ is_item(line: str) -> bool =>
 // bare `<li>`s (as this did before) is invalid HTML — browsers cope, but the
 // list gets no indent and no marker styling.
 render_list(lines: str[], i: int, acc: str) -> str {
-    ordered = is_numbered(lines.get(i))
     stop = list_end(lines, i)
-    tag = ordered ? "ol" : "ul"
-    html = "<" ++ tag ++ ">\n" ++ list_items(lines, i, stop) ++ "</" ++ tag ++ ">\n"
-    render_lines(lines, stop, false, acc ++ html)
+    // ordered or not decides the tag, so the tag is an expression
+    tag = is_numbered(lines.get(i)) ? "ol" : "ul"
+    html = element(tag, class=md_class("list"),
+                   "\n" ++ list_items(lines, i, stop)) ++ "\n"
+    render_lines(lines, stop, acc ++ html)
 }
 
 list_end(lines: str[], i: int) -> int =>
@@ -202,8 +279,8 @@ one_item(line: str) -> str {
     nested = line.starts_with("  - ")
     text = item_text(line, nested)
     nested
-        ? "<ul><li>" ++ inline(esc(text)) ++ "</li></ul>\n"
-        : "<li>" ++ inline(esc(text)) ++ "</li>\n"
+        ? ul(li(inline(esc(text)))) ++ "\n"
+        : li(class=md_class("li"), inline(esc(text))) ++ "\n"
 }
 
 // Drop the marker: `- `, `  - `, or `12. `.
@@ -231,12 +308,12 @@ is_rule_row(line: str) -> bool {
 
 render_table(lines: str[], i: int, acc: str) -> str {
     stop = table_end(lines, i)
-    head = "<thead>\n" ++ row(lines.get(i), "th") ++ "</thead>\n"
+    head = thead("\n" ++ row(lines.get(i), "th")) ++ "\n"
     // skip the header row and, if present, the alignment rule under it
     body_at = i + 1 < stop && is_rule_row(lines.get(i + 1)) ? i + 2 : i + 1
-    body = "<tbody>\n" ++ rows(lines, body_at, stop) ++ "</tbody>\n"
-    html = "<table>\n" ++ head ++ body ++ "</table>\n"
-    render_lines(lines, stop, false, acc ++ html)
+    body = tbody("\n" ++ rows(lines, body_at, stop)) ++ "\n"
+    html = table(class=md_class("table"), "\n" ++ head ++ body) ++ "\n"
+    render_lines(lines, stop, acc ++ html)
 }
 
 table_end(lines: str[], i: int) -> int =>
@@ -249,7 +326,7 @@ rows(lines: str[], at: int, stop: int) -> str =>
 // dropped by `cells` rather than by trimming the line, so an intentionally
 // empty cell in the middle survives.
 row(line: str, tag: str) -> str =>
-    "<tr>" ++ cells(split_cells(line.trim()), 1, tag) ++ "</tr>\n"
+    tr(cells(split_cells(line.trim()), 1, tag)) ++ "\n"
 
 // Split a row on `|`, honouring `\|` as a literal pipe — the operator appendix
 // has a row *about* `||`, which a naive split turns into three broken cells.
@@ -268,10 +345,13 @@ cell_walk(cs: str[], i: int, cur: str, acc: str[]) -> str[] =>
 is_escaped_pipe(cs: str[], i: int) -> bool =>
     cs.get(i) == "\\" && i + 1 < cs.length() && cs.get(i + 1) == "|"
 
+// `tag` is `th` in the header row and `td` below it — the same reason `element`
+// exists: which tag a cell gets is decided by the data, not by the source.
 cells(parts: str[], i: int, tag: str) -> str =>
     i >= parts.length() - 1
         ? ""
-        : "<" ++ tag ++ ">" ++ inline(esc(parts.get(i).trim())) ++ "</" ++ tag ++ ">"
+        : element(tag, class=md_class(tag),
+                  inline(esc(parts.get(i).trim())))
               ++ cells(parts, i + 1, tag)
 
 // Gather the run of `> ` lines starting at `i` into one blockquote (a quote
@@ -279,7 +359,9 @@ cells(parts: str[], i: int, tag: str) -> str =>
 render_quote(lines: str[], i: int, acc: str) -> str {
     stop = quote_end(lines, i)
     text = join_quote(lines, i, stop)
-    render_lines(lines, stop, false, acc ++ "<blockquote>" ++ inline(esc(text)) ++ "</blockquote>\n")
+    render_lines(lines, stop,
+                 acc ++ blockquote(class=md_class("quote"), inline(esc(text)))
+                     ++ "\n")
 }
 
 quote_end(lines: str[], i: int) -> int =>
@@ -300,7 +382,8 @@ join_quote(lines: str[], at: int, stop: int) -> str =>
 render_para(lines: str[], i: int, acc: str) -> str {
     stop = para_end(lines, i)
     text = join_range(lines, i, stop)
-    render_lines(lines, stop, false, acc ++ "<p>" ++ inline(esc(text)) ++ "</p>\n")
+    render_lines(lines, stop,
+                 acc ++ p(class=md_class("p"), inline(esc(text))) ++ "\n")
 }
 
 // The index just past the paragraph starting at `i` — a blank line, a heading,
@@ -326,7 +409,10 @@ join_range(lines: str[], at: int, stop: int) -> str =>
 
 // Build a `<nav>` list of a document's headings, each linking to its anchor.
 toc(md: str) -> str =>
-    "<nav class=\"toc\">\n<ul>\n" ++ toc_lines(md.split("\n"), 0) ++ "</ul>\n</nav>\n"
+    nav(data_tomo="toc",
+        class="border-t border-zinc-200 dark:border-zinc-700 mt-3 pt-2",
+        "\n" ++ ul(class="list-none m-0 p-0",
+                   "\n" ++ toc_lines(md.split("\n"), 0)) ++ "\n") ++ "\n"
 
 toc_lines(lines: str[], i: int) -> str =>
     i >= lines.length()
@@ -343,116 +429,29 @@ toc_line(line: str) -> str =>
                 : ""
 
 toc_entry(text: str) -> str =>
-    "<li><a href=\"#" ++ slug(text) ++ "\">" ++ esc(text) ++ "</a></li>\n"
+    li(class="my-0",
+       a(class=link_class(false) ++ " pl-4 text-[0.82rem]",
+         href="#" ++ slug(text), esc(text))) ++ "\n"
 
 // ---- i18n page shell ------------------------------------------------------
 
 // A self-contained stylesheet — no external fetch, so a built book works from
-// the filesystem. Readable measure, a light/dark pair, and code that stands out.
+// the filesystem.
+//
+// Almost all of it is `styles()`, generated by the compiler from the utility
+// classes this program actually writes. What is left is the one rule that is
+// about the *document* rather than any element: telling the browser the page
+// has both a light and a dark palette, so form controls and scrollbars follow.
 // (A raw triple-quoted string — CSS is full of `{`/`}`, which would otherwise
 // read as string interpolation.)
-style() -> str =>
-    """<style>
-:root{color-scheme:light dark;--fg:#1a1a1a;--bg:#fdfdfc;--mut:#666;--line:#e2e2df;--code:#f4f4f1}
-@media(prefers-color-scheme:dark){:root{--fg:#e8e8e6;--bg:#191919;--mut:#9a9a95;--line:#333;--code:#232323}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.7 ui-serif,Georgia,serif}
-h1,h2,h3{font-family:ui-sans-serif,system-ui,sans-serif;line-height:1.25;margin:2.2rem 0 .8rem}
-h1{font-size:2rem;margin-top:.5rem}h2{font-size:1.4rem}h3{font-size:1.15rem}
-code{background:var(--code);padding:.12em .35em;border-radius:3px;font:0.88em ui-monospace,monospace}
-pre{background:var(--code);padding:1rem;border-radius:6px;overflow-x:auto}
-pre code{background:none;padding:0}
-a{color:inherit;text-decoration-color:var(--mut);text-underline-offset:2px}
-li{margin:.2rem 0}
-img{max-width:100%}
-table{border-collapse:collapse;width:100%;margin:1.2rem 0;font-size:.94rem;display:block;overflow-x:auto}
-th,td{border:1px solid var(--line);padding:.4rem .7rem;text-align:left;vertical-align:top}
-th{background:var(--code);font-family:ui-sans-serif,system-ui,sans-serif;font-size:.88rem}
-
-/* ---- layout: navigation left, text right --------------------------------
-   Two columns while there is room for both, one column when there isn't. The
-   text column is capped at a readable measure rather than filling the screen. */
-.wrap{display:grid;grid-template-columns:16rem minmax(0,44rem);gap:3rem;
-  justify-content:center;padding:2rem 1.25rem 5rem}
-.wrap.solo{display:block;max-width:44rem;margin:0 auto}
-main{min-width:0}
-
-.side{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.85rem;
-  position:sticky;top:2rem;align-self:start;max-height:calc(100vh - 4rem);
-  overflow-y:auto;overscroll-behavior:contain}
-/* title on the left, language switcher at its right */
-/* stays put while the chapter list scrolls under it */
-.sh{display:flex;align-items:baseline;justify-content:space-between;gap:.75rem;
-  padding:0 0 .6rem;border-bottom:1px solid var(--line);
-  position:sticky;top:0;background:var(--bg);z-index:1}
-.sh .bt{font-weight:600;color:var(--fg);text-decoration:none;font-size:.95rem}
-nav.i18n{font-size:.8rem;flex:none;position:relative}
-details.lang>summary{list-style:none;cursor:pointer;color:var(--mut);
-  padding:.15rem .45rem;border:1px solid var(--line);border-radius:4px;
-  white-space:nowrap}
-details.lang>summary::-webkit-details-marker{display:none}
-details.lang>summary::after{content:" \25be";color:var(--mut)}
-details.lang[open]>summary{color:var(--fg)}
-details.lang>ul{position:absolute;right:0;z-index:5;margin:.25rem 0 0;padding:.25rem;
-  list-style:none;min-width:100%;background:var(--bg);border:1px solid var(--line);
-  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.12)}
-details.lang li{margin:0}
-details.lang a{display:block;padding:.25rem .6rem;border-radius:4px;
-  color:var(--mut);text-decoration:none;white-space:nowrap}
-details.lang a:hover{background:var(--code);color:var(--fg)}
-details.lang a.cur{color:var(--fg);font-weight:600}
-/* a section heading in the chapter list — a label, not a destination */
-.side li.sec{margin:1.1rem 0 .2rem;padding:0 .5rem;color:var(--fg);
-  font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
-.side li.sec:first-child{margin-top:.4rem}
-.solo li.sec{margin:1.2rem 0 .3rem;color:var(--mut);font-size:.8rem;
-  letter-spacing:.06em;text-transform:uppercase;font-family:ui-sans-serif,system-ui,sans-serif}
-
-.side ol{list-style:none;margin:.4rem 0 0;padding:0}
-.side li{margin:.05rem 0}
-.side a{display:block;padding:.22rem .5rem;border-radius:4px;color:var(--mut);text-decoration:none}
-.side a:hover{background:var(--code);color:var(--fg)}
-.side a.cur{background:var(--code);color:var(--fg);font-weight:600}
-/* the current page's own headings, under the chapter list */
-.side nav.toc{border-top:1px solid var(--line);margin-top:.8rem;padding-top:.6rem}
-.side nav.toc ul{list-style:none;margin:0;padding:0}
-.side nav.toc a{font-size:.82rem;padding-left:1rem}
-details.nav>summary{display:none}
-
-#q{width:100%;margin:.8rem 0 .2rem;padding:.35rem .5rem;border:1px solid var(--line);
-  border-radius:4px;background:var(--bg);color:var(--fg);font:inherit;font-size:.85rem}
-#hits{margin:.3rem 0 0;padding:0;list-style:none}
-#hits a{padding:.3rem .5rem}
-#hits .sec{color:var(--mut);font-size:.8rem}
-#hits .none{color:var(--mut);padding:.3rem .5rem;display:block}
-
-nav.chapters{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.85rem;color:var(--mut);
-  border-top:1px solid var(--line);padding-top:.8rem;margin-top:2.5rem;
-  display:flex;justify-content:space-between;gap:1rem}
-/* the root page has no sidebar, so its switcher sits above the text */
-.solo nav.i18n{border-bottom:1px solid var(--line);padding-bottom:.6rem;margin-bottom:1.2rem;
-  font-family:ui-sans-serif,system-ui,sans-serif}
-.solo nav.toc ul{list-style:none;padding:0}
-
-@media(max-width:56rem){
-  .wrap{display:block;max-width:44rem;margin:0 auto;padding:1.25rem 1.25rem 4rem}
-  .side{position:static;max-height:none;overflow:visible;
-    margin-bottom:1.5rem;padding-bottom:.4rem;border-bottom:1px solid var(--line)}
-  /* the nav collapses to one line so the prose starts near the top */
-  details.nav>summary{display:block;cursor:pointer;list-style:none;
-    padding:.5rem 0 .2rem;color:var(--mut)}
-  details.nav>summary::-webkit-details-marker{display:none}
-  details.nav>summary::before{content:"☰ "}
-  details.nav[open]>summary::before{content:"✕ "}
-}
-@media(max-width:30rem){
-  body{font-size:15px}
-  .wrap{padding:1rem .9rem 3rem}
-  h1{font-size:1.6rem}h2{font-size:1.25rem}
-  pre{padding:.75rem;font-size:.9em}
-}
-</style>
+base_css() -> str =>
+    """html{color-scheme:light dark}
 """
+
+// Named for what it produces rather than the tag, because `style` *is* the tag
+// and a definition of that name would shadow it.
+stylesheet() -> str =>
+    style(base_css() ++ styles()) ++ "\n"
 
 // Previous/next links between chapters, so a reader can move through the book.
 chapter_nav(chs: str[], idx: int) -> str {
@@ -463,6 +462,51 @@ chapter_nav(chs: str[], idx: int) -> str {
         n >= 0 ? a(href=chs.get(n) ++ ".html", "next →") : span("")
     ) ++ "\n"
 }
+
+// ---- layout classes -------------------------------------------------------
+//
+// Named once here rather than repeated at each call site, because they are the
+// page's structure and it should be possible to see all of it together.
+
+// A sidebar entry, and the same shape marked as the page you are on.
+link_class(current: bool) -> str =>
+    "block px-2 py-1 rounded no-underline"
+        ++ (current
+                ? " bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white"
+                    ++ " font-semibold"
+                : " text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    ++ " hover:text-black dark:hover:text-white")
+
+sec_class() -> str =>
+    "mt-4 mb-1 px-2 text-[0.78rem] uppercase tracking-wide font-semibold"
+        ++ " first:mt-1"
+
+lang_summary_class() -> str =>
+    "cursor-pointer px-2 py-1 border border-zinc-200 dark:border-zinc-700"
+        ++ " rounded text-zinc-500 whitespace-nowrap list-none"
+        ++ " details-marker:hidden"
+
+lang_menu_class() -> str =>
+    "absolute right-0 z-10 mt-1 p-1 list-none bg-white dark:bg-zinc-900"
+        ++ " border border-zinc-200 dark:border-zinc-700 rounded-md shadow-lg"
+
+wrap_class() -> str =>
+    "grid grid-cols-[16rem_minmax(0,44rem)] gap-12 justify-center"
+        ++ " p-8 pb-20 max-md:block max-md:max-w-[44rem] max-md:mx-auto"
+        ++ " max-md:p-5"
+
+solo_class() -> str =>
+    "block max-w-[44rem] mx-auto p-8 pb-20"
+
+side_class() -> str =>
+    "font-sans text-[0.85rem] sticky top-8 self-start max-h-screen"
+        ++ " overflow-y-auto overscroll-contain max-md:static max-md:max-h-none"
+        ++ " max-md:mb-6 max-md:border-b max-md:border-zinc-200"
+
+sh_class() -> str =>
+    "flex items-baseline justify-between gap-3 pb-2 border-b"
+        ++ " border-zinc-200 dark:border-zinc-700 sticky top-0 bg-white"
+        ++ " dark:bg-zinc-900 z-10"
 
 // ---- sections -------------------------------------------------------------
 //
@@ -513,18 +557,21 @@ next_page(chs: str[], i: int) -> int =>
 // closes it on a narrow viewport; without script it stays open and usable.
 sidebar(title: str, langs: str, cur_lang: str, chs: str[], titles: str[],
         cur: str, toc_html: str) -> str =>
-    "<div class=\"side\">\n"
-        ++ "<div class=\"sh\"><a class=\"bt\" href=\"index.html\">"
-        ++ esc(title) ++ "</a>\n"
-        ++ "<nav class=\"i18n\">"
-        ++ lang_links(langs.split(","), 0, cur_lang, "../", cur)
-        ++ "</nav></div>\n"
-        ++ "<details class=\"nav\" open>\n<summary>"
-        ++ nav_label(cur_lang) ++ "</summary>\n"
-        ++ search_box()
-        ++ "<ol>\n" ++ side_items(chs, titles, cur, 0) ++ "</ol>\n"
-        ++ toc_html
-        ++ "</details>\n" ++ collapse_script() ++ "</div>\n"
+    div(data_tomo="side", class=side_class(),
+        div(data_tomo="head", class=sh_class(),
+            a(class="font-semibold text-[0.95rem] no-underline text-inherit",
+              href="index.html", esc(title))
+            nav(data_tomo="i18n", class="relative shrink-0 text-[0.8rem]",
+                lang_links(langs.split(","), 0, cur_lang, "../", cur)))
+        details(data_tomo="nav", open=true,
+                summary(class="hidden max-md:block cursor-pointer py-2"
+                              ++ " list-none details-marker:hidden"
+                              ++ " text-zinc-500",
+                        "☰ " ++ nav_label(cur_lang))
+                search_box()
+                ol(class="list-none mt-2 p-0", side_items(chs, titles, cur, 0))
+                toc_html)
+        collapse_script()) ++ "\n"
 
 // The disclosure label, in the reader's language.
 nav_label(lang: str) -> str =>
@@ -533,20 +580,22 @@ nav_label(lang: str) -> str =>
 // Collapse the navigation on a narrow viewport. Progressive: the markup ships
 // expanded, so a browser with no script still shows the whole thing.
 collapse_script() -> str =>
-    """<script>
+    script("""
 (function(){
-  var d=document.querySelector("details.nav");
-  if(d&&window.matchMedia("(max-width:56rem)").matches) d.removeAttribute("open");
+  var d=document.querySelector('details[data-tomo="nav"]');
+  if(d&&window.matchMedia("(max-width:48rem)").matches)
+    d.removeAttribute("open");
 })();
-</script>
-"""
+""") ++ "\n"
 
 side_items(chs: str[], titles: str[], cur: str, i: int) -> str =>
     i >= chs.length()
         ? ""
         : (is_section(chs.get(i))
-            ? li(class="sec", esc(titles.get(i)))
-            : li(a(class=chs.get(i) == cur ? "cur" : "",
+            ? li(data_tomo="section", class=sec_class(), esc(titles.get(i)))
+            : li(class="my-0",
+                 a(data_tomo=chs.get(i) == cur ? "current" : "chapter",
+                   class=link_class(chs.get(i) == cur),
                    href=chs.get(i) ++ ".html",
                    esc(titles.get(i)))))
           ++ side_items(chs, titles, cur, i + 1)
@@ -554,14 +603,46 @@ side_items(chs: str[], titles: str[], cur: str, i: int) -> str =>
 // The search UI plus the code that drives it. The index is a plain `<script>`
 // (not `fetch`) so a built book still searches when opened straight off disk
 // as `file://…` — mdBook's search needs a server; this one doesn't.
+//
+// The markup is markup; only the behaviour is a raw block. That is not tidiness
+// — the compiler collects `class=` strings to decide which utility rules to
+// generate, and it cannot read inside a raw string. While this whole function
+// was one raw block, every class in it named a rule that was never emitted, and
+// the search field had no styling at all.
 search_box() -> str =>
-    """<input id="q" type="search" placeholder="search" autocomplete="off">
-<ul id="hits"></ul>
-<script src="search-index.js"></script>
-<script>
-(function(){
+    input(id="q", type="search", placeholder="search", autocomplete="off",
+          class="w-full my-2 px-2 py-1 border border-zinc-200"
+                ++ " dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
+                ++ " text-[0.85rem]")
+    ++ ul(id="hits", class="list-none m-0 p-0")
+    ++ script(src="search-index.js")
+    ++ script(hit_styles())
+    ++ script(search_js())
+
+// The classes the result list uses, handed to the script as data.
+//
+// Results are built by JavaScript, so their classes never appear in a `class=`
+// attribute for the compiler to find. Naming them here — in ordinary Maca
+// strings — is what gets their rules into the stylesheet.
+// (`\{` and `\}` — a bare brace would open a string interpolation.)
+hit_styles() -> str =>
+    "window.TOMO_CLS=\{hit:\"" ++ hit_class() ++ "\",sec:\""
+        ++ hit_sec_class() ++ "\",none:\"" ++ hit_none_class() ++ "\"\};"
+
+hit_class() -> str =>
+    "block py-1 no-underline text-inherit text-[0.82rem]"
+
+hit_sec_class() -> str =>
+    "text-zinc-500 text-[0.75rem]"
+
+hit_none_class() -> str =>
+    "text-zinc-500 text-[0.8rem] py-1 block"
+
+search_js() -> str =>
+    """(function(){
   var q=document.getElementById("q"),hits=document.getElementById("hits");
   if(!q) return;
+  var C=window.TOMO_CLS||{hit:"",sec:"",none:""};
   function esc(s){return s.replace(/[&<>"]/g,function(c){
     return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
   q.addEventListener("input",function(){
@@ -573,14 +654,16 @@ search_box() -> str =>
       var e=idx[i];
       if(e.s.toLowerCase().indexOf(t)>=0||e.x.indexOf(t)>=0) out.push(e);
     }
-    if(!out.length){hits.innerHTML='<li><span class="none">no matches</span></li>';return;}
+    if(!out.length){
+      hits.innerHTML='<li><span class="'+C.none+'">no matches</span></li>';
+      return;
+    }
     hits.innerHTML=out.map(function(e){
-      return '<li><a href="'+esc(e.u)+'">'+esc(e.s)+
-             '<br><span class="sec">'+esc(e.c)+'</span></a></li>';
+      return '<li><a class="'+C.hit+'" href="'+esc(e.u)+'">'+esc(e.s)+
+             '<br><span class="'+C.sec+'">'+esc(e.c)+'</span></a></li>';
     }).join("");
   });
 })();
-</script>
 """
 
 // Wrap rendered chapter HTML in a page with the stylesheet, a language
@@ -601,10 +684,10 @@ shell(title: str, cur: str, langs: str, side: str, body: str,
                 meta(name="viewport",
                      content="width=device-width,initial-scale=1")
                 title_tag(esc(title))
-                style()
+                stylesheet()
             )
-            body_tag(
-                div(class=side.length() == 0 ? "wrap solo" : "wrap",
+            body_tag(class=body_class(),
+                div(class=side.length() == 0 ? solo_class() : wrap_class(),
                     side ++ main_landmark(body)
                 )
             )
@@ -618,13 +701,23 @@ shell(title: str, cur: str, langs: str, side: str, body: str,
 title_tag(text: str) -> str =>
     title(text)
 
-body_tag(inner: str) -> str =>
-    body(inner)
+body_tag(class: str, inner: str) -> str =>
+    body(class=class, inner)
 
-// `<main>` is the one tag no program can write, because every program defines
-// `main` and a user definition wins. Spelled out rather than worked around.
+// The page's own typography and colours, on the element that owns them.
+body_class() -> str =>
+    "font-serif text-base leading-relaxed bg-white dark:bg-zinc-900"
+        ++ " text-zinc-900 dark:text-zinc-100"
+
+// `<code>` inside a `<pre>` must not repeat the block's background or padding.
+pre_code_class() -> str =>
+    "bg-transparent p-0 text-[0.88em]"
+
+// `<main>` is the one tag no program can write as a call, because every program
+// defines `main` and a user definition wins. `element` takes its tag as a
+// value, so it reaches the tag the call syntax cannot.
 main_landmark(inner: str) -> str =>
-    "<main>" ++ inner ++ "</main>"
+    element("main", inner)
 
 // The language picker: a disclosure, not a `<select>`.
 //
@@ -640,14 +733,16 @@ main_landmark(inner: str) -> str =>
 lang_links(codes: str[], i: int, cur: str, up: str, page: str) -> str =>
     codes.length() < 2
         ? ""
-        : "<details class=\"lang\"><summary>" ++ lang_name(cur)
-              ++ "</summary><ul>" ++ lang_options(codes, 0, cur, up, page)
-              ++ "</ul></details>"
+        : details(data_tomo="lang",
+                  summary(class=lang_summary_class(), lang_name(cur) ++ " ▾")
+                  ul(class=lang_menu_class(),
+                     lang_options(codes, 0, cur, up, page)))
 
 lang_options(codes: str[], i: int, cur: str, up: str, page: str) -> str =>
     i >= codes.length()
         ? ""
-        : li(a(class=codes.get(i) == cur ? "cur" : "",
+        : li(class="my-0",
+             a(class=link_class(codes.get(i) == cur),
                href=up ++ codes.get(i) ++ "/" ++ target_page(page),
                lang=codes.get(i),
                lang_name(codes.get(i))))
@@ -717,21 +812,27 @@ build_book(root: str, out: str) -> int {
 // through when the book is published beside something else.
 write_root(out: str, title: str, langs: str, play: str) -> int {
     make_dir(out)
-    body = "<h1>" ++ esc(title) ++ "</h1>\n<nav class=\"toc\">\n<ul>\n"
-           ++ root_links(langs.split(","), 0)
-           ++ (play.length() > 0
-                   ? "<li><a href=\"" ++ esc(play) ++ "\">Playground</a></li>\n"
-                   : "")
-           ++ "</ul>\n</nav>\n"
+    body = h1(class=md_class("h1"), esc(title)) ++ "\n"
+           ++ nav(class="toc",
+                  "\n" ++ ul(class="list-none p-0",
+                             "\n" ++ root_links(langs.split(","), 0)
+                                  ++ play_link(play)) ++ "\n") ++ "\n"
     write_file(out ++ "/index.html",
                shell(title, langs.split(",").get(0), langs, "", body, ""))
     1
 }
 
+// The optional sibling link, absent when `book.toml` names no playground.
+play_link(play: str) -> str =>
+    play.length() == 0
+        ? ""
+        : li(class="my-1", a(href=play, "Playground")) ++ "\n"
+
 root_links(codes: str[], i: int) -> str =>
     i >= codes.length()
         ? ""
-        : li(a(href=codes.get(i) ++ "/index.html", lang=codes.get(i),
+        : li(class="my-1",
+             a(href=codes.get(i) ++ "/index.html", lang=codes.get(i),
                lang_name(codes.get(i))))
           ++ root_links(codes, i + 1)
 
@@ -785,8 +886,9 @@ write_index(root: str, out: str, title: str, langs: str, lang: str,
             chs: str[], titles: str[]) -> int {
     dir = out ++ "/" ++ lang
     make_dir(dir)
-    body = "<h1>" ++ esc(title) ++ "</h1>\n<nav class=\"toc\">\n<ol>\n"
-           ++ index_items(chs, titles, 0) ++ "</ol>\n</nav>\n"
+    body = h1(class=md_class("h1"), esc(title))
+           ++ nav(ol(class="list-none p-0",
+                     "\n" ++ index_items(chs, titles, 0))) ++ "\n"
     side = sidebar(title, langs, lang, chs, titles, "", "")
     write_file(dir ++ "/index.html", page(title, lang, langs, side, body))
     1
@@ -796,8 +898,10 @@ index_items(chs: str[], titles: str[], i: int) -> str =>
     i >= chs.length()
         ? ""
         : (is_section(chs.get(i))
-            ? li(class="sec", esc(titles.get(i)))
-            : li(a(href=chs.get(i) ++ ".html", esc(titles.get(i)))))
+            ? li(data_tomo="section", class=sec_class(), esc(titles.get(i)))
+            : li(class="my-0",
+                 a(class=link_class(false), href=chs.get(i) ++ ".html",
+                   esc(titles.get(i)))))
           ++ index_items(chs, titles, i + 1)
 
 // ---- search index ---------------------------------------------------------
@@ -918,8 +1022,7 @@ write_chapter(out: str, title: str, langs: str, lang: str, chs: str[],
               titles: str[], ci: int, md: str) -> int {
     dir = out ++ "/" ++ lang
     make_dir(dir)
-    body = "<article>\n" ++ render(md) ++ "</article>\n"
-           ++ chapter_nav(chs, ci)
+    body = article("\n" ++ render(md)) ++ "\n" ++ chapter_nav(chs, ci)
     side = sidebar(title, langs, lang, chs, titles, chs.get(ci), toc(md))
     write_file(dir ++ "/" ++ chs.get(ci) ++ ".html",
                page(title, lang, langs, side, body))
@@ -930,6 +1033,7 @@ write_chapter(out: str, title: str, langs: str, lang: str, chs: str[],
 
 main() -> int {
     sample = "# Title\n\nA **bold** word and `code`, see [docs](guide.md).\n\n"
+        ++ "An `int[]` is a list, and [two](a.md) [links](b.md) both work.\n\n"
         ++ "## Is it fast?\n\n- one\n  - nested\n- two\n\n1. first\n2. second\n\n"
         ++ "| target | flag |\n|--------|------|\n| native | `--target c` |\n\n"
         ++ "> a quoted aside that\n> wraps across two source lines\n\n"
@@ -942,7 +1046,7 @@ main() -> int {
     info("=== page ===")
     demo = sidebar("Maca Handbook", "en,ko", "en", ["a", "b"], ["One", "Two"],
                    "a", toc(sample))
-    info(page("Maca Handbook", "en", "en,ko", demo, "<article>hi</article>\n"))
+    info(page("Maca Handbook", "en", "en,ko", demo, article("hi")))
 
     // Build the real book from this repository into `site/`.
     info("=== build ===")

@@ -585,11 +585,16 @@ impl Cx {
                     }
                 }
                 Arg::Named { name, value } => {
+                    // `_` → `-` so `data_tomo` / `aria_label` / `http_equiv`
+                    // are writable; a bool toggles the attribute's presence
+                    // rather than its text. `_attr` decides which at run time,
+                    // because the JS side has no types to decide it earlier.
+                    let key = maca_parser::attr_name(name);
                     let expr = jexpr(value);
-                    out.push_str(&format!("  {v}.setAttribute(\"{name}\", {expr});\n"));
+                    out.push_str(&format!("  _attr({v}, \"{key}\", {expr});\n"));
                     if is_dynamic(value) {
                         out.push_str(&format!(
-                            "  _binds.push(() => {{ {v}.setAttribute(\"{name}\", {expr}); }});\n"
+                            "  _binds.push(() => {{ _attr({v}, \"{key}\", {expr}); }});\n"
                         ));
                     }
                 }
@@ -670,6 +675,11 @@ impl Cx {
             "\"use strict\";\n\
              const state = {{ {state} }};\n\
              const _binds = [];\n\
+             function _attr(el, k, v) {{\n\
+             \x20 if (v === true) el.setAttribute(k, \"\");\n\
+             \x20 else if (v === false || v == null) el.removeAttribute(k);\n\
+             \x20 else el.setAttribute(k, v);\n\
+             }}\n\
              function build() {{\n{build_body}  return {root};\n}}\n\
              function update() {{ for (const b of _binds) b(); }}\n\
              let _root = null;\n\
@@ -785,6 +795,9 @@ pub fn rule(class: &str) -> Option<String> {
             "before" => selector.push_str("::before"),
             "after" => selector.push_str("::after"),
             "marker" => selector.push_str("::marker"),
+            // WebKit draws its own triangle on `<summary>` and ignores
+            // `list-style`, so hiding it needs the vendor pseudo-element
+            "details-marker" => selector.push_str("::-webkit-details-marker"),
             "placeholder" => selector.push_str("::placeholder"),
             "dark" => media.push("(prefers-color-scheme:dark)"),
             "sm" => media.push("(min-width:40rem)"),
@@ -1312,7 +1325,14 @@ fn plain_text(parts: &[StrPart]) -> String {
 
 /// Walk a statement collecting whitespace-separated tokens of every string
 /// literal as Tailwind class candidates.
-fn collect_class_strings(s: &Stmt, out: &mut BTreeSet<String>) {
+/// Every whitespace-separated token of every string literal reachable from an
+/// item, as Tailwind class candidates.
+///
+/// Not just `class=` attributes: a program that builds its class list in a
+/// helper — `md_class("pre")` — has the literals in that helper's body, and
+/// collecting only at the call site finds nothing. Tokens that aren't utilities
+/// simply generate no rule.
+pub fn collect_class_strings(s: &Stmt, out: &mut BTreeSet<String>) {
     match s {
         Stmt::Fn(f) => match &f.body {
             Some(FnBody::Expr(e)) => collect_class_expr(e, out),
