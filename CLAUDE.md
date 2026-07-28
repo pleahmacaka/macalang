@@ -48,7 +48,9 @@ Virtual workspace; members are `crates/*`.
 | `maca-backend-embedded` | freestanding C for bare-metal MCUs (Cortex-M/RISC-V) |
 | `maca-wasm` | `wasm32` front-end for the browser playground (no wasm-bindgen) |
 
-Non-crate dirs: `std/` (prelude docs — most of the stdlib is compiler/runtime
+Non-crate dirs: `tools/` (Maca-written ports of the toolchain — `bindgen.maca`,
+kept equivalent to its stage-0 Rust twin by `crates/driver/tests/bindgen_port.rs`),
+`std/` (prelude docs — most of the stdlib is compiler/runtime
 builtins), `examples/` (golden `.maca` programs + `examples/bad/`), `apps/`
 (capstones: `mqtt`, `microkernel`, `blink`, `desktop`, `mcmod`, `tomo` — the
 i18n handbook builder, a Markdown→HTML renderer written in Maca), `selfhost/`
