@@ -104,5 +104,24 @@ main() -> int {
     pi = 3.14159265
     info("fmt: [{pi:.2}] [{42:>6}] [{"ok":<4}] [{"ok":^6}] [{7:03}]")
 
+    // ch15: user interfaces. On native an element renders to HTML text — named
+    // arguments become attributes, positional ones children.
+    // (`p(…)` would be the local `p` above — a binding shadows a tag, which is
+    // what stops a program's own `label`/`code`/`main` becoming markup.)
+    info("ui: {article(class="prose", h1("Hi") span("Body"))}")
+    // `_` in an attribute name is a `-`; a bool decides whether the attribute
+    // exists at all; `element` takes its tag as a value.
+    info("attrs: {div(data_kind="note", hidden=false, "seen")}")
+    info("flag: {details(open=true, summary("more") "text")}")
+    info("dyn: {element("h" ++ 2, id="s", "Deep")}")
+    // `styles()` is the stylesheet for the utilities this program writes, and
+    // nothing else — the `prose` class above is not a utility, so no rule.
+    sheet = styles()
+    info("styles: {sheet.contains(".font-bold")} {sheet.contains(".text-9xl")}")
+
     0
 }
+
+// `class=` strings anywhere in the module are collected, not just at use sites.
+button_class() -> str =>
+    "font-bold hover:bg-zinc-100 dark:bg-zinc-800 md:px-4"

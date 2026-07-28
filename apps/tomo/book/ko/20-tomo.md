@@ -71,23 +71,21 @@ render(md: str) -> str
 목록 순회, 사이트 쓰기 — 가 이것을 감쌉니다. 이 분리가 테스트를 가능하게 합니다.
 게이트는 샘플에 `render`를 호출하고 HTML을 검사합니다.
 
-줄들 위의 fold이고, 상태 둘을 넘깁니다.
+줄들 위의 fold이고, 누산기를 넘깁니다.
 
 ```maca
-render_lines(lines: str[], i: int, in_code: bool, acc: str) -> str =>
-    i >= lines.length()
-        ? (in_code ? acc ++ "</code></pre>\n" : acc)
-        : render_line(lines, i, in_code, acc)
+render_lines(lines: str[], i: int, acc: str) -> str =>
+    i >= lines.length() ? acc : render_line(lines, i, acc)
 ```
 
-여러 줄에 걸치는 블록 요소 — 문단, 인용, 리스트, 표 — 는 자기 끝을 찾아 그
-구간을 통째로 소비합니다.
+여러 줄에 걸치는 블록 요소 — 문단, 인용, 리스트, 표, 코드 펜스 — 는 자기 끝을
+찾아 그 구간을 통째로 소비합니다.
 
 ```maca
 render_para(lines: str[], i: int, acc: str) -> str {
     stop = para_end(lines, i)
     text = join_range(lines, i, stop)
-    render_lines(lines, stop, false, acc ++ "<p>" ++ inline(esc(text)) ++ "</p>\n")
+    render_lines(lines, stop, acc ++ p(class=md_class("p"), inline(esc(text))) ++ "\n")
 }
 ```
 
@@ -95,6 +93,52 @@ render_para(lines: str[], i: int, acc: str) -> str {
 줄바꿈된 `**config mode**`가 `<strong>config</p>`가 되었습니다. 마크업이 문단을
 가로질러 쪼개진 것이죠. 인용도 같은 버그가 있어서 세 줄짜리 인용이 세 개의
 blockquote가 되었습니다. 둘 다 지금은 게이트의 테스트입니다.
+
+`in_code` 플래그가 없다는 점을 보세요. 예전에는 있었습니다. 코드 펜스를
+흘려보냈거든요. 여는 `<pre><code …>` 문자열, 그다음 한 줄씩, 그다음 닫는 문자열.
+그러려면 fold의 모든 단계가 "지금 펜스 안인가?"를 들고 다녀야 했고, `<pre>`는
+원시 텍스트로밖에 쓸 수 없었습니다. 구간을 먼저 모으면 순회 한 번을 더 하는
+대신 마크업을 마크업으로 쓸 수 있습니다.
+
+```maca
+render_fence(lines: str[], i: int, acc: str, fence: str) -> str {
+    stop = fence_end(lines, i + 1)
+    lang = fence.substr(3, fence.length() - 3).trim()
+    html = pre(class=md_class("pre"),
+               code(class=pre_code_class() ++ lang_class(lang),
+                    fence_body(lines, i + 1, stop)))
+    render_lines(lines, stop + 1, acc ++ html ++ "\n")
+}
+```
+
+## 문자열 이어붙이기가 아니라 마크업
+
+Tomo가 내보내는 모든 요소는 앞 장의 요소 문법으로 쓰였고, 모든 스타일은
+컴파일러가 규칙으로 바꿔 주는 유틸리티 클래스입니다. 템플릿은 없고, 손으로 쓴
+CSS는 한 줄 — 페이지에 밝은 팔레트와 어두운 팔레트가 둘 다 있다고 브라우저에게
+알려 주는 그 줄 — 뿐입니다.
+
+거기까지 가는 데 태그가 값이어야 하는 자리가 셋 있었습니다. 마크다운 렌더러는
+소스가 아니라 입력을 보고 태그를 고르기 때문입니다.
+
+```maca
+heading(level: str, text: str) -> str =>
+    element("h" ++ level, id=slug(text), class=md_class("h" ++ level),
+            inline(esc(text))) ++ "\n"
+
+cells(parts: str[], i: int, tag: str) -> str =>   // 헤더는 `th`, 그 아래는 `td`
+    element(tag, class=md_class(tag), inline(esc(parts.get(i).trim())))
+        ++ cells(parts, i + 1, tag)
+```
+
+그리고 `<main>` 에 한 번 더. 이 프로그램도 — 모든 프로그램이 그렇듯 — `main` 을
+정의하므로 어떤 호출로도 그 태그에 이름을 붙일 수 없습니다.
+
+이건 단정함을 넘어서는 이유가 있습니다. 컴파일러는 눈에 보이는 `class=`
+문자열을 모아서 어떤 CSS 규칙을 만들지 정하는데, 원시 `"""…"""` 문자열 안은
+보지 못합니다. 검색 상자가 원시 블록 하나였던 동안, 거기 적힌 모든 클래스는
+규칙을 하나도 만들지 못했고, 검색 필드는 아무것도 실패하지 않은 채 스타일 없이
+놓여 있었습니다.
 
 ## 서버 없는 검색
 
@@ -122,13 +166,14 @@ maca run apps/tomo/tomo.maca
 
 ## 이 책에서 무엇을 쓰는가
 
-설정에 레코드. 줄 위를 걷는 모든 순회에 누산기를 든 재귀. 모든 파싱에 `str`
-메서드. 챕터와 언어 집합에 리스트. 읽고 쓰는 데 파일 IO. 스타일시트와 검색
-JavaScript에 raw `"""…"""` 문자열 — CSS는 중괄호 투성이라 그러지 않으면 보간으로
-읽히니까요.
+줄 위를 걷는 모든 순회에 누산기를 든 재귀. 모든 파싱에 `str` 메서드. 챕터와 언어
+집합에 리스트. 읽고 쓰는 데 파일 IO. 출력의 모든 바이트에 요소 문법과 생성된
+스타일. 원시 `"""…"""` 문자열은 딱 하나에만 — 검색을 굴리고 사이드바를 접는
+JavaScript에. 원시 블록은 그러라고 있는 것이니까요. 마크업을 위장한 것이 아니라
+다른 언어를 담으라고요.
 
 공교롭게도 합타입은 안 씁니다. 렌더러가 토큰 타입이 아니라 줄 접두사로
 분기하기 때문입니다. 더 큰 마크다운 구현이라면 합타입을 원할 것입니다.
 
-500줄쯤 됩니다. 그것이 정적 사이트 생성기 전부입니다. 자기가 문서화하는 언어로
+천 줄쯤 됩니다. 그것이 정적 사이트 생성기 전부입니다. 자기가 문서화하는 언어로
 쓰인 채로요.

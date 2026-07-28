@@ -59,7 +59,10 @@ requires the whole repository to pass it),
 `std/` (prelude docs — most of the stdlib is compiler/runtime
 builtins), `examples/` (golden `.maca` programs + `examples/bad/`), `apps/`
 (capstones: `mqtt`, `microkernel`, `blink`, `desktop`, `mcmod`, `tomo` — the
-i18n handbook builder, a Markdown→HTML renderer written in Maca), `selfhost/`
+i18n handbook builder that renders `book/{en,ko}/*.md` into `site/`, built
+entirely out of the UI syntax below plus one line of hand-written CSS; it is
+also the worked example of that syntax, so keep it free of hand-concatenated
+markup), `selfhost/`
 (the Maca compiler written in Maca — stage 1), `playground/` (the browser
 playground, a single `.maca` file compiled by the JS backend), `editor/`,
 `docs/`.
@@ -137,6 +140,31 @@ programs (non-`main` functions, records→structs, sum types→tagged enums, lis
 string interpolation, `match` lowering incl. list patterns (bracketless `x, ..rest` or bracketed
 `[]`/`[x]`/`[x, ..rest]`), UFCS) compile and
 run end-to-end (parse → check → C → `cc`/`zig cc` → execute).
+
+**UI syntax on every target.** A tag name called as a function is an element:
+named args → attributes, positional args → children (comma-separated *or*
+juxtaposed). The JS backend builds a reactive DOM; the **C backend renders the
+same call to an HTML string** (`maca_concat` chain; `maca_attr` escapes
+attribute values, children are not re-escaped; void elements self-close;
+`on:click=` is a clean error pointing at `--target js`). A user definition or
+local **always shadows a tag** — `label`/`code`/`main`/`p` are tags and ordinary
+names. Three forms an identifier can't express: `_` in an attribute name becomes
+`-` (`data_tomo="nav"` → `data-tomo="nav"`, via `maca_parser::attr_name`,
+shared by both back ends); a **bool** attribute controls the attribute's
+*presence* (`open=true` → `<details open>`, `hidden=false` → nothing —
+`maca_flag`); and `element(tag, …)` takes the **tag as a value**
+(`element("h" ++ n, …)`, `th`/`td` per row, and `<main>`, which no call can
+name) — voidness is decided in `maca_element` at run time. `styles()` is the
+generated stylesheet for exactly the Tailwind utilities the module's `class=`
+strings mention (collected module-wide, *not* inside raw `"""…"""` strings —
+markup in a raw block silently gets no rules). Variants:
+`hover/focus/active/first/last/open/before/after/marker/placeholder/details-marker`
+(selector suffix) and `dark/sm/md/lg/xl/max-sm/max-md/max-lg` (`@media`),
+combinable; arbitrary values `[…]` with `_`→space; selectors are `css_escape`d
+(an unescaped `.max-w-[42rem]` is dropped by browsers *silently*) and rules are
+emitted in `order()` so a variant beats the utility it modifies. Documented in
+handbook ch. 15 (`apps/tomo/book/{en,ko}/15-ui.md`); gated by
+`crates/driver/tests/native_ui.rs` + `crates/backend_js/tests/tailwind.rs`.
 
 Backends: native C (default), LLVM (SIMD span), Nix (config mode), JS
 (reactive UI), JVM (Java source / Minecraft-Fabric interop), and embedded

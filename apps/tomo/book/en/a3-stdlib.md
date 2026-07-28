@@ -90,6 +90,18 @@ usual way to tell them apart.
 
 There is no `async` keyword. See chapter 13.
 
+## Markup
+
+| Form | Does |
+|---|---|
+| `div(class="x", child)` | an element — named args are attributes, positional ones children |
+| `data_tomo="x"` | `_` in an attribute name is a `-` |
+| `open=true` | a bool decides whether the attribute exists |
+| `element(tag, …)` | the same, with the tag as a value |
+| `styles()` | the CSS for the utility classes this module writes |
+
+See chapter 15.
+
 ## Errors
 
 | Form | Does |

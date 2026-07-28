@@ -70,23 +70,21 @@ Markdown in, HTML out, no IO. Everything else — reading files, walking the
 chapter list, writing the site — wraps it. That separation is what makes it
 testable: the gate calls `render` on a sample and asserts on the HTML.
 
-It is a fold over lines, threading two pieces of state:
+It is a fold over lines, threading an accumulator:
 
 ```maca
-render_lines(lines: str[], i: int, in_code: bool, acc: str) -> str =>
-    i >= lines.length()
-        ? (in_code ? acc ++ "</code></pre>\n" : acc)
-        : render_line(lines, i, in_code, acc)
+render_lines(lines: str[], i: int, acc: str) -> str =>
+    i >= lines.length() ? acc : render_line(lines, i, acc)
 ```
 
-Block elements that span lines — paragraphs, blockquotes, lists, tables — find
-their own end and consume the whole run:
+Block elements that span lines — paragraphs, blockquotes, lists, tables, fenced
+code — find their own end and consume the whole run:
 
 ```maca
 render_para(lines: str[], i: int, acc: str) -> str {
     stop = para_end(lines, i)
     text = join_range(lines, i, stop)
-    render_lines(lines, stop, false, acc ++ "<p>" ++ inline(esc(text)) ++ "</p>\n")
+    render_lines(lines, stop, acc ++ p(class=md_class("p"), inline(esc(text))) ++ "\n")
 }
 ```
 
@@ -94,6 +92,52 @@ This matters more than it sounds. The first version emitted one `<p>` per source
 line, which turned a soft-wrapped `**config mode**` into `<strong>config</p>` —
 markup split across paragraphs. Blockquotes had the same bug, and a three-line
 quote became three blockquotes. Both are now single tests in the gate.
+
+Notice there is no `in_code` flag. There used to be: fenced code was streamed —
+an opening `<pre><code …>` string, then a line at a time, then a closing string
+— which meant every step of the fold had to carry "am I inside a fence?", and
+the `<pre>` could only ever be written as raw text. Gathering the run first
+costs one more pass over it and lets the markup be markup:
+
+```maca
+render_fence(lines: str[], i: int, acc: str, fence: str) -> str {
+    stop = fence_end(lines, i + 1)
+    lang = fence.substr(3, fence.length() - 3).trim()
+    html = pre(class=md_class("pre"),
+               code(class=pre_code_class() ++ lang_class(lang),
+                    fence_body(lines, i + 1, stop)))
+    render_lines(lines, stop + 1, acc ++ html ++ "\n")
+}
+```
+
+## Markup, not string concatenation
+
+Every element Tomo emits is written with the element syntax from the previous
+chapter, and every style is a utility class the compiler turns into a rule.
+There is no template, and one line of hand-written CSS — the line that tells the
+browser the page has both a light and a dark palette.
+
+Getting there needed the tag to be a value in three places, because a Markdown
+renderer chooses its tags from its input rather than from its source:
+
+```maca
+heading(level: str, text: str) -> str =>
+    element("h" ++ level, id=slug(text), class=md_class("h" ++ level),
+            inline(esc(text))) ++ "\n"
+
+cells(parts: str[], i: int, tag: str) -> str =>   // `th` in the header, `td` below
+    element(tag, class=md_class(tag), inline(esc(parts.get(i).trim())))
+        ++ cells(parts, i + 1, tag)
+```
+
+and once for `<main>`, which no call can name because this program — like every
+program — defines `main`.
+
+This is worth doing for a reason beyond neatness. The compiler decides which CSS
+rules to generate by collecting the `class=` strings it can see, and it cannot
+see inside a raw `"""…"""` string. While the search box was one raw block, every
+class named in it produced no rule at all, and the search field went unstyled
+without anything failing.
 
 ## Search without a server
 
@@ -122,14 +166,15 @@ falls back and still comes out as a Korean page.
 
 ## What it uses from this book
 
-Records for the configuration. Recursion with an accumulator for every walk over
-lines. `str` methods for all the parsing. Lists for the chapter and language
-sets. File IO for reading and writing. Raw `"""…"""` strings for the stylesheet
-and the search JavaScript, because CSS is full of braces that would otherwise
-read as interpolation.
+Recursion with an accumulator for every walk over lines. `str` methods for all
+the parsing. Lists for the chapter and language sets. File IO for reading and
+writing. The element syntax and generated styles for every byte of output. Raw
+`"""…"""` strings for exactly one thing — the JavaScript that drives search and
+collapses the sidebar — because that is what a raw block is for: a foreign
+language, not markup in disguise.
 
 No sum types, as it happens — the renderer dispatches on line prefixes rather
 than on a token type. A larger Markdown implementation would want them.
 
-It is about 500 lines. That is the whole static site generator, in the language
-it documents.
+It is about a thousand lines. That is the whole static site generator, in the
+language it documents.

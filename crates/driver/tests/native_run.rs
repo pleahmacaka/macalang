@@ -1077,6 +1077,13 @@ fn handbook_examples_all_run() {
         "strings: ababab 007 2", // repeat/pad_start/split
         "braces: {} {}",         // both literal-brace escapes
         "fmt: [3.14] [    42] [ok  ] [  ok  ] [007]", // interpolation format specs
+        // UI elements on the native target: attributes, children, and the
+        // three forms an identifier can't express on its own
+        "ui: <article class=\"prose\"><h1>Hi</h1><span>Body</span></article>",
+        "attrs: <div data-kind=\"note\">seen</div>", // `_`->`-`, false flag absent
+        "flag: <details open><summary>more</summary>text</details>",
+        "dyn: <h2 id=\"s\">Deep</h2>", // a tag chosen at run time
+        "styles: true false",          // the sheet is tree-shaken
     ] {
         assert!(
             stdout.contains(want),

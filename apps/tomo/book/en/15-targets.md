@@ -33,6 +33,10 @@ finds, so an interface written in Maca needs no bundler, no `package.json` and
 no build step beyond that command. The playground that ships with this book is
 one `.maca` file compiled exactly this way.
 
+The same syntax works on the native target, where an element renders to an HTML
+string instead of a DOM node — that is what a static site generator needs, and
+it is [the previous chapter's subject](15-ui.md).
+
 ## The JVM and Rust
 
 These two are less about deployment than about *reach*. They exist so that Maca
