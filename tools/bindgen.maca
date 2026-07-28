@@ -176,11 +176,15 @@ generate(src: str, header_name: str) -> str {
 
 // ---- entry point ----------------------------------------------------------
 
-main() -> int {
-    // A sample header, so `maca run tools/bindgen.maca` demonstrates the tool
-    // without needing an argument. Point `generate` at `read_file(path)` to
-    // process a real header.
-    sample = "/* a sample C header */\n"
+// The file name at the end of a path (`/usr/include/sqlite3.h` → `sqlite3.h`).
+basename(path: str) -> str {
+    cut = last_index_of(path, "/")
+    cut < 0 ? path : path.substr(cut + 1, path.length() - cut - 1)
+}
+
+// A sample header, so the tool demonstrates itself when run with no argument.
+sample_header() -> str =>
+    "/* a sample C header */\n"
         ++ "#include <stddef.h>\n"
         ++ "typedef struct sqlite3 sqlite3;\n"
         ++ "const char* sqlite3_libversion(void);\n"
@@ -188,6 +192,37 @@ main() -> int {
         ++ "double sqlite3_column_double(sqlite3_stmt*, int iCol);\n"
         ++ "int sqlite3_close(sqlite3*);\n"
 
-    info(generate(sample, "sqlite3.h"))
+// `maca run tools/bindgen.maca <header.h> [out.maca]` — with no argument it
+// runs over a built-in sample; with one it reads the header; with two it writes
+// the generated module to the second path instead of printing it.
+main(args: str[]) -> int {
+    path = args.length() > 0 ? args.get(0) : ""
+    name = path.length() == 0 ? "sqlite3.h" : basename(path)
+
+    path.length() > 0 && !file_exists(path)
+        ? bail(path)
+        : emit(path.length() == 0 ? sample_header() : read_file(path), name, args)
+}
+
+bail(path: str) -> int {
+    err("bindgen: cannot read " ++ path)
+    1
+}
+
+emit(src: str, name: str, args: str[]) -> int {
+    out = generate(src, name)
+    args.length() > 1
+        ? write_out(args.get(1), out)
+        : print_out(out)
+}
+
+write_out(dest: str, text: str) -> int {
+    write_file(dest, text)
+    info("wrote " ++ dest)
+    0
+}
+
+print_out(text: str) -> int {
+    print(text)
     0
 }

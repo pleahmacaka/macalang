@@ -67,9 +67,13 @@ fn maca_bindgen_matches_the_rust_implementation() {
     assert!(rust.status.success(), "rust bindgen failed");
     let rust_decls = decls(&String::from_utf8_lossy(&rust.stdout));
 
-    // the Maca port
+    // the Maca port, reading the same header off disk
     let maca = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &repo.join("tools/bindgen.maca").to_string_lossy()])
+        .args([
+            "run",
+            &repo.join("tools/bindgen.maca").to_string_lossy(),
+            &header.to_string_lossy(),
+        ])
         .output()
         .expect("spawn maca run tools/bindgen.maca");
     assert!(
@@ -94,5 +98,57 @@ fn maca_bindgen_matches_the_rust_implementation() {
             "sqlite3_close(sqlite3: int) -> int",
         ],
         "bindgen output changed"
+    );
+}
+
+/// The port is a usable CLI, not just a library: it writes to a file when given
+/// a second argument, and reports a missing header rather than emitting an
+/// empty module.
+#[test]
+fn maca_bindgen_cli_writes_and_reports_errors() {
+    if wsl() || !have("cc") {
+        eprintln!("skipping bindgen CLI test: needs a host cc and no wsl");
+        return;
+    }
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let tool = repo.join("tools/bindgen.maca");
+    let dir = std::env::temp_dir().join("maca-bindgen-cli");
+    let _ = std::fs::create_dir_all(&dir);
+
+    let header = dir.join("api.h");
+    std::fs::write(&header, "int api_open(const char *path);\n").unwrap();
+    let out = dir.join("api.maca");
+    let _ = std::fs::remove_file(&out);
+
+    let run = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "run",
+            &tool.to_string_lossy(),
+            &header.to_string_lossy(),
+            &out.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn bindgen");
+    assert!(run.status.success(), "bindgen CLI failed");
+    let written = std::fs::read_to_string(&out).expect("output file not written");
+    assert!(
+        written.contains("api_open(path: str) -> int") && written.contains("import c \"api.h\""),
+        "written module wrong:\n{written}"
+    );
+
+    // a header that doesn't exist is an error, not an empty module
+    let miss = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "run",
+            &tool.to_string_lossy(),
+            &dir.join("absent.h").to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn bindgen");
+    assert!(!miss.status.success(), "a missing header should exit non-zero");
+    assert!(
+        String::from_utf8_lossy(&miss.stderr).contains("cannot read"),
+        "missing header should be reported: {}",
+        String::from_utf8_lossy(&miss.stderr)
     );
 }

@@ -91,11 +91,21 @@ pub fn put(key: &str, artifact: &Path) {
 
 /// Copy a cached artifact to `out` and mark it executable.
 pub fn place(cached: &Path, out: &Path) -> Result<(), String> {
-    std::fs::copy(cached, out).map_err(|e| format!("cache copy failed: {e}"))?;
+    // Copy to a unique temp sibling and rename into place, rather than writing
+    // `out` directly: a concurrent `maca run` of the same program may currently
+    // be *executing* that path, and copying over a running binary fails with
+    // ETXTBSY ("Text file busy"). A rename swaps the directory entry instead —
+    // the running process keeps its own inode — so parallel runs don't collide.
+    let tmp = unique_tmp(out, "place");
+    std::fs::copy(cached, &tmp).map_err(|e| format!("cache copy failed: {e}"))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(out, std::fs::Permissions::from_mode(0o755));
+        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755));
+    }
+    if let Err(e) = std::fs::rename(&tmp, out) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(format!("cache install failed: {e}"));
     }
     Ok(())
 }

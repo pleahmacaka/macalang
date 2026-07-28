@@ -1077,3 +1077,64 @@ fn handbook_examples_all_run() {
     }
     assert_eq!(out.status.code(), Some(0));
 }
+
+#[test]
+fn concurrent_runs_of_the_same_program_dont_collide() {
+    // Two `maca run`s of the same source race to install the cached binary at
+    // the same path. Copying over a file that another process is *executing*
+    // fails with ETXTBSY ("Text file busy"), so the cache installs via a temp
+    // file + rename. Without that, this flakes.
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-concurrent-run");
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("spin.maca");
+    // a little work, so the runs genuinely overlap
+    std::fs::write(
+        &f,
+        "sum_to(n: int) -> int {\n    t = 0\n    for i in 1..n {\n        t = t + i\n    }\n    t\n}\n\
+         main() -> int {\n    info(\"{sum_to(200000)}\")\n    0\n}\n",
+    )
+    .unwrap();
+
+    // prime the cache so both racers take the install path
+    let _ = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &f.to_string_lossy()])
+        .output();
+
+    let handles: Vec<_> = (0..4)
+        .map(|_| {
+            let path = f.to_string_lossy().to_string();
+            std::thread::spawn(move || {
+                Command::new(env!("CARGO_BIN_EXE_maca"))
+                    .args(["run", &path])
+                    .output()
+                    .expect("spawn maca run")
+            })
+        })
+        .collect();
+
+    for h in handles {
+        let out = h.join().expect("thread panicked");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            out.status.success(),
+            "a concurrent run failed: {stderr}"
+        );
+        assert!(
+            !stderr.contains("Text file busy") && !stderr.contains("cache copy failed"),
+            "cache install raced: {stderr}"
+        );
+        assert!(
+            String::from_utf8_lossy(&out.stdout).contains("20000100000"),
+            "wrong result from a concurrent run"
+        );
+    }
+}
