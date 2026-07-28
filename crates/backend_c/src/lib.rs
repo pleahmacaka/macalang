@@ -1020,7 +1020,12 @@ impl<'a> Cx<'a> {
         // themselves, so they wait until their element type is defined (emitted
         // with / after the struct block below).
         let mut emitted_arr: HashSet<CTy> = HashSet::new();
-        let elems: Vec<CTy> = self.arr_elems.iter().cloned().collect();
+        let mut elems: Vec<CTy> = self.arr_elems.iter().cloned().collect();
+        // Shallowest first: `IntArrArr`'s element is `IntArr`, so `IntArr` has
+        // to be a complete type before the outer array's struct names it. A
+        // HashSet's order is arbitrary, which made `int[][]` compile or not
+        // depending on the hash seed.
+        elems.sort_by_key(|e| (arr_depth(e), arr_name(e)));
         for e in &elems {
             if !matches!(e, CTy::Rec(_) | CTy::Sum(_)) {
                 self.push(&format!(
@@ -1446,8 +1451,22 @@ impl<'a> Cx<'a> {
 
     fn block(&mut self, env: &mut Env, stmts: &[Stmt], sink: &Sink, ind: usize) {
         let base = env.len();
+        // Perceus, the codegen half: a local that owns a heap buffer and cannot
+        // outlive this block is dropped when the block ends, which returns the
+        // buffer to the free-list for the next allocation of that size to reuse.
+        // `escaping` is the conservative half — see `note_escapes`.
+        let escaping = escaping_names(stmts);
+        let mut owned: Vec<(String, CTy)> = Vec::new();
         for (i, s) in stmts.iter().enumerate() {
             let last = i + 1 == stmts.len();
+            // Drops go before the block's final statement when that statement
+            // carries the value out (a `return`, or an assignment into an
+            // enclosing binding); an owned local is never named there, so
+            // nothing it holds is read after being dropped.
+            if last && !matches!(sink, Sink::Discard) {
+                self.emit_drops(&owned, ind);
+                owned.clear();
+            }
             match s {
                 // a declaration: a bare `x = e` that first introduces `x` (its
                 // const-ness is a checker concern). A bare assignment to a name
@@ -1470,6 +1489,14 @@ impl<'a> Cx<'a> {
                             let ty = ann.unwrap_or(cty);
                             self.indent(ind);
                             self.push(&format!("{} {} = {code};", c_type(&ty), cid(name)));
+                            // Owned iff the buffer is fresh (not another name's)
+                            // and the name never leaves this block.
+                            if owns_heap(&ty)
+                                && !escaping.contains(name)
+                                && !matches!(&b.value, Expr::Ident(_))
+                            {
+                                owned.push((name.clone(), ty.clone()));
+                            }
                             env.push((name.clone(), ty));
                         }
                     }
@@ -1502,7 +1529,24 @@ impl<'a> Cx<'a> {
                 _ => {}
             }
         }
+        self.emit_drops(&owned, ind);
         env.truncate(base);
+    }
+
+    /// Release each owned local's buffer. `maca_drop` takes the last owner's
+    /// count to zero and hands the block back to the free-list; a NULL buffer
+    /// (an array that was never pushed to) is a no-op.
+    fn emit_drops(&mut self, owned: &[(String, CTy)], ind: usize) {
+        for (name, ty) in owned {
+            let v = cid(name);
+            self.indent(ind);
+            match ty {
+                CTy::Map(_) => self.push(&format!(
+                    "maca_drop({v}.keys); maca_drop({v}.vals); maca_drop({v}.used);"
+                )),
+                _ => self.push(&format!("maca_drop({v}.data);")),
+            }
+        }
     }
 
     /// Emit a simple (already-lowered) value against a sink.
@@ -2425,6 +2469,8 @@ impl<'a> Cx<'a> {
                     | "assert"
                     | "assert_eq"
                     | "failures"
+                    | "alloc_count"
+                    | "reuse_count"
                     | "map"
             )
     }
@@ -2870,6 +2916,9 @@ impl<'a> Cx<'a> {
                 "assert" => return (format!("maca_assert({})", a.join(", ")), CTy::Bool),
                 "assert_eq" => return (format!("maca_assert_eq({})", a.join(", ")), CTy::Bool),
                 "failures" => return ("maca_failures()".into(), CTy::Int),
+                // allocator counters — how a program can see reuse happening
+                "alloc_count" => return ("(int64_t)maca_alloc_count()".into(), CTy::Int),
+                "reuse_count" => return ("(int64_t)maca_reuse_count()".into(), CTy::Int),
                 // `list_dir(p)` → a `str[]` of entry names, built from the
                 // runtime's malloc'd array (mirrors how `.split` lowers).
                 "list_dir" => {
@@ -4285,6 +4334,181 @@ fn ty_tag(t: &CTy) -> String {
         CTy::Rec(n) | CTy::Sum(n) => cid(n),
         CTy::Arr(e) => format!("{}arr", ty_tag(e)),
         _ => "any".into(),
+    }
+}
+
+/// How deeply an array type nests — `int` is 0, `int[]` is 1, `int[][]` is 2.
+fn arr_depth(t: &CTy) -> usize {
+    match t {
+        CTy::Arr(e) => 1 + arr_depth(e),
+        CTy::Map(v) => 1 + arr_depth(v),
+        _ => 0,
+    }
+}
+
+/// Types whose value carries a heap buffer this back end allocated and can
+/// therefore name. A record's fields may be heap too, but the record does not
+/// own them exclusively, so it is left out.
+fn owns_heap(t: &CTy) -> bool {
+    matches!(t, CTy::Arr(_) | CTy::Map(_))
+}
+
+/// Names that may outlive the statement list they are bound in.
+///
+/// The analysis is deliberately lopsided. Missing an escape frees a buffer
+/// someone still holds; missing a *non*-escape only means the program keeps
+/// memory it could have released, which is exactly what it did before any of
+/// this existed. So a name counts as escaping the moment it appears anywhere
+/// its value could be kept: a call argument, a list or record element, another
+/// binding's value, the tail expression, a `return` or `fail`.
+///
+/// The one position that does *not* escape is the receiver of a method call.
+/// Every array and map method in this back end builds a fresh buffer or reads
+/// one — none stores its receiver — so `xs.length()` and `xs.sort()` leave `xs`
+/// owned by the block that built it. Without that exemption almost nothing
+/// would qualify, since a value you never look at is not worth building.
+fn escaping_names(stmts: &[Stmt]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    let n = stmts.len();
+    for (i, s) in stmts.iter().enumerate() {
+        match s {
+            // the tail expression carries the block's value out
+            Stmt::Expr(e) if i + 1 == n => note_escapes_all(e, &mut out),
+            Stmt::Expr(e) => note_escapes(e, &mut out),
+            Stmt::Bind(b) => {
+                // a value bound to another name is now that name's problem
+                note_escapes_all(&b.value, &mut out);
+                note_escapes(&b.target, &mut out);
+            }
+            Stmt::Fn(f) => match &f.body {
+                // a nested function can capture, so treat its whole body as an
+                // escape context
+                Some(FnBody::Expr(e)) => note_escapes_all(e, &mut out),
+                Some(FnBody::Block(ss)) => ss.iter().for_each(|s| match s {
+                    Stmt::Expr(e) | Stmt::Bind(Bind { value: e, .. }) => {
+                        note_escapes_all(e, &mut out)
+                    }
+                    _ => {}
+                }),
+                None => {}
+            },
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Every name in `e` escapes — used where the expression's value is kept.
+fn note_escapes_all(e: &Expr, out: &mut HashSet<String>) {
+    if let Expr::Ident(n) = e {
+        out.insert(n.clone());
+    }
+    walk_children(e, &mut |c| note_escapes_all(c, out));
+}
+
+/// Names in `e` that escape, sparing a method call's receiver.
+fn note_escapes(e: &Expr, out: &mut HashSet<String>) {
+    if let Expr::Call { callee, args } = e
+        && let Expr::Field { base, .. } = &**callee
+    {
+        // the receiver is read, not retained; its own children still count
+        if !matches!(&**base, Expr::Ident(_)) {
+            note_escapes(base, out);
+        }
+        for a in args {
+            note_escapes_all(arg_value(a), out);
+        }
+        return;
+    }
+    if let Expr::Ident(n) = e {
+        out.insert(n.clone());
+    }
+    walk_children(e, &mut |c| note_escapes(c, out));
+}
+
+fn arg_value(a: &Arg) -> &Expr {
+    match a {
+        Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
+    }
+}
+
+/// Apply `f` to each direct sub-expression of `e`.
+fn walk_children(e: &Expr, f: &mut dyn FnMut(&Expr)) {
+    let stmts = |ss: &[Stmt], f: &mut dyn FnMut(&Expr)| {
+        for s in ss {
+            match s {
+                Stmt::Expr(e) | Stmt::Bind(Bind { value: e, .. }) => f(e),
+                _ => {}
+            }
+        }
+    };
+    match e {
+        Expr::Str(parts) => parts.iter().for_each(|p| {
+            if let StrPart::Interp(x) = p {
+                f(x)
+            }
+        }),
+        Expr::List(es) => es.iter().for_each(f),
+        Expr::Record(fs) | Expr::Ctor { fields: fs, .. } | Expr::With { fields: fs, .. } => {
+            fs.iter().for_each(|fl| {
+                if let Field::Value { value, .. } | Field::Bare(value) = fl {
+                    f(value)
+                }
+            })
+        }
+        Expr::Call { callee, args } => {
+            f(callee);
+            args.iter().for_each(|a| f(arg_value(a)));
+        }
+        Expr::Field { base, .. }
+        | Expr::Unary { expr: base, .. }
+        | Expr::Try(base)
+        | Expr::Fail(base)
+        | Expr::Reify(base)
+        | Expr::Await(base)
+        | Expr::Spawn(base)
+        | Expr::Lambda { body: base, .. } => f(base),
+        Expr::Index { base: a, index: b }
+        | Expr::Range { lo: a, hi: b }
+        | Expr::Binary { lhs: a, rhs: b, .. }
+        | Expr::Assign {
+            target: a,
+            value: b,
+        } => {
+            f(a);
+            f(b);
+        }
+        Expr::Ternary { cond, then, els } => {
+            f(cond);
+            f(then);
+            f(els);
+        }
+        Expr::If { cond, then, els } => {
+            f(cond);
+            stmts(then, f);
+            if let Some(e) = els {
+                stmts(e, f);
+            }
+        }
+        Expr::Match { scrut, arms } => {
+            f(scrut);
+            for a in arms {
+                f(&a.body);
+                if let Some(g) = &a.guard {
+                    f(g);
+                }
+            }
+        }
+        Expr::For { iter, body, .. } => {
+            f(iter);
+            stmts(body, f);
+        }
+        Expr::While { cond, body } => {
+            f(cond);
+            stmts(body, f);
+        }
+        Expr::Block(ss) => stmts(ss, f),
+        _ => {}
     }
 }
 

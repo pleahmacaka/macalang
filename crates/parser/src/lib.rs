@@ -141,6 +141,10 @@ pub fn is_backend_intrinsic(name: &str) -> bool {
                 | "assert"
                 | "assert_eq"
                 | "failures"
+                // allocator counters: how many blocks were requested, and how
+                // many of those came back off the free-list instead of malloc
+                | "alloc_count"
+                | "reuse_count"
                 // an empty `Map str V`, typed by what it is assigned into
                 | "map"
         )

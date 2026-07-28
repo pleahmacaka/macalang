@@ -21,15 +21,25 @@ pub const RUNTIME_H: &str = r##"#ifndef MACA_RUNTIME_H
 
 typedef const char* maca_str;
 
-/* ---- allocator (Phase 5): size-tracked blocks, a free-list for reuse, and a
-   registry drained at exit so a run-once binary is valgrind-clean. Not full
-   Perceus (no codegen-inserted dup/drop yet) — arrays return their old buffer
-   to the free-list on growth, which the next same-size request reuses. ---- */
+/* ---- allocator: size-tracked, reference-counted blocks with a free-list for
+   reuse and a registry drained at exit.
+
+   `maca_alloc` hands back a block with one owner. `maca_dup` adds an owner,
+   `maca_drop` removes one, and the block returns to the free-list when the last
+   owner lets go — where the next same-size request picks it up rather than
+   going to malloc. That is the reuse Perceus is named for: the code generator
+   inserts the dup/drop calls (see `owned_locals` in the C backend), so a loop
+   that builds and discards a value reuses one buffer instead of asking the
+   allocator for a new one every time round.
+
+   Blocks are also registered, and the registry is drained at exit, so a program
+   that ends while still holding memory is valgrind-clean. ---- */
 void maca_init(void);          /* installs atexit(shutdown); call first in main */
 void maca_shutdown(void);      /* frees every live block */
 void* maca_alloc(size_t n);
 void* maca_realloc(void* p, size_t n);
-void maca_drop(void* p);       /* return a block to the reuse free-list */
+void maca_dup(void* p);        /* one more owner */
+void maca_drop(void* p);       /* one fewer owner; at zero, back to the free-list */
 uint64_t maca_alloc_count(void);
 uint64_t maca_reuse_count(void);
 
@@ -302,7 +312,7 @@ static void die(const char* msg) {
 }
 
 /* ---- allocator: header-tracked blocks + reuse free-list + exit drain ---- */
-typedef struct maca_hdr { size_t size; struct maca_hdr* fl_next; } maca_hdr;
+typedef struct maca_hdr { size_t size; int64_t rc; struct maca_hdr* fl_next; } maca_hdr;
 static maca_hdr** g_live = NULL;
 static size_t g_live_len = 0, g_live_cap = 0;
 static maca_hdr* g_freelist = NULL;
@@ -317,11 +327,14 @@ void maca_shutdown(void) {
 void* maca_alloc(size_t n) {
     for (maca_hdr** pp = &g_freelist; *pp; pp = &(*pp)->fl_next) {
         maca_hdr* h = *pp;
-        if (h->size >= n) { *pp = h->fl_next; g_reuse_count++; return (void*)(h + 1); }
+        if (h->size >= n) {
+            *pp = h->fl_next; h->fl_next = NULL; h->rc = 1;
+            g_reuse_count++; return (void*)(h + 1);
+        }
     }
     maca_hdr* h = (maca_hdr*)malloc(sizeof(maca_hdr) + n);
     if (!h) die("out of memory");
-    h->size = n; h->fl_next = NULL;
+    h->size = n; h->rc = 1; h->fl_next = NULL;
     if (g_live_len == g_live_cap) {
         g_live_cap = g_live_cap ? g_live_cap * 2 : 64;
         g_live = (maca_hdr**)realloc(g_live, g_live_cap * sizeof(maca_hdr*));
@@ -331,9 +344,14 @@ void* maca_alloc(size_t n) {
     g_alloc_count++;
     return (void*)(h + 1);
 }
+void maca_dup(void* p) {
+    if (!p) return;
+    (((maca_hdr*)p) - 1)->rc++;
+}
 void maca_drop(void* p) {
     if (!p) return;
     maca_hdr* h = ((maca_hdr*)p) - 1;
+    if (--h->rc > 0) return;
     h->fl_next = g_freelist; g_freelist = h;
 }
 void* maca_realloc(void* p, size_t n) {

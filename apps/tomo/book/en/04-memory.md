@@ -72,24 +72,54 @@ an AST — all fine, all acyclic. A doubly-linked list where each node points ba
 at its parent will hold itself alive. In practice this is rarely a constraint;
 the compiler in `selfhost/` is a large program built entirely from trees.
 
-## Where this actually stands
+## What the compiler inserts
 
-Being straight about it: **Perceus is the design, not yet the implementation.**
+Every heap block carries a count of how many owners it has. `maca_alloc` hands
+one back with a single owner; the compiler emits the calls that add and remove
+owners, and when the last one lets go the block goes on a free-list where the
+next request of that size picks it up.
 
-What is in the runtime today is a size-tracked allocator with a free-list and a
-registry that is drained at exit. Growing an array returns its old buffer to the
-free-list, and the next request of that size reuses it — so the *reuse* half of
-Perceus exists in a limited form. What does not exist yet is the compile-time
-part: codegen does not insert `dup`/`drop` operations, so nothing is freed early;
-a run-once program simply holds its memory until it exits.
+You never write those calls. The rule the compiler follows is worth knowing
+anyway, because it explains why memory behaves the way it does:
 
-For a compiler, a CLI tool, a build step — the things Maca is used for today —
-that is fine, and it is valgrind-clean because of the exit-time drain. For a
-long-running server it would not be. The gap is known and it is where the memory
-work goes next.
+**A local owns its buffer if it built it and cannot outlive its block.** A value
+bound from another name is an alias and owns nothing. A value that leaves — as
+the block's result, in an outer binding, inside a structure, as an argument —
+belongs to whoever it went to. Everything else is released when its block ends.
 
-A handbook that described the intended design as though it were finished would
-be a nicer read and a worse book.
+Reading a value never counts as taking it, so a method call leaves ownership
+where it was: `xs.length()` and `xs.sort()` both leave `xs` owned by the block
+that built it. This matters, because a value you never look at is not worth
+building.
+
+The effect is visible from inside the program:
+
+```maca
+build(n: int) -> int[] {
+    xs = []
+    for i in 1..n {
+        xs = xs.push(i)
+    }
+    xs
+}
+
+main() -> int {
+    for round in 1..500 {
+        ys = build(200)
+    }
+    info("reused {reuse_count() * 100 / alloc_count()}% of allocations")
+    0
+}
+```
+
+Over 90% — the loop settles on one buffer and keeps handing it back and forth
+with the allocator, rather than asking for five hundred.
+
+The analysis is deliberately lopsided. Missing an escape would free a buffer
+someone still holds; missing a *non*-escape only means holding memory a little
+longer than necessary. So when the compiler cannot tell, it keeps the value.
+That is why the whole test suite runs valgrind-clean: nothing live is ever
+released, and whatever a program is still holding when it exits is drained then.
 
 ## Comparison at a glance
 
@@ -98,5 +128,4 @@ be a nicer read and a worse book.
 | Manual (C) | none | if you do | if you do | high, in bugs |
 | Tracing GC (Go) | yes | no | yes | none |
 | Ownership (Rust) | none | yes | with effort | high, in types |
-| Perceus (Maca, target) | none | yes | no | none |
-| Maca, today | none | at exit | n/a | none |
+| Perceus (Maca) | none | yes | no | none |
