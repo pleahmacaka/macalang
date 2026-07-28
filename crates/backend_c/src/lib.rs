@@ -19,7 +19,7 @@ pub fn emit(m: &Module) -> String {
     let mut cx = Cx::new(m);
     cx.collect();
     cx.emit_all();
-    cx.out
+    cx.finish()
 }
 
 /// Emit C, or the list of codegen limitations the module hit. The driver uses
@@ -30,7 +30,7 @@ pub fn emit_checked(m: &Module) -> Result<String, Vec<String>> {
     cx.collect();
     cx.emit_all();
     if cx.problems.is_empty() {
-        Ok(cx.out)
+        Ok(cx.finish())
     } else {
         Err(cx.problems)
     }
@@ -134,6 +134,9 @@ struct Cx<'a> {
     // codegen limitations hit while lowering — surfaced as clean errors instead
     // of silently emitting wrong C.
     problems: Vec<String>,
+    // Tailwind utility names seen in a `class=` attribute, so `styles()` can
+    // emit only the rules the program actually uses.
+    classes: BTreeSet<String>,
 }
 
 impl<'a> Cx<'a> {
@@ -161,14 +164,60 @@ impl<'a> Cx<'a> {
             spec_pending: Vec::new(),
             spec_done: HashSet::new(),
             problems: Vec::new(),
+            classes: BTreeSet::new(),
         }
     }
 
     /// Record a codegen limitation. The placeholder C keeps the output
     /// well-formed for tests, but `emit_checked` turns any recorded problem into
     /// a hard error so a real build never ships silently-wrong code.
+    /// The finished translation unit.
+    ///
+    /// `styles()` lowers to `MACA_STYLES`, which can only be defined once every
+    /// `class=` in the module has been seen — so it is prepended here, after
+    /// lowering rather than during it.
+    fn finish(mut self) -> String {
+        if !self.out.contains("MACA_STYLES") {
+            return self.out;
+        }
+        let mut css =
+            String::from("*,*::before,*::after{box-sizing:border-box}\\nhtml,body{margin:0}\\n");
+        for c in &self.classes {
+            if let Some(rule) = maca_backend_js::tailwind(c) {
+                css.push_str(&format!(
+                    ".{} {{ {rule} }}\\n",
+                    maca_backend_js::css_escape(c)
+                ));
+            }
+        }
+        let def = format!("#define MACA_STYLES \"{css}\"\n");
+        // after the includes, before anything that uses it
+        match self.out.find("\n\n") {
+            Some(i) => {
+                self.out.insert_str(i + 2, &def);
+                self.out
+            }
+            None => def + &self.out,
+        }
+    }
+
     fn problem(&mut self, msg: impl Into<String>) {
         self.problems.push(msg.into());
+    }
+
+    /// Record the utility names in a `class=` value. Only literal text can be
+    /// seen at compile time; a class assembled at run time won't be in the
+    /// generated stylesheet, which is the same limitation Tailwind itself has.
+    fn note_classes(&mut self, value: &Expr) {
+        if let Expr::Str(parts) = value {
+            for p in parts {
+                if let StrPart::Text(t) = p {
+                    for c in t.split_whitespace() {
+                        self.classes.insert(c.to_string());
+                    }
+                }
+            }
+        }
     }
 
     fn note_vec(&mut self, t: &CTy) {
@@ -2348,6 +2397,68 @@ impl<'a> Cx<'a> {
         (format!("({{ {body} _a; }})"), CTy::Arr(Box::new(elem)))
     }
 
+    /// `tag(attr=value, …, child, …)` → the HTML text for that element.
+    ///
+    /// Named arguments become attributes, positional ones children. A void
+    /// element takes no children and closes itself. Children are already
+    /// strings — a nested element lowered by this same function, or any
+    /// expression converted with `to_str` — so the whole tree is one
+    /// concatenation with no intermediate representation.
+    ///
+    /// Attribute values are escaped; children are *not*, because a child is
+    /// either another element (already markup) or text the program chose to
+    /// put there. A generator that has to emit `<pre>` around code it escaped
+    /// itself cannot have the renderer escape it again.
+    fn html_element(&mut self, env: &mut Env, tag: &str, args: &[Arg]) -> (String, CTy) {
+        let mut attrs = String::new();
+        let mut kids: Vec<String> = Vec::new();
+        for a in args {
+            match a {
+                Arg::Named { name, value } => {
+                    let (v, t) = self.expr(env, value, Some(&CTy::Str));
+                    let v = to_str(&v, &t);
+                    // `class` is where Tailwind utilities are written, so its
+                    // literals are collected for the generated stylesheet.
+                    if name == "class" {
+                        self.note_classes(value);
+                    }
+                    attrs.push_str(&format!(" maca_attr(\"{}\", {v})", name.replace('"', "")));
+                }
+                // `on:click=…` is a DOM handler; there is no DOM in a string.
+                Arg::Directive { prop, .. } => {
+                    self.problem(format!(
+                        "`on:{prop}` needs a live DOM — build this with `--target js`"
+                    ));
+                }
+                Arg::Pos(e) => {
+                    let (c, t) = self.expr(env, e, Some(&CTy::Str));
+                    kids.push(to_str(&c, &t));
+                }
+            }
+        }
+        // attributes are emitted by one runtime call per attribute, folded into
+        // the open tag
+        let open = attrs
+            .split(" maca_attr")
+            .filter(|s| !s.is_empty())
+            .fold(format!("\"<{tag}\""), |acc, a| {
+                format!("maca_concat({acc}, maca_attr{a})")
+            });
+        if is_void_html(tag) {
+            if !kids.is_empty() {
+                self.problem(format!("`{tag}` is a void element and takes no children"));
+            }
+            return (format!("maca_concat({open}, \">\")"), CTy::Str);
+        }
+        let inner = kids.into_iter().fold("\"\"".to_string(), |acc, k| {
+            format!("maca_concat({acc}, {k})")
+        });
+        (
+            format!("maca_concat(maca_concat({open}, \">\"), maca_concat({inner}, \"</{tag}>\"))"),
+            CTy::Str,
+        )
+    }
+
     fn call(
         &mut self,
         env: &mut Env,
@@ -2355,6 +2466,26 @@ impl<'a> Cx<'a> {
         args: &[Arg],
         expected: Option<&CTy>,
     ) -> (String, CTy) {
+        // A UI element tag on the native target renders to an HTML *string*.
+        //
+        // The JS backend turns these into a reactive DOM; there is no DOM here,
+        // so `div(class="x", "hi")` becomes the text `<div class="x">hi</div>`.
+        // That is what a static site generator needs, and it means a program
+        // that emits HTML can be written in Maca's own UI syntax instead of
+        // concatenating angle brackets by hand.
+        // A user's own definition always wins. `label`, `main`, `section`,
+        // `code`, `p`, `a`, `form`, `option` are all HTML tags *and* names
+        // people give their functions; hijacking a defined name would break
+        // working programs (it broke `examples/record_pattern.maca`, which has
+        // a `label(pos: bool) -> str`).
+        if let Expr::Ident(tag) = callee
+            && maca_parser::is_ui_element_tag(tag)
+            && !self.fns.contains_key(tag)
+            && !self.generics.contains_key(tag)
+            && lookup(env, tag).is_none()
+        {
+            return self.html_element(env, tag, args);
+        }
         // module.member(...) and UFCS receiver.method(...)
         if let Expr::Field { base, name } = callee {
             if let Expr::Ident(m) = &**base {
@@ -2543,6 +2674,14 @@ impl<'a> Cx<'a> {
             let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
             if let Some(cfn) = console_fn(name) {
                 return (format!("{cfn}({})", a.join(", ")), CTy::Unit);
+            }
+            // `styles()` — the stylesheet for the Tailwind utilities this
+            // program uses. Generated at compile time from every `class=`
+            // literal in the module, so nothing unused ships and no hand-written
+            // CSS is needed. The string is emitted at the end of codegen, once
+            // every class has been seen.
+            if name == "styles" && a.is_empty() {
+                return ("MACA_STYLES".into(), CTy::Str);
             }
             // file I/O builtins.
             match name.as_str() {
@@ -3836,4 +3975,24 @@ fn value_dep(t: &CTy) -> Option<String> {
         CTy::Rec(n) | CTy::Sum(n) => Some(n.clone()),
         _ => None,
     }
+}
+
+/// HTML elements that have no closing tag and take no children.
+fn is_void_html(tag: &str) -> bool {
+    matches!(
+        tag,
+        "area"
+            | "base"
+            | "br"
+            | "col"
+            | "embed"
+            | "hr"
+            | "img"
+            | "input"
+            | "link"
+            | "meta"
+            | "source"
+            | "track"
+            | "wbr"
+    )
 }

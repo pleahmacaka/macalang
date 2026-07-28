@@ -89,6 +89,7 @@ maca_str* maca_list_dir(maca_str path, int64_t* out_len); /* names, sorted; mall
 maca_str maca_pad_start(maca_str s, int64_t w, maca_str p); /* left-pad to width w */
 maca_str maca_pad_end(maca_str s, int64_t w, maca_str p);   /* right-pad to width w */
 maca_str maca_pad_center(maca_str s, int64_t w, maca_str p); /* centre within width w */
+maca_str maca_attr(maca_str name, maca_str value);  /* ` name="escaped"` */
 maca_str maca_fixed(double x, int64_t n);             /* x with n decimal places */
 maca_str maca_substr(maca_str s, int64_t start, int64_t len);  /* byte range, clamped */
 int64_t maca_index_of(maca_str s, maca_str sub);      /* byte index, or -1 */
@@ -469,6 +470,31 @@ maca_str maca_pad_start(maca_str s, int64_t w, maca_str p) { return maca_pad(s, 
 maca_str maca_pad_end(maca_str s, int64_t w, maca_str p) { return maca_pad(s, w, p, false); }
 /* Centre `s` in width `w`. An odd remainder goes on the right, so a column of
    centred cells stays flush left — the same choice Python's `str.center` makes. */
+/* ` name="value"`, with the value escaped for an attribute context. Returns the
+   empty string for an empty value, so an optional attribute can be passed as ""
+   and simply not appear. */
+maca_str maca_attr(maca_str name, maca_str value) {
+    if (!name || !*name) return "";
+    if (!value) value = "";
+    size_t n = strlen(name), v = strlen(value);
+    /* worst case every byte becomes &quot; (6) */
+    char* r = (char*)xmalloc(n + v * 6 + 5);
+    char* w = r;
+    *w++ = ' ';
+    memcpy(w, name, n); w += n;
+    *w++ = '='; *w++ = '"';
+    for (size_t i = 0; i < v; i++) {
+        switch (value[i]) {
+            case '&':  memcpy(w, "&amp;", 5);  w += 5; break;
+            case '<':  memcpy(w, "&lt;", 4);   w += 4; break;
+            case '>':  memcpy(w, "&gt;", 4);   w += 4; break;
+            case '"':  memcpy(w, "&quot;", 6); w += 6; break;
+            default:   *w++ = value[i];
+        }
+    }
+    *w++ = '"'; *w = '\0';
+    return r;
+}
 maca_str maca_pad_center(maca_str s, int64_t w, maca_str p) {
     if (!s) s = "";
     if (!p || !*p) p = " ";

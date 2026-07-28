@@ -101,6 +101,9 @@ pub fn is_backend_intrinsic(name: &str) -> bool {
                 | "nop"
                 | "forever"
                 // file I/O builtins (lowered by the C backend to the runtime)
+                // the stylesheet for the Tailwind utilities the module uses,
+                // generated at compile time by the back end
+                | "styles"
                 | "read_file"
                 | "write_file"
                 | "file_exists"

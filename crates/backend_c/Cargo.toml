@@ -5,4 +5,5 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+maca-backend-js = { path = "../backend_js" }
 maca-parser = { path = "../parser" }

@@ -728,7 +728,7 @@ fn js_init(e: &Expr) -> String {
 /// the common utilities (display/flex/grid, spacing, sizing, text, colors,
 /// borders, rounding, overflow, position) generatively — a compact but real
 /// engine, not a fixed table. Unknown classes return `None` and are dropped.
-fn tailwind(class: &str) -> Option<String> {
+pub fn tailwind(class: &str) -> Option<String> {
     // fixed keywords first
     let fixed = match class {
         "flex" => "display:flex",
@@ -836,6 +836,9 @@ fn tailwind(class: &str) -> Option<String> {
         return Some(format!("min-width:{};", size(v)?));
     }
     if let Some(v) = class.strip_prefix("max-w-") {
+        if let Some(w) = container_width(v) {
+            return Some(format!("max-width:{w};"));
+        }
         return Some(format!("max-width:{};", size(v)?));
     }
     if let Some(v) = class.strip_prefix("max-h-") {
@@ -905,10 +908,35 @@ fn space(v: &str) -> Option<String> {
     Some(match v {
         "0" => "0".into(),
         "px" => "1px".into(),
+        // `mx-auto` is how anything gets centred, so the spacing scale has to
+        // accept it even though it isn't a length.
+        "auto" => "auto".into(),
         _ => {
             let n: f32 = v.parse().ok()?;
             format!("{}rem", n * 0.25)
         }
+    })
+}
+
+/// Tailwind's named container widths, for `max-w-*`. These are what a column of
+/// text is actually sized with — `max-w-2xl` is the standard reading measure —
+/// so a documentation page needs them before it needs most of the numeric scale.
+fn container_width(v: &str) -> Option<&'static str> {
+    Some(match v {
+        "xs" => "20rem",
+        "sm" => "24rem",
+        "md" => "28rem",
+        "lg" => "32rem",
+        "xl" => "36rem",
+        "2xl" => "42rem",
+        "3xl" => "48rem",
+        "4xl" => "56rem",
+        "5xl" => "64rem",
+        "6xl" => "72rem",
+        "7xl" => "80rem",
+        "prose" => "65ch",
+        "none" => "none",
+        _ => return None,
     })
 }
 
@@ -1004,7 +1032,7 @@ fn color(v: &str) -> Option<&'static str> {
 }
 
 /// Escape a class name for a CSS selector (`/` in `w-1/2`, `.` in `p-1.5`).
-fn css_escape(c: &str) -> String {
+pub fn css_escape(c: &str) -> String {
     c.replace('/', "\\/")
         .replace('.', "\\.")
         .replace(':', "\\:")
