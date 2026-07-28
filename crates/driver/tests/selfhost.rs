@@ -249,7 +249,7 @@ fn selfhost_frontend_compiles_and_runs() {
 
     // records: a type declaration → a struct, a field access → member access.
     assert!(
-        stdout.contains("record C:    typedef struct { int x; int y;")
+        stdout.contains("typedef struct { int x; int y;")
             && stdout.contains("int sum(Point p) { return (p.x + p.y);"),
         "C record lowering wrong: {stdout}"
     );
@@ -262,7 +262,7 @@ fn selfhost_frontend_compiles_and_runs() {
     // sum types: a `A | B | C` declaration → a C/Rust enum; a bare variant
     // reference stays bare (Rust glob-imports the variants via `use Color::*`).
     assert!(
-        stdout.contains("sum C:    typedef enum { Red, Green, Blue } Color;")
+        stdout.contains("typedef enum { Red, Green, Blue } Color;")
             && stdout.contains("rank(Color c) { return ((c == Green) ? 42 : 0);"),
         "C sum lowering wrong: {stdout}"
     );
@@ -283,6 +283,17 @@ fn selfhost_frontend_compiles_and_runs() {
         "Rust match lowering wrong: {stdout}"
     );
 
+    // string equality: `w == "let"` → `strcmp(w, "let") == 0` in C (with a
+    // <string.h> preamble), a native `==` in Rust.
+    assert!(
+        stdout.contains("streq C:    int kw(const char* w) { return ((strcmp(w, \"let\") == 0) ? 1 : 0);"),
+        "C string-equality lowering wrong: {stdout}"
+    );
+    assert!(
+        stdout.contains("streq Rust: fn kw(w: String) -> i64 { (if (w == \"let\".to_string())"),
+        "Rust string-equality lowering wrong: {stdout}"
+    );
+
     // Capstone: compile and run the *complete program* the self-hosted compiler
     // emitted. Extract the C between the markers, compile it with the host cc,
     // run it, and check its exit code is `sum(Point{40,2}) == 42` — the
@@ -296,8 +307,10 @@ fn selfhost_frontend_compiles_and_runs() {
     assert!(
         c_src.contains("typedef struct { int x; int y;  } Point;")
             && c_src.contains("typedef enum { Red, Green, Blue } Color;")
+            && c_src.contains("#include <string.h>")
             && c_src.contains("int fld(Point p)")
             && c_src.contains("int code(Color c)")
+            && c_src.contains("int pick(const char* w)")
             && c_src.contains("int main()"),
         "emitted program missing record/sum/functions:\n{c_src}"
     );
@@ -306,8 +319,10 @@ fn selfhost_frontend_compiles_and_runs() {
         "C record literal (designated init) wrong:\n{c_src}"
     );
     assert!(
-        c_src.contains("return p.x;") && c_src.contains("(c == Green ? 2 :"),
-        "C field access / match wrong:\n{c_src}"
+        c_src.contains("return p.x;")
+            && c_src.contains("(c == Green ? 2 :")
+            && c_src.contains("(strcmp(w, \"yes\") == 0)"),
+        "C field access / match / strcmp wrong:\n{c_src}"
     );
     let cfile = dir.join("emitted.c");
     std::fs::write(&cfile, &c_src).unwrap();
@@ -353,6 +368,7 @@ fn selfhost_frontend_compiles_and_runs() {
             && rs_src.contains("enum Color { Red, Green, Blue }")
             && rs_src.contains("fn fld(p: Point) -> i64")
             && rs_src.contains("fn code(c: Color) -> i64")
+            && rs_src.contains("fn pick(w: String) -> i64")
             && rs_src.contains("fn __maca_main() -> i64"),
         "emitted Rust missing record/sum/functions:\n{rs_src}"
     );

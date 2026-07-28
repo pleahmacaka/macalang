@@ -115,13 +115,21 @@ main() -> int {
     info("match C:    {emit_fn(mt.snode)}")
     info("match Rust: {remit_fn(mt.snode)}")
 
+    // string equality: `w == "let"` compares by value — `strcmp(w, "let") == 0`
+    // in C (with the `<string.h>` preamble), a native `==` in Rust. This is what
+    // real Maca keyword/operator matching leans on.
+    se = parse_fn(lex("kw(w: str) -> int => w == \"let\" ? 1 : 0"), 0)
+    info("streq C:    {emit_fn(se.snode)}")
+    info("streq Rust: {remit_fn(se.snode)}")
+
     // a COMPLETE program compiled end to end exercising a record, a sum, field
     // access, and a `match`: a `Point`, a `Color`, `fld` reading a field, `code`
     // matching a variant, and a `main` composing them. C lowers the types to a
     // `typedef struct` / `typedef enum` and `match` to a ternary chain; Rust to a
     // `struct` / `enum` and a native `match`. Compiled and run, exit
-    // `fld(Point{40,9}) + code(Green)` = `40 + 2` = `42`.
-    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} main() -> int {{ q = Point {{ x = 40, y = 9 }} fld(q) + code(Green) }}"
+    // `(fld(Point{40,9}) + code(Green)) * pick("yes")` = `(40 + 2) * 1` = `42`,
+    // where `pick` uses string equality.
+    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} pick(w: str) -> int => w == \"yes\" ? 1 : 0 main() -> int {{ q = Point {{ x = 40, y = 9 }} (fld(q) + code(Green)) * pick(\"yes\") }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))

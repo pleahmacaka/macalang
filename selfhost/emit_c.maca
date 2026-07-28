@@ -23,7 +23,7 @@ emit_expr(e: Expr) -> str =>
         EBool   => e.text == "true" ? "1" : "0"
         EIdent  => e.text
         ECall   => "{e.text}({emit_args(e.children, 0)})"
-        EBinary => "({emit_expr(e.children.get(0))} {e.text} {emit_expr(e.children.get(1))})"
+        EBinary => emit_binary(e)
         ETernary => "({emit_expr(e.children.get(0))} ? {emit_expr(e.children.get(1))} : {emit_expr(e.children.get(2))})"
         EUnary  => "({e.text}{emit_expr(e.children.get(0))})"
         ERecord => "({e.text}){{ {emit_lit_fields(e.children, 0)} }}"
@@ -31,6 +31,18 @@ emit_expr(e: Expr) -> str =>
         EMatch  => emit_match(e)
         _       => "0"
     }
+
+// A binary operator. `==`/`!=` with a string operand goes through `strcmp`
+// (`strcmp(a, b) == 0`), since C `==` on `char*` compares pointers; every other
+// operator is emitted directly.
+emit_binary(e: Expr) -> str {
+    l = e.children.get(0)
+    r = e.children.get(1)
+    is_str_eq = (e.text == "==" || e.text == "!=") && (l.kind == EStr || r.kind == EStr)
+    is_str_eq
+        ? "(strcmp({emit_expr(l)}, {emit_expr(r)}) {e.text} 0)"
+        : "({emit_expr(l)} {e.text} {emit_expr(r)})"
+}
 
 // A `match` lowers to a right-nested ternary chain: `scrut == Pat ? body : …`.
 // A `_` arm (or running out of arms) is the final else.
@@ -121,11 +133,12 @@ emit_stmt(s: Stmt, is_last: bool) -> str =>
             ? "return {emit_expr(s.value)};"
             : "{emit_expr(s.value)};"
 
-// A whole module: record `struct` declarations and function definitions, one
+// A whole module: a `<string.h>` preamble (for the `strcmp` that string `==`
+// lowers to), then record `struct` declarations and function definitions, one
 // item per line (records appear first in source order, so a struct is declared
 // before a function uses it).
 emit_module(m: Module) -> str =>
-    emit_items(m.items, 0)
+    "#include <string.h>\n" ++ emit_items(m.items, 0)
 
 emit_items(items: Stmt[], i: int) -> str =>
     i >= items.length()
