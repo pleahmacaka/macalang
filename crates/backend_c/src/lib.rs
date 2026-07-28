@@ -357,7 +357,16 @@ impl<'a> Cx<'a> {
                                 }
                             })
                             .collect::<Vec<_>>();
-                        let ret = f.ret.as_ref().map_or(CTy::Unit, |t| self.cty(t));
+                        // No `-> T`? Infer it from an arrow body, which *is* the
+                        // function's value — otherwise the return type stays
+                        // `Unit` and callers don't convert the result (a
+                        // `"{inc(41)}"` would pass an int where a string is
+                        // wanted). A block body keeps `Unit`.
+                        let ret = match (&f.ret, &f.body) {
+                            (Some(t), _) => self.cty(t),
+                            (None, Some(FnBody::Expr(e))) => self.infer_ret(e),
+                            _ => CTy::Unit,
+                        };
                         for p in &params {
                             self.note_arr(p);
                             self.note_vec(p);
@@ -534,6 +543,41 @@ impl<'a> Cx<'a> {
             _ => {}
         }
     }
+    /// The type an arrow body yields, for a function that declared no `-> T`.
+    /// Covers the shapes that actually appear (`x + 1`, a comparison, a call, a
+    /// ternary, a literal); anything else stays `Unknown`, the gradual escape
+    /// hatch, rather than the wrong concrete type.
+    fn infer_ret(&self, e: &Expr) -> CTy {
+        match e {
+            Expr::Binary { op, lhs, rhs } => match op {
+                BinOp::Eq
+                | BinOp::Ne
+                | BinOp::Lt
+                | BinOp::Gt
+                | BinOp::Le
+                | BinOp::Ge
+                | BinOp::And
+                | BinOp::Or => CTy::Bool,
+                BinOp::Concat => CTy::Str,
+                _ => {
+                    // arithmetic: take whichever side we can name
+                    let l = self.infer_ret(lhs);
+                    if l != CTy::Unknown { l } else { self.infer_ret(rhs) }
+                }
+            },
+            Expr::Unary { op, expr } => match op {
+                UnOp::Not => CTy::Bool,
+                UnOp::Neg => self.infer_ret(expr),
+            },
+            // both branches should agree; the `then` side names it
+            Expr::Ternary { then, els, .. } => {
+                let t = self.infer_ret(then);
+                if t != CTy::Unknown { t } else { self.infer_ret(els) }
+            }
+            _ => self.shallow_cty(e),
+        }
+    }
+
     fn shallow_cty(&self, e: &Expr) -> CTy {
         match e {
             Expr::Int(_) => CTy::Int,
@@ -1195,14 +1239,20 @@ impl<'a> Cx<'a> {
                 self.stmt_expr(&mut env, e, &sink, 1);
             }
             Some(FnBody::Expr(e)) => {
+                // An arrow body *is* the function's value, so it is returned
+                // even with no `-> T` declared: an undeclared return type is
+                // `CTy::Unit`, which still lowers to a C `int64_t`, so
+                // discarding here would fall off the end of a non-void function
+                // and hand back garbage (`twice(f, x) => f(f(x))` segfaulted).
                 let (c, _) = self.expr(&mut env, e, Some(&ret));
-                if ret == CTy::Unit {
-                    self.push(&format!("    (void)({c});"));
-                } else {
-                    self.push(&format!("    return {c};"));
-                }
+                self.push(&format!("    return {c};"));
             }
             None => {}
+        }
+        // A block body with no declared return type discards its statements,
+        // so terminate it rather than running off the end.
+        if ret == CTy::Unit && matches!(&f.body, Some(FnBody::Block(_))) {
+            self.push("    return 0;");
         }
         self.push("}");
     }
@@ -2034,14 +2084,20 @@ impl<'a> Cx<'a> {
                 self.block(&mut env, stmts, &sink, 1);
             }
             Some(FnBody::Expr(e)) => {
+                // An arrow body *is* the function's value, so it is returned
+                // even with no `-> T` declared: an undeclared return type is
+                // `CTy::Unit`, which still lowers to a C `int64_t`, so
+                // discarding here would fall off the end of a non-void function
+                // and hand back garbage (`twice(f, x) => f(f(x))` segfaulted).
                 let (c, _) = self.expr(&mut env, e, Some(&ret));
-                if ret == CTy::Unit {
-                    self.push(&format!("    (void)({c});"));
-                } else {
-                    self.push(&format!("    return {c};"));
-                }
+                self.push(&format!("    return {c};"));
             }
             None => {}
+        }
+        // A block body with no declared return type discards its statements,
+        // so terminate it rather than running off the end.
+        if ret == CTy::Unit && matches!(&genf.body, Some(FnBody::Block(_))) {
+            self.push("    return 0;");
         }
         self.push("}");
         let def = std::mem::replace(&mut self.out, saved);
@@ -2108,11 +2164,25 @@ impl<'a> Cx<'a> {
             }
             _ => None,
         };
+        // A named top-level function passed where a lambda is expected
+        // (`xs.filter(is_even)`) — reuse the function-value closure so
+        // `.map`/`.filter`/`.reduce` accept it as readily as a lambda.
+        let named_fn = |a: Option<&Arg>, cx: &Self| match a {
+            Some(Arg::Pos(Expr::Ident(n))) if cx.fns.contains_key(n) => Some(n.clone()),
+            _ => None,
+        };
         match method {
             "map" => {
-                let (params, body) = lambda(args.first())?;
-                let (clos, ret) =
-                    self.emit_closure(env, &params, &body, std::slice::from_ref(elem));
+                let (clos, ret) = match named_fn(args.first(), self) {
+                    Some(n) => {
+                        let ret = self.fns[&n].1.clone();
+                        (self.fn_value_closure(&n).0, ret)
+                    }
+                    None => {
+                        let (params, body) = lambda(args.first())?;
+                        self.emit_closure(env, &params, &body, std::slice::from_ref(elem))
+                    }
+                };
                 self.note_arr(&CTy::Arr(Box::new(ret.clone())));
                 let dst = arr_name(&ret);
                 let boxed = box_i64("_s.data[_i]", elem);
@@ -2124,8 +2194,14 @@ impl<'a> Cx<'a> {
                 Some((code, CTy::Arr(Box::new(ret))))
             }
             "filter" => {
-                let (params, body) = lambda(args.first())?;
-                let (clos, _) = self.emit_closure(env, &params, &body, std::slice::from_ref(elem));
+                let clos = match named_fn(args.first(), self) {
+                    Some(n) => self.fn_value_closure(&n).0,
+                    None => {
+                        let (params, body) = lambda(args.first())?;
+                        self.emit_closure(env, &params, &body, std::slice::from_ref(elem))
+                            .0
+                    }
+                };
                 let boxed = box_i64("_s.data[_i]", elem);
                 let code = format!(
                     "({{ {src} _s = {rc}; {src} _r = {src}_new(); maca_closure _f = {clos}; \
@@ -2135,9 +2211,14 @@ impl<'a> Cx<'a> {
             }
             "reduce" | "fold" => {
                 let (initc, acc_ty) = self.arg_typed(env, args.first()?);
-                let (params, body) = lambda(args.get(1))?;
-                let (clos, _) =
-                    self.emit_closure(env, &params, &body, &[acc_ty.clone(), elem.clone()]);
+                let clos = match named_fn(args.get(1), self) {
+                    Some(n) => self.fn_value_closure(&n).0,
+                    None => {
+                        let (params, body) = lambda(args.get(1))?;
+                        self.emit_closure(env, &params, &body, &[acc_ty.clone(), elem.clone()])
+                            .0
+                    }
+                };
                 let init_boxed = box_i64(&initc, &acc_ty);
                 let elem_boxed = box_i64("_s.data[_i]", elem);
                 let result = unbox_i64("_acc", &acc_ty);
@@ -3108,6 +3189,12 @@ fn to_str(code: &str, t: &CTy) -> String {
         CTy::Int => format!("maca_from_int({code})"),
         CTy::Float | CTy::F32 => format!("maca_from_float({code})"),
         CTy::Bool => format!("maca_from_bool({code})"),
+        // A value whose type we couldn't name — typically a call through a
+        // closure parameter (`f(x)` where `f` is higher-order). Everything
+        // crosses the closure ABI as `int64_t`, so render it as one; without
+        // this the raw integer is handed to a `maca_str` parameter and the
+        // program crashes.
+        CTy::Unknown => format!("maca_from_int({code})"),
         _ => code.to_string(),
     }
 }

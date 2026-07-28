@@ -882,3 +882,99 @@ fn maca_test_runs_test_prefixed_functions() {
         "should say there are no tests"
     );
 }
+
+#[test]
+fn functions_without_a_declared_return_type_return_their_value() {
+    // An arrow body *is* the function's value. Before this was fixed, a
+    // function with no `-> T` discarded its body and fell off the end of a
+    // non-void C function, returning garbage (and often segfaulting).
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-inferred-ret");
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("ret.maca");
+    std::fs::write(
+        &f,
+        // no `-> T` anywhere: a plain arithmetic body, a comparison (bool), a
+        // string concat, and a call through a higher-order parameter
+        "inc(x) => x + 1\n\
+         big(x) => x > 10\n\
+         greet(n) => \"hi \" ++ n\n\
+         twice(g, x) => g(g(x))\n\
+         main() -> int {\n\
+             name = \"maca\"\n\
+             info(\"inc={inc(41)}\")\n\
+             info(\"big={big(50)}\")\n\
+             info(\"greet={greet(name)}\")\n\
+             info(\"twice={twice(n => n + 1, 40)}\")\n\
+             0\n\
+         }\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &f.to_string_lossy()])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for want in ["inc=42", "big=true", "greet=hi maca", "twice=42"] {
+        assert!(
+            stdout.contains(want),
+            "missing {want:?} — an inferred return type was mishandled.\n\
+             stdout: {stdout}\nstderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    assert_eq!(out.status.code(), Some(0), "program should exit cleanly");
+}
+
+#[test]
+fn list_methods_accept_a_named_function() {
+    // `xs.filter(is_even)` — a top-level function passed where a lambda is
+    // expected. Previously only literal lambdas were accepted and this emitted
+    // a call to an undeclared C function.
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-named-fn-methods");
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("hof.maca");
+    std::fs::write(
+        &f,
+        "is_even(n: int) -> bool => n % 2 == 0\n\
+         double(n: int) -> int => n * 2\n\
+         add(a: int, b: int) -> int => a + b\n\
+         main() -> int {\n\
+             info(\"filter={[1, 2, 3, 4].filter(is_even).length()}\")\n\
+             info(\"map={[1, 2, 3].map(double).get(2)}\")\n\
+             info(\"reduce={[1, 2, 3, 4].reduce(0, add)}\")\n\
+             info(\"lambda={[1, 2, 3, 4].filter(n => n > 2).length()}\")\n\
+             0\n\
+         }\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &f.to_string_lossy()])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for want in ["filter=2", "map=6", "reduce=10", "lambda=2"] {
+        assert!(
+            stdout.contains(want),
+            "missing {want:?}.\nstdout: {stdout}\nstderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
