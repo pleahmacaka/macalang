@@ -985,6 +985,31 @@ impl Parser {
                 Pattern::Bool(false)
             }
             Tok::StrOpen => Pattern::Str(self.parse_string_literal()),
+            // A bracketed list pattern: `[]`, `[x]`, `[x, y]`, `[x, ..rest]`.
+            // The bracketless spelling (`x, ..rest`) is handled by
+            // `parse_pattern_top`; brackets additionally make the empty and
+            // single-element cases expressible.
+            Tok::LBracket => {
+                self.bump();
+                let mut elems = Vec::new();
+                let mut rest = None;
+                self.skip_newlines();
+                while !self.at(Tok::RBracket) && !self.at_eof() {
+                    if self.eat(Tok::DotDot) {
+                        rest = Some(Box::new(self.parse_or_pattern()));
+                        self.skip_newlines();
+                        break;
+                    }
+                    elems.push(self.parse_or_pattern());
+                    self.skip_newlines();
+                    if !self.eat(Tok::Comma) {
+                        break;
+                    }
+                    self.skip_newlines();
+                }
+                self.expect(Tok::RBracket, "']'");
+                Pattern::List { elems, rest }
+            }
             Tok::Ident(name) => {
                 self.bump();
                 if name == "_" {

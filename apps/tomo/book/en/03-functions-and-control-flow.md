@@ -53,6 +53,10 @@ describe(xs: int[]) -> str =>
     }
 ```
 
+The brackets are optional — `x, ..rest` matches the same way, in keeping with
+Maca's bracketless comma lists. Use whichever reads better; brackets make the
+empty and single-element cases clearer.
+
 ## Loops
 
 `while` and `for` are statements, and `for` walks an inclusive integer range with

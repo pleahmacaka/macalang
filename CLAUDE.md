@@ -126,7 +126,8 @@ definition cycle resolves — `MACA_ARRAY_STRUCT` before the body,
 
 The compiler is complete and `cargo test` is green across the workspace. Whole
 programs (non-`main` functions, records→structs, sum types→tagged enums, lists,
-string interpolation, `match` lowering incl. list patterns, UFCS) compile and
+string interpolation, `match` lowering incl. list patterns (bracketless `x, ..rest` or bracketed
+`[]`/`[x]`/`[x, ..rest]`), UFCS) compile and
 run end-to-end (parse → check → C → `cc`/`zig cc` → execute).
 
 Backends: native C (default), LLVM (SIMD span), Nix (config mode), JS

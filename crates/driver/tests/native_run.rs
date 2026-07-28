@@ -978,3 +978,60 @@ fn list_methods_accept_a_named_function() {
         );
     }
 }
+
+#[test]
+fn bracketed_list_patterns_match() {
+    // `[]`, `[x]`, `[x, y]`, `[x, ..rest]` — brackets alongside the bracketless
+    // spelling. Before this, an empty list had no pattern at all.
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-list-patterns");
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("lp.maca");
+    std::fs::write(
+        &f,
+        "kind(xs: int[]) -> int =>\n\
+         \x20   match xs {\n\
+         \x20       []     => 0\n\
+         \x20       [x]    => 1\n\
+         \x20       [x, y] => 2\n\
+         \x20       _      => 9\n\
+         \x20   }\n\
+         tail_len(xs: int[]) -> int =>\n\
+         \x20   match xs {\n\
+         \x20       [x, ..rest] => rest.length()\n\
+         \x20       _           => 0\n\
+         \x20   }\n\
+         bare(xs: int[]) -> int =>\n\
+         \x20   match xs {\n\
+         \x20       x, ..rest => rest.length()\n\
+         \x20       _         => 0\n\
+         \x20   }\n\
+         main() -> int {\n\
+         \x20   info(\"kinds={kind([])} {kind([5])} {kind([5, 6])} {kind([1, 2, 3])}\")\n\
+         \x20   info(\"tail={tail_len([1, 2, 3])}\")\n\
+         \x20   info(\"bare={bare([1, 2, 3])}\")\n\
+         \x20   0\n\
+         }\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &f.to_string_lossy()])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for want in ["kinds=0 1 2 9", "tail=2", "bare=2"] {
+        assert!(
+            stdout.contains(want),
+            "missing {want:?}.\nstdout: {stdout}\nstderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
