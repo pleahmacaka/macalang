@@ -1681,8 +1681,18 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// A scratch directory for one compile: the generated `main.c`, the runtime
+/// sources, and the object files.
+///
+/// Per *process*, not per source. Two concurrent `maca run`/`maca build` of the
+/// same file used to share it, so one process would rewrite `main.c` and the
+/// runtime objects while another was linking them — producing undefined
+/// references to `maca_init` and friends, or ETXTBSY on the output binary.
+/// Nothing here is worth sharing: the artifact cache
+/// (`build_cache`, content-addressed) is what makes rebuilds fast, and it lives
+/// elsewhere. This is pure scratch.
 fn build_dir(src: &Path) -> PathBuf {
-    std::env::temp_dir().join(format!("maca-build-{}", stem(src)))
+    std::env::temp_dir().join(format!("maca-build-{}-{}", stem(src), std::process::id()))
 }
 
 /// `import nix "F"` evaluates F at build time and binds the result (the file

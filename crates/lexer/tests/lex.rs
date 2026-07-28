@@ -249,7 +249,11 @@ fn raw_triple_quoted_string_is_verbatim() {
 // therefore never matched anything.) A `"…"` string now stops at end of line.
 
 fn errs(src: &str) -> Vec<String> {
-    maca_lexer::lex(src).errors.into_iter().map(|e| e.msg).collect()
+    maca_lexer::lex(src)
+        .errors
+        .into_iter()
+        .map(|e| e.msg)
+        .collect()
 }
 
 fn text(src: &str) -> Vec<String> {
@@ -290,7 +294,11 @@ fn interpolation_and_raw_strings_still_work() {
     // an unescaped brace is still an interpolation
     let toks = maca_lexer::lex(r#"x = "n={n}""#);
     assert!(toks.errors.is_empty(), "{:?}", toks.errors);
-    assert!(toks.tokens.iter().any(|t| t.tok == maca_lexer::Tok::InterpStart));
+    assert!(
+        toks.tokens
+            .iter()
+            .any(|t| t.tok == maca_lexer::Tok::InterpStart)
+    );
     // a raw string is exempt — it may span lines and hold bare braces
     assert!(errs("x = \"\"\"a {\n} b\"\"\"").is_empty());
 }
@@ -329,7 +337,10 @@ fn a_format_spec_is_lexed_as_one_token() {
 fn a_spaced_colon_is_still_a_ternary() {
     let toks = maca_lexer::lex(r#""{c ? a : b}""#);
     assert!(toks.errors.is_empty(), "{:?}", toks.errors);
-    assert!(specs(r#""{c ? a : b}""#).is_empty(), "ternary read as a spec");
+    assert!(
+        specs(r#""{c ? a : b}""#).is_empty(),
+        "ternary read as a spec"
+    );
     assert!(toks.tokens.iter().any(|t| t.tok == maca_lexer::Tok::Colon));
     // and a ternary whose arms are strings, as the handbook writes it
     assert!(specs(r#""{n > 0 ? "yes" : "no"}""#).is_empty());

@@ -46,8 +46,7 @@ fn lint(target: &str) -> (bool, String) {
         .expect("spawn maca run tools/lint.maca");
     (
         out.status.success(),
-        String::from_utf8_lossy(&out.stdout).to_string()
-            + &String::from_utf8_lossy(&out.stderr),
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr),
     )
 }
 
@@ -161,7 +160,11 @@ fn a_long_string_literal_is_not_a_long_line() {
     let _ = std::fs::create_dir_all(&dir);
     let f = dir.join("wide.maca");
     let long = "x".repeat(150);
-    std::fs::write(&f, format!("main() -> int {{\n    info(\"{long}\")\n    0\n}}\n")).unwrap();
+    std::fs::write(
+        &f,
+        format!("main() -> int {{\n    info(\"{long}\")\n    0\n}}\n"),
+    )
+    .unwrap();
     let (ok, report) = lint(&f.to_string_lossy());
     assert!(ok, "a long string literal should be exempt:\n{report}");
 

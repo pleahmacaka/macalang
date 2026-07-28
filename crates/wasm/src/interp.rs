@@ -848,16 +848,15 @@ impl<'a> Interp<'a> {
             "pad_start" | "pad_end" => {
                 let s = str_of(vals.first());
                 let w = int_of(vals.get(1)).max(0) as usize;
-                let p = vals.get(2).map(|v| str_of(Some(v))).unwrap_or_else(|| " ".into());
+                let p = vals
+                    .get(2)
+                    .map(|v| str_of(Some(v)))
+                    .unwrap_or_else(|| " ".into());
                 let p = if p.is_empty() { " ".to_string() } else { p };
                 if s.chars().count() >= w {
                     return Ok(Value::Str(s));
                 }
-                let fill: String = p
-                    .chars()
-                    .cycle()
-                    .take(w - s.chars().count())
-                    .collect();
+                let fill: String = p.chars().cycle().take(w - s.chars().count()).collect();
                 return Ok(Value::Str(if name == "pad_start" {
                     fill + &s
                 } else {
@@ -869,7 +868,10 @@ impl<'a> Interp<'a> {
             "pad_center" => {
                 let s = str_of(vals.first());
                 let w = int_of(vals.get(1)).max(0) as usize;
-                let p = vals.get(2).map(|v| str_of(Some(v))).unwrap_or_else(|| " ".into());
+                let p = vals
+                    .get(2)
+                    .map(|v| str_of(Some(v)))
+                    .unwrap_or_else(|| " ".into());
                 let p = if p.is_empty() { " ".to_string() } else { p };
                 let n = s.chars().count();
                 if n >= w {

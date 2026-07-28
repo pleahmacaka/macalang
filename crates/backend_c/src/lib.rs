@@ -567,7 +567,11 @@ impl<'a> Cx<'a> {
                 _ => {
                     // arithmetic: take whichever side we can name
                     let l = self.infer_ret(lhs);
-                    if l != CTy::Unknown { l } else { self.infer_ret(rhs) }
+                    if l != CTy::Unknown {
+                        l
+                    } else {
+                        self.infer_ret(rhs)
+                    }
                 }
             },
             Expr::Unary { op, expr } => match op {
@@ -577,7 +581,11 @@ impl<'a> Cx<'a> {
             // both branches should agree; the `then` side names it
             Expr::Ternary { then, els, .. } => {
                 let t = self.infer_ret(then);
-                if t != CTy::Unknown { t } else { self.infer_ret(els) }
+                if t != CTy::Unknown {
+                    t
+                } else {
+                    self.infer_ret(els)
+                }
             }
             _ => self.shallow_cty(e),
         }
@@ -2787,7 +2795,11 @@ impl<'a> Cx<'a> {
                 format!(
                     "maca_pad_start({rc}, {}, {})",
                     arg0(),
-                    if a.len() > 1 { arg1() } else { "\" \"".to_string() }
+                    if a.len() > 1 {
+                        arg1()
+                    } else {
+                        "\" \"".to_string()
+                    }
                 ),
                 CTy::Str,
             ),
@@ -2795,7 +2807,11 @@ impl<'a> Cx<'a> {
                 format!(
                     "maca_pad_end({rc}, {}, {})",
                     arg0(),
-                    if a.len() > 1 { arg1() } else { "\" \"".to_string() }
+                    if a.len() > 1 {
+                        arg1()
+                    } else {
+                        "\" \"".to_string()
+                    }
                 ),
                 CTy::Str,
             ),
@@ -2803,17 +2819,20 @@ impl<'a> Cx<'a> {
                 format!(
                     "maca_pad_center({rc}, {}, {})",
                     arg0(),
-                    if a.len() > 1 { arg1() } else { "\" \"".to_string() }
+                    if a.len() > 1 {
+                        arg1()
+                    } else {
+                        "\" \"".to_string()
+                    }
                 ),
                 CTy::Str,
             ),
             // `x.fixed(n)` — `x` with n decimal places. Written on a float, but
             // an int receiver is accepted and widened, so `{n:.2}` works on any
             // number rather than failing on the one case the user didn't expect.
-            (CTy::Float | CTy::Int | CTy::Unknown, "fixed") => (
-                format!("maca_fixed((double)({rc}), {})", arg0()),
-                CTy::Str,
-            ),
+            (CTy::Float | CTy::Int | CTy::Unknown, "fixed") => {
+                (format!("maca_fixed((double)({rc}), {})", arg0()), CTy::Str)
+            }
             (CTy::Str | CTy::Unknown, "split") => {
                 self.note_arr(&CTy::Arr(Box::new(CTy::Str)));
                 let sep = arg0();

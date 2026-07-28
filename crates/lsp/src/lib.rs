@@ -265,10 +265,14 @@ pub fn signature_help(src: &str, byte_offset: usize) -> Option<(String, Vec<Stri
         }
     };
     let name = word_at(src, open)?;
-    let f = parse(src).module.items.into_iter().find_map(|it| match it {
-        Stmt::Fn(f) if f.name == name => Some(f),
-        _ => None,
-    })?;
+    let f = parse(src)
+        .module
+        .items
+        .into_iter()
+        .find_map(|it| match it {
+            Stmt::Fn(f) if f.name == name => Some(f),
+            _ => None,
+        })?;
     let labels: Vec<String> = f
         .params
         .iter()

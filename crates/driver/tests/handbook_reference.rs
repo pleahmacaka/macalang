@@ -47,7 +47,10 @@ fn reserved() -> Vec<String> {
         .iter()
         .filter(|w| {
             let toks = maca_lexer::lex(w).tokens;
-            !matches!(toks.first().map(|t| &t.tok), Some(maca_lexer::Tok::Ident(_)))
+            !matches!(
+                toks.first().map(|t| &t.tok),
+                Some(maca_lexer::Tok::Ident(_))
+            )
         })
         .map(|w| w.to_string())
         .collect()
@@ -83,7 +86,7 @@ fn appendix_a_claims_no_keyword_that_isnt_one() {
 /// checker actually gives one, so the book and the compiler agree.
 #[test]
 fn the_phantom_keywords_the_book_lists_all_produce_a_hint() {
-    use maca_core::{check, DiagKind, Mode};
+    use maca_core::{DiagKind, Mode, check};
     for word in ["fn", "let", "var", "return", "type", "null"] {
         let src = format!("f() -> int {{\n    {word}\n    1\n}}\n");
         let parsed = maca_parser::parse(&src);

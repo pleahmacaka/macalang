@@ -163,9 +163,7 @@ impl Checker {
         let hint = match name {
             "return" => "Maca has no `return` — a function's last expression is its value",
             "let" | "var" => "Maca has no `let`/`var` — write `x = e`, or `const x = e`",
-            "fn" | "func" | "def" => {
-                "Maca has no `fn` — write `name(arg: T) -> R { … }` or `=> e`"
-            }
+            "fn" | "func" | "def" => "Maca has no `fn` — write `name(arg: T) -> R { … }` or `=> e`",
             "type" => "Maca has no `type` — write `Name = { field: T }` or `Name = A | B`",
             "async" | "await_" => {
                 "Maca has no `async` — async is an inferred effect; use `spawn`/`await`"

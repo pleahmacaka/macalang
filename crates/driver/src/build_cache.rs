@@ -96,6 +96,11 @@ pub fn place(cached: &Path, out: &Path) -> Result<(), String> {
     // be *executing* that path, and copying over a running binary fails with
     // ETXTBSY ("Text file busy"). A rename swaps the directory entry instead —
     // the running process keeps its own inode — so parallel runs don't collide.
+    // The scratch directory is per-process, so on a cache hit nothing has
+    // created it yet — the compile that would have is exactly what we skipped.
+    if let Some(parent) = out.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
     let tmp = unique_tmp(out, "place");
     std::fs::copy(cached, &tmp).map_err(|e| format!("cache copy failed: {e}"))?;
     #[cfg(unix)]

@@ -795,11 +795,11 @@ fn file_io_builtins_run_natively() {
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
     for want in [
-        "read 4 lines",       // read_file round-trips what write_file wrote
-        "one.md exists",      // file_exists is true for a written file
-        "nope.md missing",    // ...and false for an absent one
-        "pages: 2",           // make_dir + list_dir see both files
-        "first: one.md",      // list_dir is sorted, so builds are reproducible
+        "read 4 lines",    // read_file round-trips what write_file wrote
+        "one.md exists",   // file_exists is true for a written file
+        "nope.md missing", // ...and false for an absent one
+        "pages: 2",        // make_dir + list_dir see both files
+        "first: one.md",   // list_dir is sorted, so builds are reproducible
         "second: two.md",
     ] {
         assert!(
@@ -839,7 +839,10 @@ fn maca_test_runs_test_prefixed_functions() {
         .output()
         .expect("spawn maca test");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(out.status.success(), "passing tests should exit 0: {stdout}");
+    assert!(
+        out.status.success(),
+        "passing tests should exit 0: {stdout}"
+    );
     assert!(stdout.contains("running 2 tests"), "count wrong: {stdout}");
     assert!(stdout.contains("2 tests passed"), "summary wrong: {stdout}");
     assert!(
@@ -867,7 +870,10 @@ fn maca_test_runs_test_prefixed_functions() {
         stdout.contains("test_broken") && !stdout.contains("test_after"),
         "output should stop at the failing test: {stdout}"
     );
-    assert!(stderr.contains("deliberate"), "failure message lost: {stderr}");
+    assert!(
+        stderr.contains("deliberate"),
+        "failure message lost: {stderr}"
+    );
 
     // a file with no tests is not an error
     let none = dir.join("none.maca");
@@ -1056,20 +1062,20 @@ fn handbook_examples_all_run() {
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
     for want in [
-        "record: 3 4 -> 5",                          // ctor, field access, `with`
-        "bindings: 1 100",                           // mutable vs const
-        "sides: 4",                                  // sum type + match
-        "list: 10 3 60",                             // first/length/reduce
-        "named fn: 2",                               // a named fn passed to .filter
-        "inferred: 42 42",                           // undeclared return types
-        "sum_to: 55",                                // `for` over an inclusive range
+        "record: 3 4 -> 5", // ctor, field access, `with`
+        "bindings: 1 100",  // mutable vs const
+        "sides: 4",         // sum type + match
+        "list: 10 3 60",    // first/length/reduce
+        "named fn: 2",      // a named fn passed to .filter
+        "inferred: 42 42",  // undeclared return types
+        "sum_to: 55",       // `for` over an inclusive range
         "ternary: pass",
         "patterns: empty / one: 7 / head 1, then 2 more", // list patterns
-        "propagate: 42",                             // `?`
-        "try: caught, still running",                // `try`
-        "strings: ababab 007 2",                     // repeat/pad_start/split
-        "braces: {} {}",                             // both literal-brace escapes
-        "fmt: [3.14] [    42] [ok  ] [  ok  ] [007]", // interpolation format specs
+        "propagate: 42",                                  // `?`
+        "try: caught, still running",                     // `try`
+        "strings: ababab 007 2",                          // repeat/pad_start/split
+        "braces: {} {}",                                  // both literal-brace escapes
+        "fmt: [3.14] [    42] [ok  ] [  ok  ] [007]",     // interpolation format specs
     ] {
         assert!(
             stdout.contains(want),
@@ -1082,10 +1088,17 @@ fn handbook_examples_all_run() {
 
 #[test]
 fn concurrent_runs_of_the_same_program_dont_collide() {
-    // Two `maca run`s of the same source race to install the cached binary at
-    // the same path. Copying over a file that another process is *executing*
-    // fails with ETXTBSY ("Text file busy"), so the cache installs via a temp
-    // file + rename. Without that, this flakes.
+    // Concurrent `maca run`s of the same source used to collide twice over.
+    //
+    // Warm cache: each process installs the cached binary at the same path, and
+    // copying over a file another process is *executing* fails with ETXTBSY
+    // ("Text file busy"). The cache now installs via a temp file + rename.
+    //
+    // Cold cache: each process runs `cc -o` into that same path, and one that
+    // execs while another is still linking gets the same ETXTBSY. `run` now
+    // names its throwaway binary per process. This is the case that actually
+    // broke CI — the warm path was covered, the cold one wasn't, and CI starts
+    // cold every time.
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -1106,37 +1119,47 @@ fn concurrent_runs_of_the_same_program_dont_collide() {
     )
     .unwrap();
 
-    // prime the cache so both racers take the install path
-    let _ = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &f.to_string_lossy()])
-        .output();
-
-    let handles: Vec<_> = (0..4)
-        .map(|_| {
-            let path = f.to_string_lossy().to_string();
-            std::thread::spawn(move || {
-                Command::new(env!("CARGO_BIN_EXE_maca"))
-                    .args(["run", &path])
-                    .output()
-                    .expect("spawn maca run")
+    // Both races, in order: cold (no cache at all, every process compiles and
+    // links), then warm (the cache is primed and every process installs).
+    for cold in [true, false] {
+        if !cold {
+            let _ = Command::new(env!("CARGO_BIN_EXE_maca"))
+                .args(["run", &f.to_string_lossy()])
+                .output();
+        }
+        let handles: Vec<_> = (0..4)
+            .map(|_| {
+                let path = f.to_string_lossy().to_string();
+                std::thread::spawn(move || {
+                    let mut c = Command::new(env!("CARGO_BIN_EXE_maca"));
+                    c.args(["run", &path]);
+                    if cold {
+                        c.env("MACA_NO_CACHE", "1");
+                    }
+                    c.output().expect("spawn maca run")
+                })
             })
-        })
-        .collect();
+            .collect();
+        check_racers(handles, cold);
+    }
+}
 
+fn check_racers(handles: Vec<std::thread::JoinHandle<std::process::Output>>, cold: bool) {
+    let phase = if cold { "cold cache" } else { "warm cache" };
     for h in handles {
         let out = h.join().expect("thread panicked");
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert!(
             out.status.success(),
-            "a concurrent run failed: {stderr}"
+            "a concurrent run failed ({phase}): {stderr}"
         );
         assert!(
             !stderr.contains("Text file busy") && !stderr.contains("cache copy failed"),
-            "cache install raced: {stderr}"
+            "concurrent runs raced ({phase}): {stderr}"
         );
         assert!(
             String::from_utf8_lossy(&out.stdout).contains("20000100000"),
-            "wrong result from a concurrent run"
+            "wrong result from a concurrent run ({phase})"
         );
     }
 }

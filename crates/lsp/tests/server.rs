@@ -1,7 +1,7 @@
 //! End-to-end: spawn the real `maca-lsp` binary and drive a full LSP session
 //! over stdio (Content-Length framing), asserting the responses.
 
-use std::io::{BufRead, BufReader, Read as _, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 
 fn frame(body: &str) -> String {

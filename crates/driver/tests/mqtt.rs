@@ -28,15 +28,14 @@ impl BuildLock {
     fn acquire() -> Self {
         let p = std::env::temp_dir().join("maca-it-build.lock");
         for _ in 0..1200 {
-            if let Ok(m) = std::fs::metadata(&p) {
-                if m.modified()
+            if let Ok(m) = std::fs::metadata(&p)
+                && m.modified()
                     .ok()
                     .and_then(|t| t.elapsed().ok())
                     .map(|e| e.as_secs() > 300)
                     .unwrap_or(false)
-                {
-                    let _ = std::fs::remove_file(&p);
-                }
+            {
+                let _ = std::fs::remove_file(&p);
             }
             if std::fs::OpenOptions::new()
                 .write(true)

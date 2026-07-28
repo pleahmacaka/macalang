@@ -267,8 +267,7 @@ fn selfhost_frontend_compiles_and_runs() {
         "C sum lowering wrong: {stdout}"
     );
     assert!(
-        stdout.contains("enum Color { Red, Green, Blue }")
-            && stdout.contains("use Color::*;"),
+        stdout.contains("enum Color { Red, Green, Blue }") && stdout.contains("use Color::*;"),
         "Rust sum lowering wrong: {stdout}"
     );
 
@@ -286,7 +285,9 @@ fn selfhost_frontend_compiles_and_runs() {
     // string equality: `w == "let"` → `strcmp(w, "let") == 0` in C (with a
     // <string.h> preamble), a native `==` in Rust.
     assert!(
-        stdout.contains("streq C:    int kw(const char* w) { return ((strcmp(w, \"let\") == 0) ? 1 : 0);"),
+        stdout.contains(
+            "streq C:    int kw(const char* w) { return ((strcmp(w, \"let\") == 0) ? 1 : 0);"
+        ),
         "C string-equality lowering wrong: {stdout}"
     );
     assert!(
@@ -307,7 +308,9 @@ fn selfhost_frontend_compiles_and_runs() {
 
     // int-to-string: `str(n)` → `maca_int_to_str` in C, `format!` in Rust.
     assert!(
-        stdout.contains("str C:    const char* numbered(int n) { return maca_cat(\"#\", maca_int_to_str(n));"),
+        stdout.contains(
+            "str C:    const char* numbered(int n) { return maca_cat(\"#\", maca_int_to_str(n));"
+        ),
         "C int-to-string lowering wrong: {stdout}"
     );
     assert!(
@@ -332,7 +335,9 @@ fn selfhost_frontend_compiles_and_runs() {
         "C .at lowering wrong: {stdout}"
     );
     assert!(
-        stdout.contains("at Rust: fn first(s: String) -> i64 { ((s).as_bytes()[(0i64) as usize] as i64)"),
+        stdout.contains(
+            "at Rust: fn first(s: String) -> i64 { ((s).as_bytes()[(0i64) as usize] as i64)"
+        ),
         "Rust .at lowering wrong: {stdout}"
     );
 
@@ -395,7 +400,7 @@ fn selfhost_frontend_compiles_and_runs() {
     let ebin = dir.join("emitted");
     let cc = Command::new("cc")
         .args([
-            &cfile.to_string_lossy().to_string(),
+            cfile.to_string_lossy().as_ref(),
             "-o",
             &ebin.to_string_lossy(),
         ])
@@ -454,7 +459,7 @@ fn selfhost_frontend_compiles_and_runs() {
     let rbin = dir.join("emitted_rs");
     let rustc = Command::new("rustc")
         .args([
-            &rsfile.to_string_lossy().to_string(),
+            rsfile.to_string_lossy().as_ref(),
             "--edition",
             "2021",
             "-o",
@@ -467,7 +472,9 @@ fn selfhost_frontend_compiles_and_runs() {
         "self-host-emitted Rust failed to compile:\n{}\n--- source ---\n{rs_src}",
         String::from_utf8_lossy(&rustc.stderr)
     );
-    let rrun = Command::new(&rbin).output().expect("run emitted rust program");
+    let rrun = Command::new(&rbin)
+        .output()
+        .expect("run emitted rust program");
     assert_eq!(
         rrun.status.code(),
         Some(42),

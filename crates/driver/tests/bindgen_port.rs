@@ -145,7 +145,10 @@ fn maca_bindgen_cli_writes_and_reports_errors() {
         ])
         .output()
         .expect("spawn bindgen");
-    assert!(!miss.status.success(), "a missing header should exit non-zero");
+    assert!(
+        !miss.status.success(),
+        "a missing header should exit non-zero"
+    );
     assert!(
         String::from_utf8_lossy(&miss.stderr).contains("cannot read"),
         "missing header should be reported: {}",

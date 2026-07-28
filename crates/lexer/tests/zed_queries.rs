@@ -8,7 +8,9 @@
 use std::path::PathBuf;
 
 fn repo(rel: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(rel)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(rel)
 }
 
 fn read(rel: &str) -> String {
@@ -76,10 +78,16 @@ fn outline_query_covers_functions_and_type_declarations() {
     // The symbol picker must list both kinds of top-level definition; a
     // regression here silently empties Zed's outline.
     let scm = read("editor/zed-maca/languages/maca/outline.scm");
-    assert!(scm.contains("(function"), "outline lost function definitions");
+    assert!(
+        scm.contains("(function"),
+        "outline lost function definitions"
+    );
     assert!(
         scm.contains("(type_decl"),
         "outline lost type declarations (records/sums)"
     );
-    assert!(scm.contains("@name") && scm.contains("@item"), "outline missing captures");
+    assert!(
+        scm.contains("@name") && scm.contains("@item"),
+        "outline missing captures"
+    );
 }

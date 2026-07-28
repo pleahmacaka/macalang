@@ -35,7 +35,12 @@ fn tomo_renders_markdown_to_html() {
     let bin = dir.join("tomo");
 
     let build = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["build", &src.to_string_lossy(), "-o", &bin.to_string_lossy()])
+        .args([
+            "build",
+            &src.to_string_lossy(),
+            "-o",
+            &bin.to_string_lossy(),
+        ])
         .output()
         .expect("spawn maca build");
     assert!(
@@ -54,7 +59,10 @@ fn tomo_renders_markdown_to_html() {
     let html = String::from_utf8_lossy(&out.stdout);
 
     // headings carry anchor ids (slugged) so the TOC can link to them
-    assert!(html.contains("<h1 id=\"title\">Title</h1>"), "h1 wrong: {html}");
+    assert!(
+        html.contains("<h1 id=\"title\">Title</h1>"),
+        "h1 wrong: {html}"
+    );
     // punctuation is dropped from the slug, so `Is it fast?` still anchors
     assert!(
         html.contains("<h2 id=\"is-it-fast\">Is it fast?</h2>"),
@@ -133,7 +141,12 @@ fn tomo_builds_the_handbook_site() {
     let _ = std::fs::create_dir_all(&dir);
     let bin = dir.join("tomo");
     let build = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["build", &src.to_string_lossy(), "-o", &bin.to_string_lossy()])
+        .args([
+            "build",
+            &src.to_string_lossy(),
+            "-o",
+            &bin.to_string_lossy(),
+        ])
         .output()
         .expect("spawn maca build");
     assert!(
@@ -142,7 +155,10 @@ fn tomo_builds_the_handbook_site() {
         String::from_utf8_lossy(&build.stderr)
     );
     // `main` builds the book with paths relative to the repo root
-    let out = Command::new(&bin).current_dir(&repo).output().expect("run tomo");
+    let out = Command::new(&bin)
+        .current_dir(&repo)
+        .output()
+        .expect("run tomo");
     let log = String::from_utf8_lossy(&out.stdout);
     // every chapter listed in book.toml, plus an index, in each of 2 languages
     let want = std::fs::read_to_string(repo.join("apps/tomo/book.toml"))
@@ -242,12 +258,14 @@ fn every_page_has_the_sidebar_and_a_working_search_index() {
         .output()
         .expect("spawn maca build");
     assert!(build.status.success(), "tomo build failed");
-    assert!(Command::new(&bin)
-        .current_dir(&repo)
-        .output()
-        .expect("run tomo")
-        .status
-        .success());
+    assert!(
+        Command::new(&bin)
+            .current_dir(&repo)
+            .output()
+            .expect("run tomo")
+            .status
+            .success()
+    );
 
     // a mid-book chapter lists every chapter, and marks itself
     let mid = std::fs::read_to_string(site.join("en/08-collections.html")).unwrap();
@@ -268,7 +286,10 @@ fn every_page_has_the_sidebar_and_a_working_search_index() {
     // the search index is real JavaScript, one entry per heading, carrying the
     // anchor a hit should jump to
     let js = std::fs::read_to_string(site.join("en/search-index.js")).unwrap();
-    assert!(js.starts_with("window.TOMO_INDEX=["), "index isn't a script: {js:.80}");
+    assert!(
+        js.starts_with("window.TOMO_INDEX=["),
+        "index isn't a script: {js:.80}"
+    );
     assert!(
         js.contains("\"u\":\"03-common-concepts.html#format-specs\""),
         "index is missing a section anchor"
@@ -281,7 +302,10 @@ fn every_page_has_the_sidebar_and_a_working_search_index() {
     let ko = std::fs::read_to_string(site.join("ko/search-index.js")).unwrap();
     assert_ne!(js, ko, "both languages got the same search index");
     // and every page loads it
-    assert!(mid.contains("<script src=\"search-index.js\">"), "search not wired up");
+    assert!(
+        mid.contains("<script src=\"search-index.js\">"),
+        "search not wired up"
+    );
 }
 
 /// Anchors have to work in every language the book ships in.
@@ -302,23 +326,27 @@ fn headings_anchor_in_every_language() {
     let dir = std::env::temp_dir().join("maca-tomo-anchor");
     let _ = std::fs::create_dir_all(&dir);
     let bin = dir.join("tomo");
-    assert!(Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args([
-            "build",
-            &repo.join("apps/tomo/tomo.maca").to_string_lossy(),
-            "-o",
-            &bin.to_string_lossy(),
-        ])
-        .output()
-        .expect("spawn maca build")
-        .status
-        .success());
-    assert!(Command::new(&bin)
-        .current_dir(&repo)
-        .output()
-        .expect("run tomo")
-        .status
-        .success());
+    assert!(
+        Command::new(env!("CARGO_BIN_EXE_maca"))
+            .args([
+                "build",
+                &repo.join("apps/tomo/tomo.maca").to_string_lossy(),
+                "-o",
+                &bin.to_string_lossy(),
+            ])
+            .output()
+            .expect("spawn maca build")
+            .status
+            .success()
+    );
+    assert!(
+        Command::new(&bin)
+            .current_dir(&repo)
+            .output()
+            .expect("run tomo")
+            .status
+            .success()
+    );
 
     let ko = std::fs::read_to_string(site.join("ko/06-sum-types.html")).unwrap();
     assert!(
@@ -327,7 +355,10 @@ fn headings_anchor_in_every_language() {
     );
     // no heading may collapse to an empty or bare-hyphen anchor
     for bad in ["id=\"\"", "id=\"-\"", "id=\"--\"", "href=\"#\""] {
-        assert!(!ko.contains(bad), "degenerate anchor {bad} in the Korean page");
+        assert!(
+            !ko.contains(bad),
+            "degenerate anchor {bad} in the Korean page"
+        );
     }
     // and the TOC links match the headings it links to
     assert!(
@@ -336,7 +367,10 @@ fn headings_anchor_in_every_language() {
     );
     // punctuation is still dropped, and English is unaffected
     let en = std::fs::read_to_string(site.join("en/06-sum-types.html")).unwrap();
-    assert!(en.contains("<h2 id=\"exhaustiveness\">"), "English anchor changed");
+    assert!(
+        en.contains("<h2 id=\"exhaustiveness\">"),
+        "English anchor changed"
+    );
 }
 
 /// Tomo's point of difference from mdBook: a chapter that hasn't been
@@ -378,7 +412,10 @@ fn untranslated_chapters_fall_back_to_the_default_language() {
         .output()
         .expect("spawn maca build");
     assert!(build.status.success(), "tomo build failed");
-    let out = Command::new(&bin).current_dir(&dir).output().expect("run tomo");
+    let out = Command::new(&bin)
+        .current_dir(&dir)
+        .output()
+        .expect("run tomo");
     let log = String::from_utf8_lossy(&out.stdout);
     // 2 chapters + an index, per language
     assert!(log.contains("built 6 pages"), "fixture build log: {log}");
@@ -386,14 +423,20 @@ fn untranslated_chapters_fall_back_to_the_default_language() {
     let site = book.join("site");
     // the translated chapter is Korean
     let ko_a = std::fs::read_to_string(site.join("ko/a.html")).unwrap();
-    assert!(ko_a.contains("한국어 알파"), "translated chapter wrong: {ko_a}");
+    assert!(
+        ko_a.contains("한국어 알파"),
+        "translated chapter wrong: {ko_a}"
+    );
     // the untranslated one falls back to English but stays a Korean page
     let ko_b = std::fs::read_to_string(site.join("ko/b.html")).unwrap();
     assert!(
         ko_b.contains("english beta"),
         "untranslated chapter didn't fall back: {ko_b}"
     );
-    assert!(ko_b.contains("<html lang=\"ko\">"), "fallback lost its language");
+    assert!(
+        ko_b.contains("<html lang=\"ko\">"),
+        "fallback lost its language"
+    );
     // and the index mixes the translated title with the fallen-back one
     let ko_index = std::fs::read_to_string(site.join("ko/index.html")).unwrap();
     assert!(

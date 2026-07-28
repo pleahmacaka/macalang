@@ -283,13 +283,13 @@ fn simd_uses_llvm_vector_instructions() {
     }
     // The LLVM path must produce real 256-bit AVX vector ops (8-wide → faster
     // than scalar). objdump the dot8 kernel and require a packed-vector mul.
-    let dis = objdump(&"simd.maca");
+    let dis = objdump("simd.maca");
     assert!(
         dis.contains("vmulps") || dis.contains("vfmadd") || dis.contains("%ymm"),
         "expected AVX vector instructions from the LLVM SIMD path"
     );
     // and the C path alone (no SIMD) must not
-    let hello = objdump(&"hello.maca");
+    let hello = objdump("hello.maca");
     assert!(
         !hello.contains("%ymm"),
         "scalar binary should have no 256-bit vector ops"
