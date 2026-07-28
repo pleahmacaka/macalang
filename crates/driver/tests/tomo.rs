@@ -144,8 +144,18 @@ fn tomo_builds_the_handbook_site() {
     // `main` builds the book with paths relative to the repo root
     let out = Command::new(&bin).current_dir(&repo).output().expect("run tomo");
     let log = String::from_utf8_lossy(&out.stdout);
-    // 8 chapters + an index, in each of 2 languages
-    assert!(log.contains("built 18 pages"), "build log: {log}");
+    // every chapter listed in book.toml, plus an index, in each of 2 languages
+    let want = std::fs::read_to_string(repo.join("apps/tomo/book.toml"))
+        .unwrap()
+        .lines()
+        .filter(|l| l.trim().starts_with('"'))
+        .count();
+    assert!(want >= 20, "the handbook shrank to {want} chapters");
+    assert!(
+        log.contains(&format!("built {} pages", (want + 1) * 2)),
+        "expected {} chapters + index in 2 languages; log: {log}",
+        want
+    );
 
     // a translated chapter renders in its own language
     let ko_intro = std::fs::read_to_string(site.join("ko/00-introduction.html")).unwrap();
@@ -164,19 +174,20 @@ fn tomo_builds_the_handbook_site() {
     );
     let en_index = std::fs::read_to_string(site.join("en/index.html")).unwrap();
     assert!(
-        en_index.contains("<a href=\"06-targets-and-tooling.html\">Targets and Tooling</a>"),
+        en_index.contains("<a href=\"15-targets.html\">")
+            && en_index.contains("<a href=\"a1-keywords.html\">"),
         "en index missing a chapter"
     );
 
     // paragraphs join soft-wrapped lines, so inline formatting survives a wrap
-    let en_config = std::fs::read_to_string(site.join("en/05-config-mode.html")).unwrap();
+    let en_config = std::fs::read_to_string(site.join("en/14-config-mode.html")).unwrap();
     assert!(
         en_config.contains("<strong>config mode</strong>"),
         "soft-wrapped bold was split across paragraphs"
     );
 
     // a quote wrapped across source lines becomes ONE blockquote, not one per line
-    let en_err = std::fs::read_to_string(site.join("en/07-errors-and-testing.html")).unwrap();
+    let en_err = std::fs::read_to_string(site.join("en/09-errors.html")).unwrap();
     assert_eq!(
         en_err.matches("<blockquote>").count(),
         1,
@@ -194,13 +205,13 @@ fn tomo_builds_the_handbook_site() {
     // chapter has no previous link, the last no next.
     let first = std::fs::read_to_string(site.join("en/00-introduction.html")).unwrap();
     assert!(
-        first.contains("<a href=\"01-hello-world.html\">next")
-            && !first.contains("previous"),
+        first.contains("<a href=\"01-getting-started.html\">next")
+            && !first.contains("&larr; previous"),
         "first chapter's nav wrong"
     );
-    let last = std::fs::read_to_string(site.join("en/07-errors-and-testing.html")).unwrap();
+    let last = std::fs::read_to_string(site.join("en/a4-diagnostics.html")).unwrap();
     assert!(
-        last.contains("<a href=\"06-targets-and-tooling.html\">&larr; previous</a>")
+        last.contains("<a href=\"a3-stdlib.html\">&larr; previous</a>")
             && !last.contains("next &rarr;"),
         "last chapter's nav wrong"
     );
@@ -239,15 +250,15 @@ fn every_page_has_the_sidebar_and_a_working_search_index() {
         .success());
 
     // a mid-book chapter lists every chapter, and marks itself
-    let mid = std::fs::read_to_string(site.join("en/03-functions-and-control-flow.html")).unwrap();
+    let mid = std::fs::read_to_string(site.join("en/08-collections.html")).unwrap();
     assert!(mid.contains("<div class=\"side\">"), "no sidebar");
     assert!(
         mid.contains("href=\"00-introduction.html\">Introduction</a>")
-            && mid.contains("href=\"07-errors-and-testing.html\">"),
+            && mid.contains("href=\"a4-diagnostics.html\">"),
         "sidebar doesn't list the whole book"
     );
     assert!(
-        mid.contains("<a class=\"cur\" href=\"03-functions-and-control-flow.html\">"),
+        mid.contains("<a class=\"cur\" href=\"08-collections.html\">"),
         "sidebar doesn't mark the current chapter"
     );
     // the index page's sidebar marks nothing as current
@@ -259,7 +270,7 @@ fn every_page_has_the_sidebar_and_a_working_search_index() {
     let js = std::fs::read_to_string(site.join("en/search-index.js")).unwrap();
     assert!(js.starts_with("window.TOMO_INDEX=["), "index isn't a script: {js:.80}");
     assert!(
-        js.contains("\"u\":\"02-values-and-types.html#format-specs\""),
+        js.contains("\"u\":\"03-common-concepts.html#format-specs\""),
         "index is missing a section anchor"
     );
     // section text is lowercased for matching, and HTML-unsafe characters are

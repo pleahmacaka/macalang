@@ -9,6 +9,7 @@ name = "maca"
 path = "src/main.rs"
 
 [dependencies]
+maca-lexer = { path = "../lexer" }
 maca-parser = { path = "../parser" }
 maca-core = { path = "../core" }
 maca-backend-c = { path = "../backend_c" }

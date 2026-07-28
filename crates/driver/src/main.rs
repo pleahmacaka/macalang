@@ -483,6 +483,7 @@ fn usage() {
          \x20 watch <file.maca> [args..]   rebuild & rerun on change (hot reload)\n\
          \x20 fmt   <file.maca>… [--check] format in place (style from maca.toml [format])\n\
          \x20 lint  <file.maca>            style + type/effect diagnostics\n\
+         \x20 test  <file.maca>            run every `test_…` function in the file\n\
          \x20 profile <file.maca> [-o svg] run under callgrind, render a flame graph\n\
          \x20 add   <spec>…               add a dependency (npm:pkg | git+url | name@ver)\n\
          \x20 update                      re-resolve dependencies to latest\n\

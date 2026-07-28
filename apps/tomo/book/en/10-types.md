@@ -1,0 +1,164 @@
+# The Type System
+
+Maca is statically typed and mostly inferred. You annotate function boundaries;
+everything inside follows. This chapter explains what the checker actually does,
+because knowing that turns its error messages from noise into information.
+
+## Inference at the boundary
+
+A function's signature is the contract:
+
+```maca
+double(n: int) -> int =>
+    n * 2
+```
+
+Locals are never annotated:
+
+```maca
+half(n: int) -> int {
+    m = n / 2      // m is int; nothing to declare
+    m
+}
+```
+
+The return type may be omitted, and is then inferred from the body:
+
+```maca
+inc(x) => x + 1
+```
+
+Both the parameter and the result are inferred here. Prefer writing them: a
+signature is documentation the compiler checks, and the error messages get much
+better when there is something to disagree with.
+
+## Generics without angle brackets
+
+A **lowercase** name in a type position is a type variable:
+
+```maca
+identity(x: a) -> a =>
+    x
+
+pair_first(xs: a[], fallback: a) -> a =>
+    xs.length() > 0 ? xs.first() : fallback
+```
+
+`a` here is not a type called "a" — it is "any type, the same one in all three
+places". There is no `<T>` to declare, because lowercase already means variable
+and uppercase already means concrete.
+
+Function signatures generalise into schemes and instantiate afresh at each call,
+so `identity(1)` and `identity("x")` both work and neither constrains the other.
+This is standard Hindley–Milner inference.
+
+The C backend **monomorphises**: each distinct instantiation becomes its own
+specialised function in the generated C. There is no boxing and no dispatch at
+run time — a generic function costs exactly what the hand-written specialisation
+would.
+
+## Gradual typing and `any`
+
+Not everything can be known. Foreign functions, some standard-library corners,
+and values crossing a backend boundary have no Maca type to give. For those
+there is `any`, and it unifies with everything.
+
+This is why Maca is called *gradually* typed: the strict core does real
+inference, and `any` is an escape hatch at the edges rather than a hole in the
+middle. Practically, it means calls into unknown territory do not produce a
+cascade of spurious errors — but also that a mistake in that territory is not
+caught. Method calls are one such place; see the end of chapter 8.
+
+## Effects
+
+A function's type is not only its arguments and result. The checker also tracks
+what a function *does* — its **effects**.
+
+Today there are two that matter:
+
+- **IO** — reading a file, printing, touching the outside world.
+- **ASYNC** — `await`, `spawn`, `sleep_ms`.
+
+Effects are inferred, never declared. There is no `async` keyword, no `IO` in a
+signature. A function that calls something asynchronous is asynchronous, and the
+compiler works that out.
+
+Effects earn their keep in **config mode** (chapter 14), where a `.maca` file
+describes infrastructure and compiles to Nix. Configuration must be pure, so an
+effect in config mode is an error:
+
+```
+EffectInConfig: `async` effect is not allowed in config mode
+```
+
+That check is the reason the same language can serve as both a programming
+language and a configuration language without being dangerous as the latter.
+
+## The diagnostics
+
+Six kinds, and each means one specific thing:
+
+| Diagnostic | Meaning |
+|---|---|
+| `TypeMismatch` | two types had to be the same and weren't |
+| `NonExhaustive` | a `match` doesn't cover every variant |
+| `Immutable` | assignment to a constant |
+| `UndefinedName` | a call to a name defined nowhere |
+| `UnknownOption` | a config option that doesn't exist |
+| `EffectInConfig` | an impure operation in config mode |
+
+`TypeMismatch` covers more than it sounds like. Call arity is a mismatch:
+
+```
+TypeMismatch: call to `f` expects 2 argument(s), got 3
+```
+
+So are disagreeing branches of an `if` or a ternary, which is a genuinely common
+mistake:
+
+```maca
+x = c ? 1 : "two"
+// TypeMismatch: ternary branches disagree: expected int, found str
+```
+
+## Constants
+
+A binding is mutable by default:
+
+```maca
+count = 0
+count = count + 1
+```
+
+Three things make it constant — `const`, a trailing `as const`, or a Capitalized
+name:
+
+```maca
+const Limit = 100
+step = 5 as const
+Origin = 0
+```
+
+Reassigning any of them is a compile error:
+
+```
+Immutable: cannot reassign constant `Limit` — declare it mutable with
+`Limit = …` (no `const`)
+```
+
+The Capitalized rule exists because it matches how people already write
+constants, but it is implicit, and `maca lint` will nudge you toward writing
+`const` where you mean it.
+
+## Reading an error
+
+Type errors name the function and the position:
+
+```
+TypeMismatch: in call to `d` (argument 2): type mismatch: expected P, found int
+```
+
+When the message is about a type variable rather than a concrete type, the usual
+cause is a missing annotation somewhere upstream — the checker inferred something
+more general than you meant. Adding the signature you had in mind will either fix
+it or tell you exactly where your mental model and the code disagree.

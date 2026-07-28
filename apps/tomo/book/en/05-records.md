@@ -1,0 +1,145 @@
+# Records
+
+A record groups named fields under a type name. It is Maca's struct, and it is
+the workhorse of the language.
+
+## Declaring and building
+
+```maca
+Point = {
+    x: int
+    y: int
+}
+```
+
+The declaration reads `Name = { … }` — the same `=` that binds a value, because
+a type declaration *is* a binding at the top level. Inside, one `field: type`
+per line. No commas are needed at line ends, though they are allowed.
+
+Building a value uses `=`, not `:`:
+
+```maca
+p = Point { x = 3, y = 4 }
+```
+
+This is the single most useful punctuation rule in Maca: **`:` says what
+something is, `=` says what it holds.** It holds in record declarations, record
+literals, function parameters, and bindings.
+
+Fields are read with a dot:
+
+```maca
+info("{p.x}, {p.y}")
+```
+
+## Updating
+
+Records are values. To get a changed one, use `with`:
+
+```maca
+q = p with { y = 5 }
+```
+
+`q` is a `Point` with `x = 3, y = 5`; `p` is untouched. Several fields can be
+updated at once, and the fields not mentioned come across unchanged:
+
+```maca
+r = p with { x = 0, y = 0 }
+```
+
+This is not necessarily a copy. Chapter 4 explains why: when nothing else is
+holding `p`, the compiler is free to make `with` a store into the memory that was
+already there. Writing the functional version and getting the imperative
+performance is the whole design.
+
+Direct field assignment also exists, for when a record is a local you are
+building up:
+
+```maca
+p.x = 10
+```
+
+## Records in signatures
+
+A record type is used like any other:
+
+```maca
+Rect = {
+    w: int
+    h: int
+}
+
+area(r: Rect) -> int =>
+    r.w * r.h
+
+scale(r: Rect, k: int) -> Rect =>
+    r with { w = r.w * k, h = r.h * k }
+```
+
+And because of UFCS — `x.f(y)` is `f(x, y)` — those read as methods at the call
+site without ever being declared as ones:
+
+```maca
+big = Rect { w = 2, h = 3 }.scale(10)
+info("area: {big.area()}")
+```
+
+There is no `impl` block, no `self`, and no distinction between a "method" and a
+"function whose first argument is a Rect". A free function is all you need.
+
+## Records containing records
+
+Fields can be any type, including other records and lists of them:
+
+```maca
+Line = {
+    from: Point
+    to: Point
+}
+
+Shape = {
+    name: str
+    points: Point[]
+}
+```
+
+Access nests the obvious way: `l.from.x`.
+
+A record may also refer to *itself*, which is how trees are built:
+
+```maca
+Node = {
+    label: str
+    children: Node[]
+}
+```
+
+This works, and it is worth knowing why it needs help from the compiler. In C, a
+struct containing an array of itself is a definition cycle — the array type needs
+the struct's size, and the struct needs the array. Maca's C backend breaks it by
+forward-declaring the array struct before the record body and emitting the
+operations after, so the cycle resolves. You never see any of this; it matters
+only because it means self-referential records are a supported thing rather than
+an accident.
+
+## Records vs. sum types
+
+A record says "all of these at once". When you need "one of these", that is a
+sum type — the next chapter. The two compose: a sum type's variants can carry
+records, and a record's field can be a sum type. Most real data models are a
+handful of each.
+
+## Always name the type
+
+A record literal with no type name in front — `{ host = "x", port = 80 }` — is
+accepted by the parser and the type checker, which infers a structural type from
+the fields present. The native backend does **not** support it, and rejects the
+program:
+
+```
+expression not supported by the native backend: Record(…)
+```
+
+So in practice every record you build gets a declared type. That is the right
+habit anyway: a named type is what a diagnostic can talk about, and the shape
+almost always appears more than once.

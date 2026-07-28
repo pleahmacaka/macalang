@@ -228,7 +228,24 @@ rows(lines: str[], at: int, stop: int) -> str =>
 // dropped by `cells` rather than by trimming the line, so an intentionally
 // empty cell in the middle survives.
 row(line: str, tag: str) -> str =>
-    "<tr>" ++ cells(line.trim().split("|"), 1, tag) ++ "</tr>\n"
+    "<tr>" ++ cells(split_cells(line.trim()), 1, tag) ++ "</tr>\n"
+
+// Split a row on `|`, honouring `\|` as a literal pipe — the operator appendix
+// has a row *about* `||`, which a naive split turns into three broken cells.
+split_cells(s: str) -> str[] =>
+    cell_walk(s.chars(), 0, "", [])
+
+cell_walk(cs: str[], i: int, cur: str, acc: str[]) -> str[] =>
+    i >= cs.length()
+        ? acc ++ [cur]
+        : (is_escaped_pipe(cs, i)
+            ? cell_walk(cs, i + 2, cur ++ "|", acc)
+            : (cs.get(i) == "|"
+                ? cell_walk(cs, i + 1, "", acc ++ [cur])
+                : cell_walk(cs, i + 1, cur ++ cs.get(i), acc)))
+
+is_escaped_pipe(cs: str[], i: int) -> bool =>
+    cs.get(i) == "\\" && i + 1 < cs.length() && cs.get(i + 1) == "|"
 
 cells(parts: str[], i: int, tag: str) -> str =>
     i >= parts.length() - 1
