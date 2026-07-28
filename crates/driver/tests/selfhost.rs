@@ -315,6 +315,16 @@ fn selfhost_frontend_compiles_and_runs() {
         "Rust int-to-string lowering wrong: {stdout}"
     );
 
+    // UFCS method call: `s.length()` → `strlen` in C, `.len() as i64` in Rust.
+    assert!(
+        stdout.contains("method C:    int slen(const char* s) { return ((int)strlen(s));"),
+        "C method-call lowering wrong: {stdout}"
+    );
+    assert!(
+        stdout.contains("method Rust: fn slen(s: String) -> i64 { ((s).len() as i64)"),
+        "Rust method-call lowering wrong: {stdout}"
+    );
+
     // a realistic file shape: leading `import` lines are skipped, leaving the
     // type/function definitions — 2 items here (a sum + a function).
     assert!(
@@ -342,6 +352,7 @@ fn selfhost_frontend_compiles_and_runs() {
             && c_src.contains("int hi(const char* a, const char* b)")
             && c_src.contains("static char* maca_int_to_str(")
             && c_src.contains("int chk(int n)")
+            && c_src.contains("int slen(const char* s)")
             && c_src.contains("int main()"),
         "emitted program missing record/sum/functions:\n{c_src}"
     );
@@ -405,6 +416,7 @@ fn selfhost_frontend_compiles_and_runs() {
             && rs_src.contains("fn code(c: Color) -> i64")
             && rs_src.contains("fn hi(a: String, b: String) -> i64")
             && rs_src.contains("fn chk(n: i64) -> i64")
+            && rs_src.contains("fn slen(s: String) -> i64")
             && rs_src.contains("fn __maca_main() -> i64"),
         "emitted Rust missing record/sum/functions:\n{rs_src}"
     );

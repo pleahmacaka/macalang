@@ -248,11 +248,26 @@ climb(ts: Token[], lhs: PExpr, p: int, min_prec: int) -> PExpr {
 parse_primary(ts: Token[], i: int) -> PExpr =>
     parse_postfix(ts, parse_atom(ts, i))
 
-// Chain postfix `.field` accesses onto a base expression.
+// Chain postfix `.field` accesses and `.method(args)` calls onto a base.
 parse_postfix(ts: Token[], e: PExpr) -> PExpr =>
     ts.get(e.next).kind == Dot
-        ? parse_postfix(ts, mk_pexpr(e_field(e.node, ts.get(e.next + 1).text), e.next + 2))
+        ? parse_dot(ts, e)
         : e
+
+// A `.name` — a method call `recv.name(args)` when a `(` follows, else a plain
+// field access.
+parse_dot(ts: Token[], e: PExpr) -> PExpr {
+    name = ts.get(e.next + 1).text
+    after = e.next + 2
+    ts.get(after).kind == LParen
+        ? parse_method(ts, e.node, name, after)
+        : parse_postfix(ts, mk_pexpr(e_field(e.node, name), after))
+}
+
+parse_method(ts: Token[], recv: Expr, name: str, lparen: int) -> PExpr {
+    a = parse_args(ts, lparen + 1, [])
+    parse_postfix(ts, mk_pexpr(e_method(recv, name, a.aitems), a.anext))
+}
 
 // atom := '-'|'!' atom | int | float | str | bool | ident [call | record] | '(' expr ')'
 parse_atom(ts: Token[], i: int) -> PExpr {

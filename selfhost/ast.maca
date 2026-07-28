@@ -13,7 +13,7 @@ import selfhost/token
 ExprKind =
     EInt | EFloat | EStr | EBool | EIdent
     | ECall | EField | EBinary | EUnary | ETernary
-    | EList | ERecord | ELambda | EBlock | EMatch
+    | EList | ERecord | ELambda | EBlock | EMatch | EMethod
 
 // One expression node. `children` holds sub-expressions (call args, operands,
 // list elements); `text` names idents/operators; `ival` carries int literals;
@@ -97,6 +97,11 @@ e_field(base: Expr, name: str) -> Expr =>
 e_match(children: Expr[]) -> Expr =>
     Expr { kind = EMatch, text = "", ival = 0, ty = "", children = children }
 
+// A UFCS method call `recv.name(args)`; `text` is the method name, `children`
+// is `[recv, arg0, …]`.
+e_method(recv: Expr, name: str, args: Expr[]) -> Expr =>
+    Expr { kind = EMethod, text = name, ival = 0, ty = "", children = [recv] ++ args }
+
 s_expr(value: Expr) -> Stmt =>
     Stmt { kind = SExpr, name = "", value, ret = "", params = [], body = [] }
 
@@ -134,6 +139,7 @@ show(e: Expr) -> str =>
         ERecord => "{e.text} {{ {show_args(e.children, 0)} }}"
         EField  => "{show(e.children.get(0))}.{e.text}"
         EMatch  => "match {show(e.children.get(0))} {{ ... }}"
+        EMethod => "{show(e.children.get(0))}.{e.text}({show_args(e.children, 1)})"
         _       => "?"
     }
 

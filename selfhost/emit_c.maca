@@ -29,8 +29,17 @@ emit_expr(e: Expr) -> str =>
         ERecord => "({e.text}){{ {emit_lit_fields(e.children, 0)} }}"
         EField  => "{emit_expr(e.children.get(0))}.{e.text}"
         EMatch  => emit_match(e)
+        EMethod => emit_method(e)
         _       => "0"
     }
+
+// A UFCS method call. `.length()` on a string is `strlen`; any other method
+// falls back to C member-call syntax (valid only where the receiver truly has
+// it — the runtime for lists/strings grows here).
+emit_method(e: Expr) -> str =>
+    e.text == "length"
+        ? "((int)strlen({emit_expr(e.children.get(0))}))"
+        : "{emit_expr(e.children.get(0))}.{e.text}({emit_args(e.children, 1)})"
 
 // A call. `info`/`print` are the output builtins — a string argument prints
 // with a trailing newline (`info`) or without (`print`); every other call is a

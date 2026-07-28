@@ -35,8 +35,16 @@ remit_expr(e: Expr) -> str =>
         ERecord => "{e.text} {{ {remit_lit_fields(e.children, 0)} }}"
         EField  => "{remit_expr(e.children.get(0))}.{e.text}"
         EMatch  => "match {remit_expr(e.children.get(0))} {{ {remit_arms(e.children, 1)} }}"
+        EMethod => remit_method(e)
         _       => "0i64"
     }
+
+// A UFCS method call. `.length()` maps to Rust's `.len()` (as `i64`); any other
+// method passes through as-is.
+remit_method(e: Expr) -> str =>
+    e.text == "length"
+        ? "(({remit_expr(e.children.get(0))}).len() as i64)"
+        : "{remit_expr(e.children.get(0))}.{e.text}({remit_args(e.children, 1)})"
 
 // A call. `info`/`print` are the output builtins → `println!`/`print!`; every
 // other call is a plain `name(args)`.
