@@ -446,6 +446,12 @@ impl<'a> Cx<'a> {
                         self.note_arr(&CTy::Arr(Box::new(CTy::Str)));
                     }
                 }
+                // `list_dir(path)` likewise yields a `str[]`.
+                if let Expr::Ident(f) = callee.as_ref()
+                    && f == "list_dir"
+                {
+                    self.note_arr(&CTy::Arr(Box::new(CTy::Str)));
+                }
                 self.walk_expr(callee);
                 for a in args {
                     match a {
@@ -2154,7 +2160,19 @@ impl<'a> Cx<'a> {
             || console_fn(n).is_some()
             || matches!(
                 n,
-                "str" | "int" | "float" | "print" | "info" | "len" | "true" | "false"
+                "str"
+                    | "int"
+                    | "float"
+                    | "print"
+                    | "info"
+                    | "len"
+                    | "true"
+                    | "false"
+                    | "read_file"
+                    | "write_file"
+                    | "file_exists"
+                    | "make_dir"
+                    | "list_dir"
             )
     }
 
@@ -2431,6 +2449,31 @@ impl<'a> Cx<'a> {
             let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
             if let Some(cfn) = console_fn(name) {
                 return (format!("{cfn}({})", a.join(", ")), CTy::Unit);
+            }
+            // file I/O builtins.
+            match name.as_str() {
+                "read_file" => return (format!("maca_read_file({})", a.join(", ")), CTy::Str),
+                "write_file" => {
+                    return (format!("maca_write_file({})", a.join(", ")), CTy::Bool);
+                }
+                "file_exists" => {
+                    return (format!("maca_file_exists({})", a.join(", ")), CTy::Bool);
+                }
+                "make_dir" => return (format!("maca_make_dir({})", a.join(", ")), CTy::Bool),
+                // `list_dir(p)` → a `str[]` of entry names, built from the
+                // runtime's malloc'd array (mirrors how `.split` lowers).
+                "list_dir" => {
+                    self.note_arr(&CTy::Arr(Box::new(CTy::Str)));
+                    return (
+                        format!(
+                            "({{ int64_t _dn; maca_str* _dd = maca_list_dir({}, &_dn); \
+                             StrArr _dr = StrArr_new(); for (int64_t _di = 0; _di < _dn; _di++) StrArr_push(&_dr, _dd[_di]); _dr; }})",
+                            a.join(", ")
+                        ),
+                        CTy::Arr(Box::new(CTy::Str)),
+                    );
+                }
+                _ => {}
             }
             let _ = expected;
             // an FFI/foreign function (declared, provided by C glue) — a direct call

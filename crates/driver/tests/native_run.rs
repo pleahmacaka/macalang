@@ -773,3 +773,39 @@ fn microkernel_boots_natively() {
     );
     assert_eq!(out.status.code(), Some(0), "kernel should halt cleanly");
 }
+
+#[test]
+fn file_io_builtins_run_natively() {
+    // read_file / write_file / file_exists / make_dir / list_dir — the
+    // filesystem primitives a build tool needs.
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    // start from a clean directory so `list_dir` counts are deterministic
+    let _ = std::fs::remove_dir_all("/tmp/maca_fileio_example");
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &example("fileio.maca")])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for want in [
+        "read 4 lines",       // read_file round-trips what write_file wrote
+        "one.md exists",      // file_exists is true for a written file
+        "nope.md missing",    // ...and false for an absent one
+        "pages: 2",           // make_dir + list_dir see both files
+        "first: one.md",      // list_dir is sorted, so builds are reproducible
+        "second: two.md",
+    ] {
+        assert!(
+            stdout.contains(want),
+            "missing {want:?}.\nstdout: {stdout}\nstderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}

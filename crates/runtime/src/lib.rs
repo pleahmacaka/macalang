@@ -79,6 +79,13 @@ bool maca_starts_with(maca_str s, maca_str prefix);
 bool maca_ends_with(maca_str s, maca_str suffix);
 maca_str maca_replace(maca_str s, maca_str from, maca_str to); /* all occurrences */
 maca_str maca_repeat(maca_str s, int64_t n);          /* s concatenated n times */
+
+/* ---- file I/O ---- */
+maca_str maca_read_file(maca_str path);               /* whole file, "" if unreadable */
+bool maca_write_file(maca_str path, maca_str text);   /* truncate + write; ok? */
+bool maca_file_exists(maca_str path);
+bool maca_make_dir(maca_str path);                    /* mkdir -p; ok? */
+maca_str* maca_list_dir(maca_str path, int64_t* out_len); /* names, sorted; malloc'd */
 maca_str maca_pad_start(maca_str s, int64_t w, maca_str p); /* left-pad to width w */
 maca_str maca_pad_end(maca_str s, int64_t w, maca_str p);   /* right-pad to width w */
 maca_str maca_substr(maca_str s, int64_t start, int64_t len);  /* byte range, clamped */
@@ -184,6 +191,7 @@ pub const RUNTIME_C: &str = r##"#define _GNU_SOURCE
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <dirent.h>
 
 static void die(const char* msg) {
     fputs("maca runtime error: ", stderr);
@@ -357,6 +365,84 @@ maca_str maca_lower(maca_str s) {
     for (size_t i = 0; i < n; i++) r[i] = (char)tolower((unsigned char)s[i]);
     r[n] = '\0'; return r;
 }
+/* ---- file I/O ---- */
+maca_str maca_read_file(maca_str path) {
+    if (!path) return "";
+    FILE* f = fopen(path, "rb");
+    if (!f) return "";
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return ""; }
+    long n = ftell(f);
+    if (n < 0) { fclose(f); return ""; }
+    rewind(f);
+    char* buf = (char*)xmalloc((size_t)n + 1);
+    size_t got = fread(buf, 1, (size_t)n, f);
+    fclose(f);
+    buf[got] = '\0';
+    return buf;
+}
+bool maca_write_file(maca_str path, maca_str text) {
+    if (!path) return false;
+    if (!text) text = "";
+    FILE* f = fopen(path, "wb");
+    if (!f) return false;
+    size_t n = strlen(text);
+    bool ok = fwrite(text, 1, n, f) == n;
+    return fclose(f) == 0 && ok;
+}
+bool maca_file_exists(maca_str path) {
+    struct stat st;
+    return path && stat(path, &st) == 0;
+}
+/* `mkdir -p`: create each missing component in turn. */
+bool maca_make_dir(maca_str path) {
+    if (!path || !*path) return false;
+    size_t n = strlen(path);
+    char* tmp = (char*)xmalloc(n + 1);
+    memcpy(tmp, path, n + 1);
+    for (size_t i = 1; i <= n; i++) {
+        if (tmp[i] == '/' || tmp[i] == '\0') {
+            char save = tmp[i];
+            tmp[i] = '\0';
+            struct stat st;
+            if (stat(tmp, &st) != 0 && mkdir(tmp, 0777) != 0) return false;
+            tmp[i] = save;
+        }
+    }
+    return true;
+}
+maca_str* maca_list_dir(maca_str path, int64_t* out_len) {
+    *out_len = 0;
+    if (!path) return NULL;
+    DIR* d = opendir(path);
+    if (!d) return NULL;
+    size_t cap = 16, n = 0;
+    maca_str* names = (maca_str*)xmalloc(cap * sizeof(maca_str));
+    struct dirent* e;
+    while ((e = readdir(d)) != NULL) {
+        if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+        if (n == cap) {
+            cap *= 2;
+            maca_str* bigger = (maca_str*)xmalloc(cap * sizeof(maca_str));
+            memcpy(bigger, names, n * sizeof(maca_str));
+            names = bigger;
+        }
+        size_t len = strlen(e->d_name);
+        char* copy = (char*)xmalloc(len + 1);
+        memcpy(copy, e->d_name, len + 1);
+        names[n++] = copy;
+    }
+    closedir(d);
+    /* readdir order is arbitrary; sort so builds are reproducible. */
+    for (size_t i = 1; i < n; i++) {
+        maca_str key = names[i];
+        size_t j = i;
+        while (j > 0 && strcmp(names[j - 1], key) > 0) { names[j] = names[j - 1]; j--; }
+        names[j] = key;
+    }
+    *out_len = (int64_t)n;
+    return names;
+}
+
 maca_str maca_repeat(maca_str s, int64_t n) {
     if (!s || n <= 0) return "";
     size_t len = strlen(s), total = len * (size_t)n;

@@ -100,6 +100,12 @@ pub fn is_backend_intrinsic(name: &str) -> bool {
                 | "delay"
                 | "nop"
                 | "forever"
+                // file I/O builtins (lowered by the C backend to the runtime)
+                | "read_file"
+                | "write_file"
+                | "file_exists"
+                | "make_dir"
+                | "list_dir"
         )
 }
 

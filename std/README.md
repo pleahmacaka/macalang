@@ -11,6 +11,10 @@ language surface wants (a prelude you can just use). What exists today:
 - **math** — `abs`, `min`, `max`, `clamp`, `sign`, `gcd`, `sqrt`, `floor`,
   `ceil`, `round`, `pow`, `sin`, `cos`, `tan`, `log`, `exp`.
 - **async** — `spawn`/`await` (colorblind), `sleep_ms`.
+- **file I/O** — `read_file(path) -> str` (empty when unreadable),
+  `write_file(path, text) -> bool`, `file_exists(path) -> bool`,
+  `make_dir(path) -> bool` (`mkdir -p`), `list_dir(path) -> str[]` (entry names,
+  sorted so builds are reproducible).
 
 **String methods (UFCS on `str`):** `split`, `join`, `trim`, `upper`, `lower`,
 `contains`, `starts_with`, `ends_with`, `replace`, `substr`, `index_of`,
