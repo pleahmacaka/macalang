@@ -47,9 +47,16 @@ fn tomo_renders_markdown_to_html() {
     let out = Command::new(&bin).output().expect("run tomo");
     let html = String::from_utf8_lossy(&out.stdout);
 
-    // headings
-    assert!(html.contains("<h1>Title</h1>"), "h1 wrong: {html}");
-    assert!(html.contains("<h2>Section</h2>"), "h2 wrong: {html}");
+    // headings carry anchor ids (slugged) so the TOC can link to them
+    assert!(html.contains("<h1 id=\"title\">Title</h1>"), "h1 wrong: {html}");
+    assert!(html.contains("<h2 id=\"section\">Section</h2>"), "h2 wrong: {html}");
+    // a table of contents generated from the document's headings
+    assert!(
+        html.contains("<nav class=\"toc\">")
+            && html.contains("<li><a href=\"#title\">Title</a></li>")
+            && html.contains("<li><a href=\"#section\">Section</a></li>"),
+        "toc wrong: {html}"
+    );
     // inline bold + code + link
     assert!(
         html.contains(

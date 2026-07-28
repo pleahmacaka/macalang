@@ -19,7 +19,9 @@ The **renderer** is implemented in Maca and gated
 - `-` list items,
 - ```` ``` ```` fenced code blocks (HTML-escaped),
 - paragraphs,
-- inline `**bold**` and `` `code` ``,
+- inline `**bold**`, `` `code` ``, and links `[text](url)`,
+- heading anchor ids, plus `toc(...)` which builds a table of contents from a
+  document's headings,
 
 and `page(...)` wraps rendered chapters in an HTML shell with the i18n language
 switcher. The file-walking CLI driver (read `book.toml` + `book/<lang>/*.md`,
@@ -49,8 +51,10 @@ content Tomo renders, and doubles as the i18n showcase: each chapter exists in
 ## Roadmap
 
 - [x] Markdown renderer in Maca (headings, lists, code, paragraphs, inline)
+- [x] inline links `[text](url)`
+- [x] heading anchors + a generated table of contents
 - [x] i18n page shell with a language switcher
 - [ ] file-I/O CLI driver (`maca run tomo.maca -- build`) once the I/O builtins land
-- [ ] `book.toml` parsing, chapter ordering, a generated table of contents
+- [ ] `book.toml` parsing and chapter ordering
 - [ ] translation-fallback to the default language for missing chapters
-- [ ] tables, blockquotes, nested lists, and heading anchors
+- [ ] tables, blockquotes, and nested lists

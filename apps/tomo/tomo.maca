@@ -13,9 +13,14 @@ import std/str
 esc(s: str) -> str =>
     s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-// `<hN>text</hN>` for a heading of the given level.
+// A URL anchor slug for a heading: lowercased, spaces to hyphens. (A light
+// version — dropping punctuation grows here.)
+slug(text: str) -> str =>
+    text.lower().replace(" ", "-")
+
+// `<hN id="slug">text</hN>` — the `id` lets the table of contents link to it.
 heading(level: str, text: str) -> str =>
-    "<h" ++ level ++ ">" ++ inline(esc(text)) ++ "</h" ++ level ++ ">\n"
+    "<h" ++ level ++ " id=\"" ++ slug(text) ++ "\">" ++ inline(esc(text)) ++ "</h" ++ level ++ ">\n"
 
 // Replace only the *first* occurrence of `from` with `to` (`std/str`'s
 // `replace` swaps every occurrence, so alternating open/close tags need this).
@@ -99,6 +104,29 @@ render_block(lines: str[], i: int, acc: str, line: str) -> str {
     render_lines(lines, i + 1, false, acc ++ html)
 }
 
+// ---- table of contents ----------------------------------------------------
+
+// Build a `<nav>` list of a document's headings, each linking to its anchor.
+toc(md: str) -> str =>
+    "<nav class=\"toc\">\n<ul>\n" ++ toc_lines(md.split("\n"), 0) ++ "</ul>\n</nav>\n"
+
+toc_lines(lines: str[], i: int) -> str =>
+    i >= lines.length()
+        ? ""
+        : toc_line(lines.get(i)) ++ toc_lines(lines, i + 1)
+
+toc_line(line: str) -> str =>
+    line.starts_with("### ")
+        ? toc_entry(line.substr(4, line.length() - 4))
+        : line.starts_with("## ")
+            ? toc_entry(line.substr(3, line.length() - 3))
+            : line.starts_with("# ")
+                ? toc_entry(line.substr(2, line.length() - 2))
+                : ""
+
+toc_entry(text: str) -> str =>
+    "<li><a href=\"#" ++ slug(text) ++ "\">" ++ esc(text) ++ "</a></li>\n"
+
 // ---- i18n page shell ------------------------------------------------------
 
 // Wrap rendered chapter HTML in a minimal page with a language switcher. `langs`
@@ -125,6 +153,8 @@ main() -> int {
     html = render(sample)
     info("=== rendered ===")
     info(html)
+    info("=== toc ===")
+    info(toc(sample))
     info("=== page ===")
     info(page("Maca Handbook", "en", "en,ko", "<article>hi</article>\n"))
     0
