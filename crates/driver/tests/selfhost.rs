@@ -336,14 +336,15 @@ fn selfhost_frontend_compiles_and_runs() {
         "Rust .at lowering wrong: {stdout}"
     );
 
-    // list literals + `.get(i)` indexing: a C compound literal / a Rust `vec!`.
+    // dynamic arrays: an `int[]` parameter is a heap `MacaList` (C) / `Vec<i64>`
+    // (Rust); `.get(i)` indexes it and `.count()` is its length.
     assert!(
-        stdout.contains("list C:    int pair() { int* xs = (int[]){ 40, 2 }; return (xs[0] + xs[1]);"),
-        "C list lowering wrong: {stdout}"
+        stdout.contains("array C:    int total(MacaList xs) { return ((((int)xs.data[0]) + ((int)xs.data[1])) + (xs.len));"),
+        "C dynamic-array lowering wrong: {stdout}"
     );
     assert!(
-        stdout.contains("list Rust: fn pair() -> i64 { let xs = vec![40i64, 2i64]; (xs[(0i64) as usize] + xs[(1i64) as usize])"),
-        "Rust list lowering wrong: {stdout}"
+        stdout.contains("array Rust: fn total(xs: Vec<i64>) -> i64 { ((xs[(0i64) as usize] + xs[(1i64) as usize]) + ((xs).len() as i64))"),
+        "Rust dynamic-array lowering wrong: {stdout}"
     );
 
     // a realistic file shape: leading `import` lines are skipped, leaving the
@@ -374,6 +375,8 @@ fn selfhost_frontend_compiles_and_runs() {
             && c_src.contains("static char* maca_int_to_str(")
             && c_src.contains("int chk(int n)")
             && c_src.contains("int slen(const char* s)")
+            && c_src.contains("typedef struct { long* data; int len; } MacaList;")
+            && c_src.contains("int head(MacaList xs)")
             && c_src.contains("int main()"),
         "emitted program missing record/sum/functions:\n{c_src}"
     );
@@ -438,6 +441,7 @@ fn selfhost_frontend_compiles_and_runs() {
             && rs_src.contains("fn hi(a: String, b: String) -> i64")
             && rs_src.contains("fn chk(n: i64) -> i64")
             && rs_src.contains("fn slen(s: String) -> i64")
+            && rs_src.contains("fn head(xs: Vec<i64>) -> i64")
             && rs_src.contains("fn __maca_main() -> i64"),
         "emitted Rust missing record/sum/functions:\n{rs_src}"
     );

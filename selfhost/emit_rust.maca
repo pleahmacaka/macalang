@@ -40,10 +40,11 @@ remit_expr(e: Expr) -> str =>
         _       => "0i64"
     }
 
-// A UFCS method call. `.length()` → `.len()` (as `i64`); `.get(i)` indexes a
-// `Vec`; `.at(i)` indexes a string's bytes; any other method passes through.
+// A UFCS method call. `.length()` (string) / `.count()` (list) → `.len()`;
+// `.get(i)` indexes a `Vec`; `.at(i)` indexes a string's bytes; any other
+// method passes through.
 remit_method(e: Expr) -> str =>
-    e.text == "length"
+    e.text == "length" || e.text == "count"
         ? "(({remit_expr(e.children.get(0))}).len() as i64)"
         : e.text == "at"
             ? "(({remit_expr(e.children.get(0))}).as_bytes()[({remit_expr(e.children.get(1))}) as usize] as i64)"
@@ -97,15 +98,17 @@ remit_args(xs: Expr[], i: int) -> str =>
 // Map a Maca type name to its Rust spelling. Scalars map directly; an empty
 // type defaults to `i64`; any other name is a record type used verbatim.
 rtype(ty: str) -> str =>
-    ty == "float"
-        ? "f64"
-        : ty == "str"
-            ? "String"
-            : ty == "bool"
-                ? "bool"
-                : ty == "" || ty == "int"
-                    ? "i64"
-                    : ty
+    ty.ends_with("[]")
+        ? "Vec<i64>"
+        : ty == "float"
+            ? "f64"
+            : ty == "str"
+                ? "String"
+                : ty == "bool"
+                    ? "bool"
+                    : ty == "" || ty == "int"
+                        ? "i64"
+                        : ty
 
 // A function definition. `main` returns an exit code, so it is wrapped the way
 // `maca-backend-rust` does: the body becomes `__maca_main`, and a real `main`

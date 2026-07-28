@@ -147,12 +147,12 @@ main() -> int {
     info("at C:    {emit_fn(at.snode)}")
     info("at Rust: {remit_fn(at.snode)}")
 
-    // list literals + indexing: `[a, b]` → a C compound literal / a Rust `vec!`,
-    // and `.get(i)` indexes it. (Local int lists for now — the first step of the
-    // arrays roadmap.)
-    ls = parse_fn(lex("pair() -> int {{ xs = [40, 2] xs.get(0) + xs.get(1) }}"), 0)
-    info("list C:    {emit_fn(ls.snode)}")
-    info("list Rust: {remit_fn(ls.snode)}")
+    // dynamic arrays: an `int[]` parameter (a heap `MacaList` in C, a `Vec<i64>`
+    // in Rust), `[a, b]` literals built on the heap so they survive being
+    // returned/passed, `.get(i)` indexing, and `.count()` length.
+    ar = parse_fn(lex("total(xs: int[]) -> int => xs.get(0) + xs.get(1) + xs.count()"), 0)
+    info("array C:    {emit_fn(ar.snode)}")
+    info("array Rust: {remit_fn(ar.snode)}")
 
     // a realistic file shape: leading `import` lines (skipped — the driver
     // resolves modules), then a sum type and a function. This is the structure
@@ -169,7 +169,7 @@ main() -> int {
     // `(fld(Point{40,9}) + code(Green)) * hi("hel", "lo")` = `(40 + 2) * 1` =
     // `42`, where `hi` concatenates then compares — `(a ++ b) == "hello"`. `main`
     // also prints a greeting via the `info` builtin (`printf` / `println!`).
-    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} hi(a: str, b: str) -> int => (a ++ b) == \"hello\" ? 1 : 0 chk(n: int) -> int => (\"v\" ++ str(n)) == \"v42\" ? 1 : 0 slen(s: str) -> int => s.length() main() -> int {{ q = Point {{ x = 40, y = 9 }} info(\"self-hosted!\") (fld(q) + code(Green)) * hi(\"hel\", \"lo\") * chk(42) * slen(\"z\") }}"
+    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} hi(a: str, b: str) -> int => (a ++ b) == \"hello\" ? 1 : 0 chk(n: int) -> int => (\"v\" ++ str(n)) == \"v42\" ? 1 : 0 slen(s: str) -> int => s.length() head(xs: int[]) -> int => xs.get(0) main() -> int {{ q = Point {{ x = 40, y = 9 }} ys = [1, 99] info(\"self-hosted!\") (fld(q) + code(Green)) * hi(\"hel\", \"lo\") * chk(42) * slen(\"z\") * head(ys) }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))

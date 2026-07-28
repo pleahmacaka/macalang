@@ -30,21 +30,32 @@ emit_expr(e: Expr) -> str =>
         EField  => "{emit_expr(e.children.get(0))}.{e.text}"
         EMatch  => emit_match(e)
         EMethod => emit_method(e)
-        EList   => "(int[]){{ {emit_args(e.children, 0)} }}"
+        EList   => "maca_listv({str(e.children.length())}, {emit_list_elems(e.children, 0)})"
         _       => "0"
     }
 
-// A UFCS method call. `.length()` on a string is `strlen`; `.get(i)` indexes a
-// list; `.at(i)` indexes a string's bytes; any other method falls back to C
-// member-call syntax (valid only where the receiver truly has it).
+// `(long)(e0), (long)(e1), …` — list elements widened to the `long` cell type
+// the variadic `maca_listv` reads.
+emit_list_elems(es: Expr[], i: int) -> str =>
+    i >= es.length()
+        ? ""
+        : i == es.length() - 1
+            ? "(long)({emit_expr(es.get(i))})"
+            : "(long)({emit_expr(es.get(i))}), {emit_list_elems(es, i + 1)}"
+
+// A UFCS method call. `.length()` on a string is `strlen`; `.count()` is a
+// list's length; `.get(i)` indexes a list; `.at(i)` indexes a string's bytes;
+// any other method falls back to C member-call syntax.
 emit_method(e: Expr) -> str =>
     e.text == "length"
         ? "((int)strlen({emit_expr(e.children.get(0))}))"
-        : e.text == "at"
-            ? "((int){emit_expr(e.children.get(0))}[{emit_expr(e.children.get(1))}])"
-            : e.text == "get"
-                ? "{emit_expr(e.children.get(0))}[{emit_expr(e.children.get(1))}]"
-                : "{emit_expr(e.children.get(0))}.{e.text}({emit_args(e.children, 1)})"
+        : e.text == "count"
+            ? "({emit_expr(e.children.get(0))}.len)"
+            : e.text == "at"
+                ? "((int){emit_expr(e.children.get(0))}[{emit_expr(e.children.get(1))}])"
+                : e.text == "get"
+                    ? "((int){emit_expr(e.children.get(0))}.data[{emit_expr(e.children.get(1))}])"
+                    : "{emit_expr(e.children.get(0))}.{e.text}({emit_args(e.children, 1)})"
 
 // A call. `info`/`print` are the output builtins — a string argument prints
 // with a trailing newline (`info`) or without (`print`); every other call is a
@@ -114,13 +125,15 @@ emit_unit(e: Expr) -> str =>
 // other name is a user type (record or sum), emitted verbatim because it is
 // `typedef`'d, so no `struct`/`enum` keyword is needed at the use site.
 type_c(ty: str) -> str =>
-    ty == "float"
-        ? "double"
-        : ty == "str"
-            ? "const char*"
-            : ty == "" || ty == "int" || ty == "bool"
-                ? "int"
-                : ty
+    ty.ends_with("[]")
+        ? "MacaList"
+        : ty == "float"
+            ? "double"
+            : ty == "str"
+                ? "const char*"
+                : ty == "" || ty == "int" || ty == "bool"
+                    ? "int"
+                    : ty
 
 // Emit a C function definition from an `SFn` statement. Parameter and return
 // types come from the parsed signature (via `type_c`). The body is a statement
@@ -149,7 +162,7 @@ local_c_type(e: Expr) -> str =>
         EStr    => "const char*"
         EFloat  => "double"
         ERecord => e.text
-        EList   => "int*"
+        EList   => "MacaList"
         EBinary => e.text == "++" ? "const char*" : "int"
         _       => "int"
     }
@@ -168,9 +181,11 @@ emit_stmt(s: Stmt, is_last: bool) -> str =>
 // definitions, one item per line (records appear first in source order, so a
 // struct is declared before a function uses it).
 c_preamble() -> str =>
-    "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n" ++
+    "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <stdarg.h>\n" ++
     "static char* maca_cat(const char* a, const char* b) {{ char* r = malloc(strlen(a) + strlen(b) + 1); strcpy(r, a); strcat(r, b); return r; }}\n" ++
-    "static char* maca_int_to_str(int n) {{ char* r = malloc(16); snprintf(r, 16, \"%d\", n); return r; }}\n"
+    "static char* maca_int_to_str(int n) {{ char* r = malloc(16); snprintf(r, 16, \"%d\", n); return r; }}\n" ++
+    "typedef struct {{ long* data; int len; }} MacaList;\n" ++
+    "static MacaList maca_listv(int n, ...) {{ MacaList l; l.data = malloc(n * sizeof(long)); l.len = n; va_list ap; va_start(ap, n); for (int i = 0; i < n; i++) l.data[i] = va_arg(ap, long); va_end(ap); return l; }}\n"
 
 emit_module(m: Module) -> str =>
     c_preamble() ++ emit_items(m.items, 0)

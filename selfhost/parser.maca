@@ -60,8 +60,9 @@ parse_fn(ts: Token[], i: int) -> PStmt {
     pp = parse_params(ts, i + 2, [])   // i+1 is '(' ; params start at i+2
     afterp = pp.pnext + 1              // skip ')'
     has_ret = ts.get(afterp).kind == Arrow
-    ret = has_ret ? ts.get(afterp + 1).text : ""   // the `R` in `-> R`
-    afterret = has_ret ? afterp + 2 : afterp       // skip '-> R'
+    ret_arr = has_ret && ts.get(afterp + 2).kind == LBracket   // `-> R[]`
+    ret = has_ret ? (ret_arr ? ts.get(afterp + 1).text ++ "[]" : ts.get(afterp + 1).text) : ""
+    afterret = has_ret ? (ret_arr ? afterp + 4 : afterp + 2) : afterp   // skip '-> R' / '-> R[]'
     ts.get(afterret).kind == LBrace
         ? mk_block_fn(ts, name, ret, pp.params, afterret)
         : mk_arrow_fn(ts, name, ret, pp.params, afterret)
@@ -186,9 +187,10 @@ parse_params(ts: Token[], i: int, acc: Expr[]) -> PParams =>
 parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
     pname = ts.get(i).text
     has_ty = ts.get(i + 1).kind == Colon
-    tyname = has_ty ? ts.get(i + 2).text : ""    // the `T` in `name: T`
+    is_arr = has_ty && ts.get(i + 3).kind == LBracket    // `name: T[]`
+    tyname = has_ty ? (is_arr ? ts.get(i + 2).text ++ "[]" : ts.get(i + 2).text) : ""
     nacc = acc ++ [e_param(pname, tyname)]
-    after = has_ty ? i + 3 : i + 1               // skip optional ': T'
+    after = has_ty ? (is_arr ? i + 5 : i + 3) : i + 1    // skip ': T' / ': T[]'
     ts.get(after).kind == Comma
         ? parse_params(ts, after + 1, nacc)
         : parse_params(ts, after, nacc)
