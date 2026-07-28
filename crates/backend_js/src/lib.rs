@@ -687,9 +687,12 @@ impl Cx {
             "/* generated Tailwind subset (tree-shaken) */\n\
              *,*::before,*::after{box-sizing:border-box}\nhtml,body{margin:0}\n",
         );
-        for c in &self.classes {
-            if let Some(rule) = tailwind(c) {
-                out.push_str(&format!(".{} {{ {rule} }}\n", css_escape(c)));
+        let mut sorted: Vec<&String> = self.classes.iter().collect();
+        sorted.sort_by_key(|c| (order(c), (*c).clone()));
+        for c in sorted {
+            if let Some(r) = rule(c) {
+                out.push_str(&r);
+                out.push('\n');
             }
         }
         out
@@ -722,6 +725,104 @@ fn js_init(e: &Expr) -> String {
         Expr::Bool(b) => b.to_string(),
         _ => "null".into(),
     }
+}
+
+/// Where a class's rule belongs in the sheet.
+///
+/// CSS resolves a tie in specificity by source order, so a variant has to come
+/// *after* the plain utility it overrides — otherwise `max-md:block` loses to
+/// `grid` and the narrow layout silently never applies. Plain utilities first,
+/// then state variants, then media queries ordered so the more specific
+/// breakpoint wins.
+pub fn order(class: &str) -> (u8, i32) {
+    let (variants, _) = split_variants(class);
+    if variants.is_empty() {
+        return (0, 0);
+    }
+    let mut layer = 1u8;
+    let mut width = 0i32;
+    for v in &variants {
+        match *v {
+            "sm" => (layer, width) = (2, 40),
+            "md" => (layer, width) = (2, 48),
+            "lg" => (layer, width) = (2, 64),
+            "xl" => (layer, width) = (2, 80),
+            // a max-width query is more specific the *smaller* it is, so it
+            // sorts the other way round
+            "max-lg" => (layer, width) = (3, -64),
+            "max-md" => (layer, width) = (3, -48),
+            "max-sm" => (layer, width) = (3, -40),
+            "dark" => layer = layer.max(2),
+            _ => {}
+        }
+    }
+    (layer, width)
+}
+
+/// A whole CSS rule for one utility class, variants included.
+///
+/// A variant is a `name:` prefix that changes *when* the rule applies rather
+/// than what it does, and they chain: `dark:hover:bg-zinc-800` is the hover
+/// colour in dark mode. Without them a utility system can only express the
+/// unconditional case, which is why anything with a theme, a hover state or a
+/// breakpoint had to fall back to hand-written CSS.
+///
+/// Returns the rule text — including any `@media` wrapper — or `None` when the
+/// class isn't one we generate.
+pub fn rule(class: &str) -> Option<String> {
+    let (variants, base) = split_variants(class);
+    let body = tailwind(base)?;
+    let mut selector = format!(".{}", css_escape(class));
+    let mut media: Vec<&str> = Vec::new();
+    for v in &variants {
+        match *v {
+            "hover" => selector.push_str(":hover"),
+            "focus" => selector.push_str(":focus"),
+            "active" => selector.push_str(":active"),
+            "first" => selector.push_str(":first-child"),
+            "last" => selector.push_str(":last-child"),
+            "open" => selector.push_str("[open]"),
+            "before" => selector.push_str("::before"),
+            "after" => selector.push_str("::after"),
+            "marker" => selector.push_str("::marker"),
+            "placeholder" => selector.push_str("::placeholder"),
+            "dark" => media.push("(prefers-color-scheme:dark)"),
+            "sm" => media.push("(min-width:40rem)"),
+            "md" => media.push("(min-width:48rem)"),
+            "lg" => media.push("(min-width:64rem)"),
+            "xl" => media.push("(min-width:80rem)"),
+            // a max-width breakpoint, for styling *down* from a size
+            "max-sm" => media.push("(max-width:40rem)"),
+            "max-md" => media.push("(max-width:48rem)"),
+            "max-lg" => media.push("(max-width:64rem)"),
+            _ => return None,
+        }
+    }
+    let rule = format!("{selector} {{ {body} }}");
+    Some(if media.is_empty() {
+        rule
+    } else {
+        format!("@media{} {{ {rule} }}", media.join(" and "))
+    })
+}
+
+/// Split `dark:hover:bg-x` into its variants and the utility they modify.
+///
+/// A `:` inside brackets is not a separator — `[&>summary]:hidden` and colour
+/// values keep theirs — so only top-level colons split.
+fn split_variants(class: &str) -> (Vec<&str>, &str) {
+    let mut variants = Vec::new();
+    let mut rest = class;
+    while let Some(i) = rest.find(':') {
+        // `max-sm:` is two tokens with a hyphen, not a variant boundary problem;
+        // a bracket group protects its own colons.
+        if rest[..i].contains('[') {
+            break;
+        }
+        variants.push(&rest[..i]);
+        rest = &rest[i + 1..];
+    }
+    (variants, rest)
 }
 
 /// Maca's integrated Tailwind: turn a utility class into its CSS body. Covers
@@ -790,6 +891,32 @@ pub fn tailwind(class: &str) -> Option<String> {
         "absolute" => "position:absolute",
         "fixed" => "position:fixed",
         "sticky" => "position:sticky",
+        "static" => "position:static",
+        // list, table and typography bits a document needs and an app doesn't —
+        // which is why they were missing until a book was built with this.
+        "list-none" => "list-style:none",
+        "list-disc" => "list-style:disc",
+        "list-decimal" => "list-style:decimal",
+        "border-collapse" => "border-collapse:collapse",
+        "table" => "display:table",
+        "table-auto" => "table-layout:auto",
+        "table-fixed" => "table-layout:fixed",
+        "text-inherit" => "color:inherit",
+        "border-separate" => "border-collapse:separate",
+        "align-top" => "vertical-align:top",
+        "align-middle" => "vertical-align:middle",
+        "align-baseline" => "vertical-align:baseline",
+        "font-serif" => "font-family:ui-serif,Georgia,serif",
+        "no-underline" => "text-decoration-line:none",
+        "shrink-0" => "flex-shrink:0",
+        "grow" => "flex-grow:1",
+        "content-none" => "content:\"\"",
+        "shadow" => "box-shadow:0 1px 3px rgba(0,0,0,.1)",
+        "shadow-md" => "box-shadow:0 4px 8px rgba(0,0,0,.12)",
+        "shadow-lg" => "box-shadow:0 4px 14px rgba(0,0,0,.14)",
+        "shadow-none" => "box-shadow:none",
+        "overscroll-contain" => "overscroll-behavior:contain",
+        "appearance-none" => "appearance:none",
         "inset-0" => "top:0;right:0;bottom:0;left:0",
         "cursor-pointer" => "cursor:pointer",
         "cursor-default" => "cursor:default",
@@ -834,6 +961,58 @@ pub fn tailwind(class: &str) -> Option<String> {
     }
     if let Some(v) = class.strip_prefix("min-w-") {
         return Some(format!("min-width:{};", size(v)?));
+    }
+    // Arbitrary values: `text-[0.9em]`, `w-[42rem]`, `bg-[#191919]`. Without
+    // these a utility system is a fixed menu, and anything outside the scale
+    // sends you back to hand-written CSS — which is the whole thing this is
+    // meant to replace. Underscores become spaces, as Tailwind does, so a value
+    // with spaces can still live in a class attribute.
+    if let Some(open) = class.find("[")
+        && class.ends_with(']')
+    {
+        let prefix = &class[..open];
+        let raw = &class[open + 1..class.len() - 1].replace('_', " ");
+        if let Some(prop) = arbitrary_property(prefix.trim_end_matches('-')) {
+            return Some(format!("{prop}:{raw};"));
+        }
+    }
+    // `underline-offset-2`, `leading-7`, `max-h-none`, `border-l-2`,
+    // `decoration-zinc-400` — the last stragglers a text layout needs.
+    if let Some(v) = class.strip_prefix("underline-offset-")
+        && let Ok(n) = v.parse::<u32>()
+    {
+        return Some(format!("text-underline-offset:{n}px;"));
+    }
+    if let Some(v) = class.strip_prefix("leading-") {
+        if let Some(n) = line_height(v) {
+            return Some(format!("line-height:{n};"));
+        }
+        return Some(format!("line-height:{};", space(v)?));
+    }
+    if let Some(v) = class.strip_prefix("decoration-") {
+        return Some(format!("text-decoration-color:{};", color(v)?));
+    }
+    for (p, prop) in [
+        ("border-l-", "border-left-width"),
+        ("border-r-", "border-right-width"),
+        ("border-t-", "border-top-width"),
+        ("border-b-", "border-bottom-width"),
+    ] {
+        if let Some(v) = class.strip_prefix(p)
+            && let Ok(n) = v.parse::<u32>()
+        {
+            return Some(format!("{prop}:{n}px;"));
+        }
+    }
+    for (p, prop) in [
+        ("top-", "top"),
+        ("right-", "right"),
+        ("bottom-", "bottom"),
+        ("left-", "left"),
+    ] {
+        if let Some(v) = class.strip_prefix(p) {
+            return Some(format!("{prop}:{};", space(v)?));
+        }
     }
     if let Some(v) = class.strip_prefix("max-w-") {
         if let Some(w) = container_width(v) {
@@ -940,9 +1119,51 @@ fn container_width(v: &str) -> Option<&'static str> {
     })
 }
 
+/// The CSS property an arbitrary-value class sets: `text-[…]` is a font size,
+/// `w-[…]` a width, and so on.
+fn arbitrary_property(prefix: &str) -> Option<&'static str> {
+    Some(match prefix {
+        "text" => "font-size",
+        "w" => "width",
+        "h" => "height",
+        "min-w" => "min-width",
+        "min-h" => "min-height",
+        "max-w" => "max-width",
+        "max-h" => "max-height",
+        "bg" => "background-color",
+        "border" => "border-color",
+        "p" => "padding",
+        "m" => "margin",
+        "mt" => "margin-top",
+        "mb" => "margin-bottom",
+        "gap" => "gap",
+        "top" => "top",
+        "leading" => "line-height",
+        "font" => "font-family",
+        "content" => "content",
+        "shadow" => "box-shadow",
+        "grid-cols" => "grid-template-columns",
+        _ => return None,
+    })
+}
+
+/// Tailwind's named line heights.
+fn line_height(v: &str) -> Option<&'static str> {
+    Some(match v {
+        "none" => "1",
+        "tight" => "1.25",
+        "snug" => "1.375",
+        "normal" => "1.5",
+        "relaxed" => "1.625",
+        "loose" => "2",
+        _ => return None,
+    })
+}
+
 /// Width/height value: spacing scale, plus `full`/`screen`/`auto`/fractions.
 fn size(v: &str) -> Option<String> {
     Some(match v {
+        "none" => "none".into(),
         "full" => "100%".into(),
         "screen" => "100vh".into(),
         "auto" => "auto".into(),
@@ -1032,10 +1253,51 @@ fn color(v: &str) -> Option<&'static str> {
 }
 
 /// Escape a class name for a CSS selector (`/` in `w-1/2`, `.` in `p-1.5`).
+/// Escape a class name for use in a CSS selector.
+///
+/// Utility names are full of characters a selector treats as syntax — `.` in
+/// `text-[0.9em]`, `:` in every variant, and brackets, parens, commas, `#` and
+/// quotes once arbitrary values are allowed. An unescaped one doesn't warn; the
+/// browser silently drops the whole rule.
 pub fn css_escape(c: &str) -> String {
-    c.replace('/', "\\/")
-        .replace('.', "\\.")
-        .replace(':', "\\:")
+    let mut out = String::with_capacity(c.len() + 8);
+    for ch in c.chars() {
+        if matches!(
+            ch,
+            '/' | '.'
+                | ':'
+                | '['
+                | ']'
+                | '('
+                | ')'
+                | ','
+                | '#'
+                | '%'
+                | '\''
+                | '"'
+                | '!'
+                | '$'
+                | '&'
+                | '*'
+                | '+'
+                | ';'
+                | '<'
+                | '='
+                | '>'
+                | '?'
+                | '@'
+                | '^'
+                | '`'
+                | '{'
+                | '|'
+                | '}'
+                | '~'
+        ) {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
 }
 
 fn plain_text(parts: &[StrPart]) -> String {

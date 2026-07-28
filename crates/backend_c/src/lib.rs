@@ -182,12 +182,14 @@ impl<'a> Cx<'a> {
         }
         let mut css =
             String::from("*,*::before,*::after{box-sizing:border-box}\\nhtml,body{margin:0}\\n");
-        for c in &self.classes {
-            if let Some(rule) = maca_backend_js::tailwind(c) {
-                css.push_str(&format!(
-                    ".{} {{ {rule} }}\\n",
-                    maca_backend_js::css_escape(c)
-                ));
+        let mut sorted: Vec<&String> = self.classes.iter().collect();
+        sorted.sort_by_key(|c| (maca_backend_js::order(c), (*c).clone()));
+        for c in sorted {
+            if let Some(r) = maca_backend_js::rule(c) {
+                // the sheet becomes a C string literal, so its backslashes —
+                // the selector escapes — have to survive that trip
+                css.push_str(&r.replace('\\', "\\\\"));
+                css.push_str("\\n");
             }
         }
         let def = format!("#define MACA_STYLES \"{css}\"\n");
