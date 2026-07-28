@@ -8,9 +8,14 @@ use maca_lexer::{Tok, lex};
 use std::path::PathBuf;
 
 /// The lexer's reserved words (mirrors the `match` in `lex_ident`).
+///
+/// `from` is deliberately absent: it is grammar in a selective import and an
+/// ordinary identifier everywhere else, so that `copy(from, to)` compiles. The
+/// editor grammars still colour it, which is the right call for a reader — a
+/// highlighter's job is to show intent, not to enumerate reserved words.
 const LEXER_KEYWORDS: &[&str] = &[
     "const", "as", "if", "else", "for", "in", "while", "break", "continue", "match", "import",
-    "from", "with", "fail", "try", "alias", "await", "spawn",
+    "with", "fail", "try", "alias", "await", "spawn",
 ];
 
 fn repo(rel: &str) -> String {
@@ -62,7 +67,7 @@ fn monarch_and_zed_grammars_name_every_keyword() {
             monarch.contains(&format!("\"{kw}\"")),
             "Monarch grammar missing keyword `{kw}`"
         );
-        if *kw != "import" && *kw != "from" {
+        if *kw != "import" {
             assert!(zed.contains(kw), "Zed grammar missing keyword `{kw}`");
         }
     }

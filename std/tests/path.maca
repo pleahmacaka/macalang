@@ -1,0 +1,13 @@
+import std/path
+
+main() -> int {
+    info("join: {join("a", "b")} {join("a/", "/b")} {join("", "b")} {join("a", "")}")
+    info("base: {basename("/x/y/z.txt")} {basename("z.txt")}")
+    info("dir: {dirname("/x/y/z.txt")} {dirname("z.txt")} {dirname("/z")}")
+    info("ext: [{extension("a/b.tar.gz")}] [{extension(".bashrc")}] [{extension("none")}]")
+    info("stem: {stem("a/b.tar.gz")} {stem("none")}")
+    info("with: {with_extension("a/b.md", "html")} {with_extension("b.md", ".txt")}")
+    info("abs: {is_absolute("/x")} {is_absolute("x")}")
+    info("norm: {normalize("a/./b/../c")} {normalize("/a/b/../..")} {normalize("./x")}")
+    0
+}

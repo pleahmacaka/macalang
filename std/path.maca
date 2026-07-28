@@ -1,0 +1,84 @@
+// std/path — filesystem paths as strings, handled the way a build tool needs.
+//
+// A path is a `str` here; there is no `Path` type to convert into and out of.
+// Separators are `/`, which is what the compiler emits, what Nix expects, and
+// what Windows accepts in every API that matters.
+//
+//   import std/path
+
+// Join two segments with exactly one separator, whatever each side brought.
+// `join("a/", "/b")` and `join("a", "b")` are both `"a/b"` — the sort of thing
+// that otherwise produces `a//b` in a path that mostly works until it doesn't.
+join(a: str, b: str) -> str {
+    left = a.ends_with("/") ? a.slice(0, a.length() - 1) : a
+    right = b.starts_with("/") ? b.slice(1, b.length()) : b
+    left == "" ? right : (right == "" ? left : left ++ "/" ++ right)
+}
+
+// Everything after the last separator.
+basename(p: str) -> str {
+    at = last_sep(p)
+    at < 0 ? p : p.slice(at + 1, p.length())
+}
+
+// Everything before the last separator; "." when there is none, so the result
+// is always a directory you can pass on.
+dirname(p: str) -> str {
+    at = last_sep(p)
+    at < 0 ? "." : (at == 0 ? "/" : p.slice(0, at))
+}
+
+// The extension without its dot, or "". A leading dot is a hidden file rather
+// than an extension: `extension(".bashrc")` is "".
+extension(p: str) -> str {
+    b = basename(p)
+    at = last_dot(b.chars(), b.length() - 1)
+    at <= 0 ? "" : b.slice(at + 1, b.length())
+}
+
+// The basename with its extension removed.
+stem(p: str) -> str {
+    b = basename(p)
+    at = last_dot(b.chars(), b.length() - 1)
+    at <= 0 ? b : b.slice(0, at)
+}
+
+// Replace the extension (with or without a leading dot on `ext`).
+with_extension(p: str, ext: str) -> str {
+    e = ext.starts_with(".") ? ext.slice(1, ext.length()) : ext
+    d = dirname(p)
+    base = e == "" ? stem(p) : stem(p) ++ "." ++ e
+    bare = d == "." && !p.starts_with("./")
+    bare ? base : join(d, base)
+}
+
+is_absolute(p: str) -> bool =>
+    p.starts_with("/")
+
+// Collapse `.` and `..` segments textually — no filesystem access, so it is
+// safe to call on a path that does not exist yet.
+normalize(p: str) -> str {
+    abs = is_absolute(p)
+    kept = walk_segments(p.split("/"), 0, [])
+    body = kept.join("/")
+    abs ? "/" ++ body : (body == "" ? "." : body)
+}
+
+walk_segments(segs: str[], i: int, acc: str[]) -> str[] =>
+    i >= segs.length()
+        ? acc
+        : walk_segments(segs, i + 1, step(acc, segs.get(i)))
+
+step(acc: str[], seg: str) -> str[] =>
+    seg == "" || seg == "."
+        ? acc
+        : (seg == ".." ? (acc.length() > 0 ? acc.pop() : acc) : acc.push(seg))
+
+last_sep(p: str) -> int =>
+    scan_back(p.chars(), p.length() - 1, "/")
+
+last_dot(cs: str[], i: int) -> int =>
+    i < 0 ? -1 : (cs.get(i) == "." ? i : last_dot(cs, i - 1))
+
+scan_back(cs: str[], i: int, want: str) -> int =>
+    i < 0 ? -1 : (cs.get(i) == want ? i : scan_back(cs, i - 1, want))

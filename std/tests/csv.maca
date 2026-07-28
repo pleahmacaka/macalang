@@ -1,0 +1,20 @@
+import std/csv
+
+main() -> int {
+    info("field: [{field("plain")}] [{field("a,b")}] [{field("say \"hi\"")}]")
+    doc = document(["name", "note"],
+                   [["Ada", "likes, commas"], ["Bob", "says \"hi\""]])
+    info("doc: {doc.replace("\r\n", "|")}")
+    rows = parse(doc)
+    info("rows: {rows.length()}")
+    hdr = rows.get(0)
+    r1 = rows.get(1)
+    r2 = rows.get(2)
+    info("r1: [{column(hdr, r1, "name")}] [{column(hdr, r1, "note")}]")
+    info("r2: [{column(hdr, r2, "name")}] [{column(hdr, r2, "note")}]")
+    info("missing: [{column(hdr, r1, "nope")}]")
+    // a newline inside a quoted field keeps the record together
+    multi = parse("a,\"line1\nline2\",c\r\n")
+    info("multi: {multi.length()} {multi.get(0).length()} [{multi.get(0).get(1).replace("\n", "/")}]")
+    0
+}

@@ -1,0 +1,14 @@
+import std/text
+
+main() -> int {
+    info("lines: {lines("a\nb\nc\n").length()} {lines("a\nb").length()}")
+    info("words: {words("  a  b\tc\n").join("|")}")
+    info("once: {split_once("a=b=c", "=").join("|")} / {split_once("x", "=").join("|")}")
+    info("strip: {strip_prefix("foobar", "foo")} {strip_suffix("foobar", "bar")} {strip_prefix("bar", "foo")}")
+    info("count: {count("aXbXc", "X")} {count("aaaa", "aa")}")
+    info("title: {title_case("hello wide world")}")
+    info("indent:\n{indent("a\n\nb", "  ")}")
+    info("dedent:\n{dedent("    a\n      b\n    c")}")
+    info("wrap:\n{wrap("the quick brown fox jumps over", 12)}")
+    0
+}

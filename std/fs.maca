@@ -1,0 +1,94 @@
+// std/fs — the filesystem work a build step keeps rewriting.
+//
+// `read_file`, `write_file`, `list_dir`, `is_dir` and the rest are builtins.
+// This module is what you build out of them: walking a tree, copying, reading a
+// file as lines, writing one only when its contents changed.
+//
+//   import std/fs
+
+import std/text
+import std/path
+
+// Every file under `root`, recursively, in a stable order — `list_dir` sorts,
+// and this preserves that, so a generated manifest doesn't churn between runs.
+walk(root: str) -> str[] =>
+    walk_entries(root, list_dir(root), 0, [])
+
+walk_entries(root: str, names: str[], i: int, acc: str[]) -> str[] {
+    i >= names.length()
+        ? acc
+        : walk_entries(root, names, i + 1,
+                       acc ++ walk_one(join(root, names.get(i))))
+}
+
+walk_one(p: str) -> str[] =>
+    is_dir(p) ? walk(p) : [p]
+
+// Directories under `root`, recursively.
+walk_dirs(root: str) -> str[] =>
+    dir_entries(root, list_dir(root), 0, [])
+
+dir_entries(root: str, names: str[], i: int, acc: str[]) -> str[] {
+    at_end = i >= names.length()
+    at_end
+        ? acc
+        : dir_entries(root, names, i + 1,
+                      acc ++ dir_one(join(root, names.get(i))))
+}
+
+dir_one(p: str) -> str[] =>
+    is_dir(p) ? [p] ++ walk_dirs(p) : []
+
+// Files under `root` whose name ends with `suffix` — `walk(root)` filtered, but
+// the filter is the reason you were walking.
+find(root: str, suffix: str) -> str[] =>
+    walk(root).filter(p => p.ends_with(suffix))
+
+// A file's lines, without terminators. "" for a file that isn't there, which
+// `read_file` already decided.
+read_lines(p: str) -> str[] =>
+    lines(read_file(p))
+
+// Write `text` to `p`, creating the parent directory. Returns whether it
+// changed anything: a build step that rewrites an identical file makes every
+// downstream timestamp lie.
+write_if_changed(p: str, text: str) -> bool {
+    same = file_exists(p) && read_file(p) == text
+    same ? false : force_write(p, text)
+}
+
+force_write(p: str, text: str) -> bool {
+    make_dir(dirname(p))
+    write_file(p, text)
+}
+
+// Append, creating the file if it isn't there.
+append_file(p: str, text: str) -> bool =>
+    write_file(p, (file_exists(p) ? read_file(p) : "") ++ text)
+
+copy_file(from: str, to: str) -> bool {
+    make_dir(dirname(to))
+    write_file(to, read_file(from))
+}
+
+// Copy a tree, preserving the layout under `to`.
+copy_tree(from: str, to: str) -> int =>
+    copy_all(from, to, walk(from), 0, 0)
+
+copy_all(from: str, to: str, files: str[], i: int, n: int) -> int {
+    at_end = i >= files.length()
+    at_end
+        ? n
+        : copy_all(from, to, files, i + 1,
+                   n + (copy_one(files.get(i), from, to) ? 1 : 0))
+}
+
+// One file, with its path rewritten from under `from` to under `to`.
+copy_one(p: str, from: str, to: str) -> bool {
+    rel = strip_prefix(strip_prefix(p, from), "/")
+    copy_file(p, join(to, rel))
+}
+
+// The size of a whole tree, in bytes.
+tree_size(root: str) -> int =>
+    walk(root).map(p => file_size(p)).sum()

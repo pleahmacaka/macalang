@@ -207,7 +207,16 @@ impl Parser {
                     self.skip_seps();
                 }
                 self.expect(Tok::RBrace, "'}'");
-                self.expect(Tok::From, "'from'");
+                // `from` is an ordinary identifier everywhere else — it is far
+                // too natural a parameter name (`copy(from, to)`) to spend a
+                // keyword on, and here the grammar already knows what follows a
+                // selective import's brace list.
+                match self.peek().clone() {
+                    Tok::Ident(n) if n == "from" => {
+                        self.bump();
+                    }
+                    other => self.err(format!("expected 'from', found {other:?}")),
+                }
                 let module = self.parse_module_path();
                 Import::Names { names, module }
             }

@@ -1,0 +1,16 @@
+import std/json
+
+main() -> int {
+    info("quote: {quote("a\"b\nc")}")
+    info("arrs: {array_of_str(["x","y"])} {array_of_int([1,2,3])}")
+    doc = object_of(["name","age","tags"],
+                    [quote("Ada"), "36", array_of_str(["math","code"])])
+    info("obj: {doc}")
+    info("get: [{get(doc, "name")}] [{get(doc, "age")}] [{get(doc, "nope")}]")
+    info("int: {get_int(doc, "age", 0)} {get_int(doc, "nope", -1)}")
+    info("items: {items(get(doc, "tags")).join("|")}")
+    nested = "[1, [2, 3], \"a,b\", \{\"k\": 4\}]"
+    info("nested: {items(nested).length()} / {items(nested).join(" ~ ")}")
+    info("bool: {get_bool("\{\"ok\":true\}", "ok")} {get_bool("\{\"ok\":false\}", "ok")}")
+    0
+}

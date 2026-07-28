@@ -1,0 +1,170 @@
+// std/json — JSON, written in Maca.
+//
+// Emitting is the common half and is exact. Reading is a scanner over the two
+// shapes a program actually receives from a config file or an API: an object of
+// scalars, and an array of them. Nested containers are returned as their raw
+// text, which you hand back to `get`/`items` to go a level deeper — a tree with
+// no sum type to hold it, in the language as it stands.
+//
+//   import std/json
+
+import std/text
+
+// ---- emitting -------------------------------------------------------------
+
+// A JSON string literal, with the five escapes the format requires. A raw
+// newline inside a string is what most hand-rolled emitters get wrong.
+quote(s: str) -> str =>
+    "\"" ++ s.replace("\\", "\\\\")
+             .replace("\"", "\\\"")
+             .replace("\n", "\\n")
+             .replace("\r", "\\r")
+             .replace("\t", "\\t") ++ "\""
+
+// `["a", "b"]` from a `str[]`.
+array_of_str(xs: str[]) -> str =>
+    "[" ++ xs.map(quote).join(",") ++ "]"
+
+array_of_int(xs: int[]) -> str =>
+    "[" ++ xs.map(v => str(v)).join(",") ++ "]"
+
+// `{"k":v}` from parallel key and (already-encoded) value lists. Values are
+// passed encoded so one object can mix a number, a string and a nested object
+// without a variant type to carry the difference.
+object_of(keys: str[], values: str[]) -> str =>
+    "\{" ++ pairs(keys, values, 0, []).join(",") ++ "\}"
+
+pairs(ks: str[], vs: str[], i: int, acc: str[]) -> str[] {
+    n = ks.length() < vs.length() ? ks.length() : vs.length()
+    i >= n
+        ? acc
+        : pairs(ks, vs, i + 1,
+                acc.push(quote(ks.get(i)) ++ ":" ++ vs.get(i)))
+}
+
+// ---- reading --------------------------------------------------------------
+
+// The raw text of `key`'s value in a JSON object, or "" when it isn't there.
+// A string value comes back unquoted and unescaped; anything else comes back
+// as written, so a number is `"42"` and a nested object is its own JSON.
+get(src: str, key: str) -> str {
+    at = src.index_of(quote(key) ++ ":")
+    at < 0 ? "" : value_at(src, at + quote(key).length() + 1)
+}
+
+get_int(src: str, key: str, dflt: int) -> int {
+    v = get(src, key)
+    v == "" ? dflt : int(v)
+}
+
+get_bool(src: str, key: str) -> bool =>
+    get(src, key) == "true"
+
+// The elements of a JSON array, each as raw text (strings unquoted).
+items(src: str) -> str[] {
+    body = src.trim()
+    !body.starts_with("[")
+        ? []
+        : split_items(body.slice(1, body.length() - 1).chars(), 0, 0, "", [])
+}
+
+// A depth- and quote-aware split on commas: a comma inside a nested array or
+// inside a string is not a separator, which is the whole difficulty.
+split_items(cs: str[], i: int, depth: int, cur: str,
+            acc: str[]) -> str[] {
+    at_end = i >= cs.length()
+    at_end
+        ? (cur.trim() == "" ? acc : acc.push(unwrap(cur)))
+        : next_item(cs, i, depth, cur, acc)
+}
+
+next_item(cs: str[], i: int, depth: int, cur: str, acc: str[]) -> str[] {
+    c = cs.get(i)
+    opens = c == "[" || c == "\{"
+    closes = c == "]" || c == "\}"
+    quoted = c == "\""
+    // a quoted run is copied whole so its commas and brackets stay inert
+    quoted
+        ? copy_string(cs, i + 1, depth, cur ++ c, acc)
+        : (c == "," && depth == 0
+            ? split_items(cs, i + 1, depth, "", acc.push(unwrap(cur)))
+            : split_items(cs, i + 1,
+                          depth + (opens ? 1 : 0) - (closes ? 1 : 0),
+                          cur ++ c, acc))
+}
+
+copy_string(cs: str[], i: int, depth: int, cur: str, acc: str[]) -> str[] {
+    at_end = i >= cs.length()
+    at_end
+        ? split_items(cs, i, depth, cur, acc)
+        : (cs.get(i) == "\\"
+            ? copy_string(cs, i + 2, depth,
+                          cur ++ cs.get(i) ++ (i + 1 < cs.length()
+                                                   ? cs.get(i + 1)
+                                                   : ""), acc)
+            : (cs.get(i) == "\""
+                ? split_items(cs, i + 1, depth, cur ++ "\"", acc)
+                : copy_string(cs, i + 1, depth, cur ++ cs.get(i), acc)))
+}
+
+// The value beginning at `at`: a quoted string (unquoted and unescaped) or a
+// bare run up to the next separator.
+value_at(src: str, at: int) -> str {
+    rest = src.slice(at, src.length()).trim()
+    rest.starts_with("\"")
+        ? unescape(read_quoted(rest.chars(), 1, ""))
+        : (rest.starts_with("[") || rest.starts_with("\{")
+            ? rest.slice(0, balanced_end(rest.chars(), 0, 0))
+            : rest.slice(0, bare_end(rest.chars(), 0)))
+}
+
+// The index just past a balanced `[…]` / `\{…\}` run. A bracket inside a
+// string doesn't count, which is why this can't be a depth counter alone.
+balanced_end(cs: str[], i: int, depth: int) -> int =>
+    i >= cs.length() ? i : balanced_step(cs, i, depth)
+
+balanced_step(cs: str[], i: int, depth: int) -> int {
+    c = cs.get(i)
+    c == "\""
+        ? balanced_end(cs, skip_string(cs, i + 1), depth)
+        : (c == "[" || c == "\{"
+            ? balanced_end(cs, i + 1, depth + 1)
+            : (c == "]" || c == "\}"
+                ? (depth <= 1 ? i + 1 : balanced_end(cs, i + 1, depth - 1))
+                : balanced_end(cs, i + 1, depth)))
+}
+
+skip_string(cs: str[], i: int) -> int =>
+    i >= cs.length()
+        ? i
+        : (cs.get(i) == "\\"
+            ? skip_string(cs, i + 2)
+            : (cs.get(i) == "\"" ? i + 1 : skip_string(cs, i + 1)))
+
+read_quoted(cs: str[], i: int, acc: str) -> str =>
+    i >= cs.length() || cs.get(i) == "\""
+        ? acc
+        : (cs.get(i) == "\\" && i + 1 < cs.length()
+            ? read_quoted(cs, i + 2, acc ++ cs.get(i) ++ cs.get(i + 1))
+            : read_quoted(cs, i + 1, acc ++ cs.get(i)))
+
+bare_end(cs: str[], i: int) -> int =>
+    i >= cs.length() || cs.get(i) == "," || cs.get(i) == "\}"
+        || cs.get(i) == "]"
+        ? i
+        : bare_end(cs, i + 1)
+
+// Strip the quotes off an item that has them, and unescape it.
+unwrap(s: str) -> str {
+    t = s.trim()
+    t.starts_with("\"") && t.ends_with("\"") && t.length() >= 2
+        ? unescape(t.slice(1, t.length() - 1))
+        : t
+}
+
+unescape(s: str) -> str =>
+    s.replace("\\n", "\n")
+     .replace("\\r", "\r")
+     .replace("\\t", "\t")
+     .replace("\\\"", "\"")
+     .replace("\\\\", "\\")

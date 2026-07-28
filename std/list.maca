@@ -1,0 +1,132 @@
+// std/list — the list operations that aren't builtins.
+//
+// `map`, `filter`, `reduce`, `sort`, `slice` and friends are UFCS methods on
+// any `T[]`. This module is the next layer: the shapes you reach for once you
+// have those, written as ordinary functions because they need types the method
+// set can't spell (a pair of lists, a predicate that answers about the whole
+// list rather than an element).
+//
+//   import std/list
+//   import { any_of, chunk } from std/list
+
+// Does any element satisfy `pred`? Short of a `break`, this is the readable
+// way to ask — `.filter(pred).length() > 0` walks the whole list and allocates.
+any_of(xs: int[], pred) -> bool =>
+    scan_any(xs, 0, pred)
+
+scan_any(xs: int[], i: int, pred) -> bool =>
+    i >= xs.length()
+        ? false
+        : (pred(xs.get(i)) ? true : scan_any(xs, i + 1, pred))
+
+all_of(xs: int[], pred) -> bool =>
+    scan_all(xs, 0, pred)
+
+scan_all(xs: int[], i: int, pred) -> bool =>
+    i >= xs.length()
+        ? true
+        : (pred(xs.get(i)) ? scan_all(xs, i + 1, pred) : false)
+
+// The index of the first element satisfying `pred`, or -1. `index_of` matches a
+// value; this matches a question.
+find_index(xs: int[], pred) -> int =>
+    scan_find(xs, 0, pred)
+
+scan_find(xs: int[], i: int, pred) -> int =>
+    i >= xs.length() ? -1 : (pred(xs.get(i)) ? i : scan_find(xs, i + 1, pred))
+
+count_if(xs: int[], pred) -> int =>
+    xs.filter(pred).length()
+
+// The first `n` elements, and everything after them. Both clamp rather than
+// failing, so `take(xs, 100)` on a short list is the short list.
+take(xs: int[], n: int) -> int[] =>
+    xs.slice(0, n < 0 ? 0 : (n > xs.length() ? xs.length() : n))
+
+drop(xs: int[], n: int) -> int[] =>
+    xs.slice(n < 0 ? 0 : (n > xs.length() ? xs.length() : n), xs.length())
+
+// Fixed-size groups, the last one short if the length doesn't divide.
+chunk(xs: int[], size: int) -> int[][] =>
+    size <= 0 ? [] : chunk_from(xs, 0, size, [])
+
+chunk_from(xs: int[], at: int, size: int, acc: int[][]) -> int[][] {
+    at >= xs.length()
+        ? acc
+        : chunk_from(xs, at + size, size,
+                     acc.push(xs.slice(at, at + size > xs.length()
+                                              ? xs.length()
+                                              : at + size)))
+}
+
+// One list of the pairwise sums, stopping at the shorter input. The language
+// has no tuple, so `zip` proper needs a record; this is the arithmetic case,
+// which is the one that comes up.
+zip_add(a: int[], b: int[]) -> int[] =>
+    zip_add_from(a, b, 0, [])
+
+zip_add_from(a: int[], b: int[], i: int, acc: int[]) -> int[] {
+    n = a.length() < b.length() ? a.length() : b.length()
+    i >= n ? acc : zip_add_from(a, b, i + 1, acc.push(a.get(i) + b.get(i)))
+}
+
+// Flatten one level.
+flatten(xss: int[][]) -> int[] =>
+    flatten_from(xss, 0, [])
+
+flatten_from(xss: int[][], i: int, acc: int[]) -> int[] =>
+    i >= xss.length() ? acc : flatten_from(xss, i + 1, acc ++ xss.get(i))
+
+// Values in first-seen order, duplicates dropped. Order is preserved on
+// purpose: sorting first would be faster and would also throw away the one
+// property that makes the result useful for output.
+unique(xs: int[]) -> int[] =>
+    unique_from(xs, 0, [])
+
+unique_from(xs: int[], i: int, acc: int[]) -> int[] =>
+    i >= xs.length()
+        ? acc
+        : unique_from(xs, i + 1,
+                      acc.contains(xs.get(i)) ? acc : acc.push(xs.get(i)))
+
+// `[lo, lo+1, …, hi]`, empty when `hi < lo`. The `lo..hi` range is a loop
+// header; this is the value.
+range(lo: int, hi: int) -> int[] =>
+    hi < lo ? [] : range_from(lo, hi, [])
+
+range_from(at: int, hi: int, acc: int[]) -> int[] =>
+    at > hi ? acc : range_from(at + 1, hi, acc.push(at))
+
+// ---- the same, for `str[]` ------------------------------------------------
+//
+// Maca's generics don't reach across the list *methods* a body calls, so a
+// second copy is the honest cost of `xs.get(i)` returning the element type.
+
+str_unique(xs: str[]) -> str[] =>
+    str_unique_from(xs, 0, [])
+
+str_unique_from(xs: str[], i: int, acc: str[]) -> str[] =>
+    i >= xs.length()
+        ? acc
+        : str_unique_from(xs, i + 1,
+                          acc.contains(xs.get(i)) ? acc : acc.push(xs.get(i)))
+
+str_take(xs: str[], n: int) -> str[] =>
+    xs.slice(0, n < 0 ? 0 : (n > xs.length() ? xs.length() : n))
+
+str_drop(xs: str[], n: int) -> str[] =>
+    xs.slice(n < 0 ? 0 : (n > xs.length() ? xs.length() : n), xs.length())
+
+str_find_index(xs: str[], pred) -> int =>
+    str_scan_find(xs, 0, pred)
+
+str_scan_find(xs: str[], i: int, pred) -> int =>
+    i >= xs.length()
+        ? -1
+        : (pred(xs.get(i)) ? i : str_scan_find(xs, i + 1, pred))
+
+str_flatten(xss: str[][]) -> str[] =>
+    str_flatten_from(xss, 0, [])
+
+str_flatten_from(xss: str[][], i: int, acc: str[]) -> str[] =>
+    i >= xss.length() ? acc : str_flatten_from(xss, i + 1, acc ++ xss.get(i))

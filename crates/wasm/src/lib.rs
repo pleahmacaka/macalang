@@ -234,7 +234,7 @@ fn tok_kind(t: &maca_lexer::Tok) -> u8 {
         Int(_) | Float(_) => 2,
         StrOpen | StrText(_) | StrClose | Path(_) => 3,
         True | False | Const | As | If | Else | For | In | While | Break | Continue | Match
-        | Import | From | With | Fail | Try | Alias => 1,
+        | Import | With | Fail | Try | Alias => 1,
         Ident(s) => {
             if s.chars().next().is_some_and(|c| c.is_uppercase()) {
                 5

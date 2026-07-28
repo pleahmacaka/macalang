@@ -1,8 +1,33 @@
 # std — the Maca standard library
 
-Most of the library ships as **compiler/runtime builtins** — always available,
-no `import` needed — rather than `.maca` source, because that's what a mature
-language surface wants (a prelude you can just use). What exists today:
+Two layers.
+
+The **prelude** ships as compiler and runtime builtins: always available, no
+`import`, the same on every target. That is what a language surface should give
+you for the things every program touches.
+
+The **modules** in this directory are ordinary Maca source you import. They are
+the layer above the primitives — the code you would otherwise write again in
+every project — and being written in Maca means they are also a working example
+of the language and, through `std/tests/`, part of what gates the compiler.
+
+| module | what it is for |
+|---|---|
+| `std/text` | `lines`, `words`, `split_once`, `strip_prefix`/`strip_suffix`, `count`, `title_case`, `indent`, `dedent`, `wrap` |
+| `std/list` | `any_of`, `all_of`, `find_index`, `count_if`, `take`, `drop`, `chunk`, `zip_add`, `flatten`, `unique`, `range` (and `str_`-prefixed twins) |
+| `std/path` | `join`, `basename`, `dirname`, `extension`, `stem`, `with_extension`, `is_absolute`, `normalize` |
+| `std/json` | `quote`, `array_of_str`/`array_of_int`, `object_of`, `get`, `get_int`, `get_bool`, `items` |
+| `std/csv` | `field`, `row`, `document`, `parse`, `parse_row`, `column` — quoted fields, doubled quotes, embedded newlines |
+| `std/fs` | `walk`, `walk_dirs`, `find`, `read_lines`, `write_if_changed`, `append_file`, `copy_file`, `copy_tree`, `tree_size` |
+
+```maca
+import std/path
+import { lines, dedent } from std/text
+```
+
+A selective import pulls in only what you name, plus what it needs.
+
+The prelude, for reference:
 
 **Prelude (always available, unqualified):**
 - **console** — syslog-level logging `emerg`/`alert`/`crit`/`err`/`warn`/

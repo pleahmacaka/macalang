@@ -123,6 +123,8 @@ struct Cx<'a> {
     fns: HashMap<String, (Vec<CTy>, CTy)>, // fn name -> (param types, ret)
     arr_elems: HashSet<CTy>,               // array element types to instantiate
     map_vals: HashSet<CTy>,                // map value types to instantiate
+    /// `(fn name, param index)` pairs that hold a function value.
+    closure_params: HashSet<(String, usize)>,
     vecs: BTreeSet<(String, String, usize)>, // SIMD vector types (name, scalar_c, lanes)
     tmp: usize,
     // lambdas hoisted to top-level `static` functions (closures carry a heap env)
@@ -160,6 +162,7 @@ impl<'a> Cx<'a> {
             fns: HashMap::new(),
             arr_elems: HashSet::new(),
             map_vals: HashSet::new(),
+            closure_params: HashSet::new(),
             vecs: BTreeSet::new(),
             tmp: 0,
             hoisted_decls: Vec::new(),
@@ -395,6 +398,16 @@ impl<'a> Cx<'a> {
                 }
             }
         }
+        self.closure_params = closure_params(&self.m.items);
+        // The primitive arrays are always defined. They are a handful of
+        // `static inline` functions each, which the C compiler drops if unused,
+        // and having them unconditionally removes a whole class of bug: a type
+        // that only becomes reachable while a body is being lowered — the
+        // element type of a `.map`'s result, `chars()` used on its own — was
+        // registered after the typedefs had already been written out.
+        for t in [CTy::Int, CTy::Str, CTy::Float, CTy::Bool] {
+            self.arr_elems.insert(t);
+        }
         // fn signatures, lets
         for item in &self.m.items {
             match item {
@@ -404,19 +417,18 @@ impl<'a> Cx<'a> {
                     if fn_is_generic(f) {
                         self.generics.insert(f.name.clone(), f.clone());
                     } else {
-                        // an unannotated parameter that is *called* in the body
-                        // is a function value → `maca_closure` (surface Maca has
-                        // no function-type syntax, so this is how higher-order
-                        // parameters are recognized).
-                        let mut callees = HashSet::new();
-                        if let Some(body) = &f.body {
-                            callee_idents_body(body, &mut callees);
-                        }
+                        // an unannotated parameter that holds a function value
+                        // → `maca_closure`. Surface Maca has no function-type
+                        // syntax, so this is how a higher-order parameter is
+                        // recognized (see `closure_params`).
                         let params = f
                             .params
                             .iter()
-                            .map(|p| {
-                                if p.ty.is_none() && callees.contains(&p.name) {
+                            .enumerate()
+                            .map(|(i, p)| {
+                                if p.ty.is_none()
+                                    && self.closure_params.contains(&(f.name.clone(), i))
+                                {
                                     CTy::Closure
                                 } else {
                                     self.cty_opt(&p.ty)
@@ -2129,7 +2141,14 @@ impl<'a> Cx<'a> {
     /// Lower a lambda in a function-value position: a `maca_closure` with
     /// default `int` parameters (the shape `.parallel`/first-class calls use).
     fn emit_lambda(&mut self, env: &Env, params: &[Param], body: &Expr) -> (String, CTy) {
-        let ptys = vec![CTy::Int; params.len()];
+        // No element type from the call site (this is a bare lambda value, e.g.
+        // one handed to a higher-order *parameter*), so read the body for what
+        // it does to each parameter. Without this, `s => s == "c"` typed `s` as
+        // an integer and compared a string pointer to it.
+        let ptys: Vec<CTy> = params
+            .iter()
+            .map(|p| lambda_param_ty(&p.name, body).unwrap_or(CTy::Int))
+            .collect();
         let (val, _ret) = self.emit_closure(env, params, body, &ptys);
         (val, CTy::Closure)
     }
@@ -2395,9 +2414,23 @@ impl<'a> Cx<'a> {
                 Some((code, CTy::Arr(Box::new(ret))))
             }
             "filter" => {
-                let clos = match named_fn(args.first(), self) {
-                    Some(n) => self.fn_value_closure(&n).0,
-                    None => {
+                // A closure the caller already holds — a higher-order parameter
+                // forwarded to `.filter` rather than a lambda written here.
+                // `filter` can take one because its result type is the receiver's
+                // element type; `map`'s would depend on the closure's return,
+                // which an opaque value doesn't carry.
+                let held = match args.first() {
+                    Some(Arg::Pos(Expr::Ident(n)))
+                        if matches!(lookup(env, n), Some(CTy::Closure)) =>
+                    {
+                        Some(cid(n))
+                    }
+                    _ => None,
+                };
+                let clos = match (held, named_fn(args.first(), self)) {
+                    (Some(v), _) => v,
+                    (None, Some(n)) => self.fn_value_closure(&n).0,
+                    (None, None) => {
                         let (params, body) = lambda(args.first())?;
                         self.emit_closure(env, &params, &body, std::slice::from_ref(elem))
                             .0
@@ -3980,6 +4013,17 @@ fn box_i64(code: &str, t: &CTy) -> String {
         CTy::Str => format!("(int64_t)(intptr_t)({code})"),
         CTy::Float => format!("maca_box_f64({code})"),
         CTy::F32 => format!("maca_box_f64((double)({code}))"),
+        // A struct does not fit in the boundary word, so it crosses by
+        // reference: a heap copy whose address is the boxed value. Without
+        // this, `people.filter(p => p.age > 18)` emitted `(int64_t)(a_record)`
+        // and the C compiler rejected the cast — a closure over a list of
+        // records, which is most of what `map`/`filter` are for.
+        CTy::Rec(_) | CTy::Sum(_) | CTy::Arr(_) | CTy::Map(_) | CTy::Vec { .. } => {
+            let ct = c_type(t);
+            format!(
+                "({{ {ct}* _bx = ({ct}*)maca_alloc(sizeof({ct})); *_bx = ({code}); (int64_t)(intptr_t)_bx; }})"
+            )
+        }
         _ => format!("(int64_t)({code})"),
     }
 }
@@ -3990,6 +4034,11 @@ fn unbox_i64(code: &str, t: &CTy) -> String {
         CTy::Bool => format!("(bool)({code})"),
         CTy::Float => format!("maca_unbox_f64({code})"),
         CTy::F32 => format!("(float)maca_unbox_f64({code})"),
+        // the mirror of `box_i64`: the boundary word is the address of a heap
+        // copy, so read it back through that pointer
+        CTy::Rec(_) | CTy::Sum(_) | CTy::Arr(_) | CTy::Map(_) | CTy::Vec { .. } => {
+            format!("(*({}*)(intptr_t)({code}))", c_type(t))
+        }
         _ => format!("(int64_t)({code})"),
     }
 }
@@ -4335,6 +4384,184 @@ fn ty_tag(t: &CTy) -> String {
         CTy::Arr(e) => format!("{}arr", ty_tag(e)),
         _ => "any".into(),
     }
+}
+
+/// What a lambda's body says its parameter is.
+///
+/// A lambda written at a call site gets its parameter type from the receiver's
+/// element type. One written for a higher-order *parameter* has no such
+/// context, so the body is the evidence: compared against a string, concatenated
+/// with one, or sent a string-only method means `str`; compared against a float
+/// means `float`. Anything else stays the integer default, which is also how a
+/// pointer crosses the closure boundary.
+fn lambda_param_ty(name: &str, body: &Expr) -> Option<CTy> {
+    let mut found = None;
+    scan_param_use(name, body, &mut found);
+    found
+}
+
+fn scan_param_use(name: &str, e: &Expr, found: &mut Option<CTy>) {
+    let is_p = |x: &Expr| matches!(x, Expr::Ident(n) if n == name);
+    match e {
+        Expr::Binary { op, lhs, rhs, .. }
+            if matches!(op, BinOp::Eq | BinOp::Ne | BinOp::Concat) && (is_p(lhs) || is_p(rhs)) =>
+        {
+            let other = if is_p(lhs) { rhs } else { lhs };
+            match &**other {
+                Expr::Str(_) => *found = Some(CTy::Str),
+                Expr::Float(_) => *found = Some(CTy::Float),
+                _ => {}
+            }
+        }
+        Expr::Call { callee, .. } => {
+            // methods only a `str` has — `length`/`slice`/`contains` are on
+            // both, so they say nothing
+            const STR_ONLY: &[&str] = &[
+                "split",
+                "trim",
+                "upper",
+                "lower",
+                "starts_with",
+                "ends_with",
+                "replace",
+                "substr",
+                "repeat",
+                "pad_start",
+                "pad_end",
+                "pad_center",
+                "chars",
+                "at",
+                "is_whitespace",
+                "is_ascii_digit",
+                "is_alpha",
+            ];
+            if let Expr::Field { base, name: m } = &**callee
+                && is_p(base)
+                && STR_ONLY.contains(&m.as_str())
+            {
+                *found = Some(CTy::Str);
+            }
+        }
+        _ => {}
+    }
+    if found.is_none() {
+        walk_children(e, &mut |c| scan_param_use(name, c, found));
+    }
+}
+
+/// Which unannotated parameters hold a function value.
+///
+/// Surface Maca has no function-type syntax, so a higher-order parameter is
+/// recognized from use. Calling it is the obvious evidence — `pred(x)` means
+/// `pred` is a function. But a parameter is just as often *forwarded*: the
+/// public `any_of(xs, pred)` hands `pred` to a recursive `scan_any(xs, i, pred)`
+/// that does the calling. Looking only at the immediate body typed the two ends
+/// of that pair differently, and the C compiler rejected the call.
+///
+/// So this runs to a fixpoint: a parameter is a function value if it is called,
+/// or if it is passed into a position already known to be one. Two functions
+/// that forward to each other settle in one extra round.
+fn closure_params(items: &[Stmt]) -> HashSet<(String, usize)> {
+    let fns: Vec<&FnDef> = items
+        .iter()
+        .filter_map(|it| match it {
+            Stmt::Fn(f) => Some(f),
+            _ => None,
+        })
+        .collect();
+    let mut out: HashSet<(String, usize)> = HashSet::new();
+    // seed: a parameter that is called in its own body, or handed to a list
+    // method that takes a function
+    for f in &fns {
+        let mut callees = HashSet::new();
+        if let Some(body) = &f.body {
+            callee_idents_body(body, &mut callees);
+            hof_method_args_body(body, &mut callees);
+        }
+        for (i, p) in f.params.iter().enumerate() {
+            if p.ty.is_none() && callees.contains(&p.name) {
+                out.insert((f.name.clone(), i));
+            }
+        }
+    }
+    // propagate: `f` forwards its parameter into a known function position
+    loop {
+        let mut grew = false;
+        for f in &fns {
+            let mut fwd: Vec<(String, usize, String)> = Vec::new();
+            if let Some(body) = &f.body {
+                forwarded_args_body(body, &mut fwd);
+            }
+            for (callee, idx, arg) in fwd {
+                if !out.contains(&(callee, idx)) {
+                    continue;
+                }
+                for (i, p) in f.params.iter().enumerate() {
+                    if p.ty.is_none() && p.name == arg && out.insert((f.name.clone(), i)) {
+                        grew = true;
+                    }
+                }
+            }
+        }
+        if !grew {
+            return out;
+        }
+    }
+}
+
+/// Bare identifiers handed to a list method that takes a function —
+/// `xs.filter(pred)`. Evidence that the name holds one, the same as calling it.
+fn hof_method_args_body(b: &FnBody, out: &mut HashSet<String>) {
+    match b {
+        FnBody::Expr(e) => hof_method_args(e, out),
+        FnBody::Block(ss) => ss.iter().for_each(|s| match s {
+            Stmt::Expr(e) | Stmt::Bind(Bind { value: e, .. }) => hof_method_args(e, out),
+            _ => {}
+        }),
+    }
+}
+
+fn hof_method_args(e: &Expr, out: &mut HashSet<String>) {
+    if let Expr::Call { callee, args } = e
+        && let Expr::Field { name, .. } = &**callee
+    {
+        // the argument index the function goes in: `reduce`/`fold` take the
+        // seed first
+        let at = match name.as_str() {
+            "map" | "filter" | "parallel" => 0,
+            "reduce" | "fold" => 1,
+            _ => usize::MAX,
+        };
+        if let Some(Arg::Pos(Expr::Ident(x))) = args.get(at) {
+            out.insert(x.clone());
+        }
+    }
+    walk_children(e, &mut |c| hof_method_args(c, out));
+}
+
+/// Every `g(…, x, …)` in a body, as `(g, index, x)` for a bare-identifier
+/// argument — the shape that forwards a value on unchanged.
+fn forwarded_args_body(b: &FnBody, out: &mut Vec<(String, usize, String)>) {
+    match b {
+        FnBody::Expr(e) => forwarded_args(e, out),
+        FnBody::Block(ss) => ss.iter().for_each(|s| match s {
+            Stmt::Expr(e) | Stmt::Bind(Bind { value: e, .. }) => forwarded_args(e, out),
+            _ => {}
+        }),
+    }
+}
+
+fn forwarded_args(e: &Expr, out: &mut Vec<(String, usize, String)>) {
+    if let Expr::Call { callee, args } = e
+        && let Expr::Ident(g) = &**callee
+    {
+        for (i, a) in args.iter().enumerate() {
+            if let Arg::Pos(Expr::Ident(x)) = a {
+                out.push((g.clone(), i, x.clone()));
+            }
+        }
+    }
+    walk_children(e, &mut |c| forwarded_args(c, out));
 }
 
 /// How deeply an array type nests — `int` is 0, `int[]` is 1, `int[][]` is 2.

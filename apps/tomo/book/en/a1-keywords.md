@@ -16,7 +16,6 @@ head is a design goal, not an accident.
 | `continue` | next iteration |
 | `match` | destructure and branch |
 | `import` | bring in a module, or a foreign library |
-| `from` | `import { a, b } from m` |
 | `with` | functional record update: `p with { y = 5 }` |
 | `fail` | raise an error |
 | `try` | catch one |
@@ -25,6 +24,10 @@ head is a design goal, not an accident.
 | `spawn` | start concurrent work |
 | `true` | boolean |
 | `false` | boolean |
+
+`from` is *not* on this list. It appears in a selective import, but only there —
+everywhere else it is an ordinary identifier, because `copy(from, to)` is too
+natural a parameter name to spend a keyword on.
 
 ## Words Maca does not reserve
 

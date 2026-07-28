@@ -80,15 +80,21 @@ fn canon(path: &Path) -> PathBuf {
 /// local file (stdlib builtins, `nixpkgs`, foreign headers) resolve to `None`.
 pub fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> {
     let last = segs.last()?;
-    let by_sibling = importer
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(format!("{last}.maca"));
-    if by_sibling.is_file() {
-        return Some(by_sibling);
+    let dir = importer.parent().unwrap_or_else(|| Path::new("."));
+    let joined = format!("{}.maca", segs.join("/"));
+    // The written path wins, from the importer's directory and then from the
+    // working directory — that is what reaches `std/list.maca` in the
+    // repository. The bare-sibling rule comes last on purpose: it is a
+    // convenience for `import selfhost/token` next to its siblings, and taking
+    // it first meant any `list.maca` beside a program silently shadowed
+    // `std/list` with no diagnostic at all.
+    for cand in [dir.join(&joined), PathBuf::from(&joined)] {
+        if cand.is_file() {
+            return Some(cand);
+        }
     }
-    let by_path = PathBuf::from(format!("{}.maca", segs.join("/")));
-    by_path.is_file().then_some(by_path)
+    let by_sibling = dir.join(format!("{last}.maca"));
+    by_sibling.is_file().then_some(by_sibling)
 }
 
 /// The local module a single import statement names, if any.

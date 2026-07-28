@@ -1,0 +1,25 @@
+import std/fs
+
+main() -> int {
+    root = "/tmp/maca-fs-test"
+    remove_dir(root)
+    make_dir(root ++ "/sub/deep")
+    write_file(root ++ "/a.txt", "one\ntwo\n")
+    write_file(root ++ "/sub/b.md", "hello")
+    write_file(root ++ "/sub/deep/c.txt", "x")
+    info("walk: {walk(root).length()}")
+    info("dirs: {walk_dirs(root).length()}")
+    info("find: {find(root, ".txt").length()} {find(root, ".md").length()}")
+    info("lines: {read_lines(root ++ "/a.txt").join("|")}")
+    info("changed1: {write_if_changed(root ++ "/a.txt", "one\ntwo\n")}")
+    info("changed2: {write_if_changed(root ++ "/a.txt", "different")}")
+    append_file(root ++ "/a.txt", "!")
+    info("append: {read_file(root ++ "/a.txt")}")
+    n = copy_tree(root, "/tmp/maca-fs-copy")
+    info("copied: {n} {walk("/tmp/maca-fs-copy").length()}")
+    info("size: {tree_size(root) > 0}")
+    remove_dir(root)
+    remove_dir("/tmp/maca-fs-copy")
+    info("cleaned: {file_exists(root)}")
+    0
+}

@@ -236,10 +236,12 @@ fn roundtrip_generic_record() {
 
 #[test]
 fn malformed_input_does_not_hang() {
-    // a reserved word where a field name is expected used to loop forever
+    // a reserved word where a field name is expected used to loop forever.
+    // (`from` is no longer one — `{ from }` is a perfectly good shorthand
+    // field now — so the cases here use words that still are.)
     for src in [
-        "f(p: P) -> int { match p { { from } => 1 } }\n",
-        "R = {\n    from: int\n}\n",
+        "f(p: P) -> int { match p { { match } => 1 } }\n",
+        "R = {\n    while: int\n}\n",
         "main() -> int {\n    x = {\n    0\n}\n",
         "x = ) ( } {\n",
     ] {

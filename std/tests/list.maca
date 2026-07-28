@@ -1,0 +1,19 @@
+import std/list
+
+show(xs: int[]) -> str => xs.map(v => str(v)).join(",")
+
+main() -> int {
+    xs = [3, 1, 4, 1, 5, 9, 2, 6]
+    info("any/all: {any_of(xs, v => v > 8)} {all_of(xs, v => v > 0)} {all_of(xs, v => v > 3)}")
+    info("find: {find_index(xs, v => v > 4)} {count_if(xs, v => v % 2 == 0)}")
+    info("take/drop: {show(take(xs, 3))} | {show(drop(xs, 6))} | {take(xs, 99).length()}")
+    info("chunk: {chunk(xs, 3).length()} {show(chunk(xs, 3).get(2))}")
+    info("zip_add: {show(zip_add([1,2,3], [10,20]))}")
+    info("flatten: {show(flatten([[1,2],[3],[4,5]]))}")
+    info("unique: {show(unique(xs))}")
+    info("range: {show(range(2, 6))} {range(5, 4).length()}")
+    ss = ["b", "a", "b", "c"]
+    info("str: {str_unique(ss).join(",")} {str_take(ss, 2).join(",")} {str_find_index(ss, s => s == "c")}")
+    info("str_flatten: {str_flatten([["a"],["b","c"]]).join(",")}")
+    0
+}

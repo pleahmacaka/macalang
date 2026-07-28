@@ -49,7 +49,6 @@ pub enum Tok {
     Continue,
     Match,
     Import,
-    From,
     With,
     Fail,
     Try,
@@ -333,7 +332,6 @@ impl<'a> Lexer<'a> {
                     | In
                     | Match
                     | Import
-                    | From
                     | With
                     | Fail
                     | Try
@@ -559,7 +557,6 @@ impl<'a> Lexer<'a> {
             "continue" => Tok::Continue,
             "match" => Tok::Match,
             "import" => Tok::Import,
-            "from" => Tok::From,
             "with" => Tok::With,
             "fail" => Tok::Fail,
             "try" => Tok::Try,

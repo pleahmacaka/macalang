@@ -1,0 +1,108 @@
+// std/csv — comma-separated values, RFC 4180 as far as it is worth going.
+//
+// The whole difficulty of CSV is the quoted field: a comma, a newline or a
+// quote inside one is data, not structure. A `split(",")` gets every simple
+// file right and every real file wrong, which is the failure mode this module
+// exists to remove.
+//
+//   import std/csv
+
+import std/text
+
+// ---- writing --------------------------------------------------------------
+
+// One field, quoted only when it has to be. A `"` inside becomes `""`, which
+// is the format's own escape rather than a backslash.
+field(s: str) -> str =>
+    needs_quotes(s)
+        ? "\"" ++ s.replace("\"", "\"\"") ++ "\""
+        : s
+
+needs_quotes(s: str) -> bool =>
+    s.contains(",") || s.contains("\"") || s.contains("\n")
+        || s.contains("\r")
+
+// One record, terminated with `\r\n` — the line ending the format specifies,
+// and the one a spreadsheet expects.
+row(cells: str[]) -> str =>
+    cells.map(field).join(",") ++ "\r\n"
+
+// A whole document from a header and its rows.
+document(header: str[], rows: str[][]) -> str =>
+    row(header) ++ join_rows(rows, 0, "")
+
+join_rows(rows: str[][], i: int, acc: str) -> str =>
+    i >= rows.length() ? acc : join_rows(rows, i + 1, acc ++ row(rows.get(i)))
+
+// ---- reading --------------------------------------------------------------
+
+// The fields of one record. Handles quoted fields, doubled quotes inside them,
+// and commas that are data.
+parse_row(line: str) -> str[] =>
+    scan_fields(line.chars(), 0, "", [])
+
+scan_fields(cs: str[], i: int, cur: str, acc: str[]) -> str[] =>
+    i >= cs.length()
+        ? acc.push(cur)
+        : next_field(cs, i, cur, acc)
+
+next_field(cs: str[], i: int, cur: str, acc: str[]) -> str[] {
+    c = cs.get(i)
+    c == "\""
+        ? read_quoted_field(cs, i + 1, cur, acc)
+        : (c == ","
+            ? scan_fields(cs, i + 1, "", acc.push(cur))
+            : (c == "\r" ? scan_fields(cs, i + 1, cur, acc)
+                         : scan_fields(cs, i + 1, cur ++ c, acc)))
+}
+
+// Inside quotes: `""` is one literal quote, a lone `"` ends the field.
+read_quoted_field(cs: str[], i: int, cur: str, acc: str[]) -> str[] {
+    at_end = i >= cs.length()
+    at_end
+        ? acc.push(cur)
+        : (cs.get(i) == "\""
+            ? (i + 1 < cs.length() && cs.get(i + 1) == "\""
+                ? read_quoted_field(cs, i + 2, cur ++ "\"", acc)
+                : scan_fields(cs, i + 1, cur, acc))
+            : read_quoted_field(cs, i + 1, cur ++ cs.get(i), acc))
+}
+
+// Every record in a document. A quoted field may hold a newline, so the
+// document is split on record boundaries rather than on `\n`.
+parse(src: str) -> str[][] =>
+    parse_rows(split_records(src.chars(), 0, false, "", []), 0, [])
+
+parse_rows(ls: str[], i: int, acc: str[][]) -> str[][] =>
+    i >= ls.length()
+        ? acc
+        : parse_rows(ls, i + 1,
+                     ls.get(i).trim() == ""
+                         ? acc
+                         : acc.push(parse_row(ls.get(i))))
+
+// Split on newlines that are *outside* quotes.
+split_records(cs: str[], i: int, in_q: bool, cur: str,
+              acc: str[]) -> str[] {
+    at_end = i >= cs.length()
+    at_end
+        ? (cur == "" ? acc : acc.push(cur))
+        : record_step(cs, i, in_q, cur, acc)
+}
+
+record_step(cs: str[], i: int, in_q: bool, cur: str, acc: str[]) -> str[] {
+    c = cs.get(i)
+    c == "\""
+        ? split_records(cs, i + 1, !in_q, cur ++ c, acc)
+        : (c == "\n" && !in_q
+            ? split_records(cs, i + 1, in_q, "", acc.push(cur))
+            : split_records(cs, i + 1, in_q, cur ++ c, acc))
+}
+
+// The value under `name` in `row`, using `header` for the column order.
+// "" when the column isn't there — a missing column and an empty cell read the
+// same, which is what a CSV can actually tell you.
+column(header: str[], row: str[], name: str) -> str {
+    at = header.index_of(name)
+    at < 0 || at >= row.length() ? "" : row.get(at)
+}
