@@ -341,6 +341,72 @@ fn selfhost_frontend_compiles_and_runs() {
         "Rust .at lowering wrong: {stdout}"
     );
 
+    // The checker carries an environment: the module's signatures, its record
+    // fields, its sum variants, and the locals in scope. That is what turns
+    // counting arithmetic mismatches into checking a program.
+    assert!(
+        stdout.contains("check arity: 1"),
+        "a call with the wrong argument count should be an error: {stdout}"
+    );
+    assert!(
+        stdout.contains("check return: 1"),
+        "a body disagreeing with its declared return should be an error: {stdout}"
+    );
+    assert!(
+        stdout.contains("check calls: 1"),
+        "a call's declared return type should reach the arithmetic: {stdout}"
+    );
+    // and none of that fires on a correct module
+    assert!(
+        stdout.contains("check clean: 0"),
+        "a correct module should check clean: {stdout}"
+    );
+
+    // payload sum variants. In C a tag plus a row of cells wide enough for the
+    // widest variant, with a constructor named after each variant — so an
+    // ordinary `Circle(2)` compiles without the call site knowing which names
+    // are variants. In Rust the native enum, where it already is a constructor.
+    assert!(
+        stdout.contains("typedef enum { Circle_tag, Rect_tag } Shape_tag;"),
+        "C payload tags wrong: {stdout}"
+    );
+    assert!(
+        stdout.contains("static inline Shape Rect(long _0, long _1) { Shape _v; _v.tag = Rect_tag; _v._0 = _0; _v._1 = _1; return _v; }"),
+        "C payload constructor wrong: {stdout}"
+    );
+    assert!(
+        stdout.contains("enum Shape { Circle(i64), Rect(i64, i64) }"),
+        "Rust payload enum wrong: {stdout}"
+    );
+    // a match arm that binds the payload
+    assert!(
+        stdout.contains("bind C:    int area(Shape s) { return (s.tag == Circle_tag ? ({ long r = s._0; (r * r); }) : (s.tag == Rect_tag ? ({ long w = s._0; long h = s._1; (w * h); }) : 0));"),
+        "C payload binding wrong: {stdout}"
+    );
+    assert!(
+        stdout.contains("bind Rust: fn area(s: Shape) -> i64 { match s { Circle(r) => (r * r), Rect(w, h) => (w * h),"),
+        "Rust payload binding wrong: {stdout}"
+    );
+
+    // string interpolation: `"n = {x}"` desugars in the *parser* to the concat
+    // and `str` forms both back ends already emit, so neither emitter needed a
+    // new case — the same trick stage-0 uses for format specs.
+    assert!(
+        stdout.contains(
+            "interp C:    const char* label(int n) { return maca_cat(maca_cat(\"n = \", maca_int_to_str(n)), \"!\");"
+        ),
+        "C interpolation lowering wrong: {stdout}"
+    );
+    assert!(
+        stdout.contains("interp Rust: fn label(n: i64) -> String { format!(\"{}{}\", format!(\"{}{}\", \"n = \".to_string(), format!(\"{}\", n)), \"!\".to_string())"),
+        "Rust interpolation lowering wrong: {stdout}"
+    );
+    // an interpolation holds a whole expression, not just a name
+    assert!(
+        stdout.contains("interp expr: ((sum  ++ str((a + b))) ++  done)"),
+        "interpolated expression wrong: {stdout}"
+    );
+
     // dynamic arrays: an `int[]` parameter is a heap `MacaList` (C) / `Vec<i64>`
     // (Rust); `.get(i)` indexes it and `.count()` is its length.
     assert!(
@@ -487,4 +553,145 @@ fn selfhost_frontend_compiles_and_runs() {
         "emitted Rust program didn't print via info: {:?}",
         String::from_utf8_lossy(&rrun.stdout)
     );
+}
+
+/// The differential gate: one source, two compilers, the same program.
+///
+/// The bootstrap closes when a stage-1 binary rebuilds itself byte for byte.
+/// The step before that — and the one that actually catches divergence — is
+/// this: compile the same source with stage-0 (Rust) and with stage-1 (Maca),
+/// and require the two programs to behave identically. A difference here is a
+/// difference between the two compilers, which is the only thing that can
+/// stop the bootstrap from closing.
+///
+/// stage-1 is a real compiler for this: `maca1 <in.maca> <out.c> [rust]` reads
+/// a file and writes the emitted source.
+#[test]
+fn stage0_and_stage1_compile_the_same_program_the_same_way() {
+    if wsl() || !have("cc") {
+        eprintln!("skipping differential: needs a host cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-two-stage");
+    let _ = std::fs::create_dir_all(&dir);
+
+    // stage-0 builds stage-1
+    let maca1 = dir.join("maca1");
+    let build = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            &selfhost_dir().join("main.maca").to_string_lossy(),
+            "-o",
+            &maca1.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca build");
+    assert!(
+        build.status.success(),
+        "stage-0 could not build stage-1:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    // A program in the slice stage-1 covers: a payload sum, a match that binds
+    // the payload, string interpolation, a record-free arithmetic tail.
+    let src = "Shape = Circle(int) | Rect(int, int)\n\
+        area(s: Shape) -> int => match s { Circle(r) => r * r Rect(w, h) => w * h }\n\
+        label(n: int) -> str => \"area = {n}\"\n\
+        main() -> int {\n\
+        \x20   a = area(Rect(6, 7))\n\
+        \x20   info(label(a))\n\
+        \x20   a\n\
+        }\n";
+    let prog = dir.join("prog.maca");
+    std::fs::write(&prog, src).unwrap();
+
+    // stage-0: compile and run
+    let s0_bin = dir.join("s0");
+    let b0 = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            &prog.to_string_lossy(),
+            "-o",
+            &s0_bin.to_string_lossy(),
+        ])
+        .output()
+        .expect("stage-0 build");
+    assert!(
+        b0.status.success(),
+        "stage-0 build failed:\n{}",
+        String::from_utf8_lossy(&b0.stderr)
+    );
+    let r0 = Command::new(&s0_bin).output().expect("run stage-0 output");
+
+    // stage-1: emit C, compile it, run it
+    let c_path = dir.join("prog1.c");
+    let emit = Command::new(&maca1)
+        .arg(&prog)
+        .arg(&c_path)
+        .output()
+        .expect("stage-1 emit");
+    assert!(
+        emit.status.success(),
+        "stage-1 reported {} check errors:\n{}",
+        emit.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&emit.stderr)
+    );
+    let s1_bin = dir.join("s1");
+    let cc = Command::new("cc")
+        .arg(&c_path)
+        .arg("-o")
+        .arg(&s1_bin)
+        .output()
+        .expect("cc");
+    assert!(
+        cc.status.success(),
+        "the C stage-1 emitted does not compile:\n{}\n--- source ---\n{}",
+        String::from_utf8_lossy(&cc.stderr),
+        std::fs::read_to_string(&c_path).unwrap_or_default()
+    );
+    let r1 = Command::new(&s1_bin).output().expect("run stage-1 output");
+
+    // the two compilers must agree on both halves of the observable behaviour
+    assert_eq!(
+        String::from_utf8_lossy(&r0.stdout),
+        String::from_utf8_lossy(&r1.stdout),
+        "stage-0 and stage-1 printed different things"
+    );
+    assert_eq!(
+        r0.status.code(),
+        r1.status.code(),
+        "stage-0 and stage-1 exited differently"
+    );
+    assert_eq!(r1.status.code(), Some(42), "the program should exit 42");
+
+    // and the Rust back end written in Maca has to agree too
+    if have("rustc") {
+        let rs_path = dir.join("prog1.rs");
+        let emit_rs = Command::new(&maca1)
+            .arg(&prog)
+            .arg(&rs_path)
+            .arg("rust")
+            .output()
+            .expect("stage-1 emit rust");
+        assert!(emit_rs.status.success(), "stage-1 rust emit failed");
+        let rs_bin = dir.join("s1rs");
+        let rc = Command::new("rustc")
+            .args(["-A", "warnings", "-o"])
+            .arg(&rs_bin)
+            .arg(&rs_path)
+            .output()
+            .expect("rustc");
+        assert!(
+            rc.status.success(),
+            "the Rust stage-1 emitted does not compile:\n{}",
+            String::from_utf8_lossy(&rc.stderr)
+        );
+        let r2 = Command::new(&rs_bin).output().expect("run rust output");
+        assert_eq!(
+            String::from_utf8_lossy(&r2.stdout),
+            String::from_utf8_lossy(&r0.stdout),
+            "the Rust back end disagreed with stage-0"
+        );
+        assert_eq!(r2.status.code(), Some(42));
+    }
 }

@@ -58,6 +58,17 @@ e_ident(name: str) -> Expr =>
 e_param(name: str, ty: str) -> Expr =>
     Expr { kind = EIdent, text = name, ival = 0, ty, children = [] }
 
+// The same shape under a second name, for a sum variant's payload slot — where
+// the interesting part is the type rather than the binder.
+e_typed(name: str, ty: str) -> Expr =>
+    Expr { kind = EIdent, text = name, ival = 0, ty, children = [] }
+
+// `e` with one more child. Used to grow a variant's payload list and a match
+// pattern's binder list as each is read.
+with_child(e: Expr, c: Expr) -> Expr =>
+    Expr { kind = e.kind, text = e.text, ival = e.ival, ty = e.ty,
+           children = e.children ++ [c] }
+
 e_str(s: str) -> Expr =>
     Expr { kind = EStr, text = s, ival = 0, ty = "", children = [] }
 

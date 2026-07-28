@@ -75,7 +75,21 @@ remit_binary(e: Expr) -> str =>
 remit_arms(cs: Expr[], i: int) -> str =>
     i + 1 >= cs.length()
         ? ""
-        : "{cs.get(i).text} => {remit_expr(cs.get(i + 1))}, {remit_arms(cs, i + 2)}"
+        : "{remit_pat(cs.get(i))} => {remit_expr(cs.get(i + 1))}, {remit_arms(cs, i + 2)}"
+
+// `Circle(r)` — the binders go straight through, because Rust's own pattern
+// syntax is the one Maca borrowed.
+remit_pat(p: Expr) -> str =>
+    p.children.length() == 0
+        ? p.text
+        : "{p.text}({remit_binders(p.children, 0)})"
+
+remit_binders(bs: Expr[], i: int) -> str =>
+    i >= bs.length()
+        ? ""
+        : i == bs.length() - 1
+            ? bs.get(i).text
+            : "{bs.get(i).text}, {remit_binders(bs, i + 1)}"
 
 // Rust struct-literal fields `x: 40, y: 2`. Each rides as `EBinary("=", name, value)`.
 remit_lit_fields(fs: Expr[], i: int) -> str =>
@@ -182,5 +196,19 @@ remit_variants(vs: Expr[], i: int) -> str =>
     i >= vs.length()
         ? ""
         : i == vs.length() - 1
-            ? vs.get(i).text
-            : "{vs.get(i).text}, {remit_variants(vs, i + 1)}"
+            ? remit_variant(vs.get(i))
+            : "{remit_variant(vs.get(i))}, {remit_variants(vs, i + 1)}"
+
+// A payload variant is native here — `Circle(i64)` — so `Circle(2)` in the
+// source is already a valid constructor call and needs no shim.
+remit_variant(v: Expr) -> str =>
+    v.children.length() == 0
+        ? v.text
+        : "{v.text}({remit_payload(v.children, 0)})"
+
+remit_payload(ps: Expr[], i: int) -> str =>
+    i >= ps.length()
+        ? ""
+        : i == ps.length() - 1
+            ? rtype(ps.get(i).ty)
+            : "{rtype(ps.get(i).ty)}, {remit_payload(ps, i + 1)}"

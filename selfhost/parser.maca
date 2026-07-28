@@ -10,6 +10,7 @@
 
 import selfhost/token
 import selfhost/ast
+import selfhost/lexer
 
 // Result of a parse step: the node plus the next index to read.
 PExpr = {
@@ -120,7 +121,13 @@ parse_module(ts: Token[], i: int, acc: Stmt[]) -> Module =>
 parse_module_step(ts: Token[], i: int, acc: Stmt[]) -> Module {
     binds = ts.get(i).kind == TIdent && ts.get(i + 1).kind == Eq
     is_record = binds && ts.get(i + 2).kind == LBrace
-    is_sum = binds && ts.get(i + 2).kind == TIdent && ts.get(i + 3).kind == Bar
+    // `Name = A | B` and `Name = Circle(int) | Rect(int, int)`. A payload puts
+    // a `(` where the bar would be, so both openings count; the capitalized
+    // first variant is what separates a sum from `X = f(1)`.
+    cap = binds && ts.get(i + 2).kind == TIdent
+    starts_variant = cap ? is_upper(ts.get(i + 2).text) : false
+    opens = ts.get(i + 3).kind == Bar || ts.get(i + 3).kind == LParen
+    is_sum = starts_variant ? opens : false
     ts.get(i).kind == KwImport
         ? parse_module(ts, import_end(ts, i + 1), acc)   // skip the import path
         : is_record
@@ -129,6 +136,11 @@ parse_module_step(ts: Token[], i: int, acc: Stmt[]) -> Module {
                 ? parse_sum_decl(ts, i, acc)
                 : parse_fn_item(ts, i, acc)
 }
+
+// Does `w` begin with an ASCII capital? A sum's variants do, and a called
+// function's name doesn't, which is the whole test.
+is_upper(w: str) -> bool =>
+    w.length() > 0 && w.at(0).is_alpha() && w.at(0).upper() == w.at(0)
 
 // The index past an `import a/b/c` path — `i` is on the first path segment;
 // `Ident ('/' Ident)*` is consumed.
@@ -145,13 +157,31 @@ parse_sum_decl(ts: Token[], i: int, acc: Stmt[]) -> Module {
     parse_module(ts, sv.pnext, acc ++ [s_sum(name, sv.params)])
 }
 
-// Bar-separated variant idents; stops at the first token that isn't `Ident |`.
+// Bar-separated variants; stops at the first token that isn't `Ident |`.
+//
+// A variant may carry a payload — `Circle(int) | Rect(int, int)`. The declared
+// types ride as the variant node's children, which is what lets the Rust
+// emitter write a real `enum Shape { Circle(i64) }`.
 parse_variants(ts: Token[], i: int, acc: Expr[]) -> PParams {
-    nacc = acc ++ [e_ident(ts.get(i).text)]
-    ts.get(i + 1).kind == Bar
-        ? parse_variants(ts, i + 2, nacc)
-        : mk_pparams(nacc, i + 1)
+    has_payload = ts.get(i + 1).kind == LParen
+    v = has_payload
+        ? parse_payload(ts, i + 2, e_ident(ts.get(i).text))
+        : mk_pexpr(e_ident(ts.get(i).text), i + 1)
+    nacc = acc ++ [v.node]
+    ts.get(v.next).kind == Bar
+        ? parse_variants(ts, v.next + 1, nacc)
+        : mk_pparams(nacc, v.next)
 }
+
+// The `(int, int)` after a variant name. `i` sits on the first type.
+parse_payload(ts: Token[], i: int, v: Expr) -> PExpr =>
+    ts.get(i).kind == RParen
+        ? mk_pexpr(v, i + 1)
+        : (ts.get(i).kind == Comma
+            ? parse_payload(ts, i + 1, v)
+            : parse_payload(ts, i + 1,
+                            with_child(v, e_typed(ts.get(i).text,
+                                                  ts.get(i).text))))
 
 parse_fn_item(ts: Token[], i: int, acc: Stmt[]) -> Module {
     ps = parse_fn(ts, i)
@@ -279,6 +309,58 @@ parse_method(ts: Token[], recv: Expr, name: str, lparen: int) -> PExpr {
 }
 
 // atom := '-'|'!' atom | int | float | str | bool | ident [call | record] | '(' expr ')'
+// A string literal, interpolations included.
+//
+// `"n = {x}"` desugars here, in the parser, to `"n = " ++ str(x)` — the concat
+// and `str` forms both back ends already emit. That is the same trick stage-0
+// uses for format specs: spell the sugar once, in front of the emitters, and
+// every target gets it without knowing.
+str_node(raw: str) -> Expr =>
+    raw.contains("\{") ? interp_node(raw) : e_str(raw)
+
+interp_node(raw: str) -> Expr =>
+    join_parts(split_interp(raw.chars(), 0, false, "", []), 0, e_str(""))
+
+// Alternating literal and expression pieces: even indices are literal text,
+// odd indices are the source of an interpolation.
+split_interp(cs: str[], i: int, inside: bool, cur: str,
+             acc: str[]) -> str[] {
+    at_end = i >= cs.length()
+    at_end
+        ? acc ++ [cur]
+        : interp_step(cs, i, inside, cur, acc)
+}
+
+interp_step(cs: str[], i: int, inside: bool, cur: str, acc: str[]) -> str[] {
+    c = cs.get(i)
+    opens = c == "\{" && !inside
+    closes = c == "\}" && inside
+    opens || closes
+        ? split_interp(cs, i + 1, !inside, "", acc ++ [cur])
+        : split_interp(cs, i + 1, inside, cur ++ c, acc)
+}
+
+// Fold the pieces into one `++` chain, wrapping each expression in `str(…)`.
+join_parts(parts: str[], i: int, acc: Expr) -> Expr {
+    at_end = i >= parts.length()
+    at_end
+        ? acc
+        : join_parts(parts, i + 1, add_part(acc, parts.get(i), i))
+}
+
+add_part(acc: Expr, piece: str, i: int) -> Expr =>
+    i == 0
+        ? e_str(piece)
+        : (i % 2 == 0
+            ? (piece == "" ? acc : e_binary("++", acc, e_str(piece)))
+            : e_binary("++", acc, e_call("str", [parse_fragment(piece)])))
+
+// Parse an interpolation's source. It is a whole expression in its own right,
+// so it goes back through the lexer and the expression parser — which is what
+// makes `"{a + b}"` and `"{f(x)}"` work rather than only bare names.
+parse_fragment(src: str) -> Expr =>
+    parse_expr(lex(src), 0).node
+
 parse_atom(ts: Token[], i: int) -> PExpr {
     t = ts.get(i)
     match t.kind {
@@ -286,7 +368,7 @@ parse_atom(ts: Token[], i: int) -> PExpr {
         Bang    => parse_not(ts, i)
         TInt    => mk_pexpr(e_int(int(t.text)), i + 1)
         TFloat  => mk_pexpr(e_float(t.text), i + 1)
-        TStr    => mk_pexpr(e_str(t.text), i + 1)
+        TStr    => mk_pexpr(str_node(t.text), i + 1)
         KwTrue  => mk_pexpr(e_bool("true"), i + 1)
         KwFalse => mk_pexpr(e_bool("false"), i + 1)
         KwMatch => parse_match(ts, i)
@@ -330,11 +412,23 @@ parse_arms(ts: Token[], i: int, acc: Expr[]) -> PArgs =>
         ? mk_pargs(acc, i + 1)             // skip '}'
         : parse_one_arm(ts, i, acc)
 
+// One arm. The pattern is a variant name, `_`, or a variant with binders —
+// `Circle(r) => …`, whose names ride as the pattern's children.
 parse_one_arm(ts: Token[], i: int, acc: Expr[]) -> PArgs {
-    pat = e_ident(ts.get(i).text)          // a variant name or '_'
-    body = parse_expr(ts, i + 2)           // skip 'pat =>'
-    parse_arms(ts, body.next, acc ++ [pat, body.node])
+    bound = ts.get(i + 1).kind == LParen
+    p = bound
+        ? parse_binders(ts, i + 2, e_ident(ts.get(i).text))
+        : mk_pexpr(e_ident(ts.get(i).text), i + 1)
+    body = parse_expr(ts, p.next + 1)      // skip '=>'
+    parse_arms(ts, body.next, acc ++ [p.node, body.node])
 }
+
+parse_binders(ts: Token[], i: int, p: Expr) -> PExpr =>
+    ts.get(i).kind == RParen
+        ? mk_pexpr(p, i + 1)
+        : (ts.get(i).kind == Comma
+            ? parse_binders(ts, i + 1, p)
+            : parse_binders(ts, i + 1, with_child(p, e_ident(ts.get(i).text))))
 
 // Prefix negation: `-e` binds tighter than any binary operator, so it wraps the
 // following primary.

@@ -15,7 +15,29 @@ import selfhost/check
 import selfhost/emit_c
 import selfhost/emit_rust
 
-main() -> int {
+// The stage-1 driver.
+//
+// With arguments it is a compiler: `maca1 <in.maca> <out.c> [rust]` reads a
+// source file, runs it through the Maca-written lexer, parser and checker, and
+// writes the emitted C — or Rust, with a third argument. That is what makes a
+// differential test possible: the same source through stage-0 and stage-1, and
+// the two programs must agree.
+//
+// With no arguments it runs the demonstration below, which is what the gate
+// reads its assertions from.
+main(args: str[]) -> int =>
+    args.length() >= 2 ? compile_file(args) : demo()
+
+compile_file(args: str[]) -> int {
+    src = read_file(args.get(0))
+    m = parse_module(lex(src), 0, [])
+    errs = check_module(m)
+    want_rust = args.length() >= 3 && args.get(2) == "rust"
+    write_file(args.get(1), want_rust ? remit_module(m) : emit_module(m))
+    errs
+}
+
+demo() -> int {
     sample = "add(1) + 2 - 3"
     toks = lex(sample)
     info("scanned {toks.length()} tokens from {sample.length()} chars")
@@ -124,6 +146,37 @@ main() -> int {
 
     // string concatenation: `a ++ b` → the `maca_cat` heap helper in C, a
     // `format!` in Rust (what `quoted(s) => "\"" ++ s ++ "\""` compiles to).
+    // string interpolation: `"n = {x}"` desugars in the parser to the concat
+    // and `str` forms both back ends already emit, so neither needed changing.
+    ip = parse_fn(lex("label(n: int) -> str => \"n = \{n\}!\""), 0)
+    info("interp C:    {emit_fn(ip.snode)}")
+    info("interp Rust: {remit_fn(ip.snode)}")
+
+    // an interpolation holds a whole expression, not just a name
+    ip2 = parse_expr(lex("\"sum \{a + b\} done\""), 0)
+    info("interp expr: {show(ip2.node)}")
+
+    // The checker carries an environment now, so it sees more than arithmetic:
+    // a declared function's arity and return type, a record's fields, and the
+    // locals a body introduces as it goes.
+    info("check arity: {check_module(parse_module(lex("add(a: int, b: int) -> int => a + b use() -> int => add(1)"), 0, []))}")
+    info("check return: {check_module(parse_module(lex("bad() -> str => 1 + 2"), 0, []))}")
+    info("check calls: {check_module(parse_module(lex("n() -> int => 1 s() -> str => \"a\" mix() -> int => s() + 1"), 0, []))}")
+    info("check clean: {check_module(parse_module(lex("add(a: int, b: int) -> int => a + b use() -> int => add(1, 2)"), 0, []))}")
+
+    // payload sum variants: `Circle(int) | Rect(int, int)`. In C a tag plus a
+    // row of cells wide enough for the widest variant, with a constructor named
+    // after each variant so `Circle(2)` needs no call-site knowledge; in Rust
+    // the native enum, where `Circle(2)` is already a constructor.
+    sm = parse_module(lex("Shape = Circle(int) | Rect(int, int)"), 0, [])
+    info("payload C:    {emit_module(sm)}")
+    info("payload Rust: {remit_module(sm)}")
+
+    // and a match that binds the payload
+    ar = parse_fn(lex("area(s: Shape) -> int => match s {{ Circle(r) => r * r Rect(w, h) => w * h }}"), 0)
+    info("bind C:    {emit_fn(ar.snode)}")
+    info("bind Rust: {remit_fn(ar.snode)}")
+
     cc = parse_fn(lex("wrap(s: str) -> str => \"[\" ++ s ++ \"]\""), 0)
     info("concat C:    {emit_fn(cc.snode)}")
     info("concat Rust: {remit_fn(cc.snode)}")
@@ -169,7 +222,7 @@ main() -> int {
     // `(fld(Point{40,9}) + code(Green)) * hi("hel", "lo")` = `(40 + 2) * 1` =
     // `42`, where `hi` concatenates then compares — `(a ++ b) == "hello"`. `main`
     // also prints a greeting via the `info` builtin (`printf` / `println!`).
-    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} hi(a: str, b: str) -> int => (a ++ b) == \"hello\" ? 1 : 0 chk(n: int) -> int => (\"v\" ++ str(n)) == \"v42\" ? 1 : 0 slen(s: str) -> int => s.length() head(xs: int[]) -> int => xs.get(0) main() -> int {{ q = Point {{ x = 40, y = 9 }} ys = [1, 99] info(\"self-hosted!\") (fld(q) + code(Green)) * hi(\"hel\", \"lo\") * chk(42) * slen(\"z\") * head(ys) }}"
+    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} Shape = Circle(int) | Rect(int, int) area(sh: Shape) -> int => match sh {{ Circle(r) => r * r Rect(w, h) => w * h }} hi(a: str, b: str) -> int => (a ++ b) == \"hello\" ? 1 : 0 chk(n: int) -> int => (\"v\" ++ str(n)) == \"v42\" ? 1 : 0 slen(s: str) -> int => s.length() head(xs: int[]) -> int => xs.get(0) main() -> int {{ q = Point {{ x = 40, y = 9 }} ys = [1, 99] info(\"self-hosted!\") (fld(q) + code(Green)) * hi(\"hel\", \"lo\") * chk(42) * slen(\"z\") * head(ys) * area(Rect(1, 1)) }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))

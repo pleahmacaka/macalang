@@ -89,12 +89,40 @@ emit_binary(e: Expr) -> str {
 emit_match(e: Expr) -> str =>
     emit_arms(emit_expr(e.children.get(0)), e.children, 1)
 
+// A match is over one sum, so one arm carrying binders means every arm in it
+// tests a tag rather than the value itself.
 emit_arms(scrut: str, cs: Expr[], i: int) -> str =>
+    emit_arms_at(scrut, cs, i, any_bound(cs, 1))
+
+emit_arms_at(scrut: str, cs: Expr[], i: int, tagged: bool) -> str =>
     i + 1 >= cs.length()
         ? "0"
         : cs.get(i).text == "_"
             ? emit_expr(cs.get(i + 1))
-            : "({scrut} == {cs.get(i).text} ? {emit_expr(cs.get(i + 1))} : {emit_arms(scrut, cs, i + 2)})"
+            : "({test(scrut, cs.get(i), tagged)} ? {arm_body(scrut, cs.get(i), cs.get(i + 1))}"
+                  ++ " : {emit_arms_at(scrut, cs, i + 2, tagged)})"
+
+any_bound(cs: Expr[], i: int) -> bool =>
+    i >= cs.length()
+        ? false
+        : (cs.get(i).children.length() > 0 ? true : any_bound(cs, i + 2))
+
+test(scrut: str, pat: Expr, tagged: bool) -> str =>
+    tagged
+        ? "{scrut}.tag == {pat.text}_tag"
+        : "{scrut} == {pat.text}"
+
+// A pattern with binders opens a scope that names the payload slots, so the
+// arm body can read them.
+arm_body(scrut: str, pat: Expr, body: Expr) -> str =>
+    pat.children.length() == 0
+        ? emit_expr(body)
+        : "({{ {bind_slots(scrut, pat.children, 0)}{emit_expr(body)}; }})"
+
+bind_slots(scrut: str, bs: Expr[], i: int) -> str =>
+    i >= bs.length()
+        ? ""
+        : "long {bs.get(i).text} = {scrut}._{i}; {bind_slots(scrut, bs, i + 1)}"
 
 // Designated initializers `.x = 40, .y = 2` for a C compound literal. Each field
 // rides as an `EBinary("=", EIdent(name), value)`.
@@ -216,8 +244,66 @@ emit_struct_fields(fs: Expr[], i: int) -> str =>
         : "{type_c(fs.get(i).ty)} {fs.get(i).text}; {emit_struct_fields(fs, i + 1)}"
 
 // `typedef enum { Red, Green, Blue } Color;` from a nullary sum's variants.
+// A sum. With no payloads it is a plain C enum, which is what a nullary sum
+// wants and costs nothing.
+//
+// With payloads it is a tag plus a flat row of `long` slots, wide enough for
+// the widest variant — the same integer cell the list literals use. Each
+// variant also gets a constructor *named after itself*, so an ordinary call
+// `Circle(2)` in the source compiles with no call-site knowledge of which
+// names are variants.
 emit_sum(s: Stmt) -> str =>
-    "typedef enum {{ {emit_variants(s.params, 0)} }} {s.name};"
+    payload_arity(s.params, 0) == 0
+        ? "typedef enum {{ {emit_variants(s.params, 0)} }} {s.name};"
+        : emit_tagged_sum(s)
+
+emit_tagged_sum(s: Stmt) -> str =>
+    "typedef enum {{ {emit_tags(s.params, 0)} }} {s.name}_tag;\n"
+        ++ "typedef struct {{ {s.name}_tag tag; "
+        ++ emit_slots(payload_arity(s.params, 0), 0)
+        ++ "}} {s.name};\n"
+        ++ emit_ctors(s.name, s.params, 0)
+
+// The widest payload across the variants.
+payload_arity(vs: Expr[], i: int) -> int =>
+    i >= vs.length()
+        ? 0
+        : wider(vs.get(i).children.length(), payload_arity(vs, i + 1))
+
+wider(a: int, b: int) -> int =>
+    a > b ? a : b
+
+emit_tags(vs: Expr[], i: int) -> str =>
+    i >= vs.length()
+        ? ""
+        : i == vs.length() - 1
+            ? "{vs.get(i).text}_tag"
+            : "{vs.get(i).text}_tag, {emit_tags(vs, i + 1)}"
+
+emit_slots(n: int, i: int) -> str =>
+    i >= n ? "" : "long _{i}; {emit_slots(n, i + 1)}"
+
+emit_ctors(sum: str, vs: Expr[], i: int) -> str =>
+    i >= vs.length()
+        ? ""
+        : emit_ctor(sum, vs.get(i)) ++ emit_ctors(sum, vs, i + 1)
+
+emit_ctor(sum: str, v: Expr) -> str =>
+    "static inline {sum} {v.text}({ctor_params(v.children, 0)}) "
+        ++ "{{ {sum} _v; _v.tag = {v.text}_tag; "
+        ++ ctor_assigns(v.children, 0) ++ "return _v; }}\n"
+
+ctor_params(ps: Expr[], i: int) -> str =>
+    ps.length() == 0
+        ? "void"
+        : (i >= ps.length()
+            ? ""
+            : (i == ps.length() - 1
+                ? "long _{i}"
+                : "long _{i}, {ctor_params(ps, i + 1)}"))
+
+ctor_assigns(ps: Expr[], i: int) -> str =>
+    i >= ps.length() ? "" : "_v._{i} = _{i}; {ctor_assigns(ps, i + 1)}"
 
 emit_variants(vs: Expr[], i: int) -> str =>
     i >= vs.length()

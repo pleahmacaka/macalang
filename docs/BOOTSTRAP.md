@@ -106,6 +106,34 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
   `str(int)`, `.length()`, `.at(i)`
 - **dynamic arrays** — `T[]` parameters and returns, list literals, `.get(i)`
   and `.count()`, over a heap `MacaList` in C and a `Vec<i64>` in Rust
+- **string interpolation** — `"n = {x}"`, desugared in the *parser* to the
+  concat and `str` forms both back ends already emit, so neither emitter needed
+  a new case
+- **payload sum variants** — `Circle(int) | Rect(int, int)`, and a match that
+  binds the payload. In C a tag plus a row of cells wide enough for the widest
+  variant, with a constructor named after each variant so an ordinary
+  `Circle(2)` compiles without the call site knowing which names are variants;
+  in Rust the native enum, where it already is one
+- **a checker with an environment** — the module's function signatures, record
+  fields and sum variants, plus the locals and parameters in scope. Arity, a
+  call's result type, a field's type, and a body that disagrees with its
+  declared return are all errors now; an undeclared name stays gradual, because
+  foreign is not wrong
+- **a compiler CLI** — `maca1 <in.maca> <out.c> [rust]` reads a source file and
+  writes the emitted source, which is what makes the differential gate possible
+
+## The differential gate
+
+The bootstrap closes on a byte-identical rebuild. The check that gets you there
+— and the only one that can catch a divergence — is the step before it: compile
+one source with stage-0 and with stage-1, and require the two programs to
+behave identically.
+
+`crates/driver/tests/selfhost.rs` does exactly that. stage-0 builds stage-1;
+stage-1 compiles a program covering the slice above; the emitted C is compiled
+with `cc` and the emitted Rust with `rustc`; and all three runs must print the
+same thing and exit the same way. A difference there is a difference between
+two compilers, which is the whole risk the bootstrap carries.
 
 ## Where stage-1 stops, and why that is the shape
 
@@ -115,12 +143,12 @@ Each feature is added to `selfhost/` when the self-hosted compiler needs it to
 compile itself, and the dual-backend compile-and-run gate is what says it
 arrived.
 
-So the boundary moves by writing Maca, not by planning. Today it sits at string
-interpolation (`"{x}"`; the desugared `++` and `str` already work), at
-payload-carrying sum variants (`Circle(int)`, which needs tagged unions in C),
-and at the type system beyond the coarse model in `check.maca` — full HM
-generalization and row unification, which live in `maca-core` and have to be
-written once more, in Maca, before stage-0 can be retired.
+So the boundary moves by writing Maca, not by planning. What it takes to close
+the loop is the rest of the type system: `check.maca` reasons about a module's
+own declarations, and the generalization and row unification that `maca-core`
+does are still the stage-0 crate's. They have to be written once more, in Maca,
+before stage-0 can be retired — and by then stage-1 will be compiling the file
+that does it.
 
 ## Why the Rust side stays minimal
 
