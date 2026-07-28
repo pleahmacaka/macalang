@@ -128,6 +128,13 @@ main() -> int {
     info("concat C:    {emit_fn(cc.snode)}")
     info("concat Rust: {remit_fn(cc.snode)}")
 
+    // a realistic file shape: leading `import` lines (skipped — the driver
+    // resolves modules), then a sum type and a function. This is the structure
+    // of every real selfhost source, now parsed by the stage-1 parser.
+    real = "import std/str import selfhost/token Kind = TInt | TStr classify(k: Kind) -> int => match k {{ TInt => 1 TStr => 2 }}"
+    rm = parse_module(lex(real), 0, [])
+    info("real file: {rm.items.length()} items after skipping imports")
+
     // a COMPLETE program compiled end to end exercising a record, a sum, field
     // access, and a `match`: a `Point`, a `Color`, `fld` reading a field, `code`
     // matching a variant, and a `main` composing them. C lowers the types to a

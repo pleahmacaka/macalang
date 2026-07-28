@@ -305,6 +305,13 @@ fn selfhost_frontend_compiles_and_runs() {
         "Rust string-concat lowering wrong: {stdout}"
     );
 
+    // a realistic file shape: leading `import` lines are skipped, leaving the
+    // type/function definitions — 2 items here (a sum + a function).
+    assert!(
+        stdout.contains("real file: 2 items after skipping imports"),
+        "import skipping wrong: {stdout}"
+    );
+
     // Capstone: compile and run the *complete program* the self-hosted compiler
     // emitted. Extract the C between the markers, compile it with the host cc,
     // run it, and check its exit code is `sum(Point{40,2}) == 42` — the

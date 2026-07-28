@@ -108,19 +108,29 @@ parse_module(ts: Token[], i: int, acc: Stmt[]) -> Module =>
         ? Module { items = acc }
         : parse_module_step(ts, i, acc)
 
-// A top-level item is a record type declaration `Name = { … }` (ident then
+// A top-level item is an `import a/b` statement (skipped — the driver resolves
+// and inlines modules), a record type declaration `Name = { … }` (ident then
 // `= {`), a nullary sum `Name = A | B …` (ident then `= Ident |`), or otherwise
 // a function definition.
 parse_module_step(ts: Token[], i: int, acc: Stmt[]) -> Module {
     binds = ts.get(i).kind == TIdent && ts.get(i + 1).kind == Eq
     is_record = binds && ts.get(i + 2).kind == LBrace
     is_sum = binds && ts.get(i + 2).kind == TIdent && ts.get(i + 3).kind == Bar
-    is_record
-        ? parse_record_decl(ts, i, acc)
-        : is_sum
-            ? parse_sum_decl(ts, i, acc)
-            : parse_fn_item(ts, i, acc)
+    ts.get(i).kind == KwImport
+        ? parse_module(ts, import_end(ts, i + 1), acc)   // skip the import path
+        : is_record
+            ? parse_record_decl(ts, i, acc)
+            : is_sum
+                ? parse_sum_decl(ts, i, acc)
+                : parse_fn_item(ts, i, acc)
 }
+
+// The index past an `import a/b/c` path — `i` is on the first path segment;
+// `Ident ('/' Ident)*` is consumed.
+import_end(ts: Token[], i: int) -> int =>
+    ts.get(i + 1).kind == Slash
+        ? import_end(ts, i + 2)
+        : i + 1
 
 // `Name = A | B | C` → a nullary sum declaration. `i` is on the name; the first
 // variant is at `i + 2` (past `Name =`).
