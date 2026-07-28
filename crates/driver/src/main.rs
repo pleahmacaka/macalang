@@ -27,6 +27,7 @@ fn main() {
         Some("init") => cmd_init(&args[1..]),
         Some("fmt") => cmd_fmt(&args[1..]),
         Some("lint") => cmd_lint(&args[1..]),
+        Some("test") => cmd_test(&args[1..]),
         Some("watch") => cmd_watch(&args[1..]),
         Some("profile") => cmd_profile(&args[1..]),
         Some("dev") => cmd_dev(&args[1..]),
@@ -1290,6 +1291,85 @@ fn base64(data: &[u8]) -> String {
         });
     }
     out
+}
+
+/// `maca test <file.maca>` — run every `test_`-prefixed function in the file.
+///
+/// The file's own `main` (if any) is dropped and replaced with a generated one
+/// that calls each test in turn, announcing it first. A test that `fail`s aborts
+/// the process, so the last announced name identifies the failure; a clean run
+/// prints a summary and exits 0.
+fn cmd_test(args: &[String]) {
+    let Some(src) = args.first().map(PathBuf::from) else {
+        die("test: expected a .maca file");
+    };
+    let source = load_with_imports(&src).unwrap_or_else(|e| die(&e));
+    let parsed = maca_parser::parse(&source);
+    if !parsed.errors.is_empty() {
+        die(&format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
+    }
+
+    let tests: Vec<String> = parsed
+        .module
+        .items
+        .iter()
+        .filter_map(|it| match it {
+            maca_parser::Stmt::Fn(f) if f.name.starts_with("test_") => Some(f.name.clone()),
+            _ => None,
+        })
+        .collect();
+    if tests.is_empty() {
+        println!("no tests found (name a function `test_…` to make it one)");
+        return;
+    }
+
+    // rebuild the module without its `main`, then append the generated runner
+    let items: Vec<maca_parser::Stmt> = parsed
+        .module
+        .items
+        .iter()
+        .filter(|it| !matches!(it, maca_parser::Stmt::Fn(f) if f.name == "main"))
+        .cloned()
+        .collect();
+    let mut program = maca_parser::print_module(&maca_parser::ast::Module { items });
+    program.push_str("\nmain() -> int {\n");
+    program.push_str(&format!(
+        "    info(\"running {} test{}\")\n",
+        tests.len(),
+        if tests.len() == 1 { "" } else { "s" }
+    ));
+    for t in &tests {
+        // announce before running: if the test aborts, this is the last line out
+        program.push_str(&format!("    info(\"  {t}\")\n    {t}()\n"));
+    }
+    program.push_str(&format!(
+        "    info(\"{} test{} passed\")\n    0\n}}\n",
+        tests.len(),
+        if tests.len() == 1 { "" } else { "s" }
+    ));
+
+    let dir = build_dir(&src);
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        die(&format!("test: {e}"));
+    }
+    let gen_path = dir.join("test_main.maca");
+    if let Err(e) = std::fs::write(&gen_path, &program) {
+        die(&format!("test: {e}"));
+    }
+    let out = dir.join(format!("{}_test", stem(&src)));
+    if let Err(e) = compile(&gen_path, &out) {
+        die(&e);
+    }
+    let status = if have_wsl() {
+        Command::new("wsl").arg(to_wsl(&out)).status()
+    } else {
+        Command::new(&out).status()
+    }
+    .unwrap_or_else(|e| die(&format!("failed to launch tests: {e}")));
+    if !status.success() {
+        eprintln!("maca: tests failed");
+    }
+    std::process::exit(status.code().unwrap_or(1));
 }
 
 fn cmd_run(args: &[String]) {
