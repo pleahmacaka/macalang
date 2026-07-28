@@ -1,0 +1,18 @@
+# Tomo book configuration — The Maca Handbook.
+
+[book]
+title = "The Maca Handbook"
+authors = ["Maca contributors"]
+
+# i18n is first-class: list the languages the book ships in. The first is the
+# default (and the fallback for any chapter not yet translated).
+languages = ["en", "ko"]
+
+# Chapter order (filenames, without the .md extension), resolved under
+# book/<lang>/. A chapter missing in a non-default language falls back to the
+# default language's version.
+chapters = [
+    "00-introduction",
+    "01-hello-world",
+    "02-values-and-types",
+]

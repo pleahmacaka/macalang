@@ -50,7 +50,8 @@ Virtual workspace; members are `crates/*`.
 
 Non-crate dirs: `std/` (prelude docs — most of the stdlib is compiler/runtime
 builtins), `examples/` (golden `.maca` programs + `examples/bad/`), `apps/`
-(capstones: `mqtt`, `microkernel`, `blink`, `desktop`, `mcmod`), `selfhost/`
+(capstones: `mqtt`, `microkernel`, `blink`, `desktop`, `mcmod`, `tomo` — the
+i18n handbook builder, a Markdown→HTML renderer written in Maca), `selfhost/`
 (the Maca compiler written in Maca — stage 1), `playground/` (the browser
 playground, a single `.maca` file compiled by the JS backend), `editor/`,
 `docs/`.
