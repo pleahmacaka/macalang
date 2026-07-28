@@ -458,14 +458,10 @@ nav.chapters{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.85rem;col
 chapter_nav(chs: str[], idx: int) -> str {
     p = prev_page(chs, idx)
     n = next_page(chs, idx)
-    "<nav class=\"chapters\">"
-        ++ (p >= 0
-                ? "<a href=\"" ++ chs.get(p) ++ ".html\">&larr; previous</a>"
-                : "<span></span>")
-        ++ (n >= 0
-                ? "<a href=\"" ++ chs.get(n) ++ ".html\">next &rarr;</a>"
-                : "<span></span>")
-        ++ "</nav>\n"
+    nav(class="chapters",
+        p >= 0 ? a(href=chs.get(p) ++ ".html", "← previous") : span("")
+        n >= 0 ? a(href=chs.get(n) ++ ".html", "next →") : span("")
+    ) ++ "\n"
 }
 
 // ---- sections -------------------------------------------------------------
@@ -549,10 +545,10 @@ side_items(chs: str[], titles: str[], cur: str, i: int) -> str =>
     i >= chs.length()
         ? ""
         : (is_section(chs.get(i))
-            ? "<li class=\"sec\">" ++ esc(titles.get(i)) ++ "</li>\n"
-            : "<li><a class=\"" ++ (chs.get(i) == cur ? "cur" : "")
-                  ++ "\" href=\"" ++ chs.get(i) ++ ".html\">"
-                  ++ esc(titles.get(i)) ++ "</a></li>\n")
+            ? li(class="sec", esc(titles.get(i)))
+            : li(a(class=chs.get(i) == cur ? "cur" : "",
+                   href=chs.get(i) ++ ".html",
+                   esc(titles.get(i)))))
           ++ side_items(chs, titles, cur, i + 1)
 
 // The search UI plus the code that drives it. The index is a plain `<script>`
@@ -598,12 +594,37 @@ page(title: str, cur: str, langs: str, side: str, body: str) -> str =>
 // wrong sends the switcher out of the site entirely.
 shell(title: str, cur: str, langs: str, side: str, body: str,
       up: str) -> str =>
-    "<!doctype html>\n<html lang=\"" ++ cur ++ "\">\n<head><meta charset=\"utf-8\">\n" ++
-    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n" ++
-    "<title>" ++ esc(title) ++ "</title>\n" ++ style() ++ "</head>\n<body>\n" ++
-    "<div class=\"wrap" ++ (side.length() == 0 ? " solo" : "") ++ "\">\n"
-        ++ side ++ "<main>\n" ++ body
-        ++ "</main>\n</div>\n</body>\n</html>\n"
+    "<!doctype html>\n"
+        ++ html(lang=cur,
+            head(
+                meta(charset="utf-8")
+                meta(name="viewport",
+                     content="width=device-width,initial-scale=1")
+                title_tag(esc(title))
+                style()
+            )
+            body_tag(
+                div(class=side.length() == 0 ? "wrap solo" : "wrap",
+                    side ++ main_landmark(body)
+                )
+            )
+        ) ++ "\n"
+
+// `title` and `body` are taken by parameters all over this file, and `main` is
+// the entry point, so the three tags that collide get a suffixed wrapper. The
+// backend resolves a user definition ahead of a tag, which is what makes these
+// necessary — and what stops every `label(...)` in every program from silently
+// becoming markup.
+title_tag(text: str) -> str =>
+    title(text)
+
+body_tag(inner: str) -> str =>
+    body(inner)
+
+// `<main>` is the one tag no program can write, because every program defines
+// `main` and a user definition wins. Spelled out rather than worked around.
+main_landmark(inner: str) -> str =>
+    "<main>" ++ inner ++ "</main>"
 
 // The language picker: a disclosure, not a `<select>`.
 //
@@ -626,11 +647,11 @@ lang_links(codes: str[], i: int, cur: str, up: str, page: str) -> str =>
 lang_options(codes: str[], i: int, cur: str, up: str, page: str) -> str =>
     i >= codes.length()
         ? ""
-        : "<li><a class=\"" ++ (codes.get(i) == cur ? "cur" : "")
-              ++ "\" href=\"" ++ up ++ codes.get(i) ++ "/" ++ target_page(page)
-              ++ "\" lang=\"" ++ codes.get(i) ++ "\">"
-              ++ lang_name(codes.get(i)) ++ "</a></li>"
-              ++ lang_options(codes, i + 1, cur, up, page)
+        : li(a(class=codes.get(i) == cur ? "cur" : "",
+               href=up ++ codes.get(i) ++ "/" ++ target_page(page),
+               lang=codes.get(i),
+               lang_name(codes.get(i))))
+          ++ lang_options(codes, i + 1, cur, up, page)
 
 // Always a file, never a bare directory: a `…/ko/` URL only resolves to
 // `index.html` when a web server does it. Opened off disk — which this book
@@ -710,9 +731,9 @@ write_root(out: str, title: str, langs: str, play: str) -> int {
 root_links(codes: str[], i: int) -> str =>
     i >= codes.length()
         ? ""
-        : "<li><a href=\"" ++ codes.get(i) ++ "/index.html\" lang=\""
-              ++ codes.get(i) ++ "\">" ++ lang_name(codes.get(i))
-              ++ "</a></li>\n" ++ root_links(codes, i + 1)
+        : li(a(href=codes.get(i) ++ "/index.html", lang=codes.get(i),
+               lang_name(codes.get(i))))
+          ++ root_links(codes, i + 1)
 
 // A language's own name for itself — a reader looking for their language should
 // see it written the way they write it, not as an ISO code.
@@ -775,9 +796,8 @@ index_items(chs: str[], titles: str[], i: int) -> str =>
     i >= chs.length()
         ? ""
         : (is_section(chs.get(i))
-            ? "<li class=\"sec\">" ++ esc(titles.get(i)) ++ "</li>\n"
-            : "<li><a href=\"" ++ chs.get(i) ++ ".html\">"
-                  ++ esc(titles.get(i)) ++ "</a></li>\n")
+            ? li(class="sec", esc(titles.get(i)))
+            : li(a(href=chs.get(i) ++ ".html", esc(titles.get(i)))))
           ++ index_items(chs, titles, i + 1)
 
 // ---- search index ---------------------------------------------------------

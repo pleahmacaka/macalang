@@ -21,7 +21,18 @@ pub use print::print_module;
 pub fn is_ui_element_tag(name: &str) -> bool {
     matches!(
         name,
-        "div"
+        // document structure — only reachable on the native target, where an
+        // element renders to text and a program emits a whole page. The JS
+        // backend mounts into an existing document and never builds these.
+        "html"
+            | "head"
+            | "title"
+            | "meta"
+            | "link"
+            | "style"
+            | "script"
+            | "body"
+            | "div"
             | "span"
             | "p"
             | "pre"

@@ -268,13 +268,12 @@ fn tomo_builds_the_handbook_site() {
     // chapter has no previous link, the last no next.
     let first = std::fs::read_to_string(site.join("en/00-introduction.html")).unwrap();
     assert!(
-        first.contains("<a href=\"01-installing.html\">next") && !first.contains("&larr; previous"),
+        first.contains("<a href=\"01-installing.html\">next") && !first.contains("← previous"),
         "first chapter's nav wrong"
     );
     let last = std::fs::read_to_string(site.join("en/a4-diagnostics.html")).unwrap();
     assert!(
-        last.contains("<a href=\"a3-stdlib.html\">&larr; previous</a>")
-            && !last.contains("next &rarr;"),
+        last.contains("<a href=\"a3-stdlib.html\">← previous</a>") && !last.contains("next →"),
         "last chapter's nav wrong"
     );
 }
