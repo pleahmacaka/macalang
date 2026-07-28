@@ -50,4 +50,4 @@ maca build hello.maca -o hello
 
 Next: the values and types those functions pass around.
 
-[On to values and types.](02-values-and-types.md)
+[On to a first real program.](02-a-first-program.md)

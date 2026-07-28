@@ -16,3 +16,6 @@ __pycache__/
 
 # Tomo's generated book output (rebuild with `maca run apps/tomo/tomo.maca`)
 apps/tomo/site/
+
+# `maca build --target js playground.maca -o out` output (built by CI for Pages)
+playground/out/

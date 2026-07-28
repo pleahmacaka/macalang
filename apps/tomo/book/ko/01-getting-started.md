@@ -49,4 +49,4 @@ maca build hello.maca -o hello
 
 다음: 이 함수들이 주고받는 값과 타입.
 
-[값과 타입으로.](02-values-and-types.md)
+[첫 프로그램으로.](02-a-first-program.md)

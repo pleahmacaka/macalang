@@ -78,8 +78,9 @@ fn tomo_renders_markdown_to_html() {
     // inline bold + code + link
     assert!(
         html.contains(
+            // a `.md` target is rewritten to the page that was produced
             "<p>A <strong>bold</strong> word and <code>code</code>, \
-             see <a href=\"guide.md\">docs</a>.</p>"
+             see <a href=\"guide.html\">docs</a>.</p>"
         ),
         "inline formatting wrong: {html}"
     );
@@ -167,11 +168,20 @@ fn tomo_builds_the_handbook_site() {
         .filter(|l| l.trim().starts_with('"'))
         .count();
     assert!(want >= 20, "the handbook shrank to {want} chapters");
+    // chapters + a per-language index, in 2 languages, plus the root page
     assert!(
-        log.contains(&format!("built {} pages", (want + 1) * 2)),
-        "expected {} chapters + index in 2 languages; log: {log}",
-        want
+        log.contains(&format!("built {} pages", (want + 1) * 2 + 1)),
+        "expected {want} chapters + index in 2 languages + root; log: {log}"
     );
+
+    // the root page sits above the languages and links each by its own name
+    let root = std::fs::read_to_string(site.join("index.html")).unwrap();
+    assert!(
+        root.contains("<a href=\"en/\">English</a>") && root.contains("<a href=\"ko/\">한국어</a>"),
+        "root page doesn't offer both languages: {root}"
+    );
+    // its switcher must not point above the site root
+    assert!(!root.contains("href=\"../"), "root page links above itself");
 
     // a translated chapter renders in its own language
     let ko_intro = std::fs::read_to_string(site.join("ko/00-introduction.html")).unwrap();
@@ -417,8 +427,8 @@ fn untranslated_chapters_fall_back_to_the_default_language() {
         .output()
         .expect("run tomo");
     let log = String::from_utf8_lossy(&out.stdout);
-    // 2 chapters + an index, per language
-    assert!(log.contains("built 6 pages"), "fixture build log: {log}");
+    // 2 chapters + an index, per language, plus the root page
+    assert!(log.contains("built 7 pages"), "fixture build log: {log}");
 
     let site = book.join("site");
     // the translated chapter is Korean
@@ -443,4 +453,135 @@ fn untranslated_chapters_fall_back_to_the_default_language() {
         ko_index.contains(">알파</a>") && ko_index.contains(">Beta</a>"),
         "index didn't mix translated + fallback titles: {ko_index}"
     );
+}
+
+/// Every internal link in the built book must resolve.
+///
+/// Two classes of breakage got here by hand-checking and both are invisible in
+/// the Markdown: a cross-chapter link is written to the *source* file
+/// (`[next](01-x.md)`) so it works in an editor, and used to be emitted
+/// verbatim — a 404 on every one. And a chapter rename left a link pointing at
+/// a file that no longer existed. Neither shows up until someone clicks.
+#[test]
+fn every_link_in_the_built_book_resolves() {
+    if wsl() || !have("cc") {
+        eprintln!("skipping tomo link check: needs a host cc and no wsl");
+        return;
+    }
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let site = repo.join("apps/tomo/site");
+    let dir = std::env::temp_dir().join("maca-tomo-links");
+    let _ = std::fs::create_dir_all(&dir);
+    let bin = dir.join("tomo");
+    assert!(
+        Command::new(env!("CARGO_BIN_EXE_maca"))
+            .args([
+                "build",
+                &repo.join("apps/tomo/tomo.maca").to_string_lossy(),
+                "-o",
+                &bin.to_string_lossy(),
+            ])
+            .output()
+            .expect("spawn maca build")
+            .status
+            .success()
+    );
+    assert!(
+        Command::new(&bin)
+            .current_dir(&repo)
+            .output()
+            .expect("run tomo")
+            .status
+            .success()
+    );
+
+    let mut pages = Vec::new();
+    collect_html(&site, &mut pages);
+    assert!(pages.len() > 40, "only {} pages built", pages.len());
+
+    let mut broken = Vec::new();
+    let mut checked = 0usize;
+    for page in &pages {
+        let html = std::fs::read_to_string(page).unwrap();
+        // the search index is JavaScript; its hrefs are built at run time
+        let markup = strip_scripts(&html);
+        for href in hrefs(&markup) {
+            if href.starts_with("http")
+                || href.starts_with('#')
+                || href.starts_with("mailto:")
+                || href.starts_with("data:")
+            {
+                continue;
+            }
+            let target = href.split('#').next().unwrap_or("");
+            if target.is_empty() {
+                continue;
+            }
+            checked += 1;
+            let mut dest = page.parent().unwrap().join(target);
+            if dest.is_dir() {
+                dest = dest.join("index.html");
+            }
+            // `play/` is added by the Pages workflow, not by tomo
+            if !dest.exists() && !target.starts_with("play") {
+                broken.push(format!("{}: {href}", page.display()));
+            }
+        }
+    }
+    assert!(
+        checked > 500,
+        "only {checked} links checked — did parsing break?"
+    );
+    assert!(
+        broken.is_empty(),
+        "broken links:\n  {}",
+        broken.join("\n  ")
+    );
+}
+
+fn collect_html(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            collect_html(&p, out);
+        } else if p.extension().is_some_and(|x| x == "html") {
+            out.push(p);
+        }
+    }
+}
+
+fn strip_scripts(html: &str) -> String {
+    let mut out = String::new();
+    let mut rest = html;
+    while let Some(i) = rest.find("<script") {
+        out.push_str(&rest[..i]);
+        rest = match rest[i..].find("</script>") {
+            Some(j) => &rest[i + j + 9..],
+            None => "",
+        };
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The `href` of every `<a>` in the markup.
+fn hrefs(markup: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = markup;
+    while let Some(i) = rest.find("<a ") {
+        rest = &rest[i..];
+        let Some(end) = rest.find('>') else { break };
+        let tag = &rest[..end];
+        if let Some(h) = tag.find("href=\"") {
+            let after = &tag[h + 6..];
+            if let Some(q) = after.find('"') {
+                out.push(after[..q].to_string());
+            }
+        }
+        rest = &rest[end..];
+    }
+    out
 }

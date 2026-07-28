@@ -73,10 +73,20 @@ link(s: str) -> str {
     urlend < 0
         ? s
         : s.substr(0, open)
-          ++ "<a href=\"" ++ s.substr(close + 2, urlend - close - 2) ++ "\">"
+          ++ "<a href=\"" ++ href(s.substr(close + 2, urlend - close - 2))
+          ++ "\">"
           ++ s.substr(open + 1, close - open - 1) ++ "</a>"
           ++ link(s.substr(urlend + 1, s.length() - urlend - 1))
 }
+
+// A link between chapters is written to the source file — `[next](01-x.md)` —
+// because that is what works when the Markdown is read on its own, in an editor
+// or on a git host. Rendered, it has to point at the page that was produced.
+// Without this rewrite every cross-chapter link in the book is a 404.
+href(url: str) -> str =>
+    url.ends_with(".md") && !url.contains("://")
+        ? url.substr(0, url.length() - 3) ++ ".html"
+        : url
 
 // `` `x` `` -> `<code>x</code>` — the first two backticks become the open/close
 // tags; further pairs are handled by recursing.
@@ -450,21 +460,29 @@ search_box() -> str =>
 // switcher and the sidebar. `langs` is a comma-joined list of codes
 // (e.g. "en,ko"); `cur` is the active one.
 page(title: str, cur: str, langs: str, side: str, body: str) -> str =>
+    shell(title, cur, langs, side, body, "../")
+
+// `up` is the path back to the languages' shared parent: "../" from inside a
+// language directory, "" from the root page, which sits above them. Getting it
+// wrong sends the switcher out of the site entirely.
+shell(title: str, cur: str, langs: str, side: str, body: str,
+      up: str) -> str =>
     "<!doctype html>\n<html lang=\"" ++ cur ++ "\">\n<head><meta charset=\"utf-8\">\n" ++
     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n" ++
     "<title>" ++ esc(title) ++ "</title>\n" ++ style() ++ "</head>\n<body>\n" ++
     "<div class=\"wrap\">\n" ++ side ++ "<main>\n" ++
-    "<nav class=\"i18n\">" ++ lang_links(langs.split(","), 0, cur) ++ "</nav>\n" ++
+    "<nav class=\"i18n\">" ++ lang_links(langs.split(","), 0, cur, up) ++ "</nav>\n" ++
     body ++
     "</main>\n</div>\n</body>\n</html>\n"
 
-lang_links(codes: str[], i: int, cur: str) -> str =>
+lang_links(codes: str[], i: int, cur: str, up: str) -> str =>
     i >= codes.length()
         ? ""
         : (codes.get(i) == cur
             ? "<strong>" ++ codes.get(i) ++ "</strong> "
-            : "<a href=\"../" ++ codes.get(i) ++ "/\">" ++ codes.get(i) ++ "</a> ")
-          ++ lang_links(codes, i + 1, cur)
+            : "<a href=\"" ++ up ++ codes.get(i) ++ "/\">" ++ codes.get(i)
+                  ++ "</a> ")
+          ++ lang_links(codes, i + 1, cur, up)
 
 // ---- the book builder -----------------------------------------------------
 
@@ -508,9 +526,48 @@ build_book(root: str, out: str) -> int {
     title = conf_value(toml, "title")
     langs = conf_value(toml, "languages").replace(" ", "")
     chapters = conf_value(toml, "chapters").replace(" ", "")
-    build_langs(root, out, title, langs, langs.split(","), 0,
-                chapters.split(","), 0)
+    n = build_langs(root, out, title, langs, langs.split(","), 0,
+                    chapters.split(","), 0)
+    n + write_root(out, title, langs, conf_value(toml, "playground"))
 }
+
+// ---- the root entry point -------------------------------------------------
+
+// One page above the languages, so `/` is a real destination rather than a
+// directory listing. A multi-language book cannot pick a default for the reader
+// — a Korean speaker landing on English is the same failure as the reverse — so
+// this asks instead of redirecting.
+//
+// `play` is an optional `playground = "…"` in book.toml: a sibling link carried
+// through when the book is published beside something else.
+write_root(out: str, title: str, langs: str, play: str) -> int {
+    make_dir(out)
+    body = "<h1>" ++ esc(title) ++ "</h1>\n<nav class=\"toc\">\n<ul>\n"
+           ++ root_links(langs.split(","), 0)
+           ++ (play.length() > 0
+                   ? "<li><a href=\"" ++ esc(play) ++ "\">Playground</a></li>\n"
+                   : "")
+           ++ "</ul>\n</nav>\n"
+    write_file(out ++ "/index.html",
+               shell(title, langs.split(",").get(0), langs, "", body, ""))
+    1
+}
+
+root_links(codes: str[], i: int) -> str =>
+    i >= codes.length()
+        ? ""
+        : "<li><a href=\"" ++ codes.get(i) ++ "/\">"
+              ++ lang_name(codes.get(i)) ++ "</a></li>\n"
+              ++ root_links(codes, i + 1)
+
+// A language's own name for itself — a reader looking for their language should
+// see it written the way they write it, not as an ISO code.
+lang_name(code: str) -> str =>
+    code == "en"
+        ? "English"
+        : (code == "ko"
+            ? "한국어"
+            : (code == "ja" ? "日本語" : (code == "es" ? "Español" : code)))
 
 // Outer loop: one language at a time.
 build_langs(root: str, out: str, title: str, langs: str, codes: str[],

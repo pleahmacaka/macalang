@@ -38,3 +38,6 @@ chapters = [
     "a3-stdlib",
     "a4-diagnostics",
 ]
+
+# Published alongside the book (see .github/workflows/pages.yml).
+playground = "play/"
