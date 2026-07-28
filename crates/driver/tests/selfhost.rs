@@ -263,13 +263,24 @@ fn selfhost_frontend_compiles_and_runs() {
     // reference stays bare (Rust glob-imports the variants via `use Color::*`).
     assert!(
         stdout.contains("sum C:    typedef enum { Red, Green, Blue } Color;")
-            && stdout.contains("rank(Color c) { return ((c == Green) ? 2 : 0);"),
+            && stdout.contains("rank(Color c) { return ((c == Green) ? 42 : 0);"),
         "C sum lowering wrong: {stdout}"
     );
     assert!(
         stdout.contains("enum Color { Red, Green, Blue }")
             && stdout.contains("use Color::*;"),
         "Rust sum lowering wrong: {stdout}"
+    );
+
+    // match: a nullary-variant match lowers to a right-nested ternary chain in
+    // C and a native `match` in Rust.
+    assert!(
+        stdout.contains("match C:    int code(Color c) { return (c == Red ? 1 : (c == Green ? 42 : (c == Blue ? 3 : 0)));"),
+        "C match lowering wrong: {stdout}"
+    );
+    assert!(
+        stdout.contains("match Rust: fn code(c: Color) -> i64 { match c { Red => 1i64, Green => 42i64, Blue => 3i64,"),
+        "Rust match lowering wrong: {stdout}"
     );
 
     // Capstone: compile and run the *complete program* the self-hosted compiler
@@ -286,7 +297,7 @@ fn selfhost_frontend_compiles_and_runs() {
         c_src.contains("typedef struct { int x; int y;  } Point;")
             && c_src.contains("typedef enum { Red, Green, Blue } Color;")
             && c_src.contains("int fld(Point p)")
-            && c_src.contains("int rank(Color c)")
+            && c_src.contains("int code(Color c)")
             && c_src.contains("int main()"),
         "emitted program missing record/sum/functions:\n{c_src}"
     );
@@ -295,8 +306,8 @@ fn selfhost_frontend_compiles_and_runs() {
         "C record literal (designated init) wrong:\n{c_src}"
     );
     assert!(
-        c_src.contains("return p.x;") && c_src.contains("(c == Green)"),
-        "C field access / variant compare wrong:\n{c_src}"
+        c_src.contains("return p.x;") && c_src.contains("(c == Green ? 2 :"),
+        "C field access / match wrong:\n{c_src}"
     );
     let cfile = dir.join("emitted.c");
     std::fs::write(&cfile, &c_src).unwrap();
@@ -341,13 +352,13 @@ fn selfhost_frontend_compiles_and_runs() {
         rs_src.contains("struct Point { x: i64, y: i64 }")
             && rs_src.contains("enum Color { Red, Green, Blue }")
             && rs_src.contains("fn fld(p: Point) -> i64")
-            && rs_src.contains("fn rank(c: Color) -> i64")
+            && rs_src.contains("fn code(c: Color) -> i64")
             && rs_src.contains("fn __maca_main() -> i64"),
         "emitted Rust missing record/sum/functions:\n{rs_src}"
     );
     assert!(
-        rs_src.contains("Point { x: 40i64, y: 9i64 }") && rs_src.contains("(c == Green)"),
-        "Rust record literal / variant compare wrong:\n{rs_src}"
+        rs_src.contains("Point { x: 40i64, y: 9i64 }") && rs_src.contains("match c { Red =>"),
+        "Rust record literal / match wrong:\n{rs_src}"
     );
     let rsfile = dir.join("emitted.rs");
     std::fs::write(&rsfile, &rs_src).unwrap();

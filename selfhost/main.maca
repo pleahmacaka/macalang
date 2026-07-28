@@ -108,12 +108,20 @@ main() -> int {
     info("sum C:    {emit_module(su)}")
     info("sum Rust: {remit_module(su)}")
 
-    // a COMPLETE program compiled end to end exercising both a record and a sum
-    // type: a `Point`, a `Color`, a `sum` reading record fields, a `rank`
-    // comparing a variant, and a `main` composing them. C lowers the types to a
-    // `typedef struct` / `typedef enum`, Rust to a `struct` / `enum`. The emitted
-    // program between the markers compiles and runs, exit `40 + rank(Green) == 42`.
-    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x rank(c: Color) -> int => c == Green ? 2 : 0 main() -> int {{ q = Point {{ x = 40, y = 9 }} fld(q) + rank(Green) }}"
+    // match: deconstruct a nullary sum. C lowers it to a right-nested ternary
+    // chain (`c == Red ? … : …`), Rust to a native `match` (bare variant
+    // patterns resolve via `use Color::*`).
+    mt = parse_fn(lex("code(c: Color) -> int => match c {{ Red => 1 Green => 42 Blue => 3 }}"), 0)
+    info("match C:    {emit_fn(mt.snode)}")
+    info("match Rust: {remit_fn(mt.snode)}")
+
+    // a COMPLETE program compiled end to end exercising a record, a sum, field
+    // access, and a `match`: a `Point`, a `Color`, `fld` reading a field, `code`
+    // matching a variant, and a `main` composing them. C lowers the types to a
+    // `typedef struct` / `typedef enum` and `match` to a ternary chain; Rust to a
+    // `struct` / `enum` and a native `match`. Compiled and run, exit
+    // `fld(Point{40,9}) + code(Green)` = `40 + 2` = `42`.
+    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} main() -> int {{ q = Point {{ x = 40, y = 9 }} fld(q) + code(Green) }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))

@@ -28,8 +28,21 @@ emit_expr(e: Expr) -> str =>
         EUnary  => "({e.text}{emit_expr(e.children.get(0))})"
         ERecord => "({e.text}){{ {emit_lit_fields(e.children, 0)} }}"
         EField  => "{emit_expr(e.children.get(0))}.{e.text}"
+        EMatch  => emit_match(e)
         _       => "0"
     }
+
+// A `match` lowers to a right-nested ternary chain: `scrut == Pat ? body : …`.
+// A `_` arm (or running out of arms) is the final else.
+emit_match(e: Expr) -> str =>
+    emit_arms(emit_expr(e.children.get(0)), e.children, 1)
+
+emit_arms(scrut: str, cs: Expr[], i: int) -> str =>
+    i + 1 >= cs.length()
+        ? "0"
+        : cs.get(i).text == "_"
+            ? emit_expr(cs.get(i + 1))
+            : "({scrut} == {cs.get(i).text} ? {emit_expr(cs.get(i + 1))} : {emit_arms(scrut, cs, i + 2)})"
 
 // Designated initializers `.x = 40, .y = 2` for a C compound literal. Each field
 // rides as an `EBinary("=", EIdent(name), value)`.

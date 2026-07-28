@@ -255,10 +255,30 @@ parse_atom(ts: Token[], i: int) -> PExpr {
         TStr    => mk_pexpr(e_str(t.text), i + 1)
         KwTrue  => mk_pexpr(e_bool("true"), i + 1)
         KwFalse => mk_pexpr(e_bool("false"), i + 1)
+        KwMatch => parse_match(ts, i)
         TIdent  => parse_call_or_ident(ts, i)
         LParen  => parse_paren(ts, i)
         _       => mk_pexpr(e_ident("?"), i + 1)
     }
+}
+
+// `match scrut { pat => body … }` over nullary variant patterns (or `_`). The
+// children are seeded with the scrutinee, then each arm appends `[pat, body]`.
+parse_match(ts: Token[], i: int) -> PExpr {
+    scrut = parse_expr(ts, i + 1)          // after 'match'
+    arms = parse_arms(ts, scrut.next + 1, [scrut.node])   // skip '{'
+    mk_pexpr(e_match(arms.aitems), arms.anext)
+}
+
+parse_arms(ts: Token[], i: int, acc: Expr[]) -> PArgs =>
+    ts.get(i).kind == RBrace
+        ? mk_pargs(acc, i + 1)             // skip '}'
+        : parse_one_arm(ts, i, acc)
+
+parse_one_arm(ts: Token[], i: int, acc: Expr[]) -> PArgs {
+    pat = e_ident(ts.get(i).text)          // a variant name or '_'
+    body = parse_expr(ts, i + 2)           // skip 'pat =>'
+    parse_arms(ts, body.next, acc ++ [pat, body.node])
 }
 
 // Prefix negation: `-e` binds tighter than any binary operator, so it wraps the
@@ -280,13 +300,17 @@ parse_paren(ts: Token[], i: int) -> PExpr {
 }
 
 // An ident may head a call `name(...)`, a record literal `Name { f = v, … }`,
-// or stand alone.
+// or stand alone. A record literal is recognized only when the brace opens a
+// `field =` assignment — so a `match`'s `scrutinee { pat => … }` (whose brace is
+// followed by `pat =>`, not `field =`) is left for the match parser, not eaten
+// as a record literal.
 parse_call_or_ident(ts: Token[], i: int) -> PExpr {
     name = ts.get(i).text
     nk = ts.get(i + 1).kind
+    is_record_lit = nk == LBrace && ts.get(i + 2).kind == TIdent && ts.get(i + 3).kind == Eq
     nk == LParen
         ? parse_call(ts, i, name)
-        : nk == LBrace
+        : is_record_lit
             ? parse_record_lit(ts, i, name)
             : mk_pexpr(e_ident(name), i + 1)
 }

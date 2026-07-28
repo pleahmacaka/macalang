@@ -13,7 +13,7 @@ import selfhost/token
 ExprKind =
     EInt | EFloat | EStr | EBool | EIdent
     | ECall | EField | EBinary | EUnary | ETernary
-    | EList | ERecord | ELambda | EBlock
+    | EList | ERecord | ELambda | EBlock | EMatch
 
 // One expression node. `children` holds sub-expressions (call args, operands,
 // list elements); `text` names idents/operators; `ival` carries int literals;
@@ -92,6 +92,11 @@ e_record(tyname: str, fields: Expr[]) -> Expr =>
 e_field(base: Expr, name: str) -> Expr =>
     Expr { kind = EField, text = name, ival = 0, ty = "", children = [base] }
 
+// A `match scrut { pat => body … }`. `children` is `[scrut, pat0, body0, …]`;
+// each pattern is a bare-ident node (a variant name, or `_` for the wildcard).
+e_match(children: Expr[]) -> Expr =>
+    Expr { kind = EMatch, text = "", ival = 0, ty = "", children = children }
+
 s_expr(value: Expr) -> Stmt =>
     Stmt { kind = SExpr, name = "", value, ret = "", params = [], body = [] }
 
@@ -128,6 +133,7 @@ show(e: Expr) -> str =>
         EUnary  => "({e.text}{show(e.children.get(0))})"
         ERecord => "{e.text} {{ {show_args(e.children, 0)} }}"
         EField  => "{show(e.children.get(0))}.{e.text}"
+        EMatch  => "match {show(e.children.get(0))} {{ ... }}"
         _       => "?"
     }
 
