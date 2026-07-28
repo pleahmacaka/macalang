@@ -249,14 +249,27 @@ fn selfhost_frontend_compiles_and_runs() {
 
     // records: a type declaration → a struct, a field access → member access.
     assert!(
-        stdout.contains("record C:    struct Point { int x; int y;")
-            && stdout.contains("int sum(struct Point p) { return (p.x + p.y);"),
+        stdout.contains("record C:    typedef struct { int x; int y;")
+            && stdout.contains("int sum(Point p) { return (p.x + p.y);"),
         "C record lowering wrong: {stdout}"
     );
     assert!(
         stdout.contains("struct Point { x: i64, y: i64 }")
             && stdout.contains("fn sum(p: Point) -> i64 { (p.x + p.y)"),
         "Rust record lowering wrong: {stdout}"
+    );
+
+    // sum types: a `A | B | C` declaration → a C/Rust enum; a bare variant
+    // reference stays bare (Rust glob-imports the variants via `use Color::*`).
+    assert!(
+        stdout.contains("sum C:    typedef enum { Red, Green, Blue } Color;")
+            && stdout.contains("rank(Color c) { return ((c == Green) ? 2 : 0);"),
+        "C sum lowering wrong: {stdout}"
+    );
+    assert!(
+        stdout.contains("enum Color { Red, Green, Blue }")
+            && stdout.contains("use Color::*;"),
+        "Rust sum lowering wrong: {stdout}"
     );
 
     // Capstone: compile and run the *complete program* the self-hosted compiler
@@ -270,18 +283,20 @@ fn selfhost_frontend_compiles_and_runs() {
         .map(|(prog, _)| prog.trim().to_string())
         .expect("emitted-program markers present");
     assert!(
-        c_src.contains("struct Point { int x; int y;")
-            && c_src.contains("int sum(struct Point p)")
+        c_src.contains("typedef struct { int x; int y;  } Point;")
+            && c_src.contains("typedef enum { Red, Green, Blue } Color;")
+            && c_src.contains("int fld(Point p)")
+            && c_src.contains("int rank(Color c)")
             && c_src.contains("int main()"),
-        "emitted program missing record/functions:\n{c_src}"
+        "emitted program missing record/sum/functions:\n{c_src}"
     );
     assert!(
-        c_src.contains("(struct Point){ .x = 40, .y = 2 }"),
+        c_src.contains("(Point){ .x = 40, .y = 9 }"),
         "C record literal (designated init) wrong:\n{c_src}"
     );
     assert!(
-        c_src.contains("(p.x + p.y)"),
-        "C field access wrong:\n{c_src}"
+        c_src.contains("return p.x;") && c_src.contains("(c == Green)"),
+        "C field access / variant compare wrong:\n{c_src}"
     );
     let cfile = dir.join("emitted.c");
     std::fs::write(&cfile, &c_src).unwrap();
@@ -324,13 +339,15 @@ fn selfhost_frontend_compiles_and_runs() {
         .expect("emitted-rust markers present");
     assert!(
         rs_src.contains("struct Point { x: i64, y: i64 }")
-            && rs_src.contains("fn sum(p: Point) -> i64")
+            && rs_src.contains("enum Color { Red, Green, Blue }")
+            && rs_src.contains("fn fld(p: Point) -> i64")
+            && rs_src.contains("fn rank(c: Color) -> i64")
             && rs_src.contains("fn __maca_main() -> i64"),
-        "emitted Rust missing record/functions:\n{rs_src}"
+        "emitted Rust missing record/sum/functions:\n{rs_src}"
     );
     assert!(
-        rs_src.contains("Point { x: 40i64, y: 2i64 }"),
-        "Rust record literal wrong:\n{rs_src}"
+        rs_src.contains("Point { x: 40i64, y: 9i64 }") && rs_src.contains("(c == Green)"),
+        "Rust record literal / variant compare wrong:\n{rs_src}"
     );
     let rsfile = dir.join("emitted.rs");
     std::fs::write(&rsfile, &rs_src).unwrap();

@@ -115,7 +115,9 @@ remit_items(items: Stmt[], i: int) -> str =>
 remit_item(s: Stmt) -> str =>
     s.kind == SRecord
         ? remit_struct(s)
-        : remit_fn(s)
+        : s.kind == SSum
+            ? remit_sum(s)
+            : remit_fn(s)
 
 // `#[derive(Clone)] struct Point { x: i64, y: i64 }` from a record declaration.
 remit_struct(s: Stmt) -> str =>
@@ -127,3 +129,16 @@ remit_struct_fields(fs: Expr[], i: int) -> str =>
         : i == fs.length() - 1
             ? "{fs.get(i).text}: {rtype(fs.get(i).ty)}"
             : "{fs.get(i).text}: {rtype(fs.get(i).ty)}, {remit_struct_fields(fs, i + 1)}"
+
+// `#[derive(Clone, PartialEq)] enum Color { Red, Green, Blue }` plus a
+// `use Color::*;` so a bare variant reference (`Green`) resolves without
+// qualification — matching how the emitter leaves variant idents bare.
+remit_sum(s: Stmt) -> str =>
+    "#[derive(Clone, PartialEq)]\nenum {s.name} {{ {remit_variants(s.params, 0)} }}\nuse {s.name}::*;"
+
+remit_variants(vs: Expr[], i: int) -> str =>
+    i >= vs.length()
+        ? ""
+        : i == vs.length() - 1
+            ? vs.get(i).text
+            : "{vs.get(i).text}, {remit_variants(vs, i + 1)}"

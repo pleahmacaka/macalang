@@ -102,12 +102,18 @@ main() -> int {
     info("record C:    {emit_module(rec)}")
     info("record Rust: {remit_module(rec)}")
 
-    // a COMPLETE program compiled end to end exercising records: a `Point` type,
-    // a `sum` that takes a `Point` parameter and reads its fields, and a `main`
-    // that builds a record literal and passes it. C lowers the type to a
-    // `struct Point`, Rust to a `struct`. The emitted program between the markers
-    // compiles and runs, exit `sum(Point{40,2}) == 42`.
-    program = "Point = {{ x: int, y: int }} sum(p: Point) -> int => p.x + p.y main() -> int {{ q = Point {{ x = 40, y = 2 }} sum(q) }}"
+    // sum types: a `A | B | C` declaration parses to a C/Rust enum; a bare
+    // variant reference stays bare (Rust glob-imports the variants).
+    su = parse_module(lex("Color = Red | Green | Blue rank(c: Color) -> int => c == Green ? 42 : 0"), 0, [])
+    info("sum C:    {emit_module(su)}")
+    info("sum Rust: {remit_module(su)}")
+
+    // a COMPLETE program compiled end to end exercising both a record and a sum
+    // type: a `Point`, a `Color`, a `sum` reading record fields, a `rank`
+    // comparing a variant, and a `main` composing them. C lowers the types to a
+    // `typedef struct` / `typedef enum`, Rust to a `struct` / `enum`. The emitted
+    // program between the markers compiles and runs, exit `40 + rank(Green) == 42`.
+    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x rank(c: Color) -> int => c == Green ? 2 : 0 main() -> int {{ q = Point {{ x = 40, y = 9 }} fld(q) + rank(Green) }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))

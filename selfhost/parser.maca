@@ -108,13 +108,34 @@ parse_module(ts: Token[], i: int, acc: Stmt[]) -> Module =>
         ? Module { items = acc }
         : parse_module_step(ts, i, acc)
 
-// A top-level item is a record type declaration `Name = { field: T, … }` when
-// an ident is followed by `= {`, otherwise a function definition.
+// A top-level item is a record type declaration `Name = { … }` (ident then
+// `= {`), a nullary sum `Name = A | B …` (ident then `= Ident |`), or otherwise
+// a function definition.
 parse_module_step(ts: Token[], i: int, acc: Stmt[]) -> Module {
-    is_record = ts.get(i).kind == TIdent && ts.get(i + 1).kind == Eq && ts.get(i + 2).kind == LBrace
+    binds = ts.get(i).kind == TIdent && ts.get(i + 1).kind == Eq
+    is_record = binds && ts.get(i + 2).kind == LBrace
+    is_sum = binds && ts.get(i + 2).kind == TIdent && ts.get(i + 3).kind == Bar
     is_record
         ? parse_record_decl(ts, i, acc)
-        : parse_fn_item(ts, i, acc)
+        : is_sum
+            ? parse_sum_decl(ts, i, acc)
+            : parse_fn_item(ts, i, acc)
+}
+
+// `Name = A | B | C` → a nullary sum declaration. `i` is on the name; the first
+// variant is at `i + 2` (past `Name =`).
+parse_sum_decl(ts: Token[], i: int, acc: Stmt[]) -> Module {
+    name = ts.get(i).text
+    sv = parse_variants(ts, i + 2, [])
+    parse_module(ts, sv.pnext, acc ++ [s_sum(name, sv.params)])
+}
+
+// Bar-separated variant idents; stops at the first token that isn't `Ident |`.
+parse_variants(ts: Token[], i: int, acc: Expr[]) -> PParams {
+    nacc = acc ++ [e_ident(ts.get(i).text)]
+    ts.get(i + 1).kind == Bar
+        ? parse_variants(ts, i + 2, nacc)
+        : mk_pparams(nacc, i + 1)
 }
 
 parse_fn_item(ts: Token[], i: int, acc: Stmt[]) -> Module {

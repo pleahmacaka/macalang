@@ -28,7 +28,7 @@ Expr = {
 
 // ---- statement kinds ------------------------------------------------------
 
-StmtKind = SExpr | SBind | SFn | SRecord
+StmtKind = SExpr | SBind | SFn | SRecord | SSum
 
 // One top-level or block statement. A function packs its params (as ident
 // exprs carrying their declared type in `ty`) into `params`, its declared
@@ -105,6 +105,11 @@ s_fn(name: str, ret: str, params: Expr[], body: Stmt[]) -> Stmt =>
 // `params` as typed idents (`e_param(field, type)`), reusing the fn machinery.
 s_record(name: str, fields: Expr[]) -> Stmt =>
     Stmt { kind = SRecord, name, value = e_ident(name), ret = "", params = fields, body = [] }
+
+// A nullary sum type declaration `Color = Red | Green | Blue`. Variants ride in
+// `params` as bare idents.
+s_sum(name: str, variants: Expr[]) -> Stmt =>
+    Stmt { kind = SSum, name, value = e_ident(name), ret = "", params = variants, body = [] }
 
 // ---- pretty-printer (recursive over the AST) ------------------------------
 
