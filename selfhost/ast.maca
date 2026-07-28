@@ -77,7 +77,8 @@ e_binary(op: str, lhs: Expr, rhs: Expr) -> Expr =>
     Expr { kind = EBinary, text = op, ival = 0, ty = "", children = [lhs, rhs] }
 
 e_ternary(cond: Expr, then: Expr, els: Expr) -> Expr =>
-    Expr { kind = ETernary, text = "", ival = 0, ty = "", children = [cond, then, els] }
+    Expr { kind = ETernary, text = "", ival = 0, ty = "",
+           children = [cond, then, els] }
 
 e_unary(op: str, operand: Expr) -> Expr =>
     Expr { kind = EUnary, text = op, ival = 0, ty = "", children = [operand] }
@@ -100,7 +101,8 @@ e_match(children: Expr[]) -> Expr =>
 // A UFCS method call `recv.name(args)`; `text` is the method name, `children`
 // is `[recv, arg0, …]`.
 e_method(recv: Expr, name: str, args: Expr[]) -> Expr =>
-    Expr { kind = EMethod, text = name, ival = 0, ty = "", children = [recv] ++ args }
+    Expr { kind = EMethod, text = name, ival = 0, ty = "",
+           children = [recv] ++ args }
 
 // A list literal `[a, b, c]`; `children` holds the elements.
 e_list(elems: Expr[]) -> Expr =>
@@ -118,12 +120,14 @@ s_fn(name: str, ret: str, params: Expr[], body: Stmt[]) -> Stmt =>
 // A record type declaration `Point = { x: int, y: int }`. Fields ride in
 // `params` as typed idents (`e_param(field, type)`), reusing the fn machinery.
 s_record(name: str, fields: Expr[]) -> Stmt =>
-    Stmt { kind = SRecord, name, value = e_ident(name), ret = "", params = fields, body = [] }
+    Stmt { kind = SRecord, name, value = e_ident(name), ret = "",
+           params = fields, body = [] }
 
 // A nullary sum type declaration `Color = Red | Green | Blue`. Variants ride in
 // `params` as bare idents.
 s_sum(name: str, variants: Expr[]) -> Stmt =>
-    Stmt { kind = SSum, name, value = e_ident(name), ret = "", params = variants, body = [] }
+    Stmt { kind = SSum, name, value = e_ident(name), ret = "",
+           params = variants, body = [] }
 
 // ---- pretty-printer (recursive over the AST) ------------------------------
 

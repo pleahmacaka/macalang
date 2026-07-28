@@ -75,7 +75,8 @@ emit_call(e: Expr) -> str =>
 emit_binary(e: Expr) -> str {
     l = e.children.get(0)
     r = e.children.get(1)
-    is_str_eq = (e.text == "==" || e.text == "!=") && (l.kind == EStr || r.kind == EStr)
+    is_cmp = e.text == "==" || e.text == "!="
+    is_str_eq = is_cmp && (l.kind == EStr || r.kind == EStr)
     e.text == "++"
         ? "maca_cat({emit_expr(l)}, {emit_expr(r)})"
         : is_str_eq

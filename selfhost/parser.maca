@@ -61,19 +61,23 @@ parse_fn(ts: Token[], i: int) -> PStmt {
     afterp = pp.pnext + 1              // skip ')'
     has_ret = ts.get(afterp).kind == Arrow
     ret_arr = has_ret && ts.get(afterp + 2).kind == LBracket   // `-> R[]`
-    ret = has_ret ? (ret_arr ? ts.get(afterp + 1).text ++ "[]" : ts.get(afterp + 1).text) : ""
-    afterret = has_ret ? (ret_arr ? afterp + 4 : afterp + 2) : afterp   // skip '-> R' / '-> R[]'
+    retname = has_ret ? ts.get(afterp + 1).text : ""
+    ret = ret_arr ? retname ++ "[]" : retname
+    // skip `-> R` / `-> R[]`
+    afterret = has_ret ? (ret_arr ? afterp + 4 : afterp + 2) : afterp
     ts.get(afterret).kind == LBrace
         ? mk_block_fn(ts, name, ret, pp.params, afterret)
         : mk_arrow_fn(ts, name, ret, pp.params, afterret)
 }
 
-mk_arrow_fn(ts: Token[], name: str, ret: str, params: Expr[], at: int) -> PStmt {
+mk_arrow_fn(ts: Token[], name: str, ret: str, params: Expr[],
+            at: int) -> PStmt {
     be = parse_expr(ts, at + 1)        // skip '=>'
     mk_pstmt(s_fn(name, ret, params, [s_expr(be.node)]), be.next)
 }
 
-mk_block_fn(ts: Token[], name: str, ret: str, params: Expr[], at: int) -> PStmt {
+mk_block_fn(ts: Token[], name: str, ret: str, params: Expr[],
+            at: int) -> PStmt {
     pb = parse_block(ts, at + 1, [])   // skip '{'
     mk_pstmt(s_fn(name, ret, params, pb.bstmts), pb.bnext)
 }
@@ -159,7 +163,8 @@ parse_fn_item(ts: Token[], i: int, acc: Stmt[]) -> Module {
 parse_record_decl(ts: Token[], i: int, acc: Stmt[]) -> Module {
     name = ts.get(i).text
     rf = parse_fields(ts, i + 3, [])
-    parse_module(ts, rf.pnext + 1, acc ++ [s_record(name, rf.params)])   // skip '}'
+    // skip the closing brace
+    parse_module(ts, rf.pnext + 1, acc ++ [s_record(name, rf.params)])
 }
 
 // Typed fields up to the closing `}` (its index is returned in `pnext`).
@@ -188,7 +193,8 @@ parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
     pname = ts.get(i).text
     has_ty = ts.get(i + 1).kind == Colon
     is_arr = has_ty && ts.get(i + 3).kind == LBracket    // `name: T[]`
-    tyname = has_ty ? (is_arr ? ts.get(i + 2).text ++ "[]" : ts.get(i + 2).text) : ""
+    tybase = has_ty ? ts.get(i + 2).text : ""
+    tyname = is_arr ? tybase ++ "[]" : tybase
     nacc = acc ++ [e_param(pname, tyname)]
     after = has_ty ? (is_arr ? i + 5 : i + 3) : i + 1    // skip ': T' / ': T[]'
     ts.get(after).kind == Comma
@@ -208,7 +214,8 @@ prec_of(k: Kind) -> int =>
         ? 5
         : k == Plus || k == Minus || k == PlusPlus
             ? 4
-            : k == EqEq || k == NotEq || k == Lt || k == Gt || k == Le || k == Ge
+            : k == EqEq || k == NotEq || k == Lt || k == Gt ||
+                  k == Le || k == Ge
                 ? 3
                 : k == AmpAmp
                     ? 2
@@ -355,7 +362,8 @@ parse_paren(ts: Token[], i: int) -> PExpr {
 parse_call_or_ident(ts: Token[], i: int) -> PExpr {
     name = ts.get(i).text
     nk = ts.get(i + 1).kind
-    is_record_lit = nk == LBrace && ts.get(i + 2).kind == TIdent && ts.get(i + 3).kind == Eq
+    is_record_lit = nk == LBrace && ts.get(i + 2).kind == TIdent &&
+        ts.get(i + 3).kind == Eq
     nk == LParen
         ? parse_call(ts, i, name)
         : is_record_lit

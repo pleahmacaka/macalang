@@ -29,10 +29,31 @@ single_line_if(line: str) -> bool {
     opens && t.contains("\{") && t.ends_with("\}") && !t.contains("? ")
 }
 
-// `str.length()` counts bytes; a UTF-8 comment would over-count, but comments
-// are exempt from the width rule anyway.
+// The width rule exists so *code* stays readable at 80 columns. A long string
+// literal is like a long comment — a C template, a URL, a test program — and
+// rewrapping it would change or disfigure it. So the line is measured with its
+// string literals collapsed: `info("…200 chars…")` counts as `info("")` and
+// passes, while genuinely wide code still fails.
+//
+// `str.length()` counts bytes, so a UTF-8 comment would over-count; comments
+// are exempt outright.
 too_wide(line: str) -> bool =>
-    line.length() > 80 && !line.trim().starts_with("//")
+    !line.trim().starts_with("//") && collapse_strings(line).length() > 80
+
+// Replace the contents of every `"…"` literal with nothing, keeping the quotes.
+collapse_strings(line: str) -> str =>
+    collapse(line.chars(), 0, false, "")
+
+// `quoted` says whether we are inside a literal; the quote characters
+// themselves are always kept, so an unterminated quote can't hide the line.
+collapse(cs: str[], i: int, quoted: bool, acc: str) -> str =>
+    i >= cs.length()
+        ? acc
+        : (cs.get(i) == "\\" && quoted
+            ? collapse(cs, i + 2, quoted, acc)     // an escape, e.g. `\"`
+            : cs.get(i) == "\""
+                ? collapse(cs, i + 1, !quoted, acc ++ "\"")
+                : collapse(cs, i + 1, quoted, quoted ? acc : acc ++ cs.get(i)))
 
 has_trailing_space(line: str) -> bool =>
     line.length() > 0 && (line.ends_with(" ") || line.ends_with("\t"))

@@ -60,9 +60,11 @@ fn every_rule_fires_and_a_clean_file_is_clean() {
     let dir = std::env::temp_dir().join("maca-lint-port");
     let _ = std::fs::create_dir_all(&dir);
 
-    // one file, one violation of each rule, in rule order
+    // one file, one violation of each rule, in rule order. The wide line is
+    // *code*, not a long string — a long string literal is deliberately exempt
+    // (see `a_long_string_literal_is_not_a_long_line`).
     let bad = dir.join("bad.maca");
-    let wide = "w".repeat(90);
+    let wide = "+ 1 ".repeat(25) + "+ 1";
     std::fs::write(
         &bad,
         format!(
@@ -70,7 +72,7 @@ fn every_rule_fires_and_a_clean_file_is_clean() {
              \x20   if x > 0 {{ x = 2 }}\n\
              \ty = 3\n\
              \x20   z = 4   \n\
-             \x20   info(\"{wide}\")\n\
+             \x20   w = 0 {wide}\n\
              \x20   0\n\
              }}\n"
         ),
@@ -122,13 +124,55 @@ fn the_single_line_if_rule_does_not_fire_on_ternaries_or_comments() {
     assert!(ok, "no rule should fire here:\n{report}");
 }
 
-/// Maca linting Maca: the tools directory must pass its own linter.
+/// Maca linting Maca. Run with no argument the linter checks the repository's
+/// own sources — `examples/`, `selfhost/`, `tools/`, `std/` — so this asserts
+/// the whole tree stays clean, not just the tool's own directory. A style the
+/// codebase doesn't actually hold to isn't a style.
 #[test]
-fn the_tools_directory_passes_its_own_linter() {
+fn the_repository_passes_its_own_linter() {
     if wsl() || !have("cc") {
         eprintln!("skipping lint dogfood test: needs a host cc and no wsl");
         return;
     }
-    let (ok, report) = lint(&repo().join("tools").to_string_lossy());
-    assert!(ok, "tools/ does not pass tools/lint.maca:\n{report}");
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &repo().join("tools/lint.maca").to_string_lossy()])
+        .current_dir(repo())
+        .output()
+        .expect("spawn maca run tools/lint.maca");
+    assert!(
+        out.status.success(),
+        "the repository does not pass tools/lint.maca:\n{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
+/// The width rule measures code, not text: a line is over-long only once its
+/// string literals are collapsed. A 200-character C template inside a string —
+/// `selfhost/emit_c.maca` is full of them — can't be rewrapped without changing
+/// what it emits, so it is exempt exactly as a long comment is.
+#[test]
+fn a_long_string_literal_is_not_a_long_line() {
+    if wsl() || !have("cc") {
+        eprintln!("skipping lint width test: needs a host cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-lint-width");
+    let _ = std::fs::create_dir_all(&dir);
+    let f = dir.join("wide.maca");
+    let long = "x".repeat(150);
+    std::fs::write(&f, format!("main() -> int {{\n    info(\"{long}\")\n    0\n}}\n")).unwrap();
+    let (ok, report) = lint(&f.to_string_lossy());
+    assert!(ok, "a long string literal should be exempt:\n{report}");
+
+    // but the code *around* a string still counts
+    let g = dir.join("wide2.maca");
+    let pad = " ".repeat(70);
+    std::fs::write(
+        &g,
+        format!("main() -> int {{\n    a = 1{pad}+ 2 + 3 + 4 + \"s\"\n    0\n}}\n"),
+    )
+    .unwrap();
+    let (ok, report) = lint(&g.to_string_lossy());
+    assert!(!ok, "wide code should still be flagged:\n{report}");
 }
