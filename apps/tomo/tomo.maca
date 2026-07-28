@@ -409,7 +409,7 @@ join_range(lines: str[], at: int, stop: int) -> str =>
 
 // Build a `<nav>` list of a document's headings, each linking to its anchor.
 toc(md: str) -> str =>
-    nav(data_tomo="toc",
+    nav(data-tomo="toc",
         class="border-t border-zinc-200 dark:border-zinc-700 mt-3 pt-2",
         "\n" ++ ul(class="list-none m-0 p-0",
                    "\n" ++ toc_lines(md.split("\n"), 0)) ++ "\n") ++ "\n"
@@ -557,13 +557,13 @@ next_page(chs: str[], i: int) -> int =>
 // closes it on a narrow viewport; without script it stays open and usable.
 sidebar(title: str, langs: str, cur_lang: str, chs: str[], titles: str[],
         cur: str, toc_html: str) -> str =>
-    div(data_tomo="side", class=side_class(),
-        div(data_tomo="head", class=sh_class(),
+    div(data-tomo="side", class=side_class(),
+        div(data-tomo="head", class=sh_class(),
             a(class="font-semibold text-[0.95rem] no-underline text-inherit",
               href="index.html", esc(title))
-            nav(data_tomo="i18n", class="relative shrink-0 text-[0.8rem]",
+            nav(data-tomo="i18n", class="relative shrink-0 text-[0.8rem]",
                 lang_links(langs.split(","), 0, cur_lang, "../", cur)))
-        details(data_tomo="nav", open=true,
+        details(data-tomo="nav", open=true,
                 summary(class="hidden max-md:block cursor-pointer py-2"
                               ++ " list-none details-marker:hidden"
                               ++ " text-zinc-500",
@@ -592,9 +592,9 @@ side_items(chs: str[], titles: str[], cur: str, i: int) -> str =>
     i >= chs.length()
         ? ""
         : (is_section(chs.get(i))
-            ? li(data_tomo="section", class=sec_class(), esc(titles.get(i)))
+            ? li(data-tomo="section", class=sec_class(), esc(titles.get(i)))
             : li(class="my-0",
-                 a(data_tomo=chs.get(i) == cur ? "current" : "chapter",
+                 a(data-tomo=chs.get(i) == cur ? "current" : "chapter",
                    class=link_class(chs.get(i) == cur),
                    href=chs.get(i) ++ ".html",
                    esc(titles.get(i)))))
@@ -733,7 +733,7 @@ main_landmark(inner: str) -> str =>
 lang_links(codes: str[], i: int, cur: str, up: str, page: str) -> str =>
     codes.length() < 2
         ? ""
-        : details(data_tomo="lang",
+        : details(data-tomo="lang",
                   summary(class=lang_summary_class(), lang_name(cur) ++ " ▾")
                   ul(class=lang_menu_class(),
                      lang_options(codes, 0, cur, up, page)))
@@ -898,7 +898,7 @@ index_items(chs: str[], titles: str[], i: int) -> str =>
     i >= chs.length()
         ? ""
         : (is_section(chs.get(i))
-            ? li(data_tomo="section", class=sec_class(), esc(titles.get(i)))
+            ? li(data-tomo="section", class=sec_class(), esc(titles.get(i)))
             : li(class="my-0",
                  a(class=link_class(false), href=chs.get(i) ++ ".html",
                    esc(titles.get(i)))))

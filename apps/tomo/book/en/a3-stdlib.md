@@ -95,7 +95,7 @@ There is no `async` keyword. See chapter 13.
 | Form | Does |
 |---|---|
 | `div(class="x", child)` | an element — named args are attributes, positional ones children |
-| `data_tomo="x"` | `_` in an attribute name is a `-` |
+| `data-tomo="x"` | an attached `-` is part of the name; a spaced one subtracts |
 | `open=true` | a bool decides whether the attribute exists |
 | `element(tag, …)` | the same, with the tag as a value |
 | `styles()` | the CSS for the utility classes this module writes |

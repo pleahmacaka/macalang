@@ -153,14 +153,15 @@ fn styles_are_generated_and_tree_shaken() {
     assert!(!out.contains(".text-2xl"), "shipped an unused rule:\n{out}");
 }
 
-/// `data-*`, `aria-*`, `http-equiv` — the attributes a real document is full of
-/// and a Maca identifier cannot spell. Underscore stands in for the hyphen.
+/// `data-*`, `aria-*`, `http-equiv` — the attributes a real document is full
+/// of, written with the hyphen they have in HTML.
 ///
-/// Without this, every structural hook and every accessibility attribute sends
-/// the program back to concatenating angle brackets, which is what the UI
-/// syntax exists to replace.
+/// An attached `-` is part of an identifier and a spaced one is the subtraction
+/// operator, the same attached-vs-spaced rule that separates `x?` from
+/// `c ? x : y`. So `data-tomo="toc"` needs no rewriting and no workaround, and
+/// `a - b` in the same argument list still subtracts.
 #[test]
-fn underscores_in_attribute_names_become_hyphens() {
+fn hyphenated_attribute_names_work_and_still_subtract_when_spaced() {
     if wsl() || !have("cc") {
         eprintln!("skipping: needs a host cc and no wsl");
         return;
@@ -168,8 +169,14 @@ fn underscores_in_attribute_names_become_hyphens() {
     let (ok, out) = run(
         "hyphen",
         "main() -> int {\n\
-        \x20   info(nav(data_tomo=\"toc\", aria_label=\"Contents\", \"x\"))\n\
-        \x20   info(meta(http_equiv=\"refresh\", content=\"0\"))\n\
+        \x20   a = 10\n\
+        \x20   b = 3\n\
+        \x20   info(nav(data-tomo=\"toc\", aria-label=\"Contents\", \"x\"))\n\
+        \x20   info(meta(http-equiv=\"refresh\", content=\"0\"))\n\
+        \x20   // a custom attribute may keep a literal underscore\n\
+        \x20   info(div(data-my_thing=\"1\", \"u\"))\n\
+        \x20   // spaced, so this is arithmetic, not an attribute name\n\
+        \x20   info(span(\"{a - b}\"))\n\
         \x20   0\n\
         }\n",
     );
@@ -181,6 +188,14 @@ fn underscores_in_attribute_names_become_hyphens() {
     assert!(
         out.contains("<meta http-equiv=\"refresh\" content=\"0\">"),
         "http-equiv wrong:\n{out}"
+    );
+    assert!(
+        out.contains("<div data-my_thing=\"1\">u</div>"),
+        "an underscore in an attribute name must survive:\n{out}"
+    );
+    assert!(
+        out.contains("<span>7</span>"),
+        "spaced `-` must subtract:\n{out}"
     );
 }
 

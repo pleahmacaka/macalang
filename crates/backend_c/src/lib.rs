@@ -2474,7 +2474,10 @@ impl<'a> Cx<'a> {
                     if name == "class" {
                         self.note_classes(value);
                     }
-                    let key = maca_parser::attr_name(name).replace('"', "");
+                    // `data-tomo` is one identifier, not a subtraction: an
+                    // attached `-` is part of a name, a spaced one is the
+                    // operator. So a hyphenated attribute needs no rewriting.
+                    let key = name.replace('"', "");
                     // A bool decides whether the attribute *exists*. HTML reads
                     // every value as true — `hidden="false"` still hides — so
                     // `open=false` has to emit nothing at all.

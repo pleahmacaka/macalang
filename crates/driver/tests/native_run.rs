@@ -1080,7 +1080,7 @@ fn handbook_examples_all_run() {
         // UI elements on the native target: attributes, children, and the
         // three forms an identifier can't express on its own
         "ui: <article class=\"prose\"><h1>Hi</h1><span>Body</span></article>",
-        "attrs: <div data-kind=\"note\">seen</div>", // `_`->`-`, false flag absent
+        "attrs: <div data-kind=\"note\">seen</div>", // hyphenated name, false flag absent
         "flag: <details open><summary>more</summary>text</details>",
         "dyn: <h2 id=\"s\">Deep</h2>", // a tag chosen at run time
         "styles: true false",          // the sheet is tree-shaken

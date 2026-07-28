@@ -148,9 +148,11 @@ same call to an HTML string** (`maca_concat` chain; `maca_attr` escapes
 attribute values, children are not re-escaped; void elements self-close;
 `on:click=` is a clean error pointing at `--target js`). A user definition or
 local **always shadows a tag** — `label`/`code`/`main`/`p` are tags and ordinary
-names. Three forms an identifier can't express: `_` in an attribute name becomes
-`-` (`data_tomo="nav"` → `data-tomo="nav"`, via `maca_parser::attr_name`,
-shared by both back ends); a **bool** attribute controls the attribute's
+names. A **hyphenated attribute needs no workaround** — an attached `-` is part
+of an identifier and a spaced one is the operator (the same attached-vs-spaced
+rule as `x?`/`c ? x : y`), so `nav(data-tomo="toc", span("{a - b}"))` is one
+attribute and one subtraction. Two forms an identifier alone can't express: a
+**bool** attribute controls the attribute's
 *presence* (`open=true` → `<details open>`, `hidden=false` → nothing —
 `maca_flag`); and `element(tag, …)` takes the **tag as a value**
 (`element("h" ++ n, …)`, `th`/`td` per row, and `<main>`, which no call can

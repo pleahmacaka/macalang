@@ -585,16 +585,14 @@ impl Cx {
                     }
                 }
                 Arg::Named { name, value } => {
-                    // `_` → `-` so `data_tomo` / `aria_label` / `http_equiv`
-                    // are writable; a bool toggles the attribute's presence
-                    // rather than its text. `_attr` decides which at run time,
-                    // because the JS side has no types to decide it earlier.
-                    let key = maca_parser::attr_name(name);
+                    // A bool toggles the attribute's presence rather than its
+                    // text. `_attr` decides which at run time, because the JS
+                    // side has no types to decide it earlier.
                     let expr = jexpr(value);
-                    out.push_str(&format!("  _attr({v}, \"{key}\", {expr});\n"));
+                    out.push_str(&format!("  _attr({v}, \"{name}\", {expr});\n"));
                     if is_dynamic(value) {
                         out.push_str(&format!(
-                            "  _binds.push(() => {{ _attr({v}, \"{key}\", {expr}); }});\n"
+                            "  _binds.push(() => {{ _attr({v}, \"{name}\", {expr}); }});\n"
                         ));
                     }
                 }
