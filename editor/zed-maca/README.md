@@ -34,6 +34,8 @@ wasm, builds the tree-sitter grammar from `extension.toml`, applies the
 | `Cargo.toml` / `src/lib.rs` | the wasm extension: resolves & launches `maca-lsp` |
 | `languages/maca/config.toml` | language config: suffixes, comments, brackets, tab size |
 | `languages/maca/highlights.scm` | tree-sitter highlight queries |
+| `languages/maca/outline.scm` | symbol picker + breadcrumbs (functions, records, sums) |
+| `languages/maca/indents.scm` | auto-indent for blocks, records, lists, params, calls |
 
 ## Publishing to the Zed extension registry
 
