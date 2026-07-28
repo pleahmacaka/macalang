@@ -30,7 +30,7 @@ page carrying its stylesheet, table of contents, language switcher, and
 previous/next chapter links. A chapter missing in
 a non-default language **falls back** to the default language's text rather than
 404-ing. Running `tomo` from the repo root rebuilds this repository's handbook
-(14 pages across `en` and `ko`); the output lands in `apps/tomo/site/`, which is
+(16 pages across `en` and `ko` — 7 chapters plus an index each); the output lands in `apps/tomo/site/`, which is
 gitignored.
 
 ## Layout
@@ -49,8 +49,8 @@ apps/tomo/
 `book/` holds **The Maca Handbook** — a book about the language itself, modelled
 on the structure of *The Rust Book* but written for Maca (records and sum types,
 colorblind async, config mode, the multi-target backends). It is the primary
-content Tomo renders, and doubles as the i18n showcase: each chapter exists in
-`en/` and `ko/`.
+content Tomo renders, and doubles as the i18n showcase: every chapter exists in
+both `en/` and `ko/`.
 
 ## Roadmap
 
@@ -64,4 +64,5 @@ content Tomo renders, and doubles as the i18n showcase: each chapter exists in
 - [x] translation-fallback to the default language for missing chapters
 - [ ] tables, blockquotes, and nested lists
 - [x] a self-contained stylesheet (light/dark) and chapter-to-chapter navigation
-- [ ] a book index page and search
+- [x] a per-language index page (chapters titled from their own headings)
+- [ ] search

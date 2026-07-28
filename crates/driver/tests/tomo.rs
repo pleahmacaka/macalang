@@ -109,7 +109,8 @@ fn tomo_builds_the_handbook_site() {
     // `main` builds the book with paths relative to the repo root
     let out = Command::new(&bin).current_dir(&repo).output().expect("run tomo");
     let log = String::from_utf8_lossy(&out.stdout);
-    assert!(log.contains("built 14 pages"), "build log: {log}");
+    // 7 chapters + an index, in each of 2 languages
+    assert!(log.contains("built 16 pages"), "build log: {log}");
 
     // a translated chapter renders in its own language
     let ko_intro = std::fs::read_to_string(site.join("ko/00-introduction.html")).unwrap();
@@ -120,14 +121,17 @@ fn tomo_builds_the_handbook_site() {
         "ko switcher wrong"
     );
 
-    // an *untranslated* chapter falls back to the default language rather than
-    // 404-ing — the point of difference from mdBook
-    let ko_config = std::fs::read_to_string(site.join("ko/05-config-mode.html")).unwrap();
+    // each language gets an index listing every chapter by its own heading
+    let ko_index = std::fs::read_to_string(site.join("ko/index.html")).unwrap();
     assert!(
-        ko_config.contains("One Language for Configuration"),
-        "missing chapter didn't fall back to the default language"
+        ko_index.contains("<a href=\"00-introduction.html\">소개</a>"),
+        "ko index doesn't title chapters in Korean"
     );
-    assert!(ko_config.contains("<html lang=\"ko\">"), "fallback lost its language");
+    let en_index = std::fs::read_to_string(site.join("en/index.html")).unwrap();
+    assert!(
+        en_index.contains("<a href=\"06-targets-and-tooling.html\">Targets and Tooling</a>"),
+        "en index missing a chapter"
+    );
 
     // paragraphs join soft-wrapped lines, so inline formatting survives a wrap
     let en_config = std::fs::read_to_string(site.join("en/05-config-mode.html")).unwrap();
@@ -156,5 +160,68 @@ fn tomo_builds_the_handbook_site() {
         last.contains("<a href=\"05-config-mode.html\">&larr; previous</a>")
             && !last.contains("next"),
         "last chapter's nav wrong"
+    );
+}
+
+/// Tomo's point of difference from mdBook: a chapter that hasn't been
+/// translated yet falls back to the default language instead of 404-ing.
+/// Uses a synthetic two-chapter book so the assertion stays valid however
+/// complete the real handbook's translations become.
+#[test]
+fn untranslated_chapters_fall_back_to_the_default_language() {
+    if wsl() || !have("cc") {
+        eprintln!("skipping tomo fallback test: needs a host cc and no wsl");
+        return;
+    }
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let dir = std::env::temp_dir().join("maca-tomo-fallback");
+    let _ = std::fs::remove_dir_all(&dir);
+    // `main` builds "apps/tomo" relative to the working directory, so mirror
+    // that layout inside the fixture.
+    let book = dir.join("apps/tomo");
+    std::fs::create_dir_all(book.join("book/en")).unwrap();
+    std::fs::create_dir_all(book.join("book/ko")).unwrap();
+    std::fs::write(
+        book.join("book.toml"),
+        "[book]\ntitle = \"Fixture\"\nlanguages = [\"en\", \"ko\"]\nchapters = [\n    \"a\",\n    \"b\",\n]\n",
+    )
+    .unwrap();
+    std::fs::write(book.join("book/en/a.md"), "# Alpha\n\nenglish alpha\n").unwrap();
+    std::fs::write(book.join("book/en/b.md"), "# Beta\n\nenglish beta\n").unwrap();
+    // only `a` is translated; `b` must fall back
+    std::fs::write(book.join("book/ko/a.md"), "# 알파\n\n한국어 알파\n").unwrap();
+
+    let bin = dir.join("tomo");
+    let build = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            &repo.join("apps/tomo/tomo.maca").to_string_lossy(),
+            "-o",
+            &bin.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca build");
+    assert!(build.status.success(), "tomo build failed");
+    let out = Command::new(&bin).current_dir(&dir).output().expect("run tomo");
+    let log = String::from_utf8_lossy(&out.stdout);
+    // 2 chapters + an index, per language
+    assert!(log.contains("built 6 pages"), "fixture build log: {log}");
+
+    let site = book.join("site");
+    // the translated chapter is Korean
+    let ko_a = std::fs::read_to_string(site.join("ko/a.html")).unwrap();
+    assert!(ko_a.contains("한국어 알파"), "translated chapter wrong: {ko_a}");
+    // the untranslated one falls back to English but stays a Korean page
+    let ko_b = std::fs::read_to_string(site.join("ko/b.html")).unwrap();
+    assert!(
+        ko_b.contains("english beta"),
+        "untranslated chapter didn't fall back: {ko_b}"
+    );
+    assert!(ko_b.contains("<html lang=\"ko\">"), "fallback lost its language");
+    // and the index mixes the translated title with the fallen-back one
+    let ko_index = std::fs::read_to_string(site.join("ko/index.html")).unwrap();
+    assert!(
+        ko_index.contains(">알파</a>") && ko_index.contains(">Beta</a>"),
+        "index didn't mix translated + fallback titles: {ko_index}"
     );
 }

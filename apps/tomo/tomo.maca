@@ -253,12 +253,46 @@ build_book(root: str, out: str) -> int {
     build_langs(root, out, title, langs, langs.split(","), 0, chapters.split(","), 0)
 }
 
-// Outer loop: one language at a time.
+// Outer loop: one language at a time — its chapters, then its index page.
 build_langs(root: str, out: str, title: str, langs: str, codes: str[], li: int, chs: str[], acc: int) -> int =>
     li >= codes.length()
         ? acc
         : build_langs(root, out, title, langs, codes, li + 1, chs,
-                      acc + build_chapters(root, out, title, langs, codes.get(li), codes.get(0), chs, 0, 0))
+                      acc + build_chapters(root, out, title, langs, codes.get(li), codes.get(0), chs, 0, 0)
+                          + write_index(root, out, title, langs, codes.get(li), codes.get(0), chs))
+
+// The book's entry point: a table of contents linking every chapter, titled by
+// each chapter's own `# heading` (taken from the translation in use, so an
+// index in Korean lists Korean titles and falls back with the chapter).
+write_index(root: str, out: str, title: str, langs: str, lang: str, fallback: str, chs: str[]) -> int {
+    dir = out ++ "/" ++ lang
+    make_dir(dir)
+    body = "<h1>" ++ esc(title) ++ "</h1>\n<nav class=\"toc\">\n<ul>\n"
+           ++ index_items(root, lang, fallback, chs, 0) ++ "</ul>\n</nav>\n"
+    write_file(dir ++ "/index.html", page(title, lang, langs, body))
+    1
+}
+
+index_items(root: str, lang: str, fallback: str, chs: str[], i: int) -> str =>
+    i >= chs.length()
+        ? ""
+        : "<li><a href=\"" ++ chs.get(i) ++ ".html\">"
+          ++ esc(chapter_title(root, lang, fallback, chs.get(i)))
+          ++ "</a></li>\n" ++ index_items(root, lang, fallback, chs, i + 1)
+
+// A chapter's display title: its first `# ` heading, else the file stem.
+chapter_title(root: str, lang: str, fallback: str, ch: str) -> str {
+    own = root ++ "/book/" ++ lang ++ "/" ++ ch ++ ".md"
+    src = file_exists(own) ? own : root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md"
+    file_exists(src) ? first_heading(read_file(src).split("\n"), 0, ch) : ch
+}
+
+first_heading(lines: str[], i: int, fallback: str) -> str =>
+    i >= lines.length()
+        ? fallback
+        : lines.get(i).starts_with("# ")
+            ? lines.get(i).substr(2, lines.get(i).length() - 2)
+            : first_heading(lines, i + 1, fallback)
 
 // Inner loop: one chapter at a time, for a single language.
 build_chapters(root: str, out: str, title: str, langs: str, lang: str, fallback: str, chs: str[], ci: int, acc: int) -> int =>
