@@ -102,6 +102,10 @@ e_match(children: Expr[]) -> Expr =>
 e_method(recv: Expr, name: str, args: Expr[]) -> Expr =>
     Expr { kind = EMethod, text = name, ival = 0, ty = "", children = [recv] ++ args }
 
+// A list literal `[a, b, c]`; `children` holds the elements.
+e_list(elems: Expr[]) -> Expr =>
+    Expr { kind = EList, text = "", ival = 0, ty = "", children = elems }
+
 s_expr(value: Expr) -> Stmt =>
     Stmt { kind = SExpr, name = "", value, ret = "", params = [], body = [] }
 
@@ -140,6 +144,7 @@ show(e: Expr) -> str =>
         EField  => "{show(e.children.get(0))}.{e.text}"
         EMatch  => "match {show(e.children.get(0))} {{ ... }}"
         EMethod => "{show(e.children.get(0))}.{e.text}({show_args(e.children, 1)})"
+        EList   => "[{show_args(e.children, 0)}]"
         _       => "?"
     }
 

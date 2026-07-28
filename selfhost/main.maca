@@ -147,6 +147,13 @@ main() -> int {
     info("at C:    {emit_fn(at.snode)}")
     info("at Rust: {remit_fn(at.snode)}")
 
+    // list literals + indexing: `[a, b]` → a C compound literal / a Rust `vec!`,
+    // and `.get(i)` indexes it. (Local int lists for now — the first step of the
+    // arrays roadmap.)
+    ls = parse_fn(lex("pair() -> int {{ xs = [40, 2] xs.get(0) + xs.get(1) }}"), 0)
+    info("list C:    {emit_fn(ls.snode)}")
+    info("list Rust: {remit_fn(ls.snode)}")
+
     // a realistic file shape: leading `import` lines (skipped — the driver
     // resolves modules), then a sum type and a function. This is the structure
     // of every real selfhost source, now parsed by the stage-1 parser.

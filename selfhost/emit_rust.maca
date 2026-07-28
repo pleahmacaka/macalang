@@ -36,17 +36,20 @@ remit_expr(e: Expr) -> str =>
         EField  => "{remit_expr(e.children.get(0))}.{e.text}"
         EMatch  => "match {remit_expr(e.children.get(0))} {{ {remit_arms(e.children, 1)} }}"
         EMethod => remit_method(e)
+        EList   => "vec![{remit_args(e.children, 0)}]"
         _       => "0i64"
     }
 
-// A UFCS method call. `.length()` maps to Rust's `.len()` (as `i64`); any other
-// method passes through as-is.
+// A UFCS method call. `.length()` → `.len()` (as `i64`); `.get(i)` indexes a
+// `Vec`; `.at(i)` indexes a string's bytes; any other method passes through.
 remit_method(e: Expr) -> str =>
     e.text == "length"
         ? "(({remit_expr(e.children.get(0))}).len() as i64)"
         : e.text == "at"
             ? "(({remit_expr(e.children.get(0))}).as_bytes()[({remit_expr(e.children.get(1))}) as usize] as i64)"
-            : "{remit_expr(e.children.get(0))}.{e.text}({remit_args(e.children, 1)})"
+            : e.text == "get"
+                ? "{remit_expr(e.children.get(0))}[({remit_expr(e.children.get(1))}) as usize]"
+                : "{remit_expr(e.children.get(0))}.{e.text}({remit_args(e.children, 1)})"
 
 // A call. `info`/`print` are the output builtins → `println!`/`print!`; every
 // other call is a plain `name(args)`.

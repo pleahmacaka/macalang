@@ -30,18 +30,21 @@ emit_expr(e: Expr) -> str =>
         EField  => "{emit_expr(e.children.get(0))}.{e.text}"
         EMatch  => emit_match(e)
         EMethod => emit_method(e)
+        EList   => "(int[]){{ {emit_args(e.children, 0)} }}"
         _       => "0"
     }
 
-// A UFCS method call. `.length()` on a string is `strlen`; any other method
-// falls back to C member-call syntax (valid only where the receiver truly has
-// it — the runtime for lists/strings grows here).
+// A UFCS method call. `.length()` on a string is `strlen`; `.get(i)` indexes a
+// list; `.at(i)` indexes a string's bytes; any other method falls back to C
+// member-call syntax (valid only where the receiver truly has it).
 emit_method(e: Expr) -> str =>
     e.text == "length"
         ? "((int)strlen({emit_expr(e.children.get(0))}))"
         : e.text == "at"
             ? "((int){emit_expr(e.children.get(0))}[{emit_expr(e.children.get(1))}])"
-            : "{emit_expr(e.children.get(0))}.{e.text}({emit_args(e.children, 1)})"
+            : e.text == "get"
+                ? "{emit_expr(e.children.get(0))}[{emit_expr(e.children.get(1))}]"
+                : "{emit_expr(e.children.get(0))}.{e.text}({emit_args(e.children, 1)})"
 
 // A call. `info`/`print` are the output builtins — a string argument prints
 // with a trailing newline (`info`) or without (`print`); every other call is a
@@ -146,6 +149,7 @@ local_c_type(e: Expr) -> str =>
         EStr    => "const char*"
         EFloat  => "double"
         ERecord => e.text
+        EList   => "int*"
         EBinary => e.text == "++" ? "const char*" : "int"
         _       => "int"
     }

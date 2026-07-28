@@ -336,6 +336,16 @@ fn selfhost_frontend_compiles_and_runs() {
         "Rust .at lowering wrong: {stdout}"
     );
 
+    // list literals + `.get(i)` indexing: a C compound literal / a Rust `vec!`.
+    assert!(
+        stdout.contains("list C:    int pair() { int* xs = (int[]){ 40, 2 }; return (xs[0] + xs[1]);"),
+        "C list lowering wrong: {stdout}"
+    );
+    assert!(
+        stdout.contains("list Rust: fn pair() -> i64 { let xs = vec![40i64, 2i64]; (xs[(0i64) as usize] + xs[(1i64) as usize])"),
+        "Rust list lowering wrong: {stdout}"
+    );
+
     // a realistic file shape: leading `import` lines are skipped, leaving the
     // type/function definitions — 2 items here (a sum + a function).
     assert!(

@@ -281,10 +281,31 @@ parse_atom(ts: Token[], i: int) -> PExpr {
         KwTrue  => mk_pexpr(e_bool("true"), i + 1)
         KwFalse => mk_pexpr(e_bool("false"), i + 1)
         KwMatch => parse_match(ts, i)
+        LBracket => parse_list(ts, i)
         TIdent  => parse_call_or_ident(ts, i)
         LParen  => parse_paren(ts, i)
         _       => mk_pexpr(e_ident("?"), i + 1)
     }
+}
+
+// `[a, b, c]` — a list literal. Elements start at `i + 1`; `parse_list_elems`
+// reuses the argument collector but stops at `]`.
+parse_list(ts: Token[], i: int) -> PExpr {
+    el = parse_list_elems(ts, i + 1, [])
+    mk_pexpr(e_list(el.aitems), el.anext)
+}
+
+parse_list_elems(ts: Token[], i: int, acc: Expr[]) -> PArgs =>
+    ts.get(i).kind == RBracket
+        ? mk_pargs(acc, i + 1)          // skip ']'
+        : parse_one_elem(ts, i, acc)
+
+parse_one_elem(ts: Token[], i: int, acc: Expr[]) -> PArgs {
+    e = parse_expr(ts, i)
+    nacc = acc ++ [e.node]
+    ts.get(e.next).kind == Comma
+        ? parse_list_elems(ts, e.next + 1, nacc)
+        : parse_list_elems(ts, e.next, nacc)
 }
 
 // `match scrut { pat => body … }` over nullary variant patterns (or `_`). The
