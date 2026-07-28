@@ -1,0 +1,100 @@
+// Every runnable claim The Maca Handbook makes, in one program.
+//
+// The handbook (apps/tomo/book/) teaches the language by example; this file is
+// those examples, executed. Writing the book turned up five real compiler bugs
+// (a discarded arrow body, an uninferred return type, list methods rejecting a
+// named function, a missing `maca test`, and no empty-list pattern), so the
+// examples are kept here and gated — documentation that isn't run is a claim,
+// not a fact.
+
+// --- ch2: values and types -------------------------------------------------
+
+Point = {
+    x: int
+    y: int
+}
+
+Shape = Circle | Square | Triangle
+
+sides(s: Shape) -> int =>
+    match s {
+        Circle   => 0
+        Square   => 4
+        Triangle => 3
+    }
+
+// --- ch3: functions and control flow ---------------------------------------
+
+is_even(n: int) -> bool => n % 2 == 0
+
+// a function with no declared return type: its arrow body *is* its value
+inc(x) => x + 1
+
+// an unannotated parameter that is called is inferred to be a function
+run_twice(f, x) => f(f(x))
+
+sum_to(n: int) -> int {
+    total = 0
+    for i in 1..n {
+        total = total + i
+    }
+    total
+}
+
+describe(xs: int[]) -> str =>
+    match xs {
+        []          => "empty"
+        [x]         => "one: {x}"
+        [x, ..rest] => "head {x}, then {rest.length()} more"
+    }
+
+// --- ch7: errors -----------------------------------------------------------
+
+divide(a: int, b: int) -> int =>
+    b == 0 ? fail "division by zero" : a / b
+
+// `?` propagates a failure to the caller
+checked(n: int) -> int {
+    v = divide(84, n)?
+    v
+}
+
+main() -> int {
+    // records: construction, field access, functional update
+    p = Point { x = 3, y = 4 }
+    q = p with { y = 5 }
+    info("record: {p.x} {p.y} -> {q.y}")
+
+    // bindings: mutable vs constant
+    count = 0
+    count = count + 1
+    const Limit = 100
+    info("bindings: {count} {Limit}")
+
+    // sum types + match
+    info("sides: {sides(Square)}")
+
+    // lists and their UFCS methods, with lambdas *and* named functions
+    xs = [10, 20, 30]
+    info("list: {xs.first()} {xs.length()} {xs.reduce(0, (a, b) => a + b)}")
+    info("named fn: {[1, 2, 3, 4].filter(is_even).length()}")
+
+    // inferred return types, including through a higher-order parameter
+    info("inferred: {inc(41)} {run_twice(n => n + 1, 40)}")
+
+    // control flow: ranges, ternary, list patterns
+    info("sum_to: {sum_to(10)}")
+    score = 75
+    info("ternary: {score >= 60 ? "pass" : "fail"}")
+    info("patterns: {describe([])} / {describe([7])} / {describe([1, 2, 3])}")
+
+    // errors: `?` propagates, `try` catches
+    info("propagate: {checked(2)}")
+    caught = try divide(10, 0)
+    info("try: caught, still running")
+
+    // strings
+    info("strings: {"ab".repeat(3)} {"7".pad_start(3, "0")} {"A,B".split(",").length()}")
+
+    0
+}

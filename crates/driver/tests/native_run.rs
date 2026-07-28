@@ -1035,3 +1035,45 @@ fn bracketed_list_patterns_match() {
         );
     }
 }
+
+#[test]
+fn handbook_examples_all_run() {
+    // `examples/handbook.maca` collects every runnable claim The Maca Handbook
+    // makes. Writing the book found five real compiler bugs, so its examples
+    // are executed here — documentation that isn't run is a claim, not a fact.
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &example("handbook.maca")])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for want in [
+        "record: 3 4 -> 5",                          // ctor, field access, `with`
+        "bindings: 1 100",                           // mutable vs const
+        "sides: 4",                                  // sum type + match
+        "list: 10 3 60",                             // first/length/reduce
+        "named fn: 2",                               // a named fn passed to .filter
+        "inferred: 42 42",                           // undeclared return types
+        "sum_to: 55",                                // `for` over an inclusive range
+        "ternary: pass",
+        "patterns: empty / one: 7 / head 1, then 2 more", // list patterns
+        "propagate: 42",                             // `?`
+        "try: caught, still running",                // `try`
+        "strings: ababab 007 2",                     // repeat/pad_start/split
+    ] {
+        assert!(
+            stdout.contains(want),
+            "handbook claim broken — missing {want:?}.\nstdout: {stdout}\nstderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    assert_eq!(out.status.code(), Some(0));
+}
