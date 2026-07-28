@@ -1068,6 +1068,7 @@ fn handbook_examples_all_run() {
         "propagate: 42",                             // `?`
         "try: caught, still running",                // `try`
         "strings: ababab 007 2",                     // repeat/pad_start/split
+        "braces: {} {}",                             // both literal-brace escapes
     ] {
         assert!(
             stdout.contains(want),

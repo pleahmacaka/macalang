@@ -672,6 +672,26 @@ impl<'a> Lexer<'a> {
                     self.mode = Mode::Code;
                     return;
                 }
+                // A `"…"` string stays on its line. Without this, a stray `{`
+                // (`"{"` — a literal brace needs `\{` or `{{`) opens an
+                // interpolation, the following `"` opens a *nested* string, and
+                // that string quietly swallows the rest of the file up to the
+                // next quote. The program still compiles, with the wrong text
+                // baked in. Multi-line text is what `"""…"""` is for.
+                '\n' => {
+                    if !s.is_empty() {
+                        self.push(Tok::StrText(s), (start, self.byte()));
+                    }
+                    let nl = self.byte();
+                    self.error(
+                        "string literal spans a line; write `\\n`, or use a raw \
+                         \"\"\"…\"\"\" string. (A literal brace is `\\{` or `{{`.)",
+                        (start, nl),
+                    );
+                    self.push(Tok::StrClose, (nl, nl));
+                    self.mode = Mode::Code;
+                    return;
+                }
                 '{' if self.peek_n(1) == '{' => {
                     self.bump();
                     self.bump();

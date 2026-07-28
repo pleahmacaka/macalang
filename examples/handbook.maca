@@ -96,5 +96,9 @@ main() -> int {
     // strings
     info("strings: {"ab".repeat(3)} {"7".pad_start(3, "0")} {"A,B".split(",").length()}")
 
+    // a literal brace: doubled, or backslash-escaped. Both spell the same thing
+    // ("{" alone would open an interpolation the quote never closes — an error).
+    info("braces: {{}} \{\}")
+
     0
 }

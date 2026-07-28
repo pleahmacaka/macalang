@@ -49,7 +49,11 @@ Virtual workspace; members are `crates/*`.
 | `maca-wasm` | `wasm32` front-end for the browser playground (no wasm-bindgen) |
 
 Non-crate dirs: `tools/` (Maca-written ports of the toolchain — `bindgen.maca`,
-kept equivalent to its stage-0 Rust twin by `crates/driver/tests/bindgen_port.rs`),
+kept equivalent to its stage-0 Rust twin by `crates/driver/tests/bindgen_port.rs`,
+and `lint.maca`, a style linter that walks a directory tree and checks line
+width / single-line `if` / trailing whitespace / hard tabs, gated by
+`crates/driver/tests/lint_port.rs` — which also requires `tools/` to pass its
+own linter),
 `std/` (prelude docs — most of the stdlib is compiler/runtime
 builtins), `examples/` (golden `.maca` programs + `examples/bad/`), `apps/`
 (capstones: `mqtt`, `microkernel`, `blink`, `desktop`, `mcmod`, `tomo` — the

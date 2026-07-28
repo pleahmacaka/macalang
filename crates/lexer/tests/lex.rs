@@ -238,3 +238,59 @@ fn raw_triple_quoted_string_is_verbatim() {
         "raw string interpolated"
     );
 }
+
+// ---- literal braces in strings --------------------------------------------
+//
+// `{` starts an interpolation, so a literal brace must be escaped. Getting that
+// wrong used to be silent: `"{"` opened an interpolation, the following `"`
+// opened a *nested* string, and that string swallowed source up to the next
+// quote — the program compiled with the wrong text baked in. (It hid a real bug
+// in `tools/lint.maca`, whose single-line-`if` rule tested `contains("{")` and
+// therefore never matched anything.) A `"…"` string now stops at end of line.
+
+fn errs(src: &str) -> Vec<String> {
+    maca_lexer::lex(src).errors.into_iter().map(|e| e.msg).collect()
+}
+
+fn text(src: &str) -> Vec<String> {
+    maca_lexer::lex(src)
+        .tokens
+        .into_iter()
+        .filter_map(|t| match t.tok {
+            maca_lexer::Tok::StrText(s) => Some(s),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_bare_brace_in_a_string_is_an_error_not_a_silent_swallow() {
+    let e = errs("main() -> int {\n    ob = \"{\"\n    print(ob)\n    0\n}\n");
+    assert!(
+        e.iter().any(|m| m.contains("spans a line")),
+        "expected a spans-a-line diagnostic, got {e:?}"
+    );
+    // and it says how to fix it
+    assert!(
+        e.iter().any(|m| m.contains("\\{") && m.contains("{{")),
+        "the diagnostic should name both brace escapes, got {e:?}"
+    );
+}
+
+#[test]
+fn both_brace_escapes_produce_a_literal_brace() {
+    assert!(errs(r#"x = "\{a\}""#).is_empty());
+    assert_eq!(text(r#"x = "\{a\}""#), vec!["{a}"]);
+    assert!(errs(r#"x = "{{a}}""#).is_empty());
+    assert_eq!(text(r#"x = "{{a}}""#), vec!["{a}"]);
+}
+
+#[test]
+fn interpolation_and_raw_strings_still_work() {
+    // an unescaped brace is still an interpolation
+    let toks = maca_lexer::lex(r#"x = "n={n}""#);
+    assert!(toks.errors.is_empty(), "{:?}", toks.errors);
+    assert!(toks.tokens.iter().any(|t| t.tok == maca_lexer::Tok::InterpStart));
+    // a raw string is exempt — it may span lines and hold bare braces
+    assert!(errs("x = \"\"\"a {\n} b\"\"\"").is_empty());
+}

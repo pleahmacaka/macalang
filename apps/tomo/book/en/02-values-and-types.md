@@ -10,6 +10,31 @@ boundaries — the compiler infers the rest.
 - `bool` — `true` or `false`.
 - `str` — a string: `"hello"`, with interpolation: `"n = {n}"`.
 
+## Strings
+
+A `"…"` string interpolates: any `{expr}` inside it is evaluated and spliced in.
+That makes a brace special, so a **literal** brace is escaped — either by
+doubling it or with a backslash:
+
+```
+info("n = {n}")        // interpolates n
+info("{{}}")           // prints {}
+info("\{\}")           // the same, spelled with escapes
+```
+
+Getting this wrong is a compile error, not a surprise: `"{"` starts an
+interpolation the closing quote never ends, and the compiler says so.
+
+A `"…"` string stays on one line — write `\n` for a newline. For text that
+really is multi-line, use a **raw** string, which spans lines and interpolates
+nothing, so braces inside it need no escaping:
+
+```
+css = """
+body { margin: 0 }
+"""
+```
+
 ## Bindings: mutable vs constant
 
 A bare lowercase name binds a **mutable** variable:
