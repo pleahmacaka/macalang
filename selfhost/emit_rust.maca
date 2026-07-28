@@ -29,7 +29,7 @@ remit_expr(e: Expr) -> str =>
         EBool   => e.text
         EIdent  => e.text
         ECall   => "{e.text}({remit_args(e.children, 0)})"
-        EBinary => "({remit_expr(e.children.get(0))} {e.text} {remit_expr(e.children.get(1))})"
+        EBinary => remit_binary(e)
         ETernary => "(if {remit_expr(e.children.get(0))} {{ {remit_expr(e.children.get(1))} }} else {{ {remit_expr(e.children.get(2))} }})"
         EUnary  => "({e.text}{remit_expr(e.children.get(0))})"
         ERecord => "{e.text} {{ {remit_lit_fields(e.children, 0)} }}"
@@ -37,6 +37,13 @@ remit_expr(e: Expr) -> str =>
         EMatch  => "match {remit_expr(e.children.get(0))} {{ {remit_arms(e.children, 1)} }}"
         _       => "0i64"
     }
+
+// A binary operator. `++` is string concatenation → `format!("{}{}", a, b)`;
+// every other operator is emitted directly.
+remit_binary(e: Expr) -> str =>
+    e.text == "++"
+        ? "format!(\"{{}}{{}}\", {remit_expr(e.children.get(0))}, {remit_expr(e.children.get(1))})"
+        : "({remit_expr(e.children.get(0))} {e.text} {remit_expr(e.children.get(1))})"
 
 // Rust match arms `Red => 1, _ => 0,` — a bare variant pattern resolves through
 // the enum's `use Color::*;`.
