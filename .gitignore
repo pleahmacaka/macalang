@@ -19,3 +19,6 @@ apps/tomo/site/
 
 # `maca build --target js playground.maca -o out` output (built by CI for Pages)
 playground/out/
+
+# `tools/build-site.sh` output
+_site/

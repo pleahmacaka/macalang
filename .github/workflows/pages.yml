@@ -55,48 +55,18 @@ jobs:
       - name: Build the compiler
         run: cargo build --release -p maca-driver
 
-      # `tomo.maca` resolves `apps/tomo` relative to the working directory, so
-      # it runs from the repo root and writes apps/tomo/site/{index,en,ko}.
-      - name: Build the handbook
-        run: ./target/release/maca run apps/tomo/tomo.maca
-
+      # `import wasm` in playground.maca embeds this, so it has to exist before
+      # the playground is built.
       - name: Build the in-browser compiler
         run: cargo build -p maca-wasm --target wasm32-unknown-unknown --release
 
-      # `--target js` inlines the styles, the transpiled app and the wasm (as
-      # base64) into one self-contained index.html.
-      - name: Build the playground
-        working-directory: playground
-        run: ../target/release/maca build --target js playground.maca -o out
-
-      - name: Assemble the site
-        run: |
-          set -euo pipefail
-          mkdir -p _site
-          cp -r apps/tomo/site/. _site/
-          mkdir -p _site/play
-          cp -r playground/out/. _site/play/
-          # Jekyll would otherwise drop files and directories beginning with `_`.
-          touch _site/.nojekyll
-
-      # Fail here rather than publishing a site with holes: every page the root
-      # links to must exist, and the playground must have its compiler inlined.
-      - name: Check the site
-        run: |
-          set -euo pipefail
-          for f in _site/index.html _site/en/index.html _site/ko/index.html \
-                   _site/en/search-index.js _site/ko/search-index.js \
-                   _site/play/index.html; do
-            test -s "$f" || { echo "missing or empty: $f"; exit 1; }
-          done
-          chapters=$(ls _site/en/*.html | wc -l)
-          test "$chapters" -ge 20 || { echo "only $chapters English pages"; exit 1; }
-          grep -q 'href="en/"' _site/index.html
-          grep -q 'href="play/"' _site/index.html
-          # the playground embeds the wasm compiler; a page without it is a shell
-          test "$(stat -c%s _site/play/index.html)" -gt 200000 \
-            || { echo "playground looks like it lost its embedded wasm"; exit 1; }
-          echo "site ok: $chapters English pages, $(du -sh _site | cut -f1) total"
+      # One script builds and checks the site, and it is the same script a
+      # human runs. Keeping these steps in the workflow meant "verified
+      # locally" could mean a different set of commands than CI ran — which is
+      # exactly how this job broke: the root page's links changed and the
+      # workflow's copy of the check kept grepping for the old ones.
+      - name: Build and check the site
+        run: tools/build-site.sh _site
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
