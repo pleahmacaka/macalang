@@ -1260,3 +1260,62 @@ fn concat_converts_a_non_string_operand() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+/// A record literal with no type name in front.
+///
+/// The parser and the checker always accepted `{ host = "x", port = 80 }`; the
+/// native backend rejected it with "expression not supported by the native
+/// backend: Record(…)", so in practice every record had to be declared first.
+/// A struct is now synthesized per distinct shape, and the shape is sorted by
+/// field name — so the same fields written in a different order are the same
+/// type, which is what "structural" has to mean for the two to be assignable.
+#[test]
+fn anonymous_record_literals_run_natively() {
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-anon-record");
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("anon.maca");
+    std::fs::write(
+        &f,
+        "main() -> int {\n\
+        \x20   c = { host = \"localhost\", port = 8080 }\n\
+        \x20   info(\"one: {c.host}:{c.port}\")\n\
+        \x20   // the same shape, fields written in the other order\n\
+        \x20   d = { port = 80, host = \"example.com\" }\n\
+        \x20   c = d\n\
+        \x20   info(\"two: {c.host}:{c.port}\")\n\
+        \x20   // a field holding a list, and a functional update\n\
+        \x20   b = { label = \"xs\", items = [1, 2, 3] }\n\
+        \x20   info(\"three: {b.label} {b.items.length()} {b.items.get(1)}\")\n\
+        \x20   up = c with { port = 443 }\n\
+        \x20   info(\"four: {up.host}:{up.port}\")\n\
+        \x20   0\n\
+        }\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &f.to_string_lossy()])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for want in [
+        "one: localhost:8080",
+        "two: example.com:80",
+        "three: xs 3 2",
+        "four: example.com:443",
+    ] {
+        assert!(
+            stdout.contains(want),
+            "anonymous record broken — missing {want:?}.\nstdout: {stdout}\nstderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}

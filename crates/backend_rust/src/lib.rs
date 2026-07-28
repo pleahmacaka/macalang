@@ -15,7 +15,7 @@
 //! read, and Maca's mutability model produces harmless `unused_mut`/dead-code.
 
 use maca_parser::ast::*;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The `import rust "spec"` specs, in source order — the crates.io / std items a
 /// program pulls in. `import rust "gpui::div"` → the driver validates the crate
@@ -65,6 +65,12 @@ pub fn emit(m: &Module) -> String {
         out.push('\n');
     }
     out.push_str(&cx.prelude());
+
+    // Anonymous record literals have no declaration to emit a struct from, so
+    // one is synthesized per distinct shape, ahead of the code that uses it.
+    for (name, fields) in anon_shapes(m) {
+        out.push_str(&cx.emit_struct(&name, &fields));
+    }
 
     for it in &m.items {
         match it {
@@ -348,7 +354,12 @@ impl Cx {
             }
             Expr::Match { scrut, arms } => (self.match_expr(scrut, arms), false),
             Expr::Ctor { name, fields } => (self.ctor(name, fields), false),
-            Expr::Record(fields) => (self.ctor("", fields), false),
+            // an anonymous record literal names the struct synthesized for its
+            // shape; a shape that can't be typed stays a bare literal
+            Expr::Record(fields) => {
+                let n = anon_shape(fields).map(|s| anon_struct_name(&s));
+                (self.ctor(n.as_deref().unwrap_or(""), fields), false)
+            }
             Expr::Call { callee, args } => self.call(callee, args),
             // R4: a closure. `move` so it can escape into a foreign callback and
             // outlive this frame (§2.3); params are untyped so Rust infers them
@@ -768,6 +779,166 @@ fn pat_bind(p: &Pattern) -> String {
 fn arg_expr(a: &Arg) -> &Expr {
     match a {
         Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
+    }
+}
+
+/// The shape of an anonymous record *value* — `{ host = "x", port = 80 }` —
+/// sorted by field name, so the same shape written twice is one struct and the
+/// two values are the same type regardless of the order they were written in.
+fn anon_shape(fs: &[Field]) -> Option<Vec<(String, Type)>> {
+    let mut out = Vec::new();
+    for f in fs {
+        let Field::Value { name, value } = f else {
+            return None;
+        };
+        out.push((name.clone(), shallow_type(value)?));
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    (!out.is_empty()).then_some(out)
+}
+
+/// A best-effort type for a record field's value. `None` when it can't be
+/// named, which leaves the literal alone rather than inventing a wrong struct.
+fn shallow_type(e: &Expr) -> Option<Type> {
+    let name = |n: &str| Type::Name(vec![n.to_string()]);
+    Some(match e {
+        Expr::Int(_) => name("int"),
+        Expr::Float(_) => name("float"),
+        Expr::Bool(_) => name("bool"),
+        Expr::Str(_) | Expr::Path(_) => name("str"),
+        Expr::List(es) => Type::Array(Box::new(shallow_type(es.first()?)?)),
+        Expr::Record(fs) => name(&anon_struct_name(&anon_shape(fs)?)),
+        _ => return None,
+    })
+}
+
+/// The struct name for an anonymous record's shape — derived from the shape, so
+/// it is the same everywhere the shape is.
+fn anon_struct_name(fields: &[(String, Type)]) -> String {
+    let mut s = String::from("MacaAnon");
+    for (n, t) in fields {
+        s.push('_');
+        s.push_str(&ident(n));
+        s.push('_');
+        s.push_str(&type_tag(t));
+    }
+    s
+}
+
+fn type_tag(t: &Type) -> String {
+    match t {
+        Type::Name(segs) => ident(segs.last().map(String::as_str).unwrap_or("any")),
+        Type::Array(e) => format!("{}arr", type_tag(e)),
+        Type::Opt(e) => format!("{}opt", type_tag(e)),
+        Type::Paren(e) => type_tag(e),
+        Type::Apply(b, _) => type_tag(b),
+    }
+}
+
+/// Every distinct anonymous-record shape in the module, in a stable order.
+fn anon_shapes(m: &Module) -> Vec<(String, Vec<(String, Type)>)> {
+    let mut found: BTreeMap<String, Vec<(String, Type)>> = BTreeMap::new();
+    for it in &m.items {
+        walk_stmt_for_anon(it, &mut found);
+    }
+    found.into_iter().collect()
+}
+
+fn walk_stmt_for_anon(s: &Stmt, out: &mut BTreeMap<String, Vec<(String, Type)>>) {
+    match s {
+        // a top-level `Name = { f: T }` is a type declaration, not a value
+        Stmt::Bind(b) if record_fields(&b.value).is_some() => {}
+        Stmt::Bind(b) => walk_expr_for_anon(&b.value, out),
+        Stmt::Fn(f) => match &f.body {
+            Some(FnBody::Expr(e)) => walk_expr_for_anon(e, out),
+            Some(FnBody::Block(ss)) => ss.iter().for_each(|s| walk_stmt_for_anon(s, out)),
+            None => {}
+        },
+        Stmt::Expr(e) => walk_expr_for_anon(e, out),
+        _ => {}
+    }
+}
+
+fn walk_expr_for_anon(e: &Expr, out: &mut BTreeMap<String, Vec<(String, Type)>>) {
+    if let Expr::Record(fs) = e
+        && let Some(shape) = anon_shape(fs)
+    {
+        out.insert(anon_struct_name(&shape), shape);
+    }
+    let mut go = |c: &Expr| walk_expr_for_anon(c, out);
+    match e {
+        Expr::Str(parts) => parts.iter().for_each(|p| {
+            if let StrPart::Interp(x) = p {
+                go(x)
+            }
+        }),
+        Expr::List(es) => es.iter().for_each(&mut go),
+        Expr::Record(fs) | Expr::Ctor { fields: fs, .. } | Expr::With { fields: fs, .. } => {
+            fs.iter().for_each(|f| {
+                if let Field::Value { value, .. } | Field::Bare(value) = f {
+                    go(value)
+                }
+            })
+        }
+        Expr::Call { callee, args } => {
+            go(callee);
+            args.iter().for_each(|a| go(arg_expr(a)));
+        }
+        Expr::Field { base, .. }
+        | Expr::Unary { expr: base, .. }
+        | Expr::Try(base)
+        | Expr::Fail(base)
+        | Expr::Reify(base)
+        | Expr::Await(base)
+        | Expr::Spawn(base)
+        | Expr::Lambda { body: base, .. } => go(base),
+        Expr::Index { base: a, index: b }
+        | Expr::Range { lo: a, hi: b }
+        | Expr::Binary { lhs: a, rhs: b, .. }
+        | Expr::Assign {
+            target: a,
+            value: b,
+        } => {
+            go(a);
+            go(b);
+        }
+        Expr::Ternary { cond, then, els } => {
+            go(cond);
+            go(then);
+            go(els);
+        }
+        Expr::If { cond, then, els } => {
+            go(cond);
+            drop(go);
+            then.iter().for_each(|s| walk_stmt_for_anon(s, out));
+            if let Some(e) = els {
+                e.iter().for_each(|s| walk_stmt_for_anon(s, out));
+            }
+        }
+        Expr::Match { scrut, arms } => {
+            go(scrut);
+            arms.iter().for_each(|a| {
+                walk_expr_for_anon(&a.body, out);
+                if let Some(g) = &a.guard {
+                    walk_expr_for_anon(g, out)
+                }
+            });
+        }
+        Expr::For { iter, body, .. } => {
+            go(iter);
+            drop(go);
+            body.iter().for_each(|s| walk_stmt_for_anon(s, out));
+        }
+        Expr::While { cond, body } => {
+            go(cond);
+            drop(go);
+            body.iter().for_each(|s| walk_stmt_for_anon(s, out));
+        }
+        Expr::Block(ss) => {
+            drop(go);
+            ss.iter().for_each(|s| walk_stmt_for_anon(s, out));
+        }
+        _ => {}
     }
 }
 

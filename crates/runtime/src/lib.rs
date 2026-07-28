@@ -84,7 +84,18 @@ maca_str maca_repeat(maca_str s, int64_t n);          /* s concatenated n times 
 maca_str maca_read_file(maca_str path);               /* whole file, "" if unreadable */
 bool maca_write_file(maca_str path, maca_str text);   /* truncate + write; ok? */
 bool maca_file_exists(maca_str path);
+bool maca_is_dir(maca_str path);                      /* a directory, not a file? */
+int64_t maca_file_size(maca_str path);                /* bytes, or -1 */
+int64_t maca_modified_ms(maca_str path);              /* mtime in ms, or -1 */
+bool maca_remove_file(maca_str path);                 /* unlink; ok? */
+bool maca_remove_dir(maca_str path);                  /* recursive rmdir; ok? */
 bool maca_make_dir(maca_str path);                    /* mkdir -p; ok? */
+maca_str maca_read_line(void);                        /* one stdin line, no \n; "" at EOF */
+bool maca_at_eof(void);                               /* stdin exhausted? */
+maca_str maca_read_stdin(void);                       /* all of stdin */
+int64_t maca_now_ms(void);                            /* ms since the Unix epoch */
+maca_str maca_now_iso(void);                          /* UTC, "YYYY-MM-DDTHH:MM:SSZ" */
+maca_str maca_format_time(int64_t ms, maca_str fmt);  /* strftime over UTC */
 maca_str* maca_list_dir(maca_str path, int64_t* out_len); /* names, sorted; malloc'd */
 maca_str maca_pad_start(maca_str s, int64_t w, maca_str p); /* left-pad to width w */
 maca_str maca_pad_end(maca_str s, int64_t w, maca_str p);   /* right-pad to width w */
@@ -94,6 +105,10 @@ maca_str maca_flag(maca_str name, bool on);         /* ` name` when on, else "" 
 maca_str maca_element(maca_str tag, maca_str attrs, maca_str kids); /* tag chosen at runtime */
 maca_str maca_fixed(double x, int64_t n);             /* x with n decimal places */
 maca_str maca_substr(maca_str s, int64_t start, int64_t len);  /* byte range, clamped */
+maca_str maca_str_slice(maca_str s, int64_t from, int64_t to); /* exclusive end */
+bool maca_assert(bool cond, maca_str msg);                     /* report + remember */
+bool maca_assert_eq(maca_str got, maca_str want, maca_str msg);
+int64_t maca_failures(void);        /* how many assertions have failed */
 int64_t maca_index_of(maca_str s, maca_str sub);      /* byte index, or -1 */
 maca_str* maca_split(maca_str s, maca_str sep, int64_t* out_len); /* malloc'd maca_str[] */
 
@@ -115,6 +130,7 @@ static inline double maca_unbox_f64(int64_t i) { double d; memcpy(&d, &i, sizeof
 void maca_sort_i64(int64_t* data, int64_t n);
 void maca_sort_f64(double* data, int64_t n);
 void maca_sort_str(maca_str* data, int64_t n);
+uint64_t maca_hash_str(maca_str s);                   /* FNV-1a, for map keys */
 
 /* ---- growable string builder ---- */
 typedef struct { char* buf; size_t len; size_t cap; } maca_sb;
@@ -180,6 +196,85 @@ maca_str maca_json_str(maca_json* j);
         return r;                                                              \
     }
 
+/* A string-keyed hash map, monomorphized on its value type exactly as arrays
+ * are on their element type.
+ *
+ * Keys are `str` and only `str`. That is the whole design decision: one key
+ * type means one hash and one comparison, an integer key is `str(n)` away, and
+ * the alternative is a second type parameter threaded through every backend for
+ * a case the language has not needed. Open addressing with linear probing and
+ * backward-shift deletion; grows at 70% load. `_keys` writes into a caller
+ * buffer of `_len` entries and sorts them, so iteration order is deterministic
+ * — a generator that walks a map twice produces the same file twice. */
+#define MACA_DEFINE_MAP(Name, Val)                                             \
+    typedef struct { maca_str* keys; Val* vals; unsigned char* used;           \
+                     int64_t len; int64_t cap; } Name;                         \
+    static inline Name Name##_new(void) {                                      \
+        Name m; m.keys = NULL; m.vals = NULL; m.used = NULL;                   \
+        m.len = 0; m.cap = 0; return m;                                        \
+    }                                                                          \
+    static inline int64_t Name##_slot(const Name* m, maca_str k) {             \
+        int64_t i = (int64_t)(maca_hash_str(k) & (uint64_t)(m->cap - 1));      \
+        while (m->used[i] && strcmp(m->keys[i], k) != 0)                       \
+            i = (i + 1) & (m->cap - 1);                                        \
+        return i;                                                              \
+    }                                                                          \
+    static inline void Name##_grow(Name* m) {                                  \
+        int64_t oc = m->cap;                                                   \
+        maca_str* ok = m->keys; Val* ov = m->vals; unsigned char* ou = m->used;\
+        m->cap = oc ? oc * 2 : 8;                                              \
+        m->keys = (maca_str*)maca_alloc((size_t)m->cap * sizeof(maca_str));       \
+        m->vals = (Val*)maca_alloc((size_t)m->cap * sizeof(Val));                 \
+        m->used = (unsigned char*)maca_alloc((size_t)m->cap);                     \
+        memset(m->used, 0, (size_t)m->cap);                                    \
+        m->len = 0;                                                            \
+        for (int64_t i = 0; i < oc; i++) if (ou[i]) {                          \
+            int64_t j = Name##_slot(m, ok[i]);                                 \
+            m->keys[j] = ok[i]; m->vals[j] = ov[i];                            \
+            m->used[j] = 1; m->len++;                                          \
+        }                                                                      \
+    }                                                                          \
+    static inline void Name##_set(Name* m, maca_str k, Val v) {                \
+        if (!k) k = "";                                                        \
+        if (m->cap == 0 || (m->len + 1) * 10 >= m->cap * 7) Name##_grow(m);    \
+        int64_t i = Name##_slot(m, k);                                         \
+        if (!m->used[i]) { m->used[i] = 1; m->keys[i] = k; m->len++; }         \
+        m->vals[i] = v;                                                        \
+    }                                                                          \
+    static inline bool Name##_has(Name m, maca_str k) {                        \
+        if (m.cap == 0 || !k) return false;                                    \
+        return m.used[Name##_slot(&m, k)] != 0;                                \
+    }                                                                          \
+    static inline Val Name##_get(Name m, maca_str k, Val dflt) {               \
+        if (m.cap == 0 || !k) return dflt;                                     \
+        int64_t i = Name##_slot(&m, k);                                        \
+        return m.used[i] ? m.vals[i] : dflt;                                   \
+    }                                                                          \
+    static inline bool Name##_remove(Name* m, maca_str k) {                    \
+        if (m->cap == 0 || !k) return false;                                   \
+        int64_t i = Name##_slot(m, k);                                         \
+        if (!m->used[i]) return false;                                         \
+        m->used[i] = 0; m->len--;                                              \
+        /* re-seat the run after the hole, or a probe would stop short */      \
+        int64_t j = (i + 1) & (m->cap - 1);                                    \
+        while (m->used[j]) {                                                   \
+            maca_str rk = m->keys[j]; Val rv = m->vals[j];                     \
+            m->used[j] = 0; m->len--;                                          \
+            int64_t s = Name##_slot(m, rk);                                    \
+            m->keys[s] = rk; m->vals[s] = rv; m->used[s] = 1; m->len++;        \
+            j = (j + 1) & (m->cap - 1);                                        \
+        }                                                                      \
+        return true;                                                           \
+    }                                                                          \
+    static inline int64_t Name##_len(Name m) { return m.len; }                 \
+    static inline int64_t Name##_keys(Name m, maca_str* out) {                 \
+        int64_t n = 0;                                                         \
+        for (int64_t i = 0; i < m.cap; i++)                                    \
+            if (m.used[i]) out[n++] = m.keys[i];                               \
+        maca_sort_str(out, n);                                                 \
+        return n;                                                              \
+    }
+
 /* The common case: a non-recursive element — struct + ops together. */
 #define MACA_DEFINE_ARRAY(Name, Elem)                                          \
     MACA_ARRAY_STRUCT(Name, Elem)                                              \
@@ -197,6 +292,7 @@ pub const RUNTIME_C: &str = r##"#define _GNU_SOURCE
 #include <sys/stat.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <time.h>
 
 static void die(const char* msg) {
     fputs("maca runtime error: ", stderr);
@@ -371,6 +467,67 @@ maca_str maca_lower(maca_str s) {
     r[n] = '\0'; return r;
 }
 /* ---- file I/O ---- */
+/* One line of stdin with the newline stripped. The empty string at EOF, which
+   is why `maca_at_eof` exists: a blank line and end-of-input read the same. */
+maca_str maca_read_line(void) {
+    size_t cap = 128, n = 0;
+    char* buf = (char*)xmalloc(cap);
+    int c;
+    while ((c = fgetc(stdin)) != EOF && c != '\n') {
+        if (n + 1 >= cap) {
+            cap *= 2;
+            char* bigger = (char*)xmalloc(cap);
+            memcpy(bigger, buf, n);
+            buf = bigger;
+        }
+        buf[n++] = (char)c;
+    }
+    buf[n] = '\0';
+    return buf;
+}
+bool maca_at_eof(void) {
+    int c = fgetc(stdin);
+    if (c == EOF) return true;
+    ungetc(c, stdin);
+    return false;
+}
+maca_str maca_read_stdin(void) {
+    size_t cap = 4096, n = 0;
+    char* buf = (char*)xmalloc(cap);
+    size_t got;
+    while ((got = fread(buf + n, 1, cap - n - 1, stdin)) > 0) {
+        n += got;
+        if (n + 1 >= cap) {
+            cap *= 2;
+            char* bigger = (char*)xmalloc(cap);
+            memcpy(bigger, buf, n);
+            buf = bigger;
+        }
+    }
+    buf[n] = '\0';
+    return buf;
+}
+/* Time is UTC throughout. A local-time rendering needs a zone database and a
+   policy for what to do without one; a program that wants local time can format
+   the epoch milliseconds itself. */
+int64_t maca_now_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+maca_str maca_format_time(int64_t ms, maca_str fmt) {
+    if (!fmt || !*fmt) fmt = "%Y-%m-%dT%H:%M:%SZ";
+    time_t secs = (time_t)(ms / 1000);
+    struct tm tmv;
+    gmtime_r(&secs, &tmv);
+    char* out = (char*)xmalloc(256);
+    size_t n = strftime(out, 256, fmt, &tmv);
+    out[n] = '\0';
+    return out;
+}
+maca_str maca_now_iso(void) {
+    return maca_format_time(maca_now_ms(), "%Y-%m-%dT%H:%M:%SZ");
+}
 maca_str maca_read_file(maca_str path) {
     if (!path) return "";
     FILE* f = fopen(path, "rb");
@@ -397,6 +554,45 @@ bool maca_write_file(maca_str path, maca_str text) {
 bool maca_file_exists(maca_str path) {
     struct stat st;
     return path && stat(path, &st) == 0;
+}
+bool maca_is_dir(maca_str path) {
+    struct stat st;
+    return path && stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+/* -1 rather than 0 for "no such file", so an empty file and a missing one are
+   distinguishable without a second call. */
+int64_t maca_file_size(maca_str path) {
+    struct stat st;
+    if (!path || stat(path, &st) != 0) return -1;
+    return (int64_t)st.st_size;
+}
+int64_t maca_modified_ms(maca_str path) {
+    struct stat st;
+    if (!path || stat(path, &st) != 0) return -1;
+    return (int64_t)st.st_mtime * 1000;
+}
+bool maca_remove_file(maca_str path) {
+    return path && unlink(path) == 0;
+}
+/* Depth-first, so a directory with contents goes too — `rm -r`, not `rmdir`. */
+bool maca_remove_dir(maca_str path) {
+    if (!path) return false;
+    DIR* d = opendir(path);
+    if (!d) return false;
+    struct dirent* e;
+    bool ok = true;
+    size_t plen = strlen(path);
+    while ((e = readdir(d)) != NULL) {
+        if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+        size_t nlen = strlen(e->d_name);
+        char* child = (char*)xmalloc(plen + nlen + 2);
+        memcpy(child, path, plen);
+        child[plen] = '/';
+        memcpy(child + plen + 1, e->d_name, nlen + 1);
+        ok = (maca_is_dir(child) ? maca_remove_dir(child) : maca_remove_file(child)) && ok;
+    }
+    closedir(d);
+    return rmdir(path) == 0 && ok;
 }
 /* `mkdir -p`: create each missing component in turn. */
 bool maca_make_dir(maca_str path) {
@@ -605,6 +801,41 @@ maca_str maca_substr(maca_str s, int64_t start, int64_t len) {
     memcpy(r, s + start, (size_t)len); r[len] = '\0';
     return r;
 }
+/* `slice` takes an exclusive end, matching the list method of the same name.
+   The asymmetry with `substr`'s length is deliberate: the two names mean two
+   different things, and having both is what lets each keep its own convention. */
+maca_str maca_str_slice(maca_str s, int64_t from, int64_t to) {
+    if (!s) return "";
+    int64_t n = (int64_t)strlen(s);
+    if (from < 0) from = 0;
+    if (to > n) to = n;
+    return maca_substr(s, from, to - from);
+}
+
+/* Assertions.
+ *
+ * A failing assertion prints and keeps going rather than aborting, and the
+ * count is what a test returns: one run reports every failure instead of only
+ * the first, which is the difference between fixing a suite in one pass and in
+ * as many passes as it has bugs. `maca_failures()` is the exit code a test
+ * function returns, so the existing "0 or non-zero" contract is unchanged. */
+static int64_t maca_failed_count = 0;
+int64_t maca_failures(void) { return maca_failed_count; }
+bool maca_assert(bool cond, maca_str msg) {
+    if (cond) return true;
+    maca_failed_count++;
+    fprintf(stderr, "assertion failed: %s\n", msg && *msg ? msg : "(no message)");
+    return false;
+}
+bool maca_assert_eq(maca_str got, maca_str want, maca_str msg) {
+    if (!got) got = "";
+    if (!want) want = "";
+    if (strcmp(got, want) == 0) return true;
+    maca_failed_count++;
+    fprintf(stderr, "assertion failed: %s\n  got:  %s\n  want: %s\n",
+            msg && *msg ? msg : "(no message)", got, want);
+    return false;
+}
 static int maca_cmp_i64(const void* a, const void* b) {
     int64_t x = *(const int64_t*)a, y = *(const int64_t*)b;
     return (x > y) - (x < y);
@@ -620,6 +851,17 @@ static int maca_cmp_str(const void* a, const void* b) {
 void maca_sort_i64(int64_t* data, int64_t n) { if (n > 1) qsort(data, (size_t)n, sizeof(int64_t), maca_cmp_i64); }
 void maca_sort_f64(double* data, int64_t n) { if (n > 1) qsort(data, (size_t)n, sizeof(double), maca_cmp_f64); }
 void maca_sort_str(maca_str* data, int64_t n) { if (n > 1) qsort(data, (size_t)n, sizeof(maca_str), maca_cmp_str); }
+/* FNV-1a: short, dependency-free, and good enough for the key sizes a program
+   written in this language actually uses. */
+uint64_t maca_hash_str(maca_str s) {
+    uint64_t h = 1469598103934665603ULL;
+    if (!s) return h;
+    for (const unsigned char* p = (const unsigned char*)s; *p; p++) {
+        h ^= (uint64_t)*p;
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
 
 maca_str* maca_split(maca_str s, maca_str sep, int64_t* out_len) {
     if (!s) s = "";

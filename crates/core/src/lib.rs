@@ -69,8 +69,7 @@ const ASYNC_FNS: &[&str] = &["sleep_ms"];
 /// Every method a `str` receiver accepts. Not a wish-list: `crates/core/tests`
 /// compiles a program using all of them, so a name here that the back end can't
 /// lower fails the build — and one it *can* lower that is missing here would be
-/// rejected as a typo. Note the absences: `str` has `substr`, not `slice`, and
-/// no `get` or `join`.
+/// rejected as a typo. Note the absences: `str` has no `get` and no `join`.
 pub const STR_METHODS: &[&str] = &[
     "length",
     "split",
@@ -82,6 +81,7 @@ pub const STR_METHODS: &[&str] = &[
     "ends_with",
     "replace",
     "substr",
+    "slice",
     "index_of",
     "repeat",
     "pad_start",
@@ -93,6 +93,9 @@ pub const STR_METHODS: &[&str] = &[
     "is_ascii_digit",
     "is_alpha",
 ];
+
+/// Every method a `Map str V` receiver accepts, gated the same way.
+pub const MAP_METHODS: &[&str] = &["set", "get", "has", "remove", "keys", "length"];
 
 /// Every method a `T[]` receiver accepts, gated the same way.
 ///
@@ -631,13 +634,19 @@ impl Checker {
                             }
                         }
                     }
-                    let vty = self.infer(env, &b.value);
+                    let mut vty = self.infer(env, &b.value);
                     if let Some(t) = b.tys.first() {
                         let at = self.relax_ann(ast_ty(t));
                         if let Err(e) = self.inf.unify(&vty, &at) {
                             let name = target_name(&b.target);
                             self.diag(DiagKind::TypeMismatch, format!("in `{name}`: {e}"));
                         }
+                        // The annotation is what the binding *is*. Keeping the
+                        // inferred type instead loses it whenever the value is
+                        // gradual — `counts: Map str int = map()` would stay
+                        // `any`, and a misspelt method on it would sail past
+                        // the closed-method-set check to the linker.
+                        vty = at;
                     }
                     if let Expr::Ident(n) = &b.target {
                         env.push((n.clone(), vty));
@@ -991,6 +1000,7 @@ impl Checker {
         let (known, what) = match self.inf.resolve(recv) {
             Ty::Str => (STR_METHODS, "str"),
             Ty::Con(n, _) if n == "Array" => (LIST_METHODS, "list"),
+            Ty::Con(n, _) if n == "Map" => (MAP_METHODS, "map"),
             _ => return,
         };
         if known.contains(&name) {

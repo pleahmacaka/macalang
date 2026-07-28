@@ -63,6 +63,7 @@ fn every_str_method_the_checker_allows_actually_works() {
         "s.ends_with(\"a\") ? 1 : 0",
         "s.replace(\"a\", \"b\").length()",
         "s.substr(0, 2).length()",
+        "s.slice(1, 3).length()",
         "s.index_of(\"b\")",
         "s.repeat(2).length()",
         "s.pad_start(9, \" \").length()",
@@ -135,6 +136,34 @@ fn every_list_method_the_checker_allows_actually_works() {
     assert!(ok, "a documented list method doesn't work:\n{out}");
 }
 
+/// The same executed check for `Map str V`.
+#[test]
+fn every_map_method_the_checker_allows_actually_works() {
+    if wsl() || !have("cc") {
+        eprintln!("skipping: needs a host cc and no wsl");
+        return;
+    }
+    let calls = [
+        "m.set(\"c\", 3).length()",
+        "m.get(\"a\", 0)",
+        "m.has(\"a\") ? 1 : 0",
+        "m.remove(\"a\").length()",
+        "m.keys().length()",
+        "m.length()",
+    ];
+    assert_eq!(
+        calls.len(),
+        maca_core::MAP_METHODS.len(),
+        "MAP_METHODS changed but this test didn't"
+    );
+    let body: String = calls.iter().map(|c| format!("    n = n + {c}\n")).collect();
+    let src = format!(
+        "main() -> int {{\n    m: Map str int = map()\n    m = m.set(\"a\", 1).set(\"b\", 2)\n    n = 0\n{body}    info(\"{{n}}\")\n    0\n}}\n"
+    );
+    let (ok, out) = run("map_methods", &src);
+    assert!(ok, "a documented map method doesn't work:\n{out}");
+}
+
 /// The point of the whole exercise: a misspelt method is a diagnostic naming
 /// the closest real one, not a linker error about a C symbol.
 #[test]
@@ -152,10 +181,10 @@ fn a_misspelt_method_is_a_diagnostic_with_a_suggestion() {
             "main() -> int {\n    info(\"{[1, 2].mapp(v => v)}\")\n    0\n}\n",
             "did you mean `map`",
         ),
-        // `str` has substr, not slice — the case that sent people to the linker
+        // a map's method set is closed the same way
         (
-            "main() -> int {\n    info(\"{\"abc\".slice(0, 2)}\")\n    0\n}\n",
-            "`str` has no method `slice`",
+            "main() -> int {\n    m: Map str int = map()\n    info(\"{m.lenght()}\")\n    0\n}\n",
+            "did you mean `length`",
         ),
     ] {
         let (ok, out) = run("misspelt", src);

@@ -70,6 +70,10 @@ enum CTy {
     Rec(String),
     Sum(String),
     Arr(Box<CTy>),
+    /// `Map str V` — a string-keyed hash map, monomorphized on its value type
+    /// the same way an array is on its element type. Keys are always `str`, so
+    /// only the value type varies.
+    Map(Box<CTy>),
     /// SIMD vector, e.g. `f32x8` → { name: "f32x8", scalar_c: "float", lanes: 8 }
     Vec {
         name: String,
@@ -118,6 +122,7 @@ struct Cx<'a> {
     let_names: HashSet<String>,
     fns: HashMap<String, (Vec<CTy>, CTy)>, // fn name -> (param types, ret)
     arr_elems: HashSet<CTy>,               // array element types to instantiate
+    map_vals: HashSet<CTy>,                // map value types to instantiate
     vecs: BTreeSet<(String, String, usize)>, // SIMD vector types (name, scalar_c, lanes)
     tmp: usize,
     // lambdas hoisted to top-level `static` functions (closures carry a heap env)
@@ -154,6 +159,7 @@ impl<'a> Cx<'a> {
             let_names: HashSet::new(),
             fns: HashMap::new(),
             arr_elems: HashSet::new(),
+            map_vals: HashSet::new(),
             vecs: BTreeSet::new(),
             tmp: 0,
             hoisted_decls: Vec::new(),
@@ -483,7 +489,15 @@ impl<'a> Cx<'a> {
     fn walk_stmts(&mut self, stmts: &[Stmt]) {
         for s in stmts {
             match s {
-                Stmt::Bind(b) => self.walk_expr(&b.value),
+                Stmt::Bind(b) => {
+                    // a local's declared type instantiates its container:
+                    // `counts: Map str int = map()` needs `IntMap` defined
+                    for t in &b.tys {
+                        let cty = self.cty(t);
+                        self.note_arr(&cty);
+                    }
+                    self.walk_expr(&b.value);
+                }
                 Stmt::Expr(e) => self.walk_expr(e),
                 _ => {}
             }
@@ -536,6 +550,17 @@ impl<'a> Cx<'a> {
                 }
             }
             Expr::Ctor { fields, .. } | Expr::Record(fields) => {
+                // An anonymous record literal has no declared type, so its
+                // struct is synthesized from the shape and registered here —
+                // before any typedef is emitted, which is why it happens in the
+                // prepass rather than when the expression is lowered.
+                if let Expr::Record(fs) = e {
+                    let shape = self.anon_shape(fs);
+                    for (_, t) in &shape {
+                        self.note_arr(t);
+                    }
+                    self.records.insert(anon_record_name(&shape), shape);
+                }
                 for f in fields {
                     if let Field::Value { value, .. } | Field::Bare(value) = f {
                         self.walk_expr(value);
@@ -658,6 +683,14 @@ impl<'a> Cx<'a> {
             Expr::Bool(_) => CTy::Bool,
             Expr::Str(_) | Expr::Path(_) => CTy::Str,
             Expr::Ctor { name, .. } => CTy::Rec(name.clone()),
+            // a list literal's type is its first element's, one level up — so a
+            // record field holding `[1, 2, 3]` is an `int[]` and not an opaque
+            // scalar
+            Expr::List(es) => es
+                .first()
+                .map(|x| CTy::Arr(Box::new(self.shallow_cty(x))))
+                .unwrap_or(CTy::Unknown),
+            Expr::Record(fs) => CTy::Rec(anon_record_name(&self.anon_shape(fs))),
             Expr::Ident(n) => self
                 .variant_of
                 .get(n)
@@ -678,10 +711,41 @@ impl<'a> Cx<'a> {
         }
     }
 
+    /// The field list of an anonymous record literal, sorted by name.
+    ///
+    /// Sorted, so `{ x = 1, y = 2 }` and `{ y = 2, x = 1 }` are the same type —
+    /// which is what "structural" has to mean for the two to be assignable to
+    /// one another. Field types come from `shallow_cty`, the same function the
+    /// lowering uses, so the struct and its compound literal cannot disagree.
+    fn anon_shape(&self, fs: &[Field]) -> Vec<(String, CTy)> {
+        let mut out: Vec<(String, CTy)> = fs
+            .iter()
+            .filter_map(|f| match f {
+                Field::Value { name, value } => Some((name.clone(), self.shallow_cty(value))),
+                Field::Shorthand(name) => {
+                    Some((name.clone(), self.shallow_cty(&Expr::Ident(name.clone()))))
+                }
+                _ => None,
+            })
+            .collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
     fn note_arr(&mut self, t: &CTy) {
-        if let CTy::Arr(e) = t {
-            self.arr_elems.insert((**e).clone());
-            self.note_arr(e);
+        match t {
+            CTy::Arr(e) => {
+                self.arr_elems.insert((**e).clone());
+                self.note_arr(e);
+            }
+            // a map's typedef needs its value type instantiated too, and
+            // `.keys()` yields a `str[]`, so that array comes along with it
+            CTy::Map(v) => {
+                self.map_vals.insert((**v).clone());
+                self.arr_elems.insert(CTy::Str);
+                self.note_arr(v);
+            }
+            _ => {}
         }
     }
 
@@ -884,6 +948,11 @@ impl<'a> Cx<'a> {
             Type::Array(t) => CTy::Arr(Box::new(self.cty(t))),
             Type::Opt(t) => self.cty(t),
             Type::Paren(t) => self.cty(t),
+            // `Map str V` — the key type is written for readability and checked
+            // by the type checker; codegen only needs the value type.
+            Type::Apply(base, args) if matches!(&**base, Type::Name(s) if s.last().is_some_and(|n| n == "Map")) => {
+                CTy::Map(Box::new(args.last().map_or(CTy::Unknown, |t| self.cty(t))))
+            }
             _ => CTy::Unknown,
         }
     }
@@ -960,6 +1029,15 @@ impl<'a> Cx<'a> {
                     c_type(e)
                 ));
                 emitted_arr.insert(e.clone());
+            }
+        }
+        // string-keyed maps, monomorphized on the value type. Sorted so the
+        // generated C is byte-identical run to run.
+        let mut vals: Vec<CTy> = self.map_vals.iter().cloned().collect();
+        vals.sort_by_key(map_name);
+        for v in &vals {
+            if !matches!(v, CTy::Rec(_) | CTy::Sum(_)) {
+                self.push(&format!("MACA_DEFINE_MAP({}, {})", map_name(v), c_type(v)));
             }
         }
         self.push("");
@@ -1808,6 +1886,12 @@ impl<'a> Cx<'a> {
             Expr::Path(p) => (c_str(p), CTy::Str),
             Expr::Ident(n) => self.ident(env, n),
             Expr::Ctor { name, fields } => self.ctor(env, name, fields),
+            // An anonymous record literal: the struct was synthesized from the
+            // shape in the prepass, so this is an ordinary construction of it.
+            Expr::Record(fields) => {
+                let name = anon_record_name(&self.anon_shape(fields));
+                self.ctor(env, &name, fields)
+            }
             Expr::List(es) => self.list(env, es, expected),
             Expr::Call { callee, args } => self.call(env, callee, args, expected),
             Expr::Field { base, name } => self.field(env, base, name),
@@ -2327,6 +2411,21 @@ impl<'a> Cx<'a> {
                     | "file_exists"
                     | "make_dir"
                     | "list_dir"
+                    | "is_dir"
+                    | "file_size"
+                    | "modified_ms"
+                    | "remove_file"
+                    | "remove_dir"
+                    | "read_line"
+                    | "at_eof"
+                    | "read_stdin"
+                    | "now_ms"
+                    | "now_iso"
+                    | "format_time"
+                    | "assert"
+                    | "assert_eq"
+                    | "failures"
+                    | "map"
             )
     }
 
@@ -2730,6 +2829,17 @@ impl<'a> Cx<'a> {
             if name == "styles" && a.is_empty() {
                 return ("MACA_STYLES".into(), CTy::Str);
             }
+            // `map()` — an empty map. Its value type comes from the context it
+            // is being assigned into (`counts: Map str int = map()`), the same
+            // way an empty list literal gets its element type.
+            if name == "map" && a.is_empty() {
+                let v = match expected {
+                    Some(CTy::Map(v)) => (**v).clone(),
+                    _ => CTy::Int,
+                };
+                self.note_arr(&CTy::Map(Box::new(v.clone())));
+                return (format!("{}_new()", map_name(&v)), CTy::Map(Box::new(v)));
+            }
             // file I/O builtins.
             match name.as_str() {
                 "read_file" => return (format!("maca_read_file({})", a.join(", ")), CTy::Str),
@@ -2740,6 +2850,26 @@ impl<'a> Cx<'a> {
                     return (format!("maca_file_exists({})", a.join(", ")), CTy::Bool);
                 }
                 "make_dir" => return (format!("maca_make_dir({})", a.join(", ")), CTy::Bool),
+                "is_dir" => return (format!("maca_is_dir({})", a.join(", ")), CTy::Bool),
+                "file_size" => return (format!("maca_file_size({})", a.join(", ")), CTy::Int),
+                "modified_ms" => return (format!("maca_modified_ms({})", a.join(", ")), CTy::Int),
+                "remove_file" => return (format!("maca_remove_file({})", a.join(", ")), CTy::Bool),
+                "remove_dir" => return (format!("maca_remove_dir({})", a.join(", ")), CTy::Bool),
+                // stdin
+                "read_line" => return ("maca_read_line()".into(), CTy::Str),
+                "at_eof" => return ("maca_at_eof()".into(), CTy::Bool),
+                "read_stdin" => return ("maca_read_stdin()".into(), CTy::Str),
+                // time, UTC throughout
+                "now_ms" => return ("maca_now_ms()".into(), CTy::Int),
+                "now_iso" => return ("maca_now_iso()".into(), CTy::Str),
+                "format_time" => {
+                    return (format!("maca_format_time({})", a.join(", ")), CTy::Str);
+                }
+                // assertions: report and carry on, so one run finds every
+                // failure rather than only the first
+                "assert" => return (format!("maca_assert({})", a.join(", ")), CTy::Bool),
+                "assert_eq" => return (format!("maca_assert_eq({})", a.join(", ")), CTy::Bool),
+                "failures" => return ("maca_failures()".into(), CTy::Int),
                 // `list_dir(p)` → a `str[]` of entry names, built from the
                 // runtime's malloc'd array (mirrors how `.split` lowers).
                 "list_dir" => {
@@ -2811,6 +2941,52 @@ impl<'a> Cx<'a> {
                 format!("maca_join({rc}.data, {rc}.len, {})", arg0()),
                 CTy::Str,
             ),
+            // ---- map methods -------------------------------------------------
+            //
+            // `set` and `remove` return the map rather than mutating in place,
+            // so a map behaves like every other value in the language: `m =
+            // m.set(k, v)`. The copy is shallow — the same buffers with an
+            // updated count — which is why the receiver is a statement
+            // expression rather than a call on a temporary.
+            (CTy::Map(v), "set") => {
+                let mn = map_name(v);
+                (
+                    format!(
+                        "({{ {mn} _m = {rc}; {mn}_set(&_m, {}, {}); _m; }})",
+                        arg0(),
+                        arg1()
+                    ),
+                    CTy::Map(v.clone()),
+                )
+            }
+            (CTy::Map(v), "remove") => {
+                let mn = map_name(v);
+                (
+                    format!("({{ {mn} _m = {rc}; {mn}_remove(&_m, {}); _m; }})", arg0()),
+                    CTy::Map(v.clone()),
+                )
+            }
+            // `get(k, default)` — a miss returns the default rather than a
+            // sentinel, because the language has no null to return.
+            (CTy::Map(v), "get") => {
+                let mn = map_name(v);
+                let dflt = a.get(1).cloned().unwrap_or_else(|| zero_value(v));
+                (format!("{mn}_get({rc}, {}, {dflt})", arg0()), (**v).clone())
+            }
+            (CTy::Map(v), "has") => (format!("{}_has({rc}, {})", map_name(v), arg0()), CTy::Bool),
+            (CTy::Map(v), "length") => (format!("{}_len({rc})", map_name(v)), CTy::Int),
+            // sorted, so walking a map twice writes the same file twice
+            (CTy::Map(v), "keys") => {
+                let mn = map_name(v);
+                (
+                    format!(
+                        "({{ {mn} _m = {rc}; maca_str* _kb = (maca_str*)maca_alloc((size_t)(_m.len > 0 ? _m.len : 1) * sizeof(maca_str)); \
+                         int64_t _kn = {mn}_keys(_m, _kb); StrArr _kr = StrArr_new(); \
+                         for (int64_t _ki = 0; _ki < _kn; _ki++) StrArr_push(&_kr, _kb[_ki]); _kr; }})"
+                    ),
+                    CTy::Arr(Box::new(CTy::Str)),
+                )
+            }
             // ---- list methods (closure-free; map/filter/reduce are in list_hof) ----
             (CTy::Arr(e), "sort") if matches!(**e, CTy::Int | CTy::Float | CTy::Str) => {
                 let an = arr_name(e);
@@ -2971,6 +3147,12 @@ impl<'a> Cx<'a> {
             ),
             (CTy::Str | CTy::Unknown, "substr") => (
                 format!("maca_substr({rc}, {}, {})", arg0(), arg1()),
+                CTy::Str,
+            ),
+            // `slice` takes an exclusive end, the same as the list method; the
+            // two names mean two things and each keeps its own convention
+            (CTy::Str, "slice") => (
+                format!("maca_str_slice({rc}, {}, {})", arg0(), arg1()),
                 CTy::Str,
             ),
             (CTy::Str | CTy::Unknown, "repeat") => {
@@ -3289,9 +3471,14 @@ impl<'a> Cx<'a> {
                 self.push("    }");
                 self.push("    maca_sb_putc(&sb, ']');");
             }
-            CTy::Unit | CTy::Unknown | CTy::Vec { .. } | CTy::Future | CTy::Closure => {
-                self.push("    maca_sb_puts(&sb, \"null\");")
-            }
+            // a map has no ordered JSON shape without a key ordering the
+            // format guarantees, and this serializer emits records
+            CTy::Map(_)
+            | CTy::Unit
+            | CTy::Unknown
+            | CTy::Vec { .. }
+            | CTy::Future
+            | CTy::Closure => self.push("    maca_sb_puts(&sb, \"null\");"),
         }
     }
 
@@ -3328,9 +3515,12 @@ impl<'a> Cx<'a> {
                 self.push("      }");
                 self.push(&format!("      {dest} = _acc; }}"));
             }
-            CTy::Unit | CTy::Unknown | CTy::Vec { .. } | CTy::Future | CTy::Closure => {
-                self.push(&format!("    {dest} = 0;"))
-            }
+            CTy::Map(_)
+            | CTy::Unit
+            | CTy::Unknown
+            | CTy::Vec { .. }
+            | CTy::Future
+            | CTy::Closure => self.push(&format!("    {dest} = 0;")),
         }
     }
 }
@@ -3385,6 +3575,7 @@ fn c_type(t: &CTy) -> String {
         CTy::Unit => "int64_t".into(),
         CTy::Rec(n) | CTy::Sum(n) => n.clone(),
         CTy::Arr(e) => arr_name(e),
+        CTy::Map(v) => map_name(v),
         CTy::Vec { name, .. } => name.clone(),
         CTy::Future => "maca_future*".into(),
         CTy::Closure => "maca_closure".into(),
@@ -3402,7 +3593,24 @@ fn arr_name(elem: &CTy) -> String {
         CTy::Rec(n) | CTy::Sum(n) => format!("{n}Arr"),
         CTy::Vec { name, .. } => format!("{name}Arr"),
         CTy::Arr(e) => format!("{}Arr", arr_name(e)),
+        CTy::Map(v) => format!("{}Arr", map_name(v)),
         CTy::Unit | CTy::Unknown | CTy::Future | CTy::Closure => "IntArr".into(),
+    }
+}
+
+/// The monomorphized map type name for a value type — `Map str int` is
+/// `IntMap`, mirroring how `int[]` is `IntArr`.
+fn map_name(val: &CTy) -> String {
+    match val {
+        CTy::Int => "IntMap".into(),
+        CTy::Float => "FloatMap".into(),
+        CTy::F32 => "F32Map".into(),
+        CTy::Str => "StrMap".into(),
+        CTy::Bool => "BoolMap".into(),
+        CTy::Rec(n) | CTy::Sum(n) => format!("{n}Map"),
+        CTy::Arr(e) => format!("{}Map", arr_name(e)),
+        CTy::Map(v) => format!("{}Map", map_name(v)),
+        _ => "IntMap".into(),
     }
 }
 
@@ -3412,6 +3620,7 @@ fn zero_value(t: &CTy) -> String {
         CTy::Bool => "false".into(),
         CTy::F32 | CTy::Float => "0.0".into(),
         CTy::Arr(e) => format!("{}_new()", arr_name(e)),
+        CTy::Map(v) => format!("{}_new()", map_name(v)),
         CTy::Rec(_) | CTy::Vec { .. } => format!("({{ {} _z; _z; }})", c_type(t)),
         _ => "0".into(),
     }
@@ -3695,6 +3904,7 @@ fn mangle_name(name: &str, ctys: &[CTy]) -> String {
 
 fn cty_tag(t: &CTy) -> String {
     match t {
+        CTy::Map(v) => format!("{}map", cty_tag(v)),
         CTy::Int => "int".into(),
         CTy::Float => "f64".into(),
         CTy::F32 => "f32".into(),
@@ -4044,6 +4254,37 @@ fn concat_operand(code: &str, t: &CTy) -> String {
     match t {
         CTy::Int | CTy::Float | CTy::F32 | CTy::Bool => to_str(code, t),
         _ => code.to_string(),
+    }
+}
+
+/// The struct name for an anonymous record's shape.
+///
+/// Derived from the shape rather than from a counter, so the same literal
+/// written in two different functions is one struct and the two values are
+/// assignable to each other. `{ host = "x", port = 80 }` becomes
+/// `MacaAnon_host_str_port_int`, which is also readable in the generated C.
+fn anon_record_name(fields: &[(String, CTy)]) -> String {
+    let mut s = String::from("MacaAnon");
+    for (n, t) in fields {
+        s.push('_');
+        s.push_str(&cid(n));
+        s.push('_');
+        s.push_str(&ty_tag(t));
+    }
+    s
+}
+
+/// An identifier-safe tag for a type, for use inside a generated struct name.
+fn ty_tag(t: &CTy) -> String {
+    match t {
+        CTy::Int => "int".into(),
+        CTy::Float => "float".into(),
+        CTy::F32 => "f32".into(),
+        CTy::Bool => "bool".into(),
+        CTy::Str => "str".into(),
+        CTy::Rec(n) | CTy::Sum(n) => cid(n),
+        CTy::Arr(e) => format!("{}arr", ty_tag(e)),
+        _ => "any".into(),
     }
 }
 

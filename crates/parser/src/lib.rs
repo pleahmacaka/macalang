@@ -123,6 +123,26 @@ pub fn is_backend_intrinsic(name: &str) -> bool {
                 | "file_exists"
                 | "make_dir"
                 | "list_dir"
+                | "is_dir"
+                | "file_size"
+                | "modified_ms"
+                | "remove_file"
+                | "remove_dir"
+                // stdin
+                | "read_line"
+                | "at_eof"
+                | "read_stdin"
+                // time (UTC)
+                | "now_ms"
+                | "now_iso"
+                | "format_time"
+                // assertions — report and continue, so one run finds every
+                // failure; `failures()` is the count a test returns
+                | "assert"
+                | "assert_eq"
+                | "failures"
+                // an empty `Map str V`, typed by what it is assigned into
+                | "map"
         )
 }
 
