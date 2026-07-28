@@ -76,8 +76,18 @@ checker (`check.maca`) → **two back ends written in Maca** — `emit_c.maca` a
 the parsed slice) — compile through the stage-0 C backend and execute the whole
 `lex → parse → check → emit` chain (the `selfhost.rs` run gate builds it with the
 host `cc`, then compiles the *emitted* program two ways: the C capstone with
-`cc` and the Rust capstone with `rustc`, checking both exit `sq(9) == 81`). New
-backend work belongs here in Maca, not in the stage-0 crates. The two backend features that
+`cc` and the Rust capstone with `rustc`, checking both exit `42`). New backend
+work belongs here in Maca, not in the stage-0 crates. The parsed slice has grown
+well past a toy: the full primitive expression language (`int`/`float`/`str`/
+`bool` literals; `+ - * / %`, comparison, `&& ||`, unary `- !`; ternary;
+multi-arg + nested calls with precedence), **type-threaded signatures** (a
+parameter/return/local type flows to `const char*`/`double`/`bool`/… in C and
+`String`/`f64`/… in Rust), and Maca's core data model — **records** (`Point =
+{ x: int }` → `typedef struct`/`struct`, literals, field access) and **nullary
+sum types + `match`** (`Color = Red | Green` → `typedef enum`/`enum` with `use
+Color::*`; `match` lowers to a C ternary chain / a native Rust `match`). Each
+increment is added in Maca and gated by a dual-backend compile+run of the
+emitted program. The two backend features that
 enabled it are shared by the whole language: the `std/str` scan primitives
 (`chars`/`length`/`at`/`get`/`slice` + `is_whitespace`/`is_ascii_digit`/
 `is_alpha`) and **recursive record types** (a self-referential field like
