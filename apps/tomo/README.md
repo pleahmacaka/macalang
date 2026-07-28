@@ -24,10 +24,13 @@ The **renderer** is implemented in Maca and gated
   document's headings,
 
 and `page(...)` wraps rendered chapters in an HTML shell with the i18n language
-switcher. The file-walking CLI driver (read `book.toml` + `book/<lang>/*.md`,
-write `site/<lang>/*.html`) is the next layer — it needs the file-I/O builtins
-that are being added to Maca; until then `tomo.maca`'s `main` is a self-check
-that renders a sample and prints it.
+switcher. The **book builder** is implemented too: `build_book(root, out)` reads
+`book.toml`, walks `book/<lang>/*.md`, and writes `site/<lang>/*.html` — each
+page carrying its table of contents and language switcher. A chapter missing in
+a non-default language **falls back** to the default language's text rather than
+404-ing. Running `tomo` from the repo root rebuilds this repository's handbook
+(14 pages across `en` and `ko`); the output lands in `apps/tomo/site/`, which is
+gitignored.
 
 ## Layout
 
@@ -54,7 +57,9 @@ content Tomo renders, and doubles as the i18n showcase: each chapter exists in
 - [x] inline links `[text](url)`
 - [x] heading anchors + a generated table of contents
 - [x] i18n page shell with a language switcher
-- [ ] file-I/O CLI driver (`maca run tomo.maca -- build`) once the I/O builtins land
-- [ ] `book.toml` parsing and chapter ordering
-- [ ] translation-fallback to the default language for missing chapters
+- [x] paragraph joining (soft-wrapped lines become one `<p>`)
+- [x] file-I/O book builder — reads `book.toml` + `book/<lang>/*.md`, writes `site/<lang>/*.html`
+- [x] `book.toml` parsing (including multi-line arrays) and chapter ordering
+- [x] translation-fallback to the default language for missing chapters
 - [ ] tables, blockquotes, and nested lists
+- [ ] a per-book stylesheet and a chapter-to-chapter nav bar

@@ -89,20 +89,46 @@ render_line(lines: str[], i: int, in_code: bool, acc: str) -> str {
 }
 
 // A non-code line: a heading, a list item, a blank separator, or a paragraph.
-render_block(lines: str[], i: int, acc: str, line: str) -> str {
-    html = line.starts_with("### ")
-        ? heading("3", line.substr(4, line.length() - 4))
+// Headings and list items are one line each; a paragraph absorbs the following
+// soft-wrapped lines, so Markdown that wraps mid-sentence (and mid-`**bold**`)
+// renders as one `<p>` rather than several broken ones.
+render_block(lines: str[], i: int, acc: str, line: str) -> str =>
+    line.starts_with("### ")
+        ? render_lines(lines, i + 1, false, acc ++ heading("3", line.substr(4, line.length() - 4)))
         : line.starts_with("## ")
-            ? heading("2", line.substr(3, line.length() - 3))
+            ? render_lines(lines, i + 1, false, acc ++ heading("2", line.substr(3, line.length() - 3)))
             : line.starts_with("# ")
-                ? heading("1", line.substr(2, line.length() - 2))
+                ? render_lines(lines, i + 1, false, acc ++ heading("1", line.substr(2, line.length() - 2)))
                 : line.starts_with("- ")
-                    ? "<li>" ++ inline(esc(line.substr(2, line.length() - 2))) ++ "</li>\n"
+                    ? render_lines(lines, i + 1, false, acc ++ "<li>" ++ inline(esc(line.substr(2, line.length() - 2))) ++ "</li>\n")
                     : line.trim() == ""
-                        ? ""
-                        : "<p>" ++ inline(esc(line)) ++ "</p>\n"
-    render_lines(lines, i + 1, false, acc ++ html)
+                        ? render_lines(lines, i + 1, false, acc)
+                        : render_para(lines, i, acc)
+
+// Gather the run of plain lines starting at `i` into a single paragraph.
+render_para(lines: str[], i: int, acc: str) -> str {
+    stop = para_end(lines, i)
+    text = join_range(lines, i, stop)
+    render_lines(lines, stop, false, acc ++ "<p>" ++ inline(esc(text)) ++ "</p>\n")
 }
+
+// The index just past the paragraph starting at `i` — a blank line, a heading,
+// a list item, or a code fence ends it.
+para_end(lines: str[], i: int) -> int =>
+    i >= lines.length() || is_break(lines.get(i))
+        ? i
+        : para_end(lines, i + 1)
+
+is_break(line: str) -> bool =>
+    line.trim() == "" || line.starts_with("#") || line.starts_with("- ") || line.starts_with("```")
+
+// Join `lines[from..to)` with single spaces (Markdown's soft-wrap semantics).
+join_range(lines: str[], at: int, stop: int) -> str =>
+    at >= stop
+        ? ""
+        : at == stop - 1
+            ? lines.get(at).trim()
+            : lines.get(at).trim() ++ " " ++ join_range(lines, at + 1, stop)
 
 // ---- table of contents ----------------------------------------------------
 
@@ -146,6 +172,83 @@ lang_links(codes: str[], i: int, cur: str) -> str =>
             : "<a href=\"../" ++ codes.get(i) ++ "/\">" ++ codes.get(i) ++ "</a> ")
           ++ lang_links(codes, i + 1, cur)
 
+// ---- the book builder -----------------------------------------------------
+
+// The value of a `key = value` entry, unquoted. An array value may span lines
+// (`chapters = [\n  "a",\n  "b",\n]`), so once a `[` opens, lines are gathered
+// until the closing `]`. Returns "" when `key` is absent.
+conf_value(toml: str, key: str) -> str =>
+    conf_scan(toml.split("\n"), 0, key)
+
+conf_scan(lines: str[], i: int, key: str) -> str =>
+    i >= lines.length()
+        ? ""
+        : lines.get(i).trim().starts_with(key ++ " =")
+            ? unquote(conf_gather(lines, i, rest_of(lines.get(i))))
+            : conf_scan(lines, i + 1, key)
+
+// The text after `=` on a `key = value` line.
+rest_of(line: str) -> str =>
+    line.substr(line.index_of("=") + 1, line.length()).trim()
+
+// If the value opened a `[` that this line doesn't close, keep appending
+// following lines until the `]` arrives.
+conf_gather(lines: str[], i: int, acc: str) -> str =>
+    !acc.starts_with("[") || acc.contains("]") || i + 1 >= lines.length()
+        ? acc
+        : conf_gather(lines, i + 1, acc ++ lines.get(i + 1).trim())
+
+// Drop the `[` `]` wrapper, quotes, and a trailing comma so both
+// `title = "X"` and a multi-line `["a", "b",]` yield usable text.
+unquote(v: str) -> str {
+    bare = v.replace("[", "").replace("]", "").replace("\"", "").trim()
+    bare.ends_with(",") ? bare.substr(0, bare.length() - 1) : bare
+}
+
+// Build the whole book: for each language, render every chapter to
+// `<out>/<lang>/<chapter>.html`. A chapter missing in a non-default language
+// falls back to the default language's file, so a partial translation still
+// produces a complete book. Returns the number of pages written.
+build_book(root: str, out: str) -> int {
+    toml = read_file(root ++ "/book.toml")
+    title = conf_value(toml, "title")
+    langs = conf_value(toml, "languages").replace(" ", "")
+    chapters = conf_value(toml, "chapters").replace(" ", "")
+    build_langs(root, out, title, langs, langs.split(","), 0, chapters.split(","), 0)
+}
+
+// Outer loop: one language at a time.
+build_langs(root: str, out: str, title: str, langs: str, codes: str[], li: int, chs: str[], acc: int) -> int =>
+    li >= codes.length()
+        ? acc
+        : build_langs(root, out, title, langs, codes, li + 1, chs,
+                      acc + build_chapters(root, out, title, langs, codes.get(li), codes.get(0), chs, 0, 0))
+
+// Inner loop: one chapter at a time, for a single language.
+build_chapters(root: str, out: str, title: str, langs: str, lang: str, fallback: str, chs: str[], ci: int, acc: int) -> int =>
+    ci >= chs.length()
+        ? acc
+        : build_chapters(root, out, title, langs, lang, fallback, chs, ci + 1,
+                         acc + build_chapter(root, out, title, langs, lang, fallback, chs.get(ci)))
+
+// Render one chapter. Falls back to the default language when the translation
+// is missing; writes nothing (and counts nothing) if neither exists.
+build_chapter(root: str, out: str, title: str, langs: str, lang: str, fallback: str, ch: str) -> int {
+    own = root ++ "/book/" ++ lang ++ "/" ++ ch ++ ".md"
+    src = file_exists(own) ? own : root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md"
+    file_exists(src)
+        ? write_chapter(out, title, langs, lang, ch, read_file(src))
+        : 0
+}
+
+write_chapter(out: str, title: str, langs: str, lang: str, ch: str, md: str) -> int {
+    dir = out ++ "/" ++ lang
+    make_dir(dir)
+    body = toc(md) ++ "<article>\n" ++ render(md) ++ "</article>\n"
+    write_file(dir ++ "/" ++ ch ++ ".html", page(title, lang, langs, body))
+    1
+}
+
 // ---- self-check -----------------------------------------------------------
 
 main() -> int {
@@ -157,5 +260,10 @@ main() -> int {
     info(toc(sample))
     info("=== page ===")
     info(page("Maca Handbook", "en", "en,ko", "<article>hi</article>\n"))
+
+    // Build the real book from this repository into `site/`.
+    info("=== build ===")
+    pages = build_book("apps/tomo", "apps/tomo/site")
+    info("built {pages} pages")
     0
 }

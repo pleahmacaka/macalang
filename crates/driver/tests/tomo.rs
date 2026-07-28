@@ -79,3 +79,60 @@ fn tomo_renders_markdown_to_html() {
         "i18n switcher wrong: {html}"
     );
 }
+
+/// The CLI driver: Tomo reads `book.toml` and the chapter tree and writes a
+/// full HTML site — including falling back to the default language for a
+/// chapter that hasn't been translated yet.
+#[test]
+fn tomo_builds_the_handbook_site() {
+    if wsl() || !have("cc") {
+        eprintln!("skipping tomo build: needs a host cc and no wsl");
+        return;
+    }
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let src = repo.join("apps/tomo/tomo.maca");
+    let site = repo.join("apps/tomo/site");
+    let _ = std::fs::remove_dir_all(&site);
+
+    let dir = std::env::temp_dir().join("maca-tomo-build");
+    let _ = std::fs::create_dir_all(&dir);
+    let bin = dir.join("tomo");
+    let build = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["build", &src.to_string_lossy(), "-o", &bin.to_string_lossy()])
+        .output()
+        .expect("spawn maca build");
+    assert!(
+        build.status.success(),
+        "tomo failed to build:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    // `main` builds the book with paths relative to the repo root
+    let out = Command::new(&bin).current_dir(&repo).output().expect("run tomo");
+    let log = String::from_utf8_lossy(&out.stdout);
+    assert!(log.contains("built 14 pages"), "build log: {log}");
+
+    // a translated chapter renders in its own language
+    let ko_intro = std::fs::read_to_string(site.join("ko/00-introduction.html")).unwrap();
+    assert!(ko_intro.contains("Maca 핸드북"), "ko chapter not Korean");
+    // the switcher marks the current language and links the other
+    assert!(
+        ko_intro.contains("<a href=\"../en/\">en</a> <strong>ko</strong>"),
+        "ko switcher wrong"
+    );
+
+    // an *untranslated* chapter falls back to the default language rather than
+    // 404-ing — the point of difference from mdBook
+    let ko_config = std::fs::read_to_string(site.join("ko/05-config-mode.html")).unwrap();
+    assert!(
+        ko_config.contains("One Language for Configuration"),
+        "missing chapter didn't fall back to the default language"
+    );
+    assert!(ko_config.contains("<html lang=\"ko\">"), "fallback lost its language");
+
+    // paragraphs join soft-wrapped lines, so inline formatting survives a wrap
+    let en_config = std::fs::read_to_string(site.join("en/05-config-mode.html")).unwrap();
+    assert!(
+        en_config.contains("<strong>config mode</strong>"),
+        "soft-wrapped bold was split across paragraphs"
+    );
+}
