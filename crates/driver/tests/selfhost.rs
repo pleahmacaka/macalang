@@ -325,6 +325,17 @@ fn selfhost_frontend_compiles_and_runs() {
         "Rust method-call lowering wrong: {stdout}"
     );
 
+    // `s.at(i)` → the byte at an index: `((int)s[i])` in C, `as_bytes()[i]` in
+    // Rust. `"*".at(0)` is ASCII 42.
+    assert!(
+        stdout.contains("at C:    int first(const char* s) { return ((int)s[0]);"),
+        "C .at lowering wrong: {stdout}"
+    );
+    assert!(
+        stdout.contains("at Rust: fn first(s: String) -> i64 { ((s).as_bytes()[(0i64) as usize] as i64)"),
+        "Rust .at lowering wrong: {stdout}"
+    );
+
     // a realistic file shape: leading `import` lines are skipped, leaving the
     // type/function definitions — 2 items here (a sum + a function).
     assert!(

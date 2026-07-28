@@ -39,7 +39,9 @@ emit_expr(e: Expr) -> str =>
 emit_method(e: Expr) -> str =>
     e.text == "length"
         ? "((int)strlen({emit_expr(e.children.get(0))}))"
-        : "{emit_expr(e.children.get(0))}.{e.text}({emit_args(e.children, 1)})"
+        : e.text == "at"
+            ? "((int){emit_expr(e.children.get(0))}[{emit_expr(e.children.get(1))}])"
+            : "{emit_expr(e.children.get(0))}.{e.text}({emit_args(e.children, 1)})"
 
 // A call. `info`/`print` are the output builtins — a string argument prints
 // with a trailing newline (`info`) or without (`print`); every other call is a

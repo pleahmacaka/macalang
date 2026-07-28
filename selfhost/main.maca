@@ -141,6 +141,12 @@ main() -> int {
     info("method C:    {emit_fn(lm.snode)}")
     info("method Rust: {remit_fn(lm.snode)}")
 
+    // `s.at(i)` → the byte at an index (C `s[i]`, Rust `as_bytes()[i]`), the
+    // character access the lexer uses. `"*".at(0)` is ASCII 42.
+    at = parse_fn(lex("first(s: str) -> int => s.at(0)"), 0)
+    info("at C:    {emit_fn(at.snode)}")
+    info("at Rust: {remit_fn(at.snode)}")
+
     // a realistic file shape: leading `import` lines (skipped — the driver
     // resolves modules), then a sum type and a function. This is the structure
     // of every real selfhost source, now parsed by the stage-1 parser.
