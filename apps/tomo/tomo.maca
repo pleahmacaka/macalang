@@ -155,11 +155,47 @@ toc_entry(text: str) -> str =>
 
 // ---- i18n page shell ------------------------------------------------------
 
-// Wrap rendered chapter HTML in a minimal page with a language switcher. `langs`
-// is a comma-joined list of codes (e.g. "en,ko"); `cur` is the active one.
+// A self-contained stylesheet — no external fetch, so a built book works from
+// the filesystem. Readable measure, a light/dark pair, and code that stands out.
+// (A raw triple-quoted string — CSS is full of `{`/`}`, which would otherwise
+// read as string interpolation.)
+style() -> str =>
+    """<style>
+:root{color-scheme:light dark;--fg:#1a1a1a;--bg:#fdfdfc;--mut:#666;--line:#e2e2df;--code:#f4f4f1}
+@media(prefers-color-scheme:dark){:root{--fg:#e8e8e6;--bg:#191919;--mut:#9a9a95;--line:#333;--code:#232323}}
+body{max-width:44rem;margin:0 auto;padding:2rem 1.25rem 5rem;background:var(--bg);color:var(--fg);
+  font:16px/1.7 ui-serif,Georgia,serif}
+h1,h2,h3{font-family:ui-sans-serif,system-ui,sans-serif;line-height:1.25;margin:2.2rem 0 .8rem}
+h1{font-size:2rem;margin-top:.5rem}h2{font-size:1.4rem}h3{font-size:1.15rem}
+code{background:var(--code);padding:.12em .35em;border-radius:3px;font:0.88em ui-monospace,monospace}
+pre{background:var(--code);padding:1rem;border-radius:6px;overflow-x:auto}
+pre code{background:none;padding:0}
+a{color:inherit;text-decoration-color:var(--mut);text-underline-offset:2px}
+nav.i18n,nav.chapters{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.85rem;color:var(--mut)}
+nav.i18n{border-bottom:1px solid var(--line);padding-bottom:.6rem;margin-bottom:1.2rem}
+nav.chapters{border-top:1px solid var(--line);padding-top:.8rem;margin-top:2.5rem;
+  display:flex;justify-content:space-between;gap:1rem}
+nav.toc{background:var(--code);border-radius:6px;padding:.6rem 1rem;margin:0 0 1.6rem;
+  font-family:ui-sans-serif,system-ui,sans-serif;font-size:.9rem}
+nav.toc ul{margin:0;padding-left:1.1rem}
+li{margin:.2rem 0}
+</style>
+"""
+
+// Previous/next links between chapters, so a reader can move through the book.
+chapter_nav(chs: str[], idx: int) -> str =>
+    "<nav class=\"chapters\">" ++
+    (idx > 0 ? "<a href=\"" ++ chs.get(idx - 1) ++ ".html\">&larr; previous</a>" : "<span></span>") ++
+    (idx + 1 < chs.length() ? "<a href=\"" ++ chs.get(idx + 1) ++ ".html\">next &rarr;</a>" : "<span></span>") ++
+    "</nav>\n"
+
+// Wrap rendered chapter HTML in a page with the stylesheet and a language
+// switcher. `langs` is a comma-joined list of codes (e.g. "en,ko"); `cur` is
+// the active one.
 page(title: str, cur: str, langs: str, body: str) -> str =>
     "<!doctype html>\n<html lang=\"" ++ cur ++ "\">\n<head><meta charset=\"utf-8\">\n" ++
-    "<title>" ++ esc(title) ++ "</title></head>\n<body>\n" ++
+    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n" ++
+    "<title>" ++ esc(title) ++ "</title>\n" ++ style() ++ "</head>\n<body>\n" ++
     "<nav class=\"i18n\">" ++ lang_links(langs.split(","), 0, cur) ++ "</nav>\n" ++
     body ++
     "</body>\n</html>\n"
@@ -229,23 +265,24 @@ build_chapters(root: str, out: str, title: str, langs: str, lang: str, fallback:
     ci >= chs.length()
         ? acc
         : build_chapters(root, out, title, langs, lang, fallback, chs, ci + 1,
-                         acc + build_chapter(root, out, title, langs, lang, fallback, chs.get(ci)))
+                         acc + build_chapter(root, out, title, langs, lang, fallback, chs, ci))
 
 // Render one chapter. Falls back to the default language when the translation
 // is missing; writes nothing (and counts nothing) if neither exists.
-build_chapter(root: str, out: str, title: str, langs: str, lang: str, fallback: str, ch: str) -> int {
+build_chapter(root: str, out: str, title: str, langs: str, lang: str, fallback: str, chs: str[], ci: int) -> int {
+    ch = chs.get(ci)
     own = root ++ "/book/" ++ lang ++ "/" ++ ch ++ ".md"
     src = file_exists(own) ? own : root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md"
     file_exists(src)
-        ? write_chapter(out, title, langs, lang, ch, read_file(src))
+        ? write_chapter(out, title, langs, lang, chs, ci, read_file(src))
         : 0
 }
 
-write_chapter(out: str, title: str, langs: str, lang: str, ch: str, md: str) -> int {
+write_chapter(out: str, title: str, langs: str, lang: str, chs: str[], ci: int, md: str) -> int {
     dir = out ++ "/" ++ lang
     make_dir(dir)
-    body = toc(md) ++ "<article>\n" ++ render(md) ++ "</article>\n"
-    write_file(dir ++ "/" ++ ch ++ ".html", page(title, lang, langs, body))
+    body = toc(md) ++ "<article>\n" ++ render(md) ++ "</article>\n" ++ chapter_nav(chs, ci)
+    write_file(dir ++ "/" ++ chs.get(ci) ++ ".html", page(title, lang, langs, body))
     1
 }
 

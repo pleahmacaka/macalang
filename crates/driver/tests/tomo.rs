@@ -135,4 +135,26 @@ fn tomo_builds_the_handbook_site() {
         en_config.contains("<strong>config mode</strong>"),
         "soft-wrapped bold was split across paragraphs"
     );
+
+    // every page carries the self-contained stylesheet (no external fetch, so a
+    // built book works straight off the filesystem)
+    assert!(
+        en_config.contains("prefers-color-scheme") && en_config.contains("<style>"),
+        "page is missing its stylesheet"
+    );
+
+    // chapter-to-chapter navigation, with the boundaries handled: the first
+    // chapter has no previous link, the last no next.
+    let first = std::fs::read_to_string(site.join("en/00-introduction.html")).unwrap();
+    assert!(
+        first.contains("<a href=\"01-hello-world.html\">next")
+            && !first.contains("previous"),
+        "first chapter's nav wrong"
+    );
+    let last = std::fs::read_to_string(site.join("en/06-targets-and-tooling.html")).unwrap();
+    assert!(
+        last.contains("<a href=\"05-config-mode.html\">&larr; previous</a>")
+            && !last.contains("next"),
+        "last chapter's nav wrong"
+    );
 }

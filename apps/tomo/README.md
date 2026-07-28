@@ -26,7 +26,8 @@ The **renderer** is implemented in Maca and gated
 and `page(...)` wraps rendered chapters in an HTML shell with the i18n language
 switcher. The **book builder** is implemented too: `build_book(root, out)` reads
 `book.toml`, walks `book/<lang>/*.md`, and writes `site/<lang>/*.html` — each
-page carrying its table of contents and language switcher. A chapter missing in
+page carrying its stylesheet, table of contents, language switcher, and
+previous/next chapter links. A chapter missing in
 a non-default language **falls back** to the default language's text rather than
 404-ing. Running `tomo` from the repo root rebuilds this repository's handbook
 (14 pages across `en` and `ko`); the output lands in `apps/tomo/site/`, which is
@@ -62,4 +63,5 @@ content Tomo renders, and doubles as the i18n showcase: each chapter exists in
 - [x] `book.toml` parsing (including multi-line arrays) and chapter ordering
 - [x] translation-fallback to the default language for missing chapters
 - [ ] tables, blockquotes, and nested lists
-- [ ] a per-book stylesheet and a chapter-to-chapter nav bar
+- [x] a self-contained stylesheet (light/dark) and chapter-to-chapter navigation
+- [ ] a book index page and search
