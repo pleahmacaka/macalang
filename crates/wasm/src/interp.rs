@@ -839,6 +839,31 @@ impl<'a> Interp<'a> {
             "trim" => return Ok(Value::Str(str_of(vals.first()).trim().to_string())),
             "upper" => return Ok(Value::Str(str_of(vals.first()).to_uppercase())),
             "lower" => return Ok(Value::Str(str_of(vals.first()).to_lowercase())),
+            "repeat" => {
+                let n = int_of(vals.get(1)).max(0) as usize;
+                return Ok(Value::Str(str_of(vals.first()).repeat(n)));
+            }
+            // pad to a width with an optional pad string (default a space); a
+            // string already at least that wide is returned unchanged.
+            "pad_start" | "pad_end" => {
+                let s = str_of(vals.first());
+                let w = int_of(vals.get(1)).max(0) as usize;
+                let p = vals.get(2).map(|v| str_of(Some(v))).unwrap_or_else(|| " ".into());
+                let p = if p.is_empty() { " ".to_string() } else { p };
+                if s.chars().count() >= w {
+                    return Ok(Value::Str(s));
+                }
+                let fill: String = p
+                    .chars()
+                    .cycle()
+                    .take(w - s.chars().count())
+                    .collect();
+                return Ok(Value::Str(if name == "pad_start" {
+                    fill + &s
+                } else {
+                    s + &fill
+                }));
+            }
             "contains" => {
                 return Ok(Value::Bool(
                     str_of(vals.first()).contains(&str_of(vals.get(1))),

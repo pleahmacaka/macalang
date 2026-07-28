@@ -2650,6 +2650,26 @@ impl<'a> Cx<'a> {
                 format!("maca_substr({rc}, {}, {})", arg0(), arg1()),
                 CTy::Str,
             ),
+            (CTy::Str | CTy::Unknown, "repeat") => {
+                (format!("maca_repeat({rc}, {})", arg0()), CTy::Str)
+            }
+            // `pad_start`/`pad_end` take an optional pad string (default " ").
+            (CTy::Str | CTy::Unknown, "pad_start") => (
+                format!(
+                    "maca_pad_start({rc}, {}, {})",
+                    arg0(),
+                    if a.len() > 1 { arg1() } else { "\" \"".to_string() }
+                ),
+                CTy::Str,
+            ),
+            (CTy::Str | CTy::Unknown, "pad_end") => (
+                format!(
+                    "maca_pad_end({rc}, {}, {})",
+                    arg0(),
+                    if a.len() > 1 { arg1() } else { "\" \"".to_string() }
+                ),
+                CTy::Str,
+            ),
             (CTy::Str | CTy::Unknown, "split") => {
                 self.note_arr(&CTy::Arr(Box::new(CTy::Str)));
                 let sep = arg0();

@@ -14,6 +14,7 @@ language surface wants (a prelude you can just use). What exists today:
 
 **String methods (UFCS on `str`):** `split`, `join`, `trim`, `upper`, `lower`,
 `contains`, `starts_with`, `ends_with`, `replace`, `substr`, `index_of`,
+`repeat`, `pad_start`/`pad_end` (width + optional pad string, default a space),
 subscripting `s[i]`. Byte-level scanning: `length` (byte count), `at(i)` (the
 1-char string at byte `i`), `chars` (→ `str[]` of single bytes), and the
 character classes `is_whitespace` / `is_ascii_digit` / `is_alpha`.

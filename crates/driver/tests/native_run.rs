@@ -370,6 +370,10 @@ fn string_stdlib_runs_natively() {
         "Employees View",
         "Employees",
         "index 10",
+        "---------",
+        "007",
+        "ab...",
+        "    hi",
     ] {
         assert!(
             stdout.contains(want),

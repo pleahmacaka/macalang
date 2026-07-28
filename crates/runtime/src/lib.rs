@@ -78,6 +78,9 @@ bool maca_contains(maca_str s, maca_str sub);
 bool maca_starts_with(maca_str s, maca_str prefix);
 bool maca_ends_with(maca_str s, maca_str suffix);
 maca_str maca_replace(maca_str s, maca_str from, maca_str to); /* all occurrences */
+maca_str maca_repeat(maca_str s, int64_t n);          /* s concatenated n times */
+maca_str maca_pad_start(maca_str s, int64_t w, maca_str p); /* left-pad to width w */
+maca_str maca_pad_end(maca_str s, int64_t w, maca_str p);   /* right-pad to width w */
 maca_str maca_substr(maca_str s, int64_t start, int64_t len);  /* byte range, clamped */
 int64_t maca_index_of(maca_str s, maca_str sub);      /* byte index, or -1 */
 maca_str* maca_split(maca_str s, maca_str sep, int64_t* out_len); /* malloc'd maca_str[] */
@@ -354,6 +357,28 @@ maca_str maca_lower(maca_str s) {
     for (size_t i = 0; i < n; i++) r[i] = (char)tolower((unsigned char)s[i]);
     r[n] = '\0'; return r;
 }
+maca_str maca_repeat(maca_str s, int64_t n) {
+    if (!s || n <= 0) return "";
+    size_t len = strlen(s), total = len * (size_t)n;
+    char* r = (char*)xmalloc(total + 1);
+    for (int64_t i = 0; i < n; i++) memcpy(r + (size_t)i * len, s, len);
+    r[total] = '\0'; return r;
+}
+/* Pad `s` to width `w` with `p` (repeated, then clipped) on the given side. */
+static maca_str maca_pad(maca_str s, int64_t w, maca_str p, bool at_start) {
+    if (!s) s = "";
+    if (!p || !*p) p = " ";
+    size_t len = strlen(s);
+    if (w <= 0 || (size_t)w <= len) return s;
+    size_t fill = (size_t)w - len, plen = strlen(p);
+    char* r = (char*)xmalloc((size_t)w + 1);
+    char* pad = at_start ? r : r + len;
+    for (size_t i = 0; i < fill; i++) pad[i] = p[i % plen];
+    memcpy(at_start ? r + fill : r, s, len);
+    r[(size_t)w] = '\0'; return r;
+}
+maca_str maca_pad_start(maca_str s, int64_t w, maca_str p) { return maca_pad(s, w, p, true); }
+maca_str maca_pad_end(maca_str s, int64_t w, maca_str p) { return maca_pad(s, w, p, false); }
 bool maca_contains(maca_str s, maca_str sub) {
     if (!s) s = ""; if (!sub) sub = "";
     return strstr(s, sub) != NULL;
