@@ -99,11 +99,45 @@ render_block(lines: str[], i: int, acc: str, line: str) -> str =>
             ? render_lines(lines, i + 1, false, acc ++ heading("2", line.substr(3, line.length() - 3)))
             : line.starts_with("# ")
                 ? render_lines(lines, i + 1, false, acc ++ heading("1", line.substr(2, line.length() - 2)))
-                : line.starts_with("- ")
-                    ? render_lines(lines, i + 1, false, acc ++ "<li>" ++ inline(esc(line.substr(2, line.length() - 2))) ++ "</li>\n")
-                    : line.trim() == ""
-                        ? render_lines(lines, i + 1, false, acc)
-                        : render_para(lines, i, acc)
+                : line.starts_with("- ") || line.starts_with("  - ")
+                    ? render_item(lines, i, acc, line)
+                    : line.starts_with("> ")
+                        ? render_quote(lines, i, acc)
+                        : line.trim() == ""
+                            ? render_lines(lines, i + 1, false, acc)
+                            : render_para(lines, i, acc)
+
+// A list item. Two leading spaces mark a nested item, which is wrapped in its
+// own `<ul>` so it indents under its parent.
+render_item(lines: str[], i: int, acc: str, line: str) -> str {
+    nested = line.starts_with("  - ")
+    text = nested ? line.substr(4, line.length() - 4) : line.substr(2, line.length() - 2)
+    html = nested
+        ? "<ul><li>" ++ inline(esc(text)) ++ "</li></ul>\n"
+        : "<li>" ++ inline(esc(text)) ++ "</li>\n"
+    render_lines(lines, i + 1, false, acc ++ html)
+}
+
+// Gather the run of `> ` lines starting at `i` into one blockquote (a quote
+// wraps across lines the same way a paragraph does).
+render_quote(lines: str[], i: int, acc: str) -> str {
+    stop = quote_end(lines, i)
+    text = join_quote(lines, i, stop)
+    render_lines(lines, stop, false, acc ++ "<blockquote>" ++ inline(esc(text)) ++ "</blockquote>\n")
+}
+
+quote_end(lines: str[], i: int) -> int =>
+    i >= lines.length() || !lines.get(i).starts_with("> ")
+        ? i
+        : quote_end(lines, i + 1)
+
+// Join `lines[at..stop)`, stripping each line's `> ` marker.
+join_quote(lines: str[], at: int, stop: int) -> str =>
+    at >= stop
+        ? ""
+        : at == stop - 1
+            ? lines.get(at).substr(2, lines.get(at).length() - 2).trim()
+            : lines.get(at).substr(2, lines.get(at).length() - 2).trim() ++ " " ++ join_quote(lines, at + 1, stop)
 
 // Gather the run of plain lines starting at `i` into a single paragraph.
 render_para(lines: str[], i: int, acc: str) -> str {
@@ -120,7 +154,8 @@ para_end(lines: str[], i: int) -> int =>
         : para_end(lines, i + 1)
 
 is_break(line: str) -> bool =>
-    line.trim() == "" || line.starts_with("#") || line.starts_with("- ") || line.starts_with("```")
+    line.trim() == "" || line.starts_with("#") || line.starts_with("- ")
+        || line.starts_with("  - ") || line.starts_with("> ") || line.starts_with("```")
 
 // Join `lines[from..to)` with single spaces (Markdown's soft-wrap semantics).
 join_range(lines: str[], at: int, stop: int) -> str =>
@@ -323,7 +358,7 @@ write_chapter(out: str, title: str, langs: str, lang: str, chs: str[], ci: int, 
 // ---- self-check -----------------------------------------------------------
 
 main() -> int {
-    sample = "# Title\n\nA **bold** word and `code`, see [docs](guide.md).\n\n## Section\n\n- one\n- two\n\n```\nlet x = 1\n```\n"
+    sample = "# Title\n\nA **bold** word and `code`, see [docs](guide.md).\n\n## Section\n\n- one\n  - nested\n- two\n\n> a quoted aside\n\n```\nlet x = 1\n```\n"
     html = render(sample)
     info("=== rendered ===")
     info(html)

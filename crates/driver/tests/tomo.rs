@@ -71,8 +71,17 @@ fn tomo_renders_markdown_to_html() {
         ),
         "inline formatting wrong: {html}"
     );
-    // list items
+    // list items, including a nested one wrapped in its own <ul>
     assert!(html.contains("<li>one</li>") && html.contains("<li>two</li>"), "list wrong: {html}");
+    assert!(
+        html.contains("<ul><li>nested</li></ul>"),
+        "nested list item wrong: {html}"
+    );
+    // blockquotes
+    assert!(
+        html.contains("<blockquote>a quoted aside</blockquote>"),
+        "blockquote wrong: {html}"
+    );
     // fenced code block, HTML-escaped content
     assert!(
         html.contains("<pre><code>let x = 1\n</code></pre>"),
@@ -115,8 +124,8 @@ fn tomo_builds_the_handbook_site() {
     // `main` builds the book with paths relative to the repo root
     let out = Command::new(&bin).current_dir(&repo).output().expect("run tomo");
     let log = String::from_utf8_lossy(&out.stdout);
-    // 7 chapters + an index, in each of 2 languages
-    assert!(log.contains("built 16 pages"), "build log: {log}");
+    // 8 chapters + an index, in each of 2 languages
+    assert!(log.contains("built 18 pages"), "build log: {log}");
 
     // a translated chapter renders in its own language
     let ko_intro = std::fs::read_to_string(site.join("ko/00-introduction.html")).unwrap();
@@ -146,6 +155,14 @@ fn tomo_builds_the_handbook_site() {
         "soft-wrapped bold was split across paragraphs"
     );
 
+    // a quote wrapped across source lines becomes ONE blockquote, not one per line
+    let en_err = std::fs::read_to_string(site.join("en/07-errors-and-testing.html")).unwrap();
+    assert_eq!(
+        en_err.matches("<blockquote>").count(),
+        1,
+        "multi-line blockquote was split"
+    );
+
     // every page carries the self-contained stylesheet (no external fetch, so a
     // built book works straight off the filesystem)
     assert!(
@@ -161,10 +178,10 @@ fn tomo_builds_the_handbook_site() {
             && !first.contains("previous"),
         "first chapter's nav wrong"
     );
-    let last = std::fs::read_to_string(site.join("en/06-targets-and-tooling.html")).unwrap();
+    let last = std::fs::read_to_string(site.join("en/07-errors-and-testing.html")).unwrap();
     assert!(
-        last.contains("<a href=\"05-config-mode.html\">&larr; previous</a>")
-            && !last.contains("next"),
+        last.contains("<a href=\"06-targets-and-tooling.html\">&larr; previous</a>")
+            && !last.contains("next &rarr;"),
         "last chapter's nav wrong"
     );
 }

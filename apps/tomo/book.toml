@@ -19,4 +19,5 @@ chapters = [
     "04-colorblind-async",
     "05-config-mode",
     "06-targets-and-tooling",
+    "07-errors-and-testing",
 ]

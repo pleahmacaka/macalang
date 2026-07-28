@@ -16,7 +16,8 @@ The **renderer** is implemented in Maca and gated
 (`crates/driver/tests/tomo.rs`): `render : str -> str` turns Markdown into HTML —
 
 - `#`/`##`/`###` headings,
-- `-` list items,
+- `-` list items, including nested (`  - `) items,
+- `>` blockquotes,
 - ```` ``` ```` fenced code blocks (HTML-escaped),
 - paragraphs,
 - inline `**bold**`, `` `code` ``, and links `[text](url)`,
@@ -30,7 +31,7 @@ page carrying its stylesheet, table of contents, language switcher, and
 previous/next chapter links. A chapter missing in
 a non-default language **falls back** to the default language's text rather than
 404-ing. Running `tomo` from the repo root rebuilds this repository's handbook
-(16 pages across `en` and `ko` — 7 chapters plus an index each); the output lands in `apps/tomo/site/`, which is
+(18 pages across `en` and `ko` — 8 chapters plus an index each); the output lands in `apps/tomo/site/`, which is
 gitignored.
 
 ## Layout
@@ -62,7 +63,8 @@ both `en/` and `ko/`.
 - [x] file-I/O book builder — reads `book.toml` + `book/<lang>/*.md`, writes `site/<lang>/*.html`
 - [x] `book.toml` parsing (including multi-line arrays) and chapter ordering
 - [x] translation-fallback to the default language for missing chapters
-- [ ] tables, blockquotes, and nested lists
+- [x] blockquotes (multi-line quotes join) and nested list items
+- [ ] tables
 - [x] a self-contained stylesheet (light/dark) and chapter-to-chapter navigation
 - [x] a per-language index page (chapters titled from their own headings)
 - [ ] search
