@@ -32,5 +32,5 @@ functional update.
 finalize/close), `import c "mqtt.h"`, `import py "…"`, and `import nixpkgs` for
 config mode.
 
-See `docs/PLAN.md` for the language cheatsheet and effect rows, and
+See `docs/SPEC.md` for the language cheatsheet and effect rows, and
 `examples/{collections,strings,async}.maca` for the prelude in use.

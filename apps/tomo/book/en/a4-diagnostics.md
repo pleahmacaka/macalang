@@ -115,10 +115,12 @@ lex (28, 28): string literal spans a line; write `\n`, or use a raw
 **Backend refusals** — valid code that a particular target cannot emit:
 
 ```
-expression not supported by the native backend: Record(…)
+`on:click` needs a live DOM — build this with `--target js`
 ```
 
-An anonymous record (chapter 5) is the case you are most likely to hit.
+An event handler has nowhere to attach when elements render to a string
+(chapter 15), so the native target says so rather than emitting markup that
+silently does nothing.
 
 **C compiler errors** should not happen, and when they do it is a compiler bug
 worth reporting. A misspelt method used to be the exception — it survived to

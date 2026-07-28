@@ -81,7 +81,7 @@ pub fn emit(m: &Module) -> String {
                     } else if let (Some(trait_ty), Some(methods)) =
                         (b.tys.first(), lambda_fields(&b.value))
                     {
-                        // R5: `Name : Trait = { m = (self, …) => … }` →
+                        // `Name : Trait = { m = (self, …) => … }` →
                         // `impl Trait for Name { fn m(&mut self, …) { … } }`.
                         out.push_str(&cx.emit_impl(name, trait_ty, &methods));
                     } else if let Some(fields) = record_fields(&b.value) {
@@ -190,7 +190,7 @@ impl Cx {
         out
     }
 
-    /// R5: a foreign trait implementation. `Name : Trait = { m = (self, p: T) => body }`
+    /// A foreign trait implementation. `Name : Trait = { m = (self, p: T) => body }`
     /// → `impl Trait for Name { fn m(&mut self, p: T) -> Ret { body } }`. A leading
     /// `self` parameter becomes `&mut self` (§2.1: a foreign type parameter is a
     /// non-escaping mutable borrow); the return type is inferred from the body
@@ -354,6 +354,17 @@ impl Cx {
             }
             Expr::Match { scrut, arms } => (self.match_expr(scrut, arms), false),
             Expr::Ctor { name, fields } => (self.ctor(name, fields), false),
+            // Colorblind async, on threads — the same shape the C runtime
+            // gives it. `spawn e` is a `JoinHandle`, `await h` joins it, and a
+            // function that does either is still an ordinary function.
+            Expr::Spawn(inner) => {
+                let (e, _) = self.expr(inner);
+                (format!("std::thread::spawn(move || {e})"), false)
+            }
+            Expr::Await(inner) => {
+                let (e, _) = self.expr(inner);
+                (format!("({e}).join().unwrap()"), false)
+            }
             // an anonymous record literal names the struct synthesized for its
             // shape; a shape that can't be typed stays a bare literal
             Expr::Record(fields) => {
@@ -700,9 +711,10 @@ fn lambda_fields(e: &Expr) -> Option<Vec<(String, Vec<Param>, Expr)>> {
 
 /// Best-effort return type for a trait-impl method body (Maca lambdas carry no
 /// return annotation). Covers the common shapes: a mutation/loop/unit body → `()`
-/// (a gpui-style event handler), a comparison/`!` → `bool`, a string → `String`,
-/// otherwise `i64`. A body needing a foreign return type (`impl IntoElement`) is
-/// not yet inferred — that is the R5→R6 boundary.
+/// (an event handler), a comparison/`!` → `bool`, a string → `String`, otherwise
+/// `i64`. A foreign return type such as `impl IntoElement` is out of reach from
+/// the body alone — the backend does not read the crate's signatures, so a
+/// method that needs one writes it as an annotation.
 fn guess_ret(body: &Expr, is_str: bool) -> String {
     use BinOp::*;
     if is_str {
@@ -865,24 +877,27 @@ fn walk_expr_for_anon(e: &Expr, out: &mut BTreeMap<String, Vec<(String, Type)>>)
     {
         out.insert(anon_struct_name(&shape), shape);
     }
-    let mut go = |c: &Expr| walk_expr_for_anon(c, out);
+    let go = walk_expr_for_anon;
+    let body = |ss: &[Stmt], out: &mut BTreeMap<String, Vec<(String, Type)>>| {
+        ss.iter().for_each(|s| walk_stmt_for_anon(s, out))
+    };
     match e {
         Expr::Str(parts) => parts.iter().for_each(|p| {
             if let StrPart::Interp(x) = p {
-                go(x)
+                go(x, out)
             }
         }),
-        Expr::List(es) => es.iter().for_each(&mut go),
+        Expr::List(es) => es.iter().for_each(|x| go(x, out)),
         Expr::Record(fs) | Expr::Ctor { fields: fs, .. } | Expr::With { fields: fs, .. } => {
             fs.iter().for_each(|f| {
                 if let Field::Value { value, .. } | Field::Bare(value) = f {
-                    go(value)
+                    go(value, out)
                 }
             })
         }
         Expr::Call { callee, args } => {
-            go(callee);
-            args.iter().for_each(|a| go(arg_expr(a)));
+            go(callee, out);
+            args.iter().for_each(|a| go(arg_expr(a), out));
         }
         Expr::Field { base, .. }
         | Expr::Unary { expr: base, .. }
@@ -891,7 +906,7 @@ fn walk_expr_for_anon(e: &Expr, out: &mut BTreeMap<String, Vec<(String, Type)>>)
         | Expr::Reify(base)
         | Expr::Await(base)
         | Expr::Spawn(base)
-        | Expr::Lambda { body: base, .. } => go(base),
+        | Expr::Lambda { body: base, .. } => go(base, out),
         Expr::Index { base: a, index: b }
         | Expr::Range { lo: a, hi: b }
         | Expr::Binary { lhs: a, rhs: b, .. }
@@ -899,45 +914,39 @@ fn walk_expr_for_anon(e: &Expr, out: &mut BTreeMap<String, Vec<(String, Type)>>)
             target: a,
             value: b,
         } => {
-            go(a);
-            go(b);
+            go(a, out);
+            go(b, out);
         }
         Expr::Ternary { cond, then, els } => {
-            go(cond);
-            go(then);
-            go(els);
+            go(cond, out);
+            go(then, out);
+            go(els, out);
         }
         Expr::If { cond, then, els } => {
-            go(cond);
-            drop(go);
-            then.iter().for_each(|s| walk_stmt_for_anon(s, out));
+            go(cond, out);
+            body(then, out);
             if let Some(e) = els {
-                e.iter().for_each(|s| walk_stmt_for_anon(s, out));
+                body(e, out);
             }
         }
         Expr::Match { scrut, arms } => {
-            go(scrut);
+            go(scrut, out);
             arms.iter().for_each(|a| {
-                walk_expr_for_anon(&a.body, out);
+                go(&a.body, out);
                 if let Some(g) = &a.guard {
-                    walk_expr_for_anon(g, out)
+                    go(g, out)
                 }
             });
         }
-        Expr::For { iter, body, .. } => {
-            go(iter);
-            drop(go);
-            body.iter().for_each(|s| walk_stmt_for_anon(s, out));
+        Expr::For { iter, body: b, .. } => {
+            go(iter, out);
+            body(b, out);
         }
-        Expr::While { cond, body } => {
-            go(cond);
-            drop(go);
-            body.iter().for_each(|s| walk_stmt_for_anon(s, out));
+        Expr::While { cond, body: b } => {
+            go(cond, out);
+            body(b, out);
         }
-        Expr::Block(ss) => {
-            drop(go);
-            ss.iter().for_each(|s| walk_stmt_for_anon(s, out));
-        }
+        Expr::Block(ss) => body(ss, out),
         _ => {}
     }
 }

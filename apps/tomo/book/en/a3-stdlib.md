@@ -37,6 +37,7 @@ Called as methods through UFCS — `s.trim()` is `trim(s)`.
 | `starts_with(s)` `ends_with(s)` | `bool` |
 | `replace(from, to)` | every occurrence |
 | `substr(start, len)` | a **length**, not an end |
+| `slice(from, to)` | `to` is **exclusive**, as on a list |
 | `index_of(s)` | index or `-1` |
 | `repeat(n)` | `str` |
 | `pad_start(w, p)` `pad_end(w, p)` `pad_center(w, p)` | `p` defaults to a space |
@@ -61,6 +62,35 @@ Called as methods through UFCS — `s.trim()` is `trim(s)`.
 | `join(sep)` | a `str[]` into one `str` |
 | `parallel(f)` | like `map`, evaluated concurrently |
 
+## Maps
+
+`Map str V` is a string-keyed hash map, monomorphized on its value type the way
+an array is on its element type.
+
+| Method | Result |
+|---|---|
+| `set(k, v)` | the map, with `k` bound to `v` |
+| `get(k, default)` | the value, or `default` |
+| `has(k)` | `bool` |
+| `remove(k)` | the map, without `k` |
+| `keys()` | `str[]`, sorted |
+| `length()` | `int` |
+
+```maca
+counts: Map str int = map()
+counts = counts.set("apple", 3).set("pear", 1)
+info("{counts.get("apple", 0)}")     // 3
+info("{counts.get("kiwi", 0)}")      // 0 — a miss gives the default
+```
+
+Keys are `str` and only `str`. One key type is one hash and one comparison, and
+an integer key is `str(n)` away. `keys()` comes back sorted, so a program that
+walks a map twice produces the same output twice — which matters when the output
+is a file under version control.
+
+`get` takes a default rather than returning something empty, because the
+language has no null to return.
+
 ## Math
 
 | Function | Does |
@@ -76,9 +106,43 @@ Called as methods through UFCS — `s.trim()` is `trim(s)`.
 | `file_exists(path)` | `bool` |
 | `make_dir(path)` | like `mkdir -p` |
 | `list_dir(path)` | `str[]` of names, sorted |
+| `is_dir(path)` | `bool` |
+| `file_size(path)` | bytes, or `-1` |
+| `modified_ms(path)` | mtime in ms, or `-1` |
+| `remove_file(path)` | delete a file |
+| `remove_dir(path)` | delete a directory and its contents |
 
-There is no `is_dir`. `list_dir` of a plain file returns nothing, which is the
-usual way to tell them apart.
+A missing file's size is `-1` rather than `0`, so an empty file and an absent one
+are distinguishable without a second call.
+
+## Standard input
+
+| Function | Does |
+|---|---|
+| `read_line()` | one line, newline stripped |
+| `at_eof()` | is input exhausted? |
+| `read_stdin()` | all of it |
+
+`at_eof` exists because a blank line and end-of-input both read as the empty
+string:
+
+```maca
+while !at_eof() {
+    line = read_line()
+    info(line.upper())
+}
+```
+
+## Time
+
+| Function | Does |
+|---|---|
+| `now_ms()` | milliseconds since the Unix epoch |
+| `now_iso()` | `"YYYY-MM-DDTHH:MM:SSZ"` |
+| `format_time(ms, fmt)` | `strftime` over the instant |
+
+Everything is UTC. Local time needs a zone database and a policy for what to do
+without one; a program that wants it can format the epoch milliseconds itself.
 
 ## Concurrency
 
@@ -112,20 +176,23 @@ See chapter 15.
 
 See chapter 9.
 
-## What is missing
+## Assertions
 
-Being straight about it, so you can plan around it:
+| Function | Does |
+|---|---|
+| `assert(cond, msg)` | report `msg` if `cond` is false |
+| `assert_eq(got, want, msg)` | report both sides if they differ |
+| `failures()` | how many assertions have failed |
 
-- **No hash map.** A list of records and a linear scan is the current answer,
-  which is what `examples/wordcount.maca` does.
-- **No `is_dir`, no file metadata, no delete.**
-- **No stdin.** Programs take arguments and read files.
-- **No date or time.**
-- **No regular expressions.**
-- **No assertion library** — a test returns `0` or non-zero (chapter 12).
-- **No string `slice`** — `substr` takes a length instead (calling it is a
-  clean diagnostic, not a linker error).
+A failing assertion reports and keeps going. Aborting on the first one means
+fixing a suite takes as many runs as it has bugs; counting them means one run
+tells you everything. `failures()` is the number a test function returns, which
+is the same "0 or non-zero" contract as chapter 12.
 
-Where these land is mostly a question of what gets built in Maca next; a hash
-map in particular is a good first contribution, because it needs nothing from
-the compiler.
+## Regular expressions
+
+There are none. `contains`, `starts_with`, `ends_with`, `index_of`, `split` and
+the character classes cover what a program in this language actually reaches for
+— `selfhost/lexer.maca` scans the whole language with `chars`, `at` and three
+predicates — and a regex engine is a language of its own to learn, debug and
+implement. Reach for `split` and a loop.

@@ -5,7 +5,7 @@ programs compile to native (C-tier binary), the JVM, JavaScript, or bare-metal
 firmware; infra and dev-environment config compile to Nix. The compiler is Rust
 + a hand-written front-end; everything you write is `.maca` or `maca.toml`.
 
-See [`docs/PLAN.md`](docs/PLAN.md) for the authoritative spec and phase plan.
+See [`docs/SPEC.md`](docs/SPEC.md) for the authoritative spec.
 
 ## Install
 
@@ -152,6 +152,6 @@ live diagnostics, hover, and completion over LSP (stdio). Editor integrations:
 
 ```sh
 cargo build            # the whole workspace
-cargo test             # the phase gate
+cargo test             # the whole suite
 cargo run -p maca-driver -- --version
 ```

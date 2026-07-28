@@ -114,10 +114,12 @@ lex (28, 28): string literal spans a line; write `\n`, or use a raw
 **백엔드 거부** — 특정 타깃이 내보낼 수 없는 올바른 코드입니다.
 
 ```
-expression not supported by the native backend: Record(…)
+`on:click` needs a live DOM — build this with `--target js`
 ```
 
-익명 레코드(5장)가 가장 마주치기 쉬운 경우입니다.
+요소가 문자열로 렌더링될 때(15장) 이벤트 핸들러는 붙을 자리가 없습니다. 그래서
+네이티브 타깃은 조용히 아무 일도 하지 않는 마크업을 내놓는 대신 그렇다고
+말합니다.
 
 **C 컴파일러 에러**는 일어나면 안 되고, 일어난다면 보고할 만한 컴파일러 버그
 입니다. 오타난 메서드가 예외였습니다. `undefined reference to 'slice'`로 링커까지

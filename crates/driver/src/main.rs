@@ -680,7 +680,7 @@ fn build_rust(src: &Path, out: &Path) -> Result<String, String> {
     }
 
     // Dependencies present → build through Cargo.
-    build_rust_cargo(&rs, &deps, out)
+    build_rust_cargo(&rs, &deps, &rust_patch(src), out)
 }
 
 /// Reject foreign imports the Rust target can't satisfy, and any `import rust`
@@ -741,6 +741,15 @@ fn validate_rust_imports(m: &maca_parser::Module, deps: &[(String, String)]) -> 
 /// as `(name, raw-rhs)` pairs — the RHS is preserved verbatim so both a bare
 /// version (`"1"`) and a table (`{ git = "…" }`) round-trip into `Cargo.toml`.
 fn rust_dependencies(src: &Path) -> Vec<(String, String)> {
+    manifest_section(src, "[rust-dependencies]")
+}
+
+/// `[rust-patch]` — crate overrides, emitted as Cargo's `[patch.crates-io]`.
+fn rust_patch(src: &Path) -> Vec<(String, String)> {
+    manifest_section(src, "[rust-patch]")
+}
+
+fn manifest_section(src: &Path, section: &str) -> Vec<(String, String)> {
     let Some(manifest) = find_manifest(src) else {
         return Vec::new();
     };
@@ -755,7 +764,7 @@ fn rust_dependencies(src: &Path) -> Vec<(String, String)> {
             continue;
         }
         if t.starts_with('[') {
-            in_section = t == "[rust-dependencies]";
+            in_section = t == section;
             continue;
         }
         if in_section && let Some((k, v)) = t.split_once('=') {
@@ -789,33 +798,51 @@ fn find_manifest(src: &Path) -> Option<PathBuf> {
 /// The `Cargo.toml` for the throwaway build project. Each dep RHS is re-emitted
 /// verbatim: a bare version string gets quoted, a `{ … }` table (git/path deps)
 /// or an already-quoted value passes through unchanged.
-fn cargo_manifest(deps: &[(String, String)]) -> String {
-    let mut deps_toml = String::new();
-    for (name, rhs) in deps {
-        let value = if rhs.starts_with('{') || rhs.starts_with('"') {
-            rhs.clone()
-        } else {
-            format!("\"{rhs}\"")
-        };
-        deps_toml.push_str(&format!("{name} = {value}\n"));
-    }
+fn cargo_manifest(deps: &[(String, String)], patch: &[(String, String)]) -> String {
+    let entries = |kv: &[(String, String)]| {
+        let mut out = String::new();
+        for (name, rhs) in kv {
+            let value = if rhs.starts_with('{') || rhs.starts_with('"') {
+                rhs.clone()
+            } else {
+                format!("\"{rhs}\"")
+            };
+            out.push_str(&format!("{name} = {value}\n"));
+        }
+        out
+    };
+    // `[rust-patch]` becomes Cargo's `[patch.crates-io]`, which is how a local
+    // checkout or a fork is substituted for a published crate — the thing you
+    // need the moment a dependency needs a one-line fix.
+    let patch_toml = if patch.is_empty() {
+        String::new()
+    } else {
+        format!("\n[patch.crates-io]\n{}", entries(patch))
+    };
     format!(
         "[package]\nname = \"maca_app\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n\
          [[bin]]\nname = \"maca_app\"\npath = \"src/main.rs\"\n\n\
-         [dependencies]\n{deps_toml}"
+         [dependencies]\n{}{patch_toml}",
+        entries(deps)
     )
 }
 
 /// Build the emitted Rust through a throwaway Cargo project so `[rust-dependencies]`
 /// resolve. The generated `Cargo.toml` re-emits each dep RHS verbatim (a bare
 /// version gets quoted, a `{ … }` table is passed through).
-fn build_rust_cargo(rs: &str, deps: &[(String, String)], out: &Path) -> Result<String, String> {
+fn build_rust_cargo(
+    rs: &str,
+    deps: &[(String, String)],
+    patch: &[(String, String)],
+    out: &Path,
+) -> Result<String, String> {
     if !have("cargo") {
         return Err("no cargo on PATH to build [rust-dependencies]".into());
     }
     let proj = build_dir(out).join("cargo");
     std::fs::create_dir_all(proj.join("src")).map_err(|e| e.to_string())?;
-    std::fs::write(proj.join("Cargo.toml"), cargo_manifest(deps)).map_err(|e| e.to_string())?;
+    std::fs::write(proj.join("Cargo.toml"), cargo_manifest(deps, patch))
+        .map_err(|e| e.to_string())?;
     std::fs::write(proj.join("src/main.rs"), rs).map_err(|e| e.to_string())?;
 
     let o = Command::new("cargo")
@@ -1953,13 +1980,16 @@ mod rust_target_tests {
 
     #[test]
     fn cargo_manifest_quotes_versions_and_passes_tables() {
-        let m = cargo_manifest(&[
-            ("itoa".into(), "1".into()),
-            (
-                "gpui".into(),
-                "{ git = \"https://github.com/zed-industries/zed\" }".into(),
-            ),
-        ]);
+        let m = cargo_manifest(
+            &[
+                ("itoa".into(), "1".into()),
+                (
+                    "gpui".into(),
+                    "{ git = \"https://github.com/zed-industries/zed\" }".into(),
+                ),
+            ],
+            &[("serde".into(), "{ path = \"../serde\" }".into())],
+        );
         assert!(m.contains("name = \"maca_app\""), "{m}");
         assert!(m.contains("itoa = \"1\""), "bare version quoted: {m}");
         assert!(
@@ -1967,5 +1997,10 @@ mod rust_target_tests {
             "table passed through: {m}"
         );
         assert!(m.contains("path = \"src/main.rs\""), "{m}");
+        // `[rust-patch]` becomes Cargo's crates-io patch table
+        assert!(
+            m.contains("[patch.crates-io]\nserde = { path = \"../serde\" }"),
+            "patch table missing: {m}"
+        );
     }
 }

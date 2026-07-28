@@ -1,9 +1,10 @@
 # A Rust source backend for Maca (`--target rust`)
 
-**Status (2026-07-27):** R1–R5 are implemented; R6 (gpui executor wiring +
-`impl IntoElement` return + foreign param types) remains.
+`--target rust` emits Rust source that `rustc` or `cargo` compiles. Rust is a
+substrate for an ecosystem, the way the JVM backend is for Maven: the point is
+that a crates.io library costs a line of configuration rather than a port.
 
-- **R1/R2 functional core** — `crates/backend_rust` emits Rust source and
+- **The functional core** — `crates/backend_rust` emits Rust source and
   `maca build --target rust` builds a native binary. Covered: `main` (exits with
   the returned code), functions, recursion, `int`/`float`/`str`/`bool`, records →
   structs, **sums → enums including payload variants** (`Circle(int) | Rect(int,
@@ -12,7 +13,7 @@
   arithmetic/comparison, string interpolation → `format!`, and declare-then-
   reassign mutability. A local passed by value to a user call is `.clone()`d so
   Maca's value semantics survive Rust's move checker.
-- **R3 crate dependencies** — `import rust "gpui::div"` → `use gpui::div;`;
+- **Crate dependencies** — `import rust "gpui::div"` → `use gpui::div;`;
   `[rust-dependencies]` in `maca.toml` generates a throwaway Cargo project and
   builds through `cargo` (a program with no external crates still takes the fast
   single-file `rustc` path). An import that names an **undeclared crate**, or a
@@ -31,11 +32,11 @@ the driver (import validation + manifest generation), and
 `crates/driver/tests/rust_backend.rs` (compile + run via `rustc`, plus a
 best-effort cargo-dependency build).
 
-- **R4 closures** — a lambda lowers to a `move` closure (`n => n + 1` →
+- **Closures** — a lambda lowers to a `move` closure (`n => n + 1` →
   `move |n| { (n + 1) }`) with inferred parameter types, so it can escape into a
   foreign callback API and outlive its frame. Verified end-to-end passing a
   closure to a raw-block `fn apply(f: impl Fn(i64)->i64, …)`.
-- **R5 foreign trait impl** — `Counter : Render = { render = (self, …) => … }` →
+- **Foreign trait impls** — `Counter : Render = { render = (self, …) => … }` →
   `impl Render for Counter { fn render(&mut self, …) { … } }`. A leading `self`
   becomes `&mut self` (§2.1); the return type is inferred from the body
   (`()`/`bool`/`String`/`i64`), which covers event handlers and getters. The
@@ -44,14 +45,18 @@ best-effort cargo-dependency build).
   verbatim (a trait/impl/`fn` supplied inline). Verified compiling + running
   against a local stand-in trait.
 
-**Known gaps before gpui (R6):** `render` returns gpui's `impl IntoElement`,
-which isn't inferred from the body yet (§2.5 — emit `-> AnyElement` +
-`.into_any_element()`); unannotated foreign method params default to `i64` rather
-than `&mut Window` / `&mut Context<Self>`; `cx.listener(…)`/`cx.notify()` and
-`spawn`/`await` executor wiring; and recursive sum types need `Box<T>`
-(`tree.maca`). `examples/gpui_counter.maca` shows the full surface and documents
-exactly these remaining pieces. Foreign *argument* coercion beyond bare integer
-literals also stays gradual (a wrong type just makes `rustc` error, §2.4).
+- **Colorblind async** — `spawn e` becomes a `std::thread::spawn` handle and
+  `await h` joins it, the same shape the C runtime gives it with pthreads. There
+  is still no `async` keyword and no function colour.
+- **Crate overrides** — `[rust-patch]` in `maca.toml` becomes Cargo's
+  `[patch.crates-io]`, which is how a local checkout or a fork stands in for a
+  published crate.
+
+What stays gradual, deliberately: a foreign call's argument types beyond bare
+integer literals. Maca does not read the crate's signatures, so a wrong type is
+`rustc`'s error to report rather than a second type checker's — which is the
+same bargain `import c` makes, and the reason a foreign call needs no
+declaration in the first place.
 
 ---
 
@@ -79,7 +84,7 @@ backend (like `backend_jvm` for Java) closes it: Maca → Rust source → `cargo
   Payoff isn't gpui-specific: it also unlocks `sqlx`, `keyring`, `ureq`,
   `lsp-types`, … — Maca as a crates.io citizen the way `--target jvm` did Maven.
 
-## 2. Language gaps, ordered by how blocking they are
+## 2. How each Rust-shaped problem is handled
 
 - **2.1 Foreign trait impl (biggest).** `impl Render for Workspace { fn render(&mut self, …) -> impl IntoElement }`. Generalize the JVM backend's `Name : Iface = { m = () => … }`: `self` first param → `&mut self`, multiple methods per block, generic trait arg (`EventEmitter ConnectEvent`). `TableDelegate` (6 methods) is the stress case.
 - **2.2 `&mut` parameters (a restriction, not a borrow checker).** One rule: *a parameter whose type is a foreign type is a non-escaping borrow* — may be passed on, may not be stored/returned/captured. Emit `&mut T`, diagnose violations. Local, syntactic.
@@ -92,30 +97,27 @@ backend (like `backend_jvm` for Java) closes it: Maca → Rust source → `cargo
 - **2.9 Memory model (the real risk).** Lower every record to `Rc<RefCell<T>>`, scalars to plain values. gpui is already `Rc`-shaped (`Entity<T>`), so idiomatic here.
 - **2.10 Deps.** `maca.toml` `[rust-dependencies]` + `[rust-patch]` → the emitted `Cargo.toml`.
 
-## 3. What you explicitly do NOT need
+## 3. What the backend deliberately does not do
 
 A borrow checker or lifetimes (§2.2 replaces it); trait *definitions* (only
 impls of foreign traits); generic bounds / associated types / HRTBs in v1; proc
 macros, `unsafe`, or a Rust parser (you emit Rust, `rustc` reads it).
 
-## 4. Acceptance program
+## 4. The program that exercises all of it
 
 `examples/gpui_counter.maca` — foreign trait impl, `&mut` threading, an escaping
 mutating closure, a generic foreign type, `impl IntoElement` return, a builder
 chain, and RC'd record mutation, in one file. If the button increments, gpql is
 mechanical from there.
 
-## 5. Phases (one per commit, `cargo test` green before advancing)
+## 5. Where the ambition stops
 
-| phase | deliverable | acceptance |
-|---|---|---|
-| **R1** ✅ | `crates/backend_rust`; `--target rust`; `main() -> int` → a Rust binary | `examples/hello.maca` runs via the Rust backend |
-| **R2** ✅ (core) | records → structs, sums → enums, lists → `Vec`, `str` → `String` | functional examples run on the Rust backend |
-| **R3** ✅ | `import rust`, `[rust-dependencies]` → generated `Cargo.toml` + `cargo` build, unresolved imports are hard errors, method-chain passthrough | a Maca program links a real crates.io crate |
-| **R4** ✅ | closures → `move` closures with `Rc` capture | a callback-taking crate API works |
-| **R5** ✅ | `Name : Trait = { … }` → `impl Trait for Name`; `&mut` non-escaping rule + diagnostic | `examples/gpui_counter.maca` compiles and runs |
-| **R6** | `spawn`/`await` → gpui executors; `@derive`; `[rust-patch]` | gpql's backend layer ports over |
+Everything above is about reaching Rust's ecosystem, and that is the whole
+remit. The backend does not try to be a second Rust: no borrow checker (§2.2's
+non-escaping rule stands in for one), no lifetimes, no trait definitions, no
+generic bounds. It emits Rust and lets `rustc` be the authority on Rust.
 
-R1–R4 are language-agnostic and worth having regardless of gpui. R5 is the one
-that actually unblocks gpql. §2.9 (RC output that satisfies the borrow checker)
-is where the backend gets hard; `Rc<RefCell<T>>` everywhere is the escape hatch.
+The one place that authority costs something is §2.9, the memory model:
+lowering every record to `Rc<RefCell<T>>` is what makes Maca's value semantics
+survive the borrow checker, and it is a real cost in a hot loop. The native C
+target exists for that case, and moving between the two is a flag.

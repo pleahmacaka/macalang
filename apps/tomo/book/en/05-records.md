@@ -129,17 +129,25 @@ sum type — the next chapter. The two compose: a sum type's variants can carry
 records, and a record's field can be a sum type. Most real data models are a
 handful of each.
 
-## Always name the type
+## Records without a name
 
-A record literal with no type name in front — `{ host = "x", port = 80 }` — is
-accepted by the parser and the type checker, which infers a structural type from
-the fields present. The native backend does **not** support it, and rejects the
-program:
+A record literal with no type name in front — `{ host = "x", port = 80 }` —
+infers its type from the fields present:
 
+```maca
+c = { host = "localhost", port = 8080 }
+info("{c.host}:{c.port}")
 ```
-expression not supported by the native backend: Record(…)
+
+Two literals with the same fields are the same type, whatever order they were
+written in, so one can be assigned to the other:
+
+```maca
+d = { port = 80, host = "example.com" }
+c = d                                    // fine — same shape
 ```
 
-So in practice every record you build gets a declared type. That is the right
-habit anyway: a named type is what a diagnostic can talk about, and the shape
-almost always appears more than once.
+Reach for it when the shape is used once, in one place: a pair of values to
+return together, a row about to be rendered. When the shape appears more than
+twice, name it. A named type is what a diagnostic can talk about, and it gives
+the shape somewhere to grow a comment.

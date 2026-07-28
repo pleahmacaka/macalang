@@ -121,11 +121,13 @@ Chapter 11 covers what a function value actually is.
 | `at(i)` | `str` | the character at `i` |
 | `is_whitespace()` `is_ascii_digit()` `is_alpha()` | `bool` | character classes |
 
-Note the asymmetry that will catch you once: **`slice` on a list takes an end,
-`substr` on a string takes a length.**
+A string has both, and they mean different things: **`slice` takes an exclusive
+end, `substr` takes a length.** The names are the same on a list and a string,
+and so are their conventions.
 
 ```maca
-"abcdef".substr(1, 3)     // "bcd"
+"abcdef".slice(1, 3)      // "bc"  — up to, not including, index 3
+"abcdef".substr(1, 3)     // "bcd" — three characters from index 1
 ```
 
 `chars`, `at` and the three character classes are what a scanner is built from —
@@ -138,14 +140,7 @@ run_digits(cs: str[], i: int) -> int =>
         : run_digits(cs, i + 1)
 ```
 
-### There is no string slice
-
-`str` has `substr`, not `slice`. Calling `slice` on a string is a compile error
-that says so:
-
-```
-UndefinedName: `str` has no method `slice`
-```
+### A misspelt method is caught, not linked
 
 Method calls are otherwise gradual — an `any` receiver reaches foreign code the
 checker cannot see — but the method set of a `str` or a `T[]` is closed, so a

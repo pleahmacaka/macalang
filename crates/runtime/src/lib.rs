@@ -1,9 +1,10 @@
 //! maca-runtime: the C runtime linked into every native binary.
 //!
-//! Phase 4: `minconsole`, heap strings + a string builder, a typed dynamic
-//! array macro, a small robust JSON parser, file/dir helpers. Perceus RC
-//! (Phase 5) will replace the current leak-on-purpose allocation; a run-once
-//! CLI never frees, which is fine until then.
+//! `minconsole`, heap strings + a string builder, typed dynamic array and map
+//! macros, a small robust JSON parser, file/dir/stdin/time helpers, and the
+//! reference-counted allocator behind Perceus — the code generator emits the
+//! dup/drop calls, so a discarded buffer returns to the free-list rather than
+//! being held until exit.
 //!
 //! Style note: defensive C in the spirit of sqlite — every allocation checked,
 //! bounds respected, no undefined behavior on malformed input (parse errors
@@ -1113,8 +1114,9 @@ int64_t maca_cancel_demo(int64_t workers);
 
 /* colorblind async: `spawn f(x)` runs `f` concurrently and returns a future;
  * `await fut` blocks until it resolves. A task is an ordinary `int64 -> int64`
- * function — no `async` coloring, no ABI change. (POSIX threads back the model
- * for now; stackful fibers + io_uring are the eventual target.) */
+ * function — no `async` coloring, no ABI change. POSIX threads back the model:
+ * a suspension point is a real thread boundary, which keeps the runtime small
+ * enough to read and costs a thread per task. */
 typedef int64_t (*maca_task_fn)(int64_t);
 typedef struct maca_future maca_future;
 maca_future* maca_spawn(maca_task_fn fn, int64_t arg);
@@ -1124,9 +1126,10 @@ void maca_sleep_ms(int64_t ms);
 #endif
 "##;
 
-/// `maca_async.c` — colorblind-async slice: a bounded worker pool (stackful
-/// fibers + io_uring are the eventual target; POSIX threads carry the model for
-/// now) and a cancellation token. Structured: all workers join before return.
+/// `maca_async.c` — the colorblind-async slice: a bounded POSIX-thread worker
+/// pool and a cancellation token. Structured: all workers join before return.
+/// A suspension point is a real thread boundary, which keeps the runtime small
+/// enough to read at the cost of a thread per task.
 pub const ASYNC_C: &str = r##"#include "maca_async.h"
 #include "maca_runtime.h"
 #include <pthread.h>

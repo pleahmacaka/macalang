@@ -1,9 +1,8 @@
 # Bootstrapping Maca in Maca
 
-Maca's long-term goal is to compile itself. The Rust workspace is the
-**stage-0 bootstrap** — frozen in scope, kept only as capable as it must be to
-compile the stage-1 compiler. New compiler work goes into `selfhost/`, written
-in Maca.
+Maca compiles itself, in stages. The Rust workspace is the **stage-0
+bootstrap** — frozen in scope, kept only as capable as it must be to compile
+the stage-1 compiler. Compiler work goes into `selfhost/`, written in Maca.
 
 ```
 stage-0 (Rust, crates/*)  ──compiles──▶  stage-1 (Maca, selfhost/*.maca)
@@ -12,7 +11,7 @@ stage-0 (Rust, crates/*)  ──compiles──▶  stage-1 (Maca, selfhost/*.mac
                                                              (must be identical)
 ```
 
-Self-hosting is reached when a stage-1 binary built by stage-0 rebuilds itself
+The bootstrap closes when a stage-1 binary built by stage-0 rebuilds itself
 byte-for-byte:
 
 ```sh
@@ -34,9 +33,9 @@ cmp maca1 maca2                             # fixed point ⇒ self-hosted
 | `emit_rust.maca` | 1 | a Rust emitter over the same AST → Rust source (the `--target rust` back end, in Maca) |
 | `main.maca` | 1 | driver entry; lexes + parses + checks + emits samples through both back ends |
 
-## What's proven today
+## How the gate works
 
-The stage-1 **front-end compiles and runs as a native binary, and now emits
+The stage-1 **front-end compiles and runs as a native binary, and emits
 through two back ends written in Maca** (`emit_c.maca` and `emit_rust.maca`).
 The gate, `crates/driver/tests/selfhost.rs`, requires that
 
@@ -47,7 +46,7 @@ The gate, `crates/driver/tests/selfhost.rs`, requires that
    *emitted* program **two ways** — the C output with `cc`, the Rust output with
    `rustc` — and runs both.
 
-The parsed slice has grown well past a toy. stage-1 now handles:
+The parsed slice is well past a toy. stage-1 handles:
 
 - the full primitive expression language — `int`/`float`(`1.5`)/`str`/`bool`
   literals; `+ - * / %`, comparison, `&& ||` (with a precedence ladder), unary
@@ -78,51 +77,55 @@ the rest of the language now shares: the **`std/str` scan primitives**
 forward declaration that breaks the struct/array definition cycle). Every stage-1
 feature since is added in Maca and gated by this dual-backend compile+run.
 
-## Roadmap
+## What stage-1 compiles
 
-- [x] `token.maca`, `lexer.maca`, `main.maca` — parse + typecheck clean
-- [x] `std/str` primitives implemented for the C backend (see `std/README.md`)
-- [x] `parser.maca` — recursive-descent over the token stream
-- [x] recursive AST (`ast.maca`) — the stage-0 backend lowers recursive records
-- [x] stage-1 front-end builds + runs natively (the `selfhost.rs` run gate)
-- [x] `check.maca` — a coarse type checker (int/str/float, gradual `any`,
-      mismatch counting); grows into full HM generalization + row unification
-- [x] `emit_c.maca` — a C emitter over the AST slice (literals, idents, calls,
-      binary ops, whole functions, and a module → a complete C translation unit)
-- [x] `parse_fn` / `parse_module` — function definitions and multi-function
-      modules (two-char operators, parameter lists, arrow bodies)
-- [x] multi-file builds — `maca build selfhost/main.maca` resolves the local
-      `import selfhost/…` statements and inlines the modules in dependency
-      order (the run gate builds from the real entry point, no concatenation)
-- [x] higher-order parameters — a function passed by name (`run_end(cs, i,
-      is_alpha)`) is wrapped in a closure, and an unannotated param that is
-      called is typed as a function value; `lexer.maca` uses the single
-      predicate-taking `run_end` again
-- [x] a **second back end in Maca** — `emit_rust.maca` (the `--target rust`
-      path); the capstone is compiled and run through both `cc` and `rustc`
-- [x] type-threaded signatures — parameter/return/local types reach the emitted
-      C/Rust (`str`/`float`/`bool`/records)
-- [x] records — `typedef struct`/`struct`, literals, field access
-- [x] nullary sum types + `match` — `typedef enum`/`enum` + `use`, C ternary
-      chain / native Rust `match`
-- [x] strings — `==`/`!=` (`strcmp`), `++` (`maca_cat`/`format!`), `str(int)`,
-      `.length()`/`.at(i)`, `info`/`print` builtins
-- [x] `import` statements skipped in the module parser
-- [ ] **arrays/lists** — `T[]`, list literals, `.get`/`.push`/`.map` (needs a
-      dynamic-array runtime in the emitted C)
-- [ ] **string interpolation** — `"{x}"` splices (needs per-splice type
-      inference to pick the right formatter; `++` + `str` is the desugared form
-      that already works)
-- [ ] **payload sum variants** — `Circle(int)` (tagged unions in C)
-- [ ] the checker grown past the coarse int/str model (full HM generalization,
-      row unification — the rest of `maca-core`, in Maca)
-- [ ] two-stage fixed-point build in CI (`cmp maca1 maca2`)
+Each entry below is exercised by `crates/driver/tests/selfhost.rs`, which
+compiles the emitted program with both `cc` and `rustc` and runs it.
+
+- **the lexer and parser** — `token.maca`, `lexer.maca`, `parser.maca`: the
+  character scanner (two-char operators, float literals), recursive descent
+  with a precedence ladder, function/record/sum declarations, and `import`
+  statements (skipped — the driver inlines modules)
+- **the recursive AST** — `ast.maca`, whose `Expr { children: Expr[] }` is what
+  drove recursive record types into the stage-0 backend
+- **a coarse type checker** — `check.maca`: `int`/`str`/`float`, gradual `any`,
+  mismatch counting
+- **two back ends** — `emit_c.maca` and `emit_rust.maca`, each turning a module
+  into a complete translation unit
+- **multi-file builds** — the gate builds from `selfhost/main.maca` and the
+  driver resolves the `import` graph; there is no concatenation step
+- **higher-order parameters** — a function passed by name is wrapped in a
+  closure, and an unannotated parameter that is called is typed as a function
+  value, which is how `lexer.maca` shares one predicate-taking `run_end`
+- **type-threaded signatures** — a parameter, return or local type reaches the
+  emitted C and Rust
+- **records** — `typedef struct` / `struct`, literals, field access
+- **nullary sum types and `match`** — `typedef enum` / `enum` + `use`, lowered
+  to a C ternary chain and a native Rust `match`
+- **strings** — `==`/`!=` via `strcmp`, `++` via `maca_cat`/`format!`,
+  `str(int)`, `.length()`, `.at(i)`
+- **dynamic arrays** — `T[]` parameters and returns, list literals, `.get(i)`
+  and `.count()`, over a heap `MacaList` in C and a `Vec<i64>` in Rust
+
+## Where stage-1 stops, and why that is the shape
+
+Stage-1 is a compiler for the subset of Maca that stage-1 is written in. That
+is not a limitation to be worked around; it is the loop the bootstrap runs on.
+Each feature is added to `selfhost/` when the self-hosted compiler needs it to
+compile itself, and the dual-backend compile-and-run gate is what says it
+arrived.
+
+So the boundary moves by writing Maca, not by planning. Today it sits at string
+interpolation (`"{x}"`; the desugared `++` and `str` already work), at
+payload-carrying sum variants (`Circle(int)`, which needs tagged unions in C),
+and at the type system beyond the coarse model in `check.maca` — full HM
+generalization and row unification, which live in `maca-core` and have to be
+written once more, in Maca, before stage-0 can be retired.
 
 ## Why the Rust side stays minimal
 
 Every feature added to the Rust compiler is a feature the Maca compiler must
-also implement to self-host. Keeping stage-0 small keeps the bootstrap
-tractable: the type-system hardening that would otherwise grow `maca-core`
-(full HM over inferred bindings, real row unification, generic monomorphization)
-is deferred into `selfhost/check.maca`, where it only has to be written once —
-in Maca.
+also implement to self-host. That is the whole argument for keeping stage-0
+small: type-system work that would otherwise grow `maca-core` — full HM over
+inferred bindings, row unification, generic monomorphization — belongs in
+`selfhost/check.maca`, where it is written once, in Maca, instead of twice.

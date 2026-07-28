@@ -53,18 +53,32 @@ colorblind async, config mode, the multi-target backends). It is the primary
 content Tomo renders, and doubles as the i18n showcase: every chapter exists in
 both `en/` and `ko/`.
 
-## Roadmap
+## What it renders
 
-- [x] Markdown renderer in Maca (headings, lists, code, paragraphs, inline)
-- [x] inline links `[text](url)`
-- [x] heading anchors + a generated table of contents
-- [x] i18n page shell with a language switcher
-- [x] paragraph joining (soft-wrapped lines become one `<p>`)
-- [x] file-I/O book builder — reads `book.toml` + `book/<lang>/*.md`, writes `site/<lang>/*.html`
-- [x] `book.toml` parsing (including multi-line arrays) and chapter ordering
-- [x] translation-fallback to the default language for missing chapters
-- [x] blockquotes (multi-line quotes join) and nested list items
-- [ ] tables
-- [x] a self-contained stylesheet (light/dark) and chapter-to-chapter navigation
-- [x] a per-language index page (chapters titled from their own headings)
-- [ ] search
+Markdown → HTML, all of it written in Maca:
+
+- headings with anchors, and a table of contents generated from them
+- paragraphs that join soft-wrapped source lines, and blockquotes that do the
+  same across a run of `>` lines
+- lists (ordered, unordered, one level of nesting) and tables — the reference
+  appendices are mostly tables
+- fenced code with its language carried through to a `language-…` class
+- inline `**bold**`, `` `code` ``, and `[links](to.md)` rewritten to the page
+  that was produced
+
+and, around the text:
+
+- a book builder that reads `book.toml` plus `book/<lang>/*.md` and writes
+  `site/<lang>/*.html`, including multi-line arrays and chapter ordering
+- an i18n page shell with a language switcher, and per-language index pages
+  titled from each chapter's own heading
+- translation fallback: a chapter that exists only in the default language is
+  served in the reader's language shell rather than 404-ing
+- a sidebar with chapter-to-chapter navigation, and search that works from a
+  `file://` URL because the index ships as a `<script>` rather than a fetch
+- a stylesheet generated from the utility classes the program writes, so the
+  built site needs no network and no CSS file
+
+The markup is built with Maca's element syntax and the styles are generated
+(handbook chapter 15), so there is exactly one line of hand-written CSS in the
+whole program.

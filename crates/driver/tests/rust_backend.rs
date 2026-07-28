@@ -204,3 +204,54 @@ fn rust_dependencies_drive_a_cargo_build() {
         );
     }
 }
+
+/// Colorblind async reaches the Rust target too.
+///
+/// `spawn e` becomes a `JoinHandle` and `await h` joins it — the same shape the
+/// C runtime gives it with pthreads. There is still no `async` keyword and no
+/// function colour: a function that spawns is an ordinary function.
+#[test]
+fn spawn_and_await_run_via_rust() {
+    if !have("rustc") {
+        eprintln!("skipping: no rustc on PATH");
+        return;
+    }
+    let (out, code) = build_and_run(
+        "async",
+        "work(n: int) -> int => n * 2\n\n\
+         main() -> int {\n\
+        \x20   a = spawn work(21)\n\
+        \x20   b = spawn work(10)\n\
+        \x20   info(\"{await a} {await b}\")\n\
+        \x20   0\n\
+         }\n",
+    );
+    assert!(out.contains("42 20"), "spawn/await wrong: {out}");
+    assert_eq!(code, Some(0));
+}
+
+/// A record literal with no type name gets a struct synthesized for its shape,
+/// on this target as on the native one.
+#[test]
+fn anonymous_records_run_via_rust() {
+    if !have("rustc") {
+        eprintln!("skipping: no rustc on PATH");
+        return;
+    }
+    let (out, code) = build_and_run(
+        "anon",
+        "main() -> int {\n\
+        \x20   c = { host = \"localhost\", port = 8080 }\n\
+        \x20   info(\"{c.host}:{c.port}\")\n\
+        \x20   // same shape, other order — the same type\n\
+        \x20   d = { port = 80, host = \"example.com\" }\n\
+        \x20   info(\"{d.host}:{d.port}\")\n\
+        \x20   0\n\
+         }\n",
+    );
+    assert!(
+        out.contains("localhost:8080") && out.contains("example.com:80"),
+        "anonymous records wrong: {out}"
+    );
+    assert_eq!(code, Some(0));
+}

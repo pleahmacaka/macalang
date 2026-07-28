@@ -52,17 +52,15 @@ Chapters build on each other, so front to back is the intended path.
 - **The appendices** are reference: keywords, operators, the standard library,
   and every diagnostic.
 
-## A note on honesty
+## Everything here has been run
 
-Maca is young, and this book says so where it matters. Chapter 4 describes a
-memory model whose compile-time half is not implemented yet. Chapter 8 documents
-a method that fails at link time instead of type-checking. Appendix C lists what
-the standard library does not have.
+The repository holds `examples/handbook.maca`: this book's claims, as one
+program the test suite executes. The reference appendices are checked against
+the compiler itself — the keyword list against the lexer, the diagnostics
+against the checker, the method tables against a program that calls every name
+in them.
 
-That is deliberate. Everything runnable in this book has been run — the
-repository holds `examples/handbook.maca`, which contains the book's claims as
-one program that the test suite executes. Writing this handbook found six real
-bugs in the compiler, because prose that reads well is not the same as prose
-that is true.
+That is not ceremony. Writing this handbook found six real bugs in the compiler,
+because prose that reads well is not the same as prose that is true.
 
 Ready? [Let's get set up.](01-installing.md)

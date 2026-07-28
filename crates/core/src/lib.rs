@@ -1,6 +1,6 @@
 //! maca-core: name/type/effect checking over the parser's AST.
 //!
-//! Pragmatic gradual checker (see docs/PLAN.md P3): unification-based inference
+//! Pragmatic gradual checker (see docs/SPEC.md): unification-based inference
 //! with an `any` escape hatch for unknown stdlib/foreign values, made *strict*
 //! on the four diagnostics the acceptance requires:
 //!   * type mismatch (annotated return / `let x: T =`),
@@ -10,8 +10,10 @@
 //!
 //! Function signatures are generalized into rank-1 type schemes and
 //! instantiated per call site, so generics like `id(x: a) -> a` are usable at
-//! many types. Full HM generalization over inferred (un-annotated) bindings and
-//! real row unification are future hardening.
+//! many types. Inference over un-annotated bindings stays monomorphic, and
+//! effect rows unify by set rather than by row variable — both bought
+//! deliberately, because the strictness this checker owes its users is on the
+//! diagnostics above, and rank-1 plus gradual `any` reaches them.
 
 mod ty;
 

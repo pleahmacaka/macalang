@@ -1,4 +1,4 @@
-//! Phase 5 memory tests: the reuse free-list and valgrind-cleanliness. Compiles
+//! Memory tests: the reuse free-list and valgrind-cleanliness. Compiles
 //! small C drivers against the runtime via `zig cc` in WSL; skips without it.
 
 use std::path::{Path, PathBuf};

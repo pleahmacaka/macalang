@@ -84,9 +84,15 @@ the program dictates the answer: a browser, a microcontroller, a Java API, a
 crate that would take a month to port. The useful property is not that Maca has
 many backends but that moving between them costs a flag rather than a rewrite.
 
-## What is not here
+## Where the list stops
 
-There is no BEAM target, despite Maca's concurrency model being a natural fit
-for one. Colorblind async (chapter 13) is implemented on pthreads in the C
-runtime; an Erlang-style backend would be a genuinely different lowering, and
-nobody has written it.
+Every target here earns its place by reaching something: a browser, a
+microcontroller, the JVM's libraries, crates.io. That is the whole rule, and it
+is why the list is the length it is.
+
+A BEAM target is the one people ask about, because Maca's concurrency model
+looks like a fit. It isn't on the list, because it would be the first backend
+added for elegance rather than reach — colorblind async (chapter 13) already
+runs on pthreads in the C runtime, and an Erlang-style lowering would be a
+second, genuinely different implementation of something that works. Reach is a
+reason. Symmetry is not.

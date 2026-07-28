@@ -1,6 +1,6 @@
-//! Maca AST. Span-free on purpose: Phase 2 checks structural equality for the
-//! parse→print→parse roundtrip, so nodes carry no source positions (parse
-//! errors still report token spans). Spans get added when Phase 3 needs them.
+//! Maca AST. Span-free on purpose: the parse→print→parse roundtrip test checks
+//! structural equality, so nodes carry no source positions. Parse errors still
+//! report token spans, which is where a reader needs them.
 
 pub type Ident = String;
 

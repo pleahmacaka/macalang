@@ -109,7 +109,7 @@ listing sources, no build graph to maintain. The self-hosted compiler is built
 exactly this way — `maca build selfhost/main.maca` compiles the whole front end
 from its import list.
 
-## What is deliberately missing
+## Where the module system stops
 
 No visibility modifiers: everything a module defines is importable. No
 namespacing beyond the file. No versioned module registry.

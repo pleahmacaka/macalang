@@ -54,7 +54,7 @@ mk_pargs(aitems: Expr[], anext: int) -> PArgs =>
 
 // `name(p [: T], …) -> R <body>` — a top-level function. The body is either an
 // arrow expression (`=> e`) or a brace block (`{ stmt* }`). Parameter types are
-// skipped for now (the AST carries params as ident nodes).
+// carried on the ident nodes the AST uses for parameters.
 parse_fn(ts: Token[], i: int) -> PStmt {
     name = ts.get(i).text
     pp = parse_params(ts, i + 2, [])   // i+1 is '(' ; params start at i+2

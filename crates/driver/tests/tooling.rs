@@ -1,4 +1,4 @@
-//! Phase 11 tooling: fmt (idempotent, 4-space, block breaks), lint, and
+//! Tooling: fmt (idempotent, 4-space, block breaks), lint, and
 //! `[scripts]` aliases. Pure — no WSL/toolchain needed.
 
 use std::process::Command;

@@ -111,6 +111,7 @@ evens = [1, 2, 3, 4].filter(is_even)
 | `starts_with(s)` `ends_with(s)` | `bool` | |
 | `replace(from, to)` | `str` | 모든 occurrence |
 | `substr(start, len)` | `str` | 끝이 아니라 **길이** |
+| `slice(from, to)` | `str` | `to`는 **제외**, 리스트와 동일 |
 | `index_of(s)` | `int` | 없으면 `-1` |
 | `repeat(n)` | `str` | |
 | `pad_start(w, p)` `pad_end(w, p)` | `str` | `p`의 기본값은 공백 |
@@ -119,11 +120,12 @@ evens = [1, 2, 3, 4].filter(is_even)
 | `at(i)` | `str` | `i` 위치의 글자 |
 | `is_whitespace()` `is_ascii_digit()` `is_alpha()` | `bool` | 문자 분류 |
 
-한 번은 걸려 넘어질 비대칭을 눈여겨보세요. **리스트의 `slice`는 끝을 받고,
-문자열의 `substr`는 길이를 받습니다.**
+문자열에는 둘 다 있고, 서로 다른 뜻입니다. **`slice`는 제외되는 끝을 받고,
+`substr`는 길이를 받습니다.** 이름이 리스트와 같듯 규약도 같습니다.
 
 ```maca
-"abcdef".substr(1, 3)     // "bcd"
+"abcdef".slice(1, 3)      // "bc"  — 인덱스 3 앞까지
+"abcdef".substr(1, 3)     // "bcd" — 인덱스 1부터 세 글자
 ```
 
 `chars`, `at`, 그리고 세 가지 문자 분류가 스캐너를 만드는 재료입니다.
@@ -136,14 +138,7 @@ run_digits(cs: str[], i: int) -> int =>
         : run_digits(cs, i + 1)
 ```
 
-### 문자열에는 slice가 없습니다
-
-`str`에는 `slice`가 아니라 `substr`가 있습니다. 문자열에 `slice`를 호출하면
-그렇다고 말해 주는 컴파일 에러가 납니다.
-
-```
-UndefinedName: `str` has no method `slice`
-```
+### 오타 난 메서드는 링커가 아니라 검사기가 잡습니다
 
 메서드 호출은 그 외에는 점진적입니다. `any` 수신자는 검사기가 볼 수 없는 외부
 코드에 닿으니까요. 하지만 `str`나 `T[]`의 메서드 집합은 닫혀 있으므로, 거기에

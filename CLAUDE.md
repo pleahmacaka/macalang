@@ -2,18 +2,18 @@
 
 A single typed language for **programs and infrastructure config**. General
 programs compile to native (C-tier binary), JS, JVM, Rust, or freestanding C;
-infra config compiles to Nix. (There is no BEAM backend — the docs used to
-claim one.) The compiler is Rust + chumsky; everything a user writes is `.maca` or
-`maca.toml`.
+infra config compiles to Nix. There is no BEAM backend, by design — see the
+targets chapter. The compiler is Rust (hand-written lexer + recursive-descent
+parser, no parser library); everything a user writes is `.maca` or `maca.toml`.
 
-`docs/PLAN.md` is the authoritative plan and spec summary. Read it before
-starting work — it holds the language cheatsheet and the phase gates.
+`docs/SPEC.md` is the authoritative spec. Read it before starting work — it
+holds the language cheatsheet and the effect rows.
 
 ## Commands
 
 ```
 cargo build            # build the whole workspace
-cargo test             # run all tests (the phase gate)
+cargo test             # run all tests
 cargo run -p maca-driver -- --version    # the maca CLI
 cargo test -p maca-lexer                 # test one crate
 ```
@@ -33,7 +33,7 @@ Virtual workspace; members are `crates/*`.
 | crate | role |
 |---|---|
 | `maca-lexer` | significant-newline tokenizer |
-| `maca-parser` | tokens → AST (chumsky) |
+| `maca-parser` | tokens → AST (hand-written recursive descent + Pratt) |
 | `maca-core` | typed core IR + HM/gradual/row type & effect checker |
 | `maca-backend-c` | core IR → C (default native path) |
 | `maca-backend-llvm` | core IR → LLVM IR (**SIMD only**) |
@@ -72,7 +72,7 @@ FFI (`import c "sqlite3.h"` / `import py "…"`) links the real library: through
 (`-lsqlite3`, `python3-config`), so FFI builds on a plain Linux dev machine
 (`examples/ffi_sqlite.maca` iterates a real result set).
 
-## Self-hosting (current direction)
+## Self-hosting
 
 Rust (`crates/*`) is the **frozen stage-0 bootstrap** — keep it minimal. New
 compiler work is written in Maca under `selfhost/` and gated by the stage-0
@@ -109,24 +109,25 @@ definition cycle resolves — `MACA_ARRAY_STRUCT` before the body,
 
 ## How to work here
 
-- **Bootstrap-first, test-gated.** Follow the phases in `docs/PLAN.md` in order.
-  Never advance past a phase until its acceptance passes and `cargo test` is
-  green. One phase (or acceptance sub-bullet) per commit.
+- **Test-gated.** Nothing lands until `cargo test` is green across the
+  workspace. A change that can be observed at run time gets a test that runs it;
+  documentation that makes a runnable claim gets one too (`examples/handbook.maca`
+  is the book's claims as an executable program).
 - **Native is hybrid.** C backend is the default for everything; the LLVM path
   exists **only** for the SIMD span. Both link over the C ABI.
 - **Golden examples are the regression set.** The code blocks in the spec become
   `examples/*.maca` verbatim; `examples/bad/*.maca` must be rejected with the
   right diagnostic.
-- The spec wins ties. If a design must change, update `docs/PLAN.md` and the
-  affected phase together.
+- The spec wins ties. If a design must change, update `docs/SPEC.md` and the
+  code together.
 
 ## Gotchas
 
 - **Native/Nix builds go through WSL (NixOS).** Windows side has no `zig`/`nix`;
-  WSL is NixOS with `nix`/`nix-instantiate` on PATH. Phase 4 gets a C compiler
-  via `wsl nix shell nixpkgs#zig -c zig cc ...`; Phase 8 uses `wsl nix-instantiate`.
-  Paths cross the boundary: a Windows path `C:\x` is `/mnt/c/x` in WSL (translate
-  when shelling out).
+  WSL is NixOS with `nix`/`nix-instantiate` on PATH. The native path gets a C
+  compiler via `wsl nix shell nixpkgs#zig -c zig cc ...`; config mode uses
+  `wsl nix-instantiate`. Paths cross the boundary: a Windows path `C:\x` is
+  `/mnt/c/x` in WSL (translate when shelling out).
 - **Maca surface syntax** (matters when writing `.maca` fixtures): no `fn`, no
   `type`, no `Result`/`Ok`, no `<>` generics, **no `async` keyword** (async is a
   colorblind, inferred effect — see below). Field `:` = type, `=` = value.

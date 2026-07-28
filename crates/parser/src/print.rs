@@ -1,6 +1,6 @@
 //! Canonical pretty-printer. Output is not meant to match the original source
-//! byte-for-byte; it only has to re-parse to the same AST (the Phase 2
-//! roundtrip). Compound expressions are parenthesized so precedence survives —
+//! byte-for-byte; it only has to re-parse to the same AST (the roundtrip test).
+//! Compound expressions are parenthesized so precedence survives —
 //! grouping `(e)` parses back to `e`, so extra parens are harmless.
 
 use crate::ast::*;

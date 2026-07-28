@@ -1,20 +1,21 @@
-# Maca — build plan & living spec
+# Maca — the specification
 
 > One typed language for programs **and** infrastructure config, sharing one
 > syntax and one type system. General programs compile to native (C-tier
-> binary), BEAM, or JS; infra config compiles to Nix.
+> binary), JS, the JVM, Rust, or freestanding C; infra config compiles to Nix.
 
-This file is the authoritative plan. It tracks the spec and the phase gates.
-When a design decision changes, update this file and the affected phase; the
-spec wins ties.
+This file is the authoritative description of the language. When a design
+decision changes, this file and the code change together; the spec wins ties.
 
 ## Architecture
 
 ```
-                          ┌─▶ gleam ─▶ BEAM      concurrency / services
-.maca ─▶ maca-compiler ───┼─▶ js    ─▶ browser   web / UI
-   (Rust / chumsky)       ├─▶ C/LLVM ─▶ binary    CLI (C-tier)
-                          └─▶ nix   ─▶ .nix       config
+                          ┌─▶ C/LLVM ─▶ binary    CLI (C-tier), the default
+.maca ─▶ maca-compiler ───┼─▶ js     ─▶ browser   web / UI
+                          ├─▶ java   ─▶ JVM       Minecraft / Maven interop
+                          ├─▶ rust   ─▶ crate     crates.io interop
+                          ├─▶ C      ─▶ MCU       freestanding, Cortex-M / RISC-V
+                          └─▶ nix    ─▶ .nix      config
 ```
 
 - **Shared:** frontend · type checker · effect checker · core IR
@@ -28,7 +29,7 @@ spec wins ties.
 | | General mode | Config mode |
 |---|---|---|
 | character | imperative/functional, effects | declarative, idempotent, pure `<>` |
-| backend | native · BEAM · JS | Nix |
+| backend | native · JS · JVM · Rust · embedded | Nix |
 | entry | `main` | root module (= configuration.nix) |
 | run | runtime execution | Nix eval → derivation |
 
@@ -50,8 +51,8 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   `async` effect is inferred, never written. `spawn f(x)` runs `f` concurrently
   and yields a `Future`; `await fut` suspends until it resolves. `sleep_ms(ms)`
   is a suspension point. A task is an ordinary function — no coloring, no ABI
-  change. (Native: POSIX-thread-backed for now; stackful fibers + io_uring are
-  the eventual target. Playground interp runs it eagerly.)
+  change. (Native: POSIX-thread-backed — a suspension point is a real thread
+  boundary. The playground interpreter runs it eagerly.)
 - Generics: lowercase type vars, applied by juxtaposition (`Map k v`), postfix
   `T[]` / `T?`. Nullable `T?` = `T | None`.
 - **Closures / first-class functions.** A lambda `v => …` captures its enclosing
@@ -141,8 +142,8 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   compiled by this backend, carrying its styles and the WebAssembly-bridge
   runtime inline via `import css`/`import js` raw-string blocks.
 
-Full symbol table, EBNF, stdlib, and examples live in the build brief and will
-be mirrored into `llms.txt` in Phase 11.
+The standard library surface is appendix C of the handbook
+(`apps/tomo/book/en/a3-stdlib.md`), and the examples are `examples/*.maca`.
 
 ## Status
 
@@ -155,10 +156,10 @@ backends: native **C** (default), **LLVM** (SIMD span), **Nix** (config mode),
 browser playground authored in Maca itself (`playground/playground.maca`,
 compiled by the JS backend) plus the wasm front-end (`crates/wasm`).
 
-Self-hosting is the current direction: the Rust workspace is the frozen
-**stage-0 bootstrap**; new compiler work is written in Maca under `selfhost/`
-and gated by the stage-0 front-end (see `docs/BOOTSTRAP.md`). Prefer adding to
-`selfhost/*.maca` over growing the Rust crates.
+The Rust workspace is the frozen **stage-0 bootstrap**; compiler work is
+written in Maca under `selfhost/` and gated by the stage-0 front-end (see
+`docs/BOOTSTRAP.md`). Prefer adding to `selfhost/*.maca` over growing the Rust
+crates.
 
 ## Golden examples (regression set)
 

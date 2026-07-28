@@ -1,4 +1,4 @@
-// A gpui counter in Maca -- the R5 target for the Rust source backend.
+// A gpui counter in Maca -- what the Rust source backend reaches for.
 //
 // Build with `maca build --target rust examples/gpui_counter.maca`, alongside a
 // maca.toml declaring the crate:
@@ -8,17 +8,18 @@
 //
 // What the Rust backend lowers today (verified against a local stand-in trait
 // in crates/driver/tests/rust_backend.rs::foreign_trait_impl_runs):
-//   * `Counter : Render = { ... }`     -> `impl Render for Counter { ... }`  (R5)
+//   * `Counter : Render = { ... }`     -> `impl Render for Counter { ... }`
 //   * a leading `self` parameter        -> `&mut self`                        (2.1)
 //   * a mutating method (`count = ...`) -> returns `()` (an event handler)
-//   * `n => n + 1`                       -> a `move |n| ...` closure           (R4)
+//   * `n => n + 1`                       -> a `move |n| ...` closure
 //   * `div().flex().child(x)`            -> method-chain passthrough
 //   * `Duration.from_secs(5)` etc.       -> `Type::assoc(...)` without `::`
 //
-// The one piece still pending before this compiles against real gpui is the
-// `render` return type: gpui wants `-> impl IntoElement`, which the backend
-// can't infer from the body yet (2.5 -- emit `-> AnyElement` + `.into_any_element()`).
-// That, plus `cx.listener(...)` / `cx.notify()` executor wiring, is R6.
+// Against real gpui the `render` signature needs writing out: gpui wants
+// `-> impl IntoElement`, and the backend does not read gpui's source, so a
+// foreign return type is an annotation rather than something inferred from the
+// body. That is the same bargain every foreign call makes -- rustc is the
+// authority on Rust, and Maca does not keep a second copy of its type rules.
 
 import rust "gpui::div"
 import rust "gpui::Render"
