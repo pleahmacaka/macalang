@@ -66,6 +66,44 @@ const IO_METHODS: &[&str] = &["read", "write", "exists", "remove", "append", "cr
 /// Prelude functions that carry the `async` effect (suspension points).
 const ASYNC_FNS: &[&str] = &["sleep_ms"];
 
+/// Every method a `str` receiver accepts. Not a wish-list: `crates/core/tests`
+/// compiles a program using all of them, so a name here that the back end can't
+/// lower fails the build — and one it *can* lower that is missing here would be
+/// rejected as a typo. Note the absences: `str` has `substr`, not `slice`, and
+/// no `get` or `join`.
+pub const STR_METHODS: &[&str] = &[
+    "length",
+    "split",
+    "trim",
+    "upper",
+    "lower",
+    "contains",
+    "starts_with",
+    "ends_with",
+    "replace",
+    "substr",
+    "index_of",
+    "repeat",
+    "pad_start",
+    "pad_end",
+    "pad_center",
+    "chars",
+    "at",
+    "is_whitespace",
+    "is_ascii_digit",
+    "is_alpha",
+];
+
+/// Every method a `T[]` receiver accepts, gated the same way.
+///
+/// Some are refined further by the element type — `join` wants `str[]`, `sum`
+/// wants numbers — and the back end reports that. This list is about catching a
+/// misspelt name, which is a different job from checking the element type.
+pub const LIST_METHODS: &[&str] = &[
+    "map", "filter", "reduce", "fold", "sort", "reverse", "push", "pop", "slice", "contains",
+    "index_of", "sum", "min", "max", "first", "last", "get", "length", "parallel", "join",
+];
+
 /// Top-level NixOS / home-manager option namespaces we recognize.
 const NIXOS_ROOTS: &[&str] = &[
     "networking",
@@ -705,6 +743,12 @@ impl Checker {
                         format!("call to undefined function `{name}`"),
                     );
                 }
+                // UFCS on a known primitive receiver: a method outside the
+                // closed set is a typo, not gradual foreign code.
+                if let Expr::Field { base, name } = &**callee {
+                    let bt = self.infer(env, base);
+                    self.check_method(&bt, name);
+                }
                 let ct = self.infer(env, callee);
                 let ats: Vec<Ty> = args.iter().map(|a| self.infer_arg(env, a)).collect();
                 match self.inf.resolve(&ct) {
@@ -920,6 +964,46 @@ impl Checker {
             fields: map,
             open: true,
         }
+    }
+
+    /// A UFCS method call on a receiver whose type we actually know.
+    ///
+    /// Method calls are gradual on purpose — `any` receivers reach foreign and
+    /// unknown-stdlib code, and rejecting those would make the escape hatch
+    /// useless. But when the receiver is a `str` or a `T[]`, the set of methods
+    /// is closed and a name outside it is a typo. It used to sail through the
+    /// checker and die in the linker:
+    ///
+    /// ```text
+    /// undefined reference to `slice'
+    /// ```
+    ///
+    /// which is a message about a C symbol, for a Maca programmer who wrote
+    /// `s.slice(1, 3)` and wanted `substr`.
+    fn check_method(&mut self, recv: &Ty, name: &str) {
+        if self.mode != Mode::Program || self.gradual_foreign {
+            return;
+        }
+        // a user-defined function of the same name is a legitimate UFCS target
+        if self.globals.contains_key(name) {
+            return;
+        }
+        let (known, what) = match self.inf.resolve(recv) {
+            Ty::Str => (STR_METHODS, "str"),
+            Ty::Con(n, _) if n == "Array" => (LIST_METHODS, "list"),
+            _ => return,
+        };
+        if known.contains(&name) {
+            return;
+        }
+        let near = nearest(name, known);
+        self.diag(
+            DiagKind::UndefinedName,
+            match near {
+                Some(alt) => format!("`{what}` has no method `{name}` — did you mean `{alt}`?"),
+                None => format!("`{what}` has no method `{name}`"),
+            },
+        );
     }
 
     fn field_ty(&self, base: &Ty, name: &str) -> Ty {
@@ -1219,4 +1303,37 @@ fn root_ident(e: &Expr) -> Option<String> {
         Expr::Field { base, .. } => root_ident(base),
         _ => None,
     }
+}
+
+/// The closest name in `pool` to `name`, if one is close enough to suggest.
+///
+/// Plain edit distance, capped so a wrong guess isn't offered: "did you mean"
+/// is only useful when it is usually right.
+fn nearest<'a>(name: &str, pool: &[&'a str]) -> Option<&'a str> {
+    let limit = match name.len() {
+        0..=3 => 1,
+        4..=7 => 2,
+        _ => 3,
+    };
+    pool.iter()
+        .map(|c| (edit_distance(name, c), *c))
+        .filter(|(d, _)| *d <= limit)
+        .min_by_key(|(d, c)| (*d, c.len()))
+        .map(|(_, c)| c)
+}
+
+/// Levenshtein distance, two rows at a time.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut cur = vec![0usize; b.len() + 1];
+    for (i, ca) in a.iter().enumerate() {
+        cur[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let sub = prev[j] + usize::from(ca != cb);
+            cur[j + 1] = sub.min(prev[j + 1] + 1).min(cur[j] + 1);
+        }
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    prev[b.len()]
 }

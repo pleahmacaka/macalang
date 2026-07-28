@@ -123,10 +123,11 @@ fn the_single_line_if_rule_does_not_fire_on_ternaries_or_comments() {
     assert!(ok, "no rule should fire here:\n{report}");
 }
 
-/// Maca linting Maca. Run with no argument the linter checks the repository's
-/// own sources — `examples/`, `selfhost/`, `tools/`, `std/` — so this asserts
-/// the whole tree stays clean, not just the tool's own directory. A style the
-/// codebase doesn't actually hold to isn't a style.
+/// Maca linting Maca. Run with no argument the linter checks every directory
+/// holding Maca source — `examples/`, `selfhost/`, `tools/`, `std/`, `apps/`
+/// and `playground/` — so this asserts the whole tree stays clean. A style the
+/// codebase doesn't actually hold to isn't a style, and an exemption list is
+/// how a style becomes one nobody holds to.
 #[test]
 fn the_repository_passes_its_own_linter() {
     if wsl() || !have("cc") {

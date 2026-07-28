@@ -42,6 +42,8 @@ xs[2] = 99
 | `first()` `last()` | `T` | |
 | `get(i)` | `T` | same as `xs[i]` |
 | `length()` | `int` | |
+| `join(sep)` | `str` | a `str[]` only |
+| `parallel(f)` | `U[]` | like `map`, evaluated concurrently |
 
 ```maca
 xs = [5, 3, 8, 1]
@@ -138,11 +140,20 @@ run_digits(cs: str[], i: int) -> int =>
 
 ### There is no string slice
 
-`str` has `substr`, not `slice`. Calling `slice` on a string does not fail with a
-type error — method calls stay gradual, so the checker lets it through and the C
-compiler reports an undefined reference to `slice`. This is a known rough edge:
-a misspelt method on a primitive should be a diagnostic, and today it is a
-linker message.
+`str` has `substr`, not `slice`. Calling `slice` on a string is a compile error
+that says so:
+
+```
+UndefinedName: `str` has no method `slice`
+```
+
+Method calls are otherwise gradual — an `any` receiver reaches foreign code the
+checker cannot see — but the method set of a `str` or a `T[]` is closed, so a
+name outside it is a typo. Near misses get a suggestion:
+
+```
+UndefinedName: `str` has no method `lenght` — did you mean `length`?
+```
 
 ## Strings and characters
 

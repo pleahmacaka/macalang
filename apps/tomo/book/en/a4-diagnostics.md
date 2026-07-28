@@ -121,12 +121,8 @@ expression not supported by the native backend: Record(…)
 An anonymous record (chapter 5) is the case you are most likely to hit.
 
 **C compiler errors** should not happen, and when they do it is a compiler bug
-worth reporting. The one you may still see is a misspelt method on a primitive:
-
-```
-undefined reference to `slice'
-```
-
-Method calls stay gradual — the checker lets an unknown method through, so a
-typo survives to the linker. Tightening that for known receiver types is open
-work.
+worth reporting. A misspelt method used to be the exception — it survived to
+the linker as `undefined reference to 'slice'` — but the method set of a `str`
+or a `T[]` is closed, so a name outside it is now caught here, with a
+suggestion where there is a near miss. Method calls on an `any` receiver stay
+gradual, because that is how foreign code is reached.

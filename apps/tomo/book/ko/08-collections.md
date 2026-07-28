@@ -42,6 +42,8 @@ xs[2] = 99
 | `first()` `last()` | `T` | |
 | `get(i)` | `T` | `xs[i]`와 같음 |
 | `length()` | `int` | |
+| `join(sep)` | `str` | `str[]`에만 |
+| `parallel(f)` | `U[]` | `map`과 같되 동시 실행 |
 
 ```maca
 xs = [5, 3, 8, 1]
@@ -136,11 +138,20 @@ run_digits(cs: str[], i: int) -> int =>
 
 ### 문자열에는 slice가 없습니다
 
-`str`에는 `slice`가 아니라 `substr`가 있습니다. 문자열에 `slice`를 호출해도 타입
-에러가 나지 않습니다. 메서드 호출은 점진적으로 남아 있어서 검사기가 통과시키고,
-C 컴파일러가 `slice`에 대한 undefined reference를 보고합니다. 알려진 거친
-모서리입니다. 기본 타입에 대한 오타난 메서드는 진단 메시지여야 하는데, 지금은
-링커 메시지입니다.
+`str`에는 `slice`가 아니라 `substr`가 있습니다. 문자열에 `slice`를 호출하면
+그렇다고 말해 주는 컴파일 에러가 납니다.
+
+```
+UndefinedName: `str` has no method `slice`
+```
+
+메서드 호출은 그 외에는 점진적입니다. `any` 수신자는 검사기가 볼 수 없는 외부
+코드에 닿으니까요. 하지만 `str`나 `T[]`의 메서드 집합은 닫혀 있으므로, 거기에
+없는 이름은 오타입니다. 가까운 것이 있으면 제안도 해 줍니다.
+
+```
+UndefinedName: `str` has no method `lenght` — did you mean `length`?
+```
 
 ## 문자열과 문자
 

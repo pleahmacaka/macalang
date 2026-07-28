@@ -50,7 +50,7 @@ Virtual workspace; members are `crates/*`.
 
 Non-crate dirs: `tools/` (Maca-written ports of the toolchain — `bindgen.maca`,
 kept equivalent to its stage-0 Rust twin by `crates/driver/tests/bindgen_port.rs`,
-and `lint.maca`, a style linter that walks a directory tree and checks line
+and `lint.maca`, a style linter that walks the tree recursively and checks line
 width / single-line `if` / trailing whitespace / hard tabs — width is measured
 with string literals collapsed, so a long C template or URL is exempt exactly
 as a long comment is. Gated by `crates/driver/tests/lint_port.rs`, which
@@ -173,7 +173,14 @@ TypeMismatch / NonExhaustive / EffectInConfig / UnknownOption / Immutable /
 UndefinedName — the last flags a direct call to a name defined nowhere (no
 local/user-fn/import/builtin), so a typo surfaces as a clean diagnostic
 instead of a broken-C link error; UI element tags and embedded intrinsics are
-exempt via `maca_parser::is_backend_intrinsic`). Function
+exempt via `maca_parser::is_backend_intrinsic`). `UndefinedName` also covers
+**phantom keywords** (`return`/`let`/`type`/`null` — each answered with what
+Maca does instead) and a **misspelt UFCS method on a known receiver**: the
+method sets of `str` and `T[]` are closed (`maca_core::STR_METHODS` /
+`LIST_METHODS`), so `s.slice(…)` is a diagnostic with a `did you mean` rather
+than an `undefined reference` from the linker. `any` receivers stay gradual.
+The two lists are executed, not trusted — `crates/driver/tests/method_sets.rs`
+compiles and runs every name in them. Function
 signatures generalize into `Scheme`s (lowercase names are type vars) and
 instantiate per call; the C backend monomorphizes generics (one specialized fn
 per concrete instantiation). Call **arity** and disagreeing **if/ternary

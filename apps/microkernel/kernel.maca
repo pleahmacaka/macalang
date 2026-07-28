@@ -157,7 +157,8 @@ main() -> int {
     // send, the kernel refuses the syscall and reaps it (a capability fault).
     kinds  = 1, 2, 0, 1, 2, 0
     prios  = 5, 9, 3, 5, 9, 2
-    caps   = CAP_WORKER, CAP_SERVER, CAP_COMPUTE, CAP_COMPUTE, CAP_SERVER, CAP_COMPUTE
+    caps   = CAP_WORKER, CAP_SERVER, CAP_COMPUTE,
+             CAP_COMPUTE, CAP_SERVER, CAP_COMPUTE
     states = READY, READY, READY, READY, READY, READY
     work   = 6, 4, 8, 5, 4, 7
     inbox  = 0, 0, 0, 0, 0, 0

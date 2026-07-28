@@ -516,10 +516,12 @@ main() -> Element =>
                 // ---- results: diagnostics / console / C / JS + profiler -----
                 div(class="flex flex-col min-w-0 min-h-0 bg-zinc-950"
                     div(class="flex gap-1 px-2 pt-2 border-b border-zinc-800 overflow-x-auto"
-                        button(class=tabClass("Diagnostics"), on:click=showDiag,    "Diagnostics")
-                        button(class=tabClass("Console"),     on:click=showConsole, "Console")
-                        button(class=tabClass("C"),           on:click=showC,       "C")
-                        button(class=tabClass("JS"),          on:click=showJs,      "JS")
+                        button(class=tabClass("Diagnostics"),
+                               on:click=showDiag, "Diagnostics")
+                        button(class=tabClass("Console"),
+                               on:click=showConsole, "Console")
+                        button(class=tabClass("C"), on:click=showC, "C")
+                        button(class=tabClass("JS"), on:click=showJs, "JS")
                     )
                     pre(class="flex-1 min-h-0 overflow-auto p-4 font-mono text-sm whitespace-pre-wrap break-words text-zinc-200", mcTab(tab))
                     div(class="flex-none border-t border-zinc-800 p-4"

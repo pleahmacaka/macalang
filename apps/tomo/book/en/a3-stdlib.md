@@ -58,6 +58,8 @@ Called as methods through UFCS — `s.trim()` is `trim(s)`.
 | `sum()` `min()` `max()` | numeric |
 | `first()` `last()` `get(i)` | elements |
 | `length()` | `int` |
+| `join(sep)` | a `str[]` into one `str` |
+| `parallel(f)` | like `map`, evaluated concurrently |
 
 ## Math
 
@@ -109,7 +111,8 @@ Being straight about it, so you can plan around it:
 - **No date or time.**
 - **No regular expressions.**
 - **No assertion library** — a test returns `0` or non-zero (chapter 12).
-- **No string `slice`** — `substr` takes a length instead.
+- **No string `slice`** — `substr` takes a length instead (calling it is a
+  clean diagnostic, not a linker error).
 
 Where these land is mostly a question of what gets built in Maca next; a hash
 map in particular is a good first contribution, because it needs nothing from

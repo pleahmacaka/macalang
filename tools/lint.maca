@@ -143,12 +143,10 @@ count_nonempty(lines: str[], i: int) -> int =>
 // ---- entry point ----------------------------------------------------------
 
 // The repository's own Maca sources, when no path is given — Maca linting Maca.
-// `apps/` beyond tomo and `playground/` predate this linter and still carry
-// wide lines — mostly aligned UI markup. They are left out of the default set
-// rather than silently exempted: `maca run tools/lint.maca playground` still
-// reports them, and they come in as they are cleaned up.
+// Every directory holding Maca source. Nothing is exempt: a style the codebase
+// doesn't hold to isn't a style.
 default_dirs() -> str[] =>
-    ["examples", "selfhost", "tools", "std", "apps/tomo"]
+    ["examples", "selfhost", "tools", "std", "apps", "playground"]
 
 lint_all(dirs: str[], i: int, acc: str) -> str =>
     i >= dirs.length()
