@@ -305,6 +305,16 @@ fn selfhost_frontend_compiles_and_runs() {
         "Rust string-concat lowering wrong: {stdout}"
     );
 
+    // int-to-string: `str(n)` → `maca_int_to_str` in C, `format!` in Rust.
+    assert!(
+        stdout.contains("str C:    const char* numbered(int n) { return maca_cat(\"#\", maca_int_to_str(n));"),
+        "C int-to-string lowering wrong: {stdout}"
+    );
+    assert!(
+        stdout.contains("str Rust: fn numbered(n: i64) -> String { format!(\"{}{}\", \"#\".to_string(), format!(\"{}\", n))"),
+        "Rust int-to-string lowering wrong: {stdout}"
+    );
+
     // a realistic file shape: leading `import` lines are skipped, leaving the
     // type/function definitions — 2 items here (a sum + a function).
     assert!(
@@ -330,6 +340,8 @@ fn selfhost_frontend_compiles_and_runs() {
             && c_src.contains("int code(Color c)")
             && c_src.contains("static char* maca_cat(")
             && c_src.contains("int hi(const char* a, const char* b)")
+            && c_src.contains("static char* maca_int_to_str(")
+            && c_src.contains("int chk(int n)")
             && c_src.contains("int main()"),
         "emitted program missing record/sum/functions:\n{c_src}"
     );
@@ -392,6 +404,7 @@ fn selfhost_frontend_compiles_and_runs() {
             && rs_src.contains("fn fld(p: Point) -> i64")
             && rs_src.contains("fn code(c: Color) -> i64")
             && rs_src.contains("fn hi(a: String, b: String) -> i64")
+            && rs_src.contains("fn chk(n: i64) -> i64")
             && rs_src.contains("fn __maca_main() -> i64"),
         "emitted Rust missing record/sum/functions:\n{rs_src}"
     );

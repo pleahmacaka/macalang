@@ -45,7 +45,9 @@ remit_call(e: Expr) -> str =>
         ? "println!(\"{{}}\", {remit_args(e.children, 0)})"
         : e.text == "print"
             ? "print!(\"{{}}\", {remit_args(e.children, 0)})"
-            : "{e.text}({remit_args(e.children, 0)})"
+            : e.text == "str"
+                ? "format!(\"{{}}\", {remit_args(e.children, 0)})"
+                : "{e.text}({remit_args(e.children, 0)})"
 
 // A binary operator. `++` is string concatenation → `format!("{}{}", a, b)`;
 // every other operator is emitted directly.

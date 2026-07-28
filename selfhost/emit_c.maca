@@ -40,7 +40,9 @@ emit_call(e: Expr) -> str =>
         ? "printf(\"%s\\n\", {emit_args(e.children, 0)})"
         : e.text == "print"
             ? "printf(\"%s\", {emit_args(e.children, 0)})"
-            : "{e.text}({emit_args(e.children, 0)})"
+            : e.text == "str"
+                ? "maca_int_to_str({emit_args(e.children, 0)})"
+                : "{e.text}({emit_args(e.children, 0)})"
 
 // A binary operator. `++` is string concatenation (→ the `maca_cat` runtime
 // helper); `==`/`!=` with a string operand goes through `strcmp` (C `==` on
@@ -152,7 +154,8 @@ emit_stmt(s: Stmt, is_last: bool) -> str =>
 // struct is declared before a function uses it).
 c_preamble() -> str =>
     "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n" ++
-    "static char* maca_cat(const char* a, const char* b) {{ char* r = malloc(strlen(a) + strlen(b) + 1); strcpy(r, a); strcat(r, b); return r; }}\n"
+    "static char* maca_cat(const char* a, const char* b) {{ char* r = malloc(strlen(a) + strlen(b) + 1); strcpy(r, a); strcat(r, b); return r; }}\n" ++
+    "static char* maca_int_to_str(int n) {{ char* r = malloc(16); snprintf(r, 16, \"%d\", n); return r; }}\n"
 
 emit_module(m: Module) -> str =>
     c_preamble() ++ emit_items(m.items, 0)

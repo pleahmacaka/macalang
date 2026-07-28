@@ -128,6 +128,13 @@ main() -> int {
     info("concat C:    {emit_fn(cc.snode)}")
     info("concat Rust: {remit_fn(cc.snode)}")
 
+    // int-to-string: `str(n)` → the `maca_int_to_str` helper in C, a `format!`
+    // in Rust. With `++` this is the desugared form of interpolation and what
+    // real Maca's `str(e.ival)` compiles to.
+    st = parse_fn(lex("numbered(n: int) -> str => \"#\" ++ str(n)"), 0)
+    info("str C:    {emit_fn(st.snode)}")
+    info("str Rust: {remit_fn(st.snode)}")
+
     // a realistic file shape: leading `import` lines (skipped — the driver
     // resolves modules), then a sum type and a function. This is the structure
     // of every real selfhost source, now parsed by the stage-1 parser.
@@ -143,7 +150,7 @@ main() -> int {
     // `(fld(Point{40,9}) + code(Green)) * hi("hel", "lo")` = `(40 + 2) * 1` =
     // `42`, where `hi` concatenates then compares — `(a ++ b) == "hello"`. `main`
     // also prints a greeting via the `info` builtin (`printf` / `println!`).
-    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} hi(a: str, b: str) -> int => (a ++ b) == \"hello\" ? 1 : 0 main() -> int {{ q = Point {{ x = 40, y = 9 }} info(\"self-hosted!\") (fld(q) + code(Green)) * hi(\"hel\", \"lo\") }}"
+    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} hi(a: str, b: str) -> int => (a ++ b) == \"hello\" ? 1 : 0 chk(n: int) -> int => (\"v\" ++ str(n)) == \"v42\" ? 1 : 0 main() -> int {{ q = Point {{ x = 40, y = 9 }} info(\"self-hosted!\") (fld(q) + code(Green)) * hi(\"hel\", \"lo\") * chk(42) }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))
