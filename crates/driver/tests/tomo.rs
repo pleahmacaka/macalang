@@ -44,7 +44,13 @@ fn tomo_renders_markdown_to_html() {
         String::from_utf8_lossy(&build.stderr)
     );
 
-    let out = Command::new(&bin).output().expect("run tomo");
+    // `main` also builds a book from `apps/tomo` relative to the working
+    // directory, so run from a scratch dir — otherwise the render check would
+    // scatter a `site/` into whatever directory the test happened to run in.
+    let out = Command::new(&bin)
+        .current_dir(&dir)
+        .output()
+        .expect("run tomo");
     let html = String::from_utf8_lossy(&out.stdout);
 
     // headings carry anchor ids (slugged) so the TOC can link to them
