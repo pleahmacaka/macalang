@@ -1,68 +1,95 @@
 # Errors
 
-## Failure is a value, not an exception
+Maca has no exceptions to catch, no `Result` to unwrap, and no `null` to check
+for. A function that can fail says so by failing, and its caller decides in one
+of three ways what that means.
 
-A function that can fail says so by failing — `fail msg` unwinds to the nearest
-handler:
+## Failing
 
-```
+`fail` takes a message and unwinds:
+
+```maca
 divide(a: int, b: int) -> int =>
     b == 0 ? fail "division by zero" : a / b
 ```
 
-At a call site you choose what to do about it:
+Note the return type: `int`, not a wrapper around an `int`. A failure is not part
+of the value, so it does not have to be threaded through every signature between
+where it happens and where it is handled. That is the same reason exceptions
+exist in other languages, without the hierarchy of exception classes to design.
 
-- `divide(x, y)?` — **propagate**: on failure, return it to *your* caller.
-- `try divide(x, y)` — **reify**: catch the failure and get a value you can
-  inspect instead of unwinding.
+## Ignoring it
 
-```
-result = try divide(10, 0)     // handled here, not propagated
-```
+Call the function normally and a failure travels straight out of your program:
 
-> There is no `null` and no exception hierarchy. A failure carries a message and
-> travels one of exactly two paths: onward with `?`, or into your hands with
-> `try`.
-
-## Tests live next to the code
-
-`maca test` compiles and runs a program's tests. There is no separate framework
-to learn — a test is a function whose name starts with `test_`:
-
-```
-add(a: int, b: int) -> int => a + b
-
-test_add_is_commutative() -> int {
-    add(2, 3) == add(3, 2) ? 0 : fail "addition should commute"
+```maca
+main() -> int {
+    info("{divide(10, 0)}")
+    0
 }
 ```
 
-Returning `0` passes; failing fails, and the message is what you read.
+prints `error: division by zero` on standard error and exits with status 1. For
+a command line tool that is often exactly right — the message reaches the user
+and the exit code reaches the shell, with nothing written to arrange it.
 
-## The golden-example habit
+## Passing it on
 
-Maca's own compiler is developed the same way you are encouraged to develop with
-it: every language feature gets
+An attached `?` propagates the failure to *your* caller:
 
-- a small program in `examples/` that uses it, and
-- a test that compiles that program, runs it, and checks the output.
+```maca
+checked(n: int) -> int {
+    v = divide(84, n)?
+    v + 1
+}
+```
 
-The point is that a feature is only "done" when a real program using it *runs*.
-A plausible-looking compiler output that never executes has caught nobody's bug.
+If `divide` fails, `checked` fails with the same message and `v + 1` never runs.
+The `?` is attached, with no space before it — the same attached-versus-spaced
+rule that separates a format spec from a ternary.
 
-## Diagnostics you can act on
+## Handling it
 
-The compiler reports a small, deliberate set of errors rather than a wall of
-inference noise:
+`try` runs an expression and hands you the failure instead of unwinding:
 
-- `TypeMismatch` — the types don't line up (including call arity and disagreeing
-  `if` branches),
-- `NonExhaustive` — a `match` is missing a variant,
-- `UndefinedName` — a call to something defined nowhere,
-- `Immutable` — reassigning a constant,
-- `EffectInConfig` / `UnknownOption` — the config-mode guardrails.
+```maca
+msg = try divide(10, 0)
+```
 
-Each names the thing that is wrong and where. If you get one you cannot act on,
-that is a bug in the compiler, not in you.
+`msg` is the failure's message, or the **empty string** when nothing failed, so
+handling an error is a length check:
 
-Next: how Maca is bootstrapping itself.
+```maca
+main() -> int {
+    msg = try risky_thing()
+    msg.length() > 0 ? report(msg) : 0
+}
+```
+
+Be clear about the limitation, because it is a real one: `try` gives you the
+*message*, not the value. `try divide(10, 2)` is the empty string, not `5`. When
+you need both the result and a local way to handle failure, either run the
+operation and check separately, or return a sum type and skip `fail` for that
+function entirely.
+
+## Which one to use
+
+Most code should use `?`, or nothing at all. Propagating is the default because
+the place that can *do* something about a failure is almost never the place that
+noticed it, and letting one reach the top of a command line program produces a
+decent error message for free.
+
+Reserve `try` for a boundary where you genuinely have a fallback: a retry, a
+default, a message to a user who is going to try again.
+
+And where failure is an ordinary outcome rather than an exceptional one — a
+parse that may not match, a lookup that may miss — do not use `fail` at all. A
+sum type (chapter 6) says so in the type, and the compiler then makes every
+caller deal with it:
+
+```maca
+Parsed = Found(int) | Missing(str)
+```
+
+That is the distinction worth internalising. `fail` is for the case you did not
+plan for; a sum type is for the case you did.

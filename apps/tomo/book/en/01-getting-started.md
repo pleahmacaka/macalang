@@ -1,4 +1,4 @@
-# Getting Started
+# Hello, World
 
 Every Maca program starts at `main`, which returns an `int` — the process exit
 code. Here is the whole thing:
@@ -20,13 +20,17 @@ You will see `Hello, World`, and the process exits with code `0`.
 
 ## What each piece means
 
-- `main() -> int` declares a function named `main` that takes no arguments and
-  returns an `int`. There is no `fn` keyword — a name followed by `(...)` and a
-  `-> Type` is a function.
-- `{ ... }` is the body, a **block**. The last expression in a block is its
-  value; here the block's value is `0`, so that is what `main` returns.
-- `info("Hello, World")` calls the `info` builtin, which prints a line.
-- `0` is the exit code. Return non-zero to signal failure.
+`main() -> int` declares a function called `main` that takes no arguments and
+returns an `int`. There is no `fn` keyword: a name, a parameter list, and a
+`-> Type` is all a function definition is.
+
+The braces hold a **block**, and a block's value is its last expression. Here
+that is `0`, so that is what `main` returns — and because `main`'s return value
+is the process exit status, `0` means success. Return anything else to signal
+failure.
+
+`info` prints a line. It is one of a small family named after syslog levels;
+`warn` and below go to standard error instead.
 
 ## Arrow bodies
 

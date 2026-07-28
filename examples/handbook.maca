@@ -88,10 +88,10 @@ main() -> int {
     info("ternary: {score >= 60 ? "pass" : "fail"}")
     info("patterns: {describe([])} / {describe([7])} / {describe([1, 2, 3])}")
 
-    // errors: `?` propagates, `try` catches
+    // errors: `?` propagates; `try` yields the failure's *message*, and the
+    // empty string when nothing failed — not the success value.
     info("propagate: {checked(2)}")
-    caught = try divide(10, 0)
-    info("try: caught, still running")
+    info("try: [{try divide(10, 0)}] [{try divide(10, 2)}]")
 
     // strings
     info("strings: {"ab".repeat(3)} {"7".pad_start(3, "0")} {"A,B".split(",").length()}")

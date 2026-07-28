@@ -1,56 +1,88 @@
 # Targets
 
-One language, several backends. You pick a target; the compiler picks how.
+The same source compiles to very different things. Which one you get is a flag,
+not a dialect — there is no `#ifdef`, no per-target subset of the language, and
+no separate standard library. You write Maca and choose where it lands.
 
-## The targets
+## Native, by way of C
 
-- **Native** (default) — through C, linked to a static binary. The fast,
-  general path.
-- **SIMD** — a hot numeric span can lower through LLVM for vectorization; it
-  links over the C ABI alongside the rest.
-- **JavaScript** — a reactive UI with Tailwind styling, from the same source.
-- **BEAM** — for the Erlang/Elixir ecosystem's concurrency and fault tolerance.
-- **JVM** — Java source, for JVM interop (Minecraft/Fabric mods, for one).
-- **Rust** — Rust source, to build on crates.io libraries.
-- **Nix** — config mode, as the previous chapter showed.
-- **Embedded** — freestanding C for bare-metal MCUs (Cortex-M / RISC-V).
-
-## The `maca` CLI
+With no `--target`, Maca compiles through C and links a static binary. This is
+the path everything else is measured against: no runtime to ship, no interpreter
+to start, no collector to pause. The generated C goes to whatever compiler your
+system has, so the optimiser you benefit from is the one that has had thirty
+years of work put into it.
 
 ```
-maca run app.maca                 # compile and run
-maca build app.maca -o app        # native binary
-maca build app.maca --target js   # a web bundle
-maca build cfg.maca --target nix  # a Nix expression
-maca dev                          # a dev shell (Nix flake, or a Windows toolchain)
-maca watch                        # rebuild on change
-maca fmt / maca lint              # format and lint
-maca test                         # run tests
+maca build app.maca -o app
+./app
 ```
 
-## Modules
+A numerically hot span can lower through LLVM instead, for vectorisation. That
+path exists only for SIMD, and it links over the C ABI alongside everything
+else, so it stays a local decision rather than a whole-program one.
 
-A program spans files with `import`:
+## JavaScript
 
 ```
-import util/math          // inlines a sibling util/math.maca
-import { parse } from lexer   // selective: only `parse` and what it needs
+maca build app.maca --target js -o out
 ```
 
-Selective import (`import { … } from …`) pulls in just the named definitions and
-their dependency closure — dead code stays out of your build.
+produces a self-contained page. The JavaScript backend understands Maca's
+reactive UI syntax and generates the CSS for the Tailwind utility classes it
+finds, so an interface written in Maca needs no bundler, no `package.json` and
+no build step beyond that command. The playground that ships with this book is
+one `.maca` file compiled exactly this way.
 
-## Foreign libraries
+## The JVM and Rust
 
-`import c "sqlite3.h"` links a real C library through the system toolchain;
-`import rust "gpui::div"` (with `[rust-dependencies]` in `maca.toml`) builds on a
-crates.io crate via the Rust target. Maca aims to be a good citizen of the
-ecosystems it targets, not an island.
+These two are less about deployment than about *reach*. They exist so that Maca
+can use an ecosystem instead of reimplementing it.
 
-## The road ahead
+`--target jvm` emits Java source, which makes JVM interop ordinary — Minecraft
+mods through Fabric are the worked example in the repository. `--target rust`
+emits Rust source and takes dependencies from `[rust-dependencies]` in
+`maca.toml`, so a crates.io library is a line of configuration away.
 
-Maca is bootstrapping itself: the compiler's own front end is being rewritten in
-Maca under `selfhost/`, and this very book is built by **Tomo**, a Maca program.
-The goal is a language that compiles itself and documents itself — in Maca.
+The trade is that you inherit the target's start-up cost and its runtime. Reach
+for these when the library you need lives there, and for native when it does not.
 
-Thanks for reading. Go build something — a program, a machine, or both at once.
+## Embedded
+
+```
+maca build blink.maca --target embedded --mcu cortex-m0
+```
+
+emits freestanding C for a bare-metal microcontroller: no libc, no allocator, no
+operating system. Cortex-M and RISC-V are supported. Memory-mapped registers are
+ordinary Maca values, and a field write lowers to a read-modify-write of the
+right width.
+
+This is the target that most justifies compiling through C. The C toolchain for
+a given chip already exists, and Maca gets to use it rather than carry a code
+generator per microcontroller family.
+
+## Nix
+
+`--target nix` is the config-mode output covered in chapter 14. It belongs in
+this list because it is the target that makes Maca unusual: the language that
+produced the binary can also describe the machine the binary runs on, and both
+halves are type-checked before anything is deployed.
+
+## Tauri
+
+`--target tauri` scaffolds a desktop application — the JavaScript backend for
+the interface, a native binary underneath it.
+
+## Choosing
+
+Most programs want native, and the question only arises when something outside
+the program dictates the answer: a browser, a microcontroller, a Java API, a
+crate that would take a month to port. The useful property is not that Maca has
+many backends but that moving between them costs a flag rather than a rewrite.
+
+## What is not here
+
+There is no BEAM target, despite Maca's concurrency model being a natural fit
+for one. Colorblind async (chapter 13) is implemented on pthreads in the C
+runtime; an Erlang-style backend would be a genuinely different lowering, and
+nobody has written it.

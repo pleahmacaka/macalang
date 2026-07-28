@@ -8,22 +8,28 @@ write to describe the machine it runs on — no second language, no YAML.
 
 ## What makes Maca different
 
-- **One language, many targets.** A general program compiles to a native binary
-  (through C), to JavaScript, to the JVM, to Rust, or to freestanding C for a
-  microcontroller. A program written in *config mode* compiles to Nix. Same
-  language, no dialects.
-- **Records and sum types, no ceremony.** Data is either a record
-  (`Point = { x: int, y: int }`) or a sum (`Shape = Circle | Rect`), and `match`
-  takes them apart, exhaustively. There are no classes and no `null`.
-- **Colorblind async.** There is no `async` keyword. Concurrency is an *inferred
-  effect*: `spawn f(x)` runs `f` concurrently, `await` suspends until it
-  resolves, and an ordinary function becomes async simply by using them.
-- **No garbage collector and no borrow checker.** Memory is managed by reference
-  counting that the compiler mostly optimises away. You write the functional
-  version and get the imperative performance, with nothing to annotate.
-- **Config is code, checked like code.** Infrastructure written in Maca is
-  type-checked before it ever reaches a machine; an unknown option or an impure
-  expression in config mode is a compile error, not a 3 a.m. surprise.
+Most of what follows is ordinary: functions, records, pattern matching, static
+types you rarely have to write down. Four things are not.
+
+**One language, many targets.** A program compiles to a native binary through C,
+or to JavaScript, the JVM, Rust, or freestanding C for a microcontroller. Which
+one you get is a flag, not a dialect — there is no per-target subset of the
+language and no separate standard library.
+
+**No garbage collector and no borrow checker.** Memory is managed by reference
+counting that the compiler mostly optimises away, so you write the functional
+version — build a new value from an old one — and get the performance of the
+imperative one. There is nothing to annotate, no lifetimes, no `clone()`.
+
+**No `async` keyword.** Concurrency is an inferred effect rather than a colour
+that splits your standard library in two. `spawn f(x)` runs `f` concurrently and
+`await` waits for it; an ordinary function becomes asynchronous by using them,
+and every function that calls it follows without changing its signature.
+
+**Configuration is code, checked like code.** Infrastructure written in Maca
+compiles to Nix, and it is type-checked first. An option that doesn't exist, or
+an expression that tries to *do* something rather than describe it, is a compile
+error rather than a discovery at three in the morning.
 
 ## Who this book is for
 
@@ -59,4 +65,4 @@ one program that the test suite executes. Writing this handbook found six real
 bugs in the compiler, because prose that reads well is not the same as prose
 that is true.
 
-Ready? [Let's get set up.](01-getting-started.md)
+Ready? [Let's get set up.](01-installing.md)

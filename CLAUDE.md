@@ -1,8 +1,9 @@
 # Maca
 
 A single typed language for **programs and infrastructure config**. General
-programs compile to native (C-tier binary), BEAM, or JS; infra config compiles
-to Nix. The compiler is Rust + chumsky; everything a user writes is `.maca` or
+programs compile to native (C-tier binary), JS, JVM, Rust, or freestanding C;
+infra config compiles to Nix. (There is no BEAM backend — the docs used to
+claim one.) The compiler is Rust + chumsky; everything a user writes is `.maca` or
 `maca.toml`.
 
 `docs/PLAN.md` is the authoritative plan and spec summary. Read it before

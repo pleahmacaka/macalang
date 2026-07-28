@@ -386,9 +386,27 @@ main{min-width:0}
   padding:0 0 .6rem;border-bottom:1px solid var(--line);
   position:sticky;top:0;background:var(--bg);z-index:1}
 .sh .bt{font-weight:600;color:var(--fg);text-decoration:none;font-size:.95rem}
-nav.i18n{font-size:.8rem;color:var(--mut);white-space:nowrap;flex:none}
-nav.i18n a{padding:0;display:inline}
-nav.i18n strong{color:var(--fg)}
+nav.i18n{font-size:.8rem;flex:none;position:relative}
+details.lang>summary{list-style:none;cursor:pointer;color:var(--mut);
+  padding:.15rem .45rem;border:1px solid var(--line);border-radius:4px;
+  white-space:nowrap}
+details.lang>summary::-webkit-details-marker{display:none}
+details.lang>summary::after{content:" \25be";color:var(--mut)}
+details.lang[open]>summary{color:var(--fg)}
+details.lang>ul{position:absolute;right:0;z-index:5;margin:.25rem 0 0;padding:.25rem;
+  list-style:none;min-width:100%;background:var(--bg);border:1px solid var(--line);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+details.lang li{margin:0}
+details.lang a{display:block;padding:.25rem .6rem;border-radius:4px;
+  color:var(--mut);text-decoration:none;white-space:nowrap}
+details.lang a:hover{background:var(--code);color:var(--fg)}
+details.lang a.cur{color:var(--fg);font-weight:600}
+/* a section heading in the chapter list — a label, not a destination */
+.side li.sec{margin:1.1rem 0 .2rem;padding:0 .5rem;color:var(--fg);
+  font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+.side li.sec:first-child{margin-top:.4rem}
+.solo li.sec{margin:1.2rem 0 .3rem;color:var(--mut);font-size:.8rem;
+  letter-spacing:.06em;text-transform:uppercase;font-family:ui-sans-serif,system-ui,sans-serif}
 
 .side ol{list-style:none;margin:.4rem 0 0;padding:0}
 .side li{margin:.05rem 0}
@@ -437,11 +455,55 @@ nav.chapters{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.85rem;col
 """
 
 // Previous/next links between chapters, so a reader can move through the book.
-chapter_nav(chs: str[], idx: int) -> str =>
-    "<nav class=\"chapters\">" ++
-    (idx > 0 ? "<a href=\"" ++ chs.get(idx - 1) ++ ".html\">&larr; previous</a>" : "<span></span>") ++
-    (idx + 1 < chs.length() ? "<a href=\"" ++ chs.get(idx + 1) ++ ".html\">next &rarr;</a>" : "<span></span>") ++
-    "</nav>\n"
+chapter_nav(chs: str[], idx: int) -> str {
+    p = prev_page(chs, idx)
+    n = next_page(chs, idx)
+    "<nav class=\"chapters\">"
+        ++ (p >= 0
+                ? "<a href=\"" ++ chs.get(p) ++ ".html\">&larr; previous</a>"
+                : "<span></span>")
+        ++ (n >= 0
+                ? "<a href=\"" ++ chs.get(n) ++ ".html\">next &rarr;</a>"
+                : "<span></span>")
+        ++ "</nav>\n"
+}
+
+// ---- sections -------------------------------------------------------------
+//
+// A `chapters` entry beginning with `#` is a section heading rather than a
+// page: it groups the chapters that follow it. The label carries one title per
+// language, `|`-separated in the same order as `languages`:
+//
+//     "# Getting Started|시작하기",
+//
+// A language with no title of its own falls back to the first, the same way a
+// missing chapter falls back to the default language. Sections are labels, not
+// content, so they live in the config and leave the chapter directory to hold
+// only things a reader can open.
+
+is_section(entry: str) -> bool =>
+    entry.starts_with("#")
+
+section_title(entry: str, langs: str, lang: str) -> str {
+    parts = entry.substr(1, entry.length() - 1).split("|").map(v => v.trim())
+    at = index_in(langs.split(","), lang, 0)
+    at >= 0 && at < parts.length() ? parts.get(at) : parts.get(0)
+}
+
+index_in(xs: str[], want: str, i: int) -> int =>
+    i >= xs.length() ? -1 : (xs.get(i) == want ? i : index_in(xs, want, i + 1))
+
+// The nearest real page before/after `i`, skipping section headings. Without
+// this, previous/next would walk into a heading that has no page.
+prev_page(chs: str[], i: int) -> int =>
+    i <= 0
+        ? -1
+        : (is_section(chs.get(i - 1)) ? prev_page(chs, i - 1) : i - 1)
+
+next_page(chs: str[], i: int) -> int =>
+    i + 1 >= chs.length()
+        ? -1
+        : (is_section(chs.get(i + 1)) ? next_page(chs, i + 1) : i + 1)
 
 // ---- sidebar and search ---------------------------------------------------
 
@@ -459,7 +521,8 @@ sidebar(title: str, langs: str, cur_lang: str, chs: str[], titles: str[],
         ++ "<div class=\"sh\"><a class=\"bt\" href=\"index.html\">"
         ++ esc(title) ++ "</a>\n"
         ++ "<nav class=\"i18n\">"
-        ++ lang_links(langs.split(","), 0, cur_lang, "../") ++ "</nav></div>\n"
+        ++ lang_links(langs.split(","), 0, cur_lang, "../", cur)
+        ++ "</nav></div>\n"
         ++ "<details class=\"nav\" open>\n<summary>"
         ++ nav_label(cur_lang) ++ "</summary>\n"
         ++ search_box()
@@ -485,9 +548,12 @@ collapse_script() -> str =>
 side_items(chs: str[], titles: str[], cur: str, i: int) -> str =>
     i >= chs.length()
         ? ""
-        : "<li><a class=\"" ++ (chs.get(i) == cur ? "cur" : "") ++ "\" href=\""
-              ++ chs.get(i) ++ ".html\">" ++ esc(titles.get(i)) ++ "</a></li>\n"
-              ++ side_items(chs, titles, cur, i + 1)
+        : (is_section(chs.get(i))
+            ? "<li class=\"sec\">" ++ esc(titles.get(i)) ++ "</li>\n"
+            : "<li><a class=\"" ++ (chs.get(i) == cur ? "cur" : "")
+                  ++ "\" href=\"" ++ chs.get(i) ++ ".html\">"
+                  ++ esc(titles.get(i)) ++ "</a></li>\n")
+          ++ side_items(chs, titles, cur, i + 1)
 
 // The search UI plus the code that drives it. The index is a plain `<script>`
 // (not `fetch`) so a built book still searches when opened straight off disk
@@ -536,22 +602,41 @@ shell(title: str, cur: str, langs: str, side: str, body: str,
     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n" ++
     "<title>" ++ esc(title) ++ "</title>\n" ++ style() ++ "</head>\n<body>\n" ++
     "<div class=\"wrap" ++ (side.length() == 0 ? " solo" : "") ++ "\">\n"
-        ++ side ++ "<main>\n"
-        ++ (side.length() == 0
-                ? "<nav class=\"i18n\">"
-                      ++ lang_links(langs.split(","), 0, cur, up) ++ "</nav>\n"
-                : "")
-        ++ body
+        ++ side ++ "<main>\n" ++ body
         ++ "</main>\n</div>\n</body>\n</html>\n"
 
-lang_links(codes: str[], i: int, cur: str, up: str) -> str =>
+// The language picker: a disclosure, not a `<select>`.
+//
+// A `<select>` cannot navigate without script, and this is the one control a
+// reader who landed on the wrong language most needs to work. A `<details>`
+// holding real links needs no script at all, keeps every language a crawlable
+// `<a href>`, and still behaves like a dropdown.
+//
+// `page` is the chapter to land on — the one being read, not the book's index.
+// Switching language should keep your place; sending a reader on chapter 8 back
+// to the table of contents makes them find it again. The fallback guarantees
+// that page exists in every language even when it isn't translated yet.
+lang_links(codes: str[], i: int, cur: str, up: str, page: str) -> str =>
+    codes.length() < 2
+        ? ""
+        : "<details class=\"lang\"><summary>" ++ lang_name(cur)
+              ++ "</summary><ul>" ++ lang_options(codes, 0, cur, up, page)
+              ++ "</ul></details>"
+
+lang_options(codes: str[], i: int, cur: str, up: str, page: str) -> str =>
     i >= codes.length()
         ? ""
-        : (codes.get(i) == cur
-            ? "<strong>" ++ codes.get(i) ++ "</strong> "
-            : "<a href=\"" ++ up ++ codes.get(i) ++ "/\">" ++ codes.get(i)
-                  ++ "</a> ")
-          ++ lang_links(codes, i + 1, cur, up)
+        : "<li><a class=\"" ++ (codes.get(i) == cur ? "cur" : "")
+              ++ "\" href=\"" ++ up ++ codes.get(i) ++ "/" ++ target_page(page)
+              ++ "\" lang=\"" ++ codes.get(i) ++ "\">"
+              ++ lang_name(codes.get(i)) ++ "</a></li>"
+              ++ lang_options(codes, i + 1, cur, up, page)
+
+// Always a file, never a bare directory: a `…/ko/` URL only resolves to
+// `index.html` when a web server does it. Opened off disk — which this book
+// supports — the browser shows a directory listing instead.
+target_page(page: str) -> str =>
+    page.length() == 0 ? "index.html" : page ++ ".html"
 
 // ---- the book builder -----------------------------------------------------
 
@@ -594,9 +679,9 @@ build_book(root: str, out: str) -> int {
     toml = read_file(root ++ "/book.toml")
     title = conf_value(toml, "title")
     langs = conf_value(toml, "languages").replace(" ", "")
-    chapters = conf_value(toml, "chapters").replace(" ", "")
-    n = build_langs(root, out, title, langs, langs.split(","), 0,
-                    chapters.split(","), 0)
+    // not `.replace(" ", "")` — a section label is prose and keeps its spaces
+    chs = conf_value(toml, "chapters").split(",").map(v => v.trim())
+    n = build_langs(root, out, title, langs, langs.split(","), 0, chs, 0)
     n + write_root(out, title, langs, conf_value(toml, "playground"))
 }
 
@@ -625,9 +710,9 @@ write_root(out: str, title: str, langs: str, play: str) -> int {
 root_links(codes: str[], i: int) -> str =>
     i >= codes.length()
         ? ""
-        : "<li><a href=\"" ++ codes.get(i) ++ "/\">"
-              ++ lang_name(codes.get(i)) ++ "</a></li>\n"
-              ++ root_links(codes, i + 1)
+        : "<li><a href=\"" ++ codes.get(i) ++ "/index.html\" lang=\""
+              ++ codes.get(i) ++ "\">" ++ lang_name(codes.get(i))
+              ++ "</a></li>\n" ++ root_links(codes, i + 1)
 
 // A language's own name for itself — a reader looking for their language should
 // see it written the way they write it, not as an ISO code.
@@ -651,20 +736,26 @@ build_langs(root: str, out: str, title: str, langs: str, codes: str[],
 // page needs all of them), then its chapters, search index and index page.
 build_lang(root: str, out: str, title: str, langs: str, lang: str,
            fallback: str, chs: str[]) -> int {
-    titles = chapter_titles(root, lang, fallback, chs, 0)
+    titles = chapter_titles(root, langs, lang, fallback, chs, 0)
     n = build_chapters(root, out, title, langs, lang, fallback, chs, titles,
                        0, 0)
     write_search_index(root, out, lang, fallback, chs, titles)
     n + write_index(root, out, title, langs, lang, chs, titles)
 }
 
-// Every chapter's display title, in book order.
-chapter_titles(root: str, lang: str, fallback: str, chs: str[],
+// Every entry's display title, in book order — a chapter's from its own
+// `# heading`, a section's from its `|`-separated label.
+chapter_titles(root: str, langs: str, lang: str, fallback: str, chs: str[],
                i: int) -> str[] =>
     i >= chs.length()
         ? []
-        : [chapter_title(root, lang, fallback, chs.get(i))]
-              ++ chapter_titles(root, lang, fallback, chs, i + 1)
+        : [entry_title(root, langs, lang, fallback, chs.get(i))]
+              ++ chapter_titles(root, langs, lang, fallback, chs, i + 1)
+
+entry_title(root: str, langs: str, lang: str, fallback: str, e: str) -> str =>
+    is_section(e)
+        ? section_title(e, langs, lang)
+        : chapter_title(root, lang, fallback, e)
 
 // The book's entry point: a table of contents linking every chapter, titled by
 // each chapter's own `# heading` (taken from the translation in use, so an
@@ -683,8 +774,11 @@ write_index(root: str, out: str, title: str, langs: str, lang: str,
 index_items(chs: str[], titles: str[], i: int) -> str =>
     i >= chs.length()
         ? ""
-        : "<li><a href=\"" ++ chs.get(i) ++ ".html\">" ++ esc(titles.get(i))
-              ++ "</a></li>\n" ++ index_items(chs, titles, i + 1)
+        : (is_section(chs.get(i))
+            ? "<li class=\"sec\">" ++ esc(titles.get(i)) ++ "</li>\n"
+            : "<li><a href=\"" ++ chs.get(i) ++ ".html\">"
+                  ++ esc(titles.get(i)) ++ "</a></li>\n")
+          ++ index_items(chs, titles, i + 1)
 
 // ---- search index ---------------------------------------------------------
 
@@ -710,10 +804,14 @@ index_chapters(root: str, lang: str, fallback: str, chs: str[], titles: str[],
 
 index_chapter(root: str, lang: str, fallback: str, ch: str,
               ctitle: str) -> str {
-    own = root ++ "/book/" ++ lang ++ "/" ++ ch ++ ".md"
+    own = is_section(ch)
+        ? ""
+        : root ++ "/book/" ++ lang ++ "/" ++ ch ++ ".md"
     src = file_exists(own)
         ? own
-        : root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md"
+        : (is_section(ch)
+            ? ""
+            : root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md")
     file_exists(src)
         ? sections(read_file(src).split("\n"), 0, ch ++ ".html", ctitle,
                    "", "", "")
@@ -782,10 +880,14 @@ build_chapters(root: str, out: str, title: str, langs: str, lang: str,
 build_chapter(root: str, out: str, title: str, langs: str, lang: str,
               fallback: str, chs: str[], titles: str[], ci: int) -> int {
     ch = chs.get(ci)
-    own = root ++ "/book/" ++ lang ++ "/" ++ ch ++ ".md"
+    own = is_section(ch)
+        ? ""
+        : root ++ "/book/" ++ lang ++ "/" ++ ch ++ ".md"
     src = file_exists(own)
         ? own
-        : root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md"
+        : (is_section(ch)
+            ? ""
+            : root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md")
     file_exists(src)
         ? write_chapter(out, title, langs, lang, chs, titles, ci,
                         read_file(src))
@@ -810,14 +912,17 @@ main() -> int {
     sample = "# Title\n\nA **bold** word and `code`, see [docs](guide.md).\n\n"
         ++ "## Is it fast?\n\n- one\n  - nested\n- two\n\n1. first\n2. second\n\n"
         ++ "| target | flag |\n|--------|------|\n| native | `--target c` |\n\n"
-        ++ "> a quoted aside\n\n```maca\nx = 1\n```\n"
+        ++ "> a quoted aside that\n> wraps across two source lines\n\n"
+        ++ "```maca\nx = 1\n```\n"
     html = render(sample)
     info("=== rendered ===")
     info(html)
     info("=== toc ===")
     info(toc(sample))
     info("=== page ===")
-    info(page("Maca Handbook", "en", "en,ko", "", "<article>hi</article>\n"))
+    demo = sidebar("Maca Handbook", "en,ko", "en", ["a", "b"], ["One", "Two"],
+                   "a", toc(sample))
+    info(page("Maca Handbook", "en", "en,ko", demo, "<article>hi</article>\n"))
 
     // Build the real book from this repository into `site/`.
     info("=== build ===")

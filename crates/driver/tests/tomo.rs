@@ -106,11 +106,12 @@ fn tomo_renders_markdown_to_html() {
         html.contains("<ul><li>nested</li></ul>"),
         "nested list item wrong: {html}"
     );
-    // blockquotes
+    // a quote wrapped across source lines is ONE blockquote, not one per line
     assert!(
-        html.contains("<blockquote>a quoted aside</blockquote>"),
-        "blockquote wrong: {html}"
+        html.contains("<blockquote>a quoted aside that wraps across two source lines</blockquote>"),
+        "multi-line blockquote was split: {html}"
     );
+    assert_eq!(html.matches("<blockquote>").count(), 1, "blockquote split");
     // fenced code block, HTML-escaped content
     assert!(
         html.contains("<pre><code class=\"language-maca\">x = 1\n</code></pre>"),
@@ -118,9 +119,13 @@ fn tomo_renders_markdown_to_html() {
     );
     // i18n page shell: a language switcher marking the current language and
     // linking the other.
+    // the switcher is a `<details>` dropdown holding real links — a `<select>`
+    // cannot navigate without script, and this is the control a reader who
+    // landed in the wrong language most needs to work
     assert!(
-        html.contains("<strong>en</strong> <a href=\"../ko/\">ko</a>"),
-        "i18n switcher wrong: {html}"
+        html.contains("<details class=\"lang\"><summary>English</summary>")
+            && html.contains("lang=\"ko\">한국어</a>"),
+        "i18n dropdown wrong: {html}"
     );
 }
 
@@ -162,33 +167,60 @@ fn tomo_builds_the_handbook_site() {
         .expect("run tomo");
     let log = String::from_utf8_lossy(&out.stdout);
     // every chapter listed in book.toml, plus an index, in each of 2 languages
-    let want = std::fs::read_to_string(repo.join("apps/tomo/book.toml"))
+    // count real chapters, not the `# Section|섹션` headings, which are labels
+    // in the same list and produce no page
+    let entries: Vec<String> = std::fs::read_to_string(repo.join("apps/tomo/book.toml"))
         .unwrap()
         .lines()
-        .filter(|l| l.trim().starts_with('"'))
+        .map(|l| l.trim().trim_end_matches(',').trim_matches('"').to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    let want = entries
+        .iter()
+        .filter(|e| e.starts_with(char::is_numeric) || e.starts_with('a'))
+        .filter(|e| e.contains('-'))
         .count();
+    let sections = entries.iter().filter(|e| e.starts_with("# ")).count();
     assert!(want >= 20, "the handbook shrank to {want} chapters");
+    assert!(sections >= 3, "the book lost its sections");
     // chapters + a per-language index, in 2 languages, plus the root page
     assert!(
         log.contains(&format!("built {} pages", (want + 1) * 2 + 1)),
         "expected {want} chapters + index in 2 languages + root; log: {log}"
     );
+    // sections appear as headings, in each language, and are not links
+    let en_side = std::fs::read_to_string(site.join("en/08-collections.html")).unwrap();
+    let ko_side = std::fs::read_to_string(site.join("ko/08-collections.html")).unwrap();
+    assert!(
+        en_side.contains("<li class=\"sec\">The Language</li>")
+            && ko_side.contains("<li class=\"sec\">언어</li>"),
+        "sections missing, or not translated"
+    );
 
     // the root page sits above the languages and links each by its own name
     let root = std::fs::read_to_string(site.join("index.html")).unwrap();
     assert!(
-        root.contains("<a href=\"en/\">English</a>") && root.contains("<a href=\"ko/\">한국어</a>"),
+        root.contains("<a href=\"en/index.html\" lang=\"en\">English</a>")
+            && root.contains("<a href=\"ko/index.html\" lang=\"ko\">한국어</a>"),
         "root page doesn't offer both languages: {root}"
     );
-    // its switcher must not point above the site root
+    // it links files, not bare directories: `…/ko/` only resolves to index.html
+    // when a web server does it, and this book is meant to open off disk too
     assert!(!root.contains("href=\"../"), "root page links above itself");
+    assert!(
+        !root.contains("href=\"en/\"") && !root.contains("href=\"ko/\""),
+        "root page links a bare directory, which won't open from a file:// path"
+    );
 
     // a translated chapter renders in its own language
     let ko_intro = std::fs::read_to_string(site.join("ko/00-introduction.html")).unwrap();
     assert!(ko_intro.contains("Maca 핸드북"), "ko chapter not Korean");
     // the switcher marks the current language and links the other
+    // the switcher keeps your place: it links the *same chapter* in the other
+    // language, not that language's table of contents
     assert!(
-        ko_intro.contains("<a href=\"../en/\">en</a> <strong>ko</strong>"),
+        ko_intro.contains("<summary>한국어</summary>")
+            && ko_intro.contains("href=\"../en/00-introduction.html\""),
         "ko switcher wrong"
     );
 
@@ -210,14 +242,6 @@ fn tomo_builds_the_handbook_site() {
     assert!(
         en_config.contains("<strong>config mode</strong>"),
         "soft-wrapped bold was split across paragraphs"
-    );
-
-    // a quote wrapped across source lines becomes ONE blockquote, not one per line
-    let en_err = std::fs::read_to_string(site.join("en/09-errors.html")).unwrap();
-    assert_eq!(
-        en_err.matches("<blockquote>").count(),
-        1,
-        "multi-line blockquote was split"
     );
 
     // every page carries the self-contained stylesheet (no external fetch, so a
@@ -244,8 +268,7 @@ fn tomo_builds_the_handbook_site() {
     // chapter has no previous link, the last no next.
     let first = std::fs::read_to_string(site.join("en/00-introduction.html")).unwrap();
     assert!(
-        first.contains("<a href=\"01-getting-started.html\">next")
-            && !first.contains("&larr; previous"),
+        first.contains("<a href=\"01-installing.html\">next") && !first.contains("&larr; previous"),
         "first chapter's nav wrong"
     );
     let last = std::fs::read_to_string(site.join("en/a4-diagnostics.html")).unwrap();
@@ -333,7 +356,11 @@ fn every_page_has_the_sidebar_and_a_working_search_index() {
     );
     // the index page's sidebar marks nothing as current
     let idx = std::fs::read_to_string(site.join("en/index.html")).unwrap();
-    assert!(idx.contains("<div class=\"side\">") && !idx.contains("class=\"cur\""));
+    assert!(idx.contains("<div class=\"side\">"), "index has no sidebar");
+    assert!(
+        !idx.contains("<a class=\"cur\" href=\"0"),
+        "the index marked a chapter as current"
+    );
 
     // the search index is real JavaScript, one entry per heading, carrying the
     // anchor a hit should jump to
@@ -565,7 +592,9 @@ fn every_link_in_the_built_book_resolves() {
                 dest = dest.join("index.html");
             }
             // `play/` is added by the Pages workflow, not by tomo
-            if !dest.exists() && !target.starts_with("play") {
+            // `play/` is the playground, put beside the book by the Pages
+            // workflow rather than by tomo, so it isn't in this tree
+            if !dest.exists() && !target.contains("play/") {
                 broken.push(format!("{}: {href}", page.display()));
             }
         }
