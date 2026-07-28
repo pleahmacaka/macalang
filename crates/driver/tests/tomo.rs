@@ -284,6 +284,61 @@ fn every_page_has_the_sidebar_and_a_working_search_index() {
     assert!(mid.contains("<script src=\"search-index.js\">"), "search not wired up");
 }
 
+/// Anchors have to work in every language the book ships in.
+///
+/// `chars()` is byte-based, so a Korean heading arrives as multi-byte
+/// sequences. A slug that kept only `is_alpha() || is_ascii_digit()` deleted
+/// every one of those bytes, and "값과 타입" became an empty anchor — every
+/// Korean heading collapsing to `#`, in the language the i18n support exists
+/// for. The rule now drops a known set of ASCII punctuation and keeps the rest.
+#[test]
+fn headings_anchor_in_every_language() {
+    if wsl() || !have("cc") {
+        eprintln!("skipping tomo anchor test: needs a host cc and no wsl");
+        return;
+    }
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let site = repo.join("apps/tomo/site");
+    let dir = std::env::temp_dir().join("maca-tomo-anchor");
+    let _ = std::fs::create_dir_all(&dir);
+    let bin = dir.join("tomo");
+    assert!(Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            &repo.join("apps/tomo/tomo.maca").to_string_lossy(),
+            "-o",
+            &bin.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca build")
+        .status
+        .success());
+    assert!(Command::new(&bin)
+        .current_dir(&repo)
+        .output()
+        .expect("run tomo")
+        .status
+        .success());
+
+    let ko = std::fs::read_to_string(site.join("ko/06-sum-types.html")).unwrap();
+    assert!(
+        ko.contains("<h2 id=\"선언\">선언</h2>"),
+        "a Korean heading lost its anchor"
+    );
+    // no heading may collapse to an empty or bare-hyphen anchor
+    for bad in ["id=\"\"", "id=\"-\"", "id=\"--\"", "href=\"#\""] {
+        assert!(!ko.contains(bad), "degenerate anchor {bad} in the Korean page");
+    }
+    // and the TOC links match the headings it links to
+    assert!(
+        ko.contains("<li><a href=\"#선언\">선언</a></li>"),
+        "Korean TOC doesn't link its own headings"
+    );
+    // punctuation is still dropped, and English is unaffected
+    let en = std::fs::read_to_string(site.join("en/06-sum-types.html")).unwrap();
+    assert!(en.contains("<h2 id=\"exhaustiveness\">"), "English anchor changed");
+}
+
 /// Tomo's point of difference from mdBook: a chapter that hasn't been
 /// translated yet falls back to the default language instead of 404-ing.
 /// Uses a synthetic two-chapter book so the assertion stays valid however

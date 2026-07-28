@@ -1140,3 +1140,47 @@ fn concurrent_runs_of_the_same_program_dont_collide() {
         );
     }
 }
+
+/// `s.chars()` on its own, not passed to a `str[]` parameter.
+///
+/// The C backend registers array types in a prepass, and `chars()` was not one
+/// of the expressions that registered `StrArr`. It compiled only when the
+/// result went straight into a parameter declared `str[]`, which registered the
+/// type as a side effect; standalone it emitted a reference to an undeclared
+/// `StrArr` and failed in the C compiler. Found while chasing a Korean-heading
+/// bug in the handbook generator.
+#[test]
+fn chars_registers_its_array_type() {
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca-chars-prepass");
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("chars.maca");
+    std::fs::write(
+        &f,
+        "main() -> int {\n\
+        \x20   n = \"abc\".chars().length()\n\
+        \x20   cs = \"hello\".chars()\n\
+        \x20   info(\"{n} {cs.length()} {cs.get(1)} {\"xy\".chars().length()}\")\n\
+        \x20   0\n\
+        }\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &f.to_string_lossy()])
+        .output()
+        .expect("spawn maca");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("3 5 e 2"),
+        "chars() prepass regression.\nstdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}

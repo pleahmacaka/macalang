@@ -449,9 +449,14 @@ impl<'a> Cx<'a> {
                     {
                         self.vecs.insert((v.clone(), sc, ln));
                     }
-                    // `s.split(sep)` yields a `str[]` — register `StrArr` so its
-                    // typedef/ops are emitted before any function body uses it.
-                    if name == "split" {
+                    // `s.split(sep)` and `s.chars()` both yield a `str[]` —
+                    // register `StrArr` so its typedef/ops are emitted before
+                    // any function body uses it. Without this, `chars()` only
+                    // compiled when it was passed straight to a parameter
+                    // declared `str[]` (which registered the type as a side
+                    // effect); used on its own it emitted a reference to an
+                    // undeclared `StrArr`.
+                    if name == "split" || name == "chars" {
                         self.note_arr(&CTy::Arr(Box::new(CTy::Str)));
                     }
                 }

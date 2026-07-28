@@ -13,9 +13,15 @@ import std/str
 esc(s: str) -> str =>
     s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-// A URL anchor slug for a heading: lowercased, punctuation dropped, spaces to
-// hyphens. Headings like "To `fail` or not to `fail`?" have to produce a link
-// that works, so anything that isn't a letter, digit or hyphen goes.
+// A URL anchor slug for a heading: lowercased, whitespace to hyphens, ASCII
+// punctuation dropped. Headings like "To `fail` or not to `fail`?" have to
+// produce a link that works.
+//
+// Everything *else* is kept, and that matters more than it looks: `chars()` is
+// byte-based, so a Korean heading arrives as multi-byte sequences. Keeping only
+// `is_alpha() || is_ascii_digit()` deleted every one of those bytes and turned
+// "값과 타입" into an empty anchor — in the language this book exists to be
+// translated into. So the rule drops a known set rather than keeping one.
 slug(text: str) -> str =>
     slug_chars(text.lower().chars(), 0, "")
 
@@ -25,7 +31,12 @@ slug_chars(cs: str[], i: int, acc: str) -> str =>
         : slug_chars(cs, i + 1, acc ++ slug_char(cs.get(i)))
 
 slug_char(c: str) -> str =>
-    c.is_alpha() || c.is_ascii_digit() ? c : (c == " " || c == "-" ? "-" : "")
+    c == " " || c == "\t" || c == "_" ? "-" : (is_drop(c) ? "" : c)
+
+// ASCII punctuation with no place in a URL fragment. Any byte outside this set
+// — including every byte of a multi-byte character — is kept.
+is_drop(c: str) -> bool =>
+    ".,?!:;`\"'()[]\{\}/\\*&<>=+|#@$%^~".contains(c)
 
 // `<hN id="slug">text</hN>` — the `id` lets the table of contents link to it.
 heading(level: str, text: str) -> str =>
