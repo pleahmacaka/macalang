@@ -1,0 +1,44 @@
+// A word tally, built up step by step.
+Tally = {
+    word: str
+    count: int
+}
+
+words(text: str) -> str[] =>
+    text.lower().replace(".", " ").replace(",", " ").split(" ")
+
+bump(ts: Tally[], w: str) -> Tally[] {
+    at = find(ts, w, 0)
+    at < 0
+        ? ts ++ [Tally { word = w, count = 1 }]
+        : replace_at(ts, at, Tally { word = w, count = ts.get(at).count + 1 })
+}
+
+find(ts: Tally[], w: str, i: int) -> int =>
+    i >= ts.length() ? -1 : (ts.get(i).word == w ? i : find(ts, w, i + 1))
+
+replace_at(ts: Tally[], at: int, t: Tally) -> Tally[] {
+    ts[at] = t
+    ts
+}
+
+tally(ws: str[], i: int, acc: Tally[]) -> Tally[] =>
+    i >= ws.length()
+        ? acc
+        : tally(ws, i + 1, ws.get(i).length() == 0 ? acc : bump(acc, ws.get(i)))
+
+show(ts: Tally[], i: int) -> int {
+    if i < ts.length() {
+        info("{ts.get(i).word:<8} {ts.get(i).count}")
+        show(ts, i + 1)
+    }
+    0
+}
+
+main() -> int {
+    text = "the quick brown fox. the lazy dog, the end."
+    ts = tally(words(text), 0, [])
+    info("{ts.length()} distinct words")
+    show(ts, 0)
+    0
+}

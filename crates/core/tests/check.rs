@@ -268,3 +268,40 @@ fn ui_element_tags_are_not_undefined() {
         "UI tags wrongly flagged: {d:?}"
     );
 }
+
+/// A keyword Maca doesn't have gets told what Maca does instead.
+///
+/// `return x` parses as the identifier `return` beside `x`, reaches the C
+/// backend, and comes out as `'return_mc' undeclared` — a message about a
+/// mangled name in a file the programmer never wrote. These are the words
+/// people actually reach for on their first day; each earns a real answer.
+#[test]
+fn phantom_keywords_explain_themselves() {
+    for (src, want) in [
+        ("f(n: int) -> int {\n    return n\n}\n", "no `return`"),
+        ("f() -> int {\n    let x = 1\n    x\n}\n", "no `let`/`var`"),
+        ("f() -> int {\n    var x = 1\n    x\n}\n", "no `let`/`var`"),
+        ("f() -> int {\n    type T = 1\n    2\n}\n", "no `type`"),
+        ("f() -> int {\n    null\n}\n", "no null"),
+    ] {
+        let parsed = maca_parser::parse(src);
+        let d = check(&parsed.module, Mode::Program);
+        let hit = d
+            .iter()
+            .find(|x| x.kind == DiagKind::UndefinedName && x.msg.contains(want));
+        assert!(hit.is_some(), "no hint for {want:?} in {src:?}: {d:?}");
+    }
+}
+
+/// The hint fires only on names that are defined nowhere, so a program that
+/// legitimately binds one of these words still compiles.
+#[test]
+fn a_defined_name_is_never_a_phantom_keyword() {
+    let src = "type(n: int) -> int => n + 1\n\nmain() -> int => type(41)\n";
+    let parsed = maca_parser::parse(src);
+    let d = check(&parsed.module, Mode::Program);
+    assert!(
+        !d.iter().any(|x| x.kind == DiagKind::UndefinedName),
+        "a user-defined `type` was flagged as a phantom keyword: {d:?}"
+    );
+}

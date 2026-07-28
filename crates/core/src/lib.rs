@@ -146,6 +146,39 @@ impl Checker {
         });
     }
 
+    /// A keyword Maca doesn't have, used as if it did.
+    ///
+    /// `return x` parses as the identifier `return` next to `x` and reaches the
+    /// C backend, which mangles the C keyword and emits `return_mc` — so the
+    /// first thing a newcomer sees is `'return_mc' undeclared`, from a compiler
+    /// they didn't invoke, about a file they didn't write. These are the words
+    /// people actually reach for; each gets told what Maca does instead.
+    ///
+    /// Only *undefined* names land here, so a program that legitimately binds
+    /// `type` or `func` keeps working.
+    fn phantom_keyword(&mut self, name: &str) {
+        if self.mode != Mode::Program || self.gradual_foreign {
+            return;
+        }
+        let hint = match name {
+            "return" => "Maca has no `return` — a function's last expression is its value",
+            "let" | "var" => "Maca has no `let`/`var` — write `x = e`, or `const x = e`",
+            "fn" | "func" | "def" => {
+                "Maca has no `fn` — write `name(arg: T) -> R { … }` or `=> e`"
+            }
+            "type" => "Maca has no `type` — write `Name = { field: T }` or `Name = A | B`",
+            "async" | "await_" => {
+                "Maca has no `async` — async is an inferred effect; use `spawn`/`await`"
+            }
+            "null" | "nil" | "None" | "undefined" => {
+                "Maca has no null — use a sum type with an empty variant"
+            }
+            "true_" | "false_" => return,
+            _ => return,
+        };
+        self.diag(DiagKind::UndefinedName, format!("`{name}`: {hint}"));
+    }
+
     // ---- pass 1: collect declarations ------------------------------------
 
     fn collect(&mut self, m: &Module) {
@@ -613,7 +646,10 @@ impl Checker {
                 Some(t) => t,
                 None => match self.globals.get(n).cloned() {
                     Some(s) => self.inf.instantiate(&s),
-                    None => Ty::Any,
+                    None => {
+                        self.phantom_keyword(n);
+                        Ty::Any
+                    }
                 },
             },
             Expr::List(es) => {
