@@ -163,8 +163,16 @@ fn first_backtick(msg: &str) -> Option<&str> {
 /// First whole-word occurrence of `name` in *code* (skipping `//` comments and
 /// `"…"` strings), as a byte span — so a marker anchors on the real identifier.
 fn code_word_span(src: &str, name: &str) -> Option<(usize, usize)> {
+    code_word_spans(src, name).into_iter().next()
+}
+
+/// Every whole-word occurrence of `name` in *code* — comments and string
+/// literals are skipped, so a rename never touches prose. Byte spans, in source
+/// order.
+fn code_word_spans(src: &str, name: &str) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
     if name.is_empty() {
-        return None;
+        return out;
     }
     let b = src.as_bytes();
     let is_word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
@@ -189,13 +197,25 @@ fn code_word_span(src: &str, name: &str) -> Option<(usize, usize)> {
                     && (i == 0 || !is_word(b[i - 1]))
                     && (i + n >= b.len() || !is_word(b[i + n]))
                 {
-                    return Some((i, i + n));
+                    out.push((i, i + n));
+                    i += n;
+                } else {
+                    i += 1;
                 }
-                i += 1;
             }
         }
     }
-    None
+    out
+}
+
+/// Every reference to the symbol under the cursor — its definition and every
+/// use — as byte spans. Powers `textDocument/references` and, with a new name,
+/// `textDocument/rename`.
+pub fn references(src: &str, byte_offset: usize) -> Vec<(usize, usize)> {
+    match word_at(src, byte_offset) {
+        Some(word) => code_word_spans(src, &word),
+        None => Vec::new(),
+    }
 }
 
 /// Byte span of a top-level definition's name — a line starting (at column 0)

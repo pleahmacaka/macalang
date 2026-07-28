@@ -94,3 +94,40 @@ fn position_to_offset_maps_utf16_columns() {
         );
     }
 }
+
+#[test]
+fn references_finds_definition_and_uses() {
+    // `twice` is defined once and used twice — three spans, and the mention
+    // inside a comment and a string literal must NOT be counted.
+    let src = "twice(n: int) -> int => n * 2\n\
+               // twice is a helper\n\
+               main() -> int {\n\
+                   info(\"twice\")\n\
+                   twice(1) + twice(2)\n\
+               }\n";
+    let off = src.find("twice").unwrap();
+    let refs = maca_lsp::references(src, off);
+    assert_eq!(refs.len(), 3, "expected def + 2 uses, got {refs:?}");
+    for (s, e) in &refs {
+        assert_eq!(&src[*s..*e], "twice");
+    }
+    // the first span is the definition
+    assert_eq!(refs[0].0, off);
+}
+
+#[test]
+fn references_skip_comments_and_strings() {
+    let src = "// name here\nname() -> int => 1\nmain() -> int { info(\"name\") name() }\n";
+    let off = src.find("name() -> int").unwrap();
+    let refs = maca_lsp::references(src, off);
+    // only the definition and the real call site
+    assert_eq!(refs.len(), 2, "comment/string occurrences leaked: {refs:?}");
+}
+
+#[test]
+fn references_on_empty_position_is_empty() {
+    let src = "main() -> int => 0\n";
+    // an offset sitting on whitespace yields no word, hence no references
+    let off = src.find(' ').unwrap();
+    assert!(maca_lsp::references(src, off).is_empty());
+}

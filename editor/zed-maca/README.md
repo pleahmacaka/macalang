@@ -1,6 +1,7 @@
 # Maca — Zed extension
 
-Syntax highlighting **and a language server** (diagnostics, hover, completion)
+Syntax highlighting **and a language server** (diagnostics, hover, completion,
+go-to-definition, document symbols, find-references, rename, formatting)
 for `.maca` files in [Zed](https://zed.dev).
 
 ## Prerequisite: the language server

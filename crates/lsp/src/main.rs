@@ -1,7 +1,8 @@
 //! maca-lsp: a Language Server for `.maca`, speaking LSP over stdio with
 //! `Content-Length` framing. Wraps the pure analysis functions in `lib.rs`:
 //! live diagnostics (parse + type/effect), hover (signatures/types), and
-//! completion (config option namespaces or top-level names).
+//! completion (config option namespaces or top-level names), go-to-definition,
+//! document symbols, find-references, rename, and formatting.
 //!
 //! Editors launch this binary and talk JSON-RPC to it — see `editor/zed-maca`.
 
@@ -48,6 +49,8 @@ impl Server {
                         "completionProvider": { "triggerCharacters": ["."] },
                         "documentSymbolProvider": true,
                         "definitionProvider": true,
+                        "referencesProvider": true,
+                        "renameProvider": true,
                         "documentFormattingProvider": true
                     },
                     "serverInfo": { "name": "maca-lsp", "version": env!("CARGO_PKG_VERSION") }
@@ -119,6 +122,32 @@ impl Server {
                     )),
                     None => Some(reply(id, Value::Null)),
                 }
+            }
+            "textDocument/references" => {
+                let text = self.doc_at(req)?;
+                let off = self.offset_at(req, &text)?;
+                let uri = req.pointer("/params/textDocument/uri")?.as_str()?;
+                let locs: Vec<Value> = maca_lsp::references(&text, off)
+                    .into_iter()
+                    .map(|(s, e)| json!({ "uri": uri, "range": range(&text, s, e) }))
+                    .collect();
+                Some(reply(id, json!(locs)))
+            }
+            "textDocument/rename" => {
+                let text = self.doc_at(req)?;
+                let off = self.offset_at(req, &text)?;
+                let uri = req.pointer("/params/textDocument/uri")?.as_str()?;
+                let new_name = req.pointer("/params/newName")?.as_str()?;
+                // one edit per occurrence — comments and strings are excluded,
+                // so prose mentioning the name is never rewritten.
+                let edits: Vec<Value> = maca_lsp::references(&text, off)
+                    .into_iter()
+                    .map(|(s, e)| json!({ "range": range(&text, s, e), "newText": new_name }))
+                    .collect();
+                if edits.is_empty() {
+                    return Some(reply(id, Value::Null));
+                }
+                Some(reply(id, json!({ "changes": { uri: edits } })))
             }
             "textDocument/formatting" => {
                 let text = self.doc_at(req).unwrap_or_default();
