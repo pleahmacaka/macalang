@@ -1,4 +1,4 @@
-# Targets and Tooling
+# Targets
 
 One language, several backends. You pick a target; the compiler picks how.
 

@@ -227,6 +227,19 @@ fn tomo_builds_the_handbook_site() {
         "page is missing its stylesheet"
     );
 
+    // responsive: a viewport meta, a two-column grid that collapses, and a
+    // phone breakpoint. Without the meta a phone renders at desktop width and
+    // every other precaution is wasted.
+    assert!(
+        en_config.contains("name=\"viewport\"") && en_config.contains("width=device-width"),
+        "no viewport meta — a phone would render this at desktop width"
+    );
+    assert!(
+        en_config.contains("grid-template-columns")
+            && en_config.contains("@media(max-width:56rem)"),
+        "the layout has no breakpoint"
+    );
+
     // chapter-to-chapter navigation, with the boundaries handled: the first
     // chapter has no previous link, the last no next.
     let first = std::fs::read_to_string(site.join("en/00-introduction.html")).unwrap();
@@ -280,6 +293,35 @@ fn every_page_has_the_sidebar_and_a_working_search_index() {
     // a mid-book chapter lists every chapter, and marks itself
     let mid = std::fs::read_to_string(site.join("en/08-collections.html")).unwrap();
     assert!(mid.contains("<div class=\"side\">"), "no sidebar");
+
+    // Everything a reader navigates with lives in the left column: the title,
+    // the language switcher (top-right of that column), search, the chapter
+    // list, and the page's own headings. `main` carries the text and nothing
+    // else — a nav bar above the prose pushes the first paragraph off a phone.
+    let side = &mid[mid.find("<div class=\"side\">").unwrap()..mid.find("<main>").unwrap()];
+    let main = &mid[mid.find("<main>").unwrap()..];
+    for (probe, what) in [
+        ("class=\"sh\"", "header row"),
+        ("<nav class=\"i18n\">", "language switcher"),
+        ("id=\"q\"", "search box"),
+        ("<nav class=\"toc\">", "the page's own headings"),
+    ] {
+        assert!(side.contains(probe), "sidebar is missing {what}");
+        assert!(!main.contains(probe), "{what} leaked into main");
+    }
+    // in the header row the title comes first and the switcher after it, so the
+    // switcher sits at the row's right edge
+    let sh = &side[side.find("class=\"sh\"").unwrap()..];
+    assert!(
+        sh.find("class=\"bt\"").unwrap() < sh.find("i18n").unwrap(),
+        "the language switcher should follow the title in the header row"
+    );
+    // the nav collapses on a narrow viewport, and ships open so it still works
+    // without script
+    assert!(
+        side.contains("<details class=\"nav\" open>") && side.contains("<summary>"),
+        "the sidebar nav isn't collapsible"
+    );
     assert!(
         mid.contains("href=\"00-introduction.html\">Introduction</a>")
             && mid.contains("href=\"a4-diagnostics.html\">"),

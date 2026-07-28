@@ -1,4 +1,4 @@
-# Functions and Control Flow
+# Closures and Control Flow
 
 ## Functions are values
 

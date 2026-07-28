@@ -1,4 +1,4 @@
-# Values and Types
+# Common Concepts
 
 Maca is statically typed, but you rarely write types except at function
 boundaries — the compiler infers the rest.

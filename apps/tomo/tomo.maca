@@ -355,47 +355,83 @@ style() -> str =>
     """<style>
 :root{color-scheme:light dark;--fg:#1a1a1a;--bg:#fdfdfc;--mut:#666;--line:#e2e2df;--code:#f4f4f1}
 @media(prefers-color-scheme:dark){:root{--fg:#e8e8e6;--bg:#191919;--mut:#9a9a95;--line:#333;--code:#232323}}
-body{max-width:44rem;margin:0 auto;padding:2rem 1.25rem 5rem;background:var(--bg);color:var(--fg);
-  font:16px/1.7 ui-serif,Georgia,serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.7 ui-serif,Georgia,serif}
 h1,h2,h3{font-family:ui-sans-serif,system-ui,sans-serif;line-height:1.25;margin:2.2rem 0 .8rem}
 h1{font-size:2rem;margin-top:.5rem}h2{font-size:1.4rem}h3{font-size:1.15rem}
 code{background:var(--code);padding:.12em .35em;border-radius:3px;font:0.88em ui-monospace,monospace}
 pre{background:var(--code);padding:1rem;border-radius:6px;overflow-x:auto}
 pre code{background:none;padding:0}
 a{color:inherit;text-decoration-color:var(--mut);text-underline-offset:2px}
-nav.i18n,nav.chapters{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.85rem;color:var(--mut)}
-nav.i18n{border-bottom:1px solid var(--line);padding-bottom:.6rem;margin-bottom:1.2rem}
-nav.chapters{border-top:1px solid var(--line);padding-top:.8rem;margin-top:2.5rem;
-  display:flex;justify-content:space-between;gap:1rem}
-nav.toc{background:var(--code);border-radius:6px;padding:.6rem 1rem;margin:0 0 1.6rem;
-  font-family:ui-sans-serif,system-ui,sans-serif;font-size:.9rem}
-nav.toc ul{margin:0;padding-left:1.1rem}
 li{margin:.2rem 0}
+img{max-width:100%}
 table{border-collapse:collapse;width:100%;margin:1.2rem 0;font-size:.94rem;display:block;overflow-x:auto}
 th,td{border:1px solid var(--line);padding:.4rem .7rem;text-align:left;vertical-align:top}
 th{background:var(--code);font-family:ui-sans-serif,system-ui,sans-serif;font-size:.88rem}
-/* Sidebar: a column on wide screens, a collapsed block above the text on
-   narrow ones — the book has to read on a phone. */
-.wrap{display:grid;grid-template-columns:15rem minmax(0,44rem);gap:2.5rem;
-  max-width:62rem;margin:0 auto;padding:2rem 1.25rem 5rem}
-.side{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.85rem;position:sticky;
-  top:2rem;align-self:start;max-height:calc(100vh - 4rem);overflow-y:auto}
-.side ol{list-style:none;margin:.4rem 0 0;padding:0;counter-reset:ch}
+
+/* ---- layout: navigation left, text right --------------------------------
+   Two columns while there is room for both, one column when there isn't. The
+   text column is capped at a readable measure rather than filling the screen. */
+.wrap{display:grid;grid-template-columns:16rem minmax(0,44rem);gap:3rem;
+  justify-content:center;padding:2rem 1.25rem 5rem}
+.wrap.solo{display:block;max-width:44rem;margin:0 auto}
+main{min-width:0}
+
+.side{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.85rem;
+  position:sticky;top:2rem;align-self:start;max-height:calc(100vh - 4rem);
+  overflow-y:auto;overscroll-behavior:contain}
+/* title on the left, language switcher at its right */
+/* stays put while the chapter list scrolls under it */
+.sh{display:flex;align-items:baseline;justify-content:space-between;gap:.75rem;
+  padding:0 0 .6rem;border-bottom:1px solid var(--line);
+  position:sticky;top:0;background:var(--bg);z-index:1}
+.sh .bt{font-weight:600;color:var(--fg);text-decoration:none;font-size:.95rem}
+nav.i18n{font-size:.8rem;color:var(--mut);white-space:nowrap;flex:none}
+nav.i18n a{padding:0;display:inline}
+nav.i18n strong{color:var(--fg)}
+
+.side ol{list-style:none;margin:.4rem 0 0;padding:0}
 .side li{margin:.05rem 0}
 .side a{display:block;padding:.22rem .5rem;border-radius:4px;color:var(--mut);text-decoration:none}
 .side a:hover{background:var(--code);color:var(--fg)}
 .side a.cur{background:var(--code);color:var(--fg);font-weight:600}
-.side .bt{font-weight:600;color:var(--fg);text-decoration:none;font-size:.95rem}
+/* the current page's own headings, under the chapter list */
+.side nav.toc{border-top:1px solid var(--line);margin-top:.8rem;padding-top:.6rem}
+.side nav.toc ul{list-style:none;margin:0;padding:0}
+.side nav.toc a{font-size:.82rem;padding-left:1rem}
+details.nav>summary{display:none}
+
 #q{width:100%;margin:.8rem 0 .2rem;padding:.35rem .5rem;border:1px solid var(--line);
   border-radius:4px;background:var(--bg);color:var(--fg);font:inherit;font-size:.85rem}
 #hits{margin:.3rem 0 0;padding:0;list-style:none}
 #hits a{padding:.3rem .5rem}
 #hits .sec{color:var(--mut);font-size:.8rem}
 #hits .none{color:var(--mut);padding:.3rem .5rem;display:block}
+
+nav.chapters{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.85rem;color:var(--mut);
+  border-top:1px solid var(--line);padding-top:.8rem;margin-top:2.5rem;
+  display:flex;justify-content:space-between;gap:1rem}
+/* the root page has no sidebar, so its switcher sits above the text */
+.solo nav.i18n{border-bottom:1px solid var(--line);padding-bottom:.6rem;margin-bottom:1.2rem;
+  font-family:ui-sans-serif,system-ui,sans-serif}
+.solo nav.toc ul{list-style:none;padding:0}
+
 @media(max-width:56rem){
-  .wrap{display:block;max-width:46rem}
-  .side{position:static;max-height:none;border-bottom:1px solid var(--line);
-    padding-bottom:1rem;margin-bottom:1.5rem}
+  .wrap{display:block;max-width:44rem;margin:0 auto;padding:1.25rem 1.25rem 4rem}
+  .side{position:static;max-height:none;overflow:visible;
+    margin-bottom:1.5rem;padding-bottom:.4rem;border-bottom:1px solid var(--line)}
+  /* the nav collapses to one line so the prose starts near the top */
+  details.nav>summary{display:block;cursor:pointer;list-style:none;
+    padding:.5rem 0 .2rem;color:var(--mut)}
+  details.nav>summary::-webkit-details-marker{display:none}
+  details.nav>summary::before{content:"☰ "}
+  details.nav[open]>summary::before{content:"✕ "}
+}
+@media(max-width:30rem){
+  body{font-size:15px}
+  .wrap{padding:1rem .9rem 3rem}
+  h1{font-size:1.6rem}h2{font-size:1.25rem}
+  pre{padding:.75rem;font-size:.9em}
 }
 </style>
 """
@@ -409,13 +445,42 @@ chapter_nav(chs: str[], idx: int) -> str =>
 
 // ---- sidebar and search ---------------------------------------------------
 
-// The persistent chapter list, on every page, with the current one marked —
-// a reader should always be able to see where they are in the book and jump
-// anywhere without going back to the index.
-sidebar(title: str, chs: str[], titles: str[], cur: str) -> str =>
-    "<div class=\"side\">\n<a class=\"bt\" href=\"index.html\">" ++ esc(title) ++ "</a>\n"
+// Everything a reader navigates with, in one left column: the book title, the
+// language switcher, search, the chapter list with the current one marked, and
+// the current page's own headings. Nothing above the text — a reader scrolling
+// a chapter should never lose their place in the book.
+//
+// The bulk of it is a `<details>` so a phone gets a line instead of three
+// screens of links before the prose starts. It ships open, and a line of script
+// closes it on a narrow viewport; without script it stays open and usable.
+sidebar(title: str, langs: str, cur_lang: str, chs: str[], titles: str[],
+        cur: str, toc_html: str) -> str =>
+    "<div class=\"side\">\n"
+        ++ "<div class=\"sh\"><a class=\"bt\" href=\"index.html\">"
+        ++ esc(title) ++ "</a>\n"
+        ++ "<nav class=\"i18n\">"
+        ++ lang_links(langs.split(","), 0, cur_lang, "../") ++ "</nav></div>\n"
+        ++ "<details class=\"nav\" open>\n<summary>"
+        ++ nav_label(cur_lang) ++ "</summary>\n"
         ++ search_box()
-        ++ "<ol>\n" ++ side_items(chs, titles, cur, 0) ++ "</ol>\n</div>\n"
+        ++ "<ol>\n" ++ side_items(chs, titles, cur, 0) ++ "</ol>\n"
+        ++ toc_html
+        ++ "</details>\n" ++ collapse_script() ++ "</div>\n"
+
+// The disclosure label, in the reader's language.
+nav_label(lang: str) -> str =>
+    lang == "ko" ? "목차" : (lang == "ja" ? "目次" : "Contents")
+
+// Collapse the navigation on a narrow viewport. Progressive: the markup ships
+// expanded, so a browser with no script still shows the whole thing.
+collapse_script() -> str =>
+    """<script>
+(function(){
+  var d=document.querySelector("details.nav");
+  if(d&&window.matchMedia("(max-width:56rem)").matches) d.removeAttribute("open");
+})();
+</script>
+"""
 
 side_items(chs: str[], titles: str[], cur: str, i: int) -> str =>
     i >= chs.length()
@@ -470,10 +535,14 @@ shell(title: str, cur: str, langs: str, side: str, body: str,
     "<!doctype html>\n<html lang=\"" ++ cur ++ "\">\n<head><meta charset=\"utf-8\">\n" ++
     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n" ++
     "<title>" ++ esc(title) ++ "</title>\n" ++ style() ++ "</head>\n<body>\n" ++
-    "<div class=\"wrap\">\n" ++ side ++ "<main>\n" ++
-    "<nav class=\"i18n\">" ++ lang_links(langs.split(","), 0, cur, up) ++ "</nav>\n" ++
-    body ++
-    "</main>\n</div>\n</body>\n</html>\n"
+    "<div class=\"wrap" ++ (side.length() == 0 ? " solo" : "") ++ "\">\n"
+        ++ side ++ "<main>\n"
+        ++ (side.length() == 0
+                ? "<nav class=\"i18n\">"
+                      ++ lang_links(langs.split(","), 0, cur, up) ++ "</nav>\n"
+                : "")
+        ++ body
+        ++ "</main>\n</div>\n</body>\n</html>\n"
 
 lang_links(codes: str[], i: int, cur: str, up: str) -> str =>
     i >= codes.length()
@@ -606,7 +675,7 @@ write_index(root: str, out: str, title: str, langs: str, lang: str,
     make_dir(dir)
     body = "<h1>" ++ esc(title) ++ "</h1>\n<nav class=\"toc\">\n<ol>\n"
            ++ index_items(chs, titles, 0) ++ "</ol>\n</nav>\n"
-    side = sidebar(title, chs, titles, "")
+    side = sidebar(title, langs, lang, chs, titles, "", "")
     write_file(dir ++ "/index.html", page(title, lang, langs, side, body))
     1
 }
@@ -727,9 +796,9 @@ write_chapter(out: str, title: str, langs: str, lang: str, chs: str[],
               titles: str[], ci: int, md: str) -> int {
     dir = out ++ "/" ++ lang
     make_dir(dir)
-    body = toc(md) ++ "<article>\n" ++ render(md) ++ "</article>\n"
+    body = "<article>\n" ++ render(md) ++ "</article>\n"
            ++ chapter_nav(chs, ci)
-    side = sidebar(title, chs, titles, chs.get(ci))
+    side = sidebar(title, langs, lang, chs, titles, chs.get(ci), toc(md))
     write_file(dir ++ "/" ++ chs.get(ci) ++ ".html",
                page(title, lang, langs, side, body))
     1

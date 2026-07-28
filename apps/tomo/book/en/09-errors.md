@@ -1,4 +1,4 @@
-# Errors and Testing
+# Errors
 
 ## Failure is a value, not an exception
 

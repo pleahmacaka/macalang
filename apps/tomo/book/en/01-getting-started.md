@@ -1,4 +1,4 @@
-# Hello, World
+# Getting Started
 
 Every Maca program starts at `main`, which returns an `int` — the process exit
 code. Here is the whole thing:
