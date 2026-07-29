@@ -13,7 +13,12 @@ import std/text
 import std/list
 import std/proc
 
-Maca = "target/release/maca"
+// The compiler these programs are run with. The Rust runner passes the one
+// `cargo test` just built; running this file by hand picks up the release
+// binary. Hardcoding `target/release/maca` made the whole suite skip in CI,
+// where the test job has no reason to have built one.
+maca() -> str =>
+    env_or("MACA", "target/release/maca")
 
 Out = "/tmp/maca-sitegen"
 
@@ -22,7 +27,7 @@ Out = "/tmp/maca-sitegen"
 front_page_dir() -> str {
     dir = join(Out, "home")
     remove_dir(dir)
-    run(Maca, ["run", "apps/site/home.maca", dir])
+    run(maca(), ["run", "apps/site/home.maca", dir])
     dir
 }
 
@@ -134,18 +139,124 @@ test_both_languages_carry_every_card() {
     assert_eq(str(count(ko, "<li class=")), "3", "ko caveats")
 }
 
+// ---- the code on the page ---------------------------------------------------
+//
+// `apps/site/home.maca` says of its samples "each is a program that compiles".
+// Nothing checked it, and three of the five are fragments — a function with no
+// `main`, a call to a `get` defined nowhere — so the claim was only true of the
+// two that happened to be whole programs. Each is compiled here with the
+// context a reader would supply, which is what the claim actually means.
+
+Samples = "/tmp/maca-sitegen/samples"
+
+test_the_hero_program_runs() {
+    src = sample_source("HeroSample")
+
+    assert(src.contains("Shape = Circle(float)"), "found the sample")
+    assert_eq(run_sample("hero", src), "floor plan: 15.14 m²", "it runs")
+}
+
+// What a reader supplies around each fragment: the function it calls, the
+// record it updates, and the `main` that runs it.
+AsyncContext = """
+
+get(url: str) -> int => url.length()
+
+main() -> int {
+    n = fetch_both("ab", "cde")
+    info("{n}")
+    0
+}
+"""
+
+MarkupContext = """
+
+main() -> int {
+    info(card("Hi"))
+    0
+}
+"""
+
+ValuePreamble = """Point = { x: int, y: int }
+
+"""
+
+ValueContext = """
+
+main() -> int {
+    q = shift(Point { x = 1, y = 2 }, 4)
+    info("{q.x}")
+    0
+}
+"""
+
+test_every_sample_compiles_with_its_context() {
+    assert(compiles("async", sample_source("AsyncSample") ++ AsyncContext),
+           "the async sample")
+    assert(compiles("markup", sample_source("MarkupSample") ++ MarkupContext),
+           "the markup sample")
+    assert(compiles("value", ValuePreamble ++ sample_source("ValueSample")
+                             ++ ValueContext),
+           "the record-update sample")
+}
+
+// The config sample is the one that needs the flag the card beside it names.
+test_the_config_sample_emits_nix() {
+    make_dir(Samples)
+    path = join(Samples, "config.maca")
+    out = join(Samples, "config.nix")
+    write_file(path, sample_source("ConfigSample") ++ "\n")
+
+    assert(try_run(maca(), ["build", "--target", "nix", path, "-o", out]),
+           "`--target nix` builds it")
+    assert(read_file(out).contains("rigel"), "and the hostname survives")
+}
+
+// A `Name = \"\"\"…\"\"\"` constant in the page's source.
+sample_source(name: str) -> str =>
+    between(read_file("apps/site/home.maca"), name ++ " = \"\"\"", "\"\"\"")
+
+compiles(name: str, src: str) -> bool {
+    make_dir(Samples)
+    path = join(Samples, name ++ ".maca")
+    write_file(path, src)
+
+    try_run(maca(), ["build", path, "-o", join(Samples, name)])
+}
+
+run_sample(name: str, src: str) -> str {
+    make_dir(Samples)
+    path = join(Samples, name ++ ".maca")
+    write_file(path, src ++ "\n")
+
+    output(maca(), ["run", path]).trim()
+}
+
 // ---- the API reference ------------------------------------------------------
 
 api_dir() -> str {
     dir = join(Out, "api")
     remove_dir(dir)
-    run(Maca, ["run", "tools/macadoc.maca", dir] ++ std_modules())
+    run(maca(), ["run", "tools/macadoc.maca", dir] ++ std_modules())
     dir
 }
 
+// Read from the README's table, the same place `tools/build-site.maca` reads
+// it. A second copy here would let the site build and the test that checks it
+// disagree about which modules exist.
 std_modules() -> str[] =>
-    ["std/text.maca", "std/list.maca", "std/path.maca", "std/json.maca",
-     "std/csv.maca", "std/fs.maca", "std/proc.maca"]
+    module_paths(read_lines("std/README.md"), 0, [])
+
+module_paths(ls: str[], i: int, acc: str[]) -> str[] {
+    if i >= ls.length() {
+        acc
+    } else if ls.get(i).starts_with("| `std/") {
+        name = between(ls.get(i), "| `std/", "`")
+        module_paths(ls, i + 1, acc.push("std/" ++ name ++ ".maca"))
+    } else {
+        module_paths(ls, i + 1, acc)
+    }
+}
 
 // What MacaDoc lists has to be what `std/README.md` advertises — no more, no
 // less. Before `///` marked a doc comment, "any comment above an item" was the
@@ -163,10 +274,164 @@ test_reference_matches_the_advertised_api() {
     assert_eq(documented(dir, "proc"), advertised("proc"), "std/proc")
 }
 
+// Handbook ch. 17 makes four claims about what a doc comment renders as. Each
+// one is a line of `tools/macadoc.maca` that can be deleted without the name
+// set changing by one character, so each one is executed here.
+test_a_doc_comment_renders_as_documented() {
+    page = read_file(join(api_dir(), "text.html"))
+    doc = between(page, "<article id=\"split_once\"", "</article>")
+
+    // a backtick span is code, and an HTML metacharacter inside one is escaped
+    assert(doc.contains("<code"), "backtick span became code")
+    assert(doc.contains("&quot;a=b=c&quot;") || doc.contains("a=b=c"),
+           "the span carries its text")
+    // a `*starred*` run is emphasis
+    assert(doc.contains("<em>first</em>"), "starred run became emphasis")
+    // an indented run in the module blurb is a code block, not a sentence
+    assert(page.contains("<pre class="), "the blurb's import example is code")
+    assert(page.contains("import std/text"), "and it kept its text")
+}
+
+// `str[]` in a signature has to survive as text. Deleting `esc` entirely was
+// invisible to a test that only compared name sets — a documentation generator
+// that stops escaping HTML is the one bug it must not have.
+test_signatures_are_escaped() {
+    page = read_file(join(api_dir(), "text.html"))
+
+    assert(page.contains("-&gt; str[]"), "the arrow is escaped")
+    assert(!page.contains("-> str[]"), "and not left raw")
+    assert(sig_of(page, "lines").contains("lines(s: str) -&gt; str[]"),
+           "the whole signature is published")
+}
+
+sig_of(page: str, name: str) -> str =>
+    between(between(page, "<article id=\"" ++ name ++ "\"", "</article>"),
+            "<pre", "</pre>")
+
+// Every jump link has to land on something. A `#anchor` with no `id` is a
+// click that does nothing, and there is one per item on every page.
+test_every_jump_link_resolves() {
+    page = read_file(join(api_dir(), "list.html"))
+    names = ids_after(page.split("<article id=\""), 1, [])
+
+    assert(names.length() > 10, "the page has items at all")
+    assert(all_anchored(page, names, 0), "every #anchor has its id")
+}
+
+all_anchored(page: str, names: str[], i: int) -> bool {
+    if i >= names.length() {
+        true
+    } else if !page.contains("href=\"#" ++ names.get(i) ++ "\"") {
+        false
+    } else {
+        all_anchored(page, names, i + 1)
+    }
+}
+
+// A module card carries the first sentence of the blurb. It came out empty for
+// any module whose header had no blank line, because `str_find_index` answers
+// -1 and `str_take` clamps that to zero.
+test_module_cards_say_what_the_module_is() {
+    index = read_file(join(api_dir(), "index.html"))
+
+    assert(index.contains("string work that sits one level above"),
+           "std/text's blurb")
+    assert(index.contains("running other programs"), "std/proc's blurb")
+    assert(index.contains("10 items"), "and how many things it documents")
+}
+
+// ---- the awkward module -----------------------------------------------------
+//
+// std is written carefully, so running MacaDoc only on std tests the happy
+// path. `docfixture.maca` is written the awkward ways instead — every shape
+// below produced wrong output at some point.
+
+fixture_dir() -> str {
+    dir = join(Out, "fixture")
+    remove_dir(dir)
+    run(maca(), ["run", "tools/macadoc.maca", dir,
+                 "crates/driver/tests/programs/docfixture.maca"])
+    dir
+}
+
+test_four_slashes_are_not_a_doc_comment() {
+    page = read_file(join(fixture_dir(), "docfixture.html"))
+
+    assert(!page.contains("undocumented_helper"),
+           "a slash rule published a private helper")
+    assert(page.contains("wrapped"), "and the real items are still there")
+}
+
+// Each of these was published wrong: a signature cut at the first line, a
+// one-line record mislabelled `const` with the rest of the file as its body.
+test_awkward_declarations_are_read_whole() {
+    page = read_file(join(fixture_dir(), "docfixture.html"))
+
+    assert(sig_of(page, "wrapped")
+               .contains("wrapped(alpha: int, beta: int) -&gt; int"),
+           "a wrapped parameter list is joined back up")
+    assert(sig_of(page, "Compact").contains("Compact = \{ a: int, b: int \}"),
+           "a one-line record keeps its fields and stops there")
+    assert(sig_of(page, "Roomy").contains("second: str"),
+           "a multi-line record keeps all of them")
+    assert_eq(kinds_of(page), "fn record record sum const fn fn",
+              "and each is labelled for what it is")
+}
+
+kinds_of(page: str) -> str =>
+    tagged(page.split("tracking-wide bg-zinc-100 dark:bg-zinc-800"
+                      ++ " text-zinc-500\">"), 1, []).join(" ")
+
+tagged(parts: str[], i: int, acc: str[]) -> str[] {
+    if i >= parts.length() {
+        acc
+    } else {
+        tagged(parts, i + 1, acc.push(between(parts.get(i), "", "<")))
+    }
+}
+
+// A `*` between spaces is multiplication and a lone backtick is a typo. Both
+// used to swallow the rest of the paragraph into `<em>` or `<code>`.
+test_stray_markup_stays_text() {
+    doc = doc_of(read_file(join(fixture_dir(), "docfixture.html")),
+                 "punctuated")
+
+    assert(doc.contains("a * b is a product"), "multiplication is left alone")
+    assert(doc.contains("use `foo for that"), "an unclosed backtick too")
+    assert(doc.contains("<em>this</em>"), "but real emphasis still renders")
+    assert(doc.contains(">this</code>"), "and a real code span")
+}
+
+// The one bug a documentation generator must not have.
+test_markup_in_a_doc_comment_is_escaped() {
+    doc = doc_of(read_file(join(fixture_dir(), "docfixture.html")),
+                 "metacharacters")
+
+    assert(doc.contains("&lt;b&gt;"), "a tag arrives as text")
+    assert(doc.contains("&amp;amp;"), "and an entity is not decoded")
+    assert(!doc.contains("<b>"), "nothing reaches the page as markup")
+}
+
+// The blurb here is one paragraph with no blank line, which is what made
+// `str_find_index` answer -1 and `str_take` clamp it to an empty card.
+test_a_blurb_without_a_blank_line_still_summarises() {
+    index = read_file(join(fixture_dir(), "index.html"))
+
+    assert(index.contains("A module written the awkward ways"),
+           "the card says what the module is")
+}
+
+doc_of(page: str, name: str) -> str =>
+    between(between(page, "<article id=\"" ++ name ++ "\"", "</article>"),
+            "</pre>", "</article>")
+
 // The names MacaDoc gave a page section to, sorted.
 documented(dir: str, module: str) -> str =>
     ids(read_file(join(dir, module ++ ".html")).split("<article id=\""), 1, [])
         .sort().join(" ")
+
+ids_after(parts: str[], i: int, acc: str[]) -> str[] =>
+    ids(parts, i, acc)
 
 ids(parts: str[], i: int, acc: str[]) -> str[] {
     if i >= parts.length() {

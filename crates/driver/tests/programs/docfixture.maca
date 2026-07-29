@@ -1,0 +1,47 @@
+// A module written the awkward ways, so MacaDoc is read on more than std.
+// Every shape here is one that produced wrong output at some point, and this
+// blurb is itself one of them: it has no blank line, which used to give the
+// module an empty card.
+
+//// A slash rule. Four slashes are punctuation someone drew, not a doc
+//// comment, so the helper below it stays out of the reference.
+undocumented_helper(x: int) -> int =>
+    x + 1
+
+/// A signature whose parameter list wraps. Reading one line and stopping
+/// published `wrapped(alpha: int,` — an unbalanced paren, no return type.
+wrapped(alpha: int,
+        beta: int) -> int =>
+    alpha + beta
+
+/// A record written on one line. Looking for a `}` of its own would have run
+/// to the end of the file.
+Compact = { a: int, b: int }
+
+/// A record written the usual way.
+Roomy = {
+    first:  str
+    second: str
+}
+
+/// A sum type.
+Choice = Yes | No
+
+/// A constant.
+Answer = 42
+
+/// Arithmetic is not emphasis: a * b is a product, and 2 * 3 * 4 is another.
+///
+/// A backtick that never closes is not a code span either: use `foo for that.
+/// Delimiters pair left to right within a paragraph, as they do in Markdown,
+/// so this one is on its own — a stray backtick and a real pair in the same
+/// paragraph is genuinely ambiguous and nothing can tell them apart.
+///
+/// But *this* is emphasis and `this` is code.
+punctuated(x: int) -> int =>
+    x
+
+/// A doc comment can carry markup — <b>, &amp; and </b> — and none of it may
+/// reach the page as markup.
+metacharacters(x: int) -> int =>
+    x

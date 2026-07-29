@@ -152,6 +152,32 @@ fn arity_rejected() {
         DiagKind::TypeMismatch,
     );
 }
+/// A record literal has to name every field the record declares.
+///
+/// A missing one was a silent zero — `""` for a `str`, `0` for an `int` — so a
+/// value whose whole job is to carry copy could ship half-empty and compile
+/// clean. `apps/site/home.maca` keeps a page's text in a 19-field record for
+/// exactly the reason that a missing field should be a compile error.
+#[test]
+fn missing_record_field_rejected() {
+    assert_has(
+        "examples/bad/missing_field.maca",
+        Mode::Program,
+        DiagKind::TypeMismatch,
+    );
+}
+
+/// And no field it doesn't declare. A misspelt name is worse than a missing
+/// one: the value goes nowhere and the field it was meant for stays empty.
+#[test]
+fn unknown_record_field_rejected() {
+    assert_has(
+        "examples/bad/unknown_field.maca",
+        Mode::Program,
+        DiagKind::TypeMismatch,
+    );
+}
+
 #[test]
 fn branch_mismatch_rejected() {
     // Ternary branches with disagreeing types (int vs str).

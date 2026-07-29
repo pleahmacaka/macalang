@@ -29,6 +29,20 @@ This one catches a common slip: `if` and `match` are expressions, so their
 branches have to agree even when you were treating the whole thing as a
 statement. `c ? continue : 0` fails for this reason — `continue` has no value.
 
+**Record fields** — a literal names every field the record declares, and no
+field it doesn't:
+
+```
+TypeMismatch: `Config` is missing field(s): title, port
+TypeMismatch: `Config` has no field `titel`; did you mean `title`?
+```
+
+A missing field would otherwise be a silent zero — `""` for a `str`, `0` for an
+`int` — and a misspelt one is worse, because the value goes nowhere and the
+field it was meant for stays empty. Both compiled clean before this check, and
+what you saw was a page with a heading missing. `base with { f = v }` is the
+update form and is deliberately partial; only a construction is checked.
+
 ## NonExhaustive
 
 A `match` doesn't cover every variant.

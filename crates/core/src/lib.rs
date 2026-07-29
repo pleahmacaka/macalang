@@ -18,7 +18,7 @@
 mod ty;
 
 use maca_parser::ast::*;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use ty::{ASYNC, EXN, EffSet, IO, Infer, NET, OS, Scheme, Ty};
 
 pub use ty::show;
@@ -712,6 +712,7 @@ impl Checker {
                 for f in fields {
                     self.infer_field(env, f);
                 }
+                self.check_record_fields(name, fields);
                 Ty::Con(name.clone(), vec![])
             }
             Expr::Call { callee, args } => {
@@ -974,6 +975,65 @@ impl Checker {
         Ty::Rec {
             fields: map,
             open: true,
+        }
+    }
+
+    /// A record literal has to name every field the record declares, and no
+    /// field it doesn't.
+    ///
+    /// A missing one used to be silently zero — `""` for a `str`, `0` for an
+    /// `int` — so a page whose copy lives in a record shipped a link with no
+    /// text and a heading with no words, compiling clean the whole way. A
+    /// *misspelt* one is worse: the value goes nowhere and the field it was
+    /// meant for stays empty.
+    ///
+    /// `base with { f = v }` is the update form and is deliberately partial;
+    /// only a construction is checked.
+    fn check_record_fields(&mut self, name: &str, fields: &[Field]) {
+        if self.mode != Mode::Program {
+            return;
+        }
+        let Some(declared) = self.records.get(name).cloned() else {
+            return;
+        };
+        // `Field::Bare` is a positional child in the UI syntax, not a named
+        // field; a literal carrying one isn't a record construction.
+        if fields.iter().any(|f| matches!(f, Field::Bare(_))) {
+            return;
+        }
+        let given: BTreeSet<&str> = fields
+            .iter()
+            .filter_map(|f| match f {
+                Field::Value { name, .. } | Field::Type { name, .. } => Some(name.as_str()),
+                Field::Shorthand(n) => Some(n.as_str()),
+                Field::Bare(_) => None,
+            })
+            .collect();
+
+        let missing: Vec<&str> = declared
+            .keys()
+            .map(String::as_str)
+            .filter(|k| !given.contains(k))
+            .collect();
+        if !missing.is_empty() {
+            self.diag(
+                DiagKind::TypeMismatch,
+                format!("`{name}` is missing field(s): {}", missing.join(", ")),
+            );
+        }
+
+        let unknown: Vec<&str> = given
+            .iter()
+            .copied()
+            .filter(|k| !declared.contains_key(*k))
+            .collect();
+        for k in unknown {
+            let near = nearest(k, &declared.keys().map(String::as_str).collect::<Vec<_>>());
+            let hint = near.map_or(String::new(), |n| format!("; did you mean `{n}`?"));
+            self.diag(
+                DiagKind::TypeMismatch,
+                format!("`{name}` has no field `{k}`{hint}"),
+            );
         }
     }
 

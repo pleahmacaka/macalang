@@ -333,6 +333,7 @@ page(c: Copy, up: str) -> str =>
                 meta(property="og:title", content=c.title)
                 meta(property="og:description", content=c.descr)
                 meta(property="og:type", content="website")
+                meta(property="og:locale", content=og_locale(c))
                 meta(name="twitter:card", content="summary")
                 link(rel="canonical", href=canonical(c, up))
                 alternates(up)
@@ -342,7 +343,7 @@ page(c: Copy, up: str) -> str =>
             body_tag(page_class(),
                 skip_link(c)
                     ++ top_nav(c, up)
-                    ++ element("main", id="content",
+                    ++ element("main", id="content", tabindex="-1",
                            hero(c, up)
                            spec_strip(c)
                            features(c)
@@ -364,11 +365,24 @@ canonical(c: Copy, up: str) -> str {
 default_lang() -> str =>
     copies().get(0).lang
 
+// One `alternate` per language, plus the `x-default` a crawler uses for a
+// reader whose language is neither.
 alternates(up: str) -> str =>
     copies().map(o => alternate(o, up)).join("")
+        ++ link(rel="alternate", hreflang="x-default",
+                href=canonical(copies().get(0), up))
 
 alternate(o: Copy, up: str) -> str =>
     link(rel="alternate", hreflang=o.lang, href=canonical(o, up))
+
+// `og:locale` wants a full locale, not a bare language.
+og_locale(c: Copy) -> str {
+    if c.lang == "ko" {
+        "ko_KR"
+    } else {
+        "en_US"
+    }
+}
 
 // Told to the browser rather than any element: the page has both palettes, so
 // scrollbars and form controls follow the reader's system setting.
@@ -376,8 +390,11 @@ base_css() -> str =>
     """html{color-scheme:light dark}
 """
 
+// `break-keep` for every language, not just Korean: it only changes text that
+// would otherwise break inside a word, which Korean does by default — a
+// heading split `돌아갈` as `돌` / `아갈` — and English never does.
 page_class() -> str =>
-    "font-sans text-base leading-relaxed bg-white dark:bg-zinc-950"
+    "font-sans text-base leading-relaxed break-keep bg-white dark:bg-zinc-950"
         ++ " text-zinc-900 dark:text-zinc-100"
 
 wrap() -> str =>
@@ -416,10 +433,13 @@ top_nav(c: Copy, up: str) -> str =>
                 lang_switch(c, up))))
 
 // The wordmark goes to this language's front page, not the site's — a Korean
-// reader clicking the name should not land in English.
+// reader clicking the name should not land in English. For the default
+// language that page *is* the root, which is also what `rel=canonical` says,
+// so `en/home.html` links out to the address it is a copy of rather than to
+// itself.
 home_href(c: Copy, up: str) -> str {
-    if up == "" {
-        "index.html"
+    if c.lang == default_lang() {
+        up ++ "index.html"
     } else {
         up ++ c.lang ++ "/home.html"
     }
@@ -438,7 +458,7 @@ lang_switch(c: Copy, up: str) -> str =>
 
 lang_link(c: Copy, up: str, other: Copy) -> str {
     if other.lang == c.lang {
-        span(class="font-semibold", aria-current="true", native_name(other))
+        span(class="font-semibold", aria-current="page", native_name(other))
     } else {
         a(class=quiet_link(), href=up ++ other.lang ++ "/home.html",
           lang=other.lang, native_name(other))
@@ -594,8 +614,15 @@ esc(s: str) -> str =>
 // A sentence of copy, where a backtick span is a piece of code. `--target nix`
 // is a flag, and printing the backticks around it is worse than not marking it
 // at all — so the one bit of markup the copy uses is the one it renders.
-prose(s: str) -> str =>
-    spans(s.split("`"), 0, "")
+prose(s: str) -> str {
+    parts = s.split("`")
+
+    if parts.length() % 2 == 0 {
+        fail "unclosed backtick in copy: {s}"
+    }
+
+    spans(parts, 0, "")
+}
 
 spans(parts: str[], i: int, out: str) -> str {
     if i >= parts.length() {
@@ -643,10 +670,15 @@ write_langs(out: str, cs: Copy[], i: int) -> int {
 // A write that isn't checked is a build that reports success having produced
 // nothing: the directory may not exist, or the disk may be full, and
 // `write_file` says neither.
+//
+// Checked against the length written, not against zero. The default output
+// directory always already holds the previous build's pages, so "the file is
+// non-empty" was satisfied by the file that was there before — three failed
+// writes reported three files written.
 write_page(path: str, markup: str) -> int {
     write_file(path, markup)
 
-    if file_size(path) > 0 {
+    if file_size(path) == markup.length() {
         1
     } else {
         err("could not write {path}")

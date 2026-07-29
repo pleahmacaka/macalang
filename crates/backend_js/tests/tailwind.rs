@@ -125,20 +125,91 @@ fn document_utilities_exist() {
 
 /// A border width with no style is invisible — CSS defaults `border-style` to
 /// `none`. The unparameterized `border-l` always emitted both; `border-l-2`
-/// emitted only the width, so it drew nothing and said nothing.
+/// emitted only the width, so it drew nothing and said nothing. `border-x`
+/// and `border-y` then shipped emitting *nothing*, and `border-x-[3px]`
+/// shipped as a width with no style all over again — three spellings of one
+/// mistake, so all three are checked here.
 #[test]
-fn a_sided_border_width_carries_its_style() {
-    for (class, side) in [
-        ("border-l-2", "left"),
-        ("border-t-4", "top"),
-        ("border-r-2", "right"),
-        ("border-b-8", "bottom"),
+fn every_border_spelling_carries_its_style() {
+    for (class, sides) in [
+        ("border-l", &["left"] as &[&str]),
+        ("border-x", &["left", "right"]),
+        ("border-y", &["top", "bottom"]),
+        ("border-l-2", &["left"]),
+        ("border-t-4", &["top"]),
+        ("border-r-2", &["right"]),
+        ("border-b-8", &["bottom"]),
+        ("border-x-2", &["left", "right"]),
+        ("border-y-4", &["top", "bottom"]),
+        ("border-x-[3px]", &["left", "right"]),
+        ("border-y-[0.5rem]", &["top", "bottom"]),
     ] {
         let css = maca_backend_js::rule(class)
             .unwrap_or_else(|| panic!("{class} generates no rule"));
+        for side in sides {
+            assert!(
+                css.contains(&format!("border-{side}-style:solid"))
+                    && css.contains(&format!("border-{side}-width:")),
+                "{class} is missing a width or style on {side}: {css}"
+            );
+        }
+    }
+}
+
+/// Every utility the front page and the API reference reach for. A class the
+/// engine doesn't know generates nothing at all — no warning, no error, just a
+/// layout that is quietly a little wrong — so the ones this repository's own
+/// pages depend on are named here.
+#[test]
+fn the_utilities_the_site_uses_all_generate_rules() {
+    for class in [
+        "scroll-mt-6",
+        "scroll-mt-[7rem]",
+        "scroll-mb-2",
+        "break-keep",
+        "px-[3px]",
+        "py-[0.05rem]",
+        "mx-[2px]",
+        "my-[2px]",
+        "pt-[1px]",
+        "pb-[1px]",
+        "pl-[1px]",
+        "pr-[1px]",
+        "ml-[1px]",
+        "mr-[1px]",
+        "gap-x-[4px]",
+        "gap-y-[4px]",
+        "left-[-9999px]",
+        "right-[2px]",
+        "bottom-[2px]",
+        "inset-[18px]",
+        "focus:left-2",
+        "focus:z-10",
+        "focus:underline",
+        "min-w-0",
+        "text-right",
+        "grid-cols-2",
+    ] {
         assert!(
-            css.contains(&format!("border-{side}-style:solid")),
-            "{class} sets a width with no style: {css}"
+            maca_backend_js::rule(class).is_some(),
+            "{class} generates no rule, so it is silently dead on the page"
         );
     }
+}
+
+/// `font-mono` must not lead with a proportional family. Pretendard is the
+/// de-facto Korean UI face and is installed widely enough that naming it first
+/// rendered every code block on the Korean pages in a sans-serif.
+#[test]
+fn the_monospace_stack_is_monospace() {
+    let css = maca_backend_js::rule("font-mono").unwrap();
+    assert!(
+        !css.contains("Pretendard"),
+        "font-mono leads with a proportional family: {css}"
+    );
+    assert!(css.contains("ui-monospace"));
+    assert!(
+        maca_backend_js::rule("font-sans").unwrap().contains("Pretendard"),
+        "font-sans should still prefer Pretendard"
+    );
 }

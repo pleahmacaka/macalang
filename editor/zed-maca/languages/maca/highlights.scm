@@ -1,6 +1,12 @@
 ; Tree-sitter highlight queries for Maca (Zed).
 ; Targets the grammar in editor/tree-sitter-maca.
 
+; `///` is a doc comment — what `tools/macadoc.maca` reads as the marker that
+; makes an item API. The grammar has one `comment` node, so the distinction is
+; drawn by a predicate here rather than by regenerating the parser. The
+; specific pattern has to come first.
+((comment) @comment.doc
+  (#match? @comment.doc "^///([^/]|$)"))
 (comment) @comment
 (string) @string
 (number) @number

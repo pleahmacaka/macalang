@@ -29,6 +29,20 @@ TypeMismatch: ternary branches disagree: type mismatch: expected int, found str
 있었더라도 갈래들의 타입이 맞아야 합니다. `c ? continue : 0`이 이 이유로
 실패합니다. `continue`에는 값이 없습니다.
 
+**레코드 필드** — 리터럴은 레코드가 선언한 모든 필드를 적어야 하고, 선언하지
+않은 필드는 적으면 안 됩니다.
+
+```
+TypeMismatch: `Config` is missing field(s): title, port
+TypeMismatch: `Config` has no field `titel`; did you mean `title`?
+```
+
+빠뜨린 필드는 조용한 0이 됩니다. `str`이면 `""`, `int`면 `0`입니다. 오타는 더
+나쁩니다. 값은 아무 데도 가지 않고, 원래 가려던 필드는 빈 채로 남습니다. 이
+검사가 생기기 전에는 둘 다 깨끗하게 컴파일됐고, 눈에 보이는 건 제목이 사라진
+페이지뿐이었습니다. `base with { f = v }`는 갱신 형태라 일부만 적는 것이
+의도이므로, 생성만 검사합니다.
+
 ## NonExhaustive
 
 `match`가 모든 변형을 다루지 않습니다.

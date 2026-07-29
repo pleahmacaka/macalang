@@ -64,7 +64,9 @@ JavaScript rather than Maca.
 
 `tools/macadoc.maca` reads a module's declarations, pairs each with the comment
 above it, and writes an HTML reference — what rustdoc is to Rust and TSDoc is to
-TypeScript.
+TypeScript. Like `tools/lint.maca` above, it lives in the repository rather than
+inside the `maca` binary: it is a Maca program, so it is a file you run, not a
+subcommand you install.
 
 ```
 maca run tools/macadoc.maca site/api std/text.maca std/list.maca

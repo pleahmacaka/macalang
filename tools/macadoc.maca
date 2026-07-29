@@ -47,14 +47,51 @@ Module = {
 
 // ---- reading a module -----------------------------------------------------
 
+// A path that doesn't resolve used to read as an empty file, which produced a
+// module with no items and a full page of chrome around it — and the site
+// check, which only asks whether a page is non-empty, published it.
 read_module(p: str) -> Module {
+    if !file_exists(p) {
+        fail "no such module: {p}"
+    }
+
     lines = read_lines(p)
+    items = scan(lines, 0, [], [])
+
+    if items.length() == 0 {
+        fail "{p} documents nothing — is every item missing its `///` block?"
+    }
+
+    require_distinct_items(p, items, 0)
 
     Module {
         path = p,
         name = stem(p),
         blurb = module_blurb(lines, 0, []),
-        items = scan(lines, 0, [], [])
+        items = items
+    }
+}
+
+// A name is the item's `id` and the target of its jump link, so two of them on
+// a page means a duplicate id and a link that lands on whichever the browser
+// picks.
+require_distinct_items(p: str, items: Item[], i: int) -> bool {
+    if i >= items.length() {
+        true
+    } else if item_taken(items, 0, i) {
+        fail "{p} documents {items.get(i).name} twice"
+    } else {
+        require_distinct_items(p, items, i + 1)
+    }
+}
+
+item_taken(items: Item[], i: int, before: int) -> bool {
+    if i >= before {
+        false
+    } else if items.get(i).name == items.get(before).name {
+        true
+    } else {
+        item_taken(items, i + 1, before)
     }
 }
 
@@ -68,8 +105,12 @@ module_blurb(lines: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
+// A fourth slash means it isn't one. `//// ----` is a section rule someone
+// drew, and rustdoc excludes it for the same reason: publishing a private
+// helper because a rule happened to sit above it is exactly what `///` is here
+// to prevent.
 is_doc(line: str) -> bool =>
-    line.starts_with("///")
+    line.starts_with("///") && !line.starts_with("////")
 
 is_plain_comment(line: str) -> bool =>
     line.starts_with("//") && !is_doc(line)
@@ -78,12 +119,20 @@ is_plain_comment(line: str) -> bool =>
 // further indent is kept: an indented run inside a block is an example, and
 // the renderer needs to be able to see that.
 comment_body(line: str) -> str {
-    body = strip_prefix(strip_prefix(line, "///"), "//")
+    body = drop_slashes(line, 0)
 
     if body.starts_with(" ") {
         body.slice(1, body.length())
     } else {
         body
+    }
+}
+
+drop_slashes(line: str, i: int) -> str {
+    if i < line.length() && line.at(i) == "/" {
+        drop_slashes(line, i + 1)
+    } else {
+        line.slice(i, line.length())
     }
 }
 
@@ -93,13 +142,29 @@ comment_body(line: str) -> str {
 // onto whatever happens to follow it.
 scan(lines: str[], i: int, doc: str[], acc: Item[]) -> Item[] {
     if i >= lines.length() {
+        warn_orphan(doc, i)
         acc
     } else if is_doc(lines.get(i)) {
         scan(lines, i + 1, doc ++ [comment_body(lines.get(i))], acc)
-    } else if doc.length() == 0 || !is_decl(lines.get(i)) {
+    } else if doc.length() == 0 {
+        scan(lines, i + 1, [], acc)
+    } else if !is_decl(lines.get(i)) {
+        warn_orphan(doc, i)
         scan(lines, i + 1, [], acc)
     } else {
         scan(lines, i + 1, [], acc ++ [declared(lines, i, doc)])
+    }
+}
+
+// Dropping the block is what stops it drifting onto whatever follows. Dropping
+// it in silence is how an item goes missing from the reference with nobody the
+// wiser, so it is dropped out loud.
+warn_orphan(doc: str[], at: int) -> bool {
+    if doc.length() == 0 {
+        true
+    } else {
+        warn("line {at + 1}: doc comment attached to nothing: {doc.get(0)}")
+        false
     }
 }
 
@@ -112,9 +177,9 @@ declared(lines: str[], i: int, doc: str[]) -> Item {
     line = lines.get(i)
 
     if is_fn(line) {
-        Item { kind = "fn", name = before(line, "("), sig = signature(line),
-               doc = doc }
-    } else if line.trim().ends_with("\{") {
+        Item { kind = "fn", name = before(line, "("),
+               sig = signature(lines, i), doc = doc }
+    } else if rhs(line).starts_with("\{") {
         Item { kind = "record", name = before(line, " ="),
                sig = record_sig(lines, i), doc = doc }
     } else if rhs(line).contains("|") {
@@ -186,16 +251,54 @@ rhs(line: str) -> str {
 
 // A function's signature is everything before the body — the `{` of a block or
 // the `=>` of an arrow — so the reader sees the types and nothing else.
-signature(line: str) -> str {
-    t = line.trim()
-    arrow = t.index_of("=>")
-    brace = t.index_of("\{")
-    cut = first_of(arrow, brace)
+//
+// A parameter list that wraps is joined back up first. Reading one line and
+// stopping published `wrapped(alpha: int,` as the signature: an unbalanced
+// paren, no return type, and no complaint.
+signature(lines: str[], i: int) -> str =>
+    cut_body(whole_head(lines, i, ""))
+
+whole_head(lines: str[], i: int, acc: str) -> str {
+    if i >= lines.length() {
+        acc
+    } else {
+        so_far = appended(acc, lines.get(i))
+
+        if paren_depth(so_far.chars(), 0, 0) > 0 {
+            whole_head(lines, i + 1, so_far)
+        } else {
+            so_far
+        }
+    }
+}
+
+appended(acc: str, line: str) -> str {
+    if acc == "" {
+        line.trim()
+    } else {
+        acc ++ " " ++ line.trim()
+    }
+}
+
+paren_depth(cs: str[], i: int, n: int) -> int {
+    if i >= cs.length() {
+        n
+    } else if cs.get(i) == "(" {
+        paren_depth(cs, i + 1, n + 1)
+    } else if cs.get(i) == ")" {
+        paren_depth(cs, i + 1, n - 1)
+    } else {
+        paren_depth(cs, i + 1, n)
+    }
+}
+
+cut_body(head: str) -> str {
+    cut = first_of(head.index_of("=>"), head.index_of("\{"))
 
     if cut < 0 {
-        t
+        head
     } else {
-        t.slice(0, cut).trim()
+        head.slice(0, cut).trim()
     }
 }
 
@@ -211,12 +314,19 @@ first_of(a: int, b: int) -> int {
     }
 }
 
-// A record's declaration is several lines; the fields are the point of it.
-record_sig(lines: str[], i: int) -> str =>
-    gather(lines, i, i + 1)
+// A record's declaration is usually several lines, and the fields are the
+// point of it. One written on a single line closes on that line, and looking
+// for a `}` of its own would swallow the rest of the file.
+record_sig(lines: str[], i: int) -> str {
+    if lines.get(i).trim().ends_with("\}") {
+        lines.get(i).trim()
+    } else {
+        gather(lines, i, i + 1)
+    }
+}
 
 gather(lines: str[], from: int, i: int) -> str {
-    if i >= lines.length() || lines.get(i).trim() == "}" {
+    if i >= lines.length() || lines.get(i).trim() == "\}" {
         lines.slice(from, i + 1).join("\n")
     } else {
         gather(lines, from, i + 1)
@@ -258,7 +368,7 @@ block(ls: str[]) -> str {
 // else is markup, because nothing else is what these comments use — and a
 // marker that renders as itself is worse than no marker at all.
 inline(s: str) -> str =>
-    spans(s.split("`"), 0, "")
+    spans(paired(s.split("`"), "`"), 0, "")
 
 spans(parts: str[], i: int, out: str) -> str {
     if i >= parts.length() {
@@ -266,17 +376,41 @@ spans(parts: str[], i: int, out: str) -> str {
     } else if i % 2 == 1 {
         spans(parts, i + 1, out ++ code(class=CodeSpan, esc(parts.get(i))))
     } else {
-        spans(parts, i + 1, out ++ emphasis(parts.get(i).split("*"), 0, ""))
+        starred = paired(parts.get(i).split("*"), "*")
+        spans(parts, i + 1, out ++ emphasis(starred, 0, ""))
     }
 }
 
 emphasis(parts: str[], i: int, out: str) -> str {
     if i >= parts.length() {
         out
-    } else if i % 2 == 1 {
+    } else if i % 2 == 0 {
+        emphasis(parts, i + 1, out ++ esc(parts.get(i)))
+    } else if is_emphasis(parts.get(i)) {
         emphasis(parts, i + 1, out ++ em(esc(parts.get(i))))
     } else {
-        emphasis(parts, i + 1, out ++ esc(parts.get(i)))
+        emphasis(parts, i + 1, out ++ "*" ++ esc(parts.get(i)) ++ "*")
+    }
+}
+
+// Markdown's rule, and the one that tells emphasis from arithmetic: a `*` opens
+// only when something follows it immediately and closes only when something
+// precedes it immediately. Without it, `2 * 3 * 4` italicised the space between
+// the operators and `a * b` italicised the rest of the sentence.
+is_emphasis(body: str) -> bool =>
+    body != "" && !body.starts_with(" ") && !body.ends_with(" ")
+
+// An odd number of delimiters means the last one opened something that never
+// closed — a multiplication sign in prose, or a backtick someone forgot. The
+// tail is joined back onto the part before it, so it stays plain text instead
+// of italicising the rest of the paragraph.
+paired(parts: str[], sep: str) -> str[] {
+    if parts.length() % 2 == 1 {
+        parts
+    } else {
+        n = parts.length()
+        str_take(parts, n - 2)
+            .push(parts.get(n - 2) ++ sep ++ parts.get(n - 1))
     }
 }
 
@@ -290,7 +424,9 @@ PreClass = "mt-3 bg-zinc-100 dark:bg-zinc-900 rounded-md p-4 overflow-x-auto"
 CodeSpan = "font-mono text-[0.9em] bg-zinc-100 dark:bg-zinc-800 rounded"
     ++ " px-1 py-[0.05rem]"
 
-page(title: str, body: str, up: str) -> str =>
+// Every page in the reference sits directly in the output directory, so there
+// is one level to climb to reach the site root and no parameter to carry it.
+page(title: str, body: str) -> str =>
     "<!doctype html>\n"
         ++ html(lang="en",
             head(
@@ -300,7 +436,7 @@ page(title: str, body: str, up: str) -> str =>
                 title_tag(title)
                 style(base_css() ++ styles())
             )
-            body_tag(page_class(), top_bar(title, up) ++ element("main", body)))
+            body_tag(page_class(), top_bar(title) ++ element("main", body)))
         ++ "\n"
 
 base_css() -> str =>
@@ -311,18 +447,18 @@ page_class() -> str =>
     "font-sans text-base leading-relaxed bg-white dark:bg-zinc-950"
         ++ " text-zinc-900 dark:text-zinc-100"
 
-top_bar(title: str, up: str) -> str =>
+top_bar(title: str) -> str =>
     header(class="border-b border-zinc-200 dark:border-zinc-800",
         div(class=Wrap ++ " flex flex-wrap items-center justify-between"
                   ++ " gap-x-4 gap-y-2 py-3",
             nav(aria-label="Reference",
                 class="flex items-center gap-3",
                 a(class="font-bold no-underline text-inherit focus:underline",
-                  href=up ++ "../index.html", "Maca")
+                  href="../index.html", "Maca")
                 a(class="no-underline text-zinc-600 dark:text-zinc-400"
                         ++ " hover:text-black dark:hover:text-white"
                         ++ " focus:underline",
-                  href=up ++ "index.html", "API reference"))
+                  href="index.html", "API reference"))
             span(class="text-[0.85rem] text-zinc-500 dark:text-zinc-400",
                  esc(title))))
 
@@ -335,8 +471,7 @@ index_page(ms: Module[]) -> str =>
              p(class="mt-2 text-zinc-600 dark:text-zinc-400",
                "Generated from the source by "
                    ++ code(class=Mono, "tools/macadoc.maca") ++ ".")
-             div(class="mt-8 grid gap-4", module_cards(ms, 0))),
-         "")
+             div(class="mt-8 grid gap-4", module_cards(ms, 0))))
 
 Mono = "font-mono text-[0.9em]"
 
@@ -355,14 +490,29 @@ module_card(m: Module) -> str =>
       href=m.name ++ ".html",
       div(class="flex items-baseline justify-between gap-4",
           span(class="font-mono font-semibold", esc(m.path))
-          span(class="text-[0.8rem] text-zinc-500",
-               "{m.items.length()} items"))
+          span(class="text-[0.8rem] text-zinc-500 dark:text-zinc-400",
+               counted(m.items.length())))
       p(class="mt-2 text-[0.95rem] text-zinc-600 dark:text-zinc-400 m-0",
         inline(summary(m.blurb))))
 
+counted(n: int) -> str {
+    if n == 1 {
+        "1 item"
+    } else {
+        "{n} items"
+    }
+}
+
 // A module's card gets one line: the first sentence of the first paragraph.
+//
+// `str_find_index` answers -1 when no line is blank, and `str_take(ls, -1)`
+// clamps to zero — so a blurb written as one paragraph produced an empty card
+// rather than its first sentence. The std modules all happen to have a blank
+// line; nothing made them.
 summary(ls: str[]) -> str {
-    para = str_take(ls, str_find_index(ls, l => l.trim() == "")).join(" ")
+    blank = str_find_index(ls, l => l.trim() == "")
+    end = if blank < 0 { ls.length() } else { blank }
+    para = str_take(ls, end).join(" ")
     at = para.index_of(". ")
 
     if at < 0 {
@@ -378,8 +528,7 @@ module_page(m: Module) -> str =>
              h1(class="font-mono font-bold text-[1.6rem] m-0", esc(m.path))
              prose(m.blurb)
              toc(m.items)
-             div(class="mt-10 grid gap-8", entries(m.items, 0))),
-         "")
+             div(class="mt-10 grid gap-8", entries(m.items, 0))))
 
 // A jump list, because a reference is read by looking something up.
 toc(items: Item[]) -> str =>
@@ -440,14 +589,43 @@ main(args: str[]) -> int {
 }
 
 generate(out: str, sources: str[]) -> int {
-    make_dir(out)
     modules = read_all(sources, 0, [])
+    require_distinct_names(modules, 0)
+
+    // Cleared, not merged into. A module that is renamed or dropped otherwise
+    // leaves its old page behind, and the site build copies that page out and
+    // publishes it forever.
+    remove_dir(out)
+    make_dir(out)
 
     write_file(join(out, "index.html"), index_page(modules))
     written = write_modules(out, modules, 0)
 
     info("macadoc: {written} modules, {total_items(modules, 0)} items → {out}")
     0
+}
+
+// Two modules with the same stem would claim the same page and the same card
+// link, and the first would simply be gone. `a/text.maca b/text.maca` reported
+// "2 modules" and wrote one file.
+require_distinct_names(ms: Module[], i: int) -> bool {
+    if i >= ms.length() {
+        true
+    } else if name_taken(ms, 0, i) {
+        fail "two modules named {ms.get(i).name}: {ms.get(i).path}"
+    } else {
+        require_distinct_names(ms, i + 1)
+    }
+}
+
+name_taken(ms: Module[], i: int, before: int) -> bool {
+    if i >= before {
+        false
+    } else if ms.get(i).name == ms.get(before).name {
+        true
+    } else {
+        name_taken(ms, i + 1, before)
+    }
 }
 
 read_all(sources: str[], i: int, acc: Module[]) -> Module[] {

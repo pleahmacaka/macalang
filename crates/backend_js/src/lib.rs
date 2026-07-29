@@ -883,8 +883,13 @@ pub fn tailwind(class: &str) -> Option<String> {
         "font-sans" => {
             "font-family:'Pretendard',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif"
         }
+        // No Pretendard here, though it leads `font-sans`. It is the de-facto
+        // Korean UI face and is installed on a large share of Korean machines
+        // — and it is a *sans-serif*, so naming it first made every code block
+        // and every inline `<code>` render proportionally for exactly the
+        // readers the Korean pages are for.
         "font-mono" => {
-            "font-family:'Pretendard',ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace"
+            "font-family:ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace"
         }
         "uppercase" => "text-transform:uppercase",
         "lowercase" => "text-transform:lowercase",
@@ -897,6 +902,11 @@ pub fn tailwind(class: &str) -> Option<String> {
         "truncate" => "overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
         "break-words" => "overflow-wrap:break-word",
         "break-all" => "word-break:break-all",
+        // Korean text breaks anywhere by default, so a heading splits a word
+        // down the middle — `돌아갈` as `돌` / `아갈`. `keep-all` is the
+        // convention every Korean site sets, and without this utility a page
+        // built here could not express it.
+        "break-keep" => "word-break:keep-all",
         "overflow-auto" => "overflow:auto",
         "overflow-hidden" => "overflow:hidden",
         "overflow-x-auto" => "overflow-x:auto",
@@ -988,9 +998,20 @@ pub fn tailwind(class: &str) -> Option<String> {
     if let Some(open) = class.find("[")
         && class.ends_with(']')
     {
-        let prefix = &class[..open];
+        let prefix = class[..open].trim_end_matches('-');
         let raw = &class[open + 1..class.len() - 1].replace('_', " ");
-        if let Some(prop) = arbitrary_property(prefix.trim_end_matches('-')) {
+        // A border width has to carry its style, whether the width came from
+        // the scale or from brackets — CSS defaults `border-style` to `none`,
+        // so a width on its own draws nothing at all.
+        if let Some(sides) = border_sides(prefix) {
+            return Some(
+                sides
+                    .iter()
+                    .map(|s| format!("border-{s}-width:{raw};border-{s}-style:solid;"))
+                    .collect(),
+            );
+        }
+        if let Some(prop) = arbitrary_property(prefix) {
             return Some(format!("{prop}:{raw};"));
         }
     }
@@ -1013,24 +1034,16 @@ pub fn tailwind(class: &str) -> Option<String> {
     // A width with no style is invisible: CSS defaults `border-style` to
     // `none`, so `border-l-2` drew nothing at all. The unparameterized
     // `border-l` always set both; these have to as well.
-    for (p, sides) in [
-        ("border-l-", &["left"] as &[&str]),
-        ("border-r-", &["right"]),
-        ("border-t-", &["top"]),
-        ("border-b-", &["bottom"]),
-        ("border-x-", &["left", "right"]),
-        ("border-y-", &["top", "bottom"]),
-    ] {
-        if let Some(v) = class.strip_prefix(p)
-            && let Ok(n) = v.parse::<u32>()
-        {
-            return Some(
-                sides
-                    .iter()
-                    .map(|s| format!("border-{s}-width:{n}px;border-{s}-style:solid;"))
-                    .collect(),
-            );
-        }
+    if let Some(at) = class.rfind('-')
+        && let Some(sides) = border_sides(&class[..at])
+        && let Ok(n) = class[at + 1..].parse::<u32>()
+    {
+        return Some(
+            sides
+                .iter()
+                .map(|s| format!("border-{s}-width:{n}px;border-{s}-style:solid;"))
+                .collect(),
+        );
     }
     // A heading that an in-page `#anchor` jumps to needs room above it, or the
     // sticky header lands on top of what you just jumped to.
@@ -1157,6 +1170,21 @@ fn container_width(v: &str) -> Option<&'static str> {
     })
 }
 
+/// The edges a `border-…` utility draws on, or `None` if it isn't one. Shared
+/// by the scale form (`border-y-2`) and the arbitrary one (`border-y-[3px]`)
+/// so the two cannot disagree about which edges `y` means.
+fn border_sides(prefix: &str) -> Option<&'static [&'static str]> {
+    Some(match prefix {
+        "border-l" => &["left"],
+        "border-r" => &["right"],
+        "border-t" => &["top"],
+        "border-b" => &["bottom"],
+        "border-x" => &["left", "right"],
+        "border-y" => &["top", "bottom"],
+        _ => return None,
+    })
+}
+
 /// The CSS property an arbitrary-value class sets: `text-[…]` is a font size,
 /// `w-[…]` a width, and so on.
 fn arbitrary_property(prefix: &str) -> Option<&'static str> {
@@ -1192,6 +1220,13 @@ fn arbitrary_property(prefix: &str) -> Option<&'static str> {
         "bottom" => "bottom",
         "left" => "left",
         "inset" => "inset",
+        // The arbitrary-value branch runs before the numeric parsers, so a
+        // prefix missing from this table falls through to one that rejects
+        // `[…]` and emits nothing. An arbitrary scroll-margin is the case a
+        // sticky header of a non-scale height needs, which is what
+        // `scroll-mt-*` was added for.
+        "scroll-mt" => "scroll-margin-top",
+        "scroll-mb" => "scroll-margin-bottom",
         "leading" => "line-height",
         "font" => "font-family",
         "content" => "content",

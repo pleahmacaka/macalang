@@ -16,34 +16,26 @@ fn have_cc() -> bool {
         .unwrap_or(false)
 }
 
-fn have_wsl() -> bool {
-    Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
 fn repo() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// The suite runs `target/release/maca`, which a debug-only `cargo test` has no
-/// reason to have built. Skipping is the honest answer — the alternative is a
-/// test that passes because it silently checked nothing.
+/// The suite shells out to a compiler to run the two generators, and `MACA`
+/// tells it which one: the binary this `cargo test` just built. It used to
+/// hardcode `target/release/maca` and skip when that was absent, which is
+/// every CI run — the `test` job has no reason to have made a release build,
+/// so the whole suite was green having checked nothing.
 #[test]
 fn the_generated_pages_are_what_they_claim() {
-    if have_wsl() || !have_cc() {
-        eprintln!("skipping: needs a host cc and no wsl");
-        return;
-    }
-    if !repo().join("target/release/maca").exists() {
-        eprintln!("skipping: needs cargo build --release -p maca-driver");
+    if !have_cc() {
+        eprintln!("skipping: needs a host cc");
         return;
     }
 
-    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+    let maca = env!("CARGO_BIN_EXE_maca");
+    let out = Command::new(maca)
         .current_dir(repo())
+        .env("MACA", maca)
         .args(["test", "crates/driver/tests/programs/sitegen.maca"])
         .output()
         .expect("spawn maca test");

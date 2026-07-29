@@ -902,8 +902,12 @@ body_tag(class: str, inner: str) -> str =>
     body(class=class, inner)
 
 // The page's own typography and colours, on the element that owns them.
+//
+// `break-keep` matters for the Korean half of the book and costs the English
+// half nothing: it only changes text that would otherwise break inside a word,
+// which Korean does by default and English never does.
 body_class() -> str =>
-    "font-serif text-base leading-relaxed bg-white dark:bg-zinc-900"
+    "font-serif text-base leading-relaxed break-keep bg-white dark:bg-zinc-900"
         ++ " text-zinc-900 dark:text-zinc-100"
 
 // `<code>` inside a `<pre>` must not repeat the block's background or padding.

@@ -53,14 +53,48 @@ build_handbook() -> bool {
 // for this book the landing is written here instead.
 build_front_page() -> bool {
     info("==> front page")
+    drop_landings(landing_pages(), 0)
     run(Maca, ["run", "apps/site/home.maca", "apps/tomo/site"])
 }
 
-// The modules `std/README.md` advertises, in the order it lists them. Naming
-// them rather than globbing keeps `std/tests/*.maca` out of the reference.
+// Tomo writes a landing for every language whether or not the book has a
+// `home.md` — without one it writes the picker — so these three paths always
+// exist by the time the front page runs. Removing them first means a front
+// page that fails to build leaves nothing behind to be mistaken for it,
+// rather than silently publishing tomo's picker under the site's own address.
+landing_pages() -> str[] =>
+    ["apps/tomo/site/index.html", "apps/tomo/site/en/home.html",
+     "apps/tomo/site/ko/home.html"]
+
+drop_landings(paths: str[], i: int) -> bool {
+    if i >= paths.length() {
+        true
+    } else {
+        remove_file(paths.get(i))
+        drop_landings(paths, i + 1)
+    }
+}
+
+// The modules `std/README.md` advertises, in the order it lists them.
+//
+// Read out of the table rather than written down again here. Globbing `std/`
+// would pull in `std/tests/*.maca`, and a second copy of the list is a list
+// that drifts — the reference's contents are checked against this same table
+// by `crates/driver/tests/programs/sitegen.maca`, so it is the one place a
+// module is named.
 std_modules() -> str[] =>
-    ["std/text.maca", "std/list.maca", "std/path.maca", "std/json.maca",
-     "std/csv.maca", "std/fs.maca", "std/proc.maca"]
+    module_paths(read_lines("std/README.md"), 0, [])
+
+module_paths(ls: str[], i: int, acc: str[]) -> str[] {
+    if i >= ls.length() {
+        acc
+    } else if ls.get(i).starts_with("| `std/") {
+        name = between(ls.get(i), "| `std/", "`")
+        module_paths(ls, i + 1, acc.push("std/" ++ name ++ ".maca"))
+    } else {
+        module_paths(ls, i + 1, acc)
+    }
+}
 
 build_api_reference() -> bool {
     info("==> api reference")
@@ -142,12 +176,29 @@ dead_in_pages(pages: str[], i: int, acc: str[]) -> str[] {
 
 dead_in_page(path: str) -> str[] {
     src = read_file(path)
-    sheet = between(src, "<style>", "</style>")
+    sheet = stylesheets(src, 0, "")
 
     if sheet == "" {
         []
     } else {
         unruled(classes_in(src), 0, sheet, [])
+    }
+}
+
+// Every `<style>` block, not the first one. Reading one meant a page with two
+// sheets had every class in the second reported dead, and matching the tag as
+// the literal `<style>` meant a `<style type="text/css">` exempted its whole
+// page from checking — a check that can be switched off by an attribute is
+// worse than no check, because it reads as a pass.
+stylesheets(src: str, at: int, acc: str) -> str {
+    rest = src.slice(at, src.length())
+    open = rest.index_of("<style")
+
+    if open < 0 {
+        acc
+    } else {
+        body = between(rest.slice(open, rest.length()), ">", "</style>")
+        stylesheets(src, at + open + 6, acc ++ body)
     }
 }
 
@@ -161,8 +212,20 @@ unruled(cs: str[], i: int, sheet: str, acc: str[]) -> str[] {
     }
 }
 
-has_rule(sheet: str, class: str) -> bool =>
-    class.starts_with("language-") || sheet.contains("." ++ css_escape(class))
+// The selector has to end where the class ends. Asking whether the sheet
+// merely *contains* `.rounded-l` was answered by `.rounded-lg`, so any dead
+// class that is a prefix of a live one passed — and `rounded-l` is a real
+// Tailwind utility this engine does not implement.
+//
+// A rule is always `.{escaped}` followed by ` {`, a pseudo-class `:`, or the
+// `[` of an attribute selector, so those three are the whole list of ways it
+// can end.
+has_rule(sheet: str, class: str) -> bool {
+    sel = "." ++ css_escape(class)
+
+    class.starts_with("language-") || sheet.contains(sel ++ " ")
+        || sheet.contains(sel ++ ":") || sheet.contains(sel ++ "[")
+}
 
 // The escaping `styles()` applies to a selector. A `:` or a `[` is punctuation
 // to a CSS parser, so a utility carrying one is written `.max-w-\[64rem\]`.
@@ -276,10 +339,20 @@ between(src: str, open: str, close: str) -> str {
 
 // The pages a reader can reach directly, and the search index each language
 // needs. An empty file counts as missing — a failed render writes one.
+// Every module gets a page, not just the first one: naming two of the eight
+// meant six could vanish or come out empty with the check still green.
 required_pages() -> str[] =>
     ["index.html", "en/index.html", "ko/index.html",
      "en/search-index.js", "ko/search-index.js", "play/index.html",
-     "api/index.html", "api/text.html"]
+     "api/index.html"] ++ api_pages(std_modules(), 0, [])
+
+api_pages(ms: str[], i: int, acc: str[]) -> str[] {
+    if i >= ms.length() {
+        acc
+    } else {
+        api_pages(ms, i + 1, acc.push("api/" ++ stem(ms.get(i)) ++ ".html"))
+    }
+}
 
 require_pages(out: str) -> bool =>
     all_present(required_pages(), 0, out)

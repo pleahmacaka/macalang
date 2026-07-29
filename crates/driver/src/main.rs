@@ -620,6 +620,15 @@ fn cmd_build(args: &[String]) {
         }
         return;
     }
+    // A `--target` nobody recognises used to fall through to the native path
+    // and report "built …", so a typo produced a binary for the wrong target
+    // and said nothing.
+    if !target.is_empty() && target != "native" && target != "c" {
+        die(&format!(
+            "unknown target `{target}` — expected one of \
+             nix, js, jvm, rust, embedded, tauri, or none for native"
+        ));
+    }
     let out = out.unwrap_or_else(|| PathBuf::from(stem(&src)));
     match compile(&src, &out) {
         Ok(()) => println!("built {}", out.display()),

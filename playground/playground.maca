@@ -274,6 +274,9 @@ import js """
       typeKeywords: ["int", "float", "str", "bool", "bytes"],
       tokenizer: {
         root: [
+          // `///` is a doc comment — what macadoc reads as API. Listed first
+          // so the plain `//` rule doesn't claim it.
+          [/\/\/\/[^\/].*$|\/\/\/$/, "comment.doc"],
           [/\/\/.*$/, "comment"],
           [/\/\*/, "comment", "@block"],
           [/"{3}/, "string", "@raw"],
@@ -318,6 +321,7 @@ import js """
       base: "vs-dark", inherit: true,
       rules: [
         { token: "comment", foreground: "7d8590", fontStyle: "italic" },
+        { token: "comment.doc", foreground: "8b9cb0", fontStyle: "italic" },
         { token: "keyword", foreground: "c792ea" },
         { token: "type", foreground: "ffcb6b" },
         { token: "string", foreground: "c3e88d" },

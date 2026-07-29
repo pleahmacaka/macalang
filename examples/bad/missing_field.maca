@@ -1,0 +1,14 @@
+// `Config` declares three fields and the literal names one, so `title` and
+// `port` would each be a silent zero — "" and 0 — in a program that compiled
+// clean and rendered a page with no heading.
+Config = {
+    host:  str
+    title: str
+    port:  int
+}
+
+main() -> int {
+    c = Config { host = "localhost" }
+    info(c.title)
+    0
+}
