@@ -1124,6 +1124,13 @@ fn capitalize(s: &str) -> String {
     }
 }
 
+/// The smallest `dev.maca` that produces a working shell — shown when there
+/// isn't one, so the next step is a copy rather than a search.
+const STARTER_DEV: &str = "    import nixpkgs\n\n\
+     \x20   dev.name     = \"myapp\"\n\
+     \x20   dev.packages = rustc, cargo\n\
+     \x20   dev.env      = { RUST_BACKTRACE = \"1\" }\n";
+
 /// `maca dev [dev.maca] [-o flake.nix]` — compile a Maca-defined dev
 /// environment to a `flake.nix` devShell, replacing a hand-written flake.
 fn cmd_dev(args: &[String]) {
@@ -1138,6 +1145,15 @@ fn cmd_dev(args: &[String]) {
     }
     let source = match std::fs::read_to_string(&src) {
         Ok(s) => s,
+        // `maca init` does not scaffold one, because a Nix dev shell is
+        // optional. Saying only "not found" leaves the reader with no idea
+        // what the file they are missing would contain.
+        Err(_) if !src.exists() => die(&format!(
+            "no {} here. It describes the dev shell, in Maca:\n\n\
+             {STARTER_DEV}\n\
+             Then `maca dev` writes flake.nix and `nix develop` enters it.",
+            src.display()
+        )),
         Err(e) => die(&format!("cannot read {}: {e}", src.display())),
     };
     let parsed = maca_parser::parse(&source);
