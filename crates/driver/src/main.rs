@@ -739,6 +739,55 @@ fn validate_rust_imports(m: &maca_parser::Module, deps: &[(String, String)]) -> 
     Ok(())
 }
 
+/// A freestanding image has no libc and no console, and its `main` is the reset
+/// handler's callee rather than a process entry point.
+///
+/// Both facts used to surface as C compiler noise — `call to undeclared
+/// function 'info'`, `conflicting types for 'main'` — about a file the user
+/// never wrote.
+fn validate_freestanding(m: &maca_parser::Module) -> Result<(), String> {
+    use maca_parser::ast::{Expr, Stmt};
+
+    for it in &m.items {
+        if let Stmt::Fn(f) = it
+            && f.name == "main"
+            && f.ret.is_some()
+        {
+            return Err(
+                "`main` returns nothing on a freestanding target — there is no \
+                 process to hand an exit code to; the reset handler calls it and \
+                 halts when it returns"
+                    .into(),
+            );
+        }
+    }
+
+    let mut used: Option<String> = None;
+    for it in &m.items {
+        maca_parser::ast::walk_stmt(it, &mut |e| {
+            if let Expr::Call { callee, .. } = e
+                && let Expr::Ident(n) = &**callee
+                && CONSOLE.contains(&n.as_str())
+                && used.is_none()
+            {
+                used = Some(n.clone());
+            }
+        });
+    }
+    match used {
+        Some(n) => Err(format!(
+            "`{n}` needs a console, and a freestanding image has none — no libc, \
+             no stdout. Drive a UART or a debug port with `mmio_write` instead"
+        )),
+        None => Ok(()),
+    }
+}
+
+/// The output builtins, which all write to a stream a bare-metal target lacks.
+const CONSOLE: &[&str] = &[
+    "print", "info", "debug", "notice", "warn", "err", "crit", "alert", "emerg", "input",
+];
+
 /// A trait-impl method's foreign-typed parameter is a mutable borrow of a value
 /// the crate owns, so it must not outlive the call: returning it, or storing it
 /// in a record or a list, would need a lifetime Maca has no way to name.
@@ -1178,6 +1227,8 @@ fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<Stri
             .collect();
         return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
     }
+    validate_freestanding(&parsed.module)?;
+
     let mcu = maca_backend_embedded::Mcu::resolve(mcu_name)
         .ok_or_else(|| format!("unknown --mcu {mcu_name:?} (try cortex-m0/m3/m4, riscv32)"))?;
 

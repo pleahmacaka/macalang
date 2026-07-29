@@ -120,7 +120,15 @@ lex (28, 28): string literal spans a line; write `\n`, or use a raw
 
 An event handler has nowhere to attach when elements render to a string
 (chapter 15), so the native target says so rather than emitting markup that
-silently does nothing.
+silently does nothing. Each target refuses what it cannot honour, and for the
+same reason — the alternative is an error about generated code you never
+wrote:
+
+| Target | Refuses |
+|---|---|
+| native | `on:click=` and its siblings |
+| `rust` | a bodyless (FFI) function; `import c`/`import py`; an `import rust` naming an undeclared crate; a borrowed foreign parameter that is returned or stored |
+| `embedded` | `info` and the other console builtins; a `main` with a return type |
 
 **C compiler errors** should not happen, and when they do it is a compiler bug
 worth reporting. A misspelt method used to be the exception — it survived to

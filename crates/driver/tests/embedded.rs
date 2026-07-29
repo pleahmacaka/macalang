@@ -96,3 +96,45 @@ fn mmio_lowers_to_read_modify_write() {
     );
     assert!(c.contains("Reset_Handler"), "no reset handler");
 }
+
+/// A freestanding image has no libc and no console, and its `main` is called by
+/// the reset handler rather than by a process. Both used to reach the user as C
+/// compiler noise about a file they never wrote.
+#[test]
+fn a_hosted_program_is_refused_with_a_reason() {
+    let dir = std::env::temp_dir().join("maca-embedded-hosted");
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+
+    for (name, src, want) in [
+        (
+            "console",
+            "main() {\n    info(\"hi\")\n}\n",
+            "needs a console",
+        ),
+        (
+            "exit_code",
+            "main() -> int {\n    0\n}\n",
+            "returns nothing on a freestanding target",
+        ),
+    ] {
+        let file = dir.join(format!("{name}.maca"));
+        std::fs::write(&file, src).expect("write source");
+
+        let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+            .args([
+                "build",
+                "--target",
+                "embedded",
+                &file.to_string_lossy(),
+                "-o",
+                &dir.join(name).to_string_lossy(),
+            ])
+            .output()
+            .expect("spawn maca build");
+
+        let text = String::from_utf8_lossy(&out.stdout).to_string()
+            + &String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success(), "{name} should not build:\n{text}");
+        assert!(text.contains(want), "{name}: expected {want:?} in:\n{text}");
+    }
+}

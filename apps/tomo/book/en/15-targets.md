@@ -61,6 +61,12 @@ operating system. Cortex-M and RISC-V are supported. Memory-mapped registers are
 ordinary Maca values, and a field write lowers to a read-modify-write of the
 right width.
 
+Two things follow from "freestanding" and the compiler says so rather than
+letting the C toolchain complain about a file you didn't write: there is no
+console, so `info` and its siblings are not available — drive a UART with
+`mmio_write` — and `main` returns nothing, because there is no process to hand
+an exit code to. The reset handler calls it and halts when it returns.
+
 This is the target that most justifies compiling through C. The C toolchain for
 a given chip already exists, and Maca gets to use it rather than carry a code
 generator per microcontroller family.
