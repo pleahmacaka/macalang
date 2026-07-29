@@ -38,6 +38,33 @@ pick(xs: a[], key: (a) -> str, want: str, i: int) -> a {
 
 first_of(xs: a[]) -> a => xs.get(0)
 
+// A local whose type mentions the variable and is a *container* — the pass that
+// instantiates array and map types runs long before this is specialized, so the
+// C type it names has to be defined late or not at all.
+group_pairs(xs: a[]) -> a[][] {
+    out: a[][] = []
+    for x in xs {
+        row: a[] = []
+        row = row.push(x)
+        out = out.push(row)
+    }
+    out
+}
+
+index_by(xs: a[], key: (a) -> str) -> Map str a {
+    m: Map str a = map()
+    for x in xs {
+        m = m.set(key(x), x)
+    }
+    m
+}
+
+// The same generic at two different return types: the mangled name has to tell
+// them apart or the C compiler is handed one symbol with two signatures.
+apply_to(x: a, f: (a) -> b) -> b => f(x)
+
+size_of(r: Row) -> int => r.size
+
 count_of(xs: a[]) -> int => xs.length()
 
 pair_up(a: a, b: a) -> a[] => [a, b]
@@ -78,7 +105,36 @@ test_a_generic_works_on_a_primitive_too() {
     assert_eq(pair_up("a", "b").join("-"), "a-b", "two of the same type")
 }
 
+test_a_generic_local_may_be_a_container_of_the_element_type() {
+    rows = [Row { name = "a", size = 1 }, Row { name = "b", size = 2 }]
+    grouped = group_pairs(rows)
+    indexed = index_by(rows, label)
+
+    assert_eq(str(grouped.length()), "2", "one row each")
+    assert_eq(grouped.get(1).get(0).name, "b", "and the element survived")
+    assert_eq(indexed.get("a", Row { name = "?", size = 0 }).name, "a", "keyed by name")
+}
+
+// A lambda, not a named function — which is the whole point of taking a key.
+test_a_lambda_may_be_passed_where_a_function_type_is_declared() {
+    rows = [Row { name = "c", size = 3 }, Row { name = "a", size = 1 }]
+    sorted = sort_by(rows, r => r.name)
+
+    assert_eq(sorted.get(0).name, "a", "the lambda read a field, not an address")
+    assert_eq(sorted.get(1).name, "c", "and ordered by it")
+}
+
+test_one_generic_at_two_return_types_stays_two_functions() {
+    r = Row { name = "z", size = 9 }
+
+    assert_eq(apply_to(r, label), "z", "the str instantiation")
+    assert_eq(str(apply_to(r, size_of)), "9", "and the int one")
+}
+
 main() -> int {
+    test_a_generic_local_may_be_a_container_of_the_element_type()
+    test_a_lambda_may_be_passed_where_a_function_type_is_declared()
+    test_one_generic_at_two_return_types_stays_two_functions()
     test_a_type_variable_binds_from_inside_a_parameters_type()
     test_a_generic_local_gets_the_concrete_element_type()
     test_the_same_function_specialises_per_key()

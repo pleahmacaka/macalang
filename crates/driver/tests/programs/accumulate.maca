@@ -16,6 +16,16 @@ Box = { items: int[] }
 
 size_of(xs: int[]) -> int => xs.length()
 
+// The most ordinary helper there is, and the one that made the first version of
+// this unsound: `dst` is the caller's buffer, so appending to it in place
+// reallocated a list the caller was still holding.
+add_all(dst: int[], src: int[]) -> int[] {
+    for v in src {
+        dst = dst.push(v)
+    }
+    dst
+}
+
 // The shape it is for.
 build(n: int) -> int[] {
     out: int[] = []
@@ -37,6 +47,35 @@ split_evens(n: int) -> int {
         }
     }
     evens.length() * 100 + odds.length()
+}
+
+// The assertions below check *answers*, and an answer is the same whether the
+// list was copied or appended to — so on their own they cannot tell whether the
+// optimisation happened at all. This one can: building two thousand elements by
+// copying is two thousand buffers.
+test_an_accumulator_does_not_rebuild_itself_every_round() {
+    before = alloc_count() + reuse_count()
+    big = build(2000)
+    spent = alloc_count() + reuse_count() - before
+
+    assert_eq(str(big.length()), "2000", "every round is in it")
+    assert(spent < 40, "grew in place: {spent} allocations for 2000 elements")
+}
+
+// The same shape where a second name exists: here the copy is required, and the
+// cost of it is how we know it happened.
+test_a_second_holder_costs_a_copy_a_round() {
+    base: int[] = []
+    keep = base
+    before = alloc_count() + reuse_count()
+    for i in 1..200 {
+        base = base.push(i)
+    }
+    spent = alloc_count() + reuse_count() - before
+
+    assert_eq(str(base.length()), "200", "still correct")
+    assert_eq(str(keep.length()), "0", "and the other name did not move")
+    assert(spent > 200, "copied every round: {spent} allocations for 200 elements")
 }
 
 test_an_accumulator_collects_every_value() {
@@ -85,25 +124,52 @@ test_a_copy_is_kept_when_a_record_holds_the_list() {
 // A loop holds its own handle on what it iterates: the lowering copies the list
 // struct, and that copy shares the buffer. Appending in place could move the
 // buffer out from under it.
+// What the loop reads is a copy of the list struct, sharing the buffer.
+// Appending in place can reallocate and leave that copy pointing at freed
+// memory — so the values the loop *sees* are the assertion, not the values the
+// list ends up with. Enough rounds to force the reallocation.
 test_appending_to_the_list_being_iterated_reads_the_original() {
-    f = [1, 2, 3]
+    f: int[] = []
+    for i in 1..8 {
+        f = f.push(i)
+    }
+    seen = 0
     for x in f {
         f = f.push(x)
+        seen = seen + x
     }
 
-    assert_eq(str(f.length()), "6", "three appended, from the three there were")
-    assert_eq(str(f.get(3)), "1", "and they are the originals")
-    assert_eq(str(f.get(5)), "3", "in order")
+    assert_eq("{seen}", "36", "the loop saw one through eight, and nothing else")
+    assert_eq("{f.length()}", "16", "eight appended, from the eight there were")
+    assert_eq("{f.get(8)}", "1", "and they are the originals, in order")
 }
 
-// A list built from another list is that other list's business.
+// A parameter is a second handle by construction: what it points at belongs to
+// the caller. Read the caller's *elements* afterwards, not its length — a
+// length survives a reallocation that leaves the buffer dangling.
+test_a_parameter_is_the_callers_list() {
+    a = [1, 2, 3, 4]
+    b = [7, 8]
+    c = add_all(a, b)
+
+    assert_eq("{c.length()}", "6", "the helper built the whole thing")
+    assert_eq("{a.get(0)}", "1", "and the caller's list is untouched")
+    assert_eq("{a.get(3)}", "4", "all of it")
+}
+
+// A list built from another list is that other list's business. Enough elements
+// to force a reallocation, and the original read element by element — appending
+// in place would move the buffer and leave the other name pointing at nothing.
 test_a_copy_is_kept_when_the_accumulator_started_as_an_alias() {
     base = [1, 2]
     g = base
-    g = g.push(3)
+    for i in 1..40 {
+        g = g.push(i)
+    }
 
-    assert_eq(str(g.length()), "3", "the copy grew")
-    assert_eq(str(base.length()), "2", "the original did not")
+    assert_eq("{g.length()}", "42", "the copy grew")
+    assert_eq("{base.get(0)}", "1", "the original still reads")
+    assert_eq("{base.get(1)}", "2", "both of it")
 }
 
 test_strings_accumulate_the_same_way() {
@@ -123,8 +189,8 @@ test_a_list_literal_may_hold_a_list() {
     e = [1, 2]
     nested = [e]
 
-    assert_eq(str(nested.length()), "1", "one row")
-    assert_eq(str(nested.get(0).length()), "2", "holding two")
+    assert_eq("{nested.length()}", "1", "one row")
+    assert_eq("{nested.get(0).length()}", "2", "holding two")
 }
 
 test_a_list_of_lists_accumulates() {
@@ -142,12 +208,15 @@ test_a_list_of_lists_accumulates() {
 }
 
 main() -> int {
+    test_an_accumulator_does_not_rebuild_itself_every_round()
+    test_a_second_holder_costs_a_copy_a_round()
     test_an_accumulator_collects_every_value()
     test_two_accumulators_do_not_mix()
     test_a_copy_is_kept_when_another_name_holds_the_list()
     test_a_copy_is_kept_after_the_list_is_passed_to_a_function()
     test_a_copy_is_kept_when_a_record_holds_the_list()
     test_appending_to_the_list_being_iterated_reads_the_original()
+    test_a_parameter_is_the_callers_list()
     test_a_copy_is_kept_when_the_accumulator_started_as_an_alias()
     test_strings_accumulate_the_same_way()
     test_a_list_literal_may_hold_a_list()

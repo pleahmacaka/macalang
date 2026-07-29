@@ -10,6 +10,8 @@ Route = { path: str, handle: (str) -> str }
 
 Reducer = { name: str, step: (int, int) -> int }
 
+Tagger = { tag: (int, str) -> str }
+
 Res = { code: int, body: str }
 
 Maker = { build: (str) -> Res }
@@ -23,6 +25,11 @@ add(a: int, b: int) -> int => a + b
 mul(a: int, b: int) -> int => a * b
 
 page(q: str) -> Res => Res { code = 200, body = "<h1>{q}</h1>" }
+
+// A closure reached through an *unannotated* parameter says it returns `int`,
+// because that was inferred from being called rather than written down. What
+// the caller expects has to win, or a record comes back as its address.
+answer(handler, q: str) -> Res => handler(q)
 
 // The shape the whole feature exists for: a table of routes, each naming what
 // answers it, walked until one matches.
@@ -105,7 +112,25 @@ test_a_captured_value_survives_being_stored() {
     assert_eq(filler, "AAAAAAAA", "and the string built afterwards")
 }
 
+// The hint a stored lambda gets has to carry *every* parameter, not only the
+// first: this one's second parameter is a string, and typed as an integer it
+// renders an address.
+test_a_stored_lambda_gets_all_its_parameter_types() {
+    t = Tagger { tag = (n, s) => "{s}#{n}" }
+
+    assert_eq(t.tag(7, "row"), "row#7", "both parameters arrived as themselves")
+}
+
+test_the_caller_decides_what_an_inferred_closure_returns() {
+    r = answer(page, "Title")
+
+    assert_eq(str(r.code), "200", "a record came back, not an integer")
+    assert_eq(r.body, "<h1>Title</h1>", "with its fields intact")
+}
+
 main() -> int {
+    test_a_stored_lambda_gets_all_its_parameter_types()
+    test_the_caller_decides_what_an_inferred_closure_returns()
     test_a_field_holds_a_named_function()
     test_a_table_of_routes_dispatches_by_path()
     test_a_field_takes_two_arguments()

@@ -751,6 +751,7 @@ fn build_rust(src: &Path, out: &Path) -> Result<String, String> {
     validate_rust_imports(&parsed.module, &deps)?;
     validate_rust_bodies(&parsed.module)?;
     validate_borrowed_params(&parsed.module)?;
+    validate_no_function_fields(&parsed.module, "rust")?;
 
     let rs = maca_backend_rust::emit(&parsed.module);
     let rs_path = out.with_extension("rs");
@@ -1035,6 +1036,36 @@ fn validate_rust_bodies(m: &maca_parser::Module) -> Result<(), String> {
 /// `[rust-dependencies]` from the `maca.toml` nearest `src` (searching upward),
 /// as `(name, raw-rhs)` pairs — the RHS is preserved verbatim so both a bare
 /// version (`"1"`) and a table (`{ git = "…" }`) round-trip into `Cargo.toml`.
+/// A record field declared `(T) -> R` reaches only the native and JS back ends.
+///
+/// Rust would need the field boxed, the record's derives dropped and the call
+/// spelled `(r.f)(x)`; Java would need a functional interface and an explicit
+/// `.apply`. Both were emitted as if none of that mattered, and the failure
+/// arrived from `rustc` or `javac` describing generated code the reader never
+/// wrote. Refusing here says which field, and which target.
+fn validate_no_function_fields(m: &maca_parser::Module, target: &str) -> Result<(), String> {
+    use maca_parser::{Expr, Field, Stmt, Type};
+    for it in &m.items {
+        let Stmt::Bind(b) = it else { continue };
+        let (Expr::Ident(rec), Expr::Record(fs)) = (&b.target, &b.value) else {
+            continue;
+        };
+        for f in fs {
+            if let Field::Type {
+                name,
+                ty: Type::Fn(_, _),
+            } = f
+            {
+                return Err(format!(
+                    "`{rec}.{name}` holds a function, which --target {target} \
+                     cannot carry — the native and js targets can"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn rust_dependencies(src: &Path) -> Vec<(String, String)> {
     manifest_section(src, "[rust-dependencies]")
 }
@@ -1173,6 +1204,7 @@ fn build_jvm(src: &Path, out: Option<&Path>, classpath: Option<&str>) -> Result<
             .collect();
         return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
     }
+    validate_no_function_fields(&parsed.module, "jvm")?;
     let class = capitalize(&stem(src));
     let java = maca_backend_jvm::emit(&parsed.module, &class, None);
 

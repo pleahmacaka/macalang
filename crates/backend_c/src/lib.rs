@@ -156,6 +156,11 @@ struct Cx<'a> {
     // generic functions, monomorphized per concrete instantiation
     generics: HashMap<String, FnDef>,
     spec_pending: Vec<(String, Vec<CTy>)>, // instantiations to emit
+    /// C container types already defined, and the point in the output where
+    /// more can still go. A specialization discovers what it needs long after
+    /// the definitions were written — a generic whose local is `a[][]` or
+    /// `Map str a` named a type the program had never been given.
+    emitted_containers: HashSet<String>,
     /// The type variables of the specialization being emitted, if any.
     ///
     /// Parameters and the return type were substituted at the signature and
@@ -177,11 +182,10 @@ struct Cx<'a> {
     fresh: Fresh,
     /// The flattened pieces of the concatenation just lowered, if it was one.
     concat_pieces: Option<Vec<Piece>>,
-    /// Names the function being lowered gives a second holder to — anywhere in
-    /// its body, not only in the block at hand. A list appended to in a loop is
-    /// reassigned in an inner block while the alias that rules the optimisation
-    /// out can be three blocks up.
-    aliased: HashSet<String>,
+    /// Names the function being lowered may append to in place — see
+    /// `ownership::appendable_names`. Whole-body, because a list appended to in
+    /// a loop is reassigned three blocks below the binding that aliased it.
+    appendable: HashSet<String>,
     /// What each local was bound to, while the array types are being
     /// collected. A list literal's type is its first element's, and an element
     /// that is itself a name had no type at all here — so `[e]` where `e` is an
@@ -222,11 +226,12 @@ impl<'a> Cx<'a> {
             fn_thunks: HashSet::new(),
             generics: HashMap::new(),
             spec_pending: Vec::new(),
+            emitted_containers: HashSet::new(),
             type_subst: HashMap::new(),
             spec_done: HashSet::new(),
             problems: Vec::new(),
             classes: BTreeSet::new(),
-            aliased: HashSet::new(),
+            appendable: HashSet::new(),
             local_tys: HashMap::new(),
             fresh: Fresh::of(m),
             concat_pieces: None,
@@ -866,8 +871,49 @@ impl<'a> Cx<'a> {
                 ty: Type::Fn(ps, _),
             } = f
             {
+                // Everything crosses the closure boundary boxed as one
+                // `int64_t`, and a function value is two words — so a field
+                // whose function takes another function has nowhere to put it.
+                // Saying so beats the C compiler saying it about a generated
+                // thunk nobody wrote.
+                if ps.iter().any(|t| matches!(t, Type::Fn(_, _))) {
+                    self.problem(format!(
+                        "`{rec}.{name}` takes a function as an argument, which \
+                         this back end cannot carry — pass it as a parameter of \
+                         the enclosing function instead"
+                    ));
+                }
                 let ctys: Vec<CTy> = ps.iter().map(|t| self.cty(t)).collect();
                 self.record_fn_params.insert(format!("{rec}.{name}"), ctys);
+            }
+        }
+    }
+
+    /// Register the container types a body's local annotations name, now that
+    /// the type variables in them are known.
+    fn note_local_containers(&mut self, stmts: &[Stmt]) {
+        for st in stmts {
+            if let Stmt::Bind(b) = st {
+                for t in &b.tys {
+                    let cty = self.cty(t);
+                    self.note_arr(&cty);
+                }
+            }
+            let mut inner: Vec<Vec<Stmt>> = Vec::new();
+            walk_stmt(st, &mut |e| match e {
+                Expr::If { then, els, .. } => {
+                    inner.push(then.clone());
+                    if let Some(e) = els {
+                        inner.push(e.clone());
+                    }
+                }
+                Expr::For { body, .. } | Expr::While { body, .. } | Expr::Block(body) => {
+                    inner.push(body.clone())
+                }
+                _ => {}
+            });
+            for ss in inner {
+                self.note_local_containers(&ss);
             }
         }
     }
@@ -1154,6 +1200,7 @@ impl<'a> Cx<'a> {
                     c_type(e)
                 ));
                 emitted_arr.insert(arr_name(e));
+                self.emitted_containers.insert(arr_name(e));
             }
         }
         // string-keyed maps, monomorphized on the value type. Sorted so the
@@ -1163,6 +1210,7 @@ impl<'a> Cx<'a> {
         for v in &vals {
             if !matches!(v, CTy::Rec(_) | CTy::Sum(_)) {
                 self.push(&format!("MACA_DEFINE_MAP({}, {})", map_name(v), c_type(v)));
+                self.emitted_containers.insert(map_name(v));
             }
         }
         self.push("");
@@ -1216,6 +1264,7 @@ impl<'a> Cx<'a> {
                     c_type(e)
                 ));
                 emitted_arr.insert(arr_name(e));
+                self.emitted_containers.insert(arr_name(e));
             }
             cyclic_arr_elems = want;
             self.push("");
@@ -1250,6 +1299,7 @@ impl<'a> Cx<'a> {
                         c_type(e)
                     ));
                     emitted_arr.insert(arr_name(e));
+                    self.emitted_containers.insert(arr_name(e));
                 }
             }
             if self.records.contains_key(name) {
@@ -1289,6 +1339,7 @@ impl<'a> Cx<'a> {
                     c_type(e)
                 ));
                 emitted_arr.insert(arr_name(e));
+                self.emitted_containers.insert(arr_name(e));
             }
         }
         self.push("");
@@ -1371,6 +1422,9 @@ impl<'a> Cx<'a> {
         }
         self.push("");
 
+        self.push(LATE_CONTAINERS);
+        self.push("");
+
         // user fn forward decls (SIMD kernels are defined on the LLVM path, so
         // they are declared `extern` here and skipped in the def loop)
         for item in &self.m.items {
@@ -1423,6 +1477,12 @@ impl<'a> Cx<'a> {
             }
             self.emit_specialization(&name, &ctys);
         }
+        let late = self.late_containers();
+        let mut saved = saved;
+        match saved.find(LATE_CONTAINERS) {
+            Some(at) => saved.replace_range(at..at + LATE_CONTAINERS.len(), &late),
+            None => saved.push_str(&late),
+        }
         let defs = std::mem::replace(&mut self.out, saved);
         for d in self.hoisted_decls.clone() {
             self.push(&d);
@@ -1431,6 +1491,44 @@ impl<'a> Cx<'a> {
             self.out.push_str(&d);
         }
         self.out.push_str(&defs);
+    }
+
+    /// Definitions for containers nobody knew about until a generic was
+    /// specialized, shallowest first so an outer array names a complete inner
+    /// one.
+    fn late_containers(&mut self) -> String {
+        let mut elems: Vec<CTy> = self
+            .arr_elems
+            .iter()
+            .filter(|e| !self.emitted_containers.contains(&arr_name(e)))
+            .cloned()
+            .collect();
+        elems.sort_by_key(|e| (arr_depth(e), arr_name(e)));
+        let mut out = String::new();
+        for e in &elems {
+            out.push_str(&format!(
+                "MACA_DEFINE_ARRAY({}, {})\n",
+                arr_name(e),
+                c_type(e)
+            ));
+            self.emitted_containers.insert(arr_name(e));
+        }
+        let mut vals: Vec<CTy> = self
+            .map_vals
+            .iter()
+            .filter(|v| !self.emitted_containers.contains(&map_name(v)))
+            .cloned()
+            .collect();
+        vals.sort_by_key(map_name);
+        for v in &vals {
+            out.push_str(&format!(
+                "MACA_DEFINE_MAP({}, {})\n",
+                map_name(v),
+                c_type(v)
+            ));
+            self.emitted_containers.insert(map_name(v));
+        }
+        out
     }
 
     /// The C type of a top-level constant: its declared type when it has one,
@@ -1492,7 +1590,7 @@ impl<'a> Cx<'a> {
     }
 
     fn emit_fn(&mut self, f: &FnDef) {
-        self.aliased = ownership::aliased_names(f);
+        self.appendable = ownership::appendable_names(f, self.fresh.defined());
         let (params, ret) = self.fns[&f.name].clone();
         let mut env: Env = f
             .params
@@ -1797,34 +1895,12 @@ impl<'a> Cx<'a> {
         let Some(CTy::Arr(elem)) = lookup(env, name) else {
             return None;
         };
-        let _ = kept;
-        if self.aliased.contains(name) || !self.only_accumulates(name, stmts) {
+        let _ = (kept, stmts);
+        if !self.appendable.contains(name) {
             return None;
         }
         let (v, _) = self.expr(env, arg_expr(&args[0]), Some(&elem));
         Some(format!("{}_push(&{}, {v});", arr_name(&elem), cid(name)))
-    }
-
-    /// Is every value `name` is given in `stmts` a list of its own — a literal,
-    /// or an append to itself?
-    fn only_accumulates(&self, name: &str, stmts: &[Stmt]) -> bool {
-        let mut ok = true;
-        ownership::each_bind(stmts, &mut |n, value| {
-            if n != name {
-                return;
-            }
-            ok = ok
-                && match value {
-                    Expr::List(_) => true,
-                    Expr::Call { callee, .. } => matches!(
-                        callee.as_ref(),
-                        Expr::Field { base, name: m }
-                            if m == "push" && matches!(base.as_ref(), Expr::Ident(b) if b == name)
-                    ),
-                    _ => false,
-                };
-        });
-        ok
     }
 
     /// May this block release the string `name` holds?
@@ -2758,6 +2834,12 @@ impl<'a> Cx<'a> {
         body: &Expr,
         param_tys: &[CTy],
     ) -> (String, CTy) {
+        // A lambda body is a scope of its own, and the enclosing function's
+        // answer about what may be appended to in place says nothing about it —
+        // everything a lambda touches it either captured or was handed. Nothing
+        // inside one appends in place.
+        let saved_appendable = std::mem::take(&mut self.appendable);
+
         // free variables captured from the enclosing scope
         let mut bound: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
         let mut refs = HashSet::new();
@@ -2855,6 +2937,7 @@ impl<'a> Cx<'a> {
                 "({{ {ename}* _e = ({ename}*)maca_alloc(sizeof({ename})); {fills}({ctype}){{ {cast}{fname}, _e }}; }})"
             )
         };
+        self.appendable = saved_appendable;
         (val, ret)
     }
 
@@ -2899,6 +2982,16 @@ impl<'a> Cx<'a> {
         self.hoisted_decls.push(format!("static {sig};"));
         let saved = std::mem::take(&mut self.out);
         let saved_subst = std::mem::replace(&mut self.type_subst, subst);
+        // A specialization is a function body, and it was being lowered
+        // against whatever `appendable` the last ordinary function left
+        // behind — so a generic appended to a caller's list in place.
+        let saved_appendable = std::mem::replace(
+            &mut self.appendable,
+            ownership::appendable_names(&genf, self.fresh.defined()),
+        );
+        if let Some(FnBody::Block(stmts)) = &genf.body {
+            self.note_local_containers(&stmts.clone());
+        }
         self.push(&format!("static {sig} {{"));
         match &genf.body {
             Some(FnBody::Block(stmts)) => {
@@ -2927,6 +3020,7 @@ impl<'a> Cx<'a> {
         }
         self.push("}");
         self.type_subst = saved_subst;
+        self.appendable = saved_appendable;
         let def = std::mem::replace(&mut self.out, saved);
         self.hoisted_defs.push(def);
     }
@@ -2958,6 +3052,16 @@ impl<'a> Cx<'a> {
             Type::Array(inner) => CTy::Arr(Box::new(self.subst_cty(inner, subst))),
             Type::Opt(inner) => self.subst_cty(inner, subst),
             Type::Paren(inner) => self.subst_cty(inner, subst),
+            // `Map str a` is an application, and reading it as opaque meant a
+            // generic returning one was declared with the fallback map and its
+            // body returned the real one.
+            Type::Apply(base, args) if matches!(&**base, Type::Name(n) if n.last().is_some_and(|h| h == "Map")) => {
+                CTy::Map(Box::new(
+                    args.last()
+                        .map_or(CTy::Unknown, |a| self.subst_cty(a, subst)),
+                ))
+            }
+            Type::Fn(ps, r) => closure_ty(ps.len(), self.subst_cty(r, subst)),
             _ => self.cty(t),
         }
     }
@@ -3520,8 +3624,21 @@ impl<'a> Cx<'a> {
             }
             // a generic function → monomorphize per concrete argument types
             if let Some(genf) = self.generics.get(name).cloned() {
-                let lowered: Vec<(String, CTy)> =
-                    args.iter().map(|x| self.arg_typed(env, x)).collect();
+                // A lambda argument needs the parameter type the generic
+                // declared for it, with the variables settled from the
+                // arguments given concretely — `sort_by(rows, r => r.name)`
+                // otherwise typed `r` as an integer and read a field off it.
+                let declared = self.declared_lambda_params(name, args, env);
+                let lowered: Vec<(String, CTy)> = args
+                    .iter()
+                    .enumerate()
+                    .map(|(i, x)| {
+                        self.lambda_hint = declared.get(&i).cloned();
+                        let got = self.arg_typed(env, x);
+                        self.lambda_hint = None;
+                        got
+                    })
+                    .collect();
                 let arg_ctys: Vec<CTy> = lowered.iter().map(|(_, t)| t.clone()).collect();
                 let key = (name.to_string(), arg_ctys.clone());
                 if !self.spec_done.contains(&key) && !self.spec_pending.contains(&key) {
@@ -3550,6 +3667,12 @@ impl<'a> Cx<'a> {
             // parameter type as its expected type (so `[]` and other
             // context-typed literals resolve correctly).
             if let Some((params, ret)) = self.fns.get(name).cloned() {
+                // What the callee *declared* it will call a lambda with, with
+                // its type variables settled from the other arguments. A
+                // generic `sort_by(xs: a[], key: (a) -> str)` called with a
+                // `Row[]` says `key` takes a `Row`; without that the lambda's
+                // parameter was an integer and `r.name` dereferenced it.
+                let declared = self.declared_lambda_params(name, args, env);
                 let a: Vec<String> = args
                     .iter()
                     .enumerate()
@@ -3561,7 +3684,10 @@ impl<'a> Cx<'a> {
                         // belongs to, which typed `apply(v => v.path…)` as a
                         // record and dereferenced whatever `v` happened to be.
                         if matches!(x, Arg::Pos(Expr::Lambda { .. })) {
-                            self.lambda_hint = self.callee_param_ty(name, i, 8).map(|t| vec![t]);
+                            self.lambda_hint = declared
+                                .get(&i)
+                                .cloned()
+                                .or_else(|| self.callee_param_ty(name, i, 8).map(|t| vec![t]));
                         }
                         let c = self.arg_expected(env, x, params.get(i)).0;
                         self.lambda_hint = None;
@@ -3720,6 +3846,53 @@ impl<'a> Cx<'a> {
         }
     }
 
+    /// For each argument position holding a lambda, the parameter types the
+    /// callee declared for it — `(T, U) -> R` — with any type variables settled
+    /// from the arguments the call site gives concretely.
+    fn declared_lambda_params(
+        &mut self,
+        callee: &str,
+        args: &[Arg],
+        env: &mut Env,
+    ) -> HashMap<usize, Vec<CTy>> {
+        let mut out = HashMap::new();
+        let Some(def) = self.fn_def(callee) else {
+            return out;
+        };
+        // the concrete types of the arguments that are not themselves lambdas,
+        // which is what settles the variables a lambda's type mentions
+        let mut subst: HashMap<String, CTy> = HashMap::new();
+        for (i, p) in def.params.iter().enumerate() {
+            let Some(t) = &p.ty else { continue };
+            let Some(a) = args.get(i) else { continue };
+            if matches!(a, Arg::Pos(Expr::Lambda { .. })) {
+                continue;
+            }
+            let (_, cty) = self.expr(env, arg_expr(a), None);
+            bind_vars(t, &cty, &mut subst);
+        }
+        for (i, p) in def.params.iter().enumerate() {
+            if let Some(Type::Fn(ps, _)) = &p.ty
+                && matches!(args.get(i), Some(Arg::Pos(Expr::Lambda { .. })))
+            {
+                let ctys: Vec<CTy> = ps.iter().map(|t| self.subst_cty(t, &subst)).collect();
+                out.insert(i, ctys);
+            }
+        }
+        out
+    }
+
+    /// A function the module defines, generic or not.
+    fn fn_def(&self, name: &str) -> Option<FnDef> {
+        if let Some(g) = self.generics.get(name) {
+            return Some(g.clone());
+        }
+        self.m.items.iter().find_map(|it| match it {
+            Stmt::Fn(f) if f.name == name => Some(f.clone()),
+            _ => None,
+        })
+    }
+
     /// The declared C type of `field` on record `rec`, if it has one.
     fn field_ty(&self, rec: &str, field: &str) -> Option<CTy> {
         self.records
@@ -3748,6 +3921,17 @@ impl<'a> Cx<'a> {
         let (CTy::Closure(r) | CTy::Closure2(r)) = ty else {
             return ("0 /* not a function */".into(), CTy::Unknown);
         };
+        // The runtime has one call shape per arity, so a call that does not
+        // match one is a diagnostic here — passed through, it reached
+        // `maca_call2` with a one-argument closure and the C compiler reported
+        // a type it had never been shown.
+        let want = if matches!(ty, CTy::Closure2(_)) { 2 } else { 1 };
+        if args.len() != want {
+            self.problem(format!(
+                "this function value takes {want} argument(s), not {}",
+                args.len()
+            ));
+        }
         let boxed: Vec<(String, CTy)> = args.iter().map(|x| self.arg_typed(env, x)).collect();
         let bx: Vec<String> = boxed.iter().map(|(c, t)| box_i64(c, t)).collect();
         // What the caller expects wins over what the closure says, because a
@@ -4933,6 +5117,9 @@ fn mangle_name(name: &str, ctys: &[CTy]) -> String {
     format!("{name}__{}", tags.join("_"))
 }
 
+/// Where late container definitions go — see `Cx::late_containers`.
+const LATE_CONTAINERS: &str = "/* containers a specialization asked for */";
+
 fn cty_tag(t: &CTy) -> String {
     match t {
         CTy::Map(v) => format!("{}map", cty_tag(v)),
@@ -4946,7 +5133,11 @@ fn cty_tag(t: &CTy) -> String {
         CTy::Arr(e) => format!("arr{}", cty_tag(e)),
         CTy::Vec { name, .. } => name.clone(),
         CTy::Future => "future".into(),
-        CTy::Closure(_) | CTy::Closure2(_) => "closure".into(),
+        // The return type is part of the tag. Without it `apply_to(r, name_of)`
+        // and `apply_to(r, size_of)` mangled to one name and the C compiler
+        // reported two functions with the same symbol and different types.
+        CTy::Closure(r) => format!("fn{}", cty_tag(r)),
+        CTy::Closure2(r) => format!("fn2{}", cty_tag(r)),
         CTy::Unknown => "any".into(),
     }
 }

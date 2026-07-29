@@ -499,7 +499,13 @@ void maca_drop(void* p) {
                that happened to still be sitting there. A use-after-free that
                only shows up as a correct answer is a bug the test suite cannot
                see, which is the whole reason for the switch. */
-            if (g_poison < 0) g_poison = getenv("MACA_POISON") ? 1 : 0;
+            if (g_poison < 0) {
+                /* Set-but-off has to mean off. `MACA_POISON=0` reading as *on*
+                   made every suite that looped over "0" and "1" run the
+                   poisoned build twice and never test the ordinary one. */
+                const char* v = getenv("MACA_POISON");
+                g_poison = v && *v && strcmp(v, "0") != 0;
+            }
             if (g_poison) memset((void*)(h + 1), 0xDD, h->size);
             h->fl_next = g_freelist; g_freelist = h;
         }
