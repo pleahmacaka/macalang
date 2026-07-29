@@ -265,7 +265,7 @@ fn ps_escape(s: &str) -> String {
 }
 
 /// `user` is the home-manager username (from `maca.toml [hosts.X] user = …`).
-pub fn emit_for_user(m: &Module, user: &str) -> String {
+fn emit_for_user(m: &Module, user: &str) -> String {
     let mut top: Vec<String> = Vec::new();
     let mut hm: Vec<String> = Vec::new();
 
@@ -479,16 +479,6 @@ fn nix_string(parts: &[StrPart]) -> String {
     }
     s.push('"');
     s
-}
-
-fn plain_text(parts: &[StrPart]) -> String {
-    parts
-        .iter()
-        .filter_map(|p| match p {
-            StrPart::Text(t) => Some(t.clone()),
-            _ => None,
-        })
-        .collect()
 }
 
 fn path_of(e: &Expr) -> Vec<String> {

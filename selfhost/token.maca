@@ -43,18 +43,6 @@ keyword_kind(w: str) -> Kind =>
         _        => TIdent
     }
 
-// A short human label for a kind — used by the token dumper and error messages.
-kind_name(k: Kind) -> str =>
-    match k {
-        TInt    => "int"
-        TFloat  => "float"
-        TIdent  => "ident"
-        TStr    => "str"
-        TPath   => "path"
-        Newline => "newline"
-        Eof     => "eof"
-        _       => "punct"
-    }
 
 mk_token(kind: Kind, text: str, pos: int) -> Token =>
     Token { kind, text, pos }

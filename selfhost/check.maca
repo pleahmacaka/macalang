@@ -381,6 +381,3 @@ type_of(e: Expr) -> str =>
 
 count_errors(e: Expr) -> int =>
     errors_in(e, empty_env())
-
-check_fn(s: Stmt) -> int =>
-    check_fn_in(s, empty_env())

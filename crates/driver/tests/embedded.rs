@@ -110,6 +110,13 @@ fn a_hosted_program_is_refused_with_a_reason() {
             "main() {\n    info(\"hi\")\n}\n",
             "needs a console",
         ),
+        // `panic` is an output builtin too. The check kept its own list of
+        // them, that list was missing this one, and it reached the image.
+        (
+            "panic",
+            "main() {\n    panic(\"boom\")\n}\n",
+            "needs a console",
+        ),
         (
             "exit_code",
             "main() -> int {\n    0\n}\n",

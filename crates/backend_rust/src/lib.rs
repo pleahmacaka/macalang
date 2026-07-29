@@ -20,7 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// The `import rust "spec"` specs, in source order — the crates.io / std items a
 /// program pulls in. `import rust "gpui::div"` → the driver validates the crate
 /// against `[rust-dependencies]` and `emit` turns it into `use gpui::div;`.
-pub fn rust_imports(m: &Module) -> Vec<String> {
+fn rust_imports(m: &Module) -> Vec<String> {
     m.items
         .iter()
         .filter_map(|it| match it {
@@ -884,12 +884,6 @@ fn pat_bind(p: &Pattern) -> String {
         Pattern::Bind(n) => ident(n),
         Pattern::Wild => "_".into(),
         _ => "_".into(),
-    }
-}
-
-fn arg_expr(a: &Arg) -> &Expr {
-    match a {
-        Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
     }
 }
 

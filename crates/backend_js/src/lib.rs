@@ -463,7 +463,7 @@ fn jbinary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
 }
 
 fn jcall(callee: &Expr, args: &[Arg]) -> String {
-    let a: Vec<String> = args.iter().map(|x| jexpr(&arg_expr(x))).collect();
+    let a: Vec<String> = args.iter().map(|x| jexpr(arg_expr(x))).collect();
     match callee {
         Expr::Ident(f) if f == "int" => format!(
             "Math.trunc(Number({}))",
@@ -710,12 +710,6 @@ impl Cx {
     }
 }
 
-fn arg_expr(a: &Arg) -> Expr {
-    match a {
-        Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e.clone(),
-    }
-}
-
 /// Is `name` an HTML element tag (so `name(...)` in a view builds a DOM node),
 /// as opposed to a text-returning function call used as a child? Delegates to
 /// the canonical list in `maca-parser`, shared with the type checker.
@@ -843,7 +837,7 @@ fn split_variants(class: &str) -> (Vec<&str>, &str) {
 /// the common utilities (display/flex/grid, spacing, sizing, text, colors,
 /// borders, rounding, overflow, position) generatively — a compact but real
 /// engine, not a fixed table. Unknown classes return `None` and are dropped.
-pub fn tailwind(class: &str) -> Option<String> {
+fn tailwind(class: &str) -> Option<String> {
     // fixed keywords first
     let fixed = match class {
         "flex" => "display:flex",
@@ -1391,16 +1385,6 @@ pub fn css_escape(c: &str) -> String {
     out
 }
 
-fn plain_text(parts: &[StrPart]) -> String {
-    parts
-        .iter()
-        .filter_map(|p| match p {
-            StrPart::Text(t) => Some(t.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
 /// Walk a statement collecting whitespace-separated tokens of every string
 /// literal as Tailwind class candidates.
 /// Every whitespace-separated token of every string literal reachable from an
@@ -1437,7 +1421,7 @@ fn collect_class_expr(e: &Expr, out: &mut BTreeSet<String>) {
         Expr::Call { callee, args } => {
             collect_class_expr(callee, out);
             for a in args {
-                collect_class_expr(&arg_expr(a), out);
+                collect_class_expr(arg_expr(a), out);
             }
         }
         Expr::Ternary { cond, then, els } => {
@@ -1497,10 +1481,6 @@ fn collect_class_expr(e: &Expr, out: &mut BTreeSet<String>) {
         }
         _ => {}
     }
-}
-
-fn is_record_type(e: &Expr) -> bool {
-    matches!(e, Expr::Record(fs) if !fs.is_empty() && fs.iter().all(|f| matches!(f, Field::Type { .. })))
 }
 
 fn sum_variants(e: &Expr) -> Option<()> {

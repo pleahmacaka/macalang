@@ -62,20 +62,10 @@ impl Scheme {
 /// and sized-numeric / SIMD lane types start with `i`/`u`/`f` + a digit
 /// (`i32`, `f32x8`). Everything else lowercase (`a`, `k`, `value`) is a
 /// type variable.
-pub fn is_type_var_name(n: &str) -> bool {
-    let b = n.as_bytes();
-    if b.is_empty() || !b[0].is_ascii_lowercase() {
-        return false;
-    }
-    if matches!(n, "int" | "float" | "str" | "bool" | "bytes" | "unit") {
-        return false;
-    }
-    // Sized-numeric / SIMD lane types (`i32`, `u8`, `f32x8`) are nominal.
-    if matches!(b[0], b'i' | b'u' | b'f') && b.get(1).is_some_and(u8::is_ascii_digit) {
-        return false;
-    }
-    true
-}
+///
+/// The C and JVM backends monomorphize against the same rule, so it is spelled
+/// once, beside the AST all three read.
+pub use maca_parser::ast::is_type_var_name;
 
 /// Union-find inference context.
 #[derive(Default)]

@@ -27,7 +27,7 @@ pub struct FnCost {
 ///
 /// Handles Callgrind name compression: `fn=(12) name` defines id 12 = name,
 /// and a later `fn=(12)` refers back to it.
-pub fn parse_callgrind(text: &str) -> (HashMap<String, FnCost>, u64) {
+fn parse_callgrind(text: &str) -> (HashMap<String, FnCost>, u64) {
     let mut fns: HashMap<String, FnCost> = HashMap::new();
     let mut names: HashMap<String, String> = HashMap::new(); // compression id -> name
     let mut cur: Option<String> = None;
@@ -157,7 +157,7 @@ pub fn flamegraph_svg(cg_text: &str) -> String {
 /// Render a flame graph SVG from any cost model (`unit` labels the metric,
 /// e.g. `Ir` for Callgrind, `steps` for the interpreter). Rooted at `main`, or
 /// the costliest function when there is no `main`.
-pub fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String {
+fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String {
     let root_name = if fns.contains_key("main") {
         "main".to_string()
     } else {

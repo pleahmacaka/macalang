@@ -356,7 +356,7 @@ impl<'a> Cx<'a> {
         for item in &self.m.items {
             if let Stmt::Bind(b) = item
                 && let Expr::Ident(name) = &b.target
-                && is_record_value(&b.value)
+                && is_record_type(&b.value)
             {
                 self.records.entry(name.clone()).or_default();
             }
@@ -380,7 +380,7 @@ impl<'a> Cx<'a> {
                                 self.variant_of.insert(v.clone(), name.clone());
                             }
                             self.sums.insert(name.clone(), names);
-                        } else if is_record_value(&b.value) {
+                        } else if is_record_type(&b.value) {
                             self.records.insert(name.clone(), Vec::new());
                         }
                     }
@@ -2375,7 +2375,7 @@ impl<'a> Cx<'a> {
         for (p, cty) in genf.params.iter().zip(arg_ctys) {
             if let Some(Type::Name(segs)) = &p.ty
                 && segs.len() == 1
-                && is_tyvar(&segs[0])
+                && is_type_var_name(&segs[0])
             {
                 m.insert(segs[0].clone(), cty.clone());
             }
@@ -4025,18 +4025,6 @@ fn sum_variants(e: &Expr) -> Option<Vec<(String, Vec<Type>)>> {
     }
 }
 
-/// The `Expr` a call argument carries.
-fn arg_expr(a: &Arg) -> &Expr {
-    match a {
-        Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
-    }
-}
-
-/// Whether a bind value is a record type declaration (`{ x: int, y: str }`).
-fn is_record_value(e: &Expr) -> bool {
-    matches!(e, Expr::Record(fs) if !fs.is_empty() && fs.iter().all(|f| matches!(f, Field::Type { .. })))
-}
-
 /// A function is generic if any parameter or the return type mentions a
 /// type variable.
 fn fn_is_generic(f: &FnDef) -> bool {
@@ -4048,22 +4036,13 @@ fn fn_is_generic(f: &FnDef) -> bool {
 
 fn type_has_tyvar(t: &Type) -> bool {
     match t {
-        Type::Name(segs) => segs.len() == 1 && is_tyvar(&segs[0]),
+        Type::Name(segs) => segs.len() == 1 && is_type_var_name(&segs[0]),
         Type::Array(i) | Type::Opt(i) | Type::Paren(i) => type_has_tyvar(i),
         Type::Apply(h, args) => type_has_tyvar(h) || args.iter().any(type_has_tyvar),
     }
 }
 
 /// A lowercase single-word type name that isn't a primitive is a type variable.
-#[allow(clippy::nonminimal_bool)] // the positive conjunction reads clearer
-fn is_tyvar(n: &str) -> bool {
-    let b = n.as_bytes();
-    !b.is_empty()
-        && b[0].is_ascii_lowercase()
-        && !matches!(n, "int" | "float" | "str" | "bool" | "bytes" | "unit")
-        && !(matches!(b[0], b'i' | b'u' | b'f') && b.get(1).is_some_and(u8::is_ascii_digit))
-}
-
 /// A generic function's specialized C name for a concrete argument tuple, e.g.
 /// `id__int`, `id__str`, `id__Box`.
 fn mangle_name(name: &str, ctys: &[CTy]) -> String {
@@ -4730,7 +4709,7 @@ fn note_escapes(e: &Expr, out: &mut HashSet<String>) {
             note_escapes(base, out);
         }
         for a in args {
-            note_escapes_all(arg_value(a), out);
+            note_escapes_all(arg_expr(a), out);
         }
         return;
     }
@@ -4740,22 +4719,32 @@ fn note_escapes(e: &Expr, out: &mut HashSet<String>) {
     walk_children(e, &mut |c| note_escapes(c, out));
 }
 
-fn arg_value(a: &Arg) -> &Expr {
-    match a {
-        Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
+/// Apply `f` to each direct sub-expression of `e`.
+/// The expressions a block's statements carry, one level down.
+///
+/// This used to match `Stmt::Expr` and `Stmt::Bind` and nothing else, so a
+/// function nested inside a block was invisible to every consumer of
+/// `walk_children` — including the escape analysis that decides what a buffer
+/// outlives. `maca_parser::ast::walk_stmt` covers every statement shape; this
+/// is the shallow form of it, which is what these callers recurse through
+/// themselves.
+fn stmt_children(ss: &[Stmt], f: &mut dyn FnMut(&Expr)) {
+    for s in ss {
+        match s {
+            Stmt::Expr(e) | Stmt::Bind(Bind { value: e, .. }) => f(e),
+            Stmt::Alias { value, .. } => f(value),
+            Stmt::Fn(fd) => match &fd.body {
+                Some(FnBody::Expr(e)) => f(e),
+                Some(FnBody::Block(inner)) => stmt_children(inner, f),
+                None => {}
+            },
+            Stmt::Import(_) => {}
+        }
     }
 }
 
-/// Apply `f` to each direct sub-expression of `e`.
 fn walk_children(e: &Expr, f: &mut dyn FnMut(&Expr)) {
-    let stmts = |ss: &[Stmt], f: &mut dyn FnMut(&Expr)| {
-        for s in ss {
-            match s {
-                Stmt::Expr(e) | Stmt::Bind(Bind { value: e, .. }) => f(e),
-                _ => {}
-            }
-        }
-    };
+    let stmts = stmt_children;
     match e {
         Expr::Str(parts) => parts.iter().for_each(|p| {
             if let StrPart::Interp(x) = p {
@@ -4772,7 +4761,7 @@ fn walk_children(e: &Expr, f: &mut dyn FnMut(&Expr)) {
         }
         Expr::Call { callee, args } => {
             f(callee);
-            args.iter().for_each(|a| f(arg_value(a)));
+            args.iter().for_each(|a| f(arg_expr(a)));
         }
         Expr::Field { base, .. }
         | Expr::Unary { expr: base, .. }

@@ -315,7 +315,7 @@ fn cexpr(e: &Expr) -> String {
 }
 
 fn ccall(callee: &Expr, args: &[Arg]) -> String {
-    let a: Vec<String> = args.iter().map(|x| cexpr(&arg_expr(x))).collect();
+    let a: Vec<String> = args.iter().map(|x| cexpr(arg_expr(x))).collect();
     let g = |i: usize| a.get(i).cloned().unwrap_or_else(|| "0u".into());
     let reg = |addr: &str| format!("(*(volatile uint32_t *)(uintptr_t)({addr}))");
     if let Expr::Ident(f) = callee {
@@ -343,12 +343,6 @@ fn is_pure(e: &Expr) -> bool {
         e,
         Expr::Int(_) | Expr::Bool(_) | Expr::Ident(_) | Expr::Unit
     )
-}
-
-fn arg_expr(a: &Arg) -> Expr {
-    match a {
-        Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e.clone(),
-    }
 }
 
 #[cfg(test)]

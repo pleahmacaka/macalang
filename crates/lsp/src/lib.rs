@@ -166,18 +166,15 @@ fn first_backtick(msg: &str) -> Option<&str> {
 }
 
 /// First whole-word occurrence of `name` in *code* (skipping `//` comments and
-/// `"…"` strings), as a byte span — so a marker anchors on the real identifier.
+/// `"…"` strings), so a diagnostic anchors on the real identifier rather than
+/// on a mention of it in prose.
+///
+/// References and rename used to be built on the all-occurrences form of this;
+/// they resolve the binding properly now (see `binding`), and anchoring one
+/// diagnostic is all that is left.
 fn code_word_span(src: &str, name: &str) -> Option<(usize, usize)> {
-    code_word_spans(src, name).into_iter().next()
-}
-
-/// Every whole-word occurrence of `name` in *code* — comments and string
-/// literals are skipped, so a rename never touches prose. Byte spans, in source
-/// order.
-fn code_word_spans(src: &str, name: &str) -> Vec<(usize, usize)> {
-    let mut out = Vec::new();
     if name.is_empty() {
-        return out;
+        return None;
     }
     let b = src.as_bytes();
     let is_word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
@@ -202,15 +199,13 @@ fn code_word_spans(src: &str, name: &str) -> Vec<(usize, usize)> {
                     && (i == 0 || !is_word(b[i - 1]))
                     && (i + n >= b.len() || !is_word(b[i + n]))
                 {
-                    out.push((i, i + n));
-                    i += n;
-                } else {
-                    i += 1;
+                    return Some((i, i + n));
                 }
+                i += 1;
             }
         }
     }
-    out
+    None
 }
 
 /// Every reference to the binding under the cursor — its definition and every

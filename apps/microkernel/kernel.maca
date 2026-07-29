@@ -41,7 +41,6 @@ CAP_SEND    = 2 as const
 CAP_RECV    = 4 as const
 CAP_WORKER  = 3 as const   // compute | send
 CAP_SERVER  = 5 as const   // compute | recv
-CAP_ALL     = 15 as const
 
 syscall_cap(s: Syscall) -> int =>
     match s {

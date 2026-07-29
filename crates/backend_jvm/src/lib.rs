@@ -339,7 +339,7 @@ fn jbinary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
 }
 
 fn jcall(callee: &Expr, args: &[Arg]) -> String {
-    let a: Vec<String> = args.iter().map(|x| jexpr(&arg_expr(x))).collect();
+    let a: Vec<String> = args.iter().map(|x| jexpr(arg_expr(x))).collect();
     match callee {
         Expr::Ident(f) if f == "info" || f == "print" => {
             format!(
@@ -447,7 +447,7 @@ fn jtype(t: &Type) -> String {
                 "bool" => "boolean".into(),
                 "unit" | "()" => "void".into(),
                 // lowercase single-segment = type variable → Object
-                _ if segs.len() == 1 && is_type_var(&n) => "Object".into(),
+                _ if segs.len() == 1 && is_type_var_name(&n) => "Object".into(),
                 _ => n, // nominal / Java interop type, verbatim
             }
         }
@@ -482,15 +482,6 @@ fn type_name(t: &Type) -> String {
     }
 }
 
-#[allow(clippy::nonminimal_bool)]
-fn is_type_var(n: &str) -> bool {
-    let b = n.as_bytes();
-    !b.is_empty()
-        && b[0].is_ascii_lowercase()
-        && !matches!(n, "int" | "float" | "str" | "bool" | "bytes" | "unit")
-        && !(matches!(b[0], b'i' | b'u' | b'f') && b.get(1).is_some_and(u8::is_ascii_digit))
-}
-
 fn is_str(e: &Expr) -> bool {
     matches!(e, Expr::Str(_))
 }
@@ -518,12 +509,6 @@ fn java_str_lit(s: &str) -> String {
     }
     out.push('"');
     out
-}
-
-fn arg_expr(a: &Arg) -> Expr {
-    match a {
-        Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e.clone(),
-    }
 }
 
 fn indent(s: &str, levels: usize) -> String {
@@ -555,10 +540,6 @@ fn lambda_fields(e: &Expr) -> Option<Vec<(String, Vec<Param>, Expr)>> {
         return None;
     }
     (!out.is_empty()).then_some(out)
-}
-
-fn is_record_type(e: &Expr) -> bool {
-    matches!(e, Expr::Record(fs) if !fs.is_empty() && fs.iter().all(|f| matches!(f, Field::Type { .. })))
 }
 
 fn sum_variants(e: &Expr) -> Option<Vec<String>> {

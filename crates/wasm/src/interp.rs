@@ -1402,12 +1402,6 @@ fn overload_name(op: BinOp) -> Option<&'static str> {
     })
 }
 
-fn arg_expr(a: &Arg) -> &Expr {
-    match a {
-        Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
-    }
-}
-
 /// Variant name → arity for a `A | B(int) | C(int, int)` sum declaration.
 /// Returns `None` when `value` isn't a sum type.
 fn sum_variants(value: &Expr) -> Option<Vec<(String, usize)>> {

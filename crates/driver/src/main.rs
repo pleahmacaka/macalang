@@ -879,9 +879,12 @@ fn validate_freestanding(m: &maca_parser::Module) -> Result<(), String> {
 }
 
 /// The output builtins, which all write to a stream a bare-metal target lacks.
-const CONSOLE: &[&str] = &[
-    "print", "info", "debug", "notice", "warn", "err", "crit", "alert", "emerg", "input",
-];
+///
+/// `maca_core::IO_FNS` is the same set — the effect checker's reason for
+/// calling them impure is that they touch a console, which is this check's
+/// reason for refusing them. Two lists meant `panic` was in one and not the
+/// other, and slipped through onto bare metal.
+use maca_core::IO_FNS as CONSOLE;
 
 /// A trait-impl method's foreign-typed parameter is a mutable borrow of a value
 /// the crate owns, so it must not outlive the call: returning it, or storing it

@@ -60,7 +60,11 @@ pub fn check(module: &Module, mode: Mode) -> Vec<Diagnostic> {
 }
 
 /// Prelude functions that carry the `io` effect.
-const IO_FNS: &[&str] = &[
+///
+/// Public because the freestanding-target check refuses exactly these: the
+/// reason they are impure is that they write to a console, and a bare-metal
+/// image has none. It kept its own copy, which was missing `panic`.
+pub const IO_FNS: &[&str] = &[
     "info", "warn", "err", "debug", "notice", "crit", "alert", "emerg", "panic", "print", "input",
 ];
 /// UFCS method names treated as `io` (file/stdio side effects).
@@ -1300,7 +1304,7 @@ fn sum_variants(e: &Expr) -> Option<Vec<(String, Vec<Type>)>> {
             }
             Expr::Call { callee, args } => {
                 if let Expr::Ident(n) = &**callee {
-                    let tys = args.iter().map(|a| type_of_arg(arg_value(a))).collect();
+                    let tys = args.iter().map(|a| type_of_arg(arg_expr(a))).collect();
                     out.push((n.clone(), tys));
                     true
                 } else {
@@ -1321,13 +1325,6 @@ fn sum_variants(e: &Expr) -> Option<Vec<(String, Vec<Type>)>> {
             op: BinOp::Union, ..
         } if go(e, &mut out) => Some(out),
         _ => None,
-    }
-}
-
-/// The `Expr` carried by a call argument (positional / named / directive).
-fn arg_value(a: &Arg) -> &Expr {
-    match a {
-        Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
     }
 }
 

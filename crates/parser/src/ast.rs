@@ -383,3 +383,40 @@ pub fn arg_expr(a: &Arg) -> &Expr {
         Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
     }
 }
+
+/// Is this expression a *record type declaration* rather than a record value?
+///
+/// `P = { x: int }` declares a type — every field is `name: Type`. `P { x = 1 }`
+/// builds one. Three backends each carried a byte-identical copy of this, and
+/// they name the same source-level distinction, so they share one.
+pub fn is_record_type(e: &Expr) -> bool {
+    matches!(e, Expr::Record(fs) if !fs.is_empty()
+        && fs.iter().all(|f| matches!(f, Field::Type { .. })))
+}
+
+/// The literal text of an interpolated string, with the interpolations dropped.
+///
+/// What a backend needs when a string has to be known at compile time — a Nix
+/// attribute path, a Tailwind class list.
+pub fn plain_text(parts: &[StrPart]) -> String {
+    parts
+        .iter()
+        .filter_map(|p| match p {
+            StrPart::Text(t) => Some(t.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Is `n` a type *variable* rather than a concrete type?
+///
+/// Lowercase and not one of the primitives, and not a sized numeric like `i32`
+/// or a SIMD `f32x4`. The C and JVM backends monomorphize against this and must
+/// agree with the checker about which names are generic.
+pub fn is_type_var_name(n: &str) -> bool {
+    let b = n.as_bytes();
+    !b.is_empty()
+        && b[0].is_ascii_lowercase()
+        && !matches!(n, "int" | "float" | "str" | "bool" | "bytes" | "unit")
+        && !(matches!(b[0], b'i' | b'u' | b'f') && b.get(1).is_some_and(u8::is_ascii_digit))
+}
