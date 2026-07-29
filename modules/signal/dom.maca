@@ -28,12 +28,10 @@
 // enough to test the wiring without a browser, and is what `static_note` says
 // on the page so nobody mistakes it for a live one.
 //
-// Deliver the page from a native build for now. `maca build --target js` does
-// not inline an imported module: it emits calls to this module's functions and
-// none of their definitions, so the page loads and throws. Everything here is
-// a string, so a native build writing `index.html` — `runtime_script()` in the
-// head, bound nodes in the body, `patch_script` sent down however the page
-// gets its updates — works today and is the same markup either way.
+// Either build delivers the page. Everything here is a string, so a native
+// build writing `index.html` — `runtime_script()` in the head, bound nodes in
+// the body, `patch_script` sent down however the page gets its updates — is the
+// same markup `maca build --target js` emits.
 
 // Every import here is selective, and every call to another function of this
 // module or of `signal/store` is a plain call and not a UFCS method — see the

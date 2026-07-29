@@ -142,11 +142,27 @@ fn discarded_strings_are_reused() {
 }
 
 /// Nested array types are declared before the types that hold them.
+///
+/// This one is about values, not about the process, so it is a file of `test_…`
+/// functions run by `maca test` — which names each one it ran. Its neighbours
+/// above stay process-level because what they check *is* the process: valgrind's
+/// verdict, `MACA_POISON`, an exit code.
 #[test]
 fn nested_array_types_are_declared_before_use() {
     if have_wsl() || !have("cc") {
         eprintln!("skipping: needs a host cc and no wsl");
         return;
     }
-    assert_passes(&build("nested_arrays"));
+    let program = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/programs/nested_arrays.maca");
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["test", &program.to_string_lossy()])
+        .output()
+        .expect("spawn maca test");
+    let text =
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{text}");
+    // A file whose assertions sit in `main` reports "no tests found" and passes
+    // on its exit code alone, which is what this replaced.
+    assert!(text.contains("3 tests passed"), "{text}");
 }

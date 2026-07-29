@@ -4,18 +4,26 @@
 // first. The element set is a hash set, so before it was sorted whether
 // `int[][]` compiled at all depended on the iteration order.
 
-main() -> int {
+grid_of_products(n: int) -> int[][] {
     grid: int[][] = []
-    for i in 1..3 {
+    for i in 1..n {
         row = []
-        for j in 1..3 {
+        for j in 1..n {
             row = row.push(i * j)
         }
         grid = grid.push(row)
     }
+    grid
+}
 
-    assert_eq(str(grid.length()), "3", "three rows")
-    assert_eq(str(grid.get(2).get(2)), "9", "the last cell of the last row")
+test_a_nested_array_holds_every_row() {
+    assert_eq(str(grid_of_products(3).length()), "3", "three rows")
+}
 
-    failures()
+test_a_nested_array_indexes_through_both_levels() {
+    assert_eq(str(grid_of_products(3).get(2).get(2)), "9", "last cell, last row")
+}
+
+test_a_nested_array_of_one_row_still_nests() {
+    assert_eq(str(grid_of_products(1).get(0).get(0)), "1", "the only cell")
 }
