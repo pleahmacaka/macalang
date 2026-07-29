@@ -25,15 +25,22 @@ import selfhost/emit_rust
 //
 // With no arguments it runs the demonstration below, which is what the gate
 // reads its assertions from.
-main(args: str[]) -> int =>
-    args.length() >= 2 ? compile_file(args) : demo()
+main(args: str[]) -> int {
+    if args.length() >= 2 {
+        compile_file(args)
+    } else {
+        demo()
+    }
+}
 
 compile_file(args: str[]) -> int {
     src = read_file(args.get(0))
     m = parse_module(lex(src), 0, [])
     errs = check_module(m)
     want_rust = args.length() >= 3 && args.get(2) == "rust"
-    write_file(args.get(1), want_rust ? remit_module(m) : emit_module(m))
+    emitted = if want_rust { remit_module(m) } else { emit_module(m) }
+
+    write_file(args.get(1), emitted)
     errs
 }
 

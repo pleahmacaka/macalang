@@ -21,10 +21,13 @@ is_alnum(c: str) -> bool => is_alpha(c) || is_digit(c)
 // index (exclusive). `pred` is a higher-order parameter (a predicate
 // `str -> bool`): the stage-0 backend recognizes an unannotated parameter that
 // is called and lowers it as a first-class function value.
-run_end(cs: str[], i: int, pred) -> int =>
-    i < cs.length() && pred(cs.get(i))
-        ? run_end(cs, i + 1, pred)
-        : i
+run_end(cs: str[], i: int, pred) -> int {
+    if i < cs.length() && pred(cs.get(i)) {
+        run_end(cs, i + 1, pred)
+    } else {
+        i
+    }
+}
 
 // The source text between two indices, as a single string.
 span(cs: str[], i: int, j: int) -> str =>
@@ -37,10 +40,13 @@ lex(src: str) -> Token[] {
     scan(cs, 0, [])
 }
 
-scan(cs: str[], i: int, out: Token[]) -> Token[] =>
-    i >= cs.length()
-        ? out ++ [mk_token(Eof, "", i)]
-        : step(cs, i, out)
+scan(cs: str[], i: int, out: Token[]) -> Token[] {
+    if i >= cs.length() {
+        out ++ [mk_token(Eof, "", i)]
+    } else {
+        step(cs, i, out)
+    }
+}
 
 step(cs: str[], i: int, out: Token[]) -> Token[] {
     c = cs.get(i)
@@ -61,10 +67,13 @@ lex_string(cs: str[], i: int, out: Token[]) -> Token[] {
     scan(cs, j + 1, out ++ [mk_token(TStr, text, i)])
 }
 
-string_end(cs: str[], i: int) -> int =>
-    i < cs.length() && cs.get(i) != "\""
-        ? string_end(cs, i + 1)
-        : i
+string_end(cs: str[], i: int) -> int {
+    if i < cs.length() && cs.get(i) != "\"" {
+        string_end(cs, i + 1)
+    } else {
+        i
+    }
+}
 
 lex_word(cs: str[], i: int, out: Token[]) -> Token[] {
     j = run_end(cs, i, is_alnum)
@@ -77,10 +86,14 @@ lex_word(cs: str[], i: int, out: Token[]) -> Token[] {
 // digit after it (`1.`) stays an int and leaves the `.` for the next token.
 lex_number(cs: str[], i: int, out: Token[]) -> Token[] {
     j = run_end(cs, i, is_digit)
-    is_float = j + 1 < cs.length() && cs.get(j) == "." && is_digit(cs.get(j + 1))
-    is_float
-        ? lex_float(cs, i, j, out)
-        : scan(cs, j, out ++ [mk_token(TInt, span(cs, i, j), i)])
+    has_fraction = j + 1 < cs.length() && cs.get(j) == "."
+        && is_digit(cs.get(j + 1))
+
+    if has_fraction {
+        lex_float(cs, i, j, out)
+    } else {
+        scan(cs, j, out ++ [mk_token(TInt, span(cs, i, j), i)])
+    }
 }
 
 lex_float(cs: str[], i: int, dot: int, out: Token[]) -> Token[] {
@@ -92,12 +105,14 @@ lex_float(cs: str[], i: int, dot: int, out: Token[]) -> Token[] {
 // fall back to a single character. `is_two_char` gates the two-char consume so
 // we never mis-read `a - b` as one token.
 lex_punct(cs: str[], i: int, out: Token[], c: str) -> Token[] {
-    n = cs.length()
-    nxt = i + 1 < n ? cs.get(i + 1) : ""
+    nxt = if i + 1 < cs.length() { cs.get(i + 1) } else { "" }
     two = c ++ nxt
-    is_two_char(two)
-        ? scan(cs, i + 2, out ++ [mk_token(two_char_kind(two), two, i)])
-        : scan(cs, i + 1, out ++ [mk_token(punct_kind(c), c, i)])
+
+    if is_two_char(two) {
+        scan(cs, i + 2, out ++ [mk_token(two_char_kind(two), two, i)])
+    } else {
+        scan(cs, i + 1, out ++ [mk_token(punct_kind(c), c, i)])
+    }
 }
 
 is_two_char(s: str) -> bool =>

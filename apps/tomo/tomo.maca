@@ -25,13 +25,23 @@ esc(s: str) -> str =>
 slug(text: str) -> str =>
     slug_chars(text.lower().chars(), 0, "")
 
-slug_chars(cs: str[], i: int, acc: str) -> str =>
-    i >= cs.length()
-        ? acc
-        : slug_chars(cs, i + 1, acc ++ slug_char(cs.get(i)))
+slug_chars(cs: str[], i: int, acc: str) -> str {
+    if i >= cs.length() {
+        acc
+    } else {
+        slug_chars(cs, i + 1, acc ++ slug_char(cs.get(i)))
+    }
+}
 
-slug_char(c: str) -> str =>
-    c == " " || c == "\t" || c == "_" ? "-" : (is_drop(c) ? "" : c)
+slug_char(c: str) -> str {
+    if c == " " || c == "\t" || c == "_" {
+        "-"
+    } else if is_drop(c) {
+        ""
+    } else {
+        c
+    }
+}
 
 // ASCII punctuation with no place in a URL fragment. Any byte outside this set
 // — including every byte of a multi-byte character — is kept.
@@ -45,39 +55,36 @@ is_drop(c: str) -> bool =>
 // worth paying: the classes sit next to the markup that uses them, and only the
 // rules actually used are generated.
 
-md_class(kind: str) -> str =>
-    kind == "h1"
-        ? "font-sans text-[2rem] leading-tight mt-2 mb-3 font-bold"
-        : (kind == "h2"
-            ? "font-sans text-[1.4rem] leading-tight mt-9 mb-3 font-bold"
-            : (kind == "h3"
-                ? "font-sans text-[1.15rem] leading-tight mt-8 mb-3 font-bold"
-                : md_class2(kind)))
-
-md_class2(kind: str) -> str =>
-    kind == "p"
-        ? "my-4"
-        : (kind == "pre"
-            ? "bg-zinc-100 dark:bg-zinc-800 p-4 rounded-md overflow-x-auto"
-                  ++ " my-4"
-            : (kind == "quote"
-                ? "border-l-2 border-zinc-300 dark:border-zinc-600 pl-4 my-4"
-                      ++ " text-zinc-600 dark:text-zinc-400"
-                : md_class3(kind)))
+md_class(kind: str) -> str {
+    if kind == "h1" {
+        "font-sans text-[2rem] leading-tight mt-2 mb-3 font-bold"
+    } else if kind == "h2" {
+        "font-sans text-[1.4rem] leading-tight mt-9 mb-3 font-bold"
+    } else if kind == "h3" {
+        "font-sans text-[1.15rem] leading-tight mt-8 mb-3 font-bold"
+    } else if kind == "p" {
+        "my-4"
+    } else if kind == "pre" {
+        "bg-zinc-100 dark:bg-zinc-800 p-4 rounded-md overflow-x-auto my-4"
+    } else if kind == "quote" {
+        "border-l-2 border-zinc-300 dark:border-zinc-600 pl-4 my-4"
+            ++ " text-zinc-600 dark:text-zinc-400"
+    } else if kind == "table" {
+        "block overflow-x-auto border-collapse w-full my-5 text-[0.94rem]"
+    } else if kind == "th" {
+        cell_class() ++ " font-sans text-[0.88rem]"
+            ++ " bg-zinc-100 dark:bg-zinc-800"
+    } else if kind == "td" {
+        cell_class()
+    } else if kind == "list" {
+        "my-4 pl-6"
+    } else {
+        "my-1"
+    }
+}
 
 cell_class() -> str =>
     "border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-left align-top"
-
-md_class3(kind: str) -> str =>
-    kind == "table"
-        ? "block overflow-x-auto border-collapse w-full my-5"
-              ++ " text-[0.94rem]"
-        : (kind == "th"
-            ? cell_class() ++ " font-sans text-[0.88rem]"
-                  ++ " bg-zinc-100 dark:bg-zinc-800"
-            : (kind == "td"
-                ? cell_class()
-                : (kind == "list" ? "my-4 pl-6" : "my-1")))
 
 // `<hN id="slug">text</hN>` — the `id` lets the table of contents link to it.
 //
@@ -91,7 +98,12 @@ heading(level: str, text: str) -> str =>
 // `index_of` from an offset — returns an absolute index, or -1.
 index_from(s: str, pat: str, start: int) -> int {
     idx = s.substr(start, s.length() - start).index_of(pat)
-    idx < 0 ? -1 : idx + start
+
+    if idx < 0 {
+        -1
+    } else {
+        idx + start
+    }
 }
 
 // Inline formatting within a line: code spans, then **bold**, then links.
@@ -101,7 +113,12 @@ inline(s: str) -> str =>
 // `[text](url)` -> `<a href="url">text</a>`, recursing on the remainder.
 link(s: str) -> str {
     open = s.index_of("[")
-    open < 0 ? s : link_at(s, open)
+
+    if open < 0 {
+        s
+    } else {
+        link_at(s, open)
+    }
 }
 
 // A link starting at the `[` at `open`.
@@ -113,51 +130,64 @@ link(s: str) -> str {
 // `text-[0.88em]` class through this pass.
 link_at(s: str, open: int) -> str {
     close = index_from(s, "](", open)
-    urlend = close < 0 ? -1 : index_from(s, ")", close + 2)
+    urlend = if close < 0 { -1 } else { index_from(s, ")", close + 2) }
     next = index_from(s, "[", open + 1)
-    urlend < 0 || (next >= 0 && next < close)
-        ? s.substr(0, open + 1)
-              ++ link(s.substr(open + 1, s.length() - open - 1))
-        : s.substr(0, open)
-          ++ a(class="text-inherit underline underline-offset-2"
-                     ++ " decoration-zinc-400",
-               href=href(s.substr(close + 2, urlend - close - 2)),
-               s.substr(open + 1, close - open - 1))
-          ++ link(s.substr(urlend + 1, s.length() - urlend - 1))
+    malformed = urlend < 0 || (next >= 0 && next < close)
+
+    if malformed {
+        s.substr(0, open + 1)
+            ++ link(s.substr(open + 1, s.length() - open - 1))
+    } else {
+        s.substr(0, open)
+            ++ a(class="text-inherit underline underline-offset-2"
+                       ++ " decoration-zinc-400",
+                 href=href(s.substr(close + 2, urlend - close - 2)),
+                 s.substr(open + 1, close - open - 1))
+            ++ link(s.substr(urlend + 1, s.length() - urlend - 1))
+    }
 }
 
 // A link between chapters is written to the source file — `[next](01-x.md)` —
 // because that is what works when the Markdown is read on its own, in an editor
 // or on a git host. Rendered, it has to point at the page that was produced.
 // Without this rewrite every cross-chapter link in the book is a 404.
-href(url: str) -> str =>
-    url.ends_with(".md") && !url.contains("://")
-        ? url.substr(0, url.length() - 3) ++ ".html"
-        : url
+href(url: str) -> str {
+    if url.ends_with(".md") && !url.contains("://") {
+        url.substr(0, url.length() - 3) ++ ".html"
+    } else {
+        url
+    }
+}
 
 // `` `x` `` -> `<code>x</code>`, recursing on what follows the closing
 // backtick. An unpaired backtick is left alone.
 code_spans(s: str) -> str {
     open = s.index_of("`")
-    close = open < 0 ? -1 : index_from(s, "`", open + 1)
-    close < 0
-        ? s
-        : s.substr(0, open)
-          ++ code(class="bg-zinc-100 dark:bg-zinc-800 px-1 rounded-sm"
-                        ++ " font-mono text-[0.88em]",
-                  s.substr(open + 1, close - open - 1))
-          ++ code_spans(s.substr(close + 1, s.length() - close - 1))
+    close = if open < 0 { -1 } else { index_from(s, "`", open + 1) }
+
+    if close < 0 {
+        s
+    } else {
+        s.substr(0, open)
+            ++ code(class="bg-zinc-100 dark:bg-zinc-800 px-1 rounded-sm"
+                          ++ " font-mono text-[0.88em]",
+                    s.substr(open + 1, close - open - 1))
+            ++ code_spans(s.substr(close + 1, s.length() - close - 1))
+    }
 }
 
 // `**x**` -> `<strong>x</strong>`.
 bold(s: str) -> str {
     open = s.index_of("**")
-    close = open < 0 ? -1 : index_from(s, "**", open + 2)
-    close < 0
-        ? s
-        : s.substr(0, open)
-          ++ strong(s.substr(open + 2, close - open - 2))
-          ++ bold(s.substr(close + 2, s.length() - close - 2))
+    close = if open < 0 { -1 } else { index_from(s, "**", open + 2) }
+
+    if close < 0 {
+        s
+    } else {
+        s.substr(0, open)
+            ++ strong(s.substr(open + 2, close - open - 2))
+            ++ bold(s.substr(close + 2, s.length() - close - 2))
+    }
 }
 
 // Render a whole markdown document to HTML.
@@ -165,14 +195,22 @@ render(md: str) -> str =>
     render_lines(md.split("\n"), 0, "")
 
 // Fold over the lines, threading the HTML accumulator `acc`.
-render_lines(lines: str[], i: int, acc: str) -> str =>
-    i >= lines.length() ? acc : render_line(lines, i, acc)
+render_lines(lines: str[], i: int, acc: str) -> str {
+    if i >= lines.length() {
+        acc
+    } else {
+        render_line(lines, i, acc)
+    }
+}
 
 render_line(lines: str[], i: int, acc: str) -> str {
     line = lines.get(i)
-    line.starts_with("```")
-        ? render_fence(lines, i, acc, line)
-        : render_block(lines, i, acc, line)
+
+    if line.starts_with("```") {
+        render_fence(lines, i, acc, line)
+    } else {
+        render_block(lines, i, acc, line)
+    }
 }
 
 // A fenced block, gathered whole and emitted as one element.
@@ -194,41 +232,62 @@ render_fence(lines: str[], i: int, acc: str, fence: str) -> str {
 }
 
 // The closing fence, or the end of the document if it is missing.
-fence_end(lines: str[], i: int) -> int =>
-    i >= lines.length() || lines.get(i).starts_with("```")
-        ? i
-        : fence_end(lines, i + 1)
+fence_end(lines: str[], i: int) -> int {
+    if i >= lines.length() || lines.get(i).starts_with("```") {
+        i
+    } else {
+        fence_end(lines, i + 1)
+    }
+}
 
-fence_body(lines: str[], at: int, stop: int) -> str =>
-    at >= stop
-        ? ""
-        : esc(lines.get(at)) ++ "\n" ++ fence_body(lines, at + 1, stop)
+fence_body(lines: str[], at: int, stop: int) -> str {
+    if at >= stop {
+        ""
+    } else {
+        esc(lines.get(at)) ++ "\n" ++ fence_body(lines, at + 1, stop)
+    }
+}
 
-lang_class(lang: str) -> str =>
-    lang.length() == 0 ? "" : " language-" ++ slug(lang)
+lang_class(lang: str) -> str {
+    if lang.length() == 0 {
+        ""
+    } else {
+        " language-" ++ slug(lang)
+    }
+}
 
 // A non-code line: a heading, a table, a list, a quote, a blank separator, or
 // a paragraph. Headings are one line each; the rest absorb the run of lines
 // that belongs to them, so Markdown that wraps mid-sentence (and mid-`**bold**`)
 // renders as one block rather than several broken ones.
-render_block(lines: str[], i: int, acc: str, line: str) -> str =>
-    head_level(line) > 0
-        ? render_lines(lines, i + 1, acc ++ head_html(line))
-        : is_table(line)
-            ? render_table(lines, i, acc)
-            : is_item(line)
-                ? render_list(lines, i, acc)
-                : line.starts_with("> ")
-                    ? render_quote(lines, i, acc)
-                    : line.trim() == ""
-                        ? render_lines(lines, i + 1, acc)
-                        : render_para(lines, i, acc)
+render_block(lines: str[], i: int, acc: str, line: str) -> str {
+    if head_level(line) > 0 {
+        render_lines(lines, i + 1, acc ++ head_html(line))
+    } else if is_table(line) {
+        render_table(lines, i, acc)
+    } else if is_item(line) {
+        render_list(lines, i, acc)
+    } else if line.starts_with("> ") {
+        render_quote(lines, i, acc)
+    } else if line.trim() == "" {
+        render_lines(lines, i + 1, acc)
+    } else {
+        render_para(lines, i, acc)
+    }
+}
 
 // `#`, `##`, `###` → 1, 2, 3; 0 when the line is not a heading.
-head_level(line: str) -> int =>
-    line.starts_with("### ")
-        ? 3
-        : (line.starts_with("## ") ? 2 : (line.starts_with("# ") ? 1 : 0))
+head_level(line: str) -> int {
+    if line.starts_with("### ") {
+        3
+    } else if line.starts_with("## ") {
+        2
+    } else if line.starts_with("# ") {
+        1
+    } else {
+        0
+    }
+}
 
 head_html(line: str) -> str {
     n = head_level(line)
@@ -247,8 +306,13 @@ is_numbered(line: str) -> bool {
     d > 0 && t.substr(d, 2) == ". "
 }
 
-digits_at(cs: str[], i: int) -> int =>
-    i >= cs.length() || !cs.get(i).is_ascii_digit() ? i : digits_at(cs, i + 1)
+digits_at(cs: str[], i: int) -> int {
+    if i >= cs.length() || !cs.get(i).is_ascii_digit() {
+        i
+    } else {
+        digits_at(cs, i + 1)
+    }
+}
 
 is_item(line: str) -> bool =>
     is_bullet(line) || is_numbered(line)
@@ -259,38 +323,52 @@ is_item(line: str) -> bool =>
 render_list(lines: str[], i: int, acc: str) -> str {
     stop = list_end(lines, i)
     // ordered or not decides the tag, so the tag is an expression
-    tag = is_numbered(lines.get(i)) ? "ol" : "ul"
+    tag = if is_numbered(lines.get(i)) { "ol" } else { "ul" }
     html = element(tag, class=md_class("list"),
                    "\n" ++ list_items(lines, i, stop)) ++ "\n"
     render_lines(lines, stop, acc ++ html)
 }
 
-list_end(lines: str[], i: int) -> int =>
-    i >= lines.length() || !is_item(lines.get(i)) ? i : list_end(lines, i + 1)
+list_end(lines: str[], i: int) -> int {
+    if i >= lines.length() || !is_item(lines.get(i)) {
+        i
+    } else {
+        list_end(lines, i + 1)
+    }
+}
 
 // Two leading spaces mark a nested item, which gets its own `<ul>` so it
 // indents under its parent.
-list_items(lines: str[], at: int, stop: int) -> str =>
-    at >= stop
-        ? ""
-        : one_item(lines.get(at)) ++ list_items(lines, at + 1, stop)
+list_items(lines: str[], at: int, stop: int) -> str {
+    if at >= stop {
+        ""
+    } else {
+        one_item(lines.get(at)) ++ list_items(lines, at + 1, stop)
+    }
+}
 
 one_item(line: str) -> str {
     nested = line.starts_with("  - ")
-    text = item_text(line, nested)
-    nested
-        ? ul(li(inline(esc(text)))) ++ "\n"
-        : li(class=md_class("li"), inline(esc(text))) ++ "\n"
+    text = inline(esc(item_text(line, nested)))
+
+    if nested {
+        ul(li(text)) ++ "\n"
+    } else {
+        li(class=md_class("li"), text) ++ "\n"
+    }
 }
 
 // Drop the marker: `- `, `  - `, or `12. `.
 item_text(line: str, nested: bool) -> str {
     t = line.trim()
-    nested
-        ? line.substr(4, line.length() - 4)
-        : (is_numbered(line)
-            ? t.substr(digits_at(t.chars(), 0) + 2, t.length())
-            : t.substr(2, t.length() - 2))
+
+    if nested {
+        line.substr(4, line.length() - 4)
+    } else if is_numbered(line) {
+        t.substr(digits_at(t.chars(), 0) + 2, t.length())
+    } else {
+        t.substr(2, t.length() - 2)
+    }
 }
 
 // ---- tables ---------------------------------------------------------------
@@ -303,6 +381,7 @@ is_table(line: str) -> bool =>
 // The `|---|:--:|` alignment row, which carries no content.
 is_rule_row(line: str) -> bool {
     body = line.trim().replace("|", "").replace("-", "").replace(":", "").trim()
+
     line.trim().starts_with("|") && line.contains("-") && body == ""
 }
 
@@ -310,17 +389,28 @@ render_table(lines: str[], i: int, acc: str) -> str {
     stop = table_end(lines, i)
     head = thead("\n" ++ row(lines.get(i), "th")) ++ "\n"
     // skip the header row and, if present, the alignment rule under it
-    body_at = i + 1 < stop && is_rule_row(lines.get(i + 1)) ? i + 2 : i + 1
+    ruled = i + 1 < stop && is_rule_row(lines.get(i + 1))
+    body_at = if ruled { i + 2 } else { i + 1 }
     body = tbody("\n" ++ rows(lines, body_at, stop)) ++ "\n"
     html = table(class=md_class("table"), "\n" ++ head ++ body) ++ "\n"
     render_lines(lines, stop, acc ++ html)
 }
 
-table_end(lines: str[], i: int) -> int =>
-    i >= lines.length() || !is_table(lines.get(i)) ? i : table_end(lines, i + 1)
+table_end(lines: str[], i: int) -> int {
+    if i >= lines.length() || !is_table(lines.get(i)) {
+        i
+    } else {
+        table_end(lines, i + 1)
+    }
+}
 
-rows(lines: str[], at: int, stop: int) -> str =>
-    at >= stop ? "" : row(lines.get(at), "td") ++ rows(lines, at + 1, stop)
+rows(lines: str[], at: int, stop: int) -> str {
+    if at >= stop {
+        ""
+    } else {
+        row(lines.get(at), "td") ++ rows(lines, at + 1, stop)
+    }
+}
 
 // One row. The leading and trailing `|` produce empty edge cells, which are
 // dropped by `cells` rather than by trimming the line, so an intentionally
@@ -333,26 +423,32 @@ row(line: str, tag: str) -> str =>
 split_cells(s: str) -> str[] =>
     cell_walk(s.chars(), 0, "", [])
 
-cell_walk(cs: str[], i: int, cur: str, acc: str[]) -> str[] =>
-    i >= cs.length()
-        ? acc ++ [cur]
-        : (is_escaped_pipe(cs, i)
-            ? cell_walk(cs, i + 2, cur ++ "|", acc)
-            : (cs.get(i) == "|"
-                ? cell_walk(cs, i + 1, "", acc ++ [cur])
-                : cell_walk(cs, i + 1, cur ++ cs.get(i), acc)))
+cell_walk(cs: str[], i: int, cur: str, acc: str[]) -> str[] {
+    if i >= cs.length() {
+        acc ++ [cur]
+    } else if is_escaped_pipe(cs, i) {
+        cell_walk(cs, i + 2, cur ++ "|", acc)
+    } else if cs.get(i) == "|" {
+        cell_walk(cs, i + 1, "", acc ++ [cur])
+    } else {
+        cell_walk(cs, i + 1, cur ++ cs.get(i), acc)
+    }
+}
 
 is_escaped_pipe(cs: str[], i: int) -> bool =>
     cs.get(i) == "\\" && i + 1 < cs.length() && cs.get(i + 1) == "|"
 
 // `tag` is `th` in the header row and `td` below it — the same reason `element`
 // exists: which tag a cell gets is decided by the data, not by the source.
-cells(parts: str[], i: int, tag: str) -> str =>
-    i >= parts.length() - 1
-        ? ""
-        : element(tag, class=md_class(tag),
-                  inline(esc(parts.get(i).trim())))
-              ++ cells(parts, i + 1, tag)
+cells(parts: str[], i: int, tag: str) -> str {
+    if i >= parts.length() - 1 {
+        ""
+    } else {
+        cell = element(tag, class=md_class(tag),
+                       inline(esc(parts.get(i).trim())))
+        cell ++ cells(parts, i + 1, tag)
+    }
+}
 
 // Gather the run of `> ` lines starting at `i` into one blockquote (a quote
 // wraps across lines the same way a paragraph does).
@@ -364,19 +460,30 @@ render_quote(lines: str[], i: int, acc: str) -> str {
                      ++ "\n")
 }
 
-quote_end(lines: str[], i: int) -> int =>
-    i >= lines.length() || !lines.get(i).starts_with("> ")
-        ? i
-        : quote_end(lines, i + 1)
+quote_end(lines: str[], i: int) -> int {
+    if i >= lines.length() || !lines.get(i).starts_with("> ") {
+        i
+    } else {
+        quote_end(lines, i + 1)
+    }
+}
 
 // Join `lines[at..stop)`, stripping each line's `> ` marker.
-join_quote(lines: str[], at: int, stop: int) -> str =>
-    at >= stop
-        ? ""
-        : at == stop - 1
-            ? lines.get(at).substr(2, lines.get(at).length() - 2).trim()
-            : lines.get(at).substr(2, lines.get(at).length() - 2).trim()
-                  ++ " " ++ join_quote(lines, at + 1, stop)
+join_quote(lines: str[], at: int, stop: int) -> str {
+    if at >= stop {
+        ""
+    } else {
+        text = strip_quote_marker(lines.get(at))
+        if at == stop - 1 {
+            text
+        } else {
+            text ++ " " ++ join_quote(lines, at + 1, stop)
+        }
+    }
+}
+
+strip_quote_marker(line: str) -> str =>
+    line.substr(2, line.length() - 2).trim()
 
 // Gather the run of plain lines starting at `i` into a single paragraph.
 render_para(lines: str[], i: int, acc: str) -> str {
@@ -388,22 +495,28 @@ render_para(lines: str[], i: int, acc: str) -> str {
 
 // The index just past the paragraph starting at `i` — a blank line, a heading,
 // a list item, or a code fence ends it.
-para_end(lines: str[], i: int) -> int =>
-    i >= lines.length() || is_break(lines.get(i))
-        ? i
-        : para_end(lines, i + 1)
+para_end(lines: str[], i: int) -> int {
+    if i >= lines.length() || is_break(lines.get(i)) {
+        i
+    } else {
+        para_end(lines, i + 1)
+    }
+}
 
 is_break(line: str) -> bool =>
     line.trim() == "" || line.starts_with("#") || is_item(line) ||
         line.starts_with("> ") || line.starts_with("```") || is_table(line)
 
 // Join `lines[from..to)` with single spaces (Markdown's soft-wrap semantics).
-join_range(lines: str[], at: int, stop: int) -> str =>
-    at >= stop
-        ? ""
-        : at == stop - 1
-            ? lines.get(at).trim()
-            : lines.get(at).trim() ++ " " ++ join_range(lines, at + 1, stop)
+join_range(lines: str[], at: int, stop: int) -> str {
+    if at >= stop {
+        ""
+    } else if at == stop - 1 {
+        lines.get(at).trim()
+    } else {
+        lines.get(at).trim() ++ " " ++ join_range(lines, at + 1, stop)
+    }
+}
 
 // ---- table of contents ----------------------------------------------------
 
@@ -414,19 +527,23 @@ toc(md: str) -> str =>
         "\n" ++ ul(class="list-none m-0 p-0",
                    "\n" ++ toc_lines(md.split("\n"), 0)) ++ "\n") ++ "\n"
 
-toc_lines(lines: str[], i: int) -> str =>
-    i >= lines.length()
-        ? ""
-        : toc_line(lines.get(i)) ++ toc_lines(lines, i + 1)
+toc_lines(lines: str[], i: int) -> str {
+    if i >= lines.length() {
+        ""
+    } else {
+        toc_line(lines.get(i)) ++ toc_lines(lines, i + 1)
+    }
+}
 
-toc_line(line: str) -> str =>
-    line.starts_with("### ")
-        ? toc_entry(line.substr(4, line.length() - 4))
-        : line.starts_with("## ")
-            ? toc_entry(line.substr(3, line.length() - 3))
-            : line.starts_with("# ")
-                ? toc_entry(line.substr(2, line.length() - 2))
-                : ""
+toc_line(line: str) -> str {
+    n = head_level(line)
+
+    if n == 0 {
+        ""
+    } else {
+        toc_entry(line.substr(n + 1, line.length() - n - 1))
+    }
+}
 
 toc_entry(text: str) -> str =>
     li(class="my-0",
@@ -458,9 +575,19 @@ chapter_nav(chs: str[], idx: int) -> str {
     p = prev_page(chs, idx)
     n = next_page(chs, idx)
     nav(class="chapters",
-        p >= 0 ? a(href=chs.get(p) ++ ".html", "← previous") : span("")
-        n >= 0 ? a(href=chs.get(n) ++ ".html", "next →") : span("")
+        page_link(chs, p, "← previous")
+        page_link(chs, n, "next →")
     ) ++ "\n"
+}
+
+// A link to a neighbouring chapter, or an empty placeholder at the ends of the
+// book — the grid wants both slots filled either way.
+page_link(chs: str[], at: int, label: str) -> str {
+    if at < 0 {
+        span("")
+    } else {
+        a(href=chs.get(at) ++ ".html", label)
+    }
 }
 
 // ---- layout classes -------------------------------------------------------
@@ -470,12 +597,17 @@ chapter_nav(chs: str[], idx: int) -> str {
 
 // A sidebar entry, and the same shape marked as the page you are on.
 link_class(current: bool) -> str =>
-    "block px-2 py-1 rounded no-underline"
-        ++ (current
-                ? " bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white"
-                    ++ " font-semibold"
-                : " text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                    ++ " hover:text-black dark:hover:text-white")
+    "block px-2 py-1 rounded no-underline" ++ link_state_class(current)
+
+link_state_class(current: bool) -> str {
+    if current {
+        " bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white"
+            ++ " font-semibold"
+    } else {
+        " text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            ++ " hover:text-black dark:hover:text-white"
+    }
+}
 
 sec_class() -> str =>
     "mt-4 mb-1 px-2 text-[0.78rem] uppercase tracking-wide font-semibold"
@@ -527,23 +659,45 @@ is_section(entry: str) -> bool =>
 section_title(entry: str, langs: str, lang: str) -> str {
     parts = entry.substr(1, entry.length() - 1).split("|").map(v => v.trim())
     at = index_in(langs.split(","), lang, 0)
-    at >= 0 && at < parts.length() ? parts.get(at) : parts.get(0)
+
+    if at >= 0 && at < parts.length() {
+        parts.get(at)
+    } else {
+        parts.get(0)
+    }
 }
 
-index_in(xs: str[], want: str, i: int) -> int =>
-    i >= xs.length() ? -1 : (xs.get(i) == want ? i : index_in(xs, want, i + 1))
+index_in(xs: str[], want: str, i: int) -> int {
+    if i >= xs.length() {
+        -1
+    } else if xs.get(i) == want {
+        i
+    } else {
+        index_in(xs, want, i + 1)
+    }
+}
 
 // The nearest real page before/after `i`, skipping section headings. Without
 // this, previous/next would walk into a heading that has no page.
-prev_page(chs: str[], i: int) -> int =>
-    i <= 0
-        ? -1
-        : (is_section(chs.get(i - 1)) ? prev_page(chs, i - 1) : i - 1)
+prev_page(chs: str[], i: int) -> int {
+    if i <= 0 {
+        -1
+    } else if is_section(chs.get(i - 1)) {
+        prev_page(chs, i - 1)
+    } else {
+        i - 1
+    }
+}
 
-next_page(chs: str[], i: int) -> int =>
-    i + 1 >= chs.length()
-        ? -1
-        : (is_section(chs.get(i + 1)) ? next_page(chs, i + 1) : i + 1)
+next_page(chs: str[], i: int) -> int {
+    if i + 1 >= chs.length() {
+        -1
+    } else if is_section(chs.get(i + 1)) {
+        next_page(chs, i + 1)
+    } else {
+        i + 1
+    }
+}
 
 // ---- sidebar and search ---------------------------------------------------
 
@@ -574,8 +728,15 @@ sidebar(title: str, langs: str, cur_lang: str, chs: str[], titles: str[],
         collapse_script()) ++ "\n"
 
 // The disclosure label, in the reader's language.
-nav_label(lang: str) -> str =>
-    lang == "ko" ? "목차" : (lang == "ja" ? "目次" : "Contents")
+nav_label(lang: str) -> str {
+    if lang == "ko" {
+        "목차"
+    } else if lang == "ja" {
+        "目次"
+    } else {
+        "Contents"
+    }
+}
 
 // Collapse the navigation on a narrow viewport. Progressive: the markup ships
 // expanded, so a browser with no script still shows the whole thing.
@@ -588,17 +749,26 @@ collapse_script() -> str =>
 })();
 """) ++ "\n"
 
-side_items(chs: str[], titles: str[], cur: str, i: int) -> str =>
-    i >= chs.length()
-        ? ""
-        : (is_section(chs.get(i))
-            ? li(data-tomo="section", class=sec_class(), esc(titles.get(i)))
-            : li(class="my-0",
-                 a(data-tomo=chs.get(i) == cur ? "current" : "chapter",
-                   class=link_class(chs.get(i) == cur),
-                   href=chs.get(i) ++ ".html",
-                   esc(titles.get(i)))))
-          ++ side_items(chs, titles, cur, i + 1)
+side_items(chs: str[], titles: str[], cur: str, i: int) -> str {
+    if i >= chs.length() {
+        ""
+    } else {
+        side_item(chs.get(i), titles.get(i), cur)
+            ++ side_items(chs, titles, cur, i + 1)
+    }
+}
+
+side_item(entry: str, title: str, cur: str) -> str {
+    if is_section(entry) {
+        li(data-tomo="section", class=sec_class(), esc(title))
+    } else {
+        here = entry == cur
+        mark = if here { "current" } else { "chapter" }
+        li(class="my-0",
+           a(data-tomo=mark, class=link_class(here),
+             href=entry ++ ".html", esc(title)))
+    }
+}
 
 // The search UI plus the code that drives it. The index is a plain `<script>`
 // (not `fetch`) so a built book still searches when opened straight off disk
@@ -687,11 +857,20 @@ shell(title: str, cur: str, langs: str, side: str, body: str,
                 stylesheet()
             )
             body_tag(class=body_class(),
-                div(class=side.length() == 0 ? solo_class() : wrap_class(),
+                div(class=column_class(side),
                     side ++ main_landmark(body)
                 )
             )
         ) ++ "\n"
+
+// One column when there is no sidebar, two when there is.
+column_class(side: str) -> str {
+    if side.length() == 0 {
+        solo_class()
+    } else {
+        wrap_class()
+    }
+}
 
 // `title` and `body` are taken by parameters all over this file, and `main` is
 // the entry point, so the three tags that collide get a suffixed wrapper. The
@@ -730,29 +909,42 @@ main_landmark(inner: str) -> str =>
 // Switching language should keep your place; sending a reader on chapter 8 back
 // to the table of contents makes them find it again. The fallback guarantees
 // that page exists in every language even when it isn't translated yet.
-lang_links(codes: str[], i: int, cur: str, up: str, page: str) -> str =>
-    codes.length() < 2
-        ? ""
-        : details(data-tomo="lang",
-                  summary(class=lang_summary_class(), lang_name(cur) ++ " ▾")
-                  ul(class=lang_menu_class(),
-                     lang_options(codes, 0, cur, up, page)))
+lang_links(codes: str[], i: int, cur: str, up: str, page: str) -> str {
+    if codes.length() < 2 {
+        // One language is not a choice.
+        ""
+    } else {
+        details(data-tomo="lang",
+                summary(class=lang_summary_class(), lang_name(cur) ++ " ▾")
+                ul(class=lang_menu_class(),
+                   lang_options(codes, 0, cur, up, page)))
+    }
+}
 
-lang_options(codes: str[], i: int, cur: str, up: str, page: str) -> str =>
-    i >= codes.length()
-        ? ""
-        : li(class="my-0",
-             a(class=link_class(codes.get(i) == cur),
-               href=up ++ codes.get(i) ++ "/" ++ target_page(page),
-               lang=codes.get(i),
-               lang_name(codes.get(i))))
-          ++ lang_options(codes, i + 1, cur, up, page)
+lang_options(codes: str[], i: int, cur: str, up: str, page: str) -> str {
+    if i >= codes.length() {
+        ""
+    } else {
+        code = codes.get(i)
+        option = li(class="my-0",
+                    a(class=link_class(code == cur),
+                      href=up ++ code ++ "/" ++ target_page(page),
+                      lang=code,
+                      lang_name(code)))
+        option ++ lang_options(codes, i + 1, cur, up, page)
+    }
+}
 
 // Always a file, never a bare directory: a `…/ko/` URL only resolves to
 // `index.html` when a web server does it. Opened off disk — which this book
 // supports — the browser shows a directory listing instead.
-target_page(page: str) -> str =>
-    page.length() == 0 ? "index.html" : page ++ ".html"
+target_page(page: str) -> str {
+    if page.length() == 0 {
+        "index.html"
+    } else {
+        page ++ ".html"
+    }
+}
 
 // ---- the book builder -----------------------------------------------------
 
@@ -762,12 +954,15 @@ target_page(page: str) -> str =>
 conf_value(toml: str, key: str) -> str =>
     conf_scan(toml.split("\n"), 0, key)
 
-conf_scan(lines: str[], i: int, key: str) -> str =>
-    i >= lines.length()
-        ? ""
-        : lines.get(i).trim().starts_with(key ++ " =")
-            ? unquote(conf_gather(lines, i, rest_of(lines.get(i))))
-            : conf_scan(lines, i + 1, key)
+conf_scan(lines: str[], i: int, key: str) -> str {
+    if i >= lines.length() {
+        ""
+    } else if lines.get(i).trim().starts_with(key ++ " =") {
+        unquote(conf_gather(lines, i, rest_of(lines.get(i))))
+    } else {
+        conf_scan(lines, i + 1, key)
+    }
+}
 
 // The text after `=` on a `key = value` line.
 rest_of(line: str) -> str =>
@@ -775,16 +970,26 @@ rest_of(line: str) -> str =>
 
 // If the value opened a `[` that this line doesn't close, keep appending
 // following lines until the `]` arrives.
-conf_gather(lines: str[], i: int, acc: str) -> str =>
-    !acc.starts_with("[") || acc.contains("]") || i + 1 >= lines.length()
-        ? acc
-        : conf_gather(lines, i + 1, acc ++ lines.get(i + 1).trim())
+conf_gather(lines: str[], i: int, acc: str) -> str {
+    complete = !acc.starts_with("[") || acc.contains("]")
+
+    if complete || i + 1 >= lines.length() {
+        acc
+    } else {
+        conf_gather(lines, i + 1, acc ++ lines.get(i + 1).trim())
+    }
+}
 
 // Drop the `[` `]` wrapper, quotes, and a trailing comma so both
 // `title = "X"` and a multi-line `["a", "b",]` yield usable text.
 unquote(v: str) -> str {
     bare = v.replace("[", "").replace("]", "").replace("\"", "").trim()
-    bare.ends_with(",") ? bare.substr(0, bare.length() - 1) : bare
+
+    if bare.ends_with(",") {
+        bare.substr(0, bare.length() - 1)
+    } else {
+        bare
+    }
 }
 
 // Build the whole book: for each language, render every chapter to
@@ -823,36 +1028,52 @@ write_root(out: str, title: str, langs: str, play: str) -> int {
 }
 
 // The optional sibling link, absent when `book.toml` names no playground.
-play_link(play: str) -> str =>
-    play.length() == 0
-        ? ""
-        : li(class="my-1", a(href=play, "Playground")) ++ "\n"
+play_link(play: str) -> str {
+    if play.length() == 0 {
+        ""
+    } else {
+        li(class="my-1", a(href=play, "Playground")) ++ "\n"
+    }
+}
 
-root_links(codes: str[], i: int) -> str =>
-    i >= codes.length()
-        ? ""
-        : li(class="my-1",
-             a(href=codes.get(i) ++ "/index.html", lang=codes.get(i),
-               lang_name(codes.get(i))))
-          ++ root_links(codes, i + 1)
+root_links(codes: str[], i: int) -> str {
+    if i >= codes.length() {
+        ""
+    } else {
+        code = codes.get(i)
+        entry = li(class="my-1",
+                   a(href=code ++ "/index.html", lang=code, lang_name(code)))
+        entry ++ root_links(codes, i + 1)
+    }
+}
 
 // A language's own name for itself — a reader looking for their language should
 // see it written the way they write it, not as an ISO code.
-lang_name(code: str) -> str =>
-    code == "en"
-        ? "English"
-        : (code == "ko"
-            ? "한국어"
-            : (code == "ja" ? "日本語" : (code == "es" ? "Español" : code)))
+lang_name(code: str) -> str {
+    if code == "en" {
+        "English"
+    } else if code == "ko" {
+        "한국어"
+    } else if code == "ja" {
+        "日本語"
+    } else if code == "es" {
+        "Español"
+    } else {
+        code
+    }
+}
 
 // Outer loop: one language at a time.
 build_langs(root: str, out: str, title: str, langs: str, codes: str[],
-            li: int, chs: str[], acc: int) -> int =>
-    li >= codes.length()
-        ? acc
-        : build_langs(root, out, title, langs, codes, li + 1, chs,
-                      acc + build_lang(root, out, title, langs,
-                                       codes.get(li), codes.get(0), chs))
+            li: int, chs: str[], acc: int) -> int {
+    if li >= codes.length() {
+        acc
+    } else {
+        written = build_lang(root, out, title, langs, codes.get(li),
+                             codes.get(0), chs)
+        build_langs(root, out, title, langs, codes, li + 1, chs, acc + written)
+    }
+}
 
 // One language: its chapter titles (resolved once, since the sidebar on every
 // page needs all of them), then its chapters, search index and index page.
@@ -868,16 +1089,22 @@ build_lang(root: str, out: str, title: str, langs: str, lang: str,
 // Every entry's display title, in book order — a chapter's from its own
 // `# heading`, a section's from its `|`-separated label.
 chapter_titles(root: str, langs: str, lang: str, fallback: str, chs: str[],
-               i: int) -> str[] =>
-    i >= chs.length()
-        ? []
-        : [entry_title(root, langs, lang, fallback, chs.get(i))]
-              ++ chapter_titles(root, langs, lang, fallback, chs, i + 1)
+               i: int) -> str[] {
+    if i >= chs.length() {
+        []
+    } else {
+        here = entry_title(root, langs, lang, fallback, chs.get(i))
+        [here] ++ chapter_titles(root, langs, lang, fallback, chs, i + 1)
+    }
+}
 
-entry_title(root: str, langs: str, lang: str, fallback: str, e: str) -> str =>
-    is_section(e)
-        ? section_title(e, langs, lang)
-        : chapter_title(root, lang, fallback, e)
+entry_title(root: str, langs: str, lang: str, fallback: str, e: str) -> str {
+    if is_section(e) {
+        section_title(e, langs, lang)
+    } else {
+        chapter_title(root, lang, fallback, e)
+    }
+}
 
 // The book's entry point: a table of contents linking every chapter, titled by
 // each chapter's own `# heading` (taken from the translation in use, so an
@@ -894,15 +1121,23 @@ write_index(root: str, out: str, title: str, langs: str, lang: str,
     1
 }
 
-index_items(chs: str[], titles: str[], i: int) -> str =>
-    i >= chs.length()
-        ? ""
-        : (is_section(chs.get(i))
-            ? li(data-tomo="section", class=sec_class(), esc(titles.get(i)))
-            : li(class="my-0",
-                 a(class=link_class(false), href=chs.get(i) ++ ".html",
-                   esc(titles.get(i)))))
-          ++ index_items(chs, titles, i + 1)
+index_items(chs: str[], titles: str[], i: int) -> str {
+    if i >= chs.length() {
+        ""
+    } else {
+        index_item(chs.get(i), titles.get(i))
+            ++ index_items(chs, titles, i + 1)
+    }
+}
+
+index_item(entry: str, title: str) -> str {
+    if is_section(entry) {
+        li(data-tomo="section", class=sec_class(), esc(title))
+    } else {
+        li(class="my-0",
+           a(class=link_class(false), href=entry ++ ".html", esc(title)))
+    }
+}
 
 // ---- search index ---------------------------------------------------------
 
@@ -920,55 +1155,78 @@ write_search_index(root: str, out: str, lang: str, fallback: str, chs: str[],
 }
 
 index_chapters(root: str, lang: str, fallback: str, chs: str[], titles: str[],
-               i: int) -> str =>
-    i >= chs.length()
-        ? ""
-        : index_chapter(root, lang, fallback, chs.get(i), titles.get(i))
-              ++ index_chapters(root, lang, fallback, chs, titles, i + 1)
+               i: int) -> str {
+    if i >= chs.length() {
+        ""
+    } else {
+        index_chapter(root, lang, fallback, chs.get(i), titles.get(i))
+            ++ index_chapters(root, lang, fallback, chs, titles, i + 1)
+    }
+}
 
 index_chapter(root: str, lang: str, fallback: str, ch: str,
               ctitle: str) -> str {
-    own = is_section(ch)
-        ? ""
-        : root ++ "/book/" ++ lang ++ "/" ++ ch ++ ".md"
-    src = file_exists(own)
-        ? own
-        : (is_section(ch)
-            ? ""
-            : root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md")
-    file_exists(src)
-        ? sections(read_file(src).split("\n"), 0, ch ++ ".html", ctitle,
-                   "", "", "")
-        : ""
+    src = chapter_source(root, lang, fallback, ch)
+
+    if !file_exists(src) {
+        ""
+    } else {
+        sections(read_file(src).split("\n"), 0, ch ++ ".html", ctitle,
+                 "", "", "")
+    }
+}
+
+// A chapter's markdown file: the reader's language when it has been translated,
+// the default language when it hasn't, and "" for a section heading — which is
+// a label in the config rather than a file on disk.
+chapter_source(root: str, lang: str, fallback: str, ch: str) -> str {
+    if is_section(ch) {
+        ""
+    } else {
+        own = root ++ "/book/" ++ lang ++ "/" ++ ch ++ ".md"
+        if file_exists(own) {
+            own
+        } else {
+            root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md"
+        }
+    }
 }
 
 // Walk the lines, flushing an entry whenever a new heading starts.
 sections(lines: str[], i: int, url: str, ctitle: str, head: str, buf: str,
-         acc: str) -> str =>
-    i >= lines.length()
-        ? acc ++ entry(url, ctitle, head, buf)
-        : (head_text(lines.get(i)).length() > 0
-            ? sections(lines, i + 1, url, ctitle, head_text(lines.get(i)), "",
-                       acc ++ entry(url, ctitle, head, buf))
-            : sections(lines, i + 1, url, ctitle, head,
-                       buf ++ " " ++ lines.get(i), acc))
+         acc: str) -> str {
+    if i >= lines.length() {
+        acc ++ entry(url, ctitle, head, buf)
+    } else if head_text(lines.get(i)).length() > 0 {
+        // A new heading closes the section that was being gathered.
+        sections(lines, i + 1, url, ctitle, head_text(lines.get(i)), "",
+                 acc ++ entry(url, ctitle, head, buf))
+    } else {
+        sections(lines, i + 1, url, ctitle, head,
+                 buf ++ " " ++ lines.get(i), acc)
+    }
+}
 
-head_text(line: str) -> str =>
-    line.starts_with("### ")
-        ? line.substr(4, line.length() - 4)
-        : (line.starts_with("## ")
-            ? line.substr(3, line.length() - 3)
-            : (line.starts_with("# ")
-                ? line.substr(2, line.length() - 2)
-                : ""))
+head_text(line: str) -> str {
+    n = head_level(line)
+
+    if n == 0 {
+        ""
+    } else {
+        line.substr(n + 1, line.length() - n - 1)
+    }
+}
 
 // Text before the first heading belongs to no section, so it is dropped.
-entry(url: str, ctitle: str, head: str, buf: str) -> str =>
-    head.length() == 0
-        ? ""
-        : "\{\"u\":" ++ jstr(url ++ "#" ++ slug(head)) ++ ",\"c\":"
-              ++ jstr(ctitle) ++ ",\"s\":" ++ jstr(head) ++ ",\"x\":"
-              ++ jstr(buf.lower()) ++ "\},"
+entry(url: str, ctitle: str, head: str, buf: str) -> str {
+    if head.length() == 0 {
+        ""
+    } else {
+        "\{\"u\":" ++ jstr(url ++ "#" ++ slug(head)) ++ ",\"c\":"
+            ++ jstr(ctitle) ++ ",\"s\":" ++ jstr(head) ++ ",\"x\":"
+            ++ jstr(buf.lower()) ++ "\},"
+    }
+}
 
 // A JSON string literal. Backslash first, so it doesn't escape its own escapes.
 jstr(s: str) -> str =>
@@ -976,46 +1234,50 @@ jstr(s: str) -> str =>
 
 // A chapter's display title: its first `# ` heading, else the file stem.
 chapter_title(root: str, lang: str, fallback: str, ch: str) -> str {
-    own = root ++ "/book/" ++ lang ++ "/" ++ ch ++ ".md"
-    src = file_exists(own) ? own : root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md"
-    file_exists(src) ? first_heading(read_file(src).split("\n"), 0, ch) : ch
+    src = chapter_source(root, lang, fallback, ch)
+
+    if !file_exists(src) {
+        ch
+    } else {
+        first_heading(read_file(src).split("\n"), 0, ch)
+    }
 }
 
-first_heading(lines: str[], i: int, fallback: str) -> str =>
-    i >= lines.length()
-        ? fallback
-        : lines.get(i).starts_with("# ")
-            ? lines.get(i).substr(2, lines.get(i).length() - 2)
-            : first_heading(lines, i + 1, fallback)
+first_heading(lines: str[], i: int, fallback: str) -> str {
+    if i >= lines.length() {
+        fallback
+    } else if lines.get(i).starts_with("# ") {
+        lines.get(i).substr(2, lines.get(i).length() - 2)
+    } else {
+        first_heading(lines, i + 1, fallback)
+    }
+}
 
 // Inner loop: one chapter at a time, for a single language.
 build_chapters(root: str, out: str, title: str, langs: str, lang: str,
                fallback: str, chs: str[], titles: str[], ci: int,
-               acc: int) -> int =>
-    ci >= chs.length()
-        ? acc
-        : build_chapters(root, out, title, langs, lang, fallback, chs, titles,
-                         ci + 1,
-                         acc + build_chapter(root, out, title, langs, lang,
-                                             fallback, chs, titles, ci))
+               acc: int) -> int {
+    if ci >= chs.length() {
+        acc
+    } else {
+        written = build_chapter(root, out, title, langs, lang, fallback, chs,
+                                titles, ci)
+        build_chapters(root, out, title, langs, lang, fallback, chs, titles,
+                       ci + 1, acc + written)
+    }
+}
 
 // Render one chapter. Falls back to the default language when the translation
 // is missing; writes nothing (and counts nothing) if neither exists.
 build_chapter(root: str, out: str, title: str, langs: str, lang: str,
               fallback: str, chs: str[], titles: str[], ci: int) -> int {
-    ch = chs.get(ci)
-    own = is_section(ch)
-        ? ""
-        : root ++ "/book/" ++ lang ++ "/" ++ ch ++ ".md"
-    src = file_exists(own)
-        ? own
-        : (is_section(ch)
-            ? ""
-            : root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md")
-    file_exists(src)
-        ? write_chapter(out, title, langs, lang, chs, titles, ci,
-                        read_file(src))
-        : 0
+    src = chapter_source(root, lang, fallback, chs.get(ci))
+
+    if !file_exists(src) {
+        0
+    } else {
+        write_chapter(out, title, langs, lang, chs, titles, ci, read_file(src))
+    }
 }
 
 write_chapter(out: str, title: str, langs: str, lang: str, chs: str[],
