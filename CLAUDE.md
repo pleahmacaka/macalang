@@ -51,12 +51,19 @@ Virtual workspace; members are `crates/*`.
 
 Non-crate dirs: `tools/` (Maca-written ports of the toolchain — `bindgen.maca`,
 kept equivalent to its stage-0 Rust twin by `crates/driver/tests/bindgen_port.rs`,
-and `lint.maca`, a style linter that walks the tree recursively and checks line
+`lint.maca`, a style linter that walks the tree recursively and checks line
 width / single-line `if` / trailing whitespace / hard tabs — width is measured
 with string literals collapsed, so a long C template or URL is exempt exactly
 as a long comment is. Gated by `crates/driver/tests/lint_port.rs`, which
-requires the whole repository to pass it),
-`std/` (prelude docs — most of the stdlib is compiler/runtime
+requires the whole repository to pass it — and `build-site.maca`, which builds
+and checks the published site for both CI and a human).
+**Every script in the repository is a Maca program**: `bench/run.maca` is the
+benchmark harness, `packages/macalang/build.maca` builds the wasm into the npm
+package. All five are compiled by `crates/driver/tests/scripts.rs`, because a
+script only run at release time rots quietly. The one exception is
+`install.sh`, which runs *before* there is a `maca` to run anything with.
+`std/` (importable Maca modules — `text`, `list`, `path`, `json`, `csv`, `fs`,
+`proc` — plus prelude docs; the rest of the stdlib is compiler/runtime
 builtins), `examples/` (golden `.maca` programs + `examples/bad/`), `apps/`
 (capstones: `mqtt`, `microkernel`, `blink`, `desktop`, `mcmod`, `tomo` — the
 i18n handbook builder that renders `book/{en,ko}/*.md` into `site/`, built
@@ -113,6 +120,19 @@ definition cycle resolves — `MACA_ARRAY_STRUCT` before the body,
   workspace. A change that can be observed at run time gets a test that runs it;
   documentation that makes a runnable claim gets one too (`examples/handbook.maca`
   is the book's claims as an executable program).
+- **Assert in Maca, not in Rust.** A behaviour test is a file of `test_…`
+  functions using `assert`/`assert_eq`, run by `maca test`, which reports each
+  one and exits with the failure count. The Rust side is a runner that checks
+  the exit code. Do *not* write a Maca program that `info(…)`s its results and
+  a Rust test that greps stdout for them, and do not embed the Maca source in a
+  Rust string literal — the suites live in `std/tests/` and
+  `crates/driver/tests/programs/`. What stays in Rust is what is about the
+  *process* rather than the values: piping stdin, running under valgrind, and a
+  program that must fail to compile.
+- **Readable over clever.** `if`/`else if`/`else` works in value position on
+  every back end, so a multi-way choice is a chain of guards with each condition
+  beside the branch it selects. A ternary is for one binary choice. Prefer code
+  that reads to a comment explaining code that doesn't.
 - **Native is hybrid.** C backend is the default for everything; the LLVM path
   exists **only** for the SIMD span. Both link over the C ABI.
 - **Golden examples are the regression set.** The code blocks in the spec become
@@ -185,6 +205,16 @@ self-hosted front-end from its imports). **Selective import** —
 plus the transitive closure of same-module definitions they reference (dead-code
 elimination at the module boundary); a name the module doesn't define is a clean
 error, not a dangling reference (`crates/driver/src/imports.rs`).
+
+**Processes, no shell:** `exec(cmd, args) -> int` (the exit code) and
+`capture(cmd, args) -> str` (its stdout) are `fork` + `execvp` — `args` is a
+`str[]` and each element is one argument however it is spelled, so
+`exec("cp", ["my notes.txt", dest])` copies one file and `exec("echo",
+["$HOME"])` prints `$HOME`. With `env`/`cwd`/`chdir` and `copy_bytes(src, dst)`
+(a byte copy — `write_file(read_file(…))` stops at the first NUL, so it
+truncates any binary), that is what lets every script in the repository be a
+Maca program. `std/proc` is the layer above: `run`, `try_run`, `run_in`,
+`output`, `which`/`have`, `env_or`.
 
 `maca dev` also emits `.maca/dev/{setup,activate}.ps1` when the config declares
 `scoop.*`/`choco.*`/`winget.*` packages (see `dev.maca`): Windows hosts (no nix)
