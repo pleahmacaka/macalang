@@ -1,0 +1,3 @@
+// A file with no `test_` function is not an error.
+
+main() -> int => 0

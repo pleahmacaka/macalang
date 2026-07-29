@@ -10,10 +10,10 @@ declares its languages up front; every page carries a language switcher, and a
 chapter that hasn't been translated yet falls back to the default language
 instead of 404-ing.
 
-## Status
+## What it does
 
-The **renderer** is implemented in Maca and gated
-(`crates/driver/tests/tomo.rs`): `render : str -> str` turns Markdown into HTML —
+The **renderer** is Maca, gated by `crates/driver/tests/tomo.rs`:
+`render : str -> str` turns Markdown into HTML —
 
 - `#`/`##`/`###` headings,
 - `-` list items, including nested (`  - `) items,
@@ -25,14 +25,17 @@ The **renderer** is implemented in Maca and gated
   document's headings,
 
 and `page(...)` wraps rendered chapters in an HTML shell with the i18n language
-switcher. The **book builder** is implemented too: `build_book(root, out)` reads
-`book.toml`, walks `book/<lang>/*.md`, and writes `site/<lang>/*.html` — each
-page carrying its stylesheet, table of contents, language switcher, and
-previous/next chapter links. A chapter missing in
-a non-default language **falls back** to the default language's text rather than
-404-ing. Running `tomo` from the repo root rebuilds this repository's handbook
-(18 pages across `en` and `ko` — 8 chapters plus an index each); the output lands in `apps/tomo/site/`, which is
-gitignored.
+switcher.
+
+The **book builder** is `build_book(root, out)`: it reads `book.toml`, walks
+`book/<lang>/*.md`, and writes `site/<lang>/*.html` — each page carrying its
+stylesheet, table of contents, search index, language switcher, and
+previous/next chapter links. A chapter missing in a non-default language
+**falls back** to the default language's text rather than 404-ing.
+
+Running `tomo` from the repository root rebuilds this repository's handbook —
+27 chapters and appendices in each of `en` and `ko`, plus an index per language
+and one above them. The output lands in `apps/tomo/site/`, which is gitignored.
 
 ## Layout
 

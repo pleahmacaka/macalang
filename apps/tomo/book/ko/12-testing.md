@@ -4,7 +4,8 @@
 
 ## 테스트 쓰기
 
-이름이 `test_`로 시작하는 함수는 테스트입니다.
+이름이 `test_`로 시작하는 함수는 테스트이고, 무엇을 확인하는지는 `assert` /
+`assert_eq`로 씁니다.
 
 ```maca
 Counter = {
@@ -14,15 +15,43 @@ Counter = {
 bump(c: Counter) -> Counter =>
     c with { n = c.n + 1 }
 
-test_bump() -> int {
+test_bump_increments_by_one() {
     c = bump(Counter { n = 1 })
-    c.n == 2 ? 0 : 1
+    assert_eq(str(c.n), "2", "원래 값보다 하나 큼")
+}
+
+test_bump_is_not_in_place() {
+    c = Counter { n = 1 }
+    bump(c)
+    assert_eq(str(c.n), "1", "원본은 그대로")
 }
 ```
 
-테스트는 `int`를 반환합니다. **0이면 통과, 0이 아니면 실패**입니다. `main`과
-같은 관례이고, 시스템의 모든 프로세스와 같은 관례입니다. 새로 배울 것도,
-import할 것도 없습니다.
+테스트는 반환 타입을 선언하지 않고 아무것도 반환하지 않습니다. 실패한 단언이
+하나도 없으면 통과입니다.
+
+테스트 이름은 호출하는 함수가 아니라 **무엇을 보장하는지**로 짓습니다.
+`test_bump_is_not_in_place`는 실패했을 때 무엇이 깨졌는지 알려주고,
+`test_bump`는 어디서부터 찾아보라고만 알려줍니다.
+
+## 두 개의 단언
+
+| 호출 | 통과 조건 |
+|---|---|
+| `assert(cond, message)` | `cond`가 참 |
+| `assert_eq(got, want, message)` | `got == want` (둘 다 `str`) |
+
+세 번째 인자는 식을 다시 쓴 것이 아닙니다. 값은 러너가 이미 출력합니다. 그
+식이 **무엇을 보장하려던 것인지**를 적어서, 실패가 문장으로 읽히게 합니다.
+
+```
+assertion failed: the two disagree
+  got:  got
+  want: want
+```
+
+`assert_eq`는 문자열을 비교하므로 숫자는 들어갈 때 `str(n)`이 됩니다. 타입마다
+단언을 하나씩 두는 대신 하나로 끝나고, 실패 출력에 값이 쓰는 그대로 보입니다.
 
 ## 실행
 
@@ -31,29 +60,46 @@ maca test counter.maca
 ```
 
 ```
-running 1 test
-  test_bump
-1 test passed
+running 2 tests
+  test_bump_increments_by_one
+    ok
+  test_bump_is_not_in_place
+    ok
+2 tests passed
 ```
 
 드라이버가 파일 안의 `test_` 접두사 함수를 전부 모으고, 파일에 `main`이 있으면
 그것은 빼고, 각 테스트를 호출하기 전에 이름을 알리는 러너를 생성합니다. 그래서
 크래시가 난 테스트가 어느 것인지 알 수 있습니다.
 
-## 왜 assert 라이브러리가 없나
+종료 코드는 실패한 단언의 개수입니다. 그래서 `maca test`는 종료 코드를 읽는
+무엇과도 그대로 이어 붙습니다.
 
-없고, 지금으로서는 의도한 생략입니다. `c.n == 2 ? 0 : 1`이 우아하지는 않지만,
-매크로 시스템도 프레임워크도 컴파일러와의 특별한 통합도 필요 없습니다. 이름
-붙은 단언, 실패 시 diff 같은 더 풍부한 이야기는, 그것을 만들 만한 표준
-라이브러리가 갖춰진 뒤에 Maca 코드로 들어가야 할 것입니다. 컴파일러가 아니라요.
+## 단언이 실패해도 실행은 멈추지 않습니다
 
-그동안은 직접 만든 도우미 하나가 꽤 멀리 데려다 줍니다.
+모든 단언이 실행되고, 실패는 세어집니다.
 
-```maca
-check(name: str, ok: bool) -> int {
-    ok ? 0 : 1
-}
 ```
+assertion failed: the two disagree
+  got:  got
+  want: want
+assertion failed: one is not greater than two
+running 3 tests
+  test_a_failure_shows_both_sides
+    FAILED
+  test_a_bare_assertion_shows_its_message
+    FAILED
+  test_a_passing_one_still_runs
+    ok
+2 assertion(s) failed
+```
+
+의도한 것입니다. 첫 실패에서 멈추면 스위트를 고치는 데 버그 수만큼 실행이
+필요하지만, 세어 두면 한 번의 실행이 전부를 알려줍니다.
+
+`failures()`는 그 누적 개수를 반환합니다. 생성된 러너가 테스트의 통과 여부를
+판단하는 데 쓰는 값이고, 실패한 전제 조건 때문에 의미가 없어진 작업을 테스트가
+스스로 건너뛰고 싶을 때 쓸 수 있는 값이기도 합니다.
 
 ## 파일을 넘나드는 테스트
 
@@ -63,11 +109,14 @@ check(name: str, ok: bool) -> int {
 ```maca
 import geometry
 
-test_origin_is_zero() -> int {
+test_origin_is_the_zero_point() {
     p = origin()
-    p.x == 0 && p.y == 0 ? 0 : 1
+    assert_eq("{p.x},{p.y}", "0,0", "두 좌표 모두 0에서 시작")
 }
 ```
+
+`std/`가 이렇게 테스트됩니다. `std/tests/path.maca`는 `std/path`만 import하므로,
+스위트는 정확히 그 모듈의 공개 표면을 정문으로 통과하며 실행한 것이 됩니다.
 
 ## 더 큰 요점: 문서를 실행하세요
 
@@ -90,3 +139,7 @@ Maca 저장소에는 `examples/handbook.maca`라는 파일이 있습니다. 이 
 하나같이 아주 잘 읽히는 글 안에 있었습니다. 실행하지 않은 문서는 사실이 아니라
 주장입니다. 그리고 그것을 사실로 만드는 가장 값싼 방법은 테스트 스위트가
 실행하는 파일에 넣는 것입니다.
+
+같은 논리가 한 단계 아래, 테스트 자체에도 적용됩니다. 결과를 출력하고 그 출력을
+다른 무언가가 grep해서 검사하는 테스트는 출력을 테스트하고 있는 것입니다. 언어
+안에서 단언하고, 종료 코드가 판정이 되게 하세요.

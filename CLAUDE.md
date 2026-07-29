@@ -89,8 +89,10 @@ crates; only touch stage-0 for genuine bootstrap bugs (e.g. a parser that hangs
 or mis-parses valid surface syntax).
 
 The stage-1 **compiler pipeline already runs natively**: the Maca-written lexer
-→ recursive-descent parser → recursive-`Expr` AST + pretty-printer → coarse type
-checker (`check.maca`) → **two back ends written in Maca** — `emit_c.maca` and
+→ recursive-descent parser → recursive-`Expr` AST + pretty-printer → type
+checker (`check.maca`, an `Env` of signatures / record fields / sum variants /
+locals — result types, arity, field types, declared returns) → **two back ends
+written in Maca** — `emit_c.maca` and
 `emit_rust.maca` (the `--target rust` backend, mirroring `maca-backend-rust` on
 the parsed slice) — compile through the stage-0 C backend and execute the whole
 `lex → parse → check → emit` chain (the `selfhost.rs` run gate builds it with the

@@ -1,0 +1,14 @@
+// A failed assertion is counted, not fatal: every test here runs, and the exit
+// code is the number of assertions that failed.
+
+test_a_failure_shows_both_sides() {
+    assert_eq("got", "want", "the two disagree")
+}
+
+test_a_bare_assertion_shows_its_message() {
+    assert(1 > 2, "one is not greater than two")
+}
+
+test_a_passing_one_still_runs() {
+    assert(true, "and is reported separately")
+}

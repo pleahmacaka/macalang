@@ -150,11 +150,18 @@ The standard library surface is appendix C of the handbook
 The compiler is complete and `cargo test` is green across the workspace.
 Front-end (lexer → parser → gradual type/effect checker → core IR) plus
 backends: native **C** (default), **LLVM** (SIMD span), **Nix** (config mode),
-**JS** (reactive UI + Tailwind), **JVM** (Java source), and **embedded**
-(freestanding C for Cortex-M / RISC-V). Driver: `build` / `run` / `dev` /
-`watch` / `fmt` / `lint` / `profile` / `init`. Tooling: LSP, MCP server, and a
-browser playground authored in Maca itself (`playground/playground.maca`,
-compiled by the JS backend) plus the wasm front-end (`crates/wasm`).
+**JS** (reactive UI + Tailwind), **JVM** (Java source), **Rust** source, and
+**embedded** (freestanding C for Cortex-M / RISC-V). Driver: `init` / `build`
+(`--target nix|js|jvm|rust|embedded|tauri`) / `run` / `dev` / `watch` / `fmt` /
+`lint` / `test` / `profile` / `add` / `update` / `upgrade` / `bindgen`. Tooling:
+LSP, MCP server, and a browser playground authored in Maca itself
+(`playground/playground.maca`, compiled by the JS backend) plus the wasm
+front-end (`crates/wasm`).
+
+Every script in the repository is a Maca program too — the site builder, the
+benchmark harness, the linter, `bindgen`, and the npm package's wasm build. The
+one exception is `install.sh`, which runs before there is a `maca` to run
+anything with.
 
 The Rust workspace is the frozen **stage-0 bootstrap**; compiler work is
 written in Maca under `selfhost/` and gated by the stage-0 front-end (see

@@ -28,15 +28,23 @@ lexer.maca → parser.maca → ast.maca → check.maca → emit_c.maca
 ```
 
 A hand-written lexer, a recursive-descent parser producing a recursive `Expr`
-AST with a pretty-printer, a coarse type checker, and **two** back ends — one
-emitting C, one emitting Rust.
+AST with a pretty-printer, a type checker, and **two** back ends — one emitting
+C, one emitting Rust.
 
 The slice of Maca it handles is well past a toy: the full primitive expression
 language (integer, float, string and boolean literals; arithmetic, comparison,
 `&&`/`||`, unary `-`/`!`; the ternary; multi-argument and nested calls with
-correct precedence), type-threaded signatures where a declared type flows through
-to `const char*`/`double`/`bool` in C and `String`/`f64` in Rust, records, and
-nullary sum types with `match`.
+correct precedence), string interpolation, type-threaded signatures where a
+declared type flows through to `const char*`/`double`/`bool` in C and
+`String`/`f64` in Rust, records with field access, and sum types — nullary and
+payload-carrying — with `match` over binding patterns.
+
+The checker carries an environment rather than counting mismatches: the
+module's function signatures, its record fields, its sum variants, and the
+locals in scope. That is what lets it answer a call's result type, a call's
+arity, a field the record does not have, and a body that disagrees with its
+declared return. `any` is the gradual escape hatch, and it is deliberate — a
+name the module does not declare is foreign, not wrong.
 
 ## How the gate works
 
@@ -97,12 +105,18 @@ string templates. There is no cleverness to decode, which is the idea — a
 bootstrap compiler that is hard to read is a bootstrap compiler nobody will
 finish.
 
-## What is left
+## Where the two stages differ
 
-The type checker is coarse. There is no module system in stage 1, no closures,
-no generics, no effects. Those are the gap between stage 1 and stage 0, and
-closing it is the work.
+Stage 1 compiles a subset. Closures, generics, the effect rows and the module
+system live in stage 0 alone, so a program using them goes through the Rust
+compiler.
 
-The direction is not to port stage 0 line by line. It is to write each piece in
-Maca, gate it with a compile-and-run capstone, and let the two implementations
-disagree loudly until they don't.
+That boundary is the point of the two-stage design rather than a defect in it.
+Stage 0 is frozen at whatever it takes to compile stage 1; stage 1 grows one
+gated increment at a time. Each increment is written in Maca, gated with a
+compile-and-run capstone, and left to disagree loudly with stage 0 until it
+doesn't — which is why the gate compiles the *emitted* program through both
+`cc` and `rustc` rather than comparing generated text.
+
+Porting stage 0 line by line would be faster to start and impossible to
+verify.

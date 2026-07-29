@@ -187,7 +187,8 @@ count_nonempty(lines: str[], i: int) -> int {
 // Every directory holding Maca source. Nothing is exempt: a style the codebase
 // doesn't hold to isn't a style.
 default_dirs() -> str[] =>
-    ["examples", "selfhost", "tools", "std", "apps", "playground"]
+    ["examples", "selfhost", "tools", "std", "apps", "playground", "bench",
+     "crates/driver/tests/programs"]
 
 lint_all(dirs: str[], i: int, acc: str) -> str {
     if i >= dirs.length() {

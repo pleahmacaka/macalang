@@ -5,7 +5,8 @@ them by name.
 
 ## Writing a test
 
-Any function whose name begins with `test_` is a test:
+Any function whose name begins with `test_` is a test, and `assert` /
+`assert_eq` are what it says:
 
 ```maca
 Counter = {
@@ -15,15 +16,45 @@ Counter = {
 bump(c: Counter) -> Counter =>
     c with { n = c.n + 1 }
 
-test_bump() -> int {
+test_bump_increments_by_one() {
     c = bump(Counter { n = 1 })
-    c.n == 2 ? 0 : 1
+    assert_eq(str(c.n), "2", "one more than it was")
+}
+
+test_bump_is_not_in_place() {
+    c = Counter { n = 1 }
+    bump(c)
+    assert_eq(str(c.n), "1", "the original is untouched")
 }
 ```
 
-A test returns `int`: **zero passes, non-zero fails**. That is the same
-convention as `main`, and the same convention as every process on the system, so
-there is nothing new to learn and nothing to import.
+A test declares no return type and returns nothing. It passes when none of its
+assertions failed.
+
+Name a test after what it establishes, not after the function it calls.
+`test_bump_is_not_in_place` tells you what broke when it fails;
+`test_bump` tells you where to start looking.
+
+## The two assertions
+
+| Call | Passes when |
+|---|---|
+| `assert(cond, message)` | `cond` is true |
+| `assert_eq(got, want, message)` | `got == want` (both `str`) |
+
+The third argument is not the expression restated — the runner already prints
+the values. It is what the expression was *supposed to establish*, so a failure
+reads as a sentence:
+
+```
+assertion failed: the two disagree
+  got:  got
+  want: want
+```
+
+`assert_eq` compares strings, so a number is `str(n)` on the way in. That keeps
+one assertion instead of one per type, and the failure output shows the values
+as you would write them.
 
 ## Running
 
@@ -32,30 +63,46 @@ maca test counter.maca
 ```
 
 ```
-running 1 test
-  test_bump
-1 test passed
+running 2 tests
+  test_bump_increments_by_one
+    ok
+  test_bump_is_not_in_place
+    ok
+2 tests passed
 ```
 
-The driver collects every `test_`-prefixed function in the file, drops the file's
-own `main` if it has one, and generates a runner that announces each test before
-calling it — so a test that crashes tells you which one it was.
+The driver collects every `test_`-prefixed function in the file, drops the
+file's own `main` if it has one, and generates a runner that announces each test
+before calling it — so a test that crashes tells you which one it was.
 
-## Why not an assert library
+The exit code is the number of failed assertions, so `maca test` composes with
+anything that reads exit codes.
 
-There isn't one, and the omission is deliberate for now. `c.n == 2 ? 0 : 1` is
-not elegant, but it needs no macro system, no framework, and no special
-integration with the compiler. A richer story — named assertions, a diff on
-failure — belongs in Maca-level code once there is enough of a standard library
-to build it in, not in the compiler.
+## A failed assertion does not stop the run
 
-In the meantime, a helper of your own goes a long way:
+Every assertion runs, and the failures are counted:
 
-```maca
-check(name: str, ok: bool) -> int {
-    ok ? 0 : 1
-}
 ```
+assertion failed: the two disagree
+  got:  got
+  want: want
+assertion failed: one is not greater than two
+running 3 tests
+  test_a_failure_shows_both_sides
+    FAILED
+  test_a_bare_assertion_shows_its_message
+    FAILED
+  test_a_passing_one_still_runs
+    ok
+2 assertion(s) failed
+```
+
+That is deliberate. Aborting on the first failure means fixing a suite takes as
+many runs as it has bugs; counting them means one run tells you everything.
+
+`failures()` returns the running count, which is what the generated runner uses
+to decide whether a test passed — and what a test can use itself if it wants to
+skip work that a failed precondition has made meaningless.
 
 ## Testing across files
 
@@ -65,11 +112,15 @@ exercises:
 ```maca
 import geometry
 
-test_origin_is_zero() -> int {
+test_origin_is_the_zero_point() {
     p = origin()
-    p.x == 0 && p.y == 0 ? 0 : 1
+    assert_eq("{p.x},{p.y}", "0,0", "both coordinates start at zero")
 }
 ```
+
+That is how `std/` is tested: `std/tests/path.maca` imports `std/path` and
+nothing else, so the suite is exactly the module's public surface exercised
+through the front door.
 
 ## The larger point: run your documentation
 
@@ -92,3 +143,8 @@ confidently and actually executing it:
 Every one of those was in text that read perfectly well. Documentation that
 isn't run is a claim, not a fact — and the cheapest way to make it a fact is to
 put it in a file the test suite executes.
+
+The same argument applies one level down, to the tests themselves. A test that
+prints its results and is checked by something else grepping that output is
+testing the printing. Assert in the language, and let the exit code be the
+verdict.

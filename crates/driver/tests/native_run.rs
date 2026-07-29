@@ -810,6 +810,10 @@ fn file_io_builtins_run_natively() {
     }
 }
 
+/// `maca test` — chapter 12 of the handbook, executed.
+///
+/// The suites live in `tests/programs/testsuite/` rather than in a Rust string
+/// literal, because they are the same Maca the chapter prints.
 #[test]
 fn maca_test_runs_test_prefixed_functions() {
     let wsl = Command::new("wsl")
@@ -821,72 +825,64 @@ fn maca_test_runs_test_prefixed_functions() {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
     }
-    let dir = std::env::temp_dir().join("maca-test-cmd");
-    std::fs::create_dir_all(&dir).unwrap();
 
-    // passing: two tests, plus a `main` that must be replaced rather than run
-    let pass = dir.join("pass.maca");
-    std::fs::write(
-        &pass,
-        "add(a: int, b: int) -> int => a + b\n\
-         main() -> int {\n    info(\"main must not run\")\n    99\n}\n\
-         test_commutes() -> int => add(2, 3) == add(3, 2) ? 0 : fail \"should commute\"\n\
-         test_identity() -> int => add(7, 0) == 7 ? 0 : fail \"identity\"\n",
-    )
-    .unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["test", &pass.to_string_lossy()])
-        .output()
-        .expect("spawn maca test");
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    // Passing: two tests, plus a `main` that must be replaced rather than run.
+    let (ok, out, _) = maca_test("passing");
+    assert!(ok, "passing tests should exit 0:\n{out}");
+    assert!(out.contains("running 2 tests"), "count wrong:\n{out}");
+    assert!(out.contains("2 tests passed"), "summary wrong:\n{out}");
     assert!(
-        out.status.success(),
-        "passing tests should exit 0: {stdout}"
-    );
-    assert!(stdout.contains("running 2 tests"), "count wrong: {stdout}");
-    assert!(stdout.contains("2 tests passed"), "summary wrong: {stdout}");
-    assert!(
-        !stdout.contains("main must not run"),
-        "the file's own main was executed: {stdout}"
+        !out.contains("main must not run"),
+        "the file's own main was executed:\n{out}"
     );
 
-    // failing: a non-zero exit, and the failing test is the last one announced
-    let fail = dir.join("fail.maca");
-    std::fs::write(
-        &fail,
-        "test_ok() -> int => 0\n\
-         test_broken() -> int => fail \"deliberate\"\n\
-         test_after() -> int => 0\n",
-    )
-    .unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["test", &fail.to_string_lossy()])
-        .output()
-        .expect("spawn maca test");
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(!out.status.success(), "a failing test must exit non-zero");
+    // Failing: every test still runs, each is marked, and the exit code is the
+    // number of failed assertions — two, from three tests.
+    let (ok, out, code) = maca_test("failing");
+    assert!(!ok, "a failing suite must exit non-zero");
+    assert_eq!(code, Some(2), "the exit code is the failure count:\n{out}");
+    assert!(out.contains("running 3 tests"), "count wrong:\n{out}");
     assert!(
-        stdout.contains("test_broken") && !stdout.contains("test_after"),
-        "output should stop at the failing test: {stdout}"
+        out.contains("2 assertion(s) failed"),
+        "summary wrong:\n{out}"
     );
+    for want in ["got:  got", "want: want", "one is not greater than two"] {
+        assert!(out.contains(want), "expected {want:?} in:\n{out}");
+    }
+    // The passing test after two failures still ran and still reported.
     assert!(
-        stderr.contains("deliberate"),
-        "failure message lost: {stderr}"
+        out.contains("test_a_passing_one_still_runs\n    ok"),
+        "a later test was skipped:\n{out}"
     );
 
-    // a file with no tests is not an error
-    let none = dir.join("none.maca");
-    std::fs::write(&none, "main() -> int => 0\n").unwrap();
+    // `fail` is not `assert`: it ends the program where it happened.
+    let (ok, out, _) = maca_test("aborting");
+    assert!(!ok, "`fail` must exit non-zero");
+    assert!(
+        out.contains("test_broken") && !out.contains("test_after"),
+        "output should stop at the aborting test:\n{out}"
+    );
+    assert!(out.contains("deliberate"), "failure message lost:\n{out}");
+
+    // A file with no tests is not an error.
+    let (ok, out, _) = maca_test("no_tests");
+    assert!(ok, "no tests should not be a failure:\n{out}");
+    assert!(out.contains("no tests found"), "should say so:\n{out}");
+}
+
+/// Run `tests/programs/testsuite/<name>.maca` through `maca test`. Returns
+/// success, stdout+stderr together, and the exit code.
+fn maca_test(name: &str) -> (bool, String, Option<i32>) {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/programs/testsuite")
+        .join(format!("{name}.maca"));
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["test", &none.to_string_lossy()])
+        .args(["test", &path.to_string_lossy()])
         .output()
         .expect("spawn maca test");
-    assert!(out.status.success(), "no tests should not be a failure");
-    assert!(
-        String::from_utf8_lossy(&out.stdout).contains("no tests found"),
-        "should say there are no tests"
-    );
+    let text = String::from_utf8_lossy(&out.stdout).to_string()
+        + &String::from_utf8_lossy(&out.stderr);
+    (out.status.success(), text, out.status.code())
 }
 
 #[test]

@@ -1,0 +1,25 @@
+// Chapter 12's worked example, executed: two `test_` functions asserting in
+// Maca, and a `main` the runner must replace rather than run.
+
+Counter = {
+    n: int
+}
+
+bump(c: Counter) -> Counter =>
+    c with { n = c.n + 1 }
+
+main() -> int {
+    info("main must not run")
+    99
+}
+
+test_bump_increments_by_one() {
+    c = bump(Counter { n = 1 })
+    assert_eq(str(c.n), "2", "one more than it was")
+}
+
+test_bump_is_not_in_place() {
+    c = Counter { n = 1 }
+    bump(c)
+    assert_eq(str(c.n), "1", "the original is untouched")
+}

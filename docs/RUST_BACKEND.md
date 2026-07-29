@@ -100,8 +100,9 @@ backend (like `backend_jvm` for Java) closes it: Maca → Rust source → `cargo
 ## 3. What the backend deliberately does not do
 
 A borrow checker or lifetimes (§2.2 replaces it); trait *definitions* (only
-impls of foreign traits); generic bounds / associated types / HRTBs in v1; proc
-macros, `unsafe`, or a Rust parser (you emit Rust, `rustc` reads it).
+impls of foreign traits); generic bounds, associated types or HRTBs; proc
+macros, `unsafe`, or a Rust parser (you emit Rust, `rustc` reads it). §5 says
+why that list is the remit rather than a shortfall.
 
 ## 4. The program that exercises all of it
 

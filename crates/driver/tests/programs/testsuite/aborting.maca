@@ -1,0 +1,13 @@
+// `fail` is not `assert`: it ends the program. The run stops where it happened,
+// so the tests after it never announce themselves.
+
+test_ok() {
+    assert(true, "this one is fine")
+}
+
+test_broken() -> int =>
+    fail "deliberate"
+
+test_after() {
+    assert(true, "never reached")
+}

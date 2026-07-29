@@ -28,7 +28,7 @@ cmp maca1 maca2                             # fixed point ⇒ self-hosted
 | `ast.maca` | 1 | the recursive `Expr`/`Stmt`/`Module` AST (typed params/returns, records, sums, match, methods) + an AST pretty-printer |
 | `lexer.maca` | 1 | character-level scanner incl. two-char operators + float literals (`lex : str -> Token[]`) |
 | `parser.maca` | 1 | recursive descent → expressions (precedence, ternary, unary, calls, field/method, records, match), function/record/sum declarations, and `import` skipping |
-| `check.maca` | 1 | a coarse type checker (infers `int`/`str`/…, counts mismatches) |
+| `check.maca` | 1 | the type checker: an `Env` of signatures, record fields, sum variants and locals; result types, arity, field types, declared returns |
 | `emit_c.maca` | 1 | a C emitter over the AST → C source (with a `<string.h>`/`<stdlib.h>`/`<stdio.h>` + `maca_cat`/`maca_int_to_str` preamble) |
 | `emit_rust.maca` | 1 | a Rust emitter over the same AST → Rust source (the `--target rust` back end, in Maca) |
 | `main.maca` | 1 | driver entry; lexes + parses + checks + emits samples through both back ends |
@@ -88,8 +88,6 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
   statements (skipped — the driver inlines modules)
 - **the recursive AST** — `ast.maca`, whose `Expr { children: Expr[] }` is what
   drove recursive record types into the stage-0 backend
-- **a coarse type checker** — `check.maca`: `int`/`str`/`float`, gradual `any`,
-  mismatch counting
 - **two back ends** — `emit_c.maca` and `emit_rust.maca`, each turning a module
   into a complete translation unit
 - **multi-file builds** — the gate builds from `selfhost/main.maca` and the
