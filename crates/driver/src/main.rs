@@ -1394,8 +1394,13 @@ fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<Stri
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
     let c_path = out_dir.join("firmware.c");
     let ld_path = out_dir.join("link.ld");
-    std::fs::write(&c_path, maca_backend_embedded::emit_c(&parsed.module))
-        .map_err(|e| e.to_string())?;
+    let fw = maca_backend_embedded::emit_c_checked(&parsed.module).map_err(|probs| {
+        format!(
+            "unsupported by the embedded backend:\n  {}",
+            probs.join("\n  ")
+        )
+    })?;
+    std::fs::write(&c_path, fw).map_err(|e| e.to_string())?;
     std::fs::write(&ld_path, maca_backend_embedded::linker_script(&mcu))
         .map_err(|e| e.to_string())?;
 

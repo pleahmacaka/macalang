@@ -75,6 +75,32 @@ impl Mcu {
     }
 }
 
+thread_local! {
+    /// Constructs this target cannot honour, collected while lowering. A
+    /// freestanding MCU has no allocator and no libc, so a good part of the
+    /// language genuinely does not fit — but it has to be said by name at
+    /// compile time, not turned into a plausible-looking `0u`.
+    static PROBLEMS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn problem(msg: impl Into<String>) {
+    PROBLEMS.with(|p| p.borrow_mut().push(msg.into()));
+}
+
+/// Emit freestanding C, or the list of constructs the target cannot honour.
+/// The driver uses this so an unsupported construct is a clean error rather
+/// than C that compiles and computes something else.
+pub fn emit_c_checked(m: &Module) -> Result<String, Vec<String>> {
+    PROBLEMS.with(|p| p.borrow_mut().clear());
+    let out = emit_c(m);
+    let problems = PROBLEMS.with(|p| p.borrow().clone());
+    if problems.is_empty() {
+        Ok(out)
+    } else {
+        Err(problems)
+    }
+}
+
 /// The full firmware C translation unit: intrinsics, startup, user code.
 pub fn emit_c(m: &Module) -> String {
     let mut out = String::new();
@@ -86,6 +112,28 @@ pub fn emit_c(m: &Module) -> String {
         if let Stmt::Bind(b) = it
             && let Expr::Ident(name) = &b.target
         {
+            // A sum or record declaration is a binding too, and lowering one to
+            // a `uint32_t` const yields C naming variants that do not exist.
+            if matches!(
+                b.value,
+                Expr::Binary {
+                    op: BinOp::Union,
+                    ..
+                }
+            ) {
+                problem(format!(
+                    "`{name}` is a sum type; the embedded target has no tagged \
+                     values — use integer constants"
+                ));
+                continue;
+            }
+            if matches!(b.value, Expr::Record(_)) {
+                problem(format!(
+                    "`{name}` is a record type; the embedded target has no \
+                     structs — use separate values"
+                ));
+                continue;
+            }
             out.push_str(&format!(
                 "static const uint32_t {name} = {};\n",
                 cexpr(&b.value)
@@ -194,18 +242,31 @@ fn cblock(stmts: &[Stmt], wants_value: bool, ind: usize) -> String {
     for (i, s) in stmts.iter().enumerate() {
         let last = i + 1 == stmts.len();
         match s {
-            Stmt::Bind(b) => {
-                if let Expr::Ident(n) = &b.target {
+            Stmt::Bind(b) => match &b.target {
+                Expr::Ident(n) => {
                     let decl = if declared.insert(n.clone()) {
                         "uint32_t "
                     } else {
                         ""
                     };
                     out.push_str(&format!("{pad}{decl}{n} = {};\n", cexpr(&b.value)));
-                } else {
-                    out.push_str(&format!("{pad}{};\n", cexpr(&b.value)));
                 }
-            }
+                // `p.f = v` and `xs[i] = v` are ordinary C stores. Emitting only
+                // the right-hand side left `v;`, which C accepts in silence.
+                Expr::Field { .. } | Expr::Index { .. } => {
+                    out.push_str(&format!(
+                        "{pad}{} = {};\n",
+                        cexpr(&b.target),
+                        cexpr(&b.value)
+                    ));
+                }
+                other => {
+                    problem(format!(
+                        "cannot assign to {} on the embedded target",
+                        describe(other)
+                    ));
+                }
+            },
             Stmt::Expr(Expr::For { pat, iter, body }) => out.push_str(&cfor(pat, iter, body, ind)),
             Stmt::Expr(Expr::While { cond, body }) => {
                 out.push_str(&format!(
@@ -299,7 +360,19 @@ fn cexpr(e: &Expr) -> String {
                 BinOp::And => "&&",
                 BinOp::Or => "||",
                 BinOp::Union => "|", // surface `|` as bit-or in embedded
-                _ => "+",
+                // `++` was reaching the `+` fallback, so a concatenation
+                // silently became pointer arithmetic.
+                BinOp::Concat => {
+                    problem(
+                        "`++` needs an allocator; the embedded target is \
+                         freestanding, with no heap",
+                    );
+                    "+"
+                }
+                BinOp::Pipe => {
+                    problem("`|>` is not lowered on the embedded target");
+                    "+"
+                }
             };
             format!("({} {o} {})", cexpr(lhs), cexpr(rhs))
         }
@@ -309,7 +382,39 @@ fn cexpr(e: &Expr) -> String {
         Expr::Call { callee, args } => ccall(callee, args),
         Expr::Field { base, name } => format!("{}.{name}", cexpr(base)),
         Expr::Index { base, index } => format!("{}[{}]", cexpr(base), cexpr(index)),
-        _ => "0u".into(),
+        // `a = b` is an expression in C too.
+        Expr::Assign { target, value } => {
+            format!("({} = {})", cexpr(target), cexpr(value))
+        }
+        // Everything else used to become the literal `0u`, which C accepts
+        // wherever a `uint32_t` is wanted — a `match` in firmware compiled to
+        // the number zero. Name it instead.
+        other => {
+            problem(format!(
+                "{} is not lowered on the embedded target",
+                describe(other)
+            ));
+            "0u".into()
+        }
+    }
+}
+
+/// Name a construct the way the author wrote it, for a refusal message.
+fn describe(e: &Expr) -> &'static str {
+    match e {
+        Expr::Match { .. } => "`match`",
+        Expr::Float(_) => "a float literal (the target is integer-only)",
+        Expr::Str(_) => "a string (the target has no allocator)",
+        Expr::List(_) => "a list (the target has no allocator)",
+        Expr::Record(_) | Expr::Ctor { .. } => "a record or sum value",
+        Expr::Range { .. } => "a range in value position",
+        Expr::Lambda { .. } => "a closure",
+        Expr::Try(_) | Expr::Fail(_) | Expr::Reify(_) => "the error operators (`?`, `fail`)",
+        Expr::Await(_) | Expr::Spawn(_) => "`await`/`spawn` (there is no scheduler)",
+        Expr::With { .. } => "a record update",
+        Expr::If { .. } => "`if` in value position",
+        Expr::Block(_) => "a block in value position",
+        _ => "this construct",
     }
 }
 
