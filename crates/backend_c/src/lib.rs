@@ -83,12 +83,14 @@ enum CTy {
     /// A closure value, carrying its arity — the runtime has one struct per
     /// arity (`maca_closure`, `maca_closure2`), so a local holding a two-
     /// parameter lambda has to be declared as the matching one.
-    Closure2,
+    Closure2(Box<CTy>),
     /// A concurrent computation handle (`spawn e`), awaited with `await`.
     /// Lowers to `maca_future*`; its result is boxed as `int64_t` for the slice.
     Future,
     /// A first-class function value (a lambda). Lowers to `maca_closure`.
-    Closure,
+    /// Its result type: the boundary word is an `int64_t`, so a call site needs
+    /// this to unbox a record result back into a record.
+    Closure(Box<CTy>),
     Unknown,
 }
 
@@ -433,7 +435,7 @@ impl<'a> Cx<'a> {
                                 if p.ty.is_none()
                                     && self.closure_params.contains(&(f.name.clone(), i))
                                 {
-                                    CTy::Closure
+                                    CTy::Closure(Box::new(CTy::Int))
                                 } else {
                                     self.cty_opt(&p.ty)
                                 }
@@ -2163,7 +2165,7 @@ impl<'a> Cx<'a> {
         };
         (
             format!("(({ctype}){{ {cast}{thunk}, NULL }})"),
-            closure_ty(arity),
+            closure_ty(arity, ret),
         )
     }
 
@@ -2178,8 +2180,8 @@ impl<'a> Cx<'a> {
             .iter()
             .map(|p| lambda_param_ty(&p.name, body).unwrap_or(CTy::Int))
             .collect();
-        let (val, _ret) = self.emit_closure(env, params, body, &ptys);
-        (val, closure_ty(params.len()))
+        let (val, ret) = self.emit_closure(env, params, body, &ptys);
+        (val, closure_ty(params.len(), ret))
     }
 
     /// Lower a lambda to a `maca_closure`: a hoisted function plus a heap
@@ -2255,9 +2257,22 @@ impl<'a> Cx<'a> {
             ));
             lenv.push((p.name.clone(), pt));
         }
-        let (bc, bt) = self.expr(&mut lenv, body, None);
-        let ret = if bt == CTy::Unknown { CTy::Int } else { bt };
-        self.push(&format!("    return {};", box_i64(&bc, &ret)));
+        // A block / `if` / `match` body is a statement shape, so it goes
+        // through the same `Sink` the rest of the backend uses: assign the
+        // value in each tail, then box that once. Evaluating it as an
+        // expression is what made `(n) => { a = n * 2  a > 10 }` unsupported.
+        let ret = if is_control(body) {
+            let ret = self.result_cty(&lenv, body);
+            self.push(&format!("    {} _r;", c_type(&ret)));
+            self.stmt_expr(&mut lenv, body, &Sink::Assign("_r".into(), ret.clone()), 1);
+            self.push(&format!("    return {};", box_i64("_r", &ret)));
+            ret
+        } else {
+            let (bc, bt) = self.expr(&mut lenv, body, None);
+            let ret = if bt == CTy::Unknown { CTy::Int } else { bt };
+            self.push(&format!("    return {};", box_i64(&bc, &ret)));
+            ret
+        };
         self.push("}");
         let def = std::mem::replace(&mut self.out, saved);
         self.hoisted_defs.push(def);
@@ -2450,7 +2465,7 @@ impl<'a> Cx<'a> {
                 // which an opaque value doesn't carry.
                 let held = match args.first() {
                     Some(Arg::Pos(Expr::Ident(n)))
-                        if matches!(lookup(env, n), Some(CTy::Closure | CTy::Closure2)) =>
+                        if matches!(lookup(env, n), Some(CTy::Closure(_) | CTy::Closure2(_))) =>
                     {
                         Some(cid(n))
                     }
@@ -2782,18 +2797,18 @@ impl<'a> Cx<'a> {
         }
         if let Expr::Ident(name) = callee {
             // calling a local that holds a closure value: `f = v => …; f(x)`
-            if matches!(lookup(env, name), Some(CTy::Closure | CTy::Closure2)) {
+            if let Some(CTy::Closure(r) | CTy::Closure2(r)) = lookup(env, name) {
                 let boxed: Vec<(String, CTy)> =
                     args.iter().map(|x| self.arg_typed(env, x)).collect();
                 let bx: Vec<String> = boxed.iter().map(|(c, t)| box_i64(c, t)).collect();
-                if bx.len() >= 2 {
-                    return (
-                        format!("maca_call2({}, {}, {})", cid(name), bx[0], bx[1]),
-                        CTy::Int,
-                    );
-                }
-                let a0 = bx.first().cloned().unwrap_or_else(|| "0".into());
-                return (format!("maca_call1({}, {a0})", cid(name)), CTy::Int);
+                let ret = (*r).clone();
+                let call = if bx.len() >= 2 {
+                    format!("maca_call2({}, {}, {})", cid(name), bx[0], bx[1])
+                } else {
+                    let a0 = bx.first().cloned().unwrap_or_else(|| "0".into());
+                    format!("maca_call1({}, {a0})", cid(name))
+                };
+                return (unbox_i64(&call, &ret), ret);
             }
             // coercions need the argument type
             if name == "str" {
@@ -3612,8 +3627,8 @@ impl<'a> Cx<'a> {
             | CTy::Unknown
             | CTy::Vec { .. }
             | CTy::Future
-            | CTy::Closure
-            | CTy::Closure2 => self.push("    maca_sb_puts(&sb, \"null\");"),
+            | CTy::Closure(_)
+            | CTy::Closure2(_) => self.push("    maca_sb_puts(&sb, \"null\");"),
         }
     }
 
@@ -3655,8 +3670,8 @@ impl<'a> Cx<'a> {
             | CTy::Unknown
             | CTy::Vec { .. }
             | CTy::Future
-            | CTy::Closure
-            | CTy::Closure2 => self.push(&format!("    {dest} = 0;")),
+            | CTy::Closure(_)
+            | CTy::Closure2(_) => self.push(&format!("    {dest} = 0;")),
         }
     }
 }
@@ -3714,19 +3729,19 @@ fn c_type(t: &CTy) -> String {
         CTy::Map(v) => map_name(v),
         CTy::Vec { name, .. } => name.clone(),
         CTy::Future => "maca_future*".into(),
-        CTy::Closure => "maca_closure".into(),
-        CTy::Closure2 => "maca_closure2".into(),
+        CTy::Closure(_) => "maca_closure".into(),
+        CTy::Closure2(_) => "maca_closure2".into(),
         CTy::Unknown => "int64_t".into(),
     }
 }
 
 /// The closure struct for a given arity. The runtime declares one per arity, so
 /// the type a local is *declared* with has to match the one it is built as.
-fn closure_ty(arity: usize) -> CTy {
+fn closure_ty(arity: usize, ret: CTy) -> CTy {
     if arity >= 2 {
-        CTy::Closure2
+        CTy::Closure2(Box::new(ret))
     } else {
-        CTy::Closure
+        CTy::Closure(Box::new(ret))
     }
 }
 
@@ -3741,7 +3756,7 @@ fn arr_name(elem: &CTy) -> String {
         CTy::Vec { name, .. } => format!("{name}Arr"),
         CTy::Arr(e) => format!("{}Arr", arr_name(e)),
         CTy::Map(v) => format!("{}Arr", map_name(v)),
-        CTy::Unit | CTy::Unknown | CTy::Future | CTy::Closure | CTy::Closure2 => "IntArr".into(),
+        CTy::Unit | CTy::Unknown | CTy::Future | CTy::Closure(_) | CTy::Closure2(_) => "IntArr".into(),
     }
 }
 
@@ -3944,7 +3959,7 @@ fn infer_cty_shallow(e: &Expr) -> CTy {
             };
             CTy::Arr(Box::new(elem))
         }
-        Expr::Lambda { params, .. } => closure_ty(params.len()),
+        Expr::Lambda { params, .. } => closure_ty(params.len(), CTy::Int),
         _ => CTy::Str,
     }
 }
@@ -4070,8 +4085,7 @@ fn cty_tag(t: &CTy) -> String {
         CTy::Arr(e) => format!("arr{}", cty_tag(e)),
         CTy::Vec { name, .. } => name.clone(),
         CTy::Future => "future".into(),
-        CTy::Closure => "closure".into(),
-        CTy::Closure2 => "closure".into(),
+        CTy::Closure(_) | CTy::Closure2(_) => "closure".into(),
         CTy::Unknown => "any".into(),
     }
 }

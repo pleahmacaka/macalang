@@ -186,6 +186,10 @@ impl Cx {
         let body = match &f.body {
             Some(FnBody::Expr(e)) => self.expr(e).0,
             Some(FnBody::Block(stmts)) => self.block(stmts),
+            // Unreachable through the driver: a bodyless function is an FFI
+            // declaration, and `validate_rust_bodies` refuses one on this
+            // target before emission. Kept so a direct `emit` call on a
+            // hand-built module still produces compilable Rust.
             None => "unimplemented!()".into(),
         };
 

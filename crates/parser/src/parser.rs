@@ -500,9 +500,16 @@ impl Parser {
         }
     }
 
-    /// Lambda bodies additionally allow the UI setter form `x = e` (assign expr)
-    /// and nested lambdas.
+    /// Lambda bodies additionally allow a `{ … }` block, the UI setter form
+    /// `x = e` (assign expr), and nested lambdas.
     fn parse_lambda_body(&mut self) -> Expr {
+        // `=> { … }` is a block, the way a match arm's `=> { … }` is. An
+        // anonymous record still has its own syntax everywhere a value is
+        // wanted; what it cannot be is the *whole* body of a lambda, which is
+        // the same trade a match arm already makes.
+        if self.at(Tok::LBrace) {
+            return Expr::Block(self.parse_block());
+        }
         if let Some(e) = self.typed_lambda() {
             return e;
         }

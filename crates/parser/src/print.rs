@@ -306,7 +306,15 @@ fn expr(s: &mut String, e: &Expr) {
                 let _ = write!(s, " -> {}", ty(t));
             }
             s.push_str(" => ");
-            expr(s, body);
+            // `=> { … }` is a block, so a record body needs its parentheses
+            // back or it would re-parse as one.
+            if matches!(&**body, Expr::Record(_)) {
+                s.push('(');
+                expr(s, body);
+                s.push(')');
+            } else {
+                expr(s, body);
+            }
         }
         Expr::With { base, fields } => {
             operand(s, base);

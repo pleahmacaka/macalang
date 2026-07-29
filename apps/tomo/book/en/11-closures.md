@@ -40,6 +40,18 @@ Counter : Render = {
 The annotation needs the parameter parentheses, so `(n) -> int => n + 1` rather
 than `n -> int => n + 1` — otherwise it would read as a function signature.
 
+A lambda body may be a block, the way a `match` arm's may:
+
+```
+classify = (n) -> str => {
+    doubled = n * 2
+    doubled > 10 ? "big" : "small"
+}
+```
+
+Which means a bare `{ … }` after `=>` is that block, not an anonymous record.
+Parenthesize when you meant the record — `(n) => ({ x = n })`.
+
 ## `if` as an expression
 
 Control flow produces values. `if`/`else` is an expression:
