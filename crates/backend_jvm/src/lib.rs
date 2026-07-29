@@ -21,7 +21,26 @@ use std::collections::BTreeSet;
 
 /// Emit a Java compilation unit named `class_name` (usually the file stem, or
 /// overridden by `package`/entry conventions). `package` is optional.
+/// Emit Java, or the list of constructs this backend does not lower. The driver
+/// uses this so an unsupported construct is a clean error naming what the author
+/// wrote, rather than a `null` javac accepts anywhere a reference is wanted.
+pub fn emit_checked(
+    m: &Module,
+    class_name: &str,
+    package: Option<&str>,
+) -> Result<String, Vec<String>> {
+    PROBLEMS.with(|p| p.borrow_mut().clear());
+    let out = emit(m, class_name, package);
+    let problems = PROBLEMS.with(|p| p.borrow().clone());
+    if problems.is_empty() {
+        Ok(out)
+    } else {
+        Err(problems)
+    }
+}
+
 pub fn emit(m: &Module, class_name: &str, package: Option<&str>) -> String {
+    VARIANT_OF.with(|v| v.borrow_mut().clear());
     let mut cx = Cx::default();
     cx.collect(m);
     let body = cx.emit_members(m, class_name);
@@ -56,7 +75,8 @@ impl Cx {
                 }
                 Stmt::Bind(b) => {
                     if let Expr::Ident(name) = &b.target {
-                        if sum_variants(&b.value).is_some() {
+                        if let Some(vars) = sum_variants(&b.value) {
+                            note_variants(name, &vars);
                             self.sums.insert(name.clone());
                         } else if is_record_type(&b.value) {
                             self.records.insert(name.clone());
@@ -150,6 +170,7 @@ impl Cx {
     }
 
     fn emit_method(&self, f: &FnDef, modifiers: &str) -> String {
+        start_scope(&f.params);
         let ret = f.ret.as_ref().map(jtype).unwrap_or_else(|| "void".into());
         let params: Vec<String> = f
             .params
@@ -181,6 +202,7 @@ impl Cx {
     }
 
     fn emit_main(&self, f: &FnDef) -> String {
+        start_scope(&f.params);
         let body = match &f.body {
             Some(FnBody::Block(stmts)) => jblock(stmts, false),
             Some(FnBody::Expr(e)) => format!("    {};\n", jexpr(e)),
@@ -200,19 +222,36 @@ fn jblock(stmts: &[Stmt], wants_value: bool) -> String {
         match s {
             Stmt::Bind(b) => {
                 if let Expr::Ident(n) = &b.target {
-                    let ty = b.tys.first().map(jtype).unwrap_or_else(|| "var".into());
-                    out.push_str(&format!("    {ty} {n} = {};\n", jexpr(&b.value)));
+                    let fresh = DECLARED.with(|d| d.borrow_mut().insert(n.clone()));
+                    let ty = if fresh {
+                        b.tys.first().map(jtype).unwrap_or_else(|| "var".into()) + " "
+                    } else {
+                        String::new()
+                    };
+                    out.push_str(&format!("    {ty}{n} = {};\n", jexpr(&b.value)));
                 } else {
-                    out.push_str(&format!("    {};\n", jexpr(&b.value)));
+                    out.push_str(&format!(
+                        "    {} = {};\n",
+                        jexpr(&b.target),
+                        jexpr(&b.value)
+                    ));
                 }
             }
             Stmt::Expr(e) => {
                 if let Expr::For { pat, iter, body } = e {
                     out.push_str(&jfor(pat, iter, body));
+                } else if let Expr::While { cond, body } = e {
+                    out.push_str(&format!(
+                        "    while ({}) {{\n{}    }}\n",
+                        jexpr(cond),
+                        indent(&jblock(body, false), 1)
+                    ));
                 } else if let Expr::If { .. } = e {
                     out.push_str(&jif_stmt(e));
                 } else if last && wants_value {
                     out.push_str(&format!("    return {};\n", jexpr(e)));
+                } else if matches!(e, Expr::Break | Expr::Continue) {
+                    out.push_str(&format!("    {};\n", jexpr(e)));
                 } else if !is_pure_value(e) {
                     // a bare value in statement position is a no-op (e.g. the
                     // trailing `0` of a Maca `main`); Java rejects it, so skip.
@@ -263,7 +302,7 @@ fn jexpr(e: &Expr) -> String {
         Expr::Unit => "null".into(),
         Expr::Str(parts) => jstr(parts),
         Expr::Path(p) => format!("{p:?}"),
-        Expr::Ident(n) => n.clone(),
+        Expr::Ident(n) => qualify(n),
         Expr::Unary { op, expr } => {
             let o = if matches!(op, UnOp::Not) { "!" } else { "-" };
             format!("{o}({})", jexpr(expr))
@@ -295,7 +334,86 @@ fn jexpr(e: &Expr) -> String {
         Expr::Match { scrut, arms } => jmatch(scrut, arms),
         Expr::Block(stmts) => block_value(stmts),
         Expr::Try(x) => jexpr(x),
-        _ => "null".into(),
+        // A Java lambda. This is the target's headline use case — a Fabric mod
+        // registers callbacks — and it used to become `null`, which is
+        // assignable to any functional interface, so it compiled and the
+        // callback did nothing.
+        Expr::Lambda { params, body, .. } => {
+            let ps: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+            format!("({}) -> {}", ps.join(", "), jexpr(body))
+        }
+        Expr::Assign { target, value } => format!("({} = {})", jexpr(target), jexpr(value)),
+        Expr::Break => "break".into(),
+        Expr::Continue => "continue".into(),
+        // `null` is assignable to every Java reference type, so an unlowered
+        // construct type-checked and the program ran with a hole in it.
+        other => {
+            problem(format!("{} is not lowered by the jvm backend", describe(other)));
+            "null".into()
+        }
+    }
+}
+
+thread_local! {
+    /// Constructs this backend does not lower, collected while emitting.
+    static PROBLEMS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// Names already bound in the function being emitted. A later `x = e` is a
+    /// reassignment; re-emitting the type made it a redeclaration, which javac
+    /// rejects.
+    static DECLARED: std::cell::RefCell<std::collections::BTreeSet<String>> =
+        const { std::cell::RefCell::new(std::collections::BTreeSet::new()) };
+    /// variant name → its enum. Java needs `Status.Done` everywhere except a
+    /// `case` label, where the bare name is the only spelling allowed.
+    static VARIANT_OF: std::cell::RefCell<std::collections::BTreeMap<String, String>> =
+        const { std::cell::RefCell::new(std::collections::BTreeMap::new()) };
+}
+
+/// Begin a function: its parameters are already bound, so a `x = e` naming one
+/// is a reassignment rather than a declaration that would shadow it.
+fn start_scope(params: &[Param]) {
+    DECLARED.with(|d| {
+        let mut d = d.borrow_mut();
+        d.clear();
+        for p in params {
+            d.insert(p.name.clone());
+        }
+    });
+}
+
+fn note_variants(enom: &str, vars: &[String]) {
+    VARIANT_OF.with(|v| {
+        let mut v = v.borrow_mut();
+        for name in vars {
+            v.insert(name.clone(), enom.to_string());
+        }
+    });
+}
+
+/// `Done` → `Status.Done` when it names a variant, else itself.
+fn qualify(n: &str) -> String {
+    VARIANT_OF.with(|v| match v.borrow().get(n) {
+        Some(enom) => format!("{enom}.{n}"),
+        None => n.to_string(),
+    })
+}
+
+fn problem(msg: impl Into<String>) {
+    PROBLEMS.with(|p| p.borrow_mut().push(msg.into()));
+}
+
+/// Name a construct the way the author wrote it, for a refusal message.
+fn describe(e: &Expr) -> &'static str {
+    match e {
+        Expr::While { .. } => "`while` in value position",
+        Expr::With { .. } => "a record update (`with`)",
+        Expr::Fail(_) => "`fail`",
+        Expr::Reify(_) => "`reify`",
+        Expr::Await(_) => "`await`",
+        Expr::Spawn(_) => "`spawn`",
+        Expr::Range { .. } => "a range in value position",
+        Expr::Path(_) => "a path expression",
+        Expr::Unit => "the unit value",
+        _ => "this construct",
     }
 }
 
@@ -303,7 +421,13 @@ fn jexpr(e: &Expr) -> String {
 fn block_value(stmts: &[Stmt]) -> String {
     match stmts.last() {
         Some(Stmt::Expr(e)) => jexpr(e),
-        _ => "null".into(),
+        _ => {
+            problem(
+                "a block whose last statement is not an expression has no value                  on the jvm backend"
+                    .to_string(),
+            );
+            "null".into()
+        }
     }
 }
 
@@ -383,8 +507,12 @@ fn jctor(e: &Expr, fields: &[Field]) -> String {
         })
         .collect();
     if name.is_empty() {
-        // structural record literal — no Java type; fall back to a comment
-        "/* record */ null".to_string()
+        // An anonymous record has no Java type to name in a `new`.
+        problem(
+            "an anonymous record literal has no Java type — declare a record type"
+                .to_string(),
+        );
+        "null".to_string()
     } else {
         format!("new {name}({})", vals.join(", "))
     }
@@ -397,14 +525,45 @@ fn jmatch(scrut: &Expr, arms: &[Arm]) -> String {
         let label = match &a.pat {
             Pattern::Wild => "default".to_string(),
             Pattern::Bind(n) => format!("case {n}"),
+            // A payload pattern's arguments were dropped, so the arm body named
+            // variables javac never saw. Sums lower to a plain Java enum, which
+            // carries no payload to bind in the first place.
+            Pattern::Ctor { name, args } if !args.is_empty() => {
+                problem(format!(
+                    "`{name}(…)` binds a payload; a sum lowers to a Java enum                      on this target, which carries none"
+                ));
+                format!("case {name}")
+            }
             Pattern::Ctor { name, .. } => format!("case {name}"),
             Pattern::Int(n) => format!("case {n}"),
-            _ => "default".to_string(),
+            // Java switches on strings, so this is a real label — it used to
+            // fall to `default`, and two such arms were a duplicate-default
+            // error from javac.
+            Pattern::Str(v) => format!("case {}", java_str_lit(v)),
+            other => {
+                problem(format!(
+                    "{} cannot be a `case` label on the jvm backend",
+                    describe_pattern(other)
+                ));
+                "default".to_string()
+            }
         };
         out.push_str(&format!("        {label} -> {};\n", jexpr(&a.body)));
     }
     out.push_str("    }");
     out
+}
+
+/// Name a pattern the way the author wrote it, for a refusal message.
+fn describe_pattern(p: &Pattern) -> &'static str {
+    match p {
+        Pattern::Bool(_) => "a bool pattern (Java cannot switch on a boolean)",
+        Pattern::Float(_) => "a float pattern",
+        Pattern::List { .. } => "a list pattern",
+        Pattern::Record(_) => "a record pattern",
+        Pattern::Or(_) => "an or-pattern",
+        _ => "this pattern",
+    }
 }
 
 /// String with interpolation → Java string concatenation.

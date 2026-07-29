@@ -1218,7 +1218,8 @@ fn build_jvm(src: &Path, out: Option<&Path>, classpath: Option<&str>) -> Result<
     }
     validate_no_function_fields(&parsed.module, "jvm")?;
     let class = capitalize(&stem(src));
-    let java = maca_backend_jvm::emit(&parsed.module, &class, None);
+    let java = maca_backend_jvm::emit_checked(&parsed.module, &class, None)
+        .map_err(|probs| format!("unsupported by the jvm backend:\n  {}", probs.join("\n  ")))?;
 
     let out_dir = out
         .map(PathBuf::from)
