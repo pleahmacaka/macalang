@@ -87,3 +87,54 @@ fn fs_module() {
 fn proc_module() {
     suite("proc");
 }
+
+/// Every function `std/README.md` advertises is defined by the module it names.
+///
+/// The table is the first thing anyone reads to find out what `std/` holds, so
+/// a name that drifted out of it — renamed, moved, removed — sends a reader to
+/// a function that isn't there. The suites above prove the modules work; this
+/// proves the index of them is honest.
+#[test]
+fn the_std_readme_names_functions_that_exist() {
+    let readme = std::fs::read_to_string(repo().join("std/README.md")).expect("std/README.md");
+
+    let mut checked = 0;
+    for line in readme.lines() {
+        let Some(rest) = line.strip_prefix("| `std/") else {
+            continue;
+        };
+        let Some((module, body)) = rest.split_once("` | ") else {
+            continue;
+        };
+
+        let src = std::fs::read_to_string(repo().join(format!("std/{module}.maca")))
+            .unwrap_or_else(|_| panic!("std/README.md lists std/{module}, which has no source"));
+
+        for name in backticked(body) {
+            // `str_`-prefixed twins` and the like are prose, not a call.
+            if name.ends_with('_') {
+                continue;
+            }
+            assert!(
+                src.lines().any(|l| l.starts_with(&format!("{name}("))),
+                "std/README.md lists `{name}` under std/{module}, which does not define it"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 40, "the table stopped being parsed: {checked} names");
+}
+
+/// The `` `name` `` spans in a README table cell.
+fn backticked(cell: &str) -> Vec<String> {
+    cell.split('`')
+        .skip(1)
+        .step_by(2)
+        .filter(|s| {
+            !s.is_empty()
+                && s.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        })
+        .map(str::to_string)
+        .collect()
+}

@@ -255,3 +255,45 @@ fn anonymous_records_run_via_rust() {
     );
     assert_eq!(code, Some(0));
 }
+
+/// A bodyless function is an FFI declaration, and the Rust path has no C ABI
+/// bridge to satisfy it. The emitter used to write `unimplemented!()`, so the
+/// program built, linked, and panicked the first time it reached the call.
+#[test]
+fn a_bodyless_function_is_rejected_rather_than_emitted_as_a_panic() {
+    let dir = std::env::temp_dir().join("maca-rust-bodyless");
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let file = dir.join("bodyless.maca");
+    std::fs::write(
+        &file,
+        "mystery(n: int) -> int\n\nmain() -> int {\n    info(\"{mystery(1)}\")\n    0\n}\n",
+    )
+    .expect("write source");
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            "--target",
+            "rust",
+            &file.to_string_lossy(),
+            "-o",
+            &dir.join("bl").to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca build");
+
+    let text = String::from_utf8_lossy(&out.stdout).to_string()
+        + &String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "should not build:\n{text}");
+    assert!(text.contains("mystery"), "should name the function:\n{text}");
+    assert!(
+        text.contains("no body"),
+        "should say what is wrong:\n{text}"
+    );
+    assert!(
+        !std::fs::read_to_string(dir.join("bodyless.rs"))
+            .unwrap_or_default()
+            .contains("unimplemented!()"),
+        "no `unimplemented!()` should reach the emitted source"
+    );
+}

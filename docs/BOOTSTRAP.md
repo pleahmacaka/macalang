@@ -141,12 +141,14 @@ Each feature is added to `selfhost/` when the self-hosted compiler needs it to
 compile itself, and the dual-backend compile-and-run gate is what says it
 arrived.
 
-So the boundary moves by writing Maca, not by planning. What it takes to close
-the loop is the rest of the type system: `check.maca` reasons about a module's
-own declarations, and the generalization and row unification that `maca-core`
-does are still the stage-0 crate's. They have to be written once more, in Maca,
-before stage-0 can be retired — and by then stage-1 will be compiling the file
-that does it.
+So the boundary moves by writing Maca, not by planning.
+
+The two stages own different halves of the type system, and that split is
+visible in the source: `check.maca` reasons about a module's own declarations —
+signatures, record fields, sum variants, locals — while the generalization and
+row unification live in `maca-core`. Stage-0 is retired when the second half is
+written in Maca as well, which is the same increment-and-gate loop as everything
+above it, run once more.
 
 ## Why the Rust side stays minimal
 

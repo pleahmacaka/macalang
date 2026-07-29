@@ -651,6 +651,7 @@ fn build_rust(src: &Path, out: &Path) -> Result<String, String> {
     // look like it compiled while its real crate call was simply missing.
     let deps = rust_dependencies(src);
     validate_rust_imports(&parsed.module, &deps)?;
+    validate_rust_bodies(&parsed.module)?;
 
     let rs = maca_backend_rust::emit(&parsed.module);
     let rs_path = out.with_extension("rs");
@@ -735,6 +736,32 @@ fn validate_rust_imports(m: &maca_parser::Module, deps: &[(String, String)]) -> 
         }
     }
     Ok(())
+}
+
+/// A bodyless function is an FFI declaration — the body lives in a C library.
+/// There is no C ABI bridge on the Rust path, so there is nothing to call: the
+/// emitter would write `unimplemented!()` and the program would build and then
+/// panic at run time. Say so at compile time instead.
+fn validate_rust_bodies(m: &maca_parser::Module) -> Result<(), String> {
+    use maca_parser::ast::Stmt;
+    let bodyless: Vec<&str> = m
+        .items
+        .iter()
+        .filter_map(|it| match it {
+            Stmt::Fn(f) if f.body.is_none() => Some(f.name.as_str()),
+            _ => None,
+        })
+        .collect();
+    if bodyless.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "`{}` {} declared with no body — that is an FFI declaration, and there \
+         is no C ABI bridge on the Rust path; supply a body, or provide the \
+         function in an `import rust \"\"\"…\"\"\"` raw block",
+        bodyless.join("`, `"),
+        if bodyless.len() == 1 { "is" } else { "are" },
+    ))
 }
 
 /// `[rust-dependencies]` from the `maca.toml` nearest `src` (searching upward),
