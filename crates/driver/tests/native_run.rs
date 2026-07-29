@@ -1194,6 +1194,32 @@ fn lambdas_run_natively() {
     );
 }
 
+/// A function kept in a record field — the route table, the reducer, the
+/// builder. `(T, U) -> R` is the type that makes it writable; the assertions
+/// are in Maca, in `tests/programs/function_fields.maca`.
+#[test]
+fn a_function_can_be_kept_in_a_record_field() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let program =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/programs/function_fields.maca");
+    for poison in ["0", "1"] {
+        let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+            .args(["test", &program.to_string_lossy()])
+            .env("MACA_POISON", poison)
+            .output()
+            .expect("spawn maca test");
+        assert!(
+            out.status.success(),
+            "MACA_POISON={poison}:\n{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+    }
+}
+
 #[test]
 fn native_backend_regressions_still_hold() {
     // List patterns, `chars()` registering its array type, `++` converting a

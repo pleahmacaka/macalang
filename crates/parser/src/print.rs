@@ -131,6 +131,10 @@ fn ty(t: &Type) -> String {
         Type::Array(t) => format!("{}[]", ty(t)),
         Type::Opt(t) => format!("{}?", ty(t)),
         Type::Paren(t) => format!("({})", ty(t)),
+        Type::Fn(ps, r) => {
+            let ps: Vec<String> = ps.iter().map(ty).collect();
+            format!("({}) -> {}", ps.join(", "), ty(r))
+        }
     }
 }
 

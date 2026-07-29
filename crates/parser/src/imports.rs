@@ -475,6 +475,10 @@ fn refs_in_type(t: &Type, out: &mut BTreeSet<String>) {
             args.iter().for_each(|a| refs_in_type(a, out));
         }
         Type::Array(t) | Type::Opt(t) | Type::Paren(t) => refs_in_type(t, out),
+        Type::Fn(ps, r) => {
+            ps.iter().for_each(|p| refs_in_type(p, out));
+            refs_in_type(r, out);
+        }
     }
 }
 

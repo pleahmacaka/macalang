@@ -130,6 +130,10 @@ fn type_name(t: &Type) -> String {
         Type::Array(inner) => format!("{}[]", type_name(inner)),
         Type::Opt(inner) => format!("{}?", type_name(inner)),
         Type::Paren(inner) => type_name(inner),
+        Type::Fn(ps, r) => {
+            let ps: Vec<String> = ps.iter().map(type_name).collect();
+            format!("({}) -> {}", ps.join(", "), type_name(r))
+        }
         Type::Apply(head, args) => {
             let a: Vec<String> = args.iter().map(type_name).collect();
             format!("{} {}", type_name(head), a.join(" "))

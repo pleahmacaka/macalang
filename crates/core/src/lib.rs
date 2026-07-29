@@ -406,6 +406,10 @@ impl Checker {
             Type::Array(inner) => Ty::array(self.ast_ty_v(inner, vars)),
             Type::Opt(inner) => Ty::Opt(Box::new(self.ast_ty_v(inner, vars))),
             Type::Paren(inner) => self.ast_ty_v(inner, vars),
+            Type::Fn(ps, r) => {
+                let ps = ps.iter().map(|p| self.ast_ty_v(p, vars)).collect();
+                Ty::Fn(ps, Box::new(self.ast_ty_v(r, vars)))
+            }
             Type::Name(_) => ast_ty(t),
         }
     }
@@ -1298,6 +1302,7 @@ fn ast_ty(t: &Type) -> Ty {
         Type::Array(t) => Ty::array(ast_ty(t)),
         Type::Opt(t) => Ty::Opt(Box::new(ast_ty(t))),
         Type::Paren(t) => ast_ty(t),
+        Type::Fn(ps, r) => Ty::Fn(ps.iter().map(ast_ty).collect(), Box::new(ast_ty(r))),
     }
 }
 

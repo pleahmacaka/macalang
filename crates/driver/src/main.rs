@@ -954,7 +954,7 @@ fn is_foreign_type_name(
             h.chars().next().is_some_and(char::is_uppercase) && !declared.contains(h.as_str())
         }),
         Type::Apply(base, _) | Type::Paren(base) => is_foreign_type_name(base, declared),
-        Type::Array(_) | Type::Opt(_) => false,
+        Type::Array(_) | Type::Opt(_) | Type::Fn(_, _) => false,
     }
 }
 

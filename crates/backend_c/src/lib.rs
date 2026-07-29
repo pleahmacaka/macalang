@@ -120,17 +120,24 @@ fn parse_vec_c(name: &str) -> Option<(String, usize)> {
 struct Cx<'a> {
     m: &'a Module,
     out: String,
-    /// The parameter type the callee will call a lambda argument with, set for
-    /// the duration of lowering that one argument.
-    lambda_hint: Option<CTy>,
+    /// The parameter types a lambda about to be lowered will be called with,
+    /// set for the duration of lowering that one lambda. From the callee's
+    /// signature at a call site, or from the field's declared type where the
+    /// lambda is being stored in a record.
+    lambda_hint: Option<Vec<CTy>>,
     // declarations
     sums: BTreeMap<String, Vec<String>>, // sum name -> variants
     variant_of: HashMap<String, String>, // variant -> sum name
     variant_payloads: HashMap<String, Vec<CTy>>, // variant -> payload field types
     records: BTreeMap<String, Vec<(String, CTy)>>, // record name -> ordered fields
-    rec_order: Vec<String>,              // topo order
-    modules: HashSet<String>,            // imported module names (json, dirs, …)
-    lets: Vec<(String, CTy, Expr)>,      // top-level `let`/value bindings
+    /// `Rec.field` -> the parameter types of a field declared `(T, U) -> R`.
+    /// `CTy::Closure` carries only the return type, and a lambda stored in such
+    /// a field has nothing else to read its parameter types off — it typed them
+    /// `int` and read a string argument as an address.
+    record_fn_params: HashMap<String, Vec<CTy>>,
+    rec_order: Vec<String>,         // topo order
+    modules: HashSet<String>,       // imported module names (json, dirs, …)
+    lets: Vec<(String, CTy, Expr)>, // top-level `let`/value bindings
     let_names: HashSet<String>,
     fns: HashMap<String, (Vec<CTy>, CTy)>, // fn name -> (param types, ret)
     arr_elems: HashSet<CTy>,               // array element types to instantiate
@@ -178,6 +185,7 @@ impl<'a> Cx<'a> {
             variant_of: HashMap::new(),
             variant_payloads: HashMap::new(),
             records: BTreeMap::new(),
+            record_fn_params: HashMap::new(),
             rec_order: Vec::new(),
             modules: HashSet::new(),
             lets: Vec::new(),
@@ -422,6 +430,7 @@ impl<'a> Cx<'a> {
                     }
                     let _ = name;
                 } else if let Some(fields) = self.record_fields(&b.value) {
+                    self.note_fn_fields(name, &b.value);
                     self.records.insert(name.clone(), fields);
                 }
             }
@@ -804,6 +813,22 @@ impl<'a> Cx<'a> {
         )
     }
 
+    /// Remember the parameter types of every field declared as a function, so
+    /// a lambda written straight into one can be lowered against them.
+    fn note_fn_fields(&mut self, rec: &str, decl: &Expr) {
+        let Expr::Record(fs) = decl else { return };
+        for f in fs {
+            if let Field::Type {
+                name,
+                ty: Type::Fn(ps, _),
+            } = f
+            {
+                let ctys: Vec<CTy> = ps.iter().map(|t| self.cty(t)).collect();
+                self.record_fn_params.insert(format!("{rec}.{name}"), ctys);
+            }
+        }
+    }
+
     fn topo_records(&mut self) {
         let mut seen = HashSet::new();
         let names: Vec<String> = self.records.keys().cloned().collect();
@@ -988,6 +1013,11 @@ impl<'a> Cx<'a> {
             Type::Array(t) => CTy::Arr(Box::new(self.cty(t))),
             Type::Opt(t) => self.cty(t),
             Type::Paren(t) => self.cty(t),
+            // `(T, U) -> R` — a function value. The runtime has one struct per
+            // arity, so the arity is what picks the C type; everything crosses
+            // the boundary boxed as `int64_t` and the return type is what says
+            // how to read the answer back.
+            Type::Fn(ps, r) => closure_ty(ps.len(), self.cty(r)),
             // `Map str V` — the key type is written for readability and checked
             // by the type checker; codegen only needs the value type.
             Type::Apply(base, args) if matches!(&**base, Type::Name(s) if s.last().is_some_and(|n| n == "Map")) => {
@@ -2451,7 +2481,7 @@ impl<'a> Cx<'a> {
             .map(|(i, p)| {
                 p.ty.as_ref()
                     .map(|t| self.cty(t))
-                    .or_else(|| if i == 0 { hint.clone() } else { None })
+                    .or_else(|| hint.as_ref().and_then(|h| h.get(i).cloned()))
                     .or_else(|| self.param_ty_from_use(&p.name, body))
                     .or_else(|| lambda_param_ty(&p.name, body))
                     .unwrap_or(CTy::Int)
@@ -2986,7 +3016,15 @@ impl<'a> Cx<'a> {
                 _ => None,
             });
             let code = match val {
-                Some((v, _)) => self.expr(env, &v, Some(fty)).0,
+                Some((v, _)) => {
+                    self.lambda_hint = self
+                        .record_fn_params
+                        .get(&format!("{name}.{fname}"))
+                        .cloned();
+                    let c = self.expr(env, &v, Some(fty)).0;
+                    self.lambda_hint = None;
+                    c
+                }
                 None => zero_value(fty),
             };
             parts.push(format!(".{} = {code}", cid(fname)));
@@ -3021,7 +3059,12 @@ impl<'a> Cx<'a> {
                 .iter()
                 .find(|(n, _)| *n == fname)
                 .map(|(_, t)| t.clone());
+            self.lambda_hint = self
+                .record_fn_params
+                .get(&format!("{rname}.{fname}"))
+                .cloned();
             let code = self.expr(env, &val, fty.as_ref()).0;
+            self.lambda_hint = None;
             assigns.push(format!("{t}.{} = {code};", cid(&fname)));
         }
         (
@@ -3209,32 +3252,30 @@ impl<'a> Cx<'a> {
             {
                 return res;
             }
+            // A field holding a function is *called*, not used as a receiver.
+            // `app.handle(req)` where `handle` is declared `(Request) -> Response`
+            // means the function in that field; reading it as UFCS asked the
+            // linker for a `handle` nobody wrote, which is what made a route
+            // table impossible to write down.
+            if let CTy::Rec(r) = &rty
+                && let Some(f) = self.field_ty(r, name)
+                && matches!(f, CTy::Closure(_) | CTy::Closure2(_))
+            {
+                return self.call_closure(
+                    env,
+                    &format!("({rc}).{}", cid(name)),
+                    &f,
+                    args,
+                    expected,
+                );
+            }
             let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
             return self.ufcs(&rc, &rty, name, &a);
         }
         if let Expr::Ident(name) = callee {
             // calling a local that holds a closure value: `f = v => …; f(x)`
-            if let Some(CTy::Closure(r) | CTy::Closure2(r)) = lookup(env, name) {
-                let boxed: Vec<(String, CTy)> =
-                    args.iter().map(|x| self.arg_typed(env, x)).collect();
-                let bx: Vec<String> = boxed.iter().map(|(c, t)| box_i64(c, t)).collect();
-                // A closure's declared return type is `int` — surface Maca
-                // has no function-type syntax to say otherwise. Where the
-                // context does know, it knows better: `answer(handler, raw) ->
-                // Response` calling `handler(r)` means a `Response` comes back,
-                // and reading it as an integer is the difference between a
-                // record and its address.
-                let ret = match expected {
-                    Some(t) if !matches!(t, CTy::Unknown | CTy::Unit) => t.clone(),
-                    _ => (*r).clone(),
-                };
-                let call = if bx.len() >= 2 {
-                    format!("maca_call2({}, {}, {})", cid(name), bx[0], bx[1])
-                } else {
-                    let a0 = bx.first().cloned().unwrap_or_else(|| "0".into());
-                    format!("maca_call1({}, {a0})", cid(name))
-                };
-                return (unbox_i64(&call, &ret), ret);
+            if let Some(t @ (CTy::Closure(_) | CTy::Closure2(_))) = lookup(env, name) {
+                return self.call_closure(env, &cid(name), &t, args, expected);
             }
             // coercions need the argument type
             if name == "str" {
@@ -3394,7 +3435,7 @@ impl<'a> Cx<'a> {
                         // belongs to, which typed `apply(v => v.path…)` as a
                         // record and dereferenced whatever `v` happened to be.
                         if matches!(x, Arg::Pos(Expr::Lambda { .. })) {
-                            self.lambda_hint = self.callee_param_ty(name, i, 8);
+                            self.lambda_hint = self.callee_param_ty(name, i, 8).map(|t| vec![t]);
                         }
                         let c = self.arg_expected(env, x, params.get(i)).0;
                         self.lambda_hint = None;
@@ -3551,6 +3592,54 @@ impl<'a> Cx<'a> {
                 )
             }
         }
+    }
+
+    /// The declared C type of `field` on record `rec`, if it has one.
+    fn field_ty(&self, rec: &str, field: &str) -> Option<CTy> {
+        self.records
+            .get(rec)?
+            .iter()
+            .find(|(n, _)| n == field)
+            .map(|(_, t)| t.clone())
+    }
+
+    /// Call through a closure value, however it was reached — a local, a
+    /// parameter, or a record field.
+    ///
+    /// Arguments and the result cross the boundary boxed as `int64_t`, so the
+    /// return type has to come from somewhere. A declared `(T) -> R` says it;
+    /// otherwise the context does, because `answer(handler, raw) -> Response`
+    /// calling `handler(r)` means a `Response` comes back, and reading that as
+    /// an integer is the difference between a record and its address.
+    fn call_closure(
+        &mut self,
+        env: &mut Env,
+        target: &str,
+        ty: &CTy,
+        args: &[Arg],
+        expected: Option<&CTy>,
+    ) -> (String, CTy) {
+        let (CTy::Closure(r) | CTy::Closure2(r)) = ty else {
+            return ("0 /* not a function */".into(), CTy::Unknown);
+        };
+        let boxed: Vec<(String, CTy)> = args.iter().map(|x| self.arg_typed(env, x)).collect();
+        let bx: Vec<String> = boxed.iter().map(|(c, t)| box_i64(c, t)).collect();
+        // What the caller expects wins over what the closure says, because a
+        // closure reached through an *unannotated* parameter says `int` whether
+        // or not that is true — it was inferred from being called, not
+        // declared. A written `(Request) -> Response` is the fallback, and it
+        // is the answer wherever the context has no opinion.
+        let ret = match expected {
+            Some(t) if !matches!(t, CTy::Unknown | CTy::Unit) => t.clone(),
+            _ => (**r).clone(),
+        };
+        let call = if bx.len() >= 2 {
+            format!("maca_call2({target}, {}, {})", bx[0], bx[1])
+        } else {
+            let a0 = bx.first().cloned().unwrap_or_else(|| "0".into());
+            format!("maca_call1({target}, {a0})")
+        };
+        (unbox_i64(&call, &ret), ret)
     }
 
     fn ufcs(&mut self, rc: &str, rty: &CTy, method: &str, a: &[String]) -> (String, CTy) {
@@ -4682,6 +4771,7 @@ fn type_has_tyvar(t: &Type) -> bool {
         Type::Name(segs) => segs.len() == 1 && is_type_var_name(&segs[0]),
         Type::Array(i) | Type::Opt(i) | Type::Paren(i) => type_has_tyvar(i),
         Type::Apply(h, args) => type_has_tyvar(h) || args.iter().any(type_has_tyvar),
+        Type::Fn(ps, r) => ps.iter().any(type_has_tyvar) || type_has_tyvar(r),
     }
 }
 
