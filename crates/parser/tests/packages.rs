@@ -161,3 +161,53 @@ fn a_project_does_not_borrow_another_projects_packages() {
 
     assert!(got.is_err(), "resolved another project's package: {got:?}");
 }
+
+/// Two files in one package may each keep a helper to themselves. Everything
+/// inlines into one translation unit, so without qualification the C compiler
+/// reported a redefinition of a function the reader never wrote twice — and
+/// "you cannot split a package into files" is not a package system.
+#[test]
+fn two_files_may_share_a_private_helper_name() {
+    let p = Project::new("private");
+    p.write(
+        "modules/pkg/alpha.maca",
+        "helper(s: str) -> str => \"alpha:\" ++ s\n\nalpha() -> str => helper(\"a\")\n",
+    );
+    p.write(
+        "modules/pkg/beta.maca",
+        "helper(s: str) -> str => \"beta:\" ++ s\n\nbeta() -> str => helper(\"b\")\n",
+    );
+    let main = p.write(
+        "main.maca",
+        "import { alpha } from pkg/alpha\nimport { beta } from pkg/beta\n\n\
+         main() -> str => alpha() ++ beta()\n",
+    );
+
+    let src = inlined(&main).expect("inlines");
+    assert!(src.contains("alpha__helper"), "alpha's is qualified: {src}");
+    assert!(src.contains("beta__helper"), "beta's is qualified: {src}");
+    assert!(
+        !src.contains("\nhelper("),
+        "neither kept the bare name: {src}"
+    );
+}
+
+/// A name someone asked for by hand keeps the spelling they asked for —
+/// qualifying it would break the caller that named it.
+#[test]
+fn a_requested_name_keeps_its_spelling() {
+    let p = Project::new("requested");
+    p.write(
+        "modules/pkg/alpha.maca",
+        "helper(s: str) -> str => s\n\nalpha() -> str => helper(\"a\")\n",
+    );
+    let main = p.write(
+        "main.maca",
+        "import { alpha, helper } from pkg/alpha\n\n\
+         main() -> str => alpha() ++ helper(\"x\")\n",
+    );
+
+    let src = inlined(&main).expect("inlines");
+    assert!(src.contains("helper(s: str)"), "unqualified: {src}");
+    assert!(!src.contains("alpha__helper"), "not qualified: {src}");
+}

@@ -39,13 +39,60 @@ pub fn load_with_imports(entry: &Path) -> Result<String, String> {
             }
             Sel::Names(want) => {
                 let module = &g.parsed[path];
-                let sliced = slice_module(module, want, path)?;
+                let mut sliced = slice_module(module, want, path)?;
+                qualify_private(&mut sliced, want, path);
                 combined.push_str(&crate::print_module(&Module { items: sliced }));
             }
         }
         combined.push('\n');
     }
     Ok(combined)
+}
+
+/// Qualify a module's private definitions with the module's own name.
+///
+/// Everything is inlined into one translation unit, so two files that each keep
+/// a `helper` to themselves collide — and "two files in a package cannot share
+/// a private name" defeats the point of splitting a package into files at all.
+/// The failure was a C `redefinition` error naming a function the reader never
+/// wrote twice.
+///
+/// Only *private* names move. A name some importer asked for by hand is the
+/// name it was asked for, and renaming it would break the caller; a private
+/// name is one nobody asked of this module, so nothing outside can be referring
+/// to it. Every one of them is qualified rather than only the ones that happen
+/// to clash today, because a collision that appears when an unrelated file
+/// gains a helper is a collision nobody can see coming — and because
+/// `alpha__helper` in a stack trace says more than `helper` did.
+fn qualify_private(items: &mut [Stmt], want: &BTreeSet<String>, path: &Path) {
+    let Some(stem) = path.file_stem().map(|s| s.to_string_lossy().into_owned()) else {
+        return;
+    };
+    // A body-less function is a foreign declaration: its name *is* the symbol
+    // the engine provides, so it is the module's to expose and not the
+    // module's to rename. Qualifying `http_listen` asked the linker for
+    // `server__http_listen`, which nothing defines.
+    let foreign: HashSet<&str> = items
+        .iter()
+        .filter_map(|st| match st {
+            Stmt::Fn(f) if f.body.is_none() => Some(f.name.as_str()),
+            _ => None,
+        })
+        .collect();
+
+    let private: Vec<String> = items
+        .iter()
+        .filter_map(defined_name)
+        .filter(|n| !want.contains(*n) && !foreign.contains(*n))
+        .map(str::to_string)
+        .collect();
+
+    for name in private {
+        let qualified = format!("{stem}__{name}");
+        for st in items.iter_mut() {
+            crate::ast::rename_ident(st, &name, &qualified);
+        }
+    }
 }
 
 /// How much of a module to inline.

@@ -377,6 +377,157 @@ pub fn walk_stmt(s: &Stmt, f: &mut impl FnMut(&Expr)) {
     }
 }
 
+/// Rename every free reference to `from` into `to`, throughout `s`.
+///
+/// Used when two modules inlined into one program each define a private helper
+/// under the same name. Everything lands in one translation unit, so one of the
+/// two has to be renamed, and it has to be renamed in its own module's
+/// references as well as at its definition.
+///
+/// Shadowing is not tracked: a local called `helper` inside a module whose
+/// `helper` is being renamed is renamed too. That is a rename of something to
+/// an unused name — the qualified form is fresh by construction — so it is
+/// harmless, and the alternative is scope analysis this pass has no need of.
+pub fn rename_ident(s: &mut Stmt, from: &str, to: &str) {
+    match s {
+        Stmt::Expr(e) => rename_in_expr(e, from, to),
+        Stmt::Bind(b) => {
+            rename_in_expr(&mut b.target, from, to);
+            rename_in_expr(&mut b.value, from, to);
+        }
+        Stmt::Alias { name, value } => {
+            if name == from {
+                *name = to.to_string();
+            }
+            rename_in_expr(value, from, to);
+        }
+        Stmt::Fn(fd) => {
+            if fd.name == from {
+                fd.name = to.to_string();
+            }
+            match &mut fd.body {
+                Some(FnBody::Expr(e)) => rename_in_expr(e, from, to),
+                Some(FnBody::Block(ss)) => {
+                    ss.iter_mut().for_each(|x| rename_ident(x, from, to))
+                }
+                None => {}
+            }
+        }
+        Stmt::Import(_) => {}
+    }
+}
+
+fn rename_in_expr(e: &mut Expr, from: &str, to: &str) {
+    match e {
+        Expr::Ident(n) => {
+            if n == from {
+                *n = to.to_string();
+            }
+        }
+        Expr::Int(_)
+        | Expr::Float(_)
+        | Expr::Bool(_)
+        | Expr::Unit
+        | Expr::Path(_)
+        | Expr::Break
+        | Expr::Continue => {}
+        Expr::Str(parts) => {
+            for p in parts {
+                if let StrPart::Interp(x) = p {
+                    rename_in_expr(x, from, to);
+                }
+            }
+        }
+        Expr::List(xs) => xs.iter_mut().for_each(|x| rename_in_expr(x, from, to)),
+        Expr::Record(fields) => rename_in_fields(fields, from, to),
+        Expr::Ctor { name, fields } => {
+            if name == from {
+                *name = to.to_string();
+            }
+            rename_in_fields(fields, from, to);
+        }
+        Expr::With { base, fields } => {
+            rename_in_expr(base, from, to);
+            rename_in_fields(fields, from, to);
+        }
+        Expr::Call { callee, args } => {
+            rename_in_expr(callee, from, to);
+            for a in args {
+                rename_in_expr(arg_expr_mut(a), from, to);
+            }
+        }
+        // The field *name* is a field, not a binding — only the base is renamed.
+        Expr::Field { base, .. } => rename_in_expr(base, from, to),
+        Expr::Index { base, index } => {
+            rename_in_expr(base, from, to);
+            rename_in_expr(index, from, to);
+        }
+        Expr::Range { lo, hi } => {
+            rename_in_expr(lo, from, to);
+            rename_in_expr(hi, from, to);
+        }
+        Expr::Unary { expr, .. } => rename_in_expr(expr, from, to),
+        Expr::Binary { lhs, rhs, .. } => {
+            rename_in_expr(lhs, from, to);
+            rename_in_expr(rhs, from, to);
+        }
+        Expr::Ternary { cond, then, els } => {
+            rename_in_expr(cond, from, to);
+            rename_in_expr(then, from, to);
+            rename_in_expr(els, from, to);
+        }
+        Expr::If { cond, then, els } => {
+            rename_in_expr(cond, from, to);
+            then.iter_mut().for_each(|x| rename_ident(x, from, to));
+            if let Some(e) = els {
+                e.iter_mut().for_each(|x| rename_ident(x, from, to));
+            }
+        }
+        Expr::Match { scrut, arms } => {
+            rename_in_expr(scrut, from, to);
+            for a in arms {
+                if let Some(g) = &mut a.guard {
+                    rename_in_expr(g, from, to);
+                }
+                rename_in_expr(&mut a.body, from, to);
+            }
+        }
+        Expr::For { iter, body, .. } => {
+            rename_in_expr(iter, from, to);
+            body.iter_mut().for_each(|x| rename_ident(x, from, to));
+        }
+        Expr::While { cond, body } => {
+            rename_in_expr(cond, from, to);
+            body.iter_mut().for_each(|x| rename_ident(x, from, to));
+        }
+        Expr::Lambda { body, .. } => rename_in_expr(body, from, to),
+        Expr::Try(x) | Expr::Fail(x) | Expr::Reify(x) | Expr::Await(x) | Expr::Spawn(x) => {
+            rename_in_expr(x, from, to)
+        }
+        Expr::Assign { target, value } => {
+            rename_in_expr(target, from, to);
+            rename_in_expr(value, from, to);
+        }
+        Expr::Block(ss) => ss.iter_mut().for_each(|x| rename_ident(x, from, to)),
+    }
+}
+
+fn rename_in_fields(fields: &mut [Field], from: &str, to: &str) {
+    for field in fields {
+        match field {
+            Field::Value { value, .. } | Field::Bare(value) => rename_in_expr(value, from, to),
+            Field::Type { .. } | Field::Shorthand(_) => {}
+        }
+    }
+}
+
+/// The expression carried by a call argument, mutably.
+pub fn arg_expr_mut(a: &mut Arg) -> &mut Expr {
+    match a {
+        Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
+    }
+}
+
 /// The expression carried by a call argument, whatever form it took.
 pub fn arg_expr(a: &Arg) -> &Expr {
     match a {
