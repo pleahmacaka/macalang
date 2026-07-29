@@ -385,7 +385,13 @@ fn single_line_if(line: &str) -> bool {
 }
 
 fn cmd_lint(args: &[String]) {
-    let Some(src) = args.first().map(PathBuf::from) else {
+    // `EffectInConfig` and `UnknownOption` only exist in config mode, and
+    // nothing about a file says which mode it is for — `maca build --target
+    // nix` is where that is decided. Linting always in program mode meant
+    // `maca lint` reported "no issues" on the two fixtures written to fail,
+    // while advertising itself as a substitute for `maca.check`.
+    let config = args.iter().any(|a| a == "--config");
+    let Some(src) = args.iter().find(|a| !a.starts_with("--")).map(PathBuf::from) else {
         die("lint: expected a .maca file");
     };
     let source =
@@ -416,7 +422,12 @@ fn cmd_lint(args: &[String]) {
     // exact thing it exists to catch.
     let parsed = maca_parser::parse(&source);
     let whole = load_with_imports(&src).unwrap_or_else(|_| source.clone());
-    for d in maca_core::check(&maca_parser::parse(&whole).module, maca_core::Mode::Program) {
+    let mode = if config {
+        maca_core::Mode::Config
+    } else {
+        maca_core::Mode::Program
+    };
+    for d in maca_core::check(&maca_parser::parse(&whole).module, mode) {
         issues.push(format!("{}: {:?}: {}", src.display(), d.kind, d.msg));
     }
 
@@ -570,7 +581,7 @@ fn usage() {
          \x20 dev   [dev.maca] [-o flake]  generate a dev-shell flake.nix from Maca\n\
          \x20 watch <file.maca> [args..]   rebuild & rerun on change (hot reload)\n\
          \x20 fmt   <file.maca>… [--check] format in place (style from maca.toml [format])\n\
-         \x20 lint  <file.maca>            style + type/effect diagnostics\n\
+         \x20 lint  <file.maca> [--config] style + type/effect diagnostics\n\
          \x20 test  <file.maca>            run every `test_…` function in the file\n\
          \x20 profile <file.maca> [-o svg] run under callgrind, render a flame graph\n\
          \x20 add   <spec>…               add a dependency (npm:pkg | git+url | name@ver)\n\

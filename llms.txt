@@ -12,7 +12,7 @@ Everything a user writes is `.maca` or `maca.toml`. Verify what you generate wit
 - `{}` block (statements) or record (values); `Name { = }` is a constructor.
 - `?` attached `x?` propagates an error; spaced `c ? x : y` is the ternary.
 - `/` path-join or division (by type/spacing). `++` list concat. `|>` pipe.
-- `T[]` list type, `T?` nullable, `...rest: T` variadic.
+- `T[]` list type, `T?` nullable. (`...rest: T` parses but no backend lowers it — take a `T[]`.)
 
 ## Rules (what models get wrong)
 
@@ -105,6 +105,10 @@ system.packages     = git, curl, ripgrep
 Always run `maca.check` (MCP) or `maca lint` on generated code and fix every
 diagnostic: type-mismatch, non-exhaustive, effect-in-config, unknown-option,
 immutable, undefined-name.
+
+For a config module, say which mode it is — `maca.check` with `config: true`,
+or `maca lint --config`. The last two diagnostics only exist in config mode,
+and a config module checked as a program comes back clean when it is not.
 
 ## Links
 

@@ -116,3 +116,47 @@ test_an_anonymous_record_takes_a_functional_update() {
     assert_eq("{up.host}:{up.port}", "example.com:443", "one field replaced")
     assert_eq(str(c.port), "80", "and the original is untouched")
 }
+
+// ---- the pipe operator ----------------------------------------------------
+//
+// `|>` lexed, parsed, and then every backend evaluated it to the left operand
+// and threw the right one away. `3 |> double` was `3`, on native, on JS and in
+// the checker, with no diagnostic anywhere — and `llms.txt` told agents the
+// operator existed. It is a parser desugar now, so a backend cannot get it
+// wrong: `x |> f` is `f(x)` and `x |> f(a)` is `f(x, a)`.
+
+twice(x: int) -> int => x * 2
+
+plus(a: int, b: int) -> int => a + b
+
+surround(s: str, l: str, r: str) -> str => l ++ s ++ r
+
+shout(s: str) -> str => s.upper()
+
+test_a_pipe_calls_what_is_to_its_right() {
+    assert_eq("{3 |> twice}", "6", "the value became the argument")
+    assert_eq("hey" |> shout, "HEY", "and it works on strings")
+}
+
+test_a_pipe_prepends_to_an_existing_argument_list() {
+    assert_eq("{3 |> plus(4)}", "7", "piped value first, written args after")
+    assert_eq("hi" |> surround("[", "]"), "[hi]", "and with two of them")
+}
+
+test_pipes_chain_left_to_right() {
+    assert_eq("{3 |> twice |> twice |> plus(1)}", "13", "3, 6, 12, then 13")
+}
+
+// Arithmetic binds tighter than the arrow, so the left side is the whole sum
+// rather than its last term — which is the only reading that makes a pipeline
+// readable without brackets.
+test_a_pipe_binds_looser_than_arithmetic() {
+    assert_eq("{1 + 2 |> twice}", "6", "(1 + 2) piped, not 1 + (2 piped)")
+}
+
+test_a_pipe_accepts_a_function_value() {
+    f = twice
+
+    assert_eq("{5 |> f}", "10", "a local holding a function")
+    assert_eq("{[3, 1, 2].sort() |> len}", "3", "and a method call on the left")
+}

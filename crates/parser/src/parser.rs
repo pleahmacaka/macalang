@@ -596,10 +596,14 @@ impl Parser {
             }
             self.bump();
             let rhs = self.parse_binary(bp + 1);
-            lhs = Expr::Binary {
-                op,
-                lhs: Box::new(lhs),
-                rhs: Box::new(rhs),
+            lhs = if op == BinOp::Pipe {
+                piped(lhs, rhs)
+            } else {
+                Expr::Binary {
+                    op,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                }
             };
         }
         lhs
@@ -1303,6 +1307,32 @@ impl Parser {
                 Vec::new()
             }
         }
+    }
+}
+
+/// `lhs |> rhs` — the piped value becomes `rhs`'s first argument.
+///
+/// `x |> f` is `f(x)`, and `x |> f(a, b)` is `f(x, a, b)`: what is written to
+/// the right of the arrow reads as the call it will become, with the subject
+/// left out because the arrow supplies it. A pipeline is then the order the
+/// steps happen in rather than the reverse, which is the whole reason to write
+/// one.
+///
+/// Desugaring here rather than lowering per backend is what keeps the answer
+/// the same everywhere. It was a `BinOp` for a while, and every backend
+/// evaluated it to the left operand and discarded the right — `3 |> double`
+/// was `3`, with no diagnostic anywhere.
+fn piped(lhs: Expr, rhs: Expr) -> Expr {
+    match rhs {
+        Expr::Call { callee, args } => {
+            let mut all = vec![Arg::Pos(lhs)];
+            all.extend(args);
+            Expr::Call { callee, args: all }
+        }
+        callee => Expr::Call {
+            callee: Box::new(callee),
+            args: vec![Arg::Pos(lhs)],
+        },
     }
 }
 

@@ -43,7 +43,9 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   `Name { = }` = constructor. Single namespace for types and values.
 - Bracketless comma lists (`xs = a, b, c`); significant newlines; records are
   newline-separated `{ }`.
-- Functions: `f(x: T) -> R { body }` or `=> expr`. Variadic `...rest: T`.
+- Functions: `f(x: T) -> R { body }` or `=> expr`. A variadic `...rest: T` is
+  reserved syntax: it parses, no backend lowers it, and declaring one is a
+  diagnostic naming the `T[]` to write instead.
 - Errors are the inferred `exn` effect; propagate with `x?`, raise with `fail e`.
 - Effects (Koka-style, inferred): `io · net · os · async · exn`. Config mode
   forces `<>`.

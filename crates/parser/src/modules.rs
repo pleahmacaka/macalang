@@ -32,7 +32,7 @@
 //! `http/server`, and that is the only thing it is:
 //!
 //! ```text
-//! import { listen, text } from http/server
+//! import { listen } from http/server
 //! ```
 //!
 //! An installed dependency is the same — `maca_modules/toml/parse.maca` is

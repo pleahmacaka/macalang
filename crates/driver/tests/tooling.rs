@@ -102,16 +102,42 @@ fn lint_resolves_imports_before_calling_a_name_undefined() {
 /// Lint a source string; returns whether it was clean, and what it complained
 /// about.
 fn lint(src: &str, name: &str) -> (bool, String) {
+    lint_in(src, name, &[])
+}
+
+fn lint_in(src: &str, name: &str, flags: &[&str]) -> (bool, String) {
     let tmp = std::env::temp_dir().join(format!("maca-lint-{name}.maca"));
     std::fs::write(&tmp, src).unwrap();
-    let out = Command::new(maca())
-        .args(["lint", &tmp.to_string_lossy()])
-        .output()
-        .unwrap();
+    let mut args = vec!["lint".to_string(), tmp.to_string_lossy().to_string()];
+    args.extend(flags.iter().map(|f| f.to_string()));
+    let out = Command::new(maca()).args(&args).output().unwrap();
     (
         out.status.success(),
         String::from_utf8_lossy(&out.stderr).to_string(),
     )
+}
+
+/// The two config-mode diagnostics are reachable from `maca lint`.
+///
+/// They exist only in config mode and nothing about a file says which mode it
+/// is for, so `maca lint` checked everything as a program — and reported "no
+/// issues" on the very fixtures written to fail. Documentation offered it as a
+/// substitute for `maca.check`, which does take the mode.
+#[test]
+fn lint_reaches_the_config_diagnostics_when_told_the_mode() {
+    let effectful = "system.stateVersion = \"24.11\"\nsystem.motd = info(\"x\")\n";
+    let misspelt = "netwrking.hostName = \"h\"\n";
+
+    let (ok, _) = lint_in(effectful, "cfg-effect-program", &[]);
+    assert!(ok, "as a program there is nothing to say about it");
+
+    let (ok, said) = lint_in(effectful, "cfg-effect", &["--config"]);
+    assert!(!ok, "an effect in a config module is an error");
+    assert!(said.contains("EffectInConfig"), "{said}");
+
+    let (ok, said) = lint_in(misspelt, "cfg-option", &["--config"]);
+    assert!(!ok, "a misspelt option namespace is an error");
+    assert!(said.contains("UnknownOption"), "{said}");
 }
 
 #[test]

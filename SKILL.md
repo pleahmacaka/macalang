@@ -46,9 +46,9 @@ field: a function *passed* as an argument needs no annotation.
 
 A path is the whole name. `modules/http/server.maca` is `http/server`, from
 anywhere in the tree — there is no entry file and no index, and a directory is
-not a module. `import { listen, text } from http/server` pulls in only what you
-name. The packages are `std` (`text`, `list`, `path`, `json`, `csv`, `fs`,
-`proc`), `http`, `tambo`, `cli`, `bench`, `profile` and `signal`.
+not a module. `import { listen } from http/server` pulls in only what you name.
+The packages are `std` (`text`, `list`, `path`, `json`, `csv`, `fs`, `proc`),
+`http`, `tambo`, `cli`, `bench`, `profile` and `signal`.
 
 ## The verify habit
 
@@ -56,6 +56,11 @@ Always run the `maca.check` MCP tool (or `maca lint`) on what you wrote and fix
 every diagnostic before finishing. Diagnostic kinds: `type-mismatch`,
 `non-exhaustive`, `effect-in-config`, `unknown-option`, `immutable`,
 `undefined-name`.
+
+For a **config module**, say so — `maca.check` with `config: true`, or
+`maca lint --config`. `effect-in-config` and `unknown-option` only exist in
+config mode, and nothing about a file says which mode it is for, so a config
+module checked as a program comes back clean when it is not.
 
 Behaviour goes in a `test_…` function checked with `assert`/`assert_eq` and run
 by `maca test <file>`, which reports each one and exits with the failure count.

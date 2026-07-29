@@ -1,9 +1,10 @@
 # Maca
 
 A single typed language for **programs and infrastructure config**. General
-programs compile to native (C-tier binary), the JVM, JavaScript, or bare-metal
-firmware; infra and dev-environment config compile to Nix. The compiler is Rust
-+ a hand-written front-end; everything you write is `.maca` or `maca.toml`.
+programs compile to native (C-tier binary), the JVM, JavaScript, Rust, or
+bare-metal firmware; infra and dev-environment config compile to Nix. The
+compiler is Rust + a hand-written front-end; everything you write is `.maca` or
+`maca.toml`.
 
 See [`docs/SPEC.md`](docs/SPEC.md) for the authoritative spec.
 
@@ -64,7 +65,7 @@ maca test  <file.maca>           run every `test_…` function in the file
 maca dev   [dev.maca] [-o flake] generate a dev-shell flake.nix from Maca
 maca watch <file.maca> [args..]  rebuild & rerun on change (hot reload)
 maca fmt   <file.maca>… [--check] format (style from maca.toml [format])
-maca lint  <file.maca>           style + type/effect diagnostics
+maca lint  <file.maca> [--config] style + type/effect diagnostics
 maca profile <file.maca> [-o svg] run under callgrind, render a flame graph
 maca bindgen <header.h>          C header → Maca FFI declarations
 maca add   <spec>…               add a dependency (npm:pkg | git+url | name@ver)

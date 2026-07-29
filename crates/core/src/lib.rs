@@ -293,6 +293,29 @@ impl Checker {
                     self.globals.insert(f.name.clone(), scheme);
                     self.local_names.insert(f.name.clone());
                     let variadic = f.params.iter().any(|p| p.variadic);
+                    if variadic {
+                        // Parsed and printed since the beginning, and lowered by
+                        // nothing: the C backend emitted the parameter as a
+                        // scalar and the call site passed N arguments, so the
+                        // program failed in `cc` with a message naming a
+                        // generated file. Say so here instead, and say what to
+                        // write in the meantime.
+                        let which = f
+                            .params
+                            .iter()
+                            .find(|p| p.variadic)
+                            .map(|p| p.name.clone())
+                            .unwrap_or_default();
+                        self.diags.push(Diagnostic {
+                            kind: DiagKind::TypeMismatch,
+                            msg: format!(
+                                "`{}` declares a variadic parameter `...{which}`, \
+                                 which no backend lowers — declare it as a list \
+                                 (`{which}: T[]`) and pass one",
+                                f.name,
+                            ),
+                        });
+                    }
                     self.fn_arity
                         .insert(f.name.clone(), (f.params.len(), variadic));
                 }
@@ -423,6 +446,14 @@ impl Checker {
                 Stmt::Bind(b) if !self.type_decls.contains(&i) => self.check_bind(b),
                 Stmt::Alias { value, .. } if self.mode == Mode::Config => {
                     self.check_config_effects(value);
+                }
+                // A config module is its bindings; an expression standing alone
+                // produces no option and is dropped from the emitted Nix. A
+                // pure one is merely dead, but `info("…")` at the top level
+                // looked like it ran and did not — the build succeeded and the
+                // line was simply gone.
+                Stmt::Expr(e) if self.mode == Mode::Config => {
+                    self.check_config_effects(e);
                 }
                 _ => {}
             }
@@ -1139,6 +1170,7 @@ impl Checker {
                 let _ = self.inf.unify(&rt, &Ty::Int);
                 Ty::Int
             }
+            // `Pipe` is desugared by the parser and never arrives here.
             Union | Pipe => Ty::Any,
         }
     }

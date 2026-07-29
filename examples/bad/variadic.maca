@@ -1,0 +1,17 @@
+// `...rest: T` parses and prints, and no backend lowers it: the C backend
+// emitted the parameter as a scalar while the call site passed N arguments, so
+// the program died in `cc` pointing at a generated file. Rejected here instead,
+// with the shape to write in the meantime.
+
+total(...rest: int) -> int {
+    n = 0
+    for v in rest {
+        n = n + v
+    }
+    n
+}
+
+main() -> int {
+    info("{total(1, 2, 3)}")
+    0
+}

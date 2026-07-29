@@ -258,7 +258,12 @@ pub enum BinOp {
     And,   // &&
     Or,    // ||
     Union, // |  (sum types / rows)
-    Pipe,  // |>
+    /// `|>`. Never reaches a backend: the parser rewrites `x |> f` to `f(x)`
+    /// as it builds the node, and this variant only carries the operator's
+    /// precedence through `bin_op`. Lowering it per backend instead meant
+    /// three separate arms that all evaluated to the left operand and dropped
+    /// the right, so `3 |> double` was `3` on every target and nothing said so.
+    Pipe,
 }
 
 /// Visit `e` and every expression inside it, outermost first.

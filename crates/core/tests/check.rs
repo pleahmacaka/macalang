@@ -130,6 +130,18 @@ fn effect_in_config_rejected() {
         DiagKind::EffectInConfig,
     );
 }
+/// An effect in *statement* position, not only in a binding's value. The check
+/// looked at what a binding was set to and nothing else, so a bare `info(…)`
+/// was accepted and then dropped from the emitted Nix — the build succeeded
+/// and the line was gone.
+#[test]
+fn effect_statement_in_config_rejected() {
+    assert_has(
+        "examples/bad/effect_statement_in_config.maca",
+        Mode::Config,
+        DiagKind::EffectInConfig,
+    );
+}
 #[test]
 fn unknown_option_rejected() {
     assert_has(
@@ -152,6 +164,17 @@ fn arity_rejected() {
     // `greet(name: str)` called with two arguments.
     assert_has(
         "examples/bad/arity.maca",
+        Mode::Program,
+        DiagKind::TypeMismatch,
+    );
+}
+/// A variadic parameter is refused where it is written, rather than at `cc`.
+/// It parses and prints and nothing lowers it, so the program used to build a
+/// C file that would not compile, and the error named that file.
+#[test]
+fn variadic_rejected() {
+    assert_has(
+        "examples/bad/variadic.maca",
         Mode::Program,
         DiagKind::TypeMismatch,
     );

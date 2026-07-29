@@ -1,0 +1,7 @@
+// The effect check used to look only at what a binding was set *to*, so a bare
+// effectful statement was accepted — and then dropped, because a config module
+// is its bindings and an expression standing alone becomes no option. The build
+// succeeded and the line was simply gone from the emitted Nix.
+
+system.stateVersion = "24.11"
+info("this never runs, and used to compile")

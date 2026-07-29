@@ -45,6 +45,7 @@ Virtual workspace; members are `crates/*`.
 | `maca-mcp` | Maca MCP server (LLM-native tools) |
 | `maca-driver` | the `maca` CLI |
 | `maca-testsupport` | host probes + the cross-crate build lock, for the integration suites |
+| `maca-profile` | the flame-graph renderer, shared by `maca profile` and the playground |
 | `maca-backend-jvm` | core IR → Java source (JVM interop; Minecraft/Fabric) |
 | `maca-backend-rust` | core IR → Rust source (crates.io interop; `--target rust`) |
 | `maca-backend-embedded` | freestanding C for bare-metal MCUs (Cortex-M/RISC-V) |
@@ -123,8 +124,9 @@ structure and comment voice.
 | `signal` | nanostore-style reactive state — `store` (signals, computed, effects) and `dom`, so a native web page updates the nodes that changed rather than re-rendering | 58 |
 | `tambo` | the web framework over `http` — `app`, `route`, `ctx`, `dispatch`, `reply` | 87 |
 
-`examples/` (golden `.maca` programs + `examples/bad/`, plus one `X_demo.maca`
-per package), `apps/` (capstones: `mqtt`, `microkernel`, `blink`, `desktop`,
+`examples/` (golden `.maca` programs + `examples/bad/`, plus `bench_demo`,
+`profile_demo`, `signal_demo`, `tambo_demo` and `cli_tool` — a runnable program
+for most of the packages), `apps/` (capstones: `mqtt`, `microkernel`, `blink`, `desktop`,
 `mcmod`, `bench` — the cross-language harness and its C/Rust/Go/JS/Python
 reference kernels — `playground` (the browser playground, a single `.maca`
 file compiled by the JS backend), `tomo` — the i18n handbook builder that
@@ -286,7 +288,7 @@ self-hosted front-end from its imports). **Selective import** —
 `import { foo, bar } from a/b` — inlines only the named top-level definitions
 plus the transitive closure of same-module definitions they reference (dead-code
 elimination at the module boundary); a name the module doesn't define is a clean
-error, not a dangling reference (`crates/driver/src/imports.rs`).
+error, not a dangling reference (`crates/parser/src/imports.rs`).
 
 **Processes, no shell:** `exec(cmd, args) -> int` (the exit code) and
 `capture(cmd, args) -> str` (its stdout) are `fork` + `execvp` — `args` is a

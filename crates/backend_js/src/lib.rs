@@ -457,6 +457,7 @@ fn jbinary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
         And => "&&",
         Or => "||",
         Concat => return format!("({l}).concat({r})"),
+        // `Pipe` is desugared by the parser and never arrives here.
         Union | Pipe => return l,
     };
     format!("({l} {o} {r})")

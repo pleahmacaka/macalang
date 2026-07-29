@@ -4455,6 +4455,7 @@ impl<'a> Cx<'a> {
             }
             Lt | Gt | Le | Ge => (format!("({lc} {} {rc})", bin_op(op)), CTy::Bool),
             And | Or => (format!("({lc} {} {rc})", bin_op(op)), CTy::Bool),
+            // `Pipe` is desugared by the parser and never arrives here.
             Union | Pipe => (lc, lt),
         }
     }
