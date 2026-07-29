@@ -1111,6 +1111,33 @@ fn check_racers(handles: Vec<std::thread::JoinHandle<std::process::Output>>, col
     }
 }
 
+/// Lambdas at every position: a top-level one is a function, a local one is a
+/// closure, and both may carry types.
+#[test]
+fn lambdas_run_natively() {
+    let wsl = Command::new("wsl")
+        .arg("true")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if wsl || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let program = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/programs/lambdas.maca");
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["test", &program.to_string_lossy()])
+        .output()
+        .expect("spawn maca test");
+    assert!(
+        out.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
 #[test]
 fn native_backend_regressions_still_hold() {
     // List patterns, `chars()` registering its array type, `++` converting a

@@ -173,9 +173,40 @@ pub fn parse(src: &str) -> Parsed {
         .map(|e| format!("lex {:?}: {}", e.span, e.msg))
         .collect();
     let mut p = Parser::new(lexed.tokens);
-    let module = p.parse_module();
+    let mut module = p.parse_module();
     for e in &p.errors {
         errors.push(format!("parse {:?}: {}", e.span, e.msg));
     }
+    lift_top_level_lambdas(&mut module);
     Parsed { module, errors }
+}
+
+/// A top-level `name = (a, b) [-> T] => body` *is* a function definition.
+///
+/// There is nothing to capture at module scope, so lowering it as a closure
+/// buys nothing and costs a heap environment — and the C backend emitted a
+/// constant accessor whose name no call site knew, so calling one failed to
+/// link. Rewriting it here means every back end and the checker see a function,
+/// which is what the source says.
+fn lift_top_level_lambdas(m: &mut Module) {
+    for item in &mut m.items {
+        let Stmt::Bind(b) = item else { continue };
+        let Expr::Ident(name) = &b.target else {
+            continue;
+        };
+        // `x: T = (…) => …` declares the binding's own type; leave it alone.
+        if !b.tys.is_empty() {
+            continue;
+        }
+        let Expr::Lambda { params, ret, body } = &b.value else {
+            continue;
+        };
+        *item = Stmt::Fn(FnDef {
+            name: name.clone(),
+            params: params.clone(),
+            ret: ret.clone(),
+            effects: None,
+            body: Some(FnBody::Expr(body.clone())),
+        });
+    }
 }

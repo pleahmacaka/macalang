@@ -1,4 +1,4 @@
-use maca_parser::{parse, print_module, Expr, Stmt};
+use maca_parser::{parse, print_module, Expr, FnBody, Stmt};
 use std::fs;
 use std::path::PathBuf;
 
@@ -350,30 +350,64 @@ fn index_is_postfix_not_a_list() {
 fn a_lambda_can_declare_its_return_type() {
     // `(a, b) -> T => …`. The annotation is what a trait-impl method needs when
     // it has to match a signature the compiler cannot read.
-    let m = parsed("f = (a, b) -> Element => g(a, b)\n");
-    let Stmt::Bind(b) = &m.items[0] else {
-        panic!("expected a binding: {:?}", m.items[0])
-    };
+    let m = parsed("use_it() -> int {\n    f = (a, b) -> Element => g(a, b)\n    0\n}\n");
+    let Stmt::Fn(fd) = &m.items[0] else { panic!() };
+    let Some(FnBody::Block(stmts)) = &fd.body else { panic!() };
+    let Stmt::Bind(b) = &stmts[0] else { panic!("{:?}", stmts[0]) };
     let Expr::Lambda { params, ret, .. } = &b.value else {
         panic!("expected a lambda: {:?}", b.value)
     };
     assert_eq!(params.len(), 2);
-    // the annotation survives a print/re-parse round trip
+    assert!(ret.is_some(), "an annotation was written");
+
+    // and it survives a print / re-parse round trip
     let printed = print_module(&m);
     let again = parse(&printed);
     assert!(again.errors.is_empty(), "{printed}: {:?}", again.errors);
-    let Stmt::Bind(b2) = &again.module.items[0] else { panic!("{printed}") };
+    let Stmt::Fn(fd2) = &again.module.items[0] else { panic!("{printed}") };
+    let Some(FnBody::Block(ss2)) = &fd2.body else { panic!("{printed}") };
+    let Stmt::Bind(b2) = &ss2[0] else { panic!("{printed}") };
     let Expr::Lambda { ret: ret2, .. } = &b2.value else { panic!("{printed}") };
     assert_eq!(ret, ret2, "the declared type was lost: {printed}");
-    assert!(ret.is_some(), "an annotation was written");
 }
 
 #[test]
-fn an_unannotated_lambda_still_parses() {
-    let m = parsed("f = (a, b) => g(a, b)\n");
-    let Stmt::Bind(b) = &m.items[0] else { panic!() };
-    let Expr::Lambda { ret, .. } = &b.value else { panic!() };
-    assert!(ret.is_none(), "no annotation was written");
+fn a_lambda_parameter_can_declare_its_type() {
+    let m = parsed("use_it() -> int {\n    f = (a: Window, b) => g(a, b)\n    0\n}\n");
+    let Stmt::Fn(fd) = &m.items[0] else { panic!() };
+    let Some(FnBody::Block(stmts)) = &fd.body else { panic!() };
+    let Stmt::Bind(b) = &stmts[0] else { panic!() };
+    let Expr::Lambda { params, .. } = &b.value else { panic!("{:?}", b.value) };
+    assert!(params[0].ty.is_some(), "the first parameter is typed");
+    assert!(params[1].ty.is_none(), "the second is not");
+}
+
+/// A top-level `name = (…) => …` *is* a function definition — there is nothing
+/// to capture at module scope, and lowering it as a closure produced a constant
+/// no call site could reach.
+#[test]
+fn a_top_level_lambda_binding_becomes_a_function() {
+    let m = parsed("twice = (x) -> int => x * 2\n");
+    let Stmt::Fn(fd) = &m.items[0] else {
+        panic!("expected a fn def: {:?}", m.items[0])
+    };
+    assert_eq!(fd.name, "twice");
+    assert_eq!(fd.params.len(), 1);
+    assert!(fd.ret.is_some(), "the annotation became the return type");
+}
+
+/// …but a local one stays a lambda, because a local *can* capture.
+#[test]
+fn a_local_lambda_binding_stays_a_lambda() {
+    let m = parsed("use_it() -> int {\n    step = 10\n    f = (x) => x + step\n    f(1)\n}\n");
+    let Stmt::Fn(fd) = &m.items[0] else { panic!() };
+    let Some(FnBody::Block(stmts)) = &fd.body else { panic!() };
+    let Stmt::Bind(b) = &stmts[1] else { panic!() };
+    assert!(
+        matches!(&b.value, Expr::Lambda { .. }),
+        "expected a lambda: {:?}",
+        b.value
+    );
 }
 
 #[test]

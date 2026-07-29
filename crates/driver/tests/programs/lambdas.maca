@@ -1,0 +1,47 @@
+// Lambdas at every position they can appear in, executed.
+//
+// A top-level `name = (…) => …` is a function definition: there is nothing to
+// capture at module scope. It used to lower as a constant holding a closure,
+// which emitted an accessor no call site knew about — so calling one failed to
+// link, and a record-returning one could not have its fields read.
+
+Point = {
+    x: int
+    y: int
+}
+
+twice = (n) -> int => n * 2
+
+origin = () -> Point => Point { x = 0, y = 0 }
+
+shifted = (p: Point, dx: int) -> Point =>
+    p with { x = p.x + dx }
+
+test_a_top_level_lambda_is_callable() {
+    assert_eq(str(twice(21)), "42", "called by name like any function")
+}
+
+test_a_top_level_lambda_can_return_a_record() {
+    assert_eq(str(origin().x), "0", "and its fields are readable")
+    assert_eq(str(shifted(origin(), 7).x), "7", "including through a parameter")
+}
+
+test_a_top_level_lambda_is_a_value() {
+    doubled = [1, 2, 3].map(twice)
+
+    assert_eq(doubled.map(v => str(v)).join(","), "2,4,6", "passed by name")
+}
+
+// A local lambda stays a lambda, because a local can capture.
+test_a_local_lambda_captures() {
+    step = 10
+    bump = (n) => n + step
+
+    assert_eq(str(bump(32)), "42", "the enclosing scope came along")
+}
+
+test_a_local_lambda_can_declare_its_types() {
+    join_pair = (a: int, b: int) -> str => "{a}-{b}"
+
+    assert_eq(join_pair(4, 2), "4-2", "annotations on both ends")
+}

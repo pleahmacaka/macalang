@@ -80,6 +80,10 @@ enum CTy {
         scalar_c: String,
         lanes: usize,
     },
+    /// A closure value, carrying its arity — the runtime has one struct per
+    /// arity (`maca_closure`, `maca_closure2`), so a local holding a two-
+    /// parameter lambda has to be declared as the matching one.
+    Closure2,
     /// A concurrent computation handle (`spawn e`), awaited with `await`.
     /// Lowers to `maca_future*`; its result is boxed as `int64_t` for the slice.
     Future,
@@ -1252,20 +1256,14 @@ impl<'a> Cx<'a> {
             self.emit_from_json(name);
         }
 
-        // top-level let accessors
+        // top-level let accessors: declared here, defined below with the
+        // function bodies. A constant holding a lambda hoists that lambda to a
+        // `static` function, and the hoist has to land *before* the accessor
+        // that takes its address — which only the deferred region guarantees.
         let lets = self.lets.clone();
         for (name, cty, init) in &lets {
-            let ret = if *cty == CTy::Unknown {
-                infer_cty_shallow(init)
-            } else {
-                cty.clone()
-            };
-            let mut env: Env = Vec::new();
-            let (code, _) = self.expr(&mut env, init, None);
-            self.push(&format!(
-                "static {} mv_{name}(void) {{ return {code}; }}",
-                c_type(&ret)
-            ));
+            let ret = self.let_ty(cty, init);
+            self.push(&format!("static {} mv_{name}(void);", c_type(&ret)));
         }
         self.push("");
 
@@ -1293,6 +1291,16 @@ impl<'a> Cx<'a> {
         // top-level `static` functions, which must be declared/defined *before*
         // the functions that take their address.
         let saved = std::mem::take(&mut self.out);
+        for (name, cty, init) in &lets {
+            let ret = self.let_ty(cty, init);
+            let mut env: Env = Vec::new();
+            let (code, _) = self.expr(&mut env, init, None);
+            self.push(&format!(
+                "static {} mv_{name}(void) {{ return {code}; }}",
+                c_type(&ret)
+            ));
+        }
+        self.push("");
         for item in self.m.items.clone() {
             if let Stmt::Fn(f) = &item
                 && f.body.is_some()
@@ -1319,6 +1327,16 @@ impl<'a> Cx<'a> {
             self.out.push_str(&d);
         }
         self.out.push_str(&defs);
+    }
+
+    /// The C type of a top-level constant: its declared type when it has one,
+    /// otherwise read off the initializer's shape.
+    fn let_ty(&self, cty: &CTy, init: &Expr) -> CTy {
+        if *cty == CTy::Unknown {
+            infer_cty_shallow(init)
+        } else {
+            cty.clone()
+        }
     }
 
     fn fn_sig(&self, f: &FnDef) -> String {
@@ -2145,7 +2163,7 @@ impl<'a> Cx<'a> {
         };
         (
             format!("(({ctype}){{ {cast}{thunk}, NULL }})"),
-            CTy::Closure,
+            closure_ty(arity),
         )
     }
 
@@ -2161,7 +2179,7 @@ impl<'a> Cx<'a> {
             .map(|p| lambda_param_ty(&p.name, body).unwrap_or(CTy::Int))
             .collect();
         let (val, _ret) = self.emit_closure(env, params, body, &ptys);
-        (val, CTy::Closure)
+        (val, closure_ty(params.len()))
     }
 
     /// Lower a lambda to a `maca_closure`: a hoisted function plus a heap
@@ -2432,7 +2450,7 @@ impl<'a> Cx<'a> {
                 // which an opaque value doesn't carry.
                 let held = match args.first() {
                     Some(Arg::Pos(Expr::Ident(n)))
-                        if matches!(lookup(env, n), Some(CTy::Closure)) =>
+                        if matches!(lookup(env, n), Some(CTy::Closure | CTy::Closure2)) =>
                     {
                         Some(cid(n))
                     }
@@ -2764,7 +2782,7 @@ impl<'a> Cx<'a> {
         }
         if let Expr::Ident(name) = callee {
             // calling a local that holds a closure value: `f = v => …; f(x)`
-            if matches!(lookup(env, name), Some(CTy::Closure)) {
+            if matches!(lookup(env, name), Some(CTy::Closure | CTy::Closure2)) {
                 let boxed: Vec<(String, CTy)> =
                     args.iter().map(|x| self.arg_typed(env, x)).collect();
                 let bx: Vec<String> = boxed.iter().map(|(c, t)| box_i64(c, t)).collect();
@@ -3594,7 +3612,8 @@ impl<'a> Cx<'a> {
             | CTy::Unknown
             | CTy::Vec { .. }
             | CTy::Future
-            | CTy::Closure => self.push("    maca_sb_puts(&sb, \"null\");"),
+            | CTy::Closure
+            | CTy::Closure2 => self.push("    maca_sb_puts(&sb, \"null\");"),
         }
     }
 
@@ -3636,7 +3655,8 @@ impl<'a> Cx<'a> {
             | CTy::Unknown
             | CTy::Vec { .. }
             | CTy::Future
-            | CTy::Closure => self.push(&format!("    {dest} = 0;")),
+            | CTy::Closure
+            | CTy::Closure2 => self.push(&format!("    {dest} = 0;")),
         }
     }
 }
@@ -3695,7 +3715,18 @@ fn c_type(t: &CTy) -> String {
         CTy::Vec { name, .. } => name.clone(),
         CTy::Future => "maca_future*".into(),
         CTy::Closure => "maca_closure".into(),
+        CTy::Closure2 => "maca_closure2".into(),
         CTy::Unknown => "int64_t".into(),
+    }
+}
+
+/// The closure struct for a given arity. The runtime declares one per arity, so
+/// the type a local is *declared* with has to match the one it is built as.
+fn closure_ty(arity: usize) -> CTy {
+    if arity >= 2 {
+        CTy::Closure2
+    } else {
+        CTy::Closure
     }
 }
 
@@ -3710,7 +3741,7 @@ fn arr_name(elem: &CTy) -> String {
         CTy::Vec { name, .. } => format!("{name}Arr"),
         CTy::Arr(e) => format!("{}Arr", arr_name(e)),
         CTy::Map(v) => format!("{}Arr", map_name(v)),
-        CTy::Unit | CTy::Unknown | CTy::Future | CTy::Closure => "IntArr".into(),
+        CTy::Unit | CTy::Unknown | CTy::Future | CTy::Closure | CTy::Closure2 => "IntArr".into(),
     }
 }
 
@@ -3913,6 +3944,7 @@ fn infer_cty_shallow(e: &Expr) -> CTy {
             };
             CTy::Arr(Box::new(elem))
         }
+        Expr::Lambda { params, .. } => closure_ty(params.len()),
         _ => CTy::Str,
     }
 }
@@ -4039,6 +4071,7 @@ fn cty_tag(t: &CTy) -> String {
         CTy::Vec { name, .. } => name.clone(),
         CTy::Future => "future".into(),
         CTy::Closure => "closure".into(),
+        CTy::Closure2 => "closure".into(),
         CTy::Unknown => "any".into(),
     }
 }
