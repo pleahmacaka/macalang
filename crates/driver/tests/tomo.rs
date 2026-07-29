@@ -207,10 +207,11 @@ fn tomo_builds_the_handbook_site() {
     let sections = entries.iter().filter(|e| e.starts_with("# ")).count();
     assert!(want >= 20, "the handbook shrank to {want} chapters");
     assert!(sections >= 3, "the book lost its sections");
-    // chapters + a per-language index, in 2 languages, plus the root page
+    // chapters + a per-language index, in 2 languages, plus the root landing
+    // page and one landing per language
     assert!(
-        log.contains(&format!("built {} pages", (want + 1) * 2 + 1)),
-        "expected {want} chapters + index in 2 languages + root; log: {log}"
+        log.contains(&format!("built {} pages", (want + 1) * 2 + 3)),
+        "expected {want} chapters + index in 2 languages + landings; log: {log}"
     );
     // sections appear as headings, in each language, and are not links
     let en_side = std::fs::read_to_string(site.join("en/08-collections.html")).unwrap();
@@ -222,19 +223,60 @@ fn tomo_builds_the_handbook_site() {
         "sections missing, or not translated"
     );
 
-    // the root page sits above the languages and links each by its own name
+    // The root is the landing page: it has to answer what the language *is*
+    // before a reader will click anything. These are the questions someone
+    // arriving cold asks, and each has to be answered on this page.
     let root = std::fs::read_to_string(site.join("index.html")).unwrap();
+    for want in [
+        "statically typed",   // typed, and how
+        "no garbage collector", // GC, and whether
+        "native binary",      // compiled, and to what
+    ] {
+        assert!(
+            root.contains(want),
+            "the landing page doesn't say {want:?}: {root}"
+        );
+    }
+    // a code sample, run through the same highlighter the chapters use
     assert!(
-        root.contains("<a href=\"en/index.html\" lang=\"en\">English</a>")
-            && root.contains("<a href=\"ko/index.html\" lang=\"ko\">한국어</a>"),
-        "root page doesn't offer both languages: {root}"
+        root.contains("language-maca"),
+        "the landing page has no code sample: {root}"
+    );
+    // and the table that puts the language in a box
+    assert!(
+        root.contains("Garbage collected?") && root.contains("Compiled or interpreted?"),
+        "the landing page lost its summary table: {root}"
+    );
+    // the three doors out: the handbook, the playground, the source
+    for want in ["en/index.html", "play/index.html", "github.com/pleahmacaka"] {
+        assert!(
+            root.contains(want),
+            "the landing page doesn't link {want:?}: {root}"
+        );
+    }
+    // the switcher offers the other language's *landing*, not a chapter index
+    assert!(
+        root.contains("ko/home.html"),
+        "no Korean landing offered: {root}"
     );
     // it links files, not bare directories: `…/ko/` only resolves to index.html
     // when a web server does it, and this book is meant to open off disk too
     assert!(!root.contains("href=\"../"), "root page links above itself");
     assert!(
-        !root.contains("href=\"en/\"") && !root.contains("href=\"ko/\""),
+        !root.contains("href=\"en/\"") && !root.contains("href=\"ko/\"")
+            && !root.contains("href=\"play/\""),
         "root page links a bare directory, which won't open from a file:// path"
+    );
+
+    // the Korean landing is Korean, and points back into the Korean handbook
+    let ko_home = std::fs::read_to_string(site.join("ko/home.html")).unwrap();
+    assert!(
+        ko_home.contains("가비지") && ko_home.contains("정적 타입"),
+        "the Korean landing isn't Korean: {ko_home}"
+    );
+    assert!(
+        ko_home.contains("../ko/index.html") && ko_home.contains("../play/index.html"),
+        "the Korean landing's links don't resolve from its directory: {ko_home}"
     );
 
     // a translated chapter renders in its own language
@@ -520,8 +562,10 @@ fn untranslated_chapters_fall_back_to_the_default_language() {
         .output()
         .expect("run tomo");
     let log = String::from_utf8_lossy(&out.stdout);
-    // 2 chapters + an index, per language, plus the root page
-    assert!(log.contains("built 7 pages"), "fixture build log: {log}");
+    // 2 chapters + an index, per language, plus the root page and a landing
+    // page per language (this fixture has no `home.md`, so those are the
+    // language picker the root used to be)
+    assert!(log.contains("built 9 pages"), "fixture build log: {log}");
 
     let site = book.join("site");
     // the translated chapter is Korean

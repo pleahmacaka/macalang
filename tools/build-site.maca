@@ -102,14 +102,17 @@ all_present(pages: str[], i: int, out: str) -> bool {
 // Every link the root page offers must resolve, and must name a file: a bare
 // `en/` directory only becomes index.html when a web server says so, and this
 // book is meant to open off disk too.
+//
+// The root is the landing page, so it links the handbook in its own language
+// and offers the other language's landing.
 require_root_links(out: str) -> bool {
     root = read_file(join(out, "index.html"))
 
     if !root.contains("href=\"en/index.html\"") {
-        fail "root page doesn't link en/index.html"
-    } else if !root.contains("href=\"ko/index.html\"") {
-        fail "root page doesn't link ko/index.html"
-    } else if !root.contains("href=\"play/\"") {
+        fail "root page doesn't link the handbook"
+    } else if !root.contains("href=\"ko/home.html\"") {
+        fail "root page doesn't offer the Korean landing"
+    } else if !root.contains("href=\"play/index.html\"") {
         fail "root page doesn't link the playground"
     } else {
         true

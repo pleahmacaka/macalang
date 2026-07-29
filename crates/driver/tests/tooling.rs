@@ -36,21 +36,54 @@ fn fmt_is_idempotent_and_indented() {
 
 #[test]
 fn lint_flags_long_line() {
-    let long = format!("x = \"{}\"\n", "a".repeat(100));
-    let tmp = std::env::temp_dir().join("maca-lint-test.maca");
-    std::fs::write(&tmp, long).unwrap();
+    // wide *code* — the rule is about what a reader has to scan
+    let long = format!("total = {}\n", vec!["value"; 20].join(" + "));
+    let (ok, err) = lint(&long, "wide");
+    assert!(!ok, "lint should exit nonzero on a seeded issue: {err}");
+    assert!(err.contains("80 columns"), "expected an 80-column diagnostic");
+}
+
+/// A long string literal is like a long comment — a C template, a URL, a test
+/// program — and rewrapping it would change or disfigure it. So the line is
+/// measured with its literals collapsed, which is what `tools/lint.maca` does;
+/// the two linters have to agree or one of them is lying about the codebase.
+#[test]
+fn lint_does_not_flag_a_long_string_literal() {
+    let long = format!("x = \"{}\"\n", "a".repeat(200));
+    let (ok, err) = lint(&long, "literal");
+    assert!(ok, "a long string literal is not a long line: {err}");
+}
+
+/// `} else if cond {` is one line of a guard chain, not a single-line block.
+/// The rule used to fire on every one of them.
+#[test]
+fn lint_does_not_flag_an_else_if_chain() {
+    let src = "pick(n: int) -> str {\n\
+               \x20   if n > 1 {\n\
+               \x20       \"many\"\n\
+               \x20   } else if n == 1 {\n\
+               \x20       \"one\"\n\
+               \x20   } else {\n\
+               \x20       \"none\"\n\
+               \x20   }\n\
+               }\n";
+    let (ok, err) = lint(src, "chain");
+    assert!(ok, "an else-if chain is the style, not a violation: {err}");
+}
+
+/// Lint a source string; returns whether it was clean, and what it complained
+/// about.
+fn lint(src: &str, name: &str) -> (bool, String) {
+    let tmp = std::env::temp_dir().join(format!("maca-lint-{name}.maca"));
+    std::fs::write(&tmp, src).unwrap();
     let out = Command::new(maca())
         .args(["lint", &tmp.to_string_lossy()])
         .output()
         .unwrap();
-    assert!(
-        !out.status.success(),
-        "lint should exit nonzero on a seeded issue"
-    );
-    assert!(
-        String::from_utf8_lossy(&out.stderr).contains("80 columns"),
-        "expected an 80-column diagnostic"
-    );
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stderr).to_string(),
+    )
 }
 
 #[test]

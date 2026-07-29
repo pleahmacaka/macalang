@@ -340,6 +340,49 @@ fn lint_capital_consts_expr(e: &maca_parser::Expr, src: &Path, issues: &mut Vec<
     }
 }
 
+/// The width rule is about *code*. A long string literal is like a long
+/// comment — a C template, a URL, a test program — and rewrapping it would
+/// change or disfigure it, so the line is measured with its literals collapsed.
+/// Comments are exempt outright, since `chars()` over a UTF-8 comment measures
+/// something nobody is reading.
+fn too_wide(line: &str) -> bool {
+    !line.trim_start().starts_with("//") && collapse_strings(line).chars().count() > 80
+}
+
+/// Replace the contents of every `"…"` literal with nothing, keeping the
+/// quotes, so an unterminated one cannot hide the rest of the line.
+fn collapse_strings(line: &str) -> String {
+    let mut out = String::new();
+    let mut quoted = false;
+    let mut cs = line.chars();
+    while let Some(c) = cs.next() {
+        match c {
+            '\\' if quoted => {
+                cs.next();
+            }
+            '"' => {
+                quoted = !quoted;
+                out.push('"');
+            }
+            _ if quoted => {}
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Does this line hold a whole `if` block, opened and closed?
+///
+/// The line must *start* with the keyword — an `if ` in the middle is a string
+/// or a comment — and *end* with the closing brace. Without the second half
+/// this fired on every `} else if cond {`, which is one line of a chain and
+/// exactly the shape the style guide asks for.
+fn single_line_if(line: &str) -> bool {
+    let t = line.trim();
+    let opens = t.starts_with("if ") || t.starts_with("} else if ");
+    opens && t.contains('{') && t.ends_with('}') && !t.contains("? ")
+}
+
 fn cmd_lint(args: &[String]) {
     let Some(src) = args.first().map(PathBuf::from) else {
         die("lint: expected a .maca file");
@@ -348,18 +391,17 @@ fn cmd_lint(args: &[String]) {
         std::fs::read_to_string(&src).unwrap_or_else(|e| die(&format!("cannot read: {e}")));
     let mut issues: Vec<String> = Vec::new();
 
-    // style: line width (strings excluded from the count is future; flag raw >80)
+    // Style, matching `tools/lint.maca` — the two are the same rules, and a
+    // disagreement between them means one of them is lying about the codebase.
     for (i, line) in source.lines().enumerate() {
-        if line.chars().count() > 80 && !line.trim_start().starts_with("//") {
+        if too_wide(line) {
             issues.push(format!(
                 "{}:{}: line exceeds 80 columns",
                 src.display(),
                 i + 1
             ));
         }
-        // forced block breaks: no single-line statement block `if c { .. }`
-        if line.contains("if ") && line.contains('{') && line.contains('}') && !line.contains("? ")
-        {
+        if single_line_if(line) {
             issues.push(format!(
                 "{}:{}: single-line `if` block; break it across lines",
                 src.display(),

@@ -2,6 +2,10 @@
 
 [book]
 title = "The Maca Handbook"
+
+# The site's own name, used on the landing page. The book has a title; the
+# thing the book is about has a name, and they are not the same string.
+site = "Maca"
 authors = ["Maca contributors"]
 
 # i18n is first-class: list the languages the book ships in. The first is the

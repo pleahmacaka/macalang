@@ -27,6 +27,14 @@ The **renderer** is Maca, gated by `crates/driver/tests/tomo.rs`:
 and `page(...)` wraps rendered chapters in an HTML shell with the i18n language
 switcher.
 
+The **landing page** is `home.md` in each language, rendered by the same
+Markdown renderer and wrapped in a header with the language switcher. It is
+written to `/index.html` (in the default language) and to `<lang>/home.html`,
+so the switcher moves between landings rather than dropping a reader into a
+chapter index. A book without a `home.md` gets the language picker instead —
+a landing page is something you opt into by writing one. `site` in `book.toml`
+names the thing the book is about, which is not the book's own title.
+
 The **book builder** is `build_book(root, out)`: it reads `book.toml`, walks
 `book/<lang>/*.md`, and writes `site/<lang>/*.html` — each page carrying its
 stylesheet, table of contents, search index, language switcher, and

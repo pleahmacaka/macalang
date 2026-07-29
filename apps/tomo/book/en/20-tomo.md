@@ -153,6 +153,23 @@ It ships as a `<script>` the page loads, not as JSON the page fetches — and th
 is not laziness. A book opened straight off disk as `file://` cannot `fetch`;
 mdBook's search needs a web server. This one works from a folder on a USB stick.
 
+## The landing page
+
+A book explains a thing. Someone arriving cold needs to know what the thing
+*is* before a table of contents helps them, so `home.md` — one per language —
+is rendered by the same renderer and becomes `/index.html` and
+`<lang>/home.html`.
+
+Two details are worth copying. The three buttons live in the layout rather than
+in the Markdown, because the root landing and a language's landing are the same
+Markdown at different depths, and a site-relative link written in that Markdown
+could only be right in one of them. And the page splits at its first `##`: what
+is above is the pitch, the buttons go after it, and the argument follows — so
+the reader gets a way out before two screens of prose, not after.
+
+A book with no `home.md` still gets a root page: the language picker this used
+to be. A landing page is something you opt into by writing one.
+
 ## Building it
 
 ```

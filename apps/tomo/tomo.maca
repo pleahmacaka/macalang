@@ -1003,7 +1003,19 @@ build_book(root: str, out: str) -> int {
     // not `.replace(" ", "")` — a section label is prose and keeps its spaces
     chs = conf_value(toml, "chapters").split(",").map(v => v.trim())
     n = build_langs(root, out, title, langs, langs.split(","), 0, chs, 0)
-    n + write_root(out, title, langs, conf_value(toml, "playground"))
+    n + write_root(root, out, site_name(toml, title), langs)
+}
+
+// The site's own name — `site` in book.toml, falling back to the book's title.
+// A book has a title; the thing it documents has a name.
+site_name(toml: str, title: str) -> str {
+    name = conf_value(toml, "site")
+
+    if name == "" {
+        title
+    } else {
+        name
+    }
 }
 
 // ---- the root entry point -------------------------------------------------
@@ -1015,37 +1027,154 @@ build_book(root: str, out: str) -> int {
 //
 // `play` is an optional `playground = "…"` in book.toml: a sibling link carried
 // through when the book is published beside something else.
-write_root(out: str, title: str, langs: str, play: str) -> int {
+write_root(root: str, out: str, title: str, langs: str) -> int {
     make_dir(out)
-    body = h1(class=md_class("h1"), esc(title)) ++ "\n"
-           ++ nav(class="toc",
-                  "\n" ++ ul(class="list-none p-0",
-                             "\n" ++ root_links(langs.split(","), 0)
-                                  ++ play_link(play)) ++ "\n") ++ "\n"
+    codes = langs.split(",")
+    default = codes.get(0)
+
+    // `/index.html` is the default language's landing page, and every language
+    // has its own at `<lang>/home.html` — so the switcher moves between
+    // landings rather than dropping a reader into a chapter index.
     write_file(out ++ "/index.html",
-               shell(title, langs.split(",").get(0), langs, "", body, ""))
-    1
+               landing(root, title, langs, default, default, ""))
+
+    1 + write_landings(root, out, title, langs, codes, 0)
 }
 
-// The optional sibling link, absent when `book.toml` names no playground.
-play_link(play: str) -> str {
-    if play.length() == 0 {
-        ""
+write_landings(root: str, out: str, title: str, langs: str, codes: str[],
+               i: int) -> int {
+    if i >= codes.length() {
+        0
     } else {
-        li(class="my-1", a(href=play, "Playground")) ++ "\n"
+        lang = codes.get(i)
+        dir = out ++ "/" ++ lang
+        make_dir(dir)
+        write_file(dir ++ "/home.html",
+                   landing(root, title, langs, lang, codes.get(0), "../"))
+        1 + write_landings(root, out, title, langs, codes, i + 1)
     }
 }
 
-root_links(codes: str[], i: int) -> str {
+// The landing page: `home.md` in the reader's language, rendered by the same
+// Markdown renderer the chapters use, under a header carrying the name and the
+// language switcher.
+//
+// `up` is the path back to the languages' shared parent — "" from the root
+// page, "../" from inside a language directory.
+landing(root: str, title: str, langs: str, lang: str, fallback: str,
+        up: str) -> str {
+    src = chapter_source(root, lang, fallback, "home")
+    body = landing_head(title, langs, lang, up)
+           ++ "\n" ++ article(landing_body(src, title, langs, lang, up))
+           ++ "\n"
+
+    shell(title, lang, langs, "", body, up)
+}
+
+landing_head(title: str, langs: str, lang: str, up: str) -> str =>
+    header(class=hero_class(),
+           span(class="font-semibold text-[1.05rem]", esc(title))
+           nav(data-tomo="i18n", class="relative shrink-0 text-[0.8rem]",
+               lang_links(langs.split(","), 0, lang, up, "home")))
+
+// A book with no `home.md` still gets a root page — the language picker this
+// used to be. Tomo builds other people's books too, and a landing page is
+// something you opt into by writing one.
+landing_body(src: str, title: str, langs: str, lang: str, up: str) -> str {
+    if !file_exists(src) {
+        picker(title, langs, up)
+    } else {
+        lines = read_file(src).split("\n")
+        cut = first_section(lines, 0)
+
+        render(lines.slice(0, cut).join("\n"))
+            ++ calls_to_action(langs, lang, up)
+            ++ render(lines.slice(cut, lines.length()).join("\n"))
+    }
+}
+
+// Where the pitch ends and the argument begins: the first `##`. Everything
+// above it is the hero — a heading and a paragraph — and the buttons go there,
+// under the blurb, rather than after two screens of prose.
+first_section(lines: str[], i: int) -> int {
+    if i >= lines.length() {
+        lines.length()
+    } else if lines.get(i).starts_with("## ") {
+        i
+    } else {
+        first_section(lines, i + 1)
+    }
+}
+
+picker(title: str, langs: str, up: str) -> str =>
+    h1(class=md_class("h1"), esc(title))
+        ++ nav(ul(class="list-none p-0",
+                  "\n" ++ root_links(langs.split(","), 0, up))) ++ "\n"
+
+root_links(codes: str[], i: int, up: str) -> str {
     if i >= codes.length() {
         ""
     } else {
         code = codes.get(i)
         entry = li(class="my-1",
-                   a(href=code ++ "/index.html", lang=code, lang_name(code)))
-        entry ++ root_links(codes, i + 1)
+                   a(href=up ++ code ++ "/index.html", lang=code,
+                     lang_name(code)))
+        entry ++ root_links(codes, i + 1, up)
     }
 }
+
+// The two destinations, as chrome rather than prose. They live here because
+// only the layout knows where the page sits: the root landing and a language's
+// own landing are the same Markdown at different depths, and a site-relative
+// link written in that Markdown could only be right in one of them.
+calls_to_action(langs: str, lang: str, up: str) -> str =>
+    nav(class="flex flex-wrap gap-3 my-8",
+        a(class=cta_class(true), href=up ++ lang ++ "/index.html",
+          cta_label(lang, "handbook"))
+        a(class=cta_class(false), href=up ++ "play/index.html",
+          cta_label(lang, "playground"))
+        a(class=cta_class(false), href=Repo, cta_label(lang, "source"))) ++ "\n"
+
+Repo = "https://github.com/pleahmacaka/macalang"
+
+cta_class(primary: bool) -> str {
+    base = "inline-block px-4 py-2 rounded-md no-underline font-sans"
+        ++ " text-[0.9rem]"
+
+    if primary {
+        base ++ " bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black"
+    } else {
+        base ++ " border border-zinc-300 dark:border-zinc-600 text-inherit"
+    }
+}
+
+// The button labels. Three strings per language, so they live here rather than
+// in the Markdown — the Markdown is the argument, these are the doors out of it.
+cta_label(lang: str, which: str) -> str {
+    if lang != "ko" {
+        english_cta(which)
+    } else if which == "handbook" {
+        "핸드북 읽기"
+    } else if which == "playground" {
+        "플레이그라운드"
+    } else {
+        "GitHub 소스"
+    }
+}
+
+english_cta(which: str) -> str {
+    if which == "handbook" {
+        "Read the handbook"
+    } else if which == "playground" {
+        "Playground"
+    } else {
+        "Source on GitHub"
+    }
+}
+
+hero_class() -> str =>
+    "flex items-baseline justify-between gap-3 pb-3 mb-6 border-b"
+        ++ " border-zinc-200 dark:border-zinc-700"
 
 // A language's own name for itself — a reader looking for their language should
 // see it written the way they write it, not as an ISO code.
