@@ -191,21 +191,22 @@ impl Cx {
     }
 
     /// A foreign trait implementation. `Name : Trait = { m = (self, p: T) => body }`
-    /// → `impl Trait for Name { fn m(&mut self, p: T) -> Ret { body } }`. A leading
-    /// `self` parameter becomes `&mut self` (§2.1: a foreign type parameter is a
-    /// non-escaping mutable borrow); the return type is inferred from the body
-    /// (`()`/`bool`/`String`/`i64`), which covers event handlers and getters.
-    fn emit_impl(
-        &mut self,
-        name: &str,
-        trait_ty: &Type,
-        methods: &[(String, Vec<Param>, Expr)],
-    ) -> String {
+    /// → `impl Trait for Name { fn m(&mut self, p: T) -> Ret { body } }`. A
+    /// leading `self` parameter becomes `&mut self`.
+    ///
+    /// The return type is the method's own annotation when it has one —
+    /// `render = (self, w, cx) -> AnyElement => …` — and otherwise inferred from
+    /// the body (`()`/`bool`/`String`/`i64`), which covers event handlers and
+    /// getters. A trait whose method returns something the backend cannot see
+    /// (gpui's `-> impl IntoElement`) needs the annotation: Rust lets an impl
+    /// name a concrete type where the trait wrote `impl Trait`, so writing the
+    /// type out is enough.
+    fn emit_impl(&mut self, name: &str, trait_ty: &Type, methods: &[Method]) -> String {
         let mut ms = String::new();
-        for (mname, params, body) in methods {
+        for m in methods {
             self.declared.clear();
             let mut ps = Vec::new();
-            for (i, p) in params.iter().enumerate() {
+            for (i, p) in m.params.iter().enumerate() {
                 if i == 0 && p.name == "self" {
                     ps.push("&mut self".to_string());
                 } else {
@@ -214,8 +215,11 @@ impl Cx {
                     ps.push(format!("mut {}: {}", ident(&p.name), ty));
                 }
             }
-            let (b, is_str) = self.expr(body);
-            let ret = guess_ret(body, is_str);
+            let (b, is_str) = self.expr(&m.body);
+            let ret = match &m.ret {
+                Some(t) => rust_ty(t),
+                None => guess_ret(&m.body, is_str),
+            };
             let arrow = if ret == "()" {
                 String::new()
             } else {
@@ -223,7 +227,7 @@ impl Cx {
             };
             ms.push_str(&format!(
                 "    fn {}({}){arrow} {{ {b} }}\n",
-                ident(mname),
+                ident(&m.name),
                 ps.join(", ")
             ));
         }
@@ -375,7 +379,7 @@ impl Cx {
             // R4: a closure. `move` so it can escape into a foreign callback and
             // outlive this frame (§2.3); params are untyped so Rust infers them
             // from the expected `Fn`/`FnMut` signature at the call site.
-            Expr::Lambda { params, body } => {
+            Expr::Lambda { params, body, .. } => {
                 let ps: Vec<String> = params.iter().map(|p| ident(&p.name)).collect();
                 let (b, _) = self.expr(body);
                 (format!("move |{}| {{ {b} }}", ps.join(", ")), false)
@@ -694,19 +698,35 @@ fn emit_enum(name: &str, vars: &[Variant]) -> String {
 
 /// A record whose every field is `name = (params) => body` → the methods of a
 /// trait impl. `None` if any field isn't a lambda (so it's a plain record/const).
-fn lambda_fields(e: &Expr) -> Option<Vec<(String, Vec<Param>, Expr)>> {
+fn lambda_fields(e: &Expr) -> Option<Vec<Method>> {
     let Expr::Record(fields) = e else { return None };
     let mut out = Vec::new();
     for f in fields {
         if let Field::Value { name, value } = f
-            && let Expr::Lambda { params, body } = value
+            && let Expr::Lambda { params, ret, body } = value
         {
-            out.push((name.clone(), params.clone(), (**body).clone()));
+            out.push(Method {
+                name: name.clone(),
+                params: params.clone(),
+                ret: ret.clone(),
+                body: (**body).clone(),
+            });
             continue;
         }
         return None;
     }
     (!out.is_empty()).then_some(out)
+}
+
+/// One method of a foreign trait impl.
+struct Method {
+    name: String,
+    params: Vec<Param>,
+    /// The declared return type, when the method wrote one. A trait method has
+    /// to match a signature the backend cannot read, so `guess_ret` is the
+    /// fallback rather than the rule.
+    ret: Option<Type>,
+    body: Expr,
 }
 
 /// Best-effort return type for a trait-impl method body (Maca lambdas carry no

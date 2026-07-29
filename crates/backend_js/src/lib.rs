@@ -277,7 +277,7 @@ fn jexpr(e: &Expr) -> String {
         // JS is single-threaded in the UI; colorblind async runs eagerly (the
         // event loop still interleaves), matching the playground interpreter.
         Expr::Await(x) | Expr::Spawn(x) => jexpr(x),
-        Expr::Lambda { params, body } => {
+        Expr::Lambda { params, body, .. } => {
             let ps = params
                 .iter()
                 .map(|p| p.name.clone())
@@ -426,10 +426,13 @@ fn subst_ident(e: &Expr, from: &str, to: &str) -> Expr {
         Expr::Await(x) => Expr::Await(go(x)),
         Expr::Spawn(x) => Expr::Spawn(go(x)),
         // a nested lambda that rebinds `from` shadows it; otherwise descend
-        Expr::Lambda { params, body } if !params.iter().any(|p| p.name == from) => Expr::Lambda {
-            params: params.clone(),
-            body: go(body),
-        },
+        Expr::Lambda { params, ret, body } if !params.iter().any(|p| p.name == from) => {
+            Expr::Lambda {
+                params: params.clone(),
+                ret: ret.clone(),
+                body: go(body),
+            }
+        }
         other => other.clone(),
     }
 }
@@ -636,7 +639,7 @@ impl Cx {
     fn bind(&self, target: &Expr) -> (String, String) {
         match target {
             Expr::Ident(n) => (format!("state.{n}"), format!("state.{n} = $v")),
-            Expr::Lambda { params, body } => {
+            Expr::Lambda { params, body, .. } => {
                 // `v => age = int(v)` — bound var is the assignment target
                 let pv = params.first().map(|p| p.name.as_str()).unwrap_or("v");
                 if let Expr::Assign { target: t, value } = body.as_ref()

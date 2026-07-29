@@ -2018,7 +2018,7 @@ impl<'a> Cx<'a> {
             // `try e` / `reify e` — run `e` under a failure handler; the value is
             // the caught message (a `str`), or "" on success. setjmp must be
             // inline (not wrapped in a helper), so a GNU statement-expression.
-            Expr::Lambda { params, body } => self.emit_lambda(env, params, body),
+            Expr::Lambda { params, body, .. } => self.emit_lambda(env, params, body),
             // `base with { f = v, … }` — functional record update: copy the base
             // struct (a value type) and overwrite the named fields.
             Expr::With { base, fields } => self.with_update(env, base, fields),
@@ -2390,7 +2390,7 @@ impl<'a> Cx<'a> {
     ) -> Option<(String, CTy)> {
         let src = arr_name(elem);
         let lambda = |a: Option<&Arg>| match a {
-            Some(Arg::Pos(Expr::Lambda { params, body })) => {
+            Some(Arg::Pos(Expr::Lambda { params, body, .. })) => {
                 Some((params.clone(), (**body).clone()))
             }
             _ => None,
@@ -4255,7 +4255,7 @@ fn free_vars(e: &Expr, bound: &HashSet<String>, out: &mut HashSet<String>) {
             free_vars(base, bound, out);
             free_field_vars(fields, bound, out);
         }
-        Expr::Lambda { params, body } => {
+        Expr::Lambda { params, body, .. } => {
             let mut b = bound.clone();
             for p in params {
                 b.insert(p.name.clone());

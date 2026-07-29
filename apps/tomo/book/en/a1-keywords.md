@@ -61,6 +61,7 @@ Not keywords, but worth listing here because they carry meaning:
 | `:` | introduces a **type** |
 | `=` | introduces a **value** |
 | `=>` | an arrow function body, or a `match` arm |
+| `(a, b) -> T => …` | a lambda with a declared return type |
 | `->` | a return type |
 | `?` `:` | the ternary, written **spaced** |
 | `?` | attached to an expression: propagate a failure |

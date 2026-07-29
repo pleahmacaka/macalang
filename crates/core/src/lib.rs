@@ -890,7 +890,7 @@ impl Checker {
                 Ty::Unit
             }
             Expr::Break | Expr::Continue => Ty::Unit,
-            Expr::Lambda { params, body } => {
+            Expr::Lambda { params, body, .. } => {
                 let base = env.len();
                 let pts: Vec<Ty> = params
                     .iter()

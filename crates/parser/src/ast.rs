@@ -145,6 +145,10 @@ pub enum Expr {
     Continue,
     Lambda {
         params: Vec<Param>,
+        /// `(a, b) -> T => …` — an optional declared return type. A lambda
+        /// usually infers, but a trait-impl method has to match a signature the
+        /// compiler cannot read, so it can be written out.
+        ret: Option<Type>,
         body: Box<Expr>,
     },
     With {

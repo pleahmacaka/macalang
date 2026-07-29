@@ -439,7 +439,7 @@ fn refs_in_expr(e: &Expr, out: &mut BTreeSet<String>) {
             refs_in_expr(cond, out);
             body.iter().for_each(|s| refs_in_stmt(s, out));
         }
-        Expr::Lambda { params, body } => {
+        Expr::Lambda { params, ret: _, body } => {
             for p in params {
                 if let Some(t) = &p.ty {
                     refs_in_type(t, out);

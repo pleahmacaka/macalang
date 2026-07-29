@@ -568,7 +568,7 @@ impl<'a> Interp<'a> {
             // (which the interpreter doesn't model) differs.
             Expr::Spawn(x) | Expr::Await(x) => self.eval(x, scope, depth),
             // a lambda captures its enclosing scope by value
-            Expr::Lambda { params, body } => Ok(Value::Closure {
+            Expr::Lambda { params, body, .. } => Ok(Value::Closure {
                 params: params.clone(),
                 body: Box::new((**body).clone()),
                 captured: scope.clone(),

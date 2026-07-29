@@ -58,7 +58,11 @@ foreign callback API and outlive its frame.
 **Foreign trait impls.** `Counter : Render = { render = (self, …) => … }` →
 `impl Render for Counter { fn render(&mut self, …) { … } }`. A leading `self`
 becomes `&mut self`; the return type is inferred from the body
-(`()`/`bool`/`String`/`i64`), which covers event handlers and getters. The
+(`()`/`bool`/`String`/`i64`), which covers event handlers and getters, or
+**declared** — `render = (self, w, cx) -> AnyElement => …` — for a method whose
+signature the backend cannot see. gpui's `Render::render` returns
+`impl IntoElement`, and Rust lets an impl name a concrete type where the trait
+wrote `impl Trait`, so the annotation is the whole answer. The
 checker treats unknown lowercase calls as gradual foreign items once the program
 has an `import rust`, and an `import rust """…"""` raw block is emitted verbatim,
 so a trait or `fn` can be supplied inline.
@@ -95,7 +99,7 @@ keep correct.
   foreign trait impl against a local stand-in trait, `spawn`/`await`, and a real
   `std` type.
 
-`examples/gpui_counter.maca` is the shape a gpui program takes on this backend.
-Its header says which of its lines the backend lowers today and which need
-writing out by hand against real gpui — a foreign return type is an annotation,
-because the backend does not read gpui's source.
+`examples/gpui_counter.maca` is the shape a gpui program takes on this backend:
+a foreign trait impl with a declared return type, `&mut self` threading, a
+mutating closure in an event handler, a generic foreign type, and a builder
+chain.

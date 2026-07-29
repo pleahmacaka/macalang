@@ -14,16 +14,17 @@
 //   * `n => n + 1`                       -> a `move |n| ...` closure
 //   * `div().flex().child(x)`            -> method-chain passthrough
 //   * `Duration.from_secs(5)` etc.       -> `Type::assoc(...)` without `::`
+//   * `(self, w, cx) -> AnyElement => ...` -> the method's declared return type
 //
-// Against real gpui the `render` signature needs writing out: gpui wants
-// `-> impl IntoElement`, and the backend does not read gpui's source, so a
-// foreign return type is an annotation rather than something inferred from the
-// body. That is the same bargain every foreign call makes -- rustc is the
-// authority on Rust, and Maca does not keep a second copy of its type rules.
+// The `render` return type is written out rather than inferred: the backend
+// does not read gpui's source, so a foreign return type is an annotation. That
+// is the same bargain every foreign call makes -- rustc is the authority on
+// Rust, and Maca does not keep a second copy of its type rules.
 
 import rust "gpui::div"
 import rust "gpui::Render"
 import rust "gpui::IntoElement"
+import rust "gpui::AnyElement"
 import rust "gpui::Context"
 import rust "gpui::Window"
 
@@ -32,9 +33,11 @@ Counter = {
 }
 
 Counter : Render = {
-    // `self` -> `&mut self`; the builder chain passes through as-is. The return
-    // is gpui's `impl IntoElement` (the 2.5 piece still to land).
-    render = (self, window, cx) =>
+    // `self` -> `&mut self`; the builder chain passes through as-is. gpui's
+    // `Render::render` returns `impl IntoElement`, and Rust lets an impl name a
+    // concrete type where the trait wrote `impl Trait` -- so the annotation is
+    // the whole answer, and `.into_any_element()` produces the value.
+    render = (self, window, cx) -> AnyElement =>
         div()
             .flex()
             .gap_2()
@@ -45,6 +48,7 @@ Counter : Render = {
                     .child("increment")
                     .on_click(ev => self.count = self.count + 1)
             )
+            .into_any_element()
 }
 
 main() -> int {

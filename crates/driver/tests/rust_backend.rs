@@ -297,3 +297,39 @@ fn a_bodyless_function_is_rejected_rather_than_emitted_as_a_panic() {
         "no `unimplemented!()` should reach the emitted source"
     );
 }
+
+/// A trait-impl method can declare its return type.
+///
+/// gpui's `Render::render` returns `impl IntoElement`, which the backend cannot
+/// see — it does not read the crate's source. Rust lets an impl name a concrete
+/// type where the trait wrote `impl Trait`, so writing the type out is the whole
+/// answer. Without the annotation the return type is guessed from the body, and
+/// a builder chain guesses `i64`.
+#[test]
+fn a_trait_method_can_declare_its_return_type() {
+    if !have("rustc") {
+        eprintln!("skipping: needs rustc");
+        return;
+    }
+    let (out, code) = build_and_run(
+        "declared_ret",
+        "import rust \"\"\"\n\
+         pub struct Div { pub s: String }\n\
+         pub struct AnyElement { pub s: String }\n\
+         impl Div { pub fn into_any_element(self) -> AnyElement { AnyElement { s: self.s } } }\n\
+         pub fn div() -> Div { Div { s: \"count \".to_string() } }\n\
+         pub trait Render { fn render(&mut self) -> AnyElement; }\n\
+         \"\"\"\n\n\
+         Counter = {\n    count: int\n}\n\n\
+         Counter : Render = {\n\
+         \x20   render = (self) -> AnyElement => div().into_any_element()\n\
+         }\n\n\
+         main() -> int {\n\
+         \x20   c = Counter { count = 41 }\n\
+         \x20   info(\"{c.render().s}{c.count}\")\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(code, Some(0), "{out}");
+    assert!(out.contains("count 41"), "{out}");
+}

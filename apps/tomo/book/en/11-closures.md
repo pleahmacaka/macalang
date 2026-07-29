@@ -25,6 +25,21 @@ run_twice(f, x) => f(f(x))
 run_twice(n => n + 1, 40)              // 42
 ```
 
+A lambda infers its return type from its body. It can also declare one, which
+is what you need when the lambda has to match a signature the compiler cannot
+see — a method of a foreign trait on the Rust target, where the trait lives in
+a crate the compiler does not read:
+
+```
+Counter : Render = {
+    render = (self, window, cx) -> AnyElement =>
+        div().child("Count: {self.count}").into_any_element()
+}
+```
+
+The annotation needs the parameter parentheses, so `(n) -> int => n + 1` rather
+than `n -> int => n + 1` — otherwise it would read as a function signature.
+
 ## `if` as an expression
 
 Control flow produces values. `if`/`else` is an expression:

@@ -389,14 +389,49 @@ impl Parser {
 
     fn parse_expr(&mut self) -> Expr {
         let lhs = self.parse_ternary();
-        if self.eat(Tok::FatArrow) {
+        if let Some(ret) = self.lambda_ret() {
             let params = self.expr_to_params(lhs);
-            Expr::Lambda {
+            return Expr::Lambda {
                 params,
+                ret,
                 body: Box::new(self.parse_lambda_body()),
+            };
+        }
+        lhs
+    }
+
+    /// The arrow between a lambda's parameters and its body, with an optional
+    /// return type in front of it: `(a, b) => …` or `(a, b) -> T => …`.
+    ///
+    /// `Some(None)` is a lambda with no annotation, `Some(Some(t))` one with,
+    /// and `None` means this was not a lambda at all. A declared type is what a
+    /// trait-impl method needs when it has to match a signature the compiler
+    /// cannot read.
+    fn lambda_ret(&mut self) -> Option<Option<Type>> {
+        if self.eat(Tok::FatArrow) {
+            return Some(None);
+        }
+        if self.at(Tok::Arrow) && self.lambda_arrow_ahead() {
+            self.bump();
+            let t = self.parse_type();
+            self.expect(Tok::FatArrow, "'=>'");
+            return Some(Some(t));
+        }
+        None
+    }
+
+    /// Is this `-> T` the head of a lambda rather than a function signature?
+    /// Only a `=>` after the type makes it one, so scan forward for it before
+    /// the next token that could not be part of a type.
+    fn lambda_arrow_ahead(&self) -> bool {
+        let mut i = 1;
+        loop {
+            match self.peekn(i) {
+                Tok::FatArrow => return true,
+                Tok::Ident(_) | Tok::Dot | Tok::LBracket | Tok::RBracket | Tok::Question
+                | Tok::QuestionPost | Tok::LParen | Tok::RParen => i += 1,
+                _ => return false,
             }
-        } else {
-            lhs
         }
     }
 
@@ -404,10 +439,11 @@ impl Parser {
     /// and nested lambdas.
     fn parse_lambda_body(&mut self) -> Expr {
         let lhs = self.parse_ternary();
-        if self.eat(Tok::FatArrow) {
+        if let Some(ret) = self.lambda_ret() {
             let params = self.expr_to_params(lhs);
             Expr::Lambda {
                 params,
+                ret,
                 body: Box::new(self.parse_lambda_body()),
             }
         } else if self.at(Tok::Eq) {

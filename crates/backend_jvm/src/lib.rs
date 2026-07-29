@@ -547,7 +547,7 @@ fn lambda_fields(e: &Expr) -> Option<Vec<(String, Vec<Param>, Expr)>> {
     let mut out = Vec::new();
     for f in fields {
         if let Field::Value { name, value } = f
-            && let Expr::Lambda { params, body } = value
+            && let Expr::Lambda { params, body, .. } = value
         {
             out.push((name.clone(), params.clone(), (**body).clone()));
             continue;

@@ -25,6 +25,20 @@ run_twice(f, x) => f(f(x))
 run_twice(n => n + 1, 40)              // 42
 ```
 
+람다는 반환 타입을 본문에서 추론합니다. 직접 선언할 수도 있는데, 컴파일러가 볼
+수 없는 시그니처에 맞춰야 할 때 필요합니다. Rust 타깃에서 외부 trait의 메서드가
+그런 경우입니다 — trait이 컴파일러가 읽지 않는 크레이트 안에 있으니까요.
+
+```
+Counter : Render = {
+    render = (self, window, cx) -> AnyElement =>
+        div().child("Count: {self.count}").into_any_element()
+}
+```
+
+어노테이션을 쓸 때는 파라미터 괄호가 필요합니다. `n -> int => n + 1`이 아니라
+`(n) -> int => n + 1`입니다. 괄호가 없으면 함수 시그니처로 읽히니까요.
+
 ## 식으로서의 `if`
 
 제어 흐름은 값을 만듭니다. `if`/`else`는 식입니다:

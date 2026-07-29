@@ -1,4 +1,4 @@
-use maca_parser::{parse, print_module};
+use maca_parser::{parse, print_module, Expr, Stmt};
 use std::fs;
 use std::path::PathBuf;
 
@@ -344,4 +344,53 @@ fn index_is_postfix_not_a_list() {
         matches!(&**e, maca_parser::Expr::Index { .. }),
         "not an Index: {e:?}"
     );
+}
+
+#[test]
+fn a_lambda_can_declare_its_return_type() {
+    // `(a, b) -> T => …`. The annotation is what a trait-impl method needs when
+    // it has to match a signature the compiler cannot read.
+    let m = parsed("f = (a, b) -> Element => g(a, b)\n");
+    let Stmt::Bind(b) = &m.items[0] else {
+        panic!("expected a binding: {:?}", m.items[0])
+    };
+    let Expr::Lambda { params, ret, .. } = &b.value else {
+        panic!("expected a lambda: {:?}", b.value)
+    };
+    assert_eq!(params.len(), 2);
+    // the annotation survives a print/re-parse round trip
+    let printed = print_module(&m);
+    let again = parse(&printed);
+    assert!(again.errors.is_empty(), "{printed}: {:?}", again.errors);
+    let Stmt::Bind(b2) = &again.module.items[0] else { panic!("{printed}") };
+    let Expr::Lambda { ret: ret2, .. } = &b2.value else { panic!("{printed}") };
+    assert_eq!(ret, ret2, "the declared type was lost: {printed}");
+    assert!(ret.is_some(), "an annotation was written");
+}
+
+#[test]
+fn an_unannotated_lambda_still_parses() {
+    let m = parsed("f = (a, b) => g(a, b)\n");
+    let Stmt::Bind(b) = &m.items[0] else { panic!() };
+    let Expr::Lambda { ret, .. } = &b.value else { panic!() };
+    assert!(ret.is_none(), "no annotation was written");
+}
+
+#[test]
+fn an_arrow_after_a_call_is_still_a_signature_not_a_lambda() {
+    // `-> T` only heads a lambda when a `=>` follows the type. A function
+    // definition must keep parsing as one.
+    let m = parsed("f(a: int) -> int => a\n");
+    assert!(
+        matches!(&m.items[0], Stmt::Fn(_)),
+        "expected a fn def: {:?}",
+        m.items[0]
+    );
+}
+
+/// Parse a source string, requiring no errors.
+fn parsed(src: &str) -> maca_parser::Module {
+    let p = parse(src);
+    assert!(p.errors.is_empty(), "{src}: {:?}", p.errors);
+    p.module
 }
