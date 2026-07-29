@@ -8,6 +8,7 @@
 // switcher. This file is the renderer + a self-check `main`.
 
 import { conf_value } from apps/tomo/conf
+import { highlight, code_css } from apps/tomo/highlight
 import { escape_html, index_of_from } from std/text
 import { quote } from std/json
 
@@ -209,12 +210,18 @@ render_line(lines: str[], i: int, acc: str) -> str {
 //
 // ```` ```maca ```` carries its language through to a `language-maca` class,
 // the convention every highlighter reads. An unlabelled fence is fine too.
+//
+// The tag also chooses the highlighter (`apps/tomo/highlight`), which is the
+// one thing this function knows about languages: it hands over a tag and a
+// block of text and gets back escaped HTML. A tag nothing highlights comes back
+// as plain escaped text, so an unlabelled fence — the shell transcripts and
+// rendered-output blocks this book is full of — is unchanged.
 render_fence(lines: str[], i: int, acc: str, fence: str) -> str {
     stop = fence_end(lines, i + 1)
     lang = fence.substr(3, fence.length() - 3).trim()
     html = pre(class=md_class("pre"),
                code(class=pre_code_class() ++ lang_class(lang),
-                    fence_body(lines, i + 1, stop)))
+                    highlight(lang, fence_body(lines, i + 1, stop))))
     render_lines(lines, stop + 1, acc ++ html ++ "\n")
 }
 
@@ -227,11 +234,15 @@ fence_end(lines: str[], i: int) -> int {
     }
 }
 
+// The block's source, verbatim. Escaping happens in the highlighter, which has
+// to see the real characters to tokenize them — a `&lt;` is not a `<` to a
+// scanner, and escaping first meant every one of them was highlighted as an
+// entity rather than the operator it is.
 fence_body(lines: str[], at: int, stop: int) -> str {
     if at >= stop {
         ""
     } else {
-        escape_html(lines.get(at)) ++ "\n" ++ fence_body(lines, at + 1, stop)
+        lines.get(at) ++ "\n" ++ fence_body(lines, at + 1, stop)
     }
 }
 
@@ -553,8 +564,12 @@ base_css() -> str =>
 
 // Named for what it produces rather than the tag, because `style` *is* the tag
 // and a definition of that name would shadow it.
+//
+// `code_css()` is the syntax theme, and it is hand-written for the reason its
+// own comment gives: a `text-…` utility takes a named colour only, and the
+// named set that stays legible on a light code block is one hue.
 stylesheet() -> str =>
-    style(base_css() ++ styles()) ++ "\n"
+    style(base_css() ++ code_css() ++ styles()) ++ "\n"
 
 // Previous/next links between chapters, so a reader can move through the book.
 chapter_nav(chs: str[], idx: int) -> str {
@@ -617,6 +632,13 @@ sec_class() -> str =>
     "mt-4 mb-1 px-2 text-[0.78rem] uppercase tracking-wide font-semibold"
         ++ " first:mt-1"
 
+// A volume heading — the top level of the contents, above the sections. It is
+// set in the page's own colour and ruled underneath, so the eye can tell "which
+// book am I in" from "which part of it" without reading either.
+book_class() -> str =>
+    "mt-8 mb-1 px-2 pb-1 text-[0.95rem] font-bold text-black dark:text-white"
+        ++ " border-b border-zinc-200 dark:border-zinc-700 first:mt-1"
+
 lang_summary_class() -> str =>
     "cursor-pointer px-2 py-1 border border-zinc-200 dark:border-zinc-700"
         ++ " rounded text-zinc-500 whitespace-nowrap list-none"
@@ -644,30 +666,59 @@ sh_class() -> str =>
         ++ " border-zinc-200 dark:border-zinc-700 sticky top-0 bg-white"
         ++ " dark:bg-zinc-900 z-10"
 
-// ---- sections -------------------------------------------------------------
+// ---- volumes and sections -------------------------------------------------
 //
-// A `chapters` entry beginning with `#` is a section heading rather than a
-// page: it groups the chapters that follow it. The label carries one title per
-// language, `|`-separated in the same order as `languages`:
+// A `chapters` entry beginning with `#` is a heading rather than a page. `##`
+// opens a **volume**, `#` a **section** inside it, so one chapter list can hold
+// two books — a handbook read front to back and a reference opened at a page —
+// under a single table of contents, sidebar and search index. The label carries
+// one title per language, `|`-separated in the same order as `languages`:
 //
+//     "## Learning Maca|Maca 배우기",
 //     "# Getting Started|시작하기",
 //
 // A language with no title of its own falls back to the first, the same way a
-// missing chapter falls back to the default language. Sections are labels, not
+// missing chapter falls back to the default language. Headings are labels, not
 // content, so they live in the config and leave the chapter directory to hold
 // only things a reader can open.
 
 is_section(entry: str) -> bool =>
     entry.starts_with("#")
 
+is_book(entry: str) -> bool =>
+    entry.starts_with("##")
+
+// How many characters of marker to drop before the label.
+marker_len(entry: str) -> int {
+    if is_book(entry) {
+        2
+    } else {
+        1
+    }
+}
+
 section_title(entry: str, langs: str, lang: str) -> str {
-    parts = entry.substr(1, entry.length() - 1).split("|").map(v => v.trim())
+    n = marker_len(entry)
+    parts = entry.substr(n, entry.length() - n).split("|").map(v => v.trim())
     at = index_in(langs.split(","), lang, 0)
 
     if at >= 0 && at < parts.length() {
         parts.get(at)
     } else {
         parts.get(0)
+    }
+}
+
+// The volume each entry belongs to, in book order — a `##` heading names one
+// and every entry after it is inside it, until the next. A search hit says
+// which book it came from, and "Collections" in the handbook is a different
+// answer from "Collections" in the reference.
+volume_titles(chs: str[], titles: str[], i: int, cur: str) -> str[] {
+    if i >= chs.length() {
+        []
+    } else {
+        here = if is_book(chs.get(i)) { titles.get(i) } else { cur }
+        [here] ++ volume_titles(chs, titles, i + 1, here)
     }
 }
 
@@ -763,7 +814,9 @@ side_items(chs: str[], titles: str[], cur: str, i: int) -> str {
 }
 
 side_item(entry: str, title: str, cur: str) -> str {
-    if is_section(entry) {
+    if is_book(entry) {
+        li(data-tomo="book", class=book_class(), escape_html(title))
+    } else if is_section(entry) {
         li(data-tomo="section", class=sec_class(), escape_html(title))
     } else {
         here = entry == cur
@@ -1176,9 +1229,10 @@ build_langs(root: str, out: str, title: str, langs: str, codes: str[],
 build_lang(root: str, out: str, title: str, langs: str, lang: str,
            fallback: str, chs: str[]) -> int {
     titles = chapter_titles(root, langs, lang, fallback, chs, 0)
+    vols = volume_titles(chs, titles, 0, "")
     n = build_chapters(root, out, title, langs, lang, fallback, chs, titles,
                        0, 0)
-    write_search_index(root, out, lang, fallback, chs, titles)
+    write_search_index(root, out, lang, fallback, chs, titles, vols)
     n + write_index(root, out, title, langs, lang, chs, titles)
 }
 
@@ -1227,7 +1281,9 @@ index_items(chs: str[], titles: str[], i: int) -> str {
 }
 
 index_item(entry: str, title: str) -> str {
-    if is_section(entry) {
+    if is_book(entry) {
+        li(data-tomo="book", class=book_class(), escape_html(title))
+    } else if is_section(entry) {
         li(data-tomo="section", class=sec_class(), escape_html(title))
     } else {
         li(class="my-0",
@@ -1241,34 +1297,46 @@ index_item(entry: str, title: str) -> str {
 // `<script>` that assigns `window.TOMO_INDEX`, not as JSON the page fetches,
 // so search still works when the book is opened straight off disk.
 write_search_index(root: str, out: str, lang: str, fallback: str, chs: str[],
-                   titles: str[]) -> int {
+                   titles: str[], vols: str[]) -> int {
     dir = out ++ "/" ++ lang
     make_dir(dir)
-    body = index_chapters(root, lang, fallback, chs, titles, 0)
+    body = index_chapters(root, lang, fallback, chs, titles, vols, 0)
     write_file(dir ++ "/search-index.js",
                "window.TOMO_INDEX=[" ++ body ++ "];\n")
     0
 }
 
 index_chapters(root: str, lang: str, fallback: str, chs: str[], titles: str[],
-               i: int) -> str {
+               vols: str[], i: int) -> str {
     if i >= chs.length() {
         ""
     } else {
-        index_chapter(root, lang, fallback, chs.get(i), titles.get(i))
-            ++ index_chapters(root, lang, fallback, chs, titles, i + 1)
+        index_chapter(root, lang, fallback, chs.get(i), titles.get(i),
+                      vols.get(i))
+            ++ index_chapters(root, lang, fallback, chs, titles, vols, i + 1)
     }
 }
 
-index_chapter(root: str, lang: str, fallback: str, ch: str,
-              ctitle: str) -> str {
+// A hit's caption is the volume and the chapter, because the two books cover
+// the same ground on purpose: a reader searching "effects" wants to know
+// whether the answer they found is the explanation or the rule.
+index_chapter(root: str, lang: str, fallback: str, ch: str, ctitle: str,
+              vol: str) -> str {
     src = chapter_source(root, lang, fallback, ch)
 
     if !file_exists(src) {
         ""
     } else {
-        sections(read_file(src).split("\n"), 0, ch ++ ".html", ctitle,
-                 "", "", "")
+        sections(read_file(src).split("\n"), 0, ch ++ ".html",
+                 caption(vol, ctitle), "", "", "")
+    }
+}
+
+caption(vol: str, ctitle: str) -> str {
+    if vol == "" {
+        ctitle
+    } else {
+        vol ++ " · " ++ ctitle
     }
 }
 
@@ -1391,7 +1459,9 @@ main() -> int {
         ++ "## Is it fast?\n\n- one\n  - nested\n- two\n\n1. first\n2. second\n\n"
         ++ "| target | flag |\n|--------|------|\n| native | `--target c` |\n\n"
         ++ "> a quoted aside that\n> wraps across two source lines\n\n"
-        ++ "```maca\nx = 1\n```\n"
+        // a labelled fence is highlighted; an unlabelled one is left as text
+        ++ "```maca\ngreet(n: int) -> str => \"hi \{n\}\"\n```\n"
+        ++ "```\nx = 1\n```\n"
     html = render(sample)
     info("=== rendered ===")
     info(html)

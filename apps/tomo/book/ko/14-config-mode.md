@@ -6,42 +6,76 @@
 
 ## 설정은 값이다
 
-```
-import options
+```maca
+import nixpkgs
 
-host = {
-    networking.hostName = "web-01"
-    services.nginx.enable = true
-    services.nginx.virtualHosts."example.com".root = "/srv/www"
+networking.hostName = "rigel"
+system.stateVersion = "24.11"
+
+system.packages = git, curl, htop, ripgrep
+
+services.openssh = {
+    passwordAuthentication = false
 }
 ```
 
-이것은 평범한 Maca입니다 — 설정값의 레코드죠. 이는 Nix가 평가해 시스템을
-구성하는 `.nix` 식으로 컴파일됩니다.
+평범한 Maca입니다. 대입, 대괄호 없는 콤마 리스트, 레코드. `--target nix`로
+빌드하면 NixOS 모듈이 나옵니다.
+
+```
+maca build host.maca --target nix -o host.nix
+```
+
+```nix
+{ config, pkgs, lib, ... }:
+{
+  networking.hostName = "rigel";
+  system.stateVersion = "24.11";
+}
+```
+
+Nix가 이것을 평가해 시스템을 구성합니다.
 
 ## 설정 모드가 금지하는 것
 
-설정 모드는 *순수*합니다: 설정은 상태를 기술할 뿐 동작을 수행하지 않습니다.
+설정 모드는 *순수*합니다. 설정은 상태를 기술할 뿐 동작을 수행하지 않습니다.
 그래서 프로그램에서는 괜찮던 이펙트가 여기서는 에러가 됩니다.
 
 - `await`/`spawn`/`sleep_ms` — async는 비순수 → **컴파일 에러**.
-- I/O, 난수, 시계에 손대는 것 — 비순수 → **컴파일 에러**.
+- I/O, 네트워크, 프로세스에 손대는 것 — 비순수 → **컴파일 에러**.
 
-컴파일러는 앞 장의 이펙트 시스템으로 이를 강제합니다. 머신 정의에 부수효과를
-실수로 끼워 넣을 수 없습니다.
-
-## 옵션에는 타입이 있다
-
-타깃이 노출하는 옵션(`services.nginx.enable` 등)에는 타입이 있습니다. 존재하지
-않는 옵션을 설정하거나 타입이 틀리면, 무엇도 호스트에 닿기 전에 명확한 진단이
-나옵니다:
+컴파일러는 [앞 장](13-colorblind-async.md)의 이펙트 시스템으로 이를
+강제합니다.
 
 ```
-services.nginx.enabled = true   // 에러: 알 수 없는 옵션 (`enable`을 의도하셨나요?)
+EffectInConfig: config must be pure but this uses effect(s): async
 ```
 
-`UnknownOption`과 `EffectInConfig`은 평범한 컴파일 에러이며, 머신이 아니라 내
-책상에서 잡힙니다.
+머신 정의에 부수효과를 실수로 끼워 넣을 수 없습니다.
+
+## 옵션 이름은 검사된다
+
+NixOS 모듈이 대입할 수 있는 옵션 네임스페이스를 컴파일러가 알고 있으므로,
+존재하지 않는 네임스페이스는 내 책상에서 잡힙니다.
+
+```
+UnknownOption: unknown NixOS option namespace `servicez`
+```
+
+`UnknownOption`과 `EffectInConfig`은 타입 불일치와 같은 자격의 평범한 컴파일
+에러입니다.
+
+## 실행해 보기
+
+저장소에 진짜 설정이 `examples/system.maca`로 들어 있습니다. 빌드해서 나온
+Nix를 읽어 보세요.
+
+```
+maca build examples/system.maca --target nix -o system.nix
+```
+
+그다음 사본에 `delay = sleep_ms(10)`을 넣고 다시 빌드해 보세요. 그때 나오는
+에러가 이 장의 요점입니다.
 
 ## 왜 언어를 공유하는가
 
@@ -49,4 +83,9 @@ services.nginx.enabled = true   // 에러: 알 수 없는 옵션 (`enable`을 �
 공유할 수 있습니다. 한 번 정의한 포트 번호가 서버가 바인딩하는 그 상수이자
 방화벽이 여는 그 상수입니다 — "앱"과 "앱이 도는 상자" 사이에 어긋남이 없습니다.
 
-다음: 타깃과 툴체인.
+## 전체 규칙은 어디에
+
+레퍼런스의 [설정 모드](a12-config.md)에 모드가 어떻게 선택되는지, 이펙트 표
+전체, 옵션 검사가 정확히 어디까지 미치는지(한쪽으로는 짐작보다 멀고 다른
+쪽으로는 짧습니다), 그리고 같은 기계 장치를 호스트가 아니라 개발 셸에 겨눈
+`maca dev`가 있습니다.

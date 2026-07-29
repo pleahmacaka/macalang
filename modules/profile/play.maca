@@ -11,6 +11,12 @@
 // `replay` is the only thing here that sleeps, and only when asked to: pace 0
 // walks the whole trace as fast as the machine can, which is what a test wants
 // and what a program that only needs the order wants too.
+//
+// Flattening is quadratic in the number of spans, because appending to a list
+// copies it: a thousand-span trace takes about 0.15s, four thousand about 20s.
+// This is a diagnostic over a run that has already happened, not something to
+// call in a loop — and a trace that large has stopped saying anything a person
+// can read anyway.
 
 import profile/trace
 
@@ -33,7 +39,25 @@ Event = {
 events(t: Trace) -> Event[] {
     walked = walk_kids(t, roots(t), 0, [])
 
-    by_time(walked, 0, [])
+    in_order(walked, 1) ? walked : by_time(walked, 0, [])
+}
+
+// A recorded trace leaves the walk already in time order: a region opens
+// before the first region inside it, each of those closes before the next one
+// opens, and the last closes before the region holding them does. The sort is
+// for a trace assembled by hand, where none of that need hold.
+//
+// It is worth one pass to find out. `insert_by_time` copies the list three
+// times per event, and at four thousand spans that is twenty-five seconds of a
+// profiler's own time — spent, until this check, on every trace it ever built.
+in_order(evs: Event[], i: int) -> bool {
+    if i >= evs.length() {
+        true
+    } else if evs.get(i).at < evs.get(i - 1).at {
+        false
+    } else {
+        in_order(evs, i + 1)
+    }
 }
 
 walk_kids(t: Trace, ids: int[], i: int, acc: Event[]) -> Event[] {
@@ -62,8 +86,8 @@ edge(s: Span, i: int, enter: bool) -> Event =>
 
 // A stable insertion sort. `sort` handles ints, not records, and a sort that
 // reordered the ties would throw away the only part of the ordering the
-// timestamps could not supply. A trace is short enough that the quadratic cost
-// is beneath notice next to the run it describes.
+// timestamps could not supply. It is quadratic and it is not cheap — see
+// `in_order`, which is why a recorded trace does not come through here.
 by_time(evs: Event[], i: int, acc: Event[]) -> Event[] {
     if i >= evs.length() {
         acc

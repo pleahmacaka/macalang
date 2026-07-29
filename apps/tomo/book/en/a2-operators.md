@@ -1,4 +1,7 @@
-# Appendix B: Operators and Symbols
+# Operators and Symbols
+
+Every operator, what it does, and where it binds. The lexical rules that decide
+when two of them are the same character are in [Syntax](a5-syntax.md).
 
 ## Arithmetic
 
@@ -27,6 +30,11 @@ ok = a > 0 &&
 fine = a > 0
     && b > 0
 ```
+
+`&&`, `||` and `++` are the operators that may *begin* a line, because none of
+them can begin an expression. `+`, `*` and the comparisons cannot, and `-` is
+the trap: it can, so a leading `-` starts a new statement instead of continuing
+the one above. [Syntax](a5-syntax.md) has the whole rule.
 
 ## Bitwise
 

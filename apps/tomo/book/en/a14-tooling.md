@@ -1,7 +1,10 @@
-# Tooling
+# The Toolchain
 
 One binary, `maca`, does everything. There is no separate build tool, formatter
 binary, package manager or test runner to install.
+
+Every command, what it caches, and the two Maca programs in the repository that
+do the jobs a subcommand would do elsewhere.
 
 ## The commands
 
@@ -138,4 +141,5 @@ the compiler itself, which is the largest Maca program that exists.
 target go in a `[rust-dependencies]` table and are passed through to Cargo.
 
 For your own code, the module system needs no manifest at all — `maca build
-app/main.maca` follows the imports. See chapter 7.
+app/main.maca` follows the imports. See
+[Modules and Layout](a9-modules.md).

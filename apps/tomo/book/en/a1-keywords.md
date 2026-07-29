@@ -1,7 +1,11 @@
-# Appendix A: Keywords
+# Keywords
 
 Maca reserves 21 words. That is the whole list — a language you can hold in your
 head is a design goal, not an accident.
+
+The words it pointedly does *not* reserve are the second table, and they matter
+as much: each one is a habit from another language that the compiler answers
+with what Maca does instead.
 
 | Keyword | Purpose |
 |---|---|
@@ -44,7 +48,7 @@ were* a keyword, the compiler tells you what Maca does instead.
 | `async` | async is an inferred effect; use `spawn` and `await` |
 | `null`, `nil`, `None` | there is no null; use a sum type |
 | `pub`, `private` | everything a module defines is importable |
-| `mut`, `&`, `move` | there is no borrow checker (chapter 4) |
+| `mut`, `&`, `move` | there is no borrow checker; see [memory](a8-memory.md) |
 | `impl`, `trait`, `self` | a free function plus UFCS is the method |
 | `new` | a record literal is `Name { f = v }` |
 

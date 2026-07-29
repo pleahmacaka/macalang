@@ -3,7 +3,7 @@
 Every Maca program starts at `main`, which returns an `int` — the process exit
 code. Here is the whole thing:
 
-```
+```maca
 main() -> int {
     info("Hello, World")
     0
@@ -36,7 +36,7 @@ failure.
 
 A function whose body is a single expression can skip the braces and use `=>`:
 
-```
+```maca
 double(n: int) -> int => n * 2
 ```
 

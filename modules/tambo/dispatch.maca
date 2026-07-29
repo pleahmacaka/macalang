@@ -43,15 +43,12 @@ dispatch(a: App, req: Request, handle) -> Response {
     after_hook(a, base, scrub(answer), handle)
 }
 
-// Every call into `handle` goes through here. The annotation is not decoration:
-// what a function value returns comes back boxed, and a declared return type is
-// what unboxes it. Without one, a field access on the result compiles to
-// nonsense.
-ask(ctx: Ctx, handle) -> Response {
-    out: Response = handle(ctx)
-
-    out
-}
+// Every call into `handle` goes through here, and it exists for the `->
+// Response`. What a function value returns arrives boxed, and a declared type
+// is what unboxes it; a caller that binds `handle(ctx)` straight into a local
+// gets an integer, and the field accesses on it compile to nonsense.
+ask(ctx: Ctx, handle) -> Response =>
+    handle(ctx)
 
 // The `before` hook, or `pass()` when the app declared none.
 before_hook(a: App, ctx: Ctx, handle) -> Response {

@@ -2,8 +2,8 @@
 
 This handbook is a directory of Markdown files. The HTML you are reading was
 produced by `apps/tomo/tomo.maca` — a static site generator written in Maca. It
-is the last chapter because it uses nearly everything in the book, and because a
-tool that builds its own documentation is a good final exercise.
+is here because it uses nearly everything in the book at once, and because a
+tool that builds its own documentation is the honest test of a language.
 
 *Tomo* is Spanish for a volume of a book, in the same Andean spirit as *maca*.
 
@@ -19,13 +19,22 @@ difference: **i18n is not a plugin.** It is the data model.
 title = "The Maca Handbook"
 languages = ["en", "ko"]
 chapters = [
+    "## Learning Maca|Maca 배우기",
+    "# Getting Started|시작하기",
     "00-introduction",
-    "01-getting-started",
+    "01-installing",
 ]
 ```
 
 `languages` is a list, and the first entry is the default. Chapters are named
 once, and resolved per language under `book/<lang>/`.
+
+An entry beginning with `#` is a heading rather than a page: `##` opens a
+volume, `#` a section inside it, and the label carries one title per language in
+the same order as `languages`. That is how this book is two books — a handbook
+and a reference — under one table of contents, one sidebar and one search index.
+Headings are labels, so they live in the config and leave the chapter directory
+holding only files a reader can open.
 
 ## The fallback, which is the point
 
@@ -105,17 +114,50 @@ render_fence(lines: str[], i: int, acc: str, fence: str) -> str {
     lang = fence.substr(3, fence.length() - 3).trim()
     html = pre(class=md_class("pre"),
                code(class=pre_code_class() ++ lang_class(lang),
-                    fence_body(lines, i + 1, stop)))
+                    highlight(lang, fence_body(lines, i + 1, stop))))
     render_lines(lines, stop + 1, acc ++ html ++ "\n")
 }
 ```
 
+## Highlighting is a hook, not a special case
+
+`render_fence` calls one function it knows nothing about:
+
+```maca
+highlight(lang: str, src: str) -> str
+```
+
+The fence's tag goes in, escaped HTML comes out. `apps/tomo/highlight.maca`
+answers it: a fence tagged `maca` gets a scanner that follows `crates/lexer`,
+the config and shell languages get a shallow generic one, and **a tag nothing
+highlights falls through to plain escaped text**. That last case is the one that
+decides whether the design is any good — an unlabelled block of program output
+must come out exactly as it went in, not mangled by rules written for some other
+language.
+
+Adding a language is a function and one arm of a dispatch, and the renderer does
+not change:
+
+```maca
+hl_ini(src: str) -> str => hl_words(src, ";", IniWords)
+```
+
+The Maca scanner earns its keep on the cases a regular expression gets wrong,
+which are the ones this book is made of: an attached `x?` against a spaced
+`c ? a : b`, a format spec `{x:>8}` against a ternary inside an interpolation,
+`data-tomo` against `a - b`. It follows the lexer rather than guessing, and the
+expression inside a `{…}` is scanned as code, because that is where a good half
+of the code in these pages lives.
+
 ## Markup, not string concatenation
 
-Every element Tomo emits is written with the element syntax from the previous
-chapter, and every style is a utility class the compiler turns into a rule.
-There is no template, and one line of hand-written CSS — the line that tells the
-browser the page has both a light and a dark palette.
+Every element Tomo emits is written with [the element syntax](a11-ui.md), and
+every style is a utility class the compiler turns into a rule.
+There is no template and there are two pieces of hand-written CSS: the line that
+tells the browser the page has both a light and a dark palette, and the syntax
+theme's ten colours. The second is written out because `text-…` takes a *named*
+colour — `text-[#cf222e]` is read as a font size — and the named palette holds
+one hue that stays legible on a light code block, which is not a syntax theme.
 
 Getting there needed the tag to be a value in three places, because a Markdown
 renderer chooses its tags from its input rather than from its source:

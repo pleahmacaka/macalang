@@ -16,7 +16,7 @@ operations introduce it:
 
 A function that uses any of them *is* async — no annotation, no color:
 
-```
+```maca
 fetch_both(a: str, b: str) -> str {
     fa = spawn get(a)          // both requests run concurrently
     fb = spawn get(b)
@@ -48,5 +48,38 @@ Effects are not only inferred — they are enforced where it matters. In *config
 mode* (the Nix target), async is impure, so `await`/`spawn`/`sleep_ms` are a
 compile error: infrastructure descriptions must be pure. The effect that is
 convenient in a program is a guardrail in config.
+
+## Run it
+
+```
+maca run examples/async.maca
+```
+
+Two jobs that each sleep 50ms, spawned together and awaited:
+
+```maca
+slow_double(n: int) -> int {
+    sleep_ms(50)
+    n * 2
+}
+
+main() -> int {
+    a = spawn slow_double(10)
+    b = spawn slow_double(20)
+    info("{await a + await b}")
+    0
+}
+```
+
+Wall time is about 50ms, not 100. Take the two `spawn`s out and call
+`slow_double` directly — same output, twice the wall time, and not one signature
+had to change.
+
+## Where the full answer is
+
+Async is one row of a five-row effect system, and the others are the reason
+config mode is safe. [Effects and Async](a7-effects.md) in the reference has all
+five, what introduces each, what `try` *removes*, the precedence of `await` and
+`spawn`, and what a suspension point becomes on each target.
 
 Next: one language for configuration.

@@ -16,7 +16,7 @@ A `"…"` string interpolates: any `{expr}` inside it is evaluated and spliced i
 That makes a brace special, so a **literal** brace is escaped — either by
 doubling it or with a backslash:
 
-```
+```maca
 info("n = {n}")        // interpolates n
 info("{{}}")           // prints {}
 info("\{\}")           // the same, spelled with escapes
@@ -29,7 +29,7 @@ interpolation the closing quote never ends, and the compiler says so.
 
 An interpolation can say how to render its value, after a `:`
 
-```
+```maca
 info("{pi:.2}")        // 3.14        — two decimal places
 info("{n:>8}")         // "      42"  — right-align in 8 columns
 info("{name:<8}")      // "ok      "  — left-align
@@ -47,7 +47,7 @@ A ternary inside an interpolation still works, because Maca writes a ternary
 *spaced* (`c ? x : y`) and a format spec *attached* (`x:>8`) — the same
 distinction that separates `x?` from `c ? x : y`:
 
-```
+```maca
 info("{score >= 60 ? "pass" : "fail"}")
 ```
 
@@ -55,7 +55,7 @@ A `"…"` string stays on one line — write `\n` for a newline. For text that
 really is multi-line, use a **raw** string, which spans lines and interpolates
 nothing, so braces inside it need no escaping:
 
-```
+```maca
 css = """
 body { margin: 0 }
 """
@@ -65,7 +65,7 @@ body { margin: 0 }
 
 A bare lowercase name binds a **mutable** variable:
 
-```
+```maca
 count = 0
 count = count + 1   // fine
 ```
@@ -73,7 +73,7 @@ count = count + 1   // fine
 A `const`, an `as const`, or a **Capitalized** name binds a **constant**.
 Reassigning it is a compile error:
 
-```
+```maca
 const Limit = 100
 Limit = 200         // error: cannot reassign a constant
 ```
@@ -84,7 +84,7 @@ There is no `let`. Introducing a name and updating it use the same `=`.
 
 A record groups named fields. Declaring the type and building a value:
 
-```
+```maca
 Point = {
     x: int
     y: int
@@ -99,7 +99,7 @@ q = p with { y = 5 }         // functional update — p is unchanged
 
 A sum type is one of several variants. `match` takes it apart:
 
-```
+```maca
 Shape = Circle | Square | Triangle
 
 sides(s: Shape) -> int =>
@@ -118,7 +118,7 @@ variant out and the compiler tells you.
 A list holds many values of one type. The stdlib methods are UFCS — you call
 them with `.`:
 
-```
+```maca
 xs = [10, 20, 30]
 info("first {xs.first()}, length {xs.length()}")
 doubled = xs.map(n => n * 2)          // [20, 40, 60]
@@ -133,4 +133,21 @@ own. When Maca meets something it cannot know — an unknown stdlib value, a
 foreign call — it falls back to a gradual `any` rather than rejecting your
 program, so interop stays smooth while your own code stays strict.
 
-Next up: functions and control flow in depth.
+## Run it
+
+```
+maca run examples/strings.maca
+```
+
+Every string method and every format spec above, in one program that prints what
+each produces. Change a spec and run it again — a format spec is the cheapest
+thing in the language to experiment with, because it desugars to a call you
+could have written yourself.
+
+## Where the full answer is
+
+[Syntax](a5-syntax.md) in the reference is every form the language has, in
+tables: declarations, expressions, statements, patterns, the string grammar, and
+the rule for when an expression continues onto the next line.
+
+Next: giving a group of values a name.

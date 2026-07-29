@@ -1,4 +1,4 @@
-# Writing Maca in Maca
+# The Self-Hosted Compiler
 
 A language that cannot compile itself is asking you to trust it further than its
 authors do. Maca is being bootstrapped, and this chapter explains the shape of
@@ -86,8 +86,9 @@ Expr = {
 
 In C that is a definition cycle — the array type needs the struct's size, the
 struct needs the array. The backend breaks it by forward-declaring the array
-struct before the record body and emitting its operations after. Chapter 5
-mentions this; it exists because the self-hosted AST needed it.
+struct before the record body and emitting its operations after.
+[Memory and Ownership](a8-memory.md) has the exact shape; it exists because the
+self-hosted AST needed it.
 
 ## Reading the source
 

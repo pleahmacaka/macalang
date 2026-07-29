@@ -62,8 +62,8 @@ sorted = ys.sort()
 ```
 
 That is worth internalising. `xs.push(9)` is not a statement that grows `xs`; it
-is an expression whose value is the longer list. Chapter 4 explains why writing
-it this way is not the performance mistake it looks like.
+is an expression whose value is the longer list. [Memory](04-memory.md)
+explains why writing it this way is not the performance mistake it looks like.
 
 `slice` takes a start and an **exclusive** end, so `xs.slice(1, 3)` is two
 elements:
@@ -97,7 +97,8 @@ is_even(n: int) -> bool => n % 2 == 0
 evens = [1, 2, 3, 4].filter(is_even)
 ```
 
-Chapter 11 covers what a function value actually is.
+[Functions and Control Flow](11-closures.md) covers what a function value
+actually is.
 
 ## Strings
 
@@ -163,3 +164,13 @@ info("{c == "e"}")      // true
 Because `length` counts bytes, a string with non-ASCII text has a length larger
 than its character count. Interpolation, concatenation and comparison are all
 byte-exact and safe; it is only indexing that needs care with multi-byte text.
+
+## Run it
+
+```
+maca run examples/collections.maca
+```
+
+Every list method above, applied and printed. The two tables in this chapter are
+the everyday subset; the complete method sets — which are *closed*, and checked
+— are in [The Standard Library](a3-stdlib.md).

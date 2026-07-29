@@ -1,7 +1,10 @@
-# 도구
+# 툴체인
 
 바이너리 하나, `maca`가 전부를 합니다. 따로 설치할 빌드 도구, 포매터 바이너리,
 패키지 매니저, 테스트 러너가 없습니다.
+
+모든 명령, 무엇이 캐시되는지, 그리고 다른 언어라면 서브커맨드였을 일을 하는
+저장소 안의 Maca 프로그램 둘.
 
 ## 명령들
 
@@ -131,4 +134,5 @@ maca profile FILE -o flame.svg
 `[rust-dependencies]` 테이블에 넣으면 Cargo로 전달됩니다.
 
 당신 코드에 대해서는 모듈 시스템이 매니페스트를 전혀 필요로 하지 않습니다.
-`maca build app/main.maca`가 import를 따라갑니다. 7장을 보세요.
+`maca build app/main.maca`가 import를 따라갑니다.
+[모듈과 레이아웃](a9-modules.md)을 보세요.

@@ -12,15 +12,20 @@
 //   r = span(r, "check", check_everything)
 //   t = finish(r)
 //
-// Recording computes nothing. `start` and `stop` append one mark each and the
-// tree is built once, inside `finish` — so measuring a region costs a list push
-// and a `now_ms`, not a walk of everything recorded so far.
+// Recording computes nothing: `start` and `stop` append one mark each, and the
+// tree is built once, inside `finish`. A region costs a `now_ms` and a list
+// push while it is being recorded — but a push copies the list, so the cost
+// does grow with the length of the recording. Measured: a thousand regions
+// record in 47ms, four thousand in 6.3s.
 //
-// The clock is `now_ms`, and a millisecond is therefore the smallest thing any
-// of this can see. A region that returns faster than that measures zero, and a
+// The clock is `now_ms` too, so a millisecond is the smallest thing any of
+// this can see. A region that returns faster than that measures zero, and a
 // program built out of such regions charts as a row of slivers over `0ms` —
-// which is not a broken profile, it is one saying the run is beneath its
-// resolution. Measure a loop of the work rather than one call of it.
+// not a broken profile, one saying the run is beneath its resolution.
+//
+// Both point the same way: measure the loop, not the iteration. A few hundred
+// regions is free and legible; one per iteration is neither, and the profile
+// would be mostly of itself.
 
 import profile/trace
 

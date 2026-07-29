@@ -141,3 +141,13 @@ Job = {
 
 Now a `Job` cannot be simultaneously done and failed, and cannot be done without
 a result — not by convention, but because there is no way to write it down.
+
+## Run it
+
+```
+maca run examples/tree.maca
+```
+
+A recursive sum type — a binary tree — built, summed and printed. Then try
+deleting one arm of a `match` in it and building again: the diagnostic names the
+variant you dropped, which is the entire reason to reach for a sum type.

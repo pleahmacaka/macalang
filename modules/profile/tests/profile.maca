@@ -392,6 +392,24 @@ test_events_sharing_a_millisecond_keep_their_nesting() {
     assert(evs.get(2).enter, "all three are enters")
 }
 
+// A trace whose spans are not in the order they opened — one assembled by
+// hand, or stitched together out of two files — is where the sort earns its
+// place. A recorded trace comes out of the walk already ordered and never
+// reaches it, which is the only reason `events` is affordable at all.
+test_events_the_walk_hands_over_out_of_order_are_sorted_by_time() {
+    jumbled = trace("jumbled", [
+        node("root", 0, 100, 0, -1),
+        node("late", 50, 60, 1, 0),
+        node("early", 10, 20, 1, 0),
+    ])
+    evs = events(jumbled)
+
+    assert_eq(str(evs.length()), "6", "three spans, two events each")
+    assert_eq(evs.get(1).name, "early", "the one that opened first, first")
+    assert_eq(evs.get(3).name, "late", "and the one that opened later, later")
+    assert_eq(str(gap_before(evs, 3)), "30", "twenty to fifty")
+}
+
 test_an_event_points_back_at_its_span() {
     evs = events(sample())
 

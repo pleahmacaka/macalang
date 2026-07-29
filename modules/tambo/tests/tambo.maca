@@ -36,9 +36,7 @@ Site = app()
     .route("GET", "/boom", "boom")
 
 handle(ctx: Ctx) -> Response {
-    name = ctx.name
-
-    match name {
+    match ctx.name {
         "home" => text("root")
         "show_user" => text("user " ++ param(ctx, "id"))
         "new_user" => text("new")
@@ -398,9 +396,7 @@ test_a_fallback_answers_instead_of_the_404() {
 }
 
 fallback_handle(ctx: Ctx) -> Response {
-    name = ctx.name
-
-    if name == "missing" {
+    if ctx.name == "missing" {
         text("no page " ++ ctx.path) with { status = 404 }
     } else {
         handle(ctx)
@@ -439,11 +435,9 @@ test_a_failed_handler_does_not_tell_the_caller_what_broke() {
 Guarded = Site.before("guard").after("stamp")
 
 guarded_handle(ctx: Ctx) -> Response {
-    name = ctx.name
-
-    if name == "guard" {
+    if ctx.name == "guard" {
         header(ctx, "x-key") == "open" ? pass() : status(403)
-    } else if name == "stamp" {
+    } else if ctx.name == "stamp" {
         with_header(ctx.reply, "X-Route: " ++ ctx.pattern)
     } else {
         handle(ctx)
@@ -499,9 +493,7 @@ test_an_after_hook_sees_the_scrubbed_5xx() {
 }
 
 error_page_handle(ctx: Ctx) -> Response {
-    name = ctx.name
-
-    if name == "show_error" && ctx.reply.status >= 500 {
+    if ctx.name == "show_error" && ctx.reply.status >= 500 {
         assert(!ctx.reply.body.contains("secret"),
                "the hook is handed the scrubbed body, not the note")
         text("we are looking into it") with { status = 500 }

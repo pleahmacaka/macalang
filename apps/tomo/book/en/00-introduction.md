@@ -37,26 +37,46 @@ You have written code before — the exact language does not matter. This handbo
 teaches Maca from the ground up: values, functions, its data model, the type
 system, effects, and the toolchain around it.
 
-## How to read it
+## It is two books
 
-Chapters build on each other, so front to back is the intended path.
+They serve two different readers, and trying to be one book served both badly.
 
-- **Chapters 1–3** get you running and cover the everyday language.
-- **Chapter 4** explains the memory model — read it once, then forget it.
-- **Chapters 5–8** are the data model: records, sum types, modules, collections.
-- **Chapters 9–12** are errors, the type system, closures and testing.
-- **Chapters 13–17** are what Maca does that other languages don't: colorblind
-  async, config mode, the targets, FFI, and the tooling.
-- **Chapters 18–20** build three real programs: a linter, the compiler itself,
-  and the generator that produced this book.
-- **The appendices** are reference: keywords, operators, the standard library,
-  and every diagnostic.
+**Learning Maca** is what you are in. It teaches: it moves in the order a
+learner needs rather than the order the compiler is built in, every chapter ends
+with something you can run, and it is meant to be finished in a sitting or two.
+It is deliberately incomplete. Where it stops short it says so and names the
+page that doesn't.
+
+**The Reference** answers. It assumes you know the language and is organised for
+lookup: the exact rule, the exact syntax, the exact diagnostic, the corner
+cases. The effect rows, the ownership rules, the import resolution order, the
+back-end differences and the full diagnostic list live there. Its prose is dense
+on purpose.
+
+Both are in the sidebar, and the search box searches both — a hit tells you
+which book it came from, because "Collections" in the handbook and "Collections"
+in the reference are different answers to different questions.
+
+## How to read Learning Maca
+
+Front to back. The chapters build on each other.
+
+- **Getting Started** installs the compiler and writes two programs.
+- **The Language** is the everyday language: values, records, sum types,
+  collections, errors, functions, modules, memory, tests.
+- **What Maca Does Differently** is a tour of the four things that are not like
+  other languages — colorblind async, config mode, the UI syntax, the targets.
+  Each is a short chapter with a door into the reference at the end.
+- **Build Something** writes a real tool end to end.
+
+If you already know the language, start at
+[Syntax](a5-syntax.md) instead.
 
 ## Everything here has been run
 
 The repository holds `examples/handbook.maca`: this book's claims, as one
-program the test suite executes. The reference appendices are checked against
-the compiler itself — the keyword list against the lexer, the diagnostics
+program the test suite executes. The reference is checked against the compiler
+itself — the keyword list against the lexer, the diagnostics
 against the checker, the method tables against a program that calls every name
 in them.
 

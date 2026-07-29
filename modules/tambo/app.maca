@@ -9,38 +9,37 @@
 //         .route("POST", "/user", "create_user")
 //         .fallback("not_found")
 //
-// Two things about that declaration are worth explaining before you read any
-// further, because both look like they should have gone the other way.
+// Two things in that declaration went the opposite way to the obvious one, and
+// both are worth reading before the rest of the file.
 //
-// **The third argument is the *name* of a handler, not the handler.** Maca has
-// no function values in record fields, so a table holding handlers could not
-// be a value at all. A table of names turns out to be the better shape anyway:
-// the program gets one `match` where every handler is named, in one place, and
-// the table can be printed, counted and checked as the data it is.
+// The third argument is the *name* of a handler, not the handler. Maca has no
+// function values in record fields, so a table holding handlers could not be a
+// value at all. A table of names turns out to be the better shape anyway: the
+// program gets one `match` where every handler is named, in one place, and the
+// table stays data — printable, countable, checkable.
 //
 //     handle(ctx: Ctx) -> Response {
-//         name = ctx.name
-//         match name {
+//         match ctx.name {
 //             "home" => text("hello")
 //             "show_user" => text(ctx.param("id"))
 //             _ => pass()
 //         }
 //     }
 //
-// What that costs is that a name and its arm can drift apart, and the compiler
-// cannot see it. `tambo/dispatch` buys it back at startup: `serve` asks
-// `handle` for every declared name before it binds a port, and refuses to
-// start, naming the ones with no arm. A missing arm is a mistake in the
-// program, so it is reported as one — never as a 404, which would send
-// whoever reads the log hunting a routing bug that is not there.
+// What that costs is that a name and its arm can drift apart with nothing to
+// catch it. `tambo/dispatch` buys it back at startup: `serve` asks `handle`
+// for every declared name before it binds a port, and refuses to start, naming
+// the ones with no arm. A missing arm is a mistake in the program, so it is
+// reported as one — never as a 404, which would send whoever reads the log
+// hunting a routing bug that is not there.
 //
-// **The method is an argument rather than the function name.** `.get(…)` is
-// what this wanted to be, and it cannot be. Maca has one namespace per compiled
-// program, and a top-level three-argument `get` captures every
-// `m.get(key, fallback)` in it — tambo's own included — so the build fails
-// inside a file the author never opened. `.on(…)` would have been the next
-// choice and `cli/parse` has it already, for a flag. So: one `route` for every
-// method, which costs a few characters and puts the method in the column
+// The method is an argument rather than the function name. `.get(…)` is what
+// this wanted to be, and it cannot be: a compiled Maca program has one
+// namespace, so a top-level three-argument `get` captures every
+// `m.get(key, fallback)` in it — tambo's own included — and the build fails
+// inside a file the author never opened. `.on(…)` was the next choice, and
+// `cli/parse` has that one already, for a flag. So `route` for every method,
+// which costs a few characters and puts the method in the column
 // `routes_table` prints it in.
 
 import { bind_path, more_specific } from tambo/route

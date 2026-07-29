@@ -1,0 +1,276 @@
+# The UI Syntax
+
+Every form the element syntax has, and every rule the stylesheet generator
+follows. Both are part of the language rather than a library, and both work on
+more than one target: the same markup becomes a live DOM when you build for the
+browser and a string of HTML when you build a native binary.
+
+The introduction is [Interfaces and Documents](15-ui.md). The page you are
+reading was produced by what is described here.
+
+## An element is a call
+
+Any HTML tag name can be called:
+
+```maca
+article(class="prose",
+    h1("Hello")
+    span("Some text"))
+```
+
+Named arguments are attributes; positional arguments are children. Children are
+separated by commas or by nothing at all — the second is what makes nested
+markup readable, and it is why the example above needs no punctuation between
+the heading and the paragraph.
+
+There is no closing tag to forget, no template language, and no separate file.
+An element is an ordinary expression, so it composes with everything else: you
+can build one in a function, put one in a list, return one from a `match`.
+
+```maca
+item(name: str) -> str => li(name)
+
+list_of(names: str[]) -> str =>
+    ul(names.map(item).join(""))
+```
+
+## Two targets, one syntax
+
+```
+maca build app.maca --target js -o out
+```
+
+builds a reactive page. Elements become `createElement` calls, `on:click=…`
+attaches a handler, and `bind:value=…` two-way binds a field. The playground
+that ships with this book is one `.maca` file compiled exactly this way.
+
+```
+maca build gen.maca -o gen
+```
+
+builds a native binary, and there the same elements render to **text**:
+
+```maca
+main() -> int {
+    info(article(class="prose", h1("Hi") span("Body")))
+    0
+}
+```
+
+```
+<article class="prose"><h1>Hi</h1><span>Body</span></article>
+```
+
+That is what a static site generator needs. An event handler has nowhere to
+attach in a string, so `on:click=` on the native target is a compile error that
+tells you to build for `js` — rather than markup that silently does nothing.
+
+Attribute values are escaped. Children are **not**, because a child is either
+another element (already markup) or text the program chose to put there. A
+generator that has escaped its own code block cannot have the renderer escape it
+a second time.
+
+## A definition wins over a tag
+
+`label`, `code`, `main`, `section`, `p`, `a`, `form` and `option` are HTML tags
+*and* names people give their own functions and variables. When a name is
+defined, the definition wins:
+
+```maca
+label(pos: bool) -> str => pos ? "right" : "left"
+
+main() -> int {
+    info(label(true))     // "right" — your function, not <label>
+    info(span("tag"))     // "<span>tag</span>" — nothing shadows `span`
+    0
+}
+```
+
+This is not a special case for a list of names; it is the ordinary scoping rule,
+applied before the tag is considered. A local binding shadows a tag the same way
+a function does.
+
+## Hyphens, and the rule that makes them work
+
+Documents are full of `data-*`, `aria-*`, `http-equiv`, `accept-charset`. You
+write them with the hyphen they have in HTML:
+
+```maca
+nav(data-tomo="toc", aria-label="Contents", body)
+```
+
+```
+<nav data-tomo="toc" aria-label="Contents">…</nav>
+```
+
+There is no rewriting here and no workaround, because an **attached** `-` is
+part of an identifier while a **spaced** one is the subtraction operator. Both
+readings live in the same argument list without ambiguity:
+
+```maca
+div(data-kind="note", span("{a - b}"))
+```
+
+You have met this rule twice already: `x?` propagates a failure while `c ? x : y`
+is a ternary, and `{n:>8}` is a format spec while `{c ? a : b}` is a ternary
+inside a string. Attached and spaced mean different things, deliberately, and
+whitespace is how you choose.
+
+## Two more an identifier alone cannot express
+
+**Booleans.** HTML reads *any* attribute value as true — `hidden="false"` still
+hides the element. So a bool controls whether the attribute exists at all:
+
+```maca
+details(open=true, summary("more") "text")   // <details open>…
+div(hidden=false, "seen")                    // <div>seen</div>
+div(hidden=n > 5, "computed")                // decided at run time
+```
+
+**Tags chosen at run time.** A document generator picks its tags from its input:
+a heading's depth chooses `h1`…`h6`, a table row chooses `th` or `td`. `element`
+takes the tag as a value:
+
+```maca
+heading(level: int, text: str) -> str =>
+    element("h" ++ level, id=slug(text), text)
+```
+
+It also reaches `<main>`, which no call can name, because every program defines
+`main` and the definition wins.
+
+## Styles are generated, not linked
+
+Classes are written in `class=` using Tailwind's utility names, and the compiler
+generates the stylesheet for the utilities your program actually mentions:
+
+```maca
+page() -> str =>
+    div(class="max-w-2xl mx-auto font-bold", "text")
+```
+
+`styles()` returns that stylesheet as a string:
+
+```maca
+head(
+    meta(charset="utf-8")
+    style(styles()))
+```
+
+```css
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0}
+.font-bold { font-weight:700; }
+.max-w-2xl { max-width:42rem; }
+.mx-auto { margin-left:auto;margin-right:auto; }
+```
+
+Two lines of reset, then one rule per utility written. A utility the program
+never mentions produces no rule — there is no framework to tree-shake, because
+nothing was included in the first place. There is also no network fetch, which
+is why a book built this way opens correctly straight off a disk.
+
+Classes are collected from anywhere in the module, not only from `class=` at the
+point of use, so factoring them into a function works:
+
+```maca
+button_class() -> str =>
+    "font-bold hover:bg-zinc-100 dark:bg-zinc-800 md:px-4"
+```
+
+The one place they are *not* collected is inside a raw `"""…"""` string. Markup
+written as a raw block is invisible to the collector, and its classes name rules
+that never get generated.
+
+## Variants
+
+A prefix before the utility narrows when it applies. State variants add a
+selector suffix:
+
+| variant | selector |
+|---|---|
+| `hover:` `focus:` `active:` | `:hover` `:focus` `:active` |
+| `first:` `last:` | `:first-child` `:last-child` |
+| `open:` | `[open]` — an open `<details>` |
+| `before:` `after:` `marker:` | the matching pseudo-element |
+| `placeholder:` | `::placeholder` |
+| `details-marker:` | `::-webkit-details-marker` |
+
+Condition variants wrap the rule in a media query:
+
+| variant | query |
+|---|---|
+| `dark:` | `prefers-color-scheme: dark` |
+| `sm:` `md:` `lg:` `xl:` | min-width 40 / 48 / 64 / 80rem |
+| `max-sm:` `max-md:` `max-lg:` | max-width 40 / 48 / 64rem |
+
+They combine, in any order and any number:
+
+```maca
+a(class="text-zinc-500 hover:text-black dark:hover:text-white max-md:hidden",
+  href="x.html", "link")
+```
+
+Generated rules are ordered so that a variant beats the plain utility it
+modifies. CSS breaks ties by source order, so `max-md:block` losing to `grid`
+would be a real bug rather than a cosmetic one, and the ordering is part of the
+generator rather than something you arrange by hand.
+
+## Arbitrary values
+
+When the scale does not have what you need, brackets take a literal value:
+
+```maca
+div(class="max-w-[42rem] text-[0.88em] mt-[3px]", body)
+```
+
+Underscores inside the brackets become spaces, since a class attribute cannot
+contain one:
+
+```maca
+div(class="grid-cols-[1fr_18rem]", body)
+```
+
+The generated selector is escaped, which matters more than it looks: `.max-w-[42rem]`
+is not a valid CSS selector, and a browser that meets one **drops the rule
+silently** — no console warning, no visible failure except that the style is
+missing.
+
+## Putting it together
+
+A page, complete, with no other files:
+
+```maca
+main() -> int {
+    write_file("index.html",
+        "<!doctype html>\n"
+        ++ html(lang="en",
+            head(
+                meta(charset="utf-8")
+                meta(name="viewport", content="width=device-width,initial-scale=1")
+                title("Notes")
+                style(styles()))
+            body(class="font-serif bg-white dark:bg-zinc-900",
+                element("main",
+                    h1(class="text-[2rem] font-bold", "Notes")
+                    span(class="my-4", "Written in Maca.")))))
+    0
+}
+```
+
+`maca run` it and you have a styled, self-contained, dark-mode-aware page.
+[Tomo](a16-tomo.md), the generator that built this book, is the same idea with a
+Markdown parser in front of it.
+
+## What each target does with an element
+
+| Target | An element becomes |
+|---|---|
+| native (C) | a `maca_concat` chain producing an HTML string; `maca_attr` escapes attribute values, children are not re-escaped, void elements self-close |
+| `js` | `createElement` calls and a reactive DOM; `on:` attaches a handler, `bind:` two-way binds a field |
+| `element(tag, …)` | the same on both, with voidness decided at run time in `maca_element` |
+| `open=true` | `maca_flag` — the attribute is present or absent, never `="false"` |
+
+`on:click=` on the native target is a compile error naming `--target js`, and
+that is the only place the two targets diverge in what they accept. See
+[Targets](a10-targets.md).

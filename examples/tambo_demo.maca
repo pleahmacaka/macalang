@@ -1,4 +1,5 @@
-// A small site on tambo: two pages, a JSON endpoint, a parameter, a wildcard.
+// A small site on tambo: a page, two JSON endpoints, a route with a parameter,
+// a wildcard route, and a handler that fails.
 //
 //     maca run examples/tambo_demo.maca         # print the table and answer
 //                                               # a few requests, no socket
@@ -8,8 +9,7 @@
 // every name in that table is answered, and nothing in between. Read the two
 // against each other — that is the whole program.
 
-import { app, route, before, after, fallback,
-         routes_table } from tambo/app
+import { app, route, before, after, fallback, routes_table } from tambo/app
 import { Ctx, param, query, wildcard } from tambo/ctx
 import { pass, broke, json_of, json_of_str } from tambo/reply
 import { dispatch, serve, missing_handlers } from tambo/dispatch
@@ -29,14 +29,11 @@ Site = app()
     .after("stamp")
     .fallback("missing")
 
-/// Every handler this site has, named once each.
-///
-/// A name in the table with no arm here is not a 404: `serve` refuses to start
-/// and says which name it could not find.
+// Every handler this site has, named once each. A name in the table above with
+// no arm here is not a 404: `serve` refuses to start and says which name it
+// could not find.
 handle(ctx: Ctx) -> Response {
-    name = ctx.name
-
-    match name {
+    match ctx.name {
         "log" => log_line(ctx)
         "stamp" => stamp(ctx)
         "home" => html(front_page())
@@ -71,12 +68,13 @@ stamp(ctx: Ctx) -> Response {
 }
 
 front_page() -> str =>
-    "<h1>tambo</h1>" ++ ul(
-        item("/hello/ada", "a route with a parameter"),
-        item("/api/time", "a JSON endpoint"),
-        item("/files/notes/today.txt", "a wildcard route"),
-        item("/boom", "a handler that fails"),
-        item("/nowhere", "the fallback"))
+    div(h1("tambo"),
+        ul(item("/hello/ada", "a route with a parameter"),
+           item("/api/time", "a JSON endpoint"),
+           item("/api/echo?say=hi", "a query string"),
+           item("/files/notes/today.txt", "a wildcard route"),
+           item("/boom", "a handler that fails"),
+           item("/nowhere", "the fallback")))
 
 item(href: str, what: str) -> str =>
     li(a(href=href, href), " — ", what)

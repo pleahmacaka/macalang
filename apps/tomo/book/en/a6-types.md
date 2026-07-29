@@ -1,8 +1,10 @@
 # The Type System
 
-Maca is statically typed and mostly inferred. You annotate function boundaries;
-everything inside follows. This chapter explains what the checker actually does,
-because knowing that turns its error messages from noise into information.
+What the checker does, precisely. Maca is statically typed and mostly inferred:
+you annotate function boundaries and everything inside follows.
+
+The teaching version of this is spread through
+[Learning Maca](03-common-concepts.md) — this chapter is the rule.
 
 ## Inference at the boundary
 
@@ -31,6 +33,13 @@ inc(x) => x + 1
 Both the parameter and the result are inferred here. Prefer writing them: a
 signature is documentation the compiler checks, and the error messages get much
 better when there is something to disagree with.
+
+A local may carry an annotation where inference has nothing to go on — an empty
+map has no value type until something is put in it:
+
+```maca
+counts: Map str int = map()
+```
 
 ## Generics without angle brackets
 
@@ -67,32 +76,21 @@ This is why Maca is called *gradually* typed: the strict core does real
 inference, and `any` is an escape hatch at the edges rather than a hole in the
 middle. Practically, it means calls into unknown territory do not produce a
 cascade of spurious errors — but also that a mistake in that territory is not
-caught. Method calls are one such place; see the end of chapter 8.
+caught.
+
+Method calls are one such place, and the exception is worth knowing. The method
+set of a `str` and of a `T[]` is **closed**, so a name outside it is a typo and
+is reported with a suggestion rather than surviving to the linker. An `any`
+receiver stays gradual, because that is how foreign code is reached. The two
+closed sets are listed in [The Standard Library](a3-stdlib.md), and a test
+compiles and runs every name in them.
 
 ## Effects
 
 A function's type is not only its arguments and result. The checker also tracks
-what a function *does* — its **effects**.
-
-Today there are two that matter:
-
-- **IO** — reading a file, printing, touching the outside world.
-- **ASYNC** — `await`, `spawn`, `sleep_ms`.
-
-Effects are inferred, never declared. There is no `async` keyword, no `IO` in a
-signature. A function that calls something asynchronous is asynchronous, and the
-compiler works that out.
-
-Effects earn their keep in **config mode** (chapter 14), where a `.maca` file
-describes infrastructure and compiles to Nix. Configuration must be pure, so an
-effect in config mode is an error:
-
-```
-EffectInConfig: `async` effect is not allowed in config mode
-```
-
-That check is the reason the same language can serve as both a programming
-language and a configuration language without being dangerous as the latter.
+what a function *does* — its **effects** — and effects are inferred, never
+declared. [Effects and Async](a7-effects.md) is the full account: the rows, what
+introduces each one, and where each is enforced.
 
 ## The diagnostics
 
@@ -120,6 +118,9 @@ mistake:
 x = c ? 1 : "two"
 // TypeMismatch: ternary branches disagree: expected int, found str
 ```
+
+Every message the six can produce, and what to do about each, is
+[Diagnostics](a4-diagnostics.md).
 
 ## Constants
 

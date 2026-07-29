@@ -5,14 +5,14 @@
 이름으로 참조한 최상위 함수는 값입니다 — 함수를 기대하는 자리에 그대로
 넘길 수 있습니다:
 
-```
+```maca
 is_even(n: int) -> bool => n % 2 == 0
 evens = [1, 2, 3, 4].filter(is_even)   // [2, 4]
 ```
 
 람다는 주변 스코프를 캡처합니다:
 
-```
+```maca
 step = 10
 bumped = [1, 2, 3].map(n => n + step)  // [11, 12, 13]
 ```
@@ -20,7 +20,7 @@ bumped = [1, 2, 3].map(n => n + step)  // [11, 12, 13]
 주석이 없는 파라미터가 본문에서 *호출*되면 함수로 추론되므로, 고차 함수 코드에
 특별한 문법이 필요 없습니다:
 
-```
+```maca
 run_twice(f, x) => f(f(x))
 run_twice(n => n + 1, 40)              // 42
 ```
@@ -29,7 +29,7 @@ run_twice(n => n + 1, 40)              // 42
 수 없는 시그니처에 맞춰야 할 때 필요합니다. Rust 타깃에서 외부 trait의 메서드가
 그런 경우입니다 — trait이 컴파일러가 읽지 않는 크레이트 안에 있으니까요.
 
-```
+```maca
 Counter : Render = {
     render = (self, window, cx) -> AnyElement =>
         div().child("Count: {self.count}").into_any_element()
@@ -41,7 +41,7 @@ Counter : Render = {
 
 람다 본문은 `match` 갈래와 마찬가지로 블록이 될 수 있습니다.
 
-```
+```maca
 classify = (n) -> str => {
     doubled = n * 2
     doubled > 10 ? "big" : "small"
@@ -56,13 +56,13 @@ classify = (n) -> str => {
 
 제어 흐름은 값을 만듭니다. `if`/`else`는 식입니다:
 
-```
+```maca
 label = if score >= 60 { "합격" } else { "불합격" }
 ```
 
 흔한 두 갈래 선택에는 공백을 띄운 삼항 연산자가 있습니다:
 
-```
+```maca
 label = score >= 60 ? "합격" : "불합격"
 ```
 
@@ -71,7 +71,7 @@ label = score >= 60 ? "합격" : "불합격"
 `match`가 주력입니다. 합타입, 리터럴, 리스트에 모두 동작하며 빠짐없이 다뤄야
 합니다:
 
-```
+```maca
 describe(xs: int[]) -> str =>
     match xs {
         []          => "비어 있음"
@@ -88,7 +88,7 @@ describe(xs: int[]) -> str =>
 
 `while`과 `for`는 문이며, `for`는 `..`로 정수 범위를 (양 끝 포함) 순회합니다:
 
-```
+```maca
 sum_to(n: int) -> int {
     total = 0
     for i in 1..n {          // 1, 2, …, n
@@ -107,8 +107,18 @@ sum_to(n: int) -> int {
 실패할 수 있는 호출은 호출 지점에 `?`를 붙여 표시합니다. 실패하면 곧바로
 반환하고, 성공하면 값을 꺼냅니다:
 
-```
+```maca
 config = read_file("app.toml")?      // 실패를 호출자에게 전파
 ```
 
-다음: 패턴 매칭 심화.
+## 실행해 보기
+
+```
+maca run examples/lambda.maca
+```
+
+리스트 메서드에 넘긴 람다, 값으로 쓴 이름 붙은 함수, 지역 변수를 캡처한 클로저.
+셋 다 같은 것 — 코드 포인터와 힙 환경 — 으로 컴파일되고, 그래서 호출 지점에서
+서로 바꿔 쓸 수 있습니다.
+
+다음: 함수를 파일 여러 개에 나누기.

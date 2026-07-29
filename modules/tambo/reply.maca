@@ -17,7 +17,7 @@ import { quote, object_of } from std/json
 ///
 /// From a `before` hook that means carry on to the route. From an `after` hook
 /// it means leave the response alone. From a route handler it means the arm is
-/// missing, and `tambo/run` reports it as the program bug it is.
+/// missing, and `tambo/dispatch` reports it as the program bug it is.
 ///
 /// One sentinel with one meaning — "not my request" — and the caller decides
 /// what that implies, which is why it can be the `_` arm of every dispatch.
@@ -38,8 +38,8 @@ passed(r: Response) -> bool =>
 /// server that exits because one request could not be answered has turned one
 /// caller's bad afternoon into everybody's.
 ///
-/// The scrubbing is not this function's doing — `run` applies it to every 5xx,
-/// however it was built. `broke` just gives the note somewhere to go.
+/// The scrubbing is not this function's doing — `dispatch` applies it to every
+/// 5xx, however it was built. `broke` just gives the note somewhere to go.
 broke(note: str) -> Response =>
     Response { status = 500, headers = [], body = note, close = true }
 

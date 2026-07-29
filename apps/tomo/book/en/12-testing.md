@@ -125,8 +125,10 @@ through the front door.
 ## The larger point: run your documentation
 
 The Maca repository holds a file called `examples/handbook.maca`. It contains
-every runnable claim this book makes — the record update from chapter 5, the
-format specs from chapter 3, the list patterns from chapter 6 — in one program,
+every runnable claim this book makes — the record update from
+[Records](05-records.md), the format specs from
+[Common Concepts](03-common-concepts.md), the list patterns from
+[Sum Types](06-sum-types.md) — in one program,
 and the test suite runs it and checks each line of its output.
 
 That file exists because writing this handbook broke things. Five compiler bugs

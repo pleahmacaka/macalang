@@ -1,0 +1,273 @@
+# UI 문법
+
+요소 문법이 가진 모든 형태와, 스타일시트 생성기가 따르는 모든 규칙. 둘 다
+라이브러리가 아니라 언어의 일부이고, 둘 다 하나의 타깃에만 묶여 있지 않습니다.
+같은 마크업이 브라우저용으로 빌드하면 살아 있는 DOM이 되고, 네이티브 바이너리로
+빌드하면 HTML 문자열이 됩니다.
+
+입문은 [인터페이스와 문서](15-ui.md)입니다. 지금 읽고 계신 이 페이지가 여기
+적힌 것으로 만들어졌습니다.
+
+## 요소는 호출이다
+
+HTML 태그 이름은 그대로 호출할 수 있습니다.
+
+```maca
+article(class="prose",
+    h1("안녕하세요")
+    span("본문"))
+```
+
+이름 있는 인자는 속성이 되고, 위치 인자는 자식이 됩니다. 자식은 쉼표로 나눠도
+되고 아무것도 쓰지 않아도 됩니다. 뒤쪽이 중첩된 마크업을 읽기 좋게 만들어 주는
+쪽이고, 위 예제에서 제목과 문단 사이에 아무 구두점이 없는 이유입니다.
+
+빠뜨릴 닫는 태그도, 템플릿 언어도, 별도 파일도 없습니다. 요소는 평범한
+표현식이므로 나머지 모든 것과 어울립니다. 함수 안에서 만들 수도, 리스트에 담을
+수도, `match`에서 반환할 수도 있습니다.
+
+```maca
+item(name: str) -> str => li(name)
+
+list_of(names: str[]) -> str =>
+    ul(names.map(item).join(""))
+```
+
+## 타깃은 둘, 문법은 하나
+
+```
+maca build app.maca --target js -o out
+```
+
+는 반응형 페이지를 만듭니다. 요소는 `createElement` 호출이 되고, `on:click=…`
+은 핸들러를 붙이며, `bind:value=…` 는 필드를 양방향으로 묶습니다. 이 책과 함께
+배포되는 플레이그라운드가 바로 이렇게 컴파일된 `.maca` 파일 하나입니다.
+
+```
+maca build gen.maca -o gen
+```
+
+는 네이티브 바이너리를 만들고, 거기서 같은 요소는 **텍스트**로 렌더링됩니다.
+
+```maca
+main() -> int {
+    info(article(class="prose", h1("Hi") span("Body")))
+    0
+}
+```
+
+```
+<article class="prose"><h1>Hi</h1><span>Body</span></article>
+```
+
+정적 사이트 생성기에 필요한 것이 정확히 이것입니다. 문자열에는 이벤트 핸들러가
+붙을 자리가 없으므로, 네이티브 타깃에서 `on:click=` 은 컴파일 오류가 되어
+`js` 로 빌드하라고 알려 줍니다. 조용히 아무 일도 하지 않는 마크업을 내놓는
+대신에요.
+
+속성 값은 이스케이프되고, 자식은 **되지 않습니다**. 자식은 이미 마크업인 다른
+요소이거나, 프로그램이 일부러 거기에 넣은 텍스트이기 때문입니다. 코드 블록을 직접
+이스케이프해 둔 생성기가 렌더러에게 한 번 더 이스케이프당할 수는 없습니다.
+
+## 정의가 태그를 이긴다
+
+`label`, `code`, `main`, `section`, `p`, `a`, `form`, `option` 은 HTML 태그
+*이면서* 사람들이 자기 함수와 변수에 붙이는 이름이기도 합니다. 그 이름이
+정의되어 있으면 정의가 이깁니다.
+
+```maca
+label(pos: bool) -> str => pos ? "오른쪽" : "왼쪽"
+
+main() -> int {
+    info(label(true))     // "오른쪽" — <label>이 아니라 여러분의 함수
+    info(span("tag"))     // "<span>tag</span>" — `span`을 가리는 것은 없음
+    0
+}
+```
+
+이것은 특정 이름 목록을 위한 예외가 아니라, 태그를 따지기 전에 적용되는 평범한
+스코프 규칙입니다. 지역 바인딩도 함수와 똑같이 태그를 가립니다.
+
+## 하이픈, 그리고 그것을 가능하게 하는 규칙
+
+문서에는 `data-*`, `aria-*`, `http-equiv`, `accept-charset` 이 가득합니다.
+HTML에 있는 그대로, 하이픈을 써서 씁니다.
+
+```maca
+nav(data-tomo="toc", aria-label="목차", body)
+```
+
+```
+<nav data-tomo="toc" aria-label="목차">…</nav>
+```
+
+여기에 치환도 우회도 없습니다. **붙여 쓴** `-` 는 식별자의 일부이고, **띄어 쓴**
+`-` 는 뺄셈 연산자이기 때문입니다. 두 해석이 같은 인자 목록 안에 모호함 없이
+공존합니다.
+
+```maca
+div(data-kind="note", span("{a - b}"))
+```
+
+이 규칙은 이미 두 번 만났습니다. `x?` 는 실패를 전파하고 `c ? x : y` 는
+삼항이며, `{n:>8}` 은 포맷 스펙이고 `{c ? a : b}` 는 문자열 안의 삼항입니다.
+붙여 쓰기와 띄어 쓰기는 일부러 다른 뜻이고, 공백이 그 선택입니다.
+
+## 식별자만으로는 안 되는 두 가지
+
+**불리언.** HTML은 속성 값이 무엇이든 참으로 읽습니다. `hidden="false"` 도
+요소를 숨깁니다. 그래서 bool은 속성의 값이 아니라 속성의 **존재 여부**를
+결정합니다.
+
+```maca
+details(open=true, summary("더 보기") "내용")   // <details open>…
+div(hidden=false, "보임")                       // <div>보임</div>
+div(hidden=n > 5, "계산됨")                     // 실행 시점에 결정
+```
+
+**실행 시점에 정해지는 태그.** 문서 생성기는 입력을 보고 태그를 고릅니다. 제목의
+깊이가 `h1`…`h6` 을 고르고, 표의 행이 `th` 인지 `td` 인지를 고릅니다.
+`element` 는 태그를 값으로 받습니다.
+
+```maca
+heading(level: int, text: str) -> str =>
+    element("h" ++ level, id=slug(text), text)
+```
+
+어떤 호출로도 이름 붙일 수 없는 `<main>` 에도 이것으로 닿습니다. 모든 프로그램이
+`main` 을 정의하고, 정의가 이기기 때문입니다.
+
+## 스타일은 링크하는 것이 아니라 생성되는 것
+
+클래스는 Tailwind의 유틸리티 이름으로 `class=` 에 쓰고, 컴파일러는 프로그램이
+실제로 언급한 유틸리티에 대한 스타일시트를 만들어 냅니다.
+
+```maca
+page() -> str =>
+    div(class="max-w-2xl mx-auto font-bold", "텍스트")
+```
+
+`styles()` 가 그 스타일시트를 문자열로 돌려줍니다.
+
+```maca
+head(
+    meta(charset="utf-8")
+    style(styles()))
+```
+
+```css
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0}
+.font-bold { font-weight:700; }
+.max-w-2xl { max-width:42rem; }
+.mx-auto { margin-left:auto;margin-right:auto; }
+```
+
+리셋 두 줄, 그다음 쓰인 유틸리티 하나당 규칙 하나입니다. 프로그램이 언급하지
+않은 유틸리티는 규칙을 만들지 않습니다. 흔들어 떨어뜨릴 프레임워크가 없는데,
+애초에 아무것도 포함하지 않았기 때문입니다. 네트워크 요청도 없고, 그래서 이렇게
+만든 책은 디스크에서 바로 열어도 제대로 보입니다.
+
+클래스는 사용하는 자리의 `class=` 만이 아니라 모듈 어디에서든 수집되므로,
+함수로 빼내도 됩니다.
+
+```maca
+button_class() -> str =>
+    "font-bold hover:bg-zinc-100 dark:bg-zinc-800 md:px-4"
+```
+
+수집되지 *않는* 곳은 딱 하나, 원시 `"""…"""` 문자열 안입니다. 원시 블록으로 쓴
+마크업은 수집기에게 보이지 않고, 그 안의 클래스는 끝내 만들어지지 않는 규칙을
+가리키게 됩니다.
+
+## 변형
+
+유틸리티 앞에 붙는 접두사가 적용 조건을 좁힙니다. 상태 변형은 선택자에 접미사를
+붙입니다.
+
+| 변형 | 선택자 |
+|---|---|
+| `hover:` `focus:` `active:` | `:hover` `:focus` `:active` |
+| `first:` `last:` | `:first-child` `:last-child` |
+| `open:` | `[open]` — 열린 `<details>` |
+| `before:` `after:` `marker:` | 대응하는 의사 요소 |
+| `placeholder:` | `::placeholder` |
+| `details-marker:` | `::-webkit-details-marker` |
+
+조건 변형은 규칙을 미디어 쿼리로 감쌉니다.
+
+| 변형 | 쿼리 |
+|---|---|
+| `dark:` | `prefers-color-scheme: dark` |
+| `sm:` `md:` `lg:` `xl:` | 최소 너비 40 / 48 / 64 / 80rem |
+| `max-sm:` `max-md:` `max-lg:` | 최대 너비 40 / 48 / 64rem |
+
+순서와 개수에 상관없이 겹쳐 쓸 수 있습니다.
+
+```maca
+a(class="text-zinc-500 hover:text-black dark:hover:text-white max-md:hidden",
+  href="x.html", "링크")
+```
+
+생성된 규칙은 변형이 그것이 수식하는 맨 유틸리티를 이기도록 정렬됩니다. CSS는
+동점을 소스 순서로 가르기 때문에, `max-md:block` 이 `grid` 에 지는 것은 미관의
+문제가 아니라 진짜 버그입니다. 그래서 이 정렬은 손으로 맞추는 것이 아니라
+생성기의 일부입니다.
+
+## 임의 값
+
+스케일에 필요한 값이 없을 때는 대괄호에 값을 그대로 씁니다.
+
+```maca
+div(class="max-w-[42rem] text-[0.88em] mt-[3px]", body)
+```
+
+class 속성에는 공백을 넣을 수 없으므로, 대괄호 안의 밑줄은 공백이 됩니다.
+
+```maca
+div(class="grid-cols-[1fr_18rem]", body)
+```
+
+생성되는 선택자는 이스케이프됩니다. 보기보다 중요한 부분인데, `.max-w-[42rem]`
+는 유효한 CSS 선택자가 아니고, 이것을 만난 브라우저는 **아무 말 없이 규칙을
+버리기** 때문입니다. 콘솔 경고도 없고, 스타일이 빠진 것 말고는 눈에 띄는 실패도
+없습니다.
+
+## 한데 모으면
+
+다른 파일 없이, 페이지 하나를 온전히 만들어 봅시다.
+
+```maca
+main() -> int {
+    write_file("index.html",
+        "<!doctype html>\n"
+        ++ html(lang="ko",
+            head(
+                meta(charset="utf-8")
+                meta(name="viewport", content="width=device-width,initial-scale=1")
+                title("메모")
+                style(styles()))
+            body(class="font-serif bg-white dark:bg-zinc-900",
+                element("main",
+                    h1(class="text-[2rem] font-bold", "메모")
+                    span(class="my-4", "Maca로 썼습니다.")))))
+    0
+}
+```
+
+`maca run` 한 번이면 스타일이 입혀지고, 자체 완결적이며, 다크 모드를 아는
+페이지가 나옵니다. 이 책을 만든 생성기 [Tomo](a16-tomo.md)는 여기에 Markdown
+파서를 하나 얹은 것입니다.
+
+## 타깃별로 요소가 무엇이 되는가
+
+| 타깃 | 요소가 되는 것 |
+|---|---|
+| 네이티브 (C) | HTML 문자열을 만드는 `maca_concat` 체인. `maca_attr`가 속성 값을 이스케이프하고, 자식은 다시 이스케이프하지 않으며, void 요소는 스스로 닫힙니다 |
+| `js` | `createElement` 호출과 반응형 DOM. `on:`은 핸들러를 붙이고 `bind:`는 필드를 양방향으로 묶습니다 |
+| `element(tag, …)` | 양쪽에서 같고, void 여부는 실행 시점에 `maca_element`가 정합니다 |
+| `open=true` | `maca_flag` — 속성이 있거나 없거나이지 `="false"`는 절대 아닙니다 |
+
+네이티브 타깃의 `on:click=`은 `--target js`를 가리키는 컴파일 오류이고, 두
+타깃이 받아들이는 것이 갈리는 곳은 여기뿐입니다. [타깃](a10-targets.md)을
+보세요.

@@ -5,10 +5,12 @@ written in Maca (`tomo.maca`). It turns a tree of Markdown chapters into a stati
 HTML site. *Tomo* is Spanish for a book's *volume*, in the Andean spirit of
 `maca` itself.
 
-The point of difference from mdBook: **i18n is built in, not bolted on.** A book
-declares its languages up front; every page carries a language switcher, and a
-chapter that hasn't been translated yet falls back to the default language
-instead of 404-ing.
+Two points of difference from mdBook. **i18n is built in, not bolted on**: a
+book declares its languages up front, every page carries a language switcher,
+and a chapter that hasn't been translated yet falls back to the default language
+instead of 404-ing. And a chapter list can hold **more than one volume**: a `##`
+entry opens a book and a `#` entry a section inside it, so a handbook and a
+reference share one table of contents, one sidebar and one search index.
 
 ## What it does
 
@@ -48,15 +50,15 @@ previous/next chapter links. A chapter missing in a non-default language
 **falls back** to the default language's text rather than 404-ing.
 
 Running `tomo` from the repository root rebuilds this repository's handbook —
-27 chapters and appendices in each of `en` and `ko`, plus an index per language
-and one above them. The output lands in `apps/tomo/site/`, which is gitignored.
+34 chapters in each of `en` and `ko`, plus an index per language and one above
+them. The output lands in `apps/tomo/site/`, which is gitignored.
 
 ## Layout
 
 ```
 apps/tomo/
 ├── tomo.maca        # the renderer (Markdown -> HTML) + i18n page shell, in Maca
-├── book.toml        # book config: title, languages, chapter order
+├── book.toml        # book config: title, languages, volumes, chapter order
 └── book/
     ├── en/          # English chapters (the default language)
     └── ko/          # Korean chapters (i18n)
@@ -64,11 +66,21 @@ apps/tomo/
 
 ## The handbook
 
-`book/` holds **The Maca Handbook** — a book about the language itself, modelled
-on the structure of *The Rust Book* but written for Maca (records and sum types,
-colorblind async, config mode, the multi-target backends). It is the primary
-content Tomo renders, and doubles as the i18n showcase: every chapter exists in
-both `en/` and `ko/`.
+`book/` holds **The Maca Handbook**, which is two books over one chapter list.
+
+**Learning Maca** (`00-`…`18-`) teaches: it moves in the order a learner needs,
+every chapter ends with something runnable, and it is meant to be finished in a
+sitting or two. **The Reference** (`a1-`…`a16-`) answers: the exact rule, the
+exact syntax, the exact diagnostic. A teaching chapter with a stricter twin
+links to it by name, and the reference links back.
+
+The split is entirely in `book.toml` — the `##` volume entries and the order of
+the chapter list. Nothing in the renderer knows which book a page belongs to
+except the sidebar heading it sits under and the caption on its search-index
+entries.
+
+It is also the i18n showcase: every chapter exists in both `en/` and `ko/`, with
+the same headings in the same order.
 
 ## What it renders
 
@@ -79,7 +91,10 @@ Markdown → HTML, all of it written in Maca:
   same across a run of `>` lines
 - lists (ordered, unordered, one level of nesting) and tables — the reference
   appendices are mostly tables
-- fenced code with its language carried through to a `language-…` class
+- fenced code, syntax-highlighted by the language its fence names — Maca by a
+  scanner that follows the real lexer, the config and shell languages by a
+  generic one, and an unknown tag by nothing at all, which is the case that
+  keeps a block of program output intact
 - inline `**bold**`, `` `code` ``, and `[links](to.md)` rewritten to the page
   that was produced
 
@@ -91,11 +106,27 @@ and, around the text:
   titled from each chapter's own heading
 - translation fallback: a chapter that exists only in the default language is
   served in the reader's language shell rather than 404-ing
-- a sidebar with chapter-to-chapter navigation, and search that works from a
-  `file://` URL because the index ships as a `<script>` rather than a fetch
+- a sidebar with chapter-to-chapter navigation grouped by volume and section,
+  and search that works from a `file://` URL because the index ships as a
+  `<script>` rather than a fetch — each hit captioned with the volume it came
+  from, since two volumes may answer the same question differently
 - a stylesheet generated from the utility classes the program writes, so the
   built site needs no network and no CSS file
 
 The markup is built with Maca's element syntax and the styles are generated
-(handbook chapter 15), so there is exactly one line of hand-written CSS in the
-whole program.
+(handbook chapter 15). Two pieces of CSS are written by hand: the line that
+tells the browser the page has a light and a dark palette, and the syntax
+theme's colours in `highlight.maca` — `text-…` accepts a *named* colour only
+(`text-[#cf222e]` is read as a font size), and the named palette holds one hue
+that clears 4.5:1 on a light code block.
+
+## Layout of the program
+
+```
+apps/tomo/
+├── tomo.maca        # Markdown -> HTML, the i18n page shell, the book builder
+├── highlight.maca   # the syntax highlighter and its theme
+├── conf.maca        # the `book.toml` subset, shared with tools/build-site.maca
+└── tests/
+    └── highlight.maca   # `maca test apps/tomo/tests/highlight.maca`
+```

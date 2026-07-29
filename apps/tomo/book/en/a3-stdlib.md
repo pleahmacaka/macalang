@@ -1,4 +1,4 @@
-# Appendix C: The Standard Library
+# The Standard Library
 
 Most of Maca's "standard library" is compiler and runtime builtins rather than
 Maca source. That keeps it available on every target — the same `xs.map(f)`
@@ -182,7 +182,7 @@ without one; a program that wants it can format the epoch milliseconds itself.
 | `await fut` | wait for it, giving an `a` |
 | `sleep_ms(n)` | suspend |
 
-There is no `async` keyword. See chapter 13.
+There is no `async` keyword. See [Effects and Async](a7-effects.md).
 
 ## Markup
 
@@ -194,7 +194,7 @@ There is no `async` keyword. See chapter 13.
 | `element(tag, …)` | the same, with the tag as a value |
 | `styles()` | the CSS for the utility classes this module writes |
 
-See chapter 15.
+See [The UI Syntax](a11-ui.md).
 
 ## Errors
 
@@ -204,7 +204,7 @@ See chapter 15.
 | `x?` | propagate a failure to the caller |
 | `try e` | catch one |
 
-See chapter 9.
+See [Errors](09-errors.md).
 
 ## Assertions
 
@@ -217,7 +217,7 @@ See chapter 9.
 A failing assertion reports and keeps going. Aborting on the first one means
 fixing a suite takes as many runs as it has bugs; counting them means one run
 tells you everything. `failures()` is the number a test function returns, which
-is the same "0 or non-zero" contract as chapter 12.
+is the same "0 or non-zero" contract as [Testing](12-testing.md).
 
 ## Regular expressions
 

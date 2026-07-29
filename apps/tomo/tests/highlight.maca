@@ -1,0 +1,175 @@
+// Behaviour tests for `apps/tomo/highlight` — run with
+// `maca test apps/tomo/tests/highlight.maca`.
+//
+// Each case is one of the lexical distinctions the highlighter exists to get
+// right, written as the smallest source that can go wrong. What is asserted is
+// which span a piece of text lands in, never a whole HTML string: the theme is
+// free to change without this file being rewritten.
+//
+// The inputs are Maca source *inside* Maca source, so a brace meant for the
+// highlighter is written `\{` and a quote `\"`.
+
+import { highlight } from apps/tomo/highlight
+
+// The markup one class wraps `text` in, as a probe to search the output for.
+kw(text: str) -> str => "<span class=\"tok-kw\">{text}</span>"
+
+op(text: str) -> str => "<span class=\"tok-op\">{text}</span>"
+
+st(text: str) -> str => "<span class=\"tok-str\">{text}</span>"
+
+num(text: str) -> str => "<span class=\"tok-num\">{text}</span>"
+
+ip(text: str) -> str => "<span class=\"tok-interp\">{text}</span>"
+
+test_keywords_types_and_definitions() {
+    out = highlight("maca", "greet(n: int) -> str => \"hi\"\n")
+
+    assert(out.contains("<span class=\"tok-fn\">greet</span>"),
+           "the name at a definition site")
+    assert(out.contains("<span class=\"tok-ty\">int</span>"), "a primitive")
+    assert(out.contains(op("-&gt;")), "an arrow is one token: {out}")
+}
+
+// A call that opens a line is not a definition, and example bodies are full of
+// them.
+test_a_call_is_not_a_definition() {
+    out = highlight("maca", "info(\"x\")\n")
+
+    assert(!out.contains("tok-fn"), "info(...) is a call: {out}")
+}
+
+// The attached/spaced rule, which the whole language leans on, twice.
+test_attached_propagate_versus_spaced_ternary() {
+    prop = highlight("maca", "x = read()?\n")
+    tern = highlight("maca", "y = a ? b : c\n")
+
+    assert(prop.contains(kw("?")), "x? propagates: {prop}")
+    assert(tern.contains(op("?")), "c ? x : y is an operator: {tern}")
+    assert(!tern.contains(kw("?")), "a spaced ? is not a propagate")
+}
+
+test_format_spec_versus_ternary_in_an_interpolation() {
+    spec = highlight("maca", "s = \"\{n:>8\}\"\n")
+    tern = highlight("maca", "s = \"\{c ? a : b\}\"\n")
+
+    assert(spec.contains(ip(":&gt;8")), "a format spec: {spec}")
+    assert(tern.contains(op("?")) && tern.contains("tok-punct\">:"),
+           "a ternary inside a string: {tern}")
+}
+
+// An interpolated expression is code, and a string nested inside one is a
+// string again.
+test_interpolations_are_scanned_as_code() {
+    out = highlight("maca", "s = \"n=\{1 + 2\}\"\n")
+    nested = highlight("maca", "s = \"\{f(\"in\")\}\"\n")
+
+    assert(out.contains(ip("\{")) && out.contains(ip("\}")), "the delimiters")
+    assert(out.contains(num("1")) && out.contains(op("+")),
+           "the expression: {out}")
+    assert(nested.contains(st("&quot;in&quot;")), "nested: {nested}")
+}
+
+test_escaped_braces_stay_in_the_string() {
+    out = highlight("maca", "s = \"a\{\{b\"\n")
+
+    assert(!out.contains("tok-interp"), "a doubled brace is literal: {out}")
+}
+
+test_comments_and_doc_comments_differ() {
+    out = highlight("maca", "/// api\n// note\n")
+
+    assert(out.contains("<span class=\"tok-doc\">/// api</span>"), "doc")
+    assert(out.contains("<span class=\"tok-com\">// note</span>"), "plain")
+}
+
+// A `"""…"""` block is one string however many quotes and braces are in it.
+test_raw_strings_are_one_token() {
+    out = highlight("maca", "css() -> str => \"\"\"a\{b\}c\"\"\"\n")
+
+    assert(!out.contains("tok-interp"), "a raw block does not interpolate")
+    assert(out.contains("a\{b\}c"), "the body survives whole: {out}")
+}
+
+// The failure this is here to prevent: one unbalanced quote colouring the rest
+// of the file as a string.
+test_an_unterminated_string_ends_at_the_line() {
+    out = highlight("maca", "a = \"oops\nconst b = 1\n")
+
+    assert(out.contains(kw("const")), "the next line is still code: {out}")
+}
+
+test_hyphenated_identifier_versus_subtraction() {
+    attached = highlight("maca", "nav(data-tomo=\"toc\")\n")
+    spaced = highlight("maca", "n = a - b\n")
+
+    assert(attached.contains("data-tomo"), "one identifier")
+    assert(!attached.contains(op("-")), "no operator in it: {attached}")
+    assert(spaced.contains(op("-")), "a spaced - subtracts: {spaced}")
+}
+
+test_radix_literals_keep_their_separators() {
+    out = highlight("maca", "a = 0xFF_FF\nb = 1_000\nc = 1.5\n")
+
+    assert(out.contains(num("0xFF_FF")), "hex: {out}")
+    assert(out.contains(num("1_000")), "separators")
+    assert(out.contains(num("1.5")), "a float is one token")
+}
+
+// `/tmp` is a path where an operand is expected; `a / b` is a division.
+test_paths_only_where_an_operand_is_expected() {
+    path = highlight("maca", "p = /tmp/x\n")
+    div = highlight("maca", "q = a / b\n")
+
+    assert(path.contains(st("/tmp/x")), "a path literal: {path}")
+    assert(div.contains(op("/")), "a spaced slash divides: {div}")
+}
+
+test_everything_is_escaped() {
+    out = highlight("maca", "s = \"<b>&\"\n")
+
+    assert(out.contains("&lt;b&gt;&amp;"), "markup in a string: {out}")
+    assert(!out.contains("<b>"), "no raw tag reaches the page")
+}
+
+// The hook: a tag with no highlighter is escaped and otherwise left alone.
+test_an_unknown_tag_falls_through_to_plain_text() {
+    out = highlight("brainfuck", "+[-]<>\n")
+
+    assert_eq(out, "+[-]&lt;&gt;\n", "plain, escaped, unstyled")
+}
+
+test_the_generic_highlighter_reads_a_config_file() {
+    toml = highlight("toml", "# a book\ntitle = \"Maca\"\nport = 8080\n")
+
+    assert(toml.contains("<span class=\"tok-com\"># a book</span>"), "comment")
+    assert(toml.contains("<span class=\"tok-fn\">title</span>"), "the key")
+    assert(toml.contains(st("&quot;Maca&quot;")), "the value: {toml}")
+    assert(toml.contains(num("8080")), "a number")
+}
+
+test_a_shell_block_keeps_its_flags_whole() {
+    out = highlight("sh", "maca build app.maca --target js -o out\n")
+
+    assert(out.contains("--target"), "one flag, not two minus signs")
+    assert(!out.contains(op("-")), "no bare operator in a command: {out}")
+}
+
+// A URL is the commonest thing in an install chapter, and it is not an
+// assignment however much its `:` looks like one.
+test_a_url_is_not_a_key() {
+    out = highlight("sh", "curl -fsSL https://example.com/x.sh | bash\n")
+
+    assert(!out.contains("tok-fn"), "https: is not a key: {out}")
+    assert(!out.contains(op("/")), "a path separator is not division")
+}
+
+// A shell block that writes a whole program to a file is one string across
+// several lines; an apostrophe with no partner is not a string at all.
+test_a_generic_string_spans_lines_but_never_runs_away() {
+    both = highlight("sh", "echo 'a\nb' > f\n")
+    lone = highlight("sh", "echo it's fine\nmaca run f\n")
+
+    assert(both.contains(st("'a\nb'")), "one string, two lines: {both}")
+    assert(!lone.contains("tok-str"), "a lone quote stays text: {lone}")
+}

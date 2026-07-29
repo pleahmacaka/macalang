@@ -16,10 +16,23 @@ languages = ["en", "ko"]
 # book/<lang>/. A chapter missing in a non-default language falls back to the
 # default language's version.
 #
-# An entry starting with `#` is a section heading rather than a page. Its label
-# carries one title per language, `|`-separated in the same order as
-# `languages`; a language with no title of its own falls back to the first.
+# An entry starting with `#` is a heading rather than a page. `##` opens a
+# volume, `#` a section inside it. The label carries one title per language,
+# `|`-separated in the same order as `languages`; a language with no title of
+# its own falls back to the first.
+#
+# The handbook is two volumes with one table of contents. Learning Maca is read
+# front to back once; the Reference is opened at the page you need and answers
+# in one screen. A chapter belongs to exactly one of them, and the teaching
+# chapter that has a stricter twin links to it by name.
+#
+# Every chapter file name begins with a digit or `a` and contains a hyphen.
+# The digits are Learning Maca's reading order; the `a` series is the Reference,
+# which grew out of the appendices and kept their prefix so no published URL
+# had to move.
 chapters = [
+    "## Learning Maca|Maca 배우기",
+
     "# Getting Started|시작하기",
     "00-introduction",
     "01-installing",
@@ -28,14 +41,13 @@ chapters = [
 
     "# The Language|언어",
     "03-common-concepts",
-    "04-memory",
     "05-records",
     "06-sum-types",
-    "07-modules",
     "08-collections",
     "09-errors",
-    "10-types",
     "11-closures",
+    "07-modules",
+    "04-memory",
     "12-testing",
 
     "# What Maca Does Differently|Maca가 다르게 하는 것",
@@ -43,17 +55,33 @@ chapters = [
     "14-config-mode",
     "15-ui",
     "15-targets",
-    "16-ffi",
-    "17-tooling",
 
-    "# Real Programs|실제 프로그램",
+    "# Build Something|만들어 보기",
     "18-an-io-project",
-    "19-self-hosting",
-    "20-tomo",
 
-    "# Reference|레퍼런스",
+    "## The Reference|레퍼런스",
+
+    "# The Language in Detail|언어 상세",
+    "a5-syntax",
     "a1-keywords",
     "a2-operators",
+    "a6-types",
+    "a7-effects",
+    "a8-memory",
+    "a9-modules",
+
+    "# Targets and Interop|타깃과 상호운용",
+    "a10-targets",
+    "a11-ui",
+    "a12-config",
+    "a13-ffi",
+
+    "# The Toolchain and the Project|툴체인과 프로젝트",
+    "a14-tooling",
+    "a15-self-hosting",
+    "a16-tomo",
+
+    "# Tables|표",
     "a3-stdlib",
     "a4-diagnostics",
 ]

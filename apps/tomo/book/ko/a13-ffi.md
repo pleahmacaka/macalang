@@ -1,7 +1,10 @@
-# C와 Python 다루기
+# 외부 함수 인터페이스
 
 Maca는 C로 컴파일됩니다. 그러니 C ABI는 이 언어가 놓아야 할 다리가 아니라
 이미 딛고 선 땅입니다. FFI는 `import` 하나입니다.
+
+이 장이 그 전부입니다. 두 가지 형태, 타입 매핑, 선언 생성기, 그리고 이 중
+어느 것도 쓰지 말아야 할 때에 대한 솔직한 지침.
 
 ## C
 
@@ -57,7 +60,7 @@ maca bindgen /usr/include/sqlite3.h sqlite3.maca
 Maca 선언으로 바꿉니다. typedef, struct, union, 함수 포인터는 추측하지 않고
 건너뜁니다.
 
-```
+```maca
 sqlite3_libversion() -> str
 sqlite3_open(filename: str, ppDb: int) -> int
 sqlite3_column_double(sqlite3_stmt: int, iCol: int) -> float
@@ -90,5 +93,5 @@ Python 연동은 `python3-config`를 거치고, 모듈의 함수를 같은 방�
 Maca는 다른 언어를 호출하는 대신 다른 언어로 컴파일될 수도 있습니다.
 `--target rust`는 crates.io를 쓸 수 있는 Rust 소스를, `--target jvm`은 Java를,
 `--target js`는 JavaScript를 내보냅니다. 필요한 생태계가 그중 한 플랫폼에 있다면
-바인딩하는 것보다 그쪽을 타깃하는 편이 나은 경우가 많습니다. 타깃은 15장에서
-다룹니다.
+바인딩하는 것보다 그쪽을 타깃하는 편이 나은 경우가 많습니다.
+[타깃](a10-targets.md)이 여섯 개 전부를 다룹니다.

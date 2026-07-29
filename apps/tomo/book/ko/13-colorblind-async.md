@@ -16,7 +16,7 @@
 
 이 중 무엇이든 쓰는 함수는 그 자체로 async입니다 — 주석도, 색도 없습니다:
 
-```
+```maca
 fetch_both(a: str, b: str) -> str {
     fa = spawn get(a)          // 두 요청이 동시에 실행됨
     fb = spawn get(b)
@@ -48,5 +48,38 @@ fetch_both(a: str, b: str) -> str {
 에서 async는 순수하지 않으므로 `await`/`spawn`/`sleep_ms`는 컴파일 에러입니다:
 인프라 기술은 순수해야 합니다. 프로그램에서 편의였던 이펙트가 설정에서는
 가드레일이 됩니다.
+
+## 실행해 보기
+
+```
+maca run examples/async.maca
+```
+
+각각 50ms를 자는 작업 둘을 함께 spawn하고 await합니다.
+
+```maca
+slow_double(n: int) -> int {
+    sleep_ms(50)
+    n * 2
+}
+
+main() -> int {
+    a = spawn slow_double(10)
+    b = spawn slow_double(20)
+    info("{await a + await b}")
+    0
+}
+```
+
+벽시계 시간은 100ms가 아니라 50ms쯤입니다. `spawn` 둘을 빼고 `slow_double`을
+직접 호출해 보세요. 출력은 같고, 시간은 두 배이며, 시그니처는 하나도 바뀌지
+않습니다.
+
+## 전체 규칙은 어디에
+
+async는 다섯 줄짜리 이펙트 시스템의 한 행이고, 나머지 행들이 config 모드를
+안전하게 만드는 이유입니다. 레퍼런스의 [이펙트와 async](a7-effects.md)에 다섯
+행 전부, 각각을 도입하는 것, `try`가 *덜어내는* 것, `await`와 `spawn`의
+우선순위, 그리고 각 타깃에서 중단 지점이 무엇이 되는지가 있습니다.
 
 다음: 설정을 위한 하나의 언어.

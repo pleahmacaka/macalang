@@ -91,7 +91,8 @@ import js """…"""
 import css """…"""
 ```
 
-The first two link a real library — chapter 16 covers them. The last two embed
+The first two link a real library — [the FFI reference](a13-ffi.md) covers
+them. The last two embed
 raw text for the JavaScript backend, so a `.maca` user interface can carry its
 own host glue and stylesheet inline. They take a triple-quoted string, which
 spans lines and interpolates nothing, so CSS braces need no escaping.
@@ -118,3 +119,24 @@ This is a small language for programs that fit in a repository, and the module
 system is sized to match. If that changes, it will change in the direction of
 selective import — which already gives you the "explicit surface" benefit of
 `pub` without a keyword.
+
+## Run it
+
+Put the `geometry.maca` above in a directory, and beside it a `main.maca` with
+the `import geometry` version from the top of this chapter. Then:
+
+```
+maca run main.maca
+```
+
+One command, two files, no manifest. Now move `geometry.maca` into a
+`modules/` subdirectory and run the same command — it still resolves, because
+`modules/` is a search root.
+
+## Where the full answer is
+
+[Modules and Layout](a9-modules.md) in the reference is the resolution order in
+full: which directories are searched, in what sequence, where the walk stops,
+and why the "a file beside the program" rule comes last rather than first.
+
+Next: what happens to the memory all these values live in.

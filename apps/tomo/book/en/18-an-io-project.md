@@ -160,3 +160,27 @@ true and which the rule now uses. And a `"…"` string may no longer span a line
 so the mistake is a diagnostic instead of a silent miscompile.
 
 Building real tools in a young language is how the language gets finished.
+
+## That is Learning Maca
+
+You have the language: values, records, sum types, collections, errors,
+functions, modules, memory, tests, and a tour of the four things Maca does
+differently. It is enough to write real programs, and this chapter was one.
+
+What is left is the part a book cannot teach, only answer. **[The
+Reference](a5-syntax.md)** starts at the grammar and goes through the type
+system, the effect rows, the ownership rules, the module resolution order, every
+target and what each one refuses, the UI syntax in full, the toolchain, the
+standard library and every diagnostic.
+
+Three entrances worth knowing by name:
+
+- [Syntax](a5-syntax.md) — every form, in tables, including the line-break rule
+  that has one silent trap in it.
+- [The Standard Library](a3-stdlib.md) — every builtin and every method.
+- [Diagnostics](a4-diagnostics.md) — the message you are looking at right now,
+  and what to do about it.
+
+And two chapters about the project rather than the language: the
+[self-hosted compiler](a15-self-hosting.md), which is where new compiler work
+goes, and [Tomo](a16-tomo.md), which built the page you are reading.

@@ -72,27 +72,9 @@ an AST — all fine, all acyclic. A doubly-linked list where each node points ba
 at its parent will hold itself alive. In practice this is rarely a constraint;
 the compiler in `selfhost/` is a large program built entirely from trees.
 
-## What the compiler inserts
+## You can watch it happen
 
-Every heap block carries a count of how many owners it has. `maca_alloc` hands
-one back with a single owner; the compiler emits the calls that add and remove
-owners, and when the last one lets go the block goes on a free-list where the
-next request of that size picks it up.
-
-You never write those calls. The rule the compiler follows is worth knowing
-anyway, because it explains why memory behaves the way it does:
-
-**A local owns its buffer if it built it and cannot outlive its block.** A value
-bound from another name is an alias and owns nothing. A value that leaves — as
-the block's result, in an outer binding, inside a structure, as an argument —
-belongs to whoever it went to. Everything else is released when its block ends.
-
-Reading a value never counts as taking it, so a method call leaves ownership
-where it was: `xs.length()` and `xs.sort()` both leave `xs` owned by the block
-that built it. This matters, because a value you never look at is not worth
-building.
-
-The effect is visible from inside the program:
+The allocator keeps two counters, and a program can read them:
 
 ```maca
 build(n: int) -> int[] {
@@ -112,14 +94,17 @@ main() -> int {
 }
 ```
 
-Over 90% — the loop settles on one buffer and keeps handing it back and forth
-with the allocator, rather than asking for five hundred.
+Over 90%. The loop settles on one buffer and keeps handing it back and forth
+with the allocator rather than asking for five hundred — five hundred rebuilds
+of a two-hundred-element list, and almost no allocation.
 
-The analysis is deliberately lopsided. Missing an escape would free a buffer
-someone still holds; missing a *non*-escape only means holding memory a little
-longer than necessary. So when the compiler cannot tell, it keeps the value.
-That is why the whole test suite runs valgrind-clean: nothing live is ever
-released, and whatever a program is still holding when it exits is drained then.
+That is the whole argument for this design in one number, and it is a number
+your own program can print.
+
+The exact rule the compiler follows — which local owns what, when a value
+escapes, what a recursive type costs — is
+[Memory and Ownership](a8-memory.md) in the reference. You do not need it to
+write Maca. You need it the day something holds memory longer than you expected.
 
 ## Comparison at a glance
 

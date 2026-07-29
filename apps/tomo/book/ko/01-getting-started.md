@@ -3,7 +3,7 @@
 모든 Maca 프로그램은 `main`에서 시작하며, `main`은 `int` — 프로세스 종료 코드 —
 를 반환합니다. 전체는 이렇습니다:
 
-```
+```maca
 main() -> int {
     info("Hello, World")
     0
@@ -35,7 +35,7 @@ maca run hello.maca
 
 본문이 하나의 식인 함수는 중괄호를 생략하고 `=>`를 쓸 수 있습니다:
 
-```
+```maca
 double(n: int) -> int => n * 2
 ```
 

@@ -84,7 +84,8 @@ default, a message to a user who is going to try again.
 
 And where failure is an ordinary outcome rather than an exceptional one — a
 parse that may not match, a lookup that may miss — do not use `fail` at all. A
-sum type (chapter 6) says so in the type, and the compiler then makes every
+[sum type](06-sum-types.md) says so in the type, and the compiler then makes
+every
 caller deal with it:
 
 ```maca
@@ -93,3 +94,17 @@ Parsed = Found(int) | Missing(str)
 
 That is the distinction worth internalising. `fail` is for the case you did not
 plan for; a sum type is for the case you did.
+
+## Run it
+
+```
+maca run examples/catch.maca
+```
+
+A failure raised, caught with `try`, and execution continuing past it. Then take
+the `try` away and run it again: the same program now prints the message to
+standard error and exits `1`, with nothing written to arrange either.
+
+Failure is one row of the effect system, and `try` is the one operation that
+*removes* an effect rather than adding one —
+[Effects and Async](a7-effects.md) has the rest.

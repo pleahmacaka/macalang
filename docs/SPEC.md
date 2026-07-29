@@ -142,8 +142,11 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   compiled by this backend, carrying its styles and the WebAssembly-bridge
   runtime inline via `import css`/`import js` raw-string blocks.
 
-The standard library surface is appendix C of the handbook
-(`apps/tomo/book/en/a3-stdlib.md`), and the examples are `examples/*.maca`.
+The standard library surface is *The Standard Library* in the handbook's
+reference (`apps/tomo/book/en/a3-stdlib.md`), and the examples are
+`examples/*.maca`. The handbook is two volumes over one chapter list — *Learning
+Maca* (`00-`…`18-`) teaches, the *Reference* (`a1-`…`a16-`) answers — and
+`apps/tomo/book.toml` is the order they are read in.
 
 ## Status
 

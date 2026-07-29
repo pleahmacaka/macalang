@@ -1,6 +1,8 @@
-# Appendix D: Diagnostics
+# Diagnostics
 
 Every diagnostic the checker emits, what it means, and what to do about it.
+Six kinds, plus the failures that come from further down the pipeline and read
+differently.
 
 ## TypeMismatch
 
@@ -89,31 +91,43 @@ UndefinedName: `return`: Maca has no `return` — a function's last expression
 is its value
 ```
 
-See appendix A for the full list of those.
+See [Keywords](a1-keywords.md) for the full list of those.
 
 ## UnknownOption
 
-In config mode, an option that the option set doesn't define.
+In config mode, an assignment to an option **namespace** the compiler does not
+know.
 
 ```
-UnknownOption: unknown option `services.nginx.enabl`
+UnknownOption: unknown NixOS option namespace `servicez`
 ```
 
-Config mode checks names against the real option schema, so a typo in a NixOS
-option is caught at compile time rather than at deploy time.
+The roots it knows are the NixOS ones — `networking`, `services`, `system`,
+`users`, `environment`, `programs`, `boot`, `hardware`, `security`, `nix`,
+`fonts` and their siblings — plus any local binding in the file.
+
+Be precise about the reach, because it decides where you go looking when a
+deploy fails: the namespace is checked, the leaf is not. `servicez.nginx.enable`
+is caught here; `services.nginx.enabl` goes through to Nix, which rejects it at
+evaluation time with its own message. `maca dev` suppresses this diagnostic
+entirely, because `dev.*` is not a NixOS namespace at all.
 
 ## EffectInConfig
 
 An impure operation in config mode.
 
 ```
-EffectInConfig: `async` effect is not allowed in config mode
+EffectInConfig: config must be pure but this uses effect(s): async
 ```
 
+The message names every row it found, so a configuration that both prints and
+sleeps reports `io, async`.
+
 Configuration describes a desired state; it must not *do* anything. Reading a
-file, printing, `spawn`, `await` and `sleep_ms` are all rejected. This is the
-check that makes it safe for one language to be both a programming language and
-a configuration language.
+file, printing, the network, the process table, `fail`, `spawn`, `await` and
+`sleep_ms` are all rejected. This is the check that makes it safe for one
+language to be both a programming language and a configuration language. The
+rows themselves are [Effects and Async](a7-effects.md).
 
 ## Errors that are not diagnostics
 
@@ -133,8 +147,9 @@ lex (28, 28): string literal spans a line; write `\n`, or use a raw
 ```
 
 An event handler has nowhere to attach when elements render to a string
-(chapter 15), so the native target says so rather than emitting markup that
-silently does nothing. Each target refuses what it cannot honour, and for the
+([the UI syntax](a11-ui.md)), so the native target says so rather than emitting
+markup that silently does nothing. Each target refuses what it cannot honour,
+and for the
 same reason — the alternative is an error about generated code you never
 wrote:
 

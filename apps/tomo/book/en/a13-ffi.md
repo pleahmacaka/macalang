@@ -1,7 +1,10 @@
-# Talking to C and Python
+# Foreign Function Interface
 
 Maca compiles to C, which means the C ABI is not a bridge it has to build — it
 is the ground it already stands on. Foreign function interface is an `import`.
+
+This chapter is the whole of it: the two forms, the type mapping, the generator,
+and the honest guidance about when not to use any of it.
 
 ## C
 
@@ -60,7 +63,7 @@ splits on `;`, and turns each `RET NAME(PARAMS)` into a Maca declaration. It
 skips typedefs, structs, unions and function pointers rather than guessing at
 them.
 
-```
+```maca
 sqlite3_libversion() -> str
 sqlite3_open(filename: str, ppDb: int) -> int
 sqlite3_column_double(sqlite3_stmt: int, iCol: int) -> float
@@ -95,5 +98,5 @@ checked.
 Maca can also compile *to* other languages rather than calling into them:
 `--target rust` emits Rust source that can use crates.io, `--target jvm` emits
 Java, and `--target js` emits JavaScript. When the ecosystem you need is on one
-of those platforms, targeting it is often better than binding to it. Chapter 15
-covers the targets.
+of those platforms, targeting it is often better than binding to it.
+[Targets](a10-targets.md) covers all six.

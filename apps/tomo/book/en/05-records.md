@@ -47,7 +47,8 @@ updated at once, and the fields not mentioned come across unchanged:
 r = p with { x = 0, y = 0 }
 ```
 
-This is not necessarily a copy. Chapter 4 explains why: when nothing else is
+This is not necessarily a copy. [Memory](04-memory.md) explains why: when
+nothing else is
 holding `p`, the compiler is free to make `with` a store into the memory that was
 already there. Writing the functional version and getting the imperative
 performance is the whole design.
@@ -151,3 +152,14 @@ Reach for it when the shape is used once, in one place: a pair of values to
 return together, a row about to be rendered. When the shape appears more than
 twice, name it. A named type is what a diagnostic can talk about, and it gives
 the shape somewhere to grow a comment.
+
+## Run it
+
+```
+maca run examples/record_update.maca
+```
+
+`with` on a record, and the original left untouched afterwards. That second half
+is the claim worth watching: the update is a store into the same memory when
+nothing else holds the value, and a copy when something does, and the program
+cannot tell the difference.

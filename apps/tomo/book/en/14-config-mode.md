@@ -6,18 +6,35 @@ is type-checked code, not a stringly-typed YAML file.
 
 ## A configuration is a value
 
-```
-import options
+```maca
+import nixpkgs
 
-host = {
-    networking.hostName = "web-01"
-    services.nginx.enable = true
-    services.nginx.virtualHosts."example.com".root = "/srv/www"
+networking.hostName = "rigel"
+system.stateVersion = "24.11"
+
+system.packages = git, curl, htop, ripgrep
+
+services.openssh = {
+    passwordAuthentication = false
 }
 ```
 
-This is ordinary Maca — a record of settings. It compiles to a `.nix` expression
-that Nix evaluates to build the system.
+This is ordinary Maca — assignments, a bracketless comma list, a record. Build
+it with `--target nix` and you get a NixOS module:
+
+```
+maca build host.maca --target nix -o host.nix
+```
+
+```nix
+{ config, pkgs, lib, ... }:
+{
+  networking.hostName = "rigel";
+  system.stateVersion = "24.11";
+}
+```
+
+Nix evaluates that to build the system.
 
 ## What config mode forbids
 
@@ -25,23 +42,41 @@ Config mode is *pure*: a configuration describes state, it does not perform
 actions. So the effects that are fine in a program become errors here.
 
 - `await`/`spawn`/`sleep_ms` — async is impure → **compile error**.
-- Reaching for I/O, randomness, or the clock — impure → **compile error**.
+- Reaching for I/O, the network, or the process table — impure → **compile
+  error**.
 
-The compiler enforces this with the effect system from the previous chapter. You
-cannot accidentally smuggle a side effect into a machine definition.
-
-## Options are typed
-
-The options a target exposes (`services.nginx.enable`, and so on) are typed. Set
-one that doesn't exist, or give it the wrong type, and you get a clear diagnostic
-before anything reaches a host:
+The compiler enforces this with the effect system from
+[the previous chapter](13-colorblind-async.md):
 
 ```
-services.nginx.enabled = true   // error: unknown option (did you mean `enable`?)
+EffectInConfig: config must be pure but this uses effect(s): async
 ```
 
-`UnknownOption` and `EffectInConfig` are ordinary compile errors, caught at your
-desk rather than on the machine.
+You cannot accidentally smuggle a side effect into a machine definition.
+
+## Option names are checked
+
+The option namespaces a NixOS module may assign to are known to the compiler, so
+a whole namespace that doesn't exist is caught at your desk:
+
+```
+UnknownOption: unknown NixOS option namespace `servicez`
+```
+
+`UnknownOption` and `EffectInConfig` are ordinary compile errors, on the same
+footing as a type mismatch.
+
+## Try it
+
+The repository has a real one at `examples/system.maca`. Build it and read the
+Nix that comes out:
+
+```
+maca build examples/system.maca --target nix -o system.nix
+```
+
+Then add `delay = sleep_ms(10)` to a copy of it and build again. The error is
+the point of this chapter.
 
 ## Why share the language
 
@@ -50,4 +85,9 @@ tooling, and can share values. A port number defined once is the same constant
 your server binds and your firewall opens — no drift between "the app" and "the
 box it runs on".
 
-Next: the targets and the toolchain.
+## Where the full answer is
+
+[Config Mode](a12-config.md) in the reference has how the mode is selected, the
+full effect table, exactly how far the option check reaches (further than you
+would guess in one direction and less far in another), and `maca dev` — the
+same machinery pointed at a development shell instead of a host.

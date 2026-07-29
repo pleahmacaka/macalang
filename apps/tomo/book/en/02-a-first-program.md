@@ -116,7 +116,8 @@ show(ts: Tally[], i: int) -> int {
 
 `info` prints a line. The string is **interpolated**: `{expr}` is evaluated and
 spliced in. `{…:<8}` is a format spec — left-align in eight columns — so the
-counts line up. Chapter 3 covers the full spec grammar.
+counts line up. [The next chapter](03-common-concepts.md) covers the full spec
+grammar.
 
 `if` here is a statement whose value is discarded; the block's value is the `0`
 on the last line.
