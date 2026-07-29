@@ -16,6 +16,7 @@
 //! are left for the backend.
 
 use maca_parser::ast::*;
+use maca_parser::modules::import_target;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -77,37 +78,6 @@ fn canon(path: &Path) -> PathBuf {
 /// file named by the import's last segment next to the importer
 /// (`import selfhost/token` from `selfhost/main.maca` → `selfhost/token.maca`),
 /// and the whole dotted path from the working directory. Imports that name no
-/// local file (stdlib builtins, `nixpkgs`, foreign headers) resolve to `None`.
-pub fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> {
-    let last = segs.last()?;
-    let dir = importer.parent().unwrap_or_else(|| Path::new("."));
-    let joined = format!("{}.maca", segs.join("/"));
-    // The written path wins, from the importer's directory and then from the
-    // working directory — that is what reaches `std/list.maca` in the
-    // repository. The bare-sibling rule comes last on purpose: it is a
-    // convenience for `import selfhost/token` next to its siblings, and taking
-    // it first meant any `list.maca` beside a program silently shadowed
-    // `std/list` with no diagnostic at all.
-    for cand in [dir.join(&joined), PathBuf::from(&joined)] {
-        if cand.is_file() {
-            return Some(cand);
-        }
-    }
-    let by_sibling = dir.join(format!("{last}.maca"));
-    by_sibling.is_file().then_some(by_sibling)
-}
-
-/// The local module a single import statement names, if any.
-fn import_target(im: &Import, importer: &Path) -> Option<PathBuf> {
-    let segs = match im {
-        Import::Module(segs) => segs.clone(),
-        Import::Bare(name) => vec![name.clone()],
-        Import::Names { module, .. } => module.clone(),
-        _ => return None,
-    };
-    resolve_module_path(&segs, importer)
-}
-
 /// Depth-first post-order over local imports; parse each module once.
 fn collect(path: &Path, g: &mut Graph) -> Result<(), String> {
     let key = canon(path);

@@ -2,6 +2,11 @@
 //! located diagnostics, hover, completion, document symbols, and go-to-
 //! definition. The stdio JSON-RPC transport lives in `main.rs`.
 
+pub mod binding;
+pub mod workspace;
+
+pub use binding::{Binding, Scope};
+
 use maca_parser::ast::*;
 use maca_parser::parse;
 
@@ -208,12 +213,15 @@ fn code_word_spans(src: &str, name: &str) -> Vec<(usize, usize)> {
     out
 }
 
-/// Every reference to the symbol under the cursor — its definition and every
-/// use — as byte spans. Powers `textDocument/references` and, with a new name,
-/// `textDocument/rename`.
+/// Every reference to the binding under the cursor — its definition and every
+/// use — as byte spans. Powers `textDocument/references`, `documentHighlight`
+/// and, with a new name, `textDocument/rename`.
+///
+/// Scoped, not textual: see `binding`. A local's uses stop at the end of its
+/// function, and a field is never confused with a variable of the same name.
 pub fn references(src: &str, byte_offset: usize) -> Vec<(usize, usize)> {
-    match word_at(src, byte_offset) {
-        Some(word) => code_word_spans(src, &word),
+    match binding::resolve(src, byte_offset) {
+        Some(b) => binding::spans(src, &b),
         None => Vec::new(),
     }
 }

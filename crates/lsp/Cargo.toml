@@ -9,6 +9,7 @@ name = "maca-lsp"
 path = "src/main.rs"
 
 [dependencies]
+maca-lexer = { path = "../lexer" }
 maca-parser = { path = "../parser" }
 maca-core = { path = "../core" }
 serde_json = "1"

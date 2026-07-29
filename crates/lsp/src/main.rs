@@ -9,18 +9,22 @@
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
+use std::path::{Path, PathBuf};
 
 fn main() {
     let stdin = io::stdin();
     let stdout = io::stdout();
-    let mut server = Server {
-        docs: HashMap::new(),
-    };
+    let mut server = Server::default();
     server.run(&mut stdin.lock(), &mut stdout.lock());
 }
 
+#[derive(Default)]
 struct Server {
     docs: HashMap<String, String>, // uri → text
+    /// The folder the editor opened, from `initialize`. Renaming a top-level
+    /// name has to reach the modules that import it, and this is where they
+    /// are looked for.
+    root: Option<PathBuf>,
 }
 
 impl Server {
@@ -40,23 +44,35 @@ impl Server {
         let method = req.get("method")?.as_str()?;
         let id = req.get("id").cloned();
         match method {
-            "initialize" => Some(reply(
-                id,
-                json!({
-                    "capabilities": {
-                        "textDocumentSync": 1, // Full
-                        "hoverProvider": true,
-                        "completionProvider": { "triggerCharacters": ["."] },
-                        "documentSymbolProvider": true,
-                        "definitionProvider": true,
-                        "referencesProvider": true,
-                        "renameProvider": true,
-                        "signatureHelpProvider": { "triggerCharacters": ["(", ","] },
-                        "documentFormattingProvider": true
-                    },
-                    "serverInfo": { "name": "maca-lsp", "version": env!("CARGO_PKG_VERSION") }
-                }),
-            )),
+            "initialize" => {
+                self.root = req
+                    .pointer("/params/workspaceFolders/0/uri")
+                    .or_else(|| req.pointer("/params/rootUri"))
+                    .and_then(Value::as_str)
+                    .and_then(path_of);
+                Some(reply(
+                    id,
+                    json!({
+                        "capabilities": {
+                            "textDocumentSync": 1, // Full
+                            "hoverProvider": true,
+                            "completionProvider": { "triggerCharacters": ["."] },
+                            "documentSymbolProvider": true,
+                            "definitionProvider": true,
+                            "referencesProvider": true,
+                            "documentHighlightProvider": true,
+                            // `prepareSupport` lets the editor ask what the cursor
+                            // is on before it opens the rename box, so the box is
+                            // pre-filled with the name and refuses to open at all
+                            // on a keyword or a comment.
+                            "renameProvider": { "prepareProvider": true },
+                            "signatureHelpProvider": { "triggerCharacters": ["(", ","] },
+                            "documentFormattingProvider": true
+                        },
+                        "serverInfo": { "name": "maca-lsp", "version": env!("CARGO_PKG_VERSION") }
+                    }),
+                ))
+            }
             "textDocument/didOpen" => {
                 let td = req.pointer("/params/textDocument")?;
                 let uri = td.get("uri")?.as_str()?.to_string();
@@ -155,21 +171,70 @@ impl Server {
                     .collect();
                 Some(reply(id, json!(locs)))
             }
+            "textDocument/documentHighlight" => {
+                let text = self.doc_at(req)?;
+                let off = self.offset_at(req, &text)?;
+                // kind 1 = Text. The protocol also has Read and Write, which
+                // would need to know which occurrence is the binding site;
+                // `binding` knows the scope but not yet the direction.
+                let spans: Vec<Value> = maca_lsp::references(&text, off)
+                    .into_iter()
+                    .map(|(s, e)| json!({ "range": range(&text, s, e), "kind": 1 }))
+                    .collect();
+                Some(reply(id, json!(spans)))
+            }
+            "textDocument/prepareRename" => {
+                let text = self.doc_at(req)?;
+                let off = self.offset_at(req, &text)?;
+                match maca_lsp::binding::resolve(&text, off) {
+                    Some(b) => Some(reply(
+                        id,
+                        json!({
+                            "range": range(&text, b.at.0, b.at.1),
+                            "placeholder": b.name,
+                        }),
+                    )),
+                    // Null is the protocol's "nothing renameable here", which
+                    // is what stops the editor opening a rename box over a
+                    // keyword or a comment.
+                    None => Some(reply(id, Value::Null)),
+                }
+            }
             "textDocument/rename" => {
                 let text = self.doc_at(req)?;
                 let off = self.offset_at(req, &text)?;
                 let uri = req.pointer("/params/textDocument/uri")?.as_str()?;
                 let new_name = req.pointer("/params/newName")?.as_str()?;
-                // one edit per occurrence — comments and strings are excluded,
-                // so prose mentioning the name is never rewritten.
-                let edits: Vec<Value> = maca_lsp::references(&text, off)
-                    .into_iter()
-                    .map(|(s, e)| json!({ "range": range(&text, s, e), "newText": new_name }))
-                    .collect();
-                if edits.is_empty() {
+                let binding = maca_lsp::binding::resolve(&text, off)?;
+
+                // A top-level name is visible to every module that imports it,
+                // so the edit spans files: renaming only the open one leaves
+                // those callers naming something that no longer exists, and
+                // the editor reports success while the build breaks.
+                let mut changes = serde_json::Map::new();
+                match (self.root.as_deref(), path_of(uri)) {
+                    (Some(root), Some(file)) => {
+                        for (path, spans) in
+                            maca_lsp::workspace::rename_edits(root, &file, &text, &binding)
+                        {
+                            let src = if path == file {
+                                text.clone()
+                            } else {
+                                std::fs::read_to_string(&path).unwrap_or_default()
+                            };
+                            changes.insert(uri_of(&path), edits_in(&src, &spans, new_name));
+                        }
+                    }
+                    // No workspace: the open document is all there is.
+                    _ => {
+                        let spans = maca_lsp::binding::spans(&text, &binding);
+                        changes.insert(uri.to_string(), edits_in(&text, &spans, new_name));
+                    }
+                }
+                if changes.is_empty() {
                     return Some(reply(id, Value::Null));
                 }
-                Some(reply(id, json!({ "changes": { uri: edits } })))
+                Some(reply(id, json!({ "changes": changes })))
             }
             "textDocument/formatting" => {
                 let text = self.doc_at(req).unwrap_or_default();
@@ -243,6 +308,47 @@ fn reply(id: Option<Value>, result: Value) -> Value {
 }
 
 /// An LSP `Range` json for a `[start, end)` byte span into `text`.
+/// One `TextEdit` per span, all replacing with the same new name.
+fn edits_in(src: &str, spans: &[(usize, usize)], new_name: &str) -> Value {
+    json!(
+        spans
+            .iter()
+            .map(|(s, e)| json!({ "range": range(src, *s, *e), "newText": new_name }))
+            .collect::<Vec<_>>()
+    )
+}
+
+/// `file:///a/b` → `/a/b`. Percent-escapes are decoded because a path with a
+/// space arrives as `%20` and would otherwise name a file that isn't there.
+fn path_of(uri: &str) -> Option<PathBuf> {
+    let rest = uri.strip_prefix("file://")?;
+    let rest = rest.strip_prefix("localhost").unwrap_or(rest);
+    Some(PathBuf::from(percent_decode(rest)))
+}
+
+fn uri_of(path: &Path) -> String {
+    format!("file://{}", path.display())
+}
+
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && let Ok(byte) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+        {
+            out.push(byte as char);
+            i += 3;
+        } else {
+            out.push(b[i] as char);
+            i += 1;
+        }
+    }
+    out
+}
+
 fn range(text: &str, start: usize, end: usize) -> Value {
     let (sl, sc) = maca_lsp::offset_to_position(text, start);
     let (el, ec) = maca_lsp::offset_to_position(text, end);
@@ -304,9 +410,7 @@ mod tests {
 
     #[test]
     fn initialize_advertises_capabilities() {
-        let mut s = Server {
-            docs: HashMap::new(),
-        };
+        let mut s = Server::default();
         let mut out = Vec::new();
         let resp = s
             .handle(
@@ -324,9 +428,7 @@ mod tests {
 
     #[test]
     fn didopen_publishes_diagnostics_for_bad_code() {
-        let mut s = Server {
-            docs: HashMap::new(),
-        };
+        let mut s = Server::default();
         let mut out = Vec::new();
         // a type error: return type int, body is a string
         let src = "f() -> int => \"oops\"\n";
@@ -351,9 +453,7 @@ mod tests {
 
     #[test]
     fn hover_returns_a_signature() {
-        let mut s = Server {
-            docs: HashMap::new(),
-        };
+        let mut s = Server::default();
         let mut out = Vec::new();
         let src = "add(a: int, b: int) -> int => a + b\n";
         s.handle(
@@ -383,9 +483,7 @@ mod tests {
 
     #[test]
     fn diagnostics_point_at_the_offending_code() {
-        let mut s = Server {
-            docs: HashMap::new(),
-        };
+        let mut s = Server::default();
         let mut out = Vec::new();
         // `slugify` is undefined; the marker must land on line 1, not line 0.
         let src = "main() -> int {\n    x = slugify(1)\n    0\n}\n";
@@ -400,9 +498,7 @@ mod tests {
 
     #[test]
     fn document_symbols_lists_definitions() {
-        let mut s = Server {
-            docs: HashMap::new(),
-        };
+        let mut s = Server::default();
         let mut out = Vec::new();
         let src = "helper() -> int => 1\nPoint = {\n    x: int\n}\nmain() -> int => 0\n";
         open(&mut s, &mut out, "file:///t.maca", src);
@@ -428,9 +524,7 @@ mod tests {
 
     #[test]
     fn definition_jumps_to_the_defining_line() {
-        let mut s = Server {
-            docs: HashMap::new(),
-        };
+        let mut s = Server::default();
         let mut out = Vec::new();
         // `helper` is called on line 1 and defined on line 4.
         let src = "main() -> int {\n    helper()\n    0\n}\nhelper() -> int => 1\n";
@@ -450,9 +544,7 @@ mod tests {
 
     #[test]
     fn formatting_returns_a_full_document_edit() {
-        let mut s = Server {
-            docs: HashMap::new(),
-        };
+        let mut s = Server::default();
         let mut out = Vec::new();
         // messy spacing the canonical printer will normalize
         let src = "main( )   ->int=>0\n";
@@ -474,9 +566,7 @@ mod tests {
 
     #[test]
     fn config_completion_after_import() {
-        let mut s = Server {
-            docs: HashMap::new(),
-        };
+        let mut s = Server::default();
         let mut out = Vec::new();
         let src = "import nixpkgs\nsys";
         s.handle(

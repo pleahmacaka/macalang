@@ -93,6 +93,7 @@ name = "maca-lsp"
 version = "0.1.0"
 dependencies = [
  "maca-core",
+ "maca-lexer",
  "maca-parser",
  "serde_json",
 ]

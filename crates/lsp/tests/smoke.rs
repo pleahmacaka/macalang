@@ -124,6 +124,78 @@ fn references_skip_comments_and_strings() {
     assert_eq!(refs.len(), 2, "comment/string occurrences leaked: {refs:?}");
 }
 
+/// The program that showed what the old whole-word search did. Renaming the
+/// local `x` in `f` used to rewrite all seven `x`s — the field declaration,
+/// `g`'s parameter, `g`'s body, the literal's key, and the field access were
+/// all collateral, and only two of the seven were right.
+const SHADOWED: &str = "P = { x: int }\n\
+                        \n\
+                        f() -> int {\n\
+                        \x20   x = 1\n\
+                        \x20   x + 1\n\
+                        }\n\
+                        \n\
+                        g(x: int) -> int => x * 2\n\
+                        \n\
+                        h() -> int {\n\
+                        \x20   p = P { x = 9 }\n\
+                        \x20   p.x\n\
+                        }\n";
+
+fn refs_at(src: &str, needle: &str) -> Vec<(usize, usize)> {
+    maca_lsp::references(src, src.find(needle).expect("needle"))
+}
+
+#[test]
+fn a_local_is_scoped_to_its_function() {
+    let refs = refs_at(SHADOWED, "x = 1");
+    assert_eq!(refs.len(), 2, "expected only `f`'s two uses: {refs:?}");
+    // both inside `f`, which ends before `g` starts
+    let g = SHADOWED.find("g(x: int)").unwrap();
+    assert!(refs.iter().all(|(s, _)| *s < g), "escaped `f`: {refs:?}");
+}
+
+#[test]
+fn a_parameter_is_scoped_to_its_function() {
+    let refs = refs_at(SHADOWED, "x: int) -> int => x");
+    assert_eq!(
+        refs.len(),
+        2,
+        "expected `g`'s parameter and its use: {refs:?}"
+    );
+}
+
+/// A field is a different thing from a variable that happens to share its name.
+/// All three field positions belong together — the declaration, the literal's
+/// key, and the `.x` access — and none of the locals do.
+#[test]
+fn a_field_is_not_a_variable() {
+    let decl = refs_at(SHADOWED, "x: int }");
+    assert_eq!(decl.len(), 3, "declaration, key, access: {decl:?}");
+    assert_eq!(decl, refs_at(SHADOWED, "x = 9"), "from the literal's key");
+    // and none of them is one of the locals
+    let f_body = SHADOWED.find("x = 1").unwrap();
+    assert!(
+        decl.iter().all(|(s, _)| *s != f_body),
+        "a field rename reached a local: {decl:?}"
+    );
+}
+
+/// A `{` is a record or a block depending on the line, which is why the parser
+/// has a `no_brace` mode. Reading `f() -> int {` as a record made every `name =`
+/// in every function body a field key.
+#[test]
+fn a_function_body_is_not_a_record() {
+    let src = "Point = { x: int }\n\
+               at(n: int) -> Point => Point { x = n }\n\
+               go() -> int {\n\
+               \x20   count = 1\n\
+               \x20   count + 1\n\
+               }\n";
+    let refs = refs_at(src, "count = 1");
+    assert_eq!(refs.len(), 2, "`count` is a local, not a field: {refs:?}");
+}
+
 #[test]
 fn references_on_empty_position_is_empty() {
     let src = "main() -> int => 0\n";
