@@ -730,7 +730,8 @@ fn build_nix(src: &Path, out: &Path) -> Result<(), String> {
             .collect();
         return Err(format!("config errors:\n  {}", msgs.join("\n  ")));
     }
-    let nix = maca_backend_nix::emit(&parsed.module);
+    let nix = maca_backend_nix::emit_checked(&parsed.module)
+        .map_err(|probs| format!("unsupported in config mode:\n  {}", probs.join("\n  ")))?;
     std::fs::write(out, nix).map_err(|e| e.to_string())?;
     Ok(())
 }

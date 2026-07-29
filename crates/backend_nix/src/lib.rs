@@ -17,6 +17,29 @@ pub fn emit(m: &Module) -> String {
     emit_for_user(m, "alice")
 }
 
+thread_local! {
+    /// Constructs config mode cannot express. Nix accepts `null` as a value
+    /// everywhere, so an unlowered expression used to become a plausible option
+    /// setting instead of an error.
+    static PROBLEMS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn problem(msg: impl Into<String>) {
+    PROBLEMS.with(|p| p.borrow_mut().push(msg.into()));
+}
+
+/// Emit the NixOS module, or the list of constructs config mode cannot express.
+pub fn emit_checked(m: &Module) -> Result<String, Vec<String>> {
+    PROBLEMS.with(|p| p.borrow_mut().clear());
+    let out = emit(m);
+    let problems = PROBLEMS.with(|p| p.borrow().clone());
+    if problems.is_empty() {
+        Ok(out)
+    } else {
+        Err(problems)
+    }
+}
+
 /// Config-mode → a **dev-environment flake** (`flake.nix`), replacing a
 /// hand-written flake. Reads `dev.*` bindings:
 ///   * `dev.name = "…"`        → shell description
@@ -423,7 +446,88 @@ fn value(e: &Expr) -> String {
                 format!("{{\n  {}\n}}", fs.join("\n  "))
             }
         }
-        _ => "null".into(),
+        Expr::Unary { op, expr } => match op {
+            UnOp::Neg => format!("(-{})", value(expr)),
+            UnOp::Not => format!("(!{})", value(expr)),
+        },
+        Expr::Binary { op, lhs, rhs } => binary(*op, lhs, rhs),
+        Expr::Ternary { cond, then, els } => format!(
+            "(if {} then {} else {})",
+            value(cond),
+            value(then),
+            value(els)
+        ),
+        Expr::Unit => "null".into(),
+        // `null` is a value Nix accepts everywhere, so an unlowered construct
+        // used to become a plausible option setting rather than an error.
+        other => {
+            problem(format!("{} is not a config value", describe(other)));
+            "null".into()
+        }
+    }
+}
+
+/// An operator in a config value. Nix has `+ - *` directly, integer division
+/// and truncating remainder through `builtins.div`, and no shifts at all.
+fn binary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
+    let (l, r) = (value(lhs), value(rhs));
+    let infix = |o: &str| format!("({l} {o} {r})");
+    match op {
+        BinOp::Add => infix("+"),
+        BinOp::Sub => infix("-"),
+        BinOp::Mul => infix("*"),
+        // Spelled out rather than `/`, which Nix reads as a path separator when
+        // it is not surrounded by whitespace.
+        BinOp::Div => format!("(builtins.div {l} {r})"),
+        // Nix has no modulo; `a - (a / b) * b` is it, and `builtins.div`
+        // truncates toward zero, so this is the same remainder Maca's `%` gives.
+        BinOp::Mod => format!("({l} - (builtins.div {l} {r}) * {r})"),
+        BinOp::Eq => infix("=="),
+        BinOp::Ne => infix("!="),
+        BinOp::Lt => infix("<"),
+        BinOp::Gt => infix(">"),
+        BinOp::Le => infix("<="),
+        BinOp::Ge => infix(">="),
+        BinOp::And => infix("&&"),
+        BinOp::Or => infix("||"),
+        // Nix `+` concatenates strings; `++` there is for lists.
+        BinOp::Concat => infix("+"),
+        BinOp::Shl | BinOp::Shr => {
+            problem(format!(
+                "`{}` has no equivalent in Nix — shift with multiplication or \
+                 division by a power of two",
+                if matches!(op, BinOp::Shl) { "<<" } else { ">>" }
+            ));
+            "null".into()
+        }
+        BinOp::Union => {
+            problem("a sum type is not a config value".to_string());
+            "null".into()
+        }
+        BinOp::Pipe => {
+            problem("`|>` is not lowered in config mode".to_string());
+            "null".into()
+        }
+    }
+}
+
+/// Name a construct the way the author wrote it, for a refusal message.
+fn describe(e: &Expr) -> &'static str {
+    match e {
+        Expr::Call { .. } => "a function call",
+        Expr::Lambda { .. } => "a closure",
+        Expr::Match { .. } => "`match`",
+        Expr::If { .. } => "`if` (config mode takes the `c ? a : b` form)",
+        Expr::Block(_) => "a block",
+        Expr::Index { .. } => "an index",
+        Expr::Range { .. } => "a range",
+        Expr::With { .. } => "a record update",
+        Expr::Assign { .. } => "an assignment",
+        Expr::Try(_) | Expr::Fail(_) | Expr::Reify(_) => "the error operators (`?`, `fail`)",
+        Expr::Await(_) | Expr::Spawn(_) => "`await`/`spawn` (config mode is pure)",
+        Expr::Ctor { .. } => "a sum value",
+        Expr::Path(_) => "a path expression",
+        _ => "this construct",
     }
 }
 
