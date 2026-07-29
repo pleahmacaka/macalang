@@ -716,8 +716,7 @@ fn detect_target(m: &maca_parser::Module) -> Option<(&'static str, &'static str)
 
 /// Config mode → a NixOS module. Checked in the pure `<>` config context.
 fn build_nix(src: &Path, out: &Path) -> Result<(), String> {
-    let source =
-        std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
         return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
@@ -1202,8 +1201,7 @@ fn build_rust_cargo(
 /// JVM target → Java source (and `javac` to `.class` when a JDK is present).
 /// The class name is the file stem, capitalized. `out` names the output dir.
 fn build_jvm(src: &Path, out: Option<&Path>, classpath: Option<&str>) -> Result<String, String> {
-    let source =
-        std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
         return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
@@ -1372,8 +1370,7 @@ fn cmd_dev(args: &[String]) {
 /// Embedded target → freestanding C + startup + linker script, cross-compiled
 /// to a bare-metal firmware image (ELF + raw .bin) with clang/lld.
 fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<String, String> {
-    let source =
-        std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
         return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
@@ -1481,8 +1478,7 @@ fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<Stri
 /// `wasm-b64`) before the app, so a browser playground ships as a single file
 /// with no external requests. `maca build --target js app.maca` → deploy it.
 fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
-    let source =
-        std::fs::read_to_string(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
         return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));

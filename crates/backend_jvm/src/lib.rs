@@ -205,6 +205,9 @@ impl Cx {
         start_scope(&f.params);
         let body = match &f.body {
             Some(FnBody::Block(stmts)) => jblock(stmts, false),
+            // The trailing `0` of `main() -> int => 0` is the exit code, not a
+            // statement, and Java rejects a bare value as one.
+            Some(FnBody::Expr(e)) if is_pure_value(e) => String::new(),
             Some(FnBody::Expr(e)) => format!("    {};\n", jexpr(e)),
             None => String::new(),
         };
