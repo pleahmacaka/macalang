@@ -1351,7 +1351,10 @@ impl<'a> Cx<'a> {
             .collect();
 
         if f.name == "main" {
-            self.push("int main(int argc, char** argv) {");
+            // `_maca_argc`/`_maca_argv` rather than the conventional names: a
+            // Maca `main(argv: str[])` would otherwise be shadowed by C's own
+            // parameter and fail to compile.
+            self.push("int main(int _maca_argc, char** _maca_argv) {");
             self.push("    maca_init();");
             // build args: str[]
             if let Some((pname, _)) = f.params.first().map(|p| (p.name.clone(), ())) {
@@ -1363,7 +1366,8 @@ impl<'a> Cx<'a> {
                     arr_name(&CTy::Str)
                 ));
                 self.push(&format!(
-                    "    for (int _i = 1; _i < argc; _i++) {}_push(&{pc}, argv[_i]);",
+                    "    for (int _i = 1; _i < _maca_argc; _i++) \
+                     {}_push(&{pc}, _maca_argv[_i]);",
                     arr_name(&CTy::Str)
                 ));
             }
@@ -1999,10 +2003,17 @@ impl<'a> Cx<'a> {
             // noreturn; the trailing `0` only keeps the expression well-typed.
             Expr::Fail(msg) => {
                 let (mc, _) = self.expr(env, msg, Some(&CTy::Str));
-                (
-                    format!("(maca_fail({mc}), 0)"),
-                    expected.cloned().unwrap_or(CTy::Unit),
-                )
+                let ty = expected.cloned().unwrap_or(CTy::Unit);
+                // `maca_fail` is noreturn, so the value after the comma is
+                // never produced — but C still type-checks the expression, and
+                // a bare `0` is the wrong type wherever the branch is a struct.
+                let zero = match &ty {
+                    CTy::Rec(_) | CTy::Sum(_) | CTy::Arr(_) | CTy::Map(_) => {
+                        format!("({}){{0}}", c_type(&ty))
+                    }
+                    _ => "0".into(),
+                };
+                (format!("(maca_fail({mc}), {zero})"), ty)
             }
             // `try e` / `reify e` — run `e` under a failure handler; the value is
             // the caught message (a `str`), or "" on success. setjmp must be
@@ -2493,6 +2504,12 @@ impl<'a> Cx<'a> {
                     | "modified_ms"
                     | "remove_file"
                     | "remove_dir"
+                    | "copy_bytes"
+                    | "exec"
+                    | "capture"
+                    | "env"
+                    | "cwd"
+                    | "chdir"
                     | "read_line"
                     | "at_eof"
                     | "read_stdin"
@@ -2934,6 +2951,23 @@ impl<'a> Cx<'a> {
                 "modified_ms" => return (format!("maca_modified_ms({})", a.join(", ")), CTy::Int),
                 "remove_file" => return (format!("maca_remove_file({})", a.join(", ")), CTy::Bool),
                 "remove_dir" => return (format!("maca_remove_dir({})", a.join(", ")), CTy::Bool),
+                "copy_bytes" => {
+                    return (format!("maca_copy_bytes({})", a.join(", ")), CTy::Bool);
+                }
+                // processes. `args` is a `str[]`, so the buffer and its length
+                // are unpacked at the call site the way `.split` results are.
+                "exec" | "capture" => {
+                    let (cmd, args) = (&a[0], &a[1]);
+                    let fn_name = format!("maca_{name}");
+                    let ret = if name == "exec" { CTy::Int } else { CTy::Str };
+                    return (
+                        format!("{fn_name}({cmd}, {args}.data, {args}.len)"),
+                        ret,
+                    );
+                }
+                "env" => return (format!("maca_env({})", a.join(", ")), CTy::Str),
+                "cwd" => return ("maca_cwd()".into(), CTy::Str),
+                "chdir" => return (format!("maca_chdir({})", a.join(", ")), CTy::Bool),
                 // stdin
                 "read_line" => return ("maca_read_line()".into(), CTy::Str),
                 "at_eof" => return ("maca_at_eof()".into(), CTy::Bool),

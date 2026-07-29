@@ -1,0 +1,27 @@
+// build — compile the wasm compiler and copy it into the npm package.
+//
+// Run before publishing or testing `packages/macalang`. `index.js` reads
+// `maca_wasm.wasm` from beside itself, so the package is only publishable once
+// this has put a current one there.
+//
+//   maca run packages/macalang/build.maca
+
+import std/proc
+import std/path
+
+Wasm = "target/wasm32-unknown-unknown/release/maca_wasm.wasm"
+Package = "packages/macalang"
+
+main() -> int {
+    run("cargo", ["build", "-p", "maca-wasm",
+                  "--target", "wasm32-unknown-unknown", "--release"])
+
+    dest = join(Package, "maca_wasm.wasm")
+
+    if !copy_bytes(Wasm, dest) {
+        fail "no wasm at {Wasm}"
+    }
+
+    info("copied maca_wasm.wasm ({file_size(dest)} bytes) into {Package}")
+    0
+}

@@ -1,10 +1,10 @@
 //! `std/` — the Maca-source standard library, executed.
 //!
 //! `std/` was a README describing builtins. It is now importable Maca: `text`,
-//! `list`, `path`, `json`, `csv`, `fs`. Each has a suite of `test_…` functions
-//! under `std/tests/`, and this runs them all through `maca test` — a library
-//! nothing runs is a claim rather than a fact, and the suites are written in
-//! the language they ship with, so they also gate the compiler.
+//! `list`, `path`, `json`, `csv`, `fs`, `proc`. Each has a suite of `test_…`
+//! functions under `std/tests/`, and this runs them all through `maca test` —
+//! a library nothing runs is a claim rather than a fact, and the suites are
+//! written in the language they ship with, so they also gate the compiler.
 //!
 //! The assertions live in the Maca; this file only reports the exit code,
 //! which `maca test` sets to the number of failed assertions.
@@ -81,4 +81,9 @@ fn csv_module() {
 #[test]
 fn fs_module() {
     suite("fs");
+}
+
+#[test]
+fn proc_module() {
+    suite("proc");
 }

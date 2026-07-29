@@ -63,6 +63,6 @@ const lib = loadFile("./mathx.maca");
 - The functional core lowers to JS (arithmetic, calls, ternary, `if`/`match`
   blocks, records, string interpolation, operator overloading). UI programs
   (`main() -> Element`) also emit `mount`/`build` for the DOM.
-- `maca_wasm.wasm` is built from this repo's `crates/wasm` by `build.sh`.
+- `maca_wasm.wasm` is built from this repo's `crates/wasm` by `build.maca`.
 - Node ≥ 18 or Bun. For Node, use the programmatic API (`loadFile`); the
   zero-config import plugin targets Bun.

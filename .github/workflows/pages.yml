@@ -65,8 +65,11 @@ jobs:
       # locally" could mean a different set of commands than CI ran — which is
       # exactly how this job broke: the root page's links changed and the
       # workflow's copy of the check kept grepping for the old ones.
+      #
+      # The script is a Maca program, built by the compiler it is publishing
+      # the documentation for.
       - name: Build and check the site
-        run: tools/build-site.sh _site
+        run: ./target/release/maca run tools/build-site.maca _site
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

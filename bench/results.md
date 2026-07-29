@@ -3,8 +3,8 @@
 Median execution time in **ms** (lower is better); `×N` is the slowdown
 vs C. Maca is `maca build` (Maca → C → `cc -O2`); C is `cc -O2`; Rust is
 `rustc -O`; Go is `go build`; JS is Node; Python is CPython 3. Every
-column computes the same verified result. Reproduce with `python3
-bench/run.py`.
+column computes the same verified result. Reproduce with
+`maca run bench/run.maca`.
 
 ### Recursion-bound (call overhead)
 
@@ -12,9 +12,9 @@ Tree/nested recursion — dominated by function-call cost.
 
 | kernel | params | Maca | C | Rust | Go | JS (node) | Python |
 |---|---|---|---|---|---|---|---|
-| fib | fib(40) | 201.7 (×1.0) | 202.0 (×1.0) | 302.1 (×1.5) | 577.9 (×2.9) | 1175.8 (×5.8) | 13378.2 (×66.2) |
-| tak | tak(32,16,8) | 70.2 (×1.0) | 70.6 (×1.0) | 79.7 (×1.1) | 96.2 (×1.4) | 201.9 (×2.9) | 2007.8 (×28.5) |
-| ackermann | ack(3,10) | 37.3 (×1.0) | 37.7 (×1.0) | 164.5 (×4.4) | 252.4 (×6.7) | 412.1 (×10.9) | 5336.0 (×141.6) |
+| fib | fib(40) | 168 (×1.0) | 172 (×1.0) | 257 (×1.5) | 488 (×2.8) | 994 (×5.8) | 11622 (×67.6) |
+| tak | tak(32,16,8) | 69 (×1.0) | 66 (×1.0) | 59 (×0.9) | 75 (×1.1) | 196 (×3.0) | 1735 (×26.3) |
+| ackermann | ack(3,10) | 18 (×0.9) | 21 (×1.0) | 35 (×1.7) | 70 (×3.3) | 234 (×11.1) | 4634 (×220.7) |
 
 ### Compute-bound (loops, arrays, float)
 
@@ -22,9 +22,9 @@ Tight loops over arrays and floating point — dominated by the inner loop.
 
 | kernel | params | Maca | C | Rust | Go | JS (node) | Python |
 |---|---|---|---|---|---|---|---|
-| sieve | primes ≤ 10⁷ | 338.0 (×5.0) | 67.6 (×1.0) | 67.7 (×1.0) | 69.8 (×1.0) | 118.2 (×1.7) | 547.5 (×8.1) |
-| mandel | 800×800, ≤1000 it | 605.2 (×1.0) | 605.0 (×1.0) | 584.8 (×1.0) | 602.4 (×1.0) | 663.8 (×1.1) | 16376.1 (×27.1) |
-| matmul | 400×400 int | 72.2 (×1.2) | 59.8 (×1.0) | 68.3 (×1.1) | 110.7 (×1.9) | 196.6 (×3.3) | 5512.4 (×92.2) |
+| sieve | primes ≤ 10⁷ | 259 (×2.7) | 97 (×1.0) | 105 (×1.1) | 101 (×1.0) | 199 (×2.1) | 505 (×5.2) |
+| mandel | 800×800, ≤1000 it | 408 (×1.0) | 393 (×1.0) | 400 (×1.0) | 419 (×1.1) | 463 (×1.2) | 13341 (×33.9) |
+| matmul | 400×400 int | 61 (×1.1) | 57 (×1.0) | 57 (×1.0) | 125 (×2.2) | 163 (×2.9) | 4788 (×84.0) |
 
 On recursion and float/loop work Maca lands right on C (it *is* C, at
 `-O2`). `sieve` is the one gap: Maca's only array type is 64-bit `int[]`,
@@ -32,4 +32,4 @@ so a sieve over 10⁷ touches ~80 MB where C's `char` array touches ~10 MB —
 it's memory-bound, not a codegen deficit (a compact byte array would close
 it).
 
-_Host: Linux x86_64, 6.18.5. Times are wall-clock medians including process startup._
+_Host: Linux 6.18.5 x86_64. Times are wall-clock medians including process startup._

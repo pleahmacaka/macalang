@@ -87,9 +87,12 @@ append_file(p: str, text: str) -> bool {
     write_file(p, existing ++ text)
 }
 
+// A byte-for-byte copy, not `write_file(to, read_file(from))` — that stops at
+// the first NUL, which turns copying a wasm module or an image into silently
+// truncating it.
 copy_file(from: str, to: str) -> bool {
     make_dir(dirname(to))
-    write_file(to, read_file(from))
+    copy_bytes(from, to)
 }
 
 // Copy a tree, preserving the layout under `to`.

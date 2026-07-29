@@ -1,0 +1,129 @@
+// build-site — build the published site (the handbook and the playground) and
+// check it, written in Maca.
+//
+// This exists so there is exactly one definition of "build the site", run both
+// by `.github/workflows/pages.yml` and by hand. When the workflow held its own
+// copy of these steps I verified them locally by retyping from memory, changed
+// the root page's links, and shipped a workflow that still grepped for the old
+// ones. Local and CI now run the same file or neither does.
+//
+//   maca run tools/build-site.maca [outdir]     # default: _site
+//
+// Assumes `maca` is already built at target/release/maca and the wasm compiler
+// at target/wasm32-unknown-unknown/release — the workflow builds both first,
+// and so should you.
+
+import std/proc
+import std/fs
+import std/path
+import std/list
+
+Maca = "target/release/maca"
+
+main(args: str[]) -> int {
+    out = if args.length() > 0 { args.get(0) } else { "_site" }
+
+    if !file_exists(Maca) {
+        err("no maca at {Maca} — cargo build --release -p maca-driver")
+        1
+    } else {
+        build_handbook()
+        build_playground()
+        assemble(out)
+        check(out)
+    }
+}
+
+// tomo.maca resolves `apps/tomo` relative to the working directory, so this
+// runs from the repository root.
+build_handbook() -> bool {
+    info("==> handbook")
+    run(Maca, ["run", "apps/tomo/tomo.maca"])
+}
+
+build_playground() -> bool {
+    info("==> playground")
+    run_in("playground", "../" ++ Maca,
+           ["build", "--target", "js", "playground.maca", "-o", "out"])
+}
+
+assemble(out: str) -> bool {
+    info("==> assembling {out}")
+    remove_dir(out)
+    make_dir(out)
+    copy_tree("apps/tomo/site", out)
+    copy_tree("playground/out", join(out, "play"))
+
+    // Jekyll would otherwise drop files and directories beginning with `_`.
+    write_file(join(out, ".nojekyll"), "")
+}
+
+// ---- checking -------------------------------------------------------------
+//
+// A site that built is not a site that works. Each of these is a way the build
+// has actually broken.
+
+check(out: str) -> int {
+    info("==> checking")
+
+    require_pages(out)
+    chapters = find(join(out, "en"), ".html").length()
+
+    if chapters < 20 {
+        fail "only {chapters} English pages"
+    }
+
+    require_root_links(out)
+    require_embedded_wasm(out)
+
+    info("site ok: {chapters} English pages, {tree_size(out) / 1024} KiB total")
+    0
+}
+
+// The pages a reader can reach directly, and the search index each language
+// needs. An empty file counts as missing — a failed render writes one.
+required_pages() -> str[] =>
+    ["index.html", "en/index.html", "ko/index.html",
+     "en/search-index.js", "ko/search-index.js", "play/index.html"]
+
+require_pages(out: str) -> bool =>
+    all_present(required_pages(), 0, out)
+
+all_present(pages: str[], i: int, out: str) -> bool {
+    if i >= pages.length() {
+        true
+    } else if file_size(join(out, pages.get(i))) <= 0 {
+        fail "missing or empty: {pages.get(i)}"
+    } else {
+        all_present(pages, i + 1, out)
+    }
+}
+
+// Every link the root page offers must resolve, and must name a file: a bare
+// `en/` directory only becomes index.html when a web server says so, and this
+// book is meant to open off disk too.
+require_root_links(out: str) -> bool {
+    root = read_file(join(out, "index.html"))
+
+    if !root.contains("href=\"en/index.html\"") {
+        fail "root page doesn't link en/index.html"
+    } else if !root.contains("href=\"ko/index.html\"") {
+        fail "root page doesn't link ko/index.html"
+    } else if !root.contains("href=\"play/\"") {
+        fail "root page doesn't link the playground"
+    } else {
+        true
+    }
+}
+
+// The playground carries the wasm compiler inline; without it the page is a
+// shell that loads and does nothing.
+require_embedded_wasm(out: str) -> bool {
+    size = file_size(join(out, "play/index.html"))
+
+    if size <= 200000 {
+        fail "playground is only {size} bytes — lost its embedded wasm?"
+    } else {
+        true
+    }
+}

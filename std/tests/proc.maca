@@ -1,0 +1,78 @@
+import std/proc
+
+test_exec_returns_the_exit_code() {
+    assert_eq(str(exec("true", [])), "0", "a program that succeeds")
+    assert_eq(str(exec("false", [])), "1", "a program that fails")
+}
+
+test_exec_reports_a_program_that_is_not_there() {
+    assert_eq(str(exec("maca-no-such-program", [])), "127", "not found")
+}
+
+test_capture_returns_stdout() {
+    assert_eq(capture("echo", ["hello"]), "hello\n", "the newline is kept")
+    assert_eq(output("echo", ["hello"]), "hello", "and `output` trims it")
+}
+
+// The whole reason not to build a command line as a string: a shell would read
+// this as two arguments.
+test_an_argument_holding_a_space_stays_one_argument() {
+    assert_eq(output("echo", ["-n", "a b"]), "a b", "one argument, one word")
+}
+
+// Likewise for the characters a shell would expand.
+test_an_argument_is_not_expanded() {
+    assert_eq(output("echo", ["-n", "$HOME"]), "$HOME", "no variable expansion")
+    assert_eq(output("echo", ["-n", "*"]), "*", "no globbing")
+}
+
+test_try_run_answers_rather_than_stopping() {
+    assert(try_run("true", []), "success")
+    assert(!try_run("false", []), "failure, without ending the program")
+}
+
+test_env_reads_the_environment() {
+    assert(env("PATH").length() > 0, "PATH is set")
+    assert_eq(env("MACA_TEST_NO_SUCH_VAR"), "", "an unset variable is empty")
+}
+
+test_env_or_falls_back() {
+    assert_eq(env_or("MACA_TEST_NO_SUCH_VAR", "dflt"), "dflt", "unset")
+    assert(env_or("PATH", "dflt") != "dflt", "set, so not the fallback")
+}
+
+test_cwd_and_chdir_move_and_come_back() {
+    here = cwd()
+
+    assert(chdir("/tmp"), "a directory that exists")
+    assert(cwd().ends_with("/tmp"), "the process moved")
+    assert(chdir(here), "and back again")
+    assert_eq(cwd(), here, "exactly where it started")
+}
+
+test_chdir_refuses_a_missing_directory() {
+    assert(!chdir("/tmp/maca-no-such-directory"), "nothing to change into")
+}
+
+test_run_in_restores_the_working_directory() {
+    here = cwd()
+
+    assert(run_in("/tmp", "true", []), "the command ran")
+    assert_eq(cwd(), here, "and the process is back where it was")
+}
+
+test_which_finds_a_program_on_path() {
+    found = which("sh")
+
+    assert(found.ends_with("/sh"), "an absolute path to it")
+    assert(file_exists(found), "that really is there")
+}
+
+test_which_answers_empty_for_a_program_that_is_not_there() {
+    assert_eq(which("maca-no-such-program"), "", "nothing found")
+}
+
+test_have_is_which_as_a_question() {
+    assert(have("sh"), "a program that exists")
+    assert(!have("maca-no-such-program"), "one that does not")
+}

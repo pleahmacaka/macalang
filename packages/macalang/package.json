@@ -16,7 +16,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bash ./build.sh",
+    "build": "../../target/release/maca run ./build.maca",
     "test": "node ./test.mjs"
   },
   "keywords": ["maca", "macalang", "compiler", "wasm", "language", "bun"],

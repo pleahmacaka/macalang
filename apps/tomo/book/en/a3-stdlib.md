@@ -111,9 +111,39 @@ language has no null to return.
 | `modified_ms(path)` | mtime in ms, or `-1` |
 | `remove_file(path)` | delete a file |
 | `remove_dir(path)` | delete a directory and its contents |
+| `copy_bytes(src, dst)` | byte-for-byte copy |
 
 A missing file's size is `-1` rather than `0`, so an empty file and an absent one
 are distinguishable without a second call.
+
+`copy_bytes` exists because `write_file(dst, read_file(src))` stops at the first
+NUL — fine for source, silently truncating for a wasm module or an image.
+
+## Processes
+
+| Function | Does |
+|---|---|
+| `exec(cmd, args)` | run it, wait, return the exit code |
+| `capture(cmd, args)` | run it, return its stdout |
+| `env(name)` | an environment variable, `""` when unset |
+| `cwd()` | the working directory |
+| `chdir(path)` | change it |
+
+There is no shell in between. `args` is a `str[]`, and each element is one
+argument however it is spelled:
+
+```maca
+exec("cp", ["my notes.txt", dest])   // one file, not two
+exec("echo", ["$HOME"])              // prints $HOME, does not expand it
+```
+
+That is the difference from a command string, and it is the whole reason these
+are builtins rather than a `system()` wrapper. `exec` searches `PATH` the way a
+shell would; a program that isn't there exits `127`.
+
+`std/proc` builds the usual conveniences on top: `run` (stop the program if the
+step fails), `try_run`, `run_in` (in a directory, and back again), `output`
+(captured and trimmed), `which`/`have`, `env_or`.
 
 ## Standard input
 

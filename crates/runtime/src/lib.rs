@@ -101,6 +101,7 @@ int64_t maca_modified_ms(maca_str path);              /* mtime in ms, or -1 */
 bool maca_remove_file(maca_str path);                 /* unlink; ok? */
 bool maca_remove_dir(maca_str path);                  /* recursive rmdir; ok? */
 bool maca_make_dir(maca_str path);                    /* mkdir -p; ok? */
+bool maca_copy_bytes(maca_str src, maca_str dst);     /* byte-for-byte copy; ok? */
 maca_str maca_read_line(void);                        /* one stdin line, no \n; "" at EOF */
 bool maca_at_eof(void);                               /* stdin exhausted? */
 maca_str maca_read_stdin(void);                       /* all of stdin */
@@ -108,6 +109,15 @@ int64_t maca_now_ms(void);                            /* ms since the Unix epoch
 maca_str maca_now_iso(void);                          /* UTC, "YYYY-MM-DDTHH:MM:SSZ" */
 maca_str maca_format_time(int64_t ms, maca_str fmt);  /* strftime over UTC */
 maca_str* maca_list_dir(maca_str path, int64_t* out_len); /* names, sorted; malloc'd */
+
+/* ---- processes ---- */
+/* Run `cmd` with `argv[0..n)` as its arguments, no shell in between: an
+   argument holding a space, a quote or a `$` is one argument, not three. */
+int64_t maca_exec(maca_str cmd, maca_str* argv, int64_t n);    /* exit code, or -1 */
+maca_str maca_capture(maca_str cmd, maca_str* argv, int64_t n); /* its stdout */
+maca_str maca_env(maca_str name);                     /* "" when unset */
+maca_str maca_cwd(void);                              /* the working directory */
+bool maca_chdir(maca_str path);                       /* change it; ok? */
 maca_str maca_pad_start(maca_str s, int64_t w, maca_str p); /* left-pad to width w */
 maca_str maca_pad_end(maca_str s, int64_t w, maca_str p);   /* right-pad to width w */
 maca_str maca_pad_center(maca_str s, int64_t w, maca_str p); /* centre within width w */
@@ -304,6 +314,7 @@ pub const RUNTIME_C: &str = r##"#define _GNU_SOURCE
 #include <unistd.h>
 #include <dirent.h>
 #include <time.h>
+#include <sys/wait.h>
 
 static void die(const char* msg) {
     fputs("maca runtime error: ", stderr);
@@ -630,6 +641,26 @@ bool maca_make_dir(maca_str path) {
     }
     return true;
 }
+/* A byte-for-byte copy. `read_file` + `write_file` would stop at the first NUL
+   — fine for source, silently truncating for a wasm module or an image. */
+bool maca_copy_bytes(maca_str src, maca_str dst) {
+    if (!src || !dst) return false;
+    FILE* in = fopen(src, "rb");
+    if (!in) return false;
+    FILE* out = fopen(dst, "wb");
+    if (!out) { fclose(in); return false; }
+    char buf[65536];
+    bool ok = true;
+    for (;;) {
+        size_t got = fread(buf, 1, sizeof buf, in);
+        if (got == 0) break;
+        if (fwrite(buf, 1, got, out) != got) { ok = false; break; }
+    }
+    if (ferror(in)) ok = false;
+    fclose(in);
+    return fclose(out) == 0 && ok;
+}
+
 maca_str* maca_list_dir(maca_str path, int64_t* out_len) {
     *out_len = 0;
     if (!path) return NULL;
@@ -661,6 +692,91 @@ maca_str* maca_list_dir(maca_str path, int64_t* out_len) {
     }
     *out_len = (int64_t)n;
     return names;
+}
+
+/* ---- processes ----------------------------------------------------------
+   `fork` + `execvp`, not `system`: no shell means no quoting rules, so a path
+   with a space in it is a path with a space in it. `execvp` still searches
+   PATH, which is the one shell behaviour a build script actually wants. */
+
+/* NULL-terminated argv, with argv[0] set to the program name as convention
+   requires. Freed by the child's exec, or by exit. */
+static char** maca_argv(maca_str cmd, maca_str* argv, int64_t n) {
+    if (n < 0) n = 0;
+    char** out = (char**)xmalloc((size_t)(n + 2) * sizeof(char*));
+    out[0] = (char*)cmd;
+    for (int64_t i = 0; i < n; i++) out[i + 1] = (char*)(argv[i] ? argv[i] : "");
+    out[n + 1] = NULL;
+    return out;
+}
+
+int64_t maca_exec(maca_str cmd, maca_str* argv, int64_t n) {
+    if (!cmd) return -1;
+    char** args = maca_argv(cmd, argv, n);
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+    if (pid == 0) {
+        execvp(cmd, args);
+        _exit(127);              /* exec failed: the shell's "not found" code */
+    }
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) return -1;
+    if (WIFEXITED(status)) return (int64_t)WEXITSTATUS(status);
+    if (WIFSIGNALED(status)) return (int64_t)(128 + WTERMSIG(status));
+    return -1;
+}
+
+/* The child's stdout, whole. Its stderr is left alone, so a build script's
+   diagnostics still reach the terminal while its output is captured. */
+maca_str maca_capture(maca_str cmd, maca_str* argv, int64_t n) {
+    if (!cmd) return "";
+    int fds[2];
+    if (pipe(fds) != 0) return "";
+    char** args = maca_argv(cmd, argv, n);
+    pid_t pid = fork();
+    if (pid < 0) { close(fds[0]); close(fds[1]); return ""; }
+    if (pid == 0) {
+        close(fds[0]);
+        dup2(fds[1], STDOUT_FILENO);
+        close(fds[1]);
+        execvp(cmd, args);
+        _exit(127);
+    }
+    close(fds[1]);
+    size_t cap = 4096, len = 0;
+    char* buf = (char*)xmalloc(cap);
+    for (;;) {
+        if (len + 1024 > cap) {
+            size_t bigger_cap = cap * 2;
+            char* bigger = (char*)xmalloc(bigger_cap);
+            memcpy(bigger, buf, len);
+            buf = bigger; cap = bigger_cap;
+        }
+        ssize_t got = read(fds[0], buf + len, cap - len - 1);
+        if (got <= 0) break;
+        len += (size_t)got;
+    }
+    close(fds[0]);
+    int status = 0;
+    waitpid(pid, &status, 0);
+    buf[len] = '\0';
+    return buf;
+}
+
+maca_str maca_env(maca_str name) {
+    if (!name) return "";
+    const char* v = getenv(name);
+    return v ? v : "";
+}
+
+maca_str maca_cwd(void) {
+    char* buf = (char*)xmalloc(4096);
+    if (!getcwd(buf, 4096)) return "";
+    return buf;
+}
+
+bool maca_chdir(maca_str path) {
+    return path && chdir(path) == 0;
 }
 
 maca_str maca_repeat(maca_str s, int64_t n) {

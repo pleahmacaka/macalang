@@ -77,7 +77,10 @@ jobs:
           node-version: 20
       # build the compiler wasm into the package, then exercise the JS API
       # (compile / loadModule / loadFile / toJS) so it can't silently break.
+      # The build step is a Maca program, so the compiler is built first.
+      - name: Build the compiler
+        run: cargo build --release -p maca-driver
       - name: Build wasm into the package
-        run: bash packages/macalang/build.sh
+        run: ./target/release/maca run packages/macalang/build.maca
       - name: Test the package
         run: node packages/macalang/test.mjs

@@ -165,8 +165,4 @@ show(e: Expr) -> str =>
 
 // Comma-join the rendered children from index `i` on.
 show_args(xs: Expr[], i: int) -> str =>
-    i >= xs.length()
-        ? ""
-        : i == xs.length() - 1
-            ? show(xs.get(i))
-            : "{show(xs.get(i))}, {show_args(xs, i + 1)}"
+    xs.slice(i, xs.length()).map(show).join(", ")

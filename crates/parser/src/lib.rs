@@ -128,6 +128,13 @@ pub fn is_backend_intrinsic(name: &str) -> bool {
                 | "modified_ms"
                 | "remove_file"
                 | "remove_dir"
+                | "copy_bytes"
+                // processes
+                | "exec"
+                | "capture"
+                | "env"
+                | "cwd"
+                | "chdir"
                 // stdin
                 | "read_line"
                 | "at_eof"

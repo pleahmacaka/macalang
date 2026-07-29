@@ -1,194 +1,38 @@
-{
-  "fib": {
-    "Maca": {
-      "ms": 201.72,
-      "output": "102334155",
-      "ok": true
-    },
-    "C": {
-      "ms": 201.992,
-      "output": "102334155",
-      "ok": true
-    },
-    "Rust": {
-      "ms": 302.076,
-      "output": "102334155",
-      "ok": true
-    },
-    "Go": {
-      "ms": 577.931,
-      "output": "102334155",
-      "ok": true
-    },
-    "JS (node)": {
-      "ms": 1175.773,
-      "output": "102334155",
-      "ok": true
-    },
-    "Python": {
-      "ms": 13378.164,
-      "output": "102334155",
-      "ok": true
-    }
-  },
-  "tak": {
-    "Maca": {
-      "ms": 70.164,
-      "output": "9",
-      "ok": true
-    },
-    "C": {
-      "ms": 70.555,
-      "output": "9",
-      "ok": true
-    },
-    "Rust": {
-      "ms": 79.683,
-      "output": "9",
-      "ok": true
-    },
-    "Go": {
-      "ms": 96.228,
-      "output": "9",
-      "ok": true
-    },
-    "JS (node)": {
-      "ms": 201.866,
-      "output": "9",
-      "ok": true
-    },
-    "Python": {
-      "ms": 2007.766,
-      "output": "9",
-      "ok": true
-    }
-  },
-  "ackermann": {
-    "Maca": {
-      "ms": 37.296,
-      "output": "8189",
-      "ok": true
-    },
-    "C": {
-      "ms": 37.683,
-      "output": "8189",
-      "ok": true
-    },
-    "Rust": {
-      "ms": 164.536,
-      "output": "8189",
-      "ok": true
-    },
-    "Go": {
-      "ms": 252.358,
-      "output": "8189",
-      "ok": true
-    },
-    "JS (node)": {
-      "ms": 412.051,
-      "output": "8189",
-      "ok": true
-    },
-    "Python": {
-      "ms": 5335.963,
-      "output": "8189",
-      "ok": true
-    }
-  },
-  "sieve": {
-    "Maca": {
-      "ms": 337.952,
-      "output": "664579",
-      "ok": true
-    },
-    "C": {
-      "ms": 67.614,
-      "output": "664579",
-      "ok": true
-    },
-    "Rust": {
-      "ms": 67.663,
-      "output": "664579",
-      "ok": true
-    },
-    "Go": {
-      "ms": 69.767,
-      "output": "664579",
-      "ok": true
-    },
-    "JS (node)": {
-      "ms": 118.243,
-      "output": "664579",
-      "ok": true
-    },
-    "Python": {
-      "ms": 547.549,
-      "output": "664579",
-      "ok": true
-    }
-  },
-  "mandel": {
-    "Maca": {
-      "ms": 605.17,
-      "output": "141554306",
-      "ok": true
-    },
-    "C": {
-      "ms": 604.955,
-      "output": "141554306",
-      "ok": true
-    },
-    "Rust": {
-      "ms": 584.807,
-      "output": "141554306",
-      "ok": true
-    },
-    "Go": {
-      "ms": 602.431,
-      "output": "141554306",
-      "ok": true
-    },
-    "JS (node)": {
-      "ms": 663.847,
-      "output": "141554306",
-      "ok": true
-    },
-    "Python": {
-      "ms": 16376.126,
-      "output": "141554306",
-      "ok": true
-    }
-  },
-  "matmul": {
-    "Maca": {
-      "ms": 72.219,
-      "output": "163198950",
-      "ok": true
-    },
-    "C": {
-      "ms": 59.778,
-      "output": "163198950",
-      "ok": true
-    },
-    "Rust": {
-      "ms": 68.337,
-      "output": "163198950",
-      "ok": true
-    },
-    "Go": {
-      "ms": 110.725,
-      "output": "163198950",
-      "ok": true
-    },
-    "JS (node)": {
-      "ms": 196.57,
-      "output": "163198950",
-      "ok": true
-    },
-    "Python": {
-      "ms": 5512.361,
-      "output": "163198950",
-      "ok": true
-    }
-  }
-}
+[
+  {"algo": "fib", "lang": "Maca", "ms": 168, "output": "102334155", "ok": true},
+  {"algo": "fib", "lang": "C", "ms": 172, "output": "102334155", "ok": true},
+  {"algo": "fib", "lang": "Rust", "ms": 257, "output": "102334155", "ok": true},
+  {"algo": "fib", "lang": "Go", "ms": 488, "output": "102334155", "ok": true},
+  {"algo": "fib", "lang": "JS (node)", "ms": 994, "output": "102334155", "ok": true},
+  {"algo": "fib", "lang": "Python", "ms": 11622, "output": "102334155", "ok": true},
+  {"algo": "tak", "lang": "Maca", "ms": 69, "output": "9", "ok": true},
+  {"algo": "tak", "lang": "C", "ms": 66, "output": "9", "ok": true},
+  {"algo": "tak", "lang": "Rust", "ms": 59, "output": "9", "ok": true},
+  {"algo": "tak", "lang": "Go", "ms": 75, "output": "9", "ok": true},
+  {"algo": "tak", "lang": "JS (node)", "ms": 196, "output": "9", "ok": true},
+  {"algo": "tak", "lang": "Python", "ms": 1735, "output": "9", "ok": true},
+  {"algo": "ackermann", "lang": "Maca", "ms": 18, "output": "8189", "ok": true},
+  {"algo": "ackermann", "lang": "C", "ms": 21, "output": "8189", "ok": true},
+  {"algo": "ackermann", "lang": "Rust", "ms": 35, "output": "8189", "ok": true},
+  {"algo": "ackermann", "lang": "Go", "ms": 70, "output": "8189", "ok": true},
+  {"algo": "ackermann", "lang": "JS (node)", "ms": 234, "output": "8189", "ok": true},
+  {"algo": "ackermann", "lang": "Python", "ms": 4634, "output": "8189", "ok": true},
+  {"algo": "sieve", "lang": "Maca", "ms": 259, "output": "664579", "ok": true},
+  {"algo": "sieve", "lang": "C", "ms": 97, "output": "664579", "ok": true},
+  {"algo": "sieve", "lang": "Rust", "ms": 105, "output": "664579", "ok": true},
+  {"algo": "sieve", "lang": "Go", "ms": 101, "output": "664579", "ok": true},
+  {"algo": "sieve", "lang": "JS (node)", "ms": 199, "output": "664579", "ok": true},
+  {"algo": "sieve", "lang": "Python", "ms": 505, "output": "664579", "ok": true},
+  {"algo": "mandel", "lang": "Maca", "ms": 408, "output": "141554306", "ok": true},
+  {"algo": "mandel", "lang": "C", "ms": 393, "output": "141554306", "ok": true},
+  {"algo": "mandel", "lang": "Rust", "ms": 400, "output": "141554306", "ok": true},
+  {"algo": "mandel", "lang": "Go", "ms": 419, "output": "141554306", "ok": true},
+  {"algo": "mandel", "lang": "JS (node)", "ms": 463, "output": "141554306", "ok": true},
+  {"algo": "mandel", "lang": "Python", "ms": 13341, "output": "141554306", "ok": true},
+  {"algo": "matmul", "lang": "Maca", "ms": 61, "output": "163198950", "ok": true},
+  {"algo": "matmul", "lang": "C", "ms": 57, "output": "163198950", "ok": true},
+  {"algo": "matmul", "lang": "Rust", "ms": 57, "output": "163198950", "ok": true},
+  {"algo": "matmul", "lang": "Go", "ms": 125, "output": "163198950", "ok": true},
+  {"algo": "matmul", "lang": "JS (node)", "ms": 163, "output": "163198950", "ok": true},
+  {"algo": "matmul", "lang": "Python", "ms": 4788, "output": "163198950", "ok": true}
+]

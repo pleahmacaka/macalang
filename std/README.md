@@ -19,6 +19,7 @@ of the language and, through `std/tests/`, part of what gates the compiler.
 | `std/json` | `quote`, `array_of_str`/`array_of_int`, `object_of`, `get`, `get_int`, `get_bool`, `items` |
 | `std/csv` | `field`, `row`, `document`, `parse`, `parse_row`, `column` — quoted fields, doubled quotes, embedded newlines |
 | `std/fs` | `walk`, `walk_dirs`, `find`, `read_lines`, `write_if_changed`, `append_file`, `copy_file`, `copy_tree`, `tree_size` |
+| `std/proc` | `run`, `try_run`, `run_in`, `output`, `which`/`have`, `env_or` — running other programs, with no shell in between |
 
 ```maca
 import std/path
@@ -39,7 +40,12 @@ The prelude, for reference:
 - **file I/O** — `read_file(path) -> str` (empty when unreadable),
   `write_file(path, text) -> bool`, `file_exists(path) -> bool`,
   `make_dir(path) -> bool` (`mkdir -p`), `list_dir(path) -> str[]` (entry names,
-  sorted so builds are reproducible).
+  sorted so builds are reproducible), `copy_bytes(src, dst) -> bool` (a binary
+  file survives it; `write_file(read_file(…))` stops at the first NUL).
+- **processes** — `exec(cmd, args) -> int` (the exit code), `capture(cmd, args)
+  -> str` (its stdout), `env(name) -> str`, `cwd() -> str`, `chdir(path) ->
+  bool`. `args` is a `str[]` and there is no shell in between, so an argument
+  holding a space is one argument.
 
 **String methods (UFCS on `str`):** `split`, `join`, `trim`, `upper`, `lower`,
 `contains`, `starts_with`, `ends_with`, `replace`, `substr`, `index_of`,
