@@ -113,7 +113,7 @@ Monaco(플레이그라운드)용과 TextMate용 구문 정의는 렉서의 실�
 
 ## 플레이그라운드
 
-`playground/playground.maca`는 브라우저 플레이그라운드입니다. 에디터, 실시간
+`apps/playground/playground.maca`는 브라우저 플레이그라운드입니다. 에디터, 실시간
 진단, 프로그램을 실행해 C와 JavaScript 출력을 보는 기능이 있습니다. JavaScript
 백엔드로 컴파일되는 Maca 파일 하나이고, 자기 호스트 글루와 스타일시트를 raw
 문자열로 인라인에 들고 다닙니다. 이 언어로 쓴 실제 프로그램의 예로 읽어볼 만합니다.

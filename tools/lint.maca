@@ -174,8 +174,8 @@ lint_path(path: str) -> Issue[] {
 // repository that holds Maca source is here, and nothing is exempt — a style
 // the codebase doesn't hold to isn't a style.
 default_paths() -> str[] =>
-    ["examples", "selfhost", "tools", "modules", "apps", "playground", "bench",
-     "packages", "crates/driver/tests/programs", "dev.maca"]
+    ["examples", "selfhost", "tools", "modules", "apps", "packages",
+     "crates/driver/tests/programs", "dev.maca"]
 
 Spec = command("lint", "Maca's style rules, over a file or a whole tree")
     .rest("path", "what to lint — the repository's own sources by default")

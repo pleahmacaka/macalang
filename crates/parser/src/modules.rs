@@ -184,6 +184,20 @@ pub fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> 
 }
 
 /// `<base>/<path>`, then each search root under `base`.
+///
+/// The written path comes first, and that has a cost worth knowing: a
+/// directory that shares a package's name shadows it, silently, with no
+/// diagnostic. The tree had exactly that shape — a top-level `bench/` beside
+/// `modules/bench/`, whose files the benchmark subsystem imports as `bench/…`
+/// — and it was closed by moving the directory, not by reordering here.
+///
+/// Reordering was tried and reverted. It does not fix the general case: the
+/// ancestor walk visits each directory in turn, so `apps/bench/report.maca`
+/// still answers for `bench/report` from anywhere under `apps/`, whatever the
+/// order within one directory. And it makes things worse elsewhere —
+/// `maca_modules` is a search root, so roots-first lets an installed
+/// dependency outrank the project's own source. Across the 229 imports in this
+/// repository the two orderings agree on every one.
 fn in_base(base: &Path, path: &str, layout: &Layout) -> Option<PathBuf> {
     module_file(&base.join(path)).or_else(|| {
         layout

@@ -119,7 +119,7 @@ to the grammars fails the build.
 
 ## The playground
 
-`playground/playground.maca` is a browser playground: an editor, live
+`apps/playground/playground.maca` is a browser playground: an editor, live
 diagnostics, and the ability to run a program and see its C and JavaScript
 output. It is a single Maca file compiled by the JavaScript backend, with its
 own host glue and stylesheet carried inline in raw strings. It is worth reading

@@ -138,7 +138,7 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   (`span(fmt(x))`) is a text node, not an element (only known HTML tags build
   elements); `html=expr` sets `innerHTML`; transpiled functions resolve state
   names to `state.x` so handlers can read and mutate state. The browser
-  playground itself is a single Maca file (`playground/playground.maca`)
+  playground itself is a single Maca file (`apps/playground/playground.maca`)
   compiled by this backend, carrying its styles and the WebAssembly-bridge
   runtime inline via `import css`/`import js` raw-string blocks.
 
@@ -158,7 +158,7 @@ backends: native **C** (default), **LLVM** (SIMD span), **Nix** (config mode),
 (`--target nix|js|jvm|rust|embedded|tauri`) / `run` / `dev` / `watch` / `fmt` /
 `lint` / `test` / `profile` / `add` / `update` / `upgrade` / `bindgen`. Tooling:
 LSP, MCP server, and a browser playground authored in Maca itself
-(`playground/playground.maca`, compiled by the JS backend) plus the wasm
+(`apps/playground/playground.maca`, compiled by the JS backend) plus the wasm
 front-end (`crates/wasm`).
 
 Every script in the repository is a Maca program too — the site builder, the

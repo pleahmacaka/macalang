@@ -32,8 +32,8 @@ still recompiles on input and indents with Tab — so the page always works.
 ```sh
 # once: build the in-browser compiler
 cargo build -p maca-wasm --target wasm32-unknown-unknown --release
-# then: compile the playground → one self-contained index.html
-maca build --target js playground.maca -o out
+# then compile the playground → one self-contained index.html
+maca build --target js apps/playground/playground.maca -o out
 ```
 
 `maca build --target js` inlines the styles, the transpiled app, and the

@@ -189,9 +189,14 @@ build_api_reference() -> bool {
               ++ std_modules())
 }
 
+// Built from inside its own directory only so that `-o out` lands in
+// `apps/playground/out`, which `.gitignore` names and `assemble` copies from.
+// `import wasm` is resolved against the source file rather than the working
+// directory, so it would be found either way; the two `..` on the compiler are
+// the price of the `cd`, not of the asset.
 build_playground() -> bool {
     announce("playground")
-    run_in("playground", "../" ++ maca(),
+    run_in("apps/playground", "../../" ++ maca(),
            ["build", "--target", "js", "playground.maca", "-o", "out"])
 }
 
@@ -200,7 +205,7 @@ assemble(out: str) -> bool {
     remove_dir(out)
     make_dir(out)
     copy_tree("apps/tomo/site", out)
-    copy_tree("playground/out", join(out, "play"))
+    copy_tree("apps/playground/out", join(out, "play"))
 
     // Jekyll would otherwise drop files and directories beginning with `_`.
     write_file(join(out, ".nojekyll"), "")

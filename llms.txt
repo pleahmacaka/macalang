@@ -1,8 +1,8 @@
 # Maca
 
-> One typed language for programs **and** infrastructure config. General programs compile to native (C-tier binary), BEAM, or JS; infra config compiles to Nix. Minimal, rule-based syntax — write correct Maca from this file alone.
+> One typed language for programs **and** infrastructure config. Programs compile to a native binary, JS, the JVM, Rust, or bare-metal firmware; config compiles to Nix. Minimal, rule-based syntax — enough here to write correct Maca without reading anything else.
 
-Everything a user writes is `.maca` or `maca.toml`. Verify generated code with the `maca.check` MCP tool (or `maca lint`) and fix diagnostics before finishing.
+Everything a user writes is `.maca` or `maca.toml`. Verify what you generate with the `maca.check` MCP tool (or `maca lint`) and fix every diagnostic before finishing.
 
 ## Symbols (1:1, no exceptions to memorize)
 
@@ -16,19 +16,30 @@ Everything a user writes is `.maca` or `maca.toml`. Verify generated code with t
 
 ## Rules (what models get wrong)
 
-- No `fn`, no `type`, no `Result`/`Ok`, no `<>` generics.
+- No `fn`, no `let`, no `return`, no `type`, no `Result`/`Ok`, no `<>` generics.
 - Field `:` = type, `=` = value. Bracketless comma lists. Significant newlines.
-- Functions: `f(x: T) -> R { body }` or `=> expr`. `main() -> int`.
+- Functions: `f(x: T) -> R { body }` or `=> expr`. The last expression is the value. `main() -> int`.
 - Ternary is spaced `c ? x : y`; error-propagate is attached `x?`; raise with `fail e`.
-- Generics are lowercase type vars, applied by juxtaposition (`Map k v`).
-- Effects (inferred): `io · net · os · async · exn`. Config mode is pure `<>`.
-- Sum types are nominal; `match` must be exhaustive (or have `_`).
+- Generics are lowercase type vars, applied by juxtaposition (`Map k v`). A signature may name its own element type: `first(xs: a[]) -> a`.
+- A function type is written `(T, U) -> R`, parens required — needed only for a record field, since a function *passed* as an argument needs no annotation.
+- Effects (inferred): `io · net · os · async · exn`. There is no `async` keyword.
+- Sum types are nominal; `match` must be exhaustive (or have `_`). Arms are newline-separated.
+- A `"…"` string may not span a line — write `\n`, or use `"""…"""`, which spans lines and does not interpolate.
+- `{` inside a string opens an interpolation; a literal brace is `\{` or `{{`.
+- A binary operator may not begin a continuation line: put `+` at the end of the line above, not the start of the line below.
+- `xs.push(v)` returns a new list; `xs = xs.push(v)` is how you append.
+- `for i in 1..n` is inclusive on both ends.
 
 ## Modes
 
-- **General mode** → native / BEAM / JS. Entry `main`. Effects allowed.
-- **Config mode** → Nix. Root module is the configuration; must be pure `<>`.
-  `system.*` routes to NixOS, `user.*` to home-manager. Blocks imply `enable = true`.
+- **General mode** → native / JS / JVM / Rust / embedded. Entry `main`. Effects allowed.
+- **Config mode** → Nix. The root module *is* the configuration; it must be pure `<>`. `system.*` routes to NixOS, `user.*` to home-manager. Blocks imply `enable = true`.
+
+## Modules
+
+A path is the whole name. `modules/http/server.maca` is `http/server`, from anywhere in the tree. There is no entry file and no index — a directory is not a module. `import { a, b } from pkg/mod` pulls in only what you name.
+
+The packages: `std` (`text`, `list`, `path`, `json`, `csv`, `fs`, `proc`), `http`, `tambo` (web framework), `cli` (args + terminal output), `bench`, `profile`, `signal` (reactive state).
 
 ## Examples (all pass `maca.check`)
 
@@ -67,6 +78,20 @@ first(ts: Task[]) -> str => match ts {
 }
 ```
 
+A function kept in a record field:
+
+```maca
+Route = { path: str, handle: (str) -> str }
+
+home(q: str) -> str => "home:{q}"
+
+main() -> int {
+    r = Route { path = "/", handle = home }
+    info(r.handle("x"))
+    0
+}
+```
+
 Config (pure, routed to NixOS/home-manager):
 
 ```maca
@@ -78,9 +103,11 @@ system.packages     = git, curl, ripgrep
 ## Verify
 
 Always run `maca.check` (MCP) or `maca lint` on generated code and fix every
-diagnostic (type-mismatch, non-exhaustive, effect-in-config, unknown-option).
+diagnostic: type-mismatch, non-exhaustive, effect-in-config, unknown-option,
+immutable, undefined-name.
 
 ## Links
 
-- `docs/PLAN.md` — authoritative plan + phase gates.
+- `docs/SPEC.md` — the authoritative spec.
 - `SKILL.md` — agent skill (rules + the verify habit).
+- `README.md` — install, commands, targets, packages.

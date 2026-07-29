@@ -57,17 +57,49 @@ installer doesn't prompt for Nix.)
 
 ```
 maca init  [dir]                 scaffold a project (maca.toml, main.maca)
-maca build <file.maca> [-o out]  compile — native, or --target nix|js|jvm|embedded
+maca build <file.maca> [-o out]  compile — native, or --target nix|js|jvm|rust|embedded|tauri
 maca run   <file.maca> [args..]  compile and run
+maca -m    <module>[.<fn>]       run a function out of a module (maca -m http.serve)
+maca test  <file.maca>           run every `test_…` function in the file
 maca dev   [dev.maca] [-o flake] generate a dev-shell flake.nix from Maca
 maca watch <file.maca> [args..]  rebuild & rerun on change (hot reload)
 maca fmt   <file.maca>… [--check] format (style from maca.toml [format])
 maca lint  <file.maca>           style + type/effect diagnostics
 maca profile <file.maca> [-o svg] run under callgrind, render a flame graph
+maca bindgen <header.h>          C header → Maca FFI declarations
 maca add   <spec>…               add a dependency (npm:pkg | git+url | name@ver)
 maca update                      re-resolve dependencies to the latest
 maca upgrade                     self-update the maca toolchain
 ```
+
+## The packages
+
+Code you import lives under `modules/`, and a path is the whole name:
+`modules/http/server.maca` is written `http/server`, from anywhere in the tree.
+There is no entry file and no index — a directory is not a module.
+
+```maca
+import { listen } from http/server
+import { text, html } from http/response
+import { measure, defaults } from bench/time
+```
+
+| package | what it gives you |
+|---|---|
+| `std` | `text`, `list`, `path`, `json`, `csv`, `fs`, `proc` — the layer above the builtins every program already has |
+| `http` | an HTTP server: routes take a request and return a response, and `maca -m http.serve` runs one |
+| `tambo` | the web framework over it — an app, routes with typed context, replies |
+| `cli` | argument parsing and terminal output as one thing: a command is a value, and the `--help` page is rendered from it. Widths are counted in columns, so a Hangul or emoji cell still lines up |
+| `bench` | a measuring loop that calibrates itself, statistics that admit when the samples disagree, and a comparison against a stored run |
+| `profile` | spans, flame charts as text or SVG, and trace playback |
+| `signal` | reactive state for a native web page — signals, computed values, effects, and DOM bindings that update the nodes that changed |
+
+Each ships its tests beside it (`modules/<name>/tests/`), run by `maca test`.
+[`examples/`](examples) has a runnable program for most of them —
+`bench_demo`, `profile_demo`, `signal_demo`, `tambo_demo`, `cli_tool`.
+
+A selective import — `import { a, b } from pkg/mod` — pulls in only what you
+name plus what that needs, so a program links what it uses.
 
 ## Dependencies
 
@@ -94,11 +126,30 @@ serves both. `maca upgrade` self-updates the toolchain from its GitHub releases.
 | `--target nix` | a NixOS module | config mode (`system.*`, `user.*`) |
 | `--target js` | JS + reactive UI + Tailwind | for the browser |
 | `--target jvm` | Java source (+ `javac`) | JVM interop; Minecraft/Fabric mods — `--cp <jars>` |
+| `--target rust` | Rust source | crates.io interop |
 | `--target embedded` | bare-metal firmware (ELF + `.bin`) | Cortex-M / RISC-V — `--mcu cortex-m0\|m3\|m4\|riscv32` |
+| `--target tauri` | a desktop app | the JS UI in a native shell |
+
+There is no BEAM backend, and that is a decision rather than a gap — the
+Reference's targets chapter says why.
 
 Worked examples: [`apps/microkernel`](apps/microkernel) (a message-passing
 microkernel, simulated), [`apps/mcmod`](apps/mcmod) (a Fabric mod in Maca),
 [`apps/blink`](apps/blink) (Cortex-M firmware), [`examples/`](examples).
+
+## How fast
+
+[`apps/bench`](apps/bench) times the same six kernels written six ways — Maca,
+C, Rust, Go, Node and CPython — checks every column computed the same number,
+and writes the table:
+
+```sh
+maca run apps/bench/run.maca                 # all six kernels
+maca run apps/bench/run.maca --only mandel   # one, while you work on it
+```
+
+It reads the previous run back before overwriting it, so an ordinary run also
+says what moved. Results in [`apps/bench/results.md`](apps/bench/results.md).
 
 ## Incremental builds
 
@@ -145,8 +196,8 @@ live diagnostics, hover, and completion over LSP (stdio). Editor integrations:
   the `maca-lsp` server. Install as a dev extension (Zed → Extensions → Install
   Dev Extension → pick `editor/zed-maca`).
 - **TextMate / VS Code grammar** — [`editor/maca.tmLanguage.json`](editor/maca.tmLanguage.json).
-- **Playground** — [`playground/playground.maca`](playground/playground.maca): the
-  browser playground, itself written in Maca and compiled by the JS backend.
+- **Playground** — [`apps/playground/playground.maca`](apps/playground/playground.maca):
+  the browser playground, itself written in Maca and compiled by the JS backend.
 
 ## The site
 
@@ -160,7 +211,7 @@ maca run tools/build-site.maca _site
 | Path | What | Built by |
 |---|---|---|
 | `/` | the front page | [`apps/site/home.maca`](apps/site/home.maca) |
-| `/en` `/ko` | The Maca Handbook | [`apps/tomo/tomo.maca`](apps/tomo/tomo.maca) |
+| `/en` `/ko` | The Maca Handbook — *Learning Maca* and *The Reference*, in English and Korean | [`apps/tomo/tomo.maca`](apps/tomo/tomo.maca) |
 | `/api` | the `std/` reference | [`tools/macadoc.maca`](tools/macadoc.maca) |
 | `/play` | the playground | `maca build --target js` |
 

@@ -11,9 +11,9 @@
 // while staying far ahead of interpreted Python and JIT'd JS on call-bound
 // code.
 //
-//   maca run bench/run.maca [--runs N] [--only KERNEL]
+//   maca run apps/bench/run.maca [--runs N] [--only KERNEL]
 //
-// Writes bench/results.json and bench/results.md, and reads results.json back
+// Writes results.json and results.md beside itself, and reads results.json
 // *before* overwriting it, so an ordinary run also says what moved since the
 // last one. A harness that only printed a table could not answer the question a
 // benchmark is run to answer.
@@ -24,7 +24,7 @@
 // specific to timing *other languages' binaries*: building them, running them,
 // and checking that they all computed the same number.
 //
-// The reference implementations under `bench/ref/` stay in their own languages:
+// The reference implementations under `ref/` stay in their own languages:
 // they are the comparison. The harness around them does not need to be.
 //
 // `std/fs`, `std/list` and `std/text` are deliberately not imported. Nothing
@@ -50,8 +50,8 @@ Tmp = "/tmp/maca-bench"
 
 // The record and the baseline are the same file: read before the run, written
 // after, so nobody has to remember to save one.
-Baseline = "bench/results.json"
-Report = "bench/results.md"
+Baseline = "apps/bench/results.json"
+Report = "apps/bench/results.md"
 
 RunsDefault = 5
 
@@ -155,7 +155,7 @@ runners(algo: str) -> Runner[] {
 }
 
 ref(algo: str, ext: str) -> str =>
-    join("bench/ref", algo ++ ext)
+    join("apps/bench/ref", algo ++ ext)
 
 no_runner(lang: str) -> Runner =>
     Runner { lang = lang, cmd = "", args = [] }
@@ -163,7 +163,7 @@ no_runner(lang: str) -> Runner =>
 build_maca(algo: str) -> Runner {
     out = join(Tmp, algo ++ "_maca")
     built = try_run("target/release/maca",
-                    ["build", join("bench", algo ++ ".maca"), "-o", out])
+                    ["build", join("apps/bench", algo ++ ".maca"), "-o", out])
 
     if !built {
         fail "maca build {algo} failed"
@@ -388,7 +388,7 @@ preamble() -> str =>
         ++ " slowdown\nvs C. Maca is `maca build` (Maca → C → `cc -O2`); C is"
         ++ " `cc -O2`; Rust is\n`rustc -O`; Go is `go build`; JS is Node;"
         ++ " Python is CPython 3. Every\ncolumn computes the same verified"
-        ++ " result. Reproduce with\n`maca run bench/run.maca`.\n\n"
+        ++ " result. Reproduce with\n`maca run apps/bench/run.maca`.\n\n"
 
 closing() -> str =>
     "On recursion and float/loop work Maca lands right on C (it *is* C, at\n"

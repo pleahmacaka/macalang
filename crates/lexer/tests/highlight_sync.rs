@@ -51,11 +51,11 @@ fn textmate_grammar_names_every_keyword() {
     }
 }
 
-/// The Monarch grammar (embedded in `playground/playground.maca`) and the Zed
+/// The Monarch grammar (embedded in `apps/playground/playground.maca`) and the Zed
 /// tree-sitter queries (`highlights.scm`) also name every keyword.
 #[test]
 fn monarch_and_zed_grammars_name_every_keyword() {
-    let monarch = repo("playground/playground.maca");
+    let monarch = repo("apps/playground/playground.maca");
     let zed = repo("editor/zed-maca/languages/maca/highlights.scm");
     assert!(!monarch.is_empty(), "playground.maca missing");
     assert!(!zed.is_empty(), "highlights.scm missing");

@@ -174,17 +174,68 @@ fn apps_is_not_a_search_root() {
 
 /// The written path still wins over the search roots, so a module sitting
 /// beside its importer is not shadowed by a same-named package.
+///
+/// The colliding file is `modules/selfhost/token.maca` and not
+/// `modules/token.maca`: the latter is never a candidate for the path
+/// `selfhost/token`, so a fixture built that way resolves the same under any
+/// ordering and pins nothing.
 #[test]
 fn a_written_path_beats_a_search_root() {
     let p = Project::new("written");
     p.write("maca.toml", MANIFEST);
-    p.write("modules/token.maca", "v() -> int => 1\n");
+    p.write("modules/selfhost/token.maca", "v() -> int => 1\n");
     p.write("selfhost/token.maca", "v() -> int => 2\n");
     let app = p.write("selfhost/main.maca", "import selfhost/token\n");
 
     assert_eq!(
         p.resolve(&app, "selfhost/token").as_deref(),
         Some("selfhost/token.maca")
+    );
+}
+
+/// A directory that shares a package's name shadows the package, and nothing
+/// says so. This is the sharp edge of the rule above, pinned here so a change
+/// to it is a change to a test rather than a surprise: the tree had a
+/// top-level `bench/` beside `modules/bench/`, whose files the whole benchmark
+/// subsystem imports as `bench/…`, and which one `import bench/stat` meant was
+/// decided by which file happened to exist.
+///
+/// It was closed by moving the directory. Reordering `in_base` to put the
+/// search roots first was tried and reverted: it does not fix the case where
+/// the shadowing directory is under `apps/` — the ancestor walk reaches that
+/// directory before the root — and it lets an installed dependency under
+/// `maca_modules/` outrank the project's own source.
+#[test]
+fn a_directory_of_the_same_name_shadows_a_package() {
+    let p = Project::new("collide");
+    p.write("maca.toml", MANIFEST);
+    p.write("modules/bench/stat.maca", "median() -> int => 1\n");
+    p.write("bench/stat.maca", "median() -> int => 2\n");
+    let app = p.write("apps/x/main.maca", "import bench/stat\n");
+
+    assert_eq!(
+        p.resolve(&app, "bench/stat").as_deref(),
+        Some("bench/stat.maca"),
+        "the written path wins — which is why a package's name is not a name \
+         to give a directory"
+    );
+}
+
+/// An installed dependency does not take over a path the project itself wrote.
+/// `maca_modules` is a search root like the others, so without the written
+/// path coming first, `maca add`ing anything called `tools` would answer for
+/// this project's own `tools/`.
+#[test]
+fn an_installed_dependency_does_not_outrank_the_projects_own_source() {
+    let p = Project::new("vendor");
+    p.write("maca.toml", MANIFEST);
+    p.write("tools/helper.maca", "v() -> int => 1\n");
+    p.write("maca_modules/tools/helper.maca", "v() -> int => 2\n");
+    let app = p.write("apps/x/main.maca", "import tools/helper\n");
+
+    assert_eq!(
+        p.resolve(&app, "tools/helper").as_deref(),
+        Some("tools/helper.maca")
     );
 }
 

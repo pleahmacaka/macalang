@@ -4,7 +4,7 @@
 /flake.nix
 
 # generated build artifacts (compiler/toolchain outputs never live in the repo)
-playground/maca_wasm.wasm
+apps/playground/maca_wasm.wasm
 packages/macalang/maca_wasm.wasm
 
 # per-file build outputs from `maca build --target js|jvm|embedded` run in-tree
@@ -18,7 +18,7 @@ __pycache__/
 apps/tomo/site/
 
 # `maca build --target js playground.maca -o out` output (built by CI for Pages)
-playground/out/
+apps/playground/out/
 
 # `tools/build-site.sh` output
 _site/

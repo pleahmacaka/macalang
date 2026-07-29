@@ -21,11 +21,17 @@ fn maca_blocks(md: &str) -> Vec<String> {
     blocks
 }
 
-/// Every `maca` example in the LLM-native docs must pass `maca.check`.
+/// Every `maca` example in the documentation must pass `maca.check`.
+///
+/// Each block is checked on its own, because that is how it is read: an
+/// example calling a function the block never defines is an example nobody can
+/// run. `README.md` is here for the same reason the other two are — its blocks
+/// were written by hand and verified by pasting them into a file with the
+/// missing pieces added, which checks a program the reader will never see.
 #[test]
 fn llm_docs_examples_check_clean() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    for file in ["llms.txt", "SKILL.md"] {
+    for file in ["llms.txt", "SKILL.md", "README.md"] {
         let md = fs::read_to_string(root.join(file)).unwrap_or_else(|e| panic!("{file}: {e}"));
         let blocks = maca_blocks(&md);
         assert!(!blocks.is_empty(), "{file}: no ```maca blocks found");

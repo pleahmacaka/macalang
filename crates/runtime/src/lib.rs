@@ -114,7 +114,7 @@ maca_str maca_replace(maca_str s, maca_str from, maca_str to); /* all occurrence
 maca_str maca_repeat(maca_str s, int64_t n);          /* s concatenated n times */
 
 /* ---- file I/O ---- */
-maca_str maca_read_file(maca_str path);               /* whole file, "" if unreadable */
+maca_str maca_read_file(maca_str path);               /* whole file; "" unless it is a readable ordinary file */
 bool maca_write_file(maca_str path, maca_str text);   /* truncate + write; ok? */
 bool maca_file_exists(maca_str path);
 maca_str maca_real_path(maca_str path);     /* symlinks resolved; "" if absent */
@@ -759,6 +759,13 @@ maca_str maca_now_iso(void) {
 }
 maca_str maca_read_file(maca_str path) {
     if (!path) return "";
+    /* Only an ordinary file has a length worth trusting. Opening a directory
+       succeeds on Linux, and the size it then reports is not a byte count — the
+       allocation below asked for it and the process died with "out of memory",
+       naming nothing that pointed at the directory. Walking a tree and reading
+       what the walk returns is the shape that hits this. */
+    struct stat st;
+    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) return "";
     FILE* f = fopen(path, "rb");
     if (!f) return "";
     if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return ""; }
@@ -784,11 +791,11 @@ bool maca_file_exists(maca_str path) {
     struct stat st;
     return path && stat(path, &st) == 0;
 }
+bool maca_is_tty(void) { return isatty(1) == 1; }
 /* The path with `.`, `..` *and symlinks* resolved, or "" when it names nothing.
    A server deciding whether a request stayed inside its root cannot do it with
    string arithmetic: a link inside the root points wherever it likes, and only
    the kernel knows where. */
-bool maca_is_tty(void) { return isatty(1) == 1; }
 maca_str maca_real_path(maca_str path) {
     if (!path) return "";
     char buf[4096];

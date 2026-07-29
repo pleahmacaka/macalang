@@ -55,7 +55,7 @@ fn the_package_builder_compiles() {
 
 #[test]
 fn the_benchmark_harness_compiles() {
-    builds("bench/run.maca");
+    builds("apps/bench/run.maca");
 }
 
 #[test]

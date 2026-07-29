@@ -25,11 +25,11 @@ a known value before timing).
 ## Run
 
 ```sh
-cargo build --release -p maca-driver     # the maca CLI
-maca run bench/run.maca                  # builds + times + verifies everything
-maca run bench/run.maca --runs 9         # more samples per contender
-maca run bench/run.maca --only mandel    # one kernel, while you work on it
-maca run bench/run.maca --help
+cargo build --release -p maca-driver    # the maca CLI
+maca run apps/bench/run.maca                # builds, times and verifies all six
+maca run apps/bench/run.maca --runs 9       # more samples per contender
+maca run apps/bench/run.maca --only mandel  # one kernel, while you work on it
+maca run apps/bench/run.maca --help
 ```
 
 Needs a native `cc` (Maca and C link through it). `rustc`, `go`, `node`, and

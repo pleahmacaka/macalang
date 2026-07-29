@@ -76,6 +76,22 @@ The bare-sibling rule comes **last** on purpose. It is a convenience for
 `list.maca` next to a program silently shadowed `std/list` with no diagnostic at
 all.
 
+### Do not name a directory after a package
+
+Step 1.i comes before 1.ii, so a directory that shares a package's name answers
+for it. A `bench/` beside `modules/bench/` makes `import bench/stat` mean
+whichever of the two files exists — and if both do, the one that is not the
+package. Nothing reports this; the program compiles against the other file.
+
+Putting the search roots first does not fix it, which is worth knowing before
+you propose it. The walk visits each directory in turn, so `apps/bench/` still
+answers for `bench/…` from anywhere under `apps/` whatever the order *within*
+one directory. And `maca_modules` is a search root, so roots-first would let a
+dependency you installed outrank a file you wrote.
+
+The rule that follows is short: a package's name is not a name to give a
+directory.
+
 ## Search roots
 
 | Directory | Is a search root | Written as |

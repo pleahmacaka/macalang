@@ -58,17 +58,19 @@ with string literals collapsed, so a long C template or URL is exempt exactly
 as a long comment is. Gated by `crates/driver/tests/lint_port.rs`, which
 requires the whole repository to pass it — `macadoc.maca`, the API-doc
 generator (rustdoc's job for Maca: a `///` block above an item is what makes it
-API, an ordinary `//` explains a helper to the next reader; handbook ch. 17
-documents the marker, and `crates/driver/tests/programs/sitegen.maca` fails if
-what it lists ever differs from what `std/README.md` advertises) — and
+API, an ordinary `//` explains a helper to the next reader; the Reference's
+tooling chapter documents the marker, and
+`crates/driver/tests/programs/sitegen.maca` fails if what it lists ever differs
+from what `modules/std/README.md` advertises) — and
 `build-site.maca`, which builds and checks the published site for both CI and a
 human, including a check that every class on every emitted page produced a CSS
 rule).
-**Every script in the repository is a Maca program**: `bench/run.maca` is the
-benchmark harness, `packages/macalang/build.maca` builds the wasm into the npm
-package. All seven are compiled by `crates/driver/tests/scripts.rs`, because a
-script only run at release time rots quietly. The one exception is
-`install.sh`, which runs *before* there is a `maca` to run anything with.
+**Every script in the repository is a Maca program**: `apps/bench/run.maca` is
+the cross-language benchmark harness, `packages/macalang/build.maca` builds the
+wasm into the npm package. All seven are compiled by
+`crates/driver/tests/scripts.rs`, because a script only run at release time
+rots quietly. The two exceptions are `install.sh` and `install.ps1`, which run
+*before* there is a `maca` to run anything with.
 **Maca code lives under `modules/`, `apps/` and `src/`.** `modules/*` and
 `src/*` are import search roots, so `modules/std/text.maca` is written
 `std/text` and `modules/http/server.maca` is written `http/server` — from
@@ -78,6 +80,21 @@ source. `apps/*` is deliberately *not* a root: two apps may each have a `conf`,
 and neither should silently answer for the other, so an application is reached
 by its written path (`import apps/tomo/conf`). `[layout]` in `maca.toml`
 renames any of them.
+
+**A directory that shares a package's name shadows the package**, silently. The
+written path is tried before the search roots, so a top-level `bench/` beside
+`modules/bench/` — which is what the tree had — decided `import bench/stat` by
+which file happened to exist. Do not name a directory after a package; the
+cross-language harness moved to `apps/bench/` for this reason.
+
+Reordering `in_base` to try the roots first was tried and reverted, and the
+reasons are worth knowing before anyone tries it again. It does not fix the
+general case: the resolver walks the importer's ancestors, so
+`apps/bench/report.maca` still answers for `bench/report` from anywhere under
+`apps/`, whatever the order within one directory. And it costs more than it
+buys — `maca_modules` is a search root, so roots-first lets an installed
+dependency outrank the project's own source. Across the 229 imports in this
+repository the two orderings agree on every one.
 
 **There is no entry file and no index.** A directory is not a module; a path is
 a path and that is the only thing it is. (An earlier design had a per-directory
@@ -90,23 +107,43 @@ selective import, because there is nothing to select from a builtin. Four files
 imported a `std/str` that has never existed, silently, and each then hand-wrote
 the helpers it believed it was importing.
 
-`modules/std/` holds the importable stdlib — `text`, `list`, `path`, `json`,
-`csv`, `fs`, `proc` — plus prelude docs; the rest is compiler/runtime builtins.
-`modules/http/` is the HTTP server (`server`/`request`/`response`/`status`, and
-`serve`, which `maca -m http.serve` runs).
+### The packages (`modules/*`)
 
-`examples/` (golden `.maca` programs + `examples/bad/`), `apps/`
-(capstones: `mqtt`, `microkernel`, `blink`, `desktop`, `mcmod`, `tomo` — the
-i18n handbook builder that renders `book/{en,ko}/*.md` into `site/`, built
-entirely out of the UI syntax below plus one line of hand-written CSS; it is
-also the worked example of that syntax, so keep it free of hand-concatenated
-markup — and `site`, the project's front page, `home.maca`, whose copy is keyed
-by sum types so a translation that drops a card is a NonExhaustive error rather
-than a shorter page; it replaces tomo's Markdown landing for this book only),
-`selfhost/`
-(the Maca compiler written in Maca — stage 1), `playground/` (the browser
-playground, a single `.maca` file compiled by the JS backend), `editor/`,
-`docs/`.
+Seven, all ordinary Maca source, all with a suite under `<pkg>/tests/` run by
+`maca test`. Read `modules/cli/` first — it is the house standard for
+structure and comment voice.
+
+| package | what it is | tests |
+|---|---|---|
+| `std` | `text`, `list`, `path`, `json`, `csv`, `fs`, `proc` — the layer above the prelude builtins (`modules/std/README.md` is the reference, and `crates/driver/tests/programs/sitegen.maca` fails if it and the generated API pages disagree) | 106 |
+| `http` | the server — `server`/`request`/`response`/`status`, plus `serve`, which `maca -m http.serve` runs | 16 |
+| `cli` | argument parsing and terminal output in one — `spec` (a command as a value), `parse`, `help` (the page rendered from the spec), `show` (tables, rules), `style` (colour, and UTF-8 *column* widths, so a Hangul or emoji cell still lines up) | 36 |
+| `bench` | `time` (calibrating measurement loop), `stat`, `store` (JSON round-trip), `compare` (two runs, with a verdict), `cases/*` (a corpus from primitives to advanced algorithms) | 141 |
+| `profile` | `record` (spans), `trace`, `flame` (text and SVG charts), `play` (trace playback), `report` | 75 |
+| `signal` | nanostore-style reactive state — `store` (signals, computed, effects) and `dom`, so a native web page updates the nodes that changed rather than re-rendering | 58 |
+| `tambo` | the web framework over `http` — `app`, `route`, `ctx`, `dispatch`, `reply` | 87 |
+
+`examples/` (golden `.maca` programs + `examples/bad/`, plus one `X_demo.maca`
+per package), `apps/` (capstones: `mqtt`, `microkernel`, `blink`, `desktop`,
+`mcmod`, `bench` — the cross-language harness and its C/Rust/Go/JS/Python
+reference kernels — `playground` (the browser playground, a single `.maca`
+file compiled by the JS backend), `tomo` — the i18n handbook builder that
+renders `book/{en,ko}/*.md` into `site/`, built entirely out of the UI syntax
+below plus one line of hand-written CSS; it is also the worked example of that
+syntax, so keep it free of hand-concatenated markup — and `site`, the project's
+front page, `home.maca`, whose copy is keyed by sum types so a translation that
+drops a card is a NonExhaustive error rather than a shorter page),
+`selfhost/` (the Maca compiler written in Maca — stage 1), `editor/`, `docs/`.
+
+**The handbook is two volumes with one table of contents** (`apps/tomo/book.toml`):
+*Learning Maca*, read front to back once, and *The Reference*, opened at the
+page you need. A chapter belongs to exactly one of them, and a teaching chapter
+with a stricter twin links to it by name. The `a`-prefixed files are the
+Reference — they grew out of the appendices and kept the prefix so no published
+URL had to move. Maca in a fenced block is highlighted by
+`apps/tomo/highlight.maca`, a scanner that follows `crates/lexer/src/lib.rs`
+rather than guessing; an unknown language tag falls through to escaped plain
+text.
 
 FFI (`import c "sqlite3.h"` / `import py "…"`) links the real library: through
 `wsl nix` when present, else the **host `cc`** with system headers/libs
@@ -161,10 +198,15 @@ definition cycle resolves — `MACA_ARRAY_STRUCT` before the body,
   one and exits with the failure count. The Rust side is a runner that checks
   the exit code. Do *not* write a Maca program that `info(…)`s its results and
   a Rust test that greps stdout for them, and do not embed the Maca source in a
-  Rust string literal — the suites live in `std/tests/` and
+  Rust string literal — the suites live in `modules/<pkg>/tests/` and
   `crates/driver/tests/programs/`. What stays in Rust is what is about the
   *process* rather than the values: piping stdin, running under valgrind, and a
   program that must fail to compile.
+- **Break it to prove the test works.** A test written after the fix usually
+  passes before it too. Mutate the code the test claims to cover — delete the
+  branch, flip the comparison, remove the feature outright — and confirm the
+  test goes red. Ten mutations against the append analysis left six green,
+  including deleting the whole optimisation.
 - **Readable over clever.** `if`/`else if`/`else` works in value position on
   every back end, so a multi-way choice is a chain of guards with each condition
   beside the branch it selects. A ternary is for one binary choice. Prefer code
@@ -328,8 +370,27 @@ by the element; `sort`/`reverse`/`push`/`pop`/`contains`/`index_of`/`sum`/`min`/
 `is_alpha` (what `selfhost/lexer.maca` scans with);
 and raw triple-quoted strings (`"""…"""`) with `import js`/`import css` foreign
 blocks that let a `.maca` UI carry its own host glue and styles inline (see
-`playground/playground.maca`). Examples:
+`apps/playground/playground.maca`). Examples:
 `examples/{indexing,record_update,tree,sum_record,keywords,strings}.maca`.
+
+**A function can be kept in a record field**, declared `(T, U) -> R` — the
+parens are required, and this is the only place a function type is written
+down, because a field is declared before anything calls it. A function *passed*
+still needs no annotation: an unannotated parameter that is called in the body
+is one. That is what makes a route table, a reducer, or a builder expressible
+(`crates/driver/tests/programs/function_fields.maca`). The `rust` and `jvm`
+emitters reject a function field with a clean diagnostic rather than emitting
+something that will not compile.
+
+**A generic can name its own element type**: `first(xs: a[]) -> a`,
+`sort_by(xs: a[], key: (a) -> str) -> a[]`. A call binds `a` by looking *into*
+the argument's type, not only at a parameter written as a bare variable, and
+the body is lowered knowing what `a` turned out to be — so a local declared
+`a[]` inside a generic gets the concrete element type instead of the fallback
+array (`crates/driver/tests/programs/generics.maca`).
+
+`is_tty()` answers whether stdout is a terminal, which is how `cli/style`
+decides to emit colour.
 
 **Strings:** `{` opens an interpolation, so a literal brace is `\{`/`\}` or
 `{{`/`}}`. A `"…"` string may not span a line (write `\n`, or use `"""…"""`,
@@ -344,6 +405,36 @@ for free. A spec's `:` is *attached* and a ternary's is *spaced*, which is how
 the lexer tells `{x:>8}` from `{c ? a : b}` (`Tok::FmtSpec`, `fmt_spec_here`) —
 the same attached-vs-spaced rule as `x?` vs `c ? x : y`. New primitives behind
 it: `float.fixed(n) -> str` (int receiver widened) and `str.pad_center(w, p)`.
+
+**Memory (Perceus RC, C backend).** Two invariants hold the string and list
+handling together, and both are easy to break from inside `maca-runtime` or
+`crates/backend_c/src/ownership.rs`.
+
+*Every `maca_str`-returning runtime function returns a fresh block or a static
+literal, never one of its arguments.* `maca_str_copy` exists for the cases that
+would otherwise hand an argument back — `maca_replace` with nothing to replace,
+`maca_split` on an empty separator, `maca_pad` already wide enough. A borrowed
+return is a double free that only shows up under a load the tests don't reach.
+
+*`xs = xs.push(v)` appends in place; `ys = xs.push(v)` copies.* A list is a
+value, so the copy is the rule and assigning back to the same name is the one
+case where the old value is unreachable the moment the new one exists. Written
+as a copy it is quadratic — eight thousand elements took half a second and left
+every intermediate buffer behind. `ownership::appendable_names` decides this
+per *function*, not per block, and excludes parameters (a parameter is a second
+handle by construction — appending in place reallocates a list the caller still
+holds), `for` pattern variables, and anything aliased. `emit_specialization` and
+`emit_closure` save and restore it, or a specialization bypasses the analysis
+entirely. Every one of those exclusions was a wrong answer before it was a rule;
+`crates/driver/tests/programs/accumulate.maca` is one test per shape.
+
+**A test that asserts only answers cannot detect this.** An answer is identical
+whether the list was copied or appended to, and `assert_eq(str(xs.length()), …)`
+marks the list aliased, which switches the optimisation off inside its own test.
+Assert on `alloc_count()`/`reuse_count()`, read elements through interpolations,
+and read them *after* enough rounds to force a reallocation. `MACA_POISON=1`
+fills released blocks with `0xDD` so a use-after-free is a wrong answer rather
+than a lucky one.
 
 **Codegen note (C backend):** control-flow expressions (`if`/`match`/block)
 work in value position via a `Sink` (Discard/Return/Assign) threaded through

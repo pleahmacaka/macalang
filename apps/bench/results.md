@@ -4,7 +4,7 @@ Median execution time in **ms** (lower is better); `×N` is the slowdown
 vs C. Maca is `maca build` (Maca → C → `cc -O2`); C is `cc -O2`; Rust is
 `rustc -O`; Go is `go build`; JS is Node; Python is CPython 3. Every
 column computes the same verified result. Reproduce with
-`maca run bench/run.maca`.
+`maca run apps/bench/run.maca`.
 
 ### Recursion-bound (call overhead)
 
