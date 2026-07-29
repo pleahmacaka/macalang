@@ -652,6 +652,7 @@ fn build_rust(src: &Path, out: &Path) -> Result<String, String> {
     let deps = rust_dependencies(src);
     validate_rust_imports(&parsed.module, &deps)?;
     validate_rust_bodies(&parsed.module)?;
+    validate_borrowed_params(&parsed.module)?;
 
     let rs = maca_backend_rust::emit(&parsed.module);
     let rs_path = out.with_extension("rs");
@@ -736,6 +737,126 @@ fn validate_rust_imports(m: &maca_parser::Module, deps: &[(String, String)]) -> 
         }
     }
     Ok(())
+}
+
+/// A trait-impl method's foreign-typed parameter is a mutable borrow of a value
+/// the crate owns, so it must not outlive the call: returning it, or storing it
+/// in a record or a list, would need a lifetime Maca has no way to name.
+///
+/// Rust would reject it too, but with an error about a type the user never
+/// wrote. This says which parameter and why.
+fn validate_borrowed_params(m: &maca_parser::Module) -> Result<(), String> {
+    use maca_parser::ast::{Expr, Stmt};
+
+    let declared: std::collections::HashSet<&str> = m
+        .items
+        .iter()
+        .filter_map(|it| match it {
+            Stmt::Bind(b) => match &b.target {
+                Expr::Ident(n) => Some(n.as_str()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+
+    for it in &m.items {
+        let Stmt::Bind(b) = it else { continue };
+        if b.tys.first().is_none() {
+            continue;
+        }
+        let Expr::Record(fields) = &b.value else {
+            continue;
+        };
+        for f in fields {
+            let maca_parser::ast::Field::Value { name, value } = f else {
+                continue;
+            };
+            let Expr::Lambda { params, body, .. } = value else {
+                continue;
+            };
+            for p in params {
+                let borrowed = p
+                    .ty
+                    .as_ref()
+                    .is_some_and(|t| is_foreign_type_name(t, &declared));
+                if borrowed && escapes(body, &p.name) {
+                    return Err(format!(
+                        "`{}` in method `{name}` is a borrowed foreign value — it \
+                         can be read and passed on, but not returned or stored, \
+                         because it belongs to the caller",
+                        p.name
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A capitalized type this module does not declare.
+fn is_foreign_type_name(
+    t: &maca_parser::ast::Type,
+    declared: &std::collections::HashSet<&str>,
+) -> bool {
+    use maca_parser::ast::Type;
+    match t {
+        Type::Name(segs) => segs
+            .last()
+            .is_some_and(|h| h.chars().next().is_some_and(char::is_uppercase) && !declared.contains(h.as_str())),
+        Type::Apply(base, _) | Type::Paren(base) => is_foreign_type_name(base, declared),
+        Type::Array(_) | Type::Opt(_) => false,
+    }
+}
+
+/// Does `name` leave the method — as the body's value, or inside a record, a
+/// list or a closure that outlives it? Being passed to another call does not
+/// count: that is a reborrow, which is the whole point of taking one.
+fn escapes(body: &maca_parser::ast::Expr, name: &str) -> bool {
+    use maca_parser::ast::{Expr, Field, Stmt};
+
+    fn mentions(e: &Expr, name: &str) -> bool {
+        let mut found = false;
+        maca_parser::ast::walk_expr(e, &mut |x| {
+            if matches!(x, Expr::Ident(n) if n == name) {
+                found = true;
+            }
+        });
+        found
+    }
+
+    // the body's own value
+    let tail = match body {
+        Expr::Block(stmts) => match stmts.last() {
+            Some(Stmt::Expr(e)) => e,
+            _ => return false,
+        },
+        other => other,
+    };
+    if matches!(tail, Expr::Ident(n) if n == name) {
+        return true;
+    }
+
+    // stored in a structure, or captured by a closure that is itself the value
+    let mut stored = false;
+    maca_parser::ast::walk_expr(body, &mut |x| match x {
+        Expr::Record(fields) | Expr::Ctor { fields, .. } => {
+            for f in fields {
+                if let Field::Value { value, .. } = f
+                    && mentions(value, name)
+                {
+                    stored = true;
+                }
+            }
+        }
+        Expr::List(items) => {
+            if items.iter().any(|i| mentions(i, name)) {
+                stored = true;
+            }
+        }
+        _ => {}
+    });
+    stored
 }
 
 /// A bodyless function is an FFI declaration — the body lives in a C library.

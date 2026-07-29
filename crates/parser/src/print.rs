@@ -296,6 +296,9 @@ fn expr(s: &mut String, e: &Expr) {
                         s.push_str(", ");
                     }
                     s.push_str(&p.name);
+                    if let Some(t) = &p.ty {
+                        let _ = write!(s, ": {}", ty(t));
+                    }
                 }
                 s.push(')');
             }

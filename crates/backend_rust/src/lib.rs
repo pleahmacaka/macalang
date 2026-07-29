@@ -104,6 +104,13 @@ pub fn emit(m: &Module) -> String {
 struct Cx {
     records: BTreeSet<String>,
     sums: BTreeSet<String>,
+    /// Trait-impl methods, by name → which of their arguments the method takes
+    /// as a mutable borrow. A call site has to pass `&mut` for those, and the
+    /// only place that is knowable is the impl the module itself declares.
+    borrowed_args: BTreeMap<String, Vec<bool>>,
+    /// The parameters of the method being emitted that are borrows. A borrow is
+    /// passed on, never cloned — it is not ours to copy.
+    borrows: BTreeSet<String>,
     /// variant name → its enum, so a bare `Green` emits `Color::Green`.
     variant_of: std::collections::BTreeMap<String, String>,
     /// names already bound in the current function — a later `x = e` is a
@@ -124,6 +131,24 @@ impl Cx {
                     }
                 } else if record_fields(&b.value).is_some() {
                     self.records.insert(name.clone());
+                }
+            }
+        }
+        // A second pass: a method's parameter types are foreign relative to the
+        // records and sums collected above, so this cannot run in the same loop.
+        for it in &m.items {
+            if let Stmt::Bind(b) = it
+                && b.tys.first().is_some()
+                && let Some(methods) = lambda_fields(&b.value)
+            {
+                for m in methods {
+                    let borrowed = m
+                        .params
+                        .iter()
+                        .skip_while(|p| p.name == "self")
+                        .map(|p| p.ty.as_ref().is_some_and(|t| self.is_foreign_ty(t)))
+                        .collect();
+                    self.borrowed_args.insert(m.name.clone(), borrowed);
                 }
             }
         }
@@ -201,18 +226,53 @@ impl Cx {
     /// (gpui's `-> impl IntoElement`) needs the annotation: Rust lets an impl
     /// name a concrete type where the trait wrote `impl Trait`, so writing the
     /// type out is enough.
+    /// A trait method's parameter type.
+    ///
+    /// A type this module does not declare is *foreign* — it belongs to the
+    /// crate the trait came from, and Maca never owns one. So it is borrowed
+    /// mutably, which is the convention a Rust trait method takes its arguments
+    /// by (`w: &mut Window`, `cx: &mut Context<Self>`). A Maca type — a record,
+    /// a sum, a scalar — is passed by value as everywhere else.
+    ///
+    /// An unannotated parameter has no type to borrow, so it stays `i64`.
+    fn method_param_ty(&self, p: &Param) -> String {
+        match &p.ty {
+            Some(t) if self.is_foreign_ty(t) => format!("&mut {}", rust_ty(t)),
+            Some(t) => format!("mut {}", rust_ty(t)),
+            None => "mut i64".into(),
+        }
+    }
+
+    /// Is this type from outside the module — neither a Maca scalar nor a
+    /// record/sum declared here?
+    fn is_foreign_ty(&self, t: &Type) -> bool {
+        let head = match t {
+            Type::Name(segs) => segs.last().cloned().unwrap_or_default(),
+            Type::Apply(base, _) | Type::Paren(base) => return self.is_foreign_ty(base),
+            // a list or an optional is a Maca shape whatever it holds
+            Type::Array(_) | Type::Opt(_) => return false,
+        };
+        !head.is_empty()
+            && head.chars().next().is_some_and(char::is_uppercase)
+            && !self.records.contains(&head)
+            && !self.sums.contains(&head)
+    }
+
     fn emit_impl(&mut self, name: &str, trait_ty: &Type, methods: &[Method]) -> String {
         let mut ms = String::new();
         for m in methods {
             self.declared.clear();
+            self.borrows.clear();
             let mut ps = Vec::new();
             for (i, p) in m.params.iter().enumerate() {
                 if i == 0 && p.name == "self" {
                     ps.push("&mut self".to_string());
                 } else {
                     self.declared.insert(p.name.clone());
-                    let ty = p.ty.as_ref().map(rust_ty).unwrap_or_else(|| "i64".into());
-                    ps.push(format!("mut {}: {}", ident(&p.name), ty));
+                    if p.ty.as_ref().is_some_and(|t| self.is_foreign_ty(t)) {
+                        self.borrows.insert(p.name.clone());
+                    }
+                    ps.push(format!("{}: {}", ident(&p.name), self.method_param_ty(p)));
                 }
             }
             let (b, is_str) = self.expr(&m.body);
@@ -437,6 +497,7 @@ impl Cx {
             .iter()
             .zip(&argv)
             .map(|(a, (c, _))| match arg_expr(a) {
+                Expr::Ident(n) if self.borrows.contains(n) => c.clone(),
                 Expr::Ident(n) if self.declared.contains(n) => format!("{c}.clone()"),
                 _ => c.clone(),
             })
@@ -449,6 +510,7 @@ impl Cx {
             .zip(&argv)
             .map(|(a, (c, _))| match arg_expr(a) {
                 Expr::Int(n) => n.to_string(),
+                Expr::Ident(nm) if self.borrows.contains(nm) => c.clone(),
                 Expr::Ident(nm) if self.declared.contains(nm) => format!("{c}.clone()"),
                 _ => c.clone(),
             })
@@ -510,6 +572,17 @@ impl Cx {
                 );
             }
             let (b, _) = self.expr(base);
+            if let Some(borrowed) = self.borrowed_args.get(name) {
+                let args: Vec<String> = cloned
+                    .iter()
+                    .enumerate()
+                    .map(|(i, a)| match borrowed.get(i) {
+                        Some(true) => format!("&mut {a}"),
+                        _ => a.clone(),
+                    })
+                    .collect();
+                return (format!("{b}.{}({})", ident(name), args.join(", ")), false);
+            }
             return (format!("{b}.{}({joined})", ident(name)), false);
         }
         ("Default::default()".into(), false)
@@ -612,6 +685,8 @@ impl Cx {
                     let mut c = Cx {
                         records: self.records.clone(),
                         sums: self.sums.clone(),
+                        borrowed_args: self.borrowed_args.clone(),
+                        borrows: self.borrows.clone(),
                         variant_of: self.variant_of.clone(),
                         declared: self.declared.clone(),
                     };

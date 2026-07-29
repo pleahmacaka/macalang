@@ -57,7 +57,16 @@ foreign callback API and outlive its frame.
 
 **Foreign trait impls.** `Counter : Render = { render = (self, …) => … }` →
 `impl Render for Counter { fn render(&mut self, …) { … } }`. A leading `self`
-becomes `&mut self`; the return type is inferred from the body
+becomes `&mut self`. A parameter whose type this module does not declare is
+**foreign**, and Maca never owns a value from a crate it does not read, so it
+lowers to `&mut T` — which is how a Rust trait method takes its arguments
+(`w: &mut Window`, `cx: &mut Context<Self>`). Call sites pass `&mut`, and a
+borrow is passed on rather than cloned. It may be read and handed to another
+call, but not returned or stored: that would outlive the call, and the lifetime
+it would need has no spelling in Maca, so it is a clean error naming the
+parameter rather than one from `rustc` about a type nobody wrote.
+
+The return type is inferred from the body
 (`()`/`bool`/`String`/`i64`), which covers event handlers and getters, or
 **declared** — `render = (self, w, cx) -> AnyElement => …` — for a method whose
 signature the backend cannot see. gpui's `Render::render` returns
@@ -78,7 +87,9 @@ is still no `async` keyword and no function colour.
 
 No borrow checker, no lifetimes, no trait *definitions* (only impls of foreign
 traits), no generic bounds, associated types or HRTBs, no proc macros, no
-`unsafe`, and no Rust parser. The backend emits Rust and lets `rustc` be the
+`unsafe`, and no Rust parser. The non-escaping rule on foreign parameters is
+one syntactic check, not an analysis: it does not track what a call does with
+what it was handed. The backend emits Rust and lets `rustc` be the
 authority on Rust.
 
 A foreign call's argument types stay gradual beyond bare integer literals. Maca

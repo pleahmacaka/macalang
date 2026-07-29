@@ -248,3 +248,138 @@ pub enum BinOp {
     Union, // |  (sum types / rows)
     Pipe,  // |>
 }
+
+/// Visit `e` and every expression inside it, outermost first.
+///
+/// Each backend used to carry its own copy of this walk, each covering the
+/// variants that backend happened to need — which is how `chars()` went years
+/// without registering its array type. One walk, over every variant, means a
+/// new `Expr` variant is a compile error here rather than a silent gap there.
+pub fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
+    f(e);
+    match e {
+        Expr::Int(_)
+        | Expr::Float(_)
+        | Expr::Bool(_)
+        | Expr::Unit
+        | Expr::Path(_)
+        | Expr::Ident(_)
+        | Expr::Break
+        | Expr::Continue => {}
+        Expr::Str(parts) => {
+            for p in parts {
+                if let StrPart::Interp(x) = p {
+                    walk_expr(x, f);
+                }
+            }
+        }
+        Expr::List(xs) => {
+            for x in xs {
+                walk_expr(x, f);
+            }
+        }
+        Expr::Record(fields) | Expr::Ctor { fields, .. } => walk_fields(fields, f),
+        Expr::With { base, fields } => {
+            walk_expr(base, f);
+            walk_fields(fields, f);
+        }
+        Expr::Call { callee, args } => {
+            walk_expr(callee, f);
+            for a in args {
+                walk_expr(arg_expr(a), f);
+            }
+        }
+        Expr::Field { base, .. } => walk_expr(base, f),
+        Expr::Index { base, index } => {
+            walk_expr(base, f);
+            walk_expr(index, f);
+        }
+        Expr::Range { lo, hi } => {
+            walk_expr(lo, f);
+            walk_expr(hi, f);
+        }
+        Expr::Unary { expr, .. } => walk_expr(expr, f),
+        Expr::Binary { lhs, rhs, .. } => {
+            walk_expr(lhs, f);
+            walk_expr(rhs, f);
+        }
+        Expr::Ternary { cond, then, els } => {
+            walk_expr(cond, f);
+            walk_expr(then, f);
+            walk_expr(els, f);
+        }
+        Expr::If { cond, then, els } => {
+            walk_expr(cond, f);
+            walk_stmts(then, f);
+            if let Some(e) = els {
+                walk_stmts(e, f);
+            }
+        }
+        Expr::Match { scrut, arms } => {
+            walk_expr(scrut, f);
+            for a in arms {
+                if let Some(g) = &a.guard {
+                    walk_expr(g, f);
+                }
+                walk_expr(&a.body, f);
+            }
+        }
+        Expr::For { iter, body, .. } => {
+            walk_expr(iter, f);
+            walk_stmts(body, f);
+        }
+        Expr::While { cond, body } => {
+            walk_expr(cond, f);
+            walk_stmts(body, f);
+        }
+        Expr::Lambda { body, .. } => walk_expr(body, f),
+        Expr::Try(x) | Expr::Fail(x) | Expr::Reify(x) | Expr::Await(x) | Expr::Spawn(x) => {
+            walk_expr(x, f)
+        }
+        Expr::Assign { target, value } => {
+            walk_expr(target, f);
+            walk_expr(value, f);
+        }
+        Expr::Block(ss) => walk_stmts(ss, f),
+    }
+}
+
+fn walk_stmts(ss: &[Stmt], f: &mut impl FnMut(&Expr)) {
+    for s in ss {
+        walk_stmt(s, f);
+    }
+}
+
+fn walk_fields(fields: &[Field], f: &mut impl FnMut(&Expr)) {
+    for field in fields {
+        match field {
+            Field::Value { value, .. } | Field::Bare(value) => walk_expr(value, f),
+            Field::Type { .. } | Field::Shorthand(_) => {}
+        }
+    }
+}
+
+/// Visit every expression in a statement.
+pub fn walk_stmt(s: &Stmt, f: &mut impl FnMut(&Expr)) {
+    match s {
+        Stmt::Expr(e) => walk_expr(e, f),
+        Stmt::Bind(b) => {
+            walk_expr(&b.target, f);
+            walk_expr(&b.value, f);
+        }
+        Stmt::Alias { value, .. } => walk_expr(value, f),
+        Stmt::Fn(fd) => match &fd.body {
+            Some(FnBody::Expr(e)) => walk_expr(e, f),
+            Some(FnBody::Block(ss)) => walk_stmts(ss, f),
+            None => {}
+        },
+        Stmt::Import(_) => {}
+    }
+}
+
+/// The expression carried by a call argument, whatever form it took.
+pub fn arg_expr(a: &Arg) -> &Expr {
+    match a {
+        Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => e,
+    }
+}

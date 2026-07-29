@@ -333,3 +333,77 @@ fn a_trait_method_can_declare_its_return_type() {
     assert_eq!(code, Some(0), "{out}");
     assert!(out.contains("count 41"), "{out}");
 }
+
+/// A trait method's foreign-typed parameter is a mutable borrow.
+///
+/// Rust trait methods take their arguments that way — `w: &mut Window`,
+/// `cx: &mut Context<Self>` — and Maca never owns a value from a crate it does
+/// not read. So a parameter whose type this module does not declare lowers to
+/// `&mut T`, call sites pass `&mut`, and it is passed on rather than `.clone()`d
+/// (a `&mut T` has no `clone`).
+#[test]
+fn a_foreign_typed_parameter_is_a_mutable_borrow() {
+    if !have("rustc") {
+        eprintln!("skipping: needs rustc");
+        return;
+    }
+    let (out, code) = build_and_run(
+        "borrowed_param",
+        "import rust \"\"\"\n\
+         pub struct Window { pub n: i64 }\n\
+         pub trait Bump { fn bump(&mut self, w: &mut Window) -> i64; }\n\
+         pub fn peek(w: &mut Window) -> i64 { w.n }\n\
+         \"\"\"\n\n\
+         Counter = {\n    count: int\n}\n\n\
+         Counter : Bump = {\n\
+         \x20   bump = (self, w: Window) -> int => peek(w) + self.count\n\
+         }\n\n\
+         main() -> int {\n\
+         \x20   c = Counter { count = 40 }\n\
+         \x20   info(\"{c.bump(Window { n = 2 })}\")\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(code, Some(0), "{out}");
+    assert!(out.contains("42"), "{out}");
+}
+
+/// A borrow may be read and passed on, but not kept. Storing it would outlive
+/// the call, and the lifetime that would need has no spelling in Maca — so it
+/// is refused here, naming the parameter, rather than by `rustc` naming a type
+/// the user never wrote.
+#[test]
+fn a_borrowed_parameter_may_not_be_stored() {
+    let dir = std::env::temp_dir().join("maca-rust-escape");
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let file = dir.join("escape.maca");
+    std::fs::write(
+        &file,
+        "import rust \"\"\"\npub struct Window { pub n: i64 }\n\
+         pub trait Keep { fn keep(&mut self, w: &mut Window) -> i64; }\n\"\"\"\n\n\
+         Holder = {\n    saved: int\n}\n\n\
+         Holder : Keep = {\n\
+         \x20   keep = (self, w: Window) -> int => Holder { saved = w }.saved\n\
+         }\n\n\
+         main() -> int => 0\n",
+    )
+    .expect("write source");
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            "--target",
+            "rust",
+            &file.to_string_lossy(),
+            "-o",
+            &dir.join("escape").to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca build");
+
+    let text = String::from_utf8_lossy(&out.stdout).to_string()
+        + &String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "storing a borrow should fail:\n{text}");
+    assert!(text.contains("`w`"), "should name the parameter:\n{text}");
+    assert!(text.contains("borrowed"), "should say why:\n{text}");
+}

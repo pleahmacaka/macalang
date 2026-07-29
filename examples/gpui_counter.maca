@@ -14,7 +14,9 @@
 //   * `n => n + 1`                       -> a `move |n| ...` closure
 //   * `div().flex().child(x)`            -> method-chain passthrough
 //   * `Duration.from_secs(5)` etc.       -> `Type::assoc(...)` without `::`
-//   * `(self, w, cx) -> AnyElement => ...` -> the method's declared return type
+//   * `(self, w: Window, ...)`            -> `&mut Window` (a foreign type is
+//                                            borrowed, never owned by Maca)
+//   * `... -> AnyElement =>`                -> the method's declared return type
 //
 // The `render` return type is written out rather than inferred: the backend
 // does not read gpui's source, so a foreign return type is an annotation. That
@@ -37,7 +39,7 @@ Counter : Render = {
     // `Render::render` returns `impl IntoElement`, and Rust lets an impl name a
     // concrete type where the trait wrote `impl Trait` -- so the annotation is
     // the whole answer, and `.into_any_element()` produces the value.
-    render = (self, window, cx) -> AnyElement =>
+    render = (self, window: Window, cx: Context Counter) -> AnyElement =>
         div()
             .flex()
             .gap_2()

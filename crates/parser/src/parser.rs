@@ -388,6 +388,9 @@ impl Parser {
     // ---- expressions ------------------------------------------------------
 
     fn parse_expr(&mut self) -> Expr {
+        if let Some(e) = self.typed_lambda() {
+            return e;
+        }
         let lhs = self.parse_ternary();
         if let Some(ret) = self.lambda_ret() {
             let params = self.expr_to_params(lhs);
@@ -398,6 +401,68 @@ impl Parser {
             };
         }
         lhs
+    }
+
+    /// `(a: T, b) [-> R] => body` — a lambda whose parameters carry types.
+    ///
+    /// A parameter list is not an expression, so the usual route (parse an
+    /// expression, then reinterpret it as parameters) cannot see the `: T`.
+    /// When the tokens ahead are a parenthesized list followed by the lambda
+    /// arrow, the list is parsed as what it is.
+    fn typed_lambda(&mut self) -> Option<Expr> {
+        if !self.at(Tok::LParen) || !self.typed_params_ahead() {
+            return None;
+        }
+        self.bump(); // '('
+        let params = self.parse_params();
+        self.expect(Tok::RParen, "')'");
+        let ret = if self.eat(Tok::Arrow) {
+            Some(self.parse_type())
+        } else {
+            None
+        };
+        self.expect(Tok::FatArrow, "'=>'");
+        Some(Expr::Lambda {
+            params,
+            ret,
+            body: Box::new(self.parse_lambda_body()),
+        })
+    }
+
+    /// Does a `(` here open a parameter list with at least one `name: Type` in
+    /// it, closed and followed by the lambda arrow? Only then is it worth
+    /// parsing as parameters rather than as an expression — `(a, b) => …` is
+    /// handled fine by the existing path, and `(a + b)` must stay an
+    /// expression.
+    fn typed_params_ahead(&self) -> bool {
+        let mut depth = 0usize;
+        let mut typed = false;
+        let mut i = 0usize;
+        loop {
+            match self.peekn(i) {
+                Tok::LParen | Tok::LBracket => depth += 1,
+                Tok::RParen | Tok::RBracket => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                // a `:` directly inside this list is a parameter's type; deeper
+                // in, it belongs to a nested list or a ternary.
+                Tok::Colon if depth == 1 => typed = true,
+                Tok::Eof => return false,
+                _ => {}
+            }
+            i += 1;
+        }
+        if !typed {
+            return false;
+        }
+        match self.peekn(i + 1) {
+            Tok::FatArrow => true,
+            Tok::Arrow => true,
+            _ => false,
+        }
     }
 
     /// The arrow between a lambda's parameters and its body, with an optional
@@ -438,6 +503,9 @@ impl Parser {
     /// Lambda bodies additionally allow the UI setter form `x = e` (assign expr)
     /// and nested lambdas.
     fn parse_lambda_body(&mut self) -> Expr {
+        if let Some(e) = self.typed_lambda() {
+            return e;
+        }
         let lhs = self.parse_ternary();
         if let Some(ret) = self.lambda_ret() {
             let params = self.expr_to_params(lhs);
