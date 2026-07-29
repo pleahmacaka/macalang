@@ -22,3 +22,7 @@ playground/out/
 
 # `tools/build-site.sh` output
 _site/
+
+# scratch space the toolchain writes in a project: the dev-shell scripts from
+# `maca dev`, and the entry module `maca -m` generates and removes.
+/.maca/

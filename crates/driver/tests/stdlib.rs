@@ -5,7 +5,7 @@
 //! those is now a real builtin, and each is exercised here, because a
 //! documented library that nothing runs is a claim rather than a fact.
 //!
-//! Most of it is asserted in Maca, in `std/tests/builtins.maca`, and run by
+//! Most of it is asserted in Maca, in `modules/std/tests/builtins.maca`, and run by
 //! `maca test`. What stays here is the two cases that are about the *process*
 //! rather than the values: reading piped stdin, and what a failing assertion
 //! writes and returns.
@@ -54,7 +54,7 @@ fn the_documented_builtins_work() {
 
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .current_dir(repo())
-        .args(["test", "std/tests/builtins.maca"])
+        .args(["test", "modules/std/tests/builtins.maca"])
         .output()
         .expect("spawn maca test");
 

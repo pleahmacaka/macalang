@@ -10,6 +10,14 @@
 //!   compiles). A name that the module doesn't define is a clean error rather
 //!   than a dangling reference.
 //!
+//! A package's entry module — `modules/http/_init.maca` — also **hands on**
+//! what it imports. `import { serve } from http` finds `serve` whether the
+//! entry module defines it or takes it from `http/server`, so a package can be
+//! organised into files without every caller learning which file. That is what
+//! an entry module is for: it says what the package's name means. Ordinary
+//! modules do not do this — a name reachable through any module that happened
+//! to import it would make every import path a public one.
+//!
 //! Everything is inlined into one translation unit (dependency order, each
 //! module once), so `maca build a.maca` sees a single source string. Foreign
 //! imports (`import c "…"`, `nixpkgs`, stdlib builtins) resolve to no file and
@@ -132,11 +140,82 @@ fn resolve_selection(entry: &Path, g: &Graph) -> HashMap<PathBuf, Sel> {
                     Import::Names { names, .. } => Some(names.clone()),
                     _ => continue,
                 };
+                // A name asked of a package entry module that the entry does
+                // not define itself is asked of what the entry imports. Passing
+                // the request on is what lets `modules/http/_init.maca` be a
+                // table of contents rather than a wall of forwarding functions
+                // whose signatures drift from the ones they forward to.
+                let want = want.map(|names| forward(&names, &dep, g, &mut sel, &mut changed));
                 changed |= merge(&mut sel, dep, want);
             }
         }
     }
     sel
+}
+
+/// Split `names` into those `entry` defines itself and those it hands on,
+/// requesting the rest from whichever module `entry` imports that defines them.
+///
+/// Only an entry module forwards. A name is left in place when nothing it
+/// imports defines it, so the "not defined in that module" error still names
+/// the module the reader actually wrote.
+fn forward(
+    names: &[String],
+    entry: &Path,
+    g: &Graph,
+    sel: &mut HashMap<PathBuf, Sel>,
+    changed: &mut bool,
+) -> Vec<String> {
+    if !is_entry_module(entry) {
+        return names.to_vec();
+    }
+    let Some(module) = g.parsed.get(entry) else {
+        return names.to_vec();
+    };
+    let defines_here: HashSet<&str> = module.items.iter().filter_map(defined_name).collect();
+
+    let mut keep = Vec::new();
+    for name in names {
+        if defines_here.contains(name.as_str()) {
+            keep.push(name.clone());
+            continue;
+        }
+        match provider(name, module, entry, g) {
+            Some(dep) => *changed |= merge(sel, dep, Some(vec![name.clone()])),
+            None => keep.push(name.clone()),
+        }
+    }
+    keep
+}
+
+/// The module `entry` imports that defines `name`, if exactly one does.
+fn provider(name: &str, module: &Module, entry: &Path, g: &Graph) -> Option<PathBuf> {
+    for item in &module.items {
+        let Stmt::Import(im) = item else { continue };
+        let Some(dep) = import_target(im, entry) else {
+            continue;
+        };
+        let dep = canon(&dep);
+        // A selective import only carries what it names, so it can only hand on
+        // what it asked for.
+        if let Import::Names { names, .. } = im
+            && !names.iter().any(|n| n == name)
+        {
+            continue;
+        }
+        if g.parsed
+            .get(&dep)
+            .is_some_and(|m| m.items.iter().filter_map(defined_name).any(|n| n == name))
+        {
+            return Some(dep);
+        }
+    }
+    None
+}
+
+/// Is this the file a package's own name resolves to?
+fn is_entry_module(path: &Path) -> bool {
+    path.file_name().is_some_and(|f| f == "_init.maca")
 }
 
 /// Fold one import edge's request into `sel[dep]`. Returns whether it changed.
@@ -200,10 +279,15 @@ fn slice_module(
         }
     }
 
-    let modname = path
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.display().to_string());
+    // A package's entry module is called `_init.maca` on disk and `http`
+    // everywhere else. The reader wrote `http`, so that is what the error says.
+    let modname = if is_entry_module(path) {
+        path.parent().and_then(Path::file_name)
+    } else {
+        path.file_stem()
+    }
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| path.display().to_string());
 
     // Seed the worklist from the requested names (mapping a requested variant
     // to its owning type).

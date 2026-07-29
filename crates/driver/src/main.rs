@@ -14,6 +14,7 @@ use maca_profile as profile;
 mod bindgen;
 mod build_cache;
 mod deps;
+mod entry;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -23,6 +24,7 @@ fn main() {
         Some("--version" | "-V" | "version") => println!("maca {VERSION}"),
         Some("build") => cmd_build(&args[1..]),
         Some("run") => cmd_run(&args[1..]),
+        Some("-m" | "--module") => cmd_module(&args[1..]),
         Some("init") => cmd_init(&args[1..]),
         Some("fmt") => cmd_fmt(&args[1..]),
         Some("lint") => cmd_lint(&args[1..]),
@@ -565,6 +567,7 @@ fn usage() {
          \x20 init  [dir]                  scaffold a new project (maca.toml, main.maca)\n\
          \x20 build <file.maca> [-o out]   compile (native | --target nix|js|jvm|rust|embedded|tauri)\n\
          \x20 run   <file.maca> [args..]   compile and run\n\
+         \x20 -m    <module>[.<fn>] [args..]  run a function out of a module\n\
          \x20 dev   [dev.maca] [-o flake]  generate a dev-shell flake.nix from Maca\n\
          \x20 watch <file.maca> [args..]   rebuild & rerun on change (hot reload)\n\
          \x20 fmt   <file.maca>… [--check] format in place (style from maca.toml [format])\n\
@@ -1744,6 +1747,99 @@ fn cmd_test(args: &[String]) {
     if !status.success() {
         eprintln!("maca: tests failed");
     }
+    std::process::exit(status.code().unwrap_or(1));
+}
+
+/// `maca -m http.serve [args…]` — run a function out of a module.
+///
+/// The generated entry module goes under `.maca/run/` in the project root, not
+/// a temp directory: `import http` inside it has to mean the same package it
+/// means anywhere else in the project, and import resolution is relative to the
+/// importing file.
+fn cmd_module(args: &[String]) {
+    let Some(spec) = args.first() else {
+        die("-m: expected a module, e.g. `maca -m http.serve`");
+    };
+    let (module, named) = entry::parse_spec(spec);
+    let root = maca_parser::modules::project_root(Path::new("."))
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let Some(path) = entry::resolve(&module, &root) else {
+        die(&format!(
+            "-m: no module `{module}` — looked for {module}.maca and \
+             {module}/_init.maca under the project's package roots"
+        ));
+    };
+    let src = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| die(&format!("-m: cannot read {}: {e}", path.display())));
+    let parsed = maca_parser::parse(&src);
+    if !parsed.errors.is_empty() {
+        die(&format!(
+            "-m: {} does not parse:\n  {}",
+            path.display(),
+            parsed.errors.join("\n  ")
+        ));
+    }
+
+    let function = named
+        .or_else(|| entry::entry_function(&module, &parsed.module.items))
+        .unwrap_or_else(|| {
+            die(&format!(
+                "-m: `{module}` defines no `main` and no `{}` — name the \
+                 function, as in `maca -m {module}.something`",
+                module.rsplit('/').next().unwrap_or(&module)
+            ))
+        });
+    let Some(def) = parsed.module.items.iter().find_map(|i| match i {
+        maca_parser::Stmt::Fn(f) if f.name == function => Some(f),
+        _ => None,
+    }) else {
+        die(&format!(
+            "-m: `{module}` defines no function `{function}`"
+        ));
+    };
+    let call = entry::call_shape(def).unwrap_or_else(|e| die(&format!("-m: {e}")));
+    let answer = entry::answer_of(def);
+
+    // A module whose entry point is called `main` is already a program: it is
+    // compiled as itself. Generating a wrapper would put a second `main` in the
+    // same translation unit, and the call would bind to the wrapper's.
+    let (source, cleanup) = if function == "main" {
+        (path.clone(), None)
+    } else {
+        let shim_dir = root.join(".maca/run");
+        if let Err(e) = std::fs::create_dir_all(&shim_dir) {
+            die(&format!("-m: cannot create {}: {e}", shim_dir.display()));
+        }
+        // The leading `-` is load-bearing: an import resolves against the
+        // importing file's own directory first, so a shim called `http.maca`
+        // importing `http` found itself. No identifier can begin with `-`, so
+        // no import can name this file however the project is laid out.
+        let shim = shim_dir.join(format!("-entry-{}.maca", module.replace('/', "-")));
+        let text = entry::entry_source(&module, &function, &call, &answer);
+        if let Err(e) = std::fs::write(&shim, &text) {
+            die(&format!("-m: cannot write {}: {e}", shim.display()));
+        }
+        (shim.clone(), Some(shim))
+    };
+
+    let dir = build_dir(&source);
+    let out = dir.join(stem(&source));
+    let built = compile(&source, &out);
+    if let Some(shim) = cleanup {
+        let _ = std::fs::remove_file(&shim);
+    }
+    if let Err(e) = built {
+        die(&e);
+    }
+
+    let prog_args = &args[1..];
+    let status = if have_wsl() {
+        Command::new("wsl").arg(to_wsl(&out)).args(prog_args).status()
+    } else {
+        Command::new(&out).args(prog_args).status()
+    }
+    .unwrap_or_else(|e| die(&format!("failed to launch binary: {e}")));
     std::process::exit(status.code().unwrap_or(1));
 }
 

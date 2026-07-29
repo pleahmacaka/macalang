@@ -105,19 +105,19 @@ drop_landings(paths: str[], i: int) -> bool {
 // The modules `std/README.md` advertises, in the order it lists them.
 //
 // Read out of the table rather than written down again here. Globbing `std/`
-// would pull in `std/tests/*.maca`, and a second copy of the list is a list
+// would pull in `modules/std/tests/*.maca`, and a second copy of the list is a list
 // that drifts — the reference's contents are checked against this same table
 // by `crates/driver/tests/programs/sitegen.maca`, so it is the one place a
 // module is named.
 std_modules() -> str[] =>
-    module_paths(read_lines("std/README.md"), 0, [])
+    module_paths(read_lines("modules/std/README.md"), 0, [])
 
 module_paths(ls: str[], i: int, acc: str[]) -> str[] {
     if i >= ls.length() {
         acc
     } else if ls.get(i).starts_with("| `std/") {
         name = between(ls.get(i), "| `std/", "`")
-        module_paths(ls, i + 1, acc.push("std/" ++ name ++ ".maca"))
+        module_paths(ls, i + 1, acc.push("modules/std/" ++ name ++ ".maca"))
     } else {
         module_paths(ls, i + 1, acc)
     }

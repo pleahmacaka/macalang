@@ -2,7 +2,8 @@
 //!
 //! `std/` was a README describing builtins. It is now importable Maca: `text`,
 //! `list`, `path`, `json`, `csv`, `fs`, `proc`. Each has a suite of `test_…`
-//! functions under `std/tests/`, and this runs them all through `maca test` —
+//! functions under `modules/std/tests/`, and this runs them all through
+//! `maca test` —
 //! a library nothing runs is a claim rather than a fact, and the suites are
 //! written in the language they ship with, so they also gate the compiler.
 //!
@@ -14,7 +15,8 @@ use common::*;
 
 use std::process::Command;
 
-/// Run every `test_…` function in `std/tests/<name>.maca`. The suite runs from
+/// Run every `test_…` function in `modules/std/tests/<name>.maca`. The suite
+/// runs from
 /// the repository root so `import std/…` resolves.
 fn suite(name: &str) {
     if have_wsl() || !have("cc") {
@@ -24,13 +26,13 @@ fn suite(name: &str) {
 
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .current_dir(repo())
-        .args(["test", &format!("std/tests/{name}.maca")])
+        .args(["test", &format!("modules/std/tests/{name}.maca")])
         .output()
         .expect("spawn maca test");
 
     assert!(
         out.status.success(),
-        "std/{name}:\n{}\n{}",
+        "modules/std/{name}:\n{}\n{}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr),
     );
@@ -79,7 +81,8 @@ fn proc_module() {
 /// proves the index of them is honest.
 #[test]
 fn the_std_readme_names_functions_that_exist() {
-    let readme = std::fs::read_to_string(repo().join("std/README.md")).expect("std/README.md");
+    let readme = std::fs::read_to_string(repo().join("modules/std/README.md"))
+        .expect("modules/std/README.md");
 
     let mut checked = 0;
     for line in readme.lines() {
@@ -90,8 +93,8 @@ fn the_std_readme_names_functions_that_exist() {
             continue;
         };
 
-        let src = std::fs::read_to_string(repo().join(format!("std/{module}.maca")))
-            .unwrap_or_else(|_| panic!("std/README.md lists std/{module}, which has no source"));
+        let src = std::fs::read_to_string(repo().join(format!("modules/std/{module}.maca")))
+            .unwrap_or_else(|_| panic!("modules/std/README.md lists std/{module}, which has no source"));
 
         for name in backticked(body) {
             // `str_`-prefixed twins` and the like are prose, not a call.
@@ -100,7 +103,7 @@ fn the_std_readme_names_functions_that_exist() {
             }
             assert!(
                 src.lines().any(|l| l.starts_with(&format!("{name}("))),
-                "std/README.md lists `{name}` under std/{module}, which does not define it"
+                "modules/std/README.md lists `{name}` under std/{module}, which does not define it"
             );
             checked += 1;
         }

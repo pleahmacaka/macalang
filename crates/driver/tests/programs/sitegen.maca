@@ -245,14 +245,14 @@ api_dir() -> str {
 // it. A second copy here would let the site build and the test that checks it
 // disagree about which modules exist.
 std_modules() -> str[] =>
-    module_paths(read_lines("std/README.md"), 0, [])
+    module_paths(read_lines("modules/std/README.md"), 0, [])
 
 module_paths(ls: str[], i: int, acc: str[]) -> str[] {
     if i >= ls.length() {
         acc
     } else if ls.get(i).starts_with("| `std/") {
         name = between(ls.get(i), "| `std/", "`")
-        module_paths(ls, i + 1, acc.push("std/" ++ name ++ ".maca"))
+        module_paths(ls, i + 1, acc.push("modules/std/" ++ name ++ ".maca"))
     } else {
         module_paths(ls, i + 1, acc)
     }
@@ -265,13 +265,13 @@ module_paths(ls: str[], i: int, acc: str[]) -> str[] {
 test_reference_matches_the_advertised_api() {
     dir = api_dir()
 
-    assert_eq(documented(dir, "text"), advertised("text"), "std/text")
-    assert_eq(documented(dir, "list"), advertised("list"), "std/list")
-    assert_eq(documented(dir, "path"), advertised("path"), "std/path")
-    assert_eq(documented(dir, "json"), advertised("json"), "std/json")
-    assert_eq(documented(dir, "csv"), advertised("csv"), "std/csv")
-    assert_eq(documented(dir, "fs"), advertised("fs"), "std/fs")
-    assert_eq(documented(dir, "proc"), advertised("proc"), "std/proc")
+    assert_eq(documented(dir, "text"), advertised("text"), "modules/std/text")
+    assert_eq(documented(dir, "list"), advertised("list"), "modules/std/list")
+    assert_eq(documented(dir, "path"), advertised("path"), "modules/std/path")
+    assert_eq(documented(dir, "json"), advertised("json"), "modules/std/json")
+    assert_eq(documented(dir, "csv"), advertised("csv"), "modules/std/csv")
+    assert_eq(documented(dir, "fs"), advertised("fs"), "modules/std/fs")
+    assert_eq(documented(dir, "proc"), advertised("proc"), "modules/std/proc")
 }
 
 // Handbook ch. 17 makes four claims about what a doc comment renders as. Each
@@ -335,8 +335,8 @@ test_module_cards_say_what_the_module_is() {
     index = read_file(join(api_dir(), "index.html"))
 
     assert(index.contains("string work that sits one level above"),
-           "std/text's blurb")
-    assert(index.contains("running other programs"), "std/proc's blurb")
+           "modules/std/text's blurb")
+    assert(index.contains("running other programs"), "modules/std/proc's blurb")
     assert(index.contains("14 items"), "and how many things it documents")
 }
 
@@ -495,7 +495,7 @@ is_identifier(cs: str[], i: int) -> bool {
 }
 
 row_for(module: str) -> str =>
-    matching_row(read_lines("std/README.md"), 0, "| `std/" ++ module ++ "`")
+    matching_row(read_lines("modules/std/README.md"), 0, "| `std/" ++ module ++ "`")
 
 matching_row(ls: str[], i: int, prefix: str) -> str {
     if i >= ls.length() {
