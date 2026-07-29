@@ -7,7 +7,7 @@
 //! tree-shaken Tailwind subset is emitted (only used classes ship).
 
 use maca_parser::ast::*;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub struct JsOut {
     pub js: String,
@@ -33,6 +33,9 @@ pub fn emit(m: &Module) -> JsOut {
     let state_names: BTreeSet<String> = cx.state.iter().map(|(n, _)| n.clone()).collect();
     cx.state_names = state_names.clone();
     set_state_names(&state_names);
+
+    let variants = collect_variants(m);
+    set_variants(&variants);
 
     // Collect Tailwind class candidates from every string literal in the module
     // (not just `class=` attributes), so classes returned from a helper — e.g.
@@ -80,9 +83,14 @@ pub fn emit(m: &Module) -> JsOut {
             exports.push(f.name.clone());
         }
     }
-    if !fn_defs.is_empty() {
-        js.push_str("\n// ---- transpiled functions ----\n");
-        js.push_str(&fn_defs);
+    // Variants are exported alongside the functions: a caller in JS cannot build
+    // an argument for `area(s: Shape)` without `Circle`.
+    exports.extend(variants.keys().cloned());
+    if !fn_defs.is_empty() || !variants.is_empty() {
+        if !fn_defs.is_empty() {
+            js.push_str("\n// ---- transpiled functions ----\n");
+            js.push_str(&fn_defs);
+        }
         let names = exports.join(", ");
         js.push_str(&format!(
             "if (typeof module !== \"undefined\") Object.assign(module.exports, {{ {names} }});\n"
@@ -117,12 +125,31 @@ pub fn emit(m: &Module) -> JsOut {
     } else {
         format!("{foreign_js}\n{js}")
     };
+    // Constructors go near the top: `build()` mounts the view as soon as it is
+    // defined, and a view may name a variant. They go *after* `"use strict"`
+    // rather than before it — a directive prologue only counts as one while it
+    // is still the first statement in the file.
+    let js = match variant_ctors(&variants) {
+        c if c.is_empty() => js,
+        c => insert_after_use_strict(&js, &format!("// ---- sum variants ----\n{c}")),
+    };
     let html = HTML.into();
     JsOut {
         js,
         html,
         css,
         exports,
+    }
+}
+
+/// Splice `block` in just below the `"use strict"` directive, or at the very top
+/// when there is none.
+fn insert_after_use_strict(js: &str, block: &str) -> String {
+    match js.split_once('\n') {
+        Some((first, rest)) if first.trim_start().starts_with("\"use strict\"") => {
+            format!("{first}\n{block}\n{rest}")
+        }
+        _ => format!("{block}\n{js}"),
     }
 }
 
@@ -196,9 +223,20 @@ thread_local! {
     /// Top-level reactive-state names, consulted so a reference to `x` lowers to
     /// `state.x` everywhere (view text, attributes, and transpiled functions).
     static STATE: std::cell::RefCell<BTreeSet<String>> = const { std::cell::RefCell::new(BTreeSet::new()) };
+    /// Sum-type variant names and their payload arity. A pattern cannot tell a
+    /// nullary variant (`Red`) from a binder by shape alone — both parse as
+    /// `Pattern::Bind` — so the declared set is what disambiguates them, the way
+    /// the checker's `is_variant` does for the C backend.
+    static VARIANTS: std::cell::RefCell<BTreeMap<String, usize>> = const { std::cell::RefCell::new(BTreeMap::new()) };
 }
 fn set_state_names(names: &BTreeSet<String>) {
     STATE.with(|s| *s.borrow_mut() = names.clone());
+}
+fn set_variants(vs: &BTreeMap<String, usize>) {
+    VARIANTS.with(|s| *s.borrow_mut() = vs.clone());
+}
+fn is_variant(n: &str) -> bool {
+    VARIANTS.with(|s| s.borrow().contains_key(n))
 }
 /// A bare identifier → `state.x` when it names reactive state, else itself.
 fn jname(n: &str) -> String {
@@ -295,42 +333,108 @@ fn jexpr(e: &Expr) -> String {
     }
 }
 
-/// `match` in expression position → an IIFE with an if-chain. Handles literal,
-/// bind, wildcard, and or-patterns (primitives — what a UI handler needs);
-/// constructor patterns fall through to a binding (JS sum values are untagged).
+/// `match` in expression position → an IIFE with an if-chain. Falling off the
+/// end throws rather than returning `undefined`: a scrutinee no arm covers is a
+/// bug in the program, and `undefined` would carry it somewhere else first.
 fn jmatch(scrut: &Expr, arms: &[Arm]) -> String {
     let mut body = format!("(() => {{ const _s = {};", jexpr(scrut));
     for a in arms {
-        let (cond, binds) = jpattern(&a.pat);
-        let guard = a
-            .guard
-            .as_ref()
-            .map(|g| format!(" && ({})", jexpr(g)))
-            .unwrap_or_default();
+        let (cond, binds) = jpattern(&a.pat, "_s");
+        // the guard reads the arm's own bindings, so it belongs inside the
+        // branch, after them — not in the condition that selects the branch.
+        let (test, pre) = match &a.guard {
+            Some(g) => (
+                format!("{cond} && (() => {{ {binds}return {}; }})()", jexpr(g)),
+                binds.clone(),
+            ),
+            None => (cond, binds),
+        };
         body.push_str(&format!(
-            " if ({cond}{guard}) {{ {binds}return {}; }}",
+            " if ({test}) {{ {pre}return {}; }}",
             jexpr(&a.body)
         ));
     }
-    body.push_str(" })()");
+    body.push_str(" throw new Error(\"no match\"); })()");
     body
 }
 
-/// (condition, binding-statements) for matching `_s` against `pat`.
-fn jpattern(pat: &Pattern) -> (String, String) {
+/// (condition, binding-statements) for matching `sv` against `pat`. `sv` is the
+/// JS expression holding the value, so nested patterns recurse into a field, an
+/// element, or a payload slot rather than only ever testing the scrutinee.
+fn jpattern(pat: &Pattern, sv: &str) -> (String, String) {
     match pat {
         Pattern::Wild => ("true".into(), String::new()),
-        Pattern::Bind(n) => ("true".into(), format!("const {n} = _s; ")),
-        Pattern::Int(n) => (format!("_s === {n}"), String::new()),
-        Pattern::Float(f) => (format!("_s === {f}"), String::new()),
-        Pattern::Bool(b) => (format!("_s === {b}"), String::new()),
-        Pattern::Str(s) => (format!("_s === {s:?}"), String::new()),
+        // A bare capitalised name is a nullary variant when one is declared, and
+        // a binder otherwise — the same ambiguity the C backend resolves with
+        // the checker's `is_variant`.
+        Pattern::Bind(n) if is_variant(n) => (format!("{sv}.$ === {n:?}"), String::new()),
+        Pattern::Bind(n) => ("true".into(), format!("const {n} = {sv}; ")),
+        Pattern::Int(n) => (format!("{sv} === {n}"), String::new()),
+        Pattern::Float(f) => (format!("{sv} === {f}"), String::new()),
+        Pattern::Bool(b) => (format!("{sv} === {b}"), String::new()),
+        Pattern::Str(s) => (format!("{sv} === {s:?}"), String::new()),
+        Pattern::Ctor { name, args } => {
+            let mut conds = vec![format!("{sv}.$ === {name:?}")];
+            let mut binds = String::new();
+            for (i, a) in args.iter().enumerate() {
+                let (c, b) = jpattern(a, &format!("{sv}._{i}"));
+                if c != "true" {
+                    conds.push(c);
+                }
+                binds.push_str(&b);
+            }
+            (format!("({})", conds.join(" && ")), binds)
+        }
+        // A record pattern always matches — it exists to name the fields.
+        Pattern::Record(fields) => {
+            let mut conds = Vec::new();
+            let mut binds = String::new();
+            for (fname, sub) in fields {
+                match sub {
+                    None => binds.push_str(&format!("const {fname} = {sv}.{fname}; ")),
+                    Some(p) => {
+                        let (c, b) = jpattern(p, &format!("{sv}.{fname}"));
+                        if c != "true" {
+                            conds.push(c);
+                        }
+                        binds.push_str(&b);
+                    }
+                }
+            }
+            let cond = if conds.is_empty() {
+                "true".into()
+            } else {
+                format!("({})", conds.join(" && "))
+            };
+            (cond, binds)
+        }
+        // `[a, b]` matches that length exactly; `a, ..rest` matches at least the
+        // fixed elements and binds the remainder.
+        Pattern::List { elems, rest } => {
+            let n = elems.len();
+            let op = if rest.is_some() { ">=" } else { "===" };
+            let mut conds = vec![format!("Array.isArray({sv}) && {sv}.length {op} {n}")];
+            let mut binds = String::new();
+            for (i, e) in elems.iter().enumerate() {
+                let (c, b) = jpattern(e, &format!("{sv}[{i}]"));
+                if c != "true" {
+                    conds.push(c);
+                }
+                binds.push_str(&b);
+            }
+            if let Some(r) = rest.as_deref() {
+                // a named rest binds the tail; `..` alone binds nothing
+                if let Pattern::Bind(rn) = r {
+                    binds.push_str(&format!("const {rn} = {sv}.slice({n}); "));
+                }
+            }
+            (format!("({})", conds.join(" && ")), binds)
+        }
+        // Alternatives bind nothing, so each is only a test.
         Pattern::Or(alts) => {
-            let conds: Vec<String> = alts.iter().map(|p| jpattern(p).0).collect();
+            let conds: Vec<String> = alts.iter().map(|p| jpattern(p, sv).0).collect();
             (format!("({})", conds.join(" || ")), String::new())
         }
-        // untagged sum values: best effort — bind the scrutinee, always match
-        _ => ("true".into(), String::new()),
     }
 }
 
@@ -1500,4 +1604,62 @@ fn sum_variants(e: &Expr) -> Option<()> {
         }
     )
     .then_some(())
+}
+
+/// Flatten a `A | B(int) | C` union into each variant's name and payload arity.
+/// A nullary variant parses as a bare `Ident`, one with a payload as a `Call`.
+fn union_arms(e: &Expr, out: &mut BTreeMap<String, usize>) {
+    match e {
+        Expr::Binary {
+            op: BinOp::Union,
+            lhs,
+            rhs,
+        } => {
+            union_arms(lhs, out);
+            union_arms(rhs, out);
+        }
+        Expr::Ident(n) => {
+            out.insert(n.clone(), 0);
+        }
+        Expr::Call { callee, args } => {
+            if let Expr::Ident(n) = callee.as_ref() {
+                out.insert(n.clone(), args.len());
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Every sum variant declared in the module, with its payload arity.
+fn collect_variants(m: &Module) -> BTreeMap<String, usize> {
+    let mut out = BTreeMap::new();
+    for item in &m.items {
+        if let Stmt::Bind(b) = item
+            && sum_variants(&b.value).is_some()
+        {
+            union_arms(&b.value, &mut out);
+        }
+    }
+    out
+}
+
+/// A tagged object per variant, so `match` can test the tag and read payloads.
+/// A nullary variant is a single shared value; one with a payload is a function,
+/// which is what makes the surface `Circle(2.0)` a plain call needing no special
+/// case in `jexpr`.
+fn variant_ctors(vs: &BTreeMap<String, usize>) -> String {
+    let mut out = String::new();
+    for (name, arity) in vs {
+        if *arity == 0 {
+            out.push_str(&format!("const {name} = {{ $: {name:?} }};\n"));
+        } else {
+            let ps: Vec<String> = (0..*arity).map(|i| format!("_{i}")).collect();
+            out.push_str(&format!(
+                "function {name}({}) {{ return {{ $: {name:?}, {} }}; }}\n",
+                ps.join(", "),
+                ps.join(", ")
+            ));
+        }
+    }
+    out
 }
