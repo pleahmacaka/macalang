@@ -195,6 +195,103 @@ fn two_files_may_share_a_private_helper_name() {
     );
 }
 
+/// A type a package keeps to itself is renamed everywhere it is *written*, not
+/// only where it is built. A signature still saying `Box` names a type nothing
+/// declares, and the C back end gave the parameter a fallback type and then
+/// failed to compile the package against itself.
+#[test]
+fn a_private_type_is_renamed_in_signatures_too() {
+    let p = Project::new("privty");
+    p.write(
+        "modules/pkg/inner.maca",
+        "Box = { n: int }\n\nwrap(n: int) -> Box => Box { n = n }\n\n         twice(n: int) -> int => wrap(n).n * 2\n",
+    );
+    let main = p.write(
+        "main.maca",
+        "import { twice } from pkg/inner\n\nmain() -> int => twice(21)\n",
+    );
+
+    let src = inlined(&main).expect("inlines");
+    assert!(src.contains("inner__Box"), "the type moved: {src}");
+    assert!(
+        !src.contains("-> Box\n") && !src.contains("-> Box "),
+        "and nothing still writes the old name: {src}"
+    );
+}
+
+/// A type named in a requested definition's signature is part of that
+/// definition, whatever the module thinks: nothing can call `parse(c: Cmd, …)`
+/// without writing `Cmd`, and renaming it left every caller naming a type that
+/// no longer existed.
+#[test]
+fn a_type_in_a_requested_signature_keeps_its_name() {
+    let p = Project::new("surface");
+    p.write(
+        "modules/pkg/spec.maca",
+        "Cmd = { name: str }\n\nhelper(s: str) -> str => s\n\n         make(n: str) -> Cmd => Cmd { name = helper(n) }\n",
+    );
+    let main = p.write(
+        "main.maca",
+        "import { make } from pkg/spec\n\n         run(c: Cmd) -> str => c.name\n\nmain() -> str => run(make(\"x\"))\n",
+    );
+
+    let src = inlined(&main).expect("inlines");
+    assert!(src.contains("Cmd = {"), "the type keeps its name: {src}");
+    assert!(!src.contains("spec__Cmd"), "not qualified: {src}");
+    assert!(
+        src.contains("spec__helper"),
+        "a helper nobody names still is: {src}"
+    );
+}
+
+/// Qualifying a private name leaves alone the functions that mean something
+/// else by it. A package with a private `at` rewrote `at + 1` inside any
+/// function with a parameter called `at`, and left the parameter untouched.
+#[test]
+fn qualification_skips_a_name_a_function_rebinds() {
+    let p = Project::new("shadow");
+    p.write(
+        "modules/pkg/scan.maca",
+        "at(s: str, i: int) -> str => s.substr(i, 1)\n\n         walk(body: str, at: int) -> int => at + 1\n\n         run() -> int => walk(\"abc\", 1)\n",
+    );
+    let main = p.write(
+        "main.maca",
+        "import { run } from pkg/scan\n\nmain() -> int => run()\n",
+    );
+
+    let src = inlined(&main).expect("inlines");
+    assert!(
+        src.contains("at + 1") || src.contains("(at + 1)"),
+        "the parameter is still the parameter: {src}"
+    );
+    assert!(
+        !src.contains("scan__at + 1"),
+        "and was not renamed with the function: {src}"
+    );
+}
+
+/// An imported module's syntax errors are the program's syntax errors.
+///
+/// Dropping them left the parser's partial tree to be sliced and inlined, so a
+/// file that would not compile on its own compiled to something *else* once
+/// something imported it.
+#[test]
+fn a_syntax_error_in_an_imported_module_is_reported() {
+    let p = Project::new("badsyntax");
+    p.write(
+        "modules/pkg/broken.maca",
+        "total() -> int {\n    1 + 2\n        + 3\n}\n",
+    );
+    let main = p.write(
+        "main.maca",
+        "import { total } from pkg/broken\n\nmain() -> int => total()\n",
+    );
+
+    let err = inlined(&main).expect_err("must not resolve");
+    assert!(err.contains("broken.maca"), "names the file: {err}");
+    assert!(err.contains("parse error"), "and says what is wrong: {err}");
+}
+
 /// A name someone asked for by hand keeps the spelling they asked for —
 /// qualifying it would break the caller that named it.
 #[test]

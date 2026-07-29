@@ -31,6 +31,72 @@ fn hello_runs_natively() {
     );
 }
 
+/// `examples/cli_tool.maca` — the `cli` package used the way a program uses it.
+///
+/// Run three ways, because a command line has three outcomes and only one of
+/// them is the happy path: help printed and nothing done, a refusal naming what
+/// was wrong, and the work itself.
+#[test]
+fn the_cli_example_helps_refuses_and_runs() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let bin = std::env::temp_dir().join("maca-cli-example");
+    let build = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            &example_str("cli_tool.maca"),
+            "-o",
+            &bin.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca build");
+    assert!(
+        build.status.success(),
+        "cli_tool failed to build:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let say = |args: &[&str]| {
+        let o = Command::new(&bin)
+            .args(args)
+            .env("NO_COLOR", "1")
+            .current_dir(repo())
+            .output()
+            .expect("run cli_tool");
+        (
+            o.status.success(),
+            String::from_utf8_lossy(&o.stdout).into_owned(),
+            String::from_utf8_lossy(&o.stderr).into_owned(),
+        )
+    };
+
+    let (ok, out, _) = say(&["--help"]);
+    assert!(ok, "help exits cleanly");
+    assert!(out.contains("-s, --sort"), "help lists the options:\n{out}");
+    assert!(
+        out.contains("(default: name)"),
+        "and their defaults:\n{out}"
+    );
+
+    let (ok, _, e) = say(&["modules/cli", "--srot", "lines"]);
+    assert!(!ok, "a misspelt option is a failure");
+    assert!(
+        e.contains("did you mean `--sort`"),
+        "and names the one meant:\n{e}"
+    );
+
+    let (ok, out, e) = say(&["modules/cli", "--top", "3", "--totals"]);
+    assert!(ok, "the real run succeeds:\n{e}");
+    assert!(out.contains("parse.maca"), "lists files:\n{out}");
+    assert!(
+        out.contains("3 file(s) counted"),
+        "and honours --top:\n{out}"
+    );
+    assert!(out.contains("bytes"), "and --totals:\n{out}");
+}
+
 #[test]
 fn recursion_and_arithmetic_run_natively() {
     let wsl = Command::new("wsl")

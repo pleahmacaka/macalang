@@ -1,0 +1,93 @@
+// cli/help — `--help`, rendered from the same value the parser reads.
+//
+// Help that is written by hand goes stale the first time an option is renamed,
+// and nothing fails when it does: the command still runs, and only the person
+// reading `--help` is misled. Here it is derived, so a spelling can only be
+// wrong in one place at a time.
+//
+//   info(help(Greet))
+//
+// The layout is the one a terminal reads well: a title line, a usage line you
+// can copy, then arguments and options in the order they were declared, one per
+// line with the column of descriptions aligned.
+
+import { bold, dim, grey, pad, width } from cli/style
+
+/// The whole help page for `c`.
+help(c: Cmd) -> str {
+    out = bold(c.name) ++ (c.about == "" ? "" : " — " ++ c.about) ++ "\n\n"
+    out = out ++ bold("Usage") ++ "\n  " ++ usage(c) ++ "\n"
+
+    if c.args.length() > 0 {
+        out = out ++ "\n" ++ bold("Arguments") ++ "\n" ++ arg_lines(c, 0, "")
+    }
+    out ++ "\n" ++ bold("Options") ++ "\n" ++ opt_lines(c, 0, "") ++ help_line(c)
+}
+
+/// The one line that shows how the command is invoked.
+usage(c: Cmd) -> str {
+    line = c.name
+    if c.opts.length() > 0 {
+        line = line ++ " [options]"
+    }
+    line ++ arg_usage(c, 0, "")
+}
+
+arg_usage(c: Cmd, i: int, acc: str) -> str {
+    if i >= c.args.length() {
+        acc
+    } else {
+        a = c.args.get(i)
+        arg_usage(c, i + 1, acc ++ (a.many ? " <{a.name}>..." : " <{a.name}>"))
+    }
+}
+
+// The width of the widest left column, so the descriptions line up. Measured
+// with `width`, which does not count escape codes — aligning to the bytes of a
+// bold name indents the column by the length of the escape.
+column(c: Cmd) -> int {
+    w = 10
+    for a in c.args {
+        cw = width("<{a.name}>")
+        if cw > w {
+            w = cw
+        }
+    }
+    for o in c.opts {
+        cw = width(left_of(o))
+        if cw > w {
+            w = cw
+        }
+    }
+    w + 2
+}
+
+// `-n, --times` — or four spaces where there is no short form, so the long
+// names stay in one column whether or not their neighbours have a letter.
+left_of(o: Opt) -> str =>
+    o.short == "" ? "    --{o.long}" : "-{o.short}, --{o.long}"
+
+arg_lines(c: Cmd, i: int, acc: str) -> str {
+    if i >= c.args.length() {
+        acc
+    } else {
+        a = c.args.get(i)
+        arg_lines(c, i + 1, acc ++ "  " ++ pad("<{a.name}>", column(c)) ++ a.help ++ "\n")
+    }
+}
+
+opt_lines(c: Cmd, i: int, acc: str) -> str {
+    if i >= c.opts.length() {
+        acc
+    } else {
+        o = c.opts.get(i)
+        tail = o.takes && o.fallback != "" ? grey("  (default: {o.fallback})") : ""
+        line = "  " ++ pad(left_of(o), column(c)) ++ o.help ++ tail
+        opt_lines(c, i + 1, acc ++ line ++ "\n")
+    }
+}
+
+// `--help` is understood by every command without being declared, so it is
+// printed the same way — last, where a reader expects it.
+help_line(c: Cmd) -> str =>
+    "  " ++ pad("-h, --help", column(c)) ++ dim("show this and exit") ++ "\n"

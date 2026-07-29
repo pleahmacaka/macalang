@@ -1,0 +1,96 @@
+// A command line, end to end: what it accepts, what it refuses, what it shows.
+//
+// Run it:
+//
+//   maca run examples/cli_tool.maca -- --help
+//   maca run examples/cli_tool.maca -- report modules --sort lines
+//   maca run examples/cli_tool.maca -- report --srot lines
+//
+// The command is one value. The parser reads it to decide what an argument
+// means, `--help` is printed from it, and a misspelt option is answered with
+// the nearest name out of the same list — so a renamed option cannot leave a
+// stale help line or an error message that names nothing.
+
+import { command, opt, flag, arg } from cli/spec
+import { parse, value, on, count } from cli/parse
+import { help, usage } from cli/help
+import { table_aligned, rule, kv, panel, bar } from cli/show
+import { bold, dim, ok, bad, note } from cli/style
+
+Report = command("report", "Count what is in a directory")
+    .arg("dir", "the directory to walk")
+    .opt("sort", "s", "order rows by `name` or `lines`", "name")
+    .opt("top", "t", "show only this many rows", "10")
+    .flag("totals", "", "add a totals row")
+
+main(argv: str[]) -> int {
+    got = parse(Report, argv)
+
+    if got.wants_help {
+        info(help(Report))
+        0
+    } else if got.error != "" {
+        err(bad(got.error))
+        err(dim("usage: " ++ usage(Report)))
+        1
+    } else {
+        run(got.value("dir", "."), got.value("sort", "name"),
+            got.count("top", 10), got.on("totals"))
+    }
+}
+
+run(dir: str, sort: str, top: int, totals: bool) -> int {
+    if !is_dir(dir) {
+        err(bad("`{dir}` is not a directory"))
+        1
+    } else {
+        info(rule(dir))
+        found = walk(dir, sort, top)
+        info(table_aligned(["file", "bytes"], found))
+        if totals {
+            info("")
+            info(kv("files", "{found.length()}"))
+            info(kv("bytes", "{total_of(found, 0, 0)}"))
+        }
+        info("")
+        info(ok("{found.length()} file(s) counted"))
+        0
+    }
+}
+
+// Every file in `dir`, ordered and cut to `top`.
+//
+// Sorting happens on a list of `<key>|<name>` strings rather than on the rows,
+// because `sort` orders by the whole value and a list of lists has no single
+// value to order by. Building the key is also where the choice of order lives,
+// which is one place rather than two comparators.
+walk(dir: str, order: str, top: int) -> str[][] {
+    keyed: str[] = []
+    for name in list_dir(dir) {
+        path = dir / name
+        if !is_dir(path) {
+            size = "{file_size(path)}"
+            key = order == "lines" ? size.pad_start(12, "0") : name
+            keyed = keyed.push("{key}|{name}|{size}")
+        }
+    }
+    ranked = order == "lines" ? keyed.sort().reverse() : keyed.sort()
+    rows(ranked, 0, top, [])
+}
+
+rows(keyed: str[], i: int, top: int, acc: str[][]) -> str[][] {
+    if i >= keyed.length() || acc.length() >= top {
+        acc
+    } else {
+        parts = keyed.get(i).split("|")
+        rows(keyed, i + 1, top, acc.push([parts.get(1), parts.get(2)]))
+    }
+}
+
+total_of(rows: str[][], i: int, acc: int) -> int {
+    if i >= rows.length() {
+        acc
+    } else {
+        total_of(rows, i + 1, acc + int(rows.get(i).get(1)))
+    }
+}

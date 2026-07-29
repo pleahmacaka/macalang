@@ -118,6 +118,11 @@ maca_str maca_read_file(maca_str path);               /* whole file, "" if unrea
 bool maca_write_file(maca_str path, maca_str text);   /* truncate + write; ok? */
 bool maca_file_exists(maca_str path);
 maca_str maca_real_path(maca_str path);     /* symlinks resolved; "" if absent */
+/* Is standard output a terminal?
+   The one thing a program cannot work out for itself, and the whole basis of
+   deciding whether to colour: the same command is read by a person and piped
+   into a file, and only the first wants escape codes. */
+bool maca_is_tty(void);
 bool maca_is_dir(maca_str path);                      /* a directory, not a file? */
 int64_t maca_file_size(maca_str path);                /* bytes, or -1 */
 int64_t maca_modified_ms(maca_str path);              /* mtime in ms, or -1 */
@@ -777,6 +782,7 @@ bool maca_file_exists(maca_str path) {
    A server deciding whether a request stayed inside its root cannot do it with
    string arithmetic: a link inside the root points wherever it likes, and only
    the kernel knows where. */
+bool maca_is_tty(void) { return isatty(1) == 1; }
 maca_str maca_real_path(maca_str path) {
     if (!path) return "";
     char buf[4096];

@@ -697,6 +697,70 @@ fn a_concat_chain_evaluates_in_source_order() {
     );
 }
 
+/// Several Maca types share one C array — a closure, a future and a value of
+/// unknown type all cross as `int64_t`, so all three are `IntArr`. Emitting the
+/// definitions keyed on the Maca type wrote the same `typedef` twice.
+#[test]
+fn one_array_type_is_defined_once_however_many_types_share_it() {
+    let out = c(
+        "Box = { v: int }\n\n                 f(xs: int[], g) -> int {\n                     ys = [g]\n    xs.length() + ys.length()\n}\n\n                 main() -> int => f([1], 2)\n",
+    );
+    let defs = out.matches("MACA_DEFINE_ARRAY(IntArr,").count();
+    assert_eq!(defs, 1, "IntArr defined {defs} times:\n{out}");
+}
+
+/// `assert_eq` compares what it is given as text, so a number is rendered on
+/// the way in. Passing one through unchanged handed an `int64_t` to a
+/// `const char*` parameter, which `strcmp` then dereferenced.
+#[test]
+fn assert_eq_renders_what_it_is_given() {
+    let out = c("main() -> int {\n    assert_eq(3, 3, \"same\")\n    failures()\n}\n");
+    assert!(
+        out.contains("maca_from_int(3)"),
+        "the number is rendered:\n{out}"
+    );
+    let strs = c("main() -> int {\n    assert_eq(\"a\", \"a\", \"same\")\n    failures()\n}\n");
+    assert!(
+        !strs.contains("maca_from_int"),
+        "and a string is left alone:\n{strs}"
+    );
+}
+
+/// A method the checker accepts on a receiver, that this back end cannot lower
+/// for that element type, is a diagnostic here rather than a C error naming the
+/// generated call. `xs.sort()` on a `str[][]` compiled to `sort(rows)`.
+#[test]
+fn a_method_that_cannot_be_lowered_says_so() {
+    let m = maca_parser::parse(
+        "main() -> int {\n    rows: str[][] = [[\"a\"]]\n             rows.sort().length()\n}\n",
+    )
+    .module;
+    let err = maca_backend_c::emit_checked(&m).expect_err("must be refused");
+    assert!(
+        err.iter().any(|p| p.contains("sort")),
+        "names the method: {err:?}"
+    );
+}
+
+/// An absent element answers with its type's empty value, and a sum whose
+/// variants carry payloads is a struct — `0` in the other arm of the bounds
+/// check stopped every program indexing a list of them from compiling.
+#[test]
+fn a_list_of_payload_variants_can_be_indexed() {
+    let out = c(
+        "Shape = Circle(float) | Square(int)\n\n                 main() -> int {\n    ss = [Circle(1.0), Square(2)]\n                     ss.get(0)\n    ss.first()\n    ss.last()\n    0\n}\n",
+    );
+    assert!(
+        !out.contains(": 0; })") || out.contains("memset"),
+        "a struct element gets a zeroed value, not `0`:\n{out}"
+    );
+    assert_eq!(
+        out.matches("memset(&_z, 0, sizeof _z)").count(),
+        3,
+        "one per accessor:\n{out}"
+    );
+}
+
 #[test]
 fn recursive_record_forward_declares_to_break_the_array_cycle() {
     // `Node { kids: Node[] }` is a definition cycle: the struct body needs the

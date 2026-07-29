@@ -13,6 +13,7 @@ name = "maca-backend-c"
 version = "0.1.0"
 dependencies = [
  "maca-backend-js",
+ "maca-core",
  "maca-parser",
 ]
 

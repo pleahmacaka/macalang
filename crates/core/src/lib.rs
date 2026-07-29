@@ -249,6 +249,9 @@ impl Checker {
             // escapes, base64, a character class written as arithmetic.
             ("chr", Ty::Fn(vec![Ty::Int], Box::new(Ty::Str))),
             ("real_path", Ty::Fn(vec![Ty::Str], Box::new(Ty::Str))),
+            // whether stdout is a terminal — what colour output has to ask before
+            // writing an escape code into a file somebody will read later
+            ("is_tty", Ty::Fn(vec![], Box::new(Ty::Bool))),
             ("ord", Ty::Fn(vec![Ty::Str], Box::new(Ty::Int))),
             ("input", Ty::Fn(vec![], Box::new(Ty::Str))),
             // `sleep_ms(ms)` — an async suspension point (the async effect is

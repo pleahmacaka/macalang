@@ -1059,7 +1059,11 @@ impl<'a> Cx<'a> {
         // primitive-element arrays. Record- and sum-element arrays are structs
         // themselves, so they wait until their element type is defined (emitted
         // with / after the struct block below).
-        let mut emitted_arr: HashSet<CTy> = HashSet::new();
+        // Keyed on the C name, not the Maca type: several types share one array
+        // — a closure, a future and a value of unknown type all cross as
+        // `int64_t`, so all three are `IntArr` — and a set keyed on the type
+        // emitted the same `typedef` twice, which C rejects.
+        let mut emitted_arr: HashSet<String> = HashSet::new();
         let mut elems: Vec<CTy> = self.arr_elems.iter().cloned().collect();
         // Shallowest first: `IntArrArr`'s element is `IntArr`, so `IntArr` has
         // to be a complete type before the outer array's struct names it. A
@@ -1067,13 +1071,13 @@ impl<'a> Cx<'a> {
         // depending on the hash seed.
         elems.sort_by_key(|e| (arr_depth(e), arr_name(e)));
         for e in &elems {
-            if !matches!(e, CTy::Rec(_) | CTy::Sum(_)) {
+            if !matches!(e, CTy::Rec(_) | CTy::Sum(_)) && !emitted_arr.contains(&arr_name(e)) {
                 self.push(&format!(
                     "MACA_DEFINE_ARRAY({}, {})",
                     arr_name(e),
                     c_type(e)
                 ));
-                emitted_arr.insert(e.clone());
+                emitted_arr.insert(arr_name(e));
             }
         }
         // string-keyed maps, monomorphized on the value type. Sorted so the
@@ -1135,7 +1139,7 @@ impl<'a> Cx<'a> {
                     arr_name(e),
                     c_type(e)
                 ));
-                emitted_arr.insert(e.clone());
+                emitted_arr.insert(arr_name(e));
             }
             cyclic_arr_elems = want;
             self.push("");
@@ -1162,14 +1166,14 @@ impl<'a> Cx<'a> {
             for t in &field_ctys {
                 if let CTy::Arr(e) = t
                     && matches!(**e, CTy::Rec(_) | CTy::Sum(_))
-                    && !emitted_arr.contains(e)
+                    && !emitted_arr.contains(&arr_name(e))
                 {
                     self.push(&format!(
                         "MACA_DEFINE_ARRAY({}, {})",
                         arr_name(e),
                         c_type(e)
                     ));
-                    emitted_arr.insert((**e).clone());
+                    emitted_arr.insert(arr_name(e));
                 }
             }
             if self.records.contains_key(name) {
@@ -1202,13 +1206,13 @@ impl<'a> Cx<'a> {
         // elsewhere (e.g. a top-level `let xs = R{}, R{}` or an index target):
         // now that every struct is defined, emit their MACA_DEFINE_ARRAY.
         for e in &elems {
-            if matches!(e, CTy::Rec(_) | CTy::Sum(_)) && !emitted_arr.contains(e) {
+            if matches!(e, CTy::Rec(_) | CTy::Sum(_)) && !emitted_arr.contains(&arr_name(e)) {
                 self.push(&format!(
                     "MACA_DEFINE_ARRAY({}, {})",
                     arr_name(e),
                     c_type(e)
                 ));
-                emitted_arr.insert(e.clone());
+                emitted_arr.insert(arr_name(e));
             }
         }
         self.push("");
@@ -1366,8 +1370,12 @@ impl<'a> Cx<'a> {
         if *cty != CTy::Unknown {
             return cty.clone();
         }
+        // A call says what it returns. Written UFCS it says the same thing —
+        // `command(…).opt(…)` is `opt(command(…), …)`, and reading only the
+        // `f(x)` spelling gave a builder chain the fallback type and then
+        // returned a record where a string was declared.
         if let Expr::Call { callee, .. } = init
-            && let Expr::Ident(f) = &**callee
+            && let Some(f) = called_name(callee)
             && let Some((_, ret)) = self.fns.get(f)
             && !matches!(ret, CTy::Unknown | CTy::Unit)
         {
@@ -2935,6 +2943,7 @@ impl<'a> Cx<'a> {
                     | "write_file"
                     | "file_exists"
                     | "real_path"
+                    | "is_tty"
                     | "make_dir"
                     | "list_dir"
                     | "is_dir"
@@ -3429,6 +3438,7 @@ impl<'a> Cx<'a> {
                 "real_path" => {
                     return (format!("maca_real_path({})", a.join(", ")), CTy::Str);
                 }
+                "is_tty" => return ("maca_is_tty()".into(), CTy::Bool),
                 "make_dir" => return (format!("maca_make_dir({})", a.join(", ")), CTy::Bool),
                 "is_dir" => return (format!("maca_is_dir({})", a.join(", ")), CTy::Bool),
                 "file_size" => return (format!("maca_file_size({})", a.join(", ")), CTy::Int),
@@ -3462,7 +3472,23 @@ impl<'a> Cx<'a> {
                 // assertions: report and carry on, so one run finds every
                 // failure rather than only the first
                 "assert" => return (format!("maca_assert({})", a.join(", ")), CTy::Bool),
-                "assert_eq" => return (format!("maca_assert_eq({})", a.join(", ")), CTy::Bool),
+                // `assert_eq` compares what it is given as text, so a number is
+                // rendered on the way in. Passing one through unchanged handed
+                // an `int64_t` to a `const char*` parameter, which the C
+                // compiler allowed with a warning and `strcmp` dereferenced —
+                // `assert_eq(width(s), 5, …)` is the obvious thing to write and
+                // it crashed the whole suite before the first result printed.
+                "assert_eq" => {
+                    let shown: Vec<String> = args
+                        .iter()
+                        .enumerate()
+                        .map(|(i, x)| {
+                            let (c, t) = self.expr(env, arg_expr(x), None);
+                            if i < 2 { to_str(&c, &t) } else { c }
+                        })
+                        .collect();
+                    return (format!("maca_assert_eq({})", shown.join(", ")), CTy::Bool);
+                }
                 "failures" => return ("maca_failures()".into(), CTy::Int),
                 // allocator counters — how a program can see reuse happening
                 "alloc_count" => return ("(int64_t)maca_alloc_count()".into(), CTy::Int),
@@ -3868,6 +3894,22 @@ impl<'a> Cx<'a> {
             // a user function called UFCS-style: `x.f(y)` → `f(x, y)`. Resolve
             // its real return type and escape a C-keyword name.
             _ => {
+                // A method the receiver's type is documented to have, that this
+                // back end cannot lower for *this* element type, used to fall
+                // through to a call of a function nobody wrote. `xs.sort()` on
+                // a `str[][]` compiled to `sort(rows)` and the C compiler
+                // reported that a `str` parameter called `sort` was not
+                // callable — a true statement about the wrong program.
+                if !self.fns.contains_key(method)
+                    && !self.generics.contains_key(method)
+                    && known_method(rty, method)
+                {
+                    self.problem(format!(
+                        "`{}` has no `{method}` — the method exists for simpler \
+                         element types, not this one",
+                        c_type(rty)
+                    ));
+                }
                 let ret = self
                     .fns
                     .get(method)
@@ -4151,13 +4193,37 @@ impl<'a> Cx<'a> {
                 self.push("      }");
                 self.push(&format!("      {dest} = _acc; }}"));
             }
-            CTy::Map(_)
-            | CTy::Unit
+            // A JSON object is a string-keyed map, which is what a `Map str V`
+            // is, so it decodes rather than being dropped.
+            CTy::Map(v) => {
+                let mn = map_name(v);
+                let o = self.temp();
+                let idx = self.temp();
+                self.push(&format!(
+                    "    {{ maca_json* {o} = {get}; {mn} _m = {mn}_new();"
+                ));
+                self.push(&format!(
+                    "      if ({o} && {o}->kind == MJ_OBJ) for (int64_t {idx} = 0; \
+                     {idx} < {o}->obj.len; {idx}++) {{"
+                ));
+                let read = json_read_inline(&format!("{o}->obj.vals[{idx}]"), v);
+                self.push(&format!(
+                    "        {mn}_set(&_m, {o}->obj.keys[{idx}], {read});"
+                ));
+                self.push("      }");
+                self.push(&format!("      {dest} = _m; }}"));
+            }
+            // Nothing in JSON stands for a closure, a task or a vector, so the
+            // field gets its type's empty value — `0` was invalid C the moment
+            // the type was a struct.
+            CTy::Unit
             | CTy::Unknown
             | CTy::Vec { .. }
             | CTy::Future
             | CTy::Closure(_)
-            | CTy::Closure2(_) => self.push(&format!("    {dest} = 0;")),
+            | CTy::Closure2(_) => {
+                self.push(&format!("    {dest} = {};", zero_value(t)));
+            }
         }
     }
 }
@@ -4228,6 +4294,30 @@ fn closure_ty(arity: usize, ret: CTy) -> CTy {
         CTy::Closure2(Box::new(ret))
     } else {
         CTy::Closure(Box::new(ret))
+    }
+}
+
+/// Is `method` one the checker accepts on a receiver of this type?
+///
+/// The two lists are the checker's, so this asks exactly the question the
+/// checker answered: a name it accepted and this back end did not lower is a
+/// gap between them, and saying so is more use than a C error naming the
+/// generated call.
+fn known_method(rty: &CTy, method: &str) -> bool {
+    match rty {
+        CTy::Arr(_) => maca_core::LIST_METHODS.contains(&method),
+        CTy::Str => maca_core::STR_METHODS.contains(&method),
+        CTy::Map(_) => maca_core::MAP_METHODS.contains(&method),
+        _ => false,
+    }
+}
+
+/// The user function a callee names, written either way round.
+fn called_name(callee: &Expr) -> Option<&str> {
+    match callee {
+        Expr::Ident(f) => Some(f),
+        Expr::Field { name, .. } => Some(name),
+        _ => None,
     }
 }
 

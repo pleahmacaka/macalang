@@ -1,0 +1,304 @@
+// What `cli` promises, run.
+//
+// Colour is forced off through the whole file: the escape codes a terminal
+// would get are the one thing these tests should not be about, and
+// `cli/style`'s own tests turn it back on where that *is* the question.
+
+import { command, opt, flag, arg, rest } from cli/spec
+import { find_long, find_short, found } from cli/spec
+import { parse, value, on, count, at, from } from cli/parse
+import { help, usage } from cli/help
+import { table, table_aligned, rule, panel, kv, bullet, bar } from cli/show
+import { width, plain, pad, pad_left, bold, paint } from cli/style
+
+Greet = command("greet", "Say hello to someone")
+    .arg("name", "who to greet")
+    .opt("times", "n", "how many times", "1")
+    .flag("loud", "l", "shout it")
+    .flag("slow", "s", "one at a time")
+
+Run = command("run", "Run a program")
+    .arg("program", "what to run")
+    .rest("argv", "arguments passed through")
+    .flag("quiet", "q", "say nothing")
+
+// ---- the spec ------------------------------------------------------------
+
+test_a_command_remembers_what_it_was_given() {
+    assert_eq(Greet.name, "greet", "its name")
+    assert_eq(Greet.about, "Say hello to someone", "its description")
+    assert_eq(str(Greet.opts.length()), "3", "three options")
+    assert_eq(str(Greet.args.length()), "1", "one argument")
+}
+
+test_an_option_is_found_by_either_spelling() {
+    assert(found(Greet.find_long("times")), "by long name")
+    assert(found(Greet.find_short("n")), "by short name")
+    assert_eq(Greet.find_short("n").long, "times", "the same option")
+    assert(!found(Greet.find_long("nope")), "and one that is not there is not")
+}
+
+// A flag with no short form must not answer to the empty string, or every
+// unrecognised `-` would match the first one declared.
+test_an_empty_short_name_matches_nothing() {
+    Plain = command("x", "").flag("verbose", "", "chatty")
+
+    assert(!found(Plain.find_short("")), "the empty short name is not a match")
+    assert(found(Plain.find_long("verbose")), "the long one still is")
+}
+
+// ---- parsing -------------------------------------------------------------
+
+test_a_positional_is_read_by_its_declared_name() {
+    got = parse(Greet, ["ada"])
+
+    assert_eq(got.error, "", "no complaint")
+    assert_eq(got.value("name", "?"), "ada", "by name")
+    assert_eq(got.at(0), "ada", "and by position")
+}
+
+test_an_option_takes_its_value_either_way_round() {
+    for argv in [["ada", "--times", "3"], ["ada", "--times=3"],
+                 ["ada", "-n", "3"], ["ada", "-n=3"]] {
+        got = parse(Greet, argv)
+        assert_eq(got.error, "", "understood {argv.join(" ")}")
+        assert_eq(str(got.count("times", 1)), "3", "from {argv.join(" ")}")
+    }
+}
+
+test_an_option_that_was_not_given_reads_as_its_default() {
+    got = parse(Greet, ["ada"])
+
+    assert_eq(str(got.count("times", 1)), "1", "the number")
+    assert_eq(got.value("times", "1"), "1", "and the text of it")
+}
+
+test_a_flag_is_present_or_absent() {
+    assert(parse(Greet, ["ada", "--loud"]).on("loud"), "given long")
+    assert(parse(Greet, ["ada", "-l"]).on("loud"), "given short")
+    assert(!parse(Greet, ["ada"]).on("loud"), "not given")
+}
+
+test_flags_bundle_but_an_option_does_not() {
+    both = parse(Greet, ["-ls", "ada"])
+    assert_eq(both.error, "", "two flags in one word")
+    assert(both.on("loud") && both.on("slow"), "and both are set")
+
+    bad = parse(Greet, ["-ln", "ada"])
+    assert(bad.error.contains("cannot be bundled"), "an option cannot: {bad.error}")
+}
+
+// `-n3` and `-n 3` looking like the same thing is how they end up meaning
+// different numbers in one program.
+test_a_short_option_will_not_take_a_value_attached() {
+    got = parse(Greet, ["ada", "-n3"])
+
+    assert(got.error.contains("takes a value"), "refused: {got.error}")
+    assert(got.error.contains("-n=<value>"), "and says what would work")
+}
+
+test_everything_after_a_bare_double_dash_is_positional() {
+    got = parse(Run, ["prog", "--", "--times", "-l"])
+
+    assert_eq(got.error, "", "no complaint")
+    assert_eq(got.at(0), "prog", "the program")
+    assert_eq(got.from(1).join(" "), "--times -l", "and its arguments, untouched")
+}
+
+test_a_trailing_argument_takes_what_is_left() {
+    got = parse(Run, ["prog", "a", "b", "c"])
+
+    assert_eq(got.error, "", "no complaint")
+    assert_eq(got.value("program", ""), "prog", "the first")
+    assert_eq(got.from(1).join(","), "a,b,c", "and the rest")
+    assert_eq(got.value("argv", ""), "a b c", "reachable by name too")
+}
+
+test_help_is_understood_without_being_declared() {
+    for argv in [["--help"], ["-h"], ["ada", "--help"]] {
+        assert(parse(Greet, argv).wants_help, "asked by {argv.join(" ")}")
+    }
+    assert(!parse(Greet, ["ada"]).wants_help, "and not otherwise")
+}
+
+// `cmd --help` has to work when the arguments do not, or a person who cannot
+// remember the arguments cannot find out what they are.
+test_help_wins_over_a_bad_command_line() {
+    got = parse(Greet, ["--help"])
+
+    assert(got.wants_help, "help was asked for")
+    assert_eq(got.error, "", "and the missing argument is not raised")
+}
+
+// ---- refusals ------------------------------------------------------------
+
+test_an_unknown_option_is_named_with_the_nearest_one() {
+    got = parse(Greet, ["--tmies", "3", "ada"])
+
+    assert(got.error.contains("--tmies"), "says what was given: {got.error}")
+    assert(got.error.contains("did you mean `--times`"), "and what was meant")
+}
+
+test_a_wild_typo_gets_no_suggestion() {
+    got = parse(Greet, ["--zzzzzz", "ada"])
+
+    assert(got.error.contains("unknown option"), "still refused: {got.error}")
+    assert(!got.error.contains("did you mean"), "without a guess")
+}
+
+test_an_option_with_no_value_says_what_it_wanted() {
+    got = parse(Greet, ["ada", "--times"])
+
+    assert(got.error.contains("needs a value"), "refused: {got.error}")
+    assert(got.error.contains("how many times"), "and quotes its own help")
+}
+
+test_a_flag_given_a_value_is_refused() {
+    got = parse(Greet, ["ada", "--loud=yes"])
+
+    assert(got.error.contains("is a flag"), "refused: {got.error}")
+}
+
+test_a_missing_argument_is_named() {
+    got = parse(Greet, [])
+
+    assert(got.error.contains("<name>"), "names it: {got.error}")
+    assert(got.error.contains("who to greet"), "and quotes its help")
+}
+
+test_an_extra_argument_says_how_many_were_expected() {
+    got = parse(Greet, ["ada", "bob"])
+
+    assert(got.error.contains("bob"), "names the extra one: {got.error}")
+    assert(got.error.contains("takes 1"), "and the count")
+}
+
+// The first complaint is the one to fix; reading on past it produces errors
+// that are consequences of the first.
+test_only_the_first_refusal_is_reported() {
+    got = parse(Greet, ["--nope", "--alsonope"])
+
+    assert(got.error.contains("--nope"), "the first: {got.error}")
+    assert(!got.error.contains("--alsonope"), "and not the second")
+}
+
+// ---- help ----------------------------------------------------------------
+
+test_usage_shows_every_argument_in_order() {
+    assert_eq(usage(Greet), "greet [options] <name>", "one argument")
+    assert_eq(usage(Run), "run [options] <program> <argv>...", "and a trailing one")
+}
+
+test_help_lists_what_the_command_accepts() {
+    page = help(Greet)
+
+    assert(page.contains("Say hello to someone"), "the description")
+    assert(page.contains("<name>"), "the argument")
+    assert(page.contains("who to greet"), "and its help")
+    assert(page.contains("-n, --times"), "both spellings of an option")
+    assert(page.contains("(default: 1)"), "its default")
+    assert(page.contains("-h, --help"), "and help itself")
+}
+
+// A flag has no default to show — printing `(default: )` after every one of
+// them was the first version of this.
+test_a_flag_advertises_no_default() {
+    page = help(Greet)
+
+    assert(page.contains("--loud"), "the flag is listed")
+    assert(!page.contains("(default: )"), "with nothing after it")
+}
+
+test_an_option_with_no_short_name_keeps_the_column() {
+    Long = command("x", "").opt("output", "", "where to write", "-")
+    page = help(Long)
+
+    assert(page.contains("    --output"), "indented into the long column")
+}
+
+// ---- what shows on screen ------------------------------------------------
+
+test_a_table_gives_every_column_its_widest_cell() {
+    out = table(["a", "bb"], [["xxxx", "y"], ["z", "wwwww"]])
+    rows = out.split("\n")
+
+    assert_eq(rows.get(0), "a     bb   ", "the header, padded to the data")
+    assert_eq(rows.get(2), "xxxx  y    ", "the first row")
+    assert_eq(rows.get(3), "z     wwwww", "the second")
+}
+
+test_a_short_row_is_padded_rather_than_refused() {
+    out = table(["a", "b"], [["only"]])
+
+    assert(out.contains("only"), "the cell that was there: {out}")
+}
+
+test_a_numeric_column_is_right_aligned() {
+    out = table_aligned(["name", "ms"], [["a", "5"], ["b", "1234"]])
+    rows = out.split("\n")
+
+    assert_eq(rows.get(2), "a        5", "one digit")
+    assert_eq(rows.get(3), "b     1234", "four")
+}
+
+test_a_column_of_words_is_not_treated_as_numeric() {
+    out = table_aligned(["name", "note"], [["a", "yes"], ["b", "no"]])
+    rows = out.split("\n")
+
+    assert_eq(rows.get(2), "a     yes ", "left-aligned")
+}
+
+test_a_panel_is_as_wide_as_its_widest_line() {
+    out = panel("Sum", "one\nlonger line")
+    rows = out.split("\n")
+
+    assert_eq(width(rows.get(0)), width(rows.get(1)), "top edge matches a row")
+    assert_eq(width(rows.get(1)), width(rows.get(3)), "and every row matches")
+}
+
+test_a_rule_carries_its_title() {
+    assert(rule("Results").contains("Results"), "with a title")
+    assert(!rule("").contains(" "), "and without one it is unbroken")
+}
+
+test_a_bar_fills_in_proportion() {
+    assert(bar(0, 10, 10).contains("0%"), "empty")
+    assert(bar(5, 10, 10).contains("50%"), "half")
+    assert(bar(10, 10, 10).contains("100%"), "full")
+    assert(bar(1, 0, 10).contains("0%"), "and nothing to divide by is not a crash")
+}
+
+test_a_pair_and_a_bullet_are_indented_the_same() {
+    assert(kv("k", "v").starts_with("  "), "a pair")
+    assert(bullet("x").starts_with("  "), "a bullet")
+}
+
+// ---- measuring -----------------------------------------------------------
+
+// Every width here is a column count. A cell measured in bytes indents the one
+// beside it by the length of an encoding nobody can see.
+test_width_counts_columns_not_bytes() {
+    assert_eq(str(width("abc")), "3", "ascii")
+    assert_eq(str(width("한국어")), "6", "three wide characters")
+    assert_eq(str(width("a한b")), "4", "mixed")
+    assert_eq(str(width("🎉")), "2", "four bytes, two columns")
+}
+
+test_an_escape_sequence_takes_no_columns() {
+    styled = paint("1", "abc")
+
+    assert_eq(str(width(styled)), "3", "measured as its text")
+    assert_eq(plain(styled), "abc", "and stripped back to it")
+}
+
+test_padding_counts_what_shows() {
+    styled = paint("1", "ab")
+
+    assert_eq(width(pad(styled, 5)), 5, "padded to five columns")
+    assert_eq(width(pad_left("x", 4)), 4, "and from the other side")
+}
+
+test_padding_never_shortens() {
+    assert_eq(pad("abcdef", 3), "abcdef", "wider than asked for")
+    assert_eq(pad_left("abcdef", 3), "abcdef", "from either side")
+}

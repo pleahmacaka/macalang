@@ -1,0 +1,126 @@
+// cli/spec — what a command accepts, written once.
+//
+// The spelling of an option, the help line describing it, and the check that
+// refuses an unknown one are three copies of the same fact in most command
+// lines, and they drift: the flag is renamed, `--help` still advertises the old
+// name, and the error message names neither. Here they are one value. `parse`
+// reads it to decide what an argument means, `help` reads it to print, and a
+// misspelt option is answered with the nearest name *from the same list*.
+//
+//   Greet = command("greet", "Say hello")
+//       .arg("name", "who to greet")
+//       .opt("times", "n", "how many times", "1")
+//       .flag("loud", "l", "shout it")
+//
+// Built by chaining because a command is a list of things and a list read top
+// to bottom is what the `--help` output looks like.
+
+/// One `--name` the command accepts. A flag is an option that takes no value:
+/// `takes` is what tells `--loud` from `--times 3` while parsing, which is not
+/// something the argument list itself can say.
+Opt = {
+    long: str,
+    short: str,
+    help: str,
+    fallback: str,
+    takes: bool,
+}
+
+/// One positional. `many` marks the last one as taking everything that is left
+/// — a file list, the arguments to pass through to something else.
+Arg = {
+    name: str,
+    help: str,
+    many: bool,
+}
+
+Cmd = {
+    name: str,
+    about: str,
+    opts: Opt[],
+    args: Arg[],
+}
+
+/// A command with a name and one line saying what it does.
+///
+/// `--help` is not added here. It is understood by `parse` and printed by
+/// `help` without being in the list, because a command that had to remember to
+/// declare it would eventually be a command that forgot.
+command(name: str, about: str) -> Cmd =>
+    Cmd { name = name, about = about, opts = [], args = [] }
+
+/// `--long value` / `-s value`, with `fallback` when it is not given.
+///
+/// There is no required option, on purpose: something the command cannot run
+/// without is an argument, and writing it as an option means every caller types
+/// its name to say the same thing.
+opt(c: Cmd, long: str, short: str, help: str, fallback: str) -> Cmd =>
+    c with {
+        opts = c.opts.push(Opt {
+            long = long,
+            short = short,
+            help = help,
+            fallback = fallback,
+            takes = true,
+        })
+    }
+
+/// `--long` / `-s`, present or absent. Absent is false; there is no `--no-x`,
+/// because a flag that can be switched off twice is an option with two names.
+flag(c: Cmd, long: str, short: str, help: str) -> Cmd =>
+    c with {
+        opts = c.opts.push(Opt {
+            long = long,
+            short = short,
+            help = help,
+            fallback = "",
+            takes = false,
+        })
+    }
+
+/// One positional, in the order it is written.
+arg(c: Cmd, name: str, help: str) -> Cmd => add_arg(c, name, help, false)
+
+/// A positional that takes the rest of the command line. Only the last one can,
+/// and `parse` says so rather than quietly ignoring what follows.
+rest(c: Cmd, name: str, help: str) -> Cmd => add_arg(c, name, help, true)
+
+add_arg(c: Cmd, name: str, help: str, many: bool) -> Cmd =>
+    c with { args = c.args.push(Arg { name = name, help = help, many = many }) }
+
+/// The option `--<long>` names, or one with an empty `long` if there is none.
+find_long(c: Cmd, long: str) -> Opt {
+    match_at(c.opts, 0, long, true)
+}
+
+/// The option `-<short>` names, or one with an empty `long` if there is none.
+find_short(c: Cmd, short: str) -> Opt {
+    match_at(c.opts, 0, short, false)
+}
+
+match_at(opts: Opt[], i: int, want: str, by_long: bool) -> Opt {
+    if i >= opts.length() {
+        Opt { long = "", short = "", help = "", fallback = "", takes = false }
+    } else if by_long && opts.get(i).long == want {
+        opts.get(i)
+    } else if !by_long && want != "" && opts.get(i).short == want {
+        opts.get(i)
+    } else {
+        match_at(opts, i + 1, want, by_long)
+    }
+}
+
+/// Did a lookup find anything? An option with no long name is the answer to
+/// "no such option", so this is the test every caller makes.
+found(o: Opt) -> bool => o.long != ""
+
+/// The long names the command accepts, for a `did you mean` on a misspelling.
+long_names(c: Cmd) -> str[] => names_from(c.opts, 0, [])
+
+names_from(opts: Opt[], i: int, acc: str[]) -> str[] {
+    if i >= opts.length() {
+        acc
+    } else {
+        names_from(opts, i + 1, acc.push(opts.get(i).long))
+    }
+}

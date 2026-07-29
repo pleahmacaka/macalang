@@ -419,6 +419,7 @@ pub fn rename_ident(s: &mut Stmt, from: &str, to: &str) {
         Stmt::Bind(b) => {
             rename_in_expr(&mut b.target, from, to);
             rename_in_expr(&mut b.value, from, to);
+            b.tys.iter_mut().for_each(|t| rename_in_type(t, from, to));
         }
         Stmt::Alias { name, value } => {
             if name == from {
@@ -430,6 +431,30 @@ pub fn rename_ident(s: &mut Stmt, from: &str, to: &str) {
             if fd.name == from {
                 fd.name = to.to_string();
             }
+            // A function that binds this name means something else by it, so
+            // its body is left alone: a package with a private `at` used to
+            // rewrite `at + 1` inside any function with a parameter called
+            // `at`, leaving the parameter itself untouched and the arithmetic
+            // pointing at a function. Skipping the whole body is coarse — a use
+            // *before* the shadow is bound loses its rename too — and it is
+            // coarse in the direction where the name still means what the
+            // reader thinks it does.
+            if binds(fd, from) {
+                return;
+            }
+            // A record declared privately is renamed where it is *written* as
+            // well as where it is built: a package's own `Box` becomes
+            // `pkg__Box`, and a signature still saying `Box` names a type
+            // nothing declares. The C back end then gave the parameter a
+            // fallback type and the program failed to compile against itself.
+            for p in &mut fd.params {
+                if let Some(t) = &mut p.ty {
+                    rename_in_type(t, from, to);
+                }
+            }
+            if let Some(t) = &mut fd.ret {
+                rename_in_type(t, from, to);
+            }
             match &mut fd.body {
                 Some(FnBody::Expr(e)) => rename_in_expr(e, from, to),
                 Some(FnBody::Block(ss)) => ss.iter_mut().for_each(|x| rename_ident(x, from, to)),
@@ -437,6 +462,83 @@ pub fn rename_ident(s: &mut Stmt, from: &str, to: &str) {
             }
         }
         Stmt::Import(_) => {}
+    }
+}
+
+/// Does this function give `name` a meaning of its own — a parameter, a local,
+/// a loop variable, or a lambda's parameter?
+fn binds(fd: &FnDef, name: &str) -> bool {
+    if fd.params.iter().any(|p| p.name == name) {
+        return true;
+    }
+    let Some(body) = &fd.body else {
+        return false;
+    };
+    let binder = |e: &Expr| {
+        match e {
+        Expr::Lambda { params, .. } => params.iter().any(|p| p.name == name),
+        Expr::For { pat, .. } => pattern_binds(pat, name),
+        Expr::Assign { target, .. } => matches!(&**target, Expr::Ident(n) if n == name),
+        Expr::Match { arms, .. } => arms.iter().any(|a| pattern_binds(&a.pat, name)),
+        Expr::Block(ss) | Expr::If { then: ss, .. } | Expr::While { body: ss, .. } => ss
+            .iter()
+            .any(|st| matches!(st, Stmt::Bind(b) if matches!(&b.target, Expr::Ident(n) if n == name))),
+        _ => false,
+    }
+    };
+    let mut found = false;
+    let mut look = |e: &Expr| found = found || binder(e);
+    match body {
+        FnBody::Expr(e) => walk_expr(e, &mut look),
+        FnBody::Block(ss) => {
+            for st in ss {
+                if let Stmt::Bind(b) = st
+                    && matches!(&b.target, Expr::Ident(n) if n == name)
+                {
+                    return true;
+                }
+                walk_stmt(st, &mut look);
+            }
+        }
+    }
+    found
+}
+
+/// Does this pattern introduce `name`?
+fn pattern_binds(p: &Pattern, name: &str) -> bool {
+    match p {
+        Pattern::Bind(n) => n == name,
+        Pattern::Ctor { args, .. } => args.iter().any(|a| pattern_binds(a, name)),
+        Pattern::Or(ps) => ps.iter().any(|a| pattern_binds(a, name)),
+        Pattern::List { elems, rest } => {
+            elems.iter().any(|a| pattern_binds(a, name))
+                || rest.as_ref().is_some_and(|r| pattern_binds(r, name))
+        }
+        Pattern::Record(fs) => fs.iter().any(|(f, sub)| match sub {
+            Some(p) => pattern_binds(p, name),
+            None => f == name,
+        }),
+        _ => false,
+    }
+}
+
+/// Rename a type's name wherever it appears — `T`, `T[]`, `T?`, `Map str T`.
+fn rename_in_type(t: &mut Type, from: &str, to: &str) {
+    match t {
+        Type::Name(segs) => {
+            for seg in segs {
+                if seg == from {
+                    *seg = to.to_string();
+                }
+            }
+        }
+        Type::Array(inner) | Type::Opt(inner) | Type::Paren(inner) => {
+            rename_in_type(inner, from, to)
+        }
+        Type::Apply(base, args) => {
+            rename_in_type(base, from, to);
+            args.iter_mut().for_each(|a| rename_in_type(a, from, to));
+        }
     }
 }
 

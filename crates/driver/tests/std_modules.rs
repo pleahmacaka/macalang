@@ -19,20 +19,30 @@ use std::process::Command;
 /// runs from
 /// the repository root so `import std/…` resolves.
 fn suite(name: &str) {
+    package_suite(&format!("std/tests/{name}"));
+}
+
+/// The same, for any package: `modules/<path>.maca`.
+///
+/// Colour is forced off, because a suite that renders terminal output has to
+/// assert on the text and the escape codes are decided by whether the test
+/// runner happens to have a terminal attached.
+fn package_suite(path: &str) {
     if have_wsl() || !have("cc") {
-        eprintln!("skipping std/{name}: needs a host cc and no wsl");
+        eprintln!("skipping modules/{path}: needs a host cc and no wsl");
         return;
     }
 
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .current_dir(repo())
-        .args(["test", &format!("modules/std/tests/{name}.maca")])
+        .env("NO_COLOR", "1")
+        .args(["test", &format!("modules/{path}.maca")])
         .output()
         .expect("spawn maca test");
 
     assert!(
         out.status.success(),
-        "modules/std/{name}:\n{}\n{}",
+        "modules/{path}:\n{}\n{}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr),
     );
@@ -41,6 +51,13 @@ fn suite(name: &str) {
 #[test]
 fn text_module() {
     suite("text");
+}
+
+/// `cli` — the command-line package: what a command accepts, read off one
+/// value, and what it prints.
+#[test]
+fn cli_module() {
+    package_suite("cli/tests/cli");
 }
 
 #[test]

@@ -80,10 +80,18 @@ fn qualify_private(items: &mut [Stmt], want: &BTreeSet<String>, path: &Path) {
         })
         .collect();
 
+    // A type named in a requested definition's signature is part of that
+    // definition however the module feels about it: nothing can call
+    // `parse(c: Cmd, …)` without writing `Cmd`, and a `Cmd` renamed to
+    // `spec__Cmd` left every caller naming a type that no longer exists. So the
+    // public surface grows from the requested names through their signatures,
+    // and through the field types of the types those reach.
+    let public = surface(items, want);
+
     let private: Vec<String> = items
         .iter()
         .filter_map(defined_name)
-        .filter(|n| !want.contains(*n) && !foreign.contains(*n))
+        .filter(|n| !public.contains(*n) && !foreign.contains(*n))
         .map(str::to_string)
         .collect();
 
@@ -92,6 +100,64 @@ fn qualify_private(items: &mut [Stmt], want: &BTreeSet<String>, path: &Path) {
         for st in items.iter_mut() {
             crate::ast::rename_ident(st, &name, &qualified);
         }
+    }
+}
+
+/// The names an importer can be expected to write: the ones it asked for, plus
+/// every type reachable from their signatures.
+///
+/// Bodies are deliberately not followed. A helper a public function *calls* is
+/// still private — the caller never names it — and following calls would make
+/// the whole module public the moment one function was exported.
+fn surface<'a>(items: &'a [Stmt], want: &BTreeSet<String>) -> BTreeSet<&'a str> {
+    let mut out: BTreeSet<&str> = items
+        .iter()
+        .filter_map(defined_name)
+        .filter(|n| want.contains(*n))
+        .collect();
+    loop {
+        let mut named = BTreeSet::new();
+        for st in items {
+            if defined_name(st).is_some_and(|n| out.contains(n)) {
+                sig_refs(st, &mut named);
+            }
+        }
+        let before = out.len();
+        for st in items {
+            if let Some(n) = defined_name(st)
+                && named.contains(n)
+            {
+                out.insert(n);
+            }
+        }
+        if out.len() == before {
+            return out;
+        }
+    }
+}
+
+/// The type names a definition writes where a caller can see them: a function's
+/// parameters and return, a record's field types, a sum's payload types.
+fn sig_refs(st: &Stmt, out: &mut BTreeSet<String>) {
+    match st {
+        Stmt::Fn(f) => {
+            for p in &f.params {
+                if let Some(t) = &p.ty {
+                    refs_in_type(t, out);
+                }
+            }
+            if let Some(t) = &f.ret {
+                refs_in_type(t, out);
+            }
+        }
+        // `P = { x: T }` and `S = A(T) | B` are both a binding whose value
+        // describes a type, so the declaration is where the field and payload
+        // types are written.
+        Stmt::Bind(b) => {
+            b.tys.iter().for_each(|t| refs_in_type(t, out));
+            refs_in_expr(&b.value, out);
+        }
+        _ => {}
     }
 }
 
@@ -134,6 +200,19 @@ fn collect(path: &Path, g: &mut Graph) -> Result<(), String> {
     }
     let src = read(path)?;
     let parsed = crate::parse(&src);
+    // An imported module's syntax errors are the program's syntax errors.
+    // Dropping them left the parser's partial tree to be sliced and inlined, so
+    // a file that would not compile on its own compiled to something else once
+    // something imported it — `a + b` continued onto the next line is a clean
+    // refusal in the entry file and was a silently different expression in a
+    // module beside it.
+    if !parsed.errors.is_empty() {
+        return Err(format!(
+            "{}: parse errors:\n  {}",
+            path.display(),
+            parsed.errors.join("\n  ")
+        ));
+    }
     g.parsed.insert(key.clone(), parsed.module.clone());
     for item in &parsed.module.items {
         let Stmt::Import(im) = item else { continue };
