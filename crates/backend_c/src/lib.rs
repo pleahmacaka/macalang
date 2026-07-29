@@ -156,6 +156,15 @@ struct Cx<'a> {
     // generic functions, monomorphized per concrete instantiation
     generics: HashMap<String, FnDef>,
     spec_pending: Vec<(String, Vec<CTy>)>, // instantiations to emit
+    /// The type variables of the specialization being emitted, if any.
+    ///
+    /// Parameters and the return type were substituted at the signature and
+    /// the body was lowered without them, so a local annotated with the
+    /// element type — `out: a[] = []` in a generic `sort_by` — was declared as
+    /// the fallback array and the C compiler rejected the push into it. A
+    /// generic function that cannot name its own element type in a local is
+    /// one you can only write in one line.
+    type_subst: HashMap<String, CTy>,
     spec_done: HashSet<(String, Vec<CTy>)>, // already emitted
     // codegen limitations hit while lowering — surfaced as clean errors instead
     // of silently emitting wrong C.
@@ -202,6 +211,7 @@ impl<'a> Cx<'a> {
             fn_thunks: HashSet::new(),
             generics: HashMap::new(),
             spec_pending: Vec::new(),
+            type_subst: HashMap::new(),
             spec_done: HashSet::new(),
             problems: Vec::new(),
             classes: BTreeSet::new(),
@@ -990,6 +1000,9 @@ impl<'a> Cx<'a> {
         match t {
             Type::Name(segs) if segs.len() == 1 => {
                 let n = segs[0].as_str();
+                if let Some(t) = self.type_subst.get(n) {
+                    return t.clone();
+                }
                 if let Some((scalar_c, lanes)) = parse_vec_c(n) {
                     return CTy::Vec {
                         name: n.into(),
@@ -2777,6 +2790,7 @@ impl<'a> Cx<'a> {
         );
         self.hoisted_decls.push(format!("static {sig};"));
         let saved = std::mem::take(&mut self.out);
+        let saved_subst = std::mem::replace(&mut self.type_subst, subst);
         self.push(&format!("static {sig} {{"));
         match &genf.body {
             Some(FnBody::Block(stmts)) => {
@@ -2804,20 +2818,24 @@ impl<'a> Cx<'a> {
             self.push("    return 0;");
         }
         self.push("}");
+        self.type_subst = saved_subst;
         let def = std::mem::replace(&mut self.out, saved);
         self.hoisted_defs.push(def);
     }
 
     /// type-variable name → concrete `CTy`, from a generic fn's params vs. the
     /// concrete argument types at a call.
+    ///
+    /// Matched structurally, not just where a parameter is written as a bare
+    /// variable. `first(xs: a[]) -> a` is the most natural generic signature
+    /// there is, and reading only the bare form bound nothing from it — so the
+    /// return type fell back to the default and the caller got an integer where
+    /// an element was declared.
     fn build_subst(&self, genf: &FnDef, arg_ctys: &[CTy]) -> HashMap<String, CTy> {
         let mut m = HashMap::new();
         for (p, cty) in genf.params.iter().zip(arg_ctys) {
-            if let Some(Type::Name(segs)) = &p.ty
-                && segs.len() == 1
-                && is_type_var_name(&segs[0])
-            {
-                m.insert(segs[0].clone(), cty.clone());
+            if let Some(t) = &p.ty {
+                bind_vars(t, cty, &mut m);
             }
         }
         m
@@ -4772,6 +4790,30 @@ fn type_has_tyvar(t: &Type) -> bool {
         Type::Array(i) | Type::Opt(i) | Type::Paren(i) => type_has_tyvar(i),
         Type::Apply(h, args) => type_has_tyvar(h) || args.iter().any(type_has_tyvar),
         Type::Fn(ps, r) => ps.iter().any(type_has_tyvar) || type_has_tyvar(r),
+    }
+}
+
+/// Bind every type variable in `declared` to the matching part of `concrete`.
+///
+/// Only where the two shapes agree. A declared `a[]` against a concrete array
+/// binds the element; against anything else it binds nothing, which leaves the
+/// variable to the fallback rather than to a guess.
+fn bind_vars(declared: &Type, concrete: &CTy, m: &mut HashMap<String, CTy>) {
+    match (declared, concrete) {
+        (Type::Name(segs), _) if segs.len() == 1 && is_type_var_name(&segs[0]) => {
+            m.entry(segs[0].clone()).or_insert_with(|| concrete.clone());
+        }
+        (Type::Array(inner), CTy::Arr(e)) => bind_vars(inner, e, m),
+        (Type::Opt(inner) | Type::Paren(inner), _) => bind_vars(inner, concrete, m),
+        (Type::Apply(_, args), CTy::Map(v)) => {
+            if let Some(last) = args.last() {
+                bind_vars(last, v, m);
+            }
+        }
+        // A closure carries only its return type across the boundary, so that
+        // is the only part of a `(a) -> b` a call site can settle.
+        (Type::Fn(_, r), CTy::Closure(ret) | CTy::Closure2(ret)) => bind_vars(r, ret, m),
+        _ => {}
     }
 }
 

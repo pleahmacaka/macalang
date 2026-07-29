@@ -1220,6 +1220,28 @@ fn a_function_can_be_kept_in_a_record_field() {
     }
 }
 
+/// A generic function that names its own element type — a type variable bound
+/// from inside a parameter's type, and a local declared with it. Assertions in
+/// `tests/programs/generics.maca`.
+#[test]
+fn a_generic_can_name_its_own_element_type() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let program = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/programs/generics.maca");
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["test", &program.to_string_lossy()])
+        .output()
+        .expect("spawn maca test");
+    assert!(
+        out.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
 #[test]
 fn native_backend_regressions_still_hold() {
     // List patterns, `chars()` registering its array type, `++` converting a
