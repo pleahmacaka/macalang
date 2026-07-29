@@ -416,6 +416,10 @@ fn ty_str(t: &Type) -> String {
         Type::Name(segs) => segs.join("."),
         Type::Array(t) => format!("{}[]", ty_str(t)),
         Type::Opt(t) => format!("{}?", ty_str(t)),
+        Type::Fn(ps, r) => {
+            let ps: Vec<String> = ps.iter().map(ty_str).collect();
+            format!("({}) -> {}", ps.join(", "), ty_str(r))
+        }
         Type::Apply(h, args) => {
             format!(
                 "{} {}",

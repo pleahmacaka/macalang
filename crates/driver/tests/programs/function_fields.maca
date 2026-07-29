@@ -1,0 +1,143 @@
+// A function kept in a record field, and called out of it.
+//
+// A function passed as an argument needs no annotation — an unannotated
+// parameter that is called in the body is one. A function *stored* does need
+// one, because a field is declared before anything calls it. `(T, U) -> R` is
+// how that is written, and this file is the set of shapes it has to support:
+// the route table, the reducer, the builder, the lambda kept for later.
+
+Route = { path: str, handle: (str) -> str }
+
+Reducer = { name: str, step: (int, int) -> int }
+
+Tagger = { tag: (int, str) -> str }
+
+Res = { code: int, body: str }
+
+Maker = { build: (str) -> Res }
+
+home(q: str) -> str => "home:{q}"
+
+about(q: str) -> str => "about:{q}"
+
+add(a: int, b: int) -> int => a + b
+
+mul(a: int, b: int) -> int => a * b
+
+page(q: str) -> Res => Res { code = 200, body = "<h1>{q}</h1>" }
+
+// A closure reached through an *unannotated* parameter says it returns `int`,
+// because that was inferred from being called rather than written down. What
+// the caller expects has to win, or a record comes back as its address.
+answer(handler, q: str) -> Res => handler(q)
+
+// The shape the whole feature exists for: a table of routes, each naming what
+// answers it, walked until one matches.
+pick(rs: Route[], path: str, q: str, i: int) -> str {
+    if i >= rs.length() {
+        "404"
+    } else if rs.get(i).path == path {
+        rs.get(i).handle(q)
+    } else {
+        pick(rs, path, q, i + 1)
+    }
+}
+
+fold_with(r: Reducer, xs: int[], seed: int) -> int {
+    acc = seed
+    for x in xs {
+        acc = r.step(acc, x)
+    }
+    acc
+}
+
+table() -> Route[] =>
+    [Route { path = "/", handle = home },
+     Route { path = "/about", handle = about }]
+
+test_a_field_holds_a_named_function() {
+    r = Route { path = "/", handle = home }
+
+    assert_eq(r.handle("x"), "home:x", "called through the field")
+    assert_eq(r.path, "/", "and the other fields are untouched")
+}
+
+test_a_table_of_routes_dispatches_by_path() {
+    rs = table()
+
+    assert_eq(pick(rs, "/", "q", 0), "home:q", "the first route")
+    assert_eq(pick(rs, "/about", "q", 0), "about:q", "the second")
+    assert_eq(pick(rs, "/nope", "q", 0), "404", "and one that matches nothing")
+}
+
+test_a_field_takes_two_arguments() {
+    sum = Reducer { name = "sum", step = add }
+    product = Reducer { name = "prod", step = mul }
+
+    assert_eq(str(fold_with(sum, [1, 2, 3, 4], 0)), "10", "added")
+    assert_eq(str(fold_with(product, [1, 2, 3, 4], 1)), "24", "multiplied")
+}
+
+// The return type is declared, so what comes back is a record rather than the
+// integer everything crosses the closure boundary as.
+test_a_field_may_return_a_record() {
+    m = Maker { build = page }
+    r = m.build("Title")
+
+    assert_eq(str(r.code), "200", "the status")
+    assert_eq(r.body, "<h1>Title</h1>", "and the body")
+}
+
+test_a_lambda_can_be_kept_in_a_field() {
+    r = Route { path = "/lam", handle = q => "lambda:" ++ q }
+
+    assert_eq(r.handle("v"), "lambda:v", "the lambda ran")
+}
+
+test_a_field_holding_a_function_can_be_replaced() {
+    first = Route { path = "/", handle = home }
+    second = first with { handle = about }
+
+    assert_eq(first.handle("q"), "home:q", "the original is unchanged")
+    assert_eq(second.handle("q"), "about:q", "and the update took")
+}
+
+// A lambda in a field captures the same way a lambda anywhere does.
+test_a_captured_value_survives_being_stored() {
+    prefix = "pre-" ++ "fix"
+    r = Route { path = "/cap", handle = q => prefix ++ ":" ++ q }
+    filler = "AAAAAAAA"
+
+    assert_eq(r.handle("v"), "pre-fix:v", "the capture is intact")
+    assert_eq(filler, "AAAAAAAA", "and the string built afterwards")
+}
+
+// The hint a stored lambda gets has to carry *every* parameter, not only the
+// first: this one's second parameter is a string, and typed as an integer it
+// renders an address.
+test_a_stored_lambda_gets_all_its_parameter_types() {
+    t = Tagger { tag = (n, s) => "{s}#{n}" }
+
+    assert_eq(t.tag(7, "row"), "row#7", "both parameters arrived as themselves")
+}
+
+test_the_caller_decides_what_an_inferred_closure_returns() {
+    r = answer(page, "Title")
+
+    assert_eq(str(r.code), "200", "a record came back, not an integer")
+    assert_eq(r.body, "<h1>Title</h1>", "with its fields intact")
+}
+
+main() -> int {
+    test_a_stored_lambda_gets_all_its_parameter_types()
+    test_the_caller_decides_what_an_inferred_closure_returns()
+    test_a_field_holds_a_named_function()
+    test_a_table_of_routes_dispatches_by_path()
+    test_a_field_takes_two_arguments()
+    test_a_field_may_return_a_record()
+    test_a_lambda_can_be_kept_in_a_field()
+    test_a_field_holding_a_function_can_be_replaced()
+    test_a_captured_value_survives_being_stored()
+
+    failures()
+}

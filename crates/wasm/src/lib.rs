@@ -330,6 +330,10 @@ fn ty_name(t: &Type) -> String {
         Type::Name(segs) => segs.join("."),
         Type::Array(t) => format!("{}[]", ty_name(t)),
         Type::Opt(t) => format!("{}?", ty_name(t)),
+        Type::Fn(ps, r) => {
+            let ps: Vec<String> = ps.iter().map(ty_name).collect();
+            format!("({}) -> {}", ps.join(", "), ty_name(r))
+        }
         Type::Apply(h, args) => {
             format!(
                 "{} {}",

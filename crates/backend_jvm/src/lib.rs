@@ -454,6 +454,16 @@ fn jtype(t: &Type) -> String {
         Type::Array(inner) => format!("java.util.List<{}>", boxed(inner)),
         Type::Opt(inner) => boxed(inner),
         Type::Paren(inner) => jtype(inner),
+        // Java has a functional interface per shape; one parameter covers what
+        // this back end can carry across the boundary today.
+        Type::Fn(ps, r) => match ps.len() {
+            0 => format!("java.util.function.Supplier<{}>", boxed(r)),
+            _ => format!(
+                "java.util.function.Function<{}, {}>",
+                boxed(&ps[0]),
+                boxed(r)
+            ),
+        },
         Type::Apply(h, args) => {
             let head = type_name(h);
             let a: Vec<String> = args.iter().map(boxed).collect();

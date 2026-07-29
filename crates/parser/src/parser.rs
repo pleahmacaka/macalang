@@ -372,11 +372,33 @@ impl Parser {
                 }
                 Type::Name(segs)
             }
+            // `(T)` is a grouped type; `(T, U) -> R` and `() -> R` are the
+            // type of a function value. Which one it is cannot be known before
+            // the `)`, so both are parsed the same way and the arrow decides.
             Tok::LParen => {
                 self.bump();
-                let t = self.parse_type();
+                let mut parts = Vec::new();
+                while !self.at(Tok::RParen) && !self.at(Tok::Eof) {
+                    parts.push(self.parse_type());
+                    if !self.eat(Tok::Comma) {
+                        break;
+                    }
+                }
                 self.expect(Tok::RParen, "')'");
-                Type::Paren(Box::new(t))
+                if self.eat(Tok::Arrow) {
+                    return Type::Fn(parts, Box::new(self.parse_type()));
+                }
+                match parts.len() {
+                    1 => Type::Paren(Box::new(parts.remove(0))),
+                    0 => {
+                        self.err("expected a type, or `-> R` to make this a function type");
+                        Type::Name(vec!["?".into()])
+                    }
+                    _ => {
+                        self.err("a parenthesised list of types needs `-> R` after it");
+                        Type::Name(vec!["?".into()])
+                    }
+                }
             }
             other => {
                 self.err(format!("expected type, found {other:?}"));

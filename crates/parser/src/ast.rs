@@ -76,6 +76,18 @@ pub enum Type {
     Array(Box<Type>),            // T[]
     Opt(Box<Type>),              // T?
     Paren(Box<Type>),
+    /// `(T, U) -> R` — the type of a function value.
+    ///
+    /// A function passed as an argument needs no type: an unannotated parameter
+    /// that is *called* in the body is one. A function kept in a record field
+    /// does need one, because a field is declared before anything calls it —
+    /// which is why a route table, a middleware chain and a list of subscribers
+    /// were all impossible to write down.
+    ///
+    /// The parentheses are required. `str -> str` would have to be told apart
+    /// from a return type by lookahead, and a type that means something
+    /// different depending on what follows it is not worth the two characters.
+    Fn(Vec<Type>, Box<Type>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -534,6 +546,10 @@ fn rename_in_type(t: &mut Type, from: &str, to: &str) {
         }
         Type::Array(inner) | Type::Opt(inner) | Type::Paren(inner) => {
             rename_in_type(inner, from, to)
+        }
+        Type::Fn(params, ret) => {
+            params.iter_mut().for_each(|p| rename_in_type(p, from, to));
+            rename_in_type(ret, from, to);
         }
         Type::Apply(base, args) => {
             rename_in_type(base, from, to);

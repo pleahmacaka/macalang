@@ -199,6 +199,11 @@ impl Fresh {
         }
     }
 
+    /// The names the module defines, which shadow every table in this file.
+    pub fn defined(&self) -> &HashSet<String> {
+        &self.defined
+    }
+
     /// Does `e`, evaluated here, produce a string nothing else is holding?
     pub fn allocates(&self, e: &Expr) -> bool {
         match e {
@@ -531,6 +536,218 @@ impl Fresh {
             }
             Expr::Block(ss) => self.retain_stmts(ss, Tail::Flows, out),
         }
+    }
+}
+
+/// Names this function may append to in place.
+///
+/// Three things have to be true, and each of them was learned by a program
+/// that got a wrong answer without it.
+///
+/// The name must not be a **parameter**. A parameter *is* a second handle by
+/// construction — the buffer belongs to the caller — so `add_all(dst, src) {
+/// for v in src { dst = dst.push(v) } }` reallocated the caller's list and left
+/// its pointer dangling. This is the most ordinary helper anyone writes.
+///
+/// The name must not be a **loop pattern variable**, which is bound to
+/// `it.data[i]` — a struct copy sharing the row's buffer.
+///
+/// And every value it is ever given, **anywhere in the function**, must be a
+/// list of its own: a literal, or an append to itself. Asked per block, `xs =
+/// ys` in an enclosing block was invisible and the append went to `ys`.
+pub fn appendable_names(f: &FnDef, defined: &HashSet<String>) -> HashSet<String> {
+    let aliased = aliased_names(f, defined);
+    let mut own: HashMap<String, bool> = HashMap::new();
+    let mut barred: HashSet<String> = f.params.iter().map(|p| p.name.clone()).collect();
+    let Some(body) = &f.body else {
+        return HashSet::new();
+    };
+    let stmts: Vec<Stmt> = match body {
+        FnBody::Block(ss) => ss.clone(),
+        FnBody::Expr(e) => vec![Stmt::Expr((**e).clone())],
+    };
+    each_bind(&stmts, &mut |name, value| {
+        let fresh = matches!(value, Expr::List(_)) || is_self_push(name, value);
+        own.entry(name.to_string())
+            .and_modify(|ok| *ok &= fresh)
+            .or_insert(fresh);
+    });
+    for st in &stmts {
+        walk_stmt(st, &mut |e| {
+            if let Expr::For { pat, .. } = e {
+                pattern_names(pat, &mut barred);
+            }
+        });
+    }
+    own.into_iter()
+        .filter(|(n, ok)| *ok && !aliased.contains(n) && !barred.contains(n))
+        .map(|(n, _)| n)
+        .collect()
+}
+
+/// `xs = xs.push(v)` — the only shape that hands a list back to itself.
+fn is_self_push(name: &str, value: &Expr) -> bool {
+    let Expr::Call { callee, .. } = value else {
+        return false;
+    };
+    matches!(callee.as_ref(), Expr::Field { base, name: m }
+        if m == "push" && matches!(base.as_ref(), Expr::Ident(b) if b == name))
+}
+
+fn pattern_names(p: &Pattern, out: &mut HashSet<String>) {
+    match p {
+        Pattern::Bind(n) => {
+            out.insert(n.clone());
+        }
+        Pattern::Ctor { args, .. } => args.iter().for_each(|a| pattern_names(a, out)),
+        Pattern::Or(ps) => ps.iter().for_each(|a| pattern_names(a, out)),
+        Pattern::List { elems, rest } => {
+            elems.iter().for_each(|a| pattern_names(a, out));
+            if let Some(r) = rest {
+                pattern_names(r, out);
+            }
+        }
+        Pattern::Record(fs) => {
+            for (f, sub) in fs {
+                match sub {
+                    Some(p) => pattern_names(p, out),
+                    None => {
+                        out.insert(f.clone());
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Names this function gives a second holder to.
+///
+/// A list is a value: `ys = xs` and `f(xs)` both leave two ways to reach one
+/// buffer, and appending through one of them in place would be visible through
+/// the other. A method receiver is not one of those — every method here either
+/// reads its receiver or returns a new list — and neither is a `for` iterand.
+///
+/// Whole-body, not per block: a list appended to inside a loop is reassigned
+/// three blocks below the binding that aliased it.
+pub fn aliased_names(f: &FnDef, defined: &HashSet<String>) -> HashSet<String> {
+    let mut out = HashSet::new();
+    let Some(body) = &f.body else {
+        return out;
+    };
+    match body {
+        FnBody::Expr(e) => alias_in_expr(e, defined, &mut out),
+        FnBody::Block(ss) => alias_in_stmts(ss, defined, &mut out),
+    }
+    out
+}
+
+fn alias_in_stmts(ss: &[Stmt], defined: &HashSet<String>, out: &mut HashSet<String>) {
+    for s in ss {
+        match s {
+            Stmt::Bind(b) => {
+                // the value flows into another name, unless it is that name
+                // appending to itself
+                if !self_append(&b.target, &b.value) {
+                    keep_all(&b.value, out);
+                }
+                alias_in_expr(&b.value, defined, out);
+            }
+            Stmt::Expr(e) => alias_in_expr(e, defined, out),
+            Stmt::Fn(inner) => {
+                out.extend(aliased_names(inner, defined));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn self_append(target: &Expr, value: &Expr) -> bool {
+    matches!(target, Expr::Ident(name) if is_self_push(name, value))
+}
+
+fn alias_in_expr(e: &Expr, defined: &HashSet<String>, out: &mut HashSet<String>) {
+    let mut go = |x: &Expr| alias_in_expr(x, defined, out);
+    match e {
+        // naming a list is not holding it — what holds it is the position the
+        // name is in, and those are the arms below
+        Expr::Ident(_) => {}
+        Expr::Call { callee, args } => {
+            // A helper that only reads what it is given keeps nothing, so its
+            // arguments are read too. Without this, `info("{xs.length()}")` —
+            // or an `assert_eq` in a test — was enough to say a second holder
+            // existed, and the whole optimisation switched itself off wherever
+            // anybody looked at the list.
+            let borrows = borrowing_call(callee, defined);
+            match callee.as_ref() {
+                Expr::Field { base, .. } => alias_in_expr(base, defined, out),
+                other => keep_all(other, out),
+            }
+            for a in args {
+                match arg_expr(a) {
+                    // an interpolation renders a value; it cannot keep one
+                    x @ Expr::Str(_) => alias_in_expr(x, defined, out),
+                    x if borrows => alias_in_expr(x, defined, out),
+                    x => keep_all(x, out),
+                }
+            }
+        }
+        // A loop holds its own handle on what it iterates, for the length of
+        // the loop: the lowering copies the list struct into a temporary, and
+        // that temporary shares the buffer. Appending in place could move the
+        // buffer out from under it, so iterating counts as a second holder.
+        Expr::For { iter, body, .. } => {
+            keep_all(iter, out);
+            alias_in_stmts(body, defined, out);
+        }
+        Expr::If { cond, then, els } => {
+            go(cond);
+            alias_in_stmts(then, defined, out);
+            if let Some(e) = els {
+                alias_in_stmts(e, defined, out);
+            }
+        }
+        Expr::While { cond, body } => {
+            go(cond);
+            alias_in_stmts(body, defined, out);
+        }
+        Expr::Block(ss) => alias_in_stmts(ss, defined, out),
+        Expr::Field { base, .. } => go(base),
+        Expr::Index { base, index } => {
+            go(base);
+            go(index);
+        }
+        Expr::Binary { lhs, rhs, .. } => {
+            go(lhs);
+            go(rhs);
+        }
+        Expr::Unary { expr, .. } => go(expr),
+        Expr::Ternary { cond, then, els } => {
+            go(cond);
+            keep_all(then, out);
+            keep_all(els, out);
+        }
+        Expr::Str(parts) => {
+            for p in parts {
+                if let StrPart::Interp(x) = p {
+                    go(x);
+                }
+            }
+        }
+        // everything else that names a list keeps it
+        _ => keep_all(e, out),
+    }
+}
+
+/// Does this callee only read what it is given? A name the module has redefined
+/// answers for itself, whatever the tables say.
+fn borrowing_call(callee: &Expr, defined: &HashSet<String>) -> bool {
+    match callee {
+        Expr::Ident(f) => !defined.contains(f) && BORROWING_FNS.contains(&f.as_str()),
+        Expr::Field { name, .. } => {
+            !defined.contains(name) && BORROWING_METHODS.contains(&name.as_str())
+        }
+        _ => false,
     }
 }
 

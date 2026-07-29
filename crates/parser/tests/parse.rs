@@ -1,4 +1,4 @@
-use maca_parser::{Expr, FnBody, Stmt, parse, print_module};
+use maca_parser::{Expr, FnBody, Stmt, Type, parse, print_module};
 use std::fs;
 use std::path::PathBuf;
 
@@ -116,18 +116,48 @@ fn range_binds_looser_than_arithmetic() {
     );
 }
 
+/// `(T, U) -> R` is a type. A function passed as an argument still needs no
+/// annotation — an unannotated parameter that is called in the body is one —
+/// but a function *kept* in a record field is declared before anything calls
+/// it, so there has to be a way to write it down.
+#[test]
+fn a_function_type_is_surface_syntax() {
+    let p = parse("f(pred: (str) -> bool) -> int => 0\n");
+    assert!(p.errors.is_empty(), "unexpected errors: {:?}", p.errors);
+    let Some(Stmt::Fn(f)) = p.module.items.first() else {
+        panic!("expected a function")
+    };
+    let Some(Type::Fn(ps, r)) = &f.params[0].ty else {
+        panic!("expected a function type, got {:?}", f.params[0].ty)
+    };
+    assert_eq!(ps.len(), 1);
+    assert!(matches!(&**r, Type::Name(n) if n == &["bool".to_string()]));
+
+    // and it round-trips through the printer
+    let printed = maca_parser::print_module(&p.module);
+    assert!(printed.contains("(str) -> bool"), "{printed}");
+}
+
+/// The parentheses are not optional and a list of types is not a type. Both
+/// have to be refusals rather than silence, because the shape they are nearest
+/// to — a grouped type — is one the parser accepts.
+#[test]
+fn a_type_list_without_an_arrow_is_refused() {
+    assert!(!parse("f(x: (str, int)) -> int => 0\n").errors.is_empty());
+    assert!(!parse("f(x: ()) -> int => 0\n").errors.is_empty());
+    assert!(parse("f(x: (str)) -> int => 0\n").errors.is_empty());
+    assert!(parse("f(x: () -> int) -> int => 0\n").errors.is_empty());
+}
+
 #[test]
 fn malformed_params_terminate() {
-    // A function-type annotation isn't surface syntax; the parser must report
-    // errors and *terminate* rather than spin forever (regression: the param
-    // loop used to make no progress and OOM). The playground parses arbitrary
-    // user input, so robustness here matters.
-    let p = parse("f(pred: (str) -> bool) -> int => 0\n");
-    assert!(!p.errors.is_empty(), "expected parse errors");
-
-    // an unclosed / stray param list must also terminate
+    // The parser must report errors and *terminate* rather than spin forever
+    // (regression: the param loop used to make no progress and OOM). The
+    // playground parses arbitrary user input, so robustness here matters.
     let _ = parse("g(a: , , ->) {}\n");
     let _ = parse("h(/ <io,,, > ) => 0\n");
+    let _ = parse("k(f: (,) -> ) => 0\n");
+    let _ = parse("m(f: (str) -> ) => 0\n");
 }
 
 #[test]

@@ -253,6 +253,10 @@ impl Cx {
         let head = match t {
             Type::Name(segs) => segs.last().cloned().unwrap_or_default(),
             Type::Apply(base, _) | Type::Paren(base) => return self.is_foreign_ty(base),
+            // a function type names no foreign crate; its parts might
+            Type::Fn(ps, r) => {
+                return ps.iter().any(|p| self.is_foreign_ty(p)) || self.is_foreign_ty(r);
+            }
             // a list or an optional is a Maca shape whatever it holds
             Type::Array(_) | Type::Opt(_) => return false,
         };
@@ -871,6 +875,10 @@ fn rust_ty(t: &Type) -> String {
         Type::Array(e) => format!("Vec<{}>", rust_ty(e)),
         Type::Opt(e) => format!("Option<{}>", rust_ty(e)),
         Type::Paren(e) => rust_ty(e),
+        Type::Fn(ps, r) => {
+            let a: Vec<String> = ps.iter().map(rust_ty).collect();
+            format!("Box<dyn Fn({}) -> {}>", a.join(", "), rust_ty(r))
+        }
         Type::Apply(base, args) => {
             let a: Vec<String> = args.iter().map(rust_ty).collect();
             format!("{}<{}>", rust_ty(base), a.join(", "))
@@ -937,6 +945,7 @@ fn type_tag(t: &Type) -> String {
         Type::Opt(e) => format!("{}opt", type_tag(e)),
         Type::Paren(e) => type_tag(e),
         Type::Apply(b, _) => type_tag(b),
+        Type::Fn(_, r) => format!("fn{}", type_tag(r)),
     }
 }
 
