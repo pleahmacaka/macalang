@@ -1,0 +1,355 @@
+// bench/cases/algo — the algorithms you write in the first week.
+//
+// Searching, the three quadratic sorts, folds over a list, and the small
+// integer routines: Fibonacci both ways, factorial, GCD, primality. They are
+// here to be benchmarked, but they are also the shortest honest answer to "what
+// does this language look like", so they are written the way you would write
+// them for a reader rather than the way you would write them for a compiler.
+//
+//   import { binary_search, insertion_sort } from bench/cases/algo
+//
+//   at = binary_search(ascending(1000), 640)
+//
+// Each algorithm keeps its natural signature — `insertion_sort` takes the list
+// it sorts — and each has a `…_case(n)` beside it that builds an input of size
+// `n` and returns a checksum. The first is what a test asserts against; the
+// second is what `bench/time` measures, because the harness needs one `int`
+// parameter and one `int` result and an algorithm should not be bent into that
+// shape just to be timed.
+
+import { numbers, ascending, checksum, copy_of } from bench/cases/data
+
+// ---- searching --------------------------------------------------------------
+
+/// The index of the first `target` in `xs`, or -1.
+linear_search(xs: int[], target: int) -> int {
+    found = -1
+    i = 0
+    while i < xs.length() {
+        if xs[i] == target {
+            found = i
+            break
+        }
+        i = i + 1
+    }
+    found
+}
+
+/// Scan a sorted list of `n` for its last element — the worst case, and the
+/// only one worth timing, since anything else measures where the value happened
+/// to land.
+linear_search_case(n: int) -> int =>
+    linear_search(ascending(n), n - 1)
+
+/// The index of `target` in a sorted `xs`, or -1.
+binary_search(xs: int[], target: int) -> int {
+    low = 0
+    high = xs.length() - 1
+    found = -1
+
+    while low <= high {
+        // `low + (high - low) / 2`, not `(low + high) / 2`: the second overflows
+        // once the two ends are large, and the bug hides until the list is big.
+        mid = low + (high - low) / 2
+
+        if xs[mid] == target {
+            found = mid
+            break
+        } else if xs[mid] < target {
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+    found
+}
+
+/// Look up every one of `n` values in a sorted list of `n`.
+///
+/// One binary search is `log n` comparisons against an `n`-element list that
+/// took `n` steps to build, so a case that did one search would be a case that
+/// measured `ascending`. `n` searches put the search back in the majority.
+binary_search_case(n: int) -> int {
+    xs = ascending(n)
+    hits = 0
+    i = 0
+    while i < n {
+        if binary_search(xs, i) >= 0 {
+            hits = hits + 1
+        }
+        i = i + 1
+    }
+    hits
+}
+
+// ---- the quadratic sorts ----------------------------------------------------
+
+/// Bubble sort: sweep, swapping neighbours, until a sweep swaps nothing.
+///
+/// The `swapped` flag is what makes it linear on already-sorted input, which is
+/// the only thing bubble sort has going for it.
+bubble_sort(xs: int[]) -> int[] {
+    out = copy_of(xs)
+    end = out.length() - 1
+
+    while end > 0 {
+        swapped = false
+        i = 0
+        while i < end {
+            if out[i] > out[i + 1] {
+                held = out[i]
+                out[i] = out[i + 1]
+                out[i + 1] = held
+                swapped = true
+            }
+            i = i + 1
+        }
+        if !swapped {
+            break
+        }
+        end = end - 1
+    }
+    out
+}
+
+bubble_sort_case(n: int) -> int =>
+    checksum(bubble_sort(numbers(n)))
+
+/// Insertion sort: take each element and slide it back to where it belongs.
+///
+/// The one to reach for at small sizes. It moves each element only as far as it
+/// has to, so nearly-sorted input costs nearly nothing.
+insertion_sort(xs: int[]) -> int[] {
+    out = copy_of(xs)
+    i = 1
+
+    while i < out.length() {
+        held = out[i]
+        at = i - 1
+        while at >= 0 && out[at] > held {
+            out[at + 1] = out[at]
+            at = at - 1
+        }
+        out[at + 1] = held
+        i = i + 1
+    }
+    out
+}
+
+insertion_sort_case(n: int) -> int =>
+    checksum(insertion_sort(numbers(n)))
+
+/// Selection sort: find the smallest of what is left, put it next.
+///
+/// Always `n²/2` comparisons and never more than `n` swaps. The only sort here
+/// whose cost does not depend on the input at all, which makes it the steadiest
+/// benchmark in the file and the worst sort in it.
+selection_sort(xs: int[]) -> int[] {
+    out = copy_of(xs)
+    n = out.length()
+    i = 0
+
+    while i < n {
+        least = i
+        j = i + 1
+        while j < n {
+            if out[j] < out[least] {
+                least = j
+            }
+            j = j + 1
+        }
+        held = out[i]
+        out[i] = out[least]
+        out[least] = held
+        i = i + 1
+    }
+    out
+}
+
+selection_sort_case(n: int) -> int =>
+    checksum(selection_sort(numbers(n)))
+
+// ---- folds ------------------------------------------------------------------
+
+/// `xs` back to front.
+reversed(xs: int[]) -> int[] {
+    out = copy_of(xs)
+    low = 0
+    high = out.length() - 1
+
+    while low < high {
+        held = out[low]
+        out[low] = out[high]
+        out[high] = held
+        low = low + 1
+        high = high - 1
+    }
+    out
+}
+
+reversed_case(n: int) -> int =>
+    checksum(reversed(numbers(n)))
+
+/// The total, the smallest and the largest in one pass, packed into one number.
+///
+/// `xs.sum()`, `xs.min()` and `xs.max()` are builtins and are what you should
+/// call. This is the loop they stand for, in one pass instead of three, so the
+/// case measures the traversal rather than three of them.
+sum_min_max(xs: int[]) -> int {
+    if xs.length() == 0 {
+        0
+    } else {
+        total = 0
+        least = xs[0]
+        most = xs[0]
+        for x in xs {
+            total = total + x
+            if x < least {
+                least = x
+            }
+            if x > most {
+                most = x
+            }
+        }
+        total + least * 7 + most * 13
+    }
+}
+
+sum_min_max_case(n: int) -> int =>
+    sum_min_max(numbers(n))
+
+// ---- small integer routines --------------------------------------------------
+
+/// Fibonacci by the definition: `fib(k) = fib(k-1) + fib(k-2)`.
+///
+/// Exponential, and here on purpose. Nothing else in the corpus is this
+/// dominated by the cost of a function call, so this is the case that moves when
+/// calls get cheaper or more expensive.
+fib_recursive(k: int) -> int {
+    if k < 2 {
+        k
+    } else {
+        fib_recursive(k - 1) + fib_recursive(k - 2)
+    }
+}
+
+/// `n` is the Fibonacci index, not a list length — `fib_recursive_case(25)`
+/// makes about 250,000 calls, and 30 makes about three million.
+fib_recursive_case(n: int) -> int =>
+    fib_recursive(n)
+
+/// The same answer, carrying two values forward instead of re-deriving them.
+///
+/// Correct up to `k = 92`; the 93rd Fibonacci number does not fit in 64 bits.
+fib_iterative(k: int) -> int {
+    previous = 0
+    current = 1
+    i = 0
+
+    while i < k {
+        next = previous + current
+        previous = current
+        current = next
+        i = i + 1
+    }
+    previous
+}
+
+fib_iterative_case(n: int) -> int =>
+    fib_iterative(n % 91)
+
+/// `k!`, exact up to `k = 20` — 21! overflows a 64-bit integer, and this
+/// returns the wrapped value rather than pretending otherwise.
+factorial(k: int) -> int {
+    out = 1
+    i = 2
+
+    while i <= k {
+        out = out * i
+        i = i + 1
+    }
+    out
+}
+
+/// Factorials of 0 through 20, `n` times over, summed.
+///
+/// One factorial is a dozen multiplies, which is under the clock however many
+/// samples you take. The sweep gives the case a size to grow with.
+factorial_case(n: int) -> int {
+    acc = 0
+    i = 0
+    while i < n {
+        acc = acc + factorial(i % 21)
+        i = i + 1
+    }
+    acc
+}
+
+/// The greatest common divisor, by Euclid's remainder loop.
+gcd(a: int, b: int) -> int {
+    x = abs(a)
+    y = abs(b)
+
+    while y != 0 {
+        held = y
+        y = x % y
+        x = held
+    }
+    x
+}
+
+/// `gcd(i, n)` for every `i` up to `n`, summed — Pillai's arithmetical
+/// function, and a way to give a two-argument routine a size.
+gcd_case(n: int) -> int {
+    acc = 0
+    i = 1
+    while i <= n {
+        acc = acc + gcd(i, n)
+        i = i + 1
+    }
+    acc
+}
+
+/// Is `x` prime, by trial division up to its square root?
+///
+/// The loop condition is `d * d <= x` rather than `d <= sqrt(x)` — squaring the
+/// divisor stays in integers, and integers are exact where a square root is a
+/// rounding decision waiting to go wrong at a perfect square.
+is_prime(x: int) -> bool {
+    if x < 2 {
+        false
+    } else if x % 2 == 0 {
+        x == 2
+    } else {
+        answer = true
+        d = 3
+        while d * d <= x {
+            if x % d == 0 {
+                answer = false
+                break
+            }
+            d = d + 2
+        }
+        answer
+    }
+}
+
+/// How many primes there are up to `limit`, by testing each one.
+///
+/// The slow way on purpose: `bench/cases/inter`'s sieve is the fast way, and
+/// the pair is the clearest thing in the corpus about what an algorithm choice
+/// is worth.
+prime_count(limit: int) -> int {
+    found = 0
+    i = 2
+    while i <= limit {
+        if is_prime(i) {
+            found = found + 1
+        }
+        i = i + 1
+    }
+    found
+}
+
+prime_count_case(n: int) -> int =>
+    prime_count(n)

@@ -1,0 +1,136 @@
+// bench/report — turning results into something a person reads.
+//
+// One table, one line per result, numbers right-aligned so the eye can compare
+// digit positions instead of reading each value. Everything here returns a
+// string rather than printing it, which is what lets the same call go to the
+// terminal, into a file, and into a test that asserts what a column says.
+//
+//   import { table_of, line_of, heading } from bench/report
+//
+//   info(heading("primitives"))
+//   info(table_of(results))
+//
+// The size and iteration columns are not decoration. A ns/op figure without the
+// workload size beside it is not comparable to anything, and one without the
+// iteration count hides whether the harness got enough passes to mean it.
+
+import { table_aligned, rule } from cli/show
+import { grey } from cli/style
+import { Result, fastest_ms, median_ms, mean_ms } from bench/time
+import { ns_per_op, ops_per_sec, total_ops, resolved } from bench/time
+
+/// The column headings, in the order `row_of` fills them.
+result_columns() -> str[] =>
+    ["case", "size", "iters", "min", "med", "mean", "ns/op", "ops/sec"]
+
+/// One result as table cells. `min`/`med`/`mean` are milliseconds per sample;
+/// `ns/op` is per candidate call.
+row_of(r: Result) -> str[] =>
+    [r.name, grouped(r.size), grouped(r.iters), grouped(fastest_ms(r)),
+     "{median_ms(r):.1}", "{mean_ms(r):.1}", "{ns_per_op(r):.1}",
+     grouped(int(ops_per_sec(r)))]
+
+/// Every result as one aligned table.
+table_of(rs: Result[]) -> str =>
+    table_aligned(result_columns(), rows_of(rs, 0, []))
+
+rows_of(rs: Result[], i: int, acc: str[][]) -> str[][] {
+    if i >= rs.length() {
+        acc
+    } else {
+        rows_of(rs, i + 1, acc.push(row_of(rs.get(i))))
+    }
+}
+
+/// One result on one line, for printing as the run goes rather than waiting
+/// for the whole table. A benchmark suite that says nothing for two minutes
+/// looks identical to one that hung.
+line_of(r: Result) -> str {
+    head = "{r.name:<24} {r.size:>9} {ns_per_op(r):>12.1} ns/op"
+
+    if resolved(r) {
+        head
+    } else {
+        head ++ "  " ++ grey("(under the clock)")
+    }
+}
+
+/// A section rule with a title, for putting a group of results under a name.
+///
+/// It forwards to `cli/show`'s `rule` and exists so that a program printing a
+/// benchmark report needs one import rather than two, and so that changing what
+/// a section separator looks like is a change here rather than at every call.
+heading(title: str) -> str => rule(title)
+
+/// The one-paragraph footer a table needs to be read correctly: what was
+/// measured, how many calls it took, and how long the whole thing ran.
+///
+/// Written out because the numbers above are meaningless without it. A reader
+/// who does not know that `ns/op` came from ten million calls cannot tell a
+/// measurement from a guess.
+footnote(rs: Result[]) -> str {
+    calls = summed_ops(rs, 0, 0)
+    ms = summed_ms(rs, 0, 0)
+    shaky = unresolved_count(rs, 0, 0)
+    body = "{rs.length()} cases, {grouped(calls)} calls, {grouped(ms)} ms"
+        ++ " measured. Times are wall-clock; ns/op is the total divided by the"
+        ++ " call count."
+
+    if shaky == 0 {
+        grey(body)
+    } else {
+        grey(body ++ " {shaky} case(s) stayed under the clock's resolution.")
+    }
+}
+
+summed_ops(rs: Result[], i: int, acc: int) -> int {
+    if i >= rs.length() {
+        acc
+    } else {
+        summed_ops(rs, i + 1, acc + total_ops(rs.get(i)))
+    }
+}
+
+summed_ms(rs: Result[], i: int, acc: int) -> int {
+    if i >= rs.length() {
+        acc
+    } else {
+        summed_ms(rs, i + 1, acc + rs.get(i).samples.sum())
+    }
+}
+
+unresolved_count(rs: Result[], i: int, acc: int) -> int {
+    if i >= rs.length() {
+        acc
+    } else if resolved(rs.get(i)) {
+        unresolved_count(rs, i + 1, acc)
+    } else {
+        unresolved_count(rs, i + 1, acc + 1)
+    }
+}
+
+/// `1234567` as `1,234,567`.
+///
+/// Ops-per-second figures run to nine digits and nobody reads nine digits. The
+/// separator is a comma rather than a space because `cli/show` counts a comma
+/// as part of a number, so a grouped column still right-aligns.
+grouped(n: int) -> str {
+    if n < 0 {
+        "-" ++ grouped(0 - n)
+    } else {
+        digits = str(n)
+        insert_commas(digits, 0, "")
+    }
+}
+
+// Walking left to right, a separator goes before every digit whose distance
+// from the right end is a positive multiple of three.
+insert_commas(digits: str, i: int, acc: str) -> str {
+    if i >= digits.length() {
+        acc
+    } else {
+        left = digits.length() - i
+        sep = i > 0 && left % 3 == 0 ? "," : ""
+        insert_commas(digits, i + 1, acc ++ sep ++ digits.at(i))
+    }
+}

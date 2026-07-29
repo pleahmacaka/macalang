@@ -1,0 +1,70 @@
+// bench_demo — measuring a handful of the corpus and printing the table.
+//
+//   maca run examples/bench_demo.maca
+//
+// Eight cases, three samples each, about a second in total. `quick()` is used
+// on purpose and the footer says so: three samples of fifteen milliseconds is
+// enough to see a tenfold difference and nowhere near enough to see a five
+// percent one. `defaults()` is what a number you intend to quote is measured
+// with.
+//
+// Each candidate is passed to `measure` by name. That is the whole calling
+// convention: a function `(size: int) -> int` goes in as a parameter, because a
+// function value cannot be stored in a record field and so there is no list of
+// cases to loop over. `bench/cases/catalog` has the version that runs all
+// forty-six by name, at the cost of a string comparison per call.
+
+import { measure, quick, Result } from bench/time
+import { table_of, heading, footnote, line_of } from bench/report
+import { compare, comparison_table, summary, Tolerance } from bench/compare
+import { int_arith, str_interp, list_index, map_get } from bench/cases/prim
+import { insertion_sort_case, fib_recursive_case } from bench/cases/algo
+import { merge_sort_case, sieve_case } from bench/cases/inter
+import { edit_distance_case } from bench/cases/adv
+
+main() -> int {
+    info(heading("primitives"))
+    primitives = [measure("int arithmetic", 2000, int_arith, quick()),
+                  measure("string interpolate", 500, str_interp, quick()),
+                  measure("list index", 2000, list_index, quick()),
+                  measure("map get", 1000, map_get, quick())]
+    info(table_of(primitives))
+
+    info(heading("algorithms"))
+    algorithms = [measure("insertion sort", 400, insertion_sort_case, quick()),
+                  measure("merge sort", 1000, merge_sort_case, quick()),
+                  measure("sieve", 1000, sieve_case, quick()),
+                  measure("fib recursive", 20, fib_recursive_case, quick()),
+                  measure("edit distance", 60, edit_distance_case, quick())]
+    info(table_of(algorithms))
+    info(footnote(primitives ++ algorithms))
+
+    info("")
+    info(heading("the same run, compared against itself"))
+    info(against_baseline(algorithms))
+    0
+}
+
+// A comparison needs two runs, and a demo has one. Halving the iteration count
+// of a stored result doubles its cost per call, so this makes a baseline that
+// every case has moved against — which is what the table is here to show.
+//
+// A real caller loads the baseline instead:
+//
+//   before = load("bench/baseline.json")
+//   info(comparison_table(compare(before, results, Tolerance)))
+against_baseline(now: Result[]) -> str {
+    deltas = compare(pretend_older(now, 0, []), now, Tolerance)
+
+    comparison_table(deltas) ++ "\n" ++ summary(deltas)
+}
+
+pretend_older(rs: Result[], i: int, acc: Result[]) -> Result[] {
+    if i >= rs.length() {
+        acc
+    } else {
+        one = rs[i]
+        older = one with { iters = one.iters / 2 + 1 }
+        pretend_older(rs, i + 1, acc.push(older))
+    }
+}

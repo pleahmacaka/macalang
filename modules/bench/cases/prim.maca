@@ -1,0 +1,197 @@
+// bench/cases/prim — the operations everything else is built out of.
+//
+// Integer and float arithmetic, string building and scanning, list push and
+// index and iterate, map set and get, record construction and field access.
+// These are the numbers you need before any of the algorithm cases mean
+// anything: a sort that looks slow is a different problem depending on whether
+// a list subscript costs one nanosecond or forty.
+//
+//   import { int_arith, list_index } from bench/cases/prim
+//   import { measure, defaults } from bench/time
+//
+//   r = measure("int arithmetic", 5000, int_arith, defaults())
+//
+// Every case takes the workload size and returns a checksum, so the same call
+// is both the thing being timed and the thing a test asserts against. Each one
+// builds whatever input it needs inside the timed region — there is no setup
+// hook, because a setup function would have to be stored next to the case and a
+// function value cannot live in a record field. Where the setup is O(n) and the
+// work is O(n), that is roughly a factor of two on the reported cost, and it is
+// the same factor in every run, so a comparison against a baseline is unharmed.
+
+import { ascending, sentence } from bench/cases/data
+
+/// A point, for the record cases. Two fields: enough to have a layout, small
+/// enough that the case measures construction rather than copying.
+Pt = { x: int, y: int }
+
+/// Integer add, multiply, divide and remainder, `n` times.
+int_arith(n: int) -> int {
+    acc = 0
+    i = 1
+    while i <= n {
+        acc = acc + i * 3 + i % 7 - i / 2
+        i = i + 1
+    }
+    acc
+}
+
+/// Float conversion, division and addition, `n` times, reported as thousandths
+/// so the checksum is an integer without being 0.
+///
+/// The harmonic sum grows without bound but slowly, which is what a benchmark
+/// wants: no overflow at any size, and no size at which the accumulator is so
+/// large that adding the next term rounds to no change at all.
+///
+/// No `sqrt` here on purpose. It is a builtin, but the native back end does not
+/// link libm, so a call to it that the C compiler cannot fold fails at link
+/// time — see `root` in `bench/stat` for the same problem answered the other
+/// way.
+float_arith(n: int) -> int {
+    acc = 0.0
+    i = 1
+    while i <= n {
+        acc = acc + 1.0 / float(i)
+        i = i + 1
+    }
+    int(acc * 1000.0)
+}
+
+/// Append a two-byte literal `n` times; returns the length built.
+str_concat(n: int) -> int {
+    out = ""
+    i = 0
+    while i < n {
+        out = out ++ "ab"
+        i = i + 1
+    }
+    out.length()
+}
+
+/// The same, through string interpolation — a number formatted and spliced in
+/// `n` times. The gap against `str_concat` is what interpolation costs.
+str_interp(n: int) -> int {
+    out = ""
+    i = 0
+    while i < n {
+        out = out ++ "{i}|"
+        i = i + 1
+    }
+    out.length()
+}
+
+/// Walk `n` bytes classifying each one; returns letters and digits packed into
+/// one number.
+///
+/// Byte-at-a-time scanning through `at` is what a lexer does, so this is the
+/// primitive under `selfhost`'s front end more than it is a string benchmark.
+str_scan(n: int) -> int {
+    text = sentence(n)
+    letters = 0
+    digits = 0
+    i = 0
+    while i < text.length() {
+        c = text.at(i)
+        if c.is_alpha() {
+            letters = letters + 1
+        } else if c.is_ascii_digit() {
+            digits = digits + 1
+        }
+        i = i + 1
+    }
+    letters * 1000 + digits
+}
+
+/// Grow a list one element at a time; returns the sum of what went in.
+///
+/// This is the expensive one, and deliberately so. `push` returns a new list,
+/// so building a list of `n` this way copies `n(n-1)/2` elements — it is
+/// quadratic, and a case that measures it at a size where that shows is more
+/// use than a comment saying it might.
+list_push(n: int) -> int {
+    xs: int[] = []
+    i = 0
+    while i < n {
+        xs = xs.push(i)
+        i = i + 1
+    }
+    xs.sum()
+}
+
+/// Read `n` elements by subscript.
+list_index(n: int) -> int {
+    xs = ascending(n)
+    acc = 0
+    i = 0
+    while i < n {
+        acc = acc + xs[i]
+        i = i + 1
+    }
+    acc
+}
+
+/// Read the same `n` elements with `for … in`. Same answer as `list_index`, so
+/// the difference between the two is the cost of the loop form and nothing
+/// else.
+list_iterate(n: int) -> int {
+    acc = 0
+    for x in ascending(n) {
+        acc = acc + x
+    }
+    acc
+}
+
+/// Insert `n` string keys into a map; returns how many landed.
+map_set(n: int) -> int {
+    m: Map str int = map()
+    i = 0
+    while i < n {
+        m = m.set("k{i}", i)
+        i = i + 1
+    }
+    m.length()
+}
+
+/// Insert `n` keys and then read every one back; returns the sum of the values
+/// that came out. Subtract `map_set` at the same size to get the lookup cost.
+map_get(n: int) -> int {
+    m: Map str int = map()
+    i = 0
+    while i < n {
+        m = m.set("k{i}", i)
+        i = i + 1
+    }
+
+    acc = 0
+    j = 0
+    while j < n {
+        acc = acc + m.get("k{j}", -1)
+        j = j + 1
+    }
+    acc
+}
+
+/// Construct `n` records, reading both fields of each.
+record_build(n: int) -> int {
+    acc = 0
+    i = 0
+    while i < n {
+        p = Pt { x = i, y = i * 2 }
+        acc = acc + p.x + p.y
+        i = i + 1
+    }
+    acc
+}
+
+/// Read both fields of one record `n` times — construction held out, so the
+/// gap against `record_build` is what building one costs.
+record_field(n: int) -> int {
+    p = Pt { x = 3, y = 4 }
+    acc = 0
+    i = 0
+    while i < n {
+        acc = acc + p.x + p.y
+        i = i + 1
+    }
+    acc
+}

@@ -1,0 +1,177 @@
+// tambo/app — the routing table, declared by chaining.
+//
+// A tambo is a waystation on the Inca road: the place a traveller stops along
+// a route. That is what a handler is, so that is the name.
+//
+//     Site = app()
+//         .route("GET", "/", "home")
+//         .route("GET", "/user/:id", "show_user")
+//         .route("POST", "/user", "create_user")
+//         .fallback("not_found")
+//
+// Two things about that declaration are worth explaining before you read any
+// further, because both look like they should have gone the other way.
+//
+// **The third argument is the *name* of a handler, not the handler.** Maca has
+// no function values in record fields, so a table holding handlers could not
+// be a value at all. A table of names turns out to be the better shape anyway:
+// the program gets one `match` where every handler is named, in one place, and
+// the table can be printed, counted and checked as the data it is.
+//
+//     handle(ctx: Ctx) -> Response {
+//         name = ctx.name
+//         match name {
+//             "home" => text("hello")
+//             "show_user" => text(ctx.param("id"))
+//             _ => pass()
+//         }
+//     }
+//
+// What that costs is that a name and its arm can drift apart, and the compiler
+// cannot see it. `tambo/dispatch` buys it back at startup: `serve` asks
+// `handle` for every declared name before it binds a port, and refuses to
+// start, naming the ones with no arm. A missing arm is a mistake in the
+// program, so it is reported as one — never as a 404, which would send
+// whoever reads the log hunting a routing bug that is not there.
+//
+// **The method is an argument rather than the function name.** `.get(…)` is
+// what this wanted to be, and it cannot be. Maca has one namespace per compiled
+// program, and a top-level three-argument `get` captures every
+// `m.get(key, fallback)` in it — tambo's own included — so the build fails
+// inside a file the author never opened. `.on(…)` would have been the next
+// choice and `cli/parse` has it already, for a flag. So: one `route` for every
+// method, which costs a few characters and puts the method in the column
+// `routes_table` prints it in.
+
+import { bind_path, more_specific } from tambo/route
+
+/// One row of the table.
+Route = {
+    method: str
+    pattern: str
+    /// The handler's name, as `handle` will see it in `ctx.name`.
+    name: str
+}
+
+/// A routing table, plus the three handlers that are not routes.
+App = {
+    routes: Route[]
+    /// Runs before the route, for every request. "" for none.
+    before: str
+    /// Runs after it, with the response so far in `ctx.reply`. "" for none.
+    after: str
+    /// Runs when nothing matched. "" leaves tambo's own 404.
+    fallback: str
+}
+
+/// An empty app. Everything below adds one thing to it and hands it back, so a
+/// table is written as a chain and reads as the list it is.
+app() -> App =>
+    App { routes = [], before = "", after = "", fallback = "" }
+
+/// `method pattern` → the handler called `name`.
+///
+/// The method is upper-cased on the way in, because a client's is too and a
+/// table that only answered `Get` would answer nothing.
+route(a: App, method: str, pattern: str, name: str) -> App =>
+    a with {
+        routes = a.routes.push(Route {
+            method = method.upper(),
+            pattern = pattern,
+            name = name,
+        })
+    }
+
+/// The handler for a request nothing matched. Without one, that is a 404 with
+/// the status as its body.
+fallback(a: App, name: str) -> App =>
+    a with { fallback = name }
+
+/// The handler every request passes through first — a log line, a clock start,
+/// an authorization check. Answering anything but `pass()` stops the request
+/// there, which is how the check refuses.
+before(a: App, name: str) -> App =>
+    a with { before = name }
+
+/// The handler every response passes through last, with the response in
+/// `ctx.reply`. Answering `pass()` leaves it alone.
+after(a: App, name: str) -> App =>
+    a with { after = name }
+
+/// What a method and path chose.
+Pick = {
+    ok: bool
+    name: str
+    pattern: str
+    params: Map str str
+    /// The methods this path *would* have answered to, when `ok` is false. A
+    /// non-empty list means 405 rather than 404: the path exists and the
+    /// method is the thing that was wrong, and saying so saves a caller from
+    /// hunting a URL that was right all along.
+    allowed: str[]
+}
+
+/// The route a method and path chose, if any.
+///
+/// Every matching route is considered and the most specific wins — see
+/// `more_specific` in `tambo/route`. Declaration order only breaks a tie
+/// between patterns of identical shape.
+lookup(a: App, method: str, path: str) -> Pick {
+    want = method.upper()
+    best = nothing()
+    others: str[] = []
+    i = 0
+
+    while i < a.routes.length() {
+        r = a.routes.get(i)
+        hit = bind_path(r.pattern, path)
+
+        if hit.ok && r.method == want {
+            best = better(best, r, hit)
+        } else if hit.ok && !others.contains(r.method) {
+            others = others.push(r.method)
+        }
+
+        i = i + 1
+    }
+
+    // `sort` so `Allow:` reads the same on every run — a header that shuffles
+    // between builds is a diff nobody can review.
+    best.ok ? best : best with { allowed = others.sort() }
+}
+
+// Keep whichever of the two is more specific, and the incumbent on a tie —
+// which is what makes declaration order a tie-break rather than a priority.
+better(best: Pick, r: Route, hit: Bound) -> Pick {
+    if best.ok && !more_specific(r.pattern, best.pattern) {
+        best
+    } else {
+        Pick { ok = true, name = r.name, pattern = r.pattern,
+               params = hit.params, allowed = [] }
+    }
+}
+
+nothing() -> Pick {
+    empty: Map str str = map()
+
+    Pick { ok = false, name = "", pattern = "", params = empty, allowed = [] }
+}
+
+/// The routing table as text, one route to a line, in declaration order.
+///
+/// For a program that wants to print what it serves. Reading it against the
+/// `match` in the source is how you check that the two agree by eye;
+/// `missing_handlers` is how you check it by machine.
+routes_table(a: App) -> str =>
+    rows(a.routes, 0, []).join("\n")
+
+rows(rs: Route[], i: int, acc: str[]) -> str[] {
+    if i >= rs.length() {
+        acc
+    } else {
+        r = rs.get(i)
+        line = r.method.pad_end(8, " ") ++ r.pattern.pad_end(26, " ") ++ r.name
+
+        rows(rs, i + 1, acc.push(line))
+    }
+}

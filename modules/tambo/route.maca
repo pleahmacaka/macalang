@@ -1,0 +1,157 @@
+// tambo/route — a path pattern, and what it binds from a path.
+//
+// Two kinds of hole. `:name` binds one segment; a trailing `*` binds all of
+// the path that is left. Every other segment is literal text that has to be
+// there, exactly.
+//
+//     bind_path("/user/:id", "/user/7").params.get("id", "")    // "7"
+//     bind_path("/files/*", "/files/a/b").params.get("*", "")   // "a/b"
+//
+// Nothing here knows about an app, a request or a response, which is what lets
+// the routing rules be checked by calling them.
+
+/// What a pattern bound from a path.
+Bound = {
+    ok: bool
+    /// The bound segments, by name. What a trailing `*` swallowed is filed
+    /// under `"*"`, so one map holds every capture and a handler has one place
+    /// to look.
+    params: Map str str
+}
+
+/// Match `path` against `pattern`.
+///
+/// Segment counts have to agree exactly, so `/user/:id` does not match
+/// `/user/a/b`, and a trailing slash is a segment like any other, so `/a` and
+/// `/a/` are different paths and only one of them matches `/a`. Both rules are
+/// here because the alternative is a route quietly answering for a path its
+/// author never wrote down.
+///
+/// A `:name` will not bind an empty segment: `/user/` is not a `/user/:id`
+/// with an id of "". An empty parameter is the shape of a bug in the caller,
+/// and a handler that has to check for one has gained nothing over a 404.
+bind_path(pattern: str, path: str) -> Bound {
+    ps = pattern.split("/")
+    xs = path.split("/")
+    empty: Map str str = map()
+
+    if !ends_in_wildcard(ps) {
+        if ps.length() != xs.length() {
+            miss()
+        } else {
+            bind_segments(ps, xs, 0, ps.length(), empty)
+        }
+    } else if xs.length() < ps.length() {
+        // `/files/*` wants at least `/files/`. A bare `/files` is a different
+        // path and gets the 404 it asked for.
+        miss()
+    } else {
+        upto = ps.length() - 1
+        tail = xs.slice(upto, xs.length()).join("/")
+
+        bind_segments(ps, xs, 0, upto, empty.set("*", tail))
+    }
+}
+
+// Walk the segments up to `upto`, collecting what the parameters caught.
+bind_segments(ps: str[], xs: str[], i: int, upto: int,
+              acc: Map str str) -> Bound {
+    if i >= upto {
+        Bound { ok = true, params = acc }
+    } else if is_param(ps.get(i)) && xs.get(i) == "" {
+        miss()
+    } else if is_param(ps.get(i)) {
+        name = param_name(ps.get(i))
+
+        bind_segments(ps, xs, i + 1, upto, acc.set(name, xs.get(i)))
+    } else if ps.get(i) == xs.get(i) {
+        bind_segments(ps, xs, i + 1, upto, acc)
+    } else {
+        miss()
+    }
+}
+
+miss() -> Bound {
+    empty: Map str str = map()
+
+    Bound { ok = false, params = empty }
+}
+
+/// Is `a` a more specific pattern than `b`?
+///
+/// Compared segment by segment, left to right: literal text beats `:name`, and
+/// `:name` beats `*`. The first segment where the two disagree decides, so
+/// `/user/new` wins over `/user/:id` and `/files/logo.png` wins over
+/// `/files/*` — in whichever order they were declared.
+///
+/// Two patterns of the same shape are a tie, and `tambo/app` gives a tie to
+/// whichever was declared first. So declaration order is a tie-break and never
+/// a way to shadow: a loose route written above a tight one cannot take its
+/// traffic. The alternative is first-match-wins, where adding a route near the
+/// top of the table silently retires one further down.
+more_specific(a: str, b: str) -> bool {
+    left = a.split("/")
+    right = b.split("/")
+    at = first_difference(left, right, 0)
+
+    if at < 0 {
+        // The same shape as far as both go: the longer pattern spells out
+        // segments the shorter one let a `*` swallow.
+        left.length() > right.length()
+    } else {
+        kind(left.get(at)) > kind(right.get(at))
+    }
+}
+
+// The first index where two patterns disagree about how specific they are, or
+// -1 when they agree everywhere both have a segment.
+first_difference(a: str[], b: str[], i: int) -> int {
+    if i >= a.length() || i >= b.length() {
+        -1
+    } else if kind(a.get(i)) != kind(b.get(i)) {
+        i
+    } else {
+        first_difference(a, b, i + 1)
+    }
+}
+
+// How specific one segment is. Literal text is the most, `*` the least.
+kind(seg: str) -> int {
+    if seg == "*" {
+        0
+    } else if is_param(seg) {
+        1
+    } else {
+        2
+    }
+}
+
+/// The names a pattern binds, in order, with `"*"` last when it has one.
+/// What a table listing wants, and what a test asserts against.
+param_names(pattern: str) -> str[] =>
+    collect_names(pattern.split("/"), 0, [])
+
+collect_names(ps: str[], i: int, acc: str[]) -> str[] {
+    if i >= ps.length() {
+        acc
+    } else if is_param(ps.get(i)) {
+        collect_names(ps, i + 1, acc.push(param_name(ps.get(i))))
+    } else if ps.get(i) == "*" && i == ps.length() - 1 {
+        collect_names(ps, i + 1, acc.push("*"))
+    } else {
+        collect_names(ps, i + 1, acc)
+    }
+}
+
+// Only the *last* segment can be a wildcard. A `*` in the middle is literal
+// text: a pattern that swallowed the tail from halfway along could never say
+// what came after it, so there is nothing useful for it to mean.
+ends_in_wildcard(ps: str[]) -> bool =>
+    ps.length() > 0 && ps.get(ps.length() - 1) == "*"
+
+// A bare `:` binds nothing under no name, so it is literal text too.
+is_param(seg: str) -> bool =>
+    seg.starts_with(":") && seg.length() > 1
+
+param_name(seg: str) -> str =>
+    seg.slice(1, seg.length())

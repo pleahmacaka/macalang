@@ -1,0 +1,86 @@
+// tambo/reply — the answers a handler gives that `http/response` does not.
+//
+// `text`, `html`, `json`, `redirect` and `status` already exist and are what a
+// handler should reach for; import them from `http/response`. This file adds
+// the two answers that are about *dispatch* rather than about HTTP — `pass`,
+// meaning "I have nothing to say", and `broke`, meaning "something went wrong,
+// and here is a note for the log rather than for the caller" — plus the object
+// helpers, because `http/response.json` takes a body someone else encoded.
+//
+//     import { text, json } from http/response
+//     import { pass, broke, json_of_str } from tambo/reply
+
+import { Response, json, status } from http/response
+import { quote, object_of } from std/json
+
+/// I have nothing to say.
+///
+/// From a `before` hook that means carry on to the route. From an `after` hook
+/// it means leave the response alone. From a route handler it means the arm is
+/// missing, and `tambo/run` reports it as the program bug it is.
+///
+/// One sentinel with one meaning — "not my request" — and the caller decides
+/// what that implies, which is why it can be the `_` arm of every dispatch.
+///
+/// The marker is status 0. Zero is not an HTTP status, so it cannot collide
+/// with anything a handler meant to send.
+pass() -> Response =>
+    Response { status = 0, headers = [], body = "", close = false }
+
+/// Did this response say nothing?
+passed(r: Response) -> bool =>
+    r.status == 0
+
+/// Something went wrong. `note` goes to the log; the caller gets `500 Internal
+/// Server Error` and not one word more.
+///
+/// Not the `fail` keyword, which raises and takes the process with it. A
+/// server that exits because one request could not be answered has turned one
+/// caller's bad afternoon into everybody's.
+///
+/// The scrubbing is not this function's doing — `run` applies it to every 5xx,
+/// however it was built. `broke` just gives the note somewhere to go.
+broke(note: str) -> Response =>
+    Response { status = 500, headers = [], body = note, close = true }
+
+/// Replace the body and headers of a 5xx with the status and its phrase.
+///
+/// A file path, a query string or a stack trace in an error body is how a
+/// server tells a stranger where it keeps things, and every one of those got
+/// there because somebody was debugging and left it. So the rule is blunt: no
+/// 5xx body leaves the process, whoever built it.
+///
+/// A site that genuinely wants an error *page* builds it in the `after` hook,
+/// which runs after this and can put a body back deliberately.
+scrub(r: Response) -> Response {
+    if r.status < 500 {
+        r
+    } else {
+        status(r.status)
+    }
+}
+
+/// `204 No Content`.
+///
+/// Not `status(204)`: that gives the response a body naming the status, and
+/// 204 is the one code where a body is forbidden outright. A client reading a
+/// 204 with 15 bytes after it treats those bytes as the next reply.
+no_content() -> Response =>
+    Response { status = 204, headers = [], body = "", close = false }
+
+/// A JSON object of strings, from parallel keys and values. Every value is
+/// escaped, which is the half that goes wrong by hand: one apostrophe is
+/// harmless and one double quote ends the object early.
+json_of_str(keys: str[], values: str[]) -> Response =>
+    json(object_of(keys, values.map(quote)))
+
+/// A JSON object from parallel keys and *already-encoded* values, for an
+/// object that mixes kinds.
+///
+///     json_of(["name", "age"], [quote(name), str(age)])
+///
+/// The values arrive encoded because one object holds a string, a number and a
+/// nested object, and there is no variant here to carry the difference.
+/// `quote` is `std/json`'s, and a string value that skips it is a bug.
+json_of(keys: str[], values: str[]) -> Response =>
+    json(object_of(keys, values))

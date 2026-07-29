@@ -1,0 +1,653 @@
+// bench/cases/adv — the ones with a real idea in them.
+//
+// Knuth–Morris–Pratt, edit distance, longest common subsequence, the 0/1
+// knapsack, n-queens, union-find, Dijkstra, topological sort, an LRU cache, and
+// a JSON tokenizer. Between them they cover the shapes the rest of the corpus
+// does not: a table filled in two dimensions, a search that backtracks, a graph,
+// and a scanner with state.
+//
+//   import { edit_distance, dijkstra } from bench/cases/adv
+//
+//   edit_distance("kitten", "sitting")     // 3
+//
+// Every one of these has a textbook answer that is easy to check, which is why
+// they are worth benchmarking: a case whose correctness you cannot state is a
+// case you will eventually optimise into being wrong.
+
+import { ascending, zeros, repeated } from bench/cases/data
+import { sentence, checksum } from bench/cases/data
+
+/// The distance a Dijkstra run reports for a node it could not reach. Large
+/// enough to lose every comparison, small enough that adding an edge weight to
+/// it does not overflow.
+Unreachable = 1000000000
+
+// ---- Knuth–Morris–Pratt ------------------------------------------------------
+
+/// For each prefix of `needle`, the length of its longest proper prefix that is
+/// also a suffix.
+///
+/// This table is the whole algorithm. It says, when a match fails at position
+/// `i`, how far back the pattern can be slid without missing anything — which
+/// is what lets the text pointer never move backwards.
+kmp_table(needle: str) -> int[] {
+    table = zeros(needle.length())
+    len = 0
+    i = 1
+
+    while i < needle.length() {
+        if needle.at(i) == needle.at(len) {
+            len = len + 1
+            table[i] = len
+            i = i + 1
+        } else if len > 0 {
+            len = table[len - 1]
+        } else {
+            table[i] = 0
+            i = i + 1
+        }
+    }
+    table
+}
+
+/// The index of `needle` in `hay`, or -1, in `n + m` steps.
+kmp_search(hay: str, needle: str) -> int {
+    if needle.length() == 0 {
+        0
+    } else {
+        table = kmp_table(needle)
+        found = -1
+        matched = 0
+        i = 0
+
+        while i < hay.length() {
+            if hay.at(i) == needle.at(matched) {
+                matched = matched + 1
+                i = i + 1
+                if matched == needle.length() {
+                    found = i - matched
+                    i = hay.length()
+                }
+            } else if matched > 0 {
+                matched = table[matched - 1]
+            } else {
+                i = i + 1
+            }
+        }
+        found
+    }
+}
+
+/// The same near-miss search as `find_substring_case`, so the two numbers are
+/// directly comparable and the comparison is the point.
+kmp_search_case(n: int) -> int =>
+    kmp_search(sentence(n), "the quick brown cat")
+
+// ---- edit distance -------------------------------------------------------------
+
+/// The fewest single-character insertions, deletions and substitutions that
+/// turn `a` into `b`.
+///
+/// Two rows, not a full table. The recurrence only ever looks one row back, so
+/// the `n × m` table costs `m` — which for two thousand-character strings is
+/// the difference between eight kilobytes and eight megabytes.
+edit_distance(a: str, b: str) -> int {
+    previous = ascending(b.length() + 1)
+    current = zeros(b.length() + 1)
+    i = 1
+
+    while i <= a.length() {
+        current[0] = i
+        j = 1
+        while j <= b.length() {
+            cost = a.at(i - 1) == b.at(j - 1) ? 0 : 1
+            current[j] = least_of(current[j - 1] + 1, previous[j] + 1,
+                                  previous[j - 1] + cost)
+            j = j + 1
+        }
+        previous = current.slice(0, current.length())
+        i = i + 1
+    }
+    previous[b.length()]
+}
+
+least_of(a: int, b: int, c: int) -> int {
+    if a <= b && a <= c {
+        a
+    } else if b <= c {
+        b
+    } else {
+        c
+    }
+}
+
+edit_distance_case(n: int) -> int =>
+    edit_distance(sentence(n), sentence(n).upper())
+
+// ---- longest common subsequence ---------------------------------------------------
+
+/// The length of the longest sequence of characters appearing, in order but not
+/// necessarily together, in both `a` and `b`.
+///
+/// Same two-row trick as `edit_distance`, and the same recurrence shape — which
+/// is why the two are usually confused. The difference is that this one takes
+/// the *larger* of the neighbours, because it is counting agreement rather than
+/// paying for disagreement.
+lcs_length(a: str, b: str) -> int {
+    previous = zeros(b.length() + 1)
+    current = zeros(b.length() + 1)
+    i = 1
+
+    while i <= a.length() {
+        current[0] = 0
+        j = 1
+        while j <= b.length() {
+            if a.at(i - 1) == b.at(j - 1) {
+                current[j] = previous[j - 1] + 1
+            } else {
+                current[j] = max(previous[j], current[j - 1])
+            }
+            j = j + 1
+        }
+        previous = current.slice(0, current.length())
+        i = i + 1
+    }
+    previous[b.length()]
+}
+
+lcs_case(n: int) -> int =>
+    lcs_length(sentence(n), sentence(n).replace("o", "0"))
+
+// ---- 0/1 knapsack -----------------------------------------------------------------
+
+/// The best total value that fits in `capacity`, taking each item once or not
+/// at all.
+///
+/// One row, filled from the right. Going right to left is what makes it 0/1
+/// rather than unbounded: each item's own update is never read again while that
+/// item is being considered, so nothing can be taken twice.
+knapsack(weights: int[], values: int[], capacity: int) -> int {
+    best = zeros(capacity + 1)
+    item = 0
+
+    while item < weights.length() {
+        w = weights[item]
+        c = capacity
+        while c >= w {
+            best[c] = max(best[c], best[c - w] + values[item])
+            c = c - 1
+        }
+        item = item + 1
+    }
+    best[capacity]
+}
+
+/// `n` items in a knapsack of `2n`, so the table is `n × 2n` and the size
+/// parameter moves the work quadratically.
+knapsack_case(n: int) -> int {
+    weights = zeros(n)
+    values = zeros(n)
+    i = 0
+    while i < n {
+        weights[i] = i % 7 + 1
+        values[i] = (i * 13) % 29 + 1
+        i = i + 1
+    }
+    knapsack(weights, values, 2 * n)
+}
+
+// ---- n-queens -----------------------------------------------------------------------
+
+/// How many ways `n` queens fit on an `n × n` board with none attacking
+/// another.
+///
+/// 1, 0, 0, 2, 10, 4, 40, 92 for `n` = 1 through 8 — a sequence worth knowing,
+/// because it catches an off-by-one in the diagonal test that a spot check on
+/// one board size will not.
+n_queens(n: int) -> int {
+    if n <= 0 {
+        0
+    } else {
+        // Three occupancy maps: one per column, one per ↘ diagonal (row-col,
+        // shifted to be non-negative), one per ↙ diagonal (row+col).
+        columns = repeated(n, 0)
+        down = repeated(2 * n, 0)
+        up = repeated(2 * n, 0)
+        place_queen(n, 0, columns, down, up)
+    }
+}
+
+place_queen(n: int, row: int, columns: int[], down: int[], up: int[]) -> int {
+    if row == n {
+        1
+    } else {
+        found = 0
+        col = 0
+        while col < n {
+            if columns[col] == 0 && down[row - col + n] == 0
+                    && up[row + col] == 0 {
+                columns[col] = 1
+                down[row - col + n] = 1
+                up[row + col] = 1
+                found = found + place_queen(n, row + 1, columns, down, up)
+                columns[col] = 0
+                down[row - col + n] = 0
+                up[row + col] = 0
+            }
+            col = col + 1
+        }
+        found
+    }
+}
+
+/// `n` is the board side. 8 is 2,000 or so placements; 10 is 35,000.
+n_queens_case(n: int) -> int =>
+    n_queens(n)
+
+// ---- union-find -----------------------------------------------------------------------
+
+/// Disjoint sets over `0 … n-1`.
+///
+/// `parent` and `size` are written in place by `uf_root` and `uf_union`, which
+/// is what path compression is: the query rewrites the structure. A version
+/// that returned a new `Uf` would copy both lists on every lookup and undo the
+/// thing that makes this near-constant time.
+Uf = {
+    parent: int[],
+    size: int[],
+}
+
+uf_of(n: int) -> Uf =>
+    Uf { parent = ascending(n), size = repeated(n, 1) }
+
+/// The representative of `x`'s set, flattening the path on the way.
+///
+/// Path halving rather than a second pass: pointing each node at its
+/// grandparent as the walk goes up gives the same amortised bound in one pass,
+/// and one pass is easier to get right.
+uf_root(uf: Uf, x: int) -> int {
+    at = x
+    while uf.parent[at] != at {
+        uf.parent[at] = uf.parent[uf.parent[at]]
+        at = uf.parent[at]
+    }
+    at
+}
+
+/// Merge the sets holding `a` and `b`. Answers whether they were separate,
+/// which is what a cycle check and a Kruskal step both actually ask.
+///
+/// The smaller tree hangs off the larger, so no path gets longer than it has
+/// to.
+uf_union(uf: Uf, a: int, b: int) -> bool {
+    ra = uf_root(uf, a)
+    rb = uf_root(uf, b)
+
+    if ra == rb {
+        false
+    } else {
+        big = uf.size[ra] >= uf.size[rb] ? ra : rb
+        small = big == ra ? rb : ra
+        uf.parent[small] = big
+        uf.size[big] = uf.size[big] + uf.size[small]
+        true
+    }
+}
+
+/// How many separate sets are left.
+uf_groups(uf: Uf) -> int {
+    found = 0
+    i = 0
+    while i < uf.parent.length() {
+        if uf_root(uf, i) == i {
+            found = found + 1
+        }
+        i = i + 1
+    }
+    found
+}
+
+/// Join `n` elements in a pattern that builds long chains before compressing
+/// them, then count what is left. With `i` and `i*2 % n` joined for every `i`,
+/// the answer is one group for most `n` and a handful for the rest.
+union_find_case(n: int) -> int {
+    uf = uf_of(n)
+    i = 0
+    while i < n {
+        uf_union(uf, i, (i * 2) % n)
+        i = i + 1
+    }
+    uf_groups(uf)
+}
+
+// ---- Dijkstra -------------------------------------------------------------------------
+
+/// Shortest distances from `source`, over an `n × n` weight matrix where -1
+/// means no edge.
+///
+/// The `n²` form with a linear scan for the nearest unvisited node, not the
+/// heap form. On the dense little graphs this is measured on, the scan wins —
+/// a heap is the right answer when the edges are few, and saying which is which
+/// is most of what knowing the algorithm is worth.
+dijkstra(weight: int[], n: int, source: int) -> int[] {
+    if n <= 0 {
+        []
+    } else {
+        walk_graph(weight, n, source)
+    }
+}
+
+walk_graph(weight: int[], n: int, source: int) -> int[] {
+    distance = repeated(n, Unreachable)
+    settled = repeated(n, 0)
+    distance[source] = 0
+    round = 0
+
+    while round < n {
+        at = nearest(distance, settled, n)
+        if at < 0 {
+            round = n
+        } else {
+            settled[at] = 1
+            relax_from(weight, distance, n, at)
+            round = round + 1
+        }
+    }
+    distance
+}
+
+// The closest node nothing has settled yet, or -1 when the rest is unreachable.
+nearest(distance: int[], settled: int[], n: int) -> int {
+    best = -1
+    i = 0
+    while i < n {
+        if settled[i] == 0 && distance[i] < Unreachable {
+            if best < 0 || distance[i] < distance[best] {
+                best = i
+            }
+        }
+        i = i + 1
+    }
+    best
+}
+
+relax_from(weight: int[], distance: int[], n: int, at: int) {
+    j = 0
+    while j < n {
+        w = weight[at * n + j]
+        if w >= 0 && distance[at] + w < distance[j] {
+            distance[j] = distance[at] + w
+        }
+        j = j + 1
+    }
+}
+
+/// A ring of `n` nodes with a few chords across it, solved from node 0.
+/// Returns the sum of the distances, which is a single number that changes if
+/// any one of them is wrong.
+dijkstra_case(n: int) -> int {
+    weight = repeated(n * n, -1)
+    i = 0
+    while i < n {
+        weight[i * n + (i + 1) % n] = i % 9 + 1
+        weight[i * n + (i + 7) % n] = i % 5 + 3
+        i = i + 1
+    }
+    total = 0
+    for d in dijkstra(weight, n, 0) {
+        total = total + d
+    }
+    total
+}
+
+// ---- topological sort ---------------------------------------------------------------------
+
+/// An order in which `n` nodes can be visited with every edge pointing
+/// forwards, or an empty list when the edges contain a cycle.
+///
+/// Kahn's algorithm: repeatedly take a node nothing depends on. The empty
+/// answer for a cycle is not an error code — it is the algorithm's actual
+/// output, since a graph with a cycle has no such order.
+topo_sort(edges: int[], n: int) -> int[] {
+    incoming = repeated(n, 0)
+    e = 0
+    while e + 1 < edges.length() {
+        incoming[edges[e + 1]] = incoming[edges[e + 1]] + 1
+        e = e + 2
+    }
+
+    ready = zeros(n)
+    waiting = 0
+    i = 0
+    while i < n {
+        if incoming[i] == 0 {
+            ready[waiting] = i
+            waiting = waiting + 1
+        }
+        i = i + 1
+    }
+
+    out = zeros(n)
+    written = 0
+    taken = 0
+    while taken < waiting {
+        node = ready[taken]
+        taken = taken + 1
+        out[written] = node
+        written = written + 1
+
+        at = 0
+        while at + 1 < edges.length() {
+            if edges[at] == node {
+                target = edges[at + 1]
+                incoming[target] = incoming[target] - 1
+                if incoming[target] == 0 {
+                    ready[waiting] = target
+                    waiting = waiting + 1
+                }
+            }
+            at = at + 2
+        }
+    }
+
+    written == n ? out : []
+}
+
+/// A chain of `n` nodes with every third node also pointing two ahead — acyclic
+/// by construction, so the answer is always a full ordering.
+topo_sort_case(n: int) -> int {
+    edges = zeros(2 * (n - 1 > 0 ? n - 1 : 0))
+    at = 0
+    i = 0
+    while i + 1 < n {
+        edges[at] = i
+        edges[at + 1] = i + 1
+        at = at + 2
+        i = i + 1
+    }
+    checksum(topo_sort(edges, n))
+}
+
+// ---- an LRU cache -------------------------------------------------------------------------
+
+/// How many of `keys` were already cached, with room for `capacity` of them and
+/// the least recently used one thrown out.
+///
+/// The recency order is a plain list, moved by hand. That is `O(capacity)` per
+/// access and it is the right shape at the sizes a cache like this really has:
+/// a hash map and a linked list beat it somewhere north of a few hundred
+/// entries, and below that they lose to the pointer chasing.
+lru_hits(keys: int[], capacity: int) -> int {
+    if capacity <= 0 {
+        0
+    } else {
+        recent = zeros(capacity)
+        held = 0
+        hits = 0
+
+        for k in keys {
+            at = position_of(recent, held, k)
+            if at >= 0 {
+                hits = hits + 1
+                promote(recent, at)
+            } else {
+                if held < capacity {
+                    held = held + 1
+                }
+                // The last slot is the least recently used one, so an insert
+                // and an eviction are the same move.
+                recent[held - 1] = k
+                promote(recent, held - 1)
+            }
+        }
+        hits
+    }
+}
+
+position_of(recent: int[], held: int, k: int) -> int {
+    found = -1
+    i = 0
+    while i < held {
+        if recent[i] == k {
+            found = i
+            break
+        }
+        i = i + 1
+    }
+    found
+}
+
+promote(recent: int[], from: int) {
+    held = recent[from]
+    at = from
+    while at > 0 {
+        recent[at] = recent[at - 1]
+        at = at - 1
+    }
+    recent[0] = held
+}
+
+/// `n` accesses in a cache of 16, keyed by the squares modulo 100.
+///
+/// The squares were chosen over a stride like `i * 37`: a stride visits every
+/// key in the space before revisiting any of them, so with a cache smaller than
+/// the space it hits exactly zero times and the case measures eviction only.
+/// The squares cluster — 0 and 25 come round every tenth access — so this both
+/// hits and evicts, which is what a cache does.
+lru_case(n: int) -> int {
+    keys = zeros(n)
+    i = 0
+    while i < n {
+        keys[i] = (i * i) % 100
+        i = i + 1
+    }
+    lru_hits(keys, 16)
+}
+
+// ---- a JSON tokenizer ---------------------------------------------------------------------
+
+/// JSON split into its tokens: punctuation one character each, strings whole
+/// and still quoted, numbers and bare words as they are, whitespace dropped.
+///
+/// Not a parser. It is the half of a parser that touches every byte, which is
+/// the half worth measuring.
+json_tokens(src: str) -> str[] {
+    out: str[] = []
+    i = 0
+
+    while i < src.length() {
+        stop = token_end(src, i)
+        if stop > i {
+            out = out.push(src.slice(i, stop))
+        }
+        i = stop > i ? stop : i + 1
+    }
+    out
+}
+
+/// How many tokens `src` has, without building them.
+///
+/// This is the one the benchmark runs. `json_tokens` returns the tokens, and
+/// `push` copies the whole list each time, so collecting thirteen thousand of
+/// them costs eighty million pointer moves and the case would be measuring the
+/// list rather than the scanner. Counting walks the same bytes through the same
+/// helpers and allocates nothing; a test asserts the two agree.
+json_token_count(src: str) -> int {
+    found = 0
+    i = 0
+
+    while i < src.length() {
+        stop = token_end(src, i)
+        if stop > i {
+            found = found + 1
+        }
+        i = stop > i ? stop : i + 1
+    }
+    found
+}
+
+// One past the token starting at `i`, or `i` itself when that byte is
+// whitespace and there is no token there.
+token_end(src: str, i: int) -> int {
+    c = src.at(i)
+
+    if c.is_whitespace() {
+        i
+    } else if is_punctuation(c) {
+        i + 1
+    } else if c == "\"" {
+        string_end(src, i + 1)
+    } else {
+        word_end(src, i)
+    }
+}
+
+is_punctuation(c: str) -> bool =>
+    c == "\{" || c == "\}" || c == "[" || c == "]" || c == ":" || c == ","
+
+// One past the closing quote. A backslash takes the next byte with it, which is
+// what stops an escaped quote from ending the string.
+string_end(src: str, from: int) -> int {
+    i = from
+    while i < src.length() {
+        if src.at(i) == "\\" {
+            i = i + 2
+        } else if src.at(i) == "\"" {
+            i = i + 1
+            break
+        } else {
+            i = i + 1
+        }
+    }
+    i
+}
+
+word_end(src: str, from: int) -> int {
+    i = from
+    while i < src.length() && !src.at(i).is_whitespace()
+            && !is_punctuation(src.at(i)) && src.at(i) != "\"" {
+        i = i + 1
+    }
+    i
+}
+
+/// A JSON array of `n` objects, for the tokenizer to chew on.
+///
+/// Every object is the same text, built with one `repeat` rather than `n`
+/// pushes. The tokenizer does not look at what the bytes say, only at what
+/// shape they are, so identical rows cost it exactly what varied ones would —
+/// and building them varied would put more time in the setup than in the scan.
+json_sample(n: int) -> str {
+    if n <= 0 {
+        "[]"
+    } else {
+        unit = "\{\"id\":1,\"name\":\"a row\",\"ok\":true\},"
+        body = unit.repeat(n)
+        "[" ++ body.slice(0, body.length() - 1) ++ "]"
+    }
+}
+
+/// `n` is the number of objects in the document, not its length in bytes —
+/// about 36 bytes and 13 tokens each.
+json_tokenize_case(n: int) -> int =>
+    json_token_count(json_sample(n))

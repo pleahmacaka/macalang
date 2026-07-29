@@ -1,0 +1,590 @@
+// What tambo promises, run.
+//
+// Almost all of it runs without a socket, which is the design working: the
+// router is a function from a table and a request to a response, so a routing
+// rule is checked by calling it rather than by starting a server and asking.
+// The last two tests bind a real port, because "it also works over TCP" is a
+// claim no pure test can make.
+//
+// Nothing here is called `c`. `http/server` links its socket with
+// `import c "http.h"`, and after that a parameter named `c` is not a record.
+
+import { app, route, before, after, fallback, lookup,
+         routes_table } from tambo/app
+import { bind_path, more_specific, param_names } from tambo/route
+import { Ctx, probe, param, param_int, query, header, wildcard,
+         parse_query, parse_headers } from tambo/ctx
+import { pass, passed, broke, scrub, no_content, json_of,
+         json_of_str } from tambo/reply
+import { dispatch, serve, missing_handlers } from tambo/dispatch
+import { parse_request, Request } from http/request
+import { Response, text, status, with_header, render } from http/response
+import { get } from http/server
+
+// ---- the app under test ---------------------------------------------------
+
+// `/user/new` is declared *after* `/user/:id` on purpose: the specificity rule
+// is what has to pick it, not the order.
+Site = app()
+    .route("GET", "/", "home")
+    .route("GET", "/user/:id", "show_user")
+    .route("GET", "/user/new", "new_user")
+    .route("GET", "/user/:id/posts/:post", "show_post")
+    .route("POST", "/user", "create_user")
+    .route("DELETE", "/user/:id", "drop_user")
+    .route("GET", "/files/*", "files")
+    .route("GET", "/boom", "boom")
+
+handle(ctx: Ctx) -> Response {
+    name = ctx.name
+
+    match name {
+        "home" => text("root")
+        "show_user" => text("user " ++ param(ctx, "id"))
+        "new_user" => text("new")
+        "show_post" => text(param(ctx, "id") ++ "/" ++ param(ctx, "post"))
+        "create_user" => text("made " ++ ctx.body)
+        "drop_user" => no_content()
+        "files" => text("file " ++ wildcard(ctx))
+        "boom" => broke("/var/lib/secret.db is missing")
+        _ => pass()
+    }
+}
+
+// One request against `Site`, with no socket anywhere.
+answer(method: str, target: str) -> Response =>
+    dispatch(Site, request(method, target), handle)
+
+request(method: str, target: str) -> Request =>
+    parse_request("{method} {target} HTTP/1.1\r\nHost: h\r\n\r\n")
+
+// ---- patterns -------------------------------------------------------------
+
+test_a_literal_pattern_matches_only_itself() {
+    assert(bind_path("/about", "/about").ok, "the path it names")
+    assert(!bind_path("/about", "/abou").ok, "not a prefix of it")
+    assert(!bind_path("/about", "/about/x").ok, "not something under it")
+    assert(!bind_path("/about", "/x/about").ok, "not something above it")
+}
+
+test_a_parameter_binds_one_segment_under_its_name() {
+    got = bind_path("/user/:id", "/user/7")
+
+    assert(got.ok, "it matched")
+    assert_eq(got.params.get("id", "?"), "7", "the segment, by name")
+}
+
+// The bug this rule exists for: `/user/:id` answering `/user/7/posts/3` and
+// handing the handler an id of "7" with the rest thrown away.
+test_a_parameter_does_not_swallow_the_segments_after_it() {
+    assert(!bind_path("/user/:id", "/user/a/b").ok, "two segments, one hole")
+    assert(!bind_path("/user/:id", "/user").ok, "and none is not one either")
+}
+
+test_a_parameter_will_not_bind_an_empty_segment() {
+    assert(!bind_path("/user/:id", "/user/").ok, "an id of \"\" is not an id")
+}
+
+test_a_trailing_slash_is_a_segment_like_any_other() {
+    assert(bind_path("/a", "/a").ok, "the path as written")
+    assert(!bind_path("/a", "/a/").ok, "not the one with a slash")
+    assert(bind_path("/a/", "/a/").ok, "and the pattern with one matches it")
+    assert(!bind_path("/a/", "/a").ok, "but only it")
+}
+
+test_the_root_matches_only_the_root() {
+    assert(bind_path("/", "/").ok, "the root")
+    assert(!bind_path("/", "").ok, "not the empty path")
+    assert(!bind_path("/", "/x").ok, "not anything under it")
+}
+
+test_a_wildcard_binds_the_rest_of_the_path() {
+    one = bind_path("/files/*", "/files/a.txt")
+    deep = bind_path("/files/*", "/files/a/b/c.txt")
+
+    assert_eq(one.params.get("*", "?"), "a.txt", "one segment")
+    assert_eq(deep.params.get("*", "?"), "a/b/c.txt", "several, rejoined")
+}
+
+test_a_wildcard_binds_nothing_at_all_when_there_is_nothing_left() {
+    got = bind_path("/files/*", "/files/")
+
+    assert(got.ok, "the prefix with its slash still matches")
+    assert_eq(got.params.get("*", "?"), "", "and binds an empty rest")
+}
+
+test_a_wildcard_still_needs_the_prefix_it_was_written_with() {
+    assert(!bind_path("/files/*", "/files").ok, "`/files` is a different path")
+    assert(!bind_path("/files/*", "/other/a").ok, "and so is another prefix")
+}
+
+// Only the last segment is a wildcard. Anywhere else there is nothing useful
+// for it to mean, so it is literal text and matches a literal `*`.
+test_a_star_that_is_not_last_is_literal_text() {
+    assert(bind_path("/a/*/b", "/a/*/b").ok, "it matches a real star")
+    assert(!bind_path("/a/*/b", "/a/x/b").ok, "and nothing else")
+}
+
+test_a_pattern_can_bind_more_than_one_parameter() {
+    got = bind_path("/user/:id/posts/:post", "/user/9/posts/hello")
+
+    assert_eq(got.params.get("id", "?"), "9", "the first")
+    assert_eq(got.params.get("post", "?"), "hello", "and the second")
+}
+
+test_a_pattern_lists_the_names_it_binds() {
+    assert_eq(param_names("/user/:id/posts/:post").join(","), "id,post",
+              "in the order they appear")
+    assert_eq(param_names("/files/*").join(","), "*", "a wildcard is a name")
+    assert_eq(param_names("/about").length(), 0, "and a literal binds nothing")
+}
+
+// ---- which route wins -----------------------------------------------------
+
+test_literal_text_beats_a_parameter_beats_a_wildcard() {
+    assert(more_specific("/user/new", "/user/:id"), "literal over parameter")
+    assert(more_specific("/files/:name", "/files/*"), "parameter over wildcard")
+    assert(!more_specific("/user/:id", "/user/new"), "and not the other way")
+}
+
+test_the_first_segment_the_two_disagree_on_decides() {
+    // `/a/:b/c` is literal where `/a/b/:c` is a parameter at index 2, so it
+    // wins there and index 3 never gets a say.
+    assert(more_specific("/a/b/:c", "/a/:b/c"), "index 2 settles it")
+    assert(!more_specific("/a/:b/c", "/a/b/:c"), "and settles it once")
+}
+
+test_two_patterns_of_the_same_shape_are_a_tie() {
+    assert(!more_specific("/a/:x", "/b/:y"), "neither is more specific")
+    assert(!more_specific("/b/:y", "/a/:x"), "in either direction")
+}
+
+// ---- lookup ---------------------------------------------------------------
+
+test_an_empty_app_matches_nothing() {
+    got = lookup(app(), "GET", "/")
+
+    assert(!got.ok, "no route")
+    assert_eq(got.allowed.length(), 0, "and no other method either")
+}
+
+test_lookup_returns_the_route_and_what_it_bound() {
+    got = lookup(Site, "GET", "/user/42")
+
+    assert(got.ok, "it matched")
+    assert_eq(got.name, "show_user", "the handler's name")
+    assert_eq(got.pattern, "/user/:id", "the pattern that matched")
+    assert_eq(got.params.get("id", "?"), "42", "and the segment it bound")
+}
+
+// The failure this prevents: adding `/user/:id` above `/user/new` retires
+// `/user/new` without touching it, and the table stops being readable as a
+// list because its order has become load-bearing.
+test_a_looser_route_declared_first_does_not_shadow_a_tighter_one() {
+    got = lookup(Site, "GET", "/user/new")
+
+    assert_eq(got.name, "new_user", "the specific route wins")
+    assert_eq(lookup(Site, "GET", "/user/9").name, "show_user",
+              "and the loose one still answers everything else")
+}
+
+test_declaration_order_only_breaks_a_tie() {
+    Twice = app()
+        .route("GET", "/thing/:id", "first")
+        .route("GET", "/thing/:other", "second")
+
+    assert_eq(lookup(Twice, "GET", "/thing/1").name, "first",
+              "identical shapes go to whichever was written first")
+}
+
+test_a_method_nothing_declared_reports_the_ones_that_would_have_worked() {
+    got = lookup(Site, "PUT", "/user/9")
+
+    assert(!got.ok, "no PUT route")
+    assert_eq(got.allowed.join(","), "DELETE,GET",
+              "the methods this path does answer to, sorted")
+}
+
+test_a_path_nothing_declared_reports_no_methods_at_all() {
+    got = lookup(Site, "GET", "/nowhere")
+
+    assert(!got.ok, "no route")
+    assert_eq(got.allowed.length(), 0, "and nothing to suggest")
+}
+
+test_a_method_is_matched_however_it_is_written() {
+    assert_eq(lookup(Site, "get", "/").name, "home", "a lower-case method")
+    assert_eq(lookup(app().route("get", "/x", "h"), "GET", "/x").name, "h",
+              "and a lower-case declaration")
+}
+
+test_the_table_prints_one_line_per_route_in_declaration_order() {
+    lines = routes_table(Site).split("\n")
+
+    assert_eq(lines.length(), 8, "one line each")
+    assert(lines.get(0).starts_with("GET"), "the method first")
+    assert(lines.get(0).contains("/"), "then the pattern")
+    assert(lines.get(0).ends_with("home"), "then the handler's name")
+}
+
+// ---- the context ----------------------------------------------------------
+
+test_a_query_string_parses_into_a_map() {
+    q = parse_query("a=1&b=two")
+
+    assert_eq(q.get("a", "?"), "1", "the first")
+    assert_eq(q.get("b", "?"), "two", "the second")
+    assert_eq(q.get("c", "none"), "none", "and one that is not there")
+}
+
+test_a_query_value_is_decoded() {
+    q = parse_query("say=hi+there&path=%2Fa%2Fb")
+
+    assert_eq(q.get("say", "?"), "hi there", "+ is a space")
+    assert_eq(q.get("path", "?"), "/a/b", "and %2F is a slash")
+}
+
+test_a_query_key_given_twice_keeps_the_last_value() {
+    assert_eq(parse_query("t=a&t=b").get("t", "?"), "b", "the last one wins")
+}
+
+test_a_query_key_with_no_value_is_present_and_empty() {
+    q = parse_query("debug&level=2")
+
+    assert_eq(q.get("debug", "missing"), "", "present, with nothing in it")
+    assert_eq(q.get("level", "?"), "2", "and the pair after it still parses")
+}
+
+test_an_empty_query_is_an_empty_map() {
+    assert_eq(parse_query("").length(), 0, "nothing in, nothing out")
+    assert_eq(parse_query("&&").length(), 0, "and separators alone are empty")
+}
+
+test_headers_are_lower_cased_and_trimmed() {
+    h = parse_headers("Content-Type:  text/plain \r\nX-Trace: 7")
+
+    assert_eq(h.get("content-type", "?"), "text/plain", "name down, value cut")
+    assert_eq(h.get("x-trace", "?"), "7", "and the next line too")
+}
+
+// A head with a stray line is still a head. Filing that line under itself
+// would let `header(ctx, "nonsense")` answer for something never sent.
+test_a_header_line_with_no_colon_is_dropped() {
+    h = parse_headers("Host: h\r\nnonsense\r\nAccept: */*")
+
+    assert_eq(h.length(), 2, "two headers, not three")
+    assert_eq(h.get("accept", "?"), "*/*", "and the line after it survives")
+}
+
+test_a_context_reads_its_pieces_by_name() {
+    ctx = probe("get", "/user/7") with { name = "show_user" }
+
+    assert_eq(ctx.method, "GET", "the method is upper-cased")
+    assert_eq(ctx.path, "/user/7", "the path as given")
+    assert_eq(param(ctx, "id"), "", "no parameter was bound")
+    assert_eq(query(ctx, "x"), "", "no query")
+    assert_eq(header(ctx, "Host"), "", "no headers")
+    assert_eq(wildcard(ctx), "", "and nothing from a wildcard")
+    assert_eq(ctx.arrived, 0, "a probe's clock is fixed so tests are too")
+}
+
+test_a_numeric_parameter_falls_back_when_it_is_absent() {
+    ctx = dispatch_context("/user/42")
+
+    assert_eq(param_int(ctx, "id", -1), 42, "the number that was there")
+    assert_eq(param_int(ctx, "page", 1), 1, "the fallback when it was not")
+    assert_eq(param_int(probe("GET", "/") with { name = "x" }, "id", 5), 5,
+              "and the fallback on an empty context")
+}
+
+// The context `dispatch` would build for a GET of `target`, reached the only
+// way a test can reach it: through a handler that hands it back.
+dispatch_context(target: str) -> Ctx {
+    picked = lookup(Site, "GET", target)
+
+    probe("GET", target) with {
+        name = picked.name,
+        route = picked.name,
+        pattern = picked.pattern,
+        params = picked.params,
+    }
+}
+
+// ---- replies --------------------------------------------------------------
+
+test_pass_is_the_one_answer_that_says_nothing() {
+    assert(passed(pass()), "a pass passes")
+    assert_eq(pass().status, 0, "on a status no request can produce")
+    assert(!passed(text("x")), "and an ordinary reply does not")
+    assert(!passed(status(404)), "nor does a 404")
+}
+
+test_a_5xx_body_is_replaced_by_its_status() {
+    got = scrub(broke("/var/lib/secret.db is missing"))
+
+    assert_eq(got.status, 500, "the status is kept")
+    assert(!got.body.contains("secret"), "the note is not")
+    assert(got.body.starts_with("500 Internal Server Error"), "just the status")
+}
+
+test_scrub_leaves_everything_below_500_alone() {
+    assert_eq(scrub(text("fine")).body, "fine", "a 200")
+    assert_eq(scrub(status(404)).status, 404, "a 404 keeps its status")
+    assert(scrub(status(404)).body.contains("Not Found"), "and its body")
+}
+
+// `status(204)` would give the response a body naming the status, and a client
+// reading a 204 with 15 bytes after it treats those bytes as the next reply.
+test_a_204_carries_no_body() {
+    assert_eq(no_content().status, 204, "the status")
+    assert_eq(no_content().body, "", "and nothing after it")
+    assert(render(no_content()).contains("Content-Length: 0"), "nothing sent")
+    assert(render(no_content()).ends_with("\r\n\r\n"), "and nothing written")
+    assert(!render(status(204)).contains("Content-Length: 0"),
+           "which the generic status reply, with its 15-byte body, is not")
+}
+
+test_a_json_object_escapes_its_string_values() {
+    got = json_of_str(["say"], ["a \"quoted\" line\nand another"])
+
+    assert(got.body.contains("\\\""), "the quote is escaped")
+    assert(got.body.contains("\\n"), "and so is the newline")
+    assert(!got.body.contains("\n"), "no raw newline survives in the body")
+}
+
+test_a_json_object_takes_encoded_values_as_they_are() {
+    got = json_of(["n", "ok"], ["42", "true"])
+
+    assert_eq(got.body, "\{\"n\":42,\"ok\":true\}", "numbers stay numbers")
+    assert(got.headers.get(0).contains("application/json"), "typed as JSON")
+}
+
+// ---- dispatch -------------------------------------------------------------
+
+test_a_route_answers_with_its_handlers_reply() {
+    assert_eq(answer("GET", "/").body, "root", "the root")
+    assert_eq(answer("GET", "/user/7").body, "user 7", "a bound parameter")
+    assert_eq(answer("GET", "/user/9/posts/x").body, "9/x", "two of them")
+    assert_eq(answer("GET", "/files/a/b.txt").body, "file a/b.txt",
+              "and a wildcard")
+}
+
+test_a_query_string_does_not_change_which_route_matched() {
+    assert_eq(answer("GET", "/user/7?full=1").body, "user 7",
+              "the query is off the path before it is routed")
+}
+
+test_a_path_nothing_matches_is_a_404() {
+    got = answer("GET", "/nowhere")
+
+    assert_eq(got.status, 404, "not found")
+    assert(got.body.contains("Not Found"), "with the status as its body")
+}
+
+test_a_path_that_matches_under_another_method_is_a_405() {
+    got = answer("PUT", "/user/9")
+
+    assert_eq(got.status, 405, "method not allowed")
+    assert(got.headers.contains("Allow: DELETE, GET"),
+           "naming what would have worked")
+}
+
+test_a_fallback_answers_instead_of_the_404() {
+    Custom = Site.fallback("missing")
+    got = dispatch(Custom, request("GET", "/nowhere"), fallback_handle)
+
+    assert_eq(got.status, 404, "still a 404")
+    assert_eq(got.body, "no page /nowhere", "but the site's own words")
+}
+
+fallback_handle(ctx: Ctx) -> Response {
+    name = ctx.name
+
+    if name == "missing" {
+        text("no page " ++ ctx.path) with { status = 404 }
+    } else {
+        handle(ctx)
+    }
+}
+
+// A fallback that passes is a fallback that is not there, and the request
+// still has to be answered.
+test_a_fallback_that_passes_still_gets_tambos_404() {
+    Custom = Site.fallback("nothing_here")
+    got = dispatch(Custom, request("GET", "/nowhere"), handle)
+
+    assert_eq(got.status, 404, "the built-in 404 is what is left")
+}
+
+// The whole trade of holding names rather than functions, tested: a name with
+// no arm is reported as a program bug, not served as a missing page.
+test_a_route_whose_name_has_no_arm_is_a_500_and_not_a_404() {
+    Typo = app().route("GET", "/x", "handler_that_does_not_exist")
+    got = dispatch(Typo, request("GET", "/x"), handle)
+
+    assert_eq(got.status, 500, "the program is wrong, not the request")
+}
+
+test_a_failed_handler_does_not_tell_the_caller_what_broke() {
+    got = answer("GET", "/boom")
+
+    assert_eq(got.status, 500, "a server error")
+    assert(!got.body.contains("secret"), "the path is not in the body")
+    assert(!got.body.contains("/var"), "nor any part of it")
+    assert(got.body.starts_with("500 "), "only the status is")
+}
+
+// ---- hooks ----------------------------------------------------------------
+
+Guarded = Site.before("guard").after("stamp")
+
+guarded_handle(ctx: Ctx) -> Response {
+    name = ctx.name
+
+    if name == "guard" {
+        header(ctx, "x-key") == "open" ? pass() : status(403)
+    } else if name == "stamp" {
+        with_header(ctx.reply, "X-Route: " ++ ctx.pattern)
+    } else {
+        handle(ctx)
+    }
+}
+
+// The request carries the key, so the guard passes and the route answers.
+with_key(target: str) -> Response =>
+    dispatch(Guarded,
+             parse_request("GET {target} HTTP/1.1\r\nX-Key: open\r\n\r\n"),
+             guarded_handle)
+
+test_a_before_hook_that_passes_lets_the_route_answer() {
+    got = with_key("/")
+
+    assert_eq(got.status, 200, "the route ran")
+    assert_eq(got.body, "root", "and its body came back")
+}
+
+test_a_before_hook_that_answers_stops_the_request() {
+    got = dispatch(Guarded, request("GET", "/"), guarded_handle)
+
+    assert_eq(got.status, 403, "the hook refused")
+    assert(!got.body.contains("root"), "and the route never ran")
+}
+
+test_an_after_hook_can_add_to_the_response() {
+    got = with_key("/user/7")
+
+    assert_eq(got.body, "user 7", "the route's body is kept")
+    assert(got.headers.contains("X-Route: /user/:id"), "with the hook's header")
+}
+
+// A log or a timing header that skipped the requests which failed would be a
+// log nobody could use, so the hooks run for a 404 as much as for a 200.
+test_the_hooks_run_for_a_request_that_matched_nothing() {
+    got = dispatch(Guarded,
+                   parse_request("GET /nowhere HTTP/1.1\r\nX-Key: open\r\n\r\n"),
+                   guarded_handle)
+
+    assert_eq(got.status, 404, "still a 404")
+    assert(got.headers.contains("X-Route: "), "and the after hook still ran")
+}
+
+// `scrub` runs before the after hook, which is what lets a site put an error
+// page back on deliberately.
+test_an_after_hook_sees_the_scrubbed_5xx() {
+    Watched = app().route("GET", "/boom", "boom").after("show_error")
+    got = dispatch(Watched, request("GET", "/boom"), error_page_handle)
+
+    assert_eq(got.status, 500, "the status survives")
+    assert_eq(got.body, "we are looking into it", "and the site's own page")
+}
+
+error_page_handle(ctx: Ctx) -> Response {
+    name = ctx.name
+
+    if name == "show_error" && ctx.reply.status >= 500 {
+        assert(!ctx.reply.body.contains("secret"),
+               "the hook is handed the scrubbed body, not the note")
+        text("we are looking into it") with { status = 500 }
+    } else {
+        handle(ctx)
+    }
+}
+
+// ---- the audit ------------------------------------------------------------
+
+test_every_route_in_the_test_app_has_an_arm() {
+    assert_eq(missing_handlers(Site, handle).length(), 0,
+              "the table and the match agree")
+}
+
+test_the_audit_names_the_routes_with_no_arm() {
+    Gappy = Site.route("GET", "/a", "never_written")
+                .route("GET", "/b", "also_never_written")
+
+    assert_eq(missing_handlers(Gappy, handle).join(","),
+              "never_written,also_never_written",
+              "in declaration order")
+}
+
+test_the_audit_checks_the_fallback_too() {
+    assert_eq(missing_handlers(Site.fallback("no_such_arm"), handle).join(","),
+              "no_such_arm", "a fallback is a handler like any other")
+}
+
+test_a_name_used_by_two_routes_is_audited_once() {
+    Shared = app().route("GET", "/a", "twice").route("GET", "/b", "twice")
+
+    assert_eq(missing_handlers(Shared, handle).length(), 1,
+              "one name, one complaint")
+}
+
+test_a_server_with_a_gap_refuses_to_start() {
+    Broken = app().route("GET", "/x", "never_written")
+
+    assert_eq(serve(Broken, PortInUse, handle), 1,
+              "it exits rather than binding a port it would answer wrong")
+}
+
+// A port the audit must never reach. `serve` returns before binding when there
+// is a gap, so nothing listens here — and if that ever stops being true this
+// test hangs, which is the loudest way to find out.
+PortInUse = 34899
+
+// ---- over a real socket ---------------------------------------------------
+
+// The one thing a pure test cannot claim. `spawn` puts the accept loop on its
+// own thread and the test does the asking, the same shape `http/server`'s own
+// suite uses.
+Port = 34893
+
+serve_here() -> int =>
+    serve(Site, Port, handle)
+
+start() -> bool {
+    spawn serve_here()
+    sleep_ms(300)
+    true
+}
+
+Started = start()
+
+body_of(reply: str) -> str {
+    at = reply.index_of("\r\n\r\n")
+
+    at < 0 ? "" : reply.substr(at + 4, reply.length())
+}
+
+test_a_route_answers_over_a_socket() {
+    assert(Started, "the server started")
+    reply = get("127.0.0.1", Port, "/user/7")
+
+    assert(reply.starts_with("HTTP/1.1 200 OK"), "a 200 status line")
+    assert_eq(body_of(reply), "user 7", "with the parameter bound")
+}
+
+test_the_socket_path_gives_the_same_404_the_pure_path_does() {
+    reply = get("127.0.0.1", Port, "/nowhere")
+
+    assert(reply.starts_with("HTTP/1.1 404 Not Found"), "404 over TCP")
+    assert_eq(answer("GET", "/nowhere").status, 404, "and 404 without it")
+}

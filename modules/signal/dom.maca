@@ -1,0 +1,176 @@
+// signal/dom — bind a store key to a node, then patch only what changed.
+//
+// The markup half of `signal/store`. A bound node carries the key it shows, so
+// after a change the page does not need a diff or a second render to find it:
+// the store already knows which keys moved, and the key is the address.
+//
+//   page(s: Store) -> str =>
+//       div(
+//           runtime_script()
+//           text_node(s, "span", "count")
+//           text_node(s, "p", "label"))
+//
+//   // after s.set("count", "1")
+//   for op in patch(s) {
+//       info(describe(op))          // count [data-signal="count"] <- "1"
+//   }
+//
+// A bound node is marked `data-signal="<key>"`, and `data-signal-as` says what
+// the key drives — absent means the node's text, otherwise the name of an
+// attribute. One marker rather than three means one selector to look up and
+// one place for a page to go wrong, and it is why the runtime below handles
+// `href` and `title` without this module knowing they exist.
+//
+// The two targets differ in what they can do with a patch, not in what the
+// patch is. In a browser `patch_script` produces the call that applies it to
+// the live DOM, touching exactly the marked nodes. A native build renders the
+// page once, has no DOM afterwards, and can only describe the patch — which is
+// enough to test the wiring without a browser, and is what `static_note` says
+// on the page so nobody mistakes it for a live one.
+//
+// Deliver the page from a native build for now. `maca build --target js` does
+// not inline an imported module: it emits calls to this module's functions and
+// none of their definitions, so the page loads and throws. Everything here is
+// a string, so a native build writing `index.html` — `runtime_script()` in the
+// head, bound nodes in the body, `patch_script` sent down however the page
+// gets its updates — works today and is the same markup either way.
+
+import { escape_html } from std/text
+import { Store, get, changed } from signal/store
+
+/// One node to update: the key that changed, its new value, and the selector
+/// that finds every node bound to it.
+Op = {
+    key: str,
+    value: str,
+    selector: str,
+}
+
+// ---- binding a node -------------------------------------------------------
+
+/// A `<tag>` whose text is `key`'s value.
+///
+/// The value is escaped. Children are not escaped by the element syntax — a
+/// child is normally markup the program built — but a bound value comes from
+/// state, and state comes from input.
+text_node(s: Store, tag: str, key: str) -> str =>
+    element(tag, data-signal=key, escape_html(get(s, key)))
+
+/// A `<tag>` whose `class` attribute is `key`'s value, with `body` inside it.
+/// This is how a page moves a whole block between two looks — `"card open"` /
+/// `"card"` — without re-rendering the block.
+class_node(s: Store, tag: str, key: str, body: str) -> str =>
+    element(tag, data-signal=key, data-signal-as="class", class=get(s, key),
+        body)
+
+/// An `<input>` whose value is `key`'s value. `value` is a property rather
+/// than an attribute once a field has been typed in, which is why the runtime
+/// treats it as its own case instead of calling `setAttribute`.
+value_input(s: Store, key: str) -> str =>
+    element("input", data-signal=key, data-signal-as="value",
+        value=get(s, key), "")
+
+/// The selector matching every node bound to `key`. A page that binds by hand
+/// — `data-signal-as="href"` and the like — can check its own markup with it.
+selector(key: str) -> str => "[data-signal=\"" ++ key ++ "\"]"
+
+// ---- the patch ------------------------------------------------------------
+
+/// One op per key that changed since the last `clear_changed`, in the order
+/// they changed. A key nothing is bound to still produces an op: the store
+/// cannot see the markup, an op whose selector matches nothing is harmless,
+/// and dropping it would hide a page that forgot to display something.
+patch(s: Store) -> Op[] => ops_from(s, changed(s), 0, [])
+
+ops_from(s: Store, ks: str[], i: int, acc: Op[]) -> Op[] {
+    if i >= ks.length() {
+        acc
+    } else {
+        op = Op {
+            key = ks.get(i),
+            value = get(s, ks.get(i)),
+            selector = selector(ks.get(i)),
+        }
+        ops_from(s, ks, i + 1, acc.push(op))
+    }
+}
+
+/// One op as a line of text — what a native build prints instead of patching.
+describe(op: Op) -> str =>
+    "{op.key} {op.selector} <- {quoted(op.value)}"
+
+/// The whole patch as lines, one per op.
+describe_all(ops: Op[]) -> str[] => lines_from(ops, 0, [])
+
+lines_from(ops: Op[], i: int, acc: str[]) -> str[] {
+    if i >= ops.length() {
+        acc
+    } else {
+        lines_from(ops, i + 1, acc.push(describe(ops.get(i))))
+    }
+}
+
+/// The JavaScript that applies the current patch, or "" when nothing changed.
+/// Run it after `runtime_script` is on the page, then `clear_changed` the store
+/// so the next change starts from an empty queue.
+patch_script(s: Store) -> str {
+    ops = patch(s)
+
+    if ops.length() == 0 {
+        ""
+    } else {
+        "macaSignal([" ++ encode(ops, 0, []).join(",") ++ "]);"
+    }
+}
+
+encode(ops: Op[], i: int, acc: str[]) -> str[] {
+    if i >= ops.length() {
+        acc
+    } else {
+        op = ops.get(i)
+        obj = "\{\"key\":" ++ quoted(op.key) ++ ",\"value\":"
+            ++ quoted(op.value) ++ "\}"
+        encode(ops, i + 1, acc.push(obj))
+    }
+}
+
+// A JSON string literal. `std/json` has this, and taking it from there would
+// pull in `std/text` whole — which defines a `flush` that would silently
+// replace somebody else's. Four escapes is a cheaper price than that.
+quoted(s: str) -> str =>
+    "\"" ++ s.replace("\\", "\\\\")
+             .replace("\"", "\\\"")
+             .replace("\n", "\\n")
+             .replace("\r", "\\r") ++ "\""
+
+// ---- the browser side -----------------------------------------------------
+
+/// `runtime()` inside a `<script>`, ready to drop into a page's `<head>`.
+runtime_script() -> str => element("script", runtime())
+
+/// The patcher, as JavaScript source. It is the whole browser half of this
+/// module: find the nodes bound to a changed key, update the one thing each of
+/// them shows, touch nothing else.
+runtime() -> str => """
+window.macaSignal = function (ops) {
+  for (var i = 0; i < ops.length; i++) {
+    var op = ops[i];
+    var nodes = document.querySelectorAll('[data-signal="' + op.key + '"]');
+    for (var j = 0; j < nodes.length; j++) {
+      var el = nodes[j];
+      var as = el.getAttribute("data-signal-as");
+      if (!as) el.textContent = op.value;
+      else if (as === "value") el.value = op.value;
+      else el.setAttribute(as, op.value);
+    }
+  }
+};
+"""
+
+/// An HTML comment saying the page was rendered once and is not live.
+///
+/// A native build has a store and markup and no DOM, so its output is a
+/// snapshot. Saying so in the page beats leaving a reader to discover it by
+/// clicking something that does nothing.
+static_note() -> str =>
+    "<!-- rendered once by a native build; no DOM to patch -->"

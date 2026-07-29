@@ -1,0 +1,780 @@
+// What `profile` promises, run.
+//
+// Colour is off through the whole file — `maca test` is run with `NO_COLOR`,
+// and the escape codes a terminal would get are not what these tests are about.
+// The width assertions are the exception that proves it: they measure the
+// chart in columns, which is the same number either way.
+//
+// Most of the trace tests work from `sample()`, a run whose numbers were
+// worked out on paper first. A self-time test that computes its expectation
+// the way the code does is a test of nothing.
+
+import profile/trace
+import profile/record
+import profile/play
+import profile/flame
+import profile/report
+import { width } from cli/style
+import { lines } from std/text
+
+ReplayLog = "/tmp/maca-test-profile-replay"
+
+node(n: str, a: int, b: int, d: int, p: int) -> Span =>
+    Span { name = n, start = a, end = b, depth = d, parent = p, closed = true }
+
+// The run every tree test measures against:
+//
+//   root  0..110                 self 10   (110 less its three children)
+//     a     0..40                self 30   (40 less b)
+//       b     0..10              self 10
+//     a    40..70                self 30
+//     c    70..100               self 30
+//
+// `a` appears twice, so the summary has a name with two calls; the ten
+// milliseconds between `c` ending and `root` ending are what root kept for
+// itself.
+sample() -> Trace =>
+    trace("sample", [
+        node("root", 0, 110, 0, -1),
+        node("a", 0, 40, 1, 0),
+        node("b", 0, 10, 2, 1),
+        node("a", 40, 70, 1, 0),
+        node("c", 70, 100, 1, 0),
+    ])
+
+// A list of span indices, as text. `join` is for lists of strings.
+ids(xs: int[]) -> str {
+    parts = xs.map(v => str(v))
+
+    parts.join(",")
+}
+
+// A loop rather than `sleep_ms`, which is a suspension point and would make
+// these tests about the scheduler.
+burn(ms: int) -> int {
+    until = now_ms() + ms
+    spins = 0
+    while now_ms() < until {
+        spins = spins + 1
+    }
+    spins
+}
+
+// ---- the trace as a tree --------------------------------------------------
+
+test_a_span_knows_how_long_it_lasted() {
+    assert_eq(str(duration(node("x", 5, 17, 0, -1))), "12", "17 less 5")
+    assert_eq(str(duration(node("x", 5, 5, 0, -1))), "0", "an instant")
+}
+
+test_a_trace_reports_its_extent_not_the_sum_of_its_parts() {
+    apart = trace("gappy", [node("a", 0, 10, 0, -1), node("b", 90, 100, 0, -1)])
+
+    assert_eq(str(wall(apart)), "100", "the gap between them counts")
+    assert_eq(str(wall(sample())), "110", "and the root's own extent")
+}
+
+test_an_empty_trace_answers_every_question_with_nothing() {
+    empty = trace("nothing", [])
+
+    assert_eq(str(span_count(empty)), "0", "no spans")
+    assert_eq(str(wall(empty)), "0", "no elapsed time")
+    assert_eq(str(levels(empty)), "0", "no levels to draw")
+    assert_eq(str(roots(empty).length()), "0", "no roots")
+    assert_eq(str(origin(empty)), "0", "and it began at zero")
+}
+
+// A trace that begins somewhere other than zero — one assembled by hand, or
+// read back from a file written by something that did not rebase. Every
+// question about its extent has to be answered from its own numbers.
+test_a_trace_that_did_not_begin_at_zero_is_measured_from_where_it_did() {
+    late = trace("late", [
+        node("a", 1000, 1010, 0, -1),
+        node("b", 1010, 1030, 0, -1),
+    ])
+
+    assert_eq(str(origin(late)), "1000", "it began when its first span did")
+    assert_eq(str(wall(late)), "30", "and lasted thirty, not a thousand and thirty")
+}
+
+// Recording appends spans in the order they opened, so the earliest start is
+// the first span's. Nothing else guarantees that, and scaling a chart from the
+// wrong end draws every bar before it off the left of the page.
+test_the_run_begins_at_the_earliest_start_not_the_first_one_listed() {
+    jumbled = trace("jumbled", [node("b", 50, 60, 0, -1), node("a", 0, 10, 0, -1)])
+
+    assert_eq(str(origin(jumbled)), "0", "`a` opened first however it is listed")
+    assert_eq(str(wall(jumbled)), "60", "so the run covers all sixty")
+}
+
+test_roots_are_the_spans_inside_nothing() {
+    assert_eq(str(roots(sample()).length()), "1", "one root")
+    assert_eq(str(roots(sample()).get(0)), "0", "and it is the first span")
+}
+
+// A truncated file, or a trace stitched together out of two, can leave a span
+// pointing at an index that is not there. It used to be drawn by the chart and
+// never mentioned by the timeline: one run, two views, no complaint from
+// either.
+test_a_span_whose_parent_is_not_there_is_treated_as_a_root() {
+    adrift = trace("adrift", [
+        node("kept", 0, 10, 0, -1),
+        node("lost", 2, 4, 1, 7),
+    ])
+
+    assert_eq(ids(roots(adrift)), "0,1", "both are inside nothing")
+    assert_eq(str(events(adrift).length()), "4", "so the timeline names both")
+    assert_eq(str(child_time(adrift, 0)), "0", "and `kept` is charged for neither")
+}
+
+// The same rule, doing the other job it is there for: a parent index may only
+// point backwards, so no trace can describe a loop for the walk to fall into.
+test_a_span_cannot_be_its_own_parent() {
+    knot = trace("knot", [node("self", 0, 5, 0, 0)])
+
+    assert_eq(str(children(knot, 0).length()), "0", "nothing is inside itself")
+    assert_eq(str(events(knot).length()), "2", "and the walk terminates")
+    assert_eq(str(self_time(knot, 0)), "5", "its own time is its whole time")
+}
+
+test_children_come_back_in_the_order_they_opened() {
+    kids = children(sample(), 0)
+
+    assert_eq(str(kids.length()), "3", "root opened three regions")
+    assert_eq(ids(kids), "1,3,4", "a, a again, then c")
+    assert_eq(ids(children(sample(), 2)), "", "b opened nothing")
+}
+
+test_levels_counts_rows_not_the_deepest_index() {
+    assert_eq(str(levels(sample())), "3", "root, its children, and b")
+
+    flat = trace("flat", [node("only", 0, 1, 0, -1)])
+    assert_eq(str(levels(flat)), "1", "one span still needs one row")
+}
+
+test_level_gathers_one_row_of_the_chart() {
+    assert_eq(ids(level(sample(), 0)), "0", "root alone")
+    assert_eq(ids(level(sample(), 1)), "1,3,4", "its three children")
+    assert_eq(ids(level(sample(), 9)), "", "a depth nothing reached")
+}
+
+test_child_time_adds_up_the_regions_a_span_opened() {
+    assert_eq(str(child_time(sample(), 0)), "100", "40 + 30 + 30")
+    assert_eq(str(child_time(sample(), 1)), "10", "just b")
+    assert_eq(str(child_time(sample(), 2)), "0", "b opened nothing")
+}
+
+test_self_time_is_the_duration_a_span_did_not_hand_to_a_child() {
+    assert_eq(str(self_time(sample(), 0)), "10", "110 less its children")
+    assert_eq(str(self_time(sample(), 1)), "30", "40 less b")
+    assert_eq(str(self_time(sample(), 4)), "30", "c had no children")
+}
+
+// Every millisecond belongs to exactly one span — the innermost one running at
+// the time — so the self times have to add up to the run.
+test_self_times_add_up_to_the_whole_run() {
+    t = sample()
+    total = self_time(t, 0) + self_time(t, 1) + self_time(t, 2)
+    rest = self_time(t, 3) + self_time(t, 4)
+
+    assert_eq(str(total + rest), str(wall(t)), "no time is lost or counted twice")
+}
+
+test_self_time_of_an_overrun_parent_is_zero_not_negative() {
+    broken = trace("broken", [
+        node("parent", 0, 10, 0, -1),
+        node("child", 0, 40, 1, 0),
+    ])
+
+    assert_eq(str(self_time(broken, 0)), "0", "clamped rather than negative")
+}
+
+test_leaked_names_the_regions_that_never_closed() {
+    t = trace("half", [
+        Span { name = "opened", start = 0, end = 9, depth = 0, parent = -1,
+               closed = false },
+        node("finished", 0, 4, 1, 0),
+    ])
+
+    assert_eq(leaked(t).join(","), "opened", "one region, named")
+    assert_eq(leaked(sample()).join(","), "", "and a clean run leaks nothing")
+}
+
+test_find_span_answers_with_minus_one_rather_than_guessing() {
+    assert_eq(str(find_span(sample(), "b")), "2", "the span it names")
+    assert_eq(str(find_span(sample(), "a")), "1", "the first of two")
+    assert_eq(str(find_span(sample(), "absent")), "-1", "nothing named that")
+}
+
+// ---- writing and reading --------------------------------------------------
+
+test_a_trace_survives_the_round_trip_intact() {
+    there = to_json(sample())
+    back = from_json(there)
+
+    assert_eq(back.label, "sample", "the label came back")
+    assert_eq(str(span_count(back)), "5", "every span came back")
+    assert_eq(to_json(back), there, "and encoding it again is the same text")
+}
+
+test_the_tree_survives_the_round_trip_and_not_just_the_spans() {
+    back = from_json(to_json(sample()))
+
+    assert_eq(ids(children(back, 0)), "1,3,4", "parents are preserved")
+    assert_eq(str(levels(back)), "3", "and so are depths")
+    assert_eq(str(self_time(back, 1)), "30", "so self time still computes")
+}
+
+test_a_name_with_punctuation_in_it_comes_back_whole() {
+    odd = trace("odd", [node("a,b \"quoted\" \{brace\}", 0, 5, 0, -1)])
+    back = from_json(to_json(odd))
+
+    assert_eq(back.spans.get(0).name, "a,b \"quoted\" \{brace\}",
+              "commas, quotes and braces are not separators inside a string")
+}
+
+test_an_unclosed_span_stays_unclosed_across_the_round_trip() {
+    t = trace("half", [Span { name = "hung", start = 0, end = 9, depth = 0,
+                              parent = -1, closed = false }])
+
+    assert_eq(leaked(from_json(to_json(t))).join(","), "hung",
+              "the flag is written, not recomputed from the nesting")
+}
+
+test_text_that_is_not_a_trace_reads_as_an_empty_one() {
+    assert_eq(str(span_count(from_json(""))), "0", "nothing at all")
+    assert_eq(str(span_count(from_json("not json"))), "0", "or nonsense")
+    assert_eq(str(span_count(from_json(to_json(trace("e", []))))), "0",
+              "and an empty trace round-trips to an empty trace")
+}
+
+// ---- recording ------------------------------------------------------------
+
+test_a_recorder_starts_with_nothing_in_it() {
+    r = recorder("run")
+
+    assert_eq(str(open_count(r)), "0", "no region is open")
+    assert_eq(str(span_count(finish(r))), "0", "and there is nothing to show")
+    assert_eq(finish(r).label, "run", "but it still knows what it is")
+}
+
+test_recorded_regions_nest_by_the_order_they_were_opened() {
+    r = recorder("run").start("outer").start("inner").stop().stop()
+    t = finish(r)
+
+    assert_eq(str(span_count(t)), "2", "two regions")
+    assert_eq(t.spans.get(0).name, "outer", "outermost first")
+    assert_eq(str(t.spans.get(1).depth), "1", "inner sits one level down")
+    assert_eq(str(t.spans.get(1).parent), "0", "inside outer")
+}
+
+test_times_are_rebased_so_the_run_begins_at_zero() {
+    r = recorder("run").start("work")
+    burn(6)
+    t = finish(r.stop())
+
+    assert_eq(str(t.spans.get(0).start), "0", "not milliseconds since 1970")
+    assert(duration(t.spans.get(0)) >= 5, "and it lasted about as long as it did")
+}
+
+test_a_region_that_is_never_stopped_is_reported_not_dropped() {
+    r = recorder("run").start("outer").start("hung")
+    burn(4)
+    t = finish(r)
+
+    assert_eq(str(span_count(t)), "2", "both regions are in the tree")
+    assert_eq(leaked(t).join(","), "outer,hung", "outermost first")
+    assert(duration(t.spans.get(1)) >= 3, "and it runs up to the moment we asked")
+}
+
+test_a_stop_with_nothing_open_is_ignored() {
+    r = recorder("run").stop().start("real").stop().stop()
+    t = finish(r)
+
+    assert_eq(str(span_count(t)), "1", "one region, not a re-parented mess")
+    assert_eq(str(t.spans.get(0).depth), "0", "still at the top level")
+    assert_eq(leaked(t).join(","), "", "and nothing was left open")
+}
+
+test_open_count_says_how_much_is_still_running() {
+    r = recorder("run").start("a").start("b")
+
+    assert_eq(str(open_count(r)), "2", "two regions deep")
+    assert_eq(str(open_count(r.stop())), "1", "one after closing the inner")
+    assert_eq(str(open_count(r.stop().stop())), "0", "and none after both")
+}
+
+test_span_closes_its_own_region_and_whatever_the_body_left_open() {
+    r = span(recorder("run"), "scoped", leave_one_open)
+    t = finish(r)
+
+    assert_eq(str(span_count(t)), "2", "the region and what it opened")
+    assert_eq(str(open_count(r)), "0", "nothing is still running")
+    assert_eq(leaked(t).join(","), "", "and nothing is reported as hanging")
+    assert_eq(str(t.spans.get(0).end), str(t.spans.get(1).end),
+              "the forgotten region ends where the scoped one does")
+}
+
+leave_one_open(r: Rec) -> Rec => r.start("left-open")
+
+// An extra `stop` must not leave the recorder owing one, or the next region
+// opened would be recorded a level shallower than it really is.
+test_over_stopping_cannot_drive_the_depth_below_zero() {
+    r = recorder("run").start("outer").stop().stop().stop().start("after")
+    t = finish(r)
+
+    assert_eq(str(open_count(r)), "1", "only `after` is open")
+    assert_eq(str(t.spans.get(1).depth), "0",
+              "`after` is a root, not a child of a region closed three times")
+}
+
+test_mark_records_an_instant_rather_than_a_region() {
+    t = finish(recorder("run").mark("here"))
+
+    assert_eq(str(span_count(t)), "1", "one span")
+    assert_eq(str(duration(t.spans.get(0))), "0", "with no duration")
+    assert_eq(leaked(t).join(","), "", "and it is closed, not hanging")
+}
+
+// A `mark` built out of a `start` and a `stop` reads the clock twice, and the
+// two readings straddle a millisecond boundary about once in three thousand —
+// a one-millisecond instant, and a test of one `mark` that fails for nobody's
+// reason. Twenty thousand of them cost fifteen milliseconds and catch six.
+test_a_mark_takes_no_time_however_many_are_taken() {
+    stretched = 0
+    for i in 1..20000 {
+        t = finish(recorder("m").mark("here"))
+        if duration(t.spans.get(0)) != 0 {
+            stretched = stretched + 1
+        }
+    }
+
+    assert_eq(str(stretched), "0", "one clock reading serves both marks")
+}
+
+test_finish_leaves_the_recorder_usable() {
+    r = recorder("run").start("first").stop()
+    early = finish(r)
+    later = finish(r.start("second").stop())
+
+    assert_eq(str(span_count(early)), "1", "the trace taken part-way through")
+    assert_eq(str(span_count(later)), "2", "and the one taken after")
+}
+
+// ---- playback -------------------------------------------------------------
+
+test_every_span_becomes_one_enter_and_one_leave() {
+    evs = events(sample())
+
+    assert_eq(str(evs.length()), "10", "two events for each of five spans")
+    assert(evs.get(0).enter, "the run opens with an enter")
+    assert(!evs.get(9).enter, "and closes with a leave")
+}
+
+test_events_come_out_in_the_order_they_happened() {
+    stamps = narrate(sample()).length()
+    evs = events(sample())
+
+    assert_eq(str(stamps), "10", "one line per event")
+    assert_eq(str(evs.get(0).at), "0", "the first at zero")
+    assert_eq(str(evs.get(9).at), "110", "the last at the end of the run")
+    assert(evs.get(3).at >= evs.get(2).at, "and nothing goes backwards")
+}
+
+// Three regions open in the same millisecond here. Time alone cannot order
+// them; the walk can, and the sort has to leave that answer alone.
+test_events_sharing_a_millisecond_keep_their_nesting() {
+    evs = events(sample())
+
+    assert_eq(evs.get(0).name, "root", "the outermost opened first")
+    assert_eq(evs.get(1).name, "a", "then what it contained")
+    assert_eq(evs.get(2).name, "b", "then what that contained")
+    assert(evs.get(2).enter, "all three are enters")
+}
+
+test_an_event_points_back_at_its_span() {
+    evs = events(sample())
+
+    assert_eq(str(evs.get(2).span), "2", "b is the third span")
+    assert_eq(str(evs.get(2).depth), "2", "recorded two levels down")
+}
+
+// The `0` here is deliberately not the first event's timestamp: a trace that
+// begins at 1000 would answer 1000 for the first event if `gap_before` reached
+// past the start of the list for something to subtract.
+test_gap_before_is_the_wait_between_two_events() {
+    evs = events(sample())
+    late = events(trace("late", [node("a", 1000, 1010, 0, -1)]))
+
+    assert_eq(str(gap_before(evs, 0)), "0", "nothing precedes the first")
+    assert_eq(str(gap_before(late, 0)), "0", "not even in a trace starting at 1000")
+    assert_eq(str(gap_before(evs, 2)), "0", "two events in one millisecond")
+    assert_eq(str(gap_before(evs, 3)), "10", "b ran for ten")
+    assert_eq(str(gap_before(evs, 99)), "0", "and an index past the end")
+}
+
+// The whole line, not a fragment of it: the stamp ends in two spaces of its
+// own, so a `contains` check for four spaces passes whether the indent is two
+// characters per level or one.
+test_narrate_indents_by_depth_and_says_which_way_it_went() {
+    said = narrate(sample())
+
+    assert_eq(said.get(0), "     0ms  → root", "an enter points in, at depth nought")
+    assert_eq(said.get(1), "     0ms    → a", "depth one is indented once")
+    assert_eq(said.get(2), "     0ms      → b", "and depth two twice")
+    assert_eq(said.get(9), "   110ms  ← root", "a leave points out")
+}
+
+test_replay_visits_every_event_in_order() {
+    write_file(ReplayLog, "")
+    evs = events(sample())
+    played = replay(evs, 0, note_event)
+
+    assert_eq(str(played), "10", "it played all of them")
+    assert_eq(read_file(ReplayLog), "0,1,2,3,4,5,6,7,8,9,",
+              "in index order, one call each")
+}
+
+note_event(i: int) -> int {
+    write_file(ReplayLog, read_file(ReplayLog) ++ "{i},")
+    0
+}
+
+test_replaying_an_empty_trace_does_nothing_at_all() {
+    assert_eq(str(replay(events(trace("e", [])), 100, note_event)), "0",
+              "no events, and no sleeping to find that out")
+}
+
+// The one test here that really sleeps, and the only way to tell a paced
+// replay from one that walks the list as fast as it can. Two hundred
+// milliseconds of recorded gap, replayed at a quarter speed, is fifty
+// milliseconds of waiting — not none of it, and not all of it.
+test_replay_sleeps_for_the_share_of_the_run_it_was_given() {
+    evs = events(trace("slow", [node("wait", 0, 200, 0, -1)]))
+
+    at = now_ms()
+    replay(evs, 0, ignore_event)
+    hurried = now_ms() - at
+
+    at = now_ms()
+    replay(evs, 25, ignore_event)
+    quarter = now_ms() - at
+
+    assert(hurried < 20, "pace 0 does not sleep at all")
+    assert(quarter >= 30, "a quarter of two hundred milliseconds is fifty")
+    assert(quarter < 150, "and not the two hundred the run originally took")
+}
+
+ignore_event(i: int) -> int => 0
+
+// ---- the text chart -------------------------------------------------------
+
+test_the_chart_has_a_row_for_every_level() {
+    rows = lines(flame(sample(), 60))
+
+    assert_eq(str(rows.length()), "4", "a heading and three levels")
+    assert(rows.get(0).contains("sample"), "the heading names the run")
+    assert(rows.get(0).contains("110ms"), "and says how long it took")
+}
+
+test_the_heading_counts_one_span_as_a_span_and_not_as_spans() {
+    one = trace("one", [node("only", 0, 5, 0, -1)])
+
+    assert(flame(one, 40).contains("1 span · 1 level"), "not `1 spans`")
+    assert(flame(sample(), 40).contains("5 spans · 3 levels"), "and plurals agree")
+    assert(flame_svg(one, 200).contains("1 span · 1 level"),
+           "the svg says the same thing under the label")
+}
+
+test_no_row_is_wider_than_the_chart_was_asked_for() {
+    rows = lines(flame(sample(), 60))
+
+    assert_eq(str(width(rows.get(1))), "60", "the root fills the width exactly")
+    assert(width(rows.get(2)) <= 60, "and no row overflows it")
+    assert(width(rows.get(3)) <= 60, "at any depth")
+}
+
+test_a_bar_is_as_wide_as_its_share_of_the_run() {
+    narrow = lines(flame(sample(), 22))
+
+    assert_eq(str(width(narrow.get(1))), "22", "root is the whole width")
+    assert(width(narrow.get(3)) < 11, "b took under a tenth of the run")
+}
+
+// The row is mostly the blank run in front of the bar, so its width says
+// nothing about whether a bar was drawn at all. What is left after the blanks
+// is the sliver, and that is what has to be there.
+test_a_span_that_took_no_measurable_time_still_appears() {
+    blip = trace("blip", [
+        node("all", 0, 100, 0, -1),
+        node("instant", 50, 50, 1, 0),
+    ])
+    rows = lines(flame(blip, 40))
+
+    assert_eq(str(rows.length()), "3", "a heading and two levels")
+    assert_eq(rows.get(2).trim(), "▏", "the instant is drawn, not dropped")
+}
+
+// Three regions the chart has fewer columns than it has spans for. Rounding
+// puts each bar's left edge behind where the last one ended, and a bar drawn
+// from there rather than from the cursor makes the row longer than the chart.
+test_bars_crowded_into_one_column_cannot_push_the_row_past_its_width() {
+    crowd = trace("crowd", [
+        node("all", 0, 100, 0, -1),
+        node("blip", 0, 1, 1, 0),
+        node("blop", 1, 2, 1, 0),
+        node("rest", 2, 100, 1, 0),
+    ])
+    rows = lines(flame(crowd, 10))
+
+    assert_eq(str(width(rows.get(2))), "10", "three bars, ten columns, no more")
+    assert(rows.get(2).starts_with("▏▏"), "and the two instants are both there")
+}
+
+// A cut label is padded back out to the width the layout already counted for
+// it. Two columns per Hangul character means the cut can land a column short,
+// and everything to the right of it then draws a column early.
+test_a_row_keeps_its_width_when_a_label_is_cut_mid_character() {
+    wide = trace("wide", [
+        node("all", 0, 100, 0, -1),
+        node("한국어라니", 0, 6, 1, 0),
+        node("rest", 50, 100, 1, 0),
+    ])
+    rows = lines(flame(wide, 100))
+
+    assert_eq(str(width(rows.get(1))), "100", "the root fills the chart")
+    assert_eq(str(width(rows.get(2))), "100", "and so does the row that was cut")
+}
+
+// Everything inside one millisecond: `wall` is zero, and the chart has to lay
+// out against it without dividing by it.
+test_a_run_too_short_to_measure_still_charts() {
+    blink = trace("blink", [node("a", 7, 7, 0, -1), node("b", 7, 7, 0, -1)])
+
+    assert_eq(str(wall(blink)), "0", "nothing measurable happened")
+    assert(flame(blink, 20).contains("blink"), "the chart is drawn anyway")
+    assert(flame_svg(blink, 200).ends_with("</svg>\n"), "and so is the svg")
+}
+
+test_the_chart_says_when_a_region_never_closed() {
+    hung = trace("hung", [Span { name = "stuck", start = 0, end = 9,
+                                 depth = 0, parent = -1, closed = false }])
+
+    assert(flame(hung, 40).contains("never closed: stuck"),
+           "otherwise it reads as a region that merely took a while")
+    assert(!flame(sample(), 40).contains("never closed"),
+           "and a clean run says nothing")
+}
+
+test_an_empty_trace_charts_as_a_note_rather_than_a_blank() {
+    assert(flame(trace("e", []), 40).contains("nothing recorded"),
+           "an empty string would look like a bug in the chart")
+}
+
+// The byte length matters as much as the column count: a character cut in half
+// is drawn by a terminal as a replacement glyph of its own width, which pushes
+// every bar to the right of it out of line.
+test_a_label_is_cut_only_where_a_character_ends() {
+    assert_eq(fit("hello", 20), "hello", "a label that fits is untouched")
+    assert_eq(fit("hello", 3), "hel", "and one that does not is cut")
+    assert_eq(fit("한국어", 3), "한",
+              "two columns fit and four do not, so the cut is after one")
+    assert_eq(str(fit("한국어", 3).length()), "3", "all three of its bytes")
+    assert_eq(fit("한국어", 0), "", "and nothing fits in no columns")
+}
+
+test_padding_counts_columns_not_bytes() {
+    assert_eq(pad_to("ab", 5), "ab   ", "three spaces to reach five")
+    assert_eq(pad_to("abcdef", 3), "abcdef", "already wider, so left alone")
+    assert_eq(pad_num("7", 4), "   7", "numbers are pushed right")
+    assert_eq(str(width(pad_to("한국", 6))), "6", "two columns per character")
+}
+
+test_percent_of_nothing_is_zero_rather_than_a_division_by_zero() {
+    assert_eq("{percent(1, 4):.1}", "25.0", "a quarter")
+    assert_eq("{percent(0, 4):.1}", "0.0", "none of it")
+    assert_eq("{percent(5, 0):.1}", "0.0", "and nothing to be a share of")
+}
+
+// ---- the SVG chart --------------------------------------------------------
+
+test_the_svg_is_a_whole_document() {
+    svg = flame_svg(sample(), 800)
+
+    assert(svg.starts_with("<svg "), "it opens as an svg")
+    assert(svg.ends_with("</svg>\n"), "and closes")
+    assert(svg.contains("width=\"800\""), "at the width it was asked for")
+    assert(svg.contains("viewBox=\"0 0 800"), "with a viewBox to match")
+}
+
+test_the_svg_carries_everything_it_needs() {
+    svg = flame_svg(sample(), 800)
+
+    assert(!svg.contains("<script"), "no script to run")
+    assert(!svg.contains("<link"), "no stylesheet to fetch")
+    assert(!svg.contains("@import"), "and nothing pulled in by CSS either")
+    assert(svg.contains("fill=\"#"), "every colour is an attribute")
+}
+
+test_every_frame_has_a_tooltip_naming_its_span() {
+    svg = flame_svg(sample(), 800)
+
+    assert(svg.contains("<title>root — 110ms (100.0%), self 10ms</title>"),
+           "the root's own numbers, not its children's")
+    assert(svg.contains("<title>b — 10ms (9.1%), self 10ms</title>"),
+           "and a leaf's")
+}
+
+test_a_name_that_looks_like_markup_is_escaped() {
+    sharp = trace("sharp", [node("a<b & c", 0, 10, 0, -1)])
+    svg = flame_svg(sharp, 400)
+
+    assert(svg.contains("a&lt;b &amp; c"), "escaped, so the document parses")
+    assert(!svg.contains("a<b &"), "and the raw form is nowhere in it")
+}
+
+test_a_frame_too_narrow_for_its_name_is_drawn_without_one() {
+    tiny = trace("tiny", [
+        node("all", 0, 1000, 0, -1),
+        node("a-very-long-name-indeed", 0, 2, 1, 0),
+    ])
+    svg = flame_svg(tiny, 300)
+
+    assert(!svg.contains(">a-very-long-name-indeed<"),
+           "svg text does not clip, so it would run across every frame right")
+    assert(!svg.contains("font-weight=\"600\"></text>"),
+           "and the element is left out rather than emitted empty")
+    assert(svg.contains("<title>a-very-long-name-indeed"),
+           "but the tooltip still names it")
+}
+
+// A rectangle of no width draws nothing at all, so an instant would vanish
+// from the picture without leaving a tick where it happened.
+test_an_instant_still_has_a_rectangle_in_the_svg() {
+    blip = trace("blip", [
+        node("all", 0, 100, 0, -1),
+        node("instant", 50, 50, 1, 0),
+    ])
+    svg = flame_svg(blip, 400)
+
+    assert(!svg.contains("width=\"0\""), "nothing is drawn zero pixels wide")
+    assert(svg.contains("<title>instant — 0ms"), "and the instant is a frame")
+}
+
+// The palette is asked directly. The terminal chart's colours cannot be seen
+// from here — `maca test` runs with `NO_COLOR`, so `paint` hands back the
+// plain string — and the promise being made is about the codes themselves.
+test_two_bars_that_touch_are_never_the_same_colour() {
+    assert(sgr(0) != sgr(1), "adjacent bars differ in the terminal chart")
+    assert(swatch(0) != swatch(1), "and adjacent frames differ in the svg")
+    assert_eq(sgr(6), sgr(0), "six hues, then the terminal palette cycles")
+    assert_eq(swatch(6), swatch(0), "and the svg palette cycles with it")
+}
+
+// In a terminal red means something went wrong. A region that took a long time
+// has not gone wrong, and colouring it red sends a reader hunting for a fault.
+test_no_bar_is_ever_drawn_in_red() {
+    for i in 0..11 {
+        assert(sgr(i) != "31" && sgr(i) != "91", "no bar is red")
+    }
+}
+
+// ---- the summary ----------------------------------------------------------
+
+test_the_summary_counts_every_span_with_the_same_name_once() {
+    a = stat_of(summary(sample()), "a")
+
+    assert_eq(str(a.calls), "2", "a ran twice")
+    assert_eq(str(a.total), "70", "40 the first time and 30 the second")
+    assert_eq(str(a.own), "60", "less the ten b took from it")
+}
+
+test_the_summary_charges_a_parent_only_for_what_it_kept() {
+    root = stat_of(summary(sample()), "root")
+
+    assert_eq(str(root.total), "110", "it held the whole run")
+    assert_eq(str(root.own), "10", "but spent all but ten in its children")
+}
+
+test_shares_are_of_the_whole_run() {
+    stats = summary(sample())
+
+    assert_eq("{stat_of(stats, "a").share:.1}", "54.5", "sixty of a hundred and ten")
+    assert_eq("{stat_of(stats, "b").share:.1}", "9.1", "ten of it")
+}
+
+test_the_summary_is_ordered_by_self_time() {
+    stats = summary(sample())
+
+    assert_eq(stats.get(0).name, "a", "the heaviest first")
+    assert_eq(stats.get(1).name, "c", "then the next")
+    assert_eq(stats.get(3).name, "b", "and the lightest last")
+}
+
+// Two names with the same self time must not swap places between runs, or a
+// diff of two reports is noise.
+test_names_that_tie_keep_the_order_they_were_recorded_in() {
+    stats = summary(sample())
+
+    assert_eq(stats.get(2).name, "root", "root was recorded before b")
+    assert_eq(str(stats.get(2).own), str(stats.get(3).own), "and they tie")
+}
+
+test_a_name_the_trace_never_saw_reads_as_zero() {
+    missing = stat_of(summary(sample()), "nowhere")
+
+    assert_eq(missing.name, "nowhere", "it answers about what was asked")
+    assert_eq(str(missing.calls), "0", "with no calls")
+    assert_eq(str(missing.own), "0", "and no time")
+}
+
+test_the_table_has_a_row_for_every_name() {
+    rows = lines(summary_table(sample()))
+
+    assert_eq(str(rows.length()), "6", "a heading, a rule, and four names")
+    assert(rows.get(0).contains("self"), "the column people read")
+    assert(rows.get(2).contains("a"), "the heaviest name is the first row")
+}
+
+test_the_table_columns_line_up() {
+    rows = lines(summary_table(sample()))
+
+    assert_eq(str(width(rows.get(2))), str(width(rows.get(3))),
+              "two rows are the same width")
+    assert_eq(str(width(rows.get(0))), str(width(rows.get(1))),
+              "and so are the heading and its rule")
+}
+
+test_an_empty_trace_summarises_as_a_note() {
+    assert(summary_table(trace("e", [])).contains("nothing recorded"),
+           "a bare heading over no rows reads as a broken report")
+    assert_eq(str(summary(trace("e", [])).length()), "0", "and there are no rows")
+}
+
+// "Show me the top two" is the second thing anybody asks a profile for, and it
+// is a slice of `summary` — so the table has to accept one.
+test_a_table_can_be_drawn_from_rows_the_caller_picked() {
+    top = stats_table(summary(sample()).slice(0, 2))
+    rows = lines(top)
+
+    assert_eq(str(rows.length()), "4", "a heading, a rule, and the two rows")
+    assert(top.contains("a") && top.contains("c"), "the two heaviest names")
+    assert(!top.contains("root"), "and not the ones it was not given")
+    assert(stats_table(summary(trace("e", []))).contains("nothing recorded"),
+           "an empty pick reads the same as an empty trace")
+}
+
+// ---- the two halves agree -------------------------------------------------
+
+test_a_recorded_run_charts_and_summarises_without_special_casing() {
+    r = recorder("live").start("outer")
+    burn(5)
+    r = r.start("inner")
+    burn(5)
+    t = finish(r.stop().stop())
+
+    assert_eq(str(span_count(t)), "2", "two regions were recorded")
+    assert(flame(t, 60).contains("outer"), "the chart names them")
+    assert(summary_table(t).contains("inner"), "and so does the table")
+    assert_eq(str(events(t).length()), "4", "and playback has four events")
+}

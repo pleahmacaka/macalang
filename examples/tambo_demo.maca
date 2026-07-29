@@ -1,0 +1,127 @@
+// A small site on tambo: two pages, a JSON endpoint, a parameter, a wildcard.
+//
+//     maca run examples/tambo_demo.maca         # print the table and answer
+//                                               # a few requests, no socket
+//     maca run examples/tambo_demo.maca 8080    # serve on port 8080
+//
+// The shape is the point: a table of routes at the top, one `handle` where
+// every name in that table is answered, and nothing in between. Read the two
+// against each other — that is the whole program.
+
+import { app, route, before, after, fallback,
+         routes_table } from tambo/app
+import { Ctx, param, query, wildcard } from tambo/ctx
+import { pass, broke, json_of, json_of_str } from tambo/reply
+import { dispatch, serve, missing_handlers } from tambo/dispatch
+import { Response, text, html, with_header } from http/response
+import { parse_request } from http/request
+import { quote } from std/json
+
+Site = app()
+    .before("log")
+    .route("GET", "/", "home")
+    .route("GET", "/hello/:name", "hello")
+    .route("GET", "/api/time", "api_time")
+    .route("GET", "/api/echo", "api_echo")
+    .route("GET", "/files/*", "files")
+    .route("GET", "/boom", "boom")
+    .route("POST", "/notes", "add_note")
+    .after("stamp")
+    .fallback("missing")
+
+/// Every handler this site has, named once each.
+///
+/// A name in the table with no arm here is not a 404: `serve` refuses to start
+/// and says which name it could not find.
+handle(ctx: Ctx) -> Response {
+    name = ctx.name
+
+    match name {
+        "log" => log_line(ctx)
+        "stamp" => stamp(ctx)
+        "home" => html(front_page())
+        "hello" => text("hello, {param(ctx, "name")}\n")
+        "api_time" => json_of(["now", "unit"], [str(now_ms()), quote("ms")])
+        "api_echo" => json_of_str(["said"], [query(ctx, "say")])
+        "files" => text("you asked for `{wildcard(ctx)}`\n")
+        "boom" => broke("index missing at /var/lib/tambo/demo.db")
+        "add_note" => json_of_str(["stored"], [ctx.body])
+        "missing" => text("no such page: {ctx.path}\n") with { status = 404 }
+        _ => pass()
+    }
+}
+
+// The `before` hook. It answers `pass()`, so the request carries on to its
+// route; a hook that answered anything else would stop it here.
+log_line(ctx: Ctx) -> Response {
+    where = ctx.pattern == "" ? ctx.path : ctx.pattern
+
+    info("log: {ctx.method} {where}")
+    pass()
+}
+
+// The `after` hook, which sees the finished response in `ctx.reply`. The
+// elapsed time comes from the arrival stamp rather than from anything the
+// `before` hook left behind — hooks answer with responses, not contexts, so
+// there is nothing to leave behind.
+stamp(ctx: Ctx) -> Response {
+    took = now_ms() - ctx.arrived
+
+    with_header(ctx.reply, "X-Elapsed-Ms: {took}")
+}
+
+front_page() -> str =>
+    "<h1>tambo</h1>" ++ ul(
+        item("/hello/ada", "a route with a parameter"),
+        item("/api/time", "a JSON endpoint"),
+        item("/files/notes/today.txt", "a wildcard route"),
+        item("/boom", "a handler that fails"),
+        item("/nowhere", "the fallback"))
+
+item(href: str, what: str) -> str =>
+    li(a(href=href, href), " — ", what)
+
+// ---- running it -----------------------------------------------------------
+
+main(args: str[]) -> int {
+    if args.length() > 0 {
+        serve(Site, int(args.get(0)), handle)
+    } else {
+        report()
+    }
+}
+
+// What the site does, without binding anything.
+report() -> int {
+    info(routes_table(Site))
+    info("")
+    show("GET", "/")
+    show("GET", "/hello/ada")
+    show("GET", "/api/time")
+    show("GET", "/api/echo?say=hi+there")
+    show("GET", "/files/notes/today.txt")
+    show("GET", "/boom")
+    show("GET", "/nowhere")
+    show("DELETE", "/hello/ada")
+    info("")
+    info("unanswered route names: {missing_handlers(Site, handle).length()}")
+    0
+}
+
+show(method: str, target: str) {
+    reply = ask_site(method, target)
+
+    info("  {method} {target} -> {reply.status} {first_line(reply.body)}")
+}
+
+ask_site(method: str, target: str) -> Response =>
+    dispatch(Site, parse_request("{method} {target} HTTP/1.1\r\n\r\n"), handle)
+
+// The first line of a body, or its size when there is too much of it to read
+// in a listing — the front page is one very long line of markup.
+first_line(body: str) -> str {
+    cut = body.index_of("\n")
+    one = cut < 0 ? body : body.slice(0, cut)
+
+    one.length() > 56 ? "<{one.length()} bytes>" : one
+}

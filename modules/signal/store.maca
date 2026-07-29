@@ -1,0 +1,350 @@
+// signal/store — nanostore-style reactive state, threaded through the page.
+//
+// An atom holds a value, a computed derives one from atoms it named, and a
+// change to an atom marks exactly what depends on it. What that buys is the
+// point of the module: a page can update the one node that shows a value
+// instead of re-rendering and hoping the diff is cheap.
+//
+//   s = store().set("count", "0").computed("label", ["count"])
+//   s = s.refresh("label", say)              // "clicked 0 times"
+//   s = s.set("count", "1")
+//   s = s.refresh("label", say)              // "clicked 1 times"
+//   s.changed()                              // ["count", "label"]
+//
+// Three shapes here are consequences of the language rather than preferences,
+// and a reader deciding whether to trust the module should know which is which.
+//
+// The store is a value. Maca has no globals and no interior mutability, so
+// `set` returns a new store and the program threads it. That is also why a
+// write that changes nothing returns the store untouched: if every write
+// counted as a change, nothing below would be worth having.
+//
+// Subscribers pull. A function value cannot live in a record field, so a list
+// of callbacks is not something this store could hold. Instead it records
+// *which keys changed* and the consumer asks. `changed`/`clear_changed` is the
+// render queue — what moved since the page was last patched. `watch`/`pending`/
+// `ack` is the same question asked by several consumers independently, each
+// with its own idea of when it last looked, which is what a subscription is
+// once you take the callback away.
+//
+// Dependencies are declared, not discovered. Nothing here tracks reads, so a
+// computed names its inputs when it is declared. Declare a computed after the
+// keys it reads: `refresh` called down the declaration order then settles the
+// whole graph in one pass, and the tip of a diamond recomputes once.
+//
+// One implementation rule, because it reads like a style choice and is not:
+// inside this file a function of this module is called plainly — `get(s, k)`,
+// never `s.get(k)`. A selective import's dead-code pass does not follow a UFCS
+// method call, so a helper reached only through one is dropped from the build
+// and the link fails on a name that is sitting right there in the file.
+// Callers are unaffected: `s.get("k")` is the intended spelling from outside.
+//
+// One hazard, for the same reason: two top-level definitions of one name,
+// inlined into the same program, silently keep the last. `get`, `set` and
+// `value` are also names in `std/json` and `cli/parse`, and `flush` is one in
+// `std/text` — which is why the queue here is emptied by `clear_changed`.
+// This module imports selectively and takes nothing from a module that imports
+// another one whole, because a whole-module import brings every private helper
+// in it along too.
+
+/// A store: every key's value, and the bookkeeping that makes a change to one
+/// of them observable.
+///
+/// Values are text. One map holds every key, which is what lets a page add a
+/// field without the store growing a variant type to describe it; `num` and
+/// `set_num` are the numeric spelling on top of the same map.
+Store = {
+    values: Map str str,
+    /// Bumped only when a write really changed a value. Staleness and
+    /// subscriptions are both built out of comparing these.
+    versions: Map str int,
+    deps: Map str str,
+    /// For a computed, the dependency versions at its last recomputation.
+    basis: Map str str,
+    /// Computed keys in declaration order, which `refresh` relies on.
+    computeds: str[],
+    dirty: str[],
+    watchers: Map str str,
+    acked: Map str str,
+}
+
+// A list of keys kept in one map value. Keys are compared exactly, so the
+// separator has to be something a key cannot contain, and a newline is the one
+// character no sensible key has.
+Sep = "\n"
+
+// A basis no computed could have produced — a fingerprint is digits and
+// separators — so a freshly declared computed reads as stale.
+Unseen = "?"
+
+/// An empty store.
+store() -> Store {
+    values: Map str str = map()
+    versions: Map str int = map()
+    deps: Map str str = map()
+    basis: Map str str = map()
+    watchers: Map str str = map()
+    acked: Map str str = map()
+
+    Store {
+        values = values,
+        versions = versions,
+        deps = deps,
+        basis = basis,
+        computeds = [],
+        dirty = [],
+        watchers = watchers,
+        acked = acked,
+    }
+}
+
+// ---- reading --------------------------------------------------------------
+
+/// The value of `key`, or "" when it was never written.
+get(s: Store, key: str) -> str => s.values.get(key, "")
+
+/// The value of `key`, or `fallback` when it was never written. Use this when
+/// "" is a value the page can legitimately hold and absent means something
+/// else.
+value(s: Store, key: str, fallback: str) -> str =>
+    s.values.get(key, fallback)
+
+/// Has `key` ever been written? A key that has not is not an error here — it
+/// reads as "", version 0, never stale, and nothing pends on it.
+has(s: Store, key: str) -> bool => s.values.has(key)
+
+/// Every key the store holds, atoms and computeds alike.
+keys(s: Store) -> str[] => s.values.keys()
+
+/// How many times `key` has actually changed. This is the number a subscriber
+/// compares against, and it moves only on a real change.
+version(s: Store, key: str) -> int => s.versions.get(key, 0)
+
+/// `key` read as a number, or `fallback` when it was never written. A value
+/// that is not a number reads as 0, exactly as `int("x")` does — deciding
+/// whether that is acceptable is the page's business, not the store's.
+num(s: Store, key: str, fallback: int) -> int {
+    if has(s, key) {
+        int(get(s, key))
+    } else {
+        fallback
+    }
+}
+
+// ---- writing --------------------------------------------------------------
+
+/// Write `key`.
+///
+/// A write that does not change the value returns the store untouched: no
+/// version bump, nothing added to `changed`, no subscriber told. That is the
+/// difference between a store and a firehose, and everything below rests on
+/// it.
+set(s: Store, key: str, v: str) -> Store {
+    // A computed is up to date the moment it is written, including when it
+    // recomputed to the value it already had. Doing this only on the changed
+    // path left `next_stale` handing back the same key forever.
+    settled = is_computed(s, key) ? mark_fresh(s, key) : s
+    seen = version(settled, key)
+
+    if has(settled, key) && get(settled, key) == v {
+        settled
+    } else {
+        settled with {
+            values = settled.values.set(key, v),
+            versions = settled.versions.set(key, seen + 1),
+            dirty = settled.dirty.contains(key)
+                ? settled.dirty
+                : settled.dirty.push(key),
+        }
+    }
+}
+
+/// `set`, spelled for a number.
+set_num(s: Store, key: str, n: int) -> Store => set(s, key, str(n))
+
+// ---- computed values ------------------------------------------------------
+
+/// Declare `key` as derived from `deps`.
+///
+/// Declare it *after* the keys it reads. Declaration order is the order
+/// `next_stale` walks, and a graph declared in dependency order settles in one
+/// pass down that order.
+///
+/// Declaring the same key again replaces its dependency list and leaves it
+/// stale, which is what a change to a page's wiring should do.
+computed(s: Store, key: str, deps: str[]) -> Store {
+    known = is_computed(s, key)
+
+    s with {
+        deps = s.deps.set(key, pack(deps)),
+        basis = s.basis.remove(key),
+        computeds = known ? s.computeds : s.computeds.push(key),
+    }
+}
+
+/// Was `key` declared with `computed`?
+is_computed(s: Store, key: str) -> bool => s.deps.has(key)
+
+/// What `key` was declared to derive from, in declared order.
+deps_of(s: Store, key: str) -> str[] => unpack(s.deps.get(key, ""))
+
+/// The current values of `key`'s dependencies, in declared order. This is
+/// everything a compute function gets to see, which is what keeps a declared
+/// dependency honest — a value it did not declare is not in the list.
+inputs(s: Store, key: str) -> str[] => values_of(s, deps_of(s, key), 0, [])
+
+values_of(s: Store, ks: str[], i: int, acc: str[]) -> str[] {
+    if i >= ks.length() {
+        acc
+    } else {
+        values_of(s, ks, i + 1, acc.push(get(s, ks.get(i))))
+    }
+}
+
+/// Does `key` need recomputing? An atom is never stale; a computed is stale
+/// when a dependency has changed since it was last computed.
+stale(s: Store, key: str) -> bool {
+    if !is_computed(s, key) {
+        false
+    } else {
+        fingerprint(s, deps_of(s, key)) != s.basis.get(key, Unseen)
+    }
+}
+
+/// The first computed in declaration order that needs recomputing, or "" when
+/// the graph has settled. A driver loop reads:
+///
+///   k = s.next_stale()
+///   while k != "" {
+///       s = s.set(k, recompute(s, k))
+///       k = s.next_stale()
+///   }
+next_stale(s: Store) -> str => first_stale(s, 0)
+
+first_stale(s: Store, i: int) -> str {
+    if i >= s.computeds.length() {
+        ""
+    } else if stale(s, s.computeds.get(i)) {
+        s.computeds.get(i)
+    } else {
+        first_stale(s, i + 1)
+    }
+}
+
+/// Recompute `key` if a dependency has changed since it was last computed, and
+/// do nothing at all otherwise.
+///
+/// `f` is handed `inputs(s, key)` and returns the new value. Annotate its
+/// parameter — a higher-order parameter has no type to pass down, so
+/// `(vs: str[]) => vs.get(0)` compiles where `vs => vs.get(0)` does not.
+refresh(s: Store, key: str, f) -> Store {
+    if !stale(s, key) {
+        s
+    } else {
+        fresh: str = f(inputs(s, key))
+        set(s, key, fresh)
+    }
+}
+
+// A computed is current as of the versions its dependencies have right now.
+mark_fresh(s: Store, key: str) -> Store =>
+    s with { basis = s.basis.set(key, fingerprint(s, deps_of(s, key))) }
+
+// The dependency versions as one string. Comparing it against what was
+// recorded at the last recomputation is the whole staleness test: a version
+// moves only on a real change, so an atom rewritten with the value it already
+// had leaves every fingerprint exactly where it was.
+fingerprint(s: Store, ks: str[]) -> str => pack(versions_of(s, ks, 0, []))
+
+versions_of(s: Store, ks: str[], i: int, acc: str[]) -> str[] {
+    if i >= ks.length() {
+        acc
+    } else {
+        versions_of(s, ks, i + 1, acc.push(str(version(s, ks.get(i)))))
+    }
+}
+
+// ---- the render queue -----------------------------------------------------
+
+/// The keys that changed since the last `clear_changed`, in the order they
+/// changed, each appearing once. This is what a patch step walks.
+changed(s: Store) -> str[] => s.dirty
+
+/// Did `key` change since the last `clear_changed`?
+touched(s: Store, key: str) -> bool => s.dirty.contains(key)
+
+/// Forget the changed keys. Call it after patching, not before: clearing the
+/// queue first turns a change into one nobody was ever told about.
+///
+/// Not `flush`, which is already a name in `std/text` — see the header.
+clear_changed(s: Store) -> Store => s with { dirty = [] }
+
+// ---- named subscribers ----------------------------------------------------
+
+/// Subscribe `name` to `keys`.
+///
+/// It starts up to date — a subscriber that has only just subscribed has not
+/// missed anything — so `pending` is empty until one of its keys changes.
+watch(s: Store, name: str, keys: str[]) -> Store =>
+    s with {
+        watchers = s.watchers.set(name, pack(keys)),
+        acked = s.acked.set(name, fingerprint(s, keys)),
+    }
+
+/// Drop a subscriber. Afterwards it watches nothing and pends nothing, and
+/// re-subscribing starts it up to date again rather than replaying what it
+/// missed while it was gone.
+unwatch(s: Store, name: str) -> Store =>
+    s with {
+        watchers = s.watchers.remove(name),
+        acked = s.acked.remove(name),
+    }
+
+/// Is `name` subscribed?
+watching(s: Store, name: str) -> bool => s.watchers.has(name)
+
+/// The keys `name` watches that have changed since it last looked, in the
+/// order it named them. A subscriber that was never added pends nothing,
+/// which is the same answer as one with nothing to do.
+pending(s: Store, name: str) -> str[] {
+    keys = unpack(s.watchers.get(name, ""))
+    seen = unpack(s.acked.get(name, ""))
+    behind(s, keys, seen, 0, [])
+}
+
+behind(s: Store, ks: str[], seen: str[], i: int, acc: str[]) -> str[] {
+    if i >= ks.length() {
+        acc
+    } else if seen.get(i) == str(version(s, ks.get(i))) {
+        behind(s, ks, seen, i + 1, acc)
+    } else {
+        behind(s, ks, seen, i + 1, acc.push(ks.get(i)))
+    }
+}
+
+/// Mark `name` as having seen the current values. Its `pending` is empty until
+/// one of its keys changes again. Independent of the render queue, on purpose:
+/// a subscriber and the queue are two consumers with two ideas of "now", and
+/// one clearing the other's work is the bug this design exists to avoid.
+ack(s: Store, name: str) -> Store {
+    if !watching(s, name) {
+        s
+    } else {
+        keys = unpack(s.watchers.get(name, ""))
+        s with { acked = s.acked.set(name, fingerprint(s, keys)) }
+    }
+}
+
+// ---- packing --------------------------------------------------------------
+
+pack(xs: str[]) -> str => xs.join(Sep)
+
+// An empty packed list is "", and splitting "" would give one empty key
+// rather than no keys at all.
+unpack(packed: str) -> str[] {
+    if packed == "" {
+        []
+    } else {
+        packed.split(Sep)
+    }
+}

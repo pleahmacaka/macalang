@@ -1,0 +1,80 @@
+// signal_demo — a counter, a label derived from it, and the single node that
+// each change touches.
+//
+//   maca run examples/signal_demo.maca
+//
+// Built native this renders the page once and then prints the patch it *would*
+// apply, which is what makes the wiring testable without a browser. Built with
+// `--target js` the same store and the same markup drive a live page, and the
+// `js:` line printed below is exactly what a click handler runs there.
+//
+// The page has four nodes: two bound to keys that change, one bound to a key
+// that does not, and one bound to nothing at all. Watch which of them the
+// patches name.
+
+import { store, set_num, num, computed, refresh } from signal/store
+import { clear_changed, set } from signal/store
+import { text_node, class_node, patch, describe_all } from signal/dom
+import { patch_script, runtime_script, static_note } from signal/dom
+
+say(vs: str[]) -> str => "clicked {vs.get(0)} times"
+
+page(s: Store) -> str =>
+    div(
+        runtime_script()
+        h1("Signal demo")
+        class_node(s, "section", "theme", "a counter")
+        text_node(s, "span", "count")
+        text_node(s, "p", "label")
+        p("Bound to nothing, so no patch will ever name it.")
+        static_note())
+
+// One click. The atom moves, and everything declared to derive from it is
+// brought up to date in declaration order — `refresh` does nothing at all for
+// a computed whose inputs stood still, so this is safe to call on every one.
+tick(s: Store) -> Store {
+    bumped = s.set_num("count", s.num("count", 0) + 1)
+    bumped.refresh("label", say)
+}
+
+// What a browser would do, printed instead of done, and then the render queue
+// emptied so the next change starts from nothing.
+report(s: Store) -> Store {
+    ops = patch(s)
+
+    if ops.length() == 0 {
+        info("  nothing to patch")
+    } else {
+        for line in describe_all(ops) {
+            info("  " ++ line)
+        }
+        info("  js: " ++ patch_script(s))
+    }
+
+    s.clear_changed()
+}
+
+main() -> int {
+    s = store().set_num("count", 0).set("theme", "panel")
+    s = s.computed("label", ["count"]).refresh("label", say)
+
+    info("--- the page, rendered once ---")
+    info(page(s))
+    s = s.clear_changed()
+
+    info("")
+    info("--- click: count 0 -> 1 ---")
+    s = report(tick(s))
+
+    info("")
+    info("--- click: count 1 -> 2 ---")
+    s = report(tick(s))
+
+    info("")
+    info("--- a write of the value the key already had ---")
+    s = s.set_num("count", s.num("count", 0))
+    s = s.refresh("label", say)
+    s = report(s)
+
+    0
+}

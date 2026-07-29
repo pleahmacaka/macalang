@@ -1,0 +1,266 @@
+// bench/time — the measuring loop.
+//
+// Timing one call of a fast function tells you nothing. `now_ms()` counts whole
+// milliseconds, so anything under a millisecond reads as 0 and anything just
+// over reads as 1 with a hundred percent of error on it. So a candidate is
+// called in a loop, the loop's length is chosen at run time until one pass is
+// long enough for the clock to resolve, and that pass is then repeated several
+// times so the reader can see how much the repeats disagree.
+//
+//   import { measure, defaults, ns_per_op, ops_per_sec } from bench/time
+//
+//   r = measure("sieve", 10000, sieve_upto, defaults())
+//   info("{r.name}: {ns_per_op(r):.1} ns/op, {ops_per_sec(r):.0} ops/s")
+//
+// A candidate is a function `(size: int) -> int`. It takes the workload size so
+// that two results are comparable exactly when their sizes match, and it
+// returns something — a checksum, a length, an index — which the loop
+// accumulates, so that no compiler between here and the metal can decide the
+// calls have no effect and delete them.
+//
+// The candidate is a *parameter* and never a field. A function value cannot
+// live in a record field in Maca as it stands, so there is no `Case` record
+// carrying its own function and no list of cases to iterate: the harness is
+// `measure(name, size, f, opts)`, called once per candidate, and the corpus in
+// `bench/cases` is a set of ordinary top-level functions passed by name.
+
+import { min_of, median, mean, spread, relative_spread } from bench/stat
+
+/// How hard to measure. `defaults()` is the one to reach for; the fields are
+/// public so a caller with a slow candidate can spend less time, or a caller
+/// chasing a 2% regression can spend more.
+///
+/// `min_ms` is the knob that matters. At 50 ms the clock's 1 ms granularity is
+/// 2% of a sample, which is under the noise of a loaded machine; at 5 ms it is
+/// 20%, which is not.
+Options = {
+    samples: int,
+    min_ms: int,
+    warmups: int,
+    max_iters: int,
+}
+
+/// Five samples of at least 50 ms each, after one discarded warm-up. About a
+/// third of a second per candidate.
+defaults() -> Options =>
+    Options { samples = 5, min_ms = 50, warmups = 1, max_iters = 100000000 }
+
+/// Shorter and noisier — for a demo, a smoke test, or a first look at a
+/// candidate you are still writing. Do not quote its numbers.
+quick() -> Options =>
+    Options { samples = 3, min_ms = 15, warmups = 1, max_iters = 100000000 }
+
+/// Longer and steadier — eleven samples of 200 ms, three warm-ups. For the run
+/// whose numbers get written down and compared against next week.
+careful() -> Options =>
+    Options { samples = 11, min_ms = 200, warmups = 3, max_iters = 100000000 }
+
+/// What one candidate measured.
+///
+/// The samples are kept whole rather than pre-summarised because every
+/// statistic in `bench/stat` is recoverable from them and none of them is
+/// recoverable from each other — and because a run written to JSON and read
+/// back a week later should be able to answer a question nobody had asked yet.
+///
+/// `checksum` is what the candidate returned for this size. It is stored so
+/// that a baseline can be compared on more than speed: a case that got twice as
+/// fast and changed its answer got broken, not optimised.
+Result = {
+    name: str,
+    size: int,
+    iters: int,
+    samples: int[],
+    checksum: int,
+}
+
+// One timed pass of the inner loop: how long it took, and what it computed.
+Tick = { ms: int, checksum: int }
+
+/// Time `candidate` at workload `size` and keep the samples.
+///
+/// The order is: calibrate, warm up, measure. Calibration already runs the
+/// candidate a few times, so by the time the warm-up starts the code is in
+/// cache — the warm-up is there for the heap and the branch predictors, which
+/// take a full-length pass to settle.
+measure(name: str, size: int, candidate, opts: Options) -> Result {
+    iters = calibrate(candidate, size, opts)
+    warm(candidate, size, iters, opts.warmups)
+    collect(name, size, candidate, iters, opts.samples)
+}
+
+/// `measure` with `defaults()`.
+time_it(name: str, size: int, candidate) -> Result =>
+    measure(name, size, candidate, defaults())
+
+// The inner loop. `acc` exists so the calls have a result that leaves the
+// function: a loop that called the candidate and dropped what it returned is a
+// loop an optimiser is entitled to delete, and the benchmark would then be
+// measuring an empty `while`.
+spin(candidate, size: int, iters: int) -> int {
+    acc = 0
+    i = 0
+    while i < iters {
+        acc = acc + candidate(size)
+        i = i + 1
+    }
+    acc
+}
+
+// One pass, timed. `now_ms()` is read on both sides of the loop and nowhere
+// else, so the arithmetic and the record construction below are outside the
+// measured region.
+tick(candidate, size: int, iters: int) -> Tick {
+    started = now_ms()
+    got = spin(candidate, size, iters)
+    Tick { ms = now_ms() - started, checksum = got }
+}
+
+// How many iterations one sample needs to clear `min_ms`.
+//
+// Doubling from 1 would take dozens of passes to reach the hundred million
+// iterations a nanosecond-scale candidate needs. Scaling by how far short the
+// last attempt fell gets there in two or three, which matters because every
+// calibration pass is time the run spends not measuring.
+calibrate(candidate, size: int, opts: Options) -> int {
+    iters = 1
+    while true {
+        got = tick(candidate, size, iters)
+        if got.ms >= opts.min_ms || iters >= opts.max_iters {
+            break
+        }
+        iters = grown(iters, got.ms, opts.min_ms, opts.max_iters)
+    }
+    iters
+}
+
+// The next iteration count to try.
+//
+// A pass that read as 0 ms says nothing about the ratio — it could be one
+// microsecond or four hundred — so it grows by a fixed factor and asks again
+// rather than dividing by a zero it would have to special-case anyway.
+grown(iters: int, ms: int, want: int, cap: int) -> int {
+    guess = if ms <= 0 {
+        iters * 8
+    } else {
+        iters * (want / ms + 2)
+    }
+    // Every branch above can return `iters` itself for small numbers, and a
+    // calibration loop that stops growing never terminates.
+    stepped = guess > iters ? guess : iters + 1
+
+    stepped > cap ? cap : stepped
+}
+
+// Passes whose times are thrown away. The first pass through a candidate pays
+// for cold caches, a heap that has not been faulted in, and branch predictors
+// that have never seen this loop; reporting that as the candidate's speed is
+// reporting the machine's start-up cost.
+warm(candidate, size: int, iters: int, rounds: int) -> int {
+    acc = 0
+    i = 0
+    while i < rounds {
+        acc = acc + tick(candidate, size, iters).checksum
+        i = i + 1
+    }
+    acc
+}
+
+collect(name: str, size: int, candidate, iters: int, rounds: int) -> Result {
+    taken: int[] = []
+    i = 0
+    while i < rounds {
+        taken = taken.push(tick(candidate, size, iters).ms)
+        i = i + 1
+    }
+
+    // One call outside the loop for the checksum. The loop's own total is the
+    // same value added up however many times calibration chose, which is a
+    // different number every run and so tells a reader comparing two runs
+    // nothing. A single call is comparable, and one extra call among a hundred
+    // thousand is not a measurement.
+    Result { name = name, size = size, iters = iters, samples = taken,
+             checksum = candidate(size) }
+}
+
+// ---- what the samples mean -------------------------------------------------
+
+/// Milliseconds spent inside the candidate across every kept sample.
+total_ms(r: Result) -> int {
+    if r.samples.length() == 0 {
+        0
+    } else {
+        r.samples.sum()
+    }
+}
+
+/// Candidate calls across every kept sample.
+total_ops(r: Result) -> int =>
+    r.iters * r.samples.length()
+
+/// Nanoseconds per candidate call.
+///
+/// Derived from the totals rather than from the median, and in `float`
+/// throughout. `total_ms / total_ops` in integer arithmetic is 0 for every
+/// candidate faster than a millisecond, which is all of them — the whole
+/// reason the iteration loop exists.
+ns_per_op(r: Result) -> float {
+    ops = total_ops(r)
+
+    if ops <= 0 {
+        0.0
+    } else {
+        float(total_ms(r)) * 1000000.0 / float(ops)
+    }
+}
+
+/// Candidate calls per second.
+ops_per_sec(r: Result) -> float {
+    ms = total_ms(r)
+
+    if ms <= 0 {
+        0.0
+    } else {
+        float(total_ops(r)) * 1000.0 / float(ms)
+    }
+}
+
+/// Nanoseconds per unit of workload — `ns_per_op` divided by `size`.
+///
+/// This is the number that compares a case against itself at two sizes. An
+/// O(n) case holds it roughly constant as `size` grows; a case that quietly
+/// became O(n²) does not, and that shows up here long before it shows up in a
+/// wall-clock number that was expected to grow anyway.
+ns_per_item(r: Result) -> float {
+    if r.size <= 0 {
+        0.0
+    } else {
+        ns_per_op(r) / float(r.size)
+    }
+}
+
+/// The fastest sample, in milliseconds.
+fastest_ms(r: Result) -> int => min_of(r.samples)
+
+/// The middle sample, in milliseconds.
+median_ms(r: Result) -> float => median(r.samples)
+
+/// The mean sample, in milliseconds.
+mean_ms(r: Result) -> float => mean(r.samples)
+
+/// How far the samples scatter, in milliseconds.
+spread_ms(r: Result) -> float => spread(r.samples)
+
+/// Did the clock resolve this at all?
+///
+/// False means every sample read as 0 ms even at the iteration ceiling, which
+/// makes every derived number here a zero. A report that prints those without
+/// saying so is a report with an invisible hole in it.
+resolved(r: Result) -> bool =>
+    total_ms(r) > 0
+
+/// Are these samples steady enough to compare against another run?
+///
+/// The threshold is 10% relative spread. Below it, a 20% difference between two
+/// runs is a difference; above it, the same 20% is one noisy sample.
+steady(r: Result) -> bool =>
+    resolved(r) && relative_spread(r.samples) < 0.1

@@ -1,0 +1,182 @@
+// tambo/dispatch — one request, from the table to the response.
+//
+// This is the framework, and it takes no socket. `dispatch(app, req, handle)`
+// is a function from a parsed request to a response, so every routing rule
+// below can be checked by calling it:
+//
+//     reply = dispatch(Site, parse_request(raw), handle)
+//
+// `handle` is one function of one `Ctx`, and `ctx.name` says which handler it
+// is standing in for. There is exactly one of it because a Maca function value
+// takes one argument and cannot live in a record — see `tambo/app` for what
+// that constraint buys.
+//
+// The order a request goes through:
+//
+//   1. the `before` hook, if there is one. Anything but `pass()` stops here.
+//   2. the route, chosen by `lookup` — or a 405 when the path matched under
+//      another method, or the `fallback`, or a 404.
+//   3. `scrub`, which takes the body off any 5xx.
+//   4. the `after` hook, if there is one, with the response in `ctx.reply`.
+//
+// The hooks run for a 404 as much as for a 200, because a log that skips the
+// requests which failed is a log nobody can use.
+//
+// It is called `dispatch` and not `run` so that a site which also imports
+// `std/proc` still compiles: Maca has one namespace per program, and two
+// top-level `run`s are two definitions of one name.
+
+import { App, Pick, lookup } from tambo/app
+import { Ctx, context, probe } from tambo/ctx
+import { pass, passed, scrub } from tambo/reply
+import { Request } from http/request
+import { Response, status, with_header } from http/response
+import { listen } from http/server
+
+/// Answer one request against `a`, dispatching every handler through `handle`.
+dispatch(a: App, req: Request, handle) -> Response {
+    pick = lookup(a, req.method, req.path)
+    base = context(req, "", pick.name, pick.pattern, pick.params)
+    early = before_hook(a, base, handle)
+    answer = passed(early) ? route_answer(a, pick, base, handle) : early
+
+    after_hook(a, base, scrub(answer), handle)
+}
+
+// Every call into `handle` goes through here. The annotation is not decoration:
+// what a function value returns comes back boxed, and a declared return type is
+// what unboxes it. Without one, a field access on the result compiles to
+// nonsense.
+ask(ctx: Ctx, handle) -> Response {
+    out: Response = handle(ctx)
+
+    out
+}
+
+// The `before` hook, or `pass()` when the app declared none.
+before_hook(a: App, ctx: Ctx, handle) -> Response {
+    if a.before == "" {
+        pass()
+    } else {
+        ask(ctx with { name = a.before }, handle)
+    }
+}
+
+// What the route said, or the 405/404 that stands in for it.
+route_answer(a: App, pick: Pick, ctx: Ctx, handle) -> Response {
+    if pick.ok {
+        route_or_gap(pick, ctx, handle)
+    } else if pick.allowed.length() > 0 {
+        with_header(status(405), "Allow: " ++ pick.allowed.join(", "))
+    } else {
+        missing_answer(a, ctx, handle)
+    }
+}
+
+// A route whose name has no arm in `handle` is a mistake in the program, not
+// in the request, so it is logged by name and answered 500. `serve` will not
+// have started at all, which is where this is meant to be caught; reaching
+// here means the app was driven by `dispatch` directly.
+route_or_gap(pick: Pick, ctx: Ctx, handle) -> Response {
+    out = ask(ctx with { name = pick.name }, handle)
+
+    if passed(out) {
+        err("tambo: route `{pick.pattern}` names `{pick.name}`, "
+            ++ "which `handle` has no arm for")
+        status(500)
+    } else {
+        out
+    }
+}
+
+// Nothing matched. The app's `fallback` gets first refusal; tambo's 404 is
+// what is left, including when the fallback itself passes.
+missing_answer(a: App, ctx: Ctx, handle) -> Response {
+    if a.fallback == "" {
+        status(404)
+    } else {
+        out = ask(ctx with { name = a.fallback }, handle)
+
+        passed(out) ? status(404) : out
+    }
+}
+
+// The `after` hook sees the response in `ctx.reply` and either replaces it or
+// passes. It runs after `scrub`, so it is the one place a 5xx can be given a
+// body on purpose.
+after_hook(a: App, ctx: Ctx, r: Response, handle) -> Response {
+    if a.after == "" {
+        r
+    } else {
+        out = ask(ctx with { name = a.after, reply = r }, handle)
+
+        passed(out) ? r : out
+    }
+}
+
+/// The route names `handle` has no arm for.
+///
+/// Every declared route, and the fallback if there is one, is asked once with
+/// an empty context; whatever answers `pass()` is named here. Hooks are not
+/// asked, because `pass()` is a legitimate answer from a hook.
+///
+/// This calls the handlers for real, so a handler with a side effect will
+/// perform it — which is a fair argument for keeping the side effects in the
+/// hooks, where this does not reach.
+missing_handlers(a: App, handle) -> str[] {
+    names = handler_names(a)
+    gaps: str[] = []
+    i = 0
+
+    while i < names.length() {
+        ctx = probe("GET", "/") with { name = names.get(i) }
+
+        if passed(ask(ctx, handle)) {
+            gaps = gaps.push(names.get(i))
+        }
+
+        i = i + 1
+    }
+
+    gaps
+}
+
+// Every distinct name the table points at, in declaration order.
+handler_names(a: App) -> str[] {
+    out: str[] = []
+    i = 0
+
+    while i < a.routes.length() {
+        n = a.routes.get(i).name
+
+        if !out.contains(n) {
+            out = out.push(n)
+        }
+
+        i = i + 1
+    }
+
+    if a.fallback != "" && !out.contains(a.fallback) {
+        out.push(a.fallback)
+    } else {
+        out
+    }
+}
+
+/// Serve `a` on `port` until the process ends.
+///
+/// It will not start when a route names a handler `handle` has no arm for, and
+/// says which. Holding names in the table is what makes that answerable before
+/// a request arrives, and answering it here is what pays for the trade.
+serve(a: App, port: int, handle) -> int {
+    gaps = missing_handlers(a, handle)
+    named = gaps.join(", ")
+
+    if gaps.length() > 0 {
+        err("tambo: no handler for {named}")
+        1
+    } else {
+        info("tambo: {a.routes.length()} routes on http://localhost:{port}")
+        listen(port, req => dispatch(a, req, handle))
+    }
+}

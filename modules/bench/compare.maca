@@ -1,0 +1,249 @@
+// bench/compare — this run against a stored one.
+//
+// A benchmark that cannot be compared to last week is a number nobody acts on.
+// This pairs a fresh set of results with a baseline by case name and says, for
+// each pair, how much moved and in which direction.
+//
+//   import { compare, comparison_table, regressed } from bench/compare
+//   import { load } from bench/store
+//
+//   deltas = compare(load("bench/baseline.json"), results, Tolerance)
+//   info(comparison_table(deltas))
+//
+// The comparison is on ns/op, not on wall-clock milliseconds. Two runs almost
+// never choose the same iteration count — the machine was busier, the candidate
+// got faster, the harness calibrated differently — so the milliseconds are not
+// comparable and the per-operation cost is.
+
+import { Result, ns_per_op, resolved } from bench/time
+import { grouped } from bench/report
+import { table_aligned } from cli/show
+import { ok, bad, note, yellow } from cli/style
+
+/// What happened to one case since the baseline.
+///
+/// `Fresh` and `Missing` are not failures. A corpus grows and shrinks, and a
+/// comparison that treated a new case as a regression against zero would report
+/// a catastrophe every time somebody added one.
+Verdict = Faster | Slower | Same | Fresh | Missing | Unclear
+
+/// How much a case moved. `ratio` is now over baseline, so 0.80 is a fifth
+/// faster and 1.25 is a quarter slower.
+Delta = {
+    name: str,
+    size: int,
+    base_ns: float,
+    now_ns: float,
+    ratio: float,
+    verdict: Verdict,
+}
+
+/// The fraction a case has to move before it counts as having moved. Five
+/// percent: below that, two runs on the same machine and the same binary
+/// routinely disagree, and calling that a regression trains everybody to
+/// ignore the report.
+Tolerance = 0.05
+
+/// Pair every case in `now` with its baseline, then list the baseline cases
+/// that `now` no longer has.
+///
+/// Order is `now`'s order followed by the disappearances, because the run the
+/// reader just did is the one they are looking at.
+compare(before: Result[], now: Result[], tolerance: float) -> Delta[] =>
+    paired(before, now, 0, tolerance, []) ++ dropped(before, now, 0, [])
+
+paired(before: Result[], now: Result[], i: int, tolerance: float,
+       acc: Delta[]) -> Delta[] {
+    if i >= now.length() {
+        acc
+    } else {
+        at = index_of_name(before, now[i].name)
+        one = at < 0 ? fresh(now[i]) : delta(before[at], now[i], tolerance)
+        paired(before, now, i + 1, tolerance, acc.push(one))
+    }
+}
+
+dropped(before: Result[], now: Result[], i: int, acc: Delta[]) -> Delta[] {
+    if i >= before.length() {
+        acc
+    } else if index_of_name(now, before[i].name) >= 0 {
+        dropped(before, now, i + 1, acc)
+    } else {
+        dropped(before, now, i + 1, acc.push(missing(before[i])))
+    }
+}
+
+/// One baseline result against one new one.
+delta(before: Result, now: Result, tolerance: float) -> Delta {
+    was = ns_per_op(before)
+    is_now = ns_per_op(now)
+
+    Delta {
+        name = now.name,
+        size = now.size,
+        base_ns = was,
+        now_ns = is_now,
+        ratio = was > 0.0 ? is_now / was : 0.0,
+        verdict = judged(before, now, was, is_now, tolerance),
+    }
+}
+
+// The comparison is only meaningful when both runs resolved above the clock
+// *and* did the same amount of work. A case whose size changed between runs is
+// a different case wearing the same name, and reporting it as 3× slower would
+// send somebody looking for a regression that is a corpus edit.
+judged(before: Result, now: Result, was: float, is_now: float,
+       tolerance: float) -> Verdict {
+    if before.size != now.size {
+        Unclear
+    } else if !resolved(before) || !resolved(now) {
+        Unclear
+    } else if is_now < was * (1.0 - tolerance) {
+        Faster
+    } else if is_now > was * (1.0 + tolerance) {
+        Slower
+    } else {
+        Same
+    }
+}
+
+fresh(now: Result) -> Delta =>
+    Delta { name = now.name, size = now.size, base_ns = 0.0,
+            now_ns = ns_per_op(now), ratio = 0.0, verdict = Fresh }
+
+missing(before: Result) -> Delta =>
+    Delta { name = before.name, size = before.size,
+            base_ns = ns_per_op(before), now_ns = 0.0, ratio = 0.0,
+            verdict = Missing }
+
+index_of_name(rs: Result[], name: str) -> int =>
+    scan_names(rs, name, 0)
+
+scan_names(rs: Result[], name: str, i: int) -> int {
+    if i >= rs.length() {
+        -1
+    } else if rs[i].name == name {
+        i
+    } else {
+        scan_names(rs, name, i + 1)
+    }
+}
+
+// ---- reading the answer -----------------------------------------------------
+
+/// The word for a verdict.
+label(v: Verdict) -> str {
+    match v {
+        Faster => "faster"
+        Slower => "slower"
+        Same => "same"
+        Fresh => "new"
+        Missing => "gone"
+        Unclear => "not comparable"
+    }
+}
+
+/// The verdict with the mark that goes in front of it — `✓ faster`, `✗
+/// slower`. Colour follows `cli/style`, so a piped report is plain text.
+///
+/// The two "look at this" verdicts spell out what `cli/style`'s `warn` would
+/// give them. Importing that name here would shadow the builtin `warn`, which
+/// prints rather than returning, and every later call in the file would have
+/// silently changed meaning.
+marked(v: Verdict) -> str {
+    match v {
+        Faster => ok(label(v))
+        Slower => bad(label(v))
+        Same => note(label(v))
+        Fresh => note(label(v))
+        Missing => yellow("!") ++ " " ++ label(v)
+        Unclear => yellow("!") ++ " " ++ label(v)
+    }
+}
+
+/// How far a case moved, as a signed percentage — `-20` is a fifth faster.
+/// Zero when there is nothing to compare against.
+percent_change(d: Delta) -> float {
+    if d.base_ns <= 0.0 {
+        0.0
+    } else {
+        (d.now_ns - d.base_ns) * 100.0 / d.base_ns
+    }
+}
+
+/// Did anything get slower? The one question a CI step asks.
+regressed(ds: Delta[]) -> bool =>
+    count_of(ds, Slower) > 0
+
+/// How many cases got the given verdict.
+count_of(ds: Delta[], want: Verdict) -> int =>
+    tally(ds, want, 0, 0)
+
+tally(ds: Delta[], want: Verdict, i: int, acc: int) -> int {
+    if i >= ds.length() {
+        acc
+    } else if ds[i].verdict == want {
+        tally(ds, want, i + 1, acc + 1)
+    } else {
+        tally(ds, want, i + 1, acc)
+    }
+}
+
+/// One line saying how the run went as a whole, for the top of a report or the
+/// end of a CI log.
+summary(ds: Delta[]) -> str =>
+    "{ds.length()} cases: {count_of(ds, Faster)} faster,"
+        ++ " {count_of(ds, Slower)} slower, {count_of(ds, Same)} unchanged,"
+        ++ " {count_of(ds, Fresh)} new"
+
+// ---- the table --------------------------------------------------------------
+
+/// The column headings, in the order `comparison_row` fills them.
+comparison_columns() -> str[] =>
+    ["case", "size", "was ns/op", "now ns/op", "ratio", "change", ""]
+
+comparison_row(d: Delta) -> str[] =>
+    [d.name, grouped(d.size), ns_cell(d.base_ns), ns_cell(d.now_ns),
+     ratio_cell(d), change_cell(d), marked(d.verdict)]
+
+// An empty cell, not a 0 and not a dash, for a side of the comparison that
+// does not exist. A zero in a numeric column reads as a measurement, and a dash
+// makes `cli/show` stop seeing the column as numeric, which un-right-aligns
+// every number in it to say one thing the verdict column already says.
+ns_cell(ns: float) -> str {
+    if ns <= 0.0 {
+        ""
+    } else {
+        "{ns:.1}"
+    }
+}
+
+ratio_cell(d: Delta) -> str {
+    if d.ratio <= 0.0 {
+        ""
+    } else {
+        "{d.ratio:.3}"
+    }
+}
+
+change_cell(d: Delta) -> str {
+    if d.base_ns <= 0.0 || d.now_ns <= 0.0 {
+        ""
+    } else if percent_change(d) >= 0.0 {
+        "+{percent_change(d):.1}%"
+    } else {
+        "{percent_change(d):.1}%"
+    }
+}
+
+/// Every delta as one aligned table.
+comparison_table(ds: Delta[]) -> str =>
+    table_aligned(comparison_columns(), comparison_rows(ds, 0, []))
+
+comparison_rows(ds: Delta[], i: int, acc: str[][]) -> str[][] {
+    if i >= ds.length() {
+        acc
+    } else {
+        comparison_rows(ds, i + 1, acc.push(comparison_row(ds[i])))
+    }
+}

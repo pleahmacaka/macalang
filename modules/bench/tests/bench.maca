@@ -1,0 +1,994 @@
+// What `bench` promises, run.
+//
+// Two halves. The first is the harness: statistics over a known sample list, a
+// timing loop that has to say a busy candidate is slower than an idle one, a
+// round trip through JSON, and a comparison that has to name what moved. The
+// second is the corpus, and it is the more important half — a benchmark of a
+// wrong implementation is worse than no benchmark, because it is a number
+// somebody will act on.
+//
+// Every algorithm here is checked against an answer that exists independently
+// of this code: a textbook pair, a sequence you can look up, or the language's
+// own builtin doing the same job.
+
+import { min_of, max_of, median, mean, spread, relative_spread } from bench/stat
+import { percentile, root } from bench/stat
+import { Options, Result, measure, defaults, quick, careful } from bench/time
+import { ns_per_op, ops_per_sec, ns_per_item } from bench/time
+import { total_ops, resolved } from bench/time
+import { fastest_ms, median_ms, mean_ms, total_ms } from bench/time
+import { spread_ms, steady, time_it } from bench/time
+import { table_of, line_of, footnote, grouped } from bench/report
+import { result_columns } from bench/report
+import { to_json, from_json, save, load, find } from bench/store
+import { compare, comparison_table, summary } from bench/compare
+import { regressed, Tolerance } from bench/compare
+import { count_of, percent_change, label, Delta } from bench/compare
+import { Faster, Slower, Same, Fresh, Missing, Unclear } from bench/compare
+import bench/cases/data
+import bench/cases/prim
+import bench/cases/algo
+import bench/cases/inter
+import bench/cases/adv
+import bench/cases/catalog
+
+// Cheap enough to run sixty times in a test suite, long enough that the clock
+// can still see it. Nothing here asserts a duration, only an ordering.
+//
+// A function rather than a constant: a top-level `Name = Record { … }` is
+// emitted with the wrong C type by the native back end, and every call taking
+// it fails to compile.
+brisk() -> Options =>
+    Options { samples = 2, min_ms = 5, warmups = 0, max_iters = 4000000 }
+
+// A candidate that touches nothing, for the "does less, costs less" tests.
+idle(n: int) -> int => n
+
+// The same shape doing real work, so the two differ only in the body.
+busy(n: int) -> int {
+    acc = 0
+    i = 0
+    while i < n {
+        acc = acc + i * i
+        i = i + 1
+    }
+    acc
+}
+
+sample(name: str, size: int, iters: int, ms: int[]) -> Result =>
+    Result { name = name, size = size, iters = iters, samples = ms,
+             checksum = 0 }
+
+// ---- statistics --------------------------------------------------------------
+
+test_the_median_of_an_odd_sample_is_the_middle_one() {
+    assert_eq(median([1, 5, 3]), 3.0, "three samples, middle one")
+}
+
+test_the_median_of_an_even_sample_averages_the_two_middles() {
+    assert_eq(median([1, 2, 3, 4]), 2.5, "no sample sits in the middle")
+}
+
+test_the_median_ignores_the_order_it_was_given() {
+    assert_eq(median([9, 1, 5]), median([5, 9, 1]), "order does not matter")
+}
+
+test_the_smallest_and_largest_are_the_ends_of_the_range() {
+    xs = [4, 1, 9, 7]
+
+    assert_eq(min_of(xs), 1, "the smallest")
+    assert_eq(max_of(xs), 9, "the largest")
+}
+
+test_the_mean_of_a_constant_sample_is_that_constant() {
+    assert_eq(mean([7, 7, 7]), 7.0, "nothing to average away")
+}
+
+// The reason both are reported: one number would have to be this one or the
+// other, and which it is changes the answer by a factor of three here.
+test_the_mean_is_dragged_by_an_outlier_and_the_median_is_not() {
+    steady = [10, 10, 10, 10, 10]
+    hiccup = [10, 10, 10, 10, 200]
+
+    assert_eq(median(steady), median(hiccup), "the median does not move")
+    assert(mean(hiccup) > mean(steady) * 3.0, "the mean moves a long way")
+}
+
+test_a_sample_with_no_variation_has_no_spread() {
+    assert_eq(spread([5, 5, 5]), 0.0, "every sample is the mean")
+    assert_eq(relative_spread([5, 5, 5]), 0.0, "and so is the relative form")
+}
+
+test_spread_is_the_root_of_the_mean_squared_error() {
+    // Mean 4, errors -2 and +2, mean square 4, root 2.
+    assert_eq(spread([2, 6]), 2.0, "two samples either side of the mean")
+}
+
+test_relative_spread_is_spread_over_mean() {
+    assert_eq(relative_spread([2, 6]), 0.5, "2 over a mean of 4")
+}
+
+test_percentile_reaches_both_ends() {
+    xs = [1, 2, 3, 4, 5]
+
+    assert_eq(percentile(xs, 0.0), 1, "the bottom is the smallest")
+    assert_eq(percentile(xs, 1.0), 5, "the top is the largest")
+    assert_eq(percentile(xs, 0.5), 3, "the middle is the median")
+}
+
+test_a_percentile_outside_the_range_is_clamped() {
+    xs = [1, 2, 3]
+
+    assert_eq(percentile(xs, -4.0), 1, "below zero is the first")
+    assert_eq(percentile(xs, 9.0), 3, "above one is the last")
+}
+
+test_every_statistic_of_an_empty_sample_is_zero() {
+    none: int[] = []
+
+    assert_eq(min_of(none), 0, "no smallest")
+    assert_eq(max_of(none), 0, "no largest")
+    assert_eq(median(none), 0.0, "no middle")
+    assert_eq(mean(none), 0.0, "nothing to average")
+    assert_eq(spread(none), 0.0, "nothing to scatter")
+    assert_eq(percentile(none, 0.5), 0, "no rank to reach")
+}
+
+test_the_square_root_agrees_with_multiplication() {
+    assert_eq(root(144.0), 12.0, "a perfect square")
+    assert_eq(root(1.0), 1.0, "one")
+    assert(abs(root(2.0) * root(2.0) - 2.0) < 0.0000001, "and an irrational")
+}
+
+test_the_square_root_of_zero_and_below_is_zero() {
+    assert_eq(root(0.0), 0.0, "zero")
+    assert_eq(root(-9.0), 0.0, "a negative has no real root to report")
+}
+
+// ---- the timing loop ------------------------------------------------------------
+
+test_a_candidate_that_does_nothing_is_faster_than_one_that_does_something() {
+    nothing = measure("idle", 400, idle, brisk())
+    something = measure("busy", 400, busy, brisk())
+
+    assert(ns_per_op(nothing) < ns_per_op(something),
+           "an empty candidate costs less per call than a loop of 400")
+}
+
+test_a_larger_workload_costs_more_per_call() {
+    small = measure("busy", 100, busy, brisk())
+    large = measure("busy", 2000, busy, brisk())
+
+    assert(ns_per_op(large) > ns_per_op(small),
+           "twenty times the loop costs more than the loop")
+}
+
+// `brisk() with { samples = 3 }` would say this better, but `with` needs a
+// record-typed local on the left, not a call.
+test_measure_keeps_the_number_of_samples_it_was_asked_for() {
+    three = Options { samples = 3, min_ms = 5, warmups = 0,
+                      max_iters = 4000000 }
+
+    assert_eq(measure("busy", 200, busy, three).samples.length(), 3,
+              "three samples asked for, three kept")
+}
+
+test_calibration_picks_enough_iterations_to_clear_the_clock() {
+    got = measure("idle", 1, idle, brisk())
+
+    assert(got.iters > 1, "one call of an empty candidate is not measurable")
+    assert(resolved(got), "and the chosen iteration count did clear the clock")
+}
+
+test_a_slow_candidate_needs_fewer_iterations_than_a_fast_one() {
+    fast = measure("idle", 1, idle, brisk())
+    slow = measure("busy", 5000, busy, brisk())
+
+    assert(slow.iters < fast.iters,
+           "calibration spends iterations where each one is cheap")
+}
+
+test_the_checksum_survives_the_timing_loop() {
+    got = measure("busy", 10, busy, brisk())
+
+    assert_eq(got.checksum, busy(10),
+              "the result carries what the candidate computed at this size")
+}
+
+test_a_result_remembers_the_name_and_size_it_was_given() {
+    got = measure("named", 37, idle, brisk())
+
+    assert_eq(got.name, "named", "its name")
+    assert_eq(got.size, 37, "and the workload it ran at")
+}
+
+test_ops_per_second_and_ns_per_op_are_two_views_of_one_number() {
+    got = sample("x", 10, 1000, [100, 100])
+
+    assert_eq(ns_per_op(got), 100000.0, "200 ms over 2000 calls")
+    assert_eq(ops_per_sec(got), 10000.0, "2000 calls in 0.2 s")
+}
+
+test_ns_per_item_divides_the_call_cost_by_the_workload() {
+    got = sample("x", 100, 1000, [100, 100])
+
+    assert_eq(ns_per_item(got), 1000.0, "100000 ns spread over 100 items")
+}
+
+test_the_derived_numbers_of_an_unmeasured_result_are_zero_not_a_crash() {
+    empty = sample("x", 10, 0, [])
+    unresolved = sample("x", 10, 5, [0, 0])
+
+    assert_eq(total_ops(empty), 0, "no calls")
+    assert_eq(ns_per_op(empty), 0.0, "and so no cost per call")
+    assert_eq(ops_per_sec(unresolved), 0.0, "no time means no rate")
+    assert(!resolved(unresolved), "and the result says it is unmeasured")
+}
+
+test_the_summary_milliseconds_come_from_the_samples() {
+    got = sample("x", 10, 100, [4, 10, 6])
+
+    assert_eq(total_ms(got), 20, "the total")
+    assert_eq(fastest_ms(got), 4, "the fastest")
+    assert_eq(median_ms(got), 6.0, "the middle")
+    assert(abs(mean_ms(got) - 6.6666) < 0.001, "and the mean")
+    assert(spread_ms(got) > 2.0, "and how far they scatter")
+}
+
+// The question a caller asks before believing a five percent difference: are
+// these samples steady enough for five percent to mean anything?
+test_a_result_is_steady_only_when_its_samples_agree() {
+    assert(steady(sample("x", 10, 100, [100, 101, 100])),
+           "one percent apart is steady")
+    assert(!steady(sample("x", 10, 100, [10, 100, 10])),
+           "a sample ten times the others is not")
+    assert(!steady(sample("x", 10, 100, [0, 0])),
+           "and neither is a result the clock never saw")
+}
+
+test_the_one_argument_form_measures_the_same_thing() {
+    got = time_it("busy", 50, busy)
+
+    assert_eq(got.name, "busy", "it keeps the name")
+    assert_eq(got.checksum, busy(50), "and runs the candidate given")
+    assert_eq(got.samples.length(), defaults().samples,
+              "with the default number of samples")
+}
+
+test_the_presets_ask_for_more_the_more_careful_they_are() {
+    assert(quick().min_ms < defaults().min_ms, "quick spends less per sample")
+    assert(defaults().min_ms < careful().min_ms, "careful spends more")
+    assert(quick().samples <= careful().samples, "and takes fewer samples")
+}
+
+// ---- the report -----------------------------------------------------------------
+
+test_a_long_number_is_grouped_into_threes() {
+    assert_eq(grouped(1234567), "1,234,567", "seven digits")
+    assert_eq(grouped(1000), "1,000", "exactly four")
+}
+
+test_grouping_leaves_a_short_number_alone() {
+    assert_eq(grouped(0), "0", "zero")
+    assert_eq(grouped(999), "999", "three digits need no separator")
+}
+
+test_a_grouped_negative_keeps_its_sign_in_front() {
+    assert_eq(grouped(-12345), "-12,345", "the minus is not a digit")
+}
+
+test_the_table_has_a_heading_a_rule_and_a_row_per_result() {
+    rs = [sample("alpha", 10, 5, [1]), sample("beta", 10, 5, [1])]
+    lines = table_of(rs).split("\n")
+
+    assert_eq(lines.length(), 5, "heading, rule, two rows, trailing newline")
+    assert(lines[0].contains("case"), "the first column is named")
+    assert(lines[2].contains("alpha"), "the first result")
+    assert(lines[3].contains("beta"), "the second")
+}
+
+test_the_table_has_a_column_for_every_heading() {
+    assert_eq(result_columns().length(), 8, "eight columns")
+    assert(result_columns().contains("ns/op"), "including the headline number")
+    assert(result_columns().contains("size"),
+           "and the size, without which ns/op compares to nothing")
+}
+
+test_a_line_carries_the_case_name_and_its_cost() {
+    line = line_of(sample("alpha", 10, 1000, [50]))
+
+    assert(line.contains("alpha"), "the name")
+    assert(line.contains("ns/op"), "and the unit of what follows it")
+}
+
+// A number with nothing behind it should say so rather than read as a
+// measurement of zero.
+test_a_line_says_when_the_clock_could_not_see_the_candidate() {
+    assert(line_of(sample("x", 10, 5, [0, 0])).contains("under the clock"),
+           "an unresolved result is marked")
+    assert(!line_of(sample("x", 10, 5, [7])).contains("under the clock"),
+           "a resolved one is not")
+}
+
+test_the_footnote_counts_the_calls_behind_the_table() {
+    note = footnote([sample("a", 10, 1000, [5, 5]), sample("b", 10, 500, [4])])
+
+    assert(note.contains("2 cases"), "it says how many cases")
+    assert(note.contains("2,500"), "and the total call count, grouped")
+}
+
+// ---- storing and loading -----------------------------------------------------------
+
+test_a_run_survives_being_written_and_read() {
+    before = [sample("alpha", 10, 64, [3, 4, 3]),
+              sample("beta", 2000, 8, [50])]
+    after = from_json(to_json(before))
+
+    assert_eq(after.length(), 2, "both results came back")
+    assert_eq(after[0].name, "alpha", "the first name")
+    assert_eq(after[1].size, 2000, "and the second size")
+}
+
+test_samples_survive_the_round_trip_exactly() {
+    after = from_json(to_json([sample("x", 1, 2, [7, 11, 13])]))
+
+    assert_eq(after[0].samples.length(), 3, "all three")
+    assert_eq(after[0].samples[1], 11, "in order and unchanged")
+}
+
+test_a_result_with_no_samples_round_trips_as_one() {
+    after = from_json(to_json([sample("x", 1, 2, [])]))
+
+    assert_eq(after.length(), 1, "the result is still there")
+    assert_eq(after[0].samples.length(), 0, "with nothing in it")
+}
+
+test_a_name_with_a_quote_in_it_survives() {
+    after = from_json(to_json([sample("say \"hi\"", 1, 2, [1])]))
+
+    assert_eq(after[0].name, "say \"hi\"", "escaped on the way out and back")
+}
+
+test_a_document_from_an_unknown_version_reads_as_nothing() {
+    forged = to_json([sample("x", 1, 2, [1])]).replace("\"version\":1",
+                                                       "\"version\":99")
+
+    assert_eq(from_json(forged).length(), 0,
+              "a shape this code does not know is refused, not guessed at")
+}
+
+test_nonsense_reads_as_nothing_rather_than_failing() {
+    assert_eq(from_json("").length(), 0, "an empty document")
+    assert_eq(from_json("not json at all").length(), 0, "and a wrong one")
+}
+
+test_a_saved_run_reads_back_from_disk() {
+    path = "/tmp/maca-bench-test.json"
+    rs = [sample("alpha", 10, 64, [3])]
+
+    assert(save(path, rs), "the write landed")
+    assert_eq(load(path).length(), 1, "and one result came back")
+    assert_eq(load(path)[0].name, "alpha", "with its name")
+}
+
+test_loading_a_file_that_is_not_there_is_not_an_error() {
+    assert_eq(load("/tmp/maca-bench-does-not-exist.json").length(), 0,
+              "the first run of a new benchmark has no baseline, by definition")
+}
+
+test_find_answers_minus_one_for_a_name_that_is_not_there() {
+    rs = [sample("alpha", 1, 1, [1]), sample("beta", 1, 1, [1])]
+
+    assert_eq(find(rs, "beta"), 1, "the one that is there")
+    assert_eq(find(rs, "gamma"), -1, "and the one that is not")
+}
+
+// ---- comparing ---------------------------------------------------------------------
+
+test_a_case_that_halved_is_reported_as_faster() {
+    ds = compare([sample("a", 10, 100, [100])], [sample("a", 10, 100, [50])],
+                 Tolerance)
+
+    assert_eq(label(ds[0].verdict), "faster", "half the cost per call")
+    assert_eq(ds[0].ratio, 0.5, "and the ratio says by how much")
+}
+
+test_a_case_that_doubled_is_reported_as_slower() {
+    ds = compare([sample("a", 10, 100, [50])], [sample("a", 10, 100, [100])],
+                 Tolerance)
+
+    assert_eq(label(ds[0].verdict), "slower", "twice the cost per call")
+    assert(regressed(ds), "and the run as a whole regressed")
+}
+
+test_a_case_within_tolerance_is_reported_as_unchanged() {
+    ds = compare([sample("a", 10, 1000, [100])],
+                 [sample("a", 10, 1000, [102])], Tolerance)
+
+    assert_eq(label(ds[0].verdict), "same",
+              "two percent is two runs of the same code, not a change")
+    assert(!regressed(ds), "so nothing regressed")
+}
+
+test_a_case_with_no_baseline_is_new_rather_than_a_regression() {
+    ds = compare([], [sample("a", 10, 100, [50])], Tolerance)
+
+    assert_eq(label(ds[0].verdict), "new", "there is nothing to compare to")
+    assert(!regressed(ds), "adding a case is not a regression")
+}
+
+test_a_case_missing_from_the_new_run_is_reported_as_gone() {
+    ds = compare([sample("a", 10, 100, [50])], [], Tolerance)
+
+    assert_eq(ds.length(), 1, "the disappearance is still listed")
+    assert_eq(label(ds[0].verdict), "gone", "and named as one")
+}
+
+test_a_case_whose_size_changed_is_not_comparable() {
+    ds = compare([sample("a", 10, 100, [100])], [sample("a", 99, 100, [50])],
+                 Tolerance)
+
+    assert_eq(label(ds[0].verdict), "not comparable",
+              "a different workload under the same name is a different case")
+}
+
+test_a_case_the_clock_could_not_see_is_not_comparable() {
+    ds = compare([sample("a", 10, 100, [0])], [sample("a", 10, 100, [50])],
+                 Tolerance)
+
+    assert_eq(label(ds[0].verdict), "not comparable",
+              "a baseline of zero has no ratio to be a ratio of")
+}
+
+test_percent_change_is_signed_the_way_a_reader_expects() {
+    faster = compare([sample("a", 10, 100, [100])],
+                     [sample("a", 10, 100, [80])], Tolerance)
+    slower = compare([sample("a", 10, 100, [100])],
+                     [sample("a", 10, 100, [150])], Tolerance)
+
+    assert_eq(percent_change(faster[0]), -20.0, "cheaper reads negative")
+    assert_eq(percent_change(slower[0]), 50.0, "dearer reads positive")
+}
+
+test_a_delta_with_no_baseline_has_no_percentage_to_report() {
+    ds = compare([], [sample("a", 10, 100, [50])], Tolerance)
+
+    assert_eq(percent_change(ds[0]), 0.0, "nothing to be a percentage of")
+}
+
+test_the_summary_counts_every_verdict() {
+    before = [sample("a", 1, 100, [100]), sample("b", 1, 100, [100]),
+              sample("c", 1, 100, [100]), sample("gone", 1, 100, [100])]
+    now = [sample("a", 1, 100, [50]), sample("b", 1, 100, [200]),
+           sample("c", 1, 100, [100]), sample("new", 1, 100, [10])]
+    ds = compare(before, now, Tolerance)
+
+    assert_eq(count_of(ds, Faster), 1, "one got faster")
+    assert_eq(count_of(ds, Slower), 1, "one got slower")
+    assert_eq(count_of(ds, Same), 1, "one stayed put")
+    assert_eq(count_of(ds, Fresh), 1, "one is new")
+    assert_eq(count_of(ds, Missing), 1, "one went away")
+    assert(summary(ds).contains("5 cases"), "and the summary counts them all")
+}
+
+test_the_comparison_table_marks_what_moved() {
+    ds = compare([sample("a", 1, 100, [100])], [sample("a", 1, 100, [50])],
+                 Tolerance)
+
+    assert(comparison_table(ds).contains("faster"), "the verdict is in the row")
+    assert(comparison_table(ds).contains("-50.0%"), "and so is the change")
+}
+
+// ---- the corpus: primitives -------------------------------------------------------------
+
+test_integer_arithmetic_sums_what_the_expression_says() {
+    // i*3 + i%7 - i/2 for i = 1..5: 4 + 7 + 11 + 14 + 18.
+    assert_eq(int_arith(5), 54, "five terms, added by hand")
+}
+
+test_float_arithmetic_is_the_harmonic_sum_in_thousandths() {
+    assert_eq(float_arith(1), 1000, "one term is 1.000")
+    assert_eq(float_arith(4), 2083, "1 + 1/2 + 1/3 + 1/4 = 2.0833")
+}
+
+test_the_string_cases_report_the_length_they_built() {
+    assert_eq(str_concat(3), 6, "three copies of a two-byte literal")
+    assert_eq(str_interp(3), 6, "0| 1| 2| is six bytes")
+    assert_eq(str_interp(11), 23, "and two-digit numbers make it longer")
+}
+
+test_the_scanner_counts_letters_and_digits_separately() {
+    // "the quick br" — twelve bytes, ten of them letters, none a digit.
+    assert_eq(str_scan(12), 10000, "letters in the thousands place")
+}
+
+test_the_three_list_cases_reach_the_same_total() {
+    assert_eq(list_push(5), 10, "0+1+2+3+4")
+    assert_eq(list_index(5), 10, "read back by subscript")
+    assert_eq(list_iterate(5), 10, "and by iteration")
+}
+
+test_the_map_case_reads_back_everything_it_wrote() {
+    assert_eq(map_set(4), 4, "four keys landed")
+    assert_eq(map_get(4), 6, "and 0+1+2+3 came out")
+}
+
+test_the_record_cases_read_the_fields_they_built() {
+    // x + 2x for x = 0..3, and (3 + 4) four times.
+    assert_eq(record_build(4), 18, "built and summed")
+    assert_eq(record_field(4), 28, "one record read four times")
+}
+
+test_a_primitive_case_at_size_zero_does_nothing() {
+    assert_eq(int_arith(0), 0, "no terms")
+    assert_eq(str_concat(0), 0, "no bytes")
+    assert_eq(list_push(0), 0, "no elements")
+    assert_eq(map_set(0), 0, "no keys")
+}
+
+// ---- the corpus: elementary ------------------------------------------------------------
+
+test_linear_search_finds_what_is_there_and_misses_what_is_not() {
+    assert_eq(linear_search([4, 7, 1], 7), 1, "found, by index")
+    assert_eq(linear_search([4, 7, 1], 9), -1, "not found")
+    assert_eq(linear_search([], 1), -1, "and nothing to search")
+}
+
+test_binary_search_finds_every_element_of_a_sorted_list() {
+    xs = ascending(64)
+    found = 0
+    for want in xs {
+        if binary_search(xs, want) == want {
+            found = found + 1
+        }
+    }
+    assert_eq(found, 64, "each value is at its own index")
+}
+
+test_binary_search_misses_a_value_that_is_not_there() {
+    assert_eq(binary_search(ascending(10), 99), -1, "above the range")
+    assert_eq(binary_search(ascending(10), -1), -1, "below it")
+    assert_eq(binary_search([], 0), -1, "and in an empty list")
+}
+
+test_the_three_quadratic_sorts_agree_with_the_builtin() {
+    xs = numbers(60)
+    want = checksum(xs.sort())
+
+    assert_eq(checksum(bubble_sort(xs)), want, "bubble")
+    assert_eq(checksum(insertion_sort(xs)), want, "insertion")
+    assert_eq(checksum(selection_sort(xs)), want, "selection")
+}
+
+// If a sort wrote through to its argument, the second iteration of the timing
+// loop would sort an already-sorted list and the benchmark would be measuring
+// the best case.
+test_a_sort_leaves_the_list_it_was_given_alone() {
+    xs = [3, 1, 2]
+    insertion_sort(xs)
+    quick_sort(xs)
+    merge_sort(xs)
+
+    assert_eq(xs[0], 3, "still unsorted")
+    assert_eq(xs[2], 2, "in the order it was written")
+}
+
+// Insertion sort's worst case: every element has to slide the whole way back.
+// A sort that got this wrong would still pass on random input most of the time.
+test_insertion_sort_handles_input_in_the_worst_possible_order() {
+    xs = descending(200)
+
+    assert_eq(checksum(insertion_sort(xs)), checksum(ascending(200)),
+              "reversed input comes out ascending")
+}
+
+test_sorting_nothing_and_sorting_one_thing() {
+    assert_eq(bubble_sort([]).length(), 0, "an empty list stays empty")
+    assert_eq(merge_sort([]).length(), 0, "for the recursive sorts too")
+    assert_eq(quick_sort([9])[0], 9, "one element is already sorted")
+    assert_eq(heap_sort([9])[0], 9, "however it is arranged")
+}
+
+test_reverse_is_its_own_inverse() {
+    xs = numbers(20)
+
+    assert_eq(checksum(reversed(reversed(xs))), checksum(xs), "there and back")
+    assert_eq(reversed([1, 2, 3])[0], 3, "and it does turn the list round")
+}
+
+test_sum_min_max_reads_all_three_in_one_pass() {
+    // 15 + 2*7 + 8*13 = 133.
+    assert_eq(sum_min_max([2, 8, 5]), 133, "total, smallest and largest")
+    assert_eq(sum_min_max([]), 0, "and nothing has none of them")
+}
+
+test_both_fibonacci_definitions_agree() {
+    same = true
+    for k in 0..20 {
+        if fib_recursive(k) != fib_iterative(k) {
+            same = false
+        }
+    }
+    assert(same, "the exponential and the linear form give the same numbers")
+    assert_eq(fib_iterative(90), 2880067194370816120, "and the 90th fits")
+}
+
+test_factorial_matches_the_values_you_can_check() {
+    assert_eq(factorial(0), 1, "the empty product")
+    assert_eq(factorial(5), 120, "five")
+    assert_eq(factorial(20), 2432902008176640000, "and the largest that fits")
+}
+
+test_gcd_handles_zero_and_a_negative() {
+    assert_eq(gcd(48, 18), 6, "the textbook pair")
+    assert_eq(gcd(0, 5), 5, "zero shares everything")
+    assert_eq(gcd(-12, 8), 4, "and sign is not a factor")
+    assert_eq(gcd(17, 13), 1, "two primes share nothing")
+}
+
+test_primality_agrees_with_the_first_primes() {
+    assert(!is_prime(0), "zero")
+    assert(!is_prime(1), "one is not prime")
+    assert(is_prime(2), "two is")
+    assert(is_prime(97), "and so is 97")
+    assert(!is_prime(91), "91 is 7 × 13, which trial division has to reach")
+}
+
+test_prime_count_matches_the_sieve() {
+    assert_eq(prime_count(100), 25, "twenty-five primes below a hundred")
+    assert_eq(prime_count(1000), sieve(1000).length(),
+              "the slow way and the fast way count the same primes")
+}
+
+// ---- the corpus: intermediate --------------------------------------------------------
+
+test_the_faster_sorts_agree_with_the_builtin() {
+    xs = numbers(200)
+    want = checksum(xs.sort())
+
+    assert_eq(checksum(merge_sort(xs)), want, "merge")
+    assert_eq(checksum(quick_sort(xs)), want, "quick")
+    assert_eq(checksum(heap_sort(xs).reverse()), want, "heap, which sorts down")
+}
+
+test_quicksort_survives_input_that_is_already_sorted() {
+    xs = ascending(500)
+
+    assert_eq(checksum(quick_sort(xs)), checksum(xs),
+              "the middle pivot keeps sorted input off the quadratic path")
+}
+
+test_the_heap_hands_back_its_smallest_first() {
+    assert_eq(checksum(heap_drain(numbers(50))),
+              checksum(numbers(50).sort()),
+              "push everything, pop everything, and it comes out sorted")
+    assert_eq(heap_peek([]), -1, "an empty heap has no smallest")
+}
+
+test_the_sieve_finds_the_primes_below_a_hundred() {
+    primes = sieve(100)
+
+    assert_eq(primes.length(), 25, "twenty-five of them")
+    assert_eq(primes[0], 2, "starting at two")
+    assert_eq(primes[24], 97, "and ending at 97")
+    assert_eq(sieve(1).length(), 0, "with none below two")
+}
+
+test_matrix_multiply_matches_a_worked_example() {
+    // [1 2; 3 4] × [5 6; 7 8] = [19 22; 43 50].
+    got = matrix_multiply([1, 2, 3, 4], [5, 6, 7, 8], 2)
+
+    assert_eq(got[0], 19, "top left")
+    assert_eq(got[1], 22, "top right")
+    assert_eq(got[2], 43, "bottom left")
+    assert_eq(got[3], 50, "bottom right")
+}
+
+test_substring_search_finds_matches_misses_and_the_empty_needle() {
+    assert_eq(find_substring("hello world", "world"), 6, "at the end")
+    assert_eq(find_substring("hello world", "hello"), 0, "at the start")
+    assert_eq(find_substring("abc", "zz"), -1, "not there at all")
+    assert_eq(find_substring("abc", ""), 0, "the empty needle is everywhere")
+}
+
+test_run_length_coding_round_trips() {
+    for text in ["aaab", "", "abc", "zzzzzzzzzzzz"] {
+        assert_eq(run_length_decode(run_length_encode(text)), text,
+                  "[{text}] survives encoding")
+    }
+}
+
+test_run_length_writes_a_count_even_for_a_run_of_one() {
+    assert_eq(run_length_encode("ab"), "1a1b",
+              "an unconditional count is what makes the decoder a loop")
+    assert_eq(run_length_encode("aaab"), "3a1b", "and a real run is one entry")
+}
+
+test_run_length_handles_a_run_longer_than_nine() {
+    assert_eq(run_length_decode("12x").length(), 12,
+              "the count is a number, not a digit")
+}
+
+test_base_conversion_round_trips() {
+    for base in [2, 8, 10, 16, 36] {
+        assert_eq(from_base(to_base(123456, base), base), 123456,
+                  "base {base} survives the round trip")
+    }
+}
+
+test_base_conversion_writes_the_digits_you_would_write() {
+    assert_eq(to_base(255, 16), "ff", "hex")
+    assert_eq(to_base(10, 2), "1010", "binary")
+    assert_eq(to_base(0, 7), "0", "zero is one digit, not none")
+    assert_eq(to_base(-10, 2), "-1010", "and a negative keeps its sign")
+}
+
+test_an_impossible_base_produces_nothing() {
+    assert_eq(to_base(5, 1), "", "base one has no digits")
+    assert_eq(to_base(5, 99), "", "and there are only 36 to draw on")
+}
+
+test_brackets_are_balanced_only_when_they_nest() {
+    assert(balanced("([\{\}])"), "properly nested")
+    assert(balanced(""), "and nothing at all")
+    assert(balanced("a(b)c"), "with other characters in between")
+    assert(!balanced("(]"), "crossed")
+    assert(!balanced("("), "left open")
+    assert(!balanced(")("), "closed before it opened")
+}
+
+test_the_ring_queue_returns_everything_in_the_order_it_went_in() {
+    assert_eq(ring_drain(500, 64), checksum(ascending(500)),
+              "a queue is first in, first out, however often it wraps")
+    assert_eq(ring_drain(0, 8), checksum([]), "and an empty run drains empty")
+}
+
+test_the_tree_walks_its_keys_in_order() {
+    xs = numbers(80)
+
+    assert_eq(checksum(bst_inorder(bst_of(xs))), checksum(xs.sort()),
+              "an in-order walk of a search tree is the sorted list")
+    assert_eq(bst_inorder(bst_of([])).length(), 0, "an empty tree walks empty")
+}
+
+test_the_tree_keeps_duplicates() {
+    assert_eq(bst_inorder(bst_of([5, 3, 5])).length(), 3,
+              "a repeated key goes right rather than being dropped")
+}
+
+test_the_tree_answers_membership() {
+    t = bst_of([5, 3, 8, 1])
+
+    assert(bst_contains(t, 1), "a leaf")
+    assert(bst_contains(t, 5), "the root")
+    assert(!bst_contains(t, 9), "and something that was never inserted")
+}
+
+// ---- the corpus: advanced --------------------------------------------------------------
+
+test_the_kmp_table_matches_the_worked_example() {
+    // "ababaca" is the pattern every textbook uses for this table.
+    got = kmp_table("ababaca")
+
+    assert_eq(checksum(got), checksum([0, 0, 1, 2, 3, 0, 1]),
+              "prefix-suffix lengths, position by position")
+}
+
+test_kmp_and_the_naive_search_agree() {
+    text = sentence(400)
+
+    for needle in ["quick", "dogs.", "13", "not in here", ""] {
+        assert_eq(kmp_search(text, needle), find_substring(text, needle),
+                  "the two searches agree about [{needle}]")
+    }
+}
+
+test_kmp_backs_up_correctly_on_a_repetitive_pattern() {
+    assert_eq(kmp_search("aaaaab", "aab"), 3,
+              "the table is what stops the text pointer moving backwards")
+}
+
+test_edit_distance_matches_the_textbook_pair() {
+    assert_eq(edit_distance("kitten", "sitting"), 3, "kitten to sitting")
+    assert_eq(edit_distance("same", "same"), 0, "nothing to do")
+}
+
+test_edit_distance_of_an_empty_string_is_the_other_length() {
+    assert_eq(edit_distance("", "abc"), 3, "three insertions")
+    assert_eq(edit_distance("abc", ""), 3, "three deletions")
+    assert_eq(edit_distance("", ""), 0, "and nothing either way")
+}
+
+test_lcs_matches_the_textbook_pair() {
+    assert_eq(lcs_length("AGGTAB", "GXTXAYB"), 4, "GTAB")
+    assert_eq(lcs_length("abc", "abc"), 3, "everything in common")
+    assert_eq(lcs_length("abc", "xyz"), 0, "and nothing")
+    assert_eq(lcs_length("", "x"), 0, "with an empty side")
+}
+
+test_knapsack_picks_the_best_fit_rather_than_the_biggest() {
+    // Capacity 7 takes items of weight 3 and 4 for 9, not the weight-5 item.
+    assert_eq(knapsack([1, 3, 4, 5], [1, 4, 5, 7], 7), 9, "the best 7 units")
+    assert_eq(knapsack([1, 3, 4, 5], [1, 4, 5, 7], 0), 0, "nothing fits")
+}
+
+test_knapsack_takes_each_item_only_once() {
+    // With repeats allowed, capacity 6 would take the weight-2 item three
+    // times for 30. Taking each once, the best is 10 + 8 = 18.
+    assert_eq(knapsack([2, 4], [10, 8], 6), 18, "0/1, not unbounded")
+}
+
+test_n_queens_matches_the_known_counts() {
+    want = [1, 0, 0, 2, 10, 4, 40, 92]
+    matched = 0
+    for n in 1..8 {
+        if n_queens(n) == want[n - 1] {
+            matched = matched + 1
+        }
+    }
+    assert_eq(matched, 8, "the first eight board sizes")
+    assert_eq(n_queens(0), 0, "and no board at all")
+}
+
+test_union_find_reports_whether_two_were_already_joined() {
+    uf = uf_of(6)
+
+    assert(uf_union(uf, 0, 1), "they were separate")
+    assert(!uf_union(uf, 1, 0), "and now they are not")
+    assert_eq(uf_root(uf, 0), uf_root(uf, 1), "so they share a root")
+}
+
+test_union_find_counts_the_groups_that_are_left() {
+    uf = uf_of(6)
+    uf_union(uf, 0, 1)
+    uf_union(uf, 1, 2)
+    uf_union(uf, 4, 5)
+
+    assert_eq(uf_groups(uf), 3, "\{0,1,2\}, \{3\} and \{4,5\}")
+    assert_eq(uf_groups(uf_of(4)), 4, "and nothing joined is four groups")
+}
+
+test_dijkstra_prefers_the_cheap_long_way() {
+    // 0→1→2 costs 3; the direct 0→2 costs 10.
+    n = 4
+    weight = repeated(n * n, -1)
+    weight[1] = 1
+    weight[2] = 10
+    weight[6] = 2
+    weight[11] = 1
+    got = dijkstra(weight, n, 0)
+
+    assert_eq(got[0], 0, "the source costs nothing to reach")
+    assert_eq(got[2], 3, "two cheap hops beat one dear one")
+    assert_eq(got[3], 4, "and the far node adds one more")
+}
+
+test_dijkstra_marks_what_it_cannot_reach() {
+    weight = repeated(4, -1)
+    got = dijkstra(weight, 2, 0)
+
+    assert(got[1] > 1000000, "an unreachable node is not distance zero")
+    assert_eq(dijkstra([], 0, 0).length(), 0, "and an empty graph is empty")
+}
+
+test_topological_sort_puts_every_edge_forwards() {
+    order = topo_sort([0, 1, 1, 2, 0, 2], 3)
+
+    assert_eq(order.length(), 3, "every node is placed")
+    assert_eq(order[0], 0, "the one nothing depends on comes first")
+    assert_eq(order[2], 2, "and the one that depends on both comes last")
+}
+
+test_topological_sort_refuses_a_cycle() {
+    assert_eq(topo_sort([0, 1, 1, 0], 2).length(), 0,
+              "a graph with a cycle has no ordering, so there is none to give")
+}
+
+test_the_lru_cache_hits_what_it_kept_and_misses_what_it_evicted() {
+    assert_eq(lru_hits([1, 2, 1, 3, 2, 1], 2), 1,
+              "only the second 1 is still resident")
+    assert_eq(lru_hits([1, 1, 1], 2), 2, "a repeated key hits every time after")
+    assert_eq(lru_hits([1, 2, 3], 0), 0, "a cache with no room hits nothing")
+}
+
+test_the_tokenizer_keeps_a_string_whole() {
+    toks = json_tokens("\{\"a\": [1, \"b, c\"]\}")
+
+    assert_eq(toks.length(), 9, "the comma inside the string is not a token")
+    assert_eq(toks[1], "\"a\"", "a string keeps its quotes")
+    assert_eq(toks[6], "\"b, c\"", "punctuation and all")
+}
+
+test_the_tokenizer_survives_an_escaped_quote() {
+    toks = json_tokens("[\"b\\\"c\"]")
+
+    assert_eq(toks.length(), 3, "brackets and one string")
+    assert_eq(toks[1], "\"b\\\"c\"", "the escaped quote did not end it")
+}
+
+test_counting_tokens_agrees_with_listing_them() {
+    for n in [0, 1, 5] {
+        src = json_sample(n)
+        assert_eq(json_token_count(src), json_tokens(src).length(),
+                  "{n} objects counted the fast way and the slow way")
+    }
+}
+
+// ---- the catalog ---------------------------------------------------------------------------
+
+test_every_case_belongs_to_exactly_one_group() {
+    ungrouped = 0
+    for name in case_names() {
+        if group_of(name) == "" {
+            ungrouped = ungrouped + 1
+        }
+    }
+    assert_eq(ungrouped, 0, "every name in the corpus is in a group")
+    assert_eq(case_names().length(), 46, "and the corpus is forty-six cases")
+}
+
+test_the_groups_add_up_to_the_corpus() {
+    total = 0
+    for group in groups() {
+        total = total + names_in(group).length()
+    }
+    assert_eq(total, case_names().length(), "no case is in two groups or none")
+    assert_eq(names_in("nonsense").length(), 0, "and an unknown group is empty")
+}
+
+test_every_case_has_a_size_and_a_unit_for_it() {
+    unlabelled = 0
+    for name in case_names() {
+        if default_size(name) <= 0 || size_unit(name) == "" {
+            unlabelled = unlabelled + 1
+        }
+    }
+    assert_eq(unlabelled, 0, "a size with no unit is a number with no meaning")
+}
+
+// The one property a benchmark corpus cannot do without: the same input has to
+// give the same answer, or a comparison against last week compares noise.
+//
+// The size is capped by each case's own default rather than being a flat 20,
+// because four of the sizes are not counts: `n_queens(20)` is a forty-billion
+// node search, and running the corpus at a number that looks small is how you
+// find that out.
+test_every_case_gives_the_same_answer_twice() {
+    wobbled = 0
+    for name in case_names() {
+        size = min(20, default_size(name))
+        if run_case(name, size) != run_case(name, size) {
+            wobbled = wobbled + 1
+        }
+    }
+    assert_eq(wobbled, 0, "every case in the corpus is deterministic")
+}
+
+test_every_case_survives_a_workload_of_zero() {
+    ran = 0
+    for name in case_names() {
+        run_case(name, 0)
+        ran = ran + 1
+    }
+    assert_eq(ran, case_names().length(),
+              "no case reads off the end of an empty input")
+}
+
+test_an_unknown_case_name_runs_nothing() {
+    assert_eq(run_case("no such case", 100), 0, "and answers zero")
+    assert_eq(size_unit("no such case"), "", "with no unit to report")
+}
+
+test_a_case_run_by_name_agrees_with_the_function_behind_it() {
+    assert_eq(run_case("int arithmetic", 50), int_arith(50), "a primitive")
+    assert_eq(run_case("sieve", 200), sieve_case(200), "an intermediate case")
+    assert_eq(run_case("n-queens", 6), n_queens(6), "and an advanced one")
+}
+
+test_the_harness_and_the_catalog_work_together() {
+    got = measure("sieve", 200, v => run_case("sieve", v), brisk())
+
+    assert_eq(got.checksum, sieve(200).length(),
+              "what the timing loop accumulated is what the case returns")
+    assert(resolved(got), "and the run cleared the clock")
+}

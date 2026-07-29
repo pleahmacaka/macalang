@@ -1,0 +1,687 @@
+// bench/cases/inter — the algorithms with a data structure in them.
+//
+// The `n log n` sorts, a binary heap, the sieve, matrix multiply, naive
+// substring search, run-length coding, base conversion, a stack and a ring
+// queue, and a binary search tree. Where `bench/cases/algo` is one loop,
+// everything here needs somewhere to put things while it works, and that is
+// what the numbers are actually about.
+//
+//   import { merge_sort, sieve, bst_of } from bench/cases/inter
+//
+//   primes = sieve(1000)          // 168 of them
+//
+// As in `algo`, each algorithm keeps its natural signature and has a `…_case(n)`
+// beside it for the harness.
+
+import { numbers, ascending, zeros, repeated } from bench/cases/data
+import { sentence, runs, checksum, copy_of } from bench/cases/data
+
+// ---- the n log n sorts -------------------------------------------------------
+
+/// Merge sort: halve, sort each half, then walk the two together.
+///
+/// Stable, because the merge takes from the left half when the two are equal.
+/// Stability is not free and is worth saying out loud: it is the difference
+/// between sorting by one key twice and sorting by two keys.
+merge_sort(xs: int[]) -> int[] {
+    if xs.length() <= 1 {
+        copy_of(xs)
+    } else {
+        mid = xs.length() / 2
+        merged(merge_sort(xs.slice(0, mid)),
+               merge_sort(xs.slice(mid, xs.length())))
+    }
+}
+
+merged(a: int[], b: int[]) -> int[] {
+    out = zeros(a.length() + b.length())
+    i = 0
+    j = 0
+    at = 0
+
+    while at < out.length() {
+        from_a = j >= b.length() || (i < a.length() && a[i] <= b[j])
+        if from_a {
+            out[at] = a[i]
+            i = i + 1
+        } else {
+            out[at] = b[j]
+            j = j + 1
+        }
+        at = at + 1
+    }
+    out
+}
+
+merge_sort_case(n: int) -> int =>
+    checksum(merge_sort(numbers(n)))
+
+/// Quicksort, in place, with Hoare's partition.
+quick_sort(xs: int[]) -> int[] {
+    out = copy_of(xs)
+    quick_span(out, 0, out.length() - 1)
+    out
+}
+
+quick_span(xs: int[], low: int, high: int) {
+    if low < high {
+        split = partition(xs, low, high)
+        quick_span(xs, low, split)
+        quick_span(xs, split + 1, high)
+    }
+}
+
+// The pivot is the middle element, not the first. With the first, an
+// already-sorted list — which is exactly what you get when somebody sorts twice
+// — partitions into nothing and everything, recurses `n` deep, and turns the
+// `n log n` into `n²` on the input most likely to turn up in practice.
+partition(xs: int[], low: int, high: int) -> int {
+    pivot = xs[low + (high - low) / 2]
+    i = low - 1
+    j = high + 1
+    split = -1
+
+    while split < 0 {
+        i = i + 1
+        while xs[i] < pivot {
+            i = i + 1
+        }
+        j = j - 1
+        while xs[j] > pivot {
+            j = j - 1
+        }
+        if i >= j {
+            split = j
+        } else {
+            swap(xs, i, j)
+        }
+    }
+    split
+}
+
+swap(xs: int[], a: int, b: int) {
+    held = xs[a]
+    xs[a] = xs[b]
+    xs[b] = held
+}
+
+quick_sort_case(n: int) -> int =>
+    checksum(quick_sort(numbers(n)))
+
+// ---- a binary heap ------------------------------------------------------------
+
+/// Add `v` to a min-heap held in a list, smallest at index 0.
+///
+/// The list is the heap: a node at `i` has its children at `2i+1` and `2i+2`,
+/// so there is nothing to store but the values. Note that `push` copies, so
+/// building a heap this way is quadratic in the number of pushes — `heap_sort`
+/// below does it the other way, in place.
+heap_push(heap: int[], v: int) -> int[] {
+    out = heap.push(v)
+    sift_up(out, out.length() - 1)
+    out
+}
+
+sift_up(h: int[], from: int) {
+    at = from
+    while at > 0 && h[(at - 1) / 2] > h[at] {
+        swap(h, at, (at - 1) / 2)
+        at = (at - 1) / 2
+    }
+}
+
+/// The smallest value in the heap, or -1 when it is empty.
+heap_peek(heap: int[]) -> int {
+    if heap.length() == 0 {
+        -1
+    } else {
+        heap[0]
+    }
+}
+
+/// The heap without its smallest value.
+///
+/// Take the last element, put it at the root, and let it sink — the only move
+/// that keeps the tree's shape while removing from its top.
+heap_pop(heap: int[]) -> int[] {
+    n = heap.length()
+
+    if n <= 1 {
+        []
+    } else {
+        out = copy_of(heap)
+        out[0] = out[n - 1]
+        shorter = out.slice(0, n - 1)
+        sift_down(shorter, 0, shorter.length())
+        shorter
+    }
+}
+
+sift_down(h: int[], from: int, limit: int) {
+    at = from
+    going = true
+
+    while going {
+        least = at
+        left = 2 * at + 1
+        right = 2 * at + 2
+
+        if left < limit && h[left] < h[least] {
+            least = left
+        }
+        if right < limit && h[right] < h[least] {
+            least = right
+        }
+        if least == at {
+            going = false
+        } else {
+            swap(h, at, least)
+            at = least
+        }
+    }
+}
+
+/// Heapsort: build a heap in place, then repeatedly move its root to the end.
+///
+/// Descending order, because the in-place form uses a min-heap and the sorted
+/// tail grows from the back. `heap_sort_case` reverses it, so the checksum can
+/// be compared against every other sort in the corpus.
+heap_sort(xs: int[]) -> int[] {
+    out = copy_of(xs)
+    n = out.length()
+
+    at = n / 2 - 1
+    while at >= 0 {
+        sift_down(out, at, n)
+        at = at - 1
+    }
+
+    end = n - 1
+    while end > 0 {
+        swap(out, 0, end)
+        sift_down(out, 0, end)
+        end = end - 1
+    }
+    out
+}
+
+heap_sort_case(n: int) -> int =>
+    checksum(heap_sort(numbers(n)).reverse())
+
+/// The values that come out of a `heap_push`/`heap_pop` cycle, in order.
+/// Small `n` only: see `heap_push`.
+heap_drain(xs: int[]) -> int[] {
+    heap: int[] = []
+    for x in xs {
+        heap = heap_push(heap, x)
+    }
+
+    out = zeros(xs.length())
+    at = 0
+    while heap.length() > 0 {
+        out[at] = heap_peek(heap)
+        heap = heap_pop(heap)
+        at = at + 1
+    }
+    out
+}
+
+heap_ops_case(n: int) -> int =>
+    checksum(heap_drain(numbers(n)))
+
+// ---- the sieve ----------------------------------------------------------------
+
+/// Every prime up to `limit`, by crossing out multiples.
+///
+/// Two passes over the marks: one to count what survived, one to write them
+/// out. The alternative is pushing each prime as it is found, and `push` copies
+/// the whole list — at `limit` = 100,000 that is nine thousand copies of a list
+/// nine thousand long, which costs more than the sieve.
+sieve(limit: int) -> int[] {
+    if limit < 2 {
+        []
+    } else {
+        marks = repeated(limit + 1, 1)
+        marks[0] = 0
+        marks[1] = 0
+
+        p = 2
+        while p * p <= limit {
+            if marks[p] == 1 {
+                // Start at p², because every smaller multiple of p has a
+                // smaller factor and was crossed out by it.
+                m = p * p
+                while m <= limit {
+                    marks[m] = 0
+                    m = m + p
+                }
+            }
+            p = p + 1
+        }
+        gather(marks)
+    }
+}
+
+gather(marks: int[]) -> int[] {
+    found = 0
+    i = 0
+    while i < marks.length() {
+        found = found + marks[i]
+        i = i + 1
+    }
+
+    out = zeros(found)
+    at = 0
+    j = 0
+    while j < marks.length() {
+        if marks[j] == 1 {
+            out[at] = j
+            at = at + 1
+        }
+        j = j + 1
+    }
+    out
+}
+
+sieve_case(n: int) -> int =>
+    sieve(n).length()
+
+// ---- matrix multiply ------------------------------------------------------------
+
+/// `a × b` for two `n × n` matrices stored row-major in flat lists.
+///
+/// Flat, not nested, because a list of lists in Maca is a list of pointers and
+/// this is meant to measure the arithmetic and the memory walk, not the
+/// indirection. The `i, k, j` loop order keeps both reads running forward
+/// through memory; `i, j, k` walks `b` down a column and is measurably slower
+/// for the same work.
+matrix_multiply(a: int[], b: int[], n: int) -> int[] {
+    out = zeros(n * n)
+    i = 0
+
+    while i < n {
+        k = 0
+        while k < n {
+            left = a[i * n + k]
+            if left != 0 {
+                j = 0
+                while j < n {
+                    out[i * n + j] = out[i * n + j] + left * b[k * n + j]
+                    j = j + 1
+                }
+            }
+            k = k + 1
+        }
+        i = i + 1
+    }
+    out
+}
+
+/// `n` is the side of the matrix, so the work is `n³` — 40 is 64,000
+/// multiply-adds and 100 is a million.
+matrix_multiply_case(n: int) -> int {
+    a = numbers(n * n)
+    b = ascending(n * n)
+    checksum(matrix_multiply(a, b, n))
+}
+
+// ---- naive substring search -------------------------------------------------------
+
+/// The index of `needle` in `hay`, or -1, by trying every start position.
+///
+/// `n × m` in the worst case. `bench/cases/adv`'s `kmp_search` is the same
+/// question answered in `n + m`, and the pair is the point of both.
+find_substring(hay: str, needle: str) -> int {
+    if needle.length() == 0 {
+        0
+    } else {
+        found = -1
+        last = hay.length() - needle.length()
+        start = 0
+        while start <= last {
+            if matches_at(hay, needle, start) {
+                found = start
+                break
+            }
+            start = start + 1
+        }
+        found
+    }
+}
+
+matches_at(hay: str, needle: str, start: int) -> bool {
+    same = true
+    i = 0
+    while i < needle.length() {
+        if hay.at(start + i) != needle.at(i) {
+            same = false
+            break
+        }
+        i = i + 1
+    }
+    same
+}
+
+/// Search `n` bytes of text for a pattern that is only ever *almost* there, so
+/// every start position runs a few characters in before failing.
+find_substring_case(n: int) -> int =>
+    find_substring(sentence(n), "the quick brown cat")
+
+// ---- run-length coding -----------------------------------------------------------
+
+/// `aaab` as `3a1b` — a count in front of every run.
+///
+/// Always writing the count, even for a run of one, is what makes the decoder a
+/// loop instead of a lookahead. It also makes the encoding longer than the
+/// input for text with no runs in it, which is honest about what RLE is for.
+run_length_encode(s: str) -> str {
+    out = ""
+    i = 0
+
+    while i < s.length() {
+        c = s.at(i)
+        run = 1
+        while i + run < s.length() && s.at(i + run) == c {
+            run = run + 1
+        }
+        out = out ++ "{run}" ++ c
+        i = i + run
+    }
+    out
+}
+
+/// Undo `run_length_encode`.
+run_length_decode(s: str) -> str {
+    out = ""
+    i = 0
+
+    while i < s.length() {
+        run = 0
+        while i < s.length() && s.at(i).is_ascii_digit() {
+            run = run * 10 + (ord(s.at(i)) - ord("0"))
+            i = i + 1
+        }
+        if i < s.length() {
+            out = out ++ s.at(i).repeat(run)
+            i = i + 1
+        }
+    }
+    out
+}
+
+run_length_case(n: int) -> int =>
+    run_length_decode(run_length_encode(runs(n))).length()
+
+// ---- base conversion -------------------------------------------------------------
+
+/// `v` written in `base`, 2 through 36, with digits `0`–`9` then `a`–`z`.
+to_base(v: int, base: int) -> str {
+    if base < 2 || base > 36 {
+        ""
+    } else if v == 0 {
+        "0"
+    } else if v < 0 {
+        "-" ++ to_base(0 - v, base)
+    } else {
+        out = ""
+        left = v
+        while left > 0 {
+            // Digits come out least-significant first, so each one goes on the
+            // front rather than the back.
+            out = digit_char(left % base) ++ out
+            left = left / base
+        }
+        out
+    }
+}
+
+digit_char(d: int) -> str {
+    if d < 10 {
+        chr(ord("0") + d)
+    } else {
+        chr(ord("a") + d - 10)
+    }
+}
+
+/// The value of `s` read in `base`. A character that is not a digit of that
+/// base ends the number, the way `int` treats trailing junk.
+from_base(s: str, base: int) -> int {
+    negative = s.starts_with("-")
+    body = negative ? s.slice(1, s.length()) : s
+    acc = 0
+    i = 0
+
+    while i < body.length() {
+        d = digit_value(body.at(i))
+        if d < 0 || d >= base {
+            break
+        }
+        acc = acc * base + d
+        i = i + 1
+    }
+    negative ? 0 - acc : acc
+}
+
+// Ranges are compared as byte values rather than as strings. `c >= "a"` on two
+// one-byte strings compiles and is always false in the native back end, so
+// `from_base("ff", 16)` read as 0 — a wrong answer with nothing to see in the
+// source.
+digit_value(c: str) -> int {
+    b = ord(c)
+
+    if c.is_ascii_digit() {
+        b - ord("0")
+    } else if b >= ord("a") && b <= ord("z") {
+        b - ord("a") + 10
+    } else {
+        -1
+    }
+}
+
+/// Round-trip `n` numbers through base 36 and back, summing what comes out.
+base_convert_case(n: int) -> int {
+    acc = 0
+    i = 0
+    while i < n {
+        acc = acc + from_base(to_base(i * 7919, 36), 36)
+        i = i + 1
+    }
+    acc % 1000000007
+}
+
+// ---- a stack and a queue -----------------------------------------------------------
+
+/// Are the brackets in `s` matched and properly nested?
+///
+/// The textbook use for a stack: what has been opened and not yet closed, in
+/// the order it has to close.
+balanced(s: str) -> bool {
+    stack = zeros(s.length())
+    depth = 0
+    ok_so_far = true
+    i = 0
+
+    while i < s.length() {
+        c = s.at(i)
+        if c == "(" || c == "[" || c == "\{" {
+            stack[depth] = ord(closer_for(c))
+            depth = depth + 1
+        } else if c == ")" || c == "]" || c == "\}" {
+            if depth == 0 || stack[depth - 1] != ord(c) {
+                ok_so_far = false
+                break
+            }
+            depth = depth - 1
+        }
+        i = i + 1
+    }
+    ok_so_far && depth == 0
+}
+
+closer_for(c: str) -> str {
+    if c == "(" {
+        ")"
+    } else if c == "[" {
+        "]"
+    } else {
+        "\}"
+    }
+}
+
+// Whole copies of the six-character pattern, so the string is always balanced.
+// Cutting it to exactly `n` left a dangling bracket for every `n` that is not a
+// multiple of six, and the case then measured how fast `balanced` says no.
+balanced_case(n: int) -> int {
+    text = "([\{\}])".repeat(n / 6 + 1)
+    balanced(text) ? text.length() : 0
+}
+
+/// Push `rounds` values through a ring queue of `capacity` slots, taking one
+/// out whenever it is full; returns a checksum of what came out.
+///
+/// A ring is the version of a queue that does not move anything: head and tail
+/// walk forward and wrap, so a take is two assignments rather than a shift of
+/// everything behind it.
+ring_drain(rounds: int, capacity: int) -> int {
+    slots = zeros(capacity)
+    head = 0
+    held = 0
+    acc = 0
+    i = 0
+
+    while i < rounds {
+        slots[(head + held) % capacity] = i
+        held = held + 1
+        if held == capacity {
+            acc = (acc * 31 + slots[head]) % 1000000007
+            head = (head + 1) % capacity
+            held = held - 1
+        }
+        i = i + 1
+    }
+
+    while held > 0 {
+        acc = (acc * 31 + slots[head]) % 1000000007
+        head = (head + 1) % capacity
+        held = held - 1
+    }
+    acc
+}
+
+queue_case(n: int) -> int =>
+    ring_drain(n, 64)
+
+// ---- a binary search tree ------------------------------------------------------------
+
+/// A binary search tree in three parallel lists.
+///
+/// Node `i` holds `key[i]` and points at `left[i]` and `right[i]`, with -1 for
+/// no child. Written this way and not as a record with `Node` fields because
+/// there is no null: a missing child would need an option type to say so, and
+/// an index that can be -1 says it in the type the arrays already have.
+Bst = {
+    key: int[],
+    left: int[],
+    right: int[],
+    count: int,
+}
+
+/// A tree of every value in `xs`, inserted in order. Duplicates go right, so
+/// an in-order walk keeps them.
+bst_of(xs: int[]) -> Bst {
+    n = xs.length()
+    t = Bst { key = zeros(n), left = repeated(n, -1), right = repeated(n, -1),
+              count = 0 }
+    out = t
+    for x in xs {
+        out = bst_insert(out, x)
+    }
+    out
+}
+
+/// Add `k` to `t`. The tree's lists are written in place — they were allocated
+/// with room for every value `bst_of` was given, and a tree that grew by
+/// pushing would copy all three lists per insert.
+bst_insert(t: Bst, k: int) -> Bst {
+    if t.count >= t.key.length() {
+        t
+    } else {
+        at = t.count
+        t.key[at] = k
+
+        if at > 0 {
+            link_under(t, 0, at)
+        }
+        t with { count = at + 1 }
+    }
+}
+
+link_under(t: Bst, from: int, fresh: int) {
+    at = from
+    placed = false
+
+    while !placed {
+        if t.key[fresh] < t.key[at] {
+            if t.left[at] < 0 {
+                t.left[at] = fresh
+                placed = true
+            } else {
+                at = t.left[at]
+            }
+        } else if t.right[at] < 0 {
+            t.right[at] = fresh
+            placed = true
+        } else {
+            at = t.right[at]
+        }
+    }
+}
+
+/// Is `k` in the tree?
+bst_contains(t: Bst, k: int) -> bool {
+    at = t.count > 0 ? 0 : -1
+    found = false
+
+    while at >= 0 {
+        if t.key[at] == k {
+            found = true
+            at = -1
+        } else if k < t.key[at] {
+            at = t.left[at]
+        } else {
+            at = t.right[at]
+        }
+    }
+    found
+}
+
+/// Every key in order.
+///
+/// Iterative, with an explicit stack. The recursive version is three lines
+/// shorter and overflows the machine stack on the degenerate tree you get from
+/// inserting sorted input, which is a real input.
+bst_inorder(t: Bst) -> int[] {
+    out = zeros(t.count)
+    stack = zeros(t.count + 1)
+    depth = 0
+    at = t.count > 0 ? 0 : -1
+    written = 0
+
+    while at >= 0 || depth > 0 {
+        if at >= 0 {
+            stack[depth] = at
+            depth = depth + 1
+            at = t.left[at]
+        } else {
+            depth = depth - 1
+            node = stack[depth]
+            out[written] = t.key[node]
+            written = written + 1
+            at = t.right[node]
+        }
+    }
+    out
+}
+
+bst_case(n: int) -> int =>
+    checksum(bst_inorder(bst_of(numbers(n))))

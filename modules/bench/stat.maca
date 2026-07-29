@@ -1,0 +1,157 @@
+// bench/stat — the summary numbers a run of timings needs.
+//
+// A benchmark that reports one number reports the wrong one. The mean is
+// dragged around by a single scheduling hiccup, and the minimum is the machine
+// on its best day with nothing else running. Reporting min, median and mean
+// together is what lets a reader see that the three agree — and notice when
+// they don't.
+//
+//   import { min_of, median, mean, spread } from bench/stat
+//
+//   info("median {median(samples):.2} ms of {samples.length()} samples")
+//
+// Samples come in as whole milliseconds because that is what `now_ms()` counts,
+// and go out as `float` because the median of 3 ms and 4 ms is 3.5 ms and
+// rounding it away is throwing out the half of the signal that distinguishes a
+// real change from noise.
+
+/// The smallest sample. An empty list answers 0 rather than failing: a caller
+/// summarising a run that measured nothing wants a table with zeros in it, not
+/// a crash halfway through printing.
+min_of(xs: int[]) -> int {
+    if xs.length() == 0 {
+        0
+    } else {
+        xs.min()
+    }
+}
+
+/// The largest sample, 0 for an empty list.
+max_of(xs: int[]) -> int {
+    if xs.length() == 0 {
+        0
+    } else {
+        xs.max()
+    }
+}
+
+/// The middle sample, averaging the two middles when there is an even number
+/// of them.
+///
+/// This is the number to quote. Half the samples are above it and half below,
+/// so one run that got descheduled moves it by one position instead of by its
+/// whole excess.
+median(xs: int[]) -> float {
+    n = xs.length()
+
+    if n == 0 {
+        0.0
+    } else if n % 2 == 1 {
+        float(xs.sort().get(n / 2))
+    } else {
+        sorted = xs.sort()
+        float(sorted.get(n / 2 - 1) + sorted.get(n / 2)) / 2.0
+    }
+}
+
+/// The arithmetic mean.
+///
+/// Quoted next to the median because the gap between the two is the cheapest
+/// available warning that the samples are skewed: equal means symmetric, a
+/// mean well above the median means something long happened once.
+mean(xs: int[]) -> float {
+    if xs.length() == 0 {
+        0.0
+    } else {
+        float(xs.sum()) / float(xs.length())
+    }
+}
+
+/// Population standard deviation, in the same unit as the samples.
+///
+/// Population and not sample: these are every measurement taken, not a draw
+/// from a larger set, so dividing by `n` is the honest denominator.
+spread(xs: int[]) -> float {
+    n = xs.length()
+
+    if n == 0 {
+        0.0
+    } else {
+        root(squared_error(xs, mean(xs), 0, 0.0) / float(n))
+    }
+}
+
+// Square root by Newton's method.
+//
+// `sqrt` is a builtin, but the native back end does not link libm: a call the C
+// compiler cannot fold to an instruction fails at link time with `undefined
+// reference to sqrt`. Starting from a guess at or above the true root, Newton's
+// iteration falls monotonically onto it, so "stop when it stops falling" is an
+// exact termination test rather than a tolerance somebody has to pick.
+root(v: float) -> float {
+    if v <= 0.0 {
+        0.0
+    } else {
+        descend(v, v > 1.0 ? v : 1.0, 0)
+    }
+}
+
+descend(v: float, guess: float, step: int) -> float {
+    closer = (guess + v / guess) / 2.0
+
+    if step >= 200 || closer >= guess {
+        guess
+    } else {
+        descend(v, closer, step + 1)
+    }
+}
+
+squared_error(xs: int[], centre: float, i: int, acc: float) -> float {
+    if i >= xs.length() {
+        acc
+    } else {
+        off = float(xs.get(i)) - centre
+        squared_error(xs, centre, i + 1, acc + off * off)
+    }
+}
+
+/// The spread as a fraction of the mean — the number to look at when deciding
+/// whether two results differ at all.
+///
+/// A mean of zero has no scale to be relative to, so it answers 0.
+relative_spread(xs: int[]) -> float {
+    centre = mean(xs)
+
+    if centre <= 0.0 {
+        0.0
+    } else {
+        spread(xs) / centre
+    }
+}
+
+/// The sample at `frac` of the way through the sorted list — `percentile(xs,
+/// 0.95)` is the slow tail. `frac` outside 0..1 is clamped.
+///
+/// Nearest rank, not interpolated: with the five or ten samples a benchmark
+/// actually takes, an interpolated 95th percentile is arithmetic performed on
+/// two numbers that were never measured together.
+percentile(xs: int[], frac: float) -> int {
+    n = xs.length()
+
+    if n == 0 {
+        0
+    } else {
+        at = int(frac * float(n - 1) + 0.5)
+        xs.sort().get(clamp(at, 0, n - 1))
+    }
+}
+
+clamp(v: int, low: int, high: int) -> int {
+    if v < low {
+        low
+    } else if v > high {
+        high
+    } else {
+        v
+    }
+}

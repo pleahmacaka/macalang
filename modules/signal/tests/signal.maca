@@ -1,0 +1,465 @@
+// What signal/store and signal/dom promise, run.
+//
+// The claims worth testing here are mostly about what does *not* happen: a
+// write of the value a key already had tells nobody, a computed whose inputs
+// stood still does not recompute, and a patch names only the nodes that moved.
+// Each is asserted by counting something the store exposes — a version, a
+// pending list, a patch — rather than by watching a callback fire, because a
+// pull-model store has no callbacks to watch.
+
+import { store, set, set_num, get, value, has, keys } from signal/store
+import { version, num, computed, is_computed, deps_of } from signal/store
+import { inputs, stale, next_stale, refresh } from signal/store
+import { changed, touched, clear_changed } from signal/store
+import { watch, unwatch, watching, pending, ack } from signal/store
+import { text_node, class_node, value_input, selector } from signal/dom
+import { patch, describe, describe_all, patch_script } from signal/dom
+import { runtime, runtime_script, static_note } from signal/dom
+
+// The compute functions the tests wire up. Each is a named top-level function
+// rather than a lambda: a higher-order parameter has no type to hand down, so
+// a lambda passed to `refresh` must annotate its own parameter, and a name
+// reads better than `(vs: str[]) => …` repeated in a dozen tests.
+
+say_count(vs: str[]) -> str => "clicked {vs.get(0)} times"
+
+plus_one(vs: str[]) -> str => str(int(vs.get(0)) + 1)
+
+doubled(vs: str[]) -> str => str(int(vs.get(0)) * 2)
+
+summed(vs: str[]) -> str => str(int(vs.get(0)) + int(vs.get(1)))
+
+fixed(vs: str[]) -> str => "always the same"
+
+// ---- atoms ----------------------------------------------------------------
+
+test_a_value_reads_back_as_it_was_written() {
+    s = store().set("name", "ada")
+
+    assert_eq(s.get("name"), "ada", "the value written")
+    assert(s.has("name"), "and the key is present")
+}
+
+test_a_key_that_was_never_written_answers_calmly() {
+    s = store().set("other", "x")
+
+    assert_eq(s.get("missing"), "", "reads as empty")
+    assert(!s.has("missing"), "is not present")
+    assert_eq(str(s.version("missing")), "0", "has never changed")
+    assert(!s.stale("missing"), "and is not stale, being no computed")
+}
+
+test_value_gives_a_fallback_where_get_gives_empty() {
+    s = store().set("set-to-empty", "")
+
+    assert_eq(s.value("absent", "dflt"), "dflt", "absent takes the fallback")
+    assert_eq(s.value("set-to-empty", "dflt"), "", "a real empty does not")
+}
+
+test_a_number_survives_the_round_trip() {
+    s = store().set_num("zero", 0).set_num("below", -12)
+
+    assert_eq(str(s.num("zero", 99)), "0", "zero is a value, not an absence")
+    assert_eq(str(s.num("below", 99)), "-12", "and so is a negative one")
+}
+
+test_num_falls_back_only_when_the_key_is_absent() {
+    s = store().set("text", "not a number")
+
+    assert_eq(str(s.num("nothing", 7)), "7", "absent takes the fallback")
+    assert_eq(str(s.num("text", 7)), "0", "unparseable reads as 0, like int()")
+}
+
+test_keys_lists_atoms_and_computeds_alike() {
+    s = store().set("a", "1").computed("b", ["a"]).refresh("b", plus_one)
+
+    assert_eq(s.keys().join(","), "a,b", "both, and only once each")
+}
+
+// ---- what counts as a change ----------------------------------------------
+
+test_a_write_of_the_same_value_tells_nobody() {
+    s = store().set("count", "1").clear_changed()
+    s = s.set("count", "1")
+
+    assert_eq(s.changed().join(","), "", "nothing queued")
+    assert_eq(str(s.version("count")), "1", "and no version bump")
+}
+
+test_a_write_that_changes_the_value_bumps_the_version() {
+    s = store().set("count", "1")
+
+    assert_eq(str(s.version("count")), "1", "first write is a change")
+    s = s.set("count", "2")
+    assert_eq(str(s.version("count")), "2", "so is the second")
+}
+
+// Writing "" over a key that was never set is a change: the key goes from
+// absent to present, and a page binding it needs to hear about that even
+// though `get` answered "" both times.
+test_writing_empty_over_an_absent_key_is_a_change() {
+    s = store().set("note", "")
+
+    assert(s.touched("note"), "the key changed")
+    assert_eq(str(s.version("note")), "1", "and its version moved")
+}
+
+test_the_changed_list_holds_each_key_once() {
+    s = store().set("a", "1").set("b", "2").set("a", "3").set("a", "4")
+
+    assert_eq(s.changed().join(","), "a,b", "in the order they first changed")
+}
+
+test_clearing_the_queue_leaves_the_values_alone() {
+    s = store().set("a", "1").clear_changed()
+
+    assert_eq(s.changed().join(","), "", "the queue is empty")
+    assert_eq(s.get("a"), "1", "the value is not")
+    assert_eq(str(s.version("a")), "1", "and neither is the version")
+}
+
+test_changed_keys_are_bookkept_across_several_clears() {
+    s = store().set("a", "1")
+    assert_eq(s.changed().join(","), "a", "first round")
+
+    s = s.clear_changed().set("b", "2")
+    assert_eq(s.changed().join(","), "b", "second round forgets the first")
+
+    s = s.clear_changed().set("b", "2")
+    assert_eq(s.changed().join(","), "", "third round: same value, no change")
+
+    s = s.set("a", "9").set("b", "8")
+    assert_eq(s.changed().join(","), "a,b", "fourth round picks up from empty")
+}
+
+// ---- computed values ------------------------------------------------------
+
+test_a_computed_is_stale_the_moment_it_is_declared() {
+    s = store().set("a", "1").computed("b", ["a"])
+
+    assert(s.is_computed("b"), "it is a computed")
+    assert(s.stale("b"), "and has never been computed")
+    assert_eq(s.next_stale(), "b", "so it is the work waiting")
+}
+
+test_an_atom_is_never_stale() {
+    s = store().set("a", "1")
+
+    assert(!s.stale("a"), "an atom holds its own value")
+    assert_eq(s.next_stale(), "", "so there is nothing to recompute")
+}
+
+test_a_computed_recomputes_when_its_dependency_changes() {
+    s = store().set_num("count", 0).computed("label", ["count"])
+    s = s.refresh("label", say_count)
+    assert_eq(s.get("label"), "clicked 0 times", "computed once")
+
+    s = s.set_num("count", 1)
+    assert(s.stale("label"), "the dependency moved")
+    s = s.refresh("label", say_count)
+    assert_eq(s.get("label"), "clicked 1 times", "and it followed")
+}
+
+test_a_computed_does_not_recompute_when_nothing_changed() {
+    s = store().set_num("count", 0).computed("label", ["count"])
+    s = s.refresh("label", say_count)
+    settled = s.version("label")
+
+    s = s.refresh("label", say_count).refresh("label", say_count)
+
+    assert(!s.stale("label"), "still settled")
+    assert_eq(str(s.version("label")), str(settled), "and never rewritten")
+}
+
+// A write to a dependency that leaves its value alone is not a change, so
+// nothing downstream of it goes stale. This is the whole reason `set` compares
+// before it writes.
+test_an_unchanged_dependency_leaves_its_computed_settled() {
+    s = store().set_num("count", 3).computed("label", ["count"])
+    s = s.refresh("label", say_count)
+
+    s = s.set_num("count", 3)
+
+    assert(!s.stale("label"), "the dependency did not really change")
+}
+
+test_a_computed_that_lands_on_its_old_value_notifies_nobody() {
+    s = store().set("a", "1").computed("same", ["a"])
+    s = s.refresh("same", fixed).clear_changed()
+
+    s = s.set("a", "2")
+    s = s.refresh("same", fixed)
+
+    assert(!s.stale("same"), "it is up to date")
+    assert_eq(s.changed().join(","), "a", "but only `a` is worth patching")
+}
+
+test_inputs_are_the_declared_dependencies_in_declared_order() {
+    s = store().set("x", "1").set("y", "2")
+    s = s.computed("pair", ["y", "x"])
+
+    assert_eq(s.deps_of("pair").join(","), "y,x", "as declared")
+    assert_eq(s.inputs("pair").join(","), "2,1", "and their values, in step")
+}
+
+test_a_computed_with_no_dependencies_settles_after_one_refresh() {
+    // A bare `[]` is an `int[]`; the annotation is what makes it a key list.
+    none: str[] = []
+    s = store().computed("banner", none)
+
+    assert(s.stale("banner"), "stale before it has ever run")
+    s = s.refresh("banner", fixed)
+    assert(!s.stale("banner"), "and settled after")
+    assert_eq(s.get("banner"), "always the same", "with its value")
+}
+
+test_redeclaring_a_computed_makes_it_stale_again() {
+    s = store().set("a", "1").set("b", "2").computed("c", ["a"])
+    s = s.refresh("c", plus_one)
+
+    s = s.computed("c", ["b"])
+
+    assert(s.stale("c"), "new wiring, so it must run again")
+    assert_eq(s.deps_of("c").join(","), "b", "against the new dependency")
+}
+
+test_a_chain_settles_in_one_pass_down_declaration_order() {
+    s = store().set_num("a", 1)
+    s = s.computed("b", ["a"]).computed("c", ["b"])
+    s = s.refresh("b", plus_one).refresh("c", doubled)
+
+    assert_eq(s.get("c"), "4", "c saw b, not a")
+    assert_eq(s.next_stale(), "", "and one pass was enough")
+
+    s = s.set_num("a", 4)
+    s = s.refresh("b", plus_one).refresh("c", doubled)
+
+    assert_eq(s.get("c"), "10", "the change ran the whole way down")
+}
+
+// b and c both read a, and d reads both. A push-based store would recompute d
+// once for b and again for c, and the second value would be the only correct
+// one — the first is d built from a half-updated graph.
+test_a_diamond_recomputes_its_tip_once() {
+    s = store().set_num("a", 1)
+    s = s.computed("b", ["a"]).computed("c", ["a"]).computed("d", ["b", "c"])
+    s = s.refresh("b", plus_one).refresh("c", doubled).refresh("d", summed)
+    assert_eq(s.get("d"), "4", "2 + 2 with a at 1")
+
+    settled = s.version("d")
+    s = s.set_num("a", 2)
+
+    // `refresh` is a no-op unless the key is stale, so asking first counts
+    // exactly the recomputations that happen. The fourth question is the one
+    // that matters: after d has run, it must not be stale again.
+    runs = 0
+
+    if s.stale("b") {
+        runs = runs + 1
+    }
+    s = s.refresh("b", plus_one)
+
+    if s.stale("c") {
+        runs = runs + 1
+    }
+    s = s.refresh("c", doubled)
+
+    if s.stale("d") {
+        runs = runs + 1
+    }
+    s = s.refresh("d", summed)
+
+    if s.stale("d") {
+        runs = runs + 1
+    }
+
+    assert_eq(str(runs), "3", "three recomputations, not four")
+    assert_eq(s.get("d"), "7", "3 + 4 with a at 2")
+    assert_eq(str(s.version("d")), str(settled + 1), "d changed exactly once")
+}
+
+test_next_stale_walks_declaration_order_and_then_stops() {
+    s = store().set_num("a", 1)
+    s = s.computed("b", ["a"]).computed("c", ["b"])
+
+    assert_eq(s.next_stale(), "b", "b is declared first")
+    s = s.refresh("b", plus_one)
+    assert_eq(s.next_stale(), "c", "then c, now that b has moved")
+    s = s.refresh("c", doubled)
+    assert_eq(s.next_stale(), "", "then nothing")
+}
+
+// ---- named subscribers ----------------------------------------------------
+
+test_a_new_subscriber_starts_up_to_date() {
+    s = store().set("a", "1")
+    s = s.watch("nav", ["a"])
+
+    assert(s.watching("nav"), "it is subscribed")
+    assert_eq(s.pending("nav").join(","), "", "and has missed nothing")
+}
+
+test_a_subscriber_pends_only_the_keys_it_watches() {
+    s = store().set("a", "1").set("b", "2").watch("nav", ["a"])
+
+    s = s.set("b", "9")
+    assert_eq(s.pending("nav").join(","), "", "b is not its business")
+
+    s = s.set("a", "9")
+    assert_eq(s.pending("nav").join(","), "a", "a is")
+}
+
+test_acking_clears_what_a_subscriber_is_behind_on() {
+    s = store().set("a", "1").watch("nav", ["a"]).set("a", "2")
+    assert_eq(s.pending("nav").join(","), "a", "behind by one change")
+
+    s = s.ack("nav")
+    assert_eq(s.pending("nav").join(","), "", "caught up")
+
+    s = s.set("a", "3")
+    assert_eq(s.pending("nav").join(","), "a", "and behind again after")
+}
+
+test_two_subscribers_keep_their_own_idea_of_now() {
+    s = store().set("a", "1")
+    s = s.watch("head", ["a"]).watch("foot", ["a"])
+    s = s.set("a", "2").ack("head")
+
+    assert_eq(s.pending("head").join(","), "", "head has looked")
+    assert_eq(s.pending("foot").join(","), "a", "foot has not")
+}
+
+// A subscriber is independent of the render queue: clearing one must not
+// silently answer for the other, which is the failure this design exists to
+// avoid.
+test_clearing_the_render_queue_leaves_subscribers_alone() {
+    s = store().set("a", "1").watch("nav", ["a"])
+    s = s.set("a", "2").clear_changed()
+
+    assert_eq(s.changed().join(","), "", "the queue is empty")
+    assert_eq(s.pending("nav").join(","), "a", "the subscriber is not")
+}
+
+test_unsubscribing_leaves_nothing_watched_or_pending() {
+    s = store().set("a", "1").watch("nav", ["a"]).set("a", "2")
+    assert_eq(s.pending("nav").join(","), "a", "pending while subscribed")
+
+    s = s.unwatch("nav")
+
+    assert(!s.watching("nav"), "gone")
+    assert_eq(s.pending("nav").join(","), "", "and pending nothing")
+}
+
+// Re-subscribing starts up to date rather than replaying what happened while
+// the subscriber was away — a listener that has just been added has no claim
+// on changes made before it existed.
+test_resubscribing_does_not_replay_what_it_missed() {
+    s = store().set("a", "1").watch("nav", ["a"])
+    s = s.unwatch("nav").set("a", "2").watch("nav", ["a"])
+
+    assert_eq(s.pending("nav").join(","), "", "nothing to catch up on")
+}
+
+test_an_unknown_subscriber_answers_calmly() {
+    s = store().set("a", "1")
+
+    assert(!s.watching("ghost"), "not subscribed")
+    assert_eq(s.pending("ghost").join(","), "", "pends nothing")
+    assert_eq(s.ack("ghost").get("a"), "1", "and acking it changes nothing")
+}
+
+test_a_subscriber_on_a_key_that_was_never_set_pends_nothing() {
+    s = store().watch("nav", ["never"])
+
+    assert_eq(s.pending("nav").join(","), "", "no value, so no change")
+    s = s.set("never", "now")
+    assert_eq(s.pending("nav").join(","), "never", "until there is one")
+}
+
+// ---- the markup half ------------------------------------------------------
+
+test_a_bound_node_carries_the_key_it_shows() {
+    s = store().set("count", "7")
+
+    assert_eq(text_node(s, "span", "count"),
+        "<span data-signal=\"count\">7</span>", "marked and filled")
+}
+
+test_a_bound_value_is_escaped() {
+    s = store().set("who", "<script>&")
+
+    assert(text_node(s, "p", "who").contains("&lt;script&gt;&amp;"),
+        "state can come from input, so a bound value is escaped")
+}
+
+test_an_attribute_binding_says_what_it_drives() {
+    s = store().set("theme", "card open")
+
+    node = class_node(s, "div", "theme", "body")
+
+    assert(node.contains("data-signal=\"theme\""), "bound to the key")
+    assert(node.contains("data-signal-as=\"class\""), "driving `class`")
+    assert(node.contains("class=\"card open\""), "with the current value")
+}
+
+test_an_input_binds_its_value() {
+    s = store().set("name", "ada")
+    node = value_input(s, "name")
+
+    assert(node.contains("data-signal-as=\"value\""), "driving the property")
+    assert(node.contains("value=\"ada\""), "with the current value")
+}
+
+test_a_selector_finds_every_node_bound_to_a_key() {
+    assert_eq(selector("count"), "[data-signal=\"count\"]", "one attribute")
+}
+
+test_a_patch_names_one_op_per_changed_key() {
+    s = store().set_num("count", 0).computed("label", ["count"])
+    s = s.refresh("label", say_count).clear_changed()
+
+    s = s.set_num("count", 1).refresh("label", say_count)
+    ops = patch(s)
+
+    assert_eq(str(ops.length()), "2", "the atom and what derives from it")
+    assert_eq(ops.get(0).key, "count", "in the order they changed")
+    assert_eq(ops.get(0).value, "1", "carrying the new value")
+    assert_eq(ops.get(1).selector, "[data-signal=\"label\"]", "and a selector")
+}
+
+test_a_patch_is_empty_when_nothing_changed() {
+    s = store().set("a", "1").clear_changed()
+
+    assert_eq(str(patch(s).length()), "0", "no ops")
+    assert_eq(patch_script(s), "", "and no script to run")
+}
+
+test_a_patch_line_reads_as_key_selector_value() {
+    s = store().set("count", "1")
+
+    assert_eq(describe(patch(s).get(0)),
+        "count [data-signal=\"count\"] <- \"1\"", "one line per node")
+    assert_eq(str(describe_all(patch(s)).length()), "1", "one line per op")
+}
+
+test_the_patch_script_escapes_its_values() {
+    s = store().set("msg", "say \"hi\"")
+
+    assert(patch_script(s).contains("\\\"hi\\\""),
+        "a quote in a value must not end the JSON string")
+}
+
+test_the_runtime_updates_only_the_nodes_bound_to_a_key() {
+    js = runtime()
+
+    assert(js.contains("querySelectorAll('[data-signal=\""),
+        "it looks the changed key up rather than walking the page")
+    assert(js.contains("data-signal-as"), "and reads what the node drives")
+    assert(runtime_script().starts_with("<script>"), "wrapped for a page")
+}
+
+test_a_native_page_says_it_is_a_snapshot() {
+    assert(static_note().starts_with("<!--"), "an HTML comment")
+    assert(static_note().contains("no DOM to patch"),
+        "so a reader is not left clicking something that cannot respond")
+}
