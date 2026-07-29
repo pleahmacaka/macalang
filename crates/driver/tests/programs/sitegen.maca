@@ -329,8 +329,8 @@ all_anchored(page: str, names: str[], i: int) -> bool {
 }
 
 // A module card carries the first sentence of the blurb. It came out empty for
-// any module whose header had no blank line, because `str_find_index` answers
-// -1 and `str_take` clamps that to zero.
+// any module whose header had no blank line, because `find_index` answers
+// -1 and `take` clamps that to zero.
 test_module_cards_say_what_the_module_is() {
     index = read_file(join(api_dir(), "index.html"))
 
@@ -413,7 +413,7 @@ test_markup_in_a_doc_comment_is_escaped() {
 }
 
 // The blurb here is one paragraph with no blank line, which is what made
-// `str_find_index` answer -1 and `str_take` clamp it to an empty card.
+// `find_index` answer -1 and `take` clamp it to an empty card.
 test_a_blurb_without_a_blank_line_still_summarises() {
     index = read_file(join(fixture_dir(), "index.html"))
 
@@ -446,7 +446,7 @@ ids(parts: str[], i: int, acc: str[]) -> str[] {
 
 // The names `std/README.md`'s table row for this module puts in backticks.
 advertised(module: str) -> str =>
-    str_unique(backticked(row_for(module).split("`"), 1, []))
+    unique(backticked(row_for(module).split("`"), 1, []))
         .sort().join(" ")
 
 backticked(parts: str[], i: int, acc: str[]) -> str[] {

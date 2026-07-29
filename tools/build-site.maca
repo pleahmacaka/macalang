@@ -45,8 +45,8 @@ build_handbook() -> bool {
 }
 
 // The front page replaces the landing pages tomo just wrote — `/index.html`
-// and `<lang>/home.html`, the same three addresses — so it has to run after
-// the handbook, and this is the only place either of them is invoked.
+// and `<lang>/home.html`, the same addresses — so it has to run after the
+// handbook, and this is the only place either of them is invoked.
 //
 // Tomo builds other people's books, where a Markdown `home.md` landing is the
 // right thing. This book's front page is a designed page in the UI syntax, so
@@ -58,13 +58,32 @@ build_front_page() -> bool {
 }
 
 // Tomo writes a landing for every language whether or not the book has a
-// `home.md` — without one it writes the picker — so these three paths always
-// exist by the time the front page runs. Removing them first means a front
-// page that fails to build leaves nothing behind to be mistaken for it,
-// rather than silently publishing tomo's picker under the site's own address.
+// `home.md` — without one it writes the picker — so these paths always exist by
+// the time the front page runs. Removing them first means a front page that
+// fails to build leaves nothing behind to be mistaken for it, rather than
+// silently publishing tomo's picker under the site's own address.
+//
+// Derived from the same `languages` tomo builds from, because a written-down
+// copy of that list is a list that drifts: a third language would have added a
+// landing this stopped clearing, and the failure is a published picker rather
+// than an error.
 landing_pages() -> str[] =>
-    ["apps/tomo/site/index.html", "apps/tomo/site/en/home.html",
-     "apps/tomo/site/ko/home.html"]
+    ["apps/tomo/site/index.html"]
+        ++ book_languages().map(c => "apps/tomo/site/" ++ c ++ "/home.html")
+
+// The book's languages, in order; the first is the default, which is the one
+// `/index.html` is written in.
+book_languages() -> str[] {
+    listed = between(read_file("apps/tomo/book.toml"), "languages = [", "]")
+    codes = listed.split(",").map(c => c.trim().replace("\"", ""))
+        .filter(c => c != "")
+
+    if codes.length() == 0 {
+        fail "apps/tomo/book.toml declares no languages"
+    } else {
+        codes
+    }
+}
 
 drop_landings(paths: str[], i: int) -> bool {
     if i >= paths.length() {
@@ -128,17 +147,19 @@ check(out: str) -> int {
     info("==> checking")
 
     require_pages(out)
-    chapters = find(join(out, "en"), ".html").length()
+    default_lang = book_languages().get(0)
+    chapters = find(join(out, default_lang), ".html").length()
 
     if chapters < 20 {
-        fail "only {chapters} English pages"
+        fail "only {chapters} pages in {default_lang}"
     }
 
     require_root_links(out)
     require_embedded_wasm(out)
     require_live_css(out)
 
-    info("site ok: {chapters} English pages, {tree_size(out) / 1024} KiB total")
+    info("site ok: {chapters} {default_lang} pages,"
+         ++ " {tree_size(out) / 1024} KiB total")
     0
 }
 
@@ -155,7 +176,7 @@ check(out: str) -> int {
 // meant to produce a rule.
 require_live_css(out: str) -> bool {
     pages = find(out, ".html")
-    dead = str_unique(dead_in_pages(pages, 0, []))
+    dead = unique(dead_in_pages(pages, 0, []))
 
     if dead.length() > 0 {
         named = dead.join(", ")
@@ -242,12 +263,19 @@ escape_chars(cs: str[], i: int, out: str) -> str {
     }
 }
 
+// The same list the emitter escapes, not its complement.
+//
+// This asked "is it *not* alphanumeric, `-` or `_`" — the opposite rule, and
+// `is_alpha` is byte-based, so every byte of a non-ASCII class name came out
+// escaped here and unescaped in the stylesheet. The selector then matched
+// nothing and the whole build failed with a false "classes with no CSS rule".
+// The source of truth is `css_escape` in `crates/backend_js/src/lib.rs`.
 needs_escape(c: str) -> bool =>
-    !c.is_alpha() && !c.is_ascii_digit() && c != "-" && c != "_"
+    "/.:[]()," .contains(c) || "#%'\"!$&*+;<=>?@^`\{|\}~".contains(c)
 
 // Every distinct class named by a `class="…"` attribute on an opening tag.
 classes_in(src: str) -> str[] =>
-    str_unique(str_flatten(attr_values(without_scripts(src))
+    unique(flatten(attr_values(without_scripts(src))
                                .map(v => v.split(" "))))
 
 // Read attributes from tags, not from running text. A handbook chapter shows

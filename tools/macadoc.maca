@@ -411,7 +411,7 @@ paired(parts: str[], sep: str) -> str[] {
         parts
     } else {
         n = parts.length()
-        str_take(parts, n - 2)
+        take(parts, n - 2)
             .push(parts.get(n - 2) ++ sep ++ parts.get(n - 1))
     }
 }
@@ -499,14 +499,14 @@ counted(n: int) -> str {
 
 // A module's card gets one line: the first sentence of the first paragraph.
 //
-// `str_find_index` answers -1 when no line is blank, and `str_take(ls, -1)`
+// `find_index` answers -1 when no line is blank, and `take(ls, -1)`
 // clamps to zero — so a blurb written as one paragraph produced an empty card
 // rather than its first sentence. The std modules all happen to have a blank
 // line; nothing made them.
 summary(ls: str[]) -> str {
-    blank = str_find_index(ls, l => l.trim() == "")
+    blank = find_index(ls, l => l.trim() == "")
     end = if blank < 0 { ls.length() } else { blank }
-    para = str_take(ls, end).join(" ")
+    para = take(ls, end).join(" ")
     at = para.index_of(". ")
 
     if at < 0 {
@@ -572,7 +572,7 @@ main(args: str[]) -> int {
         err("usage: macadoc <out-dir> <file.maca>…")
         1
     } else {
-        generate(args.get(0), str_drop(args, 1))
+        generate(args.get(0), drop(args, 1))
     }
 }
 

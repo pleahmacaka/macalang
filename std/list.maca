@@ -8,14 +8,19 @@
 //
 //   import std/list
 //   import { any_of, chunk } from std/list
+//
+// The element type is a variable, so one definition serves `int[]`, `str[]` and
+// anything else — the backend emits a copy per element type it is actually
+// called with. `zip_add` and `range` are the two that stay `int`, because they
+// do arithmetic rather than moving elements around.
 
 /// Does any element satisfy `pred`? Short of a `break`, this is the readable
 /// way to ask — `.filter(pred).length() > 0` walks the whole list and
 /// allocates.
-any_of(xs: int[], pred) -> bool =>
+any_of(xs: a[], pred) -> bool =>
     scan_any(xs, 0, pred)
 
-scan_any(xs: int[], i: int, pred) -> bool {
+scan_any(xs: a[], i: int, pred) -> bool {
     if i >= xs.length() {
         false
     } else if pred(xs.get(i)) {
@@ -27,10 +32,10 @@ scan_any(xs: int[], i: int, pred) -> bool {
 
 /// Does every element satisfy `pred`? An empty list passes, which is what
 /// makes `all_of(rules, ok)` behave when there are no rules yet.
-all_of(xs: int[], pred) -> bool =>
+all_of(xs: a[], pred) -> bool =>
     scan_all(xs, 0, pred)
 
-scan_all(xs: int[], i: int, pred) -> bool {
+scan_all(xs: a[], i: int, pred) -> bool {
     if i >= xs.length() {
         true
     } else if !pred(xs.get(i)) {
@@ -42,10 +47,10 @@ scan_all(xs: int[], i: int, pred) -> bool {
 
 /// The index of the first element satisfying `pred`, or -1. `index_of`
 /// matches a value; this matches a question.
-find_index(xs: int[], pred) -> int =>
+find_index(xs: a[], pred) -> int =>
     scan_find(xs, 0, pred)
 
-scan_find(xs: int[], i: int, pred) -> int {
+scan_find(xs: a[], i: int, pred) -> int {
     if i >= xs.length() {
         -1
     } else if pred(xs.get(i)) {
@@ -56,17 +61,17 @@ scan_find(xs: int[], i: int, pred) -> int {
 }
 
 /// How many elements satisfy `pred`.
-count_if(xs: int[], pred) -> int =>
+count_if(xs: a[], pred) -> int =>
     xs.filter(pred).length()
 
 /// The first `n` elements. `n` clamps rather than failing, so `take(xs, 100)`
 /// on a short list is the short list.
-take(xs: int[], n: int) -> int[] =>
+take(xs: a[], n: int) -> a[] =>
     xs.slice(0, clamp(n, xs.length()))
 
 /// Everything after the first `n` elements — the other half of `take`, and
 /// clamping the same way.
-drop(xs: int[], n: int) -> int[] =>
+drop(xs: a[], n: int) -> a[] =>
     xs.slice(clamp(n, xs.length()), xs.length())
 
 // An index brought into `0..len`, so a caller's arithmetic can't walk off
@@ -82,7 +87,7 @@ clamp(n: int, len: int) -> int {
 }
 
 /// Fixed-size groups, the last one short if the length doesn't divide.
-chunk(xs: int[], size: int) -> int[][] {
+chunk(xs: a[], size: int) -> a[][] {
     if size <= 0 {
         []
     } else {
@@ -90,7 +95,7 @@ chunk(xs: int[], size: int) -> int[][] {
     }
 }
 
-chunk_from(xs: int[], at: int, size: int, acc: int[][]) -> int[][] {
+chunk_from(xs: a[], at: int, size: int, acc: a[][]) -> a[][] {
     if at >= xs.length() {
         acc
     } else {
@@ -102,22 +107,22 @@ chunk_from(xs: int[], at: int, size: int, acc: int[][]) -> int[][] {
 /// One list of the pairwise sums, stopping at the shorter input. The language
 /// has no tuple, so `zip` proper needs a record; this is the arithmetic case,
 /// which is the one that comes up.
-zip_add(a: int[], b: int[]) -> int[] =>
-    zip_add_from(a, b, 0, [])
+zip_add(xs: int[], ys: int[]) -> int[] =>
+    zip_add_from(xs, ys, 0, [])
 
-zip_add_from(a: int[], b: int[], i: int, acc: int[]) -> int[] {
-    if i >= a.length() || i >= b.length() {
+zip_add_from(xs: int[], ys: int[], i: int, acc: int[]) -> int[] {
+    if i >= xs.length() || i >= ys.length() {
         acc
     } else {
-        zip_add_from(a, b, i + 1, acc.push(a.get(i) + b.get(i)))
+        zip_add_from(xs, ys, i + 1, acc.push(xs.get(i) + ys.get(i)))
     }
 }
 
 /// Flatten one level.
-flatten(xss: int[][]) -> int[] =>
+flatten(xss: a[][]) -> a[] =>
     flatten_from(xss, 0, [])
 
-flatten_from(xss: int[][], i: int, acc: int[]) -> int[] {
+flatten_from(xss: a[][], i: int, acc: a[]) -> a[] {
     if i >= xss.length() {
         acc
     } else {
@@ -128,10 +133,10 @@ flatten_from(xss: int[][], i: int, acc: int[]) -> int[] {
 /// Values in first-seen order, duplicates dropped. Order is preserved on
 /// purpose: sorting first would be faster and would also throw away the one
 /// property that makes the result useful for output.
-unique(xs: int[]) -> int[] =>
+unique(xs: a[]) -> a[] =>
     unique_from(xs, 0, [])
 
-unique_from(xs: int[], i: int, acc: int[]) -> int[] {
+unique_from(xs: a[], i: int, acc: a[]) -> a[] {
     if i >= xs.length() {
         acc
     } else if acc.contains(xs.get(i)) {
@@ -159,55 +164,3 @@ range_from(at: int, hi: int, acc: int[]) -> int[] {
     }
 }
 
-// ---- the same, for `str[]` ------------------------------------------------
-//
-// Maca's generics don't reach across the list *methods* a body calls, so a
-// second copy is the honest cost of `xs.get(i)` returning the element type.
-
-/// `unique` for a `str[]`.
-str_unique(xs: str[]) -> str[] =>
-    str_unique_from(xs, 0, [])
-
-str_unique_from(xs: str[], i: int, acc: str[]) -> str[] {
-    if i >= xs.length() {
-        acc
-    } else if acc.contains(xs.get(i)) {
-        str_unique_from(xs, i + 1, acc)
-    } else {
-        str_unique_from(xs, i + 1, acc.push(xs.get(i)))
-    }
-}
-
-/// `take` for a `str[]`.
-str_take(xs: str[], n: int) -> str[] =>
-    xs.slice(0, clamp(n, xs.length()))
-
-/// `drop` for a `str[]`.
-str_drop(xs: str[], n: int) -> str[] =>
-    xs.slice(clamp(n, xs.length()), xs.length())
-
-/// `find_index` for a `str[]`.
-str_find_index(xs: str[], pred) -> int =>
-    str_scan_find(xs, 0, pred)
-
-str_scan_find(xs: str[], i: int, pred) -> int {
-    if i >= xs.length() {
-        -1
-    } else if pred(xs.get(i)) {
-        i
-    } else {
-        str_scan_find(xs, i + 1, pred)
-    }
-}
-
-/// `flatten` for a `str[][]`.
-str_flatten(xss: str[][]) -> str[] =>
-    str_flatten_from(xss, 0, [])
-
-str_flatten_from(xss: str[][], i: int, acc: str[]) -> str[] {
-    if i >= xss.length() {
-        acc
-    } else {
-        str_flatten_from(xss, i + 1, acc ++ xss.get(i))
-    }
-}

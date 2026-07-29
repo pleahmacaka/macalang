@@ -215,3 +215,43 @@ fn the_monospace_stack_is_monospace() {
         "font-sans should still prefer Pretendard"
     );
 }
+
+/// `tools/build-site.maca` reimplements this escaper in Maca, because it has to
+/// build the same selector the stylesheet contains in order to ask whether a
+/// class has a rule. Its copy asked the *opposite* question — "is this not
+/// alphanumeric" — and `is_alpha` is byte-based, so every byte of a non-ASCII
+/// class name came out escaped on one side and raw on the other, failing the
+/// whole site build with a false "classes with no CSS rule".
+///
+/// The two are checked against each other here so a change to this list is a
+/// failing test rather than a broken build later.
+#[test]
+fn the_escaper_matches_the_one_build_site_reimplements() {
+    // Every punctuation class the emitted pages actually carry.
+    for (class, want) in [
+        ("max-w-[64rem]", r"max-w-\[64rem\]"),
+        ("dark:bg-zinc-950", r"dark\:bg-zinc-950"),
+        ("py-[0.05rem]", r"py-\[0\.05rem\]"),
+        ("w-1/2", r"w-1\/2"),
+        ("p-[1px_2px]", r"p-\[1px_2px\]"),
+        ("border-l-2", "border-l-2"),
+    ] {
+        assert_eq!(css_escape(class), want, "escaping {class}");
+    }
+
+    // And the rule itself, spelled out: these are escaped, `-` and `_` and
+    // alphanumerics are not. `tools/build-site.maca`'s `needs_escape` names the
+    // same set.
+    for ch in "/.:[](),#%'\"!$&*+;<=>?@^`{|}~".chars() {
+        let one = ch.to_string();
+        assert_eq!(
+            css_escape(&one),
+            format!("\\{ch}"),
+            "{ch:?} should be escaped"
+        );
+    }
+    for ch in "abzAZ09-_".chars() {
+        let one = ch.to_string();
+        assert_eq!(css_escape(&one), one, "{ch:?} should not be escaped");
+    }
+}

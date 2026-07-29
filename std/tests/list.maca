@@ -61,11 +61,19 @@ test_range_is_inclusive_and_can_be_empty() {
     assert_eq(show(range(3, 3)), "3", "a single value")
 }
 
-test_the_str_twins_behave_the_same() {
+// The same functions the tests above call on `int[]`, on a `str[]`. There used
+// to be a hand-written `str_` copy of each; the element type is a variable now,
+// and this is what says one definition really does serve both.
+test_one_definition_serves_every_element_type() {
     words = ["b", "a", "b", "c"]
-    assert_eq(str_unique(words).join(","), "b,a,c", "first-seen order")
-    assert_eq(str_take(words, 2).join(","), "b,a", "the first two")
-    assert_eq(str_drop(words, 3).join(","), "c", "past the first three")
-    assert_eq(str(str_find_index(words, s => s == "c")), "3", "found at 3")
-    assert_eq(str_flatten([["a"], ["b", "c"]]).join(","), "a,b,c", "flattened")
+    assert_eq(unique(words).join(","), "b,a,c", "first-seen order")
+    assert_eq(take(words, 2).join(","), "b,a", "the first two")
+    assert_eq(drop(words, 3).join(","), "c", "past the first three")
+    assert_eq(str(find_index(words, s => s == "c")), "3", "found at 3")
+    assert_eq(flatten([["a"], ["b", "c"]]).join(","), "a,b,c", "flattened")
+    assert(any_of(words, s => s == "c"), "any_of over strings")
+    assert(!all_of(words, s => s == "b"), "all_of over strings")
+    assert_eq(str(count_if(words, s => s == "b")), "2", "count_if over strings")
+    groups: str[][] = chunk(words, 3)
+    assert_eq(str(groups.length()), "2", "chunk over strings")
 }

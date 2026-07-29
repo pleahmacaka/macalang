@@ -54,6 +54,12 @@ Feature = {
 // the code, which is code.
 Copy = {
     lang:      str
+    // The language's own name for itself, and its `og:locale`. Fields rather
+    // than a `lang == "ko"` ladder somewhere else: a third language is then a
+    // missing-field error on this record, which is where the translator is
+    // already looking, instead of a page quietly labelled English.
+    endonym:   str
+    locale:    str
     title:     str
     descr:     str
     nav_docs:  str
@@ -137,6 +143,8 @@ maca run main.maca"""
 english() -> Copy =>
     Copy {
         lang = "en",
+        endonym = "English",
+        locale = "en_US",
         title = "Maca — one typed language for programs and infrastructure",
         descr = "A statically typed, compiled language with no garbage"
             ++ " collector. The same source builds a native binary, a browser"
@@ -218,6 +226,8 @@ en_caveat(c: Caveat) -> str =>
 korean() -> Copy =>
     Copy {
         lang = "ko",
+        endonym = "한국어",
+        locale = "ko_KR",
         title = "Maca — 프로그램과 인프라를 위한 하나의 타입 있는 언어",
         descr = "정적 타입, 컴파일, 가비지 컬렉터 없음. 같은 소스가 네이티브"
             ++ " 바이너리도, 브라우저 UI도, 그것이 돌아갈 기계의 NixOS 모듈도"
@@ -333,7 +343,7 @@ page(c: Copy, up: str) -> str =>
                 meta(property="og:title", content=c.title)
                 meta(property="og:description", content=c.descr)
                 meta(property="og:type", content="website")
-                meta(property="og:locale", content=og_locale(c))
+                meta(property="og:locale", content=c.locale)
                 meta(name="twitter:card", content="summary")
                 link(rel="canonical", href=canonical(c, up))
                 alternates(up)
@@ -374,17 +384,6 @@ alternates(up: str) -> str =>
 
 alternate(o: Copy, up: str) -> str =>
     link(rel="alternate", hreflang=o.lang, href=canonical(o, up))
-
-// `og:locale` wants a full locale, not a bare language.
-og_locale(c: Copy) -> str {
-    if c.lang == "ko" {
-        "ko_KR"
-    } else {
-        "en_US"
-    }
-}
-
-
 
 wrap() -> str =>
     "max-w-[64rem] mx-auto px-6"
@@ -445,21 +444,13 @@ lang_switch(c: Copy, up: str) -> str =>
         class="flex items-center gap-2 text-[0.8rem]",
         copies().map(o => lang_link(c, up, o)).join(""))
 
+// A language is named in itself, in every language's switcher.
 lang_link(c: Copy, up: str, other: Copy) -> str {
     if other.lang == c.lang {
-        span(class="font-semibold", aria-current="page", native_name(other))
+        span(class="font-semibold", aria-current="page", other.endonym)
     } else {
         a(class=quiet_link(), href=up ++ other.lang ++ "/home.html",
-          lang=other.lang, native_name(other))
-    }
-}
-
-// A language is named in itself, in every language's switcher.
-native_name(o: Copy) -> str {
-    if o.lang == "ko" {
-        "한국어"
-    } else {
-        "English"
+          lang=other.lang, other.endonym)
     }
 }
 
