@@ -156,7 +156,15 @@ pub fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> 
             break;
         }
     }
-    if let Some(hit) = in_base(Path::new("."), &joined, &layout) {
+    // The working directory, but only when the importer has no project of its
+    // own. A file inside a project resolves against *that* project or not at
+    // all: building `projA/app.maca` from inside `projB` used to find projB's
+    // `modules/`, which is a build whose meaning depends on where it was
+    // started — and the language server, bounded by its workspace, could never
+    // agree with it.
+    if project_root(dir).is_none()
+        && let Some(hit) = in_base(Path::new("."), &joined, &layout)
+    {
         return Some(hit);
     }
     module_file(&dir.join(last))
@@ -203,7 +211,11 @@ pub fn import_target(im: &Import, importer: &Path) -> Option<PathBuf> {
 pub fn names_a_file(im: &Import) -> bool {
     match im {
         Import::Module(segs) => segs.len() > 1,
-        Import::Names { module, .. } => module.len() > 1,
+        // A selective import can only mean a local module — there is nothing to
+        // select from a builtin — so a single word is as much a promise as a
+        // slash path. `import { greet } from lib` with no `lib` used to resolve
+        // to nothing, silently, and the program failed at the linker instead.
+        Import::Names { .. } => true,
         _ => false,
     }
 }

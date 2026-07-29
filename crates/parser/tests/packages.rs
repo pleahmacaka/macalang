@@ -22,6 +22,10 @@ impl Project {
         Project(dir)
     }
 
+    fn path(&self) -> &Path {
+        &self.0
+    }
+
     fn write(&self, rel: &str, body: &str) -> PathBuf {
         let p = self.0.join(rel);
         std::fs::create_dir_all(p.parent().expect("a parent")).expect("mkdir");
@@ -152,7 +156,7 @@ fn an_entry_hands_on_only_the_names_it_imported() {
 
     let err = inlined(&main).expect_err("internal is not part of the package");
     assert!(
-        err.contains("'internal' is not defined in that module"),
+        err.contains("'internal'") && err.contains("neither defines"),
         "unexpected error: {err}"
     );
 }
@@ -180,5 +184,77 @@ fn handing_a_name_on_keeps_the_slice_narrow() {
     assert!(
         !src.contains("a name nothing asked for"),
         "pulled in the whole module: {src}"
+    );
+}
+
+/// A package built out of sub-packages is still one name to whoever imports it.
+/// Stopping at one hop meant `outer` could not offer what `inner` offered.
+#[test]
+fn a_name_is_handed_on_through_nested_packages() {
+    let p = Project::new("nested");
+    p.write("modules/deep/_init.maca", "deep_thing() -> int => 42\n");
+    p.write(
+        "modules/inner/_init.maca",
+        "import { deep_thing } from deep\n",
+    );
+    p.write(
+        "modules/outer/_init.maca",
+        "import { deep_thing } from inner\n",
+    );
+    let main = p.write(
+        "main.maca",
+        "import { deep_thing } from outer\n\nmain() -> int => deep_thing()\n",
+    );
+
+    let src = inlined(&main).expect("inlines");
+    assert!(src.contains("deep_thing() -> int"), "{src}");
+}
+
+/// Two imports offering the same name is a collision, not a race. Taking the
+/// first put two definitions in one translation unit and the C compiler
+/// reported a redefinition of a function the reader never wrote twice.
+#[test]
+fn a_name_two_imports_both_offer_is_refused() {
+    let p = Project::new("ambiguous");
+    p.write("modules/dup/one.maca", "who() -> str => \"one\"\n");
+    p.write("modules/dup/two.maca", "who() -> str => \"two\"\n");
+    p.write(
+        "modules/dup/_init.maca",
+        "import { who } from dup/one\nimport { who } from dup/two\n",
+    );
+    let main = p.write(
+        "main.maca",
+        "import { who } from dup\n\nmain() -> str => who()\n",
+    );
+
+    let err = inlined(&main).expect_err("ambiguous");
+    assert!(
+        err.contains("exactly one"),
+        "should say why, not just 'undefined': {err}"
+    );
+}
+
+/// A file inside a project resolves against *that* project or not at all.
+/// Falling back to the working directory let a build started from one project
+/// pick up another's packages — a build whose meaning depended on where it was
+/// run, and one the language server could never agree with.
+#[test]
+fn a_project_does_not_borrow_another_projects_packages() {
+    let a = Project::new("borrow-a");
+    let b = Project::new("borrow-b");
+    b.write("modules/lib/_init.maca", "greet() -> str => \"b's\"\n");
+    let app = a.write(
+        "app.maca",
+        "import { greet } from lib\n\nmain() -> str => greet()\n",
+    );
+
+    let here = std::env::current_dir().expect("cwd");
+    std::env::set_current_dir(b.path()).expect("cd");
+    let got = inlined(&app);
+    std::env::set_current_dir(here).expect("cd back");
+
+    assert!(
+        got.is_err(),
+        "resolved another project's package: {got:?}"
     );
 }

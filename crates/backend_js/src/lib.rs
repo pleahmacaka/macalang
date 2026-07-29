@@ -481,7 +481,7 @@ fn jcall(callee: &Expr, args: &[Arg]) -> String {
         // A byte and the string holding it, matching the native pair: `chr(0)`
         // is empty rather than a NUL, and `ord("")` is -1.
         Expr::Ident(f) if f == "chr" => format!(
-            "((_b)=>_b>0?String.fromCharCode(_b&255):\"\")({})",
+            "((_b)=>_b>0&&_b<256?String.fromCharCode(_b):\"\")({})",
             a.first().cloned().unwrap_or_default()
         ),
         Expr::Ident(f) if f == "ord" => format!(

@@ -64,13 +64,22 @@ serve_file(root: str, req: Request) -> Response {
 //
 // `..` is the whole reason this is a function: a request for
 // `/../../etc/passwd` is not a mistake anyone makes by accident, and a server
-// that resolves it has handed over the machine. The check is on the normalized
-// path, so `/a/../../x` is caught as surely as `/../x`.
+// that resolves it has handed over the machine.
+//
+// Both sides go through `real_path`, which resolves `..`, `.` *and symlinks*.
+// Comparing normalized text alone let a symlink inside the root point out of
+// it — `site/link -> /etc/passwd` was served with a 200 — because no amount of
+// string arithmetic can see where a link goes.
 under(root: str, path: str) -> str {
-    inside = normalize(join(root, path))
-    base = normalize(root)
+    base = real_path(root)
+    joined = join(base, path)
+    resolved = real_path(joined)
+    // A path naming nothing cannot be a symlink out of the root, but it can
+    // still be written with `..` — so it is normalized instead, and the caller
+    // answers 404 rather than 403.
+    inside = if resolved == "" { normalize(joined) } else { resolved }
 
-    if inside == base || inside.starts_with(base ++ "/") {
+    if base != "" && (inside == base || inside.starts_with(base ++ "/")) {
         inside
     } else {
         ""

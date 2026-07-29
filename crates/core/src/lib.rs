@@ -248,6 +248,7 @@ impl Checker {
             // bytes, so these are the pair every decoder needs: percent
             // escapes, base64, a character class written as arithmetic.
             ("chr", Ty::Fn(vec![Ty::Int], Box::new(Ty::Str))),
+            ("real_path", Ty::Fn(vec![Ty::Str], Box::new(Ty::Str))),
             ("ord", Ty::Fn(vec![Ty::Str], Box::new(Ty::Int))),
             ("input", Ty::Fn(vec![], Box::new(Ty::Str))),
             // `sleep_ms(ms)` — an async suspension point (the async effect is

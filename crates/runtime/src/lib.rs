@@ -97,6 +97,7 @@ maca_str maca_repeat(maca_str s, int64_t n);          /* s concatenated n times 
 maca_str maca_read_file(maca_str path);               /* whole file, "" if unreadable */
 bool maca_write_file(maca_str path, maca_str text);   /* truncate + write; ok? */
 bool maca_file_exists(maca_str path);
+maca_str maca_real_path(maca_str path);     /* symlinks resolved; "" if absent */
 bool maca_is_dir(maca_str path);                      /* a directory, not a file? */
 int64_t maca_file_size(maca_str path);                /* bytes, or -1 */
 int64_t maca_modified_ms(maca_str path);              /* mtime in ms, or -1 */
@@ -311,6 +312,9 @@ pub const RUNTIME_C: &str = r##"#define _GNU_SOURCE
 #include "maca_runtime.h"
 #include <stdio.h>
 #include <ctype.h>
+#include <pthread.h>
+#include <limits.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -325,48 +329,74 @@ static void die(const char* msg) {
     exit(1);
 }
 
-/* ---- allocator: header-tracked blocks + reuse free-list + exit drain ---- */
+/* ---- allocator: header-tracked blocks + reuse free-list + exit drain ----
+
+   Every one of these globals is reachable from more than one thread the moment
+   a program says `spawn`, and `spawn` is the whole of Maca's concurrency: an
+   HTTP server is a thread per connection and every string operation in a
+   handler allocates. Unlocked, four concurrent tasks that only build strings
+   were enough to produce `realloc(): invalid next size` and `double free or
+   corruption`; a server at eight concurrent clients silently handed mangled
+   request text to its handler, and at forty-eight it took a general protection
+   fault inside libc.
+
+   One mutex over the bookkeeping, not per-object locks: the critical sections
+   are a free-list walk and an array push, both a handful of instructions, and a
+   correct allocator that occasionally contends is worth more than a fast one
+   that corrupts. The reference counts move under the same lock, because a
+   non-atomic `rc--` racing itself is how a live object reaches the free list.
+*/
 typedef struct maca_hdr { size_t size; int64_t rc; struct maca_hdr* fl_next; } maca_hdr;
 static maca_hdr** g_live = NULL;
 static size_t g_live_len = 0, g_live_cap = 0;
 static maca_hdr* g_freelist = NULL;
 static uint64_t g_alloc_count = 0, g_reuse_count = 0;
+static pthread_mutex_t g_heap_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void maca_init(void) { atexit(maca_shutdown); }
 void maca_shutdown(void) {
+    pthread_mutex_lock(&g_heap_lock);
     for (size_t i = 0; i < g_live_len; i++) free(g_live[i]);
     free(g_live);
     g_live = NULL; g_live_len = 0; g_live_cap = 0; g_freelist = NULL;
+    pthread_mutex_unlock(&g_heap_lock);
 }
 void* maca_alloc(size_t n) {
+    pthread_mutex_lock(&g_heap_lock);
     for (maca_hdr** pp = &g_freelist; *pp; pp = &(*pp)->fl_next) {
         maca_hdr* h = *pp;
         if (h->size >= n) {
             *pp = h->fl_next; h->fl_next = NULL; h->rc = 1;
-            g_reuse_count++; return (void*)(h + 1);
+            g_reuse_count++;
+            pthread_mutex_unlock(&g_heap_lock);
+            return (void*)(h + 1);
         }
     }
     maca_hdr* h = (maca_hdr*)malloc(sizeof(maca_hdr) + n);
-    if (!h) die("out of memory");
+    if (!h) { pthread_mutex_unlock(&g_heap_lock); die("out of memory"); }
     h->size = n; h->rc = 1; h->fl_next = NULL;
     if (g_live_len == g_live_cap) {
         g_live_cap = g_live_cap ? g_live_cap * 2 : 64;
         g_live = (maca_hdr**)realloc(g_live, g_live_cap * sizeof(maca_hdr*));
-        if (!g_live) die("out of memory");
+        if (!g_live) { pthread_mutex_unlock(&g_heap_lock); die("out of memory"); }
     }
     g_live[g_live_len++] = h;
     g_alloc_count++;
+    pthread_mutex_unlock(&g_heap_lock);
     return (void*)(h + 1);
 }
 void maca_dup(void* p) {
     if (!p) return;
+    pthread_mutex_lock(&g_heap_lock);
     (((maca_hdr*)p) - 1)->rc++;
+    pthread_mutex_unlock(&g_heap_lock);
 }
 void maca_drop(void* p) {
     if (!p) return;
+    pthread_mutex_lock(&g_heap_lock);
     maca_hdr* h = ((maca_hdr*)p) - 1;
-    if (--h->rc > 0) return;
-    h->fl_next = g_freelist; g_freelist = h;
+    if (--h->rc <= 0) { h->fl_next = g_freelist; g_freelist = h; }
+    pthread_mutex_unlock(&g_heap_lock);
 }
 void* maca_realloc(void* p, size_t n) {
     if (!p) return maca_alloc(n);
@@ -437,12 +467,13 @@ maca_str maca_str_at(maca_str s, int64_t i) {
     r[0] = s[i]; r[1] = '\0';
     return r;
 }
-/* A byte and the string holding it. Maca strings are bytes, so a value above
-   255 wraps rather than becoming a multi-byte encoding: `chr` is the inverse of
-   `ord` and nothing else, and a caller assembling UTF-8 does it a byte at a
-   time on purpose. Zero is refused — a NUL would end the string it is in. */
+/* A byte and the string holding it. `chr` is the inverse of `ord` and nothing
+   else: a caller assembling UTF-8 does it a byte at a time on purpose. Outside
+   1..255 the answer is the empty string rather than a wrapped value — zero
+   would end the string it is in, and anything larger is not a byte. Every
+   target agrees on exactly this domain. */
 maca_str maca_chr(int64_t b) {
-    if (b <= 0) return "";
+    if (b <= 0 || b > 255) return "";
     char* r = (char*)xmalloc(2);
     r[0] = (char)(b & 0xFF); r[1] = '\0';
     return r;
@@ -597,6 +628,19 @@ bool maca_write_file(maca_str path, maca_str text) {
 bool maca_file_exists(maca_str path) {
     struct stat st;
     return path && stat(path, &st) == 0;
+}
+/* The path with `.`, `..` *and symlinks* resolved, or "" when it names nothing.
+   A server deciding whether a request stayed inside its root cannot do it with
+   string arithmetic: a link inside the root points wherever it likes, and only
+   the kernel knows where. */
+maca_str maca_real_path(maca_str path) {
+    if (!path) return "";
+    char buf[4096];
+    if (!realpath(path, buf)) return "";
+    size_t n = strlen(buf);
+    char* r = (char*)xmalloc(n + 1);
+    memcpy(r, buf, n + 1);
+    return r;
 }
 bool maca_is_dir(maca_str path) {
     struct stat st;
@@ -1789,6 +1833,12 @@ static int http_write_all(int fd, const char* b, size_t n) {
     return 0;
 }
 
+/* How long a connection may stay silent before it is dropped, in seconds. A
+   thread per connection is only affordable while connections end: without a
+   timeout, one socket that connects and says nothing holds a thread forever,
+   which is a denial of service anybody can mount from a laptop. */
+#define HTTP_IDLE_SECONDS 30
+
 /* The end of the headers, or -1 while it has not arrived yet. */
 static long header_end(const char* b, size_t n) {
     for (size_t i = 0; i + 3 < n; i++) {
@@ -1812,48 +1862,92 @@ static long content_length(const char* head, size_t n) {
         if (k != 15) continue;
         size_t j = i + 15;
         while (j < n && (head[j] == ' ' || head[j] == '\t')) j++;
+        if (j < n && (head[j] == '-' || head[j] == '+')) return -1;   /* not a length */
+        if (j >= n || head[j] < '0' || head[j] > '9') return -1;      /* nor is nothing */
         long v = 0;
-        while (j < n && head[j] >= '0' && head[j] <= '9') { v = v * 10 + (head[j] - '0'); j++; }
+        while (j < n && head[j] >= '0' && head[j] <= '9') {
+            /* Overflow is not a large request, it is a malformed one: wrapping
+               made the server wait for a body that would never arrive. */
+            if (v > (long)HTTP_MAX_REQUEST) return -1;
+            v = v * 10 + (head[j] - '0');
+            j++;
+        }
         return v;
     }
     return 0;
 }
 
-/* Read one whole request: headers, then exactly as much body as they declare.
-   Returns the buffer (NUL-terminated, caller frees) or NULL on a closed or
-   oversized connection. */
-static char* read_request(int fd) {
-    size_t cap = 8192, n = 0;
-    char* buf = (char*)malloc(cap);
-    if (!buf) return NULL;
-    long head = -1, want = -1;
-    for (;;) {
-        if (n + 1 >= cap) {
-            if (cap >= HTTP_MAX_REQUEST) { free(buf); return NULL; }
-            cap *= 2;
-            char* g = (char*)realloc(buf, cap);
-            if (!g) { free(buf); return NULL; }
-            buf = g;
-        }
-        ssize_t r = read(fd, buf + n, cap - n - 1);
-        if (r <= 0) { free(buf); return NULL; }
-        n += (size_t)r;
-        buf[n] = 0;
-        if (head < 0) head = header_end(buf, n);
-        if (head >= 0) {
-            if (want < 0) want = content_length(buf, (size_t)head);
-            if ((long)n >= head + want) break;
-        }
-        if (n >= HTTP_MAX_REQUEST) { free(buf); return NULL; }
+/* Is the request framed in a way this server understands?
+
+   `Transfer-Encoding` is not implemented, and a request that uses it cannot be
+   framed by `Content-Length` — guessing produces a body that is really the
+   chunk headers, and behind a proxy that is a request-smuggling primitive. So
+   it is refused rather than misread. */
+static int has_transfer_encoding(const char* head, size_t n) {
+    for (size_t i = 0; i + 18 < n; i++) {
+        if (i && head[i-1] != '\n') continue;
+        if (strncasecmp(head + i, "transfer-encoding:", 18) == 0) return 1;
     }
-    return buf;
+    return 0;
 }
 
-/* Does the reply say to keep the connection? The handler decides, by what it
-   put in the response — the server does not second-guess it. */
-static int says_close(const char* reply) {
-    for (const char* p = reply; *p; p++) {
-        if (*p != 'c' && *p != 'C') continue;
+/* One connection's read buffer. It outlives a single request, because a client
+   may send two in one packet and the second one's bytes arrive while the first
+   is still being read — dropping them answered the first request and hung on
+   the second. */
+typedef struct { char* buf; size_t cap, len; } http_buf;
+
+/* Why `read_request` stopped. */
+typedef enum {
+    REQ_OK = 0, REQ_CLOSED, REQ_TOO_LARGE, REQ_UNSUPPORTED, REQ_MALFORMED
+} req_status;
+
+/* Read one whole request out of `b`, leaving anything past it in place for the
+   next call. `*out` is the request text (caller frees). */
+static req_status read_request(int fd, http_buf* b, char** out) {
+    for (;;) {
+        long head = header_end(b->buf, b->len);
+        if (head >= 0) {
+            if (has_transfer_encoding(b->buf, (size_t)head)) return REQ_UNSUPPORTED;
+            long want = content_length(b->buf, (size_t)head);
+            if (want < 0) return REQ_MALFORMED;   /* a length that is not one */
+            if (head + want > (long)HTTP_MAX_REQUEST) return REQ_TOO_LARGE;
+            if ((long)b->len >= head + want) {
+                size_t take = (size_t)(head + want);
+                char* req = (char*)malloc(take + 1);
+                if (!req) return REQ_CLOSED;
+                memcpy(req, b->buf, take);
+                req[take] = 0;
+                memmove(b->buf, b->buf + take, b->len - take);
+                b->len -= take;
+                *out = req;
+                return REQ_OK;
+            }
+        }
+        if (b->len >= HTTP_MAX_REQUEST) return REQ_TOO_LARGE;
+        if (b->len + 1 >= b->cap) {
+            size_t cap = b->cap ? b->cap * 2 : 8192;
+            char* g = (char*)realloc(b->buf, cap);
+            if (!g) return REQ_CLOSED;
+            b->buf = g; b->cap = cap;
+        }
+        ssize_t r = read(fd, b->buf + b->len, b->cap - b->len - 1);
+        if (r <= 0) return REQ_CLOSED;
+        b->len += (size_t)r;
+        b->buf[b->len] = 0;
+    }
+}
+
+/* Does this message's `Connection` header say `close`?
+
+   Matched at the start of a header line and stopping at the blank line, not as
+   a substring: `X-Upstream-Connection: close` is a different header, and it
+   used to close a connection whose real header said keep-alive. A body that
+   happens to contain the text is likewise not a header. */
+static int says_close(const char* msg) {
+    for (const char* p = msg; *p; p++) {
+        if (p != msg && p[-1] != '\n') continue;
+        if (p[0] == '\r' || p[0] == '\n') break;          /* end of headers */
         if (strncasecmp(p, "connection:", 11) != 0) continue;
         const char* v = p + 11;
         while (*v == ' ' || *v == '\t') v++;
@@ -1862,20 +1956,53 @@ static int says_close(const char* reply) {
     return 0;
 }
 
+/* A canned reply for the requests that never reach a handler. */
+static void http_refuse(int fd, const char* line, const char* body) {
+    char out[256];
+    int n = snprintf(out, sizeof(out),
+                     "HTTP/1.1 %s\r\nContent-Type: text/plain; charset=utf-8\r\n"
+                     "Content-Length: %d\r\nConnection: close\r\n\r\n%s",
+                     line, (int)strlen(body), body);
+    if (n > 0) http_write_all(fd, out, (size_t)n);
+}
+
 static void* http_client(void* arg) {
     http_conn* c = (http_conn*)arg;
     int fd = c->fd;
     maca_closure handler = c->handler;
     free(c);
+    /* A silent or stalled client releases its thread instead of holding it. */
+    struct timeval tv;
+    tv.tv_sec = HTTP_IDLE_SECONDS; tv.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+    http_buf b; b.buf = NULL; b.cap = 0; b.len = 0;
     for (;;) {
-        char* req = read_request(fd);
-        if (!req) break;
+        char* req = NULL;
+        req_status st = read_request(fd, &b, &req);
+        if (st == REQ_TOO_LARGE) {
+            http_refuse(fd, "413 Payload Too Large", "413 Payload Too Large\n");
+            break;
+        }
+        if (st == REQ_UNSUPPORTED) {
+            http_refuse(fd, "501 Not Implemented", "501 Not Implemented\n");
+            break;
+        }
+        if (st == REQ_MALFORMED) {
+            http_refuse(fd, "400 Bad Request", "400 Bad Request\n");
+            break;
+        }
+        if (st != REQ_OK) break;
+        /* The client's own wish, read before the request is handed over. */
+        int client_done = says_close(req);
         maca_str reply = (maca_str)(intptr_t)maca_call1(handler, (int64_t)(intptr_t)req);
         free(req);
         if (!reply) break;
         if (http_write_all(fd, reply, strlen(reply))) break;
-        if (says_close(reply)) break;
+        if (client_done || says_close(reply)) break;
     }
+    free(b.buf);
     close(fd);
     return NULL;
 }

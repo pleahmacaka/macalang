@@ -123,6 +123,7 @@ pub fn is_backend_intrinsic(name: &str) -> bool {
                 | "read_file"
                 | "write_file"
                 | "file_exists"
+                | "real_path"
                 | "make_dir"
                 | "list_dir"
                 | "is_dir"

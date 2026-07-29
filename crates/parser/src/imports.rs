@@ -180,7 +180,7 @@ fn forward(
             keep.push(name.clone());
             continue;
         }
-        match provider(name, module, entry, g) {
+        match provider(name, module, entry, g, 16) {
             Some(dep) => *changed |= merge(sel, dep, Some(vec![name.clone()])),
             None => keep.push(name.clone()),
         }
@@ -188,14 +188,28 @@ fn forward(
     keep
 }
 
-/// The module `entry` imports that defines `name`, if exactly one does.
-fn provider(name: &str, module: &Module, entry: &Path, g: &Graph) -> Option<PathBuf> {
+/// The module `entry` imports that provides `name`, if exactly one does.
+///
+/// "Provides" is defining it, or being an entry module that hands it on in
+/// turn: a package built out of sub-packages is still one name to whoever
+/// imports it, and stopping at one hop meant `outer` could not offer what
+/// `inner` offered. Ambiguity is not resolved by order — two modules offering
+/// the same name is a collision, and picking the first produced two copies in
+/// one translation unit and a C redefinition error.
+fn provider(name: &str, module: &Module, entry: &Path, g: &Graph, fuel: usize) -> Option<PathBuf> {
+    if fuel == 0 {
+        return None;
+    }
+    let mut found: Option<PathBuf> = None;
     for item in &module.items {
         let Stmt::Import(im) = item else { continue };
         let Some(dep) = import_target(im, entry) else {
             continue;
         };
         let dep = canon(&dep);
+        if dep == canon(entry) {
+            continue; // a module importing itself offers nothing new
+        }
         // A selective import only carries what it names, so it can only hand on
         // what it asked for.
         if let Import::Names { names, .. } = im
@@ -203,14 +217,21 @@ fn provider(name: &str, module: &Module, entry: &Path, g: &Graph) -> Option<Path
         {
             continue;
         }
-        if g.parsed
-            .get(&dep)
-            .is_some_and(|m| m.items.iter().filter_map(defined_name).any(|n| n == name))
-        {
-            return Some(dep);
+        let Some(dm) = g.parsed.get(&dep) else { continue };
+        let here = if dm.items.iter().filter_map(defined_name).any(|n| n == name) {
+            Some(dep.clone())
+        } else if is_entry_module(&dep) {
+            provider(name, dm, &dep, g, fuel - 1)
+        } else {
+            None
+        };
+        let Some(hit) = here else { continue };
+        match &found {
+            Some(prev) if *prev != hit => return None, // two of them: ambiguous
+            _ => found = Some(hit),
         }
     }
-    None
+    found
 }
 
 /// Is this the file a package's own name resolves to?
@@ -303,9 +324,18 @@ fn slice_module(
                     .and_then(|t| by_name.get(t.as_str()).copied())
             })
             .ok_or_else(|| {
-                format!(
-                    "import {{ {name} }} from {modname}: '{name}' is not defined in that module"
-                )
+                if is_entry_module(path) {
+                    format!(
+                        "import {{ {name} }} from {modname}: the package neither \
+                         defines '{name}' nor takes it from exactly one of its \
+                         own imports"
+                    )
+                } else {
+                    format!(
+                        "import {{ {name} }} from {modname}: '{name}' is not \
+                         defined in that module"
+                    )
+                }
             })?;
         if visited.insert(idx) {
             queue.push(idx);

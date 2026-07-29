@@ -117,6 +117,9 @@ fn parse_vec_c(name: &str) -> Option<(String, usize)> {
 struct Cx<'a> {
     m: &'a Module,
     out: String,
+    /// The parameter type the callee will call a lambda argument with, set for
+    /// the duration of lowering that one argument.
+    lambda_hint: Option<CTy>,
     // declarations
     sums: BTreeMap<String, Vec<String>>, // sum name -> variants
     variant_of: HashMap<String, String>, // variant -> sum name
@@ -157,6 +160,7 @@ impl<'a> Cx<'a> {
         Cx {
             m,
             out: String::new(),
+            lambda_hint: None,
             sums: BTreeMap::new(),
             variant_of: HashMap::new(),
             variant_payloads: HashMap::new(),
@@ -1644,6 +1648,11 @@ impl<'a> Cx<'a> {
             Expr::Block(stmts) => tail_expr(stmts)
                 .map(|e| self.result_cty(env, e))
                 .unwrap_or(CTy::Unit),
+            // A loop and a jump have no value. Falling through to the leaf case
+            // below asked `expr` for their type, which asked `result_cty`
+            // again — the compiler overflowed its stack on
+            // `y = 1 + (while false { 2 })`.
+            Expr::For { .. } | Expr::While { .. } | Expr::Break | Expr::Continue => CTy::Unit,
             leaf => {
                 let save = self.out.len();
                 let tmp = self.tmp;
@@ -2100,15 +2109,23 @@ impl<'a> Cx<'a> {
                     }
                     let typed: Vec<(String, CTy)> =
                         args.iter().map(|x| self.arg_typed(env, x)).collect();
-                    // A closure is two words. The task ABI carries one per
-                    // argument, so it cannot travel — and casting it produced a
-                    // C error rather than anything a reader could act on.
-                    if typed
-                        .iter()
-                        .any(|(_, t)| matches!(t, CTy::Closure(_) | CTy::Closure2(_)))
-                    {
+                    // The task boundary carries one integer-width slot per
+                    // argument. A closure is two words; a float is not an
+                    // integer and the C cast truncates it; a record is not a
+                    // value a slot can hold. Each was silently wrong —
+                    // `spawn fadd(1.5, 2.5)` came back as 3.4e+175 — so each is
+                    // named instead of guessed at.
+                    for (_, t) in &typed {
+                        let what = match t {
+                            CTy::Closure(_) | CTy::Closure2(_) => "a function value",
+                            CTy::Float => "a float",
+                            CTy::Rec(_) => "a record",
+                            _ => continue,
+                        };
                         self.problem(format!(
-                            "`spawn {f}(…)` cannot take a function value —                              spawn a function that calls it instead"
+                            "`spawn {f}(…)` cannot take {what}: a task takes \
+                             whole numbers and strings. Wrap it in a function \
+                             that does."
                         ));
                     }
                     let a: Vec<String> = typed.into_iter().map(|(c, _)| c).collect();
@@ -2143,7 +2160,13 @@ impl<'a> Cx<'a> {
             // lowering is wrapped in a statement expression, so a record field,
             // a call argument or a list element can be a multi-way choice
             // written beside the thing it decides.
-            other if is_control(other) => {
+            // …but only the shapes that *have* a value. A loop runs for its
+            // effect and `break` leaves one, so neither is an expression, and
+            // `[1, break]` emitted C with a `break` outside any loop.
+            other if is_control(other) && !matches!(
+                other,
+                Expr::For { .. } | Expr::While { .. } | Expr::Break | Expr::Continue
+            ) => {
                 let ty = expected
                     .cloned()
                     .unwrap_or_else(|| self.result_cty(env, other));
@@ -2241,10 +2264,18 @@ impl<'a> Cx<'a> {
         // one handed to a higher-order *parameter*), so read the body for what
         // it does to each parameter. Without this, `s => s == "c"` typed `s` as
         // an integer and compared a string pointer to it.
+        // The annotation first — a lambda parameter may say what it is, and a
+        // written type outranks every inference. Then what the callee calls it
+        // with, then what the body does to it.
+        let hint = self.lambda_hint.clone();
         let ptys: Vec<CTy> = params
             .iter()
-            .map(|p| {
-                self.param_ty_from_use(&p.name, body)
+            .enumerate()
+            .map(|(i, p)| {
+                p.ty.as_ref()
+                    .map(|t| self.cty(t))
+                    .or_else(|| if i == 0 { hint.clone() } else { None })
+                    .or_else(|| self.param_ty_from_use(&p.name, body))
                     .or_else(|| lambda_param_ty(&p.name, body))
                     .unwrap_or(CTy::Int)
             })
@@ -2264,32 +2295,7 @@ impl<'a> Cx<'a> {
     fn param_ty_from_use(&self, name: &str, body: &Expr) -> Option<CTy> {
         let mut found = None;
         self.scan_passed_to(name, body, &mut found);
-        found.or_else(|| self.param_ty_from_field(name, body))
-    }
-
-    /// The record a lambda parameter must be, read off a field it reads.
-    ///
-    /// `req => text(req.path)` never hands `req` anywhere typed, so the rule
-    /// above finds nothing — but `path` is a field of exactly one record in the
-    /// program, and a field name is not a coincidence. Where two records share
-    /// the name this stays quiet rather than guessing: a wrong record reads the
-    /// wrong offset, which is worse than the `int` default failing to compile.
-    fn param_ty_from_field(&self, name: &str, body: &Expr) -> Option<CTy> {
-        let mut fields: Vec<String> = Vec::new();
-        collect_fields_of(name, body, &mut fields);
-        for f in fields {
-            let mut owners = self
-                .records
-                .iter()
-                .filter(|(_, fs)| fs.iter().any(|(n, _)| *n == f));
-            let first = owners.next();
-            if let Some((rec, _)) = first
-                && owners.next().is_none()
-            {
-                return Some(CTy::Rec(rec.clone()));
-            }
-        }
-        None
+        found
     }
 
     fn scan_passed_to(&self, name: &str, e: &Expr, found: &mut Option<CTy>) {
@@ -2310,8 +2316,102 @@ impl<'a> Cx<'a> {
                 }
             }
         }
-        if found.is_none() {
-            walk_children(e, &mut |c| self.scan_passed_to(name, c, found));
+        if found.is_some() {
+            return;
+        }
+        // An inner lambda that rebinds the name is talking about a different
+        // parameter. Descending into it typed the *outer* one from the inner
+        // one's use — `apply(n => … xs.map(n => show(n)) …)` made the outer `n`
+        // a `str` and the call passed it a 7.
+        if let Expr::Lambda { params, .. } = e
+            && params.iter().any(|p| p.name == name)
+        {
+            return;
+        }
+        walk_children(e, &mut |c| self.scan_passed_to(name, c, found));
+    }
+
+    /// The type a lambda handed to `callee` at position `index` is called with.
+    ///
+    /// This is the fact the call site actually has: `listen(port, handler)`
+    /// forwards `handler` to `answer`, which calls it with a `parse_request`
+    /// result — so a lambda written `req => …` at that position takes a
+    /// `Request`, and nothing had to guess. Resolution follows forwarding, the
+    /// same way `closure_params` does, and gives up rather than looping.
+    fn callee_param_ty(&self, callee: &str, index: usize, fuel: usize) -> Option<CTy> {
+        if fuel == 0 {
+            return None;
+        }
+        let f = self.m.items.iter().find_map(|it| match it {
+            Stmt::Fn(f) if f.name == callee => Some(f),
+            _ => None,
+        })?;
+        let pname = &f.params.get(index)?.name;
+        let body = f.body.as_ref()?;
+
+        // What the function knows about its own locals: a parameter's declared
+        // type, and a binding whose value is a call to something with one.
+        let mut env: Vec<(String, CTy)> = f
+            .params
+            .iter()
+            .filter_map(|p| Some((p.name.clone(), self.cty(p.ty.as_ref()?))))
+            .collect();
+        if let FnBody::Block(stmts) = body {
+            for st in stmts {
+                let Stmt::Bind(b) = st else { continue };
+                let (Expr::Ident(n), Expr::Call { callee: c, .. }) = (&b.target, &b.value) else {
+                    continue;
+                };
+                if let Expr::Ident(g) = &**c
+                    && let Some((_, ret)) = self.fns.get(g)
+                    && !matches!(ret, CTy::Unknown | CTy::Unit)
+                {
+                    env.push((n.clone(), ret.clone()));
+                }
+            }
+        }
+
+        let mut direct = None;
+        let mut forwarded = None;
+        body_exprs(body, &mut |e| {
+            self.scan_called_or_forwarded(pname, e, &env, &mut direct, &mut forwarded)
+        });
+        direct.or_else(|| forwarded.and_then(|(g, j)| self.callee_param_ty(&g, j, fuel - 1)))
+    }
+
+    fn scan_called_or_forwarded(
+        &self,
+        pname: &str,
+        e: &Expr,
+        env: &[(String, CTy)],
+        direct: &mut Option<CTy>,
+        forwarded: &mut Option<(String, usize)>,
+    ) {
+        if let Expr::Call { callee, args } = e {
+            match &**callee {
+                // `handler(r)` — the argument's type is the parameter's type.
+                Expr::Ident(n) if n == pname => {
+                    if let Some(Arg::Pos(Expr::Ident(a))) = args.first()
+                        && let Some((_, t)) = env.iter().find(|(k, _)| k == a)
+                    {
+                        *direct = Some(t.clone());
+                    }
+                }
+                // `answer(handler, raw)` — ask `answer` instead.
+                Expr::Ident(g) if forwarded.is_none() => {
+                    for (i, a) in args.iter().enumerate() {
+                        if matches!(a, Arg::Pos(Expr::Ident(n)) if n == pname) {
+                            *forwarded = Some((g.clone(), i));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if direct.is_none() {
+            walk_children(e, &mut |c| {
+                self.scan_called_or_forwarded(pname, c, env, direct, forwarded)
+            });
         }
     }
 
@@ -2663,6 +2763,7 @@ impl<'a> Cx<'a> {
                     | "read_file"
                     | "write_file"
                     | "file_exists"
+                    | "real_path"
                     | "make_dir"
                     | "list_dir"
                     | "is_dir"
@@ -3094,7 +3195,20 @@ impl<'a> Cx<'a> {
                 let a: Vec<String> = args
                     .iter()
                     .enumerate()
-                    .map(|(i, x)| self.arg_expected(env, x, params.get(i)).0)
+                    .map(|(i, x)| {
+                        // A lambda written into a function-value position takes
+                        // its parameter type from what the callee calls it
+                        // with. That is a fact the program states — as against
+                        // reading a field name and guessing which record it
+                        // belongs to, which typed `apply(v => v.path…)` as a
+                        // record and dereferenced whatever `v` happened to be.
+                        if matches!(x, Arg::Pos(Expr::Lambda { .. })) {
+                            self.lambda_hint = self.callee_param_ty(name, i, 8);
+                        }
+                        let c = self.arg_expected(env, x, params.get(i)).0;
+                        self.lambda_hint = None;
+                        c
+                    })
                     .collect();
                 return (format!("{}({})", cid(name), a.join(", ")), ret);
             }
@@ -3129,6 +3243,9 @@ impl<'a> Cx<'a> {
                 }
                 "file_exists" => {
                     return (format!("maca_file_exists({})", a.join(", ")), CTy::Bool);
+                }
+                "real_path" => {
+                    return (format!("maca_real_path({})", a.join(", ")), CTy::Str);
                 }
                 "make_dir" => return (format!("maca_make_dir({})", a.join(", ")), CTy::Bool),
                 "is_dir" => return (format!("maca_is_dir({})", a.join(", ")), CTy::Bool),
@@ -4102,7 +4219,23 @@ fn infer_cty_shallow(e: &Expr) -> CTy {
         Expr::Float(_) => CTy::Float,
         Expr::Bool(_) => CTy::Bool,
         Expr::Str(_) | Expr::Path(_) => CTy::Str,
-        Expr::Binary { op: BinOp::Div, .. } => CTy::Str, // path join
+        // `a / b` is a path join when either side is a path-shaped literal, and
+        // arithmetic otherwise. Treating every `/` as a join emitted
+        // `Quot = 10 / 5` as a `str` accessor returning an integer, which
+        // compiled with a warning and segfaulted on first use.
+        Expr::Binary {
+            op: BinOp::Div,
+            lhs,
+            rhs,
+        } => {
+            if matches!(**lhs, Expr::Str(_) | Expr::Path(_))
+                || matches!(**rhs, Expr::Str(_) | Expr::Path(_))
+            {
+                CTy::Str
+            } else {
+                infer_cty_shallow(lhs)
+            }
+        }
         Expr::List(items) => {
             let elem = match items.first() {
                 Some(first) => infer_cty_shallow(first),
@@ -4782,14 +4915,15 @@ fn closure_params(items: &[Stmt]) -> HashSet<(String, usize)> {
     }
 }
 
-/// Every field name read off `name` anywhere in `e`.
-fn collect_fields_of(name: &str, e: &Expr, out: &mut Vec<String>) {
-    if let Expr::Field { base, name: f } = e
-        && matches!(&**base, Expr::Ident(n) if n == name)
-    {
-        out.push(f.clone());
+/// Visit every expression in a function body.
+fn body_exprs(b: &FnBody, f: &mut impl FnMut(&Expr)) {
+    match b {
+        FnBody::Expr(e) => f(e),
+        FnBody::Block(ss) => ss.iter().for_each(|s| match s {
+            Stmt::Expr(e) | Stmt::Bind(Bind { value: e, .. }) => f(e),
+            _ => {}
+        }),
     }
-    walk_children(e, &mut |c| collect_fields_of(name, c, out));
 }
 
 /// `(callee, index)` for every argument position a lambda is written into.

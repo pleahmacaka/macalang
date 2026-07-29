@@ -783,3 +783,36 @@ fn is_ident_continue(c: char) -> bool {
 fn is_path_char(c: char) -> bool {
     matches!(c, '/' | '.' | '~' | '_' | '-') || c.is_ascii_alphanumeric()
 }
+
+/// Is `word` a keyword rather than an identifier?
+///
+/// One list, read from the same place the lexer decides. Anything that needs to
+/// know — `maca -m` refusing to run a module whose name no program could
+/// import, an editor, a linter — asks here rather than keeping a copy that
+/// drifts the next time a keyword is added.
+pub fn is_keyword(word: &str) -> bool {
+    matches!(
+        lex(word).tokens.first().map(|t| &t.tok),
+        Some(
+            Tok::Const
+                | Tok::As
+                | Tok::If
+                | Tok::Else
+                | Tok::For
+                | Tok::In
+                | Tok::While
+                | Tok::Break
+                | Tok::Continue
+                | Tok::Match
+                | Tok::Import
+                | Tok::With
+                | Tok::Fail
+                | Tok::Try
+                | Tok::Alias
+                | Tok::Await
+                | Tok::Spawn
+                | Tok::True
+                | Tok::False
+        )
+    )
+}

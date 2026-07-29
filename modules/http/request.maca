@@ -27,9 +27,12 @@ Request = {
 /// comes back with an empty method, which is a handler's cue to answer 400
 /// rather than guess.
 parse_request(raw: str) -> Request {
-    head_body = split_once(normalize_endings(raw), "\n\n")
-    head = head_body.get(0)
-    body = head_body.get(1)
+    // The head is normalized; the body is not. Rewriting `\r\n` across the
+    // whole request corrupted every upload that contained one — a 14-byte body
+    // arrived as 12 and no longer matched the length that was sent.
+    split = split_head(raw)
+    head = normalize_endings(split.get(0))
+    body = split.get(1)
     line_rest = split_once(head, "\n")
     parts = line_rest.get(0).split(" ").filter(w => w != "")
     target = if parts.length() > 1 { parts.get(1) } else { "" }
@@ -45,8 +48,23 @@ parse_request(raw: str) -> Request {
     }
 }
 
-// `\r\n` and `\n` both mean "next line" here, so the rest of this file only has
-// to know about one of them.
+// The header block and the body, split at the blank line. HTTP says `\r\n\r\n`
+// and hand-written clients send `\n\n`, so whichever comes first wins.
+split_head(raw: str) -> str[] {
+    crlf = raw.index_of("\r\n\r\n")
+    lf = raw.index_of("\n\n")
+
+    if crlf >= 0 && (lf < 0 || crlf < lf) {
+        [raw.substr(0, crlf), raw.substr(crlf + 4, raw.length())]
+    } else if lf >= 0 {
+        [raw.substr(0, lf), raw.substr(lf + 2, raw.length())]
+    } else {
+        [raw, ""]
+    }
+}
+
+// Inside the head, `\r\n` and `\n` both mean "next line", so the rest of this
+// file only has to know about one of them.
 normalize_endings(raw: str) -> str =>
     raw.replace("\r\n", "\n")
 

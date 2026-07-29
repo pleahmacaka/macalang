@@ -592,6 +592,27 @@ mod tests {
     }
 
     #[test]
+    /// `chr` and `ord` must mean the same thing here as they do natively, or
+    /// the playground quietly runs a different language. The domain is the
+    /// agreed one: `chr` answers "" outside 1..255, and the pair round-trips.
+    fn chr_and_ord_match_the_native_domain() {
+        let json = compile_json(
+            "main() -> int {\n    \
+             a = ord(chr(200))\n    \
+             b = ord(chr(65))\n    \
+             c = len(chr(256))\n    \
+             d = len(chr(0))\n    \
+             e = ord(\"\")\n    \
+             info(\"{a} {b} {c} {d} {e}\")\n    0\n}\n",
+            0,
+        );
+        assert!(
+            json.contains("\"output\":\"200 65 0 0 -1\\n\""),
+            "chr/ord disagree with the native domain: {json}"
+        );
+    }
+
+    #[test]
     fn profile_renders_flame_graph() {
         let json = compile_json(
             "fib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\nmain() -> int {\n    info(\"{fib(10)}\")\n    0\n}\n",

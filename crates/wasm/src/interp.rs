@@ -821,14 +821,16 @@ impl<'a> Interp<'a> {
             // agreeing about that is the point of it being the same language.
             "chr" => {
                 let b = match vals.first() {
-                    Some(Value::Int(n)) if *n > 0 => (*n & 0xFF) as u8,
+                    Some(Value::Int(n)) if *n > 0 && *n < 256 => *n as u32,
                     _ => return Ok(Value::Str(String::new())),
                 };
-                return Ok(Value::Str((b as char).to_string()));
+                return Ok(Value::Str(
+                    char::from_u32(b).map(|c| c.to_string()).unwrap_or_default(),
+                ));
             }
             "ord" => {
                 return Ok(Value::Int(match vals.first() {
-                    Some(Value::Str(s)) => s.as_bytes().first().map_or(-1, |b| *b as i64),
+                    Some(Value::Str(s)) => s.chars().next().map_or(-1, |c| c as i64),
                     _ => -1,
                 }));
             }

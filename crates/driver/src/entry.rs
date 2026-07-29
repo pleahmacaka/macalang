@@ -37,6 +37,34 @@ pub fn parse_spec(spec: &str) -> (String, Option<String>) {
     }
 }
 
+/// Is this a module path a program could have written?
+///
+/// A leading dot, a trailing dot and an absolute path all reached resolution
+/// and failed somewhere further in — `maca -m .run_it` searched `/run_it.maca`,
+/// outside the project entirely, because joining an absolute segment replaces
+/// the base. A keyword segment resolved to a real file and then failed to parse
+/// inside a generated shim the user could not see. All of them are the same
+/// answer: that is not a module name.
+pub fn module_name_error(spec: &str, module: &str) -> Option<String> {
+    if spec.starts_with('.') || spec.ends_with('.') {
+        return Some(format!("`{spec}` starts or ends with a dot"));
+    }
+    if module.starts_with('/') {
+        return Some(format!("`{spec}` is an absolute path, not a module"));
+    }
+    for seg in module.split('/') {
+        if seg.is_empty() {
+            return Some(format!("`{spec}` has an empty path segment"));
+        }
+        if maca_lexer::is_keyword(seg) {
+            return Some(format!(
+                "`{seg}` is a keyword, so no program can import it"
+            ));
+        }
+    }
+    None
+}
+
 /// The module file `spec` names, resolved the way an `import` would be.
 ///
 /// Resolution is relative to a file in the project root, so `-m` and an

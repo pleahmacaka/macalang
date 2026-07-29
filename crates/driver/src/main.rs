@@ -1767,6 +1767,9 @@ fn cmd_module(args: &[String]) {
         die("-m: expected a module, e.g. `maca -m http.serve`");
     };
     let (module, named) = entry::parse_spec(spec);
+    if let Some(why) = entry::module_name_error(spec, &module) {
+        die(&format!("-m: {why}"));
+    }
     let root = maca_parser::modules::project_root(Path::new("."))
         .unwrap_or_else(|| PathBuf::from("."));
 
@@ -1821,7 +1824,16 @@ fn cmd_module(args: &[String]) {
         // importing file's own directory first, so a shim called `http.maca`
         // importing `http` found itself. No identifier can begin with `-`, so
         // no import can name this file however the project is laid out.
-        let shim = shim_dir.join(format!("-entry-{}.maca", module.replace('/', "-")));
+        // The function is in the name, and the file is not reused: two `-m`
+        // runs in one project raced on a shim named only for the module, and
+        // each ran whichever function the other had just written — silently,
+        // with the wrong exit code. The pid keeps concurrent runs of the *same*
+        // spec apart too.
+        let shim = shim_dir.join(format!(
+            "-entry-{}-{function}-{}.maca",
+            module.replace('/', "-"),
+            std::process::id()
+        ));
         let text = entry::entry_source(&module, &function, &call, &answer);
         if let Err(e) = std::fs::write(&shim, &text) {
             die(&format!("-m: cannot write {}: {e}", shim.display()));
@@ -2085,9 +2097,10 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
     for g in &glue {
         extras.push(to_wsl(g));
     }
-    if use_async || !glue.is_empty() {
-        extras.push("-pthread".into());
-    }
+    // Unconditional: the allocator takes a mutex, so every program links
+    // pthreads whether or not it ever says `spawn`.
+    extras.push("-pthread".into());
+    let _ = use_async;
     if use_simd {
         // the LLVM IR object (clang compiles .ll directly); enable AVX
         extras.push(to_wsl(&dir.join("simd.ll")));
@@ -2361,9 +2374,7 @@ fn link_native(
     for g in glue {
         cmd.arg(g);
     }
-    if use_async || !glue.is_empty() {
-        cmd.arg("-pthread");
-    }
+    cmd.arg("-pthread");
     if use_simd {
         cmd.arg(dir.join("simd.ll")).arg("-mavx2");
     }
