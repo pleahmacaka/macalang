@@ -639,6 +639,64 @@ fn emit_checked_flags_unsupported_instead_of_silent_zero() {
     );
 }
 
+/// A value with no text form is a diagnostic, not a pointer dereference.
+///
+/// The two-operand `maca_concat` took declared parameters, so handing it a
+/// record was a C type error naming both types. One variadic call takes
+/// whatever it is given, so the refusal has to be made here.
+#[test]
+fn concatenating_a_value_with_no_text_form_is_refused() {
+    for (src, want) in [
+        (
+            "Point = { x: int }\n\nmain() -> int {\n                 p = Point { x = 1 }\n    info(\"p: \" ++ p)\n    0\n}\n",
+            "Point",
+        ),
+        (
+            "main() -> int {\n    xs = [1, 2]\n    info(\"xs: \" ++ xs)\n    0\n}\n",
+            "IntArr",
+        ),
+    ] {
+        let m = maca_parser::parse(src).module;
+        let err = maca_backend_c::emit_checked(&m).expect_err("must be refused");
+        assert!(
+            err.iter()
+                .any(|p| p.contains(want) && p.contains("text form")),
+            "wrong or missing diagnostic for {want}: {err:?}"
+        );
+    }
+
+    // an unannotated parameter is still a string as far as `++` is concerned —
+    // refusing it would reject `greet(n) => "hi " ++ n`
+    let ok = maca_parser::parse("greet(n) -> str => \"hi \" ++ n\n").module;
+    assert!(
+        maca_backend_c::emit_checked(&ok).is_ok(),
+        "an unknown type is not a refusal"
+    );
+}
+
+/// A `++` chain runs left to right, whatever the ownership analysis decides to
+/// name. Naming only the pieces to release left the order to the C compiler for
+/// the rest, which is neither the order the source is written in nor a stable
+/// one.
+#[test]
+fn a_concat_chain_evaluates_in_source_order() {
+    let out = c(
+        "a() -> str => \"A\"\n\nb(s: str) -> str => s\n\n                 c() -> str => \"C\"\n\n                 main() -> int {\n    info(a() ++ b(\"B\") ++ c())\n    0\n}\n",
+    );
+    let body = out
+        .split("int main(")
+        .nth(1)
+        .expect("a main")
+        .split('\n')
+        .find(|l| l.contains("maca_concat_n"))
+        .expect("the concatenation");
+    let at = |needle: &str| body.find(needle).unwrap_or(usize::MAX);
+    assert!(
+        at("a()") < at("b(\"B\")") && at("b(\"B\")") < at("c()"),
+        "operands are not evaluated in source order:\n{body}"
+    );
+}
+
 #[test]
 fn recursive_record_forward_declares_to_break_the_array_cycle() {
     // `Node { kids: Node[] }` is a definition cycle: the struct body needs the

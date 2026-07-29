@@ -354,9 +354,34 @@ fn walk_fields(fields: &[Field], f: &mut impl FnMut(&Expr)) {
     for field in fields {
         match field {
             Field::Value { value, .. } | Field::Bare(value) => walk_expr(value, f),
+            // A shorthand names a variable but holds no `Expr` to hand over —
+            // see `walk_names`, which is the walk to use when the question is
+            // which names an expression mentions.
             Field::Type { .. } | Field::Shorthand(_) => {}
         }
     }
+}
+
+/// Every variable name `e` mentions.
+///
+/// `walk_expr` visits expressions, and `{ s }` mentions `s` without containing
+/// an expression for it — the shorthand carries a bare `Ident`. Anything asking
+/// *which names does this use* has to see through that, or `{ s }` and
+/// `{ s = s }` answer differently: the first told the C back end that nothing
+/// was holding `s`, so the block that built it released it while the record it
+/// had just been put into still pointed at the bytes.
+pub fn walk_names(e: &Expr, f: &mut impl FnMut(&str)) {
+    walk_expr(e, &mut |c| match c {
+        Expr::Ident(n) => f(n),
+        Expr::Record(fields) | Expr::Ctor { fields, .. } | Expr::With { fields, .. } => {
+            for field in fields {
+                if let Field::Shorthand(n) = field {
+                    f(n);
+                }
+            }
+        }
+        _ => {}
+    });
 }
 
 /// Visit every expression in a statement.

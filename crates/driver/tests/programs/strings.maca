@@ -7,6 +7,10 @@
 
 Row = { label: str, note: str }
 
+Holder = { s: str }
+
+Shape = Circle(float) | Square(int)
+
 // Hands back what it was given. The caller is holding those bytes, so nothing
 // the caller does with the result may release them.
 lent(s: str) -> str => s
@@ -15,6 +19,26 @@ lent(s: str) -> str => s
 built(n: int) -> str => "row-" ++ str(n)
 
 pick(a: str, b: str, first: bool) -> str => first ? a : b
+
+// Rewrites its argument on one path and hands it straight back on the other.
+// Only the caller knows where the untouched one came from.
+maybe_bang(s: str, yes: bool) -> str {
+    if yes {
+        s = s ++ "!"
+    }
+    s
+}
+
+// Keeps what it is given. Called `wrap(s)` or `s.wrap()`, it is the same
+// function and the same promise.
+wrap(s: str) -> Holder => Holder { s = s }
+
+show(s: Shape) -> str {
+    match s {
+        Circle(r) => "circle {r:.1}"
+        Square(n) => "square {n}"
+    }
+}
 
 // An accumulator: rebuilt every round, returned at the end. Each round's
 // previous value is dead the moment the next one exists.
@@ -129,8 +153,95 @@ check_rows_are_reused_without_losing_the_one_kept() {
     assert_eq(kept, "1.2.3.4.5.6.7.8.!", "the row lifted out of the loop")
 }
 
+// `str(x)` renders a value. Given a string there is nothing to render, and
+// the answer used to be the argument itself — so the caller released bytes it
+// had only been shown.
+check_rendering_a_string_does_not_take_it_from_its_owner() {
+    s = "hello" ++ "-world"
+    shown = "[" ++ str(s) ++ "]"
+    // a string of the same size, which lands on the freed block if there was one
+    other = "AAAAA" ++ "AAAAAA"
+
+    assert_eq(shown, "[hello-world]", "the rendering")
+    assert_eq(other, "AAAAAAAAAAA", "the string built afterwards")
+    assert_eq(s, "hello-world", "and the one that was rendered")
+}
+
+check_a_conditionally_rewritten_parameter_belongs_to_the_caller() {
+    a = "hi" ++ " there"
+    // in a loop, so a result released at the end of one round is read again at
+    // the start of the next
+    for i in 1..3 {
+        untouched = maybe_bang(a, false)
+        assert_eq(untouched, "hi there", "the path that changed nothing")
+    }
+    filler = "BBBBBBBB"
+
+    assert_eq(maybe_bang(a, true), "hi there!", "the path that built a string")
+    assert_eq(filler, "BBBBBBBB", "the string built afterwards")
+    assert_eq(a, "hi there", "and the caller's own")
+}
+
+// Written UFCS, the receiver is argument zero. The two spellings have to agree.
+check_a_receiver_is_kept_by_whatever_keeps_an_argument() {
+    held = Holder { s = "" }
+    for i in 1..3 {
+        s = "payload-" ++ "abc"
+        held = s.wrap()
+    }
+    filler = "zzzzzzzzzz" ++ "yyy"
+
+    assert_eq(held.s, "payload-abc", "what the receiver was")
+    assert_eq(filler, "zzzzzzzzzzyyy", "the string built afterwards")
+}
+
+// `{ s }` is `{ s = s }` written short, and the record keeps the string either
+// way.
+check_a_shorthand_field_keeps_its_string() {
+    held = Holder { s = "" }
+    for i in 1..3 {
+        s = "payload-" ++ "abc"
+        boxed = [Holder { s }]
+        held = boxed.get(0)
+    }
+    filler = "zzzzzzzzzz" ++ "yyy"
+
+    assert_eq(held.s, "payload-abc", "what the shorthand named")
+    assert_eq(filler, "zzzzzzzzzzyyy", "the string built afterwards")
+}
+
+// Splitting on nothing has nothing to split, and used to answer with the
+// receiver itself.
+check_splitting_on_nothing_answers_with_its_own_string() {
+    parts: str[] = []
+    for i in 1..2 {
+        s = "abc" ++ "def"
+        parts = s.split("")
+    }
+
+    assert_eq(str(parts.length()), "1", "one piece")
+    assert_eq(parts.get(0), "abcdef", "holding the whole string")
+}
+
+// A list of a sum type whose variants carry payloads: the position that may not
+// be there has to answer with a value of the element type, and a sum is a
+// struct as soon as one variant carries something.
+check_a_list_of_payload_variants_can_be_indexed() {
+    ss = [Circle(1.0), Square(2)]
+
+    assert_eq(show(ss.get(0)), "circle 1.0", "by index")
+    assert_eq(show(ss.first()), "circle 1.0", "the first")
+    assert_eq(show(ss.last()), "square 2", "the last")
+}
+
 main() -> int {
     check_an_accumulator_survives_the_loop_that_built_it()
+    check_rendering_a_string_does_not_take_it_from_its_owner()
+    check_a_conditionally_rewritten_parameter_belongs_to_the_caller()
+    check_a_receiver_is_kept_by_whatever_keeps_an_argument()
+    check_a_shorthand_field_keeps_its_string()
+    check_splitting_on_nothing_answers_with_its_own_string()
+    check_a_list_of_payload_variants_can_be_indexed()
     check_a_lent_string_is_not_released_by_the_borrower()
     check_a_returned_parameter_is_not_released_twice()
     check_a_string_put_in_a_list_outlives_the_block_that_built_it()

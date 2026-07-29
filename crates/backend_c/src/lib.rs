@@ -1541,13 +1541,13 @@ impl<'a> Cx<'a> {
         // A string answers a narrower question than an array does — see
         // `ownership`. `retained` is that question; `escaping` stays the array
         // answer, because every copy of a `T[]` shares one buffer.
-        let retained = ownership::retained(stmts, Tail::Flows);
+        let retained = self.fresh.retained(stmts, Tail::Flows);
         // Two different questions, and an accumulator answers them differently.
         // Releasing the *previous* value on each reassignment is right even for
         // a name the block goes on to return, because the value being replaced
         // is dead either way; releasing the name at the end of the block is
         // not, because that is the value the caller gets.
-        let kept_apart_from_result = ownership::retained(stmts, Tail::Read);
+        let kept_apart_from_result = self.fresh.retained(stmts, Tail::Read);
         let mut owned: Vec<(String, CTy)> = Vec::new();
         for (i, s) in stmts.iter().enumerate() {
             let last = i + 1 == stmts.len();
@@ -1713,12 +1713,21 @@ impl<'a> Cx<'a> {
             let args: Vec<&str> = pieces.iter().map(|p| p.code.as_str()).collect();
             return format!("maca_concat_n({n}, {})", args.join(", "));
         }
+        // Every piece that could be doing something is named, not just the ones
+        // to release, because the names are what fix the order: arguments to
+        // one call are evaluated in whatever order the C compiler likes, and
+        // naming only some of them would run a chain neither left to right nor
+        // right to left, decided by an ownership judgement the source does not
+        // show. A literal or a bare variable is left alone — reading one is not
+        // an event anybody can observe.
         let (mut lets, mut args, mut drops) = (Vec::new(), Vec::new(), Vec::new());
         for p in pieces {
-            if p.releasable() {
+            if p.releasable() || !p.is_settled() {
                 let t = self.temp();
                 lets.push(format!("maca_str {t} = {};", p.code));
-                drops.push(format!("maca_drop_str({t});"));
+                if p.releasable() {
+                    drops.push(format!("maca_drop_str({t});"));
+                }
                 args.push(t);
             } else {
                 args.push(p.code.clone());
@@ -3221,7 +3230,15 @@ impl<'a> Cx<'a> {
             // coercions need the argument type
             if name == "str" {
                 let (c, t) = self.arg_typed(env, &args[0]);
-                return (to_str(&c, &t), CTy::Str);
+                return match t {
+                    // `str(s)` on a string has nothing to convert, and used to
+                    // hand back the argument — which made it the one producer
+                    // the ownership analysis trusts that did not produce
+                    // anything, so its caller released a string it was only
+                    // lent. A conversion that returns a value builds one.
+                    CTy::Str => (format!("maca_str_copy({c})"), CTy::Str),
+                    _ => (to_str(&c, &t), CTy::Str),
+                };
             }
             if name == "int" {
                 let (c, t) = self.arg_typed(env, &args[0]);
@@ -3962,6 +3979,19 @@ impl<'a> Cx<'a> {
             // used to hand an `int64_t` to a `maca_str` parameter, compile
             // without complaint, and segfault at run time reading address 3.
             Concat if matches!(lt, CTy::Str) || matches!(rt, CTy::Str) => {
+                // One call takes its operands as varargs, where the two-operand
+                // form took them as declared parameters — so a value with no
+                // text form used to be a compile error naming the types and
+                // would now be read as a pointer and dereferenced.
+                for t in [&lt, &rt] {
+                    if !can_concat(t) {
+                        self.problem(format!(
+                            "`{}` has no text form — `++` joins strings, so \
+                             convert it first",
+                            c_type(t)
+                        ));
+                    }
+                }
                 let mut pieces = left_pieces
                     .unwrap_or_else(|| vec![Piece::operand(&lc, &lt, self.fresh.allocates(lhs))]);
                 pieces.push(Piece::operand(&rc, &rt, self.fresh.allocates(rhs)));
@@ -4241,13 +4271,17 @@ fn zero_value(t: &CTy) -> String {
         CTy::F32 | CTy::Float => "0.0".into(),
         CTy::Arr(e) => format!("{}_new()", arr_name(e)),
         CTy::Map(v) => format!("{}_new()", map_name(v)),
-        // zeroed, not merely declared: this is what an absent element answers
+        CTy::Int | CTy::Unit | CTy::Unknown | CTy::Future => "0".into(),
+        // Zeroed, not merely declared: this is what an absent element answers
         // with, and an indeterminate struct is a different wrong answer every
-        // time it is read
-        CTy::Rec(_) | CTy::Vec { .. } => {
-            format!("({{ {0} _z; memset(&_z, 0, sizeof _z); _z; }})", c_type(t))
-        }
-        _ => "0".into(),
+        // time it is read.
+        //
+        // Everything else lands here rather than on `0`, because whether a type
+        // is a scalar in C is not something to guess at: a sum type is an enum
+        // until one of its variants carries a payload and then it is a struct,
+        // and `0` in the other arm of a bounds check stopped every program that
+        // indexed a list of them from compiling at all.
+        _ => format!("({{ {0} _z; memset(&_z, 0, sizeof _z); _z; }})", c_type(t)),
     }
 }
 
@@ -5386,6 +5420,19 @@ struct Piece {
     owned: bool,
 }
 
+/// Can a value of this type be an operand of `++` beside a string?
+///
+/// A scalar is rendered on the way in and `Unknown` is passed through, which is
+/// what an unannotated parameter needs. A record, a list, a map, a closure or a
+/// vector has no text form, and saying so is the whole difference between a
+/// diagnostic and a segfault.
+fn can_concat(t: &CTy) -> bool {
+    matches!(
+        t,
+        CTy::Str | CTy::Int | CTy::Float | CTy::F32 | CTy::Bool | CTy::Unknown
+    )
+}
+
 impl Piece {
     /// An operand of `++` where the other side is a string.
     ///
@@ -5429,6 +5476,16 @@ impl Piece {
     /// Is this a piece a release would actually reach?
     fn releasable(&self) -> bool {
         self.owned && !self.code.starts_with('"')
+    }
+
+    /// Is reading this piece an event? A literal and a bare variable are the
+    /// two shapes that cannot be, so they need no name to pin their order.
+    fn is_settled(&self) -> bool {
+        self.code.starts_with('"')
+            || self
+                .code
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_')
     }
 }
 

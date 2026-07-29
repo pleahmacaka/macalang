@@ -184,11 +184,11 @@ impl Fresh {
         };
         loop {
             let mut grew = false;
-            for (name, body) in &bodies {
+            for (name, params, body) in &bodies {
                 if fresh.fns.contains(name) {
                     continue;
                 }
-                if fresh.body_returns_fresh(body) {
+                if fresh.body_returns_fresh(params, body) {
                     fresh.fns.insert(name.clone());
                     grew = true;
                 }
@@ -225,76 +225,91 @@ impl Fresh {
     }
 
     /// Is every string this body returns one the caller becomes the owner of?
-    fn body_returns_fresh(&self, body: &FnBody) -> bool {
+    fn body_returns_fresh(&self, params: &HashSet<String>, body: &FnBody) -> bool {
         match body {
-            FnBody::Expr(e) => self.returned(e, &[]),
+            FnBody::Expr(e) => self.returned(params, e, &[]),
             FnBody::Block(ss) => {
                 // A local named as the result is fresh when the local itself is
                 // — `page` builds `out` a piece at a time and hands it back, and
                 // refusing that would leave the common shape unowned. What it
                 // must not do is hand the same string somewhere else on the way
                 // out, so retention is measured with the tail left out.
-                let kept = retained(ss, Tail::Read);
-                self.returned_from(ss, &kept)
+                let kept = self.retained(ss, Tail::Read);
+                self.returned_from(params, ss, &kept)
             }
         }
     }
 
     /// The tail of a statement list, and the tails of any branches it ends in.
-    fn returned_from(&self, ss: &[Stmt], kept: &HashSet<String>) -> bool {
-        let locals = fresh_locals(self, ss, kept);
+    fn returned_from(&self, params: &HashSet<String>, ss: &[Stmt], kept: &HashSet<String>) -> bool {
+        let locals = self.fresh_locals(params, ss, kept);
         match ss.last() {
-            Some(Stmt::Expr(e)) => self.returned(e, &locals),
+            Some(Stmt::Expr(e)) => self.returned(params, e, &locals),
             // a body that ends in a binding has no value to return
             _ => false,
         }
     }
 
     /// Is `e` in return position fresh, given the locals known to be?
-    fn returned(&self, e: &Expr, locals: &[String]) -> bool {
+    fn returned(&self, params: &HashSet<String>, e: &Expr, locals: &[String]) -> bool {
         match e {
             Expr::Ident(n) => locals.iter().any(|l| l == n),
             Expr::Ternary { then, els, .. } => {
-                self.returned(then, locals) && self.returned(els, locals)
+                self.returned(params, then, locals) && self.returned(params, els, locals)
             }
-            Expr::Try(inner) | Expr::Reify(inner) => self.returned(inner, locals),
+            Expr::Try(inner) | Expr::Reify(inner) => self.returned(params, inner, locals),
             Expr::If { then, els, .. } => {
-                let kept = retained(then, Tail::Read);
-                self.returned_from(then, &kept)
+                let kept = self.retained(then, Tail::Read);
+                self.returned_from(params, then, &kept)
                     && els.as_ref().is_some_and(|e| {
-                        let kept = retained(e, Tail::Read);
-                        self.returned_from(e, &kept)
+                        let kept = self.retained(e, Tail::Read);
+                        self.returned_from(params, e, &kept)
                     })
             }
             Expr::Block(ss) => {
-                let kept = retained(ss, Tail::Read);
-                self.returned_from(ss, &kept)
+                let kept = self.retained(ss, Tail::Read);
+                self.returned_from(params, ss, &kept)
             }
-            Expr::Match { arms, .. } => arms.iter().all(|a| self.returned(&a.body, locals)),
+            Expr::Match { arms, .. } => arms.iter().all(|a| self.returned(params, &a.body, locals)),
             _ => self.allocates(e),
         }
     }
-}
 
-/// Locals in `ss` that hold a string nobody else is holding.
-///
-/// A name qualifies when every value it is ever given is fresh — the first one
-/// and every reassignment anywhere below, including inside a loop — and nothing
-/// keeps it.
-fn fresh_locals(f: &Fresh, ss: &[Stmt], kept: &HashSet<String>) -> Vec<String> {
-    let mut binds: HashMap<String, bool> = HashMap::new();
-    each_bind(ss, &mut |name, value| {
-        let fresh = f.allocates(value);
+    /// Locals in `ss` that hold a string nobody else is holding.
+    ///
+    /// A name qualifies when every value it is ever given is fresh — the first
+    /// one and every reassignment anywhere below, including inside a loop — and
+    /// nothing keeps it.
+    ///
+    /// A parameter never qualifies, however it is assigned. Its first value is
+    /// the caller's argument, which is not in this body to be looked at:
+    /// `norm(s) { if !s.starts_with("/") { s = "/" ++ s }  s }` assigns a fresh
+    /// string on one path and hands back the caller's own pointer on the other,
+    /// and counting only the assignment it can see called the whole function a
+    /// producer.
+    fn fresh_locals(
+        &self,
+        params: &HashSet<String>,
+        ss: &[Stmt],
+        kept: &HashSet<String>,
+    ) -> Vec<String> {
+        let mut binds: HashMap<String, bool> = HashMap::new();
+        each_bind(ss, &mut |name, value| {
+            if params.contains(name) {
+                return;
+            }
+            let fresh = self.allocates(value);
+            binds
+                .entry(name.to_string())
+                .and_modify(|ok| *ok &= fresh)
+                .or_insert(fresh);
+        });
         binds
-            .entry(name.to_string())
-            .and_modify(|ok| *ok &= fresh)
-            .or_insert(fresh);
-    });
-    binds
-        .into_iter()
-        .filter(|(name, ok)| *ok && !kept.contains(name))
-        .map(|(name, _)| name)
-        .collect()
+            .into_iter()
+            .filter(|(name, ok)| *ok && !kept.contains(name))
+            .map(|(name, _)| name)
+            .collect()
+    }
 }
 
 /// Every `name = value` in the subtree, however deeply nested.
@@ -356,148 +371,166 @@ pub enum Tail {
     Read,
 }
 
-/// Names whose string may be kept somewhere this statement list cannot see.
-///
-/// The default is retention: a call goes on the list unless the callee is one
-/// of the borrowing helpers above. Everything a container holds goes on it, and
-/// so does anything a lambda could capture.
-pub fn retained(stmts: &[Stmt], tail: Tail) -> HashSet<String> {
-    let mut out = HashSet::new();
-    retain_stmts(stmts, tail, &mut out);
-    out
-}
+impl Fresh {
+    /// Names whose string may be kept somewhere this statement list cannot see.
+    ///
+    /// The default is retention: a call goes on the list unless the callee is
+    /// one of the borrowing helpers above. Everything a container holds goes on
+    /// it, and so does anything a lambda could capture.
+    pub fn retained(&self, stmts: &[Stmt], tail: Tail) -> HashSet<String> {
+        let mut out = HashSet::new();
+        self.retain_stmts(stmts, tail, &mut out);
+        out
+    }
 
-fn retain_stmts(stmts: &[Stmt], tail: Tail, out: &mut HashSet<String>) {
-    let n = stmts.len();
-    for (i, s) in stmts.iter().enumerate() {
-        let last = i + 1 == n;
-        match s {
-            Stmt::Bind(b) => {
-                flows_out(&b.value, out);
-                // `xs[i] = s` and `p.f = s` put the value in the container; the
-                // container expression itself is only read.
-                if !matches!(&b.target, Expr::Ident(_)) {
-                    reads(&b.target, out);
-                }
+    /// Does this callee read what it is given without keeping any of it?
+    ///
+    /// A name in one of the tables, and not one the module has redefined —
+    /// `length` is the runtime's until a module writes its own, and then what
+    /// it does with a string is not visible from here.
+    fn borrowing(&self, callee: &Expr) -> bool {
+        match callee {
+            Expr::Ident(f) => !self.defined.contains(f) && BORROWING_FNS.contains(&f.as_str()),
+            Expr::Field { name, .. } => {
+                !self.defined.contains(name) && BORROWING_METHODS.contains(&name.as_str())
             }
-            Stmt::Expr(e) if last && tail == Tail::Flows => flows_out(e, out),
-            Stmt::Expr(e) => reads(e, out),
-            // a nested function can capture anything it names
-            Stmt::Fn(f) => match &f.body {
-                Some(FnBody::Expr(e)) => keep_all(e, out),
-                Some(FnBody::Block(ss)) => ss.iter().for_each(|s| {
-                    walk_stmt(s, &mut |e| {
-                        if let Expr::Ident(n) = e {
-                            out.insert(n.clone());
-                        }
-                    })
-                }),
-                None => {}
-            },
-            _ => {}
+            _ => false,
         }
     }
-}
 
-/// The value leaves this position, so a bare name here is no longer ours.
-fn flows_out(e: &Expr, out: &mut HashSet<String>) {
-    match e {
-        Expr::Ident(n) => {
-            out.insert(n.clone());
+    fn retain_stmts(&self, stmts: &[Stmt], tail: Tail, out: &mut HashSet<String>) {
+        let n = stmts.len();
+        for (i, s) in stmts.iter().enumerate() {
+            let last = i + 1 == n;
+            match s {
+                Stmt::Bind(b) => {
+                    self.flows_out(&b.value, out);
+                    // `xs[i] = s` and `p.f = s` put the value in the container;
+                    // the container expression itself is only read.
+                    if !matches!(&b.target, Expr::Ident(_)) {
+                        self.reads(&b.target, out);
+                    }
+                }
+                Stmt::Expr(e) if last && tail == Tail::Flows => self.flows_out(e, out),
+                Stmt::Expr(e) => self.reads(e, out),
+                // a nested function can capture anything it names
+                Stmt::Fn(f) => match &f.body {
+                    Some(FnBody::Expr(e)) => keep_all(e, out),
+                    Some(FnBody::Block(ss)) => ss
+                        .iter()
+                        .for_each(|s| walk_stmt(s, &mut |e| keep_all(e, out))),
+                    None => {}
+                },
+                _ => {}
+            }
         }
-        Expr::Ternary { cond, then, els } => {
-            reads(cond, out);
-            flows_out(then, out);
-            flows_out(els, out);
-        }
-        Expr::Try(inner) | Expr::Reify(inner) => flows_out(inner, out),
-        _ => reads(e, out),
     }
-}
 
-/// The expression is evaluated and its parts read. Sub-positions that do keep a
-/// value are marked as they are reached.
-fn reads(e: &Expr, out: &mut HashSet<String>) {
-    match e {
-        Expr::Ident(_) | Expr::Int(_) | Expr::Float(_) | Expr::Bool(_) | Expr::Unit => {}
-        Expr::Path(_) | Expr::Break | Expr::Continue => {}
-        Expr::Str(parts) => {
-            for p in parts {
-                if let StrPart::Interp(e) = p {
-                    reads(e, out);
+    /// The value leaves this position, so a bare name here is no longer ours.
+    fn flows_out(&self, e: &Expr, out: &mut HashSet<String>) {
+        match e {
+            Expr::Ident(n) => {
+                out.insert(n.clone());
+            }
+            Expr::Ternary { cond, then, els } => {
+                self.reads(cond, out);
+                self.flows_out(then, out);
+                self.flows_out(els, out);
+            }
+            Expr::Try(inner) | Expr::Reify(inner) => self.flows_out(inner, out),
+            _ => self.reads(e, out),
+        }
+    }
+
+    /// The expression is evaluated and its parts read. Sub-positions that do
+    /// keep a value are marked as they are reached.
+    fn reads(&self, e: &Expr, out: &mut HashSet<String>) {
+        match e {
+            Expr::Ident(_) | Expr::Int(_) | Expr::Float(_) | Expr::Bool(_) | Expr::Unit => {}
+            Expr::Path(_) | Expr::Break | Expr::Continue => {}
+            Expr::Str(parts) => {
+                for p in parts {
+                    if let StrPart::Interp(e) = p {
+                        self.reads(e, out);
+                    }
                 }
             }
-        }
-        // a container holds what it is given
-        Expr::List(items) => items.iter().for_each(|i| keep_all(i, out)),
-        Expr::Record(fs) | Expr::Ctor { fields: fs, .. } => keep_fields(fs, out),
-        Expr::With { base, fields } => {
-            keep_all(base, out);
-            keep_fields(fields, out);
-        }
-        // a lambda outlives the expression that wrote it, and so does anything
-        // it captured; a task the same
-        Expr::Lambda { body, .. } => keep_all(body, out),
-        Expr::Spawn(x) | Expr::Await(x) | Expr::Fail(x) => keep_all(x, out),
-        Expr::Assign { target, value } => {
-            reads(target, out);
-            keep_all(value, out);
-        }
-        Expr::Call { callee, args } => {
-            let borrows = borrowing(callee);
-            if let Expr::Field { base, .. } = callee.as_ref() {
-                reads(base, out);
-            } else {
-                reads(callee, out);
+            // a container holds what it is given
+            Expr::List(items) => items.iter().for_each(|i| keep_all(i, out)),
+            Expr::Record(fs) | Expr::Ctor { fields: fs, .. } => keep_fields(fs, out),
+            Expr::With { base, fields } => {
+                keep_all(base, out);
+                keep_fields(fields, out);
             }
-            for a in args {
-                if borrows {
-                    reads(arg_expr(a), out);
-                } else {
-                    keep_all(arg_expr(a), out);
+            // a lambda outlives the expression that wrote it, and so does
+            // anything it captured; a task the same
+            Expr::Lambda { body, .. } => keep_all(body, out),
+            Expr::Spawn(x) | Expr::Await(x) | Expr::Fail(x) => keep_all(x, out),
+            Expr::Assign { target, value } => {
+                self.reads(target, out);
+                keep_all(value, out);
+            }
+            Expr::Call { callee, args } => {
+                let borrows = self.borrowing(callee);
+                match callee.as_ref() {
+                    // Written UFCS, the receiver *is* argument zero, so it is
+                    // kept by exactly the calls that keep an argument.
+                    // Exempting it made `s.wrap()` release a string that
+                    // `wrap(s)` correctly held on to — the same program, spelled
+                    // two ways, one of them handing back recycled bytes.
+                    Expr::Field { base, .. } if borrows => self.reads(base, out),
+                    Expr::Field { base, .. } => keep_all(base, out),
+                    other => self.reads(other, out),
+                }
+                for a in args {
+                    if borrows {
+                        self.reads(arg_expr(a), out);
+                    } else {
+                        keep_all(arg_expr(a), out);
+                    }
                 }
             }
-        }
-        Expr::Field { base, .. } => reads(base, out),
-        Expr::Index { base, index } => {
-            reads(base, out);
-            reads(index, out);
-        }
-        Expr::Range { lo, hi } => {
-            reads(lo, out);
-            reads(hi, out);
-        }
-        Expr::Unary { expr, .. } => reads(expr, out),
-        Expr::Binary { lhs, rhs, .. } => {
-            reads(lhs, out);
-            reads(rhs, out);
-        }
-        Expr::Ternary { cond, then, els } => {
-            reads(cond, out);
-            reads(then, out);
-            reads(els, out);
-        }
-        Expr::Try(x) | Expr::Reify(x) => reads(x, out),
-        Expr::If { cond, then, els } => {
-            reads(cond, out);
-            retain_stmts(then, Tail::Flows, out);
-            if let Some(e) = els {
-                retain_stmts(e, Tail::Flows, out);
+            Expr::Field { base, .. } => self.reads(base, out),
+            Expr::Index { base, index } => {
+                self.reads(base, out);
+                self.reads(index, out);
             }
+            Expr::Range { lo, hi } => {
+                self.reads(lo, out);
+                self.reads(hi, out);
+            }
+            Expr::Unary { expr, .. } => self.reads(expr, out),
+            Expr::Binary { lhs, rhs, .. } => {
+                self.reads(lhs, out);
+                self.reads(rhs, out);
+            }
+            Expr::Ternary { cond, then, els } => {
+                self.reads(cond, out);
+                self.reads(then, out);
+                self.reads(els, out);
+            }
+            Expr::Try(x) | Expr::Reify(x) => self.reads(x, out),
+            Expr::If { cond, then, els } => {
+                self.reads(cond, out);
+                self.retain_stmts(then, Tail::Flows, out);
+                if let Some(e) = els {
+                    self.retain_stmts(e, Tail::Flows, out);
+                }
+            }
+            Expr::Match { scrut, arms } => {
+                self.reads(scrut, out);
+                arms.iter().for_each(|a| self.flows_out(&a.body, out));
+            }
+            Expr::For { iter, body, .. } => {
+                self.reads(iter, out);
+                self.retain_stmts(body, Tail::Read, out);
+            }
+            Expr::While { cond, body } => {
+                self.reads(cond, out);
+                self.retain_stmts(body, Tail::Read, out);
+            }
+            Expr::Block(ss) => self.retain_stmts(ss, Tail::Flows, out),
         }
-        Expr::Match { scrut, arms } => {
-            reads(scrut, out);
-            arms.iter().for_each(|a| flows_out(&a.body, out));
-        }
-        Expr::For { iter, body, .. } => {
-            reads(iter, out);
-            retain_stmts(body, Tail::Read, out);
-        }
-        Expr::While { cond, body } => {
-            reads(cond, out);
-            retain_stmts(body, Tail::Read, out);
-        }
-        Expr::Block(ss) => retain_stmts(ss, Tail::Flows, out),
     }
 }
 
@@ -516,21 +549,14 @@ fn keep_fields(fs: &[Field], out: &mut HashSet<String>) {
 }
 
 /// Everything named in here may be kept.
+///
+/// `walk_names`, not `walk_expr`: `{ s }` mentions `s` and holds no expression
+/// for it, so a walk over expressions alone said a list of shorthand records
+/// kept nothing.
 fn keep_all(e: &Expr, out: &mut HashSet<String>) {
-    walk_expr(e, &mut |c| {
-        if let Expr::Ident(n) = c {
-            out.insert(n.clone());
-        }
+    walk_names(e, &mut |n| {
+        out.insert(n.to_string());
     });
-}
-
-/// Does this callee read its arguments without keeping any of them?
-fn borrowing(callee: &Expr) -> bool {
-    match callee {
-        Expr::Ident(f) => BORROWING_FNS.contains(&f.as_str()),
-        Expr::Field { name, .. } => BORROWING_METHODS.contains(&name.as_str()),
-        _ => false,
-    }
 }
 
 /// Every top-level name the module defines.
@@ -552,12 +578,15 @@ fn collect_defined(items: &[Stmt], out: &mut HashSet<String>) {
     }
 }
 
-/// The module's functions that have a body, by name.
-fn fn_bodies(items: &[Stmt]) -> Vec<(String, &FnBody)> {
+/// The module's functions that have a body: name, parameter names, body.
+fn fn_bodies(items: &[Stmt]) -> Vec<(String, HashSet<String>, &FnBody)> {
     items
         .iter()
         .filter_map(|s| match s {
-            Stmt::Fn(f) => f.body.as_ref().map(|b| (f.name.clone(), b)),
+            Stmt::Fn(f) => f.body.as_ref().map(|b| {
+                let params = f.params.iter().map(|p| p.name.clone()).collect();
+                (f.name.clone(), params, b)
+            }),
             _ => None,
         })
         .collect()
@@ -628,11 +657,10 @@ mod tests {
         assert!(!f.fns.contains("walk"));
     }
 
-    /// Reading a name is not keeping it — that is what lets an accumulator be
-    /// released one iteration at a time.
-    #[test]
-    fn concatenation_reads_its_operands() {
-        let m = module("f() -> int {\n    a = \"x\"\n    b = a ++ \"y\"\n    0\n}\n");
+    /// The names a block's statements keep, for a module that defines nothing
+    /// but the function under test.
+    fn kept(src: &str) -> HashSet<String> {
+        let m = module(src);
         let Stmt::Fn(FnDef {
             body: Some(FnBody::Block(ss)),
             ..
@@ -640,7 +668,14 @@ mod tests {
         else {
             panic!("a block body");
         };
-        let kept = retained(ss, Tail::Flows);
+        Fresh::of(&m).retained(ss, Tail::Flows)
+    }
+
+    /// Reading a name is not keeping it — that is what lets an accumulator be
+    /// released one iteration at a time.
+    #[test]
+    fn concatenation_reads_its_operands() {
+        let kept = kept("f() -> int {\n    a = \"x\"\n    b = a ++ \"y\"\n    0\n}\n");
         assert!(!kept.contains("a"), "read, not kept: {kept:?}");
     }
 
@@ -648,28 +683,68 @@ mod tests {
     /// function does with the string is not visible from here.
     #[test]
     fn an_argument_to_an_unknown_call_is_kept() {
-        let m = module("f() -> int {\n    a = \"x\"\n    remember(a)\n    0\n}\n");
-        let Stmt::Fn(FnDef {
-            body: Some(FnBody::Block(ss)),
-            ..
-        }) = &m.items[0]
-        else {
-            panic!("a block body");
-        };
-        assert!(retained(ss, Tail::Flows).contains("a"));
+        assert!(kept("f() -> int {\n    a = \"x\"\n    remember(a)\n    0\n}\n").contains("a"));
     }
 
-    /// A container holds what it is given, whatever shape it is written in.
+    /// Written UFCS, the receiver is argument zero, so the two spellings of the
+    /// same call have to agree about it.
     #[test]
-    fn a_container_keeps_its_elements() {
-        let m = module("f() -> int {\n    a = \"x\"\n    xs = [a]\n    0\n}\n");
+    fn a_receiver_is_kept_by_whatever_keeps_an_argument() {
+        assert!(
+            kept("f() -> int {\n    a = \"x\"\n    remember(a)\n    0\n}\n").contains("a"),
+            "written as a call"
+        );
+        assert!(
+            kept("f() -> int {\n    a = \"x\"\n    a.remember()\n    0\n}\n").contains("a"),
+            "written UFCS"
+        );
+        assert!(
+            !kept("f() -> int {\n    a = \"x\"\n    n = a.length()\n    0\n}\n").contains("a"),
+            "a runtime helper that only measures keeps nothing"
+        );
+    }
+
+    /// A module's own definition wins over the table: what its `length` does
+    /// with a string is not something this list can answer for.
+    #[test]
+    fn a_redefined_helper_is_no_longer_borrowing() {
+        let src = "length(s: str) -> int => 0\n\n                   f() -> int {\n    a = \"x\"\n    n = a.length()\n    0\n}\n";
+        let m = module(src);
         let Stmt::Fn(FnDef {
             body: Some(FnBody::Block(ss)),
             ..
-        }) = &m.items[0]
+        }) = &m.items[1]
         else {
             panic!("a block body");
         };
-        assert!(retained(ss, Tail::Flows).contains("a"));
+        assert!(Fresh::of(&m).retained(ss, Tail::Flows).contains("a"));
+    }
+
+    /// A container holds what it is given, whatever shape it is written in —
+    /// including the shorthand, which names a variable and holds no expression
+    /// for a walk over expressions to find.
+    #[test]
+    fn a_container_keeps_its_elements() {
+        assert!(kept("f() -> int {\n    a = \"x\"\n    xs = [a]\n    0\n}\n").contains("a"));
+        assert!(
+            kept("f() -> int {\n    a = \"x\"\n    xs = [Holder { a = a }]\n    0\n}\n")
+                .contains("a"),
+            "a named field"
+        );
+        assert!(
+            kept("f() -> int {\n    a = \"x\"\n    xs = [Holder { a }]\n    0\n}\n").contains("a"),
+            "and the shorthand for it"
+        );
+    }
+
+    /// A parameter's first value is the caller's, which is not in this body to
+    /// be looked at — so a function that rewrites one on some paths and hands
+    /// it back on others is not a producer.
+    #[test]
+    fn a_conditionally_rewritten_parameter_is_not_fresh() {
+        let f = fresh(
+            "norm(s: str, add: bool) -> str {\n                 if add {\n        s = s ++ \"!\"\n    }\n    s\n}\n",
+        );
+        assert!(!f.fns.contains("norm"));
     }
 }

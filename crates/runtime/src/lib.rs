@@ -44,6 +44,16 @@ void* maca_realloc(void* p, size_t n);
    struct with a buffer in it, and it is `const` because nothing may write
    through it — neither changes who is allowed to let go of the bytes. */
 void maca_drop_str(maca_str s);
+/* A fresh copy of `s`.
+   Every `maca_str`-returning function in here promises the same thing: what
+   comes back is a block this allocator handed out, or a static literal — never
+   one of the arguments. That promise is what lets the back end release a string
+   it built without first proving where the bytes came from, and this is how the
+   ones with nothing to do keep it: the shortcuts that used to return an
+   argument unchanged (`replace` with an empty needle, `pad` of an already-wide
+   string, `split` on an empty separator) were free until the caller was allowed
+   to let go of the result. */
+maca_str maca_str_copy(maca_str s);
 void maca_dup(void* p);        /* one more owner */
 void maca_drop(void* p);       /* one fewer owner; at zero, back to the free-list */
 uint64_t maca_alloc_count(void);
@@ -532,7 +542,10 @@ jmp_buf* maca_try_push(void) {
     return &g_handlers[g_handler_top++];
 }
 void maca_try_pop(void) { if (g_handler_top > 0) g_handler_top--; }
-maca_str maca_last_fail(void) { return g_last_fail; }
+/* The message the last caught failure carried. Copied, because `fail e` was
+   handed a string somebody else is holding and the caller of `try` is entitled
+   to treat what it gets back as its own. */
+maca_str maca_last_fail(void) { return maca_str_copy(g_last_fail); }
 
 void maca_fail(maca_str s) {
     if (g_handler_top > 0) {
@@ -555,15 +568,7 @@ maca_str maca_input(void) {
 }
 
 /* ---- strings ---- */
-/* A fresh copy of `s`.
-   Every `maca_str`-returning function in here promises the same thing: what
-   comes back is a block this allocator handed out, or a static literal — never
-   one of the arguments. That promise is what lets the back end release a string
-   it built without first proving where the bytes came from. The shortcuts that
-   used to return an argument unchanged (`replace` with an empty needle, `pad`
-   of an already-wide string, `path_join` with an empty side) were free until
-   the caller was allowed to let go of the result. */
-static maca_str str_copy(maca_str s) {
+maca_str maca_str_copy(maca_str s) {
     if (!s || !*s) return "";
     size_t n = strlen(s);
     char* r = (char*)xmalloc(n + 1);
@@ -962,7 +967,7 @@ maca_str maca_capture(maca_str cmd, maca_str* argv, int64_t n) {
 maca_str maca_env(maca_str name) {
     if (!name) return "";
     const char* v = getenv(name);
-    return v ? str_copy(v) : "";
+    return v ? maca_str_copy(v) : "";
 }
 
 maca_str maca_cwd(void) {
@@ -987,7 +992,7 @@ static maca_str maca_pad(maca_str s, int64_t w, maca_str p, bool at_start) {
     if (!s) s = "";
     if (!p || !*p) p = " ";
     size_t len = strlen(s);
-    if (w <= 0 || (size_t)w <= len) return str_copy(s);
+    if (w <= 0 || (size_t)w <= len) return maca_str_copy(s);
     size_t fill = (size_t)w - len, plen = strlen(p);
     char* r = (char*)xmalloc((size_t)w + 1);
     char* pad = at_start ? r : r + len;
@@ -1047,7 +1052,7 @@ static bool maca_void_tag(maca_str t) {
    that, and a generator that walks a document needs to. Voidness is decided
    here because it can't be decided at compile time. */
 maca_str maca_element(maca_str tag, maca_str attrs, maca_str kids) {
-    if (!tag || !*tag) return str_copy(kids);
+    if (!tag || !*tag) return maca_str_copy(kids);
     if (!attrs) attrs = "";
     if (!kids) kids = "";
     size_t t = strlen(tag), a = strlen(attrs), k = strlen(kids);
@@ -1069,7 +1074,7 @@ maca_str maca_pad_center(maca_str s, int64_t w, maca_str p) {
     if (!s) s = "";
     if (!p || !*p) p = " ";
     size_t len = strlen(s);
-    if (w <= 0 || (size_t)w <= len) return str_copy(s);
+    if (w <= 0 || (size_t)w <= len) return maca_str_copy(s);
     size_t fill = (size_t)w - len, left = fill / 2, plen = strlen(p);
     char* r = (char*)xmalloc((size_t)w + 1);
     for (size_t i = 0; i < left; i++) r[i] = p[i % plen];
@@ -1107,7 +1112,7 @@ int64_t maca_index_of(maca_str s, maca_str sub) {
 }
 maca_str maca_replace(maca_str s, maca_str from, maca_str to) {
     if (!s) return "";
-    if (!from || !*from) return str_copy(s); /* empty needle: no-op (avoid infinite loop) */
+    if (!from || !*from) return maca_str_copy(s); /* empty needle: no-op (avoid infinite loop) */
     if (!to) to = "";
     size_t lf = strlen(from);
     maca_sb sb; maca_sb_init(&sb);
@@ -1200,7 +1205,7 @@ maca_str* maca_split(maca_str s, maca_str sep, int64_t* out_len) {
     maca_str* out = (maca_str*)xmalloc(cap * sizeof(maca_str));
     /* empty separator: split into whole string as one element */
     if (!sep || !*sep) {
-        out[n++] = s;
+        out[n++] = maca_str_copy(s);
         *out_len = (int64_t)n;
         return out;
     }
@@ -1256,15 +1261,15 @@ maca_str maca_sb_finish(maca_sb* sb) { sb->buf[sb->len] = '\0'; return sb->buf; 
 
 /* ---- paths & files ---- */
 maca_str maca_path_join(maca_str a, maca_str b) {
-    if (!a || !*a) return str_copy(b);
-    if (!b || !*b) return str_copy(a);
+    if (!a || !*a) return maca_str_copy(b);
+    if (!b || !*b) return maca_str_copy(a);
     size_t la = strlen(a);
     bool slash = a[la - 1] == '/';
     return maca_concat(a, slash ? b : maca_concat("/", b));
 }
 maca_str maca_dirs_data(void) {
     const char* x = getenv("XDG_DATA_HOME");
-    if (x && *x) return x;
+    if (x && *x) return maca_str_copy(x);
     const char* h = getenv("HOME");
     if (!h || !*h) h = ".";
     return maca_path_join(h, ".local/share");
@@ -1403,7 +1408,7 @@ maca_json* maca_json_get(maca_json* o, const char* key) {
 int64_t maca_json_int(maca_json* j) { return j && j->kind == MJ_NUM ? (int64_t)j->num : 0; }
 double maca_json_float(maca_json* j) { return j && j->kind == MJ_NUM ? j->num : 0.0; }
 bool maca_json_bool(maca_json* j) { return j && j->kind == MJ_BOOL ? j->b : false; }
-maca_str maca_json_str(maca_json* j) { return j && j->kind == MJ_STR && j->str ? str_copy(j->str) : ""; }
+maca_str maca_json_str(maca_json* j) { return j && j->kind == MJ_STR && j->str ? maca_str_copy(j->str) : ""; }
 "##;
 
 /// `maca_async.h` — the concurrency runtime interface. Always includable; the
