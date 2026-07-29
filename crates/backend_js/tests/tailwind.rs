@@ -122,3 +122,23 @@ fn document_utilities_exist() {
     assert!(rule("max-w-2xl").unwrap().contains("42rem"));
     assert!(rule("underline-offset-2").unwrap().contains("2px"));
 }
+
+/// A border width with no style is invisible — CSS defaults `border-style` to
+/// `none`. The unparameterized `border-l` always emitted both; `border-l-2`
+/// emitted only the width, so it drew nothing and said nothing.
+#[test]
+fn a_sided_border_width_carries_its_style() {
+    for (class, side) in [
+        ("border-l-2", "left"),
+        ("border-t-4", "top"),
+        ("border-r-2", "right"),
+        ("border-b-8", "bottom"),
+    ] {
+        let css = maca_backend_js::rule(class)
+            .unwrap_or_else(|| panic!("{class} generates no rule"));
+        assert!(
+            css.contains(&format!("border-{side}-style:solid")),
+            "{class} sets a width with no style: {css}"
+        );
+    }
+}

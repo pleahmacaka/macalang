@@ -409,9 +409,13 @@ fn cmd_lint(args: &[String]) {
             ));
         }
     }
-    // semantic diagnostics
+    // Semantic diagnostics see the imports resolved, the way `build` does.
+    // Checking the file alone reported every `join` and `read_lines` in a
+    // script as an undefined name, which is a linter crying wolf about the
+    // exact thing it exists to catch.
     let parsed = maca_parser::parse(&source);
-    for d in maca_core::check(&parsed.module, maca_core::Mode::Program) {
+    let whole = load_with_imports(&src).unwrap_or_else(|_| source.clone());
+    for d in maca_core::check(&maca_parser::parse(&whole).module, maca_core::Mode::Program) {
         issues.push(format!("{}: {:?}: {}", src.display(), d.kind, d.msg));
     }
 

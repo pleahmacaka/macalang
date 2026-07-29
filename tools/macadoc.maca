@@ -1,0 +1,477 @@
+// macadoc — API documentation from Maca source, written in Maca.
+//
+// What TSDoc is to TypeScript and rustdoc is to Rust: read the declarations a
+// module exports, pair each with the comment written above it, and render a
+// reference page. Nothing is inferred that the source does not say.
+//
+//   maca run tools/macadoc.maca <out-dir> <file.maca>…
+//   maca run tools/macadoc.maca site/api std/text.maca std/list.maca
+//
+// **`///` is what makes an item API.** Maca has no export keyword, and a
+// module is mostly helpers — `scan_any`, `keep_nonempty`, the recursion an
+// exported function is written in terms of. So a doc comment is spelled with a
+// third slash, exactly as `///` is rustdoc's and `/** */` is TSDoc's: an item
+// with a `///` block directly above it is API and is listed, and an item with
+// an ordinary `//` comment is a helper being explained to the next reader of
+// the source, which is a different audience and belongs in a different place.
+//
+// The alternative — "any comment above an item means API" — was tried first,
+// and measuring it against what `std/README.md` advertises found it wrong 18
+// times in 60: nine helpers listed as API because they needed explaining, and
+// nine public functions missing because they were obvious enough not to.
+
+import std/fs
+import std/path
+import std/text
+import std/list
+
+// ---- the model ------------------------------------------------------------
+
+// One documented declaration. `kind` is what it is, `sig` is how it is written
+// in the source, and `doc` is the `///` block above it, still a list of lines
+// because the blank ones in it are paragraph breaks.
+Item = {
+    kind: str
+    name: str
+    sig:  str
+    doc:  str[]
+}
+
+// One source file's worth of them.
+Module = {
+    path:  str
+    name:  str
+    blurb: str[]
+    items: Item[]
+}
+
+// ---- reading a module -----------------------------------------------------
+
+read_module(p: str) -> Module {
+    lines = read_lines(p)
+
+    Module {
+        path = p,
+        name = stem(p),
+        blurb = module_blurb(lines, 0, []),
+        items = scan(lines, 0, [], [])
+    }
+}
+
+// The plain `//` block at the top of the file. It describes the module rather
+// than any one thing in it, which is why it is not spelled `///`.
+module_blurb(lines: str[], i: int, acc: str[]) -> str[] {
+    if i >= lines.length() || !is_plain_comment(lines.get(i)) {
+        acc
+    } else {
+        module_blurb(lines, i + 1, acc ++ [comment_body(lines.get(i))])
+    }
+}
+
+is_doc(line: str) -> bool =>
+    line.starts_with("///")
+
+is_plain_comment(line: str) -> bool =>
+    line.starts_with("//") && !is_doc(line)
+
+// A comment line with its marker gone and one space after it eaten. Any
+// further indent is kept: an indented run inside a block is an example, and
+// the renderer needs to be able to see that.
+comment_body(line: str) -> str {
+    body = strip_prefix(strip_prefix(line, "///"), "//")
+
+    if body.starts_with(" ") {
+        body.slice(1, body.length())
+    } else {
+        body
+    }
+}
+
+// Walk the file, gathering a `///` run and attaching it to the declaration
+// directly below it. Anything else — a blank line, an ordinary comment, a line
+// that declares nothing — throws the run away, so a doc block can never drift
+// onto whatever happens to follow it.
+scan(lines: str[], i: int, doc: str[], acc: Item[]) -> Item[] {
+    if i >= lines.length() {
+        acc
+    } else if is_doc(lines.get(i)) {
+        scan(lines, i + 1, doc ++ [comment_body(lines.get(i))], acc)
+    } else if doc.length() == 0 || !is_decl(lines.get(i)) {
+        scan(lines, i + 1, [], acc)
+    } else {
+        scan(lines, i + 1, [], acc ++ [declared(lines, i, doc)])
+    }
+}
+
+is_decl(line: str) -> bool =>
+    is_fn(line) || is_binding(line)
+
+// What this line declares. A record and a sum both begin `Name = `, and what
+// follows decides which.
+declared(lines: str[], i: int, doc: str[]) -> Item {
+    line = lines.get(i)
+
+    if is_fn(line) {
+        Item { kind = "fn", name = before(line, "("), sig = signature(line),
+               doc = doc }
+    } else if line.trim().ends_with("\{") {
+        Item { kind = "record", name = before(line, " ="),
+               sig = record_sig(lines, i), doc = doc }
+    } else if rhs(line).contains("|") {
+        Item { kind = "sum", name = before(line, " ="), sig = line.trim(),
+               doc = doc }
+    } else {
+        Item { kind = "const", name = before(line, " ="),
+               sig = line.trim(), doc = doc }
+    }
+}
+
+// `name(params) -> R` at column zero. Indented means it is inside something.
+is_fn(line: str) -> bool {
+    if line.starts_with(" ") || !line.contains("(") {
+        false
+    } else {
+        head = before(line, "(")
+        head.length() > 0 && is_lower(head.at(0)) && is_ident(head)
+    }
+}
+
+// `Name = …` at column zero — a type or a constant.
+is_binding(line: str) -> bool {
+    if line.starts_with(" ") || !line.contains(" = ") {
+        false
+    } else {
+        head = before(line, " =")
+        head.length() > 0 && !is_lower(head.at(0)) && is_ident(head)
+    }
+}
+
+is_lower(c: str) -> bool =>
+    c.is_alpha() && c.lower() == c
+
+is_ident(s: str) -> bool =>
+    all_chars_ident(s.chars(), 0)
+
+all_chars_ident(cs: str[], i: int) -> bool {
+    if i >= cs.length() {
+        true
+    } else if cs.get(i).is_alpha() || cs.get(i).is_ascii_digit() {
+        all_chars_ident(cs, i + 1)
+    } else if cs.get(i) == "_" {
+        all_chars_ident(cs, i + 1)
+    } else {
+        false
+    }
+}
+
+before(s: str, sep: str) -> str {
+    at = s.index_of(sep)
+
+    if at < 0 {
+        s.trim()
+    } else {
+        s.slice(0, at).trim()
+    }
+}
+
+rhs(line: str) -> str {
+    at = line.index_of(" = ")
+
+    if at < 0 {
+        ""
+    } else {
+        line.slice(at + 3, line.length())
+    }
+}
+
+// A function's signature is everything before the body — the `{` of a block or
+// the `=>` of an arrow — so the reader sees the types and nothing else.
+signature(line: str) -> str {
+    t = line.trim()
+    arrow = t.index_of("=>")
+    brace = t.index_of("\{")
+    cut = first_of(arrow, brace)
+
+    if cut < 0 {
+        t
+    } else {
+        t.slice(0, cut).trim()
+    }
+}
+
+first_of(a: int, b: int) -> int {
+    if a < 0 {
+        b
+    } else if b < 0 {
+        a
+    } else if a < b {
+        a
+    } else {
+        b
+    }
+}
+
+// A record's declaration is several lines; the fields are the point of it.
+record_sig(lines: str[], i: int) -> str =>
+    gather(lines, i, i + 1)
+
+gather(lines: str[], from: int, i: int) -> str {
+    if i >= lines.length() || lines.get(i).trim() == "}" {
+        lines.slice(from, i + 1).join("\n")
+    } else {
+        gather(lines, from, i + 1)
+    }
+}
+
+// ---- prose ----------------------------------------------------------------
+//
+// A comment block is not one paragraph. Blank lines separate it into blocks,
+// and a block that is indented in the source is an example — the module
+// headers all end with the `import` line you need, and running that together
+// with the sentence above it would be the one thing a reference must not do.
+
+prose(ls: str[]) -> str =>
+    blocks(ls, 0, [], "")
+
+blocks(ls: str[], i: int, cur: str[], out: str) -> str {
+    if i >= ls.length() {
+        out ++ block(cur)
+    } else if ls.get(i).trim() == "" {
+        blocks(ls, i + 1, [], out ++ block(cur))
+    } else {
+        blocks(ls, i + 1, cur ++ [ls.get(i)], out)
+    }
+}
+
+block(ls: str[]) -> str {
+    if ls.length() == 0 {
+        ""
+    } else if ls.get(0).starts_with(" ") {
+        pre(class=PreClass, code(class=Mono, esc(dedent(ls.join("\n")))))
+    } else {
+        p(class="mt-3 text-[0.95rem] text-zinc-600 dark:text-zinc-400 m-0",
+          inline(ls.join(" ")))
+    }
+}
+
+// Backtick spans become `<code>` and `*starred*` runs become `<em>`. Nothing
+// else is markup, because nothing else is what these comments use — and a
+// marker that renders as itself is worse than no marker at all.
+inline(s: str) -> str =>
+    spans(s.split("`"), 0, "")
+
+spans(parts: str[], i: int, out: str) -> str {
+    if i >= parts.length() {
+        out
+    } else if i % 2 == 1 {
+        spans(parts, i + 1, out ++ code(class=CodeSpan, esc(parts.get(i))))
+    } else {
+        spans(parts, i + 1, out ++ emphasis(parts.get(i).split("*"), 0, ""))
+    }
+}
+
+emphasis(parts: str[], i: int, out: str) -> str {
+    if i >= parts.length() {
+        out
+    } else if i % 2 == 1 {
+        emphasis(parts, i + 1, out ++ em(esc(parts.get(i))))
+    } else {
+        emphasis(parts, i + 1, out ++ esc(parts.get(i)))
+    }
+}
+
+// ---- rendering ------------------------------------------------------------
+
+Wrap = "max-w-[52rem] mx-auto px-6"
+
+PreClass = "mt-3 bg-zinc-100 dark:bg-zinc-900 rounded-md p-4 overflow-x-auto"
+    ++ " text-[0.85rem] m-0"
+
+CodeSpan = "font-mono text-[0.9em] bg-zinc-100 dark:bg-zinc-800 rounded"
+    ++ " px-1 py-[0.05rem]"
+
+page(title: str, body: str, up: str) -> str =>
+    "<!doctype html>\n"
+        ++ html(lang="en",
+            head(
+                meta(charset="utf-8")
+                meta(name="viewport",
+                     content="width=device-width,initial-scale=1")
+                title_tag(title)
+                style(base_css() ++ styles())
+            )
+            body_tag(page_class(), top_bar(title, up) ++ element("main", body)))
+        ++ "\n"
+
+base_css() -> str =>
+    """html{color-scheme:light dark}
+"""
+
+page_class() -> str =>
+    "font-sans text-base leading-relaxed bg-white dark:bg-zinc-950"
+        ++ " text-zinc-900 dark:text-zinc-100"
+
+top_bar(title: str, up: str) -> str =>
+    header(class="border-b border-zinc-200 dark:border-zinc-800",
+        div(class=Wrap ++ " flex flex-wrap items-center justify-between"
+                  ++ " gap-x-4 gap-y-2 py-3",
+            nav(aria-label="Reference",
+                class="flex items-center gap-3",
+                a(class="font-bold no-underline text-inherit focus:underline",
+                  href=up ++ "../index.html", "Maca")
+                a(class="no-underline text-zinc-600 dark:text-zinc-400"
+                        ++ " hover:text-black dark:hover:text-white"
+                        ++ " focus:underline",
+                  href=up ++ "index.html", "API reference"))
+            span(class="text-[0.85rem] text-zinc-500 dark:text-zinc-400",
+                 esc(title))))
+
+// The index: every module, its blurb, and how many things it documents.
+index_page(ms: Module[]) -> str =>
+    page("API reference",
+         section(class=Wrap ++ " py-12",
+             h1(class="font-bold text-[1.9rem] tracking-tight m-0",
+                "API reference")
+             p(class="mt-2 text-zinc-600 dark:text-zinc-400",
+               "Generated from the source by "
+                   ++ code(class=Mono, "tools/macadoc.maca") ++ ".")
+             div(class="mt-8 grid gap-4", module_cards(ms, 0))),
+         "")
+
+Mono = "font-mono text-[0.9em]"
+
+module_cards(ms: Module[], i: int) -> str {
+    if i >= ms.length() {
+        ""
+    } else {
+        module_card(ms.get(i)) ++ module_cards(ms, i + 1)
+    }
+}
+
+module_card(m: Module) -> str =>
+    a(class="block no-underline text-inherit rounded-lg border"
+            ++ " border-zinc-200 dark:border-zinc-800 p-5 hover:bg-zinc-50"
+            ++ " dark:hover:bg-zinc-900",
+      href=m.name ++ ".html",
+      div(class="flex items-baseline justify-between gap-4",
+          span(class="font-mono font-semibold", esc(m.path))
+          span(class="text-[0.8rem] text-zinc-500",
+               "{m.items.length()} items"))
+      p(class="mt-2 text-[0.95rem] text-zinc-600 dark:text-zinc-400 m-0",
+        inline(summary(m.blurb))))
+
+// A module's card gets one line: the first sentence of the first paragraph.
+summary(ls: str[]) -> str {
+    para = str_take(ls, str_find_index(ls, l => l.trim() == "")).join(" ")
+    at = para.index_of(". ")
+
+    if at < 0 {
+        para
+    } else {
+        para.slice(0, at + 1)
+    }
+}
+
+module_page(m: Module) -> str =>
+    page(m.path,
+         section(class=Wrap ++ " py-12",
+             h1(class="font-mono font-bold text-[1.6rem] m-0", esc(m.path))
+             prose(m.blurb)
+             toc(m.items)
+             div(class="mt-10 grid gap-8", entries(m.items, 0))),
+         "")
+
+// A jump list, because a reference is read by looking something up.
+toc(items: Item[]) -> str =>
+    nav(class="mt-6 flex flex-wrap gap-2", toc_links(items, 0))
+
+toc_links(items: Item[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else {
+        link = a(class="px-2 py-1 rounded border border-zinc-200"
+                       ++ " dark:border-zinc-800 no-underline text-inherit"
+                       ++ " font-mono text-[0.8rem] hover:bg-zinc-100"
+                       ++ " dark:hover:bg-zinc-900",
+                 href="#" ++ items.get(i).name, esc(items.get(i).name))
+        link ++ toc_links(items, i + 1)
+    }
+}
+
+entries(items: Item[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else {
+        entry(items.get(i)) ++ entries(items, i + 1)
+    }
+}
+
+entry(it: Item) -> str =>
+    article(id=it.name, class="scroll-mt-6",
+        div(class="flex items-baseline gap-3",
+            h2(class="font-mono font-semibold text-[1.05rem] m-0",
+               esc(it.name))
+            span(class=badge_class(), it.kind))
+        pre(class=PreClass, code(class=Mono, esc(it.sig)))
+        prose(it.doc))
+
+badge_class() -> str =>
+    "px-2 py-[0.1rem] rounded-full text-[0.7rem] uppercase tracking-wide"
+        ++ " bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
+
+esc(s: str) -> str =>
+    s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+title_tag(text: str) -> str =>
+    title(esc(text))
+
+body_tag(classes: str, inner: str) -> str =>
+    body(class=classes, inner)
+
+// ---- entry ----------------------------------------------------------------
+
+main(args: str[]) -> int {
+    if args.length() < 2 {
+        err("usage: macadoc <out-dir> <file.maca>…")
+        1
+    } else {
+        generate(args.get(0), str_drop(args, 1))
+    }
+}
+
+generate(out: str, sources: str[]) -> int {
+    make_dir(out)
+    modules = read_all(sources, 0, [])
+
+    write_file(join(out, "index.html"), index_page(modules))
+    written = write_modules(out, modules, 0)
+
+    info("macadoc: {written} modules, {total_items(modules, 0)} items → {out}")
+    0
+}
+
+read_all(sources: str[], i: int, acc: Module[]) -> Module[] {
+    if i >= sources.length() {
+        acc
+    } else {
+        read_all(sources, i + 1, acc ++ [read_module(sources.get(i))])
+    }
+}
+
+write_modules(out: str, ms: Module[], i: int) -> int {
+    if i >= ms.length() {
+        0
+    } else {
+        write_file(join(out, ms.get(i).name ++ ".html"),
+                   module_page(ms.get(i)))
+        1 + write_modules(out, ms, i + 1)
+    }
+}
+
+total_items(ms: Module[], i: int) -> int {
+    if i >= ms.length() {
+        0
+    } else {
+        ms.get(i).items.length() + total_items(ms, i + 1)
+    }
+}

@@ -13,8 +13,8 @@
 
 import std/path
 
-// Run `cmd`, and stop the whole program if it fails. What a build step wants:
-// carrying on after a failed compile just buries the error further up.
+/// Run `cmd`, and stop the whole program if it fails. What a build step wants:
+/// carrying on after a failed compile just buries the error further up.
 run(cmd: str, args: str[]) -> bool {
     code = exec(cmd, args)
 
@@ -25,12 +25,12 @@ run(cmd: str, args: str[]) -> bool {
     }
 }
 
-// Run `cmd` and report whether it succeeded, without stopping.
+/// Run `cmd` and report whether it succeeded, without stopping.
 try_run(cmd: str, args: str[]) -> bool =>
     exec(cmd, args) == 0
 
-// Run `cmd` with `dir` as the working directory, then change back. A script
-// that leaves the process somewhere else makes every later path a guess.
+/// Run `cmd` with `dir` as the working directory, then change back. A script
+/// that leaves the process somewhere else makes every later path a guess.
 run_in(dir: str, cmd: str, args: str[]) -> bool {
     back = cwd()
 
@@ -48,16 +48,16 @@ run_in(dir: str, cmd: str, args: str[]) -> bool {
     }
 }
 
-// The trimmed stdout of `cmd` — the usual reason to capture one is a version
-// string or a path, and both arrive with a trailing newline.
+/// The trimmed stdout of `cmd` — the usual reason to capture one is a version
+/// string or a path, and both arrive with a trailing newline.
 output(cmd: str, args: str[]) -> str =>
     capture(cmd, args).trim()
 
-// Where `cmd` lives on PATH, or "". Asked before using an optional tool, so a
-// script can say what is missing rather than dying inside it.
-//
-// PATH is walked here rather than handed to `command -v`, because reaching for
-// a shell to answer "is there a shell?" is the wrong shape.
+/// Where `cmd` lives on PATH, or "". Asked before using an optional tool, so a
+/// script can say what is missing rather than dying inside it.
+///
+/// PATH is walked here rather than handed to `command -v`, because reaching for
+/// a shell to answer "is there a shell?" is the wrong shape.
 which(cmd: str) -> str {
     if cmd.contains("/") {
         // Already a path; PATH does not apply to it.
@@ -67,6 +67,7 @@ which(cmd: str) -> str {
     }
 }
 
+/// Is `cmd` on PATH at all? `which` when you only need the yes or no.
 have(cmd: str) -> bool =>
     which(cmd) != ""
 
@@ -91,7 +92,7 @@ found_or_empty(p: str) -> str {
     }
 }
 
-// An environment variable, or `dflt` when it is unset or empty.
+/// An environment variable, or `dflt` when it is unset or empty.
 env_or(name: str, dflt: str) -> str {
     v = env(name)
 

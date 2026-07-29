@@ -18,6 +18,11 @@
   "repository": {
     "comments": {
       "patterns": [
+        {
+          "comment": "A doc comment is what makes an item API to macadoc, so it gets its own scope and a theme can set it apart from an ordinary remark.",
+          "name": "comment.line.documentation.maca",
+          "match": "///.*$"
+        },
         { "name": "comment.line.double-slash.maca", "match": "//.*$" },
         {
           "name": "comment.block.maca",

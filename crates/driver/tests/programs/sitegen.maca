@@ -1,0 +1,259 @@
+// The front page and the API reference, run and inspected.
+//
+// Both are Maca programs that write HTML, so the thing to assert is the HTML
+// they wrote. This runs each into a temporary directory and reads it back.
+//
+// Run from the repository root, which is where `maca` and the sources are:
+//
+//   maca test crates/driver/tests/programs/sitegen.maca
+
+import std/fs
+import std/path
+import std/text
+import std/list
+import std/proc
+
+Maca = "target/release/maca"
+
+Out = "/tmp/maca-sitegen"
+
+// ---- the front page ---------------------------------------------------------
+
+front_page_dir() -> str {
+    dir = join(Out, "home")
+    remove_dir(dir)
+    run(Maca, ["run", "apps/site/home.maca", dir])
+    dir
+}
+
+test_front_page_writes_every_language() {
+    dir = front_page_dir()
+
+    assert(file_size(join(dir, "index.html")) > 0, "root page")
+    assert(file_size(join(dir, "en/home.html")) > 0, "english landing")
+    assert(file_size(join(dir, "ko/home.html")) > 0, "korean landing")
+}
+
+// The three links `tools/build-site.maca` requires of a root page. They are
+// asserted there against the assembled site; asserted here against the page
+// that produces them, so a broken link is caught before a full site build.
+test_root_page_links_the_site() {
+    root = read_file(join(front_page_dir(), "index.html"))
+
+    assert(root.contains("href=\"en/index.html\""), "handbook link")
+    assert(root.contains("href=\"ko/home.html\""), "korean landing link")
+    assert(root.contains("href=\"play/index.html\""), "playground link")
+    assert(root.contains("href=\"api/index.html\""), "api link")
+}
+
+// The page exists to answer three questions a reader asks before anything
+// else — statically or dynamically typed, garbage collected or not,
+// interpreted or compiled — and to answer them where they can be read rather
+// than inferred. Each has to be stated in words on the page itself.
+test_the_page_puts_the_language_in_a_box() {
+    root = read_file(join(front_page_dir(), "index.html"))
+
+    assert(root.contains("Statically typed"), "says whether it is typed")
+    assert(root.contains("no garbage collector"), "says whether it collects")
+    assert(root.contains("native binary"), "says what it compiles to")
+    assert(root.contains("Static, inferred"), "and again in the spec strip")
+    assert(root.contains("Refcounted at compile time"), "how memory is freed")
+}
+
+// The same three answers, in Korean. A translated page that dropped them would
+// leave a Korean reader with the pitch and none of the decisions.
+test_the_korean_page_answers_the_same_questions() {
+    ko = read_file(join(front_page_dir(), "ko/home.html"))
+
+    assert(ko.contains("정적 타입"), "typed")
+    assert(ko.contains("가비지 컬렉터 없음"), "not collected")
+    assert(ko.contains("네이티브 바이너리"), "compiled to a binary")
+}
+
+// A landing page with no code on it is a brochure. This one shows a whole
+// program, marked as Maca for a highlighter, plus one sample per claim.
+test_the_page_shows_code() {
+    root = read_file(join(front_page_dir(), "index.html"))
+
+    assert(root.contains("language-maca"), "a Maca sample")
+    assert(root.contains("language-sh"), "and the install line is shell")
+    assert(root.contains("Shape = Circle(float)"), "the hero program")
+    assert_eq(str(count(root, "<pre class=")), "6", "hero + 4 cards + install")
+}
+
+// A `<title>` was being derived by `sub.slice(0, 60)`, which cuts a UTF-8
+// sequence in half: the Korean page's tab title ended in a replacement
+// character. Every title is written out in full now, in its own language.
+test_titles_are_whole_and_translated() {
+    dir = front_page_dir()
+    en = title_of(read_file(join(dir, "index.html")))
+    ko = title_of(read_file(join(dir, "ko/home.html")))
+
+    assert(en.starts_with("Maca — "), "english title")
+    assert(ko.starts_with("Maca — "), "korean title")
+    assert(en != ko, "titles differ")
+    assert(!en.ends_with("…"), "title not truncated")
+    assert(ko.ends_with("언어"), "korean title is whole")
+}
+
+title_of(page: str) -> str =>
+    between(page, "<title>", "</title>")
+
+// The install line is piped into a shell, so the URL it names has to be one
+// that exists. `install.sh` states the canonical form; the page must agree.
+test_install_line_matches_install_sh() {
+    root = read_file(join(front_page_dir(), "index.html"))
+    url = install_url(read_lines("install.sh"), 0)
+
+    assert(url != "", "install.sh names a url")
+    assert(root.contains(url), "page names the same url")
+}
+
+// The `curl … | bash` line in the script's own header comment.
+install_url(ls: str[], i: int) -> str {
+    if i >= ls.length() {
+        ""
+    } else if ls.get(i).contains("https://raw.githubusercontent.com") {
+        between(ls.get(i), "https://", " ")
+    } else {
+        install_url(ls, i + 1)
+    }
+}
+
+// Both languages carry every card. The checker enforces it — `Topic`, `Spec`
+// and `Caveat` are sum types and each language answers a `match` — so this is
+// the executed form of that claim.
+test_both_languages_carry_every_card() {
+    dir = front_page_dir()
+    en = read_file(join(dir, "index.html"))
+    ko = read_file(join(dir, "ko/home.html"))
+
+    assert_eq(str(count(en, "<article class=")), "4", "en cards")
+    assert_eq(str(count(ko, "<article class=")), "4", "ko cards")
+    assert_eq(str(count(en, "<li class=")), "3", "en caveats")
+    assert_eq(str(count(ko, "<li class=")), "3", "ko caveats")
+}
+
+// ---- the API reference ------------------------------------------------------
+
+api_dir() -> str {
+    dir = join(Out, "api")
+    remove_dir(dir)
+    run(Maca, ["run", "tools/macadoc.maca", dir] ++ std_modules())
+    dir
+}
+
+std_modules() -> str[] =>
+    ["std/text.maca", "std/list.maca", "std/path.maca", "std/json.maca",
+     "std/csv.maca", "std/fs.maca", "std/proc.maca"]
+
+// What MacaDoc lists has to be what `std/README.md` advertises — no more, no
+// less. Before `///` marked a doc comment, "any comment above an item" was the
+// rule, and it listed nine internal helpers while dropping nine public
+// functions. Neither is visible by reading the output; both are visible here.
+test_reference_matches_the_advertised_api() {
+    dir = api_dir()
+
+    assert_eq(documented(dir, "text"), advertised("text"), "std/text")
+    assert_eq(documented(dir, "list"), advertised("list"), "std/list")
+    assert_eq(documented(dir, "path"), advertised("path"), "std/path")
+    assert_eq(documented(dir, "json"), advertised("json"), "std/json")
+    assert_eq(documented(dir, "csv"), advertised("csv"), "std/csv")
+    assert_eq(documented(dir, "fs"), advertised("fs"), "std/fs")
+    assert_eq(documented(dir, "proc"), advertised("proc"), "std/proc")
+}
+
+// The names MacaDoc gave a page section to, sorted.
+documented(dir: str, module: str) -> str =>
+    ids(read_file(join(dir, module ++ ".html")).split("<article id=\""), 1, [])
+        .sort().join(" ")
+
+ids(parts: str[], i: int, acc: str[]) -> str[] {
+    if i >= parts.length() {
+        acc
+    } else {
+        ids(parts, i + 1, acc.push(between(parts.get(i), "", "\"")))
+    }
+}
+
+// The names `std/README.md`'s table row for this module puts in backticks.
+advertised(module: str) -> str =>
+    str_unique(backticked(row_for(module).split("`"), 1, []))
+        .sort().join(" ")
+
+backticked(parts: str[], i: int, acc: str[]) -> str[] {
+    if i >= parts.length() {
+        acc
+    } else if i % 2 == 0 {
+        backticked(parts, i + 1, acc)
+    } else {
+        backticked(parts, i + 1, acc ++ names_in(parts.get(i)))
+    }
+}
+
+// A cell names one function (`walk`) or a pair (`strip_prefix`/`strip_suffix`).
+// The row's own label is `std/text`, and a cell may be a type like `str[]` —
+// neither of those is an item.
+names_in(cell: str) -> str[] {
+    if cell.starts_with("std/") {
+        []
+    } else {
+        keep_identifiers(cell.split("/"), 0, [])
+    }
+}
+
+keep_identifiers(parts: str[], i: int, acc: str[]) -> str[] {
+    if i >= parts.length() {
+        acc
+    } else if is_identifier(parts.get(i).chars(), 0) {
+        keep_identifiers(parts, i + 1, acc.push(parts.get(i)))
+    } else {
+        keep_identifiers(parts, i + 1, acc)
+    }
+}
+
+is_identifier(cs: str[], i: int) -> bool {
+    if cs.length() == 0 {
+        false
+    } else if i >= cs.length() {
+        true
+    } else if cs.get(i).is_alpha() || cs.get(i).is_ascii_digit() {
+        is_identifier(cs, i + 1)
+    } else if cs.get(i) == "_" {
+        is_identifier(cs, i + 1)
+    } else {
+        false
+    }
+}
+
+row_for(module: str) -> str =>
+    matching_row(read_lines("std/README.md"), 0, "| `std/" ++ module ++ "`")
+
+matching_row(ls: str[], i: int, prefix: str) -> str {
+    if i >= ls.length() {
+        ""
+    } else if ls.get(i).starts_with(prefix) {
+        ls.get(i)
+    } else {
+        matching_row(ls, i + 1, prefix)
+    }
+}
+
+// ---- shared -----------------------------------------------------------------
+
+between(src: str, open: str, close: str) -> str {
+    at = src.index_of(open)
+
+    if at < 0 {
+        ""
+    } else {
+        tail = src.slice(at + open.length(), src.length())
+        end = tail.index_of(close)
+
+        if end < 0 {
+            tail
+        } else {
+            tail.slice(0, end)
+        }
+    }
+}

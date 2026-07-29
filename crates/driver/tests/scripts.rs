@@ -41,7 +41,11 @@ fn builds(script: &str) {
         return;
     }
 
-    let out = std::env::temp_dir().join(format!("maca-script-{}", script.len()));
+    // Keyed on the path, not its length: two scripts whose names happen to be
+    // the same length would otherwise share an output file and race, because
+    // these run in parallel.
+    let slug = script.replace(['/', '.'], "-");
+    let out = std::env::temp_dir().join(format!("maca-script-{slug}"));
     let result = Command::new(env!("CARGO_BIN_EXE_maca"))
         .current_dir(repo())
         .args(["build", script, "-o", &out.to_string_lossy()])
@@ -79,4 +83,14 @@ fn the_linter_compiles() {
 #[test]
 fn bindgen_compiles() {
     builds("tools/bindgen.maca");
+}
+
+#[test]
+fn the_front_page_compiles() {
+    builds("apps/site/home.maca");
+}
+
+#[test]
+fn macadoc_compiles() {
+    builds("tools/macadoc.maca");
 }

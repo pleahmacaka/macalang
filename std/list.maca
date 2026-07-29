@@ -9,8 +9,9 @@
 //   import std/list
 //   import { any_of, chunk } from std/list
 
-// Does any element satisfy `pred`? Short of a `break`, this is the readable
-// way to ask — `.filter(pred).length() > 0` walks the whole list and allocates.
+/// Does any element satisfy `pred`? Short of a `break`, this is the readable
+/// way to ask — `.filter(pred).length() > 0` walks the whole list and
+/// allocates.
 any_of(xs: int[], pred) -> bool =>
     scan_any(xs, 0, pred)
 
@@ -24,6 +25,8 @@ scan_any(xs: int[], i: int, pred) -> bool {
     }
 }
 
+/// Does every element satisfy `pred`? An empty list passes, which is what
+/// makes `all_of(rules, ok)` behave when there are no rules yet.
 all_of(xs: int[], pred) -> bool =>
     scan_all(xs, 0, pred)
 
@@ -37,8 +40,8 @@ scan_all(xs: int[], i: int, pred) -> bool {
     }
 }
 
-// The index of the first element satisfying `pred`, or -1. `index_of` matches a
-// value; this matches a question.
+/// The index of the first element satisfying `pred`, or -1. `index_of`
+/// matches a value; this matches a question.
 find_index(xs: int[], pred) -> int =>
     scan_find(xs, 0, pred)
 
@@ -52,14 +55,17 @@ scan_find(xs: int[], i: int, pred) -> int {
     }
 }
 
+/// How many elements satisfy `pred`.
 count_if(xs: int[], pred) -> int =>
     xs.filter(pred).length()
 
-// The first `n` elements, and everything after them. Both clamp rather than
-// failing, so `take(xs, 100)` on a short list is the short list.
+/// The first `n` elements. `n` clamps rather than failing, so `take(xs, 100)`
+/// on a short list is the short list.
 take(xs: int[], n: int) -> int[] =>
     xs.slice(0, clamp(n, xs.length()))
 
+/// Everything after the first `n` elements — the other half of `take`, and
+/// clamping the same way.
 drop(xs: int[], n: int) -> int[] =>
     xs.slice(clamp(n, xs.length()), xs.length())
 
@@ -75,7 +81,7 @@ clamp(n: int, len: int) -> int {
     }
 }
 
-// Fixed-size groups, the last one short if the length doesn't divide.
+/// Fixed-size groups, the last one short if the length doesn't divide.
 chunk(xs: int[], size: int) -> int[][] {
     if size <= 0 {
         []
@@ -93,9 +99,9 @@ chunk_from(xs: int[], at: int, size: int, acc: int[][]) -> int[][] {
     }
 }
 
-// One list of the pairwise sums, stopping at the shorter input. The language
-// has no tuple, so `zip` proper needs a record; this is the arithmetic case,
-// which is the one that comes up.
+/// One list of the pairwise sums, stopping at the shorter input. The language
+/// has no tuple, so `zip` proper needs a record; this is the arithmetic case,
+/// which is the one that comes up.
 zip_add(a: int[], b: int[]) -> int[] =>
     zip_add_from(a, b, 0, [])
 
@@ -107,7 +113,7 @@ zip_add_from(a: int[], b: int[], i: int, acc: int[]) -> int[] {
     }
 }
 
-// Flatten one level.
+/// Flatten one level.
 flatten(xss: int[][]) -> int[] =>
     flatten_from(xss, 0, [])
 
@@ -119,9 +125,9 @@ flatten_from(xss: int[][], i: int, acc: int[]) -> int[] {
     }
 }
 
-// Values in first-seen order, duplicates dropped. Order is preserved on
-// purpose: sorting first would be faster and would also throw away the one
-// property that makes the result useful for output.
+/// Values in first-seen order, duplicates dropped. Order is preserved on
+/// purpose: sorting first would be faster and would also throw away the one
+/// property that makes the result useful for output.
 unique(xs: int[]) -> int[] =>
     unique_from(xs, 0, [])
 
@@ -135,8 +141,8 @@ unique_from(xs: int[], i: int, acc: int[]) -> int[] {
     }
 }
 
-// `[lo, lo+1, …, hi]`, empty when `hi < lo`. The `lo..hi` range is a loop
-// header; this is the value.
+/// `[lo, lo+1, …, hi]`, empty when `hi < lo`. The `lo..hi` range is a loop
+/// header; this is the value.
 range(lo: int, hi: int) -> int[] {
     if hi < lo {
         []
@@ -158,6 +164,7 @@ range_from(at: int, hi: int, acc: int[]) -> int[] {
 // Maca's generics don't reach across the list *methods* a body calls, so a
 // second copy is the honest cost of `xs.get(i)` returning the element type.
 
+/// `unique` for a `str[]`.
 str_unique(xs: str[]) -> str[] =>
     str_unique_from(xs, 0, [])
 
@@ -171,12 +178,15 @@ str_unique_from(xs: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
+/// `take` for a `str[]`.
 str_take(xs: str[], n: int) -> str[] =>
     xs.slice(0, clamp(n, xs.length()))
 
+/// `drop` for a `str[]`.
 str_drop(xs: str[], n: int) -> str[] =>
     xs.slice(clamp(n, xs.length()), xs.length())
 
+/// `find_index` for a `str[]`.
 str_find_index(xs: str[], pred) -> int =>
     str_scan_find(xs, 0, pred)
 
@@ -190,6 +200,7 @@ str_scan_find(xs: str[], i: int, pred) -> int {
     }
 }
 
+/// `flatten` for a `str[][]`.
 str_flatten(xss: str[][]) -> str[] =>
     str_flatten_from(xss, 0, [])
 

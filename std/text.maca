@@ -8,9 +8,9 @@
 //   import std/text
 //   import { lines, dedent } from std/text
 
-// The lines of `s`, without their terminators. A trailing newline does not
-// produce a final empty line, which is what makes `read_file(p).lines()` count
-// what a person would count.
+/// The lines of `s`, without their terminators. A trailing newline does not
+/// produce a final empty line, which is what makes `read_file(p).lines()` count
+/// what a person would count.
 lines(s: str) -> str[] {
     parts = s.replace("\r\n", "\n").split("\n")
     n = parts.length()
@@ -22,8 +22,8 @@ lines(s: str) -> str[] {
     }
 }
 
-// Whitespace-separated words, with empty runs dropped — `split(" ")` alone
-// leaves an empty string wherever two spaces met.
+/// Whitespace-separated words, with empty runs dropped — `split(" ")` alone
+/// leaves an empty string wherever two spaces met.
 words(s: str) -> str[] =>
     keep_nonempty(s.replace("\t", " ").replace("\n", " ").split(" "), 0, [])
 
@@ -37,8 +37,8 @@ keep_nonempty(xs: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-// Split on the *first* occurrence only: `split_once("a=b=c", "=")` is
-// `["a", "b=c"]`. A separator that isn't there gives the whole string and "".
+/// Split on the *first* occurrence only: `split_once("a=b=c", "=")` is
+/// `["a", "b=c"]`. A separator that isn't there gives the whole string and "".
 split_once(s: str, sep: str) -> str[] {
     at = s.index_of(sep)
 
@@ -49,8 +49,8 @@ split_once(s: str, sep: str) -> str[] {
     }
 }
 
-// Remove `p` from the front, or leave `s` alone. Distinct from `replace`, which
-// would take it from the middle too.
+/// Remove `p` from the front, or leave `s` alone. Distinct from `replace`,
+/// which would take it from the middle too.
 strip_prefix(s: str, p: str) -> str {
     if s.starts_with(p) {
         s.slice(p.length(), s.length())
@@ -59,6 +59,8 @@ strip_prefix(s: str, p: str) -> str {
     }
 }
 
+/// Remove `p` from the end, or leave `s` alone. The other half of
+/// `strip_prefix`, and the one that turns a filename into a stem.
 strip_suffix(s: str, p: str) -> str {
     if s.ends_with(p) {
         s.slice(0, s.length() - p.length())
@@ -67,8 +69,8 @@ strip_suffix(s: str, p: str) -> str {
     }
 }
 
-// How many non-overlapping times `pat` occurs in `s`. An empty needle matches
-// nothing rather than matching everywhere.
+/// How many non-overlapping times `pat` occurs in `s`. An empty needle matches
+/// nothing rather than matching everywhere.
 count(s: str, pat: str) -> int {
     if pat.length() == 0 {
         0
@@ -87,8 +89,8 @@ count_from(s: str, pat: str, at: int, n: int) -> int {
     }
 }
 
-// `Title Case`, one word at a time. Byte-based like the rest of `str`, so it
-// upper-cases ASCII and leaves everything else as it found it.
+/// `Title Case`, one word at a time. Byte-based like the rest of `str`, so it
+/// upper-cases ASCII and leaves everything else as it found it.
 title_case(s: str) -> str =>
     join_words(words(s).map(capitalize), 0, "")
 
@@ -110,8 +112,8 @@ join_words(ws: str[], i: int, acc: str) -> str {
     }
 }
 
-// Add `pad` to the start of every line. An empty line stays empty — trailing
-// whitespace in generated output is noise a diff will show you forever.
+/// Add `pad` to the start of every line. An empty line stays empty — trailing
+/// whitespace in generated output is noise a diff will show you forever.
 indent(s: str, pad: str) -> str =>
     lines(s).map(l => pad_unless_empty(l, pad)).join("\n")
 
@@ -123,9 +125,9 @@ pad_unless_empty(line: str, pad: str) -> str {
     }
 }
 
-// Remove the longest run of leading spaces common to every non-empty line.
-// What a raw `"""…"""` block needs when it is written inside an indented
-// function but has to come out flush.
+/// Remove the longest run of leading spaces common to every non-empty line.
+/// What a raw `"""…"""` block needs when it is written inside an indented
+/// function but has to come out flush.
 dedent(s: str) -> str {
     cut = common_indent(lines(s), 0, -1)
 
@@ -176,9 +178,9 @@ leading_spaces(cs: str[], i: int) -> int {
     }
 }
 
-// Fold `s` to lines of at most `width` bytes, breaking between words. A word
-// longer than the width gets a line to itself rather than being cut in half —
-// a URL survives wrapping.
+/// Fold `s` to lines of at most `width` bytes, breaking between words. A word
+/// longer than the width gets a line to itself rather than being cut in half —
+/// a URL survives wrapping.
 wrap(s: str, width: int) -> str =>
     fill(words(s), 0, width, "", "")
 

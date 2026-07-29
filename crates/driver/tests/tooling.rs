@@ -71,6 +71,41 @@ fn lint_does_not_flag_an_else_if_chain() {
     assert!(ok, "an else-if chain is the style, not a violation: {err}");
 }
 
+/// A name an `import` brings in is defined. `lint` used to check the file on
+/// its own, so every script in the repository — each of which imports `std/…`
+/// — was reported as calling undefined functions, which is a linter crying
+/// wolf about the one thing `UndefinedName` exists to find.
+#[test]
+fn lint_resolves_imports_before_calling_a_name_undefined() {
+    let src = "import std/path\n\
+               \n\
+               main() -> int {\n\
+               \x20   info(join(\"a\", \"b\"))\n\
+               \x20   0\n\
+               }\n";
+    let dir = repo_root();
+    let tmp = dir.join("maca-lint-import.maca");
+    std::fs::write(&tmp, src).unwrap();
+    let out = Command::new(maca())
+        .current_dir(&dir)
+        .args(["lint", &tmp.to_string_lossy()])
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    std::fs::remove_file(&tmp).ok();
+
+    assert!(
+        !err.contains("UndefinedName"),
+        "`join` comes from std/path: {err}"
+    );
+}
+
+/// `import std/…` resolves relative to where the file is, so this writes its
+/// fixture beside the real `std/`.
+fn repo_root() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
 /// Lint a source string; returns whether it was clean, and what it complained
 /// about.
 fn lint(src: &str, name: &str) -> (bool, String) {

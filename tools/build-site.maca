@@ -17,6 +17,7 @@ import std/proc
 import std/fs
 import std/path
 import std/list
+import std/text
 
 Maca = "target/release/maca"
 
@@ -28,6 +29,8 @@ main(args: str[]) -> int {
         1
     } else {
         build_handbook()
+        build_front_page()
+        build_api_reference()
         build_playground()
         assemble(out)
         check(out)
@@ -39,6 +42,30 @@ main(args: str[]) -> int {
 build_handbook() -> bool {
     info("==> handbook")
     run(Maca, ["run", "apps/tomo/tomo.maca"])
+}
+
+// The front page replaces the landing pages tomo just wrote — `/index.html`
+// and `<lang>/home.html`, the same three addresses — so it has to run after
+// the handbook, and this is the only place either of them is invoked.
+//
+// Tomo builds other people's books, where a Markdown `home.md` landing is the
+// right thing. This book's front page is a designed page in the UI syntax, so
+// for this book the landing is written here instead.
+build_front_page() -> bool {
+    info("==> front page")
+    run(Maca, ["run", "apps/site/home.maca", "apps/tomo/site"])
+}
+
+// The modules `std/README.md` advertises, in the order it lists them. Naming
+// them rather than globbing keeps `std/tests/*.maca` out of the reference.
+std_modules() -> str[] =>
+    ["std/text.maca", "std/list.maca", "std/path.maca", "std/json.maca",
+     "std/csv.maca", "std/fs.maca", "std/proc.maca"]
+
+build_api_reference() -> bool {
+    info("==> api reference")
+    run(Maca, ["run", "tools/macadoc.maca", "apps/tomo/site/api"]
+              ++ std_modules())
 }
 
 build_playground() -> bool {
@@ -75,16 +102,184 @@ check(out: str) -> int {
 
     require_root_links(out)
     require_embedded_wasm(out)
+    require_live_css(out)
 
     info("site ok: {chapters} English pages, {tree_size(out) / 1024} KiB total")
     0
+}
+
+// Every utility class a page mentions has to have produced a rule.
+//
+// A class the engine doesn't know is not a compile error and not a runtime
+// error: the browser drops it and the layout is quietly a little wrong. That
+// is how `border-l-2` shipped a border with no style and, once that was fixed,
+// how `border-y` shipped with no border at all. Checking the emitted CSS
+// against the emitted HTML turns the whole family of them into a build
+// failure.
+//
+// `language-…` is exempt — it is a hook for a syntax highlighter, and is not
+// meant to produce a rule.
+require_live_css(out: str) -> bool {
+    pages = find(out, ".html")
+    dead = str_unique(dead_in_pages(pages, 0, []))
+
+    if dead.length() > 0 {
+        named = dead.join(", ")
+        fail "classes with no CSS rule: {named}"
+    } else {
+        info("css ok: every utility on {pages.length()} pages has a rule")
+        true
+    }
+}
+
+dead_in_pages(pages: str[], i: int, acc: str[]) -> str[] {
+    if i >= pages.length() {
+        acc
+    } else {
+        dead_in_pages(pages, i + 1, acc ++ dead_in_page(pages.get(i)))
+    }
+}
+
+dead_in_page(path: str) -> str[] {
+    src = read_file(path)
+    sheet = between(src, "<style>", "</style>")
+
+    if sheet == "" {
+        []
+    } else {
+        unruled(classes_in(src), 0, sheet, [])
+    }
+}
+
+unruled(cs: str[], i: int, sheet: str, acc: str[]) -> str[] {
+    if i >= cs.length() {
+        acc
+    } else if has_rule(sheet, cs.get(i)) {
+        unruled(cs, i + 1, sheet, acc)
+    } else {
+        unruled(cs, i + 1, sheet, acc.push(cs.get(i)))
+    }
+}
+
+has_rule(sheet: str, class: str) -> bool =>
+    class.starts_with("language-") || sheet.contains("." ++ css_escape(class))
+
+// The escaping `styles()` applies to a selector. A `:` or a `[` is punctuation
+// to a CSS parser, so a utility carrying one is written `.max-w-\[64rem\]`.
+css_escape(class: str) -> str =>
+    escape_chars(class.chars(), 0, "")
+
+escape_chars(cs: str[], i: int, out: str) -> str {
+    if i >= cs.length() {
+        out
+    } else if needs_escape(cs.get(i)) {
+        escape_chars(cs, i + 1, out ++ "\\" ++ cs.get(i))
+    } else {
+        escape_chars(cs, i + 1, out ++ cs.get(i))
+    }
+}
+
+needs_escape(c: str) -> bool =>
+    !c.is_alpha() && !c.is_ascii_digit() && c != "-" && c != "_"
+
+// Every distinct class named by a `class="…"` attribute on an opening tag.
+classes_in(src: str) -> str[] =>
+    str_unique(str_flatten(attr_values(without_scripts(src))
+                               .map(v => v.split(" "))))
+
+// Read attributes from tags, not from running text. A handbook chapter shows
+// `article(class="prose", …)` as a code sample, and those characters in prose
+// are not a class the page uses. Escaping is what makes the distinction
+// reliable: a sample's own `<` arrives as `&lt;`, so it cannot open a tag.
+//
+// Splitting on `<` once keeps this linear — walking the string and re-slicing
+// from each tag is quadratic, and the playground page is a quarter of a
+// megabyte.
+attr_values(src: str) -> str[] =>
+    tag_classes(src.split("<"), 0, [])
+
+tag_classes(frags: str[], i: int, acc: str[]) -> str[] {
+    if i >= frags.length() {
+        acc
+    } else {
+        tag_classes(frags, i + 1, acc ++ class_in_tag(frags.get(i)))
+    }
+}
+
+class_in_tag(frag: str) -> str[] {
+    end = frag.index_of(">")
+
+    if end < 0 {
+        []
+    } else {
+        class_of(frag.slice(0, end))
+    }
+}
+
+class_of(tag: str) -> str[] {
+    at = tag.index_of(" class=\"")
+
+    if at < 0 {
+        []
+    } else {
+        [between(tag.slice(at + 8, tag.length()), "", "\"")]
+    }
+}
+
+// A `class="…"` inside a `<script>` is JavaScript assembling markup at run
+// time, usually out of concatenated fragments — `'<b class="'+C.hit+'">'`.
+// Those are not classes the page mentions; they are source that happens to
+// contain the same eight characters.
+without_scripts(src: str) -> str =>
+    drop_blocks(src, "<script", "</script>", "")
+
+drop_blocks(src: str, open: str, close: str, out: str) -> str {
+    at = src.index_of(open)
+
+    if at < 0 {
+        out ++ src
+    } else {
+        rest = src.slice(at, src.length())
+        end = rest.index_of(close)
+
+        if end < 0 {
+            out ++ src.slice(0, at)
+        } else {
+            drop_blocks(src.slice(at + end + close.length(), src.length()),
+                        open, close, out ++ src.slice(0, at))
+        }
+    }
+}
+
+// The text between two markers. An empty `open` starts at the beginning, which
+// is what reading up to the next `"` needs.
+between(src: str, open: str, close: str) -> str {
+    from = if open == "" {
+        0
+    } else {
+        src.index_of(open) + open.length()
+    }
+
+    if open != "" && src.index_of(open) < 0 {
+        ""
+    } else {
+        tail = src.slice(from, src.length())
+        end = tail.index_of(close)
+
+        if end < 0 {
+            ""
+        } else {
+            tail.slice(0, end)
+        }
+    }
 }
 
 // The pages a reader can reach directly, and the search index each language
 // needs. An empty file counts as missing — a failed render writes one.
 required_pages() -> str[] =>
     ["index.html", "en/index.html", "ko/index.html",
-     "en/search-index.js", "ko/search-index.js", "play/index.html"]
+     "en/search-index.js", "ko/search-index.js", "play/index.html",
+     "api/index.html", "api/text.html"]
 
 require_pages(out: str) -> bool =>
     all_present(required_pages(), 0, out)

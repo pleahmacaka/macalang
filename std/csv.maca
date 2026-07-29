@@ -11,8 +11,8 @@ import std/text
 
 // ---- writing --------------------------------------------------------------
 
-// One field, quoted only when it has to be. A `"` inside becomes `""`, which
-// is the format's own escape rather than a backslash.
+/// One field, quoted only when it has to be. A `"` inside becomes `""`, which
+/// is the format's own escape rather than a backslash.
 field(s: str) -> str {
     if needs_quotes(s) {
         "\"" ++ s.replace("\"", "\"\"") ++ "\""
@@ -25,12 +25,12 @@ needs_quotes(s: str) -> bool =>
     s.contains(",") || s.contains("\"") || s.contains("\n")
         || s.contains("\r")
 
-// One record, terminated with `\r\n` — the line ending the format specifies,
-// and the one a spreadsheet expects.
+/// One record, terminated with `\r\n` — the line ending the format specifies,
+/// and the one a spreadsheet expects.
 row(cells: str[]) -> str =>
     cells.map(field).join(",") ++ "\r\n"
 
-// A whole document from a header and its rows.
+/// A whole document from a header and its rows.
 document(header: str[], rows: str[][]) -> str =>
     row(header) ++ join_rows(rows, 0, "")
 
@@ -44,8 +44,8 @@ join_rows(rows: str[][], i: int, acc: str) -> str {
 
 // ---- reading --------------------------------------------------------------
 
-// The fields of one record. Handles quoted fields, doubled quotes inside them,
-// and commas that are data.
+/// The fields of one record. Handles quoted fields, doubled quotes inside them,
+/// and commas that are data.
 parse_row(line: str) -> str[] =>
     scan_fields(line.chars(), 0, "", [])
 
@@ -85,8 +85,8 @@ read_quoted_field(cs: str[], i: int, cur: str, acc: str[]) -> str[] {
     }
 }
 
-// Every record in a document. A quoted field may hold a newline, so the
-// document is split on record boundaries rather than on `\n`.
+/// Every record in a document. A quoted field may hold a newline, so the
+/// document is split on record boundaries rather than on `\n`.
 parse(src: str) -> str[][] =>
     parse_rows(split_records(src.chars(), 0, false, "", []), 0, [])
 
@@ -123,9 +123,9 @@ record_step(cs: str[], i: int, in_q: bool, cur: str, acc: str[]) -> str[] {
     }
 }
 
-// The value under `name` in `row`, using `header` for the column order.
-// "" when the column isn't there — a missing column and an empty cell read the
-// same, which is what a CSV can actually tell you.
+/// The value under `name` in `row`, using `header` for the column order.
+/// "" when the column isn't there — a missing column and an empty cell read the
+/// same, which is what a CSV can actually tell you.
 column(header: str[], row: str[], name: str) -> str {
     at = header.index_of(name)
 

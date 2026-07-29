@@ -14,7 +14,7 @@ of the language and, through `std/tests/`, part of what gates the compiler.
 | module | what it is for |
 |---|---|
 | `std/text` | `lines`, `words`, `split_once`, `strip_prefix`/`strip_suffix`, `count`, `title_case`, `indent`, `dedent`, `wrap` |
-| `std/list` | `any_of`, `all_of`, `find_index`, `count_if`, `take`, `drop`, `chunk`, `zip_add`, `flatten`, `unique`, `range` (and `str_`-prefixed twins) |
+| `std/list` | `any_of`, `all_of`, `find_index`, `count_if`, `take`, `drop`, `chunk`, `zip_add`, `flatten`, `unique`, `range`, and for `str[]`: `str_unique`, `str_take`, `str_drop`, `str_find_index`, `str_flatten` |
 | `std/path` | `join`, `basename`, `dirname`, `extension`, `stem`, `with_extension`, `is_absolute`, `normalize` |
 | `std/json` | `quote`, `array_of_str`/`array_of_int`, `object_of`, `get`, `get_int`, `get_bool`, `items` |
 | `std/csv` | `field`, `row`, `document`, `parse`, `parse_row`, `column` — quoted fields, doubled quotes, embedded newlines |
@@ -27,6 +27,17 @@ import { lines, dedent } from std/text
 ```
 
 A selective import pulls in only what you name, plus what it needs.
+
+The table above is the public API, and it is not a promise kept by hand: every
+name in it has a `///` doc comment in its module, every `///` in these modules
+names something in the table, and `crates/driver/tests/programs/sitegen.maca`
+fails if the two ever disagree. `tools/macadoc.maca` renders them —
+
+```
+maca run tools/macadoc.maca site/api std/text.maca std/list.maca
+```
+
+— and handbook chapter 17 explains the marker.
 
 The prelude, for reference:
 

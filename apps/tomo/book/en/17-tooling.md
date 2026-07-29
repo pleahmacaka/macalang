@@ -60,6 +60,43 @@ exactly as a long comment is — the rule is about code, not text. And the same
 exemption applies inside a raw `"""…"""` block, which holds foreign CSS or
 JavaScript rather than Maca.
 
+## API documentation
+
+`tools/macadoc.maca` reads a module's declarations, pairs each with the comment
+above it, and writes an HTML reference — what rustdoc is to Rust and TSDoc is to
+TypeScript.
+
+```
+maca run tools/macadoc.maca site/api std/text.maca std/list.maca
+```
+
+Maca has no `export` keyword, and a module is mostly helpers. What makes an item
+part of the API is a **doc comment**, written with a third slash:
+
+```maca
+/// Split on the *first* occurrence only: `split_once("a=b=c", "=")` is
+/// `["a", "b=c"]`. A separator that isn't there gives the whole string and "".
+split_once(s: str, sep: str) -> str[] {
+    …
+}
+
+// An index brought into `0..len`. This one is an ordinary comment, so it
+// explains the helper to the next reader of the source and stays out of the
+// reference.
+clamp(n: int, len: int) -> int {
+```
+
+To the compiler a `///` line is a comment like any other — the third slash is a
+convention MacaDoc reads, not a token. The alternative, "any comment above an
+item means API", was tried first and measured against what `std/README.md`
+advertises: it was wrong 18 times in 60, listing helpers that happened to need
+explaining and dropping public functions that didn't.
+
+Inside a doc comment, a backtick span becomes code and a `*starred*` run becomes
+emphasis. A blank line starts a paragraph, and an indented run is a code block —
+which is how a module's header comment can end with the `import` line you need.
+The plain `//` block at the top of a file is the module's own description.
+
 ## Editor support
 
 There is a language server, `maca-lsp`. It provides diagnostics, hover, go to

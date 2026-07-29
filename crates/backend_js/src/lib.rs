@@ -963,6 +963,10 @@ pub fn tailwind(class: &str) -> Option<String> {
         "border-b" => "border-bottom-width:1px;border-bottom-style:solid",
         "border-l" => "border-left-width:1px;border-left-style:solid",
         "border-r" => "border-right-width:1px;border-right-style:solid",
+        "border-x" => "border-left-width:1px;border-right-width:1px;\
+                       border-left-style:solid;border-right-style:solid",
+        "border-y" => "border-top-width:1px;border-bottom-width:1px;\
+                       border-top-style:solid;border-bottom-style:solid",
         _ => "",
     };
     if !fixed.is_empty() {
@@ -1006,16 +1010,36 @@ pub fn tailwind(class: &str) -> Option<String> {
     if let Some(v) = class.strip_prefix("decoration-") {
         return Some(format!("text-decoration-color:{};", color(v)?));
     }
-    for (p, prop) in [
-        ("border-l-", "border-left-width"),
-        ("border-r-", "border-right-width"),
-        ("border-t-", "border-top-width"),
-        ("border-b-", "border-bottom-width"),
+    // A width with no style is invisible: CSS defaults `border-style` to
+    // `none`, so `border-l-2` drew nothing at all. The unparameterized
+    // `border-l` always set both; these have to as well.
+    for (p, sides) in [
+        ("border-l-", &["left"] as &[&str]),
+        ("border-r-", &["right"]),
+        ("border-t-", &["top"]),
+        ("border-b-", &["bottom"]),
+        ("border-x-", &["left", "right"]),
+        ("border-y-", &["top", "bottom"]),
     ] {
         if let Some(v) = class.strip_prefix(p)
             && let Ok(n) = v.parse::<u32>()
         {
-            return Some(format!("{prop}:{n}px;"));
+            return Some(
+                sides
+                    .iter()
+                    .map(|s| format!("border-{s}-width:{n}px;border-{s}-style:solid;"))
+                    .collect(),
+            );
+        }
+    }
+    // A heading that an in-page `#anchor` jumps to needs room above it, or the
+    // sticky header lands on top of what you just jumped to.
+    for (p, prop) in [
+        ("scroll-mt-", "scroll-margin-top"),
+        ("scroll-mb-", "scroll-margin-bottom"),
+    ] {
+        if let Some(v) = class.strip_prefix(p) {
+            return Some(format!("{prop}:{};", space(v)?));
         }
     }
     for (p, prop) in [
@@ -1147,11 +1171,27 @@ fn arbitrary_property(prefix: &str) -> Option<&'static str> {
         "bg" => "background-color",
         "border" => "border-color",
         "p" => "padding",
+        "px" => "padding-inline",
+        "py" => "padding-block",
+        "pt" => "padding-top",
+        "pb" => "padding-bottom",
+        "pl" => "padding-left",
+        "pr" => "padding-right",
         "m" => "margin",
+        "mx" => "margin-inline",
+        "my" => "margin-block",
         "mt" => "margin-top",
         "mb" => "margin-bottom",
+        "ml" => "margin-left",
+        "mr" => "margin-right",
         "gap" => "gap",
+        "gap-x" => "column-gap",
+        "gap-y" => "row-gap",
         "top" => "top",
+        "right" => "right",
+        "bottom" => "bottom",
+        "left" => "left",
+        "inset" => "inset",
         "leading" => "line-height",
         "font" => "font-family",
         "content" => "content",

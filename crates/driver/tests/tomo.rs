@@ -223,42 +223,19 @@ fn tomo_builds_the_handbook_site() {
         "sections missing, or not translated"
     );
 
-    // The root is the landing page: it has to answer what the language *is*
-    // before a reader will click anything. These are the questions someone
-    // arriving cold asks, and each has to be answered on this page.
+    // The root page is tomo's, and this book has no `home.md`: the front page
+    // is a designed page in the UI syntax (`apps/site/home.maca`), written over
+    // these three addresses by `tools/build-site.maca`. What tomo owes is the
+    // fallback it documents — a language picker that links every language's
+    // handbook — and that is what is asserted here. The front page's own
+    // content is asserted in `tests/programs/sitegen.maca`.
     let root = std::fs::read_to_string(site.join("index.html")).unwrap();
-    for want in [
-        "statically typed",   // typed, and how
-        "no garbage collector", // GC, and whether
-        "native binary",      // compiled, and to what
-    ] {
+    for want in ["en/index.html", "ko/index.html", "en/home.html", "ko/home.html"] {
         assert!(
             root.contains(want),
-            "the landing page doesn't say {want:?}: {root}"
+            "the picker doesn't link {want:?}: {root}"
         );
     }
-    // a code sample, run through the same highlighter the chapters use
-    assert!(
-        root.contains("language-maca"),
-        "the landing page has no code sample: {root}"
-    );
-    // and the table that puts the language in a box
-    assert!(
-        root.contains("Garbage collected?") && root.contains("Compiled or interpreted?"),
-        "the landing page lost its summary table: {root}"
-    );
-    // the three doors out: the handbook, the playground, the source
-    for want in ["en/index.html", "play/index.html", "github.com/pleahmacaka"] {
-        assert!(
-            root.contains(want),
-            "the landing page doesn't link {want:?}: {root}"
-        );
-    }
-    // the switcher offers the other language's *landing*, not a chapter index
-    assert!(
-        root.contains("ko/home.html"),
-        "no Korean landing offered: {root}"
-    );
     // it links files, not bare directories: `…/ko/` only resolves to index.html
     // when a web server does it, and this book is meant to open off disk too
     assert!(!root.contains("href=\"../"), "root page links above itself");
@@ -268,14 +245,10 @@ fn tomo_builds_the_handbook_site() {
         "root page links a bare directory, which won't open from a file:// path"
     );
 
-    // the Korean landing is Korean, and points back into the Korean handbook
+    // a language's own landing resolves from inside its directory
     let ko_home = std::fs::read_to_string(site.join("ko/home.html")).unwrap();
     assert!(
-        ko_home.contains("가비지") && ko_home.contains("정적 타입"),
-        "the Korean landing isn't Korean: {ko_home}"
-    );
-    assert!(
-        ko_home.contains("../ko/index.html") && ko_home.contains("../play/index.html"),
+        ko_home.contains("../ko/index.html"),
         "the Korean landing's links don't resolve from its directory: {ko_home}"
     );
 
@@ -335,13 +308,20 @@ fn tomo_builds_the_handbook_site() {
     // chapter has no previous link, the last no next.
     let first = std::fs::read_to_string(site.join("en/00-introduction.html")).unwrap();
     assert!(
-        first.contains("<a href=\"01-installing.html\">next") && !first.contains("← previous"),
+        first.contains("href=\"01-installing.html\">next") && !first.contains("← previous"),
         "first chapter's nav wrong"
     );
     let last = std::fs::read_to_string(site.join("en/a4-diagnostics.html")).unwrap();
     assert!(
-        last.contains("<a href=\"a3-stdlib.html\">← previous</a>") && !last.contains("next →"),
+        last.contains("href=\"a3-stdlib.html\">← previous</a>") && !last.contains("next →"),
         "last chapter's nav wrong"
+    );
+    // The pair is a ruled-off two-column grid, not two bare links: `.chapters`
+    // was a class name with no rule behind it, so this nav had no styling at
+    // all on every page of the book.
+    assert!(
+        last.contains("grid grid-cols-2") && !last.contains("class=\"chapters\""),
+        "chapter nav lost its layout"
     );
 }
 

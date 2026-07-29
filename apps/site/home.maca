@@ -1,0 +1,655 @@
+// The front page, written in Maca.
+//
+// Not Markdown: a landing page is a designed thing, and the language has an
+// element syntax and a Tailwind engine. The copy is data and the layout is
+// element calls over it, so a translation is a value rather than a second copy
+// of the page.
+//
+//   maca run apps/site/home.maca [outdir]     # default: apps/tomo/site
+//
+// Writes <out>/index.html and <out>/<lang>/home.html for every language, which
+// is the URL shape tomo uses for a book's landing pages — this page replaces
+// tomo's for the handbook's own site. `tools/build-site.maca` does that
+// replacement in one place; nothing here should be run by hand into a
+// directory tomo also writes.
+//
+// What the page says is keyed by a sum type rather than a list position:
+// `Topic`, `Spec` and `Caveat` below. A translation that drops a card is a
+// NonExhaustive error from the checker, not a shorter page nobody notices.
+
+import std/path
+
+Repo = "https://github.com/pleahmacaka/macalang"
+InstallUrl = "https://raw.githubusercontent.com/pleahmacaka/macalang/main"
+    ++ "/install.sh"
+
+// ---- what the page argues ---------------------------------------------------
+
+// A feature card, a line in the spec strip, and a reason not to use this.
+Topic  = Config | Async | Markup | Values
+Spec   = Types | Memory | Output | Colour
+Caveat = Ecosystem | Cycles | Young
+
+topics() -> Topic[] => Config, Async, Markup, Values
+
+specs() -> Spec[] => Types, Memory, Output, Colour
+
+caveats() -> Caveat[] => Ecosystem, Cycles, Young
+
+// Every target the driver accepts. Native needs no flag; the rest are one.
+targets() -> str[] =>
+    ["native", "js", "jvm", "rust", "nix", "embedded", "tauri"]
+
+Fact = {
+    label: str
+    value: str
+}
+
+Feature = {
+    title: str
+    body:  str
+}
+
+// The strings that are the same in every language: the page's furniture, and
+// the code, which is code.
+Copy = {
+    lang:      str
+    title:     str
+    descr:     str
+    nav_docs:  str
+    nav_api:   str
+    headline:  str
+    sub:       str
+    cta_start: str
+    cta_play:  str
+    box_title: str
+    box_sub:   str
+    tgt_title: str
+    tgt_sub:   str
+    install:   str
+    lim_title: str
+    footer:    str
+    skip:      str
+    nav_label: str
+    lang_label: str
+}
+
+// The order here is the order of the language switcher, and the first is the
+// one `/index.html` is written in.
+copies() -> Copy[] => english(), korean()
+
+// ---- code samples -----------------------------------------------------------
+//
+// Each is a program that compiles. They live outside the per-language copy
+// because code is not translated, and a card that paired the wrong sample with
+// the wrong title would be the page's own claim failing on the page.
+
+sample(t: Topic) -> str =>
+    match t {
+        Config => ConfigSample
+        Async  => AsyncSample
+        Markup => MarkupSample
+        Values => ValueSample
+    }
+
+HeroSample = """Shape = Circle(float) | Rect(float, float)
+
+area(s: Shape) -> float =>
+    match s {
+        Circle(r)  => 3.14159 * r * r
+        Rect(w, h) => w * h
+    }
+
+main() -> int {
+    floor = [Circle(1.0), Rect(3.0, 4.0)]
+    info("floor plan: {floor.map(area).sum():.2} m²")
+    0
+}"""
+
+ConfigSample = """networking.hostName = "rigel"
+system.packages     = git, curl, htop
+
+services.openssh = {
+    passwordAuthentication = false
+}"""
+
+AsyncSample = """fetch_both(a: str, b: str) -> int {
+    x = spawn get(a)
+    y = spawn get(b)
+    await x + await y
+}"""
+
+MarkupSample = """card(name: str) -> str =>
+    article(class="rounded-lg p-4",
+        h2(class="font-bold", name)
+        p("Server or browser, one line.")
+    )"""
+
+ValueSample = """shift(p: Point, dx: int) -> Point =>
+    p with { x = p.x + dx }"""
+
+InstallSample = """curl -fsSL """ ++ InstallUrl ++ """ | bash
+maca init hello && cd hello
+maca run main.maca"""
+
+// ---- English ----------------------------------------------------------------
+
+english() -> Copy =>
+    Copy {
+        lang = "en",
+        title = "Maca — one typed language for programs and infrastructure",
+        descr = "A statically typed, compiled language with no garbage"
+            ++ " collector. The same source builds a native binary, a browser"
+            ++ " UI, or the NixOS module for the machine it runs on.",
+        nav_docs = "Handbook",
+        nav_api = "API",
+        headline = "One typed language for programs and the machines they"
+            ++ " run on",
+        sub = "Statically typed, compiled to a native binary, and no garbage"
+            ++ " collector. The language that writes your service describes the"
+            ++ " machine it is deployed to.",
+        cta_start = "Get started",
+        cta_play = "Playground",
+        box_title = "Is this the right tool for you?",
+        box_sub = "The decisions that put a language in a box, stated plainly.",
+        tgt_title = "One source, seven targets",
+        tgt_sub = "Native is the default. The rest are a flag.",
+        install = "Install",
+        lim_title = "Not for you if",
+        footer = "Criticism welcome — particularly the kind that says which of"
+            ++ " those boxes is the wrong one.",
+        skip = "Skip to content",
+        nav_label = "Site",
+        lang_label = "Language"
+    }
+
+en_fact(s: Spec) -> Fact =>
+    match s {
+        Types  => Fact { label = "Types", value = "Static, inferred" }
+        Memory => Fact { label = "Memory",
+                         value = "Refcounted at compile time" }
+        Output => Fact { label = "Output", value = "A native binary" }
+        Colour => Fact { label = "Async", value = "No function colour" }
+    }
+
+en_feature(t: Topic) -> Feature =>
+    match t {
+        Config => Feature {
+            title = "The same language configures the machine",
+            body = "Pass `--target nix` and the same file compiles to a NixOS"
+                ++ " module instead of a binary. Same syntax, same checker —"
+                ++ " and the checker refuses I/O in config mode, so a machine"
+                ++ " description cannot quietly do something."
+        }
+        Async => Feature {
+            title = "Async has no colour",
+            body = "Async-ness is an inferred effect, not a property of a"
+                ++ " function's type. No function is dyed a colour that spreads"
+                ++ " to everything calling it, and there is no async keyword to"
+                ++ " write."
+        }
+        Markup => Feature {
+            title = "Markup is syntax, not a string",
+            body = "A tag called as a function is an element. On the JS target"
+                ++ " it builds a reactive DOM; on native it renders to HTML,"
+                ++ " with a stylesheet generated for exactly the utilities you"
+                ++ " used. This page is that feature."
+        }
+        Values => Feature {
+            title = "Values stay values",
+            body = "No manual free and no borrow checker to satisfy: the"
+                ++ " compiler inserts the reference counts and works out where"
+                ++ " a buffer dies. Reach through the C FFI and you are back to"
+                ++ " C's rules, as you would expect."
+        }
+    }
+
+en_caveat(c: Caveat) -> str =>
+    match c {
+        Ecosystem => "You want a large ecosystem today. Maca reaches C,"
+            ++ " Python, crates.io and Maven rather than having grown its own."
+        Cycles => "You want a tracing collector. Reference counting does not"
+            ++ " collect a cycle."
+        Young => "You want a proven language. This one is young, and says so."
+    }
+
+// ---- Korean -----------------------------------------------------------------
+
+korean() -> Copy =>
+    Copy {
+        lang = "ko",
+        title = "Maca — 프로그램과 인프라를 위한 하나의 타입 있는 언어",
+        descr = "정적 타입, 컴파일, 가비지 컬렉터 없음. 같은 소스가 네이티브"
+            ++ " 바이너리도, 브라우저 UI도, 그것이 돌아갈 기계의 NixOS 모듈도"
+            ++ " 만듭니다.",
+        nav_docs = "핸드북",
+        nav_api = "API 문서",
+        headline = "프로그램과 그것이 돌아갈 기계를, 하나의 타입 있는 언어로",
+        sub = "정적 타입, 네이티브 바이너리로 컴파일, 가비지 컬렉터 없음."
+            ++ " 서비스를 쓰는 그 언어가 그 서비스가 배포될 기계도 기술합니다.",
+        cta_start = "시작하기",
+        cta_play = "플레이그라운드",
+        box_title = "당신에게 맞는 도구인가요?",
+        box_sub = "언어를 어느 칸에 넣을지 정하는 결정들을, 돌려 말하지 않고.",
+        tgt_title = "하나의 소스, 일곱 개의 타깃",
+        tgt_sub = "네이티브가 기본입니다. 나머지는 플래그 하나입니다.",
+        install = "설치",
+        lim_title = "이럴 땐 맞지 않습니다",
+        footer = "비판을 환영합니다 — 특히 저 칸들 중 어느 것이 잘못된"
+            ++ " 선택인지 짚어 주는 쪽으로요.",
+        skip = "본문으로 건너뛰기",
+        nav_label = "사이트",
+        lang_label = "언어"
+    }
+
+ko_fact(s: Spec) -> Fact =>
+    match s {
+        Types  => Fact { label = "타입", value = "정적, 추론" }
+        Memory => Fact { label = "메모리", value = "컴파일 타임 참조 카운트" }
+        Output => Fact { label = "결과물", value = "네이티브 바이너리" }
+        Colour => Fact { label = "비동기", value = "함수 색칠 없음" }
+    }
+
+ko_feature(t: Topic) -> Feature =>
+    match t {
+        Config => Feature {
+            title = "같은 언어가 기계를 설정합니다",
+            body = "`--target nix`를 주면 같은 파일이 바이너리 대신 NixOS"
+                ++ " 모듈로 컴파일됩니다. 같은 문법, 같은 검사기 — 그리고 설정"
+                ++ " 모드에서는 I/O를 거부하므로 기계 기술서가 몰래 무언가를 할"
+                ++ " 수 없습니다."
+        }
+        Async => Feature {
+            title = "비동기에 색이 없습니다",
+            body = "비동기성은 함수 타입의 성질이 아니라 추론되는 이펙트입니다."
+                ++ " 어떤 함수도 자기를 부르는 모든 것에 번지는 색으로 물들지"
+                ++ " 않고, 쓸 async 키워드도 없습니다."
+        }
+        Markup => Feature {
+            title = "마크업이 문자열이 아니라 문법입니다",
+            body = "태그를 함수처럼 부르면 그게 요소입니다. JS 타깃에서는"
+                ++ " 반응형 DOM을, 네이티브에서는 HTML을 만들고, 실제로 쓴"
+                ++ " 유틸리티만큼의 스타일시트가 생성됩니다. 이 페이지가 그"
+                ++ " 기능입니다."
+        }
+        Values => Feature {
+            title = "값은 값으로 남습니다",
+            body = "수동 free 없음, 만족시켜야 할 빌림 검사기도 없음. 참조"
+                ++ " 카운트는 컴파일러가 넣고, 버퍼가 죽는 지점도 컴파일러가"
+                ++ " 알아냅니다. C FFI로 손을 뻗으면 그때부터는 C의 규칙입니다."
+        }
+    }
+
+ko_caveat(c: Caveat) -> str =>
+    match c {
+        Ecosystem => "오늘 당장 큰 생태계가 필요할 때. Maca는 자기 생태계를"
+            ++ " 키우는 대신 C, Python, crates.io, Maven에 닿습니다."
+        Cycles => "추적 수집기가 필요할 때. 참조 카운팅은 순환을 수거하지"
+            ++ " 않습니다."
+        Young => "검증된 언어가 필요할 때. 이 언어는 어리고, 그렇다고 말합니다."
+    }
+
+// ---- picking a language -----------------------------------------------------
+//
+// One `if` per kind of content, in one place. A third language is a `Copy`
+// added to `copies()` and a branch added to each of these three.
+
+fact_of(c: Copy, s: Spec) -> Fact {
+    if c.lang == "ko" {
+        ko_fact(s)
+    } else {
+        en_fact(s)
+    }
+}
+
+feature_of(c: Copy, t: Topic) -> Feature {
+    if c.lang == "ko" {
+        ko_feature(t)
+    } else {
+        en_feature(t)
+    }
+}
+
+caveat_of(c: Copy, v: Caveat) -> str {
+    if c.lang == "ko" {
+        ko_caveat(v)
+    } else {
+        en_caveat(v)
+    }
+}
+
+// ---- page -------------------------------------------------------------------
+
+// `up` is the path back to the site root: "" from `/index.html`, "../" from a
+// language directory.
+page(c: Copy, up: str) -> str =>
+    "<!doctype html>\n"
+        ++ html(lang=c.lang,
+            head(
+                meta(charset="utf-8")
+                meta(name="viewport",
+                     content="width=device-width,initial-scale=1")
+                meta(name="description", content=c.descr)
+                meta(property="og:title", content=c.title)
+                meta(property="og:description", content=c.descr)
+                meta(property="og:type", content="website")
+                meta(name="twitter:card", content="summary")
+                link(rel="canonical", href=canonical(c, up))
+                alternates(up)
+                title_tag(c.title)
+                style(base_css() ++ styles())
+            )
+            body_tag(page_class(),
+                skip_link(c)
+                    ++ top_nav(c, up)
+                    ++ element("main", id="content",
+                           hero(c, up)
+                           spec_strip(c)
+                           features(c)
+                           targets_band(c)
+                           install_band(c)
+                           limits(c))
+                    ++ site_footer(c))) ++ "\n"
+
+// `/index.html` and `<lang>/home.html` are the same page for the default
+// language, so one of them has to say which is the address.
+canonical(c: Copy, up: str) -> str {
+    if c.lang == default_lang() {
+        up ++ "index.html"
+    } else {
+        up ++ c.lang ++ "/home.html"
+    }
+}
+
+default_lang() -> str =>
+    copies().get(0).lang
+
+alternates(up: str) -> str =>
+    copies().map(o => alternate(o, up)).join("")
+
+alternate(o: Copy, up: str) -> str =>
+    link(rel="alternate", hreflang=o.lang, href=canonical(o, up))
+
+// Told to the browser rather than any element: the page has both palettes, so
+// scrollbars and form controls follow the reader's system setting.
+base_css() -> str =>
+    """html{color-scheme:light dark}
+"""
+
+page_class() -> str =>
+    "font-sans text-base leading-relaxed bg-white dark:bg-zinc-950"
+        ++ " text-zinc-900 dark:text-zinc-100"
+
+wrap() -> str =>
+    "max-w-[64rem] mx-auto px-6"
+
+// Off-screen until it is tabbed to, which is the whole point of it.
+skip_link(c: Copy) -> str =>
+    a(class="absolute left-[-9999px] focus:left-2 focus:top-2 focus:z-10"
+            ++ " bg-white dark:bg-zinc-950 px-4 py-2 rounded-md"
+            ++ " border border-zinc-300 dark:border-zinc-700 text-inherit",
+      href="#content", esc(c.skip))
+
+// ---- header -----------------------------------------------------------------
+//
+// The header wraps rather than scrolling: five items at 0.9rem plus a Korean
+// "플레이그라운드" is wider than a phone, and the house rule is that wide
+// content scrolls inside its own box, never the page.
+
+top_nav(c: Copy, up: str) -> str =>
+    header(class="border-b border-zinc-200 dark:border-zinc-800",
+        div(class=wrap() ++ " flex flex-wrap items-center justify-between"
+                  ++ " gap-x-5 gap-y-2 py-3",
+            a(class="font-bold text-[1.1rem] no-underline text-inherit"
+                    ++ " focus:underline",
+              href=home_href(c, up), "Maca")
+            nav(aria-label=c.nav_label,
+                class="flex flex-wrap items-center gap-x-5 gap-y-2"
+                      ++ " text-[0.9rem]",
+                a(class=quiet_link(), href=up ++ c.lang ++ "/index.html",
+                  esc(c.nav_docs))
+                a(class=quiet_link(), href=up ++ "api/index.html",
+                  esc(c.nav_api))
+                a(class=quiet_link(), href=up ++ "play/index.html",
+                  esc(c.cta_play))
+                a(class=quiet_link(), href=Repo, "GitHub")
+                lang_switch(c, up))))
+
+// The wordmark goes to this language's front page, not the site's — a Korean
+// reader clicking the name should not land in English.
+home_href(c: Copy, up: str) -> str {
+    if up == "" {
+        "index.html"
+    } else {
+        up ++ c.lang ++ "/home.html"
+    }
+}
+
+quiet_link() -> str =>
+    "no-underline text-zinc-600 dark:text-zinc-400 hover:text-black"
+        ++ " dark:hover:text-white focus:underline"
+
+// Two languages, two links — a `<select>` cannot navigate without script, and
+// this is the one control a reader who landed on the wrong language needs.
+lang_switch(c: Copy, up: str) -> str =>
+    nav(aria-label=c.lang_label,
+        class="flex items-center gap-2 text-[0.8rem]",
+        copies().map(o => lang_link(c, up, o)).join(""))
+
+lang_link(c: Copy, up: str, other: Copy) -> str {
+    if other.lang == c.lang {
+        span(class="font-semibold", aria-current="true", native_name(other))
+    } else {
+        a(class=quiet_link(), href=up ++ other.lang ++ "/home.html",
+          lang=other.lang, native_name(other))
+    }
+}
+
+// A language is named in itself, in every language's switcher.
+native_name(o: Copy) -> str {
+    if o.lang == "ko" {
+        "한국어"
+    } else {
+        "English"
+    }
+}
+
+// ---- hero -------------------------------------------------------------------
+
+hero(c: Copy, up: str) -> str =>
+    section(class=wrap() ++ " py-14 md:py-20 grid gap-10"
+                  ++ " md:grid-cols-2 md:items-center",
+        div(class="min-w-0",
+            h1(class="font-bold text-[2.25rem] md:text-[2.75rem]"
+                     ++ " leading-tight tracking-tight m-0",
+               esc(c.headline))
+            p(class="mt-5 text-[1.05rem] text-zinc-600 dark:text-zinc-400",
+              prose(c.sub))
+            div(class="mt-8 flex flex-wrap gap-3",
+                a(class=primary_btn(), href="#install", esc(c.cta_start))
+                a(class=ghost_btn(), href=up ++ "play/index.html",
+                  esc(c.cta_play))
+                a(class=ghost_btn(), href=Repo, "GitHub")))
+        code_panel(HeroSample, "maca"))
+
+primary_btn() -> str =>
+    "inline-block px-5 py-2 rounded-md no-underline font-medium"
+        ++ " text-[0.95rem] bg-zinc-900 dark:bg-zinc-100 text-white"
+        ++ " dark:text-black focus:underline"
+
+ghost_btn() -> str =>
+    "inline-block px-5 py-2 rounded-md no-underline font-medium"
+        ++ " text-[0.95rem] border border-zinc-300 dark:border-zinc-700"
+        ++ " text-inherit hover:bg-zinc-100 dark:hover:bg-zinc-900"
+        ++ " focus:underline"
+
+// A code block is wide and pre-formatted, so it scrolls inside itself rather
+// than making the page scroll sideways on a phone.
+code_panel(src: str, lang: str) -> str =>
+    pre(class="bg-zinc-950 dark:bg-black text-zinc-100 rounded-lg p-5"
+              ++ " overflow-x-auto text-[0.85rem] leading-relaxed m-0"
+              ++ " border border-zinc-800 min-w-0",
+        code(class="font-mono language-" ++ lang, esc(src)))
+
+// ---- the strip that puts it in a box ----------------------------------------
+
+spec_strip(c: Copy) -> str =>
+    section(class="border-y border-zinc-200 dark:border-zinc-800"
+                  ++ " bg-zinc-50 dark:bg-zinc-900",
+        div(class=wrap() ++ " py-8 grid gap-6 grid-cols-2 md:grid-cols-4",
+            specs().map(s => fact_cell(fact_of(c, s))).join("")))
+
+fact_cell(f: Fact) -> str =>
+    div(
+        div(class="text-[0.75rem] uppercase tracking-wide text-zinc-500"
+                  ++ " dark:text-zinc-400", esc(f.label))
+        div(class="mt-1 font-medium", esc(f.value)))
+
+// ---- features ---------------------------------------------------------------
+
+features(c: Copy) -> str =>
+    section(class=wrap() ++ " py-16",
+        h2(class=band_title(), esc(c.box_title))
+        p(class=band_sub(), prose(c.box_sub))
+        div(class="mt-10 grid gap-6 md:grid-cols-2",
+            topics().map(t => feature_card(feature_of(c, t), sample(t)))
+                    .join("")))
+
+band_title() -> str =>
+    "font-bold text-[1.6rem] tracking-tight m-0"
+
+band_sub() -> str =>
+    "mt-2 text-zinc-600 dark:text-zinc-400"
+
+feature_card(f: Feature, src: str) -> str =>
+    article(class="rounded-lg border border-zinc-200 dark:border-zinc-800"
+                  ++ " p-6 flex flex-col gap-4 min-w-0",
+        h3(class="font-semibold text-[1.1rem] m-0", esc(f.title))
+        p(class="text-[0.95rem] text-zinc-600 dark:text-zinc-400 m-0",
+          prose(f.body))
+        pre(class="bg-zinc-100 dark:bg-zinc-900 rounded-md p-4 overflow-x-auto"
+                  ++ " text-[0.8rem] m-0 min-w-0",
+            code(class="font-mono language-maca", esc(src))))
+
+// ---- targets ----------------------------------------------------------------
+
+targets_band(c: Copy) -> str =>
+    section(class="border-t border-zinc-200 dark:border-zinc-800",
+        div(class=wrap() ++ " py-14",
+            h2(class=band_title(), esc(c.tgt_title))
+            p(class=band_sub(), prose(c.tgt_sub))
+            div(class="mt-6 flex flex-wrap gap-2",
+                targets().map(target_chip).join(""))))
+
+target_chip(t: str) -> str =>
+    span(class="inline-block px-3 py-1 rounded-full text-[0.85rem] font-mono"
+               ++ " border border-zinc-300 dark:border-zinc-700", esc(t))
+
+// ---- install ----------------------------------------------------------------
+
+install_band(c: Copy) -> str =>
+    section(id="install", class="border-t border-zinc-200 dark:border-zinc-800"
+                                ++ " bg-zinc-50 dark:bg-zinc-900",
+        div(class=wrap() ++ " py-14",
+            h2(class=band_title(), esc(c.install))
+            div(class="mt-6", code_panel(InstallSample, "sh"))))
+
+// ---- honest limits ----------------------------------------------------------
+
+limits(c: Copy) -> str =>
+    section(class=wrap() ++ " py-14",
+        h2(class=band_title(), esc(c.lim_title))
+        ul(class="mt-5 grid gap-3 list-none p-0 text-zinc-600"
+                 ++ " dark:text-zinc-400",
+           caveats().map(v => limit_item(caveat_of(c, v))).join("")))
+
+limit_item(text: str) -> str =>
+    li(class="pl-4 border-l-2 border-zinc-300 dark:border-zinc-700",
+       prose(text))
+
+site_footer(c: Copy) -> str =>
+    footer(class="border-t border-zinc-200 dark:border-zinc-800",
+        div(class=wrap() ++ " py-10 text-[0.9rem] text-zinc-500"
+                  ++ " dark:text-zinc-400",
+            p(class="m-0", prose(c.footer))
+            p(class="mt-2 m-0",
+              a(class="underline text-inherit", href=Repo,
+                "github.com/pleahmacaka/macalang"))))
+
+// `title` and `body` are parameter names all over this file, and a user
+// definition wins over a tag — so the two tags that collide get a wrapper.
+title_tag(text: str) -> str =>
+    title(esc(text))
+
+body_tag(classes: str, inner: str) -> str =>
+    body(class=classes, inner)
+
+// Children of an element are not escaped — a generator emitting markup has
+// usually escaped already, and double-escaping is the more common bug. Every
+// leaf that carries copy or code goes through here instead. Attribute values
+// are escaped by the backend, so they must not.
+esc(s: str) -> str =>
+    s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+// A sentence of copy, where a backtick span is a piece of code. `--target nix`
+// is a flag, and printing the backticks around it is worse than not marking it
+// at all — so the one bit of markup the copy uses is the one it renders.
+prose(s: str) -> str =>
+    spans(s.split("`"), 0, "")
+
+spans(parts: str[], i: int, out: str) -> str {
+    if i >= parts.length() {
+        out
+    } else if i % 2 == 1 {
+        spans(parts, i + 1, out ++ code(class=CodeSpan, esc(parts.get(i))))
+    } else {
+        spans(parts, i + 1, out ++ esc(parts.get(i)))
+    }
+}
+
+CodeSpan = "font-mono text-[0.9em] bg-zinc-100 dark:bg-zinc-800 rounded px-1"
+    ++ " py-[0.05rem]"
+
+// ---- entry ------------------------------------------------------------------
+
+main(args: str[]) -> int {
+    out = if args.length() > 0 { args.get(0) } else { "apps/tomo/site" }
+    make_dir(out)
+
+    root = write_page(join(out, "index.html"), page(copies().get(0), ""))
+    written = root + write_langs(out, copies(), 0)
+    wanted = copies().length() + 1
+
+    if written < wanted {
+        err("front page: wrote {written} of {wanted} files under {out}")
+        1
+    } else {
+        info("front page: {written} files under {out}")
+        0
+    }
+}
+
+write_langs(out: str, cs: Copy[], i: int) -> int {
+    if i >= cs.length() {
+        0
+    } else {
+        dir = join(out, cs.get(i).lang)
+        make_dir(dir)
+        n = write_page(join(dir, "home.html"), page(cs.get(i), "../"))
+        n + write_langs(out, cs, i + 1)
+    }
+}
+
+// A write that isn't checked is a build that reports success having produced
+// nothing: the directory may not exist, or the disk may be full, and
+// `write_file` says neither.
+write_page(path: str, markup: str) -> int {
+    write_file(path, markup)
+
+    if file_size(path) > 0 {
+        1
+    } else {
+        err("could not write {path}")
+        0
+    }
+}

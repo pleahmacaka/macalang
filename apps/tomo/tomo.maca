@@ -574,19 +574,20 @@ stylesheet() -> str =>
 chapter_nav(chs: str[], idx: int) -> str {
     p = prev_page(chs, idx)
     n = next_page(chs, idx)
-    nav(class="chapters",
-        page_link(chs, p, "← previous")
-        page_link(chs, n, "next →")
+    nav(aria-label="Chapter", class=chapter_nav_class(),
+        page_link(chs, p, "← previous", false)
+        page_link(chs, n, "next →", true)
     ) ++ "\n"
 }
 
 // A link to a neighbouring chapter, or an empty placeholder at the ends of the
-// book — the grid wants both slots filled either way.
-page_link(chs: str[], at: int, label: str) -> str {
+// book — the grid wants both slots filled either way, so `next` stays at the
+// right margin on the first page, where there is no `previous`.
+page_link(chs: str[], at: int, label: str, right: bool) -> str {
     if at < 0 {
         span("")
     } else {
-        a(href=chs.get(at) ++ ".html", label)
+        a(class=chapter_link_class(right), href=chs.get(at) ++ ".html", label)
     }
 }
 
@@ -594,6 +595,23 @@ page_link(chs: str[], at: int, label: str) -> str {
 //
 // Named once here rather than repeated at each call site, because they are the
 // page's structure and it should be possible to see all of it together.
+
+// The previous/next pair at the foot of a chapter, ruled off from the prose.
+chapter_nav_class() -> str =>
+    "grid grid-cols-2 gap-4 mt-12 pt-6 border-t border-zinc-200"
+        ++ " dark:border-zinc-800 text-[0.9rem]"
+
+chapter_link_class(right: bool) -> str =>
+    "no-underline text-zinc-600 dark:text-zinc-400 hover:text-black"
+        ++ " dark:hover:text-white" ++ chapter_link_side(right)
+
+chapter_link_side(right: bool) -> str {
+    if right {
+        " text-right"
+    } else {
+        ""
+    }
+}
 
 // A sidebar entry, and the same shape marked as the page you are on.
 link_class(current: bool) -> str =>

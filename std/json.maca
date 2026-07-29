@@ -12,8 +12,8 @@ import std/text
 
 // ---- emitting -------------------------------------------------------------
 
-// A JSON string literal, with the five escapes the format requires. A raw
-// newline inside a string is what most hand-rolled emitters get wrong.
+/// A JSON string literal, with the five escapes the format requires. A raw
+/// newline inside a string is what most hand-rolled emitters get wrong.
 quote(s: str) -> str =>
     "\"" ++ s.replace("\\", "\\\\")
              .replace("\"", "\\\"")
@@ -21,16 +21,17 @@ quote(s: str) -> str =>
              .replace("\r", "\\r")
              .replace("\t", "\\t") ++ "\""
 
-// `["a", "b"]` from a `str[]`.
+/// `["a", "b"]` from a `str[]`.
 array_of_str(xs: str[]) -> str =>
     "[" ++ xs.map(quote).join(",") ++ "]"
 
+/// `[1, 2]` from an `int[]`.
 array_of_int(xs: int[]) -> str =>
     "[" ++ xs.map(v => str(v)).join(",") ++ "]"
 
-// `{"k":v}` from parallel key and (already-encoded) value lists. Values are
-// passed encoded so one object can mix a number, a string and a nested object
-// without a variant type to carry the difference.
+/// `{"k":v}` from parallel key and (already-encoded) value lists. Values are
+/// passed encoded so one object can mix a number, a string and a nested object
+/// without a variant type to carry the difference.
 object_of(keys: str[], values: str[]) -> str =>
     "\{" ++ pairs(keys, values, 0, []).join(",") ++ "\}"
 
@@ -45,9 +46,9 @@ pairs(ks: str[], vs: str[], i: int, acc: str[]) -> str[] {
 
 // ---- reading --------------------------------------------------------------
 
-// The raw text of `key`'s value in a JSON object, or "" when it isn't there.
-// A string value comes back unquoted and unescaped; anything else comes back
-// as written, so a number is `"42"` and a nested object is its own JSON.
+/// The raw text of `key`'s value in a JSON object, or "" when it isn't there.
+/// A string value comes back unquoted and unescaped; anything else comes back
+/// as written, so a number is `"42"` and a nested object is its own JSON.
 get(src: str, key: str) -> str {
     marker = quote(key) ++ ":"
     at = src.index_of(marker)
@@ -59,6 +60,8 @@ get(src: str, key: str) -> str {
     }
 }
 
+/// `get`, parsed as an integer, with `dflt` when the key is absent. A key that
+/// is present but not a number reads as 0, the same as `int("x")`.
 get_int(src: str, key: str, dflt: int) -> int {
     v = get(src, key)
 
@@ -69,10 +72,12 @@ get_int(src: str, key: str, dflt: int) -> int {
     }
 }
 
+/// `get`, read as a boolean. Only a literal `true` is true — an absent key, a
+/// `false`, and a `null` are all false.
 get_bool(src: str, key: str) -> bool =>
     get(src, key) == "true"
 
-// The elements of a JSON array, each as raw text (strings unquoted).
+/// The elements of a JSON array, each as raw text (strings unquoted).
 items(src: str) -> str[] {
     body = src.trim()
 

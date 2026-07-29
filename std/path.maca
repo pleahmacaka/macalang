@@ -6,9 +6,9 @@
 //
 //   import std/path
 
-// Join two segments with exactly one separator, whatever each side brought.
-// `join("a/", "/b")` and `join("a", "b")` are both `"a/b"` — the sort of thing
-// that otherwise produces `a//b` in a path that mostly works until it doesn't.
+/// Join two segments with exactly one separator, whatever each side brought.
+/// `join("a/", "/b")` and `join("a", "b")` are both `"a/b"` — the sort of thing
+/// that otherwise produces `a//b` in a path that mostly works until it doesn't.
 join(a: str, b: str) -> str {
     left = drop_trailing_sep(a)
     right = drop_leading_sep(b)
@@ -38,7 +38,7 @@ drop_leading_sep(s: str) -> str {
     }
 }
 
-// Everything after the last separator.
+/// Everything after the last separator.
 basename(p: str) -> str {
     at = last_sep(p)
 
@@ -49,8 +49,8 @@ basename(p: str) -> str {
     }
 }
 
-// Everything before the last separator; "." when there is none, so the result
-// is always a directory you can pass on.
+/// Everything before the last separator; "." when there is none, so the result
+/// is always a directory you can pass on.
 dirname(p: str) -> str {
     at = last_sep(p)
 
@@ -63,8 +63,8 @@ dirname(p: str) -> str {
     }
 }
 
-// The extension without its dot, or "". A leading dot is a hidden file rather
-// than an extension: `extension(".bashrc")` is "".
+/// The extension without its dot, or "". A leading dot is a hidden file rather
+/// than an extension: `extension(".bashrc")` is "".
 extension(p: str) -> str {
     name = basename(p)
     at = last_dot(name)
@@ -76,7 +76,7 @@ extension(p: str) -> str {
     }
 }
 
-// The basename with its extension removed.
+/// The basename with its extension removed.
 stem(p: str) -> str {
     name = basename(p)
     at = last_dot(name)
@@ -88,7 +88,7 @@ stem(p: str) -> str {
     }
 }
 
-// Replace the extension (with or without a leading dot on `ext`).
+/// Replace the extension (with or without a leading dot on `ext`).
 with_extension(p: str, ext: str) -> str {
     bare_ext = drop_leading_dot(ext)
     dir = dirname(p)
@@ -116,11 +116,13 @@ drop_leading_dot(ext: str) -> str {
     }
 }
 
+/// Does `p` start from the root? Paths are `/`-separated here on every host,
+/// so this is the one question, not one per platform.
 is_absolute(p: str) -> bool =>
     p.starts_with("/")
 
-// Collapse `.` and `..` segments textually — no filesystem access, so it is
-// safe to call on a path that does not exist yet.
+/// Collapse `.` and `..` segments textually — no filesystem access, so it is
+/// safe to call on a path that does not exist yet.
 normalize(p: str) -> str {
     kept = walk_segments(p.split("/"), 0, []).join("/")
 
