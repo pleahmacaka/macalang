@@ -19,6 +19,7 @@ pub const RUNTIME_H: &str = r##"#ifndef MACA_RUNTIME_H
 #include <stdlib.h>
 #include <string.h>
 #include <setjmp.h>
+#include <stdarg.h>
 
 typedef const char* maca_str;
 
@@ -39,6 +40,10 @@ void maca_init(void);          /* installs atexit(shutdown); call first in main 
 void maca_shutdown(void);      /* frees every live block */
 void* maca_alloc(size_t n);
 void* maca_realloc(void* p, size_t n);
+/* Release a string. A `maca_str` is the payload pointer itself rather than a
+   struct with a buffer in it, and it is `const` because nothing may write
+   through it — neither changes who is allowed to let go of the bytes. */
+void maca_drop_str(maca_str s);
 void maca_dup(void* p);        /* one more owner */
 void maca_drop(void* p);       /* one fewer owner; at zero, back to the free-list */
 uint64_t maca_alloc_count(void);
@@ -69,6 +74,11 @@ maca_str maca_input(void);
 
 /* ---- strings ---- */
 maca_str maca_concat(maca_str a, maca_str b);
+/* Concatenate `n` strings in one allocation.
+   `a ++ b ++ c` used to build `a ++ b`, copy it into the next result and
+   abandon it; the intermediate was invisible in the source, so nothing ever
+   released it. Written as one call there is no intermediate to release. */
+maca_str maca_concat_n(size_t n, ...);
 maca_str maca_from_int(int64_t n);
 maca_str maca_from_float(double d);
 maca_str maca_from_bool(bool b);
@@ -353,12 +363,76 @@ static maca_hdr* g_freelist = NULL;
 static uint64_t g_alloc_count = 0, g_reuse_count = 0;
 static pthread_mutex_t g_heap_lock = PTHREAD_MUTEX_INITIALIZER;
 
+/* Which payload addresses this allocator handed out.
+
+   A `maca_str` is a `const char*` and says nothing about where it came from: a
+   string literal lives in .rodata, `maca_concat` returns a heap block, and a
+   Maca function returning `"x"` hands back the former where the latter is
+   expected. Releasing one means reading a header that is only there for the
+   latter, and reading eight bytes before a literal is at best a wrong answer.
+
+   So membership is asked, not assumed. An open-addressed set of payload
+   addresses, one pointer per block and never removed — a block on the free
+   list is still a block, and the set is exactly "this address has a header".
+   That is an O(1) answer with nothing read out of bounds, which is what makes
+   dropping a string safe at all. */
+static void** g_blocks = NULL;
+static size_t g_blocks_cap = 0, g_blocks_len = 0;
+static int g_poison = -1; /* -1 not yet asked, then MACA_POISON */
+
+static size_t addr_slot(void* p, size_t cap) {
+    /* Fibonacci hashing: pointers are 16-byte aligned, so the low bits are
+       constant and the raw value makes a poor index. */
+    uint64_t h = (uint64_t)(uintptr_t)p >> 4;
+    h *= 11400714819323198485ULL;
+    return (size_t)(h >> 32) & (cap - 1);
+}
+
+static void blocks_insert(void* p);
+
+static void blocks_grow(void) {
+    size_t old_cap = g_blocks_cap;
+    void** old = g_blocks;
+    g_blocks_cap = old_cap ? old_cap * 2 : 1024;
+    g_blocks = (void**)calloc(g_blocks_cap, sizeof(void*));
+    if (!g_blocks) die("out of memory");
+    g_blocks_len = 0;
+    for (size_t i = 0; i < old_cap; i++) {
+        if (old[i]) blocks_insert(old[i]);
+    }
+    free(old);
+}
+
+static void blocks_insert(void* p) {
+    if (g_blocks_cap == 0 || (g_blocks_len + 1) * 4 >= g_blocks_cap * 3) blocks_grow();
+    size_t i = addr_slot(p, g_blocks_cap);
+    while (g_blocks[i]) {
+        if (g_blocks[i] == p) return;
+        i = (i + 1) & (g_blocks_cap - 1);
+    }
+    g_blocks[i] = p;
+    g_blocks_len++;
+}
+
+/* Did this allocator hand out `p`? Called with the lock held. */
+static int blocks_has(void* p) {
+    if (!g_blocks_cap) return 0;
+    size_t i = addr_slot(p, g_blocks_cap);
+    while (g_blocks[i]) {
+        if (g_blocks[i] == p) return 1;
+        i = (i + 1) & (g_blocks_cap - 1);
+    }
+    return 0;
+}
+
 void maca_init(void) { atexit(maca_shutdown); }
 void maca_shutdown(void) {
     pthread_mutex_lock(&g_heap_lock);
     for (size_t i = 0; i < g_live_len; i++) free(g_live[i]);
     free(g_live);
+    free(g_blocks);
     g_live = NULL; g_live_len = 0; g_live_cap = 0; g_freelist = NULL;
+    g_blocks = NULL; g_blocks_cap = 0; g_blocks_len = 0;
     pthread_mutex_unlock(&g_heap_lock);
 }
 void* maca_alloc(size_t n) {
@@ -381,6 +455,7 @@ void* maca_alloc(size_t n) {
         if (!g_live) { pthread_mutex_unlock(&g_heap_lock); die("out of memory"); }
     }
     g_live[g_live_len++] = h;
+    blocks_insert((void*)(h + 1));
     g_alloc_count++;
     pthread_mutex_unlock(&g_heap_lock);
     return (void*)(h + 1);
@@ -388,18 +463,43 @@ void* maca_alloc(size_t n) {
 void maca_dup(void* p) {
     if (!p) return;
     pthread_mutex_lock(&g_heap_lock);
-    (((maca_hdr*)p) - 1)->rc++;
+    if (blocks_has(p)) (((maca_hdr*)p) - 1)->rc++;
     pthread_mutex_unlock(&g_heap_lock);
 }
 void maca_drop(void* p) {
     if (!p) return;
     pthread_mutex_lock(&g_heap_lock);
-    maca_hdr* h = ((maca_hdr*)p) - 1;
-    if (--h->rc <= 0) { h->fl_next = g_freelist; g_freelist = h; }
+    /* A string literal, a static "" a runtime function returned, a pointer
+       into someone else's buffer: all reach here, and none of them is ours to
+       release. Asking is cheap; guessing corrupts the free list. */
+    if (blocks_has(p)) {
+        maca_hdr* h = ((maca_hdr*)p) - 1;
+        /* `rc <= 0` means the block is already on the free list. Pushing it a
+           second time links it to itself and the next allocation walks a cycle
+           forever, so an over-drop costs a block that is never reclaimed rather
+           than an allocator that never returns. */
+        if (h->rc > 0 && --h->rc == 0) {
+            /* `MACA_POISON=1` overwrites a released block so that reading one
+               after it was let go produces obvious garbage instead of the value
+               that happened to still be sitting there. A use-after-free that
+               only shows up as a correct answer is a bug the test suite cannot
+               see, which is the whole reason for the switch. */
+            if (g_poison < 0) g_poison = getenv("MACA_POISON") ? 1 : 0;
+            if (g_poison) memset((void*)(h + 1), 0xDD, h->size);
+            h->fl_next = g_freelist; g_freelist = h;
+        }
+    }
     pthread_mutex_unlock(&g_heap_lock);
 }
 void* maca_realloc(void* p, size_t n) {
     if (!p) return maca_alloc(n);
+    pthread_mutex_lock(&g_heap_lock);
+    int ours = blocks_has(p);
+    pthread_mutex_unlock(&g_heap_lock);
+    /* Growing a buffer means copying `h->size` bytes out of it, and a pointer
+       with no header of ours has no size to read — guessing one reads whatever
+       is eight bytes in front of somebody else's memory. */
+    if (!ours) die("realloc of a pointer this allocator never handed out");
     maca_hdr* h = ((maca_hdr*)p) - 1;
     if (h->size >= n) return p;
     void* np = maca_alloc(n);
@@ -407,6 +507,7 @@ void* maca_realloc(void* p, size_t n) {
     maca_drop(p);
     return np;
 }
+void maca_drop_str(maca_str s) { maca_drop((void*)(uintptr_t)s); }
 uint64_t maca_alloc_count(void) { return g_alloc_count; }
 uint64_t maca_reuse_count(void) { return g_reuse_count; }
 
@@ -454,11 +555,49 @@ maca_str maca_input(void) {
 }
 
 /* ---- strings ---- */
+/* A fresh copy of `s`.
+   Every `maca_str`-returning function in here promises the same thing: what
+   comes back is a block this allocator handed out, or a static literal — never
+   one of the arguments. That promise is what lets the back end release a string
+   it built without first proving where the bytes came from. The shortcuts that
+   used to return an argument unchanged (`replace` with an empty needle, `pad`
+   of an already-wide string, `path_join` with an empty side) were free until
+   the caller was allowed to let go of the result. */
+static maca_str str_copy(maca_str s) {
+    if (!s || !*s) return "";
+    size_t n = strlen(s);
+    char* r = (char*)xmalloc(n + 1);
+    memcpy(r, s, n + 1);
+    return r;
+}
 maca_str maca_concat(maca_str a, maca_str b) {
     if (!a) a = ""; if (!b) b = "";
     size_t la = strlen(a), lb = strlen(b);
     char* r = (char*)xmalloc(la + lb + 1);
     memcpy(r, a, la); memcpy(r + la, b, lb); r[la + lb] = '\0';
+    return r;
+}
+maca_str maca_concat_n(size_t n, ...) {
+    va_list ap, copy;
+    va_start(ap, n);
+    va_copy(copy, ap);
+    size_t total = 0;
+    for (size_t i = 0; i < n; i++) {
+        maca_str s = va_arg(ap, maca_str);
+        if (s) total += strlen(s);
+    }
+    va_end(ap);
+    char* r = (char*)xmalloc(total + 1);
+    char* w = r;
+    for (size_t i = 0; i < n; i++) {
+        maca_str s = va_arg(copy, maca_str);
+        if (!s) continue;
+        size_t len = strlen(s);
+        memcpy(w, s, len);
+        w += len;
+    }
+    va_end(copy);
+    *w = '\0';
     return r;
 }
 maca_str maca_str_at(maca_str s, int64_t i) {
@@ -823,7 +962,7 @@ maca_str maca_capture(maca_str cmd, maca_str* argv, int64_t n) {
 maca_str maca_env(maca_str name) {
     if (!name) return "";
     const char* v = getenv(name);
-    return v ? v : "";
+    return v ? str_copy(v) : "";
 }
 
 maca_str maca_cwd(void) {
@@ -848,7 +987,7 @@ static maca_str maca_pad(maca_str s, int64_t w, maca_str p, bool at_start) {
     if (!s) s = "";
     if (!p || !*p) p = " ";
     size_t len = strlen(s);
-    if (w <= 0 || (size_t)w <= len) return s;
+    if (w <= 0 || (size_t)w <= len) return str_copy(s);
     size_t fill = (size_t)w - len, plen = strlen(p);
     char* r = (char*)xmalloc((size_t)w + 1);
     char* pad = at_start ? r : r + len;
@@ -908,7 +1047,7 @@ static bool maca_void_tag(maca_str t) {
    that, and a generator that walks a document needs to. Voidness is decided
    here because it can't be decided at compile time. */
 maca_str maca_element(maca_str tag, maca_str attrs, maca_str kids) {
-    if (!tag || !*tag) return kids ? kids : "";
+    if (!tag || !*tag) return str_copy(kids);
     if (!attrs) attrs = "";
     if (!kids) kids = "";
     size_t t = strlen(tag), a = strlen(attrs), k = strlen(kids);
@@ -930,7 +1069,7 @@ maca_str maca_pad_center(maca_str s, int64_t w, maca_str p) {
     if (!s) s = "";
     if (!p || !*p) p = " ";
     size_t len = strlen(s);
-    if (w <= 0 || (size_t)w <= len) return s;
+    if (w <= 0 || (size_t)w <= len) return str_copy(s);
     size_t fill = (size_t)w - len, left = fill / 2, plen = strlen(p);
     char* r = (char*)xmalloc((size_t)w + 1);
     for (size_t i = 0; i < left; i++) r[i] = p[i % plen];
@@ -968,7 +1107,7 @@ int64_t maca_index_of(maca_str s, maca_str sub) {
 }
 maca_str maca_replace(maca_str s, maca_str from, maca_str to) {
     if (!s) return "";
-    if (!from || !*from) return s; /* empty needle: no-op (avoid infinite loop) */
+    if (!from || !*from) return str_copy(s); /* empty needle: no-op (avoid infinite loop) */
     if (!to) to = "";
     size_t lf = strlen(from);
     maca_sb sb; maca_sb_init(&sb);
@@ -1117,8 +1256,8 @@ maca_str maca_sb_finish(maca_sb* sb) { sb->buf[sb->len] = '\0'; return sb->buf; 
 
 /* ---- paths & files ---- */
 maca_str maca_path_join(maca_str a, maca_str b) {
-    if (!a || !*a) return b;
-    if (!b || !*b) return a;
+    if (!a || !*a) return str_copy(b);
+    if (!b || !*b) return str_copy(a);
     size_t la = strlen(a);
     bool slash = a[la - 1] == '/';
     return maca_concat(a, slash ? b : maca_concat("/", b));
@@ -1264,7 +1403,7 @@ maca_json* maca_json_get(maca_json* o, const char* key) {
 int64_t maca_json_int(maca_json* j) { return j && j->kind == MJ_NUM ? (int64_t)j->num : 0; }
 double maca_json_float(maca_json* j) { return j && j->kind == MJ_NUM ? j->num : 0.0; }
 bool maca_json_bool(maca_json* j) { return j && j->kind == MJ_BOOL ? j->b : false; }
-maca_str maca_json_str(maca_json* j) { return j && j->kind == MJ_STR && j->str ? j->str : ""; }
+maca_str maca_json_str(maca_json* j) { return j && j->kind == MJ_STR && j->str ? str_copy(j->str) : ""; }
 "##;
 
 /// `maca_async.h` — the concurrency runtime interface. Always includable; the

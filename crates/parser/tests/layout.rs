@@ -61,7 +61,10 @@ fn a_package_under_modules_is_imported_by_name() {
     p.write("modules/http.maca", "serve() -> int => 0\n");
     let app = p.write("apps/site/main.maca", "import http\n");
 
-    assert_eq!(p.resolve(&app, "http").as_deref(), Some("modules/http.maca"));
+    assert_eq!(
+        p.resolve(&app, "http").as_deref(),
+        Some("modules/http.maca")
+    );
 }
 
 /// A file inside a package is reached by its path, and the directory holding it
@@ -109,7 +112,10 @@ fn a_polyrepo_src_is_a_search_root_by_default() {
     p.write("src/parser.maca", "parse() -> int => 0\n");
     let app = p.write("main.maca", "import parser\n");
 
-    assert_eq!(p.resolve(&app, "parser").as_deref(), Some("src/parser.maca"));
+    assert_eq!(
+        p.resolve(&app, "parser").as_deref(),
+        Some("src/parser.maca")
+    );
 }
 
 /// Both roots are searched, and `modules` is looked at first.

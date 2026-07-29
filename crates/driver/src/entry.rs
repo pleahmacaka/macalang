@@ -57,9 +57,7 @@ pub fn module_name_error(spec: &str, module: &str) -> Option<String> {
             return Some(format!("`{spec}` has an empty path segment"));
         }
         if maca_lexer::is_keyword(seg) {
-            return Some(format!(
-                "`{seg}` is a keyword, so no program can import it"
-            ));
+            return Some(format!("`{seg}` is a keyword, so no program can import it"));
         }
     }
     None
@@ -195,7 +193,10 @@ mod tests {
 
     #[test]
     fn a_dotted_spec_splits_at_the_last_dot() {
-        assert_eq!(parse_spec("http.serve"), ("http".into(), Some("serve".into())));
+        assert_eq!(
+            parse_spec("http.serve"),
+            ("http".into(), Some("serve".into()))
+        );
         assert_eq!(
             parse_spec("std.text.lines"),
             ("std/text".into(), Some("lines".into()))
@@ -221,7 +222,10 @@ mod tests {
 
     #[test]
     fn an_entry_takes_nothing_or_one_string_list() {
-        assert_eq!(call_shape(&parse_one("serve() -> int => 0\n")), Ok(Call::Nothing));
+        assert_eq!(
+            call_shape(&parse_one("serve() -> int => 0\n")),
+            Ok(Call::Nothing)
+        );
         assert_eq!(
             call_shape(&parse_one("serve(args: str[]) -> int => 0\n")),
             Ok(Call::Args)
@@ -233,8 +237,14 @@ mod tests {
     #[test]
     fn the_return_type_decides_the_exit_status() {
         assert_eq!(answer_of(&parse_one("f() -> int => 0\n")), Answer::Code);
-        assert_eq!(answer_of(&parse_one("f() -> bool => true\n")), Answer::Success);
-        assert_eq!(answer_of(&parse_one("f() -> str => \"x\"\n")), Answer::Effect);
+        assert_eq!(
+            answer_of(&parse_one("f() -> bool => true\n")),
+            Answer::Success
+        );
+        assert_eq!(
+            answer_of(&parse_one("f() -> str => \"x\"\n")),
+            Answer::Effect
+        );
         assert_eq!(answer_of(&parse_one("f() => 1\n")), Answer::Effect);
     }
 
@@ -264,7 +274,10 @@ mod tests {
         assert!(src.contains("serve(args)"), "{src}");
 
         let src = entry_source("http", "serve", &Call::Nothing, &Answer::Effect);
-        assert!(src.contains("serve()\n    0"), "discards and succeeds: {src}");
+        assert!(
+            src.contains("serve()\n    0"),
+            "discards and succeeds: {src}"
+        );
 
         let src = entry_source("http", "ok", &Call::Nothing, &Answer::Success);
         assert!(src.contains("ok() ? 0 : 1"), "{src}");

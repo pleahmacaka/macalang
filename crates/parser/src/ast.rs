@@ -407,9 +407,7 @@ pub fn rename_ident(s: &mut Stmt, from: &str, to: &str) {
             }
             match &mut fd.body {
                 Some(FnBody::Expr(e)) => rename_in_expr(e, from, to),
-                Some(FnBody::Block(ss)) => {
-                    ss.iter_mut().for_each(|x| rename_ident(x, from, to))
-                }
+                Some(FnBody::Block(ss)) => ss.iter_mut().for_each(|x| rename_ident(x, from, to)),
                 None => {}
             }
         }

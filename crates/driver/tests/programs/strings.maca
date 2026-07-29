@@ -1,0 +1,146 @@
+// String ownership, the correctness half: a string a block built is released
+// when the block ends, and one it was only lent is not.
+//
+// Run under valgrind, and again with MACA_POISON=1, which overwrites a released
+// block. Without that switch a release that came too early usually reads as the
+// value that happened to still be sitting there, and the test passes anyway.
+
+Row = { label: str, note: str }
+
+// Hands back what it was given. The caller is holding those bytes, so nothing
+// the caller does with the result may release them.
+lent(s: str) -> str => s
+
+// Builds its result, so the caller becomes the only one holding it.
+built(n: int) -> str => "row-" ++ str(n)
+
+pick(a: str, b: str, first: bool) -> str => first ? a : b
+
+// An accumulator: rebuilt every round, returned at the end. Each round's
+// previous value is dead the moment the next one exists.
+page(n: int) -> str {
+    out = ""
+    for i in 1..n {
+        out = out ++ built(i) ++ ";"
+    }
+    out
+}
+
+check_an_accumulator_survives_the_loop_that_built_it() {
+    p = page(3)
+
+    assert_eq(p, "row-1;row-2;row-3;", "every round is in the result")
+}
+
+check_a_lent_string_is_not_released_by_the_borrower() {
+    mine = "kept-" ++ "value"
+    copy = lent(mine)
+
+    assert_eq(copy, "kept-value", "the borrower sees it")
+    assert_eq(mine, "kept-value", "and the owner still has it")
+}
+
+check_a_returned_parameter_is_not_released_twice() {
+    x = "x-" ++ "one"
+    y = "y-" ++ "two"
+    got = pick(x, y, true)
+
+    assert_eq(got, "x-one", "the chosen one")
+    assert_eq(x, "x-one", "and the original is still there")
+    assert_eq(y, "y-two", "as is the one not chosen")
+}
+
+check_a_string_put_in_a_list_outlives_the_block_that_built_it() {
+    names: str[] = []
+    for i in 1..5 {
+        names = names.push(built(i))
+    }
+
+    assert_eq(str(names.length()), "5", "every name was kept")
+    assert_eq(names.get(0), "row-1", "the first is intact")
+    assert_eq(names.get(4), "row-5", "and so is the last")
+}
+
+check_a_record_keeps_its_fields() {
+    r = Row { label = "a" ++ "b", note = built(7) }
+
+    assert_eq(r.label, "ab", "the field built in place")
+    assert_eq(r.note, "row-7", "the field built by a call")
+}
+
+check_an_alias_keeps_both_names_alive() {
+    a = "one-" ++ "two"
+    b = a
+
+    assert_eq(a, "one-two", "the original")
+    assert_eq(b, "one-two", "the alias")
+}
+
+check_a_string_survives_a_nested_block_that_builds_its_own() {
+    outer = "outer-" ++ "value"
+    n = 0
+    for i in 1..10 {
+        inner = "inner-" ++ str(i)
+        n = n + inner.length()
+    }
+
+    assert_eq(outer, "outer-value", "the outer string is untouched")
+    assert_eq(str(n), "71", "nine seven-byte rows and one of eight")
+}
+
+check_a_method_result_is_the_callers_and_the_receiver_is_not() {
+    raw = "  padded  "
+    s = raw.trim()
+
+    assert_eq(s, "padded", "the method built a new string")
+    assert_eq(str(raw.length()), "10", "and left the receiver alone")
+}
+
+check_a_conditional_string_belongs_to_whichever_branch_made_it() {
+    hot = true
+    label = hot ? "hot-" ++ "path" : "cold-" ++ "path"
+
+    assert_eq(label, "hot-path", "the chosen branch")
+}
+
+check_interpolation_reads_its_pieces_without_keeping_them() {
+    name = "maca"
+    n = 3
+    line = "{name}/{n}/{name}"
+
+    assert_eq(line, "maca/3/maca", "every piece is in place")
+    assert_eq(name, "maca", "and the piece it read twice is still there")
+}
+
+// A list of strings, rebuilt many times: the buffers have to come back, and
+// the one row held out of the loop has to survive all of it.
+check_rows_are_reused_without_losing_the_one_kept() {
+    kept = ""
+    for round in 1..200 {
+        row = ""
+        for i in 1..8 {
+            row = row ++ "{i}."
+        }
+        if round == 100 {
+            kept = row ++ "!"
+        }
+    }
+
+    assert_eq(kept, "1.2.3.4.5.6.7.8.!", "the row lifted out of the loop")
+}
+
+main() -> int {
+    check_an_accumulator_survives_the_loop_that_built_it()
+    check_a_lent_string_is_not_released_by_the_borrower()
+    check_a_returned_parameter_is_not_released_twice()
+    check_a_string_put_in_a_list_outlives_the_block_that_built_it()
+    check_a_record_keeps_its_fields()
+    check_an_alias_keeps_both_names_alive()
+    check_a_string_survives_a_nested_block_that_builds_its_own()
+    check_a_method_result_is_the_callers_and_the_receiver_is_not()
+    check_a_conditional_string_belongs_to_whichever_branch_made_it()
+    check_interpolation_reads_its_pieces_without_keeping_them()
+    check_rows_are_reused_without_losing_the_one_kept()
+
+    failures()
+}

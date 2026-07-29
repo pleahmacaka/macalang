@@ -307,9 +307,7 @@ fn slice_module(
         .items
         .iter()
         .enumerate()
-        .filter(|(i, st)| {
-            visited.contains(i) || matches!(st, Stmt::Import(Import::Foreign { .. }))
-        })
+        .filter(|(i, st)| visited.contains(i) || matches!(st, Stmt::Import(Import::Foreign { .. })))
         .map(|(_, st)| st.clone())
         .collect())
 }

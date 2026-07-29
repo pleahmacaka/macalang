@@ -168,7 +168,6 @@ fn references_and_rename_over_stdio() {
     stdin
         .write_all(frame(r#"{"jsonrpc":"2.0","method":"exit"}"#).as_bytes())
         .unwrap();
-    
 }
 
 /// A real workspace on disk: a module, two files that import it, and one that
@@ -258,7 +257,7 @@ fn renaming_a_top_level_name_reaches_every_importer() {
     stdin
         .write_all(frame(r#"{"jsonrpc":"2.0","method":"exit"}"#).as_bytes())
         .unwrap();
-    
+
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -301,12 +300,17 @@ fn prepare_rename_reports_the_name_under_the_cursor() {
     stdin
         .write_all(frame(r#"{"jsonrpc":"2.0","method":"exit"}"#).as_bytes())
         .unwrap();
-    
 }
 
 /// Spawn a server, initialize it (optionally with a root), and hand back the
 /// pipes. Every test below drives a real session over stdio.
-fn session(root: Option<&std::path::Path>) -> (Child, std::process::ChildStdin, BufReader<std::process::ChildStdout>) {
+fn session(
+    root: Option<&std::path::Path>,
+) -> (
+    Child,
+    std::process::ChildStdin,
+    BufReader<std::process::ChildStdout>,
+) {
     let mut child = Child(
         Command::new(env!("CARGO_BIN_EXE_maca-lsp"))
             .stdin(Stdio::piped())
@@ -320,8 +324,7 @@ fn session(root: Option<&std::path::Path>) -> (Child, std::process::ChildStdin, 
         Some(r) => format!(r#"{{"rootUri":"file://{}"}}"#, r.display()),
         None => "{}".to_string(),
     };
-    let init =
-        format!(r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{params}}}"#);
+    let init = format!(r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{params}}}"#);
     stdin.write_all(frame(&init).as_bytes()).unwrap();
     let _ = read_frame(&mut stdout);
     (child, stdin, stdout)
@@ -342,7 +345,10 @@ fn every_request_gets_a_response() {
     // a document the server has never seen
     let hover = r#"{"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":{"textDocument":{"uri":"file:///never-opened.maca"},"position":{"line":0,"character":0}}}"#;
     stdin.write_all(frame(hover).as_bytes()).unwrap();
-    assert!(read_frame(&mut stdout).contains("\"id\":2"), "hover on an unknown document");
+    assert!(
+        read_frame(&mut stdout).contains("\"id\":2"),
+        "hover on an unknown document"
+    );
 
     let src = "main() -> int {\n    if true {\n        1\n    } else {\n        0\n    }\n}\n";
     let open = format!(
@@ -359,7 +365,11 @@ fn every_request_gets_a_response() {
     assert!(got.contains("\"id\":3"), "rename on a keyword: {got}");
 
     // references and definition on an unknown document
-    for (id, method) in [(4, "references"), (5, "definition"), (6, "documentHighlight")] {
+    for (id, method) in [
+        (4, "references"),
+        (5, "definition"),
+        (6, "documentHighlight"),
+    ] {
         let req = format!(
             r#"{{"jsonrpc":"2.0","id":{id},"method":"textDocument/{method}","params":{{"textDocument":{{"uri":"file:///gone.maca"}},"position":{{"line":0,"character":0}}}}}}"#
         );
@@ -402,7 +412,11 @@ fn an_invalid_new_name_is_refused_out_loud() {
 fn a_rename_follows_imports_transitively() {
     let root = scratch("transitive");
     std::fs::create_dir_all(root.join("lib")).unwrap();
-    std::fs::write(root.join("lib/base.maca"), "helper(n: int) -> int => n * 2\n").unwrap();
+    std::fs::write(
+        root.join("lib/base.maca"),
+        "helper(n: int) -> int => n * 2\n",
+    )
+    .unwrap();
     std::fs::write(
         root.join("lib/mid.maca"),
         "import lib/base\n\nwrap(n: int) -> int => helper(n)\n",
@@ -425,7 +439,10 @@ fn a_rename_follows_imports_transitively() {
     );
     stdin.write_all(frame(&ren).as_bytes()).unwrap();
     let edit = read_frame(&mut stdout);
-    assert!(edit.contains("base.maca"), "the definition, two modules away: {edit}");
+    assert!(
+        edit.contains("base.maca"),
+        "the definition, two modules away: {edit}"
+    );
     assert!(edit.contains("mid.maca"), "the module in between: {edit}");
 
     stdin
@@ -480,7 +497,11 @@ fn a_workspace_path_survives_the_uri_round_trip() {
     for name in ["my proj", "프로젝트"] {
         let root = scratch("uri").join(name);
         std::fs::create_dir_all(root.join("lib")).unwrap();
-        std::fs::write(root.join("lib/util.maca"), "helper(n: int) -> int => n * 2\n").unwrap();
+        std::fs::write(
+            root.join("lib/util.maca"),
+            "helper(n: int) -> int => n * 2\n",
+        )
+        .unwrap();
         let main = root.join("main.maca");
         let text = "import lib/util\\n\\nmain() -> int => helper(3)\\n";
         std::fs::write(&main, text.replace("\\n", "\n")).unwrap();

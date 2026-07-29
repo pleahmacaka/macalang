@@ -175,9 +175,7 @@ pub fn spans(src: &str, binding: &Binding) -> Vec<Span> {
             Scope::Local((start, end)) => o.span.0 >= start && o.span.0 < end,
             // the shadowing item's own head is still the definition being
             // renamed when the definition is what the head declares
-            _ => !shadowed
-                .iter()
-                .any(|(s, e)| o.span.0 > *s && o.span.0 < *e),
+            _ => !shadowed.iter().any(|(s, e)| o.span.0 > *s && o.span.0 < *e),
         })
         .map(|o| o.span)
         .collect()

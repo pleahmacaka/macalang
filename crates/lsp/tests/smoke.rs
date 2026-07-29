@@ -255,7 +255,9 @@ fn spans_of(src: &str, at: &str) -> Vec<(usize, usize)> {
 
 fn scope_of(src: &str, at: &str) -> maca_lsp::Scope {
     let off = src.find(at).expect("the cursor anchor");
-    maca_lsp::binding::resolve(src, off).expect("a binding").scope
+    maca_lsp::binding::resolve(src, off)
+        .expect("a binding")
+        .scope
 }
 
 /// A constant, a record and a sum type are definitions, not assignments. Read
@@ -270,7 +272,11 @@ fn a_definition_renames_from_its_own_declaration() {
 
     let rec = "Expr = {\n    children: Expr[]\n}\n\nmk() -> Expr =>\n    Expr { children = [] }\n";
     assert_eq!(scope_of(rec, "Expr"), maca_lsp::Scope::TopLevel);
-    assert_eq!(spans_of(rec, "Expr").len(), 4, "decl, field, return, literal");
+    assert_eq!(
+        spans_of(rec, "Expr").len(),
+        4,
+        "decl, field, return, literal"
+    );
 
     let sum = "Color = Red | Green\n\npick() -> Color => Red\n";
     assert_eq!(spans_of(sum, "Color").len(), 2);
@@ -302,7 +308,11 @@ fn a_local_in_a_lambda_block_is_not_a_field() {
         scope_of(src, "y = v + 1"),
         maca_lsp::Scope::Local(_)
     ));
-    assert_eq!(spans_of(src, "y = v + 1").len(), 2, "just the two in the block");
+    assert_eq!(
+        spans_of(src, "y = v + 1").len(),
+        2,
+        "just the two in the block"
+    );
 }
 
 /// A function passed by name is an argument, not a parameter. Treating a bare
@@ -378,7 +388,11 @@ fn primitives_and_builtins_are_not_renameable() {
 #[test]
 fn a_wrapped_argument_does_not_end_the_item() {
     let src = "pick(a: int, b: int) -> int => a + b\n\nmain() -> int {\n    n = pick(\n1,\n2)\n    n + n\n}\n";
-    assert_eq!(spans_of(src, "n = pick").len(), 3, "the binding and both uses");
+    assert_eq!(
+        spans_of(src, "n = pick").len(),
+        3,
+        "the binding and both uses"
+    );
 }
 
 /// A function whose body binds its own name — `f() { f = 1  f }` — still has a

@@ -12,7 +12,10 @@
 //! GNU statement expressions (`({ ...; v; })`, supported by `zig cc`/clang) are
 //! used for inline list literals.
 
+mod ownership;
+
 use maca_parser::ast::*;
+use ownership::{Fresh, Tail};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 pub fn emit(m: &Module) -> String {
@@ -153,6 +156,16 @@ struct Cx<'a> {
     // Tailwind utility names seen in a `class=` attribute, so `styles()` can
     // emit only the rules the program actually uses.
     classes: BTreeSet<String>,
+    /// Which expressions produce a string the binding becomes the only owner
+    /// of — see `ownership`.
+    fresh: Fresh,
+    /// The flattened pieces of the concatenation just lowered, if it was one.
+    concat_pieces: Option<Vec<Piece>>,
+    /// Locals currently holding a string this scope will release. Consulted
+    /// where a name is reassigned, which can be several blocks below the one
+    /// that declared it: a loop that rebuilds an accumulator has to let go of
+    /// the previous round, or the loop is the leak.
+    owned_strs: HashSet<String>,
 }
 
 impl<'a> Cx<'a> {
@@ -184,6 +197,9 @@ impl<'a> Cx<'a> {
             spec_done: HashSet::new(),
             problems: Vec::new(),
             classes: BTreeSet::new(),
+            fresh: Fresh::of(m),
+            concat_pieces: None,
+            owned_strs: HashSet::new(),
         }
     }
 
@@ -260,7 +276,9 @@ impl<'a> Cx<'a> {
         })
     }
 
-    fn fresh(&mut self) -> String {
+    /// A name no source program can collide with, for a value the lowering
+    /// needs to hold on to for a statement.
+    fn temp(&mut self) -> String {
         self.tmp += 1;
         format!("_t{}", self.tmp)
     }
@@ -1520,17 +1538,19 @@ impl<'a> Cx<'a> {
         // buffer to the free-list for the next allocation of that size to reuse.
         // `escaping` is the conservative half — see `note_escapes`.
         let escaping = escaping_names(stmts);
+        // A string answers a narrower question than an array does — see
+        // `ownership`. `retained` is that question; `escaping` stays the array
+        // answer, because every copy of a `T[]` shares one buffer.
+        let retained = ownership::retained(stmts, Tail::Flows);
+        // Two different questions, and an accumulator answers them differently.
+        // Releasing the *previous* value on each reassignment is right even for
+        // a name the block goes on to return, because the value being replaced
+        // is dead either way; releasing the name at the end of the block is
+        // not, because that is the value the caller gets.
+        let kept_apart_from_result = ownership::retained(stmts, Tail::Read);
         let mut owned: Vec<(String, CTy)> = Vec::new();
         for (i, s) in stmts.iter().enumerate() {
             let last = i + 1 == stmts.len();
-            // Drops go before the block's final statement when that statement
-            // carries the value out (a `return`, or an assignment into an
-            // enclosing binding); an owned local is never named there, so
-            // nothing it holds is read after being dropped.
-            if last && !matches!(sink, Sink::Discard) {
-                self.emit_drops(&owned, ind);
-                owned.clear();
-            }
             match s {
                 // a declaration: a bare `x = e` that first introduces `x` (its
                 // const-ness is a checker concern). A bare assignment to a name
@@ -1555,10 +1575,20 @@ impl<'a> Cx<'a> {
                             self.push(&format!("{} {} = {code};", c_type(&ty), cid(name)));
                             // Owned iff the buffer is fresh (not another name's)
                             // and the name never leaves this block.
-                            if owns_heap(&ty)
-                                && !escaping.contains(name)
-                                && !matches!(&b.value, Expr::Ident(_))
-                            {
+                            let mine = match &ty {
+                                CTy::Str => {
+                                    if self.owns_str(name, stmts, &kept_apart_from_result) {
+                                        self.owned_strs.insert(name.clone());
+                                    }
+                                    self.owns_str(name, stmts, &retained)
+                                }
+                                t => {
+                                    owns_heap(t)
+                                        && !escaping.contains(name)
+                                        && !matches!(&b.value, Expr::Ident(_))
+                                }
+                            };
+                            if mine {
                                 owned.push((name.clone(), ty.clone()));
                             }
                             env.push((name.clone(), ty));
@@ -1573,13 +1603,52 @@ impl<'a> Cx<'a> {
                         if let Some(ty) = lookup(env, name) {
                             let (code, _) = self.expr(env, &b.value, Some(&ty));
                             self.indent(ind);
-                            self.push(&format!("{} = {code};", cid(name)));
+                            if self.owned_strs.contains(name) {
+                                // The new value is usually built out of the old
+                                // one (`out = out ++ row`), so the old pointer
+                                // is held until the new one exists and released
+                                // after — an accumulator gives back every round
+                                // but the last.
+                                let old = self.temp();
+                                self.push(&format!(
+                                    "{{ maca_str {old} = {n}; {n} = {code}; \
+                                     maca_drop_str({old}); }}",
+                                    n = cid(name)
+                                ));
+                            } else {
+                                self.push(&format!("{} = {code};", cid(name)));
+                            }
                         }
                     } else if let Some((lv, ty)) = self.lvalue(env, &b.target) {
                         let (code, _) = self.expr(env, &b.value, ty.as_ref());
                         self.indent(ind);
                         self.push(&format!("{lv} = {code};"));
                     }
+                }
+                // The statement that carries the block's value out, with
+                // locals still to release: the value is computed into a name
+                // first, so the release happens after everything has been read
+                // and before the value leaves.
+                //
+                // Dropping first is what a block whose result *is* built out of
+                // its locals cannot survive — `emit_call` names `args` in the
+                // very expression it returns, and releasing `args` first handed
+                // the string back to the free list and then read it.
+                Stmt::Expr(e) if last && !matches!(sink, Sink::Discard) && !owned.is_empty() => {
+                    let ty = sink.cty().cloned().unwrap_or(CTy::Unknown);
+                    let held = self.temp();
+                    self.indent(ind);
+                    self.push(&format!("{} {held};", c_type(&ty)));
+                    let hold = Sink::Assign(held.clone(), ty);
+                    if is_control(e) {
+                        self.stmt_expr(env, e, &hold, ind);
+                    } else {
+                        let (code, _) = self.expr(env, e, hold.cty());
+                        self.emit_sink(&hold, &code, ind);
+                    }
+                    self.emit_drops(&owned, ind);
+                    owned.clear();
+                    self.emit_sink(sink, &held, ind);
                 }
                 Stmt::Expr(e) => {
                     let cur = if last { sink } else { &Sink::Discard };
@@ -1594,7 +1663,74 @@ impl<'a> Cx<'a> {
             }
         }
         self.emit_drops(&owned, ind);
-        env.truncate(base);
+        for (name, _) in env.drain(base..) {
+            self.owned_strs.remove(&name);
+        }
+    }
+
+    /// May this block release the string `name` holds?
+    ///
+    /// Only if every value it is ever given is one nothing else is holding, and
+    /// nothing keeps it: an accumulator qualifies, a name handed to a function
+    /// or stored in a list does not. Reassignments count wherever they are —
+    /// the one inside the loop is the whole point.
+    fn owns_str(&self, name: &str, stmts: &[Stmt], retained: &HashSet<String>) -> bool {
+        if retained.contains(name) {
+            return false;
+        }
+        let mut all_fresh = true;
+        ownership::each_bind(stmts, &mut |n, value| {
+            if n == name && !self.fresh.allocates(value) {
+                all_fresh = false;
+            }
+        });
+        all_fresh
+    }
+
+    /// Build one string out of `pieces`, giving back the ones this expression
+    /// made.
+    ///
+    /// Two savings, and the second is the larger. One call means one
+    /// allocation, where a chain of `maca_concat` built and abandoned a string
+    /// per operator. And a piece that exists only to be copied into the result
+    /// — the rendering of a number, a helper's return value, an attribute — is
+    /// named, so it can be released the moment the result exists. Those pieces
+    /// have no name in the source, which is why nothing used to release them:
+    /// `"<td>{n}</td>"` allocated four strings per call and kept all four.
+    fn concat(&mut self, pieces: &[Piece]) -> String {
+        let pieces: Vec<&Piece> = pieces.iter().filter(|p| p.code != "\"\"").collect();
+        match pieces.as_slice() {
+            [] => return "\"\"".into(),
+            // A lone owned piece is already the answer. A borrowed one is not:
+            // handing back somebody else's pointer would make this expression's
+            // value an alias, and the binding it lands in would release a
+            // string it does not own.
+            [one] if one.owned => return one.code.clone(),
+            _ => {}
+        }
+        let n = pieces.len();
+        if !pieces.iter().any(|p| p.releasable()) {
+            let args: Vec<&str> = pieces.iter().map(|p| p.code.as_str()).collect();
+            return format!("maca_concat_n({n}, {})", args.join(", "));
+        }
+        let (mut lets, mut args, mut drops) = (Vec::new(), Vec::new(), Vec::new());
+        for p in pieces {
+            if p.releasable() {
+                let t = self.temp();
+                lets.push(format!("maca_str {t} = {};", p.code));
+                drops.push(format!("maca_drop_str({t});"));
+                args.push(t);
+            } else {
+                args.push(p.code.clone());
+            }
+        }
+        let r = self.temp();
+        format!(
+            "({{ {} maca_str {r} = maca_concat_n({n}, {}); {} {r}; }})",
+            lets.join(" "),
+            args.join(", "),
+            drops.join(" ")
+        )
     }
 
     /// Release each owned local's buffer. `maca_drop` takes the last owner's
@@ -1608,6 +1744,9 @@ impl<'a> Cx<'a> {
                 CTy::Map(_) => self.push(&format!(
                     "maca_drop({v}.keys); maca_drop({v}.vals); maca_drop({v}.used);"
                 )),
+                // a string *is* the pointer, so it is released directly; a
+                // literal or a static reaches the same call and is left alone
+                CTy::Str => self.push(&format!("maca_drop_str({v});")),
                 _ => self.push(&format!("maca_drop({v}.data);")),
             }
         }
@@ -1680,9 +1819,9 @@ impl<'a> Cx<'a> {
                 let var = if let Pattern::Bind(n) = pat {
                     n.clone()
                 } else {
-                    self.fresh()
+                    self.temp()
                 };
-                let hv = self.fresh();
+                let hv = self.temp();
                 self.indent(ind);
                 self.push(&format!(
                     "{{ int64_t {hv} = {hc}; for (int64_t {var} = {lc}; {var} <= {hv}; {var}++) {{"
@@ -1700,12 +1839,12 @@ impl<'a> Cx<'a> {
                     CTy::Arr(e) => *e,
                     _ => CTy::Unknown,
                 };
-                let it = self.fresh();
-                let idx = self.fresh();
+                let it = self.temp();
+                let idx = self.temp();
                 let var = if let Pattern::Bind(n) = pat {
                     n.clone()
                 } else {
-                    self.fresh()
+                    self.temp()
                 };
                 let an = arr_name(&elem);
                 self.indent(ind);
@@ -1762,7 +1901,7 @@ impl<'a> Cx<'a> {
 
     fn match_stmt(&mut self, env: &mut Env, scrut: &Expr, arms: &[Arm], sink: &Sink, ind: usize) {
         let (sc, sty) = self.expr(env, scrut, None);
-        let sv = self.fresh();
+        let sv = self.temp();
         self.indent(ind);
         self.push(&format!("{{ {} {sv} = {sc};", c_type(&sty)));
         let elem = match &sty {
@@ -1774,7 +1913,7 @@ impl<'a> Cx<'a> {
         // that. Only when some arm has a guard do we switch to independent `if`
         // blocks with a `goto` past the rest once an arm fully matches.
         if arms.iter().any(|a| a.guard.is_some()) {
-            let end = format!("_m{}", self.fresh());
+            let end = format!("_m{}", self.temp());
             for arm in arms {
                 let (cond, binds) = self.pattern_cond(&sv, &sty, &elem, &arm.pat);
                 self.indent(ind);
@@ -1989,7 +2128,29 @@ impl<'a> Cx<'a> {
 
     // ---- expressions ------------------------------------------------------
 
+    /// Lower `e`, and leave behind the flattened pieces if it was a
+    /// concatenation.
+    ///
+    /// `a ++ b ++ c` parses left-nested, so the outer `++` needs the inner
+    /// one's pieces rather than the string it built out of them — the whole
+    /// point is that the inner string is never built. The note is cleared for
+    /// anything else, so a concatenation nested inside a call is not mistaken
+    /// for the call's own.
     fn expr(&mut self, env: &mut Env, e: &Expr, expected: Option<&CTy>) -> (String, CTy) {
+        let out = self.expr_inner(env, e, expected);
+        if !matches!(
+            e,
+            Expr::Binary {
+                op: BinOp::Concat,
+                ..
+            }
+        ) {
+            self.concat_pieces = None;
+        }
+        out
+    }
+
+    fn expr_inner(&mut self, env: &mut Env, e: &Expr, expected: Option<&CTy>) -> (String, CTy) {
         match e {
             Expr::Int(n) => (n.to_string(), CTy::Int),
             Expr::Float(f) => (format!("{f:?}"), CTy::Float),
@@ -2017,10 +2178,10 @@ impl<'a> Cx<'a> {
                 let (lc, _) = self.expr(env, lo, Some(&CTy::Int));
                 let (hc, _) = self.expr(env, hi, Some(&CTy::Int));
                 let an = arr_name(&CTy::Int);
-                let lv = self.fresh();
-                let hv = self.fresh();
-                let n = self.fresh();
-                let i = self.fresh();
+                let lv = self.temp();
+                let hv = self.temp();
+                let n = self.temp();
+                let i = self.temp();
                 (
                     format!(
                         "({{ int64_t {lv} = {lc}, {hv} = {hc}; {an} _a = {an}_new(); \
@@ -2076,8 +2237,8 @@ impl<'a> Cx<'a> {
             // struct (a value type) and overwrite the named fields.
             Expr::With { base, fields } => self.with_update(env, base, fields),
             Expr::Reify(x) => {
-                let jb = self.fresh();
-                let r = self.fresh();
+                let jb = self.temp();
+                let r = self.temp();
                 let (xc, _) = self.expr(env, x, None);
                 (
                     format!(
@@ -2131,11 +2292,7 @@ impl<'a> Cx<'a> {
                     let a: Vec<String> = typed.into_iter().map(|(c, _)| c).collect();
                     let code = match a.len() {
                         0 => format!("maca_spawn((maca_task_fn){}, 0)", cid(f)),
-                        1 => format!(
-                            "maca_spawn((maca_task_fn){}, (int64_t)({}))",
-                            cid(f),
-                            a[0]
-                        ),
+                        1 => format!("maca_spawn((maca_task_fn){}, (int64_t)({}))", cid(f), a[0]),
                         _ => format!(
                             "maca_spawn2((maca_task_fn2){}, (int64_t)({}), (int64_t)({}))",
                             cid(f),
@@ -2163,14 +2320,17 @@ impl<'a> Cx<'a> {
             // …but only the shapes that *have* a value. A loop runs for its
             // effect and `break` leaves one, so neither is an expression, and
             // `[1, break]` emitted C with a `break` outside any loop.
-            other if is_control(other) && !matches!(
-                other,
-                Expr::For { .. } | Expr::While { .. } | Expr::Break | Expr::Continue
-            ) => {
+            other
+                if is_control(other)
+                    && !matches!(
+                        other,
+                        Expr::For { .. } | Expr::While { .. } | Expr::Break | Expr::Continue
+                    ) =>
+            {
                 let ty = expected
                     .cloned()
                     .unwrap_or_else(|| self.result_cty(env, other));
-                let tmp = self.fresh();
+                let tmp = self.temp();
                 let saved = std::mem::take(&mut self.out);
                 self.push(&format!("{} {tmp};", c_type(&ty)));
                 let mut inner = env.clone();
@@ -2304,7 +2464,9 @@ impl<'a> Cx<'a> {
             && let Some((ptys, _)) = self.fns.get(f)
         {
             for (i, a) in args.iter().enumerate() {
-                let Arg::Pos(Expr::Ident(n)) = a else { continue };
+                let Arg::Pos(Expr::Ident(n)) = a else {
+                    continue;
+                };
                 if n != name {
                     continue;
                 }
@@ -2829,7 +2991,7 @@ impl<'a> Cx<'a> {
             );
         };
         let decl = self.records.get(&rname).cloned().unwrap_or_default();
-        let t = self.fresh();
+        let t = self.temp();
         let mut assigns = Vec::new();
         for f in fields {
             let (fname, val) = match f {
@@ -2884,22 +3046,22 @@ impl<'a> Cx<'a> {
     /// itself cannot have the renderer escape it again.
     fn html_element(&mut self, env: &mut Env, tag: &str, args: &[Arg]) -> (String, CTy) {
         let (attrs, kids) = self.html_args(env, args);
-        // attributes are emitted by one runtime call per attribute, folded into
-        // the open tag
-        let open = attrs.into_iter().fold(format!("\"<{tag}\""), |acc, a| {
-            format!("maca_concat({acc}, {a})")
-        });
+        // The whole element is one concatenation — open tag, each rendered
+        // attribute, each child, close tag. Nesting them pairwise built a
+        // string per bracket and per attribute, and an element deep in a page
+        // was rebuilt into its parent once for every level above it.
+        let mut pieces = vec![Piece::literal(format!("\"<{tag}\""))];
+        pieces.extend(attrs);
+        pieces.push(Piece::literal("\">\"".into()));
         if is_void_html(tag) {
             if !kids.is_empty() {
                 self.problem(format!("`{tag}` is a void element and takes no children"));
             }
-            return (format!("maca_concat({open}, \">\")"), CTy::Str);
+            return (self.concat(&pieces), CTy::Str);
         }
-        let inner = fold_concat(kids);
-        (
-            format!("maca_concat(maca_concat({open}, \">\"), maca_concat({inner}, \"</{tag}>\"))"),
-            CTy::Str,
-        )
+        pieces.extend(kids);
+        pieces.push(Piece::literal(format!("\"</{tag}>\"")));
+        (self.concat(&pieces), CTy::Str)
     }
 
     /// `element(tag, attr=value, …, child, …)` — the same element, with the tag
@@ -2918,15 +3080,15 @@ impl<'a> Cx<'a> {
         let (tag, tt) = self.expr(env, tag_expr, Some(&CTy::Str));
         let tag = to_str(&tag, &tt);
         let (attrs, kids) = self.html_args(env, rest);
-        let attrs = fold_concat(attrs);
-        let kids = fold_concat(kids);
+        let attrs = self.concat(&attrs);
+        let kids = self.concat(&kids);
         (format!("maca_element({tag}, {attrs}, {kids})"), CTy::Str)
     }
 
-    /// Lower an element call's arguments into (attribute exprs, child exprs).
-    fn html_args(&mut self, env: &mut Env, args: &[Arg]) -> (Vec<String>, Vec<String>) {
-        let mut attrs: Vec<String> = Vec::new();
-        let mut kids: Vec<String> = Vec::new();
+    /// Lower an element call's arguments into (attribute pieces, child pieces).
+    fn html_args(&mut self, env: &mut Env, args: &[Arg]) -> (Vec<Piece>, Vec<Piece>) {
+        let mut attrs: Vec<Piece> = Vec::new();
+        let mut kids: Vec<Piece> = Vec::new();
         for a in args {
             match a {
                 Arg::Named { name, value } => {
@@ -2943,11 +3105,14 @@ impl<'a> Cx<'a> {
                     // A bool decides whether the attribute *exists*. HTML reads
                     // every value as true — `hidden="false"` still hides — so
                     // `open=false` has to emit nothing at all.
-                    if t == CTy::Bool {
-                        attrs.push(format!("maca_flag(\"{key}\", {v})"));
+                    // both build the rendered attribute, so both are this
+                    // expression's to release once it has been copied in
+                    let code = if t == CTy::Bool {
+                        format!("maca_flag(\"{key}\", {v})")
                     } else {
-                        attrs.push(format!("maca_attr(\"{key}\", {})", to_str(&v, &t)));
-                    }
+                        format!("maca_attr(\"{key}\", {})", to_str(&v, &t))
+                    };
+                    attrs.push(Piece { code, owned: true });
                 }
                 // `on:click=…` is a DOM handler; there is no DOM in a string.
                 Arg::Directive { prop, .. } => {
@@ -2957,7 +3122,7 @@ impl<'a> Cx<'a> {
                 }
                 Arg::Pos(e) => {
                     let (c, t) = self.expr(env, e, Some(&CTy::Str));
-                    kids.push(to_str(&c, &t));
+                    kids.push(Piece::rendered(&c, &t, self.fresh.allocates(e)));
                 }
             }
         }
@@ -3508,11 +3673,30 @@ impl<'a> Cx<'a> {
                     (**e).clone(),
                 )
             }
-            (CTy::Arr(e), "first") => (format!("({rc}).data[0]"), (**e).clone()),
+            // `.first()`, `.last()` and `.get(i)` answer for a position that
+            // may not be there, so each answers with the element type's empty
+            // value rather than reading past the buffer. The interpreter has
+            // always done this; the C back end read `data[0]` of an array that
+            // was never pushed to (a NULL buffer) and `data[-1]` of an empty
+            // one, and the self-hosted parser looked three tokens past the end
+            // of every identifier it scanned.
+            (CTy::Arr(e), "first") => {
+                let an = arr_name(e);
+                (
+                    format!(
+                        "({{ {an} _s = {rc}; _s.len > 0 ? _s.data[0] : {}; }})",
+                        zero_value(e)
+                    ),
+                    (**e).clone(),
+                )
+            }
             (CTy::Arr(e), "last") => {
                 let an = arr_name(e);
                 (
-                    format!("({{ {an} _s = {rc}; _s.data[_s.len - 1]; }})"),
+                    format!(
+                        "({{ {an} _s = {rc}; _s.len > 0 ? _s.data[_s.len - 1] : {}; }})",
+                        zero_value(e)
+                    ),
                     (**e).clone(),
                 )
             }
@@ -3521,8 +3705,14 @@ impl<'a> Cx<'a> {
             (CTy::Arr(_), "length") => (format!("({rc}).len"), CTy::Int),
             (CTy::Arr(e), "get") => {
                 let an = arr_name(e);
+                let t = self.temp();
                 (
-                    format!("({{ {an} _s = {rc}; _s.data[{}]; }})", arg0()),
+                    format!(
+                        "({{ {an} _s = {rc}; int64_t {t} = {}; \
+                         ({t} >= 0 && {t} < _s.len) ? _s.data[{t}] : {}; }})",
+                        arg0(),
+                        zero_value(e)
+                    ),
                     (**e).clone(),
                 )
             }
@@ -3746,7 +3936,11 @@ impl<'a> Cx<'a> {
 
     fn binary(&mut self, env: &mut Env, op: BinOp, lhs: &Expr, rhs: &Expr) -> (String, CTy) {
         let (lc, lt) = self.expr(env, lhs, None);
+        // taken before the right-hand side is lowered, or it would describe
+        // that instead
+        let left_pieces = self.concat_pieces.take();
         let (rc, rt) = self.expr(env, rhs, None);
+        self.concat_pieces = None;
 
         // Operator overloading: when the left operand is a user type (record /
         // sum) and a function with the operator's canonical name exists, the
@@ -3767,14 +3961,14 @@ impl<'a> Cx<'a> {
             // A non-string operand is converted, not passed through: `"h" ++ 3`
             // used to hand an `int64_t` to a `maca_str` parameter, compile
             // without complaint, and segfault at run time reading address 3.
-            Concat if matches!(lt, CTy::Str) || matches!(rt, CTy::Str) => (
-                format!(
-                    "maca_concat({}, {})",
-                    concat_operand(&lc, &lt),
-                    concat_operand(&rc, &rt)
-                ),
-                CTy::Str,
-            ),
+            Concat if matches!(lt, CTy::Str) || matches!(rt, CTy::Str) => {
+                let mut pieces = left_pieces
+                    .unwrap_or_else(|| vec![Piece::operand(&lc, &lt, self.fresh.allocates(lhs))]);
+                pieces.push(Piece::operand(&rc, &rt, self.fresh.allocates(rhs)));
+                let code = self.concat(&pieces);
+                self.concat_pieces = Some(pieces);
+                (code, CTy::Str)
+            }
             Concat => {
                 let an = arr_name(match &lt {
                     CTy::Arr(e) => e,
@@ -3826,21 +4020,17 @@ impl<'a> Cx<'a> {
         {
             return c_str(t);
         }
-        let mut acc: Option<String> = None;
+        let mut pieces = Vec::new();
         for p in parts {
-            let piece = match p {
-                StrPart::Text(t) => c_str(t),
+            pieces.push(match p {
+                StrPart::Text(t) => Piece::literal(c_str(t)),
                 StrPart::Interp(e) => {
                     let (c, t) = self.expr(env, e, None);
-                    to_str(&c, &t)
+                    Piece::rendered(&c, &t, self.fresh.allocates(e))
                 }
-            };
-            acc = Some(match acc {
-                None => piece,
-                Some(a) => format!("maca_concat({a}, {piece})"),
             });
         }
-        acc.unwrap_or_else(|| "\"\"".into())
+        self.concat(&pieces)
     }
 
     // ---- json codegen -----------------------------------------------------
@@ -3876,7 +4066,7 @@ impl<'a> Cx<'a> {
             )),
             CTy::Rec(r) => self.push(&format!("    maca_sb_puts(&sb, {r}_to_json({access}));")),
             CTy::Arr(e) => {
-                let idx = self.fresh();
+                let idx = self.temp();
                 self.push("    maca_sb_putc(&sb, '[');");
                 self.push(&format!(
                     "    for (int64_t {idx} = 0; {idx} < {access}.len; {idx}++) {{ if ({idx}) maca_sb_putc(&sb, ',');"
@@ -3920,8 +4110,8 @@ impl<'a> Cx<'a> {
             CTy::Rec(r) => self.push(&format!("    {dest} = {r}_from_json({get});")),
             CTy::Arr(e) => {
                 let an = arr_name(e);
-                let a = self.fresh();
-                let idx = self.fresh();
+                let a = self.temp();
+                let idx = self.temp();
                 self.push(&format!(
                     "    {{ maca_json* {a} = {get}; {an} _acc = {an}_new();"
                 ));
@@ -4051,7 +4241,12 @@ fn zero_value(t: &CTy) -> String {
         CTy::F32 | CTy::Float => "0.0".into(),
         CTy::Arr(e) => format!("{}_new()", arr_name(e)),
         CTy::Map(v) => format!("{}_new()", map_name(v)),
-        CTy::Rec(_) | CTy::Vec { .. } => format!("({{ {} _z; _z; }})", c_type(t)),
+        // zeroed, not merely declared: this is what an absent element answers
+        // with, and an indeterminate struct is a different wrong answer every
+        // time it is read
+        CTy::Rec(_) | CTy::Vec { .. } => {
+            format!("({{ {0} _z; memset(&_z, 0, sizeof _z); _z; }})", c_type(t))
+        }
         _ => "0".into(),
     }
 }
@@ -4276,7 +4471,10 @@ fn infer_cty_shallow(e: &Expr) -> CTy {
             ..
         } => CTy::Bool,
         Expr::Unary { op: UnOp::Not, .. } => CTy::Bool,
-        Expr::Unary { op: UnOp::Neg, expr } => infer_cty_shallow(expr),
+        Expr::Unary {
+            op: UnOp::Neg,
+            expr,
+        } => infer_cty_shallow(expr),
         // Everything else — including a call to a user function, whose return
         // type this shallow pass cannot see — is a string, which is what most
         // top-level constants are.
@@ -4725,20 +4923,6 @@ fn value_dep(t: &CTy) -> Option<String> {
     match t {
         CTy::Rec(n) | CTy::Sum(n) => Some(n.clone()),
         _ => None,
-    }
-}
-
-/// An operand of `++` where the other side is a string.
-///
-/// A *known* scalar is converted — `"h" ++ 3` used to hand an `int64_t` to a
-/// `maca_str` parameter, compile with a warning nobody reads, and segfault
-/// dereferencing address 3. A value of unknown type is passed through instead:
-/// in a concatenation it is a string (`greet(n) => "hi " ++ n` with no
-/// annotation on `n`), and rendering it as an integer would print its address.
-fn concat_operand(code: &str, t: &CTy) -> String {
-    match t {
-        CTy::Int | CTy::Float | CTy::F32 | CTy::Bool => to_str(code, t),
-        _ => code.to_string(),
     }
 }
 
@@ -5191,11 +5375,61 @@ fn walk_children(e: &Expr, f: &mut dyn FnMut(&Expr)) {
     }
 }
 
-/// Join already-lowered string expressions into one `maca_concat` chain.
-fn fold_concat(parts: Vec<String>) -> String {
-    parts.into_iter().fold("\"\"".to_string(), |acc, p| {
-        format!("maca_concat({acc}, {p})")
-    })
+/// One piece of a string being built, and who is holding it.
+#[derive(Clone)]
+struct Piece {
+    code: String,
+    /// Nothing outside this expression is holding these bytes: a literal, or a
+    /// block built right here. A piece read out of a variable, a field or a
+    /// list element is not — releasing one of those would take the string out
+    /// from under whoever still has it.
+    owned: bool,
+}
+
+impl Piece {
+    /// An operand of `++` where the other side is a string.
+    ///
+    /// A *known* scalar is rendered on the way in — `"h" ++ 3` used to hand an
+    /// `int64_t` to a `maca_str` parameter, compile with a warning nobody
+    /// reads, and segfault dereferencing address 3. A value of unknown type is
+    /// passed through instead: in a concatenation it is a string
+    /// (`greet(n) => "hi " ++ n` with no annotation on `n`), and rendering it
+    /// as an integer would print its address.
+    fn operand(code: &str, t: &CTy, owned: bool) -> Piece {
+        match t {
+            CTy::Int | CTy::Float | CTy::F32 | CTy::Bool => Piece::rendered(code, t, owned),
+            _ => Piece {
+                code: code.to_string(),
+                owned,
+            },
+        }
+    }
+
+    /// A piece whose value is written out as text — an interpolation, an
+    /// element's child. Rendering builds a string, and the one it builds is
+    /// this expression's to release.
+    fn rendered(code: &str, t: &CTy, owned: bool) -> Piece {
+        match t {
+            CTy::Str => Piece {
+                code: code.to_string(),
+                owned,
+            },
+            _ => Piece {
+                code: to_str(code, t),
+                owned: true,
+            },
+        }
+    }
+
+    /// A literal, which lives in `.rodata` and is nobody's to release.
+    fn literal(code: String) -> Piece {
+        Piece { code, owned: true }
+    }
+
+    /// Is this a piece a release would actually reach?
+    fn releasable(&self) -> bool {
+        self.owned && !self.code.starts_with('"')
+    }
 }
 
 /// HTML elements that have no closing tag and take no children.

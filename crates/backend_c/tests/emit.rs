@@ -487,12 +487,20 @@ fn record_pattern_binds_fields() {
     );
 }
 
+/// `++` on strings is string concatenation, not the array kind. One call
+/// carries the whole chain: `a ++ b ++ c` allocates once, where a nested pair
+/// of `maca_concat`s built a string for the first `++` and abandoned it.
 #[test]
-fn string_concat_uses_maca_concat() {
+fn string_concat_is_one_call_for_the_whole_chain() {
     let out = c("g(n: str) -> str => \"hi \" ++ n\n");
     assert!(
-        out.contains("maca_concat("),
-        "string ++ should use maca_concat:\n{out}"
+        out.contains("maca_concat_n(2, \"hi \", n)"),
+        "string ++ should concatenate in one call:\n{out}"
+    );
+    let chain = c("g(a: str, b: str, c: str) -> str => a ++ b ++ c\n");
+    assert!(
+        chain.contains("maca_concat_n(3, a, b, c)"),
+        "a three-way chain is still one call:\n{chain}"
     );
     assert!(
         !out.contains("IntArr_concat"),

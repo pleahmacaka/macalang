@@ -65,18 +65,11 @@ fn a_discarded_buffer_is_reused() {
     assert_passes(&build("reuse"));
 }
 
-/// The correctness half, under valgrind: nothing still reachable is freed.
-#[test]
-fn nothing_live_is_dropped() {
-    if have_wsl() || !have("cc") || !have("valgrind") {
-        eprintln!("skipping: needs a host cc, valgrind, and no wsl");
-        return;
-    }
-
-    let bin = build("live");
+/// Run a built program under valgrind and insist it has nothing to say.
+fn assert_valgrind_quiet(bin: &Path) {
     let out = Command::new("valgrind")
         .args(["--error-exitcode=9", "--leak-check=full", "-q"])
-        .arg(&bin)
+        .arg(bin)
         .output()
         .expect("valgrind");
 
@@ -90,6 +83,62 @@ fn nothing_live_is_dropped() {
         stderr.trim().is_empty(),
         "valgrind was not quiet:\n{stderr}"
     );
+}
+
+/// The correctness half, under valgrind: nothing still reachable is freed.
+#[test]
+fn nothing_live_is_dropped() {
+    if have_wsl() || !have("cc") || !have("valgrind") {
+        eprintln!("skipping: needs a host cc, valgrind, and no wsl");
+        return;
+    }
+    assert_valgrind_quiet(&build("live"));
+}
+
+/// The same question for strings, which are the ones a program builds by the
+/// thousand: a string this block made is released, and one it was only lent is
+/// not.
+///
+/// Run three ways, because two of them pass for the wrong reason on their own.
+/// Plain, the program checks its own answers. Under `MACA_POISON` a released
+/// block is overwritten, so a release that came too early stops reading as the
+/// value that happened to survive. Under valgrind the reads themselves are
+/// checked.
+#[test]
+fn a_string_is_released_by_whoever_built_it() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping: needs a host cc and no wsl");
+        return;
+    }
+    let bin = build("strings");
+    assert_passes(&bin);
+
+    let out = Command::new(&bin)
+        .env("MACA_POISON", "1")
+        .output()
+        .expect("run");
+    assert!(
+        out.status.success(),
+        "a released block was read again:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+
+    if have("valgrind") {
+        assert_valgrind_quiet(&bin);
+    }
+}
+
+/// And the throughput half: a loop that builds and discards strings gets its
+/// buffers back. Without that a program that renders a page per request grows
+/// by every page it has ever rendered.
+#[test]
+fn discarded_strings_are_reused() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping: needs a host cc and no wsl");
+        return;
+    }
+    assert_passes(&build("string_reuse"));
 }
 
 /// Nested array types are declared before the types that hold them.

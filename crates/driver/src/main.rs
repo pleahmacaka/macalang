@@ -1770,8 +1770,8 @@ fn cmd_module(args: &[String]) {
     if let Some(why) = entry::module_name_error(spec, &module) {
         die(&format!("-m: {why}"));
     }
-    let root = maca_parser::modules::project_root(Path::new("."))
-        .unwrap_or_else(|| PathBuf::from("."));
+    let root =
+        maca_parser::modules::project_root(Path::new(".")).unwrap_or_else(|| PathBuf::from("."));
 
     // `http.serve` reads two ways: the module `http` and its `serve`, or the
     // module `http/serve` run under its own name. Both are ordinary paths, so
@@ -1812,9 +1812,7 @@ fn cmd_module(args: &[String]) {
         maca_parser::Stmt::Fn(f) if f.name == function => Some(f),
         _ => None,
     }) else {
-        die(&format!(
-            "-m: `{module}` defines no function `{function}`"
-        ));
+        die(&format!("-m: `{module}` defines no function `{function}`"));
     };
     let call = entry::call_shape(def).unwrap_or_else(|e| die(&format!("-m: {e}")));
     let answer = entry::answer_of(def);
@@ -1862,7 +1860,10 @@ fn cmd_module(args: &[String]) {
 
     let prog_args = &args[1..];
     let status = if have_wsl() {
-        Command::new("wsl").arg(to_wsl(&out)).args(prog_args).status()
+        Command::new("wsl")
+            .arg(to_wsl(&out))
+            .args(prog_args)
+            .status()
     } else {
         Command::new(&out).args(prog_args).status()
     }
@@ -2319,16 +2320,14 @@ fn have(cmd: &str) -> bool {
 /// and still runs anywhere.
 fn socket_glue(c_imports: &[String], dir: &Path) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
-    let mut want = |name: &str,
-                    write: fn(&Path) -> std::io::Result<()>,
-                    file: &str|
-     -> Result<(), String> {
-        if c_imports.iter().any(|h| h.contains(name)) {
-            write(dir).map_err(|e| e.to_string())?;
-            out.push(dir.join(file));
-        }
-        Ok(())
-    };
+    let mut want =
+        |name: &str, write: fn(&Path) -> std::io::Result<()>, file: &str| -> Result<(), String> {
+            if c_imports.iter().any(|h| h.contains(name)) {
+                write(dir).map_err(|e| e.to_string())?;
+                out.push(dir.join(file));
+            }
+            Ok(())
+        };
     want("mqtt", maca_runtime::write_mqtt_glue, "maca_ffi_mqtt.c")?;
     want("http", maca_runtime::write_http_glue, "maca_ffi_http.c")?;
     Ok(out)

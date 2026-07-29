@@ -94,7 +94,9 @@ fn the_std_readme_names_functions_that_exist() {
         };
 
         let src = std::fs::read_to_string(repo().join(format!("modules/std/{module}.maca")))
-            .unwrap_or_else(|_| panic!("modules/std/README.md lists std/{module}, which has no source"));
+            .unwrap_or_else(|_| {
+                panic!("modules/std/README.md lists std/{module}, which has no source")
+            });
 
         for name in backticked(body) {
             // `str_`-prefixed twins` and the like are prose, not a call.

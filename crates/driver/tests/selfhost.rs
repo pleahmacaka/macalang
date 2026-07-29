@@ -543,6 +543,52 @@ fn selfhost_frontend_compiles_and_runs() {
     );
 }
 
+/// The same run, watched.
+///
+/// This is the largest program the project compiles with its own back end, and
+/// the one whose answers are checked line by line above — which is exactly why
+/// it is worth running under a memory checker. Every assertion above passed
+/// while the parser read three tokens past the end of its own token array on
+/// every identifier it scanned, because reading past a buffer usually returns
+/// something plausible.
+#[test]
+fn the_selfhost_front_end_reads_nothing_it_does_not_own() {
+    if !have("cc") || have_wsl() || !have("valgrind") {
+        eprintln!("skipping: needs a host cc, valgrind, and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+    let dir = std::env::temp_dir().join("maca-selfhost-valgrind");
+    fs::create_dir_all(&dir).expect("scratch dir");
+    let bin = dir.join("frontend");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            &selfhost_dir().join("main.maca").to_string_lossy(),
+            "-o",
+            &bin.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca build");
+    assert!(
+        build.status.success(),
+        "selfhost front-end failed to build:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let out = Command::new("valgrind")
+        .args(["--error-exitcode=9", "-q"])
+        .arg(&bin)
+        .output()
+        .expect("valgrind");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success() && stderr.trim().is_empty(),
+        "valgrind was not quiet:\n{stderr}"
+    );
+}
+
 /// The differential gate: one source, two compilers, the same program.
 ///
 /// The bootstrap closes when a stage-1 binary rebuilds itself byte for byte.

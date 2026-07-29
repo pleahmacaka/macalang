@@ -83,7 +83,10 @@ fn a_package_file_may_import_its_neighbour() {
     );
 
     let src = inlined(&main).expect("inlines");
-    assert!(src.contains("listen(n: int)"), "the neighbour came along: {src}");
+    assert!(
+        src.contains("listen(n: int)"),
+        "the neighbour came along: {src}"
+    );
     assert!(
         !src.contains("a name nothing asked for"),
         "and nothing else did: {src}"

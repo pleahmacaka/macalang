@@ -148,7 +148,11 @@ fn the_leftover_command_line_reaches_the_function() {
 
     let out = p.run(&["echo.say", "alpha", "beta"]);
     assert!(out.status.success(), "{}", stderr(&out));
-    assert!(stdout(&out).contains("got 2: alpha beta"), "{}", stdout(&out));
+    assert!(
+        stdout(&out).contains("got 2: alpha beta"),
+        "{}",
+        stdout(&out)
+    );
 }
 
 /// The declared return type is what the shell sees.
@@ -163,8 +167,16 @@ fn the_return_type_becomes_the_exit_status() {
         "code() -> int => 3\n\nok() -> bool => false\n\nnote() -> str => \"nothing to report\"\n",
     );
 
-    assert_eq!(p.run(&["status.code"]).status.code(), Some(3), "an int is the code");
-    assert_eq!(p.run(&["status.ok"]).status.code(), Some(1), "false is failure");
+    assert_eq!(
+        p.run(&["status.code"]).status.code(),
+        Some(3),
+        "an int is the code"
+    );
+    assert_eq!(
+        p.run(&["status.ok"]).status.code(),
+        Some(1),
+        "false is failure"
+    );
     assert_eq!(
         p.run(&["status.note"]).status.code(),
         Some(0),
@@ -201,7 +213,10 @@ fn the_refusals_name_what_is_missing() {
 
     let e = stderr(&p.run(&["quiet"]));
     assert!(e.contains("no `main`"), "{e}");
-    assert!(e.contains("maca -m quiet.something"), "suggests the fix: {e}");
+    assert!(
+        e.contains("maca -m quiet.something"),
+        "suggests the fix: {e}"
+    );
 }
 
 /// The generated entry module is an implementation detail and must not survive
