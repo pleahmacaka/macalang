@@ -856,7 +856,7 @@ shell(title: str, cur: str, langs: str, side: str, body: str,
                 meta(charset="utf-8")
                 meta(name="viewport",
                      content="width=device-width,initial-scale=1")
-                title_tag(escape_html(title))
+                title_tag(title)
                 stylesheet()
             )
             body_tag(class=body_class(),
@@ -880,8 +880,11 @@ column_class(side: str) -> str {
 // backend resolves a user definition ahead of a tag, which is what makes these
 // necessary — and what stops every `label(...)` in every program from silently
 // becoming markup.
+// The escaping is inside, so there is one contract rather than one per caller.
+// This escaped at its call site while two other generators escaped inside their
+// own copy, which is the shape a double-escape arrives in.
 title_tag(text: str) -> str =>
-    title(text)
+    title(escape_html(text))
 
 body_tag(class: str, inner: str) -> str =>
     body(class=class, inner)

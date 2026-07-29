@@ -23,6 +23,7 @@
 import std/fs
 import std/path
 import std/text
+import apps/site/shell
 import std/list
 
 // ---- the model ------------------------------------------------------------
@@ -422,8 +423,6 @@ Wrap = "max-w-[52rem] mx-auto px-6"
 PreClass = "mt-3 bg-zinc-100 dark:bg-zinc-900 rounded-md p-4 overflow-x-auto"
     ++ " text-[0.85rem] m-0"
 
-CodeSpan = "font-mono text-[0.9em] bg-zinc-100 dark:bg-zinc-800 rounded"
-    ++ " px-1 py-[0.05rem]"
 
 // Every page in the reference sits directly in the output directory, so there
 // is one level to climb to reach the site root and no parameter to carry it.
@@ -437,16 +436,10 @@ page(title: str, body: str) -> str =>
                 title_tag(title)
                 style(base_css() ++ styles())
             )
-            body_tag(page_class(), top_bar(title) ++ element("main", body)))
+            body_tag(page_class("font-sans"), top_bar(title) ++ element("main", body)))
         ++ "\n"
 
-base_css() -> str =>
-    """html{color-scheme:light dark}
-"""
 
-page_class() -> str =>
-    "font-sans text-base leading-relaxed bg-white dark:bg-zinc-950"
-        ++ " text-zinc-900 dark:text-zinc-100"
 
 top_bar(title: str) -> str =>
     header(class="border-b border-zinc-200 dark:border-zinc-800",
@@ -570,11 +563,7 @@ badge_class() -> str =>
         ++ " bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
 
 
-title_tag(text: str) -> str =>
-    title(escape_html(text))
 
-body_tag(classes: str, inner: str) -> str =>
-    body(class=classes, inner)
 
 // ---- entry ----------------------------------------------------------------
 

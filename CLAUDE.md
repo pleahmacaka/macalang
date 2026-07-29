@@ -33,7 +33,7 @@ Virtual workspace; members are `crates/*`.
 | crate | role |
 |---|---|
 | `maca-lexer` | significant-newline tokenizer |
-| `maca-parser` | tokens → AST (hand-written recursive descent + Pratt) |
+| `maca-parser` | tokens → AST (hand-written recursive descent + Pratt); also `modules`/`imports` — which file an `import` names, and inlining it |
 | `maca-core` | typed core IR + HM/gradual/row type & effect checker |
 | `maca-backend-c` | core IR → C (default native path) |
 | `maca-backend-llvm` | core IR → LLVM IR (**SIMD only**) |
@@ -44,6 +44,7 @@ Virtual workspace; members are `crates/*`.
 | `maca-lsp` | language server: `lib.rs` (analysis fns) + `main.rs` (LSP stdio server) |
 | `maca-mcp` | Maca MCP server (LLM-native tools) |
 | `maca-driver` | the `maca` CLI |
+| `maca-testsupport` | host probes + the cross-crate build lock, for the integration suites |
 | `maca-backend-jvm` | core IR → Java source (JVM interop; Minecraft/Fabric) |
 | `maca-backend-rust` | core IR → Rust source (crates.io interop; `--target rust`) |
 | `maca-backend-embedded` | freestanding C for bare-metal MCUs (Cortex-M/RISC-V) |
@@ -70,7 +71,10 @@ script only run at release time rots quietly. The one exception is
 `install.sh`, which runs *before* there is a `maca` to run anything with.
 `std/` (importable Maca modules — `text`, `list`, `path`, `json`, `csv`, `fs`,
 `proc` — plus prelude docs; the rest of the stdlib is compiler/runtime
-builtins), `examples/` (golden `.maca` programs + `examples/bad/`), `apps/`
+builtins. **A slash-path import that resolves to no file is an error**: four
+files imported a `std/str` that has never existed, silently, and each then
+hand-wrote the helpers it believed it was importing),
+`examples/` (golden `.maca` programs + `examples/bad/`), `apps/`
 (capstones: `mqtt`, `microkernel`, `blink`, `desktop`, `mcmod`, `tomo` — the
 i18n handbook builder that renders `book/{en,ko}/*.md` into `site/`, built
 entirely out of the UI syntax below plus one line of hand-written CSS; it is
@@ -118,7 +122,7 @@ sum types + `match`** (`Color = Red | Green` → `typedef enum`/`enum` with `use
 Color::*`; `match` lowers to a C ternary chain / a native Rust `match`). Each
 increment is added in Maca and gated by a dual-backend compile+run of the
 emitted program. The two backend features that
-enabled it are shared by the whole language: the `std/str` scan primitives
+enabled it are shared by the whole language: the `str` scan builtins
 (`chars`/`length`/`at`/`get`/`slice` + `is_whitespace`/`is_ascii_digit`/
 `is_alpha`) and **recursive record types** (a self-referential field like
 `Expr { children: Expr[] }` is forward-declared in C so the struct/array

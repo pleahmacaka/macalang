@@ -1,0 +1,50 @@
+// shell — the page furniture the site's generators share.
+//
+// `apps/site/home.maca` writes the front page and `tools/macadoc.maca` writes
+// the API reference. They had a `base_css`, a `title_tag`, a `body_tag`, a
+// `page_class` and a `CodeSpan` each, and the copies drifted: one `title_tag`
+// escaped its text and one did not, one `page_class` carried `break-keep` and
+// one did not, and the two `CodeSpan`s disagreed about a padding.
+//
+// `apps/tomo` deliberately does not import this. It builds other people's
+// books, and this is the chrome of one particular site.
+//
+// Not gated on its own — it has no `main` to build. Both importers are, in
+// `crates/driver/tests/scripts.rs`, so a break here fails two suites.
+
+import { escape_html } from std/text
+
+/// The project's source, named once.
+Repo = "https://github.com/pleahmacaka/macalang"
+
+/// Told to the browser rather than to any element: a page carrying both
+/// palettes wants scrollbars and form controls to follow the reader's system
+/// setting, and no utility can say that.
+base_css() -> str =>
+    """html{color-scheme:light dark}
+"""
+
+/// `<title>`, escaped.
+///
+/// The escaping is *inside*, so there is one contract rather than one per
+/// caller. `title` and `body` are also parameter names all over these files,
+/// and a user definition wins over a tag, which is the other reason these two
+/// exist at all.
+title_tag(text: str) -> str =>
+    title(escape_html(text))
+
+body_tag(classes: str, inner: str) -> str =>
+    body(class=classes, inner)
+
+/// The body's typography and colours, over a chosen font stack.
+///
+/// `break-keep` is here for every language, not just Korean: it only changes
+/// text that would otherwise break inside a word, which Korean does by default
+/// — a heading split `돌아갈` as `돌` / `아갈` — and English never does.
+page_class(font: str) -> str =>
+    font ++ " text-base leading-relaxed break-keep bg-white dark:bg-zinc-950"
+        ++ " text-zinc-900 dark:text-zinc-100"
+
+/// An inline `<code>` span in running prose.
+CodeSpan = "font-mono text-[0.9em] bg-zinc-100 dark:bg-zinc-800 rounded px-1"
+    ++ " py-[0.05rem]"

@@ -18,9 +18,8 @@
 // NonExhaustive error from the checker, not a shorter page nobody notices.
 
 import std/path
-import { escape_html } from std/text
+import apps/site/shell
 
-Repo = "https://github.com/pleahmacaka/macalang"
 InstallUrl = "https://raw.githubusercontent.com/pleahmacaka/macalang/main"
     ++ "/install.sh"
 
@@ -341,7 +340,7 @@ page(c: Copy, up: str) -> str =>
                 title_tag(c.title)
                 style(base_css() ++ styles())
             )
-            body_tag(page_class(),
+            body_tag(page_class("font-sans"),
                 skip_link(c)
                     ++ top_nav(c, up)
                     ++ element("main", id="content", tabindex="-1",
@@ -385,18 +384,7 @@ og_locale(c: Copy) -> str {
     }
 }
 
-// Told to the browser rather than any element: the page has both palettes, so
-// scrollbars and form controls follow the reader's system setting.
-base_css() -> str =>
-    """html{color-scheme:light dark}
-"""
 
-// `break-keep` for every language, not just Korean: it only changes text that
-// would otherwise break inside a word, which Korean does by default — a
-// heading split `돌아갈` as `돌` / `아갈` — and English never does.
-page_class() -> str =>
-    "font-sans text-base leading-relaxed break-keep bg-white dark:bg-zinc-950"
-        ++ " text-zinc-900 dark:text-zinc-100"
 
 wrap() -> str =>
     "max-w-[64rem] mx-auto px-6"
@@ -597,13 +585,7 @@ site_footer(c: Copy) -> str =>
               a(class="underline text-inherit", href=Repo,
                 "github.com/pleahmacaka/macalang"))))
 
-// `title` and `body` are parameter names all over this file, and a user
-// definition wins over a tag — so the two tags that collide get a wrapper.
-title_tag(text: str) -> str =>
-    title(escape_html(text))
 
-body_tag(classes: str, inner: str) -> str =>
-    body(class=classes, inner)
 
 
 // A sentence of copy, where a backtick span is a piece of code. `--target nix`
@@ -630,8 +612,6 @@ spans(parts: str[], i: int, out: str) -> str {
     }
 }
 
-CodeSpan = "font-mono text-[0.9em] bg-zinc-100 dark:bg-zinc-800 rounded px-1"
-    ++ " py-[0.05rem]"
 
 // ---- entry ------------------------------------------------------------------
 
