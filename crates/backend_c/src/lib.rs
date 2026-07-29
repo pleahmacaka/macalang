@@ -177,6 +177,17 @@ struct Cx<'a> {
     fresh: Fresh,
     /// The flattened pieces of the concatenation just lowered, if it was one.
     concat_pieces: Option<Vec<Piece>>,
+    /// Names the function being lowered gives a second holder to — anywhere in
+    /// its body, not only in the block at hand. A list appended to in a loop is
+    /// reassigned in an inner block while the alias that rules the optimisation
+    /// out can be three blocks up.
+    aliased: HashSet<String>,
+    /// What each local was bound to, while the array types are being
+    /// collected. A list literal's type is its first element's, and an element
+    /// that is itself a name had no type at all here — so `[e]` where `e` is an
+    /// `int[]` registered nothing and the C compiler was handed an `IntArrArr`
+    /// that had never been defined.
+    local_tys: HashMap<String, CTy>,
     /// Locals currently holding a string this scope will release. Consulted
     /// where a name is reassigned, which can be several blocks below the one
     /// that declared it: a loop that rebuilds an accumulator has to let go of
@@ -215,6 +226,8 @@ impl<'a> Cx<'a> {
             spec_done: HashSet::new(),
             problems: Vec::new(),
             classes: BTreeSet::new(),
+            aliased: HashSet::new(),
+            local_tys: HashMap::new(),
             fresh: Fresh::of(m),
             concat_pieces: None,
             owned_strs: HashSet::new(),
@@ -535,11 +548,21 @@ impl<'a> Cx<'a> {
         let items = self.m.items.clone();
         for item in &items {
             match item {
-                Stmt::Fn(f) => match &f.body {
-                    Some(FnBody::Block(s)) => self.walk_stmts(s),
-                    Some(FnBody::Expr(e)) => self.walk_expr(e),
-                    None => {}
-                },
+                Stmt::Fn(f) => {
+                    // one function's locals say nothing about the next one's
+                    self.local_tys.clear();
+                    for p in &f.params {
+                        if let Some(t) = &p.ty {
+                            let cty = self.cty(t);
+                            self.local_tys.insert(p.name.clone(), cty);
+                        }
+                    }
+                    match &f.body {
+                        Some(FnBody::Block(s)) => self.walk_stmts(s),
+                        Some(FnBody::Expr(e)) => self.walk_expr(e),
+                        None => {}
+                    }
+                }
                 Stmt::Bind(b) => self.walk_expr(&b.value),
                 _ => {}
             }
@@ -556,6 +579,15 @@ impl<'a> Cx<'a> {
                         self.note_arr(&cty);
                     }
                     self.walk_expr(&b.value);
+                    if let Expr::Ident(n) = &b.target {
+                        let cty = match b.tys.first() {
+                            Some(t) => self.cty(t),
+                            None => self.shallow_cty(&b.value),
+                        };
+                        if cty != CTy::Unknown {
+                            self.local_tys.insert(n.clone(), cty);
+                        }
+                    }
                 }
                 Stmt::Expr(e) => self.walk_expr(e),
                 _ => {}
@@ -754,6 +786,7 @@ impl<'a> Cx<'a> {
                 .variant_of
                 .get(n)
                 .map(|s| CTy::Sum(s.clone()))
+                .or_else(|| self.local_tys.get(n).cloned())
                 .unwrap_or(CTy::Unknown),
             Expr::Call { callee, .. } => match &**callee {
                 // a constructor call like `Circle(2.0)` has the sum's type — so a
@@ -1459,6 +1492,7 @@ impl<'a> Cx<'a> {
     }
 
     fn emit_fn(&mut self, f: &FnDef) {
+        self.aliased = ownership::aliased_names(f);
         let (params, ret) = self.fns[&f.name].clone();
         let mut env: Env = f
             .params
@@ -1651,6 +1685,21 @@ impl<'a> Cx<'a> {
                 // (`xs[i] = v`), or a field (`p.x = v`).
                 Stmt::Bind(b) => {
                     if let Expr::Ident(name) = &b.target {
+                        // `xs = xs.push(v)` on a list nothing else holds is an
+                        // append, not a copy. Written as a copy it is quadratic:
+                        // building an eight-thousand element list took half a
+                        // second and left every intermediate buffer behind.
+                        if let Some(code) = self.accumulating_push(
+                            env,
+                            name,
+                            &b.value,
+                            stmts,
+                            &kept_apart_from_result,
+                        ) {
+                            self.indent(ind);
+                            self.push(&code);
+                            continue;
+                        }
                         if let Some(ty) = lookup(env, name) {
                             let (code, _) = self.expr(env, &b.value, Some(&ty));
                             self.indent(ind);
@@ -1717,6 +1766,65 @@ impl<'a> Cx<'a> {
         for (name, _) in env.drain(base..) {
             self.owned_strs.remove(&name);
         }
+    }
+
+    /// `xs = xs.push(v)` lowered as an append, when that cannot be observed.
+    ///
+    /// The copy exists because `ys = xs.push(v)` must leave `xs` alone — a list
+    /// is a value. Assigning back to the same name is the case where the old
+    /// value is unreachable the moment the new one exists, so there is nothing
+    /// to leave alone. Two conditions make that true rather than merely likely:
+    /// no second name may hold the list, and every value it is ever given must
+    /// be a list of its own rather than somebody else's — `xs = ys` followed by
+    /// `xs = xs.push(v)` would otherwise append to `ys`.
+    fn accumulating_push(
+        &mut self,
+        env: &mut Env,
+        name: &str,
+        value: &Expr,
+        stmts: &[Stmt],
+        kept: &HashSet<String>,
+    ) -> Option<String> {
+        let Expr::Call { callee, args } = value else {
+            return None;
+        };
+        let Expr::Field { base, name: m } = callee.as_ref() else {
+            return None;
+        };
+        if m != "push" || args.len() != 1 || !matches!(base.as_ref(), Expr::Ident(b) if b == name) {
+            return None;
+        }
+        let Some(CTy::Arr(elem)) = lookup(env, name) else {
+            return None;
+        };
+        let _ = kept;
+        if self.aliased.contains(name) || !self.only_accumulates(name, stmts) {
+            return None;
+        }
+        let (v, _) = self.expr(env, arg_expr(&args[0]), Some(&elem));
+        Some(format!("{}_push(&{}, {v});", arr_name(&elem), cid(name)))
+    }
+
+    /// Is every value `name` is given in `stmts` a list of its own — a literal,
+    /// or an append to itself?
+    fn only_accumulates(&self, name: &str, stmts: &[Stmt]) -> bool {
+        let mut ok = true;
+        ownership::each_bind(stmts, &mut |n, value| {
+            if n != name {
+                return;
+            }
+            ok = ok
+                && match value {
+                    Expr::List(_) => true,
+                    Expr::Call { callee, .. } => matches!(
+                        callee.as_ref(),
+                        Expr::Field { base, name: m }
+                            if m == "push" && matches!(base.as_ref(), Expr::Ident(b) if b == name)
+                    ),
+                    _ => false,
+                };
+        });
+        ok
     }
 
     /// May this block release the string `name` holds?

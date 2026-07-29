@@ -534,6 +534,125 @@ impl Fresh {
     }
 }
 
+/// Names this function gives a second holder to.
+///
+/// A list is a value: `ys = xs` and `f(xs)` both leave two ways to reach one
+/// buffer, and appending through one of them in place would be visible through
+/// the other. A method receiver is not one of those — every method here either
+/// reads its receiver or returns a new list — and neither is a `for` iterand.
+///
+/// Whole-body, not per block: a list appended to inside a loop is reassigned
+/// three blocks below the binding that aliased it.
+pub fn aliased_names(f: &FnDef) -> HashSet<String> {
+    let mut out = HashSet::new();
+    let Some(body) = &f.body else {
+        return out;
+    };
+    match body {
+        FnBody::Expr(e) => alias_in_expr(e, &mut out),
+        FnBody::Block(ss) => alias_in_stmts(ss, &mut out),
+    }
+    out
+}
+
+fn alias_in_stmts(ss: &[Stmt], out: &mut HashSet<String>) {
+    for s in ss {
+        match s {
+            Stmt::Bind(b) => {
+                // the value flows into another name, unless it is that name
+                // appending to itself
+                if !self_append(&b.target, &b.value) {
+                    keep_all(&b.value, out);
+                }
+                alias_in_expr(&b.value, out);
+            }
+            Stmt::Expr(e) => alias_in_expr(e, out),
+            Stmt::Fn(inner) => {
+                out.extend(aliased_names(inner));
+            }
+            _ => {}
+        }
+    }
+}
+
+// `xs = xs.push(v)` — the only shape that hands a list back to itself.
+fn self_append(target: &Expr, value: &Expr) -> bool {
+    let Expr::Ident(name) = target else {
+        return false;
+    };
+    let Expr::Call { callee, .. } = value else {
+        return false;
+    };
+    matches!(callee.as_ref(), Expr::Field { base, name: m }
+        if m == "push" && matches!(base.as_ref(), Expr::Ident(b) if b == name))
+}
+
+fn alias_in_expr(e: &Expr, out: &mut HashSet<String>) {
+    match e {
+        // naming a list is not holding it — what holds it is the position the
+        // name is in, and those are the arms below
+        Expr::Ident(_) => {}
+        // a method reads its receiver or builds something new from it
+        Expr::Call { callee, args } => {
+            match callee.as_ref() {
+                Expr::Field { base, .. } => alias_in_expr(base, out),
+                other => keep_all(other, out),
+            }
+            for a in args {
+                match arg_expr(a) {
+                    // an interpolation renders a value; it cannot keep one
+                    e @ Expr::Str(_) => alias_in_expr(e, out),
+                    e => keep_all(e, out),
+                }
+            }
+        }
+        // A loop holds its own handle on what it iterates, for the length of
+        // the loop: the lowering copies the list struct into a temporary, and
+        // that temporary shares the buffer. Appending in place could move the
+        // buffer out from under it, so iterating counts as a second holder.
+        Expr::For { iter, body, .. } => {
+            keep_all(iter, out);
+            alias_in_stmts(body, out);
+        }
+        Expr::If { cond, then, els } => {
+            alias_in_expr(cond, out);
+            alias_in_stmts(then, out);
+            if let Some(e) = els {
+                alias_in_stmts(e, out);
+            }
+        }
+        Expr::While { cond, body } => {
+            alias_in_expr(cond, out);
+            alias_in_stmts(body, out);
+        }
+        Expr::Block(ss) => alias_in_stmts(ss, out),
+        Expr::Field { base, .. } => alias_in_expr(base, out),
+        Expr::Index { base, index } => {
+            alias_in_expr(base, out);
+            alias_in_expr(index, out);
+        }
+        Expr::Binary { lhs, rhs, .. } => {
+            alias_in_expr(lhs, out);
+            alias_in_expr(rhs, out);
+        }
+        Expr::Unary { expr, .. } => alias_in_expr(expr, out),
+        Expr::Ternary { cond, then, els } => {
+            alias_in_expr(cond, out);
+            keep_all(then, out);
+            keep_all(els, out);
+        }
+        Expr::Str(parts) => {
+            for p in parts {
+                if let StrPart::Interp(x) = p {
+                    alias_in_expr(x, out);
+                }
+            }
+        }
+        // everything else that names a list keeps it
+        _ => keep_all(e, out),
+    }
+}
+
 /// A record's fields hold what they are given, however each one is written —
 /// `{ name = s }`, the shorthand `{ s }`, and a bare element alike.
 fn keep_fields(fs: &[Field], out: &mut HashSet<String>) {

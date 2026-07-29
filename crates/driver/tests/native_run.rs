@@ -1242,6 +1242,32 @@ fn a_generic_can_name_its_own_element_type() {
     );
 }
 
+/// `xs = xs.push(v)` is an append where nothing else holds the list, and a copy
+/// everywhere else. Assertions in `tests/programs/accumulate.maca`, run plain
+/// and poisoned — a buffer moved out from under a second holder is exactly what
+/// a released-memory pattern would show.
+#[test]
+fn a_list_accumulates_without_copying_itself() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let program = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/programs/accumulate.maca");
+    for poison in ["0", "1"] {
+        let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+            .args(["test", &program.to_string_lossy()])
+            .env("MACA_POISON", poison)
+            .output()
+            .expect("spawn maca test");
+        assert!(
+            out.status.success(),
+            "MACA_POISON={poison}:\n{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+    }
+}
+
 #[test]
 fn native_backend_regressions_still_hold() {
     // List patterns, `chars()` registering its array type, `++` converting a
