@@ -1,13 +1,14 @@
 name: pages
 
-# Publishes two things built by Maca itself:
-#   /          the handbook's language picker
-#   /en /ko    The Maca Handbook, rendered by apps/tomo/tomo.maca
-#   /play      the browser playground, one self-contained page
+# Publishes four things, every one of them built by Maca itself:
+#   /                the front page, apps/site/home.maca
+#   /en /ko          The Maca Handbook, rendered by apps/tomo/tomo.maca
+#   /api             the std reference, rendered by tools/macadoc.maca
+#   /play            the browser playground, one self-contained page
 #
-# Both are produced by the compiler in this repository — the book by a Maca
-# program, the playground by `maca build --target js` — so a broken site means a
-# broken toolchain, not a broken deploy script.
+# All of it comes out of the compiler in this repository — three Maca programs
+# and one `maca build --target js` — so a broken site means a broken toolchain,
+# not a broken deploy script.
 
 on:
   push:

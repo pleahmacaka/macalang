@@ -55,11 +55,17 @@ kept equivalent to its stage-0 Rust twin by `crates/driver/tests/bindgen_port.rs
 width / single-line `if` / trailing whitespace / hard tabs — width is measured
 with string literals collapsed, so a long C template or URL is exempt exactly
 as a long comment is. Gated by `crates/driver/tests/lint_port.rs`, which
-requires the whole repository to pass it — and `build-site.maca`, which builds
-and checks the published site for both CI and a human).
+requires the whole repository to pass it — `macadoc.maca`, the API-doc
+generator (rustdoc's job for Maca: a `///` block above an item is what makes it
+API, an ordinary `//` explains a helper to the next reader; handbook ch. 17
+documents the marker, and `crates/driver/tests/programs/sitegen.maca` fails if
+what it lists ever differs from what `std/README.md` advertises) — and
+`build-site.maca`, which builds and checks the published site for both CI and a
+human, including a check that every class on every emitted page produced a CSS
+rule).
 **Every script in the repository is a Maca program**: `bench/run.maca` is the
 benchmark harness, `packages/macalang/build.maca` builds the wasm into the npm
-package. All five are compiled by `crates/driver/tests/scripts.rs`, because a
+package. All seven are compiled by `crates/driver/tests/scripts.rs`, because a
 script only run at release time rots quietly. The one exception is
 `install.sh`, which runs *before* there is a `maca` to run anything with.
 `std/` (importable Maca modules — `text`, `list`, `path`, `json`, `csv`, `fs`,
@@ -69,7 +75,10 @@ builtins), `examples/` (golden `.maca` programs + `examples/bad/`), `apps/`
 i18n handbook builder that renders `book/{en,ko}/*.md` into `site/`, built
 entirely out of the UI syntax below plus one line of hand-written CSS; it is
 also the worked example of that syntax, so keep it free of hand-concatenated
-markup), `selfhost/`
+markup — and `site`, the project's front page, `home.maca`, whose copy is keyed
+by sum types so a translation that drops a card is a NonExhaustive error rather
+than a shorter page; it replaces tomo's Markdown landing for this book only),
+`selfhost/`
 (the Maca compiler written in Maca — stage 1), `playground/` (the browser
 playground, a single `.maca` file compiled by the JS backend), `editor/`,
 `docs/`.

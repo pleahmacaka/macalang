@@ -35,6 +35,12 @@ chapter index. A book without a `home.md` gets the language picker instead —
 a landing page is something you opt into by writing one. `site` in `book.toml`
 names the thing the book is about, which is not the book's own title.
 
+This book is the case that opts out. Its front page is a designed page in the
+UI syntax rather than a rendered document (`apps/site/home.maca`), written over
+those same three addresses by `tools/build-site.maca`; tomo produces the picker
+and the front page replaces it. Markdown is right for a chapter and for most
+books' landings, and this is the one where it wasn't.
+
 The **book builder** is `build_book(root, out)`: it reads `book.toml`, walks
 `book/<lang>/*.md`, and writes `site/<lang>/*.html` — each page carrying its
 stylesheet, table of contents, search index, language switcher, and

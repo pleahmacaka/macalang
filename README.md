@@ -148,6 +148,28 @@ live diagnostics, hover, and completion over LSP (stdio). Editor integrations:
 - **Playground** — [`playground/playground.maca`](playground/playground.maca): the
   browser playground, itself written in Maca and compiled by the JS backend.
 
+## The site
+
+Everything published is built by the compiler in this repository, by one
+command:
+
+```sh
+maca run tools/build-site.maca _site
+```
+
+| Path | What | Built by |
+|---|---|---|
+| `/` | the front page | [`apps/site/home.maca`](apps/site/home.maca) |
+| `/en` `/ko` | The Maca Handbook | [`apps/tomo/tomo.maca`](apps/tomo/tomo.maca) |
+| `/api` | the `std/` reference | [`tools/macadoc.maca`](tools/macadoc.maca) |
+| `/play` | the playground | `maca build --target js` |
+
+Three Maca programs and one `maca build`, so a broken site means a broken
+toolchain rather than a broken deploy script. The same command runs in CI, and
+it checks what it built: the pages a reader can reach, the links off the front
+page, that the playground still carries its embedded wasm, and that every
+utility class on every page produced a CSS rule.
+
 ## Build from source
 
 ```sh
