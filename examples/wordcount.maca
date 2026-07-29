@@ -9,23 +9,38 @@ words(text: str) -> str[] =>
 
 bump(ts: Tally[], w: str) -> Tally[] {
     at = find(ts, w, 0)
-    at < 0
-        ? ts ++ [Tally { word = w, count = 1 }]
-        : replace_at(ts, at, Tally { word = w, count = ts.get(at).count + 1 })
+
+    if at < 0 {
+        ts ++ [Tally { word = w, count = 1 }]
+    } else {
+        replace_at(ts, at, Tally { word = w, count = ts.get(at).count + 1 })
+    }
 }
 
-find(ts: Tally[], w: str, i: int) -> int =>
-    i >= ts.length() ? -1 : (ts.get(i).word == w ? i : find(ts, w, i + 1))
+find(ts: Tally[], w: str, i: int) -> int {
+    if i >= ts.length() {
+        -1
+    } else if ts.get(i).word == w {
+        i
+    } else {
+        find(ts, w, i + 1)
+    }
+}
 
 replace_at(ts: Tally[], at: int, t: Tally) -> Tally[] {
     ts[at] = t
     ts
 }
 
-tally(ws: str[], i: int, acc: Tally[]) -> Tally[] =>
-    i >= ws.length()
-        ? acc
-        : tally(ws, i + 1, ws.get(i).length() == 0 ? acc : bump(acc, ws.get(i)))
+tally(ws: str[], i: int, acc: Tally[]) -> Tally[] {
+    if i >= ws.length() {
+        acc
+    } else if ws.get(i).length() == 0 {
+        tally(ws, i + 1, acc)
+    } else {
+        tally(ws, i + 1, bump(acc, ws.get(i)))
+    }
+}
 
 show(ts: Tally[], i: int) -> int {
     if i < ts.length() {

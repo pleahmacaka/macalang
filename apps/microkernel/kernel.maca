@@ -53,8 +53,13 @@ syscall_cap(s: Syscall) -> int =>
     }
 
 // is a capability present in a mask?
-has_cap(mask: int, cap: int) -> bool =>
-    cap == 0 ? true : mask % (cap * 2) >= cap
+has_cap(mask: int, cap: int) -> bool {
+    if cap == 0 {
+        true
+    } else {
+        mask % (cap * 2) >= cap
+    }
+}
 
 // ---- scheduler decisions (pure) ------------------------------------------
 is_ready(state: int) -> bool => state == READY
@@ -117,21 +122,36 @@ burn(seed: int, rounds: int) -> int {
 // decide what syscall a task makes this quantum, from its remaining work.
 // kind 1 = worker (sends to a server, else computes), 2 = server (drains its
 // mailbox, else computes), 0 = compute-only.
-decide(kind: int, work_left: int, inbox: int) -> Syscall =>
-    work_left <= 0
-        ? Exit
-        : kind == 2
-            ? (inbox > 0 ? Recv : Compute(work_left))
-            : kind == 1 && work_left % 2 == 0
-                ? Send(1 + (work_left / 2) % 2 * 3)
-                : Compute(work_left)
+decide(kind: int, work_left: int, inbox: int) -> Syscall {
+    if work_left <= 0 {
+        Exit
+    } else if kind == 2 && inbox > 0 {
+        Recv
+    } else if kind == 1 && work_left % 2 == 0 {
+        Send(1 + (work_left / 2) % 2 * 3)
+    } else {
+        Compute(work_left)
+    }
+}
 
 // ---- IPC ------------------------------------------------------------------
 mailbox_gain(cur: int) -> int => cur + 1
-mailbox_drain(cur: int) -> int => cur > 0 ? cur - 1 : 0
+mailbox_drain(cur: int) -> int {
+    if cur > 0 {
+        cur - 1
+    } else {
+        0
+    }
+}
 
 // ---- reporting ------------------------------------------------------------
-pct(part: int, whole: int) -> int => whole == 0 ? 0 : part * 100 / whole
+pct(part: int, whole: int) -> int {
+    if whole == 0 {
+        0
+    } else {
+        part * 100 / whole
+    }
+}
 
 bar(n: int) -> str {
     s = ""
@@ -278,5 +298,9 @@ main() -> int {
         info("  task {i} [{state_name(states[i])}] {bar(quanta[i])} {quanta[i]}q ({share}%)")
     }
 
-    all_dead(states, NTASKS) ? 0 : 1
+    if all_dead(states, NTASKS) {
+        0
+    } else {
+        1
+    }
 }

@@ -46,14 +46,19 @@ collapse_strings(line: str) -> str =>
 
 // `quoted` says whether we are inside a literal; the quote characters
 // themselves are always kept, so an unterminated quote can't hide the line.
-collapse(cs: str[], i: int, quoted: bool, acc: str) -> str =>
-    i >= cs.length()
-        ? acc
-        : (cs.get(i) == "\\" && quoted
-            ? collapse(cs, i + 2, quoted, acc)     // an escape, e.g. `\"`
-            : cs.get(i) == "\""
-                ? collapse(cs, i + 1, !quoted, acc ++ "\"")
-                : collapse(cs, i + 1, quoted, quoted ? acc : acc ++ cs.get(i)))
+collapse(cs: str[], i: int, quoted: bool, acc: str) -> str {
+    if i >= cs.length() {
+        acc
+    } else if cs.get(i) == "\\" && quoted {
+        collapse(cs, i + 2, quoted, acc)           // an escape, e.g. `\"`
+    } else if cs.get(i) == "\"" {
+        collapse(cs, i + 1, !quoted, acc ++ "\"")
+    } else if quoted {
+        collapse(cs, i + 1, quoted, acc)           // the collapsed contents
+    } else {
+        collapse(cs, i + 1, quoted, acc ++ cs.get(i))
+    }
+}
 
 has_trailing_space(line: str) -> bool =>
     line.length() > 0 && (line.ends_with(" ") || line.ends_with("\t"))
@@ -72,8 +77,13 @@ space_issues(path: str, no: int, line: str) -> str =>
                "hard tab; Maca indents with four spaces")
 
 // One complaint, or nothing at all.
-say(path: str, no: int, hit: bool, what: str) -> str =>
-    hit ? at(path, no) ++ what ++ "\n" : ""
+say(path: str, no: int, hit: bool, what: str) -> str {
+    if hit {
+        at(path, no) ++ what ++ "\n"
+    } else {
+        ""
+    }
+}
 
 at(path: str, no: int) -> str =>
     path ++ ":" ++ str(no) ++ ": "
@@ -83,25 +93,38 @@ at(path: str, no: int) -> str =>
 // rules about *Maca* code shape (width, single-line `if`) are suspended there,
 // for the same reason a long string literal is exempt. Whitespace hygiene
 // still applies: a trailing space is noise in any language.
-scan_lines(path: str, lines: str[], i: int, raw: bool, acc: str) -> str =>
-    i >= lines.length()
-        ? acc
-        : scan_lines(path, lines, i + 1, raw != odd_fence(lines.get(i)),
-                     acc ++ (raw || odd_fence(lines.get(i))
-                                 ? space_issues(path, i + 1, lines.get(i))
-                                 : line_issues(path, i + 1, lines.get(i))))
+scan_lines(path: str, lines: str[], i: int, raw: bool, acc: str) -> str {
+    if i >= lines.length() {
+        acc
+    } else {
+        line = lines.get(i)
+        fence = odd_fence(line)
+        found = if raw || fence {
+            space_issues(path, i + 1, line)
+        } else {
+            line_issues(path, i + 1, line)
+        }
+        scan_lines(path, lines, i + 1, raw != fence, acc ++ found)
+    }
+}
 
 // Does this line open or close a raw block? An odd number of `"""` flips the
 // state; a one-line `"""x"""` has two and leaves it alone.
 odd_fence(line: str) -> bool =>
     count_fences(line.chars(), 0, 0) % 2 == 1
 
-count_fences(cs: str[], i: int, n: int) -> int =>
-    i + 2 >= cs.length()
-        ? n
-        : (cs.get(i) == "\"" && cs.get(i + 1) == "\"" && cs.get(i + 2) == "\""
-            ? count_fences(cs, i + 3, n + 1)
-            : count_fences(cs, i + 1, n))
+count_fences(cs: str[], i: int, n: int) -> int {
+    if i + 2 >= cs.length() {
+        n
+    } else if fence_at(cs, i) {
+        count_fences(cs, i + 3, n + 1)
+    } else {
+        count_fences(cs, i + 1, n)
+    }
+}
+
+fence_at(cs: str[], i: int) -> bool =>
+    cs.get(i) == "\"" && cs.get(i + 1) == "\"" && cs.get(i + 2) == "\""
 
 lint_file(path: str) -> str =>
     scan_lines(path, read_file(path).split("\n"), 0, false, "")
@@ -116,29 +139,47 @@ ends_with_maca(name: str) -> bool =>
 lint_dir(dir: str) -> str =>
     lint_entries(dir, list_dir(dir), 0, "")
 
-lint_entries(dir: str, names: str[], i: int, acc: str) -> str =>
-    i >= names.length()
-        ? acc
-        : lint_entries(dir, names, i + 1,
-                       acc ++ lint_entry(dir ++ "/" ++ names.get(i)))
+lint_entries(dir: str, names: str[], i: int, acc: str) -> str {
+    if i >= names.length() {
+        acc
+    } else {
+        found = lint_entry(dir ++ "/" ++ names.get(i))
+        lint_entries(dir, names, i + 1, acc ++ found)
+    }
+}
 
 // A path is a directory exactly when `list_dir` finds something in it — there
 // is no `is_dir` primitive, and an empty directory has nothing to lint anyway.
-lint_entry(path: str) -> str =>
-    ends_with_maca(path)
-        ? lint_file(path)
-        : (list_dir(path).length() > 0 ? lint_dir(path) : "")
+lint_entry(path: str) -> str {
+    if ends_with_maca(path) {
+        lint_file(path)
+    } else if list_dir(path).length() > 0 {
+        lint_dir(path)
+    } else {
+        ""
+    }
+}
 
 // ---- counting -------------------------------------------------------------
 
 // Issues are newline-terminated, so the count is the number of non-empty lines.
-count_issues(report: str) -> int =>
-    report.length() == 0 ? 0 : count_nonempty(report.split("\n"), 0)
+count_issues(report: str) -> int {
+    if report.length() == 0 {
+        0
+    } else {
+        count_nonempty(report.split("\n"), 0)
+    }
+}
 
-count_nonempty(lines: str[], i: int) -> int =>
-    i >= lines.length()
-        ? 0
-        : (lines.get(i).length() > 0 ? 1 : 0) + count_nonempty(lines, i + 1)
+count_nonempty(lines: str[], i: int) -> int {
+    if i >= lines.length() {
+        0
+    } else if lines.get(i).length() > 0 {
+        1 + count_nonempty(lines, i + 1)
+    } else {
+        count_nonempty(lines, i + 1)
+    }
+}
 
 // ---- entry point ----------------------------------------------------------
 
@@ -148,33 +189,55 @@ count_nonempty(lines: str[], i: int) -> int =>
 default_dirs() -> str[] =>
     ["examples", "selfhost", "tools", "std", "apps", "playground"]
 
-lint_all(dirs: str[], i: int, acc: str) -> str =>
-    i >= dirs.length()
-        ? acc
-        : lint_all(dirs, i + 1,
-                   acc ++ (file_exists(dirs.get(i))
-                               ? lint_dir(dirs.get(i))
-                               : ""))
+lint_all(dirs: str[], i: int, acc: str) -> str {
+    if i >= dirs.length() {
+        acc
+    } else if !file_exists(dirs.get(i)) {
+        lint_all(dirs, i + 1, acc)
+    } else {
+        lint_all(dirs, i + 1, acc ++ lint_dir(dirs.get(i)))
+    }
+}
 
 main(args: str[]) -> int {
-    report = args.length() > 0
-        ? (file_exists(args.get(0)) ? pick(args.get(0)) : missing(args.get(0)))
-        : lint_all(default_dirs(), 0, "")
+    report = report_for(args)
     n = count_issues(report)
-    n > 0 ? report_issues(report, n) : clean()
+
+    if n > 0 {
+        report_issues(report, n)
+    } else {
+        clean()
+    }
+}
+
+report_for(args: str[]) -> str {
+    if args.length() == 0 {
+        lint_all(default_dirs(), 0, "")
+    } else if !file_exists(args.get(0)) {
+        missing(args.get(0))
+    } else {
+        pick(args.get(0))
+    }
 }
 
 // A path may be a single file or a directory; `list_dir` returns nothing for a
 // file, so a `.maca` suffix decides.
-pick(path: str) -> str =>
-    ends_with_maca(path) ? lint_file(path) : lint_dir(path)
+pick(path: str) -> str {
+    if ends_with_maca(path) {
+        lint_file(path)
+    } else {
+        lint_dir(path)
+    }
+}
 
 missing(path: str) -> str =>
     "lint: cannot read " ++ path ++ "\n"
 
 report_issues(report: str, n: int) -> int {
+    plural = if n == 1 { "" } else { "s" }
+
     print(report)
-    info(str(n) ++ " issue" ++ (n == 1 ? "" : "s"))
+    info(str(n) ++ " issue" ++ plural)
     1
 }
 

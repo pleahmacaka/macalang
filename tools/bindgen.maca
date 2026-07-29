@@ -19,7 +19,12 @@ import std/str
 // `index_of` from an offset — an absolute index, or -1.
 index_from(s: str, pat: str, start: int) -> int {
     idx = s.substr(start, s.length() - start).index_of(pat)
-    idx < 0 ? -1 : idx + start
+
+    if idx < 0 {
+        -1
+    } else {
+        idx + start
+    }
 }
 
 // The index just past the last occurrence of `pat`, or -1 if absent.
@@ -28,7 +33,12 @@ last_index_of(s: str, pat: str) -> int =>
 
 scan_last(s: str, pat: str, at: int, best: int) -> int {
     hit = index_from(s, pat, at)
-    hit < 0 ? best : scan_last(s, pat, hit + 1, hit)
+
+    if hit < 0 {
+        best
+    } else {
+        scan_last(s, pat, hit + 1, hit)
+    }
 }
 
 is_ident_char(c: str) -> bool =>
@@ -39,23 +49,34 @@ is_ident_char(c: str) -> bool =>
 // Drop `/* … */` blocks. Recurses on the remainder so several blocks go.
 strip_blocks(s: str) -> str {
     open = s.index_of("/*")
-    close = open < 0 ? -1 : index_from(s, "*/", open)
-    close < 0
-        ? s
-        : s.substr(0, open) ++ " "
-              ++ strip_blocks(s.substr(close + 2, s.length() - close - 2))
+    close = if open < 0 { -1 } else { index_from(s, "*/", open) }
+
+    if close < 0 {
+        s
+    } else {
+        s.substr(0, open) ++ " "
+            ++ strip_blocks(s.substr(close + 2, s.length() - close - 2))
+    }
 }
 
 // Drop `//` line comments and `#` preprocessor lines.
-strip_lines(lines: str[], i: int, acc: str) -> str =>
-    i >= lines.length()
-        ? acc
-        : strip_lines(lines, i + 1, acc ++ clean_line(lines.get(i)) ++ "\n")
+strip_lines(lines: str[], i: int, acc: str) -> str {
+    if i >= lines.length() {
+        acc
+    } else {
+        strip_lines(lines, i + 1, acc ++ clean_line(lines.get(i)) ++ "\n")
+    }
+}
 
 clean_line(line: str) -> str {
     cut = line.index_of("//")
-    body = cut < 0 ? line : line.substr(0, cut)
-    body.trim().starts_with("#") ? "" : body
+    body = if cut < 0 { line } else { line.substr(0, cut) }
+
+    if body.trim().starts_with("#") {
+        ""
+    } else {
+        body
+    }
 }
 
 strip(src: str) -> str =>
@@ -65,9 +86,23 @@ strip(src: str) -> str =>
 
 map_type(c: str) -> str {
     t = c.trim()
-    t.contains("*")
-        ? (t.contains("char") && !t.contains("char**") ? "str" : "int")
-        : (t.contains("double") || t.contains("float") ? "float" : "int")
+
+    if !t.contains("*") {
+        scalar_type(t)
+    } else if t.contains("char") && !t.contains("char**") {
+        "str"
+    } else {
+        // Any other pointer is an opaque handle.
+        "int"
+    }
+}
+
+scalar_type(t: str) -> str {
+    if t.contains("double") || t.contains("float") {
+        "float"
+    } else {
+        "int"
+    }
 }
 
 // A bare type keyword must not be mistaken for a parameter name — an unnamed
@@ -89,47 +124,67 @@ last_ident(s: str) -> str {
     t = trim_trailing(s.trim())
     start = ident_start(t, t.length())
     id = t.substr(start, t.length() - start)
-    id.length() == 0 || id.at(0).is_ascii_digit() ? "" : id
+
+    if id.length() == 0 || id.at(0).is_ascii_digit() {
+        ""
+    } else {
+        id
+    }
 }
 
 // Strip trailing `*` and whitespace.
-trim_trailing(s: str) -> str =>
-    s.length() == 0
-        ? s
-        : (s.ends_with("*") || s.ends_with(" ") || s.ends_with("\t")
-            ? trim_trailing(s.substr(0, s.length() - 1))
-            : s)
+trim_trailing(s: str) -> str {
+    trailing = s.ends_with("*") || s.ends_with(" ") || s.ends_with("\t")
+
+    if s.length() == 0 || !trailing {
+        s
+    } else {
+        trim_trailing(s.substr(0, s.length() - 1))
+    }
+}
 
 // Walk back over identifier characters to find where the last one starts.
-ident_start(s: str, at: int) -> int =>
-    at <= 0 || !is_ident_char(s.at(at - 1))
-        ? at
-        : ident_start(s, at - 1)
+ident_start(s: str, at: int) -> int {
+    if at <= 0 || !is_ident_char(s.at(at - 1)) {
+        at
+    } else {
+        ident_start(s, at - 1)
+    }
+}
 
 // ---- parameters -----------------------------------------------------------
 
 map_params(params: str) -> str {
     p = params.trim()
-    p.length() == 0 || p == "void" ? "" : join_params(p.split(","), 0)
+
+    if p.length() == 0 || p == "void" {
+        ""
+    } else {
+        join_params(p.split(","), 0)
+    }
 }
 
-join_params(ps: str[], i: int) -> str =>
-    i >= ps.length()
-        ? ""
-        : (i == ps.length() - 1
-            ? one_param(ps.get(i), i)
-            : one_param(ps.get(i), i) ++ ", " ++ join_params(ps, i + 1))
+join_params(ps: str[], i: int) -> str {
+    if i >= ps.length() {
+        ""
+    } else if i == ps.length() - 1 {
+        one_param(ps.get(i), i)
+    } else {
+        one_param(ps.get(i), i) ++ ", " ++ join_params(ps, i + 1)
+    }
+}
 
 one_param(raw_in: str, i: int) -> str {
     raw = raw_in.trim()
     id = last_ident(raw)
-    // a bare type keyword isn't a name — synthesize `a0`, `a1`, …
+    // A bare type keyword isn't a name — synthesize `a0`, `a1`, ….
     named = id.length() > 0 && !is_c_type_word(id)
-    ty = named
-        ? map_type(raw.substr(0, raw.length() - id.length()))
-        : map_type(raw)
-    name = named ? id : "a" ++ str(i)
-    name ++ ": " ++ ty
+
+    if !named {
+        "a" ++ str(i) ++ ": " ++ map_type(raw)
+    } else {
+        id ++ ": " ++ map_type(raw.substr(0, raw.length() - id.length()))
+    }
 }
 
 // ---- prototypes -----------------------------------------------------------
@@ -145,38 +200,57 @@ prototype(chunk: str) -> str {
     decl = chunk.trim()
     open = decl.index_of("(")
     close = last_index_of(decl, ")")
-    decl.length() == 0 || open < 0 || close < 0 || close < open
-        ? ""
-        : proto_parts(decl, open, close)
+    unbalanced = open < 0 || close < 0 || close < open
+
+    if decl.length() == 0 || unbalanced {
+        ""
+    } else {
+        proto_parts(decl, open, close)
+    }
 }
 
 proto_parts(decl: str, open: int, close: int) -> str {
     head = decl.substr(0, open)
     params = decl.substr(open + 1, close - open - 1)
     name = last_ident(head)
-    skip_decl(head, params, decl) || name.length() == 0
-        ? ""
-        : name ++ "(" ++ map_params(params) ++ ") -> "
-              ++ map_type(head.substr(0, head.length() - name.length()))
+
+    if skip_decl(head, params, decl) || name.length() == 0 {
+        ""
+    } else {
+        ret = map_type(head.substr(0, head.length() - name.length()))
+        name ++ "(" ++ map_params(params) ++ ") -> " ++ ret
+    }
 }
 
 // ---- generation -----------------------------------------------------------
 
 // Every prototype in the cleaned source, one declaration per line.
 decls(chunks: str[], i: int, acc: str) -> str {
-    line = i >= chunks.length() ? "" : prototype(chunks.get(i))
-    i >= chunks.length()
-        ? acc
-        : decls(chunks, i + 1, line.length() == 0 ? acc : acc ++ line ++ "\n")
+    if i >= chunks.length() {
+        acc
+    } else {
+        line = prototype(chunks.get(i))
+        if line.length() == 0 {
+            decls(chunks, i + 1, acc)
+        } else {
+            decls(chunks, i + 1, acc ++ line ++ "\n")
+        }
+    }
 }
 
 generate(src: str, header_name: str) -> str {
-    body = decls(strip(src).split(";"), 0, "")
+    found = decls(strip(src).split(";"), 0, "")
+    body = if found.length() == 0 {
+        "// (no function prototypes found)\n"
+    } else {
+        found
+    }
+
     "// Generated by `bindgen " ++ header_name
         ++ "` — Maca FFI declarations.\n"
         ++ "// Pointers become opaque `int` handles; `char*` becomes `str`.\n"
         ++ "import c \"" ++ header_name ++ "\"\n\n"
-        ++ (body.length() == 0 ? "// (no function prototypes found)\n" : body)
+        ++ body
 }
 
 // ---- entry point ----------------------------------------------------------
@@ -184,7 +258,12 @@ generate(src: str, header_name: str) -> str {
 // The file name at the end of a path (`/usr/include/sqlite3.h` → `sqlite3.h`).
 basename(path: str) -> str {
     cut = last_index_of(path, "/")
-    cut < 0 ? path : path.substr(cut + 1, path.length() - cut - 1)
+
+    if cut < 0 {
+        path
+    } else {
+        path.substr(cut + 1, path.length() - cut - 1)
+    }
 }
 
 // A sample header, so the tool demonstrates itself when run with no argument.
@@ -201,13 +280,15 @@ sample_header() -> str =>
 // runs over a built-in sample; with one it reads the header; with two it writes
 // the generated module to the second path instead of printing it.
 main(args: str[]) -> int {
-    path = args.length() > 0 ? args.get(0) : ""
-    name = path.length() == 0 ? "sqlite3.h" : basename(path)
+    path = if args.length() > 0 { args.get(0) } else { "" }
 
-    path.length() > 0 && !file_exists(path)
-        ? bail(path)
-        : emit(path.length() == 0 ? sample_header() : read_file(path),
-               name, args)
+    if path.length() == 0 {
+        emit(sample_header(), "sqlite3.h", args)
+    } else if !file_exists(path) {
+        bail(path)
+    } else {
+        emit(read_file(path), basename(path), args)
+    }
 }
 
 bail(path: str) -> int {
@@ -217,9 +298,12 @@ bail(path: str) -> int {
 
 emit(src: str, name: str, args: str[]) -> int {
     out = generate(src, name)
-    args.length() > 1
-        ? write_out(args.get(1), out)
-        : print_out(out)
+
+    if args.length() > 1 {
+        write_out(args.get(1), out)
+    } else {
+        print_out(out)
+    }
 }
 
 write_out(dest: str, text: str) -> int {
