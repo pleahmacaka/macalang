@@ -64,9 +64,11 @@ fn skip() -> bool {
     false
 }
 
-/// The shape the whole feature exists for: a package under `modules/`, its
-/// entry module saying what the package's name means, and one function of it
-/// run straight from the command line.
+/// The shape the whole feature exists for: one function out of a package, run
+/// straight from the command line. `http.serve` reads as the module `http` and
+/// its `serve`, or as the module `http/serve` under its own name — both are
+/// ordinary paths, so whichever exists is the one that was meant, and no entry
+/// file is needed to make the spelling read well.
 #[test]
 fn a_package_function_runs_from_the_command_line() {
     if skip() {
@@ -78,18 +80,21 @@ fn a_package_function_runs_from_the_command_line() {
         "listen(port: int) -> str =>\n    \"listening on {port}\"\n",
     )
     .write(
-        "modules/http/_init.maca",
+        "modules/http/serve.maca",
         "import { listen } from http/server\n\n\
          serve() -> int {\n    info(listen(8080))\n    0\n}\n",
     );
 
-    let out = p.run(&["http.serve"]);
-    assert!(out.status.success(), "{}", stderr(&out));
-    assert!(
-        stdout(&out).contains("listening on 8080"),
-        "{}",
-        stdout(&out)
-    );
+    // both spellings reach the same function
+    for spec in ["http.serve", "http/serve"] {
+        let out = p.run(&[spec]);
+        assert!(out.status.success(), "{spec}: {}", stderr(&out));
+        assert!(
+            stdout(&out).contains("listening on 8080"),
+            "{spec}: {}",
+            stdout(&out)
+        );
+    }
 }
 
 /// With no function named, `main` runs — a package that can be run says so.
@@ -182,7 +187,10 @@ fn the_refusals_name_what_is_missing() {
 
     let e = stderr(&p.run(&["nosuch.thing"]));
     assert!(e.contains("no module `nosuch`"), "{e}");
-    assert!(e.contains("_init.maca"), "says where it looked: {e}");
+    assert!(
+        e.contains("nosuch.maca") && e.contains("nosuch/thing.maca"),
+        "says both places it looked: {e}"
+    );
 
     let e = stderr(&p.run(&["status.missing"]));
     assert!(e.contains("no function `missing`"), "{e}");

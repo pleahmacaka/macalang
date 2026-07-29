@@ -5,9 +5,12 @@
 // process and pokes it with a socket. Everything asserted here is a claim the
 // module's own documentation makes.
 
-import { listen, fetch, get, text, html, json, status, ok, with_header,
-         closing, render, Response, parse_request, header, query_value,
-         form_value, reason, is_ok, content_type } from http
+import { listen, fetch, get } from http/server
+import { parse_request, header, query_value, form_value,
+         Request } from http/request
+import { Response, text, html, with_header, closing, render,
+         status } from http/response
+import { reason, is_ok, content_type } from http/status
 
 // A port nothing else in the suite uses. Not zero: the point is to exercise
 // the real bind path, and a port the OS chooses cannot be asked for again.

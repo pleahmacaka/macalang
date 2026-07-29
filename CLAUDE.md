@@ -69,11 +69,32 @@ benchmark harness, `packages/macalang/build.maca` builds the wasm into the npm
 package. All seven are compiled by `crates/driver/tests/scripts.rs`, because a
 script only run at release time rots quietly. The one exception is
 `install.sh`, which runs *before* there is a `maca` to run anything with.
-`std/` (importable Maca modules — `text`, `list`, `path`, `json`, `csv`, `fs`,
-`proc` — plus prelude docs; the rest of the stdlib is compiler/runtime
-builtins. **A slash-path import that resolves to no file is an error**: four
-files imported a `std/str` that has never existed, silently, and each then
-hand-wrote the helpers it believed it was importing),
+**Maca code lives under `modules/`, `apps/` and `src/`.** `modules/*` and
+`src/*` are import search roots, so `modules/std/text.maca` is written
+`std/text` and `modules/http/server.maca` is written `http/server` — from
+anywhere in the tree. So is `maca_modules/`, where `maca add` installs a
+dependency, which is why the directory it chose never appears in anybody's
+source. `apps/*` is deliberately *not* a root: two apps may each have a `conf`,
+and neither should silently answer for the other, so an application is reached
+by its written path (`import apps/tomo/conf`). `[layout]` in `maca.toml`
+renames any of them.
+
+**There is no entry file and no index.** A directory is not a module; a path is
+a path and that is the only thing it is. (An earlier design had a per-directory
+`_init.maca` re-exporting its neighbours, and it cost more than it bought: two
+names for every file, a second place to update when one moved, and an import
+whose meaning depended on a file the reader never opened.)
+
+**An import that resolves to no file is an error** — including a single-word
+selective import, because there is nothing to select from a builtin. Four files
+imported a `std/str` that has never existed, silently, and each then hand-wrote
+the helpers it believed it was importing.
+
+`modules/std/` holds the importable stdlib — `text`, `list`, `path`, `json`,
+`csv`, `fs`, `proc` — plus prelude docs; the rest is compiler/runtime builtins.
+`modules/http/` is the HTTP server (`server`/`request`/`response`/`status`, and
+`serve`, which `maca -m http.serve` runs).
+
 `examples/` (golden `.maca` programs + `examples/bad/`), `apps/`
 (capstones: `mqtt`, `microkernel`, `blink`, `desktop`, `mcmod`, `tomo` — the
 i18n handbook builder that renders `book/{en,ko}/*.md` into `site/`, built
@@ -207,7 +228,11 @@ handbook ch. 15 (`apps/tomo/book/{en,ko}/15-ui.md`); gated by
 Backends: native C (default), LLVM (SIMD span), Nix (config mode), JS
 (reactive UI), JVM (Java source / Minecraft-Fabric interop), and embedded
 (freestanding C for Cortex-M / RISC-V). Driver: `build` (`--target
-nix|js|jvm|rust|embedded|tauri`, `--mcu`, `--cp`), `run`, `dev` (dev-shell flake),
+nix|js|jvm|rust|embedded|tauri`, `--mcu`, `--cp`), `run`, `-m` (run a function
+out of a module — `maca -m http.serve`; the spec reads as either
+module + function or a whole path run under its own name, the exit status comes
+from the entry point's declared return type, and a `str[]` parameter receives
+the leftover command line), `dev` (dev-shell flake),
 `watch`, `fmt`, `lint`, `test` (runs every `test_…` function in a file),
 `profile`, `init`, `bindgen` (C header → Maca FFI
 declarations: `char*`→`str`, other pointers→opaque `int`, float family→`float`).

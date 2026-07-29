@@ -1773,11 +1773,20 @@ fn cmd_module(args: &[String]) {
     let root = maca_parser::modules::project_root(Path::new("."))
         .unwrap_or_else(|| PathBuf::from("."));
 
-    let Some(path) = entry::resolve(&module, &root) else {
-        die(&format!(
-            "-m: no module `{module}` — looked for {module}.maca and \
-             {module}/_init.maca under the project's package roots"
-        ));
+    // `http.serve` reads two ways: the module `http` and its `serve`, or the
+    // module `http/serve` run under its own name. Both are ordinary paths, so
+    // whichever exists is the one that was meant — and a package needs no entry
+    // file to be runnable by a name that reads well.
+    let whole = spec.replace('.', "/");
+    let (module, named, path) = match entry::resolve(&module, &root) {
+        Some(p) => (module, named, p),
+        None => match entry::resolve(&whole, &root) {
+            Some(p) => (whole, None, p),
+            None => die(&format!(
+                "-m: no module `{module}` — looked for {module}.maca and \
+                 {whole}.maca under the project's package roots"
+            )),
+        },
     };
     let src = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| die(&format!("-m: cannot read {}: {e}", path.display())));

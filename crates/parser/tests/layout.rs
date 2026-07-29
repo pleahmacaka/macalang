@@ -64,39 +64,40 @@ fn a_package_under_modules_is_imported_by_name() {
     assert_eq!(p.resolve(&app, "http").as_deref(), Some("modules/http.maca"));
 }
 
-/// A package may be one file or a directory entered through `_init.maca`, and
-/// an importer cannot tell which — so a module can grow from one into the other
-/// without touching a call site.
+/// A file inside a package is reached by its path, and the directory holding it
+/// is not itself a module: there is no entry file, so `http` names nothing.
 #[test]
-fn a_directory_package_is_entered_through_its_init() {
-    let p = Project::new("init");
+fn a_directory_is_not_a_module_but_its_files_are() {
+    let p = Project::new("dir");
     p.write("maca.toml", MANIFEST);
-    p.write("modules/http/_init.maca", "serve() -> int => 0\n");
+    p.write("modules/http/server.maca", "listen() -> int => 0\n");
     p.write("modules/http/parse.maca", "parse() -> int => 0\n");
-    let app = p.write("apps/site/main.maca", "import http\n");
+    let app = p.write("apps/site/main.maca", "import http/server\n");
 
+    assert_eq!(p.resolve(&app, "http"), None, "a directory is not a module");
     assert_eq!(
-        p.resolve(&app, "http").as_deref(),
-        Some("modules/http/_init.maca")
+        p.resolve(&app, "http/server").as_deref(),
+        Some("modules/http/server.maca")
     );
-    // and a file inside it is still addressable
     assert_eq!(
         p.resolve(&app, "http/parse").as_deref(),
         Some("modules/http/parse.maca")
     );
 }
 
-/// The flat file wins over the directory when a project somehow has both, so
-/// the answer never depends on directory-read order.
+/// An installed dependency is a search root too, so it is written by its own
+/// name — the directory `maca add` chose never appears in anybody's source.
 #[test]
-fn a_file_package_wins_over_a_directory_of_the_same_name() {
-    let p = Project::new("both");
+fn an_installed_dependency_needs_no_prefix() {
+    let p = Project::new("installed");
     p.write("maca.toml", MANIFEST);
-    p.write("modules/http.maca", "serve() -> int => 0\n");
-    p.write("modules/http/_init.maca", "serve() -> int => 1\n");
-    let app = p.write("apps/site/main.maca", "import http\n");
+    p.write("maca_modules/toml/parse.maca", "parse() -> int => 0\n");
+    let app = p.write("apps/site/main.maca", "import toml/parse\n");
 
-    assert_eq!(p.resolve(&app, "http").as_deref(), Some("modules/http.maca"));
+    assert_eq!(
+        p.resolve(&app, "toml/parse").as_deref(),
+        Some("maca_modules/toml/parse.maca")
+    );
 }
 
 /// A single-package repository puts its code in `src/` and needs no manifest
@@ -198,6 +199,13 @@ fn the_search_stops_at_the_project_root() {
 #[test]
 fn layout_defaults_are_the_recommended_shape() {
     let l = Layout::default();
-    assert_eq!(l.roots, vec!["modules".to_string(), "src".to_string()]);
+    assert_eq!(
+        l.roots,
+        vec![
+            "modules".to_string(),
+            "src".to_string(),
+            "maca_modules".to_string()
+        ]
+    );
     assert_eq!(l.apps, "apps");
 }

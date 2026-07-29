@@ -1,37 +1,22 @@
-// http — an HTTP server, and the pieces to build one out of.
+// http/serve — the working directory, over HTTP.
 //
-//     import { listen, text } from http
+//     maca -m http.serve              # port 8000, the working directory
+//     maca -m http.serve 3000 site    # port and directory
 //
-//     main() -> int =>
-//         listen(3000, req => text("hello from {req.path}"))
+// For looking at a built site without installing anything. A directory is
+// served through its `index.html` when it has one; there is no listing, because
+// a server that volunteers a file list is a server that eventually volunteers
+// the wrong one.
 //
-// A thread per connection with keep-alive. The socket and the byte framing are
-// C the runtime carries; the request, the response and the routing are Maca.
-// Nothing is fetched or linked from the host, so a program that serves HTTP is
-// still one static binary.
-//
-// This file is the package's table of contents: it names what `http` means,
-// and where each piece lives is the package's own business.
-//
-// It is also what `maca -m http.serve` runs — a static file server over the
-// working directory, for looking at a built site without installing anything.
+// This is one program written with the library next door — `http/server`
+// listens, `http/request` parses, `http/response` builds — and reading which
+// file each name came from is the point of writing the path.
 
-import { listen, fetch, get } from http/server
-import { parse_request, header, query_value, form_value,
-         Request } from http/request
-import { Response, ok, html, text, json, file, status, redirect,
-         with_header, closing, render } from http/response
-import { reason, is_ok, content_type } from http/status
+import { listen } from http/server
+import { Request } from http/request
+import { Response, file, status } from http/response
 import { join, normalize } from std/path
 
-/// Serve the working directory over HTTP.
-///
-///     maca -m http.serve              # port 8000, the working directory
-///     maca -m http.serve 3000 site    # port and directory
-///
-/// A directory is served through its `index.html` when it has one. There is no
-/// listing: a directory without an index is a 404, because a server that
-/// volunteers a file list is a server that eventually volunteers the wrong one.
 serve(args: str[]) -> int {
     port = if args.length() > 0 { int(args.get(0)) } else { 8000 }
     root = if args.length() > 1 { args.get(1) } else { "." }
