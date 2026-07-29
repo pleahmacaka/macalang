@@ -57,11 +57,17 @@ them. The output lands in `apps/tomo/site/`, which is gitignored.
 
 ```
 apps/tomo/
-├── tomo.maca        # the renderer (Markdown -> HTML) + i18n page shell, in Maca
+├── tomo.maca        # Markdown -> HTML, the i18n page shell, the book builder
+├── highlight.maca   # the syntax highlighter and its theme
+├── conf.maca        # the `book.toml` subset, shared with tools/build-site.maca
 ├── book.toml        # book config: title, languages, volumes, chapter order
-└── book/
-    ├── en/          # English chapters (the default language)
-    └── ko/          # Korean chapters (i18n)
+├── book/
+│   ├── en/          # English chapters (the default language)
+│   └── ko/          # Korean chapters (i18n)
+└── tests/
+    ├── highlight.maca   # one case per lexical distinction
+    └── roundtrip.maca   # highlighting every .maca file under apps/ loses
+                         # no character — `maca test` runs both
 ```
 
 ## The handbook
@@ -114,19 +120,8 @@ and, around the text:
   built site needs no network and no CSS file
 
 The markup is built with Maca's element syntax and the styles are generated
-(handbook chapter 15). Two pieces of CSS are written by hand: the line that
-tells the browser the page has a light and a dark palette, and the syntax
-theme's colours in `highlight.maca` — `text-…` accepts a *named* colour only
-(`text-[#cf222e]` is read as a font size), and the named palette holds one hue
-that clears 4.5:1 on a light code block.
-
-## Layout of the program
-
-```
-apps/tomo/
-├── tomo.maca        # Markdown -> HTML, the i18n page shell, the book builder
-├── highlight.maca   # the syntax highlighter and its theme
-├── conf.maca        # the `book.toml` subset, shared with tools/build-site.maca
-└── tests/
-    └── highlight.maca   # `maca test apps/tomo/tests/highlight.maca`
-```
+(`a11-ui`, the reference's UI chapter). Two pieces of CSS are written by hand:
+the line that tells the browser the page has a light and a dark palette, and the
+syntax theme's colours in `highlight.maca` — `text-…` accepts a *named* colour
+only (`text-[#cf222e]` is read as a font size), and the named palette holds one
+hue that clears 4.5:1 on a light code block.

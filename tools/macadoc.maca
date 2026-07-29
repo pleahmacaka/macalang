@@ -25,6 +25,9 @@ import std/path
 import std/text
 import apps/site/shell
 import std/list
+import { command, arg, rest } from cli/spec
+import { parse, value, from } from cli/parse
+import { bold, dim, ok, bad } from cli/style
 
 // ---- the model ------------------------------------------------------------
 
@@ -567,12 +570,34 @@ badge_class() -> str =>
 
 // ---- entry ----------------------------------------------------------------
 
-main(args: str[]) -> int {
-    if args.length() < 2 {
-        err("usage: macadoc <out-dir> <file.maca>…")
+Spec = command("macadoc", "an API reference, rendered from Maca source")
+    .arg("out", "the directory to write the reference into")
+    .rest("module", "the .maca files to document")
+
+// `cli/help` renders this page from the same value and is not imported here,
+// for the reason `tools/lint.maca` records: it reaches `cli/style`'s `pad`,
+// which stage-0 miscompiles beside whole-module `std/fs`.
+synopsis(c: Cmd) -> str =>
+    bold(c.name) ++ " — " ++ c.about ++ "\n\n"
+        ++ "  " ++ c.name ++ " <out-dir> <file.maca>...\n"
+
+main(argv: str[]) -> int {
+    got = parse(Spec, argv)
+
+    if got.wants_help {
+        info(synopsis(Spec))
+        0
+    } else if got.error != "" {
+        err(bad(got.error))
+        1
+    } else if from(got, 1).length() == 0 {
+        // `rest` is satisfied by nothing, so the count is checked here: a run
+        // with only an output directory otherwise wrote an index of no modules
+        // and reported success.
+        err(bad("macadoc: no modules given — nothing to document"))
         1
     } else {
-        generate(args.get(0), str_drop(args, 1))
+        generate(value(got, "out", ""), from(got, 1))
     }
 }
 
@@ -589,7 +614,8 @@ generate(out: str, sources: str[]) -> int {
     write_file(join(out, "index.html"), index_page(modules))
     written = write_modules(out, modules, 0)
 
-    info("macadoc: {written} modules, {total_items(modules, 0)} items → {out}")
+    info(ok("{written} modules, {total_items(modules, 0)} items → "
+            ++ dim(out)))
     0
 }
 

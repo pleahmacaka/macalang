@@ -4,7 +4,8 @@
 // built stage-1 to compile this same source. Gated in CI by the stage-0
 // parser + checker (see crates/driver/tests/selfhost.rs).
 
-// Token kinds. Nominal sum; nullary variants only, so it lowers to a C enum.
+// Nullary variants only, so this lowers to a plain C enum and a token stays a
+// value the emitters can compare with `==`.
 Kind =
     TInt | TFloat | TIdent | TStr | TPath
     | KwLet | KwIf | KwElse | KwFor | KwIn | KwMatch
@@ -23,7 +24,6 @@ Token = {
     pos:  int
 }
 
-// Map a bare word to its keyword kind, or TIdent when it is an ordinary name.
 keyword_kind(w: str) -> Kind =>
     match w {
         "let"    => KwLet

@@ -153,7 +153,7 @@ The single-line-`if` rule tested `line.contains("{")` — and matched nothing,
 ever. In Maca a `{` inside a string opens an interpolation, so `"{"` was not a
 literal brace; it opened an interpolation that the closing quote never ended, and
 the following `"` opened a *nested* string that swallowed source up to the next
-quote. The program compiled. A binding several lines below simply vanished.
+quote. The program compiled. A binding several lines below vanished.
 
 The fix was in two places. A literal brace is `\{` or `{{`, which was already
 true and which the rule now uses. And a `"…"` string may no longer span a line,

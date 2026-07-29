@@ -77,14 +77,30 @@ dropped(before: Result[], now: Result[], i: int, acc: Delta[]) -> Delta[] {
 delta(before: Result, now: Result, tolerance: float) -> Delta {
     was = ns_per_op(before)
     is_now = ns_per_op(now)
+    judgement = judged(before, now, was, is_now, tolerance)
 
     Delta {
         name = now.name,
         size = now.size,
         base_ns = was,
         now_ns = is_now,
-        ratio = was > 0.0 ? is_now / was : 0.0,
-        verdict = judged(before, now, was, is_now, tolerance),
+        ratio = comparable(judgement) && was > 0.0 ? is_now / was : 0.0,
+        verdict = judgement,
+    }
+}
+
+// No ratio for a pair the verdict has already refused to compare. The row used
+// to print `0.500  -50.0%` beside `! not comparable`, which sends the reader
+// off after the regression the verdict exists to say is not there — and
+// `percent_change` handed the same number to anyone who asked for it directly.
+comparable(v: Verdict) -> bool {
+    match v {
+        Faster => true
+        Slower => true
+        Same => true
+        Fresh => false
+        Missing => false
+        Unclear => false
     }
 }
 
@@ -162,9 +178,10 @@ marked(v: Verdict) -> str {
 }
 
 /// How far a case moved, as a signed percentage — `-20` is a fifth faster.
-/// Zero when there is nothing to compare against.
+/// Zero when there is nothing to compare — no baseline, or a pair the verdict
+/// refused.
 percent_change(d: Delta) -> float {
-    if d.base_ns <= 0.0 {
+    if d.ratio <= 0.0 || d.base_ns <= 0.0 {
         0.0
     } else {
         (d.now_ns - d.base_ns) * 100.0 / d.base_ns
@@ -191,10 +208,26 @@ tally(ds: Delta[], want: Verdict, i: int, acc: int) -> int {
 
 /// One line saying how the run went as a whole, for the top of a report or the
 /// end of a CI log.
-summary(ds: Delta[]) -> str =>
-    "{ds.length()} cases: {count_of(ds, Faster)} faster,"
+///
+/// The counts add up to the case count in front of them. They did not: a run
+/// of four where one case had vanished and two were unmeasurable read
+/// "4 cases: 0 faster, 0 slower, 0 unchanged, 1 new", which a reader takes for
+/// a quiet run rather than for three cases nobody looked at. The two extra
+/// counts are named only when they are not zero, so an ordinary run still
+/// reads as one short sentence.
+summary(ds: Delta[]) -> str {
+    head = "{ds.length()} cases: {count_of(ds, Faster)} faster,"
         ++ " {count_of(ds, Slower)} slower, {count_of(ds, Same)} unchanged,"
         ++ " {count_of(ds, Fresh)} new"
+    gone = count_of(ds, Missing)
+    murky = count_of(ds, Unclear)
+
+    if gone == 0 && murky == 0 {
+        head
+    } else {
+        head ++ ", {gone} gone, {murky} not comparable"
+    }
+}
 
 // ---- the table --------------------------------------------------------------
 
@@ -227,7 +260,7 @@ ratio_cell(d: Delta) -> str {
 }
 
 change_cell(d: Delta) -> str {
-    if d.base_ns <= 0.0 || d.now_ns <= 0.0 {
+    if d.ratio <= 0.0 {
         ""
     } else if percent_change(d) >= 0.0 {
         "+{percent_change(d):.1}%"

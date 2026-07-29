@@ -453,8 +453,14 @@ topo_sort(edges: int[], n: int) -> int[] {
     written == n ? out : []
 }
 
-/// A chain of `n` nodes with every third node also pointing two ahead — acyclic
-/// by construction, so the answer is always a full ordering.
+/// A chain, `0 → 1 → … → n-1`. Every edge runs from a lower index to a higher
+/// one, so there is no cycle and the answer is always a full ordering — and
+/// since a chain admits exactly one ordering, the answer is `0, 1, …, n-1`,
+/// which a test can check without reimplementing Kahn's algorithm.
+///
+/// A chain is also the shape this implementation is slowest on: only one node
+/// is ever ready, and taking it rescans the whole edge list, so the case is
+/// `n²` rather than the `n + e` a queue of edges-by-source would give.
 topo_sort_case(n: int) -> int {
     edges = zeros(2 * (n - 1 > 0 ? n - 1 : 0))
     at = 0

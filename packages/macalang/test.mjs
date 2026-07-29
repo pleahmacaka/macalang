@@ -1,4 +1,12 @@
 // Smoke test for the macalang JS package (run: node test.mjs).
+//
+// One of the few files here that is not Maca, and it cannot be: what it tests
+// is that a *JavaScript* program can import this package and call it. Rewritten
+// in Maca it would exercise the compiler rather than the package, which is
+// what every other suite in the repository already does. `index.js` and
+// `bun-plugin.js` are not Maca for the same reason twice over — they are what a
+// consumer imports, and they run in Node and Bun, where no Maca toolchain
+// exists.
 import assert from "node:assert";
 import { writeFileSync } from "node:fs";
 import { compile, toJS, loadModule, loadFile, version } from "./index.js";

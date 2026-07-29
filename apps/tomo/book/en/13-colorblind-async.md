@@ -25,14 +25,14 @@ fetch_both(a: str, b: str) -> str {
 ```
 
 `fetch_both` never declares itself async; using `spawn`/`await` is enough. And a
-plain function calling `fetch_both` doesn't have to change color either — it just
+plain function calling `fetch_both` doesn't have to change color either. It
 calls it.
 
 ## Why this matters
 
 Because there is no color to propagate, refactoring is painless: making a leaf
 function concurrent doesn't force a rewrite of every caller. The same code runs
-whether or not it happens to suspend, and `await a + await b` is just
+whether or not it happens to suspend, and `await a + await b` groups as
 `(await a) + (await b)` — `await` is an ordinary prefix operator.
 
 ## It compiles to real concurrency

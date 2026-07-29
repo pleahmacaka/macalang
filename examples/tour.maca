@@ -3,21 +3,18 @@
 
 /* Block comments work too. */
 
-// a tagged sum type and a record type
 Shape = Circle(float) | Rect(float, float)
 Point = {
     x: int
     y: int
 }
 
-// arrow-body function + `match` over a sum, with binding patterns
 area(s: Shape) -> float =>
     match s {
         Circle(r) => 3.14 * r * r
         Rect(w, h) => w * h
     }
 
-// block body: mutable binding + reassignment, while, break/continue, ternary
 collatz_steps(start: int) -> int {
     n = start
     steps = 0
@@ -31,7 +28,6 @@ collatz_steps(start: int) -> int {
     steps
 }
 
-// recursion
 fib(n: int) -> int =>
     n < 2 ? n : fib(n - 1) + fib(n - 2)
 
@@ -39,7 +35,7 @@ fib(n: int) -> int =>
 double(n: int) -> int => n * 2
 
 main() -> int {
-    // inclusive ranges, for-loops, list indexing + lvalue assignment
+    // `1..5` is inclusive at both ends: five elements, not four.
     xs = 1..5
     xs[0] = 10
     acc = 0
@@ -48,15 +44,12 @@ main() -> int {
     }
     info("acc = {acc}, len = {len(xs)}")
 
-    // records: literal, field access, functional update with `with`
     p = Point { x = 1, y = 2 }
     q = p with { y = 9 }
     info("p.y = {p.y}, q.y = {q.y}, q.double = {q.y.double()}")
 
-    // sum values, constructors, and `match` (via area)
     info("circle = {area(Circle(2.0))}, rect = {area(Rect(3.0, 4.0))}")
 
-    // boolean / comparison operators
     ok = acc > 0 && len(xs) == 5
     info("ok = {ok}, collatz(27) = {collatz_steps(27)}, fib(10) = {fib(10)}")
     0

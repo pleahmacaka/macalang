@@ -10,10 +10,14 @@
 // Type mapping: `char*` → `str`, other pointers → `int` (an opaque handle),
 // `double`/`float` → `float`, and the integer family → `int`.
 //
-// Run it with:  maca run tools/bindgen.maca
+// Run it with:  maca run tools/bindgen.maca [header.h] [out.maca]
 
 import { index_of_from, last_index_of } from std/text
 import { basename } from std/path
+import { command, rest } from cli/spec
+import { parse, from } from cli/parse
+import { help } from cli/help
+import { ok, bad, dim } from cli/style
 
 // ---- small string helpers -------------------------------------------------
 
@@ -242,43 +246,57 @@ sample_header() -> str =>
         ++ "double sqlite3_column_double(sqlite3_stmt*, int iCol);\n"
         ++ "int sqlite3_close(sqlite3*);\n"
 
-// `maca run tools/bindgen.maca <header.h> [out.maca]` — with no argument it
-// runs over a built-in sample; with one it reads the header; with two it writes
-// the generated module to the second path instead of printing it.
-main(args: str[]) -> int {
-    path = if args.length() > 0 { args.get(0) } else { "" }
+// `bindgen [header.h] [out.maca]`. Both positionals are optional — with no
+// header the sample above stands in, with no destination the module is printed
+// — and `cli/spec` has no optional positional, because something a command
+// cannot run without is an argument and everything else is an option. So the
+// two arrive together as `rest` and are told apart by position here.
+Spec = command("bindgen", "a C header, as Maca FFI declarations")
+    .rest("path", "the header to read, then where to write the module")
 
-    if path.length() == 0 {
-        emit(sample_header(), "sqlite3.h", args)
-    } else if !file_exists(path) {
-        bail(path)
+main(argv: str[]) -> int {
+    got = parse(Spec, argv)
+    paths = from(got, 0)
+
+    if got.wants_help {
+        info(help(Spec))
+        0
+    } else if got.error != "" {
+        err(bad(got.error))
+        1
+    } else if paths.length() > 2 {
+        err(bad("bindgen takes a header and a destination, got "
+                ++ paths.join(", ")))
+        1
     } else {
-        emit(read_file(path), basename(path), args)
+        emit(paths)
     }
 }
 
-bail(path: str) -> int {
-    err("bindgen: cannot read " ++ path)
-    1
-}
+emit(paths: str[]) -> int {
+    dest = paths.length() > 1 ? paths.get(1) : ""
 
-emit(src: str, name: str, args: str[]) -> int {
-    out = generate(src, name)
-
-    if args.length() > 1 {
-        write_out(args.get(1), out)
+    if paths.length() == 0 {
+        deliver(generate(sample_header(), "sqlite3.h"), dest)
+    } else if !file_exists(paths.get(0)) {
+        err(bad("bindgen: cannot read " ++ paths.get(0)))
+        1
     } else {
-        print_out(out)
+        deliver(generate(read_file(paths.get(0)), basename(paths.get(0))),
+                dest)
     }
 }
 
-write_out(dest: str, text: str) -> int {
-    write_file(dest, text)
-    info("wrote " ++ dest)
-    0
-}
-
-print_out(text: str) -> int {
-    print(text)
-    0
+// Standard output is the default so the tool composes with a pipe. `--out`
+// says so on the terminal instead, because a program that writes a file and
+// prints nothing looks like a program that did nothing.
+deliver(text: str, dest: str) -> int {
+    if dest == "" {
+        print(text)
+        0
+    } else {
+        write_file(dest, text)
+        info(ok("wrote " ++ dim(dest)))
+        0
+    }
 }

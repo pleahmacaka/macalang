@@ -68,6 +68,24 @@ emits Rust source and takes dependencies from `[rust-dependencies]` in
 The trade is that you inherit the target's start-up cost and its runtime. Reach
 for these when the library you need lives there, and for native when it does not.
 
+### Implementing a foreign trait
+
+`Type : Trait = { … }` declares a Rust trait implementation, one field per
+method. This is the one place a lambda's return type has to be written down:
+the trait lives in a crate the compiler does not read, so the signature the
+method must match is not something inference can reach.
+
+```maca
+Counter : Render = {
+    render = (self, window, cx) -> AnyElement =>
+        div().child("Count: {self.count}").into_any_element()
+}
+```
+
+The form is Rust-target-only. Every other target has no trait to implement, and
+`--target rust` is also the target with the longest refusal list below, for the
+same reason: it is the one whose foreign side the compiler cannot see.
+
 ## Embedded
 
 ```
@@ -145,7 +163,7 @@ is why the list is the length it is.
 
 A BEAM target is the one people ask about, because Maca's concurrency model
 looks like a fit. It isn't on the list, because it would be the first backend
-added for elegance rather than reach — colorblind async already runs on pthreads
-in the C runtime, and an Erlang-style lowering would be a second, genuinely
-different implementation of something that works. Reach is a reason. Symmetry is
-not.
+added for elegance rather than reach — [colorblind async](a7-effects.md) already
+runs on pthreads in the C runtime, and an Erlang-style lowering would be a
+second, genuinely different implementation of something that works. Reach is a
+reason. Symmetry is not.

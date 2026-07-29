@@ -48,8 +48,8 @@ fetch_both(a: str, b: str) -> str {
 ```
 
 `fetch_both` never declares itself async; using `spawn`/`await` is enough. And a
-plain function calling `fetch_both` doesn't have to change colour either — it
-just calls it.
+plain function calling `fetch_both` doesn't have to change colour either. It
+calls it.
 
 `await` and `spawn` are **prefix operators at unary precedence**, which places
 them tighter than every binary operator and looser than a call. So

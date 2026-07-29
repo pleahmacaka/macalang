@@ -117,7 +117,6 @@ fn compile_json(src: &str, mode: u32) -> String {
     out.push_str(",\"symbols\":");
     out.push_str(&symbols_json(src, &parsed.module));
 
-    // parse errors
     out.push_str(",\"parseErrors\":[");
     for (i, e) in parsed.errors.iter().enumerate() {
         if i > 0 {

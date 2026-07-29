@@ -4,15 +4,15 @@
 // ast.maca. Maca surface has no tuples, so a parse step threads its result as a
 // `PExpr { node, next }` record — the parsed node plus the next token index.
 //
-// This slice covers primaries (int / str / ident / parenthesized), a
-// single-argument call, and left-associative `+`/`-`. It is the seed the
-// stage-1 parser grows from; gated by the stage-0 front-end.
+// It is a slice of the real grammar, not all of it, and it grows one construct
+// at a time — each addition gated by compiling and running what it emits.
+// Anything it cannot parse is a token it walks past, not a diagnostic: the
+// stage-0 front-end is still the one that rejects bad input.
 
 import selfhost/token
 import selfhost/ast
 import selfhost/lexer
 
-// Result of a parse step: the node plus the next index to read.
 PExpr = {
     node: Expr
     next: int
@@ -21,7 +21,6 @@ PExpr = {
 mk_pexpr(node: Expr, next: int) -> PExpr =>
     PExpr { node, next }
 
-// Result of parsing a statement / a parameter list (node + next index).
 PStmt = {
     snode: Stmt
     snext: int
@@ -46,7 +45,9 @@ PBlock = {
 mk_pblock(bstmts: Stmt[], bnext: int) -> PBlock =>
     PBlock { bstmts, bnext }
 
-// Result of parsing a call's argument list (the args + the index past `)`).
+// `anext` is past the closing bracket; `PParams.pnext` sits on it. The two
+// differ because a parameter list's caller has a `->` to look at next and a
+// call's does not.
 PArgs = {
     aitems: Expr[]
     anext: int
@@ -57,9 +58,7 @@ mk_pargs(aitems: Expr[], anext: int) -> PArgs =>
 
 // ---- function definitions -------------------------------------------------
 
-// `name(p [: T], …) -> R <body>` — a top-level function. The body is either an
-// arrow expression (`=> e`) or a brace block (`{ stmt* }`). Parameter types are
-// carried on the ident nodes the AST uses for parameters.
+// fn := ident '(' params ')' [ '->' type ] ( '=>' expr | '{' stmt* '}' )
 parse_fn(ts: Token[], i: int) -> PStmt {
     name = ts.get(i).text
     pp = parse_params(ts, i + 2, [])   // i+1 is '(' ; params start at i+2
@@ -73,7 +72,8 @@ parse_fn(ts: Token[], i: int) -> PStmt {
     }
 }
 
-// The declared return type, or "" when the signature has no `-> R` at all.
+// "" for a signature with no `-> R`. The emitters read that as `int`/`i64`
+// rather than as an error, which is what makes an unannotated function compile.
 return_type(ts: Token[], at: int) -> str {
     if ts.get(at).kind != Arrow {
         ""
@@ -84,7 +84,8 @@ return_type(ts: Token[], at: int) -> str {
     }
 }
 
-// Where the body begins: past `-> R` or `-> R[]`, or right here when neither.
+// Kept separate from `return_type` so the two never disagree about how many
+// tokens a `[]` suffix costs.
 after_return_type(ts: Token[], at: int) -> int {
     if ts.get(at).kind != Arrow {
         at
@@ -107,7 +108,7 @@ mk_block_fn(ts: Token[], name: str, ret: str, params: Expr[],
     mk_pstmt(s_fn(name, ret, params, pb.bstmts), pb.bnext)
 }
 
-// A brace block: statements (a binding `x = e` or a bare expression) up to `}`.
+// block := '{' ( ident '=' expr | expr )* '}'
 parse_block(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
     if ts.get(i).kind == RBrace {
         mk_pblock(acc, i + 1)          // skip '}'
@@ -129,13 +130,12 @@ parse_expr_stmt(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
     parse_block(ts, e.next, acc ++ [s_expr(e.node)])
 }
 
-// A whole module: parse top-level items until `Eof`. Whitespace (including
-// newlines) is skipped by the lexer, so items sit back-to-back in the token
-// stream and each parse step returns where the next one begins.
+// The lexer drops newlines, so items sit back-to-back with nothing separating
+// them: each parse step has to return exactly where the next one begins or the
+// rest of the file is read at the wrong offset.
 //
-// An item is an `import a/b` statement (skipped — the driver resolves and
-// inlines modules), a record type declaration `Name = { … }`, a sum
-// `Name = A | B …`, or a function definition.
+// `import` lines are walked past rather than recorded — the driver has already
+// resolved and inlined them by the time this runs.
 parse_module(ts: Token[], i: int, acc: Stmt[]) -> Module {
     if ts.get(i).kind == Eof {
         Module { items = acc }
@@ -169,13 +169,12 @@ is_sum_decl(ts: Token[], i: int) -> bool {
     }
 }
 
-// Does `w` begin with an ASCII capital? A sum's variants do, and a called
-// function's name doesn't, which is the whole test.
+// A sum's variants are capitalized and a called function's name is not, which
+// is the whole of what separates `Color = Red | Green` from `x = f(1)`.
 is_upper(w: str) -> bool =>
     w.length() > 0 && w.at(0).is_alpha() && w.at(0).upper() == w.at(0)
 
-// The index past an `import a/b/c` path — `i` is on the first path segment;
-// `Ident ('/' Ident)*` is consumed.
+// `i` is on the first path segment, and a path is `Ident ('/' Ident)*`.
 import_end(ts: Token[], i: int) -> int {
     if ts.get(i + 1).kind == Slash {
         import_end(ts, i + 2)
@@ -184,19 +183,16 @@ import_end(ts: Token[], i: int) -> int {
     }
 }
 
-// `Name = A | B | C` → a sum declaration. `i` is on the name; the first variant
-// is at `i + 2` (past `Name =`).
+// `i` is on the name, so the first variant is at `i + 2`, past `Name =`.
 parse_sum_decl(ts: Token[], i: int, acc: Stmt[]) -> Module {
     name = ts.get(i).text
     sv = parse_variants(ts, i + 2, [])
     parse_module(ts, sv.pnext, acc ++ [s_sum(name, sv.params)])
 }
 
-// Bar-separated variants; stops at the first token that isn't `Ident |`.
-//
-// A variant may carry a payload — `Circle(int) | Rect(int, int)`. The declared
-// types ride as the variant node's children, which is what lets the Rust
-// emitter write a real `enum Shape { Circle(i64) }`.
+// A payload's declared types ride as the variant node's children, which is what
+// lets the Rust emitter write a real `enum Shape { Circle(i64) }` rather than a
+// tag and a row of untyped cells.
 parse_variants(ts: Token[], i: int, acc: Expr[]) -> PParams {
     v = parse_variant(ts, i)
     seen = acc ++ [v.node]
@@ -218,7 +214,7 @@ parse_variant(ts: Token[], i: int) -> PExpr {
     }
 }
 
-// The `(int, int)` after a variant name. `i` sits on the first type.
+// `i` sits on the first type, past the `(`.
 parse_payload(ts: Token[], i: int, v: Expr) -> PExpr {
     if ts.get(i).kind == RParen {
         mk_pexpr(v, i + 1)
@@ -235,8 +231,7 @@ parse_fn_item(ts: Token[], i: int, acc: Stmt[]) -> Module {
     parse_module(ts, ps.snext, acc ++ [ps.snode])
 }
 
-// `Name = { x: int, y: int }` → a record type declaration (fields ride as typed
-// idents). `i` is on the name; fields start at `i + 3` (past `Name = {`).
+// `i` is on the name, so the fields start at `i + 3`, past `Name = {`.
 parse_record_decl(ts: Token[], i: int, acc: Stmt[]) -> Module {
     name = ts.get(i).text
     rf = parse_fields(ts, i + 3, [])
@@ -244,7 +239,8 @@ parse_record_decl(ts: Token[], i: int, acc: Stmt[]) -> Module {
     parse_module(ts, rf.pnext + 1, acc ++ [s_record(name, rf.params)])
 }
 
-// Typed fields up to the closing `}` (its index is returned in `pnext`).
+// `pnext` lands *on* the closing brace, not past it — the caller skips it,
+// because a record declaration and a record literal end differently.
 parse_fields(ts: Token[], i: int, acc: Expr[]) -> PParams {
     if ts.get(i).kind == RBrace {
         mk_pparams(acc, i)
@@ -271,7 +267,6 @@ skip_comma(ts: Token[], i: int) -> int {
     }
 }
 
-// Parse a comma-separated parameter list up to the closing `)`.
 parse_params(ts: Token[], i: int, acc: Expr[]) -> PParams {
     if ts.get(i).kind == RParen {
         mk_pparams(acc, i)
@@ -286,7 +281,8 @@ parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
     parse_params(ts, skip_comma(ts, after_param_type(ts, i)), seen)
 }
 
-// `name`, `name: T` or `name: T[]` — the type, or "" when unannotated.
+// "" for an unannotated parameter. The checker reads that as gradual rather
+// than as an error — see `param_ty` in check.maca.
 param_type(ts: Token[], i: int) -> str {
     if ts.get(i + 1).kind != Colon {
         ""
@@ -368,12 +364,10 @@ climb(ts: Token[], lhs: PExpr, p: int, min_prec: int) -> PExpr {
     parse_bin(ts, mk_pexpr(node, rhs.next), min_prec)
 }
 
-// primary := atom { '.' field } — an atom followed by zero or more field
-// accesses (`p.x.y`).
+// primary := atom { '.' field | '.' method '(' args ')' }
 parse_primary(ts: Token[], i: int) -> PExpr =>
     parse_postfix(ts, parse_atom(ts, i))
 
-// Chain postfix `.field` accesses and `.method(args)` calls onto a base.
 parse_postfix(ts: Token[], e: PExpr) -> PExpr {
     if ts.get(e.next).kind == Dot {
         parse_dot(ts, e)
@@ -440,7 +434,6 @@ interp_step(cs: str[], i: int, inside: bool, cur: str, acc: str[]) -> str[] {
     }
 }
 
-// Fold the pieces into one `++` chain, wrapping each expression in `str(…)`.
 join_parts(parts: str[], i: int, acc: Expr) -> Expr {
     if i >= parts.length() {
         acc
@@ -488,8 +481,8 @@ parse_atom(ts: Token[], i: int) -> PExpr {
     }
 }
 
-// `[a, b, c]` — a list literal. Elements start at `i + 1`; `parse_list_elems`
-// reuses the argument collector but stops at `]`.
+// The elements go through the argument collector's shape, stopping at `]`
+// instead of `)` — a list literal and an argument list differ only in that.
 parse_list(ts: Token[], i: int) -> PExpr {
     el = parse_list_elems(ts, i + 1, [])
     mk_pexpr(e_list(el.aitems), el.anext)
@@ -509,8 +502,7 @@ parse_one_elem(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     parse_list_elems(ts, skip_comma(ts, e.next), acc ++ [e.node])
 }
 
-// `match scrut { pat => body … }` over variant patterns (or `_`). The children
-// are seeded with the scrutinee, then each arm appends `[pat, body]`.
+// match := 'match' expr '{' ( pattern '=>' expr )* '}'
 parse_match(ts: Token[], i: int) -> PExpr {
     scrut = parse_expr(ts, i + 1)          // after 'match'
     arms = parse_arms(ts, scrut.next + 1, [scrut.node])   // skip '{'
@@ -525,8 +517,8 @@ parse_arms(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     }
 }
 
-// One arm. The pattern is a variant name, `_`, or a variant with binders —
-// `Circle(r) => …`, whose names ride as the pattern's children.
+// A pattern's binders ride as its children, so an arm with none is a bare
+// ident and the emitters can tell a tag test from a destructuring by length.
 parse_one_arm(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     p = parse_pattern(ts, i)
     body = parse_expr(ts, p.next + 1)      // skip '=>'
@@ -561,7 +553,7 @@ parse_neg(ts: Token[], i: int) -> PExpr {
     mk_pexpr(e_unary("-", operand.node), operand.next)
 }
 
-// Prefix logical-not: `!e`, same tight binding as negation.
+// Same tight binding as `parse_neg`, for the same reason.
 parse_not(ts: Token[], i: int) -> PExpr {
     operand = parse_primary(ts, i + 1)
     mk_pexpr(e_unary("!", operand.node), operand.next)
@@ -596,7 +588,7 @@ opens_record_lit(ts: Token[], i: int) -> bool {
     opens && named && ts.get(i + 3).kind == Eq
 }
 
-// `Name { field = value, … }` — a record literal; fields start at `i + 2`.
+// `i` is on the type name, so the fields start at `i + 2`, past `Name {`.
 parse_record_lit(ts: Token[], i: int, name: str) -> PExpr {
     rf = parse_lit_fields(ts, i + 2, [])
     mk_pexpr(e_record(name, rf.aitems), rf.anext)
@@ -610,7 +602,6 @@ parse_lit_fields(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     }
 }
 
-// Each `field = value` pair is stored as an `EBinary("=", field, value)`.
 parse_one_lit_field(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     fname = ts.get(i).text
     v = parse_expr(ts, i + 2)           // 'field = value'
@@ -619,13 +610,11 @@ parse_one_lit_field(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     parse_lit_fields(ts, skip_comma(ts, v.next), seen)
 }
 
-// `name ( arg, … )` — a comma-separated argument list (zero or more).
 parse_call(ts: Token[], i: int, name: str) -> PExpr {
     a = parse_args(ts, i + 2, [])      // i+1 is '(' ; args start at i+2
     mk_pexpr(e_call(name, a.aitems), a.anext)
 }
 
-// Collect call arguments up to the closing `)`, which `parse_args` skips.
 parse_args(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     if ts.get(i).kind == RParen {
         mk_pargs(acc, i + 1)            // skip ')'

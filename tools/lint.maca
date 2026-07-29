@@ -15,8 +15,21 @@
 // Run it with:  maca run tools/lint.maca [path…]
 // With no path it lints the repository's own Maca sources.
 
+import { command, rest } from cli/spec
+import { parse, from } from cli/parse
+import { bold, dim, ok, bad } from cli/style
+import { find, read_lines } from std/fs
 
 // ---- one file -------------------------------------------------------------
+
+// Where a complaint is and what it is about, kept apart from how it prints.
+// The report styles the location and the count is a list length, neither of
+// which is true of a pile of pre-formatted lines.
+Issue = {
+    path: str,
+    line: int,
+    what: str,
+}
 
 // Does this line hold a whole `if` block, opened and closed? The line must
 // *start* with the keyword — an `if ` in the middle is a string or a comment
@@ -62,48 +75,45 @@ collapse(cs: str[], i: int, quoted: bool, acc: str) -> str {
 has_trailing_space(line: str) -> bool =>
     line.length() > 0 && (line.ends_with(" ") || line.ends_with("\t"))
 
-// Every complaint about one line, as text (empty when the line is clean).
-line_issues(path: str, no: int, line: str) -> str =>
+// Every complaint about one line (empty when the line is clean).
+line_issues(path: str, no: int, line: str) -> Issue[] =>
     say(path, no, too_wide(line), "line exceeds 80 columns")
         ++ say(path, no, single_line_if(line),
                "single-line `if` block; break it across lines")
         ++ space_issues(path, no, line)
 
 // The rules that apply to any text, Maca or foreign.
-space_issues(path: str, no: int, line: str) -> str =>
+space_issues(path: str, no: int, line: str) -> Issue[] =>
     say(path, no, has_trailing_space(line), "trailing whitespace")
         ++ say(path, no, line.contains("\t"),
                "hard tab; Maca indents with four spaces")
 
 // One complaint, or nothing at all.
-say(path: str, no: int, hit: bool, what: str) -> str {
+say(path: str, no: int, hit: bool, what: str) -> Issue[] {
     if hit {
-        at(path, no) ++ what ++ "\n"
+        [Issue { path = path, line = no, what = what }]
     } else {
-        ""
+        []
     }
 }
-
-at(path: str, no: int) -> str =>
-    path ++ ":" ++ str(no) ++ ": "
 
 // Walk the file, threading whether we are inside a raw `"""…"""` block. Those
 // hold foreign text — the CSS and JS a `.maca` UI carries inline — so the two
 // rules about *Maca* code shape (width, single-line `if`) are suspended there,
 // for the same reason a long string literal is exempt. Whitespace hygiene
 // still applies: a trailing space is noise in any language.
-scan_lines(path: str, lines: str[], i: int, raw: bool, acc: str) -> str {
-    if i >= lines.length() {
+scan_lines(path: str, ls: str[], i: int, raw: bool, acc: Issue[]) -> Issue[] {
+    if i >= ls.length() {
         acc
     } else {
-        line = lines.get(i)
+        line = ls.get(i)
         fence = odd_fence(line)
         found = if raw || fence {
             space_issues(path, i + 1, line)
         } else {
             line_issues(path, i + 1, line)
         }
-        scan_lines(path, lines, i + 1, raw != fence, acc ++ found)
+        scan_lines(path, ls, i + 1, raw != fence, acc ++ found)
     }
 }
 
@@ -125,123 +135,115 @@ count_fences(cs: str[], i: int, n: int) -> int {
 fence_at(cs: str[], i: int) -> bool =>
     cs.get(i) == "\"" && cs.get(i + 1) == "\"" && cs.get(i + 2) == "\""
 
-lint_file(path: str) -> str =>
-    scan_lines(path, read_file(path).split("\n"), 0, false, "")
+lint_file(path: str) -> Issue[] =>
+    scan_lines(path, read_lines(path), 0, false, [])
 
-// ---- a directory tree -----------------------------------------------------
+// ---- a tree ---------------------------------------------------------------
 
-ends_with_maca(name: str) -> bool =>
-    name.ends_with(".maca")
+// `std/fs` already walks recursively and asks `is_dir` about each entry. The
+// walk written here instead treated "`list_dir` found nothing" as "not a
+// directory", so an empty directory and a file were the same thing to it.
+lint_tree(dir: str) -> Issue[] =>
+    lint_each(find(dir, ".maca"), 0, [])
 
-// Lint every `.maca` file under `dir`, recursively — `apps/` keeps each
-// capstone in its own subdirectory, so one level isn't enough.
-lint_dir(dir: str) -> str =>
-    lint_entries(dir, list_dir(dir), 0, "")
-
-lint_entries(dir: str, names: str[], i: int, acc: str) -> str {
-    if i >= names.length() {
+lint_each(paths: str[], i: int, acc: Issue[]) -> Issue[] {
+    if i >= paths.length() {
         acc
     } else {
-        found = lint_entry(dir ++ "/" ++ names.get(i))
-        lint_entries(dir, names, i + 1, acc ++ found)
+        lint_each(paths, i + 1, acc ++ lint_path(paths.get(i)))
     }
 }
 
-// A path is a directory exactly when `list_dir` finds something in it — there
-// is no `is_dir` primitive, and an empty directory has nothing to lint anyway.
-lint_entry(path: str) -> str {
-    if ends_with_maca(path) {
+// A path is a file or a tree, and one that is not there yields nothing: the
+// default list names every directory that could hold Maca source, and a
+// checkout without one of them is not a style violation. An explicitly given
+// path that is missing is refused before it gets here.
+lint_path(path: str) -> Issue[] {
+    if is_dir(path) {
+        lint_tree(path)
+    } else if file_exists(path) {
         lint_file(path)
-    } else if list_dir(path).length() > 0 {
-        lint_dir(path)
     } else {
-        ""
-    }
-}
-
-// ---- counting -------------------------------------------------------------
-
-// Issues are newline-terminated, so the count is the number of non-empty lines.
-count_issues(report: str) -> int {
-    if report.length() == 0 {
-        0
-    } else {
-        count_nonempty(report.split("\n"), 0)
-    }
-}
-
-count_nonempty(lines: str[], i: int) -> int {
-    if i >= lines.length() {
-        0
-    } else if lines.get(i).length() > 0 {
-        1 + count_nonempty(lines, i + 1)
-    } else {
-        count_nonempty(lines, i + 1)
+        []
     }
 }
 
 // ---- entry point ----------------------------------------------------------
 
-// The repository's own Maca sources, when no path is given — Maca linting Maca.
-// Every directory holding Maca source. Nothing is exempt: a style the codebase
-// doesn't hold to isn't a style.
-default_dirs() -> str[] =>
-    ["examples", "selfhost", "tools", "modules", "apps", "playground",
-     "crates/driver/tests/programs"]
+// What gets linted when no path is given: Maca linting Maca. Every path in the
+// repository that holds Maca source is here, and nothing is exempt — a style
+// the codebase doesn't hold to isn't a style.
+default_paths() -> str[] =>
+    ["examples", "selfhost", "tools", "modules", "apps", "playground", "bench",
+     "packages", "crates/driver/tests/programs", "dev.maca"]
 
-lint_all(dirs: str[], i: int, acc: str) -> str {
-    if i >= dirs.length() {
-        acc
-    } else if !file_exists(dirs.get(i)) {
-        lint_all(dirs, i + 1, acc)
+Spec = command("lint", "Maca's style rules, over a file or a whole tree")
+    .rest("path", "what to lint — the repository's own sources by default")
+
+// `cli/help` renders this page from the same value, and is not imported here.
+// It reaches `cli/style`'s `pad`, and a program holding a top-level `pad`
+// *and* whole-module `std/fs` — which brings in `std/text`'s `indent`, whose
+// lambda captures a parameter also called `pad` — miscompiles the capture into
+// the function and fails in the C compiler. Until stage-0 resolves a captured
+// name ahead of a top-level one, a tool that walks a tree cannot also render a
+// help page. The command has no options, so this is the whole page.
+synopsis(c: Cmd) -> str =>
+    bold(c.name) ++ " — " ++ c.about ++ "\n\n"
+        ++ "  " ++ c.name ++ " [path]...\n"
+
+main(argv: str[]) -> int {
+    got = parse(Spec, argv)
+
+    if got.wants_help {
+        info(synopsis(Spec))
+        0
+    } else if got.error != "" {
+        err(bad(got.error))
+        1
     } else {
-        lint_all(dirs, i + 1, acc ++ lint_dir(dirs.get(i)))
+        lint(from(got, 0))
     }
 }
 
-main(args: str[]) -> int {
-    report = report_for(args)
-    n = count_issues(report)
-
-    if n > 0 {
-        report_issues(report, n)
+lint(paths: str[]) -> int {
+    if paths.length() == 0 {
+        report(lint_each(default_paths(), 0, []))
     } else {
-        clean()
+        lint_given(paths)
     }
 }
 
-report_for(args: str[]) -> str {
-    if args.length() == 0 {
-        lint_all(default_dirs(), 0, "")
-    } else if !file_exists(args.get(0)) {
-        missing(args.get(0))
+// A path someone typed is refused when it isn't there. Silently linting
+// nothing would exit 0 and read as a pass.
+lint_given(paths: str[]) -> int {
+    absent = paths.filter(p => !file_exists(p))
+
+    if absent.length() > 0 {
+        err(bad("lint: cannot read " ++ absent.join(", ")))
+        1
     } else {
-        pick(args.get(0))
+        report(lint_each(paths, 0, []))
     }
 }
 
-// A path may be a single file or a directory; `list_dir` returns nothing for a
-// file, so a `.maca` suffix decides.
-pick(path: str) -> str {
-    if ends_with_maca(path) {
-        lint_file(path)
+report(issues: Issue[]) -> int {
+    for it in issues {
+        info(dim("{it.path}:{it.line}:") ++ " " ++ it.what)
+    }
+
+    if issues.length() == 0 {
+        info(ok("clean"))
+        0
     } else {
-        lint_dir(path)
+        info(bad(counted(issues.length())))
+        1
     }
 }
 
-missing(path: str) -> str =>
-    "lint: cannot read " ++ path ++ "\n"
-
-report_issues(report: str, n: int) -> int {
-    plural = if n == 1 { "" } else { "s" }
-
-    print(report)
-    info(str(n) ++ " issue" ++ plural)
-    1
-}
-
-clean() -> int {
-    info("clean")
-    0
+counted(n: int) -> str {
+    if n == 1 {
+        "1 issue"
+    } else {
+        "{n} issues"
+    }
 }

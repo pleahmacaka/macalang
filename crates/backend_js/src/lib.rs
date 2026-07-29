@@ -1347,7 +1347,6 @@ fn color(v: &str) -> Option<&'static str> {
     })
 }
 
-/// Escape a class name for a CSS selector (`/` in `w-1/2`, `.` in `p-1.5`).
 /// Escape a class name for use in a CSS selector.
 ///
 /// Utility names are full of characters a selector treats as syntax — `.` in
@@ -1395,8 +1394,6 @@ pub fn css_escape(c: &str) -> String {
     out
 }
 
-/// Walk a statement collecting whitespace-separated tokens of every string
-/// literal as Tailwind class candidates.
 /// Every whitespace-separated token of every string literal reachable from an
 /// item, as Tailwind class candidates.
 ///

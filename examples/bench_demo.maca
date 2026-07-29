@@ -2,7 +2,7 @@
 //
 //   maca run examples/bench_demo.maca
 //
-// Eight cases, three samples each, about a second in total. `quick()` is used
+// Nine cases, three samples each, about a second in total. `quick()` is used
 // on purpose and the footer says so: three samples of fifteen milliseconds is
 // enough to see a tenfold difference and nowhere near enough to see a five
 // percent one. `defaults()` is what a number you intend to quote is measured
@@ -15,7 +15,7 @@
 // forty-six by name, at the cost of a string comparison per call.
 
 import { measure, quick, Result } from bench/time
-import { table_of, heading, footnote, line_of } from bench/report
+import { table_of, heading, footnote } from bench/report
 import { compare, comparison_table, summary, Tolerance } from bench/compare
 import { int_arith, str_interp, list_index, map_get } from bench/cases/prim
 import { insertion_sort_case, fib_recursive_case } from bench/cases/algo

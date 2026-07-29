@@ -42,7 +42,8 @@ fn fmt_preserves_comments_and_is_idempotent() {
     let src = "// a leading comment\nfoo(x: int) -> int =>\n    x > 0\n        ? x   // inline note\n        : 0\n";
     std::fs::write(&f, src).unwrap();
 
-    // format twice
+    // Twice, so the assertions below run against a twice-formatted file: a
+    // formatter that drops a comment only on the second pass is caught here.
     for _ in 0..2 {
         let out = Command::new(maca())
             .args(["fmt", &f.to_string_lossy()])

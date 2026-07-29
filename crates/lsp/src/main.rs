@@ -379,7 +379,6 @@ fn reply(id: Option<Value>, result: Value) -> Value {
     json!({ "jsonrpc": "2.0", "id": id.unwrap_or(Value::Null), "result": result })
 }
 
-/// An LSP `Range` json for a `[start, end)` byte span into `text`.
 /// One `TextEdit` per span, all replacing with the same new name.
 fn edits_in(src: &str, spans: &[(usize, usize)], new_name: &str) -> Value {
     json!(
@@ -457,6 +456,7 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// An LSP `Range` json for a `[start, end)` byte span into `text`.
 fn range(text: &str, start: usize, end: usize) -> Value {
     let (sl, sc) = maca_lsp::offset_to_position(text, start);
     let (el, ec) = maca_lsp::offset_to_position(text, end);

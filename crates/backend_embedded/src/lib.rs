@@ -96,7 +96,6 @@ pub fn emit_c(m: &Module) -> String {
     if had_const {
         out.push('\n');
     }
-    // emit user functions
     for it in &m.items {
         if let Stmt::Fn(f) = it {
             out.push_str(&emit_fn(f));

@@ -15,6 +15,10 @@
 # Nix is optional — it powers `maca dev` and Nix builds. If missing (and you're
 # not on Windows) the installer offers to install it via the Determinate Systems
 # installer. Preseed with MACA_INSTALL_NIX=1 (install) or =0 (skip).
+#
+# Every other script in this repository is a Maca program. This one and its
+# Windows twin `install.ps1` are the two that cannot be: they run on a machine
+# that has no `maca` yet, and putting the toolchain there is the whole job.
 set -euo pipefail
 
 REPO="pleahmacaka/macalang"

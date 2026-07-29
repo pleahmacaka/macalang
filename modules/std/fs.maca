@@ -108,7 +108,6 @@ copy_all(from: str, to: str, files: str[], i: int, n: int) -> int {
     }
 }
 
-// One file, with its path rewritten from under `from` to under `to`.
 copy_one(p: str, from: str, to: str) -> bool {
     rel = strip_prefix(strip_prefix(p, from), "/")
     copy_file(p, join(to, rel))

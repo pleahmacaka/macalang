@@ -25,7 +25,6 @@ main() -> int {
     idx = title.index_of("Table")
     info("index {idx}")
 
-    // repeat + padding: building aligned, decorated output
     info("-".repeat(9))
     info("7".pad_start(3, "0"))
     info("ab".pad_end(5, "."))

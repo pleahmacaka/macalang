@@ -1,0 +1,73 @@
+// Corpus test for `apps/tomo/highlight`: highlighting must not change the
+// text, only wrap it.
+//
+// The unit suite next door (`tests/highlight.maca`) asserts which span a piece
+// of source lands in — one case per lexical distinction. This one asserts the
+// property that has to hold for every case at once, including the ones nobody
+// wrote a case for: strip the spans, undo the escaping, and what is left is the
+// file that went in. A scanner that drops a character, emits one twice, or
+// leaves a span open fails here even when every classification is right.
+//
+// The corpus is every `.maca` file under `apps/` — around 130 KB of real
+// source, including `tomo.maca`'s raw `"""…"""` blocks of CSS and JavaScript,
+// `home.maca`'s markup, and this suite's own escaped braces. It runs in tens of
+// seconds, because the scanner appends to one string per token and that is
+// quadratic in the block; the book itself is unaffected, where a block is a few
+// hundred bytes and the whole site renders in under a second.
+
+import { highlight } from apps/tomo/highlight
+import { find } from std/fs
+
+// The text a browser would show: spans removed, entities undone. Only the span
+// markup can contain a raw `<`, because everything the highlighter emits from
+// the source is escaped first.
+text_of(html: str) -> str {
+    parts = html.split("<")
+    out = parts.get(0)
+    i = 1
+    while i < parts.length() {
+        p = parts.get(i)
+        at = p.index_of(">")
+        out = out ++ (at < 0 ? p : p.substr(at + 1, p.length() - at - 1))
+        i = i + 1
+    }
+    unescape(out)
+}
+
+// The inverse of `escape_html`, and `&amp;` goes last for the same reason it
+// went first there.
+unescape(s: str) -> str =>
+    s.replace("&quot;", "\"")
+        .replace("&gt;", ">")
+        .replace("&lt;", "<")
+        .replace("&amp;", "&")
+
+// Where two strings first differ, or their common length.
+first_diff(a: str, b: str) -> int {
+    n = a.length() < b.length() ? a.length() : b.length()
+    i = 0
+    while i < n {
+        if a.substr(i, 1) != b.substr(i, 1) {
+            break
+        }
+        i = i + 1
+    }
+    i
+}
+
+test_highlighting_maca_preserves_every_character() {
+    files = find("apps", ".maca")
+    assert(files.length() > 5, "the corpus is missing: {files.length()} files")
+
+    i = 0
+    while i < files.length() {
+        path = files.get(i)
+        src = read_file(path)
+        back = text_of(highlight("maca", src))
+        at = first_diff(back, src)
+        assert_eq(back.substr(at, 60), src.substr(at, 60),
+                  "{path} differs at byte {at}")
+        assert_eq(back.length(), src.length(), "{path} changed length")
+        i = i + 1
+    }
+}

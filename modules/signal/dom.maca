@@ -35,6 +35,10 @@
 // head, bound nodes in the body, `patch_script` sent down however the page
 // gets its updates — works today and is the same markup either way.
 
+// Every import here is selective, and every call to another function of this
+// module or of `signal/store` is a plain call and not a UFCS method — see the
+// note above `signal/store`'s reading section for the build failure that rule
+// avoids.
 import { escape_html } from std/text
 import { Store, get, changed } from signal/store
 
@@ -72,7 +76,15 @@ value_input(s: Store, key: str) -> str =>
 
 /// The selector matching every node bound to `key`. A page that binds by hand
 /// — `data-signal-as="href"` and the like — can check its own markup with it.
-selector(key: str) -> str => "[data-signal=\"" ++ key ++ "\"]"
+///
+/// A quote or a backslash in the key is escaped for CSS. The markup carries
+/// the key itself: the element syntax writes `&quot;` into the attribute and a
+/// browser reads a plain quote back out of it, so an unescaped selector would
+/// end early and quietly match nothing.
+selector(key: str) -> str => "[data-signal=\"" ++ css_escaped(key) ++ "\"]"
+
+css_escaped(key: str) -> str =>
+    key.replace("\\", "\\\\").replace("\"", "\\\"")
 
 // ---- the patch ------------------------------------------------------------
 
@@ -97,7 +109,7 @@ ops_from(s: Store, ks: str[], i: int, acc: Op[]) -> Op[] {
 
 /// One op as a line of text — what a native build prints instead of patching.
 describe(op: Op) -> str =>
-    "{op.key} {op.selector} <- {quoted(op.value)}"
+    "{op.key} {op.selector} <- {shown(op.value)}"
 
 /// The whole patch as lines, one per op.
 describe_all(ops: Op[]) -> str[] => lines_from(ops, 0, [])
@@ -113,6 +125,11 @@ lines_from(ops: Op[], i: int, acc: str[]) -> str[] {
 /// The JavaScript that applies the current patch, or "" when nothing changed.
 /// Run it after `runtime_script` is on the page, then `clear_changed` the store
 /// so the next change starts from an empty queue.
+///
+/// Import `patch` alongside it. This is the one function here whose signature
+/// hides `Op[]`, and a selective import declares an inlined module's array
+/// types only for the names it was given — `import { patch_script }` on its
+/// own compiles to `unknown type name 'dom__OpArr'`.
 patch_script(s: Store) -> str {
     ops = patch(s)
 
@@ -134,14 +151,26 @@ encode(ops: Op[], i: int, acc: str[]) -> str[] {
     }
 }
 
-// A JSON string literal. `std/json` has this, and taking it from there would
-// pull in `std/text` whole — which defines a `flush` that would silently
-// replace somebody else's. Four escapes is a cheaper price than that.
-quoted(s: str) -> str =>
-    "\"" ++ s.replace("\\", "\\\\")
-             .replace("\"", "\\\"")
-             .replace("\n", "\\n")
-             .replace("\r", "\\r") ++ "\""
+// What a quoted value must escape to be read back as itself: the escape
+// character, the quote that would end the string, and the two line breaks that
+// would end the line.
+escaped_value(v: str) -> str =>
+    v.replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+
+// A value as it reads in a `describe` line, where a human is the reader.
+shown(v: str) -> str => "\"" ++ escaped_value(v) ++ "\""
+
+// A JSON string literal that is also safe inside a `<script>` block. `<` is
+// escaped on top of the four: a value holding `</script>` would otherwise
+// close the block it was printed into, and everything after it on the page
+// would be read as JavaScript. `std/json` quotes strings too, and taking it
+// from there would pull in `std/text` whole — which defines a `flush` that
+// would silently replace somebody else's.
+quoted(v: str) -> str =>
+    "\"" ++ escaped_value(v).replace("<", "\\u003c") ++ "\""
 
 // ---- the browser side -----------------------------------------------------
 
@@ -150,12 +179,14 @@ runtime_script() -> str => element("script", runtime())
 
 /// The patcher, as JavaScript source. It is the whole browser half of this
 /// module: find the nodes bound to a changed key, update the one thing each of
-/// them shows, touch nothing else.
+/// them shows, touch nothing else. It escapes the key into its selector for
+/// the same reason `selector` does.
 runtime() -> str => """
 window.macaSignal = function (ops) {
   for (var i = 0; i < ops.length; i++) {
     var op = ops[i];
-    var nodes = document.querySelectorAll('[data-signal="' + op.key + '"]');
+    var key = op.key.replace(/[\\"]/g, "\\$&");
+    var nodes = document.querySelectorAll('[data-signal="' + key + '"]');
     for (var j = 0; j < nodes.length; j++) {
       var el = nodes[j];
       var as = el.getAttribute("data-signal-as");

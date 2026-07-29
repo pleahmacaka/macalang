@@ -60,21 +60,19 @@ checked(n: int) -> int {
 }
 
 main() -> int {
-    // records: construction, field access, functional update
     p = Point { x = 3, y = 4 }
     q = p with { y = 5 }
     info("record: {p.x} {p.y} -> {q.y}")
 
-    // bindings: mutable vs constant
     count = 0
     count = count + 1
     const Limit = 100
     info("bindings: {count} {Limit}")
 
-    // sum types + match
     info("sides: {sides(Square)}")
 
-    // lists and their UFCS methods, with lambdas *and* named functions
+    // A named function goes where a lambda goes. The list methods used to
+    // reject one, which is a bug the book found by writing the example.
     xs = [10, 20, 30]
     info("list: {xs.first()} {xs.length()} {xs.reduce(0, (a, b) => a + b)}")
     info("named fn: {[1, 2, 3, 4].filter(is_even).length()}")
@@ -82,7 +80,6 @@ main() -> int {
     // inferred return types, including through a higher-order parameter
     info("inferred: {inc(41)} {run_twice(n => n + 1, 40)}")
 
-    // control flow: ranges, ternary, list patterns
     info("sum_to: {sum_to(10)}")
     score = 75
     info("ternary: {score >= 60 ? "pass" : "fail"}")
@@ -93,7 +90,6 @@ main() -> int {
     info("propagate: {checked(2)}")
     info("try: [{try divide(10, 0)}] [{try divide(10, 2)}]")
 
-    // strings
     info("strings: {"ab".repeat(3)} {"7".pad_start(3, "0")} {"A,B".split(",").length()}")
 
     // a literal brace: doubled, or backslash-escaped. Both spell the same thing

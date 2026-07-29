@@ -239,9 +239,6 @@ impl<'a> Cx<'a> {
         }
     }
 
-    /// Record a codegen limitation. The placeholder C keeps the output
-    /// well-formed for tests, but `emit_checked` turns any recorded problem into
-    /// a hard error so a real build never ships silently-wrong code.
     /// The finished translation unit.
     ///
     /// `styles()` lowers to `MACA_STYLES`, which can only be defined once every
@@ -274,6 +271,9 @@ impl<'a> Cx<'a> {
         }
     }
 
+    /// Record a codegen limitation. The placeholder C keeps the output
+    /// well-formed for tests, but `emit_checked` turns any recorded problem into
+    /// a hard error so a real build never ships silently-wrong code.
     fn problem(&mut self, msg: impl Into<String>) {
         self.problems.push(msg.into());
     }
@@ -1531,8 +1531,6 @@ impl<'a> Cx<'a> {
         out
     }
 
-    /// The C type of a top-level constant: its declared type when it has one,
-    /// otherwise read off the initializer's shape.
     /// The C type of a top-level constant: its annotation, or what its
     /// initialiser says.
     ///
@@ -1561,14 +1559,13 @@ impl<'a> Cx<'a> {
     /// A user function's C signature.
     ///
     /// Emitted `static` by its callers, always: everything a program defines
-    /// lives in one translation
-    /// unit and is only called from it, while the engines beside it — the
-    /// runtime, the socket glue — are separate objects full of libc calls. A
-    /// program that defined `listen` gave the linker two of them, the glue's
-    /// `listen(srv, 512)` bound to the Maca one, and the server bound to a port
-    /// nobody named. Internal linkage makes a name collision with libc
-    /// impossible rather than merely unlikely, and lets the C compiler inline
-    /// across the whole program while it is there.
+    /// lives in one translation unit and is only called from it, while the
+    /// engines beside it — the runtime, the socket glue — are separate objects
+    /// full of libc calls. A program that defined `listen` gave the linker two
+    /// of them, the glue's `listen(srv, 512)` bound to the Maca one, and the
+    /// server bound to a port nobody named. Internal linkage makes a name
+    /// collision with libc impossible rather than merely unlikely, and lets the
+    /// C compiler inline across the whole program while it is there.
     fn fn_sig(&self, f: &FnDef) -> String {
         let (params, ret) = &self.fns[&f.name];
         let ps: Vec<String> = f
@@ -2301,17 +2298,14 @@ impl<'a> Cx<'a> {
                 }
                 ("1".into(), binds)
             }
-            Pattern::Bind(n) => {
-                // bind whole scrutinee
-                (
-                    "1".into(),
-                    vec![(
-                        n.clone(),
-                        format!("{} {} = {sv};", c_type(sty), cid(n)),
-                        sty.clone(),
-                    )],
-                )
-            }
+            Pattern::Bind(n) => (
+                "1".into(),
+                vec![(
+                    n.clone(),
+                    format!("{} {} = {sv};", c_type(sty), cid(n)),
+                    sty.clone(),
+                )],
+            ),
             Pattern::Str(lit) if matches!(sty, CTy::Arr(_)) => (
                 format!("{sv}.len == 1 && maca_str_eq({sv}.data[0], {})", c_str(lit)),
                 vec![],
@@ -5109,7 +5103,6 @@ fn bind_vars(declared: &Type, concrete: &CTy, m: &mut HashMap<String, CTy>) {
     }
 }
 
-/// A lowercase single-word type name that isn't a primitive is a type variable.
 /// A generic function's specialized C name for a concrete argument tuple, e.g.
 /// `id__int`, `id__str`, `id__Box`.
 fn mangle_name(name: &str, ctys: &[CTy]) -> String {
@@ -5142,10 +5135,6 @@ fn cty_tag(t: &CTy) -> String {
     }
 }
 
-/// Collect the identifiers a *simple-expression* lambda body references, into
-/// `out`. Returns false if the body uses a form this increment doesn't hoist
-/// (blocks, control flow, records, …) — the caller then declines to hoist,
-/// which keeps capture analysis sound (no identifier can be missed).
 /// Box a C value of type `t` into an `int64_t` for the closure-call boundary.
 /// A `str` (pointer) fits via `intptr_t`; a `float`/`double` is bit-preserved.
 fn box_i64(code: &str, t: &CTy) -> String {
@@ -5183,9 +5172,6 @@ fn unbox_i64(code: &str, t: &CTy) -> String {
     }
 }
 
-/// Collect the free variables of `e` — identifiers referenced but not bound by
-/// an enclosing binder inside `e` (lambda params, `for`/`match` patterns, block
-/// bindings). Used to compute a lambda's captures.
 /// Collect the names invoked as a call callee anywhere in `e` (`f(x)` adds
 /// `f`). Used to recognize a higher-order parameter: an unannotated param that
 /// is called must hold a function value. A full structural walk mirroring
@@ -5293,6 +5279,9 @@ fn callee_idents_stmts(stmts: &[Stmt], out: &mut HashSet<String>) {
     }
 }
 
+/// Collect the free variables of `e` — identifiers referenced but not bound by
+/// an enclosing binder inside `e` (lambda params, `for`/`match` patterns, block
+/// bindings). Used to compute a lambda's captures.
 fn free_vars(e: &Expr, bound: &HashSet<String>, out: &mut HashSet<String>) {
     match e {
         Expr::Ident(n) => {
@@ -5834,7 +5823,6 @@ fn note_escapes(e: &Expr, out: &mut HashSet<String>) {
     walk_children(e, &mut |c| note_escapes(c, out));
 }
 
-/// Apply `f` to each direct sub-expression of `e`.
 /// The expressions a block's statements carry, one level down.
 ///
 /// This used to match `Stmt::Expr` and `Stmt::Bind` and nothing else, so a
@@ -5858,6 +5846,7 @@ fn stmt_children(ss: &[Stmt], f: &mut dyn FnMut(&Expr)) {
     }
 }
 
+/// Apply `f` to each direct sub-expression of `e`.
 fn walk_children(e: &Expr, f: &mut dyn FnMut(&Expr)) {
     let stmts = stmt_children;
     match e {

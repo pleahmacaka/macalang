@@ -25,20 +25,17 @@ run_twice(f, x) => f(f(x))
 run_twice(n => n + 1, 40)              // 42
 ```
 
-A lambda infers its return type from its body. It can also declare one, which
-is what you need when the lambda has to match a signature the compiler cannot
-see — a method of a foreign trait on the Rust target, where the trait lives in
-a crate the compiler does not read:
+A lambda infers its return type from its body, and can declare one instead:
 
 ```maca
-Counter : Render = {
-    render = (self, window, cx) -> AnyElement =>
-        div().child("Count: {self.count}").into_any_element()
-}
+inc = (n) -> int => n + 1
 ```
 
-The annotation needs the parameter parentheses, so `(n) -> int => n + 1` rather
-than `n -> int => n + 1` — otherwise it would read as a function signature.
+Parenthesise the parameters when you annotate. One parameter works either way;
+two do not, because `a, b -> int => …` has no way to say where the list ends.
+You need the annotation when the lambda must match a type the compiler cannot
+see for itself. That happens in one place, and it is in the reference:
+implementing a Rust trait, in [Targets](a10-targets.md).
 
 A lambda body may be a block, the way a `match` arm's may:
 
@@ -86,8 +83,8 @@ empty and single-element cases clearer.
 
 ## Loops
 
-`while` and `for` are statements, and `for` walks an inclusive integer range with
-`..`:
+`while` and `for` are statements. `for` walks a list, or an inclusive integer
+range written with `..`:
 
 ```maca
 sum_to(n: int) -> int {
@@ -99,9 +96,22 @@ sum_to(n: int) -> int {
 }
 ```
 
-`break` and `continue` work as you expect. But note the Maca idiom leans on
-recursion and the list methods (`map`/`filter`/`reduce`) over explicit loops —
-they are usually shorter and say what they mean.
+`while` takes a condition, and you move the counter yourself:
+
+```maca
+countdown(start: int) -> int {
+    n = start
+    while n > 0 {
+        info("{n}")
+        n = n - 1
+    }
+    0
+}
+```
+
+`break` and `continue` work as you expect. The Maca idiom leans on recursion and
+the list methods (`map`/`filter`/`reduce`) over explicit loops — they are
+usually shorter and say what they mean.
 
 ## Error propagation
 

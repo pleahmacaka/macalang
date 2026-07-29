@@ -166,6 +166,9 @@ fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String {
             .map(|(n, _)| n.clone())
             .unwrap_or_default()
     };
+    // Floored at 1: the root's cost is the divisor for every frame's width, so
+    // a run that recorded no samples at all would otherwise scale the whole
+    // chart by infinity.
     let root_val = inclusive(&root_name, fns).max(1);
     let root = build(&root_name, root_val, 0, 0, fns, &mut Vec::new());
 
@@ -262,6 +265,9 @@ pub fn flamegraph_html_from(fns: &HashMap<String, FnCost>, unit: &str) -> String
             .map(|(n, _)| n.clone())
             .unwrap_or_default()
     };
+    // Floored at 1: the root's cost is the divisor for every frame's width, so
+    // a run that recorded no samples at all would otherwise scale the whole
+    // chart by infinity.
     let root_val = inclusive(&root_name, fns).max(1);
     let root = build(&root_name, root_val, 0, 0, fns, &mut Vec::new());
 

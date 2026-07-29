@@ -126,6 +126,11 @@ big     = xs.filter(n => n > 15)      // [20, 30]
 total   = xs.reduce(0, (a, b) => a + b)
 ```
 
+`n => n * 2` is a **lambda** — the same `=>` that gives a named function its
+body, with the name left off. [Closures and Control Flow](11-closures.md) is
+where it gets a chapter; here it is enough to read it as "the function that
+doubles its argument".
+
 ## Type annotations are inference hints
 
 You annotate function parameters and returns; inside a body, types flow on their

@@ -114,6 +114,7 @@ actually is.
 | `starts_with(s)` `ends_with(s)` | `bool` | |
 | `replace(from, to)` | `str` | every occurrence |
 | `substr(start, len)` | `str` | a **length**, not an end |
+| `slice(from, to)` | `str` | `to` is **exclusive**, as on a list |
 | `index_of(s)` | `int` | `-1` when absent |
 | `repeat(n)` | `str` | |
 | `pad_start(w, p)` `pad_end(w, p)` | `str` | `p` defaults to a space |

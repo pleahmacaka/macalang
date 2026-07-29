@@ -87,7 +87,7 @@ replace_at(ts: Tally[], at: int, t: Tally) -> Tally[] {
 this shape constantly in Maca code — it is how the compiler itself is written.
 
 `replace_at` shows the other side: `ts[at] = t` assigns through an index. Maca
-is not a pure language; it just prefers expressions.
+is not a pure language; it prefers expressions.
 
 ## Folding over the words
 

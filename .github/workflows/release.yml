@@ -53,6 +53,15 @@ jobs:
       - name: Build
         run: cargo build --release -p maca-driver -p maca-lsp
 
+      # The two steps below are the only inline scripts left in this
+      # repository's CI, and they stay scripts. Packaging a Maca program would
+      # mean `maca run tools/package.maca`, which compiles that program through
+      # the C backend and so needs a C compiler on the runner. Four of the five
+      # legs have one; `windows-latest` does not ship a `cc`. Writing it in Maca
+      # anyway would either leave a second implementation behind for Windows —
+      # exactly the drift this file's siblings exist to avoid — or make cutting
+      # a release depend on the compiler being able to build a program on the
+      # host whose binaries the release is being cut for.
       - name: Package (unix)
         if: runner.os != 'Windows'
         shell: bash

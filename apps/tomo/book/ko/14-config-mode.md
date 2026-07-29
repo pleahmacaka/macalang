@@ -31,10 +31,20 @@ maca build host.maca --target nix -o host.nix
 {
   networking.hostName = "rigel";
   system.stateVersion = "24.11";
+  environment.systemPackages = [ pkgs.git pkgs.curl pkgs.htop pkgs.ripgrep ];
+  services.openssh = {
+    enable = true;
+    passwordAuthentication = false;
+  };
 }
 ```
 
 Nix가 이것을 평가해 시스템을 구성합니다.
+
+들어간 대로 나오지 않은 줄이 둘 있습니다. `system.packages`는 NixOS의 이름인
+`environment.systemPackages`로 바뀌고, 설정을 한 `services.X` 블록에는 쓰지
+않은 `enable = true`가 붙습니다. 서비스를 켜는 일과 설정하는 일을 따로 하지는
+않으니까요. 두 재작성은 [설정 모드](a12-config.md)에 정리되어 있습니다.
 
 ## 설정 모드가 금지하는 것
 

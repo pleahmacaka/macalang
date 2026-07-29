@@ -99,6 +99,17 @@ test_an_unterminated_string_ends_at_the_line() {
     assert(out.contains(kw("const")), "the next line is still code: {out}")
 }
 
+// `from` is a keyword to the parser in one place and a name everywhere else.
+// This book has both: `import { x } from a/b`, and a record field called
+// `from`.
+test_from_is_a_keyword_only_in_an_import() {
+    imp = highlight("maca", "import \{ centroid \} from geometry\n")
+    field = highlight("maca", "Line = \{\n    from: Point\n\}\n")
+
+    assert(imp.contains(kw("from")), "the import form: {imp}")
+    assert(!field.contains(kw("from")), "a field named from: {field}")
+}
+
 test_hyphenated_identifier_versus_subtraction() {
     attached = highlight("maca", "nav(data-tomo=\"toc\")\n")
     spaced = highlight("maca", "n = a - b\n")
@@ -123,6 +134,18 @@ test_paths_only_where_an_operand_is_expected() {
 
     assert(path.contains(st("/tmp/x")), "a path literal: {path}")
     assert(div.contains(op("/")), "a spaced slash divides: {div}")
+}
+
+// The three closers complete an operand together — `expect_operand` lists
+// `RBrace` beside `RParen` and `RBracket`. Reading `}` the other way made the
+// slash after it open a path literal instead of dividing.
+test_every_closer_completes_an_operand() {
+    brace = highlight("maca", "n = f(x) \} /tmp\n")
+    bracket = highlight("maca", "n = xs[0] /tmp\n")
+
+    assert(brace.contains(op("/")) && !brace.contains(st("/tmp")),
+           "a slash after \} divides: {brace}")
+    assert(bracket.contains(op("/")), "and after ]: {bracket}")
 }
 
 test_everything_is_escaped() {

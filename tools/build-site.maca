@@ -7,11 +7,13 @@
 // the root page's links, and shipped a workflow that still grepped for the old
 // ones. Local and CI now run the same file or neither does.
 //
-//   maca run tools/build-site.maca [outdir]     # default: _site
+//   maca run tools/build-site.maca [outdir]        # default: _site
+//   MACA=target/debug/maca maca run tools/build-site.maca
 //
-// Assumes `maca` is already built at target/release/maca and the wasm compiler
-// at target/wasm32-unknown-unknown/release — the workflow builds both first,
-// and so should you.
+// Assumes `maca` is already built at target/release/maca — `MACA` names a
+// different one — and the wasm compiler at
+// target/wasm32-unknown-unknown/release, which `import wasm` in the playground
+// embeds by that exact path. The workflow builds both first, and so should you.
 
 import { conf_value } from apps/tomo/conf
 import std/proc
@@ -19,30 +21,88 @@ import std/fs
 import std/path
 import std/list
 import std/text
+import { command, rest } from cli/spec
+import { parse, from } from cli/parse
+import { bold, dim, grey, ok, bad } from cli/style
 
-Maca = "target/release/maca"
+// The compiler the site is built with. `MACA` overrides it, the way
+// `crates/driver/tests/programs/sitegen.maca` overrides it, so a developer who
+// has only run `cargo build` can build the site with what they have instead of
+// discovering the hard way that the release binary on disk is three weeks old.
+maca() -> str =>
+    env_or("MACA", "target/release/maca")
 
-main(args: str[]) -> int {
-    out = if args.length() > 0 { args.get(0) } else { "_site" }
+// Named once: `--help` prints it and `main` falls back to it, and the two
+// being different strings is a `--help` that lies.
+OutDefault = "_site"
 
-    if !file_exists(Maca) {
-        err("no maca at {Maca} — cargo build --release -p maca-driver")
+// The output directory is a positional and stays one — `README.md` and the
+// workflow both spell it `build-site _site`, and a tool nobody can invoke the
+// documented way is worse than a tool with a plain interface. `cli/spec` has
+// no optional positional (something a command cannot run without is an
+// argument, everything else is an option), so it arrives as `rest` and the
+// default is applied here, exactly as `tools/bindgen.maca` does it.
+Spec = command("build-site", "build and check the published site")
+    .rest("outdir", "where to assemble the site — {OutDefault} by default")
+
+// `cli/help` renders this page from the same value and is not imported here,
+// for the reason `tools/lint.maca` records: it reaches `cli/style`'s `pad`,
+// which stage-0 miscompiles beside whole-module `std/fs`.
+synopsis(c: Cmd) -> str =>
+    bold(c.name) ++ " — " ++ c.about ++ "\n\n"
+        ++ "  " ++ c.name ++ " [outdir]   " ++ grey("(default: {OutDefault})")
+        ++ "\n"
+
+main(argv: str[]) -> int {
+    got = parse(Spec, argv)
+    where = from(got, 0)
+
+    if got.wants_help {
+        info(synopsis(Spec))
+        0
+    } else if got.error != "" {
+        err(bad(got.error))
+        1
+    } else if where.length() > 1 {
+        err(bad("build-site assembles one directory, got "
+                ++ where.join(", ")))
+        1
+    } else if !file_exists(maca()) {
+        err(bad("no maca at {maca()} — cargo build --release -p maca-driver"))
         1
     } else {
-        build_handbook()
-        build_front_page()
-        build_api_reference()
-        build_playground()
-        assemble(out)
-        check(out)
+        build(where.length() == 0 ? OutDefault : where.get(0))
     }
+}
+
+build(out: str) -> int {
+    build_handbook()
+    build_front_page()
+    build_api_reference()
+    build_playground()
+    assemble(out)
+    check(out)
+}
+
+// Each step announces itself before it runs, because every one of them is slow
+// enough that silence reads as a hang.
+//
+// On stderr, and that is the whole point. `info` writes to stdout, which the C
+// runtime leaves block-buffered whenever it is a pipe — so in a CI log every
+// `==>` line arrived at exit, *after* the output of the child processes it was
+// introducing, and the running commentary described a build that had already
+// finished. stderr is unbuffered, so these land where they belong. The site
+// itself is the output of this program; what it says while working is not.
+announce(what: str) -> bool {
+    err(grey("==>") ++ " " ++ bold(what))
+    true
 }
 
 // tomo.maca resolves `apps/tomo` relative to the working directory, so this
 // runs from the repository root.
 build_handbook() -> bool {
-    info("==> handbook")
-    run(Maca, ["run", "apps/tomo/tomo.maca"])
+    announce("handbook")
+    run(maca(), ["run", "apps/tomo/tomo.maca"])
 }
 
 // The front page replaces the landing pages tomo just wrote — `/index.html`
@@ -53,9 +113,9 @@ build_handbook() -> bool {
 // right thing. This book's front page is a designed page in the UI syntax, so
 // for this book the landing is written here instead.
 build_front_page() -> bool {
-    info("==> front page")
+    announce("front page")
     drop_landings(landing_pages(), 0)
-    run(Maca, ["run", "apps/site/home.maca", "apps/tomo/site"])
+    run(maca(), ["run", "apps/site/home.maca", "apps/tomo/site"])
 }
 
 // Tomo writes a landing for every language whether or not the book has a
@@ -124,19 +184,19 @@ module_paths(ls: str[], i: int, acc: str[]) -> str[] {
 }
 
 build_api_reference() -> bool {
-    info("==> api reference")
-    run(Maca, ["run", "tools/macadoc.maca", "apps/tomo/site/api"]
+    announce("api reference")
+    run(maca(), ["run", "tools/macadoc.maca", "apps/tomo/site/api"]
               ++ std_modules())
 }
 
 build_playground() -> bool {
-    info("==> playground")
-    run_in("playground", "../" ++ Maca,
+    announce("playground")
+    run_in("playground", "../" ++ maca(),
            ["build", "--target", "js", "playground.maca", "-o", "out"])
 }
 
 assemble(out: str) -> bool {
-    info("==> assembling {out}")
+    announce("assembling " ++ dim(out))
     remove_dir(out)
     make_dir(out)
     copy_tree("apps/tomo/site", out)
@@ -152,7 +212,7 @@ assemble(out: str) -> bool {
 // has actually broken.
 
 check(out: str) -> int {
-    info("==> checking")
+    announce("checking")
 
     require_pages(out)
     default_lang = book_languages().get(0)
@@ -166,8 +226,8 @@ check(out: str) -> int {
     require_embedded_wasm(out)
     require_live_css(out)
 
-    info("site ok: {chapters} {default_lang} pages,"
-         ++ " {tree_size(out) / 1024} KiB total")
+    info(ok("{chapters} {default_lang} pages,"
+            ++ " {tree_size(out) / 1024} KiB total"))
     0
 }
 
@@ -190,7 +250,7 @@ require_live_css(out: str) -> bool {
         named = dead.join(", ")
         fail "classes with no CSS rule: {named}"
     } else {
-        info("css ok: every utility on {pages.length()} pages has a rule")
+        info(ok("every utility on {pages.length()} pages has a rule"))
         true
     }
 }

@@ -31,10 +31,21 @@ maca build host.maca --target nix -o host.nix
 {
   networking.hostName = "rigel";
   system.stateVersion = "24.11";
+  environment.systemPackages = [ pkgs.git pkgs.curl pkgs.htop pkgs.ripgrep ];
+  services.openssh = {
+    enable = true;
+    passwordAuthentication = false;
+  };
 }
 ```
 
 Nix evaluates that to build the system.
+
+Two lines came out different from how they went in. `system.packages` is written
+where NixOS spells it `environment.systemPackages`, and a `services.X` block you
+configured at all gets `enable = true` without your writing it — you do not
+switch a service on and then configure it separately.
+[Config Mode](a12-config.md) lists both rewrites.
 
 ## What config mode forbids
 

@@ -2,12 +2,17 @@
 //
 // Colour is off through the whole file — `maca test` is run with `NO_COLOR`,
 // and the escape codes a terminal would get are not what these tests are about.
-// The width assertions are the exception that proves it: they measure the
-// chart in columns, which is the same number either way.
+// That is why the palette is asked for its codes directly in one test: with
+// colour off there is nothing in the output to read them from. The width
+// assertions are unaffected either way, because a column is a column.
 //
 // Most of the trace tests work from `sample()`, a run whose numbers were
 // worked out on paper first. A self-time test that computes its expectation
 // the way the code does is a test of nothing.
+//
+// Two tests are slower than the rest on purpose: one replays a trace at a
+// quarter speed, which really sleeps, and one takes twenty thousand marks,
+// because the fault it watches for shows up about once in three thousand.
 
 import profile/trace
 import profile/record

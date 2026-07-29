@@ -63,7 +63,6 @@ fn taskr_add_list_roundtrip() {
         .status()
         .ok();
 
-    // empty state → usage
     assert!(taskr(&[]).contains("usage"), "no-args should print usage");
 
     // add one, it round-trips through JSON on the next list
@@ -77,7 +76,6 @@ fn taskr_add_list_roundtrip() {
     let l2 = taskr(&["list"]);
     assert!(l2.contains("#1") && l2.contains("buy milk"), "list2: {l2}");
     assert!(l2.contains("#2") && l2.contains("walk dog"), "list2: {l2}");
-    // exactly two tasks
     assert_eq!(
         l2.lines().filter(|x| x.contains('#')).count(),
         2,

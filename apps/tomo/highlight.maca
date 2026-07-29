@@ -273,7 +273,10 @@ mc_token(cs: str[], i: int, interp: bool, operand: bool, depth: int) -> Scan {
     } else if c == "\{" {
         scanned(tok("tok-punct", c), i + 1, false, depth + 1)
     } else if c == "\}" {
-        scanned(tok("tok-punct", c), i + 1, false, depth - 1)
+        // A closing brace completes an operand, exactly as `)` and `]` do —
+        // `expect_operand` lists `RBrace` beside `RParen` and `RBracket`. Read
+        // the other way, `f(x) } /tmp` coloured a division as a path literal.
+        scanned(tok("tok-punct", c), i + 1, true, depth - 1)
     } else if c == "?" {
         mc_question(cs, i, depth)
     } else if interp && depth == 0 && c == ":" && mc_spec_len(cs, i) > 0 {
@@ -338,11 +341,12 @@ mc_question(cs: str[], i: int, depth: int) -> Scan {
 
 // ---- Maca: words ----------------------------------------------------------
 
-// The lexer's keyword set, plus `from`, which the parser reads in
-// `import { … } from a/b` and which every other Maca grammar in this
-// repository colours as a keyword.
+// The lexer's keyword set. `from` is not in it: the lexer does not reserve the
+// word, the parser only reads it in `import { … } from a/b`, and this book has
+// a record field and a parameter called `from` that are ordinary names. It is
+// handled separately, by the line it sits on.
 Keywords = " const as if else for in while break continue match import with"
-    ++ " fail try alias await spawn from "
+    ++ " fail try alias await spawn "
 
 Prims = " int float str bool bytes unit i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 "
 
@@ -350,7 +354,10 @@ mc_word(cs: str[], i: int, depth: int) -> Scan {
     j = mc_word_end(cs, i)
     w = text_of(cs, i, j)
 
-    if Keywords.contains(" " ++ w ++ " ") {
+    if w == "from" {
+        cls = import_line(cs, i) ? "tok-kw" : ""
+        scanned(tok(cls, w), j, cls == "", depth)
+    } else if Keywords.contains(" " ++ w ++ " ") {
         scanned(tok("tok-kw", w), j, false, depth)
     } else if w == "true" || w == "false" {
         scanned(tok("tok-kw", w), j, true, depth)
@@ -360,6 +367,20 @@ mc_word(cs: str[], i: int, depth: int) -> Scan {
         scanned(tok("tok-fn", w), j, true, depth)
     } else {
         scanned(tok("", w), j, true, depth)
+    }
+}
+
+// Is the word at `i` on a line that opens with `import`? That is the only
+// place `from` means anything to the parser, and it is what separates the
+// `from` in `import { x } from a/b` from a field or a parameter of that name.
+import_line(cs: str[], i: int) -> bool =>
+    starts(cs, skip_blanks(cs, line_start(cs, i)), "import ")
+
+line_start(cs: str[], i: int) -> int {
+    if i <= 0 || ch(cs, i - 1) == "\n" {
+        i
+    } else {
+        line_start(cs, i - 1)
     }
 }
 

@@ -216,7 +216,8 @@ bare_end(cs: str[], i: int) -> int {
     }
 }
 
-// Strip the quotes off an item that has them, and unescape it.
+// A lone `"` is not a quoted item, which is why the length is tested before the
+// ends are: `t.slice(1, 0)` on a one-character string is not a value.
 unwrap(s: str) -> str {
     t = s.trim()
 

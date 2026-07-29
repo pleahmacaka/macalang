@@ -374,6 +374,12 @@ find_substring_case(n: int) -> int =>
 /// Always writing the count, even for a run of one, is what makes the decoder a
 /// loop instead of a lookahead. It also makes the encoding longer than the
 /// input for text with no runs in it, which is honest about what RLE is for.
+///
+/// A byte that is itself a digit is written behind a `\`, and a literal `\` is
+/// doubled. Without that the count and the byte run together: `13` came out as
+/// `1113`, which reads back as a run of one thousand one hundred and thirteen
+/// with no byte after it, and the round trip was lost for any text with a
+/// number in it.
 run_length_encode(s: str) -> str {
     out = ""
     i = 0
@@ -384,13 +390,21 @@ run_length_encode(s: str) -> str {
         while i + run < s.length() && s.at(i + run) == c {
             run = run + 1
         }
-        out = out ++ "{run}" ++ c
+        out = out ++ "{run}" ++ escaped_byte(c)
         i = i + run
     }
     out
 }
 
-/// Undo `run_length_encode`.
+escaped_byte(c: str) -> str {
+    if c.is_ascii_digit() || c == "\\" {
+        "\\" ++ c
+    } else {
+        c
+    }
+}
+
+/// Undo `run_length_encode` — for any input, digits in it or not.
 run_length_decode(s: str) -> str {
     out = ""
     i = 0
@@ -401,10 +415,12 @@ run_length_decode(s: str) -> str {
             run = run * 10 + (ord(s.at(i)) - ord("0"))
             i = i + 1
         }
-        if i < s.length() {
-            out = out ++ s.at(i).repeat(run)
-            i = i + 1
+        // A `\` is not the byte of the run; the byte is whatever follows it.
+        at = i < s.length() && s.at(i) == "\\" ? i + 1 : i
+        if at < s.length() {
+            out = out ++ s.at(at).repeat(run)
         }
+        i = at + 1
     }
     out
 }
@@ -602,6 +618,10 @@ bst_of(xs: int[]) -> Bst {
 /// Add `k` to `t`. The tree's lists are written in place — they were allocated
 /// with room for every value `bst_of` was given, and a tree that grew by
 /// pushing would copy all three lists per insert.
+///
+/// A full tree therefore answers unchanged rather than growing. `bst_of` sizes
+/// the lists to its input, so this only comes up when a caller keeps inserting
+/// past what it asked for, and it is worth knowing that the key is dropped.
 bst_insert(t: Bst, k: int) -> Bst {
     if t.count >= t.key.length() {
         t

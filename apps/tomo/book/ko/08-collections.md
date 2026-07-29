@@ -109,7 +109,7 @@ evens = [1, 2, 3, 4].filter(is_even)
 | `upper()` `lower()` | `str` | |
 | `contains(s)` | `bool` | |
 | `starts_with(s)` `ends_with(s)` | `bool` | |
-| `replace(from, to)` | `str` | 모든 occurrence |
+| `replace(from, to)` | `str` | 일치하는 곳 전부 |
 | `substr(start, len)` | `str` | 끝이 아니라 **길이** |
 | `slice(from, to)` | `str` | `to`는 **제외**, 리스트와 동일 |
 | `index_of(s)` | `int` | 없으면 `-1` |

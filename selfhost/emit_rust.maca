@@ -1,11 +1,13 @@
 // selfhost/emit_rust — a Rust emitter over the AST, written in Maca.
 //
-// The Maca-written sibling of emit_c: it turns the stage-1 AST into Rust source
-// (the `--target rust` back end), so the Rust backend itself is written in Maca
-// rather than living only in the stage-0 crate. Mirrors `maca-backend-rust` on
-// the slice the stage-1 parser covers: integer/string literals, idents, calls,
-// binary operators, function definitions, bindings, and a `main` that exits
-// with its returned value. It grows into the full backend the way emit_c does.
+// The Maca-written sibling of emit_c: the `--target rust` back end, written in
+// Maca rather than living only in the stage-0 crate. It mirrors
+// `maca-backend-rust` over whatever the stage-1 parser can read, and grows the
+// way emit_c does.
+//
+// Both back ends are held to one answer: the gate compiles the *same* emitted
+// program with `cc` and with `rustc` and checks the two exit alike. A back end
+// tested only against its own output can agree with nothing but itself.
 
 import selfhost/token
 import selfhost/ast
@@ -15,12 +17,11 @@ import selfhost/ast
 rust_int(n: int) -> str =>
     "{str(n)}i64"
 
-// An owned Rust string literal (`"…".to_string()`), kept out of interpolation
-// so the quoting stays legible.
+// Owned, not `&'static str`: `++` produces a `String` and a signature says
+// `String`, so a literal that stayed borrowed would need a cast at every use.
 rust_str(s: str) -> str =>
     "\"" ++ s ++ "\".to_string()"
 
-// Emit a Rust expression for one AST node.
 remit_expr(e: Expr) -> str =>
     match e.kind {
         EInt     => rust_int(e.ival)
@@ -52,9 +53,8 @@ remit_ternary(e: Expr) -> str {
 remit_match(e: Expr) -> str =>
     "match {remit_expr(e.children.get(0))} {{ {remit_arms(e.children, 1)} }}"
 
-// A UFCS method call. `.length()` (string) / `.count()` (list) → `.len()`;
-// `.get(i)` indexes a `Vec`; `.at(i)` indexes a string's bytes; any other
-// method passes through.
+// Maca's `length` and `count` collapse back into one `len()` here — the split
+// exists for C's sake (see emit_c), not for Rust's.
 remit_method(e: Expr) -> str {
     recv = remit_expr(e.children.get(0))
 
@@ -70,8 +70,9 @@ remit_method(e: Expr) -> str {
     }
 }
 
-// A call. `info`/`print` are the output builtins → `println!`/`print!`; every
-// other call is a plain `name(args)`.
+// Matched by name before the fallback, exactly as `emit_call` does it, so both
+// back ends shadow a user `info`/`print`/`str` the same way rather than one
+// target quietly calling something the other does not.
 remit_call(e: Expr) -> str {
     args = remit_args(e.children, 0)
 
@@ -86,8 +87,8 @@ remit_call(e: Expr) -> str {
     }
 }
 
-// A binary operator. `++` is string concatenation → `format!("{}{}", a, b)`;
-// every other operator is emitted directly.
+// `++` goes through `format!` rather than `+`: Rust's `+` on strings consumes
+// its left operand, and the AST gives no way to know whether that is safe.
 remit_binary(e: Expr) -> str {
     l = remit_expr(e.children.get(0))
     r = remit_expr(e.children.get(1))
@@ -99,8 +100,8 @@ remit_binary(e: Expr) -> str {
     }
 }
 
-// Rust match arms `Red => 1, _ => 0,` — a bare variant pattern resolves through
-// the enum's `use Color::*;`.
+// A bare variant pattern resolves through the `use Color::*;` that `remit_sum`
+// emits, so nothing here has to know which enum the scrutinee belongs to.
 remit_arms(cs: Expr[], i: int) -> str {
     if i + 1 >= cs.length() {
         ""
@@ -123,22 +124,20 @@ remit_pat(p: Expr) -> str {
 binder_name(b: Expr) -> str =>
     b.text
 
-// Rust struct-literal fields `x: 40, y: 2`. Each rides as
-// `EBinary("=", name, value)`.
 remit_lit_fields(fs: Expr[]) -> str =>
     fs.map(remit_lit_field).join(", ")
 
 remit_lit_field(f: Expr) -> str =>
     "{f.children.get(0).text}: {remit_expr(f.children.get(1))}"
 
-// Comma-join the emitted arguments from index `i` on.
+// `i` is 1 for a method call, whose first child is the receiver.
 remit_args(xs: Expr[], i: int) -> str =>
     xs.slice(i, xs.length()).map(remit_expr).join(", ")
 
 // ---- function emission ----------------------------------------------------
 
-// Map a Maca type name to its Rust spelling. Scalars map directly; an empty
-// type defaults to `i64`; any other name is a record type used verbatim.
+// An unwritten type defaults to `i64` because a signature with no return type
+// is the common case. `int` is `i64`, not `i32`, so it cannot silently narrow.
 rtype(ty: str) -> str {
     if ty.ends_with("[]") {
         "Vec<i64>"
@@ -155,11 +154,10 @@ rtype(ty: str) -> str {
     }
 }
 
-// A function definition. `main` returns an exit code, so it is wrapped the way
-// `maca-backend-rust` does: the body becomes `__maca_main`, and a real `main`
-// exits with it. Every other function carries its declared parameter and return
-// types (via `rtype`). (Literal Rust braces are written `{{`/`}}` so they aren't
-// read as Maca string interpolation.)
+// Maca's `main` returns an exit code and Rust's returns nothing, so the body
+// moves to `__maca_main` and a real `main` exits with it — the same wrapping
+// `maca-backend-rust` does. Literal Rust braces are written `{{`/`}}` so they
+// aren't read as Maca string interpolation.
 remit_fn(s: Stmt) -> str {
     body = remit_stmts(s.body, 0)
 
@@ -172,7 +170,6 @@ remit_fn(s: Stmt) -> str {
     }
 }
 
-// `a: i64, b: String` from the typed parameter ident nodes.
 remit_param(p: Expr) -> str =>
     "{p.text}: {rtype(p.ty)}"
 
@@ -185,8 +182,9 @@ remit_stmts(body: Stmt[], i: int) -> str {
     }
 }
 
-// A binding is a local `let x = e;`; the last expression is the block's tail
-// value (no semicolon — Rust returns it), any earlier one a statement.
+// The last expression drops its semicolon so it becomes the block's tail value.
+// Maca's last-expression-is-the-value rule is Rust's too, which is why this
+// back end needs no `return` and no inferred local types.
 remit_stmt(s: Stmt, is_last: bool) -> str {
     if s.kind == SBind {
         "let {s.name} = {remit_expr(s.value)};"
@@ -197,8 +195,6 @@ remit_stmt(s: Stmt, is_last: bool) -> str {
     }
 }
 
-// A whole module: record `struct` declarations and function definitions, one
-// item per line.
 remit_module(m: Module) -> str =>
     m.items.map(remit_item).join("\n")
 
@@ -212,7 +208,8 @@ remit_item(s: Stmt) -> str {
     }
 }
 
-// `#[derive(Clone)] struct Point { x: i64, y: i64 }` from a record declaration.
+// `Clone` on every record, because Maca records are values and a field access
+// or a `with` update reads as a copy at the source level.
 remit_struct(s: Stmt) -> str {
     fields = s.params.map(remit_struct_field).join(", ")
 
@@ -222,9 +219,10 @@ remit_struct(s: Stmt) -> str {
 remit_struct_field(f: Expr) -> str =>
     "{f.text}: {rtype(f.ty)}"
 
-// `#[derive(Clone, PartialEq)] enum Color { Red, Green, Blue }` plus a
-// `use Color::*;` so a bare variant reference (`Green`) resolves without
-// qualification — matching how the emitter leaves variant idents bare.
+// `use Color::*;` follows the enum so a bare `Green` in the emitted body
+// resolves — the AST keeps variant references bare, with no enum to qualify by.
+// `PartialEq` is for `==` on a variant, which `remit_binary` passes straight
+// through to Rust; a `match` needs no derive at all.
 remit_sum(s: Stmt) -> str {
     variants = s.params.map(remit_variant).join(", ")
 

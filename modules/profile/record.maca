@@ -45,8 +45,7 @@ Mark = {
 ///
 /// `open` is how deep the recording currently is. It is carried rather than
 /// counted from the marks, so `span` can ask how deep it was without walking
-/// everything recorded so far — which would make instrumenting a program cost
-/// more the longer the program ran.
+/// everything recorded so far.
 Rec = {
     label: str,
     marks: Mark[],

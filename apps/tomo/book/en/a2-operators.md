@@ -31,10 +31,11 @@ fine = a > 0
     && b > 0
 ```
 
-`&&`, `||` and `++` are the operators that may *begin* a line, because none of
-them can begin an expression. `+`, `*` and the comparisons cannot, and `-` is
-the trap: it can, so a leading `-` starts a new statement instead of continuing
-the one above. [Syntax](a5-syntax.md) has the whole rule.
+Six may *begin* a line — `&&`, `||`, `++`, `.`, `?` and `:` — because none of
+them can begin an expression. `+`, `*` and the comparisons cannot, and a line
+that starts with one is a parse error. `-` is the trap: it can begin an
+expression, so a leading `-` starts a new statement instead of continuing the
+one above, and nothing warns. [Syntax](a5-syntax.md) has the whole rule.
 
 ## Bitwise
 
@@ -61,9 +62,11 @@ the one above. [Syntax](a5-syntax.md) has the whole rule.
 | `x, ..rest` | rest pattern in a `match` |
 
 The spaced-versus-attached distinction is load-bearing and appears three times in
-the language. A spaced `:` is a ternary; an attached one, inside an
-interpolation, is a format spec. A spaced `?` is a ternary; an attached one is
-error propagation.
+the language. A spaced `?` is a ternary; an attached one is error propagation. A
+spaced `:` is a ternary's second half; an attached one, inside an interpolation,
+is a format spec. And a spaced `-` subtracts while an attached one between two
+word characters is part of the name — `data-id` is one identifier, `a - b` is
+two operands.
 
 ## Access
 

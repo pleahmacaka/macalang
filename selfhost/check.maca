@@ -12,11 +12,9 @@
 import selfhost/token
 import selfhost/ast
 
-// Everything a body needs to know about its module and its scope.
-//
-// Parallel lists rather than a map, because that is what the language stage-1
-// compiles gives it — and it keeps the whole environment one flat value that
-// can be extended by copying.
+// Parallel lists rather than a map, because the slice of Maca that stage-1
+// compiles has no map — and because it keeps the whole environment one flat
+// value, so extending a scope is a copy and unwinding one is free.
 Env = {
     names:  str[]     // locals and parameters in scope
     types:  str[]     // their types, positionally
@@ -38,7 +36,8 @@ empty_env() -> Env =>
 bind(env: Env, name: str, ty: str) -> Env =>
     env with { names = env.names ++ [name], types = env.types ++ [ty] }
 
-// The type of a name in scope, or "" when it isn't one.
+// "" means *not in scope*. No real type is spelled "", so the sentinel cannot
+// collide with an answer — `param_ty` turns an unwritten type into "any" first.
 lookup(env: Env, name: str) -> str {
     at = env.names.index_of(name)
 
@@ -103,8 +102,8 @@ add_ctor(env: Env, v: str, sum: str) -> Env =>
 
 // ---- types ----------------------------------------------------------------
 
-// The type of an expression in `env`. "any" is gradual, "error" is a mismatch
-// this pass has already accounted for.
+// Two types are not types: "any" is gradual, and "error" marks a mismatch this
+// pass has already counted, so `disagrees` knows not to count it twice.
 type_in(e: Expr, env: Env) -> str =>
     match e.kind {
         EInt     => "int"
@@ -123,7 +122,8 @@ type_in(e: Expr, env: Env) -> str =>
         _        => "any"
     }
 
-// A name: a local or parameter first, then a nullary sum variant, else gradual.
+// A local shadows a variant of the same name, matching the surface language,
+// where a user definition always shadows a name the language supplies.
 ident_type(e: Expr, env: Env) -> str {
     local = lookup(env, e.text)
     variant = env.ctors.index_of(e.text)
@@ -137,8 +137,9 @@ ident_type(e: Expr, env: Env) -> str {
     }
 }
 
-// A call to a declared function has that function's return type; a call to a
-// sum variant builds that sum; anything else is foreign and stays gradual.
+// A variant is called like a function — `Circle(2)` — so both tables are
+// consulted before falling back. An unknown name stays gradual on purpose: a
+// module does not declare what it imports, and foreign is not wrong.
 call_type(e: Expr, env: Env) -> str {
     declared = env.fns.index_of(e.text)
     variant = env.ctors.index_of(e.text)
@@ -152,7 +153,6 @@ call_type(e: Expr, env: Env) -> str {
     }
 }
 
-// A declared return of "" means the function didn't write one.
 ret_or_any(r: str) -> str {
     if r == "" {
         "any"
@@ -174,7 +174,8 @@ builtin_type(name: str) -> str {
     }
 }
 
-// `p.x` — the field's declared type when the receiver's record is known.
+// A field of an unknown receiver is gradual, not an error: the receiver may be
+// a value from a module this pass never saw.
 field_type(e: Expr, env: Env) -> str {
     recv = type_in(e.children.get(0), env)
     at = env.fields.index_of(recv ++ "." ++ e.text)
@@ -186,7 +187,8 @@ field_type(e: Expr, env: Env) -> str {
     }
 }
 
-// A match has the type of its first arm's body.
+// The first arm decides. Arms that disagree are not caught here — the stage-0
+// checker is what reports that, and duplicating it would risk the two drifting.
 match_type(e: Expr, env: Env) -> str {
     if e.children.length() >= 3 {
         type_in(e.children.get(2), env)
@@ -195,8 +197,8 @@ match_type(e: Expr, env: Env) -> str {
     }
 }
 
-// Arithmetic combines like numbers and `++` builds strings; a gradual operand
-// keeps the result usable; anything else is a mismatch.
+// `++` is the string operator, so it answers before the operands are examined
+// at all — concatenating two gradual values is still a string.
 binop_in(e: Expr, env: Env) -> str {
     is_cmp = e.text == "==" || e.text == "!=" || e.text == "<"
         || e.text == ">" || e.text == "<=" || e.text == ">="
@@ -223,8 +225,8 @@ arith_type(lt: str, rt: str) -> str {
 
 // ---- errors ---------------------------------------------------------------
 
-// Mismatches in a whole subtree: an arithmetic type error, and a call whose
-// argument count doesn't match its declaration.
+// Counts, rather than collecting diagnostics: stage-1 has no span to point at
+// yet, and a number is enough for the gate to assert on.
 errors_in(e: Expr, env: Env) -> int {
     mismatch = if type_in(e, env) == "error" { 1 } else { 0 }
 
@@ -260,8 +262,6 @@ wrong_arity(env: Env, declared: int, given: int) -> int {
 
 // ---- functions and modules ------------------------------------------------
 
-// A function: its parameters are in scope, its bindings extend that scope as
-// they appear, and its last expression must agree with its declared return.
 check_fn_in(s: Stmt, env: Env) -> int {
     inner = bind_params(env, s.params, 0)
 
@@ -286,8 +286,8 @@ param_ty(ty: str) -> str {
     }
 }
 
-// Walk the statements, threading the scope: a binding is visible to what
-// follows it and to nothing before.
+// The scope is threaded forward, so a binding is visible to what follows it and
+// to nothing before — a body is checked in one pass, with no hoisting.
 check_body(stmts: Stmt[], i: int, env: Env) -> int {
     if i >= stmts.length() {
         0
@@ -305,8 +305,8 @@ extend(env: Env, s: Stmt) -> Env {
     }
 }
 
-// The declared return against the body's last expression. A declared "any" or
-// an inferred "any" agrees with anything — that is what gradual means.
+// A declared "any" or an inferred "any" agrees with anything. That is what
+// gradual means, and it is why an unannotated function is never wrong here.
 return_error(s: Stmt, env: Env) -> int {
     actual = body_type(s, env)
 
@@ -326,8 +326,8 @@ body_type(s: Stmt, env: Env) -> str {
     }
 }
 
-// The scope the last statement sees: the parameters plus every binding before
-// it.
+// Stops one short of the end: the last statement is the one being typed, and a
+// binding does not bring itself into scope.
 scope_of(s: Stmt, env: Env) -> Env =>
     fold_binds(s.body, 0, s.body.length() - 1, env)
 
@@ -350,7 +350,6 @@ disagrees(declared: str, actual: str) -> bool {
     }
 }
 
-// Total errors across a module, with its own declarations in scope.
 check_module(m: Module) -> int =>
     check_items(m.items, 0, env_of_module(m))
 

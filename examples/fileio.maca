@@ -6,18 +6,17 @@ main() -> int {
     dir = "/tmp/maca_fileio_example"
     make_dir(dir ++ "/pages")
 
-    // write two files, then read one back
     write_file(dir ++ "/pages/one.md", "# One\n\nfirst page\n")
     write_file(dir ++ "/pages/two.md", "# Two\n\nsecond page\n")
 
     body = read_file(dir ++ "/pages/one.md")
     info("read {body.split("\n").length()} lines")
 
-    // existence checks distinguish written files from absent ones
     info(file_exists(dir ++ "/pages/one.md") ? "one.md exists" : "one.md missing")
     info(file_exists(dir ++ "/pages/nope.md") ? "nope.md exists" : "nope.md missing")
 
-    // list_dir returns the entry names, sorted for reproducible builds
+    // Sorted, so a generator that walks a directory twice writes the same
+    // output twice.
     entries = list_dir(dir ++ "/pages")
     info("pages: {entries.length()}")
     info("first: {entries.get(0)}")

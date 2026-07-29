@@ -34,7 +34,7 @@ TypeMismatch: ternary branches disagree: type mismatch: expected int, found str
 않은 필드는 적으면 안 됩니다.
 
 ```
-TypeMismatch: `Config` is missing field(s): title, port
+TypeMismatch: `Config` is missing field(s): port, title
 TypeMismatch: `Config` has no field `titel`; did you mean `title`?
 ```
 
@@ -122,10 +122,16 @@ EffectInConfig: config must be pure but this uses effect(s): async
 메시지는 찾아낸 행을 전부 나열하므로, 출력도 하고 잠도 자는 설정은
 `io, async`로 보고됩니다.
 
-설정은 원하는 상태를 기술합니다. 무언가를 *하면* 안 됩니다. 파일 읽기, 출력,
-네트워크, 프로세스, `fail`, `spawn`, `await`, `sleep_ms`가 모두 거부됩니다.
-하나의 언어가 프로그래밍 언어이면서 설정 언어여도 안전하게 만들어 주는
-검사입니다. 행 자체는 [이펙트와 async](a7-effects.md)에 있습니다.
+설정은 원하는 상태를 기술합니다. 무언가를 *하면* 안 됩니다. 출력, `fail`,
+`spawn`, `await`, `sleep_ms`, 그리고 `net`/`http`/`socket`이나 `os`/`process`
+수신자를 통한 호출이 거부됩니다. 하나의 언어가 프로그래밍 언어이면서 설정
+언어여도 안전하게 만들어 주는 검사입니다.
+
+여기서도 검사가 닿는 범위를 분명히 해 두는 편이 낫습니다. 행은 호출의
+*모양*으로 판정합니다. 알려진 빌트인 이름이거나, 위 수신자들 중 하나에 대한
+메서드거나. 그래서 `file.read(p)`는 잡히고 자유 함수 `read_file(p)`는 잡히지
+않습니다. 자유 빌트인으로 파일을 읽는 설정은 오늘 컴파일됩니다. 행과 각 행을
+만드는 것은 [이펙트와 async](a7-effects.md)에 있습니다.
 
 ## 진단이 아닌 에러들
 

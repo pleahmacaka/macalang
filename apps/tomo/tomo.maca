@@ -9,8 +9,9 @@
 
 import { conf_value } from apps/tomo/conf
 import { highlight, code_css } from apps/tomo/highlight
-import { escape_html, index_of_from } from std/text
-import { quote } from std/json
+import { escape_html, index_of_from, lines } from std/text
+import { read_lines } from std/fs
+import { object_of, quote } from std/json
 
 // A URL anchor slug for a heading: lowercased, whitespace to hyphens, ASCII
 // punctuation dropped. Headings like "To `fail` or not to `fail`?" have to
@@ -180,7 +181,7 @@ bold(s: str) -> str {
 
 // Render a whole markdown document to HTML.
 render(md: str) -> str =>
-    render_lines(md.split("\n"), 0, "")
+    render_lines(lines(md), 0, "")
 
 // Fold over the lines, threading the HTML accumulator `acc`.
 render_lines(lines: str[], i: int, acc: str) -> str {
@@ -522,7 +523,7 @@ toc(md: str) -> str =>
     nav(data-tomo="toc",
         class="border-t border-zinc-200 dark:border-zinc-700 mt-3 pt-2",
         "\n" ++ ul(class="list-none m-0 p-0",
-                   "\n" ++ toc_lines(md.split("\n"), 0)) ++ "\n") ++ "\n"
+                   "\n" ++ toc_lines(lines(md), 0)) ++ "\n") ++ "\n"
 
 toc_lines(lines: str[], i: int) -> str {
     if i >= lines.length() {
@@ -1104,12 +1105,12 @@ landing_body(src: str, title: str, langs: str, lang: str, up: str) -> str {
     if !file_exists(src) {
         picker(title, langs, up)
     } else {
-        lines = read_file(src).split("\n")
-        cut = first_section(lines, 0)
+        ls = read_lines(src)
+        cut = first_section(ls, 0)
 
-        render(lines.slice(0, cut).join("\n"))
+        render(ls.slice(0, cut).join("\n"))
             ++ calls_to_action(langs, lang, up)
-            ++ render(lines.slice(cut, lines.length()).join("\n"))
+            ++ render(ls.slice(cut, ls.length()).join("\n"))
     }
 }
 
@@ -1327,7 +1328,7 @@ index_chapter(root: str, lang: str, fallback: str, ch: str, ctitle: str,
     if !file_exists(src) {
         ""
     } else {
-        sections(read_file(src).split("\n"), 0, ch ++ ".html",
+        sections(read_lines(src), 0, ch ++ ".html",
                  caption(vol, ctitle), "", "", "")
     }
 }
@@ -1386,9 +1387,9 @@ entry(url: str, ctitle: str, head: str, buf: str) -> str {
     if head.length() == 0 {
         ""
     } else {
-        "\{\"u\":" ++ quote(url ++ "#" ++ slug(head)) ++ ",\"c\":"
-            ++ quote(ctitle) ++ ",\"s\":" ++ quote(head) ++ ",\"x\":"
-            ++ quote(buf.lower()) ++ "\},"
+        object_of(["u", "c", "s", "x"],
+                  [quote(url ++ "#" ++ slug(head)), quote(ctitle),
+                   quote(head), quote(buf.lower())]) ++ ","
     }
 }
 
@@ -1399,7 +1400,7 @@ chapter_title(root: str, lang: str, fallback: str, ch: str) -> str {
     if !file_exists(src) {
         ch
     } else {
-        first_heading(read_file(src).split("\n"), 0, ch)
+        first_heading(read_lines(src), 0, ch)
     }
 }
 

@@ -73,7 +73,6 @@ pub fn run(module: &Module) -> RunResult {
     let mut exit = None;
     let mut error = None;
 
-    // find `main`
     let main = module.items.iter().find_map(|s| match s {
         Stmt::Fn(f) if f.name == "main" => Some(f.clone()),
         _ => None,
@@ -1307,7 +1306,6 @@ fn to_f64(v: &Value) -> f64 {
     }
 }
 
-/// Render a value the way `str(...)` / string interpolation would.
 /// A `Value` as its string form, for the string-stdlib builtins (`str`
 /// receivers/args stringify; non-strings fall back to their display form).
 fn str_of(v: Option<&Value>) -> String {
@@ -1349,6 +1347,7 @@ fn byte_substr(s: &str, start: i64, len: i64) -> String {
     s[a..e.max(a)].to_string()
 }
 
+/// Render a value the way `str(...)` / string interpolation would.
 fn display(v: &Value) -> String {
     match v {
         Value::Int(n) => n.to_string(),

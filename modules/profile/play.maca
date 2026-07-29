@@ -32,10 +32,11 @@ Event = {
 
 /// Every enter and leave in the trace, in the order they happened.
 ///
-/// Built by walking the tree and *then* sorting by time, not by sorting alone.
-/// At millisecond resolution a parent and its first child usually open in the
-/// same millisecond, and the timestamps cannot say which came first; the walk
-/// can. The sort is stable, so it does not undo that answer.
+/// Built by walking the tree, and sorted by time only if the walk did not
+/// already deliver it in that order. Sorting alone would not do: at
+/// millisecond resolution a parent and its first child usually open in the
+/// same millisecond, and the timestamps cannot say which came first. The walk
+/// can, and the sort is stable, so it does not undo that answer.
 events(t: Trace) -> Event[] {
     walked = walk_kids(t, roots(t), 0, [])
 

@@ -38,6 +38,9 @@ passed(r: Response) -> bool =>
 /// server that exits because one request could not be answered has turned one
 /// caller's bad afternoon into everybody's.
 ///
+/// It hangs up rather than keeping the connection alive, because whatever went
+/// wrong may have left half a body already written to it.
+///
 /// The scrubbing is not this function's doing — `dispatch` applies it to every
 /// 5xx, however it was built. `broke` just gives the note somewhere to go.
 broke(note: str) -> Response =>
@@ -71,6 +74,9 @@ no_content() -> Response =>
 /// A JSON object of strings, from parallel keys and values. Every value is
 /// escaped, which is the half that goes wrong by hand: one apostrophe is
 /// harmless and one double quote ends the object early.
+///
+/// The lists are walked in step and the object stops when the shorter one
+/// does, so a key with no value is dropped rather than given a null.
 json_of_str(keys: str[], values: str[]) -> Response =>
     json(object_of(keys, values.map(quote)))
 
@@ -82,5 +88,7 @@ json_of_str(keys: str[], values: str[]) -> Response =>
 /// The values arrive encoded because one object holds a string, a number and a
 /// nested object, and there is no variant here to carry the difference.
 /// `quote` is `std/json`'s, and a string value that skips it is a bug.
+///
+/// Unequal lists stop at the shorter one, as in `json_of_str`.
 json_of(keys: str[], values: str[]) -> Response =>
     json(object_of(keys, values))

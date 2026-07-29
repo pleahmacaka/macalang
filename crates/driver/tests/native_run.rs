@@ -1067,12 +1067,11 @@ fn handbook_examples_all_run() {
         "sum_to: 55",       // `for` over an inclusive range
         "ternary: pass",
         "patterns: empty / one: 7 / head 1, then 2 more", // list patterns
-        "propagate: 42",
-        "try: [division by zero] []", // `try` gives the message, not the value                                  // `?`
-        // `try`
-        "strings: ababab 007 2", // repeat/pad_start/split
-        "braces: {} {}",         // both literal-brace escapes
-        "fmt: [3.14] [    42] [ok  ] [  ok  ] [007]", // interpolation format specs
+        "propagate: 42",                                  // `?`
+        "try: [division by zero] []",                     // `try` gives the message, not the value
+        "strings: ababab 007 2",                          // repeat/pad_start/split
+        "braces: {} {}",                                  // both literal-brace escapes
+        "fmt: [3.14] [    42] [ok  ] [  ok  ] [007]",     // interpolation format specs
         // UI elements on the native target: attributes, children, and the
         // three forms an identifier can't express on its own
         "ui: <article class=\"prose\"><h1>Hi</h1><span>Body</span></article>",

@@ -1,10 +1,13 @@
 // selfhost/ast — the AST for the Maca-in-Maca compiler (stage 1).
 //
-// Surface Maca sums are nullary today (no payload-carrying variants), so the
-// AST uses the classic bootstrap shape: a `kind` tag (a nullary sum → C enum)
-// plus a record that carries every possible field. Unused fields stay zero /
-// empty per node. When stage-1 gains real algebraic data types this collapses
-// into a proper tagged union — but this form compiles under stage-0 today.
+// The classic bootstrap shape: a `kind` tag (a nullary sum → C enum) plus a
+// record carrying every possible field, most of them empty on any given node.
+//
+// A real tagged union would be the better AST, and stage-0 compiles one. It is
+// not used here because stage-1's own back ends cannot: `emit_c` lowers a
+// payload variant to a row of `long` cells and `emit_rust` writes the payload
+// type verbatim, so neither can express a variant that holds another `Expr`.
+// An AST the compiler could not compile is not an AST it can be written in.
 
 import selfhost/token
 
@@ -30,9 +33,8 @@ Expr = {
 
 StmtKind = SExpr | SBind | SFn | SRecord | SSum
 
-// One top-level or block statement. A function packs its params (as ident
-// exprs carrying their declared type in `ty`) into `params`, its declared
-// return type into `ret`, and its body statements into `body`.
+// One top-level or block statement. Records and sums reuse `params` rather
+// than adding fields only they would fill — see `s_record` and `s_sum`.
 Stmt = {
     kind:   StmtKind
     name:   str
@@ -54,17 +56,16 @@ e_int(n: int) -> Expr =>
 e_ident(name: str) -> Expr =>
     Expr { kind = EIdent, text = name, ival = 0, ty = "", children = [] }
 
-// A parameter ident that carries its declared type name (`n: int` → ty "int").
 e_param(name: str, ty: str) -> Expr =>
     Expr { kind = EIdent, text = name, ival = 0, ty, children = [] }
 
-// The same shape under a second name, for a sum variant's payload slot — where
-// the interesting part is the type rather than the binder.
+// The same shape as `e_param` under a second name, for a sum variant's payload
+// slot — where the interesting part is the type rather than the binder.
 e_typed(name: str, ty: str) -> Expr =>
     Expr { kind = EIdent, text = name, ival = 0, ty, children = [] }
 
-// `e` with one more child. Used to grow a variant's payload list and a match
-// pattern's binder list as each is read.
+// Grows a variant's payload list and a match pattern's binder list as each is
+// read; the parser has the child before it has anywhere to put it.
 with_child(e: Expr, c: Expr) -> Expr =>
     Expr { kind = e.kind, text = e.text, ival = e.ival, ty = e.ty,
            children = e.children ++ [c] }
@@ -72,7 +73,8 @@ with_child(e: Expr, c: Expr) -> Expr =>
 e_str(s: str) -> Expr =>
     Expr { kind = EStr, text = s, ival = 0, ty = "", children = [] }
 
-// A boolean literal; `text` is "true" or "false".
+// The source spelling, not a bool field: C wants `1`/`0` and Rust wants the
+// keyword, so the emitters decide and the AST stays neutral.
 e_bool(text: str) -> Expr =>
     Expr { kind = EBool, text, ival = 0, ty = "", children = [] }
 
@@ -94,28 +96,26 @@ e_ternary(cond: Expr, then: Expr, els: Expr) -> Expr =>
 e_unary(op: str, operand: Expr) -> Expr =>
     Expr { kind = EUnary, text = op, ival = 0, ty = "", children = [operand] }
 
-// A record literal `Point { x = 3, y = 4 }`. `text` is the type name; each
-// field is an `EBinary("=", EIdent(field), value)` so the name/value pair rides
-// inside the flat AST.
+// Each field rides as an `EBinary("=", EIdent(field), value)`: the flat AST has
+// no pair node, and `children` is the only list a node has.
 e_record(tyname: str, fields: Expr[]) -> Expr =>
     Expr { kind = ERecord, text = tyname, ival = 0, ty = "", children = fields }
 
-// A field access `base.name`; `text` is the field name, `children` the base.
 e_field(base: Expr, name: str) -> Expr =>
     Expr { kind = EField, text = name, ival = 0, ty = "", children = [base] }
 
-// A `match scrut { pat => body … }`. `children` is `[scrut, pat0, body0, …]`;
-// each pattern is a bare-ident node (a variant name, or `_` for the wildcard).
+// `children` is `[scrut, pat0, body0, …]` — arms flattened in pairs, because a
+// node has one child list and no room for a second. Each pattern is a bare
+// ident: a variant name, or `_` for the wildcard.
 e_match(children: Expr[]) -> Expr =>
     Expr { kind = EMatch, text = "", ival = 0, ty = "", children = children }
 
-// A UFCS method call `recv.name(args)`; `text` is the method name, `children`
-// is `[recv, arg0, …]`.
+// The receiver is `children.get(0)` and the arguments follow it, so every
+// consumer slices from 1 rather than reading a separate field.
 e_method(recv: Expr, name: str, args: Expr[]) -> Expr =>
     Expr { kind = EMethod, text = name, ival = 0, ty = "",
            children = [recv] ++ args }
 
-// A list literal `[a, b, c]`; `children` holds the elements.
 e_list(elems: Expr[]) -> Expr =>
     Expr { kind = EList, text = "", ival = 0, ty = "", children = elems }
 
@@ -128,22 +128,21 @@ s_bind(name: str, value: Expr) -> Stmt =>
 s_fn(name: str, ret: str, params: Expr[], body: Stmt[]) -> Stmt =>
     Stmt { kind = SFn, name, value = e_ident(name), ret, params, body }
 
-// A record type declaration `Point = { x: int, y: int }`. Fields ride in
-// `params` as typed idents (`e_param(field, type)`), reusing the fn machinery.
+// Fields ride in `params` as typed idents, reusing the function machinery — a
+// field and a parameter are both a name with a type, and one list is enough.
 s_record(name: str, fields: Expr[]) -> Stmt =>
     Stmt { kind = SRecord, name, value = e_ident(name), ret = "",
            params = fields, body = [] }
 
-// A nullary sum type declaration `Color = Red | Green | Blue`. Variants ride in
-// `params` as bare idents.
+// Variants ride in `params` too, each carrying its payload types as children.
 s_sum(name: str, variants: Expr[]) -> Stmt =>
     Stmt { kind = SSum, name, value = e_ident(name), ret = "",
            params = variants, body = [] }
 
 // ---- pretty-printer (recursive over the AST) ------------------------------
 
-// Render an expression back to source-like text. Recurses over `children`,
-// exercising the recursive `Expr` type end to end.
+// Source-like text, not source: parenthesised everywhere so the shape the
+// parser built is visible. It is how a parse is asserted about in a test.
 show(e: Expr) -> str =>
     match e.kind {
         EInt    => str(e.ival)
@@ -163,6 +162,6 @@ show(e: Expr) -> str =>
         _       => "?"
     }
 
-// Comma-join the rendered children from index `i` on.
+// `i` is 1 for a method call, whose first child is the receiver.
 show_args(xs: Expr[], i: int) -> str =>
     xs.slice(i, xs.length()).map(show).join(", ")

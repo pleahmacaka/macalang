@@ -101,6 +101,7 @@ report() -> int {
     show("GET", "/boom")
     show("GET", "/nowhere")
     show("DELETE", "/hello/ada")
+    post("/notes", "buy milk")
     info("")
     info("unanswered route names: {missing_handlers(Site, handle).length()}")
     0
@@ -110,6 +111,15 @@ show(method: str, target: str) {
     reply = ask_site(method, target)
 
     info("  {method} {target} -> {reply.status} {first_line(reply.body)}")
+}
+
+// A POST needs a body, and a body needs a `Content-Length` the server would
+// have framed for it, so it is written out here rather than through `show`.
+post(target: str, body: str) {
+    head = "POST {target} HTTP/1.1\r\nContent-Length: {body.length()}\r\n\r\n"
+    reply = dispatch(Site, parse_request(head ++ body), handle)
+
+    info("  POST {target} -> {reply.status} {first_line(reply.body)}")
 }
 
 ask_site(method: str, target: str) -> Response =>

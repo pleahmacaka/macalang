@@ -45,11 +45,34 @@ ordinary NixOS module:
 {
   networking.hostName = "rigel";
   system.stateVersion = "24.11";
+  environment.systemPackages = [ pkgs.git pkgs.curl pkgs.htop pkgs.ripgrep ];
+  services.openssh = {
+    enable = true;
+    passwordAuthentication = false;
+  };
 }
 ```
 
 Nix evaluates that to build the system. Nothing about the pipeline is special —
 the difference is that the file went through the type and effect checker first.
+
+### The two rewrites
+
+Most option paths come out the way they went in. Two do not, and both are
+visible above:
+
+| Written | Emitted |
+|---|---|
+| `system.packages = a, b` | `environment.systemPackages = [ pkgs.a pkgs.b ]` |
+| `services.X = { … }` | the same block with `enable = true;` added |
+
+The first is a shorter name for the option people reach for most. The second is
+implicit enable: configuring a service is how you ask for it, so a block that
+sets anything gets switched on.
+
+The injection is unconditional. Writing `enable` in the block yourself emits it
+twice — `enable = true; enable = false;` — and a repeated attribute is not a
+thing Nix accepts. Leave it out and let the block mean what it says.
 
 ## What config mode forbids
 
@@ -64,7 +87,8 @@ EffectInConfig: config must be pure but this uses effect(s): async
 | Reaching for | Row | Result |
 |---|---|---|
 | `await`, `spawn`, `sleep_ms` | `async` | compile error |
-| `info`, `print`, file reads | `io` | compile error |
+| `info`, `print`, and the console family | `io` | compile error |
+| `x.read(…)`, `x.write(…)` and the file methods | `io` | compile error |
 | a `net`/`http`/`socket` call | `net` | compile error |
 | an `os`/`process` call | `os` | compile error |
 | `fail` | `exn` | compile error |
@@ -73,6 +97,12 @@ The message names every row it found, so a configuration that prints *and*
 sleeps reports `io, async`. There is no escape hatch, which is the point: a
 machine definition that reads a file to decide what it declares is a machine
 definition whose meaning depends on when you ran it.
+
+The left column is a list of shapes, not of ideas, and the difference shows at
+one edge: the free builtins `read_file`, `capture` and `exec` are in none of
+those rows, so a config that calls one compiles. Read that as the reach of a
+check rather than as permission — the intent is the whole of the left column,
+and a config reaching for the disk is outside it either way.
 
 The check is the effect system from [Effects and Async](a7-effects.md), pointed
 at a whole module instead of a function.

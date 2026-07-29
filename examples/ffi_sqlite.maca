@@ -18,7 +18,8 @@ main() -> int {
     sqlite_exec(db, "CREATE TABLE people(name TEXT, age INTEGER)")
     sqlite_exec(db, "INSERT INTO people VALUES('ada', 36), ('alan', 41)")
 
-    // iterate every row, read each column by index — a real result set
+    // A real result set, not a single scalar: the row loop and the per-column
+    // reads are where an FFI binding usually turns out to be a toy.
     st = sqlite_prepare(db, "SELECT name, age FROM people ORDER BY age")
     while sqlite_step(st) {
         name = sqlite_column_text(st, 0)

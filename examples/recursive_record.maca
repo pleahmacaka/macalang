@@ -10,7 +10,6 @@ Tree = {
 leaf(label: str) -> Tree =>
     Tree { label, kids = [] }
 
-// total node count, counting this node plus every descendant.
 size(t: Tree) -> int =>
     1 + kids_size(t.kids, 0)
 

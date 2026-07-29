@@ -8,7 +8,6 @@ py_call_i(module: str, func: str, n: int) -> str
 
 main() -> int {
     info(py_call("platform", "python_version"))
-    // math.sqrt(144) and os.path.basename("/a/b/c.txt")
     info(py_call_i("math", "sqrt", 144))
     info(py_call_s("os.path", "basename", "/a/b/c.txt"))
     0

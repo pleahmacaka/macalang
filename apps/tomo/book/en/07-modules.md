@@ -33,7 +33,7 @@ main() -> int {
 }
 ```
 
-Note that `origin` is called unqualified. An import brings names in flat —
+`origin` is called unqualified. An import brings names in flat —
 there is no `geometry.origin()` form, because there is no namespace to qualify
 with.
 

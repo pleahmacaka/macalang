@@ -10,9 +10,10 @@
 //
 // Call that parameter `ctx` and not `c`. `http/server` links its socket with
 // `import c "http.h"`, which takes the name `c` for the C namespace, and after
-// that a parameter called `c` is not a record: `c.name` reads as a lookup into
-// the header and yields "". It compiles, runs, and answers every request with
-// an empty string.
+// that nothing in the program called `c` is a record any more — not a
+// parameter, not a local. `c.status` on a `Response` bound as `c = dispatch(…)`
+// compiles, runs, and prints a pointer. Nothing warns. The same goes for `py`,
+// `js` and `css`, which other modules take the same way.
 //
 // Building a context takes no socket. `probe("GET", "/user/7")` is a whole
 // one, which is what lets a handler be tested by calling it.
@@ -26,6 +27,11 @@ import { split_once } from std/text
 Ctx = {
     method: str
     /// The path with the query removed and percent-escapes decoded.
+    ///
+    /// Decoded *before* it is routed, which is `http/request`'s doing and
+    /// worth knowing: a `%2F` a client sent inside one segment has become an
+    /// ordinary separator by the time a pattern sees it, so `/user/a%2Fb`
+    /// takes the `/user/:id/:rest` route and not `/user/:id`.
     path: str
     /// The handler being called: a route's name, a hook's name, or the
     /// fallback's. This is what the dispatch `match` matches on.
@@ -131,6 +137,10 @@ probe(method: str, path: str) -> Ctx {
 /// A key given twice keeps the last value. A map has one slot per key, and
 /// giving `query` a list return for the sake of `?tag=a&tag=b` would make
 /// every ordinary lookup pay for a case no handler here has.
+///
+/// A pair with no key — `?=v`, or the nothing between two `&`s — is dropped.
+/// Storing it would put a value under "" where `query(ctx, "")` could find it,
+/// and no client ever meant to send that.
 parse_query(q: str) -> Map str str {
     empty: Map str str = map()
 
@@ -144,26 +154,33 @@ parse_query(q: str) -> Map str str {
 add_pairs(ps: str[], i: int, acc: Map str str) -> Map str str {
     if i >= ps.length() {
         acc
-    } else if ps.get(i) == "" {
-        add_pairs(ps, i + 1, acc)
     } else {
         cut = split_once(ps.get(i), "=")
         key = decode_form(cut.get(0))
 
-        add_pairs(ps, i + 1, acc.set(key, decode_form(cut.get(1))))
+        if key == "" {
+            add_pairs(ps, i + 1, acc)
+        } else {
+            add_pairs(ps, i + 1, acc.set(key, decode_form(cut.get(1))))
+        }
     }
 }
 
 // `+` means a space in a query string and in a form body, and nowhere else —
 // a `+` in a path is a plus, which is why this is not `percent_decode`.
+//
+// The `+` goes first and the `%XX` second, and swapping the two is wrong in a
+// way nothing shouts about: `%2B` is how a client sends a literal plus, and
+// decoding it before the replace turns that plus into a space.
 decode_form(s: str) -> str =>
     percent_decode(s.replace("+", " "))
 
 /// A raw header block as a map, names lower-cased and values trimmed.
 ///
-/// A line with no `:` is dropped rather than stored under itself: a request
-/// whose head carries a stray line is still a request, and a handler asking
-/// for `content-type` must not be able to get one back that was never sent.
+/// A line with no `:`, and a line whose name is empty, are both dropped rather
+/// than stored: a request whose head carries a stray line is still a request,
+/// and a handler asking for `content-type` — or for "" — must not be able to
+/// get one back that was never sent.
 parse_headers(block: str) -> Map str str {
     empty: Map str str = map()
 
@@ -179,6 +196,10 @@ add_headers(ls: str[], i: int, acc: Map str str) -> Map str str {
         cut = split_once(ls.get(i), ":")
         name = cut.get(0).trim().lower()
 
-        add_headers(ls, i + 1, acc.set(name, cut.get(1).trim()))
+        if name == "" {
+            add_headers(ls, i + 1, acc)
+        } else {
+            add_headers(ls, i + 1, acc.set(name, cut.get(1).trim()))
+        }
     }
 }

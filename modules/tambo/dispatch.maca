@@ -13,20 +13,23 @@
 //
 // The order a request goes through:
 //
-//   1. the `before` hook, if there is one. Anything but `pass()` stops here.
-//   2. the route, chosen by `lookup` — or a 405 when the path matched under
-//      another method, or the `fallback`, or a 404.
-//   3. `scrub`, which takes the body off any 5xx.
+//   1. the `before` hook, if there is one. Anything but `pass()` is the
+//      answer, and the route does not run at all.
+//   2. otherwise the route, chosen by `lookup` — or a 405 when the path
+//      matched under another method, or the `fallback`, or a 404.
+//   3. `scrub`, which takes the body off any 5xx, whichever of those built it.
 //   4. the `after` hook, if there is one, with the response in `ctx.reply`.
 //
-// The hooks run for a 404 as much as for a 200, because a log that skips the
-// requests which failed is a log nobody can use.
+// Steps 3 and 4 run whatever happened above them. The hooks see a request the
+// guard refused and a path that matched nothing as readily as a 200, because a
+// log that skips the requests which failed is a log nobody can use.
 //
 // It is called `dispatch` and not `run` so that a site which also imports
 // `std/proc` still compiles: Maca has one namespace per program, and two
 // top-level `run`s are two definitions of one name.
 
-import { App, Pick, lookup } from tambo/app
+import { App, Pick, Route, lookup } from tambo/app
+import { bind_path, sample_path } from tambo/route
 import { Ctx, context, probe } from tambo/ctx
 import { pass, passed, scrub } from tambo/reply
 import { Request } from http/request
@@ -113,50 +116,74 @@ after_hook(a: App, ctx: Ctx, r: Response, handle) -> Response {
 
 /// The route names `handle` has no arm for.
 ///
-/// Every declared route, and the fallback if there is one, is asked once with
-/// an empty context; whatever answers `pass()` is named here. Hooks are not
-/// asked, because `pass()` is a legitimate answer from a hook.
+/// Every route is asked once, and the fallback after them; whatever answers
+/// `pass()` is named here, in declaration order. A name two routes share is
+/// asked once and named once.
+///
+/// Each route is asked through a context built from that route: its own
+/// method, a path its own pattern matches, and the parameters that pattern
+/// binds. That matters — an arm reading `ctx.method == "POST"` or
+/// `param(ctx, "id")` and passing otherwise is an ordinary arm, and asking it
+/// about `GET /` with nothing bound reported half of a correct site as
+/// missing.
+///
+/// What no probe can settle is an arm that answers `pass()` for the sample
+/// too. A missing arm and an arm that passes are the same answer, so such a
+/// handler is reported, and the fix is to answer the sample.
+///
+/// That is also why hooks are not asked at all: `pass()` is what a `before`
+/// hook says to let a request through, so a hook with no arm and a hook that
+/// admits everything are the same answer from here. A misspelt `.before(…)`
+/// name is therefore silent, and it fails open. Assert those arms yourself.
 ///
 /// This calls the handlers for real, so a handler with a side effect will
 /// perform it — which is a fair argument for keeping the side effects in the
 /// hooks, where this does not reach.
 missing_handlers(a: App, handle) -> str[] {
-    names = handler_names(a)
     gaps: str[] = []
-    i = 0
-
-    while i < names.length() {
-        ctx = probe("GET", "/") with { name = names.get(i) }
-
-        if passed(ask(ctx, handle)) {
-            gaps = gaps.push(names.get(i))
-        }
-
-        i = i + 1
-    }
-
-    gaps
-}
-
-// Every distinct name the table points at, in declaration order.
-handler_names(a: App) -> str[] {
-    out: str[] = []
+    asked: str[] = []
     i = 0
 
     while i < a.routes.length() {
-        n = a.routes.get(i).name
+        r = a.routes.get(i)
 
-        if !out.contains(n) {
-            out = out.push(n)
+        if !asked.contains(r.name) {
+            asked = asked.push(r.name)
+
+            if passed(ask(route_probe(r), handle)) {
+                gaps = gaps.push(r.name)
+            }
         }
 
         i = i + 1
     }
 
-    if a.fallback != "" && !out.contains(a.fallback) {
-        out.push(a.fallback)
+    fallback_gap(a, asked, gaps, handle)
+}
+
+// The context a route's handler would be given by a request that took it. Not
+// the same request the site will get, but the same shape, which is as close as
+// anything can come before a client exists.
+route_probe(r: Route) -> Ctx {
+    path = sample_path(r.pattern)
+
+    probe(r.method, path) with {
+        name = r.name,
+        route = r.name,
+        pattern = r.pattern,
+        params = bind_path(r.pattern, path).params,
+    }
+}
+
+// The fallback, asked last and only if no route already answered for its name.
+// It gets a path no pattern was written for, because that is when it runs.
+fallback_gap(a: App, asked: str[], gaps: str[], handle) -> str[] {
+    if a.fallback == "" || asked.contains(a.fallback) {
+        gaps
     } else {
-        out
+        ctx = probe("GET", "/") with { name = a.fallback }
+
+        passed(ask(ctx, handle)) ? gaps.push(a.fallback) : gaps
     }
 }
 
@@ -167,10 +194,9 @@ handler_names(a: App) -> str[] {
 /// a request arrives, and answering it here is what pays for the trade.
 serve(a: App, port: int, handle) -> int {
     gaps = missing_handlers(a, handle)
-    named = gaps.join(", ")
 
     if gaps.length() > 0 {
-        err("tambo: no handler for {named}")
+        err("tambo: no handler for {gaps.join(", ")}")
         1
     } else {
         info("tambo: {a.routes.length()} routes on http://localhost:{port}")

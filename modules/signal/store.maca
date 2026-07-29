@@ -16,7 +16,7 @@
 //
 // The store is a value. Maca has no globals and no interior mutability, so
 // `set` returns a new store and the program threads it. That is also why a
-// write that changes nothing returns the store untouched: if every write
+// write that changes nothing returns the store unchanged: if every write
 // counted as a change, nothing below would be worth having.
 //
 // Subscribers pull. A function value cannot live in a record field, so a list
@@ -29,23 +29,18 @@
 //
 // Dependencies are declared, not discovered. Nothing here tracks reads, so a
 // computed names its inputs when it is declared. Declare a computed after the
-// keys it reads: `refresh` called down the declaration order then settles the
-// whole graph in one pass, and the tip of a diamond recomputes once.
+// keys it reads and `refresh` down `derived()` settles the whole graph in one
+// pass; declared in any other order, loop on `next_stale` instead.
 //
-// One implementation rule, because it reads like a style choice and is not:
-// inside this file a function of this module is called plainly — `get(s, k)`,
-// never `s.get(k)`. A selective import's dead-code pass does not follow a UFCS
-// method call, so a helper reached only through one is dropped from the build
-// and the link fails on a name that is sitting right there in the file.
-// Callers are unaffected: `s.get("k")` is the intended spelling from outside.
-//
-// One hazard, for the same reason: two top-level definitions of one name,
-// inlined into the same program, silently keep the last. `get`, `set` and
-// `value` are also names in `std/json` and `cli/parse`, and `flush` is one in
-// `std/text` — which is why the queue here is emptied by `clear_changed`.
-// This module imports selectively and takes nothing from a module that imports
-// another one whole, because a whole-module import brings every private helper
-// in it along too.
+// One thing to know before importing. Two top-level definitions of one name,
+// inlined into the same program, silently keep the last — the compiler says
+// nothing, and the error lands in whichever of them lost. `get`, `set` and
+// `value` are names this API has to have, and `std/json`, `http/server` and
+// `cli/parse` have their own. A program may bring any such name in from one
+// module only; `import { quote } from std/json` beside this module is fine,
+// `import { get, quote }` is a type error naming `Store` from a line the
+// program did not write. That is also why the render queue is emptied by
+// `clear_changed` and not by `flush`, which `std/text` already defines.
 
 /// A store: every key's value, and the bookkeeping that makes a change to one
 /// of them observable.
@@ -68,13 +63,14 @@ Store = {
     acked: Map str str,
 }
 
-// A list of keys kept in one map value. Keys are compared exactly, so the
-// separator has to be something a key cannot contain, and a newline is the one
-// character no sensible key has.
+// A record field cannot hold a `Map str str[]` — the native backend generates
+// a JSON reader for every record type and mis-types the list there — so a list
+// of keys is kept as one packed string. `pack`/`unpack` at the foot of the file
+// are what make that lossless.
 Sep = "\n"
 
-// A basis no computed could have produced — a fingerprint is digits and
-// separators — so a freshly declared computed reads as stale.
+// A basis no computed could have produced — a packed list of digits either ends
+// in the separator or is empty — so a freshly declared computed reads as stale.
 Unseen = "?"
 
 /// An empty store.
@@ -98,6 +94,13 @@ store() -> Store {
     }
 }
 
+// One rule for editing this file, because it reads like a style choice and is
+// not: a function here calls another one of this module plainly — `get(s, k)`,
+// never `s.get(k)`. A selective import's dead-code pass does not follow a UFCS
+// method call, so a helper reached only through one is dropped from the build,
+// and the link then fails on a mangled name (`double_mc`) that nobody wrote.
+// From outside the module `s.get("k")` is the intended spelling and works.
+
 // ---- reading --------------------------------------------------------------
 
 /// The value of `key`, or "" when it was never written.
@@ -113,7 +116,9 @@ value(s: Store, key: str, fallback: str) -> str =>
 /// reads as "", version 0, never stale, and nothing pends on it.
 has(s: Store, key: str) -> bool => s.values.has(key)
 
-/// Every key the store holds, atoms and computeds alike.
+/// Every key the store holds, atoms and computeds alike. A computed that has
+/// never been refreshed has no value yet and so is not in this list; `derived`
+/// is the one that answers regardless.
 keys(s: Store) -> str[] => s.values.keys()
 
 /// How many times `key` has actually changed. This is the number a subscriber
@@ -135,10 +140,9 @@ num(s: Store, key: str, fallback: int) -> int {
 
 /// Write `key`.
 ///
-/// A write that does not change the value returns the store untouched: no
-/// version bump, nothing added to `changed`, no subscriber told. That is the
-/// difference between a store and a firehose, and everything below rests on
-/// it.
+/// A write of the value `key` already holds is not a change: no version bump,
+/// nothing added to `changed`, no subscriber told. That is the difference
+/// between a store and a firehose, and everything below rests on it.
 set(s: Store, key: str, v: str) -> Store {
     // A computed is up to date the moment it is written, including when it
     // recomputed to the value it already had. Doing this only on the changed
@@ -167,11 +171,13 @@ set_num(s: Store, key: str, n: int) -> Store => set(s, key, str(n))
 /// Declare `key` as derived from `deps`.
 ///
 /// Declare it *after* the keys it reads. Declaration order is the order
-/// `next_stale` walks, and a graph declared in dependency order settles in one
-/// pass down that order.
+/// `derived` and `next_stale` walk, and a graph declared in dependency order
+/// settles in one pass down that order.
 ///
 /// Declaring the same key again replaces its dependency list and leaves it
-/// stale, which is what a change to a page's wiring should do.
+/// stale, which is what a change to a page's wiring should do. It does not
+/// declare a second computed: `derived` names each key once however often it
+/// was rewired.
 computed(s: Store, key: str, deps: str[]) -> Store {
     known = is_computed(s, key)
 
@@ -184,6 +190,10 @@ computed(s: Store, key: str, deps: str[]) -> Store {
 
 /// Was `key` declared with `computed`?
 is_computed(s: Store, key: str) -> bool => s.deps.has(key)
+
+/// Every computed, in declaration order — the order to `refresh` them in, and
+/// the only way to ask the store what its wiring is rather than remembering.
+derived(s: Store) -> str[] => s.computeds
 
 /// What `key` was declared to derive from, in declared order.
 deps_of(s: Store, key: str) -> str[] => unpack(s.deps.get(key, ""))
@@ -212,7 +222,9 @@ stale(s: Store, key: str) -> bool {
 }
 
 /// The first computed in declaration order that needs recomputing, or "" when
-/// the graph has settled. A driver loop reads:
+/// the graph has settled. Use this when the computeds were *not* declared in
+/// dependency order — it re-asks after every write, so it settles a graph in
+/// any order, where one pass down `derived` needs the right one:
 ///
 ///   k = s.next_stale()
 ///   while k != "" {
@@ -232,11 +244,15 @@ first_stale(s: Store, i: int) -> str {
 }
 
 /// Recompute `key` if a dependency has changed since it was last computed, and
-/// do nothing at all otherwise.
+/// do nothing at all otherwise — `f` is not called for a settled computed, for
+/// an atom, or for a key nobody declared. That is what makes it safe to call
+/// down `derived()` on every pass, however expensive `f` is.
 ///
 /// `f` is handed `inputs(s, key)` and returns the new value. Annotate its
-/// parameter — a higher-order parameter has no type to pass down, so
-/// `(vs: str[]) => vs.get(0)` compiles where `vs => vs.get(0)` does not.
+/// parameter: `(vs: str[]) => vs.get(0)`. A higher-order parameter has no type
+/// to pass down, so a bare `vs => vs.get(0)` resolves `get` against the top
+/// level and finds this module's `get(Store, str)` — the error says `Store`
+/// and points at the lambda, which explains nothing.
 refresh(s: Store, key: str, f) -> Store {
     if !stale(s, key) {
         s
@@ -276,7 +292,8 @@ touched(s: Store, key: str) -> bool => s.dirty.contains(key)
 /// Forget the changed keys. Call it after patching, not before: clearing the
 /// queue first turns a change into one nobody was ever told about.
 ///
-/// Not `flush`, which is already a name in `std/text` — see the header.
+/// It touches nothing else. A subscriber's idea of when it last looked is its
+/// own, and only `ack` moves it.
 clear_changed(s: Store) -> Store => s with { dirty = [] }
 
 // ---- named subscribers ----------------------------------------------------
@@ -337,14 +354,39 @@ ack(s: Store, name: str) -> Store {
 
 // ---- packing --------------------------------------------------------------
 
-pack(xs: str[]) -> str => xs.join(Sep)
+// A list of keys, in one map value. Every key is escaped and *terminated*
+// rather than separated, because separating loses two cases that both reach
+// this file from ordinary code: joining on a raw newline turns one key holding
+// one into two keys nobody wrote, and a plain join packs `[]` and `[""]` to the
+// same empty string, which made a subscriber watching nothing and one watching
+// the empty key indistinguishable.
+pack(xs: str[]) -> str => pack_from(xs, 0, "")
 
-// An empty packed list is "", and splitting "" would give one empty key
-// rather than no keys at all.
-unpack(packed: str) -> str[] {
-    if packed == "" {
-        []
+pack_from(xs: str[], i: int, acc: str) -> str {
+    if i >= xs.length() {
+        acc
     } else {
-        packed.split(Sep)
+        pack_from(xs, i + 1, acc ++ escaped(xs.get(i)) ++ Sep)
+    }
+}
+
+escaped(x: str) -> str => x.replace("\\", "\\\\").replace(Sep, "\\n")
+
+unpack(packed: str) -> str[] => unpack_from(packed, 0, "", [])
+
+// Unescaping is a left-to-right scan and not two `replace` passes, because a
+// key that really held a backslash followed by `n` packs to the same three
+// characters an escaped newline shares a suffix with, and a `replace` reads it
+// as the newline.
+unpack_from(s: str, i: int, cur: str, acc: str[]) -> str[] {
+    if i >= s.length() {
+        cur == "" ? acc : acc.push(cur)
+    } else if s.at(i) == "\\" && i + 1 < s.length() {
+        c = s.at(i + 1)
+        unpack_from(s, i + 2, cur ++ (c == "n" ? Sep : c), acc)
+    } else if s.at(i) == Sep {
+        unpack_from(s, i + 1, "", acc.push(cur))
+    } else {
+        unpack_from(s, i + 1, cur ++ s.at(i), acc)
     }
 }

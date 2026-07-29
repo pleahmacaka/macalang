@@ -440,14 +440,6 @@ fn cmd_lint(args: &[String]) {
     }
 }
 
-/// Brace/paren-depth re-indenter (4-space), string-aware.
-/// Normalize indentation to `unit` without reflowing. Each line's existing
-/// indent depth (in levels, inferred from the file's own indent step) is
-/// re-emitted with `unit` — so a 4-space file re-formatted with the default
-/// 4-space style is unchanged (idempotent), while tab↔space / size changes
-/// convert cleanly. This preserves every author choice that isn't pure
-/// leading whitespace: comments, blank lines, and expression-continuation
-/// alignment (`=>` bodies, ternary chains) all survive intact.
 /// The lines of `src` that are Maca rather than the contents of a raw string.
 fn outside_raw_blocks(src: &str) -> Vec<&str> {
     let mut out = Vec::new();
@@ -464,6 +456,13 @@ fn outside_raw_blocks(src: &str) -> Vec<&str> {
     out
 }
 
+/// Normalize indentation to `unit` without reflowing. Each line's existing
+/// indent depth (in levels, inferred from the file's own indent step) is
+/// re-emitted with `unit` — so a 4-space file re-formatted with the default
+/// 4-space style is unchanged (idempotent), while tab↔space / size changes
+/// convert cleanly. This preserves every author choice that isn't pure
+/// leading whitespace: comments, blank lines, and expression-continuation
+/// alignment (`=>` bodies, ternary chains) all survive intact.
 fn reindent(src: &str, unit: &str) -> String {
     // A raw `"""…"""` block holds foreign source — CSS, JavaScript, a C
     // template — with its own indentation, which is not this file's to
@@ -1033,9 +1032,6 @@ fn validate_rust_bodies(m: &maca_parser::Module) -> Result<(), String> {
     ))
 }
 
-/// `[rust-dependencies]` from the `maca.toml` nearest `src` (searching upward),
-/// as `(name, raw-rhs)` pairs — the RHS is preserved verbatim so both a bare
-/// version (`"1"`) and a table (`{ git = "…" }`) round-trip into `Cargo.toml`.
 /// A record field declared `(T) -> R` reaches only the native and JS back ends.
 ///
 /// Rust would need the field boxed, the record's derives dropped and the call
@@ -1066,6 +1062,9 @@ fn validate_no_function_fields(m: &maca_parser::Module, target: &str) -> Result<
     Ok(())
 }
 
+/// `[rust-dependencies]` from the `maca.toml` nearest `src` (searching upward),
+/// as `(name, raw-rhs)` pairs — the RHS is preserved verbatim so both a bare
+/// version (`"1"`) and a table (`{ git = "…" }`) round-trip into `Cargo.toml`.
 fn rust_dependencies(src: &Path) -> Vec<(String, String)> {
     manifest_section(src, "[rust-dependencies]")
 }
@@ -1926,10 +1925,6 @@ fn cmd_run(args: &[String]) {
     std::process::exit(status.code().unwrap_or(1));
 }
 
-/// Read → parse → typecheck → emit C → `zig cc` → binary at `out`.
-/// Compile `src` to a native binary at `out`, backed by the content-addressed
-/// build cache: an unchanged source is copied straight from the cache (skipping
-/// the whole pipeline), and a fresh build is stored back.
 /// A fingerprint that changes whenever the compiler itself does — its version
 /// plus its binary's mtime — so a rebuilt/upgraded `maca` invalidates the cache
 /// even though the crate version string is unchanged during development.
@@ -1946,6 +1941,10 @@ fn compiler_fingerprint() -> String {
 
 use maca_parser::imports::load_with_imports;
 
+/// Read → parse → typecheck → emit C → `zig cc` → a native binary at `out`,
+/// backed by the content-addressed build cache: an unchanged source is copied
+/// straight from the cache (skipping the whole pipeline), and a fresh build is
+/// stored back.
 fn compile(src: &Path, out: &Path) -> Result<(), String> {
     let source = load_with_imports(src)?;
     let key = build_cache::artifact_key(&source, &compiler_fingerprint(), "native");
@@ -2318,7 +2317,6 @@ fn have_wsl() -> bool {
         .unwrap_or(false)
 }
 
-/// Is a command available on PATH (responds to `--version`)?
 /// Run a host command and capture its trimmed stdout (for `python3-config` etc.).
 fn capture_cmd(cmd: &str, args: &[&str]) -> Result<String, String> {
     let o = Command::new(cmd)
@@ -2335,6 +2333,7 @@ fn capture_cmd(cmd: &str, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
+/// Is a command available on PATH (responds to `--version`)?
 fn have(cmd: &str) -> bool {
     Command::new(cmd)
         .arg("--version")

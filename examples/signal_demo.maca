@@ -3,16 +3,18 @@
 //
 //   maca run examples/signal_demo.maca
 //
-// Built native this renders the page once and then prints the patch it *would*
-// apply, which is what makes the wiring testable without a browser. Built with
-// `--target js` the same store and the same markup drive a live page, and the
-// `js:` line printed below is exactly what a click handler runs there.
+// This renders the page once and then prints the patch it *would* apply, which
+// is what makes the wiring testable without a browser. The `js:` line is the
+// call a browser would run against the same markup — send it down however the
+// page gets its updates, next to the runtime `runtime_script()` puts in the
+// page. Do not reach for `--target js`: that backend drops an imported
+// module's definitions without saying so, and the page loads and throws.
 //
-// The page has four nodes: two bound to keys that change, one bound to a key
-// that does not, and one bound to nothing at all. Watch which of them the
-// patches name.
+// The page has four bound-looking nodes: two bound to keys that change, one
+// bound to `theme`, which does not, and one bound to nothing at all. Watch
+// which of them the patches name.
 
-import { store, set_num, num, computed, refresh } from signal/store
+import { store, set_num, num, computed, refresh, derived } from signal/store
 import { clear_changed, set } from signal/store
 import { text_node, class_node, patch, describe_all } from signal/dom
 import { patch_script, runtime_script, static_note } from signal/dom
@@ -29,13 +31,23 @@ page(s: Store) -> str =>
         p("Bound to nothing, so no patch will ever name it.")
         static_note())
 
-// One click. The atom moves, and everything declared to derive from it is
-// brought up to date in declaration order — `refresh` does nothing at all for
-// a computed whose inputs stood still, so this is safe to call on every one.
-tick(s: Store) -> Store {
-    bumped = s.set_num("count", s.num("count", 0) + 1)
-    bumped.refresh("label", say)
+// Bring every computed up to date. `refresh` does nothing at all for one whose
+// inputs stood still, so this is safe after any write at all; walking
+// `derived()` rather than naming "label" here is what keeps it from needing an
+// edit every time the page grows a computed. A page with more than one compute
+// function dispatches on `k` inside the loop.
+settle(s: Store) -> Store {
+    out = s
+
+    for k in s.derived() {
+        out = out.refresh(k, say)
+    }
+    out
 }
+
+// One click: the atom moves, and everything derived from it follows.
+tick(s: Store) -> Store =>
+    settle(s.set_num("count", s.num("count", 0) + 1))
 
 // What a browser would do, printed instead of done, and then the render queue
 // emptied so the next change starts from nothing.
@@ -72,9 +84,7 @@ main() -> int {
 
     info("")
     info("--- a write of the value the key already had ---")
-    s = s.set_num("count", s.num("count", 0))
-    s = s.refresh("label", say)
-    s = report(s)
+    s = report(settle(s.set_num("count", s.num("count", 0))))
 
     0
 }

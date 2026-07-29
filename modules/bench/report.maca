@@ -17,7 +17,7 @@
 import { table_aligned, rule } from cli/show
 import { grey } from cli/style
 import { Result, fastest_ms, median_ms, mean_ms } from bench/time
-import { ns_per_op, ops_per_sec, total_ops, resolved } from bench/time
+import { ns_per_op, ops_per_sec, total_ops, total_ms, resolved } from bench/time
 
 /// The column headings, in the order `row_of` fills them.
 result_columns() -> str[] =>
@@ -72,14 +72,25 @@ footnote(rs: Result[]) -> str {
     calls = summed_ops(rs, 0, 0)
     ms = summed_ms(rs, 0, 0)
     shaky = unresolved_count(rs, 0, 0)
-    body = "{rs.length()} cases, {grouped(calls)} calls, {grouped(ms)} ms"
-        ++ " measured. Times are wall-clock; ns/op is the total divided by the"
-        ++ " call count."
+    body = "{counted(rs.length(), "case")}, {grouped(calls)} calls,"
+        ++ " {grouped(ms)} ms measured. Times are wall-clock; ns/op is the"
+        ++ " total divided by the call count."
 
     if shaky == 0 {
         grey(body)
     } else {
-        grey(body ++ " {shaky} case(s) stayed under the clock's resolution.")
+        grey(body ++ " {counted(shaky, "case")} stayed under the clock.")
+    }
+}
+
+// A footer that says "1 cases" is the report being wrong about the one thing
+// its reader can check, which is a poor way to introduce the numbers nobody
+// can.
+counted(n: int, thing: str) -> str {
+    if n == 1 {
+        "1 {thing}"
+    } else {
+        "{n} {thing}s"
     }
 }
 
@@ -95,7 +106,7 @@ summed_ms(rs: Result[], i: int, acc: int) -> int {
     if i >= rs.length() {
         acc
     } else {
-        summed_ms(rs, i + 1, acc + rs.get(i).samples.sum())
+        summed_ms(rs, i + 1, acc + total_ms(rs.get(i)))
     }
 }
 

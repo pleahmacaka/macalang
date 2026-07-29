@@ -16,10 +16,9 @@ is_alnum(c: str) -> bool => is_alpha(c) || is_digit(c)
 
 // ---- span helpers ---------------------------------------------------------
 
-// Consume a run of characters matching `pred` starting at `i`; return the end
-// index (exclusive). `pred` is a higher-order parameter (a predicate
-// `str -> bool`): the stage-0 backend recognizes an unannotated parameter that
-// is called and lowers it as a first-class function value.
+// `pred` is deliberately unannotated: the stage-0 backend types a parameter
+// that is *called* in the body as a closure, which is how a predicate is passed
+// with no function-type syntax in the surface language.
 run_end(cs: str[], i: int, pred) -> int {
     if i < cs.length() && pred(cs.get(i)) {
         run_end(cs, i + 1, pred)
@@ -28,7 +27,6 @@ run_end(cs: str[], i: int, pred) -> int {
     }
 }
 
-// The source text between two indices, as a single string.
 span(cs: str[], i: int, j: int) -> str =>
     cs.slice(i, j).join("")
 
@@ -58,8 +56,8 @@ step(cs: str[], i: int, out: Token[]) -> Token[] {
     }
 }
 
-// A double-quoted string literal. `i` sits on the opening quote; the token text
-// is the content between the quotes (escapes are left verbatim in this slice).
+// `i` sits on the opening quote. Escapes are left verbatim — unescaping is the
+// parser's job, because an interpolation has to be re-lexed anyway.
 lex_string(cs: str[], i: int, out: Token[]) -> Token[] {
     j = string_end(cs, i + 1)
     text = span(cs, i + 1, j)
@@ -80,9 +78,8 @@ lex_word(cs: str[], i: int, out: Token[]) -> Token[] {
     scan(cs, j, out ++ [mk_token(keyword_kind(text), text, i)])
 }
 
-// A number: integer digits, and — when a `.` is immediately followed by another
-// digit — a fractional part, making it a float (`1.5`). A trailing dot with no
-// digit after it (`1.`) stays an int and leaves the `.` for the next token.
+// A `.` only starts a fraction when a digit follows it. `1.` stays an int and
+// leaves the dot behind, so `1.max(2)` is a method call rather than a float.
 lex_number(cs: str[], i: int, out: Token[]) -> Token[] {
     j = run_end(cs, i, is_digit)
     has_fraction = j + 1 < cs.length() && cs.get(j) == "."
@@ -96,13 +93,12 @@ lex_number(cs: str[], i: int, out: Token[]) -> Token[] {
 }
 
 lex_float(cs: str[], i: int, dot: int, out: Token[]) -> Token[] {
-    k = run_end(cs, dot + 1, is_digit)   // fractional digits after the '.'
+    k = run_end(cs, dot + 1, is_digit)
     scan(cs, k, out ++ [mk_token(TFloat, span(cs, i, k), i)])
 }
 
-// A punctuator: try a two-character operator (`->`, `=>`, `==`, …) first, then
-// fall back to a single character. `is_two_char` gates the two-char consume so
-// we never mis-read `a - b` as one token.
+// Two-character operators are tried first, and only from a closed list: a
+// greedy pair would read the `- -` in `a - -b` as one token.
 lex_punct(cs: str[], i: int, out: Token[], c: str) -> Token[] {
     nxt = if i + 1 < cs.length() { cs.get(i + 1) } else { "" }
     two = c ++ nxt

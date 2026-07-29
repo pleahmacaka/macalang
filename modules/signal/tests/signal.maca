@@ -9,7 +9,7 @@
 
 import { store, set, set_num, get, value, has, keys } from signal/store
 import { version, num, computed, is_computed, deps_of } from signal/store
-import { inputs, stale, next_stale, refresh } from signal/store
+import { derived, inputs, stale, next_stale, refresh } from signal/store
 import { changed, touched, clear_changed } from signal/store
 import { watch, unwatch, watching, pending, ack } from signal/store
 import { text_node, class_node, value_input, selector } from signal/dom
@@ -30,6 +30,12 @@ doubled(vs: str[]) -> str => str(int(vs.get(0)) * 2)
 summed(vs: str[]) -> str => str(int(vs.get(0)) + int(vs.get(1)))
 
 fixed(vs: str[]) -> str => "always the same"
+
+// For the claim that `refresh` does not call `f` at all. Checking that the
+// value did not change proves only that a recomputation landed where it
+// started, which is a weaker claim and the one the first version of this suite
+// accidentally tested: `refresh` could run `f` every time and stay green.
+poison(vs: str[]) -> str => "POISONED"
 
 // ---- atoms ----------------------------------------------------------------
 
@@ -171,6 +177,29 @@ test_a_computed_does_not_recompute_when_nothing_changed() {
     assert_eq(str(s.version("label")), str(settled), "and never rewritten")
 }
 
+// The claim above is about the value; this one is about the work. `refresh`
+// promises not to call `f` for a settled computed, and a `f` that returns the
+// same answer either way cannot tell the two apart — which is why `poison`
+// returns a value nothing else would produce.
+test_refresh_does_not_call_the_function_for_a_settled_computed() {
+    s = store().set_num("count", 0).computed("label", ["count"])
+    s = s.refresh("label", say_count)
+
+    s = s.refresh("label", poison)
+
+    assert_eq(s.get("label"), "clicked 0 times", "the function never ran")
+}
+
+test_refresh_does_nothing_for_an_atom_or_an_undeclared_key() {
+    s = store().set("a", "1").clear_changed()
+
+    s = s.refresh("a", poison).refresh("never-declared", poison)
+
+    assert_eq(s.get("a"), "1", "an atom holds its own value")
+    assert(!s.has("never-declared"), "and an undeclared key stays absent")
+    assert_eq(s.changed().join(","), "", "neither is worth patching")
+}
+
 // A write to a dependency that leaves its value alone is not a change, so
 // nothing downstream of it goes stale. This is the whole reason `set` compares
 // before it writes.
@@ -208,6 +237,8 @@ test_a_computed_with_no_dependencies_settles_after_one_refresh() {
     s = store().computed("banner", none)
 
     assert(s.stale("banner"), "stale before it has ever run")
+    assert_eq(str(s.deps_of("banner").length()), "0", "it depends on nothing")
+    assert_eq(str(s.inputs("banner").length()), "0", "and is handed nothing")
     s = s.refresh("banner", fixed)
     assert(!s.stale("banner"), "and settled after")
     assert_eq(s.get("banner"), "always the same", "with its value")
@@ -221,6 +252,22 @@ test_redeclaring_a_computed_makes_it_stale_again() {
 
     assert(s.stale("c"), "new wiring, so it must run again")
     assert_eq(s.deps_of("c").join(","), "b", "against the new dependency")
+}
+
+test_derived_names_every_computed_in_declaration_order() {
+    none: str[] = []
+    s = store().computed("b", none).computed("c", none).computed("a", none)
+
+    assert_eq(s.derived().join(","), "b,c,a", "as declared, not sorted")
+    assert_eq(s.keys().join(","), "", "none of them has run, so none has a key")
+}
+
+test_rewiring_a_computed_does_not_declare_a_second_one() {
+    s = store().set("a", "1").set("b", "2")
+    s = s.computed("c", ["a"]).computed("c", ["b"]).computed("c", ["a", "b"])
+
+    assert_eq(s.derived().join(","), "c", "one computed, however often rewired")
+    assert_eq(s.deps_of("c").join(","), "a,b", "carrying the latest wiring")
 }
 
 test_a_chain_settles_in_one_pass_down_declaration_order() {
@@ -289,6 +336,25 @@ test_next_stale_walks_declaration_order_and_then_stops() {
     assert_eq(s.next_stale(), "", "then nothing")
 }
 
+// The loop in `next_stale`'s doc comment, run against the case it is for:
+// computeds declared in the wrong order, where one pass down `derived` would
+// leave c reading a b that had not moved yet.
+test_the_next_stale_loop_settles_a_graph_declared_out_of_order() {
+    s = store().set_num("a", 1).computed("c", ["b"]).computed("b", ["a"])
+
+    k = s.next_stale()
+    passes = 0
+    while k != "" && passes < 10 {
+        s = k == "b" ? s.refresh(k, plus_one) : s.refresh(k, doubled)
+        k = s.next_stale()
+        passes = passes + 1
+    }
+
+    assert_eq(s.get("b"), "2", "b followed a")
+    assert_eq(s.get("c"), "4", "and c followed b, declared first though it was")
+    assert_eq(str(passes), "3", "at the cost of one pass over c twice")
+}
+
 // ---- named subscribers ----------------------------------------------------
 
 test_a_new_subscriber_starts_up_to_date() {
@@ -332,12 +398,22 @@ test_two_subscribers_keep_their_own_idea_of_now() {
 // A subscriber is independent of the render queue: clearing one must not
 // silently answer for the other, which is the failure this design exists to
 // avoid.
+//
+// Both directions are asserted, because the first one alone passes even when
+// `clear_changed` wipes every ack along with the queue: a subscriber with no
+// recorded ack pends everything, so "still behind" is what a wiped one says
+// too. Only the caught-up subscriber can tell them apart.
 test_clearing_the_render_queue_leaves_subscribers_alone() {
     s = store().set("a", "1").watch("nav", ["a"])
     s = s.set("a", "2").clear_changed()
 
     assert_eq(s.changed().join(","), "", "the queue is empty")
     assert_eq(s.pending("nav").join(","), "a", "the subscriber is not")
+
+    s = s.ack("nav").set("b", "1").clear_changed()
+
+    assert_eq(s.pending("nav").join(","), "",
+        "and one that has looked stays caught up across a clear")
 }
 
 test_unsubscribing_leaves_nothing_watched_or_pending() {
@@ -374,6 +450,47 @@ test_a_subscriber_on_a_key_that_was_never_set_pends_nothing() {
     assert_eq(s.pending("nav").join(","), "", "no value, so no change")
     s = s.set("never", "now")
     assert_eq(s.pending("nav").join(","), "never", "until there is one")
+}
+
+// ---- keys the packing has to survive --------------------------------------
+
+// A key list lives in one map value, so a key holding the separator used to
+// come back as two keys nobody wrote — and the store then answered about
+// names that were never in the page.
+test_a_key_holding_a_newline_stays_one_key() {
+    s = store().set("line\nbreak", "1")
+    s = s.computed("c", ["line\nbreak"]).watch("nav", ["line\nbreak"])
+
+    assert_eq(str(s.deps_of("c").length()), "1", "one dependency, not two")
+    assert_eq(s.deps_of("c").get(0), "line\nbreak", "the key as it was written")
+    assert_eq(s.inputs("c").get(0), "1", "so it reads the value that is there")
+
+    s = s.set("line\nbreak", "2")
+
+    assert_eq(str(s.pending("nav").length()), "1", "and one key pends")
+    assert_eq(s.pending("nav").get(0), "line\nbreak", "the same one")
+}
+
+// A backslash then `n` and an escaped newline share two of three characters,
+// so unpacking with a pair of `replace`s reads the first as the second.
+test_a_key_holding_a_backslash_survives_packing() {
+    s = store().set("a\\nb", "1").computed("c", ["a\\nb"])
+
+    assert_eq(s.deps_of("c").get(0), "a\\nb", "a backslash is not a newline")
+    assert_eq(s.inputs("c").get(0), "1", "so the value is still found")
+}
+
+// Joining a key list packs `[]` and `[""]` to the same empty string, which
+// made a subscriber watching nothing and one watching the empty key the same
+// subscriber. Every key is terminated instead of separated.
+test_watching_nothing_differs_from_watching_the_empty_key() {
+    none: str[] = []
+    s = store().watch("quiet", none).watch("odd", [""])
+
+    s = s.set("", "now")
+
+    assert_eq(s.pending("quiet").join(","), "", "nothing watched, none pends")
+    assert_eq(str(s.pending("odd").length()), "1", "the empty key is a key")
 }
 
 // ---- the markup half ------------------------------------------------------
@@ -414,6 +531,16 @@ test_a_selector_finds_every_node_bound_to_a_key() {
     assert_eq(selector("count"), "[data-signal=\"count\"]", "one attribute")
 }
 
+// The markup carries the key itself — the element syntax writes `&quot;` and a
+// browser reads a plain quote back out — so a selector that did not escape it
+// would end early and match nothing at all.
+test_a_selector_escapes_a_quote_in_the_key() {
+    assert_eq(selector("say\"hi"), "[data-signal=\"say\\\"hi\"]",
+        "escaped, so the selector still ends where it should")
+    assert_eq(selector("back\\slash"), "[data-signal=\"back\\\\slash\"]",
+        "and so is the escape character itself")
+}
+
 test_a_patch_names_one_op_per_changed_key() {
     s = store().set_num("count", 0).computed("label", ["count"])
     s = s.refresh("label", say_count).clear_changed()
@@ -442,11 +569,48 @@ test_a_patch_line_reads_as_key_selector_value() {
     assert_eq(str(describe_all(patch(s)).length()), "1", "one line per op")
 }
 
+// A `describe` line is read by a person, so it escapes what would make the
+// line ambiguous and nothing else. The script below escapes more, and this is
+// where the two part company.
+test_a_describe_line_reads_the_value_back_as_written() {
+    s = store().set("msg", "a \"b\" <c>")
+
+    assert_eq(describe(patch(s).get(0)),
+        "msg [data-signal=\"msg\"] <- \"a \\\"b\\\" <c>\"", "quoted, not JSON")
+}
+
 test_the_patch_script_escapes_its_values() {
     s = store().set("msg", "say \"hi\"")
 
     assert(patch_script(s).contains("\\\"hi\\\""),
         "a quote in a value must not end the JSON string")
+}
+
+test_a_backslash_in_a_value_is_escaped_in_the_script() {
+    s = store().set("path", "C:\\tmp")
+
+    assert(patch_script(s).contains("\"C:\\\\tmp\""),
+        "an unescaped backslash would eat the character after it")
+}
+
+test_a_newline_in_a_value_cannot_break_the_script() {
+    s = store().set("note", "one\ntwo")
+
+    assert(patch_script(s).contains("one\\ntwo"), "escaped, not literal")
+    assert(!patch_script(s).contains("one\ntwo"),
+        "a raw newline would leave the string literal unterminated")
+}
+
+// `patch_script` is written to be printed into a `<script>` block, so a value
+// is not just JSON: a `</script>` in it would close the block early and the
+// rest of the page would be read as JavaScript.
+test_a_value_cannot_close_the_script_it_is_printed_into() {
+    s = store().set("msg", "</script><img onerror=boom>")
+
+    js = patch_script(s)
+
+    assert(!js.contains("<"), "no `<` survives, so no tag can start")
+    assert(js.contains("\\u003c/script>"), "it is escaped, not dropped")
 }
 
 test_the_runtime_updates_only_the_nodes_bound_to_a_key() {
@@ -455,7 +619,20 @@ test_the_runtime_updates_only_the_nodes_bound_to_a_key() {
     assert(js.contains("querySelectorAll('[data-signal=\""),
         "it looks the changed key up rather than walking the page")
     assert(js.contains("data-signal-as"), "and reads what the node drives")
+    assert(js.contains("op.key.replace"),
+        "escaping the key, as `selector` does, so a quote cannot end it")
     assert(runtime_script().starts_with("<script>"), "wrapped for a page")
+}
+
+// The three things `data-signal-as` can mean, each needing its own branch: no
+// marker is the node's text, `value` is a property a typed-in field keeps, and
+// anything else is an attribute.
+test_the_runtime_handles_text_value_and_attribute_bindings() {
+    js = runtime()
+
+    assert(js.contains("el.textContent = op.value"), "no marker means text")
+    assert(js.contains("el.value = op.value"), "`value` is set as a property")
+    assert(js.contains("el.setAttribute(as, op.value)"), "the rest attributes")
 }
 
 test_a_native_page_says_it_is_a_snapshot() {

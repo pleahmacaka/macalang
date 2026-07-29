@@ -35,7 +35,7 @@ statement. `c ? continue : 0` fails for this reason — `continue` has no value.
 field it doesn't:
 
 ```
-TypeMismatch: `Config` is missing field(s): title, port
+TypeMismatch: `Config` is missing field(s): port, title
 TypeMismatch: `Config` has no field `titel`; did you mean `title`?
 ```
 
@@ -123,11 +123,17 @@ EffectInConfig: config must be pure but this uses effect(s): async
 The message names every row it found, so a configuration that both prints and
 sleeps reports `io, async`.
 
-Configuration describes a desired state; it must not *do* anything. Reading a
-file, printing, the network, the process table, `fail`, `spawn`, `await` and
-`sleep_ms` are all rejected. This is the check that makes it safe for one
-language to be both a programming language and a configuration language. The
-rows themselves are [Effects and Async](a7-effects.md).
+Configuration describes a desired state; it must not *do* anything. Printing,
+`fail`, `spawn`, `await`, `sleep_ms`, and any call through a `net`/`http`/
+`socket` or `os`/`process` receiver are rejected. This is the check that makes
+it safe for one language to be both a programming language and a configuration
+language.
+
+Be precise about the reach here too. The rows are matched on the *shape* of the
+call — a known builtin name, or a method on one of those receivers — so
+`file.read(p)` is caught and the free function `read_file(p)` is not. A config
+that reads a file through the free builtin compiles today. The rows and what
+introduces each are [Effects and Async](a7-effects.md).
 
 ## Errors that are not diagnostics
 

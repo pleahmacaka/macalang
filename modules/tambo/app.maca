@@ -89,11 +89,19 @@ fallback(a: App, name: str) -> App =>
 /// The handler every request passes through first — a log line, a clock start,
 /// an authorization check. Answering anything but `pass()` stops the request
 /// there, which is how the check refuses.
+///
+/// A misspelt name here is the one drift `missing_handlers` cannot catch, and
+/// it fails open: `pass()` is both "no such arm" and "let this through", so a
+/// `.before("gaurd")` silently admits everybody. Assert the arm in your own
+/// tests — call `handle` with the hook's name and check it does not pass.
 before(a: App, name: str) -> App =>
     a with { before = name }
 
 /// The handler every response passes through last, with the response in
 /// `ctx.reply`. Answering `pass()` leaves it alone.
+///
+/// Misspelling this name is silent too, for the same reason, but it costs a
+/// header rather than a locked door.
 after(a: App, name: str) -> App =>
     a with { after = name }
 
@@ -156,7 +164,8 @@ nothing() -> Pick {
     Pick { ok = false, name = "", pattern = "", params = empty, allowed = [] }
 }
 
-/// The routing table as text, one route to a line, in declaration order.
+/// The routing table as text, one route to a line, in declaration order. An
+/// app with no routes gives "".
 ///
 /// For a program that wants to print what it serves. Reading it against the
 /// `match` in the source is how you check that the two agree by eye;
@@ -169,8 +178,14 @@ rows(rs: Route[], i: int, acc: str[]) -> str[] {
         acc
     } else {
         r = rs.get(i)
-        line = r.method.pad_end(8, " ") ++ r.pattern.pad_end(26, " ") ++ r.name
+        line = column(r.method, 8) ++ column(r.pattern, 26) ++ r.name
 
         rows(rs, i + 1, acc.push(line))
     }
 }
+
+// A column that always ends in at least one space. Padding alone does nothing
+// to a value already wider than the column, and `/user/:id/posts/:post/edit`
+// is wider than 26, so the pattern ran straight into the handler's name.
+column(s: str, w: int) -> str =>
+    (s ++ " ").pad_end(w, " ")

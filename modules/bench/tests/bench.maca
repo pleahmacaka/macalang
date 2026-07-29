@@ -19,7 +19,7 @@ import { total_ops, resolved } from bench/time
 import { fastest_ms, median_ms, mean_ms, total_ms } from bench/time
 import { spread_ms, steady, time_it } from bench/time
 import { table_of, line_of, footnote, grouped } from bench/report
-import { result_columns } from bench/report
+import { result_columns, row_of, heading } from bench/report
 import { to_json, from_json, save, load, find } from bench/store
 import { compare, comparison_table, summary } from bench/compare
 import { regressed, Tolerance } from bench/compare
@@ -123,6 +123,17 @@ test_a_percentile_outside_the_range_is_clamped() {
     assert_eq(percentile(xs, 9.0), 3, "above one is the last")
 }
 
+// Nearest rank, which is what the doc promises and what none of the fractions
+// above distinguish: 0.0, 0.5 and 1.0 all land on a whole index, so truncating
+// instead of rounding answered the same three samples.
+test_percentile_rounds_to_the_nearest_rank() {
+    xs = [1, 2, 3, 4, 5]
+
+    assert_eq(percentile(xs, 0.7), 4, "rank 2.8 is nearest the fourth sample")
+    assert_eq(percentile(xs, 0.9), 5, "rank 3.6 is nearest the fifth")
+    assert_eq(percentile(xs, 0.6), 3, "and rank 2.4 is nearest the third")
+}
+
 test_every_statistic_of_an_empty_sample_is_zero() {
     none: int[] = []
 
@@ -143,6 +154,30 @@ test_the_square_root_agrees_with_multiplication() {
 test_the_square_root_of_zero_and_below_is_zero() {
     assert_eq(root(0.0), 0.0, "zero")
     assert_eq(root(-9.0), 0.0, "a negative has no real root to report")
+}
+
+// The descent halves its guess for as long as the guess is far above the root,
+// so a value near the top of the double range is hundreds of passes from the
+// point where Newton's method starts converging quickly. A pass limit picked
+// for millisecond-scale variance stopped short and `root` answered 6.2e239 for
+// 1e300 — wrong by ninety orders of magnitude, and quietly.
+test_the_square_root_holds_at_the_top_of_the_float_range() {
+    huge = ten_to(300)
+    r = root(huge)
+
+    assert(abs(r * r / huge - 1.0) < 0.0000001, "1e300 has a root of 1e150")
+    assert(abs(root(ten_to(200)) / ten_to(100) - 1.0) < 0.0000001,
+           "and every size on the way there has one too")
+}
+
+ten_to(power: int) -> float {
+    v = 1.0
+    i = 0
+    while i < power {
+        v = v * 10.0
+        i = i + 1
+    }
+    v
 }
 
 // ---- the timing loop ------------------------------------------------------------
@@ -258,7 +293,7 @@ test_the_one_argument_form_measures_the_same_thing() {
 test_the_presets_ask_for_more_the_more_careful_they_are() {
     assert(quick().min_ms < defaults().min_ms, "quick spends less per sample")
     assert(defaults().min_ms < careful().min_ms, "careful spends more")
-    assert(quick().samples <= careful().samples, "and takes fewer samples")
+    assert(quick().samples < careful().samples, "and takes fewer samples")
 }
 
 // ---- the report -----------------------------------------------------------------
@@ -287,11 +322,36 @@ test_the_table_has_a_heading_a_rule_and_a_row_per_result() {
     assert(lines[3].contains("beta"), "the second")
 }
 
-test_the_table_has_a_column_for_every_heading() {
+test_the_table_names_the_columns_it_needs() {
     assert_eq(result_columns().length(), 8, "eight columns")
     assert(result_columns().contains("ns/op"), "including the headline number")
     assert(result_columns().contains("size"),
            "and the size, without which ns/op compares to nothing")
+}
+
+// `cli/show` pads a short row out with empty cells rather than refusing it, so
+// a row one cell short does not fail — it shifts every column after the gap and
+// silently files each number under the wrong heading.
+test_a_row_has_a_cell_for_every_column() {
+    row = row_of(sample("alpha", 10, 5, [1]))
+
+    assert_eq(row.length(), result_columns().length(),
+              "as many cells as there are headings")
+    assert_eq(row[0], "alpha", "and the first of them is the case name")
+}
+
+test_a_heading_carries_its_title() {
+    assert(heading("primitives").contains("primitives"),
+           "a section rule a reader can tell from the one above it")
+}
+
+// A footer that misspells the one word a reader can check is a footer that
+// makes him doubt the numbers he cannot.
+test_the_footnote_counts_in_words_that_match_the_number() {
+    one = footnote([sample("a", 10, 1000, [5])])
+
+    assert(one.contains("1 case,"), "one case")
+    assert(!one.contains("1 cases"), "and not one cases")
 }
 
 test_a_line_carries_the_case_name_and_its_cost() {
@@ -347,6 +407,26 @@ test_a_name_with_a_quote_in_it_survives() {
     after = from_json(to_json([sample("say \"hi\"", 1, 2, [1])]))
 
     assert_eq(after[0].name, "say \"hi\"", "escaped on the way out and back")
+}
+
+// The reader undid the five escapes with five `replace`s, and a name holding a
+// backslash and then an `n` — written `\\n` — came back holding a backslash and
+// a newline. No ordering of five replacements fixes that; only a scan that
+// consumes the escape it just recognised does.
+test_a_backslash_before_a_letter_survives_the_round_trip() {
+    name = "win" ++ "\\" ++ "new"
+    after = from_json(to_json([sample(name, 1, 2, [1])]))
+
+    assert_eq(after[0].name, name, "an escaped escape is not an escape")
+    assert_eq(after[0].name.length(), 7, "and nothing was eaten on the way")
+}
+
+test_every_escape_the_writer_emits_comes_back() {
+    doubled = "one" ++ "\\" ++ "\\" ++ "two"
+    for name in ["a\nb", "a\tb", "a\rb", "a\"b", doubled] {
+        after = from_json(to_json([sample(name, 1, 2, [1])]))
+        assert_eq(after[0].name, name, "a name of {name.length()} bytes")
+    }
 }
 
 test_a_document_from_an_unknown_version_reads_as_nothing() {
@@ -456,6 +536,43 @@ test_a_delta_with_no_baseline_has_no_percentage_to_report() {
     assert_eq(percent_change(ds[0]), 0.0, "nothing to be a percentage of")
 }
 
+// The verdict refused the comparison and the row printed it anyway: a case
+// resized from 10 to 99 read `0.500  -50.0%  ! not comparable`, which sends a
+// reader after the regression the verdict exists to say is not there.
+test_a_comparison_that_is_refused_reports_no_ratio_either() {
+    ds = compare([sample("a", 10, 100, [100])], [sample("a", 99, 100, [50])],
+                 Tolerance)
+
+    assert_eq(ds[0].ratio, 0.0, "no ratio")
+    assert_eq(percent_change(ds[0]), 0.0, "no percentage")
+    assert(!comparison_table(ds).contains("%"), "and neither in the table")
+}
+
+// The four counts left out the case that vanished and the case the clock never
+// resolved, so the line read as a quiet run when three of its five cases were
+// ones somebody needed to look at.
+test_the_summary_accounts_for_every_case() {
+    before = [sample("a", 1, 100, [100]), sample("resized", 10, 100, [100]),
+              sample("dark", 1, 100, [0]), sample("gone", 1, 100, [100])]
+    now = [sample("a", 1, 100, [50]), sample("resized", 99, 100, [100]),
+           sample("dark", 1, 100, [50]), sample("new", 1, 100, [10])]
+    line = summary(compare(before, now, Tolerance))
+
+    assert(line.contains("5 cases"), "five rows in the comparison")
+    assert(line.contains("1 faster"), "one moved")
+    assert(line.contains("1 new"), "one arrived")
+    assert(line.contains("1 gone"), "one disappeared")
+    assert(line.contains("2 not comparable"), "and two could not be compared")
+}
+
+test_an_ordinary_run_does_not_carry_the_two_extra_counts() {
+    ds = compare([sample("a", 1, 100, [100])], [sample("a", 1, 100, [50])],
+                 Tolerance)
+
+    assert(!summary(ds).contains("gone"),
+           "a line that ends in two zeros every time is a line nobody reads")
+}
+
 test_the_summary_counts_every_verdict() {
     before = [sample("a", 1, 100, [100]), sample("b", 1, 100, [100]),
               sample("c", 1, 100, [100]), sample("gone", 1, 100, [100])]
@@ -477,6 +594,46 @@ test_the_comparison_table_marks_what_moved() {
 
     assert(comparison_table(ds).contains("faster"), "the verdict is in the row")
     assert(comparison_table(ds).contains("-50.0%"), "and so is the change")
+}
+
+// ---- the corpus: the inputs it runs on --------------------------------------------------
+
+// The whole argument for keeping a baseline is that today's input is last
+// week's input, and nothing else here would notice a changed seed: every
+// correctness test compares two computations over the same list, so both sides
+// move together and stay equal.
+test_the_generated_input_is_the_same_numbers_every_run() {
+    xs = numbers(6)
+
+    assert_eq(xs[0], 32606, "the first")
+    assert_eq(xs[1], 83775, "the second")
+    assert_eq(xs[5], 50459, "and the sixth")
+    assert_eq(numbers(3)[2], xs[2], "a short draw is a prefix of a long one")
+}
+
+// Every sort in the corpus is checked by comparing checksums, so a checksum
+// that ignored order would pass a sort that handed its input straight back.
+test_a_checksum_notices_order_and_not_only_values() {
+    assert(checksum([1, 2]) != checksum([2, 1]), "two orders, two answers")
+    assert_eq(checksum([1, 2]), checksum([1, 2]), "and one order, one answer")
+    assert_eq(checksum([]), 0, "with nothing at all to fold over")
+}
+
+test_a_copy_can_be_written_to_without_writing_to_the_original() {
+    xs = [3, 1, 2]
+    ys = copy_of(xs)
+    ys[0] = 99
+
+    assert_eq(xs[0], 3, "the original is untouched")
+    assert_eq(ys[0], 99, "and the copy took the write")
+}
+
+test_the_generated_inputs_are_the_lengths_they_were_asked_for() {
+    assert_eq(ascending(5).length(), 5, "a sorted list")
+    assert_eq(descending(5)[0], 4, "a reversed one starts at the top")
+    assert_eq(sentence(20).length(), 20, "text cut to length")
+    assert_eq(runs(20).length(), 20, "and text with runs in it")
+    assert_eq(zeros(0).length(), 0, "with nothing asked for, nothing built")
 }
 
 // ---- the corpus: primitives -------------------------------------------------------------
@@ -709,6 +866,20 @@ test_run_length_handles_a_run_longer_than_nine() {
               "the count is a number, not a digit")
 }
 
+// A count written straight against the byte it counts is ambiguous when the
+// byte is itself a digit: `13` encoded as `1113`, and the decoder read that as
+// a run of one thousand one hundred and thirteen with nothing to repeat. Every
+// text in the round-trip test above happened to be letters.
+test_run_length_coding_round_trips_text_with_digits_in_it() {
+    for text in ["13", "a1b", "000", "9", "aab3c"] {
+        assert_eq(run_length_decode(run_length_encode(text)), text,
+                  "[{text}] survives encoding")
+    }
+    slashed = "x" ++ "\\" ++ "y"
+    assert_eq(run_length_decode(run_length_encode(slashed)), slashed,
+              "and so does the byte the escape is written with")
+}
+
 test_base_conversion_round_trips() {
     for base in [2, 8, 10, 16, 36] {
         assert_eq(from_base(to_base(123456, base), base), 123456,
@@ -762,6 +933,16 @@ test_the_tree_answers_membership() {
     assert(bst_contains(t, 1), "a leaf")
     assert(bst_contains(t, 5), "the root")
     assert(!bst_contains(t, 9), "and something that was never inserted")
+}
+
+// Three parallel lists sized to what `bst_of` was handed, and no way to grow
+// them without copying all three — so a key past that is dropped, and a caller
+// who did not expect it should be able to find that out from a test.
+test_a_full_tree_drops_a_key_rather_than_growing() {
+    t = bst_insert(bst_of([5, 3]), 9)
+
+    assert_eq(bst_inorder(t).length(), 2, "the lists were sized for two")
+    assert(!bst_contains(t, 9), "so the third key never landed")
 }
 
 // ---- the corpus: advanced --------------------------------------------------------------
@@ -884,6 +1065,14 @@ test_topological_sort_refuses_a_cycle() {
               "a graph with a cycle has no ordering, so there is none to give")
 }
 
+// A chain admits exactly one ordering, so the case can be pinned against
+// arithmetic instead of against another run of the same code.
+test_the_topological_case_gives_the_only_order_a_chain_has() {
+    assert_eq(topo_sort_case(7), checksum(ascending(7)), "0, 1, … 6")
+    assert_eq(topo_sort_case(1), checksum(ascending(1)), "one node, one order")
+    assert_eq(topo_sort_case(0), checksum([]), "and no nodes, no order")
+}
+
 test_the_lru_cache_hits_what_it_kept_and_misses_what_it_evicted() {
     assert_eq(lru_hits([1, 2, 1, 3, 2, 1], 2), 1,
               "only the second 1 is still resident")
@@ -916,7 +1105,7 @@ test_counting_tokens_agrees_with_listing_them() {
 
 // ---- the catalog ---------------------------------------------------------------------------
 
-test_every_case_belongs_to_exactly_one_group() {
+test_every_case_belongs_to_a_group() {
     ungrouped = 0
     for name in case_names() {
         if group_of(name) == "" {
@@ -925,15 +1114,61 @@ test_every_case_belongs_to_exactly_one_group() {
     }
     assert_eq(ungrouped, 0, "every name in the corpus is in a group")
     assert_eq(case_names().length(), 46, "and the corpus is forty-six cases")
+    assert_eq(names_in("nonsense").length(), 0, "an unknown group is empty")
 }
 
-test_the_groups_add_up_to_the_corpus() {
-    total = 0
-    for group in groups() {
-        total = total + names_in(group).length()
+// `group_of` answers the first group that claims a name, so a name pasted into
+// a second list still looks grouped, and summing the four list lengths against
+// a corpus that *is* those four lists concatenated compares a number to itself.
+// Counting the claims is what actually catches it. Retyping "json tokenize" as
+// "map get" — dropping one case and duplicating another — left the whole suite
+// green before this.
+test_every_case_is_claimed_by_exactly_one_group() {
+    miscounted = 0
+    for name in case_names() {
+        if groups_holding(name) != 1 {
+            miscounted = miscounted + 1
+        }
     }
-    assert_eq(total, case_names().length(), "no case is in two groups or none")
-    assert_eq(names_in("nonsense").length(), 0, "and an unknown group is empty")
+    assert_eq(miscounted, 0, "each name is in one group's list and no other")
+}
+
+test_no_two_cases_share_a_name() {
+    doubled = ""
+    for name in case_names() {
+        if occurrences(case_names(), name) > 1 {
+            doubled = name
+        }
+    }
+    assert_eq(doubled, "",
+              "a repeated name means some case is never dispatched to")
+}
+
+groups_holding(name: str) -> int {
+    held = 0
+    for group in groups() {
+        if names_in(group).contains(name) {
+            held = held + 1
+        }
+    }
+    held
+}
+
+occurrences(all: str[], want: str) -> int {
+    seen = 0
+    for one in all {
+        if one == want {
+            seen = seen + 1
+        }
+    }
+    seen
+}
+
+test_the_size_unit_says_when_the_number_is_not_a_count() {
+    assert_eq(size_unit("n-queens"), "side", "a board side, not a count")
+    assert_eq(size_unit("matrix multiply"), "side", "and a matrix side")
+    assert_eq(size_unit("fib recursive"), "index", "a Fibonacci index")
+    assert_eq(size_unit("list index"), "elements", "everything else counts")
 }
 
 test_every_case_has_a_size_and_a_unit_for_it() {
@@ -964,6 +1199,11 @@ test_every_case_gives_the_same_answer_twice() {
     assert_eq(wobbled, 0, "every case in the corpus is deterministic")
 }
 
+// The assertion here is a formality and says so: what this checks is that none
+// of the forty-six reads off the end of an empty input, and a case that does
+// takes the whole run down before the assertion is reached. There is no answer
+// to compare against — `sieve(0)` is 0, `balanced brackets` at 0 is 6, and
+// pinning forty-six such numbers would be pinning the corpus, not the boundary.
 test_every_case_survives_a_workload_of_zero() {
     ran = 0
     for name in case_names() {

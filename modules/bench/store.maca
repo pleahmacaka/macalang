@@ -23,8 +23,8 @@
 // another list element. `bench/report` is full of such calls and so is
 // `cli/show` underneath it. Until that is fixed, a benchmark module that
 // dragged `std/json` into every program using it would be handing its callers a
-// silent wrong answer, so the ninety lines below are the cheaper trade. Nothing
-// here is named for a list or string method, on purpose.
+// silent wrong answer, so the reader and writer below are the cheaper trade.
+// Nothing here is named for a list or string method, on purpose.
 
 import { Result } from bench/time
 
@@ -170,7 +170,8 @@ bracket_end(s: str, i: int, depth: int) -> int {
     }
 }
 
-// The index just past a closing quote, starting from inside the string.
+// `i` starts *inside* the string, past the opening quote. A backslash consumes
+// what follows it, so an escaped quote does not end the run.
 quoted_end(s: str, i: int) -> int {
     if i >= s.length() {
         i
@@ -229,7 +230,8 @@ step(c: str) -> int {
     }
 }
 
-// Strip the quotes off an element that has them, and unescape it.
+// A lone `"` is not a quoted element, which is why the length is tested before
+// the ends are: `t.slice(1, 0)` on a one-character string is not a value.
 bare(s: str) -> str {
     t = s.trim()
 
@@ -240,14 +242,43 @@ bare(s: str) -> str {
     }
 }
 
-/// Undo `encode_str`. Backslash last, so an escaped backslash does not turn
-/// the character after it into an escape of its own.
+/// Undo `encode_str`.
+///
+/// One left-to-right pass, not a chain of `replace`s — and no ordering of that
+/// chain would have done. A name holding a backslash and then an `n` is written
+/// `\\n`: undoing `\n` first reads the second and third bytes as an escape and
+/// answers a backslash and a newline, while undoing `\\` first leaves a `\n`
+/// for the next replacement to eat and loses the backslash instead. Only a scan
+/// that consumes the escape it has just recognised gets the name back.
 decode_str(s: str) -> str =>
-    s.replace("\\n", "\n")
-     .replace("\\r", "\r")
-     .replace("\\t", "\t")
-     .replace("\\\"", "\"")
-     .replace("\\\\", "\\")
+    unescaped(s, 0, "")
+
+unescaped(s: str, i: int, acc: str) -> str {
+    if i >= s.length() {
+        acc
+    } else if s.at(i) != "\\" || i + 1 >= s.length() {
+        unescaped(s, i + 1, acc ++ s.at(i))
+    } else {
+        unescaped(s, i + 2, acc ++ unescape_one(s.at(i + 1)))
+    }
+}
+
+unescape_one(c: str) -> str {
+    if c == "n" {
+        "\n"
+    } else if c == "r" {
+        "\r"
+    } else if c == "t" {
+        "\t"
+    } else if c == "\"" || c == "\\" {
+        c
+    } else {
+        // An escape `encode_str` never writes — a `\u` from some other
+        // producer. Leaving it exactly as it was written loses nothing; the
+        // alternative is dropping a backslash that meant something.
+        "\\" ++ c
+    }
+}
 
 // ---- files -----------------------------------------------------------------
 

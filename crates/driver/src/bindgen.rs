@@ -72,7 +72,6 @@ pub fn generate(src: &str, header: &Path) -> String {
 /// Remove `//` and `/* */` comments and `#` preprocessor lines, collapsing the
 /// rest to whitespace-separated tokens across lines.
 fn strip(src: &str) -> String {
-    // block comments
     let mut s = String::with_capacity(src.len());
     let b = src.as_bytes();
     let mut i = 0;
@@ -88,7 +87,6 @@ fn strip(src: &str) -> String {
             i += 1;
         }
     }
-    // line comments + preprocessor
     s.lines()
         .map(|l| {
             let l = l.split("//").next().unwrap_or("");

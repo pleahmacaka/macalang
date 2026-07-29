@@ -11,20 +11,49 @@
 // while staying far ahead of interpreted Python and JIT'd JS on call-bound
 // code.
 //
-//   maca run bench/run.maca [runs]      # default: 5
+//   maca run bench/run.maca [--runs N] [--only KERNEL]
 //
-// Writes bench/results.json and bench/results.md.
+// Writes bench/results.json and bench/results.md, and reads results.json back
+// *before* overwriting it, so an ordinary run also says what moved since the
+// last one. A harness that only printed a table could not answer the question a
+// benchmark is run to answer.
+//
+// The statistics, the file format and the comparison are `modules/bench`'s —
+// `bench/stat` has the median and the spread, `bench/store` reads and writes a
+// run, `bench/compare` pairs two of them. What is left here is the part that is
+// specific to timing *other languages' binaries*: building them, running them,
+// and checking that they all computed the same number.
 //
 // The reference implementations under `bench/ref/` stay in their own languages:
 // they are the comparison. The harness around them does not need to be.
+//
+// `std/fs`, `std/list` and `std/text` are deliberately not imported. Nothing
+// here uses them, and whole-module `std/text` brings `indent`, whose lambda
+// captures a parameter named `pad`; stage-0 resolves that capture to
+// `cli/style`'s top-level `pad` and the emitted C will not compile. Every table
+// below comes through `cli/show`, so this file has to stay clear of it.
 
 import std/proc
-import std/fs
-import std/path
-import std/list
-import std/text
+import { join } from std/path
+import { Result, median_ms, spread_ms } from bench/time
+import { save, load, find } from bench/store
+import { compare, comparison_table, summary } from bench/compare
+import { regressed, Tolerance } from bench/compare
+import { grouped } from bench/report
+import { rule } from cli/show
+import { dim, ok, bad, note } from cli/style
+import { command, opt } from cli/spec
+import { parse, value, count } from cli/parse
+import { help } from cli/help
 
 Tmp = "/tmp/maca-bench"
+
+// The record and the baseline are the same file: read before the run, written
+// after, so nobody has to remember to save one.
+Baseline = "bench/results.json"
+Report = "bench/results.md"
+
+RunsDefault = 5
 
 // Families, in report order.
 recursion_kernels() -> str[] => ["fib", "tak", "ackermann"]
@@ -34,19 +63,19 @@ kernels() -> str[] =>
     recursion_kernels() ++ compute_kernels()
 
 // Every column must print this, or the number it produced is not comparable.
-expected(algo: str) -> str {
+expected(algo: str) -> int {
     if algo == "fib" {
-        "102334155"
+        102334155
     } else if algo == "tak" {
-        "9"
+        9
     } else if algo == "ackermann" {
-        "8189"
+        8189
     } else if algo == "sieve" {
-        "664579"
+        664579
     } else if algo == "mandel" {
-        "141554306"
+        141554306
     } else {
-        "163198950"
+        163198950
     }
 }
 
@@ -71,41 +100,38 @@ params(algo: str) -> str {
 langs() -> str[] =>
     ["Maca", "C", "Rust", "Go", "JS (node)", "Python"]
 
+// One case is one kernel in one language. The name is what a run is filed
+// under and what two runs are paired by, so it is spelled in one place.
+case_name(algo: str, lang: str) -> str =>
+    algo ++ "/" ++ lang
+
 // ---- one measurement ------------------------------------------------------
 
-// A timed run: the command, its median wall-clock time, and what it printed.
-Timing = {
-    algo: str
-    lang: str
-    ms: int
-    output: str
-}
-
-// Median wall-clock ms over `runs` executions, after one warmup. Whole
-// milliseconds: every kernel here runs for hundreds of them, so the clock's
-// resolution is three digits below the signal.
-time_cmd(algo: str, lang: str, cmd: str, args: str[], runs: int) -> Timing {
+// A timed contender, as a `bench/time` result.
+//
+// `size` and `iters` are both 1 because the unit here is one whole process,
+// not one call: what is being compared is what six toolchains do with the same
+// kernel end to end, start-up included. `checksum` is the number the program
+// printed — the field exists so that a case which got faster and changed its
+// answer reads as broken rather than as an improvement.
+//
+// Samples are whole milliseconds. Every kernel here runs for hundreds of them,
+// so the clock's resolution sits three digits below the signal — which is also
+// why the ns/op column of the comparison table is nine digits with information
+// in only the leading three.
+time_cmd(algo: str, lang: str, cmd: str, args: str[], runs: int) -> Result {
     capture(cmd, args)                                    // warmup
-    samples = []
-    output = ""
+    taken: int[] = []
+    printed = ""
 
     for _ in 1..runs {
         started = now_ms()
-        output = capture(cmd, args).trim()
-        samples = samples.push(now_ms() - started)
+        printed = capture(cmd, args).trim()
+        taken = taken.push(now_ms() - started)
     }
 
-    Timing { algo = algo, lang = lang, ms = median(samples), output = output }
-}
-
-median(xs: int[]) -> int {
-    sorted = xs.sort()
-
-    if sorted.length() == 0 {
-        0
-    } else {
-        sorted.get(sorted.length() / 2)
-    }
+    Result { name = case_name(algo, lang), size = 1, iters = 1,
+             samples = taken, checksum = int(printed) }
 }
 
 // ---- building the contenders ----------------------------------------------
@@ -188,133 +214,172 @@ interpreted(lang: str, tool: str, args: str[]) -> Runner {
 
 // ---- the run ---------------------------------------------------------------
 
+Spec = command("bench", "Maca against C, Rust, Go, JS and Python")
+    .opt("runs", "n", "timed runs per contender, after one warm-up",
+         str(RunsDefault))
+    .opt("only", "k", "one kernel instead of all six", "")
+
 main(argv: str[]) -> int {
-    runs = if argv.length() > 0 { int(argv.get(0)) } else { 5 }
+    got = parse(Spec, argv)
+
+    if got.wants_help {
+        info(help(Spec))
+        0
+    } else if got.error != "" {
+        err(bad(got.error))
+        1
+    } else {
+        measure_all(chosen(value(got, "only", "")),
+                    count(got, "runs", RunsDefault))
+    }
+}
+
+// `--only` names a kernel, and a misspelling is answered with the list rather
+// than with an empty run that looks like everything passing.
+chosen(only: str) -> str[] {
+    if only == "" {
+        kernels()
+    } else if !kernels().contains(only) {
+        fail "no kernel called {only} — try {kernels().join(", ")}"
+    } else {
+        [only]
+    }
+}
+
+measure_all(algos: str[], runs: int) -> int {
     make_dir(Tmp)
+    before = load(Baseline)
+    now = run_kernels(algos, 0, runs, [])
 
-    timings = run_kernels(kernels(), 0, runs, [])
-
-    write_file("bench/results.json", results_json(timings, 0))
-    write_file("bench/results.md", results_md(timings))
-    info("")
-    info("wrote bench/results.json and results.md")
+    against(baseline_for(algos, before), now)
+    record(algos, now)
     0
 }
 
-run_kernels(algos: str[], i: int, runs: int, acc: Timing[]) -> Timing[] {
+// A `--only tak` run has nothing to say about `fib`. Paired against the whole
+// baseline it reports the thirty cases it never attempted as having vanished,
+// which buries the six it did.
+baseline_for(algos: str[], before: Result[]) -> Result[] =>
+    before.filter(r => algos.contains(kernel_of(r)))
+
+kernel_of(r: Result) -> str =>
+    r.name.split("/").get(0)
+
+run_kernels(algos: str[], i: int, runs: int, acc: Result[]) -> Result[] {
     if i >= algos.length() {
         acc
     } else {
-        here = run_kernel(algos.get(i), runs)
+        info(rule("{algos.get(i)} — {params(algos.get(i))}"))
+        here = time_runners(runners(algos.get(i)), 0, algos.get(i), runs, [])
         run_kernels(algos, i + 1, runs, acc ++ here)
     }
 }
 
-run_kernel(algo: str, runs: int) -> Timing[] =>
-    time_runners(runners(algo), 0, algo, runs, [])
-
 time_runners(rs: Runner[], i: int, algo: str, runs: int,
-             acc: Timing[]) -> Timing[] {
+             acc: Result[]) -> Result[] {
     if i >= rs.length() {
         acc
     } else if rs.get(i).cmd == "" {
         // No toolchain for this language on this host; the column stays empty.
         time_runners(rs, i + 1, algo, runs, acc)
     } else {
-        t = time_cmd(algo, rs.get(i).lang, rs.get(i).cmd, rs.get(i).args, runs)
-        report(t)
-        time_runners(rs, i + 1, algo, runs, acc ++ [t])
+        r = time_cmd(algo, rs.get(i).lang, rs.get(i).cmd, rs.get(i).args, runs)
+        report(algo, rs.get(i).lang, r)
+        time_runners(rs, i + 1, algo, runs, acc ++ [r])
     }
 }
 
-report(t: Timing) {
-    verdict = if t.output == expected(t.algo) {
-        "ok"
+// Printed as each contender finishes rather than at the end: a suite that says
+// nothing for two minutes looks exactly like one that hung.
+//
+// The spread is beside the median because a median alone cannot be read. Two
+// numbers a hundred milliseconds apart mean nothing if the samples of either
+// scatter by two hundred.
+report(algo: str, lang: str, r: Result) {
+    line = "  {lang:<10}{median_ms(r):>9.0} ms  ±{spread_ms(r):<7.1}"
+    mark = r.checksum == expected(algo)
+        ? note("ok")
+        : bad("got {grouped(r.checksum)}, want {grouped(expected(algo))}")
+
+    info(line ++ mark)
+}
+
+// ---- against the last run ---------------------------------------------------
+
+against(before: Result[], now: Result[]) {
+    if before.length() == 0 {
+        info(note("no baseline in {Baseline} — this run becomes one"))
     } else {
-        "MISMATCH (got {t.output}, want {expected(t.algo)})"
+        deltas = compare(before, now, Tolerance)
+        info(rule("since the last run"))
+        info(comparison_table(deltas))
+        // The op is one whole process here, so the ns/op columns run to nine
+        // digits. The ratio is the column to read.
+        info(regressed(deltas) ? bad(summary(deltas)) : ok(summary(deltas)))
     }
-
-    info("{t.algo:<10} {t.lang:<10} {t.ms:>8} ms  {verdict}")
 }
 
-// ---- the report ------------------------------------------------------------
-
-find_timing(ts: Timing[], algo: str, lang: str, i: int) -> int {
-    if i >= ts.length() {
-        -1
-    } else if ts.get(i).algo == algo && ts.get(i).lang == lang {
-        i
+// A partial run is not a record. `--only` is for iterating on one kernel, and
+// writing its handful of rows over the file would delete the other five
+// kernels' numbers and leave a results.md that reads as the whole benchmark.
+record(algos: str[], now: Result[]) {
+    if algos.length() < kernels().length() {
+        info(note("partial run — {Baseline} and {Report} left alone"))
     } else {
-        find_timing(ts, algo, lang, i + 1)
+        save(Baseline, now)
+        write_file(Report, results_md(now))
+        info(ok("wrote " ++ dim(Baseline) ++ " and " ++ dim(Report)))
     }
 }
 
-results_json(ts: Timing[], i: int) -> str {
-    if i >= ts.length() {
-        "[]"
-    } else {
-        "[\n" ++ json_rows(ts, 0, "") ++ "]\n"
-    }
-}
-
-json_rows(ts: Timing[], i: int, acc: str) -> str {
-    if i >= ts.length() {
-        acc
-    } else {
-        t = ts.get(i)
-        ok = t.output == expected(t.algo)
-        comma = if i == ts.length() - 1 { "\n" } else { ",\n" }
-        row = "  \{\"algo\": \"{t.algo}\", \"lang\": \"{t.lang}\", "
-            ++ "\"ms\": {t.ms}, \"output\": \"{t.output}\", \"ok\": {ok}\}"
-        json_rows(ts, i + 1, acc ++ row ++ comma)
-    }
-}
+// ---- the published report ---------------------------------------------------
 
 // One cell: the median, and how many times slower than C it is.
-cell(ts: Timing[], algo: str, lang: str, base: int) -> str {
-    at = find_timing(ts, algo, lang, 0)
+cell(rs: Result[], algo: str, lang: str, base: float) -> str {
+    at = find(rs, case_name(algo, lang))
 
     if at < 0 {
         "—"
-    } else if base <= 0 {
-        str(ts.get(at).ms)
+    } else if base <= 0.0 {
+        "{median_ms(rs.get(at)):.0}"
     } else {
-        ratio = float(ts.get(at).ms) / float(base)
-        "{ts.get(at).ms} (×{ratio:.1})"
+        ms = median_ms(rs.get(at))
+        "{ms:.0} (×{ms / base:.1})"
     }
 }
 
-row(ts: Timing[], algo: str) -> str {
-    at = find_timing(ts, algo, "C", 0)
-    base = if at < 0 { 0 } else { ts.get(at).ms }
-    cells = langs().map(l => cell(ts, algo, l, base))
+md_row(rs: Result[], algo: str) -> str {
+    at = find(rs, case_name(algo, "C"))
+    base = if at < 0 { 0.0 } else { median_ms(rs.get(at)) }
+    cells = langs().map(l => cell(rs, algo, l, base))
 
     "| " ++ algo ++ " | " ++ params(algo) ++ " | " ++ cells.join(" | ") ++ " |\n"
 }
 
-table(ts: Timing[], algos: str[], title: str, note: str) -> str =>
-    "### " ++ title ++ "\n\n" ++ note ++ "\n\n"
+md_table(rs: Result[], algos: str[], title: str, blurb: str) -> str =>
+    "### " ++ title ++ "\n\n" ++ blurb ++ "\n\n"
         ++ "| kernel | params | " ++ langs().join(" | ") ++ " |\n"
         ++ "|" ++ "---|".repeat(langs().length() + 2) ++ "\n"
-        ++ rows_for(ts, algos, 0)
+        ++ md_rows(rs, algos, 0)
         ++ "\n"
 
-rows_for(ts: Timing[], algos: str[], i: int) -> str {
+md_rows(rs: Result[], algos: str[], i: int) -> str {
     if i >= algos.length() {
         ""
     } else {
-        row(ts, algos.get(i)) ++ rows_for(ts, algos, i + 1)
+        md_row(rs, algos.get(i)) ++ md_rows(rs, algos, i + 1)
     }
 }
 
-results_md(ts: Timing[]) -> str =>
+results_md(rs: Result[]) -> str =>
     preamble()
-        ++ table(ts, recursion_kernels(), "Recursion-bound (call overhead)",
-                 "Tree/nested recursion — dominated by function-call cost.")
-        ++ table(ts, compute_kernels(),
-                 "Compute-bound (loops, arrays, float)",
-                 "Tight loops over arrays and floating point — dominated by"
-                     ++ " the inner loop.")
+        ++ md_table(rs, recursion_kernels(),
+                    "Recursion-bound (call overhead)",
+                    "Tree/nested recursion — dominated by function-call cost.")
+        ++ md_table(rs, compute_kernels(),
+                    "Compute-bound (loops, arrays, float)",
+                    "Tight loops over arrays and floating point — dominated by"
+                        ++ " the inner loop.")
         ++ closing()
 
 preamble() -> str =>

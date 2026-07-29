@@ -239,7 +239,6 @@ fn top_level_span(src: &str, name: &str) -> Option<(usize, usize)> {
     None
 }
 
-/// Hover: the signature/type of the identifier at `byte_offset`, if known.
 /// Signature help for the call the cursor sits inside: the callee's signature,
 /// its parameter labels, and which parameter is being typed.
 ///
@@ -289,6 +288,7 @@ pub fn signature_help(src: &str, byte_offset: usize) -> Option<(String, Vec<Stri
     Some((fn_sig(&f), labels, active))
 }
 
+/// Hover: the signature/type of the identifier at `byte_offset`, if known.
 pub fn hover(src: &str, byte_offset: usize) -> Option<String> {
     let word = word_at(src, byte_offset)?;
     let parsed = parse(src);

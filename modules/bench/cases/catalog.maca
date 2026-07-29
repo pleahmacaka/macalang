@@ -127,10 +127,13 @@ cheap_cases() -> str[] =>
 /// The workload size a case runs at when nobody says otherwise.
 ///
 /// Not one number for the whole corpus. The bands below are cost classes: a
-/// case is in one because of how its work grows, and choosing sizes that way
-/// puts every case within about a factor of ten of a millisecond per call —
-/// which is what makes a run of all forty-six finish, and a table of it worth
-/// reading.
+/// case is in one because of how its work grows, and sizing by class is what
+/// keeps one pass over all forty-six down to about twenty milliseconds. Within
+/// that the cases are not level — a call ranges from under a microsecond
+/// (`int arithmetic`) to a few milliseconds (`json tokenize`) — and they do not
+/// need to be. `bench/time` calibrates each case's iteration count separately,
+/// so a cheap case is measured by running it more often, not by being given a
+/// bigger input than the shape of its work makes sense at.
 default_size(name: str) -> int {
     if name == "fib recursive" {
         22
