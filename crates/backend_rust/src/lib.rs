@@ -51,7 +51,24 @@ fn is_rust_path(s: &str) -> bool {
 }
 
 /// Emit a Rust compilation unit for `m`.
+/// Emit Rust, or the list of constructs this backend does not lower. The driver
+/// uses this so an unsupported construct is a clean error naming what the author
+/// wrote, rather than `Default::default()` reaching rustc.
+pub fn emit_checked(m: &Module) -> Result<String, Vec<String>> {
+    let mut problems = Vec::new();
+    let out = emit_collecting(m, &mut problems);
+    if problems.is_empty() {
+        Ok(out)
+    } else {
+        Err(problems)
+    }
+}
+
 pub fn emit(m: &Module) -> String {
+    emit_collecting(m, &mut Vec::new())
+}
+
+fn emit_collecting(m: &Module, problems: &mut Vec<String>) -> String {
     let mut cx = Cx::default();
     cx.collect(m);
     let mut out = String::from("#![allow(warnings)]\n\n");
@@ -97,6 +114,7 @@ pub fn emit(m: &Module) -> String {
             _ => {}
         }
     }
+    problems.extend(cx.problems.drain(..));
     out
 }
 
@@ -116,6 +134,9 @@ struct Cx {
     /// names already bound in the current function — a later `x = e` is a
     /// reassignment (`x = e`), not a new `let`.
     declared: BTreeSet<String>,
+    /// Constructs this backend does not lower. They used to become
+    /// `Default::default()` or a `_` arm, both of which rustc accepts.
+    problems: Vec<String>,
 }
 
 impl Cx {
@@ -452,8 +473,42 @@ impl Cx {
                 let (b, _) = self.expr(body);
                 (format!("move |{}| {{ {b} }}", ps.join(", ")), false)
             }
-            _ => ("Default::default()".into(), false),
+            // Rust has both, and `!` coerces to any type, so they work in the
+            // value position `expr` is called from as well as as statements.
+            Expr::Break => ("break".into(), false),
+            Expr::Continue => ("continue".into(), false),
+            // `base with { f = v }`. Rust's `Struct { f, ..base }` needs the
+            // struct's name, which is not known here; a mutate-and-return block
+            // is the same value and needs no type.
+            Expr::With { base, fields } => {
+                let (b, _) = self.expr(base);
+                let mut out = format!("{{ let mut _w = {b}.clone(); ");
+                for f in fields {
+                    let (n, v) = match f {
+                        Field::Value { name, value } => (name.clone(), self.expr(value).0),
+                        Field::Shorthand(n) => (n.clone(), ident(n)),
+                        _ => continue,
+                    };
+                    out.push_str(&format!("_w.{} = {v}; ", ident(&n)));
+                }
+                out.push_str("_w }");
+                (out, false)
+            }
+            // `Default::default()` type-checks wherever a value is wanted, so
+            // an unlowered construct became a plausible one — `break` inside a
+            // `while` turned into a value and the loop could not terminate.
+            other => {
+                self.problem(format!(
+                    "{} is not lowered by the rust backend",
+                    describe(other)
+                ));
+                ("Default::default()".into(), false)
+            }
         }
+    }
+
+    fn problem(&mut self, msg: impl Into<String>) {
+        self.problems.push(msg.into());
     }
 
     fn binary(&mut self, op: BinOp, lhs: &Expr, rhs: &Expr) -> (String, bool) {
@@ -641,7 +696,7 @@ impl Cx {
     }
 
     /// A `match` pattern, qualifying any variant name to `Enum::Variant`.
-    fn pat_match(&self, p: &Pattern) -> String {
+    fn pat_match(&mut self, p: &Pattern) -> String {
         match p {
             Pattern::Wild => "_".into(),
             Pattern::Int(n) => n.to_string(),
@@ -660,16 +715,40 @@ impl Cx {
                 if args.is_empty() {
                     qualified
                 } else {
-                    let a: Vec<String> = args.iter().map(|x| self.pat_match(x)).collect();
+                    let a: Vec<String> = args
+                        .iter()
+                        .map(|x| self.pat_match(x))
+                        .collect::<Vec<_>>();
                     format!("{qualified}({})", a.join(", "))
                 }
             }
-            Pattern::Or(ps) => ps
-                .iter()
-                .map(|x| self.pat_match(x))
-                .collect::<Vec<_>>()
-                .join(" | "),
-            _ => "_".into(),
+            Pattern::Or(ps) => {
+                let a: Vec<String> = ps.iter().map(|x| self.pat_match(x)).collect();
+                a.join(" | ")
+            }
+            Pattern::Float(f) => {
+                // Rust rejects a float in a pattern, so it has to be a guard —
+                // as a `_` arm it silently swallowed every later arm.
+                self.problem(format!(
+                    "the float pattern `{f}` has no Rust equivalent — \
+                     compare with a guard instead"
+                ));
+                "_".into()
+            }
+            Pattern::Record(_) => {
+                self.problem(
+                    "a record pattern is not lowered by the rust backend"
+                        .to_string(),
+                );
+                "_".into()
+            }
+            Pattern::List { .. } => {
+                self.problem(
+                    "a list pattern is not lowered by the rust backend"
+                        .to_string(),
+                );
+                "_".into()
+            }
         }
     }
 
@@ -691,6 +770,7 @@ impl Cx {
                 StrPart::Interp(e) => {
                     fmt.push_str("{}");
                     let mut c = Cx {
+                        problems: Vec::new(),
                         records: self.records.clone(),
                         sums: self.sums.clone(),
                         borrowed_args: self.borrowed_args.clone(),
@@ -883,6 +963,17 @@ fn rust_ty(t: &Type) -> String {
             let a: Vec<String> = args.iter().map(rust_ty).collect();
             format!("{}<{}>", rust_ty(base), a.join(", "))
         }
+    }
+}
+
+/// Name a construct the way the author wrote it, for a refusal message.
+fn describe(e: &Expr) -> &'static str {
+    match e {
+        Expr::Try(_) | Expr::Fail(_) | Expr::Reify(_) => "the error operators (`?`, `fail`)",
+        Expr::Path(_) => "a path expression",
+        Expr::Await(_) | Expr::Spawn(_) => "`await`/`spawn`",
+        Expr::Range { .. } => "a range in value position",
+        _ => "this construct",
     }
 }
 

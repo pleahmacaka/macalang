@@ -764,7 +764,8 @@ fn build_rust(src: &Path, out: &Path) -> Result<String, String> {
     validate_borrowed_params(&parsed.module)?;
     validate_no_function_fields(&parsed.module, "rust")?;
 
-    let rs = maca_backend_rust::emit(&parsed.module);
+    let rs = maca_backend_rust::emit_checked(&parsed.module)
+        .map_err(|probs| format!("unsupported by the rust backend:\n  {}", probs.join("\n  ")))?;
     let rs_path = out.with_extension("rs");
     std::fs::write(&rs_path, &rs).map_err(|e| e.to_string())?;
 
