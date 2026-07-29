@@ -94,8 +94,9 @@ impl Server {
                 None
             }
             "textDocument/hover" => {
-                let text = self.doc_at(req)?;
-                let off = self.offset_at(req, &text)?;
+                let (Some(text), Some(off)) = self.where_at(req) else {
+                    return Some(reply(id, Value::Null));
+                };
                 let value = maca_lsp::hover(&text, off).unwrap_or_default();
                 Some(reply(
                     id,
@@ -129,8 +130,9 @@ impl Server {
                 Some(reply(id, json!(syms)))
             }
             "textDocument/definition" => {
-                let text = self.doc_at(req)?;
-                let off = self.offset_at(req, &text)?;
+                let (Some(text), Some(off)) = self.where_at(req) else {
+                    return Some(reply(id, Value::Null));
+                };
                 let uri = req.pointer("/params/textDocument/uri")?.as_str()?;
                 match maca_lsp::definition(&text, off) {
                     Some((s, e)) => Some(reply(
@@ -141,8 +143,9 @@ impl Server {
                 }
             }
             "textDocument/signatureHelp" => {
-                let text = self.doc_at(req)?;
-                let off = self.offset_at(req, &text)?;
+                let (Some(text), Some(off)) = self.where_at(req) else {
+                    return Some(reply(id, Value::Null));
+                };
                 match maca_lsp::signature_help(&text, off) {
                     Some((sig, labels, active)) => Some(reply(
                         id,
@@ -162,8 +165,9 @@ impl Server {
                 }
             }
             "textDocument/references" => {
-                let text = self.doc_at(req)?;
-                let off = self.offset_at(req, &text)?;
+                let (Some(text), Some(off)) = self.where_at(req) else {
+                    return Some(reply(id, json!([])));
+                };
                 let uri = req.pointer("/params/textDocument/uri")?.as_str()?;
                 let locs: Vec<Value> = maca_lsp::references(&text, off)
                     .into_iter()
@@ -172,8 +176,9 @@ impl Server {
                 Some(reply(id, json!(locs)))
             }
             "textDocument/documentHighlight" => {
-                let text = self.doc_at(req)?;
-                let off = self.offset_at(req, &text)?;
+                let (Some(text), Some(off)) = self.where_at(req) else {
+                    return Some(reply(id, json!([])));
+                };
                 // kind 1 = Text. The protocol also has Read and Write, which
                 // would need to know which occurrence is the binding site;
                 // `binding` knows the scope but not yet the direction.
@@ -184,8 +189,9 @@ impl Server {
                 Some(reply(id, json!(spans)))
             }
             "textDocument/prepareRename" => {
-                let text = self.doc_at(req)?;
-                let off = self.offset_at(req, &text)?;
+                let (Some(text), Some(off)) = self.where_at(req) else {
+                    return Some(reply(id, Value::Null));
+                };
                 match maca_lsp::binding::resolve(&text, off) {
                     Some(b) => Some(reply(
                         id,
@@ -201,11 +207,40 @@ impl Server {
                 }
             }
             "textDocument/rename" => {
-                let text = self.doc_at(req)?;
-                let off = self.offset_at(req, &text)?;
+                let (Some(text), Some(off)) = self.where_at(req) else {
+                    return Some(reply(id, Value::Null));
+                };
                 let uri = req.pointer("/params/textDocument/uri")?.as_str()?;
-                let new_name = req.pointer("/params/newName")?.as_str()?;
-                let binding = maca_lsp::binding::resolve(&text, off)?;
+                let new_name = req
+                    .pointer("/params/newName")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let Some(binding) = maca_lsp::binding::resolve(&text, off) else {
+                    return Some(reply(id, Value::Null));
+                };
+                // The editor hands over whatever was typed. `1x` or `if` turns
+                // a working file into one that doesn't parse, and a rename that
+                // reports success is the wrong way to find that out.
+                if !maca_lsp::binding::is_renameable_to(new_name) {
+                    return Some(self.refuse(id, out, &format!("`{new_name}` is not a name")));
+                }
+                // A field is renamed in one file, so a field whose record lives
+                // in another module can only be renamed half-way — the literal
+                // here, not the declaration there. Half is worse than none: it
+                // reports success and breaks the build.
+                if binding.scope == maca_lsp::Scope::Field
+                    && !maca_lsp::binding::declares_field(&text, &binding.name)
+                {
+                    return Some(self.refuse(
+                        id,
+                        out,
+                        &format!(
+                            "`{}` is declared in another module; \
+                             rename it where the record is",
+                            binding.name
+                        ),
+                    ));
+                }
 
                 // A top-level name is visible to every module that imports it,
                 // so the edit spans files: renaming only the open one leaves
@@ -217,12 +252,19 @@ impl Server {
                         for (path, spans) in
                             maca_lsp::workspace::rename_edits(root, &file, &text, &binding)
                         {
-                            let src = if path == file {
-                                text.clone()
+                            // The open document's own URI is whatever the
+                            // editor sent; re-deriving it from the path would
+                            // not necessarily match, and an unmatched URI is a
+                            // dropped buffer edit.
+                            let (key, src) = if path == file {
+                                (uri.to_string(), text.clone())
                             } else {
-                                std::fs::read_to_string(&path).unwrap_or_default()
+                                (
+                                    uri_of(&path),
+                                    std::fs::read_to_string(&path).unwrap_or_default(),
+                                )
                             };
-                            changes.insert(uri_of(&path), edits_in(&src, &spans, new_name));
+                            changes.insert(key, edits_in(&src, &spans, new_name));
                         }
                     }
                     // No workspace: the open document is all there is.
@@ -262,6 +304,36 @@ impl Server {
     fn doc_at(&self, req: &Value) -> Option<String> {
         let uri = req.pointer("/params/textDocument/uri")?.as_str()?;
         self.docs.get(uri).cloned()
+    }
+
+    /// The document and cursor offset a positional request names.
+    ///
+    /// Returned as a pair rather than propagated with `?`, because the caller
+    /// must still answer: `handle` returning `None` writes no reply at all, and
+    /// a request with an `id` and no response hangs the client until it gives
+    /// up. A hover over a document the server never saw `didOpen` for wedged
+    /// the editor for exactly that reason.
+    fn where_at(&self, req: &Value) -> (Option<String>, Option<usize>) {
+        let Some(text) = self.doc_at(req) else {
+            return (None, None);
+        };
+        let off = self.offset_at(req, &text);
+        (Some(text), off)
+    }
+
+    /// Answer a rename with "nothing happened", and say why in the editor's
+    /// status area — silence would read as success.
+    fn refuse(&self, id: Option<Value>, out: &mut impl Write, why: &str) -> Value {
+        write_message(
+            out,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "window/showMessage",
+                // 2 = Warning
+                "params": { "type": 2, "message": why }
+            }),
+        );
+        reply(id, Value::Null)
     }
 
     fn offset_at(&self, req: &Value, text: &str) -> Option<usize> {
@@ -320,33 +392,69 @@ fn edits_in(src: &str, spans: &[(usize, usize)], new_name: &str) -> Value {
 
 /// `file:///a/b` → `/a/b`. Percent-escapes are decoded because a path with a
 /// space arrives as `%20` and would otherwise name a file that isn't there.
+///
+/// `file:///c%3A/proj/x.maca` → `c:/proj/x.maca`: a Windows drive letter comes
+/// through as an absolute path whose first segment is the drive, and the
+/// leading slash has to go or nothing on that host resolves.
 fn path_of(uri: &str) -> Option<PathBuf> {
     let rest = uri.strip_prefix("file://")?;
     let rest = rest.strip_prefix("localhost").unwrap_or(rest);
-    Some(PathBuf::from(percent_decode(rest)))
+    let decoded = percent_decode(rest);
+    let bytes = decoded.as_bytes();
+    if bytes.len() >= 3 && bytes[0] == b'/' && bytes[1].is_ascii_alphabetic() && bytes[2] == b':' {
+        return Some(PathBuf::from(&decoded[1..]));
+    }
+    Some(PathBuf::from(decoded))
 }
 
+/// The inverse. Everything outside the URI unreserved set is escaped, so a
+/// project directory with a space produces a key the editor can match: without
+/// this the round-trip was asymmetric — `path_of` decoded and `uri_of` did not
+/// encode — and an edit keyed by a raw-space URI was silently dropped.
 fn uri_of(path: &Path) -> String {
-    format!("file://{}", path.display())
+    let s = path.to_string_lossy().replace('\\', "/");
+    let s = if s.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
+        && s.as_bytes().get(1) == Some(&b':')
+    {
+        format!("/{s}")
+    } else {
+        s
+    };
+    let mut out = String::from("file://");
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                out.push(b as char);
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }
 
+/// Decode `%XX` escapes back into bytes, then into text.
+///
+/// Bytes, not `char`s: a Korean directory arrives as three escapes per
+/// character, and pushing each byte as a `char` re-encoded it as three
+/// characters of mojibake — a path that named nothing, so the workspace walk
+/// found no files and the rename silently shrank to the open buffer.
 fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
-    let mut out = String::with_capacity(s.len());
+    let mut out: Vec<u8> = Vec::with_capacity(s.len());
     let mut i = 0;
     while i < b.len() {
         if b[i] == b'%'
             && i + 2 < b.len()
             && let Ok(byte) = u8::from_str_radix(&s[i + 1..i + 3], 16)
         {
-            out.push(byte as char);
+            out.push(byte);
             i += 3;
         } else {
-            out.push(b[i] as char);
+            out.push(b[i]);
             i += 1;
         }
     }
-    out
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 fn range(text: &str, start: usize, end: usize) -> Value {

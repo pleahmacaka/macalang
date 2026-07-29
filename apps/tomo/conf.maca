@@ -1,0 +1,62 @@
+// conf — reading a value out of a `book.toml`.
+//
+// Not a TOML parser. It is the small subset tomo's config uses: `key = value`
+// at the start of a line, quotes and brackets stripped, an array allowed to
+// span lines.
+//
+// A module rather than a private helper because two programs read the same
+// file. `tools/build-site.maca` derives the landing pages it clears from the
+// book's `languages`, and when it had its own one-line reader that searched the
+// whole file, a commented-out `# languages = ["fr"]` above the real key won —
+// the build then cleared a landing that does not exist and published tomo's
+// language picker at the two addresses the front page was supposed to replace.
+// Scanning lines is what makes a comment a comment, and there is now one place
+// that does it.
+//
+// Gated through both importers by `crates/driver/tests/scripts.rs`.
+
+/// The value of a `key = value` entry, unquoted. An array value may span lines
+/// (`chapters = [\n  "a",\n  "b",\n]`), so once a `[` opens, lines are gathered
+/// until the closing `]`. Returns "" when `key` is absent.
+conf_value(toml: str, key: str) -> str =>
+    conf_scan(toml.split("\n"), 0, key)
+
+// `trim().starts_with(key ++ " =")` is what skips a commented-out copy: a `#`
+// line does not start with the key.
+conf_scan(lines: str[], i: int, key: str) -> str {
+    if i >= lines.length() {
+        ""
+    } else if lines.get(i).trim().starts_with(key ++ " =") {
+        unquote(conf_gather(lines, i, rest_of(lines.get(i))))
+    } else {
+        conf_scan(lines, i + 1, key)
+    }
+}
+
+// The text after `=` on a `key = value` line.
+rest_of(line: str) -> str =>
+    line.substr(line.index_of("=") + 1, line.length()).trim()
+
+// If the value opened a `[` that this line doesn't close, keep appending
+// following lines until the `]` arrives.
+conf_gather(lines: str[], i: int, acc: str) -> str {
+    complete = !acc.starts_with("[") || acc.contains("]")
+
+    if complete || i + 1 >= lines.length() {
+        acc
+    } else {
+        conf_gather(lines, i + 1, acc ++ lines.get(i + 1).trim())
+    }
+}
+
+// Drop the `[` `]` wrapper, quotes, and a trailing comma so both
+// `title = "X"` and a multi-line `["a", "b",]` yield usable text.
+unquote(v: str) -> str {
+    bare = v.replace("[", "").replace("]", "").replace("\"", "").trim()
+
+    if bare.ends_with(",") {
+        bare.substr(0, bare.length() - 1)
+    } else {
+        bare
+    }
+}

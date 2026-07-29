@@ -240,3 +240,159 @@ fn signature_help_handles_nested_calls() {
     assert_eq!(sig2, "outer(a: int, b: int) -> int");
     assert_eq!(active2, 1);
 }
+
+// ---- what an adversarial review of rename found ---------------------------
+//
+// Each of these renamed the wrong thing, or too little, on real files in this
+// repository. They are here as cases rather than as prose because every one of
+// them read as working until it was executed.
+
+fn spans_of(src: &str, at: &str) -> Vec<(usize, usize)> {
+    let off = src.find(at).expect("the cursor anchor");
+    let b = maca_lsp::binding::resolve(src, off).expect("a binding");
+    maca_lsp::binding::spans(src, &b)
+}
+
+fn scope_of(src: &str, at: &str) -> maca_lsp::Scope {
+    let off = src.find(at).expect("the cursor anchor");
+    maca_lsp::binding::resolve(src, off).expect("a binding").scope
+}
+
+/// A constant, a record and a sum type are definitions, not assignments. Read
+/// as locals of an item that happened to be called the same thing, each
+/// renamed to exactly one edit — its own declaration — and left every use
+/// behind. That was 102 of the 1178 definitions in this repository.
+#[test]
+fn a_definition_renames_from_its_own_declaration() {
+    let konst = "NTASKS = 6 as const\n\nmain() -> int {\n    n = NTASKS\n    n + NTASKS\n}\n";
+    assert_eq!(scope_of(konst, "NTASKS"), maca_lsp::Scope::TopLevel);
+    assert_eq!(spans_of(konst, "NTASKS").len(), 3, "declaration + two uses");
+
+    let rec = "Expr = {\n    children: Expr[]\n}\n\nmk() -> Expr =>\n    Expr { children = [] }\n";
+    assert_eq!(scope_of(rec, "Expr"), maca_lsp::Scope::TopLevel);
+    assert_eq!(spans_of(rec, "Expr").len(), 4, "decl, field, return, literal");
+
+    let sum = "Color = Red | Green\n\npick() -> Color => Red\n";
+    assert_eq!(spans_of(sum, "Color").len(), 2);
+}
+
+/// `c with { port = p }` and `=> Point { x = n }` are record literals whose
+/// line also carries a `->`. Asking whether an arrow appeared anywhere on the
+/// line called them blocks, so their keys were skipped — and applying the
+/// rename to `examples/record_update.maca` produced a file that did not
+/// compile.
+#[test]
+fn a_field_rename_reaches_literals_on_an_arrow_line() {
+    let src = "Config = {\n    port: int\n}\n\nset(c: Config, p: int) -> Config => c with { port = p }\n\nat(n: int) -> Config => Config { port = n }\n";
+    assert_eq!(scope_of(src, "port"), maca_lsp::Scope::Field);
+    assert_eq!(
+        spans_of(src, "port").len(),
+        3,
+        "declaration, the `with` update, and the literal"
+    );
+}
+
+/// A block opened inside a still-open call — `xs.map(v => { y = 1 … })` — used
+/// to keep the file's paren counter above zero, so the block's `y = 1` read as
+/// a named argument and renaming that temporary rewrote the record field.
+#[test]
+fn a_local_in_a_lambda_block_is_not_a_field() {
+    let src = "Row = {\n    y: int\n}\n\nmain() -> int {\n    zs = [1].map(v => {\n        y = v + 1\n        y * 2\n    })\n    zs.length()\n}\n";
+    assert!(matches!(
+        scope_of(src, "y = v + 1"),
+        maca_lsp::Scope::Local(_)
+    ));
+    assert_eq!(spans_of(src, "y = v + 1").len(), 2, "just the two in the block");
+}
+
+/// A function passed by name is an argument, not a parameter. Treating a bare
+/// name in a comma list as a binder wherever it appeared made every
+/// higher-order call — `xs.map(quote)`, `run_end(cs, i, is_alpha)` — a local of
+/// its caller: 351 sites here, each renaming to a single edit.
+#[test]
+fn a_function_passed_by_name_is_still_top_level() {
+    let src = "quote(s: str) -> str => s\n\nmain() -> str => [\"a\"].map(quote).join(\",\")\n";
+    assert_eq!(scope_of(src, "quote)"), maca_lsp::Scope::TopLevel);
+    assert_eq!(spans_of(src, "quote)").len(), 2, "definition and use");
+}
+
+/// The other direction: a bracketless list pattern's head *is* a binder, and
+/// its `prev` is the brace rather than a comma, so it was escaping its function
+/// and going workspace-wide.
+#[test]
+fn a_bracketless_list_pattern_binds_its_head() {
+    let src = "head_of(xs: int[]) -> int {\n    match xs {\n        [] => 0\n        first, ..rest => first + rest.length()\n    }\n}\n";
+    assert!(matches!(
+        scope_of(src, "first, ..rest"),
+        maca_lsp::Scope::Local(_)
+    ));
+    assert_eq!(spans_of(src, "first, ..rest").len(), 2);
+}
+
+/// A top-level name is not visible inside a function that binds the same name
+/// itself, so renaming the definition must leave that function's own alone.
+#[test]
+fn a_top_level_rename_skips_a_function_that_shadows_it() {
+    let src = "helper(n: int) -> int => n * 2\n\nuses() -> int => helper(1)\n\nshadows() -> int {\n    helper = 5\n    helper + helper\n}\n";
+    assert_eq!(
+        spans_of(src, "helper(n").len(),
+        2,
+        "the definition and the one real call"
+    );
+}
+
+/// `import std/text` names a directory. Renaming the path segment used to
+/// rewrite every local called `text`; the names in a selective import are the
+/// exception, because those really are the definitions.
+#[test]
+fn an_import_path_is_not_a_binding() {
+    let src = "import std/text\n\nmain() -> int {\n    text = \"hello\"\n    text.length()\n}\n";
+    assert_eq!(spans_of(src, "text = ").len(), 2, "the local only");
+
+    let sel = "import { lines } from std/text\n\nmain() -> int => lines(\"a\").length()\n";
+    assert_eq!(
+        spans_of(sel, "lines").len(),
+        2,
+        "the imported name and its use"
+    );
+}
+
+/// `int` and `info` are identifiers to the lexer. An editor would happily open
+/// a rename box over them, and renaming all three `int`s in a signature is
+/// never what anyone meant.
+#[test]
+fn primitives_and_builtins_are_not_renameable() {
+    let src = "add(a: int, b: int) -> int => a + b\n";
+    let off = src.find("int").unwrap();
+    assert!(maca_lsp::binding::resolve(src, off).is_none());
+    assert!(!maca_lsp::binding::is_renameable_to("int"));
+    assert!(!maca_lsp::binding::is_renameable_to("if"));
+    assert!(!maca_lsp::binding::is_renameable_to("1x"));
+    assert!(!maca_lsp::binding::is_renameable_to(""));
+    assert!(maca_lsp::binding::is_renameable_to("twice"));
+}
+
+/// An argument that happens to start a line is not a new top-level item. Ending
+/// the enclosing item there put the rest of the function outside its own
+/// local's scope, so the rename covered half of it.
+#[test]
+fn a_wrapped_argument_does_not_end_the_item() {
+    let src = "pick(a: int, b: int) -> int => a + b\n\nmain() -> int {\n    n = pick(\n1,\n2)\n    n + n\n}\n";
+    assert_eq!(spans_of(src, "n = pick").len(), 3, "the binding and both uses");
+}
+
+/// A function whose body binds its own name — `f() { f = 1  f }` — still has a
+/// head that is the definition. Reading the head as the local it shadows gave
+/// the definition a one-edit rename and left every caller behind.
+#[test]
+fn an_item_head_is_the_definition_even_when_its_body_shadows_it() {
+    let src = "f(n: int) -> int {\n    f = n + 1\n    f\n}\n\nmain() -> int => f(1)\n";
+    assert_eq!(scope_of(src, "f(n"), maca_lsp::Scope::TopLevel);
+    let call = src.rfind("f(1)").unwrap();
+    assert_eq!(
+        spans_of(src, "f(n"),
+        vec![(0, 1), (call, call + 1)],
+        "the head and the call, not the local"
+    );
+    assert!(matches!(scope_of(src, "f = n"), maca_lsp::Scope::Local(_)));
+}

@@ -411,13 +411,7 @@ impl<'a> Cx<'a> {
         // that only becomes reachable while a body is being lowered — the
         // element type of a `.map`'s result, `chars()` used on its own — was
         // registered after the typedefs had already been written out.
-        // A list *of* those lists is defined for the same reason and costs the
-        // same nothing: a generic signature like `flatten(xss: a[][])` is not
-        // scanned here at all — its concrete `str[][]` only exists once a call
-        // site has picked the element type, which is after the typedefs are
-        // written.
         for t in [CTy::Int, CTy::Str, CTy::Float, CTy::Bool] {
-            self.arr_elems.insert(CTy::Arr(Box::new(t.clone())));
             self.arr_elems.insert(t);
         }
         // fn signatures, lets
@@ -2379,8 +2373,11 @@ impl<'a> Cx<'a> {
     fn build_subst(&self, genf: &FnDef, arg_ctys: &[CTy]) -> HashMap<String, CTy> {
         let mut m = HashMap::new();
         for (p, cty) in genf.params.iter().zip(arg_ctys) {
-            if let Some(ty) = &p.ty {
-                bind_type_vars(ty, cty, &mut m);
+            if let Some(Type::Name(segs)) = &p.ty
+                && segs.len() == 1
+                && is_type_var_name(&segs[0])
+            {
+                m.insert(segs[0].clone(), cty.clone());
             }
         }
         m
@@ -2912,28 +2909,8 @@ impl<'a> Cx<'a> {
             }
             // a generic function → monomorphize per concrete argument types
             if let Some(genf) = self.generics.get(name).cloned() {
-                let probe: Vec<CTy> = args
-                    .iter()
-                    .map(|x| self.arg_typed(env, x).1)
-                    .collect();
-                // Lower each argument again, this time expecting the parameter
-                // type with the call's type variables filled in. An accumulator
-                // seeded with `[]` carries no element type of its own, so
-                // without this it lowered to `int[]` and a `str[]` walk failed
-                // to compile against its own recursive call.
-                let subst = self.build_subst(&genf, &probe);
-                let lowered: Vec<(String, CTy)> = args
-                    .iter()
-                    .enumerate()
-                    .map(|(i, x)| {
-                        let want = genf
-                            .params
-                            .get(i)
-                            .and_then(|p| p.ty.as_ref())
-                            .map(|t| self.subst_cty(t, &subst));
-                        self.arg_expected(env, x, want.as_ref())
-                    })
-                    .collect();
+                let lowered: Vec<(String, CTy)> =
+                    args.iter().map(|x| self.arg_typed(env, x)).collect();
                 let arg_ctys: Vec<CTy> = lowered.iter().map(|(_, t)| t.clone()).collect();
                 let key = (name.to_string(), arg_ctys.clone());
                 if !self.spec_done.contains(&key) && !self.spec_pending.contains(&key) {
@@ -4065,30 +4042,7 @@ fn type_has_tyvar(t: &Type) -> bool {
     }
 }
 
-/// Match a declared parameter type against the concrete type the call passed,
-/// binding every type variable it mentions.
-///
-/// Structural rather than a bare-name test, because a type variable is as often
-/// under a list as alone: `uniq(xs: a[]) -> a[]` called with `str[]` bound
-/// nothing, so the return type fell back to `int[]` and the emitted C did not
-/// compile. First binding wins — an argument that carries no element type of its
-/// own (the empty list literal an accumulator is seeded with) must not overwrite
-/// what a real argument already said.
-fn bind_type_vars(t: &Type, cty: &CTy, m: &mut HashMap<String, CTy>) {
-    match t {
-        Type::Name(segs) if segs.len() == 1 && is_type_var_name(&segs[0]) => {
-            m.entry(segs[0].clone()).or_insert_with(|| cty.clone());
-        }
-        Type::Array(inner) => {
-            if let CTy::Arr(elem) = cty {
-                bind_type_vars(inner, elem, m);
-            }
-        }
-        Type::Opt(inner) | Type::Paren(inner) => bind_type_vars(inner, cty, m),
-        _ => {}
-    }
-}
-
+/// A lowercase single-word type name that isn't a primitive is a type variable.
 /// A generic function's specialized C name for a concrete argument tuple, e.g.
 /// `id__int`, `id__str`, `id__Box`.
 fn mangle_name(name: &str, ctys: &[CTy]) -> String {

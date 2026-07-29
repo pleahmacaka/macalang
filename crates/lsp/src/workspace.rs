@@ -33,19 +33,31 @@ pub fn rename_edits(
         return out;
     }
 
-    let owner = defining_module(root, file, text, &binding.name).unwrap_or_else(|| canon(file));
+    let owner = defining_module(file, text, &binding.name).unwrap_or_else(|| canon(file));
+    // Keyed by the real path: a `lib/` reachable both directly and through a
+    // symlink is one file, and emitting it twice applies the second edit at
+    // offsets the first one moved.
+    let mut seen: Vec<PathBuf> = vec![canon(file)];
     for other in maca_sources(root) {
-        if canon(&other) == canon(file) {
+        let real = canon(&other);
+        if seen.contains(&real) {
             continue;
         }
         let Ok(src) = std::fs::read_to_string(&other) else {
             continue;
         };
         // Only a module that can actually see the definition — one that
-        // imports the module defining it, or defines it itself.
-        if canon(&other) != owner && !imports(&other, &src, &owner) {
+        // imports the module defining it, or is that module.
+        if real != owner && !can_see(&other, &src, &owner, &binding.name) {
             continue;
         }
+        // A module with its own top-level definition of the name is talking
+        // about its own, not this one. Maca would reject the collision if it
+        // really did import ours, so the safe reading is "leave it alone".
+        if real != owner && defines(&src, &binding.name) {
+            continue;
+        }
+        seen.push(real);
         let spans = crate::binding::spans(&src, binding);
         if !spans.is_empty() {
             out.insert(other, spans);
@@ -55,20 +67,31 @@ pub fn rename_edits(
 }
 
 /// The module that defines `name` at top level: this file if it does, else the
-/// first module it imports that does.
+/// first module reachable through its imports that does.
 ///
 /// Renaming from a *call site* has to reach the definition and every other
-/// caller, not just the file the cursor is in.
-fn defining_module(root: &Path, file: &Path, text: &str, name: &str) -> Option<PathBuf> {
+/// caller, not just the file the cursor is in — and Maca inlines imports
+/// transitively, so the definition may be two modules away.
+fn defining_module(file: &Path, text: &str, name: &str) -> Option<PathBuf> {
     if defines(text, name) {
         return Some(canon(file));
     }
-    for im in imported_modules(file, text) {
-        if std::fs::read_to_string(&im).is_ok_and(|s| defines(&s, name)) {
-            return Some(canon(&im));
+    let mut queue: Vec<PathBuf> = imported_modules(file, text);
+    let mut seen: Vec<PathBuf> = vec![canon(file)];
+    while let Some(m) = queue.pop() {
+        let real = canon(&m);
+        if seen.contains(&real) {
+            continue;
         }
+        seen.push(real.clone());
+        let Ok(src) = std::fs::read_to_string(&m) else {
+            continue;
+        };
+        if defines(&src, name) {
+            return Some(real);
+        }
+        queue.extend(imported_modules(&m, &src));
     }
-    let _ = root;
     None
 }
 
@@ -76,21 +99,64 @@ fn defines(src: &str, name: &str) -> bool {
     crate::document_symbols(src).iter().any(|s| s.name == name)
 }
 
-fn imports(file: &Path, src: &str, target: &Path) -> bool {
-    imported_modules(file, src)
-        .iter()
-        .any(|m| canon(m) == *target)
+/// Can this module see `name` as defined by `target`?
+///
+/// Reaching `target` through any chain of imports counts, because that is how
+/// the compiler resolves it. A *selective* import along the way is the one
+/// narrowing: `import { other } from lib/util` brings in `other` and the
+/// definitions it needs, so a file that never asks for `name` never sees it,
+/// and renaming its own unrelated `name` would be pure collateral.
+fn can_see(file: &Path, src: &str, target: &Path, name: &str) -> bool {
+    let mut queue: Vec<(PathBuf, bool)> = imports_of(file, src, name);
+    let mut seen: Vec<PathBuf> = vec![canon(file)];
+    while let Some((m, selective)) = queue.pop() {
+        // A selective import that doesn't name what we're renaming carries
+        // nothing of it — not the module itself, and not anything past it.
+        // Checked before the target match, not after: importing the *defining*
+        // module for some other name is exactly the case that has to say no.
+        // Not marked seen either, so the same module reached by an ordinary
+        // import still counts.
+        if selective {
+            continue;
+        }
+        let real = canon(&m);
+        if seen.contains(&real) {
+            continue;
+        }
+        seen.push(real.clone());
+        if real == *target {
+            return true;
+        }
+        if let Ok(s) = std::fs::read_to_string(&m) {
+            queue.extend(imports_of(&m, &s, name));
+        }
+    }
+    false
 }
 
-fn imported_modules(file: &Path, src: &str) -> Vec<PathBuf> {
+/// Each module this file imports, paired with "this import excludes `name`".
+fn imports_of(file: &Path, src: &str, name: &str) -> Vec<(PathBuf, bool)> {
     maca_parser::parse(src)
         .module
         .items
         .iter()
         .filter_map(|item| match item {
-            maca_parser::Stmt::Import(im) => import_target(im, file),
+            maca_parser::Stmt::Import(im) => {
+                let excludes = match im {
+                    maca_parser::Import::Names { names, .. } => !names.iter().any(|n| n == name),
+                    _ => false,
+                };
+                import_target(im, file).map(|p| (p, excludes))
+            }
             _ => None,
         })
+        .collect()
+}
+
+fn imported_modules(file: &Path, src: &str) -> Vec<PathBuf> {
+    imports_of(file, src, "")
+        .into_iter()
+        .map(|(p, _)| p)
         .collect()
 }
 

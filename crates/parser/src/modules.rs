@@ -22,16 +22,24 @@ pub fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> 
     let dir = importer.parent().unwrap_or_else(|| Path::new("."));
     let joined = format!("{}.maca", segs.join("/"));
 
-    // The importer's own directory, then every directory above it, then the
-    // working directory. Walking up is what lets a program deep in the tree say
-    // `import std/text` and mean the project's `std/` — resolving only against
-    // the working directory made a build depend on where it was started from,
-    // and `cargo test`, which runs in a crate directory, could not resolve an
-    // example's imports at all.
+    // The importer's own directory, then every directory above it up to the
+    // project root, then the working directory. Walking up is what lets a
+    // program deep in the tree say `import std/text` and mean the project's
+    // `std/` — resolving only against the working directory made a build depend
+    // on where it was started from, and `cargo test`, which runs in a crate
+    // directory, could not resolve an example's imports at all.
     for base in dir.ancestors() {
         let cand = base.join(&joined);
         if cand.is_file() {
             return Some(cand);
+        }
+        // Stop at the project root. Without this the walk continues into `$HOME`
+        // and `/`, where a stray `std/` becomes the standard library for every
+        // project beneath it — and the language server, whose own search is
+        // bounded by the workspace, would then disagree with the compiler about
+        // which file a name is defined in.
+        if base.join("maca.toml").is_file() {
+            break;
         }
     }
     let cwd = PathBuf::from(&joined);

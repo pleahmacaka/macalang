@@ -1,0 +1,65 @@
+// The book.toml reader, on the shapes a real config takes.
+//
+// `apps/tomo/conf.maca` is imported by two programs — the handbook builder and
+// the site build, which derives the landing pages it clears from `languages`.
+// The site build used to read the file with a one-liner of its own, and a
+// commented-out `# languages = ["fr"]` above the real key won: it then cleared
+// a landing that does not exist and published tomo's language picker at the two
+// addresses the front page was supposed to replace.
+//
+// So the first test here is that comment. The rest are the shapes `book.toml`
+// actually uses, because one reader now serves both programs and a change to it
+// moves the site as well as the book.
+
+import { conf_value } from apps/tomo/conf
+
+Toml = """title = "The Maca Handbook"
+site = "Maca"
+
+# languages = ["fr"] was the old list
+languages = ["en", "ko"]
+
+chapters = [
+    "00-introduction",
+    "01-installing",
+]
+"""
+
+test_a_commented_out_key_is_a_comment() {
+    assert_eq(conf_value(Toml, "languages"), "en, ko",
+              "the live key, not the commented-out one above it")
+}
+
+test_a_plain_value_is_unquoted() {
+    assert_eq(conf_value(Toml, "title"), "The Maca Handbook", "the title")
+    assert_eq(conf_value(Toml, "site"), "Maca", "the site name")
+}
+
+test_an_array_may_span_lines() {
+    got = conf_value(Toml, "chapters")
+    assert_eq(got, "00-introduction,01-installing",
+              "gathered across lines, trailing comma dropped")
+}
+
+test_an_absent_key_is_empty() {
+    assert_eq(conf_value(Toml, "playground"), "", "not in this config")
+    assert_eq(conf_value("", "title"), "", "nothing to read")
+}
+
+// `languages` is a prefix of nothing here, but `site` is a prefix of nothing
+// while `title` is — the match is on `key ++ " ="`, so a longer key that starts
+// with a shorter one must not answer for it.
+test_a_key_is_matched_whole() {
+    src = """site_name = "wrong"
+site = "right"
+"""
+    assert_eq(conf_value(src, "site"), "right", "not the longer key above it")
+}
+
+test_the_real_book_declares_two_languages() {
+    got = conf_value(read_file("apps/tomo/book.toml"), "languages")
+    codes = got.split(",").map(c => c.trim()).filter(c => c != "")
+    assert_eq(codes.join("|"), "en|ko", "the book ships English and Korean")
+}
+
+main() -> int => 0

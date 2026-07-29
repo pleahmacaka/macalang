@@ -7,6 +7,7 @@
 // i18n layer renders each language's chapters into a page carrying a language
 // switcher. This file is the renderer + a self-check `main`.
 
+import { conf_value } from apps/tomo/conf
 import { escape_html, index_of_from } from std/text
 import { quote } from std/json
 
@@ -957,50 +958,6 @@ target_page(page: str) -> str {
 }
 
 // ---- the book builder -----------------------------------------------------
-
-// The value of a `key = value` entry, unquoted. An array value may span lines
-// (`chapters = [\n  "a",\n  "b",\n]`), so once a `[` opens, lines are gathered
-// until the closing `]`. Returns "" when `key` is absent.
-conf_value(toml: str, key: str) -> str =>
-    conf_scan(toml.split("\n"), 0, key)
-
-conf_scan(lines: str[], i: int, key: str) -> str {
-    if i >= lines.length() {
-        ""
-    } else if lines.get(i).trim().starts_with(key ++ " =") {
-        unquote(conf_gather(lines, i, rest_of(lines.get(i))))
-    } else {
-        conf_scan(lines, i + 1, key)
-    }
-}
-
-// The text after `=` on a `key = value` line.
-rest_of(line: str) -> str =>
-    line.substr(line.index_of("=") + 1, line.length()).trim()
-
-// If the value opened a `[` that this line doesn't close, keep appending
-// following lines until the `]` arrives.
-conf_gather(lines: str[], i: int, acc: str) -> str {
-    complete = !acc.starts_with("[") || acc.contains("]")
-
-    if complete || i + 1 >= lines.length() {
-        acc
-    } else {
-        conf_gather(lines, i + 1, acc ++ lines.get(i + 1).trim())
-    }
-}
-
-// Drop the `[` `]` wrapper, quotes, and a trailing comma so both
-// `title = "X"` and a multi-line `["a", "b",]` yield usable text.
-unquote(v: str) -> str {
-    bare = v.replace("[", "").replace("]", "").replace("\"", "").trim()
-
-    if bare.ends_with(",") {
-        bare.substr(0, bare.length() - 1)
-    } else {
-        bare
-    }
-}
 
 // Build the whole book: for each language, render every chapter to
 // `<out>/<lang>/<chapter>.html`. A chapter missing in a non-default language

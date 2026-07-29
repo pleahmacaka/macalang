@@ -13,6 +13,7 @@
 // at target/wasm32-unknown-unknown/release — the workflow builds both first,
 // and so should you.
 
+import { conf_value } from apps/tomo/conf
 import std/proc
 import std/fs
 import std/path
@@ -73,13 +74,20 @@ landing_pages() -> str[] =>
 
 // The book's languages, in order; the first is the default, which is the one
 // `/index.html` is written in.
+//
+// Read with tomo's own `conf_value`, not a second reader written here. The one
+// written here searched the whole file, so a commented-out `# languages =
+// ["fr"]` above the real key won: the build then cleared a landing that does
+// not exist and left tomo's picker at the two addresses the front page was
+// supposed to replace — the precise failure deriving this list was meant to
+// prevent.
 book_languages() -> str[] {
-    listed = between(read_file("apps/tomo/book.toml"), "languages = [", "]")
-    codes = listed.split(",").map(c => c.trim().replace("\"", ""))
+    toml = read_file("apps/tomo/book.toml")
+    codes = conf_value(toml, "languages").split(",").map(c => c.trim())
         .filter(c => c != "")
 
     if codes.length() == 0 {
-        fail "apps/tomo/book.toml declares no languages"
+        fail "apps/tomo/book.toml declares no `languages = [...]`"
     } else {
         codes
     }
@@ -176,7 +184,7 @@ check(out: str) -> int {
 // meant to produce a rule.
 require_live_css(out: str) -> bool {
     pages = find(out, ".html")
-    dead = unique(dead_in_pages(pages, 0, []))
+    dead = str_unique(dead_in_pages(pages, 0, []))
 
     if dead.length() > 0 {
         named = dead.join(", ")
@@ -275,7 +283,7 @@ needs_escape(c: str) -> bool =>
 
 // Every distinct class named by a `class="…"` attribute on an opening tag.
 classes_in(src: str) -> str[] =>
-    unique(flatten(attr_values(without_scripts(src))
+    str_unique(str_flatten(attr_values(without_scripts(src))
                                .map(v => v.split(" "))))
 
 // Read attributes from tags, not from running text. A handbook chapter shows
