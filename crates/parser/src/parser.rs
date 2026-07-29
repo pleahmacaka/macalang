@@ -458,11 +458,7 @@ impl Parser {
         if !typed {
             return false;
         }
-        match self.peekn(i + 1) {
-            Tok::FatArrow => true,
-            Tok::Arrow => true,
-            _ => false,
-        }
+        matches!(self.peekn(i + 1), Tok::FatArrow | Tok::Arrow)
     }
 
     /// The arrow between a lambda's parameters and its body, with an optional
@@ -493,8 +489,14 @@ impl Parser {
         loop {
             match self.peekn(i) {
                 Tok::FatArrow => return true,
-                Tok::Ident(_) | Tok::Dot | Tok::LBracket | Tok::RBracket | Tok::Question
-                | Tok::QuestionPost | Tok::LParen | Tok::RParen => i += 1,
+                Tok::Ident(_)
+                | Tok::Dot
+                | Tok::LBracket
+                | Tok::RBracket
+                | Tok::Question
+                | Tok::QuestionPost
+                | Tok::LParen
+                | Tok::RParen => i += 1,
                 _ => return false,
             }
         }

@@ -1,5 +1,16 @@
+// taskr — a task list on disk, in about sixty lines.
+//
+//   maca run examples/taskr.maca add write the docs
+//   maca run examples/taskr.maca list
+//   maca run examples/taskr.maca done 1
+//
+// A record, a sum type, `match` over the argument list, and `std/json` for the
+// file. The store lives under `$XDG_DATA_HOME` when that is set and beside you
+// when it isn't.
+
 import std/json
-import std/dirs
+import std/path
+import std/proc
 
 Status = Todo | Doing | Done
 
@@ -9,40 +20,97 @@ Task = {
     status: Status
 }
 
-Store = {
-    tasks:   Task[]
-    next_id: int
+store_path() -> str =>
+    join(env_or("XDG_DATA_HOME", "."), "taskr.json")
+
+// ---- the file ---------------------------------------------------------------
+//
+// `std/json` reads an array as raw element text and an object a field at a
+// time, so a record goes to and from JSON by hand. That is the whole of the
+// mapping for a three-field task.
+
+load() -> Task[] {
+    path = store_path()
+
+    if !file_exists(path) {
+        []
+    } else {
+        items(read_file(path)).map(task_of)
+    }
 }
 
-store = dirs.data / "store.json"
+task_of(src: str) -> Task =>
+    Task {
+        id = get_int(src, "id", 0),
+        title = get(src, "title"),
+        status = status_of(get(src, "status"))
+    }
 
-load() -> Store =>
-    store.exists()
-        ? json.decode(store.read()?)
-        : Store { tasks = [], next_id = 1 }
+save(tasks: Task[]) -> bool =>
+    write_file(store_path(), "[" ++ tasks.map(json_of).join(",") ++ "]")
 
-add(s: Store, title: str) -> Store {
-    t = Task { id = s.next_id, title, status = Todo }
-    Store { tasks = s.tasks ++ [t], next_id = s.next_id + 1 }
+json_of(t: Task) -> str =>
+    object_of(["id", "title", "status"],
+              [str(t.id), quote(t.title), quote(name_of(t.status))])
+
+// A sum type is not a string, and the two directions are written out rather
+// than derived — which is what makes a `match` here exhaustive.
+name_of(s: Status) -> str =>
+    match s {
+        Todo  => "todo"
+        Doing => "doing"
+        Done  => "done"
+    }
+
+status_of(name: str) -> Status {
+    if name == "doing" {
+        Doing
+    } else if name == "done" {
+        Done
+    } else {
+        Todo
+    }
 }
+
+// ---- commands ---------------------------------------------------------------
+
+add(tasks: Task[], title: str) -> Task[] =>
+    tasks.push(Task { id = next_id(tasks), title = title, status = Todo })
+
+next_id(tasks: Task[]) -> int =>
+    tasks.map(id_of).max() + 1
+
+id_of(t: Task) -> int =>
+    t.id
+
+finish(tasks: Task[], id: int) -> Task[] =>
+    tasks.map(t => t.id == id ? t with { status = Done } : t)
 
 render(t: Task) -> str {
-    box = t.status == Done ? "[x]" : "[ ]"
+    box = match t.status {
+        Todo  => "[ ]"
+        Doing => "[~]"
+        Done  => "[x]"
+    }
+
     "{box} #{t.id}  {t.title}"
 }
 
 main(args: str[]) -> int {
-    s = load()?
+    tasks = load()
+
     match args {
         "add", ..rest => {
             title = rest.join(" ")
-            store.write(json.encode(add(s, title)))?
+            save(add(tasks, title))
             info("added: {title}")
         }
-        "list" => for t in s.tasks {
-            info(render(t))
+        "done", id => {
+            save(finish(tasks, int(id)))
+            info("done: #{id}")
         }
-        _      => info("usage: taskr [add <title> | list]")
+        "list" => info(tasks.map(render).join("\n"))
+        _ => info("usage: taskr [add <title> | done <id> | list]")
     }
     0
 }

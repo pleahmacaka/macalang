@@ -59,3 +59,37 @@ test_wrap_gives_a_long_word_its_own_line() {
     wrapped = wrap("a supercalifragilistic b", 6)
     assert_eq(wrapped, "a\nsupercalifragilistic\nb", "never cut mid-word")
 }
+
+test_index_of_from_returns_an_absolute_index() {
+    assert_eq(str(index_of_from("a=b=c", "=", 0)), "1", "the first")
+    assert_eq(str(index_of_from("a=b=c", "=", 2)), "3", "the second")
+    assert_eq(str(index_of_from("a=b=c", "=", 4)), "-1", "none after")
+    assert_eq(str(index_of_from("abc", "z", 0)), "-1", "absent")
+}
+
+test_index_of_from_clamps_its_start() {
+    assert_eq(str(index_of_from("abc", "a", -5)), "0", "a negative start")
+    assert_eq(str(index_of_from("abc", "a", 99)), "-1", "a start past the end")
+}
+
+test_last_index_of_finds_the_last_one() {
+    assert_eq(str(last_index_of("a/b/c", "/")), "3", "the last separator")
+    assert_eq(str(last_index_of("abc", "/")), "-1", "absent")
+    assert_eq(str(last_index_of("///", "/")), "2", "overlapping runs")
+}
+
+test_between_needs_both_markers() {
+    assert_eq(between("<b>hi</b>", "<b>", "</b>"), "hi", "the text between")
+    assert_eq(between("<b>hi", "<b>", "</b>"), "", "no closing marker")
+    assert_eq(between("hi</b>", "<b>", "</b>"), "", "no opening marker")
+    assert_eq(between("<b></b>", "<b>", "</b>"), "", "empty between")
+}
+
+test_escape_html_covers_the_attribute_case_too() {
+    assert_eq(escape_html("a < b & c > d"), "a &lt; b &amp; c &gt; d", "elements")
+    assert_eq(escape_html("say \"hi\""), "say &quot;hi&quot;", "attributes")
+}
+
+test_escape_html_does_not_double_escape() {
+    assert_eq(escape_html("&lt;"), "&amp;lt;", "the ampersand goes first")
+}

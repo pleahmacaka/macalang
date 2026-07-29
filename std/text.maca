@@ -69,6 +69,77 @@ strip_suffix(s: str, p: str) -> str {
     }
 }
 
+/// `index_of` starting from `start`, as an absolute index, or -1.
+///
+/// The builtin always searches from the beginning, so scanning a string for a
+/// second occurrence means slicing first and adding the offset back — which is
+/// what two programs in this repository each wrote out by hand.
+index_of_from(s: str, pat: str, start: int) -> int {
+    at = if start < 0 { 0 } else { start }
+
+    if at >= s.length() {
+        -1
+    } else {
+        hit = s.slice(at, s.length()).index_of(pat)
+
+        if hit < 0 {
+            -1
+        } else {
+            at + hit
+        }
+    }
+}
+
+/// The index of the *last* occurrence of `pat`, or -1.
+last_index_of(s: str, pat: str) -> int =>
+    scan_last(s, pat, 0, -1)
+
+scan_last(s: str, pat: str, at: int, best: int) -> int {
+    hit = index_of_from(s, pat, at)
+
+    if hit < 0 {
+        best
+    } else {
+        scan_last(s, pat, hit + 1, hit)
+    }
+}
+
+/// The text between `open` and `close`, or "" if either marker is missing.
+///
+/// Both markers must be there. A version that returned the whole remainder on
+/// a missing `close` existed alongside this one, and the two were used against
+/// each other's output — so a malformed input parsed one way in the generator
+/// and the other way in the test that checked it.
+between(s: str, open: str, close: str) -> str {
+    at = s.index_of(open)
+
+    if at < 0 {
+        ""
+    } else {
+        tail = s.slice(at + open.length(), s.length())
+        end = tail.index_of(close)
+
+        if end < 0 {
+            ""
+        } else {
+            tail.slice(0, end)
+        }
+    }
+}
+
+/// The four characters that would otherwise be markup, as entities.
+///
+/// `&` goes first, or the `&` of an entity written by a later replacement gets
+/// escaped a second time. The quote is included because a value that is safe
+/// in an element is not automatically safe in an attribute, and three copies
+/// of this function each omitted it and each documented a different reason why
+/// that was fine.
+escape_html(s: str) -> str =>
+    s.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+
 /// How many non-overlapping times `pat` occurs in `s`. An empty needle matches
 /// nothing rather than matching everywhere.
 count(s: str, pat: str) -> int {

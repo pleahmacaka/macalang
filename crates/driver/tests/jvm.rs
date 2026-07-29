@@ -1,20 +1,11 @@
 //! JVM target: `maca build --target jvm` emits Java that compiles and runs.
 //! Skips when there's no JDK (`javac`/`java`).
 
+mod common;
+use common::*;
+
 use std::path::PathBuf;
 use std::process::Command;
-
-fn have(cmd: &str) -> bool {
-    Command::new(cmd)
-        .arg("-version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn maca() -> &'static str {
-    env!("CARGO_BIN_EXE_maca")
-}
 
 #[test]
 fn program_runs_on_jvm() {

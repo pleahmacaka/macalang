@@ -1,12 +1,11 @@
 //! Embedded target: `maca build --target embedded` produces a valid bare-metal
 //! Cortex-M firmware image. Skips when clang can't cross-compile.
 
+mod common;
+use common::*;
+
 use std::path::PathBuf;
 use std::process::Command;
-
-fn maca() -> &'static str {
-    env!("CARGO_BIN_EXE_maca")
-}
 
 fn have_clang() -> bool {
     Command::new("clang")

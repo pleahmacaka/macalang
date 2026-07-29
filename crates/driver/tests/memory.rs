@@ -13,30 +13,11 @@
 //! The programs live beside this file, in `tests/programs/`, and assert in
 //! Maca: each returns `failures()`, so a non-zero exit is the whole verdict.
 
+mod common;
+use common::*;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
-
-fn have(cmd: &str) -> bool {
-    Command::new(cmd)
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn have_wsl() -> bool {
-    Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn program(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/programs")
-        .join(format!("{name}.maca"))
-}
 
 /// Compile `tests/programs/<name>.maca` to a native binary.
 fn build(name: &str) -> PathBuf {
@@ -105,7 +86,10 @@ fn nothing_live_is_dropped() {
         "{}\n{stderr}",
         String::from_utf8_lossy(&out.stdout),
     );
-    assert!(stderr.trim().is_empty(), "valgrind was not quiet:\n{stderr}");
+    assert!(
+        stderr.trim().is_empty(),
+        "valgrind was not quiet:\n{stderr}"
+    );
 }
 
 /// Nested array types are declared before the types that hold them.

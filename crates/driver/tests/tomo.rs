@@ -5,27 +5,15 @@
 //! HTML (headings, inline `**bold**`/`` `code` ``, lists, fenced code) and that
 //! the i18n page shell emits a language switcher.
 
+mod common;
+use common::*;
+
 use std::path::PathBuf;
 use std::process::Command;
 
-fn have(cmd: &str) -> bool {
-    Command::new(cmd)
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-fn wsl() -> bool {
-    Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
 #[test]
 fn tomo_renders_markdown_to_html() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping tomo run: needs a host cc and no wsl");
         return;
     }
@@ -158,7 +146,7 @@ fn tomo_renders_markdown_to_html() {
 /// chapter that hasn't been translated yet.
 #[test]
 fn tomo_builds_the_handbook_site() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping tomo build: needs a host cc and no wsl");
         return;
     }
@@ -230,7 +218,12 @@ fn tomo_builds_the_handbook_site() {
     // handbook — and that is what is asserted here. The front page's own
     // content is asserted in `tests/programs/sitegen.maca`.
     let root = std::fs::read_to_string(site.join("index.html")).unwrap();
-    for want in ["en/index.html", "ko/index.html", "en/home.html", "ko/home.html"] {
+    for want in [
+        "en/index.html",
+        "ko/index.html",
+        "en/home.html",
+        "ko/home.html",
+    ] {
         assert!(
             root.contains(want),
             "the picker doesn't link {want:?}: {root}"
@@ -240,7 +233,8 @@ fn tomo_builds_the_handbook_site() {
     // when a web server does it, and this book is meant to open off disk too
     assert!(!root.contains("href=\"../"), "root page links above itself");
     assert!(
-        !root.contains("href=\"en/\"") && !root.contains("href=\"ko/\"")
+        !root.contains("href=\"en/\"")
+            && !root.contains("href=\"ko/\"")
             && !root.contains("href=\"play/\""),
         "root page links a bare directory, which won't open from a file:// path"
     );
@@ -331,7 +325,7 @@ fn tomo_builds_the_handbook_site() {
 /// is opened straight off disk — mdBook's needs a server.
 #[test]
 fn every_page_has_the_sidebar_and_a_working_search_index() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping tomo sidebar test: needs a host cc and no wsl");
         return;
     }
@@ -442,7 +436,7 @@ fn every_page_has_the_sidebar_and_a_working_search_index() {
 /// for. The rule now drops a known set of ASCII punctuation and keeps the rest.
 #[test]
 fn headings_anchor_in_every_language() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping tomo anchor test: needs a host cc and no wsl");
         return;
     }
@@ -504,7 +498,7 @@ fn headings_anchor_in_every_language() {
 /// complete the real handbook's translations become.
 #[test]
 fn untranslated_chapters_fall_back_to_the_default_language() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping tomo fallback test: needs a host cc and no wsl");
         return;
     }
@@ -581,7 +575,7 @@ fn untranslated_chapters_fall_back_to_the_default_language() {
 /// a file that no longer existed. Neither shows up until someone clicks.
 #[test]
 fn every_link_in_the_built_book_resolves() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping tomo link check: needs a host cc and no wsl");
         return;
     }

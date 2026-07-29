@@ -12,22 +12,10 @@
 //! from the list gets rejected by the checker as a typo, which the second half
 //! of this file catches.
 
-use std::process::Command;
+mod common;
+use common::*;
 
-fn have(cmd: &str) -> bool {
-    Command::new(cmd)
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-fn wsl() -> bool {
-    Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
+use std::process::Command;
 
 fn run(name: &str, src: &str) -> (bool, String) {
     let dir = std::env::temp_dir().join("maca-method-sets");
@@ -48,7 +36,7 @@ fn run(name: &str, src: &str) -> (bool, String) {
 /// run, which means the checker accepted every name and the back end lowered it.
 #[test]
 fn every_str_method_the_checker_allows_actually_works() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping: needs a host cc and no wsl");
         return;
     }
@@ -91,7 +79,7 @@ fn every_str_method_the_checker_allows_actually_works() {
 
 #[test]
 fn every_list_method_the_checker_allows_actually_works() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping: needs a host cc and no wsl");
         return;
     }
@@ -139,7 +127,7 @@ fn every_list_method_the_checker_allows_actually_works() {
 /// The same executed check for `Map str V`.
 #[test]
 fn every_map_method_the_checker_allows_actually_works() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping: needs a host cc and no wsl");
         return;
     }
@@ -168,7 +156,7 @@ fn every_map_method_the_checker_allows_actually_works() {
 /// the closest real one, not a linker error about a C symbol.
 #[test]
 fn a_misspelt_method_is_a_diagnostic_with_a_suggestion() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping: needs a host cc and no wsl");
         return;
     }
@@ -201,7 +189,7 @@ fn a_misspelt_method_is_a_diagnostic_with_a_suggestion() {
 /// program defines itself, must not be flagged.
 #[test]
 fn gradual_and_user_defined_methods_are_not_flagged() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping: needs a host cc and no wsl");
         return;
     }

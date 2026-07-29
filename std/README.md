@@ -13,7 +13,7 @@ of the language and, through `std/tests/`, part of what gates the compiler.
 
 | module | what it is for |
 |---|---|
-| `std/text` | `lines`, `words`, `split_once`, `strip_prefix`/`strip_suffix`, `count`, `title_case`, `indent`, `dedent`, `wrap` |
+| `std/text` | `lines`, `words`, `split_once`, `strip_prefix`/`strip_suffix`, `index_of_from`, `last_index_of`, `between`, `escape_html`, `count`, `title_case`, `indent`, `dedent`, `wrap` |
 | `std/list` | `any_of`, `all_of`, `find_index`, `count_if`, `take`, `drop`, `chunk`, `zip_add`, `flatten`, `unique`, `range`, and for `str[]`: `str_unique`, `str_take`, `str_drop`, `str_find_index`, `str_flatten` |
 | `std/path` | `join`, `basename`, `dirname`, `extension`, `stem`, `with_extension`, `is_absolute`, `normalize` |
 | `std/json` | `quote`, `array_of_str`/`array_of_int`, `object_of`, `get`, `get_int`, `get_bool`, `items` |

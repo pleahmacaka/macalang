@@ -285,7 +285,7 @@ class_of(tag: str) -> str[] {
     if at < 0 {
         []
     } else {
-        [between(tag.slice(at + 8, tag.length()), "", "\"")]
+        [split_once(tag.slice(at + 8, tag.length()), "\"").get(0)]
     }
 }
 
@@ -310,29 +310,6 @@ drop_blocks(src: str, open: str, close: str, out: str) -> str {
         } else {
             drop_blocks(src.slice(at + end + close.length(), src.length()),
                         open, close, out ++ src.slice(0, at))
-        }
-    }
-}
-
-// The text between two markers. An empty `open` starts at the beginning, which
-// is what reading up to the next `"` needs.
-between(src: str, open: str, close: str) -> str {
-    from = if open == "" {
-        0
-    } else {
-        src.index_of(open) + open.length()
-    }
-
-    if open != "" && src.index_of(open) < 0 {
-        ""
-    } else {
-        tail = src.slice(from, src.length())
-        end = tail.index_of(close)
-
-        if end < 0 {
-            ""
-        } else {
-            tail.slice(0, end)
         }
     }
 }

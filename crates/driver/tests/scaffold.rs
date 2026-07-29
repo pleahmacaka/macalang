@@ -1,10 +1,9 @@
 //! `maca init` scaffolds a working project (hermetic — no toolchain needed).
 
-use std::process::Command;
+mod common;
+use common::*;
 
-fn maca() -> &'static str {
-    env!("CARGO_BIN_EXE_maca")
-}
+use std::process::Command;
 
 #[test]
 fn init_scaffolds_a_valid_project() {

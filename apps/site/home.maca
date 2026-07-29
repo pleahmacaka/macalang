@@ -18,6 +18,7 @@
 // NonExhaustive error from the checker, not a shorter page nobody notices.
 
 import std/path
+import { escape_html } from std/text
 
 Repo = "https://github.com/pleahmacaka/macalang"
 InstallUrl = "https://raw.githubusercontent.com/pleahmacaka/macalang/main"
@@ -405,7 +406,7 @@ skip_link(c: Copy) -> str =>
     a(class="absolute left-[-9999px] focus:left-2 focus:top-2 focus:z-10"
             ++ " bg-white dark:bg-zinc-950 px-4 py-2 rounded-md"
             ++ " border border-zinc-300 dark:border-zinc-700 text-inherit",
-      href="#content", esc(c.skip))
+      href="#content", escape_html(c.skip))
 
 // ---- header -----------------------------------------------------------------
 //
@@ -424,11 +425,11 @@ top_nav(c: Copy, up: str) -> str =>
                 class="flex flex-wrap items-center gap-x-5 gap-y-2"
                       ++ " text-[0.9rem]",
                 a(class=quiet_link(), href=up ++ c.lang ++ "/index.html",
-                  esc(c.nav_docs))
+                  escape_html(c.nav_docs))
                 a(class=quiet_link(), href=up ++ "api/index.html",
-                  esc(c.nav_api))
+                  escape_html(c.nav_api))
                 a(class=quiet_link(), href=up ++ "play/index.html",
-                  esc(c.cta_play))
+                  escape_html(c.cta_play))
                 a(class=quiet_link(), href=Repo, "GitHub")
                 lang_switch(c, up))))
 
@@ -482,13 +483,13 @@ hero(c: Copy, up: str) -> str =>
         div(class="min-w-0",
             h1(class="font-bold text-[2.25rem] md:text-[2.75rem]"
                      ++ " leading-tight tracking-tight m-0",
-               esc(c.headline))
+               escape_html(c.headline))
             p(class="mt-5 text-[1.05rem] text-zinc-600 dark:text-zinc-400",
               prose(c.sub))
             div(class="mt-8 flex flex-wrap gap-3",
-                a(class=primary_btn(), href="#install", esc(c.cta_start))
+                a(class=primary_btn(), href="#install", escape_html(c.cta_start))
                 a(class=ghost_btn(), href=up ++ "play/index.html",
-                  esc(c.cta_play))
+                  escape_html(c.cta_play))
                 a(class=ghost_btn(), href=Repo, "GitHub")))
         code_panel(HeroSample, "maca"))
 
@@ -509,7 +510,7 @@ code_panel(src: str, lang: str) -> str =>
     pre(class="bg-zinc-950 dark:bg-black text-zinc-100 rounded-lg p-5"
               ++ " overflow-x-auto text-[0.85rem] leading-relaxed m-0"
               ++ " border border-zinc-800 min-w-0",
-        code(class="font-mono language-" ++ lang, esc(src)))
+        code(class="font-mono language-" ++ lang, escape_html(src)))
 
 // ---- the strip that puts it in a box ----------------------------------------
 
@@ -522,14 +523,14 @@ spec_strip(c: Copy) -> str =>
 fact_cell(f: Fact) -> str =>
     div(
         div(class="text-[0.75rem] uppercase tracking-wide text-zinc-500"
-                  ++ " dark:text-zinc-400", esc(f.label))
-        div(class="mt-1 font-medium", esc(f.value)))
+                  ++ " dark:text-zinc-400", escape_html(f.label))
+        div(class="mt-1 font-medium", escape_html(f.value)))
 
 // ---- features ---------------------------------------------------------------
 
 features(c: Copy) -> str =>
     section(class=wrap() ++ " py-16",
-        h2(class=band_title(), esc(c.box_title))
+        h2(class=band_title(), escape_html(c.box_title))
         p(class=band_sub(), prose(c.box_sub))
         div(class="mt-10 grid gap-6 md:grid-cols-2",
             topics().map(t => feature_card(feature_of(c, t), sample(t)))
@@ -544,26 +545,26 @@ band_sub() -> str =>
 feature_card(f: Feature, src: str) -> str =>
     article(class="rounded-lg border border-zinc-200 dark:border-zinc-800"
                   ++ " p-6 flex flex-col gap-4 min-w-0",
-        h3(class="font-semibold text-[1.1rem] m-0", esc(f.title))
+        h3(class="font-semibold text-[1.1rem] m-0", escape_html(f.title))
         p(class="text-[0.95rem] text-zinc-600 dark:text-zinc-400 m-0",
           prose(f.body))
         pre(class="bg-zinc-100 dark:bg-zinc-900 rounded-md p-4 overflow-x-auto"
                   ++ " text-[0.8rem] m-0 min-w-0",
-            code(class="font-mono language-maca", esc(src))))
+            code(class="font-mono language-maca", escape_html(src))))
 
 // ---- targets ----------------------------------------------------------------
 
 targets_band(c: Copy) -> str =>
     section(class="border-t border-zinc-200 dark:border-zinc-800",
         div(class=wrap() ++ " py-14",
-            h2(class=band_title(), esc(c.tgt_title))
+            h2(class=band_title(), escape_html(c.tgt_title))
             p(class=band_sub(), prose(c.tgt_sub))
             div(class="mt-6 flex flex-wrap gap-2",
                 targets().map(target_chip).join(""))))
 
 target_chip(t: str) -> str =>
     span(class="inline-block px-3 py-1 rounded-full text-[0.85rem] font-mono"
-               ++ " border border-zinc-300 dark:border-zinc-700", esc(t))
+               ++ " border border-zinc-300 dark:border-zinc-700", escape_html(t))
 
 // ---- install ----------------------------------------------------------------
 
@@ -571,14 +572,14 @@ install_band(c: Copy) -> str =>
     section(id="install", class="border-t border-zinc-200 dark:border-zinc-800"
                                 ++ " bg-zinc-50 dark:bg-zinc-900",
         div(class=wrap() ++ " py-14",
-            h2(class=band_title(), esc(c.install))
+            h2(class=band_title(), escape_html(c.install))
             div(class="mt-6", code_panel(InstallSample, "sh"))))
 
 // ---- honest limits ----------------------------------------------------------
 
 limits(c: Copy) -> str =>
     section(class=wrap() ++ " py-14",
-        h2(class=band_title(), esc(c.lim_title))
+        h2(class=band_title(), escape_html(c.lim_title))
         ul(class="mt-5 grid gap-3 list-none p-0 text-zinc-600"
                  ++ " dark:text-zinc-400",
            caveats().map(v => limit_item(caveat_of(c, v))).join("")))
@@ -599,17 +600,11 @@ site_footer(c: Copy) -> str =>
 // `title` and `body` are parameter names all over this file, and a user
 // definition wins over a tag — so the two tags that collide get a wrapper.
 title_tag(text: str) -> str =>
-    title(esc(text))
+    title(escape_html(text))
 
 body_tag(classes: str, inner: str) -> str =>
     body(class=classes, inner)
 
-// Children of an element are not escaped — a generator emitting markup has
-// usually escaped already, and double-escaping is the more common bug. Every
-// leaf that carries copy or code goes through here instead. Attribute values
-// are escaped by the backend, so they must not.
-esc(s: str) -> str =>
-    s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 // A sentence of copy, where a backtick span is a piece of code. `--target nix`
 // is a flag, and printing the backticks around it is worse than not marking it
@@ -628,9 +623,10 @@ spans(parts: str[], i: int, out: str) -> str {
     if i >= parts.length() {
         out
     } else if i % 2 == 1 {
-        spans(parts, i + 1, out ++ code(class=CodeSpan, esc(parts.get(i))))
+        span = code(class=CodeSpan, escape_html(parts.get(i)))
+        spans(parts, i + 1, out ++ span)
     } else {
-        spans(parts, i + 1, out ++ esc(parts.get(i)))
+        spans(parts, i + 1, out ++ escape_html(parts.get(i)))
     }
 }
 

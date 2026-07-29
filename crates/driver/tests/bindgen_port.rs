@@ -6,23 +6,11 @@
 //! generated declarations to match exactly. A divergence in either direction
 //! fails here rather than silently producing different FFI bindings.
 
+mod common;
+use common::*;
+
 use std::path::PathBuf;
 use std::process::Command;
-
-fn have(cmd: &str) -> bool {
-    Command::new(cmd)
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-fn wsl() -> bool {
-    Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
 
 /// The declaration lines only — dropping the generated banner (which names the
 /// header) and blank lines, so the two implementations are compared on the
@@ -37,7 +25,7 @@ fn decls(text: &str) -> Vec<String> {
 
 #[test]
 fn maca_bindgen_matches_the_rust_implementation() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping bindgen port test: needs a host cc and no wsl");
         return;
     }
@@ -106,7 +94,7 @@ fn maca_bindgen_matches_the_rust_implementation() {
 /// empty module.
 #[test]
 fn maca_bindgen_cli_writes_and_reports_errors() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping bindgen CLI test: needs a host cc and no wsl");
         return;
     }

@@ -2,15 +2,10 @@
 //! `rustc`, run the binary, and check its output / exit code. Skips if `rustc`
 //! isn't on PATH (it always is in this workspace).
 
-use std::process::Command;
+mod common;
+use common::*;
 
-fn have(cmd: &str) -> bool {
-    Command::new(cmd)
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
+use std::process::Command;
 
 fn build_and_run(name: &str, src: &str) -> (String, Option<i32>) {
     let dir = std::env::temp_dir().join(format!("maca-rust-{name}"));
@@ -282,10 +277,13 @@ fn a_bodyless_function_is_rejected_rather_than_emitted_as_a_panic() {
         .output()
         .expect("spawn maca build");
 
-    let text = String::from_utf8_lossy(&out.stdout).to_string()
-        + &String::from_utf8_lossy(&out.stderr);
+    let text =
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
     assert!(!out.status.success(), "should not build:\n{text}");
-    assert!(text.contains("mystery"), "should name the function:\n{text}");
+    assert!(
+        text.contains("mystery"),
+        "should name the function:\n{text}"
+    );
     assert!(
         text.contains("no body"),
         "should say what is wrong:\n{text}"
@@ -401,9 +399,12 @@ fn a_borrowed_parameter_may_not_be_stored() {
         .output()
         .expect("spawn maca build");
 
-    let text = String::from_utf8_lossy(&out.stdout).to_string()
-        + &String::from_utf8_lossy(&out.stderr);
-    assert!(!out.status.success(), "storing a borrow should fail:\n{text}");
+    let text =
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "storing a borrow should fail:\n{text}"
+    );
     assert!(text.contains("`w`"), "should name the parameter:\n{text}");
     assert!(text.contains("borrowed"), "should say why:\n{text}");
 }

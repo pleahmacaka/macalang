@@ -15,8 +15,8 @@
 //! imports (`import c "…"`, `nixpkgs`, stdlib builtins) resolve to no file and
 //! are left for the backend.
 
-use maca_parser::ast::*;
-use maca_parser::modules::import_target;
+use crate::ast::*;
+use crate::modules::{import_segments, import_target, names_a_file};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -40,7 +40,7 @@ pub fn load_with_imports(entry: &Path) -> Result<String, String> {
             Sel::Names(want) => {
                 let module = &g.parsed[path];
                 let sliced = slice_module(module, want, path)?;
-                combined.push_str(&maca_parser::print_module(&Module { items: sliced }));
+                combined.push_str(&crate::print_module(&Module { items: sliced }));
             }
         }
         combined.push('\n');
@@ -74,24 +74,33 @@ fn canon(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
-/// Resolve `import a/b` to a sibling `.maca` file. Two candidates are tried: a
-/// file named by the import's last segment next to the importer
-/// (`import selfhost/token` from `selfhost/main.maca` → `selfhost/token.maca`),
-/// and the whole dotted path from the working directory. Imports that name no
 /// Depth-first post-order over local imports; parse each module once.
+///
+/// A slash-path import that resolves to nothing is an error here rather than a
+/// line that does nothing. `import std/str` — a module that has never existed —
+/// sat in four files, and each of them then hand-wrote the helpers it believed
+/// it was importing.
 fn collect(path: &Path, g: &mut Graph) -> Result<(), String> {
     let key = canon(path);
     if g.parsed.contains_key(&key) {
         return Ok(());
     }
     let src = read(path)?;
-    let parsed = maca_parser::parse(&src);
+    let parsed = crate::parse(&src);
     g.parsed.insert(key.clone(), parsed.module.clone());
     for item in &parsed.module.items {
-        if let Stmt::Import(im) = item
-            && let Some(dep) = import_target(im, path)
-        {
-            collect(&dep, g)?;
+        let Stmt::Import(im) = item else { continue };
+        match import_target(im, path) {
+            Some(dep) => collect(&dep, g)?,
+            None if names_a_file(im) => {
+                let written = import_segments(im).unwrap_or_default().join("/");
+                return Err(format!(
+                    "{}: no module `{written}` — `{written}.maca` is not beside \
+                     this file or in the working directory",
+                    path.display()
+                ));
+            }
+            None => {}
         }
     }
     g.order.push(key);
@@ -409,7 +418,11 @@ fn refs_in_expr(e: &Expr, out: &mut BTreeSet<String>) {
             refs_in_expr(cond, out);
             body.iter().for_each(|s| refs_in_stmt(s, out));
         }
-        Expr::Lambda { params, ret: _, body } => {
+        Expr::Lambda {
+            params,
+            ret: _,
+            body,
+        } => {
             for p in params {
                 if let Some(t) = &p.ty {
                     refs_in_type(t, out);

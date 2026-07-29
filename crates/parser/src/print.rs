@@ -283,11 +283,7 @@ fn expr(s: &mut String, e: &Expr) {
         Expr::Lambda { params, ret, body } => {
             // A single bare parameter needs no parens — but an annotated lambda
             // does, or `x -> T => …` would re-parse as a function signature.
-            if params.len() == 1
-                && !params[0].variadic
-                && params[0].ty.is_none()
-                && ret.is_none()
-            {
+            if params.len() == 1 && !params[0].variadic && params[0].ty.is_none() && ret.is_none() {
                 s.push_str(&params[0].name);
             } else {
                 s.push('(');

@@ -2993,10 +2993,7 @@ impl<'a> Cx<'a> {
                     let (cmd, args) = (&a[0], &a[1]);
                     let fn_name = format!("maca_{name}");
                     let ret = if name == "exec" { CTy::Int } else { CTy::Str };
-                    return (
-                        format!("{fn_name}({cmd}, {args}.data, {args}.len)"),
-                        ret,
-                    );
+                    return (format!("{fn_name}({cmd}, {args}.data, {args}.len)"), ret);
                 }
                 "env" => return (format!("maca_env({})", a.join(", ")), CTy::Str),
                 "cwd" => return ("maca_cwd()".into(), CTy::Str),
@@ -3756,7 +3753,9 @@ fn arr_name(elem: &CTy) -> String {
         CTy::Vec { name, .. } => format!("{name}Arr"),
         CTy::Arr(e) => format!("{}Arr", arr_name(e)),
         CTy::Map(v) => format!("{}Arr", map_name(v)),
-        CTy::Unit | CTy::Unknown | CTy::Future | CTy::Closure(_) | CTy::Closure2(_) => "IntArr".into(),
+        CTy::Unit | CTy::Unknown | CTy::Future | CTy::Closure(_) | CTy::Closure2(_) => {
+            "IntArr".into()
+        }
     }
 }
 

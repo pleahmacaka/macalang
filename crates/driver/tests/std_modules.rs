@@ -9,32 +9,15 @@
 //! The assertions live in the Maca; this file only reports the exit code,
 //! which `maca test` sets to the number of failed assertions.
 
+mod common;
+use common::*;
+
 use std::process::Command;
-
-fn have_cc() -> bool {
-    Command::new("cc")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn have_wsl() -> bool {
-    Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn repo() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 /// Run every `test_…` function in `std/tests/<name>.maca`. The suite runs from
 /// the repository root so `import std/…` resolves.
 fn suite(name: &str) {
-    if have_wsl() || !have_cc() {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping std/{name}: needs a host cc and no wsl");
         return;
     }
@@ -122,7 +105,10 @@ fn the_std_readme_names_functions_that_exist() {
             checked += 1;
         }
     }
-    assert!(checked > 40, "the table stopped being parsed: {checked} names");
+    assert!(
+        checked > 40,
+        "the table stopped being parsed: {checked} names"
+    );
 }
 
 /// The `` `name` `` spans in a README table cell.

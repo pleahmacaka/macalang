@@ -6,19 +6,10 @@
 //! process: they need a built `maca` on disk to run, because each one shells
 //! out to it.
 
+mod common;
+use common::*;
+
 use std::process::Command;
-
-fn have_cc() -> bool {
-    Command::new("cc")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn repo() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 /// The suite shells out to a compiler to run the two generators, and `MACA`
 /// tells it which one: the binary this `cargo test` just built. It used to
@@ -27,7 +18,7 @@ fn repo() -> std::path::PathBuf {
 /// so the whole suite was green having checked nothing.
 #[test]
 fn the_generated_pages_are_what_they_claim() {
-    if !have_cc() {
+    if !have("cc") {
         eprintln!("skipping: needs a host cc");
         return;
     }

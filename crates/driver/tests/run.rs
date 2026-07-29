@@ -2,78 +2,25 @@
 //! example, then assert on its output. Requires WSL + zig; skips otherwise so
 //! `cargo test` stays green on hosts without the native toolchain.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+mod common;
+use common::*;
 
-fn wsl_ready() -> bool {
-    Command::new("wsl")
-        .arg("true")
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
+use std::path::PathBuf;
+use std::process::Command;
 
 /// Cross-process build lock: nix/zig can't be hammered by ~a dozen concurrent
 /// invocations (lock contention), so integration tests serialize the compile
 /// step. Held for the test body; released on drop, stale locks (>5min) stolen.
-struct BuildLock(PathBuf);
-impl BuildLock {
-    fn acquire() -> Self {
-        let p = std::env::temp_dir().join("maca-it-build.lock");
-        for _ in 0..1200 {
-            if let Ok(m) = std::fs::metadata(&p) {
-                let stale = m
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.elapsed().ok())
-                    .map(|e| e.as_secs() > 300)
-                    .unwrap_or(false);
-                if stale {
-                    let _ = std::fs::remove_file(&p);
-                }
-            }
-            if std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&p)
-                .is_ok()
-            {
-                return BuildLock(p);
-            }
-            std::thread::sleep(std::time::Duration::from_millis(300));
-        }
-        BuildLock(p)
-    }
-}
-impl Drop for BuildLock {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-    }
-}
-
-fn to_wsl(p: &Path) -> String {
-    let s = p.to_string_lossy().replace('\\', "/");
-    let b = s.as_bytes();
-    if b.len() >= 2 && b[1] == b':' {
-        format!("/mnt/{}{}", (b[0] as char).to_ascii_lowercase(), &s[2..])
-    } else {
-        s
-    }
-}
-
-fn example(name: &str) -> String {
-    format!("{}/../../examples/{name}", env!("CARGO_MANIFEST_DIR"))
-}
 
 #[test]
 fn hello_builds_and_runs() {
-    if !wsl_ready() {
+    if !have_wsl() {
         eprintln!("skipping hello_builds_and_runs: wsl not available");
         return;
     }
     let _lk = BuildLock::acquire();
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("hello.maca")])
+        .args(["run", &example_str("hello.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -86,7 +33,7 @@ fn hello_builds_and_runs() {
 
 fn taskr(args: &[&str]) -> String {
     let _lk = BuildLock::acquire();
-    let mut a = vec!["run".to_string(), example("taskr.maca")];
+    let mut a = vec!["run".to_string(), example_str("taskr.maca")];
     a.extend(args.iter().map(|s| s.to_string()));
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args(&a)
@@ -102,7 +49,7 @@ fn taskr(args: &[&str]) -> String {
 
 #[test]
 fn taskr_add_list_roundtrip() {
-    if !wsl_ready() {
+    if !have_wsl() {
         eprintln!("skipping taskr_add_list_roundtrip: wsl not available");
         return;
     }
@@ -140,12 +87,12 @@ fn taskr_add_list_roundtrip() {
 
 #[test]
 fn parallel_runs() {
-    if !wsl_ready() {
+    if !have_wsl() {
         eprintln!("skipping parallel_runs: wsl not available");
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("parallel.maca")])
+        .args(["run", &example_str("parallel.maca")])
         .output()
         .expect("spawn maca");
     let s = String::from_utf8_lossy(&out.stdout);
@@ -162,7 +109,7 @@ fn parallel_runs() {
 /// the driver's pipeline including async and SIMD (LLVM IR) linkage.
 fn build_unstripped(name: &str) -> PathBuf {
     let _lk = BuildLock::acquire();
-    let src = std::fs::read_to_string(example(name)).unwrap();
+    let src = std::fs::read_to_string(example_str(name)).unwrap();
     let parsed = maca_parser::parse(&src);
     assert!(parsed.errors.is_empty(), "{name}: {:?}", parsed.errors);
     let c = maca_backend_c::emit(&parsed.module);
@@ -238,7 +185,7 @@ fn objdump(name: &str) -> String {
 
 #[test]
 fn sequential_binary_has_no_scheduler() {
-    if !wsl_ready() {
+    if !have_wsl() {
         eprintln!("skipping sequential_binary_has_no_scheduler: wsl not available");
         return;
     }
@@ -256,14 +203,14 @@ fn sequential_binary_has_no_scheduler() {
 
 #[test]
 fn simd_hybrid_correct() {
-    if !wsl_ready() {
+    if !have_wsl() {
         eprintln!("skipping simd_hybrid_correct: wsl not available");
         return;
     }
     let _lk = BuildLock::acquire();
     // dot8(splat 2, splat 3) = 8 lanes * (2*3) = 48; C main calls the LLVM kernel
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("simd.maca")])
+        .args(["run", &example_str("simd.maca")])
         .output()
         .expect("spawn maca");
     let s = String::from_utf8_lossy(&out.stdout);
@@ -277,7 +224,7 @@ fn simd_hybrid_correct() {
 
 #[test]
 fn simd_uses_llvm_vector_instructions() {
-    if !wsl_ready() {
+    if !have_wsl() {
         eprintln!("skipping simd_uses_llvm_vector_instructions: wsl not available");
         return;
     }
@@ -298,7 +245,7 @@ fn simd_uses_llvm_vector_instructions() {
 
 #[test]
 fn nix_config_accepted() {
-    if !wsl_ready() {
+    if !have_wsl() {
         eprintln!("skipping nix_config_accepted: wsl not available");
         return;
     }
@@ -309,7 +256,7 @@ fn nix_config_accepted() {
             "build",
             "--target",
             "nix",
-            &example("system.maca"),
+            &example_str("system.maca"),
             "-o",
             &out.to_string_lossy(),
         ])
@@ -370,7 +317,7 @@ fn build_auto_detects_ui_target() {
     let r = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args([
             "build",
-            &example("counter.maca"),
+            &example_str("counter.maca"),
             "-o",
             &dir.to_string_lossy(),
         ])
@@ -386,7 +333,7 @@ fn build_auto_detects_ui_target() {
 
 #[test]
 fn js_ui_renders_and_binds() {
-    if !wsl_ready() {
+    if !have_wsl() {
         eprintln!("skipping js_ui_renders_and_binds: wsl not available");
         return;
     }
@@ -397,7 +344,7 @@ fn js_ui_renders_and_binds() {
             "build",
             "--target",
             "js",
-            &example("counter.maca"),
+            &example_str("counter.maca"),
             "-o",
             &dir.to_string_lossy(),
         ])
@@ -444,10 +391,10 @@ fn js_ui_renders_and_binds() {
     );
 }
 
-fn run_example(name: &str) -> String {
+fn run_example_str(name: &str) -> String {
     let _lk = BuildLock::acquire();
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example(name)])
+        .args(["run", &example_str(name)])
         .output()
         .expect("spawn maca");
     assert!(
@@ -460,25 +407,25 @@ fn run_example(name: &str) -> String {
 
 #[test]
 fn ffi_c_sqlite_roundtrip() {
-    if !wsl_ready() {
+    if !have_wsl() {
         eprintln!("skipping ffi_c_sqlite_roundtrip: wsl not available");
         return;
     }
     // import c "sqlite3.h": open :memory:, create, insert, then iterate the
     // full result set reading multiple columns per row.
-    let out = run_example("ffi_sqlite.maca");
+    let out = run_example_str("ffi_sqlite.maca");
     assert!(out.contains("ada is 36"), "sqlite row 1: {out}");
     assert!(out.contains("alan is 41"), "sqlite row 2: {out}");
 }
 
 #[test]
 fn ffi_nix_value() {
-    if !wsl_ready() {
+    if !have_wsl() {
         eprintln!("skipping ffi_nix_value: wsl not available");
         return;
     }
     // import nix "./answer.nix" evaluates `21 * 2` at build time
-    let out = run_example("ffi_nix.maca");
+    let out = run_example_str("ffi_nix.maca");
     assert_eq!(out.trim(), "42", "nix value: {out}");
 }
 
@@ -491,12 +438,12 @@ fn ffi_py_calls_python() {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
-    if !wsl_ready() && !has_pyconfig {
+    if !have_wsl() && !has_pyconfig {
         eprintln!("skipping ffi_py_calls_python: no python3-config and no wsl");
         return;
     }
     // python_version() → a version string; sqrt(144) and basename() pass args
-    let out = run_example("ffi_py.maca");
+    let out = run_example_str("ffi_py.maca");
     let first = out.lines().next().unwrap_or("").trim();
     assert!(
         first.split('.').count() >= 2 && first.chars().next().is_some_and(|c| c.is_ascii_digit()),

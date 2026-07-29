@@ -11,32 +11,15 @@
 //! several minutes — but a script that compiles cannot have lost a function it
 //! calls.
 
+mod common;
+use common::*;
+
 use std::process::Command;
-
-fn have_cc() -> bool {
-    Command::new("cc")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn have_wsl() -> bool {
-    Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn repo() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 /// Compile `script` from the repository root, where its `import std/…` and its
 /// own relative paths resolve.
 fn builds(script: &str) {
-    if have_wsl() || !have_cc() {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping {script}: needs a host cc and no wsl");
         return;
     }

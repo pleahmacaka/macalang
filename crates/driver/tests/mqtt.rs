@@ -1,59 +1,14 @@
 //! Capstone 12a: MQTT broker + client (pure `.maca`, std/mqtt engine).
 //! Pub/sub roundtrip with a `test/#` wildcard, and ≥100 concurrent subscribers.
 
-use std::path::{Path, PathBuf};
+mod common;
+use common::*;
+
+use std::path::PathBuf;
 use std::process::Command;
 
-fn wsl_ready() -> bool {
-    Command::new("wsl")
-        .arg("true")
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-fn to_wsl(p: &Path) -> String {
-    let s = p.to_string_lossy().replace('\\', "/");
-    let b = s.as_bytes();
-    if b.len() >= 2 && b[1] == b':' {
-        format!("/mnt/{}{}", (b[0] as char).to_ascii_lowercase(), &s[2..])
-    } else {
-        s
-    }
-}
 fn app(name: &str) -> String {
     format!("{}/../../apps/mqtt/{name}", env!("CARGO_MANIFEST_DIR"))
-}
-struct BuildLock(PathBuf);
-impl BuildLock {
-    fn acquire() -> Self {
-        let p = std::env::temp_dir().join("maca-it-build.lock");
-        for _ in 0..1200 {
-            if let Ok(m) = std::fs::metadata(&p)
-                && m.modified()
-                    .ok()
-                    .and_then(|t| t.elapsed().ok())
-                    .map(|e| e.as_secs() > 300)
-                    .unwrap_or(false)
-            {
-                let _ = std::fs::remove_file(&p);
-            }
-            if std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&p)
-                .is_ok()
-            {
-                return BuildLock(p);
-            }
-            std::thread::sleep(std::time::Duration::from_millis(300));
-        }
-        BuildLock(p)
-    }
-}
-impl Drop for BuildLock {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-    }
 }
 
 fn build(app_file: &str, out_name: &str) -> PathBuf {
@@ -73,7 +28,7 @@ fn build(app_file: &str, out_name: &str) -> PathBuf {
 
 #[test]
 fn mqtt_broker_serves_pubsub_and_100_clients() {
-    if !wsl_ready() {
+    if !have_wsl() {
         eprintln!("skipping mqtt capstone: wsl not available");
         return;
     }

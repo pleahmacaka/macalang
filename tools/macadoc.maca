@@ -357,7 +357,7 @@ block(ls: str[]) -> str {
     if ls.length() == 0 {
         ""
     } else if ls.get(0).starts_with(" ") {
-        pre(class=PreClass, code(class=Mono, esc(dedent(ls.join("\n")))))
+        pre(class=PreClass, code(class=Mono, escape_html(dedent(ls.join("\n")))))
     } else {
         p(class="mt-3 text-[0.95rem] text-zinc-600 dark:text-zinc-400 m-0",
           inline(ls.join(" ")))
@@ -374,7 +374,8 @@ spans(parts: str[], i: int, out: str) -> str {
     if i >= parts.length() {
         out
     } else if i % 2 == 1 {
-        spans(parts, i + 1, out ++ code(class=CodeSpan, esc(parts.get(i))))
+        span = code(class=CodeSpan, escape_html(parts.get(i)))
+        spans(parts, i + 1, out ++ span)
     } else {
         starred = paired(parts.get(i).split("*"), "*")
         spans(parts, i + 1, out ++ emphasis(starred, 0, ""))
@@ -385,11 +386,11 @@ emphasis(parts: str[], i: int, out: str) -> str {
     if i >= parts.length() {
         out
     } else if i % 2 == 0 {
-        emphasis(parts, i + 1, out ++ esc(parts.get(i)))
+        emphasis(parts, i + 1, out ++ escape_html(parts.get(i)))
     } else if is_emphasis(parts.get(i)) {
-        emphasis(parts, i + 1, out ++ em(esc(parts.get(i))))
+        emphasis(parts, i + 1, out ++ em(escape_html(parts.get(i))))
     } else {
-        emphasis(parts, i + 1, out ++ "*" ++ esc(parts.get(i)) ++ "*")
+        emphasis(parts, i + 1, out ++ "*" ++ escape_html(parts.get(i)) ++ "*")
     }
 }
 
@@ -460,7 +461,7 @@ top_bar(title: str) -> str =>
                         ++ " focus:underline",
                   href="index.html", "API reference"))
             span(class="text-[0.85rem] text-zinc-500 dark:text-zinc-400",
-                 esc(title))))
+                 escape_html(title))))
 
 // The index: every module, its blurb, and how many things it documents.
 index_page(ms: Module[]) -> str =>
@@ -489,7 +490,7 @@ module_card(m: Module) -> str =>
             ++ " dark:hover:bg-zinc-900",
       href=m.name ++ ".html",
       div(class="flex items-baseline justify-between gap-4",
-          span(class="font-mono font-semibold", esc(m.path))
+          span(class="font-mono font-semibold", escape_html(m.path))
           span(class="text-[0.8rem] text-zinc-500 dark:text-zinc-400",
                counted(m.items.length())))
       p(class="mt-2 text-[0.95rem] text-zinc-600 dark:text-zinc-400 m-0",
@@ -525,7 +526,7 @@ summary(ls: str[]) -> str {
 module_page(m: Module) -> str =>
     page(m.path,
          section(class=Wrap ++ " py-12",
-             h1(class="font-mono font-bold text-[1.6rem] m-0", esc(m.path))
+             h1(class="font-mono font-bold text-[1.6rem] m-0", escape_html(m.path))
              prose(m.blurb)
              toc(m.items)
              div(class="mt-10 grid gap-8", entries(m.items, 0))))
@@ -542,7 +543,7 @@ toc_links(items: Item[], i: int) -> str {
                        ++ " dark:border-zinc-800 no-underline text-inherit"
                        ++ " font-mono text-[0.8rem] hover:bg-zinc-100"
                        ++ " dark:hover:bg-zinc-900",
-                 href="#" ++ items.get(i).name, esc(items.get(i).name))
+                 href="#" ++ items.get(i).name, escape_html(items.get(i).name))
         link ++ toc_links(items, i + 1)
     }
 }
@@ -559,20 +560,18 @@ entry(it: Item) -> str =>
     article(id=it.name, class="scroll-mt-6",
         div(class="flex items-baseline gap-3",
             h2(class="font-mono font-semibold text-[1.05rem] m-0",
-               esc(it.name))
+               escape_html(it.name))
             span(class=badge_class(), it.kind))
-        pre(class=PreClass, code(class=Mono, esc(it.sig)))
+        pre(class=PreClass, code(class=Mono, escape_html(it.sig)))
         prose(it.doc))
 
 badge_class() -> str =>
     "px-2 py-[0.1rem] rounded-full text-[0.7rem] uppercase tracking-wide"
         ++ " bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
 
-esc(s: str) -> str =>
-    s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 title_tag(text: str) -> str =>
-    title(esc(text))
+    title(escape_html(text))
 
 body_tag(classes: str, inner: str) -> str =>
     body(class=classes, inner)

@@ -1,20 +1,11 @@
 //! Native-toolchain smoke test: with no WSL but a host `cc`, `maca run` must
 //! compile and execute a program end to end. Skips if neither is usable.
 
+mod common;
+use common::*;
+
 use std::path::PathBuf;
 use std::process::Command;
-
-fn have(cmd: &str) -> bool {
-    Command::new(cmd)
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn example(name: &str) -> String {
-    format!("{}/../../examples/{name}", env!("CARGO_MANIFEST_DIR"))
-}
 
 #[test]
 fn hello_runs_natively() {
@@ -29,7 +20,7 @@ fn hello_runs_natively() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("hello.maca")])
+        .args(["run", &example_str("hello.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -196,7 +187,7 @@ fn recursive_record_runs_natively() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("recursive_record.maca")])
+        .args(["run", &example_str("recursive_record.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -220,7 +211,7 @@ fn operator_overloading_runs_natively() {
     }
     // (1,2)+(3,4) = (4,6); *2 = (8,12)
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("operators.maca")])
+        .args(["run", &example_str("operators.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -246,7 +237,7 @@ fn sqlite_ffi_runs_natively_with_system_sqlite() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("ffi_sqlite.maca")])
+        .args(["run", &example_str("ffi_sqlite.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -272,7 +263,7 @@ fn math_prelude_runs_natively() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("math.maca")])
+        .args(["run", &example_str("math.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -299,7 +290,7 @@ fn closures_and_collections_run_natively() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("collections.maca")])
+        .args(["run", &example_str("collections.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -331,7 +322,7 @@ fn async_spawn_await_runs_natively() {
     }
     // two spawned tasks resolve to 20 and 40; awaiting both sums to 60.
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("async.maca")])
+        .args(["run", &example_str("async.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -354,7 +345,7 @@ fn string_stdlib_runs_natively() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("strings.maca")])
+        .args(["run", &example_str("strings.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -429,7 +420,7 @@ fn match_guards_run_natively() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("match_guard.maca")])
+        .args(["run", &example_str("match_guard.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -476,7 +467,7 @@ fn or_patterns_run_natively() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("or_patterns.maca")])
+        .args(["run", &example_str("or_patterns.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -499,7 +490,7 @@ fn payload_sums_run_natively() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("payload_sum.maca")])
+        .args(["run", &example_str("payload_sum.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -522,7 +513,7 @@ fn try_catches_failure_natively() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("catch.maca")])
+        .args(["run", &example_str("catch.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -552,7 +543,7 @@ fn lambda_runs_natively() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("lambda.maca")])
+        .args(["run", &example_str("lambda.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -576,7 +567,7 @@ fn generics_monomorphize_and_run_natively() {
     }
     // record instantiation is the case a single-int64_t stamp cannot compile
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("generic_record.maca")])
+        .args(["run", &example_str("generic_record.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -599,7 +590,7 @@ fn record_patterns_and_ops_run_natively() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("record_pattern.maca")])
+        .args(["run", &example_str("record_pattern.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -622,7 +613,7 @@ fn c_keyword_identifiers_run_natively() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("keywords.maca")])
+        .args(["run", &example_str("keywords.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -646,7 +637,7 @@ fn indexing_runs_natively() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("indexing.maca")])
+        .args(["run", &example_str("indexing.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -670,7 +661,7 @@ fn record_update_runs_natively() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("record_update.maca")])
+        .args(["run", &example_str("record_update.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -699,7 +690,7 @@ fn recursive_sum_types_run_natively() {
     }
     // boxed recursive payloads: tree fold + list length
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("tree.maca")])
+        .args(["run", &example_str("tree.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -725,7 +716,7 @@ fn sum_with_record_payload_runs_natively() {
     // sum declared before the record it carries: the combined topo order must
     // define the record struct first, or the C won't compile.
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("sum_record.maca")])
+        .args(["run", &example_str("sum_record.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -790,7 +781,7 @@ fn file_io_builtins_run_natively() {
     // start from a clean directory so `list_dir` counts are deterministic
     let _ = std::fs::remove_dir_all("/tmp/maca_fileio_example");
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("fileio.maca")])
+        .args(["run", &example_str("fileio.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -880,8 +871,8 @@ fn maca_test(name: &str) -> (bool, String, Option<i32>) {
         .args(["test", &path.to_string_lossy()])
         .output()
         .expect("spawn maca test");
-    let text = String::from_utf8_lossy(&out.stdout).to_string()
-        + &String::from_utf8_lossy(&out.stderr);
+    let text =
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
     (out.status.success(), text, out.status.code())
 }
 
@@ -996,7 +987,7 @@ fn handbook_examples_all_run() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &example("handbook.maca")])
+        .args(["run", &example_str("handbook.maca")])
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -1124,8 +1115,7 @@ fn lambdas_run_natively() {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
     }
-    let program = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/programs/lambdas.maca");
+    let program = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/programs/lambdas.maca");
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args(["test", &program.to_string_lossy()])
         .output()
@@ -1152,8 +1142,7 @@ fn native_backend_regressions_still_hold() {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
     }
-    let program = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/programs/regressions.maca");
+    let program = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/programs/regressions.maca");
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args(["test", &program.to_string_lossy()])
         .output()

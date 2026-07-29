@@ -1,4 +1,4 @@
-use maca_parser::{parse, print_module, Expr, FnBody, Stmt};
+use maca_parser::{Expr, FnBody, Stmt, parse, print_module};
 use std::fs;
 use std::path::PathBuf;
 
@@ -352,8 +352,12 @@ fn a_lambda_can_declare_its_return_type() {
     // it has to match a signature the compiler cannot read.
     let m = parsed("use_it() -> int {\n    f = (a, b) -> Element => g(a, b)\n    0\n}\n");
     let Stmt::Fn(fd) = &m.items[0] else { panic!() };
-    let Some(FnBody::Block(stmts)) = &fd.body else { panic!() };
-    let Stmt::Bind(b) = &stmts[0] else { panic!("{:?}", stmts[0]) };
+    let Some(FnBody::Block(stmts)) = &fd.body else {
+        panic!()
+    };
+    let Stmt::Bind(b) = &stmts[0] else {
+        panic!("{:?}", stmts[0])
+    };
     let Expr::Lambda { params, ret, .. } = &b.value else {
         panic!("expected a lambda: {:?}", b.value)
     };
@@ -364,10 +368,18 @@ fn a_lambda_can_declare_its_return_type() {
     let printed = print_module(&m);
     let again = parse(&printed);
     assert!(again.errors.is_empty(), "{printed}: {:?}", again.errors);
-    let Stmt::Fn(fd2) = &again.module.items[0] else { panic!("{printed}") };
-    let Some(FnBody::Block(ss2)) = &fd2.body else { panic!("{printed}") };
-    let Stmt::Bind(b2) = &ss2[0] else { panic!("{printed}") };
-    let Expr::Lambda { ret: ret2, .. } = &b2.value else { panic!("{printed}") };
+    let Stmt::Fn(fd2) = &again.module.items[0] else {
+        panic!("{printed}")
+    };
+    let Some(FnBody::Block(ss2)) = &fd2.body else {
+        panic!("{printed}")
+    };
+    let Stmt::Bind(b2) = &ss2[0] else {
+        panic!("{printed}")
+    };
+    let Expr::Lambda { ret: ret2, .. } = &b2.value else {
+        panic!("{printed}")
+    };
     assert_eq!(ret, ret2, "the declared type was lost: {printed}");
 }
 
@@ -375,9 +387,13 @@ fn a_lambda_can_declare_its_return_type() {
 fn a_lambda_parameter_can_declare_its_type() {
     let m = parsed("use_it() -> int {\n    f = (a: Window, b) => g(a, b)\n    0\n}\n");
     let Stmt::Fn(fd) = &m.items[0] else { panic!() };
-    let Some(FnBody::Block(stmts)) = &fd.body else { panic!() };
+    let Some(FnBody::Block(stmts)) = &fd.body else {
+        panic!()
+    };
     let Stmt::Bind(b) = &stmts[0] else { panic!() };
-    let Expr::Lambda { params, .. } = &b.value else { panic!("{:?}", b.value) };
+    let Expr::Lambda { params, .. } = &b.value else {
+        panic!("{:?}", b.value)
+    };
     assert!(params[0].ty.is_some(), "the first parameter is typed");
     assert!(params[1].ty.is_none(), "the second is not");
 }
@@ -401,7 +417,9 @@ fn a_top_level_lambda_binding_becomes_a_function() {
 fn a_local_lambda_binding_stays_a_lambda() {
     let m = parsed("use_it() -> int {\n    step = 10\n    f = (x) => x + step\n    f(1)\n}\n");
     let Stmt::Fn(fd) = &m.items[0] else { panic!() };
-    let Some(FnBody::Block(stmts)) = &fd.body else { panic!() };
+    let Some(FnBody::Block(stmts)) = &fd.body else {
+        panic!()
+    };
     let Stmt::Bind(b) = &stmts[1] else { panic!() };
     assert!(
         matches!(&b.value, Expr::Lambda { .. }),

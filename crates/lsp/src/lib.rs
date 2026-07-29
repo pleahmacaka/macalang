@@ -396,27 +396,7 @@ pub fn program_completions(src: &str, prefix: &str) -> Vec<String> {
 
 /// Config-mode completion: NixOS option namespaces matching `prefix`.
 pub fn config_completions(prefix: &str) -> Vec<String> {
-    const ROOTS: &[&str] = &[
-        "networking",
-        "system",
-        "services",
-        "users",
-        "user",
-        "environment",
-        "programs",
-        "fonts",
-        "boot",
-        "hardware",
-        "security",
-        "nix",
-        "systemd",
-        "i18n",
-        "time",
-        "xdg",
-        "home",
-        "console",
-    ];
-    ROOTS
+    maca_core::NIXOS_ROOTS
         .iter()
         .filter(|r| r.starts_with(prefix))
         .map(|r| r.to_string())

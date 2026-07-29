@@ -10,36 +10,11 @@
 //! rather than the values: reading piped stdin, and what a failing assertion
 //! writes and returns.
 
+mod common;
+use common::*;
+
 use std::io::Write;
 use std::process::{Command, Stdio};
-
-fn have_cc() -> bool {
-    Command::new("cc")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn have_wsl() -> bool {
-    Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn unsupported_host() -> bool {
-    if have_wsl() || !have_cc() {
-        eprintln!("skipping: needs a host cc and no wsl");
-        return true;
-    }
-    false
-}
-
-fn repo() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 /// Write `src` to a scratch file and `maca run` it with `stdin` on its input.
 /// Returns the exit status and stdout+stderr together.
@@ -65,8 +40,8 @@ fn run_with(name: &str, src: &str, stdin: &str) -> (bool, String) {
         .expect("write stdin");
 
     let out = child.wait_with_output().expect("wait");
-    let text = String::from_utf8_lossy(&out.stdout).to_string()
-        + &String::from_utf8_lossy(&out.stderr);
+    let text =
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
     (out.status.success(), text)
 }
 

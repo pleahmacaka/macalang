@@ -110,7 +110,13 @@ pub const LIST_METHODS: &[&str] = &[
 ];
 
 /// Top-level NixOS / home-manager option namespaces we recognize.
-const NIXOS_ROOTS: &[&str] = &[
+///
+/// Public because the language server completes from it and the MCP server
+/// answers `maca.options` from it. Each kept its own copy until the three
+/// disagreed: the checker accepted `virtualisation.docker.enable` while the
+/// LSP would never offer `virtualisation`, and neither of the other two knew
+/// about `imports`.
+pub const NIXOS_ROOTS: &[&str] = &[
     "networking",
     "system",
     "services",

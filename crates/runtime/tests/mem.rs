@@ -1,7 +1,9 @@
 //! Memory tests: the reuse free-list and valgrind-cleanliness. Compiles
 //! small C drivers against the runtime via `zig cc` in WSL; skips without it.
 
-use std::path::{Path, PathBuf};
+use maca_testsupport::{BuildLock, to_wsl};
+
+use std::path::PathBuf;
 use std::process::Command;
 
 fn wsl_ready() -> bool {
@@ -10,50 +12,6 @@ fn wsl_ready() -> bool {
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
-}
-
-/// Cross-process build lock (nix/zig can't be hammered concurrently).
-struct BuildLock(PathBuf);
-impl BuildLock {
-    fn acquire() -> Self {
-        let p = std::env::temp_dir().join("maca-it-build.lock");
-        for _ in 0..1200 {
-            if let Ok(m) = std::fs::metadata(&p)
-                && m.modified()
-                    .ok()
-                    .and_then(|t| t.elapsed().ok())
-                    .map(|e| e.as_secs() > 300)
-                    .unwrap_or(false)
-            {
-                let _ = std::fs::remove_file(&p);
-            }
-            if std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&p)
-                .is_ok()
-            {
-                return BuildLock(p);
-            }
-            std::thread::sleep(std::time::Duration::from_millis(300));
-        }
-        BuildLock(p)
-    }
-}
-impl Drop for BuildLock {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-    }
-}
-
-fn to_wsl(p: &Path) -> String {
-    let s = p.to_string_lossy().replace('\\', "/");
-    let b = s.as_bytes();
-    if b.len() >= 2 && b[1] == b':' {
-        format!("/mnt/{}{}", (b[0] as char).to_ascii_lowercase(), &s[2..])
-    } else {
-        s
-    }
 }
 
 /// Write runtime + a C main, compile to a static binary, return its path.

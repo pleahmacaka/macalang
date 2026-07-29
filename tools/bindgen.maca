@@ -12,34 +12,10 @@
 //
 // Run it with:  maca run tools/bindgen.maca
 
-import std/str
+import { index_of_from, last_index_of } from std/text
+import { basename } from std/path
 
 // ---- small string helpers -------------------------------------------------
-
-// `index_of` from an offset — an absolute index, or -1.
-index_from(s: str, pat: str, start: int) -> int {
-    idx = s.substr(start, s.length() - start).index_of(pat)
-
-    if idx < 0 {
-        -1
-    } else {
-        idx + start
-    }
-}
-
-// The index just past the last occurrence of `pat`, or -1 if absent.
-last_index_of(s: str, pat: str) -> int =>
-    scan_last(s, pat, 0, -1)
-
-scan_last(s: str, pat: str, at: int, best: int) -> int {
-    hit = index_from(s, pat, at)
-
-    if hit < 0 {
-        best
-    } else {
-        scan_last(s, pat, hit + 1, hit)
-    }
-}
 
 is_ident_char(c: str) -> bool =>
     c.is_alpha() || c.is_ascii_digit() || c == "_"
@@ -49,7 +25,7 @@ is_ident_char(c: str) -> bool =>
 // Drop `/* … */` blocks. Recurses on the remainder so several blocks go.
 strip_blocks(s: str) -> str {
     open = s.index_of("/*")
-    close = if open < 0 { -1 } else { index_from(s, "*/", open) }
+    close = if open < 0 { -1 } else { index_of_from(s, "*/", open) }
 
     if close < 0 {
         s
@@ -255,16 +231,6 @@ generate(src: str, header_name: str) -> str {
 
 // ---- entry point ----------------------------------------------------------
 
-// The file name at the end of a path (`/usr/include/sqlite3.h` → `sqlite3.h`).
-basename(path: str) -> str {
-    cut = last_index_of(path, "/")
-
-    if cut < 0 {
-        path
-    } else {
-        path.substr(cut + 1, path.length() - cut - 1)
-    }
-}
 
 // A sample header, so the tool demonstrates itself when run with no argument.
 sample_header() -> str =>

@@ -138,7 +138,7 @@ impl Cx {
         // records and sums collected above, so this cannot run in the same loop.
         for it in &m.items {
             if let Stmt::Bind(b) = it
-                && b.tys.first().is_some()
+                && !b.tys.is_empty()
                 && let Some(methods) = lambda_fields(&b.value)
             {
                 for m in methods {

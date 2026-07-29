@@ -81,6 +81,7 @@ dependencies = [
  "maca-parser",
  "maca-profile",
  "maca-runtime",
+ "maca-testsupport",
  "serde_json",
 ]
 
@@ -124,6 +125,13 @@ version = "0.1.0"
 
 [[package]]
 name = "maca-runtime"
+version = "0.1.0"
+dependencies = [
+ "maca-testsupport",
+]
+
+[[package]]
+name = "maca-testsupport"
 version = "0.1.0"
 
 [[package]]

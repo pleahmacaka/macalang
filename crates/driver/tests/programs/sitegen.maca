@@ -337,7 +337,7 @@ test_module_cards_say_what_the_module_is() {
     assert(index.contains("string work that sits one level above"),
            "std/text's blurb")
     assert(index.contains("running other programs"), "std/proc's blurb")
-    assert(index.contains("10 items"), "and how many things it documents")
+    assert(index.contains("14 items"), "and how many things it documents")
 }
 
 // ---- the awkward module -----------------------------------------------------
@@ -386,7 +386,7 @@ tagged(parts: str[], i: int, acc: str[]) -> str[] {
     if i >= parts.length() {
         acc
     } else {
-        tagged(parts, i + 1, acc.push(between(parts.get(i), "", "<")))
+        tagged(parts, i + 1, acc.push(split_once(parts.get(i), "<").get(0)))
     }
 }
 
@@ -421,9 +421,12 @@ test_a_blurb_without_a_blank_line_still_summarises() {
            "the card says what the module is")
 }
 
+// Everything after the signature block: the inner `between` has already cut
+// the article's own `</article>`, so there is no closing marker left to look
+// for — the rest of the body *is* the prose.
 doc_of(page: str, name: str) -> str =>
-    between(between(page, "<article id=\"" ++ name ++ "\"", "</article>"),
-            "</pre>", "</article>")
+    split_once(between(page, "<article id=\"" ++ name ++ "\"", "</article>"),
+               "</pre>").get(1)
 
 // The names MacaDoc gave a page section to, sorted.
 documented(dir: str, module: str) -> str =>
@@ -437,7 +440,7 @@ ids(parts: str[], i: int, acc: str[]) -> str[] {
     if i >= parts.length() {
         acc
     } else {
-        ids(parts, i + 1, acc.push(between(parts.get(i), "", "\"")))
+        ids(parts, i + 1, acc.push(split_once(parts.get(i), "\"").get(0)))
     }
 }
 
@@ -505,20 +508,3 @@ matching_row(ls: str[], i: int, prefix: str) -> str {
 }
 
 // ---- shared -----------------------------------------------------------------
-
-between(src: str, open: str, close: str) -> str {
-    at = src.index_of(open)
-
-    if at < 0 {
-        ""
-    } else {
-        tail = src.slice(at + open.length(), src.length())
-        end = tail.index_of(close)
-
-        if end < 0 {
-            tail
-        } else {
-            tail.slice(0, end)
-        }
-    }
-}

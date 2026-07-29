@@ -4,23 +4,12 @@
 //! binary's output, and (via a Node DOM + `__TAURI__` stub) the UI → bridge →
 //! backend → view round-trip.
 
+mod common;
+use common::*;
+
 use std::path::Path;
 use std::process::Command;
 
-fn have(cmd: &str) -> bool {
-    Command::new(cmd)
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-fn wsl() -> bool {
-    Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
 fn app_path(name: &str) -> String {
     format!("{}/../../apps/desktop/{name}", env!("CARGO_MANIFEST_DIR"))
 }
@@ -28,7 +17,7 @@ fn app_path(name: &str) -> String {
 #[test]
 fn tauri_scaffold_is_complete_and_runs() {
     // build_tauri compiles the backend with the host cc, so needs cc and no wsl.
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping tauri scaffold: needs a native cc and no wsl");
         return;
     }

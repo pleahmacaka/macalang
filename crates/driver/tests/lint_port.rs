@@ -12,27 +12,10 @@
 //! The lexer now rejects that (see `crates/lexer/tests/lex.rs`); this test makes
 //! sure the rule it broke stays fixed.
 
-use std::path::PathBuf;
+mod common;
+use common::*;
+
 use std::process::Command;
-
-fn have(cmd: &str) -> bool {
-    Command::new(cmd)
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-fn wsl() -> bool {
-    Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn repo() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 /// Run the linter over `target`, returning (exit ok, stdout).
 fn lint(target: &str) -> (bool, String) {
@@ -52,7 +35,7 @@ fn lint(target: &str) -> (bool, String) {
 
 #[test]
 fn every_rule_fires_and_a_clean_file_is_clean() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping lint port test: needs a host cc and no wsl");
         return;
     }
@@ -105,7 +88,7 @@ fn every_rule_fires_and_a_clean_file_is_clean() {
 /// Ternaries and prose are exempt — a linter that cries wolf gets turned off.
 #[test]
 fn the_single_line_if_rule_does_not_fire_on_ternaries_or_comments() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping lint exemption test: needs a host cc and no wsl");
         return;
     }
@@ -130,7 +113,7 @@ fn the_single_line_if_rule_does_not_fire_on_ternaries_or_comments() {
 /// how a style becomes one nobody holds to.
 #[test]
 fn the_repository_passes_its_own_linter() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping lint dogfood test: needs a host cc and no wsl");
         return;
     }
@@ -153,7 +136,7 @@ fn the_repository_passes_its_own_linter() {
 /// what it emits, so it is exempt exactly as a long comment is.
 #[test]
 fn a_long_string_literal_is_not_a_long_line() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping lint width test: needs a host cc and no wsl");
         return;
     }

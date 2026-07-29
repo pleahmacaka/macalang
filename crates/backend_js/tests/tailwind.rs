@@ -144,8 +144,8 @@ fn every_border_spelling_carries_its_style() {
         ("border-x-[3px]", &["left", "right"]),
         ("border-y-[0.5rem]", &["top", "bottom"]),
     ] {
-        let css = maca_backend_js::rule(class)
-            .unwrap_or_else(|| panic!("{class} generates no rule"));
+        let css =
+            maca_backend_js::rule(class).unwrap_or_else(|| panic!("{class} generates no rule"));
         for side in sides {
             assert!(
                 css.contains(&format!("border-{side}-style:solid"))
@@ -209,7 +209,9 @@ fn the_monospace_stack_is_monospace() {
     );
     assert!(css.contains("ui-monospace"));
     assert!(
-        maca_backend_js::rule("font-sans").unwrap().contains("Pretendard"),
+        maca_backend_js::rule("font-sans")
+            .unwrap()
+            .contains("Pretendard"),
         "font-sans should still prefer Pretendard"
     );
 }

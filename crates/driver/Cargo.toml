@@ -22,3 +22,6 @@ maca-backend-embedded = { path = "../backend_embedded" }
 maca-runtime = { path = "../runtime" }
 maca-profile = { path = "../profile" }
 serde_json = "1"
+
+[dev-dependencies]
+maca-testsupport = { path = "../testsupport" }

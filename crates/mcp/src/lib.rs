@@ -77,39 +77,12 @@ pub fn stdlib(query: &str) -> Vec<String> {
 
 /// `maca.options` — known NixOS option namespaces matching a prefix.
 pub fn options(prefix: &str) -> Vec<String> {
-    NIXOS_ROOTS
+    maca_core::NIXOS_ROOTS
         .iter()
         .filter(|r| r.starts_with(prefix))
         .map(|r| r.to_string())
         .collect()
 }
-
-pub const NIXOS_ROOTS: &[&str] = &[
-    "networking",
-    "system",
-    "services",
-    "users",
-    "user",
-    "environment",
-    "programs",
-    "fonts",
-    "boot",
-    "hardware",
-    "security",
-    "nix",
-    "nixpkgs",
-    "virtualisation",
-    "systemd",
-    "i18n",
-    "time",
-    "sound",
-    "xdg",
-    "home",
-    "console",
-    "powerManagement",
-    "documentation",
-    "location",
-];
 
 /// `maca.spec` — a short reference for a section name.
 pub fn spec(section: &str) -> String {

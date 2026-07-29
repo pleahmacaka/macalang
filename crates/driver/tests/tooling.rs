@@ -1,18 +1,14 @@
 //! Tooling: fmt (idempotent, 4-space, block breaks), lint, and
 //! `[scripts]` aliases. Pure — no WSL/toolchain needed.
 
-use std::process::Command;
+mod common;
+use common::*;
 
-fn maca() -> &'static str {
-    env!("CARGO_BIN_EXE_maca")
-}
-fn example(name: &str) -> String {
-    format!("{}/../../examples/{name}", env!("CARGO_MANIFEST_DIR"))
-}
+use std::process::Command;
 
 #[test]
 fn fmt_is_idempotent_and_indented() {
-    let src = std::fs::read_to_string(example("taskr.maca")).unwrap();
+    let src = std::fs::read_to_string(example_str("taskr.maca")).unwrap();
     let tmp = std::env::temp_dir().join("maca-fmt-test.maca");
     std::fs::write(&tmp, &src).unwrap();
 
@@ -40,7 +36,10 @@ fn lint_flags_long_line() {
     let long = format!("total = {}\n", vec!["value"; 20].join(" + "));
     let (ok, err) = lint(&long, "wide");
     assert!(!ok, "lint should exit nonzero on a seeded issue: {err}");
-    assert!(err.contains("80 columns"), "expected an 80-column diagnostic");
+    assert!(
+        err.contains("80 columns"),
+        "expected an 80-column diagnostic"
+    );
 }
 
 /// A long string literal is like a long comment — a C template, a URL, a test
@@ -83,7 +82,7 @@ fn lint_resolves_imports_before_calling_a_name_undefined() {
                \x20   info(join(\"a\", \"b\"))\n\
                \x20   0\n\
                }\n";
-    let dir = repo_root();
+    let dir = repo();
     let tmp = dir.join("maca-lint-import.maca");
     std::fs::write(&tmp, src).unwrap();
     let out = Command::new(maca())
@@ -98,12 +97,6 @@ fn lint_resolves_imports_before_calling_a_name_undefined() {
         !err.contains("UndefinedName"),
         "`join` comes from std/path: {err}"
     );
-}
-
-/// `import std/…` resolves relative to where the file is, so this writes its
-/// fixture beside the real `std/`.
-fn repo_root() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
 /// Lint a source string; returns whether it was clean, and what it complained
@@ -159,8 +152,8 @@ fn dev_without_a_dev_maca_shows_a_working_starter() {
         .arg("dev")
         .output()
         .expect("spawn maca dev");
-    let text = String::from_utf8_lossy(&out.stdout).to_string()
-        + &String::from_utf8_lossy(&out.stderr);
+    let text =
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
     assert!(!out.status.success(), "should not succeed:\n{text}");
 
     // Everything indented in the message is the starter file.

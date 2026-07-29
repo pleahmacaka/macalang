@@ -12,6 +12,9 @@
 //!     the matching exit codes prove the self-hosted compiler produced a working
 //!     executable through each back end, not just a plausible-looking string.
 
+mod common;
+use common::*;
+
 use maca_core::{Mode, check};
 use std::fs;
 use std::path::PathBuf;
@@ -45,21 +48,6 @@ fn concatenated() -> String {
         .map(|n| read(n))
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-fn have(cmd: &str) -> bool {
-    Command::new(cmd)
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-fn wsl() -> bool {
-    Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
 }
 
 #[test]
@@ -96,7 +84,7 @@ fn selfhost_module_typechecks() {
 fn selfhost_frontend_compiles_and_runs() {
     // Needs the host-cc native path (the C backend links with `cc` when there's
     // no WSL/Nix). Skip cleanly where neither is available.
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping selfhost native run: needs a host cc and no wsl");
         return;
     }
@@ -568,7 +556,7 @@ fn selfhost_frontend_compiles_and_runs() {
 /// a file and writes the emitted source.
 #[test]
 fn stage0_and_stage1_compile_the_same_program_the_same_way() {
-    if wsl() || !have("cc") {
+    if have_wsl() || !have("cc") {
         eprintln!("skipping differential: needs a host cc and no wsl");
         return;
     }

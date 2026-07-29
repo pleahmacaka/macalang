@@ -2,12 +2,11 @@
 //! normalizes indentation only, so the golden examples (already 4-space) are
 //! left byte-for-byte unchanged.
 
+mod common;
+use common::*;
+
 use std::path::PathBuf;
 use std::process::Command;
-
-fn maca() -> &'static str {
-    env!("CARGO_BIN_EXE_maca")
-}
 
 fn examples() -> Vec<PathBuf> {
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples");
@@ -75,4 +74,74 @@ fn fmt_preserves_comments_and_is_idempotent() {
         .output()
         .unwrap();
     assert!(chk.status.success(), "fmt not idempotent");
+}
+
+/// `fmt` used to infer the file's indent step as the gcd of every leading
+/// width, which one continuation line aligned under an open paren destroys: a
+/// second argument at column 14 makes the gcd 2, every four-space indent reads
+/// as two levels, and the file comes back at eight. The gcd was 1 or 2 in
+/// twenty-three files in this repository.
+#[test]
+fn an_aligned_continuation_does_not_double_the_indent() {
+    let src = "f(t: int) -> str =>\n\
+               \x20   pair([\"id\", \"name\"],\n\
+               \x20         [str(t), \"x\"])\n\
+               \n\
+               g() -> int {\n\
+               \x20   n = 1\n\
+               \x20   n + 1\n\
+               }\n";
+    assert_eq!(
+        formatted(src, "indent-gcd"),
+        src,
+        "fmt changed a formatted file"
+    );
+}
+
+/// And it must not re-indent the aligned line itself. An indent that isn't a
+/// whole number of levels is alignment, not structure.
+#[test]
+fn alignment_survives_formatting() {
+    let src = "f() -> str =>\n\
+               \x20   pair(one,\n\
+               \x20        two)\n";
+    // `two` sits at column 9, under the `(` of `pair(` — not a multiple of the
+    // four-space level, and so not the formatter's to move.
+    assert_eq!(formatted(src, "align"), src, "the aligned argument moved");
+}
+
+/// A raw `"""…"""` block holds foreign source with its own indentation. The
+/// playground embeds a two-space-indented stylesheet, and measuring it set the
+/// step for the whole program.
+#[test]
+fn a_raw_block_is_neither_measured_nor_reindented() {
+    let src = "Css = \"\"\"\n\
+               body {\n\
+               \x20 color: red;\n\
+               }\n\
+               \"\"\"\n\
+               \n\
+               go() -> int {\n\
+               \x20   n = 1\n\
+               \x20   n\n\
+               }\n";
+    let out = formatted(src, "raw");
+    assert_eq!(out, src, "a raw block changed the file's indentation");
+    assert!(out.contains("\n  color: red;"), "the CSS was re-indented");
+}
+
+/// Format `src` and hand back the result.
+fn formatted(src: &str, name: &str) -> String {
+    let tmp = std::env::temp_dir().join(format!("maca-fmt-{name}.maca"));
+    std::fs::write(&tmp, src).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["fmt", &tmp.to_string_lossy()])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "fmt failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    std::fs::read_to_string(&tmp).unwrap()
 }

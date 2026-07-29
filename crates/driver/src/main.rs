@@ -14,7 +14,6 @@ use maca_profile as profile;
 mod bindgen;
 mod build_cache;
 mod deps;
-mod imports;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -447,41 +446,82 @@ fn cmd_lint(args: &[String]) {
 /// convert cleanly. This preserves every author choice that isn't pure
 /// leading whitespace: comments, blank lines, and expression-continuation
 /// alignment (`=>` bodies, ternary chains) all survive intact.
+/// The lines of `src` that are Maca rather than the contents of a raw string.
+fn outside_raw_blocks(src: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut in_raw = false;
+    for line in src.lines() {
+        let marks = line.matches("\"\"\"").count();
+        if !in_raw {
+            out.push(line);
+        }
+        if marks % 2 == 1 {
+            in_raw = !in_raw;
+        }
+    }
+    out
+}
+
 fn reindent(src: &str, unit: &str) -> String {
-    // Detect the file's indent step as the gcd of all leading-whitespace widths
-    // (a tab counts as one column here — enough to recover level counts).
-    let widths: Vec<usize> = src
-        .lines()
+    // A raw `"""…"""` block holds foreign source — CSS, JavaScript, a C
+    // template — with its own indentation, which is not this file's to
+    // normalize and not this file's to measure. The playground embeds a
+    // two-space-indented stylesheet, and that alone set the step for the whole
+    // program.
+    let code: Vec<&str> = outside_raw_blocks(src);
+
+    // The file's indent step is the *narrowest* non-empty indent: one level.
+    //
+    // It used to be the gcd of every leading width, which a continuation line
+    // aligned under an open paren destroys — one argument list broken at column
+    // 14 makes the gcd 2, every four-space indent read as two levels, and the
+    // whole file come back at eight. Across this repository the gcd is 1 or 2
+    // in twenty-three files and the minimum is 4 in every single one.
+    let step = code
+        .iter()
         .filter(|l| !l.trim().is_empty())
         .map(|l| l.len() - l.trim_start().len())
         .filter(|&w| w > 0)
-        .collect();
-    let step = widths
-        .iter()
-        .copied()
-        .reduce(gcd)
-        .filter(|&s| s > 0)
+        .min()
         .unwrap_or(4);
 
     let mut out = String::new();
+    let mut in_raw = false;
     for raw in src.lines() {
+        let opens = raw.matches("\"\"\"").count();
+        if in_raw {
+            out.push_str(raw);
+            out.push('\n');
+            in_raw = opens % 2 == 0;
+            continue;
+        }
+        in_raw = opens % 2 == 1;
         if raw.trim().is_empty() {
             out.push('\n');
             continue;
         }
         let lead = raw.len() - raw.trim_start().len();
-        let levels = lead / step;
-        for _ in 0..levels {
+        // An indent that isn't a whole number of levels is alignment, not
+        // structure — a continuation sitting under an open paren, or a
+        // parameter lined up with the one above it. Re-indenting those to the
+        // nearest level is what turned
+        //
+        //     object_of(["id", "title"],
+        //               [str(t.id), quote(t.title)])
+        //
+        // into a second line three levels deep and pointing at nothing.
+        if lead % step != 0 {
+            out.push_str(raw);
+            out.push('\n');
+            continue;
+        }
+        for _ in 0..lead / step {
             out.push_str(unit);
         }
         out.push_str(raw.trim_start());
         out.push('\n');
     }
     out
-}
-
-fn gcd(a: usize, b: usize) -> usize {
-    if b == 0 { a } else { gcd(b, a % b) }
 }
 
 /// Look up a `[scripts]` alias in ./maca.toml.
@@ -866,7 +906,7 @@ fn validate_borrowed_params(m: &maca_parser::Module) -> Result<(), String> {
 
     for it in &m.items {
         let Stmt::Bind(b) = it else { continue };
-        if b.tys.first().is_none() {
+        if b.tys.is_empty() {
             continue;
         }
         let Expr::Record(fields) = &b.value else {
@@ -880,10 +920,9 @@ fn validate_borrowed_params(m: &maca_parser::Module) -> Result<(), String> {
                 continue;
             };
             for p in params {
-                let borrowed = p
-                    .ty
-                    .as_ref()
-                    .is_some_and(|t| is_foreign_type_name(t, &declared));
+                let borrowed =
+                    p.ty.as_ref()
+                        .is_some_and(|t| is_foreign_type_name(t, &declared));
                 if borrowed && escapes(body, &p.name) {
                     return Err(format!(
                         "`{}` in method `{name}` is a borrowed foreign value — it \
@@ -905,9 +944,9 @@ fn is_foreign_type_name(
 ) -> bool {
     use maca_parser::ast::Type;
     match t {
-        Type::Name(segs) => segs
-            .last()
-            .is_some_and(|h| h.chars().next().is_some_and(char::is_uppercase) && !declared.contains(h.as_str())),
+        Type::Name(segs) => segs.last().is_some_and(|h| {
+            h.chars().next().is_some_and(char::is_uppercase) && !declared.contains(h.as_str())
+        }),
         Type::Apply(base, _) | Type::Paren(base) => is_foreign_type_name(base, declared),
         Type::Array(_) | Type::Opt(_) => false,
     }
@@ -953,10 +992,8 @@ fn escapes(body: &maca_parser::ast::Expr, name: &str) -> bool {
                 }
             }
         }
-        Expr::List(items) => {
-            if items.iter().any(|i| mentions(i, name)) {
-                stored = true;
-            }
+        Expr::List(items) if items.iter().any(|i| mentions(i, name)) => {
+            stored = true;
         }
         _ => {}
     });
@@ -1602,7 +1639,10 @@ fn generated_runner(tests: &[String]) -> String {
     let mut out = String::new();
 
     out.push_str("\nmain() -> int {\n");
-    out.push_str(&line(1, &format!("info(\"running {} test{plural}\")", tests.len())));
+    out.push_str(&line(
+        1,
+        &format!("info(\"running {} test{plural}\")", tests.len()),
+    ));
 
     for (i, name) in tests.iter().enumerate() {
         out.push_str(&line(1, &format!("before{i} = failures()")));
@@ -1616,7 +1656,10 @@ fn generated_runner(tests: &[String]) -> String {
 
     out.push_str(&line(1, "total = failures()"));
     out.push_str(&line(1, "if total == 0 {"));
-    out.push_str(&line(2, &format!("info(\"{} test{plural} passed\")", tests.len())));
+    out.push_str(&line(
+        2,
+        &format!("info(\"{} test{plural} passed\")", tests.len()),
+    ));
     out.push_str(&line(1, "} else {"));
     out.push_str(&line(2, "info(\"{total} assertion(s) failed\")"));
     out.push_str(&line(1, "}"));
@@ -1742,7 +1785,7 @@ fn compiler_fingerprint() -> String {
     format!("{VERSION}-{mtime}")
 }
 
-use imports::load_with_imports;
+use maca_parser::imports::load_with_imports;
 
 fn compile(src: &Path, out: &Path) -> Result<(), String> {
     let source = load_with_imports(src)?;

@@ -15,7 +15,6 @@
 // Run it with:  maca run tools/lint.maca [path…]
 // With no path it lints the repository's own Maca sources.
 
-import std/str
 
 // ---- one file -------------------------------------------------------------
 

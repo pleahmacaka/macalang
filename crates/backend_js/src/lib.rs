@@ -888,9 +888,7 @@ pub fn tailwind(class: &str) -> Option<String> {
         // — and it is a *sans-serif*, so naming it first made every code block
         // and every inline `<code>` render proportionally for exactly the
         // readers the Korean pages are for.
-        "font-mono" => {
-            "font-family:ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace"
-        }
+        "font-mono" => "font-family:ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace",
         "uppercase" => "text-transform:uppercase",
         "lowercase" => "text-transform:lowercase",
         "italic" => "font-style:italic",
@@ -973,10 +971,14 @@ pub fn tailwind(class: &str) -> Option<String> {
         "border-b" => "border-bottom-width:1px;border-bottom-style:solid",
         "border-l" => "border-left-width:1px;border-left-style:solid",
         "border-r" => "border-right-width:1px;border-right-style:solid",
-        "border-x" => "border-left-width:1px;border-right-width:1px;\
-                       border-left-style:solid;border-right-style:solid",
-        "border-y" => "border-top-width:1px;border-bottom-width:1px;\
-                       border-top-style:solid;border-bottom-style:solid",
+        "border-x" => {
+            "border-left-width:1px;border-right-width:1px;\
+                       border-left-style:solid;border-right-style:solid"
+        }
+        "border-y" => {
+            "border-top-width:1px;border-bottom-width:1px;\
+                       border-top-style:solid;border-bottom-style:solid"
+        }
         _ => "",
     };
     if !fixed.is_empty() {

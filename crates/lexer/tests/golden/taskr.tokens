@@ -6,7 +6,12 @@ Newline
 Import
 Ident "std"
 Slash
-Ident "dirs"
+Ident "path"
+Newline
+Import
+Ident "std"
+Slash
+Ident "proc"
 Newline
 Ident "Status"
 Eq
@@ -32,117 +37,394 @@ Colon
 Ident "Status"
 RBrace
 Newline
-Ident "Store"
-Eq
-LBrace
-Ident "tasks"
-Colon
-Ident "Task"
-LBracket
-RBracket
-Newline
-Ident "next_id"
-Colon
-Ident "int"
-RBrace
-Newline
-Ident "store"
-Eq
-Ident "dirs"
-Dot
-Ident "data"
-Slash
+Ident "store_path"
+LParen
+RParen
+Arrow
+Ident "str"
+FatArrow
+Ident "join"
+LParen
+Ident "env_or"
+LParen
 StrOpen
-StrText "store.json"
+StrText "XDG_DATA_HOME"
 StrClose
+Comma
+StrOpen
+StrText "."
+StrClose
+RParen
+Comma
+StrOpen
+StrText "taskr.json"
+StrClose
+RParen
 Newline
 Ident "load"
 LParen
 RParen
 Arrow
-Ident "Store"
-FatArrow
-Ident "store"
-Dot
-Ident "exists"
-LParen
-RParen
-Question
-Ident "json"
-Dot
-Ident "decode"
-LParen
-Ident "store"
-Dot
-Ident "read"
-LParen
-RParen
-QuestionPost
-RParen
-Colon
-Ident "Store"
-LBrace
-Ident "tasks"
-Eq
+Ident "Task"
 LBracket
 RBracket
-Comma
-Ident "next_id"
+LBrace
+Ident "path"
 Eq
-Int 1
+Ident "store_path"
+LParen
+RParen
+Newline
+If
+Bang
+Ident "file_exists"
+LParen
+Ident "path"
+RParen
+LBrace
+LBracket
+RBracket
+RBrace
+Else
+LBrace
+Ident "items"
+LParen
+Ident "read_file"
+LParen
+Ident "path"
+RParen
+RParen
+Dot
+Ident "map"
+LParen
+Ident "task_of"
+RParen
+RBrace
+RBrace
+Newline
+Ident "task_of"
+LParen
+Ident "src"
+Colon
+Ident "str"
+RParen
+Arrow
+Ident "Task"
+FatArrow
+Ident "Task"
+LBrace
+Ident "id"
+Eq
+Ident "get_int"
+LParen
+Ident "src"
+Comma
+StrOpen
+StrText "id"
+StrClose
+Comma
+Int 0
+RParen
+Comma
+Ident "title"
+Eq
+Ident "get"
+LParen
+Ident "src"
+Comma
+StrOpen
+StrText "title"
+StrClose
+RParen
+Comma
+Ident "status"
+Eq
+Ident "status_of"
+LParen
+Ident "get"
+LParen
+Ident "src"
+Comma
+StrOpen
+StrText "status"
+StrClose
+RParen
+RParen
+RBrace
+Newline
+Ident "save"
+LParen
+Ident "tasks"
+Colon
+Ident "Task"
+LBracket
+RBracket
+RParen
+Arrow
+Ident "bool"
+FatArrow
+Ident "write_file"
+LParen
+Ident "store_path"
+LParen
+RParen
+Comma
+StrOpen
+StrText "["
+StrClose
+PlusPlus
+Ident "tasks"
+Dot
+Ident "map"
+LParen
+Ident "json_of"
+RParen
+Dot
+Ident "join"
+LParen
+StrOpen
+StrText ","
+StrClose
+RParen
+PlusPlus
+StrOpen
+StrText "]"
+StrClose
+RParen
+Newline
+Ident "json_of"
+LParen
+Ident "t"
+Colon
+Ident "Task"
+RParen
+Arrow
+Ident "str"
+FatArrow
+Ident "object_of"
+LParen
+LBracket
+StrOpen
+StrText "id"
+StrClose
+Comma
+StrOpen
+StrText "title"
+StrClose
+Comma
+StrOpen
+StrText "status"
+StrClose
+RBracket
+Comma
+LBracket
+Ident "str"
+LParen
+Ident "t"
+Dot
+Ident "id"
+RParen
+Comma
+Ident "quote"
+LParen
+Ident "t"
+Dot
+Ident "title"
+RParen
+Comma
+Ident "quote"
+LParen
+Ident "name_of"
+LParen
+Ident "t"
+Dot
+Ident "status"
+RParen
+RParen
+RBracket
+RParen
+Newline
+Ident "name_of"
+LParen
+Ident "s"
+Colon
+Ident "Status"
+RParen
+Arrow
+Ident "str"
+FatArrow
+Match
+Ident "s"
+LBrace
+Ident "Todo"
+FatArrow
+StrOpen
+StrText "todo"
+StrClose
+Newline
+Ident "Doing"
+FatArrow
+StrOpen
+StrText "doing"
+StrClose
+Newline
+Ident "Done"
+FatArrow
+StrOpen
+StrText "done"
+StrClose
+RBrace
+Newline
+Ident "status_of"
+LParen
+Ident "name"
+Colon
+Ident "str"
+RParen
+Arrow
+Ident "Status"
+LBrace
+If
+Ident "name"
+EqEq
+StrOpen
+StrText "doing"
+StrClose
+LBrace
+Ident "Doing"
+RBrace
+Else
+If
+Ident "name"
+EqEq
+StrOpen
+StrText "done"
+StrClose
+LBrace
+Ident "Done"
+RBrace
+Else
+LBrace
+Ident "Todo"
+RBrace
 RBrace
 Newline
 Ident "add"
 LParen
-Ident "s"
+Ident "tasks"
 Colon
-Ident "Store"
+Ident "Task"
+LBracket
+RBracket
 Comma
 Ident "title"
 Colon
 Ident "str"
 RParen
 Arrow
-Ident "Store"
-LBrace
-Ident "t"
-Eq
+Ident "Task"
+LBracket
+RBracket
+FatArrow
+Ident "tasks"
+Dot
+Ident "push"
+LParen
 Ident "Task"
 LBrace
 Ident "id"
 Eq
-Ident "s"
-Dot
 Ident "next_id"
+LParen
+Ident "tasks"
+RParen
 Comma
+Ident "title"
+Eq
 Ident "title"
 Comma
 Ident "status"
 Eq
 Ident "Todo"
 RBrace
+RParen
 Newline
-Ident "Store"
-LBrace
+Ident "next_id"
+LParen
 Ident "tasks"
-Eq
-Ident "s"
-Dot
-Ident "tasks"
-PlusPlus
+Colon
+Ident "Task"
 LBracket
-Ident "t"
 RBracket
-Comma
-Ident "next_id"
-Eq
-Ident "s"
+RParen
+Arrow
+Ident "int"
+FatArrow
+Ident "tasks"
 Dot
-Ident "next_id"
+Ident "map"
+LParen
+Ident "id_of"
+RParen
+Dot
+Ident "max"
+LParen
+RParen
 Plus
 Int 1
+Newline
+Ident "id_of"
+LParen
+Ident "t"
+Colon
+Ident "Task"
+RParen
+Arrow
+Ident "int"
+FatArrow
+Ident "t"
+Dot
+Ident "id"
+Newline
+Ident "finish"
+LParen
+Ident "tasks"
+Colon
+Ident "Task"
+LBracket
+RBracket
+Comma
+Ident "id"
+Colon
+Ident "int"
+RParen
+Arrow
+Ident "Task"
+LBracket
+RBracket
+FatArrow
+Ident "tasks"
+Dot
+Ident "map"
+LParen
+Ident "t"
+FatArrow
+Ident "t"
+Dot
+Ident "id"
+EqEq
+Ident "id"
+Question
+Ident "t"
+With
+LBrace
+Ident "status"
+Eq
+Ident "Done"
 RBrace
-RBrace
+Colon
+Ident "t"
+RParen
 Newline
 Ident "render"
 LParen
@@ -155,19 +437,29 @@ Ident "str"
 LBrace
 Ident "box"
 Eq
+Match
 Ident "t"
 Dot
 Ident "status"
-EqEq
-Ident "Done"
-Question
-StrOpen
-StrText "[x]"
-StrClose
-Colon
+LBrace
+Ident "Todo"
+FatArrow
 StrOpen
 StrText "[ ]"
 StrClose
+Newline
+Ident "Doing"
+FatArrow
+StrOpen
+StrText "[~]"
+StrClose
+Newline
+Ident "Done"
+FatArrow
+StrOpen
+StrText "[x]"
+StrClose
+RBrace
 Newline
 StrOpen
 InterpStart
@@ -199,12 +491,11 @@ RParen
 Arrow
 Ident "int"
 LBrace
-Ident "s"
+Ident "tasks"
 Eq
 Ident "load"
 LParen
 RParen
-QuestionPost
 Newline
 Match
 Ident "args"
@@ -228,23 +519,15 @@ StrText " "
 StrClose
 RParen
 Newline
-Ident "store"
-Dot
-Ident "write"
-LParen
-Ident "json"
-Dot
-Ident "encode"
+Ident "save"
 LParen
 Ident "add"
 LParen
-Ident "s"
+Ident "tasks"
 Comma
 Ident "title"
 RParen
 RParen
-RParen
-QuestionPost
 Newline
 Ident "info"
 LParen
@@ -258,31 +541,63 @@ RParen
 RBrace
 Newline
 StrOpen
+StrText "done"
+StrClose
+Comma
+Ident "id"
+FatArrow
+LBrace
+Ident "save"
+LParen
+Ident "finish"
+LParen
+Ident "tasks"
+Comma
+Ident "int"
+LParen
+Ident "id"
+RParen
+RParen
+RParen
+Newline
+Ident "info"
+LParen
+StrOpen
+StrText "done: #"
+InterpStart
+Ident "id"
+InterpEnd
+StrClose
+RParen
+RBrace
+Newline
+StrOpen
 StrText "list"
 StrClose
 FatArrow
-For
-Ident "t"
-In
-Ident "s"
-Dot
-Ident "tasks"
-LBrace
 Ident "info"
 LParen
-Ident "render"
+Ident "tasks"
+Dot
+Ident "map"
 LParen
-Ident "t"
+Ident "render"
+RParen
+Dot
+Ident "join"
+LParen
+StrOpen
+StrText "\n"
+StrClose
 RParen
 RParen
-RBrace
 Newline
 Ident "_"
 FatArrow
 Ident "info"
 LParen
 StrOpen
-StrText "usage: taskr [add <title> | list]"
+StrText "usage: taskr [add <title> | done <id> | list]"
 StrClose
 RParen
 RBrace

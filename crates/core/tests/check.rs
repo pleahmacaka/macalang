@@ -1,12 +1,16 @@
 use maca_core::{DiagKind, Mode, check};
-use std::fs;
 use std::path::PathBuf;
 
+/// The source as the compiler sees it: with `import a/b` resolved and inlined.
+///
+/// Checking a file on its own reports every name it imports as undefined, and
+/// this suite is what says an example type-checks — so an example that uses
+/// `std/` would have had to avoid imports to stay green.
 fn read(rel: &str) -> String {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join(rel);
-    fs::read_to_string(p).unwrap()
+    maca_parser::imports::load_with_imports(&p).unwrap_or_else(|e| panic!("{rel}: {e}"))
 }
 
 fn diags(rel: &str, mode: Mode) -> Vec<maca_core::Diagnostic> {

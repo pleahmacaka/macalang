@@ -6,6 +6,7 @@
 //! canonical pretty-printer used by the roundtrip test.
 
 pub mod ast;
+pub mod imports;
 pub mod modules;
 mod parser;
 mod print;

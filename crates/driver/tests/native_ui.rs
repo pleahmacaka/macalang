@@ -10,37 +10,10 @@
 //! stays here is the case that has no value to assert on: an event handler
 //! must *fail* to compile, so there is no program to run.
 
+mod common;
+use common::*;
+
 use std::process::Command;
-
-fn have_cc() -> bool {
-    Command::new("cc")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn have_wsl() -> bool {
-    Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn unsupported_host() -> bool {
-    if have_wsl() || !have_cc() {
-        eprintln!("skipping: needs a host cc and no wsl");
-        return true;
-    }
-    false
-}
-
-fn program(name: &str) -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/programs")
-        .join(format!("{name}.maca"))
-}
 
 /// Elements, escaping, composition, `styles()`, hyphenated and boolean
 /// attributes, runtime tags, and tag shadowing.
@@ -91,8 +64,8 @@ main() -> int {
         .output()
         .expect("spawn maca run");
 
-    let text = String::from_utf8_lossy(&out.stdout).to_string()
-        + &String::from_utf8_lossy(&out.stderr);
+    let text =
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
     assert!(
         !out.status.success(),
         "an event handler should not compile natively:\n{text}"
