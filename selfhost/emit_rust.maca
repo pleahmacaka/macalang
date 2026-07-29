@@ -23,192 +23,224 @@ rust_str(s: str) -> str =>
 // Emit a Rust expression for one AST node.
 remit_expr(e: Expr) -> str =>
     match e.kind {
-        EInt    => rust_int(e.ival)
-        EFloat  => "{e.text}_f64"
-        EStr    => rust_str(e.text)
-        EBool   => e.text
-        EIdent  => e.text
-        ECall   => remit_call(e)
-        EBinary => remit_binary(e)
-        ETernary => "(if {remit_expr(e.children.get(0))} {{ {remit_expr(e.children.get(1))} }} else {{ {remit_expr(e.children.get(2))} }})"
-        EUnary  => "({e.text}{remit_expr(e.children.get(0))})"
-        ERecord => "{e.text} {{ {remit_lit_fields(e.children, 0)} }}"
-        EField  => "{remit_expr(e.children.get(0))}.{e.text}"
-        EMatch  => "match {remit_expr(e.children.get(0))} {{ {remit_arms(e.children, 1)} }}"
-        EMethod => remit_method(e)
-        EList   => "vec![{remit_args(e.children, 0)}]"
-        _       => "0i64"
+        EInt     => rust_int(e.ival)
+        EFloat   => "{e.text}_f64"
+        EStr     => rust_str(e.text)
+        EBool    => e.text
+        EIdent   => e.text
+        ECall    => remit_call(e)
+        EBinary  => remit_binary(e)
+        ETernary => remit_ternary(e)
+        EUnary   => "({e.text}{remit_expr(e.children.get(0))})"
+        ERecord  => "{e.text} {{ {remit_lit_fields(e.children)} }}"
+        EField   => "{remit_expr(e.children.get(0))}.{e.text}"
+        EMatch   => remit_match(e)
+        EMethod  => remit_method(e)
+        EList    => "vec![{remit_args(e.children, 0)}]"
+        _        => "0i64"
     }
+
+// Rust has no ternary; `if` is already an expression there.
+remit_ternary(e: Expr) -> str {
+    cond = remit_expr(e.children.get(0))
+    then = remit_expr(e.children.get(1))
+    els = remit_expr(e.children.get(2))
+
+    "(if {cond} {{ {then} }} else {{ {els} }})"
+}
+
+remit_match(e: Expr) -> str =>
+    "match {remit_expr(e.children.get(0))} {{ {remit_arms(e.children, 1)} }}"
 
 // A UFCS method call. `.length()` (string) / `.count()` (list) → `.len()`;
 // `.get(i)` indexes a `Vec`; `.at(i)` indexes a string's bytes; any other
 // method passes through.
-remit_method(e: Expr) -> str =>
-    e.text == "length" || e.text == "count"
-        ? "(({remit_expr(e.children.get(0))}).len() as i64)"
-        : e.text == "at"
-            ? "(({remit_expr(e.children.get(0))}).as_bytes()[({remit_expr(e.children.get(1))}) as usize] as i64)"
-            : e.text == "get"
-                ? "{remit_expr(e.children.get(0))}[({remit_expr(e.children.get(1))}) as usize]"
-                : "{remit_expr(e.children.get(0))}.{e.text}({remit_args(e.children, 1)})"
+remit_method(e: Expr) -> str {
+    recv = remit_expr(e.children.get(0))
+
+    if e.text == "length" || e.text == "count" {
+        "(({recv}).len() as i64)"
+    } else if e.text == "at" {
+        idx = remit_expr(e.children.get(1))
+        "(({recv}).as_bytes()[({idx}) as usize] as i64)"
+    } else if e.text == "get" {
+        "{recv}[({remit_expr(e.children.get(1))}) as usize]"
+    } else {
+        "{recv}.{e.text}({remit_args(e.children, 1)})"
+    }
+}
 
 // A call. `info`/`print` are the output builtins → `println!`/`print!`; every
 // other call is a plain `name(args)`.
-remit_call(e: Expr) -> str =>
-    e.text == "info"
-        ? "println!(\"{{}}\", {remit_args(e.children, 0)})"
-        : e.text == "print"
-            ? "print!(\"{{}}\", {remit_args(e.children, 0)})"
-            : e.text == "str"
-                ? "format!(\"{{}}\", {remit_args(e.children, 0)})"
-                : "{e.text}({remit_args(e.children, 0)})"
+remit_call(e: Expr) -> str {
+    args = remit_args(e.children, 0)
+
+    if e.text == "info" {
+        "println!(\"{{}}\", {args})"
+    } else if e.text == "print" {
+        "print!(\"{{}}\", {args})"
+    } else if e.text == "str" {
+        "format!(\"{{}}\", {args})"
+    } else {
+        "{e.text}({args})"
+    }
+}
 
 // A binary operator. `++` is string concatenation → `format!("{}{}", a, b)`;
 // every other operator is emitted directly.
-remit_binary(e: Expr) -> str =>
-    e.text == "++"
-        ? "format!(\"{{}}{{}}\", {remit_expr(e.children.get(0))}, {remit_expr(e.children.get(1))})"
-        : "({remit_expr(e.children.get(0))} {e.text} {remit_expr(e.children.get(1))})"
+remit_binary(e: Expr) -> str {
+    l = remit_expr(e.children.get(0))
+    r = remit_expr(e.children.get(1))
+
+    if e.text == "++" {
+        "format!(\"{{}}{{}}\", {l}, {r})"
+    } else {
+        "({l} {e.text} {r})"
+    }
+}
 
 // Rust match arms `Red => 1, _ => 0,` — a bare variant pattern resolves through
 // the enum's `use Color::*;`.
-remit_arms(cs: Expr[], i: int) -> str =>
-    i + 1 >= cs.length()
-        ? ""
-        : "{remit_pat(cs.get(i))} => {remit_expr(cs.get(i + 1))}, {remit_arms(cs, i + 2)}"
+remit_arms(cs: Expr[], i: int) -> str {
+    if i + 1 >= cs.length() {
+        ""
+    } else {
+        arm = "{remit_pat(cs.get(i))} => {remit_expr(cs.get(i + 1))}, "
+        arm ++ remit_arms(cs, i + 2)
+    }
+}
 
 // `Circle(r)` — the binders go straight through, because Rust's own pattern
 // syntax is the one Maca borrowed.
-remit_pat(p: Expr) -> str =>
-    p.children.length() == 0
-        ? p.text
-        : "{p.text}({remit_binders(p.children, 0)})"
+remit_pat(p: Expr) -> str {
+    if p.children.length() == 0 {
+        p.text
+    } else {
+        "{p.text}({p.children.map(binder_name).join(", ")})"
+    }
+}
 
-remit_binders(bs: Expr[], i: int) -> str =>
-    i >= bs.length()
-        ? ""
-        : i == bs.length() - 1
-            ? bs.get(i).text
-            : "{bs.get(i).text}, {remit_binders(bs, i + 1)}"
+binder_name(b: Expr) -> str =>
+    b.text
 
-// Rust struct-literal fields `x: 40, y: 2`. Each rides as `EBinary("=", name, value)`.
-remit_lit_fields(fs: Expr[], i: int) -> str =>
-    i >= fs.length()
-        ? ""
-        : i == fs.length() - 1
-            ? "{fs.get(i).children.get(0).text}: {remit_expr(fs.get(i).children.get(1))}"
-            : "{fs.get(i).children.get(0).text}: {remit_expr(fs.get(i).children.get(1))}, {remit_lit_fields(fs, i + 1)}"
+// Rust struct-literal fields `x: 40, y: 2`. Each rides as
+// `EBinary("=", name, value)`.
+remit_lit_fields(fs: Expr[]) -> str =>
+    fs.map(remit_lit_field).join(", ")
+
+remit_lit_field(f: Expr) -> str =>
+    "{f.children.get(0).text}: {remit_expr(f.children.get(1))}"
 
 // Comma-join the emitted arguments from index `i` on.
 remit_args(xs: Expr[], i: int) -> str =>
-    i >= xs.length()
-        ? ""
-        : i == xs.length() - 1
-            ? remit_expr(xs.get(i))
-            : "{remit_expr(xs.get(i))}, {remit_args(xs, i + 1)}"
+    xs.slice(i, xs.length()).map(remit_expr).join(", ")
 
 // ---- function emission ----------------------------------------------------
 
 // Map a Maca type name to its Rust spelling. Scalars map directly; an empty
 // type defaults to `i64`; any other name is a record type used verbatim.
-rtype(ty: str) -> str =>
-    ty.ends_with("[]")
-        ? "Vec<i64>"
-        : ty == "float"
-            ? "f64"
-            : ty == "str"
-                ? "String"
-                : ty == "bool"
-                    ? "bool"
-                    : ty == "" || ty == "int"
-                        ? "i64"
-                        : ty
+rtype(ty: str) -> str {
+    if ty.ends_with("[]") {
+        "Vec<i64>"
+    } else if ty == "float" {
+        "f64"
+    } else if ty == "str" {
+        "String"
+    } else if ty == "bool" {
+        "bool"
+    } else if ty == "" || ty == "int" {
+        "i64"
+    } else {
+        ty
+    }
+}
 
 // A function definition. `main` returns an exit code, so it is wrapped the way
 // `maca-backend-rust` does: the body becomes `__maca_main`, and a real `main`
 // exits with it. Every other function carries its declared parameter and return
 // types (via `rtype`). (Literal Rust braces are written `{{`/`}}` so they aren't
 // read as Maca string interpolation.)
-remit_fn(s: Stmt) -> str =>
-    s.name == "main"
-        ? "fn __maca_main() -> i64 {{ {remit_stmts(s.body, 0)} }}\nfn main() {{ std::process::exit(__maca_main() as i32); }}"
-        : "fn {s.name}({remit_params(s.params, 0)}) -> {rtype(s.ret)} {{ {remit_stmts(s.body, 0)} }}"
+remit_fn(s: Stmt) -> str {
+    body = remit_stmts(s.body, 0)
+
+    if s.name == "main" {
+        "fn __maca_main() -> i64 {{ {body} }}\n"
+            ++ "fn main() {{ std::process::exit(__maca_main() as i32); }}"
+    } else {
+        params = s.params.map(remit_param).join(", ")
+        "fn {s.name}({params}) -> {rtype(s.ret)} {{ {body} }}"
+    }
+}
 
 // `a: i64, b: String` from the typed parameter ident nodes.
-remit_params(ps: Expr[], i: int) -> str =>
-    i >= ps.length()
-        ? ""
-        : i == ps.length() - 1
-            ? "{ps.get(i).text}: {rtype(ps.get(i).ty)}"
-            : "{ps.get(i).text}: {rtype(ps.get(i).ty)}, {remit_params(ps, i + 1)}"
+remit_param(p: Expr) -> str =>
+    "{p.text}: {rtype(p.ty)}"
 
-remit_stmts(body: Stmt[], i: int) -> str =>
-    i >= body.length()
-        ? ""
-        : "{remit_stmt(body.get(i), i == body.length() - 1)} {remit_stmts(body, i + 1)}"
+remit_stmts(body: Stmt[], i: int) -> str {
+    if i >= body.length() {
+        ""
+    } else {
+        here = remit_stmt(body.get(i), i == body.length() - 1)
+        "{here} {remit_stmts(body, i + 1)}"
+    }
+}
 
 // A binding is a local `let x = e;`; the last expression is the block's tail
 // value (no semicolon — Rust returns it), any earlier one a statement.
-remit_stmt(s: Stmt, is_last: bool) -> str =>
-    s.kind == SBind
-        ? "let {s.name} = {remit_expr(s.value)};"
-        : is_last
-            ? remit_expr(s.value)
-            : "{remit_expr(s.value)};"
+remit_stmt(s: Stmt, is_last: bool) -> str {
+    if s.kind == SBind {
+        "let {s.name} = {remit_expr(s.value)};"
+    } else if is_last {
+        remit_expr(s.value)
+    } else {
+        "{remit_expr(s.value)};"
+    }
+}
 
 // A whole module: record `struct` declarations and function definitions, one
 // item per line.
 remit_module(m: Module) -> str =>
-    remit_items(m.items, 0)
+    m.items.map(remit_item).join("\n")
 
-remit_items(items: Stmt[], i: int) -> str =>
-    i >= items.length()
-        ? ""
-        : i == items.length() - 1
-            ? remit_item(items.get(i))
-            : "{remit_item(items.get(i))}\n{remit_items(items, i + 1)}"
-
-remit_item(s: Stmt) -> str =>
-    s.kind == SRecord
-        ? remit_struct(s)
-        : s.kind == SSum
-            ? remit_sum(s)
-            : remit_fn(s)
+remit_item(s: Stmt) -> str {
+    if s.kind == SRecord {
+        remit_struct(s)
+    } else if s.kind == SSum {
+        remit_sum(s)
+    } else {
+        remit_fn(s)
+    }
+}
 
 // `#[derive(Clone)] struct Point { x: i64, y: i64 }` from a record declaration.
-remit_struct(s: Stmt) -> str =>
-    "#[derive(Clone)]\nstruct {s.name} {{ {remit_struct_fields(s.params, 0)} }}"
+remit_struct(s: Stmt) -> str {
+    fields = s.params.map(remit_struct_field).join(", ")
 
-remit_struct_fields(fs: Expr[], i: int) -> str =>
-    i >= fs.length()
-        ? ""
-        : i == fs.length() - 1
-            ? "{fs.get(i).text}: {rtype(fs.get(i).ty)}"
-            : "{fs.get(i).text}: {rtype(fs.get(i).ty)}, {remit_struct_fields(fs, i + 1)}"
+    "#[derive(Clone)]\nstruct {s.name} {{ {fields} }}"
+}
+
+remit_struct_field(f: Expr) -> str =>
+    "{f.text}: {rtype(f.ty)}"
 
 // `#[derive(Clone, PartialEq)] enum Color { Red, Green, Blue }` plus a
 // `use Color::*;` so a bare variant reference (`Green`) resolves without
 // qualification — matching how the emitter leaves variant idents bare.
-remit_sum(s: Stmt) -> str =>
-    "#[derive(Clone, PartialEq)]\nenum {s.name} {{ {remit_variants(s.params, 0)} }}\nuse {s.name}::*;"
+remit_sum(s: Stmt) -> str {
+    variants = s.params.map(remit_variant).join(", ")
 
-remit_variants(vs: Expr[], i: int) -> str =>
-    i >= vs.length()
-        ? ""
-        : i == vs.length() - 1
-            ? remit_variant(vs.get(i))
-            : "{remit_variant(vs.get(i))}, {remit_variants(vs, i + 1)}"
+    "#[derive(Clone, PartialEq)]\nenum {s.name} {{ {variants} }}\n"
+        ++ "use {s.name}::*;"
+}
 
 // A payload variant is native here — `Circle(i64)` — so `Circle(2)` in the
 // source is already a valid constructor call and needs no shim.
-remit_variant(v: Expr) -> str =>
-    v.children.length() == 0
-        ? v.text
-        : "{v.text}({remit_payload(v.children, 0)})"
+remit_variant(v: Expr) -> str {
+    if v.children.length() == 0 {
+        v.text
+    } else {
+        "{v.text}({v.children.map(payload_type).join(", ")})"
+    }
+}
 
-remit_payload(ps: Expr[], i: int) -> str =>
-    i >= ps.length()
-        ? ""
-        : i == ps.length() - 1
-            ? rtype(ps.get(i).ty)
-            : "{rtype(ps.get(i).ty)}, {remit_payload(ps, i + 1)}"
+payload_type(p: Expr) -> str =>
+    rtype(p.ty)

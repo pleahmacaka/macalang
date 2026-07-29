@@ -13,10 +13,13 @@ import std/text
 
 // One field, quoted only when it has to be. A `"` inside becomes `""`, which
 // is the format's own escape rather than a backslash.
-field(s: str) -> str =>
-    needs_quotes(s)
-        ? "\"" ++ s.replace("\"", "\"\"") ++ "\""
-        : s
+field(s: str) -> str {
+    if needs_quotes(s) {
+        "\"" ++ s.replace("\"", "\"\"") ++ "\""
+    } else {
+        s
+    }
+}
 
 needs_quotes(s: str) -> bool =>
     s.contains(",") || s.contains("\"") || s.contains("\n")
@@ -31,8 +34,13 @@ row(cells: str[]) -> str =>
 document(header: str[], rows: str[][]) -> str =>
     row(header) ++ join_rows(rows, 0, "")
 
-join_rows(rows: str[][], i: int, acc: str) -> str =>
-    i >= rows.length() ? acc : join_rows(rows, i + 1, acc ++ row(rows.get(i)))
+join_rows(rows: str[][], i: int, acc: str) -> str {
+    if i >= rows.length() {
+        acc
+    } else {
+        join_rows(rows, i + 1, acc ++ row(rows.get(i)))
+    }
+}
 
 // ---- reading --------------------------------------------------------------
 
@@ -41,31 +49,40 @@ join_rows(rows: str[][], i: int, acc: str) -> str =>
 parse_row(line: str) -> str[] =>
     scan_fields(line.chars(), 0, "", [])
 
-scan_fields(cs: str[], i: int, cur: str, acc: str[]) -> str[] =>
-    i >= cs.length()
-        ? acc.push(cur)
-        : next_field(cs, i, cur, acc)
+scan_fields(cs: str[], i: int, cur: str, acc: str[]) -> str[] {
+    if i >= cs.length() {
+        acc.push(cur)
+    } else {
+        next_field(cs, i, cur, acc)
+    }
+}
 
 next_field(cs: str[], i: int, cur: str, acc: str[]) -> str[] {
     c = cs.get(i)
-    c == "\""
-        ? read_quoted_field(cs, i + 1, cur, acc)
-        : (c == ","
-            ? scan_fields(cs, i + 1, "", acc.push(cur))
-            : (c == "\r" ? scan_fields(cs, i + 1, cur, acc)
-                         : scan_fields(cs, i + 1, cur ++ c, acc)))
+
+    if c == "\"" {
+        read_quoted_field(cs, i + 1, cur, acc)
+    } else if c == "," {
+        scan_fields(cs, i + 1, "", acc.push(cur))
+    } else if c == "\r" {
+        // A record terminator's `\r` is structure, not part of the last cell.
+        scan_fields(cs, i + 1, cur, acc)
+    } else {
+        scan_fields(cs, i + 1, cur ++ c, acc)
+    }
 }
 
 // Inside quotes: `""` is one literal quote, a lone `"` ends the field.
 read_quoted_field(cs: str[], i: int, cur: str, acc: str[]) -> str[] {
-    at_end = i >= cs.length()
-    at_end
-        ? acc.push(cur)
-        : (cs.get(i) == "\""
-            ? (i + 1 < cs.length() && cs.get(i + 1) == "\""
-                ? read_quoted_field(cs, i + 2, cur ++ "\"", acc)
-                : scan_fields(cs, i + 1, cur, acc))
-            : read_quoted_field(cs, i + 1, cur ++ cs.get(i), acc))
+    if i >= cs.length() {
+        acc.push(cur)
+    } else if cs.get(i) != "\"" {
+        read_quoted_field(cs, i + 1, cur ++ cs.get(i), acc)
+    } else if i + 1 < cs.length() && cs.get(i + 1) == "\"" {
+        read_quoted_field(cs, i + 2, cur ++ "\"", acc)
+    } else {
+        scan_fields(cs, i + 1, cur, acc)
+    }
 }
 
 // Every record in a document. A quoted field may hold a newline, so the
@@ -73,30 +90,37 @@ read_quoted_field(cs: str[], i: int, cur: str, acc: str[]) -> str[] {
 parse(src: str) -> str[][] =>
     parse_rows(split_records(src.chars(), 0, false, "", []), 0, [])
 
-parse_rows(ls: str[], i: int, acc: str[][]) -> str[][] =>
-    i >= ls.length()
-        ? acc
-        : parse_rows(ls, i + 1,
-                     ls.get(i).trim() == ""
-                         ? acc
-                         : acc.push(parse_row(ls.get(i))))
+parse_rows(ls: str[], i: int, acc: str[][]) -> str[][] {
+    if i >= ls.length() {
+        acc
+    } else if ls.get(i).trim() == "" {
+        parse_rows(ls, i + 1, acc)
+    } else {
+        parse_rows(ls, i + 1, acc.push(parse_row(ls.get(i))))
+    }
+}
 
 // Split on newlines that are *outside* quotes.
-split_records(cs: str[], i: int, in_q: bool, cur: str,
-              acc: str[]) -> str[] {
-    at_end = i >= cs.length()
-    at_end
-        ? (cur == "" ? acc : acc.push(cur))
-        : record_step(cs, i, in_q, cur, acc)
+split_records(cs: str[], i: int, in_q: bool, cur: str, acc: str[]) -> str[] {
+    if i < cs.length() {
+        record_step(cs, i, in_q, cur, acc)
+    } else if cur == "" {
+        acc
+    } else {
+        acc.push(cur)
+    }
 }
 
 record_step(cs: str[], i: int, in_q: bool, cur: str, acc: str[]) -> str[] {
     c = cs.get(i)
-    c == "\""
-        ? split_records(cs, i + 1, !in_q, cur ++ c, acc)
-        : (c == "\n" && !in_q
-            ? split_records(cs, i + 1, in_q, "", acc.push(cur))
-            : split_records(cs, i + 1, in_q, cur ++ c, acc))
+
+    if c == "\"" {
+        split_records(cs, i + 1, !in_q, cur ++ c, acc)
+    } else if c == "\n" && !in_q {
+        split_records(cs, i + 1, in_q, "", acc.push(cur))
+    } else {
+        split_records(cs, i + 1, in_q, cur ++ c, acc)
+    }
 }
 
 // The value under `name` in `row`, using `header` for the column order.
@@ -104,5 +128,10 @@ record_step(cs: str[], i: int, in_q: bool, cur: str, acc: str[]) -> str[] {
 // same, which is what a CSV can actually tell you.
 column(header: str[], row: str[], name: str) -> str {
     at = header.index_of(name)
-    at < 0 || at >= row.length() ? "" : row.get(at)
+
+    if at < 0 || at >= row.length() {
+        ""
+    } else {
+        row.get(at)
+    }
 }

@@ -17,12 +17,15 @@
 | `&&` `\|\|` | boolean and/or |
 | `!x` | negation |
 
-A line may not *begin* with `&&` or `||` — the lexer treats a newline as a
-separator. Put the operator at the end of the previous line:
+A long condition can break across lines either way — leave the operator at the
+end of the line, or start the next line with it. Both read as one expression:
 
 ```maca
 ok = a > 0 &&
     b > 0
+
+fine = a > 0
+    && b > 0
 ```
 
 ## Bitwise

@@ -346,6 +346,9 @@ impl<'a> Lexer<'a> {
             ')' | ']' | '}' => true,
             '.' => !self.peek_n(1).is_ascii_digit(),
             '|' => true,
+            // `&&` and `++` can only continue an expression; a bare `&` or `+`
+            // could open a new one, so only the doubled form breaks the line.
+            '&' => self.peek_n(1) == '&',
             '+' => self.peek_n(1) == '+',
             c if is_ident_start(c) => {
                 let w = self.peek_word();

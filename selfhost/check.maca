@@ -36,15 +36,17 @@ empty_env() -> Env =>
 // `env` with one more name bound. Copying rather than mutating keeps a
 // binding's scope exactly the statements after it.
 bind(env: Env, name: str, ty: str) -> Env =>
-    Env { names = env.names ++ [name], types = env.types ++ [ty],
-          fns = env.fns, rets = env.rets, arity = env.arity,
-          fields = env.fields, ftypes = env.ftypes,
-          ctors = env.ctors, owners = env.owners }
+    env with { names = env.names ++ [name], types = env.types ++ [ty] }
 
 // The type of a name in scope, or "" when it isn't one.
 lookup(env: Env, name: str) -> str {
     at = env.names.index_of(name)
-    at < 0 ? "" : env.types.get(at)
+
+    if at < 0 {
+        ""
+    } else {
+        env.types.get(at)
+    }
 }
 
 // ---- building the environment from a module -------------------------------
@@ -52,47 +54,52 @@ lookup(env: Env, name: str) -> str {
 env_of_module(m: Module) -> Env =>
     collect_items(m.items, 0, empty_env())
 
-collect_items(items: Stmt[], i: int, env: Env) -> Env =>
-    i >= items.length()
-        ? env
-        : collect_items(items, i + 1, collect_item(items.get(i), env))
+collect_items(items: Stmt[], i: int, env: Env) -> Env {
+    if i >= items.length() {
+        env
+    } else {
+        collect_items(items, i + 1, collect_item(items.get(i), env))
+    }
+}
 
-collect_item(s: Stmt, env: Env) -> Env =>
-    s.kind == SFn
-        ? add_fn(env, s.name, s.ret, s.params.length())
-        : (s.kind == SRecord
-            ? add_fields(env, s.name, s.params, 0)
-            : (s.kind == SSum ? add_ctors(env, s.name, s.params, 0) : env))
+collect_item(s: Stmt, env: Env) -> Env {
+    if s.kind == SFn {
+        add_fn(env, s.name, s.ret, s.params.length())
+    } else if s.kind == SRecord {
+        add_fields(env, s.name, s.params, 0)
+    } else if s.kind == SSum {
+        add_ctors(env, s.name, s.params, 0)
+    } else {
+        env
+    }
+}
 
 add_fn(env: Env, name: str, ret: str, n: int) -> Env =>
-    Env { names = env.names, types = env.types,
-          fns = env.fns ++ [name], rets = env.rets ++ [ret],
-          arity = env.arity ++ [n],
-          fields = env.fields, ftypes = env.ftypes,
-          ctors = env.ctors, owners = env.owners }
+    env with { fns = env.fns ++ [name], rets = env.rets ++ [ret],
+               arity = env.arity ++ [n] }
 
-add_fields(env: Env, rec: str, fs: Expr[], i: int) -> Env =>
-    i >= fs.length()
-        ? env
-        : add_fields(add_field(env, rec ++ "." ++ fs.get(i).text,
-                               fs.get(i).ty), rec, fs, i + 1)
+add_fields(env: Env, rec: str, fs: Expr[], i: int) -> Env {
+    if i >= fs.length() {
+        env
+    } else {
+        key = rec ++ "." ++ fs.get(i).text
+        add_fields(add_field(env, key, fs.get(i).ty), rec, fs, i + 1)
+    }
+}
 
 add_field(env: Env, key: str, ty: str) -> Env =>
-    Env { names = env.names, types = env.types,
-          fns = env.fns, rets = env.rets, arity = env.arity,
-          fields = env.fields ++ [key], ftypes = env.ftypes ++ [ty],
-          ctors = env.ctors, owners = env.owners }
+    env with { fields = env.fields ++ [key], ftypes = env.ftypes ++ [ty] }
 
-add_ctors(env: Env, sum: str, vs: Expr[], i: int) -> Env =>
-    i >= vs.length()
-        ? env
-        : add_ctors(add_ctor(env, vs.get(i).text, sum), sum, vs, i + 1)
+add_ctors(env: Env, sum: str, vs: Expr[], i: int) -> Env {
+    if i >= vs.length() {
+        env
+    } else {
+        add_ctors(add_ctor(env, vs.get(i).text, sum), sum, vs, i + 1)
+    }
+}
 
 add_ctor(env: Env, v: str, sum: str) -> Env =>
-    Env { names = env.names, types = env.types,
-          fns = env.fns, rets = env.rets, arity = env.arity,
-          fields = env.fields, ftypes = env.ftypes,
-          ctors = env.ctors ++ [v], owners = env.owners ++ [sum] }
+    env with { ctors = env.ctors ++ [v], owners = env.owners ++ [sum] }
 
 // ---- types ----------------------------------------------------------------
 
@@ -100,100 +107,155 @@ add_ctor(env: Env, v: str, sum: str) -> Env =>
 // this pass has already accounted for.
 type_in(e: Expr, env: Env) -> str =>
     match e.kind {
-        EInt    => "int"
-        EFloat  => "float"
-        EStr    => "str"
-        EBool   => "bool"
-        EIdent  => ident_type(e, env)
-        ECall   => call_type(e, env)
-        EBinary => binop_in(e, env)
+        EInt     => "int"
+        EFloat   => "float"
+        EStr     => "str"
+        EBool    => "bool"
+        EIdent   => ident_type(e, env)
+        ECall    => call_type(e, env)
+        EBinary  => binop_in(e, env)
         ETernary => type_in(e.children.get(1), env)
-        EUnary  => type_in(e.children.get(0), env)
-        ERecord => e.text
-        EField  => field_type(e, env)
-        EMatch  => match_type(e, env)
-        EList   => "list"
-        _       => "any"
+        EUnary   => type_in(e.children.get(0), env)
+        ERecord  => e.text
+        EField   => field_type(e, env)
+        EMatch   => match_type(e, env)
+        EList    => "list"
+        _        => "any"
     }
 
 // A name: a local or parameter first, then a nullary sum variant, else gradual.
 ident_type(e: Expr, env: Env) -> str {
     local = lookup(env, e.text)
-    at = env.ctors.index_of(e.text)
-    local != "" ? local : (at >= 0 ? env.owners.get(at) : "any")
+    variant = env.ctors.index_of(e.text)
+
+    if local != "" {
+        local
+    } else if variant >= 0 {
+        env.owners.get(variant)
+    } else {
+        "any"
+    }
 }
 
 // A call to a declared function has that function's return type; a call to a
 // sum variant builds that sum; anything else is foreign and stays gradual.
 call_type(e: Expr, env: Env) -> str {
-    at = env.fns.index_of(e.text)
-    ct = env.ctors.index_of(e.text)
-    at >= 0
-        ? ret_or_any(env.rets.get(at))
-        : (ct >= 0 ? env.owners.get(ct) : builtin_type(e.text))
+    declared = env.fns.index_of(e.text)
+    variant = env.ctors.index_of(e.text)
+
+    if declared >= 0 {
+        ret_or_any(env.rets.get(declared))
+    } else if variant >= 0 {
+        env.owners.get(variant)
+    } else {
+        builtin_type(e.text)
+    }
 }
 
 // A declared return of "" means the function didn't write one.
-ret_or_any(r: str) -> str =>
-    r == "" ? "any" : r
+ret_or_any(r: str) -> str {
+    if r == "" {
+        "any"
+    } else {
+        r
+    }
+}
 
 // The builtins the emitters lower directly.
-builtin_type(name: str) -> str =>
-    name == "str"
-        ? "str"
-        : (name == "int" ? "int" : (name == "info" || name == "print"
-                                        ? "unit"
-                                        : "any"))
+builtin_type(name: str) -> str {
+    if name == "str" {
+        "str"
+    } else if name == "int" {
+        "int"
+    } else if name == "info" || name == "print" {
+        "unit"
+    } else {
+        "any"
+    }
+}
 
 // `p.x` — the field's declared type when the receiver's record is known.
 field_type(e: Expr, env: Env) -> str {
     recv = type_in(e.children.get(0), env)
     at = env.fields.index_of(recv ++ "." ++ e.text)
-    at < 0 ? "any" : env.ftypes.get(at)
+
+    if at < 0 {
+        "any"
+    } else {
+        env.ftypes.get(at)
+    }
 }
 
 // A match has the type of its first arm's body.
-match_type(e: Expr, env: Env) -> str =>
-    e.children.length() >= 3 ? type_in(e.children.get(2), env) : "any"
+match_type(e: Expr, env: Env) -> str {
+    if e.children.length() >= 3 {
+        type_in(e.children.get(2), env)
+    } else {
+        "any"
+    }
+}
 
 // Arithmetic combines like numbers and `++` builds strings; a gradual operand
 // keeps the result usable; anything else is a mismatch.
 binop_in(e: Expr, env: Env) -> str {
-    lt = type_in(e.children.get(0), env)
-    rt = type_in(e.children.get(1), env)
     is_cmp = e.text == "==" || e.text == "!=" || e.text == "<"
         || e.text == ">" || e.text == "<=" || e.text == ">="
-    e.text == "++"
-        ? "str"
-        : (is_cmp ? "bool" : arith_type(lt, rt))
+
+    if e.text == "++" {
+        "str"
+    } else if is_cmp {
+        "bool"
+    } else {
+        arith_type(type_in(e.children.get(0), env),
+                   type_in(e.children.get(1), env))
+    }
 }
 
-arith_type(lt: str, rt: str) -> str =>
-    lt == "any" || rt == "any"
-        ? "int"
-        : (lt == rt && (lt == "int" || lt == "float") ? lt : "error")
+arith_type(lt: str, rt: str) -> str {
+    if lt == "any" || rt == "any" {
+        "int"
+    } else if lt == rt && (lt == "int" || lt == "float") {
+        lt
+    } else {
+        "error"
+    }
+}
 
 // ---- errors ---------------------------------------------------------------
 
 // Mismatches in a whole subtree: an arithmetic type error, and a call whose
 // argument count doesn't match its declaration.
 errors_in(e: Expr, env: Env) -> int {
-    here = (type_in(e, env) == "error" ? 1 : 0) + arity_error(e, env)
-    here + child_errors(e.children, 0, env)
+    mismatch = if type_in(e, env) == "error" { 1 } else { 0 }
+
+    mismatch + arity_error(e, env) + child_errors(e.children, 0, env)
 }
 
-child_errors(xs: Expr[], i: int, env: Env) -> int =>
-    i >= xs.length()
-        ? 0
-        : errors_in(xs.get(i), env) + child_errors(xs, i + 1, env)
+child_errors(xs: Expr[], i: int, env: Env) -> int {
+    if i >= xs.length() {
+        0
+    } else {
+        errors_in(xs.get(i), env) + child_errors(xs, i + 1, env)
+    }
+}
 
 // A call to a *declared* function with the wrong number of arguments. An
 // undeclared name is foreign, so its arity is not ours to check.
 arity_error(e: Expr, env: Env) -> int {
-    at = e.kind == ECall ? env.fns.index_of(e.text) : -1
-    at < 0
-        ? 0
-        : (env.arity.get(at) == e.children.length() ? 0 : 1)
+    if e.kind != ECall {
+        0
+    } else {
+        declared = env.fns.index_of(e.text)
+        wrong_arity(env, declared, e.children.length())
+    }
+}
+
+wrong_arity(env: Env, declared: int, given: int) -> int {
+    if declared < 0 || env.arity.get(declared) == given {
+        0
+    } else {
+        1
+    }
 }
 
 // ---- functions and modules ------------------------------------------------
@@ -202,42 +264,66 @@ arity_error(e: Expr, env: Env) -> int {
 // they appear, and its last expression must agree with its declared return.
 check_fn_in(s: Stmt, env: Env) -> int {
     inner = bind_params(env, s.params, 0)
-    body = check_body(s.body, 0, inner)
-    body + return_error(s, inner)
+
+    check_body(s.body, 0, inner) + return_error(s, inner)
 }
 
-bind_params(env: Env, ps: Expr[], i: int) -> Env =>
-    i >= ps.length()
-        ? env
-        : bind_params(bind(env, ps.get(i).text, param_ty(ps.get(i).ty)),
-                      ps, i + 1)
+bind_params(env: Env, ps: Expr[], i: int) -> Env {
+    if i >= ps.length() {
+        env
+    } else {
+        bound = bind(env, ps.get(i).text, param_ty(ps.get(i).ty))
+        bind_params(bound, ps, i + 1)
+    }
+}
 
 // An unannotated parameter is gradual rather than wrong.
-param_ty(ty: str) -> str =>
-    ty == "" ? "any" : ty
+param_ty(ty: str) -> str {
+    if ty == "" {
+        "any"
+    } else {
+        ty
+    }
+}
 
 // Walk the statements, threading the scope: a binding is visible to what
 // follows it and to nothing before.
-check_body(stmts: Stmt[], i: int, env: Env) -> int =>
-    i >= stmts.length() ? 0 : body_step(stmts, i, env)
-
-body_step(stmts: Stmt[], i: int, env: Env) -> int {
-    here = errors_in(stmts.get(i).value, env)
-    here + check_body(stmts, i + 1, extend(env, stmts.get(i)))
+check_body(stmts: Stmt[], i: int, env: Env) -> int {
+    if i >= stmts.length() {
+        0
+    } else {
+        here = errors_in(stmts.get(i).value, env)
+        here + check_body(stmts, i + 1, extend(env, stmts.get(i)))
+    }
 }
 
-extend(env: Env, s: Stmt) -> Env =>
-    s.kind == SBind ? bind(env, s.name, type_in(s.value, env)) : env
+extend(env: Env, s: Stmt) -> Env {
+    if s.kind == SBind {
+        bind(env, s.name, type_in(s.value, env))
+    } else {
+        env
+    }
+}
 
 // The declared return against the body's last expression. A declared "any" or
 // an inferred "any" agrees with anything — that is what gradual means.
 return_error(s: Stmt, env: Env) -> int {
-    declared = s.ret
-    has_body = s.body.length() > 0
-    actual = has_body
-        ? type_in(s.body.get(s.body.length() - 1).value, scope_of(s, env))
-        : "any"
-    disagrees(declared, actual) ? 1 : 0
+    actual = body_type(s, env)
+
+    if disagrees(s.ret, actual) {
+        1
+    } else {
+        0
+    }
+}
+
+body_type(s: Stmt, env: Env) -> str {
+    if s.body.length() == 0 {
+        "any"
+    } else {
+        last = s.body.get(s.body.length() - 1)
+        type_in(last.value, scope_of(s, env))
+    }
 }
 
 // The scope the last statement sees: the parameters plus every binding before
@@ -245,28 +331,44 @@ return_error(s: Stmt, env: Env) -> int {
 scope_of(s: Stmt, env: Env) -> Env =>
     fold_binds(s.body, 0, s.body.length() - 1, env)
 
-fold_binds(stmts: Stmt[], i: int, stop: int, env: Env) -> Env =>
-    i >= stop
-        ? env
-        : fold_binds(stmts, i + 1, stop, extend(env, stmts.get(i)))
-
-disagrees(declared: str, actual: str) -> bool =>
-    declared == "" || declared == "any" || actual == "any"
-        ? false
-        : (actual == "error" ? false : declared != actual)
-
-// Total errors across a module, with its own declarations in scope.
-check_module(m: Module) -> int {
-    env = env_of_module(m)
-    check_items(m.items, 0, env)
+fold_binds(stmts: Stmt[], i: int, stop: int, env: Env) -> Env {
+    if i >= stop {
+        env
+    } else {
+        fold_binds(stmts, i + 1, stop, extend(env, stmts.get(i)))
+    }
 }
 
-check_items(items: Stmt[], i: int, env: Env) -> int =>
-    i >= items.length() ? 0 : item_step(items, i, env)
+disagrees(declared: str, actual: str) -> bool {
+    if declared == "" || declared == "any" || actual == "any" {
+        false
+    } else if actual == "error" {
+        // Already counted where it arose; reporting it again would double it.
+        false
+    } else {
+        declared != actual
+    }
+}
 
-item_step(items: Stmt[], i: int, env: Env) -> int {
-    here = items.get(i).kind == SFn ? check_fn_in(items.get(i), env) : 0
-    here + check_items(items, i + 1, env)
+// Total errors across a module, with its own declarations in scope.
+check_module(m: Module) -> int =>
+    check_items(m.items, 0, env_of_module(m))
+
+check_items(items: Stmt[], i: int, env: Env) -> int {
+    if i >= items.length() {
+        0
+    } else {
+        here = check_item(items.get(i), env)
+        here + check_items(items, i + 1, env)
+    }
+}
+
+check_item(s: Stmt, env: Env) -> int {
+    if s.kind == SFn {
+        check_fn_in(s, env)
+    } else {
+        0
+    }
 }
 
 // ---- the shallow entry points ---------------------------------------------

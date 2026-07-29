@@ -436,7 +436,7 @@ fn selfhost_frontend_compiles_and_runs() {
         .map(|(prog, _)| prog.trim().to_string())
         .expect("emitted-program markers present");
     assert!(
-        c_src.contains("typedef struct { int x; int y;  } Point;")
+        c_src.contains("typedef struct { int x; int y; } Point;")
             && c_src.contains("typedef enum { Red, Green, Blue } Color;")
             && c_src.contains("#include <string.h>")
             && c_src.contains("int fld(Point p)")

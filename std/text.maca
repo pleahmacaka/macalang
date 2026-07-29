@@ -14,7 +14,12 @@
 lines(s: str) -> str[] {
     parts = s.replace("\r\n", "\n").split("\n")
     n = parts.length()
-    n > 0 && parts.get(n - 1) == "" ? parts.slice(0, n - 1) : parts
+
+    if n > 0 && parts.get(n - 1) == "" {
+        parts.slice(0, n - 1)
+    } else {
+        parts
+    }
 }
 
 // Whitespace-separated words, with empty runs dropped — `split(" ")` alone
@@ -22,37 +27,64 @@ lines(s: str) -> str[] {
 words(s: str) -> str[] =>
     keep_nonempty(s.replace("\t", " ").replace("\n", " ").split(" "), 0, [])
 
-keep_nonempty(xs: str[], i: int, acc: str[]) -> str[] =>
-    i >= xs.length()
-        ? acc
-        : keep_nonempty(xs, i + 1,
-                        xs.get(i) == "" ? acc : acc.push(xs.get(i)))
+keep_nonempty(xs: str[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else if xs.get(i) == "" {
+        keep_nonempty(xs, i + 1, acc)
+    } else {
+        keep_nonempty(xs, i + 1, acc.push(xs.get(i)))
+    }
+}
 
 // Split on the *first* occurrence only: `split_once("a=b=c", "=")` is
 // `["a", "b=c"]`. A separator that isn't there gives the whole string and "".
 split_once(s: str, sep: str) -> str[] {
     at = s.index_of(sep)
-    at < 0
-        ? [s, ""]
-        : [s.slice(0, at), s.slice(at + sep.length(), s.length())]
+
+    if at < 0 {
+        [s, ""]
+    } else {
+        [s.slice(0, at), s.slice(at + sep.length(), s.length())]
+    }
 }
 
 // Remove `p` from the front, or leave `s` alone. Distinct from `replace`, which
 // would take it from the middle too.
-strip_prefix(s: str, p: str) -> str =>
-    s.starts_with(p) ? s.slice(p.length(), s.length()) : s
+strip_prefix(s: str, p: str) -> str {
+    if s.starts_with(p) {
+        s.slice(p.length(), s.length())
+    } else {
+        s
+    }
+}
 
-strip_suffix(s: str, p: str) -> str =>
-    s.ends_with(p) ? s.slice(0, s.length() - p.length()) : s
+strip_suffix(s: str, p: str) -> str {
+    if s.ends_with(p) {
+        s.slice(0, s.length() - p.length())
+    } else {
+        s
+    }
+}
 
-// How many non-overlapping times `pat` occurs in `s`.
-count(s: str, pat: str) -> int =>
-    pat.length() == 0 ? 0 : count_from(s, pat, 0, 0)
+// How many non-overlapping times `pat` occurs in `s`. An empty needle matches
+// nothing rather than matching everywhere.
+count(s: str, pat: str) -> int {
+    if pat.length() == 0 {
+        0
+    } else {
+        count_from(s, pat, 0, 0)
+    }
+}
 
 count_from(s: str, pat: str, at: int, n: int) -> int {
-    rest = s.slice(at, s.length())
-    hit = rest.index_of(pat)
-    hit < 0 ? n : count_from(s, pat, at + hit + pat.length(), n + 1)
+    hit = s.slice(at, s.length()).index_of(pat)
+
+    if hit < 0 {
+        n
+    } else {
+        count_from(s, pat, at + hit + pat.length(), n + 1)
+    }
 }
 
 // `Title Case`, one word at a time. Byte-based like the rest of `str`, so it
@@ -60,43 +92,89 @@ count_from(s: str, pat: str, at: int, n: int) -> int {
 title_case(s: str) -> str =>
     join_words(words(s).map(capitalize), 0, "")
 
-capitalize(w: str) -> str =>
-    w.length() == 0 ? w : w.at(0).upper() ++ w.slice(1, w.length()).lower()
+capitalize(w: str) -> str {
+    if w.length() == 0 {
+        w
+    } else {
+        w.at(0).upper() ++ w.slice(1, w.length()).lower()
+    }
+}
 
-join_words(ws: str[], i: int, acc: str) -> str =>
-    i >= ws.length()
-        ? acc
-        : join_words(ws, i + 1, acc == "" ? ws.get(i) : acc ++ " " ++ ws.get(i))
+join_words(ws: str[], i: int, acc: str) -> str {
+    if i >= ws.length() {
+        acc
+    } else if acc == "" {
+        join_words(ws, i + 1, ws.get(i))
+    } else {
+        join_words(ws, i + 1, acc ++ " " ++ ws.get(i))
+    }
+}
 
 // Add `pad` to the start of every line. An empty line stays empty — trailing
 // whitespace in generated output is noise a diff will show you forever.
 indent(s: str, pad: str) -> str =>
-    lines(s).map(l => l == "" ? l : pad ++ l).join("\n")
+    lines(s).map(l => pad_unless_empty(l, pad)).join("\n")
+
+pad_unless_empty(line: str, pad: str) -> str {
+    if line == "" {
+        line
+    } else {
+        pad ++ line
+    }
+}
 
 // Remove the longest run of leading spaces common to every non-empty line.
 // What a raw `"""…"""` block needs when it is written inside an indented
 // function but has to come out flush.
 dedent(s: str) -> str {
-    ls = lines(s)
-    cut = common_indent(ls, 0, -1)
-    cut <= 0 ? s : ls.map(l => l.length() >= cut ? l.slice(cut, l.length()) : l)
-                     .join("\n")
+    cut = common_indent(lines(s), 0, -1)
+
+    if cut <= 0 {
+        s
+    } else {
+        lines(s).map(l => drop_indent(l, cut)).join("\n")
+    }
 }
 
+drop_indent(line: str, cut: int) -> str {
+    if line.length() >= cut {
+        line.slice(cut, line.length())
+    } else {
+        line
+    }
+}
+
+// The narrowest indent among the non-empty lines. `best` starts at -1, which
+// means "no line has been seen yet" — distinct from an indent of 0.
 common_indent(ls: str[], i: int, best: int) -> int {
-    at_end = i >= ls.length()
-    at_end
-        ? (best < 0 ? 0 : best)
-        : common_indent(ls, i + 1, narrower(best, ls.get(i)))
+    if i < ls.length() {
+        common_indent(ls, i + 1, narrower(best, ls.get(i)))
+    } else if best < 0 {
+        0
+    } else {
+        best
+    }
 }
 
 narrower(best: int, line: str) -> int {
     n = leading_spaces(line.chars(), 0)
-    line.trim() == "" ? best : (best < 0 || n < best ? n : best)
+
+    if line.trim() == "" {
+        best
+    } else if best < 0 || n < best {
+        n
+    } else {
+        best
+    }
 }
 
-leading_spaces(cs: str[], i: int) -> int =>
-    i >= cs.length() || cs.get(i) != " " ? i : leading_spaces(cs, i + 1)
+leading_spaces(cs: str[], i: int) -> int {
+    if i >= cs.length() || cs.get(i) != " " {
+        i
+    } else {
+        leading_spaces(cs, i + 1)
+    }
+}
 
 // Fold `s` to lines of at most `width` bytes, breaking between words. A word
 // longer than the width gets a line to itself rather than being cut in half —
@@ -104,18 +182,33 @@ leading_spaces(cs: str[], i: int) -> int =>
 wrap(s: str, width: int) -> str =>
     fill(words(s), 0, width, "", "")
 
-fill(ws: str[], i: int, width: int, cur: str, out: str) -> str =>
-    i >= ws.length()
-        ? flush(out, cur)
-        : next_word(ws, i, width, cur, out)
+fill(ws: str[], i: int, width: int, cur: str, out: str) -> str {
+    if i >= ws.length() {
+        flush(out, cur)
+    } else {
+        next_word(ws, i, width, cur, out)
+    }
+}
 
 next_word(ws: str[], i: int, width: int, cur: str, out: str) -> str {
     w = ws.get(i)
-    joined = cur == "" ? w : cur ++ " " ++ w
-    joined.length() <= width || cur == ""
-        ? fill(ws, i + 1, width, joined, out)
-        : fill(ws, i + 1, width, w, flush(out, cur))
+    joined = if cur == "" { w } else { cur ++ " " ++ w }
+
+    // `cur == ""` means the word is alone on its line already: it is too long
+    // for the width and there is nothing to break it away from.
+    if joined.length() <= width || cur == "" {
+        fill(ws, i + 1, width, joined, out)
+    } else {
+        fill(ws, i + 1, width, w, flush(out, cur))
+    }
 }
 
-flush(out: str, cur: str) -> str =>
-    cur == "" ? out : (out == "" ? cur : out ++ "\n" ++ cur)
+flush(out: str, cur: str) -> str {
+    if cur == "" {
+        out
+    } else if out == "" {
+        cur
+    } else {
+        out ++ "\n" ++ cur
+    }
+}

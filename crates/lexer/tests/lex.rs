@@ -352,3 +352,28 @@ fn a_colon_outside_an_interpolation_is_not_a_spec() {
     assert!(specs("f(x: int) -> int => x").is_empty());
     assert!(specs("Point = {\n    x: int\n}").is_empty());
 }
+
+#[test]
+fn a_leading_boolean_operator_continues_the_line() {
+    // A long condition breaks either way: the operator can end the line or
+    // begin the next one. `&&` used to be accepted only at the end, while
+    // `||` was accepted at both — so the same condition parsed or didn't
+    // depending on which operator it happened to use.
+    for (src, op) in [
+        ("ok = a\n    && b\n", Tok::AmpAmp),
+        ("ok = a\n    || b\n", Tok::BarBar),
+    ] {
+        assert_eq!(
+            toks(src),
+            vec![
+                Tok::Ident("ok".into()),
+                Tok::Eq,
+                Tok::Ident("a".into()),
+                op,
+                Tok::Ident("b".into()),
+                Tok::Eof,
+            ],
+            "{src:?} should be one expression"
+        );
+    }
+}

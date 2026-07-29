@@ -10,46 +10,110 @@
 // `join("a/", "/b")` and `join("a", "b")` are both `"a/b"` — the sort of thing
 // that otherwise produces `a//b` in a path that mostly works until it doesn't.
 join(a: str, b: str) -> str {
-    left = a.ends_with("/") ? a.slice(0, a.length() - 1) : a
-    right = b.starts_with("/") ? b.slice(1, b.length()) : b
-    left == "" ? right : (right == "" ? left : left ++ "/" ++ right)
+    left = drop_trailing_sep(a)
+    right = drop_leading_sep(b)
+
+    if left == "" {
+        right
+    } else if right == "" {
+        left
+    } else {
+        left ++ "/" ++ right
+    }
+}
+
+drop_trailing_sep(s: str) -> str {
+    if s.ends_with("/") {
+        s.slice(0, s.length() - 1)
+    } else {
+        s
+    }
+}
+
+drop_leading_sep(s: str) -> str {
+    if s.starts_with("/") {
+        s.slice(1, s.length())
+    } else {
+        s
+    }
 }
 
 // Everything after the last separator.
 basename(p: str) -> str {
     at = last_sep(p)
-    at < 0 ? p : p.slice(at + 1, p.length())
+
+    if at < 0 {
+        p
+    } else {
+        p.slice(at + 1, p.length())
+    }
 }
 
 // Everything before the last separator; "." when there is none, so the result
 // is always a directory you can pass on.
 dirname(p: str) -> str {
     at = last_sep(p)
-    at < 0 ? "." : (at == 0 ? "/" : p.slice(0, at))
+
+    if at < 0 {
+        "."
+    } else if at == 0 {
+        "/"
+    } else {
+        p.slice(0, at)
+    }
 }
 
 // The extension without its dot, or "". A leading dot is a hidden file rather
 // than an extension: `extension(".bashrc")` is "".
 extension(p: str) -> str {
-    b = basename(p)
-    at = last_dot(b.chars(), b.length() - 1)
-    at <= 0 ? "" : b.slice(at + 1, b.length())
+    name = basename(p)
+    at = last_dot(name)
+
+    if at <= 0 {
+        ""
+    } else {
+        name.slice(at + 1, name.length())
+    }
 }
 
 // The basename with its extension removed.
 stem(p: str) -> str {
-    b = basename(p)
-    at = last_dot(b.chars(), b.length() - 1)
-    at <= 0 ? b : b.slice(0, at)
+    name = basename(p)
+    at = last_dot(name)
+
+    if at <= 0 {
+        name
+    } else {
+        name.slice(0, at)
+    }
 }
 
 // Replace the extension (with or without a leading dot on `ext`).
 with_extension(p: str, ext: str) -> str {
-    e = ext.starts_with(".") ? ext.slice(1, ext.length()) : ext
-    d = dirname(p)
-    base = e == "" ? stem(p) : stem(p) ++ "." ++ e
-    bare = d == "." && !p.starts_with("./")
-    bare ? base : join(d, base)
+    bare_ext = drop_leading_dot(ext)
+    dir = dirname(p)
+
+    name = if bare_ext == "" {
+        stem(p)
+    } else {
+        stem(p) ++ "." ++ bare_ext
+    }
+
+    // `dirname` answers "." for a path that never named a directory. Joining
+    // it back on would turn `b.txt` into `./b.txt`.
+    if dir == "." && !p.starts_with("./") {
+        name
+    } else {
+        join(dir, name)
+    }
+}
+
+drop_leading_dot(ext: str) -> str {
+    if ext.starts_with(".") {
+        ext.slice(1, ext.length())
+    } else {
+        ext
+    }
 }
 
 is_absolute(p: str) -> bool =>
@@ -58,27 +122,50 @@ is_absolute(p: str) -> bool =>
 // Collapse `.` and `..` segments textually — no filesystem access, so it is
 // safe to call on a path that does not exist yet.
 normalize(p: str) -> str {
-    abs = is_absolute(p)
-    kept = walk_segments(p.split("/"), 0, [])
-    body = kept.join("/")
-    abs ? "/" ++ body : (body == "" ? "." : body)
+    kept = walk_segments(p.split("/"), 0, []).join("/")
+
+    if is_absolute(p) {
+        "/" ++ kept
+    } else if kept == "" {
+        "."
+    } else {
+        kept
+    }
 }
 
-walk_segments(segs: str[], i: int, acc: str[]) -> str[] =>
-    i >= segs.length()
-        ? acc
-        : walk_segments(segs, i + 1, step(acc, segs.get(i)))
+walk_segments(segs: str[], i: int, acc: str[]) -> str[] {
+    if i >= segs.length() {
+        acc
+    } else {
+        walk_segments(segs, i + 1, step(acc, segs.get(i)))
+    }
+}
 
-step(acc: str[], seg: str) -> str[] =>
-    seg == "" || seg == "."
-        ? acc
-        : (seg == ".." ? (acc.length() > 0 ? acc.pop() : acc) : acc.push(seg))
+step(acc: str[], seg: str) -> str[] {
+    if seg == "" || seg == "." {
+        acc
+    } else if seg != ".." {
+        acc.push(seg)
+    } else if acc.length() > 0 {
+        acc.pop()
+    } else {
+        // `..` above the root has nowhere to go.
+        acc
+    }
+}
 
 last_sep(p: str) -> int =>
     scan_back(p.chars(), p.length() - 1, "/")
 
-last_dot(cs: str[], i: int) -> int =>
-    i < 0 ? -1 : (cs.get(i) == "." ? i : last_dot(cs, i - 1))
+last_dot(s: str) -> int =>
+    scan_back(s.chars(), s.length() - 1, ".")
 
-scan_back(cs: str[], i: int, want: str) -> int =>
-    i < 0 ? -1 : (cs.get(i) == want ? i : scan_back(cs, i - 1, want))
+scan_back(cs: str[], i: int, want: str) -> int {
+    if i < 0 {
+        -1
+    } else if cs.get(i) == want {
+        i
+    } else {
+        scan_back(cs, i - 1, want)
+    }
+}

@@ -17,57 +17,84 @@ quoted(s: str) -> str =>
 // Emit a C expression for one AST node.
 emit_expr(e: Expr) -> str =>
     match e.kind {
-        EInt    => str(e.ival)
-        EFloat  => e.text
-        EStr    => quoted(e.text)
-        EBool   => e.text == "true" ? "1" : "0"
-        EIdent  => e.text
-        ECall   => emit_call(e)
-        EBinary => emit_binary(e)
-        ETernary => "({emit_expr(e.children.get(0))} ? {emit_expr(e.children.get(1))} : {emit_expr(e.children.get(2))})"
-        EUnary  => "({e.text}{emit_expr(e.children.get(0))})"
-        ERecord => "({e.text}){{ {emit_lit_fields(e.children, 0)} }}"
-        EField  => "{emit_expr(e.children.get(0))}.{e.text}"
-        EMatch  => emit_match(e)
-        EMethod => emit_method(e)
-        EList   => "maca_listv({str(e.children.length())}, {emit_list_elems(e.children, 0)})"
-        _       => "0"
+        EInt     => str(e.ival)
+        EFloat   => e.text
+        EStr     => quoted(e.text)
+        EBool    => emit_bool(e)
+        EIdent   => e.text
+        ECall    => emit_call(e)
+        EBinary  => emit_binary(e)
+        ETernary => emit_ternary(e)
+        EUnary   => "({e.text}{emit_expr(e.children.get(0))})"
+        ERecord  => "({e.text}){{ {emit_lit_fields(e.children, 0)} }}"
+        EField   => "{emit_expr(e.children.get(0))}.{e.text}"
+        EMatch   => emit_match(e)
+        EMethod  => emit_method(e)
+        EList    => emit_list(e)
+        _        => "0"
     }
 
-// `(long)(e0), (long)(e1), …` — list elements widened to the `long` cell type
-// the variadic `maca_listv` reads.
-emit_list_elems(es: Expr[], i: int) -> str =>
-    i >= es.length()
-        ? ""
-        : i == es.length() - 1
-            ? "(long)({emit_expr(es.get(i))})"
-            : "(long)({emit_expr(es.get(i))}), {emit_list_elems(es, i + 1)}"
+emit_bool(e: Expr) -> str {
+    if e.text == "true" {
+        "1"
+    } else {
+        "0"
+    }
+}
+
+emit_ternary(e: Expr) -> str {
+    cond = emit_expr(e.children.get(0))
+    then = emit_expr(e.children.get(1))
+    els = emit_expr(e.children.get(2))
+
+    "({cond} ? {then} : {els})"
+}
+
+// Elements are widened to the `long` cell type the variadic `maca_listv` reads.
+emit_list(e: Expr) -> str {
+    n = e.children.length()
+
+    "maca_listv({str(n)}, {e.children.map(emit_cell).join(", ")})"
+}
+
+emit_cell(e: Expr) -> str =>
+    "(long)({emit_expr(e)})"
 
 // A UFCS method call. `.length()` on a string is `strlen`; `.count()` is a
 // list's length; `.get(i)` indexes a list; `.at(i)` indexes a string's bytes;
 // any other method falls back to C member-call syntax.
-emit_method(e: Expr) -> str =>
-    e.text == "length"
-        ? "((int)strlen({emit_expr(e.children.get(0))}))"
-        : e.text == "count"
-            ? "({emit_expr(e.children.get(0))}.len)"
-            : e.text == "at"
-                ? "((int){emit_expr(e.children.get(0))}[{emit_expr(e.children.get(1))}])"
-                : e.text == "get"
-                    ? "((int){emit_expr(e.children.get(0))}.data[{emit_expr(e.children.get(1))}])"
-                    : "{emit_expr(e.children.get(0))}.{e.text}({emit_args(e.children, 1)})"
+emit_method(e: Expr) -> str {
+    recv = emit_expr(e.children.get(0))
+
+    if e.text == "length" {
+        "((int)strlen({recv}))"
+    } else if e.text == "count" {
+        "({recv}.len)"
+    } else if e.text == "at" {
+        "((int){recv}[{emit_expr(e.children.get(1))}])"
+    } else if e.text == "get" {
+        "((int){recv}.data[{emit_expr(e.children.get(1))}])"
+    } else {
+        "{recv}.{e.text}({emit_args(e.children, 1)})"
+    }
+}
 
 // A call. `info`/`print` are the output builtins — a string argument prints
 // with a trailing newline (`info`) or without (`print`); every other call is a
 // plain `name(args)`.
-emit_call(e: Expr) -> str =>
-    e.text == "info"
-        ? "printf(\"%s\\n\", {emit_args(e.children, 0)})"
-        : e.text == "print"
-            ? "printf(\"%s\", {emit_args(e.children, 0)})"
-            : e.text == "str"
-                ? "maca_int_to_str({emit_args(e.children, 0)})"
-                : "{e.text}({emit_args(e.children, 0)})"
+emit_call(e: Expr) -> str {
+    args = emit_args(e.children, 0)
+
+    if e.text == "info" {
+        "printf(\"%s\\n\", {args})"
+    } else if e.text == "print" {
+        "printf(\"%s\", {args})"
+    } else if e.text == "str" {
+        "maca_int_to_str({args})"
+    } else {
+        "{e.text}({args})"
+    }
+}
 
 // A binary operator. `++` is string concatenation (→ the `maca_cat` runtime
 // helper); `==`/`!=` with a string operand goes through `strcmp` (C `==` on
@@ -77,11 +104,14 @@ emit_binary(e: Expr) -> str {
     r = e.children.get(1)
     is_cmp = e.text == "==" || e.text == "!="
     is_str_eq = is_cmp && (l.kind == EStr || r.kind == EStr)
-    e.text == "++"
-        ? "maca_cat({emit_expr(l)}, {emit_expr(r)})"
-        : is_str_eq
-            ? "(strcmp({emit_expr(l)}, {emit_expr(r)}) {e.text} 0)"
-            : "({emit_expr(l)} {e.text} {emit_expr(r)})"
+
+    if e.text == "++" {
+        "maca_cat({emit_expr(l)}, {emit_expr(r)})"
+    } else if is_str_eq {
+        "(strcmp({emit_expr(l)}, {emit_expr(r)}) {e.text} 0)"
+    } else {
+        "({emit_expr(l)} {e.text} {emit_expr(r)})"
+    }
 }
 
 // A `match` lowers to a right-nested ternary chain: `scrut == Pat ? body : …`.
@@ -94,52 +124,66 @@ emit_match(e: Expr) -> str =>
 emit_arms(scrut: str, cs: Expr[], i: int) -> str =>
     emit_arms_at(scrut, cs, i, any_bound(cs, 1))
 
-emit_arms_at(scrut: str, cs: Expr[], i: int, tagged: bool) -> str =>
-    i + 1 >= cs.length()
-        ? "0"
-        : cs.get(i).text == "_"
-            ? emit_expr(cs.get(i + 1))
-            : "({test(scrut, cs.get(i), tagged)} ? {arm_body(scrut, cs.get(i), cs.get(i + 1))}"
-                  ++ " : {emit_arms_at(scrut, cs, i + 2, tagged)})"
+emit_arms_at(scrut: str, cs: Expr[], i: int, tagged: bool) -> str {
+    if i + 1 >= cs.length() {
+        "0"
+    } else if cs.get(i).text == "_" {
+        emit_expr(cs.get(i + 1))
+    } else {
+        cond = test(scrut, cs.get(i), tagged)
+        body = arm_body(scrut, cs.get(i), cs.get(i + 1))
+        rest = emit_arms_at(scrut, cs, i + 2, tagged)
+        "({cond} ? {body} : {rest})"
+    }
+}
 
-any_bound(cs: Expr[], i: int) -> bool =>
-    i >= cs.length()
-        ? false
-        : (cs.get(i).children.length() > 0 ? true : any_bound(cs, i + 2))
+any_bound(cs: Expr[], i: int) -> bool {
+    if i >= cs.length() {
+        false
+    } else if cs.get(i).children.length() > 0 {
+        true
+    } else {
+        any_bound(cs, i + 2)
+    }
+}
 
-test(scrut: str, pat: Expr, tagged: bool) -> str =>
-    tagged
-        ? "{scrut}.tag == {pat.text}_tag"
-        : "{scrut} == {pat.text}"
+test(scrut: str, pat: Expr, tagged: bool) -> str {
+    if tagged {
+        "{scrut}.tag == {pat.text}_tag"
+    } else {
+        "{scrut} == {pat.text}"
+    }
+}
 
 // A pattern with binders opens a scope that names the payload slots, so the
 // arm body can read them.
-arm_body(scrut: str, pat: Expr, body: Expr) -> str =>
-    pat.children.length() == 0
-        ? emit_expr(body)
-        : "({{ {bind_slots(scrut, pat.children, 0)}{emit_expr(body)}; }})"
+arm_body(scrut: str, pat: Expr, body: Expr) -> str {
+    if pat.children.length() == 0 {
+        emit_expr(body)
+    } else {
+        "({{ {bind_slots(scrut, pat.children, 0)}{emit_expr(body)}; }})"
+    }
+}
 
-bind_slots(scrut: str, bs: Expr[], i: int) -> str =>
-    i >= bs.length()
-        ? ""
-        : "long {bs.get(i).text} = {scrut}._{i}; {bind_slots(scrut, bs, i + 1)}"
+bind_slots(scrut: str, bs: Expr[], i: int) -> str {
+    if i >= bs.length() {
+        ""
+    } else {
+        "long {bs.get(i).text} = {scrut}._{i}; {bind_slots(scrut, bs, i + 1)}"
+    }
+}
 
 // Designated initializers `.x = 40, .y = 2` for a C compound literal. Each field
 // rides as an `EBinary("=", EIdent(name), value)`.
 emit_lit_fields(fs: Expr[], i: int) -> str =>
-    i >= fs.length()
-        ? ""
-        : i == fs.length() - 1
-            ? ".{fs.get(i).children.get(0).text} = {emit_expr(fs.get(i).children.get(1))}"
-            : ".{fs.get(i).children.get(0).text} = {emit_expr(fs.get(i).children.get(1))}, {emit_lit_fields(fs, i + 1)}"
+    fs.map(emit_lit_field).join(", ")
+
+emit_lit_field(f: Expr) -> str =>
+    ".{f.children.get(0).text} = {emit_expr(f.children.get(1))}"
 
 // Comma-join the emitted arguments from index `i` on.
 emit_args(xs: Expr[], i: int) -> str =>
-    i >= xs.length()
-        ? ""
-        : i == xs.length() - 1
-            ? emit_expr(xs.get(i))
-            : "{emit_expr(xs.get(i))}, {emit_args(xs, i + 1)}"
+    xs.slice(i, xs.length()).map(emit_expr).join(", ")
 
 // A whole translation unit: a `main` that returns the expression's value.
 // (Literal C braces are written `{{`/`}}` so they aren't read as Maca string
@@ -153,35 +197,40 @@ emit_unit(e: Expr) -> str =>
 // <stdbool.h> here, so it stays `int`); an empty type defaults to `int`; any
 // other name is a user type (record or sum), emitted verbatim because it is
 // `typedef`'d, so no `struct`/`enum` keyword is needed at the use site.
-type_c(ty: str) -> str =>
-    ty.ends_with("[]")
-        ? "MacaList"
-        : ty == "float"
-            ? "double"
-            : ty == "str"
-                ? "const char*"
-                : ty == "" || ty == "int" || ty == "bool"
-                    ? "int"
-                    : ty
+type_c(ty: str) -> str {
+    if ty.ends_with("[]") {
+        "MacaList"
+    } else if ty == "float" {
+        "double"
+    } else if ty == "str" {
+        "const char*"
+    } else if ty == "" || ty == "int" || ty == "bool" {
+        "int"
+    } else {
+        ty
+    }
+}
 
 // Emit a C function definition from an `SFn` statement. Parameter and return
 // types come from the parsed signature (via `type_c`). The body is a statement
 // sequence: bindings become locals and the final expression the `return`.
-emit_fn(s: Stmt) -> str =>
-    "{type_c(s.ret)} {s.name}({emit_params(s.params, 0)}) {{ {emit_stmts(s.body, 0)} }}"
+emit_fn(s: Stmt) -> str {
+    params = s.params.map(emit_param).join(", ")
 
-// `int a, const char* b` from the typed parameter ident nodes.
-emit_params(ps: Expr[], i: int) -> str =>
-    i >= ps.length()
-        ? ""
-        : i == ps.length() - 1
-            ? "{type_c(ps.get(i).ty)} {ps.get(i).text}"
-            : "{type_c(ps.get(i).ty)} {ps.get(i).text}, {emit_params(ps, i + 1)}"
+    "{type_c(s.ret)} {s.name}({params}) {{ {emit_stmts(s.body, 0)} }}"
+}
 
-emit_stmts(body: Stmt[], i: int) -> str =>
-    i >= body.length()
-        ? ""
-        : "{emit_stmt(body.get(i), i == body.length() - 1)} {emit_stmts(body, i + 1)}"
+emit_param(p: Expr) -> str =>
+    "{type_c(p.ty)} {p.text}"
+
+emit_stmts(body: Stmt[], i: int) -> str {
+    if i >= body.length() {
+        ""
+    } else {
+        here = emit_stmt(body.get(i), i == body.length() - 1)
+        "{here} {emit_stmts(body, i + 1)}"
+    }
+}
 
 // The C type of a local binding, inferred from the value's shape — a string /
 // float / bool literal picks its own type; anything else defaults to `int`.
@@ -192,18 +241,29 @@ local_c_type(e: Expr) -> str =>
         EFloat  => "double"
         ERecord => e.text
         EList   => "MacaList"
-        EBinary => e.text == "++" ? "const char*" : "int"
+        EBinary => concat_c_type(e)
         _       => "int"
     }
 
+concat_c_type(e: Expr) -> str {
+    if e.text == "++" {
+        "const char*"
+    } else {
+        "int"
+    }
+}
+
 // A binding is a local `<type> x = e;`; the last expression statement is the
 // `return`, any earlier one is a bare expression statement.
-emit_stmt(s: Stmt, is_last: bool) -> str =>
-    s.kind == SBind
-        ? "{local_c_type(s.value)} {s.name} = {emit_expr(s.value)};"
-        : is_last
-            ? "return {emit_expr(s.value)};"
-            : "{emit_expr(s.value)};"
+emit_stmt(s: Stmt, is_last: bool) -> str {
+    if s.kind == SBind {
+        "{local_c_type(s.value)} {s.name} = {emit_expr(s.value)};"
+    } else if is_last {
+        "return {emit_expr(s.value)};"
+    } else {
+        "{emit_expr(s.value)};"
+    }
+}
 
 // A whole module: a preamble (headers plus the `maca_cat` string-concat helper
 // that `++` lowers to), then record `struct` declarations and function
@@ -217,33 +277,29 @@ c_preamble() -> str =>
     "static MacaList maca_listv(int n, ...) {{ MacaList l; l.data = malloc(n * sizeof(long)); l.len = n; va_list ap; va_start(ap, n); for (int i = 0; i < n; i++) l.data[i] = va_arg(ap, long); va_end(ap); return l; }}\n"
 
 emit_module(m: Module) -> str =>
-    c_preamble() ++ emit_items(m.items, 0)
+    c_preamble() ++ m.items.map(emit_item).join("\n")
 
-emit_items(items: Stmt[], i: int) -> str =>
-    i >= items.length()
-        ? ""
-        : i == items.length() - 1
-            ? emit_item(items.get(i))
-            : "{emit_item(items.get(i))}\n{emit_items(items, i + 1)}"
-
-emit_item(s: Stmt) -> str =>
-    s.kind == SRecord
-        ? emit_struct(s)
-        : s.kind == SSum
-            ? emit_sum(s)
-            : emit_fn(s)
+emit_item(s: Stmt) -> str {
+    if s.kind == SRecord {
+        emit_struct(s)
+    } else if s.kind == SSum {
+        emit_sum(s)
+    } else {
+        emit_fn(s)
+    }
+}
 
 // `typedef struct { int x; int y; } Point;` from a record's typed fields — the
 // typedef lets `Point` be used as a type name without the `struct` keyword.
-emit_struct(s: Stmt) -> str =>
-    "typedef struct {{ {emit_struct_fields(s.params, 0)} }} {s.name};"
+emit_struct(s: Stmt) -> str {
+    fields = s.params.map(emit_struct_field).join(" ")
 
-emit_struct_fields(fs: Expr[], i: int) -> str =>
-    i >= fs.length()
-        ? ""
-        : "{type_c(fs.get(i).ty)} {fs.get(i).text}; {emit_struct_fields(fs, i + 1)}"
+    "typedef struct {{ {fields} }} {s.name};"
+}
 
-// `typedef enum { Red, Green, Blue } Color;` from a nullary sum's variants.
+emit_struct_field(f: Expr) -> str =>
+    "{type_c(f.ty)} {f.text};"
+
 // A sum. With no payloads it is a plain C enum, which is what a nullary sum
 // wants and costs nothing.
 //
@@ -252,62 +308,86 @@ emit_struct_fields(fs: Expr[], i: int) -> str =>
 // variant also gets a constructor *named after itself*, so an ordinary call
 // `Circle(2)` in the source compiles with no call-site knowledge of which
 // names are variants.
-emit_sum(s: Stmt) -> str =>
-    payload_arity(s.params, 0) == 0
-        ? "typedef enum {{ {emit_variants(s.params, 0)} }} {s.name};"
-        : emit_tagged_sum(s)
+emit_sum(s: Stmt) -> str {
+    if payload_arity(s.params, 0) == 0 {
+        variants = s.params.map(variant_name).join(", ")
+        "typedef enum {{ {variants} }} {s.name};"
+    } else {
+        emit_tagged_sum(s)
+    }
+}
 
-emit_tagged_sum(s: Stmt) -> str =>
-    "typedef enum {{ {emit_tags(s.params, 0)} }} {s.name}_tag;\n"
-        ++ "typedef struct {{ {s.name}_tag tag; "
-        ++ emit_slots(payload_arity(s.params, 0), 0)
-        ++ "}} {s.name};\n"
+variant_name(v: Expr) -> str =>
+    v.text
+
+emit_tagged_sum(s: Stmt) -> str {
+    tags = s.params.map(tag_name).join(", ")
+    slots = emit_slots(payload_arity(s.params, 0), 0)
+
+    "typedef enum {{ {tags} }} {s.name}_tag;\n"
+        ++ "typedef struct {{ {s.name}_tag tag; {slots}}} {s.name};\n"
         ++ emit_ctors(s.name, s.params, 0)
+}
+
+tag_name(v: Expr) -> str =>
+    "{v.text}_tag"
 
 // The widest payload across the variants.
-payload_arity(vs: Expr[], i: int) -> int =>
-    i >= vs.length()
-        ? 0
-        : wider(vs.get(i).children.length(), payload_arity(vs, i + 1))
+payload_arity(vs: Expr[], i: int) -> int {
+    if i >= vs.length() {
+        0
+    } else {
+        wider(vs.get(i).children.length(), payload_arity(vs, i + 1))
+    }
+}
 
-wider(a: int, b: int) -> int =>
-    a > b ? a : b
+wider(a: int, b: int) -> int {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
 
-emit_tags(vs: Expr[], i: int) -> str =>
-    i >= vs.length()
-        ? ""
-        : i == vs.length() - 1
-            ? "{vs.get(i).text}_tag"
-            : "{vs.get(i).text}_tag, {emit_tags(vs, i + 1)}"
+emit_slots(n: int, i: int) -> str {
+    if i >= n {
+        ""
+    } else {
+        "long _{i}; {emit_slots(n, i + 1)}"
+    }
+}
 
-emit_slots(n: int, i: int) -> str =>
-    i >= n ? "" : "long _{i}; {emit_slots(n, i + 1)}"
-
-emit_ctors(sum: str, vs: Expr[], i: int) -> str =>
-    i >= vs.length()
-        ? ""
-        : emit_ctor(sum, vs.get(i)) ++ emit_ctors(sum, vs, i + 1)
+emit_ctors(sum: str, vs: Expr[], i: int) -> str {
+    if i >= vs.length() {
+        ""
+    } else {
+        emit_ctor(sum, vs.get(i)) ++ emit_ctors(sum, vs, i + 1)
+    }
+}
 
 emit_ctor(sum: str, v: Expr) -> str =>
     "static inline {sum} {v.text}({ctor_params(v.children, 0)}) "
         ++ "{{ {sum} _v; _v.tag = {v.text}_tag; "
         ++ ctor_assigns(v.children, 0) ++ "return _v; }}\n"
 
-ctor_params(ps: Expr[], i: int) -> str =>
-    ps.length() == 0
-        ? "void"
-        : (i >= ps.length()
-            ? ""
-            : (i == ps.length() - 1
-                ? "long _{i}"
-                : "long _{i}, {ctor_params(ps, i + 1)}"))
+// A nullary variant's constructor takes `void`, not an empty parameter list —
+// in C the empty list means "unspecified", not "none".
+ctor_params(ps: Expr[], i: int) -> str {
+    if ps.length() == 0 {
+        "void"
+    } else if i >= ps.length() {
+        ""
+    } else if i == ps.length() - 1 {
+        "long _{i}"
+    } else {
+        "long _{i}, {ctor_params(ps, i + 1)}"
+    }
+}
 
-ctor_assigns(ps: Expr[], i: int) -> str =>
-    i >= ps.length() ? "" : "_v._{i} = _{i}; {ctor_assigns(ps, i + 1)}"
-
-emit_variants(vs: Expr[], i: int) -> str =>
-    i >= vs.length()
-        ? ""
-        : i == vs.length() - 1
-            ? vs.get(i).text
-            : "{vs.get(i).text}, {emit_variants(vs, i + 1)}"
+ctor_assigns(ps: Expr[], i: int) -> str {
+    if i >= ps.length() {
+        ""
+    } else {
+        "_v._{i} = _{i}; {ctor_assigns(ps, i + 1)}"
+    }
+}

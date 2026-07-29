@@ -15,29 +15,42 @@ walk(root: str) -> str[] =>
     walk_entries(root, list_dir(root), 0, [])
 
 walk_entries(root: str, names: str[], i: int, acc: str[]) -> str[] {
-    i >= names.length()
-        ? acc
-        : walk_entries(root, names, i + 1,
-                       acc ++ walk_one(join(root, names.get(i))))
+    if i >= names.length() {
+        acc
+    } else {
+        found = walk_one(join(root, names.get(i)))
+        walk_entries(root, names, i + 1, acc ++ found)
+    }
 }
 
-walk_one(p: str) -> str[] =>
-    is_dir(p) ? walk(p) : [p]
+walk_one(p: str) -> str[] {
+    if is_dir(p) {
+        walk(p)
+    } else {
+        [p]
+    }
+}
 
 // Directories under `root`, recursively.
 walk_dirs(root: str) -> str[] =>
     dir_entries(root, list_dir(root), 0, [])
 
 dir_entries(root: str, names: str[], i: int, acc: str[]) -> str[] {
-    at_end = i >= names.length()
-    at_end
-        ? acc
-        : dir_entries(root, names, i + 1,
-                      acc ++ dir_one(join(root, names.get(i))))
+    if i >= names.length() {
+        acc
+    } else {
+        found = dir_one(join(root, names.get(i)))
+        dir_entries(root, names, i + 1, acc ++ found)
+    }
 }
 
-dir_one(p: str) -> str[] =>
-    is_dir(p) ? [p] ++ walk_dirs(p) : []
+dir_one(p: str) -> str[] {
+    if is_dir(p) {
+        [p] ++ walk_dirs(p)
+    } else {
+        []
+    }
+}
 
 // Files under `root` whose name ends with `suffix` — `walk(root)` filtered, but
 // the filter is the reason you were walking.
@@ -53,8 +66,13 @@ read_lines(p: str) -> str[] =>
 // changed anything: a build step that rewrites an identical file makes every
 // downstream timestamp lie.
 write_if_changed(p: str, text: str) -> bool {
-    same = file_exists(p) && read_file(p) == text
-    same ? false : force_write(p, text)
+    unchanged = file_exists(p) && read_file(p) == text
+
+    if unchanged {
+        false
+    } else {
+        force_write(p, text)
+    }
 }
 
 force_write(p: str, text: str) -> bool {
@@ -63,8 +81,11 @@ force_write(p: str, text: str) -> bool {
 }
 
 // Append, creating the file if it isn't there.
-append_file(p: str, text: str) -> bool =>
-    write_file(p, (file_exists(p) ? read_file(p) : "") ++ text)
+append_file(p: str, text: str) -> bool {
+    existing = if file_exists(p) { read_file(p) } else { "" }
+
+    write_file(p, existing ++ text)
+}
 
 copy_file(from: str, to: str) -> bool {
     make_dir(dirname(to))
@@ -76,11 +97,12 @@ copy_tree(from: str, to: str) -> int =>
     copy_all(from, to, walk(from), 0, 0)
 
 copy_all(from: str, to: str, files: str[], i: int, n: int) -> int {
-    at_end = i >= files.length()
-    at_end
-        ? n
-        : copy_all(from, to, files, i + 1,
-                   n + (copy_one(files.get(i), from, to) ? 1 : 0))
+    if i >= files.length() {
+        n
+    } else {
+        copied = if copy_one(files.get(i), from, to) { 1 } else { 0 }
+        copy_all(from, to, files, i + 1, n + copied)
+    }
 }
 
 // One file, with its path rewritten from under `from` to under `to`.
