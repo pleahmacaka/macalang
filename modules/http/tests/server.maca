@@ -1,0 +1,165 @@
+// The server, driven by a client in the same program.
+//
+// `spawn` puts the accept loop on its own thread and the test does the asking,
+// which is why this can be one Maca file rather than a harness that launches a
+// process and pokes it with a socket. Everything asserted here is a claim the
+// module's own documentation makes.
+
+import { listen, fetch, get, text, html, json, status, ok, with_header,
+         closing, render, Response, parse_request, header, query_value,
+         form_value, reason, is_ok, content_type } from http
+
+// A port nothing else in the suite uses. Not zero: the point is to exercise
+// the real bind path, and a port the OS chooses cannot be asked for again.
+Port = 34871
+
+routes(req: Request) -> Response {
+    if req.path == "/" {
+        text("root")
+    } else if req.path == "/page" {
+        html("<h1>hi</h1>")
+    } else if req.path == "/echo" {
+        text(query_value(req, "say"))
+    } else if req.path == "/method" {
+        text(req.method)
+    } else if req.path == "/agent" {
+        text(header(req, "user-agent"))
+    } else if req.path == "/posted" {
+        text(form_value(req, "name"))
+    } else {
+        status(404)
+    }
+}
+
+// Every test asks a live server, so it is started once and left running for
+// the file. A `spawn`ed accept loop never resolves, which is the point.
+serve_here() -> int =>
+    listen(Port, routes)
+
+start() -> bool {
+    spawn serve_here()
+    sleep_ms(300)
+    true
+}
+
+Started = start()
+
+// The body of a reply — everything after the blank line.
+body_of(reply: str) -> str {
+    at = reply.index_of("\r\n\r\n")
+
+    if at < 0 {
+        ""
+    } else {
+        reply.substr(at + 4, reply.length())
+    }
+}
+
+fetch_path(path: str) -> str =>
+    get("127.0.0.1", Port, path)
+
+test_a_handler_answers_with_its_body() {
+    assert(Started, "the server started")
+    reply = fetch_path("/")
+    assert(reply.starts_with("HTTP/1.1 200 OK"), "a 200 status line")
+    assert_eq(body_of(reply), "root", "the handler's body")
+}
+
+test_the_content_type_is_the_one_the_response_chose() {
+    assert(fetch_path("/page").contains("Content-Type: text/html"), "html")
+    assert(fetch_path("/").contains("Content-Type: text/plain"), "text")
+}
+
+test_a_path_nothing_matches_is_the_handlers_own_404() {
+    reply = fetch_path("/nowhere")
+    assert(reply.starts_with("HTTP/1.1 404 Not Found"), "404 with its phrase")
+}
+
+test_the_query_string_reaches_the_handler() {
+    assert_eq(body_of(fetch_path("/echo?say=hello")), "hello", "a parameter")
+    assert_eq(body_of(fetch_path("/echo?a=1&say=two&b=3")), "two", "one of many")
+    assert_eq(body_of(fetch_path("/echo")), "", "absent is empty")
+}
+
+test_a_percent_escape_is_decoded() {
+    assert_eq(body_of(fetch_path("/echo?say=a%20b")), "a b", "%20 is a space")
+    assert_eq(body_of(fetch_path("/echo?say=a+b")), "a b", "+ is a space too")
+}
+
+test_headers_are_matched_however_they_are_spelled() {
+    reply = fetch("127.0.0.1", Port,
+                  "GET /agent HTTP/1.1\r\nUSER-AGENT: probe\r\n"
+                  ++ "Connection: close\r\n\r\n")
+    assert_eq(body_of(reply), "probe", "a header name is case-insensitive")
+}
+
+test_a_posted_form_reaches_the_handler() {
+    reply = fetch("127.0.0.1", Port,
+                  "POST /posted HTTP/1.1\r\nContent-Length: 9\r\n"
+                  ++ "Connection: close\r\n\r\nname=maca")
+    assert_eq(body_of(reply), "maca", "the body was read in full")
+}
+
+test_the_method_arrives_uppercased() {
+    reply = fetch("127.0.0.1", Port,
+                  "get /method HTTP/1.1\r\nConnection: close\r\n\r\n")
+    assert_eq(body_of(reply), "GET", "however the client wrote it")
+}
+
+// A request line that isn't three words is not a request, and the server says
+// so itself rather than handing the handler something it cannot use.
+test_a_malformed_request_is_a_400() {
+    reply = fetch("127.0.0.1", Port, "nonsense\r\n\r\n")
+    assert(reply.starts_with("HTTP/1.1 400 Bad Request"), "400 for garbage")
+}
+
+// ---- the parts, without a socket ------------------------------------------
+
+test_a_request_parses_into_its_fields() {
+    r = parse_request("POST /a/b?x=1 HTTP/1.1\r\nHost: h\r\n\r\nbody here")
+    assert_eq(r.method, "POST", "method")
+    assert_eq(r.path, "/a/b", "path without the query")
+    assert_eq(r.query, "x=1", "query")
+    assert_eq(r.body, "body here", "body")
+    assert_eq(header(r, "host"), "h", "a header")
+}
+
+test_bare_newlines_parse_as_well_as_crlf() {
+    r = parse_request("GET /x HTTP/1.1\nHost: h\n\nb")
+    assert_eq(r.path, "/x", "path")
+    assert_eq(r.body, "b", "body")
+}
+
+test_a_content_length_is_computed_not_declared() {
+    out = render(text("12345"))
+    assert(out.contains("Content-Length: 5"), "the body's own length")
+    assert(out.ends_with("12345"), "and the body after the blank line")
+}
+
+test_a_response_keeps_the_connection_unless_told_not_to() {
+    assert(render(text("x")).contains("Connection: keep-alive"), "the default")
+    assert(render(closing(text("x"))).contains("Connection: close"), "closing")
+    assert(render(status(500)).contains("Connection: close"), "an error hangs up")
+}
+
+test_an_extra_header_is_carried_through() {
+    out = render(with_header(text("x"), "X-Trace: 7"))
+    assert(out.contains("X-Trace: 7"), "the added header")
+    assert(out.contains("Content-Type: text/plain"), "and the original")
+}
+
+test_a_status_carries_its_phrase() {
+    assert_eq(reason(404), "Not Found", "a named code")
+    assert_eq(reason(299), "Success", "an unnamed one gets its class")
+    assert(is_ok(200) && is_ok(204), "2xx is success")
+    assert(!is_ok(302) && !is_ok(404), "and nothing else is")
+}
+
+test_a_files_type_comes_from_its_name() {
+    assert(content_type("a/b/page.html").starts_with("text/html"), "html")
+    assert_eq(content_type("style.CSS"), "text/css; charset=utf-8", "any case")
+    assert_eq(content_type("app.wasm"), "application/wasm", "wasm")
+    assert_eq(content_type("noextension"), "application/octet-stream", "unknown")
+    assert_eq(content_type("a.b/README"), "application/octet-stream",
+              "a dot in a directory is not an extension")
+}

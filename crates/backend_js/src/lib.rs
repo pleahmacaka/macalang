@@ -478,6 +478,16 @@ fn jcall(callee: &Expr, args: &[Arg]) -> String {
         Expr::Ident(f) if f == "len" => {
             format!("({}).length", a.first().cloned().unwrap_or_default())
         }
+        // A byte and the string holding it, matching the native pair: `chr(0)`
+        // is empty rather than a NUL, and `ord("")` is -1.
+        Expr::Ident(f) if f == "chr" => format!(
+            "((_b)=>_b>0?String.fromCharCode(_b&255):\"\")({})",
+            a.first().cloned().unwrap_or_default()
+        ),
+        Expr::Ident(f) if f == "ord" => format!(
+            "((_s)=>_s&&_s.length?_s.charCodeAt(0):-1)({})",
+            a.first().cloned().unwrap_or_default()
+        ),
         Expr::Ident(f) => format!("{f}({})", a.join(", ")),
         Expr::Field { base, name } => format!("{}.{name}({})", jexpr(base), a.join(", ")),
         _ => format!("{}({})", jexpr(callee), a.join(", ")),

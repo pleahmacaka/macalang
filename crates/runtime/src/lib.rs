@@ -75,6 +75,8 @@ maca_str maca_from_bool(bool b);
 bool maca_str_eq(maca_str a, maca_str b);
 maca_str maca_join(maca_str* data, int64_t len, maca_str sep);
 maca_str maca_str_at(maca_str s, int64_t i); /* single-char str at byte i ("" if OOB) */
+maca_str maca_chr(int64_t b);               /* the one-byte string holding b   */
+int64_t  maca_ord(maca_str s);              /* the value of s's first byte, -1 for "" */
 int64_t maca_strlen(maca_str s);              /* byte length (0 if NULL) */
 /* character classes — inspect the first byte of a 1-char str (false if empty) */
 bool maca_is_space(maca_str c);
@@ -435,6 +437,17 @@ maca_str maca_str_at(maca_str s, int64_t i) {
     r[0] = s[i]; r[1] = '\0';
     return r;
 }
+/* A byte and the string holding it. Maca strings are bytes, so a value above
+   255 wraps rather than becoming a multi-byte encoding: `chr` is the inverse of
+   `ord` and nothing else, and a caller assembling UTF-8 does it a byte at a
+   time on purpose. Zero is refused — a NUL would end the string it is in. */
+maca_str maca_chr(int64_t b) {
+    if (b <= 0) return "";
+    char* r = (char*)xmalloc(2);
+    r[0] = (char)(b & 0xFF); r[1] = '\0';
+    return r;
+}
+int64_t maca_ord(maca_str s) { return (s && s[0]) ? (int64_t)(unsigned char)s[0] : -1; }
 int64_t maca_strlen(maca_str s) { return s ? (int64_t)strlen(s) : 0; }
 bool maca_is_space(maca_str c) { return c && c[0] && isspace((unsigned char)c[0]) != 0; }
 bool maca_is_digit(maca_str c) { return c && c[0] >= '0' && c[0] <= '9'; }
@@ -1234,8 +1247,14 @@ int64_t maca_cancel_demo(int64_t workers);
  * a suspension point is a real thread boundary, which keeps the runtime small
  * enough to read and costs a thread per task. */
 typedef int64_t (*maca_task_fn)(int64_t);
+/* `spawn f(a, b)`. A separate arity rather than a boxed argument list: two is
+   where real uses stop (a server's port and its handler, a worker's input and
+   its sink), and a tuple ABI nobody could see would cost more to read than it
+   saves. Three or more is a diagnostic, not a silent truncation. */
+typedef int64_t (*maca_task_fn2)(int64_t, int64_t);
 typedef struct maca_future maca_future;
 maca_future* maca_spawn(maca_task_fn fn, int64_t arg);
+maca_future* maca_spawn2(maca_task_fn2 fn, int64_t a, int64_t b);
 int64_t maca_await(maca_future* f);
 void maca_sleep_ms(int64_t ms);
 
@@ -1310,18 +1329,26 @@ int64_t maca_cancel_demo(int64_t workers) {
 struct maca_future {
     pthread_t th;
     maca_task_fn fn;
+    maca_task_fn2 fn2;
     int64_t arg;
+    int64_t arg2;
     int64_t result;
     int joined;
 };
 static void* maca_task_trampoline(void* p) {
     maca_future* f = (maca_future*)p;
-    f->result = f->fn(f->arg);
+    f->result = f->fn2 ? f->fn2(f->arg, f->arg2) : f->fn(f->arg);
     return NULL;
 }
 maca_future* maca_spawn(maca_task_fn fn, int64_t arg) {
     maca_future* f = (maca_future*)maca_alloc(sizeof(maca_future));
-    f->fn = fn; f->arg = arg; f->result = 0; f->joined = 0;
+    f->fn = fn; f->fn2 = 0; f->arg = arg; f->arg2 = 0; f->result = 0; f->joined = 0;
+    pthread_create(&f->th, NULL, maca_task_trampoline, f);
+    return f;
+}
+maca_future* maca_spawn2(maca_task_fn2 fn, int64_t a, int64_t b) {
+    maca_future* f = (maca_future*)maca_alloc(sizeof(maca_future));
+    f->fn = 0; f->fn2 = fn; f->arg = a; f->arg2 = b; f->result = 0; f->joined = 0;
     pthread_create(&f->th, NULL, maca_task_trampoline, f);
     return f;
 }
@@ -1717,5 +1744,214 @@ int64_t mqtt_disconnect(int64_t fd) { send_packet((int)fd, 0xE0, 0, 0); close((i
 
 pub fn write_mqtt_glue(dir: &std::path::Path) -> std::io::Result<()> {
     std::fs::write(dir.join("maca_ffi_mqtt.c"), MQTT_GLUE)?;
+    Ok(())
+}
+
+/// `modules/http` engine (for `import c "http.h"`): an HTTP/1.1 server.
+///
+/// A thread per connection with keep-alive, which is what the runtime already
+/// links for `spawn`/`await` and for the MQTT broker — no event loop, no
+/// external library, and it still holds a few thousand concurrent connections
+/// on a normal machine.
+///
+/// The split with Maca is at raw bytes on purpose. C owns the socket, the
+/// accept loop, request framing (`Content-Length`, and the header/body
+/// boundary) and writing the reply; everything above that — parsing a request
+/// into fields, routing, building a response — is Maca, where it can be read
+/// and tested. The handler is an ordinary Maca closure, called across the same
+/// `maca_closure` ABI `xs.map(f)` uses.
+pub const HTTP_GLUE: &str = r##"#define _GNU_SOURCE
+#include "maca_runtime.h"
+#include <stdio.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+#include <signal.h>
+#include <ctype.h>
+
+/* A request larger than this is answered 413 rather than buffered. A server
+   that grows its buffer to whatever a client sends is a server anyone can take
+   down from one socket. */
+#define HTTP_MAX_REQUEST (1 << 20)
+
+typedef struct { int fd; maca_closure handler; } http_conn;
+
+static int http_write_all(int fd, const char* b, size_t n) {
+    size_t off = 0;
+    while (off < n) {
+        ssize_t w = write(fd, b + off, n - off);
+        if (w <= 0) return -1;
+        off += (size_t)w;
+    }
+    return 0;
+}
+
+/* The end of the headers, or -1 while it has not arrived yet. */
+static long header_end(const char* b, size_t n) {
+    for (size_t i = 0; i + 3 < n; i++) {
+        if (b[i] == '\r' && b[i+1] == '\n' && b[i+2] == '\r' && b[i+3] == '\n') return (long)(i + 4);
+    }
+    /* tolerate bare LF, which hand-written clients and `printf | nc` produce */
+    for (size_t i = 0; i + 1 < n; i++) {
+        if (b[i] == '\n' && b[i+1] == '\n') return (long)(i + 2);
+    }
+    return -1;
+}
+
+/* `Content-Length`, or 0 when absent. Case-insensitive: the header name is not
+   the client's to spell. */
+static long content_length(const char* head, size_t n) {
+    static const char* key = "content-length:";
+    for (size_t i = 0; i + 15 < n; i++) {
+        if (i && head[i-1] != '\n') continue;
+        size_t k = 0;
+        while (k < 15 && (char)tolower((unsigned char)head[i+k]) == key[k]) k++;
+        if (k != 15) continue;
+        size_t j = i + 15;
+        while (j < n && (head[j] == ' ' || head[j] == '\t')) j++;
+        long v = 0;
+        while (j < n && head[j] >= '0' && head[j] <= '9') { v = v * 10 + (head[j] - '0'); j++; }
+        return v;
+    }
+    return 0;
+}
+
+/* Read one whole request: headers, then exactly as much body as they declare.
+   Returns the buffer (NUL-terminated, caller frees) or NULL on a closed or
+   oversized connection. */
+static char* read_request(int fd) {
+    size_t cap = 8192, n = 0;
+    char* buf = (char*)malloc(cap);
+    if (!buf) return NULL;
+    long head = -1, want = -1;
+    for (;;) {
+        if (n + 1 >= cap) {
+            if (cap >= HTTP_MAX_REQUEST) { free(buf); return NULL; }
+            cap *= 2;
+            char* g = (char*)realloc(buf, cap);
+            if (!g) { free(buf); return NULL; }
+            buf = g;
+        }
+        ssize_t r = read(fd, buf + n, cap - n - 1);
+        if (r <= 0) { free(buf); return NULL; }
+        n += (size_t)r;
+        buf[n] = 0;
+        if (head < 0) head = header_end(buf, n);
+        if (head >= 0) {
+            if (want < 0) want = content_length(buf, (size_t)head);
+            if ((long)n >= head + want) break;
+        }
+        if (n >= HTTP_MAX_REQUEST) { free(buf); return NULL; }
+    }
+    return buf;
+}
+
+/* Does the reply say to keep the connection? The handler decides, by what it
+   put in the response — the server does not second-guess it. */
+static int says_close(const char* reply) {
+    for (const char* p = reply; *p; p++) {
+        if (*p != 'c' && *p != 'C') continue;
+        if (strncasecmp(p, "connection:", 11) != 0) continue;
+        const char* v = p + 11;
+        while (*v == ' ' || *v == '\t') v++;
+        return strncasecmp(v, "close", 5) == 0;
+    }
+    return 0;
+}
+
+static void* http_client(void* arg) {
+    http_conn* c = (http_conn*)arg;
+    int fd = c->fd;
+    maca_closure handler = c->handler;
+    free(c);
+    for (;;) {
+        char* req = read_request(fd);
+        if (!req) break;
+        maca_str reply = (maca_str)(intptr_t)maca_call1(handler, (int64_t)(intptr_t)req);
+        free(req);
+        if (!reply) break;
+        if (http_write_all(fd, reply, strlen(reply))) break;
+        if (says_close(reply)) break;
+    }
+    close(fd);
+    return NULL;
+}
+
+/* Bind and listen. Returns the socket, or a negative code naming the step that
+   failed so the caller can say something better than "it didn't work". */
+int64_t http_listen(int64_t port) {
+    int srv = socket(AF_INET, SOCK_STREAM, 0);
+    if (srv < 0) return -1;
+    int one = 1;
+    setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    struct sockaddr_in a;
+    memset(&a, 0, sizeof(a));
+    a.sin_family = AF_INET;
+    a.sin_addr.s_addr = INADDR_ANY;
+    a.sin_port = htons((unsigned short)port);
+    if (bind(srv, (struct sockaddr*)&a, sizeof(a)) < 0) { close(srv); return -2; }
+    if (listen(srv, 512) < 0) { close(srv); return -3; }
+    return srv;
+}
+
+/* Serve until the process ends. A write to a client that vanished raises
+   SIGPIPE, whose default action is to kill the process — one disconnecting
+   client would take the server with it. */
+int64_t http_accept_loop(int64_t srv, maca_closure handler) {
+    signal(SIGPIPE, SIG_IGN);
+    for (;;) {
+        int fd = accept((int)srv, 0, 0);
+        if (fd < 0) continue;
+        int one = 1;
+        setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+        http_conn* c = (http_conn*)malloc(sizeof(http_conn));
+        if (!c) { close(fd); continue; }
+        c->fd = fd;
+        c->handler = handler;
+        pthread_t th;
+        if (pthread_create(&th, 0, http_client, c) != 0) { free(c); close(fd); continue; }
+        pthread_detach(th);
+    }
+    return 0;
+}
+
+/* One request, for a client and for the tests: send `request` to host:port and
+   return the whole reply. */
+maca_str http_fetch(maca_str host, int64_t port, maca_str request) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return "";
+    struct sockaddr_in a;
+    memset(&a, 0, sizeof(a));
+    a.sin_family = AF_INET;
+    a.sin_port = htons((unsigned short)port);
+    inet_pton(AF_INET, host && *host ? host : "127.0.0.1", &a.sin_addr);
+    if (connect(fd, (struct sockaddr*)&a, sizeof(a)) < 0) { close(fd); return ""; }
+    if (http_write_all(fd, request, strlen(request))) { close(fd); return ""; }
+    shutdown(fd, SHUT_WR);
+    size_t cap = 8192, n = 0;
+    char* buf = (char*)malloc(cap);
+    if (!buf) { close(fd); return ""; }
+    for (;;) {
+        if (n + 1 >= cap) {
+            cap *= 2;
+            char* g = (char*)realloc(buf, cap);
+            if (!g) { free(buf); close(fd); return ""; }
+            buf = g;
+        }
+        ssize_t r = read(fd, buf + n, cap - n - 1);
+        if (r <= 0) break;
+        n += (size_t)r;
+    }
+    buf[n] = 0;
+    close(fd);
+    return buf;
+}
+"##;
+
+pub fn write_http_glue(dir: &std::path::Path) -> std::io::Result<()> {
+    std::fs::write(dir.join("maca_ffi_http.c"), HTTP_GLUE)?;
     Ok(())
 }

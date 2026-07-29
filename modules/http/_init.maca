@@ -1,0 +1,88 @@
+// http — an HTTP server, and the pieces to build one out of.
+//
+//     import { listen, text } from http
+//
+//     main() -> int =>
+//         listen(3000, req => text("hello from {req.path}"))
+//
+// A thread per connection with keep-alive. The socket and the byte framing are
+// C the runtime carries; the request, the response and the routing are Maca.
+// Nothing is fetched or linked from the host, so a program that serves HTTP is
+// still one static binary.
+//
+// This file is the package's table of contents: it names what `http` means,
+// and where each piece lives is the package's own business.
+//
+// It is also what `maca -m http.serve` runs — a static file server over the
+// working directory, for looking at a built site without installing anything.
+
+import { listen, fetch, get } from http/server
+import { parse_request, header, query_value, form_value,
+         Request } from http/request
+import { Response, ok, html, text, json, file, status, redirect,
+         with_header, closing, render } from http/response
+import { reason, is_ok, content_type } from http/status
+import { join, normalize } from std/path
+
+/// Serve the working directory over HTTP.
+///
+///     maca -m http.serve              # port 8000, the working directory
+///     maca -m http.serve 3000 site    # port and directory
+///
+/// A directory is served through its `index.html` when it has one. There is no
+/// listing: a directory without an index is a 404, because a server that
+/// volunteers a file list is a server that eventually volunteers the wrong one.
+serve(args: str[]) -> int {
+    port = if args.length() > 0 { int(args.get(0)) } else { 8000 }
+    root = if args.length() > 1 { args.get(1) } else { "." }
+
+    if !is_dir(root) {
+        err("no directory `{root}`")
+        1
+    } else {
+        info("serving {root} on http://localhost:{port}")
+        listen(port, req => serve_file(root, req))
+    }
+}
+
+/// One file out of `root`, chosen by the request path.
+serve_file(root: str, req: Request) -> Response {
+    if req.method != "GET" && req.method != "HEAD" {
+        status(405)
+    } else {
+        wanted = under(root, req.path)
+
+        if wanted == "" {
+            status(403)
+        } else {
+            read_or_index(wanted)
+        }
+    }
+}
+
+// The file a path names inside `root`, or "" when the path escapes it.
+//
+// `..` is the whole reason this is a function: a request for
+// `/../../etc/passwd` is not a mistake anyone makes by accident, and a server
+// that resolves it has handed over the machine. The check is on the normalized
+// path, so `/a/../../x` is caught as surely as `/../x`.
+under(root: str, path: str) -> str {
+    inside = normalize(join(root, path))
+    base = normalize(root)
+
+    if inside == base || inside.starts_with(base ++ "/") {
+        inside
+    } else {
+        ""
+    }
+}
+
+read_or_index(path: str) -> Response {
+    target = if is_dir(path) { join(path, "index.html") } else { path }
+
+    if !file_exists(target) {
+        status(404)
+    } else {
+        file(target, read_file(target))
+    }
+}

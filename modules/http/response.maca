@@ -1,0 +1,83 @@
+// http/response — what a handler answers with.
+//
+// A response is built as a value and rendered to bytes once, at the edge. The
+// alternative — handlers concatenating status lines and headers themselves — is
+// how a `Content-Length` ends up disagreeing with the body it describes, which
+// a browser reports as a truncated page and nothing else.
+
+import { reason, content_type } from http/status
+
+/// A response, before it is bytes.
+Response = {
+    status: int
+    /// Extra headers, each `Name: value`, without line endings.
+    headers: str[]
+    body:    str
+    /// Answer this one and hang up. Keep-alive is the default; a handler that
+    /// knows there is nothing more to say sets this.
+    close:   bool
+}
+
+/// The common case: a body, a content type, and 200.
+ok(body: str, kind: str) -> Response =>
+    Response { status = 200, headers = ["Content-Type: " ++ kind],
+               body = body, close = false }
+
+/// An HTML page.
+html(body: str) -> Response =>
+    ok(body, "text/html; charset=utf-8")
+
+/// Plain text.
+text(body: str) -> Response =>
+    ok(body, "text/plain; charset=utf-8")
+
+/// A JSON document. The body is passed through as written — building it is
+/// `std/json`'s job, not this one's.
+json(body: str) -> Response =>
+    ok(body, "application/json; charset=utf-8")
+
+/// A file's contents, typed by its name's extension.
+file(name: str, body: str) -> Response =>
+    ok(body, content_type(name))
+
+/// Any status with a plain-text body naming it, for the answers that are the
+/// status: `status(404)` says `404 Not Found`.
+status(code: int) -> Response =>
+    Response { status = code, headers = ["Content-Type: text/plain; charset=utf-8"],
+               body = "{code} {reason(code)}\n", close = code >= 400 }
+
+/// Send the reader somewhere else. `301` for a move that is permanent, `302`
+/// for one that isn't; nothing else belongs here.
+redirect(code: int, location: str) -> Response =>
+    Response { status = code, headers = ["Location: " ++ location],
+               body = "", close = false }
+
+/// One more header. Returns a new response — nothing is mutated, so a chain of
+/// these reads in the order it applies.
+with_header(r: Response, line: str) -> Response =>
+    r with { headers = r.headers.push(line) }
+
+/// Answer and hang up.
+closing(r: Response) -> Response =>
+    r with { close = true }
+
+/// Render a response to the bytes that go on the wire.
+///
+/// `Content-Length` is computed here and nowhere else, which is the reason this
+/// function exists: a handler that writes its own length eventually writes the
+/// wrong one, and the failure is a page that stops mid-word.
+render(r: Response) -> str =>
+    "HTTP/1.1 {r.status} {reason(r.status)}\r\n"
+        ++ header_lines(r.headers, 0, "")
+        ++ "Content-Length: {r.body.length()}\r\n"
+        ++ "Connection: " ++ (r.close ? "close" : "keep-alive") ++ "\r\n"
+        ++ "\r\n"
+        ++ r.body
+
+header_lines(hs: str[], i: int, acc: str) -> str {
+    if i >= hs.length() {
+        acc
+    } else {
+        header_lines(hs, i + 1, acc ++ hs.get(i) ++ "\r\n")
+    }
+}

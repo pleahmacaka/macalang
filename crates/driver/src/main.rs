@@ -1708,18 +1708,24 @@ fn cmd_test(args: &[String]) {
         return;
     }
 
-    // Rebuild the module without its `main` and without its imports, then
-    // append the generated runner.
+    // Rebuild the module without its `main` and without its local imports,
+    // then append the generated runner.
     //
-    // The imports have already been inlined by `load_with_imports`; leaving
-    // them in the printed source would inline every module a second time when
-    // the generated file is compiled, and every function in them would be
-    // defined twice.
+    // The local imports have already been inlined by `load_with_imports`;
+    // leaving them in the printed source would inline every module a second
+    // time when the generated file is compiled, and every function in them
+    // would be defined twice. A *foreign* import is not inlined and must stay:
+    // `import c "http.h"` is how the module says which engine it links
+    // against, and dropping it left a suite of passing assertions that would
+    // not link.
     let items: Vec<maca_parser::Stmt> = parsed
         .module
         .items
         .iter()
-        .filter(|it| !matches!(it, maca_parser::Stmt::Import(_)))
+        .filter(|it| {
+            !matches!(it, maca_parser::Stmt::Import(im)
+                if !matches!(im, maca_parser::Import::Foreign { .. }))
+        })
         .filter(|it| !matches!(it, maca_parser::Stmt::Fn(f) if f.name == "main"))
         .cloned()
         .collect();
@@ -2040,12 +2046,11 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
         return Ok(());
     }
 
-    // std/mqtt (import c "mqtt.h"): libc sockets only → links into the static
-    // musl build alongside the runtime.
-    let use_mqtt = c_imports.iter().any(|h| h.contains("mqtt"));
-    if use_mqtt {
-        maca_runtime::write_mqtt_glue(&dir).map_err(|e| e.to_string())?;
-    }
+    // Engines that are pure libc — sockets and pthreads — so they link into
+    // the static musl build alongside the runtime with nothing to find on the
+    // host. Each is an ordinary translation unit; naming them in one list is
+    // what keeps the two link paths below from growing a flag apiece.
+    let glue = socket_glue(&c_imports, &dir)?;
     if use_async {
         maca_runtime::write_async(&dir).map_err(|e| e.to_string())?;
     }
@@ -2055,7 +2060,7 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
 
     // No WSL/zig? Link with the host's native cc (plain builds only).
     if !have_wsl() {
-        return link_native(&dir, out, use_async, use_mqtt, use_simd);
+        return link_native(&dir, out, use_async, &glue, use_simd);
     }
 
     // `zig cc` through WSL, with the invariant musl target flags.
@@ -2077,10 +2082,10 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
     if use_async {
         extras.push(to_wsl(&dir.join("maca_async.c")));
     }
-    if use_mqtt {
-        extras.push(to_wsl(&dir.join("maca_ffi_mqtt.c")));
+    for g in &glue {
+        extras.push(to_wsl(g));
     }
-    if use_async || use_mqtt {
+    if use_async || !glue.is_empty() {
         extras.push("-pthread".into());
     }
     if use_simd {
@@ -2283,13 +2288,37 @@ fn have(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// The engines an `import c "…"` asks for that need nothing but libc, written
+/// out ready to compile.
+///
+/// These are not FFI in the usual sense — there is no library on the host to
+/// find, no headers to locate, no `-l` flag. `mqtt.h` and `http.h` name engines
+/// the runtime carries, so a program that imports one still links static-musl
+/// and still runs anywhere.
+fn socket_glue(c_imports: &[String], dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut out = Vec::new();
+    let mut want = |name: &str,
+                    write: fn(&Path) -> std::io::Result<()>,
+                    file: &str|
+     -> Result<(), String> {
+        if c_imports.iter().any(|h| h.contains(name)) {
+            write(dir).map_err(|e| e.to_string())?;
+            out.push(dir.join(file));
+        }
+        Ok(())
+    };
+    want("mqtt", maca_runtime::write_mqtt_glue, "maca_ffi_mqtt.c")?;
+    want("http", maca_runtime::write_http_glue, "maca_ffi_http.c")?;
+    Ok(out)
+}
+
 /// Link the plain (no-FFI) build with the host's native C compiler. `clang` is
 /// used when SIMD IR is present (it compiles `.ll`); otherwise `cc`.
 fn link_native(
     dir: &Path,
     out: &Path,
     use_async: bool,
-    use_mqtt: bool,
+    glue: &[PathBuf],
     use_simd: bool,
 ) -> Result<(), String> {
     let cc = if use_simd { "clang" } else { "cc" };
@@ -2329,10 +2358,10 @@ fn link_native(
     if use_async {
         cmd.arg(dir.join("maca_async.c"));
     }
-    if use_mqtt {
-        cmd.arg(dir.join("maca_ffi_mqtt.c"));
+    for g in glue {
+        cmd.arg(g);
     }
-    if use_async || use_mqtt {
+    if use_async || !glue.is_empty() {
         cmd.arg("-pthread");
     }
     if use_simd {

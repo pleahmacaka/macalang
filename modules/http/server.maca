@@ -1,0 +1,74 @@
+// http/server — the socket, and the loop around it.
+//
+// The engine is C (`import c "http.h"`, carried by the runtime): it owns the
+// listening socket, the accept loop, request framing and writing the reply. A
+// thread per connection, which is what the runtime already links for
+// `spawn`/`await`, and keep-alive so a browser's second request costs no
+// handshake.
+//
+// Everything above the bytes is here, in Maca, because that is the part anyone
+// needs to read: a handler is an ordinary function from a `Request` to a
+// `Response`, and it is called across the same closure ABI `xs.map(f)` uses.
+
+import c "http.h"
+
+import { parse_request, Request } from http/request
+import { Response, render, status } from http/response
+
+// The engine. `http_accept_loop` never returns; `http_fetch` is one request,
+// for clients and for the tests.
+http_listen(port: int) -> int
+http_accept_loop(server: int, handler) -> int
+http_fetch(host: str, port: int, request: str) -> str
+
+/// Serve `handler` on `port` until the process ends.
+///
+/// The handler sees a parsed request and answers with a response. Errors from
+/// binding are named rather than returned as a bare code, because "address
+/// already in use" is the one that actually happens and a caller should not
+/// have to look up `-2`.
+listen(port: int, handler) -> int {
+    server = http_listen(port)
+
+    if server < 0 {
+        err(bind_failure(server, port))
+        1
+    } else {
+        http_accept_loop(server, raw => render(answer(handler, raw)))
+        0
+    }
+}
+
+// A handler that fails to produce a response still has to produce one: a
+// request line that isn't a request line gets 400 rather than an empty reply
+// the client waits out.
+answer(handler, raw: str) -> Response {
+    r = parse_request(raw)
+
+    if r.method == "" {
+        status(400)
+    } else {
+        handler(r)
+    }
+}
+
+bind_failure(code: int, port: int) -> str {
+    if code == -2 {
+        "port {port} is already in use"
+    } else if code == -1 {
+        "could not open a socket"
+    } else {
+        "could not listen on port {port}"
+    }
+}
+
+/// One request against a server, returning the whole reply including headers.
+/// Enough to drive a server from a test, and enough to be a client for the
+/// things a build script fetches.
+fetch(host: str, port: int, request: str) -> str =>
+    http_fetch(host, port, request)
+
+/// A `GET` for the common case.
+get(host: str, port: int, path: str) -> str =>
+    fetch(host, port,
+          "GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n")

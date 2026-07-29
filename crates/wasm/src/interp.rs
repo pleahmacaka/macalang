@@ -816,6 +816,22 @@ impl<'a> Interp<'a> {
                     _ => 0,
                 }));
             }
+            // A byte and the string holding it. Bytes, not code points: a
+            // Maca string is bytes on every other target, and the playground
+            // agreeing about that is the point of it being the same language.
+            "chr" => {
+                let b = match vals.first() {
+                    Some(Value::Int(n)) if *n > 0 => (*n & 0xFF) as u8,
+                    _ => return Ok(Value::Str(String::new())),
+                };
+                return Ok(Value::Str((b as char).to_string()));
+            }
+            "ord" => {
+                return Ok(Value::Int(match vals.first() {
+                    Some(Value::Str(s)) => s.as_bytes().first().map_or(-1, |b| *b as i64),
+                    _ => -1,
+                }));
+            }
             "str" => return Ok(Value::Str(vals.first().map(display).unwrap_or_default())),
             "int" => {
                 return Ok(Value::Int(match vals.first() {

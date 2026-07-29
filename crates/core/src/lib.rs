@@ -244,6 +244,11 @@ impl Checker {
             ("float", Ty::Fn(vec![Ty::Any], Box::new(Ty::Float))),
             ("str", Ty::Fn(vec![Ty::Any], Box::new(Ty::Str))),
             ("len", Ty::Fn(vec![Ty::Any], Box::new(Ty::Int))),
+            // A byte and the one-character string holding it. Maca strings are
+            // bytes, so these are the pair every decoder needs: percent
+            // escapes, base64, a character class written as arithmetic.
+            ("chr", Ty::Fn(vec![Ty::Int], Box::new(Ty::Str))),
+            ("ord", Ty::Fn(vec![Ty::Str], Box::new(Ty::Int))),
             ("input", Ty::Fn(vec![], Box::new(Ty::Str))),
             // `sleep_ms(ms)` — an async suspension point (the async effect is
             // added in `eff`); yields nothing.

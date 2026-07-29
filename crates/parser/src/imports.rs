@@ -334,11 +334,18 @@ fn slice_module(
     }
 
     // Emit in original source order for stable, readable output.
+    //
+    // A foreign import comes along whatever was selected. `import c "http.h"`
+    // is not a definition anybody can ask for by name — it is the module saying
+    // which engine its functions are compiled against, and dropping it left the
+    // slice referring to symbols the link step was never told to provide.
     Ok(module
         .items
         .iter()
         .enumerate()
-        .filter(|(i, _)| visited.contains(i))
+        .filter(|(i, st)| {
+            visited.contains(i) || matches!(st, Stmt::Import(Import::Foreign { .. }))
+        })
         .map(|(_, st)| st.clone())
         .collect())
 }

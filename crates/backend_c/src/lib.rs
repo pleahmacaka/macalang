@@ -1282,7 +1282,7 @@ impl<'a> Cx<'a> {
                 if f.body.is_none() || self.is_simd_fn(&f.name) {
                     self.push(&format!("extern {};", self.fn_sig(f)));
                 } else {
-                    self.push(&format!("{};", self.fn_sig(f)));
+                    self.push(&format!("static {};", self.fn_sig(f)));
                 }
             }
         }
@@ -1333,14 +1333,38 @@ impl<'a> Cx<'a> {
 
     /// The C type of a top-level constant: its declared type when it has one,
     /// otherwise read off the initializer's shape.
+    /// The C type of a top-level constant: its annotation, or what its
+    /// initialiser says.
+    ///
+    /// A call to something the program defines takes that function's return
+    /// type — `Started = start()` was a `str` because the shallow guess never
+    /// looked the callee up, and the accessor then returned a `bool` as a
+    /// pointer.
     fn let_ty(&self, cty: &CTy, init: &Expr) -> CTy {
-        if *cty == CTy::Unknown {
-            infer_cty_shallow(init)
-        } else {
-            cty.clone()
+        if *cty != CTy::Unknown {
+            return cty.clone();
         }
+        if let Expr::Call { callee, .. } = init
+            && let Expr::Ident(f) = &**callee
+            && let Some((_, ret)) = self.fns.get(f)
+            && !matches!(ret, CTy::Unknown | CTy::Unit)
+        {
+            return ret.clone();
+        }
+        infer_cty_shallow(init)
     }
 
+    /// A user function's C signature.
+    ///
+    /// Emitted `static` by its callers, always: everything a program defines
+    /// lives in one translation
+    /// unit and is only called from it, while the engines beside it — the
+    /// runtime, the socket glue — are separate objects full of libc calls. A
+    /// program that defined `listen` gave the linker two of them, the glue's
+    /// `listen(srv, 512)` bound to the Maca one, and the server bound to a port
+    /// nobody named. Internal linkage makes a name collision with libc
+    /// impossible rather than merely unlikely, and lets the C compiler inline
+    /// across the whole program while it is there.
     fn fn_sig(&self, f: &FnDef) -> String {
         let (params, ret) = &self.fns[&f.name];
         let ps: Vec<String> = f
@@ -1409,7 +1433,7 @@ impl<'a> Cx<'a> {
             return;
         }
 
-        self.push(&format!("{} {{", self.fn_sig(f)));
+        self.push(&format!("static {} {{", self.fn_sig(f)));
         match &f.body {
             Some(FnBody::Block(stmts)) => {
                 let sink = if ret == CTy::Unit {
@@ -2064,14 +2088,45 @@ impl<'a> Cx<'a> {
                     let Expr::Ident(f) = &**callee else {
                         unreachable!()
                     };
-                    let arg = args
-                        .first()
-                        .map(|a| self.arg(env, a))
-                        .unwrap_or_else(|| "0".into());
-                    (
-                        format!("maca_spawn((maca_task_fn){}, (int64_t)({arg}))", cid(f)),
-                        CTy::Future,
-                    )
+                    // Every argument, not just the first. `spawn f(a, b)` used
+                    // to compile with `b` dropped and the thread reading
+                    // whatever happened to be in that register — a server
+                    // spawned with a port and a handler bound to neither.
+                    if args.len() > 2 {
+                        self.problem(format!(
+                            "`spawn {f}(…)` takes at most two arguments; \
+                             pass the rest in a record"
+                        ));
+                    }
+                    let typed: Vec<(String, CTy)> =
+                        args.iter().map(|x| self.arg_typed(env, x)).collect();
+                    // A closure is two words. The task ABI carries one per
+                    // argument, so it cannot travel — and casting it produced a
+                    // C error rather than anything a reader could act on.
+                    if typed
+                        .iter()
+                        .any(|(_, t)| matches!(t, CTy::Closure(_) | CTy::Closure2(_)))
+                    {
+                        self.problem(format!(
+                            "`spawn {f}(…)` cannot take a function value —                              spawn a function that calls it instead"
+                        ));
+                    }
+                    let a: Vec<String> = typed.into_iter().map(|(c, _)| c).collect();
+                    let code = match a.len() {
+                        0 => format!("maca_spawn((maca_task_fn){}, 0)", cid(f)),
+                        1 => format!(
+                            "maca_spawn((maca_task_fn){}, (int64_t)({}))",
+                            cid(f),
+                            a[0]
+                        ),
+                        _ => format!(
+                            "maca_spawn2((maca_task_fn2){}, (int64_t)({}), (int64_t)({}))",
+                            cid(f),
+                            a[0],
+                            a[1]
+                        ),
+                    };
+                    (code, CTy::Future)
                 }
                 _ => {
                     self.problem("`spawn` expects a direct function call, e.g. `spawn f(x)`");
@@ -2081,6 +2136,24 @@ impl<'a> Cx<'a> {
             Expr::Await(inner) => {
                 let (fc, _) = self.expr(env, inner, None);
                 (format!("maca_await({fc})"), CTy::Int)
+            }
+            // `if`, `match` and a block are values wherever a value goes, not
+            // only where a statement can be hung underneath them. A binding and
+            // a return already lower them through a `Sink`; here the same
+            // lowering is wrapped in a statement expression, so a record field,
+            // a call argument or a list element can be a multi-way choice
+            // written beside the thing it decides.
+            other if is_control(other) => {
+                let ty = expected
+                    .cloned()
+                    .unwrap_or_else(|| self.result_cty(env, other));
+                let tmp = self.fresh();
+                let saved = std::mem::take(&mut self.out);
+                self.push(&format!("{} {tmp};", c_type(&ty)));
+                let mut inner = env.clone();
+                self.stmt_expr(&mut inner, other, &Sink::Assign(tmp.clone(), ty.clone()), 0);
+                let body = std::mem::replace(&mut self.out, saved);
+                (format!("({{ {} {tmp}; }})", body.trim()), ty)
             }
             other => {
                 self.problem(format!(
@@ -2104,17 +2177,9 @@ impl<'a> Cx<'a> {
             return (format!("{sum}_{n}"), CTy::Sum(sum));
         }
         if self.let_names.contains(n) {
-            let ty = self
-                .lets
-                .iter()
-                .find(|(name, _, _)| name == n)
-                .map(|(_, t, init)| {
-                    if *t == CTy::Unknown {
-                        infer_cty_shallow(init)
-                    } else {
-                        t.clone()
-                    }
-                })
+            let found = self.lets.iter().find(|(name, _, _)| name == n).cloned();
+            let ty = found
+                .map(|(_, t, init)| self.let_ty(&t, &init))
                 .unwrap_or(CTy::Unknown);
             return (format!("mv_{n}()"), ty);
         }
@@ -2178,10 +2243,76 @@ impl<'a> Cx<'a> {
         // an integer and compared a string pointer to it.
         let ptys: Vec<CTy> = params
             .iter()
-            .map(|p| lambda_param_ty(&p.name, body).unwrap_or(CTy::Int))
+            .map(|p| {
+                self.param_ty_from_use(&p.name, body)
+                    .or_else(|| lambda_param_ty(&p.name, body))
+                    .unwrap_or(CTy::Int)
+            })
             .collect();
         let (val, ret) = self.emit_closure(env, params, body, &ptys);
         (val, closure_ty(params.len(), ret))
+    }
+
+    /// The type a lambda parameter must have, read off the place it is passed.
+    ///
+    /// `req => serve_file(root, req)` says nothing about `req` on its own, but
+    /// `serve_file` declares its second parameter a `Request`, so `req` is one.
+    /// This is stronger than guessing from the methods the body calls — a
+    /// declared signature is a fact rather than a hint — and it is what lets a
+    /// handler take a record at all: unboxed as an `int`, `req.path` reads a
+    /// field off an integer.
+    fn param_ty_from_use(&self, name: &str, body: &Expr) -> Option<CTy> {
+        let mut found = None;
+        self.scan_passed_to(name, body, &mut found);
+        found.or_else(|| self.param_ty_from_field(name, body))
+    }
+
+    /// The record a lambda parameter must be, read off a field it reads.
+    ///
+    /// `req => text(req.path)` never hands `req` anywhere typed, so the rule
+    /// above finds nothing — but `path` is a field of exactly one record in the
+    /// program, and a field name is not a coincidence. Where two records share
+    /// the name this stays quiet rather than guessing: a wrong record reads the
+    /// wrong offset, which is worse than the `int` default failing to compile.
+    fn param_ty_from_field(&self, name: &str, body: &Expr) -> Option<CTy> {
+        let mut fields: Vec<String> = Vec::new();
+        collect_fields_of(name, body, &mut fields);
+        for f in fields {
+            let mut owners = self
+                .records
+                .iter()
+                .filter(|(_, fs)| fs.iter().any(|(n, _)| *n == f));
+            let first = owners.next();
+            if let Some((rec, _)) = first
+                && owners.next().is_none()
+            {
+                return Some(CTy::Rec(rec.clone()));
+            }
+        }
+        None
+    }
+
+    fn scan_passed_to(&self, name: &str, e: &Expr, found: &mut Option<CTy>) {
+        if let Expr::Call { callee, args } = e
+            && let Expr::Ident(f) = &**callee
+            && let Some((ptys, _)) = self.fns.get(f)
+        {
+            for (i, a) in args.iter().enumerate() {
+                let Arg::Pos(Expr::Ident(n)) = a else { continue };
+                if n != name {
+                    continue;
+                }
+                if let Some(t) = ptys.get(i)
+                    && !matches!(t, CTy::Unknown | CTy::Unit)
+                {
+                    *found = Some(t.clone());
+                    return;
+                }
+            }
+        }
+        if found.is_none() {
+            walk_children(e, &mut |c| self.scan_passed_to(name, c, found));
+        }
     }
 
     /// Lower a lambda to a `maca_closure`: a hoisted function plus a heap
@@ -2525,6 +2656,8 @@ impl<'a> Cx<'a> {
                     | "print"
                     | "info"
                     | "len"
+                    | "chr"
+                    | "ord"
                     | "true"
                     | "false"
                     | "read_file"
@@ -2801,7 +2934,16 @@ impl<'a> Cx<'a> {
                 let boxed: Vec<(String, CTy)> =
                     args.iter().map(|x| self.arg_typed(env, x)).collect();
                 let bx: Vec<String> = boxed.iter().map(|(c, t)| box_i64(c, t)).collect();
-                let ret = (*r).clone();
+                // A closure's declared return type is `int` — surface Maca
+                // has no function-type syntax to say otherwise. Where the
+                // context does know, it knows better: `answer(handler, raw) ->
+                // Response` calling `handler(r)` means a `Response` comes back,
+                // and reading it as an integer is the difference between a
+                // record and its address.
+                let ret = match expected {
+                    Some(t) if !matches!(t, CTy::Unknown | CTy::Unit) => t.clone(),
+                    _ => (*r).clone(),
+                };
                 let call = if bx.len() >= 2 {
                     format!("maca_call2({}, {}, {})", cid(name), bx[0], bx[1])
                 } else {
@@ -2898,6 +3040,16 @@ impl<'a> Cx<'a> {
                     ),
                     CTy::Int,
                 );
+            }
+            // `chr(n)` / `ord(s)` — a byte and the one-character string that
+            // holds it, in both directions.
+            if name == "chr" && args.len() == 1 {
+                let a = self.arg(env, &args[0]);
+                return (format!("maca_chr({a})"), CTy::Str);
+            }
+            if name == "ord" && args.len() == 1 {
+                let a = self.arg(env, &args[0]);
+                return (format!("maca_ord({a})"), CTy::Int);
             }
             // `len(x)` — array length (the backing `.len`) or string byte length
             if name == "len" && args.len() == 1 {
@@ -3959,6 +4111,42 @@ fn infer_cty_shallow(e: &Expr) -> CTy {
             CTy::Arr(Box::new(elem))
         }
         Expr::Lambda { params, .. } => closure_ty(params.len(), CTy::Int),
+        // A prelude conversion says what it returns. Without this a constant
+        // like `UpperA = ord("A")` fell through to the `str` default below and
+        // every arithmetic use of it was a pointer.
+        Expr::Call { callee, .. } => match callee.as_ref() {
+            Expr::Ident(f) => match f.as_str() {
+                "ord" | "int" | "len" => CTy::Int,
+                "chr" | "str" => CTy::Str,
+                "float" | "sqrt" | "floor" | "ceil" | "round" | "pow" => CTy::Float,
+                _ => CTy::Str,
+            },
+            _ => CTy::Str,
+        },
+        // Arithmetic keeps its operands' type; a comparison answers `bool`.
+        // `++` and `/` stay `str` — the cases above this one.
+        Expr::Binary {
+            op: BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Mod | BinOp::Shl | BinOp::Shr,
+            lhs,
+            ..
+        } => infer_cty_shallow(lhs),
+        Expr::Binary {
+            op:
+                BinOp::Eq
+                | BinOp::Ne
+                | BinOp::Lt
+                | BinOp::Gt
+                | BinOp::Le
+                | BinOp::Ge
+                | BinOp::And
+                | BinOp::Or,
+            ..
+        } => CTy::Bool,
+        Expr::Unary { op: UnOp::Not, .. } => CTy::Bool,
+        Expr::Unary { op: UnOp::Neg, expr } => infer_cty_shallow(expr),
+        // Everything else — including a call to a user function, whose return
+        // type this shallow pass cannot see — is a string, which is what most
+        // top-level constants are.
         _ => CTy::Str,
     }
 }
@@ -4550,6 +4738,25 @@ fn closure_params(items: &[Stmt]) -> HashSet<(String, usize)> {
             }
         }
     }
+    // seed: a parameter that is *handed* a lambda somewhere. Evidence from the
+    // call site rather than the body, which is the only evidence there is for a
+    // declaration with no body — an `import c` engine taking a handler is
+    // exactly that, and typed as `int64_t` it took the address of half a
+    // closure.
+    let declared: HashSet<&str> = fns.iter().map(|f| f.name.as_str()).collect();
+    let mut given_lambda: HashSet<(String, usize)> = HashSet::new();
+    for f in &fns {
+        if let Some(body) = &f.body {
+            lambda_args_body(body, &declared, &mut given_lambda);
+        }
+    }
+    for (name, i) in given_lambda {
+        if let Some(f) = fns.iter().find(|f| f.name == name)
+            && f.params.get(i).is_some_and(|p| p.ty.is_none())
+        {
+            out.insert((name, i));
+        }
+    }
     // propagate: `f` forwards its parameter into a known function position
     loop {
         let mut grew = false;
@@ -4573,6 +4780,41 @@ fn closure_params(items: &[Stmt]) -> HashSet<(String, usize)> {
             return out;
         }
     }
+}
+
+/// Every field name read off `name` anywhere in `e`.
+fn collect_fields_of(name: &str, e: &Expr, out: &mut Vec<String>) {
+    if let Expr::Field { base, name: f } = e
+        && matches!(&**base, Expr::Ident(n) if n == name)
+    {
+        out.push(f.clone());
+    }
+    walk_children(e, &mut |c| collect_fields_of(name, c, out));
+}
+
+/// `(callee, index)` for every argument position a lambda is written into.
+fn lambda_args_body(b: &FnBody, declared: &HashSet<&str>, out: &mut HashSet<(String, usize)>) {
+    match b {
+        FnBody::Expr(e) => lambda_args(e, declared, out),
+        FnBody::Block(ss) => ss.iter().for_each(|s| match s {
+            Stmt::Expr(e) | Stmt::Bind(Bind { value: e, .. }) => lambda_args(e, declared, out),
+            _ => {}
+        }),
+    }
+}
+
+fn lambda_args(e: &Expr, declared: &HashSet<&str>, out: &mut HashSet<(String, usize)>) {
+    if let Expr::Call { callee, args } = e
+        && let Expr::Ident(f) = &**callee
+        && declared.contains(f.as_str())
+    {
+        for (i, a) in args.iter().enumerate() {
+            if matches!(a, Arg::Pos(Expr::Lambda { .. })) {
+                out.insert((f.clone(), i));
+            }
+        }
+    }
+    walk_children(e, &mut |c| lambda_args(c, declared, out));
 }
 
 /// Bare identifiers handed to a list method that takes a function —

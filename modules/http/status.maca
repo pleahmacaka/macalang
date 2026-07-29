@@ -1,0 +1,156 @@
+// http/status — status codes, and what they are called.
+//
+// A response line needs the number and the phrase. Clients ignore the phrase,
+// but people read logs, and `500 Internal Server Error` says more to a reader
+// at 3am than `500`.
+
+/// The reason phrase for a status code. An unknown code is not an error —
+/// HTTP allows any three digits — so it gets the phrase for its class.
+reason(code: int) -> str {
+    if code == 200 {
+        "OK"
+    } else if code == 201 {
+        "Created"
+    } else if code == 204 {
+        "No Content"
+    } else if code == 301 {
+        "Moved Permanently"
+    } else if code == 302 {
+        "Found"
+    } else if code == 304 {
+        "Not Modified"
+    } else if code == 400 {
+        "Bad Request"
+    } else if code == 401 {
+        "Unauthorized"
+    } else if code == 403 {
+        "Forbidden"
+    } else if code == 404 {
+        "Not Found"
+    } else if code == 405 {
+        "Method Not Allowed"
+    } else if code == 409 {
+        "Conflict"
+    } else if code == 413 {
+        "Payload Too Large"
+    } else if code == 415 {
+        "Unsupported Media Type"
+    } else if code == 422 {
+        "Unprocessable Content"
+    } else if code == 429 {
+        "Too Many Requests"
+    } else if code == 500 {
+        "Internal Server Error"
+    } else if code == 501 {
+        "Not Implemented"
+    } else if code == 503 {
+        "Service Unavailable"
+    } else {
+        class_reason(code)
+    }
+}
+
+// The phrase for a code nothing above names. Better than an empty phrase,
+// which some proxies treat as a malformed response line.
+class_reason(code: int) -> str {
+    if code < 200 {
+        "Informational"
+    } else if code < 300 {
+        "Success"
+    } else if code < 400 {
+        "Redirection"
+    } else if code < 500 {
+        "Client Error"
+    } else {
+        "Server Error"
+    }
+}
+
+/// Did this code succeed? `2xx` and nothing else — a redirect is not a success
+/// to the code that has to decide whether to keep going.
+is_ok(code: int) -> bool =>
+    code >= 200 && code < 300
+
+/// The MIME type for a filename's extension, `application/octet-stream` when
+/// nothing matches. A browser shown the wrong type will render a stylesheet as
+/// text or refuse a script outright, so this is not decoration.
+content_type(path: str) -> str {
+    ext = extension_of(path)
+
+    if ext == "html" || ext == "htm" {
+        "text/html; charset=utf-8"
+    } else if ext == "css" {
+        "text/css; charset=utf-8"
+    } else if ext == "js" || ext == "mjs" {
+        "text/javascript; charset=utf-8"
+    } else if ext == "json" {
+        "application/json; charset=utf-8"
+    } else if ext == "svg" {
+        "image/svg+xml"
+    } else if ext == "png" {
+        "image/png"
+    } else if ext == "jpg" || ext == "jpeg" {
+        "image/jpeg"
+    } else if ext == "gif" {
+        "image/gif"
+    } else if ext == "webp" {
+        "image/webp"
+    } else if ext == "ico" {
+        "image/x-icon"
+    } else if ext == "woff2" {
+        "font/woff2"
+    } else if ext == "wasm" {
+        "application/wasm"
+    } else if ext == "txt" || ext == "md" {
+        "text/plain; charset=utf-8"
+    } else if ext == "xml" {
+        "application/xml"
+    } else if ext == "pdf" {
+        "application/pdf"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+// The lowercased extension, or "" when the last path segment has no dot. The
+// dot has to be in the *segment*: `/a.b/README` has no extension.
+extension_of(path: str) -> str {
+    segment = last_segment(path)
+    at = last_dot(segment, segment.length() - 1)
+
+    if at < 0 {
+        ""
+    } else {
+        segment.substr(at + 1, segment.length()).lower()
+    }
+}
+
+last_segment(path: str) -> str {
+    at = last_slash(path, path.length() - 1)
+
+    if at < 0 {
+        path
+    } else {
+        path.substr(at + 1, path.length())
+    }
+}
+
+last_slash(s: str, i: int) -> int {
+    if i < 0 {
+        -1
+    } else if s.at(i) == "/" {
+        i
+    } else {
+        last_slash(s, i - 1)
+    }
+}
+
+last_dot(s: str, i: int) -> int {
+    if i <= 0 {
+        -1
+    } else if s.at(i) == "." {
+        i
+    } else {
+        last_dot(s, i - 1)
+    }
+}
