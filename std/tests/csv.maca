@@ -1,20 +1,74 @@
 import std/csv
 
-main() -> int {
-    info("field: [{field("plain")}] [{field("a,b")}] [{field("say \"hi\"")}]")
-    doc = document(["name", "note"],
-                   [["Ada", "likes, commas"], ["Bob", "says \"hi\""]])
-    info("doc: {doc.replace("\r\n", "|")}")
-    rows = parse(doc)
-    info("rows: {rows.length()}")
-    hdr = rows.get(0)
-    r1 = rows.get(1)
-    r2 = rows.get(2)
-    info("r1: [{column(hdr, r1, "name")}] [{column(hdr, r1, "note")}]")
-    info("r2: [{column(hdr, r2, "name")}] [{column(hdr, r2, "note")}]")
-    info("missing: [{column(hdr, r1, "nope")}]")
-    // a newline inside a quoted field keeps the record together
-    multi = parse("a,\"line1\nline2\",c\r\n")
-    info("multi: {multi.length()} {multi.get(0).length()} [{multi.get(0).get(1).replace("\n", "/")}]")
-    0
+test_field_quotes_only_when_it_has_to() {
+    assert_eq(field("plain"), "plain", "nothing special in it")
+    assert_eq(field("a,b"), "\"a,b\"", "a comma is structure otherwise")
+    assert_eq(field("a\nb"), "\"a\nb\"", "so is a newline")
+}
+
+test_field_doubles_an_embedded_quote() {
+    assert_eq(field("say \"hi\""), "\"say \"\"hi\"\"\"", "the format's escape")
+}
+
+test_row_ends_with_crlf() {
+    assert_eq(row(["a", "b"]), "a,b\r\n", "the line ending the format asks for")
+}
+
+test_document_puts_the_header_first() {
+    doc = document(["id", "name"], [["1", "a"], ["2", "b"]])
+    assert_eq(doc, "id,name\r\n1,a\r\n2,b\r\n", "header then rows")
+}
+
+test_parse_row_splits_on_unquoted_commas() {
+    assert_eq(parse_row("a,b,c").join("|"), "a|b|c", "three plain fields")
+    assert_eq(parse_row("a,,c").join("|"), "a||c", "an empty field is a field")
+}
+
+test_parse_row_keeps_a_quoted_comma_as_data() {
+    assert_eq(parse_row("a,\"b,c\",d").join("|"), "a|b,c|d", "two, not three")
+}
+
+test_parse_row_reads_a_doubled_quote_as_one() {
+    assert_eq(parse_row("\"say \"\"hi\"\"\"").join("|"), "say \"hi\"", "unescaped")
+}
+
+test_parse_row_drops_a_carriage_return() {
+    assert_eq(parse_row("a,b\r").join("|"), "a|b", "no stray \\r in the cell")
+}
+
+test_parse_reads_every_record() {
+    rows = parse("a,b\r\nc,d\r\n")
+    assert_eq(str(rows.length()), "2", "two records")
+    assert_eq(rows.get(1).join("|"), "c|d", "the second one")
+}
+
+test_parse_ignores_blank_lines() {
+    assert_eq(str(parse("a,b\n\nc,d\n").length()), "2", "the blank is not a row")
+}
+
+test_parse_keeps_a_quoted_newline_inside_one_field() {
+    rows = parse("a,\"line1\nline2\"\nc,d\n")
+    assert_eq(str(rows.length()), "2", "the embedded newline is not a break")
+    assert_eq(rows.get(0).get(1), "line1\nline2", "the field kept it")
+}
+
+test_column_looks_the_name_up_in_the_header() {
+    header = ["id", "name", "email"]
+    record = ["1", "ada", "ada@example.com"]
+
+    assert_eq(column(header, record, "name"), "ada", "a column in the middle")
+    assert_eq(column(header, record, "id"), "1", "the first column")
+    assert_eq(column(header, record, "absent"), "", "a column that is not there")
+}
+
+test_column_survives_a_short_record() {
+    assert_eq(column(["a", "b"], ["1"], "b"), "", "the row stopped early")
+}
+
+test_writing_then_reading_gives_the_values_back() {
+    cells = ["plain", "a,b", "say \"hi\"", "line1\nline2"]
+    parsed = parse(row(cells))
+
+    assert_eq(str(parsed.length()), "1", "one record came back")
+    assert_eq(parsed.get(0).join("|"), cells.join("|"), "every cell intact")
 }

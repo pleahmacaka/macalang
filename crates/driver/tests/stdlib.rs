@@ -1,20 +1,27 @@
 //! The standard library surface that appendix C documents, executed.
 //!
 //! Appendix C used to carry a "What is missing" list — no hash map, no file
-//! metadata, no stdin, no time, no assertions, no string `slice`. Each of those
-//! is now a real builtin, and each is exercised here, because a documented
-//! library that nothing runs is a claim rather than a fact.
+//! metadata, no stdin, no time, no assertions, no string `slice`. Each of
+//! those is now a real builtin, and each is exercised here, because a
+//! documented library that nothing runs is a claim rather than a fact.
+//!
+//! Most of it is asserted in Maca, in `std/tests/builtins.maca`, and run by
+//! `maca test`. What stays here is the two cases that are about the *process*
+//! rather than the values: reading piped stdin, and what a failing assertion
+//! writes and returns.
 
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
-fn have(cmd: &str) -> bool {
-    Command::new(cmd)
+fn have_cc() -> bool {
+    Command::new("cc")
         .arg("--version")
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
 }
-fn wsl() -> bool {
+
+fn have_wsl() -> bool {
     Command::new("wsl")
         .arg("true")
         .output()
@@ -22,225 +29,95 @@ fn wsl() -> bool {
         .unwrap_or(false)
 }
 
+fn unsupported_host() -> bool {
+    if have_wsl() || !have_cc() {
+        eprintln!("skipping: needs a host cc and no wsl");
+        return true;
+    }
+    false
+}
+
+fn repo() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// Write `src` to a scratch file and `maca run` it with `stdin` on its input.
+/// Returns the exit status and stdout+stderr together.
 fn run_with(name: &str, src: &str, stdin: &str) -> (bool, String) {
-    use std::io::Write;
-    use std::process::Stdio;
     let dir = std::env::temp_dir().join("maca-stdlib-test");
-    let _ = std::fs::create_dir_all(&dir);
-    let f = dir.join(format!("{name}.maca"));
-    std::fs::write(&f, src).unwrap();
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let file = dir.join(format!("{name}.maca"));
+    std::fs::write(&file, src).expect("write source");
+
     let mut child = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &f.to_string_lossy()])
+        .args(["run", &file.to_string_lossy()])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn maca run");
+
     child
         .stdin
         .take()
-        .unwrap()
+        .expect("piped stdin")
         .write_all(stdin.as_bytes())
-        .unwrap();
+        .expect("write stdin");
+
     let out = child.wait_with_output().expect("wait");
-    (
+    let text = String::from_utf8_lossy(&out.stdout).to_string()
+        + &String::from_utf8_lossy(&out.stderr);
+    (out.status.success(), text)
+}
+
+/// Maps, string `slice`, file metadata and time — asserted in Maca.
+#[test]
+fn the_documented_builtins_work() {
+    if unsupported_host() {
+        return;
+    }
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .current_dir(repo())
+        .args(["test", "std/tests/builtins.maca"])
+        .output()
+        .expect("spawn maca test");
+
+    assert!(
         out.status.success(),
-        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr),
-    )
-}
-
-fn run(name: &str, src: &str) -> (bool, String) {
-    run_with(name, src, "")
-}
-
-/// `Map str V` — a real hash map, monomorphized on its value type the way an
-/// array is on its element type.
-///
-/// Keys are `str` and only `str`: one key type means one hash and one
-/// comparison, and an integer key is `str(n)` away.
-#[test]
-fn maps_work() {
-    if wsl() || !have("cc") {
-        eprintln!("skipping: needs a host cc and no wsl");
-        return;
-    }
-    let (ok, out) = run(
-        "maps",
-        "main() -> int {\n\
-        \x20   counts: Map str int = map()\n\
-        \x20   counts = counts.set(\"apple\", 3).set(\"pear\", 1).set(\"apple\", 5)\n\
-        \x20   info(\"a: {counts.get(\"apple\", 0)} {counts.get(\"kiwi\", -1)} {counts.length()}\")\n\
-        \x20   info(\"b: {counts.has(\"pear\")} {counts.has(\"kiwi\")}\")\n\
-        \x20   // sorted, so walking a map twice writes the same file twice\n\
-        \x20   info(\"c: {counts.keys().join(\",\")}\")\n\
-        \x20   counts = counts.remove(\"pear\")\n\
-        \x20   info(\"d: {counts.length()} {counts.has(\"pear\")}\")\n\
-        \x20   // a value type other than int\n\
-        \x20   names: Map str str = map()\n\
-        \x20   names = names.set(\"ko\", \"한국어\")\n\
-        \x20   info(\"e: {names.get(\"ko\", \"?\")}\")\n\
-        \x20   0\n\
-        }\n",
-    );
-    assert!(ok, "maps don't work:\n{out}");
-    for want in [
-        "a: 5 -1 2", // set overwrites, get takes a default, length counts keys
-        "b: true false",
-        "c: apple,pear", // keys come back sorted
-        "d: 1 false",    // remove
-        "e: 한국어",     // a str-valued map
-    ] {
-        assert!(out.contains(want), "expected {want:?} in:\n{out}");
-    }
-}
-
-/// Enough entries to force several grows and to exercise deletion's
-/// backward-shift: a probe that stopped at a hole would lose keys.
-#[test]
-fn a_map_survives_growth_and_deletion() {
-    if wsl() || !have("cc") {
-        eprintln!("skipping: needs a host cc and no wsl");
-        return;
-    }
-    let (ok, out) = run(
-        "map_grow",
-        "main() -> int {\n\
-        \x20   m: Map str int = map()\n\
-        \x20   for i in 1..200 {\n\
-        \x20       m = m.set(\"k{i}\", i)\n\
-        \x20   }\n\
-        \x20   info(\"n={m.length()} first={m.get(\"k1\", 0)} last={m.get(\"k200\", 0)}\")\n\
-        \x20   for i in 1..100 {\n\
-        \x20       m = m.remove(\"k{i}\")\n\
-        \x20   }\n\
-        \x20   info(\"after={m.length()} gone={m.has(\"k50\")} kept={m.get(\"k150\", 0)}\")\n\
-        \x20   0\n\
-        }\n",
-    );
-    assert!(ok, "{out}");
-    assert!(
-        out.contains("n=200 first=1 last=200"),
-        "growth lost entries:\n{out}"
-    );
-    assert!(
-        out.contains("after=100 gone=false kept=150"),
-        "deletion broke the probe chain:\n{out}"
+        "{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
     );
 }
 
-/// `slice` takes an exclusive end on a string exactly as it does on a list.
-#[test]
-fn strings_have_slice() {
-    if wsl() || !have("cc") {
-        eprintln!("skipping: needs a host cc and no wsl");
-        return;
-    }
-    let (ok, out) = run(
-        "slice",
-        "main() -> int {\n\
-        \x20   s = \"abcdef\"\n\
-        \x20   info(\"{s.slice(1, 3)} {s.substr(1, 3)} {s.slice(0, 99)} {s.slice(4, 2)}\")\n\
-        \x20   0\n\
-        }\n",
-    );
-    assert!(ok, "{out}");
-    // slice(1,3) is two characters; substr(1,3) is three — the two names keep
-    // their own conventions, which is the point of having both
-    assert!(out.contains("bc bcd abcdef "), "slice/substr wrong:\n{out}");
-}
-
-/// File metadata and deletion.
-#[test]
-fn file_metadata_and_deletion_work() {
-    if wsl() || !have("cc") {
-        eprintln!("skipping: needs a host cc and no wsl");
-        return;
-    }
-    let (ok, out) = run(
-        "files",
-        "main() -> int {\n\
-        \x20   d = \"/tmp/maca-stdlib-files\"\n\
-        \x20   make_dir(d ++ \"/nested\")\n\
-        \x20   p = d ++ \"/f.txt\"\n\
-        \x20   write_file(p, \"hello\")\n\
-        \x20   info(\"a: {file_size(p)} {is_dir(p)} {is_dir(d)}\")\n\
-        \x20   info(\"b: {file_size(d ++ \"/none\")} {modified_ms(p) > 0}\")\n\
-        \x20   remove_file(p)\n\
-        \x20   info(\"c: {file_exists(p)}\")\n\
-        \x20   // recursive: the directory still holds `nested`\n\
-        \x20   remove_dir(d)\n\
-        \x20   info(\"d: {file_exists(d)}\")\n\
-        \x20   0\n\
-        }\n",
-    );
-    assert!(ok, "{out}");
-    assert!(out.contains("a: 5 false true"), "metadata wrong:\n{out}");
-    // a missing file is -1, not 0 — an empty file and an absent one differ
-    assert!(
-        out.contains("b: -1 true"),
-        "missing-file size wrong:\n{out}"
-    );
-    assert!(out.contains("c: false"), "remove_file wrong:\n{out}");
-    assert!(
-        out.contains("d: false"),
-        "remove_dir wasn't recursive:\n{out}"
-    );
-}
-
-/// Standard input, line by line and whole.
+/// Standard input, line by line, until it runs out.
 #[test]
 fn stdin_can_be_read() {
-    if wsl() || !have("cc") {
-        eprintln!("skipping: needs a host cc and no wsl");
+    if unsupported_host() {
         return;
     }
+
     let (ok, out) = run_with(
         "stdin",
-        "main() -> int {\n\
-        \x20   n = 0\n\
-        \x20   while !at_eof() {\n\
-        \x20       line = read_line()\n\
-        \x20       n = n + 1\n\
-        \x20       info(\"{n}: {line.upper()}\")\n\
-        \x20   }\n\
-        \x20   info(\"lines: {n}\")\n\
-        \x20   0\n\
-        }\n",
+        r#"main() -> int {
+    n = 0
+    while !at_eof() {
+        line = read_line()
+        n = n + 1
+        info("{n}: {line.upper()}")
+    }
+    info("lines: {n}")
+    0
+}
+"#,
         "alpha\nbeta\ngamma\n",
     );
-    assert!(ok, "{out}");
-    assert!(
-        out.contains("1: ALPHA") && out.contains("3: GAMMA") && out.contains("lines: 3"),
-        "line reading wrong:\n{out}"
-    );
-}
 
-/// Time, in UTC.
-#[test]
-fn time_is_available() {
-    if wsl() || !have("cc") {
-        eprintln!("skipping: needs a host cc and no wsl");
-        return;
-    }
-    let (ok, out) = run(
-        "time",
-        "main() -> int {\n\
-        \x20   // a fixed instant, so the assertion is about formatting\n\
-        \x20   info(\"a: {format_time(0, \"%Y-%m-%dT%H:%M:%SZ\")}\")\n\
-        \x20   info(\"b: {format_time(86400000, \"%Y-%m-%d\")}\")\n\
-        \x20   info(\"c: {now_ms() > 1700000000000}\")\n\
-        \x20   info(\"d: {now_iso().length()}\")\n\
-        \x20   0\n\
-        }\n",
-    );
     assert!(ok, "{out}");
-    assert!(
-        out.contains("a: 1970-01-01T00:00:00Z"),
-        "epoch wrong:\n{out}"
-    );
-    assert!(out.contains("b: 1970-01-02"), "a day later wrong:\n{out}");
-    assert!(out.contains("c: true"), "now_ms wrong:\n{out}");
-    assert!(out.contains("d: 20"), "now_iso length wrong:\n{out}");
+    for want in ["1: ALPHA", "3: GAMMA", "lines: 3"] {
+        assert!(out.contains(want), "expected {want:?} in:\n{out}");
+    }
 }
 
 /// Assertions report and keep going, and `failures()` is what a test returns.
@@ -249,31 +126,35 @@ fn time_is_available() {
 /// has bugs; counting them means one run tells you everything.
 #[test]
 fn assertions_count_rather_than_abort() {
-    if wsl() || !have("cc") {
-        eprintln!("skipping: needs a host cc and no wsl");
+    if unsupported_host() {
         return;
     }
-    let (ok, out) = run(
+
+    let (ok, out) = run_with(
         "assert",
-        "test_arithmetic() -> int {\n\
-        \x20   assert(1 + 1 == 2, \"one plus one\")\n\
-        \x20   assert_eq(\"{2 * 21}\", \"42\", \"the answer\")\n\
-        \x20   failures()\n\
-        }\n\n\
-         main() -> int {\n\
-        \x20   info(\"clean: {test_arithmetic()}\")\n\
-        \x20   assert(false, \"deliberate\")\n\
-        \x20   assert_eq(\"got\", \"want\", \"also deliberate\")\n\
-        \x20   info(\"failures: {failures()}\")\n\
-        \x20   0\n\
-        }\n",
+        r#"test_arithmetic() -> int {
+    assert(1 + 1 == 2, "one plus one")
+    assert_eq("{2 * 21}", "42", "the answer")
+    failures()
+}
+
+main() -> int {
+    info("clean: {test_arithmetic()}")
+    assert(false, "deliberate")
+    assert_eq("got", "want", "also deliberate")
+    info("failures: {failures()}")
+    0
+}
+"#,
+        "",
     );
+
     assert!(ok, "{out}");
     assert!(
         out.contains("clean: 0"),
         "a passing test should count 0:\n{out}"
     );
-    // both failures ran — the first didn't stop the second
+    // Both failures ran — the first didn't stop the second.
     assert!(
         out.contains("assertion failed: deliberate"),
         "no report:\n{out}"

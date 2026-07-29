@@ -1,25 +1,97 @@
 import std/fs
+import std/path
 
-main() -> int {
-    root = "/tmp/maca-fs-test"
+Root = "/tmp/maca-test-fs"
+
+fixture() -> str {
+    remove_dir(Root)
+    make_dir(join(Root, "sub/deep"))
+    write_file(join(Root, "a.txt"), "one\ntwo\n")
+    write_file(join(Root, "sub/b.md"), "hello")
+    write_file(join(Root, "sub/deep/c.txt"), "x")
+    Root
+}
+
+test_walk_finds_every_file_at_every_depth() {
+    root = fixture()
+    assert_eq(str(walk(root).length()), "3", "three files across three levels")
     remove_dir(root)
-    make_dir(root ++ "/sub/deep")
-    write_file(root ++ "/a.txt", "one\ntwo\n")
-    write_file(root ++ "/sub/b.md", "hello")
-    write_file(root ++ "/sub/deep/c.txt", "x")
-    info("walk: {walk(root).length()}")
-    info("dirs: {walk_dirs(root).length()}")
-    info("find: {find(root, ".txt").length()} {find(root, ".md").length()}")
-    info("lines: {read_lines(root ++ "/a.txt").join("|")}")
-    info("changed1: {write_if_changed(root ++ "/a.txt", "one\ntwo\n")}")
-    info("changed2: {write_if_changed(root ++ "/a.txt", "different")}")
-    append_file(root ++ "/a.txt", "!")
-    info("append: {read_file(root ++ "/a.txt")}")
-    n = copy_tree(root, "/tmp/maca-fs-copy")
-    info("copied: {n} {walk("/tmp/maca-fs-copy").length()}")
-    info("size: {tree_size(root) > 0}")
+}
+
+test_walk_dirs_finds_directories_and_not_files() {
+    root = fixture()
+    assert_eq(str(walk_dirs(root).length()), "2", "sub and sub/deep")
     remove_dir(root)
-    remove_dir("/tmp/maca-fs-copy")
-    info("cleaned: {file_exists(root)}")
-    0
+}
+
+test_find_filters_by_suffix() {
+    root = fixture()
+    assert_eq(str(find(root, ".txt").length()), "2", "two .txt files")
+    assert_eq(str(find(root, ".md").length()), "1", "one .md file")
+    assert_eq(str(find(root, ".zip").length()), "0", "no .zip files")
+    remove_dir(root)
+}
+
+test_read_lines_drops_the_trailing_newline() {
+    root = fixture()
+    lines = read_lines(join(root, "a.txt"))
+    assert_eq(lines.join("|"), "one|two", "a trailing newline is not a line")
+    remove_dir(root)
+}
+
+test_write_if_changed_only_writes_when_it_differs() {
+    root = fixture()
+    path = join(root, "a.txt")
+
+    rewrote_same = write_if_changed(path, "one\ntwo\n")
+    assert(!rewrote_same, "identical contents should not be rewritten")
+
+    rewrote_different = write_if_changed(path, "different")
+    assert(rewrote_different, "different contents should be written")
+    assert_eq(read_file(path), "different", "the new contents landed")
+
+    remove_dir(root)
+}
+
+test_append_file_adds_to_the_end() {
+    root = fixture()
+    path = join(root, "a.txt")
+    append_file(path, "three\n")
+    assert_eq(read_file(path), "one\ntwo\nthree\n", "appended, not replaced")
+    remove_dir(root)
+}
+
+test_append_file_creates_a_missing_file() {
+    root = fixture()
+    path = join(root, "new.txt")
+    append_file(path, "fresh")
+    assert_eq(read_file(path), "fresh", "appending created the file")
+    remove_dir(root)
+}
+
+test_copy_tree_reproduces_the_layout() {
+    root = fixture()
+    dest = "/tmp/maca-test-fs-copy"
+    remove_dir(dest)
+
+    copied = copy_tree(root, dest)
+
+    assert_eq(str(copied), "3", "every file was copied")
+    assert_eq(str(walk(dest).length()), "3", "and every one arrived")
+    assert_eq(read_file(join(dest, "sub/deep/c.txt")), "x", "nested file intact")
+
+    remove_dir(dest)
+    remove_dir(root)
+}
+
+test_tree_size_sums_the_files() {
+    root = fixture()
+    assert_eq(str(tree_size(root)), "14", "8 + 5 + 1 bytes")
+    remove_dir(root)
+}
+
+test_remove_dir_is_recursive() {
+    root = fixture()
+    remove_dir(root)
+    assert(!file_exists(root), "a directory with contents goes too")
 }

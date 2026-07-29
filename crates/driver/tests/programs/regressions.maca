@@ -1,0 +1,118 @@
+// Native-backend regressions, each one a bug that compiled.
+//
+// A program that fails to build announces itself. These four did not: they
+// produced a binary, and the binary was wrong.
+
+// ---- list patterns --------------------------------------------------------
+//
+// `[]`, `[x]`, `[x, y]`, `[x, ..rest]` — brackets alongside the bracketless
+// spelling. Before this, an empty list had no pattern at all.
+
+kind(xs: int[]) -> int =>
+    match xs {
+        []     => 0
+        [x]    => 1
+        [x, y] => 2
+        _      => 9
+    }
+
+tail_len(xs: int[]) -> int =>
+    match xs {
+        [x, ..rest] => rest.length()
+        _           => 0
+    }
+
+bare_tail_len(xs: int[]) -> int =>
+    match xs {
+        x, ..rest => rest.length()
+        _         => 0
+    }
+
+test_a_bracketed_pattern_matches_by_length() {
+    assert_eq(str(kind([])), "0", "the empty list has a pattern")
+    assert_eq(str(kind([5])), "1", "one element")
+    assert_eq(str(kind([5, 6])), "2", "two elements")
+    assert_eq(str(kind([1, 2, 3])), "9", "more than the patterns name")
+}
+
+test_a_rest_binder_works_bracketed_and_bare() {
+    assert_eq(str(tail_len([1, 2, 3])), "2", "[x, ..rest]")
+    assert_eq(str(bare_tail_len([1, 2, 3])), "2", "x, ..rest")
+}
+
+// ---- chars() registers its array type -------------------------------------
+//
+// The C backend registers array types in a prepass, and `chars()` was not one
+// of the expressions that registered `StrArr`. It compiled only when the result
+// went straight into a parameter declared `str[]`, which registered the type as
+// a side effect; standalone it emitted a reference to an undeclared `StrArr`
+// and failed in the C compiler.
+
+test_chars_works_without_a_str_array_parameter_in_sight() {
+    n = "abc".chars().length()
+    cs = "hello".chars()
+
+    assert_eq(str(n), "3", "counted straight off the call")
+    assert_eq(str(cs.length()), "5", "bound to a local first")
+    assert_eq(cs.get(1), "e", "and indexable")
+    assert_eq(str("xy".chars().length()), "2", "inside an interpolation")
+}
+
+// ---- `++` converts a non-string operand -----------------------------------
+//
+// `"h" ++ level` used to emit `maca_concat("h", level)` — an `int64_t` handed
+// to a `maca_str` parameter. C accepts it with a warning nobody reads, and the
+// program segfaults dereferencing address 3. It compiled, so it looked like a
+// language feature; it just crashed.
+
+test_concat_converts_an_int_operand() {
+    level = 3
+
+    assert_eq("h" ++ level, "h3", "on the right")
+    assert_eq(7 ++ " trailing", "7 trailing", "on the left")
+}
+
+test_concat_converts_every_scalar_type() {
+    joined = "n=" ++ 4 ++ " f=" ++ 1.5 ++ " b=" ++ true
+
+    assert_eq(joined, "n=4 f=1.5 b=true", "int, float and bool")
+}
+
+// ---- anonymous record literals --------------------------------------------
+//
+// The parser and the checker always accepted `{ host = "x", port = 80 }`; the
+// native backend rejected it, so in practice every record had to be declared
+// first. A struct is now synthesized per distinct shape, and the shape is
+// sorted by field name — so the same fields written in a different order are
+// the same type, which is what "structural" has to mean for the two to be
+// assignable.
+
+test_an_anonymous_record_needs_no_declaration() {
+    c = { host = "localhost", port = 8080 }
+
+    assert_eq("{c.host}:{c.port}", "localhost:8080", "both fields readable")
+}
+
+test_field_order_does_not_change_the_type() {
+    c = { host = "localhost", port = 8080 }
+    d = { port = 80, host = "example.com" }
+    c = d
+
+    assert_eq("{c.host}:{c.port}", "example.com:80", "the same shape, assigned")
+}
+
+test_an_anonymous_field_can_hold_a_list() {
+    b = { label = "xs", items = [1, 2, 3] }
+
+    assert_eq(b.label, "xs", "a scalar field beside it")
+    assert_eq(str(b.items.length()), "3", "the list arrived whole")
+    assert_eq(str(b.items.get(1)), "2", "and is indexable")
+}
+
+test_an_anonymous_record_takes_a_functional_update() {
+    c = { host = "example.com", port = 80 }
+    up = c with { port = 443 }
+
+    assert_eq("{up.host}:{up.port}", "example.com:443", "one field replaced")
+    assert_eq(str(c.port), "80", "and the original is untouched")
+}

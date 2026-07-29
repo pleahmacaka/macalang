@@ -1,19 +1,71 @@
 import std/list
 
-show(xs: int[]) -> str => xs.map(v => str(v)).join(",")
+show(xs: int[]) -> str =>
+    xs.map(v => str(v)).join(",")
 
-main() -> int {
-    xs = [3, 1, 4, 1, 5, 9, 2, 6]
-    info("any/all: {any_of(xs, v => v > 8)} {all_of(xs, v => v > 0)} {all_of(xs, v => v > 3)}")
-    info("find: {find_index(xs, v => v > 4)} {count_if(xs, v => v % 2 == 0)}")
-    info("take/drop: {show(take(xs, 3))} | {show(drop(xs, 6))} | {take(xs, 99).length()}")
-    info("chunk: {chunk(xs, 3).length()} {show(chunk(xs, 3).get(2))}")
-    info("zip_add: {show(zip_add([1,2,3], [10,20]))}")
-    info("flatten: {show(flatten([[1,2],[3],[4,5]]))}")
-    info("unique: {show(unique(xs))}")
-    info("range: {show(range(2, 6))} {range(5, 4).length()}")
-    ss = ["b", "a", "b", "c"]
-    info("str: {str_unique(ss).join(",")} {str_take(ss, 2).join(",")} {str_find_index(ss, s => s == "c")}")
-    info("str_flatten: {str_flatten([["a"],["b","c"]]).join(",")}")
-    0
+Sample = [3, 1, 4, 1, 5, 9, 2, 6]
+
+test_any_of_stops_at_the_first_match() {
+    assert(any_of(Sample, v => v > 8), "9 is there")
+    assert(!any_of(Sample, v => v > 100), "nothing is that big")
+}
+
+test_all_of_requires_every_element() {
+    assert(all_of(Sample, v => v > 0), "all positive")
+    assert(!all_of(Sample, v => v > 3), "1 is not")
+}
+
+test_find_index_answers_a_question_not_a_value() {
+    assert_eq(str(find_index(Sample, v => v > 4)), "4", "the 5 at index 4")
+    assert_eq(str(find_index(Sample, v => v > 100)), "-1", "no match")
+}
+
+test_count_if_counts_matches() {
+    assert_eq(str(count_if(Sample, v => v % 2 == 0)), "3", "4, 2 and 6")
+}
+
+test_take_and_drop_clamp_rather_than_fail() {
+    assert_eq(show(take(Sample, 3)), "3,1,4", "the first three")
+    assert_eq(show(drop(Sample, 6)), "2,6", "past the first six")
+    assert_eq(str(take(Sample, 99).length()), "8", "more than there is")
+    assert_eq(str(drop(Sample, 99).length()), "0", "past the end")
+    assert_eq(str(take(Sample, -1).length()), "0", "a negative count")
+}
+
+test_chunk_leaves_the_last_group_short() {
+    groups = chunk(Sample, 3)
+    assert_eq(str(groups.length()), "3", "8 elements in groups of 3")
+    assert_eq(show(groups.get(0)), "3,1,4", "the first group")
+    assert_eq(show(groups.get(2)), "2,6", "the short one")
+}
+
+test_chunk_rejects_a_meaningless_size() {
+    assert_eq(str(chunk(Sample, 0).length()), "0", "size zero")
+}
+
+test_zip_add_stops_at_the_shorter_input() {
+    assert_eq(show(zip_add([1, 2, 3], [10, 20])), "11,22", "two pairs")
+}
+
+test_flatten_removes_one_level() {
+    assert_eq(show(flatten([[1, 2], [3], [4, 5]])), "1,2,3,4,5", "one level")
+}
+
+test_unique_keeps_first_seen_order() {
+    assert_eq(show(unique(Sample)), "3,1,4,5,9,2,6", "order preserved")
+}
+
+test_range_is_inclusive_and_can_be_empty() {
+    assert_eq(show(range(2, 6)), "2,3,4,5,6", "both ends included")
+    assert_eq(str(range(5, 4).length()), "0", "backwards is empty")
+    assert_eq(show(range(3, 3)), "3", "a single value")
+}
+
+test_the_str_twins_behave_the_same() {
+    words = ["b", "a", "b", "c"]
+    assert_eq(str_unique(words).join(","), "b,a,c", "first-seen order")
+    assert_eq(str_take(words, 2).join(","), "b,a", "the first two")
+    assert_eq(str_drop(words, 3).join(","), "c", "past the first three")
+    assert_eq(str(str_find_index(words, s => s == "c")), "3", "found at 3")
+    assert_eq(str_flatten([["a"], ["b", "c"]]).join(","), "a,b,c", "flattened")
 }

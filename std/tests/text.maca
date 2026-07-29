@@ -1,14 +1,61 @@
 import std/text
 
-main() -> int {
-    info("lines: {lines("a\nb\nc\n").length()} {lines("a\nb").length()}")
-    info("words: {words("  a  b\tc\n").join("|")}")
-    info("once: {split_once("a=b=c", "=").join("|")} / {split_once("x", "=").join("|")}")
-    info("strip: {strip_prefix("foobar", "foo")} {strip_suffix("foobar", "bar")} {strip_prefix("bar", "foo")}")
-    info("count: {count("aXbXc", "X")} {count("aaaa", "aa")}")
-    info("title: {title_case("hello wide world")}")
-    info("indent:\n{indent("a\n\nb", "  ")}")
-    info("dedent:\n{dedent("    a\n      b\n    c")}")
-    info("wrap:\n{wrap("the quick brown fox jumps over", 12)}")
-    0
+test_lines_does_not_invent_a_final_empty_line() {
+    assert_eq(lines("a\nb\nc\n").join("|"), "a|b|c", "trailing newline")
+    assert_eq(lines("a\nb").join("|"), "a|b", "no trailing newline")
+    assert_eq(lines("").join("|"), "", "empty input")
+}
+
+test_lines_accepts_windows_endings() {
+    assert_eq(lines("a\r\nb\r\n").join("|"), "a|b", "CRLF")
+}
+
+test_words_drops_empty_runs() {
+    assert_eq(words("  a  b\tc\n").join("|"), "a|b|c", "runs of whitespace")
+    assert_eq(words("").join("|"), "", "nothing to split")
+}
+
+test_split_once_splits_on_the_first_separator_only() {
+    assert_eq(split_once("a=b=c", "=").join("|"), "a|b=c", "only the first")
+    assert_eq(split_once("x", "=").join("|"), "x|", "separator absent")
+}
+
+test_strip_prefix_and_suffix_only_touch_the_ends() {
+    assert_eq(strip_prefix("foobar", "foo"), "bar", "prefix present")
+    assert_eq(strip_prefix("bar", "foo"), "bar", "prefix absent")
+    assert_eq(strip_suffix("foobar", "bar"), "foo", "suffix present")
+    assert_eq(strip_suffix("foo", "bar"), "foo", "suffix absent")
+    assert_eq(strip_prefix("aXa", "a"), "Xa", "not a global replace")
+}
+
+test_count_counts_non_overlapping_occurrences() {
+    assert_eq(str(count("aXbXc", "X")), "2", "two separate hits")
+    assert_eq(str(count("aaaa", "aa")), "2", "non-overlapping")
+    assert_eq(str(count("abc", "z")), "0", "no hits")
+    assert_eq(str(count("abc", "")), "0", "an empty needle matches nothing")
+}
+
+test_title_case_capitalizes_each_word() {
+    assert_eq(title_case("hello wide world"), "Hello Wide World", "three words")
+    assert_eq(title_case("gREETings"), "Greetings", "the rest is lowered")
+}
+
+test_indent_leaves_empty_lines_alone() {
+    assert_eq(indent("a\n\nb", "  "), "  a\n\n  b", "no trailing whitespace")
+}
+
+test_dedent_removes_the_common_indent() {
+    assert_eq(dedent("    a\n      b\n    c"), "a\n  b\nc", "relative shape kept")
+    assert_eq(dedent("a\n  b"), "a\n  b", "nothing common to remove")
+}
+
+test_wrap_breaks_between_words() {
+    assert_eq(wrap("the quick brown fox jumps over", 12),
+              "the quick\nbrown fox\njumps over",
+              "each line within the width")
+}
+
+test_wrap_gives_a_long_word_its_own_line() {
+    wrapped = wrap("a supercalifragilistic b", 6)
+    assert_eq(wrapped, "a\nsupercalifragilistic\nb", "never cut mid-word")
 }

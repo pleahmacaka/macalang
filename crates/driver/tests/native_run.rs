@@ -986,63 +986,6 @@ fn list_methods_accept_a_named_function() {
 }
 
 #[test]
-fn bracketed_list_patterns_match() {
-    // `[]`, `[x]`, `[x, y]`, `[x, ..rest]` — brackets alongside the bracketless
-    // spelling. Before this, an empty list had no pattern at all.
-    let wsl = Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    if wsl || !have("cc") {
-        eprintln!("skipping: needs a native cc and no wsl");
-        return;
-    }
-    let dir = std::env::temp_dir().join("maca-list-patterns");
-    std::fs::create_dir_all(&dir).unwrap();
-    let f = dir.join("lp.maca");
-    std::fs::write(
-        &f,
-        "kind(xs: int[]) -> int =>\n\
-         \x20   match xs {\n\
-         \x20       []     => 0\n\
-         \x20       [x]    => 1\n\
-         \x20       [x, y] => 2\n\
-         \x20       _      => 9\n\
-         \x20   }\n\
-         tail_len(xs: int[]) -> int =>\n\
-         \x20   match xs {\n\
-         \x20       [x, ..rest] => rest.length()\n\
-         \x20       _           => 0\n\
-         \x20   }\n\
-         bare(xs: int[]) -> int =>\n\
-         \x20   match xs {\n\
-         \x20       x, ..rest => rest.length()\n\
-         \x20       _         => 0\n\
-         \x20   }\n\
-         main() -> int {\n\
-         \x20   info(\"kinds={kind([])} {kind([5])} {kind([5, 6])} {kind([1, 2, 3])}\")\n\
-         \x20   info(\"tail={tail_len([1, 2, 3])}\")\n\
-         \x20   info(\"bare={bare([1, 2, 3])}\")\n\
-         \x20   0\n\
-         }\n",
-    )
-    .unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &f.to_string_lossy()])
-        .output()
-        .expect("spawn maca");
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    for want in ["kinds=0 1 2 9", "tail=2", "bare=2"] {
-        assert!(
-            stdout.contains(want),
-            "missing {want:?}.\nstdout: {stdout}\nstderr: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-    }
-}
-
-#[test]
 fn handbook_examples_all_run() {
     // `examples/handbook.maca` collects every runnable claim The Maca Handbook
     // makes. Writing the book found five real compiler bugs, so its examples
@@ -1172,16 +1115,11 @@ fn check_racers(handles: Vec<std::thread::JoinHandle<std::process::Output>>, col
     }
 }
 
-/// `s.chars()` on its own, not passed to a `str[]` parameter.
-///
-/// The C backend registers array types in a prepass, and `chars()` was not one
-/// of the expressions that registered `StrArr`. It compiled only when the
-/// result went straight into a parameter declared `str[]`, which registered the
-/// type as a side effect; standalone it emitted a reference to an undeclared
-/// `StrArr` and failed in the C compiler. Found while chasing a Korean-heading
-/// bug in the handbook generator.
 #[test]
-fn chars_registers_its_array_type() {
+fn native_backend_regressions_still_hold() {
+    // List patterns, `chars()` registering its array type, `++` converting a
+    // non-string operand, and anonymous record literals. Each one is a bug
+    // that *compiled*, so each is asserted in Maca and run by `maca test`.
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -1191,131 +1129,16 @@ fn chars_registers_its_array_type() {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
     }
-    let dir = std::env::temp_dir().join("maca-chars-prepass");
-    std::fs::create_dir_all(&dir).unwrap();
-    let f = dir.join("chars.maca");
-    std::fs::write(
-        &f,
-        "main() -> int {\n\
-        \x20   n = \"abc\".chars().length()\n\
-        \x20   cs = \"hello\".chars()\n\
-        \x20   info(\"{n} {cs.length()} {cs.get(1)} {\"xy\".chars().length()}\")\n\
-        \x20   0\n\
-        }\n",
-    )
-    .unwrap();
+    let program = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/programs/regressions.maca");
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &f.to_string_lossy()])
+        .args(["test", &program.to_string_lossy()])
         .output()
-        .expect("spawn maca");
-    let stdout = String::from_utf8_lossy(&out.stdout);
+        .expect("spawn maca test");
     assert!(
-        stdout.contains("3 5 e 2"),
-        "chars() prepass regression.\nstdout: {stdout}\nstderr: {}",
-        String::from_utf8_lossy(&out.stderr)
+        out.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
     );
-}
-
-/// `++` converts a non-string operand instead of passing it through.
-///
-/// `"h" ++ level` used to emit `maca_concat("h", level)` — an `int64_t` handed
-/// to a `maca_str` parameter. C accepts it with a warning nobody reads, and the
-/// program segfaults dereferencing address 3. It compiled, so it looked like a
-/// language feature; it just crashed.
-#[test]
-fn concat_converts_a_non_string_operand() {
-    let wsl = Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    if wsl || !have("cc") {
-        eprintln!("skipping: needs a native cc and no wsl");
-        return;
-    }
-    let dir = std::env::temp_dir().join("maca-concat-coerce");
-    std::fs::create_dir_all(&dir).unwrap();
-    let f = dir.join("concat.maca");
-    std::fs::write(
-        &f,
-        "main() -> int {\n\
-        \x20   level = 3\n\
-        \x20   info(\"h\" ++ level)\n\
-        \x20   info(\"n=\" ++ 4 ++ \" f=\" ++ 1.5 ++ \" b=\" ++ true)\n\
-        \x20   info(7 ++ \" trailing\")\n\
-        \x20   0\n\
-        }\n",
-    )
-    .unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &f.to_string_lossy()])
-        .output()
-        .expect("spawn maca");
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout.contains("h3")
-            && stdout.contains("n=4 f=1.5 b=true")
-            && stdout.contains("7 trailing"),
-        "`++` mis-lowered a non-string operand.\nstdout: {stdout}\nstderr: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-}
-
-/// A record literal with no type name in front.
-///
-/// The parser and the checker always accepted `{ host = "x", port = 80 }`; the
-/// native backend rejected it with "expression not supported by the native
-/// backend: Record(…)", so in practice every record had to be declared first.
-/// A struct is now synthesized per distinct shape, and the shape is sorted by
-/// field name — so the same fields written in a different order are the same
-/// type, which is what "structural" has to mean for the two to be assignable.
-#[test]
-fn anonymous_record_literals_run_natively() {
-    let wsl = Command::new("wsl")
-        .arg("true")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    if wsl || !have("cc") {
-        eprintln!("skipping: needs a native cc and no wsl");
-        return;
-    }
-    let dir = std::env::temp_dir().join("maca-anon-record");
-    std::fs::create_dir_all(&dir).unwrap();
-    let f = dir.join("anon.maca");
-    std::fs::write(
-        &f,
-        "main() -> int {\n\
-        \x20   c = { host = \"localhost\", port = 8080 }\n\
-        \x20   info(\"one: {c.host}:{c.port}\")\n\
-        \x20   // the same shape, fields written in the other order\n\
-        \x20   d = { port = 80, host = \"example.com\" }\n\
-        \x20   c = d\n\
-        \x20   info(\"two: {c.host}:{c.port}\")\n\
-        \x20   // a field holding a list, and a functional update\n\
-        \x20   b = { label = \"xs\", items = [1, 2, 3] }\n\
-        \x20   info(\"three: {b.label} {b.items.length()} {b.items.get(1)}\")\n\
-        \x20   up = c with { port = 443 }\n\
-        \x20   info(\"four: {up.host}:{up.port}\")\n\
-        \x20   0\n\
-        }\n",
-    )
-    .unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &f.to_string_lossy()])
-        .output()
-        .expect("spawn maca");
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    for want in [
-        "one: localhost:8080",
-        "two: example.com:80",
-        "three: xs 3 2",
-        "four: example.com:443",
-    ] {
-        assert!(
-            stdout.contains(want),
-            "anonymous record broken — missing {want:?}.\nstdout: {stdout}\nstderr: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-    }
 }

@@ -1,0 +1,87 @@
+// Perceus, the correctness half: a value that escapes its block — aliased,
+// returned, kept in an outer binding, stored in a longer-lived structure —
+// must not be dropped.
+//
+// Run under valgrind. A dropped-too-early buffer usually reads as garbage long
+// before valgrind is consulted, so the assertions come first.
+
+keep(xs: int[]) -> int[] => xs
+
+sum_of(xs: int[]) -> int => xs.reduce(0, (a, b) => a + b)
+
+// Two names, one buffer.
+check_an_alias_keeps_both_names_alive() {
+    a = [1, 2, 3]
+    b = a
+
+    assert_eq(str(a.length()), "3", "the original")
+    assert_eq(str(b.length()), "3", "the alias")
+    assert_eq(str(sum_of(a)), "6", "reading through the original")
+    assert_eq(str(sum_of(b)), "6", "reading through the alias")
+}
+
+// Built in a loop, one of them kept out of it.
+check_a_value_lifted_out_of_a_loop_survives() {
+    kept = []
+    for i in 1..50 {
+        tmp = []
+        for j in 1..20 {
+            tmp = tmp.push(i * j)
+        }
+        if i == 25 {
+            kept = tmp
+        }
+    }
+
+    assert_eq(str(kept.length()), "20", "the kept row is intact")
+    assert_eq(str(kept.get(0)), "25", "its first element")
+    assert_eq(str(kept.get(19)), "500", "its last element")
+}
+
+check_a_map_lifted_out_of_a_loop_survives() {
+    held: Map str int = map()
+    for i in 1..100 {
+        m: Map str int = map()
+        m = m.set("x", i).set("y", i * 2)
+        if i == 50 {
+            held = m
+        }
+    }
+
+    assert_eq(str(held.get("x", 0)), "50", "the kept map's first key")
+    assert_eq(str(held.get("y", 0)), "100", "and its second")
+    assert_eq(str(held.length()), "2", "with nothing else in it")
+}
+
+check_a_value_returned_from_a_function_survives() {
+    c = keep([9, 8, 7])
+
+    assert_eq(str(c.length()), "3", "the returned buffer is intact")
+    assert_eq(str(c.get(0)), "9", "and holds what it was given")
+}
+
+// Arrays of arrays: the inner buffers outlive the block that built them.
+check_inner_buffers_outlive_their_block() {
+    rows: int[][] = []
+    for i in 1..30 {
+        row = []
+        for j in 1..5 {
+            row = row.push(i + j)
+        }
+        rows = rows.push(row)
+    }
+
+    assert_eq(str(rows.length()), "30", "every row was kept")
+    assert_eq(str(rows.get(0).length()), "5", "and each is whole")
+    assert_eq(str(rows.get(29).get(4)), "35", "including the last element")
+}
+
+main() -> int {
+    check_an_alias_keeps_both_names_alive()
+    check_a_value_lifted_out_of_a_loop_survives()
+    check_a_map_lifted_out_of_a_loop_survives()
+    check_a_value_returned_from_a_function_survives()
+    check_inner_buffers_outlive_their_block()
+
+    failures()
+}

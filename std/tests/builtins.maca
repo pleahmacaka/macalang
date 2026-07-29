@@ -1,0 +1,145 @@
+// The builtin surface appendix C documents: maps, string slicing, file
+// metadata and time. These are compiler and runtime builtins rather than
+// `std/` modules, so this suite imports nothing.
+
+test_a_map_stores_and_retrieves_by_key() {
+    counts: Map str int = map()
+    counts = counts.set("apple", 3).set("pear", 1)
+
+    assert_eq(str(counts.get("apple", 0)), "3", "the value that was set")
+    assert_eq(str(counts.get("kiwi", -1)), "-1", "the default for a missing key")
+    assert_eq(str(counts.length()), "2", "two keys")
+}
+
+test_setting_an_existing_key_overwrites_it() {
+    counts: Map str int = map()
+    counts = counts.set("apple", 3).set("apple", 5)
+
+    assert_eq(str(counts.get("apple", 0)), "5", "the later value won")
+    assert_eq(str(counts.length()), "1", "and it is still one key")
+}
+
+test_has_answers_without_a_default() {
+    counts: Map str int = map()
+    counts = counts.set("pear", 1)
+
+    assert(counts.has("pear"), "a key that is there")
+    assert(!counts.has("kiwi"), "a key that is not")
+}
+
+// Sorted, so walking a map twice writes the same file twice.
+test_keys_come_back_sorted() {
+    m: Map str int = map()
+    m = m.set("pear", 1).set("apple", 2).set("fig", 3)
+
+    assert_eq(m.keys().join(","), "apple,fig,pear", "sorted, not insertion order")
+}
+
+test_remove_takes_the_key_out() {
+    m: Map str int = map()
+    m = m.set("apple", 1).set("pear", 2).remove("pear")
+
+    assert_eq(str(m.length()), "1", "one key left")
+    assert(!m.has("pear"), "and it is not the removed one")
+}
+
+test_a_map_can_hold_any_value_type() {
+    names: Map str str = map()
+    names = names.set("ko", "한국어")
+
+    assert_eq(names.get("ko", "?"), "한국어", "a str-valued map")
+}
+
+// Enough entries to force several grows, and a deletion pass to exercise the
+// backward shift: a probe that stopped at a hole would lose keys.
+test_a_map_survives_growth_and_deletion() {
+    m: Map str int = map()
+    for i in 1..200 {
+        m = m.set("k{i}", i)
+    }
+
+    assert_eq(str(m.length()), "200", "growth kept every entry")
+    assert_eq(str(m.get("k1", 0)), "1", "the first entry")
+    assert_eq(str(m.get("k200", 0)), "200", "the last entry")
+
+    for i in 1..100 {
+        m = m.remove("k{i}")
+    }
+
+    assert_eq(str(m.length()), "100", "half of them removed")
+    assert(!m.has("k50"), "a removed key is gone")
+    assert_eq(str(m.get("k150", 0)), "150", "and the probe chain still holds")
+}
+
+// `slice` takes an exclusive end on a string exactly as it does on a list;
+// `substr` takes a length. The two names keep their own conventions, which is
+// the point of having both.
+test_slice_takes_an_exclusive_end() {
+    s = "abcdef"
+
+    assert_eq(s.slice(1, 3), "bc", "two characters")
+    assert_eq(s.substr(1, 3), "bcd", "three characters")
+}
+
+test_slice_clamps_rather_than_failing() {
+    s = "abcdef"
+
+    assert_eq(s.slice(0, 99), "abcdef", "past the end")
+    assert_eq(s.slice(4, 2), "", "an end before the start")
+}
+
+test_file_size_and_is_dir_describe_what_is_there() {
+    root = "/tmp/maca-test-builtins"
+    remove_dir(root)
+    make_dir(root ++ "/nested")
+    path = root ++ "/f.txt"
+    write_file(path, "hello")
+
+    assert_eq(str(file_size(path)), "5", "five bytes")
+    assert(!is_dir(path), "a file is not a directory")
+    assert(is_dir(root), "a directory is")
+    assert(modified_ms(path) > 0, "and it has a modification time")
+
+    remove_dir(root)
+}
+
+// A missing file is -1, not 0 — an empty file and an absent one differ.
+test_file_size_of_a_missing_file_is_negative() {
+    assert_eq(str(file_size("/tmp/maca-test-builtins/none")), "-1", "absent")
+}
+
+test_remove_file_removes_one_file() {
+    root = "/tmp/maca-test-builtins-rm"
+    make_dir(root)
+    path = root ++ "/f.txt"
+    write_file(path, "hello")
+
+    remove_file(path)
+
+    assert(!file_exists(path), "the file is gone")
+    assert(file_exists(root), "the directory around it is not")
+
+    remove_dir(root)
+}
+
+test_remove_dir_is_recursive() {
+    root = "/tmp/maca-test-builtins-rmdir"
+    make_dir(root ++ "/nested")
+    write_file(root ++ "/nested/f.txt", "hello")
+
+    remove_dir(root)
+
+    assert(!file_exists(root), "a directory with contents goes too")
+}
+
+// A fixed instant, so the assertion is about formatting rather than the clock.
+test_format_time_renders_a_fixed_instant() {
+    assert_eq(format_time(0, "%Y-%m-%dT%H:%M:%SZ"), "1970-01-01T00:00:00Z",
+              "the epoch, in UTC")
+    assert_eq(format_time(86400000, "%Y-%m-%d"), "1970-01-02", "a day later")
+}
+
+test_the_clock_reports_the_present() {
+    assert(now_ms() > 1700000000000, "later than when this was written")
+    assert_eq(str(now_iso().length()), "20", "an ISO 8601 instant")
+}

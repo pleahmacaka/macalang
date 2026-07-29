@@ -1,0 +1,155 @@
+// UI elements and Tailwind on the native target.
+//
+// The JS backend turns `div(class="…", child)` into a reactive DOM. On native
+// there is no DOM, so the same syntax renders to an HTML *string* — which is
+// what a static site generator needs.
+
+test_a_tag_call_renders_its_children_in_order() {
+    html = div(class="wrap",
+        h1("Title")
+        p("text")
+        a(href="x.html", "link")
+        hr()
+    )
+
+    assert_eq(html,
+              "<div class=\"wrap\"><h1>Title</h1><p>text</p>"
+                  ++ "<a href=\"x.html\">link</a><hr></div>",
+              "attributes, children and a void element")
+}
+
+// An attribute value is escaped; a child is not. A generator emitting a code
+// block has already escaped its contents and must not have it done twice.
+test_an_attribute_value_is_escaped() {
+    html = p(title="a \"q\" & <b>", "x")
+
+    assert(html.contains("title=\"a &quot;q&quot; &amp; &lt;b&gt;\""),
+           "quotes and angle brackets escaped")
+}
+
+test_a_child_is_not_re_escaped() {
+    html = p("already &lt;escaped&gt;")
+
+    assert_eq(html, "<p>already &lt;escaped&gt;</p>", "passed through as given")
+}
+
+// Elements are ordinary string-valued expressions, so they compose with
+// everything else in the language.
+test_elements_compose_through_functions_and_interpolation() {
+    n = 2
+    body = ul(item("one") item("two"))
+
+    assert_eq(section(p("{n} items") body),
+              "<section><p>2 items</p><ul><li>one</li><li>two</li></ul></section>",
+              "a function-built child inside an interpolated parent")
+}
+
+item(s: str) -> str => li(s)
+
+// `styles()` ships the utilities the module's `class=` literals mention, and
+// nothing else. The reading measure and a centred column are what a text page
+// needs.
+test_styles_generates_a_rule_per_utility_used() {
+    sheet = styles()
+
+    assert(sheet.contains(".max-w-2xl \{ max-width:42rem; \}"), "max-width")
+    assert(sheet.contains(".mx-auto \{ margin-left:auto;margin-right:auto; \}"),
+           "centring")
+    assert(sheet.contains(".font-bold \{ font-weight:700; \}"), "font weight")
+}
+
+test_styles_ships_nothing_the_module_never_mentions() {
+    assert(!styles().contains(".text-2xl"), "an unused utility is not emitted")
+}
+
+use_the_utilities_the_stylesheet_is_asked_about() -> str =>
+    div(class="max-w-2xl mx-auto font-bold", "x")
+
+// `data-*`, `aria-*`, `http-equiv` — the attributes a real document is full of,
+// written with the hyphen they have in HTML. An attached `-` is part of an
+// identifier and a spaced one is the subtraction operator, the same
+// attached-vs-spaced rule that separates `x?` from `c ? x : y`.
+test_a_hyphenated_attribute_name_needs_no_workaround() {
+    assert_eq(nav(data-tomo="toc", aria-label="Contents", "x"),
+              "<nav data-tomo=\"toc\" aria-label=\"Contents\">x</nav>",
+              "data- and aria-")
+    assert_eq(meta(http-equiv="refresh", content="0"),
+              "<meta http-equiv=\"refresh\" content=\"0\">",
+              "http-equiv on a void element")
+}
+
+test_an_attribute_name_may_keep_a_literal_underscore() {
+    assert_eq(div(data-my_thing="1", "u"), "<div data-my_thing=\"1\">u</div>",
+              "the underscore is not rewritten to a hyphen")
+}
+
+test_a_spaced_minus_is_still_subtraction() {
+    a = 10
+    b = 3
+
+    assert_eq(span("{a - b}"), "<span>7</span>", "arithmetic, not an attribute")
+}
+
+// HTML reads *any* value as true, `hidden="false"` included, so a bool has to
+// control whether the attribute exists at all.
+test_a_true_flag_is_the_bare_attribute() {
+    assert_eq(details(open=true, summary("s") "body"),
+              "<details open><summary>s</summary>body</details>",
+              "no value, just the name")
+}
+
+test_a_false_flag_is_no_attribute() {
+    assert_eq(div(hidden=false, "seen"), "<div>seen</div>", "nothing emitted")
+}
+
+test_a_computed_flag_is_evaluated() {
+    n = 3
+
+    assert_eq(div(hidden=n > 5, "computed"), "<div>computed</div>", "false")
+    assert_eq(div(hidden=n < 5, "computed"), "<div hidden>computed</div>", "true")
+}
+
+// A document generator picks its tags from its input: a heading's depth chooses
+// `h1`…`h6`, a table row chooses `th` or `td`. Voidness is decided at run time,
+// since that is when the tag is known.
+test_element_takes_its_tag_as_a_value() {
+    assert_eq(head_at(1, "Top"), "<h1 id=\"s\">Top</h1>", "a shallow heading")
+    assert_eq(head_at(3, "Deep"), "<h3 id=\"s\">Deep</h3>", "a deep one")
+}
+
+test_a_tag_chosen_at_runtime_works_as_a_child() {
+    cell = "th"
+
+    assert_eq(tr(element(cell, "name")), "<tr><th>name</th></tr>", "a header cell")
+}
+
+test_a_void_tag_chosen_at_runtime_still_self_closes() {
+    assert_eq(element("br"), "<br>", "no closing tag")
+}
+
+head_at(level: int, text: str) -> str =>
+    element("h" ++ level, id="s", text)
+
+// `label`, `main`, `section`, `code`, `p`, `a`, `form` and `option` are all
+// HTML tags *and* names people give functions. A user's own definition wins.
+test_a_user_function_shadows_the_tag_of_the_same_name() {
+    assert_eq(label(true), "side: right", "`label` is the user's function")
+    assert_eq(str(code(21)), "42", "so is `code`")
+}
+
+test_a_tag_nothing_shadows_still_works() {
+    assert_eq(span("tag"), "<span>tag</span>", "no definition in the way")
+}
+
+label(pos: bool) -> str {
+    pos ? "side: right" : "side: left"
+}
+
+code(n: int) -> int => n * 2
+
+// A local shadows a tag too.
+test_a_local_shadows_the_tag_of_the_same_name() {
+    assert_eq(str(apply(n => n + 1, 41)), "42", "`n` is the lambda's parameter")
+}
+
+apply(f, x: int) -> int => f(x)

@@ -451,7 +451,11 @@ fn pattern(s: &mut String, p: &Pattern) {
             }
             s.push_str(" }");
         }
+        // Always bracketed. The bracketless spelling is only unambiguous when
+        // there is something to see: an empty list prints as nothing, and a
+        // lone `[x]` prints as `x`, which reparses as "bind anything".
         Pattern::List { elems, rest } => {
+            s.push('[');
             for (i, e) in elems.iter().enumerate() {
                 if i > 0 {
                     s.push_str(", ");
@@ -465,6 +469,7 @@ fn pattern(s: &mut String, p: &Pattern) {
                 s.push_str("..");
                 pattern(s, r);
             }
+            s.push(']');
         }
         Pattern::Or(alts) => {
             for (i, a) in alts.iter().enumerate() {

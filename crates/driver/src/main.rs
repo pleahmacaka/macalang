@@ -1321,12 +1321,50 @@ fn base64(data: &[u8]) -> String {
     out
 }
 
+/// The `main` that runs the tests.
+///
+/// Each test is bracketed by `failures()` so the report says which one failed
+/// rather than only that something did, and the process exits with the number
+/// of failed assertions. A test that `fail`s still aborts outright — that is
+/// the hard-failure path, and the name printed before it identifies it.
+fn generated_runner(tests: &[String]) -> String {
+    let plural = if tests.len() == 1 { "" } else { "s" };
+    let mut out = String::new();
+
+    out.push_str("\nmain() -> int {\n");
+    out.push_str(&line(1, &format!("info(\"running {} test{plural}\")", tests.len())));
+
+    for (i, name) in tests.iter().enumerate() {
+        out.push_str(&line(1, &format!("before{i} = failures()")));
+        out.push_str(&line(1, &format!("info(\"  {name}\")")));
+        out.push_str(&line(1, &format!("{name}()")));
+        out.push_str(&line(
+            1,
+            &format!("info(failures() == before{i} ? \"    ok\" : \"    FAILED\")"),
+        ));
+    }
+
+    out.push_str(&line(1, "total = failures()"));
+    out.push_str(&line(1, "if total == 0 {"));
+    out.push_str(&line(2, &format!("info(\"{} test{plural} passed\")", tests.len())));
+    out.push_str(&line(1, "} else {"));
+    out.push_str(&line(2, "info(\"{total} assertion(s) failed\")"));
+    out.push_str(&line(1, "}"));
+    out.push_str(&line(1, "total"));
+    out.push_str("}\n");
+    out
+}
+
+fn line(depth: usize, text: &str) -> String {
+    format!("{}{text}\n", "    ".repeat(depth))
+}
+
 /// `maca test <file.maca>` — run every `test_`-prefixed function in the file.
 ///
 /// The file's own `main` (if any) is dropped and replaced with a generated one
-/// that calls each test in turn, announcing it first. A test that `fail`s aborts
-/// the process, so the last announced name identifies the failure; a clean run
-/// prints a summary and exits 0.
+/// that calls each test in turn. Assertions come from the `assert`/`assert_eq`
+/// builtins: they report and keep going, so one run reports every failure, and
+/// the exit code is how many failed.
 fn cmd_test(args: &[String]) {
     let Some(src) = args.first().map(PathBuf::from) else {
         die("test: expected a .maca file");
@@ -1351,30 +1389,23 @@ fn cmd_test(args: &[String]) {
         return;
     }
 
-    // rebuild the module without its `main`, then append the generated runner
+    // Rebuild the module without its `main` and without its imports, then
+    // append the generated runner.
+    //
+    // The imports have already been inlined by `load_with_imports`; leaving
+    // them in the printed source would inline every module a second time when
+    // the generated file is compiled, and every function in them would be
+    // defined twice.
     let items: Vec<maca_parser::Stmt> = parsed
         .module
         .items
         .iter()
+        .filter(|it| !matches!(it, maca_parser::Stmt::Import(_)))
         .filter(|it| !matches!(it, maca_parser::Stmt::Fn(f) if f.name == "main"))
         .cloned()
         .collect();
     let mut program = maca_parser::print_module(&maca_parser::ast::Module { items });
-    program.push_str("\nmain() -> int {\n");
-    program.push_str(&format!(
-        "    info(\"running {} test{}\")\n",
-        tests.len(),
-        if tests.len() == 1 { "" } else { "s" }
-    ));
-    for t in &tests {
-        // announce before running: if the test aborts, this is the last line out
-        program.push_str(&format!("    info(\"  {t}\")\n    {t}()\n"));
-    }
-    program.push_str(&format!(
-        "    info(\"{} test{} passed\")\n    0\n}}\n",
-        tests.len(),
-        if tests.len() == 1 { "" } else { "s" }
-    ));
+    program.push_str(&generated_runner(&tests));
 
     let dir = build_dir(&src);
     if let Err(e) = std::fs::create_dir_all(&dir) {

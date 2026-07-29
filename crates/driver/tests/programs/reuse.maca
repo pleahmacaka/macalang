@@ -1,0 +1,28 @@
+// Perceus, the throughput half: a loop that builds and discards a value should
+// reuse one buffer rather than asking the allocator for a new one every round.
+//
+// Without codegen-inserted drops the reuse rate is 0.
+
+build(n: int) -> int[] {
+    xs = []
+    for i in 1..n {
+        xs = xs.push(i)
+    }
+    xs
+}
+
+main() -> int {
+    total = 0
+    for round in 1..500 {
+        ys = build(200)
+        total = total + ys.length()
+    }
+
+    assert_eq(str(total), "100000", "every round built 200 elements")
+
+    reused = reuse_count() * 100 / alloc_count()
+    info("reused={reused}%")
+    assert(reused > 90, "almost every allocation came off the free-list")
+
+    failures()
+}

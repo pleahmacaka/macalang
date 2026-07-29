@@ -3872,6 +3872,13 @@ fn infer_cty_shallow(e: &Expr) -> CTy {
         Expr::Bool(_) => CTy::Bool,
         Expr::Str(_) | Expr::Path(_) => CTy::Str,
         Expr::Binary { op: BinOp::Div, .. } => CTy::Str, // path join
+        Expr::List(items) => {
+            let elem = match items.first() {
+                Some(first) => infer_cty_shallow(first),
+                None => CTy::Str,
+            };
+            CTy::Arr(Box::new(elem))
+        }
         _ => CTy::Str,
     }
 }

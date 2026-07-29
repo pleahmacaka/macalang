@@ -1,16 +1,73 @@
 import std/json
 
-main() -> int {
-    info("quote: {quote("a\"b\nc")}")
-    info("arrs: {array_of_str(["x","y"])} {array_of_int([1,2,3])}")
-    doc = object_of(["name","age","tags"],
-                    [quote("Ada"), "36", array_of_str(["math","code"])])
-    info("obj: {doc}")
-    info("get: [{get(doc, "name")}] [{get(doc, "age")}] [{get(doc, "nope")}]")
-    info("int: {get_int(doc, "age", 0)} {get_int(doc, "nope", -1)}")
-    info("items: {items(get(doc, "tags")).join("|")}")
-    nested = "[1, [2, 3], \"a,b\", \{\"k\": 4\}]"
-    info("nested: {items(nested).length()} / {items(nested).join(" ~ ")}")
-    info("bool: {get_bool("\{\"ok\":true\}", "ok")} {get_bool("\{\"ok\":false\}", "ok")}")
-    0
+test_quote_escapes_what_the_format_requires() {
+    assert_eq(quote("plain"), "\"plain\"", "nothing to escape")
+    assert_eq(quote("a\"b"), "\"a\\\"b\"", "an embedded quote")
+    assert_eq(quote("a\\b"), "\"a\\\\b\"", "an embedded backslash")
+    assert_eq(quote("a\nb"), "\"a\\nb\"", "a raw newline never survives")
+}
+
+test_arrays_encode_their_elements() {
+    assert_eq(array_of_str(["a", "b"]), "[\"a\",\"b\"]", "strings are quoted")
+    assert_eq(array_of_int([1, 2, 3]), "[1,2,3]", "numbers are not")
+    assert_eq(array_of_str([]), "[]", "an empty array")
+}
+
+test_object_of_pairs_keys_with_encoded_values() {
+    encoded = object_of(["n", "s"], ["1", "\"x\""])
+    assert_eq(encoded, "\{\"n\":1,\"s\":\"x\"\}", "a number beside a string")
+}
+
+test_object_of_stops_at_the_shorter_list() {
+    assert_eq(object_of(["a", "b"], ["1"]), "\{\"a\":1\}", "one value only")
+}
+
+test_get_returns_a_string_value_unquoted() {
+    src = "\{\"name\":\"maca\",\"n\":42\}"
+    assert_eq(get(src, "name"), "maca", "the quotes are not part of it")
+    assert_eq(get(src, "n"), "42", "a number comes back as written")
+    assert_eq(get(src, "absent"), "", "a missing key")
+}
+
+test_get_unescapes_a_string_value() {
+    src = "\{\"s\":\"a\\nb\"\}"
+    assert_eq(get(src, "s"), "a\nb", "the escape became a newline")
+}
+
+test_get_returns_a_nested_container_as_raw_text() {
+    src = "\{\"inner\":\{\"k\":1\},\"after\":2\}"
+    assert_eq(get(src, "inner"), "\{\"k\":1\}", "the nested object, whole")
+    assert_eq(get(get(src, "inner"), "k"), "1", "and it can be read again")
+}
+
+test_get_int_falls_back_when_the_key_is_absent() {
+    src = "\{\"n\":7\}"
+    assert_eq(str(get_int(src, "n", 0)), "7", "the value that is there")
+    assert_eq(str(get_int(src, "missing", 5)), "5", "the default")
+}
+
+test_get_bool_only_accepts_the_literal_true() {
+    assert(get_bool("\{\"b\":true\}", "b"), "true reads as true")
+    assert(!get_bool("\{\"b\":false\}", "b"), "false does not")
+    assert(!get_bool("\{\}", "b"), "and neither does an absent key")
+}
+
+test_items_splits_an_array_of_scalars() {
+    assert_eq(items("[1, 2, 3]").join("|"), "1|2|3", "numbers")
+    assert_eq(items("[\"a\", \"b\"]").join("|"), "a|b", "strings, unquoted")
+    assert_eq(items("[]").join("|"), "", "an empty array")
+}
+
+test_items_does_not_split_inside_a_string() {
+    assert_eq(items("[\"a,b\", \"c\"]").join("|"), "a,b|c", "a comma is data")
+}
+
+test_items_does_not_split_inside_a_nested_container() {
+    nested = items("[[1,2], [3]]")
+    assert_eq(str(nested.length()), "2", "two elements, not four")
+    assert_eq(nested.get(0), "[1,2]", "the first nested array, whole")
+}
+
+test_items_rejects_a_value_that_is_not_an_array() {
+    assert_eq(str(items("\{\"a\":1\}").length()), "0", "an object")
 }

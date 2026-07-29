@@ -1,13 +1,65 @@
 import std/path
 
-main() -> int {
-    info("join: {join("a", "b")} {join("a/", "/b")} {join("", "b")} {join("a", "")}")
-    info("base: {basename("/x/y/z.txt")} {basename("z.txt")}")
-    info("dir: {dirname("/x/y/z.txt")} {dirname("z.txt")} {dirname("/z")}")
-    info("ext: [{extension("a/b.tar.gz")}] [{extension(".bashrc")}] [{extension("none")}]")
-    info("stem: {stem("a/b.tar.gz")} {stem("none")}")
-    info("with: {with_extension("a/b.md", "html")} {with_extension("b.md", ".txt")}")
-    info("abs: {is_absolute("/x")} {is_absolute("x")}")
-    info("norm: {normalize("a/./b/../c")} {normalize("/a/b/../..")} {normalize("./x")}")
-    0
+test_join_produces_exactly_one_separator() {
+    assert_eq(join("a", "b"), "a/b", "neither side brought one")
+    assert_eq(join("a/", "b"), "a/b", "the left side brought one")
+    assert_eq(join("a", "/b"), "a/b", "the right side brought one")
+    assert_eq(join("a/", "/b"), "a/b", "both sides brought one")
+}
+
+test_join_ignores_an_empty_side() {
+    assert_eq(join("", "b"), "b", "no left segment")
+    assert_eq(join("a", ""), "a", "no right segment")
+}
+
+test_basename_is_everything_after_the_last_separator() {
+    assert_eq(basename("/a/b/c.txt"), "c.txt", "a nested file")
+    assert_eq(basename("c.txt"), "c.txt", "no separator at all")
+    assert_eq(basename("/a/b/"), "", "a trailing separator")
+}
+
+test_dirname_always_yields_a_usable_directory() {
+    assert_eq(dirname("/a/b/c.txt"), "/a/b", "a nested file")
+    assert_eq(dirname("c.txt"), ".", "no directory in the path")
+    assert_eq(dirname("/c.txt"), "/", "the root is not empty")
+}
+
+test_extension_drops_the_dot() {
+    assert_eq(extension("a/b.tar.gz"), "gz", "only the last one")
+    assert_eq(extension("Makefile"), "", "no extension")
+}
+
+test_a_hidden_file_has_no_extension() {
+    assert_eq(extension(".bashrc"), "", "a leading dot is not an extension")
+    assert_eq(stem(".bashrc"), ".bashrc", "and the stem keeps it")
+}
+
+test_stem_removes_the_extension_and_the_directory() {
+    assert_eq(stem("/a/b.tar.gz"), "b.tar", "one extension removed")
+    assert_eq(stem("/a/b"), "b", "nothing to remove")
+}
+
+test_with_extension_replaces_rather_than_appends() {
+    assert_eq(with_extension("a/b.txt", "md"), "a/b.md", "without a dot")
+    assert_eq(with_extension("a/b.txt", ".md"), "a/b.md", "with a dot")
+    assert_eq(with_extension("b.txt", "md"), "b.md", "no directory to keep")
+    assert_eq(with_extension("a/b.txt", ""), "a/b", "the extension removed")
+}
+
+test_is_absolute_asks_about_the_first_character() {
+    assert(is_absolute("/a/b"), "a rooted path")
+    assert(!is_absolute("a/b"), "a relative path")
+}
+
+test_normalize_collapses_dot_and_dotdot() {
+    assert_eq(normalize("a/./b"), "a/b", "a current-directory segment")
+    assert_eq(normalize("a/b/../c"), "a/c", "a parent segment")
+    assert_eq(normalize("/a//b"), "/a/b", "a doubled separator")
+    assert_eq(normalize("/a/b/.."), "/a", "a trailing parent segment")
+}
+
+test_normalize_keeps_a_relative_path_relative() {
+    assert_eq(normalize("./a"), "a", "a leading current directory")
+    assert_eq(normalize("a/.."), ".", "nothing left is not empty")
+    assert_eq(normalize("/a/../.."), "/", "past the root")
 }
