@@ -15,7 +15,10 @@
 use maca_core::{DiagKind, Mode};
 use maca_parser::ast::*;
 
-mod interp;
+/// The tree-walking interpreter the playground runs programs with. Public so a
+/// native test can check it against the answers the C backend gives: it is a
+/// third implementation of Maca's semantics, and nothing else compares them.
+pub mod interp;
 
 /// Hand ownership of `bytes` (as an exact-length boxed slice) to the caller and
 /// return `(ptr << 32) | len`. Exact length matters: [`dealloc`] frees using

@@ -689,7 +689,9 @@ impl<'a> Interp<'a> {
         let f = vals.get(1).cloned();
         let run = |me: &mut Self, c: &Value, x: Value| me.call_closure(c, vec![x], depth);
         let out: Eval = match name {
-            "map" => {
+            // `parallel` differs from `map` only in where the work runs, and
+            // there is no second thread here, so the answer is the same.
+            "map" | "parallel" => {
                 let Some(c) = &f else {
                     return Some(Ok(Value::List(list)));
                 };
@@ -943,6 +945,15 @@ impl<'a> Interp<'a> {
                 let len = int_of(vals.get(2));
                 return Ok(Value::Str(byte_substr(&s, start, len)));
             }
+            // A string `slice` takes an end offset where `substr` takes a
+            // length. `list_method` handles the list receiver and returns before
+            // this, so only a string reaches here.
+            "slice" => {
+                let s = str_of(vals.first());
+                let from = int_of(vals.get(1));
+                let to = int_of(vals.get(2));
+                return Ok(Value::Str(byte_substr(&s, from, to - from)));
+            }
             "split" => {
                 let (s, sep) = (str_of(vals.first()), str_of(vals.get(1)));
                 let parts: Vec<Value> = if sep.is_empty() {
@@ -1072,7 +1083,11 @@ impl<'a> Interp<'a> {
         if let Some(f) = self.fns.get(name).copied() {
             return self.call_fn(f, vals, depth + 1);
         }
-        Ok(Value::Unit)
+        // Returning unit here made every unimplemented or misspelt call answer
+        // quietly, in the one place people try the language out.
+        Err(Signal::Limit(format!(
+            "`{name}` is not a function the playground knows"
+        )))
     }
 
     /// Try to bind `pat` against `v`, pushing bindings onto `scope`. Returns

@@ -16,3 +16,6 @@ maca-backend-c = { path = "../backend_c" }
 maca-backend-js = { path = "../backend_js" }
 maca-backend-nix = { path = "../backend_nix" }
 maca-profile = { path = "../profile" }
+
+[dev-dependencies]
+maca-core = { path = "../core" }
