@@ -96,8 +96,10 @@ import { measure, defaults } from bench/time
 | `signal` | reactive state for a native web page — signals, computed values, effects, and DOM bindings that update the nodes that changed |
 
 Each ships its tests beside it (`modules/<name>/tests/`), run by `maca test`.
-[`examples/`](examples) has a runnable program for most of them —
-`bench_demo`, `profile_demo`, `signal_demo`, `tambo_demo`, `cli_tool`.
+Most of them also have a runnable program under `apps/`, one directory each with
+a README: [`bench_demo`](apps/bench_demo), [`profile_demo`](apps/profile_demo),
+[`signal_demo`](apps/signal_demo), [`tambo_demo`](apps/tambo_demo),
+[`cli_tool`](apps/cli_tool).
 
 A selective import — `import { a, b } from pkg/mod` — pulls in only what you
 name plus what that needs, so a program links what it uses.

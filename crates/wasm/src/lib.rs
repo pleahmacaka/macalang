@@ -11,6 +11,11 @@
 //!     a UTF-8 JSON blob the caller reads out of memory and then frees.
 //!
 //! `mode`: 0 = program (native/JS), 1 = config (Nix).
+//!
+//! The packing is `wasm32`-only: it folds a 32-bit pointer into the high half of
+//! a `u64`, so a 64-bit host cannot call the exports. [`compile_json`] and
+//! [`lsp_json`] are the same work as plain Rust functions, which is what a
+//! native test asserts the JSON contract against.
 
 use maca_core::{DiagKind, Mode};
 use maca_parser::ast::*;
@@ -84,6 +89,79 @@ pub unsafe extern "C" fn hover(ptr: *const u8, len: usize, off: usize) -> u64 {
     leak_bytes(h.into_bytes())
 }
 
+/// Everything the language server can say about the caret in one call: hover,
+/// signature help, the definition site, and every reference to the binding.
+/// `(ptr<<32)|len` locating the JSON described by [`lsp_json`].
+///
+/// One export rather than four because the editor asks all four questions about
+/// the same caret, and each separate export would re-lex and re-parse the file.
+///
+/// # Safety
+/// `ptr`/`len` must describe a valid UTF-8 buffer from [`alloc`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lsp(ptr: *const u8, len: usize, off: usize) -> u64 {
+    let src = unsafe { core::slice::from_raw_parts(ptr, len) };
+    let src = core::str::from_utf8(src).unwrap_or("");
+    leak_bytes(lsp_json(src, off.min(src.len())).into_bytes())
+}
+
+/// The language-server answers for one caret position, as JSON:
+///
+/// ```json
+/// { "hover": "fib(n: int) -> int",
+///   "signature": { "label": "…", "params": ["n: int"], "active": 0 },
+///   "definition": { "line": 3, "col": 1, "endLine": 3, "endCol": 4 },
+///   "references": [ { "line": 3, "col": 1, "endLine": 3, "endCol": 4 } ] }
+/// ```
+///
+/// Positions are Monaco's convention (1-based, columns in UTF-16 units) so the
+/// editor can use them without a second conversion; `signature` and
+/// `definition` are `null` when there is nothing to say.
+pub fn lsp_json(src: &str, off: usize) -> String {
+    let mut out = String::from("{\"hover\":");
+    push_json_str(&mut out, &maca_lsp::hover(src, off).unwrap_or_default());
+
+    out.push_str(",\"signature\":");
+    match maca_lsp::signature_help(src, off) {
+        Some((label, params, active)) => {
+            out.push_str("{\"label\":");
+            push_json_str(&mut out, &label);
+            out.push_str(",\"params\":[");
+            for (i, p) in params.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                push_json_str(&mut out, p);
+            }
+            out.push_str(&format!("],\"active\":{active}}}"));
+        }
+        None => out.push_str("null"),
+    }
+
+    out.push_str(",\"definition\":");
+    match maca_lsp::definition(src, off) {
+        Some(span) => out.push_str(&span_json(src, span)),
+        None => out.push_str("null"),
+    }
+
+    out.push_str(",\"references\":[");
+    for (i, span) in maca_lsp::references(src, off).iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&span_json(src, *span));
+    }
+    out.push_str("]}");
+    out
+}
+
+/// A byte span as a Monaco range object.
+fn span_json(src: &str, (start, end): (usize, usize)) -> String {
+    let (line, col) = line_col(src, start);
+    let (end_line, end_col) = line_col(src, end);
+    format!("{{\"line\":{line},\"col\":{col},\"endLine\":{end_line},\"endCol\":{end_col}}}")
+}
+
 fn mode_of(m: u32) -> Mode {
     match m {
         1 => Mode::Config,
@@ -107,9 +185,15 @@ fn kind_str(k: DiagKind) -> &'static str {
 /// ```json
 /// { "parseErrors": ["…"],
 ///   "diagnostics": [{"kind":"TypeMismatch","msg":"…"}],
-///   "outputs": {"C":"…"} | {"JS":"…","HTML":"…","CSS":"…"} | {"Nix":"…"} }
+///   "outputs": {"C":"…"} | {"JS":"…","HTML":"…","CSS":"…"} | {"Nix":"…"},
+///   "limits": {"C": ["`on:click` needs a live DOM — …"]} }
 /// ```
-fn compile_json(src: &str, mode: u32) -> String {
+///
+/// A target appears in `outputs` when it lowered the whole module and in
+/// `limits` when it refused a construct by name. Never both: code a backend
+/// disowned is code that would not compile, so the playground must not show it
+/// as if it would.
+pub fn compile_json(src: &str, mode: u32) -> String {
     let parsed = maca_parser::parse(src);
     let mut out = String::from("{");
 
@@ -155,32 +239,58 @@ fn compile_json(src: &str, mode: u32) -> String {
     out.push_str(",\"markers\":");
     out.push_str(&markers_json(src, &parsed.errors, &diags));
 
-    // backend outputs (only when the source parses)
+    // backend outputs (only when the source parses), and the constructs a
+    // backend refused. Both C and Nix go through `emit_checked`: their
+    // unchecked `emit` answers with plausible-looking code for a construct they
+    // cannot lower, and a playground that shows it is teaching the wrong thing.
     let mut js_exports: Vec<String> = Vec::new();
+    let mut limits: Vec<(&str, Vec<String>)> = Vec::new();
     out.push_str(",\"outputs\":{");
     if parsed.errors.is_empty() {
         match mode_of(mode) {
-            Mode::Config => {
-                out.push_str("\"Nix\":");
-                push_json_str(&mut out, &maca_backend_nix::emit(&parsed.module));
-            }
+            Mode::Config => match maca_backend_nix::emit_checked(&parsed.module) {
+                Ok(nix) => {
+                    out.push_str("\"Nix\":");
+                    push_json_str(&mut out, &nix);
+                }
+                Err(problems) => limits.push(("Nix", problems)),
+            },
             Mode::Program => {
-                out.push_str("\"C\":");
-                push_json_str(&mut out, &maca_backend_c::emit(&parsed.module));
+                match maca_backend_c::emit_checked(&parsed.module) {
+                    Ok(c) => {
+                        out.push_str("\"C\":");
+                        push_json_str(&mut out, &c);
+                        out.push(',');
+                    }
+                    Err(problems) => limits.push(("C", problems)),
+                }
                 let js = maca_backend_js::emit(&parsed.module);
                 js_exports = js.exports.clone();
-                out.push_str(",\"JS\":");
+                out.push_str("\"JS\":");
                 push_json_str(&mut out, &js.js);
-                if !js.html.is_empty() {
-                    out.push_str(",\"HTML\":");
-                    push_json_str(&mut out, &js.html);
-                }
                 if !js.css.is_empty() {
                     out.push_str(",\"CSS\":");
                     push_json_str(&mut out, &js.css);
                 }
             }
         }
+    }
+    out.push('}');
+
+    out.push_str(",\"limits\":{");
+    for (i, (target, problems)) in limits.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        push_json_str(&mut out, target);
+        out.push_str(":[");
+        for (j, p) in problems.iter().enumerate() {
+            if j > 0 {
+                out.push(',');
+            }
+            push_json_str(&mut out, p);
+        }
+        out.push(']');
     }
     out.push('}');
 

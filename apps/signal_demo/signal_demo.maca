@@ -1,7 +1,7 @@
 // signal_demo — a counter, a label derived from it, and the single node that
 // each change touches.
 //
-//   maca run examples/signal_demo.maca
+//   maca run apps/signal_demo/signal_demo.maca
 //
 // This renders the page once and then prints the patch it *would* apply, which
 // is what makes the wiring testable without a browser. The `js:` line is the

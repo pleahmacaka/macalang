@@ -153,8 +153,8 @@ fn nested_array_types_are_declared_before_use() {
         eprintln!("skipping: needs a host cc and no wsl");
         return;
     }
-    let program = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/programs/nested_arrays.maca");
+    let program =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/programs/nested_arrays.maca");
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args(["test", &program.to_string_lossy()])
         .output()

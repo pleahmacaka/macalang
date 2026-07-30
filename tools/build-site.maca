@@ -23,6 +23,7 @@ import std/list
 import std/text
 import { command, rest } from cli/spec
 import { parse, from } from cli/parse
+import { help } from cli/help
 import { bold, dim, grey, ok, bad } from cli/style
 
 // The compiler the site is built with. `MACA` overrides it, the way
@@ -45,20 +46,12 @@ OutDefault = "_site"
 Spec = command("build-site", "build and check the published site")
     .rest("outdir", "where to assemble the site — {OutDefault} by default")
 
-// `cli/help` renders this page from the same value and is not imported here,
-// for the reason `tools/lint.maca` records: it reaches `cli/style`'s `pad`,
-// which stage-0 miscompiles beside whole-module `std/fs`.
-synopsis(c: Cmd) -> str =>
-    bold(c.name) ++ " — " ++ c.about ++ "\n\n"
-        ++ "  " ++ c.name ++ " [outdir]   " ++ grey("(default: {OutDefault})")
-        ++ "\n"
-
 main(argv: str[]) -> int {
     got = parse(Spec, argv)
     where = from(got, 0)
 
     if got.wants_help {
-        info(synopsis(Spec))
+        info(help(Spec))
         0
     } else if got.error != "" {
         err(bad(got.error))

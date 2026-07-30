@@ -17,7 +17,8 @@
 
 import { command, rest } from cli/spec
 import { parse, from } from cli/parse
-import { bold, dim, ok, bad } from cli/style
+import { help } from cli/help
+import { dim, ok, bad } from cli/style
 import { find, read_lines } from std/fs
 
 // ---- one file -------------------------------------------------------------
@@ -180,22 +181,11 @@ default_paths() -> str[] =>
 Spec = command("lint", "Maca's style rules, over a file or a whole tree")
     .rest("path", "what to lint — the repository's own sources by default")
 
-// `cli/help` renders this page from the same value, and is not imported here.
-// It reaches `cli/style`'s `pad`, and a program holding a top-level `pad`
-// *and* whole-module `std/fs` — which brings in `std/text`'s `indent`, whose
-// lambda captures a parameter also called `pad` — miscompiles the capture into
-// the function and fails in the C compiler. Until stage-0 resolves a captured
-// name ahead of a top-level one, a tool that walks a tree cannot also render a
-// help page. The command has no options, so this is the whole page.
-synopsis(c: Cmd) -> str =>
-    bold(c.name) ++ " — " ++ c.about ++ "\n\n"
-        ++ "  " ++ c.name ++ " [path]...\n"
-
 main(argv: str[]) -> int {
     got = parse(Spec, argv)
 
     if got.wants_help {
-        info(synopsis(Spec))
+        info(help(Spec))
         0
     } else if got.error != "" {
         err(bad(got.error))

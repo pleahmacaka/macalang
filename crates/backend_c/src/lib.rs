@@ -140,8 +140,12 @@ struct Cx<'a> {
     lets: Vec<(String, CTy, Expr)>, // top-level `let`/value bindings
     let_names: HashSet<String>,
     fns: HashMap<String, (Vec<CTy>, CTy)>, // fn name -> (param types, ret)
-    arr_elems: HashSet<CTy>,               // array element types to instantiate
-    map_vals: HashSet<CTy>,                // map value types to instantiate
+    /// Variadic fn name -> how many parameters come before the `...` one.
+    /// Everything from that index on is collected into the last parameter, so
+    /// this is the only number a call site needs to know.
+    variadics: HashMap<String, usize>,
+    arr_elems: HashSet<CTy>, // array element types to instantiate
+    map_vals: HashSet<CTy>,  // map value types to instantiate
     /// `(fn name, param index)` pairs that hold a function value.
     closure_params: HashSet<(String, usize)>,
     vecs: BTreeSet<(String, String, usize)>, // SIMD vector types (name, scalar_c, lanes)
@@ -215,6 +219,7 @@ impl<'a> Cx<'a> {
             lets: Vec::new(),
             let_names: HashSet::new(),
             fns: HashMap::new(),
+            variadics: HashMap::new(),
             arr_elems: HashSet::new(),
             map_vals: HashSet::new(),
             closure_params: HashSet::new(),
@@ -477,6 +482,22 @@ impl<'a> Cx<'a> {
         for item in &self.m.items {
             match item {
                 Stmt::Fn(f) => {
+                    if let Some(at) = f.params.iter().position(|p| p.variadic) {
+                        self.variadics.insert(f.name.clone(), at);
+                        // A list of function values is not a container this back
+                        // end has: `arr_name` maps a closure element to `IntArr`,
+                        // so declaring one redefines the integer array as an
+                        // array of closures and every `int[]` in the program
+                        // stops compiling. Refused where it is written.
+                        if is_fn_type(f.params[at].ty.as_ref()) {
+                            self.problem(format!(
+                                "`{}`: a variadic of function type is not \
+                                 supported — take a record with a function \
+                                 field instead",
+                                f.name
+                            ));
+                        }
+                    }
                     // a generic function (type-variable params/ret) is not emitted
                     // as one C function — it is monomorphized per call site.
                     if fn_is_generic(f) {
@@ -496,7 +517,7 @@ impl<'a> Cx<'a> {
                                 {
                                     CTy::Closure(Box::new(CTy::Int))
                                 } else {
-                                    self.cty_opt(&p.ty)
+                                    self.param_cty(p)
                                 }
                             })
                             .collect::<Vec<_>>();
@@ -557,8 +578,8 @@ impl<'a> Cx<'a> {
                     // one function's locals say nothing about the next one's
                     self.local_tys.clear();
                     for p in &f.params {
-                        if let Some(t) = &p.ty {
-                            let cty = self.cty(t);
+                        if p.ty.is_some() {
+                            let cty = self.param_cty(p);
                             self.local_tys.insert(p.name.clone(), cty);
                         }
                     }
@@ -1120,6 +1141,18 @@ impl<'a> Cx<'a> {
     }
     fn cty_opt(&self, t: &Option<Type>) -> CTy {
         t.as_ref().map_or(CTy::Unknown, |t| self.cty(t))
+    }
+
+    /// The C type a parameter is *declared* with.
+    ///
+    /// `...rest: int` is written with one argument's type, because that is what
+    /// a call site writes; the C parameter is the `IntArr` the trailing
+    /// arguments were collected into. One list, one parameter — the callee has
+    /// an ordinary signature and knows nothing about how many arguments were
+    /// spelled out.
+    fn param_cty(&self, p: &Param) -> CTy {
+        let t = self.cty_opt(&p.ty);
+        if p.variadic { CTy::Arr(Box::new(t)) } else { t }
     }
 }
 
@@ -2506,6 +2539,18 @@ impl<'a> Cx<'a> {
                              pass the rest in a record"
                         ));
                     }
+                    // A task boundary carries integer-width slots, and a
+                    // variadic's parameter is the list its arguments were
+                    // collected into — three words, and built by a call this
+                    // one bypasses. `spawn grow(9)` handed the callee a 9 where
+                    // it expected the list and printed a pointer.
+                    if self.variadics.contains_key(f) {
+                        self.problem(format!(
+                            "`spawn {f}(…)` cannot take a variadic: a task takes \
+                             whole numbers and strings. Wrap it in a function \
+                             that does."
+                        ));
+                    }
                     let typed: Vec<(String, CTy)> =
                         args.iter().map(|x| self.arg_typed(env, x)).collect();
                     // The task boundary carries one integer-width slot per
@@ -2619,6 +2664,16 @@ impl<'a> Cx<'a> {
     fn fn_value_closure(&mut self, name: &str) -> (String, CTy) {
         let (params, ret) = self.fns[name].clone();
         let arity = params.len();
+        // The closure ABI is fixed-arity, and the collection into a list is
+        // something the call site does — so a variadic reached through a closure
+        // would be handed one element where it expects the whole list. The
+        // checker rejects this; the guard is here because a lowering that can
+        // only be wrong should not be reachable by a second route.
+        if self.variadics.contains_key(name) {
+            self.problem(format!(
+                "`{name}` is variadic, so it cannot be used as a function value"
+            ));
+        }
         let thunk = format!("{}__fnval", cid(name));
         if self.fn_thunks.insert(name.to_string()) {
             let sig = if arity >= 2 {
@@ -2708,10 +2763,21 @@ impl<'a> Cx<'a> {
                 if n != name {
                     continue;
                 }
-                if let Some(t) = ptys.get(i)
+                // Past a variadic's fixed count the parameter is the *list* the
+                // arguments were collected into, so what this name is passed as
+                // is one element of it — `v => grow(v)` typed `v` as the whole
+                // `IntArr` and pushed a list into a list of ints.
+                let slot = match self.variadics.get(f) {
+                    Some(&at) if i >= at => match ptys.get(at) {
+                        Some(CTy::Arr(e)) => Some((**e).clone()),
+                        _ => None,
+                    },
+                    _ => ptys.get(i).cloned(),
+                };
+                if let Some(t) = slot
                     && !matches!(t, CTy::Unknown | CTy::Unit)
                 {
-                    *found = Some(t.clone());
+                    *found = Some(t);
                     return;
                 }
             }
@@ -2746,7 +2812,14 @@ impl<'a> Cx<'a> {
             Stmt::Fn(f) if f.name == callee => Some(f),
             _ => None,
         })?;
-        let pname = &f.params.get(index)?.name;
+        let param = f.params.get(index)?;
+        // A variadic parameter names the collected list, not the argument at
+        // this position, so how the body uses it says nothing about a lambda
+        // written here.
+        if param.variadic {
+            return None;
+        }
+        let pname = &param.name;
         let body = f.body.as_ref()?;
 
         // What the function knows about its own locals: a parameter's declared
@@ -3031,7 +3104,14 @@ impl<'a> Cx<'a> {
         let mut m = HashMap::new();
         for (p, cty) in genf.params.iter().zip(arg_ctys) {
             if let Some(t) = &p.ty {
-                bind_vars(t, cty, &mut m);
+                // A variadic's written type is one element's, matched against
+                // the list the call site collected — so bind through the array,
+                // or `...xs: a` would decide that `a` is `int[]`.
+                let against = match (p.variadic, cty) {
+                    (true, CTy::Arr(e)) => e,
+                    _ => cty,
+                };
+                bind_vars(t, against, &mut m);
             }
         }
         m
@@ -3317,6 +3397,82 @@ impl<'a> Cx<'a> {
         (format!("({{ {body} _a; }})"), CTy::Arr(Box::new(elem)))
     }
 
+    /// The trailing arguments of a variadic call, collected into one list.
+    ///
+    /// Deliberately the same C a list literal in that position would produce:
+    /// `total(1, 2, 3)` and `total([1, 2, 3])` allocate one buffer each, so the
+    /// sugar costs nothing and inherits an ownership story that already exists
+    /// rather than inventing one. C's own `stdarg.h` was not an option — a
+    /// promoted `...` argument list is invisible to the reference counting, so
+    /// a `maca_str` passed through it would have no owner at all.
+    fn collect_rest(&mut self, env: &mut Env, tail: &[Arg], elem: &CTy) -> String {
+        let pieces: Vec<String> = tail
+            .iter()
+            .map(|x| self.arg_expected(env, x, Some(elem)).0)
+            .collect();
+        self.list_of(&pieces, elem)
+    }
+
+    /// `receiver.f(…)` where `f` is variadic: the receiver joins the arguments
+    /// and the tail past the fixed count is collected, exactly as for `f(…)`.
+    ///
+    /// `at` is the fixed parameter count, and the receiver occupies the first of
+    /// them — so with `at == 0` the receiver is itself the first collected
+    /// element, which is what `f(x, …)` means.
+    fn ufcs_variadic(
+        &mut self,
+        env: &mut Env,
+        rc: &str,
+        name: &str,
+        args: &[Arg],
+        at: usize,
+    ) -> (String, CTy) {
+        let Some((params, ret)) = self.fns.get(name).cloned() else {
+            // A generic reached UFCS-style has no monomorphized name to call;
+            // that hole predates variadics, but a variadic one would compound it
+            // with an argument count nothing checks.
+            self.problem(format!(
+                "`{name}` is generic and variadic, so it cannot be called \
+                 UFCS-style — write `{name}(…)`"
+            ));
+            return (format!("{}({rc})", cid(name)), CTy::Unknown);
+        };
+        let elem = match params.get(at) {
+            Some(CTy::Arr(e)) => (**e).clone(),
+            _ => CTy::Unknown,
+        };
+        let mut fixed = vec![rc.to_string()];
+        let mut rest = Vec::new();
+        for (i, x) in args.iter().enumerate() {
+            // +1 for the receiver already in `fixed`
+            let slot = i + 1;
+            if slot < at {
+                fixed.push(self.arg_expected(env, x, params.get(slot)).0);
+            } else {
+                rest.push(self.arg_expected(env, x, Some(&elem)).0);
+            }
+        }
+        if at == 0 {
+            rest.insert(0, fixed.remove(0));
+        }
+        fixed.push(self.list_of(&rest, &elem));
+        (format!("{}({})", cid(name), fixed.join(", ")), ret)
+    }
+
+    /// Already-lowered elements, gathered into one fresh list.
+    fn list_of(&mut self, pieces: &[String], elem: &CTy) -> String {
+        let an = arr_name(elem);
+        if pieces.is_empty() {
+            return format!("{an}_new()");
+        }
+        let v = self.temp();
+        let mut body = format!("{an} {v} = {an}_new();");
+        for c in pieces {
+            body.push_str(&format!(" {an}_push(&{v}, {c});"));
+        }
+        format!("({{ {body} {v}; }})")
+    }
+
     /// `tag(attr=value, …, child, …)` → the HTML text for that element.
     ///
     /// Named arguments become attributes, positional ones children. A void
@@ -3493,6 +3649,14 @@ impl<'a> Cx<'a> {
                     expected,
                 );
             }
+            // A variadic written UFCS-style. `x.f(y, z)` is `f(x, y, z)`, so the
+            // receiver is an argument like any other and the tail still has to
+            // be collected. `ufcs` is handed lowered strings and cannot do it,
+            // which is how `bag.tally(1, 2)` reached `cc` as three arguments to
+            // a two-parameter function.
+            if let Some(&at) = self.variadics.get(name) {
+                return self.ufcs_variadic(env, &rc, name, args, at);
+            }
             let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
             return self.ufcs(&rc, &rty, name, &a);
         }
@@ -3623,7 +3787,9 @@ impl<'a> Cx<'a> {
                 // arguments given concretely — `sort_by(rows, r => r.name)`
                 // otherwise typed `r` as an integer and read a field off it.
                 let declared = self.declared_lambda_params(name, args, env);
-                let lowered: Vec<(String, CTy)> = args
+                let fixed = self.variadics.get(name).copied();
+                let spelled = fixed.unwrap_or(args.len()).min(args.len());
+                let mut lowered: Vec<(String, CTy)> = args[..spelled]
                     .iter()
                     .enumerate()
                     .map(|(i, x)| {
@@ -3633,6 +3799,22 @@ impl<'a> Cx<'a> {
                         got
                     })
                     .collect();
+                // A generic variadic (`largest(...xs: a) -> a`) is specialized
+                // on the *list* the trailing arguments were collected into, so
+                // the element type has to be known before they are collected —
+                // and nothing declares it, so the arguments say. Lowered once
+                // and reused: lowering again to ask its type would hoist a
+                // second copy of any lambda among them.
+                if fixed.is_some() {
+                    let tail: Vec<(String, CTy)> = args[spelled..]
+                        .iter()
+                        .map(|x| self.arg_typed(env, x))
+                        .collect();
+                    let elem = tail.first().map_or(CTy::Unknown, |(_, t)| t.clone());
+                    let pieces: Vec<String> = tail.into_iter().map(|(c, _)| c).collect();
+                    let code = self.list_of(&pieces, &elem);
+                    lowered.push((code, CTy::Arr(Box::new(elem))));
+                }
                 let arg_ctys: Vec<CTy> = lowered.iter().map(|(_, t)| t.clone()).collect();
                 let key = (name.to_string(), arg_ctys.clone());
                 if !self.spec_done.contains(&key) && !self.spec_pending.contains(&key) {
@@ -3667,7 +3849,11 @@ impl<'a> Cx<'a> {
                 // `Row[]` says `key` takes a `Row`; without that the lambda's
                 // parameter was an integer and `r.name` dereferenced it.
                 let declared = self.declared_lambda_params(name, args, env);
-                let a: Vec<String> = args
+                // A variadic takes the arguments past its fixed ones as one
+                // list, so only the fixed ones line up with a parameter.
+                let fixed = self.variadics.get(name).copied();
+                let spelled = fixed.unwrap_or(args.len()).min(args.len());
+                let mut a: Vec<String> = args[..spelled]
                     .iter()
                     .enumerate()
                     .map(|(i, x)| {
@@ -3688,6 +3874,13 @@ impl<'a> Cx<'a> {
                         c
                     })
                     .collect();
+                if let Some(at) = fixed {
+                    let elem = match params.get(at) {
+                        Some(CTy::Arr(e)) => (**e).clone(),
+                        _ => CTy::Unknown,
+                    };
+                    a.push(self.collect_rest(env, &args[spelled..], &elem));
+                }
                 return (format!("{}({})", cid(name), a.join(", ")), ret);
             }
             let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
@@ -5064,6 +5257,15 @@ fn sum_variants(e: &Expr) -> Option<Vec<(String, Vec<Type>)>> {
 
 /// A function is generic if any parameter or the return type mentions a
 /// type variable.
+/// A written type that is `(T, U) -> R`, through any parentheses around it.
+fn is_fn_type(t: Option<&Type>) -> bool {
+    match t {
+        Some(Type::Fn(..)) => true,
+        Some(Type::Paren(inner)) => is_fn_type(Some(inner)),
+        _ => false,
+    }
+}
+
 fn fn_is_generic(f: &FnDef) -> bool {
     f.params
         .iter()

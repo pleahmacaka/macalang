@@ -1,0 +1,16 @@
+// A variadic is callable and nothing else.
+//
+// Collecting the trailing arguments is something the *call site* does, so a
+// variadic function has no arity as a value: the closure ABI every back end
+// passes function values through is fixed-arity, and a function type is written
+// `(T) -> R` with no variadic spelling. Passed by name, `apply` would hand the
+// callee one element where it expects the whole list.
+
+total(...rest: int) -> int => rest.length()
+
+apply(f, v: int) -> int => f(v)
+
+main() -> int {
+    info("{apply(total, 3)}")
+    0
+}

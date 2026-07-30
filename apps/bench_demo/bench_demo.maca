@@ -1,6 +1,6 @@
 // bench_demo — measuring a handful of the corpus and printing the table.
 //
-//   maca run examples/bench_demo.maca
+//   maca run apps/bench_demo/bench_demo.maca
 //
 // Nine cases, three samples each, about a second in total. `quick()` is used
 // on purpose and the footer says so: three samples of fifteen milliseconds is

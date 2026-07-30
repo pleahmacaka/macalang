@@ -133,22 +133,51 @@ pub fn layout_for(importer: &Path) -> Layout {
         .map_or_else(Layout::default, |t| Layout::from_manifest(&t))
 }
 
+/// Which rule turned up a candidate file for one written import.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Found {
+    /// `<base>/<the path exactly as written>`.
+    Written,
+    /// `<base>/<one of the project's own source roots>/<the path>`.
+    Root,
+    /// `<base>/maca_modules/<the path>` — an installed dependency.
+    Installed,
+}
+
+/// The file an import resolves to, and the file that resolution hid.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Resolved {
+    /// The file the import means.
+    pub chosen: PathBuf,
+    /// A second, different file the same written import also names — one found
+    /// as a written path and one under a search root. Nothing in the source
+    /// says which of the two won, so this is an ambiguity to report rather than
+    /// a precedence to rely on; see `candidates`.
+    pub shadowed: Option<PathBuf>,
+}
+
 /// The file `import a/b` names, relative to the importing file.
 ///
 /// The written path wins, from the importer's directory upward and then from
 /// the working directory — that is what reaches `apps/tomo/conf.maca` from
 /// `tools/`. Each of those directories is also tried as a project root, so
 /// `import std/text` finds `modules/std/text.maca` from anywhere in the tree.
+pub fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> {
+    resolve_module(segs, importer).map(|r| r.chosen)
+}
+
+/// `resolve_module_path`, and what else the same import names.
 ///
 /// The bare-sibling rule comes last on purpose: it is a convenience for
 /// `import selfhost/token` next to its siblings, and taking it first meant any
 /// `list.maca` beside a program silently shadowed `std/list` with no
 /// diagnostic at all.
-pub fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> {
+pub fn resolve_module(segs: &[String], importer: &Path) -> Option<Resolved> {
     let last = segs.last()?;
     let dir = importer.parent().unwrap_or_else(|| Path::new("."));
     let joined = segs.join("/");
     let layout = layout_for(importer);
+    let mut found: Vec<(PathBuf, Found)> = Vec::new();
 
     // The importer's own directory, then every directory above it up to the
     // project root, then the working directory. Walking up is what lets a
@@ -157,9 +186,7 @@ pub fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> 
     // where it was started from, and `cargo test`, which runs in a crate
     // directory, could not resolve an example's imports at all.
     for base in dir.ancestors() {
-        if let Some(hit) = in_base(base, &joined, &layout) {
-            return Some(hit);
-        }
+        candidates(base, &joined, &layout, &mut found);
         // Stop at the project root. Without this the walk continues into `$HOME`
         // and `/`, where a stray `std/` becomes the standard library for every
         // project beneath it — and the language server, whose own search is
@@ -175,21 +202,50 @@ pub fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> 
     // `modules/`, which is a build whose meaning depends on where it was
     // started — and the language server, bounded by its workspace, could never
     // agree with it.
-    if project_root(dir).is_none()
-        && let Some(hit) = in_base(Path::new("."), &joined, &layout)
-    {
-        return Some(hit);
+    if found.is_empty() && project_root(dir).is_none() {
+        candidates(Path::new("."), &joined, &layout, &mut found);
     }
-    module_file(&dir.join(last))
+    if found.is_empty() {
+        return module_file(&dir.join(last)).map(|chosen| Resolved {
+            chosen,
+            shadowed: None,
+        });
+    }
+    let (chosen, rule) = found[0].clone();
+    let shadowed = found[1..]
+        .iter()
+        .find(|(p, other)| hides(rule, *other) && !same_file(p, &chosen))
+        .map(|(p, _)| p.clone());
+    Some(Resolved { chosen, shadowed })
 }
 
-/// `<base>/<path>`, then each search root under `base`.
+/// Do these two rules finding two different files make the import ambiguous?
+///
+/// A written path against a source root, either way round: nothing the author
+/// wrote distinguishes `bench/stat` the directory from `bench/stat` the
+/// package, so whichever wins, the loser is invisible.
+///
+/// An installed dependency losing to the project's own source is *not* that.
+/// `maca_modules` is a directory `maca add` created, not one anybody wrote, and
+/// a project's own copy outranking a vendored one is the documented precedence
+/// — see `an_installed_dependency_does_not_outrank_the_projects_own_source`.
+fn hides(chosen: Found, other: Found) -> bool {
+    matches!(
+        (chosen, other),
+        (Found::Written, Found::Root) | (Found::Root, Found::Written)
+    )
+}
+
+/// Every file `<base>` offers for one written import, best first: `<base>/<path>`,
+/// then `<base>/<root>/<path>` for each search root in order.
 ///
 /// The written path comes first, and that has a cost worth knowing: a
-/// directory that shares a package's name shadows it, silently, with no
-/// diagnostic. The tree had exactly that shape — a top-level `bench/` beside
-/// `modules/bench/`, whose files the benchmark subsystem imports as `bench/…`
-/// — and it was closed by moving the directory, not by reordering here.
+/// directory that shares a package's name shadows it. The tree had exactly that
+/// shape — a top-level `bench/` beside `modules/bench/`, whose files the
+/// benchmark subsystem imports as `bench/…` — and it was closed by moving the
+/// directory, not by reordering here. What is new is that the shadowing is no
+/// longer silent: both candidates are collected, and an import that names two
+/// files is refused by `imports::collect` naming both.
 ///
 /// Reordering was tried and reverted. It does not fix the general case: the
 /// ancestor walk visits each directory in turn, so `apps/bench/report.maca`
@@ -197,14 +253,30 @@ pub fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> 
 /// order within one directory. And it makes things worse elsewhere —
 /// `maca_modules` is a search root, so roots-first lets an installed
 /// dependency outrank the project's own source. Across the 229 imports in this
-/// repository the two orderings agree on every one.
-fn in_base(base: &Path, path: &str, layout: &Layout) -> Option<PathBuf> {
-    module_file(&base.join(path)).or_else(|| {
-        layout
-            .roots
-            .iter()
-            .find_map(|r| module_file(&base.join(r).join(path)))
-    })
+/// repository the two orderings agree on every one, which is also why refusing
+/// an ambiguous import costs those imports nothing.
+fn candidates(base: &Path, path: &str, layout: &Layout, out: &mut Vec<(PathBuf, Found)>) {
+    if let Some(hit) = module_file(&base.join(path)) {
+        out.push((hit, Found::Written));
+    }
+    for r in &layout.roots {
+        if let Some(hit) = module_file(&base.join(r).join(path)) {
+            let rule = if r == INSTALLED {
+                Found::Installed
+            } else {
+                Found::Root
+            };
+            out.push((hit, rule));
+        }
+    }
+}
+
+/// The same file reached two ways. `modules/std/text.maca` is both the written
+/// path from inside `modules/` and the `modules` root's answer from the project
+/// root, and that is one file, not an ambiguity.
+fn same_file(a: &Path, b: &Path) -> bool {
+    let real = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    real(a) == real(b)
 }
 
 /// The module at `stem` — the file `stem.maca`, and nothing else.
@@ -216,7 +288,12 @@ fn module_file(stem: &Path) -> Option<PathBuf> {
 /// The local module a single import statement names, if any. Foreign imports
 /// (`import c "…"`, `nixpkgs`, a raw block) resolve to no file.
 pub fn import_target(im: &Import, importer: &Path) -> Option<PathBuf> {
-    resolve_module_path(&import_segments(im)?, importer)
+    import_resolution(im, importer).map(|r| r.chosen)
+}
+
+/// `import_target`, and what else that import statement names.
+pub fn import_resolution(im: &Import, importer: &Path) -> Option<Resolved> {
+    resolve_module(&import_segments(im)?, importer)
 }
 
 /// Does this import name a file it is an error not to find?

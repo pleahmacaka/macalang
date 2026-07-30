@@ -1,0 +1,15 @@
+import { params, langs, case_name } from apps/bench/run
+import { recursion_kernels, compute_kernels } from apps/bench/run
+import { load, find } from bench/store
+import { median_ms } from bench/time
+
+main() -> int {
+    rs = load("apps/bench/results.json")
+    info("{rs.length()} results")
+    info(langs().join(", "))
+    info(recursion_kernels().join(", ") ++ " | " ++ compute_kernels().join(", "))
+    info(params("fib"))
+    at = find(rs, case_name("sieve", "Maca"))
+    info("{median_ms(rs.get(at)):.0}")
+    0
+}

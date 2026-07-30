@@ -4,7 +4,7 @@
 //! are here rather than in Maca: each one builds a project on disk and asks
 //! `resolve_module_path` what a written import means inside it.
 
-use maca_parser::modules::{Layout, resolve_module_path};
+use maca_parser::modules::{Layout, resolve_module, resolve_module_path};
 use std::path::{Path, PathBuf};
 
 /// A throwaway project rooted at a unique directory, removed on drop.
@@ -32,7 +32,16 @@ impl Project {
     /// What `import <path>` resolves to from `importer`, relative to the root.
     fn resolve(&self, importer: &Path, path: &str) -> Option<String> {
         let segs: Vec<String> = path.split('/').map(str::to_string).collect();
-        let hit = resolve_module_path(&segs, importer)?;
+        self.relative(resolve_module_path(&segs, importer)?)
+    }
+
+    /// The file the same import also names, if it names two.
+    fn shadowed(&self, importer: &Path, path: &str) -> Option<String> {
+        let segs: Vec<String> = path.split('/').map(str::to_string).collect();
+        self.relative(resolve_module(&segs, importer)?.shadowed?)
+    }
+
+    fn relative(&self, hit: PathBuf) -> Option<String> {
         let hit = std::fs::canonicalize(&hit).unwrap_or(hit);
         let root = std::fs::canonicalize(&self.0).unwrap_or_else(|_| self.0.clone());
         Some(
@@ -193,18 +202,23 @@ fn a_written_path_beats_a_search_root() {
     );
 }
 
-/// A directory that shares a package's name shadows the package, and nothing
-/// says so. This is the sharp edge of the rule above, pinned here so a change
-/// to it is a change to a test rather than a surprise: the tree had a
-/// top-level `bench/` beside `modules/bench/`, whose files the whole benchmark
-/// subsystem imports as `bench/…`, and which one `import bench/stat` meant was
-/// decided by which file happened to exist.
+/// A directory that shares a package's name shadows the package. This is the
+/// sharp edge of the rule above, pinned here so a change to it is a change to a
+/// test rather than a surprise: the tree had a top-level `bench/` beside
+/// `modules/bench/`, whose files the whole benchmark subsystem imports as
+/// `bench/…`, and which one `import bench/stat` meant was decided by which file
+/// happened to exist.
 ///
-/// It was closed by moving the directory. Reordering `in_base` to put the
-/// search roots first was tried and reverted: it does not fix the case where
-/// the shadowing directory is under `apps/` — the ancestor walk reaches that
+/// It was closed by moving the directory. Reordering the search to put the
+/// roots first was tried and reverted: it does not fix the case where the
+/// shadowing directory is under `apps/` — the ancestor walk reaches that
 /// directory before the root — and it lets an installed dependency under
 /// `maca_modules/` outrank the project's own source.
+///
+/// So the order stands and the shadowing is reported instead: resolution still
+/// answers with the written path, and now also says which file that hid.
+/// `imports::collect` refuses the import rather than compiling one of the two in
+/// silence.
 #[test]
 fn a_directory_of_the_same_name_shadows_a_package() {
     let p = Project::new("collide");
@@ -218,6 +232,31 @@ fn a_directory_of_the_same_name_shadows_a_package() {
         Some("bench/stat.maca"),
         "the written path wins — which is why a package's name is not a name \
          to give a directory"
+    );
+    assert_eq!(
+        p.shadowed(&app, "bench/stat").as_deref(),
+        Some("modules/bench/stat.maca"),
+        "and the package it hid is named, so nobody has to guess"
+    );
+}
+
+/// An import naming one file names one file. Every ordinary resolution has to
+/// come back clean, or a diagnostic about two files fires on programs that have
+/// only one.
+#[test]
+fn an_unambiguous_import_shadows_nothing() {
+    let p = Project::new("clean");
+    p.write("maca.toml", MANIFEST);
+    p.write("modules/std/text.maca", "lines(s: str) -> str[] => [s]\n");
+    let inside = p.write("modules/std/fs.maca", "import std/text\n");
+    let app = p.write("apps/x/main.maca", "import std/text\n");
+
+    assert_eq!(p.shadowed(&app, "std/text"), None, "from an app");
+    assert_eq!(
+        p.shadowed(&inside, "std/text"),
+        None,
+        "and from inside `modules/`, where the written path and the `modules` \
+         root find the same file by two different rules"
     );
 }
 

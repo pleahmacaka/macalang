@@ -68,8 +68,8 @@ fn documented_imports_name_things_that_exist() {
 
     let mut built = 0;
     for file in ["llms.txt", "SKILL.md", "README.md"] {
-        let md = std::fs::read_to_string(repo().join(file))
-            .unwrap_or_else(|e| panic!("{file}: {e}"));
+        let md =
+            std::fs::read_to_string(repo().join(file)).unwrap_or_else(|e| panic!("{file}: {e}"));
 
         for (i, block) in maca_blocks(&md).iter().enumerate() {
             if !imports_a_package(block) {
@@ -84,7 +84,12 @@ fn documented_imports_name_things_that_exist() {
             let out = std::env::temp_dir().join(format!("maca-doc-{i}"));
             let result = Command::new(maca())
                 .current_dir(repo())
-                .args(["build", &src.to_string_lossy(), "-o", &out.to_string_lossy()])
+                .args([
+                    "build",
+                    &src.to_string_lossy(),
+                    "-o",
+                    &out.to_string_lossy(),
+                ])
                 .output()
                 .expect("spawn maca build");
             let _ = std::fs::remove_file(&src);

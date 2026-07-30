@@ -1,6 +1,6 @@
 // profile_demo — a small program that measures itself.
 //
-//   maca run examples/profile_demo.maca
+//   maca run apps/profile_demo/profile_demo.maca
 //
 // It does three real pieces of work — builds a paragraph, sorts its words, and
 // walks a directory tree — with a span around each, then prints the flame

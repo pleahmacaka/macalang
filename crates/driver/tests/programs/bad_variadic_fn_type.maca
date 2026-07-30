@@ -1,0 +1,19 @@
+// A variadic of function type is not lowered.
+//
+// A list of function values is not a container the C back end has: it names the
+// array after its element type, and a closure element lands on the same name as
+// an integer one. Declaring this redefined the integer array as an array of
+// closures, and every `int[]` in the program stopped compiling.
+
+apply_all(...fs: (int) -> int) -> int {
+    n = 0
+    for f in fs {
+        n = n + f(3)
+    }
+    n
+}
+
+main() -> int {
+    info("{apply_all(v => v + 1)}")
+    0
+}

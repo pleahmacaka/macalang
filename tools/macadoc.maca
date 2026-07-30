@@ -27,6 +27,7 @@ import apps/site/shell
 import std/list
 import { command, arg, rest } from cli/spec
 import { parse, value, from } from cli/parse
+import { help } from cli/help
 import { bold, dim, ok, bad } from cli/style
 
 // ---- the model ------------------------------------------------------------
@@ -574,18 +575,11 @@ Spec = command("macadoc", "an API reference, rendered from Maca source")
     .arg("out", "the directory to write the reference into")
     .rest("module", "the .maca files to document")
 
-// `cli/help` renders this page from the same value and is not imported here,
-// for the reason `tools/lint.maca` records: it reaches `cli/style`'s `pad`,
-// which stage-0 miscompiles beside whole-module `std/fs`.
-synopsis(c: Cmd) -> str =>
-    bold(c.name) ++ " — " ++ c.about ++ "\n\n"
-        ++ "  " ++ c.name ++ " <out-dir> <file.maca>...\n"
-
 main(argv: str[]) -> int {
     got = parse(Spec, argv)
 
     if got.wants_help {
-        info(synopsis(Spec))
+        info(help(Spec))
         0
     } else if got.error != "" {
         err(bad(got.error))

@@ -2,9 +2,13 @@
 //
 // Run it:
 //
-//   maca run examples/cli_tool.maca -- --help
-//   maca run examples/cli_tool.maca -- report modules --sort lines
-//   maca run examples/cli_tool.maca -- report --srot lines
+//   maca run apps/cli_tool/cli_tool.maca --help
+//   maca run apps/cli_tool/cli_tool.maca modules/cli --sort lines
+//   maca run apps/cli_tool/cli_tool.maca modules/cli --srot lines
+//
+// No `--` before the program's own arguments: `maca run` forwards it, and this
+// parser reads it as the end-of-options marker, so `-- --help` asks for a
+// directory named `--help` instead of printing the page.
 //
 // The command is one value. The parser reads it to decide what an argument
 // means, `--help` is printed from it, and a misspelt option is answered with

@@ -50,7 +50,11 @@ fn have(tool: &str) -> bool {
 
 /// The two-file program every target below is given.
 fn two_files(dir: &Path) {
-    write(dir, "lib/greet.maca", "greeting(name: str) -> str => \"hello \" ++ name\n");
+    write(
+        dir,
+        "lib/greet.maca",
+        "greeting(name: str) -> str => \"hello \" ++ name\n",
+    );
     write(
         dir,
         "app.maca",
@@ -142,7 +146,11 @@ fn embedded_inlines_the_imported_module() {
 fn nix_reads_an_imported_config_fragment() {
     let dir = project("nix");
     write(&dir, "lib/ports.maca", "services.ssh.port = 2222\n");
-    write(&dir, "app.maca", "import lib/ports\n\nservices.ssh.enable = true\n");
+    write(
+        &dir,
+        "app.maca",
+        "import lib/ports\n\nservices.ssh.enable = true\n",
+    );
     let o = build(&dir, "nix", "out.nix", &[]);
     assert!(
         o.status.success(),
@@ -161,8 +169,16 @@ fn a_transitive_import_is_inlined() {
     }
     let dir = project("transitive");
     write(&dir, "lib/c.maca", "base() -> int => 7\n");
-    write(&dir, "lib/b.maca", "import lib/c\nmid() -> int => base() + 1\n");
-    write(&dir, "lib/a.maca", "import lib/b\ntop() -> int => mid() + 1\n");
+    write(
+        &dir,
+        "lib/b.maca",
+        "import lib/c\nmid() -> int => base() + 1\n",
+    );
+    write(
+        &dir,
+        "lib/a.maca",
+        "import lib/b\ntop() -> int => mid() + 1\n",
+    );
     write(
         &dir,
         "app.maca",
@@ -194,8 +210,16 @@ fn a_diamond_inlines_the_shared_module_once() {
     // Two copies is a redeclaration in JS and a duplicate symbol in C.
     let dir = project("diamond");
     write(&dir, "lib/base.maca", "base_val() -> int => 7\n");
-    write(&dir, "lib/a.maca", "import lib/base\nfrom_a() -> int => base_val() + 1\n");
-    write(&dir, "lib/b.maca", "import lib/base\nfrom_b() -> int => base_val() + 2\n");
+    write(
+        &dir,
+        "lib/a.maca",
+        "import lib/base\nfrom_a() -> int => base_val() + 1\n",
+    );
+    write(
+        &dir,
+        "lib/b.maca",
+        "import lib/base\nfrom_b() -> int => base_val() + 2\n",
+    );
     write(
         &dir,
         "app.maca",
@@ -260,11 +284,7 @@ fn an_import_that_names_no_file_is_an_error_on_every_target() {
         ("embedded", &["--mcu", "cortex-m4"]),
     ] {
         let dir = project(&format!("missing-{target}"));
-        write(
-            &dir,
-            "app.maca",
-            "import lib/nope\n\nmain() -> int => 0\n",
-        );
+        write(&dir, "app.maca", "import lib/nope\n\nmain() -> int => 0\n");
         let o = build(&dir, target, "out", extra);
         assert!(
             !o.status.success(),

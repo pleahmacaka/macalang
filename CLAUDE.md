@@ -124,10 +124,20 @@ structure and comment voice.
 | `signal` | nanostore-style reactive state — `store` (signals, computed, effects) and `dom`, so a native web page updates the nodes that changed rather than re-rendering | 58 |
 | `tambo` | the web framework over `http` — `app`, `route`, `ctx`, `dispatch`, `reply` | 87 |
 
-`examples/` (golden `.maca` programs + `examples/bad/`, plus `bench_demo`,
-`profile_demo`, `signal_demo`, `tambo_demo` and `cli_tool` — a runnable program
-for most of the packages), `apps/` (capstones: `mqtt`, `microkernel`, `blink`, `desktop`,
-`mcmod`, `bench` — the cross-language harness and its C/Rust/Go/JS/Python
+`examples/` is the **regression set and nothing else**: the spec's code blocks
+verbatim, `examples/bad/` (each rejected with a named diagnostic), and
+`examples/handbook.maca` (the book's claims as one executable program). A file is
+there because a test, `docs/SPEC.md`, or a handbook chapter names it. **A
+runnable program built on a package is an application, so it lives under
+`apps/`** — `bench_demo`, `profile_demo`, `signal_demo`, `tambo_demo` and
+`cli_tool`, one directory and one README each, the same reasoning that moved
+`bench` and `playground` there. `examples/taskr.maca` is the one runnable program
+that stays, because it is also four fixtures: the committed lexer golden-token
+snapshot, the parser round-trip, the `maca fmt --check` golden, and the root
+manifest's `[[bin]]`.
+
+`apps/` (capstones: `mqtt`, `microkernel`, `blink`, `desktop`, `mcmod`,
+`bench` — the cross-language harness and its C/Rust/Go/JS/Python
 reference kernels — `playground` (the browser playground, a single `.maca`
 file compiled by the JS backend), `tomo` — the i18n handbook builder that
 renders `book/{en,ko}/*.md` into `site/`, built entirely out of the UI syntax

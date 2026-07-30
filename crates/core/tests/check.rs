@@ -168,16 +168,37 @@ fn arity_rejected() {
         DiagKind::TypeMismatch,
     );
 }
-/// A variadic parameter is refused where it is written, rather than at `cc`.
-/// It parses and prints and nothing lowers it, so the program used to build a
-/// C file that would not compile, and the error named that file.
+/// A variadic parameter is a lowered declaration now, not a rejected one: the
+/// call site collects its trailing arguments into the `T[]` the body sees.
+///
+/// The rules it does have — last, annotated, not `main`, not a function value —
+/// and the arity relaxation are asserted end to end by
+/// `crates/driver/tests/variadic.rs`, which runs them through the real compiler.
+/// What this says is the part the checker owes: a program that uses one is
+/// clean.
 #[test]
-fn variadic_rejected() {
-    assert_has(
-        "examples/bad/variadic.maca",
-        Mode::Program,
-        DiagKind::TypeMismatch,
-    );
+fn variadic_typechecks() {
+    assert_clean("crates/driver/tests/programs/variadic.maca", Mode::Program);
+}
+
+/// The rules it does have belong to *this* layer, so they are asserted here and
+/// not only through the back end that would also refuse them. A variadic has no
+/// arity as a value; a call that skips a fixed parameter is short one argument
+/// the collection cannot invent; a parameter after the variadic has no way to be
+/// told from one more of them.
+#[test]
+fn variadic_misuse_rejected() {
+    for bad in [
+        "bad_variadic_value",
+        "bad_variadic_arity",
+        "bad_variadic_not_last",
+    ] {
+        assert_has(
+            &format!("crates/driver/tests/programs/{bad}.maca"),
+            Mode::Program,
+            DiagKind::TypeMismatch,
+        );
+    }
 }
 /// A record literal has to name every field the record declares.
 ///

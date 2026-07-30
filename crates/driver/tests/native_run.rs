@@ -31,7 +31,11 @@ fn hello_runs_natively() {
     );
 }
 
-/// `examples/cli_tool.maca` — the `cli` package used the way a program uses it.
+/// `apps/cli_tool/` — the `cli` package used the way a program uses it.
+///
+/// An application, not a fixture, so it lives under `apps/` with the other
+/// programs and is named by its written path: `apps/` is deliberately not an
+/// import search root.
 ///
 /// Run three ways, because a command line has three outcomes and only one of
 /// them is the happy path: help printed and nothing done, a refusal naming what
@@ -43,10 +47,11 @@ fn the_cli_example_helps_refuses_and_runs() {
         return;
     }
     let bin = std::env::temp_dir().join("maca-cli-example");
+    let src = repo().join("apps/cli_tool/cli_tool.maca");
     let build = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args([
             "build",
-            &example_str("cli_tool.maca"),
+            &src.to_string_lossy(),
             "-o",
             &bin.to_string_lossy(),
         ])

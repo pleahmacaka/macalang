@@ -391,7 +391,11 @@ fn cmd_lint(args: &[String]) {
     // `maca lint` reported "no issues" on the two fixtures written to fail,
     // while advertising itself as a substitute for `maca.check`.
     let config = args.iter().any(|a| a == "--config");
-    let Some(src) = args.iter().find(|a| !a.starts_with("--")).map(PathBuf::from) else {
+    let Some(src) = args
+        .iter()
+        .find(|a| !a.starts_with("--"))
+        .map(PathBuf::from)
+    else {
         die("lint: expected a .maca file");
     };
     let source =

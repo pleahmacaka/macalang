@@ -1,0 +1,12 @@
+// One half of a same-named private helper, kept in its own module.
+//
+// `reading` has no `///` block and nothing asks for it by name, so this module
+// is the only thing that can mean it. Inlining puts both halves into one
+// translation unit, and before they were kept apart the checker typed this
+// file's call against beta's signature and reported the mismatch here, in a
+// file whose author had not touched beta at all.
+
+/// One more than the length of `s`.
+alpha_reading(s: str) -> int => reading(s) + 1
+
+reading(s: str) -> int => s.length()

@@ -26,12 +26,6 @@
 //
 // The reference implementations under `ref/` stay in their own languages:
 // they are the comparison. The harness around them does not need to be.
-//
-// `std/fs`, `std/list` and `std/text` are deliberately not imported. Nothing
-// here uses them, and whole-module `std/text` brings `indent`, whose lambda
-// captures a parameter named `pad`; stage-0 resolves that capture to
-// `cli/style`'s top-level `pad` and the emitted C will not compile. Every table
-// below comes through `cli/show`, so this file has to stay clear of it.
 
 import std/proc
 import { join } from std/path

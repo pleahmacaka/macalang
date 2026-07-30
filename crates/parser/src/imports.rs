@@ -16,8 +16,8 @@
 //! are left for the backend.
 
 use crate::ast::*;
-use crate::modules::{import_segments, import_target, names_a_file};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use crate::modules::{import_resolution, import_segments, import_target, names_a_file};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Read a program and inline every local module it imports (transitively). A
@@ -29,24 +29,478 @@ pub fn load_with_imports(entry: &Path) -> Result<String, String> {
     collect(entry, &mut g)?;
     let sel = resolve_selection(entry, &g);
 
-    let mut combined = String::new();
+    let mut units: Vec<Unit> = Vec::new();
     for path in &g.order {
+        let src = read(path)?;
         match sel.get(path).unwrap_or(&Sel::All) {
-            Sel::All => {
-                // Preserve the module verbatim (comments, formatting) — its own
-                // `import` lines are no-ops for codegen.
-                combined.push_str(&read(path)?);
-            }
+            Sel::All => units.push(Unit {
+                items: g.parsed[path].items.clone(),
+                verbatim: true,
+                path: path.clone(),
+                src,
+            }),
             Sel::Names(want) => {
-                let module = &g.parsed[path];
-                let mut sliced = slice_module(module, want, path)?;
+                let mut sliced = slice_module(&g.parsed[path], want, path)?;
                 qualify_private(&mut sliced, want, path);
-                combined.push_str(&crate::print_module(&Module { items: sliced }));
+                units.push(Unit {
+                    items: sliced,
+                    verbatim: false,
+                    path: path.clone(),
+                    src,
+                });
             }
+        }
+    }
+    separate_scopes(&mut units, &g, entry)?;
+
+    let mut combined = String::new();
+    for u in &units {
+        if u.verbatim {
+            // Preserve the module verbatim (comments, formatting). Its own
+            // `import` lines are no-ops for codegen.
+            combined.push_str(&u.src);
+        } else {
+            combined.push_str(&crate::print_module(&Module {
+                items: u.items.clone(),
+            }));
         }
         combined.push('\n');
     }
     Ok(combined)
+}
+
+/// One module's contribution to the flat translation unit.
+struct Unit {
+    path: PathBuf,
+    /// The module's own text. Emitted as it was written while nothing has
+    /// rewritten the module, which keeps its comments and its formatting in the
+    /// program the back end reads.
+    src: String,
+    /// What the module contributes: every item for a whole-module import, the
+    /// requested slice for a selective one.
+    items: Vec<Stmt>,
+    /// Whether `src` still says what `items` do. A rename clears this, and the
+    /// module is printed from its tree instead.
+    verbatim: bool,
+}
+
+impl Unit {
+    fn stem(&self) -> String {
+        self.path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "module".to_string())
+    }
+
+    fn defines(&self, name: &str) -> bool {
+        self.items
+            .iter()
+            .filter_map(defined_name)
+            .any(|n| n == name)
+    }
+
+    /// Every top-level name the module contributes.
+    fn defined(&self) -> Vec<String> {
+        self.items
+            .iter()
+            .filter_map(defined_name)
+            .map(str::to_string)
+            .collect()
+    }
+}
+
+/// What each module can reach: the modules it imports, transitively.
+type Reach = HashMap<PathBuf, HashSet<PathBuf>>;
+
+/// Per module, the names some importer asked that module for by hand.
+type Asked = HashMap<PathBuf, BTreeSet<String>>;
+
+/// Keep two modules' names apart once they share one namespace.
+///
+/// Inlining flattens every module into a single translation unit, so a name
+/// written in one file can be answered by a definition in another that the
+/// first never imported. Two shapes of that, and both used to fail in a file
+/// the author was not looking at:
+///
+/// * two modules define the same name, and the checker types a call in one of
+///   them against the other's signature (`profile/flame` and `profile/report`
+///   each keeping a `helper`);
+/// * one module's top level answers for a name another module binds as a
+///   parameter, which the C back end turns into a function value where a
+///   lambda captured it (`cli/style`'s `pad` against the `pad` parameter of
+///   `std/text`'s `indent`).
+///
+/// Both are repaired by moving a name. `rename_ident` rewrites a definition
+/// together with its references and declines to touch a function that gives the
+/// name a meaning of its own, which is exactly the distinction both shapes turn
+/// on, so it is asked rather than reimplemented here.
+fn separate_scopes(units: &mut [Unit], g: &Graph, entry: &Path) -> Result<(), String> {
+    let scope = Scope::of(units, g, entry);
+    separate_definitions(units, &scope)?;
+    separate_bindings(units, &scope);
+    Ok(())
+}
+
+/// What the program as a whole says about a name, gathered once.
+struct Scope {
+    /// Which modules each module can reach.
+    reach: Reach,
+    /// Names an importer asked a module for by hand.
+    asked: Asked,
+    /// The program's own file, whose names nothing here renames.
+    entry: PathBuf,
+    /// Names written as a field or inside a pattern anywhere in the program,
+    /// which is where a rename cannot follow them.
+    members: HashSet<String>,
+    /// Per module, in `units` order, the names that module binds itself.
+    bound: Vec<BTreeSet<String>>,
+}
+
+impl Scope {
+    fn of(units: &[Unit], g: &Graph, entry: &Path) -> Scope {
+        let defined: BTreeSet<String> = units.iter().flat_map(Unit::defined).collect();
+        Scope {
+            reach: import_closure(g),
+            asked: requested_names(g),
+            entry: canon(entry),
+            members: units.iter().flat_map(|u| members(&u.items)).collect(),
+            bound: units.iter().map(|u| own_bindings(u, &defined)).collect(),
+        }
+    }
+}
+
+/// Two modules defining one name: move the private one out of the way.
+///
+/// A collision has two possible repairs, so the private side moves and the API
+/// side keeps the name a caller and a crash trace both show. Where neither side
+/// can move, the clash is reported naming both files, because the alternative
+/// is a diagnostic about the file the author was not editing.
+fn separate_definitions(units: &mut [Unit], scope: &Scope) -> Result<(), String> {
+    let mut owners: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for (i, u) in units.iter().enumerate() {
+        for n in u.defined() {
+            let os = owners.entry(n).or_default();
+            if !os.contains(&i) {
+                os.push(i);
+            }
+        }
+    }
+    let mut taken: HashSet<String> = owners.keys().cloned().collect();
+
+    for (name, os) in &owners {
+        if os.len() < 2 {
+            continue;
+        }
+        let mut kept: Vec<usize> = Vec::new();
+        for &i in os {
+            if is_api(&units[i], name, &scope.asked) || !can_move(units, i, name, scope) {
+                kept.push(i);
+                continue;
+            }
+            let to = fresh(&units[i].stem(), name, &mut taken);
+            move_name(units, i, name, &to, scope);
+        }
+        if kept.len() > 1 {
+            return Err(clashing_definitions(units, &kept, name));
+        }
+    }
+    Ok(())
+}
+
+/// A top level answering for a name another module binds locally: move the top
+/// level, so the binding means what it says.
+///
+/// Every module that binds the name is evidence, including one that imports the
+/// definition and means both. `can_move` is what settles those: a module that
+/// binds the name *and* can reach the definition would keep a reference the
+/// rename cannot follow, so nothing moves on its account. Filtering here as
+/// well was tried, and no program can tell the difference: the case it would
+/// have suppressed is exactly the case `can_move` refuses.
+fn separate_bindings(units: &mut [Unit], scope: &Scope) {
+    let mut owner: HashMap<String, usize> = HashMap::new();
+    for (i, u) in units.iter().enumerate() {
+        for n in u.defined() {
+            owner.insert(n, i);
+        }
+    }
+    let mut moves: BTreeSet<(String, usize)> = BTreeSet::new();
+    for v in 0..units.len() {
+        for (name, &o) in &owner {
+            if o != v && scope.bound[v].contains(name) {
+                moves.insert((name.clone(), o));
+            }
+        }
+    }
+    let mut taken: HashSet<String> = owner.keys().cloned().collect();
+    for (name, u) in moves {
+        if !can_move(units, u, &name, scope) {
+            continue;
+        }
+        let to = fresh(&units[u].stem(), &name, &mut taken);
+        move_name(units, u, &name, &to, scope);
+    }
+}
+
+/// May this module's `name` be renamed without losing a reference to it?
+///
+/// Everything the flat translation unit holds is rewritten together, so the bar
+/// is that every reference follows. Four kinds do not.
+///
+/// A name read from outside the source: `main` is the entry symbol, `maca test`
+/// finds a suite by looking for `test_…`, a body-less declaration *is* the
+/// symbol some library provides, and the entry file's own names are what the
+/// person running the program typed.
+///
+/// A name written as a field or a pattern, which `rename_ident` deliberately
+/// leaves alone. `r.start("build")` is a UFCS call the C back end lowers to
+/// `start(r, "build")`, so renaming the definition and not the call left the
+/// call naming a function nothing defines.
+///
+/// A name this module binds itself as well as defines, where the rename would
+/// skip the function holding the binding and leave its reference behind.
+///
+/// And a name some module that reaches this one binds, for the same reason.
+fn can_move(units: &[Unit], owner: usize, name: &str, scope: &Scope) -> bool {
+    if name == "main" || name.starts_with("test_") || units[owner].path == scope.entry {
+        return false;
+    }
+    if scope.members.contains(name) || is_foreign(&units[owner].items, name) {
+        return false;
+    }
+    (0..units.len())
+        .filter(|&i| rewritten_by(units, i, owner, name, scope))
+        .all(|i| !scope.bound[i].contains(name))
+}
+
+/// Does moving `owner`'s `name` rewrite this module?
+///
+/// The module that defines it, and every module that can reach the definition
+/// and has no definition of its own to mean instead.
+fn rewritten_by(units: &[Unit], i: usize, owner: usize, name: &str, scope: &Scope) -> bool {
+    i == owner || (!units[i].defines(name) && reaches(scope, &units[i].path, &units[owner].path))
+}
+
+/// Rename `from` to `to` at its definition and everywhere it is referred to.
+fn move_name(units: &mut [Unit], owner: usize, from: &str, to: &str, scope: &Scope) {
+    let targets: Vec<usize> = (0..units.len())
+        .filter(|&i| rewritten_by(units, i, owner, from, scope))
+        .collect();
+    for i in targets {
+        let before = units[i].items.clone();
+        for st in units[i].items.iter_mut() {
+            crate::ast::rename_ident(st, from, to);
+        }
+        if units[i].items != before {
+            units[i].verbatim = false;
+        }
+    }
+}
+
+/// Which of `names` this module gives a meaning of its own to: a parameter, a
+/// local, a loop variable, a lambda's argument.
+///
+/// Answered by renaming all of them away at once and seeing which are still
+/// referred to. `rename_ident` declines to rewrite a function that binds the
+/// name, so whatever survives is bound by this module. Asking the rename itself
+/// instead of keeping a second copy of its scope rules here is what makes this
+/// answer and the repair agree.
+///
+/// Only names the module refers to at all are asked about: one it never writes
+/// cannot survive the probe, and the probe costs a walk per name.
+fn own_bindings(unit: &Unit, names: &BTreeSet<String>) -> BTreeSet<String> {
+    let mut refs = BTreeSet::new();
+    unit.items.iter().for_each(|st| refs_in_stmt(st, &mut refs));
+    let asking: BTreeSet<String> = refs.intersection(names).cloned().collect();
+    if asking.is_empty() {
+        return BTreeSet::new();
+    }
+    let mut probe: Vec<Stmt> = unit.items.clone();
+    for n in &asking {
+        for st in probe.iter_mut() {
+            crate::ast::rename_ident(st, n, &format!("\u{1}{n}"));
+        }
+    }
+    let mut left = BTreeSet::new();
+    probe.iter().for_each(|st| refs_in_stmt(st, &mut left));
+    asking.intersection(&left).cloned().collect()
+}
+
+/// Every name this module writes as a field or inside a pattern.
+///
+/// These are the positions `rename_ident` holds still: a field name is a field,
+/// not a binding. The C back end reads two of them as calls, though, since
+/// `x.f(y)` is `f(x, y)`, so a name appearing here is a name this pass leaves
+/// alone.
+fn members(items: &[Stmt]) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for st in items {
+        crate::ast::walk_stmt(st, &mut |e| match e {
+            Expr::Field { name, .. } => {
+                out.insert(name.clone());
+            }
+            Expr::Match { arms, .. } => arms.iter().for_each(|a| refs_in_pattern(&a.pat, &mut out)),
+            Expr::For { pat, .. } => refs_in_pattern(pat, &mut out),
+            _ => {}
+        });
+    }
+    out
+}
+
+/// Is this name part of what the module offers, rather than one of its workings?
+///
+/// Maca has no export keyword. What it has is the `///` marker: a doc block
+/// directly above an item is what makes the item API, and an ordinary `//`
+/// comment explains a helper to the next reader of the source. That is the rule
+/// `tools/macadoc.maca` publishes the reference from and the one the tooling
+/// chapter documents, so it is the rule used here.
+///
+/// A name an importer asked for by hand is API too, whatever comment sits above
+/// it: `import { pad } from cli/style` is that module being asked for `pad`, and
+/// `maca -m http.serve` generates exactly such an import.
+fn is_api(unit: &Unit, name: &str, asked: &Asked) -> bool {
+    documented(&unit.src).contains(name)
+        || asked.get(&unit.path).is_some_and(|ns| ns.contains(name))
+}
+
+/// The names carrying a `///` block directly above them.
+///
+/// A fourth slash means it is a rule somebody drew rather than a doc block, and
+/// a blank line or an ordinary comment in between breaks the attachment. Both
+/// follow `tools/macadoc.maca`, so what counts as API here is what gets
+/// published as API there.
+fn documented(src: &str) -> HashSet<String> {
+    let mut out = HashSet::new();
+    let mut docs = false;
+    for line in src.lines() {
+        if line.starts_with("///") && !line.starts_with("////") {
+            docs = true;
+            continue;
+        }
+        if docs {
+            if let Some(name) = declared_name(line) {
+                out.insert(name);
+            }
+            docs = false;
+        }
+    }
+    out
+}
+
+/// The name a top-level declaration line introduces: `name(` for a function,
+/// `Name =` for a type or a constant. An indented line is inside something else
+/// and declares nothing at this level.
+///
+/// A line this cannot read counts as undocumented, which is the safe direction:
+/// a name is only ever moved when every reference to it moves too.
+fn declared_name(line: &str) -> Option<String> {
+    if line.starts_with(char::is_whitespace) {
+        return None;
+    }
+    let head = match (line.find('('), line.find('=')) {
+        (Some(p), eq) if eq.is_none_or(|e| p < e) => &line[..p],
+        (_, Some(e)) => {
+            let head = &line[..e];
+            let head = head.strip_prefix("const ").unwrap_or(head);
+            head.split(':').next().unwrap_or(head)
+        }
+        _ => return None,
+    };
+    let head = head.trim();
+    let named = !head.is_empty()
+        && head.starts_with(|c: char| c.is_alphabetic() || c == '_')
+        && head.chars().all(|c| c.is_alphanumeric() || c == '_');
+    named.then(|| head.to_string())
+}
+
+/// `<module>__<name>`, and a numbered `<module>2__<name>` if that is taken.
+fn fresh(stem: &str, name: &str, taken: &mut HashSet<String>) -> String {
+    let mut candidate = format!("{stem}__{name}");
+    let mut n = 2;
+    while taken.contains(&candidate) {
+        candidate = format!("{stem}{n}__{name}");
+        n += 1;
+    }
+    taken.insert(candidate.clone());
+    candidate
+}
+
+/// Is this name a body-less declaration, whose symbol some library provides?
+fn is_foreign(items: &[Stmt], name: &str) -> bool {
+    items
+        .iter()
+        .any(|st| matches!(st, Stmt::Fn(f) if f.name == name && f.body.is_none()))
+}
+
+fn reaches(scope: &Scope, from: &Path, to: &Path) -> bool {
+    scope.reach.get(from).is_some_and(|s| s.contains(to))
+}
+
+/// Every module each module imports, transitively.
+fn import_closure(g: &Graph) -> Reach {
+    let mut closure: Reach = HashMap::new();
+    for (path, module) in &g.parsed {
+        let direct = module
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Stmt::Import(im) => import_target(im, path).map(|d| canon(&d)),
+                _ => None,
+            })
+            .collect();
+        closure.insert(path.clone(), direct);
+    }
+    // To a fixpoint rather than by recursion: two modules may import each other,
+    // and `g.order` is not a topological order when they do.
+    let paths: Vec<PathBuf> = closure.keys().cloned().collect();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for path in &paths {
+            let grown: HashSet<PathBuf> = closure[path]
+                .iter()
+                .filter_map(|d| closure.get(d))
+                .flatten()
+                .cloned()
+                .collect();
+            let here = closure.get_mut(path).expect("seeded above");
+            for p in grown {
+                changed |= here.insert(p);
+            }
+        }
+    }
+    closure
+}
+
+/// Per module, every name a selective import asked that module for.
+fn requested_names(g: &Graph) -> Asked {
+    let mut out: Asked = HashMap::new();
+    for (path, module) in &g.parsed {
+        for item in &module.items {
+            let Stmt::Import(im) = item else { continue };
+            let Import::Names { names, .. } = im else {
+                continue;
+            };
+            if let Some(dep) = import_target(im, path) {
+                out.entry(canon(&dep)).or_default().extend(names.clone());
+            }
+        }
+    }
+    out
+}
+
+/// Two files, one name, and no way to tell which a third file meant.
+fn clashing_definitions(units: &[Unit], kept: &[usize], name: &str) -> String {
+    let files: Vec<String> = kept
+        .iter()
+        .map(|&i| format!("  {}", units[i].path.display()))
+        .collect();
+    format!(
+        "`{name}` is defined by more than one module of this program, and every \
+         module is inlined into one:\n{}\n  Both are API, so neither can be \
+         moved out of the way. Rename one of them, or ask for the one you mean \
+         with `import {{ … }} from …` and keep the other out of the program.",
+        files.join("\n")
+    )
 }
 
 /// Qualify a module's private definitions with the module's own name.
@@ -216,8 +670,12 @@ fn collect(path: &Path, g: &mut Graph) -> Result<(), String> {
     g.parsed.insert(key.clone(), parsed.module.clone());
     for item in &parsed.module.items {
         let Stmt::Import(im) = item else { continue };
-        match import_target(im, path) {
-            Some(dep) => collect(&dep, g)?,
+        match import_resolution(im, path) {
+            Some(r) if r.shadowed.is_some() => {
+                let other = r.shadowed.expect("just matched");
+                return Err(ambiguous(path, im, &r.chosen, &other));
+            }
+            Some(r) => collect(&r.chosen, g)?,
             None if names_a_file(im) => {
                 let written = import_segments(im).unwrap_or_default().join("/");
                 return Err(format!(
@@ -231,6 +689,31 @@ fn collect(path: &Path, g: &mut Graph) -> Result<(), String> {
     }
     g.order.push(key);
     Ok(())
+}
+
+/// One written import, two files.
+///
+/// Refused rather than warned about. The two candidates are different files
+/// with, by construction, the same name, so one of them is being compiled and
+/// the other silently is not — and which is which depends on a directory layout
+/// the import line does not mention. That is not a preference the author
+/// expressed, so there is nothing here to honour; the repair is to rename the
+/// directory or to write a path that names one file, and both are the author's
+/// to make. It costs correct programs nothing: across the 229 imports in this
+/// repository no written path and no search root ever name two different files.
+fn ambiguous(importer: &Path, im: &Import, chosen: &Path, other: &Path) -> String {
+    let written = import_segments(im).unwrap_or_default().join("/");
+    format!(
+        "{}: ambiguous import `{written}` — it names two files:\n  \
+         {} (as written — the one this build would use)\n  \
+         {} (under a search root)\n  \
+         A directory sharing a package's name hides the package, and the import \
+         line cannot say which was meant. Rename the directory, or move the \
+         module so that one path names it.",
+        importer.display(),
+        chosen.display(),
+        other.display()
+    )
 }
 
 /// Effective selection per module: the entry file and any whole-module import

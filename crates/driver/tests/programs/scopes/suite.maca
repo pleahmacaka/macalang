@@ -1,0 +1,27 @@
+// What one namespace does to modules that never imported each other.
+//
+// Two of the four modules keep a same-named private helper; a third binds as a
+// parameter the name a fourth defines at top level. Neither program used to get
+// as far as running: the first failed as a type error reported against the
+// wrong file, the second as C that would not compile.
+
+import alpha
+import beta
+import top
+import capture
+
+test_each_module_keeps_its_own_private_helper() {
+    assert_eq(str(alpha_reading("abc")), "4", "alpha's own reading")
+    assert_eq(beta_reading(7), "b7", "beta's own reading")
+}
+
+test_a_captured_parameter_beats_another_modules_top_level() {
+    assert_eq(indent_lines("a\nb", ">"), ">a|>b", "the parameter won")
+}
+
+// The moved name still answers where it was asked for: repairing the shadow
+// must not cost the module its own function.
+test_the_shadowed_top_level_still_answers() {
+    assert_eq(column("ab", 4), "ab  ", "top's own column")
+    assert_eq(column("abcd", 2), "abcd", "already wide enough")
+}

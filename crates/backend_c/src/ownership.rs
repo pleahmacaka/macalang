@@ -558,7 +558,18 @@ impl Fresh {
 pub fn appendable_names(f: &FnDef, defined: &HashSet<String>) -> HashSet<String> {
     let aliased = aliased_names(f, defined);
     let mut own: HashMap<String, bool> = HashMap::new();
-    let mut barred: HashSet<String> = f.params.iter().map(|p| p.name.clone()).collect();
+    // A parameter is a second handle by construction, so appending to one in
+    // place reallocates a list the caller still holds. A *variadic* parameter is
+    // the exception, and the only one: the list it holds was built by the call
+    // site for this call out of arguments that were never a list, so no caller
+    // has a name for it. `aliased_names` still applies — a body that gives it a
+    // second holder loses the append the same way any local would.
+    let mut barred: HashSet<String> = f
+        .params
+        .iter()
+        .filter(|p| !p.variadic)
+        .map(|p| p.name.clone())
+        .collect();
     let Some(body) = &f.body else {
         return HashSet::new();
     };

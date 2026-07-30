@@ -1,0 +1,230 @@
+// A function that takes any number of trailing arguments, and everything the
+// collection into a list has to get right.
+//
+// `...rest: T` is written with the type of *one* argument, because that is what
+// a call site writes; inside the body `rest` is a `T[]`. The call site builds
+// that list, so a variadic call and the explicit-list call it is sugar for
+// compile to the same C — which is what the allocation counts below assert,
+// rather than an answer that would be identical either way.
+
+Point = {
+    x: int
+    y: int
+}
+
+Bag = {
+    n: int
+}
+
+// The plainest shape: nothing fixed, everything collected.
+total(...rest: int) -> int {
+    n = 0
+    for v in rest {
+        n = n + v
+    }
+    n
+}
+
+// The same function written the long way round. Every allocation claim below is
+// stated as "the variadic costs what this costs", so the assertion survives a
+// change in how lists grow.
+total_list(rest: int[]) -> int {
+    n = 0
+    for v in rest {
+        n = n + v
+    }
+    n
+}
+
+// A fixed parameter before the variadic: `sep` lines up with the first
+// argument, and everything after it is collected.
+joined(sep: str, ...parts: str) -> str => parts.join(sep)
+
+// A variadic of a record type — the collected list is a `PointArr`, and the
+// body reads fields off its elements.
+span(...ps: Point) -> int {
+    n = 0
+    for p in ps {
+        n = n + p.x + p.y
+    }
+    n
+}
+
+// UFCS makes the receiver the first argument, so `bag.tally(1, 2)` is
+// `tally(bag, 1, 2)`: `bag` fills the fixed parameter and the rest collect.
+tally(b: Bag, ...more: int) -> int {
+    t = b.n
+    for v in more {
+        t = t + v
+    }
+    t
+}
+
+// With nothing fixed, a UFCS receiver is itself the first collected element.
+counted(...xs: int) -> int => xs.length()
+
+// A generic variadic: the element type is settled by the arguments, and one
+// specialization is emitted per element type it is called with.
+first_of(...xs: a) -> a => xs.first()
+
+// Recursion through a variadic: each call site builds its own list.
+countdown(n: int, ...seen: int) -> int =>
+    n == 0 ? seen.length() : countdown(n - 1, n, n)
+
+// The variadic parameter holds a list the call site built for this call alone,
+// so appending to it in place cannot be observed by anybody — and this is the
+// shape that says whether the ownership analysis agrees. Written as a copy it is
+// quadratic. The values are read back through an interpolation *after* enough
+// rounds to force several reallocations, so a buffer moved out from under a
+// stale handle is a wrong answer rather than an unread one.
+grow_variadic(...seed: int) -> str {
+    for i in 1..2000 {
+        seed = seed.push(i)
+    }
+    "{seed.length()}:{seed.get(0)}:{seed.get(1)}:{seed.get(2001)}"
+}
+
+// The same body behind an ordinary list parameter, where the copy has to stay:
+// the caller is still holding that list, so appending in place would reallocate
+// it underneath them.
+grow_param(seed: int[]) -> str {
+    for i in 1..2000 {
+        seed = seed.push(i)
+    }
+    "{seed.length()}:{seed.get(0)}:{seed.get(1)}:{seed.get(2001)}"
+}
+
+// ---- answers --------------------------------------------------------------
+
+test_no_arguments_collect_to_an_empty_list() {
+    assert_eq(str(total()), "0", "nothing to add")
+    assert_eq(str(counted()), "0", "and nothing in the list")
+}
+
+test_one_argument_collects_to_a_list_of_one() {
+    assert_eq(str(total(7)), "7", "the only value")
+    assert_eq(str(counted(7)), "1", "one element")
+}
+
+test_many_arguments_collect_in_order() {
+    assert_eq(str(total(1, 2, 3)), "6", "all three")
+    assert_eq(str(counted(1, 2, 3, 4, 5)), "5", "five elements")
+    assert_eq(str(first_of(9, 1, 1)), "9", "the first, not the smallest")
+}
+
+test_a_fixed_parameter_takes_the_first_argument() {
+    assert_eq(joined("-", "a", "b", "c"), "a-b-c", "three parts, one sep")
+    assert_eq(joined("-"), "", "no parts at all")
+    assert_eq(joined("+", "solo"), "solo", "one part needs no separator")
+}
+
+test_a_variadic_of_records_reads_its_fields() {
+    a = Point { x = 1, y = 2 }
+    b = Point { x = 3, y = 4 }
+
+    assert_eq(str(span(a, b)), "10", "both points")
+    assert_eq(str(span(a)), "3", "one point")
+    assert_eq(str(span()), "0", "none")
+}
+
+test_a_generic_variadic_specializes_per_element_type() {
+    assert_eq(str(first_of(4, 5)), "4", "an int list")
+    assert_eq(first_of("a", "b"), "a", "and a str list, from one signature")
+}
+
+// `x.f(y)` is `f(x, y)`, and the collection has to happen there too — written
+// UFCS it reached the C compiler as three arguments to a two-parameter function.
+test_ufcs_collects_the_arguments_past_the_receiver() {
+    bag = Bag { n = 10 }
+
+    assert_eq(str(bag.tally(1, 2)), "13", "receiver plus the collected two")
+    assert_eq(str(bag.tally()), "10", "receiver alone")
+}
+
+test_a_ufcs_receiver_is_the_first_collected_element() {
+    n = 10
+    assert_eq(str(n.counted(1, 2)), "3", "receiver counts as an element")
+}
+
+// A lambda parameter with no annotation is typed from what the body does with
+// it, and a variadic callee's parameter is the *list* — so `v => total(v, 1)`
+// typed `v` as a whole `int[]` and pushed a list into a list of ints.
+test_a_lambda_can_pass_its_parameter_to_a_variadic() {
+    f = v => total(v, 1)
+
+    assert_eq(str(f(2)), "3", "the lambda parameter is one element")
+}
+
+test_a_variadic_can_recurse() {
+    assert_eq(str(countdown(3)), "2", "the last call collected two")
+    assert_eq(str(countdown(0, 5, 6, 7)), "3", "or three, on the first")
+}
+
+// ---- memory ---------------------------------------------------------------
+
+// An answer is the same whether the collected list was built once or twice, so
+// the answers above cannot tell. This can: the variadic call must cost exactly
+// what the list-literal call it is sugar for costs. Two buffers per call would
+// mean the lowering copies what it just built.
+test_a_variadic_call_costs_what_the_list_it_sugars_costs() {
+    before = alloc_count() + reuse_count()
+    sugar = 0
+    for i in 1..200 {
+        sugar = sugar + total(1, 2, 3)
+    }
+    spent_sugar = alloc_count() + reuse_count() - before
+
+    mid = alloc_count() + reuse_count()
+    spelled = 0
+    for i in 1..200 {
+        spelled = spelled + total_list([1, 2, 3])
+    }
+    spent_spelled = alloc_count() + reuse_count() - mid
+
+    assert_eq(str(sugar), str(spelled), "same answer either way")
+    assert_eq(
+        str(spent_sugar),
+        str(spent_spelled),
+        "the sugar costs more: {spent_sugar} against {spent_spelled}",
+    )
+}
+
+// Zero arguments is the case that should cost nothing at all: an empty list has
+// no buffer to allocate.
+test_a_variadic_call_with_no_arguments_allocates_nothing() {
+    before = alloc_count() + reuse_count()
+    seen = 0
+    for i in 1..200 {
+        seen = seen + total()
+    }
+    spent = alloc_count() + reuse_count() - before
+
+    assert_eq(str(seen), "0", "still the right answer")
+    assert_eq(str(spent), "0", "an empty list allocated {spent} buffers")
+}
+
+// The variadic parameter is the one parameter a body may append to in place:
+// the list was built by the call site for this call, so no caller has a name for
+// it. Two thousand rounds is a copy per round if the analysis disagrees.
+test_a_variadic_parameter_grows_in_place() {
+    before = alloc_count() + reuse_count()
+    got = grow_variadic(1, 2)
+    spent = alloc_count() + reuse_count() - before
+
+    assert_eq(got, "2002:1:2:2000", "every round is in it, in order")
+    assert(spent < 40, "copied instead of growing: {spent} for 2000 rounds")
+}
+
+// And an ordinary list parameter is still not: the caller is holding it. Same
+// body, one difference in the signature — this is what fails if the exclusion of
+// parameters is dropped wholesale instead of narrowed to the variadic one.
+test_an_ordinary_list_parameter_still_copies() {
+    held = [1, 2]
+    before = alloc_count() + reuse_count()
+    got = grow_param(held)
+    spent = alloc_count() + reuse_count() - before
+
+    assert_eq(got, "2002:1:2:2000", "the same answer")
+    assert(spent > 2000, "grew in place: {spent} for 2000 rounds")
+    assert_eq(str(held.length()), "2", "and the caller's list did not move")
+}

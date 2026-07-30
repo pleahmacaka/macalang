@@ -159,7 +159,8 @@ struct Checker {
     /// sum variant -> its payload field types (empty for a nullary variant)
     variant_payloads: HashMap<String, Vec<Ty>>,
     /// User-declared function name -> (fixed param count, is variadic). Used to
-    /// catch call-arity mistakes; variadic functions are exempt.
+    /// catch call-arity mistakes: a variadic wants *at least* the fixed count,
+    /// everything else wants exactly it.
     fn_arity: HashMap<String, (usize, bool)>,
     type_decls: HashSet<usize>, // item indices that are type declarations
     local_names: HashSet<String>,
@@ -171,6 +172,13 @@ struct Checker {
     /// contents the checker can't see), so unknown lowercase calls are treated as
     /// gradual foreign items rather than `UndefinedName` (§2.4).
     gradual_foreign: bool,
+    /// Set for exactly one `infer` call: the callee of a direct `f(…)`.
+    ///
+    /// A variadic function has no arity as a *value* — the collection into a
+    /// list happens at the call site — so `f` alone is an error while `f(…)`
+    /// is not, and the two are the same `Expr::Ident`. Consumed at the top of
+    /// `infer`, so a nested expression never inherits it.
+    callee_pos: bool,
     diags: Vec<Diagnostic>,
 }
 
@@ -188,6 +196,7 @@ impl Checker {
             local_names: HashSet::new(),
             mut_of: HashMap::new(),
             gradual_foreign: false,
+            callee_pos: false,
             diags: Vec::new(),
         }
     }
@@ -228,6 +237,74 @@ impl Checker {
             _ => return,
         };
         self.diag(DiagKind::UndefinedName, format!("`{name}`: {hint}"));
+    }
+
+    /// The three things a `...rest: T` parameter has to be.
+    ///
+    /// It has to be **last**, because the trailing arguments are collected into
+    /// it and a parameter after it could not be told from one more of them. It
+    /// has to be **annotated**, because `T` is what the collected list's
+    /// elements are — with no annotation the back end has no element type and
+    /// picks one, which is a silently wrong list rather than an error. And it
+    /// cannot be **`main`**, whose arguments come from the process, not from a
+    /// call site that could do the collecting.
+    fn check_variadic(&mut self, f: &FnDef) {
+        let Some(at) = f.params.iter().position(|p| p.variadic) else {
+            return;
+        };
+        if at + 1 != f.params.len() {
+            let after = &f.params[at + 1].name;
+            self.diag(
+                DiagKind::TypeMismatch,
+                format!(
+                    "`{}`: a variadic parameter must be last, but `{after}` \
+                     follows `...{}`",
+                    f.name, f.params[at].name,
+                ),
+            );
+        }
+        for p in f.params.iter().filter(|p| p.variadic) {
+            if p.ty.is_none() {
+                self.diag(
+                    DiagKind::TypeMismatch,
+                    format!(
+                        "`{}`: a variadic parameter needs its element type — \
+                         write `...{}: T`",
+                        f.name, p.name,
+                    ),
+                );
+            }
+        }
+        if f.name == "main" {
+            self.diag(
+                DiagKind::TypeMismatch,
+                "`main` cannot be variadic — its arguments come from the \
+                 command line; declare `main(argv: str[])`"
+                    .to_string(),
+            );
+        }
+    }
+
+    /// A variadic function is callable and nothing else.
+    ///
+    /// Collecting the trailing arguments into a list is something the *call
+    /// site* does, so a variadic function only exists as a call. As a value it
+    /// has no arity to give — a function type is written `(T, U) -> R` and has
+    /// no variadic spelling, and the closure ABI every back end passes function
+    /// values through is fixed-arity. Handing one to a higher-order parameter or
+    /// storing it in a record field would pass a callee expecting a list an
+    /// argument that is one element.
+    fn check_not_variadic_value(&mut self, name: &str) {
+        if self.fn_arity.get(name).is_some_and(|&(_, v)| v) {
+            self.diag(
+                DiagKind::TypeMismatch,
+                format!(
+                    "`{name}` is variadic, so it cannot be used as a function \
+                     value — call it, or declare it `{name}(xs: T[])` and pass \
+                     a list"
+                ),
+            );
+        }
     }
 
     // ---- pass 1: collect declarations ------------------------------------
@@ -292,32 +369,13 @@ impl Checker {
                     let scheme = self.sig_scheme(f);
                     self.globals.insert(f.name.clone(), scheme);
                     self.local_names.insert(f.name.clone());
+                    self.check_variadic(f);
                     let variadic = f.params.iter().any(|p| p.variadic);
-                    if variadic {
-                        // Parsed and printed since the beginning, and lowered by
-                        // nothing: the C backend emitted the parameter as a
-                        // scalar and the call site passed N arguments, so the
-                        // program failed in `cc` with a message naming a
-                        // generated file. Say so here instead, and say what to
-                        // write in the meantime.
-                        let which = f
-                            .params
-                            .iter()
-                            .find(|p| p.variadic)
-                            .map(|p| p.name.clone())
-                            .unwrap_or_default();
-                        self.diags.push(Diagnostic {
-                            kind: DiagKind::TypeMismatch,
-                            msg: format!(
-                                "`{}` declares a variadic parameter `...{which}`, \
-                                 which no backend lowers — declare it as a list \
-                                 (`{which}: T[]`) and pass one",
-                                f.name,
-                            ),
-                        });
-                    }
-                    self.fn_arity
-                        .insert(f.name.clone(), (f.params.len(), variadic));
+                    // For a variadic the stored count is the *fixed* one: the
+                    // trailing arguments are collected into the last parameter,
+                    // so a call passes at least this many and any number more.
+                    let arity = f.params.len() - usize::from(variadic);
+                    self.fn_arity.insert(f.name.clone(), (arity, variadic));
                 }
                 Stmt::Bind(b) => {
                     if let Expr::Ident(name) = &b.target {
@@ -393,8 +451,12 @@ impl Checker {
             .params
             .iter()
             .map(|p| {
-                p.ty.as_ref()
-                    .map_or(Ty::Any, |t| self.ast_ty_v(t, &mut vars))
+                let t =
+                    p.ty.as_ref()
+                        .map_or(Ty::Any, |t| self.ast_ty_v(t, &mut vars));
+                // A variadic's written type is one argument's; the parameter
+                // holds the list they were collected into.
+                if p.variadic { Ty::array(t) } else { t }
             })
             .collect();
         let ret = f
@@ -465,7 +527,7 @@ impl Checker {
         let mut env: Env = f
             .params
             .iter()
-            .map(|p| (p.name.clone(), p.ty.as_ref().map_or(Ty::Any, ast_ty)))
+            .map(|p| (p.name.clone(), param_ty(p)))
             .collect();
         // fresh mutability scope for this body; params are exempt (mutable).
         let saved_mut = std::mem::take(&mut self.mut_of);
@@ -711,11 +773,7 @@ impl Checker {
                 }
                 Stmt::Expr(e) => last = self.infer(env, e),
                 Stmt::Fn(f) => {
-                    let params = f
-                        .params
-                        .iter()
-                        .map(|p| p.ty.as_ref().map_or(Ty::Any, ast_ty))
-                        .collect();
+                    let params = f.params.iter().map(param_ty).collect();
                     let ret = f.ret.as_ref().map_or(Ty::Any, ast_ty);
                     env.push((f.name.clone(), Ty::Fn(params, Box::new(ret))));
                     self.check_fn(f);
@@ -729,6 +787,7 @@ impl Checker {
     }
 
     fn infer(&mut self, env: &mut Env, e: &Expr) -> Ty {
+        let callee_pos = std::mem::take(&mut self.callee_pos);
         match e {
             Expr::Int(_) => Ty::Int,
             Expr::Float(_) => Ty::Float,
@@ -743,16 +802,21 @@ impl Checker {
                 }
                 Ty::Str
             }
-            Expr::Ident(n) => match lookup(env, n) {
-                Some(t) => t,
-                None => match self.globals.get(n).cloned() {
-                    Some(s) => self.inf.instantiate(&s),
-                    None => {
-                        self.phantom_keyword(n);
-                        Ty::Any
-                    }
-                },
-            },
+            Expr::Ident(n) => {
+                if !callee_pos && lookup(env, n).is_none() {
+                    self.check_not_variadic_value(n);
+                }
+                match lookup(env, n) {
+                    Some(t) => t,
+                    None => match self.globals.get(n).cloned() {
+                        Some(s) => self.inf.instantiate(&s),
+                        None => {
+                            self.phantom_keyword(n);
+                            Ty::Any
+                        }
+                    },
+                }
+            }
             Expr::List(es) => {
                 let el = self.inf.fresh();
                 for x in es {
@@ -772,20 +836,32 @@ impl Checker {
             Expr::Call { callee, args } => {
                 // Arity: a direct call of a user function (not shadowed by a
                 // local of the same name) must pass the declared number of
-                // arguments unless the function is variadic.
+                // arguments — or, for a variadic, at least the fixed ones. Too
+                // few fixed arguments is still an error: the collection cannot
+                // invent the one that is missing.
+                let mut fixed = None;
                 if let Expr::Ident(name) = &**callee
                     && lookup(env, name).is_none()
                     && let Some(&(arity, variadic)) = self.fn_arity.get(name)
-                    && !variadic
-                    && args.len() != arity
                 {
-                    self.diag(
-                        DiagKind::TypeMismatch,
-                        format!(
-                            "call to `{name}` expects {arity} argument(s), got {}",
-                            args.len()
-                        ),
-                    );
+                    if variadic {
+                        fixed = Some(arity);
+                    }
+                    let wrong = if variadic {
+                        args.len() < arity
+                    } else {
+                        args.len() != arity
+                    };
+                    if wrong {
+                        let least = if variadic { "at least " } else { "" };
+                        self.diag(
+                            DiagKind::TypeMismatch,
+                            format!(
+                                "call to `{name}` expects {least}{arity} argument(s), got {}",
+                                args.len()
+                            ),
+                        );
+                    }
                 }
                 // Undefined direct call: a bare lowercase `foo(...)` that is
                 // neither a local, a user function, an import/alias, nor a
@@ -815,10 +891,28 @@ impl Checker {
                     let bt = self.infer(env, base);
                     self.check_method(&bt, name);
                 }
+                self.callee_pos = matches!(&**callee, Expr::Ident(_));
                 let ct = self.infer(env, callee);
                 let ats: Vec<Ty> = args.iter().map(|a| self.infer_arg(env, a)).collect();
                 match self.inf.resolve(&ct) {
                     Ty::Fn(params, ret) => {
+                        // The signature says `rest: T[]`, one parameter; the
+                        // call says N arguments of `T`. Unroll the tail so each
+                        // trailing argument is checked against the element type
+                        // — and against each other, since one type variable is
+                        // shared by all of them.
+                        let params = match fixed {
+                            Some(n) if params.len() == n + 1 => {
+                                let elem = match self.inf.resolve(&params[n]) {
+                                    Ty::Con(c, a) if c == "Array" && a.len() == 1 => a[0].clone(),
+                                    other => other,
+                                };
+                                let mut ps = params[..n].to_vec();
+                                ps.resize(ats.len().max(n), elem);
+                                ps
+                            }
+                            _ => params,
+                        };
                         // A concrete/concrete clash between a declared parameter
                         // and its argument is a real error (`Any`/vars never
                         // clash, so unknown-stdlib calls stay silent).
@@ -1308,6 +1402,17 @@ fn lookup(env: &Env, name: &str) -> Option<Ty> {
         .rev()
         .find(|(n, _)| n == name)
         .map(|(_, t)| t.clone())
+}
+
+/// The type a parameter has *inside the body*.
+///
+/// `...rest: int` is written with the type of one argument, because that is
+/// what a call site writes; the body sees the `int[]` they were collected into,
+/// so it can iterate them. Every reader of a parameter's type wants this one,
+/// not `p.ty`.
+fn param_ty(p: &Param) -> Ty {
+    let t = p.ty.as_ref().map_or(Ty::Any, ast_ty);
+    if p.variadic { Ty::array(t) } else { t }
 }
 
 fn ast_ty(t: &Type) -> Ty {

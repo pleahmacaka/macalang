@@ -43,9 +43,18 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   `Name { = }` = constructor. Single namespace for types and values.
 - Bracketless comma lists (`xs = a, b, c`); significant newlines; records are
   newline-separated `{ }`.
-- Functions: `f(x: T) -> R { body }` or `=> expr`. A variadic `...rest: T` is
-  reserved syntax: it parses, no backend lowers it, and declaring one is a
-  diagnostic naming the `T[]` to write instead.
+- Functions: `f(x: T) -> R { body }` or `=> expr`.
+- **Variadic `...rest: T`** — the trailing arguments, collected. The written
+  type is one argument's, because that is what a call site writes; inside the
+  body `rest` is a `T[]`. Three dots and not two: `..` already means an
+  inclusive range and a list rest pattern, and the ellipsis is *prefix* so the
+  mark is on the parameter rather than on the type. It must be the last
+  parameter, must name its element type, and cannot be `main`. A call passes at
+  least the fixed parameters and any number more; `f(1, 2, 3)` and `f([1, 2, 3])`
+  against `f(xs: T[])` lower to the same list. A variadic is callable and
+  nothing else: it has no arity as a value, so it cannot be passed to a
+  higher-order parameter or stored in a `(T, U) -> R` field.
+  (`crates/driver/tests/programs/variadic.maca`.)
 - Errors are the inferred `exn` effect; propagate with `x?`, raise with `fail e`.
 - Effects (Koka-style, inferred): `io · net · os · async · exn`. Config mode
   forces `<>`.
@@ -181,3 +190,11 @@ Verbatim from the spec, under `examples/`:
 language-surface goldens (`indexing`, `record_update`, `tree`, `sum_record`,
 `keywords`, `generic`). Changing a design updates this file and the affected
 example together; the spec wins ties.
+
+`examples/` is that set and only that set: a file is there because a test, this
+document, or a handbook chapter names it. A runnable program built on a package
+is an application and lives under `apps/` in a directory of its own
+(`apps/cli_tool`, `apps/bench_demo`, `apps/profile_demo`, `apps/signal_demo`,
+`apps/tambo_demo`). `taskr.maca` is the one runnable program that stays, because
+it is also the lexer's golden token dump, the parser round-trip and the
+`maca fmt --check` golden.

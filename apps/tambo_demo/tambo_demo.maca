@@ -1,9 +1,10 @@
 // A small site on tambo: a page, two JSON endpoints, a route with a parameter,
 // a wildcard route, and a handler that fails.
 //
-//     maca run examples/tambo_demo.maca         # print the table and answer
-//                                               # a few requests, no socket
-//     maca run examples/tambo_demo.maca 8080    # serve on port 8080
+//     maca run apps/tambo_demo/tambo_demo.maca       # print the table and
+//                                                    # answer a few requests,
+//                                                    # no socket
+//     maca run apps/tambo_demo/tambo_demo.maca 8080  # serve on port 8080
 //
 // The shape is the point: a table of routes at the top, one `handle` where
 // every name in that table is answered, and nothing in between. Read the two
