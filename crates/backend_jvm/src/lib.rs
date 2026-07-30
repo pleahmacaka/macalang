@@ -17,7 +17,7 @@
 //! unknown types map to their name verbatim (a Java type).
 
 use maca_parser::ast::*;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Emit a Java compilation unit named `class_name` (usually the file stem, or
 /// overridden by `package`/entry conventions). `package` is optional.
@@ -41,6 +41,8 @@ pub fn emit_checked(
 
 pub fn emit(m: &Module, class_name: &str, package: Option<&str>) -> String {
     VARIANT_OF.with(|v| v.borrow_mut().clear());
+    let fnps = fn_params(&m.items);
+    FN_PARAMS.with(|f| *f.borrow_mut() = fnps.clone());
     let mut cx = Cx::default();
     cx.collect(m);
     let body = cx.emit_members(m, class_name);
@@ -53,6 +55,21 @@ pub fn emit(m: &Module, class_name: &str, package: Option<&str>) -> String {
         out.push_str(&format!("import {imp};\n"));
     }
     if !cx.imports.is_empty() {
+        out.push('\n');
+    }
+    // One declaration per distinct shape actually used, above the class that
+    // names it.
+    let mut ifaces: Vec<String> = fnps
+        .values()
+        .filter(|s| s.arity <= 2)
+        .map(|s| s.decl())
+        .collect();
+    ifaces.sort();
+    ifaces.dedup();
+    for d in ifaces {
+        out.push_str(&d);
+    }
+    if !fnps.is_empty() {
         out.push('\n');
     }
     out.push_str(&body);
@@ -171,17 +188,13 @@ impl Cx {
 
     fn emit_method(&self, f: &FnDef, modifiers: &str) -> String {
         start_scope(&f.params);
+        start_fn_scope(&f.name, &f.params);
         let ret = f.ret.as_ref().map(jtype).unwrap_or_else(|| "void".into());
         let params: Vec<String> = f
             .params
             .iter()
-            .map(|p| {
-                format!(
-                    "{} {}",
-                    p.ty.as_ref().map(jtype).unwrap_or_else(|| "Object".into()),
-                    p.name
-                )
-            })
+            .enumerate()
+            .map(|(i, p)| format!("{} {}", param_type(&f.name, i, p), p.name))
             .collect();
         let body = match &f.body {
             Some(FnBody::Expr(e)) => {
@@ -203,6 +216,7 @@ impl Cx {
 
     fn emit_main(&self, f: &FnDef) -> String {
         start_scope(&f.params);
+        start_fn_scope(&f.name, &f.params);
         let body = match &f.body {
             Some(FnBody::Block(stmts)) => jblock(stmts, false),
             // The trailing `0` of `main() -> int => 0` is the exit code, not a
@@ -365,6 +379,13 @@ thread_local! {
     /// rejects.
     static DECLARED: std::cell::RefCell<std::collections::BTreeSet<String>> =
         const { std::cell::RefCell::new(std::collections::BTreeSet::new()) };
+    /// Function-typed parameters of every top-level function in the module.
+    static FN_PARAMS: std::cell::RefCell<BTreeMap<(String, usize), Fnp>> =
+        const { std::cell::RefCell::new(BTreeMap::new()) };
+    /// Those belonging to the function being emitted, by parameter name, so a
+    /// call site knows to invoke the interface method rather than a static.
+    static IN_SCOPE: std::cell::RefCell<BTreeMap<String, Fnp>> =
+        const { std::cell::RefCell::new(BTreeMap::new()) };
     /// variant name → its enum. Java needs `Status.Done` everywhere except a
     /// `case` label, where the bare name is the only spelling allowed.
     static VARIANT_OF: std::cell::RefCell<std::collections::BTreeMap<String, String>> =
@@ -381,6 +402,40 @@ fn start_scope(params: &[Param]) {
             d.insert(p.name.clone());
         }
     });
+}
+
+/// Begin a function: note which of its parameters are functions, so a call to
+/// one lowers to the interface's method instead of a static of the same name.
+fn start_fn_scope(name: &str, params: &[Param]) {
+    let all = FN_PARAMS.with(|m| m.borrow().clone());
+    IN_SCOPE.with(|s| {
+        let mut s = s.borrow_mut();
+        s.clear();
+        for (i, p) in params.iter().enumerate() {
+            if let Some(sig) = all.get(&(name.to_string(), i)) {
+                s.insert(p.name.clone(), *sig);
+            }
+        }
+    });
+}
+
+/// The declared Java type of parameter `i` of function `name`.
+fn param_type(name: &str, i: usize, p: &Param) -> String {
+    if let Some(ty) = &p.ty {
+        return jtype(ty);
+    }
+    match FN_PARAMS.with(|m| m.borrow().get(&(name.to_string(), i)).copied()) {
+        Some(sig) if sig.arity > 2 => {
+            problem(format!(
+                "`{}` takes {} arguments; Java has no functional interface of \
+                 that shape",
+                p.name, sig.arity
+            ));
+            "Object".into()
+        }
+        Some(sig) => sig.iface(),
+        None => "Object".into(),
+    }
 }
 
 fn note_variants(enom: &str, vars: &[String]) {
@@ -402,6 +457,165 @@ fn qualify(n: &str) -> String {
 
 fn problem(msg: impl Into<String>) {
     PROBLEMS.with(|p| p.borrow_mut().push(msg.into()));
+}
+
+
+/// A parameter with no declared type that is *called* in the body is a
+/// function. Maca writes no function type at a parameter, so its use in the
+/// body is the only evidence there is; this mirrors the decision
+/// `maca_backend_c`'s `closure_params` makes for the native target.
+///
+/// What Java needs beyond that decision is a *type*, and there is none to read.
+/// The generated interfaces are `long`-typed because Maca's `int` is a Java
+/// `long` and that is what an unannotated parameter is treated as everywhere
+/// else in this emitter. A callback over strings or records would need its type
+/// written down, which this target does not accept yet, so it is refused by name
+/// rather than emitted as something that will not compile.
+#[derive(Clone, Copy, PartialEq)]
+struct Fnp {
+    arity: usize,
+    /// Whether the call's value is used. Java splits these: a `Function` returns
+    /// and a `Consumer` does not, and one cannot stand in for the other.
+    returns: bool,
+}
+
+impl Fnp {
+    /// The generated interface this parameter is declared as.
+    fn iface(&self) -> String {
+        match (self.arity, self.returns) {
+            (0, true) => "_Fn0".into(),
+            (0, false) => "_Act0".into(),
+            (1, true) => "_Fn1".into(),
+            (1, false) => "_Act1".into(),
+            (_, true) => "_Fn2".into(),
+            (_, false) => "_Act2".into(),
+        }
+    }
+
+    /// The interface's single method.
+    fn call(&self) -> &'static str {
+        if self.returns { "apply" } else { "accept" }
+    }
+
+    fn decl(&self) -> String {
+        let ps: Vec<String> = (0..self.arity).map(|i| format!("long _a{i}")).collect();
+        let ret = if self.returns { "long" } else { "void" };
+        format!(
+            "interface {} {{ {ret} {}({}); }}\n",
+            self.iface(),
+            self.call(),
+            ps.join(", ")
+        )
+    }
+}
+
+/// Every function parameter of `items` that is used as a function, keyed by the
+/// declaring function's name and the parameter's position.
+fn fn_params(items: &[Stmt]) -> BTreeMap<(String, usize), Fnp> {
+    let mut out = BTreeMap::new();
+    for it in items {
+        let Stmt::Fn(f) = it else { continue };
+        let Some(body) = &f.body else { continue };
+        let mut uses: BTreeMap<String, Fnp> = BTreeMap::new();
+        // A function with no declared return type discards its tail value, so a
+        // call in that position is a Consumer rather than a Function.
+        collect_calls_body(body, &mut uses, f.ret.is_some());
+        for (i, p) in f.params.iter().enumerate() {
+            if p.ty.is_none()
+                && let Some(sig) = uses.get(&p.name)
+            {
+                out.insert((f.name.clone(), i), *sig);
+            }
+        }
+    }
+    out
+}
+
+/// Record each `name(args)` in `body`. `valued` says whether the expression's
+/// value is used where it appears, which is what decides `Function` vs
+/// `Consumer`.
+fn collect_calls_body(body: &FnBody, out: &mut BTreeMap<String, Fnp>, valued: bool) {
+    match body {
+        FnBody::Expr(e) => collect_calls(e, out, valued),
+        FnBody::Block(stmts) => collect_calls_stmts(stmts, out, valued),
+    }
+}
+
+fn collect_calls_stmts(stmts: &[Stmt], out: &mut BTreeMap<String, Fnp>, tail_valued: bool) {
+    for (i, s) in stmts.iter().enumerate() {
+        let last = i + 1 == stmts.len();
+        match s {
+            Stmt::Bind(b) => collect_calls(&b.value, out, true),
+            // a bare call in the middle of a block discards its value
+            Stmt::Expr(e) => collect_calls(e, out, last && tail_valued),
+            _ => {}
+        }
+    }
+}
+
+fn collect_calls(e: &Expr, out: &mut BTreeMap<String, Fnp>, valued: bool) {
+    match e {
+        Expr::Call { callee, args } => {
+            if let Expr::Ident(n) = callee.as_ref() {
+                let sig = Fnp {
+                    arity: args.len(),
+                    returns: valued,
+                };
+                // A name called for its value anywhere is a Function: a
+                // Consumer could not stand in, while the reverse is harmless.
+                let keep = match out.get(n) {
+                    Some(prev) if prev.returns => *prev,
+                    _ => sig,
+                };
+                out.insert(n.clone(), keep);
+            }
+            for a in args {
+                collect_calls(arg_expr(a), out, true);
+            }
+            collect_calls(callee, out, true);
+        }
+        Expr::Unary { expr, .. } => collect_calls(expr, out, true),
+        Expr::Binary { lhs, rhs, .. } => {
+            collect_calls(lhs, out, true);
+            collect_calls(rhs, out, true);
+        }
+        Expr::Ternary { cond, then, els } => {
+            collect_calls(cond, out, true);
+            collect_calls(then, out, true);
+            collect_calls(els, out, true);
+        }
+        Expr::If { cond, then, els } => {
+            collect_calls(cond, out, true);
+            collect_calls_stmts(then, out, valued);
+            if let Some(e) = els {
+                collect_calls_stmts(e, out, valued);
+            }
+        }
+        Expr::Block(stmts) => collect_calls_stmts(stmts, out, valued),
+        Expr::While { cond, body } => {
+            collect_calls(cond, out, true);
+            collect_calls_stmts(body, out, false);
+        }
+        Expr::For { iter, body, .. } => {
+            collect_calls(iter, out, true);
+            collect_calls_stmts(body, out, false);
+        }
+        Expr::Field { base, .. } => collect_calls(base, out, true),
+        Expr::Index { base, index } => {
+            collect_calls(base, out, true);
+            collect_calls(index, out, true);
+        }
+        Expr::Lambda { body, .. } => collect_calls(body, out, true),
+        Expr::Match { scrut, arms } => {
+            collect_calls(scrut, out, true);
+            for a in arms {
+                collect_calls(&a.body, out, valued);
+            }
+        }
+        Expr::Assign { value, .. } => collect_calls(value, out, true),
+        Expr::Try(x) | Expr::Fail(x) | Expr::Reify(x) => collect_calls(x, out, true),
+        _ => {}
+    }
 }
 
 /// Name a construct the way the author wrote it, for a refusal message.
@@ -489,6 +703,12 @@ fn jcall(callee: &Expr, args: &[Arg]) -> String {
         // Capitalized target → constructor (`Pos(1,2)` → `new Pos(1, 2)`)
         Expr::Ident(f) if f.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
             format!("new {f}({})", a.join(", "))
+        }
+        // A function-typed parameter is not a static of the same name; Java
+        // reaches it through the interface's single method.
+        Expr::Ident(f) if IN_SCOPE.with(|s| s.borrow().contains_key(f)) => {
+            let sig = IN_SCOPE.with(|s| s.borrow()[f]);
+            format!("{f}.{}({})", sig.call(), a.join(", "))
         }
         Expr::Ident(f) => format!("{f}({})", a.join(", ")),
         Expr::Field { base, name } => format!("{}.{name}({})", jexpr(base), a.join(", ")),
