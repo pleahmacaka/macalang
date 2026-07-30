@@ -81,7 +81,8 @@ fn a_lambda_is_a_java_lambda_not_null() {
     // Only the emission is asserted: calling one through an unannotated Maca
     // parameter needs that parameter to be a functional interface rather than
     // `Object`, which this backend does not yet do.
-    let java = ok("register(cb) {\n    cb(1)\n}\n\nmain() -> int {\n    register(v => v + 1)\n    0\n}\n");
+    let java =
+        ok("register(cb) {\n    cb(1)\n}\n\nmain() -> int {\n    register(v => v + 1)\n    0\n}\n");
     assert!(
         java.contains("(v) -> (v + 1L)"),
         "lambda not lowered:\n{java}"

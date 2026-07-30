@@ -607,10 +607,10 @@ test_a_label_is_cut_only_where_a_character_ends() {
 }
 
 test_padding_counts_columns_not_bytes() {
-    assert_eq(pad_to("ab", 5), "ab   ", "three spaces to reach five")
-    assert_eq(pad_to("abcdef", 3), "abcdef", "already wider, so left alone")
-    assert_eq(pad_num("7", 4), "   7", "numbers are pushed right")
-    assert_eq(str(width(pad_to("한국", 6))), "6", "two columns per character")
+    assert_eq(pad("ab", 5), "ab   ", "three spaces to reach five")
+    assert_eq(pad("abcdef", 3), "abcdef", "already wider, so left alone")
+    assert_eq(pad_left("7", 4), "   7", "numbers are pushed right")
+    assert_eq(str(width(pad("한국", 6))), "6", "two columns per character")
 }
 
 test_percent_of_nothing_is_zero_rather_than_a_division_by_zero() {

@@ -91,7 +91,10 @@ main() -> int {
 }
 ";
     let java = ok(src, "A");
-    assert!(java.contains("_Fn1 f"), "parameter is not an interface:\n{java}");
+    assert!(
+        java.contains("_Fn1 f"),
+        "parameter is not an interface:\n{java}"
+    );
     assert!(java.contains("f.apply("), "call site not lowered:\n{java}");
     assert!(!java.contains("Object f"), "still Object:\n{java}");
     let Some(out) = run(src, "A") else { return };
@@ -114,7 +117,10 @@ main() -> int {
 ";
     let java = ok(src, "B");
     assert!(java.contains("_Act1 cb"), "not a consumer:\n{java}");
-    assert!(java.contains("cb.accept("), "call site not lowered:\n{java}");
+    assert!(
+        java.contains("cb.accept("),
+        "call site not lowered:\n{java}"
+    );
     let Some(out) = run(src, "B") else { return };
     assert_eq!(out, vec!["1"]);
 }
@@ -165,8 +171,14 @@ fn an_interface_is_declared_once_per_shape_and_only_when_used() {
 #[test]
 fn a_parameter_taking_more_arguments_than_java_can_express_is_refused() {
     // Java stops at BiFunction, so this has to be said rather than emitted.
-    let msg = refused("quad(f, x: int) -> int => f(x, x, x, x)\nmain() -> int => 0\n", "F");
-    assert!(msg.contains('f'), "message does not name the parameter: {msg}");
+    let msg = refused(
+        "quad(f, x: int) -> int => f(x, x, x, x)\nmain() -> int => 0\n",
+        "F",
+    );
+    assert!(
+        msg.contains('f'),
+        "message does not name the parameter: {msg}"
+    );
     assert!(msg.contains('4'), "message does not say the arity: {msg}");
     assert!(
         !msg.contains("Object") && !msg.contains("_Fn"),

@@ -67,7 +67,8 @@ fn a_call_the_interpreter_does_not_know_is_an_error_not_unit() {
 #[test]
 fn a_user_function_is_still_reached() {
     // The refusal must not have swallowed the lookup it comes after.
-    let src = "double(n: int) -> int => n * 2\n\nmain() -> int {\n    info(str(double(21)))\n    0\n}\n";
+    let src =
+        "double(n: int) -> int => n * 2\n\nmain() -> int {\n    info(str(double(21)))\n    0\n}\n";
     let p = maca_parser::parse(src);
     assert!(p.errors.is_empty(), "parse: {:?}", p.errors);
     let r = interp::run(&p.module);

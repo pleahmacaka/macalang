@@ -197,6 +197,79 @@ fn a_name_called_ufcs_is_left_alone() {
     assert!(err.contains("snip"), "names the name: {err}");
 }
 
+/// A third module reaching both sides of the collision means the API side, and
+/// repairing the collision must not take its reference along.
+///
+/// This one compiled and ran, with the wrong answer: the private definition
+/// moved, every module that could reach it was rewritten, and a call written
+/// against the documented function ran a helper of a module never opened.
+#[test]
+fn a_third_module_means_the_published_definition() {
+    let p = Project::new("meant");
+    p.write(
+        "modules/pkg/gauge.maca",
+        "/// How wide `s` is.\nfits(s: str) -> int => s.length()\n",
+    );
+    p.write(
+        "modules/pkg/snug.maca",
+        "/// Snug's own reading.\nsnug_use() -> int => fits(\"ab\")\n\
+         fits(s: str) -> int => s.length() * 3\n",
+    );
+    p.write(
+        "modules/pkg/pick.maca",
+        "import pkg/gauge\nimport pkg/snug\n\
+         /// Pick's reading.\npicked() -> int => fits(\"abcd\")\n",
+    );
+    let app = p.write(
+        "apps/x/main.maca",
+        "import pkg/pick\nmain() -> int => picked()\n",
+    );
+
+    let flat = p.flatten(&app).expect("should flatten");
+    assert!(
+        flat.contains("snug__fits"),
+        "the private side still moves:\n{flat}"
+    );
+    assert!(
+        flat.contains("picked() -> int => fits(\"abcd\")"),
+        "and the third module keeps naming the published one:\n{flat}"
+    );
+}
+
+/// Where no one of the definitions in reach is the API one, nothing in the
+/// referring module says which it meant, and it is refused naming that file —
+/// the alternative is a call bound by which definition happened to move first.
+#[test]
+fn a_reference_nothing_settles_is_refused() {
+    let p = Project::new("unsettled");
+    for (m, n) in [("one", "1"), ("two", "2")] {
+        p.write(
+            &format!("modules/pkg/{m}.maca"),
+            &format!("helper(n: int) -> int => n + {n}\n"),
+        );
+    }
+    p.write(
+        "modules/pkg/user.maca",
+        "import pkg/one\nimport pkg/two\n\
+         /// Which helper?\nuser_use() -> int => helper(0)\n",
+    );
+    let app = p.write(
+        "apps/x/main.maca",
+        "import pkg/user\nmain() -> int => user_use()\n",
+    );
+
+    let err = p.flatten(&app).expect_err("should refuse");
+    assert!(err.contains("user.maca"), "names the referring file: {err}");
+    assert!(
+        err.contains("one.maca") && err.contains("two.maca"),
+        "{err}"
+    );
+    assert!(
+        err.contains("import { helper } from"),
+        "says the fix: {err}"
+    );
+}
+
 // ---- a top level against another module's binding --------------------------
 
 /// A lambda capturing a parameter, and another module defining that name at top
@@ -308,6 +381,57 @@ fn a_programs_main_is_never_moved() {
     assert!(
         flat.lines().any(|l| l.starts_with("main() -> int")),
         "the program kept its entry point:\n{flat}"
+    );
+}
+
+/// `maca test` finds a suite by looking for `test_…` in the *flattened* program,
+/// so a module's test function is read from outside the source the way `main` is.
+/// Renaming one does not fail: it makes the test disappear, and a suite that
+/// silently runs fewer tests than it has is worse than one that will not build.
+#[test]
+fn a_modules_test_function_is_never_moved() {
+    let p = Project::new("suiteguard");
+    for m in ["one", "two"] {
+        p.write(
+            &format!("modules/pkg/{m}.maca"),
+            "test_shared() {\n    assert(true, \"x\")\n}\n",
+        );
+    }
+    let app = p.write("apps/x/suite.maca", "import pkg/one\nimport pkg/two\n");
+
+    let err = p.flatten(&app).expect_err("should refuse");
+    assert!(err.contains("test_shared"), "names the test: {err}");
+    assert!(
+        err.contains("one.maca") && err.contains("two.maca"),
+        "names both suites: {err}"
+    );
+}
+
+/// A body-less declaration *is* the symbol some library provides, so its name is
+/// not this pass's to change: `atol` renamed to `ffi__atol` asked the linker for
+/// a symbol nothing defines.
+#[test]
+fn a_foreign_declaration_keeps_the_symbols_name() {
+    let p = Project::new("foreign");
+    p.write(
+        "modules/pkg/ffi.maca",
+        "/// C's `atol`.\natol(s: str) -> int\n",
+    );
+    p.write(
+        "modules/pkg/user.maca",
+        "/// A name that happens to be `atol`.\n\
+         len_of(atol: str) -> int => atol.length()\n",
+    );
+    let app = p.write(
+        "apps/x/main.maca",
+        "import pkg/ffi\nimport pkg/user\n\
+         main() -> int => atol(\"41\") + len_of(\"ab\")\n",
+    );
+
+    let flat = p.flatten(&app).expect("should flatten");
+    assert!(
+        !flat.contains("ffi__atol"),
+        "the declaration keeps the name the library exports:\n{flat}"
     );
 }
 

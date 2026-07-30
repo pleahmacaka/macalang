@@ -14,14 +14,8 @@
 // bytes and two columns per character. `length()` is wrong in both directions,
 // and wrong only once the chart reaches a terminal that renders either.
 
-// `pad` is deliberately not imported from `cli/style`, and neither is
-// `cli/show`, which does import it. `profile/trace` reaches `std/text`, whose
-// `indent(s, pad)` passes its own `pad` parameter into a lambda — and a lambda
-// that captures a name a top-level function also has takes the function. The
-// two modules cannot be linked into one program today, so the two column
-// helpers this package needs live here instead.
 import profile/trace
-import { paint, bold, dim, yellow, width } from cli/style
+import { paint, bold, dim, yellow, width, pad, pad_left } from cli/style
 import { escape_html } from std/text
 
 // How a trace's milliseconds map onto the chart's width. Computed once and
@@ -158,30 +152,16 @@ inside(name: str, ms: int, room: int) -> str {
     full = "{name} {ms}ms"
 
     if width(full) <= room {
-        pad_to(full, room)
+        pad(full, room)
     } else if width(name) <= room {
-        pad_to(name, room)
+        pad(name, room)
     } else {
-        pad_to(fit(name, room - 1) ++ "…", room)
+        pad(fit(name, room - 1) ++ "…", room)
     }
 }
 
 /// `s` padded out to `w` columns, counting what shows rather than what is
 /// stored. A cell aligned to the bytes of a coloured string is aligned to
-/// characters nobody can see.
-pad_to(s: str, w: int) -> str {
-    short = w - width(s)
-
-    short > 0 ? s ++ " ".repeat(short) : s
-}
-
-/// `pad_to`, right-aligned — for a column of numbers.
-pad_num(s: str, w: int) -> str {
-    short = w - width(s)
-
-    short > 0 ? " ".repeat(short) ++ s : s
-}
-
 /// The longest prefix of `s` that fits in `n` columns, cut only where a
 /// character ends.
 ///

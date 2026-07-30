@@ -142,7 +142,10 @@ fn a_float_pattern_is_refused_rather_than_becoming_a_wildcard() {
         "pick(x: float) -> str {\n    match x {\n        1.5 => \"a\"\n        2.5 => \"b\"\n        _ => \"c\"\n    }\n}\n",
     );
     assert!(msg.contains("1.5"), "message does not name it: {msg}");
-    assert!(msg.contains("guard"), "message does not say what to do: {msg}");
+    assert!(
+        msg.contains("guard"),
+        "message does not say what to do: {msg}"
+    );
 }
 
 #[test]

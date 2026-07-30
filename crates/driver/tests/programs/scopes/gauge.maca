@@ -1,0 +1,8 @@
+// One module's published answer for a name a second module also keeps
+// privately, and a third module writes.
+//
+// This half is the API: a `///` block is what says so, and it is what a module
+// that never opened either file is written against.
+
+/// How many columns `s` takes.
+fits(s: str) -> int => s.length()

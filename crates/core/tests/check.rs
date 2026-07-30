@@ -206,9 +206,9 @@ fn variadic_misuse_rejected() {
 }
 /// A record literal has to name every field the record declares.
 ///
-/// A missing one was a silent zero — `""` for a `str`, `0` for an `int` — so a
+/// A missing one was a silent zero, `""` for a `str` and `0` for an `int`, so a
 /// value whose whole job is to carry copy could ship half-empty and compile
-/// clean. `apps/site/home.maca` keeps a page's text in a 19-field record for
+/// clean. `apps/site/home.maca` keeps a page's text in a 30-field record for
 /// exactly the reason that a missing field should be a compile error.
 #[test]
 fn missing_record_field_rejected() {

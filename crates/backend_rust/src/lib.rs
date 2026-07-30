@@ -715,10 +715,7 @@ impl Cx {
                 if args.is_empty() {
                     qualified
                 } else {
-                    let a: Vec<String> = args
-                        .iter()
-                        .map(|x| self.pat_match(x))
-                        .collect::<Vec<_>>();
+                    let a: Vec<String> = args.iter().map(|x| self.pat_match(x)).collect::<Vec<_>>();
                     format!("{qualified}({})", a.join(", "))
                 }
             }
@@ -736,17 +733,11 @@ impl Cx {
                 "_".into()
             }
             Pattern::Record(_) => {
-                self.problem(
-                    "a record pattern is not lowered by the rust backend"
-                        .to_string(),
-                );
+                self.problem("a record pattern is not lowered by the rust backend".to_string());
                 "_".into()
             }
             Pattern::List { .. } => {
-                self.problem(
-                    "a list pattern is not lowered by the rust backend"
-                        .to_string(),
-                );
+                self.problem("a list pattern is not lowered by the rust backend".to_string());
                 "_".into()
             }
         }

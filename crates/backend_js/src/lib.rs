@@ -704,12 +704,18 @@ const METHOD_HELPERS: &[(&str, &str)] = &[
         "_mcmp",
         "function _mcmp(a, b) { return typeof a === \"number\" ? a - b : (a < b ? -1 : a > b ? 1 : 0); }",
     ),
-    ("_msort", "function _msort(xs) { return [...xs].sort(_mcmp); }"),
+    (
+        "_msort",
+        "function _msort(xs) { return [...xs].sort(_mcmp); }",
+    ),
     (
         "_mpick",
         "function _mpick(xs, dir) { return xs.reduce((a, b) => (_mcmp(b, a) * dir > 0 ? b : a)); }",
     ),
-    ("_mlast", "function _mlast(xs) { return xs[xs.length - 1]; }"),
+    (
+        "_mlast",
+        "function _mlast(xs) { return xs[xs.length - 1]; }",
+    ),
 ];
 
 /// The helper definitions `js` actually calls, in dependency order.

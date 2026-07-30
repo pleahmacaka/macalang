@@ -137,7 +137,8 @@ snapshot, the parser round-trip, the `maca fmt --check` golden, and the root
 manifest's `[[bin]]`.
 
 `apps/` (capstones: `mqtt`, `microkernel`, `blink`, `desktop`, `mcmod`,
-`bench` — the cross-language harness and its C/Rust/Go/JS/Python
+the five package demos named above, `bench` — the cross-language harness
+and its C/Rust/Go/JS/Python
 reference kernels — `playground` (the browser playground, a single `.maca`
 file compiled by the JS backend), `tomo` — the i18n handbook builder that
 renders `book/{en,ko}/*.md` into `site/`, built entirely out of the UI syntax

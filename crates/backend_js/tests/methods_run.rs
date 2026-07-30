@@ -192,7 +192,10 @@ fn every_name_in_both_closed_sets_has_a_lowering() {
             missing.push(*m);
         }
     }
-    assert!(missing.is_empty(), "no JS lowering exercised for: {missing:?}");
+    assert!(
+        missing.is_empty(),
+        "no JS lowering exercised for: {missing:?}"
+    );
 }
 
 #[test]
@@ -226,9 +229,13 @@ main() -> int => 0
 
 #[test]
 fn a_helper_is_emitted_only_when_it_is_used() {
-    let with = maca_backend_js::emit(&maca_parser::parse("f() -> int[] => [2, 1].sort()\n").module).js;
+    let with =
+        maca_backend_js::emit(&maca_parser::parse("f() -> int[] => [2, 1].sort()\n").module).js;
     assert!(with.contains("function _msort"), "helper missing:\n{with}");
-    assert!(with.contains("function _mcmp"), "_msort needs _mcmp:\n{with}");
+    assert!(
+        with.contains("function _mcmp"),
+        "_msort needs _mcmp:\n{with}"
+    );
 
     let without = maca_backend_js::emit(&maca_parser::parse("f() -> int => 1 + 1\n").module).js;
     assert!(
@@ -251,9 +258,6 @@ fn use_strict_stays_the_first_statement() {
 fn a_field_holding_a_function_is_still_called_directly() {
     // Only Maca's own method names are rewritten; anything else is a record
     // field or a foreign JS call and must pass through untouched.
-    let js = maca_backend_js::emit(
-        &maca_parser::parse("f(r) -> int => r.handler(1)\n").module,
-    )
-    .js;
+    let js = maca_backend_js::emit(&maca_parser::parse("f(r) -> int => r.handler(1)\n").module).js;
     assert!(js.contains("r.handler(1)"), "rewrote a field call:\n{js}");
 }

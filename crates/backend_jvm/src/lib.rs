@@ -365,7 +365,10 @@ fn jexpr(e: &Expr) -> String {
         // `null` is assignable to every Java reference type, so an unlowered
         // construct type-checked and the program ran with a hole in it.
         other => {
-            problem(format!("{} is not lowered by the jvm backend", describe(other)));
+            problem(format!(
+                "{} is not lowered by the jvm backend",
+                describe(other)
+            ));
             "null".into()
         }
     }
@@ -458,7 +461,6 @@ fn qualify(n: &str) -> String {
 fn problem(msg: impl Into<String>) {
     PROBLEMS.with(|p| p.borrow_mut().push(msg.into()));
 }
-
 
 /// A parameter with no declared type that is *called* in the body is a
 /// function. Maca writes no function type at a parameter, so its use in the
@@ -731,10 +733,7 @@ fn jctor(e: &Expr, fields: &[Field]) -> String {
         .collect();
     if name.is_empty() {
         // An anonymous record has no Java type to name in a `new`.
-        problem(
-            "an anonymous record literal has no Java type — declare a record type"
-                .to_string(),
-        );
+        problem("an anonymous record literal has no Java type — declare a record type".to_string());
         "null".to_string()
     } else {
         format!("new {name}({})", vals.join(", "))

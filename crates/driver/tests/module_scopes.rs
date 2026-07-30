@@ -15,13 +15,16 @@ use common::*;
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Two modules with the same private helper, and a lambda capturing a parameter
-/// another module defines at top level.
+/// Two modules with the same private helper, a lambda capturing a parameter
+/// another module defines at top level, and a third module written against one
+/// of two same-named definitions it can reach.
 ///
-/// Before the repair, neither half reached the assertions. The first was a
-/// `TypeMismatch` in `alpha_reading` against beta's signature; the second was
-/// `incompatible type for argument 2 of 'prefixed'` out of the C compiler, the
-/// captured `column` having been lowered as a function value.
+/// Before the repair, none of the three reached the assertions with the right
+/// answer. The first was a `TypeMismatch` in `alpha_reading` against beta's
+/// signature; the second was `incompatible type for argument 2 of 'prefixed'`
+/// out of the C compiler, the captured `column` having been lowered as a
+/// function value. The third compiled and ran, and returned 12 where the module
+/// it was written against says 4.
 #[test]
 fn modules_do_not_answer_for_each_others_names() {
     if have_wsl() || !have("cc") {
@@ -38,7 +41,7 @@ fn modules_do_not_answer_for_each_others_names() {
         String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
     assert!(out.status.success(), "the suite did not pass:\n{text}");
     assert!(
-        text.contains("3 tests passed"),
+        text.contains("4 tests passed"),
         "every test should have run:\n{text}"
     );
 }

@@ -1,14 +1,17 @@
 //! maca-wasm: a tiny `wasm32-unknown-unknown` surface over the front-end +
 //! emitters, for the browser playground.
 //!
-//! No `wasm-bindgen`: the ABI is three raw exports over linear memory so the
-//! `.wasm` builds with a plain `cargo build --target wasm32-unknown-unknown`
-//! and loads with `WebAssembly.instantiate` alone (no JS glue, no toolchain).
+//! No `wasm-bindgen`: the ABI is raw exports over linear memory so the `.wasm`
+//! builds with a plain `cargo build --target wasm32-unknown-unknown` and loads
+//! with `WebAssembly.instantiate` alone (no JS glue, no toolchain).
 //!
-//!   * `alloc(len) -> ptr` — reserve `len` bytes for the caller to fill
-//!   * `dealloc(ptr, len)` — release a buffer returned by `run`
-//!   * `run(ptr, len, mode) -> (ptr<<32)|len` — parse + check + emit, returning
+//!   * `alloc(len) -> ptr`: reserve `len` bytes for the caller to fill
+//!   * `dealloc(ptr, len)`: release a buffer returned by any of the below
+//!   * `run(ptr, len, mode) -> (ptr<<32)|len`: parse + check + emit, returning
 //!     a UTF-8 JSON blob the caller reads out of memory and then frees.
+//!   * `lsp(ptr, len, off)`: every language-server answer for one caret
+//!   * `version()`: the compiler's version string
+//!   * `hover(ptr, len, off)`: hover alone, which `lsp` also carries
 //!
 //! `mode`: 0 = program (native/JS), 1 = config (Nix).
 //!
@@ -186,7 +189,7 @@ fn kind_str(k: DiagKind) -> &'static str {
 /// { "parseErrors": ["…"],
 ///   "diagnostics": [{"kind":"TypeMismatch","msg":"…"}],
 ///   "outputs": {"C":"…","JS":"…","CSS":"…"} | {"Nix":"…"},
-///   "limits": {"C": ["`on:click` needs a live DOM — …"]} }
+///   "limits": {"C": ["`on:click` needs a live DOM, build with --target js"]} }
 /// ```
 ///
 /// A target appears in `outputs` when it lowered the whole module and in
@@ -309,7 +312,7 @@ pub fn compile_json(src: &str, mode: u32) -> String {
     }
     out.push(']');
 
-    // run the program (Program mode only) — captured stdout + an execution
+    // run the program (Program mode only): captured stdout + an execution
     // profile, so the playground can show real output and where the time went.
     if parsed.errors.is_empty() && matches!(mode_of(mode), Mode::Program) {
         let r = interp::run(&parsed.module);
@@ -579,8 +582,8 @@ fn first_backtick(msg: &str) -> Option<&str> {
     Some(&rest[..b])
 }
 
-/// First whole-word occurrence of `name` in *code* — skipping `//` comments and
-/// `"…"` string literals — as a byte span. Anchoring a diagnostic marker on a
+/// First whole-word occurrence of `name` in *code*, skipping `//` comments and
+/// `"…"` string literals, as a byte span. Anchoring a diagnostic marker on a
 /// mention inside a comment/string would draw the squiggle in the wrong place.
 fn find_word(src: &str, name: &str) -> Option<(usize, usize)> {
     if name.is_empty() {
@@ -592,13 +595,13 @@ fn find_word(src: &str, name: &str) -> Option<(usize, usize)> {
     let mut i = 0;
     while i < bytes.len() {
         match bytes[i] {
-            // line comment — skip to end of line
+            // line comment: skip to end of line
             b'/' if bytes.get(i + 1) == Some(&b'/') => {
                 while i < bytes.len() && bytes[i] != b'\n' {
                     i += 1;
                 }
             }
-            // string literal — skip to the closing quote (respecting \" escapes)
+            // string literal: skip to the closing quote (respecting \" escapes)
             b'"' => {
                 i += 1;
                 while i < bytes.len() && bytes[i] != b'"' {

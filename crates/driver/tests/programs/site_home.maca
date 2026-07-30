@@ -21,7 +21,8 @@ import { kernels, langs, params, case_name } from apps/bench/run
 import { bar_width, ms_text, ratio, standing, timing } from apps/site/home
 import { Standing, losses, verified, all_verified } from apps/site/home
 import { timed_runs, StartChapter, BenchData, BenchReport } from apps/site/home
-import { copies, korean } from apps/site/home
+import { chip_tone, is_behind, mine_tone } from apps/site/home
+import { copies, english, korean } from apps/site/home
 
 // The compiler the page is built with. The Rust runner passes the one `cargo
 // test` just built; running this file by hand picks up the release binary.
@@ -162,6 +163,128 @@ cell(rs: Result[], algo: str, lang: str) -> str {
     "{ms:.0} (×{ms / base:.1})"
 }
 
+// ---- the columns ------------------------------------------------------------
+
+// Six languages in a row of numbers is only a comparison if each number is
+// under the name of the language that produced it, and the header and the rows
+// are two separate expressions that can disagree about how many columns there
+// are. Deleting the `workload` header cell shifts every remaining label one
+// column left: the workload is then headed `Maca`, Maca's time is headed `C`,
+// and Python's has no header at all. Every number on the page is still the
+// right number, which is exactly why asking whether the numbers are present
+// cannot see it, and it passed every other assertion in this file.
+test_each_column_is_under_its_own_language() {
+    page = root()
+    rs = runs()
+    want = [english().tbl_kernel, english().tbl_workload] ++ langs()
+
+    assert_eq(column_labels(page).join(" | "), want.join(" | "),
+              "the header names the kernel, the workload, then each language")
+    assert_eq(misplaced(page, rs, kernels(), 0, []).join("; "), "",
+              "and every measurement sits under its own language")
+}
+
+// The labels of the header row, in order.
+column_labels(page: str) -> str[] =>
+    row_cells(between(bench_table(page), "<thead>", "</thead>"))
+
+bench_table(page: str) -> str =>
+    between(page, "<table", "</table>")
+
+// One row's cells, in order. A `<th>` and a `<td>` are the same thing to a
+// reader looking down a column, so the row is normalised to one closing tag
+// before it is split, and a cell's text is whatever follows the tag that
+// opened it: every cell here is escaped, so none of them holds a `>`.
+row_cells(row: str) -> str[] =>
+    but_last(row.replace("</th>", "</td>").split("</td>"), 0, [])
+
+// Splitting on a closing tag leaves one fragment after the last one, which is
+// the rest of the row rather than a cell.
+but_last(parts: str[], i: int, acc: str[]) -> str[] {
+    if i + 1 >= parts.length() {
+        acc
+    } else {
+        but_last(parts, i + 1, acc.push(after_tag(parts.get(i))))
+    }
+}
+
+after_tag(frag: str) -> str {
+    parts = frag.split(">")
+
+    parts.get(parts.length() - 1)
+}
+
+// The body row for one kernel, found by the name in its first cell rather than
+// by its position, so that a reordered table still reads correctly here and
+// only a mislabelled column fails.
+kernel_cells(page: str, algo: str) -> str[] =>
+    row_for(between(bench_table(page), "<tbody>", "</tbody>").split("<tr>"),
+            0, algo)
+
+row_for(rows: str[], i: int, algo: str) -> str[] {
+    if i >= rows.length() {
+        []
+    } else if first_cell(rows.get(i)) == algo {
+        row_cells(rows.get(i))
+    } else {
+        row_for(rows, i + 1, algo)
+    }
+}
+
+first_cell(row: str) -> str {
+    cs = row_cells(row)
+
+    if cs.length() == 0 {
+        ""
+    } else {
+        cs.get(0)
+    }
+}
+
+misplaced(page: str, rs: Result[], ks: str[], i: int, acc: str[]) -> str[] {
+    if i >= ks.length() {
+        acc
+    } else {
+        misplaced(page, rs, ks, i + 1,
+                  acc ++ off_column(rs, ks.get(i),
+                                    kernel_cells(page, ks.get(i)),
+                                    langs(), 0, []))
+    }
+}
+
+// The kernel is column 0, the workload column 1, and language `j` column
+// `j + 2`. Anything else names what it found instead.
+off_column(rs: Result[], algo: str, cs: str[], ls: str[], j: int,
+           acc: str[]) -> str[] {
+    if j >= ls.length() {
+        acc ++ off_workload(algo, cs)
+    } else if at(cs, j + 2) == cell(rs, algo, ls.get(j)) {
+        off_column(rs, algo, cs, ls, j + 1, acc)
+    } else {
+        off_column(rs, algo, cs, ls, j + 1,
+                   acc.push("{case_name(algo, ls.get(j))} column holds"
+                            ++ " \"{at(cs, j + 2)}\""))
+    }
+}
+
+off_workload(algo: str, cs: str[]) -> str[] {
+    if at(cs, 1) == params(algo) {
+        []
+    } else {
+        ["{algo}'s workload column holds \"{at(cs, 1)}\""]
+    }
+}
+
+// A row shorter than the header reads as an empty cell rather than dying, so
+// the assertion names the column instead of the suite naming an index.
+at(cs: str[], i: int) -> str {
+    if i >= cs.length() {
+        ""
+    } else {
+        cs.get(i)
+    }
+}
+
 // The bars carry the same two times again, as labels, and their lengths are each
 // time's share of the slower of the two. `sieve` is the row where those two are
 // far enough apart that a wrong denominator could not pass unnoticed.
@@ -194,8 +317,8 @@ test_the_page_says_where_maca_loses() {
     assert_eq(str(occurrences(page, "slower than C")), str(lost.length()),
               "every one of them is marked slower")
     assert(all_named(page, lost, 0), "and named in the note")
-    assert_eq(worst_of(rs, lost, 0, ""), "sieve",
-              "sieve is still the largest of them")
+    assert_eq(worst_of(rs, lost, 0, ""), Explained,
+              "the one the note explains is still the largest of them")
     assert(only_trailing(rs, lost, 0), "and the rest still only trail")
     assert(page.contains("bound by memory bandwidth"), "the note says why")
 }
@@ -222,13 +345,17 @@ worst_of(rs: Result[], ks: str[], i: int, worst: str) -> str {
     }
 }
 
+// The one loss the page explains by name, named here because the sentence beside
+// it in the copy names it there.
+Explained = "sieve"
+
 // "trails by a margin a single timed run cannot separate from noise" is a claim
-// about a number. Every loss except the one the note explains has to be within a
-// fifth of C, or that sentence needs writing again.
+// about a number. Every loss except the explained one has to be within a fifth of
+// C, or that sentence needs writing again.
 only_trailing(rs: Result[], ks: str[], i: int) -> bool {
     if i >= ks.length() {
         true
-    } else if ks.get(i) == "sieve" || ratio(rs, ks.get(i)) < 1.2 {
+    } else if ks.get(i) == Explained || ratio(rs, ks.get(i)) < 1.2 {
         only_trailing(rs, ks, i + 1)
     } else {
         false
@@ -238,9 +365,44 @@ only_trailing(rs: Result[], ks: str[], i: int) -> bool {
 occurrences(haystack: str, needle: str) -> int =>
     haystack.split(needle).length() - 1
 
+// The bars are the part of this section a reader takes in without reading, so
+// the rows behind C are drawn in an accent the rest are not. The verdict beside
+// each bar says the same thing in words, which is what stops the colour from
+// carrying the meaning alone, and it is also what let both accents be replaced
+// by the ordinary tone with every other assertion in this file still green.
+//
+// The tones are asked of the page's own functions rather than spelled out, so
+// this checks that a loss is drawn differently, not that it is drawn in amber.
+test_a_kernel_behind_c_is_drawn_unlike_one_that_is_not() {
+    page = root()
+    rs = runs()
+    lost = losses(rs)
+    same = not_behind(rs, kernels(), 0)
+
+    assert(lost.length() > 0, "there is a kernel behind C")
+    assert(same != "", "and one that is not")
+    assert(mine_tone(rs, lost.get(0)) != mine_tone(rs, same),
+           "their bars are not drawn the same")
+    assert(chip_tone(rs, lost.get(0)) != chip_tone(rs, same),
+           "nor are their verdicts")
+    assert_eq(str(occurrences(page, mine_tone(rs, lost.get(0)))),
+              str(lost.length()),
+              "and the page draws that accent once per loss")
+}
+
+not_behind(rs: Result[], ks: str[], i: int) -> str {
+    if i >= ks.length() {
+        ""
+    } else if is_behind(rs, ks.get(i)) {
+        not_behind(rs, ks, i + 1)
+    } else {
+        ks.get(i)
+    }
+}
+
 // Every kernel is on the page under the workload it was given, and every
-// language it was measured against is named. Six of eight columns are languages
-// Maca is faster than, and dropping one of those would flatter it.
+// language it was measured against is named. A contender dropped from the table
+// is a comparison quietly narrowed to flatter, and nothing else would notice.
 test_every_kernel_and_language_is_named() {
     page = root()
 
@@ -320,6 +482,8 @@ test_the_chapter_it_opens_is_published_in_every_language() {
 
     assert(toml.contains("\"{StartChapter}\""), "the book lists the chapter")
     assert(chapters_exist(copies(), 0), "and has it in every language")
+    assert(read_file(chapter("en")).contains("install.sh"),
+           "and it is the chapter that says how to install")
 }
 
 chapters_exist(cs: Copy[], i: int) -> bool {

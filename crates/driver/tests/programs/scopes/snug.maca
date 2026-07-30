@@ -1,0 +1,10 @@
+// The private half: the same name and the same signature, a different answer.
+//
+// The signatures agree on purpose. A third module bound to this one instead of
+// `gauge` still type-checks and still compiles, so the only thing that shows
+// the mistake is the number that comes back.
+
+/// Three times what this module's own reading says.
+snug_use() -> int => fits("ab")
+
+fits(s: str) -> int => s.length() * 3

@@ -66,8 +66,12 @@ fn concat_is_refused_rather_than_becoming_addition() {
 
 #[test]
 fn match_is_refused_rather_than_becoming_zero() {
-    let msg = refused("f(n: int) -> int {\n    match n {\n        1 => 2\n        _ => 3\n    }\n}\n");
-    assert!(msg.contains("match"), "message does not name `match`: {msg}");
+    let msg =
+        refused("f(n: int) -> int {\n    match n {\n        1 => 2\n        _ => 3\n    }\n}\n");
+    assert!(
+        msg.contains("match"),
+        "message does not name `match`: {msg}"
+    );
 }
 
 #[test]

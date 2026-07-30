@@ -60,6 +60,7 @@ import js """
 (function () {
   let ex = null;       // wasm exports
   let last = null;     // last compile result (parsed JSON)
+  let lastMode = 0;    // the mode `last` was compiled in (0 program, 1 config)
   let lastMs = 0;      // wall-clock of the last compile+run
   let version = "";
   let statusText = "loading…";
@@ -160,12 +161,27 @@ import js """
     }
     return out;
   }
+  // Definitions a configuration has no place for. Config mode's root module
+  // *is* the configuration: a function is code, and the Nix back end drops it
+  // without a word, so a whole program compiled as config comes back "clean"
+  // with an empty module. Named here because an empty answer the page calls
+  // clean is worse than an error.
+  function configDrops() {
+    if (lastMode !== 1) return [];
+    return ((last && last.symbols) || [])
+      .filter(function (s) { return s.kind === "fn"; })
+      .map(function (s) { return s.name; });
+  }
   function diagText(r) {
     const lines = [];
     for (const e of r.parseErrors || []) lines.push("parse: " + e);
     for (const d of r.diagnostics || []) lines.push(d.kind + ": " + d.msg);
     for (const [target, why] of refusals(r)) {
       lines.push(target + " back end: " + why);
+    }
+    for (const name of configDrops()) {
+      lines.push("config mode: `" + name + "` is a function, and a " +
+        "configuration is options rather than code, so it is not in the Nix");
     }
     if (!lines.length) return "✓ parsed and type-checked clean";
     return lines.join("\n");
@@ -186,7 +202,14 @@ import js """
     "it compiled to. Running it\nhere reports an unknown tag because the " +
     "interpreter has no DOM to build into.";
 
+  // `run` is absent for exactly two reasons, and they are not the same reason:
+  // config mode has nothing to run, and a program that does not parse has
+  // nothing to run *yet*. Console is the opening tab, so the first thing a
+  // mistyped brace used to say was that the reader had picked config mode.
   function consoleText(r) {
+    if ((r.parseErrors || []).length) {
+      return "(nothing ran: fix the parse error in Diagnostics first)";
+    }
     if (isUiProgram()) return UI_NOTE;
     const ran = r.run;
     if (!ran) return "(config mode is pure, so there is nothing to run)";
@@ -207,16 +230,18 @@ import js """
       "carry rather\nthan emitting code that would not compile.";
   }
 
-  // Why a target's tab is blank, when nothing was refused either.
+  // Why a target's tab is blank, when nothing was refused either. `lastMode`
+  // rather than a guess: every branch here used to end in a sentence about
+  // config mode, which a program-mode reader was told for no reason.
   function emptyNote(tab) {
     if ((last.parseErrors || []).length) return "(fix the parse error first)";
+    if (lastMode === 1) {
+      return "(config mode emits Nix and nothing else)";
+    }
     if (tab === "Nix") {
       return "(Nix is what config mode emits: switch to config in the header)";
     }
-    if (tab === "CSS") {
-      return "(no utility classes in this program, so styles() is empty)";
-    }
-    return "(config mode emits Nix and nothing else)";
+    return "(nothing here: " + tab + " came back empty for this program)";
   }
 
   function fmtN(n) {
@@ -227,28 +252,51 @@ import js """
   }
 
   // ---- API consumed by the Maca app (global `mc*` functions) ---------------
+  //
+  // One door for "a compile result arrived": everything the panes read comes
+  // from here, and `mcCompile` is this plus the wasm call. Anything that
+  // compiled elsewhere (a worker, a server, a test) uses the same door.
+  window.mcShow = function (result, mode) {
+    lastMode = mode | 0;
+    last = typeof result === "string" ? JSON.parse(result) : result;
+    const n = (last.parseErrors || []).length +
+      (last.diagnostics || []).length + refusals(last).length +
+      configDrops().length;
+    statusText = n ? (n + " diagnostic" + (n > 1 ? "s" : "")) : "compiled clean";
+    if (window.mcMarkers) window.mcMarkers();
+  };
   window.mcCompile = function (src, mode) {
     if (!ex) { statusText = "loading…"; return; }
     try {
       const t0 = performance.now();
-      last = wasmRun(src, mode | 0);
+      const result = wasmRun(src, mode | 0);
       lastMs = performance.now() - t0;
-      const n = (last.parseErrors || []).length +
-        (last.diagnostics || []).length + refusals(last).length;
-      statusText = n ? (n + " diagnostic" + (n > 1 ? "s" : "")) : "compiled clean";
+      window.mcShow(result, mode);
     } catch (e) {
-      last = { parseErrors: ["internal: " + e.message], diagnostics: [], outputs: {} };
+      window.mcShow(
+        { parseErrors: ["internal: " + e.message], diagnostics: [], outputs: {} },
+        mode);
       statusText = "error";
     }
-    if (window.mcMarkers) window.mcMarkers();
   };
+  // The text pane's body. Preview is the one tab that is not text: it has its
+  // own element, and asking for it here would answer with a note nobody sees.
   window.mcTab = function (tab) {
-    if (!last) return "";
+    if (!last || tab === "Preview") return "";
     if (tab === "Diagnostics") return diagText(last);
     if (tab === "Console") return consoleText(last);
     const refused = limitText(tab);
     if (refused) return refused;
-    return ((last.outputs || {})[tab]) || emptyNote(tab);
+    const code = (last.outputs || {})[tab];
+    if (!code) return emptyNote(tab);
+    // The switch in the header puts any program one click from config mode, so
+    // say what the module left out rather than showing a short one.
+    const dropped = tab === "Nix" ? configDrops() : [];
+    if (dropped.length) {
+      return "this configuration does not carry " + dropped.join(", ") +
+        ": a config module is options, not code.\n\n" + code;
+    }
+    return code;
   };
   // What the run answered with, in the width of a word: the exit status is in
   // the JSON and used to be nowhere on the page.
@@ -265,7 +313,7 @@ import js """
     return (p && p.flameSvg) || "";
   };
   window.mcStatus = function () { return statusText; };
-  window.mcVersion = function () { return version ? "maca " + version + " · wasm" : ""; };
+  window.mcVersion = function () { return version ? "maca " + version + " (wasm)" : ""; };
 
   // ---- live preview: the emitted JS, actually running ----------------------
   //
@@ -291,8 +339,11 @@ import js """
     frame.setAttribute("sandbox", "allow-scripts");
     frame.setAttribute("title", "preview");
     frame.style.cssText = "width:100%;height:100%;border:0;background:#ffffff";
+    // A program whose own text contains `</script` would otherwise close the
+    // tag early and the rest of it would render as page content.
     frame.srcdoc = '<!doctype html><meta charset="utf-8"><style>' + css +
-      '</style><div id="app"></div><script>' + js + "<\/script>";
+      '</style><div id="app"></div><script>' +
+      js.replace(/<\/script/gi, "<\\/script") + "<\/script>";
     host.innerHTML = "";
     host.appendChild(frame);
   };
@@ -406,19 +457,19 @@ import js """
 
   // ---- profiler split: a prominent wall-clock, then the counters -----------
   window.mcMs = function () {
-    if (!last || !last.run) return "—";
+    if (!last || !last.run) return "-";
     return lastMs.toFixed(lastMs < 10 ? 2 : 1) + " ms";
   };
   window.mcStats = function () {
     const p = last && last.run && last.run.profile;
     if (!p) return "run a program to profile it";
-    const t = p.truncated ? " · truncated" : "";
-    return `${fmtN(p.steps)} steps · ${fmtN(p.totalCalls)} calls · depth ${fmtN(p.maxDepth)}${t}`;
+    const t = p.truncated ? ", truncated" : "";
+    return `${fmtN(p.steps)} steps, ${fmtN(p.totalCalls)} calls, depth ${fmtN(p.maxDepth)}${t}`;
   };
 
   // ---- diagnostics as editor markers (squiggles) --------------------------
   // the wasm returns Monaco-ready spans (precise for parse errors, best-effort
-  // for semantic diagnostics), all as errors — the compiler rejects them all.
+  // for semantic diagnostics), all as errors: the compiler rejects them all.
   function setMarkers() {
     if (!editor || !monaco || !last) return;
     const sev = {
@@ -454,7 +505,7 @@ import js """
       typeKeywords: ["int", "float", "str", "bool", "bytes"],
       tokenizer: {
         root: [
-          // `///` is a doc comment — what macadoc reads as API. Listed first
+          // `///` is a doc comment, what macadoc reads as API. Listed first
           // so the plain `//` rule doesn't claim it.
           [/\/\/\/[^\/].*$|\/\/\/$/, "comment.doc"],
           [/\/\/.*$/, "comment"],
@@ -646,7 +697,7 @@ import js """
           t = setTimeout(function () { if (typeof run === "function") run(); }, 120);
         });
         editor.onDidChangeCursorPosition(function () { if (typeof update === "function") update(); });
-        statusText = "ready · monaco";
+        statusText = "ready (monaco)";
         firstRender();
       });
     };
@@ -676,7 +727,7 @@ import js """
       }
     });
     host.appendChild(ta);
-    statusText = "ready · textarea";
+    statusText = "ready (textarea)";
   }
 
   // ---- boot: load the wasm compiler, mount the editor, render --------------
@@ -941,9 +992,15 @@ note = ""
 
 // ---- handlers ------------------------------------------------------------
 
+// Rebuilding the preview restarts the program inside it, so it happens only
+// while somebody is looking at it. Switching to the tab renders it too.
 run() {
     mcCompile(mcSource(), mode)
-    mcRenderPreview()
+
+    if tab == "Preview" {
+        mcRenderPreview()
+    }
+
     update()
 }
 
@@ -957,6 +1014,7 @@ start() {
         load("hello")
     } else {
         mcSetSource(shared)
+        mcSetPicked("")
         mode = mcUrlMode()
         tab = mode == 1 ? "Nix" : "Console"
         note = "loaded from a shared link"
@@ -1068,6 +1126,9 @@ main() -> Element =>
             button(class=modeClass(0), on:click=useProgram, "program")
             button(class=modeClass(1), on:click=useConfig, "config")
             select(id="examples", class=Picker, on:change=pickExample
+                // The placeholder is what a shared link shows: the program in
+                // the editor is then nobody's example.
+                option(value="", "examples")
                 option(value="hello", "hello")
                 option(value="page", "a page")
                 option(value="tour", "the syntax")

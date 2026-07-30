@@ -333,7 +333,7 @@ cell(rs: Result[], algo: str, lang: str, base: float) -> str {
     at = find(rs, case_name(algo, lang))
 
     if at < 0 {
-        "—"
+        "n/a"
     } else if base <= 0.0 {
         "{median_ms(rs.get(at)):.0}"
     } else {
@@ -386,7 +386,7 @@ preamble() -> str =>
 
 closing() -> str =>
     "On recursion and float/loop work Maca lands right on C (it *is* C, at\n"
-        ++ "`-O2`). `sieve` is the one gap: Maca's only array type is 64-bit"
+        ++ "`-O2`). `sieve` is the widest gap: Maca's only array type is 64-bit"
         ++ " `int[]`,\nso a sieve over 10⁷ touches ~80 MB where C's `char`"
         ++ " array touches ~10 MB —\nit's memory-bound, not a codegen deficit"
         ++ " (a compact byte array would close\nit).\n\n"

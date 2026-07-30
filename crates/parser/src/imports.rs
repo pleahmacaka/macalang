@@ -191,20 +191,91 @@ fn separate_definitions(units: &mut [Unit], scope: &Scope) -> Result<(), String>
         if os.len() < 2 {
             continue;
         }
+        let meant = meanings(units, os, name, scope)?;
         let mut kept: Vec<usize> = Vec::new();
         for &i in os {
-            if is_api(&units[i], name, &scope.asked) || !can_move(units, i, name, scope) {
+            if is_api(&units[i], name, &scope.asked) || !can_move(units, i, name, scope, &meant) {
                 kept.push(i);
                 continue;
             }
             let to = fresh(&units[i].stem(), name, &mut taken);
-            move_name(units, i, name, &to, scope);
+            move_name(units, i, name, &to, scope, &meant);
         }
         if kept.len() > 1 {
             return Err(clashing_definitions(units, &kept, name));
         }
     }
     Ok(())
+}
+
+/// Which of several same-named definitions a third module means.
+///
+/// A module that neither defines the name nor binds it, and can reach two of the
+/// definitions, is written against exactly one of them — and moving the other
+/// must not take its reference along. Left to `reaches` alone the reference went
+/// to whichever definition moved, so a call written against a documented
+/// function silently ran a private helper of a module the author never opened.
+///
+/// What says which is the same rule the rest of this pass uses: a private
+/// definition is not a name another module can be referring to, so where exactly
+/// one of the definitions in reach is API, that is the one. Where none is, or
+/// more than one is, nothing in the module's source distinguishes them, and the
+/// reference is refused rather than bound by the order the moves happened in.
+fn meanings(
+    units: &[Unit],
+    os: &[usize],
+    name: &str,
+    scope: &Scope,
+) -> Result<HashMap<usize, usize>, String> {
+    let mut out = HashMap::new();
+    for i in 0..units.len() {
+        if os.contains(&i) || scope.bound[i].contains(name) || !refers(&units[i], name) {
+            continue;
+        }
+        let in_reach: Vec<usize> = os
+            .iter()
+            .copied()
+            .filter(|&o| reaches(scope, &units[i].path, &units[o].path))
+            .collect();
+        if in_reach.len() < 2 {
+            continue;
+        }
+        let api: Vec<usize> = in_reach
+            .iter()
+            .copied()
+            .filter(|&o| is_api(&units[o], name, &scope.asked))
+            .collect();
+        match api.as_slice() {
+            [only] => {
+                out.insert(i, *only);
+            }
+            _ => return Err(ambiguous_reference(units, i, &in_reach, name)),
+        }
+    }
+    Ok(out)
+}
+
+/// Does this module write the name anywhere at all?
+fn refers(unit: &Unit, name: &str) -> bool {
+    let mut refs = BTreeSet::new();
+    unit.items.iter().for_each(|st| refs_in_stmt(st, &mut refs));
+    refs.contains(name)
+}
+
+/// One name, several modules answering for it, and a third module writing it.
+fn ambiguous_reference(units: &[Unit], at: usize, in_reach: &[usize], name: &str) -> String {
+    let files: Vec<String> = in_reach
+        .iter()
+        .map(|&o| format!("  {}", units[o].path.display()))
+        .collect();
+    format!(
+        "{}: `{name}` is defined by more than one module this file reaches, and \
+         every module is inlined into one:\n{}\n  Nothing here says which one \
+         `{name}` means. Ask for the one you mean with `import {{ {name} }} from \
+         …`, or rename the others.",
+        units[at].path.display(),
+        files.join("\n")
+    )
 }
 
 /// A top level answering for a name another module binds locally: move the top
@@ -232,12 +303,16 @@ fn separate_bindings(units: &mut [Unit], scope: &Scope) {
         }
     }
     let mut taken: HashSet<String> = owner.keys().cloned().collect();
+    // `separate_definitions` ran first, so every top-level name is answered by
+    // one module and there is nothing left for a third module to be ambiguous
+    // about.
+    let settled = HashMap::new();
     for (name, u) in moves {
-        if !can_move(units, u, &name, scope) {
+        if !can_move(units, u, &name, scope, &settled) {
             continue;
         }
         let to = fresh(&units[u].stem(), &name, &mut taken);
-        move_name(units, u, &name, &to, scope);
+        move_name(units, u, &name, &to, scope, &settled);
     }
 }
 
@@ -260,7 +335,13 @@ fn separate_bindings(units: &mut [Unit], scope: &Scope) {
 /// skip the function holding the binding and leave its reference behind.
 ///
 /// And a name some module that reaches this one binds, for the same reason.
-fn can_move(units: &[Unit], owner: usize, name: &str, scope: &Scope) -> bool {
+fn can_move(
+    units: &[Unit],
+    owner: usize,
+    name: &str,
+    scope: &Scope,
+    meant: &HashMap<usize, usize>,
+) -> bool {
     if name == "main" || name.starts_with("test_") || units[owner].path == scope.entry {
         return false;
     }
@@ -268,22 +349,43 @@ fn can_move(units: &[Unit], owner: usize, name: &str, scope: &Scope) -> bool {
         return false;
     }
     (0..units.len())
-        .filter(|&i| rewritten_by(units, i, owner, name, scope))
+        .filter(|&i| rewritten_by(units, i, owner, name, scope, meant))
         .all(|i| !scope.bound[i].contains(name))
 }
 
 /// Does moving `owner`'s `name` rewrite this module?
 ///
 /// The module that defines it, and every module that can reach the definition
-/// and has no definition of its own to mean instead.
-fn rewritten_by(units: &[Unit], i: usize, owner: usize, name: &str, scope: &Scope) -> bool {
-    i == owner || (!units[i].defines(name) && reaches(scope, &units[i].path, &units[owner].path))
+/// and has no definition of its own to mean instead — except one `meanings` has
+/// already settled on a different definition for, whose reference this move is
+/// not about.
+fn rewritten_by(
+    units: &[Unit],
+    i: usize,
+    owner: usize,
+    name: &str,
+    scope: &Scope,
+    meant: &HashMap<usize, usize>,
+) -> bool {
+    if i == owner {
+        return true;
+    }
+    !units[i].defines(name)
+        && reaches(scope, &units[i].path, &units[owner].path)
+        && meant.get(&i).is_none_or(|&o| o == owner)
 }
 
 /// Rename `from` to `to` at its definition and everywhere it is referred to.
-fn move_name(units: &mut [Unit], owner: usize, from: &str, to: &str, scope: &Scope) {
+fn move_name(
+    units: &mut [Unit],
+    owner: usize,
+    from: &str,
+    to: &str,
+    scope: &Scope,
+    meant: &HashMap<usize, usize>,
+) {
     let targets: Vec<usize> = (0..units.len())
-        .filter(|&i| rewritten_by(units, i, owner, from, scope))
+        .filter(|&i| rewritten_by(units, i, owner, from, scope, meant))
         .collect();
     for i in targets {
         let before = units[i].items.clone();

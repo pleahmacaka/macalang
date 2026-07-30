@@ -7,6 +7,10 @@
 //
 //   maca run apps/site/home.maca [outdir]     # default: apps/tomo/site
 //
+// Run from the repository root: the benchmark section reads the harness's
+// measurements out of `apps/bench/`, resolved against the working directory, the
+// same way `apps/tomo/tomo.maca` resolves its book.
+//
 // Writes <out>/index.html and <out>/<lang>/home.html for every language, which
 // is the URL shape tomo uses for a book's landing pages — this page replaces
 // tomo's for the handbook's own site. `tools/build-site.maca` does that
@@ -204,10 +208,11 @@ english() -> Copy =>
         install = "Install",
         install_more = "Full install instructions",
         bench_title = "How fast is it?",
-        bench_sub = "Six kernels in six languages, on one machine, each"
-            ++ " verified to have computed the same answer. The bars are Maca"
-            ++ " against C, because Maca compiles through C and C is therefore"
-            ++ " the ceiling. Lower is better, and not every row reaches it.",
+        bench_sub = "Every kernel below is one algorithm written out in each"
+            ++ " language, on one machine, with every column verified to have"
+            ++ " computed the same answer. The bars are Maca against C, because"
+            ++ " Maca compiles through C and C is therefore the ceiling. Lower"
+            ++ " is better, and not every row reaches it.",
         bench_note = "Where it is behind: `sieve` is the real gap, and it is"
             ++ " not a code-generation deficit. Maca's only array type is a"
             ++ " 64-bit `int[]`, so a sieve to 10⁷ touches about 80 MB where"
@@ -350,10 +355,11 @@ korean() -> Copy =>
         install = "설치",
         install_more = "설치 안내 전체 보기",
         bench_title = "얼마나 빠릅니까?",
-        bench_sub = "여섯 개의 커널, 여섯 개의 언어, 한 대의 기계. 모두 같은"
-            ++ " 답을 계산했음을 확인했습니다. 막대는 Maca와 C의 비교입니다."
-            ++ " Maca는 C를 거쳐 컴파일되므로 C가 천장이고, 낮을수록"
-            ++ " 좋습니다. 그리고 모든 줄이 그 천장에 닿지는 않습니다.",
+        bench_sub = "아래 커널들은 같은 알고리즘을 언어마다 그대로 옮겨 쓴"
+            ++ " 것이고, 한 대의 기계에서 모든 열이 같은 답을 계산했음을"
+            ++ " 확인했습니다. 막대는 Maca와 C의 비교입니다. Maca는 C를 거쳐"
+            ++ " 컴파일되므로 C가 천장이고, 낮을수록 좋습니다. 그리고 모든"
+            ++ " 줄이 그 천장에 닿지는 않습니다.",
         bench_note = "뒤처지는 곳: `sieve`가 진짜 격차이고, 코드 생성의"
             ++ " 문제는 아닙니다. Maca의 배열 타입은 64비트 `int[]`"
             ++ " 하나뿐이라 10⁷까지의 체는 약 80 MB를 건드리고, C의 `char`"
@@ -755,7 +761,7 @@ feature_card(f: Feature, src: str) -> str =>
 BenchData = "apps/bench/results.json"
 
 // The harness writes its rendered tables beside the data, and the machine it
-// measured on is stated there and nowhere else. Which is why the host is read
+// measured on is stated there and nowhere else, which is why the host is read
 // out of a Markdown file rather than asked of the host: this page is built
 // wherever it is built, the numbers were not, and `uname` here would quietly
 // relabel someone else's measurements as ours.
@@ -768,13 +774,13 @@ ReproCommand = "maca run apps/bench/run.maca"
 Toolchains = "Maca `maca build` → `cc -O2`, C `cc -O2`, Rust `rustc -O`,"
     ++ " Go `go build`, JS `node`, Python `python3`"
 
-// The two names the harness files a case under that this page reads by name.
-// Maca compiles through C, so C is the ceiling and every ratio here is over it.
+// The two contenders this page reads by name. Maca compiles through C, so C is
+// the ceiling, and every ratio here is over it.
 MacaLang = "Maca"
 BaseLang = "C"
 
-// One read of the file, threaded into the page. `load` parses the whole
-// document, and the section asks it dozens of questions.
+// The stored run. `main` calls this once and threads it into every page: `load`
+// parses the whole document, and the section asks it dozens of questions.
 bench_runs() -> Result[] =>
     load(BenchData)
 
@@ -936,7 +942,7 @@ bench_band(c: Copy, rs: Result[]) -> str =>
             p(class="mt-9 max-w-[46rem] text-[0.95rem] text-zinc-600"
                     ++ " dark:text-zinc-400", prose(c.bench_note))
             bench_table(c, rs)
-            bench_notes(c, rs)))
+            bench_provenance(c, rs)))
 
 family_group(c: Copy, rs: Result[], f: Family) -> str =>
     div(class="mt-10",
@@ -947,7 +953,7 @@ family_group(c: Copy, rs: Result[], f: Family) -> str =>
         div(class="mt-5 grid gap-5",
             family_kernels(f).map(k => kernel_row(c, rs, k)).join("")))
 
-// One kernel: what it is, where Maca landed, and the two bars that says it. The
+// One kernel: what it is, where Maca landed, and the two bars that say so. The
 // pair is scaled to the slower of the two, so the longer bar is always the full
 // track and the shorter one is the ratio, drawn.
 kernel_row(c: Copy, rs: Result[], algo: str) -> str {
@@ -1104,10 +1110,11 @@ cell_text(rs: Result[], algo: str, lang: str) -> str {
 // Where the numbers came from and how to get your own. A benchmark without its
 // machine and its flags is not reproducible, and one nobody can reproduce is one
 // nobody has to believe.
-bench_notes(c: Copy, rs: Result[]) -> str =>
+bench_provenance(c: Copy, rs: Result[]) -> str =>
     div(class="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800",
         div(class="grid gap-5 sm:grid-cols-2 md:grid-cols-3",
-            provenance().map(p => prov_cell(prov_of(c, p, rs))).join(""))
+            provenance().map(key => prov_cell(prov_of(c, key, rs)))
+                        .join(""))
         div(class="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-[0.85rem]",
             a(class="underline text-inherit", href=bench_doc("README.md"),
               escape_html(c.bench_readme))
@@ -1178,8 +1185,7 @@ site_footer(c: Copy) -> str =>
               a(class="underline text-inherit", href=Repo,
                 "github.com/pleahmacaka/macalang"))))
 
-
-
+// ---- copy as markup ---------------------------------------------------------
 
 // A sentence of copy, where a backtick span is a piece of code. `--target nix`
 // is a flag, and printing the backticks around it is worse than not marking it
@@ -1204,7 +1210,6 @@ spans(parts: str[], i: int, out: str) -> str {
         spans(parts, i + 1, out ++ escape_html(parts.get(i)))
     }
 }
-
 
 // ---- entry ------------------------------------------------------------------
 

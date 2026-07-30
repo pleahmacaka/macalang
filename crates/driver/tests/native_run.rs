@@ -108,8 +108,14 @@ fn the_cli_example_helps_refuses_and_runs() {
 /// need it: `apps/bench_demo` imports `bench/…` from a directory whose sibling
 /// is `apps/bench`, which is the shape that hides a package. That collision is
 /// refused rather than resolved silently, but only for a build that happens, so
-/// this is the build that happens. The needle is the program's own last line, so
-/// a demo that compiles and then stops halfway is not counted as passing.
+/// this is the build that happens.
+///
+/// Two things are asserted, and each caught a mutation the other let through.
+/// The needle is text only the program's *final* line prints — a header the
+/// last section prints before doing its work is not one, because emptying that
+/// section then leaves the test green. And the exit status: a demo whose `main`
+/// returns non-zero, or that fails after its last `info`, prints every needle
+/// on its way out.
 #[test]
 fn the_package_demos_run_natively() {
     if have_wsl() || !have("cc") {
@@ -118,7 +124,9 @@ fn the_package_demos_run_natively() {
     }
     for (app, last) in [
         ("bench_demo", "5 cases:"),
-        ("profile_demo", "the first four moments"),
+        // The fourth of `narrate`'s four moments, which the section header is
+        // printed before. The arrow is what keeps it off the summary table.
+        ("profile_demo", "→ sort words"),
         ("signal_demo", "nothing to patch"),
         ("tambo_demo", "unanswered route names: 0"),
     ] {
@@ -132,6 +140,13 @@ fn the_package_demos_run_natively() {
         assert!(
             stdout.contains(last),
             "{app} did not reach its last line ({last:?}).\nstdout: {stdout}\nstderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{app} printed its last line and then exited {:?}.\nstderr: {}",
+            out.status.code(),
             String::from_utf8_lossy(&out.stderr)
         );
     }
