@@ -163,9 +163,17 @@ fn a_payload_pattern_is_refused_rather_than_dropping_its_binding() {
 }
 
 #[test]
-fn an_anonymous_record_is_refused_rather_than_becoming_null() {
+fn a_literal_matching_no_declared_record_is_refused_rather_than_becoming_null() {
+    // A literal whose shape belongs to a declared record now takes that record's
+    // name, since the checker accepts it there. One that matches nothing still
+    // has no type for a Java `new`, and the refusal names the fields written so
+    // the author can see what it looked for.
     let msg = refused("f() -> int {\n    p = { x = 1, y = 2 }\n    p.x\n}\n");
-    assert!(msg.contains("anonymous record"), "{msg}");
+    assert!(msg.contains("no declared record"), "{msg}");
+    assert!(
+        msg.contains('x') && msg.contains('y'),
+        "does not name the fields: {msg}"
+    );
 }
 
 #[test]

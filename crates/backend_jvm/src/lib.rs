@@ -41,6 +41,8 @@ pub fn emit_checked(
 
 pub fn emit(m: &Module, class_name: &str, package: Option<&str>) -> String {
     VARIANT_OF.with(|v| v.borrow_mut().clear());
+    RECORD_FIELDS.with(|m| m.borrow_mut().clear());
+    RECORD_FIELD_NAMES.with(|m| m.borrow_mut().clear());
     let fnps = fn_params(&m.items);
     FN_PARAMS.with(|f| *f.borrow_mut() = fnps.clone());
     let mut cx = Cx::default();
@@ -97,6 +99,16 @@ impl Cx {
                             self.sums.insert(name.clone());
                         } else if is_record_type(&b.value) {
                             self.records.insert(name.clone());
+                            if let Expr::Record(fs) = &b.value {
+                                let order: Vec<String> = fs
+                                    .iter()
+                                    .filter_map(|f| match f {
+                                        Field::Type { name, .. } => Some(name.clone()),
+                                        _ => None,
+                                    })
+                                    .collect();
+                                note_record(name, &order);
+                            }
                         }
                     }
                 }
@@ -338,6 +350,12 @@ fn jexpr(e: &Expr) -> String {
             format!("({} ? {} : {})", jexpr(cond), t, e)
         }
         Expr::Call { callee, args } => jcall(callee, args),
+        // A Java record keeps its components private and exposes an accessor of
+        // the same name, so reading one is `p.x()`. A field of a foreign Java
+        // object is a real field and stays `o.x`.
+        Expr::Field { base, name } if RECORD_FIELD_NAMES.with(|m| m.borrow().contains(name)) => {
+            format!("{}.{name}()", jexpr(base))
+        }
         Expr::Field { base, name } => format!("{}.{name}", jexpr(base)),
         // List.get needs an int index; Maca ints are Java longs, so narrow it
         Expr::Index { base, index } => format!("{}.get((int)({}))", jexpr(base), jexpr(index)),
@@ -382,6 +400,17 @@ thread_local! {
     /// rejects.
     static DECLARED: std::cell::RefCell<std::collections::BTreeSet<String>> =
         const { std::cell::RefCell::new(std::collections::BTreeSet::new()) };
+    /// Declared record name -> its fields, in declaration order. A Java record's
+    /// constructor is positional, so a literal written in another order has to
+    /// be reordered or the values land in the wrong components.
+    static RECORD_FIELDS: std::cell::RefCell<BTreeMap<String, Vec<String>>> =
+        const { std::cell::RefCell::new(BTreeMap::new()) };
+    /// Every field name any declared record has. A Java record keeps its
+    /// components private and exposes an accessor of the same name, so reading
+    /// one is `p.x()` rather than `p.x`; without types this is what tells a
+    /// record field from a field of a foreign Java object.
+    static RECORD_FIELD_NAMES: std::cell::RefCell<BTreeSet<String>> =
+        const { std::cell::RefCell::new(BTreeSet::new()) };
     /// Function-typed parameters of every top-level function in the module.
     static FN_PARAMS: std::cell::RefCell<BTreeMap<(String, usize), Fnp>> =
         const { std::cell::RefCell::new(BTreeMap::new()) };
@@ -438,6 +467,37 @@ fn param_type(name: &str, i: usize, p: &Param) -> String {
         }
         Some(sig) => sig.iface(),
         None => "Object".into(),
+    }
+}
+
+fn note_record(name: &str, fields: &[String]) {
+    RECORD_FIELDS.with(|m| m.borrow_mut().insert(name.to_string(), fields.to_vec()));
+    RECORD_FIELD_NAMES.with(|m| {
+        let mut m = m.borrow_mut();
+        for f in fields {
+            m.insert(f.clone());
+        }
+    });
+}
+
+/// The one declared record whose fields are exactly `written`, if there is one.
+/// Two records sharing a shape have no single answer, so those are refused.
+fn record_of_shape(written: &[String]) -> Result<String, Vec<String>> {
+    let mut want: Vec<String> = written.to_vec();
+    want.sort();
+    let mut hits: Vec<String> = Vec::new();
+    RECORD_FIELDS.with(|m| {
+        for (name, fields) in m.borrow().iter() {
+            let mut have = fields.clone();
+            have.sort();
+            if have == want {
+                hits.push(name.clone());
+            }
+        }
+    });
+    match hits.len() {
+        1 => Ok(hits.remove(0)),
+        _ => Err(hits),
     }
 }
 
@@ -719,25 +779,73 @@ fn jcall(callee: &Expr, args: &[Arg]) -> String {
 }
 
 fn jctor(e: &Expr, fields: &[Field]) -> String {
-    let name = match e {
-        Expr::Ctor { name, .. } => name.clone(),
-        _ => String::new(),
-    };
-    let vals: Vec<String> = fields
+    // (field name, value) in the order written, which is not necessarily the
+    // order the record declares.
+    let written: Vec<(String, String)> = fields
         .iter()
         .filter_map(|f| match f {
-            Field::Value { value, .. } => Some(jexpr(value)),
-            Field::Shorthand(n) => Some(n.clone()),
+            Field::Value { name, value } => Some((name.clone(), jexpr(value))),
+            Field::Shorthand(n) => Some((n.clone(), n.clone())),
             _ => None,
         })
         .collect();
-    if name.is_empty() {
-        // An anonymous record has no Java type to name in a `new`.
-        problem("an anonymous record literal has no Java type — declare a record type".to_string());
-        "null".to_string()
-    } else {
-        format!("new {name}({})", vals.join(", "))
-    }
+    let names: Vec<String> = written.iter().map(|(n, _)| n.clone()).collect();
+
+    let name = match e {
+        Expr::Ctor { name, .. } => name.clone(),
+        // An anonymous literal takes the name of the one declared record with
+        // its shape. Telling the author to "declare a record type" was advice
+        // they could not follow once the checker accepted the literal straight
+        // into a declared one.
+        _ => match record_of_shape(&names) {
+            Ok(found) => found,
+            Err(hits) if hits.is_empty() => {
+                problem(format!(
+                    "this `{{ … }}` matches no declared record (its fields are \
+                     {}), and a Java `new` needs a type",
+                    names.join(", ")
+                ));
+                return "null".into();
+            }
+            Err(hits) => {
+                problem(format!(
+                    "this `{{ … }}` matches more than one declared record ({}), \
+                     and the jvm backend needs one; write the constructor, as \
+                     in `{} {{ … }}`",
+                    hits.join(", "),
+                    hits[0]
+                ));
+                return "null".into();
+            }
+        },
+    };
+
+    // A Java record's constructor is positional, so the values follow the
+    // declaration rather than the literal. Writing them in the order they
+    // appear put `{ y = 2, x = 1 }` into `Point(2, 1)`, silently.
+    let order = RECORD_FIELDS.with(|m| m.borrow().get(&name).cloned());
+    let vals: Vec<String> = match &order {
+        Some(decl) => {
+            let mut out = Vec::with_capacity(decl.len());
+            for f in decl {
+                match written.iter().find(|(n, _)| n == f) {
+                    Some((_, v)) => out.push(v.clone()),
+                    None => {
+                        problem(format!(
+                            "this `{name} {{ … }}` never writes field `{f}`, and \
+                             a Java `new` has no value to pass for it"
+                        ));
+                        return "null".into();
+                    }
+                }
+            }
+            out
+        }
+        // A capitalized call that is not a declared record is Java interop, so
+        // the arguments are the author's own order.
+        None => written.into_iter().map(|(_, v)| v).collect(),
+    };
+    format!("new {name}({})", vals.join(", "))
 }
 
 fn jmatch(scrut: &Expr, arms: &[Arm]) -> String {

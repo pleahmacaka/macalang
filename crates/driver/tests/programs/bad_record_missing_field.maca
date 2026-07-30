@@ -1,0 +1,10 @@
+// A record literal written into a named record type has to name every field the
+// record declares. A record literal is open, so left open here `y` would be
+// silently zero.
+
+Point = { x: int, y: int }
+
+main() -> int {
+    p: Point = { x = 5 }
+    p.x
+}

@@ -70,6 +70,7 @@ pub fn emit(m: &Module) -> String {
 
 fn emit_collecting(m: &Module, problems: &mut Vec<String>) -> String {
     let mut cx = Cx::default();
+    cx.named_shapes = named_by_shape(m);
     cx.collect(m);
     let mut out = String::from("#![allow(warnings)]\n\n");
     for spec in rust_imports(m) {
@@ -84,9 +85,17 @@ fn emit_collecting(m: &Module, problems: &mut Vec<String>) -> String {
     out.push_str(&cx.prelude());
 
     // Anonymous record literals have no declaration to emit a struct from, so
-    // one is synthesized per distinct shape, ahead of the code that uses it.
+    // one is synthesized per distinct shape, ahead of the code that uses it. A
+    // shape one declared record owns needs none: the literal takes that
+    // record's name, and a second struct nothing builds is dead.
     for (name, fields) in anon_shapes(m) {
-        out.push_str(&cx.emit_struct(&name, &fields));
+        let owned = cx
+            .named_shapes
+            .get(&name)
+            .is_some_and(|names| names.len() == 1);
+        if !owned {
+            out.push_str(&cx.emit_struct(&name, &fields));
+        }
     }
 
     for it in &m.items {
@@ -121,6 +130,10 @@ fn emit_collecting(m: &Module, problems: &mut Vec<String>) -> String {
 #[derive(Default)]
 struct Cx {
     records: BTreeSet<String>,
+    /// Field shape -> every named record declared with it (see
+    /// `named_by_shape`). Exactly one is the name an anonymous literal takes;
+    /// more than one has no single answer and is refused.
+    named_shapes: BTreeMap<String, Vec<String>>,
     sums: BTreeSet<String>,
     /// Trait-impl methods, by name → which of their arguments the method takes
     /// as a mutable borrow. A call site has to pass `&mut` for those, and the
@@ -458,10 +471,28 @@ impl Cx {
                 let (e, _) = self.expr(inner);
                 (format!("({e}).join().unwrap()"), false)
             }
-            // an anonymous record literal names the struct synthesized for its
-            // shape; a shape that can't be typed stays a bare literal
+            // An anonymous record literal takes the name of the one declared
+            // record with its shape, and only falls back to the struct
+            // synthesized for that shape when no single declaration owns it.
             Expr::Record(fields) => {
-                let n = anon_shape(fields).map(|s| anon_struct_name(&s));
+                let shape = anon_shape(fields).map(|s| anon_struct_name(&s));
+                let n = shape.as_ref().map(|k| match self.named_shapes.get(k) {
+                    Some(names) if names.len() == 1 => names[0].clone(),
+                    Some(names) => {
+                        // Rust has no structural typing, so there is no type to
+                        // emit that is both of them. Say which records collide
+                        // rather than letting rustc name the synthesized struct.
+                        self.problem(format!(
+                            "this `{{ … }}` matches more than one declared \
+                             record ({}), and the rust backend needs one; write \
+                             the constructor, as in `{} {{ … }}`",
+                            names.join(", "),
+                            names[0]
+                        ));
+                        k.clone()
+                    }
+                    None => k.clone(),
+                });
                 (self.ctor(n.as_deref().unwrap_or(""), fields), false)
             }
             Expr::Call { callee, args } => self.call(callee, args),
@@ -763,6 +794,7 @@ impl Cx {
                     let mut c = Cx {
                         problems: Vec::new(),
                         records: self.records.clone(),
+                        named_shapes: self.named_shapes.clone(),
                         sums: self.sums.clone(),
                         borrowed_args: self.borrowed_args.clone(),
                         borrows: self.borrows.clone(),
@@ -1032,6 +1064,37 @@ fn type_tag(t: &Type) -> String {
 }
 
 /// Every distinct anonymous-record shape in the module, in a stable order.
+/// Named record declarations by their field shape, keyed the same way
+/// `anon_struct_name` keys an anonymous one.
+///
+/// The checker unifies an anonymous literal with a named record of the same
+/// shape, so `corner() -> Point { { x = 1, y = 2 } }` type-checks. Rust has no
+/// structural typing, and a synthesized `MacaAnon_x_int_y_int` is a different
+/// type from `Point`, so emitting one where the other is declared was a rustc
+/// error about generated code the author never wrote.
+///
+/// The name is decided from the module rather than from an expected type
+/// threaded down every expression, because a shape belonging to exactly one
+/// declared record has only one answer wherever it appears. Two records sharing
+/// a shape is ambiguous, so those keep the synthesized struct and the checker's
+/// own annotation is what tells them apart.
+fn named_by_shape(m: &Module) -> BTreeMap<String, Vec<String>> {
+    let mut seen: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for it in &m.items {
+        if let Stmt::Bind(b) = it
+            && let Expr::Ident(name) = &b.target
+            && let Some(fields) = record_fields(&b.value)
+        {
+            let mut shape = fields;
+            shape.sort_by(|a, c| a.0.cmp(&c.0));
+            seen.entry(anon_struct_name(&shape))
+                .or_default()
+                .push(name.clone());
+        }
+    }
+    seen
+}
+
 fn anon_shapes(m: &Module) -> Vec<(String, Vec<(String, Type)>)> {
     let mut found: BTreeMap<String, Vec<(String, Type)>> = BTreeMap::new();
     for it in &m.items {

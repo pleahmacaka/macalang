@@ -44,6 +44,22 @@ TypeMismatch: `Config` has no field `titel`; did you mean `title`?
 페이지뿐이었습니다. `base with { f = v }`는 갱신 형태라 일부만 적는 것이
 의도이므로, 생성만 검사합니다.
 
+익명 표기도 같은 두 가지를 집니다. 그리고 메시지는 타입이 아니라 바인딩의 이름을
+말합니다. 그것이 저자가 쓴 것이기 때문입니다.
+
+```
+TypeMismatch: in `p`: record is missing field `y`
+TypeMismatch: in `p`: record has unexpected field `z`
+```
+
+레코드 리터럴은 그렇지 않으면 열려 있습니다. 한 필드를 읽으려고 나머지를 다 알아야
+할 필요는 없기 때문입니다. 이름 있는 표기와 익명 표기가 만나는 곳은
+[타입 시스템](a6-types.md)입니다.
+
+**어느 쪽이 어느 쪽인가.** `expected`는 언제나 코드가 *선언한* 타입이고
+`found`는 도착한 값입니다. 타입 표기, 반환 타입, 파라미터가 expected이고, 식이
+found입니다. 반대로 된 짝은 프로그램에 대한 힌트가 아니라 컴파일러 버그입니다.
+
 ## NonExhaustive
 
 `match`가 모든 변형을 다루지 않습니다.
@@ -86,11 +102,15 @@ UFCS 메서드 호출은 점진적으로 남습니다.
 Maca에 없는 키워드도 여기서 다룹니다.
 
 ```
-UndefinedName: `return`: Maca has no `return` — a function's last expression
-is its value
+UndefinedName: `return`: a function's last expression is its value, so drop
+the `return`
 ```
 
-전체 목록은 [키워드](a1-keywords.md)를 보세요.
+각 힌트는 동작하는 형태를 먼저 말하고, 없는 단어를 뒤에 붙입니다. 반대 순서는
+거부로 읽혔습니다. "Maca has no `return`"이 먼저 도착하는 바람에, 어떤 독자는
+함수가 값을 돌려줄 수 없다고 받아들였습니다. Maca에는 Rust와 똑같은 규칙이 있는데
+말이죠. 단어는 곁가지이고, 대신 무엇을 쓰는지가 메시지입니다. 전체 목록은
+[키워드](a1-keywords.md)를 보세요.
 
 ## UnknownOption
 
@@ -133,6 +153,74 @@ EffectInConfig: config must be pure but this uses effect(s): async
 않습니다. 자유 빌트인으로 파일을 읽는 설정은 오늘 컴파일됩니다. 행과 각 행을
 만드는 것은 [이펙트와 async](a7-effects.md)에 있습니다.
 
+## import 해석
+
+이것들은 검사기보다 앞, 컴파일러가 각 `import`가 어느 파일을 가리키는지 알아내어
+인라인하는 동안 나옵니다. `DiagKind`는 아니지만 사람이 실제로 만나는 컴파일
+에러이고, 하나하나가 조용히 틀린 답을 대신한 것입니다.
+
+**모호한 import**는 두 파일을 가리키며, 하나를 고르는 대신 거부합니다.
+
+```
+apps/x/main.maca: ambiguous import `bench/stat`: it names two files:
+  apps/x/bench/stat.maca (as written, the one this build would use)
+  modules/bench/stat.maca (under a search root)
+  A directory sharing a package's name hides the package, and the import line
+  cannot say which was meant. Rename the directory, or move the module so that
+  one path names it.
+```
+
+쓰인 경로를 탐색 루트보다 먼저 시도하므로, 소스 옆에 있는 디렉터리가 패키지와
+이름을 공유하면 패키지를 가립니다. 두 후보는 구조상 같은 이름을 가진 서로 다른
+실제 파일이라서 하나는 컴파일되고 다른 하나는 조용히 되지 않으며, 어느 쪽인지는
+import 줄이 말하지 않는 디렉터리 배치가 결정합니다. 그것은 누가 표현한 선호가
+아니므로 존중할 것이 없습니다. 디렉터리 이름을 바꾸거나, 한 파일만 가리키는 경로를
+쓰세요.
+
+**한 이름을 두 모듈 이상이 정의**하면 인라인할 수 없습니다. 모든 것이 하나의
+번역 단위가 되기 때문입니다.
+
+```
+`render` is defined by more than one module of this program, and every module
+is inlined into one:
+  modules/tomo/page.maca
+  modules/tomo/feed.maca
+  Both are API, so neither can be moved out of the way. Rename one of them, or
+  ask for the one you mean with `import { … } from …` and keep the other out of
+  the program.
+```
+
+두 파일이 각각 같은 이름의 *비공개* 헬퍼를 두는 것은 괜찮습니다. 컴파일러가
+모듈 자신의 이름으로 한정해 줍니다. 이 에러는 둘 다 API일 때 나오고, 그때
+이름을 바꾸는 결정은 저자만이 할 수 있습니다.
+
+**아무것도 정해 주지 않는 참조**는 같은 충돌을 제3의 파일에서 본 것입니다.
+
+```
+apps/site/home.maca: `render` is defined by more than one module this file
+reaches, and every module is inlined into one:
+  modules/tomo/page.maca
+  modules/tomo/feed.maca
+  Nothing here says which one `render` means. Ask for the one you mean with
+  `import { render } from …`, or rename the others.
+```
+
+위의 것과 다른 점은 모호함이 어디에 있는지입니다. 위에서는 두 모듈이 그 이름을
+답하고, 여기서는 *제3의* 모듈이 그 이름을 쓰는데 그 파일의 무엇도 어느 쪽을
+뜻했는지 말하지 않습니다. 어느 쪽이든 선택적 import가 답입니다. 원하는 것을
+이름으로 말하는 것이 이것을 정해 주는 유일한 방법이기 때문입니다.
+
+**어느 파일로도 해석되지 않는 import**도 에러입니다. 한 단어짜리 선택적 import도
+포함됩니다. 빌트인에서는 골라낼 것이 없기 때문입니다.
+
+```
+apps/x/main.maca: no module `std/str`: `std/str.maca` is not beside this file
+or in the working directory
+```
+
+한때 네 파일이 존재한 적 없는 `std/str`을 조용히 import했고, 각자 import하고
+있다고 믿은 헬퍼를 직접 손으로 썼습니다.
+
 ## 진단이 아닌 에러들
 
 일부 실패는 파이프라인 아래쪽에서 오고 다르게 읽힙니다.
@@ -143,6 +231,18 @@ EffectInConfig: config must be pure but this uses effect(s): async
 lex (28, 28): string literal spans a line; write `\n`, or use a raw
 """…""" string. (A literal brace is `\{` or `{{`.)
 ```
+
+모호한 `=> { … }`가 그중 하나입니다. 모든 엔트리가 서로 다른 `name = value`이고
+줄바꿈만이 그것들을 구분하면 레코드 리터럴과 블록이 똑같이 읽히므로, 어느 해석도
+택하지 않습니다.
+
+```
+parse (45, 46): `mk`: this `=> { … }` reads as a record literal and as a
+block. Write `Name { … }` for the record, or drop the `=>` for the block
+```
+
+전체 규칙과, 모호하지 않은 경우에 무엇이 그것을 결정하는지는
+[문법](a5-syntax.md)에 있습니다.
 
 **백엔드 거부** — 특정 타깃이 내보낼 수 없는 올바른 코드입니다.
 

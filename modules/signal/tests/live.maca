@@ -1,0 +1,229 @@
+// A region, and a patch applied to markup rather than to a DOM.
+//
+// `signal/dom`'s browser half sets `innerHTML` on the nodes a patch names; its
+// native half, `apply_patch`, does the same thing to the page string. The two
+// have to agree, and everything here is about the second one, because it is the
+// one that can be checked without a browser and the one an incremental
+// generator's self-check rests on.
+//
+// The cases that matter are the ones where a careless implementation looks
+// right: a region that wraps another element of its own tag, a tag whose name is
+// a prefix of a longer one, two nodes bound to one key, and a key nothing is
+// bound to.
+
+import { Store, store, set, clear_changed } from signal/store
+import { text_node, class_node, value_input, selector } from signal/dom
+import { html_node, patch, patch_json, patch_script,
+         apply_patch } from signal/dom
+
+// ---- binding a region -----------------------------------------------------
+
+test_a_region_carries_its_key_and_its_markup() {
+    s = store().set("body", "<p>one</p>")
+    html = html_node(s, "article", "body")
+
+    assert(html.contains("data-signal=\"body\""), "the key is on the element")
+    assert(html.contains("data-signal-as=\"html\""), "and says it is markup")
+    assert(html.contains("<p>one</p>"), "the value went in unescaped")
+}
+
+// The difference between the two bindings, and the reason a region is the one a
+// generator uses and never the one input goes into.
+test_a_region_does_not_escape_where_a_text_node_does() {
+    s = store().set("k", "<b>x</b>")
+
+    assert(html_node(s, "div", "k").contains("<b>x</b>"), "markup stays markup")
+    assert(text_node(s, "div", "k").contains("&lt;b&gt;x&lt;/b&gt;"),
+           "text is escaped")
+}
+
+// ---- the patch as data ----------------------------------------------------
+
+test_patch_json_is_the_array_patch_script_wraps() {
+    s = store().set("a", "1").set("b", "2")
+    ops = patch_json(s)
+
+    assert(ops.starts_with("[\{\"key\":\"a\""), "an array of ops, a first")
+    assert(ops.ends_with("\}]"), "and it closes")
+    assert_eq(patch_script(s), "macaSignal(" ++ ops ++ ");",
+              "the script is the array, called")
+}
+
+test_an_empty_patch_is_an_empty_array_and_no_script() {
+    s = store().set("a", "1").clear_changed()
+
+    assert_eq(patch_json(s), "[]", "nothing changed, nothing to send")
+    assert_eq(patch_script(s), "", "and nothing to run")
+}
+
+// ---- applying a patch to markup -------------------------------------------
+
+test_a_region_is_replaced_by_the_value_the_op_carries() {
+    s = store().set("body", "<p>one</p>")
+    page = "<main>" ++ html_node(s, "article", "body") ++ "</main>"
+    s = s.clear_changed().set("body", "<p>two</p>")
+
+    assert_eq(apply_patch(page, patch(s)),
+              "<main><article data-signal=\"body\" data-signal-as=\"html\">"
+              ++ "<p>two</p></article></main>",
+              "the children changed and the element did not")
+}
+
+test_a_text_node_is_replaced_escaped() {
+    s = store().set("who", "ada")
+    page = text_node(s, "p", "who")
+    s = s.clear_changed().set("who", "a < b")
+
+    assert_eq(apply_patch(page, patch(s)),
+              "<p data-signal=\"who\">a &lt; b</p>",
+              "text arrives as text, however it is spelled")
+}
+
+// A patch is applied to the markup it was computed against, so the rest of the
+// page has to come out the other side untouched. This is the claim that makes
+// the whole design worth having.
+test_everything_outside_the_region_is_left_alone() {
+    s = store().set("body", "old")
+    page = "<div id=\"top\">before</div>"
+        ++ html_node(s, "section", "body")
+        ++ "<details open><summary>s</summary>after</details>"
+    s = s.clear_changed().set("body", "new")
+    out = apply_patch(page, patch(s))
+
+    assert(out.contains("<div id=\"top\">before</div>"), "what came before")
+    assert(out.contains("<details open><summary>s</summary>after</details>"),
+           "and what came after, open attribute included")
+    assert(out.contains(">new</section>"), "with the region replaced")
+}
+
+// `querySelectorAll` patches every match, so the text side has to as well. A
+// version that stopped at the first left the second node showing the old value
+// and called the page correct.
+test_every_node_bound_to_the_key_is_patched() {
+    s = store().set("n", "1")
+    page = text_node(s, "span", "n") ++ "|" ++ text_node(s, "b", "n")
+    s = s.clear_changed().set("n", "2")
+    out = apply_patch(page, patch(s))
+
+    assert_eq(out, "<span data-signal=\"n\">2</span>|<b data-signal=\"n\">2</b>",
+              "both of them")
+}
+
+test_an_op_nothing_is_bound_to_changes_nothing() {
+    s = store().set("shown", "a").set("hidden", "b")
+    page = text_node(s, "p", "shown")
+    s = s.clear_changed().set("hidden", "c")
+
+    assert_eq(apply_patch(page, patch(s)), page,
+              "a key with no node is a patch with no effect")
+}
+
+// A region wrapping an element of its own tag closes at the *second* close tag.
+// Taking the first cut the region in half and left its tail outside, which reads
+// as a page that half-updated.
+// The assertion is the whole string and not a `contains`: stopping at the first
+// `</div>` leaves an extra one behind, and every substring anyone would think to
+// check is still there in the broken output.
+test_a_region_holding_its_own_tag_closes_in_the_right_place() {
+    s = store().set("k", "<div>inner</div>")
+    page = html_node(s, "div", "k") ++ "<p>tail</p>"
+    s = s.clear_changed().set("k", "<div>fresh</div>")
+
+    assert_eq(apply_patch(page, patch(s)),
+              "<div data-signal=\"k\" data-signal-as=\"html\">"
+              ++ "<div>fresh</div></div><p>tail</p>",
+              "the region closed at its own close tag, not at its child's")
+}
+
+// `<div` is also the start of `<divider>`. Counting that as a nested `<div>`
+// walked the scan past the close it was looking for.
+test_a_longer_tag_sharing_the_prefix_is_not_a_nested_tag() {
+    s = store().set("k", "<divider></divider>")
+    page = html_node(s, "div", "k") ++ "<p>tail</p>"
+    s = s.clear_changed().set("k", "done")
+    out = apply_patch(page, patch(s))
+
+    assert_eq(out, "<div data-signal=\"k\" data-signal-as=\"html\">done</div>"
+                   ++ "<p>tail</p>",
+              "the region ended at its own close tag")
+}
+
+test_an_attribute_binding_replaces_the_attribute() {
+    s = store().set("look", "card")
+    page = class_node(s, "div", "look", "inside")
+    s = s.clear_changed().set("look", "card open")
+    out = apply_patch(page, patch(s))
+
+    assert(out.contains("class=\"card open\""), "the new class")
+    assert(out.contains(">inside</div>"), "and the block was not re-rendered")
+}
+
+test_an_input_keeps_its_markup_value_in_step() {
+    s = store().set("q", "ab")
+    page = value_input(s, "q")
+    s = s.clear_changed().set("q", "abc")
+
+    assert(apply_patch(page, patch(s)).contains("value=\"abc\""),
+           "the rendered value follows the store")
+}
+
+// The marker on the page holds the key as an attribute value, where a quote is
+// `&quot;`. Searching for the raw key found nothing and left the node alone,
+// silently.
+test_a_key_holding_a_quote_is_still_found() {
+    key = "say \"hi\""
+    s = store().set(key, "one")
+    page = text_node(s, "p", key)
+    s = s.clear_changed().set(key, "two")
+
+    assert(page.contains("&quot;"), "the markup escaped the key")
+    assert(apply_patch(page, patch(s)).contains(">two<"), "and it was found")
+    assert(selector(key).contains("\\\""), "the CSS selector escapes instead")
+}
+
+// ---- the claim an incremental build rests on ------------------------------
+//
+// Patching the last build's page has to equal rebuilding it. Everything above
+// is a piece of this; this is the shape a generator asserts.
+
+// Two regions and some fixed furniture, which is what a generated page is.
+demo_page(s: Store) -> str =>
+    "<body><header>fixed</header>"
+        ++ html_node(s, "article", "body")
+        ++ "<nav>" ++ text_node(s, "span", "count") ++ "</nav>"
+        ++ "<footer>fixed</footer></body>"
+
+filled(body: str, count: str) -> Store =>
+    store().set("body", body).set("count", count)
+
+test_patching_a_page_equals_rebuilding_it() {
+    before = demo_page(filled("<p>one</p>", "1"))
+    after = demo_page(filled("<p>one</p><p>two</p>", "2"))
+
+    s = filled("<p>one</p>", "1").clear_changed()
+    s = s.set("body", "<p>one</p><p>two</p>").set("count", "2")
+
+    assert_eq(apply_patch(before, patch(s)), after,
+              "the patched page is the rebuilt page")
+}
+
+test_a_rebuild_that_changed_one_region_patches_only_that_one() {
+    before = demo_page(filled("<p>one</p>", "1"))
+    after = demo_page(filled("<p>two</p>", "1"))
+
+    s = filled("<p>one</p>", "1").clear_changed()
+    s = s.set("body", "<p>two</p>").set("count", "1")
+    ops = patch(s)
+
+    assert_eq(str(ops.length()), "1", "the count was rewritten, not changed")
+    assert_eq(apply_patch(before, ops), after, "and the page still matches")
+}
+
+test_a_rebuild_that_changed_nothing_patches_nothing() {
+    page = demo_page(filled("<p>one</p>", "1"))
+    s = filled("<p>one</p>", "1").clear_changed()
+    s = s.set("body", "<p>one</p>").set("count", "1")
+
+    assert_eq(str(patch(s).length()), "0", "no op for a rewritten value")
+    assert_eq(apply_patch(page, patch(s)), page, "and the page is untouched")
+}

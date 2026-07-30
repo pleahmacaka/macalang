@@ -347,27 +347,49 @@ fn ui_element_tags_are_not_undefined() {
     );
 }
 
-/// A keyword Maca doesn't have gets told what Maca does instead.
+/// A keyword Maca doesn't have gets told what Maca does instead, and told it
+/// *first*.
 ///
 /// `return x` parses as the identifier `return` beside `x`, reaches the C
-/// backend, and comes out as `'return_mc' undeclared` — a message about a
+/// backend, and comes out as `'return_mc' undeclared`, a message about a
 /// mangled name in a file the programmer never wrote. These are the words
 /// people actually reach for on their first day; each earns a real answer.
+///
+/// The order carries the weight. Phrased as an absence, "Maca has no `return`"
+/// is what a reader takes away, and one did: they concluded a function could
+/// not hand a value back, when Maca has exactly Rust's rule. So the working
+/// form leads and the missing word is the aside, which is what this asserts.
 #[test]
-fn phantom_keywords_explain_themselves() {
-    for (src, want) in [
-        ("f(n: int) -> int {\n    return n\n}\n", "no `return`"),
-        ("f() -> int {\n    let x = 1\n    x\n}\n", "no `let`/`var`"),
-        ("f() -> int {\n    var x = 1\n    x\n}\n", "no `let`/`var`"),
-        ("f() -> int {\n    type T = 1\n    2\n}\n", "no `type`"),
-        ("f() -> int {\n    null\n}\n", "no null"),
+fn phantom_keywords_lead_with_what_maca_does() {
+    for (word, opens_with) in [
+        ("return", "a function's last expression is its value"),
+        ("let", "write `x = e`"),
+        ("var", "write `x = e`"),
+        ("fn", "write the signature straight out"),
+        ("func", "write the signature straight out"),
+        ("def", "write the signature straight out"),
+        ("type", "declare a type by binding it"),
+        ("async", "async is an inferred effect"),
+        ("null", "a sum type with an empty variant"),
+        ("nil", "a sum type with an empty variant"),
     ] {
-        let parsed = maca_parser::parse(src);
+        let src = format!("f() -> int {{\n    {word}\n    1\n}}\n");
+        let parsed = maca_parser::parse(&src);
         let d = check(&parsed.module, Mode::Program);
+        let lead = format!("`{word}`: ");
         let hit = d
             .iter()
-            .find(|x| x.kind == DiagKind::UndefinedName && x.msg.contains(want));
-        assert!(hit.is_some(), "no hint for {want:?} in {src:?}: {d:?}");
+            .find(|x| x.kind == DiagKind::UndefinedName && x.msg.starts_with(&lead))
+            .unwrap_or_else(|| panic!("no hint for `{word}`: {d:?}"));
+        let hint = &hit.msg[lead.len()..];
+        assert!(
+            hint.starts_with(opens_with),
+            "`{word}` should open with {opens_with:?}, opens with {hint:?}"
+        );
+        assert!(
+            !hint.starts_with("Maca has no"),
+            "`{word}` leads with the denial again: {hint:?}"
+        );
     }
 }
 
@@ -382,4 +404,142 @@ fn a_defined_name_is_never_a_phantom_keyword() {
         !d.iter().any(|x| x.kind == DiagKind::UndefinedName),
         "a user-defined `type` was flagged as a phantom keyword: {d:?}"
     );
+}
+
+// ---- a named record type and a record literal are one type ---------------
+
+/// Check a source string in program mode.
+fn check_src(src: &str) -> Vec<maca_core::Diagnostic> {
+    let parsed = maca_parser::parse(src);
+    assert!(parsed.errors.is_empty(), "{src}: {:?}", parsed.errors);
+    check(&parsed.module, Mode::Program)
+}
+
+fn assert_src_clean(src: &str) {
+    let d = check_src(src);
+    assert!(d.is_empty(), "should typecheck:\n{src}\ngot: {d:?}");
+}
+
+/// `Point = { x: int, y: int }` and `{ x = 5, y = 6 }` are the same type.
+///
+/// They were not: the declared name is nominal, the literal is structural, and
+/// unification saw two unrelated types. Naming the constructor worked, so the
+/// language had both halves and no way to put them together, in every position
+/// where a type is written down.
+#[test]
+fn a_record_literal_meets_the_record_type_it_is_written_into() {
+    let decl = "Point = { x: int, y: int }\nLine = { a: Point, b: Point }\n\n";
+    for (what, src) in [
+        (
+            "a local binding",
+            "main() -> int {\n    p: Point = { x = 5, y = 6 }\n    p.x\n}\n",
+        ),
+        (
+            "a top-level binding",
+            "Origin: Point = { x = 0, y = 0 }\n\nmain() -> int => Origin.x\n",
+        ),
+        (
+            "return position",
+            "mk() -> Point => { x = 1, y = 2 }\n\nmain() -> int => mk().x\n",
+        ),
+        (
+            "a parameter",
+            "far(p: Point) -> int => p.x\n\nmain() -> int => far({ x = 1, y = 2 })\n",
+        ),
+        (
+            "a nested field",
+            "main() -> int {\n    l: Line = { a = { x = 1, y = 2 }, b = { x = 3, y = 4 } }\n    l.a.x\n}\n",
+        ),
+        (
+            "a list element",
+            "main() -> int {\n    ps: Point[] = [{ x = 1, y = 2 }]\n    ps[0].y\n}\n",
+        ),
+    ] {
+        let d = check_src(&format!("{decl}{src}"));
+        assert!(d.is_empty(), "{what} should typecheck:\n{src}\ngot: {d:?}");
+    }
+}
+
+/// Meeting the declaration is also what checks the literal against it. A record
+/// literal is open (field access is row-polymorphic), so left open here a field
+/// nobody wrote would be silently zero, which is the bug the `Point { … }`
+/// spelling already refuses.
+#[test]
+fn a_literal_written_into_a_record_type_must_name_its_fields() {
+    for (src, want) in [
+        (
+            "main() -> int {\n    p: Point = { x = 5 }\n    p.x\n}\n",
+            "missing field `y`",
+        ),
+        (
+            "main() -> int {\n    p: Point = { x = 5, y = 6, z = 7 }\n    p.x\n}\n",
+            "unexpected field `z`",
+        ),
+        (
+            "main() -> int {\n    p: Point = { x = 5, y = \"six\" }\n    p.x\n}\n",
+            "expected int, found str",
+        ),
+        // Naming none of them is the same mistake, not an exemption. An empty
+        // literal used to be waved through, so `p: Point = {}` compiled and ran
+        // with both fields zero, which is the silence the rest of this test is
+        // about.
+        (
+            "main() -> int {\n    p: Point = {}\n    p.x\n}\n",
+            "missing field `x`",
+        ),
+    ] {
+        let d = check_src(&format!("Point = {{ x: int, y: int }}\n\n{src}"));
+        assert!(
+            d.iter()
+                .any(|x| x.kind == DiagKind::TypeMismatch && x.msg.contains(want)),
+            "expected {want:?} for:\n{src}\ngot: {d:?}"
+        );
+    }
+}
+
+/// Two anonymous literals still meet structurally, and stay open. Closing every
+/// literal would have been the easy way to check the one above and would break
+/// this.
+#[test]
+fn two_anonymous_record_literals_still_meet_structurally() {
+    assert_src_clean(
+        "pick(c: bool) -> int {\n    p = c ? { x = 1 } : { x = 2 }\n    p.x\n}\n\
+         \nmain() -> int => pick(true)\n",
+    );
+}
+
+/// A real mismatch still is one, and is reported the way the author wrote it:
+/// the annotation is expected, the value is what was found. The pair used to
+/// come out inverted, which is how the unification bug was first noticed.
+#[test]
+fn expected_names_the_annotation_and_found_names_the_value() {
+    for (src, want) in [
+        (
+            "Point = { x: int, y: int }\n\nmain() -> int {\n    p: Point = 3\n    p.x\n}\n",
+            "expected Point, found int",
+        ),
+        (
+            "f() -> str => 42\n\nmain() -> int => 0\n",
+            "expected str, found int",
+        ),
+        (
+            "h(n: int) -> int => n\n\nmain() -> int => h(\"s\")\n",
+            "expected int, found str",
+        ),
+        (
+            "main() -> int {\n    while 7 {\n        break\n    }\n    0\n}\n",
+            "expected bool, found int",
+        ),
+        (
+            "main() -> int {\n    for i in \"a\"..\"b\" {\n        info(\"{i}\")\n    }\n    0\n}\n",
+            "expected int, found str",
+        ),
+    ] {
+        let d = check_src(src);
+        assert!(
+            d.iter()
+                .any(|x| x.kind == DiagKind::TypeMismatch && x.msg.contains(want)),
+            "expected {want:?} for:\n{src}\ngot: {d:?}"
+        );
+    }
 }

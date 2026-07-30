@@ -140,7 +140,47 @@ That is the whole of generics: there are no angle brackets in the language.
 
 A lambda body may be a block, so a bare `{ … }` after `=>` is that block rather
 than a record literal. Parenthesise when the record is what you meant:
-`(n) => ({ x = n })`.
+`(n) => ({ x = n })`. A match arm's `=> { … }` is a block for the same reason.
+
+A **named function**'s `=> { … }` is the one place both readings are live, and
+the body decides. A record literal's fields are `name = value` with commas
+between them; a block's statements are newline-separated and the last one is the
+value. So:
+
+```maca
+// a block: the last line is a bare expression, which is no field
+total() -> int => {
+    a = 1
+    a + 41
+}
+
+// a record literal: a comma separates fields, and never statements
+origin() -> Point => { x = 0, y = 0 }
+```
+
+The arrow adds nothing to the block form, and the compiler keeps the plain
+spelling: `f() -> R => { … }` *is* `f() -> R { … }`, and the pretty-printer
+(an editor's format command over the LSP, and `maca.fmt` over MCP) prints it
+back without the `=>`. `maca fmt` on the command line only re-indents, so it
+leaves whichever spelling you wrote.
+
+Three things rule the record out on their own, because none of them can be a
+field: an entry that is not `name = value` (a bare expression, `xs[i] = v`,
+`p.f = v`, `const x = e`, a punned `{ x, y }`), a name bound twice (no record has
+two `x` fields), and empty braces.
+
+When every entry is a distinct `name = value` and only newlines separate them,
+both readings hold and neither is taken:
+
+```
+`mk`: this `=> { … }` reads as a record literal and as a block. Write
+`Name { … }` for the record, or drop the `=>` for the block
+```
+
+Guessing here is what the rule exists to avoid. Naming the constructor
+(`Point { x = 1 }`) or dropping the arrow settles it, and both say plainly which
+one you meant. So does a comma, wherever one fits: `{ x = 1, }` is a record,
+because a trailing comma is a thing no block has either.
 
 ## Statements
 

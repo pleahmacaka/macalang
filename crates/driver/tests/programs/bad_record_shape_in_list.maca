@@ -1,0 +1,17 @@
+// A list whose element type is settled by its first element, and a second
+// element of another shape entirely.
+//
+// The checker unifies list elements and ignores the error (a gradual list is
+// deliberately heterogeneous), so this reaches codegen with the element type
+// already `Point`. The C backend builds a record from the *declaration*, so a
+// field the record does not declare would be dropped and both real fields
+// zeroed. Refused by name instead.
+
+Point = { x: int, y: int }
+
+corner() -> Point => { x = 1, y = 2 }
+
+main() -> int {
+    ps = [corner(), { host = "nowhere" }]
+    ps[0].x
+}

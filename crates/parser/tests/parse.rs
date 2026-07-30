@@ -476,3 +476,143 @@ fn parsed(src: &str) -> maca_parser::Module {
     assert!(p.errors.is_empty(), "{src}: {:?}", p.errors);
     p.module
 }
+
+// ---- a `{` after a function's `=>` --------------------------------------
+
+/// `f() -> int => { a = 1 \n a }` is a block, not a record literal.
+///
+/// It was read as a record: the fields came out as `a = 1` and a punned `a`, so
+/// the JS backend emitted `return { a: 1, a: a };` (a duplicate key and a
+/// reference to an `a` that was never declared) and the native path reported a
+/// mismatch against `{ a: any }`, a record the author never wrote.
+///
+/// The arrow form is parsed straight into `FnBody::Block`, because
+/// `f() -> T => { … }` and `f() -> T { … }` are the same function; every back
+/// end already lowers a block body, and the printer prints back the spelling
+/// without the spare `=>`.
+#[test]
+fn an_arrow_body_that_binds_and_then_reads_a_name_is_a_block() {
+    for src in [
+        "f() -> int => {\n    a = 1\n    a\n}\n",
+        "f() -> int => {\n    a = 1\n    b = a + 1\n    a + b\n}\n",
+        // one statement, no binding at all
+        "f() -> int => {\n    41 + 1\n}\n",
+        // A name bound and then reassigned. Every entry here is a `name =
+        // value`, so the repeated name is the only thing that rules the record
+        // out, and it is the only shape where that is true: a block whose last
+        // statement is an assignment has no value to return, so this case
+        // cannot be asserted by running it.
+        "f() -> int => {\n    a = 1\n    a = 2\n}\n",
+        // a punned `{ x, y }` is a bare identifier per entry, same as above
+        "f(x: int, y: int) -> int => {\n    x\n    y\n}\n",
+        // nothing at all: `{}` is an empty block, and a record with no fields
+        // is not a thing worth having a second spelling for
+        "f() -> int => {}\n",
+    ] {
+        let m = parsed(src);
+        let Stmt::Fn(fd) = &m.items[0] else {
+            panic!("expected a fn def: {:?}", m.items[0])
+        };
+        assert!(
+            matches!(&fd.body, Some(FnBody::Block(_))),
+            "expected a block body for {src:?}, got {:?}",
+            fd.body
+        );
+    }
+}
+
+/// The record body the ambiguity is about still works, because a comma
+/// separates record fields and never separates statements.
+///
+/// Only a comma at the brace's *own* depth separates two fields, and only the
+/// matching `}` ends the body. A field value carries commas and braces of its
+/// own, so both of those are load-bearing: counting a nested comma cuts a field
+/// value in half (`tags = [1` then `2]`), and stopping at the first `}` cuts the
+/// body off inside a nested literal. Either way this record stops parsing as
+/// one, so both shapes are here.
+#[test]
+fn a_comma_separated_arrow_body_is_a_record_literal() {
+    for src in [
+        "mk() -> Point => { x = 1, y = 2 }\n",
+        "mk() -> Point => {\n    x = 1,\n    y = 2\n}\n",
+        // commas inside a field's own brackets and parens
+        "mk() -> Point => { x = [1, 2].length(), y = max(3, 4) }\n",
+        // a nested record literal, whose `}` is not this body's
+        "mk() -> Line => { a = { x = 1, y = 2 }, b = { x = 3, y = 4 } }\n",
+    ] {
+        let m = parsed(src);
+        let Stmt::Fn(fd) = &m.items[0] else { panic!() };
+        let Some(FnBody::Expr(e)) = &fd.body else {
+            panic!("expected an expression body for {src:?}: {:?}", fd.body)
+        };
+        assert!(
+            matches!(&**e, Expr::Record(fs) if fs.len() == 2),
+            "expected a two-field record for {src:?}: {e:?}"
+        );
+    }
+}
+
+/// With every entry a distinct `name = value` and only newlines between them,
+/// both readings hold and neither is taken. Refused by name, with both
+/// spellings, rather than silently picking one.
+#[test]
+fn an_arrow_body_that_reads_both_ways_is_refused() {
+    for src in [
+        // a single field, which is also a single binding statement
+        "mk() -> Point => { x = 1 }\n",
+        "mk() -> Point => {\n    x = 1\n    y = 2\n}\n",
+    ] {
+        let p = parse(src);
+        let msg = p.errors.join("\n");
+        assert!(
+            msg.contains("reads as a record literal and as a block"),
+            "expected a refusal for {src:?}, got {:?}",
+            p.errors
+        );
+        assert!(
+            msg.contains("Name { … }") && msg.contains("drop the `=>`"),
+            "the refusal must show both spellings, got {msg:?}"
+        );
+    }
+}
+
+/// An arrow body that is not a brace at all is untouched, including the
+/// bracketless comma list.
+#[test]
+fn arrow_bodies_that_are_not_braces_are_unchanged() {
+    for src in [
+        "f() -> int => 1\n",
+        "f() -> int[] => 1, 2, 3\n",
+        "f() -> int => if true { 1 } else { 2 }\n",
+        "f(p: Point) -> int => match p.x {\n    0 => 1\n    _ => 2\n}\n",
+    ] {
+        let m = parsed(src);
+        let Stmt::Fn(fd) = &m.items[0] else { panic!() };
+        assert!(
+            matches!(&fd.body, Some(FnBody::Expr(_))),
+            "expected an expression body for {src:?}: {:?}",
+            fd.body
+        );
+    }
+}
+
+/// The pretty-printer prints an arrow-block body back as a block body, so the
+/// two spellings converge on the one the parser keeps.
+///
+/// This is `print_module`, which is what an editor's format command gets over
+/// the LSP and what `maca.fmt` answers over MCP. `maca fmt` on the command line
+/// is a different thing on purpose: it re-indents the original text, because
+/// the lexer drops comments and a print-based `fmt` would delete them.
+#[test]
+fn the_printer_prints_an_arrow_block_body_without_the_arrow() {
+    let printed = print_module(&parsed("f() -> int => {\n    a = 1\n    a\n}\n"));
+    assert!(
+        printed.contains("f() -> int {") && !printed.contains("=>"),
+        "expected a block body, got:\n{printed}"
+    );
+    // and the printed form parses to the same thing
+    assert_eq!(
+        parse(&printed).module,
+        parsed("f() -> int {\n    a = 1\n    a\n}\n")
+    );
+}

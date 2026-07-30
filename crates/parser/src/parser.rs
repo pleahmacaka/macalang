@@ -22,6 +22,27 @@ pub struct Parser {
     no_brace: bool,
 }
 
+/// Which reading a `{` after a function's `=>` has.
+enum ArrowBrace {
+    /// Some entry cannot be a record field, so this is a block.
+    Block,
+    /// Every entry is a distinct `name = value`, and a comma sits at the
+    /// brace's own depth, which is a thing no block has. A trailing one counts:
+    /// `{ x = 1, }` is not a statement either.
+    Record,
+    /// Every entry is a distinct `name = value` and only newlines separate
+    /// them: both readings hold, so neither is taken.
+    Both,
+}
+
+/// The field a `name = value` entry names, if that is what the entry is.
+fn field_name(entry: &[Token]) -> Option<&str> {
+    match (&entry.first()?.tok, &entry.get(1)?.tok) {
+        (Tok::Ident(n), Tok::Eq) if entry.len() > 2 => Some(n),
+        _ => None,
+    }
+}
+
 impl Parser {
     pub fn new(toks: Vec<Token>) -> Self {
         Parser {
@@ -281,9 +302,7 @@ impl Parser {
         let body = if self.at(Tok::LBrace) {
             Some(FnBody::Block(self.parse_block()))
         } else if self.eat(Tok::FatArrow) {
-            // a bracketless comma list is a valid arrow body (`make() -> int[] =>
-            // 1, 2, 3`); a single expression parses unchanged.
-            Some(FnBody::Expr(Box::new(self.parse_list_expr())))
+            Some(self.parse_arrow_body(&name))
         } else {
             None
         };
@@ -294,6 +313,112 @@ impl Parser {
             effects,
             body,
         }
+    }
+
+    /// The body after a function's `=>`.
+    ///
+    /// A bracketless comma list is a valid arrow body (`make() -> int[] => 1,
+    /// 2, 3`) and a single expression parses unchanged. The one shape that has
+    /// to be decided is a leading `{`, which is a record literal and a block at
+    /// the same time.
+    fn parse_arrow_body(&mut self, name: &str) -> FnBody {
+        if self.at(Tok::LBrace) {
+            match self.arrow_brace() {
+                // `f() -> T => { … }` means `f() -> T { … }`, so it is parsed
+                // as one: every back end already lowers a block body, and the
+                // printer prints back the spelling without the spare `=>`.
+                ArrowBrace::Block => return FnBody::Block(self.parse_block()),
+                ArrowBrace::Record => {}
+                ArrowBrace::Both => {
+                    self.err(format!(
+                        "`{name}`: this `=> {{ … }}` reads as a record literal \
+                         and as a block. Write `Name {{ … }}` for the record, \
+                         or drop the `=>` for the block"
+                    ));
+                    return FnBody::Block(self.parse_block());
+                }
+            }
+        }
+        FnBody::Expr(Box::new(self.parse_list_expr()))
+    }
+
+    /// Decide a `{` after a function's `=>` from the shape of its body.
+    ///
+    /// `no_brace` is the precedent for this decision and cannot make it: it
+    /// answers from the token *before* the brace (a `{` in a control header is
+    /// never a constructor), and here both readings stay live until the whole
+    /// brace has been read. So this is the same idea one lookahead wider, like
+    /// the scan that finds a function definition by the `->`, `{`, or `=>`
+    /// after its `)`.
+    ///
+    /// The evidence is the entries and their separator. A record literal's
+    /// fields are `name = value` and a comma separates them; a block's
+    /// statements are newline-separated and the last one is the value. So a
+    /// bare expression, a name bound twice (no record has two `x` fields), a
+    /// punned `{ x, y }`, `xs[i] = v`, `p.f = v` and `const x = e` each rule
+    /// the record out on their own.
+    fn arrow_brace(&self) -> ArrowBrace {
+        let Some(close) = self.brace_end(self.i) else {
+            return ArrowBrace::Block; // unterminated; `parse_block` reports it
+        };
+        // where each entry starts, cutting at the brace's own depth
+        let mut cuts = vec![self.i + 1];
+        let mut saw_comma = false;
+        let mut depth = 0i32;
+        for j in self.i + 1..close {
+            match &self.toks[j].tok {
+                Tok::LParen | Tok::LBracket | Tok::LBrace => depth += 1,
+                Tok::RParen | Tok::RBracket | Tok::RBrace => depth -= 1,
+                Tok::Comma if depth == 0 => {
+                    saw_comma = true;
+                    cuts.push(j + 1);
+                }
+                Tok::Newline if depth == 0 => cuts.push(j + 1),
+                _ => {}
+            }
+        }
+        cuts.push(close + 1);
+
+        let mut names: Vec<&str> = Vec::new();
+        for w in cuts.windows(2) {
+            let entry = &self.toks[w[0]..w[1] - 1];
+            if entry.is_empty() {
+                continue; // two separators in a row
+            }
+            match field_name(entry) {
+                Some(n) if !names.contains(&n) => names.push(n),
+                _ => return ArrowBrace::Block,
+            }
+        }
+        if names.is_empty() {
+            return ArrowBrace::Block; // `{}` is an empty block, not a record
+        }
+        if saw_comma {
+            ArrowBrace::Record
+        } else {
+            ArrowBrace::Both
+        }
+    }
+
+    /// The index of the `}` that closes the `{` at `open`.
+    fn brace_end(&self, open: usize) -> Option<usize> {
+        let mut depth = 0i32;
+        for (j, t) in self.toks.iter().enumerate().skip(open) {
+            match &t.tok {
+                // an interpolation's braces are `InterpStart`/`InterpEnd`, so a
+                // `{` inside a string never reaches this scan
+                Tok::LBrace => depth += 1,
+                Tok::RBrace => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(j);
+                    }
+                }
+                Tok::Eof => return None,
+                _ => {}
+            }
+        }
+        None
     }
 
     fn parse_params(&mut self) -> Vec<Param> {

@@ -10,6 +10,21 @@
 // needs to read: a handler is an ordinary function from a `Request` to a
 // `Response`, and it is called across the same closure ABI `xs.map(f)` uses.
 
+// One thing to know before importing this module, because the failure is a C
+// compiler error in a file nobody wrote.
+//
+// `import c "…"` binds `c` as a module name for the whole program this is linked
+// into, and the stage-0 C backend resolves a UFCS call by that name as a call
+// *into that module*: a local `c` holding a character makes `c.is_alpha()` lower
+// to `/* c.is_alpha */ ()`, which is not an expression. The type checker says
+// nothing, so the first sign of it is `expected expression before ')'` pointing
+// at generated code.
+//
+// So a module that an `http` program may import keeps off the name `c` for a
+// local. `apps/tomo/highlight.maca` spells its character `cur` for this reason,
+// and `signal/dom` says the same at its own `is_name_char`. Others in the tree
+// still use it (`modules/bench/cases/*`, `selfhost/lexer.maca`, `tools/*`) and
+// are fine only because nothing links them beside a server.
 import c "http.h"
 
 import { parse_request, Request } from http/request

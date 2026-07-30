@@ -53,11 +53,52 @@ Running `tomo` from the repository root rebuilds this repository's handbook —
 34 chapters in each of `en` and `ko`, plus an index per language and one above
 them. The output lands in `apps/tomo/site/`, which is gitignored.
 
+## Dev mode: a patch, not a reload
+
+```
+maca -m apps/tomo/dev                  # port 8000, work in .maca/dev/tomo
+maca -m apps/tomo/dev 3000 /tmp/w      # a port and a work directory
+maca -m apps/tomo/dev 3000 /tmp/w /bk  # and a book to read
+```
+
+`dev.maca` builds the book, serves it, and watches `book/`. Saving a chapter
+does **not** reload the page: the browser is sent the nodes that changed and
+patches those. A prose edit repaints one `<article>`. A heading edit also
+repaints that page's heading list and the chapter list on every page, because a
+chapter's title is its own first heading. Nothing else is touched, so the sidebar
+stays open where the reader left it, the search box keeps what was typed into it,
+and a reader three screens into a chapter stays there.
+
+Three parts of a chapter page depend on the Markdown, and dev mode names them as
+`signal/dom` regions: the rendered prose, the page's heading list, and the
+chapter list. Two stores do the rest. `srcs` holds each chapter's Markdown and
+answers "did anything change at all", which is the cheap guard that keeps an idle
+editor from re-rendering the book. `regions` holds the rendered regions and
+answers "what changed", which *is* the patch: a write of the value a key already
+held is not a change, so a save that changed nothing sends nothing. `regions` is
+also the build's memo, so a heading edit rewrites every page file without
+re-rendering any Markdown but the one chapter's.
+
+The browser learns about a change by **long poll** over `modules/http`, on
+`/_maca/hmr`; `modules/http/dev.maca` has the whole channel and the reason it is
+not server-sent events. A client that fell more than one generation behind is
+sent every delta in between, in order; one that fell behind the window on disk is
+told to reload rather than left drifting.
+
+**A published page carries none of this.** `build_book` writes exactly the bytes
+it wrote before regions existed, and `apps/tomo/tests/dev.maca` asserts it: strip
+the markers and the one `<script>` out of a dev page and it is the published page,
+character for character. The same suite asserts the claim the whole thing rests
+on, that patching one build's page equals rebuilding it.
+`crates/driver/tests/hmr.rs` does the process half, editing a file under a
+running server and handing the patch that comes back to `node`.
+
 ## Layout
 
 ```
 apps/tomo/
 ├── tomo.maca        # Markdown -> HTML, the i18n page shell, the book builder
+├── dev.maca         # dev mode: build, serve, watch, publish a patch
 ├── highlight.maca   # the syntax highlighter and its theme
 ├── conf.maca        # the `book.toml` subset, shared with tools/build-site.maca
 ├── book.toml        # book config: title, languages, volumes, chapter order
@@ -65,9 +106,10 @@ apps/tomo/
 │   ├── en/          # English chapters (the default language)
 │   └── ko/          # Korean chapters (i18n)
 └── tests/
+    ├── dev.maca         # a patch has to land where a rebuild does
     ├── highlight.maca   # one case per lexical distinction
     └── roundtrip.maca   # highlighting every .maca file under apps/ loses
-                         # no character — `maca test` runs both
+                         # no character; `maca test` runs all three
 ```
 
 ## The handbook

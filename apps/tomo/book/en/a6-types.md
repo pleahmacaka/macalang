@@ -85,6 +85,43 @@ receiver stays gradual, because that is how foreign code is reached. The two
 closed sets are listed in [The Standard Library](a3-stdlib.md), and a test
 compiles and runs every name in them.
 
+## A record type and a record literal
+
+`Point = { x: int, y: int }` names a type, and `{ x = 5, y = 6 }` writes one
+without naming it. They are the same type, and a literal *becomes* the named
+record wherever the context names one:
+
+```maca
+Point = { x: int, y: int }
+
+origin: Point = { x = 0, y = 0 }
+mk() -> Point => { x = 1, y = 2 }
+far(p: Point) -> int => p.x + p.y
+```
+
+An annotation, a return type, a parameter, a field of another record and an
+element of a `Point[]` all count as naming one. Becoming the named type rather
+than staying a lookalike is what makes the value a real `Point` for the rest of
+its life: the record's own struct is what gets built, no second one is
+synthesized, and `with`, a declared field's type and an overloaded operator all
+work on it.
+
+Meeting the declaration is also what checks the literal against it. A record
+literal is otherwise **open**, because reading a field should not require knowing
+every other field, and left open here a field nobody wrote would be silently
+zero. So a literal written into a named record owes the same two things the
+`Point { … }` spelling owes: every field the record declares, and no field it
+doesn't.
+
+```
+TypeMismatch: in `p`: record is missing field `y`
+TypeMismatch: in `p`: record has unexpected field `z`
+```
+
+With no such context a literal stays structural, and two literals of the same
+shape are one type. The native and Rust back ends synthesize one struct per
+distinct shape for those.
+
 ## Effects
 
 A function's type is not only its arguments and result. The checker also tracks

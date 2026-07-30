@@ -130,6 +130,10 @@ struct Cx<'a> {
     variant_of: HashMap<String, String>, // variant -> sum name
     variant_payloads: HashMap<String, Vec<CTy>>, // variant -> payload field types
     records: BTreeMap<String, Vec<(String, CTy)>>, // record name -> ordered fields
+    /// Which of `records` were synthesized from an anonymous literal's shape
+    /// rather than written by the author. A diagnostic must not name one: the
+    /// author never typed `MacaAnon_x_int_y_int` and cannot act on it.
+    anon_records: HashSet<String>,
     /// `Rec.field` -> the parameter types of a field declared `(T, U) -> R`.
     /// `CTy::Closure` carries only the return type, and a lambda stored in such
     /// a field has nothing else to read its parameter types off — it typed them
@@ -213,6 +217,7 @@ impl<'a> Cx<'a> {
             variant_of: HashMap::new(),
             variant_payloads: HashMap::new(),
             records: BTreeMap::new(),
+            anon_records: HashSet::new(),
             record_fn_params: HashMap::new(),
             rec_order: Vec::new(),
             modules: HashSet::new(),
@@ -676,7 +681,9 @@ impl<'a> Cx<'a> {
                     for (_, t) in &shape {
                         self.note_arr(t);
                     }
-                    self.records.insert(anon_record_name(&shape), shape);
+                    let anon = anon_record_name(&shape);
+                    self.anon_records.insert(anon.clone());
+                    self.records.insert(anon, shape);
                 }
                 for f in fields {
                     if let Field::Value { value, .. } | Field::Bare(value) = f {
@@ -848,6 +855,71 @@ impl<'a> Cx<'a> {
             .collect();
         out.sort_by(|a, b| a.0.cmp(&b.0));
         out
+    }
+
+    /// The declared record a literal is being written into, if the context
+    /// names one and the literal only writes fields that record has.
+    ///
+    /// The field test is what keeps this honest, and it is not dead weight
+    /// behind the checker. `ctor` reads the *declaration* and looks each field
+    /// up in the literal, so a field the record does not declare is dropped and
+    /// one the literal omits is zeroed. Constructing a `Point` out of
+    /// `{ host = "x" }` would therefore compile to `{ .x = 0, .y = 0 }` with the
+    /// value gone, and out of `{ x = 9 }` to `{ .x = 9, .y = 0 }` with a `y`
+    /// nobody wrote. An annotated position is checked before it gets here, but a
+    /// list element is not: `Expr::List` unifies its elements and *ignores* the
+    /// error, so `[mk_point(), { host = "x" }]` reaches codegen with the element
+    /// type already settled as `Point`. Both halves are refused here by name,
+    /// because a dropped value and a zeroed field are the same silence.
+    fn expected_record(&mut self, expected: Option<&CTy>, fields: &[Field]) -> Option<String> {
+        let CTy::Rec(name) = expected? else {
+            return None;
+        };
+        let decl = self.records.get(name)?.clone();
+        let named: Vec<String> = fields
+            .iter()
+            .map(|f| match f {
+                Field::Value { name, .. } | Field::Shorthand(name) => Some(name.clone()),
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let stray: Vec<&String> = named
+            .iter()
+            .filter(|n| !decl.iter().any(|(d, _)| d == *n))
+            .collect();
+        let missing: Vec<&String> = decl
+            .iter()
+            .map(|(d, _)| d)
+            .filter(|d| !named.contains(d))
+            .collect();
+        // A synthesized shape is not a name the author can be told about, so
+        // that case falls back to the literal's own struct exactly as before.
+        if self.anon_records.contains(name) {
+            return stray.is_empty().then(|| name.clone());
+        }
+        if stray.is_empty() && missing.is_empty() {
+            return Some(name.clone());
+        }
+        // One reason, the sharpest one: a literal of another shape entirely has
+        // a stray field *and* misses every declared one, and listing all of
+        // them buries the field that actually names the mistake.
+        let name = name.clone();
+        if stray.is_empty() {
+            for k in missing {
+                self.problem(format!(
+                    "this `{{ … }}` never writes `{name}`'s field `{k}`, so it \
+                     is not the `{name}` this position wants"
+                ));
+            }
+        } else {
+            for k in stray {
+                self.problem(format!(
+                    "`{name}` has no field `{k}`, so this `{{ … }}` is not the \
+                     `{name}` this position wants"
+                ));
+            }
+        }
+        None
     }
 
     fn note_arr(&mut self, t: &CTy) {
@@ -2431,10 +2503,15 @@ impl<'a> Cx<'a> {
             Expr::Path(p) => (c_str(p), CTy::Str),
             Expr::Ident(n) => self.ident(env, n),
             Expr::Ctor { name, fields } => self.ctor(env, name, fields),
-            // An anonymous record literal: the struct was synthesized from the
-            // shape in the prepass, so this is an ordinary construction of it.
+            // A record literal. Where the context names a declared record it
+            // constructs *that* record, so `p: Point = { x = 5, y = 6 }` is one
+            // `Point` and not a lookalike struct that would need a cast at
+            // every assignment. With no expectation the struct synthesized from
+            // the shape in the prepass is what it builds.
             Expr::Record(fields) => {
-                let name = anon_record_name(&self.anon_shape(fields));
+                let name = self
+                    .expected_record(expected, fields)
+                    .unwrap_or_else(|| anon_record_name(&self.anon_shape(fields)));
                 self.ctor(env, &name, fields)
             }
             Expr::List(es) => self.list(env, es, expected),

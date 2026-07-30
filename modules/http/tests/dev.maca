@@ -1,0 +1,240 @@
+// The dev channel: publishing a patch, and a poll that waits for one.
+//
+// The channel is a directory, so most of this is ordinary file work and reads
+// like it. The one part that needs a running clock is the wait, and `spawn` is
+// enough for it: a publisher on another thread, a poll on this one, and the
+// assertion is that the poll came back with what the publisher wrote rather
+// than with a timeout.
+
+import { Feed, feed, publish, generation, patch_of, message, ops_since,
+         have_all, seen, is_poll, answer, dev_head,
+         poll_script } from http/dev
+import { Request, parse_request } from http/request
+import { render } from http/response
+
+Root = "/tmp/maca-test-http-dev"
+
+// A feed with nothing in it. Each test starts from one, because a generation
+// counter left over from the test before is exactly the state that makes a
+// passing suite meaningless.
+fresh() -> Feed {
+    remove_dir(Root)
+    feed(Root)
+}
+
+poll_for(gen: int) -> Request =>
+    parse_request("GET /_maca/hmr?gen={gen} HTTP/1.1\r\n\r\n")
+
+// One op, as a builder would have produced it, and the patch of exactly one.
+one(key: str, value: str) -> str => "\{\"key\":\"{key}\",\"value\":\"{value}\"\}"
+
+op(key: str, value: str) -> str => "[" ++ one(key, value) ++ "]"
+
+// ---- the feed -------------------------------------------------------------
+
+test_a_feed_starts_at_generation_zero() {
+    f = fresh()
+
+    assert(is_dir(Root), "the directory was created")
+    assert_eq(str(generation(f)), "0", "and nothing has been published")
+}
+
+test_a_published_patch_reads_back_under_its_generation() {
+    f = fresh()
+    publish(f, 1, op("a", "1"))
+
+    assert_eq(str(generation(f)), "1", "the counter moved")
+    assert_eq(patch_of(f, 1), op("a", "1"), "and the patch is there")
+}
+
+test_a_generation_nobody_published_reads_as_an_empty_patch() {
+    f = fresh()
+    publish(f, 1, op("a", "1"))
+
+    assert_eq(patch_of(f, 7), "[]", "no file, no ops")
+}
+
+// ---- what a poll is told --------------------------------------------------
+
+test_a_client_that_is_up_to_date_is_told_the_generation_and_no_ops() {
+    f = fresh()
+    publish(f, 3, op("a", "1"))
+
+    assert_eq(message(f, 3, 3), "\{\"gen\":3\}", "nothing to apply")
+}
+
+test_a_client_one_behind_is_sent_that_generations_ops() {
+    f = fresh()
+    publish(f, 1, op("a", "1"))
+
+    assert_eq(message(f, 0, 1), "\{\"gen\":1,\"ops\":" ++ op("a", "1") ++ "\}",
+              "the delta it missed")
+}
+
+// Applying deltas in order lands on what a single rebuild would have written,
+// which is why a client several behind is caught up rather than reloaded.
+//
+// The assertion is the whole array and not three `contains` calls: three
+// one-element arrays have to arrive as one array of three, and a merge that
+// forgot the comma between them, or left the brackets on, still contains every
+// substring anyone would think to look for. What it does not do is parse, and a
+// client that cannot parse its patch waits a second and asks again, forever.
+test_a_client_several_behind_is_sent_every_delta_in_order() {
+    f = fresh()
+    publish(f, 1, op("a", "1"))
+    publish(f, 2, op("a", "2"))
+    publish(f, 3, op("b", "9"))
+
+    assert_eq(ops_since(f, 0, 3),
+              "[" ++ one("a", "1") ++ "," ++ one("a", "2") ++ ","
+                  ++ one("b", "9") ++ "]",
+              "one array, the older write first so the newer one wins")
+}
+
+// The patches are a window, not a history. A client behind the window cannot be
+// patched from deltas, so it is told to start again rather than sent the
+// generations that happened to survive.
+test_a_client_behind_the_window_is_told_to_reload() {
+    f = fresh()
+    gen = 1
+
+    while gen <= 20 {
+        publish(f, gen, op("a", str(gen)))
+        gen = gen + 1
+    }
+
+    assert(!have_all(f, 1, 20), "generation 2 has been pruned")
+    assert_eq(message(f, 1, 20), "\{\"gen\":20,\"reload\":true\}",
+              "so the answer is a reload")
+    assert(have_all(f, 19, 20), "a client one behind is still catchable")
+}
+
+// ---- a page that has just loaded ------------------------------------------
+//
+// The poller names no generation on its first request, because the markup it is
+// asking about came off disk and disk holds what the newest generation wrote.
+// The two tests below are the two ends of the same rule: it is not sent the
+// deltas that produced the page it already has, and it is never told to reload
+// the page it just loaded.
+
+no_gen() -> Request => parse_request("GET /_maca/hmr HTTP/1.1\r\n\r\n")
+
+test_a_page_that_has_just_loaded_is_told_where_it_is_and_nothing_else() {
+    f = fresh()
+    publish(f, 1, op("a", "1"))
+    publish(f, 2, op("a", "2"))
+
+    assert_eq(answer(f, no_gen(), 0).body, "\{\"gen\":2\}",
+              "current with the files it loaded")
+}
+
+// A reload answers a client that has fallen behind the window. The client it
+// answers then names no generation, so telling *that* one to reload as well is a
+// page that reloads forever.
+test_a_reload_is_not_answered_with_another_reload() {
+    f = fresh()
+    gen = 1
+
+    while gen <= 20 {
+        publish(f, gen, op("a", str(gen)))
+        gen = gen + 1
+    }
+
+    assert_eq(message(f, 1, 20), "\{\"gen\":20,\"reload\":true\}",
+              "a client past the window reloads once")
+    assert_eq(answer(f, no_gen(), 0).body, "\{\"gen\":20\}",
+              "and the page that reload loaded is current, not reloaded again")
+}
+
+// ---- the endpoint ---------------------------------------------------------
+
+test_only_the_channels_own_path_is_a_poll() {
+    assert(is_poll(poll_for(0)), "the poll path")
+    assert(!is_poll(parse_request("GET /en/01.html HTTP/1.1\r\n\r\n")),
+           "and a page is not")
+}
+
+test_an_answer_is_json() {
+    f = fresh()
+    out = render(answer(f, poll_for(0), 0))
+
+    assert(out.starts_with("HTTP/1.1 200 OK"), "a 200")
+    assert(out.contains("Content-Type: application/json"), "as JSON")
+    assert(out.ends_with("\{\"gen\":0\}"), "with nothing published yet")
+}
+
+// `gen` is a number off a query string, so it is whatever the caller typed. A
+// negative one names a range no feed can hold every file for, and the answer was
+// then a reload where the ops would have done.
+test_a_generation_nobody_could_have_reads_as_the_beginning() {
+    f = fresh()
+    publish(f, 1, op("a", "1"))
+    req = parse_request("GET /_maca/hmr?gen=-1 HTTP/1.1\r\n\r\n")
+
+    assert_eq(answer(f, req, 0).body,
+              "\{\"gen\":1,\"ops\":" ++ op("a", "1") ++ "\}",
+              "answered as a client that has seen nothing")
+}
+
+test_a_poll_with_nothing_to_report_answers_with_the_same_generation() {
+    f = fresh()
+    publish(f, 4, op("a", "1"))
+
+    assert_eq(answer(f, poll_for(4), 200).body, "\{\"gen\":4\}",
+              "the budget ran out and the client is still current")
+}
+
+// The whole point of a long poll: the handler does not answer until there is
+// something to say. Asserting on the body alone would pass against a server
+// that answered instantly with a generation it happened to find, so the
+// publisher below runs *after* the poll has started waiting.
+// It takes the directory and not the feed, because a task takes numbers and
+// strings: a record cannot cross into one.
+publish_soon(dir: str, gen: int) -> int {
+    sleep_ms(400)
+    publish(feed(dir), gen, op("late", "yes"))
+    gen
+}
+
+test_a_poll_waits_for_a_publish_that_has_not_happened_yet() {
+    f = fresh()
+    spawn publish_soon(Root, 1)
+    body = answer(f, poll_for(0), 5000).body
+
+    assert(body.contains("\"gen\":1"), "the poll came back on the publish")
+    assert(body.contains("\"key\":\"late\""), "carrying the ops it published")
+}
+
+// ---- what the page carries ------------------------------------------------
+
+test_the_dev_head_carries_both_halves() {
+    out = dev_head()
+
+    assert(out.contains("window.macaSignal"), "the patcher")
+    assert(out.contains("window.macaDevPath"), "and the poller")
+    assert(out.contains("/_maca/hmr"), "pointing at the channel's own path")
+}
+
+// The path is in one place. A script that hardcoded its own copy is a script
+// that keeps polling the old one after the path moves.
+test_the_script_polls_the_path_the_handler_answers() {
+    js = poll_script()
+    at = js.index_of("\"/_maca/hmr\"")
+
+    assert(at > 0, "the script names the path")
+    assert(is_poll(poll_for(0)), "and the handler answers it")
+}
+
+// The browser's half of the fresh-load rule, and the handler's, in one place.
+// The script itself is run against a stubbed request by
+// `crates/driver/tests/hmr.rs`, which is where the URLs it produces are checked;
+// what is here is that it does not send a generation before it has one, and that
+// the handler reads a request without one as fresh rather than as zero.
+test_the_scripts_first_request_names_no_generation() {
+    js = poll_script()
+
+    assert(js.contains("gen < 0 ? \"\" : \"?gen=\" + gen"),
+           "the parameter is left off until the script has a generation")
+    assert_eq(str(seen(no_gen())), "-1", "which the handler reads as fresh")
+    assert_eq(str(seen(poll_for(0))), "0", "where 0 is a place it can be at")
+}

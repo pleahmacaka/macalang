@@ -218,20 +218,37 @@ impl Checker {
     ///
     /// Only *undefined* names land here, so a program that legitimately binds
     /// `type` or `func` keeps working.
+    ///
+    /// Each hint leads with the form that works and mentions the missing word
+    /// second, because the other order was read as a refusal. "Maca has no
+    /// `return`" landed first and the reader concluded the capability was
+    /// missing, when Maca has exactly Rust's rule; one user had to argue the
+    /// point before finding out the language already did what they wanted.
     fn phantom_keyword(&mut self, name: &str) {
         if self.mode != Mode::Program || self.gradual_foreign {
             return;
         }
         let hint = match name {
-            "return" => "Maca has no `return` — a function's last expression is its value",
-            "let" | "var" => "Maca has no `let`/`var` — write `x = e`, or `const x = e`",
-            "fn" | "func" | "def" => "Maca has no `fn` — write `name(arg: T) -> R { … }` or `=> e`",
-            "type" => "Maca has no `type` — write `Name = { field: T }` or `Name = A | B`",
+            "return" => "a function's last expression is its value, so drop the `return`",
+            "let" | "var" => {
+                "write `x = e` for a variable, `const x = e` for a constant; \
+                 no `let`/`var` keyword"
+            }
+            "fn" | "func" | "def" => {
+                "write the signature straight out: `name(arg: T) -> R { … }` or \
+                 `name(arg: T) -> R => e`; no `fn` keyword"
+            }
+            "type" => {
+                "declare a type by binding it: `Name = { field: T }` for a record, \
+                 `Name = A | B` for a sum; no `type` keyword"
+            }
             "async" | "await_" => {
-                "Maca has no `async` — async is an inferred effect; use `spawn`/`await`"
+                "async is an inferred effect, so any function can \
+                 `spawn` and `await`; no `async` keyword to write"
             }
             "null" | "nil" | "None" | "undefined" => {
-                "Maca has no null — use a sum type with an empty variant"
+                "a sum type with an empty variant says what the absence means, \
+                 and `match` makes you handle it; Maca has no null"
             }
             "true_" | "false_" => return,
             _ => return,
@@ -541,10 +558,121 @@ impl Checker {
         self.mut_of = saved_mut;
         if let Some(ret) = &f.ret {
             let rt = self.relax_ann(ast_ty(ret));
-            if let Err(e) = self.inf.unify(&bty, &rt) {
+            if let Err(e) = self.unify_ann(&rt, &bty) {
                 self.diag(DiagKind::TypeMismatch, format!("in `{}`: {e}", f.name));
             }
         }
+    }
+
+    /// Unify an annotation with the value it annotates.
+    ///
+    /// The argument order is the message. `Infer::unify(a, b)` reports `a` as
+    /// *expected* and `b` as *found*, so passing the value first told the
+    /// author their annotation was the surprise: `p: Point = { x = 5, y = 6 }`
+    /// came back as "expected { x: int, y: int }, found Point", which is
+    /// exactly backwards from what they wrote. The annotation is what is
+    /// expected; the value is what was found.
+    fn unify_ann(&mut self, want: &Ty, got: &Ty) -> Result<(), String> {
+        let (w, g) = self.meet_records(want, got);
+        self.inf.unify(&w, &g)
+    }
+
+    /// A declared record type and a structurally identical record literal are
+    /// one type, so bring the two spellings together before unifying.
+    ///
+    /// `Point` is nominal everywhere else in the language and a literal
+    /// `{ x = 5, y = 6 }` is structural, so unification saw two unrelated types
+    /// and refused. The literal *becomes* the named type rather than staying
+    /// structural: the record's struct already exists, so no second one is
+    /// synthesized and no conversion is needed, and the value keeps everything
+    /// a `Point` can do (a declared field's type, `with`, an overloaded
+    /// operator) instead of a lookalike that can do less.
+    ///
+    /// Expanding here rather than inside `Infer::unify` is deliberate: what
+    /// `Point` stands for is the checker's record table, which `Infer` cannot
+    /// see. Recursion is bounded by the literal, which is finite even when the
+    /// record refers to itself, because a name only expands opposite a `Rec`.
+    fn meet_records(&self, want: &Ty, got: &Ty) -> (Ty, Ty) {
+        let w = self.inf.resolve(want);
+        let g = self.inf.resolve(got);
+        match (&w, &g) {
+            (_, Ty::Rec { .. }) if self.declared_shape(&w).is_some() => {
+                let decl = self.declared_shape(&w).expect("just checked");
+                self.meet_fields(&decl, &g)
+            }
+            (Ty::Rec { .. }, _) if self.declared_shape(&g).is_some() => {
+                let decl = self.declared_shape(&g).expect("just checked");
+                let (decl, lit) = self.meet_fields(&decl, &w);
+                (lit, decl)
+            }
+            // reach through a list (`Point[]` against `{ … }[]`) and a nullable
+            (Ty::Con(n, wa), Ty::Con(m, ga)) if n == m && wa.len() == ga.len() => {
+                let met: Vec<(Ty, Ty)> = wa
+                    .iter()
+                    .zip(ga)
+                    .map(|(x, y)| self.meet_records(x, y))
+                    .collect();
+                (
+                    Ty::Con(n.clone(), met.iter().map(|(a, _)| a.clone()).collect()),
+                    Ty::Con(m.clone(), met.iter().map(|(_, b)| b.clone()).collect()),
+                )
+            }
+            (Ty::Opt(x), Ty::Opt(y)) => {
+                let (a, b) = self.meet_records(x, y);
+                (Ty::Opt(Box::new(a)), Ty::Opt(Box::new(b)))
+            }
+            _ => (w, g),
+        }
+    }
+
+    /// The fields a named record declares, as a closed structural type. `None`
+    /// for anything that is not a bare declared record name.
+    fn declared_shape(&self, t: &Ty) -> Option<Ty> {
+        let Ty::Con(n, args) = t else { return None };
+        if !args.is_empty() {
+            return None;
+        }
+        Some(Ty::Rec {
+            fields: self.records.get(n)?.clone(),
+            open: false,
+        })
+    }
+
+    /// Line a declared record's fields up with a literal's, recursively, and
+    /// close the literal.
+    ///
+    /// A record literal is open on purpose, because field access is
+    /// row-polymorphic. Left open against a declaration, `p: Point = { x = 5 }`
+    /// would pass with `y` never written and silently zero, which is the bug
+    /// `check_record_fields` exists to catch on the `Point { … }` spelling.
+    fn meet_fields(&self, decl: &Ty, lit: &Ty) -> (Ty, Ty) {
+        let (Ty::Rec { fields: df, .. }, Ty::Rec { fields: lf, .. }) = (decl, lit) else {
+            return (decl.clone(), lit.clone());
+        };
+        let mut d = BTreeMap::new();
+        let mut l = lf.clone();
+        for (k, dt) in df {
+            match lf.get(k) {
+                Some(lt) => {
+                    let (a, b) = self.meet_records(dt, lt);
+                    d.insert(k.clone(), a);
+                    l.insert(k.clone(), b);
+                }
+                None => {
+                    d.insert(k.clone(), dt.clone());
+                }
+            }
+        }
+        (
+            Ty::Rec {
+                fields: d,
+                open: false,
+            },
+            Ty::Rec {
+                fields: l,
+                open: false,
+            },
+        )
     }
 
     /// Relax an *annotation* type: a bare, capitalized nominal that isn't a
@@ -575,7 +703,7 @@ impl Checker {
         let vty = self.infer(&mut env, &b.value);
         if let Some(t) = b.tys.first() {
             let at = self.relax_ann(ast_ty(t));
-            if let Err(e) = self.inf.unify(&vty, &at) {
+            if let Err(e) = self.unify_ann(&at, &vty) {
                 let name = target_name(&b.target);
                 self.diag(DiagKind::TypeMismatch, format!("in binding `{name}`: {e}"));
             }
@@ -755,7 +883,7 @@ impl Checker {
                     let mut vty = self.infer(env, &b.value);
                     if let Some(t) = b.tys.first() {
                         let at = self.relax_ann(ast_ty(t));
-                        if let Err(e) = self.inf.unify(&vty, &at) {
+                        if let Err(e) = self.unify_ann(&at, &vty) {
                             let name = target_name(&b.target);
                             self.diag(DiagKind::TypeMismatch, format!("in `{name}`: {e}"));
                         }
@@ -917,7 +1045,7 @@ impl Checker {
                         // and its argument is a real error (`Any`/vars never
                         // clash, so unknown-stdlib calls stay silent).
                         for (i, (p, a)) in params.iter().zip(&ats).enumerate() {
-                            if let Err(e) = self.inf.unify(p, a) {
+                            if let Err(e) = self.unify_ann(p, a) {
                                 let name = target_name(callee);
                                 self.diag(
                                     DiagKind::TypeMismatch,
@@ -949,13 +1077,15 @@ impl Checker {
             Expr::Range { lo, hi } => {
                 let lt = self.infer(env, lo);
                 let rt = self.infer(env, hi);
-                if let Err(e) = self.inf.unify(&lt, &Ty::Int) {
+                // `int` first: it is what the range expects, and `unify` names
+                // its first argument as the expected one.
+                if let Err(e) = self.inf.unify(&Ty::Int, &lt) {
                     self.diag(
                         DiagKind::TypeMismatch,
                         format!("range start must be `int`: {e}"),
                     );
                 }
-                if let Err(e) = self.inf.unify(&rt, &Ty::Int) {
+                if let Err(e) = self.inf.unify(&Ty::Int, &rt) {
                     self.diag(
                         DiagKind::TypeMismatch,
                         format!("range end must be `int`: {e}"),
@@ -1030,7 +1160,7 @@ impl Checker {
             }
             Expr::While { cond, body } => {
                 let ct = self.infer(env, cond);
-                if let Err(e) = self.inf.unify(&ct, &Ty::Bool) {
+                if let Err(e) = self.inf.unify(&Ty::Bool, &ct) {
                     self.diag(DiagKind::TypeMismatch, format!("`while` condition: {e}"));
                 }
                 let base = env.len();

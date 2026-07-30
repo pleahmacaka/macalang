@@ -519,11 +519,17 @@ join_range(lines: str[], at: int, stop: int) -> str {
 // ---- table of contents ----------------------------------------------------
 
 // Build a `<nav>` list of a document's headings, each linking to its anchor.
-toc(md: str) -> str =>
-    nav(data-tomo="toc",
-        class="border-t border-zinc-200 dark:border-zinc-700 mt-3 pt-2",
-        "\n" ++ ul(class="list-none m-0 p-0",
-                   "\n" ++ toc_lines(lines(md), 0)) ++ "\n") ++ "\n"
+toc(md: str) -> str => toc_region(published(), "", toc_list(md))
+
+// The list itself, without the `<nav>` around it. Split out because dev mode
+// patches the inside of that `<nav>` and leaves the element alone: see the
+// regions section below.
+toc_list(md: str) -> str =>
+    "\n" ++ ul(class="list-none m-0 p-0",
+               "\n" ++ toc_lines(lines(md), 0)) ++ "\n"
+
+toc_class() -> str =>
+    "border-t border-zinc-200 dark:border-zinc-700 mt-3 pt-2"
 
 toc_lines(lines: str[], i: int) -> str {
     if i >= lines.length() {
@@ -547,6 +553,106 @@ toc_entry(text: str) -> str =>
     li(class="my-0",
        a(class=link_class(false) ++ " pl-4 text-[0.82rem]",
          href="#" ++ slug(text), escape_html(text))) ++ "\n"
+
+// ---- dev-mode regions -----------------------------------------------------
+//
+// Exactly three parts of a chapter page are decided by the chapter's Markdown:
+// the rendered prose, the page's own heading list, and the chapter list with
+// this page marked. Nothing else on the page reads a `.md` file at all.
+//
+// Naming those three is what lets a dev-mode rebuild patch a page instead of
+// replacing it. `apps/tomo/dev.maca` re-renders them, asks `signal/store` which
+// of them actually moved, and sends only those. Everything outside them stays
+// as the reader left it: the sidebar's disclosure open or shut, the search box
+// with what was typed in it, and the scroll position halfway down a chapter.
+//
+// The list has to stay complete, and that is a testable claim rather than a
+// promise: `apps/tomo/tests/dev.maca` patches one build's page with one edit's
+// ops and asserts the result is byte-identical to rebuilding it. A fourth part
+// that depends on the Markdown and is not a region shows up there as a
+// difference, not as a page that slowly drifts from its source.
+//
+// A published page carries none of this. `Dev` off is the branch `build_book`
+// takes, and it emits the same bytes the builder emitted before regions
+// existed.
+
+/// What dev mode adds to a page. `published()` is all of it turned off.
+Dev = {
+    /// Do the three regions carry `data-signal` markers for the patcher?
+    on: bool,
+    /// Extra `<head>` markup: the patcher, and the poll loop that feeds it.
+    extra: str,
+}
+
+/// Dev mode off, which is how the book is published.
+published() -> Dev => Dev { on = false, extra = "" }
+
+/// The parts of a chapter page that its Markdown decides.
+Parts = {
+    /// The rendered prose, as the `<article>`'s children.
+    article: str,
+    /// The page's heading list, as the table-of-contents `<nav>`'s children.
+    toc: str,
+    /// The book's chapter list with this page marked, as the sidebar `<ol>`'s
+    /// children.
+    nav: str,
+}
+
+/// The three parts, rendered. One Markdown pass, which is the expensive one.
+parts_of(chs: str[], titles: str[], ci: int, md: str) -> Parts =>
+    Parts {
+        article = "\n" ++ render(md),
+        toc = toc_list(md),
+        nav = side_items(chs, titles, chs.get(ci), 0),
+    }
+
+/// Which page a region belongs to: `"en/05-strings"`.
+page_key(lang: str, ch: str) -> str => lang ++ "/" ++ ch
+
+/// One region's store key: `"article:en/05-strings"`.
+///
+/// A key names the page as well as the part, so one patch can carry every page
+/// the rebuild touched. A browser reading it applies the ops whose selectors
+/// match the page it is on and ignores the rest, which is what lets the builder
+/// stay ignorant of which chapter is open in which tab.
+region_key(part: str, key: str) -> str => part ++ ":" ++ key
+
+// The three wrappers below each emit the published element unchanged when dev
+// mode is off, so `build_book` writes exactly the bytes it always wrote. The
+// marked form is that same element plus the two attributes `signal/dom` patches
+// by, which is why the region is the element the page already had rather than a
+// wrapper around it: a `<div>` that only exists in dev mode is a layout that
+// only exists in dev mode.
+
+article_region(d: Dev, key: str, inner: str) -> str {
+    if d.on {
+        article(data-signal=region_key("article", key),
+                data-signal-as="html", inner)
+    } else {
+        article(inner)
+    }
+}
+
+toc_region(d: Dev, key: str, inner: str) -> str {
+    if d.on {
+        nav(data-tomo="toc", class=toc_class(),
+            data-signal=region_key("toc", key), data-signal-as="html",
+            inner) ++ "\n"
+    } else {
+        nav(data-tomo="toc", class=toc_class(), inner) ++ "\n"
+    }
+}
+
+nav_region(d: Dev, key: str, inner: str) -> str {
+    if d.on {
+        ol(class=side_list_class(), data-signal=region_key("nav", key),
+           data-signal-as="html", inner)
+    } else {
+        ol(class=side_list_class(), inner)
+    }
+}
+
+side_list_class() -> str => "list-none mt-2 p-0"
 
 // ---- i18n page shell ------------------------------------------------------
 
@@ -765,8 +871,10 @@ next_page(chs: str[], i: int) -> int {
 // The bulk of it is a `<details>` so a phone gets a line instead of three
 // screens of links before the prose starts. It ships open, and a line of script
 // closes it on a narrow viewport; without script it stays open and usable.
-sidebar(title: str, langs: str, cur_lang: str, chs: str[], titles: str[],
-        cur: str, toc_html: str) -> str =>
+// `nav_html` and `toc_html` are the two regions the sidebar holds; `key` names
+// the page they belong to and is unused when `d` is off.
+sidebar(d: Dev, key: str, title: str, langs: str, cur_lang: str, chs: str[],
+        titles: str[], cur: str, nav_html: str, toc_html: str) -> str =>
     div(data-tomo="side", class=side_class(),
         div(data-tomo="head", class=sh_class(),
             a(class="font-semibold text-[0.95rem] no-underline text-inherit",
@@ -779,7 +887,7 @@ sidebar(title: str, langs: str, cur_lang: str, chs: str[], titles: str[],
                               ++ " text-zinc-500",
                         "☰ " ++ nav_label(cur_lang))
                 search_box()
-                ol(class="list-none mt-2 p-0", side_items(chs, titles, cur, 0))
+                nav_region(d, key, nav_html)
                 toc_html)
         collapse_script()) ++ "\n"
 
@@ -898,13 +1006,18 @@ search_js() -> str =>
 // switcher and the sidebar. `langs` is a comma-joined list of codes
 // (e.g. "en,ko"); `cur` is the active one.
 page(title: str, cur: str, langs: str, side: str, body: str) -> str =>
-    shell(title, cur, langs, side, body, "../")
+    shell(title, cur, langs, side, body, "../", "")
 
 // `up` is the path back to the languages' shared parent: "../" from inside a
 // language directory, "" from the root page, which sits above them. Getting it
 // wrong sends the switcher out of the site entirely.
-shell(title: str, cur: str, langs: str, side: str, body: str,
-      up: str) -> str =>
+//
+// `extra` is appended to the `<head>`, and is "" for every page this program
+// publishes. It is where a dev build puts the patcher and its poll loop, so a
+// published page is one string shorter than a dev one and carries no script it
+// does not need.
+shell(title: str, cur: str, langs: str, side: str, body: str, up: str,
+      extra: str) -> str =>
     "<!doctype html>\n"
         ++ html(lang=cur,
             head(
@@ -913,6 +1026,7 @@ shell(title: str, cur: str, langs: str, side: str, body: str,
                      content="width=device-width,initial-scale=1")
                 title_tag(title)
                 stylesheet()
+                extra
             )
             body_tag(class=body_class(),
                 div(class=column_class(side),
@@ -1089,7 +1203,7 @@ landing(root: str, title: str, langs: str, lang: str, fallback: str,
            ++ "\n" ++ article(landing_body(src, title, langs, lang, up))
            ++ "\n"
 
-    shell(title, lang, langs, "", body, up)
+    shell(title, lang, langs, "", body, up, "")
 }
 
 landing_head(title: str, langs: str, lang: str, up: str) -> str =>
@@ -1267,7 +1381,11 @@ write_index(root: str, out: str, title: str, langs: str, lang: str,
     body = h1(class=md_class("h1"), escape_html(title))
            ++ nav(ol(class="list-none p-0",
                      "\n" ++ index_items(chs, titles, 0))) ++ "\n"
-    side = sidebar(title, langs, lang, chs, titles, "", "")
+    // The index is nobody's chapter, so no entry in the sidebar is current and
+    // it has no headings of its own to list. It is not a dev-mode region
+    // either: a reader on the index gets the rebuilt file on their next load.
+    side = sidebar(published(), "", title, langs, lang, chs, titles, "",
+                   side_items(chs, titles, "", 0), "")
     write_file(dir ++ "/index.html", page(title, lang, langs, side, body))
     1
 }
@@ -1437,19 +1555,36 @@ build_chapter(root: str, out: str, title: str, langs: str, lang: str,
     if !file_exists(src) {
         0
     } else {
-        write_chapter(out, title, langs, lang, chs, titles, ci, read_file(src))
+        write_chapter(published(), out, title, langs, lang, chs, titles, ci,
+                      parts_of(chs, titles, ci, read_file(src)))
     }
 }
 
-write_chapter(out: str, title: str, langs: str, lang: str, chs: str[],
-              titles: str[], ci: int, md: str) -> int {
+/// One chapter's page, written where the book wants it. Returns 1, so a builder
+/// can count what it produced.
+///
+/// It takes rendered `Parts` rather than Markdown because a dev-mode rebuild
+/// has them already: it renders a chapter once, keeps the parts in a store to
+/// diff the next build against, and writes the page out of the same values. Two
+/// renders of one chapter would be two chances to disagree.
+write_chapter(d: Dev, out: str, title: str, langs: str, lang: str, chs: str[],
+              titles: str[], ci: int, p: Parts) -> int {
     dir = out ++ "/" ++ lang
     make_dir(dir)
-    body = article("\n" ++ render(md)) ++ "\n" ++ chapter_nav(chs, ci)
-    side = sidebar(title, langs, lang, chs, titles, chs.get(ci), toc(md))
     write_file(dir ++ "/" ++ chs.get(ci) ++ ".html",
-               page(title, lang, langs, side, body))
+               chapter_page(d, title, langs, lang, chs, titles, ci, p))
     1
+}
+
+/// One chapter's page, as markup.
+chapter_page(d: Dev, title: str, langs: str, lang: str, chs: str[],
+             titles: str[], ci: int, p: Parts) -> str {
+    key = page_key(lang, chs.get(ci))
+    body = article_region(d, key, p.article) ++ "\n" ++ chapter_nav(chs, ci)
+    side = sidebar(d, key, title, langs, lang, chs, titles, chs.get(ci), p.nav,
+                   toc_region(d, key, p.toc))
+
+    shell(title, lang, langs, side, body, "../", d.extra)
 }
 
 // ---- self-check -----------------------------------------------------------
@@ -1469,8 +1604,9 @@ main() -> int {
     info("=== toc ===")
     info(toc(sample))
     info("=== page ===")
-    demo = sidebar("Maca Handbook", "en,ko", "en", ["a", "b"], ["One", "Two"],
-                   "a", toc(sample))
+    demo = sidebar(published(), "", "Maca Handbook", "en,ko", "en", ["a", "b"],
+                   ["One", "Two"], "a",
+                   side_items(["a", "b"], ["One", "Two"], "a", 0), toc(sample))
     info(page("Maca Handbook", "en", "en,ko", demo, article("hi")))
 
     // Build the real book from this repository into `site/`.

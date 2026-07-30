@@ -45,6 +45,23 @@ field it was meant for stays empty. Both compiled clean before this check, and
 what you saw was a page with a heading missing. `base with { f = v }` is the
 update form and is deliberately partial; only a construction is checked.
 
+The anonymous spelling owes the same two things, and the message names the
+binding rather than the type, because that is what the author wrote:
+
+```
+TypeMismatch: in `p`: record is missing field `y`
+TypeMismatch: in `p`: record has unexpected field `z`
+```
+
+A record literal is otherwise open, because reading one field should not require
+knowing the rest. [The Type System](a6-types.md) is where the named and anonymous
+spellings meet.
+
+**Which side is which.** `expected` is always the type the code *declares* and
+`found` is the value that arrived: the annotation, the return type, or the
+parameter is expected, and the expression is found. A pair the other way round is
+a compiler bug, not a hint about your program.
+
 ## NonExhaustive
 
 A `match` doesn't cover every variant.
@@ -87,11 +104,15 @@ capitalised names are constructors, and UFCS method calls stay gradual.
 It also covers the keywords Maca doesn't have:
 
 ```
-UndefinedName: `return`: Maca has no `return` — a function's last expression
-is its value
+UndefinedName: `return`: a function's last expression is its value, so drop
+the `return`
 ```
 
-See [Keywords](a1-keywords.md) for the full list of those.
+Each of those leads with the form that works and mentions the missing word
+second. The other order was read as a refusal: "Maca has no `return`" landed
+first, and a reader took away that a function could not hand a value back, when
+Maca has exactly Rust's rule. The word is the aside; what to write instead is the
+message. See [Keywords](a1-keywords.md) for the full list of those.
 
 ## UnknownOption
 
@@ -135,6 +156,79 @@ call — a known builtin name, or a method on one of those receivers — so
 that reads a file through the free builtin compiles today. The rows and what
 introduces each are [Effects and Async](a7-effects.md).
 
+## Import resolution
+
+These come from before the checker, when the compiler is working out which file
+each `import` names and inlining it. They are not `DiagKind`s, but they are
+compile errors a person hits, and every one of them replaced a silent wrong
+answer.
+
+**An ambiguous import** names two files, and refuses rather than picking one:
+
+```
+apps/x/main.maca: ambiguous import `bench/stat`: it names two files:
+  apps/x/bench/stat.maca (as written, the one this build would use)
+  modules/bench/stat.maca (under a search root)
+  A directory sharing a package's name hides the package, and the import line
+  cannot say which was meant. Rename the directory, or move the module so that
+  one path names it.
+```
+
+The written path is tried before the search roots, so a directory beside your
+source that shares a package's name shadows the package. Both candidates are real
+files with, by construction, the same name, so one is being compiled and the other
+silently is not, and which is which depends on a directory layout the import line
+never mentions. That is not a preference anybody expressed, so there is nothing to
+honour: rename the directory, or write a path that names one file. It costs
+correct programs nothing, because across this repository's imports no written path
+and no search root ever name two different files.
+
+**A name defined by more than one module** cannot be inlined, because everything
+becomes one translation unit:
+
+```
+`render` is defined by more than one module of this program, and every module
+is inlined into one:
+  modules/tomo/page.maca
+  modules/tomo/feed.maca
+  Both are API, so neither can be moved out of the way. Rename one of them, or
+  ask for the one you mean with `import { … } from …` and keep the other out of
+  the program.
+```
+
+Two files that each keep a *private* helper of the same name are fine: the
+compiler qualifies those with the module's own name. This fires when both are
+API, which is where renaming is a decision only the author can make. The failure
+it replaced was a C `redefinition` error naming a function the reader never wrote
+twice.
+
+**A reference nothing settles** is the same clash seen from a third file:
+
+```
+apps/site/home.maca: `render` is defined by more than one module this file
+reaches, and every module is inlined into one:
+  modules/tomo/page.maca
+  modules/tomo/feed.maca
+  Nothing here says which one `render` means. Ask for the one you mean with
+  `import { render } from …`, or rename the others.
+```
+
+The difference from the one above is where the ambiguity is: there, two modules
+answer for the name; here, a *third* module writes it and nothing in that file
+says which it meant. A selective import is the answer either way, because naming
+what you want is the one thing that settles it.
+
+**An import that resolves to no file** is an error too, including a single-word
+selective import, because there is nothing to select from a builtin:
+
+```
+apps/x/main.maca: no module `std/str`: `std/str.maca` is not beside this file
+or in the working directory
+```
+
+Four files once imported a `std/str` that has never existed, silently, and each
+then hand-wrote the helpers it believed it was importing.
+
 ## Errors that are not diagnostics
 
 Some failures come from further down the pipeline and read differently.
@@ -145,6 +239,18 @@ Some failures come from further down the pipeline and read differently.
 lex (28, 28): string literal spans a line; write `\n`, or use a raw
 """…""" string. (A literal brace is `\{` or `{{`.)
 ```
+
+An ambiguous `=> { … }` is one of these. A record literal and a block read the
+same when every entry is a distinct `name = value` and only newlines separate
+them, so neither reading is taken:
+
+```
+parse (45, 46): `mk`: this `=> { … }` reads as a record literal and as a
+block. Write `Name { … }` for the record, or drop the `=>` for the block
+```
+
+[Syntax](a5-syntax.md) has the full rule and what decides it in the cases that
+are not ambiguous.
 
 **Backend refusals** — valid code that a particular target cannot emit:
 

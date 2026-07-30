@@ -186,3 +186,45 @@ main() -> int {
     let Some(out) = run(src) else { return };
     assert_eq!(out, "12");
 }
+
+#[test]
+fn an_anonymous_literal_takes_the_declared_records_name() {
+    // The checker unifies a literal with a named record of the same shape, so
+    // this type-checks. Rust has no structural typing, so emitting the struct
+    // synthesized for the shape gave `expected Point, found MacaAnon_x_int_y_int`,
+    // a rustc error about generated code the author never wrote.
+    let src = "\
+Point = { x: int, y: int }
+
+corner() -> Point {
+    { x = 1, y = 2 }
+}
+
+main() -> int {
+    info(str(corner().x))
+    0
+}
+";
+    let rs = ok(src);
+    assert!(rs.contains("Point {"), "did not name the record:\n{rs}");
+    assert!(
+        !rs.contains("MacaAnon_x_int_y_int {"),
+        "still built the synthesized struct:\n{rs}"
+    );
+    let Some(out) = run(src) else { return };
+    assert_eq!(out, "1");
+}
+
+#[test]
+fn a_shape_two_records_share_is_refused_by_name() {
+    // There is no Rust type that is both, so rustc would have named the
+    // synthesized struct instead of the records that collide.
+    let msg = refused(
+        "Point = { x: int, y: int }\nPair = { x: int, y: int }\n\ncorner() -> Point {\n    { x = 1, y = 2 }\n}\n\nmain() -> int => 0\n",
+    );
+    assert!(msg.contains("Point") && msg.contains("Pair"), "{msg}");
+    assert!(
+        !msg.contains("MacaAnon"),
+        "refusal names generated code: {msg}"
+    );
+}

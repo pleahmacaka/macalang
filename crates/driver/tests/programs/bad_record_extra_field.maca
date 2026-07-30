@@ -1,0 +1,9 @@
+// And no field the record does not declare: the value goes nowhere and the
+// field it was meant for stays empty.
+
+Point = { x: int, y: int }
+
+main() -> int {
+    p: Point = { x = 5, y = 6, z = 7 }
+    p.x
+}

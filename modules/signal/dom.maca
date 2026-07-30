@@ -24,9 +24,14 @@
 // The two targets differ in what they can do with a patch, not in what the
 // patch is. In a browser `patch_script` produces the call that applies it to
 // the live DOM, touching exactly the marked nodes. A native build renders the
-// page once, has no DOM afterwards, and can only describe the patch — which is
-// enough to test the wiring without a browser, and is what `static_note` says
-// on the page so nobody mistakes it for a live one.
+// page once and has no DOM afterwards, so it has three weaker answers instead:
+// `describe` prints the patch, `patch_json` sends it to a browser that does
+// have one, and `apply_patch` applies it to the page string it rendered. That
+// last one is how an incremental generator checks itself without a browser:
+// patching the last build's page has to produce the next build's page, byte for
+// byte, or the incremental path has drifted from the static one.
+// `static_note` is what says on the page that this build is a snapshot, so
+// nobody mistakes it for a live one.
 //
 // Either build delivers the page. Everything here is a string, so a native
 // build writing `index.html` — `runtime_script()` in the head, bound nodes in
@@ -37,7 +42,7 @@
 // module or of `signal/store` is a plain call and not a UFCS method — see the
 // note above `signal/store`'s reading section for the build failure that rule
 // avoids.
-import { escape_html } from std/text
+import { escape_html, index_of_from } from std/text
 import { Store, get, changed } from signal/store
 
 /// One node to update: the key that changed, its new value, and the selector
@@ -71,6 +76,20 @@ class_node(s: Store, tag: str, key: str, body: str) -> str =>
 value_input(s: Store, key: str) -> str =>
     element("input", data-signal=key, data-signal-as="value",
         value=get(s, key), "")
+
+/// A `<tag>` whose *inner markup* is `key`'s value: a region of the page that a
+/// rebuild replaces whole.
+///
+/// This is the binding a dev-mode rebuild patches. A region holds a block of
+/// markup its own generator produced, so replacing it repaints that block and
+/// leaves the rest of the page (scroll position, an open `<details>`, a
+/// half-typed field) exactly where the reader put it.
+///
+/// It is the one binding here that does not escape, which is both the point and
+/// the risk: markup is what a region is for, and state that came from input
+/// belongs in `text_node`.
+html_node(s: Store, tag: str, key: str) -> str =>
+    element(tag, data-signal=key, data-signal-as="html", get(s, key))
 
 /// The selector matching every node bound to `key`. A page that binds by hand
 /// — `data-signal-as="href"` and the like — can check its own markup with it.
@@ -134,9 +153,21 @@ patch_script(s: Store) -> str {
     if ops.length() == 0 {
         ""
     } else {
-        "macaSignal([" ++ encode(ops, 0, []).join(",") ++ "]);"
+        "macaSignal(" ++ ops_json(ops) ++ ");"
     }
 }
+
+/// The current patch as a JSON array, `[]` when nothing changed.
+///
+/// `patch_script` is this wrapped in the call that applies it on the page it is
+/// printed into. This is the form for a patch that travels: a dev-mode channel
+/// sends the array and the browser hands it to `macaSignal` itself, so the
+/// message is data rather than script the page has to evaluate.
+///
+/// Import `patch` alongside it, for the reason `patch_script` gives.
+patch_json(s: Store) -> str => ops_json(patch(s))
+
+ops_json(ops: Op[]) -> str => "[" ++ encode(ops, 0, []).join(",") ++ "]"
 
 encode(ops: Op[], i: int, acc: str[]) -> str[] {
     if i >= ops.length() {
@@ -170,6 +201,188 @@ shown(v: str) -> str => "\"" ++ escaped_value(v) ++ "\""
 quoted(v: str) -> str =>
     "\"" ++ escaped_value(v).replace("<", "\\u003c") ++ "\""
 
+// ---- applying a patch without a browser -----------------------------------
+//
+// The browser applies a patch to a DOM. A native build has only the string it
+// rendered, and `apply_patch` is that string patched the same way. It exists to
+// be compared against: an incremental generator can assert that patching the
+// last build's page produces the next build's page byte for byte, which is the
+// one claim an incremental path has to keep and the one thing a browser cannot
+// check on its behalf.
+//
+// So this is the reference implementation of `runtime()` over text, and the two
+// have to agree. Where they could drift, the text side follows the DOM: every
+// node bound to the key is patched, not the first; a key nothing is bound to
+// changes nothing; and a text binding escapes where a markup binding does not.
+
+/// `ops` applied to the markup they were computed against.
+///
+/// Import `patch` alongside it: the signature names `Op[]`, and a selective
+/// import declares an inlined module's array types only for the names it was
+/// given.
+apply_patch(page: str, ops: Op[]) -> str => applied(page, ops, 0)
+
+applied(page: str, ops: Op[], i: int) -> str {
+    if i >= ops.length() {
+        page
+    } else {
+        applied(apply_from(page, ops.get(i), 0), ops, i + 1)
+    }
+}
+
+// One op, at every node bound to its key, walking forward from `at`.
+//
+// Forward rather than once, because `querySelectorAll` patches every match and
+// a check that stopped at the first would call a page correct that a browser
+// renders differently. The next search starts past the text just written, so a
+// value that happens to contain the marker is content and not a second node.
+apply_from(page: str, op: Op, at: int) -> str {
+    found = index_of_from(page, marker(op.key), at)
+
+    if found < 0 {
+        page
+    } else {
+        patch_node(page, op, tag_open(page, found))
+    }
+}
+
+patch_node(page: str, op: Op, lt: int) -> str {
+    gt = index_of_from(page, ">", lt)
+    tag = tag_name(page, lt)
+    shows = attr_in(page.slice(lt, gt + 1), "data-signal-as")
+
+    if shows == "" || shows == "html" {
+        patch_children(page, op, tag, gt + 1, shows == "html")
+    } else {
+        patch_attr(page, op, lt, gt, shows == "value" ? "value" : shows)
+    }
+}
+
+// The element's children, replaced. A text binding escapes its value on the way
+// in, because `textContent` is text and the page it is written into is markup.
+patch_children(page: str, op: Op, tag: str, from: int, raw: bool) -> str {
+    close = close_at(page, tag, from)
+    shown = raw ? op.value : escape_html(op.value)
+    next = page.slice(0, from) ++ shown ++ page.slice(close, page.length())
+
+    apply_from(next, op, from + shown.length())
+}
+
+// One attribute of the open tag, replaced. `value` is a property in the browser
+// and an attribute here, which is the one place the two sides cannot match: a
+// field the reader has typed in keeps its property and its markup says what the
+// page was rendered with. Comparing rendered pages is what this is for, so the
+// markup is the honest answer.
+patch_attr(page: str, op: Op, lt: int, gt: int, name: str) -> str {
+    rebuilt = with_attr(page.slice(lt, gt + 1), name, op.value)
+    next = page.slice(0, lt) ++ rebuilt ++ page.slice(gt + 1, page.length())
+
+    apply_from(next, op, lt + rebuilt.length())
+}
+
+// The marker the element syntax wrote for `key`.
+//
+// Not `selector(key)`: a CSS selector reads the key a browser has already
+// parsed out of the attribute, and this reads the bytes on the page, where a
+// quote is `&quot;` and an ampersand is `&amp;`.
+marker(key: str) -> str => "data-signal=\"" ++ escape_html(key) ++ "\""
+
+// The `<` opening the element whose attributes contain position `at`.
+tag_open(page: str, at: int) -> int {
+    if at <= 0 {
+        0
+    } else if page.at(at) == "<" {
+        at
+    } else {
+        tag_open(page, at - 1)
+    }
+}
+
+tag_name(page: str, lt: int) -> str => name_from(page, lt + 1, "")
+
+name_from(page: str, i: int, acc: str) -> str {
+    if i >= page.length() || !is_name_char(page.at(i)) {
+        acc
+    } else {
+        name_from(page, i + 1, acc ++ page.at(i))
+    }
+}
+
+// `ch` and not `c`: `http/server`'s `import c "http.h"` makes `c` a module name
+// for the whole program it is linked into, and a UFCS call on a local of that
+// name is then lowered as a call into that module. `modules/http/server.maca`
+// says more about it. This module is one an `http` program imports, so it keeps
+// off the name.
+is_name_char(ch: str) -> bool => ch.is_alpha() || ch.is_ascii_digit()
+
+// Where the element whose children start at `from` closes.
+//
+// Nesting is counted, and it has to be: a region wrapping a `<div>` that holds
+// another `<div>` closes at the second `</div>`, and taking the first would cut
+// the region in half and strand its tail outside. A tag that is never closed
+// answers with the end of the page rather than a negative index.
+close_at(page: str, tag: str, from: int) -> int =>
+    close_scan(page, tag, from, 0)
+
+close_scan(page: str, tag: str, at: int, depth: int) -> int {
+    closing = index_of_from(page, "</" ++ tag ++ ">", at)
+    opening = next_open(page, tag, at)
+
+    if closing < 0 {
+        page.length()
+    } else if opening >= 0 && opening < closing {
+        close_scan(page, tag, opening + tag.length() + 1, depth + 1)
+    } else if depth == 0 {
+        closing
+    } else {
+        close_scan(page, tag, closing + tag.length() + 3, depth - 1)
+    }
+}
+
+// The next `<tag` that really opens a `<tag>`. `<div` is also the start of
+// `<divider>`, and counting that one as a nested `<div>` walks the scan past the
+// close it was looking for.
+next_open(page: str, tag: str, at: int) -> int {
+    found = index_of_from(page, "<" ++ tag, at)
+    after = found + tag.length() + 1
+
+    if found < 0 {
+        -1
+    } else if after >= page.length() || !is_name_char(page.at(after)) {
+        found
+    } else {
+        next_open(page, tag, found + 1)
+    }
+}
+
+// An open tag with `name` set to `v`, added when the tag did not carry it.
+with_attr(open: str, name: str, v: str) -> str {
+    pat = " " ++ name ++ "=\""
+    at = open.index_of(pat)
+    end = index_of_from(open, "\"", at + pat.length())
+
+    if at < 0 {
+        open.slice(0, open.length() - 1) ++ pat ++ escape_html(v) ++ "\">"
+    } else {
+        open.slice(0, at + pat.length()) ++ escape_html(v)
+            ++ open.slice(end, open.length())
+    }
+}
+
+// One attribute's value out of an open tag, still escaped as the page has it,
+// or "" when the tag does not carry it.
+attr_in(open: str, name: str) -> str {
+    pat = " " ++ name ++ "=\""
+    at = open.index_of(pat)
+
+    if at < 0 {
+        ""
+    } else {
+        open.slice(at + pat.length(),
+                   index_of_from(open, "\"", at + pat.length()))
+    }
+}
+
 // ---- the browser side -----------------------------------------------------
 
 /// `runtime()` inside a `<script>`, ready to drop into a page's `<head>`.
@@ -189,6 +402,7 @@ window.macaSignal = function (ops) {
       var el = nodes[j];
       var as = el.getAttribute("data-signal-as");
       if (!as) el.textContent = op.value;
+      else if (as === "html") el.innerHTML = op.value;
       else if (as === "value") el.value = op.value;
       else el.setAttribute(as, op.value);
     }

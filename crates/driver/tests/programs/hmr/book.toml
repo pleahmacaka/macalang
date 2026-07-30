@@ -1,0 +1,16 @@
+# A two-chapter book, for the dev-mode gate in crates/driver/tests/hmr.rs.
+#
+# Small on purpose: the test starts a server, edits a chapter and watches what
+# comes back, and none of that gets truer with forty chapters. One language, so
+# a patch names one page per edit and the assertions can say which.
+
+[book]
+title = "Fixture Book"
+site = "Fixture"
+languages = ["en"]
+
+chapters = [
+    "# A Section",
+    "01-one",
+    "02-two",
+]

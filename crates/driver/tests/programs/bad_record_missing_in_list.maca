@@ -1,0 +1,17 @@
+// The other half of `bad_record_shape_in_list.maca`: a literal that writes only
+// some of the record's fields.
+//
+// The element type is settled by the first element, so the second reaches the
+// native emitter as a `Point`. `ctor` reads the *declaration* and looks each
+// field up in the literal, so `y` would be filled in as zero and the program
+// would run and answer, which is exactly the silence a literal written into a
+// named record is refused for everywhere else.
+
+Point = { x: int, y: int }
+
+corner() -> Point => { x = 1, y = 2 }
+
+main() -> int {
+    ps = [corner(), { x = 9 }]
+    ps[1].y
+}

@@ -43,7 +43,9 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   `Name { = }` = constructor. Single namespace for types and values.
 - Bracketless comma lists (`xs = a, b, c`); significant newlines; records are
   newline-separated `{ }`.
-- Functions: `f(x: T) -> R { body }` or `=> expr`.
+- Functions: `f(x: T) -> R { body }` or `=> expr`. The two brace forms are one
+  function: `f() -> R => { … }` *is* `f() -> R { … }`, and the parser keeps the
+  block. See the arrow-brace rule below.
 - **Variadic `...rest: T`** — the trailing arguments, collected. The written
   type is one argument's, because that is what a call site writes; inside the
   body `rest` is a `T[]`. Three dots and not two: `..` already means an
@@ -140,6 +142,34 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - Functional record update: `base with { field = value }` yields a copy of a
   record with the named fields overwritten, leaving the original binding
   unchanged (C: struct copy; JS: object spread). (`examples/record_update.maca`.)
+- **A record literal is the record type it is written into.** `Point = { x: int,
+  y: int }` is nominal, `{ x = 5, y = 6 }` is structural, and the two are one
+  type: a literal *becomes* the named record wherever an annotation, a return
+  type, a parameter, a field, or a list element names one, so the record's own
+  struct is what is built and no second one is synthesized. Meeting the
+  declaration is also what checks the literal against it: a record literal is
+  otherwise open (field access is row-polymorphic), and a field nobody wrote
+  would be silently zero, so a literal written into a named record has to name
+  every field the record declares and no field it doesn't. With no such context a
+  literal stays structural, and the native and Rust back ends synthesize one
+  struct per distinct shape. (`crates/driver/tests/programs/arrow_records.maca`.)
+- **The arrow-brace rule.** `=>` then `{` is a record literal and a block at the
+  same time, and the shape of the body decides which, because a record literal's
+  fields are `name = value` with commas between them and a block's statements are
+  newline-separated with the last one the value:
+  - some entry is not `name = value`, or a name is bound twice, or the braces are
+    empty, and it is a **block**, parsed as `FnBody::Block` because
+    `f() -> R => { … }` is `f() -> R { … }`; the pretty-printer behind the LSP's
+    format command and `maca.fmt` prints back the spelling without the spare
+    `=>` (`maca fmt` itself only re-indents, so it keeps either);
+  - every entry is a distinct `name = value` and a comma sits at the brace's own
+    depth, which no block has, and it is a **record literal** (a trailing comma
+    counts, so `{ x = 1, }` is one);
+  - every entry is a distinct `name = value` with only newlines between them, and
+    both readings hold, so **neither is taken**: refused by name, showing the
+    record spelling (`Name { … }`) and the block spelling (drop the `=>`).
+  A *lambda*'s `=> {` is always a block, as is a match arm's, and parenthesising
+  is how a record is written there (`(n) => ({ x = n })`).
 - Paths are literals: `/tmp` `./x` `../x` `~/x`, joined with `p / "seg"`.
 - SIMD vectors are first-class value types: `f32x8`, `i32x4`, … (native only).
 - UI: elements are functions (`div(class=..., ...children)`); Svelte-style

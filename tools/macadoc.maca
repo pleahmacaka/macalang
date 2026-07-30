@@ -24,6 +24,7 @@ import std/fs
 import std/path
 import std/text
 import apps/site/shell
+import { highlight, code_css } from apps/tomo/highlight
 import std/list
 import { command, arg, rest } from cli/spec
 import { parse, value, from } from cli/parse
@@ -34,11 +35,13 @@ import { bold, dim, ok, bad } from cli/style
 
 // One documented declaration. `kind` is what it is, `sig` is how it is written
 // in the source, and `doc` is the `///` block above it, still a list of lines
-// because the blank ones in it are paragraph breaks.
+// because the blank ones in it are paragraph breaks. `line` is where the
+// declaration sits in the file, which is what the source link points at.
 Item = {
     kind: str
     name: str
     sig:  str
+    line: int
     doc:  str[]
 }
 
@@ -180,19 +183,20 @@ is_decl(line: str) -> bool =>
 // follows decides which.
 declared(lines: str[], i: int, doc: str[]) -> Item {
     line = lines.get(i)
+    at = i + 1
 
     if is_fn(line) {
         Item { kind = "fn", name = before(line, "("),
-               sig = signature(lines, i), doc = doc }
+               sig = signature(lines, i), line = at, doc = doc }
     } else if rhs(line).starts_with("\{") {
         Item { kind = "record", name = before(line, " ="),
-               sig = record_sig(lines, i), doc = doc }
+               sig = record_sig(lines, i), line = at, doc = doc }
     } else if rhs(line).contains("|") {
         Item { kind = "sum", name = before(line, " ="), sig = line.trim(),
-               doc = doc }
+               line = at, doc = doc }
     } else {
         Item { kind = "const", name = before(line, " ="),
-               sig = line.trim(), doc = doc }
+               sig = line.trim(), line = at, doc = doc }
     }
 }
 
@@ -422,15 +426,38 @@ paired(parts: str[], sep: str) -> str[] {
 
 // ---- rendering ------------------------------------------------------------
 
-Wrap = "max-w-[52rem] mx-auto px-6"
+// The top bar spans the whole layout below it, sidebar included, so its own
+// width is the grid's: two tracks and the gap between them.
+Wrap = "max-w-[75rem] mx-auto px-6"
+
+// The reading column with the navigation beside it. Below the `md` breakpoint
+// the grid becomes one column and the sidebar, being first in the document,
+// lands above the text as a disclosure.
+Shell = "grid grid-cols-[15rem_minmax(0,50rem)] gap-10 justify-center px-6"
+    ++ " py-10 max-md:block max-md:max-w-[50rem] max-md:mx-auto max-md:px-5"
 
 PreClass = "mt-3 bg-zinc-100 dark:bg-zinc-900 rounded-md p-4 overflow-x-auto"
     ++ " text-[0.85rem] m-0"
 
+// A column of evenly spaced blocks, and the reason it is not a bare `grid`.
+//
+// A grid's implicit column is `auto`, which means "as wide as your widest
+// child", and a child here is a signature in a `<pre>`. So the track grew past
+// the viewport, and a phone scrolled sideways with the prose cut off at the
+// right edge: `overflow-x-auto` on the block cannot help, because by then the
+// track it sits in is already too wide. `minmax(0,1fr)` is what lets it shrink,
+// and `grid-cols-1` is how that is spelled.
+Stack = "grid grid-cols-1"
+
 
 // Every page in the reference sits directly in the output directory, so there
 // is one level to climb to reach the site root and no parameter to carry it.
-page(title: str, body: str) -> str =>
+//
+// `code_css()` is here beside the generated utilities because the token colours
+// cannot be utilities: `text-…` takes a named colour, and the named set that
+// clears 4.5:1 on a code block is one hue. `apps/tomo/highlight.maca` writes
+// them out and both this and the handbook include them.
+page(title: str, side: str, body: str) -> str =>
     "<!doctype html>\n"
         ++ html(lang="en",
             head(
@@ -438,9 +465,11 @@ page(title: str, body: str) -> str =>
                 meta(name="viewport",
                      content="width=device-width,initial-scale=1")
                 title_tag(title)
-                style(base_css() ++ styles())
+                style(base_css() ++ code_css() ++ styles())
             )
-            body_tag(page_class("font-sans"), top_bar(title) ++ element("main", body)))
+            body_tag(page_class("font-sans"),
+                top_bar(title)
+                    ++ div(class=Shell, side ++ element("main", body))))
         ++ "\n"
 
 
@@ -462,14 +491,14 @@ top_bar(title: str) -> str =>
 
 // The index: every module, its blurb, and how many things it documents.
 index_page(ms: Module[]) -> str =>
-    page("API reference",
-         section(class=Wrap ++ " py-12",
+    page("API reference", sidebar(ms, ""),
+         section(class="py-2",
              h1(class="font-bold text-[1.9rem] tracking-tight m-0",
                 "API reference")
              p(class="mt-2 text-zinc-600 dark:text-zinc-400",
                "Generated from the source by "
                    ++ code(class=Mono, "tools/macadoc.maca") ++ ".")
-             div(class="mt-8 grid gap-4", module_cards(ms, 0))))
+             div(class=Stack ++ " mt-8 gap-4", module_cards(ms, 0))))
 
 Mono = "font-mono text-[0.9em]"
 
@@ -491,7 +520,7 @@ module_card(m: Module) -> str =>
           span(class="text-[0.8rem] text-zinc-500 dark:text-zinc-400",
                counted(m.items.length())))
       p(class="mt-2 text-[0.95rem] text-zinc-600 dark:text-zinc-400 m-0",
-        inline(summary(m.blurb))))
+        inline(first_sentence(m.blurb))))
 
 counted(n: int) -> str {
     if n == 1 {
@@ -503,11 +532,16 @@ counted(n: int) -> str {
 
 // A module's card gets one line: the first sentence of the first paragraph.
 //
+// Not called `summary`, though that is what it is, because `<summary>` is the
+// label of a disclosure and the sidebar needs one per module: a top-level
+// definition shadows a tag of the same name for the whole file, and there is no
+// way to write past it.
+//
 // `str_find_index` answers -1 when no line is blank, and `str_take(ls, -1)`
-// clamps to zero — so a blurb written as one paragraph produced an empty card
+// clamps to zero, so a blurb written as one paragraph produced an empty card
 // rather than its first sentence. The std modules all happen to have a blank
 // line; nothing made them.
-summary(ls: str[]) -> str {
+first_sentence(ls: str[]) -> str {
     blank = str_find_index(ls, l => l.trim() == "")
     end = if blank < 0 { ls.length() } else { blank }
     para = str_take(ls, end).join(" ")
@@ -520,51 +554,370 @@ summary(ls: str[]) -> str {
     }
 }
 
-module_page(m: Module) -> str =>
-    page(m.path,
-         section(class=Wrap ++ " py-12",
-             h1(class="font-mono font-bold text-[1.6rem] m-0", escape_html(m.path))
+module_page(ms: Module[], m: Module) -> str =>
+    page(m.path, sidebar(ms, m.name),
+         section(class="py-2",
+             div(class="flex flex-wrap items-baseline justify-between gap-3",
+                 h1(class="font-mono font-bold text-[1.6rem] m-0",
+                    escape_html(m.path))
+                 source_link(m.path, 0, "source"))
              prose(m.blurb)
-             toc(m.items)
-             div(class="mt-10 grid gap-8", entries(m.items, 0))))
+             div(class=Stack ++ " mt-10 gap-8", entries(ms, m, m.items, 0))))
 
-// A jump list, because a reference is read by looking something up.
-toc(items: Item[]) -> str =>
-    nav(class="mt-6 flex flex-wrap gap-2", toc_links(items, 0))
-
-toc_links(items: Item[], i: int) -> str {
+entries(ms: Module[], m: Module, items: Item[], i: int) -> str {
     if i >= items.length() {
         ""
     } else {
-        link = a(class="px-2 py-1 rounded border border-zinc-200"
-                       ++ " dark:border-zinc-800 no-underline text-inherit"
-                       ++ " font-mono text-[0.8rem] hover:bg-zinc-100"
-                       ++ " dark:hover:bg-zinc-900",
-                 href="#" ++ items.get(i).name, escape_html(items.get(i).name))
-        link ++ toc_links(items, i + 1)
+        entry(ms, m, items.get(i)) ++ entries(ms, m, items, i + 1)
     }
 }
 
-entries(items: Item[], i: int) -> str {
-    if i >= items.length() {
-        ""
-    } else {
-        entry(items.get(i)) ++ entries(items, i + 1)
-    }
-}
-
-entry(it: Item) -> str =>
+// One item. The heading is its own jump link, which is what makes a signature
+// something a reader can send to somebody else: the name in the heading and the
+// name in the sidebar address the same `id`.
+entry(ms: Module[], m: Module, it: Item) -> str =>
     article(id=it.name, class="scroll-mt-6",
-        div(class="flex items-baseline gap-3",
+        div(class="flex flex-wrap items-baseline gap-3",
             h2(class="font-mono font-semibold text-[1.05rem] m-0",
-               escape_html(it.name))
-            span(class=badge_class(), it.kind))
-        pre(class=PreClass, code(class=Mono, escape_html(it.sig)))
+               a(class="no-underline text-inherit hover:underline",
+                 href="#" ++ it.name, escape_html(it.name)))
+            span(class=badge_class(), it.kind)
+            source_link(m.path, it.line, "source"))
+        signature_block(ms, m, it)
         prose(it.doc))
+
+// The signature twice over: as tokens for a reader, and as text in `data-sig`.
+//
+// Highlighting turns `-> str[]` into four spans, and a span is not text: the
+// search box above matches names and types out of `data-sig`, and anything else
+// reading the page gets the declaration without reassembling markup. The tokens
+// come from `apps/tomo/highlight.maca`, the scanner the handbook uses, so a
+// signature here is coloured by the same rules as a signature in a chapter.
+signature_block(ms: Module[], m: Module, it: Item) -> str =>
+    pre(class=PreClass, data-sig=flat(it.sig),
+        code(class=Mono,
+             cross_linked(highlight("maca", it.sig), ms, m.name, it.name)))
+
+// ---- cross-links ----------------------------------------------------------
+
+// A type named in a signature, linked to the declaration it names.
+//
+// This reads the highlighter's *output* rather than the source. The scanner has
+// already decided which words are types, following the lexer to do it; deciding
+// again here, with a second set of rules, is how the two answers drift apart.
+// So every `tok-ty` span whose text is a documented record or sum becomes a
+// link, and nothing else is touched.
+TySpan = "<span class=\"tok-ty\">"
+
+// `here` is the module being written and `own` the item being written, which is
+// excluded: a record's declaration opens with its own name, and linking that to
+// the heading directly above it is a link with nowhere to go.
+cross_linked(html: str, ms: Module[], here: str, own: str) -> str {
+    parts = html.split(TySpan)
+
+    linked_spans(parts, 1, ms, here, own, parts.get(0))
+}
+
+linked_spans(parts: str[], i: int, ms: Module[], here: str, own: str,
+             out: str) -> str {
+    if i >= parts.length() {
+        out
+    } else {
+        linked_spans(parts, i + 1, ms, here, own,
+                     out ++ TySpan ++ linked_span(parts.get(i), ms, here, own))
+    }
+}
+
+// One span's worth: the type's name, then `</span>`, then whatever followed it.
+//
+// A span always closes, because `tok` writes both halves or neither. If one ever
+// did not, `index_of` answers -1 and `slice(0, -1)` is "", which is the name of
+// nothing documented, so the part goes back out as it came in. There is no
+// branch for it because there is nothing for the branch to do differently.
+linked_span(part: str, ms: Module[], here: str, own: str) -> str {
+    at = part.index_of("</span>")
+    name = part.slice(0, at)
+    where = declaring_module(ms, here, name)
+
+    if name == own || where == "" {
+        part
+    } else {
+        a(class="no-underline text-inherit hover:underline focus:underline",
+          href=item_href(where, name, where == here), name)
+            ++ part.slice(at, part.length())
+    }
+}
+
+// The module documenting a record or a sum of this name, or "".
+//
+// A function or a constant is not a type, and a `tok-ty` span in a signature is
+// in type position, so those two kinds cannot be what it names however well the
+// name matches.
+//
+// `here`, the module being written, is asked first. Two modules may each
+// declare a `Point`, and a signature written in one of them means its own:
+// taking the first match in the list sent every one of those links to whichever
+// module happened to be documented first, so the reader landed on a record with
+// different fields and nothing on the page said so.
+declaring_module(ms: Module[], here: str, name: str) -> str {
+    if declares_in(ms, 0, here, name) {
+        here
+    } else {
+        first_declaring(ms, 0, name)
+    }
+}
+
+declares_in(ms: Module[], i: int, here: str, name: str) -> bool {
+    if i >= ms.length() {
+        false
+    } else if ms.get(i).name == here {
+        declares_type(ms.get(i).items, 0, name)
+    } else {
+        declares_in(ms, i + 1, here, name)
+    }
+}
+
+first_declaring(ms: Module[], i: int, name: str) -> str {
+    if i >= ms.length() {
+        ""
+    } else if declares_type(ms.get(i).items, 0, name) {
+        ms.get(i).name
+    } else {
+        first_declaring(ms, i + 1, name)
+    }
+}
+
+declares_type(items: Item[], i: int, name: str) -> bool {
+    if i >= items.length() {
+        false
+    } else if items.get(i).name != name {
+        declares_type(items, i + 1, name)
+    } else {
+        items.get(i).kind == "record" || items.get(i).kind == "sum"
+    }
+}
+
+// A declaration on one line. A record's spans several, and a reader searching
+// for `second: str` should find it however the source laid it out.
+flat(s: str) -> str =>
+    squeezed(s.replace("\n", " ").chars(), 0, "").trim()
+
+squeezed(cs: str[], i: int, out: str) -> str {
+    if i >= cs.length() {
+        out
+    } else if cs.get(i) == " " && out.ends_with(" ") {
+        squeezed(cs, i + 1, out)
+    } else {
+        squeezed(cs, i + 1, out ++ cs.get(i))
+    }
+}
 
 badge_class() -> str =>
     "px-2 py-[0.1rem] rounded-full text-[0.7rem] uppercase tracking-wide"
         ++ " bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
+
+// The declaration in the repository, at its line. A generated page is a summary
+// of source, and the question it cannot answer is "how".
+source_link(path: str, line: int, label: str) -> str =>
+    a(class="no-underline text-zinc-500 dark:text-zinc-400 text-[0.75rem]"
+            ++ " hover:underline",
+      href=source_url(path, line), label)
+
+// Line 0 means the file rather than a place in it.
+source_url(path: str, line: int) -> str {
+    if line <= 0 {
+        Repo ++ "/blob/main/" ++ path
+    } else {
+        Repo ++ "/blob/main/" ++ path ++ "#L{line}"
+    }
+}
+
+// ---- the sidebar ----------------------------------------------------------
+//
+// Every module and every item of every module, on every page. A reference is
+// read by looking one thing up and then a second thing, and going back to an
+// index between them is the whole cost this is here to remove: from
+// `text.html` a reader reaches `list/sort_by` in one click.
+//
+// It is also the search index. Filtering markup that is already on the page
+// needs no separate index file, no `fetch` (so the reference still searches
+// when opened straight off disk), and no markup built by script, which is what
+// would otherwise carry classes the compiler never sees and never styles.
+
+SideClass = "text-[0.85rem] sticky top-6 self-start max-h-screen"
+    ++ " overflow-y-auto overscroll-contain max-md:static max-md:max-h-none"
+    ++ " max-md:mb-6 max-md:border-b max-md:border-zinc-200"
+    ++ " max-md:dark:border-zinc-800"
+
+// `cur` is the module whose page this is, or "" on the index. Its disclosure
+// ships open and its items link within the page; every other module's link
+// carries its file.
+sidebar(ms: Module[], cur: str) -> str =>
+    div(class=SideClass,
+        details(data-doc="nav", open=true,
+            summary(class="hidden max-md:block cursor-pointer py-2 list-none"
+                          ++ " details-marker:hidden text-zinc-500",
+                    "☰ Modules")
+            search_box()
+            div(class="mt-2", module_trees(ms, 0, cur)))
+        nav_script())
+
+// The field, and the line that answers when nothing matches. Without it a query
+// with no hits looks identical to a query the box never received.
+search_box() -> str =>
+    input(id="q", type="search", placeholder="Search names and types",
+          aria-label="Search names and types", autocomplete="off",
+          class="w-full my-2 px-2 py-1 border border-zinc-200"
+                ++ " dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
+                ++ " text-[0.85rem]")
+        ++ p(id="empty", hidden=true,
+             class="text-zinc-500 text-[0.8rem] my-1", "No matches.")
+
+module_trees(ms: Module[], i: int, cur: str) -> str {
+    if i >= ms.length() {
+        ""
+    } else {
+        module_tree(ms.get(i), cur) ++ module_trees(ms, i + 1, cur)
+    }
+}
+
+module_tree(m: Module, cur: str) -> str {
+    here = m.name == cur
+
+    details(data-mod=m.name, open=here,
+        summary(class="cursor-pointer py-1 rounded font-mono font-semibold"
+                      ++ " text-[0.82rem] hover:text-black"
+                      ++ " dark:hover:text-white",
+                escape_html(m.name))
+        div(class="pb-2", kind_groups(m, here, 0)))
+}
+
+// ---- grouping -------------------------------------------------------------
+
+// The kinds in the order a reader scans for them. A module with none of a kind
+// gets no heading for it.
+Kinds = "fn record sum const"
+
+kind_label(kind: str) -> str {
+    if kind == "fn" {
+        "Functions"
+    } else if kind == "record" {
+        "Records"
+    } else if kind == "sum" {
+        "Sum types"
+    } else {
+        "Constants"
+    }
+}
+
+kind_groups(m: Module, here: bool, i: int) -> str {
+    kinds = Kinds.split(" ")
+
+    if i >= kinds.length() {
+        ""
+    } else {
+        kind_group(m, here, kinds.get(i)) ++ kind_groups(m, here, i + 1)
+    }
+}
+
+// The group carries `data-group` so the search can hide a heading whose rows
+// have all gone.
+kind_group(m: Module, here: bool, kind: str) -> str {
+    got = of_kind(m.items, 0, kind, [])
+
+    if got.length() == 0 {
+        ""
+    } else {
+        div(data-group=kind,
+            p(class="mt-3 mb-1 px-1 text-[0.7rem] uppercase tracking-wide"
+                    ++ " text-zinc-500 dark:text-zinc-400",
+              kind_label(kind))
+            ul(class="list-none m-0 p-0", side_rows(m, got, here, 0)))
+    }
+}
+
+of_kind(items: Item[], i: int, kind: str, acc: Item[]) -> Item[] {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind == kind {
+        of_kind(items, i + 1, kind, acc ++ [items.get(i)])
+    } else {
+        of_kind(items, i + 1, kind, acc)
+    }
+}
+
+side_rows(m: Module, items: Item[], here: bool, i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else {
+        side_row(m, items.get(i), here)
+            ++ side_rows(m, items, here, i + 1)
+    }
+}
+
+// `data-sig` is what the search matches, so a query reaches a parameter or a
+// return type and not only a name. It is on the row rather than the link
+// because the row is what gets hidden.
+side_row(m: Module, it: Item, here: bool) -> str =>
+    li(data-item=it.name, data-sig=flat(it.sig), class="m-0",
+       a(class="block px-2 py-[0.15rem] rounded no-underline font-mono"
+               ++ " text-[0.8rem] text-zinc-600 dark:text-zinc-400"
+               ++ " hover:bg-zinc-100 dark:hover:bg-zinc-800"
+               ++ " hover:text-black dark:hover:text-white",
+         href=item_href(m.name, it.name, here), escape_html(it.name)))
+
+item_href(module: str, name: str, here: bool) -> str {
+    if here {
+        "#" ++ name
+    } else {
+        module ++ ".html#" ++ name
+    }
+}
+
+// ---- behaviour ------------------------------------------------------------
+
+// The two things the sidebar cannot do as markup: collapse itself on a phone,
+// and filter. Both degrade to a working page without script, which is why the
+// disclosure ships open and the rows ship visible.
+//
+// A module matching by name shows all of its items, because "what is in
+// std/path" is the other question a reader types a module name to ask. That is
+// why the match is computed per module and pushed down to its rows, rather than
+// per row with the module inferred afterwards.
+nav_script() -> str =>
+    script("""
+(function(){
+  var nav=document.querySelector('details[data-doc="nav"]');
+  if(nav&&window.matchMedia("(max-width:48rem)").matches)
+    nav.removeAttribute("open");
+  var q=document.getElementById("q");
+  if(!q) return;
+  var empty=document.getElementById("empty");
+  var mods=document.querySelectorAll('details[data-mod]');
+  var was=[],i;
+  for(i=0;i<mods.length;i++) was.push(mods[i].hasAttribute("open"));
+  q.addEventListener("input",function(){
+    var t=q.value.trim().toLowerCase(),shown=0,j;
+    for(i=0;i<mods.length;i++){
+      var m=mods[i],hits=0;
+      var all=t===""||m.dataset.mod.toLowerCase().indexOf(t)>=0;
+      var rows=m.querySelectorAll('li[data-item]');
+      for(j=0;j<rows.length;j++){
+        var hit=all||rows[j].dataset.sig.toLowerCase().indexOf(t)>=0;
+        rows[j].hidden=!hit;
+        if(hit) hits++;
+      }
+      var groups=m.querySelectorAll('div[data-group]');
+      for(j=0;j<groups.length;j++)
+        groups[j].hidden=!groups[j].querySelector('li[data-item]:not([hidden])');
+      m.hidden=hits===0;
+      m.open=t===""?was[i]:true;
+      shown+=hits;
+    }
+    if(empty) empty.hidden=shown>0;
+  });
+})();
+""")
 
 
 
@@ -649,7 +1002,7 @@ write_modules(out: str, ms: Module[], i: int) -> int {
         0
     } else {
         write_file(join(out, ms.get(i).name ++ ".html"),
-                   module_page(ms.get(i)))
+                   module_page(ms, ms.get(i)))
         1 + write_modules(out, ms, i + 1)
     }
 }
