@@ -133,6 +133,12 @@ pub fn emit(m: &Module) -> JsOut {
         c if c.is_empty() => js,
         c => insert_after_use_strict(&js, &format!("// ---- sum variants ----\n{c}")),
     };
+    // Method helpers go above the variants, which may themselves be built from
+    // a method call in a view.
+    let js = match method_helpers_for(&js) {
+        h if h.is_empty() => js,
+        h => insert_after_use_strict(&js, &format!("// ---- method helpers ----\n{h}")),
+    };
     let html = HTML.into();
     JsOut {
         js,
@@ -594,9 +600,131 @@ fn jcall(callee: &Expr, args: &[Arg]) -> String {
             a.first().cloned().unwrap_or_default()
         ),
         Expr::Ident(f) => format!("{f}({})", a.join(", ")),
-        Expr::Field { base, name } => format!("{}.{name}({})", jexpr(base), a.join(", ")),
+        Expr::Field { base, name } => match method(name, &jexpr(base), &a) {
+            Some(js) => js,
+            // Not one of Maca's methods, so it is a field holding a function or
+            // a foreign JS call — pass it through untouched.
+            None => format!("{}.{name}({})", jexpr(base), a.join(", ")),
+        },
         _ => format!("{}({})", jexpr(callee), a.join(", ")),
     }
+}
+
+/// One of Maca's UFCS methods → JS that computes the same value.
+///
+/// Handing the name straight to JS was wrong twice over. Some do not exist
+/// there — `.length` is a property, so `xs.length()` threw. The dangerous ones
+/// are those that exist and mean something else: `push` returns the new
+/// *length*, `sort` compares as strings so `[10, 9]` stays `[10, 9]`, and both
+/// `sort` and `reverse` mutate the receiver. Maca lists and strings are values,
+/// so every lowering here is non-mutating even where the answer would have
+/// matched — a second holder of that list must not see the change.
+///
+/// The receiver's type is not known at this point (the JS backend is untyped),
+/// so a name shared by both sets lowers to a helper that works for either.
+fn method(name: &str, recv: &str, args: &[String]) -> Option<String> {
+    let arg = |i: usize| args.get(i).cloned().unwrap_or_else(|| "undefined".into());
+    let out = match name {
+        // shared by `str` and `T[]`
+        "length" => format!("({recv}).length"),
+        "slice" => format!("({recv}).slice({}, {})", arg(0), arg(1)),
+        "index_of" => format!("({recv}).indexOf({})", arg(0)),
+        "contains" => format!("_mhas({recv}, {})", arg(0)),
+
+        // `str`
+        "upper" => format!("({recv}).toUpperCase()"),
+        "lower" => format!("({recv}).toLowerCase()"),
+        "trim" => format!("({recv}).trim()"),
+        "starts_with" => format!("({recv}).startsWith({})", arg(0)),
+        "ends_with" => format!("({recv}).endsWith({})", arg(0)),
+        // every occurrence, not the first — which is what JS `replace` does
+        "replace" => format!("({recv}).split({}).join({})", arg(0), arg(1)),
+        // `substr(start, len)`, so it is not JS `slice(start, end)`
+        "substr" => format!("_msubstr({recv}, {}, {})", arg(0), arg(1)),
+        "repeat" => format!("({recv}).repeat({})", arg(0)),
+        "pad_start" => format!("_mpad({recv}, {}, {}, 0)", arg(0), arg(1)),
+        "pad_end" => format!("_mpad({recv}, {}, {}, 1)", arg(0), arg(1)),
+        "pad_center" => format!("_mpad({recv}, {}, {}, 2)", arg(0), arg(1)),
+        "split" => format!("({recv}).split({})", arg(0)),
+        "chars" => format!("Array.from({recv})"),
+        "at" => format!("(({recv})[{}] ?? \"\")", arg(0)),
+        "is_whitespace" => format!("_mclass({recv}, 0)"),
+        "is_ascii_digit" => format!("_mclass({recv}, 1)"),
+        "is_alpha" => format!("_mclass({recv}, 2)"),
+
+        // `T[]`
+        "map" => format!("({recv}).map({})", arg(0)),
+        "filter" => format!("({recv}).filter({})", arg(0)),
+        // `reduce(init, f)` and `fold(init, f)` take the seed first
+        "reduce" | "fold" => format!("_mfold({recv}, {}, {})", arg(0), arg(1)),
+        "sort" => format!("_msort({recv})"),
+        "reverse" => format!("[...({recv})].reverse()"),
+        "push" => format!("[...({recv}), {}]", arg(0)),
+        "pop" => format!("({recv}).slice(0, -1)"),
+        "sum" => format!("({recv}).reduce((_a, _b) => _a + _b, 0)"),
+        "min" => format!("_mpick({recv}, -1)"),
+        "max" => format!("_mpick({recv}, 1)"),
+        "first" => format!("({recv})[0]"),
+        "last" => format!("_mlast({recv})"),
+        "get" => format!("({recv})[{}]", arg(0)),
+        "join" => format!("({recv}).join({})", arg(0)),
+        // The results are the same either way, so running the closure over each
+        // element in turn is the whole of it on a single-threaded host.
+        "parallel" => format!("({recv}).map({})", arg(0)),
+        _ => return None,
+    };
+    Some(out)
+}
+
+/// Helpers the method lowerings call, emitted only when one is used.
+const METHOD_HELPERS: &[(&str, &str)] = &[
+    (
+        "_mhas",
+        "function _mhas(x, v) { return typeof x === \"string\" ? x.includes(v) : x.indexOf(v) >= 0; }",
+    ),
+    (
+        "_msubstr",
+        "function _msubstr(s, a, n) { return s.slice(a, a + n); }",
+    ),
+    // `pad_center` splits the shortfall left-biased, matching the runtime.
+    (
+        "_mpad",
+        "function _mpad(s, w, p, mode) {\n  const n = w - s.length;\n  if (n <= 0) return s;\n  const fill = (c) => p.repeat(Math.ceil(c / p.length)).slice(0, c);\n  if (mode === 0) return fill(n) + s;\n  if (mode === 1) return s + fill(n);\n  const l = Math.floor(n / 2);\n  return fill(l) + s + fill(n - l);\n}",
+    ),
+    (
+        "_mclass",
+        "function _mclass(s, kind) {\n  const c = s[0] ?? \"\";\n  if (kind === 0) return /\\s/.test(c);\n  if (kind === 1) return c >= \"0\" && c <= \"9\";\n  return /[A-Za-z]/.test(c);\n}",
+    ),
+    (
+        "_mfold",
+        "function _mfold(xs, init, f) { let a = init; for (const x of xs) a = f(a, x); return a; }",
+    ),
+    // Numbers compare numerically; JS's default sort would order 10 before 9.
+    (
+        "_mcmp",
+        "function _mcmp(a, b) { return typeof a === \"number\" ? a - b : (a < b ? -1 : a > b ? 1 : 0); }",
+    ),
+    ("_msort", "function _msort(xs) { return [...xs].sort(_mcmp); }"),
+    (
+        "_mpick",
+        "function _mpick(xs, dir) { return xs.reduce((a, b) => (_mcmp(b, a) * dir > 0 ? b : a)); }",
+    ),
+    ("_mlast", "function _mlast(xs) { return xs[xs.length - 1]; }"),
+];
+
+/// The helper definitions `js` actually calls, in dependency order.
+fn method_helpers_for(js: &str) -> String {
+    let mut out = String::new();
+    for (name, def) in METHOD_HELPERS {
+        // `_mcmp` is reached through `_msort`/`_mpick` rather than by a lowering.
+        let needed = js.contains(&format!("{name}("))
+            || (*name == "_mcmp" && (js.contains("_msort(") || js.contains("_mpick(")));
+        if needed && !out.contains(def) {
+            out.push_str(def);
+            out.push('\n');
+        }
+    }
+    out
 }
 
 fn jrecord(fields: &[Field]) -> String {

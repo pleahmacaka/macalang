@@ -28,6 +28,7 @@ dependencies = [
 name = "maca-backend-js"
 version = "0.1.0"
 dependencies = [
+ "maca-core",
  "maca-parser",
 ]
 

@@ -6,3 +6,6 @@ license.workspace = true
 
 [dependencies]
 maca-parser = { path = "../parser" }
+
+[dev-dependencies]
+maca-core = { path = "../core" }
