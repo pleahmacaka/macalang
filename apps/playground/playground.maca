@@ -1,10 +1,17 @@
-// The Maca playground — a single self-contained .maca file, styled with
-// Maca's integrated Tailwind. The UI, state, and handlers are Maca; the only
-// inline foreign code is the WebAssembly-bridge runtime (`import js`) and the
-// Pretendard @font-face (`import css`) — a font asset, not layout CSS.
+// The Maca playground: a single self-contained .maca file, styled with Maca's
+// integrated Tailwind. The UI, state, and handlers are Maca; the only inline
+// foreign code is the WebAssembly-bridge runtime (`import js`) and the
+// Pretendard @font-face (`import css`), a font asset rather than layout CSS.
 // Build:  maca build --target js playground.maca
+//
+// What the page is for: everything the compiler can do to a program should be
+// one click away from the program. So the right pane is not "the output", it is
+// every artifact the front end produced from this source, including the ones a
+// back end refused to produce and said why. The Preview tab runs the emitted
+// JS for real, which is the one thing about this language that has to be seen
+// rather than described.
 
-// the compiler itself — embedded as base64 into the built index.html by
+// the compiler itself, embedded as base64 into the built index.html by
 // `maca build --target js` (read by the bridge below via id "wasm-b64")
 import wasm "../../target/wasm32-unknown-unknown/release/maca_wasm.wasm"
 
@@ -19,7 +26,7 @@ import css """
 """
 
 // Styles the generated-Tailwind classes can't express: the definition-outline
-// rows. Small, scoped, data-free — the layout stays in Maca's integrated
+// rows. Small, scoped, data-free. The layout stays in Maca's integrated
 // Tailwind, and the editor (Monaco) carries its own theme.
 import css """
 .ol-item { display: flex; align-items: baseline; gap: .4rem; padding: .2rem .5rem;
@@ -46,6 +53,10 @@ import js """
 // compiler, reading its packed return value out of linear memory, and holding
 // the last result so the app's `mc*` getters can read it. Think of it as the
 // playground's runtime, the way `maca-runtime` is the native runtime.
+//
+// The example programs are NOT here. They are Maca constants in the Maca half
+// of this file, which is where a reader looks for them and where a test can
+// check that each one still compiles clean.
 (function () {
   let ex = null;       // wasm exports
   let last = null;     // last compile result (parsed JSON)
@@ -53,14 +64,65 @@ import js """
   let version = "";
   let statusText = "loading…";
 
-  // ---- example programs (source lives here, not in the Maca file) ----------
-  const EXAMPLES = {
-    hello:    "main() -> int {\n    info(\"Hello from Maca\")\n    0\n}\n",
-    tree:     "// Recursive sum types — self-referential payloads are boxed.\nTree = Leaf(int) | Node(Tree, Tree)\n\ntotal(t: Tree) -> int {\n    match t {\n        Leaf(n) => n\n        Node(l, r) => total(l) + total(r)\n    }\n}\n\nmain() -> int {\n    let t = Node(Leaf(1), Node(Leaf(2), Leaf(3)))\n    info(\"{total(t)}\")\n    0\n}\n",
-    indexing: "// Subscripting, lvalue assignment, and functional record update.\nConfig = {\n    host: str\n    port: int\n}\n\nmain() -> int {\n    let xs = 10, 20, 30\n    info(\"{xs[1]} of {len(xs)}\")\n    xs[0] = 99\n    info(\"{xs[0]}\")\n    let base = Config { host = \"localhost\", port = 80 }\n    let secure = base with { port = 443 }\n    info(\"{base.port} -> {secure.port}\")\n    0\n}\n",
-    config:   "networking.hostName = \"rigel\"\nsystem.stateVersion = \"24.11\"\n\nservices.openssh = {\n    passwordAuthentication = false\n}\n",
-    range:    "// Inclusive integer ranges: 1..n counts 1, 2, …, n (both ends).\nfactorial(n: int) -> int {\n    let acc = 1\n    for i in 1..n {\n        acc = acc * i\n    }\n    acc\n}\n\nmain() -> int {\n    let sum = 0\n    for i in 1..100 {\n        sum = sum + i\n    }\n    info(\"sum 1..100 = {sum}\")\n\n    let xs = 1..6\n    info(\"1..6 has {len(xs)} elements, last {xs[len(xs) - 1]}\")\n    info(\"6! = {factorial(6)}\")\n    0\n}\n",
-    tour:     "// A tour of Maca surface syntax — one small program that exercises most of the\n// language and type-checks clean. (`examples/bad/*` show what gets rejected.)\n\n/* Block comments work too. */\n\n// a tagged sum type and a record type\nShape = Circle(float) | Rect(float, float)\nPoint = {\n    x: int\n    y: int\n}\n\n// arrow-body function + `match` over a sum, with binding patterns\narea(s: Shape) -> float =>\n    match s {\n        Circle(r) => 3.14 * r * r\n        Rect(w, h) => w * h\n    }\n\n// block body: let + reassignment, while, break/continue, operators, ternary\ncollatz_steps(start: int) -> int {\n    let n = start\n    let steps = 0\n    while n > 1 {\n        n = n % 2 == 0 ? n / 2 : 3 * n + 1\n        steps = steps + 1\n        if steps > 1000 {\n            break\n        }\n    }\n    steps\n}\n\n// recursion\nfib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\n\n// UFCS: `x.double()` is sugar for `double(x)`\ndouble(n: int) -> int => n * 2\n\nmain() -> int {\n    // inclusive ranges, for-loops, list indexing + lvalue assignment\n    let xs = 1..5\n    xs[0] = 10\n    let acc = 0\n    for i in 0..len(xs) - 1 {\n        acc = acc + xs[i]\n    }\n    info(\"acc = {acc}, len = {len(xs)}\")\n\n    // records: literal, field access, functional update with `with`\n    let p = Point { x = 1, y = 2 }\n    let q = p with { y = 9 }\n    info(\"p.y = {p.y}, q.y = {q.y}, q.double = {q.y.double()}\")\n\n    // sum values, constructors, and `match` (via area)\n    info(\"circle = {area(Circle(2.0))}, rect = {area(Rect(3.0, 4.0))}\")\n\n    // boolean / comparison operators\n    let ok = acc > 0 && len(xs) == 5\n    info(\"ok = {ok}, collatz(27) = {collatz_steps(27)}, fib(10) = {fib(10)}\")\n    0\n}\n",
+  // ---- a shareable link, with nothing sent anywhere -------------------------
+  //
+  // `#p=<base64url source>&m=<mode>`. A fragment is the one part of a URL the
+  // browser never puts on the wire, so the link carries the whole program to
+  // whoever opens it and to nobody else. No server, no paste service, no id.
+  function b64urlEncode(text) {
+    const bytes = new TextEncoder().encode(text);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function b64urlDecode(text) {
+    const bin = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
+  let urlProgram = "";
+  let urlMode = 0;
+  try {
+    const parts = {};
+    for (const kv of location.hash.replace(/^#/, "").split("&")) {
+      const eq = kv.indexOf("=");
+      if (eq > 0) parts[kv.slice(0, eq)] = kv.slice(eq + 1);
+    }
+    if (parts.p) {
+      urlProgram = b64urlDecode(parts.p);
+      urlMode = parts.m === "1" ? 1 : 0;
+    }
+  } catch (e) {
+    urlProgram = "";   // a hand-edited fragment is not a reason to show nothing
+  }
+  window.mcUrlProgram = function () { return urlProgram; };
+  window.mcUrlMode = function () { return urlMode; };
+  window.mcShare = function (mode) {
+    const link = location.origin + location.pathname +
+      "#p=" + b64urlEncode(window.mcSource()) + "&m=" + (mode | 0);
+    // Into the address bar first: that works with the clipboard blocked, and it
+    // is what makes the tab itself reloadable.
+    history.replaceState(null, "", link);
+    statusText = "link is in the address bar";
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link).then(function () {
+        statusText = "link copied";
+        if (typeof update === "function") update();
+      }, function () {});
+    }
+  };
+
+  // ---- the example picker ---------------------------------------------------
+  // Reading a <select> and writing its selection is browser API; which examples
+  // exist, and what each one says, is Maca.
+  window.mcPicked = function () {
+    const el = document.getElementById("examples");
+    return el ? el.value : "hello";
+  };
+  window.mcSetPicked = function (name) {
+    const el = document.getElementById("examples");
+    if (el) el.value = name;
   };
 
   // ---- wasm bridge ---------------------------------------------------------
@@ -87,14 +149,76 @@ import js """
   }
 
   // ---- content helpers -----------------------------------------------------
+  //
+  // A back end's refusal belongs with the type errors: it is a compile-time no,
+  // decided by name, and the reason a target's tab is empty.
+  function refusals(r) {
+    const out = [];
+    const limits = (r && r.limits) || {};
+    for (const target of Object.keys(limits)) {
+      for (const why of limits[target]) out.push([target, why]);
+    }
+    return out;
+  }
   function diagText(r) {
-    const pe = r.parseErrors || [], di = r.diagnostics || [];
-    if (!pe.length && !di.length) return "✓ parsed and type-checked clean";
     const lines = [];
-    for (const e of pe) lines.push("parse: " + e);
-    for (const d of di) lines.push(d.kind + ": " + d.msg);
+    for (const e of r.parseErrors || []) lines.push("parse: " + e);
+    for (const d of r.diagnostics || []) lines.push(d.kind + ": " + d.msg);
+    for (const [target, why] of refusals(r)) {
+      lines.push(target + " back end: " + why);
+    }
+    if (!lines.length) return "✓ parsed and type-checked clean";
     return lines.join("\n");
   }
+
+  // A UI program is one whose `main` is declared to return an Element. That
+  // declaration is what the js back end mounts and what the C back end renders
+  // to an HTML string, and it is also why the interpreter refuses to run it: a
+  // tag call needs a DOM and the interpreter has none.
+  function isUiProgram() {
+    return ((last && last.symbols) || []).some(function (s) {
+      return s.name === "main" && (s.detail || "").indexOf("-> Element") >= 0;
+    });
+  }
+  const UI_NOTE =
+    "`main` returns an Element, so this program builds a page instead of " +
+    "printing one.\n\nThe Preview tab runs it for real; JS and CSS are what " +
+    "it compiled to. Running it\nhere reports an unknown tag because the " +
+    "interpreter has no DOM to build into.";
+
+  function consoleText(r) {
+    if (isUiProgram()) return UI_NOTE;
+    const ran = r.run;
+    if (!ran) return "(config mode is pure, so there is nothing to run)";
+    let body = ran.output || "";
+    if (ran.error) {
+      body += (body && !body.endsWith("\n") ? "\n" : "") + "⚠ " + ran.error;
+    }
+    return body || "(no output)";
+  }
+
+  // What a target says when it refused, rather than the code it did not write.
+  function limitText(target) {
+    const why = refusals(last).filter(function (r) { return r[0] === target; });
+    if (!why.length) return "";
+    return "the " + target + " back end will not lower this program:\n\n" +
+      why.map(function (r) { return "  " + r[1]; }).join("\n") +
+      "\n\nEvery back end has this channel: it names the construct it cannot " +
+      "carry rather\nthan emitting code that would not compile.";
+  }
+
+  // Why a target's tab is blank, when nothing was refused either.
+  function emptyNote(tab) {
+    if ((last.parseErrors || []).length) return "(fix the parse error first)";
+    if (tab === "Nix") {
+      return "(Nix is what config mode emits: switch to config in the header)";
+    }
+    if (tab === "CSS") {
+      return "(no utility classes in this program, so styles() is empty)";
+    }
+    return "(config mode emits Nix and nothing else)";
+  }
+
   function fmtN(n) {
     if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
     if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
@@ -109,7 +233,8 @@ import js """
       const t0 = performance.now();
       last = wasmRun(src, mode | 0);
       lastMs = performance.now() - t0;
-      const n = (last.parseErrors || []).length + (last.diagnostics || []).length;
+      const n = (last.parseErrors || []).length +
+        (last.diagnostics || []).length + refusals(last).length;
       statusText = n ? (n + " diagnostic" + (n > 1 ? "s" : "")) : "compiled clean";
     } catch (e) {
       last = { parseErrors: ["internal: " + e.message], diagnostics: [], outputs: {} };
@@ -120,19 +245,20 @@ import js """
   window.mcTab = function (tab) {
     if (!last) return "";
     if (tab === "Diagnostics") return diagText(last);
-    if (tab === "Console") {
-      const run = last.run;
-      if (!run) return "(config mode — nothing to run)";
-      let body = run.output || "";
-      if (run.error) body += (body && !body.endsWith("\n") ? "\n" : "") + "⚠ " + run.error;
-      return body || "(no output)";
-    }
-    return (last.outputs && last.outputs[tab]) || "(nothing emitted)";
+    if (tab === "Console") return consoleText(last);
+    const refused = limitText(tab);
+    if (refused) return refused;
+    return ((last.outputs || {})[tab]) || emptyNote(tab);
   };
-  window.mcSummary = function () {
-    const p = last && last.run && last.run.profile;
-    if (!p) return "run a program to profile it";
-    return `${lastMs.toFixed(lastMs < 10 ? 2 : 0)} ms · ${fmtN(p.steps)} steps · ${fmtN(p.totalCalls)} calls · depth ${fmtN(p.maxDepth)}`;
+  // What the run answered with, in the width of a word: the exit status is in
+  // the JSON and used to be nowhere on the page.
+  window.mcRunBadge = function () {
+    if (!last) return "";
+    if (isUiProgram()) return "builds a page";
+    const ran = last.run;
+    if (!ran) return "";
+    if (ran.error) return "failed";
+    return ran.exit === null ? "ran" : "exit " + ran.exit;
   };
   window.mcFlame = function () {
     const p = last && last.run && last.run.profile;
@@ -140,7 +266,43 @@ import js """
   };
   window.mcStatus = function () { return statusText; };
   window.mcVersion = function () { return version ? "maca " + version + " · wasm" : ""; };
-  window.mcExample = function (name) { return EXAMPLES[name] || ""; };
+
+  // ---- live preview: the emitted JS, actually running ----------------------
+  //
+  // Byte for byte the JS and CSS that `maca build --target js` would write,
+  // running in a sandboxed iframe. Rebuilt only when the emitted code changes,
+  // so editing a comment does not restart the program under the cursor.
+  let previewKey = null;
+  window.mcRenderPreview = function () {
+    const host = document.getElementById("preview");
+    if (!host) return;
+    const emitted = (last && last.outputs) || {};
+    const js = emitted.JS || "";
+    if (!js || !isUiProgram()) {
+      previewKey = null;
+      host.innerHTML = '<div class="ol-empty">' + esc(previewNote()) + "</div>";
+      return;
+    }
+    const css = emitted.CSS || "";
+    const key = css + " " + js;
+    if (key === previewKey) return;
+    previewKey = key;
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-scripts");
+    frame.setAttribute("title", "preview");
+    frame.style.cssText = "width:100%;height:100%;border:0;background:#ffffff";
+    frame.srcdoc = '<!doctype html><meta charset="utf-8"><style>' + css +
+      '</style><div id="app"></div><script>' + js + "<\/script>";
+    host.innerHTML = "";
+    host.appendChild(frame);
+  };
+  function previewNote() {
+    if (!last) return "compiling";
+    if ((last.parseErrors || []).length) return "the program does not parse yet";
+    if (!(last.outputs || {}).JS) return "config mode has no page to build";
+    return "no page here: declare main() -> Element and return a tag call, " +
+      "such as div(class=\"p-4\", \"hello\")";
+  }
 
   // ---- shared helpers ------------------------------------------------------
   function esc(s) {
@@ -149,8 +311,10 @@ import js """
 
   // The active editor is Monaco when its CDN is reachable, else a plain
   // textarea (offline / strict-CSP fallback). These two accessors hide which.
+  // Empty until the Maca app's `start()` puts either the shared program or the
+  // opening example here, which is why the examples do not need to exist twice.
   let editor = null, monaco = null;
-  let PENDING_SRC = EXAMPLES.hello;
+  let PENDING_SRC = "";
   window.mcSource = function () {
     if (editor) return editor.getValue();
     const ta = document.getElementById("ed");
@@ -162,18 +326,34 @@ import js """
     else { const ta = document.getElementById("ed"); if (ta) ta.value = PENDING_SRC; }
   };
 
-  // LSP hover from the wasm (byte offset — Maca source is ASCII, but convert
-  // the prefix length for safety).
-  function wasmHover(src, off) {
-    if (!ex) return "";
+  // Everything the language server has to say about one caret, in one call:
+  // hover, signature help, the definition site, and every reference. The editor
+  // asks all four about the same position, and a call each would re-parse the
+  // file four times.
+  //
+  // `off` is a UTF-16 offset (Monaco's unit) and the wasm wants bytes, so the
+  // prefix is re-encoded to convert. The ranges coming back are already
+  // 1-based line/column with UTF-16 columns, which is what Monaco wants.
+  function wasmLsp(src, off) {
+    if (!ex || !ex.lsp) return null;
     try {
       const bytes = new TextEncoder().encode(src);
       const boff = new TextEncoder().encode(src.slice(0, off)).length;
       const p = ex.alloc(bytes.length); mem().set(bytes, p);
-      const out = readPacked(ex.hover(p, bytes.length, boff));
+      const out = readPacked(ex.lsp(p, bytes.length, boff));
       ex.dealloc(p, bytes.length);
-      return out;
-    } catch (e) { return ""; }
+      return JSON.parse(out);
+    } catch (e) { return null; }
+  }
+  function wasmHover(src, off) {
+    const info = wasmLsp(src, off);
+    return (info && info.hover) || "";
+  }
+  function monacoRange(r) {
+    return {
+      startLineNumber: r.line, startColumn: r.col,
+      endLineNumber: r.endLine, endColumn: r.endCol,
+    };
   }
 
   // ---- definition outline (document symbols) -------------------------------
@@ -361,6 +541,64 @@ import js """
         return { suggestions: items };
       },
     });
+    // Signature help while the call is still being typed: the callee's
+    // signature, with the parameter under the caret picked out. `maca-lsp`
+    // counts the commas, so the answer is the same one the editor gives.
+    m.languages.registerSignatureHelpProvider("maca", {
+      signatureHelpTriggerCharacters: ["(", ","],
+      provideSignatureHelp: function (model, pos) {
+        const info = wasmLsp(model.getValue(), model.getOffsetAt(pos));
+        const sig = info && info.signature;
+        if (!sig) return null;
+        return {
+          value: {
+            signatures: [{
+              label: sig.label,
+              parameters: (sig.params || []).map(function (p) {
+                return { label: p };
+              }),
+            }],
+            activeSignature: 0,
+            activeParameter: sig.active | 0,
+          },
+          dispose: function () {},
+        };
+      },
+    });
+    // Ctrl-click / F12 jumps to where the name is bound.
+    m.languages.registerDefinitionProvider("maca", {
+      provideDefinition: function (model, pos) {
+        const info = wasmLsp(model.getValue(), model.getOffsetAt(pos));
+        const at = info && info.definition;
+        return at ? { uri: model.uri, range: monacoRange(at) } : null;
+      },
+    });
+    // Resting on a name marks every other mention of the *same binding*, which
+    // is scope-aware rather than a text search: a parameter named `n` in one
+    // function does not light up an `n` in another.
+    m.languages.registerDocumentHighlightProvider("maca", {
+      provideDocumentHighlights: function (model, pos) {
+        const info = wasmLsp(model.getValue(), model.getOffsetAt(pos));
+        return ((info && info.references) || []).map(function (r) {
+          return {
+            range: monacoRange(r),
+            kind: m.languages.DocumentHighlightKind.Text,
+          };
+        });
+      },
+    });
+  }
+
+  // The first render is `start()`, not `run()`: only the Maca side knows which
+  // program to open with, and only the bridge has read the URL fragment.
+  let started = false;
+  function firstRender() {
+    if (!started && typeof start === "function") {
+      started = true;
+      start();
+    } else if (typeof run === "function") {
+      run();
+    }
   }
 
   // ---- mount Monaco (from CDN); fall back to a plain textarea if it can't ---
@@ -383,7 +621,7 @@ import js """
       if (fell || editor) return;
       fell = true;
       buildFallback(host);
-      if (typeof run === "function") run();
+      firstRender();
     };
     const timer = setTimeout(fallback, 6000);
     const s = document.createElement("script");
@@ -409,7 +647,7 @@ import js """
         });
         editor.onDidChangeCursorPosition(function () { if (typeof update === "function") update(); });
         statusText = "ready · monaco";
-        if (typeof run === "function") run();
+        firstRender();
       });
     };
     s.onerror = function () { clearTimeout(timer); fallback(); };
@@ -461,15 +699,304 @@ import js """
 })();
 """
 
+// ---- the examples --------------------------------------------------------
+//
+// Every example is a Maca constant here rather than a string in the bridge, so
+// a reader finds them where the rest of the page lives and
+// `crates/wasm/tests/playground.rs` can compile each one and fail the build
+// when it stops checking clean. Four of the six that used to live in the
+// bridge taught `let`, which Maca does not have, and the page shipped a
+// diagnostic on every one of them.
+//
+// A `"""…"""` block is raw: it spans lines, interpolates nothing, and needs no
+// escaping, so an example reads exactly as it will read in the editor.
+
+const HelloSrc = """
+main() -> int {
+    info("Hello from Maca")
+    0
+}
+"""
+
+const PageSrc = """
+// A page rather than a print. A tag name called as a function is an element:
+// named args are attributes, positional args are children. `bind:value` is
+// two-way, so typing re-renders exactly the nodes that mention the state.
+//
+// The Preview tab runs this. The C tab refuses it, and says why: the same call
+// renders to an HTML string natively, but a live binding needs a DOM.
+who = "world"
+
+main() -> Element =>
+    div(class="p-8 font-sans"
+        h1(class="text-2xl font-bold text-violet-600", "Hello, {who}")
+        input(class="mt-4 px-2 py-1 rounded border border-zinc-400",
+              bind:value=who)
+        p(class="mt-3 text-sm text-zinc-500", "{len(who)} characters")
+    )
+"""
+
+const TourSrc = """
+// A tour of Maca's surface syntax in one program that type-checks clean.
+// There is no `fn`, no `let`, no `return` and no `type`: a bare `x = e` binds a
+// mutable name, `const x = e` a constant, and the last expression is the value.
+
+/* Block comments work too. */
+
+Shape = Circle(float) | Rect(float, float)
+Point = {
+    x: int
+    y: int
+}
+
+// An arrow body, and `match` over a sum with binding patterns.
+area(s: Shape) -> float =>
+    match s {
+        Circle(r) => 3.14 * r * r
+        Rect(w, h) => w * h
+    }
+
+// A block body: reassignment, `while`, `break`, and the spaced ternary.
+collatz_steps(from: int) -> int {
+    n = from
+    steps = 0
+    while n > 1 {
+        n = n % 2 == 0 ? n / 2 : 3 * n + 1
+        steps = steps + 1
+        if steps > 1000 {
+            break
+        }
+    }
+    steps
+}
+
+// UFCS: `n.double()` is sugar for `double(n)`.
+double(n: int) -> int => n * 2
+
+main() -> int {
+    xs = 1..5
+    xs[0] = 10
+    acc = 0
+    for i in 0..len(xs) - 1 {
+        acc = acc + xs[i]
+    }
+    info("acc {acc}, len {len(xs)}")
+
+    p = Point { x = 1, y = 2 }
+    q = p with { y = 9 }
+    info("p.y {p.y}, q.y {q.y}, q.y.double() {q.y.double()}")
+
+    info("circle {area(Circle(2.0))}, rect {area(Rect(3.0, 4.0))}")
+    info("collatz(27) {collatz_steps(27)}")
+    0
+}
+"""
+
+const TreeSrc = """
+// Recursive sum types: a self-referential payload is boxed, so a tree is an
+// ordinary value and `match` on it has to be exhaustive. Drop an arm and the
+// Diagnostics tab answers NonExhaustive instead of the program running.
+Tree = Leaf(int) | Node(Tree, Tree)
+
+total(t: Tree) -> int =>
+    match t {
+        Leaf(n) => n
+        Node(l, r) => total(l) + total(r)
+    }
+
+depth(t: Tree) -> int =>
+    match t {
+        Leaf(n) => 1
+        Node(l, r) => 1 + max(depth(l), depth(r))
+    }
+
+main() -> int {
+    t = Node(Leaf(1), Node(Leaf(2), Leaf(3)))
+    info("total {total(t)}, depth {depth(t)}")
+    0
+}
+"""
+
+const ListSrc = """
+// Closures and the list methods. A lambda captures its enclosing scope, and a
+// parameter that is *called* in the body is a function with no annotation
+// needed: a function type is written down only in a record field.
+apply_twice(n: int, f) -> int => f(f(n))
+
+main() -> int {
+    xs = 5, 3, 1, 4, 2
+    step = 10
+
+    shifted = xs.map(v => v + step)
+    evens = xs.filter(v => v % 2 == 0)
+    sum = xs.reduce(0, (a, v) => a + v)
+    sorted = xs.sort()
+
+    info("sorted {sorted[0]} to {xs.max()}, sum {sum}")
+    info("shifted[0] {shifted[0]}, {len(evens)} even")
+    info("apply_twice(20, +1) {apply_twice(20, v => v + 1)}")
+    0
+}
+"""
+
+const AsyncSrc = """
+// Colorblind async: there is no `async` keyword, and no second colour of
+// function. `spawn f(x)` starts the call and answers a Future, `await` waits
+// for one, and `sleep_ms` is a suspension point. Being async is an effect the
+// checker infers, so `work` below is an ordinary function that happens to
+// suspend, callable from anywhere.
+work(n: int) -> int {
+    sleep_ms(1)
+    n * 2
+}
+
+main() -> int {
+    a = spawn work(10)
+    b = spawn work(20)
+    info("{await a + await b}")
+    0
+}
+"""
+
+const FormatSrc = """
+// An interpolation may carry a format spec: [align][0][width][.precision].
+// The spec's `:` is attached and a ternary's is spaced, which is how the lexer
+// tells `{q:>5}` from `{c ? a : b}`. It is sugar: the parser rewrites it to
+// pad_start / pad_end / pad_center / fixed, so every back end gets it free.
+row(name: str, qty: int, price: float) -> str =>
+    "{name:<10}{qty:>5}{price:>10.2}"
+
+main() -> int {
+    info(row("widget", 3, 4.5))
+    info(row("gasket", 128, 19.995))
+    info(row("shim", 7, 0.5))
+    info("pi {3.14159:.3}, zero padded {7:04}")
+    0
+}
+"""
+
+const ConfigSrc = """
+// Config mode: the module *is* the configuration and it has to be pure, so
+// there is no `main` and no `info`. `system.*` routes to NixOS, `user.*` to
+// home-manager, and a block implies `enable = true`.
+//
+// The Nix tab is the module this compiles to. Add `info("hi")` and the
+// Diagnostics tab answers EffectInConfig.
+networking.hostName = "rigel"
+system.stateVersion = "24.11"
+system.packages = git, curl, ripgrep
+
+services.openssh = {
+    passwordAuthentication = false
+}
+"""
+
+// What an example is: the program, the mode to compile it in, the pane that
+// shows it off, and the one line that says why it is here.
+Example = {
+    src:  str
+    mode: int
+    tab:  str
+    note: str
+}
+
+// The picker's `<option>` values, in one place, each beside its program.
+example(name: str) -> Example {
+    if name == "page" {
+        Example { src = PageSrc, mode = 0, tab = "Preview",
+                  note = "a tag call is an element; Preview runs it" }
+    } else if name == "tour" {
+        Example { src = TourSrc, mode = 0, tab = "Console",
+                  note = "most of the surface syntax in one program" }
+    } else if name == "tree" {
+        Example { src = TreeSrc, mode = 0, tab = "Console",
+                  note = "recursive sums, and match that must be exhaustive" }
+    } else if name == "list" {
+        Example { src = ListSrc, mode = 0, tab = "Console",
+                  note = "closures, and a function passed with no annotation" }
+    } else if name == "async" {
+        Example { src = AsyncSrc, mode = 0, tab = "Console",
+                  note = "spawn and await with no async keyword anywhere" }
+    } else if name == "format" {
+        Example { src = FormatSrc, mode = 0, tab = "Console",
+                  note = "an interpolation carrying [align][0][width][.prec]" }
+    } else if name == "config" {
+        Example { src = ConfigSrc, mode = 1, tab = "Nix",
+                  note = "the same language, compiled to a NixOS module" }
+    } else {
+        Example { src = HelloSrc, mode = 0, tab = "Console",
+                  note = "the smallest whole program" }
+    }
+}
+
 // ---- reactive state ------------------------------------------------------
-// the editor (Monaco or the textarea fallback) owns the source text; the bridge
-// exposes it via mcSource()/mcSetSource(). Here we only track mode and the tab.
+//
+// The editor (Monaco, or the textarea fallback) owns the source text and the
+// bridge exposes it as mcSource()/mcSetSource(), because only the editor knows
+// what the caret has done to it. What belongs here is what the page decides:
+// which mode to compile in, which pane to show, and the note under the picker.
 mode = 0
 tab  = "Console"
+note = ""
 
 // ---- handlers ------------------------------------------------------------
+
 run() {
     mcCompile(mcSource(), mode)
+    mcRenderPreview()
+    update()
+}
+
+// Called once, by the bridge, as soon as an editor exists. A shared link
+// carries a program and a mode in the fragment and the bridge is what read the
+// URL; with no link, the page opens on the smallest program there is.
+start() {
+    shared = mcUrlProgram()
+
+    if shared == "" {
+        load("hello")
+    } else {
+        mcSetSource(shared)
+        mode = mcUrlMode()
+        tab = mode == 1 ? "Nix" : "Console"
+        note = "loaded from a shared link"
+        run()
+    }
+}
+
+// Put an example in the editor and open the pane that shows it off. The raw
+// block each program lives in starts with a newline, which `trim` drops.
+load(name: str) {
+    picked = example(name)
+    mcSetSource(picked.src.trim())
+    mcSetPicked(name)
+    mode = picked.mode
+    tab = picked.tab
+    note = picked.note
+    run()
+}
+
+pickExample() {
+    load(mcPicked())
+}
+
+// Config mode is a different mode of the language, not a different output
+// format: the module is the configuration and it must be pure. Switching moves
+// to a pane that mode can actually fill.
+useProgram() {
+    mode = 0
+    tab  = "Console"
+    run()
+}
+
+useConfig() {
+    mode = 1
+    tab  = "Nix"
+    run()
+}
+
+share() {
+    mcShare(mode)
     update()
 }
 
@@ -477,57 +1004,110 @@ showDiag()    { tab = "Diagnostics"  update() }
 showConsole() { tab = "Console"      update() }
 showC()       { tab = "C"            update() }
 showJs()      { tab = "JS"           update() }
+showCss()     { tab = "CSS"          update() }
+showNix()     { tab = "Nix"          update() }
 
-loadTour()     { mcSetSource(mcExample("tour"))      mode = 0  run() }
-loadHello()    { mcSetSource(mcExample("hello"))     mode = 0  run() }
-loadTree()     { mcSetSource(mcExample("tree"))      mode = 0  run() }
-loadIndexing() { mcSetSource(mcExample("indexing"))  mode = 0  run() }
-loadRange()    { mcSetSource(mcExample("range"))     mode = 0  run() }
-loadConfig()   { mcSetSource(mcExample("config"))    mode = 1  run() }
+// The only tab with a side effect: the preview is an iframe the bridge builds,
+// and it is pointless to rebuild it while it is out of sight.
+showPreview() {
+    tab = "Preview"
+    mcRenderPreview()
+    update()
+}
 
-// a tab's classes reflect whether it is active — pure Tailwind, toggled by state
-tabClass(name: str) -> str =>
-    name == tab
-        ? "px-3 py-1 text-sm rounded cursor-pointer bg-zinc-800 text-zinc-100"
-        : "px-3 py-1 text-sm rounded cursor-pointer text-zinc-400"
+// ---- classes -------------------------------------------------------------
 
-ex = "px-2 py-1 text-sm rounded border border-zinc-700 text-zinc-300 cursor-pointer"
+const TabOn = "px-3 py-1 text-sm rounded cursor-pointer bg-zinc-800 text-zinc-100"
+const TabOff = "px-3 py-1 text-sm rounded cursor-pointer text-zinc-400"
+const Secondary = "px-2 py-1 text-sm rounded border border-zinc-700 text-zinc-300 cursor-pointer"
+const Picker = "px-2 py-1 text-sm rounded border border-zinc-700 bg-zinc-900 text-zinc-300 cursor-pointer"
+const TextPane = "flex-1 min-h-0 overflow-auto p-4 font-mono text-sm whitespace-pre-wrap break-words text-zinc-200"
+const PreviewPane = "flex-1 min-h-0 overflow-hidden bg-white"
+
+// A tab carries three states: not available in this mode, selected, and
+// selectable. The first is `hidden` rather than greyed out, because a pane that
+// cannot fill in this mode is not a thing to click and find empty.
+tabClass(name: str) -> str {
+    if !tabInMode(name) {
+        "hidden"
+    } else if name == tab {
+        TabOn
+    } else {
+        TabOff
+    }
+}
+
+tabInMode(name: str) -> bool {
+    if mode == 1 {
+        name == "Diagnostics" || name == "Nix"
+    } else {
+        name != "Nix"
+    }
+}
+
+// Both result panes stay in the tree, because the js back end builds the view
+// once and reacts by re-setting text, classes and attributes. So the inactive
+// one is hidden rather than removed, and the preview keeps running underneath.
+textPaneClass() -> str =>
+    tab == "Preview" ? "hidden" : TextPane
+
+previewPaneClass() -> str =>
+    tab == "Preview" ? PreviewPane : "hidden"
+
+modeClass(want: int) -> str =>
+    mode == want ? TabOn : TabOff
 
 // ---- view (styled with Maca's integrated Tailwind) -----------------------
+
 main() -> Element =>
     div(class="flex flex-col h-screen bg-zinc-900 text-zinc-100 font-sans"
-        header(class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 bg-zinc-950"
+        header(class="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-zinc-800 bg-zinc-950"
             span(class="font-mono font-bold text-violet-400", "◆ Maca playground")
             span(class="text-xs text-zinc-500 uppercase tracking-wide", "written in Maca")
+            div(class="w-4")
+            button(class=modeClass(0), on:click=useProgram, "program")
+            button(class=modeClass(1), on:click=useConfig, "config")
+            select(id="examples", class=Picker, on:change=pickExample
+                option(value="hello", "hello")
+                option(value="page", "a page")
+                option(value="tour", "the syntax")
+                option(value="tree", "sum types")
+                option(value="list", "closures")
+                option(value="async", "async")
+                option(value="format", "format specs")
+                option(value="config", "config mode")
+            )
+            span(class="text-xs text-zinc-500 truncate max-w-sm", note)
             div(class="flex-1")
-            button(class=ex, on:click=loadTour,     "tour")
-            button(class=ex, on:click=loadHello,    "hello")
-            button(class=ex, on:click=loadTree,     "tree")
-            button(class=ex, on:click=loadIndexing, "indexing")
-            button(class=ex, on:click=loadRange,    "range")
-            button(class=ex, on:click=loadConfig,   "config")
+            button(class=Secondary, on:click=share, "Share")
             button(class="px-3 py-1 text-sm font-semibold rounded bg-violet-500 text-zinc-950 cursor-pointer", on:click=run, "Run ▶")
         )
         div(class="flex-1 min-h-0 flex"
-            // ---- definition outline (document symbols) ----------------------
             aside(class="w-56 flex-none min-h-0 flex flex-col border-r border-zinc-800 bg-zinc-950"
                 div(class="px-3 py-2 text-xs uppercase tracking-wide text-zinc-500 font-semibold border-b border-zinc-800", "Definitions")
                 div(class="flex-1 min-h-0 overflow-auto p-1", html=mcOutline())
             )
             div(class="flex-1 min-w-0 grid grid-cols-2"
-                // ---- editor: Monaco mounts here (textarea fallback offline) --
+                // Monaco mounts here, or the textarea fallback offline.
                 div(id="editor", class="relative min-h-0 h-full overflow-hidden border-r border-zinc-800 bg-zinc-900")
-                // ---- results: diagnostics / console / C / JS + profiler -----
+                // Every artifact the front end produced, one click apart.
                 div(class="flex flex-col min-w-0 min-h-0 bg-zinc-950"
-                    div(class="flex gap-1 px-2 pt-2 border-b border-zinc-800 overflow-x-auto"
+                    div(class="flex items-center gap-1 px-2 pt-2 border-b border-zinc-800 overflow-x-auto"
                         button(class=tabClass("Diagnostics"),
                                on:click=showDiag, "Diagnostics")
                         button(class=tabClass("Console"),
                                on:click=showConsole, "Console")
+                        button(class=tabClass("Preview"),
+                               on:click=showPreview, "Preview")
                         button(class=tabClass("C"), on:click=showC, "C")
                         button(class=tabClass("JS"), on:click=showJs, "JS")
+                        button(class=tabClass("CSS"), on:click=showCss, "CSS")
+                        button(class=tabClass("Nix"), on:click=showNix, "Nix")
+                        div(class="flex-1")
+                        span(class="pr-2 text-xs font-mono text-zinc-500 tabular-nums whitespace-nowrap", mcRunBadge())
                     )
-                    pre(class="flex-1 min-h-0 overflow-auto p-4 font-mono text-sm whitespace-pre-wrap break-words text-zinc-200", mcTab(tab))
+                    pre(class=textPaneClass(), mcTab(tab))
+                    div(id="preview", class=previewPaneClass())
                     div(class="flex-none border-t border-zinc-800 p-4"
                         div(class="flex items-baseline gap-2 mb-2"
                             span(class="text-xs uppercase tracking-wide text-zinc-500 font-semibold", "Profiler")

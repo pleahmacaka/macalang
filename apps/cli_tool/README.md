@@ -11,9 +11,9 @@ maca run apps/cli_tool/cli_tool.maca modules/cli --sort lines
 maca run apps/cli_tool/cli_tool.maca modules/cli --srot lines
 ```
 
-No `--` before the program's own arguments. `maca run` forwards it and `cli/parse`
-reads it as the end-of-options marker, so `-- --help` asks for a directory
-called `--help`.
+No `--` before the program's own arguments. `maca run` forwards it and
+`cli/parse` reads it as the end-of-options marker, so `-- --help` asks for a
+directory called `--help`.
 
 ## The three outcomes
 

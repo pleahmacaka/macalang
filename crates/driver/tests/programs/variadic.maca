@@ -71,6 +71,40 @@ first_of(...xs: a) -> a => xs.first()
 countdown(n: int, ...seen: int) -> int =>
     n == 0 ? seen.length() : countdown(n - 1, n, n)
 
+// A float element is a `FloatArr`, not an integer array holding reinterpreted
+// bits — which is what an unannotated variadic would have got, so this is the
+// positive half of the rule that the element type must be written down.
+sumf(...xs: float) -> float {
+    t = 0.0
+    for v in xs {
+        t = t + v
+    }
+    t
+}
+
+// An element type that is itself a list, so an argument can be a `[]` with
+// nothing in it to say what it holds. The call site has to hand each one the
+// element type the parameter declared; without it the empty list came out an
+// integer array and the push into a `StrArrArr` was a C type error.
+rows(...rs: str[]) -> int {
+    n = 0
+    for r in rs {
+        n = n + r.length()
+    }
+    n
+}
+
+// A closure parameter in a fixed slot, in front of the variadic: the lambda
+// takes its type from the parameter it is written into and the tail still
+// collects past it.
+applied(f, ...xs: int) -> int {
+    n = 0
+    for v in xs {
+        n = n + f(v)
+    }
+    n
+}
+
 // The variadic parameter holds a list the call site built for this call alone,
 // so appending to it in place cannot be observed by anybody — and this is the
 // shape that says whether the ownership analysis agrees. Written as a copy it is
@@ -92,6 +126,17 @@ grow_param(seed: int[]) -> str {
         seed = seed.push(i)
     }
     "{seed.length()}:{seed.get(0)}:{seed.get(1)}:{seed.get(2001)}"
+}
+
+// And a variadic parameter the body gives a second holder to: `keep` is looking
+// at the same buffer, so the append has to copy after all. Being a variadic
+// buys the exclusion from the parameter rule, not an exemption from aliasing.
+grow_aliased(...seed: int) -> str {
+    keep = seed
+    for i in 1..2000 {
+        seed = seed.push(i)
+    }
+    "{keep.length()}:{keep.get(0)}:{seed.length()}:{seed.get(2001)}"
 }
 
 // ---- answers --------------------------------------------------------------
@@ -158,6 +203,23 @@ test_a_lambda_can_pass_its_parameter_to_a_variadic() {
 test_a_variadic_can_recurse() {
     assert_eq(str(countdown(3)), "2", "the last call collected two")
     assert_eq(str(countdown(0, 5, 6, 7)), "3", "or three, on the first")
+}
+
+// `1.5` read back as `1.0` is what a variadic collected into the wrong array
+// looks like, and it is an answer, so only an answer catches it.
+test_a_float_variadic_keeps_its_element_type() {
+    assert_eq(str(sumf(1.5, 2.25)), "3.75", "doubles, not truncated ints")
+    assert_eq(str(sumf()), "0.0", "and an empty float list")
+}
+
+test_a_variadic_of_lists_takes_an_empty_list() {
+    assert_eq(str(rows([])), "0", "one element, holding nothing")
+    assert_eq(str(rows([], ["a", "b"], ["c"])), "3", "empty ones count too")
+}
+
+test_a_closure_parameter_can_precede_a_variadic() {
+    assert_eq(str(applied(v => v * 2, 1, 2, 3)), "12", "each element doubled")
+    assert_eq(str(applied(v => v * 2)), "0", "and nothing to apply it to")
 }
 
 // ---- memory ---------------------------------------------------------------
@@ -227,4 +289,16 @@ test_an_ordinary_list_parameter_still_copies() {
     assert_eq(got, "2002:1:2:2000", "the same answer")
     assert(spent > 2000, "grew in place: {spent} for 2000 rounds")
     assert_eq(str(held.length()), "2", "and the caller's list did not move")
+}
+
+// Nor is a variadic parameter the body aliased: `keep` holds the buffer the
+// appends would have moved, so it copies like any aliased local. Read through
+// `keep` after the reallocations, which is where a stale handle shows.
+test_an_aliased_variadic_parameter_still_copies() {
+    before = alloc_count() + reuse_count()
+    got = grow_aliased(1, 2)
+    spent = alloc_count() + reuse_count() - before
+
+    assert_eq(got, "2:1:2002:2000", "keep stayed at two, seed grew")
+    assert(spent > 2000, "grew in place under an alias: {spent}")
 }

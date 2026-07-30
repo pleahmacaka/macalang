@@ -1,15 +1,421 @@
-import { params, langs, case_name } from apps/bench/run
-import { recursion_kernels, compute_kernels } from apps/bench/run
-import { load, find } from bench/store
-import { median_ms } from bench/time
+// The front page's benchmark section and its "Get started" button, run and read
+// back.
+//
+// The page is a Maca program that writes HTML, so what is asserted is the HTML
+// it wrote: every number on it against the numbers in `apps/bench/results.json`,
+// and the button against the book that has to answer it. The arithmetic behind
+// those numbers is imported and exercised directly as well, because a page can
+// be right by accident and a formula cannot.
+//
+// Run from the repository root, which is where `maca`, the data and the book
+// are:
+//
+//   maca test crates/driver/tests/programs/site_home.maca
 
-main() -> int {
-    rs = load("apps/bench/results.json")
-    info("{rs.length()} results")
-    info(langs().join(", "))
-    info(recursion_kernels().join(", ") ++ " | " ++ compute_kernels().join(", "))
-    info(params("fib"))
-    at = find(rs, case_name("sieve", "Maca"))
-    info("{median_ms(rs.get(at)):.0}")
-    0
+import std/proc
+import { join } from std/path
+import { between, split_once } from std/text
+import { Result, median_ms } from bench/time
+import { load, find } from bench/store
+import { kernels, langs, params, case_name } from apps/bench/run
+import { bar_width, ms_text, ratio, standing, timing } from apps/site/home
+import { Standing, losses, verified, all_verified } from apps/site/home
+import { timed_runs, StartChapter, BenchData, BenchReport } from apps/site/home
+import { copies, korean } from apps/site/home
+
+// The compiler the page is built with. The Rust runner passes the one `cargo
+// test` just built; running this file by hand picks up the release binary.
+maca() -> str =>
+    env_or("MACA", "target/release/maca")
+
+Out = "/tmp/maca-site-home"
+
+// The three pages, freshly written. Rebuilt per test rather than once, because
+// there is nowhere to keep it: the alternative is a stale directory answering
+// for a generator that has since stopped working.
+built() -> str {
+    remove_dir(Out)
+    make_dir(Out)
+    run(maca(), ["run", "apps/site/home.maca", Out])
+    Out
+}
+
+root() -> str =>
+    read_file(join(built(), "index.html"))
+
+runs() -> Result[] =>
+    load(BenchData)
+
+// ---- the arithmetic ---------------------------------------------------------
+//
+// One kernel measured twice, so a threshold can be walked across on purpose.
+
+Kernel = "fib"
+
+pair(mine: int, base: int) -> Result[] =>
+    [sample(case_name(Kernel, "Maca"), mine, 42),
+     sample(case_name(Kernel, "C"), base, 42)]
+
+sample(name: str, ms: int, answer: int) -> Result =>
+    Result { name = name, size = 1, iters = 1, samples = [ms],
+             checksum = answer }
+
+// The `Standing` a run reports, as a word this file owns. Not the page's word:
+// a test that asserted the copy would pass on a page whose verdicts were all
+// computed backwards, so long as the words themselves were still spelled right.
+word(rs: Result[]) -> str =>
+    match standing(rs, Kernel) {
+        Ahead  => "ahead"
+        Level  => "level"
+        Behind => "behind"
+        Absent => "absent"
+    }
+
+// Two timings within `bench/compare`'s tolerance are the same timing. It is 5%,
+// so 4% apart is level and 8% apart is not, in both directions.
+test_a_difference_under_the_tolerance_is_not_a_difference() {
+    assert_eq(word(pair(104, 100)), "level", "4% behind is noise")
+    assert_eq(word(pair(96, 100)), "level", "so is 4% ahead")
+    assert_eq(word(pair(108, 100)), "behind", "8% behind is not")
+    assert_eq(word(pair(92, 100)), "ahead", "nor 8% ahead")
+}
+
+test_the_ratio_is_over_c() {
+    assert_eq("{ratio(pair(200, 100), Kernel):.1}", "2.0", "twice C's time")
+    assert_eq("{ratio(pair(50, 100), Kernel):.1}", "0.5", "half of it")
+    assert_eq("{ratio(pair(100, 100), Kernel):.1}", "1.0", "level")
+}
+
+// A bar is drawn as a share of the slower time on its row, so the longer bar is
+// always the whole track and the shorter one is the ratio, seen.
+test_a_bar_is_the_share_of_the_slower_time() {
+    assert_eq(str(bar_width(259.0, 259.0)), "100", "the slower bar fills")
+    assert_eq(str(bar_width(97.0, 259.0)), "37", "the faster one is its share")
+    assert_eq(str(bar_width(1.0, 200.0)), "2", "a tiny share still draws")
+    assert_eq(str(bar_width(-1.0, 200.0)), "0", "a missing time draws nothing")
+    assert_eq(str(bar_width(200.0, 0.0)), "0", "nor does one over nothing")
+}
+
+// A toolchain the measuring host did not have is a hole in the data. Reported as
+// a zero it would read as infinitely fast, and it would win.
+test_a_toolchain_the_host_lacked_is_a_hole_not_a_zero() {
+    lonely = [sample(case_name(Kernel, "Maca"), 100, 42)]
+
+    assert_eq(word(lonely), "absent", "no C, no comparison")
+    assert(timing(lonely, Kernel, "C") < 0.0, "and no time to draw")
+    assert_eq(ms_text(timing(lonely, Kernel, "C")), "n/a", "which it says")
+    assert_eq(ms_text(168.0), "168 ms", "against a time it has")
+}
+
+// The comparison is six programs computing one answer, and the page says so. It
+// may only say so while the stored checksums agree.
+test_columns_that_disagree_are_not_verified() {
+    disagreeing = [sample(case_name(Kernel, "Maca"), 100, 42),
+                   sample(case_name(Kernel, "C"), 100, 43)]
+
+    assert(verified(pair(100, 100), Kernel), "one answer, verified")
+    assert(!verified(disagreeing, Kernel), "two answers, not")
+    assert(all_verified(runs()), "and the stored run agrees with itself")
+}
+
+// ---- the numbers on the page ------------------------------------------------
+
+// Every cell of the table, derived here from the file through `bench/time`
+// rather than read off the page. This is the test that makes a transcribed
+// number impossible: no figure below is written down anywhere in this file.
+test_every_measured_number_is_on_the_page() {
+    page = root()
+    rs = runs()
+
+    assert_eq(absent_cells(page, rs, kernels(), 0, []).join(", "), "",
+              "every kernel in every language, as measured")
+}
+
+absent_cells(page: str, rs: Result[], ks: str[], i: int,
+             acc: str[]) -> str[] {
+    if i >= ks.length() {
+        acc
+    } else {
+        absent_cells(page, rs, ks, i + 1,
+                     acc ++ absent_langs(page, rs, ks.get(i), langs(), 0, []))
+    }
+}
+
+absent_langs(page: str, rs: Result[], algo: str, ls: str[], i: int,
+             acc: str[]) -> str[] {
+    if i >= ls.length() {
+        acc
+    } else if page.contains(cell(rs, algo, ls.get(i))) {
+        absent_langs(page, rs, algo, ls, i + 1, acc)
+    } else {
+        absent_langs(page, rs, algo, ls, i + 1,
+                     acc.push(case_name(algo, ls.get(i))))
+    }
+}
+
+// The median and the multiple of C's time, spelled out here so that the page's
+// own formatting is compared against something rather than against itself.
+cell(rs: Result[], algo: str, lang: str) -> str {
+    ms = timing(rs, algo, lang)
+    base = timing(rs, algo, "C")
+
+    "{ms:.0} (×{ms / base:.1})"
+}
+
+// The bars carry the same two times again, as labels, and their lengths are each
+// time's share of the slower of the two. `sieve` is the row where those two are
+// far enough apart that a wrong denominator could not pass unnoticed.
+test_the_bars_are_drawn_from_the_measurements() {
+    page = root()
+    rs = runs()
+    mine = timing(rs, "sieve", "Maca")
+    base = timing(rs, "sieve", "C")
+    worst = mine > base ? mine : base
+
+    assert(mine > base, "sieve is the row where the two differ")
+    assert(page.contains("style=\"width:{bar_width(mine, worst)}%\""),
+           "maca's bar is its share of the row")
+    assert(page.contains("style=\"width:{bar_width(base, worst)}%\""),
+           "and c's is its own")
+    assert(page.contains(ms_text(mine)), "the slower label")
+    assert(page.contains(ms_text(base)), "and the faster one")
+}
+
+// A benchmark page that says only where the language wins is an advertisement.
+// Every kernel behind C is marked as behind and named in the paragraph under the
+// bars, and that paragraph's own claims about them are checked here: that the
+// one it explains is the largest, and that the others really do only trail.
+test_the_page_says_where_maca_loses() {
+    page = root()
+    rs = runs()
+    lost = losses(rs)
+
+    assert(lost.length() > 0, "there is a kernel behind C to own up to")
+    assert_eq(str(occurrences(page, "slower than C")), str(lost.length()),
+              "every one of them is marked slower")
+    assert(all_named(page, lost, 0), "and named in the note")
+    assert_eq(worst_of(rs, lost, 0, ""), "sieve",
+              "sieve is still the largest of them")
+    assert(only_trailing(rs, lost, 0), "and the rest still only trail")
+    assert(page.contains("bound by memory bandwidth"), "the note says why")
+}
+
+// A kernel the note names arrives inside a `<code>` span, because the note is
+// prose and `prose` renders a backtick run as code.
+all_named(page: str, ks: str[], i: int) -> bool {
+    if i >= ks.length() {
+        true
+    } else if !page.contains(">" ++ ks.get(i) ++ "</code>") {
+        false
+    } else {
+        all_named(page, ks, i + 1)
+    }
+}
+
+worst_of(rs: Result[], ks: str[], i: int, worst: str) -> str {
+    if i >= ks.length() {
+        worst
+    } else if worst == "" || ratio(rs, ks.get(i)) > ratio(rs, worst) {
+        worst_of(rs, ks, i + 1, ks.get(i))
+    } else {
+        worst_of(rs, ks, i + 1, worst)
+    }
+}
+
+// "trails by a margin a single timed run cannot separate from noise" is a claim
+// about a number. Every loss except the one the note explains has to be within a
+// fifth of C, or that sentence needs writing again.
+only_trailing(rs: Result[], ks: str[], i: int) -> bool {
+    if i >= ks.length() {
+        true
+    } else if ks.get(i) == "sieve" || ratio(rs, ks.get(i)) < 1.2 {
+        only_trailing(rs, ks, i + 1)
+    } else {
+        false
+    }
+}
+
+occurrences(haystack: str, needle: str) -> int =>
+    haystack.split(needle).length() - 1
+
+// Every kernel is on the page under the workload it was given, and every
+// language it was measured against is named. Six of eight columns are languages
+// Maca is faster than, and dropping one of those would flatter it.
+test_every_kernel_and_language_is_named() {
+    page = root()
+
+    assert(all_present(page, kernels(), 0), "every kernel")
+    assert(all_present(page, workloads(kernels(), 0, []), 0), "its workload")
+    assert(all_present(page, langs(), 0), "and every contender")
+}
+
+workloads(ks: str[], i: int, acc: str[]) -> str[] {
+    if i >= ks.length() {
+        acc
+    } else {
+        workloads(ks, i + 1, acc.push(params(ks.get(i))))
+    }
+}
+
+all_present(page: str, wanted: str[], i: int) -> bool {
+    if i >= wanted.length() {
+        true
+    } else if !page.contains(escaped(wanted.get(i))) {
+        false
+    } else {
+        all_present(page, wanted, i + 1)
+    }
+}
+
+// `JS (node)` and `primes ≤ 10⁷` reach the page as themselves; nothing in either
+// list is a character the page escapes. Stated as a function so that the day one
+// of them is, this is where it gets handled.
+escaped(text: str) -> str =>
+    text
+
+// ---- provenance -------------------------------------------------------------
+
+// A benchmark without its machine and its flags is a rumour, and one nobody can
+// re-run is one nobody has to believe. The host is compared against the
+// harness's own record of it, not against a string typed here.
+test_the_page_states_where_the_numbers_came_from() {
+    page = root()
+    host = between(read_file(BenchReport), "_Host: ", ". Times")
+
+    assert(host != "", "the harness recorded a host")
+    assert(page.contains(host), "and the page names that one")
+    assert(page.contains("{timed_runs(runs())} per language"),
+           "how many runs each contender got")
+    assert(page.contains("maca run apps/bench/run.maca"), "how to re-run it")
+    assert(page.contains("apps/bench/README.md"), "and where it is explained")
+    assert(page.contains("cc -O2"), "with the flags it was built at")
+}
+
+// ---- the button -------------------------------------------------------------
+
+// "Get started" used to be an anchor to the install band further down the page.
+// It leads into the handbook now, in the reader's own language: the root page is
+// English and links `en/…`, and the Korean landing sits one directory down and
+// links back up into `ko/…`.
+test_get_started_leads_into_the_handbook() {
+    dir = built()
+    page = read_file(join(dir, "index.html"))
+    ko = read_file(join(dir, "ko/home.html"))
+
+    assert(page.contains("href=\"en/{StartChapter}.html\""),
+           "the english button opens the english chapter")
+    assert(ko.contains("href=\"../ko/{StartChapter}.html\""),
+           "and the korean one the korean chapter")
+    assert(!page.contains("href=\"#install\""),
+           "nothing points down the page any more")
+    assert(page.contains("id=\"install\""),
+           "though the band with the one command is still there")
+}
+
+// The chapter has to exist in every language the page offers, and `book.toml`
+// has to list it: a chapter file the table of contents does not mention is not
+// published, so the button would land on nothing in the language that lost it.
+test_the_chapter_it_opens_is_published_in_every_language() {
+    toml = read_file("apps/tomo/book.toml")
+
+    assert(toml.contains("\"{StartChapter}\""), "the book lists the chapter")
+    assert(chapters_exist(copies(), 0), "and has it in every language")
+}
+
+chapters_exist(cs: Copy[], i: int) -> bool {
+    if i >= cs.length() {
+        true
+    } else if file_size(chapter(cs.get(i).lang)) <= 0 {
+        false
+    } else {
+        chapters_exist(cs, i + 1)
+    }
+}
+
+chapter(lang: str) -> str =>
+    "apps/tomo/book/" ++ lang ++ "/" ++ StartChapter ++ ".md"
+
+// ---- both languages ---------------------------------------------------------
+
+// The Korean page carries the whole section, not the heading with an English
+// body: the same numbers, and the verdict in Korean.
+test_the_korean_page_carries_the_same_benchmark() {
+    ko = read_file(join(built(), "ko/home.html"))
+
+    assert(ko.contains(korean().bench_title), "the heading, in Korean")
+    assert(ko.contains(korean().tbl_note), "the table's unit note too")
+    assert(ko.contains("C보다 느림"), "and it says where Maca is slower")
+    assert(ko.contains(cell(runs(), "sieve", "Maca")),
+           "over the same measurement")
+}
+
+// ---- the stylesheet ---------------------------------------------------------
+
+// Every utility the page mentions has to have produced a rule. An unknown one is
+// not an error anywhere: the browser drops it and the layout is quietly a little
+// wrong, which is why `tools/build-site.maca` checks this over every page of the
+// assembled site. It is checked here too because this suite runs without
+// building the handbook and the playground first, and because a bar's width is
+// the one thing on this page that a class could not have carried.
+//
+// The selectors are compared with their backslashes taken out rather than by
+// escaping each class name, which is the same test without a second copy of the
+// escaping table.
+test_every_utility_on_the_page_has_a_rule() {
+    page = root()
+    sheet = between(page, "<style>", "</style>").replace("\\", "")
+
+    assert(sheet.length() > 0, "the page carries a stylesheet")
+    assert_eq(unruled(sheet, mentioned(page), 0, []).join(", "), "",
+              "every class on the page has a rule")
+}
+
+// Every distinct class named by a `class="…"` attribute. The page has no
+// `<script>`, and a code sample's own `<` arrives as `&lt;`, so every one of
+// these is an attribute on a real tag.
+mentioned(page: str) -> str[] =>
+    named(page.split(" class=\""), 1, [])
+
+named(parts: str[], i: int, acc: str[]) -> str[] {
+    if i >= parts.length() {
+        acc
+    } else {
+        named(parts, i + 1, acc ++ split_once(parts.get(i), "\"").get(0)
+                                      .split(" "))
+    }
+}
+
+unruled(sheet: str, cs: str[], i: int, acc: str[]) -> str[] {
+    if i >= cs.length() {
+        acc
+    } else if has_rule(sheet, cs.get(i)) {
+        unruled(sheet, cs, i + 1, acc)
+    } else {
+        unruled(sheet, cs, i + 1, acc.push(cs.get(i)))
+    }
+}
+
+// The selector has to end where the class does, or a dead class that is a prefix
+// of a live one passes. A rule is always `.name` followed by a space, a
+// pseudo-class `:` or the `[` of an attribute selector. `language-…` is a hook
+// for a highlighter and is not meant to have one.
+has_rule(sheet: str, class: str) -> bool {
+    sel = "." ++ class
+
+    class.starts_with("language-") || sheet.contains(sel ++ " ")
+        || sheet.contains(sel ++ ":") || sheet.contains(sel ++ "[")
+}
+
+// ---- responsiveness ---------------------------------------------------------
+
+// Eight columns of numbers that must not wrap is wider than a phone. The house
+// rule is that wide content scrolls inside its own box and the page never
+// scrolls sideways, so the table is inside a scroller and its cells say so.
+test_the_wide_table_scrolls_inside_its_own_box() {
+    page = root()
+
+    assert(page.contains("overflow-x-auto\"><table"),
+           "the table is inside a scroller")
+    assert(between(page, "<table", "</table>").contains("whitespace-nowrap"),
+           "and its cells do not wrap out of it")
 }

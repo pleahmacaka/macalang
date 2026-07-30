@@ -2,7 +2,8 @@
 
 A page, two JSON endpoints, a route with a parameter, a wildcard route, a POST,
 and a handler that fails. The worked example of
-[`modules/tambo`](../../modules/tambo) over [`modules/http`](../../modules/http).
+[`modules/tambo`](../../modules/tambo) over
+[`modules/http`](../../modules/http).
 
 ```sh
 maca run apps/tambo_demo/tambo_demo.maca       # print the table and answer a

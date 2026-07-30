@@ -18,7 +18,21 @@
 // NonExhaustive error from the checker, not a shorter page nobody notices.
 
 import std/path
+import { between } from std/text
 import apps/site/shell
+
+// The benchmark section reads the harness's own output and reuses the harness's
+// own vocabulary. `bench/store` reads the JSON it wrote, `bench/time` says what
+// a set of samples means, `bench/compare` owns the threshold below which two
+// timings are the same timing, and `apps/bench/run` knows which kernels there
+// are, which family each belongs to, what workload each was given and what a
+// case is filed under. None of that is retyped here, because a retyped
+// benchmark number is a number that goes stale without anybody noticing.
+import { Result, median_ms } from bench/time
+import { load, find } from bench/store
+import { Tolerance } from bench/compare
+import { kernels, langs, params, case_name } from apps/bench/run
+import { recursion_kernels, compute_kernels } from apps/bench/run
 
 InstallUrl = "https://raw.githubusercontent.com/pleahmacaka/macalang/main"
     ++ "/install.sh"
@@ -30,11 +44,21 @@ Topic  = Config | Async | Markup | Values
 Spec   = Types | Memory | Output | Colour
 Caveat = Ecosystem | Cycles | Young
 
+// The benchmark section: a group of kernels, where Maca landed on one of them,
+// and a line of provenance under the whole thing.
+Family     = Recursion | Compute
+Standing   = Ahead | Level | Behind | Absent
+Provenance = Host | Tools | Runs | Answers | Repro
+
 topics() -> Topic[] => Config, Async, Markup, Values
 
 specs() -> Spec[] => Types, Memory, Output, Colour
 
 caveats() -> Caveat[] => Ecosystem, Cycles, Young
+
+families() -> Family[] => Recursion, Compute
+
+provenance() -> Provenance[] => Host, Tools, Runs, Answers, Repro
 
 // Every target the driver accepts. Native needs no flag; the rest are one.
 targets() -> str[] =>
@@ -73,6 +97,21 @@ Copy = {
     tgt_title: str
     tgt_sub:   str
     install:   str
+    // The install band shows the one command; the handbook's installing
+    // chapter carries the rest, and this is the link to it.
+    install_more: str
+    bench_title:  str
+    bench_sub:    str
+    // Where Maca loses, and why. One string rather than something keyed by
+    // kernel, because it is about one kernel for one reason. The suite asserts
+    // that kernel is still the only loss, so a re-run that changes which one it
+    // is turns this paragraph red rather than leaving it quietly wrong.
+    bench_note:   str
+    bench_readme: str
+    bench_full:   str
+    tbl_kernel:   str
+    tbl_workload: str
+    tbl_note:     str
     lim_title: str
     footer:    str
     skip:      str
@@ -163,6 +202,26 @@ english() -> Copy =>
         tgt_title = "One source, seven targets",
         tgt_sub = "Native is the default. The rest are a flag.",
         install = "Install",
+        install_more = "Full install instructions",
+        bench_title = "How fast is it?",
+        bench_sub = "Six kernels in six languages, on one machine, each"
+            ++ " verified to have computed the same answer. The bars are Maca"
+            ++ " against C, because Maca compiles through C and C is therefore"
+            ++ " the ceiling. Lower is better, and not every row reaches it.",
+        bench_note = "Where it is behind: `sieve` is the real gap, and it is"
+            ++ " not a code-generation deficit. Maca's only array type is a"
+            ++ " 64-bit `int[]`, so a sieve to 10⁷ touches about 80 MB where"
+            ++ " C's `char` array touches 10 MB; it is bound by memory"
+            ++ " bandwidth, and a compact byte array would close it. `matmul`"
+            ++ " trails by a margin a single timed run cannot separate from"
+            ++ " noise. Everything else lands on C, because it is C, at"
+            ++ " `-O2`.",
+        bench_readme = "How the benchmark works",
+        bench_full = "Every number, as tables",
+        tbl_kernel = "kernel",
+        tbl_workload = "workload",
+        tbl_note = "Median time in milliseconds, lower is better, and in"
+            ++ " brackets the multiple of C's time.",
         lim_title = "Not for you if",
         footer = "Criticism welcome — particularly the kind that says which of"
             ++ " those boxes is the wrong one.",
@@ -221,6 +280,51 @@ en_caveat(c: Caveat) -> str =>
         Young => "You want a proven language. This one is young, and says so."
     }
 
+en_family(f: Family) -> Feature =>
+    match f {
+        Recursion => Feature {
+            title = "Recursion-bound",
+            body = "Tree and nested recursion, where the cost of a function"
+                ++ " call is the cost of the program."
+        }
+        Compute => Feature {
+            title = "Compute-bound",
+            body = "Tight loops over arrays and floating point, where the"
+                ++ " inner loop is the cost of the program."
+        }
+    }
+
+en_standing(s: Standing) -> str =>
+    match s {
+        Ahead  => "faster than C"
+        Level  => "level with C"
+        Behind => "slower than C"
+        Absent => "not measured here"
+    }
+
+en_prov(p: Provenance, rs: Result[]) -> Fact =>
+    match p {
+        Host => Fact { label = "Measured on", value = bench_host() }
+        Tools => Fact { label = "Toolchains", value = Toolchains }
+        Runs => Fact { label = "Timed runs",
+                       value = "{timed_runs(rs)} per language, median of the"
+                           ++ " samples, wall clock with process start in it" }
+        Answers => Fact { label = "Verified", value = en_answers(rs) }
+        Repro => Fact { label = "Reproduce",
+                        value = "`" ++ ReproCommand ++ "`" }
+    }
+
+// The claim the whole comparison rests on: six programs that agree on the
+// answer. Stated only when the stored checksums actually do agree, because a
+// page is the wrong place to find out that they don't.
+en_answers(rs: Result[]) -> str {
+    if all_verified(rs) {
+        "every language printed the same checksum"
+    } else {
+        "checksums disagree on {disagreeing(rs)}"
+    }
+}
+
 // ---- Korean -----------------------------------------------------------------
 
 korean() -> Copy =>
@@ -244,6 +348,25 @@ korean() -> Copy =>
         tgt_title = "하나의 소스, 일곱 개의 타깃",
         tgt_sub = "네이티브가 기본입니다. 나머지는 플래그 하나입니다.",
         install = "설치",
+        install_more = "설치 안내 전체 보기",
+        bench_title = "얼마나 빠릅니까?",
+        bench_sub = "여섯 개의 커널, 여섯 개의 언어, 한 대의 기계. 모두 같은"
+            ++ " 답을 계산했음을 확인했습니다. 막대는 Maca와 C의 비교입니다."
+            ++ " Maca는 C를 거쳐 컴파일되므로 C가 천장이고, 낮을수록"
+            ++ " 좋습니다. 그리고 모든 줄이 그 천장에 닿지는 않습니다.",
+        bench_note = "뒤처지는 곳: `sieve`가 진짜 격차이고, 코드 생성의"
+            ++ " 문제는 아닙니다. Maca의 배열 타입은 64비트 `int[]`"
+            ++ " 하나뿐이라 10⁷까지의 체는 약 80 MB를 건드리고, C의 `char`"
+            ++ " 배열은 10 MB를 건드립니다. 메모리 대역폭에 걸린 것이고,"
+            ++ " 바이트 배열이 생기면 메워집니다. `matmul`은 한 번의 측정으로"
+            ++ " 노이즈와 구분할 수 없는 차이로 뒤에 있습니다. 나머지는 C에"
+            ++ " 붙습니다. `-O2`로 컴파일된 C 그 자체이기 때문입니다.",
+        bench_readme = "벤치마크가 어떻게 동작하는지",
+        bench_full = "모든 수치, 표로",
+        tbl_kernel = "커널",
+        tbl_workload = "작업량",
+        tbl_note = "밀리초 단위 중앙값, 낮을수록 좋습니다. 괄호 안은 C"
+            ++ " 대비 배수입니다.",
         lim_title = "이럴 땐 맞지 않습니다",
         footer = "비판을 환영합니다 — 특히 저 칸들 중 어느 것이 잘못된"
             ++ " 선택인지 짚어 주는 쪽으로요.",
@@ -299,6 +422,47 @@ ko_caveat(c: Caveat) -> str =>
         Young => "검증된 언어가 필요할 때. 이 언어는 어리고, 그렇다고 말합니다."
     }
 
+ko_family(f: Family) -> Feature =>
+    match f {
+        Recursion => Feature {
+            title = "재귀 위주",
+            body = "트리 재귀와 중첩 재귀. 함수 호출 비용이 곧 프로그램의"
+                ++ " 비용인 경우입니다."
+        }
+        Compute => Feature {
+            title = "계산 위주",
+            body = "배열을 도는 촘촘한 루프와 부동소수점. 내부 루프가 곧"
+                ++ " 프로그램의 비용인 경우입니다."
+        }
+    }
+
+ko_standing(s: Standing) -> str =>
+    match s {
+        Ahead  => "C보다 빠름"
+        Level  => "C와 같은 수준"
+        Behind => "C보다 느림"
+        Absent => "여기서는 측정되지 않음"
+    }
+
+ko_prov(p: Provenance, rs: Result[]) -> Fact =>
+    match p {
+        Host => Fact { label = "측정 환경", value = bench_host() }
+        Tools => Fact { label = "툴체인", value = Toolchains }
+        Runs => Fact { label = "측정 횟수",
+                       value = "언어당 {timed_runs(rs)}회, 샘플의 중앙값,"
+                           ++ " 프로세스 시작을 포함한 실측 시간" }
+        Answers => Fact { label = "검증", value = ko_answers(rs) }
+        Repro => Fact { label = "재현", value = "`" ++ ReproCommand ++ "`" }
+    }
+
+ko_answers(rs: Result[]) -> str {
+    if all_verified(rs) {
+        "모든 언어가 같은 체크섬을 출력했습니다"
+    } else {
+        "체크섬이 어긋난 커널: {disagreeing(rs)}"
+    }
+}
+
 // ---- picking a language -----------------------------------------------------
 //
 // One `if` per kind of content, in one place. A third language is a `Copy`
@@ -328,11 +492,36 @@ caveat_of(c: Copy, v: Caveat) -> str {
     }
 }
 
+family_of(c: Copy, f: Family) -> Feature {
+    if c.lang == "ko" {
+        ko_family(f)
+    } else {
+        en_family(f)
+    }
+}
+
+standing_of(c: Copy, s: Standing) -> str {
+    if c.lang == "ko" {
+        ko_standing(s)
+    } else {
+        en_standing(s)
+    }
+}
+
+prov_of(c: Copy, p: Provenance, rs: Result[]) -> Fact {
+    if c.lang == "ko" {
+        ko_prov(p, rs)
+    } else {
+        en_prov(p, rs)
+    }
+}
+
 // ---- page -------------------------------------------------------------------
 
 // `up` is the path back to the site root: "" from `/index.html`, "../" from a
-// language directory.
-page(c: Copy, up: str) -> str =>
+// language directory. `rs` is the benchmark run, read once by `main` rather than
+// once per page.
+page(c: Copy, up: str, rs: Result[]) -> str =>
     "<!doctype html>\n"
         ++ html(lang=c.lang,
             head(
@@ -357,8 +546,9 @@ page(c: Copy, up: str) -> str =>
                            hero(c, up)
                            spec_strip(c)
                            features(c)
+                           bench_band(c, rs)
                            targets_band(c)
-                           install_band(c)
+                           install_band(c, up)
                            limits(c))
                     ++ site_footer(c))) ++ "\n"
 
@@ -466,11 +656,28 @@ hero(c: Copy, up: str) -> str =>
             p(class="mt-5 text-[1.05rem] text-zinc-600 dark:text-zinc-400",
               prose(c.sub))
             div(class="mt-8 flex flex-wrap gap-3",
-                a(class=primary_btn(), href="#install", escape_html(c.cta_start))
+                a(class=primary_btn(), href=start_href(c, up),
+                  escape_html(c.cta_start))
                 a(class=ghost_btn(), href=up ++ "play/index.html",
                   escape_html(c.cta_play))
                 a(class=ghost_btn(), href=Repo, "GitHub")))
         code_panel(HeroSample, "maca"))
+
+// The handbook chapter "Get started" leads to, in the reader's own language.
+//
+// It used to be `#install`, an anchor to the band further down this page, and
+// that band is three lines of shell. Someone who has decided to try the thing
+// wants the chapter that also covers Windows, `PATH`, and the C compiler that is
+// the one real requirement. The band stays where it is, as the one command a
+// visitor can copy without leaving; what it cannot hold now links here.
+//
+// A chapter is published at `<lang>/<stem>.html` (see `apps/tomo/tomo.maca`),
+// and this stem is the first entry of the book's "Getting Started" section in
+// `apps/tomo/book.toml`.
+StartChapter = "01-installing"
+
+start_href(c: Copy, up: str) -> str =>
+    up ++ c.lang ++ "/" ++ StartChapter ++ ".html"
 
 primary_btn() -> str =>
     "inline-block px-5 py-2 rounded-md no-underline font-medium"
@@ -501,9 +708,14 @@ spec_strip(c: Copy) -> str =>
 
 fact_cell(f: Fact) -> str =>
     div(
-        div(class="text-[0.75rem] uppercase tracking-wide text-zinc-500"
-                  ++ " dark:text-zinc-400", escape_html(f.label))
+        div(class=fact_label(), escape_html(f.label))
         div(class="mt-1 font-medium", escape_html(f.value)))
+
+// Shared with the benchmark section's provenance cells, which are the same kind
+// of thing said in the same voice: two of them drifted apart when they were two
+// strings.
+fact_label() -> str =>
+    "text-[0.75rem] uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
 
 // ---- features ---------------------------------------------------------------
 
@@ -531,6 +743,389 @@ feature_card(f: Feature, src: str) -> str =>
                   ++ " text-[0.8rem] m-0 min-w-0",
             code(class="font-mono language-maca", escape_html(src))))
 
+// ---- benchmarks -------------------------------------------------------------
+//
+// Every figure in this section is read out of the harness's own output at build
+// time. Nothing is transcribed: the kernels, their order, the family each
+// belongs to, the workload each was given and the language names all come from
+// `apps/bench/run`, and each number is a median `bench/time` computes from the
+// samples `bench/store` read back. A benchmark page whose numbers were typed in
+// is a page that is wrong one run later and says nothing about when.
+
+BenchData = "apps/bench/results.json"
+
+// The harness writes its rendered tables beside the data, and the machine it
+// measured on is stated there and nowhere else. Which is why the host is read
+// out of a Markdown file rather than asked of the host: this page is built
+// wherever it is built, the numbers were not, and `uname` here would quietly
+// relabel someone else's measurements as ours.
+BenchReport = "apps/bench/results.md"
+
+ReproCommand = "maca run apps/bench/run.maca"
+
+// How each contender was built. Beside the numbers, because a benchmark without
+// its flags is a rumour. Not translated: these are program names and flags.
+Toolchains = "Maca `maca build` → `cc -O2`, C `cc -O2`, Rust `rustc -O`,"
+    ++ " Go `go build`, JS `node`, Python `python3`"
+
+// The two names the harness files a case under that this page reads by name.
+// Maca compiles through C, so C is the ceiling and every ratio here is over it.
+MacaLang = "Maca"
+BaseLang = "C"
+
+// One read of the file, threaded into the page. `load` parses the whole
+// document, and the section asks it dozens of questions.
+bench_runs() -> Result[] =>
+    load(BenchData)
+
+family_kernels(f: Family) -> str[] =>
+    match f {
+        Recursion => recursion_kernels()
+        Compute   => compute_kernels()
+    }
+
+// The median of the samples one kernel took in one language, or a negative
+// number when the run holds no such case. A toolchain the measuring host did
+// not have is a hole in the data, and a hole is not a zero.
+timing(rs: Result[], algo: str, lang: str) -> float {
+    at = find(rs, case_name(algo, lang))
+
+    if at < 0 {
+        -1.0
+    } else {
+        median_ms(rs.get(at))
+    }
+}
+
+// How many times C's time Maca took, or 0.0 when either side is missing.
+ratio(rs: Result[], algo: str) -> float {
+    mine = timing(rs, algo, MacaLang)
+    base = timing(rs, algo, BaseLang)
+
+    if mine < 0.0 || base <= 0.0 {
+        0.0
+    } else {
+        mine / base
+    }
+}
+
+// Where Maca landed on one kernel.
+//
+// The threshold is `bench/compare`'s `Tolerance`: the fraction a timing has to
+// move before it counts as having moved at all. Two runs of the same binary on
+// the same machine routinely disagree by less than that, so calling a 2%
+// difference a win would be reading noise out loud.
+standing(rs: Result[], algo: str) -> Standing {
+    r = ratio(rs, algo)
+
+    if r <= 0.0 {
+        Absent
+    } else if r < 1.0 - Tolerance {
+        Ahead
+    } else if r > 1.0 + Tolerance {
+        Behind
+    } else {
+        Level
+    }
+}
+
+is_behind(rs: Result[], algo: str) -> bool =>
+    match standing(rs, algo) {
+        Behind => true
+        _      => false
+    }
+
+/// The kernels Maca is slower than C on, in the harness's order.
+///
+/// Public because the page makes a claim about them in prose, and the suite
+/// checks that claim against this.
+losses(rs: Result[]) -> str[] =>
+    kept(rs, kernels(), 0, [])
+
+kept(rs: Result[], ks: str[], i: int, acc: str[]) -> str[] {
+    if i >= ks.length() {
+        acc
+    } else if is_behind(rs, ks.get(i)) {
+        kept(rs, ks, i + 1, acc.push(ks.get(i)))
+    } else {
+        kept(rs, ks, i + 1, acc)
+    }
+}
+
+// What one language printed for one kernel, or 0 when it did not run it. Every
+// kernel here answers with a large number, so 0 is safe as "no case".
+answer(rs: Result[], algo: str, lang: str) -> int {
+    at = find(rs, case_name(algo, lang))
+
+    if at < 0 {
+        0
+    } else {
+        rs.get(at).checksum
+    }
+}
+
+// Did every language that ran this kernel compute the same thing? The harness
+// checks this while it measures; this checks the file it wrote, because the
+// claim is made here.
+verified(rs: Result[], algo: str) -> bool {
+    want = answer(rs, algo, MacaLang)
+
+    want != 0 && agree(rs, algo, langs(), 0, want)
+}
+
+agree(rs: Result[], algo: str, ls: str[], i: int, want: int) -> bool {
+    if i >= ls.length() {
+        true
+    } else if answer(rs, algo, ls.get(i)) == 0 {
+        agree(rs, algo, ls, i + 1, want)
+    } else if answer(rs, algo, ls.get(i)) != want {
+        false
+    } else {
+        agree(rs, algo, ls, i + 1, want)
+    }
+}
+
+all_verified(rs: Result[]) -> bool =>
+    unverified(rs, kernels(), 0, []).length() == 0
+
+// The kernels whose columns disagree, named, so that a page which cannot make
+// the claim says which kernel took it away instead of dropping the line.
+disagreeing(rs: Result[]) -> str =>
+    unverified(rs, kernels(), 0, []).join(", ")
+
+unverified(rs: Result[], ks: str[], i: int, acc: str[]) -> str[] {
+    if i >= ks.length() {
+        acc
+    } else if verified(rs, ks.get(i)) {
+        unverified(rs, ks, i + 1, acc)
+    } else {
+        unverified(rs, ks, i + 1, acc.push(ks.get(i)))
+    }
+}
+
+// How many times each contender was run. Read from the data rather than stated,
+// because the harness takes `--runs N`: a page claiming five samples over a file
+// holding one is a page telling a small lie about its own evidence.
+timed_runs(rs: Result[]) -> int {
+    if rs.length() == 0 {
+        0
+    } else {
+        rs.get(0).samples.length()
+    }
+}
+
+bench_host() -> str {
+    stated = between(read_file(BenchReport), "_Host: ", ". Times")
+
+    if stated == "" {
+        fail "{BenchReport} no longer states the host it measured on"
+    }
+
+    stated
+}
+
+// ---- the benchmark section --------------------------------------------------
+
+bench_band(c: Copy, rs: Result[]) -> str =>
+    section(id="benchmarks",
+            class="border-t border-zinc-200 dark:border-zinc-800",
+        div(class=wrap() ++ " py-14",
+            h2(class=band_title(), escape_html(c.bench_title))
+            p(class=band_sub() ++ " max-w-[46rem]", prose(c.bench_sub))
+            families().map(f => family_group(c, rs, f)).join("")
+            p(class="mt-9 max-w-[46rem] text-[0.95rem] text-zinc-600"
+                    ++ " dark:text-zinc-400", prose(c.bench_note))
+            bench_table(c, rs)
+            bench_notes(c, rs)))
+
+family_group(c: Copy, rs: Result[], f: Family) -> str =>
+    div(class="mt-10",
+        h3(class="font-semibold text-[1.05rem] m-0",
+           escape_html(family_of(c, f).title))
+        p(class="mt-1 text-[0.9rem] text-zinc-600 dark:text-zinc-400",
+          prose(family_of(c, f).body))
+        div(class="mt-5 grid gap-5",
+            family_kernels(f).map(k => kernel_row(c, rs, k)).join("")))
+
+// One kernel: what it is, where Maca landed, and the two bars that says it. The
+// pair is scaled to the slower of the two, so the longer bar is always the full
+// track and the shorter one is the ratio, drawn.
+kernel_row(c: Copy, rs: Result[], algo: str) -> str {
+    mine = timing(rs, algo, MacaLang)
+    base = timing(rs, algo, BaseLang)
+    worst = mine > base ? mine : base
+
+    div(class="grid gap-x-6 gap-y-3 md:grid-cols-[11rem_1fr] items-start",
+        div(class="min-w-0",
+            div(class="font-mono text-[0.9rem] font-medium", escape_html(algo))
+            div(class="font-mono text-[0.75rem] text-zinc-500"
+                      ++ " dark:text-zinc-400", escape_html(params(algo)))
+            div(class="mt-2", verdict_chip(c, rs, algo)))
+        div(class="min-w-0 grid gap-2",
+            bar_row(MacaLang, mine, worst, mine_tone(rs, algo))
+            bar_row(BaseLang, base, worst, "bg-zinc-300 dark:bg-zinc-600")))
+}
+
+verdict_chip(c: Copy, rs: Result[], algo: str) -> str =>
+    span(class="inline-block rounded-full px-2 py-[0.1rem] text-[0.72rem]"
+               ++ " font-medium " ++ chip_tone(rs, algo),
+         escape_html(ratio_text(rs, algo)
+                     ++ standing_of(c, standing(rs, algo))))
+
+// `×2.7 `. The trailing space is here rather than in the copy because there is
+// nothing to separate when there is no ratio to state.
+ratio_text(rs: Result[], algo: str) -> str {
+    r = ratio(rs, algo)
+
+    if r <= 0.0 {
+        ""
+    } else {
+        "×{r:.1} "
+    }
+}
+
+// The only colour on the page, spent on the only thing a reader must not miss:
+// the kernel where Maca is behind. The word beside it says the same, so the
+// colour is not carrying the meaning by itself.
+mine_tone(rs: Result[], algo: str) -> str {
+    if is_behind(rs, algo) {
+        "bg-amber-500 dark:bg-amber-400"
+    } else {
+        "bg-zinc-900 dark:bg-zinc-100"
+    }
+}
+
+chip_tone(rs: Result[], algo: str) -> str {
+    if is_behind(rs, algo) {
+        "bg-amber-400 text-black"
+    } else {
+        "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+    }
+}
+
+// A bar's length is a measurement, not a design decision, so it is an inline
+// `width` rather than a utility class. `styles()` generates rules for the class
+// strings it can see in the source, so a class assembled at run time
+// (`"w-[" ++ str(pct) ++ "%]"`) would reach the browser with no rule behind it
+// and the bar would be invisible, silently, which is the failure mode this
+// whole site is checked for. The track is a flex child, so the percentage is a
+// percentage of whatever width the phone or the desktop left for it.
+bar_row(who: str, ms: float, worst: float, tone: str) -> str =>
+    div(class="flex items-center gap-3",
+        span(class="w-[3.2rem] shrink-0 text-[0.78rem] text-zinc-500"
+                   ++ " dark:text-zinc-400", escape_html(who))
+        span(class="flex-1 min-w-0 h-2 rounded-full bg-zinc-100"
+                   ++ " dark:bg-zinc-900 overflow-hidden",
+             span(class="block h-2 rounded-full " ++ tone,
+                  style="width:{bar_width(ms, worst)}%"))
+        span(class="w-[4.6rem] shrink-0 text-right font-mono tabular-nums"
+                   ++ " text-[0.78rem]", escape_html(ms_text(ms))))
+
+// A bar as a percentage of its track, against the slower time on the row. The
+// floor is 2%: a bar rounded down to nothing reads as missing data rather than
+// as a small number.
+bar_width(ms: float, worst: float) -> int {
+    if ms <= 0.0 || worst <= 0.0 {
+        0
+    } else if 100.0 * ms / worst < 2.0 {
+        2
+    } else {
+        int(100.0 * ms / worst)
+    }
+}
+
+ms_text(ms: float) -> str {
+    if ms < 0.0 {
+        "n/a"
+    } else {
+        "{ms:.0} ms"
+    }
+}
+
+// The whole measurement, every language, in the harness's order. The bars above
+// are the argument; this is the data they were read off, and it is on the page
+// so that a reader who suspects the argument of picking its comparisons can
+// check without cloning anything.
+bench_table(c: Copy, rs: Result[]) -> str =>
+    div(class="mt-10",
+        p(class="text-[0.85rem] text-zinc-500 dark:text-zinc-400 m-0",
+          prose(c.tbl_note))
+        // Wide by construction: eight columns of unbreakable numbers. It scrolls
+        // inside this box so the page never scrolls sideways on a phone.
+        div(class="mt-3 overflow-x-auto",
+            table(class="w-full border-collapse text-[0.82rem]",
+                thead(tr(head_cell(c.tbl_kernel) ++ head_cell(c.tbl_workload)
+                         ++ langs().map(head_cell).join("")))
+                tbody(kernels().map(k => table_row(rs, k)).join("")))))
+
+head_cell(text: str) -> str =>
+    th(class="border-b border-zinc-300 dark:border-zinc-700 px-3 py-2"
+             ++ " text-left font-medium whitespace-nowrap text-zinc-500"
+             ++ " dark:text-zinc-400", escape_html(text))
+
+table_row(rs: Result[], algo: str) -> str =>
+    tr(th(class=body_cell() ++ " text-left font-mono font-medium",
+          scope="row", escape_html(algo))
+       ++ td(class=body_cell() ++ " text-zinc-500 dark:text-zinc-400",
+             escape_html(params(algo)))
+       ++ langs().map(l => lang_cell(rs, algo, l)).join(""))
+
+body_cell() -> str =>
+    "border-b border-zinc-100 dark:border-zinc-900 px-3 py-2 align-top"
+        ++ " whitespace-nowrap"
+
+// The median and how many times C's time it was, as text. Not a bar: eight
+// columns of bars at phone width is a picture of nothing.
+lang_cell(rs: Result[], algo: str, lang: str) -> str =>
+    td(class=body_cell() ++ " font-mono tabular-nums " ++ cell_tone(lang),
+       escape_html(cell_text(rs, algo, lang)))
+
+cell_tone(lang: str) -> str {
+    if lang == MacaLang {
+        "font-medium"
+    } else {
+        "text-zinc-600 dark:text-zinc-400"
+    }
+}
+
+cell_text(rs: Result[], algo: str, lang: str) -> str {
+    ms = timing(rs, algo, lang)
+    base = timing(rs, algo, BaseLang)
+
+    if ms < 0.0 {
+        "n/a"
+    } else if base <= 0.0 {
+        "{ms:.0}"
+    } else {
+        "{ms:.0} (×{ms / base:.1})"
+    }
+}
+
+// Where the numbers came from and how to get your own. A benchmark without its
+// machine and its flags is not reproducible, and one nobody can reproduce is one
+// nobody has to believe.
+bench_notes(c: Copy, rs: Result[]) -> str =>
+    div(class="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800",
+        div(class="grid gap-5 sm:grid-cols-2 md:grid-cols-3",
+            provenance().map(p => prov_cell(prov_of(c, p, rs))).join(""))
+        div(class="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-[0.85rem]",
+            a(class="underline text-inherit", href=bench_doc("README.md"),
+              escape_html(c.bench_readme))
+            a(class="underline text-inherit", href=bench_doc("results.md"),
+              escape_html(c.bench_full))))
+
+bench_doc(file: str) -> str =>
+    Repo ++ "/blob/main/apps/bench/" ++ file
+
+// A fact whose value is prose rather than a phrase: two of these carry a
+// command, and a command that renders as running text is a command nobody can
+// pick out of the line.
+prov_cell(f: Fact) -> str =>
+    div(class="min-w-0",
+        div(class=fact_label(), escape_html(f.label))
+        div(class="mt-1 text-[0.85rem] text-zinc-600 dark:text-zinc-400",
+            prose(f.value)))
+
 // ---- targets ----------------------------------------------------------------
 
 targets_band(c: Copy) -> str =>
@@ -547,12 +1142,19 @@ target_chip(t: str) -> str =>
 
 // ---- install ----------------------------------------------------------------
 
-install_band(c: Copy) -> str =>
+// The one command, and a link to the chapter that carries the rest of the
+// story. What used to be duplicated here was the *instructions*; a single
+// copyable line is not a second place to update, and `install.sh` is checked
+// against this URL by the suite either way.
+install_band(c: Copy, up: str) -> str =>
     section(id="install", class="border-t border-zinc-200 dark:border-zinc-800"
                                 ++ " bg-zinc-50 dark:bg-zinc-900",
         div(class=wrap() ++ " py-14",
             h2(class=band_title(), escape_html(c.install))
-            div(class="mt-6", code_panel(InstallSample, "sh"))))
+            div(class="mt-6", code_panel(InstallSample, "sh"))
+            p(class="mt-4 text-[0.9rem] m-0",
+              a(class="underline text-inherit", href=start_href(c, up),
+                escape_html(c.install_more)))))
 
 // ---- honest limits ----------------------------------------------------------
 
@@ -610,8 +1212,14 @@ main(args: str[]) -> int {
     out = if args.length() > 0 { args.get(0) } else { "apps/tomo/site" }
     make_dir(out)
 
-    root = write_page(join(out, "index.html"), page(copies().get(0), ""))
-    written = root + write_langs(out, copies(), 0)
+    rs = bench_runs()
+
+    if rs.length() == 0 {
+        fail "no benchmark results in {BenchData}: run `{ReproCommand}`"
+    }
+
+    root = write_page(join(out, "index.html"), page(copies().get(0), "", rs))
+    written = root + write_langs(out, copies(), 0, rs)
     wanted = copies().length() + 1
 
     if written < wanted {
@@ -623,14 +1231,14 @@ main(args: str[]) -> int {
     }
 }
 
-write_langs(out: str, cs: Copy[], i: int) -> int {
+write_langs(out: str, cs: Copy[], i: int, rs: Result[]) -> int {
     if i >= cs.length() {
         0
     } else {
         dir = join(out, cs.get(i).lang)
         make_dir(dir)
-        n = write_page(join(dir, "home.html"), page(cs.get(i), "../"))
-        n + write_langs(out, cs, i + 1)
+        n = write_page(join(dir, "home.html"), page(cs.get(i), "../", rs))
+        n + write_langs(out, cs, i + 1, rs)
     }
 }
 

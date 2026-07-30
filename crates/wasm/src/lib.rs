@@ -185,7 +185,7 @@ fn kind_str(k: DiagKind) -> &'static str {
 /// ```json
 /// { "parseErrors": ["…"],
 ///   "diagnostics": [{"kind":"TypeMismatch","msg":"…"}],
-///   "outputs": {"C":"…"} | {"JS":"…","HTML":"…","CSS":"…"} | {"Nix":"…"},
+///   "outputs": {"C":"…","JS":"…","CSS":"…"} | {"Nix":"…"},
 ///   "limits": {"C": ["`on:click` needs a live DOM — …"]} }
 /// ```
 ///
@@ -193,6 +193,11 @@ fn kind_str(k: DiagKind) -> &'static str {
 /// `limits` when it refused a construct by name. Never both: code a backend
 /// disowned is code that would not compile, so the playground must not show it
 /// as if it would.
+///
+/// The JS backend's `html` is not carried. It is a fixed four-line shell that
+/// loads `app.js` and `app.css`, identical for every program, so a reader shown
+/// it learns nothing about their own source. `CSS` is the opposite: it is the
+/// stylesheet generated for exactly the utilities *this* module names.
 pub fn compile_json(src: &str, mode: u32) -> String {
     let parsed = maca_parser::parse(src);
     let mut out = String::from("{");

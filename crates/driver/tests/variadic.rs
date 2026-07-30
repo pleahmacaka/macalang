@@ -94,3 +94,18 @@ fn spawning_a_variadic_is_rejected() {
 fn a_variadic_of_function_type_is_rejected() {
     rejected("bad_variadic_fn_type", "variadic of function type");
 }
+
+/// No annotation, so nothing says what the collected list holds. The back end
+/// picks the integer array: `firstf(1.5, 2.5)` compiled clean and answered
+/// `1.0`, which is the reason this is a rule and not a default.
+#[test]
+fn an_unannotated_variadic_is_rejected() {
+    rejected("bad_variadic_unannotated", "needs its element type");
+}
+
+/// A variadic `main`. Nothing calls it, so nothing collects; the process hands
+/// an entry point its command line as a `str[]`.
+#[test]
+fn a_variadic_main_is_rejected() {
+    rejected("bad_variadic_main", "`main` cannot be variadic");
+}

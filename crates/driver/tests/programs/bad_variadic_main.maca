@@ -1,0 +1,8 @@
+// `main` cannot be variadic.
+
+// Collecting the trailing arguments is something a call site does, and nothing
+// calls `main`: the process hands it the command line. A `str[]` parameter is
+// how an entry point reads that, and `maca -m` says the same thing about any
+// other entry point, so the two agree.
+
+main(...args: str) -> int => args.length()

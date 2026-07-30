@@ -185,13 +185,17 @@ fn variadic_typechecks() {
 /// not only through the back end that would also refuse them. A variadic has no
 /// arity as a value; a call that skips a fixed parameter is short one argument
 /// the collection cannot invent; a parameter after the variadic has no way to be
-/// told from one more of them.
+/// told from one more of them; an unannotated one has no element type, so the
+/// back end picks the integer array and a `float` element comes back truncated;
+/// and `main` is handed its arguments by the process, not by a call site.
 #[test]
 fn variadic_misuse_rejected() {
     for bad in [
         "bad_variadic_value",
         "bad_variadic_arity",
         "bad_variadic_not_last",
+        "bad_variadic_unannotated",
+        "bad_variadic_main",
     ] {
         assert_has(
             &format!("crates/driver/tests/programs/{bad}.maca"),

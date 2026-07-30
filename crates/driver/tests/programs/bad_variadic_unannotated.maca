@@ -1,0 +1,13 @@
+// A variadic parameter has to name its element type.
+
+// `T` is what the collected list holds, and nothing else says what that is —
+// with no annotation the back end picks the integer array, so `firstf(1.5, 2.5)`
+// pushed two doubles into an `IntArr` and read back `1.0`. A silently wrong
+// answer, from a program that compiled clean.
+
+firstf(...rest) -> float => rest.get(0)
+
+main() -> int {
+    info("{firstf(1.5, 2.5)}")
+    0
+}

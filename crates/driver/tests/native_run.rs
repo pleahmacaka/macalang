@@ -102,6 +102,41 @@ fn the_cli_example_helps_refuses_and_runs() {
     assert!(out.contains("bytes"), "and --totals:\n{out}");
 }
 
+/// The other four package demos under `apps/`, each run to its last line.
+///
+/// Nothing compiled these while they sat in `examples/`, and under `apps/` they
+/// need it: `apps/bench_demo` imports `bench/…` from a directory whose sibling
+/// is `apps/bench`, which is the shape that hides a package. That collision is
+/// refused rather than resolved silently, but only for a build that happens, so
+/// this is the build that happens. The needle is the program's own last line, so
+/// a demo that compiles and then stops halfway is not counted as passing.
+#[test]
+fn the_package_demos_run_natively() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    for (app, last) in [
+        ("bench_demo", "5 cases:"),
+        ("profile_demo", "the first four moments"),
+        ("signal_demo", "nothing to patch"),
+        ("tambo_demo", "unanswered route names: 0"),
+    ] {
+        let src = repo().join(format!("apps/{app}/{app}.maca"));
+        let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+            .args(["run", &src.to_string_lossy()])
+            .current_dir(repo())
+            .output()
+            .expect("spawn maca run");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains(last),
+            "{app} did not reach its last line ({last:?}).\nstdout: {stdout}\nstderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
 #[test]
 fn recursion_and_arithmetic_run_natively() {
     let wsl = Command::new("wsl")
