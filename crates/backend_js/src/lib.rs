@@ -428,11 +428,9 @@ fn jpattern(pat: &Pattern, sv: &str) -> (String, String) {
                 }
                 binds.push_str(&b);
             }
-            if let Some(r) = rest.as_deref() {
-                // a named rest binds the tail; `..` alone binds nothing
-                if let Pattern::Bind(rn) = r {
-                    binds.push_str(&format!("const {rn} = {sv}.slice({n}); "));
-                }
+            // a named rest binds the tail; `..` alone binds nothing
+            if let Some(Pattern::Bind(rn)) = rest.as_deref() {
+                binds.push_str(&format!("const {rn} = {sv}.slice({n}); "));
             }
             (format!("({})", conds.join(" && ")), binds)
         }

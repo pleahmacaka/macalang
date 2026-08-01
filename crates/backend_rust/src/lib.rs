@@ -69,8 +69,10 @@ pub fn emit(m: &Module) -> String {
 }
 
 fn emit_collecting(m: &Module, problems: &mut Vec<String>) -> String {
-    let mut cx = Cx::default();
-    cx.named_shapes = named_by_shape(m);
+    let mut cx = Cx {
+        named_shapes: named_by_shape(m),
+        ..Default::default()
+    };
     cx.collect(m);
     let mut out = String::from("#![allow(warnings)]\n\n");
     for spec in rust_imports(m) {
@@ -123,7 +125,7 @@ fn emit_collecting(m: &Module, problems: &mut Vec<String>) -> String {
             _ => {}
         }
     }
-    problems.extend(cx.problems.drain(..));
+    problems.append(&mut cx.problems);
     out
 }
 
