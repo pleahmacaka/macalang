@@ -3871,12 +3871,23 @@ impl<'a> Cx<'a> {
                 let declared = self.declared_lambda_params(name, args, env);
                 let fixed = self.variadics.get(name).copied();
                 let spelled = fixed.unwrap_or(args.len()).min(args.len());
+                // The parameter's declared type is the expected type for its
+                // argument, which is what lets an empty `[]` passed to a
+                // `str[]` parameter know its element type. Without it the
+                // argument decided on its own and specialized the callee on
+                // `any[]`, so the body used an int array where the signature
+                // promised strings.
+                let want: Vec<Option<CTy>> = genf
+                    .params
+                    .iter()
+                    .map(|p| p.ty.as_ref().map(|t| self.cty(t)).filter(is_settled))
+                    .collect();
                 let mut lowered: Vec<(String, CTy)> = args[..spelled]
                     .iter()
                     .enumerate()
                     .map(|(i, x)| {
                         self.lambda_hint = declared.get(&i).cloned();
-                        let got = self.arg_typed(env, x);
+                        let got = self.arg_expected(env, x, want.get(i).and_then(|t| t.as_ref()));
                         self.lambda_hint = None;
                         got
                     })
@@ -5390,6 +5401,19 @@ fn bind_vars(declared: &Type, concrete: &CTy, m: &mut HashMap<String, CTy>) {
 
 /// A generic function's specialized C name for a concrete argument tuple, e.g.
 /// `id__int`, `id__str`, `id__Box`.
+/// Whether a type has nothing left to learn from a call site. A declared type
+/// that still holds a variable does not, and offering it as the expected type
+/// would settle an argument on `any` rather than on what the argument is: for
+/// `first_of(xs: a[], …)`, `a[]` reads as an array of nothing, and `["x"]`
+/// handed that as its expectation stops being a `str[]`.
+fn is_settled(t: &CTy) -> bool {
+    match t {
+        CTy::Unknown => false,
+        CTy::Arr(e) | CTy::Map(e) => is_settled(e),
+        _ => true,
+    }
+}
+
 fn mangle_name(name: &str, ctys: &[CTy]) -> String {
     let tags: Vec<String> = ctys.iter().map(cty_tag).collect();
     format!("{name}__{}", tags.join("_"))

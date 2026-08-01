@@ -1,0 +1,67 @@
+// A parameter's declared type is what an argument is lowered against.
+//
+// A call to a monomorphized function lowered each argument on its own, so an
+// empty `[]` handed to a `str[]` parameter had no element type to take and
+// became `any[]`, which the C backend lays out as an int array. The callee was
+// then specialized on that: it pushed strings into an int array and returned it
+// as the `str[]` its own signature promised, and `cc` said `incompatible types
+// when returning type 'IntArr' but 'StrArr' was expected`.
+//
+// It only showed up through a selective import, because that is what left the
+// function generic enough to be specialized at all, and the module it was found
+// in is the one nothing selectively imported.
+
+Row = {
+    label: str,
+    n: int,
+}
+
+// The shape the bug was found in: an accumulator threaded through a recursion,
+// seeded with an empty list at the call site.
+gather(xs: str[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        gather(xs, i + 1, acc.push(xs.get(i).upper()))
+    }
+}
+
+shout(xs: str[]) -> str => gather(xs, 0, []).join(",")
+
+// The same, over a record, so a wrong element type is a wrong layout rather
+// than a wrong width.
+collect(n: int, i: int, acc: Row[]) -> Row[] {
+    if i > n {
+        acc
+    } else {
+        collect(n, i + 1, acc.push(Row { label = "r{i}", n = i }))
+    }
+}
+
+third_label(n: int) -> str => collect(n, 1, []).get(2).label
+
+// A genuine type variable still learns from the argument, since the
+// declaration has nothing concrete to say.
+first_of(xs: a[], fallback: a) -> a {
+    if xs.length() > 0 {
+        xs.get(0)
+    } else {
+        fallback
+    }
+}
+
+test_an_empty_list_takes_its_element_type_from_the_parameter() {
+    assert_eq(shout(["a", "b"]), "A,B", "both were upper-cased and joined")
+}
+
+test_an_empty_list_of_records_takes_its_element_type_too() {
+    assert_eq(third_label(4), "r3", "the third row kept its label")
+}
+
+test_a_real_type_variable_still_comes_from_the_argument() {
+    // The declaration is only offered as the expected type when it has nothing
+    // left to learn. `a[]` is an array of nothing, and handing that to `["x"]`
+    // as its expectation would stop it being a `str[]`.
+    assert_eq(first_of(["x"], "none"), "x", "the element")
+    assert_eq(str(first_of([7], 0)), "7", "the same function over ints")
+}

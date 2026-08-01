@@ -11,6 +11,7 @@
 // can copy, then arguments and options in the order they were declared, one per
 // line with the column of descriptions aligned.
 
+import { Cmd, Opt } from cli/spec
 import { bold, dim, grey, pad, width } from cli/style
 
 /// The whole help page for `c`.
