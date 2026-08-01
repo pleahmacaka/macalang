@@ -191,13 +191,67 @@ declared(lines: str[], i: int, doc: str[]) -> Item {
     } else if rhs(line).starts_with("\{") {
         Item { kind = "record", name = before(line, " ="),
                sig = record_sig(lines, i), line = at, doc = doc }
-    } else if rhs(line).contains("|") {
+    } else if is_union(rhs(line)) {
         Item { kind = "sum", name = before(line, " ="), sig = line.trim(),
                line = at, doc = doc }
     } else {
         Item { kind = "const", name = before(line, " ="),
                sig = line.trim(), line = at, doc = doc }
     }
+}
+
+// A union of variant names, which is what a sum declaration is.
+//
+// Asking whether the right-hand side merely contains a `|` called
+// `Pipe = "a|b"` a sum. That was cosmetic until a type could be linked to from
+// a signature, at which point a string constant became a link target for every
+// mention of its name.
+is_union(r: str) -> bool {
+    parts = split_top(r, 0, 0, false, "", [])
+
+    parts.length() > 1 && all_variants(parts, 0)
+}
+
+// Split on `|` outside a string literal. A sum's variants cannot contain one,
+// so anything that does is not a union however it is punctuated.
+split_top(r: str, i: int, depth: int, in_str: bool, cur: str,
+          acc: str[]) -> str[] {
+    if i >= r.length() {
+        acc.push(cur)
+    } else {
+        c = r.at(i)
+
+        if c == "\"" {
+            split_top(r, i + 1, depth, !in_str, cur ++ c, acc)
+        } else if in_str {
+            split_top(r, i + 1, depth, in_str, cur ++ c, acc)
+        } else if c == "(" {
+            split_top(r, i + 1, depth + 1, in_str, cur ++ c, acc)
+        } else if c == ")" {
+            split_top(r, i + 1, depth - 1, in_str, cur ++ c, acc)
+        } else if c == "|" && depth == 0 {
+            split_top(r, i + 1, depth, in_str, "", acc.push(cur))
+        } else {
+            split_top(r, i + 1, depth, in_str, cur ++ c, acc)
+        }
+    }
+}
+
+all_variants(parts: str[], i: int) -> bool {
+    if i >= parts.length() {
+        true
+    } else if is_variant_name(parts.get(i).trim()) {
+        all_variants(parts, i + 1)
+    } else {
+        false
+    }
+}
+
+// `Red` or `Circle(int, int)`: a capitalised name, optionally with a payload.
+is_variant_name(p: str) -> bool {
+    head = p.contains("(") ? before(p, "(") : p
+
+    head.length() > 0 && !is_lower(head.at(0)) && is_ident(head.trim())
 }
 
 // `name(params) -> R` at column zero. Indented means it is inside something.
@@ -765,12 +819,12 @@ sidebar(ms: Module[], cur: str) -> str =>
 // The field, and the line that answers when nothing matches. Without it a query
 // with no hits looks identical to a query the box never received.
 search_box() -> str =>
-    input(id="q", type="search", placeholder="Search names and types",
+    input(id="macadoc-search", type="search", placeholder="Search names and types",
           aria-label="Search names and types", autocomplete="off",
           class="w-full my-2 px-2 py-1 border border-zinc-200"
                 ++ " dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
                 ++ " text-[0.85rem]")
-        ++ p(id="empty", hidden=true,
+        ++ p(id="macadoc-empty", hidden=true,
              class="text-zinc-500 text-[0.8rem] my-1", "No matches.")
 
 module_trees(ms: Module[], i: int, cur: str) -> str {
@@ -890,9 +944,9 @@ nav_script() -> str =>
   var nav=document.querySelector('details[data-doc="nav"]');
   if(nav&&window.matchMedia("(max-width:48rem)").matches)
     nav.removeAttribute("open");
-  var q=document.getElementById("q");
+  var q=document.getElementById("macadoc-search");
   if(!q) return;
-  var empty=document.getElementById("empty");
+  var empty=document.getElementById("macadoc-empty");
   var mods=document.querySelectorAll('details[data-mod]');
   var was=[],i;
   for(i=0;i<mods.length;i++) was.push(mods[i].hasAttribute("open"));

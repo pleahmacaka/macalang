@@ -19,7 +19,7 @@ import std/path
 import std/text
 import std/list
 import std/proc
-import { flat, of_kind, cross_linked, declared, kind_label,
+import { flat, of_kind, cross_linked, declared, kind_label, is_union,
          item_href, signature, is_doc, is_plain_comment,
          comment_body, first_sentence } from tools/macadoc
 
@@ -224,6 +224,26 @@ plot(p: Point) -> str =>
 // A third module, documented after `shapes` and declaring a `Point` of its own.
 // Two references to that name now exist, which is the only way to ask which one
 // a signature written here is pointing at.
+// The two shapes a generator gets wrong if it reads by substring rather than
+// by structure: a name that collides with the page chrome, and a constant whose
+// value contains the character a sum is punctuated with.
+Corner = """// Corner cases the reader is entitled to have right.
+
+/// A constant whose value holds a pipe. Reading the right-hand side for a `|`
+/// filed this under sum types and made it a link target for every mention of
+/// the name, which is a wrong answer twice over.
+Pipe = "a|b"
+
+/// A real sum, so the fix cannot be to stop recognising them.
+Facing = North | South
+
+/// An item named after the search box.
+q(n: int) -> int => n
+
+/// An item named after the no-matches line.
+empty() -> bool => true
+"""
+
 Overlay = """// Overlay, which declares a Point of its own.
 //
 //     import fx/overlay
@@ -249,10 +269,11 @@ built() -> str {
     write_file(join(src, "shapes.maca"), Shapes)
     write_file(join(src, "draw.maca"), Draw)
     write_file(join(src, "overlay.maca"), Overlay)
+    write_file(join(src, "corner.maca"), Corner)
     remove_dir(dir)
     run(maca(), ["run", "tools/macadoc.maca", dir,
                  join(src, "shapes.maca"), join(src, "draw.maca"),
-                 join(src, "overlay.maca")])
+                 join(src, "overlay.maca"), join(src, "corner.maca")])
     dir
 }
 
@@ -300,7 +321,7 @@ test_the_sidebar_reaches_every_module_from_every_page() {
            "and back again")
     assert(sidebar_of(dir, "index.html").contains("data-mod=\"shapes\""),
            "from the index too")
-    assert(sidebar_of(dir, "index.html").contains("id=\"q\""),
+    assert(sidebar_of(dir, "index.html").contains("id=\"macadoc-search\""),
            "and the search box is on every page")
 }
 
@@ -325,8 +346,10 @@ test_the_markup_and_the_script_agree_on_what_they_drive() {
     assert(both(side, js, "data-item=", "data-item"), "the rows")
     assert(both(side, js, "data-group=", "data-group"), "the kind headings")
     assert(both(side, js, "data-sig=", "dataset.sig"), "the search key")
-    assert(both(side, js, "id=\"q\"", "\"q\""), "the field")
-    assert(both(side, js, "id=\"empty\"", "\"empty\""), "the answer line")
+    assert(both(side, js, "id=\"macadoc-search\"", "\"macadoc-search\""),
+           "the field")
+    assert(both(side, js, "id=\"macadoc-empty\"", "\"macadoc-empty\""),
+           "the answer line")
 }
 
 // One name on both sides of the page: the attribute as the markup spells it,
@@ -342,7 +365,7 @@ test_the_search_ships_in_its_resting_state() {
     dir = built()
     index = read_file(join(dir, "index.html"))
 
-    assert(index.contains("id=\"empty\" hidden"),
+    assert(index.contains("id=\"macadoc-empty\" hidden"),
            "no page says \"No matches.\" before a query misses")
     assert_eq(open_mods(read_file(join(dir, "shapes.html"))), "shapes",
               "one branch ships open, the page's own")
@@ -527,4 +550,68 @@ firsts(parts: str[], i: int, acc: str[]) -> str[] {
     } else {
         firsts(parts, i + 1, acc.push(split_once(parts.get(i), "\"").get(0)))
     }
+}
+
+// A page's own furniture cannot collide with an item's anchor.
+//
+// The search box was `id="q"` and the no-matches line `id="empty"`. A module
+// documenting items of those names put two elements with one id on a page, and
+// the sidebar row for the item jumped to the hidden answer line instead, since
+// that comes first in document order.
+test_no_two_elements_on_a_page_share_an_id() {
+    page = read_file(join(built(), "corner.html"))
+    ids = values_of(page, "id=\"")
+
+    assert_eq(duplicate(ids.sort(), 1), "", "every id on the page is its own")
+    assert(ids.contains("q"), "the item still anchors under its own name")
+    assert(ids.contains("empty"), "and so does the other one")
+}
+
+// The kind badge rendered beside an item's heading.
+kind_of(page: str, name: str) -> str {
+    at = page.index_of("id=\"" ++ name ++ "\"")
+
+    if at < 0 {
+        ""
+    } else {
+        rest = page.slice(at, page.length())
+        after = rest.index_of("rounded-full")
+
+        after < 0 ? "" : badge_text(rest.slice(after, rest.length()))
+    }
+}
+
+// The text of the badge, which is whatever follows the next `>`.
+badge_text(s: str) -> str {
+    at = s.index_of(">")
+
+    at < 0 ? "" : split_once(s.slice(at + 1, s.length()), "<").get(0)
+}
+
+// The first id that equals the one before it, in a sorted list.
+duplicate(ids: str[], i: int) -> str {
+    if i >= ids.length() {
+        ""
+    } else if ids.get(i) == ids.get(i - 1) {
+        ids.get(i)
+    } else {
+        duplicate(ids, i + 1)
+    }
+}
+
+// A declaration's kind comes from its structure, not from a character in it.
+test_a_constant_holding_a_pipe_is_not_a_sum() {
+    page = read_file(join(built(), "corner.html"))
+
+    assert(is_union("North | South"), "a union of two variants")
+    assert(is_union("Circle(float) | Rect(float, float)"), "with payloads")
+    assert(!is_union("\"a|b\""), "a string that contains one")
+    assert(!is_union("\{ x: int \}"), "a record")
+    assert(!is_union("41"), "a number")
+
+    // And the page agrees. Every item links to its own anchor from the sidebar
+    // and its own heading, so the question is not whether `#Pipe` appears; it
+    // is which group the item sits in.
+    assert_eq(kind_of(page, "Pipe"), "const", "filed as a constant")
+    assert_eq(kind_of(page, "Facing"), "sum", "and a real sum still is one")
 }
