@@ -10,28 +10,55 @@ import { dirname, join } from "node:path";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
+// What to run when the wasm is missing or older than the exports asked of it.
+// It is a build artifact and the repository does not carry one, so "no such
+// file" is the state of a fresh checkout rather than a broken install.
+const BUILD = "maca run packages/macalang/build.maca";
+
 let _ex = null;
 function wasm() {
   if (_ex) return _ex;
-  const bytes = readFileSync(join(__dir, "maca_wasm.wasm"));
+  const at = join(__dir, "maca_wasm.wasm");
+  let bytes;
+  try {
+    bytes = readFileSync(at);
+  } catch {
+    throw new Error(`maca: no compiler at ${at}. Build one with \`${BUILD}\`.`);
+  }
   const instance = new WebAssembly.Instance(new WebAssembly.Module(bytes), {});
   _ex = instance.exports;
   return _ex;
 }
 
-function run(src, mode) {
+// One export taking a source buffer, called over linear memory: copy the source
+// in, read the `(ptr << 32) | len` answer back out, free both.
+//
+// A wasm built before the export existed is the failure this names, because
+// nothing else can: `maca_wasm.wasm` is not in the repository and an old one
+// left over from a previous build answers every older call perfectly.
+function callWithSource(name, src, arg) {
   const ex = wasm();
+  if (typeof ex[name] !== "function") {
+    throw new Error(
+      `maca: this maca_wasm.wasm has no "${name}" export, so it is older than` +
+        ` the compiler it came from. Rebuild it with \`${BUILD}\`.`,
+    );
+  }
   const mem = () => new Uint8Array(ex.memory.buffer);
   const enc = new TextEncoder().encode(src);
   const p = ex.alloc(enc.length);
   mem().set(enc, p);
-  const packed = ex.run(p, enc.length, mode);
+  const packed = ex[name](p, enc.length, arg);
   const ptr = Number(packed >> 32n);
   const len = Number(packed & 0xffffffffn);
   const out = new TextDecoder().decode(mem().slice(ptr, ptr + len));
   ex.dealloc(ptr, len);
   ex.dealloc(p, enc.length);
-  return JSON.parse(out);
+  return out;
+}
+
+function run(src, mode) {
+  return JSON.parse(callWithSource("run", src, mode));
 }
 
 /** Compiler version string. */
@@ -90,4 +117,18 @@ export function loadFile(path, opts) {
   return loadModule(readFileSync(path, "utf8"), opts);
 }
 
-export default { version, compile, toJS, toESM, loadModule, loadFile };
+/**
+ * Every language-server answer for one caret, as
+ * `{ hover, signature, definition, references }` (see `crates/wasm`'s
+ * `lsp_json`). Positions are 1-based lines and UTF-16 columns, which is what an
+ * editor wants; `signature` and `definition` are `null` when there is nothing
+ * to say. One call rather than four because an editor asks all four questions
+ * about the same caret and each of them would otherwise re-parse the file.
+ * @param {string} src  Maca source
+ * @param {number} [offset]  byte offset of the caret
+ */
+export function lsp(src, offset = 0) {
+  return JSON.parse(callWithSource("lsp", src, offset));
+}
+
+export default { version, compile, toJS, toESM, loadModule, loadFile, lsp };

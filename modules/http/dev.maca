@@ -77,16 +77,24 @@ PollPath = "/_maca/hmr"
 
 // ---- publishing -----------------------------------------------------------
 
-/// Publish `ops` as generation `gen`.
+/// Publish `ops` as generation `gen`, and say whether it went.
 ///
 /// The patch is written before the counter, and that order is the whole
 /// reliability of the channel: a poll that has seen a counter always finds the
 /// patch it names. Written the other way, a client is told about a generation
 /// whose file is still half a write long.
+///
+/// A patch that could not be written at all is the same rule taken to its end,
+/// so the counter does not move for it either: a read-only work directory or a
+/// full disk announces nothing, rather than announcing a generation that every
+/// poll then has to be answered for with a reload.
 publish(f: Feed, gen: int, ops: str) -> bool {
-    write_file(patch_file(f, gen), ops)
-    remove_file(patch_file(f, gen - Keep))
-    write_file(f.dir ++ "/generation", str(gen) ++ "\n")
+    if write_file(patch_file(f, gen), ops) {
+        remove_file(patch_file(f, gen - Keep))
+        write_file(f.dir ++ "/generation", str(gen) ++ "\n")
+    } else {
+        false
+    }
 }
 
 /// The newest generation published, or 0 when nothing has been.
@@ -223,19 +231,37 @@ unbracketed(arr: str) -> str {
     }
 }
 
-/// Is every generation between `since` and `gen` still on disk? A client behind
-/// by more than `Keep` of them cannot be patched, and has to be told so rather
-/// than sent the ones that survived.
+/// Is every generation between `since` and `gen` still on disk, whole? A client
+/// behind by more than `Keep` of them cannot be patched, and has to be told so
+/// rather than sent the ones that survived.
 have_all(f: Feed, since: int, gen: int) -> bool => present(f, since + 1, gen)
 
 present(f: Feed, at: int, gen: int) -> bool {
     if at > gen {
         true
-    } else if !file_exists(patch_file(f, at)) {
+    } else if !whole(f, at) {
         false
     } else {
         present(f, at + 1, gen)
     }
+}
+
+// Is `gen`'s patch on disk and finished?
+//
+// Existing is not enough, and what the difference costs is a page that stops
+// updating and does not say so. A write that ran out of disk leaves a file
+// holding the first half of an array; `file_exists` calls that a published
+// generation, the poll merges it into its answer, and the browser is sent a
+// JSON body that stops in the middle of a string. `JSON.parse` throws, the
+// poller waits a second and asks the same question again, and it goes on doing
+// that for as long as the tab is open. A patch is a JSON array, so a last
+// character of `]` is the cheapest thing that says the writer reached the end
+// of one. A directory standing where the file goes reads as "" and fails the
+// same test, which is the answer it deserves.
+whole(f: Feed, gen: int) -> bool {
+    at = patch_file(f, gen)
+
+    file_exists(at) && read_file(at).trim().ends_with("]")
 }
 
 // ---- the browser side -----------------------------------------------------

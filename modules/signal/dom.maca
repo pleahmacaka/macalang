@@ -254,7 +254,7 @@ patch_node(page: str, op: Op, lt: int) -> str {
     if shows == "" || shows == "html" {
         patch_children(page, op, tag, gt + 1, shows == "html")
     } else {
-        patch_attr(page, op, lt, gt, shows == "value" ? "value" : shows)
+        patch_attr(page, op, lt, gt, shows)
     }
 }
 

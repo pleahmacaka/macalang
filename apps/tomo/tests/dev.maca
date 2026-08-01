@@ -33,22 +33,29 @@ developing() -> Dev => Dev { on = true, extra = dev_head() }
 // which is why the sidebar of every page in the book depends on it.
 titles_for(first: str) -> str[] => [first, "Beta"]
 
-// Chapter one's page, built from `md`, with `first` the title that Markdown
-// gives it.
-built(d: Dev, md: str, first: str) -> str =>
-    chapter_page(d, Title, Langs, "en", Chs, titles_for(first), 0,
+// Chapter one's page in `lang`, built from `md`, with `first` the title that
+// Markdown gives it. The language is a parameter because the book ships two and
+// a page's regions are keyed by it: an assertion that only ever names one
+// language cannot tell a key that carries it from a key that does not.
+built_in(lang: str, d: Dev, md: str, first: str) -> str =>
+    chapter_page(d, Title, Langs, lang, Chs, titles_for(first), 0,
                  parts_of(Chs, titles_for(first), 0, md))
+
+built(d: Dev, md: str, first: str) -> str => built_in("en", d, md, first)
 
 // One rebuild's regions, into the store. Three writes, and the store decides
 // which of them were changes.
-rebuilt(s: Store, md: str, first: str) -> Store {
-    key = page_key("en", Chs.get(0))
+rebuilt_in(lang: str, s: Store, md: str, first: str) -> Store {
+    key = page_key(lang, Chs.get(0))
     p = parts_of(Chs, titles_for(first), 0, md)
 
     s.set(region_key("article", key), p.article)
         .set(region_key("toc", key), p.toc)
         .set(region_key("nav", key), p.nav)
 }
+
+rebuilt(s: Store, md: str, first: str) -> Store =>
+    rebuilt_in("en", s, md, first)
 
 // ---- a patch equals a rebuild ---------------------------------------------
 
@@ -151,6 +158,26 @@ test_a_save_that_changed_nothing_produces_no_ops() {
     assert_eq(str(patch(s).length()), "0", "nothing changed, nothing sent")
     assert_eq(apply_patch(built(developing(), md, "Alpha"), patch(s)),
               built(developing(), md, "Alpha"), "and the page is untouched")
+}
+
+// A translated book is many pages holding the same three regions, and the only
+// thing that tells one page's region from another's is the language in its key.
+// So a save in one language has to land on that language's page and slide off
+// every other: the second assertion is the one that says the key carries the
+// language, and it is the one a key built from the chapter alone would fail.
+test_a_save_in_one_language_leaves_the_other_languages_page_alone() {
+    v1 = "# 알파\n\n하나\n"
+    v2 = "# 알파\n\n둘\n"
+    s = rebuilt_in("ko", store(), v1, "알파").clear_changed()
+    s = rebuilt_in("ko", s, v2, "알파")
+    ops = patch(s)
+
+    assert_eq(apply_patch(built_in("ko", developing(), v1, "알파"), ops),
+              built_in("ko", developing(), v2, "알파"),
+              "the Korean page patched to the Korean rebuild")
+    assert_eq(apply_patch(built_in("en", developing(), v1, "알파"), ops),
+              built_in("en", developing(), v1, "알파"),
+              "and the English page, which no op names, was not touched")
 }
 
 // ---- what the patch leaves alone ------------------------------------------

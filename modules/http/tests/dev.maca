@@ -22,6 +22,14 @@ fresh() -> Feed {
     feed(Root)
 }
 
+// The two files the channel is made of, named here so a test can construct a
+// state `publish` will not produce. Everything else in this file goes through
+// the module, but a counter without its patch is exactly what the module exists
+// to prevent, so the only way to show a reader one is to write the bytes.
+counter_file() -> str => Root ++ "/generation"
+
+patch_at(gen: int) -> str => Root ++ "/" ++ str(gen) ++ ".json"
+
 poll_for(gen: int) -> Request =>
     parse_request("GET /_maca/hmr?gen={gen} HTTP/1.1\r\n\r\n")
 
@@ -52,6 +60,75 @@ test_a_generation_nobody_published_reads_as_an_empty_patch() {
     publish(f, 1, op("a", "1"))
 
     assert_eq(patch_of(f, 7), "[]", "no file, no ops")
+}
+
+// ---- the patch before the counter -----------------------------------------
+//
+// The order the two writes happen in is what the channel's reliability rests
+// on, and no state either write leaves can show it: when `publish` returns, both
+// files are there whichever order they were written in, and the window between
+// them is shorter than a test can look into. So the order is gated from its two
+// ends instead. What a reader is shown in that window is asserted by putting a
+// reader in it deliberately, and the ordering itself is asserted by making the
+// patch write fail, which is the one case where the two orders end differently.
+
+// A counter naming a generation whose patch is not on disk: the state a
+// counter-first publish leaves for as long as the second write takes.
+//
+// The poll must not be answered with the ops that do exist. The ops for the
+// generation it is being told about are exactly the missing ones, so a client
+// that applied the rest would be showing markup no build ever wrote and would
+// believe it was current. A reload costs it its scroll position and nothing else.
+test_a_counter_ahead_of_its_patch_answers_a_reload_not_a_partial_patch() {
+    f = fresh()
+    publish(f, 1, op("a", "1"))
+    write_file(counter_file(), "2\n")
+
+    assert_eq(str(generation(f)), "2", "the counter names generation two")
+    assert(!file_exists(patch_at(2)), "whose patch is not there yet")
+    assert_eq(answer(f, poll_for(1), 0).body, "\{\"gen\":2,\"reload\":true\}",
+              "so the client starts again instead of applying generation one")
+}
+
+// The ordering, from the writing end: a patch that cannot be written leaves the
+// counter where it was, so no poll is ever told about a generation that was
+// never published. A directory standing where the patch file goes is how to fail
+// that write without a full disk.
+//
+// This is the assertion the order lives or dies by. Written counter-first, the
+// counter reaches two with no patch behind it, and the client that was current
+// is told to reload.
+test_a_patch_that_cannot_be_written_does_not_move_the_counter() {
+    f = fresh()
+    publish(f, 1, op("a", "1"))
+    make_dir(patch_at(2))
+
+    assert(!publish(f, 2, op("a", "2")), "the patch could not be written")
+    assert_eq(str(generation(f)), "1", "so the counter stayed at one")
+    assert_eq(answer(f, poll_for(1), 0).body, "\{\"gen\":1\}",
+              "and a client at one is still current, not sent for a reload")
+}
+
+// A patch that exists but stops in the middle is not a patch, and the poll has
+// to read it as a generation it cannot supply. Sent as it stands it reaches the
+// browser as a JSON body that ends mid-string: `JSON.parse` throws, the poller
+// waits a second and asks the same question again, and the page goes on showing
+// the markup it loaded for as long as the tab is open, with nothing said about
+// why. A full disk is what leaves a file like this, and it is the second of the
+// two causes `publish` names.
+test_a_half_written_patch_is_answered_with_a_reload() {
+    f = fresh()
+    publish(f, 1, op("a", "1"))
+    publish(f, 2, op("a", "2"))
+    full = read_file(patch_at(2))
+
+    assert(have_all(f, 1, 2), "the patch starts out complete")
+
+    write_file(patch_at(2), full.slice(0, full.length() - 3))
+
+    assert(!have_all(f, 1, 2), "a patch cut short is a generation nobody has")
+    assert_eq(message(f, 1, 2), "\{\"gen\":2,\"reload\":true\}",
+              "so the client starts again rather than parsing half an array")
 }
 
 // ---- what a poll is told --------------------------------------------------

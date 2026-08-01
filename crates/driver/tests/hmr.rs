@@ -14,10 +14,12 @@
 //! HTTP, and handing that patch to a real JavaScript engine to check that the
 //! browser half does what the native half says it does.
 //!
-//! The book it works on is `tests/programs/hmr/`, two chapters and one language.
-//! The fixture is read-only: the test copies it into a temp directory and edits
-//! the copy, because a test that edited the handbook would be a test that dirties
-//! the tree it is gating.
+//! The book it works on is `tests/programs/hmr/`, two chapters in two languages
+//! with the second chapter left untranslated. That shape is the handbook's:
+//! one table of contents, and a chapter a translation has not reached rendered
+//! from the default language's file. The fixture is read-only: the test copies it
+//! into a temp directory and edits the copy, because a test that edited the
+//! handbook would be a test that dirties the tree it is gating.
 
 mod common;
 use common::*;
@@ -135,6 +137,9 @@ fn a_saved_chapter_reaches_the_browser_as_a_patch() {
     );
 
     // ---- a prose edit is one op ------------------------------------------
+    //
+    // One op out of the whole book: chapter one is translated, so this file is
+    // the English page's source and nothing else's.
 
     let before = std::fs::read_to_string(&page).expect("read the built page");
     edit(&book.join("book/en/01-one.md"), |md| {
@@ -221,9 +226,71 @@ fn a_saved_chapter_reaches_the_browser_as_a_patch() {
         "en/search-index.js",
         "en/01-one.html",
         "en/02-two.html",
+        "ko/index.html",
+        "ko/home.html",
+        "ko/search-index.js",
+        "ko/01-one.html",
+        "ko/02-two.html",
     ] {
         assert!(site.join(rel).exists(), "the dev site has no {rel}");
     }
+
+    // ---- the other language ----------------------------------------------
+    //
+    // A partial translation is the normal state of a translated book, and it is
+    // where the dev loop keeps a rule of its own: it reads every chapter's source
+    // per language, and for a chapter a language has not translated that source
+    // is the default language's file. So one file can be two pages, and a save to
+    // it has to reach both.
+    //
+    // First the easy direction: a save to a chapter that *is* translated is one
+    // language's business and must not touch the other's page.
+    edit(&book.join("book/ko/01-one.md"), |md| {
+        md.replace("테스트가 고치는 문단.", "테스트가 고친 문단.")
+    });
+
+    let patch = poll(2);
+    assert_eq!(
+        keys_of(&patch),
+        vec!["article:ko/01-one"],
+        "a Korean prose edit should patch the Korean page alone: {patch}"
+    );
+    assert!(
+        value_of(&patch, "article:ko/01-one").contains("테스트가 고친 문단."),
+        "the edit did not reach the patch: {patch}"
+    );
+
+    // And the hard direction: chapter two is translated into nothing, so the
+    // English file behind it is also the Korean page's source and an edit to it
+    // is two pages' worth of patch.
+    edit(&book.join("book/en/02-two.md"), |md| {
+        md.replace("more than one entry", "more than one entry (edited)")
+    });
+
+    let patch = poll(3);
+    let keys = keys_of(&patch);
+    for want in ["article:en/02-two", "article:ko/02-two"] {
+        assert!(
+            keys.contains(&want.to_string()),
+            "an edit behind an untranslated page should patch {want}, got {keys:?}"
+        );
+    }
+
+    // The file on disk moved with the patch. An untranslated page is where a
+    // stale region hides best: nothing under `book/ko/` changed, so a rebuild
+    // that decided this page had nothing to do would keep serving the paragraph
+    // as it was before the edit, and only a reader in Korean would ever see it.
+    let ko_two = std::fs::read_to_string(site.join("ko/02-two.html")).expect("the Korean chapter");
+    assert!(
+        ko_two.contains("more than one entry (edited)"),
+        "the Korean chapter two was not rebuilt from the English source"
+    );
+    assert!(
+        std::fs::read_to_string(site.join("ko/01-one.html"))
+            .expect("the Korean chapter one")
+            .contains("첫째 장"),
+        "the Korean chapter one should be its translation, not the fallback"
+    );
 
     // ---- a restart keeps an open tab's place ------------------------------
     //

@@ -1,16 +1,22 @@
-# A two-chapter book, for the dev-mode gate in crates/driver/tests/hmr.rs.
+# A two-chapter book in two languages, for the dev-mode gate in
+# crates/driver/tests/hmr.rs.
 #
 # Small on purpose: the test starts a server, edits a chapter and watches what
-# comes back, and none of that gets truer with forty chapters. One language, so
-# a patch names one page per edit and the assertions can say which.
+# comes back, and none of that gets truer with forty chapters. Two languages
+# because the handbook ships two: `ko` translates chapter one and not chapter
+# two, so the Korean chapter two is built from the English source and a save to
+# that source has to reach both languages' pages. With one language that
+# fallback was code no test ran.
+#
+# The section label carries one title per language, in the order below.
 
 [book]
 title = "Fixture Book"
 site = "Fixture"
-languages = ["en"]
+languages = ["en", "ko"]
 
 chapters = [
-    "# A Section",
+    "# A Section|어떤 절",
     "01-one",
     "02-two",
 ]

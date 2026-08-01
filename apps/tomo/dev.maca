@@ -168,10 +168,21 @@ watch(b: Book, f: Feed) -> int {
             regions = rebuild(b, regions, srcs)
 
             if primed {
+                // The counter advances whether or not the write lands, so a
+                // patch that could not be written is a hole in the feed rather
+                // than a number nobody used. A client that missed it is then
+                // behind a generation nothing can supply, and `http/dev` answers
+                // that with a reload: those ops are gone, and saying so is the
+                // only honest answer left.
                 gen = gen + 1
-                publish(f, gen, patch_json(regions))
-                info(regions_patched(patch(regions).length())
-                     ++ " (generation {gen})")
+
+                if publish(f, gen, patch_json(regions)) {
+                    info(regions_patched(patch(regions).length())
+                         ++ " (generation {gen})")
+                } else {
+                    err("could not publish generation {gen} into {f.dir}:"
+                        ++ " an open page will reload on the next save")
+                }
             } else {
                 info("built {b.chs.length()} entries per language")
             }

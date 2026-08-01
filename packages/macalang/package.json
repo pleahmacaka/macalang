@@ -16,8 +16,9 @@
     "README.md"
   ],
   "scripts": {
-    "build": "../../target/release/maca run ./build.maca",
-    "test": "node ./test.mjs"
+    "build": "cd ../.. && ./target/release/maca run packages/macalang/build.maca",
+    "test": "node ./test.mjs",
+    "prepublishOnly": "npm run build"
   },
   "keywords": ["maca", "macalang", "compiler", "wasm", "language", "bun"],
   "license": "MIT",
