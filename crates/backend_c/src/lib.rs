@@ -3697,7 +3697,12 @@ impl<'a> Cx<'a> {
                         },
                     );
                 }
-                if self.modules.contains(m) {
+                // A binding in scope wins, the same rule a UI tag already
+                // follows above. `import c "http.h"` registers `c` as a module,
+                // and any module a program imports drags its own foreign imports
+                // in with it, so a parameter called `c` became an FFI namespace
+                // and `c.is_whitespace()` was emitted as a comment.
+                if self.modules.contains(m) && lookup(env, m).is_none() {
                     return self.module_call(env, m, name, args, expected);
                 }
             }
