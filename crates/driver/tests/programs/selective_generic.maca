@@ -64,4 +64,10 @@ test_a_real_type_variable_still_comes_from_the_argument() {
     // as its expectation would stop it being a `str[]`.
     assert_eq(first_of(["x"], "none"), "x", "the element")
     assert_eq(str(first_of([7], 0)), "7", "the same function over ints")
+
+    // The empty list has nothing to say about `a`, so the fallback settles it.
+    // Binding from the first parameter that merely mentions the variable left
+    // the result an `int64_t` holding a string pointer, and the comparison was
+    // between addresses.
+    assert_eq(first_of([], "none"), "none", "the fallback")
 }

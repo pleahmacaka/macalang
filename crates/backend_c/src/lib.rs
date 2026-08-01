@@ -5383,7 +5383,18 @@ fn type_has_tyvar(t: &Type) -> bool {
 fn bind_vars(declared: &Type, concrete: &CTy, m: &mut HashMap<String, CTy>) {
     match (declared, concrete) {
         (Type::Name(segs), _) if segs.len() == 1 && is_type_var_name(&segs[0]) => {
-            m.entry(segs[0].clone()).or_insert_with(|| concrete.clone());
+            // The first parameter to mention a variable used to settle it, even
+            // when it had nothing to say. `first_of(xs: a[], fallback: a)` called
+            // as `first_of([], "none")` bound `a` from the empty list, so the
+            // return came back as an `int64_t` holding a string pointer and
+            // `assert_eq` compared the address. A binding that knows something
+            // replaces one that does not.
+            match m.get(&segs[0]) {
+                Some(prev) if is_settled(prev) => {}
+                _ => {
+                    m.insert(segs[0].clone(), concrete.clone());
+                }
+            }
         }
         (Type::Array(inner), CTy::Arr(e)) => bind_vars(inner, e, m),
         (Type::Opt(inner) | Type::Paren(inner), _) => bind_vars(inner, concrete, m),
