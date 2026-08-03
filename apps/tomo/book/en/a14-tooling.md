@@ -138,7 +138,11 @@ the compiler itself, which is the largest Maca program that exists.
 ## Project layout
 
 `maca init` starts a project with a `maca.toml`. Dependencies for the Rust
-target go in a `[rust-dependencies]` table and are passed through to Cargo.
+target go in a `[rust-dependencies]` table and are passed through to Cargo, and
+a `[page]` table names the page a JS or Tauri build produces (`title`, `lang`,
+`description`; see [Targets](a10-targets.md)). Every table is read from the
+`maca.toml` nearest the source file, searching upward, so a subdirectory is
+covered by the project it belongs to.
 
 For your own code, the module system needs no manifest at all: `maca build
 app/main.maca` follows the imports. See

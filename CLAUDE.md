@@ -304,6 +304,21 @@ plus the transitive closure of same-module definitions they reference (dead-code
 elimination at the module boundary); a name the module doesn't define is a clean
 error, not a dangling reference (`crates/parser/src/imports.rs`).
 
+**A page's identity and its assets (JS/Tauri targets).** `[page]` in the
+`maca.toml` nearest the source gives the page its `title` (falling back to the
+source file's stem, which is all it used to have), plus `lang` and
+`description`; an unknown key there is an error, not a default. After
+`import <lang>`, the two string forms differ: a raw `"""…"""` block is the
+source, a quoted `"…"` names a file, resolved against the importing file and
+read at build time, so `import css "vendor/x.css"` and `import js "vendor/x.js"`
+inline that file's bytes into the page the way `import wasm` already did (a
+missing path is a build error naming it). The parser records which form was
+written in the language word, because `Import::Foreign` has no room for a flag
+and every backend pattern-matches its fields: the file forms are `stylesheet`
+and `script`, which `print.rs` writes back as `css`/`js`, so `maca fmt` and the
+module inliner do not turn an inline block into a path. Gated by
+`crates/driver/tests/page.rs`.
+
 **Processes, no shell:** `exec(cmd, args) -> int` (the exit code) and
 `capture(cmd, args) -> str` (its stdout) are `fork` + `execvp`. `args` is a
 `str[]` and each element is one argument however it is spelled, so

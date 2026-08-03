@@ -1477,10 +1477,15 @@ fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<Stri
 
 /// UI mode → one self-contained, deployable `index.html`.
 ///
-/// Styles and the transpiled app are inlined; any `import wasm "path"` asset the
-/// program declares is read and embedded as a base64 `<script>` (with id
-/// `wasm-b64`) before the app, so a browser playground ships as a single file
-/// with no external requests. `maca build --target js app.maca` → deploy it.
+/// Styles and the transpiled app are inlined, and so is every asset the program
+/// declares: `import wasm "path"` becomes a base64 `<script>` (with id
+/// `wasm-b64`), `import css "path"` a `<style>` ahead of the generated one, and
+/// `import js "path"` a `<script>` ahead of the app. A page ships as a single
+/// file with no external requests. `maca build --target js app.maca` → deploy
+/// it.
+///
+/// The page's `<title>` (and `lang`, and description) comes from `[page]` in
+/// the `maca.toml` nearest the source, falling back to the file's stem.
 fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
     let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
@@ -1489,28 +1494,51 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
     }
     let out = maca_backend_js::emit(&parsed.module);
 
-    // embed declared binary assets: `import wasm "relpath"` → a base64 script.
+    // Declared assets, in the order they are written. A stylesheet goes in the
+    // head *before* the generated `<style>`, so the app's own utilities win
+    // over a vendor sheet; a script goes in the body next to the wasm blob,
+    // after `#app` exists and before the app that may use it.
     let base = src.parent().unwrap_or(Path::new("."));
+    let mut head_assets = String::new();
     let mut assets = String::new();
     for item in &parsed.module.items {
-        if let maca_parser::Stmt::Import(maca_parser::Import::Foreign { lang, spec }) = item
-            && lang == "wasm"
-        {
-            let path = base.join(spec);
-            let bytes =
-                std::fs::read(&path).map_err(|e| format!("import wasm {}: {e}", path.display()))?;
-            assets.push_str(&format!(
-                "<script id=\"wasm-b64\" type=\"application/octet-stream\">{}</script>\n",
-                base64(&bytes)
-            ));
+        let maca_parser::Stmt::Import(maca_parser::Import::Foreign { lang, spec }) = item else {
+            continue;
+        };
+        match lang.as_str() {
+            "wasm" => {
+                let bytes = read_asset(base, "wasm", spec)?;
+                assets.push_str(&format!(
+                    "<script id=\"wasm-b64\" type=\"application/octet-stream\">{}</script>\n",
+                    base64(&bytes)
+                ));
+            }
+            "stylesheet" => {
+                let text = asset_text(base, "css", spec)?;
+                head_assets.push_str(&format!("<style>\n{}\n</style>\n", close_safe(&text)));
+            }
+            "script" => {
+                let text = asset_text(base, "js", spec)?;
+                assets.push_str(&format!("<script>\n{}\n</script>\n", close_safe(&text)));
+            }
+            _ => {}
         }
     }
 
-    let title = stem(src);
+    let page = page_config(src)?;
+    let title = html_text(&page.title.clone().unwrap_or_else(|| stem(src)));
+    let lang = match &page.lang {
+        Some(l) => format!(" lang=\"{}\"", html_text(l)),
+        None => String::new(),
+    };
+    let description = match &page.description {
+        Some(d) => format!("<meta name=\"description\" content=\"{}\">\n", html_text(d)),
+        None => String::new(),
+    };
     let page = format!(
-        "<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n\
+        "<!doctype html>\n<html{lang}>\n<head>\n<meta charset=\"utf-8\">\n\
          <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n\
-         <title>{title}</title>\n<style>\n{}\n</style>\n</head>\n\
+         {description}<title>{title}</title>\n{head_assets}<style>\n{}\n</style>\n</head>\n\
          <body>\n<div id=\"app\"></div>\n{assets}<script>\n{}\n</script>\n</body>\n</html>\n",
         out.css, out.js
     );
@@ -1524,6 +1552,111 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// An asset a page declares, read at build time.
+///
+/// The error names the import as it was written *and* the path it resolved to:
+/// an asset path is relative to the source file, not to the directory the build
+/// was started from, so "no such file" without both is a message about nothing.
+/// It is an error rather than a skipped asset because the page it produces is
+/// the deployable, and a page missing its stylesheet looks like a CSS bug, in
+/// the browser, later.
+fn read_asset(base: &Path, lang: &str, spec: &str) -> Result<Vec<u8>, String> {
+    let path = base.join(spec);
+    std::fs::read(&path).map_err(|e| format!("import {lang} \"{spec}\": {}: {e}", path.display()))
+}
+
+/// The same, as text: a stylesheet or a script is inlined as source, so bytes
+/// that are not UTF-8 are a named error here rather than a mangled page.
+fn asset_text(base: &Path, lang: &str, spec: &str) -> Result<String, String> {
+    let bytes = read_asset(base, lang, spec)?;
+    String::from_utf8(bytes).map_err(|e| format!("import {lang} \"{spec}\": not UTF-8 text: {e}"))
+}
+
+/// Text inlined into a `<style>` or `<script>` element, with the sequences that
+/// would end that element early escaped.
+///
+/// An HTML parser closes a raw-text element at the first `</style` or
+/// `</script`, wherever it appears, including inside a JavaScript string, and
+/// everything after it becomes markup. Both languages allow the sequence only
+/// inside a string, a comment or a regex, where a backslash before the slash
+/// changes nothing, which is why escaping it is safe and dropping the asset is
+/// not.
+fn close_safe(text: &str) -> String {
+    let lower = text.to_ascii_lowercase(); // ASCII-only, so byte offsets still line up
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while let Some(off) = lower[i..].find("</") {
+        let at = i + off;
+        out.push_str(&text[i..at]);
+        let rest = &lower[at + 2..];
+        if rest.starts_with("style") || rest.starts_with("script") {
+            out.push_str("<\\/");
+        } else {
+            out.push_str("</");
+        }
+        i = at + 2;
+    }
+    out.push_str(&text[i..]);
+    out
+}
+
+/// Escape a manifest value for HTML text or an attribute value. A page title is
+/// somebody's prose, so `Tom & Jerry` is a title and not a broken entity.
+fn html_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// `[page]` in `maca.toml`: what the page *is*, as distinct from what its file
+/// happens to be called.
+struct Page {
+    title: Option<String>,
+    lang: Option<String>,
+    description: Option<String>,
+}
+
+/// Read `[page]` from the `maca.toml` nearest the source (searching upward, as
+/// `[rust-dependencies]` does).
+///
+/// The JS target named every page after its source file, so a start page in
+/// `home.maca` was `<title>home</title>` and the project patched the emitted
+/// HTML afterwards with a string replace keyed on that word: rename the file
+/// and the replace quietly matched nothing.
+///
+/// An unrecognised key is an error, not a default. A misspelt `titel` that
+/// silently produced the old title is the same failure with a longer detour.
+fn page_config(src: &Path) -> Result<Page, String> {
+    let mut page = Page {
+        title: None,
+        lang: None,
+        description: None,
+    };
+    for (k, v) in manifest_section(src, "[page]") {
+        let v = v.trim().trim_matches('"').to_string();
+        match k.as_str() {
+            "title" => page.title = Some(v),
+            "lang" => page.lang = Some(v),
+            "description" => page.description = Some(v),
+            other => {
+                return Err(format!(
+                    "maca.toml [page]: unknown key `{other}` (known: title, lang, description)"
+                ));
+            }
+        }
+    }
+    Ok(page)
+}
+
 /// `maca build --target tauri app.maca -o out`: scaffold a complete,
 /// `cargo tauri build`-able Tauri v2 desktop app from a Maca UI. Emits:
 ///   out/dist/         the compiled Maca UI (index.html, app.js, app.css) + a
@@ -1534,7 +1667,9 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
 ///                     the command, so the whole app is Maca, Tauri just the shell.
 fn build_tauri(src: &Path, out: &Path) -> Result<String, String> {
     let name = sanitize_ident(&stem(src));
-    let title = stem(src);
+    // The window's title is the page's title: one app, one name. `[page] title`
+    // in maca.toml answers for both, and the file stem is the fallback for both.
+    let title = page_config(src)?.title.unwrap_or_else(|| stem(src));
     let dist = out.join("dist");
 
     // 1. the UI (reuses the JS backend), plus the invoke bridge

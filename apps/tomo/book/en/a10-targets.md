@@ -55,6 +55,54 @@ The same syntax works on the native target, where an element renders to an HTML
 string instead of a DOM node. That is what a static site generator needs, and
 it is [the UI syntax's subject](a11-ui.md).
 
+### What the page says it is
+
+The page is named after its source file unless the project says otherwise, and
+a project says so in `maca.toml`:
+
+```toml
+[page]
+title = "tabpane"
+lang = "ko"
+description = "a browser start page"
+```
+
+`title` fills the `<title>`, and titles the window under `--target tauri` as
+well: one application, one name. `lang` becomes the `<html lang>` attribute and
+`description` a meta tag; leave either out and neither is emitted. A key that is
+none of the three is an error rather than a default, because a misspelt `titel`
+that quietly kept the file's name is the problem this section removes, with a
+longer detour.
+
+### What the page carries
+
+A page usually needs a stylesheet or a script that is not Maca. Both are
+imports:
+
+```maca
+import css "vendor/daisyui.css"       // a file, read at build time
+import js "vendor/iconify-icon.js"    // a file, read at build time
+
+import css """
+.card { border-radius: 8px }
+"""                                   // the source itself, written inline
+```
+
+After `import css` or `import js`, a quoted string names a file and a
+`"""…"""` block is the source. The file is resolved against the source that
+imports it, read at build time and **inlined**: a stylesheet lands in a
+`<style>` ahead of the generated one, so the app's own utilities win over a
+vendor sheet; a script lands in a `<script>` after the element the app mounts
+into. Nothing is linked, because `index.html` is the whole deployable and a
+`<link>` to a file the build never copied is a page that works until it is
+somewhere else. `import wasm "x.wasm"` is the same idea for a binary, embedded
+as base64.
+
+A path that resolves to no file fails the build and names the file. The
+alternative, which is what projects did before this existed, is a build script
+patching the emitted HTML with string replaces: a replace that matches nothing
+is a no-op, and a no-op is not a message.
+
 ## The JVM and Rust
 
 These two are less about deployment than about *reach*. They exist so that Maca

@@ -50,9 +50,28 @@ fn import(s: &mut String, im: &Import) {
         Import::Bare(n) => {
             let _ = write!(s, "import {n}");
         }
-        Import::Foreign { lang, spec } => {
-            let _ = write!(s, "import {lang} \"{}\"", escape(spec));
-        }
+        Import::Foreign { lang, spec } => match lang.as_str() {
+            // An inline page block. It can only have come from a `"""…"""`
+            // block, because a *quoted* css/js import is the file form and
+            // parses as `stylesheet`/`script`, so the content cannot contain
+            // `"""` and goes straight back out. Escaping it into a one-line
+            // `"…"` would tell the next reader of this source, and the next
+            // build, to go and read a file by that name.
+            "css" | "js" => {
+                let _ = write!(s, "import {lang} \"\"\"{spec}\"\"\"");
+            }
+            // The file forms, written back as the language word the author
+            // used. `maca fmt` is not allowed to rename an import.
+            "stylesheet" => {
+                let _ = write!(s, "import css \"{}\"", escape(spec));
+            }
+            "script" => {
+                let _ = write!(s, "import js \"{}\"", escape(spec));
+            }
+            _ => {
+                let _ = write!(s, "import {lang} \"{}\"", escape(spec));
+            }
+        },
     }
 }
 

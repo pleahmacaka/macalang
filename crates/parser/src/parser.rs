@@ -228,8 +228,12 @@ impl Parser {
             Tok::Ident(first) => {
                 self.bump();
                 if matches!(self.peek(), Tok::StrOpen) {
+                    let raw = self.at_raw_string();
                     let spec = self.parse_string_literal();
-                    Import::Foreign { lang: first, spec }
+                    Import::Foreign {
+                        lang: foreign_lang(first, raw),
+                        spec,
+                    }
                 } else if self.at(Tok::Slash) {
                     let mut segs = vec![first];
                     while self.eat(Tok::Slash) {
@@ -245,6 +249,15 @@ impl Parser {
                 Import::Bare("?".into())
             }
         }
+    }
+
+    /// Is the string that starts here a raw `"""…"""` block rather than an
+    /// ordinary `"…"`? The lexer opens both with the same `StrOpen`, so the one
+    /// surviving trace of which was written is the token's width: three quotes
+    /// or one.
+    fn at_raw_string(&self) -> bool {
+        let (start, end) = self.span();
+        end - start == 3
     }
 
     fn parse_module_path(&mut self) -> Vec<Ident> {
@@ -1342,6 +1355,30 @@ impl Parser {
                 Vec::new()
             }
         }
+    }
+}
+
+/// The language word an `import <lang> "…"` records, given which string form
+/// was written.
+///
+/// `css` and `js` are the two foreign languages a page can carry either way: a
+/// raw `"""…"""` block *is* the source, and a quoted `"…"` *names a file* the
+/// build reads and inlines. `Import::Foreign` keeps one string and no flag, so
+/// the two forms are told apart by the language word instead: the file forms
+/// become `stylesheet` and `script`, which `print.rs` writes back as `css` and
+/// `js`, so what the author wrote survives a round trip.
+///
+/// Recording nothing was not an option. A quoted string and a raw block reach
+/// the tree identical, so a build that read one as a path would read the other
+/// as a path too, and a stylesheet block would fail as a missing file. Deciding
+/// from the string's *contents* (a leading `./`, an ending in `.css`) is the
+/// silent-wrong-answer version of the same question: a path spelled without the
+/// marker would land in the page as a CSS rule and no one would be told.
+fn foreign_lang(lang: Ident, raw: bool) -> Ident {
+    match lang.as_str() {
+        "css" if !raw => "stylesheet".into(),
+        "js" if !raw => "script".into(),
+        _ => lang,
     }
 }
 

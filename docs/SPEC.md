@@ -182,6 +182,20 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   playground itself is a single Maca file (`apps/playground/playground.maca`)
   compiled by this backend, carrying its styles and the WebAssembly-bridge
   runtime inline via `import css`/`import js` raw-string blocks.
+- **A page's assets and its identity.** After `import <lang>`, the two string
+  forms mean different things: a raw `"""…"""` block *is* the source, and a
+  quoted `"…"` *names a file*, resolved against the importing source file and
+  read at build time. So `import css """…"""` carries inline CSS while
+  `import css "vendor/daisyui.css"` embeds that file's bytes in a `<style>`
+  ahead of the generated one, `import js "vendor/x.js"` embeds a `<script>`
+  ahead of the app, and `import wasm "x.wasm"` embeds a base64 blob. Every asset
+  is inlined, never linked: `index.html` is the whole deployable. A path that
+  resolves to no file is a build error naming it.
+  The page's title is `[page] title` in the `maca.toml` nearest the source
+  (`lang` and `description` too), falling back to the source file's stem, so a
+  page is named by what it is rather than by what its file is called; the same
+  title names the window under `--target tauri`. An unknown key under `[page]`
+  is an error.
 - The **JS bridge** is what an `import js` block and the program say to each
   other, and the only thing either may assume about the other. `maca.get(name)`
   reads declared state, `maca.set(name, value)` (or `maca.set({…})`) writes it

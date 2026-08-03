@@ -131,7 +131,11 @@ maca profile FILE -o flame.svg
 ## 프로젝트 구성
 
 `maca init`이 `maca.toml`과 함께 프로젝트를 시작합니다. Rust 타깃의 의존성은
-`[rust-dependencies]` 테이블에 넣으면 Cargo로 전달됩니다.
+`[rust-dependencies]` 테이블에 넣으면 Cargo로 전달되고, `[page]` 테이블은 JS나
+Tauri 빌드가 만드는 페이지의 이름을 정합니다 (`title`, `lang`, `description`.
+[타깃](a10-targets.md)을 보세요). 모든 테이블은 소스 파일에서 위로 올라가며
+가장 가까운 `maca.toml`에서 읽으므로, 하위 디렉터리는 자기가 속한 프로젝트가
+답합니다.
 
 당신 코드에 대해서는 모듈 시스템이 매니페스트를 전혀 필요로 하지 않습니다.
 `maca build app/main.maca`가 import를 따라갑니다.
