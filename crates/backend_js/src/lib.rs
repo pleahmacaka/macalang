@@ -28,6 +28,9 @@ pub fn emit(m: &Module) -> JsOut {
             && !is_record_type(&b.value)
         {
             cx.state.push((name.clone(), js_init(&b.value)));
+            if b.is_const {
+                cx.consts.insert(name.clone());
+            }
         }
     }
     let state_names: BTreeSet<String> = cx.state.iter().map(|(n, _)| n.clone()).collect();
@@ -71,11 +74,24 @@ pub fn emit(m: &Module) -> JsOut {
 
     // Transpile top-level functions to callable JS (skip `main`, which is the
     // UI/entry). These make `import "x.maca"` usable from JS/Bun.
+    //
+    // A function *declared* without a body is the other half of the boundary:
+    // the Maca side says what it takes and returns, the host supplies it. It
+    // gets a stub that routes through the bridge, so the implementation arrives
+    // by `maca.provide({ f })` rather than by the block assigning `window.f`
+    // and hoping a bare call finds it on the global object.
     let mut exports = Vec::new();
     let mut fn_defs = String::new();
+    let mut host_stubs = String::new();
+    let mut hosts = Vec::new();
     for item in &m.items {
         if let Stmt::Fn(f) = item {
-            if f.name == "main" || f.body.is_none() {
+            if f.name == "main" {
+                continue;
+            }
+            if f.body.is_none() {
+                host_stubs.push_str(&host_stub(f));
+                hosts.push(f.name.clone());
                 continue;
             }
             fn_defs.push_str(&emit_fn(f));
@@ -86,6 +102,10 @@ pub fn emit(m: &Module) -> JsOut {
     // Variants are exported alongside the functions: a caller in JS cannot build
     // an argument for `area(s: Shape)` without `Circle`.
     exports.extend(variants.keys().cloned());
+    if !host_stubs.is_empty() {
+        js.push_str("\n// ---- host functions (declared here, provided by the host) ----\n");
+        js.push_str(&host_stubs);
+    }
     if !fn_defs.is_empty() || !variants.is_empty() {
         if !fn_defs.is_empty() {
             js.push_str("\n// ---- transpiled functions ----\n");
@@ -99,8 +119,10 @@ pub fn emit(m: &Module) -> JsOut {
 
     // foreign blocks embedded in the .maca source: `import js """…"""` carries
     // raw JS (the host/runtime glue a UI app needs), `import css """…"""` raw
-    // CSS. This lets a single .maca file carry everything it needs. The JS is
-    // *prepended* so any helpers it defines exist before the app first mounts.
+    // CSS. This lets a single .maca file carry everything it needs. The JS goes
+    // *between the bridge and the app*: after `maca`, so a block can call
+    // `maca.provide(…)` and `maca.set(…)` at its top level, and before the app,
+    // so whatever it provides is in place by the time `mount()` builds the view.
     let mut css = cx.css();
     let mut foreign_js = String::new();
     for item in &m.items {
@@ -120,10 +142,11 @@ pub fn emit(m: &Module) -> JsOut {
             }
         }
     }
+    let bridge = cx.bridge(&hosts);
     let js = if foreign_js.is_empty() {
-        js
+        format!("{bridge}{js}")
     } else {
-        format!("{foreign_js}\n{js}")
+        format!("{bridge}\n{foreign_js}\n{js}")
     };
     // Constructors go near the top: `build()` mounts the view as soon as it is
     // defined, and a view may name a variant. They go *after* `"use strict"`
@@ -157,6 +180,96 @@ fn insert_after_use_strict(js: &str, block: &str) -> String {
         }
         _ => format!("{block}\n{js}"),
     }
+}
+
+/// The bridge itself: the fixed half of what `Cx::bridge` emits, above the
+/// three generated name lists it reads (`_vars`, `_consts`, `_declared`).
+///
+/// It is the answer to two undocumented conventions. A foreign block used to
+/// reach for `state` and `update()`, which are this generator's own locals and
+/// were never promised to anybody, and it had to write `window.f = …` for every
+/// function the Maca side declared, because a Maca call lowers to a bare call
+/// that resolves on the global object. One project carried twenty two of those
+/// assignments, and a mistyped `state.form_titel = …` silently created a field
+/// nothing was bound to, so the dialog it filled in simply stayed blank.
+const BRIDGE_JS: &str = r#"// The documented boundary between this program and any `import js` block:
+//
+//   maca.get(name)           read a name the program declared
+//   maca.set(name, value)    write it, then refresh the view
+//   maca.set({ a, b })       write several, refresh once
+//   maca.refresh()           re-sync the bound nodes after something else moved
+//   maca.provide({ f })      supply a function the Maca side declared
+//
+// Nothing else in this file is an interface.
+const _hosts = Object.create(null);
+function _declaredState() { return _vars.concat(_consts).join(", ") || "(none)"; }
+function _readable(name) {
+  if (_vars.indexOf(name) < 0 && _consts.indexOf(name) < 0) {
+    throw new Error(`maca.get: \`${name}\` is not state in this program; declared: ${_declaredState()}`);
+  }
+}
+function _writable(name) {
+  if (_vars.indexOf(name) >= 0) return;
+  if (_consts.indexOf(name) >= 0) {
+    throw new Error(`maca.set: \`${name}\` is a constant`);
+  }
+  throw new Error(`maca.set: \`${name}\` is not state in this program; declared: ${_declaredState()}`);
+}
+const maca = {
+  get(name) { _readable(name); return state[name]; },
+  // Every name is checked before any is written: a typo in one field of a
+  // `set({…})` must not leave the other fields half applied.
+  set(name, value) {
+    const pairs = typeof name === "string" ? [[name, value]] : Object.entries(name);
+    for (const pair of pairs) _writable(pair[0]);
+    for (const pair of pairs) state[pair[0]] = pair[1];
+    update();
+  },
+  refresh() { update(); },
+  // The other direction: hand back the functions Maca declared without a body.
+  // They are ordinary calls over there, so this is what makes them resolve.
+  provide(table) {
+    for (const key of Object.keys(table)) {
+      if (_declared.indexOf(key) < 0) {
+        throw new Error(`maca.provide: \`${key}\` is not declared in this program; declared: ${_declared.join(", ") || "(none)"}`);
+      }
+      if (typeof table[key] !== "function") {
+        throw new TypeError(`maca.provide: \`${key}\` must be a function`);
+      }
+      _hosts[key] = table[key];
+    }
+  },
+};
+// One call to a declared-but-not-defined function. A missing implementation
+// names itself here, rather than reaching the view as `undefined is not a
+// function` from wherever the value ended up being used.
+function _host(name, args) {
+  const f = _hosts[name];
+  if (typeof f !== "function") {
+    throw new Error(`maca: \`${name}\` is declared in Maca but nothing implements it; call maca.provide({ ${name}: … }) from the import js block`);
+  }
+  return f.apply(null, args);
+}
+"#;
+
+/// A signature with no body → a stub that routes the call through the bridge.
+///
+/// Rest arguments rather than the declared parameter names, so a variadic
+/// parameter needs no second spelling; the signature is in the comment above
+/// it, which is where a reader of the emitted JS looks for it anyway.
+fn host_stub(f: &FnDef) -> String {
+    let params = f
+        .params
+        .iter()
+        .map(|p| p.name.clone())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let name = &f.name;
+    format!(
+        "// declared in Maca as `{name}({params})`; \
+         supply it with `maca.provide({{ {name} }})`\n\
+         function {name}(...args) {{ return _host(\"{name}\", args); }}\n"
+    )
 }
 
 /// Transpile one top-level function to a JS function declaration.
@@ -763,6 +876,10 @@ fn jstr(parts: &[StrPart]) -> String {
 #[derive(Default)]
 struct Cx {
     state: Vec<(String, String)>,
+    /// The subset of `state` bound with `const` (or a Capitalized name). The
+    /// bridge refuses to write one, so `maca.set("Title", …)` is the same
+    /// error from JS that reassigning it is from Maca.
+    consts: BTreeSet<String>,
     state_names: BTreeSet<String>,
     classes: BTreeSet<String>,
     n: usize,
@@ -913,17 +1030,57 @@ impl Cx {
         }
     }
 
-    fn finish(&self, build_body: &str, root: &str) -> String {
+    /// The half of the module that has to exist before an `import js` block
+    /// runs: the state object, the bind list, and the `maca` object the block
+    /// talks to.
+    ///
+    /// It is emitted first for a reason. A block calling `maca.provide(…)` at
+    /// its top level would otherwise hit the temporal dead zone of a `const
+    /// maca` declared below it, and fail with a ReferenceError naming nothing
+    /// the author wrote.
+    fn bridge(&self, hosts: &[String]) -> String {
         let state = self
             .state
             .iter()
             .map(|(n, v)| format!("{n}: {v}"))
             .collect::<Vec<_>>()
             .join(", ");
+        let names = |ns: Vec<&String>| {
+            ns.iter()
+                .map(|n| format!("{n:?}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let vars = names(
+            self.state
+                .iter()
+                .map(|(n, _)| n)
+                .filter(|n| !self.consts.contains(*n))
+                .collect(),
+        );
+        let consts = names(
+            self.state
+                .iter()
+                .map(|(n, _)| n)
+                .filter(|n| self.consts.contains(*n))
+                .collect(),
+        );
+        let declared = names(hosts.iter().collect());
         format!(
             "\"use strict\";\n\
              const state = {{ {state} }};\n\
              const _binds = [];\n\
+             // ---- the maca bridge ----\n\
+             const _vars = [{vars}];\n\
+             const _consts = [{consts}];\n\
+             const _declared = [{declared}];\n\
+             {BRIDGE_JS}"
+        )
+    }
+
+    fn finish(&self, build_body: &str, root: &str) -> String {
+        format!(
+            "// ---- the app ----\n\
              function _attr(el, k, v) {{\n\
              \x20 if (v === true) el.setAttribute(k, \"\");\n\
              \x20 else if (v === false || v == null) el.removeAttribute(k);\n\
@@ -937,7 +1094,7 @@ impl Cx {
              \x20 const app = document.getElementById(\"app\");\n\
              \x20 if (app) mount(app);\n\
              }}\n\
-             if (typeof module !== \"undefined\") module.exports = {{ state, mount, build, update }};\n"
+             if (typeof module !== \"undefined\") module.exports = {{ state, mount, build, update, maca }};\n"
         )
     }
 

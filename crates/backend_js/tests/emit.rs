@@ -126,8 +126,8 @@ fn html_attribute_sets_inner_html() {
 #[test]
 fn foreign_import_blocks_embed_js_and_css() {
     // `import js`/`import css` with a raw triple-quoted block embed verbatim:
-    // the JS is prepended (so its helpers exist before the app mounts), the CSS
-    // appended to the stylesheet.
+    // the JS lands between the bridge and the app, the CSS is appended to the
+    // stylesheet.
     let out = maca_backend_js::emit(&maca_parser::parse(
         "import css \"\"\"\n.x { color: red }\n\"\"\"\nimport js \"\"\"\nwindow.hi = () => 1;\n\"\"\"\ng = \"\"\nmain() -> Element => div(class=\"x\", g)\n",
     ).module);
@@ -136,10 +136,19 @@ fn foreign_import_blocks_embed_js_and_css() {
         "js not embedded:\n{}",
         out.js
     );
-    // embedded js comes before the app's state/mount
+    // The block sits after `const maca` and before `build`, and both halves of
+    // that matter. Below the bridge, or a block calling `maca.provide(…)` at
+    // its top level reads a `const` still in its temporal dead zone; above the
+    // app, or whatever it provides arrives after `mount()` has already built
+    // the view with it.
+    let (bridge, block) = (
+        out.js.find("const maca = {").unwrap(),
+        out.js.find("window.hi").unwrap(),
+    );
+    let app = out.js.find("function build()").unwrap();
     assert!(
-        out.js.find("window.hi").unwrap() < out.js.find("const state").unwrap(),
-        "js not prepended:\n{}",
+        bridge < block && block < app,
+        "embedded js is not between the bridge and the app:\n{}",
         out.js
     );
     assert!(

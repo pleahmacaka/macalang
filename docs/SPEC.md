@@ -182,6 +182,18 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   playground itself is a single Maca file (`apps/playground/playground.maca`)
   compiled by this backend, carrying its styles and the WebAssembly-bridge
   runtime inline via `import css`/`import js` raw-string blocks.
+- The **JS bridge** is what an `import js` block and the program say to each
+  other, and the only thing either may assume about the other. `maca.get(name)`
+  reads declared state, `maca.set(name, value)` (or `maca.set({…})`) writes it
+  and refreshes the view, `maca.refresh()` re-syncs the bound nodes, and
+  `maca.provide({ f })` hands back a function the Maca side *declared without a
+  body*, which is how a signature like `cfg_write(title: str) -> bool` gets an
+  implementation. A name the program never declared throws rather than becoming
+  a field, and so does writing a constant. The emitted file is bridge, then
+  block, then app, so a block's top level runs with the bridge available and
+  before the first render. The generated `state`/`update()` remain, and remain
+  the generator's own names rather than an interface. Reference:
+  `apps/tomo/book/{en,ko}/a13-ffi.md`.
 
 The standard library surface is *The Standard Library* in the handbook's
 reference (`apps/tomo/book/en/a3-stdlib.md`), and the examples are

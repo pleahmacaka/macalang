@@ -81,6 +81,77 @@ Python 연동은 `python3-config`를 거치고, 모듈의 함수를 같은 방�
 있게 됩니다. 둘 중 무거운 쪽입니다. 인터프리터를 임베드하니까요. Python에만
 있는 라이브러리에 닿기 위해 존재합니다.
 
+## JavaScript: `maca` 브리지
+
+JS 백엔드는 다른 종류의 외부 코드를 인라인으로 받습니다. `import js """…"""`는
+블록을 그대로 `app.js`에 심습니다. `.maca` 사용자 인터페이스가 필요한 호스트
+글루(WebAssembly 인스턴스, 에디터, 브라우저 API)를 두 번째 파일 없이 들고 다니는
+방법입니다.
+
+블록과 프로그램은 `maca`라는 객체 하나에서만 만납니다.
+
+| 호출 | 하는 일 |
+|---|---|
+| `maca.get(name)` | 프로그램이 선언한 이름을 읽습니다 |
+| `maca.set(name, value)` | 쓰고 나서 화면을 갱신합니다 |
+| `maca.set({ a, b })` | 여럿을 쓰고 한 번만 갱신합니다 |
+| `maca.refresh()` | 다른 것이 바뀐 뒤 바인딩된 노드를 다시 맞춥니다 |
+| `maca.provide({ f })` | Maca 쪽이 선언한 함수를 건네줍니다 |
+
+프로그램이 선언한 적 없는 이름은 새 필드가 아니라 오류입니다.
+
+```
+maca.set: `form_titel` is not state in this program; declared: form_title, form_url
+maca.set: `Limit` is a constant
+```
+
+이 객체가 존재하는 이유가 바로 그것입니다. 예전에는 블록이 `state.form_titel = …`
+처럼 직접 대입했고, 그러면 아무것도 바인딩되지 않은 필드가 조용히 생기고 예외도
+나지 않아서, 채우려던 대화상자가 그냥 빈 채로 남았습니다. 상수를 거절하는 이유도
+Maca가 상수 재대입을 거절하는 이유와 같습니다.
+
+### 호스트가 주는 함수
+
+본문 없이 선언한 함수가 반대 방향의 경계입니다. 시그니처는 Maca의 것이고,
+구현은 호스트의 것입니다.
+
+```maca
+cfg_sections() -> Section[]
+cfg_write(title: str, url: str, icon: str, section: str) -> bool
+
+form_title = ""
+
+import js """
+maca.provide({
+  cfg_sections: () => JSON.parse(localStorage.getItem("sections") || "[]"),
+  cfg_write: (title, url, icon, section) => save(title, url, icon, section),
+});
+
+document.addEventListener("app:link", (e) => {
+  maca.set({ form_title: e.detail.title });
+});
+"""
+```
+
+Maca에서 `cfg_sections()`는 평범한 호출이고, 백엔드가 그것을 브리지로 보냅니다.
+선언되지 않은 이름을 주는 것은 상태 이름 오타와 똑같이 거절되고, 아무도 구현하지
+않은 것을 호출하면 그렇다고 말합니다.
+
+```
+maca: `cfg_write` is declared in Maca but nothing implements it;
+call maca.provide({ cfg_write: … }) from the import js block
+```
+
+### 순서
+
+생성된 파일은 브리지, 블록, 앱 순입니다. 그래서 `maca.provide`와 `maca.set`는
+블록의 최상위에서 동작하고, 거기서 정한 값은 `mount()`가 화면을 처음 그리기 전에
+이미 자리를 잡습니다.
+
+생성된 `state` 객체와 `update()` 함수는 여전히 있고 여전히 동작합니다. 그것들에
+기대어 쓰인 프로그램이 있으니까요. 다만 그 둘은 약속이 아니라 이 백엔드의 지역
+변수입니다. 문서화된 쪽은 `maca`이고, 새 프로그램이 잡아야 할 것도 그쪽입니다.
+
 ## 언제 FFI를 쓸까
 
 솔직한 지침은 이렇습니다. 일이 자체 완결적이면 Maca로 구현하고, 라이브러리

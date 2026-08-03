@@ -85,6 +85,78 @@ Python interop goes through `python3-config`, and the module's functions become
 callable the same way. This is the heavier of the two, because it embeds an
 interpreter, and it exists for reaching libraries that only exist in Python.
 
+## JavaScript: the `maca` bridge
+
+The JS backend takes the other kind of foreign code inline. `import js """…"""`
+embeds a block verbatim into the emitted `app.js`, which is how a `.maca` user
+interface carries the host glue it needs (a WebAssembly instance, an editor, a
+browser API) without a second file.
+
+The block and the program meet on one object, `maca`, and nowhere else:
+
+| Call | Does |
+|---|---|
+| `maca.get(name)` | read a name the program declared |
+| `maca.set(name, value)` | write it, then refresh the view |
+| `maca.set({ a, b })` | write several, refresh once |
+| `maca.refresh()` | re-sync the bound nodes after something else moved |
+| `maca.provide({ f })` | supply a function the Maca side declared |
+
+A name the program never declared is an error, not a new field:
+
+```
+maca.set: `form_titel` is not state in this program; declared: form_title, form_url
+maca.set: `Limit` is a constant
+```
+
+That is the whole reason the object exists. A block used to assign
+`state.form_titel = …` directly, which created a field nothing was bound to and
+threw nothing, so the dialog it was filling in simply stayed blank. A constant
+is refused for the same reason Maca refuses to reassign one.
+
+### Functions the host supplies
+
+A function declared with no body is the boundary in the other direction. The
+signature is Maca's, the implementation is the host's:
+
+```maca
+cfg_sections() -> Section[]
+cfg_write(title: str, url: str, icon: str, section: str) -> bool
+
+form_title = ""
+
+import js """
+maca.provide({
+  cfg_sections: () => JSON.parse(localStorage.getItem("sections") || "[]"),
+  cfg_write: (title, url, icon, section) => save(title, url, icon, section),
+});
+
+document.addEventListener("app:link", (e) => {
+  maca.set({ form_title: e.detail.title });
+});
+"""
+```
+
+`cfg_sections()` is an ordinary call in Maca; the backend routes it through the
+bridge. Providing a name the program did not declare is rejected the same way a
+state typo is, and calling one that nothing implemented says so:
+
+```
+maca: `cfg_write` is declared in Maca but nothing implements it;
+call maca.provide({ cfg_write: … }) from the import js block
+```
+
+### Order
+
+The emitted file is the bridge, then the block, then the app. So `maca.provide`
+and `maca.set` work at the top level of the block, and whatever they set is in
+place before `mount()` builds the view for the first time.
+
+The generated `state` object and `update()` function are still there and still
+work, because programs were written against them. They are this backend's own
+locals rather than a promise, though: `maca` is the part that is documented, and
+the part a new program should reach for.
+
 ## When to reach for FFI
 
 The honest guidance: prefer a Maca implementation where the work is
