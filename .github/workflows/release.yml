@@ -35,7 +35,12 @@ jobs:
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             asset: maca-linux-aarch64.tar.gz
-          - os: macos-13
+          # Cross-compiled from the arm64 runner rather than built on an Intel
+          # one. `macos-13` was the last Intel image and it is gone, so that leg
+          # sat queued with no runner while the other four published: a release
+          # that looked successful and was missing a binary. Apple's toolchain
+          # emits both slices, so this does not need a machine of its own.
+          - os: macos-latest
             target: x86_64-apple-darwin
             asset: maca-macos-x86_64.tar.gz
           - os: macos-latest
@@ -47,11 +52,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `matrix.target` used to name the target and nothing passed it to cargo,
+      # so every leg built for whatever the runner happened to be and the field
+      # was decoration. It is the build's actual target now, which is what lets
+      # a leg be cross-compiled instead of needing its own machine.
       - name: Install Rust
-        run: rustup toolchain install stable --profile minimal --no-self-update
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup target add ${{ matrix.target }}
 
       - name: Build
-        run: cargo build --release -p maca-driver -p maca-lsp
+        run: cargo build --release --target ${{ matrix.target }} -p maca-driver -p maca-lsp
 
       # The two steps below are the only inline scripts left in this
       # repository's CI, and they stay scripts. Packaging a Maca program would
@@ -67,14 +78,14 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          tar -czf "dist/${{ matrix.asset }}" -C target/release maca maca-lsp
+          tar -czf "dist/${{ matrix.asset }}" -C "target/${{ matrix.target }}/release" maca maca-lsp
 
       - name: Package (windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path target\release\maca.exe, target\release\maca-lsp.exe -DestinationPath "dist\${{ matrix.asset }}" -Force
+          Compress-Archive -Path target\${{ matrix.target }}\release\maca.exe, target\${{ matrix.target }}\release\maca-lsp.exe -DestinationPath "dist\${{ matrix.asset }}" -Force
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
