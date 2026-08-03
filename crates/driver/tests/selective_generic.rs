@@ -147,6 +147,89 @@ main() -> int {
     assert!(text.contains("a1b2"), "{text}");
 }
 
+/// A lambda inside an inlined module captures the module's own parameter, even
+/// when the entry defines a function spelling the name the same way.
+///
+/// `emit_closure` decided what to capture by asking `is_known_global`, which
+/// answers for the *whole* inlined program. `render(at: str, …)` therefore
+/// stopped capturing `at` the moment anything else in the slice defined an
+/// `at`, and the lambda body read that function as a value instead: `++` was
+/// handed a `maca_closure2` and the native backend refused the program. Nothing
+/// is renamed until a module is inlined and a one-file program rarely has two
+/// `at`s, which is why it took a slice this wide to show. `apps/tomo/highlight`
+/// is where it was found, against `at` in `site_home.maca`.
+///
+/// Both lowering paths are here, because a specialization builds its own `env`
+/// and would not have been fixed by the same line otherwise: `render` takes the
+/// record list concretely, `render_any` takes it as `e[]` and is monomorphized.
+/// The value is asserted, not the exit status: the record element type was
+/// right in the emitted C either way, and the capture is the only thing the
+/// printed string can disagree about.
+#[test]
+fn a_lambda_in_an_inlined_module_captures_its_own_parameter() {
+    if !have("cc") {
+        eprintln!("skipping: no cc");
+        return;
+    }
+    let root = repo();
+    let dir = root.join("maca_cap_probe_src");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("pal.maca"),
+        "Tone = { cls: str, decl: str }
+
+tones() -> Tone[] =>
+    { cls = \"a\", decl = \"1\" },
+    { cls = \"b\", decl = \"2\" }
+
+render(at: str, ts: Tone[]) -> str =>
+    ts.map(t => at ++ t.cls ++ t.decl).join(\"\")
+
+render_any(at: str, ts: e[]) -> str =>
+    ts.map(t => at ++ t.cls ++ t.decl).join(\"\")
+
+sheet() -> str =>
+    render(\".x \", tones()) ++ render_any(\"|y \", tones())
+",
+    )
+    .unwrap();
+    let entry = root.join("maca_cap_probe.maca");
+    std::fs::write(
+        &entry,
+        "import { sheet } from maca_cap_probe_src/pal
+
+at(cs: str[], i: int) -> str => cs.get(i)
+
+main() -> int {
+  info(sheet())
+  info(at([\"z\"], 0))
+  0
+}
+",
+    )
+    .unwrap();
+
+    let out = std::env::temp_dir().join(format!("maca-capprobe-{}", std::process::id()));
+    let o = Command::new(maca())
+        .arg("run")
+        .arg(&entry)
+        .arg("-o")
+        .arg(&out)
+        .output()
+        .expect("spawn maca run");
+    let _ = std::fs::remove_file(&entry);
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_file(&out);
+
+    let text = String::from_utf8_lossy(&o.stdout).to_string() + &String::from_utf8_lossy(&o.stderr);
+    assert!(o.status.success(), "{text}");
+    assert!(text.contains(".x a1.x b2|y a1|y b2"), "{text}");
+    assert!(
+        text.contains("z"),
+        "the shadowed function still works: {text}"
+    );
+}
+
 /// Every top-level function a module defines, which is what a selective import
 /// of it can name.
 ///

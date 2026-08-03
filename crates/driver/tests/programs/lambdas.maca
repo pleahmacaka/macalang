@@ -72,3 +72,55 @@ test_a_closure_can_return_an_anonymous_record() {
 
     assert_eq(str(make(4).x), "4", "parenthesized, so it is a record")
 }
+
+// ---- a capture that shares a name with a top-level function -----------------
+
+// `at` is here for its name and nothing else: no lambda calls it. It is the
+// second `at` in the program, and that is the whole defect.
+at(parts: str[], i: int) -> str =>
+    parts.get(i)
+
+// A lambda captures the name its enclosing scope binds, not a top-level
+// function that happens to spell it the same way. `emit_closure` asked only
+// whether the name was a known global, so the moment any file in the slice
+// defined an `at`, this parameter stopped being captured and the body read the
+// *function* as a value: `++` was handed a `maca_closure2` and the native
+// backend refused the program. It took a wide enough slice to show, which is
+// why `apps/tomo/highlight.maca`'s `under` was written around a capture rather
+// than with one, and why one of the two `at`s here is dead code.
+prefixed(at: str, text: str) -> str =>
+    text.split("\n").map(l => at ++ l).join("\n")
+
+test_a_lambda_captures_the_local_over_a_global_of_the_same_name() {
+    assert_eq(prefixed("> ", "a\nb"), "> a\n> b", "the parameter came along")
+    assert_eq(at(["z"], 0), "z", "and the function is still itself")
+}
+
+// The same shadowing one scope in: a local binding rather than a parameter,
+// and a name whose global is a one-argument function, so the value substituted
+// is a `maca_closure` rather than a `maca_closure2`. Nothing here goes near
+// `++`; adding the closure to an integer is what `cc` refused instead.
+twice_of(n: int) -> int =>
+    n * 2
+
+test_a_lambda_captures_a_local_over_a_global_of_the_same_name() {
+    twice_of = 20
+
+    assert_eq(str([1, 2].map(n => n + twice_of).sum()), "43", "20 twice, + 3")
+    assert_eq(str(twice_of), "20", "the local is still the local")
+}
+
+// A top-level *binding* of the same name is the case that says nothing at all:
+// the program links, runs, and quietly computes with the module's value in
+// place of the parameter's. `tagged("<", …)` came back `GLOBALa,GLOBALb`, so
+// this is the one assertion here that a broken lowering cannot answer with a
+// compiler error instead.
+mark = "GLOBAL"
+
+tagged(mark: str, xs: str[]) -> str =>
+    xs.map(x => mark ++ x).join(",")
+
+test_a_lambda_captures_a_local_over_a_top_level_binding() {
+    assert_eq(tagged("<", ["a", "b"]), "<a,<b", "the parameter, not the module")
+    assert_eq(mark, "GLOBAL", "and the module's own is untouched")
+}

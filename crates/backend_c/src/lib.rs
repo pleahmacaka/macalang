@@ -2992,7 +2992,20 @@ impl<'a> Cx<'a> {
         bound.clear();
         let mut caps: Vec<(String, CTy)> = refs
             .into_iter()
-            .filter(|n| !self.is_known_global(n) && !self.variant_of.contains_key(n))
+            // A name the enclosing scope binds is captured whatever else in the
+            // program is called that, because a local shadows a global here as
+            // it does everywhere else in the language. Asking only
+            // `is_known_global` dropped it: `under(at: str, css: str) =>
+            // css.split("\n").map(l => at ++ l)` lost `at` from the environment
+            // the moment any other file in the slice defined a top-level `at`,
+            // and the body then read that *global* instead.
+            //
+            // Against a function that is loud, because `ident` hands back a
+            // `maca_closure` and `++` refuses one. Against a top-level *binding*
+            // it is silent: `mv_name()` is a string, so the program links, runs,
+            // and quietly uses the module's value. Both are in
+            // `crates/driver/tests/programs/lambdas.maca`.
+            .filter(|n| lookup(env, n).is_some() || !self.is_known_global(n))
             .map(|n| {
                 let t = self.cap_ty(env, &n);
                 (n, t)

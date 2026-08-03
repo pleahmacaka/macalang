@@ -834,10 +834,16 @@ code_css() -> str =>
 //
 // One rule per line, each starting at column 0 with its `.`, is what makes this
 // a line prefix rather than a CSS parser, and it is why the two palettes below
-// are written one rule per line. The trailing newline ends the string rather
-// than a rule, so nothing follows it to prefix.
+// are written one rule per line. The palettes end with a newline, so the last
+// line is empty and is left alone: prefixing it would emit a selector with no
+// rule after it.
+//
+// The lambda captures `at`, which the C backend used to drop whenever anything
+// else in the program defined a top-level `at`, and `site_home.maca` does. It
+// was written with `replace` to avoid the capture until the backend was fixed;
+// `crates/driver/tests/programs/lambdas.maca` is what holds that fixed.
 under(at: str, css: str) -> str =>
-    at ++ css.replace("\n.", "\n" ++ at ++ ".")
+    css.split("\n").map(l => l == "" ? "" : at ++ l).join("\n")
 
 light_css() -> str =>
     """.tok-kw { color: #cf222e }
