@@ -39,5 +39,10 @@ from a source checkout.
 - The tag should point at a commit on the default branch (merge the release
   branch first). Cutting a tag is the only step a maintainer performs by hand;
   everything else is automated.
-- Bump `version` in the root `Cargo.toml`, `extension.toml`, and this repo's
-  `install.*` banner to match the tag before releasing.
+- Bump `version` to match the tag before releasing, in all five files that
+  carry one: the root `Cargo.toml` (which every crate inherits, and which
+  `maca --version` prints), `maca.toml`, `packages/macalang/package.json`,
+  `editor/zed-maca/extension.toml` and `editor/zed-maca/Cargo.toml`. The last
+  two have to agree with each other or Zed refuses the extension. The
+  installers carry no version of their own: they ask the binary they just
+  installed, so there is nothing to bump there.
