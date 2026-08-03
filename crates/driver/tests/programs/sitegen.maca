@@ -90,8 +90,37 @@ test_the_page_shows_code() {
 
     assert(root.contains("language-maca"), "a Maca sample")
     assert(root.contains("language-sh"), "and the install line is shell")
-    assert(root.contains("Shape = Circle(float)"), "the hero program")
+    // The hero is highlighted now, so its source is a run of `<span>`s and not
+    // a substring of the page. Taking the markup back off is what keeps this
+    // asserting that the program is shown, rather than weakening it to a
+    // couple of tokens that any page mentioning `Shape` would satisfy.
+    hero = unmarked(between(root, "code-dark", "</pre>"))
+    assert(hero.contains("Shape = Circle(float)"), "the hero program")
     assert_eq(str(count(root, "<pre class=")), "6", "hero + 4 cards + install")
+}
+
+// `html` with every tag removed, so what is left is what a reader sees.
+//
+// Run over one block rather than the whole page: this recurses once per tag,
+// and the page has thousands.
+unmarked(html: str) -> str =>
+    unmarked_from(html, "")
+
+unmarked_from(html: str, acc: str) -> str {
+    open = html.index_of("<")
+
+    if open < 0 {
+        acc ++ html
+    } else {
+        tail = html.slice(open, html.length())
+        shut = tail.index_of(">")
+        // An unclosed `<` is text, not a tag, and dropping the rest of the
+        // block on it would make this assert against an empty string.
+        shut < 0
+            ? acc ++ html
+            : unmarked_from(tail.slice(shut + 1, tail.length()),
+                            acc ++ html.slice(0, open))
+    }
 }
 
 // A `<title>` was being derived by `sub.slice(0, 60)`, which cuts a UTF-8
