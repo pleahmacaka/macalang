@@ -32,11 +32,17 @@ const BANNED: [(char, &str); 3] = [
 ];
 
 /// Directories that are not the repository's own text: version control, build
-/// output, and dependencies fetched by another tool.
+/// output, dependencies fetched by another tool, and vendored third-party
+/// files.
+///
+/// `fonts` holds Pretendard as it ships, licence text and all. It happens to
+/// satisfy the rule today, but it is not ours to edit, and a rule that would
+/// make somebody reword an upstream file to land an unrelated change is a rule
+/// that gets switched off.
 fn is_skipped(name: &str) -> bool {
     matches!(
         name,
-        ".git" | "target" | "node_modules" | "site" | "maca_modules" | ".maca"
+        ".git" | "target" | "node_modules" | "site" | "maca_modules" | ".maca" | "fonts"
     )
 }
 
