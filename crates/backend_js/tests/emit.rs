@@ -42,6 +42,25 @@ fn while_break_continue() {
     // reassignment produces); no `let` keyword remains in the surface language
     assert!(out.contains("var i = 0"), "no var decl:\n{out}");
     assert!(out.contains("i = (i + 1)"), "reassignment missing:\n{out}");
+    // The `continue` belongs to the `while`, so the `if` around it has to be a
+    // statement. As a ternary of IIFEs the text above was all still present and
+    // the file did not parse; whether it runs is
+    // `crates/backend_js/tests/control_flow_run.rs`.
+    assert!(
+        out.contains("if ((i < 2)) {"),
+        "the if is not a statement:\n{out}"
+    );
+}
+
+#[test]
+fn an_else_less_if_in_return_position_still_answers_null() {
+    // An `if` with no `else` owes its sink a value when the condition is false.
+    // The ternary lowering handed back `null` for the missing branch, and the
+    // statement lowering has to keep saying the same thing: the checker only
+    // allows the shape where the function has no declared return type, so
+    // nothing else pins it.
+    let out = js("f(x: int) {\n    if x > 0 {\n        1\n    }\n}\n");
+    assert!(out.contains("return null;"), "no null branch:\n{out}");
 }
 
 #[test]

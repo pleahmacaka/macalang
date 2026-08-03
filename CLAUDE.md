@@ -481,6 +481,29 @@ object (`build_cache::object`, keyed on runtime source + compiler + target), so 
 recompiling the whole runtime. The zig path falls back to the original
 all-in-one invocation if the cached-object link fails, so it can't regress.
 
+**Codegen note (JS backend):** the same `Sink` (Discard/Return/Assign), for the
+same reason. `if`, `match` and a block are expressions in Maca and *statements*
+in JS, and lowering them as values means an IIFE, which is a function boundary:
+`break`/`continue` cannot cross it (a SyntaxError, which is how
+`maca build --target js apps/site/home.maca` came to emit an `app.js` node
+would not parse), and a `var` written in a branch declared a fresh local rather
+than assigning the enclosing one, which was a wrong answer with nothing to say
+so. So `jstmt` lowers them as real statements wherever there is statement
+context, including a binding (`x = if c { … }` assigns from inside the
+branches); the IIFE remains only where the expression really is nested inside
+another. Two consequences to keep: a `for` loop variable and every `match`
+pattern binding are declared **`var`**, because a body that reassigns the name
+emits `var x = …` and a lexical binding of that name in an enclosing block
+makes it a SyntaxError; and the statement form's scrutinee temporary is `_s$`,
+which no Maca identifier can spell. `node --check` over every app that builds
+to JS is `crates/driver/tests/js_target.rs`, and what those constructs
+*compute* is `crates/driver/tests/programs/js_control_flow.maca`, run natively
+there and under node by `crates/backend_js/tests/control_flow_run.rs`. Still
+divergent, and left: `int / int` truncates natively and does not in JS, and a
+`break` buried inside a *nested* value expression (`total + (if c { break }
+else { 1 })`) still needs the IIFE, so it is a build-time failure the
+`node --check` guard catches rather than a silent one.
+
 Grammar decisions worth knowing (in `parser.rs`): `no_brace` mode in control
 headers so `for x in xs {` isn't a ctor; fn-def detected by lookahead for
 `-> | { | =>` after `)`; call args separated by comma **or** juxtaposition (UI);

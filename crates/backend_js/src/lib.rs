@@ -288,6 +288,27 @@ fn emit_fn(f: &FnDef) -> String {
     format!("function {}({params}) {{\n{body}\n}}", f.name)
 }
 
+/// Where the value of a statement-position expression has to end up.
+///
+/// This is the C backend's `Sink` by another name, and it exists for the same
+/// reason. `if`, `match` and a block are *expressions* in Maca and *statements*
+/// in JS, and only one of those two facts can be honoured by the shape of the
+/// emitted code. Lowering them as expressions means an IIFE, and an IIFE is a
+/// function boundary: `break` and `continue` cannot cross it (a SyntaxError),
+/// and a `var` written inside it declares a fresh local instead of assigning
+/// the enclosing one (a wrong answer, silently). So the value is routed by
+/// deciding, where the statement is emitted and the answer is known, what is to
+/// be done with what the branches produce.
+#[derive(Clone)]
+enum Sink {
+    /// The value is not wanted: emit it as a bare statement.
+    Discard,
+    /// The value is the function's result.
+    Return,
+    /// The value is written to this JS lvalue.
+    Assign(String),
+}
+
 /// A block of statements → JS, returning the value of the final expression.
 fn jblock(stmts: &[Stmt]) -> String {
     jblock_ret(stmts, true)
@@ -296,45 +317,163 @@ fn jblock(stmts: &[Stmt]) -> String {
 /// `ret` = whether the final expression is `return`ed (function body) or emitted
 /// as a bare statement (loop body).
 fn jblock_ret(stmts: &[Stmt], ret: bool) -> String {
+    jblock_sink(stmts, &if ret { Sink::Return } else { Sink::Discard })
+}
+
+/// A block whose final expression goes to `sink`; everything before it is
+/// evaluated for its effect.
+fn jblock_sink(stmts: &[Stmt], sink: &Sink) -> String {
     let mut out = String::new();
     for (i, s) in stmts.iter().enumerate() {
         let last = i + 1 == stmts.len();
+        let here = if last { sink.clone() } else { Sink::Discard };
         match s {
-            Stmt::Bind(b) => {
-                if let Expr::Ident(n) = &b.target {
-                    // reactive state resolves to `state.x`; a local is declared
-                    // with `var` (which, unlike `let`, tolerates the redeclaration
-                    // a bare `x =` reassignment would otherwise produce).
-                    if STATE.with(|s| s.borrow().contains(n)) {
-                        out.push_str(&format!("  {} = {};\n", jname(n), jexpr(&b.value)));
-                    } else {
-                        out.push_str(&format!("  var {n} = {};\n", jexpr(&b.value)));
-                    }
-                } else {
-                    // lvalue assignment: `xs[i] = v`, `p.field = v`
-                    out.push_str(&format!("  {} = {};\n", jexpr(&b.target), jexpr(&b.value)));
-                }
-            }
-            Stmt::Expr(Expr::While { cond, body }) => {
-                out.push_str(&format!(
-                    "  while ({}) {{\n{}  }}\n",
-                    jexpr(cond),
-                    jblock_ret(body, false)
-                ));
-            }
-            Stmt::Expr(Expr::Break) => out.push_str("  break;\n"),
-            Stmt::Expr(Expr::Continue) => out.push_str("  continue;\n"),
-            Stmt::Expr(e) => {
-                if last && ret {
-                    out.push_str(&format!("  return {};\n", jexpr(e)));
-                } else {
-                    out.push_str(&format!("  {};\n", jexpr(e)));
-                }
-            }
+            Stmt::Bind(b) => out.push_str(&jbind(b)),
+            Stmt::Expr(e) => out.push_str(&jstmt(e, &here)),
             Stmt::Fn(f) => out.push_str(&emit_fn(f)),
             _ => {}
         }
     }
+    out
+}
+
+/// A binding statement. A control-flow value is not built and then assigned:
+/// its branches assign the name directly, so a branch that also writes an
+/// enclosing local writes *that* local.
+fn jbind(b: &Bind) -> String {
+    match &b.target {
+        Expr::Ident(n) => {
+            // reactive state resolves to `state.x`; a local is declared with
+            // `var` (which, unlike `let`, tolerates the redeclaration a bare
+            // `x =` reassignment would otherwise produce).
+            let is_state = STATE.with(|s| s.borrow().contains(n));
+            if is_branching(&b.value) {
+                let decl = if is_state {
+                    String::new()
+                } else {
+                    format!("  var {n};\n")
+                };
+                format!("{decl}{}", jstmt(&b.value, &Sink::Assign(jname(n))))
+            } else if is_state {
+                format!("  {} = {};\n", jname(n), jexpr(&b.value))
+            } else {
+                format!("  var {n} = {};\n", jexpr(&b.value))
+            }
+        }
+        // lvalue assignment: `xs[i] = v`, `p.field = v`
+        t if is_branching(&b.value) => jstmt(&b.value, &Sink::Assign(jexpr(t))),
+        t => format!("  {} = {};\n", jexpr(t), jexpr(&b.value)),
+    }
+}
+
+/// Does this expression choose between blocks, so that lowering it as a value
+/// would put those blocks inside an IIFE?
+fn is_branching(e: &Expr) -> bool {
+    matches!(e, Expr::If { .. } | Expr::Match { .. } | Expr::Block(_))
+}
+
+/// Hand one already-lowered JS expression to its sink.
+fn deliver(js: &str, sink: &Sink) -> String {
+    match sink {
+        Sink::Discard => format!("  {js};\n"),
+        Sink::Return => format!("  return {js};\n"),
+        Sink::Assign(t) => format!("  {t} = {js};\n"),
+    }
+}
+
+/// One expression in statement position → JS statements.
+fn jstmt(e: &Expr, sink: &Sink) -> String {
+    match e {
+        Expr::If { cond, then, els } => {
+            let mut out = format!("  if ({}) {{\n{}  }}", jexpr(cond), jblock_sink(then, sink));
+            match els {
+                Some(b) => out.push_str(&format!(" else {{\n{}  }}\n", jblock_sink(b, sink))),
+                // An `if` with no `else` still owes its sink a value when the
+                // condition is false; `null` is what the ternary lowering used
+                // to hand back for the missing branch.
+                None => out.push_str(&match sink {
+                    Sink::Discard => "\n".to_string(),
+                    s => format!(" else {{\n{}  }}\n", deliver("null", s)),
+                }),
+            }
+            out
+        }
+        Expr::Match { scrut, arms } => jmatch_stmt(scrut, arms, sink),
+        Expr::Block(stmts) => format!("  {{\n{}  }}\n", jblock_sink(stmts, sink)),
+        // A loop is a statement in both languages, and its value is unit, so it
+        // is emitted for its effect whatever the sink is.
+        Expr::While { cond, body } => format!(
+            "  while ({}) {{\n{}  }}\n",
+            jexpr(cond),
+            jblock_sink(body, &Sink::Discard)
+        ),
+        Expr::For { pat, iter, body } => jfor(pat, iter, body),
+        Expr::Break => "  break;\n".into(),
+        Expr::Continue => "  continue;\n".into(),
+        _ => deliver(&jexpr(e), sink),
+    }
+}
+
+/// `for pat in iter { … }` → a `for … of` loop.
+///
+/// The loop variable is declared `var`, not `const` or `let`: a body that
+/// reassigns it emits `var x = …`, and a lexical binding of the same name in
+/// the loop head makes that a SyntaxError.
+fn jfor(pat: &Pattern, iter: &Expr, body: &[Stmt]) -> String {
+    let (name, binds) = match pat {
+        Pattern::Bind(n) if !is_variant(n) => (n.clone(), String::new()),
+        p => ("_it".to_string(), jpattern(p, "_it").1),
+    };
+    let mut out = format!("  for (var {name} of {}) {{\n", jexpr(iter));
+    if !binds.is_empty() {
+        out.push_str(&format!("  {binds}\n"));
+    }
+    out.push_str(&jblock_sink(body, &Sink::Discard));
+    out.push_str("  }\n");
+    out
+}
+
+/// `match` in statement position → a real `if`/`else if` chain, so an arm may
+/// `break`, `continue`, or assign a name the enclosing function owns.
+///
+/// Wrapped in a block of its own, and the scrutinee held in a block-scoped
+/// `const`, so that neither a sibling nor an enclosing `match` can be answered
+/// with the wrong value. `$` is what keeps the name to itself: a Maca
+/// identifier is `[_A-Za-z][_A-Za-z0-9]*`, so no local the arm bodies declare
+/// can hoist a `var` of the same name over it.
+fn jmatch_stmt(scrut: &Expr, arms: &[Arm], sink: &Sink) -> String {
+    let sv = "_s$";
+    let mut out = format!("  {{\n  const {sv} = {};\n", jexpr(scrut));
+    let mut chained = false;
+    for a in arms {
+        let (cond, binds) = jpattern(&a.pat, sv);
+        // the guard reads the arm's own bindings, so it belongs inside the
+        // branch, after them, not in the condition that selects the branch.
+        let (test, pre) = match &a.guard {
+            Some(g) => (
+                format!("{cond} && (() => {{ {binds}return {}; }})()", jexpr(g)),
+                binds.clone(),
+            ),
+            None => (cond, binds),
+        };
+        let kw = if chained { "  } else if" } else { "  if" };
+        chained = true;
+        out.push_str(&format!("{kw} ({test}) {{\n"));
+        if !pre.is_empty() {
+            out.push_str(&format!("  {pre}\n"));
+        }
+        out.push_str(&jstmt(&a.body, sink));
+    }
+    // Falling off the end throws rather than leaving the sink unwritten: a
+    // scrutinee no arm covers is a bug in the program, and `undefined` would
+    // carry it somewhere else first.
+    let no_match = "  throw new Error(\"no match\");\n";
+    if chained {
+        out.push_str(&format!("  }} else {{\n{no_match}  }}\n"));
+    } else {
+        out.push_str(no_match);
+    }
+    out.push_str("  }\n");
     out
 }
 
@@ -487,7 +626,7 @@ fn jpattern(pat: &Pattern, sv: &str) -> (String, String) {
         // a binder otherwise: the same ambiguity the C backend resolves with
         // the checker's `is_variant`.
         Pattern::Bind(n) if is_variant(n) => (format!("{sv}.$ === {n:?}"), String::new()),
-        Pattern::Bind(n) => ("true".into(), format!("const {n} = {sv}; ")),
+        Pattern::Bind(n) => ("true".into(), format!("var {n} = {sv}; ")),
         Pattern::Int(n) => (format!("{sv} === {n}"), String::new()),
         Pattern::Float(f) => (format!("{sv} === {f}"), String::new()),
         Pattern::Bool(b) => (format!("{sv} === {b}"), String::new()),
@@ -510,7 +649,7 @@ fn jpattern(pat: &Pattern, sv: &str) -> (String, String) {
             let mut binds = String::new();
             for (fname, sub) in fields {
                 match sub {
-                    None => binds.push_str(&format!("const {fname} = {sv}.{fname}; ")),
+                    None => binds.push_str(&format!("var {fname} = {sv}.{fname}; ")),
                     Some(p) => {
                         let (c, b) = jpattern(p, &format!("{sv}.{fname}"));
                         if c != "true" {
@@ -543,7 +682,7 @@ fn jpattern(pat: &Pattern, sv: &str) -> (String, String) {
             }
             // a named rest binds the tail; `..` alone binds nothing
             if let Some(Pattern::Bind(rn)) = rest.as_deref() {
-                binds.push_str(&format!("const {rn} = {sv}.slice({n}); "));
+                binds.push_str(&format!("var {rn} = {sv}.slice({n}); "));
             }
             (format!("({})", conds.join(" && ")), binds)
         }
