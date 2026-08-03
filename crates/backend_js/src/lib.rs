@@ -1122,8 +1122,15 @@ fn tailwind(class: &str) -> Option<String> {
         "font-semibold" => "font-weight:600",
         "font-medium" => "font-weight:500",
         "font-normal" => "font-weight:400",
+        // `Pretendard Variable` first because that is the family name the
+        // sheet the pages link (`apps/tomo/fonts/pretendard.css`, the upstream
+        // variable dynamic subset) actually declares. Asking only for
+        // `Pretendard` matched nothing it defines, so a page could link the
+        // font, fetch it, and still render in system-ui. `Pretendard` stays
+        // after it for the readers who have the static build installed.
         "font-sans" => {
-            "font-family:'Pretendard',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif"
+            "font-family:'Pretendard Variable','Pretendard',ui-sans-serif,system-ui,\
+             -apple-system,'Segoe UI',sans-serif"
         }
         // No Pretendard here, though it leads `font-sans`. It is the de-facto
         // Korean UI face and is installed on a large share of Korean machines,

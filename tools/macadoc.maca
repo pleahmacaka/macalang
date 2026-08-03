@@ -402,13 +402,25 @@ gather(lines: str[], from: int, i: int) -> str {
 // and a block that is indented in the source is an example. The module
 // headers all end with the `import` line you need, and running that together
 // with the sentence above it would be the one thing a reference must not do.
+//
+// An example is code, so it is coloured by the scanner the handbook uses,
+// exactly as the signature above it is. A signature in ten colours over a grey
+// wall of text read as two different languages on one page, and the grey half
+// was the half a reader came to copy.
 
 prose(ls: str[]) -> str =>
     blocks(ls, 0, [], "")
 
+// A fence is taken whole, blank lines included: the run belongs to the block,
+// not to the paragraphs around it.
 blocks(ls: str[], i: int, cur: str[], out: str) -> str {
     if i >= ls.length() {
         out ++ block(cur)
+    } else if is_fence(ls.get(i)) {
+        stop = fence_end(ls, i + 1)
+        fenced = code_block(fence_tag(ls.get(i)),
+                            ls.slice(i + 1, stop).join("\n"))
+        blocks(ls, stop + 1, [], out ++ block(cur) ++ fenced)
     } else if ls.get(i).trim() == "" {
         blocks(ls, i + 1, [], out ++ block(cur))
     } else {
@@ -420,10 +432,46 @@ block(ls: str[]) -> str {
     if ls.length() == 0 {
         ""
     } else if ls.get(0).starts_with(" ") {
-        pre(class=PreClass, code(class=Mono, escape_html(dedent(ls.join("\n")))))
+        code_block("maca", dedent(ls.join("\n")))
     } else {
-        p(class="mt-3 text-[0.95rem] text-zinc-600 dark:text-zinc-400 m-0",
-          inline(ls.join(" ")))
+        p(class=ProseClass, inline(ls.join(" ")))
+    }
+}
+
+// One block of code, tokenized by `apps/tomo/highlight.maca`.
+//
+// The scanner escapes every token it emits, which is why nothing here escapes
+// again: doing both turns a `str[]` in an example into `&amp;lt;`.
+code_block(lang: str, src: str) -> str =>
+    pre(class=PreClass, code(class=Mono, highlight(lang, src)))
+
+is_fence(line: str) -> bool =>
+    line.trim().starts_with("```")
+
+fence_end(ls: str[], i: int) -> int {
+    if i >= ls.length() || is_fence(ls.get(i)) {
+        i
+    } else {
+        fence_end(ls, i + 1)
+    }
+}
+
+// The language a fence declares. A tag the highlighter doesn't know falls
+// through to escaped plain text, which is the handbook's rule too: a block
+// rendered unstyled is honest, and one mangled by rules written for another
+// language is not.
+//
+// A fence with no tag is Maca, because the default language of a comment in a
+// `.maca` file is the language of the file. That is the same reason an
+// indented run, which cannot carry a tag at all, is read as Maca.
+fence_tag(line: str) -> str {
+    t = line.trim()
+    tag = t.slice(3, t.length()).trim()
+
+    if tag == "" {
+        "maca"
+    } else {
+        tag
     }
 }
 
@@ -482,16 +530,34 @@ paired(parts: str[], sep: str) -> str[] {
 
 // The top bar spans the whole layout below it, sidebar included, so its own
 // width is the grid's: two tracks and the gap between them.
-Wrap = "max-w-[75rem] mx-auto px-6"
+Wrap = "max-w-[78rem] mx-auto px-6"
 
 // The reading column with the navigation beside it. Below the `md` breakpoint
 // the grid becomes one column and the sidebar, being first in the document,
 // lands above the text as a disclosure.
-Shell = "grid grid-cols-[15rem_minmax(0,50rem)] gap-10 justify-center px-6"
-    ++ " py-10 max-md:block max-md:max-w-[50rem] max-md:mx-auto max-md:px-5"
+Shell = "grid grid-cols-[16rem_minmax(0,52rem)] gap-10 justify-center px-6"
+    ++ " py-10 max-md:block max-md:max-w-[52rem] max-md:mx-auto max-md:px-5"
 
-PreClass = "mt-3 bg-zinc-100 dark:bg-zinc-900 rounded-md p-4 overflow-x-auto"
+// A code block: an outlined panel rather than a grey slab, so it reads as a
+// thing on the page instead of a hole in it. The token colours are checked
+// against a light and a dark surface in `code_css()`, and both of these are
+// inside that range.
+PreClass = "mt-3 bg-zinc-50 dark:bg-zinc-900 rounded-lg border"
+    ++ " border-zinc-200 dark:border-zinc-800 p-4 overflow-x-auto"
     ++ " text-[0.85rem] m-0"
+
+// The signature, which is the thing a reader came for: the same panel, a
+// little larger and a little tighter to the heading above it.
+SigClass = "mt-3 bg-zinc-50 dark:bg-zinc-900 rounded-lg border"
+    ++ " border-zinc-200 dark:border-zinc-800 px-4 py-3 overflow-x-auto"
+    ++ " text-[0.9rem] m-0"
+
+// Prose in a reference is read one paragraph at a time, so it is set at a
+// measure rather than at the width of whatever is beside it.
+ProseClass = "mt-3 text-[0.95rem] leading-relaxed text-zinc-600"
+    ++ " dark:text-zinc-400 m-0"
+
+Measure = "max-w-[42rem]"
 
 // A column of evenly spaced blocks, and the reason it is not a bare `grid`.
 //
@@ -506,6 +572,8 @@ Stack = "grid grid-cols-1"
 
 // Every page in the reference sits directly in the output directory, so there
 // is one level to climb to reach the site root and no parameter to carry it.
+// That is the `../` the font link is given: the rest of the site is set in
+// Pretendard, and a reference in a different face reads as a different site.
 //
 // `code_css()` is here beside the generated utilities because the token colours
 // cannot be utilities: `text-…` takes a named colour, and the named set that
@@ -519,42 +587,88 @@ page(title: str, side: str, body: str) -> str =>
                 meta(name="viewport",
                      content="width=device-width,initial-scale=1")
                 title_tag(title)
-                style(base_css() ++ code_css() ++ styles())
+                font_link("../")
+                style(base_css() ++ code_css() ++ doc_css() ++ styles())
             )
             body_tag(page_class("font-sans"),
                 top_bar(title)
-                    ++ div(class=Shell, side ++ element("main", body))))
+                    ++ div(class=Shell, side ++ element("main", body))
+                    ++ hover_card()
+                    ++ nav_script()))
         ++ "\n"
 
+// The script is last on purpose, and it used to sit inside the sidebar. A
+// `<script>` runs where it is parsed, so from there it looked for the card and
+// for the items and found neither: both are written after the sidebar, and
+// `getElementById` on an element the parser has not reached yet answers null.
+// The search worked, which is why it read as fine.
 
-
+// The bar stays put, because a reference is read by scrolling a long page and
+// the way back to the index should not be at the top of it. Anything it can
+// cover is offset by `scroll-mt-…`, or an `#anchor` lands underneath it.
 top_bar(title: str) -> str =>
-    header(class="border-b border-zinc-200 dark:border-zinc-800",
+    header(class="sticky top-0 z-40 bg-white dark:bg-zinc-950 border-b"
+                 ++ " border-zinc-200 dark:border-zinc-800",
         div(class=Wrap ++ " flex flex-wrap items-center justify-between"
                   ++ " gap-x-4 gap-y-2 py-3",
             nav(aria-label="Reference",
-                class="flex items-center gap-3",
+                class="flex items-center gap-2 text-[0.9rem]",
                 a(class="font-bold no-underline text-inherit focus:underline",
                   href="../index.html", "Maca")
+                span(class="text-zinc-300 dark:text-zinc-700", "/")
                 a(class="no-underline text-zinc-600 dark:text-zinc-400"
                         ++ " hover:text-black dark:hover:text-white"
                         ++ " focus:underline",
                   href="index.html", "API reference"))
-            span(class="text-[0.85rem] text-zinc-500 dark:text-zinc-400",
+            span(class="font-mono text-[0.85rem] text-zinc-500"
+                       ++ " dark:text-zinc-400",
                  escape_html(title))))
+
+// The card the hover script fills in and puts under whatever is being pointed
+// at or focused.
+//
+// It is written here as markup, and that is the whole reason it exists as an
+// element rather than as three lines of `createElement`. `styles()` generates a
+// rule for exactly the utilities a `class=` in this module names, and it does
+// not look inside a raw `"""…"""` block, so a card assembled in the script
+// would carry classes with no rules and arrive unstyled and unpositioned.
+//
+// It ships empty and `hidden`. With no script it is a `<div>` that never shows
+// and the link it would have described still works, which is the whole
+// requirement: the card is an affordance, not the content.
+hover_card() -> str =>
+    div(id="macadoc-card", hidden=true,
+        class="absolute z-50 max-w-[26rem] pointer-events-none rounded-lg"
+              ++ " border border-zinc-200 dark:border-zinc-700 shadow-lg"
+              ++ " bg-white dark:bg-zinc-900 p-3",
+        pre(class="m-0 overflow-x-auto text-[0.8rem]",
+            code(class=Mono, ""))
+        p(class="mt-2 mb-0 text-[0.8rem] text-zinc-600 dark:text-zinc-400",
+          ""))
 
 // The index: every module, its blurb, and how many things it documents.
 index_page(ms: Module[]) -> str =>
     page("API reference", sidebar(ms, ""),
          section(class="py-2",
-             h1(class="font-bold text-[1.9rem] tracking-tight m-0",
+             p(class="text-[0.75rem] uppercase tracking-widest text-zinc-500"
+                     ++ " dark:text-zinc-400 m-0",
+               "Reference")
+             h1(class="mt-1 font-bold text-[2.1rem] tracking-tight m-0",
                 "API reference")
-             p(class="mt-2 text-zinc-600 dark:text-zinc-400",
-               "Generated from the source by "
-                   ++ code(class=Mono, "tools/macadoc.maca") ++ ".")
+             p(class=ProseClass ++ " " ++ Measure,
+               "Every module of the standard library, generated from the"
+                   ++ " source by " ++ code(class=CodeSpan,
+                                            "tools/macadoc.maca") ++ ". Press "
+                   ++ element("kbd", class=KbdClass, "/") ++ " to search.")
              div(class=Stack ++ " mt-8 gap-4", module_cards(ms, 0))))
 
 Mono = "font-mono text-[0.9em]"
+
+// A key, drawn as one. It is the search hint on the index and again in the
+// sidebar, so it is named once.
+KbdClass = "font-mono text-[0.7rem] px-1 py-[0.05rem] rounded border"
+    ++ " border-zinc-300 dark:border-zinc-700 text-zinc-500"
+    ++ " dark:text-zinc-400"
 
 module_cards(ms: Module[], i: int) -> str {
     if i >= ms.length() {
@@ -565,16 +679,16 @@ module_cards(ms: Module[], i: int) -> str {
 }
 
 module_card(m: Module) -> str =>
-    a(class="block no-underline text-inherit rounded-lg border"
+    a(class="block no-underline text-inherit rounded-xl border"
             ++ " border-zinc-200 dark:border-zinc-800 p-5 hover:bg-zinc-50"
-            ++ " dark:hover:bg-zinc-900",
+            ++ " dark:hover:bg-zinc-900 hover:border-zinc-300"
+            ++ " dark:hover:border-zinc-700",
       href=m.name ++ ".html",
       div(class="flex items-baseline justify-between gap-4",
           span(class="font-mono font-semibold", escape_html(m.path))
           span(class="text-[0.8rem] text-zinc-500 dark:text-zinc-400",
                counted(m.items.length())))
-      p(class="mt-2 text-[0.95rem] text-zinc-600 dark:text-zinc-400 m-0",
-        inline(first_sentence(m.blurb))))
+      p(class=ProseClass, inline(first_sentence(m.blurb))))
 
 counted(n: int) -> str {
     if n == 1 {
@@ -611,12 +725,21 @@ first_sentence(ls: str[]) -> str {
 module_page(ms: Module[], m: Module) -> str =>
     page(m.path, sidebar(ms, m.name),
          section(class="py-2",
-             div(class="flex flex-wrap items-baseline justify-between gap-3",
-                 h1(class="font-mono font-bold text-[1.6rem] m-0",
+             p(class="text-[0.75rem] uppercase tracking-widest text-zinc-500"
+                     ++ " dark:text-zinc-400 m-0",
+               "Module")
+             div(class="mt-1 flex flex-wrap items-baseline justify-between"
+                       ++ " gap-3",
+                 h1(class="font-mono font-bold text-[1.7rem] tracking-tight"
+                          ++ " m-0",
                     escape_html(m.path))
-                 source_link(m.path, 0, "source"))
-             prose(m.blurb)
-             div(class=Stack ++ " mt-10 gap-8", entries(ms, m, m.items, 0))))
+                 span(class="flex items-center gap-3",
+                      span(class="text-[0.8rem] text-zinc-500"
+                                 ++ " dark:text-zinc-400",
+                           counted(m.items.length()))
+                      source_link(m.path, 0, "source")))
+             div(class=Measure, prose(m.blurb))
+             div(class=Stack ++ " mt-10 gap-6", entries(ms, m, m.items, 0))))
 
 entries(ms: Module[], m: Module, items: Item[], i: int) -> str {
     if i >= items.length() {
@@ -626,19 +749,41 @@ entries(ms: Module[], m: Module, items: Item[], i: int) -> str {
     }
 }
 
-// One item. The heading is its own jump link, which is what makes a signature
-// something a reader can send to somebody else: the name in the heading and the
-// name in the sidebar address the same `id`.
+// One item, as a panel of its own: a header line, the signature set apart, and
+// the prose at a measure. Running them together is what made the old page one
+// undifferentiated column, where the only way to find where an item began was
+// to read until something stopped making sense.
+//
+// The heading is its own jump link, which is what makes a signature something a
+// reader can send to somebody else: the name in the heading and the name in the
+// sidebar address the same `id`. `#` beside it is the same link again, spelled
+// the way a reader recognises "copy this address".
 entry(ms: Module[], m: Module, it: Item) -> str =>
-    article(id=it.name, class="scroll-mt-6",
-        div(class="flex flex-wrap items-baseline gap-3",
-            h2(class="font-mono font-semibold text-[1.05rem] m-0",
-               a(class="no-underline text-inherit hover:underline",
-                 href="#" ++ it.name, escape_html(it.name)))
-            span(class=badge_class(), it.kind)
-            source_link(m.path, it.line, "source"))
+    article(id=it.name, class=ItemClass,
+        div(class="flex flex-wrap items-center justify-between gap-x-3"
+                  ++ " gap-y-2",
+            div(class="flex items-center gap-3",
+                h2(class="font-mono font-semibold text-[1.05rem] m-0",
+                   a(class="no-underline text-inherit hover:underline",
+                     href="#" ++ it.name, escape_html(it.name)))
+                span(data-kind=it.kind, class=badge_class(it.kind),
+                     kind_word(it.kind)))
+            div(class="flex items-center gap-3",
+                anchor_link(it.name)
+                source_link(m.path, it.line, "source")))
         signature_block(ms, m, it)
-        prose(it.doc))
+        div(class=Measure, prose(it.doc)))
+
+// The item's own address, offered as something to copy. `scroll-mt-…` on the
+// panel is what keeps the sticky bar off whatever it lands on.
+ItemClass = "scroll-mt-20 rounded-xl border border-zinc-200"
+    ++ " dark:border-zinc-800 p-5 max-sm:p-4"
+
+anchor_link(name: str) -> str =>
+    a(class="no-underline font-mono text-[0.8rem] text-zinc-400"
+            ++ " dark:text-zinc-600 hover:text-violet-600"
+            ++ " dark:hover:text-violet-300 focus:underline",
+      href="#" ++ name, title="Link to " ++ name, "#")
 
 // The signature twice over: as tokens for a reader, and as text in `data-sig`.
 //
@@ -648,7 +793,7 @@ entry(ms: Module[], m: Module, it: Item) -> str =>
 // come from `apps/tomo/highlight.maca`, the scanner the handbook uses, so a
 // signature here is coloured by the same rules as a signature in a chapter.
 signature_block(ms: Module[], m: Module, it: Item) -> str =>
-    pre(class=PreClass, data-sig=flat(it.sig),
+    pre(class=SigClass, data-sig=flat(it.sig),
         code(class=Mono,
              cross_linked(highlight("maca", it.sig), ms, m.name, it.name)))
 
@@ -696,8 +841,10 @@ linked_span(part: str, ms: Module[], here: str, own: str) -> str {
     if name == own || where == "" {
         part
     } else {
-        a(class="no-underline text-inherit hover:underline focus:underline",
-          href=item_href(where, name, where == here), name)
+        a(class="no-underline text-inherit underline-offset-2"
+                ++ " hover:underline focus:underline",
+          href=item_href(where, name, where == here),
+          data-mod=where, data-item=name, name)
             ++ part.slice(at, part.length())
     }
 }
@@ -766,9 +913,57 @@ squeezed(cs: str[], i: int, out: str) -> str {
     }
 }
 
-badge_class() -> str =>
+// The kind, said in the word a reader knows it by. `data-kind` beside it keeps
+// the short form the source uses, so anything reading the page reads structure
+// rather than a label that is free to change.
+kind_word(kind: str) -> str {
+    if kind == "fn" {
+        "function"
+    } else if kind == "record" {
+        "record"
+    } else if kind == "sum" {
+        "sum type"
+    } else {
+        "constant"
+    }
+}
+
+// Shape from the utilities, hue from `doc_css()`. The colour is the reason a
+// reader can tell a record from a function without reading either, which is
+// what a page of forty items needs.
+badge_class(kind: str) -> str =>
     "px-2 py-[0.1rem] rounded-full text-[0.7rem] uppercase tracking-wide"
-        ++ " bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
+        ++ " border font-semibold kind-" ++ kind
+
+// The two rules on this page a utility cannot express, and why each is here.
+//
+// The kind hues, first. Colour is otherwise a Tailwind utility, but `text-…`
+// takes a *named* colour, and the named set in the engine that clears 4.5:1 on
+// a white background is one hue: four kinds cannot be told apart in one. This
+// is the same wall `code_css()` hit, so it is written the same way, and each of
+// the eight is contrast-checked against white in light and `bg-zinc-950` in
+// dark. Only `color` and `border-color` are set, and no utility on the badge
+// touches either, so the two never race.
+//
+// Then the row the reader is currently at, which the script marks with
+// `aria-current` because that is what the attribute means. No variant in the
+// utility engine reaches an attribute. The selector carries a tag name so it
+// outranks the single-class `text-zinc-600` already on the link, whichever way
+// round the stylesheet happens to be assembled.
+doc_css() -> str =>
+    """.kind-fn { color: #6d28d9; border-color: #ddd6fe }
+.kind-record { color: #0e7490; border-color: #a5f3fc }
+.kind-sum { color: #b45309; border-color: #fde68a }
+.kind-const { color: #047857; border-color: #a7f3d0 }
+a[aria-current="true"] { background-color: #f4f4f5; color: #18181b }
+@media (prefers-color-scheme: dark) {
+.kind-fn { color: #c4b5fd; border-color: #5b21b6 }
+.kind-record { color: #67e8f9; border-color: #155e75 }
+.kind-sum { color: #fcd34d; border-color: #92400e }
+.kind-const { color: #6ee7b7; border-color: #065f46 }
+a[aria-current="true"] { background-color: #27272a; color: #fafafa }
+}
+"""
 
 // The declaration in the repository, at its line. A generated page is a summary
 // of source, and the question it cannot answer is "how".
@@ -798,7 +993,8 @@ source_url(path: str, line: int) -> str {
 // when opened straight off disk), and no markup built by script, which is what
 // would otherwise carry classes the compiler never sees and never styles.
 
-SideClass = "text-[0.85rem] sticky top-6 self-start max-h-screen"
+SideClass = "text-[0.85rem] sticky top-[4.5rem] self-start"
+    ++ " max-h-[calc(100vh_-_6rem)]"
     ++ " overflow-y-auto overscroll-contain max-md:static max-md:max-h-none"
     ++ " max-md:mb-6 max-md:border-b max-md:border-zinc-200"
     ++ " max-md:dark:border-zinc-800"
@@ -813,17 +1009,26 @@ sidebar(ms: Module[], cur: str) -> str =>
                           ++ " details-marker:hidden text-zinc-500",
                     "☰ Modules")
             search_box()
-            div(class="mt-2", module_trees(ms, 0, cur)))
-        nav_script())
+            div(class="mt-2", module_trees(ms, 0, cur))))
 
 // The field, and the line that answers when nothing matches. Without it a query
 // with no hits looks identical to a query the box never received.
+//
+// The `/` sitting in the field is a promise the script keeps: a reference is
+// searched far more often than it is scrolled, and reaching for the mouse to
+// start is the difference between looking something up and deciding not to.
+// The key is drawn whether or not the script loads, and it is only a drawing,
+// so a page with no script loses the shortcut and keeps the field.
 search_box() -> str =>
-    input(id="macadoc-search", type="search", placeholder="Search names and types",
-          aria-label="Search names and types", autocomplete="off",
-          class="w-full my-2 px-2 py-1 border border-zinc-200"
-                ++ " dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
-                ++ " text-[0.85rem]")
+    div(class="relative my-2",
+        input(id="macadoc-search", type="search",
+              placeholder="Search names and types",
+              aria-label="Search names and types", autocomplete="off",
+              class="w-full px-2 py-1 pr-7 border border-zinc-200"
+                    ++ " dark:border-zinc-700 rounded bg-white"
+                    ++ " dark:bg-zinc-900 text-[0.85rem]")
+        span(class="absolute right-2 top-[0.35rem] pointer-events-none",
+             element("kbd", class=KbdClass, "/")))
         ++ p(id="macadoc-empty", hidden=true,
              class="text-zinc-500 text-[0.8rem] my-1", "No matches.")
 
@@ -835,15 +1040,26 @@ module_trees(ms: Module[], i: int, cur: str) -> str {
     }
 }
 
+// The module whose page this is says so: its disclosure is open, and its name
+// is the one thing in the column wearing the accent colour. Without it every
+// module reads the same and the sidebar answers "what exists" but never "where
+// am I".
 module_tree(m: Module, cur: str) -> str {
     here = m.name == cur
 
     details(data-mod=m.name, open=here,
         summary(class="cursor-pointer py-1 rounded font-mono font-semibold"
-                      ++ " text-[0.82rem] hover:text-black"
-                      ++ " dark:hover:text-white",
+                      ++ " text-[0.82rem] " ++ summary_class(here),
                 escape_html(m.name))
         div(class="pb-2", kind_groups(m, here, 0)))
+}
+
+summary_class(here: bool) -> str {
+    if here {
+        "text-violet-600 dark:text-violet-300"
+    } else {
+        "hover:text-black dark:hover:text-white"
+    }
 }
 
 // ---- grouping -------------------------------------------------------------
@@ -912,13 +1128,25 @@ side_rows(m: Module, items: Item[], here: bool, i: int) -> str {
 // `data-sig` is what the search matches, so a query reaches a parameter or a
 // return type and not only a name. It is on the row rather than the link
 // because the row is what gets hidden.
+//
+// `data-brief` is the sentence the hover card reads. The row is the only place
+// on the page that holds every module's items, so it is the only place a card
+// over a link into *another* module can read from: the alternative is a second
+// copy of the whole index, on every page, for the script alone.
 side_row(m: Module, it: Item, here: bool) -> str =>
-    li(data-item=it.name, data-sig=flat(it.sig), class="m-0",
+    li(data-item=it.name, data-sig=flat(it.sig),
+       data-brief=plain(first_sentence(it.doc)), class="m-0",
        a(class="block px-2 py-[0.15rem] rounded no-underline font-mono"
                ++ " text-[0.8rem] text-zinc-600 dark:text-zinc-400"
                ++ " hover:bg-zinc-100 dark:hover:bg-zinc-800"
                ++ " hover:text-black dark:hover:text-white",
-         href=item_href(m.name, it.name, here), escape_html(it.name)))
+         href=item_href(m.name, it.name, here),
+         data-mod=m.name, data-item=it.name, escape_html(it.name)))
+
+// A card shows a sentence, not markup. The two markers prose uses would
+// otherwise arrive in it as themselves, which is worse than no marker at all.
+plain(s: str) -> str =>
+    flat(s).replace("`", "").replace("*", "")
 
 item_href(module: str, name: str, here: bool) -> str {
     if here {
@@ -930,14 +1158,22 @@ item_href(module: str, name: str, here: bool) -> str {
 
 // ---- behaviour ------------------------------------------------------------
 
-// The two things the sidebar cannot do as markup: collapse itself on a phone,
-// and filter. Both degrade to a working page without script, which is why the
-// disclosure ships open and the rows ship visible.
+// The four things the page cannot do as markup: collapse the sidebar on a
+// phone, filter it, say which item the reader is currently at, and describe a
+// linked name without going to it. Every one of them degrades to a working
+// page: the disclosure ships open, the rows ship visible, no row is marked
+// current, and the card stays hidden while the link it would have described
+// still works.
 //
 // A module matching by name shows all of its items, because "what is in
 // std/path" is the other question a reader types a module name to ask. That is
 // why the match is computed per module and pushed down to its rows, rather than
 // per row with the module inferred afterwards.
+//
+// The card reads the sidebar rather than a table of its own. The sidebar is the
+// one thing on every page that holds every module's items, so a link into
+// another module is answered from data already there; the alternative is
+// shipping the index twice.
 nav_script() -> str =>
     script("""
 (function(){
@@ -945,12 +1181,11 @@ nav_script() -> str =>
   if(nav&&window.matchMedia("(max-width:48rem)").matches)
     nav.removeAttribute("open");
   var q=document.getElementById("macadoc-search");
-  if(!q) return;
   var empty=document.getElementById("macadoc-empty");
   var mods=document.querySelectorAll('details[data-mod]');
   var was=[],i;
   for(i=0;i<mods.length;i++) was.push(mods[i].hasAttribute("open"));
-  q.addEventListener("input",function(){
+  if(q) q.addEventListener("input",function(){
     var t=q.value.trim().toLowerCase(),shown=0,j;
     for(i=0;i<mods.length;i++){
       var m=mods[i],hits=0;
@@ -969,6 +1204,74 @@ nav_script() -> str =>
       shown+=hits;
     }
     if(empty) empty.hidden=shown>0;
+  });
+
+  var card=document.getElementById("macadoc-card");
+  var sig=card?card.querySelector("code"):null;
+  var brief=card?card.querySelector("p"):null;
+  function hide(){ if(card) card.hidden=true; }
+  function rowFor(a){
+    var m=a.getAttribute("data-mod"),n=a.getAttribute("data-item");
+    if(!m||!n) return null;
+    return document.querySelector(
+      'details[data-mod="'+m+'"] li[data-item="'+n+'"]');
+  }
+  function show(a){
+    var li=rowFor(a);
+    if(!li||!card){ hide(); return; }
+    sig.textContent=li.getAttribute("data-sig")||"";
+    brief.textContent=li.getAttribute("data-brief")||"";
+    card.hidden=false;
+    var r=a.getBoundingClientRect();
+    card.style.top=(r.bottom+window.pageYOffset+8)+"px";
+    var room=window.pageXOffset+document.documentElement.clientWidth
+      -card.offsetWidth-12;
+    card.style.left=Math.max(window.pageXOffset+8,
+      Math.min(r.left+window.pageXOffset,room))+"px";
+  }
+  function linkAt(e){
+    return e.target&&e.target.closest?e.target.closest("a[data-item]"):null;
+  }
+  document.addEventListener("mouseover",function(e){
+    var a=linkAt(e);
+    if(a) show(a); else hide();
+  });
+  document.addEventListener("focusin",function(e){
+    var a=linkAt(e);
+    if(a) show(a); else hide();
+  });
+
+  var arts=document.querySelectorAll("article[id]");
+  var own=document.querySelectorAll('li[data-item] a[href^="#"]');
+  function spy(){
+    var at="",k;
+    for(k=0;k<arts.length;k++)
+      if(arts[k].getBoundingClientRect().top<140) at=arts[k].id;
+    for(k=0;k<own.length;k++){
+      if(own[k].getAttribute("href")==="#"+at)
+        own[k].setAttribute("aria-current","true");
+      else own[k].removeAttribute("aria-current");
+    }
+  }
+  window.addEventListener("scroll",function(){ hide(); spy(); },
+    {passive:true});
+  spy();
+
+  document.addEventListener("keydown",function(e){
+    var tag=e.target?e.target.tagName:"";
+    if(e.key==="/"&&q&&tag!=="INPUT"&&tag!=="TEXTAREA"){
+      e.preventDefault();
+      if(nav) nav.open=true;
+      q.focus();
+      q.select();
+    }else if(e.key==="Escape"){
+      hide();
+      if(q&&document.activeElement===q){
+        q.value="";
+        q.dispatchEvent(new Event("input"));
+        q.blur();
+      }
+    }
   });
 })();
 """)

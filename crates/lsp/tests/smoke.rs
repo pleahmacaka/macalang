@@ -446,3 +446,21 @@ fn a_block_after_an_arrow_is_still_a_block() {
         "just the two in the block"
     );
 }
+
+/// A misspelt method's diagnostic has to point at the typo. The message leads
+/// with the receiver's *type* (`` `str` has no method `lenght` ``), so anchoring
+/// on the first name it quotes put the squiggle on the `str` in the signature,
+/// two lines above the mistake. The quick fix for it is offered at the cursor,
+/// and a user reaches that cursor by clicking the marker.
+#[test]
+fn a_method_typo_is_marked_on_the_method() {
+    let src = "count(s: str) -> int {\n    s.lenght()\n}\n";
+    let d = maca_lsp::diagnostics_located(src, false);
+    assert_eq!(
+        d.len(),
+        1,
+        "{:?}",
+        d.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    assert_eq!(&src[d[0].start..d[0].end], "lenght", "anchored elsewhere");
+}

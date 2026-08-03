@@ -36,6 +36,21 @@ title_tag(text: str) -> str =>
 body_tag(classes: str, inner: str) -> str =>
     body(class=classes, inner)
 
+/// Pretendard, which `font-sans` names first and which no page ever fetched.
+///
+/// Naming a family is not loading it: without this every reader without the
+/// font installed got system-ui, and the Korean pages are the ones that showed
+/// it. Linked rather than inlined because the sheet is 92 `@font-face` rules
+/// and 55 KB of `unicode-range` table shared by every page, so one fetch covers
+/// the site and the browser pulls only the shards a page's characters need.
+///
+/// `up` is the page's own path back to the site root, and it has to be
+/// relative: the site is published under a subpath
+/// (`pleahmacaka.github.io/macalang/`), where `/fonts/…` asks the domain root
+/// and gets nothing.
+font_link(up: str) -> str =>
+    link(rel="stylesheet", href=up ++ "fonts/pretendard.css")
+
 /// The body's typography and colours, over a chosen font stack.
 ///
 /// `break-keep` is here for every language, not just Korean: it only changes

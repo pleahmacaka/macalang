@@ -543,6 +543,7 @@ page(c: Copy, up: str, rs: Result[]) -> str =>
                 link(rel="canonical", href=canonical(c, up))
                 alternates(up)
                 title_tag(c.title)
+                font_link(up)
                 style(base_css() ++ styles())
             )
             body_tag(page_class("font-sans"),

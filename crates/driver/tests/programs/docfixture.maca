@@ -45,3 +45,31 @@ punctuated(x: int) -> int =>
 /// reach the page as markup.
 metacharacters(x: int) -> int =>
     x
+
+/// A signature that names two documented types, which is what makes a
+/// cross-link. std documents no record and no sum, so without this the
+/// reference is generated over a corpus where the linking never runs.
+widen(r: Roomy) -> Compact =>
+    Compact { a = r.first.length(), b = r.second.length() }
+
+/// A doc comment that carries examples, which are code and are coloured as
+/// code.
+///
+/// An indented run carries no tag, so it is read as the language of the file:
+///
+///     n = widen(Roomy { first = "a", second = "bc" })
+///
+/// A fence says which language it is:
+///
+/// ```sh
+/// for f in *.maca; do maca run "$f"; done
+/// ```
+///
+/// And a tag no scanner claims comes back as plain text rather than coloured
+/// by rules written for something else:
+///
+/// ```nomad
+/// nothing here is coloured: a < b, and it says so.
+/// ```
+exampled(x: int) -> int =>
+    x

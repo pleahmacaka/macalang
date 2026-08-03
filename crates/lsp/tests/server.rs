@@ -619,3 +619,42 @@ fn a_selective_import_only_carries_the_names_it_asks_for() {
         .unwrap();
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// The lightbulb, end to end: the capability has to be advertised or no editor
+/// ever asks, and the answer has to be a workspace edit the editor can apply as
+/// it stands.
+///
+/// The request carries a `range` rather than a `position`, which is the one
+/// place the server reads a selection instead of a cursor. Reading it as a
+/// position returned the actions for the top of the file, so the fix offered
+/// was always the first one in the document.
+#[test]
+fn a_quick_fix_comes_back_as_a_workspace_edit() {
+    let (_child, mut stdin, mut stdout) = session(None);
+    let src = "f() -> int {\n    x = 1\n    return x\n}\n";
+    let open = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"file:///q.maca","text":"{}"}}}}}}"#,
+        src.replace('\n', "\\n")
+    );
+    stdin.write_all(frame(&open).as_bytes()).unwrap();
+    let diag = read_frame(&mut stdout);
+    assert!(diag.contains("UndefinedName"), "diagnostics: {diag}");
+
+    // the cursor on `return`, line 2
+    let ask = r#"{"jsonrpc":"2.0","id":2,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///q.maca"},"range":{"start":{"line":2,"character":4},"end":{"line":2,"character":4}},"context":{"diagnostics":[]}}}"#;
+    stdin.write_all(frame(ask).as_bytes()).unwrap();
+    let got = read_frame(&mut stdout);
+    assert!(got.contains("drop the `return`"), "code actions: {got}");
+    assert!(got.contains("\"quickfix\""), "no kind: {got}");
+    assert!(got.contains("file:///q.maca"), "edit is not keyed: {got}");
+
+    // and away from anything actionable there is nothing to offer
+    let none = r#"{"jsonrpc":"2.0","id":3,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///q.maca"},"range":{"start":{"line":1,"character":4},"end":{"line":1,"character":4}},"context":{"diagnostics":[]}}}"#;
+    stdin.write_all(frame(none).as_bytes()).unwrap();
+    let empty = read_frame(&mut stdout);
+    assert!(empty.contains("\"result\":[]"), "expected none: {empty}");
+
+    stdin
+        .write_all(frame(r#"{"jsonrpc":"2.0","method":"exit"}"#).as_bytes())
+        .unwrap();
+}

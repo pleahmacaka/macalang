@@ -68,7 +68,17 @@ an import that resolves to nothing is an error.
   the lexer.
 * MacaDoc generates the API reference: a sidebar over every module and item,
   search, per item anchors, cross links from a signature to a declaration,
-  and source links.
+  and source links. Every code block in a doc body is highlighted by the same
+  scanner that highlights the signature above it, rather than only the
+  signature; a cross linked name shows a card with what it is, on hover and
+  on focus; and each item is a panel with its kind, a copyable anchor and its
+  source, so a page can be scanned rather than read.
+* The site loads the font it asks for. `font-sans` has named Pretendard since
+  the day it was written and nothing ever fetched it, so every reader without
+  the font installed got system-ui, which is most of what the Korean half of
+  the handbook was rendered in. The family is vendored as it ships, and a
+  test resolves each page's link and the stylesheet's first shard to a file
+  on disk.
 * A dev mode for the site generators that patches the nodes that changed
   rather than reloading the page.
 * The front page reads its benchmark numbers out of the measured data rather
@@ -76,6 +86,15 @@ an import that resolves to nothing is an error.
 * The playground gained a live preview, config mode, share links and an
   example picker, and its interpreter fails on a call it does not know
   instead of quietly answering unit.
+* The language server answers `textDocument/codeAction`. It advertised hover,
+  completion, definition, symbols, references, rename, signature help and
+  formatting, and no code actions at all, so an editor offered nothing on a
+  diagnostic it had just drawn. Quick fixes now cover `Immutable`, a phantom
+  keyword, a misspelt UFCS method and a `NonExhaustive` match, and two
+  refactorings rewrite a Capitalized constant as an explicit `const` and swap
+  a function body between `=> e` and a block. Every candidate is applied,
+  re-parsed and re-checked before it is offered, so an action that would
+  break the file is dropped rather than listed.
 * The language server asks the parser what a `{` opens instead of deciding
   again from the tokens. Its own copy had no case for a `=>` sitting against
   the brace, so `mk(n: int) -> Point => { x = n, y = n }` read as a block and

@@ -5,8 +5,10 @@ The browser playground for Maca, **written in Maca**, one file:
 Maca's integrated Tailwind (the JS backend generates the CSS from the utility
 classes). The only inline foreign code is the WebAssembly-bridge runtime (an
 `import js` block that instantiates the compiler and reads its result out of
-linear memory) and a small `import css` block (the Pretendard `@font-face` plus
-the token/outline colours). The compiler itself is pulled in with `import wasm`.
+linear memory) and a small `import css` block (the token/outline colours).
+Pretendard is not inlined: the page links `../fonts/pretendard.css`, the same
+sheet the rest of the site links, so the Korean it renders has Hangul to render
+it with. The compiler itself is pulled in with `import wasm`.
 
 ## What the page shows
 
@@ -91,7 +93,8 @@ happens when it does not come back. That is the whole flow: `maca init`, write
 | UI, state, handlers, examples | `playground.maca` (Maca) |
 | styling | Tailwind utility classes to CSS by the JS backend (`crates/backend_js`) |
 | host runtime (wasm bridge, editor glue, preview iframe, share link) | `import js """…"""` block inside `playground.maca` |
-| font + token/outline colours | `import css """…"""` blocks (Pretendard subset + scoped classes) |
+| token/outline colours | one `import css """…"""` block of scoped classes |
+| font | `<link>` to `../fonts/pretendard.css`, shared with the rest of the site |
 | compiler, analysis, interpreter | `import wasm "…/maca_wasm.wasm"`: the `run`, `lsp` and `version` exports, embedded as base64 by `maca build` |
 
 No hand-written `.html`/`.js`/`.css` and no build wrapper: everything is

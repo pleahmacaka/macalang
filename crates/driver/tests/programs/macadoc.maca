@@ -124,15 +124,34 @@ test_a_type_in_a_signature_becomes_a_link() {
     got = cross_linked(ty("Point") ++ " -&gt; " ++ ty("Facing"), fixture(),
                        "shapes", "shift")
 
-    assert(got.contains("href=\"#Point\">Point</a>"), "the parameter's type")
-    assert(got.contains("href=\"#Facing\">Facing</a>"), "the return type")
+    assert(links_to(got, "Point", "#Point"), "the parameter's type")
+    assert(links_to(got, "Facing", "#Facing"), "the return type")
 }
 
 test_a_type_from_another_module_carries_its_page() {
     got = cross_linked(ty("Point"), fixture(), "draw", "plot")
 
-    assert(got.contains("href=\"shapes.html#Point\">Point</a>"),
+    assert(links_to(got, "Point", "shapes.html#Point"),
            "the page it is declared on")
+    assert(got.contains("data-mod=\"shapes\" data-item=\"Point\""),
+           "and it names the item, which is what the hover card reads")
+}
+
+// An `<a>` that goes to `href` and reads `name`.
+//
+// The two were asserted as the one string `href="…">Name</a>` until the link
+// grew the pair of attributes the hover card resolves it by, which sit between
+// the href and the `>`. Cutting the tag at its own `>` asks the same two
+// questions of the same anchor without requiring them to be adjacent.
+links_to(html: str, name: str, href: str) -> bool {
+    at = html.index_of("href=\"" ++ href ++ "\"")
+
+    if at < 0 {
+        false
+    } else {
+        text = split_once(html.slice(at, html.length()), ">").get(1)
+        text.starts_with(name ++ "</a>")
+    }
 }
 
 // A primitive is a `tok-ty` span too, and so is a constant: the highlighter
@@ -337,7 +356,7 @@ sidebar_of(dir: str, page: str) -> str =>
 test_the_markup_and_the_script_agree_on_what_they_drive() {
     page = read_file(join(built(), "shapes.html"))
     js = between(page, "<script>", "</script>")
-    side = split_once(page, "<script>").get(0)
+    side = split_once(page, "<main>").get(0)
 
     assert(js.length() > 0, "the page carries its script")
     assert(both(side, js, "data-doc=\"nav\"", "data-doc=\"nav\""),
@@ -353,8 +372,11 @@ test_the_markup_and_the_script_agree_on_what_they_drive() {
 }
 
 // One name on both sides of the page: the attribute as the markup spells it,
-// and whatever the script calls it. Everything before `<script>` is the
-// sidebar, so a `data-sig` found here is a row's and not a signature block's.
+// and whatever the script calls it. Everything before `<main>` is the sidebar,
+// so a `data-sig` found here is a row's and not a signature block's, and a
+// `data-item` is a row's and not a cross-link's. It was cut at `<script>`
+// instead, which said the same thing only while the script sat inside the
+// sidebar; it runs last now, so that cut was the whole page.
 both(side: str, js: str, attr: str, in_js: str) -> bool =>
     side.contains(attr) && js.contains(in_js)
 
@@ -442,7 +464,7 @@ test_a_type_in_a_signature_links_to_its_declaration() {
     dir = built()
     sig = sig_of(read_file(join(dir, "draw.html")), "plot")
 
-    assert(sig.contains("href=\"shapes.html#Point\">Point</a>"),
+    assert(links_to(sig, "Point", "shapes.html#Point"),
            "the parameter's type is a link")
     assert(read_file(join(dir, "shapes.html")).contains("id=\"Point\""),
            "and the declaration is there to land on")
@@ -457,10 +479,12 @@ test_a_type_declared_twice_links_to_the_one_at_hand() {
     dir = built()
     sig = sig_of(read_file(join(dir, "overlay.html")), "place")
 
-    assert(sig.contains("href=\"#Point\">Point</a>"), "overlay's own Point")
+    assert(links_to(sig, "Point", "#Point"), "overlay's own Point")
     assert(!sig.contains("shapes.html#Point"), "not the other module's")
-    assert(sig_of(read_file(join(dir, "draw.html")), "plot")
-               .contains("href=\"shapes.html#Point\">Point</a>"),
+    assert(sig.contains("data-mod=\"overlay\""),
+           "and the link resolves against overlay, not the other module")
+    assert(links_to(sig_of(read_file(join(dir, "draw.html")), "plot"),
+                    "Point", "shapes.html#Point"),
            "and a module declaring none still reaches the other page")
 }
 
@@ -567,25 +591,21 @@ test_no_two_elements_on_a_page_share_an_id() {
     assert(ids.contains("empty"), "and so does the other one")
 }
 
-// The kind badge rendered beside an item's heading.
+// The kind the page filed an item under, read from the badge beside its
+// heading.
+//
+// From `data-kind`, not from the badge's text. The badge reads the word a
+// reader knows the kind by (`constant`, `sum type`), which is wording and may
+// be reworded; `data-kind` is the kind itself, and the kind is what this is
+// asking about.
 kind_of(page: str, name: str) -> str {
     at = page.index_of("id=\"" ++ name ++ "\"")
 
     if at < 0 {
         ""
     } else {
-        rest = page.slice(at, page.length())
-        after = rest.index_of("rounded-full")
-
-        after < 0 ? "" : badge_text(rest.slice(after, rest.length()))
+        between(page.slice(at, page.length()), "<span data-kind=\"", "\"")
     }
-}
-
-// The text of the badge, which is whatever follows the next `>`.
-badge_text(s: str) -> str {
-    at = s.index_of(">")
-
-    at < 0 ? "" : split_once(s.slice(at + 1, s.length()), "<").get(0)
 }
 
 // The first id that equals the one before it, in a sorted list.

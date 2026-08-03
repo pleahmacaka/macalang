@@ -1,10 +1,13 @@
 //! maca-lsp: language-server features as pure functions over `.maca` source:
-//! located diagnostics, hover, completion, document symbols, and go-to-
-//! definition. The stdio JSON-RPC transport lives in `main.rs`.
+//! located diagnostics, hover, completion, document symbols, go-to-definition,
+//! and the code actions in `actions`. The stdio JSON-RPC transport lives in
+//! `main.rs`.
 
+pub mod actions;
 pub mod binding;
 pub mod workspace;
 
+pub use actions::{Action, Edit, apply_edits, code_actions};
 pub use binding::{Binding, Scope};
 
 use maca_parser::ast::*;
@@ -63,7 +66,7 @@ pub fn diagnostics_located(src: &str, config: bool) -> Vec<Located> {
     maca_core::check(&parsed.module, mode)
         .iter()
         .map(|d| {
-            let (start, end) = first_backtick(&d.msg)
+            let (start, end) = anchor_name(&d.msg)
                 .and_then(|name| code_word_span(src, name))
                 .unwrap_or((0, 1));
             Located {
@@ -163,6 +166,21 @@ fn first_backtick(msg: &str) -> Option<&str> {
     let a = msg.find('`')? + 1;
     let rest = &msg[a..];
     Some(&rest[..rest.find('`')?])
+}
+
+/// The name in a message that identifies *where* it happened.
+///
+/// The first quoted name usually is that name. A misspelt method is the
+/// exception: `` `str` has no method `lenght` `` leads with the receiver's
+/// type, so the squiggle landed on the first `str` in the file, which is
+/// typically a parameter's annotation several lines away from the typo. The
+/// quick fix is offered at the cursor, so an error marker that points at the
+/// wrong line is an error marker the fix cannot be reached from.
+fn anchor_name(msg: &str) -> Option<&str> {
+    match msg.split_once("has no method `") {
+        Some((_, rest)) => rest.split('`').next(),
+        None => first_backtick(msg),
+    }
 }
 
 /// First whole-word occurrence of `name` in *code* (skipping `//` comments and

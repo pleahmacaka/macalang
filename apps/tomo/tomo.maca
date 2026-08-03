@@ -669,6 +669,26 @@ base_css() -> str =>
     """html{color-scheme:light dark}
 """
 
+// Pretendard, which `font-sans` names first and which no page ever fetched.
+// Naming a family is not loading it, so every reader without it installed got
+// system-ui instead, and the Korean pages are the ones that showed it.
+//
+// Linked rather than inlined: the sheet is 92 `@font-face` rules and 55 KB of
+// `unicode-range` table, shared by every page in the book, so one fetch covers
+// the site and the browser then pulls only the shards a page's own characters
+// fall in.
+//
+// The href is relative because the site is published under a subpath
+// (`pleahmacaka.github.io/macalang/`), where `/fonts/…` asks the domain root
+// and gets nothing. `up` is the same path back to the root the switcher uses.
+//
+// `element("link", …)` rather than `link(…)`: this file renders Markdown, so
+// its own `link` is the inline-link renderer, and a user definition wins over
+// a tag.
+font_link(up: str) -> str =>
+    element("link", rel="stylesheet", href=up ++ "fonts/pretendard.css")
+        ++ "\n"
+
 // Named for what it produces rather than the tag, because `style` *is* the tag
 // and a definition of that name would shadow it.
 //
@@ -1025,6 +1045,7 @@ shell(title: str, cur: str, langs: str, side: str, body: str, up: str,
                 meta(name="viewport",
                      content="width=device-width,initial-scale=1")
                 title_tag(title)
+                font_link(up)
                 stylesheet()
                 extra
             )

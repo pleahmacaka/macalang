@@ -12,6 +12,14 @@ import std/path
 import std/text
 import std/list
 import std/proc
+// The site's own font installer, so the layout assembled here is the layout
+// the build produces rather than a second copy of it.
+import { install_fonts } from tools/build-site
+// The handbook renderer, so the pages checked below are the pages the book
+// publishes. `tomo.maca`'s own `main` writes into `apps/tomo/site`, which is
+// the tree `crates/driver/tests/tomo.rs` builds and reads: calling `build_book`
+// puts this suite's copy somewhere of its own.
+import { build_book } from apps/tomo/tomo
 
 // The compiler these programs are run with. The Rust runner passes the one
 // `cargo test` just built; running this file by hand picks up the release
@@ -232,6 +240,120 @@ run_sample(name: str, src: str) -> str {
     output(maca(), ["run", path]).trim()
 }
 
+// ---- the font ---------------------------------------------------------------
+//
+// `font-sans` has named Pretendard first for as long as the site has existed
+// and no page ever fetched it, so every reader without it installed silently
+// got system-ui. On the Korean half of the handbook that is the whole book.
+//
+// A test that greps a page for "pretendard" would have passed then too, so
+// these follow the href instead: to the sheet, and from the sheet to a shard.
+
+Site = "/tmp/maca-sitegen/site"
+
+// The published layout, assembled the way `tools/build-site.maca` assembles
+// it: the handbook, then the front page over the landings tomo wrote, then the
+// API reference, then the playground, then the fonts. `index.html` at the
+// root, `en/`, `api/` and `play/` one level down, `fonts/` beside them.
+//
+// All four generators, because each writes its own `<head>` and the href is
+// relative: what a page needs is not the same string on each level, and one
+// directory's worth of `../` is exactly the mistake this catches.
+site_dir() -> str {
+    remove_dir(Site)
+    build_book("apps/tomo", Site)
+    run(maca(), ["run", "apps/site/home.maca", Site])
+    run(maca(), ["run", "tools/macadoc.maca", join(Site, "api")]
+                ++ std_modules())
+    build_playground(join(Site, "play"))
+    install_fonts(Site)
+    Site
+}
+
+// The playground, built the way `tools/build-site.maca` builds it, but with a
+// stand-in for the compiler it embeds.
+//
+// `import wasm` names a build artifact under `target/` that the `cargo test`
+// job has no reason to have produced, and 1.4 MB of base64 has nothing to do
+// with which stylesheet the page links. The path is relative to the source, so
+// the source is copied into a tree that has one where it looks. Copied byte
+// for byte, not read and rewritten: the js glue separates two strings with a
+// literal NUL, and `read_file` stops there.
+build_playground(into: str) -> bool {
+    root = "/tmp/maca-sitegen/pg"
+    src = join(root, "apps/playground/playground.maca")
+    stub = join(root, "target/wasm32-unknown-unknown/release/maca_wasm.wasm")
+
+    copy_file("apps/playground/playground.maca", src)
+    make_dir(dirname(stub))
+    write_file(stub, "not the compiler")
+
+    run(maca(), ["build", "--target", "js", src, "-o", into])
+}
+
+// One page per generator, over both levels the site has. A page that names the
+// sheet with the wrong number of `../` still contains the word "pretendard";
+// it just does not contain the font.
+test_every_page_links_a_stylesheet_that_is_there() {
+    dir = site_dir()
+
+    assert(font_resolves(dir, "index.html"), "the root page")
+    assert(font_resolves(dir, "en/index.html"), "a handbook page")
+    assert(font_resolves(dir, "en/home.html"), "a language landing")
+    assert(font_resolves(dir, "api/index.html"), "an api page")
+    assert(font_resolves(dir, "play/index.html"), "the playground")
+}
+
+// Resolve the href the way a browser does: against the page's own directory.
+font_resolves(dir: str, page: str) -> bool {
+    at = join(dir, page)
+    href = stylesheet_href(read_file(at))
+
+    href != "" && file_exists(normalize(join(dirname(at), href)))
+}
+
+// The stylesheet a page asks for, however that page spells it.
+//
+// Four of the five are HTML a generator wrote, so the link is a tag. The
+// playground's document belongs to the js back end, which mounts the view into
+// an empty body, so the same link arrives as an `_attr` call in the script the
+// page carries, with its value in backticks. Either way the href is the thing
+// to follow.
+stylesheet_href(page: str) -> str {
+    if page.contains("rel=\"stylesheet\"") {
+        between(split_once(page, "rel=\"stylesheet\"").get(1), "href=\"", "\"")
+    } else {
+        between(page, "\"href\", `", "`")
+    }
+}
+
+// The sheet is 92 `@font-face` rules naming 92 files beside it, and a copy
+// that brought the 55 KB of rules and none of the files reads as a success.
+test_the_sheet_names_shards_that_are_there() {
+    sheet = join(site_dir(), "fonts/pretendard.css")
+    src = between(read_file(sheet), "src: url(", ")")
+
+    assert(src != "", "the sheet has a src at all")
+    assert(file_exists(normalize(join(dirname(sheet), src))),
+           "the first shard it names")
+}
+
+// The family the sheet defines has to be the family the pages ask for.
+//
+// `font-sans` asked for `Pretendard`; the sheet declares `Pretendard
+// Variable`, which is a different family name and matches nothing. Linking the
+// font would have downloaded it and still left every page in system-ui: a fix
+// that changes nothing on screen and looks done.
+test_the_pages_ask_for_the_family_the_sheet_defines() {
+    dir = site_dir()
+    family = between(read_file(join(dir, "fonts/pretendard.css")),
+                     "font-family: '", "'")
+
+    assert(family != "", "the sheet declares a family")
+    assert(read_file(join(dir, "index.html")).contains("'" ++ family ++ "'"),
+           "and `font-sans` names it")
+}
+
 // ---- the API reference ------------------------------------------------------
 
 api_dir() -> str {
@@ -279,7 +401,7 @@ test_reference_matches_the_advertised_api() {
 // set changing by one character, so each one is executed here.
 test_a_doc_comment_renders_as_documented() {
     page = read_file(join(api_dir(), "text.html"))
-    doc = between(page, "<article id=\"split_once\"", "</article>")
+    doc = article_of(page, "split_once")
 
     // a backtick span is code, and an HTML metacharacter inside one is escaped
     assert(doc.contains("<code"), "backtick span became code")
@@ -289,7 +411,66 @@ test_a_doc_comment_renders_as_documented() {
     assert(doc.contains("<em>first</em>"), "starred run became emphasis")
     // an indented run in the module blurb is a code block, not a sentence
     assert(page.contains("<pre class="), "the blurb's import example is code")
-    assert(page.contains("import std/text"), "and it kept its text")
+    // and it is code all the way: the same scanner the signature above it went
+    // through, so the `import` in it is a keyword and not grey text
+    assert(page.contains("<span class=\"tok-kw\">import</span>"),
+           "the example is tokenized, not escaped and left alone")
+    assert(pre_block(page, 0).contains("text"), "and it kept its text")
+}
+
+// The claim the whole page rests on: a code block in a doc body is the same
+// language as the signature above it, whatever fence it arrived under.
+//
+// `docfixture.maca` carries one of each shape. An indented run has nowhere to
+// write a tag, a fence names one, and a fence can name one no scanner claims,
+// which has to come back as plain escaped text rather than coloured by rules
+// written for a different language.
+test_a_doc_body_code_block_is_highlighted() {
+    doc = article_of(read_file(join(fixture_dir(), "docfixture.html")),
+                     "exampled")
+
+    assert(pre_block(doc, 1).contains("<span class=\"tok-ty\">Roomy</span>"),
+           "an indented run is read as the language of the file")
+    assert(pre_block(doc, 1).contains("<span class=\"tok-str\">&quot;bc&quot;"),
+           "and its string is a string")
+    assert(pre_block(doc, 2).contains("<span class=\"tok-kw\">done</span>"),
+           "a fence is read as the language it names")
+    assert(!pre_block(doc, 3).contains("<span class=\"tok-"),
+           "a tag no scanner claims stays plain")
+    assert(pre_block(doc, 3).contains("a &lt; b"),
+           "and arrives escaped rather than as markup")
+}
+
+// The hover card is the one thing on the page a reader cannot see in the
+// markup, so what is asserted is the data it reads. A cross-linked name says
+// which item it names, and the sidebar row for that item carries the signature
+// and the sentence the card shows. Break either half and the card comes up
+// empty, which looks exactly like a card that never opened.
+test_a_cross_linked_name_carries_its_card() {
+    page = read_file(join(fixture_dir(), "docfixture.html"))
+    sig = sig_of(page, "widen")
+    row = row_of(page, "Roomy")
+
+    assert(sig.contains("data-mod=\"docfixture\" data-item=\"Roomy\""),
+           "the type in a signature says which item it names")
+    assert(row.contains("second: str"), "the row carries the whole signature")
+    assert(row.contains("data-brief=\"A record written the usual way.\""),
+           "and the sentence the card reads")
+    assert(page.contains("id=\"macadoc-card\""),
+           "and the card itself is markup, so its classes get rules")
+}
+
+// The kind is said twice: as `data-kind`, which is structure, and as the word
+// a reader knows it by. Reading the badge's class string instead was a test of
+// how the badge is painted, which is not what the badge is for.
+test_the_kind_badge_says_what_an_item_is() {
+    page = read_file(join(fixture_dir(), "docfixture.html"))
+
+    assert_eq(kinds_of(page), "fn record record sum const fn fn fn fn",
+              "each is labelled for what it is")
+    assert_eq(badge_word(page, "Roomy"), "record", "a record says so")
+    assert_eq(badge_word(page, "Choice"), "sum type", "and a sum type")
+    assert_eq(badge_word(page, "widen"), "function", "and a function")
 }
 
 // `str[]` in a signature has to survive as text. Deleting `esc` entirely was
@@ -305,8 +486,21 @@ test_signatures_are_escaped() {
 }
 
 sig_of(page: str, name: str) -> str =>
-    between(between(page, "<article id=\"" ++ name ++ "\"", "</article>"),
-            "<pre", "</pre>")
+    between(article_of(page, name), "<pre", "</pre>")
+
+// One item's section, and one sidebar row, addressed by name. Every assertion
+// below is about one item, and reading the whole page for a fragment of it
+// finds the same fragment in the item after it.
+article_of(page: str, name: str) -> str =>
+    between(page, "<article id=\"" ++ name ++ "\"", "</article>")
+
+row_of(page: str, name: str) -> str =>
+    between(page, "<li data-item=\"" ++ name ++ "\"", "</li>")
+
+// The `n`th `<pre>` block of a fragment, contents included. An item's own is
+// number 0, so a doc body's first example is number 1.
+pre_block(html: str, n: int) -> str =>
+    between(html.split("<pre").get(n + 1), ">", "</pre>")
 
 // Every jump link has to land on something. A `#anchor` with no `id` is a
 // click that does nothing, and there is one per item on every page.
@@ -374,21 +568,26 @@ test_awkward_declarations_are_read_whole() {
            "a one-line record keeps its fields and stops there")
     assert(sig_of(page, "Roomy").contains("second: str"),
            "a multi-line record keeps all of them")
-    assert_eq(kinds_of(page), "fn record record sum const fn fn",
-              "and each is labelled for what it is")
 }
 
+// Each item's kind, in page order. Read from `data-kind`, which is what the
+// page says an item *is*; the badge's class string, which this read before, is
+// what the page says it looks like.
 kinds_of(page: str) -> str =>
-    tagged(page.split("tracking-wide bg-zinc-100 dark:bg-zinc-800"
-                      ++ " text-zinc-500\">"), 1, []).join(" ")
+    tagged(page.split("<span data-kind=\""), 1, []).join(" ")
 
 tagged(parts: str[], i: int, acc: str[]) -> str[] {
     if i >= parts.length() {
         acc
     } else {
-        tagged(parts, i + 1, acc.push(split_once(parts.get(i), "<").get(0)))
+        tagged(parts, i + 1, acc.push(split_once(parts.get(i), "\"").get(0)))
     }
 }
+
+// The word the badge shows, which is the one a reader knows the kind by.
+badge_word(page: str, name: str) -> str =>
+    split_once(between(article_of(page, name), "<span data-kind=", "</span>"),
+               ">").get(1)
 
 // A `*` between spaces is multiplication and a lone backtick is a typo. Both
 // used to swallow the rest of the paragraph into `<em>` or `<code>`.

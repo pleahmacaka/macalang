@@ -67,6 +67,13 @@ impl Server {
                             // on a keyword or a comment.
                             "renameProvider": { "prepareProvider": true },
                             "signatureHelpProvider": { "triggerCharacters": ["(", ","] },
+                            // The kinds are advertised so an editor can put the
+                            // quick fixes on the error lightbulb and keep the
+                            // refactorings on the refactor menu, where a reader
+                            // of the file expects to find them.
+                            "codeActionProvider": {
+                                "codeActionKinds": ["quickfix", "refactor.rewrite"]
+                            },
                             "documentFormattingProvider": true
                         },
                         "serverInfo": { "name": "maca-lsp", "version": env!("CARGO_PKG_VERSION") }
@@ -278,6 +285,36 @@ impl Server {
                 }
                 Some(reply(id, json!({ "changes": changes })))
             }
+            "textDocument/codeAction" => {
+                let text = self.doc_at(req).unwrap_or_default();
+                let uri = req.pointer("/params/textDocument/uri")?.as_str()?;
+                // The client sends the diagnostics it currently holds, but the
+                // buffer here is the truth and they may be a keystroke stale,
+                // so the actions are computed from the source again.
+                let (from, to) = self.selection(req, &text);
+                let config = maca_lsp::is_config_source(&text);
+                let actions: Vec<Value> = maca_lsp::code_actions(&text, from, to, config)
+                    .into_iter()
+                    .map(|a| {
+                        let edits: Vec<Value> = a
+                            .edits
+                            .iter()
+                            .map(|e| {
+                                json!({
+                                    "range": range(&text, e.start, e.end),
+                                    "newText": e.new_text,
+                                })
+                            })
+                            .collect();
+                        json!({
+                            "title": a.title,
+                            "kind": a.kind,
+                            "edit": { "changes": { uri: edits } },
+                        })
+                    })
+                    .collect();
+                Some(reply(id, json!(actions)))
+            }
             "textDocument/formatting" => {
                 let text = self.doc_at(req).unwrap_or_default();
                 let parsed = maca_parser::parse(&text);
@@ -334,6 +371,19 @@ impl Server {
             }),
         );
         reply(id, Value::Null)
+    }
+
+    /// The byte range a `range`-carrying request names. A bare cursor arrives
+    /// as an empty range, which is the common case for a code action.
+    fn selection(&self, req: &Value, text: &str) -> (usize, usize) {
+        let at = |ptr: &str| {
+            let pos = req.pointer(ptr)?;
+            let line = pos.get("line")?.as_u64()? as usize;
+            let ch = pos.get("character")?.as_u64()? as usize;
+            Some(maca_lsp::position_to_offset(text, line, ch))
+        };
+        let from = at("/params/range/start").unwrap_or(0);
+        (from, at("/params/range/end").unwrap_or(from))
     }
 
     fn offset_at(&self, req: &Value, text: &str) -> Option<usize> {
@@ -532,6 +582,10 @@ mod tests {
                 .get("completionProvider")
                 .is_some()
         );
+        // An unadvertised provider is never asked, so the feature is as absent
+        // as if it were not written.
+        let kinds = &resp["result"]["capabilities"]["codeActionProvider"]["codeActionKinds"];
+        assert_eq!(kinds[0], "quickfix", "code actions: {resp}");
     }
 
     #[test]

@@ -2,7 +2,8 @@
 
 Syntax highlighting **and a language server** (diagnostics, hover, completion,
 go-to-definition, document symbols, find-references, rename, signature help,
-formatting)
+formatting, and code actions: quick fixes for the checker's diagnostics plus a
+couple of refactorings)
 for `.maca` files in [Zed](https://zed.dev).
 
 ## Prerequisite: the language server

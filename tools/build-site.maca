@@ -70,6 +70,8 @@ main(argv: str[]) -> int {
 
 build(out: str) -> int {
     build_handbook()
+    announce("fonts")
+    install_fonts("apps/tomo/site")
     build_front_page()
     build_api_reference()
     build_playground()
@@ -97,6 +99,25 @@ build_handbook() -> bool {
     announce("handbook")
     run(maca(), ["run", "apps/tomo/tomo.maca"])
 }
+
+// Pretendard, where every page's `<link>` says it is.
+//
+// `font-sans` has named Pretendard first for as long as the site has existed
+// and nothing ever served it, so a reader without it installed silently got
+// system-ui: on the Korean pages that is the whole book. The pages link
+// `<up>fonts/pretendard.css`, so the sheet and its shards have to sit at the
+// site root.
+//
+// Installed into `apps/tomo/site` rather than straight into the output,
+// because that is the tree a developer previews from as well: `assemble`
+// copies it wholesale, so one copy serves both and neither can have fonts the
+// other lacks.
+//
+// `into` is a parameter so that `crates/driver/tests/programs/sitegen.maca`
+// can lay out a site the same way this does, out of this definition rather
+// than out of a second one that agrees with it today.
+install_fonts(into: str) -> bool =>
+    copy_tree("apps/tomo/fonts", join(into, "fonts")) > 0
 
 // The front page replaces the landing pages tomo just wrote (`/index.html`
 // and `<lang>/home.html`, the same addresses), so it has to run after the
@@ -222,6 +243,7 @@ check(out: str) -> int {
 
     require_root_links(out)
     require_embedded_wasm(out)
+    require_fonts(out)
     require_live_css(out)
 
     info(ok("{chapters} {default_lang} pages,"
@@ -453,6 +475,29 @@ require_root_links(out: str) -> bool {
         fail "root page doesn't offer the Korean landing"
     } else if !root.contains("href=\"play/index.html\"") {
         fail "root page doesn't link the playground"
+    } else {
+        true
+    }
+}
+
+// The sheet every page links, and the shard its first rule asks for.
+//
+// A missing font is the failure that looks like success: the page renders, in
+// the next family down the stack, and only a reader who knows what Pretendard
+// looks like can tell. Checking the shard too, not just the sheet, is what
+// catches a copy that brought the 55 KB of `@font-face` rules and none of the
+// 92 files they name.
+require_fonts(out: str) -> bool {
+    sheet = join(out, "fonts/pretendard.css")
+
+    if file_size(sheet) <= 0 {
+        fail "no fonts/pretendard.css: every page links it"
+    }
+
+    shard = join(dirname(sheet), between(read_file(sheet), "src: url(", ")"))
+
+    if file_size(shard) <= 0 {
+        fail "fonts/pretendard.css names {shard}, which is not there"
     } else {
         true
     }
