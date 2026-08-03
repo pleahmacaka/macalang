@@ -24,6 +24,7 @@
 import std/path
 import { between } from std/text
 import apps/site/shell
+import { highlight, code_css } from apps/tomo/highlight
 
 // The benchmark section reads the harness's own output and reuses the harness's
 // own vocabulary. `bench/store` reads the JSON it wrote, `bench/time` says what
@@ -544,7 +545,7 @@ page(c: Copy, up: str, rs: Result[]) -> str =>
                 alternates(up)
                 title_tag(c.title)
                 font_link(up)
-                style(base_css() ++ styles())
+                style(base_css() ++ code_css() ++ styles())
             )
             body_tag(page_class("font-sans"),
                 skip_link(c)
@@ -699,11 +700,14 @@ ghost_btn() -> str =>
 
 // A code block is wide and pre-formatted, so it scrolls inside itself rather
 // than making the page scroll sideways on a phone.
+//
+// `code-dark` is not decoration: this panel is dark under both colour schemes,
+// so it has to ask for the dark syntax palette rather than let the scheme pick.
 code_panel(src: str, lang: str) -> str =>
-    pre(class="bg-zinc-950 dark:bg-black text-zinc-100 rounded-lg p-5"
+    pre(class="code-dark bg-zinc-950 dark:bg-black text-zinc-100 rounded-lg p-5"
               ++ " overflow-x-auto text-[0.85rem] leading-relaxed m-0"
               ++ " border border-zinc-800 min-w-0",
-        code(class="font-mono language-" ++ lang, escape_html(src)))
+        code(class="font-mono language-" ++ lang, highlight(lang, src)))
 
 // ---- the strip that puts it in a box ----------------------------------------
 
@@ -748,7 +752,7 @@ feature_card(f: Feature, src: str) -> str =>
           prose(f.body))
         pre(class="bg-zinc-100 dark:bg-zinc-900 rounded-md p-4 overflow-x-auto"
                   ++ " text-[0.8rem] m-0 min-w-0",
-            code(class="font-mono language-maca", escape_html(src))))
+            code(class="font-mono language-maca", highlight("maca", src))))
 
 // ---- benchmarks -------------------------------------------------------------
 //

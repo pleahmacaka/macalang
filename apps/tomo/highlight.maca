@@ -815,9 +815,31 @@ hl_ps(src: str) -> str =>
 /// monochrome print and a reader who does not see the difference between grey
 /// and green.
 ///
-/// (A raw triple-quoted string, for the same reason `base_css()` is one: CSS is
-/// full of `{`/`}`, which would otherwise open a string interpolation.)
+/// The dark palette is emitted twice, under two different selectors, because
+/// the colour scheme is not the only thing that makes a surface dark. The front
+/// page's hero panel is `bg-zinc-950 dark:bg-black`: dark in *both* schemes. It
+/// read as unhighlighted in light mode because the scheme said light and it got
+/// `#0a3069` strings on near-black. So a block that is dark whatever the scheme
+/// says so with `class="code-dark"`, and the palette follows the surface.
+///
+/// The dark palette is written once and re-selected rather than pasted a second
+/// time, because a palette kept in two places is a palette where one of them is
+/// stale.
 code_css() -> str =>
+    light_css()
+        ++ "@media (prefers-color-scheme: dark) \{\n" ++ dark_css() ++ "\}\n"
+        ++ under(".code-dark ", dark_css())
+
+// The same rules again under a descendant selector.
+//
+// One rule per line, each starting at column 0 with its `.`, is what makes this
+// a line prefix rather than a CSS parser, and it is why the two palettes below
+// are written one rule per line. The trailing newline ends the string rather
+// than a rule, so nothing follows it to prefix.
+under(at: str, css: str) -> str =>
+    at ++ css.replace("\n.", "\n" ++ at ++ ".")
+
+light_css() -> str =>
     """.tok-kw { color: #cf222e }
 .tok-ty { color: #953800 }
 .tok-fn { color: #8250df }
@@ -828,8 +850,10 @@ code_css() -> str =>
 .tok-punct { color: #6a737d }
 .tok-com { color: #57606a; font-style: italic }
 .tok-doc { color: #116329; font-style: italic; font-weight: 600 }
-@media (prefers-color-scheme: dark) {
-.tok-kw { color: #ff7b72 }
+"""
+
+dark_css() -> str =>
+    """.tok-kw { color: #ff7b72 }
 .tok-ty { color: #ffa657 }
 .tok-fn { color: #d2a8ff }
 .tok-str { color: #a5d6ff }
@@ -839,5 +863,4 @@ code_css() -> str =>
 .tok-punct { color: #9aa4b0 }
 .tok-com { color: #8b949e; font-style: italic }
 .tok-doc { color: #7ee787; font-style: italic; font-weight: 600 }
-}
 """

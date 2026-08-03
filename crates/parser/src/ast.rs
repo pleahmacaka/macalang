@@ -711,10 +711,20 @@ pub fn plain_text(parts: &[StrPart]) -> String {
 /// Lowercase and not one of the primitives, and not a sized numeric like `i32`
 /// or a SIMD `f32x4`. The C and JVM backends monomorphize against this and must
 /// agree with the checker about which names are generic.
+///
+/// A name carrying `__` is a *qualified* one, so it is concrete however it
+/// starts. `imports::fresh` renames an inlined module's items to
+/// `<module>__<name>`, and a module stem is lowercase, so `Tone` declared in
+/// `highlight.maca` arrives here as `highlight__Tone` and read as a variable.
+/// Every record type reached through a selective import was then treated as
+/// generic: `tone_css(tones: Tone[])` was monomorphized instead of emitted, and
+/// the C compiler was handed a call to a function that does not exist and an
+/// undeclared `highlight__ToneArr`.
 pub fn is_type_var_name(n: &str) -> bool {
     let b = n.as_bytes();
     !b.is_empty()
         && b[0].is_ascii_lowercase()
+        && !n.contains("__")
         && !matches!(n, "int" | "float" | "str" | "bool" | "bytes" | "unit")
         && !(matches!(b[0], b'i' | b'u' | b'f') && b.get(1).is_some_and(u8::is_ascii_digit))
 }

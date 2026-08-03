@@ -570,6 +570,41 @@ has_rule(sheet: str, class: str) -> bool {
         || sheet.contains(sel ++ ":") || sheet.contains(sel ++ "[")
 }
 
+// ---- the code on the page ---------------------------------------------------
+
+// The front page's own examples went out as escaped plain text for as long as
+// the page existed. `highlight` was written for the handbook and the API pages
+// and the one page that shows the language first never called it, so the first
+// Maca anybody reads was the only Maca on the site with no colour in it.
+test_the_examples_on_the_front_page_are_highlighted() {
+    page = root()
+
+    assert(page.contains("<span class=\"tok-kw\">"),
+           "a keyword is a token, not escaped text")
+    assert(page.contains("<span class=\"tok-str\">"),
+           "and so is a string literal")
+    // The hero panel and the feature cards are two separate call sites, and one
+    // of them was highlighted while the other was not for the whole of the
+    // change that added this.
+    assert(between(page, "code-dark", "</pre>").contains("tok-kw"),
+           "the hero panel is highlighted")
+    assert(between(page, "language-maca", "</pre>").contains("tok-kw"),
+           "and so is the first feature card")
+}
+
+// The hero panel is `bg-zinc-950 dark:bg-black`: dark under *both* colour
+// schemes. The syntax theme keys off the scheme, so in light mode it handed
+// that near-black panel the light palette and painted strings `#0a3069` navy on
+// black. A surface that is dark whatever the scheme says has to say so.
+test_the_always_dark_panel_gets_the_dark_palette() {
+    page = root()
+
+    assert(page.contains(".code-dark .tok-str \{ color: #a5d6ff \}"),
+           "the dark palette is emitted for the always-dark surface")
+    assert(between(page, "<pre class=\"", "\"").contains("code-dark"),
+           "and the hero panel asks for it")
+}
+
 // ---- responsiveness ---------------------------------------------------------
 
 // Eight columns of numbers that must not wrap is wider than a phone. The house

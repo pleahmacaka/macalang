@@ -78,6 +78,75 @@ main() -> int => 0
     );
 }
 
+/// A record type reached through a selective import is concrete, not generic.
+///
+/// `imports::fresh` renames an inlined module's items to `<module>__<name>`,
+/// and a module stem is lowercase, so `Tone` declared in `pal.maca` reaches the
+/// back end as `pal__Tone` and `is_type_var_name` read the leading `p` and
+/// called it a type variable. Every helper taking a list of it was then
+/// monomorphized instead of emitted, and `cc` was handed a call to a function
+/// that does not exist and an undeclared `pal__ToneArr`.
+///
+/// Two files, because one file is the case that already worked: nothing is
+/// renamed until a module is inlined. And the entry names only `sheet`, whose
+/// own signature is `-> str`, because naming the helper or the type puts the
+/// record back in the slice's own signature and the defect disappears.
+#[test]
+fn a_record_type_from_an_inlined_module_is_not_a_type_variable() {
+    if !have("cc") {
+        eprintln!("skipping: no cc");
+        return;
+    }
+    let root = repo();
+    let dir = root.join("maca_rec_probe_src");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("pal.maca"),
+        "Tone = { cls: str, decl: str }
+
+tones() -> Tone[] =>
+    { cls = \"a\", decl = \"1\" },
+    { cls = \"b\", decl = \"2\" }
+
+render(ts: Tone[]) -> str =>
+    ts.map(t => t.cls ++ t.decl).join(\"\")
+
+sheet() -> str => render(tones())
+",
+    )
+    .unwrap();
+    let entry = root.join("maca_rec_probe.maca");
+    std::fs::write(
+        &entry,
+        "import { sheet } from maca_rec_probe_src/pal
+
+main() -> int {
+  info(sheet())
+  0
+}
+",
+    )
+    .unwrap();
+
+    let out = std::env::temp_dir().join(format!("maca-recprobe-{}", std::process::id()));
+    let o = Command::new(maca())
+        .arg("run")
+        .arg(&entry)
+        .arg("-o")
+        .arg(&out)
+        .output()
+        .expect("spawn maca run");
+    let _ = std::fs::remove_file(&entry);
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_file(&out);
+
+    let text = String::from_utf8_lossy(&o.stdout).to_string() + &String::from_utf8_lossy(&o.stderr);
+    assert!(o.status.success(), "{text}");
+    // The value, not just the exit status: a specialization that compiled but
+    // took the wrong element type would still have run.
+    assert!(text.contains("a1b2"), "{text}");
+}
+
 /// Every top-level function a module defines, which is what a selective import
 /// of it can name.
 ///
