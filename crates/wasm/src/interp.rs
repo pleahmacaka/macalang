@@ -2,7 +2,7 @@
 //! playground: it *runs* a program (capturing `info`/`print` output) and
 //! collects a lightweight execution profile (per-function call counts, total
 //! calls, max recursion depth, evaluation steps). It is not the language's
-//! semantics of record — the native C backend is — but it mirrors them closely
+//! semantics of record (the native C backend is), but it mirrors them closely
 //! enough to demonstrate behaviour and cost in the playground.
 //!
 //! Values are copied (records and lists are value types, matching the native
@@ -103,8 +103,8 @@ pub fn run(module: &Module) -> RunResult {
             fc.calls.insert(callee.clone(), *cost);
         }
     }
-    // HTML (percentage widths) so it fills the playground panel exactly — no
-    // fixed intrinsic width, no horizontal scroll — while rows stay tall.
+    // HTML (percentage widths) so it fills the playground panel exactly, with
+    // no fixed intrinsic width and no horizontal scroll, while rows stay tall.
     let flame_svg = maca_profile::flamegraph_html_from(&fns, "steps");
 
     RunResult {
@@ -180,7 +180,7 @@ impl<'a> Interp<'a> {
         }
         if self.steps >= STEP_LIMIT {
             return Err(Signal::Limit(
-                "execution step limit reached — possible infinite loop".into(),
+                "execution step limit reached: possible infinite loop".into(),
             ));
         }
         Ok(())
@@ -853,7 +853,7 @@ impl<'a> Interp<'a> {
                     _ => 0.0,
                 }));
             }
-            // string stdlib (UFCS on `str`) — byte-oriented, mirroring the C
+            // string stdlib (UFCS on `str`): byte-oriented, mirroring the C
             // backend so the playground and native builds agree on ASCII text.
             "trim" => return Ok(Value::Str(str_of(vals.first()).trim().to_string())),
             "upper" => return Ok(Value::Str(str_of(vals.first()).to_uppercase())),
@@ -900,7 +900,7 @@ impl<'a> Interp<'a> {
                 let right: String = p.chars().cycle().take(w - n - (w - n) / 2).collect();
                 return Ok(Value::Str(left + &s + &right));
             }
-            // `x.fixed(n)` — n decimal places. Accepts an int receiver too, so
+            // `x.fixed(n)`: n decimal places. Accepts an int receiver too, so
             // `{n:.2}` works on any number.
             "fixed" => {
                 let x = float_of(vals.first());
@@ -971,7 +971,7 @@ impl<'a> Interp<'a> {
                 }
                 return Ok(Value::Str(String::new()));
             }
-            // byte-length, per-byte access, and character classes — the scanner
+            // byte-length, per-byte access, and character classes: the scanner
             // primitives (byte-oriented to match the C runtime on ASCII source).
             "length" => return Ok(Value::Int(str_of(vals.first()).len() as i64)),
             "at" => {
@@ -1002,7 +1002,7 @@ impl<'a> Interp<'a> {
                     b.map(|c| c.is_ascii_alphabetic()).unwrap_or(false),
                 ));
             }
-            // async suspension point — a no-op in the synchronous playground
+            // async suspension point, a no-op in the synchronous playground
             // interpreter (results match; only real-time waiting is elided).
             "sleep_ms" => return Ok(Value::Unit),
             // math prelude
@@ -1230,7 +1230,7 @@ fn compare(op: BinOp, l: &Value, r: &Value) -> Value {
     })
 }
 
-/// Total order for `.sort()` — numeric by value, strings lexicographically.
+/// Total order for `.sort()`: numeric by value, strings lexicographically.
 fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
     match (a, b) {
         (Value::Str(x), Value::Str(y)) => x.cmp(y),
@@ -1240,7 +1240,7 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
     }
 }
 
-/// `.sum()` — Int if every element is an Int, else Float.
+/// `.sum()`: Int if every element is an Int, else Float.
 fn fold_num(xs: &[Value], init: f64, op: fn(f64, f64) -> f64) -> Value {
     let all_int = xs.iter().all(|v| matches!(v, Value::Int(_)));
     let acc = xs.iter().fold(init, |a, v| op(a, to_f64(v)));
@@ -1251,7 +1251,7 @@ fn fold_num(xs: &[Value], init: f64, op: fn(f64, f64) -> f64) -> Value {
     }
 }
 
-/// `.min()` / `.max()` — preserves the element's own type; Unit on empty.
+/// `.min()` / `.max()`: preserves the element's own type; Unit on empty.
 fn fold_minmax(xs: &[Value], is_min: bool) -> Value {
     let mut best: Option<&Value> = None;
     for v in xs {

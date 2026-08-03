@@ -2,7 +2,7 @@
 //!
 //! A freestanding MCU has no allocator, no libc and no scheduler, so a good
 //! part of the language genuinely does not fit. The bug these tests guard is
-//! not that it does not fit — it is that not fitting used to be silent: an
+//! not that it does not fit; it is that not fitting used to be silent: an
 //! unhandled expression became the literal `0u`, which C accepts anywhere a
 //! `uint32_t` is wanted, so a `match` in firmware compiled to the number zero.
 
@@ -30,7 +30,7 @@ fn refused(src: &str) -> String {
 
 #[test]
 fn a_field_store_is_emitted_not_dropped() {
-    // Only the right-hand side used to reach the output, as `v;` — a statement
+    // Only the right-hand side used to reach the output, as `v;`, a statement
     // C accepts in silence, so the store simply never happened.
     let c = ok("set(p: int, v: int) {\n    p.reg = v\n}\n");
     assert!(c.contains("p.reg = v;"), "no store in:\n{c}");
@@ -95,7 +95,7 @@ fn a_list_is_refused_rather_than_becoming_zero() {
 #[test]
 fn a_sum_declaration_is_refused_rather_than_becoming_a_const() {
     // `Color = Red | Green` lowered to `static const uint32_t Color = (Red |
-    // Green);` — C naming two identifiers that do not exist.
+    // Green);`, C naming two identifiers that do not exist.
     let msg = refused("Color = Red | Green\n\nf() -> int {\n    0\n}\n");
     assert!(msg.contains("sum type"), "message does not say what: {msg}");
     assert!(msg.contains("Color"), "message does not name it: {msg}");
@@ -118,7 +118,7 @@ fn integer_arithmetic_still_lowers() {
 #[test]
 fn every_refusal_names_a_construct_rather_than_generated_code() {
     // A message about `0u` or a C type would be about code the author never
-    // wrote — the failure mode the whole limitation channel exists to avoid.
+    // wrote, the failure mode the whole limitation channel exists to avoid.
     for src in [
         "f(n: int) -> int {\n    match n {\n        1 => 2\n        _ => 3\n    }\n}\n",
         "f() -> int {\n    xs = [1, 2]\n    0\n}\n",

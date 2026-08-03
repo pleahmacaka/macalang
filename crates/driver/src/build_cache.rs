@@ -1,12 +1,12 @@
-//! Content-addressed build cache — the core of `maca`'s incremental builds.
+//! Content-addressed build cache: the core of `maca`'s incremental builds.
 //!
 //! A native build is a pure function of `(source, compiler version, target)`, so
 //! the finished binary is cached under a hash of exactly those. An unchanged
 //! `maca build`/`run` then skips the whole pipeline (parse → check → emit → cc)
-//! and just copies the cached artifact — effectively instant.
+//! and just copies the cached artifact, which is effectively instant.
 //!
 //! The invariant C runtime is cached separately as a compiled object, so even a
-//! *changed* program need not recompile the runtime — only its own `main.c`.
+//! *changed* program need not recompile the runtime, only its own `main.c`.
 //!
 //! Cache root: `$MACA_CACHE`, else `$XDG_CACHE_HOME/maca`, else
 //! `~/.cache/maca`, else a temp dir. Set `MACA_NO_CACHE=1` to disable.
@@ -15,7 +15,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// A per-build-unique temp suffix — several builds (even threads of one process,
+/// A per-build-unique temp suffix. Several builds (even threads of one process,
 /// e.g. the test suite) can target the same cache key concurrently, so each
 /// writes to its own temp file before the atomic rename into place.
 static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -94,10 +94,10 @@ pub fn place(cached: &Path, out: &Path) -> Result<(), String> {
     // Copy to a unique temp sibling and rename into place, rather than writing
     // `out` directly: a concurrent `maca run` of the same program may currently
     // be *executing* that path, and copying over a running binary fails with
-    // ETXTBSY ("Text file busy"). A rename swaps the directory entry instead —
-    // the running process keeps its own inode — so parallel runs don't collide.
-    // The scratch directory is per-process, so on a cache hit nothing has
-    // created it yet — the compile that would have is exactly what we skipped.
+    // ETXTBSY ("Text file busy"). A rename swaps the directory entry instead,
+    // and the running process keeps its own inode, so parallel runs don't
+    // collide. The scratch directory is per-process, so on a cache hit nothing
+    // has created it yet: the compile that would have is what we skipped.
     if let Some(parent) = out.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -142,7 +142,7 @@ where
             let _ = std::fs::remove_file(&tmp);
             return Ok(dst);
         }
-        return Ok(tmp); // no winner yet — use our own complete object
+        return Ok(tmp); // no winner yet, so use our own complete object
     }
     Ok(dst)
 }

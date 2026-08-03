@@ -1,4 +1,4 @@
-// std/path — filesystem paths as strings, handled the way a build tool needs.
+// std/path: filesystem paths as strings, handled the way a build tool needs.
 //
 // A path is a `str` here; there is no `Path` type to convert into and out of.
 // Separators are `/`, which is what the compiler emits, what Nix expects, and
@@ -7,8 +7,9 @@
 //   import std/path
 
 /// Join two segments with exactly one separator, whatever each side brought.
-/// `join("a/", "/b")` and `join("a", "b")` are both `"a/b"` — the sort of thing
-/// that otherwise produces `a//b` in a path that mostly works until it doesn't.
+/// `join("a/", "/b")` and `join("a", "b")` are both `"a/b"`. That is the sort
+/// of thing that otherwise produces `a//b` in a path that mostly works until it
+/// doesn't.
 join(a: str, b: str) -> str {
     left = drop_trailing_sep(a)
     right = drop_leading_sep(b)
@@ -121,7 +122,7 @@ drop_leading_dot(ext: str) -> str {
 is_absolute(p: str) -> bool =>
     p.starts_with("/")
 
-/// Collapse `.` and `..` segments textually — no filesystem access, so it is
+/// Collapse `.` and `..` segments textually: no filesystem access, so it is
 /// safe to call on a path that does not exist yet.
 normalize(p: str) -> str {
     kept = walk_segments(p.split("/"), 0, []).join("/")

@@ -3,7 +3,7 @@ name = "Maca"
 version = "0.2.0"
 schema_version = 1
 authors = ["Maca contributors"]
-description = "Maca language support for Zed — syntax highlighting, comments, brackets."
+description = "Maca language support for Zed: syntax highlighting, comments, brackets."
 repository = "https://github.com/pleahmacaka/macalang"
 
 # The tree-sitter grammar lives in this repo under editor/tree-sitter-maca.

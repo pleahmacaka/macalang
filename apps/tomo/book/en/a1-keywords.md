@@ -1,6 +1,6 @@
 # Keywords
 
-Maca reserves 21 words. That is the whole list — a language you can hold in your
+Maca reserves 21 words. That is the whole list: a language you can hold in your
 head is a design goal, not an accident.
 
 The words it pointedly does *not* reserve are the second table, and they matter
@@ -29,14 +29,14 @@ with what Maca does instead.
 | `true` | boolean |
 | `false` | boolean |
 
-`from` is *not* on this list. It appears in a selective import, but only there —
-everywhere else it is an ordinary identifier, because `copy(from, to)` is too
+`from` is *not* on this list. It appears in a selective import, but only there.
+Everywhere else it is an ordinary identifier, because `copy(from, to)` is too
 natural a parameter name to spend a keyword on.
 
 ## Words Maca does not reserve
 
 These are the ones people reach for from other languages. None of them is a
-keyword, and using one as an identifier is legal — but if you use one *as if it
+keyword, and using one as an identifier is legal. But if you use one *as if it
 were* a keyword, the compiler tells you what Maca does instead.
 
 | Not a keyword | What Maca does |

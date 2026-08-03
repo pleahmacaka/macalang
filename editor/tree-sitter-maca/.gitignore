@@ -1,5 +1,5 @@
-# Zed (and other consumers) compile the generated parser directly — they do NOT
-# run `tree-sitter generate` — so the generated sources under src/ are committed.
+# Zed (and other consumers) compile the generated parser directly; they do NOT
+# run `tree-sitter generate`, so the generated sources under src/ are committed.
 # Regenerate them from grammar.js + src/scanner.c with `tree-sitter generate`.
 node_modules/
 build/

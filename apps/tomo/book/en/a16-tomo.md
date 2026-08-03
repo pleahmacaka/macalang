@@ -1,7 +1,7 @@
 # Tomo: The Book You Are Reading
 
 This handbook is a directory of Markdown files. The HTML you are reading was
-produced by `apps/tomo/tomo.maca` — a static site generator written in Maca. It
+produced by `apps/tomo/tomo.maca`, a static site generator written in Maca. It
 is here because it uses nearly everything in the book at once, and because a
 tool that builds its own documentation is the honest test of a language.
 
@@ -9,7 +9,7 @@ tool that builds its own documentation is the honest test of a language.
 
 ## What it is
 
-mdBook, roughly — Markdown in, a navigable HTML book out — with one deliberate
+mdBook, roughly (Markdown in, a navigable HTML book out), with one deliberate
 difference: **i18n is not a plugin.** It is the data model.
 
 ## The configuration
@@ -31,8 +31,8 @@ once, and resolved per language under `book/<lang>/`.
 
 An entry beginning with `#` is a heading rather than a page: `##` opens a
 volume, `#` a section inside it, and the label carries one title per language in
-the same order as `languages`. That is how this book is two books — a handbook
-and a reference — under one table of contents, one sidebar and one search index.
+the same order as `languages`. That is how this book is two books, a handbook
+and a reference, under one table of contents, one sidebar and one search index.
 Headings are labels, so they live in the config and leave the chapter directory
 holding only files a reader can open.
 
@@ -62,7 +62,7 @@ A Korean reader who reaches an untranslated chapter gets the English text, on a
 Korean page, with the sidebar and navigation intact. The book is never broken;
 it is only partly translated. That means a translation can start with one
 chapter and be useful immediately, instead of needing to be complete before it
-can ship — which is the actual reason most translations never happen.
+can ship, which is the actual reason most translations never happen.
 
 The index mixes them too: a chapter's title comes from its own `# heading`, in
 whichever language was resolved.
@@ -75,8 +75,8 @@ The core is a pure function:
 render(md: str) -> str
 ```
 
-Markdown in, HTML out, no IO. Everything else — reading files, walking the
-chapter list, writing the site — wraps it. That separation is what makes it
+Markdown in, HTML out, no IO. Everything else (reading files, walking the
+chapter list, writing the site) wraps it. That separation is what makes it
 testable: the gate calls `render` on a sample and asserts on the HTML.
 
 It is a fold over lines, threading an accumulator:
@@ -86,8 +86,8 @@ render_lines(lines: str[], i: int, acc: str) -> str =>
     i >= lines.length() ? acc : render_line(lines, i, acc)
 ```
 
-Block elements that span lines — paragraphs, blockquotes, lists, tables, fenced
-code — find their own end and consume the whole run:
+Block elements that span lines (paragraphs, blockquotes, lists, tables, fenced
+code) find their own end and consume the whole run:
 
 ```maca
 render_para(lines: str[], i: int, acc: str) -> str {
@@ -98,13 +98,13 @@ render_para(lines: str[], i: int, acc: str) -> str {
 ```
 
 This matters more than it sounds. The first version emitted one `<p>` per source
-line, which turned a soft-wrapped `**config mode**` into `<strong>config</p>` —
+line, which turned a soft-wrapped `**config mode**` into `<strong>config</p>`,
 markup split across paragraphs. Blockquotes had the same bug, and a three-line
 quote became three blockquotes. Both are now single tests in the gate.
 
-Notice there is no `in_code` flag. There used to be: fenced code was streamed —
-an opening `<pre><code …>` string, then a line at a time, then a closing string
-— which meant every step of the fold had to carry "am I inside a fence?", and
+Notice there is no `in_code` flag. There used to be: fenced code was streamed as
+an opening `<pre><code …>` string, then a line at a time, then a closing string.
+That meant every step of the fold had to carry "am I inside a fence?", and
 the `<pre>` could only ever be written as raw text. Gathering the run first
 costs one more pass over it and lets the markup be markup:
 
@@ -131,7 +131,7 @@ The fence's tag goes in, escaped HTML comes out. `apps/tomo/highlight.maca`
 answers it: a fence tagged `maca` gets a scanner that follows `crates/lexer`,
 the config and shell languages get a shallow generic one, and **a tag nothing
 highlights falls through to plain escaped text**. That last case is the one that
-decides whether the design is any good — an unlabelled block of program output
+decides whether the design is any good: an unlabelled block of program output
 must come out exactly as it went in, not mangled by rules written for some other
 language.
 
@@ -156,7 +156,7 @@ every style is a utility class the compiler turns into a rule.
 There is no template and there are two pieces of hand-written CSS: the line that
 tells the browser the page has both a light and a dark palette, and the syntax
 theme's ten colours. The second is written out because `text-…` takes a *named*
-colour — `text-[#cf222e]` is read as a font size — and the named palette holds
+colour (`text-[#cf222e]` is read as a font size), and the named palette holds
 one hue that stays legible on a light code block, which is not a syntax theme.
 
 Getting there needed the tag to be a value in three places, because a Markdown
@@ -172,8 +172,8 @@ cells(parts: str[], i: int, tag: str) -> str =>   // `th` in the header, `td` be
         ++ cells(parts, i + 1, tag)
 ```
 
-and once for `<main>`, which no call can name because this program — like every
-program — defines `main`.
+and once for `<main>`, which no call can name because this program, like every
+program, defines `main`.
 
 This is worth doing for a reason beyond neatness. The compiler decides which CSS
 rules to generate by collecting the `class=` strings it can see, and it cannot
@@ -191,14 +191,14 @@ window.TOMO_INDEX=[{"u":"08-collections.html#lists","c":"Collections",
                     "s":"Lists","x":"a list of t is written…"},…]
 ```
 
-It ships as a `<script>` the page loads, not as JSON the page fetches — and that
+It ships as a `<script>` the page loads, not as JSON the page fetches, and that
 is not laziness. A book opened straight off disk as `file://` cannot `fetch`;
 mdBook's search needs a web server. This one works from a folder on a USB stick.
 
 ## The landing page
 
 A book explains a thing. Someone arriving cold needs to know what the thing
-*is* before a table of contents helps them, so `home.md` — one per language —
+*is* before a table of contents helps them, so `home.md`, one per language,
 is rendered by the same renderer and becomes `/index.html` and
 `<lang>/home.html`.
 
@@ -206,7 +206,7 @@ Two details are worth copying. The three buttons live in the layout rather than
 in the Markdown, because the root landing and a language's landing are the same
 Markdown at different depths, and a site-relative link written in that Markdown
 could only be right in one of them. And the page splits at its first `##`: what
-is above is the pitch, the buttons go after it, and the argument follows — so
+is above is the pitch, the buttons go after it, and the argument follows, so
 the reader gets a way out before two screens of prose, not after.
 
 A book with no `home.md` still gets a root page: the language picker this used
@@ -220,7 +220,7 @@ maca run apps/tomo/tomo.maca
 
 The program renders every chapter in every language, writes a per-language index
 and search index, and reports how many pages it wrote. The test suite builds the
-real handbook and asserts on the result — including that an untranslated chapter
+real handbook and asserts on the result, including that an untranslated chapter
 falls back and still comes out as a Korean page.
 
 ## What it uses from this book
@@ -228,11 +228,11 @@ falls back and still comes out as a Korean page.
 Recursion with an accumulator for every walk over lines. `str` methods for all
 the parsing. Lists for the chapter and language sets. File IO for reading and
 writing. The element syntax and generated styles for every byte of output. Raw
-`"""…"""` strings for exactly one thing — the JavaScript that drives search and
-collapses the sidebar — because that is what a raw block is for: a foreign
+`"""…"""` strings for exactly one thing, the JavaScript that drives search and
+collapses the sidebar, because that is what a raw block is for: a foreign
 language, not markup in disguise.
 
-No sum types, as it happens — the renderer dispatches on line prefixes rather
+No sum types, as it happens: the renderer dispatches on line prefixes rather
 than on a token type. A larger Markdown implementation would want them.
 
 It is about a thousand lines. That is the whole static site generator, in the

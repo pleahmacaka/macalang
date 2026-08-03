@@ -68,7 +68,7 @@ fn prefix_at_reads_dotted_identifier() {
 
 #[test]
 fn prefix_at_never_panics_on_multibyte_offsets() {
-    // Every byte offset (incl. mid-char) must be safe — the running LSP feeds
+    // Every byte offset (incl. mid-char) must be safe: the running LSP feeds
     // arbitrary completion offsets here. Regression for the mid-char slice panic.
     let src = "한글 = 1\n// 주석 comment\nmsg = \"안녕 world\"\n";
     for off in 0..=src.len() {
@@ -84,7 +84,7 @@ fn position_to_offset_maps_utf16_columns() {
     let src = "한글 = 1\n";
     assert_eq!(maca_lsp::position_to_offset(src, 0, 0), 0); // before 한
     assert_eq!(maca_lsp::position_to_offset(src, 0, 2), 6); // before the space
-    assert_eq!(maca_lsp::position_to_offset(src, 0, 3), 7); // at '=' — a char boundary
+    assert_eq!(maca_lsp::position_to_offset(src, 0, 3), 7); // at '=', a char boundary
     // the returned offset is always a valid char boundary (never mid-char)
     for col in 0..10 {
         let off = maca_lsp::position_to_offset(src, 0, col);
@@ -97,7 +97,7 @@ fn position_to_offset_maps_utf16_columns() {
 
 #[test]
 fn references_finds_definition_and_uses() {
-    // `twice` is defined once and used twice — three spans, and the mention
+    // `twice` is defined once and used twice, so three spans, and the mention
     // inside a comment and a string literal must NOT be counted.
     let src = "twice(n: int) -> int => n * 2\n\
                // twice is a helper\n\
@@ -125,7 +125,7 @@ fn references_skip_comments_and_strings() {
 }
 
 /// The program that showed what the old whole-word search did. Renaming the
-/// local `x` in `f` used to rewrite all seven `x`s — the field declaration,
+/// local `x` in `f` used to rewrite all seven `x`s: the field declaration,
 /// `g`'s parameter, `g`'s body, the literal's key, and the field access were
 /// all collateral, and only two of the seven were right.
 const SHADOWED: &str = "P = { x: int }\n\
@@ -166,8 +166,8 @@ fn a_parameter_is_scoped_to_its_function() {
 }
 
 /// A field is a different thing from a variable that happens to share its name.
-/// All three field positions belong together — the declaration, the literal's
-/// key, and the `.x` access — and none of the locals do.
+/// All three field positions belong together (the declaration, the literal's
+/// key, and the `.x` access), and none of the locals do.
 #[test]
 fn a_field_is_not_a_variable() {
     let decl = refs_at(SHADOWED, "x: int }");
@@ -230,7 +230,7 @@ fn signature_help_outside_a_call_is_none() {
 #[test]
 fn signature_help_handles_nested_calls() {
     let src = "inner(x: int) -> int => x\nouter(a: int, b: int) -> int => a + b\nmain() -> int => outer(inner(1), 2)\n";
-    // inside `inner(` — the innermost call wins
+    // inside `inner(`, so the innermost call wins
     let off = src.rfind("inner(").unwrap() + 6;
     let (sig, _, _) = maca_lsp::signature_help(src, off).expect("signature help");
     assert_eq!(sig, "inner(x: int) -> int");
@@ -262,7 +262,7 @@ fn scope_of(src: &str, at: &str) -> maca_lsp::Scope {
 
 /// A constant, a record and a sum type are definitions, not assignments. Read
 /// as locals of an item that happened to be called the same thing, each
-/// renamed to exactly one edit — its own declaration — and left every use
+/// renamed to exactly one edit, its own declaration, and left every use
 /// behind. That was 102 of the 1178 definitions in this repository.
 #[test]
 fn a_definition_renames_from_its_own_declaration() {
@@ -284,7 +284,7 @@ fn a_definition_renames_from_its_own_declaration() {
 
 /// `c with { port = p }` and `=> Point { x = n }` are record literals whose
 /// line also carries a `->`. Asking whether an arrow appeared anywhere on the
-/// line called them blocks, so their keys were skipped — and applying the
+/// line called them blocks, so their keys were skipped, and applying the
 /// rename to `examples/record_update.maca` produced a file that did not
 /// compile.
 #[test]
@@ -298,7 +298,7 @@ fn a_field_rename_reaches_literals_on_an_arrow_line() {
     );
 }
 
-/// A block opened inside a still-open call — `xs.map(v => { y = 1 … })` — used
+/// A block opened inside a still-open call, `xs.map(v => { y = 1 … })`, used
 /// to keep the file's paren counter above zero, so the block's `y = 1` read as
 /// a named argument and renaming that temporary rewrote the record field.
 #[test]
@@ -317,8 +317,8 @@ fn a_local_in_a_lambda_block_is_not_a_field() {
 
 /// A function passed by name is an argument, not a parameter. Treating a bare
 /// name in a comma list as a binder wherever it appeared made every
-/// higher-order call — `xs.map(quote)`, `run_end(cs, i, is_alpha)` — a local of
-/// its caller: 351 sites here, each renaming to a single edit.
+/// higher-order call, such as `xs.map(quote)` or `run_end(cs, i, is_alpha)`, a
+/// local of its caller: 351 sites here, each renaming to a single edit.
 #[test]
 fn a_function_passed_by_name_is_still_top_level() {
     let src = "quote(s: str) -> str => s\n\nmain() -> str => [\"a\"].map(quote).join(\",\")\n";
@@ -395,7 +395,7 @@ fn a_wrapped_argument_does_not_end_the_item() {
     );
 }
 
-/// A function whose body binds its own name — `f() { f = 1  f }` — still has a
+/// A function whose body binds its own name, `f() { f = 1  f }`, still has a
 /// head that is the definition. Reading the head as the local it shadows gave
 /// the definition a one-edit rename and left every caller behind.
 #[test]
@@ -409,4 +409,40 @@ fn an_item_head_is_the_definition_even_when_its_body_shadows_it() {
         "the head and the call, not the local"
     );
     assert!(matches!(scope_of(src, "f = n"), maca_lsp::Scope::Local(_)));
+}
+
+/// `mk(n: int) -> Point => { x = n, y = n }` is a record literal with no type
+/// name in front of it, and the token before the brace cannot say so. Deciding
+/// it from that token alone read the literal as a block, so its `x` was an
+/// ordinary local and renaming the field skipped it: the same broken-file
+/// outcome as the `-> Point => Point { x = n }` case above, one form later.
+///
+/// The parser already answers this by reading the whole brace, and
+/// `maca_parser::brace_kind` is now what both of them ask.
+#[test]
+fn a_field_rename_reaches_an_anonymous_literal_after_an_arrow() {
+    let src = "Point = {\n    x: int,\n    y: int\n}\n\nmk(n: int) -> Point => { x = n, y = n }\n";
+    assert_eq!(scope_of(src, "x: int"), maca_lsp::Scope::Field);
+    assert_eq!(
+        spans_of(src, "x: int").len(),
+        2,
+        "the declaration and the literal's key"
+    );
+}
+
+/// The block form of the same shape stays a block. `{ acc = 1 \n acc + 1 }`
+/// has an entry that is not `name = value`, which is what rules the record
+/// out, and reading it as a literal would make the temporary a field key.
+#[test]
+fn a_block_after_an_arrow_is_still_a_block() {
+    let src = "Row = {\n    acc: int\n}\n\nf() -> int => {\n    acc = 1\n    acc + 1\n}\n";
+    assert!(matches!(
+        scope_of(src, "acc = 1"),
+        maca_lsp::Scope::Local(_)
+    ));
+    assert_eq!(
+        spans_of(src, "acc = 1").len(),
+        2,
+        "just the two in the block"
+    );
 }

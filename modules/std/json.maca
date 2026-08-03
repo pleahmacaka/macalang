@@ -1,10 +1,10 @@
-// std/json — JSON, written in Maca.
+// std/json: JSON, written in Maca.
 //
 // Emitting is the common half and is exact. Reading is a scanner over the two
 // shapes a program actually receives from a config file or an API: an object of
 // scalars, and an array of them. Nested containers are returned as their raw
-// text, which you hand back to `get`/`items` to go a level deeper — a tree with
-// no sum type to hold it, in the language as it stands.
+// text, which you hand back to `get`/`items` to go a level deeper. It is a tree
+// with no sum type to hold it, in the language as it stands.
 //
 //   import std/json
 
@@ -72,7 +72,7 @@ get_int(src: str, key: str, dflt: int) -> int {
     }
 }
 
-/// `get`, read as a boolean. Only a literal `true` is true — an absent key, a
+/// `get`, read as a boolean. Only a literal `true` is true; an absent key, a
 /// `false`, and a `null` are all false.
 get_bool(src: str, key: str) -> bool =>
     get(src, key) == "true"

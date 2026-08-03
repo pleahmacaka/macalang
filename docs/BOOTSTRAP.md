@@ -1,7 +1,7 @@
 # Bootstrapping Maca in Maca
 
 Maca compiles itself, in stages. The Rust workspace is the **stage-0
-bootstrap** — frozen in scope, kept only as capable as it must be to compile
+bootstrap**, frozen in scope, kept only as capable as it must be to compile
 the stage-1 compiler. Compiler work goes into `selfhost/`, written in Maca.
 
 ```
@@ -43,30 +43,30 @@ The gate, `crates/driver/tests/selfhost.rs`, requires that
 2. the concatenated module **type-/effect-checks clean**, and
 3. where a native `cc` is available, the concatenated compiler **builds and
    runs** the whole `lex → parse → check → emit` pipeline, then compiles the
-   *emitted* program **two ways** — the C output with `cc`, the Rust output with
-   `rustc` — and runs both.
+   *emitted* program **two ways** (the C output with `cc`, the Rust output with
+   `rustc`) and runs both.
 
 The parsed slice is well past a toy. stage-1 handles:
 
-- the full primitive expression language — `int`/`float`(`1.5`)/`str`/`bool`
+- the full primitive expression language: `int`/`float`(`1.5`)/`str`/`bool`
   literals; `+ - * / %`, comparison, `&& ||` (with a precedence ladder), unary
   `- !`, ternary; multi-argument and nested calls;
-- **type-threaded signatures** — a parameter/return/local type flows to the
+- **type-threaded signatures**: a parameter/return/local type flows to the
   emitted code (`str` → `const char*`/`String`, `float` → `double`/`f64`,
   `bool`, records);
-- Maca's core **data model** — records (`Point = { x: int }` → a
+- Maca's core **data model**: records (`Point = { x: int }` → a
   `typedef struct`/`struct`, literals, field access) and nullary sum types +
   `match` (`Color = Red | Green` → a `typedef enum`/`enum` + `use Color::*`;
   `match` → a C ternary chain / a native Rust `match`);
-- **strings** — value equality (`==`/`!=` → `strcmp`), concatenation (`++` →
+- **strings**: value equality (`==`/`!=` → `strcmp`), concatenation (`++` →
   `maca_cat` / `format!`), `str(int)` (→ `maca_int_to_str` / `format!`), and the
   `.length()` / `.at(i)` methods the lexer scans with;
 - the `info`/`print` output builtins (→ `printf` / `println!`), and `import`
-  statements (skipped — the driver inlines modules).
+  statements (skipped, because the driver inlines modules).
 
 As a capstone the gate compiles and **runs** the multi-feature program the
-self-hosted compiler emits — a `Point` record, a `Color` sum + `match`, string
-concat/equality, `str`, a `.length()` call, and an `info(…)` — through both back
+self-hosted compiler emits (a `Point` record, a `Color` sum + `match`, string
+concat/equality, `str`, a `.length()` call, and an `info(…)`) through both back
 ends: each prints `self-hosted!` and exits `42`, proving the Maca-written
 compiler produces a working executable in **C and Rust alike**.
 
@@ -82,48 +82,48 @@ feature since is added in Maca and gated by this dual-backend compile+run.
 Each entry below is exercised by `crates/driver/tests/selfhost.rs`, which
 compiles the emitted program with both `cc` and `rustc` and runs it.
 
-- **the lexer and parser** — `token.maca`, `lexer.maca`, `parser.maca`: the
+- **the lexer and parser**, `token.maca`, `lexer.maca`, `parser.maca`: the
   character scanner (two-char operators, float literals), recursive descent
   with a precedence ladder, function/record/sum declarations, and `import`
-  statements (skipped — the driver inlines modules)
-- **the recursive AST** — `ast.maca`, whose `Expr { children: Expr[] }` is what
+  statements (skipped, because the driver inlines modules)
+- **the recursive AST**: `ast.maca`, whose `Expr { children: Expr[] }` is what
   drove recursive record types into the stage-0 backend
-- **two back ends** — `emit_c.maca` and `emit_rust.maca`, each turning a module
+- **two back ends**: `emit_c.maca` and `emit_rust.maca`, each turning a module
   into a complete translation unit
-- **multi-file builds** — the gate builds from `selfhost/main.maca` and the
+- **multi-file builds**: the gate builds from `selfhost/main.maca` and the
   driver resolves the `import` graph; there is no concatenation step
-- **higher-order parameters** — a function passed by name is wrapped in a
+- **higher-order parameters**: a function passed by name is wrapped in a
   closure, and an unannotated parameter that is called is typed as a function
   value, which is how `lexer.maca` shares one predicate-taking `run_end`
-- **type-threaded signatures** — a parameter, return or local type reaches the
+- **type-threaded signatures**: a parameter, return or local type reaches the
   emitted C and Rust
-- **records** — `typedef struct` / `struct`, literals, field access
-- **nullary sum types and `match`** — `typedef enum` / `enum` + `use`, lowered
+- **records**: `typedef struct` / `struct`, literals, field access
+- **nullary sum types and `match`**: `typedef enum` / `enum` + `use`, lowered
   to a C ternary chain and a native Rust `match`
-- **strings** — `==`/`!=` via `strcmp`, `++` via `maca_cat`/`format!`,
+- **strings**: `==`/`!=` via `strcmp`, `++` via `maca_cat`/`format!`,
   `str(int)`, `.length()`, `.at(i)`
-- **dynamic arrays** — `T[]` parameters and returns, list literals, `.get(i)`
+- **dynamic arrays**: `T[]` parameters and returns, list literals, `.get(i)`
   and `.count()`, over a heap `MacaList` in C and a `Vec<i64>` in Rust
-- **string interpolation** — `"n = {x}"`, desugared in the *parser* to the
+- **string interpolation**: `"n = {x}"`, desugared in the *parser* to the
   concat and `str` forms both back ends already emit, so neither emitter needed
   a new case
-- **payload sum variants** — `Circle(int) | Rect(int, int)`, and a match that
+- **payload sum variants**: `Circle(int) | Rect(int, int)`, and a match that
   binds the payload. In C a tag plus a row of cells wide enough for the widest
   variant, with a constructor named after each variant so an ordinary
   `Circle(2)` compiles without the call site knowing which names are variants;
   in Rust the native enum, where it already is one
-- **a checker with an environment** — the module's function signatures, record
+- **a checker with an environment**: the module's function signatures, record
   fields and sum variants, plus the locals and parameters in scope. Arity, a
   call's result type, a field's type, and a body that disagrees with its
   declared return are all errors now; an undeclared name stays gradual, because
   foreign is not wrong
-- **a compiler CLI** — `maca1 <in.maca> <out.c> [rust]` reads a source file and
+- **a compiler CLI**: `maca1 <in.maca> <out.c> [rust]` reads a source file and
   writes the emitted source, which is what makes the differential gate possible
 
 ## The differential gate
 
-The bootstrap closes on a byte-identical rebuild. The check that gets you there
-— and the only one that can catch a divergence — is the step before it: compile
+The bootstrap closes on a byte-identical rebuild. The check that gets you there,
+and the only one that can catch a divergence, is the step before it: compile
 one source with stage-0 and with stage-1, and require the two programs to
 behave identically.
 
@@ -144,8 +144,8 @@ arrived.
 So the boundary moves by writing Maca, not by planning.
 
 The two stages own different halves of the type system, and that split is
-visible in the source: `check.maca` reasons about a module's own declarations —
-signatures, record fields, sum variants, locals — while the generalization and
+visible in the source: `check.maca` reasons about a module's own declarations
+(signatures, record fields, sum variants, locals) while the generalization and
 row unification live in `maca-core`. Stage-0 is retired when the second half is
 written in Maca as well, which is the same increment-and-gate loop as everything
 above it, run once more.
@@ -154,6 +154,6 @@ above it, run once more.
 
 Every feature added to the Rust compiler is a feature the Maca compiler must
 also implement to self-host. That is the whole argument for keeping stage-0
-small: type-system work that would otherwise grow `maca-core` — full HM over
-inferred bindings, row unification, generic monomorphization — belongs in
+small: type-system work that would otherwise grow `maca-core` (full HM over
+inferred bindings, row unification, generic monomorphization) belongs in
 `selfhost/check.maca`, where it is written once, in Maca, instead of twice.

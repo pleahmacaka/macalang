@@ -1,13 +1,13 @@
-// run — the benchmark harness: Maca vs C / Rust / Go / JS / Python.
+// run: the benchmark harness, Maca vs C / Rust / Go / JS / Python.
 //
 // Two families of workload:
-//   * recursion-bound integer kernels  (fib, tak, ackermann) — call overhead
+//   * recursion-bound integer kernels  (fib, tak, ackermann): call overhead
 //   * compute-bound loops/arrays/float (sieve, mandel, matmul)
 //
 // Every implementation computes the *same* result, verified against `expected`.
 // Compiled languages are built once at -O2/-O; then execution is timed (median
 // of N runs, one warmup). Maca goes through the `maca` CLI (Maca → C →
-// `cc -O2`), so it should land in C's ballpark — the "C-tier native" claim —
+// `cc -O2`), so it should land in C's ballpark (the "C-tier native" claim)
 // while staying far ahead of interpreted Python and JIT'd JS on call-bound
 // code.
 //
@@ -18,7 +18,7 @@
 // last one. A harness that only printed a table could not answer the question a
 // benchmark is run to answer.
 //
-// The statistics, the file format and the comparison are `modules/bench`'s —
+// The statistics, the file format and the comparison are `modules/bench`'s:
 // `bench/stat` has the median and the spread, `bench/store` reads and writes a
 // run, `bench/compare` pairs two of them. What is left here is the part that is
 // specific to timing *other languages' binaries*: building them, running them,
@@ -106,11 +106,11 @@ case_name(algo: str, lang: str) -> str =>
 // `size` and `iters` are both 1 because the unit here is one whole process,
 // not one call: what is being compared is what six toolchains do with the same
 // kernel end to end, start-up included. `checksum` is the number the program
-// printed — the field exists so that a case which got faster and changed its
+// printed. The field exists so that a case which got faster and changed its
 // answer reads as broken rather than as an improvement.
 //
 // Samples are whole milliseconds. Every kernel here runs for hundreds of them,
-// so the clock's resolution sits three digits below the signal — which is also
+// so the clock's resolution sits three digits below the signal, which is also
 // why the ns/op column of the comparison table is nine digits with information
 // in only the leading three.
 time_cmd(algo: str, lang: str, cmd: str, args: str[], runs: int) -> Result {
@@ -234,7 +234,7 @@ chosen(only: str) -> str[] {
     if only == "" {
         kernels()
     } else if !kernels().contains(only) {
-        fail "no kernel called {only} — try {kernels().join(", ")}"
+        fail "no kernel called {only}; try {kernels().join(", ")}"
     } else {
         [only]
     }
@@ -263,7 +263,7 @@ run_kernels(algos: str[], i: int, runs: int, acc: Result[]) -> Result[] {
     if i >= algos.length() {
         acc
     } else {
-        info(rule("{algos.get(i)} — {params(algos.get(i))}"))
+        info(rule("{algos.get(i)}: {params(algos.get(i))}"))
         here = time_runners(runners(algos.get(i)), 0, algos.get(i), runs, [])
         run_kernels(algos, i + 1, runs, acc ++ here)
     }
@@ -302,7 +302,7 @@ report(algo: str, lang: str, r: Result) {
 
 against(before: Result[], now: Result[]) {
     if before.length() == 0 {
-        info(note("no baseline in {Baseline} — this run becomes one"))
+        info(note("no baseline in {Baseline}; this run becomes one"))
     } else {
         deltas = compare(before, now, Tolerance)
         info(rule("since the last run"))
@@ -318,7 +318,7 @@ against(before: Result[], now: Result[]) {
 // kernels' numbers and leave a results.md that reads as the whole benchmark.
 record(algos: str[], now: Result[]) {
     if algos.length() < kernels().length() {
-        info(note("partial run — {Baseline} and {Report} left alone"))
+        info(note("partial run: {Baseline} and {Report} left alone"))
     } else {
         save(Baseline, now)
         write_file(Report, results_md(now))
@@ -369,15 +369,15 @@ results_md(rs: Result[]) -> str =>
     preamble()
         ++ md_table(rs, recursion_kernels(),
                     "Recursion-bound (call overhead)",
-                    "Tree/nested recursion — dominated by function-call cost.")
+                    "Tree/nested recursion, dominated by function-call cost.")
         ++ md_table(rs, compute_kernels(),
                     "Compute-bound (loops, arrays, float)",
-                    "Tight loops over arrays and floating point — dominated by"
+                    "Tight loops over arrays and floating point, dominated by"
                         ++ " the inner loop.")
         ++ closing()
 
 preamble() -> str =>
-    "# Benchmarks — Maca vs C / Rust / Go / JS / Python\n\n"
+    "# Benchmarks: Maca vs C / Rust / Go / JS / Python\n\n"
         ++ "Median execution time in **ms** (lower is better); `×N` is the"
         ++ " slowdown\nvs C. Maca is `maca build` (Maca → C → `cc -O2`); C is"
         ++ " `cc -O2`; Rust is\n`rustc -O`; Go is `go build`; JS is Node;"
@@ -388,7 +388,7 @@ closing() -> str =>
     "On recursion and float/loop work Maca lands right on C (it *is* C, at\n"
         ++ "`-O2`). `sieve` is the widest gap: Maca's only array type is 64-bit"
         ++ " `int[]`,\nso a sieve over 10⁷ touches ~80 MB where C's `char`"
-        ++ " array touches ~10 MB —\nit's memory-bound, not a codegen deficit"
+        ++ " array touches ~10 MB.\nIt's memory-bound, not a codegen deficit"
         ++ " (a compact byte array would close\nit).\n\n"
         ++ "_Host: " ++ output("uname", ["-srm"]) ++ ". Times are wall-clock"
         ++ " medians including process startup._\n"

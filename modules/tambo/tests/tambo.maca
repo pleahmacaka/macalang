@@ -6,7 +6,7 @@
 // The last two tests bind a real port, because "it also works over TCP" is a
 // claim no pure test can make.
 //
-// Nothing here — parameter or local — is called `c`. `http/server` links its
+// Nothing here (parameter or local) is called `c`. `http/server` links its
 // socket with `import c "http.h"`, and after that a `c` is not a record: the
 // field reads compile and answer with a pointer.
 
@@ -664,7 +664,7 @@ test_the_after_hook_still_runs_when_the_before_hook_refused() {
 }
 
 // Scrubbing is `dispatch`'s, not `broke`'s, so it has to cover the responses
-// `broke` did not build — including the one from a guard that fell over.
+// `broke` did not build, including the one from a guard that fell over.
 test_a_5xx_from_a_before_hook_is_scrubbed_too() {
     Leaky = Site.before("leak")
     got = dispatch(Leaky, request("GET", "/"), leak_handle)
@@ -790,7 +790,7 @@ test_a_name_that_is_both_a_route_and_the_fallback_is_audited_once() {
 }
 
 // The audit asked every handler about `GET /` with nothing bound, so an arm
-// that only answers its own method — an ordinary POST arm — looked missing,
+// that only answers its own method (an ordinary POST arm) looked missing,
 // and `serve` refused to start a site that was entirely correct.
 test_the_audit_asks_a_route_under_its_own_method() {
     Posts = app().route("POST", "/note", "add")
@@ -815,7 +815,7 @@ param_handle(ctx: Ctx) -> Response =>
     param(ctx, "id") == "" ? pass() : text("user")
 
 // What no probe can settle. A missing arm and an arm that passes are the same
-// answer, so an arm that declines the sample is reported — and the fix is to
+// answer, so an arm that declines the sample is reported, and the fix is to
 // answer the sample, not to loosen the audit.
 test_an_arm_that_passes_for_its_own_sample_is_still_reported() {
     Picky = app().route("GET", "/thing/:id", "thing")
@@ -846,7 +846,7 @@ test_a_server_with_a_gap_refuses_to_start() {
 }
 
 // A port the audit must never reach. `serve` returns before binding when there
-// is a gap, so nothing listens here — and if that ever stops being true this
+// is a gap, so nothing listens here, and if that ever stops being true this
 // test hangs, which is the loudest way to find out.
 PortInUse = 34899
 

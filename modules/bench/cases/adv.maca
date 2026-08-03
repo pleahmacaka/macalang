@@ -1,6 +1,6 @@
-// bench/cases/adv — the ones with a real idea in them.
+// bench/cases/adv: the ones with a real idea in them.
 //
-// Knuth–Morris–Pratt, edit distance, longest common subsequence, the 0/1
+// Knuth-Morris-Pratt, edit distance, longest common subsequence, the 0/1
 // knapsack, n-queens, union-find, Dijkstra, topological sort, an LRU cache, and
 // a JSON tokenizer. Between them they cover the shapes the rest of the corpus
 // does not: a table filled in two dimensions, a search that backtracks, a graph,
@@ -22,13 +22,13 @@ import { sentence, checksum } from bench/cases/data
 /// it does not overflow.
 Unreachable = 1000000000
 
-// ---- Knuth–Morris–Pratt ------------------------------------------------------
+// ---- Knuth-Morris-Pratt ------------------------------------------------------
 
 /// For each prefix of `needle`, the length of its longest proper prefix that is
 /// also a suffix.
 ///
 /// This table is the whole algorithm. It says, when a match fails at position
-/// `i`, how far back the pattern can be slid without missing anything — which
+/// `i`, how far back the pattern can be slid without missing anything, which
 /// is what lets the text pointer never move backwards.
 kmp_table(needle: str) -> int[] {
     table = zeros(needle.length())
@@ -89,7 +89,7 @@ kmp_search_case(n: int) -> int =>
 /// turn `a` into `b`.
 ///
 /// Two rows, not a full table. The recurrence only ever looks one row back, so
-/// the `n × m` table costs `m` — which for two thousand-character strings is
+/// the `n × m` table costs `m`, which for two thousand-character strings is
 /// the difference between eight kilobytes and eight megabytes.
 edit_distance(a: str, b: str) -> int {
     previous = ascending(b.length() + 1)
@@ -129,7 +129,7 @@ edit_distance_case(n: int) -> int =>
 /// The length of the longest sequence of characters appearing, in order but not
 /// necessarily together, in both `a` and `b`.
 ///
-/// Same two-row trick as `edit_distance`, and the same recurrence shape — which
+/// Same two-row trick as `edit_distance`, and the same recurrence shape, which
 /// is why the two are usually confused. The difference is that this one takes
 /// the *larger* of the neighbours, because it is counting agreement rather than
 /// paying for disagreement.
@@ -201,7 +201,7 @@ knapsack_case(n: int) -> int {
 /// How many ways `n` queens fit on an `n × n` board with none attacking
 /// another.
 ///
-/// 1, 0, 0, 2, 10, 4, 40, 92 for `n` = 1 through 8 — a sequence worth knowing,
+/// 1, 0, 0, 2, 10, 4, 40, 92 for `n` = 1 through 8, a sequence worth knowing,
 /// because it catches an off-by-one in the diagonal test that a spot check on
 /// one board size will not.
 n_queens(n: int) -> int {
@@ -326,8 +326,8 @@ union_find_case(n: int) -> int {
 /// means no edge.
 ///
 /// The `n²` form with a linear scan for the nearest unvisited node, not the
-/// heap form. On the dense little graphs this is measured on, the scan wins —
-/// a heap is the right answer when the edges are few, and saying which is which
+/// heap form. On the dense little graphs this is measured on, the scan wins.
+/// A heap is the right answer when the edges are few, and saying which is which
 /// is most of what knowing the algorithm is worth.
 dijkstra(weight: int[], n: int, source: int) -> int[] {
     if n <= 0 {
@@ -406,7 +406,7 @@ dijkstra_case(n: int) -> int {
 /// forwards, or an empty list when the edges contain a cycle.
 ///
 /// Kahn's algorithm: repeatedly take a node nothing depends on. The empty
-/// answer for a cycle is not an error code — it is the algorithm's actual
+/// answer for a cycle is not an error code. It is the algorithm's actual
 /// output, since a graph with a cycle has no such order.
 topo_sort(edges: int[], n: int) -> int[] {
     incoming = repeated(n, 0)
@@ -454,7 +454,7 @@ topo_sort(edges: int[], n: int) -> int[] {
 }
 
 /// A chain, `0 → 1 → … → n-1`. Every edge runs from a lower index to a higher
-/// one, so there is no cycle and the answer is always a full ordering — and
+/// one, so there is no cycle and the answer is always a full ordering, and
 /// since a chain admits exactly one ordering, the answer is `0, 1, …, n-1`,
 /// which a test can check without reimplementing Kahn's algorithm.
 ///
@@ -538,7 +538,7 @@ promote(recent: int[], from: int) {
 /// The squares were chosen over a stride like `i * 37`: a stride visits every
 /// key in the space before revisiting any of them, so with a cache smaller than
 /// the space it hits exactly zero times and the case measures eviction only.
-/// The squares cluster — 0 and 25 come round every tenth access — so this both
+/// The squares cluster (0 and 25 come round every tenth access), so this both
 /// hits and evicts, which is what a cache does.
 lru_case(n: int) -> int {
     keys = zeros(n)
@@ -641,7 +641,7 @@ word_end(src: str, from: int) -> int {
 ///
 /// Every object is the same text, built with one `repeat` rather than `n`
 /// pushes. The tokenizer does not look at what the bytes say, only at what
-/// shape they are, so identical rows cost it exactly what varied ones would —
+/// shape they are, so identical rows cost it exactly what varied ones would,
 /// and building them varied would put more time in the setup than in the scan.
 json_sample(n: int) -> str {
     if n <= 0 {
@@ -653,7 +653,7 @@ json_sample(n: int) -> str {
     }
 }
 
-/// `n` is the number of objects in the document, not its length in bytes —
+/// `n` is the number of objects in the document, not its length in bytes:
 /// about 36 bytes and 13 tokens each.
 json_tokenize_case(n: int) -> int =>
     json_token_count(json_sample(n))

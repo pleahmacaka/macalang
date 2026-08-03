@@ -2,15 +2,16 @@
 //!
 //! `minconsole`, heap strings + a string builder, typed dynamic array and map
 //! macros, a small robust JSON parser, file/dir/stdin/time helpers, and the
-//! reference-counted allocator behind Perceus — the code generator emits the
-//! dup/drop calls, so a discarded buffer returns to the free-list rather than
+//! reference-counted allocator behind Perceus, for which the code generator
+//! emits the dup/drop calls, so a discarded buffer returns to the free-list
+//! rather than
 //! being held until exit.
 //!
-//! Style note: defensive C in the spirit of sqlite — every allocation checked,
+//! Style note: defensive C in the spirit of sqlite: every allocation checked,
 //! bounds respected, no undefined behavior on malformed input (parse errors
 //! abort with a message rather than corrupt memory).
 
-/// `maca_runtime.h` — declarations + the array macro used by generated code.
+/// `maca_runtime.h`: declarations + the array macro used by generated code.
 pub const RUNTIME_H: &str = r##"#ifndef MACA_RUNTIME_H
 #define MACA_RUNTIME_H
 #include <stdint.h>
@@ -28,8 +29,8 @@ typedef const char* maca_str;
 
    `maca_alloc` hands back a block with one owner. `maca_dup` adds an owner,
    `maca_drop` removes one, and the block returns to the free-list when the last
-   owner lets go — where the next same-size request picks it up rather than
-   going to malloc. That is the reuse Perceus is named for: the code generator
+   owner lets go, which is where the next same-size request picks it up rather
+   than going to malloc. That is the reuse Perceus is named for: the code generator
    inserts the dup/drop calls (see `owned_locals` in the C backend), so a loop
    that builds and discards a value reuses one buffer instead of asking the
    allocator for a new one every time round.
@@ -42,12 +43,12 @@ void* maca_alloc(size_t n);
 void* maca_realloc(void* p, size_t n);
 /* Release a string. A `maca_str` is the payload pointer itself rather than a
    struct with a buffer in it, and it is `const` because nothing may write
-   through it — neither changes who is allowed to let go of the bytes. */
+   through it; neither changes who is allowed to let go of the bytes. */
 void maca_drop_str(maca_str s);
 /* A fresh copy of `s`.
    Every `maca_str`-returning function in here promises the same thing: what
-   comes back is a block this allocator handed out, or a static literal — never
-   one of the arguments. That promise is what lets the back end release a string
+   comes back is a block this allocator handed out, or a static literal, and
+   never one of the arguments. That promise is what lets the back end release a string
    it built without first proving where the bytes came from, and this is how the
    ones with nothing to do keep it: the shortcuts that used to return an
    argument unchanged (`replace` with an empty needle, `pad` of an already-wide
@@ -68,7 +69,7 @@ void maca_warn(maca_str s);
 void maca_notice(maca_str s);
 void maca_info(maca_str s);
 void maca_debug(maca_str s);
-/* `fail msg` — longjmp to the nearest `try` handler, else print "error: <msg>"
+/* `fail msg`: longjmp to the nearest `try` handler, else print "error: <msg>"
    to stderr and exit(1) (an unhandled failure). */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((noreturn))
@@ -98,7 +99,7 @@ maca_str maca_str_at(maca_str s, int64_t i); /* single-char str at byte i ("" if
 maca_str maca_chr(int64_t b);               /* the one-byte string holding b   */
 int64_t  maca_ord(maca_str s);              /* the value of s's first byte, -1 for "" */
 int64_t maca_strlen(maca_str s);              /* byte length (0 if NULL) */
-/* character classes — inspect the first byte of a 1-char str (false if empty) */
+/* character classes: inspect the first byte of a 1-char str (false if empty) */
 bool maca_is_space(maca_str c);
 bool maca_is_digit(maca_str c);
 bool maca_is_alpha(maca_str c);
@@ -215,12 +216,12 @@ bool maca_json_bool(maca_json* j);
 maca_str maca_json_str(maca_json* j);
 
 /* ---- typed dynamic array (monomorphized by generated code) ---- */
-/* The array struct alone — only needs `Elem` forward-declared (it stores an
+/* The array struct alone: only needs `Elem` forward-declared (it stores an
    `Elem*`). Split out so a self-referential record (`Expr { children: Expr[] }`)
    can declare its element array before the record body closes the cycle. */
 #define MACA_ARRAY_STRUCT(Name, Elem)                                          \
     typedef struct { Elem* data; int64_t len; int64_t cap; } Name;
-/* The array operations — need `Elem` complete (they use `sizeof(Elem)`), so a
+/* The array operations: need `Elem` complete (they use `sizeof(Elem)`), so a
    recursive record emits these only after its struct body is defined. */
 #define MACA_ARRAY_OPS(Name, Elem)                                             \
     static inline Name Name##_new(void) { Name a; a.data = NULL; a.len = 0;     \
@@ -253,8 +254,8 @@ maca_str maca_json_str(maca_json* j);
  * the alternative is a second type parameter threaded through every backend for
  * a case the language has not needed. Open addressing with linear probing and
  * backward-shift deletion; grows at 70% load. `_keys` writes into a caller
- * buffer of `_len` entries and sorts them, so iteration order is deterministic
- * — a generator that walks a map twice produces the same file twice. */
+ * buffer of `_len` entries and sorts them, so iteration order is deterministic,
+ * so a generator that walks a map twice produces the same file twice. */
 #define MACA_DEFINE_MAP(Name, Val)                                             \
     typedef struct { maca_str* keys; Val* vals; unsigned char* used;           \
                      int64_t len; int64_t cap; } Name;                         \
@@ -324,7 +325,7 @@ maca_str maca_json_str(maca_json* j);
         return n;                                                              \
     }
 
-/* The common case: a non-recursive element — struct + ops together. */
+/* The common case: a non-recursive element, struct + ops together. */
 #define MACA_DEFINE_ARRAY(Name, Elem)                                          \
     MACA_ARRAY_STRUCT(Name, Elem)                                              \
     MACA_ARRAY_OPS(Name, Elem)
@@ -387,7 +388,7 @@ static pthread_mutex_t g_heap_lock = PTHREAD_MUTEX_INITIALIZER;
    latter, and reading eight bytes before a literal is at best a wrong answer.
 
    So membership is asked, not assumed. An open-addressed set of payload
-   addresses, one pointer per block and never removed — a block on the free
+   addresses, one pointer per block and never removed, because a block on the free
    list is still a block, and the set is exactly "this address has a header".
    That is an O(1) answer with nothing read out of bounds, which is what makes
    dropping a string safe at all. */
@@ -518,7 +519,7 @@ void* maca_realloc(void* p, size_t n) {
     int ours = blocks_has(p);
     pthread_mutex_unlock(&g_heap_lock);
     /* Growing a buffer means copying `h->size` bytes out of it, and a pointer
-       with no header of ours has no size to read — guessing one reads whatever
+       with no header of ours has no size to read, and guessing one reads whatever
        is eight bytes in front of somebody else's memory. */
     if (!ours) die("realloc of a pointer this allocator never handed out");
     maca_hdr* h = ((maca_hdr*)p) - 1;
@@ -624,7 +625,7 @@ maca_str maca_str_at(maca_str s, int64_t i) {
 }
 /* A byte and the string holding it. `chr` is the inverse of `ord` and nothing
    else: a caller assembling UTF-8 does it a byte at a time on purpose. Outside
-   1..255 the answer is the empty string rather than a wrapped value — zero
+   1..255 the answer is the empty string rather than a wrapped value: zero
    would end the string it is in, and anything larger is not a byte. Every
    target agrees on exactly this domain. */
 maca_str maca_chr(int64_t b) {
@@ -760,7 +761,7 @@ maca_str maca_now_iso(void) {
 maca_str maca_read_file(maca_str path) {
     if (!path) return "";
     /* Only an ordinary file has a length worth trusting. Opening a directory
-       succeeds on Linux, and the size it then reports is not a byte count — the
+       succeeds on Linux, and the size it then reports is not a byte count. The
        allocation below asked for it and the process died with "out of memory",
        naming nothing that pointed at the directory. Walking a tree and reading
        what the walk returns is the shape that hits this. */
@@ -824,7 +825,7 @@ int64_t maca_modified_ms(maca_str path) {
 bool maca_remove_file(maca_str path) {
     return path && unlink(path) == 0;
 }
-/* Depth-first, so a directory with contents goes too — `rm -r`, not `rmdir`. */
+/* Depth-first, so a directory with contents goes too: `rm -r`, not `rmdir`. */
 bool maca_remove_dir(maca_str path) {
     if (!path) return false;
     DIR* d = opendir(path);
@@ -861,8 +862,8 @@ bool maca_make_dir(maca_str path) {
     }
     return true;
 }
-/* A byte-for-byte copy. `read_file` + `write_file` would stop at the first NUL
-   — fine for source, silently truncating for a wasm module or an image. */
+/* A byte-for-byte copy. `read_file` + `write_file` would stop at the first NUL:
+   fine for source, silently truncating for a wasm module or an image. */
 bool maca_copy_bytes(maca_str src, maca_str dst) {
     if (!src || !dst) return false;
     FILE* in = fopen(src, "rb");
@@ -1022,7 +1023,7 @@ static maca_str maca_pad(maca_str s, int64_t w, maca_str p, bool at_start) {
 maca_str maca_pad_start(maca_str s, int64_t w, maca_str p) { return maca_pad(s, w, p, true); }
 maca_str maca_pad_end(maca_str s, int64_t w, maca_str p) { return maca_pad(s, w, p, false); }
 /* Centre `s` in width `w`. An odd remainder goes on the right, so a column of
-   centred cells stays flush left — the same choice Python's `str.center` makes. */
+   centred cells stays flush left, the same choice Python's `str.center` makes. */
 /* ` name="value"`, with the value escaped for an attribute context. Returns the
    empty string for an empty value, so an optional attribute can be passed as ""
    and simply not appear. */
@@ -1049,7 +1050,7 @@ maca_str maca_attr(maca_str name, maca_str value) {
     return r;
 }
 /* A boolean attribute: present or absent, never `open="false"`. HTML reads any
-   value at all — including "false" — as true, so a bool has to control the
+   value at all, including "false", as true, so a bool has to control the
    attribute's *existence* rather than its text. */
 maca_str maca_flag(maca_str name, bool on) {
     if (!on || !name || !*name) return "";
@@ -1066,7 +1067,7 @@ static bool maca_void_tag(maca_str t) {
     for (int i = 0; v[i]; i++) if (strcmp(t, v[i]) == 0) return true;
     return false;
 }
-/* An element whose tag is only known at run time — `<h1>`…`<h6>` from a depth,
+/* An element whose tag is only known at run time: `<h1>`…`<h6>` from a depth,
    `<th>` or `<td>` from which row is being written. The static form can't say
    that, and a generator that walks a document needs to. Voidness is decided
    here because it can't be decided at compile time. */
@@ -1430,7 +1431,7 @@ bool maca_json_bool(maca_json* j) { return j && j->kind == MJ_BOOL ? j->b : fals
 maca_str maca_json_str(maca_json* j) { return j && j->kind == MJ_STR && j->str ? maca_str_copy(j->str) : ""; }
 "##;
 
-/// `maca_async.h` — the concurrency runtime interface. Always includable; the
+/// `maca_async.h`: the concurrency runtime interface. Always includable; the
 /// implementation (`maca_async.c`) is only linked when a program uses async, so
 /// a purely sequential binary carries no scheduler symbols.
 pub const ASYNC_H: &str = r##"#ifndef MACA_ASYNC_H
@@ -1450,7 +1451,8 @@ int64_t maca_cancel_demo(int64_t workers);
 
 /* colorblind async: `spawn f(x)` runs `f` concurrently and returns a future;
  * `await fut` blocks until it resolves. A task is an ordinary `int64 -> int64`
- * function — no `async` coloring, no ABI change. POSIX threads back the model:
+ * function, with no `async` coloring and no ABI change. POSIX threads back the
+ * model:
  * a suspension point is a real thread boundary, which keeps the runtime small
  * enough to read and costs a thread per task. */
 typedef int64_t (*maca_task_fn)(int64_t);
@@ -1468,7 +1470,7 @@ void maca_sleep_ms(int64_t ms);
 #endif
 "##;
 
-/// `maca_async.c` — the colorblind-async slice: a bounded POSIX-thread worker
+/// `maca_async.c`: the colorblind-async slice, a bounded POSIX-thread worker
 /// pool and a cancellation token. Structured: all workers join before return.
 /// A suspension point is a real thread boundary, which keeps the runtime small
 /// enough to read at the cost of a thread per task.
@@ -1513,7 +1515,7 @@ int maca_cancel_check(maca_cancel* c) { return c->flag; }
 typedef struct { maca_cancel* c; int64_t iters; } cwork;
 static void* cworker(void* a) {
     cwork* w = (cwork*)a;
-    /* loop forever until cancelled — if cancellation is broken, this hangs */
+    /* loop forever until cancelled; if cancellation is broken, this hangs */
     while (!maca_cancel_check(w->c)) w->iters++;
     return NULL;
 }
@@ -1656,8 +1658,8 @@ pub fn write_sqlite_glue(dir: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// FFI binding glue for `import py "module"`. Embeds CPython — **feature-gated**
-/// because it links libpython (a much larger, dynamic binary). `py_call(m, f)`
+/// FFI binding glue for `import py "module"`. Embeds CPython, and is
+/// **feature-gated** because it links libpython (a much larger, dynamic binary). `py_call(m, f)`
 /// imports module `m`, calls its no-arg function `f`, and returns `str(result)`.
 pub const PY_GLUE: &str = r#"#define PY_SSIZE_T_CLEAN
 #include <Python.h>
@@ -1738,7 +1740,7 @@ pub fn write_py_glue(dir: &std::path::Path) -> std::io::Result<()> {
 }
 
 /// `std/mqtt` engine (for `import c "mqtt.h"`): a minimal MQTT 3.1.1 broker +
-/// client over TCP — CONNECT/CONNACK, SUBSCRIBE/SUBACK, PUBLISH (QoS 0),
+/// client over TCP: CONNECT/CONNACK, SUBSCRIBE/SUBACK, PUBLISH (QoS 0),
 /// PINGREQ, and `+`/`#` topic wildcards. Threaded (one thread per client) so
 /// the broker serves many concurrent clients. Sockets/pthreads are in musl
 /// libc, so this links static-musl with no external library.
@@ -1957,14 +1959,14 @@ pub fn write_mqtt_glue(dir: &std::path::Path) -> std::io::Result<()> {
 /// `modules/http` engine (for `import c "http.h"`): an HTTP/1.1 server.
 ///
 /// A thread per connection with keep-alive, which is what the runtime already
-/// links for `spawn`/`await` and for the MQTT broker — no event loop, no
+/// links for `spawn`/`await` and for the MQTT broker: no event loop, no
 /// external library, and it still holds a few thousand concurrent connections
 /// on a normal machine.
 ///
 /// The split with Maca is at raw bytes on purpose. C owns the socket, the
 /// accept loop, request framing (`Content-Length`, and the header/body
-/// boundary) and writing the reply; everything above that — parsing a request
-/// into fields, routing, building a response — is Maca, where it can be read
+/// boundary) and writing the reply; everything above that, parsing a request
+/// into fields, routing, building a response, is Maca, where it can be read
 /// and tested. The handler is an ordinary Maca closure, called across the same
 /// `maca_closure` ABI `xs.map(f)` uses.
 pub const HTTP_GLUE: &str = r##"#define _GNU_SOURCE
@@ -2043,7 +2045,7 @@ static long content_length(const char* head, size_t n) {
 /* Is the request framed in a way this server understands?
 
    `Transfer-Encoding` is not implemented, and a request that uses it cannot be
-   framed by `Content-Length` — guessing produces a body that is really the
+   framed by `Content-Length`, and guessing produces a body that is really the
    chunk headers, and behind a proxy that is a request-smuggling primitive. So
    it is refused rather than misread. */
 static int has_transfer_encoding(const char* head, size_t n) {
@@ -2056,7 +2058,7 @@ static int has_transfer_encoding(const char* head, size_t n) {
 
 /* One connection's read buffer. It outlives a single request, because a client
    may send two in one packet and the second one's bytes arrive while the first
-   is still being read — dropping them answered the first request and hung on
+   is still being read, and dropping them answered the first request and hung on
    the second. */
 typedef struct { char* buf; size_t cap, len; } http_buf;
 
@@ -2188,7 +2190,7 @@ int64_t http_listen(int64_t port) {
 }
 
 /* Serve until the process ends. A write to a client that vanished raises
-   SIGPIPE, whose default action is to kill the process — one disconnecting
+   SIGPIPE, whose default action is to kill the process, so one disconnecting
    client would take the server with it. */
 int64_t http_accept_loop(int64_t srv, maca_closure handler) {
     signal(SIGPIPE, SIG_IGN);

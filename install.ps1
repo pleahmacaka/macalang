@@ -12,7 +12,7 @@
 # Downloads the prebuilt binaries for your platform from the latest GitHub
 # release; with no matching asset it builds from source (needs Rust + a C
 # compiler). Nix isn't native on Windows, so `maca dev` and Nix builds run under
-# WSL — this script doesn't prompt for Nix.
+# WSL, and this script doesn't prompt for Nix.
 #
 # Every other script in this repository is a Maca program. This one and its
 # POSIX twin `install.sh` are the two that cannot be: they run on a machine

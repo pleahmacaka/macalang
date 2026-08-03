@@ -1,6 +1,6 @@
 // A function kept in a record field, and called out of it.
 //
-// A function passed as an argument needs no annotation — an unannotated
+// A function passed as an argument needs no annotation: an unannotated
 // parameter that is called in the body is one. A function *stored* does need
 // one, because a field is declared before anything calls it. `(T, U) -> R` is
 // how that is written, and this file is the set of shapes it has to support:

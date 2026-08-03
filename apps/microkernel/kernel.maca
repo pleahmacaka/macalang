@@ -1,10 +1,10 @@
-// microkernel — a message-passing microkernel, simulated in Maca.
+// microkernel: a message-passing microkernel, simulated in Maca.
 //
 // It's a real stress test for the compiler (sum types, records, ranges, `match`,
 // nested loops, dozens of functions) and a faithful model of a small L4-style
 // kernel: a round-robin priority scheduler over a struct-of-arrays task table, a
 // bump allocator, synchronous IPC through per-task mailboxes, and a capability-
-// checked syscall dispatch. It runs entirely in userland — `maca run` boots it,
+// checked syscall dispatch. It runs entirely in userland: `maca run` boots it,
 // schedules the tasks to completion, and prints the trace.
 //
 // State that the scheduler mutates lives in `main`'s local arrays (Maca values
@@ -168,11 +168,11 @@ banner(title: str) {
 
 // ---- boot -----------------------------------------------------------------
 main() -> int {
-    banner("maca microkernel — boot")
+    banner("maca microkernel: boot")
 
     // struct-of-arrays task table. task kinds: 1 = worker (sends), 2 = server
     // (receives), 0 = compute-only. priorities and work budgets vary.
-    // task 3 is a worker whose capability is missing SEND — when it tries to
+    // task 3 is a worker whose capability is missing SEND. When it tries to
     // send, the kernel refuses the syscall and reaps it (a capability fault).
     kinds  = 1, 2, 0, 1, 2, 0
     prios  = 5, 9, 3, 5, 9, 2
@@ -203,7 +203,7 @@ main() -> int {
     while tick < MAX_TICK && !all_dead(states, NTASKS) {
         cur = pick_next(states, prios, NTASKS, last)
         if cur < 0 {
-            // nobody READY — unblock everyone waiting on IPC (timer wakeup)
+            // nobody READY, so unblock everyone waiting on IPC (timer wakeup)
             for i in 0..NTASKS - 1 {
                 if states[i] == BLOCKED {
                     states[i] = READY
@@ -222,7 +222,7 @@ main() -> int {
             sc = decide(kinds[cur], work[cur], inbox[cur])
             cap = syscall_cap(sc)
 
-            // capability check — a task without the cap is refused and killed
+            // capability check: a task without the cap is refused and killed
             if !has_cap(caps[cur], cap) {
                 info("t{tick} task {cur}: DENIED {syscall_name(sc)} (cap fault)")
                 denied = denied + 1
@@ -278,7 +278,7 @@ main() -> int {
         }
     }
 
-    banner("halt — kernel statistics")
+    banner("halt: kernel statistics")
     info("ticks elapsed  : {tick}")
     info("context switches: {switches}")
     info("tasks retired  : {completed}/{NTASKS}")

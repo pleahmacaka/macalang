@@ -154,7 +154,7 @@ check_rows_are_reused_without_losing_the_one_kept() {
 }
 
 // `str(x)` renders a value. Given a string there is nothing to render, and
-// the answer used to be the argument itself — so the caller released bytes it
+// the answer used to be the argument itself, so the caller released bytes it
 // had only been shown.
 check_rendering_a_string_does_not_take_it_from_its_owner() {
     s = "hello" ++ "-world"

@@ -3,7 +3,7 @@
 //
 // `xs = xs.push(v)` copies, because a list is a value and `ys = xs.push(v)` has
 // to leave `xs` alone. Assigning back to the same name is the case where the
-// old value is unreachable the moment the new one exists — so there it is an
+// old value is unreachable the moment the new one exists, so there it is an
 // append. Written as a copy it is quadratic: eight thousand elements took half
 // a second and left every intermediate buffer behind.
 //
@@ -50,7 +50,7 @@ split_evens(n: int) -> int {
 }
 
 // The assertions below check *answers*, and an answer is the same whether the
-// list was copied or appended to — so on their own they cannot tell whether the
+// list was copied or appended to, so on their own they cannot tell whether the
 // optimisation happened at all. This one can: building two thousand elements by
 // copying is two thousand buffers.
 test_an_accumulator_does_not_rebuild_itself_every_round() {
@@ -126,7 +126,7 @@ test_a_copy_is_kept_when_a_record_holds_the_list() {
 // buffer out from under it.
 // What the loop reads is a copy of the list struct, sharing the buffer.
 // Appending in place can reallocate and leave that copy pointing at freed
-// memory — so the values the loop *sees* are the assertion, not the values the
+// memory, so the values the loop *sees* are the assertion, not the values the
 // list ends up with. Enough rounds to force the reallocation.
 test_appending_to_the_list_being_iterated_reads_the_original() {
     f: int[] = []
@@ -145,7 +145,7 @@ test_appending_to_the_list_being_iterated_reads_the_original() {
 }
 
 // A parameter is a second handle by construction: what it points at belongs to
-// the caller. Read the caller's *elements* afterwards, not its length — a
+// the caller. Read the caller's *elements* afterwards, not its length: a
 // length survives a reallocation that leaves the buffer dangling.
 test_a_parameter_is_the_callers_list() {
     a = [1, 2, 3, 4]
@@ -158,7 +158,7 @@ test_a_parameter_is_the_callers_list() {
 }
 
 // A list built from another list is that other list's business. Enough elements
-// to force a reallocation, and the original read element by element — appending
+// to force a reallocation, and the original read element by element. Appending
 // in place would move the buffer and leave the other name pointing at nothing.
 test_a_copy_is_kept_when_the_accumulator_started_as_an_alias() {
     base = [1, 2]
@@ -183,7 +183,7 @@ test_strings_accumulate_the_same_way() {
 
 // `[e]` where `e` is itself a list: the literal's type is its first element's,
 // and an element that is a name had no type during the pass that instantiates
-// array types — so the C compiler was handed a list-of-lists it had never been
+// array types, so the C compiler was handed a list-of-lists it had never been
 // given a definition for.
 test_a_list_literal_may_hold_a_list() {
     e = [1, 2]

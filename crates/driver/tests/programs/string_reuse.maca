@@ -19,7 +19,7 @@ main() -> int {
     assert_eq(str(total), "215500", "every row was built and measured")
 
     // as a share of every allocation asked for, not of the ones that had to
-    // call malloc — the second reads as thousands of percent once reuse works
+    // call malloc. The second reads as thousands of percent once reuse works
     reused = reuse_count() * 100 / (reuse_count() + alloc_count())
     info("reused={reused}%")
     assert(reused > 95, "almost every string came off the free-list")

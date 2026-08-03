@@ -6,7 +6,7 @@ main() -> int {
     }
     info("sum 1..100 = {sum}")
 
-    // ranges are `int[]` values too — usable anywhere a list is
+    // ranges are `int[]` values too, usable anywhere a list is
     xs = 1..5
     info("1..5 has {len(xs)} elements, last {xs[len(xs) - 1]}")
     0

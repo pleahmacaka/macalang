@@ -1,4 +1,4 @@
-// conf — reading a value out of a `book.toml`.
+// conf: reading a value out of a `book.toml`.
 //
 // Not a TOML parser. It is the small subset tomo's config uses: `key = value`
 // at the start of a line, quotes and brackets stripped, an array allowed to
@@ -7,8 +7,8 @@
 // A module rather than a private helper because two programs read the same
 // file. `tools/build-site.maca` derives the landing pages it clears from the
 // book's `languages`, and when it had its own one-line reader that searched the
-// whole file, a commented-out `# languages = ["fr"]` above the real key won —
-// the build then cleared a landing that does not exist and published tomo's
+// whole file, a commented-out `# languages = ["fr"]` above the real key won.
+// The build then cleared a landing that does not exist and published tomo's
 // language picker at the two addresses the front page was supposed to replace.
 // Scanning lines is what makes a comment a comment, and there is now one place
 // that does it.

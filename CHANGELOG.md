@@ -76,6 +76,19 @@ an import that resolves to nothing is an error.
 * The playground gained a live preview, config mode, share links and an
   example picker, and its interpreter fails on a call it does not know
   instead of quietly answering unit.
+* The language server asks the parser what a `{` opens instead of deciding
+  again from the tokens. Its own copy had no case for a `=>` sitting against
+  the brace, so `mk(n: int) -> Point => { x = n, y = n }` read as a block and
+  a rename of the field skipped the literal's key.
+
+### House style
+
+Two thousand em dashes, nine en dashes and thirty-nine middle dots left the
+prose, and a test keeps them out. Nobody decided to write one; they
+accumulated across three hundred files, which is the kind of drift a test
+catches and a note in a style document does not. An appositive takes a colon,
+an aside takes a comma pair or parentheses, and a consequence takes a full
+stop.
 
 ## 0.1.0
 

@@ -31,7 +31,7 @@ fn hello_runs_natively() {
     );
 }
 
-/// `apps/cli_tool/` — the `cli` package used the way a program uses it.
+/// `apps/cli_tool/`: the `cli` package used the way a program uses it.
 ///
 /// An application, not a fixture, so it lives under `apps/` with the other
 /// programs and is named by its written path: `apps/` is deliberately not an
@@ -111,9 +111,9 @@ fn the_cli_example_helps_refuses_and_runs() {
 /// this is the build that happens.
 ///
 /// Two things are asserted, and each caught a mutation the other let through.
-/// The needle is text only the program's *final* line prints — a header the
-/// last section prints before doing its work is not one, because emptying that
-/// section then leaves the test green. And the exit status: a demo whose `main`
+/// The needle is text only the program's *final* line prints. A header that
+/// the last section prints before doing its work is not one, because emptying
+/// that section then leaves the test green. And the exit status: a demo whose `main`
 /// returns non-zero, or that fails after its last `info`, prints every needle
 /// on its way out.
 #[test]
@@ -249,14 +249,14 @@ fn selective_import_runs_and_drops_unused() {
         String::from_utf8_lossy(&out.stderr)
     );
     // `cube` exits with 64; had `boom` been inlined and reached it'd trap, but
-    // it's dropped entirely — the closure pulled in only cube + square.
+    // it's dropped entirely: the closure pulled in only cube + square.
     assert_eq!(out.status.code(), Some(64), "exit code should be cube(4)");
 }
 
 #[test]
 fn higher_order_params_run_natively() {
     // A function passed by name to an unannotated `pred` parameter, then called
-    // inside the callee — the C backend wraps the fn in a closure and lowers the
+    // inside the callee. The C backend wraps the fn in a closure and lowers the
     // param call through the closure ABI.
     let wsl = Command::new("wsl")
         .arg("true")
@@ -872,7 +872,7 @@ fn microkernel_boots_natively() {
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("maca microkernel — boot"),
+        stdout.contains("maca microkernel: boot"),
         "no boot banner:\n{stdout}"
     );
     assert!(
@@ -888,7 +888,7 @@ fn microkernel_boots_natively() {
 
 #[test]
 fn file_io_builtins_run_natively() {
-    // read_file / write_file / file_exists / make_dir / list_dir — the
+    // read_file / write_file / file_exists / make_dir / list_dir: the
     // filesystem primitives a build tool needs.
     let wsl = Command::new("wsl")
         .arg("true")
@@ -922,7 +922,7 @@ fn file_io_builtins_run_natively() {
     }
 }
 
-/// `maca test` — chapter 12 of the handbook, executed.
+/// `maca test`: chapter 12 of the handbook, executed.
 ///
 /// The suites live in `tests/programs/testsuite/` rather than in a Rust string
 /// literal, because they are the same Maca the chapter prints.
@@ -949,7 +949,7 @@ fn maca_test_runs_test_prefixed_functions() {
     );
 
     // Failing: every test still runs, each is marked, and the exit code is the
-    // number of failed assertions — two, from three tests.
+    // number of failed assertions: two, from three tests.
     let (ok, out, code) = maca_test("failing");
     assert!(!ok, "a failing suite must exit non-zero");
     assert_eq!(code, Some(2), "the exit code is the failure count:\n{out}");
@@ -1040,7 +1040,7 @@ fn functions_without_a_declared_return_type_return_their_value() {
     for want in ["inc=42", "big=true", "greet=hi maca", "twice=42"] {
         assert!(
             stdout.contains(want),
-            "missing {want:?} — an inferred return type was mishandled.\n\
+            "missing {want:?}: an inferred return type was mishandled.\n\
              stdout: {stdout}\nstderr: {}",
             String::from_utf8_lossy(&out.stderr)
         );
@@ -1050,7 +1050,7 @@ fn functions_without_a_declared_return_type_return_their_value() {
 
 #[test]
 fn list_methods_accept_a_named_function() {
-    // `xs.filter(is_even)` — a top-level function passed where a lambda is
+    // `xs.filter(is_even)`: a top-level function passed where a lambda is
     // expected. Previously only literal lambdas were accepted and this emitted
     // a call to an undeclared C function.
     let wsl = Command::new("wsl")
@@ -1097,7 +1097,7 @@ fn list_methods_accept_a_named_function() {
 fn handbook_examples_all_run() {
     // `examples/handbook.maca` collects every runnable claim The Maca Handbook
     // makes. Writing the book found five real compiler bugs, so its examples
-    // are executed here — documentation that isn't run is a claim, not a fact.
+    // are executed here. Documentation that isn't run is a claim, not a fact.
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -1137,7 +1137,7 @@ fn handbook_examples_all_run() {
     ] {
         assert!(
             stdout.contains(want),
-            "handbook claim broken — missing {want:?}.\nstdout: {stdout}\nstderr: {}",
+            "handbook claim broken: missing {want:?}.\nstdout: {stdout}\nstderr: {}",
             String::from_utf8_lossy(&out.stderr)
         );
     }
@@ -1155,7 +1155,7 @@ fn concurrent_runs_of_the_same_program_dont_collide() {
     // Cold cache: each process runs `cc -o` into that same path, and one that
     // execs while another is still linking gets the same ETXTBSY. `run` now
     // names its throwaway binary per process. This is the case that actually
-    // broke CI — the warm path was covered, the cold one wasn't, and CI starts
+    // broke CI: the warm path was covered, the cold one wasn't, and CI starts
     // cold every time.
     let wsl = Command::new("wsl")
         .arg("true")
@@ -1248,7 +1248,7 @@ fn lambdas_run_natively() {
     );
 }
 
-/// A function kept in a record field — the route table, the reducer, the
+/// A function kept in a record field: the route table, the reducer, the
 /// builder. `(T, U) -> R` is the type that makes it writable; the assertions
 /// are in Maca, in `tests/programs/function_fields.maca`.
 #[test]
@@ -1274,7 +1274,7 @@ fn a_function_can_be_kept_in_a_record_field() {
     }
 }
 
-/// A generic function that names its own element type — a type variable bound
+/// A generic function that names its own element type: a type variable bound
 /// from inside a parameter's type, and a local declared with it. Assertions in
 /// `tests/programs/generics.maca`.
 #[test]
@@ -1298,8 +1298,8 @@ fn a_generic_can_name_its_own_element_type() {
 
 /// `xs = xs.push(v)` is an append where nothing else holds the list, and a copy
 /// everywhere else. Assertions in `tests/programs/accumulate.maca`, run plain
-/// and poisoned — a buffer moved out from under a second holder is exactly what
-/// a released-memory pattern would show.
+/// and poisoned, because a buffer moved out from under a second holder is
+/// exactly what a released-memory pattern would show.
 #[test]
 fn a_list_accumulates_without_copying_itself() {
     if have_wsl() || !have("cc") {

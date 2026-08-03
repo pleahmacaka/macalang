@@ -17,7 +17,7 @@ fn read(rel: &str) -> String {
     std::fs::read_to_string(repo(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"))
 }
 
-/// Node types named by a query — the identifiers written as `(name`. Comments,
+/// Node types named by a query: the identifiers written as `(name`. Comments,
 /// string literals (a regex inside `#match?` can contain `(alt|alt)`), and
 /// `(#predicate? …)` forms are skipped, so only real node names are returned.
 fn node_types(scm: &str) -> Vec<String> {

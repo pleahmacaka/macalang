@@ -1,4 +1,4 @@
-// tambo/dispatch — one request, from the table to the response.
+// tambo/dispatch: one request, from the table to the response.
 //
 // This is the framework, and it takes no socket. `dispatch(app, req, handle)`
 // is a function from a parsed request to a response, so every routing rule
@@ -8,14 +8,14 @@
 //
 // `handle` is one function of one `Ctx`, and `ctx.name` says which handler it
 // is standing in for. There is exactly one of it because a Maca function value
-// takes one argument and cannot live in a record — see `tambo/app` for what
+// takes one argument and cannot live in a record. See `tambo/app` for what
 // that constraint buys.
 //
 // The order a request goes through:
 //
 //   1. the `before` hook, if there is one. Anything but `pass()` is the
 //      answer, and the route does not run at all.
-//   2. otherwise the route, chosen by `lookup` — or a 405 when the path
+//   2. otherwise the route, chosen by `lookup`, or a 405 when the path
 //      matched under another method, or the `fallback`, or a 404.
 //   3. `scrub`, which takes the body off any 5xx, whichever of those built it.
 //   4. the `after` hook, if there is one, with the response in `ctx.reply`.
@@ -122,7 +122,7 @@ after_hook(a: App, ctx: Ctx, r: Response, handle) -> Response {
 ///
 /// Each route is asked through a context built from that route: its own
 /// method, a path its own pattern matches, and the parameters that pattern
-/// binds. That matters — an arm reading `ctx.method == "POST"` or
+/// binds. That matters: an arm reading `ctx.method == "POST"` or
 /// `param(ctx, "id")` and passing otherwise is an ordinary arm, and asking it
 /// about `GET /` with nothing bound reported half of a correct site as
 /// missing.
@@ -137,7 +137,7 @@ after_hook(a: App, ctx: Ctx, r: Response, handle) -> Response {
 /// name is therefore silent, and it fails open. Assert those arms yourself.
 ///
 /// This calls the handlers for real, so a handler with a side effect will
-/// perform it — which is a fair argument for keeping the side effects in the
+/// perform it, which is a fair argument for keeping the side effects in the
 /// hooks, where this does not reach.
 missing_handlers(a: App, handle) -> str[] {
     gaps: str[] = []

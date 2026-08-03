@@ -1,9 +1,9 @@
-// selfhost/check — the type checker over the AST, written in Maca.
+// selfhost/check: the type checker over the AST, written in Maca.
 //
 // This is where the checker lives now. It carries an environment: the module's
 // function signatures, its record fields, its sum variants, and the locals and
 // parameters in scope. That is what turns "count the arithmetic mismatches"
-// into checking a program — a call's arity, a call's result type, a field that
+// into checking a program: a call's arity, a call's result type, a field that
 // the record doesn't have, a body that disagrees with its declared return.
 //
 // Gradual `any` is still the escape hatch, and it is deliberate: a name the
@@ -13,7 +13,7 @@ import selfhost/token
 import selfhost/ast
 
 // Parallel lists rather than a map, because the slice of Maca that stage-1
-// compiles has no map — and because it keeps the whole environment one flat
+// compiles has no map, and because it keeps the whole environment one flat
 // value, so extending a scope is a copy and unwinding one is free.
 Env = {
     names:  str[]     // locals and parameters in scope
@@ -37,7 +37,7 @@ bind(env: Env, name: str, ty: str) -> Env =>
     env with { names = env.names ++ [name], types = env.types ++ [ty] }
 
 // "" means *not in scope*. No real type is spelled "", so the sentinel cannot
-// collide with an answer — `param_ty` turns an unwritten type into "any" first.
+// collide with an answer. `param_ty` turns an unwritten type into "any" first.
 lookup(env: Env, name: str) -> str {
     at = env.names.index_of(name)
 
@@ -137,7 +137,7 @@ ident_type(e: Expr, env: Env) -> str {
     }
 }
 
-// A variant is called like a function — `Circle(2)` — so both tables are
+// A variant is called like a function (`Circle(2)`), so both tables are
 // consulted before falling back. An unknown name stays gradual on purpose: a
 // module does not declare what it imports, and foreign is not wrong.
 call_type(e: Expr, env: Env) -> str {
@@ -187,7 +187,7 @@ field_type(e: Expr, env: Env) -> str {
     }
 }
 
-// The first arm decides. Arms that disagree are not caught here — the stage-0
+// The first arm decides. Arms that disagree are not caught here. The stage-0
 // checker is what reports that, and duplicating it would risk the two drifting.
 match_type(e: Expr, env: Env) -> str {
     if e.children.length() >= 3 {
@@ -198,7 +198,7 @@ match_type(e: Expr, env: Env) -> str {
 }
 
 // `++` is the string operator, so it answers before the operands are examined
-// at all — concatenating two gradual values is still a string.
+// at all. Concatenating two gradual values is still a string.
 binop_in(e: Expr, env: Env) -> str {
     is_cmp = e.text == "==" || e.text == "!=" || e.text == "<"
         || e.text == ">" || e.text == "<=" || e.text == ">="
@@ -287,7 +287,7 @@ param_ty(ty: str) -> str {
 }
 
 // The scope is threaded forward, so a binding is visible to what follows it and
-// to nothing before — a body is checked in one pass, with no hoisting.
+// to nothing before: a body is checked in one pass, with no hoisting.
 check_body(stmts: Stmt[], i: int, env: Env) -> int {
     if i >= stmts.length() {
         0
@@ -373,7 +373,7 @@ check_item(s: Stmt, env: Env) -> int {
 // ---- the shallow entry points ---------------------------------------------
 //
 // Kept because an expression is often checked on its own, with no module around
-// it — which is exactly an empty environment.
+// it, which is exactly an empty environment.
 
 type_of(e: Expr) -> str =>
     type_in(e, empty_env())

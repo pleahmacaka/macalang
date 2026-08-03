@@ -1,7 +1,7 @@
 //! What the rust backend lowers, and what it refuses by name.
 //!
 //! Two catch-alls made wrong answers look like right ones. `expr` ended in
-//! `Default::default()`, which type-checks wherever a value is wanted — so
+//! `Default::default()`, which type-checks wherever a value is wanted, so
 //! `break` inside a `while` became a value and the loop could not terminate.
 //! `pat_match` ended in `_`, so a float, record or list pattern became a
 //! wildcard; rustc reports an *unreachable pattern warning* for the arms it

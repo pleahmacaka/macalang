@@ -1,6 +1,6 @@
 //! maca-backend-jvm: lower Maca to Java source (JVM interop).
 //!
-//! Java is the substrate for JVM ecosystems — notably Minecraft (Fabric/Forge)
+//! Java is the substrate for JVM ecosystems, notably Minecraft (Fabric/Forge)
 //! modding. This backend transpiles Maca to a `.java` file that `javac`
 //! compiles, so Maca can call Java APIs and implement Java interfaces directly.
 //!
@@ -369,8 +369,8 @@ fn jexpr(e: &Expr) -> String {
         Expr::Match { scrut, arms } => jmatch(scrut, arms),
         Expr::Block(stmts) => block_value(stmts),
         Expr::Try(x) => jexpr(x),
-        // A Java lambda. This is the target's headline use case — a Fabric mod
-        // registers callbacks — and it used to become `null`, which is
+        // A Java lambda. This is the target's headline use case, since a Fabric
+        // mod registers callbacks, and it used to become `null`, which is
         // assignable to any functional interface, so it compiled and the
         // callback did nothing.
         Expr::Lambda { params, body, .. } => {
@@ -866,7 +866,7 @@ fn jmatch(scrut: &Expr, arms: &[Arm]) -> String {
             }
             Pattern::Ctor { name, .. } => format!("case {name}"),
             Pattern::Int(n) => format!("case {n}"),
-            // Java switches on strings, so this is a real label — it used to
+            // Java switches on strings, so this is a real label. It used to
             // fall to `default`, and two such arms were a duplicate-default
             // error from javac.
             Pattern::Str(v) => format!("case {}", java_str_lit(v)),
@@ -985,7 +985,7 @@ fn is_str(e: &Expr) -> bool {
     matches!(e, Expr::Str(_))
 }
 
-/// A side-effect-free value expression — useless (and illegal) as a Java
+/// A side-effect-free value expression, useless (and illegal) as a Java
 /// statement, so it is dropped when it appears in statement position.
 fn is_pure_value(e: &Expr) -> bool {
     matches!(

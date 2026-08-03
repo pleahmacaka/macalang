@@ -1,4 +1,4 @@
-// bench/cases/data — the inputs every case is measured on.
+// bench/cases/data: the inputs every case is measured on.
 //
 // A benchmark's input has to be the same on every machine and in every run, or
 // two numbers that look comparable are not. Nothing here reads a clock, a file,
@@ -12,7 +12,7 @@
 //
 // Sizes are meant to be modest. `repeated` builds a list by allocating it once
 // and assigning into it, because `xs.push(v)` in a loop copies the whole list
-// every time — building a list of n by pushing is O(n²), and at n = 20000 that
+// every time: building a list of n by pushing is O(n²), and at n = 20000 that
 // is twenty seconds of the benchmark measuring the list builder instead of the
 // case. `bench/cases/prim`'s `list_push` measures that on purpose, at a size
 // small enough to survive it.
@@ -26,7 +26,7 @@ Seed = 12345
 ///
 /// Not a good random number source and not trying to be. What a benchmark needs
 /// from its input is that it is unsorted, spread out, and identical every time,
-/// and an LCG is the cheapest thing that is all three — cheap matters, because
+/// and an LCG is the cheapest thing that is all three. Cheap matters, because
 /// the generator runs inside the timed region for any case that builds its own
 /// input.
 next_rand(state: int) -> int =>
@@ -49,7 +49,7 @@ repeated(n: int, v: int) -> int[] {
     }
 }
 
-/// `n` zeros — the scratch array most of the corpus starts from.
+/// `n` zeros: the scratch array most of the corpus starts from.
 zeros(n: int) -> int[] => repeated(n, 0)
 
 /// `n` pseudo-random integers in 0..99999, the same ones every time.
@@ -65,7 +65,7 @@ numbers(n: int) -> int[] {
     xs
 }
 
-/// `0, 1, 2, …, n-1` — a sorted list, for the cases that need one.
+/// `0, 1, 2, …, n-1`: a sorted list, for the cases that need one.
 ascending(n: int) -> int[] {
     xs = zeros(n)
     i = 0
@@ -76,7 +76,7 @@ ascending(n: int) -> int[] {
     xs
 }
 
-/// `n-1, …, 1, 0` — the worst case for an insertion sort and the best case for
+/// `n-1, …, 1, 0`: the worst case for an insertion sort and the best case for
 /// nothing, which is why it is worth having.
 descending(n: int) -> int[] {
     xs = zeros(n)
@@ -91,7 +91,7 @@ descending(n: int) -> int[] {
 /// `n` bytes of mixed letters, digits and spaces.
 ///
 /// Built by repetition and then cut to length, so it costs one allocation
-/// rather than n concatenations — a scanning case should be measuring the scan.
+/// rather than n concatenations. A scanning case should be measuring the scan.
 sentence(n: int) -> str {
     if n <= 0 {
         ""
@@ -102,7 +102,7 @@ sentence(n: int) -> str {
     }
 }
 
-/// A string of `n` bytes with long runs of repeated characters — what
+/// A string of `n` bytes with long runs of repeated characters: what
 /// run-length encoding is for, and what it is embarrassed by when there are
 /// none.
 runs(n: int) -> str {

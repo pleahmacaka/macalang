@@ -1,6 +1,6 @@
 // External scanner for Maca's significant newlines.
 //
-// A newline separates statements and top-level items — except inside `(` / `[`
+// A newline separates statements and top-level items, except inside `(` / `[`
 // groups and string interpolation, where the real lexer suppresses it. Tree-
 // sitter drives this by validity: `_newline` is only marked valid where the
 // grammar expects a separator (never mid-expression inside a group), so the
@@ -42,7 +42,7 @@ bool tree_sitter_maca_external_scanner_scan(void *payload, TSLexer *lexer,
 
   // Line continuation: a line that *starts* with a binary/ternary operator, a
   // method dot, a closing bracket, or a comma is a continuation of the previous
-  // one, so no separator is emitted. (`/` is excluded — it starts a comment.)
+  // one, so no separator is emitted. (`/` is excluded: it starts a comment.)
   switch (lexer->lookahead) {
     case '?': case ':': case '+': case '-': case '*': case '%':
     case '<': case '>': case '=': case '&': case '|': case '.':

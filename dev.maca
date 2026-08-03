@@ -1,4 +1,4 @@
-// The Maca dev environment, defined in Maca — the source for flake.nix.
+// The Maca dev environment, defined in Maca: the source for flake.nix.
 // Regenerate the flake with:  maca dev
 //
 // Everything the compiler and its backends need: Rust toolchain (stage-0),
@@ -19,7 +19,7 @@ dev.env = {
     RUST_BACKTRACE = "1"
 }
 
-dev.shellHook = "echo 'maca dev shell — cargo build | cargo test | maca --version'"
+dev.shellHook = "echo 'maca dev shell: cargo build | cargo test | maca --version'"
 
 // Windows hosts have no nix; `maca dev` provisions the same toolchain natively
 // with scoop/choco/winget instead. These are ignored when emitting flake.nix,

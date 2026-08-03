@@ -4,7 +4,7 @@
 // those examples, executed. Writing the book turned up five real compiler bugs
 // (a discarded arrow body, an uninferred return type, list methods rejecting a
 // named function, a missing `maca test`, and no empty-list pattern), so the
-// examples are kept here and gated — documentation that isn't run is a claim,
+// examples are kept here and gated. Documentation that isn't run is a claim,
 // not a fact.
 
 // --- ch2: values and types -------------------------------------------------
@@ -86,23 +86,23 @@ main() -> int {
     info("patterns: {describe([])} / {describe([7])} / {describe([1, 2, 3])}")
 
     // errors: `?` propagates; `try` yields the failure's *message*, and the
-    // empty string when nothing failed — not the success value.
+    // empty string when nothing failed, not the success value.
     info("propagate: {checked(2)}")
     info("try: [{try divide(10, 0)}] [{try divide(10, 2)}]")
 
     info("strings: {"ab".repeat(3)} {"7".pad_start(3, "0")} {"A,B".split(",").length()}")
 
     // a literal brace: doubled, or backslash-escaped. Both spell the same thing
-    // ("{" alone would open an interpolation the quote never closes — an error).
+    // ("{" alone would open an interpolation the quote never closes: an error).
     info("braces: {{}} \{\}")
 
     // format specs: [align][0][width][.precision], desugared to ordinary calls
     pi = 3.14159265
     info("fmt: [{pi:.2}] [{42:>6}] [{"ok":<4}] [{"ok":^6}] [{7:03}]")
 
-    // ch15: user interfaces. On native an element renders to HTML text — named
+    // ch15: user interfaces. On native an element renders to HTML text. Named
     // arguments become attributes, positional ones children.
-    // (`p(…)` would be the local `p` above — a binding shadows a tag, which is
+    // (`p(…)` would be the local `p` above: a binding shadows a tag, which is
     // what stops a program's own `label`/`code`/`main` becoming markup.)
     info("ui: {article(class="prose", h1("Hi") span("Body"))}")
     // a hyphenated attribute is written with the hyphen (attached `-` is part
@@ -112,7 +112,7 @@ main() -> int {
     info("flag: {details(open=true, summary("more") "text")}")
     info("dyn: {element("h" ++ 2, id="s", "Deep")}")
     // `styles()` is the stylesheet for the utilities this program writes, and
-    // nothing else — the `prose` class above is not a utility, so no rule.
+    // nothing else: the `prose` class above is not a utility, so no rule.
     sheet = styles()
     info("styles: {sheet.contains(".font-bold")} {sheet.contains(".text-9xl")}")
 

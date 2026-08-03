@@ -3,7 +3,7 @@
 The chapters so far each showed one idea. This one builds a whole tool, and the
 tool is real: `tools/lint.maca` in the repository, the linter that the Maca
 sources are actually held to. It reads files, walks directories, takes command
-line arguments and sets an exit code — the shape of most command line programs.
+line arguments and sets an exit code: the shape of most command line programs.
 
 ## What it does
 
@@ -29,8 +29,8 @@ too_wide(line: str) -> bool =>
 ```
 
 Comments are exempt, because prose wraps differently from code. But run that over
-a real codebase and it fires on lines that are one long *string* — a C template,
-a URL, a test program — which cannot be rewrapped without changing what they
+a real codebase and it fires on lines that are one long *string* (a C template,
+a URL, a test program), which cannot be rewrapped without changing what they
 mean. A comment and a string literal are the same case. So the rule measures the
 line with its strings collapsed:
 
@@ -52,7 +52,7 @@ collapse(cs: str[], i: int, quoted: bool, acc: str) -> str =>
 ```
 
 `collapse` is the shape you will write over and over in Maca: a recursive walk
-over `chars()` threading state — here a cursor, a flag, and an accumulator. That
+over `chars()` threading state: here a cursor, a flag, and an accumulator. That
 change took the repository from 65 findings to 13, and all 13 were real.
 
 ## Collecting the complaints
@@ -84,7 +84,7 @@ lint_file(path: str) -> str =>
 ```
 
 `read_file` returns the contents as a `str`. Splitting on newline gives the
-lines. The `false` is the "inside a raw string" flag — raw `"""…"""` blocks hold
+lines. The `false` is the "inside a raw string" flag. Raw `"""…"""` blocks hold
 foreign CSS and JavaScript, and the Maca-shape rules should not apply to them.
 
 ## Walking a directory
@@ -149,7 +149,7 @@ of the exercise: a linter you do not run on yourself is a suggestion.
 ## What building it found
 
 Writing this tool found a compiler bug, and the way it found it is instructive.
-The single-line-`if` rule tested `line.contains("{")` — and matched nothing,
+The single-line-`if` rule tested `line.contains("{")`, and matched nothing,
 ever. In Maca a `{` inside a string opens an interpolation, so `"{"` was not a
 literal brace; it opened an interpolation that the closing quote never ended, and
 the following `"` opened a *nested* string that swallowed source up to the next
@@ -175,10 +175,10 @@ standard library and every diagnostic.
 
 Three entrances worth knowing by name:
 
-- [Syntax](a5-syntax.md) — every form, in tables, including the line-break rule
+- [Syntax](a5-syntax.md): every form, in tables, including the line-break rule
   that has one silent trap in it.
-- [The Standard Library](a3-stdlib.md) — every builtin and every method.
-- [Diagnostics](a4-diagnostics.md) — the message you are looking at right now,
+- [The Standard Library](a3-stdlib.md): every builtin and every method.
+- [Diagnostics](a4-diagnostics.md): the message you are looking at right now,
   and what to do about it.
 
 And two chapters about the project rather than the language: the

@@ -1,4 +1,4 @@
-// cli/help — `--help`, rendered from the same value the parser reads.
+// cli/help: `--help`, rendered from the same value the parser reads.
 //
 // Help that is written by hand goes stale the first time an option is renamed,
 // and nothing fails when it does: the command still runs, and only the person
@@ -16,7 +16,7 @@ import { bold, dim, grey, pad, width } from cli/style
 
 /// The whole help page for `c`.
 help(c: Cmd) -> str {
-    out = bold(c.name) ++ (c.about == "" ? "" : " — " ++ c.about) ++ "\n\n"
+    out = bold(c.name) ++ (c.about == "" ? "" : ": " ++ c.about) ++ "\n\n"
     out = out ++ bold("Usage") ++ "\n  " ++ usage(c) ++ "\n"
 
     if c.args.length() > 0 {
@@ -44,7 +44,7 @@ arg_usage(c: Cmd, i: int, acc: str) -> str {
 }
 
 // The width of the widest left column, so the descriptions line up. Measured
-// with `width`, which does not count escape codes — aligning to the bytes of a
+// with `width`, which does not count escape codes. Aligning to the bytes of a
 // bold name indents the column by the length of the escape.
 column(c: Cmd) -> int {
     w = 10
@@ -63,7 +63,7 @@ column(c: Cmd) -> int {
     w + 2
 }
 
-// `-n, --times` — or four spaces where there is no short form, so the long
+// `-n, --times`, or four spaces where there is no short form, so the long
 // names stay in one column whether or not their neighbours have a letter.
 left_of(o: Opt) -> str =>
     o.short == "" ? "    --{o.long}" : "-{o.short}, --{o.long}"
@@ -89,6 +89,6 @@ opt_lines(c: Cmd, i: int, acc: str) -> str {
 }
 
 // `--help` is understood by every command without being declared, so it is
-// printed the same way — last, where a reader expects it.
+// printed the same way: last, where a reader expects it.
 help_line(c: Cmd) -> str =>
     "  " ++ pad("-h, --help", column(c)) ++ dim("show this and exit") ++ "\n"

@@ -1,13 +1,13 @@
 //! Every UFCS method, lowered to JS and executed.
 //!
 //! `jcall` handed each method name straight to JS, which was wrong twice over.
-//! Some do not exist there — `.length` is a property, so `xs.length()` threw
+//! Some do not exist there: `.length` is a property, so `xs.length()` threw
 //! `TypeError`. The dangerous ones are those that exist and mean something else:
 //! `push` returns the new *length*, and `sort` compares as strings, so
 //! `[10, 9, 2].sort()` came back `[10, 2, 9]`.
 //!
 //! Expected values here are the answers the **native** backend gives for the
-//! same expression — the native path is the reference, and a target that
+//! same expression. The native path is the reference, and a target that
 //! disagrees with it is wrong even when its own answer looks reasonable.
 
 use std::io::Write;

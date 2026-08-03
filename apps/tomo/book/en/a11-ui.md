@@ -19,7 +19,7 @@ article(class="prose",
 ```
 
 Named arguments are attributes; positional arguments are children. Children are
-separated by commas or by nothing at all — the second is what makes nested
+separated by commas or by nothing at all. The second is what makes nested
 markup readable, and it is why the example above needs no punctuation between
 the heading and the paragraph.
 
@@ -63,7 +63,7 @@ main() -> int {
 
 That is what a static site generator needs. An event handler has nowhere to
 attach in a string, so `on:click=` on the native target is a compile error that
-tells you to build for `js` — rather than markup that silently does nothing.
+tells you to build for `js`, rather than markup that silently does nothing.
 
 Attribute values are escaped. Children are **not**, because a child is either
 another element (already markup) or text the program chose to put there. A
@@ -80,8 +80,8 @@ defined, the definition wins:
 label(pos: bool) -> str => pos ? "right" : "left"
 
 main() -> int {
-    info(label(true))     // "right" — your function, not <label>
-    info(span("tag"))     // "<span>tag</span>" — nothing shadows `span`
+    info(label(true))     // "right": your function, not <label>
+    info(span("tag"))     // "<span>tag</span>": nothing shadows `span`
     0
 }
 ```
@@ -118,7 +118,7 @@ whitespace is how you choose.
 
 ## Two more an identifier alone cannot express
 
-**Booleans.** HTML reads *any* attribute value as true — `hidden="false"` still
+**Booleans.** HTML reads *any* attribute value as true: `hidden="false"` still
 hides the element. So a bool controls whether the attribute exists at all:
 
 ```maca
@@ -166,7 +166,7 @@ html,body{margin:0}
 ```
 
 Two lines of reset, then one rule per utility written. A utility the program
-never mentions produces no rule — there is no framework to tree-shake, because
+never mentions produces no rule. There is no framework to tree-shake, because
 nothing was included in the first place. There is also no network fetch, which
 is why a book built this way opens correctly straight off a disk.
 
@@ -191,7 +191,7 @@ selector suffix:
 |---|---|
 | `hover:` `focus:` `active:` | `:hover` `:focus` `:active` |
 | `first:` `last:` | `:first-child` `:last-child` |
-| `open:` | `[open]` — an open `<details>` |
+| `open:` | `[open]`, an open `<details>` |
 | `before:` `after:` `marker:` | the matching pseudo-element |
 | `placeholder:` | `::placeholder` |
 | `details-marker:` | `::-webkit-details-marker` |
@@ -233,8 +233,8 @@ div(class="grid-cols-[1fr_18rem]", body)
 
 The generated selector is escaped, which matters more than it looks: `.max-w-[42rem]`
 is not a valid CSS selector, and a browser that meets one **drops the rule
-silently** — no console warning, no visible failure except that the style is
-missing.
+silently**, with no console warning and no visible failure except that the style
+is missing.
 
 ## Putting it together
 
@@ -269,7 +269,7 @@ Markdown parser in front of it.
 | native (C) | a `maca_concat` chain producing an HTML string; `maca_attr` escapes attribute values, children are not re-escaped, void elements self-close |
 | `js` | `createElement` calls and a reactive DOM; `on:` attaches a handler, `bind:` two-way binds a field |
 | `element(tag, …)` | the same on both, with voidness decided at run time in `maca_element` |
-| `open=true` | `maca_flag` — the attribute is present or absent, never `="false"` |
+| `open=true` | `maca_flag`: the attribute is present or absent, never `="false"` |
 
 `on:click=` on the native target is a compile error naming `--target js`, and
 that is the only place the two targets diverge in what they accept. See

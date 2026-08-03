@@ -1,10 +1,10 @@
-// tambo/reply — the answers a handler gives that `http/response` does not.
+// tambo/reply: the answers a handler gives that `http/response` does not.
 //
 // `text`, `html`, `json`, `redirect` and `status` already exist and are what a
 // handler should reach for; import them from `http/response`. This file adds
-// the two answers that are about *dispatch* rather than about HTTP — `pass`,
+// the two answers that are about *dispatch* rather than about HTTP: `pass`,
 // meaning "I have nothing to say", and `broke`, meaning "something went wrong,
-// and here is a note for the log rather than for the caller" — plus the object
+// and here is a note for the log rather than for the caller", plus the object
 // helpers, because `http/response.json` takes a body someone else encoded.
 //
 //     import { text, json } from http/response
@@ -19,7 +19,7 @@ import { quote, object_of } from std/json
 /// it means leave the response alone. From a route handler it means the arm is
 /// missing, and `tambo/dispatch` reports it as the program bug it is.
 ///
-/// One sentinel with one meaning — "not my request" — and the caller decides
+/// One sentinel with one meaning, "not my request", and the caller decides
 /// what that implies, which is why it can be the `_` arm of every dispatch.
 ///
 /// The marker is status 0. Zero is not an HTTP status, so it cannot collide
@@ -41,7 +41,7 @@ passed(r: Response) -> bool =>
 /// It hangs up rather than keeping the connection alive, because whatever went
 /// wrong may have left half a body already written to it.
 ///
-/// The scrubbing is not this function's doing — `dispatch` applies it to every
+/// The scrubbing is not this function's doing. `dispatch` applies it to every
 /// 5xx, however it was built. `broke` just gives the note somewhere to go.
 broke(note: str) -> Response =>
     Response { status = 500, headers = [], body = note, close = true }

@@ -1,5 +1,5 @@
 // An inline (non-capturing) lambda used as a function value. It is hoisted to a
-// top-level function natively — no named helper needed (cf. examples/parallel.maca).
+// top-level function natively: no named helper needed (cf. examples/parallel.maca).
 
 main() -> int {
     xs = 1, 2, 3, 4

@@ -14,7 +14,7 @@ use std::process::Command;
 /// The suite shells out to a compiler to run the two generators, and `MACA`
 /// tells it which one: the binary this `cargo test` just built. It used to
 /// hardcode `target/release/maca` and skip when that was absent, which is
-/// every CI run — the `test` job has no reason to have made a release build,
+/// every CI run: the `test` job has no reason to have made a release build,
 /// so the whole suite was green having checked nothing.
 #[test]
 fn the_generated_pages_are_what_they_claim() {

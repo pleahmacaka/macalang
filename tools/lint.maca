@@ -1,4 +1,4 @@
-// lint — the Maca style linter, written in Maca.
+// lint: the Maca style linter, written in Maca.
 //
 // A port of the style half of `maca lint` (crates/driver/src/main.rs) into the
 // language itself, extended to walk a directory so it can check a whole tree.
@@ -7,7 +7,7 @@
 // itself.
 //
 // Rules:
-//   - a line over 80 columns (comments exempt — prose wraps differently)
+//   - a line over 80 columns (comments exempt: prose wraps differently)
 //   - a single-line `if … { … }` block, which the style guide breaks apart
 //   - trailing whitespace
 //   - a hard tab (Maca indents with four spaces)
@@ -33,7 +33,7 @@ Issue = {
 }
 
 // Does this line hold a whole `if` block, opened and closed? The line must
-// *start* with the keyword — an `if ` in the middle is a string or a comment
+// *start* with the keyword: an `if ` in the middle is a string or a comment
 // (this very file mentions one), and a ternary `c ? a : b` legitimately fits
 // on one line, so both are exempt.
 single_line_if(line: str) -> bool {
@@ -43,7 +43,7 @@ single_line_if(line: str) -> bool {
 }
 
 // The width rule exists so *code* stays readable at 80 columns. A long string
-// literal is like a long comment — a C template, a URL, a test program — and
+// literal is like a long comment (a C template, a URL, a test program), and
 // rewrapping it would change or disfigure it. So the line is measured with its
 // string literals collapsed: `info("…200 chars…")` counts as `info("")` and
 // passes, while genuinely wide code still fails.
@@ -99,7 +99,7 @@ say(path: str, no: int, hit: bool, what: str) -> Issue[] {
 }
 
 // Walk the file, threading whether we are inside a raw `"""…"""` block. Those
-// hold foreign text — the CSS and JS a `.maca` UI carries inline — so the two
+// hold foreign text (the CSS and JS a `.maca` UI carries inline), so the two
 // rules about *Maca* code shape (width, single-line `if`) are suspended there,
 // for the same reason a long string literal is exempt. Whitespace hygiene
 // still applies: a trailing space is noise in any language.
@@ -172,14 +172,14 @@ lint_path(path: str) -> Issue[] {
 // ---- entry point ----------------------------------------------------------
 
 // What gets linted when no path is given: Maca linting Maca. Every path in the
-// repository that holds Maca source is here, and nothing is exempt — a style
+// repository that holds Maca source is here, and nothing is exempt: a style
 // the codebase doesn't hold to isn't a style.
 default_paths() -> str[] =>
     ["examples", "selfhost", "tools", "modules", "apps", "packages",
      "crates/driver/tests/programs", "dev.maca"]
 
 Spec = command("lint", "Maca's style rules, over a file or a whole tree")
-    .rest("path", "what to lint — the repository's own sources by default")
+    .rest("path", "what to lint (the repository's own sources by default)")
 
 main(argv: str[]) -> int {
     got = parse(Spec, argv)

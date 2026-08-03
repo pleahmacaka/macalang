@@ -7,8 +7,8 @@
 //! `import { nosuchfn } from http/server` passes it.
 //!
 //! That is the failure this file exists for. README advertised
-//! `import { serve, text } from http/server` — `http/server` defines neither
-//! name — and every check in the repository was green, because the example had
+//! `import { serve, text } from http/server` (`http/server` defines neither
+//! name) and every check in the repository was green, because the example had
 //! only ever been verified by pasting it into a file with the missing pieces
 //! added. An example is a claim about the packages as they are, and the only
 //! way to check that claim is to build it where they live.
@@ -76,7 +76,7 @@ fn documented_imports_name_things_that_exist() {
                 continue;
             }
             // Written at the repository root, because that is where `modules/`
-            // resolves from — the same reason a reader's own project has to be
+            // resolves from, the same reason a reader's own project has to be
             // a project.
             let src = repo().join(format!(".maca-doc-{}-{i}.maca", file.replace('.', "-")));
             std::fs::write(&src, as_program(block)).expect("write the block");
@@ -106,7 +106,7 @@ fn documented_imports_name_things_that_exist() {
 
     assert!(
         built > 0,
-        "no documented example imports a package — either the docs stopped \
+        "no documented example imports a package: either the docs stopped \
          showing one or the detection above stopped recognising it"
     );
 }

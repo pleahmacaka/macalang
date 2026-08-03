@@ -1,4 +1,4 @@
-// macadoc — API documentation from Maca source, written in Maca.
+// macadoc: API documentation from Maca source, written in Maca.
 //
 // What TSDoc is to TypeScript and rustdoc is to Rust: read the declarations a
 // module exports, pair each with the comment written above it, and render a
@@ -8,14 +8,14 @@
 //   maca run tools/macadoc.maca site/api std/text.maca std/list.maca
 //
 // **`///` is what makes an item API.** Maca has no export keyword, and a
-// module is mostly helpers — `scan_any`, `keep_nonempty`, the recursion an
+// module is mostly helpers: `scan_any`, `keep_nonempty`, the recursion an
 // exported function is written in terms of. So a doc comment is spelled with a
 // third slash, exactly as `///` is rustdoc's and `/** */` is TSDoc's: an item
 // with a `///` block directly above it is API and is listed, and an item with
 // an ordinary `//` comment is a helper being explained to the next reader of
 // the source, which is a different audience and belongs in a different place.
 //
-// The alternative — "any comment above an item means API" — was tried first,
+// The alternative, "any comment above an item means API", was tried first,
 // and measuring it against what `std/README.md` advertises found it wrong 18
 // times in 60: nine helpers listed as API because they needed explaining, and
 // nine public functions missing because they were obvious enough not to.
@@ -56,7 +56,7 @@ Module = {
 // ---- reading a module -----------------------------------------------------
 
 // A path that doesn't resolve used to read as an empty file, which produced a
-// module with no items and a full page of chrome around it — and the site
+// module with no items and a full page of chrome around it, and the site
 // check, which only asks whether a page is non-empty, published it.
 read_module(p: str) -> Module {
     if !file_exists(p) {
@@ -67,7 +67,7 @@ read_module(p: str) -> Module {
     items = scan(lines, 0, [], [])
 
     if items.length() == 0 {
-        fail "{p} documents nothing — is every item missing its `///` block?"
+        fail "{p} documents nothing. Is every item missing its `///` block?"
     }
 
     require_distinct_items(p, items, 0)
@@ -145,8 +145,8 @@ drop_slashes(line: str, i: int) -> str {
 }
 
 // Walk the file, gathering a `///` run and attaching it to the declaration
-// directly below it. Anything else — a blank line, an ordinary comment, a line
-// that declares nothing — throws the run away, so a doc block can never drift
+// directly below it. Anything else (a blank line, an ordinary comment, a line
+// that declares nothing) throws the run away, so a doc block can never drift
 // onto whatever happens to follow it.
 scan(lines: str[], i: int, doc: str[], acc: Item[]) -> Item[] {
     if i >= lines.length() {
@@ -264,7 +264,7 @@ is_fn(line: str) -> bool {
     }
 }
 
-// `Name = …` at column zero — a type or a constant.
+// `Name = …` at column zero: a type or a constant.
 is_binding(line: str) -> bool {
     if line.starts_with(" ") || !line.contains(" = ") {
         false
@@ -312,8 +312,8 @@ rhs(line: str) -> str {
     }
 }
 
-// A function's signature is everything before the body — the `{` of a block or
-// the `=>` of an arrow — so the reader sees the types and nothing else.
+// A function's signature is everything before the body (the `{` of a block or
+// the `=>` of an arrow), so the reader sees the types and nothing else.
 //
 // A parameter list that wraps is joined back up first. Reading one line and
 // stopping published `wrapped(alpha: int,` as the signature: an unbalanced
@@ -399,7 +399,7 @@ gather(lines: str[], from: int, i: int) -> str {
 // ---- prose ----------------------------------------------------------------
 //
 // A comment block is not one paragraph. Blank lines separate it into blocks,
-// and a block that is indented in the source is an example — the module
+// and a block that is indented in the source is an example. The module
 // headers all end with the `import` line you need, and running that together
 // with the sentence above it would be the one thing a reference must not do.
 
@@ -428,7 +428,7 @@ block(ls: str[]) -> str {
 }
 
 // Backtick spans become `<code>` and `*starred*` runs become `<em>`. Nothing
-// else is markup, because nothing else is what these comments use — and a
+// else is markup, because nothing else is what these comments use, and a
 // marker that renders as itself is worse than no marker at all.
 inline(s: str) -> str =>
     spans(paired(s.split("`"), "`"), 0, "")
@@ -465,7 +465,7 @@ is_emphasis(body: str) -> bool =>
     body != "" && !body.starts_with(" ") && !body.ends_with(" ")
 
 // An odd number of delimiters means the last one opened something that never
-// closed — a multiplication sign in prose, or a backtick someone forgot. The
+// closed: a multiplication sign in prose, or a backtick someone forgot. The
 // tail is joined back onto the part before it, so it stays plain text instead
 // of italicising the rest of the paragraph.
 paired(parts: str[], sep: str) -> str[] {
@@ -995,7 +995,7 @@ main(argv: str[]) -> int {
         // `rest` is satisfied by nothing, so the count is checked here: a run
         // with only an output directory otherwise wrote an index of no modules
         // and reported success.
-        err(bad("macadoc: no modules given — nothing to document"))
+        err(bad("macadoc: no modules given, so there is nothing to document"))
         1
     } else {
         generate(value(got, "out", ""), from(got, 1))

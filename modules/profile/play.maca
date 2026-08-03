@@ -1,8 +1,8 @@
-// profile/play — a trace, in the order it happened.
+// profile/play: a trace, in the order it happened.
 //
 // The tree says what contains what. This says what came next: every span
 // flattened into the two moments it has, sorted by time. That is the form you
-// want when the question is chronological rather than structural — printing a
+// want when the question is chronological rather than structural: printing a
 // run as it happened, animating it, or stepping through it beside a log.
 //
 //   for line in narrate(t) { info(line) }
@@ -15,7 +15,7 @@
 // Flattening is quadratic in the number of spans, because appending to a list
 // copies it: a thousand-span trace takes about 0.15s, four thousand about 20s.
 // This is a diagnostic over a run that has already happened, not something to
-// call in a loop — and a trace that large has stopped saying anything a person
+// call in a loop, and a trace that large has stopped saying anything a person
 // can read anyway.
 
 import profile/trace
@@ -50,7 +50,7 @@ events(t: Trace) -> Event[] {
 //
 // It is worth one pass to find out. `insert_by_time` copies the list three
 // times per event, and at four thousand spans that is twenty-five seconds of a
-// profiler's own time — spent, until this check, on every trace it ever built.
+// profiler's own time, spent, until this check, on every trace it ever built.
 in_order(evs: Event[], i: int) -> bool {
     if i >= evs.length() {
         true
@@ -87,7 +87,7 @@ edge(s: Span, i: int, enter: bool) -> Event =>
 
 // A stable insertion sort. `sort` handles ints, not records, and a sort that
 // reordered the ties would throw away the only part of the ordering the
-// timestamps could not supply. It is quadratic and it is not cheap — see
+// timestamps could not supply. It is quadratic and it is not cheap. See
 // `in_order`, which is why a recorded trace does not come through here.
 by_time(evs: Event[], i: int, acc: Event[]) -> Event[] {
     if i >= evs.length() {
@@ -104,7 +104,7 @@ insert_by_time(acc: Event[], e: Event) -> Event[] {
     head ++ acc.slice(at, acc.length())
 }
 
-// The first position holding a later time — inserting there puts `e` after
+// The first position holding a later time. Inserting there puts `e` after
 // everything recorded at the same millisecond, which is what keeps it stable.
 first_later(acc: Event[], at: int, i: int) -> int {
     if i >= acc.length() {
@@ -135,7 +135,7 @@ gap_before(evs: Event[], i: int) -> int {
 ///
 /// `on_event` is handed the index rather than the event because a callback
 /// takes exactly one argument, and the index is the one value from which a
-/// caller can reach everything else — it is holding `evs` already.
+/// caller can reach everything else, since it is holding `evs` already.
 replay(evs: Event[], pace: int, on_event) -> int {
     step(evs, pace, 0, on_event)
 

@@ -1,5 +1,5 @@
 // SIMD dot product over 8-lane f32 vectors (the LLVM span), alongside a
-// closure-based `.map` on the C path — two ways Maca goes fast.
+// closure-based `.map` on the C path: two ways Maca goes fast.
 dot8(a: f32x8, b: f32x8) -> f32 => (a * b).sum()
 
 main() -> int {

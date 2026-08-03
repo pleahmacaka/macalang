@@ -2,7 +2,7 @@
 
 ; comments
 ;
-; `///` is a doc comment — the marker `tools/macadoc.maca` reads to decide an
+; `///` is a doc comment: the marker `tools/macadoc.maca` reads to decide an
 ; item is API. The grammar has a single `comment` node (a third slash is not a
 ; token, exactly as it is not one to the compiler), so the distinction is drawn
 ; by a predicate. The specific pattern has to come first.

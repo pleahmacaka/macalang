@@ -1,4 +1,4 @@
-// selfhost/main — the stage-1 driver entry.
+// selfhost/main: the stage-1 driver entry.
 //
 // `maca build selfhost/main.maca` resolves these imports to the sibling
 // modules (the stage-0 driver inlines local imports in dependency order), so
@@ -61,7 +61,7 @@ demo() -> int {
     info(emit_module(mod))
 
     // One clean function and one `int + str` clash, so the count is 1 rather
-    // than 0 or 2 — a checker that answered per module would say the wrong one.
+    // than 0 or 2. A checker that answered per module would say the wrong one.
     prog2 = "ok() -> int => 1 + 2 bad() -> int => 1 + \"x\""
     mod2 = parse_module(lex(prog2), 0, [])
     info("module check: {check_module(mod2)} type errors")
@@ -133,7 +133,7 @@ demo() -> int {
     info("interp C:    {emit_fn(ip.snode)}")
     info("interp Rust: {remit_fn(ip.snode)}")
 
-    // An interpolation holds a whole expression, not just a name — it goes back
+    // An interpolation holds a whole expression, not just a name. It goes back
     // through the lexer and the expression parser to get there.
     ip2 = parse_expr(lex("\"sum \{a + b\} done\""), 0)
     info("interp expr: {show(ip2.node)}")

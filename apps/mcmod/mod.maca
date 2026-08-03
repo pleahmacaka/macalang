@@ -2,11 +2,11 @@
 //
 // Build it to Java with:  maca build --target jvm mod.maca -o build
 // then drop the generated ExampleMod.java into a Fabric project's
-// src/main/java (or point Gradle at it) — see README.md.
+// src/main/java (or point Gradle at it). See README.md.
 
 import java "net.fabricmc.api.ModInitializer"
 
-// plain Maca logic — compiled to a static Java method
+// plain Maca logic, compiled to a static Java method
 greeting(name: str) -> str =>
     "Hello from a Maca-authored Fabric mod, {name}!"
 

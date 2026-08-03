@@ -6,7 +6,7 @@
 //! first version of it was missing `parallel` and `join` and invented `count`,
 //! `get` and `fixed` on `str`.
 //!
-//! So the lists are not trusted — they are executed. Every name in them is
+//! So the lists are not trusted: they are executed. Every name in them is
 //! compiled and run against a real receiver here. A name the back end can't
 //! lower fails to build; a name the back end *can* lower but that is missing
 //! from the list gets rejected by the checker as a typo, which the second half

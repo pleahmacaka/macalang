@@ -1,4 +1,4 @@
-// A tour of Maca surface syntax — one small program that exercises most of the
+// A tour of Maca surface syntax: one small program that exercises most of the
 // language and type-checks clean. (`examples/bad/*` show what gets rejected.)
 
 /* Block comments work too. */

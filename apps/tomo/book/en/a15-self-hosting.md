@@ -2,14 +2,14 @@
 
 A language that cannot compile itself is asking you to trust it further than its
 authors do. Maca is being bootstrapped, and this chapter explains the shape of
-that — partly because it is interesting, and mostly because it is where new
+that, partly because it is interesting, and mostly because it is where new
 compiler work goes.
 
 ## Two stages
 
 **Stage 0** is the Rust compiler under `crates/`. It is the bootstrap, and it is
-frozen: it changes only for genuine bootstrap bugs — a parser that hangs, a
-construct that mis-parses. It is not where features are added.
+frozen: it changes only for genuine bootstrap bugs, such as a parser that hangs
+or a construct that mis-parses. It is not where features are added.
 
 **Stage 1** is the Maca compiler under `selfhost/`, written in Maca. This is
 where new compiler work belongs. Stage 0 compiles it; a test gate
@@ -28,7 +28,7 @@ lexer.maca → parser.maca → ast.maca → check.maca → emit_c.maca
 ```
 
 A hand-written lexer, a recursive-descent parser producing a recursive `Expr`
-AST with a pretty-printer, a type checker, and **two** back ends — one emitting
+AST with a pretty-printer, a type checker, and **two** back ends: one emitting
 C, one emitting Rust.
 
 The slice of Maca it handles is well past a toy: the full primitive expression
@@ -36,14 +36,14 @@ language (integer, float, string and boolean literals; arithmetic, comparison,
 `&&`/`||`, unary `-`/`!`; the ternary; multi-argument and nested calls with
 correct precedence), string interpolation, type-threaded signatures where a
 declared type flows through to `const char*`/`double`/`bool` in C and
-`String`/`f64` in Rust, records with field access, and sum types — nullary and
-payload-carrying — with `match` over binding patterns.
+`String`/`f64` in Rust, records with field access, and sum types, both nullary
+and payload-carrying, with `match` over binding patterns.
 
 The checker carries an environment rather than counting mismatches: the
 module's function signatures, its record fields, its sum variants, and the
 locals in scope. That is what lets it answer a call's result type, a call's
 arity, a field the record does not have, and a body that disagrees with its
-declared return. `any` is the gradual escape hatch, and it is deliberate — a
+declared return. `any` is the gradual escape hatch, and it is deliberate: a
 name the module does not declare is foreign, not wrong.
 
 ## How the gate works
@@ -54,7 +54,7 @@ The test does not check that the stage-1 compiler produces the *expected* output
 It checks that the output **works**:
 
 1. Stage 0 compiles the stage-1 compiler to a native binary with the host `cc`.
-2. That binary is run over a Maca program, twice — once emitting C, once
+2. That binary is run over a Maca program, twice: once emitting C, once
    emitting Rust.
 3. The emitted C is compiled with `cc` and run. The emitted Rust is compiled with
    `rustc` and run.
@@ -84,7 +84,7 @@ Expr = {
 }
 ```
 
-In C that is a definition cycle — the array type needs the struct's size, the
+In C that is a definition cycle: the array type needs the struct's size, the
 struct needs the array. The backend breaks it by forward-declaring the array
 struct before the record body and emitting its operations after.
 [Memory and Ownership](a8-memory.md) has the exact shape; it exists because the
@@ -102,7 +102,7 @@ maca run selfhost/main.maca
 
 The files are small and deliberately plain. `lexer.maca` is a character scanner.
 `parser.maca` is recursive descent with a precedence table. `emit_c.maca` is
-string templates. There is no cleverness to decode, which is the idea — a
+string templates. There is no cleverness to decode, which is the idea. A
 bootstrap compiler that is hard to read is a bootstrap compiler nobody will
 finish.
 
@@ -116,7 +116,7 @@ That boundary is the point of the two-stage design rather than a defect in it.
 Stage 0 is frozen at whatever it takes to compile stage 1; stage 1 grows one
 gated increment at a time. Each increment is written in Maca, gated with a
 compile-and-run capstone, and left to disagree loudly with stage 0 until it
-doesn't — which is why the gate compiles the *emitted* program through both
+doesn't, which is why the gate compiles the *emitted* program through both
 `cc` and `rustc` rather than comparing generated text.
 
 Porting stage 0 line by line would be faster to start and impossible to

@@ -1,14 +1,14 @@
 //! Gate for the Maca-in-Maca sources under `selfhost/`.
 //!
 //! Two levels of assurance:
-//!  1. Every `selfhost/*.maca` must parse with no errors, and the whole thing —
-//!     concatenated so cross-file references resolve — must type-/effect-check
+//!  1. Every `selfhost/*.maca` must parse with no errors, and the whole thing
+//!     (concatenated so cross-file references resolve) must type-/effect-check
 //!     clean under the stage-0 front-end.
 //!  2. Where a native toolchain is present, the compiler is actually *compiled
 //!     and run*: the Maca-written lexer → parser (with precedence) → checker →
 //!     two emitters (C and Rust) process expressions, functions, and whole
 //!     modules. As a capstone, the complete program it emits is compiled two
-//!     ways — the C by the host cc, the Rust by rustc — and both are executed;
+//!     ways (the C by the host cc, the Rust by rustc), and both are executed;
 //!     the matching exit codes prove the self-hosted compiler produced a working
 //!     executable through each back end, not just a plausible-looking string.
 
@@ -94,7 +94,7 @@ fn selfhost_frontend_compiles_and_runs() {
 
     // Build straight from the real entry point: the driver resolves the
     // `import selfhost/…` statements to the sibling modules and inlines them in
-    // dependency order — no manual concatenation.
+    // dependency order, with no manual concatenation.
     let entry = selfhost_dir().join("main.maca");
     let build = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args([
@@ -118,7 +118,7 @@ fn selfhost_frontend_compiles_and_runs() {
         stdout.contains("scanned 9 tokens from 14 chars"),
         "lexer output wrong: {stdout}"
     );
-    // parser + AST printer: left-associative, call folded — the recursive
+    // parser + AST printer: left-associative, call folded. The recursive
     // `Expr` type round-trips through native codegen.
     assert!(
         stdout.contains("parsed: ((add(1) + 2) - 3)"),
@@ -213,7 +213,7 @@ fn selfhost_frontend_compiles_and_runs() {
         "Rust parameter typing wrong: {stdout}"
     );
 
-    // bool: a `-> bool` function returning a literal — `true`/`false` lower to
+    // bool: a `-> bool` function returning a literal. `true`/`false` lower to
     // `1`/`0` in C but stay keywords in Rust, and the return type differs.
     assert!(
         stdout.contains("bool fn C:    int flag() { return 1;"),
@@ -351,7 +351,7 @@ fn selfhost_frontend_compiles_and_runs() {
     );
 
     // payload sum variants. In C a tag plus a row of cells wide enough for the
-    // widest variant, with a constructor named after each variant — so an
+    // widest variant, with a constructor named after each variant, so an
     // ordinary `Circle(2)` compiles without the call site knowing which names
     // are variants. In Rust the native enum, where it already is a constructor.
     assert!(
@@ -378,7 +378,7 @@ fn selfhost_frontend_compiles_and_runs() {
 
     // string interpolation: `"n = {x}"` desugars in the *parser* to the concat
     // and `str` forms both back ends already emit, so neither emitter needed a
-    // new case — the same trick stage-0 uses for format specs.
+    // new case: the same trick stage-0 uses for format specs.
     assert!(
         stdout.contains(
             "interp C:    const char* label(int n) { return maca_cat(maca_cat(\"n = \", maca_int_to_str(n)), \"!\");"
@@ -407,7 +407,7 @@ fn selfhost_frontend_compiles_and_runs() {
     );
 
     // a realistic file shape: leading `import` lines are skipped, leaving the
-    // type/function definitions — 2 items here (a sum + a function).
+    // type/function definitions: 2 items here (a sum + a function).
     assert!(
         stdout.contains("real file: 2 items after skipping imports"),
         "import skipping wrong: {stdout}"
@@ -415,7 +415,7 @@ fn selfhost_frontend_compiles_and_runs() {
 
     // Capstone: compile and run the *complete program* the self-hosted compiler
     // emitted. Extract the C between the markers, compile it with the host cc,
-    // run it, and check its exit code is `sum(Point{40,2}) == 42` — the
+    // run it, and check its exit code is `sum(Point{40,2}) == 42`: the
     // Maca-written compiler produced a working executable using a record type,
     // a record literal, field access, and a record-typed parameter.
     let c_src = stdout
@@ -481,7 +481,7 @@ fn selfhost_frontend_compiles_and_runs() {
 
     // Capstone #2: the *same* program through the Maca-written Rust back end
     // (emit_rust.maca). Extract the emitted Rust, compile it with `rustc`, run
-    // it, and check the exit code is again `42` — proving the Rust
+    // it, and check the exit code is again `42`, proving the Rust
     // backend written in Maca produces a working executable, not just C.
     if !have("rustc") {
         eprintln!("skipping selfhost rust capstone: no rustc on PATH");
@@ -546,7 +546,7 @@ fn selfhost_frontend_compiles_and_runs() {
 /// The same run, watched.
 ///
 /// This is the largest program the project compiles with its own back end, and
-/// the one whose answers are checked line by line above — which is exactly why
+/// the one whose answers are checked line by line above, which is exactly why
 /// it is worth running under a memory checker. Every assertion above passed
 /// while the parser read three tokens past the end of its own token array on
 /// every identifier it scanned, because reading past a buffer usually returns
@@ -592,7 +592,7 @@ fn the_selfhost_front_end_reads_nothing_it_does_not_own() {
 /// The differential gate: one source, two compilers, the same program.
 ///
 /// The bootstrap closes when a stage-1 binary rebuilds itself byte for byte.
-/// The step before that — and the one that actually catches divergence — is
+/// The step before that, and the one that actually catches divergence, is
 /// this: compile the same source with stage-0 (Rust) and with stage-1 (Maca),
 /// and require the two programs to behave identically. A difference here is a
 /// difference between the two compilers, which is the only thing that can

@@ -1,4 +1,4 @@
-//! Maca MCP server — newline-delimited JSON-RPC 2.0 over stdio. Exposes the
+//! Maca MCP server: newline-delimited JSON-RPC 2.0 over stdio. Exposes the
 //! LLM-native tools (`maca.check`, `maca.fmt`, `maca.stdlib`, `maca.options`,
 //! `maca.spec`) so an agent can run the generate → verify → fix loop.
 

@@ -1,9 +1,9 @@
-// selfhost/lexer — a character-level scanner for Maca, written in Maca.
+// selfhost/lexer: a character-level scanner for Maca, written in Maca.
 //
 // Recursive/functional (Maca surface has no `while`): `scan` walks a character
 // array by index, appending tokens. The `str` primitives it leans on
 // (`chars`, `length`, `get`, `slice`, and the `is_*` predicates) are the
-// stdlib contract the stage-1 compiler builds on — see std/README.md.
+// stdlib contract the stage-1 compiler builds on. See std/README.md.
 
 import selfhost/token
 
@@ -56,7 +56,7 @@ step(cs: str[], i: int, out: Token[]) -> Token[] {
     }
 }
 
-// `i` sits on the opening quote. Escapes are left verbatim — unescaping is the
+// `i` sits on the opening quote. Escapes are left verbatim. Unescaping is the
 // parser's job, because an interpolation has to be re-lexed anyway.
 lex_string(cs: str[], i: int, out: Token[]) -> Token[] {
     j = string_end(cs, i + 1)

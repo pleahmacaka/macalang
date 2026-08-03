@@ -12,7 +12,7 @@
 # latest GitHub release. With no matching asset it builds from source (needs a
 # Rust toolchain). A C compiler (cc/clang) is needed for `maca build/run`.
 #
-# Nix is optional — it powers `maca dev` and Nix builds. If missing (and you're
+# Nix is optional; it powers `maca dev` and Nix builds. If missing (and you're
 # not on Windows) the installer offers to install it via the Determinate Systems
 # installer. Preseed with MACA_INSTALL_NIX=1 (install) or =0 (skip).
 #
@@ -70,8 +70,8 @@ fi
 
 if [ -z "$installed_from" ]; then
   [ -n "$here" ] && [ -f "$here/Cargo.toml" ] || die "no prebuilt binary and no source checkout to build from"
-  command -v cargo >/dev/null 2>&1 || die "cargo not found — install Rust from https://rustup.rs"
-  command -v cc >/dev/null 2>&1 || warn "no 'cc' on PATH — 'maca build/run' needs a C compiler"
+  command -v cargo >/dev/null 2>&1 || die "cargo not found; install Rust from https://rustup.rs"
+  command -v cc >/dev/null 2>&1 || warn "no 'cc' on PATH; 'maca build/run' needs a C compiler"
   say "building maca + maca-lsp from source (release)…"
   cargo build --release -p maca-driver -p maca-lsp --manifest-path "$here/Cargo.toml"
   install -m 0755 "$here/target/release/maca" "$bindir/maca"
@@ -108,9 +108,9 @@ if [ "$is_windows" -eq 0 ] && ! command -v nix >/dev/null 2>&1; then
   if [ "$answer" = "1" ]; then
     say "installing Nix (Determinate Systems)…"
     if curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install; then
-      say "Nix installed — open a new shell, then run 'maca dev'."
+      say "Nix installed. Open a new shell, then run 'maca dev'."
     else
-      warn "Nix install failed — maca works, but 'nix' and 'maca dev' won't."
+      warn "Nix install failed. maca works, but 'nix' and 'maca dev' won't."
     fi
   else
     say "skipping Nix. maca is fully usable; 'nix' and 'maca dev' need Nix"
@@ -126,7 +126,7 @@ if command -v cc >/dev/null 2>&1; then
   if "$bindir/maca" run "$probe/hello.maca" >/dev/null 2>&1; then
     say "verified: compiled and ran a Maca program ✓"
   else
-    warn "installed, but a test compile+run failed — check your C compiler"
+    warn "installed, but a test compile+run failed; check your C compiler"
   fi
   rm -rf "$probe"
 fi

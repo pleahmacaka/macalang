@@ -1,9 +1,9 @@
-// bench/stat — the summary numbers a run of timings needs.
+// bench/stat: the summary numbers a run of timings needs.
 //
 // A benchmark that reports one number reports the wrong one. The mean is
 // dragged around by a single scheduling hiccup, and the minimum is the machine
 // on its best day with nothing else running. Reporting min, median and mean
-// together is what lets a reader see that the three agree — and notice when
+// together is what lets a reader see that the three agree, and notice when
 // they don't.
 //
 //   import { min_of, median, mean, spread } from bench/stat
@@ -101,7 +101,7 @@ root(v: float) -> float {
 // pass roughly halves a guess that is still far above the root, and a value at
 // the top of the double range is some five hundred halvings from the point
 // where the method starts converging quickly. At 200 the backstop fired first,
-// and `root` answered 6.2e239 for 1e300 — off by ninety orders of magnitude,
+// and `root` answered 6.2e239 for 1e300, off by ninety orders of magnitude,
 // with nothing in the result to say it had given up.
 descend(v: float, guess: float) -> float {
     at = guess
@@ -127,7 +127,7 @@ squared_error(xs: int[], centre: float, i: int, acc: float) -> float {
     }
 }
 
-/// The spread as a fraction of the mean — the number to look at when deciding
+/// The spread as a fraction of the mean: the number to look at when deciding
 /// whether two results differ at all.
 ///
 /// A mean of zero has no scale to be relative to, so it answers 0.
@@ -141,7 +141,7 @@ relative_spread(xs: int[]) -> float {
     }
 }
 
-/// The sample at `frac` of the way through the sorted list — `percentile(xs,
+/// The sample at `frac` of the way through the sorted list: `percentile(xs,
 /// 0.95)` is the slow tail. `frac` outside 0..1 is clamped.
 ///
 /// Nearest rank, not interpolated: with the five or ten samples a benchmark

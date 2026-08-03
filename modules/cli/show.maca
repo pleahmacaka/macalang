@@ -1,8 +1,8 @@
-// cli/show — the shapes a terminal reads well.
+// cli/show: the shapes a terminal reads well.
 //
 // A table, a rule, a panel, a list of pairs. Each returns a string rather than
 // printing one, so the same call can go to the screen, into a test, or into a
-// file — and so a caller can put two of them side by side without this module
+// file, and so a caller can put two of them side by side without this module
 // having an opinion about it.
 //
 //   info(table(["file", "lines"], rows))
@@ -115,7 +115,7 @@ row_text(row: str[], w: int[], cols: int) -> str {
 }
 
 // A column is numeric when it has at least one value and every value in it is
-// a number. An empty column is not numeric — there is nothing to align.
+// a number. An empty column is not numeric, because there is nothing to align.
 numeric_column(rows: str[][], i: int) -> bool =>
     filled(rows, i, 0) && all_numeric(rows, i, 0)
 
@@ -169,13 +169,13 @@ rule(title: str) -> str {
 }
 
 /// A box around `body`, with `title` in its top edge. For the one thing on
-/// screen that has to be read rather than skimmed — an error, a summary.
+/// screen that has to be read rather than skimmed: an error, a summary.
 panel(title: str, body: str) -> str {
     lines = body.split("\n")
     inner = widest(lines, 0, width(title) + 2)
 
     // one dash for each column the title and its two spaces do not fill, plus
-    // the corner — the row below is `│ ` + inner + ` │`, and an edge that was
+    // the corner. The row below is `│ ` + inner + ` │`, and an edge that was
     // one short lined up with nothing
     edge = "─".repeat(inner - width(title) - 1)
     out = grey("┌─ ") ++ bold(title) ++ grey(" " ++ edge ++ "┐")
@@ -196,14 +196,14 @@ widest(lines: str[], i: int, best: int) -> int {
     }
 }
 
-/// `  key    value` — a labelled fact, with the label dimmed so the value is
+/// `  key    value`: a labelled fact, with the label dimmed so the value is
 /// what the eye lands on.
 kv(key: str, value: str) -> str => "  " ++ dim(pad(key, 14)) ++ value
 
 /// A bulleted line.
 bullet(s: str) -> str => "  " ++ grey("•") ++ " " ++ s
 
-/// `[####----]  n%` — a progress bar of a given width.
+/// `[####----]  n%`: a progress bar of a given width.
 ///
 /// Returns the bar rather than drawing it, so a caller decides whether to
 /// overwrite a line or print a new one. Drawing it in place is `redraw`.

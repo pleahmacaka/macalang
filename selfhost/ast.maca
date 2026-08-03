@@ -1,4 +1,4 @@
-// selfhost/ast — the AST for the Maca-in-Maca compiler (stage 1).
+// selfhost/ast: the AST for the Maca-in-Maca compiler (stage 1).
 //
 // The classic bootstrap shape: a `kind` tag (a nullary sum → C enum) plus a
 // record carrying every possible field, most of them empty on any given node.
@@ -34,7 +34,7 @@ Expr = {
 StmtKind = SExpr | SBind | SFn | SRecord | SSum
 
 // One top-level or block statement. Records and sums reuse `params` rather
-// than adding fields only they would fill — see `s_record` and `s_sum`.
+// than adding fields only they would fill. See `s_record` and `s_sum`.
 Stmt = {
     kind:   StmtKind
     name:   str
@@ -60,7 +60,7 @@ e_param(name: str, ty: str) -> Expr =>
     Expr { kind = EIdent, text = name, ival = 0, ty, children = [] }
 
 // The same shape as `e_param` under a second name, for a sum variant's payload
-// slot — where the interesting part is the type rather than the binder.
+// slot, where the interesting part is the type rather than the binder.
 e_typed(name: str, ty: str) -> Expr =>
     Expr { kind = EIdent, text = name, ival = 0, ty, children = [] }
 
@@ -104,7 +104,7 @@ e_record(tyname: str, fields: Expr[]) -> Expr =>
 e_field(base: Expr, name: str) -> Expr =>
     Expr { kind = EField, text = name, ival = 0, ty = "", children = [base] }
 
-// `children` is `[scrut, pat0, body0, …]` — arms flattened in pairs, because a
+// `children` is `[scrut, pat0, body0, …]`: arms flattened in pairs, because a
 // node has one child list and no room for a second. Each pattern is a bare
 // ident: a variant name, or `_` for the wildcard.
 e_match(children: Expr[]) -> Expr =>
@@ -128,7 +128,7 @@ s_bind(name: str, value: Expr) -> Stmt =>
 s_fn(name: str, ret: str, params: Expr[], body: Stmt[]) -> Stmt =>
     Stmt { kind = SFn, name, value = e_ident(name), ret, params, body }
 
-// Fields ride in `params` as typed idents, reusing the function machinery — a
+// Fields ride in `params` as typed idents, reusing the function machinery: a
 // field and a parameter are both a name with a type, and one list is enough.
 s_record(name: str, fields: Expr[]) -> Stmt =>
     Stmt { kind = SRecord, name, value = e_ident(name), ret = "",

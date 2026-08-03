@@ -1,4 +1,4 @@
-// build-site — build the published site (the handbook and the playground) and
+// build-site: build the published site (the handbook and the playground) and
 // check it, written in Maca.
 //
 // This exists so there is exactly one definition of "build the site", run both
@@ -10,8 +10,8 @@
 //   maca run tools/build-site.maca [outdir]        # default: _site
 //   MACA=target/debug/maca maca run tools/build-site.maca
 //
-// Assumes `maca` is already built at target/release/maca — `MACA` names a
-// different one — and the wasm compiler at
+// Assumes `maca` is already built at target/release/maca (`MACA` names a
+// different one) and the wasm compiler at
 // target/wasm32-unknown-unknown/release, which `import wasm` in the playground
 // embeds by that exact path. The workflow builds both first, and so should you.
 
@@ -37,14 +37,14 @@ maca() -> str =>
 // being different strings is a `--help` that lies.
 OutDefault = "_site"
 
-// The output directory is a positional and stays one — `README.md` and the
+// The output directory is a positional and stays one. `README.md` and the
 // workflow both spell it `build-site _site`, and a tool nobody can invoke the
 // documented way is worse than a tool with a plain interface. `cli/spec` has
 // no optional positional (something a command cannot run without is an
 // argument, everything else is an option), so it arrives as `rest` and the
 // default is applied here, exactly as `tools/bindgen.maca` does it.
 Spec = command("build-site", "build and check the published site")
-    .rest("outdir", "where to assemble the site — {OutDefault} by default")
+    .rest("outdir", "where to assemble the site ({OutDefault} by default)")
 
 main(argv: str[]) -> int {
     got = parse(Spec, argv)
@@ -61,7 +61,7 @@ main(argv: str[]) -> int {
                 ++ where.join(", ")))
         1
     } else if !file_exists(maca()) {
-        err(bad("no maca at {maca()} — cargo build --release -p maca-driver"))
+        err(bad("no maca at {maca()}: cargo build --release -p maca-driver"))
         1
     } else {
         build(where.length() == 0 ? OutDefault : where.get(0))
@@ -81,7 +81,7 @@ build(out: str) -> int {
 // enough that silence reads as a hang.
 //
 // On stderr, and that is the whole point. `info` writes to stdout, which the C
-// runtime leaves block-buffered whenever it is a pipe — so in a CI log every
+// runtime leaves block-buffered whenever it is a pipe, so in a CI log every
 // `==>` line arrived at exit, *after* the output of the child processes it was
 // introducing, and the running commentary described a build that had already
 // finished. stderr is unbuffered, so these land where they belong. The site
@@ -98,8 +98,8 @@ build_handbook() -> bool {
     run(maca(), ["run", "apps/tomo/tomo.maca"])
 }
 
-// The front page replaces the landing pages tomo just wrote — `/index.html`
-// and `<lang>/home.html`, the same addresses — so it has to run after the
+// The front page replaces the landing pages tomo just wrote (`/index.html`
+// and `<lang>/home.html`, the same addresses), so it has to run after the
 // handbook, and this is the only place either of them is invoked.
 //
 // Tomo builds other people's books, where a Markdown `home.md` landing is the
@@ -112,7 +112,7 @@ build_front_page() -> bool {
 }
 
 // Tomo writes a landing for every language whether or not the book has a
-// `home.md` — without one it writes the picker — so these paths always exist by
+// `home.md` (without one it writes the picker), so these paths always exist by
 // the time the front page runs. Removing them first means a front page that
 // fails to build leaves nothing behind to be mistaken for it, rather than
 // silently publishing tomo's picker under the site's own address.
@@ -132,7 +132,7 @@ landing_pages() -> str[] =>
 // written here searched the whole file, so a commented-out `# languages =
 // ["fr"]` above the real key won: the build then cleared a landing that does
 // not exist and left tomo's picker at the two addresses the front page was
-// supposed to replace — the precise failure deriving this list was meant to
+// supposed to replace: the precise failure deriving this list was meant to
 // prevent.
 book_languages() -> str[] {
     toml = read_file("apps/tomo/book.toml")
@@ -159,7 +159,7 @@ drop_landings(paths: str[], i: int) -> bool {
 //
 // Read out of the table rather than written down again here. Globbing `std/`
 // would pull in `modules/std/tests/*.maca`, and a second copy of the list is a list
-// that drifts — the reference's contents are checked against this same table
+// that drifts. The reference's contents are checked against this same table
 // by `crates/driver/tests/programs/sitegen.maca`, so it is the one place a
 // module is named.
 std_modules() -> str[] =>
@@ -238,7 +238,7 @@ check(out: str) -> int {
 // against the emitted HTML turns the whole family of them into a build
 // failure.
 //
-// `language-…` is exempt — it is a hook for a syntax highlighter, and is not
+// `language-…` is exempt: it is a hook for a syntax highlighter, and is not
 // meant to produce a rule.
 require_live_css(out: str) -> bool {
     pages = find(out, ".html")
@@ -275,7 +275,7 @@ dead_in_page(path: str) -> str[] {
 // Every `<style>` block, not the first one. Reading one meant a page with two
 // sheets had every class in the second reported dead, and matching the tag as
 // the literal `<style>` meant a `<style type="text/css">` exempted its whole
-// page from checking — a check that can be switched off by an attribute is
+// page from checking. A check that can be switched off by an attribute is
 // worse than no check, because it reads as a pass.
 stylesheets(src: str, at: int, acc: str) -> str {
     rest = src.slice(at, src.length())
@@ -301,7 +301,7 @@ unruled(cs: str[], i: int, sheet: str, acc: str[]) -> str[] {
 
 // The selector has to end where the class ends. Asking whether the sheet
 // merely *contains* `.rounded-l` was answered by `.rounded-lg`, so any dead
-// class that is a prefix of a live one passed — and `rounded-l` is a real
+// class that is a prefix of a live one passed, and `rounded-l` is a real
 // Tailwind utility this engine does not implement.
 //
 // A rule is always `.{escaped}` followed by ` {`, a pseudo-class `:`, or the
@@ -331,7 +331,7 @@ escape_chars(cs: str[], i: int, out: str) -> str {
 
 // The same list the emitter escapes, not its complement.
 //
-// This asked "is it *not* alphanumeric, `-` or `_`" — the opposite rule, and
+// This asked "is it *not* alphanumeric, `-` or `_`", the opposite rule, and
 // `is_alpha` is byte-based, so every byte of a non-ASCII class name came out
 // escaped here and unescaped in the stylesheet. The selector then matched
 // nothing and the whole build failed with a false "classes with no CSS rule".
@@ -349,7 +349,7 @@ classes_in(src: str) -> str[] =>
 // are not a class the page uses. Escaping is what makes the distinction
 // reliable: a sample's own `<` arrives as `&lt;`, so it cannot open a tag.
 //
-// Splitting on `<` once keeps this linear — walking the string and re-slicing
+// Splitting on `<` once keeps this linear. Walking the string and re-slicing
 // from each tag is quadratic, and the playground page is a quarter of a
 // megabyte.
 attr_values(src: str) -> str[] =>
@@ -384,7 +384,7 @@ class_of(tag: str) -> str[] {
 }
 
 // A `class="…"` inside a `<script>` is JavaScript assembling markup at run
-// time, usually out of concatenated fragments — `'<b class="'+C.hit+'">'`.
+// time, usually out of concatenated fragments: `'<b class="'+C.hit+'">'`.
 // Those are not classes the page mentions; they are source that happens to
 // contain the same eight characters.
 without_scripts(src: str) -> str =>
@@ -409,7 +409,7 @@ drop_blocks(src: str, open: str, close: str, out: str) -> str {
 }
 
 // The pages a reader can reach directly, and the search index each language
-// needs. An empty file counts as missing — a failed render writes one.
+// needs. An empty file counts as missing: a failed render writes one.
 // Every module gets a page, not just the first one: naming two of the eight
 // meant six could vanish or come out empty with the check still green.
 required_pages() -> str[] =>
@@ -464,7 +464,7 @@ require_embedded_wasm(out: str) -> bool {
     size = file_size(join(out, "play/index.html"))
 
     if size <= 200000 {
-        fail "playground is only {size} bytes — lost its embedded wasm?"
+        fail "playground is only {size} bytes. Lost its embedded wasm?"
     } else {
         true
     }

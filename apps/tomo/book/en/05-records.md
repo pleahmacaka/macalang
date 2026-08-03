@@ -12,7 +12,7 @@ Point = {
 }
 ```
 
-The declaration reads `Name = { … }` — the same `=` that binds a value, because
+The declaration reads `Name = { … }`, the same `=` that binds a value, because
 a type declaration *is* a binding at the top level. Inside, one `field: type`
 per line. No commas are needed at line ends, though they are allowed.
 
@@ -77,7 +77,7 @@ scale(r: Rect, k: int) -> Rect =>
     r with { w = r.w * k, h = r.h * k }
 ```
 
-And because of UFCS — `x.f(y)` is `f(x, y)` — those read as methods at the call
+And because of UFCS (`x.f(y)` is `f(x, y)`), those read as methods at the call
 site without ever being declared as ones:
 
 ```maca
@@ -116,7 +116,7 @@ Node = {
 ```
 
 This works, and it is worth knowing why it needs help from the compiler. In C, a
-struct containing an array of itself is a definition cycle — the array type needs
+struct containing an array of itself is a definition cycle: the array type needs
 the struct's size, and the struct needs the array. Maca's C backend breaks it by
 forward-declaring the array struct before the record body and emitting the
 operations after, so the cycle resolves. You never see any of this; it matters
@@ -126,13 +126,13 @@ an accident.
 ## Records vs. sum types
 
 A record says "all of these at once". When you need "one of these", that is a
-sum type — the next chapter. The two compose: a sum type's variants can carry
-records, and a record's field can be a sum type. Most real data models are a
-handful of each.
+sum type, which is the next chapter. The two compose: a sum type's variants
+can carry records, and a record's field can be a sum type. Most real data
+models are a handful of each.
 
 ## Records without a name
 
-A record literal with no type name in front — `{ host = "x", port = 80 }` —
+A record literal with no type name in front (`{ host = "x", port = 80 }`)
 infers its type from the fields present:
 
 ```maca
@@ -145,7 +145,7 @@ written in, so one can be assigned to the other:
 
 ```maca
 d = { port = 80, host = "example.com" }
-c = d                                    // fine — same shape
+c = d                                    // fine: same shape
 ```
 
 Reach for it when the shape is used once, in one place: a pair of values to

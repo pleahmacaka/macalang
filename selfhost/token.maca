@@ -1,4 +1,4 @@
-// selfhost/token — the token model for the Maca-in-Maca compiler (stage 1).
+// selfhost/token: the token model for the Maca-in-Maca compiler (stage 1).
 //
 // Written in Maca. Compiled by the stage-0 Rust `maca` today; the goal is for a
 // built stage-1 to compile this same source. Gated in CI by the stage-0

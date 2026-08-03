@@ -26,7 +26,7 @@ pub fn have_jdk(cmd: &str) -> bool {
 }
 
 /// Is WSL present? On a Windows host the native path goes through it, and these
-/// suites take the host-`cc` path instead — so its presence means *skip*.
+/// suites take the host-`cc` path instead, so its presence means *skip*.
 pub fn have_wsl() -> bool {
     ran(Command::new("wsl").arg("true"))
 }
@@ -66,7 +66,7 @@ pub fn to_wsl(p: &Path) -> String {
 /// A cross-process lock around the native toolchain.
 ///
 /// `zig` and `nix` cannot take a dozen concurrent invocations, so every suite
-/// that shells out to them serializes here — across crates, which is why this
+/// that shells out to them serializes here, across crates, which is why this
 /// lives in one.
 pub struct BuildLock {
     path: PathBuf,

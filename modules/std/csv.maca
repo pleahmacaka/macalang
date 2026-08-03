@@ -1,4 +1,4 @@
-// std/csv — comma-separated values, RFC 4180 as far as it is worth going.
+// std/csv: comma-separated values, RFC 4180 as far as it is worth going.
 //
 // The whole difficulty of CSV is the quoted field: a comma, a newline or a
 // quote inside one is data, not structure. A `split(",")` gets every simple
@@ -25,7 +25,7 @@ needs_quotes(s: str) -> bool =>
     s.contains(",") || s.contains("\"") || s.contains("\n")
         || s.contains("\r")
 
-/// One record, terminated with `\r\n` — the line ending the format specifies,
+/// One record, terminated with `\r\n`: the line ending the format specifies,
 /// and the one a spreadsheet expects.
 row(cells: str[]) -> str =>
     cells.map(field).join(",") ++ "\r\n"
@@ -124,7 +124,7 @@ record_step(cs: str[], i: int, in_q: bool, cur: str, acc: str[]) -> str[] {
 }
 
 /// The value under `name` in `row`, using `header` for the column order.
-/// "" when the column isn't there — a missing column and an empty cell read the
+/// "" when the column isn't there: a missing column and an empty cell read the
 /// same, which is what a CSV can actually tell you.
 column(header: str[], row: str[], name: str) -> str {
     at = header.index_of(name)

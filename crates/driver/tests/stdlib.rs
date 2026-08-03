@@ -1,6 +1,6 @@
 //! The standard library surface that appendix C documents, executed.
 //!
-//! Appendix C used to carry a "What is missing" list — no hash map, no file
+//! Appendix C used to carry a "What is missing" list: no hash map, no file
 //! metadata, no stdin, no time, no assertions, no string `slice`. Each of
 //! those is now a real builtin, and each is exercised here, because a
 //! documented library that nothing runs is a claim rather than a fact.
@@ -45,7 +45,7 @@ fn run_with(name: &str, src: &str, stdin: &str) -> (bool, String) {
     (out.status.success(), text)
 }
 
-/// Maps, string `slice`, file metadata and time — asserted in Maca.
+/// Maps, string `slice`, file metadata and time, asserted in Maca.
 #[test]
 fn the_documented_builtins_work() {
     if unsupported_host() {
@@ -129,7 +129,7 @@ main() -> int {
         out.contains("clean: 0"),
         "a passing test should count 0:\n{out}"
     );
-    // Both failures ran — the first didn't stop the second.
+    // Both failures ran: the first didn't stop the second.
     assert!(
         out.contains("assertion failed: deliberate"),
         "no report:\n{out}"

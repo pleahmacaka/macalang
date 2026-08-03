@@ -25,7 +25,7 @@ fn maca_blocks(md: &str) -> Vec<String> {
 ///
 /// Each block is checked on its own, because that is how it is read: an
 /// example calling a function the block never defines is an example nobody can
-/// run. `README.md` is here for the same reason the other two are — its blocks
+/// run. `README.md` is here for the same reason the other two are: its blocks
 /// were written by hand and verified by pasting them into a file with the
 /// missing pieces added, which checks a program the reader will never see.
 #[test]

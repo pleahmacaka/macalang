@@ -1,4 +1,4 @@
-// Behaviour tests for `apps/tomo/highlight` — run with
+// Behaviour tests for `apps/tomo/highlight`, run with
 // `maca test apps/tomo/tests/highlight.maca`.
 //
 // Each case is one of the lexical distinctions the highlighter exists to get
@@ -136,7 +136,7 @@ test_paths_only_where_an_operand_is_expected() {
     assert(div.contains(op("/")), "a spaced slash divides: {div}")
 }
 
-// The three closers complete an operand together — `expect_operand` lists
+// The three closers complete an operand together: `expect_operand` lists
 // `RBrace` beside `RParen` and `RBracket`. Reading `}` the other way made the
 // slash after it open a path literal instead of dividing.
 test_every_closer_completes_an_operand() {

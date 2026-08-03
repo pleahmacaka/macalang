@@ -1,4 +1,4 @@
-// std/fs — the filesystem work a build step keeps rewriting.
+// std/fs: the filesystem work a build step keeps rewriting.
 //
 // `read_file`, `write_file`, `list_dir`, `is_dir` and the rest are builtins.
 // This module is what you build out of them: walking a tree, copying, reading a
@@ -9,7 +9,7 @@
 import std/text
 import std/path
 
-/// Every file under `root`, recursively, in a stable order — `list_dir` sorts,
+/// Every file under `root`, recursively, in a stable order. `list_dir` sorts,
 /// and this preserves that, so a generated manifest doesn't churn between runs.
 walk(root: str) -> str[] =>
     walk_entries(root, list_dir(root), 0, [])
@@ -52,7 +52,7 @@ dir_one(p: str) -> str[] {
     }
 }
 
-/// Files under `root` whose name ends with `suffix` — `walk(root)` filtered,
+/// Files under `root` whose name ends with `suffix`: `walk(root)` filtered,
 /// but the filter is the reason you were walking.
 find(root: str, suffix: str) -> str[] =>
     walk(root).filter(p => p.ends_with(suffix))
@@ -87,8 +87,8 @@ append_file(p: str, text: str) -> bool {
     write_file(p, existing ++ text)
 }
 
-/// A byte-for-byte copy, not `write_file(to, read_file(from))` — that stops at
-/// the first NUL, which turns copying a wasm module or an image into silently
+/// A byte-for-byte copy, not `write_file(to, read_file(from))`, which stops at
+/// the first NUL and so turns copying a wasm module or an image into silently
 /// truncating it.
 copy_file(from: str, to: str) -> bool {
     make_dir(dirname(to))

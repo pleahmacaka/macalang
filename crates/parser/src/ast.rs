@@ -76,11 +76,11 @@ pub enum Type {
     Array(Box<Type>),            // T[]
     Opt(Box<Type>),              // T?
     Paren(Box<Type>),
-    /// `(T, U) -> R` — the type of a function value.
+    /// `(T, U) -> R`: the type of a function value.
     ///
     /// A function passed as an argument needs no type: an unannotated parameter
     /// that is *called* in the body is one. A function kept in a record field
-    /// does need one, because a field is declared before anything calls it —
+    /// does need one, because a field is declared before anything calls it,
     /// which is why a route table, a middleware chain and a list of subscribers
     /// were all impossible to write down.
     ///
@@ -157,7 +157,7 @@ pub enum Expr {
     Continue,
     Lambda {
         params: Vec<Param>,
-        /// `(a, b) -> T => …` — an optional declared return type. A lambda
+        /// `(a, b) -> T => …`: an optional declared return type. A lambda
         /// usually infers, but a trait-impl method has to match a signature the
         /// compiler cannot read, so it can be written out.
         ret: Option<Type>,
@@ -170,8 +170,8 @@ pub enum Expr {
     Try(Box<Expr>),   // postfix `x?`
     Fail(Box<Expr>),  // `fail e`
     Reify(Box<Expr>), // `try e`
-    Await(Box<Expr>), // `await e` — suspend until the future resolves
-    Spawn(Box<Expr>), // `spawn e` — run `e` concurrently, yields a Future
+    Await(Box<Expr>), // `await e`: suspend until the future resolves
+    Spawn(Box<Expr>), // `spawn e`: run `e` concurrently, yields a Future
     Assign {
         target: Box<Expr>,
         value: Box<Expr>,
@@ -269,7 +269,7 @@ pub enum BinOp {
 /// Visit `e` and every expression inside it, outermost first.
 ///
 /// Each backend used to carry its own copy of this walk, each covering the
-/// variants that backend happened to need — which is how `chars()` went years
+/// variants that backend happened to need, which is how `chars()` went years
 /// without registering its array type. One walk, over every variant, means a
 /// new `Expr` variant is a compile error here rather than a silent gap there.
 pub fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
@@ -371,8 +371,8 @@ fn walk_fields(fields: &[Field], f: &mut impl FnMut(&Expr)) {
     for field in fields {
         match field {
             Field::Value { value, .. } | Field::Bare(value) => walk_expr(value, f),
-            // A shorthand names a variable but holds no `Expr` to hand over —
-            // see `walk_names`, which is the walk to use when the question is
+            // A shorthand names a variable but holds no `Expr` to hand over.
+            // See `walk_names`, which is the walk to use when the question is
             // which names an expression mentions.
             Field::Type { .. } | Field::Shorthand(_) => {}
         }
@@ -382,8 +382,8 @@ fn walk_fields(fields: &[Field], f: &mut impl FnMut(&Expr)) {
 /// Every variable name `e` mentions.
 ///
 /// `walk_expr` visits expressions, and `{ s }` mentions `s` without containing
-/// an expression for it — the shorthand carries a bare `Ident`. Anything asking
-/// *which names does this use* has to see through that, or `{ s }` and
+/// an expression for it, since the shorthand carries a bare `Ident`. Anything
+/// asking *which names does this use* has to see through that, or `{ s }` and
 /// `{ s = s }` answer differently: the first told the C back end that nothing
 /// was holding `s`, so the block that built it released it while the record it
 /// had just been put into still pointed at the bytes.
@@ -428,7 +428,7 @@ pub fn walk_stmt(s: &Stmt, f: &mut impl FnMut(&Expr)) {
 ///
 /// Shadowing is not tracked: a local called `helper` inside a module whose
 /// `helper` is being renamed is renamed too. That is a rename of something to
-/// an unused name — the qualified form is fresh by construction — so it is
+/// an unused name (the qualified form is fresh by construction), so it is
 /// harmless, and the alternative is scope analysis this pass has no need of.
 pub fn rename_ident(s: &mut Stmt, from: &str, to: &str) {
     match s {
@@ -452,8 +452,8 @@ pub fn rename_ident(s: &mut Stmt, from: &str, to: &str) {
             // its body is left alone: a package with a private `at` used to
             // rewrite `at + 1` inside any function with a parameter called
             // `at`, leaving the parameter itself untouched and the arithmetic
-            // pointing at a function. Skipping the whole body is coarse — a use
-            // *before* the shadow is bound loses its rename too — and it is
+            // pointing at a function. Skipping the whole body is coarse, and a
+            // use *before* the shadow is bound loses its rename too, but it is
             // coarse in the direction where the name still means what the
             // reader thinks it does.
             if binds(fd, from) {
@@ -482,7 +482,7 @@ pub fn rename_ident(s: &mut Stmt, from: &str, to: &str) {
     }
 }
 
-/// Does this function give `name` a meaning of its own — a parameter, a local,
+/// Does this function give `name` a meaning of its own: a parameter, a local,
 /// a loop variable, or a lambda's parameter?
 fn binds(fd: &FnDef, name: &str) -> bool {
     if fd.params.iter().any(|p| p.name == name) {
@@ -539,7 +539,7 @@ fn pattern_binds(p: &Pattern, name: &str) -> bool {
     }
 }
 
-/// Rename a type's name wherever it appears — `T`, `T[]`, `T?`, `Map str T`.
+/// Rename a type's name wherever it appears: `T`, `T[]`, `T?`, `Map str T`.
 fn rename_in_type(t: &mut Type, from: &str, to: &str) {
     match t {
         Type::Name(segs) => {
@@ -602,7 +602,8 @@ fn rename_in_expr(e: &mut Expr, from: &str, to: &str) {
                 rename_in_expr(arg_expr_mut(a), from, to);
             }
         }
-        // The field *name* is a field, not a binding — only the base is renamed.
+        // The field *name* is a field, not a binding, so only the base is
+        // renamed.
         Expr::Field { base, .. } => rename_in_expr(base, from, to),
         Expr::Index { base, index } => {
             rename_in_expr(base, from, to);
@@ -683,8 +684,8 @@ pub fn arg_expr(a: &Arg) -> &Expr {
 
 /// Is this expression a *record type declaration* rather than a record value?
 ///
-/// `P = { x: int }` declares a type — every field is `name: Type`. `P { x = 1 }`
-/// builds one. Three backends each carried a byte-identical copy of this, and
+/// `P = { x: int }` declares a type, and every field is `name: Type`.
+/// `P { x = 1 }` builds one. Three backends each carried a byte-identical copy of this, and
 /// they name the same source-level distinction, so they share one.
 pub fn is_record_type(e: &Expr) -> bool {
     matches!(e, Expr::Record(fs) if !fs.is_empty()
@@ -693,7 +694,7 @@ pub fn is_record_type(e: &Expr) -> bool {
 
 /// The literal text of an interpolated string, with the interpolations dropped.
 ///
-/// What a backend needs when a string has to be known at compile time — a Nix
+/// What a backend needs when a string has to be known at compile time: a Nix
 /// attribute path, a Tailwind class list.
 pub fn plain_text(parts: &[StrPart]) -> String {
     parts

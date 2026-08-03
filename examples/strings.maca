@@ -1,4 +1,4 @@
-// String stdlib — the everyday text operations a data/DB tool leans on:
+// String stdlib, the everyday text operations a data/DB tool leans on:
 // split a header row, normalize names, test and rewrite labels.
 
 main() -> int {

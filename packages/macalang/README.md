@@ -2,7 +2,7 @@
 
 Compile and **import Maca (`.maca`) from JavaScript**. The Maca compiler
 front-end (lexer → parser → type/effect checker → JS emitter) ships as
-WebAssembly, so everything runs in-process — no native toolchain needed.
+WebAssembly, so everything runs in-process, with no native toolchain needed.
 
 ## Install
 

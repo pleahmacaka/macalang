@@ -1,4 +1,4 @@
-// Sieve of Eratosthenes — count primes ≤ N. Array writes + tight loops.
+// Sieve of Eratosthenes: count primes ≤ N. Array writes + tight loops.
 // `marks[i] == i` means "not yet crossed out"; a composite is zeroed.
 count_primes(n: int) -> int {
     marks = 0..n

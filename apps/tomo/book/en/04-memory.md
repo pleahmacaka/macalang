@@ -3,11 +3,11 @@
 Every language has to answer the question of when memory goes away. The answers
 divide roughly in three:
 
-- **Manual** — you say. C, Zig. Fast, and the source of a large fraction of all
+- **Manual**: you say. C, Zig. Fast, and the source of a large fraction of all
   security bugs ever shipped.
-- **Traced garbage collection** — a collector finds out. Go, Java, JavaScript.
+- **Traced garbage collection**: a collector finds out. Go, Java, JavaScript.
   Safe, and it costs you a runtime, a pause, and a floor on your memory use.
-- **Static ownership** — the compiler proves it. Rust. Safe and fast, and you
+- **Static ownership**: the compiler proves it. Rust. Safe and fast, and you
   pay for it in the type system: lifetimes, borrows, and a real learning cliff.
 
 Maca takes a fourth road, and it is worth understanding *why*, because it
@@ -15,7 +15,7 @@ explains a lot of the rest of the language.
 
 ## The goal
 
-Maca targets a C-tier binary — no runtime, no pauses — while staying a language
+Maca targets a C-tier binary (no runtime, no pauses) while staying a language
 you can teach on a Tuesday. That rules out a tracing collector (the runtime) and
 it rules out borrow checking (the cliff). What's left is **reference counting**,
 which has a bad reputation it mostly no longer deserves.
@@ -28,7 +28,7 @@ basis of **Perceus**, the scheme Maca is built around.
 
 ## Perceus, briefly
 
-Perceus — *precise reference counting with reuse and specialization* — comes from
+Perceus, *precise reference counting with reuse and specialization*, comes from
 the Koka language. The idea:
 
 1. The compiler tracks ownership statically, as Rust does, but it does not
@@ -39,8 +39,8 @@ the Koka language. The idea:
    record, or a map over a list, can compile to a mutation of the buffer you
    already had.
 
-The result is that idiomatic functional code — build a new value from an old one
-— compiles to roughly what you would have written by hand with a mutable buffer.
+The result is that idiomatic functional code (build a new value from an old one)
+compiles to roughly what you would have written by hand with a mutable buffer.
 You write `p with { y = 5 }` and get an in-place field store.
 
 This is why Maca has no `mut`, no `&`, no lifetimes, and no `clone()`. Those are
@@ -52,7 +52,7 @@ does, and where it can't prove anything it quietly counts.
 Mostly: nothing. That is the point. But two habits follow from it.
 
 **Prefer building a new value to mutating a shared one.** `base with { f = v }`
-is not a copy in the general case — when nothing else holds `base`, it is a
+is not a copy in the general case. When nothing else holds `base`, it is a
 store. Code written in the obvious functional style is the code the optimiser is
 built for.
 
@@ -68,7 +68,7 @@ move_up(p: Point) -> Point =>
 
 **Don't build reference cycles and expect them to go away.** Reference counting
 cannot collect a cycle, and Maca does not run a cycle collector. A tree, a list,
-an AST — all fine, all acyclic. A doubly-linked list where each node points back
+an AST: all fine, all acyclic. A doubly-linked list where each node points back
 at its parent will hold itself alive. In practice this is rarely a constraint;
 the compiler in `selfhost/` is a large program built entirely from trees.
 
@@ -95,14 +95,14 @@ main() -> int {
 ```
 
 Over 90%. The loop settles on one buffer and keeps handing it back and forth
-with the allocator rather than asking for five hundred — five hundred rebuilds
+with the allocator rather than asking for five hundred: five hundred rebuilds
 of a two-hundred-element list, and almost no allocation.
 
 That is the whole argument for this design in one number, and it is a number
 your own program can print.
 
-The exact rule the compiler follows — which local owns what, when a value
-escapes, what a recursive type costs — is
+The exact rule the compiler follows (which local owns what, when a value
+escapes, what a recursive type costs) is
 [Memory and Ownership](a8-memory.md) in the reference. You do not need it to
 write Maca. You need it the day something holds memory longer than you expected.
 

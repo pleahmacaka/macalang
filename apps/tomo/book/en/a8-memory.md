@@ -19,8 +19,8 @@ You never write those calls. The rule the compiler follows is worth knowing
 anyway, because it explains why memory behaves the way it does:
 
 **A local owns its buffer if it built it and cannot outlive its block.** A value
-bound from another name is an alias and owns nothing. A value that leaves — as
-the block's result, in an outer binding, inside a structure, as an argument —
+bound from another name is an alias and owns nothing. A value that leaves, as
+the block's result, in an outer binding, inside a structure, or as an argument,
 belongs to whoever it went to. Everything else is released when its block ends.
 
 Reading a value never counts as taking it, so a method call leaves ownership
@@ -48,7 +48,7 @@ main() -> int {
 }
 ```
 
-Over 90% — the loop settles on one buffer and keeps handing it back and forth
+Over 90%: the loop settles on one buffer and keeps handing it back and forth
 with the allocator, rather than asking for five hundred.
 
 `alloc_count()` and `reuse_count()` are runtime counters, not a debug build's
@@ -64,7 +64,7 @@ the compiler cannot tell, it keeps the value.
 That is why the whole test suite runs valgrind-clean: nothing live is ever
 released, and whatever a program is still holding when it exits is drained then.
 It is also why a measurement of peak memory is a fair number and a measurement
-of *promptness* is not always — a value the analysis could not prove dead lives
+of *promptness* is not always. A value the analysis could not prove dead lives
 to the end of its block.
 
 ## Reuse
@@ -79,7 +79,7 @@ reused in place rather than freed and reallocated.
 | `xs.push(x)` | a grow of `xs`'s buffer |
 | `xs.sort()` | a sort of `xs`'s buffer |
 
-When it is *not* uniquely owned — something else still holds it — the same
+When it is *not* uniquely owned, because something else still holds it, the same
 expression allocates, and the original is untouched. The observable semantics
 are the same either way, which is the point: the functional reading is always
 correct and the imperative cost is what you get when nothing else is looking.
@@ -87,7 +87,7 @@ correct and the imperative cost is what you get when nothing else is looking.
 ## Cycles
 
 Reference counting cannot collect a cycle, and Maca does not run a cycle
-collector. A tree, a list, an AST — all acyclic, all fine. A doubly-linked list
+collector. A tree, a list, an AST: all acyclic, all fine. A doubly-linked list
 whose nodes point back at their parents will hold itself alive for the life of
 the process.
 
@@ -100,8 +100,8 @@ large program made entirely of trees.
 
 Two shapes need help from the backend, and both are shapes real programs want.
 
-A **recursive sum payload** is boxed — a heap pointer — so the tagged union
-stays a finite size. A `Tree = Leaf | Node(int, Tree, Tree)` allocates per
+A **recursive sum payload** is boxed, held behind a heap pointer, so the tagged
+union stays a finite size. A `Tree = Leaf | Node(int, Tree, Tree)` allocates per
 node, and a `match` that binds the payload dereferences it.
 
 A **recursive record field** is a definition cycle in C: the array type needs

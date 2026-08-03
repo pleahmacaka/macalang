@@ -2,7 +2,7 @@
 
 ## Functions are values
 
-A top-level function referenced by name is a value — you can pass it where a
+A top-level function referenced by name is a value, so you can pass it where a
 function is expected:
 
 ```maca
@@ -47,7 +47,7 @@ classify = (n) -> str => {
 ```
 
 Which means a bare `{ … }` after `=>` is that block, not an anonymous record.
-Parenthesize when you meant the record — `(n) => ({ x = n })`.
+Parenthesize when you meant the record: `(n) => ({ x = n })`.
 
 ## `if` as an expression
 
@@ -77,7 +77,7 @@ describe(xs: int[]) -> str =>
     }
 ```
 
-The brackets are optional — `x, ..rest` matches the same way, in keeping with
+The brackets are optional: `x, ..rest` matches the same way, in keeping with
 Maca's bracketless comma lists. Use whichever reads better; brackets make the
 empty and single-element cases clearer.
 
@@ -110,7 +110,7 @@ countdown(start: int) -> int {
 ```
 
 `break` and `continue` work as you expect. The Maca idiom leans on recursion and
-the list methods (`map`/`filter`/`reduce`) over explicit loops — they are
+the list methods (`map`/`filter`/`reduce`) over explicit loops. They are
 usually shorter and say what they mean.
 
 ## Error propagation
@@ -129,7 +129,7 @@ maca run examples/lambda.maca
 ```
 
 Lambdas passed to list methods, a named function used as a value, and a closure
-that captures a local. All three compile to the same thing — a code pointer and
-a heap environment — which is why they are interchangeable at a call site.
+that captures a local. All three compile to the same thing (a code pointer and
+a heap environment), which is why they are interchangeable at a call site.
 
 Next: putting functions in more than one file.

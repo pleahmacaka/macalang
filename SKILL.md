@@ -6,7 +6,7 @@ description: Write and edit Maca (.maca / maca.toml). Use when creating or editi
 # Writing Maca
 
 Maca is one typed language for programs **and** infra config. Minimal,
-rule-based syntax — no idioms to memorize. Verify with `maca.check` before
+rule-based syntax, with no idioms to memorize. Verify with `maca.check` before
 finishing.
 
 ## The rules models get wrong
@@ -32,12 +32,12 @@ finishing.
   separated by newlines, not commas.
 - **`xs.push(v)` returns a new list.** Append with `xs = xs.push(v)`.
 - **`for i in 1..n` is inclusive** on both ends.
-- **Config mode is pure `<>`** — no effects (`info`, file I/O, …) in a NixOS/
+- **Config mode is pure `<>`**: no effects (`info`, file I/O, …) in a NixOS/
   home-manager module.
 
 ## Types worth knowing
 
-A generic names its own element type — `first(xs: a[]) -> a`,
+A generic names its own element type: `first(xs: a[]) -> a`,
 `sort_by(xs: a[], key: (a) -> str) -> a[]`. A function type is written
 `(T, U) -> R` with the parens required, and you only need it for a record
 field: a function *passed* as an argument needs no annotation.
@@ -45,7 +45,7 @@ field: a function *passed* as an argument needs no annotation.
 ## Modules
 
 A path is the whole name. `modules/http/server.maca` is `http/server`, from
-anywhere in the tree — there is no entry file and no index, and a directory is
+anywhere in the tree. There is no entry file and no index, and a directory is
 not a module. `import { listen } from http/server` pulls in only what you name.
 The packages are `std` (`text`, `list`, `path`, `json`, `csv`, `fs`, `proc`),
 `http`, `tambo`, `cli`, `bench`, `profile` and `signal`.
@@ -57,7 +57,7 @@ every diagnostic before finishing. Diagnostic kinds: `type-mismatch`,
 `non-exhaustive`, `effect-in-config`, `unknown-option`, `immutable`,
 `undefined-name`.
 
-For a **config module**, say so — `maca.check` with `config: true`, or
+For a **config module**, say so: `maca.check` with `config: true`, or
 `maca lint --config`. `effect-in-config` and `unknown-option` only exist in
 config mode, and nothing about a file says which mode it is for, so a config
 module checked as a program comes back clean when it is not.

@@ -38,7 +38,7 @@ impl Ty {
 
 /// A (rank-1) polymorphic type scheme: `ty` with `vars` universally quantified.
 /// Function signatures are generalized into schemes at declaration and
-/// *instantiated* with fresh variables at each use site — that is what makes a
+/// *instantiated* with fresh variables at each use site. That is what makes a
 /// generic like `id(x: a) -> a` usable at `int` and `str` in the same program
 /// without the two uses colliding.
 #[derive(Clone, Debug)]
@@ -48,7 +48,7 @@ pub struct Scheme {
 }
 
 impl Scheme {
-    /// A monomorphic scheme — nothing quantified.
+    /// A monomorphic scheme: nothing quantified.
     pub fn mono(ty: Ty) -> Self {
         Scheme {
             vars: Vec::new(),
@@ -243,7 +243,7 @@ pub fn show(t: &Ty) -> String {
 
 // ---- effects -------------------------------------------------------------
 
-/// Algebraic effect set: `io · net · os · async · exn`.
+/// Algebraic effect set: `io`, `net`, `os`, `async`, `exn`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct EffSet(pub u8);
 

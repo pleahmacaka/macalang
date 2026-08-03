@@ -1,8 +1,8 @@
-//! `modules/http` — the server, driven by a client in the same program.
+//! `modules/http`: the server, driven by a client in the same program.
 //!
 //! The assertions are Maca (`modules/http/tests/server.maca`), including the
 //! ones that go through a real socket: the suite `spawn`s the accept loop and
-//! fetches from it. What stays here is the process — running any of it needs a
+//! fetches from it. What stays here is the process: running any of it needs a
 //! compiler and a C toolchain on disk.
 
 mod common;

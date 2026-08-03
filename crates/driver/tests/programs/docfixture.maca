@@ -9,7 +9,7 @@ undocumented_helper(x: int) -> int =>
     x + 1
 
 /// A signature whose parameter list wraps. Reading one line and stopping
-/// published `wrapped(alpha: int,` — an unbalanced paren, no return type.
+/// published `wrapped(alpha: int,`: an unbalanced paren, no return type.
 wrapped(alpha: int,
         beta: int) -> int =>
     alpha + beta
@@ -34,14 +34,14 @@ Answer = 42
 ///
 /// A backtick that never closes is not a code span either: use `foo for that.
 /// Delimiters pair left to right within a paragraph, as they do in Markdown,
-/// so this one is on its own — a stray backtick and a real pair in the same
+/// so this one is on its own: a stray backtick and a real pair in the same
 /// paragraph is genuinely ambiguous and nothing can tell them apart.
 ///
 /// But *this* is emphasis and `this` is code.
 punctuated(x: int) -> int =>
     x
 
-/// A doc comment can carry markup — <b>, &amp; and </b> — and none of it may
+/// A doc comment can carry markup (<b>, &amp; and </b>), and none of it may
 /// reach the page as markup.
 metacharacters(x: int) -> int =>
     x

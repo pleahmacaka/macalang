@@ -1,4 +1,4 @@
-// bench/time — the measuring loop.
+// bench/time: the measuring loop.
 //
 // Timing one call of a fast function tells you nothing. `now_ms()` counts whole
 // milliseconds, so anything under a millisecond reads as 0 and anything just
@@ -14,7 +14,7 @@
 //
 // A candidate is a function `(size: int) -> int`. It takes the workload size so
 // that two results are comparable exactly when their sizes match, and it
-// returns something — a checksum, a length, an index — which the loop
+// returns something (a checksum, a length, an index) which the loop
 // accumulates, so that no compiler between here and the metal can decide the
 // calls have no effect and delete them.
 //
@@ -45,12 +45,12 @@ Options = {
 defaults() -> Options =>
     Options { samples = 5, min_ms = 50, warmups = 1, max_iters = 100000000 }
 
-/// Shorter and noisier — for a demo, a smoke test, or a first look at a
+/// Shorter and noisier: for a demo, a smoke test, or a first look at a
 /// candidate you are still writing. Do not quote its numbers.
 quick() -> Options =>
     Options { samples = 3, min_ms = 15, warmups = 1, max_iters = 100000000 }
 
-/// Longer and steadier — eleven samples of 200 ms, three warm-ups. For the run
+/// Longer and steadier: eleven samples of 200 ms, three warm-ups. For the run
 /// whose numbers get written down and compared against next week.
 careful() -> Options =>
     Options { samples = 11, min_ms = 200, warmups = 3, max_iters = 100000000 }
@@ -59,7 +59,7 @@ careful() -> Options =>
 ///
 /// The samples are kept whole rather than pre-summarised because every
 /// statistic in `bench/stat` is recoverable from them and none of them is
-/// recoverable from each other — and because a run written to JSON and read
+/// recoverable from each other, and because a run written to JSON and read
 /// back a week later should be able to answer a question nobody had asked yet.
 ///
 /// `checksum` is what the candidate returned for this size. It is stored so
@@ -80,7 +80,7 @@ Tick = { ms: int, checksum: int }
 ///
 /// The order is: calibrate, warm up, measure. Calibration already runs the
 /// candidate a few times, so by the time the warm-up starts the code is in
-/// cache — the warm-up is there for the heap and the branch predictors, which
+/// cache. The warm-up is there for the heap and the branch predictors, which
 /// take a full-length pass to settle.
 measure(name: str, size: int, candidate, opts: Options) -> Result {
     iters = calibrate(candidate, size, opts)
@@ -135,8 +135,8 @@ calibrate(candidate, size: int, opts: Options) -> int {
 
 // The next iteration count to try.
 //
-// A pass that read as 0 ms says nothing about the ratio — it could be one
-// microsecond or four hundred — so it grows by a fixed factor and asks again
+// A pass that read as 0 ms says nothing about the ratio (it could be one
+// microsecond or four hundred), so it grows by a fixed factor and asks again
 // rather than dividing by a zero it would have to special-case anyway.
 grown(iters: int, ms: int, want: int, cap: int) -> int {
     guess = if ms <= 0 {
@@ -201,8 +201,8 @@ total_ops(r: Result) -> int =>
 ///
 /// Derived from the totals rather than from the median, and in `float`
 /// throughout. `total_ms / total_ops` in integer arithmetic is 0 for every
-/// candidate faster than a millisecond, which is all of them — the whole
-/// reason the iteration loop exists.
+/// candidate faster than a millisecond, which is all of them. That is the
+/// whole reason the iteration loop exists.
 ns_per_op(r: Result) -> float {
     ops = total_ops(r)
 
@@ -224,7 +224,7 @@ ops_per_sec(r: Result) -> float {
     }
 }
 
-/// Nanoseconds per unit of workload — `ns_per_op` divided by `size`.
+/// Nanoseconds per unit of workload: `ns_per_op` divided by `size`.
 ///
 /// This is the number that compares a case against itself at two sizes. An
 /// O(n) case holds it roughly constant as `size` grows; a case that quietly

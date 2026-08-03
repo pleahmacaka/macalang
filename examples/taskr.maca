@@ -1,4 +1,4 @@
-// taskr — a task list on disk, in about sixty lines.
+// taskr: a task list on disk, in about sixty lines.
 //
 //   maca run examples/taskr.maca add write the docs
 //   maca run examples/taskr.maca list
@@ -54,7 +54,7 @@ json_of(t: Task) -> str =>
               [str(t.id), quote(t.title), quote(name_of(t.status))])
 
 // A sum type is not a string, and the two directions are written out rather
-// than derived — which is what makes a `match` here exhaustive.
+// than derived, which is what makes a `match` here exhaustive.
 name_of(s: Status) -> str =>
     match s {
         Todo  => "todo"

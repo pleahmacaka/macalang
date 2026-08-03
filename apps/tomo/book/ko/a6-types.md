@@ -59,7 +59,7 @@ pair_first(xs: a[], fallback: a) -> a =>
 
 함수 시그니처는 스킴으로 일반화되고 호출마다 새로 인스턴스화되므로,
 `identity(1)`과 `identity("x")`가 둘 다 되고 서로를 제약하지 않습니다. 표준적인
-Hindley–Milner 추론입니다.
+Hindley-Milner 추론입니다.
 
 C 백엔드는 **단형화**합니다. 서로 다른 인스턴스화마다 생성된 C 안에 특수화된
 함수가 하나씩 생깁니다. 런타임 박싱도 디스패치도 없습니다. 제네릭 함수는 손으로
@@ -120,8 +120,8 @@ TypeMismatch: in `p`: record has unexpected field `z`
 
 ## 이펙트
 
-함수의 타입은 인자와 결과만이 아닙니다. 검사기는 함수가 무엇을 *하는지* —
-그 **이펙트** — 도 추적하며, 이펙트는 추론될 뿐 선언되지 않습니다.
+함수의 타입은 인자와 결과만이 아닙니다. 검사기는 함수가 무엇을 *하는지*(그
+**이펙트**)도 추적하며, 이펙트는 추론될 뿐 선언되지 않습니다.
 [이펙트와 async](a7-effects.md)가 전체 설명입니다. 다섯 개의 행, 각각을
 도입하는 것, 그리고 각각이 어디서 강제되는지.
 
@@ -176,7 +176,7 @@ Origin = 0
 어느 것이든 재대입하면 컴파일 에러입니다.
 
 ```
-Immutable: cannot reassign constant `Limit` — declare it mutable with
+Immutable: cannot reassign constant `Limit`; declare it mutable with
 `Limit = …` (no `const`)
 ```
 

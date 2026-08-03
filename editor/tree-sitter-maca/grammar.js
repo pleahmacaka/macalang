@@ -13,9 +13,10 @@ module.exports = grammar({
   externals: $ => [$._newline],
   // The external scanner emits `_newline` at a significant line break and
   // declines at a continuation (a line starting with an operator, `.`, a closer,
-  // …). A declined break falls through to `extras` here, so it's ignored — that
-  // is what lets an expression span lines. Declared `conflicts` let GLR try both
-  // the separator and the continuation; the scanner decides at runtime.
+  // …). A declined break falls through to `extras` here, so it's ignored, and
+  // that is what lets an expression span lines. Declared `conflicts` let GLR
+  // try both the separator and the continuation; the scanner decides at
+  // runtime.
   extras: $ => [/\s/, $.comment],
   word: $ => $.ident,
 
@@ -25,7 +26,7 @@ module.exports = grammar({
 
   conflicts: $ => [
     [$.record, $.block],
-    // `name(args)` is a call or a function definition — distinguished only by
+    // `name(args)` is a call or a function definition, distinguished only by
     // what follows `)` (`->` / `{` / `=>`). GLR explores both.
     [$.function, $._primary],
     [$.function, $.call],
@@ -46,7 +47,7 @@ module.exports = grammar({
     [$.param, $._primary],
     [$.params, $._primary],
     // an item/statement boundary vs. continuing an expression onto the next
-    // token — the scanner's `_newline` decides at runtime.
+    // token; the scanner's `_newline` decides at runtime.
     [$._item, $.binary], [$._item, $.range], [$._item, $.ternary],
     [$._item, $.with_update], [$._item, $.try_post],
     [$._stmt, $.binary], [$._stmt, $.range], [$._stmt, $.ternary],
@@ -287,9 +288,9 @@ module.exports = grammar({
       $.record_pattern,
       $.number, $.string, $.bool, $.ident, $.type_ident, $.list, $.wildcard,
     ),
-    // `Leaf(n)` / `Cons(x, rest)` — a variant pattern that binds its payload.
+    // `Leaf(n)` / `Cons(x, rest)`: a variant pattern that binds its payload.
     ctor_pattern: $ => seq($.type_ident, '(', sepBy(',', $._pattern), ')'),
-    // `{ head, tail }` — a record destructuring pattern.
+    // `{ head, tail }`: a record destructuring pattern.
     record_pattern: $ => seq('{', sepBy(',', $.ident), '}'),
     wildcard: $ => '_',
     for: $ => seq('for', field('pat', $.ident), 'in', field('iter', $._expr), $.block),

@@ -70,7 +70,7 @@ fn hello_and_recursion_and_loops_run_via_rust() {
     assert_eq!(code, Some(15), "main exit code should be sum_to(5)=15");
 
     // payload sum (data-carrying variants), incl. a record payload and value
-    // reuse — the shape gpql needs (`Outcome = Rows(Grid) | Affected(int)`).
+    // reuse: the shape gpql needs (`Outcome = Rows(Grid) | Affected(int)`).
     let (out, code) = build_and_run(
         "payload_sum",
         "Grid = {\n    rows: int\n    cols: int\n}\n\
@@ -92,7 +92,7 @@ fn foreign_std_type_compiles_and_runs() {
         return;
     }
     // `import rust "std::time::Duration"`, `Duration.from_secs(5)` (associated
-    // fn), `d.as_secs()` (instance method) — a real std type, no external crate,
+    // fn), `d.as_secs()` (instance method): a real std type, no external crate,
     // through the single-file rustc path.
     let (out, code) = build_and_run(
         "foreign_std",
@@ -202,7 +202,7 @@ fn rust_dependencies_drive_a_cargo_build() {
 
 /// Colorblind async reaches the Rust target too.
 ///
-/// `spawn e` becomes a `JoinHandle` and `await h` joins it — the same shape the
+/// `spawn e` becomes a `JoinHandle` and `await h` joins it, the same shape the
 /// C runtime gives it with pthreads. There is still no `async` keyword and no
 /// function colour: a function that spawns is an ordinary function.
 #[test]
@@ -238,7 +238,7 @@ fn anonymous_records_run_via_rust() {
         "main() -> int {\n\
         \x20   c = { host = \"localhost\", port = 8080 }\n\
         \x20   info(\"{c.host}:{c.port}\")\n\
-        \x20   // same shape, other order — the same type\n\
+        \x20   // same shape, other order: the same type\n\
         \x20   d = { port = 80, host = \"example.com\" }\n\
         \x20   info(\"{d.host}:{d.port}\")\n\
         \x20   0\n\
@@ -299,7 +299,7 @@ fn a_bodyless_function_is_rejected_rather_than_emitted_as_a_panic() {
 /// A trait-impl method can declare its return type.
 ///
 /// gpui's `Render::render` returns `impl IntoElement`, which the backend cannot
-/// see — it does not read the crate's source. Rust lets an impl name a concrete
+/// see: it does not read the crate's source. Rust lets an impl name a concrete
 /// type where the trait wrote `impl Trait`, so writing the type out is the whole
 /// answer. Without the annotation the return type is guessed from the body, and
 /// a builder chain guesses `i64`.
@@ -334,8 +334,8 @@ fn a_trait_method_can_declare_its_return_type() {
 
 /// A trait method's foreign-typed parameter is a mutable borrow.
 ///
-/// Rust trait methods take their arguments that way — `w: &mut Window`,
-/// `cx: &mut Context<Self>` — and Maca never owns a value from a crate it does
+/// Rust trait methods take their arguments that way (`w: &mut Window`,
+/// `cx: &mut Context<Self>`), and Maca never owns a value from a crate it does
 /// not read. So a parameter whose type this module does not declare lowers to
 /// `&mut T`, call sites pass `&mut`, and it is passed on rather than `.clone()`d
 /// (a `&mut T` has no `clone`).
@@ -367,7 +367,7 @@ fn a_foreign_typed_parameter_is_a_mutable_borrow() {
 }
 
 /// A borrow may be read and passed on, but not kept. Storing it would outlive
-/// the call, and the lifetime that would need has no spelling in Maca — so it
+/// the call, and the lifetime that would need has no spelling in Maca, so it
 /// is refused here, naming the parameter, rather than by `rustc` naming a type
 /// the user never wrote.
 #[test]

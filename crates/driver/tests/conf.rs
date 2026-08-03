@@ -1,4 +1,4 @@
-//! `apps/tomo/conf.maca` — the `book.toml` reader the handbook builder and the
+//! `apps/tomo/conf.maca`: the `book.toml` reader the handbook builder and the
 //! site build share.
 //!
 //! The assertions are in Maca (`tests/programs/conf.maca`). What stays here is

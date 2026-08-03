@@ -1,4 +1,4 @@
-// highlight — the syntax highlighter for tomo's fenced code blocks.
+// highlight: the syntax highlighter for tomo's fenced code blocks.
 //
 // The renderer hands every fence its language tag and the block's raw source,
 // and gets back HTML: one `<span class="tok-…">` per token, everything escaped.
@@ -84,7 +84,7 @@ tok(cls: str, text: str) -> str {
 //
 // Every scan below looks ahead, and `cs.get(i)` past the end is not a question
 // worth asking twice, so `ch` answers "" and every character-class test goes
-// through `one_of` — which rejects "" rather than matching it the way
+// through `one_of`, which rejects "" rather than matching it the way
 // `"abc".contains("")` does.
 
 ch(cs: str[], i: int) -> str {
@@ -228,8 +228,8 @@ scanned(out: str, at: int, operand: bool, depth: int) -> Scan =>
 hl_maca(src: str) -> str =>
     mc_run(src.chars(), 0, false, false, 0, "").out
 
-// Scan code from `i` to the end — or, inside an interpolation, to the `}` that
-// closes it.
+// Scan code from `i` to the end (or, inside an interpolation, to the `}` that
+// closes it).
 //
 // A newline ends an interpolation too. The lexer has no such rule because a
 // `"…"` string cannot reach one: a string that meets a newline is an error. A
@@ -273,7 +273,7 @@ mc_token(cs: str[], i: int, interp: bool, operand: bool, depth: int) -> Scan {
     } else if cur == "\{" {
         scanned(tok("tok-punct", cur), i + 1, false, depth + 1)
     } else if cur == "\}" {
-        // A closing brace completes an operand, exactly as `)` and `]` do —
+        // A closing brace completes an operand, exactly as `)` and `]` do.
         // `expect_operand` lists `RBrace` beside `RParen` and `RBracket`. Read
         // the other way, `f(x) } /tmp` coloured a division as a path literal.
         scanned(tok("tok-punct", cur), i + 1, true, depth - 1)
@@ -315,8 +315,8 @@ mc_number(cs: str[], i: int, depth: int) -> Scan {
     scanned(tok("tok-num", text_of(cs, i, j)), j, true, depth)
 }
 
-// `///` marks API documentation — the marker `tools/macadoc.maca` reads to
-// decide an item is public — while `////` is a rule of slashes and an ordinary
+// `///` marks API documentation (the marker `tools/macadoc.maca` reads to
+// decide an item is public), while `////` is a rule of slashes and an ordinary
 // remark. Both editor grammars in `editor/` draw the line in the same place.
 mc_line_comment(cs: str[], i: int, operand: bool, depth: int) -> Scan {
     j = line_end(cs, i)
@@ -386,9 +386,9 @@ line_start(cs: str[], i: int) -> int {
 
 // An identifier carries a Nix-style internal hyphen: `data-tomo` is one name
 // while `a - b` is a subtraction, because only a `-` directly between word
-// characters joins. `x-1` is a subtraction too — a digit does not start a
-// word. This is `lex_ident`, and it is what lets a hyphenated HTML attribute
-// need no workaround.
+// characters joins. `x-1` is a subtraction too, because a digit does not
+// start a word. This is `lex_ident`, and it is what lets a hyphenated HTML
+// attribute need no workaround.
 mc_word_end(cs: str[], i: int) -> int {
     j = word_run(cs, i)
 
@@ -410,7 +410,7 @@ starts_upper(w: str) -> bool {
     first.is_alpha() && first == first.upper()
 }
 
-// `f32x4`, `i8x16` — the vector types the LLVM span uses.
+// `f32x4`, `i8x16`: the vector types the LLVM span uses.
 is_simd(w: str) -> bool {
     at = w.index_of("x")
 
@@ -433,7 +433,7 @@ all_digits(cs: str[], i: int) -> bool {
 }
 
 // A function definition's own name, found the way the parser finds one: the
-// name starts a line, and its `(` is followed — past the parameter list — by
+// name starts a line, and its `(` is followed (past the parameter list) by
 // `->`, `=>` or `{`.
 //
 // Both halves are load-bearing. Without the lookahead an `import`-less snippet
@@ -486,7 +486,7 @@ opens_body(cs: str[], i: int) -> bool =>
 
 // ---- Maca: paths ----------------------------------------------------------
 
-// `/tmp`, `./x`, `../x`, `~/x` — a path literal, and only where an operand is
+// `/tmp`, `./x`, `../x`, `~/x`: a path literal, and only where an operand is
 // expected. A spaced `/` between two operands is division, which is the whole
 // reason this scanner carries `operand` around. Mirrors `starts_path`.
 mc_path_here(cs: str[], i: int) -> bool {
@@ -564,8 +564,9 @@ mc_str(cs: str[], i: int, text: str, out: str, depth: int) -> Scan {
     }
 }
 
-// `{` opens an interpolated expression, and the expression is scanned as code
-// — which is where a good half of the interesting code in this book lives.
+// `{` opens an interpolated expression, and the expression is scanned as
+// code, which is where a good half of the interesting code in this book
+// lives.
 // Nesting works because this recurses: a string inside an interpolation
 // arrives back at `mc_str`, and its own `{` arrives back here.
 mc_interp(cs: str[], i: int, text: str, out: str, depth: int) -> Scan {
@@ -697,7 +698,7 @@ gen_word(cs: str[], i: int, marker: str, words: str, out: str) -> str {
 }
 
 // A keyword, a key, or plain text. Colouring the left of an assignment is what
-// makes a `.toml`, a `.nix` or a rule of CSS readable at all — those files are
+// makes a `.toml`, a `.nix` or a rule of CSS readable at all. Those files are
 // mostly keys, and none of them has enough keywords to carry a block on its
 // own.
 gen_class(cs: str[], j: int, words: str, w: str) -> str {
@@ -711,7 +712,7 @@ gen_class(cs: str[], j: int, words: str, w: str) -> str {
 }
 
 // A word is a key when what follows it is a single `=` or `:`. Doubling
-// excludes the comparisons — `a == b` and a `::` — which are not assignments in
+// excludes the comparisons (`a == b` and a `::`), which are not assignments
 // any of these languages, and `://` excludes the scheme of a URL, which is
 // otherwise the most common "key" in a chapter about installing things.
 is_key(cs: str[], j: int) -> bool {
@@ -801,8 +802,8 @@ hl_ps(src: str) -> str =>
 /// page's one `<style>` beside `base_css()` and the generated utilities.
 ///
 /// Hand-written, and the only reason is the palette. Colour on this page is
-/// otherwise a Tailwind utility, but `text-…` accepts a *named* colour only —
-/// `text-[#cf222e]` is read as a font size — and the named set that clears
+/// otherwise a Tailwind utility, but `text-…` accepts a *named* colour only
+/// (`text-[#cf222e]` is read as a font size), and the named set that clears
 /// 4.5:1 against the light `bg-zinc-100` of a code block is violet-600 and the
 /// zinc ramp. One hue is not a syntax theme. So the ten colours below are
 /// written out, in the shape `base_css()` already established for a rule that

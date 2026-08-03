@@ -1,7 +1,7 @@
 //! What the jvm backend lowers, and what it refuses by name.
 //!
 //! `jexpr` ended in `_ => "null"`, and `null` is assignable to every Java
-//! reference type — so an unlowered construct type-checked and the program ran
+//! reference type, so an unlowered construct type-checked and the program ran
 //! with a hole in it. The worst case was `Expr::Lambda`: a closure handed to a
 //! Java API became `null`, and registering a callback is what this target is
 //! for.
@@ -74,8 +74,8 @@ fn run(src: &str) -> Option<String> {
 
 #[test]
 fn a_lambda_is_a_java_lambda_not_null() {
-    // A closure handed to a Java API is what this target is for — a Fabric mod
-    // registers callbacks — and it used to emit `null`, which is assignable to
+    // A closure handed to a Java API is what this target is for (a Fabric mod
+    // registers callbacks), and it used to emit `null`, which is assignable to
     // any functional interface, so it compiled and the callback did nothing.
     //
     // Only the emission is asserted: calling one through an unannotated Maca

@@ -1,9 +1,9 @@
-// profile/trace — a recorded run, as data.
+// profile/trace: a recorded run, as data.
 //
 // A trace is a flat list of spans with a parent index on each one. That is a
 // tree; it is only written the way a program can actually build one. A nested
 // value would have to be reopened deep inside itself every time a region ends,
-// and Maca has no reference to reopen it through — whereas appending a span and
+// and Maca has no reference to reopen it through, whereas appending a span and
 // remembering its parent's index costs one push and serialises without
 // recursion.
 //
@@ -14,7 +14,7 @@
 // Times are milliseconds. `finish` rebases them so the run starts at zero: a
 // profile that only exists in the process that made it cannot be compared
 // against yesterday's, and two runs measured from their own epochs cannot be
-// compared at all without subtracting them first — so it is done once, there.
+// compared at all without subtracting them first, so it is done once, there.
 // A trace built here by hand keeps whatever numbers it was given, and every
 // function below reads its extent off the spans rather than assuming zero.
 
@@ -25,7 +25,7 @@ import std/json
 /// for a region that was not inside anything.
 ///
 /// `closed` is false for a region that was started and never stopped. Such a
-/// span is kept — with its end pushed out to the last recorded moment —
+/// span is kept, with its end pushed out to the last recorded moment,
 /// because dropping it would take its children out of the tree with it, and
 /// the region that never finished is usually the one being looked for.
 Span = {
@@ -72,7 +72,7 @@ span_count(t: Trace) -> int => t.spans.length()
 /// The elapsed time of the whole run: the last end minus the first start.
 ///
 /// Not the sum of the root spans. A program can record two regions with a gap
-/// between them, and the gap is part of how long the run took — a chart scaled
+/// between them, and the gap is part of how long the run took. A chart scaled
 /// to the sum would draw the second region over the first.
 wall(t: Trace) -> int {
     if t.spans.length() == 0 {
@@ -86,7 +86,7 @@ wall(t: Trace) -> int {
 /// `finish` produced, and every layout below measures from here.
 ///
 /// The earliest start, not the first span's. Recording appends spans in the
-/// order they opened, so the two agree there — but a trace assembled by hand,
+/// order they opened, so the two agree there, but a trace assembled by hand,
 /// or stitched together out of two files, need not be in that order, and a
 /// chart scaled from the wrong end draws everything before it off the left.
 origin(t: Trace) -> int {
@@ -137,11 +137,11 @@ kids_of(xs: Span[], parent: int, i: int, acc: int[]) -> int[] {
 }
 
 // Which span holds `i`, with anything that is not an *earlier* span reading as
-// -1 — the same answer a region recorded at the top level gives.
+// -1, the same answer a region recorded at the top level gives.
 //
 // Two things depend on the "earlier" part. A truncated or hand-edited trace can
 // point a span at an index that does not exist, and such a span used to be
-// drawn by the chart and never mentioned by `events` — one run, two views, no
+// drawn by the chart and never mentioned by `events`: one run, two views, no
 // complaint from either. And a span that names itself, or a pair that name each
 // other, would send the walk round for ever; parents that only ever point
 // backwards cannot form a cycle. Recording never produces anything else.
@@ -165,7 +165,7 @@ deepest(xs: Span[], i: int, best: int) -> int {
     }
 }
 
-/// The indices of the spans at depth `d`, in the order they opened — one row
+/// The indices of the spans at depth `d`, in the order they opened: one row
 /// of a flame chart.
 level(t: Trace, d: int) -> int[] => at_depth(t.spans, d, 0, [])
 
@@ -248,8 +248,8 @@ scan_name(xs: Span[], name: str, i: int) -> int {
 //
 // The object is concatenated rather than assembled with `std/json`'s
 // `object_of`. That function returns the *keys* as the values whenever a value
-// is a freshly allocated string — `object_of(["a"], [quote("x")])` is
-// `\{"a":"a"\}` — because it calls `pairs` twice (the `.join` receiver is
+// is a freshly allocated string, so `object_of(["a"], [quote("x")])` is
+// `\{"a":"a"\}`, because it calls `pairs` twice (the `.join` receiver is
 // emitted twice) and `pairs` releases a value it only borrowed from the list.
 // `quote` is used below and is unaffected: the bug is in the assembly, not the
 // escaping.
@@ -279,7 +279,7 @@ span_json(s: Span) -> str {
 }
 
 /// A trace read back from `to_json`. Text that is not a trace reads as an
-/// empty one — a profile is a diagnostic, and failing to load yesterday's is
+/// empty one: a profile is a diagnostic, and failing to load yesterday's is
 /// not a reason to stop the run that was going to be compared against it.
 from_json(src: str) -> Trace =>
     trace(get(src, "label"), read_spans(items(get(src, "spans")), 0, []))

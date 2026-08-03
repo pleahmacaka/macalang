@@ -1,4 +1,4 @@
-# mqtt — a broker and client, in Maca
+# mqtt: a broker and client, in Maca
 
 A working **MQTT 3.1.1 broker and client** written in Maca over a C FFI
 (`import c "mqtt.h"`, resolved by the binding glue in `maca-runtime`). Both

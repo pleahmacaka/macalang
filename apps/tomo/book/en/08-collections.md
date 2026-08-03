@@ -84,7 +84,7 @@ for i in 1..5 {
 info("{(1..100).sum()}")    // 5050
 ```
 
-In a `for` header this lowers to a counting loop — no list is built.
+In a `for` header this lowers to a counting loop, and no list is built.
 
 ### Passing a named function
 
@@ -128,12 +128,12 @@ end, `substr` takes a length.** The names are the same on a list and a string,
 and so are their conventions.
 
 ```maca
-"abcdef".slice(1, 3)      // "bc"  — up to, not including, index 3
-"abcdef".substr(1, 3)     // "bcd" — three characters from index 1
+"abcdef".slice(1, 3)      // "bc"  (up to, not including, index 3)
+"abcdef".substr(1, 3)     // "bcd" (three characters from index 1)
 ```
 
-`chars`, `at` and the three character classes are what a scanner is built from —
-`selfhost/lexer.maca` uses nothing else:
+`chars`, `at` and the three character classes are what a scanner is built from,
+and `selfhost/lexer.maca` uses nothing else:
 
 ```maca
 run_digits(cs: str[], i: int) -> int =>
@@ -144,12 +144,12 @@ run_digits(cs: str[], i: int) -> int =>
 
 ### A misspelt method is caught, not linked
 
-Method calls are otherwise gradual — an `any` receiver reaches foreign code the
-checker cannot see — but the method set of a `str` or a `T[]` is closed, so a
+Method calls are otherwise gradual (an `any` receiver reaches foreign code the
+checker cannot see), but the method set of a `str` or a `T[]` is closed, so a
 name outside it is a typo. Near misses get a suggestion:
 
 ```
-UndefinedName: `str` has no method `lenght` — did you mean `length`?
+UndefinedName: `str` has no method `lenght`; did you mean `length`?
 ```
 
 ## Strings and characters
@@ -173,5 +173,5 @@ maca run examples/collections.maca
 ```
 
 Every list method above, applied and printed. The two tables in this chapter are
-the everyday subset; the complete method sets — which are *closed*, and checked
-— are in [The Standard Library](a3-stdlib.md).
+the everyday subset; the complete method sets (which are *closed*, and checked)
+are in [The Standard Library](a3-stdlib.md).

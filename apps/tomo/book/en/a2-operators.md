@@ -20,7 +20,7 @@ when two of them are the same character are in [Syntax](a5-syntax.md).
 | `&&` `\|\|` | boolean and/or |
 | `!x` | negation |
 
-A long condition can break across lines either way — leave the operator at the
+A long condition can break across lines either way: leave the operator at the
 end of the line, or start the next line with it. Both read as one expression:
 
 ```maca
@@ -31,7 +31,7 @@ fine = a > 0
     && b > 0
 ```
 
-Six may *begin* a line — `&&`, `||`, `++`, `.`, `?` and `:` — because none of
+Six may *begin* a line (`&&`, `||`, `++`, `.`, `?` and `:`), because none of
 them can begin an expression. `+`, `*` and the comparisons cannot, and a line
 that starts with one is a parse error. `-` is the trap: it can begin an
 expression, so a leading `-` starts a new statement instead of continuing the
@@ -56,8 +56,8 @@ one above, and nothing warns. [Syntax](a5-syntax.md) has the whole rule.
 
 | Form | Meaning |
 |---|---|
-| `c ? x : y` | ternary — written **spaced** |
-| `x?` | propagate a failure — written **attached** |
+| `c ? x : y` | ternary, written **spaced** |
+| `x?` | propagate a failure, written **attached** |
 | `lo..hi` | inclusive range |
 | `x, ..rest` | rest pattern in a `match` |
 
@@ -65,7 +65,7 @@ The spaced-versus-attached distinction is load-bearing and appears three times i
 the language. A spaced `?` is a ternary; an attached one is error propagation. A
 spaced `:` is a ternary's second half; an attached one, inside an interpolation,
 is a format spec. And a spaced `-` subtracts while an attached one between two
-word characters is part of the name — `data-id` is one identifier, `a - b` is
+word characters is part of the name: `data-id` is one identifier, `a - b` is
 two operands.
 
 ## Access
@@ -74,7 +74,7 @@ two operands.
 |---|---|
 | `r.f` | field |
 | `xs[i]` | index; also assignable |
-| `x.f(y)` | UFCS — the same as `f(x, y)` |
+| `x.f(y)` | UFCS: the same as `f(x, y)` |
 | `r with { f = v }` | functional update |
 
 ## In strings

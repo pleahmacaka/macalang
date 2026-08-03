@@ -7,7 +7,7 @@
 //!
 //! Cargo compiles `tests/common/mod.rs` as a module of each test binary rather
 //! than as a suite of its own, so a helper no single file uses is dead code in
-//! that binary — hence the allow.
+//! that binary, hence the allow.
 
 #![allow(dead_code, unused_imports)]
 

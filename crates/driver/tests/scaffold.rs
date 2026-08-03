@@ -1,4 +1,4 @@
-//! `maca init` scaffolds a working project (hermetic — no toolchain needed).
+//! `maca init` scaffolds a working project (hermetic: no toolchain needed).
 
 mod common;
 use common::*;

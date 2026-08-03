@@ -2,9 +2,9 @@
 //!
 //! Two import shapes name a local `.maca` module:
 //!
-//! - **whole-module** — `import a/b` (`Import::Module`) or a single-word
+//! - **whole-module**: `import a/b` (`Import::Module`) or a single-word
 //!   `import a` (`Import::Bare`): the entire sibling module is inlined.
-//! - **selective** — `import { foo, bar } from a/b` (`Import::Names`): only the
+//! - **selective**: `import { foo, bar } from a/b` (`Import::Names`), only the
 //!   named top-level definitions are inlined, together with the transitive
 //!   closure of same-module definitions they reference (so the slice still
 //!   compiles). A name that the module doesn't define is a clean error rather
@@ -211,7 +211,7 @@ fn separate_definitions(units: &mut [Unit], scope: &Scope) -> Result<(), String>
 /// Which of several same-named definitions a third module means.
 ///
 /// A module that neither defines the name nor binds it, and can reach two of the
-/// definitions, is written against exactly one of them — and moving the other
+/// definitions, is written against exactly one of them, and moving the other
 /// must not take its reference along. Left to `reaches` alone the reference went
 /// to whichever definition moved, so a call written against a documented
 /// function silently ran a private helper of a module the author never opened.
@@ -356,7 +356,7 @@ fn can_move(
 /// Does moving `owner`'s `name` rewrite this module?
 ///
 /// The module that defines it, and every module that can reach the definition
-/// and has no definition of its own to mean instead — except one `meanings` has
+/// and has no definition of its own to mean instead, except one `meanings` has
 /// already settled on a different definition for, whose reference this move is
 /// not about.
 fn rewritten_by(
@@ -608,7 +608,7 @@ fn clashing_definitions(units: &[Unit], kept: &[usize], name: &str) -> String {
 /// Qualify a module's private definitions with the module's own name.
 ///
 /// Everything is inlined into one translation unit, so two files that each keep
-/// a `helper` to themselves collide — and "two files in a package cannot share
+/// a `helper` to themselves collide, and "two files in a package cannot share
 /// a private name" defeats the point of splitting a package into files at all.
 /// The failure was a C `redefinition` error naming a function the reader never
 /// wrote twice.
@@ -618,7 +618,7 @@ fn clashing_definitions(units: &[Unit], kept: &[usize], name: &str) -> String {
 /// name is one nobody asked of this module, so nothing outside can be referring
 /// to it. Every one of them is qualified rather than only the ones that happen
 /// to clash today, because a collision that appears when an unrelated file
-/// gains a helper is a collision nobody can see coming — and because
+/// gains a helper is a collision nobody can see coming, and because
 /// `alpha__helper` in a stack trace says more than `helper` did.
 fn qualify_private(items: &mut [Stmt], want: &BTreeSet<String>, path: &Path) {
     let Some(stem) = path.file_stem().map(|s| s.to_string_lossy().into_owned()) else {
@@ -663,8 +663,8 @@ fn qualify_private(items: &mut [Stmt], want: &BTreeSet<String>, path: &Path) {
 /// every type reachable from their signatures.
 ///
 /// Bodies are deliberately not followed. A helper a public function *calls* is
-/// still private — the caller never names it — and following calls would make
-/// the whole module public the moment one function was exported.
+/// still private, since the caller never names it, and following calls would
+/// make the whole module public the moment one function was exported.
 fn surface<'a>(items: &'a [Stmt], want: &BTreeSet<String>) -> BTreeSet<&'a str> {
     let mut out: BTreeSet<&str> = items
         .iter()
@@ -746,7 +746,7 @@ fn canon(path: &Path) -> PathBuf {
 /// Depth-first post-order over local imports; parse each module once.
 ///
 /// A slash-path import that resolves to nothing is an error here rather than a
-/// line that does nothing. `import std/str` — a module that has never existed —
+/// line that does nothing. `import std/str`, a module that has never existed,
 /// sat in four files, and each of them then hand-wrote the helpers it believed
 /// it was importing.
 fn collect(path: &Path, g: &mut Graph) -> Result<(), String> {
@@ -759,7 +759,7 @@ fn collect(path: &Path, g: &mut Graph) -> Result<(), String> {
     // An imported module's syntax errors are the program's syntax errors.
     // Dropping them left the parser's partial tree to be sliced and inlined, so
     // a file that would not compile on its own compiled to something else once
-    // something imported it — `a + b` continued onto the next line is a clean
+    // something imported it. `a + b` continued onto the next line is a clean
     // refusal in the entry file and was a silently different expression in a
     // module beside it.
     if !parsed.errors.is_empty() {
@@ -781,7 +781,7 @@ fn collect(path: &Path, g: &mut Graph) -> Result<(), String> {
             None if names_a_file(im) => {
                 let written = import_segments(im).unwrap_or_default().join("/");
                 return Err(format!(
-                    "{}: no module `{written}` — `{written}.maca` is not beside \
+                    "{}: no module `{written}`: `{written}.maca` is not beside \
                      this file or in the working directory",
                     path.display()
                 ));
@@ -797,7 +797,7 @@ fn collect(path: &Path, g: &mut Graph) -> Result<(), String> {
 ///
 /// Refused rather than warned about. The two candidates are different files
 /// with, by construction, the same name, so one of them is being compiled and
-/// the other silently is not — and which is which depends on a directory layout
+/// the other silently is not, and which is which depends on a directory layout
 /// the import line does not mention. That is not a preference the author
 /// expressed, so there is nothing here to honour; the repair is to rename the
 /// directory or to write a path that names one file, and both are the author's
@@ -806,8 +806,8 @@ fn collect(path: &Path, g: &mut Graph) -> Result<(), String> {
 fn ambiguous(importer: &Path, im: &Import, chosen: &Path, other: &Path) -> String {
     let written = import_segments(im).unwrap_or_default().join("/");
     format!(
-        "{}: ambiguous import `{written}` — it names two files:\n  \
-         {} (as written — the one this build would use)\n  \
+        "{}: ambiguous import `{written}`: it names two files:\n  \
+         {} (as written, the one this build would use)\n  \
          {} (under a search root)\n  \
          A directory sharing a package's name hides the package, and the import \
          line cannot say which was meant. Rename the directory, or move the \
@@ -942,8 +942,8 @@ fn slice_module(
 
     // Grow the closure: every referenced name that this module defines (or a
     // referenced variant's owning type) is pulled in too. Over-inclusion is
-    // harmless — a spuriously matched local name just compiles unused — so no
-    // scope analysis is needed.
+    // harmless, since a spuriously matched local name just compiles unused,
+    // so no scope analysis is needed.
     while let Some(idx) = queue.pop() {
         let mut refs = BTreeSet::new();
         refs_in_stmt(&module.items[idx], &mut refs);
@@ -964,7 +964,7 @@ fn slice_module(
     // Emit in original source order for stable, readable output.
     //
     // A foreign import comes along whatever was selected. `import c "http.h"`
-    // is not a definition anybody can ask for by name — it is the module saying
+    // is not a definition anybody can ask for by name. It is the module saying
     // which engine its functions are compiled against, and dropping it left the
     // slice referring to symbols the link step was never told to provide.
     Ok(module
@@ -991,7 +991,7 @@ fn sum_variants(value: &Expr) -> Vec<String> {
             }
             Expr::Ident(n) => out.push(n.clone()),
             Expr::Ctor { name, .. } => out.push(name.clone()),
-            // `Circle(float)` — a variant with payload parses as a call.
+            // `Circle(float)`: a variant with payload parses as a call.
             Expr::Call { callee, .. } => {
                 if let Expr::Ident(n) = &**callee {
                     out.push(n.clone());
@@ -1208,7 +1208,7 @@ fn refs_in_pattern(p: &Pattern, out: &mut BTreeSet<String>) {
         Pattern::Or(alts) => alts.iter().for_each(|a| refs_in_pattern(a, out)),
         // Wild / literals / plain binds reference nothing top-level. A
         // `Pattern::Bind` shadows, but we don't remove it from the ref set of
-        // the enclosing item — over-inclusion is harmless.
+        // the enclosing item, since over-inclusion is harmless.
         _ => {}
     }
 }

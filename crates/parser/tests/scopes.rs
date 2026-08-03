@@ -237,8 +237,8 @@ fn a_third_module_means_the_published_definition() {
 }
 
 /// Where no one of the definitions in reach is the API one, nothing in the
-/// referring module says which it meant, and it is refused naming that file —
-/// the alternative is a call bound by which definition happened to move first.
+/// referring module says which it meant, and it is refused naming that file.
+/// The alternative is a call bound by which definition happened to move first.
 #[test]
 fn a_reference_nothing_settles_is_refused() {
     let p = Project::new("unsettled");

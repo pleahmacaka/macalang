@@ -9,8 +9,8 @@
 //! # Layout
 //!
 //! The recommended monorepo shape is `modules/` beside `apps/`: `modules/*` are
-//! the packages — the code meant to be imported, and what this repository
-//! publishes — and `apps/*` are the programs built out of them. A single-package
+//! the packages, the code meant to be imported and what this repository
+//! publishes, and `apps/*` are the programs built out of them. A single-package
 //! repository can use `src/*` instead and needs no manifest entry for it. Both
 //! are searched by default, so neither is a decision anyone has to make up
 //! front, and `maca.toml` can rename either:
@@ -35,7 +35,7 @@
 //! import { listen } from http/server
 //! ```
 //!
-//! An installed dependency is the same — `maca_modules/toml/parse.maca` is
+//! An installed dependency is the same: `maca_modules/toml/parse.maca` is
 //! `toml/parse`, not `maca_modules/toml/parse`. Where a package physically
 //! lives is the project's business; what you write is the name.
 //!
@@ -53,7 +53,7 @@ use std::path::{Path, PathBuf};
 pub struct Layout {
     /// Import search roots under the project root, in order.
     pub roots: Vec<String>,
-    /// Where applications live. Not a search root — see the module docs.
+    /// Where applications live. Not a search root; see the module docs.
     pub apps: String,
 }
 
@@ -81,7 +81,7 @@ impl Layout {
         }
         if let Some(v) = layout_key(toml, "src") {
             // A polyrepo naming its own source root replaces `src`, not
-            // `modules` — a repository may legitimately have both.
+            // `modules`; a repository may legitimately have both.
             out.roots[1] = v;
         }
         if let Some(v) = layout_key(toml, "apps") {
@@ -140,7 +140,7 @@ enum Found {
     Written,
     /// `<base>/<one of the project's own source roots>/<the path>`.
     Root,
-    /// `<base>/maca_modules/<the path>` — an installed dependency.
+    /// `<base>/maca_modules/<the path>`: an installed dependency.
     Installed,
 }
 
@@ -149,7 +149,7 @@ enum Found {
 pub struct Resolved {
     /// The file the import means.
     pub chosen: PathBuf,
-    /// A second, different file the same written import also names — one found
+    /// A second, different file the same written import also names, one found
     /// as a written path and one under a search root. Nothing in the source
     /// says which of the two won, so this is an ambiguity to report rather than
     /// a precedence to rely on; see `candidates`.
@@ -159,7 +159,7 @@ pub struct Resolved {
 /// The file `import a/b` names, relative to the importing file.
 ///
 /// The written path wins, from the importer's directory upward and then from
-/// the working directory — that is what reaches `apps/tomo/conf.maca` from
+/// the working directory. That is what reaches `apps/tomo/conf.maca` from
 /// `tools/`. Each of those directories is also tried as a project root, so
 /// `import std/text` finds `modules/std/text.maca` from anywhere in the tree.
 pub fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> {
@@ -182,14 +182,14 @@ pub fn resolve_module(segs: &[String], importer: &Path) -> Option<Resolved> {
     // The importer's own directory, then every directory above it up to the
     // project root, then the working directory. Walking up is what lets a
     // program deep in the tree say `import std/text` and mean the project's
-    // own — resolving only against the working directory made a build depend on
+    // own. Resolving only against the working directory made a build depend on
     // where it was started from, and `cargo test`, which runs in a crate
     // directory, could not resolve an example's imports at all.
     for base in dir.ancestors() {
         candidates(base, &joined, &layout, &mut found);
         // Stop at the project root. Without this the walk continues into `$HOME`
         // and `/`, where a stray `std/` becomes the standard library for every
-        // project beneath it — and the language server, whose own search is
+        // project beneath it, and the language server, whose own search is
         // bounded by the workspace, would then disagree with the compiler about
         // which file a name is defined in.
         if base.join("maca.toml").is_file() {
@@ -200,7 +200,7 @@ pub fn resolve_module(segs: &[String], importer: &Path) -> Option<Resolved> {
     // own. A file inside a project resolves against *that* project or not at
     // all: building `projA/app.maca` from inside `projB` used to find projB's
     // `modules/`, which is a build whose meaning depends on where it was
-    // started — and the language server, bounded by its workspace, could never
+    // started, and the language server, bounded by its workspace, could never
     // agree with it.
     if found.is_empty() && project_root(dir).is_none() {
         candidates(Path::new("."), &joined, &layout, &mut found);
@@ -227,8 +227,8 @@ pub fn resolve_module(segs: &[String], importer: &Path) -> Option<Resolved> {
 ///
 /// An installed dependency losing to the project's own source is *not* that.
 /// `maca_modules` is a directory `maca add` created, not one anybody wrote, and
-/// a project's own copy outranking a vendored one is the documented precedence
-/// — see `an_installed_dependency_does_not_outrank_the_projects_own_source`.
+/// a project's own copy outranking a vendored one is the documented
+/// precedence. See `an_installed_dependency_does_not_outrank_the_projects_own_source`.
 fn hides(chosen: Found, other: Found) -> bool {
     matches!(
         (chosen, other),
@@ -241,8 +241,8 @@ fn hides(chosen: Found, other: Found) -> bool {
 ///
 /// The written path comes first, and that has a cost worth knowing: a
 /// directory that shares a package's name shadows it. The tree had exactly that
-/// shape — a top-level `bench/` beside `modules/bench/`, whose files the
-/// benchmark subsystem imports as `bench/…` — and it was closed by moving the
+/// shape, a top-level `bench/` beside `modules/bench/`, whose files the
+/// benchmark subsystem imports as `bench/…`, and it was closed by moving the
 /// directory, not by reordering here. What is new is that the shadowing is no
 /// longer silent: both candidates are collected, and an import that names two
 /// files is refused by `imports::collect` naming both.
@@ -250,7 +250,7 @@ fn hides(chosen: Found, other: Found) -> bool {
 /// Reordering was tried and reverted. It does not fix the general case: the
 /// ancestor walk visits each directory in turn, so `apps/bench/report.maca`
 /// still answers for `bench/report` from anywhere under `apps/`, whatever the
-/// order within one directory. And it makes things worse elsewhere —
+/// order within one directory. And it makes things worse elsewhere:
 /// `maca_modules` is a search root, so roots-first lets an installed
 /// dependency outrank the project's own source. Across the 229 imports in this
 /// repository the two orderings agree on every one, which is also why refusing
@@ -279,7 +279,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
     real(a) == real(b)
 }
 
-/// The module at `stem` — the file `stem.maca`, and nothing else.
+/// The module at `stem`: the file `stem.maca`, and nothing else.
 fn module_file(stem: &Path) -> Option<PathBuf> {
     let flat = stem.with_extension("maca");
     flat.is_file().then_some(flat)
@@ -298,7 +298,7 @@ pub fn import_resolution(im: &Import, importer: &Path) -> Option<Resolved> {
 
 /// Does this import name a file it is an error not to find?
 ///
-/// A slash path — `import std/text`, `import { lines } from std/text` — names a
+/// A slash path (`import std/text`, `import { lines } from std/text`) names a
 /// module and nothing else, so failing to resolve one is a typo. A bare
 /// `import nixpkgs` is not: it may be a sibling module or the builtin, and the
 /// two are told apart only by whether the file is there.
@@ -309,10 +309,11 @@ pub fn import_resolution(im: &Import, importer: &Path) -> Option<Resolved> {
 pub fn names_a_file(im: &Import) -> bool {
     match im {
         Import::Module(segs) => segs.len() > 1,
-        // A selective import can only mean a local module — there is nothing to
-        // select from a builtin — so a single word is as much a promise as a
-        // slash path. `import { greet } from lib` with no `lib` used to resolve
-        // to nothing, silently, and the program failed at the linker instead.
+        // A selective import can only mean a local module, since there is
+        // nothing to select from a builtin, so a single word is as much a
+        // promise as a slash path. `import { greet } from lib` with no `lib`
+        // used to resolve to nothing, silently, and the program failed at the
+        // linker instead.
         Import::Names { .. } => true,
         _ => false,
     }

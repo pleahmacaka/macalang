@@ -26,7 +26,7 @@ whatever compiler your system has, so the optimiser you benefit from is one that
 has had thirty years of work put into it.
 
 Most programs want this. The question only comes up when something outside the
-program dictates the answer — a browser, a chip, a Java API, a library that
+program dictates the answer: a browser, a chip, a Java API, a library that
 would take a month to port.
 
 ## The others exist to reach something
@@ -34,7 +34,7 @@ would take a month to port.
 | Target | Reaches |
 |---|---|
 | `js` | the browser, with the UI syntax as a live DOM |
-| `jvm` | Java's libraries — Minecraft mods are the worked example |
+| `jvm` | Java's libraries; Minecraft mods are the worked example |
 | `rust` | crates.io, through emitted Rust source |
 | `embedded` | a bare-metal Cortex-M or RISC-V, with no libc under it |
 | `nix` | the machine the binary runs on |
@@ -44,7 +44,7 @@ reimplement. That is the whole rule, and it is why the list is the length it is.
 
 The one people ask for and don't get is BEAM. Maca's concurrency model looks
 like a fit, but it would be the first backend added for elegance rather than
-reach — [colorblind async](13-colorblind-async.md) already runs on real threads
+reach; [colorblind async](13-colorblind-async.md) already runs on real threads
 in the C runtime. Reach is a reason; symmetry is not.
 
 ## Try it
@@ -62,9 +62,9 @@ nothing had to.
 ## Where the full answer is
 
 [Targets](a10-targets.md) in the reference has every flag, the MMIO vocabulary
-the embedded target adds, the C ABI the native halves agree on, and — the part
-worth reading before you pick one — the exact list of what each target
-**refuses**. A target that cannot honour something says so at compile time
+the embedded target adds, the C ABI the native halves agree on, and the exact
+list of what each target **refuses**, which is the part worth reading before
+you pick one. A target that cannot honour something says so at compile time
 rather than emitting code that quietly does nothing.
 
 The UI syntax the `js` target brings to life is

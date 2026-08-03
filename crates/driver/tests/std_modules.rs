@@ -1,11 +1,11 @@
-//! `std/` — the Maca-source standard library, executed.
+//! `std/`: the Maca-source standard library, executed.
 //!
 //! `std/` was a README describing builtins. It is now importable Maca: `text`,
 //! `list`, `path`, `json`, `csv`, `fs`, `proc`. Each has a suite of `test_…`
 //! functions under `modules/std/tests/`, and this runs them all through
-//! `maca test` —
-//! a library nothing runs is a claim rather than a fact, and the suites are
-//! written in the language they ship with, so they also gate the compiler.
+//! `maca test`. A library nothing runs is a claim rather than a fact, and the
+//! suites are written in the language they ship with, so they also gate the
+//! compiler.
 //!
 //! The assertions live in the Maca; this file only reports the exit code,
 //! which `maca test` sets to the number of failed assertions.
@@ -53,7 +53,7 @@ fn text_module() {
     suite("text");
 }
 
-/// `cli` — the command-line package: what a command accepts, read off one
+/// `cli`, the command-line package: what a command accepts, read off one
 /// value, and what it prints.
 #[test]
 fn cli_module() {
@@ -93,7 +93,7 @@ fn proc_module() {
 /// Every function `std/README.md` advertises is defined by the module it names.
 ///
 /// The table is the first thing anyone reads to find out what `std/` holds, so
-/// a name that drifted out of it — renamed, moved, removed — sends a reader to
+/// a name that drifted out of it (renamed, moved, removed) sends a reader to
 /// a function that isn't there. The suites above prove the modules work; this
 /// proves the index of them is honest.
 #[test]

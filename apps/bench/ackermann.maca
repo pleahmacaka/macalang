@@ -1,4 +1,4 @@
-// Ackermann(3, n) — deep non-primitive recursion.
+// Ackermann(3, n): deep non-primitive recursion.
 ack(m: int, n: int) -> int {
     if m == 0 {
         n + 1

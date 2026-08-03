@@ -62,7 +62,7 @@ impl Drop for Project {
 const MANIFEST: &str = "[package]\nname = \"p\"\n";
 
 /// `modules/` is a search root, so a package is imported by its own name from
-/// anywhere in the tree — not by the path from the importer to it.
+/// anywhere in the tree, not by the path from the importer to it.
 #[test]
 fn a_package_under_modules_is_imported_by_name() {
     let p = Project::new("byname");
@@ -98,7 +98,7 @@ fn a_directory_is_not_a_module_but_its_files_are() {
 }
 
 /// An installed dependency is a search root too, so it is written by its own
-/// name — the directory `maca add` chose never appears in anybody's source.
+/// name: the directory `maca add` chose never appears in anybody's source.
 #[test]
 fn an_installed_dependency_needs_no_prefix() {
     let p = Project::new("installed");
@@ -171,7 +171,7 @@ fn apps_is_not_a_search_root() {
     assert_eq!(
         p.resolve(&tool, "tomo/conf"),
         None,
-        "not reachable with `apps/` left off — that is the whole difference \
+        "not reachable with `apps/` left off; that is the whole difference \
          between a package root and a place applications live"
     );
     assert_eq!(
@@ -211,8 +211,8 @@ fn a_written_path_beats_a_search_root() {
 ///
 /// It was closed by moving the directory. Reordering the search to put the
 /// roots first was tried and reverted: it does not fix the case where the
-/// shadowing directory is under `apps/` — the ancestor walk reaches that
-/// directory before the root — and it lets an installed dependency under
+/// shadowing directory is under `apps/` (the ancestor walk reaches that
+/// directory before the root), and it lets an installed dependency under
 /// `maca_modules/` outrank the project's own source.
 ///
 /// So the order stands and the shadowing is reported instead: resolution still
@@ -230,7 +230,7 @@ fn a_directory_of_the_same_name_shadows_a_package() {
     assert_eq!(
         p.resolve(&app, "bench/stat").as_deref(),
         Some("bench/stat.maca"),
-        "the written path wins — which is why a package's name is not a name \
+        "the written path wins, which is why a package's name is not a name \
          to give a directory"
     );
     assert_eq!(
@@ -280,7 +280,7 @@ fn an_installed_dependency_does_not_outrank_the_projects_own_source() {
 
 /// The search stops at the project root: a stray `modules/` in a parent
 /// directory is somebody else's, and reaching it would let the compiler and the
-/// language server — whose own search is bounded by the workspace — disagree
+/// language server, whose own search is bounded by the workspace, disagree
 /// about where a name is defined.
 #[test]
 fn the_search_stops_at_the_project_root() {

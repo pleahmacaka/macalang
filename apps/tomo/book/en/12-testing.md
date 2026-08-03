@@ -42,7 +42,7 @@ Name a test after what it establishes, not after the function it calls.
 | `assert(cond, message)` | `cond` is true |
 | `assert_eq(got, want, message)` | `got == want` (both `str`) |
 
-The third argument is not the expression restated — the runner already prints
+The third argument is not the expression restated. The runner already prints
 the values. It is what the expression was *supposed to establish*, so a failure
 reads as a sentence:
 
@@ -73,7 +73,7 @@ running 2 tests
 
 The driver collects every `test_`-prefixed function in the file, drops the
 file's own `main` if it has one, and generates a runner that announces each test
-before calling it — so a test that crashes tells you which one it was.
+before calling it, so a test that crashes tells you which one it was.
 
 The exit code is the number of failed assertions, so `maca test` composes with
 anything that reads exit codes.
@@ -101,7 +101,7 @@ That is deliberate. Aborting on the first failure means fixing a suite takes as
 many runs as it has bugs; counting them means one run tells you everything.
 
 `failures()` returns the running count, which is what the generated runner uses
-to decide whether a test passed — and what a test can use itself if it wants to
+to decide whether a test passed, and what a test can use itself if it wants to
 skip work that a failed precondition has made meaningless.
 
 ## Testing across files
@@ -125,10 +125,10 @@ through the front door.
 ## The larger point: run your documentation
 
 The Maca repository holds a file called `examples/handbook.maca`. It contains
-every runnable claim this book makes — the record update from
+every runnable claim this book makes (the record update from
 [Records](05-records.md), the format specs from
 [Common Concepts](03-common-concepts.md), the list patterns from
-[Sum Types](06-sum-types.md) — in one program,
+[Sum Types](06-sum-types.md)) in one program,
 and the test suite runs it and checks each line of its output.
 
 That file exists because writing this handbook broke things. Five compiler bugs
@@ -143,7 +143,7 @@ confidently and actually executing it:
 - a literal `{` in a string silently swallowed the rest of the file
 
 Every one of those was in text that read perfectly well. Documentation that
-isn't run is a claim, not a fact — and the cheapest way to make it a fact is to
+isn't run is a claim, not a fact. The cheapest way to make it a fact is to
 put it in a file the test suite executes.
 
 The same argument applies one level down, to the tests themselves. A test that

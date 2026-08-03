@@ -1,5 +1,5 @@
 //! Tooling: fmt (idempotent, 4-space, block breaks), lint, and
-//! `[scripts]` aliases. Pure — no WSL/toolchain needed.
+//! `[scripts]` aliases. Pure: no WSL/toolchain needed.
 
 mod common;
 use common::*;
@@ -32,7 +32,7 @@ fn fmt_is_idempotent_and_indented() {
 
 #[test]
 fn lint_flags_long_line() {
-    // wide *code* — the rule is about what a reader has to scan
+    // wide *code*: the rule is about what a reader has to scan
     let long = format!("total = {}\n", vec!["value"; 20].join(" + "));
     let (ok, err) = lint(&long, "wide");
     assert!(!ok, "lint should exit nonzero on a seeded issue: {err}");
@@ -42,8 +42,8 @@ fn lint_flags_long_line() {
     );
 }
 
-/// A long string literal is like a long comment — a C template, a URL, a test
-/// program — and rewrapping it would change or disfigure it. So the line is
+/// A long string literal is like a long comment (a C template, a URL, a test
+/// program), and rewrapping it would change or disfigure it. So the line is
 /// measured with its literals collapsed, which is what `tools/lint.maca` does;
 /// the two linters have to agree or one of them is lying about the codebase.
 #[test]
@@ -71,8 +71,8 @@ fn lint_does_not_flag_an_else_if_chain() {
 }
 
 /// A name an `import` brings in is defined. `lint` used to check the file on
-/// its own, so every script in the repository — each of which imports `std/…`
-/// — was reported as calling undefined functions, which is a linter crying
+/// its own, so every script in the repository, each of which imports `std/…`,
+/// was reported as calling undefined functions, which is a linter crying
 /// wolf about the one thing `UndefinedName` exists to find.
 #[test]
 fn lint_resolves_imports_before_calling_a_name_undefined() {
@@ -120,7 +120,7 @@ fn lint_in(src: &str, name: &str, flags: &[&str]) -> (bool, String) {
 /// The two config-mode diagnostics are reachable from `maca lint`.
 ///
 /// They exist only in config mode and nothing about a file says which mode it
-/// is for, so `maca lint` checked everything as a program — and reported "no
+/// is for, so `maca lint` checked everything as a program, and reported "no
 /// issues" on the very fixtures written to fail. Documentation offered it as a
 /// substitute for `maca.check`, which does take the mode.
 #[test]
@@ -164,7 +164,7 @@ fn script_alias_runs() {
 /// `maca dev` with no `dev.maca` prints one you can paste.
 ///
 /// `maca init` does not scaffold the file, because a Nix dev shell is
-/// optional — so "cannot read dev.maca" was the whole of the guidance, and
+/// optional, so "cannot read dev.maca" was the whole of the guidance, and
 /// finding out what belongs in it meant leaving the terminal. The starter it
 /// prints is compiled here, so it cannot drift from what the command accepts.
 #[test]

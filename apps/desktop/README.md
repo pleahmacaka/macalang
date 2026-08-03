@@ -2,7 +2,7 @@
 
 A native desktop app: the front end is a Maca UI (`app.maca` → JS/HTML/CSS), the
 back end is a Maca native command (`backend.maca` → binary), and Tauri provides
-the cross-platform window + webview. The whole app is Maca — Tauri is just the
+the cross-platform window + webview. The whole app is Maca; Tauri is just the
 shell, and `maca build --target tauri` generates it.
 
 ## One-shot build
@@ -20,7 +20,7 @@ dist-tauri/
     Cargo.toml     tauri v2 deps
     tauri.conf.json  points the webview at ../dist
     build.rs
-    src/main.rs    the shell — registers the `maca_run` command
+    src/main.rs    the shell, registers the `maca_run` command
     bin/backend    the compiled backend.maca (run by maca_run)
 ```
 

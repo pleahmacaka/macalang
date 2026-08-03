@@ -12,7 +12,7 @@
 use maca_core::{DiagKind, Mode, check as core_check};
 use maca_parser::{parse, print_module};
 
-/// `maca.check` — return human-readable diagnostics. Empty = clean.
+/// `maca.check`: return human-readable diagnostics. Empty = clean.
 pub fn check(code: &str, config: bool) -> Vec<String> {
     let parsed = parse(code);
     if !parsed.errors.is_empty() {
@@ -40,7 +40,7 @@ fn kind_name(k: DiagKind) -> &'static str {
     }
 }
 
-/// `maca.fmt` — canonical formatting (parse → print). Errs on a bad parse.
+/// `maca.fmt`: canonical formatting (parse → print). Errs on a bad parse.
 pub fn fmt(code: &str) -> Result<String, Vec<String>> {
     let parsed = parse(code);
     if !parsed.errors.is_empty() {
@@ -49,7 +49,7 @@ pub fn fmt(code: &str) -> Result<String, Vec<String>> {
     Ok(print_module(&parsed.module))
 }
 
-/// `maca.stdlib` — prelude/stdlib signatures matching a query substring.
+/// `maca.stdlib`: prelude/stdlib signatures matching a query substring.
 pub fn stdlib(query: &str) -> Vec<String> {
     const SIGS: &[&str] = &[
         "info(s: str) -> () / <io>",
@@ -75,7 +75,7 @@ pub fn stdlib(query: &str) -> Vec<String> {
         .collect()
 }
 
-/// `maca.options` — known NixOS option namespaces matching a prefix.
+/// `maca.options`: known NixOS option namespaces matching a prefix.
 pub fn options(prefix: &str) -> Vec<String> {
     maca_core::NIXOS_ROOTS
         .iter()
@@ -84,7 +84,7 @@ pub fn options(prefix: &str) -> Vec<String> {
         .collect()
 }
 
-/// `maca.spec` — a short reference for a section name.
+/// `maca.spec`: a short reference for a section name.
 pub fn spec(section: &str) -> String {
     match section {
         "syntax" | "grammar" => "\
@@ -95,14 +95,14 @@ Bracketless comma lists; significant newlines; records newline/comma separated.\
 Generics: lowercase type vars, applied by juxtaposition; postfix `T[]` / `T?`."
             .into(),
         "effects" => {
-            "Koka-style, inferred: io · net · os · async · exn. Config mode forces `<>`.".into()
+            "Koka-style, inferred: io, net, os, async, exn. Config mode forces `<>`.".into()
         }
         "modes" => {
             "General mode → native/BEAM/JS (`main`). Config mode → Nix (root module, pure `<>`)."
                 .into()
         }
         "types" => {
-            "Gradual · structural · row-polymorphic. HM + `any` boundary. Sums nominal, exhaustive."
+            "Gradual, structural, row-polymorphic. HM + `any` boundary. Sums nominal, exhaustive."
                 .into()
         }
         _ => "sections: syntax | effects | modes | types".into(),

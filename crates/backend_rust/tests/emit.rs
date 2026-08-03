@@ -35,7 +35,7 @@ fn records_become_structs_sums_become_enums() {
 
 #[test]
 fn payload_sum_becomes_a_data_enum() {
-    // A variant with a payload — `Circle(int)` — must become `Circle(i64)`, not
+    // A variant with a payload, `Circle(int)`, must become `Circle(i64)`, not
     // be mis-parsed as an addition of function calls. Construction and match
     // arms are both qualified `Enum::Variant`.
     let out = rs("Shape = Circle(int) | Rect(int, int)\n\

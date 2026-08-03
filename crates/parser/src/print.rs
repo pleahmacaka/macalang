@@ -1,6 +1,6 @@
 //! Canonical pretty-printer. Output is not meant to match the original source
 //! byte-for-byte; it only has to re-parse to the same AST (the roundtrip test).
-//! Compound expressions are parenthesized so precedence survives —
+//! Compound expressions are parenthesized so precedence survives:
 //! grouping `(e)` parses back to `e`, so extra parens are harmless.
 
 use crate::ast::*;
@@ -285,8 +285,9 @@ fn expr(s: &mut String, e: &Expr) {
         Expr::Break => s.push_str("break"),
         Expr::Continue => s.push_str("continue"),
         Expr::Lambda { params, ret, body } => {
-            // A single bare parameter needs no parens — but an annotated lambda
-            // does, or `x -> T => …` would re-parse as a function signature.
+            // A single bare parameter needs no parens, but an annotated
+            // lambda does, or `x -> T => …` would re-parse as a function
+            // signature.
             if params.len() == 1 && !params[0].variadic && params[0].ty.is_none() && ret.is_none() {
                 s.push_str(&params[0].name);
             } else {

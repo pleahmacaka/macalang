@@ -1,4 +1,4 @@
-// bench/store — results on disk, so a run can be compared to last week's.
+// bench/store: results on disk, so a run can be compared to last week's.
 //
 // A benchmark number that exists only in a terminal that has since scrolled is
 // a number nobody can act on. This writes a run as JSON and reads it back
@@ -13,12 +13,12 @@
 // Samples are stored raw rather than pre-summarised. Every statistic in
 // `bench/stat` is recoverable from the samples and none is recoverable from
 // another, so a stored run can answer a question that had not been asked when
-// it was written — including one from a version of `bench/stat` that did not
+// it was written, including one from a version of `bench/stat` that did not
 // exist yet.
 //
 // The JSON is written and read here rather than through `std/json`, which does
 // this better, for one reason: `std/json` exports a top-level `get(str, str)`,
-// and a program that has one miscompiles `xs.get(i)` on a `str[]` — the UFCS
+// and a program that has one miscompiles `xs.get(i)` on a `str[]`: the UFCS
 // call resolves to the two-string function and the list element comes back as
 // another list element. `bench/report` is full of such calls and so is
 // `cli/show` underneath it. Until that is fixed, a benchmark module that
@@ -62,8 +62,8 @@ int_csv(xs: int[], i: int, acc: str[]) -> str {
     }
 }
 
-/// A JSON string literal. The five escapes the format requires, and no others —
-/// a raw newline inside a string is what hand-rolled emitters get wrong.
+/// A JSON string literal. The five escapes the format requires, and no others.
+/// A raw newline inside a string is what hand-rolled emitters get wrong.
 encode_str(s: str) -> str =>
     "\"" ++ s.replace("\\", "\\\\")
              .replace("\"", "\\\"")
@@ -76,7 +76,7 @@ encode_str(s: str) -> str =>
 /// The results in a document written by `to_json`.
 ///
 /// A document from an unknown version, or one with no `results` array, reads as
-/// an empty list — the caller then reports "no baseline" instead of comparing
+/// an empty list. The caller then reports "no baseline" instead of comparing
 /// against invented numbers.
 from_json(src: str) -> Result[] {
     if field_int(src, "version", 0) != Version {
@@ -124,7 +124,7 @@ field(src: str, key: str) -> str {
     }
 }
 
-/// `field`, with the quotes taken off and the escapes undone — what a string
+/// `field`, with the quotes taken off and the escapes undone: what a string
 /// value actually says.
 field_str(src: str, key: str) -> str =>
     bare(field(src, key))
@@ -244,7 +244,7 @@ bare(s: str) -> str {
 
 /// Undo `encode_str`.
 ///
-/// One left-to-right pass, not a chain of `replace`s — and no ordering of that
+/// One left-to-right pass, not a chain of `replace`s, and no ordering of that
 /// chain would have done. A name holding a backslash and then an `n` is written
 /// `\\n`: undoing `\n` first reads the second and third bytes as an escape and
 /// answers a backslash and a newline, while undoing `\\` first leaves a `\n`
@@ -273,7 +273,7 @@ unescape_one(c: str) -> str {
     } else if c == "\"" || c == "\\" {
         c
     } else {
-        // An escape `encode_str` never writes — a `\u` from some other
+        // An escape `encode_str` never writes: a `\u` from some other
         // producer. Leaving it exactly as it was written loses nothing; the
         // alternative is dropping a backslash that meant something.
         "\\" ++ c

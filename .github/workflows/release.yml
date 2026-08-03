@@ -1,13 +1,13 @@
 name: release
 
-# Cut a release either by pushing a plain semver tag (no `v` prefix) —
+# Cut a release either by pushing a plain semver tag (no `v` prefix):
 #   git tag 0.1.0 && git push origin 0.1.0
-# — or by running this workflow manually with a `version` input, which creates
+# or by running this workflow manually with a `version` input, which creates
 # the tag + release from the current commit (used when tag pushes aren't
 # available). Either way the tag name is the bare version, e.g. `0.1.0`.
 on:
   push:
-    # `0.1.0` and pre-releases like `0.1.0-rc1` — not `v`-prefixed.
+    # `0.1.0` and pre-releases like `0.1.0-rc1`, not `v`-prefixed.
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+.[0-9]+-*"
@@ -58,8 +58,8 @@ jobs:
       # mean `maca run tools/package.maca`, which compiles that program through
       # the C backend and so needs a C compiler on the runner. Four of the five
       # legs have one; `windows-latest` does not ship a `cc`. Writing it in Maca
-      # anyway would either leave a second implementation behind for Windows —
-      # exactly the drift this file's siblings exist to avoid — or make cutting
+      # anyway would either leave a second implementation behind for Windows,
+      # exactly the drift this file's siblings exist to avoid, or make cutting
       # a release depend on the compiler being able to build a program on the
       # host whose binaries the release is being cut for.
       - name: Package (unix)

@@ -1,6 +1,6 @@
 // What `profile` promises, run.
 //
-// Colour is off through the whole file — `maca test` is run with `NO_COLOR`,
+// Colour is off through the whole file: `maca test` is run with `NO_COLOR`,
 // and the escape codes a terminal would get are not what these tests are about.
 // That is why the palette is asked for its codes directly in one test: with
 // colour off there is nothing in the output to read them from. The width
@@ -89,7 +89,7 @@ test_an_empty_trace_answers_every_question_with_nothing() {
     assert_eq(str(origin(empty)), "0", "and it began at zero")
 }
 
-// A trace that begins somewhere other than zero — one assembled by hand, or
+// A trace that begins somewhere other than zero: one assembled by hand, or
 // read back from a file written by something that did not rebase. Every
 // question about its extent has to be answered from its own numbers.
 test_a_trace_that_did_not_begin_at_zero_is_measured_from_where_it_did() {
@@ -175,8 +175,8 @@ test_self_time_is_the_duration_a_span_did_not_hand_to_a_child() {
     assert_eq(str(self_time(sample(), 4)), "30", "c had no children")
 }
 
-// Every millisecond belongs to exactly one span — the innermost one running at
-// the time — so the self times have to add up to the run.
+// Every millisecond belongs to exactly one span (the innermost one running at
+// the time), so the self times have to add up to the run.
 test_self_times_add_up_to_the_whole_run() {
     t = sample()
     total = self_time(t, 0) + self_time(t, 1) + self_time(t, 2)
@@ -342,7 +342,7 @@ test_mark_records_an_instant_rather_than_a_region() {
 }
 
 // A `mark` built out of a `start` and a `stop` reads the clock twice, and the
-// two readings straddle a millisecond boundary about once in three thousand —
+// two readings straddle a millisecond boundary about once in three thousand:
 // a one-millisecond instant, and a test of one `mark` that fails for nobody's
 // reason. Twenty thousand of them cost fifteen milliseconds and catch six.
 test_a_mark_takes_no_time_however_many_are_taken() {
@@ -397,8 +397,8 @@ test_events_sharing_a_millisecond_keep_their_nesting() {
     assert(evs.get(2).enter, "all three are enters")
 }
 
-// A trace whose spans are not in the order they opened — one assembled by
-// hand, or stitched together out of two files — is where the sort earns its
+// A trace whose spans are not in the order they opened (one assembled by
+// hand, or stitched together out of two files) is where the sort earns its
 // place. A recorded trace comes out of the walk already ordered and never
 // reaches it, which is the only reason `events` is affordable at all.
 test_events_the_walk_hands_over_out_of_order_are_sorted_by_time() {
@@ -471,7 +471,7 @@ test_replaying_an_empty_trace_does_nothing_at_all() {
 // The one test here that really sleeps, and the only way to tell a paced
 // replay from one that walks the list as fast as it can. Two hundred
 // milliseconds of recorded gap, replayed at a quarter speed, is fifty
-// milliseconds of waiting — not none of it, and not all of it.
+// milliseconds of waiting: not none of it, and not all of it.
 test_replay_sleeps_for_the_share_of_the_run_it_was_given() {
     evs = events(trace("slow", [node("wait", 0, 200, 0, -1)]))
 
@@ -503,9 +503,9 @@ test_the_chart_has_a_row_for_every_level() {
 test_the_heading_counts_one_span_as_a_span_and_not_as_spans() {
     one = trace("one", [node("only", 0, 5, 0, -1)])
 
-    assert(flame(one, 40).contains("1 span · 1 level"), "not `1 spans`")
-    assert(flame(sample(), 40).contains("5 spans · 3 levels"), "and plurals agree")
-    assert(flame_svg(one, 200).contains("1 span · 1 level"),
+    assert(flame(one, 40).contains("1 span, 1 level"), "not `1 spans`")
+    assert(flame(sample(), 40).contains("5 spans, 3 levels"), "and plurals agree")
+    assert(flame_svg(one, 200).contains("1 span, 1 level"),
            "the svg says the same thing under the label")
 }
 
@@ -642,9 +642,9 @@ test_the_svg_carries_everything_it_needs() {
 test_every_frame_has_a_tooltip_naming_its_span() {
     svg = flame_svg(sample(), 800)
 
-    assert(svg.contains("<title>root — 110ms (100.0%), self 10ms</title>"),
+    assert(svg.contains("<title>root: 110ms (100.0%), self 10ms</title>"),
            "the root's own numbers, not its children's")
-    assert(svg.contains("<title>b — 10ms (9.1%), self 10ms</title>"),
+    assert(svg.contains("<title>b: 10ms (9.1%), self 10ms</title>"),
            "and a leaf's")
 }
 
@@ -681,12 +681,12 @@ test_an_instant_still_has_a_rectangle_in_the_svg() {
     svg = flame_svg(blip, 400)
 
     assert(!svg.contains("width=\"0\""), "nothing is drawn zero pixels wide")
-    assert(svg.contains("<title>instant — 0ms"), "and the instant is a frame")
+    assert(svg.contains("<title>instant: 0ms"), "and the instant is a frame")
 }
 
 // The palette is asked directly. The terminal chart's colours cannot be seen
-// from here — `maca test` runs with `NO_COLOR`, so `paint` hands back the
-// plain string — and the promise being made is about the codes themselves.
+// from here (`maca test` runs with `NO_COLOR`, so `paint` hands back the
+// plain string), and the promise being made is about the codes themselves.
 test_two_bars_that_touch_are_never_the_same_colour() {
     assert(sgr(0) != sgr(1), "adjacent bars differ in the terminal chart")
     assert(swatch(0) != swatch(1), "and adjacent frames differ in the svg")
@@ -775,7 +775,7 @@ test_an_empty_trace_summarises_as_a_note() {
 }
 
 // "Show me the top two" is the second thing anybody asks a profile for, and it
-// is a slice of `summary` — so the table has to accept one.
+// is a slice of `summary`, so the table has to accept one.
 test_a_table_can_be_drawn_from_rows_the_caller_picked() {
     top = stats_table(summary(sample()).slice(0, 2))
     rows = lines(top)

@@ -1,4 +1,4 @@
-// FizzBuzz — exercises `%`, `while`, reassignment, and `match` on a computed tag.
+// FizzBuzz: exercises `%`, `while`, reassignment, and `match` on a computed tag.
 // Returns a code per number: 0 = plain, 1 = Fizz, 2 = Buzz, 3 = FizzBuzz.
 
 code(n: int) -> int {

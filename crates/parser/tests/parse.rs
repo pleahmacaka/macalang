@@ -72,7 +72,7 @@ fn clean(src: &str) -> maca_parser::Module {
 #[test]
 fn ctor_vs_for_header_brace() {
     use maca_parser::{Expr, Stmt};
-    // `for t in xs { .. }` — the `{` is the body, not `xs { .. }` ctor.
+    // `for t in xs { .. }`: the `{` is the body, not an `xs { .. }` ctor.
     let m = clean("f() {\n    for t in xs {\n        g(t)\n    }\n}");
     let Stmt::Fn(f) = &m.items[0] else { panic!() };
     let Some(maca_parser::FnBody::Block(b)) = &f.body else {
@@ -117,7 +117,7 @@ fn range_binds_looser_than_arithmetic() {
 }
 
 /// `(T, U) -> R` is a type. A function passed as an argument still needs no
-/// annotation — an unannotated parameter that is called in the body is one —
+/// annotation (an unannotated parameter that is called in the body is one),
 /// but a function *kept* in a record field is declared before anything calls
 /// it, so there has to be a way to write it down.
 #[test]
@@ -140,7 +140,7 @@ fn a_function_type_is_surface_syntax() {
 
 /// The parentheses are not optional and a list of types is not a type. Both
 /// have to be refusals rather than silence, because the shape they are nearest
-/// to — a grouped type — is one the parser accepts.
+/// to, a grouped type, is one the parser accepts.
 #[test]
 fn a_type_list_without_an_arrow_is_refused() {
     assert!(!parse("f(x: (str, int)) -> int => 0\n").errors.is_empty());
@@ -179,7 +179,7 @@ fn ternary_is_not_propagate() {
 #[test]
 fn match_guard_arm() {
     use maca_parser::{Expr, Stmt};
-    // `_ if cond => body` — the guard must not swallow the arm's `=>` as a
+    // `_ if cond => body`: the guard must not swallow the arm's `=>` as a
     // lambda arrow.
     let m = clean(
         "f(x: int) -> int =>\n    match true {\n        _ if x > 0 => 1\n        _ => 0\n    }\n",
@@ -267,8 +267,8 @@ fn roundtrip_generic_record() {
 #[test]
 fn malformed_input_does_not_hang() {
     // a reserved word where a field name is expected used to loop forever.
-    // (`from` is no longer one — `{ from }` is a perfectly good shorthand
-    // field now — so the cases here use words that still are.)
+    // (`from` is no longer one, because `{ from }` is a perfectly good
+    // shorthand field now, so the cases here use words that still are.)
     for src in [
         "f(p: P) -> int { match p { { match } => 1 } }\n",
         "R = {\n    while: int\n}\n",
@@ -346,7 +346,7 @@ fn await_and_spawn_bind_tighter_than_binary() {
 
 #[test]
 fn arrow_body_can_be_a_comma_list() {
-    // `make() -> int[] => 1, 2, 3` — a bracketless list is a valid arrow body
+    // `make() -> int[] => 1, 2, 3`: a bracketless list is a valid arrow body
     let m = clean("make() -> int[] => 1, 2, 3\n");
     let maca_parser::Stmt::Fn(f) = &m.items[0] else {
         panic!("not a fn")
@@ -428,7 +428,7 @@ fn a_lambda_parameter_can_declare_its_type() {
     assert!(params[1].ty.is_none(), "the second is not");
 }
 
-/// A top-level `name = (…) => …` *is* a function definition — there is nothing
+/// A top-level `name = (…) => …` *is* a function definition. There is nothing
 /// to capture at module scope, and lowering it as a closure produced a constant
 /// no call site could reach.
 #[test]

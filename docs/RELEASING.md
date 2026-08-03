@@ -1,7 +1,7 @@
 # Releasing
 
 Releases are produced by GitHub Actions ([`.github/workflows/release.yml`](../.github/workflows/release.yml)),
-triggered by pushing a plain semver tag — **no `v` prefix** (`0.1.0`, not
+triggered by pushing a plain semver tag, with **no `v` prefix** (`0.1.0`, not
 `v0.1.0`); pre-releases like `0.1.0-rc1` also match:
 
 ```sh
@@ -15,7 +15,7 @@ from the current commit. Use this when a tag push isn't available.
 
 On that tag the workflow:
 
-1. builds `maca` + `maca-lsp` in release mode on five targets —
+1. builds `maca` + `maca-lsp` in release mode on five targets:
    Linux `x86_64` / `aarch64`, macOS `x86_64` / `aarch64`, Windows `x86_64`;
 2. packages each as `maca-<os>-<arch>.tar.gz` (Unix) or `.zip` (Windows);
 3. uploads the archives **plus `install.sh` and `install.ps1`** to the GitHub
@@ -37,7 +37,7 @@ from a source checkout.
 ## Notes
 
 - The tag should point at a commit on the default branch (merge the release
-  branch first). Cutting a tag is the only step a maintainer performs by hand —
+  branch first). Cutting a tag is the only step a maintainer performs by hand;
   everything else is automated.
 - Bump `version` in the root `Cargo.toml`, `extension.toml`, and this repo's
   `install.*` banner to match the tag before releasing.

@@ -1,15 +1,15 @@
 //! Shared flame-graph renderer for Maca profiles.
 //!
 //! `maca profile` records a program's call graph with Callgrind (per-call
-//! inclusive instruction reads, `Ir`) and renders a classic flame graph — each
+//! inclusive instruction reads, `Ir`) and renders a classic flame graph: each
 //! frame's width is its share of the cost, depth is call nesting, and
 //! self-recursive frames (e.g. `fib`) are collapsed so the chart stays readable.
 //!
 //! The renderer is factored so the *same* flame graph is produced from any cost
 //! model, not just Callgrind: the browser playground drives it from an
 //! interpreter's per-function step counts (see `crates/wasm`). Native passes
-//! Callgrind `Ir`; the playground passes eval `steps` — same picture, different
-//! unit label.
+//! Callgrind `Ir`; the playground passes eval `steps`. Same picture, a
+//! different unit label.
 
 use std::collections::HashMap;
 
@@ -201,7 +201,7 @@ fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String {
          <text x=\"{pad_x:.0}\" y=\"18\" fill=\"#f4f2fb\" font-size=\"13\" font-weight=\"600\">\
          {} flame graph</text>\n\
          <text x=\"{pad_x:.0}\" y=\"33\" fill=\"#8b8a99\" font-size=\"11\">\
-         {} {unit} · depth {}</text>\n",
+         {} {unit}, depth {}</text>\n",
         xml_escape(&root_name),
         root_val,
         max_depth + 1,
@@ -219,7 +219,7 @@ fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String {
         let label = if w > 46.0 {
             let room = ((w - 8.0) / 6.6) as usize;
             let text = if w > 120.0 {
-                format!("{} · {:.1}%", elide(&f.name, room.saturating_sub(8)), pct)
+                format!("{}, {:.1}%", elide(&f.name, room.saturating_sub(8)), pct)
             } else {
                 elide(&f.name, room)
             };
@@ -233,7 +233,7 @@ fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String {
             String::new()
         };
         svg.push_str(&format!(
-            "<g><title>{} — {} {unit} ({:.1}%)</title>\
+            "<g><title>{}: {} {unit} ({:.1}%)</title>\
              <rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"3\" \
              fill=\"{}\" stroke=\"#0e0e14\" stroke-width=\"1\"/>{label}</g>\n",
             xml_escape(&f.name),
@@ -252,10 +252,10 @@ fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String {
 
 /// Render the same flame graph as a self-contained **HTML** fragment (inline
 /// styles, no classes) rather than SVG. Frame widths/offsets are percentages, so
-/// it fills its container exactly — no fixed intrinsic width, hence no horizontal
-/// scroll — while row height stays fixed (no shrink-to-a-strip). Used by the
-/// browser playground, which injects it with `innerHTML`; the native `maca
-/// profile` still emits SVG.
+/// it fills its container exactly, with no fixed intrinsic width and hence no
+/// horizontal scroll, while row height stays fixed (no shrink-to-a-strip). Used
+/// by the browser playground, which injects it with `innerHTML`; the native
+/// `maca profile` still emits SVG.
 pub fn flamegraph_html_from(fns: &HashMap<String, FnCost>, unit: &str) -> String {
     let root_name = if fns.contains_key("main") {
         "main".to_string()
@@ -285,7 +285,7 @@ pub fn flamegraph_html_from(fns: &HashMap<String, FnCost>, unit: &str) -> String
         "<div style=\"font-family:Pretendard,ui-monospace,monospace;background:#0e0e14;\
          color:#f4f2fb;padding:10px 12px 12px;font-size:12px\">\
          <div style=\"font-weight:600;font-size:13px\">{} flame graph</div>\
-         <div style=\"color:#8b8a99;font-size:11px;margin-bottom:8px\">{} {unit} · depth {}</div>\
+         <div style=\"color:#8b8a99;font-size:11px;margin-bottom:8px\">{} {unit}, depth {}</div>\
          <div style=\"position:relative;width:100%;height:{:.0}px\">",
         html_escape(&root_name),
         root_val,
@@ -302,7 +302,7 @@ pub fn flamegraph_html_from(fns: &HashMap<String, FnCost>, unit: &str) -> String
         let fh = row - gap;
         let pct = f.value as f64 / root_val as f64 * 100.0;
         h.push_str(&format!(
-            "<div title=\"{} — {} {unit} ({:.1}%)\" style=\"position:absolute;\
+            "<div title=\"{}: {} {unit} ({:.1}%)\" style=\"position:absolute;\
              left:{:.3}%;width:{:.3}%;top:{:.0}px;height:{:.0}px;\
              background:{};border-radius:3px;box-sizing:border-box;\
              padding:0 5px;line-height:{:.0}px;color:{FRAME_TEXT};font-weight:600;overflow:hidden;\
@@ -323,7 +323,7 @@ pub fn flamegraph_html_from(fns: &HashMap<String, FnCost>, unit: &str) -> String
     h
 }
 
-/// A vivid, high-contrast frame colour cycled by index — chosen so adjacent
+/// A vivid, high-contrast frame colour cycled by index, chosen so adjacent
 /// frames read as clearly distinct on the dark panel (with near-black text),
 /// rather than a muddy warm ramp. Shared by the SVG and HTML renderers.
 fn frame_fill(i: usize) -> &'static str {
@@ -358,8 +358,8 @@ fn xml_escape(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
-/// Like [`xml_escape`] but also escapes `"` — safe for both element text and
-/// double-quoted HTML attribute values (the flame-graph `title=`).
+/// Like [`xml_escape`] but also escapes `"`, so it is safe for both element
+/// text and double-quoted HTML attribute values (the flame-graph `title=`).
 fn html_escape(s: &str) -> String {
     xml_escape(s).replace('"', "&quot;")
 }
@@ -466,7 +466,7 @@ fn=(2) fib
             "{html}"
         );
         assert!(html.contains("main") && html.contains("fib"));
-        // percentage widths (fills the container — no fixed intrinsic width, so
+        // percentage widths (fills the container: no fixed intrinsic width, so
         // no horizontal scroll) and no <svg>.
         assert!(
             html.contains("width:100%"),

@@ -1,11 +1,11 @@
-// http/status — status codes, and what they are called.
+// http/status: status codes, and what they are called.
 //
 // A response line needs the number and the phrase. Clients ignore the phrase,
 // but people read logs, and `500 Internal Server Error` says more to a reader
 // at 3am than `500`.
 
-/// The reason phrase for a status code. An unknown code is not an error —
-/// HTTP allows any three digits — so it gets the phrase for its class.
+/// The reason phrase for a status code. An unknown code is not an error,
+/// because HTTP allows any three digits, so it gets the phrase for its class.
 reason(code: int) -> str {
     if code == 200 {
         "OK"
@@ -66,7 +66,7 @@ class_reason(code: int) -> str {
     }
 }
 
-/// Did this code succeed? `2xx` and nothing else — a redirect is not a success
+/// Did this code succeed? `2xx` and nothing else; a redirect is not a success
 /// to the code that has to decide whether to keep going.
 is_ok(code: int) -> bool =>
     code >= 200 && code < 300

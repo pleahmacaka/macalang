@@ -1,4 +1,4 @@
-// selfhost/emit_rust — a Rust emitter over the AST, written in Maca.
+// selfhost/emit_rust: a Rust emitter over the AST, written in Maca.
 //
 // The Maca-written sibling of emit_c: the `--target rust` back end, written in
 // Maca rather than living only in the stage-0 crate. It mirrors
@@ -53,7 +53,7 @@ remit_ternary(e: Expr) -> str {
 remit_match(e: Expr) -> str =>
     "match {remit_expr(e.children.get(0))} {{ {remit_arms(e.children, 1)} }}"
 
-// Maca's `length` and `count` collapse back into one `len()` here — the split
+// Maca's `length` and `count` collapse back into one `len()` here. The split
 // exists for C's sake (see emit_c), not for Rust's.
 remit_method(e: Expr) -> str {
     recv = remit_expr(e.children.get(0))
@@ -111,7 +111,7 @@ remit_arms(cs: Expr[], i: int) -> str {
     }
 }
 
-// `Circle(r)` — the binders go straight through, because Rust's own pattern
+// `Circle(r)`: the binders go straight through, because Rust's own pattern
 // syntax is the one Maca borrowed.
 remit_pat(p: Expr) -> str {
     if p.children.length() == 0 {
@@ -155,7 +155,7 @@ rtype(ty: str) -> str {
 }
 
 // Maca's `main` returns an exit code and Rust's returns nothing, so the body
-// moves to `__maca_main` and a real `main` exits with it — the same wrapping
+// moves to `__maca_main` and a real `main` exits with it, the same wrapping
 // `maca-backend-rust` does. Literal Rust braces are written `{{`/`}}` so they
 // aren't read as Maca string interpolation.
 remit_fn(s: Stmt) -> str {
@@ -220,7 +220,7 @@ remit_struct_field(f: Expr) -> str =>
     "{f.text}: {rtype(f.ty)}"
 
 // `use Color::*;` follows the enum so a bare `Green` in the emitted body
-// resolves — the AST keeps variant references bare, with no enum to qualify by.
+// resolves. The AST keeps variant references bare, with no enum to qualify by.
 // `PartialEq` is for `==` on a variant, which `remit_binary` passes straight
 // through to Rust; a `match` needs no derive at all.
 remit_sum(s: Stmt) -> str {
@@ -230,7 +230,7 @@ remit_sum(s: Stmt) -> str {
         ++ "use {s.name}::*;"
 }
 
-// A payload variant is native here — `Circle(i64)` — so `Circle(2)` in the
+// A payload variant is native here (`Circle(i64)`), so `Circle(2)` in the
 // source is already a valid constructor call and needs no shim.
 remit_variant(v: Expr) -> str {
     if v.children.length() == 0 {

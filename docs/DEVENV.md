@@ -28,8 +28,8 @@ dev.shellHook = "echo ready"
 | `dev.env = { K = "v" }` | shell environment variables |
 | `dev.shellHook = "…"` | `shellHook` |
 
-The generated flake is self-contained — only a `nixpkgs` input, multi-system via
-`nixpkgs.lib.genAttrs` (`x86_64`/`aarch64`, Linux + Darwin) — so `nix develop`
+The generated flake is self-contained: only a `nixpkgs` input, multi-system via
+`nixpkgs.lib.genAttrs` (`x86_64`/`aarch64`, Linux + Darwin). So `nix develop`
 works with no extra flake inputs.
 
 This reuses the config-mode Nix backend (`maca-backend-nix`): the same compiler

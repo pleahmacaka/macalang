@@ -3,14 +3,14 @@
 // is inferred, never written.
 
 // `sleep_ms` is a suspension point, which is the only thing that makes this
-// function async — nothing in its signature says so, and nothing needs to.
+// function async. Nothing in its signature says so, and nothing needs to.
 slow_double(n: int) -> int {
     sleep_ms(50)
     n * 2
 }
 
 main() -> int {
-    // Two jobs run concurrently — total wall time is ~50ms, not ~100ms.
+    // Two jobs run concurrently: total wall time is ~50ms, not ~100ms.
     a = spawn slow_double(10)
     b = spawn slow_double(20)
 

@@ -11,7 +11,7 @@
 //! Function signatures are generalized into rank-1 type schemes and
 //! instantiated per call site, so generics like `id(x: a) -> a` are usable at
 //! many types. Inference over un-annotated bindings stays monomorphic, and
-//! effect rows unify by set rather than by row variable — both bought
+//! effect rows unify by set rather than by row variable, both bought
 //! deliberately, because the strictness this checker owes its users is on the
 //! diagnostics above, and rank-1 plus gradual `any` reaches them.
 
@@ -39,7 +39,7 @@ pub enum DiagKind {
     /// `let x = 1` binding is mutable, so a later `x = 2` on a bare binding is
     /// an error.
     Immutable,
-    /// A direct call to a name that is not defined anywhere — no local, no
+    /// A direct call to a name that is not defined anywhere: no local, no
     /// user function, no import/alias, no builtin. Caught here so it surfaces
     /// as a clean diagnostic instead of a broken-C link error at codegen.
     UndefinedName,
@@ -74,7 +74,7 @@ const ASYNC_FNS: &[&str] = &["sleep_ms"];
 
 /// Every method a `str` receiver accepts. Not a wish-list: `crates/core/tests`
 /// compiles a program using all of them, so a name here that the back end can't
-/// lower fails the build — and one it *can* lower that is missing here would be
+/// lower fails the build, and one it *can* lower that is missing here would be
 /// rejected as a typo. Note the absences: `str` has no `get` and no `join`.
 pub const STR_METHODS: &[&str] = &[
     "length",
@@ -105,8 +105,8 @@ pub const MAP_METHODS: &[&str] = &["set", "get", "has", "remove", "keys", "lengt
 
 /// Every method a `T[]` receiver accepts, gated the same way.
 ///
-/// Some are refined further by the element type — `join` wants `str[]`, `sum`
-/// wants numbers — and the back end reports that. This list is about catching a
+/// Some are refined further by the element type (`join` wants `str[]`, `sum`
+/// wants numbers) and the back end reports that. This list is about catching a
 /// misspelt name, which is a different job from checking the element type.
 pub const LIST_METHODS: &[&str] = &[
     "map", "filter", "reduce", "fold", "sort", "reverse", "push", "pop", "slice", "contains",
@@ -174,8 +174,8 @@ struct Checker {
     gradual_foreign: bool,
     /// Set for exactly one `infer` call: the callee of a direct `f(…)`.
     ///
-    /// A variadic function has no arity as a *value* — the collection into a
-    /// list happens at the call site — so `f` alone is an error while `f(…)`
+    /// A variadic function has no arity as a *value*, since the collection
+    /// into a list happens at the call site, so `f` alone is an error while `f(…)`
     /// is not, and the two are the same `Expr::Ident`. Consumed at the top of
     /// `infer`, so a nested expression never inherits it.
     callee_pos: bool,
@@ -211,7 +211,7 @@ impl Checker {
     /// A keyword Maca doesn't have, used as if it did.
     ///
     /// `return x` parses as the identifier `return` next to `x` and reaches the
-    /// C backend, which mangles the C keyword and emits `return_mc` — so the
+    /// C backend, which mangles the C keyword and emits `return_mc`, so the
     /// first thing a newcomer sees is `'return_mc' undeclared`, from a compiler
     /// they didn't invoke, about a file they didn't write. These are the words
     /// people actually reach for; each gets told what Maca does instead.
@@ -261,7 +261,7 @@ impl Checker {
     /// It has to be **last**, because the trailing arguments are collected into
     /// it and a parameter after it could not be told from one more of them. It
     /// has to be **annotated**, because `T` is what the collected list's
-    /// elements are — with no annotation the back end has no element type and
+    /// elements are: with no annotation the back end has no element type and
     /// picks one, which is a silently wrong list rather than an error. And it
     /// cannot be **`main`**, whose arguments come from the process, not from a
     /// call site that could do the collecting.
@@ -285,7 +285,7 @@ impl Checker {
                 self.diag(
                     DiagKind::TypeMismatch,
                     format!(
-                        "`{}`: a variadic parameter needs its element type — \
+                        "`{}`: a variadic parameter needs its element type; \
                          write `...{}: T`",
                         f.name, p.name,
                     ),
@@ -295,7 +295,7 @@ impl Checker {
         if f.name == "main" {
             self.diag(
                 DiagKind::TypeMismatch,
-                "`main` cannot be variadic — its arguments come from the \
+                "`main` cannot be variadic: its arguments come from the \
                  command line; declare `main(argv: str[])`"
                     .to_string(),
             );
@@ -306,7 +306,7 @@ impl Checker {
     ///
     /// Collecting the trailing arguments into a list is something the *call
     /// site* does, so a variadic function only exists as a call. As a value it
-    /// has no arity to give — a function type is written `(T, U) -> R` and has
+    /// has no arity to give: a function type is written `(T, U) -> R` and has
     /// no variadic spelling, and the closure ABI every back end passes function
     /// values through is fixed-arity. Handing one to a higher-order parameter or
     /// storing it in a record field would pass a callee expecting a list an
@@ -317,7 +317,7 @@ impl Checker {
                 DiagKind::TypeMismatch,
                 format!(
                     "`{name}` is variadic, so it cannot be used as a function \
-                     value — call it, or declare it `{name}(xs: T[])` and pass \
+                     value; call it, or declare it `{name}(xs: T[])` and pass \
                      a list"
                 ),
             );
@@ -343,12 +343,13 @@ impl Checker {
             // escapes, base64, a character class written as arithmetic.
             ("chr", Ty::Fn(vec![Ty::Int], Box::new(Ty::Str))),
             ("real_path", Ty::Fn(vec![Ty::Str], Box::new(Ty::Str))),
-            // whether stdout is a terminal — what colour output has to ask before
-            // writing an escape code into a file somebody will read later
+            // whether stdout is a terminal, which is what colour output has to
+            // ask before writing an escape code into a file somebody will read
+            // later
             ("is_tty", Ty::Fn(vec![], Box::new(Ty::Bool))),
             ("ord", Ty::Fn(vec![Ty::Str], Box::new(Ty::Int))),
             ("input", Ty::Fn(vec![], Box::new(Ty::Str))),
-            // `sleep_ms(ms)` — an async suspension point (the async effect is
+            // `sleep_ms(ms)`: an async suspension point (the async effect is
             // added in `eff`); yields nothing.
             ("sleep_ms", Ty::Fn(vec![Ty::Int], Box::new(Ty::Unit))),
             // math prelude (always available, no import)
@@ -529,7 +530,7 @@ impl Checker {
                 // A config module is its bindings; an expression standing alone
                 // produces no option and is dropped from the emitted Nix. A
                 // pure one is merely dead, but `info("…")` at the top level
-                // looked like it ran and did not — the build succeeded and the
+                // looked like it ran and did not: the build succeeded and the
                 // line was simply gone.
                 Stmt::Expr(e) if self.mode == Mode::Config => {
                     self.check_config_effects(e);
@@ -677,7 +678,7 @@ impl Checker {
 
     /// Relax an *annotation* type: a bare, capitalized nominal that isn't a
     /// declared record/sum is a foreign / interop type (a Java interface, a Nix
-    /// value, …) — treat it gradually as `any` rather than a strict nominal, so
+    /// value, …). Treat it gradually as `any` rather than a strict nominal, so
     /// `Mod : ModInitializer = { … }` type-checks.
     fn relax_ann(&self, t: Ty) -> Ty {
         match &t {
@@ -775,7 +776,7 @@ impl Checker {
             // `reify`/`try` catches failures, so it discharges the `exn` effect
             Expr::Reify(x) => acc = EffSet(self.eff(x).0 & !EXN),
             // colorblind async: `await`/`spawn` add the `async` effect (inferred,
-            // never written — there is no `async` keyword).
+            // never written, because there is no `async` keyword).
             Expr::Await(x) | Expr::Spawn(x) => acc = self.eff(x).union(EffSet::of(ASYNC)),
             Expr::Field { base, .. } => acc = self.eff(base),
             Expr::Index { base, index } => acc = self.eff(base).union(self.eff(index)),
@@ -866,7 +867,7 @@ impl Checker {
                         match self.mut_of.get(n).copied() {
                             Some(false) => self.diag(
                                 DiagKind::Immutable,
-                                format!("cannot reassign constant `{n}` — declare it mutable with `{n} = …` (no `const`)"),
+                                format!("cannot reassign constant `{n}`; declare it mutable with `{n} = …` (no `const`)"),
                             ),
                             Some(true) => {
                                 if b.is_const {
@@ -889,7 +890,7 @@ impl Checker {
                         }
                         // The annotation is what the binding *is*. Keeping the
                         // inferred type instead loses it whenever the value is
-                        // gradual — `counts: Map str int = map()` would stay
+                        // gradual: `counts: Map str int = map()` would stay
                         // `any`, and a misspelt method on it would sail past
                         // the closed-method-set check to the linker.
                         vty = at;
@@ -964,7 +965,7 @@ impl Checker {
             Expr::Call { callee, args } => {
                 // Arity: a direct call of a user function (not shadowed by a
                 // local of the same name) must pass the declared number of
-                // arguments — or, for a variadic, at least the fixed ones. Too
+                // arguments, or, for a variadic, at least the fixed ones. Too
                 // few fixed arguments is still an error: the collection cannot
                 // invent the one that is missing.
                 let mut fixed = None;
@@ -993,7 +994,7 @@ impl Checker {
                 }
                 // Undefined direct call: a bare lowercase `foo(...)` that is
                 // neither a local, a user function, an import/alias, nor a
-                // builtin resolves to nothing the native backend can emit — it
+                // builtin resolves to nothing the native backend can emit and
                 // would become a broken-C call. Flag it here as a clean error.
                 // (Capitalized names are constructors; UFCS `x.m(...)` and calls
                 // through a value stay gradual.)
@@ -1026,9 +1027,9 @@ impl Checker {
                     Ty::Fn(params, ret) => {
                         // The signature says `rest: T[]`, one parameter; the
                         // call says N arguments of `T`. Unroll the tail so each
-                        // trailing argument is checked against the element type
-                        // — and against each other, since one type variable is
-                        // shared by all of them.
+                        // trailing argument is checked against the element
+                        // type, and against each other, since one type variable
+                        // is shared by all of them.
                         let params = match fixed {
                             Some(n) if params.len() == n + 1 => {
                                 let elem = match self.inf.resolve(&params[n]) {
@@ -1203,7 +1204,7 @@ impl Checker {
                 Ty::Any
             }
             // `spawn e : Future a` where `e : a`; `await (Future a) : a`. No
-            // `async` keyword — the async effect is inferred by `eff` above.
+            // `async` keyword: the async effect is inferred by `eff` above.
             Expr::Spawn(x) => {
                 let a = self.infer(env, x);
                 Ty::Con("Future".into(), vec![a])
@@ -1259,8 +1260,8 @@ impl Checker {
     /// A record literal has to name every field the record declares, and no
     /// field it doesn't.
     ///
-    /// A missing one used to be silently zero — `""` for a `str`, `0` for an
-    /// `int` — so a page whose copy lives in a record shipped a link with no
+    /// A missing one used to be silently zero (`""` for a `str`, `0` for an
+    /// `int`), so a page whose copy lives in a record shipped a link with no
     /// text and a heading with no words, compiling clean the whole way. A
     /// *misspelt* one is worse: the value goes nowhere and the field it was
     /// meant for stays empty.
@@ -1317,7 +1318,7 @@ impl Checker {
 
     /// A UFCS method call on a receiver whose type we actually know.
     ///
-    /// Method calls are gradual on purpose — `any` receivers reach foreign and
+    /// Method calls are gradual on purpose: `any` receivers reach foreign and
     /// unknown-stdlib code, and rejecting those would make the escape hatch
     /// useless. But when the receiver is a `str` or a `T[]`, the set of methods
     /// is closed and a name outside it is a typo. It used to sail through the
@@ -1350,7 +1351,7 @@ impl Checker {
         self.diag(
             DiagKind::UndefinedName,
             match near {
-                Some(alt) => format!("`{what}` has no method `{name}` — did you mean `{alt}`?"),
+                Some(alt) => format!("`{what}` has no method `{name}`; did you mean `{alt}`?"),
                 None => format!("`{what}` has no method `{name}`"),
             },
         );
@@ -1407,7 +1408,7 @@ impl Checker {
                 }
                 env.push((n.clone(), scrut.clone()));
                 // a pattern-bound name (loop var, match capture) is exempt from
-                // the constant rule — treat it as mutable.
+                // the constant rule, so treat it as mutable.
                 self.mut_of.insert(n.clone(), true);
             }
             Pattern::Ctor { name, args } => {

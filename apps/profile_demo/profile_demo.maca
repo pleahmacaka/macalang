@@ -1,9 +1,9 @@
-// profile_demo — a small program that measures itself.
+// profile_demo: a small program that measures itself.
 //
 //   maca run apps/profile_demo/profile_demo.maca
 //
-// It does three real pieces of work — builds a paragraph, sorts its words, and
-// walks a directory tree — with a span around each, then prints the flame
+// It does three real pieces of work (builds a paragraph, sorts its words, and
+// walks a directory tree) with a span around each, then prints the flame
 // chart and the summary table and writes the trace out as JSON and SVG.
 //
 // The recorder is a value carried through the program. That is the whole
@@ -59,7 +59,7 @@ report_on(t: Trace, prose: str, ranked: str[], found: Scan) {
     back = from_json(read_file(Out ++ "/trace.json"))
 
     info("wrote {Out}/trace.json and {Out}/flame.svg")
-    info("read back {span_count(back)} spans, {wall(back)}ms — same run")
+    info("read back {span_count(back)} spans, {wall(back)}ms, same run")
     info("")
     info("the first four moments of it:")
     for line in narrate(t).slice(0, 4) {
@@ -70,7 +70,7 @@ report_on(t: Trace, prose: str, ranked: str[], found: Scan) {
 // ---- the work being measured ----------------------------------------------
 
 // Enough string building to take a measurable number of milliseconds. Each
-// step concatenates onto the whole paragraph, so the cost grows with it —
+// step concatenates onto the whole paragraph, so the cost grows with it,
 // which is exactly the shape a profile is supposed to make visible.
 paragraph(n: int, acc: str) -> str {
     if n <= 0 {

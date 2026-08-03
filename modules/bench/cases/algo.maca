@@ -1,4 +1,4 @@
-// bench/cases/algo — the algorithms you write in the first week.
+// bench/cases/algo: the algorithms you write in the first week.
 //
 // Searching, the three quadratic sorts, folds over a list, and the small
 // integer routines: Fibonacci both ways, factorial, GCD, primality. They are
@@ -10,8 +10,8 @@
 //
 //   at = binary_search(ascending(1000), 640)
 //
-// Each algorithm keeps its natural signature — `insertion_sort` takes the list
-// it sorts — and each has a `…_case(n)` beside it that builds an input of size
+// Each algorithm keeps its natural signature (`insertion_sort` takes the list
+// it sorts), and each has a `…_case(n)` beside it that builds an input of size
 // `n` and returns a checksum. The first is what a test asserts against; the
 // second is what `bench/time` measures, because the harness needs one `int`
 // parameter and one `int` result and an algorithm should not be bent into that
@@ -35,7 +35,7 @@ linear_search(xs: int[], target: int) -> int {
     found
 }
 
-/// Scan a sorted list of `n` for its last element — the worst case, and the
+/// Scan a sorted list of `n` for its last element: the worst case, and the
 /// only one worth timing, since anything else measures where the value happened
 /// to land.
 linear_search_case(n: int) -> int =>
@@ -233,7 +233,7 @@ fib_recursive(k: int) -> int {
     }
 }
 
-/// `n` is the Fibonacci index, not a list length — `fib_recursive_case(25)`
+/// `n` is the Fibonacci index, not a list length. `fib_recursive_case(25)`
 /// makes about 250,000 calls, and 30 makes about three million.
 fib_recursive_case(n: int) -> int =>
     fib_recursive(n)
@@ -258,7 +258,7 @@ fib_iterative(k: int) -> int {
 fib_iterative_case(n: int) -> int =>
     fib_iterative(n % 91)
 
-/// `k!`, exact up to `k = 20` — 21! overflows a 64-bit integer, and this
+/// `k!`, exact up to `k = 20`. 21! overflows a 64-bit integer, and this
 /// returns the wrapped value rather than pretending otherwise.
 factorial(k: int) -> int {
     out = 1
@@ -298,7 +298,7 @@ gcd(a: int, b: int) -> int {
     x
 }
 
-/// `gcd(i, n)` for every `i` up to `n`, summed — Pillai's arithmetical
+/// `gcd(i, n)` for every `i` up to `n`, summed: Pillai's arithmetical
 /// function, and a way to give a two-argument routine a size.
 gcd_case(n: int) -> int {
     acc = 0
@@ -312,7 +312,7 @@ gcd_case(n: int) -> int {
 
 /// Is `x` prime, by trial division up to its square root?
 ///
-/// The loop condition is `d * d <= x` rather than `d <= sqrt(x)` — squaring the
+/// The loop condition is `d * d <= x` rather than `d <= sqrt(x)`. Squaring the
 /// divisor stays in integers, and integers are exact where a square root is a
 /// rounding decision waiting to go wrong at a perfect square.
 is_prime(x: int) -> bool {

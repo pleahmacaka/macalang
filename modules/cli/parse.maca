@@ -1,7 +1,7 @@
-// cli/parse — a command line, read against what the command said it accepts.
+// cli/parse: a command line, read against what the command said it accepts.
 //
 // A refusal is a value, not an exit. The command decides what to do about a
-// bad argument — print help, suggest a fix, carry on with a default — and a
+// bad argument (print help, suggest a fix, carry on with a default), and a
 // parser that called `exit` for it would take that decision away and make the
 // whole thing untestable besides.
 //
@@ -102,7 +102,7 @@ take_long(c: Cmd, p: Parsed, body: str, argv: str[], i: int) -> Step {
     } else if !o.takes {
         if cut >= 0 {
             why = "`--{name}` is a flag and takes no value"
-            refuse(p, why ++ " — write `--{name}` on its own", i)
+            refuse(p, why ++ ". Write `--{name}` on its own", i)
         } else {
             Step { parsed = set(p, name, "true"), next = i + 1 }
         }
@@ -130,7 +130,7 @@ take_short(c: Cmd, p: Parsed, body: str, argv: str[], i: int) -> Step {
         // `-n3` is not `-n 3`. Two spellings for one thing is how `-n3` and
         // `-n 3` end up meaning different numbers in the same program.
         why = "`-{name}` takes a value"
-        refuse(p, why ++ " — write `-{name} <value>` or `-{name}=<value>`", i)
+        refuse(p, why ++ ". Write `-{name} <value>` or `-{name}=<value>`", i)
     } else if o.takes {
         if i + 1 < argv.length() {
             Step { parsed = set(p, o.long, argv.get(i + 1)), next = i + 2 }
@@ -155,7 +155,7 @@ bundle(c: Cmd, p: Parsed, body: str, at: int) -> Parsed {
             p with { error = unknown(c, "-" ++ s) }
         } else if o.takes {
             bundle(c, p with {
-                error = "`-{s}` takes a value, so it cannot be bundled — write it on its own"
+                error = "`-{s}` takes a value, so it cannot be bundled. Write it on its own"
             }, body, at + 1)
         } else {
             bundle(c, set(p, o.long, "true"), body, at + 1)
@@ -170,13 +170,13 @@ unknown(c: Cmd, given: str) -> str {
     near = nearest(given.replace("-", ""), long_names(c), 0, "", 3)
     near == ""
         ? "unknown option `{given}`"
-        : "unknown option `{given}` — did you mean `--{near}`?"
+        : "unknown option `{given}`: did you mean `--{near}`?"
 }
 
 needs_value(given: str, what: str) -> str =>
     what == ""
         ? "`{given}` needs a value"
-        : "`{given}` needs a value — {what}"
+        : "`{given}` needs a value: {what}"
 
 // The closest name within `best` edits, or "" when nothing is close. Bounded so
 // a wild typo gets no suggestion rather than a confusing one.
@@ -191,7 +191,7 @@ nearest(want: str, names: str[], i: int, found: str, best: int) -> str {
     }
 }
 
-// Levenshtein, one row at a time — enough for `--verbsoe`.
+// Levenshtein, one row at a time, which is enough for `--verbsoe`.
 distance(a: str, b: str) -> int {
     prev = row(b.length() + 1, 0, [])
     i = 0
@@ -221,7 +221,7 @@ least(a: int, b: int, c: int) -> int {
 
 // Too few positionals, or too many. Then each one is filed under the name the
 // command gave it, so `value("name", …)` reads a positional and an option the
-// same way — the command declared both, and which is which is a spelling
+// same way. The command declared both, and which is which is a spelling
 // decision the reader of the command's body should not have to remember.
 check_args(c: Cmd, p: Parsed) -> Parsed {
     want = c.args.length()
@@ -229,10 +229,10 @@ check_args(c: Cmd, p: Parsed) -> Parsed {
     takes_rest = want > 0 && c.args.get(want - 1).many
 
     if got < want && !(takes_rest && got >= want - 1) {
-        p with { error = "missing <{c.args.get(got).name}> — {c.args.get(got).help}" }
+        p with { error = "missing <{c.args.get(got).name}>: {c.args.get(got).help}" }
     } else if got > want && !takes_rest {
         p with {
-            error = "too many arguments: `{p.args.get(want)}` — {c.name} takes {want}"
+            error = "too many arguments: `{p.args.get(want)}`. {c.name} takes {want}"
         }
     } else {
         name_args(c, p, 0)
@@ -260,7 +260,7 @@ value(p: Parsed, name: str, fallback: str) -> str => p.opts.get(name, fallback)
 on(p: Parsed, name: str) -> bool => p.opts.get(name, "") == "true"
 
 /// A numeric option, or `fallback` when it was not given. A value that is not a
-/// number reads as 0, which `int` already does — validating it is the command's
+/// number reads as 0, which `int` already does. Validating it is the command's
 /// business, since only the command knows what range is sensible.
 count(p: Parsed, name: str, fallback: int) -> int {
     v = p.opts.get(name, "")
@@ -270,5 +270,5 @@ count(p: Parsed, name: str, fallback: int) -> int {
 /// The positional at `i`, or "" past the end.
 at(p: Parsed, i: int) -> str => p.args.get(i)
 
-/// Everything from `i` on — what a trailing `rest` argument collects.
+/// Everything from `i` on: what a trailing `rest` argument collects.
 from(p: Parsed, i: int) -> str[] => p.args.slice(i, p.args.length())

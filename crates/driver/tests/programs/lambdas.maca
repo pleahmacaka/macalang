@@ -2,7 +2,7 @@
 //
 // A top-level `name = (…) => …` is a function definition: there is nothing to
 // capture at module scope. It used to lower as a constant holding a closure,
-// which emitted an accessor no call site knew about — so calling one failed to
+// which emitted an accessor no call site knew about, so calling one failed to
 // link, and a record-returning one could not have its fields read.
 
 Point = {
@@ -47,7 +47,7 @@ test_a_local_lambda_can_declare_its_types() {
 }
 
 // A lambda body may be a block, the way a match arm's may. What it cannot be
-// is a bare `{ … }` anonymous record — that reads as the block, which is the
+// is a bare `{ … }` anonymous record: that reads as the block, which is the
 // same trade a match arm already makes. Parenthesize to get the record back.
 test_a_lambda_body_can_be_a_block() {
     classify = (n) -> str => {

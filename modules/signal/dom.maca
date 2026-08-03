@@ -1,4 +1,4 @@
-// signal/dom — bind a store key to a node, then patch only what changed.
+// signal/dom: bind a store key to a node, then patch only what changed.
 //
 // The markup half of `signal/store`. A bound node carries the key it shows, so
 // after a change the page does not need a diff or a second render to find it:
@@ -16,7 +16,7 @@
 //   }
 //
 // A bound node is marked `data-signal="<key>"`, and `data-signal-as` says what
-// the key drives — absent means the node's text, otherwise the name of an
+// the key drives: absent means the node's text, otherwise the name of an
 // attribute. One marker rather than three means one selector to look up and
 // one place for a page to go wrong, and it is why the runtime below handles
 // `href` and `title` without this module knowing they exist.
@@ -34,12 +34,12 @@
 // nobody mistakes it for a live one.
 //
 // Either build delivers the page. Everything here is a string, so a native
-// build writing `index.html` — `runtime_script()` in the head, bound nodes in
-// the body, `patch_script` sent down however the page gets its updates — is the
+// build writing `index.html` (`runtime_script()` in the head, bound nodes in
+// the body, `patch_script` sent down however the page gets its updates) is the
 // same markup `maca build --target js` emits.
 
 // Every import here is selective, and every call to another function of this
-// module or of `signal/store` is a plain call and not a UFCS method — see the
+// module or of `signal/store` is a plain call and not a UFCS method. See the
 // note above `signal/store`'s reading section for the build failure that rule
 // avoids.
 import { escape_html, index_of_from } from std/text
@@ -57,15 +57,15 @@ Op = {
 
 /// A `<tag>` whose text is `key`'s value.
 ///
-/// The value is escaped. Children are not escaped by the element syntax — a
-/// child is normally markup the program built — but a bound value comes from
+/// The value is escaped. Children are not escaped by the element syntax, since
+/// a child is normally markup the program built, but a bound value comes from
 /// state, and state comes from input.
 text_node(s: Store, tag: str, key: str) -> str =>
     element(tag, data-signal=key, escape_html(get(s, key)))
 
 /// A `<tag>` whose `class` attribute is `key`'s value, with `body` inside it.
-/// This is how a page moves a whole block between two looks — `"card open"` /
-/// `"card"` — without re-rendering the block.
+/// This is how a page moves a whole block between two looks (`"card open"` /
+/// `"card"`) without re-rendering the block.
 class_node(s: Store, tag: str, key: str, body: str) -> str =>
     element(tag, data-signal=key, data-signal-as="class", class=get(s, key),
         body)
@@ -91,8 +91,8 @@ value_input(s: Store, key: str) -> str =>
 html_node(s: Store, tag: str, key: str) -> str =>
     element(tag, data-signal=key, data-signal-as="html", get(s, key))
 
-/// The selector matching every node bound to `key`. A page that binds by hand
-/// — `data-signal-as="href"` and the like — can check its own markup with it.
+/// The selector matching every node bound to `key`. A page that binds by hand,
+/// with `data-signal-as="href"` and the like, can check its own markup with it.
 ///
 /// A quote or a backslash in the key is escaped for CSS. The markup carries
 /// the key itself: the element syntax writes `&quot;` into the attribute and a
@@ -124,7 +124,7 @@ ops_from(s: Store, ks: str[], i: int, acc: Op[]) -> Op[] {
     }
 }
 
-/// One op as a line of text — what a native build prints instead of patching.
+/// One op as a line of text: what a native build prints instead of patching.
 describe(op: Op) -> str =>
     "{op.key} {op.selector} <- {shown(op.value)}"
 
@@ -145,7 +145,7 @@ lines_from(ops: Op[], i: int, acc: str[]) -> str[] {
 ///
 /// Import `patch` alongside it. This is the one function here whose signature
 /// hides `Op[]`, and a selective import declares an inlined module's array
-/// types only for the names it was given — `import { patch_script }` on its
+/// types only for the names it was given: `import { patch_script }` on its
 /// own compiles to `unknown type name 'dom__OpArr'`.
 patch_script(s: Store) -> str {
     ops = patch(s)
@@ -196,7 +196,7 @@ shown(v: str) -> str => "\"" ++ escaped_value(v) ++ "\""
 // escaped on top of the four: a value holding `</script>` would otherwise
 // close the block it was printed into, and everything after it on the page
 // would be read as JavaScript. `std/json` quotes strings too, and taking it
-// from there would pull in `std/text` whole — which defines a `flush` that
+// from there would pull in `std/text` whole, which defines a `flush` that
 // would silently replace somebody else's.
 quoted(v: str) -> str =>
     "\"" ++ escaped_value(v).replace("<", "\\u003c") ++ "\""

@@ -1,4 +1,4 @@
-; Outline / breadcrumbs for Maca — what Zed lists in the symbol picker
+; Outline / breadcrumbs for Maca: what Zed lists in the symbol picker
 ; (`cmd-shift-o`) and shows in the breadcrumb bar.
 ;
 ; A function definition: its name, plus the parameter list and return type as
@@ -11,7 +11,7 @@
   ("->" @context
    (type) @context)?) @item
 
-; A type declaration — a record (`Point = { … }`) or a sum
+; A type declaration: a record (`Point = { … }`) or a sum
 ; (`Color = Red | Green`).
 (type_decl
   (type_ident) @name) @item

@@ -1,4 +1,4 @@
-// shell — the page furniture the site's generators share.
+// shell: the page furniture the site's generators share.
 //
 // `apps/site/home.maca` writes the front page and `tools/macadoc.maca` writes
 // the API reference. They had a `base_css`, a `title_tag`, a `body_tag`, a
@@ -9,7 +9,7 @@
 // `apps/tomo` deliberately does not import this. It builds other people's
 // books, and this is the chrome of one particular site.
 //
-// Not gated on its own — it has no `main` to build. Both importers are, in
+// Not gated on its own: it has no `main` to build. Both importers are, in
 // `crates/driver/tests/scripts.rs`, so a break here fails two suites.
 
 import { escape_html } from std/text
@@ -40,7 +40,7 @@ body_tag(classes: str, inner: str) -> str =>
 ///
 /// `break-keep` is here for every language, not just Korean: it only changes
 /// text that would otherwise break inside a word, which Korean does by default
-/// — a heading split `돌아갈` as `돌` / `아갈` — and English never does.
+/// (a heading split `돌아갈` as `돌` / `아갈`) and English never does.
 page_class(font: str) -> str =>
     font ++ " text-base leading-relaxed break-keep bg-white dark:bg-zinc-950"
         ++ " text-zinc-900 dark:text-zinc-100"

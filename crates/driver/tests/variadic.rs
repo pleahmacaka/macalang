@@ -2,7 +2,7 @@
 //! and sees them as a `T[]`.
 //!
 //! The behaviour is asserted in Maca, in `tests/programs/variadic.maca`, and run
-//! by `maca test` — this file is the runner plus the two things that are about
+//! by `maca test`. This file is the runner plus the two things that are about
 //! the *process* rather than the values: a poisoned run, and the programs that
 //! must fail to compile.
 

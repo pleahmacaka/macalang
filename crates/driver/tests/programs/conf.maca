@@ -1,6 +1,6 @@
 // The book.toml reader, on the shapes a real config takes.
 //
-// `apps/tomo/conf.maca` is imported by two programs — the handbook builder and
+// `apps/tomo/conf.maca` is imported by two programs: the handbook builder and
 // the site build, which derives the landing pages it clears from `languages`.
 // The site build used to read the file with a one-liner of its own, and a
 // commented-out `# languages = ["fr"]` above the real key won: it then cleared
@@ -47,7 +47,7 @@ test_an_absent_key_is_empty() {
 }
 
 // `languages` is a prefix of nothing here, but `site` is a prefix of nothing
-// while `title` is — the match is on `key ++ " ="`, so a longer key that starts
+// while `title` is. The match is on `key ++ " ="`, so a longer key that starts
 // with a shorter one must not answer for it.
 test_a_key_is_matched_whole() {
     src = """site_name = "wrong"

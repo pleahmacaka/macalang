@@ -4,7 +4,7 @@ Welcome to **The Maca Handbook**.
 
 Maca is a single, typed language for **both programs and infrastructure
 configuration**. The same source you write to build an app is the source you
-write to describe the machine it runs on — no second language, no YAML.
+write to describe the machine it runs on: no second language, no YAML.
 
 ## What makes Maca different
 
@@ -13,12 +13,12 @@ types you rarely have to write down. Four things are not.
 
 **One language, many targets.** A program compiles to a native binary through C,
 or to JavaScript, the JVM, Rust, or freestanding C for a microcontroller. Which
-one you get is a flag, not a dialect — there is no per-target subset of the
+one you get is a flag, not a dialect. There is no per-target subset of the
 language and no separate standard library.
 
 **No garbage collector and no borrow checker.** Memory is managed by reference
 counting that the compiler mostly optimises away, so you write the functional
-version — build a new value from an old one — and get the performance of the
+version (build a new value from an old one) and get the performance of the
 imperative one. There is nothing to annotate, no lifetimes, no `clone()`.
 
 **No `async` keyword.** Concurrency is an inferred effect rather than a colour
@@ -33,7 +33,7 @@ error rather than a discovery at three in the morning.
 
 ## Who this book is for
 
-You have written code before — the exact language does not matter. This handbook
+You have written code before. The exact language does not matter. This handbook
 teaches Maca from the ground up: values, functions, its data model, the type
 system, effects, and the toolchain around it.
 
@@ -53,7 +53,7 @@ cases. The effect rows, the ownership rules, the import resolution order, the
 back-end differences and the full diagnostic list live there. Its prose is dense
 on purpose.
 
-Both are in the sidebar, and the search box searches both — a hit tells you
+Both are in the sidebar, and the search box searches both. A hit tells you
 which book it came from, because "Collections" in the handbook and "Collections"
 in the reference are different answers to different questions.
 
@@ -65,7 +65,7 @@ Front to back. The chapters build on each other.
 - **The Language** is the everyday language: values, records, sum types,
   collections, errors, functions, modules, memory, tests.
 - **What Maca Does Differently** is a tour of the four things that are not like
-  other languages — colorblind async, config mode, the UI syntax, the targets.
+  other languages: colorblind async, config mode, the UI syntax, the targets.
   Each is a short chapter with a door into the reference at the end.
 - **Build Something** writes a real tool end to end.
 
@@ -76,7 +76,7 @@ If you already know the language, start at
 
 The repository holds `examples/handbook.maca`: this book's claims, as one
 program the test suite executes. The reference is checked against the compiler
-itself — the keyword list against the lexer, the diagnostics
+itself: the keyword list against the lexer, the diagnostics
 against the checker, the method tables against a program that calls every name
 in them.
 

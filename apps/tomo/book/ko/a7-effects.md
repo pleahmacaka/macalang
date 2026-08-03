@@ -14,7 +14,7 @@ Koka 계보에서 온 이펙트 다섯입니다.
 
 | 이펙트 | 도입하는 것 |
 |---|---|
-| `io` | `print`, `input`, 그리고 콘솔 가족 — `info`, `warn`, `err`, `debug`, `notice`, `crit`, `alert`, `emerg`, `panic` — 과 파일/스트림 메서드 `read`, `write`, `exists`, `remove`, `append`, `create` |
+| `io` | `print`, `input`, 그리고 콘솔 가족(`info`, `warn`, `err`, `debug`, `notice`, `crit`, `alert`, `emerg`, `panic`)과 파일/스트림 메서드 `read`, `write`, `exists`, `remove`, `append`, `create` |
 | `net` | `net`, `http`, `socket` 수신자를 통한 호출 |
 | `os` | `os`, `process` 수신자를 통한 호출 |
 | `async` | `await`, `spawn`, `sleep_ms` |
@@ -33,9 +33,9 @@ Koka 계보에서 온 이펙트 다섯입니다.
 
 `async`를 도입하는 연산은 셋입니다.
 
-- `spawn f(x)` — `f(x)`를 동시에 실행하고 `Future a`를 돌려줍니다;
-- `await fut` — future가 완료될 때까지 중단하고 그 값이 됩니다;
-- `sleep_ms(ms)` — 중단 지점입니다.
+- `spawn f(x)`: `f(x)`를 동시에 실행하고 `Future a`를 돌려줍니다;
+- `await fut`: future가 완료될 때까지 중단하고 그 값이 됩니다;
+- `sleep_ms(ms)`: 중단 지점입니다.
 
 이 중 무엇이든 쓰는 함수는 그 자체로 async입니다. 주석도, 색도 없습니다.
 
@@ -64,7 +64,7 @@ fetch_both(a: str, b: str) -> str {
 
 이 설계의 대가는, 시그니처를 읽고 그 호출이 중단될 수 있는지 알 수 없다는
 것입니다. 그것이 거래입니다. 이펙트는 텍스트가 아니라 검사기가 들고 다니는
-타입에 있습니다. 그것이 중요한 곳 — 설정 — 에서는 검사기가 직접 강제하고,
+타입에 있습니다. 그것이 중요한 곳(설정)에서는 검사기가 직접 강제하고,
 그게 다음 절입니다.
 
 ## 진짜 동시성으로 컴파일된다
@@ -75,10 +75,10 @@ async 함수는 평범한 함수입니다. **ABI 변화가 없습니다.** 생�
 
 | 타깃 | 중단 지점이 되는 것 |
 |---|---|
-| 네이티브 (C) | `maca_spawn` / `maca_await` / `maca_sleep_ms` — 런타임의 pthread 기반 future. 중단 지점은 진짜 스레드 경계입니다 |
+| 네이티브 (C) | `maca_spawn` / `maca_await` / `maca_sleep_ms`: 런타임의 pthread 기반 future. 중단 지점은 진짜 스레드 경계입니다 |
 | JS | 이벤트 루프. 같은 세 연산이 그 스케줄링에 대응됩니다 |
 | 플레이그라운드 | 인터프리터가 즉시 평가합니다. 출력은 같고 타이밍은 다릅니다 |
-| Nix (설정) | 거부됩니다 — 아래 참조 |
+| Nix (설정) | 거부됩니다. 아래 참조 |
 
 이펙트는 한 번만 쓰고, 각 백엔드가 그것을 실현합니다.
 

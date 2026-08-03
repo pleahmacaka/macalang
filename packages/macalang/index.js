@@ -1,4 +1,4 @@
-// macalang — compile & import Maca from JavaScript.
+// macalang: compile & import Maca from JavaScript.
 //
 // The whole Maca front-end (lexer → parser → type/effect checker → JS emitter)
 // runs here as WebAssembly. `compile()` returns diagnostics + emitted code;

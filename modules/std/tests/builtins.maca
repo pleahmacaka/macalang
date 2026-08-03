@@ -103,7 +103,7 @@ test_file_size_and_is_dir_describe_what_is_there() {
     remove_dir(root)
 }
 
-// A missing file is -1, not 0 — an empty file and an absent one differ.
+// A missing file is -1, not 0: an empty file and an absent one differ.
 test_file_size_of_a_missing_file_is_negative() {
     assert_eq(str(file_size("/tmp/maca-test-builtins/none")), "-1", "absent")
 }
@@ -111,7 +111,7 @@ test_file_size_of_a_missing_file_is_negative() {
 // Reading a directory answers nothing, the same as reading a file that is not
 // there. Opening one succeeds on Linux and the size it reports is not a byte
 // count, so the read used to ask for that many bytes and the process died with
-// `out of memory` — a message naming nothing that pointed at the directory.
+// `out of memory`: a message naming nothing that pointed at the directory.
 // Walking a tree and reading what the walk hands back is the shape that hits
 // it.
 test_reading_a_directory_answers_nothing_rather_than_dying() {

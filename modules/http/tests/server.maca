@@ -47,7 +47,7 @@ start() -> bool {
 
 Started = start()
 
-// The body of a reply — everything after the blank line.
+// The body of a reply: everything after the blank line.
 body_of(reply: str) -> str {
     at = reply.index_of("\r\n\r\n")
 

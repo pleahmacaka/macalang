@@ -1,11 +1,11 @@
-// signal_demo — a counter, a label derived from it, and the single node that
+// signal_demo: a counter, a label derived from it, and the single node that
 // each change touches.
 //
 //   maca run apps/signal_demo/signal_demo.maca
 //
 // This renders the page once and then prints the patch it *would* apply, which
 // is what makes the wiring testable without a browser. The `js:` line is the
-// call a browser would run against the same markup — send it down however the
+// call a browser would run against the same markup. Send it down however the
 // page gets its updates, next to the runtime `runtime_script()` puts in the
 // page. Do not reach for `--target js`: that backend drops an imported
 // module's definitions without saying so, and the page loads and throws.

@@ -1,7 +1,7 @@
-# microkernel — a message-passing kernel, in Maca
+# microkernel: a message-passing kernel, in Maca
 
 A small **L4-style microkernel, simulated in Maca** (`kernel.maca`). It runs in
-userland — `maca run` boots it — but models the real thing:
+userland (`maca run` boots it) but models the real thing:
 
 - a **round-robin priority scheduler** over a struct-of-arrays task table
 - a **bump allocator** over a fixed kernel heap
@@ -19,7 +19,7 @@ maca run apps/microkernel/kernel.maca
 ```
 
 prints the boot banner, the scheduler trace (one line per syscall), and a halt
-report — context switches, retired tasks, capability faults, IPC volume, heap
+report: context switches, retired tasks, capability faults, IPC volume, heap
 high-water mark, and an ASCII bar chart of CPU time per task.
 
 ## Incremental build

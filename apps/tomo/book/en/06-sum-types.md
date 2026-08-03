@@ -27,7 +27,7 @@ s = Circle(2)
 t = Rect(3, 4)
 ```
 
-There is no `enum` keyword and no `struct` keyword — a type declaration is
+There is no `enum` keyword and no `struct` keyword. A type declaration is
 `Name = …`, and what follows decides which kind it is. Braces make a record,
 bars make a sum.
 
@@ -81,7 +81,7 @@ is_red(c: Color) -> bool =>
     }
 ```
 
-Use it when you mean "everything else, forever" — not to silence a warning you
+Use it when you mean "everything else, forever", not to silence a warning you
 would rather have.
 
 ## Matching lists
@@ -122,8 +122,8 @@ compiler's AST takes, and it is what `selfhost/ast.maca` is built from.
 
 The question to ask is whether the fields are simultaneous or alternative.
 
-A user has a name *and* an email — record. A payment is a card *or* a transfer
-*or* an invoice — sum. A request that is pending has no response body, and one
+A user has a name *and* an email: record. A payment is a card *or* a transfer
+*or* an invoice: sum. A request that is pending has no response body, and one
 that failed has no result: that is a sum, even though it is tempting to write a
 record with three nullable fields. Maca has no null, so the temptation is easier
 to resist than it is elsewhere.
@@ -140,7 +140,7 @@ Job = {
 ```
 
 Now a `Job` cannot be simultaneously done and failed, and cannot be done without
-a result — not by convention, but because there is no way to write it down.
+a result, not by convention, but because there is no way to write it down.
 
 ## Run it
 
@@ -148,6 +148,6 @@ a result — not by convention, but because there is no way to write it down.
 maca run examples/tree.maca
 ```
 
-A recursive sum type — a binary tree — built, summed and printed. Then try
+A recursive sum type (a binary tree) built, summed and printed. Then try
 deleting one arm of a `match` in it and building again: the diagnostic names the
 variant you dropped, which is the entire reason to reach for a sum type.

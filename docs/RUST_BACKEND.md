@@ -5,8 +5,8 @@
 Rust is a substrate for an ecosystem, the way the JVM backend is for Maven: the
 point is that a crates.io library costs a line of configuration rather than a
 port. That matters because a Rust library's public API has no C ABI to bind to,
-so `import c` cannot reach it. A C shim can be hand-written — that is what
-`dbbrowser` does over libpq's 23 flat functions — but it does not scale to a
+so `import c` cannot reach it. A C shim can be hand-written, which is what
+`dbbrowser` does over libpq's 23 flat functions, but it does not scale to a
 library with a thousand functions and fifty traits, and every generic collapses
 to `void*` on the way through.
 
@@ -31,7 +31,7 @@ match arms qualified `Enum::Variant`), `match`, lists → `Vec`,
 **Value semantics.** A local passed by value to a user call is `.clone()`d, so
 Maca's value semantics survive Rust's move checker. That is the memory model:
 clone at the boundary, not a reference-counted cell per record. It is a real
-cost in a hot loop, and the native C target exists for that case — moving
+cost in a hot loop, and the native C target exists for that case. Moving
 between the two is a flag.
 
 **Crate dependencies.** `import rust "gpui::div"` → `use gpui::div;`.
@@ -59,7 +59,7 @@ foreign callback API and outlive its frame.
 `impl Render for Counter { fn render(&mut self, …) { … } }`. A leading `self`
 becomes `&mut self`. A parameter whose type this module does not declare is
 **foreign**, and Maca never owns a value from a crate it does not read, so it
-lowers to `&mut T` — which is how a Rust trait method takes its arguments
+lowers to `&mut T`, which is how a Rust trait method takes its arguments
 (`w: &mut Window`, `cx: &mut Context<Self>`). Call sites pass `&mut`, and a
 borrow is passed on rather than cloned. It may be read and handed to another
 call, but not returned or stored: that would outlive the call, and the lifetime
@@ -68,7 +68,7 @@ parameter rather than one from `rustc` about a type nobody wrote.
 
 The return type is inferred from the body
 (`()`/`bool`/`String`/`i64`), which covers event handlers and getters, or
-**declared** — `render = (self, w, cx) -> AnyElement => …` — for a method whose
+**declared** as `render = (self, w, cx) -> AnyElement => …`, for a method whose
 signature the backend cannot see. gpui's `Render::render` returns
 `impl IntoElement`, and Rust lets an impl name a concrete type where the trait
 wrote `impl Trait`, so the annotation is the whole answer. The
@@ -80,7 +80,7 @@ so a trait or `fn` can be supplied inline.
 covers `div().flex().gap_2().child(x)` once the receiver is gradual.
 
 **Colorblind async.** `spawn e` becomes a `std::thread::spawn` handle and
-`await h` joins it — the same shape the C runtime gives it with pthreads. There
+`await h` joins it, the same shape the C runtime gives it with pthreads. There
 is still no `async` keyword and no function colour.
 
 ## What it does not do, and why that is the remit
@@ -94,8 +94,8 @@ authority on Rust.
 
 A foreign call's argument types stay gradual beyond bare integer literals. Maca
 does not read the crate's signatures, so a wrong type is `rustc`'s error to
-report rather than a second type checker's — the same bargain `import c` makes,
-and the reason a foreign call needs no declaration in the first place.
+report rather than a second type checker's. That is the same bargain `import c`
+makes, and the reason a foreign call needs no declaration in the first place.
 
 Reaching a Rust library through its own type system, rather than reimplementing
 that type system, is the whole design. A second Rust would be a second thing to
@@ -103,9 +103,9 @@ keep correct.
 
 ## Gates
 
-- `crates/backend_rust/tests/emit.rs` — hermetic, over the emitted source.
-- `rust_target_tests` in the driver — import validation and manifest generation.
-- `crates/driver/tests/rust_backend.rs` — compile and run through `rustc`, plus
+- `crates/backend_rust/tests/emit.rs`: hermetic, over the emitted source.
+- `rust_target_tests` in the driver: import validation and manifest generation.
+- `crates/driver/tests/rust_backend.rs`: compile and run through `rustc`, plus
   a best-effort cargo-dependency build, a closure passed to a callback API, a
   foreign trait impl against a local stand-in trait, `spawn`/`await`, and a real
   `std` type.

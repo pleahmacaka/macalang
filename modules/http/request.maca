@@ -1,12 +1,12 @@
-// http/request — one request, as fields rather than as bytes.
+// http/request: one request, as fields rather than as bytes.
 //
 // The server hands the handler the raw request text; this turns it into
 // something with a method, a path, a query and headers, so a handler never has
 // to know where the `\r\n`s are.
 //
-// Parsing is deliberately forgiving about line endings — HTTP says `\r\n` and
-// hand-written clients send `\n` — and deliberately strict about the request
-// line, because a request line that isn't three words is not a request.
+// Parsing is deliberately forgiving about line endings, because HTTP says
+// `\r\n` and hand-written clients send `\n`, and deliberately strict about the
+// request line, because a request line that isn't three words is not a request.
 
 import { split_once, index_of_from } from std/text
 
@@ -15,7 +15,7 @@ Request = {
     method:  str
     /// The path with the query string removed, and percent-escapes decoded.
     path:    str
-    /// Everything after `?`, undecoded — see `query_value`.
+    /// Everything after `?`, undecoded. See `query_value`.
     query:   str
     version: str
     /// The header block, still raw. Read it with `header`.
@@ -28,7 +28,7 @@ Request = {
 /// rather than guess.
 parse_request(raw: str) -> Request {
     // The head is normalized; the body is not. Rewriting `\r\n` across the
-    // whole request corrupted every upload that contained one — a 14-byte body
+    // whole request corrupted every upload that contained one: a 14-byte body
     // arrived as 12 and no longer matched the length that was sent.
     split = split_head(raw)
     head = normalize_endings(split.get(0))
@@ -97,7 +97,7 @@ header_value(line: str) -> str =>
 query_value(r: Request, name: str) -> str =>
     scan_pairs(r.query.split("&"), 0, name)
 
-/// The same, over a form-encoded body — `application/x-www-form-urlencoded`.
+/// The same, over a form-encoded body: `application/x-www-form-urlencoded`.
 form_value(r: Request, name: str) -> str =>
     scan_pairs(r.body.split("&"), 0, name)
 

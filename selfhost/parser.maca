@@ -1,11 +1,11 @@
-// selfhost/parser — a recursive-descent parser slice, written in Maca.
+// selfhost/parser: a recursive-descent parser slice, written in Maca.
 //
 // Consumes the `Token[]` from lexer.maca and produces `Expr` nodes from
 // ast.maca. Maca surface has no tuples, so a parse step threads its result as a
-// `PExpr { node, next }` record — the parsed node plus the next token index.
+// `PExpr { node, next }` record: the parsed node plus the next token index.
 //
 // It is a slice of the real grammar, not all of it, and it grows one construct
-// at a time — each addition gated by compiling and running what it emits.
+// at a time, each addition gated by compiling and running what it emits.
 // Anything it cannot parse is a token it walks past, not a diagnostic: the
 // stage-0 front-end is still the one that rejects bad input.
 
@@ -134,7 +134,7 @@ parse_expr_stmt(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
 // them: each parse step has to return exactly where the next one begins or the
 // rest of the file is read at the wrong offset.
 //
-// `import` lines are walked past rather than recorded — the driver has already
+// `import` lines are walked past rather than recorded. The driver has already
 // resolved and inlined them by the time this runs.
 parse_module(ts: Token[], i: int, acc: Stmt[]) -> Module {
     if ts.get(i).kind == Eof {
@@ -239,7 +239,7 @@ parse_record_decl(ts: Token[], i: int, acc: Stmt[]) -> Module {
     parse_module(ts, rf.pnext + 1, acc ++ [s_record(name, rf.params)])
 }
 
-// `pnext` lands *on* the closing brace, not past it — the caller skips it,
+// `pnext` lands *on* the closing brace, not past it. The caller skips it,
 // because a record declaration and a record literal end differently.
 parse_fields(ts: Token[], i: int, acc: Expr[]) -> PParams {
     if ts.get(i).kind == RBrace {
@@ -257,7 +257,7 @@ parse_one_field(ts: Token[], i: int, acc: Expr[]) -> PParams {
     parse_fields(ts, skip_comma(ts, i + 3), seen)
 }
 
-// A comma between items is optional in this grammar — a newline separates them
+// A comma between items is optional in this grammar. A newline separates them
 // just as well, and the lexer has already dropped it.
 skip_comma(ts: Token[], i: int) -> int {
     if ts.get(i).kind == Comma {
@@ -282,7 +282,7 @@ parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
 }
 
 // "" for an unannotated parameter. The checker reads that as gradual rather
-// than as an error — see `param_ty` in check.maca.
+// than as an error. See `param_ty` in check.maca.
 param_type(ts: Token[], i: int) -> str {
     if ts.get(i + 1).kind != Colon {
         ""
@@ -306,7 +306,7 @@ after_param_type(ts: Token[], i: int) -> int {
 // expr := precedence-climbing over primaries. `prec_of` gives each binary
 // operator its binding power (0 = not an operator); `parse_bin` consumes
 // operators of at least `min_prec`, recursing at `p + 1` for left-associative
-// binding — so `a + b * c` parses correctly as `a + (b * c)`.
+// binding, so `a + b * c` parses correctly as `a + (b * c)`.
 // Binding power, tightest first: `* / %` > `+ - ++` > comparison > `&&` > `||`.
 // `parse_expr` starts at 1 so `||` (the loosest) is still consumed; a trailing
 // ternary, looser still, is handled after `parse_bin` returns.
@@ -328,7 +328,7 @@ prec_of(k: Kind) -> int {
     }
 }
 
-// expr := binary [ '?' expr ':' expr ] — a trailing ternary is lowest-
+// expr := binary [ '?' expr ':' expr ]. A trailing ternary is lowest-
 // precedence and right-associative (its branches recurse through parse_expr).
 parse_expr(ts: Token[], i: int) -> PExpr {
     lhs = parse_bin(ts, parse_primary(ts, i), 1)
@@ -376,7 +376,7 @@ parse_postfix(ts: Token[], e: PExpr) -> PExpr {
     }
 }
 
-// A `.name` — a method call `recv.name(args)` when a `(` follows, else a plain
+// A `.name`: a method call `recv.name(args)` when a `(` follows, else a plain
 // field access.
 parse_dot(ts: Token[], e: PExpr) -> PExpr {
     name = ts.get(e.next + 1).text
@@ -396,7 +396,7 @@ parse_method(ts: Token[], recv: Expr, name: str, lparen: int) -> PExpr {
 
 // A string literal, interpolations included.
 //
-// `"n = {x}"` desugars here, in the parser, to `"n = " ++ str(x)` — the concat
+// `"n = {x}"` desugars here, in the parser, to `"n = " ++ str(x)`. The concat
 // and `str` forms both back ends already emit. That is the same trick stage-0
 // uses for format specs: spell the sugar once, in front of the emitters, and
 // every target gets it without knowing.
@@ -456,7 +456,7 @@ add_part(acc: Expr, piece: str, i: int) -> Expr {
 }
 
 // Parse an interpolation's source. It is a whole expression in its own right,
-// so it goes back through the lexer and the expression parser — which is what
+// so it goes back through the lexer and the expression parser, which is what
 // makes `"{a + b}"` and `"{f(x)}"` work rather than only bare names.
 parse_fragment(src: str) -> Expr =>
     parse_expr(lex(src), 0).node
@@ -482,7 +482,7 @@ parse_atom(ts: Token[], i: int) -> PExpr {
 }
 
 // The elements go through the argument collector's shape, stopping at `]`
-// instead of `)` — a list literal and an argument list differ only in that.
+// instead of `)`: a list literal and an argument list differ only in that.
 parse_list(ts: Token[], i: int) -> PExpr {
     el = parse_list_elems(ts, i + 1, [])
     mk_pexpr(e_list(el.aitems), el.anext)
@@ -566,7 +566,7 @@ parse_paren(ts: Token[], i: int) -> PExpr {
 
 // An ident may head a call `name(...)`, a record literal `Name { f = v, … }`,
 // or stand alone. A record literal is recognized only when the brace opens a
-// `field =` assignment — so a `match`'s `scrutinee { pat => … }` (whose brace is
+// `field =` assignment, so a `match`'s `scrutinee { pat => … }` (whose brace is
 // followed by `pat =>`, not `field =`) is left for the match parser, not eaten
 // as a record literal.
 parse_call_or_ident(ts: Token[], i: int) -> PExpr {

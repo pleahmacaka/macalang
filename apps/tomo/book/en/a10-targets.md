@@ -1,7 +1,7 @@
 # Targets
 
 The same source compiles to very different things. Which one you get is a flag,
-not a dialect — there is no `#ifdef`, no per-target subset of the language, and
+not a dialect: there is no `#ifdef`, no per-target subset of the language, and
 no separate standard library. You write Maca and choose where it lands.
 
 The tour is [Where a Program Lands](15-targets.md). This chapter is every
@@ -52,7 +52,7 @@ no build step beyond that command. The playground that ships with this book is
 one `.maca` file compiled exactly this way.
 
 The same syntax works on the native target, where an element renders to an HTML
-string instead of a DOM node — that is what a static site generator needs, and
+string instead of a DOM node. That is what a static site generator needs, and
 it is [the UI syntax's subject](a11-ui.md).
 
 ## The JVM and Rust
@@ -60,7 +60,7 @@ it is [the UI syntax's subject](a11-ui.md).
 These two are less about deployment than about *reach*. They exist so that Maca
 can use an ecosystem instead of reimplementing it.
 
-`--target jvm` emits Java source, which makes JVM interop ordinary — Minecraft
+`--target jvm` emits Java source, which makes JVM interop ordinary. Minecraft
 mods through Fabric are the worked example in the repository. `--target rust`
 emits Rust source and takes dependencies from `[rust-dependencies]` in
 `maca.toml`, so a crates.io library is a line of configuration away.
@@ -99,8 +99,8 @@ right width.
 
 Two things follow from "freestanding" and the compiler says so rather than
 letting the C toolchain complain about a file you didn't write: there is no
-console, so `info` and its siblings are not available — drive a UART with
-`mmio_write` — and `main` returns nothing, because there is no process to hand
+console, so `info` and its siblings are not available (drive a UART with
+`mmio_write`), and `main` returns nothing, because there is no process to hand
 an exit code to. The reset handler calls it and halts when it returns.
 
 `int` is a 32-bit word here rather than 64. The MMIO vocabulary is
@@ -122,7 +122,7 @@ is deployed.
 
 ## Tauri
 
-`--target tauri` scaffolds a desktop application — the JavaScript backend for
+`--target tauri` scaffolds a desktop application: the JavaScript backend for
 the interface, a native binary underneath it.
 
 ## What each target refuses
@@ -132,16 +132,16 @@ alternative is an error about generated code you never wrote.
 
 | Target | Refuses |
 |---|---|
-| native | `on:click=` and its siblings — an event handler has nowhere to attach in a string |
+| native | `on:click=` and its siblings; an event handler has nowhere to attach in a string |
 | `rust` | a bodyless (FFI) function; `import c` / `import py`; an `import rust` naming an undeclared crate; a borrowed foreign parameter that is returned or stored |
 | `embedded` | `info` and the other console builtins; a `main` with a return type |
-| `nix` | any non-empty effect row — see [Effects and Async](a7-effects.md) |
+| `nix` | any non-empty effect row; see [Effects and Async](a7-effects.md) |
 
 ## ABI and linking
 
 Everything native converges on the **C ABI**. The C backend and the LLVM SIMD
 span emit objects that link together; an FFI declaration is an ordinary extern;
-and an async function is an ordinary function — `spawn`/`await` change what the
+and an async function is an ordinary function: `spawn`/`await` change what the
 body does, never how it is called.
 
 That is the property that makes the hybrid native path a local decision. A SIMD
@@ -163,7 +163,7 @@ is why the list is the length it is.
 
 A BEAM target is the one people ask about, because Maca's concurrency model
 looks like a fit. It isn't on the list, because it would be the first backend
-added for elegance rather than reach — [colorblind async](a7-effects.md) already
+added for elegance rather than reach. [Colorblind async](a7-effects.md) already
 runs on pthreads in the C runtime, and an Erlang-style lowering would be a
 second, genuinely different implementation of something that works. Reach is a
 reason. Symmetry is not.

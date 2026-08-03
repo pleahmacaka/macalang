@@ -2,7 +2,7 @@
 //!
 //! Without variants a utility system can only express the unconditional case,
 //! so anything with a theme, a hover state or a breakpoint falls back to
-//! hand-written CSS — which is the thing utilities exist to replace. These are
+//! hand-written CSS, which is the thing utilities exist to replace. These are
 //! the cases that kept `apps/tomo` on a raw `<style>` block.
 
 use maca_backend_js::{css_escape, order, rule};
@@ -63,7 +63,7 @@ fn arbitrary_values_work() {
     );
 }
 
-/// An unescaped selector doesn't warn — the browser drops the whole rule.
+/// An unescaped selector doesn't warn: the browser drops the whole rule.
 #[test]
 fn selectors_escape_every_special_character() {
     let r = rule("text-[0.9em]").unwrap();
@@ -97,7 +97,7 @@ fn unknown_classes_are_dropped_not_guessed() {
     );
 }
 
-/// Utilities a document needs that an app doesn't — the set that was missing.
+/// Utilities a document needs that an app doesn't: the set that was missing.
 #[test]
 fn document_utilities_exist() {
     for c in [
@@ -123,12 +123,12 @@ fn document_utilities_exist() {
     assert!(rule("underline-offset-2").unwrap().contains("2px"));
 }
 
-/// A border width with no style is invisible — CSS defaults `border-style` to
-/// `none`. The unparameterized `border-l` always emitted both; `border-l-2`
-/// emitted only the width, so it drew nothing and said nothing. `border-x`
-/// and `border-y` then shipped emitting *nothing*, and `border-x-[3px]`
-/// shipped as a width with no style all over again — three spellings of one
-/// mistake, so all three are checked here.
+/// A border width with no style is invisible, because CSS defaults
+/// `border-style` to `none`. The unparameterized `border-l` always emitted
+/// both; `border-l-2` emitted only the width, so it drew nothing and said
+/// nothing. `border-x` and `border-y` then shipped emitting *nothing*, and
+/// `border-x-[3px]` shipped as a width with no style all over again: three
+/// spellings of one mistake, so all three are checked here.
 #[test]
 fn every_border_spelling_carries_its_style() {
     for (class, sides) in [
@@ -157,8 +157,8 @@ fn every_border_spelling_carries_its_style() {
 }
 
 /// Every utility the front page and the API reference reach for. A class the
-/// engine doesn't know generates nothing at all — no warning, no error, just a
-/// layout that is quietly a little wrong — so the ones this repository's own
+/// engine doesn't know generates nothing at all: no warning, no error, just a
+/// layout that is quietly a little wrong. So the ones this repository's own
 /// pages depend on are named here.
 #[test]
 fn the_utilities_the_site_uses_all_generate_rules() {
@@ -218,8 +218,8 @@ fn the_monospace_stack_is_monospace() {
 
 /// `tools/build-site.maca` reimplements this escaper in Maca, because it has to
 /// build the same selector the stylesheet contains in order to ask whether a
-/// class has a rule. Its copy asked the *opposite* question — "is this not
-/// alphanumeric" — and `is_alpha` is byte-based, so every byte of a non-ASCII
+/// class has a rule. Its copy asked the *opposite* question, "is this not
+/// alphanumeric", and `is_alpha` is byte-based, so every byte of a non-ASCII
 /// class name came out escaped on one side and raw on the other, failing the
 /// whole site build with a false "classes with no CSS rule".
 ///

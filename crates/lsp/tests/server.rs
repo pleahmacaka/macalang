@@ -174,7 +174,7 @@ fn references_and_rename_over_stdio() {
 /// happens to define the same name without importing anything.
 ///
 /// Renaming a top-level definition has to reach every importer. Editing only
-/// the open file leaves them calling a name that no longer exists — the editor
+/// the open file leaves them calling a name that no longer exists: the editor
 /// reports success and the build breaks, which is the one outcome a rename must
 /// not have. The file that never imported it must be left alone.
 #[test]
@@ -191,7 +191,7 @@ fn renaming_a_top_level_name_reaches_every_importer() {
         "import lib/util\n\ngo() -> int => helper(1)\n",
     )
     .unwrap();
-    // same name, no import — a different `helper` entirely
+    // same name, no import, so a different `helper` entirely
     std::fs::write(
         root.join("unrelated.maca"),
         "helper(n: int) -> int => n\n\ngo2() -> int => helper(9)\n",
@@ -228,8 +228,8 @@ fn renaming_a_top_level_name_reaches_every_importer() {
     stdin.write_all(frame(&open).as_bytes()).unwrap();
     let _diag = read_frame(&mut stdout);
 
-    // the cursor is on the *call*, not the definition — the rename still has to
-    // find the module that defines it
+    // the cursor is on the *call*, not the definition, so the rename still has
+    // to find the module that defines it
     let ren = format!(
         r#"{{"jsonrpc":"2.0","id":2,"method":"textDocument/rename","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":2,"character":19}},"newName":"twice"}}}}"#
     );
@@ -330,7 +330,7 @@ fn session(
     (child, stdin, stdout)
 }
 
-/// Every request carrying an `id` must get a response — including the ones that
+/// Every request carrying an `id` must get a response, including the ones that
 /// have nothing to say.
 ///
 /// `handle` returning `None` writes no reply at all, and a client waiting on an
@@ -358,7 +358,7 @@ fn every_request_gets_a_response() {
     stdin.write_all(frame(&open).as_bytes()).unwrap();
     let _ = read_frame(&mut stdout);
 
-    // the cursor is on the `if` keyword — nothing to rename
+    // the cursor is on the `if` keyword, so there is nothing to rename
     let ren = r#"{"jsonrpc":"2.0","id":3,"method":"textDocument/rename","params":{"textDocument":{"uri":"file:///k.maca"},"position":{"line":1,"character":5},"newName":"x"}}"#;
     stdin.write_all(frame(ren).as_bytes()).unwrap();
     let got = read_frame(&mut stdout);
@@ -406,7 +406,7 @@ fn an_invalid_new_name_is_refused_out_loud() {
 
 /// Maca inlines imports transitively, so a definition two modules away is
 /// still the one a call resolves to. Following only direct imports left the
-/// definition — and the module in between — untouched, and the rename produced
+/// definition (and the module in between) untouched, and the rename produced
 /// a workspace that no longer built.
 #[test]
 fn a_rename_follows_imports_transitively() {
@@ -491,7 +491,7 @@ fn a_field_declared_elsewhere_is_not_renamed_half_way() {
 /// round-trip. It didn't: `path_of` decoded escapes and `uri_of` did not
 /// re-encode them, and each escaped byte came back as a `char`, so a Korean
 /// path decoded to mojibake, named nothing, and the workspace walk found no
-/// files at all — a rename that silently shrank to the open buffer.
+/// files at all: a rename that silently shrank to the open buffer.
 #[test]
 fn a_workspace_path_survives_the_uri_round_trip() {
     for name in ["my proj", "프로젝트"] {
@@ -584,7 +584,7 @@ fn a_selective_import_only_carries_the_names_it_asks_for() {
     // A second module with a `helper` of its own, and a file that takes `other`
     // from the first and `helper` from the second. It imports the module being
     // renamed in, so only the selective name list says it can't see this
-    // `helper` — which makes it the case that tells the two rules apart.
+    // `helper`, which makes it the case that tells the two rules apart.
     std::fs::write(root.join("lib/two.maca"), "helper(s: str) -> str => s\n").unwrap();
     std::fs::write(
         root.join("sel.maca"),

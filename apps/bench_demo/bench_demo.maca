@@ -1,4 +1,4 @@
-// bench_demo — measuring a handful of the corpus and printing the table.
+// bench_demo: measuring a handful of the corpus and printing the table.
 //
 //   maca run apps/bench_demo/bench_demo.maca
 //
@@ -47,7 +47,7 @@ main() -> int {
 
 // A comparison needs two runs, and a demo has one. Halving the iteration count
 // of a stored result doubles its cost per call, so this makes a baseline that
-// every case has moved against — which is what the table is here to show.
+// every case has moved against, which is what the table is here to show.
 //
 // A real caller loads the baseline instead:
 //

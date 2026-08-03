@@ -1,4 +1,4 @@
-// bench/report — turning results into something a person reads.
+// bench/report: turning results into something a person reads.
 //
 // One table, one line per result, numbers right-aligned so the eye can compare
 // digit positions instead of reading each value. Everything here returns a

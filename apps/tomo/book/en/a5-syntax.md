@@ -15,7 +15,7 @@ Two rules run through all of it and are worth reading first:
 ## A file
 
 A file is a module. At the top level it may hold imports, type declarations,
-constants and functions, in any order — a definition may be used before the line
+constants and functions, in any order. A definition may be used before the line
 that declares it.
 
 ```maca
@@ -41,7 +41,7 @@ There is no entry file, no `package` line and no `mod` block.
 | Form | Meaning |
 |---|---|
 | `// text` | a comment |
-| `/// text` | a doc comment — the marker MacaDoc reads |
+| `/// text` | a doc comment: the marker MacaDoc reads |
 | `//// text` | a comment again; four slashes are not a doc comment |
 
 To the compiler all three are the same token. The third slash is a convention
@@ -61,7 +61,7 @@ the documentation generator reads, not a keyword.
 | `import a/b` | a module |
 
 A function's return type may be omitted and is then inferred from the body. A
-parameter's type may be omitted and is then inferred from use — including as a
+parameter's type may be omitted and is then inferred from use, including as a
 function, when the body calls it.
 
 `alias N = T` introduces `N` as the name of `T`. The checker treats the two as
@@ -103,7 +103,7 @@ constant is an `Immutable` diagnostic.
 | `T[]` | a list of `T` |
 | `Map str V` | a string-keyed map, applied by juxtaposition |
 | `Future a` | the result of a `spawn` |
-| `a`, `b`, … | a type variable — any lowercase name |
+| `a`, `b`, … | a type variable: any lowercase name |
 | `any` | the gradual escape hatch |
 
 A lowercase name in type position is a variable, an uppercase one is concrete.
@@ -123,7 +123,7 @@ That is the whole of generics: there are no angle brackets in the language.
 | `r.f` | a field |
 | `xs[i]` | an element of a list, or one byte of a `str` |
 | `f(a, b)` | a call |
-| `x.f(y)` | UFCS — exactly `f(x, y)` |
+| `x.f(y)` | UFCS: exactly `f(x, y)` |
 | `Circle(2)` | a variant with a payload |
 | `v => e` | a lambda |
 | `(a, b) -> T => e` | a lambda with a declared return type |
@@ -136,7 +136,7 @@ That is the whole of generics: there are no angle brackets in the language.
 | `fail "msg"` | raise |
 | `try e` | catch, giving the message or `""` |
 | `x?` | propagate a failure to the caller |
-| `tag(attr="v", child)` | an element — see [the UI syntax](a11-ui.md) |
+| `tag(attr="v", child)` | an element; see [the UI syntax](a11-ui.md) |
 
 A lambda body may be a block, so a bare `{ … }` after `=>` is that block rather
 than a record literal. Parenthesise when the record is what you meant:
@@ -240,8 +240,8 @@ A format spec is `[align][0][width][.precision]`, every part optional:
 | `8` | a minimum width |
 | `.3` | decimal places |
 
-The parser desugars a spec into calls you could have written — `{x:.2}` is
-`x.fixed(2)`, `{x:>8}` is `str(x).pad_start(8, " ")` — so every target renders
+The parser desugars a spec into calls you could have written (`{x:.2}` is
+`x.fixed(2)`, `{x:>8}` is `str(x).pad_start(8, " ")`), so every target renders
 it identically.
 
 ## Line breaks
@@ -298,7 +298,7 @@ an intermediate local.
 
 ## Bracketless lists
 
-A comma list needs no brackets where the shape is unambiguous — an arrow body
+A comma list needs no brackets where the shape is unambiguous: an arrow body
 returning a list, a `for` header, a rest pattern:
 
 ```maca

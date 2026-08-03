@@ -1,4 +1,4 @@
-//! Gate for `apps/tomo` — the macalang handbook builder, written in Maca.
+//! Gate for `apps/tomo`: the macalang handbook builder, written in Maca.
 //!
 //! Builds `tomo.maca` with the stage-0 native backend and runs its self-check
 //! `main`, asserting the Maca-written markdown renderer produces the expected
@@ -38,7 +38,7 @@ fn tomo_renders_markdown_to_html() {
     );
 
     // `main` also builds a book from `apps/tomo` relative to the working
-    // directory, so run from a scratch dir — otherwise the render check would
+    // directory, so run from a scratch dir. Otherwise the render check would
     // scatter a `site/` into whatever directory the test happened to run in.
     let out = Command::new(&bin)
         .current_dir(&dir)
@@ -72,7 +72,7 @@ fn tomo_renders_markdown_to_html() {
         "inline formatting wrong: {html}"
     );
     // list items, including a nested one wrapped in its own <ul>
-    // a list is wrapped in its own <ul>/<ol> — bare <li>s are invalid HTML and
+    // a list is wrapped in its own <ul>/<ol>: bare <li>s are invalid HTML and
     // render without indent or markers
     assert!(
         html.contains(">one</li>") && html.contains(">two</li>"),
@@ -82,7 +82,7 @@ fn tomo_renders_markdown_to_html() {
         html.contains(">first</li>") && html.contains(">second</li>"),
         "ordered list wrong: {html}"
     );
-    // tables — the reference appendices are built out of these
+    // tables: the reference appendices are built out of these
     assert!(
         html.contains(">target</th>")
             && html.contains(">flag</th>")
@@ -112,8 +112,8 @@ fn tomo_renders_markdown_to_html() {
     //
     // Code spans are rendered before links and emit a `text-[0.88em]` class, so
     // *every* line carrying an inline code span reaches the link pass with a
-    // stray `[` in front of its real links. Giving up on that line — which is
-    // what this used to do — silently broke most links in the book.
+    // stray `[` in front of its real links. Giving up on that line (which is
+    // what this used to do) silently broke most links in the book.
     assert!(
         html.contains("href=\"guide.html\">docs</a>"),
         "a link after a code span was lost: {html}"
@@ -126,7 +126,7 @@ fn tomo_renders_markdown_to_html() {
     assert!(html.contains("int[]</code>"), "bracket in prose: {html}");
     // i18n page shell: a language switcher marking the current language and
     // linking the other.
-    // the switcher is a `<details>` dropdown holding real links — a `<select>`
+    // the switcher is a `<details>` dropdown holding real links: a `<select>`
     // cannot navigate without script, and this is the control a reader who
     // landed in the wrong language most needs to work
     // asserted on the `data-tomo` hook rather than the classes, so restyling
@@ -142,7 +142,7 @@ fn tomo_renders_markdown_to_html() {
 }
 
 /// The CLI driver: Tomo reads `book.toml` and the chapter tree and writes a
-/// full HTML site — including falling back to the default language for a
+/// full HTML site, including falling back to the default language for a
 /// chapter that hasn't been translated yet.
 #[test]
 fn tomo_builds_the_handbook_site() {
@@ -214,8 +214,8 @@ fn tomo_builds_the_handbook_site() {
     // The root page is tomo's, and this book has no `home.md`: the front page
     // is a designed page in the UI syntax (`apps/site/home.maca`), written over
     // these three addresses by `tools/build-site.maca`. What tomo owes is the
-    // fallback it documents — a language picker that links every language's
-    // handbook — and that is what is asserted here. The front page's own
+    // fallback it documents, a language picker that links every language's
+    // handbook, and that is what is asserted here. The front page's own
     // content is asserted in `tests/programs/sitegen.maca`.
     let root = std::fs::read_to_string(site.join("index.html")).unwrap();
     for want in [
@@ -290,7 +290,7 @@ fn tomo_builds_the_handbook_site() {
     // every other precaution is wasted.
     assert!(
         en_config.contains("name=\"viewport\"") && en_config.contains("width=device-width"),
-        "no viewport meta — a phone would render this at desktop width"
+        "no viewport meta: a phone would render this at desktop width"
     );
     assert!(
         en_config.contains("grid-template-columns")
@@ -322,7 +322,7 @@ fn tomo_builds_the_handbook_site() {
 /// Every page carries the whole book: a sidebar listing each chapter with the
 /// current one marked, and a search box over a generated index. The index is a
 /// `<script>` rather than JSON the page fetches, so search works when the book
-/// is opened straight off disk — mdBook's needs a server.
+/// is opened straight off disk. mdBook's needs a server.
 #[test]
 fn every_page_has_the_sidebar_and_a_working_search_index() {
     if have_wsl() || !have("cc") {
@@ -360,7 +360,7 @@ fn every_page_has_the_sidebar_and_a_working_search_index() {
     // Everything a reader navigates with lives in the left column: the title,
     // the language switcher (top-right of that column), search, the chapter
     // list, and the page's own headings. `main` carries the text and nothing
-    // else — a nav bar above the prose pushes the first paragraph off a phone.
+    // else: a nav bar above the prose pushes the first paragraph off a phone.
     let side = &mid[mid.find("data-tomo=\"side\"").unwrap()..mid.find("<main>").unwrap()];
     let main = &mid[mid.find("<main>").unwrap()..];
     for (probe, what) in [
@@ -414,7 +414,7 @@ fn every_page_has_the_sidebar_and_a_working_search_index() {
         "index is missing a section anchor"
     );
     // section text is lowercased for matching, and HTML-unsafe characters are
-    // escaped as JSON — a stray quote would break the whole index
+    // escaped as JSON: a stray quote would break the whole index
     assert!(js.contains("\"x\":\""), "index has no body text");
     assert!(!js.contains("\n\n"), "index rows should be one line");
     // each language gets its own index, so search stays inside the language
@@ -431,7 +431,7 @@ fn every_page_has_the_sidebar_and_a_working_search_index() {
 ///
 /// `chars()` is byte-based, so a Korean heading arrives as multi-byte
 /// sequences. A slug that kept only `is_alpha() || is_ascii_digit()` deleted
-/// every one of those bytes, and "값과 타입" became an empty anchor — every
+/// every one of those bytes, and "값과 타입" became an empty anchor: every
 /// Korean heading collapsing to `#`, in the language the i18n support exists
 /// for. The rule now drops a known set of ASCII punctuation and keeps the rest.
 #[test]
@@ -571,7 +571,7 @@ fn untranslated_chapters_fall_back_to_the_default_language() {
 /// Two classes of breakage got here by hand-checking and both are invisible in
 /// the Markdown: a cross-chapter link is written to the *source* file
 /// (`[next](01-x.md)`) so it works in an editor, and used to be emitted
-/// verbatim — a 404 on every one. And a chapter rename left a link pointing at
+/// verbatim, a 404 on every one. And a chapter rename left a link pointing at
 /// a file that no longer existed. Neither shows up until someone clicks.
 #[test]
 fn every_link_in_the_built_book_resolves() {
@@ -643,7 +643,7 @@ fn every_link_in_the_built_book_resolves() {
     }
     assert!(
         checked > 500,
-        "only {checked} links checked — did parsing break?"
+        "only {checked} links checked. Did parsing break?"
     );
     assert!(
         broken.is_empty(),

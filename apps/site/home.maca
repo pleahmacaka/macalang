@@ -12,9 +12,9 @@
 // same way `apps/tomo/tomo.maca` resolves its book.
 //
 // Writes <out>/index.html and <out>/<lang>/home.html for every language, which
-// is the URL shape tomo uses for a book's landing pages — this page replaces
-// tomo's for the handbook's own site. `tools/build-site.maca` does that
-// replacement in one place; nothing here should be run by hand into a
+// is the URL shape tomo uses for a book's landing pages, and this page
+// replaces tomo's for the handbook's own site. `tools/build-site.maca` does
+// that replacement in one place; nothing here should be run by hand into a
 // directory tomo also writes.
 //
 // What the page says is keyed by a sum type rather than a list position:
@@ -188,7 +188,7 @@ english() -> Copy =>
         lang = "en",
         endonym = "English",
         locale = "en_US",
-        title = "Maca — one typed language for programs and infrastructure",
+        title = "Maca: one typed language for programs and infrastructure",
         descr = "A statically typed, compiled language with no garbage"
             ++ " collector. The same source builds a native binary, a browser"
             ++ " UI, or the NixOS module for the machine it runs on.",
@@ -228,7 +228,7 @@ english() -> Copy =>
         tbl_note = "Median time in milliseconds, lower is better, and in"
             ++ " brackets the multiple of C's time.",
         lim_title = "Not for you if",
-        footer = "Criticism welcome — particularly the kind that says which of"
+        footer = "Criticism welcome, particularly the kind that says which of"
             ++ " those boxes is the wrong one.",
         skip = "Skip to content",
         nav_label = "Site",
@@ -249,7 +249,7 @@ en_feature(t: Topic) -> Feature =>
         Config => Feature {
             title = "The same language configures the machine",
             body = "Pass `--target nix` and the same file compiles to a NixOS"
-                ++ " module instead of a binary. Same syntax, same checker —"
+                ++ " module instead of a binary. Same syntax, same checker,"
                 ++ " and the checker refuses I/O in config mode, so a machine"
                 ++ " description cannot quietly do something."
         }
@@ -337,7 +337,7 @@ korean() -> Copy =>
         lang = "ko",
         endonym = "한국어",
         locale = "ko_KR",
-        title = "Maca — 프로그램과 인프라를 위한 하나의 타입 있는 언어",
+        title = "Maca: 프로그램과 인프라를 위한 하나의 타입 있는 언어",
         descr = "정적 타입, 컴파일, 가비지 컬렉터 없음. 같은 소스가 네이티브"
             ++ " 바이너리도, 브라우저 UI도, 그것이 돌아갈 기계의 NixOS 모듈도"
             ++ " 만듭니다.",
@@ -374,7 +374,7 @@ korean() -> Copy =>
         tbl_note = "밀리초 단위 중앙값, 낮을수록 좋습니다. 괄호 안은 C"
             ++ " 대비 배수입니다.",
         lim_title = "이럴 땐 맞지 않습니다",
-        footer = "비판을 환영합니다 — 특히 저 칸들 중 어느 것이 잘못된"
+        footer = "비판을 환영합니다. 특히 저 칸들 중 어느 것이 잘못된"
             ++ " 선택인지 짚어 주는 쪽으로요.",
         skip = "본문으로 건너뛰기",
         nav_label = "사이트",
@@ -394,8 +394,8 @@ ko_feature(t: Topic) -> Feature =>
         Config => Feature {
             title = "같은 언어가 기계를 설정합니다",
             body = "`--target nix`를 주면 같은 파일이 바이너리 대신 NixOS"
-                ++ " 모듈로 컴파일됩니다. 같은 문법, 같은 검사기 — 그리고 설정"
-                ++ " 모드에서는 I/O를 거부하므로 기계 기술서가 몰래 무언가를 할"
+                ++ " 모듈로 컴파일됩니다. 같은 문법, 같은 검사기입니다. 그리고"
+                ++ " 설정 모드에서는 I/O를 거부하므로 기계 기술서가 몰래 무언가를 할"
                 ++ " 수 없습니다."
         }
         Async => Feature {
@@ -616,7 +616,7 @@ top_nav(c: Copy, up: str) -> str =>
                 a(class=quiet_link(), href=Repo, "GitHub")
                 lang_switch(c, up))))
 
-// The wordmark goes to this language's front page, not the site's — a Korean
+// The wordmark goes to this language's front page, not the site's: a Korean
 // reader clicking the name should not land in English. For the default
 // language that page *is* the root, which is also what `rel=canonical` says,
 // so `en/home.html` links out to the address it is a copy of rather than to
@@ -633,7 +633,7 @@ quiet_link() -> str =>
     "no-underline text-zinc-600 dark:text-zinc-400 hover:text-black"
         ++ " dark:hover:text-white focus:underline"
 
-// Two languages, two links — a `<select>` cannot navigate without script, and
+// Two languages, two links. A `<select>` cannot navigate without script, and
 // this is the one control a reader who landed on the wrong language needs.
 lang_switch(c: Copy, up: str) -> str =>
     nav(aria-label=c.lang_label,
@@ -1189,7 +1189,7 @@ site_footer(c: Copy) -> str =>
 
 // A sentence of copy, where a backtick span is a piece of code. `--target nix`
 // is a flag, and printing the backticks around it is worse than not marking it
-// at all — so the one bit of markup the copy uses is the one it renders.
+// at all, so the one bit of markup the copy uses is the one it renders.
 prose(s: str) -> str {
     parts = s.split("`")
 
@@ -1253,7 +1253,7 @@ write_langs(out: str, cs: Copy[], i: int, rs: Result[]) -> int {
 //
 // Checked against the length written, not against zero. The default output
 // directory always already holds the previous build's pages, so "the file is
-// non-empty" was satisfied by the file that was there before — three failed
+// non-empty" was satisfied by the file that was there before: three failed
 // writes reported three files written.
 write_page(path: str, markup: str) -> int {
     write_file(path, markup)

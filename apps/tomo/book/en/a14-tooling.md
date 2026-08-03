@@ -32,8 +32,8 @@ native binary.
 
 A native build is a pure function of the source, the compiler version and the
 target, so the finished binary is stored under a hash of exactly those. Build an
-unchanged program again and the whole pipeline — parse, check, emit, invoke the C
-compiler — is skipped and the cached artifact is copied into place.
+unchanged program again and the whole pipeline (parse, check, emit, invoke the C
+compiler) is skipped and the cached artifact is copied into place.
 
 The invariant C runtime is cached separately as a compiled object, so even a
 *changed* program does not recompile the runtime. Only your own generated `main.c`
@@ -59,17 +59,17 @@ into a pre-commit hook or CI unchanged.
 
 Two of its rules are more careful than they sound. Width is measured with string
 literals collapsed, so a 200-character C template inside a string is exempt
-exactly as a long comment is — the rule is about code, not text. And the same
+exactly as a long comment is: the rule is about code, not text. And the same
 exemption applies inside a raw `"""…"""` block, which holds foreign CSS or
 JavaScript rather than Maca.
 
 ## API documentation
 
 `tools/macadoc.maca` reads a module's declarations, pairs each with the comment
-above it, and writes an HTML reference — what rustdoc is to Rust and TSDoc is to
-TypeScript. Like `tools/lint.maca` above, it lives in the repository rather than
-inside the `maca` binary: it is a Maca program, so it is a file you run, not a
-subcommand you install.
+above it, and writes an HTML reference, which is what rustdoc is to Rust and
+TSDoc is to TypeScript. Like `tools/lint.maca` above, it lives in the repository
+rather than inside the `maca` binary: it is a Maca program, so it is a file you
+run, not a subcommand you install.
 
 ```
 maca run tools/macadoc.maca site/api std/text.maca std/list.maca
@@ -91,14 +91,14 @@ split_once(s: str, sep: str) -> str[] {
 clamp(n: int, len: int) -> int {
 ```
 
-To the compiler a `///` line is a comment like any other — the third slash is a
+To the compiler a `///` line is a comment like any other: the third slash is a
 convention MacaDoc reads, not a token. The alternative, "any comment above an
 item means API", was tried first and measured against what `std/README.md`
 advertises: it was wrong 18 times in 60, listing helpers that happened to need
 explaining and dropping public functions that didn't.
 
 Inside a doc comment, a backtick span becomes code and a `*starred*` run becomes
-emphasis. A blank line starts a paragraph, and an indented run is a code block —
+emphasis. A blank line starts a paragraph, and an indented run is a code block,
 which is how a module's header comment can end with the `import` line you need.
 The plain `//` block at the top of a file is the module's own description.
 
@@ -114,8 +114,8 @@ Install it as a dev extension: in Zed, *Extensions → Install Dev Extension*, a
 point it at that directory.
 
 Syntax definitions for Monaco (the playground) and TextMate are kept in sync with
-the lexer's real keyword list by a test — a keyword added to the language and not
-to the grammars fails the build.
+the lexer's real keyword list by a test, so a keyword added to the language and
+not to the grammars fails the build.
 
 ## The playground
 
@@ -140,6 +140,6 @@ the compiler itself, which is the largest Maca program that exists.
 `maca init` starts a project with a `maca.toml`. Dependencies for the Rust
 target go in a `[rust-dependencies]` table and are passed through to Cargo.
 
-For your own code, the module system needs no manifest at all — `maca build
+For your own code, the module system needs no manifest at all: `maca build
 app/main.maca` follows the imports. See
 [Modules and Layout](a9-modules.md).

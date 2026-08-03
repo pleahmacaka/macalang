@@ -1,5 +1,5 @@
 // A sum type carrying a record payload, with the sum declared *before* the
-// record it references — the C backend emits records and tagged sums in one
+// record it references. The C backend emits records and tagged sums in one
 // combined dependency order, so `P` is defined before `Shape`.
 
 Shape = Dot | At(P)

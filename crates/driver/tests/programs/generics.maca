@@ -38,7 +38,7 @@ pick(xs: a[], key: (a) -> str, want: str, i: int) -> a {
 
 first_of(xs: a[]) -> a => xs.get(0)
 
-// A local whose type mentions the variable and is a *container* — the pass that
+// A local whose type mentions the variable and is a *container*: the pass that
 // instantiates array and map types runs long before this is specialized, so the
 // C type it names has to be defined late or not at all.
 group_pairs(xs: a[]) -> a[][] {
@@ -115,7 +115,7 @@ test_a_generic_local_may_be_a_container_of_the_element_type() {
     assert_eq(indexed.get("a", Row { name = "?", size = 0 }).name, "a", "keyed by name")
 }
 
-// A lambda, not a named function — which is the whole point of taking a key.
+// A lambda, not a named function, which is the whole point of taking a key.
 test_a_lambda_may_be_passed_where_a_function_type_is_declared() {
     rows = [Row { name = "c", size = 3 }, Row { name = "a", size = 1 }]
     sorted = sort_by(rows, r => r.name)

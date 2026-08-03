@@ -1,8 +1,8 @@
-// tambo/ctx — what a handler is given.
+// tambo/ctx: what a handler is given.
 //
 // A request, already taken apart: the method and path, the segments the
 // pattern bound, the query as a map, the headers as a map, and the body. Plus
-// what the routing decided — `name`, the handler this call stands in for, and
+// what the routing decided: `name`, the handler this call stands in for, and
 // `route`/`pattern`, the route that matched.
 //
 //     hello(ctx: Ctx) -> Response =>
@@ -10,7 +10,7 @@
 //
 // Call that parameter `ctx` and not `c`. `http/server` links its socket with
 // `import c "http.h"`, which takes the name `c` for the C namespace, and after
-// that nothing in the program called `c` is a record any more — not a
+// that nothing in the program called `c` is a record any more: not a
 // parameter, not a local. `c.status` on a `Response` bound as `c = dispatch(…)`
 // compiles, runs, and prints a pointer. Nothing warns. The same goes for `py`,
 // `js` and `css`, which other modules take the same way.
@@ -40,7 +40,7 @@ Ctx = {
     /// `name` inside a route handler; a hook reads it to tell where it is.
     route: str
     /// The pattern that matched, "" when nothing did. What a log line should
-    /// carry instead of the path — `/user/:id` is one line in a log and
+    /// carry instead of the path: `/user/:id` is one line in a log and
     /// `/user/8814` is a million.
     pattern: str
     params: Map str str
@@ -138,7 +138,7 @@ probe(method: str, path: str) -> Ctx {
 /// giving `query` a list return for the sake of `?tag=a&tag=b` would make
 /// every ordinary lookup pay for a case no handler here has.
 ///
-/// A pair with no key — `?=v`, or the nothing between two `&`s — is dropped.
+/// A pair with no key (`?=v`, or the nothing between two `&`s) is dropped.
 /// Storing it would put a value under "" where `query(ctx, "")` could find it,
 /// and no client ever meant to send that.
 parse_query(q: str) -> Map str str {
@@ -166,7 +166,7 @@ add_pairs(ps: str[], i: int, acc: Map str str) -> Map str str {
     }
 }
 
-// `+` means a space in a query string and in a form body, and nowhere else —
+// `+` means a space in a query string and in a form body, and nowhere else:
 // a `+` in a path is a plus, which is why this is not `percent_decode`.
 //
 // The `+` goes first and the `%XX` second, and swapping the two is wrong in a
@@ -179,7 +179,7 @@ decode_form(s: str) -> str =>
 ///
 /// A line with no `:`, and a line whose name is empty, are both dropped rather
 /// than stored: a request whose head carries a stray line is still a request,
-/// and a handler asking for `content-type` — or for "" — must not be able to
+/// and a handler asking for `content-type`, or for "", must not be able to
 /// get one back that was never sent.
 parse_headers(block: str) -> Map str str {
     empty: Map str str = map()

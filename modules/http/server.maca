@@ -1,4 +1,4 @@
-// http/server — the socket, and the loop around it.
+// http/server: the socket, and the loop around it.
 //
 // The engine is C (`import c "http.h"`, carried by the runtime): it owns the
 // listening socket, the accept loop, request framing and writing the reply. A

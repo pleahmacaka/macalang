@@ -1,4 +1,4 @@
-// Maca UI front — a name field, a Greet button, and a result area. The app
+// Maca UI front: a name field, a Greet button, and a result area. The app
 // carries its own glue: clicking Greet calls the Maca native backend through
 // the Tauri bridge (`macaInvoke`, provided by `maca build --target tauri`) and
 // writes the result back into the view.

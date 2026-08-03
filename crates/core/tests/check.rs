@@ -4,7 +4,7 @@ use std::path::PathBuf;
 /// The source as the compiler sees it: with `import a/b` resolved and inlined.
 ///
 /// Checking a file on its own reports every name it imports as undefined, and
-/// this suite is what says an example type-checks — so an example that uses
+/// this suite is what says an example type-checks, so an example that uses
 /// `std/` would have had to avoid imports to stay green.
 fn read(rel: &str) -> String {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -132,7 +132,7 @@ fn effect_in_config_rejected() {
 }
 /// An effect in *statement* position, not only in a binding's value. The check
 /// looked at what a binding was set to and nothing else, so a bare `info(…)`
-/// was accepted and then dropped from the emitted Nix — the build succeeded
+/// was accepted and then dropped from the emitted Nix: the build succeeded
 /// and the line was gone.
 #[test]
 fn effect_statement_in_config_rejected() {
@@ -171,7 +171,7 @@ fn arity_rejected() {
 /// A variadic parameter is a lowered declaration now, not a rejected one: the
 /// call site collects its trailing arguments into the `T[]` the body sees.
 ///
-/// The rules it does have — last, annotated, not `main`, not a function value —
+/// The rules it does have (last, annotated, not `main`, not a function value)
 /// and the arity relaxation are asserted end to end by
 /// `crates/driver/tests/variadic.rs`, which runs them through the real compiler.
 /// What this says is the part the checker owes: a program that uses one is
@@ -290,7 +290,7 @@ fn reassign_constant_rejected() {
 
 #[test]
 fn mutable_reassign_ok() {
-    // a bare lowercase binding is mutable — declare then reassign stays clean.
+    // a bare lowercase binding is mutable: declare then reassign stays clean.
     assert_clean("examples/loops.maca", Mode::Program);
 }
 

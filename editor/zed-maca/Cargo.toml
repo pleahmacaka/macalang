@@ -1,4 +1,4 @@
-# Zed extension crate — compiled to wasm by Zed, NOT part of the main
+# Zed extension crate, compiled to wasm by Zed, NOT part of the main
 # `crates/*` workspace. The empty `[workspace]` table detaches it so a plain
 # `cargo build` at the repo root ignores it.
 [workspace]

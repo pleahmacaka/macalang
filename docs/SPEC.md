@@ -1,4 +1,4 @@
-# Maca — the specification
+# Maca: the specification
 
 > One typed language for programs **and** infrastructure config, sharing one
 > syntax and one type system. General programs compile to native (C-tier
@@ -18,8 +18,8 @@ decision changes, this file and the code change together; the spec wins ties.
                           └─▶ nix    ─▶ .nix      config
 ```
 
-- **Shared:** frontend · type checker · effect checker · core IR
-- **Split:** codegen · runtime
+- **Shared:** frontend, type checker, effect checker, core IR
+- **Split:** codegen, runtime
 - **Native = hybrid:** default `Maca → C → zig cc` (static musl); only clear-win
   spans (SIMD) take `Maca → LLVM IR`. Both converge on objects, linked over the
   C ABI. LLVM is tapped only for the IR span (feature-gated).
@@ -29,7 +29,7 @@ decision changes, this file and the code change together; the spec wins ties.
 | | General mode | Config mode |
 |---|---|---|
 | character | imperative/functional, effects | declarative, idempotent, pure `<>` |
-| backend | native · JS · JVM · Rust · embedded | Nix |
+| backend | native, JS, JVM, Rust, embedded | Nix |
 | entry | `main` | root module (= configuration.nix) |
 | run | runtime execution | Nix eval → derivation |
 
@@ -46,7 +46,7 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 - Functions: `f(x: T) -> R { body }` or `=> expr`. The two brace forms are one
   function: `f() -> R => { … }` *is* `f() -> R { … }`, and the parser keeps the
   block. See the arrow-brace rule below.
-- **Variadic `...rest: T`** — the trailing arguments, collected. The written
+- **Variadic `...rest: T`** is the trailing arguments, collected. The written
   type is one argument's, because that is what a call site writes; inside the
   body `rest` is a `T[]`. Three dots and not two: `..` already means an
   inclusive range and a list rest pattern, and the ellipsis is *prefix* so the
@@ -58,13 +58,13 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   higher-order parameter or stored in a `(T, U) -> R` field.
   (`crates/driver/tests/programs/variadic.maca`.)
 - Errors are the inferred `exn` effect; propagate with `x?`, raise with `fail e`.
-- Effects (Koka-style, inferred): `io · net · os · async · exn`. Config mode
+- Effects (Koka-style, inferred): `io`, `net`, `os`, `async`, `exn`. Config mode
   forces `<>`.
-- **Colorblind async — no `async` keyword.** Any function can suspend; the
+- **Colorblind async, no `async` keyword.** Any function can suspend; the
   `async` effect is inferred, never written. `spawn f(x)` runs `f` concurrently
   and yields a `Future`; `await fut` suspends until it resolves. `sleep_ms(ms)`
-  is a suspension point. A task is an ordinary function — no coloring, no ABI
-  change. (Native: POSIX-thread-backed — a suspension point is a real thread
+  is a suspension point. A task is an ordinary function: no coloring, no ABI
+  change. (Native: POSIX-thread-backed, so a suspension point is a real thread
   boundary. The playground interpreter runs it eagerly.)
 - Generics: lowercase type vars, applied by juxtaposition (`Map k v`), postfix
   `T[]` / `T?`. Nullable `T?` = `T | None`.
@@ -78,7 +78,7 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   `clamp`/`gcd`/…), always available. (`examples/{collections,strings,math}.maca`.)
 - Ternary is spaced `c ? x : y`; error-propagation is attached `x?`.
 - Operator overloading (no new syntax): on a user type, an operator resolves to
-  a same-named function — `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
+  a same-named function: `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
   `concat`, etc. Primitives keep the native operator. (`examples/operators.maca`.)
 - Pattern & codegen completeness: record patterns (`match p { { x, y } => … }`),
   the `!` (logical-not) prefix operator, `++` string concat (vs. array concat),
@@ -94,7 +94,7 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   (`Circle(r) => r * r`). Native lowering is a tagged struct/union with a
   per-variant constructor; plain (nullary-only) enums are unchanged. Parses with
   no stage-0 front-end change. (`examples/payload_sum.maca`.) A payload may be a
-  record, in either declaration order — the C backend emits records and tagged
+  record, in either declaration order. The C backend emits records and tagged
   sums in one combined dependency order, so the record struct is defined before a
   sum that carries it (and vice-versa). (`examples/sum_record.maca`.) Sums may be
   **recursive** (`Tree = Leaf(int) | Node(Tree, Tree)`, `List = Nil | Cons(int,
@@ -134,7 +134,7 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   implementing `Iface` (a Fabric `ModInitializer`); a capitalized call
   `Pos(x,y,z)` → `new Pos(...)`; `obj.m(a)`/`Blocks.STONE` pass through. An
   unknown capitalized annotation is a foreign type → gradual `any`. Enables
-  Minecraft (Fabric) modding in Maca — `apps/mcmod`.
+  Minecraft (Fabric) modding in Maca, in `apps/mcmod`.
 - Subscripting: `xs[i]` reads a list element or a one-character `str` from a
   string; `xs[i] = v` and `p.field = v` assign through the lvalue. Arrays lower
   to the runtime buffer (`arr.data[i]`), strings to `maca_str_at`; JS/JVM/embedded
@@ -185,8 +185,8 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
 
 The standard library surface is *The Standard Library* in the handbook's
 reference (`apps/tomo/book/en/a3-stdlib.md`), and the examples are
-`examples/*.maca`. The handbook is two volumes over one chapter list — *Learning
-Maca* (`00-`…`18-`) teaches, the *Reference* (`a1-`…`a16-`) answers — and
+`examples/*.maca`. The handbook is two volumes over one chapter list: *Learning
+Maca* (`00-`…`18-`) teaches and the *Reference* (`a1-`…`a16-`) answers, and
 `apps/tomo/book.toml` is the order they are read in.
 
 ## Status
@@ -202,7 +202,7 @@ LSP, MCP server, and a browser playground authored in Maca itself
 (`apps/playground/playground.maca`, compiled by the JS backend) plus the wasm
 front-end (`crates/wasm`).
 
-Every script in the repository is a Maca program too — the site builder, the
+Every script in the repository is a Maca program too: the site builder, the
 benchmark harness, the linter, `bindgen`, and the npm package's wasm build. The
 one exception is `install.sh`, which runs before there is a `maca` to run
 anything with.
@@ -215,8 +215,8 @@ crates.
 ## Golden examples (regression set)
 
 Verbatim from the spec, under `examples/`:
-`hello.maca` · `taskr.maca` (CLI) · `system.maca` (config) · `counter.maca` (UI)
-· `dot.maca` (SIMD), plus `examples/bad/*.maca` for diagnostics, and the
+`hello.maca`, `taskr.maca` (CLI), `system.maca` (config), `counter.maca` (UI),
+`dot.maca` (SIMD), plus `examples/bad/*.maca` for diagnostics, and the
 language-surface goldens (`indexing`, `record_update`, `tree`, `sum_record`,
 `keywords`, `generic`). Changing a design updates this file and the affected
 example together; the spec wins ties.

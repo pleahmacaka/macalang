@@ -2,7 +2,7 @@
 //!
 //! A keyword table is exactly the kind of documentation that rots: someone adds
 //! a keyword to the lexer, and the book quietly becomes wrong. So the appendix
-//! is checked against the lexer itself — every reserved word must appear in the
+//! is checked against the lexer itself: every reserved word must appear in the
 //! table, and every word the table claims is reserved must actually be.
 //!
 //! The same for the "not a keyword" list: those entries are what the checker
@@ -71,7 +71,7 @@ fn appendix_a_lists_every_real_keyword() {
 #[test]
 fn appendix_a_claims_no_keyword_that_isnt_one() {
     let md = book("a1-keywords.md");
-    // only the first table — the second is explicitly the *non*-keywords
+    // only the first table; the second is explicitly the *non*-keywords
     let first = md.split("## Words Maca does not reserve").next().unwrap();
     let real = reserved();
     for claimed in table_terms(first) {

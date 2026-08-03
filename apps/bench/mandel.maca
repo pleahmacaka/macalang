@@ -1,4 +1,4 @@
-// Mandelbrot — total escape-iteration count over a size×size grid (f64, so the
+// Mandelbrot: total escape-iteration count over a size×size grid (f64, so the
 // integer total is identical across languages). Floating-point inner loop.
 mandel(size: int) -> int {
     total = 0

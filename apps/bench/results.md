@@ -1,4 +1,4 @@
-# Benchmarks — Maca vs C / Rust / Go / JS / Python
+# Benchmarks: Maca vs C / Rust / Go / JS / Python
 
 Median execution time in **ms** (lower is better); `×N` is the slowdown
 vs C. Maca is `maca build` (Maca → C → `cc -O2`); C is `cc -O2`; Rust is
@@ -8,7 +8,7 @@ column computes the same verified result. Reproduce with
 
 ### Recursion-bound (call overhead)
 
-Tree/nested recursion — dominated by function-call cost.
+Tree/nested recursion, dominated by function-call cost.
 
 | kernel | params | Maca | C | Rust | Go | JS (node) | Python |
 |---|---|---|---|---|---|---|---|
@@ -18,7 +18,7 @@ Tree/nested recursion — dominated by function-call cost.
 
 ### Compute-bound (loops, arrays, float)
 
-Tight loops over arrays and floating point — dominated by the inner loop.
+Tight loops over arrays and floating point, dominated by the inner loop.
 
 | kernel | params | Maca | C | Rust | Go | JS (node) | Python |
 |---|---|---|---|---|---|---|---|
@@ -28,8 +28,8 @@ Tight loops over arrays and floating point — dominated by the inner loop.
 
 On recursion and float/loop work Maca lands right on C (it *is* C, at
 `-O2`). `sieve` is the one gap: Maca's only array type is 64-bit `int[]`,
-so a sieve over 10⁷ touches ~80 MB where C's `char` array touches ~10 MB —
-it's memory-bound, not a codegen deficit (a compact byte array would close
+so a sieve over 10⁷ touches ~80 MB where C's `char` array touches ~10 MB.
+It's memory-bound, not a codegen deficit (a compact byte array would close
 it).
 
 _Host: Linux 6.18.5 x86_64. Times are wall-clock medians including process startup._

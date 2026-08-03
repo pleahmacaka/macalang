@@ -200,7 +200,7 @@ test_help_lists_what_the_command_accepts() {
     assert(page.contains("-h, --help"), "and help itself")
 }
 
-// A flag has no default to show — printing `(default: )` after every one of
+// A flag has no default to show. Printing `(default: )` after every one of
 // them was the first version of this.
 test_a_flag_advertises_no_default() {
     page = help(Greet)

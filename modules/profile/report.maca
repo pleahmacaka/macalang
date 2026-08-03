@@ -1,4 +1,4 @@
-// profile/report — where the time went, per name.
+// profile/report: where the time went, per name.
 //
 // The flame chart shows one run laid out in time. This shows the same run
 // added up: for every span name, how often it ran, how long it held, how long
@@ -9,7 +9,7 @@
 //
 // Self time is the column to read. A span whose entire duration is one slow
 // child is not itself slow, and a table ranked by duration puts every caller
-// above the thing it was waiting for — which is how a profile ends up blaming
+// above the thing it was waiting for, which is how a profile ends up blaming
 // `main`.
 
 import profile/trace
@@ -80,7 +80,7 @@ charge(acc: Stat[], s: Span, own: int) -> Stat[] {
 }
 
 // Rebuilt around the row rather than written through with `xs[i] = …`, which
-// updates every other name for the same list — including a caller's copy.
+// updates every other name for the same list, including a caller's copy.
 bump(acc: Stat[], at: int, ms: int, own: int) -> Stat[] {
     was = acc.get(at)
     now = was with {
@@ -145,13 +145,13 @@ rank_of(acc: Stat[], own: int, i: int) -> int {
 /// The summary as a table: name, calls, total, self, share.
 summary_table(t: Trace) -> str => stats_table(summary(t))
 
-/// The same table over rows the caller picked — the top five, everything above
+/// The same table over rows the caller picked: the top five, everything above
 /// a threshold, one name being watched. `summary(t).slice(0, 5)` is the common
 /// one, and there is no other way to say it: the name column is sized to the
 /// rows given, so a short table is no wider than it needs to be.
 ///
 /// Written here rather than with `cli/show`, which cannot be linked into the
-/// same program as `std/text` — and `profile/trace` reaches `std/text` through
+/// same program as `std/text`, and `profile/trace` reaches `std/text` through
 /// `std/json`. `profile/flame` has the note.
 stats_table(stats: Stat[]) -> str {
     if stats.length() == 0 {

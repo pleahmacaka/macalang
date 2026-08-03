@@ -244,9 +244,10 @@ fn raw_triple_quoted_string_is_verbatim() {
 // `{` starts an interpolation, so a literal brace must be escaped. Getting that
 // wrong used to be silent: `"{"` opened an interpolation, the following `"`
 // opened a *nested* string, and that string swallowed source up to the next
-// quote — the program compiled with the wrong text baked in. (It hid a real bug
-// in `tools/lint.maca`, whose single-line-`if` rule tested `contains("{")` and
-// therefore never matched anything.) A `"…"` string now stops at end of line.
+// quote, so the program compiled with the wrong text baked in. (It hid a real
+// bug in `tools/lint.maca`, whose single-line-`if` rule tested `contains("{")`
+// and therefore never matched anything.) A `"…"` string now stops at end of
+// line.
 
 fn errs(src: &str) -> Vec<String> {
     maca_lexer::lex(src)
@@ -299,14 +300,14 @@ fn interpolation_and_raw_strings_still_work() {
             .iter()
             .any(|t| t.tok == maca_lexer::Tok::InterpStart)
     );
-    // a raw string is exempt — it may span lines and hold bare braces
+    // a raw string is exempt: it may span lines and hold bare braces
     assert!(errs("x = \"\"\"a {\n} b\"\"\"").is_empty());
 }
 
 // ---- interpolation format specs --------------------------------------------
 //
 // `"{x:>8}"` ends in a format spec; `"{c ? a : b}"` ends in a ternary. Both use
-// a colon inside an interpolation, so the lexer separates them by attachment —
+// a colon inside an interpolation, so the lexer separates them by attachment:
 // a spec's colon has no space before it, a ternary's does. That is the same
 // rule that already distinguishes `x?` from `c ? x : y`.
 
@@ -357,7 +358,7 @@ fn a_colon_outside_an_interpolation_is_not_a_spec() {
 fn a_leading_boolean_operator_continues_the_line() {
     // A long condition breaks either way: the operator can end the line or
     // begin the next one. `&&` used to be accepted only at the end, while
-    // `||` was accepted at both — so the same condition parsed or didn't
+    // `||` was accepted at both, so the same condition parsed or didn't
     // depending on which operator it happened to use.
     for (src, op) in [
         ("ok = a\n    && b\n", Tok::AmpAmp),

@@ -1,4 +1,4 @@
-// cli/spec — what a command accepts, written once.
+// cli/spec: what a command accepts, written once.
 //
 // The spelling of an option, the help line describing it, and the check that
 // refuses an unknown one are three copies of the same fact in most command
@@ -26,8 +26,8 @@ Opt = {
     takes: bool,
 }
 
-/// One positional. `many` marks the last one as taking everything that is left
-/// — a file list, the arguments to pass through to something else.
+/// One positional. `many` marks the last one as taking everything that is
+/// left: a file list, the arguments to pass through to something else.
 Arg = {
     name: str,
     help: str,

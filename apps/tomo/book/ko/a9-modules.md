@@ -9,7 +9,7 @@
 | 쓰는 법 | 가리키는 것 |
 |---|---|
 | `import a/b` | 모듈 `a/b` |
-| `import a` | 모듈 `a` — 그런 파일이 없으면 빌트인 |
+| `import a` | 모듈 `a`. 그런 파일이 없으면 빌트인 |
 | `import { f, g } from a/b` | 그 모듈에서 `f`와 `g`만 |
 | `import { f } from a` | 같음. 여기서는 한 단어도 파일 |
 | `import c "hdr.h"` | C 헤더와 그 라이브러리 |
@@ -22,7 +22,7 @@
 슬래시 경로는 모듈만을 가리키므로, 찾지 못한 것은 대안이 아니라 오타입니다.
 
 ```
-maca: app.maca: no module `std/str` — `std/str.maca` is not beside this file
+maca: app.maca: no module `std/str`: `std/str.maca` is not beside this file
 or in the working directory
 ```
 
@@ -46,9 +46,9 @@ maca: import { centroid } from geometry: 'centroid' is not defined in that modul
 
 1. **import하는 파일 자신의 디렉터리**에서, 그다음 그 위의 각 디렉터리에서.
    각 디렉터리마다:
-   1. `<dir>/a/b.maca` — 쓴 경로를 그대로;
+   1. `<dir>/a/b.maca`: 쓴 경로를 그대로;
    2. `<dir>/modules/a/b.maca`, `<dir>/src/a/b.maca`,
-      `<dir>/maca_modules/a/b.maca` — 탐색 루트들을 이 순서로.
+      `<dir>/maca_modules/a/b.maca`: 탐색 루트들을 이 순서로.
 2. 이 순회는 **프로젝트 루트에서 멈춥니다**. import하는 파일 자신 또는 그 위에서
    가장 가까운, `maca.toml`을 가진 디렉터리입니다.
 3. import하는 파일이 어떤 프로젝트에도 속하지 않으면, 같은 두 단계를
@@ -157,8 +157,9 @@ maca build app/main.maca
 import로 닿는 모든 것이 함께 컴파일됩니다. 소스를 나열하는 매니페스트도,
 관리할 빌드 그래프도 없습니다.
 
-`maca -m module.function`은 `main` 없이 모듈의 함수를 실행합니다 —
-`maca -m http.serve` — 그리고 종료 상태는 진입점의 선언된 반환 타입에서 옵니다.
+`maca -m module.function`은 `main` 없이 모듈의 함수를 실행합니다.
+`maca -m http.serve`가 그렇고, 종료 상태는 진입점의 선언된 반환 타입에서
+옵니다.
 `str[]` 매개변수는 남은 명령행을 받습니다.
 
 ## 모듈 시스템에 없는 것

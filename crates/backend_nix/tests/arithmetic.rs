@@ -2,7 +2,7 @@
 //!
 //! `value()` handled only literals, idents, lists and records and ended in
 //! `_ => "null"`. `Expr::Binary` was absent, so `port = 8000 + offset` emitted
-//! `port = null;` — and Nix accepts `null` as an option value, so the config
+//! `port = null;`, and Nix accepts `null` as an option value, so the config
 //! built and the service listened on nothing.
 //!
 //! Nix is not on this host, so these read the emitted expression rather than

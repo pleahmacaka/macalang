@@ -80,7 +80,7 @@ UFCS로 메서드처럼 호출합니다. `s.trim()`은 `trim(s)`입니다.
 counts: Map str int = map()
 counts = counts.set("apple", 3).set("pear", 1)
 info("{counts.get("apple", 0)}")     // 3
-info("{counts.get("kiwi", 0)}")      // 0 — 없으면 기본값
+info("{counts.get("kiwi", 0)}")      // 0, 없으면 기본값
 ```
 
 키는 `str`뿐입니다. 키 타입이 하나면 해시도 비교도 하나면 되고, 정수 키는
@@ -185,7 +185,7 @@ while !at_eof() {
 
 | 형태 | 하는 일 |
 |---|---|
-| `div(class="x", child)` | 요소 — 이름 있는 인자는 속성, 위치 인자는 자식 |
+| `div(class="x", child)` | 요소: 이름 있는 인자는 속성, 위치 인자는 자식 |
 | `data-tomo="x"` | 붙여 쓴 `-` 는 이름의 일부, 띄어 쓴 것은 뺄셈 |
 | `open=true` | bool은 속성의 존재 여부를 결정 |
 | `element(tag, …)` | 같은 것, 태그를 값으로 |
@@ -219,7 +219,7 @@ while !at_eof() {
 ## 정규식
 
 없습니다. `contains`, `starts_with`, `ends_with`, `index_of`, `split`과 문자
-분류가 이 언어로 쓰는 프로그램이 실제로 손을 뻗는 범위를 덮습니다 —
-`selfhost/lexer.maca`는 `chars`, `at`과 술어 셋만으로 언어 전체를 훑습니다 —
+분류가 이 언어로 쓰는 프로그램이 실제로 손을 뻗는 범위를 덮습니다.
+`selfhost/lexer.maca`는 `chars`, `at`과 술어 셋만으로 언어 전체를 훑습니다.
 그리고 정규식 엔진은 배우고 디버깅하고 구현해야 할 또 하나의 언어입니다.
 `split`과 루프로 충분합니다.

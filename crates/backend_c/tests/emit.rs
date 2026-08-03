@@ -224,7 +224,7 @@ fn payload_sum_is_a_tagged_union() {
 
 #[test]
 fn recursive_sum_boxes_self_referential_payload() {
-    // `Tree = Leaf(int) | Node(Tree, Tree)` — the recursive payload must be a
+    // In `Tree = Leaf(int) | Node(Tree, Tree)` the recursive payload must be a
     // pointer (`Tree*`), heap-allocated in the constructor, and dereferenced
     // when a match binds it. Otherwise the struct is infinitely sized.
     let out = c(
@@ -665,7 +665,7 @@ fn concatenating_a_value_with_no_text_form_is_refused() {
         );
     }
 
-    // an unannotated parameter is still a string as far as `++` is concerned —
+    // an unannotated parameter is still a string as far as `++` is concerned;
     // refusing it would reject `greet(n) => "hi " ++ n`
     let ok = maca_parser::parse("greet(n) -> str => \"hi \" ++ n\n").module;
     assert!(
@@ -697,7 +697,7 @@ fn a_concat_chain_evaluates_in_source_order() {
     );
 }
 
-/// Several Maca types share one C array — a closure, a future and a value of
+/// Several Maca types share one C array: a closure, a future and a value of
 /// unknown type all cross as `int64_t`, so all three are `IntArr`. Emitting the
 /// definitions keyed on the Maca type wrote the same `typedef` twice.
 #[test]
@@ -743,7 +743,7 @@ fn a_method_that_cannot_be_lowered_says_so() {
 }
 
 /// An absent element answers with its type's empty value, and a sum whose
-/// variants carry payloads is a struct — `0` in the other arm of the bounds
+/// variants carry payloads is a struct, so `0` in the other arm of the bounds
 /// check stopped every program indexing a list of them from compiling.
 #[test]
 fn a_list_of_payload_variants_can_be_indexed() {
@@ -853,7 +853,7 @@ fn higher_order_param_and_fn_value_lower_to_closures() {
 #[test]
 fn empty_list_argument_takes_its_element_type_from_the_callee() {
     // `seed([])` where `seed(xs: str[])` must build a StrArr, not the default
-    // IntArr — the call threads the parameter type as the literal's expected.
+    // IntArr: the call threads the parameter type as the literal's expected.
     let body = func(
         "seed(xs: str[]) -> int => xs.length()\n\nmain() -> int {\n    seed([])\n}\n",
         "main",

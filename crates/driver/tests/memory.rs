@@ -1,7 +1,7 @@
 //! Perceus: the code generator inserts the drops, and the buffer comes back.
 //!
 //! The runtime has always had a size-tracked allocator with a free-list. What
-//! it did not have was anyone calling `drop` — so a run-once program held
+//! it did not have was anyone calling `drop`, so a run-once program held
 //! every buffer it ever allocated until exit. These tests are about the other
 //! half: codegen releasing a local's buffer when the local cannot outlive its
 //! block, and the next allocation of that size picking it up instead of
@@ -144,7 +144,7 @@ fn discarded_strings_are_reused() {
 /// Nested array types are declared before the types that hold them.
 ///
 /// This one is about values, not about the process, so it is a file of `test_…`
-/// functions run by `maca test` — which names each one it ran. Its neighbours
+/// functions run by `maca test`, which names each one it ran. Its neighbours
 /// above stay process-level because what they check *is* the process: valgrind's
 /// verdict, `MACA_POISON`, an exit code.
 #[test]

@@ -1,5 +1,5 @@
-// Perceus, the correctness half: a value that escapes its block — aliased,
-// returned, kept in an outer binding, stored in a longer-lived structure —
+// Perceus, the correctness half: a value that escapes its block (aliased,
+// returned, kept in an outer binding, stored in a longer-lived structure)
 // must not be dropped.
 //
 // Run under valgrind. A dropped-too-early buffer usually reads as garbage long

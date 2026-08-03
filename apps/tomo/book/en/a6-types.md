@@ -4,7 +4,7 @@ What the checker does, precisely. Maca is statically typed and mostly inferred:
 you annotate function boundaries and everything inside follows.
 
 The teaching version of this is spread through
-[Learning Maca](03-common-concepts.md) — this chapter is the rule.
+[Learning Maca](03-common-concepts.md); this chapter is the rule.
 
 ## Inference at the boundary
 
@@ -34,7 +34,7 @@ Both the parameter and the result are inferred here. Prefer writing them: a
 signature is documentation the compiler checks, and the error messages get much
 better when there is something to disagree with.
 
-A local may carry an annotation where inference has nothing to go on — an empty
+A local may carry an annotation where inference has nothing to go on. An empty
 map has no value type until something is put in it:
 
 ```maca
@@ -53,17 +53,17 @@ pair_first(xs: a[], fallback: a) -> a =>
     xs.length() > 0 ? xs.first() : fallback
 ```
 
-`a` here is not a type called "a" — it is "any type, the same one in all three
+`a` here is not a type called "a". It is "any type, the same one in all three
 places". There is no `<T>` to declare, because lowercase already means variable
 and uppercase already means concrete.
 
 Function signatures generalise into schemes and instantiate afresh at each call,
 so `identity(1)` and `identity("x")` both work and neither constrains the other.
-This is standard Hindley–Milner inference.
+This is standard Hindley-Milner inference.
 
 The C backend **monomorphises**: each distinct instantiation becomes its own
 specialised function in the generated C. There is no boxing and no dispatch at
-run time — a generic function costs exactly what the hand-written specialisation
+run time: a generic function costs exactly what the hand-written specialisation
 would.
 
 ## Gradual typing and `any`
@@ -75,7 +75,7 @@ there is `any`, and it unifies with everything.
 This is why Maca is called *gradually* typed: the strict core does real
 inference, and `any` is an escape hatch at the edges rather than a hole in the
 middle. Practically, it means calls into unknown territory do not produce a
-cascade of spurious errors — but also that a mistake in that territory is not
+cascade of spurious errors, but also that a mistake in that territory is not
 caught.
 
 Method calls are one such place, and the exception is worth knowing. The method
@@ -125,7 +125,7 @@ distinct shape for those.
 ## Effects
 
 A function's type is not only its arguments and result. The checker also tracks
-what a function *does* — its **effects** — and effects are inferred, never
+what a function *does* (its **effects**), and effects are inferred, never
 declared. [Effects and Async](a7-effects.md) is the full account: the rows, what
 introduces each one, and where each is enforced.
 
@@ -168,7 +168,7 @@ count = 0
 count = count + 1
 ```
 
-Three things make it constant — `const`, a trailing `as const`, or a Capitalized
+Three things make it constant: `const`, a trailing `as const`, or a Capitalized
 name:
 
 ```maca
@@ -180,7 +180,7 @@ Origin = 0
 Reassigning any of them is a compile error:
 
 ```
-Immutable: cannot reassign constant `Limit` — declare it mutable with
+Immutable: cannot reassign constant `Limit`; declare it mutable with
 `Limit = …` (no `const`)
 ```
 
@@ -197,6 +197,6 @@ TypeMismatch: in call to `d` (argument 2): type mismatch: expected P, found int
 ```
 
 When the message is about a type variable rather than a concrete type, the usual
-cause is a missing annotation somewhere upstream — the checker inferred something
+cause is a missing annotation somewhere upstream: the checker inferred something
 more general than you meant. Adding the signature you had in mind will either fix
 it or tell you exactly where your mental model and the code disagree.

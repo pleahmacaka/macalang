@@ -1,4 +1,4 @@
-// profile/record — putting spans around the parts of a program.
+// profile/record: putting spans around the parts of a program.
 //
 // The recorder is a value you carry. Maca has no global to hide it in and no
 // destructor to close a region for you, and rather than apologise for that this
@@ -14,13 +14,13 @@
 //
 // Recording computes nothing: `start` and `stop` append one mark each, and the
 // tree is built once, inside `finish`. A region costs a `now_ms` and a list
-// push while it is being recorded — but a push copies the list, so the cost
+// push while it is being recorded, but a push copies the list, so the cost
 // does grow with the length of the recording. Measured: a thousand regions
 // record in 47ms, four thousand in 6.3s.
 //
 // The clock is `now_ms` too, so a millisecond is the smallest thing any of
 // this can see. A region that returns faster than that measures zero, and a
-// program built out of such regions charts as a row of slivers over `0ms` —
+// program built out of such regions charts as a row of slivers over `0ms`:
 // not a broken profile, one saying the run is beneath its resolution.
 //
 // Both point the same way: measure the loop, not the iteration. A few hundred
@@ -33,7 +33,7 @@ import profile/trace
 ///
 /// A leave carries no name. Which region it closes is settled by the marks
 /// before it, and a name written down twice is a name that can disagree with
-/// itself — a `stop("parse")` that names the wrong region would have to either
+/// itself: a `stop("parse")` that names the wrong region would have to either
 /// lie or fail, and there is nothing useful for it to do.
 Mark = {
     name: str,
@@ -76,7 +76,7 @@ stop(r: Rec) -> Rec =>
         open = r.open > 0 ? r.open - 1 : 0,
     }
 
-/// A region around a call — `start`, the work, `stop` — with no way to forget
+/// A region around a call (`start`, the work, `stop`) with no way to forget
 /// the stop.
 ///
 /// `body` takes the recorder and returns it, which is the whole convention.
@@ -86,11 +86,11 @@ stop(r: Rec) -> Rec =>
 ///
 /// Anything the body left open is closed here too. A single `stop` would close
 /// the body's forgotten region instead of this one, and every span recorded
-/// afterwards would hang off the wrong parent — the mistake would show up
+/// afterwards would hang off the wrong parent, so the mistake would show up
 /// everywhere except where it was made.
 //
 // The body's result is passed straight on rather than bound to a local first.
-// A closure's result carries no type through a binding — `ran = body(…)` makes
+// A closure's result carries no type through a binding: `ran = body(…)` makes
 // `ran` an integer, and the C compiler is the one that says so.
 span(r: Rec, name: str, body) -> Rec =>
     close_down_to(body(start(r, name)), r.open)
@@ -104,12 +104,12 @@ close_down_to(r: Rec, want: int) -> Rec {
 }
 
 /// An instant rather than a region: a zero-length span at the current moment.
-/// For punctuating a timeline — the cache went cold here, the retry happened
-/// here — where a duration would be a fiction.
+/// For punctuating a timeline (the cache went cold here, the retry happened
+/// here) where a duration would be a fiction.
 //
 // Not `stop(start(r, name))`. That reads the clock twice, and two readings a
 // few hundred nanoseconds apart straddle a millisecond boundary about once in
-// several thousand — which is a `mark` that lasted 1ms, and a test asserting
+// several thousand, which is a `mark` that lasted 1ms, and a test asserting
 // the documented zero that fails for nobody's reason. One reading, both marks.
 mark(r: Rec, name: str) -> Rec {
     at = now_ms()
@@ -175,7 +175,7 @@ build_spans(ms: Mark[], base: int, i: int, b: Build) -> Build {
 }
 
 // A span opens where the marks say, ends there for now, and is not closed
-// until a leave says so — `finish` reads that flag to find what leaked.
+// until a leave says so. `finish` reads that flag to find what leaked.
 opened(b: Build, m: Mark, base: int) -> Build {
     n = b.open.length()
     inside = n > 0 ? b.open.get(n - 1) : -1
@@ -208,7 +208,7 @@ ended(b: Build, m: Mark, base: int) -> Build {
 }
 
 // The one place a span is revisited after it was appended. `xs[i] = …` writes
-// through every name for the list rather than producing a new one — measured:
+// through every name for the list rather than producing a new one. Measured:
 // `b = close(a, 0, 7)` leaves `a` closed too. That is safe only because this
 // list was built inside `finish` and nothing outside has seen it.
 closed_at(xs: Span[], i: int, at: int) -> Span[] {

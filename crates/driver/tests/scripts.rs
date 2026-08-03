@@ -1,14 +1,14 @@
 //! The repository's own scripts, compiled.
 //!
 //! Building the site, building the wasm into the npm package, and running the
-//! benchmarks were three bash/Python scripts. They are Maca programs now — the
+//! benchmarks were three bash/Python scripts. They are Maca programs now: the
 //! toolchain's own tooling written in the language it compiles, which is the
 //! same argument `tools/bindgen.maca` and `tools/lint.maca` already make.
 //!
 //! A script nothing compiles rots quietly: it is only run at release time, so a
 //! rename in `std/` breaks it months before anyone finds out. This builds each
-//! one. It does not *run* them — that needs a wasm target, a network, and
-//! several minutes — but a script that compiles cannot have lost a function it
+//! one. It does not *run* them (that needs a wasm target, a network, and
+//! several minutes), but a script that compiles cannot have lost a function it
 //! calls.
 
 mod common;

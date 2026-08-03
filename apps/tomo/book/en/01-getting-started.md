@@ -1,6 +1,6 @@
 # Hello, World
 
-Every Maca program starts at `main`, which returns an `int` — the process exit
+Every Maca program starts at `main`, which returns an `int`: the process exit
 code. Here is the whole thing:
 
 ```maca
@@ -25,8 +25,8 @@ returns an `int`. There is no `fn` keyword: a name, a parameter list, and a
 `-> Type` is all a function definition is.
 
 The braces hold a **block**, and a block's value is its last expression. Here
-that is `0`, so that is what `main` returns — and because `main`'s return value
-is the process exit status, `0` means success. Return anything else to signal
+that is `0`, so that is what `main` returns. Because `main`'s return value is
+the process exit status, `0` means success. Return anything else to signal
 failure.
 
 `info` prints a line. It is one of a small family named after syslog levels;

@@ -1,4 +1,4 @@
-# Maca — Zed extension
+# Maca: the Zed extension
 
 Syntax highlighting **and a language server** (diagnostics, hover, completion,
 go-to-definition, document symbols, find-references, rename, signature help,
@@ -41,8 +41,8 @@ wasm, builds the tree-sitter grammar from `extension.toml`, applies the
 
 Zed installs extensions from the [`zed-industries/extensions`](https://github.com/zed-industries/extensions)
 registry. Zed builds the grammar by cloning the grammar repo **at the pinned
-commit and compiling the committed `src/parser.c` + `src/scanner.c` directly —
-it does not run `tree-sitter generate`.** That is why `editor/tree-sitter-maca/src/`
+commit and compiling the committed `src/parser.c` + `src/scanner.c` directly.
+It does not run `tree-sitter generate`.** That is why `editor/tree-sitter-maca/src/`
 (the generated `parser.c`, `node-types.json`, `grammar.json`, and the
 `tree_sitter/*.h` headers) is committed to this repo rather than `.gitignore`d.
 
@@ -55,7 +55,7 @@ To publish or update the listing:
    ```
    Commit the regenerated `src/` and push to `main`.
 2. Set `grammars.maca.commit` in `extension.toml` to that commit's SHA
-   (a real revision — `HEAD` only works for local dev builds), and bump
+   (a real revision, since `HEAD` only works for local dev builds), and bump
    `version` if the extension itself changed. Push.
 3. Fork `zed-industries/extensions`, add an entry to its `extensions.toml`:
    ```toml
@@ -69,8 +69,9 @@ To publish or update the listing:
    extension compiles to wasm.
 
 Publishing itself is done from outside this repository (the PR lives in
-`zed-industries/extensions`); everything this repo can control — the grammar,
-the committed parser, `extension.toml`, and the pinned commit — is release-ready.
+`zed-industries/extensions`); everything this repo can control, meaning the
+grammar, the committed parser, `extension.toml`, and the pinned commit, is
+release-ready.
 
 ## Notes
 

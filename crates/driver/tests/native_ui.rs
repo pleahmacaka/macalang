@@ -1,7 +1,7 @@
 //! UI elements and Tailwind on the native target.
 //!
 //! The JS backend turns `div(class="…", child)` into a reactive DOM. On native
-//! there is no DOM, so the same syntax renders to an HTML *string* — which is
+//! there is no DOM, so the same syntax renders to an HTML *string*, which is
 //! what a static site generator needs, and what `apps/tomo` was doing by hand
 //! with string concatenation and a literal `<style>` block while the language
 //! had a UI syntax and a Tailwind engine sitting unused.

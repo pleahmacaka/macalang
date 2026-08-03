@@ -2,8 +2,8 @@
 //!
 //! A top-level definition is visible to every module that imports it, so a
 //! rename that edits only the open file leaves those importers calling a name
-//! that no longer exists. The editor reports success and the build breaks — the
-//! one outcome a rename must not have.
+//! that no longer exists. The editor reports success and the build breaks,
+//! which is the one outcome a rename must not have.
 //!
 //! Locals and fields stay single-file: a local cannot be seen from another
 //! module, and a field would need the record's type followed across the import
@@ -46,7 +46,7 @@ pub fn rename_edits(
         let Ok(src) = std::fs::read_to_string(&other) else {
             continue;
         };
-        // Only a module that can actually see the definition — one that
+        // Only a module that can actually see the definition: one that
         // imports the module defining it, or is that module.
         if real != owner && !can_see(&other, &src, &owner, &binding.name) {
             continue;
@@ -70,7 +70,7 @@ pub fn rename_edits(
 /// first module reachable through its imports that does.
 ///
 /// Renaming from a *call site* has to reach the definition and every other
-/// caller, not just the file the cursor is in — and Maca inlines imports
+/// caller, not just the file the cursor is in, and Maca inlines imports
 /// transitively, so the definition may be two modules away.
 fn defining_module(file: &Path, text: &str, name: &str) -> Option<PathBuf> {
     if defines(text, name) {
@@ -111,7 +111,7 @@ fn can_see(file: &Path, src: &str, target: &Path, name: &str) -> bool {
     let mut seen: Vec<PathBuf> = vec![canon(file)];
     while let Some((m, selective)) = queue.pop() {
         // A selective import that doesn't name what we're renaming carries
-        // nothing of it — not the module itself, and not anything past it.
+        // nothing of it: not the module itself, and not anything past it.
         // Checked before the target match, not after: importing the *defining*
         // module for some other name is exactly the case that has to say no.
         // Not marked seen either, so the same module reached by an ordinary

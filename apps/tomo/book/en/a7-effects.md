@@ -2,7 +2,7 @@
 
 A function's type is its arguments, its result, **and what it does**. The third
 part is the effect row: a set the checker infers from the body and propagates
-through every caller. Nothing about it is written down in source — there is no
+through every caller. Nothing about it is written down in source: there is no
 `async` keyword, no `IO` in a signature, no `throws` clause.
 
 The teaching version is [Colorblind Async](13-colorblind-async.md). This chapter
@@ -14,7 +14,7 @@ Five effects, from the Koka lineage:
 
 | Effect | Introduced by |
 |---|---|
-| `io` | `print`, `input`, and the console family — `info`, `warn`, `err`, `debug`, `notice`, `crit`, `alert`, `emerg`, `panic` — plus the file and stream methods `read`, `write`, `exists`, `remove`, `append`, `create` |
+| `io` | `print`, `input`, and the console family (`info`, `warn`, `err`, `debug`, `notice`, `crit`, `alert`, `emerg`, `panic`), plus the file and stream methods `read`, `write`, `exists`, `remove`, `append`, `create` |
 | `net` | a call through a `net`, `http` or `socket` receiver |
 | `os` | a call through an `os` or `process` receiver |
 | `async` | `await`, `spawn`, `sleep_ms` |
@@ -37,7 +37,7 @@ Three operations introduce `async`:
 - `await fut` suspends until the future resolves, and evaluates to its value;
 - `sleep_ms(ms)` is a suspension point.
 
-A function that uses any of them *is* async — no annotation, no colour:
+A function that uses any of them *is* async: no annotation, no colour:
 
 ```maca
 fetch_both(a: str, b: str) -> str {
@@ -64,7 +64,7 @@ whether or not it happens to suspend.
 
 The cost of the design is that you cannot read a signature and know whether a
 call may suspend. That is the trade: the effect is in the type the checker
-carries, not in the text. Where it matters — configuration — the checker is the
+carries, not in the text. Where it matters, in configuration, the checker is the
 one that enforces it, which is the next section.
 
 ## It compiles to real concurrency
@@ -76,16 +76,16 @@ the FFI boundary.
 
 | Target | What a suspension point becomes |
 |---|---|
-| native (C) | `maca_spawn` / `maca_await` / `maca_sleep_ms` — pthread-backed futures in the runtime, so a suspension point is a real thread boundary |
+| native (C) | `maca_spawn` / `maca_await` / `maca_sleep_ms`: pthread-backed futures in the runtime, so a suspension point is a real thread boundary |
 | JS | the event loop; the same three operations map onto its scheduling |
 | playground | evaluated eagerly by the interpreter, so a program's output is the same and its timing is not |
-| Nix (config) | rejected — see below |
+| Nix (config) | rejected; see below |
 
 You write the effect once; each backend realises it.
 
 ## Effects are checked
 
-Effects are not only inferred — they are enforced where it matters. In
+Effects are not only inferred, they are enforced where it matters. In
 [config mode](a12-config.md) a program describes state rather than performing
 actions, so **any** non-empty effect row is a compile error:
 

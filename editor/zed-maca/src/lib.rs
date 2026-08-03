@@ -2,7 +2,7 @@
 //! live diagnostics, hover, and completion on top of the tree-sitter
 //! highlighting in `languages/maca/`.
 //!
-//! The server binary (`maca-lsp`, built from `crates/lsp`) must be on PATH —
+//! The server binary (`maca-lsp`, built from `crates/lsp`) must be on PATH;
 //! the install script places it next to `maca`.
 
 use zed_extension_api::{self as zed, LanguageServerId, Result};
@@ -21,7 +21,7 @@ impl zed::Extension for MacaExtension {
     ) -> Result<zed::Command> {
         let path = worktree
             .which("maca-lsp")
-            .ok_or_else(|| "`maca-lsp` not found on PATH — install it with the Maca installer".to_string())?;
+            .ok_or_else(|| "`maca-lsp` not found on PATH; install it with the Maca installer".to_string())?;
         Ok(zed::Command { command: path, args: vec![], env: worktree.shell_env() })
     }
 }

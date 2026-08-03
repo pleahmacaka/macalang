@@ -33,9 +33,8 @@ main() -> int {
 }
 ```
 
-`origin` is called unqualified. An import brings names in flat —
-there is no `geometry.origin()` form, because there is no namespace to qualify
-with.
+`origin` is called unqualified. An import brings names in flat. There is no
+`geometry.origin()` form, because there is no namespace to qualify with.
 
 A nested path uses `/`, matching the directory layout:
 
@@ -66,7 +65,7 @@ Selective import fixes that:
 import { origin, dist2 } from geometry
 ```
 
-Only `origin` and `dist2` come across — plus, transitively, whatever *they*
+Only `origin` and `dist2` come across, along with, transitively, whatever *they*
 reference from the same module. `origin` returns a `Point`, so `Point` comes with
 it automatically; you do not have to list the types your functions mention.
 
@@ -91,7 +90,7 @@ import js """…"""
 import css """…"""
 ```
 
-The first two link a real library — [the FFI reference](a13-ffi.md) covers
+The first two link a real library, and [the FFI reference](a13-ffi.md) covers
 them. The last two embed
 raw text for the JavaScript backend, so a `.maca` user interface can carry its
 own host glue and stylesheet inline. They take a triple-quoted string, which
@@ -107,7 +106,7 @@ maca build app/main.maca
 
 Everything reachable through imports is compiled with it. There is no manifest
 listing sources, no build graph to maintain. The self-hosted compiler is built
-exactly this way — `maca build selfhost/main.maca` compiles the whole front end
+exactly this way: `maca build selfhost/main.maca` compiles the whole front end
 from its import list.
 
 ## Where the module system stops
@@ -117,7 +116,7 @@ namespacing beyond the file. No versioned module registry.
 
 This is a small language for programs that fit in a repository, and the module
 system is sized to match. If that changes, it will change in the direction of
-selective import — which already gives you the "explicit surface" benefit of
+selective import, which already gives you the "explicit surface" benefit of
 `pub` without a keyword.
 
 ## Run it
@@ -130,7 +129,7 @@ maca run main.maca
 ```
 
 One command, two files, no manifest. Now move `geometry.maca` into a
-`modules/` subdirectory and run the same command — it still resolves, because
+`modules/` subdirectory and run the same command. It still resolves, because
 `modules/` is a search root.
 
 ## Where the full answer is

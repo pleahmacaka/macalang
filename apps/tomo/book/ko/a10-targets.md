@@ -97,7 +97,7 @@ maca build blink.maca --target embedded --mcu cortex-m0
 
 "freestanding"에서 두 가지가 따라 나오고, 컴파일러가 그것을 직접 말해 줍니다.
 쓰지도 않은 파일에 대해 C 툴체인이 불평하게 두지 않고요. 콘솔이 없으므로
-`info`와 그 형제들은 쓸 수 없습니다 — UART를 `mmio_write`로 직접 다루세요.
+`info`와 그 형제들은 쓸 수 없습니다. UART를 `mmio_write`로 직접 다루세요.
 그리고 `main`은 아무것도 반환하지 않습니다. 종료 코드를 건네줄 프로세스가
 없으니까요. 리셋 핸들러가 호출하고, 반환하면 멈춥니다.
 
@@ -129,10 +129,10 @@ JavaScript 백엔드로, 그 아래는 네이티브 바이너리로요.
 
 | 타깃 | 거부하는 것 |
 |---|---|
-| native | `on:click=`와 그 형제들 — 문자열에는 이벤트 핸들러가 붙을 자리가 없음 |
+| native | `on:click=`와 그 형제들: 문자열에는 이벤트 핸들러가 붙을 자리가 없음 |
 | `rust` | 본문 없는(FFI) 함수, `import c`/`import py`, 선언되지 않은 크레이트를 가리키는 `import rust`, 반환하거나 저장하는 빌린 외부 파라미터 |
 | `embedded` | `info`와 나머지 콘솔 빌트인, 반환 타입이 있는 `main` |
-| `nix` | 비어 있지 않은 이펙트 행 전부 — [이펙트와 async](a7-effects.md) 참조 |
+| `nix` | 비어 있지 않은 이펙트 행 전부([이펙트와 async](a7-effects.md) 참조) |
 
 ## ABI와 링크
 

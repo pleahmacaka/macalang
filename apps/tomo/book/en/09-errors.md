@@ -30,7 +30,7 @@ main() -> int {
 ```
 
 prints `error: division by zero` on standard error and exits with status 1. For
-a command line tool that is often exactly right — the message reaches the user
+a command line tool that is often exactly right: the message reaches the user
 and the exit code reaches the shell, with nothing written to arrange it.
 
 ## Passing it on
@@ -45,7 +45,7 @@ checked(n: int) -> int {
 ```
 
 If `divide` fails, `checked` fails with the same message and `v + 1` never runs.
-The `?` is attached, with no space before it — the same attached-versus-spaced
+The `?` is attached, with no space before it, the same attached-versus-spaced
 rule that separates a format spec from a ternary.
 
 ## Handling it
@@ -82,8 +82,8 @@ decent error message for free.
 Reserve `try` for a boundary where you genuinely have a fallback: a retry, a
 default, a message to a user who is going to try again.
 
-And where failure is an ordinary outcome rather than an exceptional one — a
-parse that may not match, a lookup that may miss — do not use `fail` at all. A
+And where failure is an ordinary outcome rather than an exceptional one (a
+parse that may not match, a lookup that may miss), do not use `fail` at all. A
 [sum type](06-sum-types.md) says so in the type, and the compiler then makes
 every
 caller deal with it:
@@ -106,5 +106,5 @@ the `try` away and run it again: the same program now prints the message to
 standard error and exits `1`, with nothing written to arrange either.
 
 Failure is one row of the effect system, and `try` is the one operation that
-*removes* an effect rather than adding one —
+*removes* an effect rather than adding one.
 [Effects and Async](a7-effects.md) has the rest.

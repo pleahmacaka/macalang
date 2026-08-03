@@ -34,7 +34,7 @@ maca build --target jvm mod.maca -o build --cp path/to/fabric-api.jar
 ```
 
 This produces `build/Mod.java` with a nested `Mod$ExampleMod` implementing
-`ModInitializer` — that's the class named in
+`ModInitializer`, which is the class named in
 `src/main/resources/fabric.mod.json`'s `entrypoints.main`.
 
 ## Into a real Fabric project
@@ -43,13 +43,13 @@ This produces `build/Mod.java` with a nested `Mod$ExampleMod` implementing
 2. Point the build at the generated Java, e.g. run
    `maca build --target jvm mod.maca -o src/main/java/com/example` in a
    `prebuild` step (add `package com.example;` by placing it under that path and
-   passing a package — or wrap the emit), and let Gradle compile it with the
+   passing a package, or wrap the emit), and let Gradle compile it with the
    Minecraft + Fabric API on the classpath.
-3. `gradlew runClient` — the mod loads and `onInitialize()` runs.
+3. `gradlew runClient`: the mod loads and `onInitialize()` runs.
 
 ## Verified here
 
 `onInitialize()` was compiled against a stub `ModInitializer` and invoked
-through the interface on the JVM — it prints the greeting, proving the
+through the interface on the JVM. It prints the greeting, proving the
 Maca-authored class is a valid Fabric entrypoint. Full in-game runs need the
 Minecraft/Fabric jars (fetched by Gradle), which aren't vendored in this repo.

@@ -1,5 +1,5 @@
 // `Config` declares three fields and the literal names one, so `title` and
-// `port` would each be a silent zero — "" and 0 — in a program that compiled
+// `port` would each be a silent zero ("" and 0) in a program that compiled
 // clean and rendered a page with no heading.
 Config = {
     host:  str

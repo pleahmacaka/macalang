@@ -14,13 +14,13 @@
 TypeMismatch: in call to `d` (argument 2): type mismatch: expected P, found int
 ```
 
-**인자 개수** — 개수도 타입의 성질이라 여기로 옵니다.
+**인자 개수**: 개수도 타입의 성질이라 여기로 옵니다.
 
 ```
 TypeMismatch: call to `f` expects 2 argument(s), got 3
 ```
 
-**어긋나는 갈래** — 타입이 다른 `if`나 삼항입니다.
+**어긋나는 갈래**: 타입이 다른 `if`나 삼항입니다.
 
 ```
 TypeMismatch: ternary branches disagree: type mismatch: expected int, found str
@@ -30,7 +30,7 @@ TypeMismatch: ternary branches disagree: type mismatch: expected int, found str
 있었더라도 갈래들의 타입이 맞아야 합니다. `c ? continue : 0`이 이 이유로
 실패합니다. `continue`에는 값이 없습니다.
 
-**레코드 필드** — 리터럴은 레코드가 선언한 모든 필드를 적어야 하고, 선언하지
+**레코드 필드**: 리터럴은 레코드가 선언한 모든 필드를 적어야 하고, 선언하지
 않은 필드는 적으면 안 됩니다.
 
 ```
@@ -77,7 +77,7 @@ NonExhaustive: match on `Color` is not exhaustive; missing: Blue
 상수에 대한 대입입니다.
 
 ```
-Immutable: cannot reassign constant `Limit` — declare it mutable with
+Immutable: cannot reassign constant `Limit`; declare it mutable with
 `Limit = …` (no `const`)
 ```
 
@@ -244,10 +244,10 @@ block. Write `Name { … }` for the record, or drop the `=>` for the block
 전체 규칙과, 모호하지 않은 경우에 무엇이 그것을 결정하는지는
 [문법](a5-syntax.md)에 있습니다.
 
-**백엔드 거부** — 특정 타깃이 내보낼 수 없는 올바른 코드입니다.
+**백엔드 거부**: 특정 타깃이 내보낼 수 없는 올바른 코드입니다.
 
 ```
-`on:click` needs a live DOM — build this with `--target js`
+`on:click` needs a live DOM; build this with `--target js`
 ```
 
 요소가 문자열로 렌더링될 때([UI 문법](a11-ui.md)) 이벤트 핸들러는 붙을 자리가

@@ -53,8 +53,8 @@ ordinary NixOS module:
 }
 ```
 
-Nix evaluates that to build the system. Nothing about the pipeline is special —
-the difference is that the file went through the type and effect checker first.
+Nix evaluates that to build the system. Nothing about the pipeline is special.
+The difference is that the file went through the type and effect checker first.
 
 ### The two rewrites
 
@@ -71,7 +71,7 @@ implicit enable: configuring a service is how you ask for it, so a block that
 sets anything gets switched on.
 
 The injection is unconditional. Writing `enable` in the block yourself emits it
-twice — `enable = true; enable = false;` — and a repeated attribute is not a
+twice (`enable = true; enable = false;`), and a repeated attribute is not a
 thing Nix accepts. Leave it out and let the block mean what it says.
 
 ## What config mode forbids
@@ -101,7 +101,7 @@ definition whose meaning depends on when you ran it.
 The left column is a list of shapes, not of ideas, and the difference shows at
 one edge: the free builtins `read_file`, `capture` and `exec` are in none of
 those rows, so a config that calls one compiles. Read that as the reach of a
-check rather than as permission — the intent is the whole of the left column,
+check rather than as permission. The intent is the whole of the left column,
 and a config reaching for the disk is outside it either way.
 
 The check is the effect system from [Effects and Async](a7-effects.md), pointed
@@ -109,7 +109,7 @@ at a whole module instead of a function.
 
 ## Options are checked by namespace
 
-The compiler knows the NixOS option roots — `networking`, `services`, `system`,
+The compiler knows the NixOS option roots: `networking`, `services`, `system`,
 `users`, `environment`, `programs`, `boot`, `hardware`, `security`, `nix`,
 `fonts` and their siblings. An assignment whose root is none of them and is not
 a local binding is a diagnostic:
@@ -142,7 +142,7 @@ dev.shellHook = "echo ready"
 The repository's own `flake.nix` is generated this way.
 
 Windows has no Nix, so a config that declares `scoop.*`, `choco.*` or
-`winget.*` packages also gets `.maca/dev/{setup,activate}.ps1` — a portable,
+`winget.*` packages also gets `.maca/dev/{setup,activate}.ps1`, a portable,
 project-local toolchain under `.maca\dev\`. The flake ignores those namespaces,
 so a Nix host is unaffected by their presence.
 
@@ -150,8 +150,8 @@ so a Nix host is unaffected by their presence.
 
 Because programs and config are the same language, they share types, share
 tooling, and can share values. A port number defined once is the same constant
-your server binds and your firewall opens — no drift between "the app" and "the
-box it runs on".
+your server binds and your firewall opens, with no drift between "the app" and
+"the box it runs on".
 
 The check that makes this safe rather than merely convenient is the effect row.
 Without it, "configuration is code" means a configuration can do anything a

@@ -1,4 +1,4 @@
-// tambo/app — the routing table, declared by chaining.
+// tambo/app: the routing table, declared by chaining.
 //
 // A tambo is a waystation on the Inca road: the place a traveller stops along
 // a route. That is what a handler is, so that is the name.
@@ -16,7 +16,7 @@
 // function values in record fields, so a table holding handlers could not be a
 // value at all. A table of names turns out to be the better shape anyway: the
 // program gets one `match` where every handler is named, in one place, and the
-// table stays data — printable, countable, checkable.
+// table stays data: printable, countable, checkable.
 //
 //     handle(ctx: Ctx) -> Response {
 //         match ctx.name {
@@ -30,13 +30,13 @@
 // catch it. `tambo/dispatch` buys it back at startup: `serve` asks `handle`
 // for every declared name before it binds a port, and refuses to start, naming
 // the ones with no arm. A missing arm is a mistake in the program, so it is
-// reported as one — never as a 404, which would send whoever reads the log
+// reported as one, never as a 404, which would send whoever reads the log
 // hunting a routing bug that is not there.
 //
 // The method is an argument rather than the function name. `.get(…)` is what
 // this wanted to be, and it cannot be: a compiled Maca program has one
 // namespace, so a top-level three-argument `get` captures every
-// `m.get(key, fallback)` in it — tambo's own included — and the build fails
+// `m.get(key, fallback)` in it, tambo's own included, and the build fails
 // inside a file the author never opened. `.on(…)` was the next choice, and
 // `cli/parse` has that one already, for a flag. So `route` for every method,
 // which costs a few characters and puts the method in the column
@@ -86,14 +86,14 @@ route(a: App, method: str, pattern: str, name: str) -> App =>
 fallback(a: App, name: str) -> App =>
     a with { fallback = name }
 
-/// The handler every request passes through first — a log line, a clock start,
+/// The handler every request passes through first: a log line, a clock start,
 /// an authorization check. Answering anything but `pass()` stops the request
 /// there, which is how the check refuses.
 ///
 /// A misspelt name here is the one drift `missing_handlers` cannot catch, and
 /// it fails open: `pass()` is both "no such arm" and "let this through", so a
 /// `.before("gaurd")` silently admits everybody. Assert the arm in your own
-/// tests — call `handle` with the hook's name and check it does not pass.
+/// tests: call `handle` with the hook's name and check it does not pass.
 before(a: App, name: str) -> App =>
     a with { before = name }
 
@@ -120,7 +120,7 @@ Pick = {
 
 /// The route a method and path chose, if any.
 ///
-/// Every matching route is considered and the most specific wins — see
+/// Every matching route is considered and the most specific wins. See
 /// `more_specific` in `tambo/route`. Declaration order only breaks a tie
 /// between patterns of identical shape.
 lookup(a: App, method: str, path: str) -> Pick {
@@ -142,12 +142,12 @@ lookup(a: App, method: str, path: str) -> Pick {
         i = i + 1
     }
 
-    // `sort` so `Allow:` reads the same on every run — a header that shuffles
+    // `sort` so `Allow:` reads the same on every run. A header that shuffles
     // between builds is a diff nobody can review.
     best.ok ? best : best with { allowed = others.sort() }
 }
 
-// Keep whichever of the two is more specific, and the incumbent on a tie —
+// Keep whichever of the two is more specific, and the incumbent on a tie,
 // which is what makes declaration order a tie-break rather than a priority.
 better(best: Pick, r: Route, hit: Bound) -> Pick {
     if best.ok && !more_specific(r.pattern, best.pattern) {

@@ -3,7 +3,7 @@
 // Two halves. The first is the harness: statistics over a known sample list, a
 // timing loop that has to say a busy candidate is slower than an idle one, a
 // round trip through JSON, and a comparison that has to name what moved. The
-// second is the corpus, and it is the more important half — a benchmark of a
+// second is the corpus, and it is the more important half. A benchmark of a
 // wrong implementation is worse than no benchmark, because it is a number
 // somebody will act on.
 //
@@ -160,7 +160,7 @@ test_the_square_root_of_zero_and_below_is_zero() {
 // so a value near the top of the double range is hundreds of passes from the
 // point where Newton's method starts converging quickly. A pass limit picked
 // for millisecond-scale variance stopped short and `root` answered 6.2e239 for
-// 1e300 — wrong by ninety orders of magnitude, and quietly.
+// 1e300, wrong by ninety orders of magnitude, and quietly.
 test_the_square_root_holds_at_the_top_of_the_float_range() {
     huge = ten_to(300)
     r = root(huge)
@@ -330,7 +330,7 @@ test_the_table_names_the_columns_it_needs() {
 }
 
 // `cli/show` pads a short row out with empty cells rather than refusing it, so
-// a row one cell short does not fail — it shifts every column after the gap and
+// a row one cell short does not fail. It shifts every column after the gap and
 // silently files each number under the wrong heading.
 test_a_row_has_a_cell_for_every_column() {
     row = row_of(sample("alpha", 10, 5, [1]))
@@ -410,7 +410,7 @@ test_a_name_with_a_quote_in_it_survives() {
 }
 
 // The reader undid the five escapes with five `replace`s, and a name holding a
-// backslash and then an `n` — written `\\n` — came back holding a backslash and
+// backslash and then an `n` (written `\\n`) came back holding a backslash and
 // a newline. No ordering of five replacements fixes that; only a scan that
 // consumes the escape it just recognised does.
 test_a_backslash_before_a_letter_survives_the_round_trip() {
@@ -655,7 +655,7 @@ test_the_string_cases_report_the_length_they_built() {
 }
 
 test_the_scanner_counts_letters_and_digits_separately() {
-    // "the quick br" — twelve bytes, ten of them letters, none a digit.
+    // "the quick br": twelve bytes, ten of them letters, none a digit.
     assert_eq(str_scan(12), 10000, "letters in the thousands place")
 }
 
@@ -936,7 +936,7 @@ test_the_tree_answers_membership() {
 }
 
 // Three parallel lists sized to what `bst_of` was handed, and no way to grow
-// them without copying all three — so a key past that is dropped, and a caller
+// them without copying all three. So a key past that is dropped, and a caller
 // who did not expect it should be able to find that out from a test.
 test_a_full_tree_drops_a_key_rather_than_growing() {
     t = bst_insert(bst_of([5, 3]), 9)
@@ -1121,7 +1121,7 @@ test_every_case_belongs_to_a_group() {
 // a second list still looks grouped, and summing the four list lengths against
 // a corpus that *is* those four lists concatenated compares a number to itself.
 // Counting the claims is what actually catches it. Retyping "json tokenize" as
-// "map get" — dropping one case and duplicating another — left the whole suite
+// "map get" (dropping one case and duplicating another) left the whole suite
 // green before this.
 test_every_case_is_claimed_by_exactly_one_group() {
     miscounted = 0
@@ -1202,7 +1202,7 @@ test_every_case_gives_the_same_answer_twice() {
 // The assertion here is a formality and says so: what this checks is that none
 // of the forty-six reads off the end of an empty input, and a case that does
 // takes the whole run down before the assertion is reached. There is no answer
-// to compare against — `sieve(0)` is 0, `balanced brackets` at 0 is 6, and
+// to compare against: `sieve(0)` is 0, `balanced brackets` at 0 is 6, and
 // pinning forty-six such numbers would be pinning the corpus, not the boundary.
 test_every_case_survives_a_workload_of_zero() {
     ran = 0

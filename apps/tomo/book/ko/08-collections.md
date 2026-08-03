@@ -124,8 +124,8 @@ evens = [1, 2, 3, 4].filter(is_even)
 `substr`는 길이를 받습니다.** 이름이 리스트와 같듯 규약도 같습니다.
 
 ```maca
-"abcdef".slice(1, 3)      // "bc"  — 인덱스 3 앞까지
-"abcdef".substr(1, 3)     // "bcd" — 인덱스 1부터 세 글자
+"abcdef".slice(1, 3)      // "bc"  (인덱스 3 앞까지)
+"abcdef".substr(1, 3)     // "bcd" (인덱스 1부터 세 글자)
 ```
 
 `chars`, `at`, 그리고 세 가지 문자 분류가 스캐너를 만드는 재료입니다.
@@ -145,7 +145,7 @@ run_digits(cs: str[], i: int) -> int =>
 없는 이름은 오타입니다. 가까운 것이 있으면 제안도 해 줍니다.
 
 ```
-UndefinedName: `str` has no method `lenght` — did you mean `length`?
+UndefinedName: `str` has no method `lenght`; did you mean `length`?
 ```
 
 ## 문자열과 문자

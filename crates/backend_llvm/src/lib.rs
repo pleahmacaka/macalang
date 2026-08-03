@@ -1,7 +1,7 @@
 //! maca-backend-llvm: emit LLVM IR for the SIMD span of the hybrid backend.
 //!
 //! Only functions whose signature mentions a SIMD vector type (`f32x8`,
-//! `i32x4`, …) are lowered here — everything else stays on the C path. The
+//! `i32x4`, …) are lowered here; everything else stays on the C path. The
 //! emitted IR uses native `<N x T>` vectors and `llvm.vector.reduce.*`
 //! intrinsics, is compiled to an object by `zig cc file.ll`, and links against
 //! the C objects over the shared C ABI (vector args pass in SSE/AVX registers,

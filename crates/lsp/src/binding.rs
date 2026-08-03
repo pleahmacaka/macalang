@@ -14,15 +14,15 @@
 //! the literal's key and the field access were all collateral. Two of the seven
 //! were right. In an editor that is a rename that silently breaks the file.
 //!
-//! The AST is span-free on purpose (`maca_parser::ast` — the print/parse
+//! The AST is span-free on purpose (`maca_parser::ast`, whose print/parse
 //! roundtrip test compares structure), so scope is recovered from the token
 //! stream instead, which does carry spans. That is enough to separate the three
 //! things a name can be:
 //!
-//!   * a **top-level** function, type or constant — every use in the file, and
+//!   * a **top-level** function, type or constant: every use in the file, and
 //!     in any file that imports it;
-//!   * a **local** or parameter — uses inside the one function that binds it;
-//!   * a **field** — declarations, literal keys, named arguments, and `.field`
+//!   * a **local** or parameter: uses inside the one function that binds it;
+//!   * a **field**: declarations, literal keys, named arguments, and `.field`
 //!     accesses.
 //!
 //! What it does not do is inner-block scope: two `x`s in different `if` arms of
@@ -32,13 +32,14 @@
 //!
 //! Almost every rule below is here because a plausible one was wrong on a real
 //! file. An adversarial review renamed things across this repository and found
-//! that 102 of its 1178 definitions — every record, every sum type, every
-//! constant — renamed to a single edit: their own declaration. Two golden
+//! that 102 of its 1178 definitions, every record, every sum type and every
+//! constant, renamed to a single edit: their own declaration. Two golden
 //! examples came out of a rename not compiling. The cases are in
 //! `crates/lsp/tests/smoke.rs`, one test each, and each of them fails if the
 //! rule beside it is put back the way it was.
 
 use maca_lexer::{Span, Tok, Token, lex};
+use maca_parser::{Brace, brace_kind};
 
 /// Where a name is visible, and therefore what a rename may touch.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,8 +63,8 @@ pub struct Binding {
 
 /// What syntactic position an identifier occurrence sits in.
 ///
-/// The distinction that matters is between a *value* — a name being read or
-/// written — and a *key*, which names a field rather than referring to one of
+/// The distinction that matters is between a *value*, a name being read or
+/// written, and a *key*, which names a field rather than referring to one of
 /// these bindings. `p.x`, `P { x = 1 }`, `x: int` inside a record, and
 /// `div(class="c")` are all keys.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -81,14 +82,6 @@ struct Occurrence<'a> {
     declares: bool,
 }
 
-/// A brace either opens a record — a type declaration, a literal, or a `with`
-/// update — or a block. Only the first kind makes `name =` a field key.
-#[derive(Clone, Copy, PartialEq)]
-enum Brace {
-    Record,
-    Block,
-}
-
 /// Resolve the identifier at `offset`, or `None` if the cursor is not on one.
 pub fn resolve(src: &str, offset: usize) -> Option<Binding> {
     let tokens = lex(src).tokens;
@@ -102,7 +95,7 @@ pub fn resolve(src: &str, offset: usize) -> Option<Binding> {
         .or_else(|| occurrences.iter().find(|o| offset == o.span.1))?;
     let name = hit.name.to_string();
     let items = top_level_items(src, &tokens);
-    // `int`, `str`, `info` — an editor would happily open a rename box over
+    // `int`, `str`, `info`: an editor would happily open a rename box over
     // these, and renaming all three `int`s in a signature is never what anyone
     // meant. They are `Ident`s to the lexer, so refusing them is this
     // function's job rather than the keyword check's.
@@ -126,14 +119,14 @@ pub fn resolve(src: &str, offset: usize) -> Option<Binding> {
     }
 
     // A name the enclosing function binds itself is that function's, even when
-    // a top-level definition shares the name — the local shadows it.
+    // a top-level definition shares the name, because the local shadows it.
     //
     // Everything else is top-level, including a name this file never defines:
     // a call to an imported function is exactly that, and treating it as a
     // local silently renamed the call and left the definition and every other
     // caller alone.
     let scope = match enclosing(&items, hit.span.0) {
-        // The cursor is on the item's own head — `Point` in `Point = { … }`,
+        // The cursor is on the item's own head: `Point` in `Point = { … }`,
         // `NTASKS` in `NTASKS = 6`. The item *is* the definition, so this is
         // top-level however much the head looks like an assignment. Reading it
         // as a local gave every record, sum type and constant in the repository
@@ -157,7 +150,7 @@ pub fn spans(src: &str, binding: &Binding) -> Vec<Span> {
         _ => Role::Value,
     };
     // A top-level name is not visible inside a function that binds the same
-    // name itself — that function's `helper` is its own. Without this a rename
+    // name itself: that function's `helper` is its own. Without this a rename
     // of the top-level `helper` also rewrote every unrelated local called
     // `helper`, in this file and in every file that imports it.
     let shadowed: Vec<Span> = match binding.scope {
@@ -184,7 +177,7 @@ pub fn spans(src: &str, binding: &Binding) -> Vec<Span> {
 /// Does this file declare `name` as a record field?
 ///
 /// A field rename is single-file, so one declared elsewhere can only be renamed
-/// half-way — see `workspace`.
+/// half-way. See `workspace`.
 pub fn declares_field(src: &str, name: &str) -> bool {
     let tokens = lex(src).tokens;
     occurrences(src, &tokens)
@@ -231,8 +224,8 @@ pub fn is_renameable_to(name: &str) -> bool {
 
 /// Every identifier in the file, with the position it sits in.
 ///
-/// Comments and string bodies never reach here — the lexer does not emit them
-/// as identifiers — which is why prose mentioning a name is safe from rename
+/// Comments and string bodies never reach here, because the lexer does not emit
+/// them as identifiers, which is why prose mentioning a name is safe from rename
 /// without the scanner having to know what a comment looks like. An
 /// interpolation *is* code and its identifiers do come through, which is right:
 /// `"{count}"` refers to the binding.
@@ -240,7 +233,7 @@ fn occurrences<'a>(src: &'a str, tokens: &'a [Token]) -> Vec<Occurrence<'a>> {
     let mut out = Vec::new();
     // Each open brace remembers the paren depth it interrupted. Without that,
     // `parens` was a flat file counter: a block opened inside a still-open call
-    // — `xs.map(v => { y = 1  … })` — kept `parens > 0`, so the block's `y = 1`
+    // (`xs.map(v => { y = 1  … })`) kept `parens > 0`, so the block's `y = 1`
     // read as a named argument, and renaming that temporary rewrote every
     // record field called `y` in the file.
     let mut braces: Vec<(Brace, usize)> = Vec::new();
@@ -265,7 +258,7 @@ fn occurrences<'a>(src: &'a str, tokens: &'a [Token]) -> Vec<Occurrence<'a>> {
             // `import std/text` names a module and a directory, not a binding;
             // renaming the path segment used to rewrite every local called
             // `text`. The names inside `import { foo } from a/b` are the
-            // exception — those *are* the definitions, and a rename that skips
+            // exception: those *are* the definitions, and a rename that skips
             // them leaves the importer asking for a name that no longer exists.
             Tok::Ident(_) if import_line && braces.is_empty() => {}
             Tok::Ident(_) => {
@@ -289,65 +282,14 @@ fn occurrences<'a>(src: &'a str, tokens: &'a [Token]) -> Vec<Occurrence<'a>> {
     out
 }
 
-/// A `{` opens a record when it follows a type name (`P {`), a `with`, or the
-/// `=` of a declaration. Everything else is a block.
-///
-/// The same three characters can be either, and the parser has a `no_brace`
-/// mode for exactly this reason — `for x in xs {` is a loop, not a constructor.
-/// A control keyword at the head of the phrase opens a block; otherwise the
-/// token immediately before the brace decides.
-///
-/// It has to be the *immediate* one. Asking whether a `->` appears anywhere on
-/// the line read `at(n: int) -> Point => Point { x = n }` as a block, so a
-/// rename of `x` skipped the literal's key — and skipped `c with { port = p }`
-/// in `examples/record_update.maca`, which produced a file that did not
-/// compile. A `->` before the name means a return type; a `=>`, a `=`, a `(`
-/// or a `,` before it means a constructor.
-fn brace_kind(tokens: &[Token], at: usize) -> Brace {
-    let line = line_start(tokens, at);
-    let head = &tokens[line..at];
-
-    // Anywhere in the phrase, not just at its head: `x = if c { … }` puts the
-    // `if` after the binding it feeds. A record literal inside a control arm is
-    // unaffected, because the arm's own `{` ends the phrase.
-    if head.iter().any(|t| opens_a_block(&t.tok)) {
-        return Brace::Block;
-    }
-    let mut back = head.iter().rev().filter(|t| t.tok != Tok::Newline);
-    match back.next().map(|t| &t.tok) {
-        Some(Tok::With | Tok::Eq) => Brace::Record,
-        // `f() -> Point {` is a body; `=> Point {` is a literal.
-        Some(Tok::Ident(_)) if back.next().map(|t| &t.tok) == Some(&Tok::Arrow) => Brace::Block,
-        Some(Tok::Ident(_)) => Brace::Record,
-        _ => Brace::Block,
-    }
-}
-
-fn opens_a_block(t: &Tok) -> bool {
-    matches!(t, Tok::If | Tok::Else | Tok::While | Tok::For | Tok::Match)
-}
-
-/// Index of the first token of the phrase containing `at`.
-///
-/// A brace is a boundary as much as a newline is: no `Newline` is emitted after
-/// `{`, so scanning back for one alone runs out of the block and picks up the
-/// enclosing function's signature — which has a `->` in it, and so read every
-/// record literal inside a function as a block.
-fn line_start(tokens: &[Token], at: usize) -> usize {
-    tokens[..at]
-        .iter()
-        .rposition(|t| matches!(t.tok, Tok::Newline | Tok::LBrace | Tok::RBrace))
-        .map_or(0, |i| i + 1)
-}
-
 /// Is this identifier naming a field rather than referring to a binding?
 fn is_key(tokens: &[Token], at: usize, brace: Option<Brace>, parens: usize) -> bool {
-    // `p.x` — a field access, whatever encloses it
+    // `p.x`: a field access, whatever encloses it
     if at > 0 && tokens[at - 1].tok == Tok::Dot {
         return true;
     }
     let next = tokens.get(at + 1).map(|t| &t.tok);
-    // `div(class="c")` and `f(name = v)` — a named argument, which names a
+    // `div(class="c")` and `f(name = v)`: a named argument, which names a
     // parameter or an attribute rather than referring to a local
     if parens > 0 && next == Some(&Tok::Eq) {
         return true;
@@ -402,7 +344,7 @@ fn enclosing(items: &[(Span, String)], byte: usize) -> Option<Span> {
         .map(|(span, _)| *span)
 }
 
-/// Does this function bind `name` itself — as a parameter, a `for` variable, a
+/// Does this function bind `name` itself, as a parameter, a `for` variable, a
 /// lambda parameter, or an assignment?
 fn binds_locally(tokens: &[Token], (start, end): Span, name: &str) -> bool {
     let inside: Vec<&Token> = tokens
@@ -412,7 +354,7 @@ fn binds_locally(tokens: &[Token], (start, end): Span, name: &str) -> bool {
     // The head is the region's first identifier, not its first token: the
     // lexer emits a zero-width `Newline` at the same offset, so counting
     // positions from zero found the newline and left the head looking like an
-    // ordinary `Expr =` binding — which hid every use of the type in its own
+    // ordinary `Expr =` binding, which hid every use of the type in its own
     // declaration.
     let Some(head) = inside.iter().position(|t| matches!(t.tok, Tok::Ident(_))) else {
         return false;
@@ -440,12 +382,12 @@ fn binds_locally(tokens: &[Token], (start, end): Span, name: &str) -> bool {
             return true;
         }
         // A bare name in a comma list binds only where a comma list *can* bind:
-        // this item's own parameters, and a pattern — `Circle(r) =>`, `[x, ..r]
+        // this item's own parameters, and a pattern: `Circle(r) =>`, `[x, ..r]
         // =>`, `first, ..rest =>`.
         //
         // Anywhere else a bare name in a comma list is an argument being passed.
-        // Treating those as binders made every function value — `xs.map(quote)`,
-        // `run_end(cs, i, is_alpha)` — a local of its caller: 351 sites in this
+        // Treating those as binders made every function value (`xs.map(quote)`,
+        // `run_end(cs, i, is_alpha)`) a local of its caller: 351 sites in this
         // repository, each renaming to a single edit.
         let bare_in_list = matches!(
             next,
@@ -462,7 +404,7 @@ fn binds_locally(tokens: &[Token], (start, end): Span, name: &str) -> bool {
     })
 }
 
-/// The token indices of this item's own parameter list — everything between the
+/// The token indices of this item's own parameter list: everything between the
 /// `(` that follows the item's name and its matching `)`.
 fn param_range(inside: &[&Token], head: usize) -> std::ops::Range<usize> {
     if inside.get(head + 1).map(|t| &t.tok) != Some(&Tok::LParen) {
@@ -484,7 +426,7 @@ fn param_range(inside: &[&Token], head: usize) -> std::ops::Range<usize> {
     0..0
 }
 
-/// Is the name at `i` inside a `match` arm's pattern — that is, does a `=>`
+/// Is the name at `i` inside a `match` arm's pattern, that is, does a `=>`
 /// close the phrase it sits in?
 ///
 /// `match s { Circle(r) => … }` binds `r`; `xs.map(f(a, quote))` does not bind

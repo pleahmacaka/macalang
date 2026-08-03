@@ -15,13 +15,13 @@ distinct mistakes reduce to it.
 TypeMismatch: in call to `d` (argument 2): type mismatch: expected P, found int
 ```
 
-**Argument count** — arity is a type property, so it lands here:
+**Argument count**: arity is a type property, so it lands here:
 
 ```
 TypeMismatch: call to `f` expects 2 argument(s), got 3
 ```
 
-**Disagreeing branches** — an `if` or ternary whose arms have different types:
+**Disagreeing branches**: an `if` or ternary whose arms have different types:
 
 ```
 TypeMismatch: ternary branches disagree: type mismatch: expected int, found str
@@ -29,9 +29,10 @@ TypeMismatch: ternary branches disagree: type mismatch: expected int, found str
 
 This one catches a common slip: `if` and `match` are expressions, so their
 branches have to agree even when you were treating the whole thing as a
-statement. `c ? continue : 0` fails for this reason — `continue` has no value.
+statement. `c ? continue : 0` fails for this reason, because `continue` has no
+value.
 
-**Record fields** — a literal names every field the record declares, and no
+**Record fields**: a literal names every field the record declares, and no
 field it doesn't:
 
 ```
@@ -39,8 +40,8 @@ TypeMismatch: `Config` is missing field(s): port, title
 TypeMismatch: `Config` has no field `titel`; did you mean `title`?
 ```
 
-A missing field would otherwise be a silent zero — `""` for a `str`, `0` for an
-`int` — and a misspelt one is worse, because the value goes nowhere and the
+A missing field would otherwise be a silent zero (`""` for a `str`, `0` for an
+`int`), and a misspelt one is worse, because the value goes nowhere and the
 field it was meant for stays empty. Both compiled clean before this check, and
 what you saw was a page with a heading missing. `base with { f = v }` is the
 update form and is deliberately partial; only a construction is checked.
@@ -79,18 +80,18 @@ of it.
 Assignment to a constant.
 
 ```
-Immutable: cannot reassign constant `Limit` — declare it mutable with
+Immutable: cannot reassign constant `Limit`; declare it mutable with
 `Limit = …` (no `const`)
 ```
 
 Three things make a binding constant: `const`, a trailing `as const`, and a
-**Capitalized** name. The third catches people out — `Total = 0` is a constant
+**Capitalized** name. The third catches people out: `Total = 0` is a constant
 because of the capital letter. `maca lint` nudges toward writing `const`
 explicitly for exactly this reason.
 
 ## UndefinedName
 
-A name that is defined nowhere — not a local, not a function, not an import, not
+A name that is defined nowhere: not a local, not a function, not an import, not
 a builtin.
 
 ```
@@ -123,9 +124,9 @@ know.
 UnknownOption: unknown NixOS option namespace `servicez`
 ```
 
-The roots it knows are the NixOS ones — `networking`, `services`, `system`,
+The roots it knows are the NixOS ones (`networking`, `services`, `system`,
 `users`, `environment`, `programs`, `boot`, `hardware`, `security`, `nix`,
-`fonts` and their siblings — plus any local binding in the file.
+`fonts` and their siblings), plus any local binding in the file.
 
 Be precise about the reach, because it decides where you go looking when a
 deploy fails: the namespace is checked, the leaf is not. `servicez.nginx.enable`
@@ -151,7 +152,7 @@ it safe for one language to be both a programming language and a configuration
 language.
 
 Be precise about the reach here too. The rows are matched on the *shape* of the
-call — a known builtin name, or a method on one of those receivers — so
+call, a known builtin name or a method on one of those receivers, so
 `file.read(p)` is caught and the free function `read_file(p)` is not. A config
 that reads a file through the free builtin compiles today. The rows and what
 introduces each are [Effects and Async](a7-effects.md).
@@ -252,17 +253,17 @@ block. Write `Name { … }` for the record, or drop the `=>` for the block
 [Syntax](a5-syntax.md) has the full rule and what decides it in the cases that
 are not ambiguous.
 
-**Backend refusals** — valid code that a particular target cannot emit:
+**Backend refusals**: valid code that a particular target cannot emit:
 
 ```
-`on:click` needs a live DOM — build this with `--target js`
+`on:click` needs a live DOM; build this with `--target js`
 ```
 
 An event handler has nowhere to attach when elements render to a string
 ([the UI syntax](a11-ui.md)), so the native target says so rather than emitting
 markup that silently does nothing. Each target refuses what it cannot honour,
 and for the
-same reason — the alternative is an error about generated code you never
+same reason: the alternative is an error about generated code you never
 wrote:
 
 | Target | Refuses |
@@ -272,8 +273,8 @@ wrote:
 | `embedded` | `info` and the other console builtins; a `main` with a return type |
 
 **C compiler errors** should not happen, and when they do it is a compiler bug
-worth reporting. A misspelt method used to be the exception — it survived to
-the linker as `undefined reference to 'slice'` — but the method set of a `str`
+worth reporting. A misspelt method used to be the exception, surviving to
+the linker as `undefined reference to 'slice'`, but the method set of a `str`
 or a `T[]` is closed, so a name outside it is now caught here, with a
 suggestion where there is a near miss. Method calls on an `any` receiver stay
 gradual, because that is how foreign code is reached.

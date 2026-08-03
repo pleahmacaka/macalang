@@ -1,6 +1,6 @@
 # Colorblind Async
 
-Most languages split functions into two colors — synchronous and `async` — and
+Most languages split functions into two colors (synchronous and `async`), and
 the colors are contagious: to `await` something, you must be `async`, and so must
 your caller, all the way up. Maca does not have this split. **There is no `async`
 keyword.**
@@ -14,7 +14,7 @@ operations introduce it:
 - `await fut` suspends until the future resolves, and evaluates to its value;
 - `sleep_ms(ms)` is a suspension point.
 
-A function that uses any of them *is* async — no annotation, no color:
+A function that uses any of them *is* async, with no annotation and no color:
 
 ```maca
 fetch_both(a: str, b: str) -> str {
@@ -33,7 +33,7 @@ calls it.
 Because there is no color to propagate, refactoring is painless: making a leaf
 function concurrent doesn't force a rewrite of every caller. The same code runs
 whether or not it happens to suspend, and `await a + await b` groups as
-`(await a) + (await b)` — `await` is an ordinary prefix operator.
+`(await a) + (await b)`, because `await` is an ordinary prefix operator.
 
 ## It compiles to real concurrency
 
@@ -44,7 +44,7 @@ the effect once; each backend realizes it.
 
 ## Effects are checked
 
-Effects are not only inferred — they are enforced where it matters. In *config
+Effects are not only inferred; they are enforced where it matters. In *config
 mode* (the Nix target), async is impure, so `await`/`spawn`/`sleep_ms` are a
 compile error: infrastructure descriptions must be pure. The effect that is
 convenient in a program is a guardrail in config.
@@ -72,7 +72,7 @@ main() -> int {
 ```
 
 Wall time is about 50ms, not 100. Take the two `spawn`s out and call
-`slow_double` directly — same output, twice the wall time, and not one signature
+`slow_double` directly: same output, twice the wall time, and not one signature
 had to change.
 
 ## Where the full answer is

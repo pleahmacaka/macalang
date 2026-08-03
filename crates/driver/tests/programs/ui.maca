@@ -1,7 +1,7 @@
 // UI elements and Tailwind on the native target.
 //
 // The JS backend turns `div(class="…", child)` into a reactive DOM. On native
-// there is no DOM, so the same syntax renders to an HTML *string* — which is
+// there is no DOM, so the same syntax renders to an HTML *string*, which is
 // what a static site generator needs.
 
 test_a_tag_call_renders_its_children_in_order() {
@@ -65,7 +65,7 @@ test_styles_ships_nothing_the_module_never_mentions() {
 use_the_utilities_the_stylesheet_is_asked_about() -> str =>
     div(class="max-w-2xl mx-auto font-bold", "x")
 
-// `data-*`, `aria-*`, `http-equiv` — the attributes a real document is full of,
+// `data-*`, `aria-*`, `http-equiv`: the attributes a real document is full of,
 // written with the hyphen they have in HTML. An attached `-` is part of an
 // identifier and a spaced one is the subtraction operator, the same
 // attached-vs-spaced rule that separates `x?` from `c ? x : y`.

@@ -66,7 +66,7 @@ fn skip() -> bool {
 
 /// The shape the whole feature exists for: one function out of a package, run
 /// straight from the command line. `http.serve` reads as the module `http` and
-/// its `serve`, or as the module `http/serve` under its own name — both are
+/// its `serve`, or as the module `http/serve` under its own name. Both are
 /// ordinary paths, so whichever exists is the one that was meant, and no entry
 /// file is needed to make the spelling read well.
 #[test]
@@ -97,7 +97,7 @@ fn a_package_function_runs_from_the_command_line() {
     }
 }
 
-/// With no function named, `main` runs — a package that can be run says so.
+/// With no function named, `main` runs: a package that can be run says so.
 #[test]
 fn a_bare_module_runs_its_main() {
     if skip() {
@@ -114,7 +114,7 @@ fn a_bare_module_runs_its_main() {
     assert!(stdout(&out).contains("hello from the module"));
 }
 
-/// Failing that, the function named after the module — so a one-function
+/// Failing that, the function named after the module, so a one-function
 /// package runs under its own name with nothing else written down.
 #[test]
 fn a_module_without_a_main_runs_its_namesake() {
@@ -220,7 +220,7 @@ fn the_refusals_name_what_is_missing() {
 }
 
 /// The generated entry module is an implementation detail and must not survive
-/// the run — nor be importable while it exists. A shim named after its own
+/// the run, nor be importable while it exists. A shim named after its own
 /// module resolved `import http` to itself and failed to link.
 #[test]
 fn the_generated_entry_leaves_nothing_behind() {

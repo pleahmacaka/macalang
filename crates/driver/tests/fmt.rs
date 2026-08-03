@@ -106,7 +106,7 @@ fn alignment_survives_formatting() {
     let src = "f() -> str =>\n\
                \x20   pair(one,\n\
                \x20        two)\n";
-    // `two` sits at column 9, under the `(` of `pair(` — not a multiple of the
+    // `two` sits at column 9, under the `(` of `pair(`, not a multiple of the
     // four-space level, and so not the formatter's to move.
     assert_eq!(formatted(src, "align"), src, "the aligned argument moved");
 }

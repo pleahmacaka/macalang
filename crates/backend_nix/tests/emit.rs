@@ -67,7 +67,7 @@ fn dev_flake_from_maca() {
     assert!(flake.contains("RUST_BACKTRACE = \"1\";"), "{flake}");
     assert!(flake.contains("shellHook = \"echo hi\";"), "{flake}");
     assert!(flake.contains("legacyPackages.${system}"), "{flake}");
-    // balanced braces/brackets — a cheap validity check
+    // balanced braces/brackets: a cheap validity check
     assert_eq!(
         flake.matches('{').count(),
         flake.matches('}').count(),
@@ -129,7 +129,7 @@ fn windows_dev_scripts_from_maca() {
     assert!(win.activate.contains("$env:JAVA_HOME"), "{}", win.activate);
     assert!(win.activate.contains("temurin"), "{}", win.activate);
 
-    // the flake ignores scoop/choco/winget entirely — Nix hosts see none of it
+    // the flake ignores scoop/choco/winget entirely, so Nix hosts see none of it
     let flake = maca_backend_nix::emit_flake(&parsed.module);
     assert!(!flake.contains("scoop"), "{flake}");
     assert!(!flake.contains("choco"), "{flake}");

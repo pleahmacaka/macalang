@@ -1,4 +1,4 @@
-// bench/cases/catalog — the corpus as a list you can walk.
+// bench/cases/catalog: the corpus as a list you can walk.
 //
 // Forty-six cases across four groups, each with a name, a group, a default
 // workload size, and a way to run it by name.
@@ -11,7 +11,7 @@
 //       info(line_of(measure(name, size, v => run_case(name, v), quick())))
 //   }
 //
-// `run_case` costs a name comparison per call — it walks a list to find the
+// `run_case` costs a name comparison per call: it walks a list to find the
 // group and then an `if` chain to find the case. For a case that takes
 // microseconds that is nothing; for the fastest primitives it is measurable.
 // Pass the case function directly when the number has to be exact:
@@ -102,7 +102,7 @@ table_cases() -> str[] =>
     ["edit distance", "lcs"]
 
 // Cost is per byte of a string the case builds and walks. A byte costs far more
-// than an integer does here — `at(i)` hands back a one-character string — so
+// than an integer does here (`at(i)` hands back a one-character string), so
 // these want a shorter input than a list case with the same shape.
 byte_cases() -> str[] =>
     ["run-length", "base convert", "json tokenize"]
@@ -129,8 +129,8 @@ cheap_cases() -> str[] =>
 /// Not one number for the whole corpus. The bands below are cost classes: a
 /// case is in one because of how its work grows, and sizing by class is what
 /// keeps one pass over all forty-six down to about twenty milliseconds. Within
-/// that the cases are not level — a call ranges from under a microsecond
-/// (`int arithmetic`) to a few milliseconds (`json tokenize`) — and they do not
+/// that the cases are not level, since a call ranges from under a microsecond
+/// (`int arithmetic`) to a few milliseconds (`json tokenize`), and they do not
 /// need to be. `bench/time` calibrates each case's iteration count separately,
 /// so a cheap case is measured by running it more often, not by being given a
 /// bigger input than the shape of its work makes sense at.
@@ -165,8 +165,8 @@ default_size(name: str) -> int {
 
 /// What the size means for this case, for a report that has to say so.
 ///
-/// Four of the cases take a number that is not a count of anything — a
-/// Fibonacci index, a board side, a matrix side — and a reader who assumed
+/// Four of the cases take a number that is not a count of anything (a
+/// Fibonacci index, a board side, a matrix side), and a reader who assumed
 /// otherwise would read `n-queens` at 7 as a tiny workload rather than a
 /// forty-thousand-placement search.
 size_unit(name: str) -> str {

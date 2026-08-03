@@ -1,8 +1,8 @@
-//! `tools/lint.maca` — the Maca style linter, written in Maca.
+//! `tools/lint.maca`: the Maca style linter, written in Maca.
 //!
 //! Like `tools/bindgen.maca`, this is compiler tooling ported into the language
 //! it compiles. The gate checks the four rules actually fire, that a clean file
-//! reports clean, that the exit code distinguishes the two — and that the tool
+//! reports clean, that the exit code distinguishes the two, and that the tool
 //! finds `tools/` itself clean, so the linter and the code it lints stay in
 //! agreement.
 //!
@@ -43,7 +43,7 @@ fn every_rule_fires_and_a_clean_file_is_clean() {
     let _ = std::fs::create_dir_all(&dir);
 
     // one file, one violation of each rule, in rule order. The wide line is
-    // *code*, not a long string — a long string literal is deliberately exempt
+    // *code*, not a long string; a long string literal is deliberately exempt
     // (see `a_long_string_literal_is_not_a_long_line`).
     let bad = dir.join("bad.maca");
     let wide = "+ 1 ".repeat(25) + "+ 1";
@@ -85,7 +85,7 @@ fn every_rule_fires_and_a_clean_file_is_clean() {
     assert!(report.contains("clean"), "expected `clean`, got:\n{report}");
 }
 
-/// Ternaries and prose are exempt — a linter that cries wolf gets turned off.
+/// Ternaries and prose are exempt. A linter that cries wolf gets turned off.
 #[test]
 fn the_single_line_if_rule_does_not_fire_on_ternaries_or_comments() {
     if have_wsl() || !have("cc") {
@@ -107,8 +107,8 @@ fn the_single_line_if_rule_does_not_fire_on_ternaries_or_comments() {
 }
 
 /// Maca linting Maca. Run with no argument the linter checks every directory
-/// holding Maca source — `examples/`, `selfhost/`, `tools/`, `modules/`,
-/// `apps/` and `packages/` — so this asserts the whole tree stays clean. A
+/// holding Maca source (`examples/`, `selfhost/`, `tools/`, `modules/`,
+/// `apps/` and `packages/`), so this asserts the whole tree stays clean. A
 /// style the codebase doesn't actually hold to isn't a style, and an exemption
 /// list is how a style becomes one nobody holds to.
 #[test]
@@ -131,8 +131,8 @@ fn the_repository_passes_its_own_linter() {
 }
 
 /// The width rule measures code, not text: a line is over-long only once its
-/// string literals are collapsed. A 200-character C template inside a string —
-/// `selfhost/emit_c.maca` is full of them — can't be rewrapped without changing
+/// string literals are collapsed. A 200-character C template inside a string
+/// (`selfhost/emit_c.maca` is full of them) can't be rewrapped without changing
 /// what it emits, so it is exempt exactly as a long comment is.
 #[test]
 fn a_long_string_literal_is_not_a_long_line() {

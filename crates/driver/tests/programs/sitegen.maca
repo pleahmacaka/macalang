@@ -52,8 +52,8 @@ test_root_page_links_the_site() {
 }
 
 // The page exists to answer three questions a reader asks before anything
-// else — statically or dynamically typed, garbage collected or not,
-// interpreted or compiled — and to answer them where they can be read rather
+// else (statically or dynamically typed, garbage collected or not,
+// interpreted or compiled), and to answer them where they can be read rather
 // than inferred. Each has to be stated in words on the page itself.
 test_the_page_puts_the_language_in_a_box() {
     root = read_file(join(front_page_dir(), "index.html"))
@@ -94,8 +94,8 @@ test_titles_are_whole_and_translated() {
     en = title_of(read_file(join(dir, "index.html")))
     ko = title_of(read_file(join(dir, "ko/home.html")))
 
-    assert(en.starts_with("Maca — "), "english title")
-    assert(ko.starts_with("Maca — "), "korean title")
+    assert(en.starts_with("Maca: "), "english title")
+    assert(ko.starts_with("Maca: "), "korean title")
     assert(en != ko, "titles differ")
     assert(!en.ends_with("…"), "title not truncated")
     assert(ko.ends_with("언어"), "korean title is whole")
@@ -125,8 +125,8 @@ install_url(ls: str[], i: int) -> str {
     }
 }
 
-// Both languages carry every card. The checker enforces it — `Topic`, `Spec`
-// and `Caveat` are sum types and each language answers a `match` — so this is
+// Both languages carry every card. The checker enforces it: `Topic`, `Spec`
+// and `Caveat` are sum types and each language answers a `match`, so this is
 // the executed form of that claim.
 test_both_languages_carry_every_card() {
     dir = front_page_dir()
@@ -142,8 +142,8 @@ test_both_languages_carry_every_card() {
 // ---- the code on the page ---------------------------------------------------
 //
 // `apps/site/home.maca` says of its samples "each is a program that compiles".
-// Nothing checked it, and three of the five are fragments — a function with no
-// `main`, a call to a `get` defined nowhere — so the claim was only true of the
+// Nothing checked it, and three of the five are fragments (a function with no
+// `main`, a call to a `get` defined nowhere), so the claim was only true of the
 // two that happened to be whole programs. Each is compiled here with the
 // context a reader would supply, which is what the claim actually means.
 
@@ -258,7 +258,7 @@ module_paths(ls: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-// What MacaDoc lists has to be what `std/README.md` advertises — no more, no
+// What MacaDoc lists has to be what `std/README.md` advertises: no more, no
 // less. Before `///` marked a doc comment, "any comment above an item" was the
 // rule, and it listed nine internal helpers while dropping nine public
 // functions. Neither is visible by reading the output; both are visible here.
@@ -293,7 +293,7 @@ test_a_doc_comment_renders_as_documented() {
 }
 
 // `str[]` in a signature has to survive as text. Deleting `esc` entirely was
-// invisible to a test that only compared name sets — a documentation generator
+// invisible to a test that only compared name sets. A documentation generator
 // that stops escaping HTML is the one bug it must not have.
 test_signatures_are_escaped() {
     page = read_file(join(api_dir(), "text.html"))
@@ -343,7 +343,7 @@ test_module_cards_say_what_the_module_is() {
 // ---- the awkward module -----------------------------------------------------
 //
 // std is written carefully, so running MacaDoc only on std tests the happy
-// path. `docfixture.maca` is written the awkward ways instead — every shape
+// path. `docfixture.maca` is written the awkward ways instead. Every shape
 // below produced wrong output at some point.
 
 fixture_dir() -> str {
@@ -423,7 +423,7 @@ test_a_blurb_without_a_blank_line_still_summarises() {
 
 // Everything after the signature block: the inner `between` has already cut
 // the article's own `</article>`, so there is no closing marker left to look
-// for — the rest of the body *is* the prose.
+// for: the rest of the body *is* the prose.
 doc_of(page: str, name: str) -> str =>
     split_once(between(page, "<article id=\"" ++ name ++ "\"", "</article>"),
                "</pre>").get(1)
@@ -460,8 +460,8 @@ backticked(parts: str[], i: int, acc: str[]) -> str[] {
 }
 
 // A cell names one function (`walk`) or a pair (`strip_prefix`/`strip_suffix`).
-// The row's own label is `std/text`, and a cell may be a type like `str[]` —
-// neither of those is an item.
+// The row's own label is `std/text`, and a cell may be a type like `str[]`.
+// Neither of those is an item.
 names_in(cell: str) -> str[] {
     if cell.starts_with("std/") {
         []

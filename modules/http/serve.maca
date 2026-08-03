@@ -1,4 +1,4 @@
-// http/serve — the working directory, over HTTP.
+// http/serve: the working directory, over HTTP.
 //
 //     maca -m http.serve              # port 8000, the working directory
 //     maca -m http.serve 3000 site    # port and directory
@@ -8,8 +8,8 @@
 // a server that volunteers a file list is a server that eventually volunteers
 // the wrong one.
 //
-// This is one program written with the library next door — `http/server`
-// listens, `http/request` parses, `http/response` builds — and reading which
+// This is one program written with the library next door: `http/server`
+// listens, `http/request` parses, `http/response` builds. Reading which
 // file each name came from is the point of writing the path.
 
 import { listen } from http/server
@@ -53,14 +53,14 @@ serve_file(root: str, req: Request) -> Response {
 //
 // Both sides go through `real_path`, which resolves `..`, `.` *and symlinks*.
 // Comparing normalized text alone let a symlink inside the root point out of
-// it — `site/link -> /etc/passwd` was served with a 200 — because no amount of
-// string arithmetic can see where a link goes.
+// it, so `site/link -> /etc/passwd` was served with a 200, because no amount
+// of string arithmetic can see where a link goes.
 under(root: str, path: str) -> str {
     base = real_path(root)
     joined = join(base, path)
     resolved = real_path(joined)
     // A path naming nothing cannot be a symlink out of the root, but it can
-    // still be written with `..` — so it is normalized instead, and the caller
+    // still be written with `..`, so it is normalized instead, and the caller
     // answers 404 rather than 403.
     inside = if resolved == "" { normalize(joined) } else { resolved }
 

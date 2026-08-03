@@ -1,6 +1,6 @@
 //! maca-backend-rust: lower Maca to Rust source (`--target rust`).
 //!
-//! Rust is the substrate for the crates.io ecosystem — the way the JVM backend
+//! Rust is the substrate for the crates.io ecosystem, the way the JVM backend
 //! is for Maven. This backend transpiles Maca to a `.rs` file that `cargo`/
 //! `rustc` compiles, so a Maca program can build on real Rust crates.
 //!
@@ -11,13 +11,13 @@
 //!   * `int`→`i64`, `float`→`f64`, `str`→`String`, `bool`→`bool`, `T[]`→`Vec<T>`
 //!   * `info(x)`/`print(x)` → `println!`/`print!`; interpolation → `format!`
 //!
-//! The generated file opens with `#![allow(warnings)]` — generated code is not
-//! read, and Maca's mutability model produces harmless `unused_mut`/dead-code.
+//! The generated file opens with `#![allow(warnings)]`, because generated code
+//! is not read, and Maca's mutability model produces harmless `unused_mut`/dead-code.
 
 use maca_parser::ast::*;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The `import rust "spec"` specs, in source order — the crates.io / std items a
+/// The `import rust "spec"` specs, in source order: the crates.io / std items a
 /// program pulls in. `import rust "gpui::div"` → the driver validates the crate
 /// against `[rust-dependencies]` and `emit` turns it into `use gpui::div;`.
 fn rust_imports(m: &Module) -> Vec<String> {
@@ -31,8 +31,8 @@ fn rust_imports(m: &Module) -> Vec<String> {
 }
 
 /// Turn an `import rust` spec into a `use` item. A bare path (`gpui::div`,
-/// `std::process`) is wrapped in `use …;`; anything that isn't a plain path — a
-/// raw Rust block (`fn …`, a `trait …`, an attribute) — is emitted verbatim.
+/// `std::process`) is wrapped in `use …;`; anything that isn't a plain path, such
+/// as a raw Rust block (`fn …`, a `trait …`, an attribute), is emitted verbatim.
 fn use_line(spec: &str) -> String {
     let s = spec.trim();
     if is_rust_path(s) {
@@ -142,11 +142,11 @@ struct Cx {
     /// only place that is knowable is the impl the module itself declares.
     borrowed_args: BTreeMap<String, Vec<bool>>,
     /// The parameters of the method being emitted that are borrows. A borrow is
-    /// passed on, never cloned — it is not ours to copy.
+    /// passed on, never cloned, because it is not ours to copy.
     borrows: BTreeSet<String>,
     /// variant name → its enum, so a bare `Green` emits `Color::Green`.
     variant_of: std::collections::BTreeMap<String, String>,
-    /// names already bound in the current function — a later `x = e` is a
+    /// names already bound in the current function, so a later `x = e` is a
     /// reassignment (`x = e`), not a new `let`.
     declared: BTreeSet<String>,
     /// Constructs this backend does not lower. They used to become
@@ -245,7 +245,7 @@ impl Cx {
 
     fn emit_struct(&mut self, name: &str, fields: &[(String, Type)]) -> String {
         // `PartialEq` matches the enum derive so a sum variant can carry a
-        // record payload (`Rows(Grid)`) — the derive cascades to field types.
+        // record payload (`Rows(Grid)`): the derive cascades to field types.
         let mut out =
             format!("#[derive(Clone, Debug, PartialEq)]\n#[allow(dead_code)]\nstruct {name} {{\n");
         for (fname, ty) in fields {
@@ -259,8 +259,8 @@ impl Cx {
     /// → `impl Trait for Name { fn m(&mut self, p: T) -> Ret { body } }`. A
     /// leading `self` parameter becomes `&mut self`.
     ///
-    /// The return type is the method's own annotation when it has one —
-    /// `render = (self, w, cx) -> AnyElement => …` — and otherwise inferred from
+    /// The return type is the method's own annotation when it has one, as in
+    /// `render = (self, w, cx) -> AnyElement => …`, and otherwise inferred from
     /// the body (`()`/`bool`/`String`/`i64`), which covers event handlers and
     /// getters. A trait whose method returns something the backend cannot see
     /// (gpui's `-> impl IntoElement`) needs the annotation: Rust lets an impl
@@ -268,11 +268,11 @@ impl Cx {
     /// type out is enough.
     /// A trait method's parameter type.
     ///
-    /// A type this module does not declare is *foreign* — it belongs to the
+    /// A type this module does not declare is *foreign*: it belongs to the
     /// crate the trait came from, and Maca never owns one. So it is borrowed
     /// mutably, which is the convention a Rust trait method takes its arguments
-    /// by (`w: &mut Window`, `cx: &mut Context<Self>`). A Maca type — a record,
-    /// a sum, a scalar — is passed by value as everywhere else.
+    /// by (`w: &mut Window`, `cx: &mut Context<Self>`). A Maca type, whether a
+    /// record, a sum, or a scalar, is passed by value as everywhere else.
     ///
     /// An unannotated parameter has no type to borrow, so it stays `i64`.
     fn method_param_ty(&self, p: &Param) -> String {
@@ -283,7 +283,7 @@ impl Cx {
         }
     }
 
-    /// Is this type from outside the module — neither a Maca scalar nor a
+    /// Is this type from outside the module, neither a Maca scalar nor a
     /// record/sum declared here?
     fn is_foreign_ty(&self, t: &Type) -> bool {
         let head = match t {
@@ -462,7 +462,7 @@ impl Cx {
             }
             Expr::Match { scrut, arms } => (self.match_expr(scrut, arms), false),
             Expr::Ctor { name, fields } => (self.ctor(name, fields), false),
-            // Colorblind async, on threads — the same shape the C runtime
+            // Colorblind async, on threads, in the same shape the C runtime
             // gives it. `spawn e` is a `JoinHandle`, `await h` joins it, and a
             // function that does either is still an ordinary function.
             Expr::Spawn(inner) => {
@@ -528,7 +528,7 @@ impl Cx {
                 (out, false)
             }
             // `Default::default()` type-checks wherever a value is wanted, so
-            // an unlowered construct became a plausible one — `break` inside a
+            // an unlowered construct became a plausible one: `break` inside a
             // `while` turned into a value and the loop could not terminate.
             other => {
                 self.problem(format!(
@@ -586,7 +586,7 @@ impl Cx {
         let argv: Vec<(String, bool)> = args.iter().map(|a| self.expr(arg_expr(a))).collect();
         let a0 = argv.first().map(|(c, _)| c.clone()).unwrap_or_default();
         // By-value user calls *move* their arguments in Rust, but Maca values are
-        // freely reusable — so a local variable passed by value is `.clone()`d
+        // freely reusable, so a local variable passed by value is `.clone()`d
         // (a no-op for `Copy` scalars). Fresh temporaries (literals, calls, ctors)
         // aren't moved from anything, so they're passed as-is.
         let cloned: Vec<String> = args
@@ -685,7 +685,7 @@ impl Cx {
     }
 
     /// A capitalized name that isn't a local record, sum, variant, or bound
-    /// variable — i.e. a type coming from an `import rust` crate. Such a name in
+    /// variable, i.e. a type coming from an `import rust` crate. Such a name in
     /// call position is an associated function / constructor (`Type::…`), not a
     /// value.
     fn is_foreign_type(&self, n: &str) -> bool {
@@ -757,10 +757,10 @@ impl Cx {
                 a.join(" | ")
             }
             Pattern::Float(f) => {
-                // Rust rejects a float in a pattern, so it has to be a guard —
-                // as a `_` arm it silently swallowed every later arm.
+                // Rust rejects a float in a pattern, so it has to be a guard.
+                // As a `_` arm it silently swallowed every later arm.
                 self.problem(format!(
-                    "the float pattern `{f}` has no Rust equivalent — \
+                    "the float pattern `{f}` has no Rust equivalent; \
                      compare with a guard instead"
                 ));
                 "_".into()
@@ -823,7 +823,7 @@ struct Variant {
     payload: Vec<String>, // Rust types
 }
 
-/// The variants of a sum-type declaration — `A | B(x) | C(x, y)` — or `None` if
+/// The variants of a sum-type declaration (`A | B(x) | C(x, y)`), or `None` if
 /// the value isn't a top-level union of variant forms. Each leaf is either a
 /// bare name (a nullary variant) or a call on a capitalized name whose argument
 /// "expressions" are really the payload types (`Circle(int)` parses as a call
@@ -921,7 +921,7 @@ struct Method {
 /// return annotation). Covers the common shapes: a mutation/loop/unit body → `()`
 /// (an event handler), a comparison/`!` → `bool`, a string → `String`, otherwise
 /// `i64`. A foreign return type such as `impl IntoElement` is out of reach from
-/// the body alone — the backend does not read the crate's signatures, so a
+/// the body alone, since the backend does not read the crate's signatures, so a
 /// method that needs one writes it as an annotation.
 fn guess_ret(body: &Expr, is_str: bool) -> String {
     use BinOp::*;
@@ -1011,7 +1011,7 @@ fn pat_bind(p: &Pattern) -> String {
     }
 }
 
-/// The shape of an anonymous record *value* — `{ host = "x", port = 80 }` —
+/// The shape of an anonymous record *value* (`{ host = "x", port = 80 }`),
 /// sorted by field name, so the same shape written twice is one struct and the
 /// two values are the same type regardless of the order they were written in.
 fn anon_shape(fs: &[Field]) -> Option<Vec<(String, Type)>> {
@@ -1041,7 +1041,7 @@ fn shallow_type(e: &Expr) -> Option<Type> {
     })
 }
 
-/// The struct name for an anonymous record's shape — derived from the shape, so
+/// The struct name for an anonymous record's shape, derived from the shape, so
 /// it is the same everywhere the shape is.
 fn anon_struct_name(fields: &[(String, Type)]) -> String {
     let mut s = String::from("MacaAnon");
@@ -1221,7 +1221,7 @@ fn record_fields(e: &Expr) -> Option<Vec<(String, Type)>> {
 /// Escape a Maca identifier that collides with a Rust keyword.
 fn ident(n: &str) -> String {
     // `self`/`Self`/`super`/`crate` are keywords that *cannot* be raw-escaped, and
-    // as the trait-impl receiver `self` must pass through verbatim — so they're
+    // as the trait-impl receiver `self` must pass through verbatim, so they're
     // deliberately absent from this list.
     const KW: &[&str] = &[
         "as", "break", "const", "continue", "else", "enum", "extern", "false", "fn", "for", "if",

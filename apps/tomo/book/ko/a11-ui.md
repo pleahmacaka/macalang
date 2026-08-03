@@ -79,8 +79,8 @@ main() -> int {
 label(pos: bool) -> str => pos ? "오른쪽" : "왼쪽"
 
 main() -> int {
-    info(label(true))     // "오른쪽" — <label>이 아니라 여러분의 함수
-    info(span("tag"))     // "<span>tag</span>" — `span`을 가리는 것은 없음
+    info(label(true))     // "오른쪽", <label>이 아니라 여러분의 함수
+    info(span("tag"))     // "<span>tag</span>", `span`을 가리는 것은 없음
     0
 }
 ```
@@ -189,7 +189,7 @@ button_class() -> str =>
 |---|---|
 | `hover:` `focus:` `active:` | `:hover` `:focus` `:active` |
 | `first:` `last:` | `:first-child` `:last-child` |
-| `open:` | `[open]` — 열린 `<details>` |
+| `open:` | `[open]`: 열린 `<details>` |
 | `before:` `after:` `marker:` | 대응하는 의사 요소 |
 | `placeholder:` | `::placeholder` |
 | `details-marker:` | `::-webkit-details-marker` |
@@ -266,7 +266,7 @@ main() -> int {
 | 네이티브 (C) | HTML 문자열을 만드는 `maca_concat` 체인. `maca_attr`가 속성 값을 이스케이프하고, 자식은 다시 이스케이프하지 않으며, void 요소는 스스로 닫힙니다 |
 | `js` | `createElement` 호출과 반응형 DOM. `on:`은 핸들러를 붙이고 `bind:`는 필드를 양방향으로 묶습니다 |
 | `element(tag, …)` | 양쪽에서 같고, void 여부는 실행 시점에 `maca_element`가 정합니다 |
-| `open=true` | `maca_flag` — 속성이 있거나 없거나이지 `="false"`는 절대 아닙니다 |
+| `open=true` | `maca_flag`. 속성이 있거나 없거나이지 `="false"`는 절대 아닙니다 |
 
 네이티브 타깃의 `on:click=`은 `--target js`를 가리키는 컴파일 오류이고, 두
 타깃이 받아들이는 것이 갈리는 곳은 여기뿐입니다. [타깃](a10-targets.md)을

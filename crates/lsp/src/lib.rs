@@ -1,4 +1,4 @@
-//! maca-lsp: language-server features as pure functions over `.maca` source —
+//! maca-lsp: language-server features as pure functions over `.maca` source:
 //! located diagnostics, hover, completion, document symbols, and go-to-
 //! definition. The stdio JSON-RPC transport lives in `main.rs`.
 
@@ -129,7 +129,7 @@ pub fn definition(src: &str, byte_offset: usize) -> Option<(usize, usize)> {
         .map(|s| (s.start, s.end))
 }
 
-/// Byte offset → (0-based line, 0-based UTF-16 character) — the inverse of
+/// Byte offset → (0-based line, 0-based UTF-16 character), the inverse of
 /// `position_to_offset`, for turning spans into LSP ranges.
 pub fn offset_to_position(src: &str, byte: usize) -> (usize, usize) {
     let byte = byte.min(src.len());
@@ -208,9 +208,9 @@ fn code_word_span(src: &str, name: &str) -> Option<(usize, usize)> {
     None
 }
 
-/// Every reference to the binding under the cursor — its definition and every
-/// use — as byte spans. Powers `textDocument/references`, `documentHighlight`
-/// and, with a new name, `textDocument/rename`.
+/// Every reference to the binding under the cursor, its definition and every
+/// use alike, as byte spans. Powers `textDocument/references`,
+/// `documentHighlight` and, with a new name, `textDocument/rename`.
 ///
 /// Scoped, not textual: see `binding`. A local's uses stop at the end of its
 /// function, and a field is never confused with a variable of the same name.
@@ -221,7 +221,7 @@ pub fn references(src: &str, byte_offset: usize) -> Vec<(usize, usize)> {
     }
 }
 
-/// Byte span of a top-level definition's name — a line starting (at column 0)
+/// Byte span of a top-level definition's name: a line starting (at column 0)
 /// with `name` followed by a non-identifier char.
 fn top_level_span(src: &str, name: &str) -> Option<(usize, usize)> {
     let mut off = 0;
@@ -311,7 +311,7 @@ pub fn hover(src: &str, byte_offset: usize) -> Option<String> {
     }
 }
 
-/// Whether a source should be checked in config (Nix) mode — heuristic: it
+/// Whether a source should be checked in config (Nix) mode. The heuristic: it
 /// imports nixpkgs or drives a top-level NixOS/home option namespace.
 pub fn is_config_source(src: &str) -> bool {
     src.lines().any(|l| {
@@ -327,7 +327,7 @@ pub fn is_config_source(src: &str) -> bool {
 
 /// LSP (0-based line, character) → byte offset into `src`. `character` is a
 /// UTF-16 code-unit index (the LSP/Monaco convention), mapped to a byte offset
-/// that always lands on a char boundary — even for multibyte (CJK/emoji) source.
+/// that always lands on a char boundary, even for multibyte (CJK/emoji) source.
 pub fn position_to_offset(src: &str, line: usize, character: usize) -> usize {
     let mut off = 0;
     for (i, l) in src.split_inclusive('\n').enumerate() {

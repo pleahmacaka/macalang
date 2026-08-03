@@ -1,6 +1,6 @@
 /target
 
-# generated dev-shell flake — regenerate locally with `maca dev` (source is dev.maca)
+# generated dev-shell flake; regenerate locally with `maca dev` (source is dev.maca)
 /flake.nix
 
 # generated build artifacts (compiler/toolchain outputs never live in the repo)

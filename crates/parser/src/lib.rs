@@ -1,17 +1,19 @@
 //! maca-parser: token stream → AST.
 //!
 //! Hand-written recursive-descent + Pratt (a documented deviation from the
-//! brief's chumsky suggestion — zero deps and direct control over the
+//! brief's chumsky suggestion: zero deps and direct control over the
 //! significant-newline layout). See `parser` for the grammar, `print` for the
 //! canonical pretty-printer used by the roundtrip test.
 
 pub mod ast;
+pub mod braces;
 pub mod imports;
 pub mod modules;
 mod parser;
 mod print;
 
 pub use ast::*;
+pub use braces::{Brace, brace_kind};
 pub use parser::{ParseError, Parser};
 pub use print::print_module;
 
@@ -23,7 +25,7 @@ pub use print::print_module;
 pub fn is_ui_element_tag(name: &str) -> bool {
     matches!(
         name,
-        // document structure — only reachable on the native target, where an
+        // document structure, only reachable on the native target, where an
         // element renders to text and a program emits a whole page. The JS
         // backend mounts into an existing document and never builds these.
         "html"
@@ -146,7 +148,7 @@ pub fn is_backend_intrinsic(name: &str) -> bool {
                 | "now_ms"
                 | "now_iso"
                 | "format_time"
-                // assertions — report and continue, so one run finds every
+                // assertions: report and continue, so one run finds every
                 // failure; `failures()` is the count a test returns
                 | "assert"
                 | "assert_eq"
@@ -187,7 +189,7 @@ pub fn parse(src: &str) -> Parsed {
 /// A top-level `name = (a, b) [-> T] => body` *is* a function definition.
 ///
 /// There is nothing to capture at module scope, so lowering it as a closure
-/// buys nothing and costs a heap environment — and the C backend emitted a
+/// buys nothing and costs a heap environment, and the C backend emitted a
 /// constant accessor whose name no call site knew, so calling one failed to
 /// link. Rewriting it here means every back end and the checker see a function,
 /// which is what the source says.

@@ -1,4 +1,4 @@
-// bench/compare — this run against a stored one.
+// bench/compare: this run against a stored one.
 //
 // A benchmark that cannot be compared to last week is a number nobody acts on.
 // This pairs a fresh set of results with a baseline by case name and says, for
@@ -11,8 +11,8 @@
 //   info(comparison_table(deltas))
 //
 // The comparison is on ns/op, not on wall-clock milliseconds. Two runs almost
-// never choose the same iteration count — the machine was busier, the candidate
-// got faster, the harness calibrated differently — so the milliseconds are not
+// never choose the same iteration count: the machine was busier, the candidate
+// got faster, the harness calibrated differently. So the milliseconds are not
 // comparable and the per-operation cost is.
 
 import { Result, ns_per_op, resolved } from bench/time
@@ -91,7 +91,7 @@ delta(before: Result, now: Result, tolerance: float) -> Delta {
 
 // No ratio for a pair the verdict has already refused to compare. The row used
 // to print `0.500  -50.0%` beside `! not comparable`, which sends the reader
-// off after the regression the verdict exists to say is not there — and
+// off after the regression the verdict exists to say is not there, and
 // `percent_change` handed the same number to anyone who asked for it directly.
 comparable(v: Verdict) -> bool {
     match v {
@@ -159,7 +159,7 @@ label(v: Verdict) -> str {
     }
 }
 
-/// The verdict with the mark that goes in front of it — `✓ faster`, `✗
+/// The verdict with the mark that goes in front of it: `✓ faster`, `✗
 /// slower`. Colour follows `cli/style`, so a piped report is plain text.
 ///
 /// The two "look at this" verdicts spell out what `cli/style`'s `warn` would
@@ -177,8 +177,8 @@ marked(v: Verdict) -> str {
     }
 }
 
-/// How far a case moved, as a signed percentage — `-20` is a fifth faster.
-/// Zero when there is nothing to compare — no baseline, or a pair the verdict
+/// How far a case moved, as a signed percentage, so `-20` is a fifth faster.
+/// Zero when there is nothing to compare: no baseline, or a pair the verdict
 /// refused.
 percent_change(d: Delta) -> float {
     if d.ratio <= 0.0 || d.base_ns <= 0.0 {

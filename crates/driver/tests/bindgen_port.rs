@@ -1,4 +1,4 @@
-//! `tools/bindgen.maca` — the Maca port of the stage-0 Rust bindgen.
+//! `tools/bindgen.maca`: the Maca port of the stage-0 Rust bindgen.
 //!
 //! The point of the port is that Maca's own tooling should be written in Maca.
 //! The point of this test is that the port must stay *equivalent*: it runs the
@@ -12,7 +12,7 @@ use common::*;
 use std::path::PathBuf;
 use std::process::Command;
 
-/// The declaration lines only — dropping the generated banner (which names the
+/// The declaration lines only, dropping the generated banner (which names the
 /// header) and blank lines, so the two implementations are compared on the
 /// output that actually matters.
 fn decls(text: &str) -> Vec<String> {

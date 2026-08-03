@@ -93,8 +93,8 @@ fn a_package_file_may_import_its_neighbour() {
     );
 }
 
-/// A name a module does not define is an error naming that module — there is no
-/// index that might have meant something else.
+/// A name a module does not define is an error naming that module: there is
+/// no index that might have meant something else.
 #[test]
 fn a_name_a_module_does_not_define_is_refused() {
     let p = Project::new("missing");
@@ -145,7 +145,7 @@ fn an_installed_dependency_is_written_by_its_name() {
 
 /// A file inside a project resolves against *that* project or not at all.
 /// Falling back to the working directory let a build started from one project
-/// pick up another's packages — a build whose meaning depended on where it was
+/// pick up another's packages, a build whose meaning depended on where it was
 /// run, and one the language server could never agree with.
 #[test]
 fn a_project_does_not_borrow_another_projects_packages() {
@@ -167,7 +167,7 @@ fn a_project_does_not_borrow_another_projects_packages() {
 
 /// Two files in one package may each keep a helper to themselves. Everything
 /// inlines into one translation unit, so without qualification the C compiler
-/// reported a redefinition of a function the reader never wrote twice — and
+/// reported a redefinition of a function the reader never wrote twice, and
 /// "you cannot split a package into files" is not a package system.
 #[test]
 fn two_files_may_share_a_private_helper_name() {
@@ -292,7 +292,7 @@ fn a_syntax_error_in_an_imported_module_is_reported() {
     assert!(err.contains("parse error"), "and says what is wrong: {err}");
 }
 
-/// A name someone asked for by hand keeps the spelling they asked for —
+/// A name someone asked for by hand keeps the spelling they asked for:
 /// qualifying it would break the caller that named it.
 #[test]
 fn a_requested_name_keeps_its_spelling() {

@@ -1,4 +1,4 @@
-// tambo/route — a path pattern, and what it binds from a path.
+// tambo/route: a path pattern, and what it binds from a path.
 //
 // Two kinds of hole. `:name` binds one segment; a trailing `*` binds all of
 // the path that is left. Every other segment is literal text that has to be
@@ -58,7 +58,7 @@ bind_path(pattern: str, path: str) -> Bound {
 }
 
 // `upto` stops short of a trailing `*`, which `match_one` has already bound to
-// the rest of the path — a wildcard is not a segment and must not be compared
+// the rest of the path: a wildcard is not a segment and must not be compared
 // as one.
 bind_segments(ps: str[], xs: str[], i: int, upto: int,
               acc: Map str str) -> Bound {
@@ -88,7 +88,7 @@ miss() -> Bound {
 /// Compared segment by segment, left to right: literal text beats `:name`, and
 /// `:name` beats a trailing `*`. The first segment where the two disagree
 /// decides, so `/user/new` wins over `/user/:id` and `/files/logo.png` wins
-/// over `/files/*` — in whichever order they were declared.
+/// over `/files/*`, in whichever order they were declared.
 ///
 /// Only a *trailing* `*` counts as a wildcard here, because that is the only
 /// place `bind_path` treats one as a hole. A `*` anywhere else is literal text

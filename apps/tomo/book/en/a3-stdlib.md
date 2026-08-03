@@ -1,7 +1,7 @@
 # The Standard Library
 
 Most of Maca's "standard library" is compiler and runtime builtins rather than
-Maca source. That keeps it available on every target — the same `xs.map(f)`
+Maca source. That keeps it available on every target: the same `xs.map(f)`
 works in the native binary, the browser playground and the JVM output.
 
 ## Output
@@ -25,7 +25,7 @@ The names come from syslog levels; `warn` and below go to stderr.
 
 ## Strings
 
-Called as methods through UFCS — `s.trim()` is `trim(s)`.
+Called as methods through UFCS: `s.trim()` is `trim(s)`.
 
 | Method | Result |
 |---|---|
@@ -80,12 +80,12 @@ an array is on its element type.
 counts: Map str int = map()
 counts = counts.set("apple", 3).set("pear", 1)
 info("{counts.get("apple", 0)}")     // 3
-info("{counts.get("kiwi", 0)}")      // 0 — a miss gives the default
+info("{counts.get("kiwi", 0)}")      // 0, a miss gives the default
 ```
 
 Keys are `str` and only `str`. One key type is one hash and one comparison, and
 an integer key is `str(n)` away. `keys()` comes back sorted, so a program that
-walks a map twice produces the same output twice — which matters when the output
+walks a map twice produces the same output twice, which matters when the output
 is a file under version control.
 
 `get` takes a default rather than returning something empty, because the
@@ -117,7 +117,8 @@ A missing file's size is `-1` rather than `0`, so an empty file and an absent on
 are distinguishable without a second call.
 
 `copy_bytes` exists because `write_file(dst, read_file(src))` stops at the first
-NUL — fine for source, silently truncating for a wasm module or an image.
+NUL, which is fine for source but silently truncating for a wasm module or an
+image.
 
 ## Processes
 
@@ -188,7 +189,7 @@ There is no `async` keyword. See [Effects and Async](a7-effects.md).
 
 | Form | Does |
 |---|---|
-| `div(class="x", child)` | an element — named args are attributes, positional ones children |
+| `div(class="x", child)` | an element: named args are attributes, positional ones children |
 | `data-tomo="x"` | an attached `-` is part of the name; a spaced one subtracts |
 | `open=true` | a bool decides whether the attribute exists |
 | `element(tag, …)` | the same, with the tag as a value |
@@ -222,7 +223,7 @@ is the same "0 or non-zero" contract as [Testing](12-testing.md).
 ## Regular expressions
 
 There are none. `contains`, `starts_with`, `ends_with`, `index_of`, `split` and
-the character classes cover what a program in this language actually reaches for
-— `selfhost/lexer.maca` scans the whole language with `chars`, `at` and three
-predicates — and a regex engine is a language of its own to learn, debug and
+the character classes cover what a program in this language actually reaches for.
+`selfhost/lexer.maca` scans the whole language with `chars`, `at` and three
+predicates. And a regex engine is a language of its own to learn, debug and
 implement. Reach for `split` and a loop.

@@ -7,12 +7,12 @@
 //!     but suppressed inside `()`/`[]`, after a trailing operator/comma/opener,
 //!     and before a continuation token (`?`, `:`, `.`, a closer, `else`/`with`).
 //!     This is what lets a multi-line ternary body or method chain parse.
-//!   * Path literals: `/tmp`, `./x`, `../x`, `~/x` — only in operand position.
+//!   * Path literals: `/tmp`, `./x`, `../x`, `~/x`, only in operand position.
 //!     A spaced `/` between two operands is the divide/path-join operator.
 //!   * String interpolation: `"a {e} b"` lowers to
 //!     `StrOpen StrText InterpStart <tokens> InterpEnd StrText StrClose`,
 //!     with `{{`/`}}` as literal braces.
-//!   * Attached `x?` (propagate) vs spaced `c ? x : y` (ternary) — decided by
+//!   * Attached `x?` (propagate) vs spaced `c ? x : y` (ternary), decided by
 //!     whether whitespace precedes the `?`.
 
 use std::fmt::Write as _;
@@ -121,7 +121,7 @@ pub fn lex(src: &str) -> Lexed {
     Lexer::new(src).run()
 }
 
-/// Render a token stream as one token per line — the golden-snapshot format.
+/// Render a token stream as one token per line: the golden-snapshot format.
 pub fn dump_tokens(toks: &[Token]) -> String {
     let mut out = String::new();
     for t in toks {
@@ -160,7 +160,7 @@ struct Lexer<'a> {
     end: usize,
     tokens: Vec<Token>,
     errors: Vec<LexError>,
-    group_depth: i32, // () and [] nesting — suppresses newlines
+    group_depth: i32, // () and [] nesting; suppresses newlines
     braces: Vec<Brace>,
     mode: Mode,
     leading_ws: bool, // whitespace/comment/newline seen just before current token
@@ -479,7 +479,7 @@ impl<'a> Lexer<'a> {
             }
             '"' => {
                 // raw triple-quoted string `"""…"""`: everything verbatim until
-                // the closing `"""` — no interpolation, no escapes. For embedding
+                // the closing `"""`: no interpolation, no escapes. For embedding
                 // foreign source (CSS/JS) in a `.maca` file.
                 if self.peek_n(1) == '"' && self.peek_n(2) == '"' {
                     self.bump();
@@ -660,7 +660,7 @@ impl<'a> Lexer<'a> {
     /// Three things must hold, and together they leave no ambiguity with
     /// `"{c ? a : b}"`: we are directly inside a `{…}` interpolation, the colon
     /// is *attached* to the expression before it (Maca writes a ternary spaced,
-    /// `c ? x : y` — the same attached-vs-spaced rule that distinguishes `x?`
+    /// `c ? x : y`, the same attached-vs-spaced rule that distinguishes `x?`
     /// from `c ? x : y`), and every character from here to the closing `}` is a
     /// spec character. Returns the spec without its colon.
     fn fmt_spec_here(&self) -> Option<String> {
@@ -711,7 +711,7 @@ impl<'a> Lexer<'a> {
                     return;
                 }
                 // A `"…"` string stays on its line. Without this, a stray `{`
-                // (`"{"` — a literal brace needs `\{` or `{{`) opens an
+                // (`"{"`, where a literal brace needs `\{` or `{{`) opens an
                 // interpolation, the following `"` opens a *nested* string, and
                 // that string quietly swallows the rest of the file up to the
                 // next quote. The program still compiles, with the wrong text
@@ -787,9 +787,9 @@ fn is_path_char(c: char) -> bool {
 /// Is `word` a keyword rather than an identifier?
 ///
 /// One list, read from the same place the lexer decides. Anything that needs to
-/// know — `maca -m` refusing to run a module whose name no program could
-/// import, an editor, a linter — asks here rather than keeping a copy that
-/// drifts the next time a keyword is added.
+/// know, whether that is `maca -m` refusing to run a module whose name no
+/// program could import, an editor, or a linter, asks here rather than keeping
+/// a copy that drifts the next time a keyword is added.
 pub fn is_keyword(word: &str) -> bool {
     matches!(
         lex(word).tokens.first().map(|t| &t.tok),

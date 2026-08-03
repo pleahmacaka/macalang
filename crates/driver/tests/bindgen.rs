@@ -1,4 +1,4 @@
-//! `maca bindgen` — C header → Maca FFI declarations. Verifies the generated
+//! `maca bindgen`: C header → Maca FFI declarations. Verifies the generated
 //! Maca both looks right and parses/type-checks clean.
 
 use std::process::Command;

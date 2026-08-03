@@ -1,7 +1,7 @@
 # One Language for Configuration
 
 The same Maca you write for programs also describes infrastructure. In **config
-mode** a program compiles to Nix instead of a binary — so a machine's definition
+mode** a program compiles to Nix instead of a binary, so a machine's definition
 is type-checked code, not a stringly-typed YAML file.
 
 ## A configuration is a value
@@ -19,7 +19,7 @@ services.openssh = {
 }
 ```
 
-This is ordinary Maca — assignments, a bracketless comma list, a record. Build
+This is ordinary Maca: assignments, a bracketless comma list, a record. Build
 it with `--target nix` and you get a NixOS module:
 
 ```
@@ -43,7 +43,7 @@ Nix evaluates that to build the system.
 
 Two lines came out different from how they went in. `system.packages` is written
 where NixOS spells it `environment.systemPackages`, and a `services.X` block you
-configured at all gets `enable = true` without your writing it — you do not
+configured at all gets `enable = true` without your writing it. You do not
 switch a service on and then configure it separately.
 [Config Mode](a12-config.md) lists both rewrites.
 
@@ -52,8 +52,8 @@ switch a service on and then configure it separately.
 Config mode is *pure*: a configuration describes state, it does not perform
 actions. So the effects that are fine in a program become errors here.
 
-- `await`/`spawn`/`sleep_ms` — async is impure → **compile error**.
-- Reaching for I/O, the network, or the process table — impure → **compile
+- `await`/`spawn`/`sleep_ms`: async is impure → **compile error**.
+- Reaching for I/O, the network, or the process table: impure → **compile
   error**.
 
 The compiler enforces this with the effect system from
@@ -93,12 +93,12 @@ the point of this chapter.
 
 Because programs and config are the same language, they share types, share
 tooling, and can share values. A port number defined once is the same constant
-your server binds and your firewall opens — no drift between "the app" and "the
-box it runs on".
+your server binds and your firewall opens, with no drift between "the app" and
+"the box it runs on".
 
 ## Where the full answer is
 
 [Config Mode](a12-config.md) in the reference has how the mode is selected, the
 full effect table, exactly how far the option check reaches (further than you
-would guess in one direction and less far in another), and `maca dev` — the
+would guess in one direction and less far in another), and `maca dev`, the
 same machinery pointed at a development shell instead of a host.

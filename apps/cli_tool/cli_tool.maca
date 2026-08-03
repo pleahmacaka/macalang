@@ -12,7 +12,7 @@
 //
 // The command is one value. The parser reads it to decide what an argument
 // means, `--help` is printed from it, and a misspelt option is answered with
-// the nearest name out of the same list — so a renamed option cannot leave a
+// the nearest name out of the same list, so a renamed option cannot leave a
 // stale help line or an error message that names nothing.
 
 import { command, opt, flag, arg } from cli/spec

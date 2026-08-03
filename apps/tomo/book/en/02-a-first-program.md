@@ -3,8 +3,8 @@
 The best way to meet a language is to build something small in it. This chapter
 writes one program end to end: a word tally that takes a sentence and reports
 how often each word appears. It touches records, lists, recursion, pattern-free
-control flow and string handling — most of what the next chapters cover in
-depth — without explaining any of it fully. Read it for the shape.
+control flow and string handling (most of what the next chapters cover in
+depth) without explaining any of it fully. Read it for the shape.
 
 The finished program lives at `examples/wordcount.maca` in the repository, and
 the test suite runs it, so everything below is known to work.
@@ -22,11 +22,11 @@ words(text: str) -> str[] =>
 Three things are worth noticing.
 
 `str[]` is a list of strings. Maca writes the element type first and the
-brackets after, like C, not `List<str>` — there are no angle brackets in the
+brackets after, like C, not `List<str>`. There are no angle brackets in the
 language at all.
 
 `text.lower()` is a method call on a string, but `str` is a primitive with no
-methods of its own. This is **UFCS** — uniform function call syntax. `x.f(y)`
+methods of its own. This is **UFCS**: uniform function call syntax. `x.f(y)`
 means `f(x, y)`, so any function whose first parameter fits can be called this
 way. The chain reads left to right in the order the work happens.
 
@@ -44,12 +44,12 @@ Tally = {
 }
 ```
 
-That is a record — Maca's struct. `Name = { … }` declares the type; inside,
+That is a record: Maca's struct. `Name = { … }` declares the type; inside,
 `field: type`. Note the two different meanings of the punctuation, which is
 consistent everywhere in the language: **`:` introduces a type, `=` introduces
 a value**.
 
-Now the operation that does the real work — record a sighting of one word:
+Now the operation that does the real work, which records a sighting of one word:
 
 ```maca
 bump(ts: Tally[], w: str) -> Tally[] {
@@ -60,16 +60,16 @@ bump(ts: Tally[], w: str) -> Tally[] {
 }
 ```
 
-This function has a **block body** — braces instead of `=>` — because it needs a
+This function has a **block body** (braces instead of `=>`) because it needs a
 local binding first. The last expression in the block is still the value; again,
 no `return`.
 
 `at = find(...)` binds a local. There is no `let`. `c ? a : b` is the ternary,
-and it is an expression, so it can be the whole body. `++` concatenates — lists
+and it is an expression, so it can be the whole body. `++` concatenates: lists
 here, strings elsewhere.
 
 `Tally { word = w, count = 1 }` builds a record. Type name, then `field = value`
-pairs — `=` because these are values.
+pairs, with `=` because these are values.
 
 The two helpers:
 
@@ -84,7 +84,7 @@ replace_at(ts: Tally[], at: int, t: Tally) -> Tally[] {
 ```
 
 `find` is recursive, and carries its own cursor `i` as a parameter. You will see
-this shape constantly in Maca code — it is how the compiler itself is written.
+this shape constantly in Maca code. It is how the compiler itself is written.
 
 `replace_at` shows the other side: `ts[at] = t` assigns through an index. Maca
 is not a pure language; it prefers expressions.
@@ -98,7 +98,7 @@ tally(ws: str[], i: int, acc: Tally[]) -> Tally[] =>
         : tally(ws, i + 1, ws.get(i).length() == 0 ? acc : bump(acc, ws.get(i)))
 ```
 
-An accumulator threaded through a recursive call — the standard fold. Splitting
+An accumulator threaded through a recursive call: the standard fold. Splitting
 on spaces leaves empty strings behind (`"a.  b"` produces one), so empty words
 are skipped rather than counted.
 
@@ -115,7 +115,7 @@ show(ts: Tally[], i: int) -> int {
 ```
 
 `info` prints a line. The string is **interpolated**: `{expr}` is evaluated and
-spliced in. `{…:<8}` is a format spec — left-align in eight columns — so the
+spliced in. `{…:<8}` is a format spec (left-align in eight columns), so the
 counts line up. [The next chapter](03-common-concepts.md) covers the full spec
 grammar.
 
@@ -134,7 +134,7 @@ main() -> int {
 }
 ```
 
-`main() -> int` is the entry point, and its result is the process exit status —
+`main() -> int` is the entry point, and its result is the process exit status:
 `0` for success, as everywhere else.
 
 ## Running it
@@ -156,7 +156,7 @@ end      1
 
 `maca run` compiles and executes in one step. Behind that, the program was
 parsed, type-checked, lowered to C, compiled by a real C compiler, and the
-resulting binary cached — a second run of an unchanged program skips all of it.
+resulting binary cached. A second run of an unchanged program skips all of it.
 
 ## What was not explained
 

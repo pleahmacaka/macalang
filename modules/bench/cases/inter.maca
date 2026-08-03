@@ -1,4 +1,4 @@
-// bench/cases/inter — the algorithms with a data structure in them.
+// bench/cases/inter: the algorithms with a data structure in them.
 //
 // The `n log n` sorts, a binary heap, the sieve, matrix multiply, naive
 // substring search, run-length coding, base conversion, a stack and a ring
@@ -72,8 +72,8 @@ quick_span(xs: int[], low: int, high: int) {
 }
 
 // The pivot is the middle element, not the first. With the first, an
-// already-sorted list — which is exactly what you get when somebody sorts twice
-// — partitions into nothing and everything, recurses `n` deep, and turns the
+// already-sorted list, which is exactly what you get when somebody sorts twice,
+// partitions into nothing and everything, recurses `n` deep, and turns the
 // `n log n` into `n²` on the input most likely to turn up in practice.
 partition(xs: int[], low: int, high: int) -> int {
     pivot = xs[low + (high - low) / 2]
@@ -114,7 +114,7 @@ quick_sort_case(n: int) -> int =>
 ///
 /// The list is the heap: a node at `i` has its children at `2i+1` and `2i+2`,
 /// so there is nothing to store but the values. Note that `push` copies, so
-/// building a heap this way is quadratic in the number of pushes — `heap_sort`
+/// building a heap this way is quadratic in the number of pushes. `heap_sort`
 /// below does it the other way, in place.
 heap_push(heap: int[], v: int) -> int[] {
     out = heap.push(v)
@@ -141,7 +141,7 @@ heap_peek(heap: int[]) -> int {
 
 /// The heap without its smallest value.
 ///
-/// Take the last element, put it at the root, and let it sink — the only move
+/// Take the last element, put it at the root, and let it sink: the only move
 /// that keeps the tree's shape while removing from its top.
 heap_pop(heap: int[]) -> int[] {
     n = heap.length()
@@ -235,7 +235,7 @@ heap_ops_case(n: int) -> int =>
 ///
 /// Two passes over the marks: one to count what survived, one to write them
 /// out. The alternative is pushing each prime as it is found, and `push` copies
-/// the whole list — at `limit` = 100,000 that is nine thousand copies of a list
+/// the whole list. At `limit` = 100,000 that is nine thousand copies of a list
 /// nine thousand long, which costs more than the sieve.
 sieve(limit: int) -> int[] {
     if limit < 2 {
@@ -317,7 +317,7 @@ matrix_multiply(a: int[], b: int[], n: int) -> int[] {
     out
 }
 
-/// `n` is the side of the matrix, so the work is `n³` — 40 is 64,000
+/// `n` is the side of the matrix, so the work is `n³`: 40 is 64,000
 /// multiply-adds and 100 is a million.
 matrix_multiply_case(n: int) -> int {
     a = numbers(n * n)
@@ -369,7 +369,7 @@ find_substring_case(n: int) -> int =>
 
 // ---- run-length coding -----------------------------------------------------------
 
-/// `aaab` as `3a1b` — a count in front of every run.
+/// `aaab` as `3a1b`: a count in front of every run.
 ///
 /// Always writing the count, even for a run of one, is what makes the decoder a
 /// loop instead of a lookahead. It also makes the encoding longer than the
@@ -404,7 +404,7 @@ escaped_byte(c: str) -> str {
     }
 }
 
-/// Undo `run_length_encode` — for any input, digits in it or not.
+/// Undo `run_length_encode`, for any input, digits in it or not.
 run_length_decode(s: str) -> str {
     out = ""
     i = 0
@@ -430,7 +430,7 @@ run_length_case(n: int) -> int =>
 
 // ---- base conversion -------------------------------------------------------------
 
-/// `v` written in `base`, 2 through 36, with digits `0`–`9` then `a`–`z`.
+/// `v` written in `base`, 2 through 36: digits `0` to `9`, then `a` to `z`.
 to_base(v: int, base: int) -> str {
     if base < 2 || base > 36 {
         ""
@@ -480,7 +480,7 @@ from_base(s: str, base: int) -> int {
 
 // Ranges are compared as byte values rather than as strings. `c >= "a"` on two
 // one-byte strings compiles and is always false in the native back end, so
-// `from_base("ff", 16)` read as 0 — a wrong answer with nothing to see in the
+// `from_base("ff", 16)` read as 0, a wrong answer with nothing to see in the
 // source.
 digit_value(c: str) -> int {
     b = ord(c)
@@ -615,7 +615,7 @@ bst_of(xs: int[]) -> Bst {
     out
 }
 
-/// Add `k` to `t`. The tree's lists are written in place — they were allocated
+/// Add `k` to `t`. The tree's lists are written in place: they were allocated
 /// with room for every value `bst_of` was given, and a tree that grew by
 /// pushing would copy all three lists per insert.
 ///

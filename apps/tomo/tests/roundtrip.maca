@@ -2,13 +2,13 @@
 // text, only wrap it.
 //
 // The unit suite next door (`tests/highlight.maca`) asserts which span a piece
-// of source lands in — one case per lexical distinction. This one asserts the
+// of source lands in: one case per lexical distinction. This one asserts the
 // property that has to hold for every case at once, including the ones nobody
 // wrote a case for: strip the spans, undo the escaping, and what is left is the
 // file that went in. A scanner that drops a character, emits one twice, or
 // leaves a span open fails here even when every classification is right.
 //
-// The corpus is every `.maca` file under `apps/` — around 130 KB of real
+// The corpus is every `.maca` file under `apps/`: around 130 KB of real
 // source, including `tomo.maca`'s raw `"""…"""` blocks of CSS and JavaScript,
 // `home.maca`'s markup, and this suite's own escaped braces. It runs in tens of
 // seconds, because the scanner appends to one string per token and that is

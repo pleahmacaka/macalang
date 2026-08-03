@@ -1,6 +1,6 @@
 import c "sqlite3.h"
 
-// Foreign declarations (bodyless) — bound to the sqlite3.h binding glue. Handles
+// Foreign declarations (bodyless), bound to the sqlite3.h binding glue. Handles
 // (db, stmt) are opaque `int`s; queries iterate rows and read any column.
 sqlite_open(path: str) -> int
 sqlite_close(db: int) -> int

@@ -1,4 +1,4 @@
-// tomo — the macalang handbook builder, written in Maca.
+// tomo: the macalang handbook builder, written in Maca.
 //
 // Markdown -> HTML, i18n-first (the mdBook analogue for the Maca ecosystem;
 // "tomo" is Spanish for a book's volume, in the Andean spirit of `maca`). The
@@ -20,7 +20,7 @@ import { object_of, quote } from std/json
 // Everything *else* is kept, and that matters more than it looks: `chars()` is
 // byte-based, so a Korean heading arrives as multi-byte sequences. Keeping only
 // `is_alpha() || is_ascii_digit()` deleted every one of those bytes and turned
-// "값과 타입" into an empty anchor — in the language this book exists to be
+// "값과 타입" into an empty anchor, in the language this book exists to be
 // translated into. So the rule drops a known set rather than keeping one.
 slug(text: str) -> str =>
     slug_chars(text.lower().chars(), 0, "")
@@ -44,7 +44,7 @@ slug_char(c: str) -> str {
 }
 
 // ASCII punctuation with no place in a URL fragment. Any byte outside this set
-// — including every byte of a multi-byte character — is kept.
+// (including every byte of a multi-byte character) is kept.
 is_drop(c: str) -> bool =>
     ".,?!:;`\"'()[]\{\}/\\*&<>=+|#@$%^~".contains(c)
 
@@ -86,7 +86,7 @@ md_class(kind: str) -> str {
 cell_class() -> str =>
     "border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-left align-top"
 
-// `<hN id="slug">text</hN>` — the `id` lets the table of contents link to it.
+// `<hN id="slug">text</hN>`: the `id` lets the table of contents link to it.
 //
 // The tag is `element(…)` rather than a literal, because the depth chooses it.
 heading(level: str, text: str) -> str =>
@@ -113,8 +113,8 @@ link(s: str) -> str {
 // A link starting at the `[` at `open`.
 //
 // A `[` that doesn't open a well-formed link keeps its place and the scan
-// continues *after* it. Giving up on the whole remainder — which is what
-// returning `s` here used to do — silently killed every link later on the line,
+// continues *after* it. Giving up on the whole remainder (which is what
+// returning `s` here used to do) silently killed every link later on the line,
 // and `code_spans` runs first, so any line with an inline code span carries a
 // `text-[0.88em]` class through this pass.
 link_at(s: str, open: int) -> str {
@@ -136,7 +136,7 @@ link_at(s: str, open: int) -> str {
     }
 }
 
-// A link between chapters is written to the source file — `[next](01-x.md)` —
+// A link between chapters is written to the source file as `[next](01-x.md)`,
 // because that is what works when the Markdown is read on its own, in an editor
 // or on a git host. Rendered, it has to point at the page that was produced.
 // Without this rewrite every cross-chapter link in the book is a 404.
@@ -204,7 +204,7 @@ render_line(lines: str[], i: int, acc: str) -> str {
 
 // A fenced block, gathered whole and emitted as one element.
 //
-// Streaming it — open tag, then a line at a time, then a close tag — is why
+// Streaming it (open tag, then a line at a time, then a close tag) is why
 // this used to thread an `in_code` flag through every step of the fold, and it
 // meant the `<pre>` could only ever be written as raw text. Collecting the run
 // first costs one more pass and lets the markup be markup.
@@ -215,8 +215,8 @@ render_line(lines: str[], i: int, acc: str) -> str {
 // The tag also chooses the highlighter (`apps/tomo/highlight`), which is the
 // one thing this function knows about languages: it hands over a tag and a
 // block of text and gets back escaped HTML. A tag nothing highlights comes back
-// as plain escaped text, so an unlabelled fence — the shell transcripts and
-// rendered-output blocks this book is full of — is unchanged.
+// as plain escaped text, so an unlabelled fence (the shell transcripts and
+// rendered-output blocks this book is full of) is unchanged.
 render_fence(lines: str[], i: int, acc: str, fence: str) -> str {
     stop = fence_end(lines, i + 1)
     lang = fence.substr(3, fence.length() - 3).trim()
@@ -236,7 +236,7 @@ fence_end(lines: str[], i: int) -> int {
 }
 
 // The block's source, verbatim. Escaping happens in the highlighter, which has
-// to see the real characters to tokenize them — a `&lt;` is not a `<` to a
+// to see the real characters to tokenize them. A `&lt;` is not a `<` to a
 // scanner, and escaping first meant every one of them was highlighted as an
 // entity rather than the operator it is.
 fence_body(lines: str[], at: int, stop: int) -> str {
@@ -298,7 +298,7 @@ head_html(line: str) -> str {
 is_bullet(line: str) -> bool =>
     line.starts_with("- ") || line.starts_with("  - ")
 
-// `1. `, `2. `, … — a digit run then `. `.
+// `1. `, `2. `, …: a digit run then `. `.
 is_numbered(line: str) -> bool {
     t = line.trim()
     d = digits_at(t.chars(), 0)
@@ -317,7 +317,7 @@ is_item(line: str) -> bool =>
     is_bullet(line) || is_numbered(line)
 
 // A whole list: consecutive item lines, wrapped in one `<ul>`/`<ol>`. Emitting
-// bare `<li>`s (as this did before) is invalid HTML — browsers cope, but the
+// bare `<li>`s (as this did before) is invalid HTML. Browsers cope, but the
 // list gets no indent and no marker styling.
 render_list(lines: str[], i: int, acc: str) -> str {
     stop = list_end(lines, i)
@@ -417,7 +417,7 @@ rows(lines: str[], at: int, stop: int) -> str {
 row(line: str, tag: str) -> str =>
     tr(cells(split_cells(line.trim()), 1, tag)) ++ "\n"
 
-// Split a row on `|`, honouring `\|` as a literal pipe — the operator appendix
+// Split a row on `|`, honouring `\|` as a literal pipe. The operator appendix
 // has a row *about* `||`, which a naive split turns into three broken cells.
 split_cells(s: str) -> str[] =>
     cell_walk(s.chars(), 0, "", [])
@@ -437,7 +437,7 @@ cell_walk(cs: str[], i: int, cur: str, acc: str[]) -> str[] {
 is_escaped_pipe(cs: str[], i: int) -> bool =>
     cs.get(i) == "\\" && i + 1 < cs.length() && cs.get(i + 1) == "|"
 
-// `tag` is `th` in the header row and `td` below it — the same reason `element`
+// `tag` is `th` in the header row and `td` below it, the same reason `element`
 // exists: which tag a cell gets is decided by the data, not by the source.
 cells(parts: str[], i: int, tag: str) -> str {
     if i >= parts.length() - 1 {
@@ -491,7 +491,7 @@ render_para(lines: str[], i: int, acc: str) -> str {
                  acc ++ p(class=md_class("p"), inline(escape_html(text))) ++ "\n")
 }
 
-// The index just past the paragraph starting at `i` — a blank line, a heading,
+// The index just past the paragraph starting at `i`: a blank line, a heading,
 // a list item, or a code fence ends it.
 para_end(lines: str[], i: int) -> int {
     if i >= lines.length() || is_break(lines.get(i)) {
@@ -656,14 +656,14 @@ side_list_class() -> str => "list-none mt-2 p-0"
 
 // ---- i18n page shell ------------------------------------------------------
 
-// A self-contained stylesheet — no external fetch, so a built book works from
+// A self-contained stylesheet: no external fetch, so a built book works from
 // the filesystem.
 //
 // Almost all of it is `styles()`, generated by the compiler from the utility
 // classes this program actually writes. What is left is the one rule that is
 // about the *document* rather than any element: telling the browser the page
 // has both a light and a dark palette, so form controls and scrollbars follow.
-// (A raw triple-quoted string — CSS is full of `{`/`}`, which would otherwise
+// (A raw triple-quoted string: CSS is full of `{`/`}`, which would otherwise
 // read as string interpolation.)
 base_css() -> str =>
     """html{color-scheme:light dark}
@@ -689,7 +689,7 @@ chapter_nav(chs: str[], idx: int) -> str {
 }
 
 // A link to a neighbouring chapter, or an empty placeholder at the ends of the
-// book — the grid wants both slots filled either way, so `next` stays at the
+// book. The grid wants both slots filled either way, so `next` stays at the
 // right margin on the first page, where there is no `previous`.
 page_link(chs: str[], at: int, label: str, right: bool) -> str {
     if at < 0 {
@@ -739,7 +739,7 @@ sec_class() -> str =>
     "mt-4 mb-1 px-2 text-[0.78rem] uppercase tracking-wide font-semibold"
         ++ " first:mt-1"
 
-// A volume heading — the top level of the contents, above the sections. It is
+// A volume heading: the top level of the contents, above the sections. It is
 // set in the page's own colour and ruled underneath, so the eye can tell "which
 // book am I in" from "which part of it" without reading either.
 book_class() -> str =>
@@ -777,7 +777,7 @@ sh_class() -> str =>
 //
 // A `chapters` entry beginning with `#` is a heading rather than a page. `##`
 // opens a **volume**, `#` a **section** inside it, so one chapter list can hold
-// two books — a handbook read front to back and a reference opened at a page —
+// two books (a handbook read front to back and a reference opened at a page)
 // under a single table of contents, sidebar and search index. The label carries
 // one title per language, `|`-separated in the same order as `languages`:
 //
@@ -816,7 +816,7 @@ section_title(entry: str, langs: str, lang: str) -> str {
     }
 }
 
-// The volume each entry belongs to, in book order — a `##` heading names one
+// The volume each entry belongs to, in book order: a `##` heading names one
 // and every entry after it is inside it, until the next. A search hit says
 // which book it came from, and "Collections" in the handbook is a different
 // answer from "Collections" in the reference.
@@ -865,8 +865,8 @@ next_page(chs: str[], i: int) -> int {
 
 // Everything a reader navigates with, in one left column: the book title, the
 // language switcher, search, the chapter list with the current one marked, and
-// the current page's own headings. Nothing above the text — a reader scrolling
-// a chapter should never lose their place in the book.
+// the current page's own headings. Nothing above the text, because a reader
+// scrolling a chapter should never lose their place in the book.
 //
 // The bulk of it is a `<details>` so a phone gets a line instead of three
 // screens of links before the prose starts. It ships open, and a line of script
@@ -938,13 +938,13 @@ side_item(entry: str, title: str, cur: str) -> str {
 
 // The search UI plus the code that drives it. The index is a plain `<script>`
 // (not `fetch`) so a built book still searches when opened straight off disk
-// as `file://…` — mdBook's search needs a server; this one doesn't.
+// as `file://…`. mdBook's search needs a server; this one doesn't.
 //
-// The markup is markup; only the behaviour is a raw block. That is not tidiness
-// — the compiler collects `class=` strings to decide which utility rules to
-// generate, and it cannot read inside a raw string. While this whole function
-// was one raw block, every class in it named a rule that was never emitted, and
-// the search field had no styling at all.
+// The markup is markup; only the behaviour is a raw block. That is not
+// tidiness: the compiler collects `class=` strings to decide which utility
+// rules to generate, and it cannot read inside a raw string. While this whole
+// function was one raw block, every class in it named a rule that was never
+// emitted, and the search field had no styling at all.
 search_box() -> str =>
     input(id="q", type="search", placeholder="search", autocomplete="off",
           class="w-full my-2 px-2 py-1 border border-zinc-200"
@@ -958,9 +958,9 @@ search_box() -> str =>
 // The classes the result list uses, handed to the script as data.
 //
 // Results are built by JavaScript, so their classes never appear in a `class=`
-// attribute for the compiler to find. Naming them here — in ordinary Maca
-// strings — is what gets their rules into the stylesheet.
-// (`\{` and `\}` — a bare brace would open a string interpolation.)
+// attribute for the compiler to find. Naming them here, in ordinary Maca
+// strings, is what gets their rules into the stylesheet.
+// (`\{` and `\}`: a bare brace would open a string interpolation.)
 hit_styles() -> str =>
     "window.TOMO_CLS=\{hit:\"" ++ hit_class() ++ "\",sec:\""
         ++ hit_sec_class() ++ "\",none:\"" ++ hit_none_class() ++ "\"\};"
@@ -1047,7 +1047,7 @@ column_class(side: str) -> str {
 // `title` and `body` are taken by parameters all over this file, and `main` is
 // the entry point, so the three tags that collide get a suffixed wrapper. The
 // backend resolves a user definition ahead of a tag, which is what makes these
-// necessary — and what stops every `label(...)` in every program from silently
+// necessary, and what stops every `label(...)` in every program from silently
 // becoming markup.
 // The escaping is inside, so there is one contract rather than one per caller.
 // This escaped at its call site while two other generators escaped inside their
@@ -1084,7 +1084,7 @@ main_landmark(inner: str) -> str =>
 // holding real links needs no script at all, keeps every language a crawlable
 // `<a href>`, and still behaves like a dropdown.
 //
-// `page` is the chapter to land on — the one being read, not the book's index.
+// `page` is the chapter to land on: the one being read, not the book's index.
 // Switching language should keep your place; sending a reader on chapter 8 back
 // to the table of contents makes them find it again. The fallback guarantees
 // that page exists in every language even when it isn't translated yet.
@@ -1115,8 +1115,8 @@ lang_options(codes: str[], i: int, cur: str, up: str, page: str) -> str {
 }
 
 // Always a file, never a bare directory: a `…/ko/` URL only resolves to
-// `index.html` when a web server does it. Opened off disk — which this book
-// supports — the browser shows a directory listing instead.
+// `index.html` when a web server does it. Opened off disk (which this book
+// supports), the browser shows a directory listing instead.
 target_page(page: str) -> str {
     if page.length() == 0 {
         "index.html"
@@ -1135,13 +1135,13 @@ build_book(root: str, out: str) -> int {
     toml = read_file(root ++ "/book.toml")
     title = conf_value(toml, "title")
     langs = conf_value(toml, "languages").replace(" ", "")
-    // not `.replace(" ", "")` — a section label is prose and keeps its spaces
+    // not `.replace(" ", "")`: a section label is prose and keeps its spaces
     chs = conf_value(toml, "chapters").split(",").map(v => v.trim())
     n = build_langs(root, out, title, langs, langs.split(","), 0, chs, 0)
     n + write_root(root, out, site_name(toml, title), langs)
 }
 
-// The site's own name — `site` in book.toml, falling back to the book's title.
+// The site's own name: `site` in book.toml, falling back to the book's title.
 // A book has a title; the thing it documents has a name.
 site_name(toml: str, title: str) -> str {
     name = conf_value(toml, "site")
@@ -1157,7 +1157,7 @@ site_name(toml: str, title: str) -> str {
 
 // One page above the languages, so `/` is a real destination rather than a
 // directory listing. A multi-language book cannot pick a default for the reader
-// — a Korean speaker landing on English is the same failure as the reverse — so
+// (a Korean speaker landing on English is the same failure as the reverse), so
 // this asks instead of redirecting.
 //
 // `play` is an optional `playground = "…"` in book.toml: a sibling link carried
@@ -1168,7 +1168,7 @@ write_root(root: str, out: str, title: str, langs: str) -> int {
     default = codes.get(0)
 
     // `/index.html` is the default language's landing page, and every language
-    // has its own at `<lang>/home.html` — so the switcher moves between
+    // has its own at `<lang>/home.html`, so the switcher moves between
     // landings rather than dropping a reader into a chapter index.
     write_file(out ++ "/index.html",
                landing(root, title, langs, default, default, ""))
@@ -1194,7 +1194,7 @@ write_landings(root: str, out: str, title: str, langs: str, codes: str[],
 // Markdown renderer the chapters use, under a header carrying the name and the
 // language switcher.
 //
-// `up` is the path back to the languages' shared parent — "" from the root
+// `up` is the path back to the languages' shared parent: "" from the root
 // page, "../" from inside a language directory.
 landing(root: str, title: str, langs: str, lang: str, fallback: str,
         up: str) -> str {
@@ -1212,7 +1212,7 @@ landing_head(title: str, langs: str, lang: str, up: str) -> str =>
            nav(data-tomo="i18n", class="relative shrink-0 text-[0.8rem]",
                lang_links(langs.split(","), 0, lang, up, "home")))
 
-// A book with no `home.md` still gets a root page — the language picker this
+// A book with no `home.md` still gets a root page: the language picker this
 // used to be. Tomo builds other people's books too, and a landing page is
 // something you opt into by writing one.
 landing_body(src: str, title: str, langs: str, lang: str, up: str) -> str {
@@ -1229,7 +1229,7 @@ landing_body(src: str, title: str, langs: str, lang: str, up: str) -> str {
 }
 
 // Where the pitch ends and the argument begins: the first `##`. Everything
-// above it is the hero — a heading and a paragraph — and the buttons go there,
+// above it is the hero (a heading and a paragraph), and the buttons go there,
 // under the blurb, rather than after two screens of prose.
 first_section(lines: str[], i: int) -> int {
     if i >= lines.length() {
@@ -1284,7 +1284,7 @@ cta_class(primary: bool) -> str {
 }
 
 // The button labels. Three strings per language, so they live here rather than
-// in the Markdown — the Markdown is the argument, these are the doors out of it.
+// in the Markdown. The Markdown is the argument, these are the doors out of it.
 cta_label(lang: str, which: str) -> str {
     if lang != "ko" {
         english_cta(which)
@@ -1311,7 +1311,7 @@ hero_class() -> str =>
     "flex items-baseline justify-between gap-3 pb-3 mb-6 border-b"
         ++ " border-zinc-200 dark:border-zinc-700"
 
-// A language's own name for itself — a reader looking for their language should
+// A language's own name for itself: a reader looking for their language should
 // see it written the way they write it, not as an ISO code.
 lang_name(code: str) -> str {
     if code == "en" {
@@ -1351,7 +1351,7 @@ build_lang(root: str, out: str, title: str, langs: str, lang: str,
     n + write_index(root, out, title, langs, lang, chs, titles)
 }
 
-// Every entry's display title, in book order — a chapter's from its own
+// Every entry's display title, in book order: a chapter's from its own
 // `# heading`, a section's from its `|`-separated label.
 chapter_titles(root: str, langs: str, lang: str, fallback: str, chs: str[],
                i: int) -> str[] {
@@ -1455,12 +1455,12 @@ caption(vol: str, ctitle: str) -> str {
     if vol == "" {
         ctitle
     } else {
-        vol ++ " · " ++ ctitle
+        vol ++ " / " ++ ctitle
     }
 }
 
 // A chapter's markdown file: the reader's language when it has been translated,
-// the default language when it hasn't, and "" for a section heading — which is
+// the default language when it hasn't, and "" for a section heading, which is
 // a label in the config rather than a file on disk.
 chapter_source(root: str, lang: str, fallback: str, ch: str) -> str {
     if is_section(ch) {

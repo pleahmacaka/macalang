@@ -9,7 +9,7 @@ project's directories mean. The teaching version is
 | Written | Names |
 |---|---|
 | `import a/b` | the module `a/b` |
-| `import a` | the module `a` — or a builtin, if no such file exists |
+| `import a` | the module `a`, or a builtin if no such file exists |
 | `import { f, g } from a/b` | only `f` and `g` from that module |
 | `import { f } from a` | the same; a single word here is still a file |
 | `import c "hdr.h"` | a C header and its library |
@@ -23,7 +23,7 @@ A slash path names a module and nothing else, so failing to find one is a typo,
 not a fallback:
 
 ```
-maca: app.maca: no module `std/str` — `std/str.maca` is not beside this file
+maca: app.maca: no module `std/str`: `std/str.maca` is not beside this file
 or in the working directory
 ```
 
@@ -49,10 +49,10 @@ maca: import { centroid } from geometry: 'centroid' is not defined in that modul
 
 1. In the **importer's own directory**, then in each directory above it, and at
    each of those directories:
-   1. `<dir>/a/b.maca` — the written path, taken literally;
+   1. `<dir>/a/b.maca`, the written path taken literally;
    2. `<dir>/modules/a/b.maca`, `<dir>/src/a/b.maca`,
-      `<dir>/maca_modules/a/b.maca` — each search root, in that order.
-2. The walk **stops at the project root** — the nearest directory at or above
+      `<dir>/maca_modules/a/b.maca`, each search root in that order.
+2. The walk **stops at the project root**, the nearest directory at or above
    the importer holding a `maca.toml`.
 3. If the importer is not inside a project at all, the same two steps are tried
    once more from the **working directory**.
@@ -68,7 +68,7 @@ crate directory could not resolve an example's imports at all.
 
 Stopping at the project root is what keeps the search out of `$HOME` and `/`,
 where a stray `std/` would become the standard library for every project
-beneath it — and the language server, whose own search is bounded by the
+beneath it. And the language server, whose own search is bounded by the
 workspace, would then disagree with the compiler about where a name is defined.
 
 The bare-sibling rule comes **last** on purpose. It is a convenience for
@@ -80,7 +80,7 @@ all.
 
 Step 1.i comes before 1.ii, so a directory that shares a package's name answers
 for it. A `bench/` beside `modules/bench/` makes `import bench/stat` mean
-whichever of the two files exists — and if both do, the one that is not the
+whichever of the two files exists, and if both do, the one that is not the
 package. Nothing reports this; the program compiles against the other file.
 
 Putting the search roots first does not fix it, which is worth knowing before
@@ -101,7 +101,7 @@ directory.
 | `maca_modules/` | yes | `maca_modules/toml/parse.maca` is `toml/parse` |
 | `apps/` | **no** | `apps/tomo/conf.maca` is `apps/tomo/conf` |
 
-`modules/*` are the packages — the code meant to be imported. `src/*` is the
+`modules/*` are the packages: the code meant to be imported. `src/*` is the
 same idea for a single-package repository, and needs no manifest entry.
 `maca_modules/` is where `maca add` installs a dependency, which is why the
 directory it chose never appears in anybody's source.
@@ -144,7 +144,7 @@ collide. Prefix by convention (`json_parse`, `toml_parse`) or split further.
 
 **A selective import eliminates dead code at the module boundary.**
 `import { origin, dist2 } from geometry` brings across those two definitions
-plus the transitive closure of same-module definitions *they* reference — so the
+plus the transitive closure of same-module definitions *they* reference, so the
 types their signatures mention come along without being listed. On a large
 module that is the difference between compiling everything and compiling what
 you use.
@@ -163,8 +163,8 @@ maca build app/main.maca
 Everything reachable through imports is compiled with it. There is no manifest
 listing sources and no build graph to maintain.
 
-`maca -m module.function` runs a function out of a module without a `main` —
-`maca -m http.serve` — and the exit status comes from the entry point's declared
+`maca -m module.function` runs a function out of a module without a `main`, as in
+`maca -m http.serve`, and the exit status comes from the entry point's declared
 return type. A `str[]` parameter receives the leftover command line.
 
 ## What the module system does not have

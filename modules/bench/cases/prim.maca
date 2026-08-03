@@ -1,4 +1,4 @@
-// bench/cases/prim — the operations everything else is built out of.
+// bench/cases/prim: the operations everything else is built out of.
 //
 // Integer and float arithmetic, string building and scanning, list push and
 // index and iterate, map set and get, record construction and field access.
@@ -13,7 +13,7 @@
 //
 // Every case takes the workload size and returns a checksum, so the same call
 // is both the thing being timed and the thing a test asserts against. Each one
-// builds whatever input it needs inside the timed region — there is no setup
+// builds whatever input it needs inside the timed region. There is no setup
 // hook, because a setup function would have to be stored next to the case and a
 // function value cannot live in a record field. Where the setup is O(n) and the
 // work is O(n), that is roughly a factor of two on the reported cost, and it is
@@ -45,7 +45,7 @@ int_arith(n: int) -> int {
 ///
 /// No `sqrt` here on purpose. It is a builtin, but the native back end does not
 /// link libm, so a call to it that the C compiler cannot fold fails at link
-/// time — see `root` in `bench/stat` for the same problem answered the other
+/// time. See `root` in `bench/stat` for the same problem answered the other
 /// way.
 float_arith(n: int) -> int {
     acc = 0.0
@@ -68,7 +68,7 @@ str_concat(n: int) -> int {
     out.length()
 }
 
-/// The same, through string interpolation — a number formatted and spliced in
+/// The same, through string interpolation: a number formatted and spliced in
 /// `n` times. The gap against `str_concat` is what interpolation costs.
 str_interp(n: int) -> int {
     out = ""
@@ -105,7 +105,7 @@ str_scan(n: int) -> int {
 /// Grow a list one element at a time; returns the sum of what went in.
 ///
 /// This is the expensive one, and deliberately so. `push` returns a new list,
-/// so building a list of `n` this way copies `n(n-1)/2` elements — it is
+/// so building a list of `n` this way copies `n(n-1)/2` elements. It is
 /// quadratic, and a case that measures it at a size where that shows is more
 /// use than a comment saying it might.
 list_push(n: int) -> int {
@@ -183,7 +183,7 @@ record_build(n: int) -> int {
     acc
 }
 
-/// Read both fields of one record `n` times — construction held out, so the
+/// Read both fields of one record `n` times, construction held out, so the
 /// gap against `record_build` is what building one costs.
 record_field(n: int) -> int {
     p = Pt { x = 3, y = 4 }

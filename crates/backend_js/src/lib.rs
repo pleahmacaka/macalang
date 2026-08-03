@@ -1,7 +1,7 @@
 //! maca-backend-js: lower a UI component to vanilla-DOM JS + HTML + CSS.
 //!
 //! Elements are functions (`div(class=…, …children)`); top-level bindings are
-//! reactive state (Svelte-style compile-time reactivity — assigning to state and
+//! reactive state (Svelte-style compile-time reactivity: assigning to state and
 //! calling `update()` re-syncs bound nodes). `bind:value` is two-way,
 //! `on:event` wires a handler. `class` utility names are collected and a
 //! tree-shaken Tailwind subset is emitted (only used classes ship).
@@ -38,8 +38,8 @@ pub fn emit(m: &Module) -> JsOut {
     set_variants(&variants);
 
     // Collect Tailwind class candidates from every string literal in the module
-    // (not just `class=` attributes), so classes returned from a helper — e.g.
-    // `tab(n) => n == active ? "px-2 bg-zinc-800" : "px-2"` — still emit CSS.
+    // (not just `class=` attributes), so classes returned from a helper, e.g.
+    // `tab(n) => n == active ? "px-2 bg-zinc-800" : "px-2"`, still emit CSS.
     // Non-class tokens simply resolve to nothing and are dropped.
     for item in &m.items {
         collect_class_strings(item, &mut cx.classes);
@@ -127,8 +127,8 @@ pub fn emit(m: &Module) -> JsOut {
     };
     // Constructors go near the top: `build()` mounts the view as soon as it is
     // defined, and a view may name a variant. They go *after* `"use strict"`
-    // rather than before it — a directive prologue only counts as one while it
-    // is still the first statement in the file.
+    // rather than before it: a directive prologue only counts as one while
+    // it is still the first statement in the file.
     let js = match variant_ctors(&variants) {
         c if c.is_empty() => js,
         c => insert_after_use_strict(&js, &format!("// ---- sum variants ----\n{c}")),
@@ -230,8 +230,8 @@ thread_local! {
     /// `state.x` everywhere (view text, attributes, and transpiled functions).
     static STATE: std::cell::RefCell<BTreeSet<String>> = const { std::cell::RefCell::new(BTreeSet::new()) };
     /// Sum-type variant names and their payload arity. A pattern cannot tell a
-    /// nullary variant (`Red`) from a binder by shape alone — both parse as
-    /// `Pattern::Bind` — so the declared set is what disambiguates them, the way
+    /// nullary variant (`Red`) from a binder by shape alone, since both parse
+    /// as `Pattern::Bind`, so the declared set is what disambiguates them, the way
     /// the checker's `is_variant` does for the C backend.
     static VARIANTS: std::cell::RefCell<BTreeMap<String, usize>> = const { std::cell::RefCell::new(BTreeMap::new()) };
 }
@@ -296,7 +296,7 @@ fn jexpr(e: &Expr) -> String {
         Expr::List(es) => {
             format!("[{}]", es.iter().map(jexpr).collect::<Vec<_>>().join(", "))
         }
-        // `lo..hi` — inclusive integer range as a JS array (lo … hi).
+        // `lo..hi` is an inclusive integer range as a JS array (lo … hi).
         Expr::Range { lo, hi } => format!(
             "Array.from({{length: Math.max(0, ({}) - ({}) + 1)}}, (_, _i) => _i + ({}))",
             jexpr(hi),
@@ -347,7 +347,7 @@ fn jmatch(scrut: &Expr, arms: &[Arm]) -> String {
     for a in arms {
         let (cond, binds) = jpattern(&a.pat, "_s");
         // the guard reads the arm's own bindings, so it belongs inside the
-        // branch, after them — not in the condition that selects the branch.
+        // branch, after them, not in the condition that selects the branch.
         let (test, pre) = match &a.guard {
             Some(g) => (
                 format!("{cond} && (() => {{ {binds}return {}; }})()", jexpr(g)),
@@ -371,7 +371,7 @@ fn jpattern(pat: &Pattern, sv: &str) -> (String, String) {
     match pat {
         Pattern::Wild => ("true".into(), String::new()),
         // A bare capitalised name is a nullary variant when one is declared, and
-        // a binder otherwise — the same ambiguity the C backend resolves with
+        // a binder otherwise: the same ambiguity the C backend resolves with
         // the checker's `is_variant`.
         Pattern::Bind(n) if is_variant(n) => (format!("{sv}.$ === {n:?}"), String::new()),
         Pattern::Bind(n) => ("true".into(), format!("const {n} = {sv}; ")),
@@ -391,7 +391,7 @@ fn jpattern(pat: &Pattern, sv: &str) -> (String, String) {
             }
             (format!("({})", conds.join(" && ")), binds)
         }
-        // A record pattern always matches — it exists to name the fields.
+        // A record pattern always matches: it exists to name the fields.
         Pattern::Record(fields) => {
             let mut conds = Vec::new();
             let mut binds = String::new();
@@ -601,7 +601,7 @@ fn jcall(callee: &Expr, args: &[Arg]) -> String {
         Expr::Field { base, name } => match method(name, &jexpr(base), &a) {
             Some(js) => js,
             // Not one of Maca's methods, so it is a field holding a function or
-            // a foreign JS call — pass it through untouched.
+            // a foreign JS call, so pass it through untouched.
             None => format!("{}.{name}({})", jexpr(base), a.join(", ")),
         },
         _ => format!("{}({})", jexpr(callee), a.join(", ")),
@@ -611,12 +611,12 @@ fn jcall(callee: &Expr, args: &[Arg]) -> String {
 /// One of Maca's UFCS methods → JS that computes the same value.
 ///
 /// Handing the name straight to JS was wrong twice over. Some do not exist
-/// there — `.length` is a property, so `xs.length()` threw. The dangerous ones
+/// there: `.length` is a property, so `xs.length()` threw. The dangerous ones
 /// are those that exist and mean something else: `push` returns the new
 /// *length*, `sort` compares as strings so `[10, 9]` stays `[10, 9]`, and both
 /// `sort` and `reverse` mutate the receiver. Maca lists and strings are values,
 /// so every lowering here is non-mutating even where the answer would have
-/// matched — a second holder of that list must not see the change.
+/// matched. A second holder of that list must not see the change.
 ///
 /// The receiver's type is not known at this point (the JS backend is untyped),
 /// so a name shared by both sets lowers to a helper that works for either.
@@ -635,7 +635,7 @@ fn method(name: &str, recv: &str, args: &[String]) -> Option<String> {
         "trim" => format!("({recv}).trim()"),
         "starts_with" => format!("({recv}).startsWith({})", arg(0)),
         "ends_with" => format!("({recv}).endsWith({})", arg(0)),
-        // every occurrence, not the first — which is what JS `replace` does
+        // every occurrence, not the first, which is what JS `replace` does
         "replace" => format!("({recv}).split({}).join({})", arg(0), arg(1)),
         // `substr(start, len)`, so it is not JS `slice(start, end)`
         "substr" => format!("_msubstr({recv}, {}, {})", arg(0), arg(1)),
@@ -778,8 +778,9 @@ impl Cx {
     /// Emit code that builds `expr` (an element call), returning its var name.
     fn element(&mut self, e: &Expr, out: &mut String) -> String {
         // A call to a known HTML tag (`div(...)`) builds an element; anything
-        // else — a literal, an identifier, or a call to a *text-returning*
-        // function like `mcTab(tab)` — is a (reactive) text node.
+        // else, such as a literal, an identifier, or a call to a
+        // *text-returning* function like `mcTab(tab)`, is a (reactive) text
+        // node.
         let is_element = matches!(
             e,
             Expr::Call { callee, .. } if matches!(callee.as_ref(), Expr::Ident(t) if is_html_tag(t))
@@ -810,7 +811,7 @@ impl Cx {
         for a in args {
             match a {
                 Arg::Named { name, value } if name == "html" => {
-                    // `html=expr` sets innerHTML (reactively) — for pre-rendered
+                    // `html=expr` sets innerHTML (reactively), for pre-rendered
                     // markup like the flame-graph SVG or highlighted source.
                     let expr = jexpr(value);
                     out.push_str(&format!("  {v}.innerHTML = {expr};\n"));
@@ -887,7 +888,7 @@ impl Cx {
         match target {
             Expr::Ident(n) => (format!("state.{n}"), format!("state.{n} = $v")),
             Expr::Lambda { params, body, .. } => {
-                // `v => age = int(v)` — bound var is the assignment target
+                // `v => age = int(v)`: bound var is the assignment target
                 let pv = params.first().map(|p| p.name.as_str()).unwrap_or("v");
                 if let Expr::Assign { target: t, value } = body.as_ref()
                     && let Expr::Ident(x) = t.as_ref()
@@ -903,7 +904,7 @@ impl Cx {
 
     /// JS for a value expression (event handlers, bindings, state init). Reuses
     /// the full `jexpr` lowering, so handlers can call functions, do arithmetic,
-    /// index, match, etc. — not just literals. `subst` replaces a lambda
+    /// index, match, etc., not just literals. `subst` replaces a lambda
     /// parameter (the event's `$v`) throughout the expression first.
     fn value(&self, e: &Expr, subst: Option<(&str, &str)>) -> String {
         match subst {
@@ -982,7 +983,7 @@ fn js_init(e: &Expr) -> String {
 /// Where a class's rule belongs in the sheet.
 ///
 /// CSS resolves a tie in specificity by source order, so a variant has to come
-/// *after* the plain utility it overrides — otherwise `max-md:block` loses to
+/// *after* the plain utility it overrides. Otherwise `max-md:block` loses to
 /// `grid` and the narrow layout silently never applies. Plain utilities first,
 /// then state variants, then media queries ordered so the more specific
 /// breakpoint wins.
@@ -1019,7 +1020,7 @@ pub fn order(class: &str) -> (u8, i32) {
 /// unconditional case, which is why anything with a theme, a hover state or a
 /// breakpoint had to fall back to hand-written CSS.
 ///
-/// Returns the rule text — including any `@media` wrapper — or `None` when the
+/// Returns the rule text, including any `@media` wrapper, or `None` when the
 /// class isn't one we generate.
 pub fn rule(class: &str) -> Option<String> {
     let (variants, base) = split_variants(class);
@@ -1063,8 +1064,8 @@ pub fn rule(class: &str) -> Option<String> {
 
 /// Split `dark:hover:bg-x` into its variants and the utility they modify.
 ///
-/// A `:` inside brackets is not a separator — `[&>summary]:hidden` and colour
-/// values keep theirs — so only top-level colons split.
+/// A `:` inside brackets is not a separator, since `[&>summary]:hidden` and
+/// colour values keep theirs, so only top-level colons split.
 fn split_variants(class: &str) -> (Vec<&str>, &str) {
     let mut variants = Vec::new();
     let mut rest = class;
@@ -1082,7 +1083,7 @@ fn split_variants(class: &str) -> (Vec<&str>, &str) {
 
 /// Maca's integrated Tailwind: turn a utility class into its CSS body. Covers
 /// the common utilities (display/flex/grid, spacing, sizing, text, colors,
-/// borders, rounding, overflow, position) generatively — a compact but real
+/// borders, rounding, overflow, position) generatively: a compact but real
 /// engine, not a fixed table. Unknown classes return `None` and are dropped.
 fn tailwind(class: &str) -> Option<String> {
     // fixed keywords first
@@ -1125,8 +1126,8 @@ fn tailwind(class: &str) -> Option<String> {
             "font-family:'Pretendard',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif"
         }
         // No Pretendard here, though it leads `font-sans`. It is the de-facto
-        // Korean UI face and is installed on a large share of Korean machines
-        // — and it is a *sans-serif*, so naming it first made every code block
+        // Korean UI face and is installed on a large share of Korean machines,
+        // and it is a *sans-serif*, so naming it first made every code block
         // and every inline `<code>` render proportionally for exactly the
         // readers the Korean pages are for.
         "font-mono" => "font-family:ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace",
@@ -1142,7 +1143,7 @@ fn tailwind(class: &str) -> Option<String> {
         "break-words" => "overflow-wrap:break-word",
         "break-all" => "word-break:break-all",
         // Korean text breaks anywhere by default, so a heading splits a word
-        // down the middle — `돌아갈` as `돌` / `아갈`. `keep-all` is the
+        // down the middle: `돌아갈` as `돌` / `아갈`. `keep-all` is the
         // convention every Korean site sets, and without this utility a page
         // built here could not express it.
         "break-keep" => "word-break:keep-all",
@@ -1155,7 +1156,7 @@ fn tailwind(class: &str) -> Option<String> {
         "fixed" => "position:fixed",
         "sticky" => "position:sticky",
         "static" => "position:static",
-        // list, table and typography bits a document needs and an app doesn't —
+        // list, table and typography bits a document needs and an app doesn't,
         // which is why they were missing until a book was built with this.
         "list-none" => "list-style:none",
         "list-disc" => "list-style:disc",
@@ -1235,7 +1236,7 @@ fn tailwind(class: &str) -> Option<String> {
     }
     // Arbitrary values: `text-[0.9em]`, `w-[42rem]`, `bg-[#191919]`. Without
     // these a utility system is a fixed menu, and anything outside the scale
-    // sends you back to hand-written CSS — which is the whole thing this is
+    // sends you back to hand-written CSS, which is the whole thing this is
     // meant to replace. Underscores become spaces, as Tailwind does, so a value
     // with spaces can still live in a class attribute.
     if let Some(open) = class.find("[")
@@ -1244,7 +1245,7 @@ fn tailwind(class: &str) -> Option<String> {
         let prefix = class[..open].trim_end_matches('-');
         let raw = &class[open + 1..class.len() - 1].replace('_', " ");
         // A border width has to carry its style, whether the width came from
-        // the scale or from brackets — CSS defaults `border-style` to `none`,
+        // the scale or from brackets: CSS defaults `border-style` to `none`,
         // so a width on its own draws nothing at all.
         if let Some(sides) = border_sides(prefix) {
             return Some(
@@ -1259,7 +1260,7 @@ fn tailwind(class: &str) -> Option<String> {
         }
     }
     // `underline-offset-2`, `leading-7`, `max-h-none`, `border-l-2`,
-    // `decoration-zinc-400` — the last stragglers a text layout needs.
+    // `decoration-zinc-400`: the last stragglers a text layout needs.
     if let Some(v) = class.strip_prefix("underline-offset-")
         && let Ok(n) = v.parse::<u32>()
     {
@@ -1392,7 +1393,7 @@ fn space(v: &str) -> Option<String> {
 }
 
 /// Tailwind's named container widths, for `max-w-*`. These are what a column of
-/// text is actually sized with — `max-w-2xl` is the standard reading measure —
+/// text is actually sized with (`max-w-2xl` is the standard reading measure),
 /// so a documentation page needs them before it needs most of the numeric scale.
 fn container_width(v: &str) -> Option<&'static str> {
     Some(match v {
@@ -1586,7 +1587,7 @@ fn color(v: &str) -> Option<&'static str> {
 
 /// Escape a class name for use in a CSS selector.
 ///
-/// Utility names are full of characters a selector treats as syntax — `.` in
+/// Utility names are full of characters a selector treats as syntax: `.` in
 /// `text-[0.9em]`, `:` in every variant, and brackets, parens, commas, `#` and
 /// quotes once arbitrary values are allowed. An unescaped one doesn't warn; the
 /// browser silently drops the whole rule.
@@ -1635,9 +1636,9 @@ pub fn css_escape(c: &str) -> String {
 /// item, as Tailwind class candidates.
 ///
 /// Not just `class=` attributes: a program that builds its class list in a
-/// helper — `md_class("pre")` — has the literals in that helper's body, and
-/// collecting only at the call site finds nothing. Tokens that aren't utilities
-/// simply generate no rule.
+/// helper, such as `md_class("pre")`, has the literals in that helper's body,
+/// and collecting only at the call site finds nothing. Tokens that aren't
+/// utilities simply generate no rule.
 pub fn collect_class_strings(s: &Stmt, out: &mut BTreeSet<String>) {
     match s {
         Stmt::Fn(f) => match &f.body {

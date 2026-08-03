@@ -4,7 +4,7 @@
 //! completion (config option namespaces or top-level names), go-to-definition,
 //! document symbols, find-references, rename, signature help, and formatting.
 //!
-//! Editors launch this binary and talk JSON-RPC to it — see `editor/zed-maca`.
+//! Editors launch this binary and talk JSON-RPC to it. See `editor/zed-maca`.
 
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -225,8 +225,8 @@ impl Server {
                     return Some(self.refuse(id, out, &format!("`{new_name}` is not a name")));
                 }
                 // A field is renamed in one file, so a field whose record lives
-                // in another module can only be renamed half-way — the literal
-                // here, not the declaration there. Half is worse than none: it
+                // in another module can only be renamed half-way: the literal
+                // here, not the declaration there. Half is worse than none, it
                 // reports success and breaks the build.
                 if binding.scope == maca_lsp::Scope::Field
                     && !maca_lsp::binding::declares_field(&text, &binding.name)
@@ -322,7 +322,7 @@ impl Server {
     }
 
     /// Answer a rename with "nothing happened", and say why in the editor's
-    /// status area — silence would read as success.
+    /// status area, because silence would read as success.
     fn refuse(&self, id: Option<Value>, out: &mut impl Write, why: &str) -> Value {
         write_message(
             out,
@@ -408,8 +408,8 @@ fn path_of(uri: &str) -> Option<PathBuf> {
 
 /// The inverse. Everything outside the URI unreserved set is escaped, so a
 /// project directory with a space produces a key the editor can match: without
-/// this the round-trip was asymmetric — `path_of` decoded and `uri_of` did not
-/// encode — and an edit keyed by a raw-space URI was silently dropped.
+/// this the round-trip was asymmetric (`path_of` decoded and `uri_of` did not
+/// encode) and an edit keyed by a raw-space URI was silently dropped.
 fn uri_of(path: &Path) -> String {
     let s = path.to_string_lossy().replace('\\', "/");
     let s = if s.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
@@ -435,7 +435,7 @@ fn uri_of(path: &Path) -> String {
 ///
 /// Bytes, not `char`s: a Korean directory arrives as three escapes per
 /// character, and pushing each byte as a `char` re-encoded it as three
-/// characters of mojibake — a path that named nothing, so the workspace walk
+/// characters of mojibake: a path that named nothing, so the workspace walk
 /// found no files and the rename silently shrank to the open buffer.
 fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();

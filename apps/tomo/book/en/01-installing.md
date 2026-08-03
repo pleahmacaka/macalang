@@ -68,7 +68,7 @@ maca run hello.maca
 ```
 
 If that prints `Hello, World`, the compiler, the C toolchain and the runtime are
-all in place — `maca run` exercises the whole pipeline, so it is a better smoke
+all in place. `maca run` exercises the whole pipeline, so it is a better smoke
 test than `--version`.
 
 ## Editor support
@@ -86,8 +86,8 @@ references, document symbols, signature help, completion, rename and formatting.
 
 ## Without installing anything
 
-The [playground](../play/) runs the compiler in your browser — it is the same
-compiler, built for WebAssembly — so you can work through the next few chapters
+The [playground](../play/) runs the compiler in your browser (it is the same
+compiler, built for WebAssembly), so you can work through the next few chapters
 before deciding to install a toolchain at all.
 
 ## Keeping it current

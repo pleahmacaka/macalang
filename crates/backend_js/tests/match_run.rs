@@ -2,9 +2,9 @@
 //!
 //! Every constructor, list and record pattern used to lower to the condition
 //! `true` with no bindings, so the first arm always won and payload names were
-//! never declared. An emitted-text assertion cannot see that — the text looks
-//! plausible either way — so these tests run the module under Node and assert
-//! what it computes.
+//! never declared. An emitted-text assertion cannot see that, because the text
+//! looks plausible either way, so these tests run the module under Node and
+//! assert what it computes.
 
 use std::io::Write;
 use std::process::Command;
@@ -18,7 +18,7 @@ fn run(src: &str, calls: &[&str]) -> Vec<String> {
     let js = maca_backend_js::emit(&p.module).js;
 
     // Tests in one binary share a process id, so the directory is keyed on the
-    // program itself — otherwise concurrent cases overwrite each other's module.
+    // program itself; otherwise concurrent cases overwrite each other's module.
     let mut h = std::collections::hash_map::DefaultHasher::new();
     std::hash::Hash::hash(&(src, calls), &mut h);
     let key = std::hash::Hasher::finish(&h);
@@ -73,7 +73,7 @@ main() -> int => 0
 #[test]
 fn a_nullary_variant_selects_its_own_arm() {
     // The arm order matters: with the old `true` condition every call answered
-    // "red", which is also what a correct first arm answers — so the test asks
+    // "red", which is also what a correct first arm answers, so the test asks
     // for the ones that are *not* first.
     let out = run(COLOR, &["name(mk_green())", "name(mk_blue())", "name(Red)"]);
     assert_eq!(out, vec!["green", "blue", "red"]);

@@ -1,6 +1,6 @@
 //! Every build target resolves `import a/b`.
 //!
-//! `load_with_imports` ran on exactly two paths — rust and native. `build_nix`,
+//! `load_with_imports` ran on exactly two paths, rust and native. `build_nix`,
 //! `build_jvm`, `build_embedded` and `build_js` each read one file and parsed
 //! it, so an imported module's definitions never reached the output.
 //!
@@ -84,7 +84,7 @@ fn js_inlines_the_imported_module_and_the_result_runs() {
         "imported definition missing:\n{src}"
     );
 
-    // Reading the file is not enough — the definition could be emitted after
+    // Reading the file is not enough: the definition could be emitted after
     // its use, or the module could fail to load at all.
     let run = Command::new("node")
         .arg("-e")

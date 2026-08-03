@@ -4,7 +4,7 @@
 // `...rest: T` is written with the type of *one* argument, because that is what
 // a call site writes; inside the body `rest` is a `T[]`. The call site builds
 // that list, so a variadic call and the explicit-list call it is sugar for
-// compile to the same C — which is what the allocation counts below assert,
+// compile to the same C, which is what the allocation counts below assert,
 // rather than an answer that would be identical either way.
 
 Point = {
@@ -40,7 +40,7 @@ total_list(rest: int[]) -> int {
 // argument, and everything after it is collected.
 joined(sep: str, ...parts: str) -> str => parts.join(sep)
 
-// A variadic of a record type — the collected list is a `PointArr`, and the
+// A variadic of a record type: the collected list is a `PointArr`, and the
 // body reads fields off its elements.
 span(...ps: Point) -> int {
     n = 0
@@ -72,7 +72,7 @@ countdown(n: int, ...seen: int) -> int =>
     n == 0 ? seen.length() : countdown(n - 1, n, n)
 
 // A float element is a `FloatArr`, not an integer array holding reinterpreted
-// bits — which is what an unannotated variadic would have got, so this is the
+// bits, which is what an unannotated variadic would have got, so this is the
 // positive half of the rule that the element type must be written down.
 sumf(...xs: float) -> float {
     t = 0.0
@@ -106,7 +106,7 @@ applied(f, ...xs: int) -> int {
 }
 
 // The variadic parameter holds a list the call site built for this call alone,
-// so appending to it in place cannot be observed by anybody — and this is the
+// so appending to it in place cannot be observed by anybody. This is the
 // shape that says whether the ownership analysis agrees. Written as a copy it is
 // quadratic. The values are read back through an interpolation *after* enough
 // rounds to force several reallocations, so a buffer moved out from under a
@@ -177,7 +177,7 @@ test_a_generic_variadic_specializes_per_element_type() {
     assert_eq(first_of("a", "b"), "a", "and a str list, from one signature")
 }
 
-// `x.f(y)` is `f(x, y)`, and the collection has to happen there too — written
+// `x.f(y)` is `f(x, y)`, and the collection has to happen there too. Written
 // UFCS it reached the C compiler as three arguments to a two-parameter function.
 test_ufcs_collects_the_arguments_past_the_receiver() {
     bag = Bag { n = 10 }
@@ -192,7 +192,7 @@ test_a_ufcs_receiver_is_the_first_collected_element() {
 }
 
 // A lambda parameter with no annotation is typed from what the body does with
-// it, and a variadic callee's parameter is the *list* — so `v => total(v, 1)`
+// it, and a variadic callee's parameter is the *list*, so `v => total(v, 1)`
 // typed `v` as a whole `int[]` and pushed a list into a list of ints.
 test_a_lambda_can_pass_its_parameter_to_a_variadic() {
     f = v => total(v, 1)
@@ -278,8 +278,8 @@ test_a_variadic_parameter_grows_in_place() {
 }
 
 // And an ordinary list parameter is still not: the caller is holding it. Same
-// body, one difference in the signature — this is what fails if the exclusion of
-// parameters is dropped wholesale instead of narrowed to the variadic one.
+// body, one difference in the signature. This is what fails if the exclusion
+// of parameters is dropped wholesale instead of narrowed to the variadic one.
 test_an_ordinary_list_parameter_still_copies() {
     held = [1, 2]
     before = alloc_count() + reuse_count()
