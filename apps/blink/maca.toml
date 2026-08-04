@@ -1,0 +1,11 @@
+[package]
+name = "blink"
+description = "Bare-metal firmware: a blinking LED driven through memory-mapped registers."
+
+[build]
+target = "embedded"
+mcu = "cortex-m4"
+
+[[bin]]
+name = "blink"
+path = "blink.maca"

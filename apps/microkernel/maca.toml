@@ -1,0 +1,7 @@
+[package]
+name = "microkernel"
+description = "An L4-style message-passing microkernel, simulated in Maca."
+
+[[bin]]
+name = "kernel"
+path = "kernel.maca"

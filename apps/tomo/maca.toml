@@ -1,0 +1,7 @@
+[package]
+name = "tomo"
+description = "The i18n handbook builder that renders book/{en,ko}/*.md into site/."
+
+[[bin]]
+name = "tomo"
+path = "tomo.maca"

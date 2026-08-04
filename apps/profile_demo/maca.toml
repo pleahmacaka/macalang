@@ -1,0 +1,7 @@
+[package]
+name = "profile_demo"
+description = "A program that measures itself, the worked example of the profile package."
+
+[[bin]]
+name = "profile_demo"
+path = "profile_demo.maca"

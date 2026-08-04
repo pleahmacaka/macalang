@@ -1,0 +1,7 @@
+[package]
+name = "tambo_demo"
+description = "A small site on tambo, the worked example of the tambo package."
+
+[[bin]]
+name = "tambo_demo"
+path = "tambo_demo.maca"

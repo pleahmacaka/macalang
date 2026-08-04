@@ -83,7 +83,12 @@ struct Resolved {
 
 /// The registry base for maca-registry deps, overridable via `[registry] url`.
 fn registry_url() -> String {
-    read_toml_value("registry", "url").unwrap_or_else(|| DEFAULT_REGISTRY.to_string())
+    crate::manifest::Chain::here()
+        .value("[registry]", "url")
+        .map_or_else(
+            || DEFAULT_REGISTRY.to_string(),
+            |(_, v)| crate::manifest::unquote(&v).to_string(),
+        )
 }
 
 /// `maca add <spec>…`: add and fetch one or more dependencies.
@@ -456,28 +461,14 @@ fn ensure_manifest() {
     }
 }
 
-/// Read `[dependencies]` as `(name, spec)` pairs.
+/// Read `[dependencies]` off the manifest chain as `(name, spec)` pairs.
 pub fn manifest_deps() -> Vec<(String, String)> {
-    let Ok(toml) = std::fs::read_to_string(MANIFEST) else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    let mut in_deps = false;
-    for line in toml.lines() {
-        let t = line.trim();
-        if t.starts_with('[') {
-            in_deps = t == "[dependencies]";
-            continue;
-        }
-        if in_deps && let Some((k, v)) = t.split_once('=') {
-            let k = k.trim();
-            let v = v.trim().trim_matches('"');
-            if !k.is_empty() && !v.is_empty() {
-                out.push((k.to_string(), v.to_string()));
-            }
-        }
-    }
-    out
+    crate::manifest::Chain::here()
+        .table("[dependencies]")
+        .into_iter()
+        .map(|(k, v)| (k, crate::manifest::unquote(&v).to_string()))
+        .filter(|(_, v)| !v.is_empty())
+        .collect()
 }
 
 /// Insert or replace `name = "spec"` inside `[dependencies]`, creating the section if needed.
@@ -515,27 +506,6 @@ fn manifest_put(name: &str, spec: &str) -> Result<(), String> {
     let mut out = lines.join("\n");
     out.push('\n');
     std::fs::write(MANIFEST, out).map_err(|e| e.to_string())
-}
-
-/// Read a `[section] key = "value"` scalar from maca.toml.
-fn read_toml_value(section: &str, key: &str) -> Option<String> {
-    let toml = std::fs::read_to_string(MANIFEST).ok()?;
-    let header = format!("[{section}]");
-    let mut in_sec = false;
-    for line in toml.lines() {
-        let t = line.trim();
-        if t.starts_with('[') {
-            in_sec = t == header;
-            continue;
-        }
-        if in_sec
-            && let Some((k, v)) = t.split_once('=')
-            && k.trim() == key
-        {
-            return Some(v.trim().trim_matches('"').to_string());
-        }
-    }
-    None
 }
 
 /// Append or replace a package entry in `maca.lock`.

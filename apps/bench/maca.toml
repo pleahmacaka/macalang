@@ -1,0 +1,7 @@
+[package]
+name = "bench"
+description = "The cross-language benchmark harness and its reference kernels."
+
+[[bin]]
+name = "bench"
+path = "run.maca"

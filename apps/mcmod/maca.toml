@@ -1,0 +1,10 @@
+[package]
+name = "mcmod"
+description = "A Minecraft Fabric mod, written in Maca and transpiled to Java."
+
+[build]
+target = "jvm"
+
+[[bin]]
+name = "mcmod"
+path = "mod.maca"

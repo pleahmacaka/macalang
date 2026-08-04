@@ -3,15 +3,37 @@
 name = "maca"
 version = "0.2.1"
 
+[workspace]
+members = [
+    "modules/bench",
+    "modules/cli",
+    "modules/http",
+    "modules/profile",
+    "modules/signal",
+    "modules/std",
+    "modules/tambo",
+    "apps/bench",
+    "apps/bench_demo",
+    "apps/blink",
+    "apps/cli_tool",
+    "apps/desktop",
+    "apps/mcmod",
+    "apps/microkernel",
+    "apps/mqtt",
+    "apps/playground",
+    "apps/profile_demo",
+    "apps/signal_demo",
+    "apps/site",
+    "apps/tambo_demo",
+    "apps/tomo",
+]
+
 [format]
 indent = 4
 width = 80
 
 [lint]
 strict = true
-
-[build]
-target = "native"
 
 [scripts]
 hello = "maca run examples/hello.maca"

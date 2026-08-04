@@ -1,0 +1,11 @@
+[package]
+name = "desktop"
+description = "A Tauri desktop app whose front end and back end are both Maca."
+
+[[bin]]
+name = "desktop"
+path = "app.maca"
+
+[[bin]]
+name = "backend"
+path = "backend.maca"

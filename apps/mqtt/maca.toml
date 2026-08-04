@@ -1,0 +1,11 @@
+[package]
+name = "mqtt"
+description = "An MQTT 3.1.1 broker and client over a C FFI."
+
+[[bin]]
+name = "broker"
+path = "broker.maca"
+
+[[bin]]
+name = "client"
+path = "client.maca"

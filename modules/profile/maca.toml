@@ -1,0 +1,3 @@
+[package]
+name = "profile"
+description = "Spans, traces and flame charts, as text and as SVG."

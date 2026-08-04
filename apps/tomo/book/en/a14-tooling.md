@@ -140,10 +140,110 @@ the compiler itself, which is the largest Maca program that exists.
 `maca init` starts a project with a `maca.toml`. Dependencies for the Rust
 target go in a `[rust-dependencies]` table and are passed through to Cargo, and
 a `[page]` table names the page a JS or Tauri build produces (`title`, `lang`,
-`description`; see [Targets](a10-targets.md)). Every table is read from the
-`maca.toml` nearest the source file, searching upward, so a subdirectory is
-covered by the project it belongs to.
+`description`; see [Targets](a10-targets.md)).
 
 For your own code, the module system needs no manifest at all: `maca build
 app/main.maca` follows the imports. See
 [Modules and Layout](a9-modules.md).
+
+## One repository, many packages
+
+A repository that holds more than one thing writes one `maca.toml` per thing,
+plus a root that gathers them. This is what Maca's own tree looks like:
+
+```toml
+# maca.toml, at the root
+[package]
+name = "maca"
+version = "0.2.1"
+
+[workspace]
+members = [
+    "modules/std",
+    "apps/tomo",
+]
+
+[format]
+indent_size = 4
+```
+
+```toml
+# modules/std/maca.toml
+[package]
+name = "std"
+description = "The layer above the prelude builtins."
+```
+
+### Which manifest answers
+
+**One rule: the nearest manifest that states a key answers for it.** The chain
+covering a file starts with the manifest in its own directory and ends at the
+workspace root, and a manifest that says nothing about a key inherits the
+answer from the one above it. So `modules/std` overrides `indent_size` by
+stating one, and inherits the root's by staying silent.
+
+That is why the package above states a name and not a version. It releases
+under the workspace's version, and a copy of a number nobody compares is a copy
+that goes stale.
+
+Three tables are not settings, and so are not on the chain. Each of them
+answers "which directory is this" rather than "how is this built":
+
+| table | read from | why |
+|---|---|---|
+| `[workspace]` | the root, and only the root | it is what makes that directory the root |
+| `[package]` | the package's own manifest | a member must state its own `name` |
+| `[[bin]]` | the package's own manifest | it says what *this* package builds |
+
+Every path a manifest writes is relative to the directory that manifest sits
+in, so `path = "main.maca"` in `apps/hello/maca.toml` is
+`apps/hello/main.maca` from wherever you run the command.
+
+### Members are listed, and the list is checked
+
+Members are written out. They are not found by convention, and the list is not
+trusted on its own either: it is checked against the tree in both directions.
+
+- A listed member with no `maca.toml` is an error naming it.
+- A directory beside a member that holds a `maca.toml` and is not listed is an
+  error naming it too.
+
+A convention would silently adopt a stray directory; a list on its own would
+silently drift from the tree. Both failures are silent wrong answers, and the
+list plus the check is neither. A directory becomes a package by writing a
+`maca.toml`, and by nothing else, so a scratch directory beside your packages
+is never one.
+
+### What a member manifest does not change
+
+It does not change which directories are import search roots, nor the order
+they are tried in. It changes only where the search stops. The walk up from the
+importing file used to end at the first `maca.toml` it met; it now ends at the
+workspace root, because a member's manifest is not the edge of the world.
+`modules/std/text.maca` still reaches `modules/`, and so still resolves
+`import std/list`. See [Modules and Layout](a9-modules.md).
+
+### Working inside a package
+
+With no file named, the three commands are about the package the working
+directory holds:
+
+```
+cd apps/hello
+maca build              # its [[bin]]
+maca run                # the same, and run it
+maca test               # every .maca suite under its tests/
+```
+
+`--bin <name>` picks one when a package declares more than one, and `[package]
+tests` renames the test directory. A library that declares no `[[bin]]` is told
+so by name rather than quietly building something else:
+
+```
+$ cd modules/std && maca build
+maca: build: package `std` declares no [[bin]] in .../modules/std/maca.toml; name a .maca file
+```
+
+`[build] target` in the manifest saves passing `--target` every time, and
+`[build] mcu` saves `--mcu`. A flag on the command line still wins, and a
+declared target beats the one the compiler would have guessed from the source.

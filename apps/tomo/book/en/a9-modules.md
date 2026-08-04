@@ -52,8 +52,11 @@ maca: import { centroid } from geometry: 'centroid' is not defined in that modul
    1. `<dir>/a/b.maca`, the written path taken literally;
    2. `<dir>/modules/a/b.maca`, `<dir>/src/a/b.maca`,
       `<dir>/maca_modules/a/b.maca`, each search root in that order.
-2. The walk **stops at the project root**, the nearest directory at or above
-   the importer holding a `maca.toml`.
+2. The walk **stops at the project root**: the workspace root when the tree has
+   one, and otherwise the nearest directory at or above the importer holding a
+   `maca.toml`. A member's own manifest does not stop it, which is what lets
+   `modules/std/text.maca` keep reaching `modules/` (see
+   [Tooling](a14-tooling.md)).
 3. If the importer is not inside a project at all, the same two steps are tried
    once more from the **working directory**.
 4. Last, and only last, a **bare sibling**: `<importer's dir>/b.maca`, using

@@ -1,0 +1,3 @@
+[package]
+name = "http"
+description = "The HTTP server: server, request, response, status, and the serve entry point."

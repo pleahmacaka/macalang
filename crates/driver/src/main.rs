@@ -7,6 +7,7 @@ mod bindgen;
 mod build_cache;
 mod deps;
 mod entry;
+mod manifest;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -46,26 +47,16 @@ struct FmtStyle {
     unit: String,
 }
 
-/// Read `[format]` from `maca.toml` (indent_style = "space"|"tab", indent_size = N).
-fn format_style() -> FmtStyle {
+/// Read `[format]` off the manifest chain covering the file being formatted.
+fn format_style(chain: &manifest::Chain) -> FmtStyle {
     let mut style = "space".to_string();
     let mut size = 4usize;
-    if let Ok(toml) = std::fs::read_to_string("maca.toml") {
-        let mut in_fmt = false;
-        for line in toml.lines() {
-            let t = line.trim();
-            if t.starts_with('[') {
-                in_fmt = t == "[format]";
-                continue;
-            }
-            if in_fmt && let Some((k, v)) = t.split_once('=') {
-                let v = v.trim().trim_matches('"');
-                match k.trim() {
-                    "indent_style" => style = v.to_string(),
-                    "indent_size" => size = v.parse().unwrap_or(4),
-                    _ => {}
-                }
-            }
+    for (k, v) in chain.table("[format]") {
+        let v = manifest::unquote(&v);
+        match k.as_str() {
+            "indent_style" => style = v.to_string(),
+            "indent_size" => size = v.parse().unwrap_or(4),
+            _ => {}
         }
     }
     let unit = if style == "tab" {
@@ -86,7 +77,7 @@ fn cmd_fmt(args: &[String]) {
     if files.is_empty() {
         die("fmt: expected one or more .maca files (use --check to verify only)");
     }
-    let style = format_style();
+    let style = format_style(&manifest::Chain::for_source(&files[0]));
     let mut unformatted = Vec::new();
     for src in &files {
         let source =
@@ -470,24 +461,11 @@ fn reindent(src: &str, unit: &str) -> String {
     out
 }
 
-/// Look up a `[scripts]` alias in ./maca.toml.
+/// Look up a `[scripts]` alias on the chain covering this directory.
 fn script_alias(name: &str) -> Option<String> {
-    let toml = std::fs::read_to_string("maca.toml").ok()?;
-    let mut in_scripts = false;
-    for line in toml.lines() {
-        let t = line.trim();
-        if t.starts_with('[') {
-            in_scripts = t == "[scripts]";
-            continue;
-        }
-        if in_scripts
-            && let Some((k, v)) = t.split_once('=')
-            && k.trim() == name
-        {
-            return Some(v.trim().trim_matches('"').to_string());
-        }
-    }
-    None
+    manifest::Chain::here()
+        .value("[scripts]", name)
+        .map(|(_, v)| manifest::unquote(&v).to_string())
 }
 
 fn run_script(cmd: &str) {
@@ -508,20 +486,23 @@ fn usage() {
          \n\
          commands:\n\
          \x20 init  [dir]                  scaffold a new project (maca.toml, main.maca)\n\
-         \x20 build <file.maca> [-o out]   compile (native | --target nix|js|jvm|rust|embedded|tauri)\n\
-         \x20 run   <file.maca> [args..]   compile and run\n\
+         \x20 build [file.maca] [-o out]   compile (native | --target nix|js|jvm|rust|embedded|tauri)\n\
+         \x20 run   [file.maca] [args..]   compile and run\n\
          \x20 -m    <module>[.<fn>] [args..]  run a function out of a module\n\
          \x20 dev   [dev.maca] [-o flake]  generate a dev-shell flake.nix from Maca\n\
          \x20 watch <file.maca> [args..]   rebuild & rerun on change (hot reload)\n\
          \x20 fmt   <file.maca>… [--check] format in place (style from maca.toml [format])\n\
          \x20 lint  <file.maca> [--config] style + type/effect diagnostics\n\
-         \x20 test  <file.maca>            run every `test_…` function in the file\n\
+         \x20 test  [file.maca]            run every `test_…` function in the file\n\
          \x20 profile <file.maca> [-o svg] run under callgrind, render a flame graph\n\
          \x20 add   <spec>…               add a dependency (npm:pkg | git+url | name@ver)\n\
          \x20 update                      re-resolve dependencies to latest\n\
          \x20 upgrade                     self-update the maca toolchain\n\
          \x20 bindgen <header.h> [-o f]   generate Maca FFI declarations from a C header\n\
          \x20 --version                    print the toolchain version\n\
+         \n\
+         with no file, build/run/test are about the package the directory holds:\n\
+         \x20 its [[bin]] (choose with --bin <name>), and its `tests` directory\n\
          \n\
          build targets: native (default), --target nix | js | jvm | rust | embedded | tauri\n\
          \x20 embedded also takes --mcu cortex-m0|m3|m4|riscv32; jvm takes --cp <jars>"
@@ -535,6 +516,7 @@ fn cmd_build(args: &[String]) {
     let mut explicit_target = false;
     let mut classpath = None;
     let mut mcu = String::new();
+    let mut bin = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -543,14 +525,25 @@ fn cmd_build(args: &[String]) {
                 target = it.next().cloned().unwrap_or_else(|| "native".into());
                 explicit_target = true;
             }
+            "--bin" => bin = it.next().cloned(),
             "--cp" | "--classpath" => classpath = it.next().cloned(),
             "--mcu" => mcu = it.next().cloned().unwrap_or_default(),
             _ => src = Some(PathBuf::from(a)),
         }
     }
-    let Some(src) = src else {
-        die("build: expected a .maca file");
-    };
+    let src = src.unwrap_or_else(|| declared_bin("build", bin.as_deref()));
+    check_workspace_of(&src);
+    if !explicit_target
+        && let Some((_, declared)) = manifest::Chain::for_source(&src).value("[build]", "target")
+    {
+        target = manifest::unquote(&declared).to_string();
+        explicit_target = true;
+    }
+    if mcu.is_empty()
+        && let Some((_, declared)) = manifest::Chain::for_source(&src).value("[build]", "mcu")
+    {
+        mcu = manifest::unquote(&declared).to_string();
+    }
     if !explicit_target && let Ok(source) = std::fs::read_to_string(&src) {
         let parsed = maca_parser::parse(&source);
         if let Some((detected, why)) = detect_target(&parsed.module) {
@@ -614,6 +607,56 @@ fn cmd_build(args: &[String]) {
     match compile(&src, &out) {
         Ok(()) => println!("built {}", out.display()),
         Err(e) => die(&e),
+    }
+}
+
+/// The source a command compiles when the command line named no file: a `[[bin]]` of the package here.
+fn declared_bin(cmd: &str, want: Option<&str>) -> PathBuf {
+    let chain = manifest::Chain::here();
+    if let Err(e) = chain.check_workspace() {
+        die(&e);
+    }
+    let Some(own) = chain.own() else {
+        die(&format!(
+            "{cmd}: expected a .maca file, and there is no maca.toml here to name one"
+        ))
+    };
+    let package = chain.package_name();
+    let bins = chain.bins();
+    if bins.is_empty() {
+        die(&format!(
+            "{cmd}: package `{package}` declares no [[bin]] in {}; name a .maca file",
+            own.file().display()
+        ));
+    }
+    let chosen = match want {
+        Some(name) => bins.iter().find(|b| b.name == name),
+        None if bins.len() == 1 => bins.first(),
+        None => None,
+    };
+    let Some(bin) = chosen else {
+        let names: Vec<&str> = bins.iter().map(|b| b.name.as_str()).collect();
+        die(&format!(
+            "{cmd}: package `{package}` declares {} binaries; \
+             pass --bin <name> (one of {})",
+            bins.len(),
+            names.join(", ")
+        ))
+    };
+    if !bin.path.is_file() {
+        die(&format!(
+            "{cmd}: [[bin]] `{}` names {}, which is not a file",
+            bin.name,
+            bin.path.display()
+        ));
+    }
+    bin.path.clone()
+}
+
+/// A workspace whose members and tree disagree is a wrong answer waiting to happen, so say so before building.
+fn check_workspace_of(src: &Path) {
+    if let Err(e) = manifest::check_for(src) {
+        die(&e);
     }
 }
 
@@ -956,7 +999,7 @@ fn validate_no_function_fields(m: &maca_parser::Module, target: &str) -> Result<
     Ok(())
 }
 
-/// `[rust-dependencies]` from the `maca.toml` nearest `src` (searching upward), as `(name, raw-rhs)` pairs.
+/// `[rust-dependencies]` off the manifest chain covering `src`, as `(name, raw-rhs)` pairs.
 fn rust_dependencies(src: &Path) -> Vec<(String, String)> {
     manifest_section(src, "[rust-dependencies]")
 }
@@ -967,49 +1010,7 @@ fn rust_patch(src: &Path) -> Vec<(String, String)> {
 }
 
 fn manifest_section(src: &Path, section: &str) -> Vec<(String, String)> {
-    let Some(manifest) = find_manifest(src) else {
-        return Vec::new();
-    };
-    let Ok(toml) = std::fs::read_to_string(&manifest) else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    let mut in_section = false;
-    for line in toml.lines() {
-        let t = line.trim();
-        if t.starts_with('#') {
-            continue;
-        }
-        if t.starts_with('[') {
-            in_section = t == section;
-            continue;
-        }
-        if in_section && let Some((k, v)) = t.split_once('=') {
-            let k = k.trim();
-            let v = v.trim();
-            if !k.is_empty() && !v.is_empty() {
-                out.push((k.to_string(), v.to_string()));
-            }
-        }
-    }
-    out
-}
-
-/// Walk up from `src`'s directory looking for a `maca.toml`.
-fn find_manifest(src: &Path) -> Option<PathBuf> {
-    let mut dir = src
-        .parent()
-        .map(Path::to_path_buf)
-        .or_else(|| std::env::current_dir().ok())?;
-    loop {
-        let cand = dir.join("maca.toml");
-        if cand.is_file() {
-            return Some(cand);
-        }
-        if !dir.pop() {
-            return None;
-        }
-    }
+    manifest::Chain::for_source(src).table(section)
 }
 
 /// The `Cargo.toml` for the throwaway build project.
@@ -1442,7 +1443,7 @@ struct Page {
     description: Option<String>,
 }
 
-/// Read `[page]` from the `maca.toml` nearest the source (searching upward, as `[rust-dependencies]` does).
+/// Read `[page]` off the manifest chain covering the source, as `[rust-dependencies]` is read.
 fn page_config(src: &Path) -> Result<Page, String> {
     let mut page = Page {
         title: None,
@@ -1654,15 +1655,78 @@ fn line(depth: usize, text: &str) -> String {
     format!("{}{text}\n", "    ".repeat(depth))
 }
 
-/// `maca test <file.maca>`: run every `test_`-prefixed function in the file.
+/// `maca test [file.maca]`: one suite, or every suite the package holds.
 fn cmd_test(args: &[String]) {
     let Some(src) = args.first().map(PathBuf::from) else {
-        die("test: expected a .maca file");
+        cmd_test_package()
     };
-    let source = load_with_imports(&src).unwrap_or_else(|e| die(&e));
+    let code = run_suite(&src);
+    if code != 0 {
+        eprintln!("maca: tests failed");
+    }
+    std::process::exit(code);
+}
+
+/// `maca test` with no file: every `.maca` suite under the package's test directory.
+fn cmd_test_package() -> ! {
+    let chain = manifest::Chain::here();
+    if let Err(e) = chain.check_workspace() {
+        die(&e);
+    }
+    let Some(own) = chain.own() else {
+        die("test: no maca.toml here, so there is no package to test; name a .maca file")
+    };
+    let rel = chain.value("[package]", "tests").map_or_else(
+        || "tests".to_string(),
+        |(_, v)| manifest::unquote(&v).into(),
+    );
+    let dir = own.dir.join(&rel);
+    let mut suites: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("maca"))
+        .collect();
+    suites.sort();
+    if suites.is_empty() {
+        die(&format!(
+            "test: {} holds no .maca suite; name a file, or set [package] tests",
+            dir.display()
+        ));
+    }
+    let release = chain
+        .package_version()
+        .map_or_else(String::new, |v| format!(" {v}"));
+    println!("{}{release}: {} suites", chain.package_name(), suites.len());
+    let mut failed = 0;
+    for suite in &suites {
+        println!("== {}", suite.display());
+        if run_suite(suite) != 0 {
+            failed += 1;
+        }
+    }
+    println!(
+        "{} of {} suites passed",
+        suites.len() - failed,
+        suites.len()
+    );
+    std::process::exit(i32::from(failed != 0));
+}
+
+/// Build and run one suite, answering the exit status its assertions produced.
+fn run_suite(src: &Path) -> i32 {
+    let source = match load_with_imports(src) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("maca: {e}");
+            return 1;
+        }
+    };
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
-        die(&format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
+        eprintln!("maca: parse errors:\n  {}", parsed.errors.join("\n  "));
+        return 1;
     }
 
     let tests: Vec<String> = parsed
@@ -1676,7 +1740,7 @@ fn cmd_test(args: &[String]) {
         .collect();
     if tests.is_empty() {
         println!("no tests found (name a function `test_…` to make it one)");
-        return;
+        return 0;
     }
 
     let items: Vec<maca_parser::Stmt> = parsed
@@ -1693,28 +1757,33 @@ fn cmd_test(args: &[String]) {
     let mut program = maca_parser::print_module(&maca_parser::ast::Module { items });
     program.push_str(&generated_runner(&tests));
 
-    let dir = build_dir(&src);
+    let dir = build_dir(src);
     if let Err(e) = std::fs::create_dir_all(&dir) {
-        die(&format!("test: {e}"));
+        eprintln!("maca: test: {e}");
+        return 1;
     }
     let gen_path = dir.join("test_main.maca");
     if let Err(e) = std::fs::write(&gen_path, &program) {
-        die(&format!("test: {e}"));
+        eprintln!("maca: test: {e}");
+        return 1;
     }
-    let out = dir.join(format!("{}_test", stem(&src)));
+    let out = dir.join(format!("{}_test", stem(src)));
     if let Err(e) = compile(&gen_path, &out) {
-        die(&e);
+        eprintln!("maca: {e}");
+        return 1;
     }
     let status = if have_wsl() {
         Command::new("wsl").arg(to_wsl(&out)).status()
     } else {
         Command::new(&out).status()
+    };
+    match status {
+        Ok(s) => s.code().unwrap_or(1),
+        Err(e) => {
+            eprintln!("maca: failed to launch tests: {e}");
+            1
+        }
     }
-    .unwrap_or_else(|e| die(&format!("failed to launch tests: {e}")));
-    if !status.success() {
-        eprintln!("maca: tests failed");
-    }
-    std::process::exit(status.code().unwrap_or(1));
 }
 
 /// `maca -m http.serve [args…]`: run a function out of a module.
@@ -1726,8 +1795,7 @@ fn cmd_module(args: &[String]) {
     if let Some(why) = entry::module_name_error(spec, &module) {
         die(&format!("-m: {why}"));
     }
-    let root =
-        maca_parser::modules::project_root(Path::new(".")).unwrap_or_else(|| PathBuf::from("."));
+    let root = manifest::here_or_root();
 
     let whole = spec.replace('.', "/");
     let (module, named, path) = match entry::resolve(&module, &root) {
@@ -1812,10 +1880,19 @@ fn cmd_module(args: &[String]) {
 }
 
 fn cmd_run(args: &[String]) {
-    let Some(src) = args.first().map(PathBuf::from) else {
-        die("run: expected a .maca file");
+    let named = args.first().filter(|a| !a.starts_with("--"));
+    let src = match named {
+        Some(a) => PathBuf::from(a),
+        None => {
+            let want = args
+                .iter()
+                .position(|a| a == "--bin")
+                .and_then(|i| args.get(i + 1));
+            declared_bin("run", want.map(String::as_str))
+        }
     };
-    let prog_args = &args[1..];
+    check_workspace_of(&src);
+    let prog_args: &[String] = if named.is_some() { &args[1..] } else { &[] };
     let dir = build_dir(&src);
     let out = dir.join(stem(&src));
     if let Err(e) = compile(&src, &out) {

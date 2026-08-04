@@ -32,8 +32,13 @@ first_diff(a: str, b: str) -> int {
     i
 }
 
+corpus() -> str[] {
+    from_root = find("apps", ".maca")
+    from_root.length() > 0 ? from_root : find(".", ".maca")
+}
+
 test_highlighting_maca_preserves_every_character() {
-    files = find("apps", ".maca")
+    files = corpus()
     assert(files.length() > 5, "the corpus is missing: {files.length()} files")
 
     i = 0

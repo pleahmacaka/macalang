@@ -84,6 +84,25 @@ and neither should silently answer for the other, so an application is reached
 by its written path (`import apps/tomo/conf`). `[layout]` in `maca.toml`
 renames any of them.
 
+**Every `modules/*` and `apps/*` is its own package with its own `maca.toml`,
+and the root is the workspace that gathers them.** `[workspace] members` lists
+them, and the list is checked against the tree both ways: a listed member with
+no manifest is an error naming it, and a directory beside a member that holds a
+manifest and is not listed is an error naming it too (a directory becomes a
+package by writing a `maca.toml` and by nothing else, so a scratch directory is
+never one). Precedence is one rule: **the nearest manifest that states a key
+answers for it**, from the file's own directory up to the workspace root, which
+is why a package states its `name` and inherits the workspace's `version`.
+`[workspace]`, `[package]` and `[[bin]]` are identity rather than settings, so
+they are read from one manifest, and every path a manifest writes is relative to
+the directory it sits in. The one thing this changes about resolution is where
+the walk stops: at the workspace root, not at the first `maca.toml`, or
+`modules/std/text.maca` could no longer reach `modules/` to resolve
+`import std/list`. With no file named, `maca build`/`run`/`test` are about the
+package the working directory holds: its `[[bin]]` (`--bin` picks one of
+several) and the suites under its `tests/`. Documented in `docs/SPEC.md` and
+handbook ch. a14; gated by `crates/driver/tests/workspace.rs`.
+
 **A directory that shares a package's name shadows the package**, silently. The
 written path is tried before the search roots, so a top-level `bench/` beside
 `modules/bench/`, which is what the tree had, decided `import bench/stat` by

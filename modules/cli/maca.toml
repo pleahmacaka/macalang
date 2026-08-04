@@ -1,0 +1,3 @@
+[package]
+name = "cli"
+description = "Argument parsing and terminal output in one: spec, parse, help, show, style."

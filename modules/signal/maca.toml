@@ -1,0 +1,3 @@
+[package]
+name = "signal"
+description = "Nanostore-style reactive state, and the DOM patch a change implies."

@@ -1,0 +1,7 @@
+[package]
+name = "signal_demo"
+description = "The single node each change touches, the worked example of the signal package."
+
+[[bin]]
+name = "signal_demo"
+path = "signal_demo.maca"

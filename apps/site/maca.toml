@@ -1,0 +1,7 @@
+[package]
+name = "site"
+description = "The project's front page, whose copy is keyed by sum types."
+
+[[bin]]
+name = "site"
+path = "home.maca"

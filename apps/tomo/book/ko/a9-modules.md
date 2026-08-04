@@ -49,8 +49,11 @@ maca: import { centroid } from geometry: 'centroid' is not defined in that modul
    1. `<dir>/a/b.maca`: 쓴 경로를 그대로;
    2. `<dir>/modules/a/b.maca`, `<dir>/src/a/b.maca`,
       `<dir>/maca_modules/a/b.maca`: 탐색 루트들을 이 순서로.
-2. 이 순회는 **프로젝트 루트에서 멈춥니다**. import하는 파일 자신 또는 그 위에서
-   가장 가까운, `maca.toml`을 가진 디렉터리입니다.
+2. 이 순회는 **프로젝트 루트에서 멈춥니다**. 트리에 워크스페이스가 있으면
+   워크스페이스 루트이고, 없으면 import하는 파일 자신 또는 그 위에서 가장
+   가까운, `maca.toml`을 가진 디렉터리입니다. 멤버 자신의 매니페스트는 순회를
+   멈추지 않고, 그래서 `modules/std/text.maca`가 `modules/`까지 계속 닿습니다
+   ([도구](a14-tooling.md)를 보세요).
 3. import하는 파일이 어떤 프로젝트에도 속하지 않으면, 같은 두 단계를
    **작업 디렉터리**에서 한 번 더 시도합니다.
 4. 마지막으로, 그리고 마지막에만, **형제 파일**:

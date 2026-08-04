@@ -1,0 +1,15 @@
+[package]
+name = "playground"
+description = "The browser playground, one Maca file compiled by the JS backend."
+
+[build]
+target = "js"
+
+[page]
+title = "Maca Playground"
+lang = "en"
+description = "Write Maca in the browser and watch it compile."
+
+[[bin]]
+name = "playground"
+path = "playground.maca"

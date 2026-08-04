@@ -1,0 +1,3 @@
+[package]
+name = "std"
+description = "The layer above the prelude builtins: text, list, path, json, csv, fs, proc."

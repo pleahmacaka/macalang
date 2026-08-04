@@ -1,0 +1,3 @@
+[package]
+name = "bench"
+description = "Measurement, statistics, storage and comparison, with a corpus of cases."

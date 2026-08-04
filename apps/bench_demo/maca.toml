@@ -1,0 +1,7 @@
+[package]
+name = "bench_demo"
+description = "Nine cases out of the bench corpus, measured and tabulated."
+
+[[bin]]
+name = "bench_demo"
+path = "bench_demo.maca"

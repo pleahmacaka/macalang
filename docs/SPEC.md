@@ -34,7 +34,8 @@ decision changes, this file and the code change together; the spec wins ties.
 | run | runtime execution | Nix eval → derivation |
 
 Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
-`[hosts.X]` = config.
+`[hosts.X]` = config. See *The manifest* below for what else a manifest says
+and which manifest answers.
 
 ## Language cheatsheet
 
@@ -221,6 +222,66 @@ reference (`apps/tomo/book/en/a3-stdlib.md`), and the examples are
 `examples/*.maca`. The handbook is two volumes over one chapter list: *Learning
 Maca* (`00-`…`18-`) teaches and the *Reference* (`a1-`…`a16-`) answers, and
 `apps/tomo/book.toml` is the order they are read in.
+
+## The manifest
+
+`maca.toml` says what a directory is. A repository that holds more than one
+thing writes one manifest per thing, plus a root that gathers them:
+
+```toml
+# the root
+[package]
+name = "maca"
+version = "0.2.1"
+
+[workspace]
+members = ["modules/std", "apps/tomo"]
+
+[format]
+indent_size = 4
+```
+
+```toml
+# modules/std/maca.toml
+[package]
+name = "std"
+description = "The layer above the prelude builtins."
+```
+
+**Precedence is one rule: the nearest manifest that states a key answers for
+it.** The chain covering a file runs from the manifest in its own directory up
+to the workspace root, and a manifest that says nothing about a key inherits
+the answer from the one above. That is why `modules/std` states its name and
+not its version: the version it releases under is the workspace's, and a second
+copy is a copy that goes stale.
+
+Three tables are not settings and so are not on the chain, because each is the
+answer to "which directory is this" rather than "how is this built":
+`[workspace]`, which may appear only at the root and is what makes that
+directory the root; `[package]`, which every member must state a `name` in; and
+the `[[bin]]` blocks, which say what *this* package builds. Every path a
+manifest writes is relative to the directory that manifest sits in.
+
+**Members are listed, and the list is checked against the tree in both
+directions.** A listed member with no `maca.toml` is an error naming it, and a
+directory beside a member that holds a `maca.toml` and is not listed is an
+error naming it too. A convention would silently adopt a stray directory; a
+list on its own would silently drift from the tree; the list plus the check
+does neither. A directory becomes a package by writing a `maca.toml`, and by
+nothing else, so a scratch directory is never one.
+
+**A per-package manifest changes nothing about which directories are import
+search roots, nor the order they are tried in.** It changes only where the
+search stops: the walk up from the importing file used to end at the first
+`maca.toml` it met, and now ends at the workspace root, because a member's
+manifest is not the edge of the world. `modules/std/text.maca` still reaches
+`modules/` and so still resolves `import std/list`.
+
+With no file named, `maca build`, `maca run` and `maca test` are about the
+package the working directory holds: its `[[bin]]` (`--bin <name>` when it
+declares more than one) and the `.maca` suites under its `tests` directory
+(`[package] tests` renames it). A library that declares no `[[bin]]` is told
+so, by name, rather than quietly building something else.
 
 ## Status
 

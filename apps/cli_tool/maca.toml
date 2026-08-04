@@ -1,0 +1,7 @@
+[package]
+name = "cli_tool"
+description = "report: a command line end to end, the worked example of the cli package."
+
+[[bin]]
+name = "report"
+path = "cli_tool.maca"

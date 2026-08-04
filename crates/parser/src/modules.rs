@@ -13,6 +13,9 @@ pub struct Layout {
 /// Where `maca add` installs a dependency.
 pub const INSTALLED: &str = "maca_modules";
 
+/// The file a project's settings live in.
+pub const MANIFEST: &str = "maca.toml";
+
 impl Default for Layout {
     fn default() -> Self {
         Layout {
@@ -25,14 +28,20 @@ impl Default for Layout {
 impl Layout {
     /// Read `[layout]` out of a `maca.toml`.
     pub fn from_manifest(toml: &str) -> Layout {
+        Layout::from_chain(&[toml.to_string()])
+    }
+
+    /// Read `[layout]` off a manifest chain, the nearest manifest that states a key answering for it.
+    pub fn from_chain(texts: &[String]) -> Layout {
         let mut out = Layout::default();
-        if let Some(v) = layout_key(toml, "modules") {
+        let nearest = |key: &str| texts.iter().find_map(|t| layout_key(t, key));
+        if let Some(v) = nearest("modules") {
             out.roots[0] = v;
         }
-        if let Some(v) = layout_key(toml, "src") {
+        if let Some(v) = nearest("src") {
             out.roots[1] = v;
         }
-        if let Some(v) = layout_key(toml, "apps") {
+        if let Some(v) = nearest("apps") {
             out.apps = v;
         }
         out
@@ -65,17 +74,91 @@ fn layout_key(toml: &str, key: &str) -> Option<String> {
 /// The nearest directory at or above `from` holding a `maca.toml`.
 pub fn project_root(from: &Path) -> Option<PathBuf> {
     from.ancestors()
-        .find(|d| d.join("maca.toml").is_file())
+        .find(|d| d.join(MANIFEST).is_file())
         .map(Path::to_path_buf)
 }
 
-/// The layout in force for a file: its project's `[layout]`, or the defaults.
+/// Does this manifest declare the workspace its neighbours are members of?
+pub fn declares_workspace(toml: &str) -> bool {
+    toml.lines().any(|l| l.trim() == "[workspace]")
+}
+
+/// A directory as the walk above it needs it: rooted and folded, because a relative path has no ancestors above the directory it was written from, and a `..` left in one makes the same directory look like two.
+fn rooted(dir: &Path) -> PathBuf {
+    let cwd = || std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let full = if dir.is_absolute() {
+        dir.to_path_buf()
+    } else if dir.as_os_str().is_empty() || dir == Path::new(".") {
+        cwd()
+    } else {
+        cwd().join(dir)
+    };
+    let mut out = PathBuf::new();
+    for part in full.components() {
+        match part {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Every directory at or above `from` holding a `maca.toml`, nearest first.
+fn manifest_dirs(from: &Path) -> Vec<PathBuf> {
+    rooted(from)
+        .ancestors()
+        .filter(|d| d.join(MANIFEST).is_file())
+        .map(Path::to_path_buf)
+        .collect()
+}
+
+/// The directory a manifest chain ends at: the outermost `[workspace]`, or the nearest manifest when no workspace holds it.
+pub fn workspace_root(from: &Path) -> Option<PathBuf> {
+    let dirs = manifest_dirs(from);
+    dirs.iter()
+        .rev()
+        .find(|d| {
+            std::fs::read_to_string(d.join(MANIFEST))
+                .map(|t| declares_workspace(&t))
+                .unwrap_or(false)
+        })
+        .or_else(|| dirs.first())
+        .cloned()
+}
+
+/// The manifests that answer for `from`, nearest first, ending at the workspace root.
+pub fn manifest_chain(from: &Path) -> Vec<PathBuf> {
+    let Some(stop) = workspace_root(from) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for dir in manifest_dirs(from) {
+        let last = dir == stop;
+        out.push(dir);
+        if last {
+            break;
+        }
+    }
+    out
+}
+
+/// The layout in force for a file: its manifest chain's `[layout]`, or the defaults.
 pub fn layout_for(importer: &Path) -> Layout {
     let dir = importer.parent().unwrap_or_else(|| Path::new("."));
-    project_root(dir)
-        .or_else(|| project_root(&std::env::current_dir().ok()?))
-        .and_then(|r| std::fs::read_to_string(r.join("maca.toml")).ok())
-        .map_or_else(Layout::default, |t| Layout::from_manifest(&t))
+    let mut chain = manifest_chain(dir);
+    if chain.is_empty()
+        && let Ok(cwd) = std::env::current_dir()
+    {
+        chain = manifest_chain(&cwd);
+    }
+    let texts: Vec<String> = chain
+        .iter()
+        .filter_map(|d| std::fs::read_to_string(d.join(MANIFEST)).ok())
+        .collect();
+    Layout::from_chain(&texts)
 }
 
 /// Which rule turned up a candidate file for one written import.
@@ -111,13 +194,14 @@ pub fn resolve_module(segs: &[String], importer: &Path) -> Option<Resolved> {
     let layout = layout_for(importer);
     let mut found: Vec<(PathBuf, Found)> = Vec::new();
 
+    let stop = workspace_root(dir);
     for base in dir.ancestors() {
         candidates(base, &joined, &layout, &mut found);
-        if base.join("maca.toml").is_file() {
+        if stop.as_deref().is_some_and(|s| same_dir(base, s)) {
             break;
         }
     }
-    if found.is_empty() && project_root(dir).is_none() {
+    if found.is_empty() && stop.is_none() {
         candidates(Path::new("."), &joined, &layout, &mut found);
     }
     if found.is_empty() {
@@ -163,6 +247,11 @@ fn candidates(base: &Path, path: &str, layout: &Layout, out: &mut Vec<(PathBuf, 
 fn same_file(a: &Path, b: &Path) -> bool {
     let real = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     real(a) == real(b)
+}
+
+/// The same directory named relatively and absolutely, which is how a walk over written paths meets a rooted one.
+fn same_dir(a: &Path, b: &Path) -> bool {
+    rooted(a) == rooted(b) || same_file(&rooted(a), b)
 }
 
 /// The module at `stem`: the file `stem.maca`, and nothing else.
@@ -224,6 +313,35 @@ mod tests {
         let l = Layout::from_manifest("[layout]\nsrc = \"lib\"\n");
         assert_eq!(l.roots[0], "modules");
         assert_eq!(l.roots[1], "lib");
+    }
+
+    #[test]
+    fn the_nearest_manifest_that_states_a_key_answers_for_it() {
+        let root = "[workspace]\n[layout]\nmodules = \"packages\"\napps = \"services\"\n";
+        let member = "[layout]\nsrc = \"lib\"\n".to_string();
+        let l = Layout::from_chain(&[member, root.to_string()]);
+        assert_eq!(l.roots[0], "packages", "inherited from the root");
+        assert_eq!(l.roots[1], "lib", "stated by the member");
+        assert_eq!(l.apps, "services", "inherited from the root");
+    }
+
+    #[test]
+    fn a_member_key_beats_the_root_key_it_repeats() {
+        let root = "[layout]\nmodules = \"packages\"\n".to_string();
+        let member = "[layout]\nmodules = \"mine\"\n".to_string();
+        assert_eq!(Layout::from_chain(&[member, root]).roots[0], "mine");
+    }
+
+    #[test]
+    fn a_workspace_is_the_table_that_says_so() {
+        assert!(declares_workspace(
+            "[package]\nname = \"x\"\n\n[workspace]\n"
+        ));
+        assert!(!declares_workspace("[package]\nname = \"x\"\n"));
+        assert!(
+            !declares_workspace("members = [\"a\"]\n"),
+            "the key without the table is not the table"
+        );
     }
 
     /// A key outside `[layout]`, and a commented-out one, are not the layout.
