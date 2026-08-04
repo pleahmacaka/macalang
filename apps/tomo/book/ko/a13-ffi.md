@@ -160,6 +160,77 @@ call maca.provide({ cfg_write: … }) from the import js block
 인스턴스, Monaco 에디터, URL 프래그먼트, 클립보드, 샌드박스 미리보기 iframe.
 이쪽에 있는 것은, 페이지가 찍는 모든 문장까지 포함해 전부 Maca입니다.
 
+## 모듈로서의 브라우저
+
+`modules/web`은 브라우저를 평범한 Maca로 내놓은 것입니다. 그중 셋은 다리입니다.
+각각 필요한 함수를 몸통 없이 선언하고 자기 `import js` 블록에서 구현합니다.
+넷째인 `web/format`은 산술이고 어디서든 돕니다.
+
+| 모듈 | 무엇에 닿는가 |
+|---|---|
+| `web/storage` | 방문과 방문 사이에 브라우저가 기억하는 것 |
+| `web/time` | 지역 시계, 그리고 타이머에 맞춘 다시 그리기 |
+| `web/file` | 독자에게 내려받기를 건네고, 파일을 되받기 |
+| `web/format` | 시계가 어떻게 읽히고 내려받기가 어떤 이름을 갖는지. 호스트는 전혀 없습니다 |
+
+### 남는 상태
+
+```maca
+import web/storage
+
+config: Config = stored("homepage.config", data(Links))
+locked = stored("homepage.locked", true)
+```
+
+`stored(key, default)`가 전부입니다. 그 이름은 브라우저가 `key` 아래 저장해 둔
+것으로 **시작**하고, 저장된 것이 없으면 옆에 적힌 값으로 시작합니다. 그리고
+**그 이름에 대입하면 다시 저장됩니다**.
+
+```maca
+lock() -> int {
+    locked = !locked
+    0
+}
+```
+
+핸들러가 쓰는 것은 이것이 전부입니다. 읽기 호출도, 쓰기 호출도, 그것들을
+부르려고 들고 다니던 키 상수 두 개도 없습니다. 대입은 이미 갱신이고, 이제
+저장이기도 합니다. [UI 문법](a11-ui.md)을 보세요.
+
+키는 직접 적거나 상수에 묶습니다. 계산되는 것이 아니라 슬롯을 부르는 이름이기
+때문입니다. `const` 이름은 저장할 수 없습니다. 저장되는 이름은 대입될 때 바로
+되쓰이는 이름이기 때문입니다.
+
+컴파일러가 무엇을 하는지는 알아 둘 만합니다. 생성된 `app.js`에 그대로
+보이기 때문입니다. 바인딩은 선언된 값을 그대로 지니고, 그 이름에 대한 모든
+쓰기는 `local_store(key, …)`가 되며, 페이지가 처음 만들어지기 전에 그 이름을
+되읽는 한 줄이 다리에 들어갑니다.
+
+```js
+maca.set("locked", local_start("homepage.locked", maca.get("locked")));
+```
+
+`local_start`, `local_store`, `local_forget`이 `web/storage`가 선언한 세
+함수입니다. 설탕만 원하는 프로그램은 이것들을 부를 일이 없고,
+`import web/storage` 없이 쓴 `stored(…)`는 무슨 임포트를 더해야 하는지 이름으로
+말해 주는 빌드 오류입니다.
+
+### 브라우저 밖에서
+
+구현이 `import js` 블록인 모듈은 다른 어디에서도 돌릴 것이 없습니다. 그래서 다른
+타깃으로 빌드하면 아무것도 하지 않는 프로그램으로 컴파일되는 대신 **이름을 대며**
+거절합니다.
+
+```
+`web/storage` runs in a browser: what implements it is an `import js` block,
+and the native target has no JavaScript to run it in; build the page with
+`maca build --target js`
+```
+
+`web/format`이 따로 한 파일인 이유가 이것입니다. 시계의 자릿수 채움과 내려받기
+파일 이름은 거기서, 평범한 Maca로 정해집니다. 그래서 `modules/web/tests/`는
+`maca test`가 다른 것과 똑같이 돌리는 스위트입니다.
+
 ## 언제 FFI를 쓸까
 
 솔직한 지침은 이렇습니다. 일이 자체 완결적이면 Maca로 구현하고, 라이브러리

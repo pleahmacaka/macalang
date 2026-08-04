@@ -47,6 +47,22 @@ pub fn load_with_imports(entry: &Path) -> Result<String, String> {
     Ok(combined)
 }
 
+/// Every module a program inlines that carries an `import <lang> "…"` block, in dependency order.
+pub fn modules_importing(entry: &Path, lang: &str) -> Result<Vec<PathBuf>, String> {
+    let mut g = Graph::default();
+    collect(entry, &mut g)?;
+    Ok(g.order
+        .iter()
+        .filter(|p| {
+            g.parsed[*p]
+                .items
+                .iter()
+                .any(|it| matches!(it, Stmt::Import(Import::Foreign { lang: l, .. }) if l == lang))
+        })
+        .cloned()
+        .collect())
+}
+
 /// One module's contribution to the flat translation unit.
 struct Unit {
     path: PathBuf,

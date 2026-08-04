@@ -243,6 +243,35 @@ fn candidates(base: &Path, path: &str, layout: &Layout, out: &mut Vec<(PathBuf, 
     }
 }
 
+/// The directory `maca add` installed `name` into, found by the walk an `import` takes.
+pub fn installed_dir(name: &str, importer: &Path) -> Option<PathBuf> {
+    let dir = importer.parent().unwrap_or_else(|| Path::new("."));
+    let stop = workspace_root(dir);
+    for base in dir.ancestors() {
+        let cand = base.join(INSTALLED).join(name);
+        if cand.is_dir() {
+            return Some(cand);
+        }
+        if stop.as_deref().is_some_and(|s| same_dir(base, s)) {
+            break;
+        }
+    }
+    None
+}
+
+/// The directory a package spec names and the file inside it the spec asked for, with a leading `@scope/` dropped the way `maca add` drops it.
+pub fn split_package(spec: &str) -> (String, Option<String>) {
+    let spec = spec.trim().trim_start_matches('/');
+    let rest = match spec.strip_prefix('@').and_then(|s| s.split_once('/')) {
+        Some((_, rest)) => rest,
+        None => spec,
+    };
+    match rest.split_once('/') {
+        Some((name, sub)) if !sub.is_empty() => (name.to_string(), Some(sub.to_string())),
+        _ => (rest.trim_end_matches('/').to_string(), None),
+    }
+}
+
 /// The same file reached two ways.
 fn same_file(a: &Path, b: &Path) -> bool {
     let real = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
@@ -341,6 +370,24 @@ mod tests {
         assert!(
             !declares_workspace("members = [\"a\"]\n"),
             "the key without the table is not the table"
+        );
+    }
+
+    #[test]
+    fn a_package_spec_splits_into_a_directory_and_a_file() {
+        assert_eq!(split_package("daisyui"), ("daisyui".into(), None));
+        assert_eq!(
+            split_package("daisyui/dist/full.css"),
+            ("daisyui".into(), Some("dist/full.css".into()))
+        );
+    }
+
+    #[test]
+    fn a_scoped_name_installs_under_its_bare_half() {
+        assert_eq!(split_package("@scope/pkg"), ("pkg".into(), None));
+        assert_eq!(
+            split_package("@scope/pkg/dist/x.js"),
+            ("pkg".into(), Some("dist/x.js".into()))
         );
     }
 

@@ -1,0 +1,23 @@
+import { decode } from std/json
+
+Entry = { title: str, count: int, tag: str }
+
+Links = "embedded/links.json"
+
+test_a_file_named_by_a_constant_is_read_while_the_program_is_built() {
+    config: Entry = data(Links)
+    assert_eq(config.title, "start", "the committed title")
+    assert_eq(config.count, 3, "and its count")
+}
+
+test_a_file_named_where_it_is_used_reads_the_same() {
+    config: Entry = data("embedded/links.json")
+    assert_eq(config.tag, "committed", "the path is a path either way")
+}
+
+test_a_local_copy_shadows_the_committed_one() {
+    theme: Entry = data("embedded/theme.json")
+    assert_eq(theme.tag, "local", "the .local file is the one that was read")
+    assert_eq(theme.title, "private", "so the private title is the one in the program")
+    assert_eq(theme.count, 2, "and the private count")
+}

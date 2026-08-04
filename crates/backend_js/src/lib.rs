@@ -27,6 +27,7 @@ pub fn emit(m: &Module) -> JsOut {
     let state_names: BTreeSet<String> = cx.state.iter().map(|(n, _)| n.clone()).collect();
     cx.state_names = state_names.clone();
     set_state_names(&state_names);
+    set_consts(&cx.consts);
 
     let variants = collect_variants(m);
     set_variants(&variants);
@@ -36,19 +37,31 @@ pub fn emit(m: &Module) -> JsOut {
         collect_class_strings(item, &mut cx.classes);
     }
 
-    let root_expr = m.items.iter().find_map(|it| match it {
-        Stmt::Fn(f) if f.name == "main" => match &f.body {
-            Some(FnBody::Expr(e)) => Some(e.as_ref().clone()),
-            Some(FnBody::Block(s)) => s.iter().rev().find_map(|st| match st {
-                Stmt::Expr(e) => Some(e.clone()),
-                _ => None,
-            }),
-            None => None,
-        },
+    let main_fn = m.items.iter().find_map(|it| match it {
+        Stmt::Fn(f) if f.name == "main" => Some(f),
         _ => None,
     });
+    let main_view = main_fn.filter(|f| is_element_ty(&f.ret));
 
+    SCOPES.with(|s| s.borrow_mut().push(BTreeSet::new()));
+    push_frame(main_view.map(view_frame).unwrap_or_default());
     let mut build_body = String::new();
+    let root_expr = match main_fn.and_then(|f| f.body.as_ref()) {
+        Some(FnBody::Expr(e)) => Some(e.as_ref().clone()),
+        Some(FnBody::Block(stmts)) => {
+            let root = stmts.iter().rposition(|s| matches!(s, Stmt::Expr(_)));
+            if main_view.is_some() {
+                let before = root.map(|i| &stmts[..i]).unwrap_or(stmts);
+                build_body.push_str(&jblock_sink(before, &Sink::Discard));
+            }
+            root.map(|i| match &stmts[i] {
+                Stmt::Expr(e) => e.clone(),
+                _ => Expr::Unit,
+            })
+        }
+        None => None,
+    };
+
     let root_var = match &root_expr {
         Some(e) => cx.element(e, &mut build_body),
         None => {
@@ -56,6 +69,10 @@ pub fn emit(m: &Module) -> JsOut {
             "n0".into()
         }
     };
+    pop_frame();
+    SCOPES.with(|s| {
+        s.borrow_mut().pop();
+    });
 
     let mut js = cx.finish(&build_body, &root_var);
 
@@ -175,6 +192,21 @@ const state = new Proxy(_state, {
   },
   deleteProperty(t, k) { Reflect.deleteProperty(t, k); _touch(k); return true; },
 });
+let _cells = 0;
+// A local a nested definition writes: state the view instance owns. Each call
+// makes a fresh one, so two instances of the same view share nothing.
+function _cell(v) {
+  const k = "@" + (_cells += 1);
+  return new Proxy({ v, k }, {
+    get(t, p) { return p === "v" ? _reactive(k, Reflect.get(t, p)) : Reflect.get(t, p); },
+    set(t, p, x) {
+      const was = Reflect.get(t, p);
+      Reflect.set(t, p, x);
+      if (!Object.is(was, x)) _touch(k);
+      return true;
+    },
+  });
+}
 function _bind(deps, run) { _binds.push({ deps, run }); }
 function _touch(name) {
   _dirty.add(name);
@@ -294,6 +326,214 @@ fn host_stub(f: &FnDef) -> String {
     )
 }
 
+/// How often a function binds each of its own names, and which names something other than that straight line writes.
+#[derive(Default)]
+struct Written {
+    own: BTreeMap<String, usize>,
+    nested: BTreeSet<String>,
+}
+
+impl Written {
+    fn wrote(&mut self, n: &str, inside: bool) {
+        match inside {
+            true => {
+                self.nested.insert(n.to_string());
+            }
+            false => *self.own.entry(n.to_string()).or_default() += 1,
+        }
+    }
+}
+
+/// What a function being emitted holds beyond ordinary locals: its instance's reactive cells, and the locals a bind may recompute.
+#[derive(Default)]
+struct Frame {
+    cells: BTreeSet<String>,
+    single: BTreeSet<String>,
+}
+
+/// Does this function hand back nodes, so its locals are a view instance's state rather than a calculation's scratch space?
+fn builds_elements(f: &FnDef) -> bool {
+    is_element_ty(&f.ret)
+        || match &f.body {
+            Some(FnBody::Expr(e)) => contributes_elements(e),
+            Some(FnBody::Block(stmts)) => tail_contributes(stmts),
+            None => false,
+        }
+}
+
+/// What a view's body owns: the locals a nested definition writes, and the locals one binding computes and nothing rewrites.
+fn view_frame(f: &FnDef) -> Frame {
+    let Some(FnBody::Block(stmts)) = &f.body else {
+        return Frame::default();
+    };
+    if !builds_elements(f) {
+        return Frame::default();
+    }
+    let mut w = Written::default();
+    scan_stmts(stmts, false, &mut w);
+    for p in &f.params {
+        w.own.entry(p.name.clone()).or_default();
+    }
+    Frame {
+        cells: w
+            .own
+            .keys()
+            .filter(|n| w.nested.contains(*n))
+            .cloned()
+            .collect(),
+        single: w
+            .own
+            .iter()
+            .filter(|(n, count)| **count == 1 && !w.nested.contains(*n))
+            .map(|(n, _)| n.clone())
+            .collect(),
+    }
+}
+
+fn scan_stmts(stmts: &[Stmt], inside: bool, w: &mut Written) {
+    for s in stmts {
+        match s {
+            Stmt::Fn(f) => match &f.body {
+                Some(FnBody::Expr(e)) => scan_expr(e, true, w),
+                Some(FnBody::Block(b)) => scan_stmts(b, true, w),
+                None => {}
+            },
+            Stmt::Bind(b) => {
+                if let Expr::Ident(n) = &b.target {
+                    w.wrote(n, inside);
+                }
+                scan_expr(&b.value, inside, w);
+            }
+            Stmt::Expr(e) => scan_expr(e, inside, w),
+            _ => {}
+        }
+    }
+}
+
+fn scan_expr(e: &Expr, inside: bool, w: &mut Written) {
+    if let Expr::Assign { target, .. } = e
+        && let Expr::Ident(n) = target.as_ref()
+    {
+        w.wrote(n, inside);
+    }
+    let mut es: Vec<&Expr> = Vec::new();
+    let mut blocks: Vec<&[Stmt]> = Vec::new();
+    let mut lambda = false;
+    match e {
+        Expr::Str(parts) => {
+            for p in parts {
+                if let StrPart::Interp(x) = p {
+                    es.push(x);
+                }
+            }
+        }
+        Expr::List(xs) => es.extend(xs),
+        Expr::Record(fields) | Expr::Ctor { fields, .. } => es.extend(field_values(fields)),
+        Expr::With { base, fields } => {
+            es.push(base);
+            es.extend(field_values(fields));
+        }
+        Expr::Call { callee, args } => {
+            es.push(callee);
+            for a in args {
+                if let Some(n) = two_way_target(a) {
+                    w.nested.insert(n.to_string());
+                }
+                es.push(arg_expr(a));
+            }
+        }
+        Expr::Field { base: x, .. } | Expr::Unary { expr: x, .. } => es.push(x),
+        Expr::Try(x) | Expr::Fail(x) | Expr::Reify(x) | Expr::Await(x) | Expr::Spawn(x) => {
+            es.push(x)
+        }
+        Expr::Return(x) => es.extend(x.as_deref()),
+        Expr::Index { base: a, index: b } | Expr::Range { lo: a, hi: b } => {
+            es.push(a);
+            es.push(b);
+        }
+        Expr::Binary { lhs, rhs, .. } => {
+            es.push(lhs);
+            es.push(rhs);
+        }
+        Expr::Assign { target, value } => {
+            es.push(target);
+            es.push(value);
+        }
+        Expr::Ternary { cond, then, els } => {
+            es.push(cond);
+            es.push(then);
+            es.push(els);
+        }
+        Expr::If { cond, then, els } => {
+            es.push(cond);
+            blocks.push(then);
+            blocks.extend(els.as_deref());
+        }
+        Expr::Match { scrut, arms } => {
+            es.push(scrut);
+            for a in arms {
+                es.extend(a.guard.as_ref());
+                es.push(&a.body);
+            }
+        }
+        Expr::While { cond, body } => {
+            es.push(cond);
+            blocks.push(body);
+        }
+        Expr::For { iter, body, .. } => {
+            es.push(iter);
+            blocks.push(body);
+        }
+        Expr::Block(stmts) => blocks.push(stmts),
+        Expr::Lambda { body, .. } => {
+            es.push(body);
+            lambda = true;
+        }
+        _ => {}
+    }
+    let inside = inside || lambda;
+    for x in es {
+        scan_expr(x, inside, w);
+    }
+    for b in blocks {
+        scan_stmts(b, inside, w);
+    }
+}
+
+/// The name a `value=` argument writes when the user types, which is a write the view never spells out.
+fn two_way_target(a: &Arg) -> Option<&str> {
+    let value = match a {
+        Arg::Named { name, value } if name == "value" => value,
+        Arg::Directive {
+            kind: Dir::Bind,
+            prop,
+            value,
+        } if prop == "value" => value,
+        _ => return None,
+    };
+    let target = match value {
+        Expr::Lambda { body, .. } => match body.as_ref() {
+            Expr::Assign { target, .. } => target.as_ref(),
+            _ => return None,
+        },
+        e => e,
+    };
+    match target {
+        Expr::Ident(n) => Some(n),
+        _ => None,
+    }
+}
+
+fn field_values(fields: &[Field]) -> Vec<&Expr> {
+    fields
+        .iter()
+        .filter_map(|f| match f {
+            Field::Value { value, .. } | Field::Bare(value) => Some(value),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Transpile one top-level function to a JS function declaration.
 fn emit_fn(f: &FnDef) -> String {
     let params = f
@@ -307,11 +547,20 @@ fn emit_fn(f: &FnDef) -> String {
         s.borrow_mut()
             .push(f.params.iter().map(|p| p.name.clone()).collect())
     });
-    let body = match &f.body {
+    let frame = view_frame(f);
+    let mut body = String::new();
+    for p in &f.params {
+        if frame.cells.contains(&p.name) {
+            body.push_str(&format!("  var {0} = _cell({0});\n", p.name));
+        }
+    }
+    push_frame(frame);
+    body.push_str(&match &f.body {
         Some(FnBody::Expr(e)) => format!("  return {};", jexpr(e)),
         Some(FnBody::Block(stmts)) => jblock(stmts),
         None => String::new(),
-    };
+    });
+    pop_frame();
     SCOPES.with(|s| {
         s.borrow_mut().pop();
     });
@@ -364,15 +613,24 @@ fn jbind(b: &Bind) -> String {
             if fresh {
                 declare(n);
             }
+            if fresh && !is_state && derivable(n) && reads_state(&b.value) {
+                let (value, watched) = (jexpr(&b.value), dep_list(&b.value));
+                declare_cell(n);
+                return format!(
+                    "  var {n} = _cell({value});\n  _bind({watched}, () => {{ {n}.v = {value}; }});\n"
+                );
+            }
             if is_branching(&b.value) {
-                let decl = if fresh {
-                    format!("  var {n};\n")
-                } else {
-                    String::new()
+                let decl = match (fresh, is_cell(n)) {
+                    (false, _) => String::new(),
+                    (true, false) => format!("  var {n};\n"),
+                    (true, true) => format!("  var {n} = _cell(null);\n"),
                 };
                 format!("{decl}{}", jstmt(&b.value, &Sink::Assign(jname(n))))
             } else if is_state || !fresh {
                 format!("  {} = {};\n", jname(n), jexpr(&b.value))
+            } else if is_cell(n) {
+                format!("  var {n} = _cell({});\n", jexpr(&b.value))
             } else {
                 format!("  var {n} = {};\n", jexpr(&b.value))
             }
@@ -483,6 +741,10 @@ thread_local! {
     static VARIANTS: std::cell::RefCell<BTreeMap<String, usize>> = const { std::cell::RefCell::new(BTreeMap::new()) };
     /// One frame per function being emitted, holding the names it has already declared, so a write from a nested definition assigns rather than shadows.
     static SCOPES: std::cell::RefCell<Vec<BTreeSet<String>>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// One frame per function being emitted, holding the locals that are that view instance's own reactive state.
+    static CELLS: std::cell::RefCell<Vec<Frame>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// Top-level state bound with `const`, which a `value=` reads but never writes.
+    static CONSTS: std::cell::RefCell<BTreeSet<String>> = const { std::cell::RefCell::new(BTreeSet::new()) };
     /// The module's own top-level functions and what each says it returns, so a definition shadows the tag of the same name and a view declares itself.
     static FNS: std::cell::RefCell<BTreeMap<String, Option<Type>>> = const { std::cell::RefCell::new(BTreeMap::new()) };
 }
@@ -513,51 +775,111 @@ fn declare(n: &str) {
 fn set_state_names(names: &BTreeSet<String>) {
     STATE.with(|s| *s.borrow_mut() = names.clone());
 }
+fn set_consts(names: &BTreeSet<String>) {
+    CONSTS.with(|s| *s.borrow_mut() = names.clone());
+}
+/// Is `n` a local held in a reactive cell by some function being emitted?
+fn is_cell(n: &str) -> bool {
+    CELLS.with(|s| s.borrow().iter().any(|f| f.cells.contains(n)))
+}
+/// Is `n` a local of the view being emitted that one binding computes, so a bind may recompute it?
+fn derivable(n: &str) -> bool {
+    CELLS.with(|s| s.borrow().last().is_some_and(|f| f.single.contains(n)))
+}
+/// Record that this view keeps `n` in a cell after all, because what it is computed from can change.
+fn declare_cell(n: &str) {
+    CELLS.with(|s| {
+        if let Some(top) = s.borrow_mut().last_mut() {
+            top.cells.insert(n.to_string());
+        }
+    });
+}
+fn push_frame(f: Frame) {
+    CELLS.with(|s| s.borrow_mut().push(f));
+}
+fn pop_frame() {
+    CELLS.with(|s| {
+        s.borrow_mut().pop();
+    });
+}
 fn set_variants(vs: &BTreeMap<String, usize>) {
     VARIANTS.with(|s| *s.borrow_mut() = vs.clone());
 }
 fn is_variant(n: &str) -> bool {
     VARIANTS.with(|s| s.borrow().contains_key(n))
 }
-/// A bare identifier → `state.x` when it names reactive state, else itself.
+/// A bare identifier → `state.x` when it names reactive state, `x.v` when it is a view's own cell, else itself.
 fn jname(n: &str) -> String {
     if STATE.with(|s| s.borrow().contains(n)) {
         format!("state.{n}")
+    } else if is_cell(n) {
+        format!("{n}.v")
     } else {
         n.to_string()
     }
 }
+
+/// What a `_bind` records for one name it reads: a state name is a literal, a cell is the key its instance was given.
+fn dep_key(n: &str) -> String {
+    match is_cell(n) {
+        true => format!("{n}.k"),
+        false => format!("{n:?}"),
+    }
+}
 /// The state names an expression reads, or `None` when a call puts them out of reach.
 fn deps(e: &Expr) -> Option<BTreeSet<String>> {
-    let union = |xs: [Option<BTreeSet<String>>; 3]| {
-        let mut out = BTreeSet::new();
-        for x in xs {
-            out.extend(x?);
-        }
-        Some(out)
-    };
     let none = || Some(BTreeSet::new());
     match e {
-        Expr::Ident(n) => Some(match STATE.with(|s| s.borrow().contains(n)) {
+        Expr::Int(_)
+        | Expr::Float(_)
+        | Expr::Bool(_)
+        | Expr::Unit
+        | Expr::Path(_)
+        | Expr::Break
+        | Expr::Continue => none(),
+        Expr::Ident(n) => Some(match STATE.with(|s| s.borrow().contains(n)) || is_cell(n) {
             true => BTreeSet::from([n.clone()]),
             false => BTreeSet::new(),
         }),
-        Expr::Call { .. } => None,
-        Expr::Str(parts) => {
-            let mut out = BTreeSet::new();
-            for p in parts {
-                if let StrPart::Interp(x) = p {
-                    out.extend(deps(x)?);
-                }
-            }
-            Some(out)
-        }
-        Expr::Binary { lhs, rhs, .. } => union([deps(lhs), deps(rhs), none()]),
+        Expr::Str(parts) => deps_all(parts.iter().filter_map(|p| match p {
+            StrPart::Interp(x) => Some(x),
+            StrPart::Text(_) => None,
+        })),
+        Expr::Binary { lhs, rhs, .. } => deps_all([lhs.as_ref(), rhs.as_ref()].into_iter()),
         Expr::Unary { expr, .. } | Expr::Field { base: expr, .. } => deps(expr),
-        Expr::Index { base, index } => union([deps(base), deps(index), none()]),
-        Expr::Ternary { cond, then, els } => union([deps(cond), deps(then), deps(els)]),
-        _ => none(),
+        Expr::Index { base: a, index: b } | Expr::Range { lo: a, hi: b } => {
+            deps_all([a.as_ref(), b.as_ref()].into_iter())
+        }
+        Expr::Ternary { cond, then, els } => {
+            deps_all([cond.as_ref(), then.as_ref(), els.as_ref()].into_iter())
+        }
+        Expr::List(xs) => deps_all(xs.iter()),
+        Expr::Record(fields) | Expr::Ctor { fields, .. } => {
+            deps_all(field_values(fields).into_iter())
+        }
+        Expr::With { base, fields } => {
+            deps_all(std::iter::once(base.as_ref()).chain(field_values(fields)))
+        }
+        Expr::Match { scrut, arms } => deps_all(
+            std::iter::once(scrut.as_ref())
+                .chain(arms.iter().flat_map(|a| a.guard.iter().chain([&a.body]))),
+        ),
+        _ => None,
     }
+}
+
+/// The union of what several expressions read, or `None` as soon as one of them is out of reach.
+fn deps_all<'a>(xs: impl Iterator<Item = &'a Expr>) -> Option<BTreeSet<String>> {
+    let mut out = BTreeSet::new();
+    for x in xs {
+        out.extend(deps(x)?);
+    }
+    Some(out)
+}
+
+/// Does an expression read reactive state and nothing else, so recomputing it is both worthwhile and free of consequence?
+fn reads_state(e: &Expr) -> bool {
+    matches!(deps(e), Some(names) if !names.is_empty())
 }
 
 /// Does an expression read reactive state or call a function (so a text/attr node reading it has to be re-run)?
@@ -576,7 +898,7 @@ fn dep_list(e: &Expr) -> String {
             "[{}]",
             names
                 .iter()
-                .map(|n| format!("{n:?}"))
+                .map(|n| dep_key(n))
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
@@ -1148,7 +1470,7 @@ impl Cx {
                 Arg::Named { name, value } if event_name(name).is_some() => {
                     self.handler(&v, event_name(name).unwrap(), value, out);
                 }
-                Arg::Named { name, value } if self.two_way(name, value) => {
+                Arg::Named { name, value } if name == "value" && writable(value).is_some() => {
                     self.two_way_bind(&v, name, value, out);
                 }
                 Arg::Named { name, value } => {
@@ -1193,66 +1515,18 @@ impl Cx {
 
     /// `value=name` (or the older `bind:value=`): the property follows the state, and typing writes it back.
     fn two_way_bind(&self, v: &str, prop: &str, value: &Expr, out: &mut String) {
-        let (getter, setter, name) = self.bind(value);
-        out.push_str(&format!("  {v}.{prop} = {getter};\n"));
+        let Some((key, get, set)) = writable(value) else {
+            out.push_str(&format!("  {v}.{prop} = {};\n", jexpr(value)));
+            return;
+        };
+        out.push_str(&format!("  {v}.{prop} = {get};\n"));
         out.push_str(&format!(
             "  {v}.addEventListener(\"input\", _turn((e) => {{ {} ; }}));\n",
-            setter.replace("$v", "e.target.value")
+            set.replace("$v", "e.target.value")
         ));
         out.push_str(&format!(
-            "  _bind([{name:?}], () => {{ if (document.activeElement !== {v}) {v}.{prop} = {getter}; }});\n"
+            "  _bind([{key}], () => {{ if (document.activeElement !== {v}) {v}.{prop} = {get}; }});\n"
         ));
-    }
-
-    /// Is this named argument a two-way binding rather than an ordinary attribute: a state name, or a lambda that assigns one?
-    fn two_way(&self, name: &str, value: &Expr) -> bool {
-        name == "value" && self.bound_name(value).is_some()
-    }
-
-    /// The state name a two-way binding writes, if the value expression names one that can be written.
-    fn bound_name(&self, target: &Expr) -> Option<String> {
-        let is_state = |n: &String| self.state_names.contains(n) && !self.consts.contains(n);
-        match target {
-            Expr::Ident(n) if is_state(n) => Some(n.clone()),
-            Expr::Lambda { body, .. } => match body.as_ref() {
-                Expr::Assign { target: t, .. } => match t.as_ref() {
-                    Expr::Ident(n) if is_state(n) => Some(n.clone()),
-                    _ => None,
-                },
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-
-    /// Two-way bind → (JS getter expr, JS setter stmt using `$v` for the value, the state name written).
-    fn bind(&self, target: &Expr) -> (String, String, String) {
-        match target {
-            Expr::Ident(n) => (
-                format!("state.{n}"),
-                format!("state.{n} = $v"),
-                n.to_string(),
-            ),
-            Expr::Lambda { params, body, .. } => {
-                let pv = params.first().map(|p| p.name.as_str()).unwrap_or("v");
-                if let Expr::Assign { target: t, value } = body.as_ref()
-                    && let Expr::Ident(x) = t.as_ref()
-                {
-                    let set = format!("state.{x} = {}", self.value(value, Some((pv, "$v"))));
-                    return (format!("state.{x}"), set, x.to_string());
-                }
-                ("\"\"".into(), String::new(), String::new())
-            }
-            _ => ("\"\"".into(), String::new(), String::new()),
-        }
-    }
-
-    /// JS for a value expression (event handlers, bindings, state init).
-    fn value(&self, e: &Expr, subst: Option<(&str, &str)>) -> String {
-        match subst {
-            Some((from, to)) => jexpr(&subst_ident(e, from, to)),
-            None => jexpr(e),
-        }
     }
 
     /// The half of the module that has to exist before an `import js` block runs.
@@ -1313,16 +1587,45 @@ impl Cx {
              \x20 if (Array.isArray(c)) {{ for (const x of c) _append(p, x); return; }}\n\
              \x20 p.appendChild(_node(c));\n\
              }}\n\
+             function _dyn(deps, read) {{ return {{ $d: read, deps }}; }}\n\
+             function _two(dep, read, write) {{ return {{ $t: dep, read, write }}; }}\n\
+             function _marked(x, key) {{\n\
+             \x20 return x !== null && typeof x === \"object\" && x[key] !== undefined;\n\
+             }}\n\
+             function _put(n, k, v) {{\n\
+             \x20 if (k === \"class\") n.className = v;\n\
+             \x20 else if (k === \"html\") n.innerHTML = v;\n\
+             \x20 else _attr(n, k, v);\n\
+             }}\n\
+             function _live(n, k, b) {{\n\
+             \x20 n[k] = b.read();\n\
+             \x20 n.addEventListener(\"input\", _turn((e) => {{ b.write(e.target.value); }}));\n\
+             \x20 _bind([b.$t], () => {{\n\
+             \x20   if (document.activeElement !== n) n[k] = b.read();\n\
+             \x20 }});\n\
+             }}\n\
+             function _kid(n, c) {{\n\
+             \x20 const first = c.$d();\n\
+             \x20 if (first === null || typeof first === \"object\") {{ _append(n, first); return; }}\n\
+             \x20 const t = document.createTextNode(first);\n\
+             \x20 _bind(c.deps, () => {{ t.textContent = c.$d(); }});\n\
+             \x20 n.appendChild(t);\n\
+             }}\n\
              function _el(tag, props, kids) {{\n\
              \x20 const n = document.createElement(tag);\n\
              \x20 for (const k of Object.keys(props)) {{\n\
              \x20   const v = props[k];\n\
-             \x20   if (k === \"class\") n.className = v;\n\
-             \x20   else if (k === \"html\") n.innerHTML = v;\n\
-             \x20   else if (k.startsWith(\"on:\")) n.addEventListener(k.slice(3), _turn(v));\n\
-             \x20   else _attr(n, k, v);\n\
+             \x20   if (k.startsWith(\"on:\")) n.addEventListener(k.slice(3), _turn(v));\n\
+             \x20   else if (_marked(v, \"$t\")) _live(n, k, v);\n\
+             \x20   else if (_marked(v, \"$d\")) {{\n\
+             \x20     _put(n, k, v.$d());\n\
+             \x20     _bind(v.deps, () => {{ _put(n, k, v.$d()); }});\n\
+             \x20   }} else _put(n, k, v);\n\
              \x20 }}\n\
-             \x20 for (const c of kids) _append(n, c);\n\
+             \x20 for (const c of kids) {{\n\
+             \x20   if (_marked(c, \"$d\")) _kid(n, c);\n\
+             \x20   else _append(n, c);\n\
+             \x20 }}\n\
              \x20 return n;\n\
              }}\n\
              function build() {{\n\
@@ -1430,26 +1733,77 @@ fn is_element_ty(t: &Option<Type>) -> bool {
     }
 }
 
+/// One named attribute as a value: a two-way binding when `value=` names writable state, a `_dyn` when it reads state, else the value itself.
+fn jprop(name: &str, value: &Expr) -> String {
+    if name == "value"
+        && let Some(t) = two_way(value)
+    {
+        return t;
+    }
+    match is_dynamic(value) {
+        true => format!("_dyn({}, () => {})", dep_list(value), jexpr(value)),
+        false => jexpr(value),
+    }
+}
+
+/// `bind:value=` → the same marker, falling back to a one-way read when nothing writable was named.
+fn two_way_prop(value: &Expr) -> String {
+    two_way(value).unwrap_or_else(|| jprop("", value))
+}
+
+/// The marker `_el` turns into a two-way binding: the key it watches, how to read the value, how to write it back.
+fn two_way(value: &Expr) -> Option<String> {
+    let (key, get, set) = writable(value)?;
+    Some(format!("_two({key}, () => {get}, ($v) => {{ {set}; }})"))
+}
+
+/// What a `value=` writes, as (the key a bind watches, the JS that reads it, the JS that writes `$v` to it).
+fn writable(target: &Expr) -> Option<(String, String, String)> {
+    match target {
+        Expr::Ident(n) => {
+            let state = STATE.with(|s| s.borrow().contains(n));
+            let konst = CONSTS.with(|s| s.borrow().contains(n));
+            let get = jname(n);
+            let set = format!("{get} = $v");
+            (is_cell(n) || (state && !konst)).then(|| (dep_key(n), get, set))
+        }
+        Expr::Lambda { params, body, .. } => {
+            let Expr::Assign { target: t, value } = body.as_ref() else {
+                return None;
+            };
+            let (key, get, _) = writable(t)?;
+            let pv = params.first().map(|p| p.name.as_str()).unwrap_or("v");
+            let set = format!("{get} = {}", jexpr(&subst_ident(value, pv, "$v")));
+            Some((key, get, set))
+        }
+        _ => None,
+    }
+}
+
 /// `tag(attr=value, …, child, …)` as a value: one call that builds the node.
 fn jelement(tag: &str, args: &[Arg]) -> String {
     let mut props: Vec<String> = Vec::new();
     let mut kids: Vec<String> = Vec::new();
     for a in args {
         match a {
-            Arg::Named { name, value } => {
-                let key = match event_name(name) {
-                    Some(ev) => format!("on:{ev}"),
-                    None => name.clone(),
-                };
-                props.push(format!("{key:?}: {}", jexpr(value)));
-            }
+            Arg::Named { name, value } => match event_name(name) {
+                Some(ev) => props.push(format!("\"on:{ev}\": {}", jexpr(value))),
+                None => props.push(format!("{name:?}: {}", jprop(name, value))),
+            },
             Arg::Directive {
                 kind: Dir::On,
                 prop,
                 value,
             } => props.push(format!("\"on:{prop}\": {}", jexpr(value))),
-            Arg::Directive { prop, value, .. } => props.push(format!("{prop:?}: {}", jexpr(value))),
-            Arg::Pos(e) => kids.push(jexpr(e)),
+            Arg::Directive {
+                kind: Dir::Bind,
+                prop,
+                value,
+            } => props.push(format!("{prop:?}: {}", two_way_prop(value))),
+            Arg::Pos(e) => kids.push(match !contributes_elements(e) && is_dynamic(e) {
+                true => format!("_dyn({}, () => {})", dep_list(e), jexpr(e)),
+                false => jexpr(e),
+            }),
         }
     }
     format!(

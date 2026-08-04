@@ -42,6 +42,56 @@ embedded용 `--mcu`와 JVM 클래스패스용 `--cp`. `--target`이 없으면 �
 `MACA_NO_CACHE=1`로 전부 끌 수 있습니다. 컴파일 시간을 재고 싶을 때 필요한
 것입니다.
 
+## 빌드하면서 읽는 파일
+
+`data("config/links.json")`은 그 파일을 *지금*, 즉 빌드 시점에 읽고, 프로그램은
+읽은 것을 지니고 다닙니다. 시작할 때 가져오는 일도 없고, 바이너리나 페이지
+옆에 함께 배포할 경로도 없습니다.
+
+```maca
+import { decode } from std/json
+
+Config = { title: str, links: Link[] }
+
+Links = "config/links.json"
+
+config: Config = data(Links)
+```
+
+값은 바인딩이 선언한 타입으로 읽힙니다. 그 일을 하는 것이
+[`std/json`의 `decode`](a3-stdlib.md)입니다. `data`는 읽기이고, 선언된 타입이
+무엇으로 읽을지입니다. 경로는 직접 적거나 상수에 묶으세요. 빌드는 프로그램이
+실행 중에 계산하는 경로를 따라갈 수 없기 때문입니다.
+
+경로는 작업 디렉터리가 아니라 **명령이 부른 파일**을 기준으로 풀립니다. 그래서
+`maca test /어딘가/suite.maca`는 어디서 실행해도 같은 파일을 읽습니다.
+
+### `.local`이 커밋된 사본을 가립니다
+
+확장자 앞에 `.local`이 붙은 파일은 그 옆의 파일을 대신합니다. 조용히, 관례로.
+
+```
+config/links.json         커밋된 것. 새로 클론하면 이것으로 빌드됩니다
+config/links.local.json   당신의 것. gitignore 되고, 당신의 빌드가 읽습니다
+```
+
+`config/links.local.json`이 있으면 `data("config/links.json")`은 그것을
+읽습니다. Maca가 데이터 파일에 대해 `.env.local`을 적는 방식입니다. 소스는 한
+경로만 부르고, 둘 중 어느 쪽이 답하는지는 프로그램이 아니라 트리의 성질입니다.
+`.local` 사본을 지우면 커밋된 것이 돌아옵니다.
+
+기본값 대신 오류가 되는 것이 셋 있습니다.
+
+| 무엇 | 빌드가 하는 말 |
+|---|---|
+| 그 경로에 파일이 없음 | `` data("config/links.json"): …/config/links.json: No such file or directory `` |
+| 텍스트에 타입을 주는 것이 없음 | `` data(…) reads the file into the type the binding declares; add `import { decode } from std/json` `` |
+| 경로가 계산된 것 | `` data(…): the path is read while building, so write it out or bind it to a constant `` |
+
+파일의 바이트는 [빌드 캐시](#빌드는-캐시됩니다)의 키에 들어갑니다. 그래서
+`.maca` 파일이 하나도 바뀌지 않아도 그 파일을 고치면 프로그램이 다시
+빌드됩니다.
+
 ## 린터
 
 `maca lint`가 의미 검사를 담당합니다. 그 옆에 `tools/lint.maca`가 있는데, Maca

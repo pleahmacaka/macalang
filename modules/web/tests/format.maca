@@ -1,0 +1,42 @@
+import { two, clock, clock12, stamp } from web/format
+import { safe_name, trim_dashes, slot } from web/format
+
+test_a_clock_pads_every_part_to_two_digits() {
+    assert_eq(two(0), "00", "midnight")
+    assert_eq(two(9), "09", "a single digit")
+    assert_eq(two(10), "10", "two digits already")
+    assert_eq(clock(9, 5), "09:05", "the whole clock")
+    assert_eq(clock(23, 59), "23:59", "the last minute")
+}
+
+test_a_twelve_hour_clock_names_the_half_of_the_day() {
+    assert_eq(clock12(0, 5), "12:05 am", "midnight is twelve")
+    assert_eq(clock12(11, 59), "11:59 am", "the last morning minute")
+    assert_eq(clock12(12, 0), "12:00 pm", "noon is twelve")
+    assert_eq(clock12(13, 7), "1:07 pm", "the afternoon counts from one")
+}
+
+test_a_stamp_sorts_the_way_the_dates_do() {
+    assert_eq(stamp(2026, 8, 4), "2026-08-04", "one day")
+    assert(stamp(2026, 8, 4) < stamp(2026, 12, 1), "august is before december")
+    assert(stamp(2026, 1, 9) < stamp(2026, 1, 10), "the ninth is before the tenth")
+}
+
+test_a_download_name_keeps_only_what_a_file_system_takes() {
+    assert_eq(safe_name("my links.json"), "my-links.json", "a space is a separator")
+    assert_eq(safe_name("a/b:c"), "a-b-c", "so is a path separator")
+    assert_eq(safe_name("Notes_2026.txt"), "Notes_2026.txt", "a plain name is untouched")
+}
+
+test_a_download_name_is_never_empty_and_never_a_bare_separator() {
+    assert_eq(safe_name(""), "download", "nothing at all")
+    assert_eq(safe_name("///"), "download", "nothing but separators")
+    assert_eq(safe_name("  spaced  "), "spaced", "the ends are trimmed")
+    assert_eq(trim_dashes("--a--"), "a", "the separators go from both ends")
+    assert_eq(trim_dashes("a-b"), "a-b", "and only from the ends")
+}
+
+test_two_programs_never_share_a_slot() {
+    assert_eq(slot("homepage", "config"), "homepage.config", "the program names its own")
+    assert(slot("a", "config") != slot("b", "config"), "two programs, two slots")
+}

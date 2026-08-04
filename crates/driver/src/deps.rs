@@ -73,6 +73,76 @@ fn git_name(url: &str) -> String {
         .to_string()
 }
 
+/// The prefix an asset import writes to name an installed package rather than a file beside it.
+pub const PACKAGE_PREFIX: &str = "npm:";
+
+/// The `package.json` keys a package states an entry point under, best first.
+const ENTRY_KEYS: &[&str] = &["style", "browser", "module", "main"];
+
+/// The file extensions an asset import of one language will accept an entry point at.
+fn asset_extensions(lang: &str) -> &'static [&'static str] {
+    match lang {
+        "css" => &[".css"],
+        "wasm" => &[".wasm"],
+        _ => &[".js", ".mjs", ".cjs"],
+    }
+}
+
+/// What an asset import of one language is called in a sentence.
+fn asset_noun(lang: &str) -> &'static str {
+    match lang {
+        "css" => "stylesheet",
+        "wasm" => "WebAssembly",
+        _ => "script",
+    }
+}
+
+/// The file `import <lang> "npm:<spec>"` names: the entry point the installed package states, or the file inside it the spec asked for.
+pub fn package_asset(importer: &Path, lang: &str, spec: &str) -> Result<PathBuf, String> {
+    let wrote = |why: String| format!("import {lang} \"{PACKAGE_PREFIX}{spec}\": {why}");
+    let (name, sub) = maca_parser::modules::split_package(spec);
+    if name.is_empty() {
+        return Err(wrote("no package named".into()));
+    }
+    let Some(dir) = maca_parser::modules::installed_dir(&name, importer) else {
+        return Err(wrote(format!(
+            "`{name}` is not installed; run `maca add {PACKAGE_PREFIX}{name}`"
+        )));
+    };
+    if let Some(sub) = sub {
+        let file = dir.join(&sub);
+        return file
+            .is_file()
+            .then_some(file)
+            .ok_or_else(|| wrote(format!("`{name}` has no `{sub}`")));
+    }
+    let manifest = dir.join("package.json");
+    let text = std::fs::read_to_string(&manifest)
+        .map_err(|e| wrote(format!("{}: {e}", manifest.display())))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| wrote(format!("bad package.json: {e}")))?;
+    let exts = asset_extensions(lang);
+    let entry = ENTRY_KEYS.iter().find_map(|k| {
+        let v = json.get(*k)?.as_str()?;
+        exts.iter().any(|e| v.ends_with(e)).then_some((*k, v))
+    });
+    let Some((key, rel)) = entry else {
+        return Err(wrote(format!(
+            "`{name}` states no {} entry point ({} names none of {}); name the file, as in \
+             `import {lang} \"{PACKAGE_PREFIX}{name}/dist/…\"`",
+            asset_noun(lang),
+            ENTRY_KEYS.join("/"),
+            exts.join("/")
+        )));
+    };
+    let file = dir.join(rel.trim_start_matches("./"));
+    file.is_file().then_some(file).ok_or_else(|| {
+        wrote(format!(
+            "`{name}` states {key} = \"{rel}\", which is not there"
+        ))
+    })
+}
+
 /// A resolved dependency: a concrete version plus how to fetch it.
 struct Resolved {
     version: String,

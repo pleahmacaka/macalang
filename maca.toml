@@ -12,6 +12,7 @@ members = [
     "modules/signal",
     "modules/std",
     "modules/tambo",
+    "modules/web",
     "apps/bench",
     "apps/bench_demo",
     "apps/blink",

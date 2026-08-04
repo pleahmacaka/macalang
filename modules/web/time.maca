@@ -1,0 +1,47 @@
+// web/time: the clock on the wall the page is hanging on.
+//
+// The host answers with the parts of the local time and nothing else; what
+// those parts read as is `web/format`, which every target can run.
+
+import { clock, clock12, stamp } from web/format
+
+/// The local time as `[year, month, day, hour, minute, second]`.
+now_parts() -> int[]
+
+/// Repaint the view every `ms` milliseconds, and answer the timer that does it.
+every_ms(ms: int) -> int
+
+/// Stop the repainting `every_ms` started.
+stop_every(timer: int) -> bool
+
+/// The local time as a 24-hour clock reads it.
+clock_time() -> str {
+    p = now_parts()
+    clock(p.get(3), p.get(4))
+}
+
+/// The local time as a 12-hour clock reads it.
+clock_time12() -> str {
+    p = now_parts()
+    clock12(p.get(3), p.get(4))
+}
+
+/// Today, as one sortable stamp.
+clock_date() -> str {
+    p = now_parts()
+    stamp(p.get(0), p.get(1), p.get(2))
+}
+
+import js """
+maca.provide({
+  now_parts: () => {
+    const d = new Date();
+    return [
+      d.getFullYear(), d.getMonth() + 1, d.getDate(),
+      d.getHours(), d.getMinutes(), d.getSeconds(),
+    ];
+  },
+  every_ms: (ms) => setInterval(() => maca.refresh(), ms),
+  stop_every: (timer) => { clearInterval(timer); return true },
+});
+"""

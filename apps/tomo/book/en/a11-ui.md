@@ -391,3 +391,54 @@ Markdown parser in front of it.
 The `on:click=` directive on the native target is a compile error naming
 `--target js`, and that is the only place the two targets diverge in what they
 accept. See [Targets](a10-targets.md).
+
+## A page's assets, and naming a package rather than a path
+
+After `import <lang>`, a raw `"""…"""` block *is* the source and a quoted
+`"…"` *names a file*, read while the page is built and inlined into it. So a
+page carries its vendor stylesheet and its vendor script without linking to
+anything:
+
+```maca
+import css "vendor/reset.css"
+import js "vendor/iconify-icon.js"
+```
+
+A path there is resolved against the file that wrote it, and a path that
+resolves to no file is a build error naming it.
+
+A project that ran `maca add` should not have to reach into the directory the
+installer chose. `npm:` is the prefix `maca.toml` already writes for a
+dependency, and it means the same thing in an asset import:
+
+```maca
+import css "npm:daisyui"
+import js "npm:iconify-icon"
+```
+
+**The package names its own entry point.** Its `package.json` is read, and the
+first of `style`, `browser`, `module`, `main` that names a file of the right
+kind is the one that lands: `.css` for a stylesheet, `.js`, `.mjs` or `.cjs`
+for a script, `.wasm` for WebAssembly. A package that states several of them is
+not ambiguous, because the list is ordered and a page is a browser, so
+`browser` outranks `module` and `module` outranks `main`.
+
+Three things are errors rather than a quiet nothing:
+
+| What | The build says |
+|---|---|
+| the package is not installed | `` `daisyui` is not installed; run `maca add npm:daisyui` `` |
+| it states no entry of that kind | `` `iconify-icon` states no stylesheet entry point `` |
+| the entry names a file that is not there | `` `daisyui` states style = "dist/full.css", which is not there `` |
+
+When the entry point is not the file you want, name the file:
+
+```maca
+import css "npm:daisyui/dist/themes.css"
+```
+
+A scoped package is reached under the bare name `maca add` installed it as, so
+`npm:@wooorm/starry-night` and `npm:starry-night` are the same directory. The
+walk that finds `maca_modules` is the one an ordinary `import` takes, from the
+importing file up to the workspace root, so a page in a subdirectory finds the
+package installed at the project root. See [Modules and Layout](a9-modules.md).

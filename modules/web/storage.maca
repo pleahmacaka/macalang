@@ -1,0 +1,41 @@
+// web/storage: what the browser remembers between visits.
+//
+// `stored(key, default)` is the whole surface a program needs: the name starts
+// as whatever is saved under `key`, and assigning the name saves it again. The
+// three functions below are what that is written in terms of, and a program
+// that only wants the sugar never calls them.
+
+/// The value saved under `key`, or `fallback` when the browser has nothing there.
+local_start(key: str, fallback: a) -> a
+
+/// Save `value` under `key` and answer it, so assigning a stored name is the save.
+local_store(key: str, value: a) -> a
+
+/// Forget whatever is saved under `key`, so the next visit starts from the default again.
+local_forget(key: str) -> bool
+
+import js """
+maca.provide({
+  local_start: (key, fallback) => {
+    const store = globalThis.localStorage;
+    if (!store) return fallback;
+    const text = store.getItem(key);
+    if (text === null) return fallback;
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      return fallback;
+    }
+  },
+  local_store: (key, value) => {
+    const store = globalThis.localStorage;
+    if (store) store.setItem(key, JSON.stringify(value));
+    return value;
+  },
+  local_forget: (key) => {
+    const store = globalThis.localStorage;
+    if (store) store.removeItem(key);
+    return true;
+  },
+});
+"""

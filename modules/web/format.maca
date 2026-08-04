@@ -1,0 +1,53 @@
+// web/format: the half of the browser modules that is arithmetic.
+//
+// Nothing here asks the host anything, so it reads the same on every target
+// and its answers are the ones `web/time` and `web/file` present.
+
+/// `n` written with at least two digits, which is what a clock reads.
+two(n: int) -> str => n < 10 && n >= 0 ? "0{n}" : "{n}"
+
+/// The hour and minute as a 24-hour clock reads them.
+clock(hour: int, minute: int) -> str => "{two(hour)}:{two(minute)}"
+
+/// The hour and minute as a 12-hour clock reads them, with the half of the day.
+clock12(hour: int, minute: int) -> str {
+    half = hour < 12 ? "am" : "pm"
+    h = hour % 12
+    shown = h == 0 ? 12 : h
+    "{shown}:{two(minute)} {half}"
+}
+
+/// The year, month and day as one sortable stamp.
+stamp(year: int, month: int, day: int) -> str =>
+    "{year}-{two(month)}-{two(day)}"
+
+/// `name` reduced to something every file system will accept, and never empty.
+safe_name(name: str) -> str {
+    cs = name.trim().chars()
+    out = ""
+    for c in cs {
+        out = keeps(c) ? out ++ c : out ++ "-"
+    }
+    trimmed = trim_dashes(out)
+    trimmed == "" ? "download" : trimmed
+}
+
+/// Is this character one a file name keeps as it is?
+keeps(c: str) -> bool =>
+    c.is_ascii_digit() || c.is_alpha() || c == "." || c == "-" || c == "_"
+
+/// `s` without the separators a name should not begin or end with.
+trim_dashes(s: str) -> str {
+    lo = 0
+    hi = s.length()
+    while lo < hi && s.at(lo) == "-" {
+        lo = lo + 1
+    }
+    while hi > lo && s.at(hi - 1) == "-" {
+        hi = hi - 1
+    }
+    s.slice(lo, hi)
+}
+
+/// The storage key `name` belongs to under the program called `app`.
+slot(app: str, name: str) -> str => "{app}.{name}"

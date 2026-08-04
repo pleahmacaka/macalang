@@ -98,11 +98,25 @@ link_at(s: str, open: int) -> str {
 }
 
 href(url: str) -> str {
-    if url.ends_with(".md") && !url.contains("://") {
-        url.substr(0, url.length() - 3) ++ ".html"
-    } else {
-        url
+    if url.contains("://") {
+        return url
     }
+
+    cut = url.index_of("#")
+
+    if cut < 0 {
+        return page_href(url)
+    }
+
+    "{page_href(url.substr(0, cut))}{url.substr(cut, url.length() - cut)}"
+}
+
+page_href(path: str) -> str {
+    if !path.ends_with(".md") {
+        return path
+    }
+
+    "{path.substr(0, path.length() - 3)}.html"
 }
 
 code_spans(s: str) -> str {

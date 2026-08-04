@@ -229,6 +229,11 @@ fn every_module_builds_both_selectively_and_whole() {
     pkgs.sort();
     for pkg in pkgs {
         let name = pkg.file_name().unwrap().to_string_lossy().to_string();
+        // `web` is answered by an `import js` block, so the native target refuses
+        // it by name. That refusal is the feature; `web_storage.rs` asserts it.
+        if name == "web" {
+            continue;
+        }
         let mut files: Vec<PathBuf> = std::fs::read_dir(&pkg)
             .unwrap()
             .filter_map(|e| e.ok().map(|e| e.path()))

@@ -6,6 +6,7 @@ use maca_profile as profile;
 mod bindgen;
 mod build_cache;
 mod deps;
+mod embed;
 mod entry;
 mod manifest;
 
@@ -707,6 +708,7 @@ fn detect_target(m: &maca_parser::Module) -> Option<(&'static str, &'static str)
 
 /// Config mode → a NixOS module.
 fn build_nix(src: &Path, out: &Path) -> Result<(), String> {
+    reject_browser_modules(src, "nix")?;
     let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
@@ -728,6 +730,7 @@ fn build_nix(src: &Path, out: &Path) -> Result<(), String> {
 
 /// Rust target → Rust source, then a native binary at `out`.
 fn build_rust(src: &Path, out: &Path) -> Result<String, String> {
+    reject_browser_modules(src, "rust")?;
     let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
@@ -1098,6 +1101,7 @@ fn build_rust_cargo(
 
 /// JVM target → Java source (and `javac` to `.class` when a JDK is present).
 fn build_jvm(src: &Path, out: Option<&Path>, classpath: Option<&str>) -> Result<String, String> {
+    reject_browser_modules(src, "jvm")?;
     let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
@@ -1251,6 +1255,7 @@ fn cmd_dev(args: &[String]) {
 
 /// Embedded target → freestanding C + startup + linker script, cross-compiled to a bare-metal firmware image (ELF + raw .bin) with clang/lld.
 fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<String, String> {
+    reject_browser_modules(src, "embedded")?;
     let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
@@ -1354,10 +1359,11 @@ fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<Stri
 /// UI mode → one self-contained, deployable `index.html`.
 fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
     let source = load_with_imports(src)?;
-    let parsed = maca_parser::parse(&source);
+    let mut parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
         return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
     }
+    embed::desugar(&mut parsed.module, src)?;
     let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
     if !diags.is_empty() {
         let msgs: Vec<_> = diags
@@ -1368,7 +1374,6 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
     }
     let out = maca_backend_js::emit(&parsed.module);
 
-    let base = src.parent().unwrap_or(Path::new("."));
     let mut head_assets = String::new();
     let mut assets = String::new();
     for item in &parsed.module.items {
@@ -1377,18 +1382,18 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
         };
         match lang.as_str() {
             "wasm" => {
-                let bytes = read_asset(base, "wasm", spec)?;
+                let bytes = read_asset(src, "wasm", spec)?;
                 assets.push_str(&format!(
                     "<script id=\"wasm-b64\" type=\"application/octet-stream\">{}</script>\n",
                     base64(&bytes)
                 ));
             }
             "stylesheet" => {
-                let text = asset_text(base, "css", spec)?;
+                let text = asset_text(src, "css", spec)?;
                 head_assets.push_str(&format!("<style>\n{}\n</style>\n", close_safe(&text)));
             }
             "script" => {
-                let text = asset_text(base, "js", spec)?;
+                let text = asset_text(src, "js", spec)?;
                 assets.push_str(&format!("<script>\n{}\n</script>\n", close_safe(&text)));
             }
             _ => {}
@@ -1420,15 +1425,53 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// A module whose implementation is an `import js` block reaches a browser and nothing else, so a build for anywhere else says which module that was.
+fn reject_browser_modules(src: &Path, target: &str) -> Result<(), String> {
+    let files = maca_parser::imports::modules_importing(src, "js")?;
+    let Some(first) = files.first() else {
+        return Ok(());
+    };
+    Err(format!(
+        "`{}` runs in a browser: what implements it is an `import js` block, and \
+         the {target} target has no JavaScript to run it in; build the page with \
+         `maca build --target js`",
+        module_name(first)
+    ))
+}
+
+/// A module file as an import writes it: the path under the search root that answers for it.
+fn module_name(path: &Path) -> String {
+    let stem = path.with_extension("");
+    let parts: Vec<String> = stem
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    let roots = maca_parser::modules::Layout::default();
+    let after = parts
+        .iter()
+        .rposition(|p| roots.roots.iter().any(|r| r == p))
+        .map(|i| i + 1)
+        .unwrap_or(parts.len().saturating_sub(1));
+    parts[after..].join("/")
+}
+
+/// The file an asset import names: a package's own entry point after `npm:`, and otherwise a path beside the importing file.
+fn asset_path(src: &Path, lang: &str, spec: &str) -> Result<PathBuf, String> {
+    match spec.strip_prefix(deps::PACKAGE_PREFIX) {
+        Some(pkg) => deps::package_asset(src, lang, pkg),
+        None => Ok(src.parent().unwrap_or(Path::new(".")).join(spec)),
+    }
+}
+
 /// An asset a page declares, read at build time.
-fn read_asset(base: &Path, lang: &str, spec: &str) -> Result<Vec<u8>, String> {
-    let path = base.join(spec);
+fn read_asset(src: &Path, lang: &str, spec: &str) -> Result<Vec<u8>, String> {
+    let path = asset_path(src, lang, spec)?;
     std::fs::read(&path).map_err(|e| format!("import {lang} \"{spec}\": {}: {e}", path.display()))
 }
 
 /// The same, as text: a stylesheet or a script is inlined as source.
-fn asset_text(base: &Path, lang: &str, spec: &str) -> Result<String, String> {
-    let bytes = read_asset(base, lang, spec)?;
+fn asset_text(src: &Path, lang: &str, spec: &str) -> Result<String, String> {
+    let bytes = read_asset(src, lang, spec)?;
     String::from_utf8(bytes).map_err(|e| format!("import {lang} \"{spec}\": not UTF-8 text: {e}"))
 }
 
@@ -1748,6 +1791,10 @@ fn cmd_test_package() -> ! {
 
 /// Build and run one suite, answering the exit status its assertions produced.
 fn run_suite(src: &Path) -> i32 {
+    if let Err(e) = reject_browser_modules(src, "native") {
+        eprintln!("maca: {e}");
+        return 1;
+    }
     let source = match load_with_imports(src) {
         Ok(s) => s,
         Err(e) => {
@@ -1755,9 +1802,13 @@ fn run_suite(src: &Path) -> i32 {
             return 1;
         }
     };
-    let parsed = maca_parser::parse(&source);
+    let mut parsed = maca_parser::parse(&source);
     if !parsed.errors.is_empty() {
         eprintln!("maca: parse errors:\n  {}", parsed.errors.join("\n  "));
+        return 1;
+    }
+    if let Err(e) = embed::desugar(&mut parsed.module, src) {
+        eprintln!("maca: {e}");
         return 1;
     }
 
@@ -1958,8 +2009,14 @@ use maca_parser::imports::load_with_imports;
 
 /// Read → parse → typecheck → emit C → `zig cc` → a native binary at `out`, backed by the content-addressed build cache.
 fn compile(src: &Path, out: &Path) -> Result<(), String> {
+    reject_browser_modules(src, "native")?;
     let source = load_with_imports(src)?;
-    let key = build_cache::artifact_key(&source, &compiler_fingerprint(), "native");
+    let mut parsed = maca_parser::parse(&source);
+    if !parsed.errors.is_empty() {
+        return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
+    }
+    let embedded = embed::desugar(&mut parsed.module, src)?;
+    let key = build_cache::artifact_key(&(source + &embedded), &compiler_fingerprint(), "native");
     if let Some(cached) = build_cache::get(&key) {
         build_cache::place(&cached, out)?;
         if std::env::var("MACA_VERBOSE").is_ok() {
@@ -1967,18 +2024,15 @@ fn compile(src: &Path, out: &Path) -> Result<(), String> {
         }
         return Ok(());
     }
-    compile_inner(src, &source, out)?;
+    compile_inner(src, parsed.module, out)?;
     build_cache::put(&key, out);
     Ok(())
 }
 
-fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
-    let mut parsed = maca_parser::parse(source);
-    if !parsed.errors.is_empty() {
-        return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
-    }
-    inject_nix_imports(&mut parsed.module, src)?;
-    let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
+fn compile_inner(src: &Path, module: maca_parser::Module, out: &Path) -> Result<(), String> {
+    let mut module = module;
+    inject_nix_imports(&mut module, src)?;
+    let diags = maca_core::check(&module, maca_core::Mode::Program);
     if !diags.is_empty() {
         let msgs: Vec<_> = diags
             .iter()
@@ -1987,21 +2041,21 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
         return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
     }
 
-    let c_src = maca_backend_c::emit_checked(&parsed.module).map_err(|probs| {
+    let c_src = maca_backend_c::emit_checked(&module).map_err(|probs| {
         format!(
             "unsupported by the native backend:\n  {}",
             probs.join("\n  ")
         )
     })?;
     let use_async = maca_backend_c::needs_async(&c_src);
-    let llvm = maca_backend_llvm::emit(&parsed.module);
+    let llvm = maca_backend_llvm::emit(&module);
     let use_simd = !llvm.simd_fns.is_empty();
     let dir = build_dir(src);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     std::fs::write(dir.join("main.c"), &c_src).map_err(|e| e.to_string())?;
     maca_runtime::write_to(&dir).map_err(|e| e.to_string())?;
 
-    let c_imports = maca_backend_c::c_imports(&parsed.module);
+    let c_imports = maca_backend_c::c_imports(&module);
     if c_imports.iter().any(|h| h.contains("sqlite")) {
         maca_runtime::write_sqlite_glue(&dir).map_err(|e| e.to_string())?;
         if !have_wsl() {
@@ -2053,7 +2107,7 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
         return Ok(());
     }
 
-    if parsed.module.items.iter().any(|it| {
+    if module.items.iter().any(|it| {
         matches!(it, maca_parser::Stmt::Import(maca_parser::Import::Foreign { lang, .. }) if lang == "py")
     }) {
         maca_runtime::write_py_glue(&dir).map_err(|e| e.to_string())?;

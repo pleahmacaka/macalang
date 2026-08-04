@@ -1,0 +1,45 @@
+// web/file: handing a file to the reader, and taking one back.
+//
+// The name a download is offered under is decided here rather than by the
+// host, so `web/format`'s rule for it is the one every target agrees on.
+
+import { safe_name } from web/format
+
+/// Offer `text` to the reader as a file called `name`.
+download(name: str, text: str) -> bool =>
+    browser_download(safe_name(name), text)
+
+/// Open the reader's file picker for the kinds `accept` names, and answer whether one was opened.
+ask_text(accept: str, into: str) -> bool
+
+/// Hand `text` to the browser under a name it has already been told is safe.
+browser_download(name: str, text: str) -> bool
+
+import js """
+maca.provide({
+  browser_download: (name, text) => {
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return true;
+  },
+  ask_text: (accept, into) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.addEventListener("change", () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      file.text().then((text) => maca.set(into, text));
+    });
+    input.click();
+    return true;
+  },
+});
+"""

@@ -166,6 +166,79 @@ capability with no Maca spelling: the WebAssembly instance, the Monaco editor,
 the URL fragment, the clipboard, the sandboxed preview iframe. Everything on
 this side, including every sentence the page prints, is Maca.
 
+## The browser, as modules
+
+`modules/web` is the browser presented as ordinary Maca. Three of its files are
+bridges, each declaring the functions it needs with no body and implementing
+them in its own `import js` block; the fourth, `web/format`, is arithmetic and
+runs anywhere.
+
+| Module | What it reaches |
+|---|---|
+| `web/storage` | what the browser remembers between visits |
+| `web/time` | the local clock, and repainting on a timer |
+| `web/file` | offering the reader a download, and taking a file back |
+| `web/format` | what a clock reads and what a download is named: no host at all |
+
+### State that persists
+
+```maca
+import web/storage
+
+config: Config = stored("homepage.config", data(Links))
+locked = stored("homepage.locked", true)
+```
+
+`stored(key, default)` is the whole surface. The name **starts** as whatever
+the browser has saved under `key`, falling back to the value written beside it,
+and **assigning the name saves it again**:
+
+```maca
+lock() -> int {
+    locked = !locked
+    0
+}
+```
+
+That is the whole of what a handler writes. There is no read call, no write
+call, and no pair of key constants carried around to spell them with;
+[assignment is already the update](a11-ui.md#assignment-is-the-update), and
+this makes it the save too.
+
+The key is written out or bound to a constant, because it names a slot rather
+than being computed. A `const` name cannot be stored, since a stored name is
+written back exactly when it is assigned.
+
+What the compiler does with it is worth knowing, because it is visible in the
+emitted `app.js`: the binding keeps its declared value, every write to the name
+becomes `local_store(key, …)`, and one line goes into the bridge to read the
+name back before the page is built for the first time:
+
+```js
+maca.set("locked", local_start("homepage.locked", maca.get("locked")));
+```
+
+`local_start`, `local_store` and `local_forget` are `web/storage`'s three
+declared functions. A program that only wants the sugar never calls them, and
+`stored(…)` without `import web/storage` is a build error naming the import to
+add.
+
+### Off the browser
+
+A module whose implementation is an `import js` block has nothing to run
+anywhere else, so building one for any other target refuses **by name** rather
+than compiling to a program that does nothing:
+
+```
+`web/storage` runs in a browser: what implements it is an `import js` block,
+and the native target has no JavaScript to run it in; build the page with
+`maca build --target js`
+```
+
+That is why `web/format` exists as its own file. The clock's padding and the
+download's file name are decided there, in plain Maca, so `modules/web/tests/`
+is a suite `maca test` runs like any other.
+
 ## When to reach for FFI
 
 The honest guidance: prefer a Maca implementation where the work is

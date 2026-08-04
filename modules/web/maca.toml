@@ -1,0 +1,3 @@
+[package]
+name = "web"
+description = "What a page gets from the browser it runs in: storage, the clock, and files."

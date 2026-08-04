@@ -383,3 +383,55 @@ main() -> int {
 네이티브 타깃의 `on:click=` 지시자는 `--target js`를 가리키는 컴파일 오류이고,
 두 타깃이 받아들이는 것이 갈리는 곳은 여기뿐입니다. [타깃](a10-targets.md)을
 보세요.
+
+## 페이지의 애셋, 그리고 경로 대신 패키지를 부르기
+
+`import <lang>` 뒤에서 raw `"""…"""` 블록은 소스 그 자체이고, 따옴표로 감싼
+`"…"`는 파일을 가리킵니다. 그 파일은 페이지를 빌드할 때 읽혀서 페이지 안에
+인라인됩니다. 그래서 페이지는 아무것도 링크하지 않고 벤더 스타일시트와 벤더
+스크립트를 스스로 지니고 다닙니다.
+
+```maca
+import css "vendor/reset.css"
+import js "vendor/iconify-icon.js"
+```
+
+여기서 경로는 그것을 쓴 파일을 기준으로 풀리고, 아무 파일도 가리키지 못하는
+경로는 그 경로를 이름으로 부르는 빌드 오류입니다.
+
+`maca add`를 실행한 프로젝트가 설치 도구가 고른 디렉터리에 손을 뻗을 일은
+없어야 합니다. `npm:`은 `maca.toml`이 의존성에 이미 쓰고 있는 접두사이고,
+애셋 임포트에서도 같은 뜻입니다.
+
+```maca
+import css "npm:daisyui"
+import js "npm:iconify-icon"
+```
+
+**진입점은 패키지가 스스로 정합니다.** 패키지의 `package.json`을 읽어서
+`style`, `browser`, `module`, `main` 중 알맞은 종류의 파일을 가리키는 첫 번째
+것이 실립니다. 스타일시트는 `.css`, 스크립트는 `.js`/`.mjs`/`.cjs`,
+WebAssembly는 `.wasm`입니다. 여러 개를 적어 둔 패키지도 모호하지 않습니다.
+그 목록에는 순서가 있고 페이지는 곧 브라우저이므로 `browser`가 `module`을,
+`module`이 `main`을 이깁니다.
+
+조용히 아무 일도 일어나지 않는 대신 오류가 되는 것이 셋 있습니다.
+
+| 무엇 | 빌드가 하는 말 |
+|---|---|
+| 패키지가 설치되어 있지 않음 | `` `daisyui` is not installed; run `maca add npm:daisyui` `` |
+| 그 종류의 진입점이 없음 | `` `iconify-icon` states no stylesheet entry point `` |
+| 진입점이 없는 파일을 가리킴 | `` `daisyui` states style = "dist/full.css", which is not there `` |
+
+원하는 파일이 진입점이 아니라면 파일을 직접 부르면 됩니다.
+
+```maca
+import css "npm:daisyui/dist/themes.css"
+```
+
+스코프가 붙은 패키지는 `maca add`가 설치할 때 쓴 맨 이름으로 닿습니다. 그래서
+`npm:@wooorm/starry-night`와 `npm:starry-night`는 같은 디렉터리입니다.
+`maca_modules`를 찾아 올라가는 걸음은 평범한 `import`가 걷는 그 걸음, 즉
+임포트한 파일에서 워크스페이스 루트까지이므로, 하위 디렉터리에 있는 페이지도
+프로젝트 루트에 설치된 패키지를 찾아냅니다. [모듈과 배치](a9-modules.md)를
+보세요.

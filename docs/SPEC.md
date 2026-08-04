@@ -253,6 +253,21 @@ and which manifest answers.
   ahead of the app, and `import wasm "x.wasm"` embeds a base64 blob. Every asset
   is inlined, never linked: `index.html` is the whole deployable. A path that
   resolves to no file is a build error naming it.
+  **An asset import may name a package instead of a path.** `npm:` is the same
+  prefix `maca.toml` writes for a dependency, and it means the same thing here,
+  so `import css "npm:daisyui"` reaches whatever `maca add npm:daisyui`
+  installed and the directory it installed into never appears in the source.
+  The package names its own entry point: the first of `style`, `browser`,
+  `module`, `main` in its `package.json` that names a file of the right kind
+  (`.css` for a stylesheet, `.js`/`.mjs`/`.cjs` for a script, `.wasm` for
+  WebAssembly). Several stated entries are not an ambiguity, because that list
+  is ordered and a page is a browser. A package that states none is an error
+  naming the package and the keys, and `import css "npm:daisyui/dist/full.css"`
+  is how a file inside a package is named when its entry point is not the one
+  wanted. A package that is not installed is an error naming it and saying to
+  `maca add` it, never a silent fall-through, and a scoped `npm:@scope/pkg` is
+  reached under the bare name `maca add` installed it as
+  (`crates/driver/tests/assets.rs`).
   The page's title is `[page] title` in the `maca.toml` nearest the source
   (`lang` and `description` too), falling back to the source file's stem, so a
   page is named by what it is rather than by what its file is called; the same

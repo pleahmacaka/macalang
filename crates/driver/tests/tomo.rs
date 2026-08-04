@@ -452,6 +452,56 @@ fn untranslated_chapters_fall_back_to_the_default_language() {
     );
 }
 
+/// A cross-page link that names a section still points at the built page.
+///
+/// `href` rewrote a URL only when it *ended* with `.md`, so `a11-ui.md#anchor`
+/// went out unchanged and pointed at a file the site does not contain. Nothing
+/// noticed because until the FFI chapter linked one, no page in the book had
+/// written a cross-page anchor at all.
+#[test]
+fn a_cross_page_link_keeps_its_anchor_and_gains_its_extension() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping tomo anchor check: needs a host cc and no wsl");
+        return;
+    }
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let dir = std::env::temp_dir().join("maca-tomo-anchor");
+    let _ = std::fs::create_dir_all(&dir);
+    let bin = dir.join("tomo");
+    assert!(
+        Command::new(env!("CARGO_BIN_EXE_maca"))
+            .args([
+                "build",
+                &repo.join("apps/tomo/tomo.maca").to_string_lossy(),
+                "-o",
+                &bin.to_string_lossy(),
+            ])
+            .output()
+            .expect("spawn maca build")
+            .status
+            .success()
+    );
+    assert!(
+        Command::new(&bin)
+            .current_dir(&repo)
+            .output()
+            .expect("run tomo")
+            .status
+            .success()
+    );
+
+    let page = std::fs::read_to_string(repo.join("apps/tomo/site/en/a13-ffi.html")).unwrap();
+
+    assert!(
+        page.contains("a11-ui.html#assignment-is-the-update"),
+        "the anchored cross-link was not rewritten"
+    );
+    assert!(
+        !page.contains("a11-ui.md#"),
+        "a `.md` href survived into the built page"
+    );
+}
+
 /// Every internal link in the built book must resolve.
 #[test]
 fn every_link_in_the_built_book_resolves() {

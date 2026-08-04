@@ -42,6 +42,59 @@ goes through the C compiler.
 Set `MACA_NO_CACHE=1` to turn all of it off, which is what you want when
 measuring compile times.
 
+## A file read while the program is built
+
+`data("config/links.json")` reads that file *now*, at build time, and the
+program carries what it read. There is no fetch at start-up and no path to
+deploy alongside the binary or the page.
+
+```maca
+import { decode } from std/json
+
+Config = { title: str, links: Link[] }
+
+Links = "config/links.json"
+
+config: Config = data(Links)
+```
+
+The value is read into the type the binding declares, which is
+[`std/json`'s `decode`](a3-stdlib.md) doing the work: `data` is the read and
+the declared type is what it is read as. Write the path out or bind it to a
+constant, because a build cannot follow a path a program computes at run time.
+
+The path is resolved against **the file the command names**, not the working
+directory, so `maca test /elsewhere/suite.maca` reads the same files from
+anywhere.
+
+### `.local` shadows the committed copy
+
+A file whose name has `.local` before its extension takes over from the one
+beside it, silently and by convention:
+
+```
+config/links.json         committed, and what a fresh clone builds
+config/links.local.json   yours, gitignored, and what your build reads
+```
+
+`data("config/links.json")` reads `config/links.local.json` when that file
+exists. That is `.env.local` spelled the way Maca spells a data file: the
+source names one path, and which of the two answers is a property of the tree
+rather than of the program. Delete the `.local` copy and the committed one is
+back.
+
+Three things are errors rather than a default:
+
+| What | The build says |
+|---|---|
+| no file at that path | `` data("config/links.json"): …/config/links.json: No such file or directory `` |
+| nothing types the text | `` data(…) reads the file into the type the binding declares; add `import { decode } from std/json` `` |
+| the path is computed | `` data(…): the path is read while building, so write it out or bind it to a constant `` |
+
+The file's bytes are part of what the [build cache](#builds-are-cached) is
+keyed on, so editing the file rebuilds the program even though no `.maca` file
+changed.
+
 ## The linter
 
 `maca lint` covers the semantic checks. Alongside it, `tools/lint.maca` is a
