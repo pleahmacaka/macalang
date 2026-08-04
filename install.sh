@@ -12,6 +12,11 @@
 # latest GitHub release. With no matching asset it builds from source (needs a
 # Rust toolchain). A C compiler (cc/clang) is needed for `maca build/run`.
 #
+# The standard library is inside the `maca` binary, so there is nothing else to
+# install and nothing to keep in step: `import std/json` works in any directory.
+# `maca` unpacks its copy under the cache directory the first time an import
+# needs it, and a file your own project provides always wins over it.
+#
 # Nix is optional; it powers `maca dev` and Nix builds. If missing (and you're
 # not on Windows) the installer offers to install it via the Determinate Systems
 # installer. Preseed with MACA_INSTALL_NIX=1 (install) or =0 (skip).
@@ -122,9 +127,12 @@ fi
 "$bindir/maca" --version
 if command -v cc >/dev/null 2>&1; then
   probe="$(mktemp -d)"
-  printf 'main() -> int {\n    info("maca is working")\n    0\n}\n' > "$probe/hello.maca"
+  # The probe imports the standard library on purpose: it is carried inside the
+  # binary, and a compiler that cannot answer `import std/text` outside its own
+  # source tree is the failure this checks for.
+  printf 'import { lines } from std/text\n\nmain() -> int {\n    n = lines("a\\nb").length()\n    info("maca is working, and std reads {n} lines")\n    0\n}\n' > "$probe/hello.maca"
   if "$bindir/maca" run "$probe/hello.maca" >/dev/null 2>&1; then
-    say "verified: compiled and ran a Maca program ✓"
+    say "verified: compiled and ran a Maca program that imports std ✓"
   else
     warn "installed, but a test compile+run failed; check your C compiler"
   fi

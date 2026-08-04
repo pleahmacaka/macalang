@@ -87,6 +87,20 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Compress-Archive -Path target\${{ matrix.target }}\release\maca.exe, target\${{ matrix.target }}\release\maca-lsp.exe -DestinationPath "dist\${{ matrix.asset }}" -Force
 
+      # The standard library rides inside the binary, so packaging cannot forget
+      # it and the tarball stays two files. What packaging can still lose is the
+      # copy itself, and the only way to see that is from outside the checkout:
+      # a program in a temp directory that imports `std/text` has nothing but
+      # the binary to resolve it with. The Linux legs are the native ones with a
+      # `cc`, which is what makes them the ones that can run it.
+      - name: Verify the released binary carries the standard library
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          probe="$(mktemp -d)"
+          printf 'import { lines } from std/text\n\nmain() -> int {\n    n = lines("a\\nb").length()\n    n == 2 ? 0 : 1\n}\n' > "$probe/probe.maca"
+          "$PWD/target/${{ matrix.target }}/release/maca" run "$probe/probe.maca"
+
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:

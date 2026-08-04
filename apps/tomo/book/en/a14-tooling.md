@@ -28,6 +28,34 @@ do the jobs a subcommand would do elsewhere.
 for embedded and `--cp` for the JVM classpath. With no `--target` you get a
 native binary.
 
+## What the binary carries
+
+`maca` is self-contained. Two things a compiler usually keeps in files beside
+itself are inside it instead: the **C runtime** every native build links
+against, and the **standard library**, all eight packages of it (`std`, `cli`,
+`http`, `bench`, `profile`, `signal`, `tambo`, `web`). A release is `maca` and
+`maca-lsp` and nothing else, and `import std/json` means the same thing in a
+downloaded release as it does in a checkout of the compiler's own source.
+
+It is inside the binary rather than installed next to it because a directory of
+`.maca` files beside the executable is a second thing to package, a second
+thing an installer can drop, and a second thing that can be a different version
+from the binary reading it. Nothing that can go missing can go missing.
+
+Resolving an import means reading source, so the copy has to reach disk: the
+first import that nothing in your project answers unpacks it, once, into the
+cache directory (`MACA_CACHE`, else `XDG_CACHE_HOME`, else `~/.cache/maca`),
+under a name made of the compiler's version and a digest of the files.
+Upgrading the compiler unpacks a new one and leaves the old alone, so two
+versions on one machine never read each other's `std`.
+
+Your project always wins. A `modules/std/text.maca` you wrote, or a
+`maca_modules/std/` that `maca add` installed, is found by the ordinary search
+before the carried copy is ever offered, and it is the copy the carried
+packages read as well as the copy your own code reads.
+[Modules and Layout](a9-modules.md) is where that order is written out;
+`MACA_STDLIB=<dir>` replaces the carried copy with a directory of your own.
+
 ## Builds are cached
 
 A native build is a pure function of the source, the compiler version and the
@@ -40,7 +68,8 @@ The invariant C runtime is cached separately as a compiled object, so even a
 goes through the C compiler.
 
 Set `MACA_NO_CACHE=1` to turn all of it off, which is what you want when
-measuring compile times.
+measuring compile times. It turns off *caching*, not the unpacked standard
+library: that one is not an artifact to be rebuilt, it is source to be read.
 
 ## A file read while the program is built
 

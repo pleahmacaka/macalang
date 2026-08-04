@@ -1,5 +1,11 @@
 use crate::ast::Import;
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+
+thread_local! {
+    /// The project that last asked for a module, which is the project the compiler's own copy of a package resolves its own imports against.
+    static ASKED_BY: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
 
 /// The directory names a project keeps code under.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -189,9 +195,11 @@ pub fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> 
 /// `resolve_module_path`, and what else the same import names.
 pub fn resolve_module(segs: &[String], importer: &Path) -> Option<Resolved> {
     let last = segs.last()?;
-    let dir = importer.parent().unwrap_or_else(|| Path::new("."));
+    let own = importer.parent().unwrap_or_else(|| Path::new("."));
     let joined = segs.join("/");
-    let layout = layout_for(importer);
+    let asked = asking(own);
+    let dir = asked.as_path();
+    let layout = layout_for(&dir.join("_m.maca"));
     let mut found: Vec<(PathBuf, Found)> = Vec::new();
 
     let stop = workspace_root(dir);
@@ -205,7 +213,8 @@ pub fn resolve_module(segs: &[String], importer: &Path) -> Option<Resolved> {
         candidates(Path::new("."), &joined, &layout, &mut found);
     }
     if found.is_empty() {
-        return module_file(&dir.join(last)).map(|chosen| Resolved {
+        let chosen = module_file(&own.join(last)).or_else(|| builtin(&joined))?;
+        return Some(Resolved {
             chosen,
             shadowed: None,
         });
@@ -241,6 +250,29 @@ fn candidates(base: &Path, path: &str, layout: &Layout, out: &mut Vec<(PathBuf, 
             out.push((hit, rule));
         }
     }
+}
+
+/// The standard library the compiler carries, which answers for an import only once the project has been asked and had nothing.
+fn builtin(path: &str) -> Option<PathBuf> {
+    module_file(&maca_stdlib::root()?.join(path))
+}
+
+/// The directory whose project answers an import: the importing file's own, unless that file is the compiler's copy of a package, whose imports belong to the project that asked for it.
+fn asking(dir: &Path) -> PathBuf {
+    if in_builtin(dir) {
+        if let Some(project) = ASKED_BY.with(|p| p.borrow().clone()) {
+            return project;
+        }
+        return dir.to_path_buf();
+    }
+    let here = rooted(dir);
+    ASKED_BY.with(|p| *p.borrow_mut() = Some(here));
+    dir.to_path_buf()
+}
+
+/// Is this file the compiler's own copy of a package rather than one of the project's?
+fn in_builtin(dir: &Path) -> bool {
+    rooted(dir).starts_with(rooted(&maca_stdlib::holder()))
 }
 
 /// The directory `maca add` installed `name` into, found by the walk an `import` takes.

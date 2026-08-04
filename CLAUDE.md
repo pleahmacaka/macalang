@@ -40,6 +40,7 @@ Virtual workspace; members are `crates/*`.
 | `maca-backend-nix` | config mode → `.nix` |
 | `maca-backend-js` | core IR → JS + reactive UI + Tailwind |
 | `maca-runtime` | Perceus RC + colorblind async (C runtime sources) |
+| `maca-stdlib` | the `modules/*` packages, compiled into the binary and unpacked on demand |
 | `maca-options` | `options.json` → Maca option types |
 | `maca-lsp` | language server: `lib.rs` (analysis fns) + `main.rs` (LSP stdio server) |
 | `maca-mcp` | Maca MCP server (LLM-native tools) |
@@ -83,6 +84,24 @@ source. `apps/*` is deliberately *not* a root: two apps may each have a `conf`,
 and neither should silently answer for the other, so an application is reached
 by its written path (`import apps/tomo/conf`). `[layout]` in `maca.toml`
 renames any of them.
+
+**The standard library travels inside the binary.** All eight `modules/*`
+packages are compiled into `maca` by `crates/stdlib` (a `build.rs` that reads
+the tree, the way `maca-runtime` carries the C runtime), so `import std/json`
+resolves in a project that has never seen this repository. It is **the last
+thing asked**: the walk from the importing file up to the workspace root runs
+first, over the written path and then the roots, so a project's own
+`modules/std/text.maca` or an installed `maca_modules/std/` wins without any
+rule being added for it, and inside this repository the tree is still what
+every suite exercises. Because the compiler resolves source, the carried copy
+is unpacked once into the cache directory (`~/.cache/maca/stdlib/<version>-<digest>`,
+whole or not at all) and a file the compiler carries resolves *its* imports
+against the project that asked for it, so a replaced file is replaced for the
+carried packages that read it too. `MACA_STDLIB=<dir>` replaces the carried
+copy outright. The snapshot cannot go stale: it is read out of `modules/` at
+build time and `crates/driver/tests/stdlib_ships.rs` compares the two file by
+file, builds a program in a temp directory outside the repository, and checks
+each precedence step. Documented in `docs/SPEC.md` and handbook ch. a9/a14.
 
 **Every `modules/*` and `apps/*` is its own package with its own `maca.toml`,
 and the root is the workspace that gathers them.** `[workspace] members` lists

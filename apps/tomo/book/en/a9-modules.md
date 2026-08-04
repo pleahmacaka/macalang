@@ -59,8 +59,11 @@ maca: import { centroid } from geometry: 'centroid' is not defined in that modul
    [Tooling](a14-tooling.md)).
 3. If the importer is not inside a project at all, the same two steps are tried
    once more from the **working directory**.
-4. Last, and only last, a **bare sibling**: `<importer's dir>/b.maca`, using
-   only the final segment.
+4. Then a **bare sibling**: `<importer's dir>/b.maca`, using only the final
+   segment.
+5. Last, and only last, the **standard library the compiler carries**: the copy
+   of `modules/` inside the `maca` binary, which is what makes `import std/json`
+   work in a directory that has never heard of this repository.
 
 Three of those steps exist because of a bug rather than a design.
 
@@ -123,6 +126,45 @@ apps    = "services"
 ```
 
 The keys are read line by line, so a commented-out key is a comment.
+
+## The standard library the compiler carries
+
+`maca` has all eight packages inside it: `std`, `cli`, `http`, `bench`,
+`profile`, `signal`, `tambo`, `web`. They are compiled into the binary the way
+the C runtime already is, so a downloaded release is one file that knows what
+`import std/json` means. Nothing is installed beside it, so nothing beside it
+can be missing, be a different version, or be found by one tool and not
+another.
+
+The compiler resolves and inlines *source*, so the copy has to reach disk: the
+first import that gets as far as step 5 unpacks it, once, into the cache
+directory (`MACA_CACHE`, else `XDG_CACHE_HOME`, else `~/.cache/maca`) under a
+name made of the compiler's version and a digest of the files. Two compilers on
+one machine therefore never read each other's `std`, and there is nothing to
+clean up when you upgrade.
+
+Step 5 being last is the whole of the precedence rule:
+
+```
+modules/std/text.maca        in your project      wins
+maca_modules/std/text.maca   installed by maca add wins over the carried copy
+                             the carried copy      only if neither exists
+```
+
+A file you write replaces the compiler's for the packages it carries as well as
+for your own code. Write `modules/std/text.maca` and the carried `std/json`
+reads *your* `std/text`, because a carried package resolves its imports against
+the project that asked for it rather than against the directory it was unpacked
+into. A vendored fix that only applied to the lines you wrote yourself would not
+be a fix.
+
+To put a whole checkout in front of the carried copy, name it:
+
+```
+MACA_STDLIB=~/src/macalang/modules maca build main.maca
+```
+
+Nothing is unpacked then, and every `std/…` comes from that directory.
 
 ## There is no entry file and no index
 

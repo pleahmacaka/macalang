@@ -29,6 +29,13 @@ With no prebuilt release asset it builds from source. That path needs a Rust
 toolchain (`cargo`); a C compiler (`cc`/`clang`) is needed either way for
 `maca build/run`.
 
+**The standard library comes with it.** All eight packages (`std`, `cli`,
+`http`, `bench`, `profile`, `signal`, `tambo`, `web`) are inside the `maca`
+binary, so `import std/json` works in any directory and there is nothing beside
+the binary to install or keep in step. A file your own project provides always
+wins over the carried one; see
+[`apps/tomo/book/en/a9-modules.md`](apps/tomo/book/en/a9-modules.md).
+
 **Nix (optional).** `maca dev` and Nix builds need [Nix](https://nixos.org). If
 it's missing, the installer offers to install it via the
 [Determinate Systems installer](https://install.determinate.systems). Decline

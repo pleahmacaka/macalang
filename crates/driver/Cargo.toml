@@ -20,8 +20,10 @@ maca-backend-jvm = { path = "../backend_jvm" }
 maca-backend-rust = { path = "../backend_rust" }
 maca-backend-embedded = { path = "../backend_embedded" }
 maca-runtime = { path = "../runtime" }
+maca-stdlib = { path = "../stdlib" }
 maca-profile = { path = "../profile" }
 serde_json = "1"
 
 [dev-dependencies]
 maca-testsupport = { path = "../testsupport" }
+maca-stdlib = { path = "../stdlib" }

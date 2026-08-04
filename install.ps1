@@ -14,6 +14,11 @@
 # compiler). Nix isn't native on Windows, so `maca dev` and Nix builds run under
 # WSL, and this script doesn't prompt for Nix.
 #
+# The standard library is inside the `maca` binary, so there is nothing else to
+# install and nothing to keep in step: `import std/json` works in any directory.
+# `maca` unpacks its copy under the cache directory the first time an import
+# needs it, and a file your own project provides always wins over it.
+#
 # Every other script in this repository is a Maca program. This one and its
 # POSIX twin `install.sh` are the two that cannot be: they run on a machine
 # that has no `maca` yet, and putting the toolchain there is the whole job.

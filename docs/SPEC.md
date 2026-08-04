@@ -375,6 +375,61 @@ it is relative to the directory that manifest sits in. An unknown key under
 `maca.toml` stating its `[package] name` and the `[[bin]]` it builds, and that
 `main.maca`. No commentary, and no table the project has not yet needed.
 
+## The standard library travels with the compiler
+
+**`maca` carries its own standard library.** All eight packages under
+`modules/` (`std`, `cli`, `http`, `bench`, `profile`, `signal`, `tambo`, `web`)
+are compiled into the binary, the way `maca-runtime` compiles the C runtime
+into it, so `import std/json` means the same thing in a downloaded release as
+it does in this repository. A release is still two files, `maca` and
+`maca-lsp`, and there is nothing beside them to install, to find, or to keep in
+step with the version that reads it.
+
+Embedded, rather than installed beside the binary, for the reason the C runtime
+already is: a single downloaded file should be the whole compiler. A directory
+of `.maca` files next to the executable is a second thing to package, a second
+thing an installer can drop, and a second thing that can be a different version
+from the binary reading it. Nothing that can go missing can go missing.
+
+The source has to be on disk for the compiler to resolve, read and inline it,
+so the first import that reaches the carried copy unpacks it, once, under the
+cache directory (`MACA_CACHE`, else `XDG_CACHE_HOME`, else `~/.cache/maca`) in
+a directory named for the compiler's version and a digest of the files. A
+different compiler unpacks somewhere of its own, so two versions on one machine
+never read each other's `std`. The unpack is whole or not at all: files are
+written to a temporary directory and renamed into place, and a `maca.toml`
+declaring `[workspace]` is written at its root so the carried packages resolve
+their own imports without walking out into whatever holds the cache.
+
+**Precedence: the carried copy is the last thing asked.** Resolution is
+unchanged, and the reordering of the search roots that this repository tried
+once and reverted is still not the answer. The walk from the importing file up
+to the workspace root runs first, over the written path and then the search
+roots (`modules`, `src`, `maca_modules`) at each step; only when that whole
+walk has found nothing does the compiler offer its own copy. So a project's own
+`modules/std/text.maca` wins, and so does a `maca_modules/std/` that `maca add`
+installed, without any rule being added for them.
+
+**A replacement is a replacement for the packages that read it, too.** A file
+the compiler carries resolves its imports against the project that asked for
+it, not against the directory it was unpacked into: a project that writes its
+own `modules/std/text.maca` gets that file both where it writes `import
+std/text` and inside the carried `std/json` that reads `std/text`. Without that
+the two copies would be two modules and a program reaching both would be told
+`lines` is defined twice, which is a confusing way to say a vendored fix did
+not take.
+
+`MACA_STDLIB=<dir>` replaces the carried copy outright: imports resolve in that
+directory instead, and nothing is unpacked. It is how a checkout of this
+repository can be put in front of an installed compiler.
+
+Inside this repository nothing changes, because `modules/` is a search root
+under the workspace root and the walk finds it long before the fallback: the
+tree stays the source of truth and is what the suites exercise. The carried
+copy cannot drift from it either, since it is read out of `modules/` when the
+compiler is built and
+`crates/driver/tests/stdlib_ships.rs` compares the two file by file.
+
 ## Status
 
 The compiler is complete and `cargo test` is green across the workspace.

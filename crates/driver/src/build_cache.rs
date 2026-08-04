@@ -19,12 +19,7 @@ pub fn enabled() -> bool {
 
 /// The cache root directory, created on demand.
 pub fn root() -> PathBuf {
-    let base = std::env::var_os("MACA_CACHE")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("XDG_CACHE_HOME").map(|c| PathBuf::from(c).join("maca")))
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache/maca")))
-        .unwrap_or_else(std::env::temp_dir);
-    base.join("build")
+    maca_stdlib::cache_root().join("build")
 }
 
 /// A stable 64-bit hex hash over the given byte slices.
