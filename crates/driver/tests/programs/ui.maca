@@ -117,6 +117,14 @@ test_a_tag_nothing_shadows_still_works() {
     assert_eq(span("tag"), "<span>tag</span>", "no definition in the way")
 }
 
+test_a_hyphenated_name_is_a_custom_element() {
+    assert_eq(iconify-icon(class="big", icon="lucide:lock"),
+              "<iconify-icon class=\"big\" icon=\"lucide:lock\"></iconify-icon>",
+              "a hyphen is what makes a tag a custom element")
+    assert_eq(my-card(span("in")), "<my-card><span>in</span></my-card>",
+              "and it closes, because no custom element is void")
+}
+
 label(pos: bool) -> str {
     pos ? "side: right" : "side: left"
 }

@@ -200,6 +200,23 @@ is a ternary, and `{n:>8}` is a format spec while `{c ? a : b}` is a ternary
 inside a string. Attached and spaced mean different things, deliberately, and
 whitespace is how you choose.
 
+The same hyphen names a **custom element**, because that is the platform's own
+rule for what one is: a tag with a hyphen in it, which is why no built-in tag
+can ever have one. So a web component is called the way every other tag is:
+
+```maca
+iconify-icon(class="text-2xl", icon="lucide:lock")
+```
+
+```
+<iconify-icon class="text-2xl" icon="lucide:lock"></iconify-icon>
+```
+
+The JS backend builds the node and lets the browser upgrade it when the
+component's script defines it; the native backend writes the markup, closed
+rather than self-closed, because no custom element is void. A definition still
+wins over a tag, exactly as it does for `label` and `code`.
+
 ## Two more an identifier alone cannot express
 
 **Booleans.** HTML reads *any* attribute value as true: `hidden="false"` still

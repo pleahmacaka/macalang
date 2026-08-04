@@ -10,74 +10,89 @@ pub use braces::{Brace, brace_kind};
 pub use parser::{ParseError, Parser};
 pub use print::print_module;
 
-/// Is `name` an HTML element tag?
+/// Is `name` an HTML element tag? A hyphen is how the platform spells a custom element, and it is what makes one here too.
 pub fn is_ui_element_tag(name: &str) -> bool {
-    matches!(
-        name,
-        "html"
-            | "head"
-            | "title"
-            | "meta"
-            | "link"
-            | "style"
-            | "script"
-            | "body"
-            | "div"
-            | "span"
-            | "p"
-            | "pre"
-            | "code"
-            | "a"
-            | "button"
-            | "input"
-            | "textarea"
-            | "select"
-            | "option"
-            | "label"
-            | "form"
-            | "header"
-            | "footer"
-            | "main"
-            | "section"
-            | "article"
-            | "nav"
-            | "aside"
-            | "ul"
-            | "ol"
-            | "li"
-            | "table"
-            | "thead"
-            | "tbody"
-            | "tr"
-            | "td"
-            | "th"
-            | "h1"
-            | "h2"
-            | "h3"
-            | "h4"
-            | "h5"
-            | "h6"
-            | "img"
-            | "svg"
-            | "canvas"
-            | "small"
-            | "strong"
-            | "em"
-            | "b"
-            | "i"
-            | "hr"
-            | "br"
-            | "blockquote"
-            | "figure"
-            | "figcaption"
-            | "details"
-            | "summary"
-            | "dialog"
-            | "progress"
-            | "meter"
-            | "video"
-            | "audio"
-    )
+    is_custom_element_tag(name)
+        || matches!(
+            name,
+            "html"
+                | "head"
+                | "title"
+                | "meta"
+                | "link"
+                | "style"
+                | "script"
+                | "body"
+                | "div"
+                | "span"
+                | "p"
+                | "pre"
+                | "code"
+                | "a"
+                | "button"
+                | "input"
+                | "textarea"
+                | "select"
+                | "option"
+                | "label"
+                | "form"
+                | "header"
+                | "footer"
+                | "main"
+                | "section"
+                | "article"
+                | "nav"
+                | "aside"
+                | "ul"
+                | "ol"
+                | "li"
+                | "table"
+                | "thead"
+                | "tbody"
+                | "tr"
+                | "td"
+                | "th"
+                | "h1"
+                | "h2"
+                | "h3"
+                | "h4"
+                | "h5"
+                | "h6"
+                | "img"
+                | "svg"
+                | "canvas"
+                | "small"
+                | "strong"
+                | "em"
+                | "b"
+                | "i"
+                | "hr"
+                | "br"
+                | "blockquote"
+                | "figure"
+                | "figcaption"
+                | "details"
+                | "summary"
+                | "dialog"
+                | "progress"
+                | "meter"
+                | "video"
+                | "audio"
+        )
+}
+
+/// Is `name` a custom element? The platform's own rule: a lowercase name with a hyphen inside it, which is why no built-in tag can ever be one.
+pub fn is_custom_element_tag(name: &str) -> bool {
+    let parts: Vec<&str> = name.split('-').collect();
+    let plain = |s: &str| {
+        !s.is_empty()
+            && s.bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+    };
+
+    parts.len() > 1
+        && name.starts_with(|c: char| c.is_ascii_lowercase())
+        && parts.iter().all(|p| plain(p))
 }
 
 /// Is `name` a backend intrinsic the checker must not treat as an undefined call?

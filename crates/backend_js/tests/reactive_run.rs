@@ -490,6 +490,32 @@ fn a_computed_binding_stays_reactive_after_the_page_starts() {
     assert_eq!(out[1], "dark|work|false|2|hi home|9");
 }
 
+#[test]
+fn a_hyphenated_tag_builds_the_custom_element_it_names() {
+    let src = "\
+glyph = \"lucide:lock\"
+
+main() -> Element =>
+    div(
+        iconify-icon(class=\"big\", icon=glyph)
+        my-card(span(\"in\"))
+    )
+";
+    let out = run(
+        src,
+        &[
+            "el(\"iconify-icon\").tagName",
+            "el(\"iconify-icon\").className + \" \" + el(\"iconify-icon\")._a.icon",
+            "el(\"my-card\").children.length",
+            "(maca.set(\"glyph\", \"lucide:lock-open\"), el(\"iconify-icon\")._a.icon)",
+        ],
+    );
+    assert_eq!(out[0], "ICONIFY-ICON");
+    assert_eq!(out[1], "big lucide:lock");
+    assert_eq!(out[2], "1");
+    assert_eq!(out[3], "lucide:lock-open", "and its attributes are reactive");
+}
+
 /// A handler that waits for the reader, which is what a file picker is.
 const WAITING: &str = "\
 note = \"\"
