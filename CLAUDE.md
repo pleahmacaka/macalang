@@ -103,6 +103,19 @@ package the working directory holds: its `[[bin]]` (`--bin` picks one of
 several) and the suites under its `tests/`. Documented in `docs/SPEC.md` and
 handbook ch. a14; gated by `crates/driver/tests/workspace.rs`.
 
+**Building is declared, not flagged.** `[build]` carries the five things
+`maca build` would otherwise learn only from a flag, each a property of the
+project rather than of the invocation: `target`, `out` (`-o`), `mcu`,
+`classpath` (`--cp`) and `bin` (which `[[bin]]` a bare `build`/`run` means). A
+flag on the line wins over the manifest, a declared target wins over the one
+`detect_target` would have guessed, `out` is relative to the manifest that
+wrote it, and an unknown key there is an error naming it. So a project whose
+manifest says `target = "js"`, `out = "build"` is built by `maca build`, with
+no wrapper script. `maca init` writes exactly two files to match: a `maca.toml`
+stating `[package] name` and the `[[bin]]` it builds, and that `main.maca`. No
+comments, no `.gitignore`, no table the project has not needed yet
+(`crates/driver/tests/scaffold.rs`).
+
 **A directory that shares a package's name shadows the package**, silently. The
 written path is tried before the search roots, so a top-level `bench/` beside
 `modules/bench/`, which is what the tree had, decided `import bench/stat` by

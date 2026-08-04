@@ -106,7 +106,7 @@ fn cmd_fmt(args: &[String]) {
     }
 }
 
-/// Scaffold a new Maca project: `maca.toml`, `main.maca`, `.gitignore`.
+/// Scaffold a new Maca project: a `maca.toml` that says what it is, and the program it names.
 fn cmd_init(args: &[String]) {
     let dir = args.iter().find(|a| !a.starts_with('-')).map(PathBuf::from);
     let root = dir.clone().unwrap_or_else(|| PathBuf::from("."));
@@ -120,24 +120,13 @@ fn cmd_init(args: &[String]) {
         .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
         .unwrap_or_else(|| "app".into());
 
-    let toml = format!(
-        "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n\n\
-         [[bin]]\nname = \"{name}\"\npath = \"main.maca\"\n\n\
-         # Dependencies: `maca add npm:pkg | git+url | name@ver`.\n\
-         [dependencies]\n\n\
-         # Formatting: `maca fmt` reads these (defaults shown).\n\
-         [format]\nindent_style = \"space\"\nindent_size = 4\n\n\
-         # `maca <name>` runs a script alias.\n\
-         [scripts]\nstart = \"maca run main.maca\"\n"
-    );
-    let main = "main() -> int {\n    info(\"Hello from Maca\")\n    0\n}\n";
-    let gitignore = "/target\n/build\n*.o\n/maca_modules\n";
+    let toml = format!("[package]\nname = \"{name}\"\n\n[[bin]]\npath = \"main.maca\"\n");
+    let main = "main() -> int {\n    info(\"hello\")\n    0\n}\n";
 
     write_if_absent(&root.join("maca.toml"), &toml);
     write_if_absent(&root.join("main.maca"), main);
-    write_if_absent(&root.join(".gitignore"), gitignore);
     println!("initialized Maca project `{name}` in {}", root.display());
-    println!("  maca run main.maca   # build & run");
+    println!("  maca run");
 }
 
 fn write_if_absent(path: &Path, contents: &str) {
@@ -505,52 +494,85 @@ fn usage() {
          \x20 its [[bin]] (choose with --bin <name>), and its `tests` directory\n\
          \n\
          build targets: native (default), --target nix | js | jvm | rust | embedded | tauri\n\
-         \x20 embedded also takes --mcu cortex-m0|m3|m4|riscv32; jvm takes --cp <jars>"
+         \x20 embedded also takes --mcu cortex-m0|m3|m4|riscv32; jvm takes --cp <jars>\n\
+         \n\
+         [build] in maca.toml declares target, out, mcu, classpath and bin, so a\n\
+         \x20 project builds by saying `maca build`; a flag on the line still wins"
     );
+}
+
+/// `[build]`: what this project builds, as distinct from what one command line asks of it.
+struct Declared {
+    target: Option<String>,
+    out: Option<PathBuf>,
+    mcu: Option<String>,
+    classpath: Option<String>,
+    bin: Option<String>,
+}
+
+const BUILD_KEYS: [&str; 5] = ["target", "out", "mcu", "classpath", "bin"];
+
+/// Read `[build]` off a manifest chain, with `out` resolved against the manifest that wrote it.
+fn declared_build(chain: &manifest::Chain) -> Result<Declared, String> {
+    for (k, _) in chain.table("[build]") {
+        if !BUILD_KEYS.contains(&k.as_str()) {
+            return Err(format!(
+                "maca.toml [build]: unknown key `{k}` (known: {})",
+                BUILD_KEYS.join(", ")
+            ));
+        }
+    }
+    let text = |key: &str| {
+        chain
+            .value("[build]", key)
+            .map(|(_, v)| manifest::unquote(&v).to_string())
+    };
+    Ok(Declared {
+        target: text("target"),
+        out: chain
+            .value("[build]", "out")
+            .map(|(dir, v)| dir.join(manifest::unquote(&v))),
+        mcu: text("mcu"),
+        classpath: text("classpath"),
+        bin: text("bin"),
+    })
 }
 
 fn cmd_build(args: &[String]) {
     let mut src = None;
-    let mut out = None;
-    let mut target = "native".to_string();
-    let mut explicit_target = false;
-    let mut classpath = None;
-    let mut mcu = String::new();
-    let mut bin = None;
+    let mut out: Option<PathBuf> = None;
+    let mut target: Option<String> = None;
+    let mut classpath: Option<String> = None;
+    let mut mcu: Option<String> = None;
+    let mut bin: Option<String> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "-o" => out = it.next().map(PathBuf::from),
-            "--target" => {
-                target = it.next().cloned().unwrap_or_else(|| "native".into());
-                explicit_target = true;
-            }
+            "--target" => target = it.next().cloned(),
             "--bin" => bin = it.next().cloned(),
             "--cp" | "--classpath" => classpath = it.next().cloned(),
-            "--mcu" => mcu = it.next().cloned().unwrap_or_default(),
+            "--mcu" => mcu = it.next().cloned(),
             _ => src = Some(PathBuf::from(a)),
         }
     }
     let src = src.unwrap_or_else(|| declared_bin("build", bin.as_deref()));
     check_workspace_of(&src);
-    if !explicit_target
-        && let Some((_, declared)) = manifest::Chain::for_source(&src).value("[build]", "target")
+    let declared = declared_build(&manifest::Chain::for_source(&src)).unwrap_or_else(|e| die(&e));
+    let out = out.or(declared.out);
+    let mcu = mcu.or(declared.mcu).unwrap_or_default();
+    let classpath = classpath.or(declared.classpath);
+    let mut target = target.or(declared.target);
+    if target.is_none()
+        && let Ok(source) = std::fs::read_to_string(&src)
     {
-        target = manifest::unquote(&declared).to_string();
-        explicit_target = true;
-    }
-    if mcu.is_empty()
-        && let Some((_, declared)) = manifest::Chain::for_source(&src).value("[build]", "mcu")
-    {
-        mcu = manifest::unquote(&declared).to_string();
-    }
-    if !explicit_target && let Ok(source) = std::fs::read_to_string(&src) {
         let parsed = maca_parser::parse(&source);
         if let Some((detected, why)) = detect_target(&parsed.module) {
             eprintln!("note: {why}; building --target {detected} (pass --target to override)");
-            target = detected.to_string();
+            target = Some(detected.to_string());
         }
     }
+    let target = target.unwrap_or_else(|| "native".into());
     if target == "nix" {
         let out = out.unwrap_or_else(|| PathBuf::from(format!("{}.nix", stem(&src))));
         match build_nix(&src, &out) {
@@ -621,6 +643,8 @@ fn declared_bin(cmd: &str, want: Option<&str>) -> PathBuf {
             "{cmd}: expected a .maca file, and there is no maca.toml here to name one"
         ))
     };
+    let declared = declared_build(&chain).unwrap_or_else(|e| die(&e));
+    let want = want.or(declared.bin.as_deref());
     let package = chain.package_name();
     let bins = chain.bins();
     if bins.is_empty() {
@@ -638,7 +662,7 @@ fn declared_bin(cmd: &str, want: Option<&str>) -> PathBuf {
         let names: Vec<&str> = bins.iter().map(|b| b.name.as_str()).collect();
         die(&format!(
             "{cmd}: package `{package}` declares {} binaries; \
-             pass --bin <name> (one of {})",
+             pass --bin <name>, or declare [build] bin (one of {})",
             bins.len(),
             names.join(", ")
         ))

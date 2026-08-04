@@ -130,10 +130,22 @@ maca profile FILE -o flame.svg
 
 ## 프로젝트 구성
 
-`maca init`이 `maca.toml`과 함께 프로젝트를 시작합니다. Rust 타깃의 의존성은
-`[rust-dependencies]` 테이블에 넣으면 Cargo로 전달되고, `[page]` 테이블은 JS나
-Tauri 빌드가 만드는 페이지의 이름을 정합니다 (`title`, `lang`, `description`.
-[타깃](a10-targets.md)을 보세요).
+`maca init`은 프로젝트에 없어서는 안 될 파일 두 개만 씁니다. 이름과 빌드할
+`[[bin]]`을 적은 `maca.toml`, 그리고 그 `main.maca`. 그 외에는 없습니다. 아직
+필요하지 않은 테이블은 아직 읽지 않아도 되는 테이블이고, 어느 것이든 제 몫을
+하게 되는 날 적어 넣으면 됩니다.
+
+```toml
+[package]
+name = "hello"
+
+[[bin]]
+path = "main.maca"
+```
+
+Rust 타깃의 의존성은 `[rust-dependencies]` 테이블에 넣으면 Cargo로 전달되고,
+`[page]` 테이블은 JS나 Tauri 빌드가 만드는 페이지의 이름을 정합니다 (`title`,
+`lang`, `description`. [타깃](a10-targets.md)을 보세요).
 
 당신 코드에 대해서는 모듈 시스템이 매니페스트를 전혀 필요로 하지 않습니다.
 `maca build app/main.maca`가 import를 따라갑니다.
@@ -234,6 +246,26 @@ $ cd modules/std && maca build
 maca: build: package `std` declares no [[bin]] in .../modules/std/maca.toml; name a .maca file
 ```
 
-매니페스트의 `[build] target`은 매번 `--target`을 넘기는 수고를 덜어주고,
-`[build] mcu`는 `--mcu`를 덜어줍니다. 명령줄의 플래그가 여전히 이기고, 적어둔
-타깃은 컴파일러가 소스를 보고 추측했을 타깃을 이깁니다.
+### 빌드는 플래그가 아니라 선언
+
+`[build]`는 이 프로젝트를 빌드한다는 것이 무엇인지를 프로젝트가 직접 적는
+곳입니다. 그래서 빌드는 `maca build`, 그것으로 끝입니다.
+
+```toml
+[build]
+target = "js"
+out = "build"
+```
+
+키는 다섯. 명령을 친 그 순간이 아니라 프로젝트 자체를 설명하는 플래그마다
+하나씩입니다. `target`(`--target`), `out`(`-o`), `mcu`(`--mcu`),
+`classpath`(`--cp`. JVM 패키지가 컴파일 대상으로 삼는 jar), 그리고
+`bin`(`--bin`. `[[bin]]`이 여럿일 때 그냥 친 `maca build`나 `maca run`이
+가리키는 것). 여기 모르는 키가 있으면 조용히 아무것도 하지 않는 설정이 아니라
+그 이름을 대는 오류입니다.
+
+명령줄의 플래그는 여전히 매니페스트를 이깁니다. 플래그는 이번 호출이고
+매니페스트는 프로젝트이기 때문입니다. 적어둔 타깃은 컴파일러가 소스를 보고
+추측했을 타깃도 이깁니다. `out`은 경로이므로 그것을 적은 매니페스트의
+디렉터리를 기준으로 답합니다. `apps/hello/maca.toml`의 `out = "build"`는 어느
+디렉터리에서 실행하든 `apps/hello/build`입니다.

@@ -300,6 +300,168 @@ fn the_build_target_can_be_declared_rather_than_passed() {
     );
 }
 
+/// A manifest that says the target and the directory it goes in is what the `build.maca` scripts were for.
+fn web_package(name: &str, build: &str) -> PathBuf {
+    let dir = monorepo(name);
+    write(
+        &dir,
+        "apps/hello/maca.toml",
+        &format!(
+            "[package]\nname = \"hello\"\n\n[build]\n{build}\n\n\
+             [[bin]]\nname = \"hello\"\npath = \"main.maca\"\n"
+        ),
+    );
+    dir
+}
+
+#[test]
+fn the_output_directory_can_be_declared_rather_than_passed() {
+    let dir = web_package("out", "target = \"js\"\nout = \"build\"");
+    let o = maca_in(&dir.join("apps/hello"), &["build"]);
+    let out = text(&o);
+    assert!(o.status.success(), "declared out:\n{out}");
+    assert!(
+        dir.join("apps/hello/build/index.html").is_file(),
+        "the page should be where the manifest put it:\n{out}"
+    );
+}
+
+/// A declared path answers from the directory of the manifest that wrote it, not from wherever the command was run.
+#[test]
+fn a_declared_output_directory_is_relative_to_its_own_manifest() {
+    let dir = web_package("out-rel", "target = \"js\"\nout = \"build\"");
+    let o = maca_in(&dir, &["build", "apps/hello/main.maca"]);
+    let out = text(&o);
+    assert!(o.status.success(), "build from the root:\n{out}");
+    assert!(
+        dir.join("apps/hello/build/index.html").is_file(),
+        "the page belongs beside the manifest that named the directory:\n{out}"
+    );
+    assert!(
+        !dir.join("build").exists(),
+        "and not beside the working directory:\n{out}"
+    );
+}
+
+#[test]
+fn a_flag_overrides_the_declared_output_directory() {
+    let dir = web_package("out-flag", "target = \"js\"\nout = \"build\"");
+    let o = maca_in(&dir.join("apps/hello"), &["build", "-o", "dist"]);
+    let out = text(&o);
+    assert!(o.status.success(), "-o over declared out:\n{out}");
+    assert!(
+        dir.join("apps/hello/dist/index.html").is_file(),
+        "the flag names the directory:\n{out}"
+    );
+    assert!(
+        !dir.join("apps/hello/build").exists(),
+        "and the declared one is not written too:\n{out}"
+    );
+}
+
+#[test]
+fn a_flag_overrides_the_declared_target() {
+    let dir = web_package("target-flag", "target = \"js\"");
+    let o = maca_in(&dir.join("apps/hello"), &["build", "--target", "rust"]);
+    let out = text(&o);
+    assert!(o.status.success(), "--target over declared target:\n{out}");
+    assert!(
+        dir.join("apps/hello/main.rs").is_file(),
+        "the flag's backend should be the one that ran:\n{out}"
+    );
+    assert!(
+        !dir.join("apps/hello/main-web").exists(),
+        "and the declared one should not have run at all:\n{out}"
+    );
+}
+
+#[test]
+fn the_binary_a_package_builds_by_default_can_be_declared() {
+    let dir = monorepo("default-bin");
+    write(
+        &dir,
+        "apps/hello/maca.toml",
+        "[package]\nname = \"hello\"\n\n[build]\nbin = \"other\"\n\n\
+         [[bin]]\nname = \"hello\"\npath = \"main.maca\"\n\n\
+         [[bin]]\nname = \"other\"\npath = \"other.maca\"\n",
+    );
+    write(&dir, "apps/hello/other.maca", "main() -> int => 3\n");
+
+    let o = maca_in(&dir.join("apps/hello"), &["build"]);
+    let out = text(&o);
+    assert!(o.status.success(), "a declared bin needs no flag:\n{out}");
+    assert!(
+        dir.join("apps/hello/other").exists(),
+        "the declared binary should be the one built:\n{out}"
+    );
+
+    let o = maca_in(&dir.join("apps/hello"), &["build", "--bin", "hello"]);
+    assert!(o.status.success(), "--bin over declared bin:\n{}", text(&o));
+    assert!(
+        dir.join("apps/hello/main").exists(),
+        "the flag picks the other one:\n{}",
+        text(&o)
+    );
+}
+
+#[test]
+fn an_unknown_key_under_build_is_named_rather_than_ignored() {
+    let dir = web_package("unknown-key", "targets = \"js\"");
+    let o = maca_in(&dir.join("apps/hello"), &["build"]);
+    let out = text(&o);
+    assert!(!o.status.success(), "a misspelt key is a mistake:\n{out}");
+    assert!(
+        out.contains("targets") && out.contains("target"),
+        "the message should name the key and what is known:\n{out}"
+    );
+}
+
+/// The jars a JVM package compiles against belong to the package, not to whoever types the command.
+#[test]
+fn a_declared_classpath_reaches_the_java_compiler() {
+    if !have_jdk("javac") {
+        eprintln!("skipping: no JDK");
+        return;
+    }
+    let dir = monorepo("classpath");
+    write(
+        &dir,
+        "apps/hello/stub/net/fabricmc/api/ModInitializer.java",
+        "package net.fabricmc.api;\npublic interface ModInitializer { void onInitialize(); }\n",
+    );
+    let stub = dir.join("apps/hello/stub");
+    assert!(
+        Command::new("javac")
+            .arg(stub.join("net/fabricmc/api/ModInitializer.java"))
+            .arg("-d")
+            .arg(&stub)
+            .status()
+            .unwrap()
+            .success()
+    );
+    write(
+        &dir,
+        "apps/hello/maca.toml",
+        "[package]\nname = \"hello\"\n\n\
+         [build]\ntarget = \"jvm\"\nclasspath = \"stub\"\nout = \"classes\"\n\n\
+         [[bin]]\nname = \"hello\"\npath = \"mod.maca\"\n",
+    );
+    write(
+        &dir,
+        "apps/hello/mod.maca",
+        "import java \"net.fabricmc.api.ModInitializer\"\n\n\
+         ExampleMod : ModInitializer = {\n\
+         \x20   onInitialize = () => info(\"up\")\n}\n",
+    );
+    let o = maca_in(&dir.join("apps/hello"), &["build"]);
+    let out = text(&o);
+    assert!(o.status.success(), "declared classpath:\n{out}");
+    assert!(
+        dir.join("apps/hello/classes/Mod.class").is_file(),
+        "javac needs the declared jars to resolve the interface:\n{out}"
+    );
+}
+
 /// The repository is its own witness: every directory this workspace lists is a package that says what it is.
 #[test]
 fn every_member_this_repository_lists_is_a_package() {

@@ -58,7 +58,7 @@ installer doesn't prompt for Nix.)
 
 ```
 maca init  [dir]                 scaffold a project (maca.toml, main.maca)
-maca build <file.maca> [-o out]  compile: native, or --target nix|js|jvm|rust|embedded|tauri
+maca build [file.maca] [-o out]  compile: native, or --target nix|js|jvm|rust|embedded|tauri
 maca run   <file.maca> [args..]  compile and run
 maca -m    <module>[.<fn>]       run a function out of a module (maca -m http.serve)
 maca test  <file.maca>           run every `test_…` function in the file
@@ -72,6 +72,24 @@ maca add   <spec>…               add a dependency (npm:pkg | git+url | name@ve
 maca update                      re-resolve dependencies to the latest
 maca upgrade                     self-update the maca toolchain
 ```
+
+A project says what building it means in its `maca.toml`, so building it is
+`maca build` and nothing more:
+
+```toml
+[package]
+name = "tabpane"
+
+[build]
+target = "js"
+out = "build"
+
+[[bin]]
+path = "src/home.maca"
+```
+
+`[build]` takes `target`, `out`, `mcu`, `classpath` and `bin`. A flag on the
+command line still wins over what the manifest declares.
 
 ## The packages
 

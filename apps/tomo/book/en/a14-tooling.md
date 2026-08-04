@@ -137,10 +137,24 @@ the compiler itself, which is the largest Maca program that exists.
 
 ## Project layout
 
-`maca init` starts a project with a `maca.toml`. Dependencies for the Rust
-target go in a `[rust-dependencies]` table and are passed through to Cargo, and
-a `[page]` table names the page a JS or Tauri build produces (`title`, `lang`,
-`description`; see [Targets](a10-targets.md)).
+`maca init` starts a project by writing the two files a project cannot do
+without: a `maca.toml` that states its name and the `[[bin]]` it builds, and
+that `main.maca`. Nothing else. A table you have not needed yet is a table you
+have not had to read, and every one of them can be added the day it earns its
+place:
+
+```toml
+[package]
+name = "hello"
+
+[[bin]]
+path = "main.maca"
+```
+
+Dependencies for the Rust target go in a `[rust-dependencies]` table and are
+passed through to Cargo, and a `[page]` table names the page a JS or Tauri
+build produces (`title`, `lang`, `description`; see
+[Targets](a10-targets.md)).
 
 For your own code, the module system needs no manifest at all: `maca build
 app/main.maca` follows the imports. See
@@ -244,6 +258,26 @@ $ cd modules/std && maca build
 maca: build: package `std` declares no [[bin]] in .../modules/std/maca.toml; name a .maca file
 ```
 
-`[build] target` in the manifest saves passing `--target` every time, and
-`[build] mcu` saves `--mcu`. A flag on the command line still wins, and a
-declared target beats the one the compiler would have guessed from the source.
+### What the project builds is declared, not flagged
+
+`[build]` is where a project says what building it means, so that building it
+is `maca build` and nothing more:
+
+```toml
+[build]
+target = "js"
+out = "build"
+```
+
+Five keys, one per flag that describes the project rather than the moment you
+typed the command: `target` (`--target`), `out` (`-o`), `mcu` (`--mcu`),
+`classpath` (`--cp`, the jars a JVM package compiles against) and `bin`
+(`--bin`, which `[[bin]]` a bare `maca build` or `maca run` means when the
+package declares several). An unknown key there is an error naming it, not a
+setting that silently does nothing.
+
+A flag on the command line still wins over the manifest, because the flag is
+this invocation and the manifest is the project. A declared target also beats
+the one the compiler would have guessed from the source. `out` is a path, so it
+answers from the directory of the manifest that wrote it: `out = "build"` in
+`apps/hello/maca.toml` is `apps/hello/build`, whichever directory you ran from.

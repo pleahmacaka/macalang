@@ -283,6 +283,29 @@ declares more than one) and the `.maca` suites under its `tests` directory
 (`[package] tests` renames it). A library that declares no `[[bin]]` is told
 so, by name, rather than quietly building something else.
 
+**Building is declared, not flagged.** `[build]` carries the five things
+`maca build` would otherwise learn only from a flag, each of them a property of
+the project rather than of the invocation: `target` (`--target`), `out` (`-o`),
+`mcu` (`--mcu`), `classpath` (`--cp`) and `bin` (`--bin`, which `[[bin]]` a
+bare `maca build` or `maca run` means).
+
+```toml
+[build]
+target = "js"
+out = "build"
+```
+
+is a project that builds by saying `maca build`. A flag on the command line
+wins over the manifest, because the flag is one invocation and the manifest is
+the project; a declared target also wins over the one the compiler would have
+guessed from the source. `out` is a path like any other a manifest writes, so
+it is relative to the directory that manifest sits in. An unknown key under
+`[build]` is an error naming it, as under `[page]`.
+
+`maca init` writes exactly the two files a project cannot do without: a
+`maca.toml` stating its `[package] name` and the `[[bin]]` it builds, and that
+`main.maca`. No commentary, and no table the project has not yet needed.
+
 ## Status
 
 The compiler is complete and `cargo test` is green across the workspace.
