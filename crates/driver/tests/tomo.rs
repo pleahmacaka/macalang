@@ -1,8 +1,67 @@
 mod common;
 use common::*;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// A tree of its own for one test: the book Tomo reads, copied where nothing else is writing a site at the same time.
+///
+/// Every case here used to build into the repository's own `apps/tomo/site`, and one of them empties it first, so run together they took each other's pages away.
+fn book_tree(name: &str) -> PathBuf {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let dir = std::env::temp_dir().join(format!("maca-tomo-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let app = dir.join("apps/tomo");
+    std::fs::create_dir_all(&app).expect("scratch tree");
+    std::fs::copy(repo.join("apps/tomo/book.toml"), app.join("book.toml")).expect("book.toml");
+    copy_tree(&repo.join("apps/tomo/book"), &app.join("book"));
+
+    dir
+}
+
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).expect("copy into");
+    for entry in std::fs::read_dir(from).expect("read the book") {
+        let entry = entry.expect("an entry");
+        let (src, dst) = (entry.path(), to.join(entry.file_name()));
+        if src.is_dir() {
+            copy_tree(&src, &dst);
+        } else {
+            std::fs::copy(&src, &dst).expect("copy a chapter");
+        }
+    }
+}
+
+/// Build Tomo into `dir`, run it there, and answer what it printed.
+fn build_the_book(dir: &Path) -> String {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let bin = dir.join("tomo");
+    let built = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            &repo.join("apps/tomo/tomo.maca").to_string_lossy(),
+            "-o",
+            &bin.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca build");
+    assert!(
+        built.status.success(),
+        "tomo failed to build:\n{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let ran = Command::new(&bin)
+        .current_dir(dir)
+        .output()
+        .expect("run tomo");
+    assert!(
+        ran.status.success(),
+        "tomo failed to run:\n{}",
+        String::from_utf8_lossy(&ran.stderr)
+    );
+
+    String::from_utf8_lossy(&ran.stdout).to_string()
+}
 
 #[test]
 fn tomo_renders_markdown_to_html() {
@@ -108,34 +167,10 @@ fn tomo_builds_the_handbook_site() {
         eprintln!("skipping tomo build: needs a host cc and no wsl");
         return;
     }
-    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let src = repo.join("apps/tomo/tomo.maca");
-    let site = repo.join("apps/tomo/site");
-    let _ = std::fs::remove_dir_all(&site);
-
-    let dir = std::env::temp_dir().join("maca-tomo-build");
-    let _ = std::fs::create_dir_all(&dir);
-    let bin = dir.join("tomo");
-    let build = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args([
-            "build",
-            &src.to_string_lossy(),
-            "-o",
-            &bin.to_string_lossy(),
-        ])
-        .output()
-        .expect("spawn maca build");
-    assert!(
-        build.status.success(),
-        "tomo failed to build:\n{}",
-        String::from_utf8_lossy(&build.stderr)
-    );
-    let out = Command::new(&bin)
-        .current_dir(&repo)
-        .output()
-        .expect("run tomo");
-    let log = String::from_utf8_lossy(&out.stdout);
-    let entries: Vec<String> = std::fs::read_to_string(repo.join("apps/tomo/book.toml"))
+    let dir = book_tree("build");
+    let site = dir.join("apps/tomo/site");
+    let log = build_the_book(&dir);
+    let entries: Vec<String> = std::fs::read_to_string(dir.join("apps/tomo/book.toml"))
         .unwrap()
         .lines()
         .map(|l| l.trim().trim_end_matches(',').trim_matches('"').to_string())
@@ -252,29 +287,9 @@ fn every_page_has_the_sidebar_and_a_working_search_index() {
         eprintln!("skipping tomo sidebar test: needs a host cc and no wsl");
         return;
     }
-    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let site = repo.join("apps/tomo/site");
-    let dir = std::env::temp_dir().join("maca-tomo-side");
-    let _ = std::fs::create_dir_all(&dir);
-    let bin = dir.join("tomo");
-    let build = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args([
-            "build",
-            &repo.join("apps/tomo/tomo.maca").to_string_lossy(),
-            "-o",
-            &bin.to_string_lossy(),
-        ])
-        .output()
-        .expect("spawn maca build");
-    assert!(build.status.success(), "tomo build failed");
-    assert!(
-        Command::new(&bin)
-            .current_dir(&repo)
-            .output()
-            .expect("run tomo")
-            .status
-            .success()
-    );
+    let dir = book_tree("side");
+    let site = dir.join("apps/tomo/site");
+    build_the_book(&dir);
 
     let mid = std::fs::read_to_string(site.join("en/08-collections.html")).unwrap();
     assert!(mid.contains("data-tomo=\"side\""), "no sidebar");
@@ -341,32 +356,9 @@ fn headings_anchor_in_every_language() {
         eprintln!("skipping tomo anchor test: needs a host cc and no wsl");
         return;
     }
-    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let site = repo.join("apps/tomo/site");
-    let dir = std::env::temp_dir().join("maca-tomo-anchor");
-    let _ = std::fs::create_dir_all(&dir);
-    let bin = dir.join("tomo");
-    assert!(
-        Command::new(env!("CARGO_BIN_EXE_maca"))
-            .args([
-                "build",
-                &repo.join("apps/tomo/tomo.maca").to_string_lossy(),
-                "-o",
-                &bin.to_string_lossy(),
-            ])
-            .output()
-            .expect("spawn maca build")
-            .status
-            .success()
-    );
-    assert!(
-        Command::new(&bin)
-            .current_dir(&repo)
-            .output()
-            .expect("run tomo")
-            .status
-            .success()
-    );
+    let dir = book_tree("anchor");
+    let site = dir.join("apps/tomo/site");
+    build_the_book(&dir);
 
     let ko = std::fs::read_to_string(site.join("ko/06-sum-types.html")).unwrap();
     assert!(
@@ -464,33 +456,10 @@ fn a_cross_page_link_keeps_its_anchor_and_gains_its_extension() {
         eprintln!("skipping tomo anchor check: needs a host cc and no wsl");
         return;
     }
-    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let dir = std::env::temp_dir().join("maca-tomo-anchor");
-    let _ = std::fs::create_dir_all(&dir);
-    let bin = dir.join("tomo");
-    assert!(
-        Command::new(env!("CARGO_BIN_EXE_maca"))
-            .args([
-                "build",
-                &repo.join("apps/tomo/tomo.maca").to_string_lossy(),
-                "-o",
-                &bin.to_string_lossy(),
-            ])
-            .output()
-            .expect("spawn maca build")
-            .status
-            .success()
-    );
-    assert!(
-        Command::new(&bin)
-            .current_dir(&repo)
-            .output()
-            .expect("run tomo")
-            .status
-            .success()
-    );
+    let dir = book_tree("cross-link");
+    build_the_book(&dir);
 
-    let page = std::fs::read_to_string(repo.join("apps/tomo/site/en/a13-ffi.html")).unwrap();
+    let page = std::fs::read_to_string(dir.join("apps/tomo/site/en/a13-ffi.html")).unwrap();
 
     assert!(
         page.contains("a11-ui.html#assignment-is-the-update"),
@@ -509,32 +478,9 @@ fn every_link_in_the_built_book_resolves() {
         eprintln!("skipping tomo link check: needs a host cc and no wsl");
         return;
     }
-    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let site = repo.join("apps/tomo/site");
-    let dir = std::env::temp_dir().join("maca-tomo-links");
-    let _ = std::fs::create_dir_all(&dir);
-    let bin = dir.join("tomo");
-    assert!(
-        Command::new(env!("CARGO_BIN_EXE_maca"))
-            .args([
-                "build",
-                &repo.join("apps/tomo/tomo.maca").to_string_lossy(),
-                "-o",
-                &bin.to_string_lossy(),
-            ])
-            .output()
-            .expect("spawn maca build")
-            .status
-            .success()
-    );
-    assert!(
-        Command::new(&bin)
-            .current_dir(&repo)
-            .output()
-            .expect("run tomo")
-            .status
-            .success()
-    );
+    let dir = book_tree("links");
+    let site = dir.join("apps/tomo/site");
+    build_the_book(&dir);
 
     let mut pages = Vec::new();
     collect_html(&site, &mut pages);
