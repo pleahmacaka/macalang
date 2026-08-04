@@ -9,10 +9,21 @@ pub struct JsOut {
     pub exports: Vec<String>,
 }
 
+/// Emit the page, or the list of things the module asked for that its types do not answer.
+pub fn emit_checked(m: &Module) -> Result<JsOut, Vec<String>> {
+    let out = emit(m);
+    match PROBLEMS.with(|s| s.borrow().clone()) {
+        p if p.is_empty() => Ok(out),
+        p => Err(p),
+    }
+}
+
 pub fn emit(m: &Module) -> JsOut {
     let mut cx = Cx::default();
 
-    let mut computed: Vec<(String, Expr)> = Vec::new();
+    PROBLEMS.with(|s| s.borrow_mut().clear());
+
+    let mut computed: Vec<(String, Expr, Vec<Type>)> = Vec::new();
     for item in &m.items {
         if let Stmt::Bind(b) = item
             && let Expr::Ident(name) = &b.target
@@ -23,7 +34,7 @@ pub fn emit(m: &Module) -> JsOut {
                 Some(literal) => cx.state.push((name.clone(), literal)),
                 None => {
                     cx.state.push((name.clone(), "undefined".into()));
-                    computed.push((name.clone(), b.value.clone()));
+                    computed.push((name.clone(), b.value.clone(), b.tys.clone()));
                 }
             }
             if b.is_const {
@@ -39,6 +50,9 @@ pub fn emit(m: &Module) -> JsOut {
     let variants = collect_variants(m);
     set_variants(&variants);
     set_fns(m);
+    set_json_fns(m);
+    set_declared_tys(m);
+    set_record_fields(m);
 
     for item in &m.items {
         collect_class_strings(item, &mut cx.classes);
@@ -46,10 +60,12 @@ pub fn emit(m: &Module) -> JsOut {
 
     SCOPES.with(|s| s.borrow_mut().push(BTreeSet::new()));
     push_frame(Frame::default());
-    let state_init = computed
-        .iter()
-        .map(|(name, value)| format!("\x20 state.{name} = {};\n", jexpr(value)))
-        .collect::<String>();
+    let mut state_init = String::new();
+    for (name, value, tys) in &computed {
+        let pushed = push_wanted(wanted_for(&Expr::Ident(name.clone()), tys));
+        state_init.push_str(&format!("\x20 state.{name} = {};\n", jexpr(value)));
+        pop_wanted(pushed);
+    }
     pop_frame();
     SCOPES.with(|s| {
         s.borrow_mut().pop();
@@ -104,8 +120,10 @@ pub fn emit(m: &Module) -> JsOut {
                 continue;
             }
             if f.body.is_none() {
-                host_stubs.push_str(&host_stub(f));
-                hosts.push(f.name.clone());
+                if !writes_json(&f.name) {
+                    host_stubs.push_str(&host_stub(f));
+                    hosts.push(f.name.clone());
+                }
                 continue;
             }
             fn_defs.push_str(&emit_fn(f));
@@ -154,9 +172,16 @@ pub fn emit(m: &Module) -> JsOut {
     } else {
         format!("{bridge}\n{foreign_js}\n{js}")
     };
-    let js = match variant_ctors(&variants) {
-        c if c.is_empty() => js,
-        c => insert_after_use_strict(&js, &format!("// ---- sum variants ----\n{c}")),
+    let mut head = match variant_ctors(&variants) {
+        c if c.is_empty() => String::new(),
+        c => format!("// ---- sum variants ----\n{c}"),
+    };
+    if js.contains("_jenc(") || js.contains("_jdec(") {
+        head.push_str(&format!("// ---- json ----\n{}", json_support(m, &variants)));
+    }
+    let js = match head.is_empty() {
+        true => js,
+        false => insert_after_use_strict(&js, head.trim_end()),
     };
     let js = match method_helpers_for(&js) {
         h if h.is_empty() => js,
@@ -573,11 +598,13 @@ fn emit_fn(f: &FnDef) -> String {
         }
     }
     push_frame(frame);
+    let returns = push_wanted(f.ret.as_ref().map(ty_desc));
     body.push_str(&match &f.body {
         Some(FnBody::Expr(e)) => format!("  return {};", jexpr(e)),
         Some(FnBody::Block(stmts)) => jblock(stmts),
         None => String::new(),
     });
+    pop_wanted(returns);
     pop_frame();
     SCOPES.with(|s| {
         s.borrow_mut().pop();
@@ -624,6 +651,14 @@ fn jblock_sink(stmts: &[Stmt], sink: &Sink) -> String {
 
 /// A binding statement.
 fn jbind(b: &Bind) -> String {
+    let pushed = push_wanted(wanted_for(&b.target, &b.tys));
+    let out = jbind_typed(b);
+    pop_wanted(pushed);
+
+    out
+}
+
+fn jbind_typed(b: &Bind) -> String {
     match &b.target {
         Expr::Ident(n) => {
             let is_state = STATE.with(|s| s.borrow().contains(n));
@@ -765,16 +800,256 @@ thread_local! {
     static CONSTS: std::cell::RefCell<BTreeSet<String>> = const { std::cell::RefCell::new(BTreeSet::new()) };
     /// The module's own top-level functions and what each says it returns, so a definition shadows the tag of the same name and a view declares itself.
     static FNS: std::cell::RefCell<BTreeMap<String, Option<Type>>> = const { std::cell::RefCell::new(BTreeMap::new()) };
+    /// What each top-level function takes first, which is what a UFCS call would be handing it.
+    static RECEIVERS: std::cell::RefCell<BTreeMap<String, Option<Type>>> = const { std::cell::RefCell::new(BTreeMap::new()) };
+    /// Whichever of `std/json`'s typed pair the module declared, so a call to one is written from the program's types rather than left to a host.
+    static JSON_FNS: std::cell::RefCell<BTreeSet<String>> = const { std::cell::RefCell::new(BTreeSet::new()) };
+    /// The type each enclosing binding declares, which is what `decode` reads into.
+    static WANTED: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// The type each top-level name was declared with, so a later write to it reads into the same thing.
+    static DECLARED_TYS: std::cell::RefCell<BTreeMap<String, String>> = const { std::cell::RefCell::new(BTreeMap::new()) };
+    /// Each record type's fields, in the order it declares them.
+    static RECORD_FIELDS: std::cell::RefCell<BTreeMap<String, Vec<String>>> = const { std::cell::RefCell::new(BTreeMap::new()) };
+    /// What the module asked for and could not be given.
+    static PROBLEMS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
 }
+
+/// The names `std/json` declares without a body, which the compiler writes from the record and sum types the program is built out of.
+fn set_json_fns(m: &Module) {
+    let mut out = BTreeSet::new();
+    for item in &m.items {
+        if let Stmt::Fn(f) = item
+            && f.body.is_none()
+            && matches!(f.name.as_str(), "encode" | "decode")
+            && f.params.len() == 1
+            && (is_type_var(f.ret.as_ref()) || is_type_var(f.params[0].ty.as_ref()))
+        {
+            out.insert(f.name.clone());
+        }
+    }
+    JSON_FNS.with(|s| *s.borrow_mut() = out);
+}
+
+fn writes_json(name: &str) -> bool {
+    JSON_FNS.with(|s| s.borrow().contains(name))
+}
+
+/// What each top-level name says it holds, which is what a write to it later on reads into.
+fn set_declared_tys(m: &Module) {
+    let mut out = BTreeMap::new();
+    for item in &m.items {
+        if let Stmt::Bind(b) = item
+            && let Expr::Ident(n) = &b.target
+            && let Some(t) = b.tys.first()
+        {
+            out.insert(n.clone(), ty_desc(t));
+        }
+    }
+    DECLARED_TYS.with(|s| *s.borrow_mut() = out);
+}
+
+/// The order each record type declares its fields in, which is the order every value of it is built and written in.
+fn set_record_fields(m: &Module) {
+    let mut out = BTreeMap::new();
+    for item in &m.items {
+        if let Stmt::Bind(b) = item
+            && let Expr::Ident(name) = &b.target
+            && let Expr::Record(fields) = &b.value
+        {
+            let names: Vec<String> = fields
+                .iter()
+                .filter_map(|f| match f {
+                    Field::Type { name, .. } => Some(name.clone()),
+                    _ => None,
+                })
+                .collect();
+            if !names.is_empty() {
+                out.insert(name.clone(), names);
+            }
+        }
+    }
+    RECORD_FIELDS.with(|s| *s.borrow_mut() = out);
+}
+
+/// The type this binding reads into: the one it writes down, or the one the name was declared with.
+fn wanted_for(target: &Expr, tys: &[Type]) -> Option<String> {
+    if let Some(t) = tys.first() {
+        return Some(ty_desc(t));
+    }
+    let Expr::Ident(n) = target else {
+        return None;
+    };
+
+    DECLARED_TYS.with(|s| s.borrow().get(n).cloned())
+}
+
+/// A type written as a lowercase name, which stands for whatever the call site settles it to.
+fn is_type_var(t: Option<&Type>) -> bool {
+    matches!(t, Some(Type::Name(path))
+        if path.last().is_some_and(|n| maca_parser::ast::is_type_var_name(n)))
+}
+
+/// The JS description of a type: its name, or a one-element array holding the element's description.
+fn ty_desc(t: &Type) -> String {
+    match t {
+        Type::Name(path) => format!("{:?}", path.last().cloned().unwrap_or_default()),
+        Type::Array(inner) => format!("[{}]", ty_desc(inner)),
+        Type::Paren(inner) | Type::Opt(inner) => ty_desc(inner),
+        _ => "\"\"".into(),
+    }
+}
+
+fn push_wanted(ty: Option<String>) -> bool {
+    let Some(ty) = ty else {
+        return false;
+    };
+    WANTED.with(|s| s.borrow_mut().push(ty));
+    true
+}
+
+fn pop_wanted(pushed: bool) {
+    if pushed {
+        WANTED.with(|s| {
+            s.borrow_mut().pop();
+        });
+    }
+}
+
+fn problem(msg: impl Into<String>) {
+    PROBLEMS.with(|s| s.borrow_mut().push(msg.into()));
+}
+
+/// `decode(text)` reads into the type the nearest binding declares, which is the only thing that says what the text is.
+fn jdecode(arg: &Expr) -> String {
+    let wanted = WANTED.with(|s| s.borrow().last().cloned());
+    match wanted {
+        Some(ty) => format!("_jdec(JSON.parse({}), {ty}, \"\")", jexpr(arg)),
+        None => {
+            problem(
+                "`decode`: say what it reads into, as in `c: Config = decode(text)`".to_string(),
+            );
+            "null".into()
+        }
+    }
+}
+
+/// The record and sum shapes `decode` reads by, and the two walkers that use them.
+fn json_support(m: &Module, variants: &BTreeMap<String, usize>) -> String {
+    let mut recs = Vec::new();
+    let mut sums = Vec::new();
+    for item in &m.items {
+        let Stmt::Bind(b) = item else { continue };
+        let Expr::Ident(name) = &b.target else {
+            continue;
+        };
+        if let Expr::Record(fields) = &b.value {
+            let shape: Vec<String> = fields
+                .iter()
+                .filter_map(|f| match f {
+                    Field::Type { name, ty } => Some(format!("{name}: {}", ty_desc(ty))),
+                    _ => None,
+                })
+                .collect();
+            if !shape.is_empty() {
+                recs.push(format!("  {name}: {{ {} }},\n", shape.join(", ")));
+            }
+        }
+        if sum_variants(&b.value).is_some() {
+            let nullary: Vec<String> = union_order(&b.value)
+                .iter()
+                .filter(|v| variants.get(*v) == Some(&0))
+                .map(|v| format!("{:?}: {v}", v.to_lowercase()))
+                .collect();
+            sums.push(format!("  {name}: {{ {} }},\n", nullary.join(", ")));
+        }
+    }
+    format!(
+        "const _jrecs = {{\n{}}};\nconst _jsums = {{\n{}}};\n{JSON_JS}",
+        recs.concat(),
+        sums.concat()
+    )
+}
+
+/// What a value looks like on the wire: a sum is its variant's name in lowercase, and a record is an object.
+const JSON_JS: &str = r#"function _jenc(v) {
+  if (v === null || v === undefined) return null;
+  if (Array.isArray(v)) return v.map(_jenc);
+  if (typeof v !== "object") return v;
+  if (typeof v.$ === "string") return v.$.toLowerCase();
+  const out = {};
+  for (const k of Object.keys(v)) out[k] = _jenc(v[k]);
+  return out;
+}
+function _jkind(v) {
+  if (v === undefined) return "nothing";
+  if (v === null) return "null";
+  if (Array.isArray(v)) return "a list";
+  if (typeof v === "boolean") return "a boolean";
+  if (typeof v === "number") return "a number";
+  if (typeof v === "string") return "a string";
+  return "an object";
+}
+function _jwant(v, field, kind) {
+  if (_jkind(v) === kind) return v;
+  const head = "field `" + field + "`: expected " + kind;
+  if (v === undefined) throw new Error(head + ", and the object has no such field");
+  throw new Error(head + ", got " + _jkind(v));
+}
+function _jdec(v, ty, field) {
+  if (Array.isArray(ty)) return _jwant(v, field, "a list").map((x) => _jdec(x, ty[0], field));
+  if (ty === "int" || ty === "float") return _jwant(v, field, "a number");
+  if (ty === "bool") return _jwant(v, field, "a boolean");
+  if (ty === "str") return _jwant(v, field, "a string");
+  const sum = _jsums[ty];
+  if (sum) {
+    const name = _jwant(v, field, "a string");
+    const hit = sum[name.toLowerCase()];
+    if (hit !== undefined) return hit;
+    throw new Error(
+      "field `" + field + '`: "' + name + '" is not one of ' + Object.keys(sum).join(", ")
+    );
+  }
+  const rec = _jrecs[ty];
+  if (rec) {
+    if (field === "" && _jkind(v) !== "an object") {
+      throw new Error("`" + ty + "`: expected an object, got " + _jkind(v));
+    }
+    if (field !== "") _jwant(v, field, "an object");
+    const out = {};
+    for (const k of Object.keys(rec)) out[k] = _jdec(v[k], rec[k], k);
+    return out;
+  }
+  return v;
+}
+"#;
 
 fn set_fns(m: &Module) {
     let mut out = BTreeMap::new();
+    let mut receivers = BTreeMap::new();
     for item in &m.items {
         if let Stmt::Fn(f) = item {
             out.insert(f.name.clone(), f.ret.clone());
+            receivers.insert(f.name.clone(), f.params.first().and_then(|p| p.ty.clone()));
         }
     }
     FNS.with(|s| *s.borrow_mut() = out);
+    RECEIVERS.with(|s| *s.borrow_mut() = receivers);
+}
+
+/// Does `x.name(…)` mean the builtin method rather than the module function of the same name?
+///
+/// The method sets of `str` and `T[]` are closed, so a receiver of either can only mean the method. A function reaches UFCS by declaring a type of its own to receive.
+fn method_beats_ufcs(name: &str) -> bool {
+    let closed = maca_core::STR_METHODS.contains(&name)
+        || maca_core::LIST_METHODS.contains(&name)
+        || maca_core::MAP_METHODS.contains(&name);
+    if !closed {
+        return false;
+    }
+    let receiver = RECEIVERS.with(|s| s.borrow().get(name).cloned().flatten());
+
+    !matches!(receiver, Some(Type::Name(ref path))
+        if path.last().is_some_and(|n| n.starts_with(char::is_uppercase)))
 }
 
 /// Is `n` a name some enclosing function already declared?
@@ -944,7 +1219,8 @@ fn jexpr(e: &Expr) -> String {
         Expr::Call { callee, args } => jcall(callee, args),
         Expr::Field { base, name } => format!("{}.{name}", jexpr(base)),
         Expr::Index { base, index } => format!("{}[{}]", jexpr(base), jexpr(index)),
-        Expr::Record(fields) | Expr::Ctor { fields, .. } => jrecord(fields),
+        Expr::Ctor { name, fields } => jrecord(&in_declared_order(name, fields)),
+        Expr::Record(fields) => jrecord(fields),
         Expr::List(es) => {
             format!("[{}]", es.iter().map(jexpr).collect::<Vec<_>>().join(", "))
         }
@@ -967,7 +1243,13 @@ fn jexpr(e: &Expr) -> String {
             let upd = jrecord(fields);
             format!("{{ ...{}, ...{} }}", jexpr(base), upd)
         }
-        Expr::Assign { target, value } => format!("({} = {})", jexpr(target), jexpr(value)),
+        Expr::Assign { target, value } => {
+            let pushed = push_wanted(wanted_for(target, &[]));
+            let out = format!("({} = {})", jexpr(target), jexpr(value));
+            pop_wanted(pushed);
+
+            out
+        }
         Expr::Await(x) | Expr::Spawn(x) => jexpr(x),
         Expr::Lambda { params, body, .. } => {
             let ps = params
@@ -1224,6 +1506,15 @@ fn jbinary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
 }
 
 fn jcall(callee: &Expr, args: &[Arg]) -> String {
+    if let Expr::Ident(f) = callee
+        && writes_json(f)
+        && let [one] = args
+    {
+        return match f.as_str() {
+            "encode" => format!("JSON.stringify(_jenc({}))", jexpr(arg_expr(one))),
+            _ => jdecode(arg_expr(one)),
+        };
+    }
     let a: Vec<String> = args.iter().map(|x| jexpr(arg_expr(x))).collect();
     match callee {
         Expr::Ident(f) if f == "int" => format!(
@@ -1234,7 +1525,7 @@ fn jcall(callee: &Expr, args: &[Arg]) -> String {
             format!("Number({})", a.first().cloned().unwrap_or_default())
         }
         Expr::Ident(f) if f == "str" => {
-            format!("String({})", a.first().cloned().unwrap_or_default())
+            format!("_mstr({})", a.first().cloned().unwrap_or_default())
         }
         Expr::Ident(f) if f == "len" => {
             format!("({}).length", a.first().cloned().unwrap_or_default())
@@ -1255,7 +1546,9 @@ fn jcall(callee: &Expr, args: &[Arg]) -> String {
             }
         }
         Expr::Ident(f) => format!("{f}({})", a.join(", ")),
-        Expr::Field { base, name } if FNS.with(|m| m.borrow().contains_key(name)) => {
+        Expr::Field { base, name }
+            if FNS.with(|m| m.borrow().contains_key(name)) && !method_beats_ufcs(name) =>
+        {
             let mut all = vec![jexpr(base)];
             all.extend(a.clone());
             format!("{name}({})", all.join(", "))
@@ -1323,6 +1616,10 @@ fn method(name: &str, recv: &str, args: &[String]) -> Option<String> {
 
 /// Helpers the method lowerings call, emitted only when one is used.
 const METHOD_HELPERS: &[(&str, &str)] = &[
+    (
+        "_mstr",
+        "function _mstr(v) {\n  if (v !== null && typeof v === \"object\" && typeof v.$ === \"string\") return v.$;\n  return String(v);\n}",
+    ),
     (
         "_mhas",
         "function _mhas(x, v) { return typeof x === \"string\" ? x.includes(v) : x.indexOf(v) >= 0; }",
@@ -1392,6 +1689,31 @@ fn method_helpers_for(js: &str) -> String {
     out
 }
 
+/// A record literal's fields in the order the type declares them, so two values of one type are the same object however each was written.
+fn in_declared_order(name: &str, fields: &[Field]) -> Vec<Field> {
+    let shape = RECORD_FIELDS.with(|s| s.borrow().get(name).cloned());
+    let Some(shape) = shape else {
+        return fields.to_vec();
+    };
+    let named = |f: &Field| match f {
+        Field::Value { name, .. } | Field::Shorthand(name) => Some(name.clone()),
+        _ => None,
+    };
+    let mut out: Vec<Field> = shape
+        .iter()
+        .filter_map(|want| fields.iter().find(|f| named(f).as_ref() == Some(want)))
+        .cloned()
+        .collect();
+    out.extend(
+        fields
+            .iter()
+            .filter(|f| !named(f).is_some_and(|n| shape.contains(&n)))
+            .cloned(),
+    );
+
+    out
+}
+
 fn jrecord(fields: &[Field]) -> String {
     let mut out = Vec::new();
     for f in fields {
@@ -1414,7 +1736,7 @@ fn jstr(parts: &[StrPart]) -> String {
                     .replace('`', "\\`")
                     .replace('$', "\\$"),
             ),
-            StrPart::Interp(e) => out.push_str(&format!("${{{}}}", jexpr(e))),
+            StrPart::Interp(e) => out.push_str(&format!("${{_mstr({})}}", jexpr(e))),
         }
     }
     out.push('`');
@@ -2555,6 +2877,28 @@ fn union_arms(e: &Expr, out: &mut BTreeMap<String, usize>) {
             }
         }
         _ => {}
+    }
+}
+
+/// The variants of one union, in the order they were written, which is the order a diagnostic lists them in.
+fn union_order(e: &Expr) -> Vec<String> {
+    match e {
+        Expr::Binary {
+            op: BinOp::Union,
+            lhs,
+            rhs,
+        } => {
+            let mut out = union_order(lhs);
+            out.extend(union_order(rhs));
+
+            out
+        }
+        Expr::Ident(n) => vec![n.clone()],
+        Expr::Call { callee, .. } => match callee.as_ref() {
+            Expr::Ident(n) => vec![n.clone()],
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
     }
 }
 

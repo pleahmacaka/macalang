@@ -159,13 +159,10 @@ fn the_js_backend_agrees_with_the_native_one() {
         String::from_utf8_lossy(&build.stderr)
     );
 
-    let js = std::fs::read_to_string(out_dir.join("app.js")).expect("app.js");
-    let start = js.find("function board()").expect("board() in app.js");
-    let end = js[start..].find("\n}\n").expect("end of board()") + start + 3;
-    let probe = dir.join("probe.js");
+    let probe = out_dir.join("probe.js");
     std::fs::write(
         &probe,
-        format!("{}\nconsole.log(board());\n", &js[start..end]),
+        "console.log(require(\"./app.js\").board());\n".to_string(),
     )
     .expect("write probe");
 

@@ -1372,7 +1372,8 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
             .collect();
         return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
     }
-    let out = maca_backend_js::emit(&parsed.module);
+    let out = maca_backend_js::emit_checked(&parsed.module)
+        .map_err(|p| format!("cannot emit JavaScript:\n  {}", p.join("\n  ")))?;
 
     let mut head_assets = String::new();
     let mut assets = String::new();
