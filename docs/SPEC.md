@@ -172,9 +172,16 @@ Mode is selected by target kind in `maca.toml`: `[[bin]]` = program,
   is how a record is written there (`(n) => ({ x = n })`).
 - Paths are literals: `/tmp` `./x` `../x` `~/x`, joined with `p / "seg"`.
 - SIMD vectors are first-class value types: `f32x8`, `i32x4`, … (native only).
-- UI: elements are functions (`div(class=..., ...children)`); Svelte-style
-  compile-time reactivity; `bind:` / `on:` directives; Tailwind first-class.
-  Reactive nodes update on `update()`: a text/attribute/`class` child that reads
+- UI: elements are functions (`div(class=..., ...children)`); compile-time
+  reactivity; the platform's own attribute names (`onclick=`, `oninput=`,
+  `ondrop=`, and `value=` on a state name, which binds two ways); Tailwind
+  first-class. The older `on:` / `bind:` directives still parse and mean the
+  same thing.
+  **Assignment is the update**: writing a declared state name repaints the
+  nodes that read it, so a handler needs no `update()` call, and everything one
+  handler assigns is repainted once, when the handler returns. `update()` (and
+  `maca.refresh()`) remain, for when something outside Maca moved.
+  A text/attribute/`class` child that reads
   state (or calls a function) re-renders; a text-returning call used as a child
   (`span(fmt(x))`) is a text node, not an element (only known HTML tags build
   elements); `html=expr` sets `innerHTML`; transpiled functions resolve state

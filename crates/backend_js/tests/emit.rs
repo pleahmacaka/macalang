@@ -79,10 +79,10 @@ fn string_concat_uses_plus_or_concat() {
 fn reactive_ui_binds_state_and_calls() {
     let out = js("count = 0\n\
          shown(n: int) -> str => \"n={n}\"\n\
-         bump() { count = count + 1  update() }\n\
+         bump() { count = count + 1 }\n\
          main() -> Element =>\n\
              div(\n\
-                 button(on:click=bump, \"+\")\n\
+                 button(onclick=bump, \"+\")\n\
                  span(shown(count))\n\
              )\n");
     assert!(
@@ -98,11 +98,11 @@ fn reactive_ui_binds_state_and_calls() {
         "text call became an element:\n{out}"
     );
     assert!(
-        out.contains("_binds.push(() => { "),
-        "no reactive updater registered:\n{out}"
+        out.contains("_bind(null, () => { "),
+        "a call is not a name, so its node repaints on any change:\n{out}"
     );
     assert!(
-        out.contains("addEventListener(\"click\", bump)"),
+        out.contains("addEventListener(\"click\", _turn(bump))"),
         "handler not wired:\n{out}"
     );
 }
@@ -116,7 +116,7 @@ fn html_attribute_sets_inner_html() {
         "html= not lowered to innerHTML:\n{out}"
     );
     assert!(
-        out.contains("_binds.push(() => { "),
+        out.contains("_bind([\"svg\"], () => { "),
         "innerHTML not reactive:\n{out}"
     );
 }
@@ -151,7 +151,7 @@ fn foreign_import_blocks_embed_js_and_css() {
 #[test]
 fn handlers_lower_full_expressions_not_null() {
     let out = js(
-        "count = 0\nstep = 2\nmain() -> Element =>\n    div(\n        button(on:click=(e => count = count + step) \"go\")\n        input(bind:value=(v => count = int(v) * 2))\n    )\n",
+        "count = 0\nstep = 2\nmain() -> Element =>\n    div(\n        button(onclick=(e => count = count + step) \"go\")\n        input(value=(v => count = int(v) * 2))\n    )\n",
     );
     assert!(
         out.contains("state.count = (state.count + state.step)"),

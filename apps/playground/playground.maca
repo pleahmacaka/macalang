@@ -735,7 +735,8 @@ main() -> int {
 
 const PageSrc = """
 // A page rather than a print. A tag name called as a function is an element:
-// named args are attributes, positional args are children. `bind:value` is
+// named args are attributes, positional args are children. `value=` on a state
+// name is
 // two-way, so typing re-renders exactly the nodes that mention the state.
 //
 // The Preview tab runs this. The C tab refuses it, and says why: the same call
@@ -746,7 +747,7 @@ main() -> Element =>
     div(class="p-8 font-sans"
         h1(class="text-2xl font-bold text-violet-600", "Hello, {who}")
         input(class="mt-4 px-2 py-1 rounded border border-zinc-400",
-              bind:value=who)
+              value=who)
         p(class="mt-3 text-sm text-zinc-500", "{len(who)} characters")
     )
 """
@@ -1001,17 +1002,16 @@ share() {
     update()
 }
 
-showDiag()    { tab = "Diagnostics"  update() }
-showConsole() { tab = "Console"      update() }
-showC()       { tab = "C"            update() }
-showJs()      { tab = "JS"           update() }
-showCss()     { tab = "CSS"          update() }
-showNix()     { tab = "Nix"          update() }
+showDiag()    { tab = "Diagnostics" }
+showConsole() { tab = "Console" }
+showC()       { tab = "C" }
+showJs()      { tab = "JS" }
+showCss()     { tab = "CSS" }
+showNix()     { tab = "Nix" }
 
 showPreview() {
     tab = "Preview"
     mcRenderPreview()
-    update()
 }
 
 const TabOn = "px-3 py-1 text-sm rounded cursor-pointer bg-zinc-800 text-zinc-100"
@@ -1055,9 +1055,9 @@ main() -> Element =>
             span(class="font-mono font-bold text-violet-400", "◆ Maca playground")
             span(class="text-xs text-zinc-500 uppercase tracking-wide", "written in Maca")
             div(class="w-4")
-            button(class=modeClass(0), on:click=useProgram, "program")
-            button(class=modeClass(1), on:click=useConfig, "config")
-            select(id="examples", class=Picker, on:change=pickExample
+            button(class=modeClass(0), onclick=useProgram, "program")
+            button(class=modeClass(1), onclick=useConfig, "config")
+            select(id="examples", class=Picker, onchange=pickExample
                 option(value="", "examples")
                 option(value="hello", "hello")
                 option(value="page", "a page")
@@ -1070,8 +1070,8 @@ main() -> Element =>
             )
             span(class="text-xs text-zinc-500 truncate max-w-sm", note)
             div(class="flex-1")
-            button(class=Secondary, on:click=share, "Share")
-            button(class="px-3 py-1 text-sm font-semibold rounded bg-violet-500 text-zinc-950 cursor-pointer", on:click=run, "Run ▶")
+            button(class=Secondary, onclick=share, "Share")
+            button(class="px-3 py-1 text-sm font-semibold rounded bg-violet-500 text-zinc-950 cursor-pointer", onclick=run, "Run ▶")
         )
         div(class="flex-1 min-h-0 flex"
             aside(class="w-56 flex-none min-h-0 flex flex-col border-r border-zinc-800 bg-zinc-950"
@@ -1083,15 +1083,15 @@ main() -> Element =>
                 div(class="flex flex-col min-w-0 min-h-0 bg-zinc-950"
                     div(class="flex items-center gap-1 px-2 pt-2 border-b border-zinc-800 overflow-x-auto"
                         button(class=tabClass("Diagnostics"),
-                               on:click=showDiag, "Diagnostics")
+                               onclick=showDiag, "Diagnostics")
                         button(class=tabClass("Console"),
-                               on:click=showConsole, "Console")
+                               onclick=showConsole, "Console")
                         button(class=tabClass("Preview"),
-                               on:click=showPreview, "Preview")
-                        button(class=tabClass("C"), on:click=showC, "C")
-                        button(class=tabClass("JS"), on:click=showJs, "JS")
-                        button(class=tabClass("CSS"), on:click=showCss, "CSS")
-                        button(class=tabClass("Nix"), on:click=showNix, "Nix")
+                               onclick=showPreview, "Preview")
+                        button(class=tabClass("C"), onclick=showC, "C")
+                        button(class=tabClass("JS"), onclick=showJs, "JS")
+                        button(class=tabClass("CSS"), onclick=showCss, "CSS")
+                        button(class=tabClass("Nix"), onclick=showNix, "Nix")
                         div(class="flex-1")
                         span(class="pr-2 text-xs font-mono text-zinc-500 tabular-nums whitespace-nowrap", mcRunBadge())
                     )

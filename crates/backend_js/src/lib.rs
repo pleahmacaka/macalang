@@ -145,6 +145,78 @@ fn insert_after_use_strict(js: &str, block: &str) -> String {
     }
 }
 
+/// The reactive core: `state` is a proxy, so writing a declared name marks it dirty and the bound nodes that read it run again.
+const REACTIVE_JS: &str = r#"const _binds = [];
+const _proxies = new WeakMap();
+let _dirty = new Set();
+let _depth = 0;
+function _reactive(name, v) {
+  if (v === null || typeof v !== "object") return v;
+  if (!Array.isArray(v) && Object.getPrototypeOf(v) !== Object.prototype) return v;
+  let p = _proxies.get(v);
+  if (p === undefined) {
+    p = new Proxy(v, {
+      get(t, k) { return _reactive(name, Reflect.get(t, k)); },
+      set(t, k, x) { Reflect.set(t, k, x); _touch(name); return true; },
+      deleteProperty(t, k) { Reflect.deleteProperty(t, k); _touch(name); return true; },
+    });
+    _proxies.set(v, p);
+  }
+  return p;
+}
+const state = new Proxy(_state, {
+  get(t, k) { return _reactive(k, Reflect.get(t, k)); },
+  set(t, k, v) {
+    const was = Reflect.get(t, k);
+    Reflect.set(t, k, v);
+    if (!Object.is(was, v)) _touch(k);
+    return true;
+  },
+  deleteProperty(t, k) { Reflect.deleteProperty(t, k); _touch(k); return true; },
+});
+function _bind(deps, run) { _binds.push({ deps, run }); }
+function _touch(name) {
+  _dirty.add(name);
+  if (_depth === 0) _flush();
+}
+// One turn: everything a handler assigns is collected, and the view is repainted
+// once, when the handler returns.
+function _turn(f) {
+  return function () {
+    _depth += 1;
+    try {
+      return f.apply(this, arguments);
+    } finally {
+      _depth -= 1;
+      if (_depth === 0) _flush();
+    }
+  };
+}
+function _run(bs) {
+  _depth += 1;
+  try {
+    for (const b of bs) b.run();
+  } finally {
+    _depth -= 1;
+  }
+}
+function _flush() {
+  for (let pass = 0; _dirty.size > 0; pass += 1) {
+    if (pass === 8) {
+      _dirty = new Set();
+      throw new Error("maca: a bound node keeps writing state; a view reads state, it does not assign it");
+    }
+    const names = _dirty;
+    _dirty = new Set();
+    _run(_binds.filter((b) => b.deps === null || b.deps.some((n) => names.has(n))));
+  }
+}
+function update() {
+  _dirty = new Set();
+  _run(_binds);
+}
+"#;
+
 /// The bridge itself: the fixed half of what `Cx::bridge` emits, above the three generated name lists it reads (`_vars`, `_consts`, `_declared`).
 const BRIDGE_JS: &str = r#"// The documented boundary between this program and any `import js` block:
 //
@@ -176,8 +248,7 @@ const maca = {
   set(name, value) {
     const pairs = typeof name === "string" ? [[name, value]] : Object.entries(name);
     for (const pair of pairs) _writable(pair[0]);
-    for (const pair of pairs) state[pair[0]] = pair[1];
-    update();
+    _turn(() => { for (const pair of pairs) state[pair[0]] = pair[1]; })();
   },
   refresh() { update(); },
   // The other direction: hand back the functions Maca declared without a body.
@@ -410,21 +481,59 @@ fn jname(n: &str) -> String {
         n.to_string()
     }
 }
-/// Does an expression read reactive state or call a function (so a text/attr node bound to it must be refreshed on `update()`)?
-fn is_dynamic(e: &Expr) -> bool {
-    match e {
-        Expr::Ident(n) => STATE.with(|s| s.borrow().contains(n)),
-        Expr::Call { .. } => true,
-        Expr::Str(parts) => parts
-            .iter()
-            .any(|p| matches!(p, StrPart::Interp(x) if is_dynamic(x))),
-        Expr::Binary { lhs, rhs, .. } => is_dynamic(lhs) || is_dynamic(rhs),
-        Expr::Unary { expr, .. } | Expr::Field { base: expr, .. } => is_dynamic(expr),
-        Expr::Index { base, index } => is_dynamic(base) || is_dynamic(index),
-        Expr::Ternary { cond, then, els } => {
-            is_dynamic(cond) || is_dynamic(then) || is_dynamic(els)
+/// The state names an expression reads, or `None` when a call puts them out of reach.
+fn deps(e: &Expr) -> Option<BTreeSet<String>> {
+    let union = |xs: [Option<BTreeSet<String>>; 3]| {
+        let mut out = BTreeSet::new();
+        for x in xs {
+            out.extend(x?);
         }
-        _ => false,
+        Some(out)
+    };
+    let none = || Some(BTreeSet::new());
+    match e {
+        Expr::Ident(n) => Some(match STATE.with(|s| s.borrow().contains(n)) {
+            true => BTreeSet::from([n.clone()]),
+            false => BTreeSet::new(),
+        }),
+        Expr::Call { .. } => None,
+        Expr::Str(parts) => {
+            let mut out = BTreeSet::new();
+            for p in parts {
+                if let StrPart::Interp(x) = p {
+                    out.extend(deps(x)?);
+                }
+            }
+            Some(out)
+        }
+        Expr::Binary { lhs, rhs, .. } => union([deps(lhs), deps(rhs), none()]),
+        Expr::Unary { expr, .. } | Expr::Field { base: expr, .. } => deps(expr),
+        Expr::Index { base, index } => union([deps(base), deps(index), none()]),
+        Expr::Ternary { cond, then, els } => union([deps(cond), deps(then), deps(els)]),
+        _ => none(),
+    }
+}
+
+/// Does an expression read reactive state or call a function (so a text/attr node reading it has to be re-run)?
+fn is_dynamic(e: &Expr) -> bool {
+    match deps(e) {
+        None => true,
+        Some(names) => !names.is_empty(),
+    }
+}
+
+/// The dependency list a `_bind` is registered with: the names it reads, or `null` for "whenever anything changed".
+fn dep_list(e: &Expr) -> String {
+    match deps(e) {
+        None => "null".into(),
+        Some(names) => format!(
+            "[{}]",
+            names
+                .iter()
+                .map(|n| format!("{n:?}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     }
 }
 
@@ -899,7 +1008,8 @@ impl Cx {
             out.push_str(&format!("  const {v} = document.createTextNode({expr});\n"));
             if is_dynamic(e) {
                 out.push_str(&format!(
-                    "  _binds.push(() => {{ {v}.textContent = {expr}; }});\n"
+                    "  _bind({}, () => {{ {v}.textContent = {expr}; }});\n",
+                    dep_list(e)
                 ));
             }
             return v;
@@ -923,7 +1033,8 @@ impl Cx {
                     out.push_str(&format!("  {v}.innerHTML = {expr};\n"));
                     if is_dynamic(value) {
                         out.push_str(&format!(
-                            "  _binds.push(() => {{ {v}.innerHTML = {expr}; }});\n"
+                            "  _bind({}, () => {{ {v}.innerHTML = {expr}; }});\n",
+                            dep_list(value)
                         ));
                     }
                 }
@@ -937,16 +1048,24 @@ impl Cx {
                     out.push_str(&format!("  {v}.className = {expr};\n"));
                     if is_dynamic(value) {
                         out.push_str(&format!(
-                            "  _binds.push(() => {{ {v}.className = {expr}; }});\n"
+                            "  _bind({}, () => {{ {v}.className = {expr}; }});\n",
+                            dep_list(value)
                         ));
                     }
+                }
+                Arg::Named { name, value } if event_name(name).is_some() => {
+                    self.handler(&v, event_name(name).unwrap(), value, out);
+                }
+                Arg::Named { name, value } if self.two_way(name, value) => {
+                    self.two_way_bind(&v, name, value, out);
                 }
                 Arg::Named { name, value } => {
                     let expr = jexpr(value);
                     out.push_str(&format!("  _attr({v}, \"{name}\", {expr});\n"));
                     if is_dynamic(value) {
                         out.push_str(&format!(
-                            "  _binds.push(() => {{ _attr({v}, \"{name}\", {expr}); }});\n"
+                            "  _bind({}, () => {{ _attr({v}, \"{name}\", {expr}); }});\n",
+                            dep_list(value)
                         ));
                     }
                 }
@@ -954,27 +1073,12 @@ impl Cx {
                     kind: Dir::Bind,
                     prop,
                     value,
-                } => {
-                    let (getter, setter) = self.bind(value);
-                    out.push_str(&format!("  {v}.{prop} = {getter};\n"));
-                    out.push_str(&format!(
-                        "  {v}.addEventListener(\"input\", (e) => {{ {} ; update(); }});\n",
-                        setter.replace("$v", "e.target.value")
-                    ));
-                    out.push_str(&format!(
-                        "  _binds.push(() => {{ if (document.activeElement !== {v}) {v}.{prop} = {getter}; }});\n"
-                    ));
-                }
+                } => self.two_way_bind(&v, prop, value, out),
                 Arg::Directive {
                     kind: Dir::On,
                     prop,
                     value,
-                } => {
-                    out.push_str(&format!(
-                        "  {v}.addEventListener(\"{prop}\", {});\n",
-                        jexpr(value)
-                    ));
-                }
+                } => self.handler(&v, prop, value, out),
                 Arg::Pos(child) => {
                     let cv = self.element(child, out);
                     out.push_str(&format!("  {v}.appendChild({cv});\n"));
@@ -984,21 +1088,67 @@ impl Cx {
         v
     }
 
-    /// Two-way bind → (JS getter expr, JS setter stmt using `$v` for the value).
-    fn bind(&self, target: &Expr) -> (String, String) {
+    /// An event handler: the whole call is one turn, so whatever it assigns repaints once, when it returns.
+    fn handler(&self, v: &str, event: &str, value: &Expr, out: &mut String) {
+        out.push_str(&format!(
+            "  {v}.addEventListener(\"{event}\", _turn({}));\n",
+            jexpr(value)
+        ));
+    }
+
+    /// `value=name` (or the older `bind:value=`): the property follows the state, and typing writes it back.
+    fn two_way_bind(&self, v: &str, prop: &str, value: &Expr, out: &mut String) {
+        let (getter, setter, name) = self.bind(value);
+        out.push_str(&format!("  {v}.{prop} = {getter};\n"));
+        out.push_str(&format!(
+            "  {v}.addEventListener(\"input\", _turn((e) => {{ {} ; }}));\n",
+            setter.replace("$v", "e.target.value")
+        ));
+        out.push_str(&format!(
+            "  _bind([{name:?}], () => {{ if (document.activeElement !== {v}) {v}.{prop} = {getter}; }});\n"
+        ));
+    }
+
+    /// Is this named argument a two-way binding rather than an ordinary attribute: a state name, or a lambda that assigns one?
+    fn two_way(&self, name: &str, value: &Expr) -> bool {
+        name == "value" && self.bound_name(value).is_some()
+    }
+
+    /// The state name a two-way binding writes, if the value expression names one that can be written.
+    fn bound_name(&self, target: &Expr) -> Option<String> {
+        let is_state = |n: &String| self.state_names.contains(n) && !self.consts.contains(n);
         match target {
-            Expr::Ident(n) => (format!("state.{n}"), format!("state.{n} = $v")),
+            Expr::Ident(n) if is_state(n) => Some(n.clone()),
+            Expr::Lambda { body, .. } => match body.as_ref() {
+                Expr::Assign { target: t, .. } => match t.as_ref() {
+                    Expr::Ident(n) if is_state(n) => Some(n.clone()),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// Two-way bind → (JS getter expr, JS setter stmt using `$v` for the value, the state name written).
+    fn bind(&self, target: &Expr) -> (String, String, String) {
+        match target {
+            Expr::Ident(n) => (
+                format!("state.{n}"),
+                format!("state.{n} = $v"),
+                n.to_string(),
+            ),
             Expr::Lambda { params, body, .. } => {
                 let pv = params.first().map(|p| p.name.as_str()).unwrap_or("v");
                 if let Expr::Assign { target: t, value } = body.as_ref()
                     && let Expr::Ident(x) = t.as_ref()
                 {
                     let set = format!("state.{x} = {}", self.value(value, Some((pv, "$v"))));
-                    return (format!("state.{x}"), set);
+                    return (format!("state.{x}"), set, x.to_string());
                 }
-                ("\"\"".into(), String::new())
+                ("\"\"".into(), String::new(), String::new())
             }
-            _ => ("\"\"".into(), String::new()),
+            _ => ("\"\"".into(), String::new(), String::new()),
         }
     }
 
@@ -1041,8 +1191,9 @@ impl Cx {
         let declared = names(hosts.iter().collect());
         format!(
             "\"use strict\";\n\
-             const state = {{ {state} }};\n\
-             const _binds = [];\n\
+             const _state = {{ {state} }};\n\
+             // ---- assignment is the update ----\n\
+             {REACTIVE_JS}\
              // ---- the maca bridge ----\n\
              const _vars = [{vars}];\n\
              const _consts = [{consts}];\n\
@@ -1059,8 +1210,14 @@ impl Cx {
              \x20 else if (v === false || v == null) el.removeAttribute(k);\n\
              \x20 else el.setAttribute(k, v);\n\
              }}\n\
-             function build() {{\n{build_body}  return {root};\n}}\n\
-             function update() {{ for (const b of _binds) b(); }}\n\
+             function build() {{\n\
+             \x20 _depth += 1;\n\
+             \x20 try {{\n{build_body}    return {root};\n\
+             \x20 }} finally {{\n\
+             \x20   _depth -= 1;\n\
+             \x20   if (_depth === 0) _flush();\n\
+             \x20 }}\n\
+             }}\n\
              let _root = null;\n\
              function mount(target) {{ _root = build(); target.appendChild(_root); return _root; }}\n\
              if (typeof document !== \"undefined\" && document.getElementById) {{\n\
@@ -1086,6 +1243,13 @@ impl Cx {
         }
         out
     }
+}
+
+/// The DOM event a named argument attaches to: `onclick` is `click`, and so is every other `on` followed by lowercase letters.
+fn event_name(attr: &str) -> Option<&str> {
+    let event = attr.strip_prefix("on")?;
+    let vanilla = !event.is_empty() && event.bytes().all(|b| b.is_ascii_lowercase());
+    vanilla.then_some(event)
 }
 
 /// Is `name` an HTML element tag (so `name(...)` in a view builds a DOM node), as opposed to a text-returning function call used as a child?

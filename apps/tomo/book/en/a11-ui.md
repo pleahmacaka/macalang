@@ -40,9 +40,10 @@ list_of(names: str[]) -> str =>
 maca build app.maca --target js -o out
 ```
 
-builds a reactive page. Elements become `createElement` calls, `on:click=…`
-attaches a handler, and `bind:value=…` two-way binds a field. The playground
-that ships with this book is one `.maca` file compiled exactly this way.
+builds a reactive page. Elements become `createElement` calls, `onclick=…`
+attaches a handler, and `value=…` on a state name binds it two ways. The
+playground that ships with this book is one `.maca` file compiled exactly this
+way.
 
 ```
 maca build gen.maca -o gen
@@ -62,13 +63,96 @@ main() -> int {
 ```
 
 That is what a static site generator needs. An event handler has nowhere to
-attach in a string, so `on:click=` on the native target is a compile error that
-tells you to build for `js`, rather than markup that silently does nothing.
+attach in a string, so the older `on:click=` directive on the native target is a
+compile error that tells you to build for `js`, rather than markup that silently
+does nothing. A vanilla `onclick="…"` is an ordinary HTML attribute there, which
+is what HTML makes of it too, and it renders. A *function* given to `onclick=`
+on that target does not reach a page either, but the complaint comes from the C
+compiler rather than from Maca, and that is the one place the two spellings
+differ.
 
 Attribute values are escaped. Children are **not**, because a child is either
 another element (already markup) or text the program chose to put there. A
 generator that has escaped its own code block cannot have the renderer escape it
 a second time.
+
+## Events, and the two-way name
+
+An attribute whose name is `on` followed by lowercase letters is an event
+handler, and the letters are the event: `onclick`, `oninput`, `onchange`,
+`ondragstart`, `ondragover`, `ondragend`, `ondrop`, and any other the platform
+grows. There is no list to be added to, because the rule is the spelling.
+
+```maca
+li(draggable=true, ondragstart=grab, ondragover=over, ondrop=drop_here, name)
+```
+
+The value is a function: a top-level definition by name, or a lambda that takes
+the event.
+
+```maca
+button(onclick=(e => count = count + 1), "+")
+```
+
+`value=` is the one attribute that reads in both directions. Given a name the
+program declared, the property follows the state and typing writes it back:
+
+```maca
+who = "world"
+
+main() -> Element => div(input(value=who) span("Hello, {who}"))
+```
+
+Given anything else, including a constant, it is an ordinary attribute:
+`input(value="literal")` sets the attribute and listens for nothing. When the
+value to store is not the text typed, a lambda says what to store:
+
+```maca
+input(value=(v => age = int(v)))
+```
+
+The older directive spellings, `on:click=` and `bind:value=`, still parse and
+mean the same thing. `bind:` is also the only way to two-way bind a property
+other than `value`.
+
+## Assignment is the update
+
+A handler does not ask for a repaint. Writing a declared state name *is* the
+request:
+
+```maca
+count = 0
+note = "idle"
+
+go() {
+    count = count + 1
+    note = "counted"
+}
+
+main() -> Element =>
+    div(button(onclick=go, "go") span("{count}") span(note))
+```
+
+Three rules hold that up, and each is worth knowing when a page surprises you.
+
+**Only what reads the name runs again.** Every bound node records the state
+names its expression mentions, so assigning `count` re-runs the node reading
+`count` and leaves the one reading `note` alone. A node whose value comes from
+a *call* (`span(shown(count))`) records no names, because a function body is out
+of reach, so it re-runs on any change at all.
+
+**A handler is one turn.** Everything assigned between the event arriving and
+the handler returning is collected, and the view is repainted once, at the end.
+That is also the answer for a loop: a hundred assignments inside one handler are
+one repaint, after the loop.
+
+**A write that changes nothing is not an update.** Assigning the value a name
+already holds marks nothing dirty and repaints nothing.
+
+`update()` remains, and so does `maca.refresh()`, for the case the rule cannot
+see: something outside Maca moved, and a node that reads it has to be told. A
+view that *assigns* state is a different matter: it would repaint itself
+forever, so it stops and says so by name rather than hanging the tab.
 
 ## A definition wins over a tag
 
@@ -267,10 +351,10 @@ Markdown parser in front of it.
 | Target | An element becomes |
 |---|---|
 | native (C) | a `maca_concat` chain producing an HTML string; `maca_attr` escapes attribute values, children are not re-escaped, void elements self-close |
-| `js` | `createElement` calls and a reactive DOM; `on:` attaches a handler, `bind:` two-way binds a field |
+| `js` | `createElement` calls and a reactive DOM; `onclick=` attaches a handler, `value=` on a state name binds two ways, and an assignment to that name repaints what reads it |
 | `element(tag, …)` | the same on both, with voidness decided at run time in `maca_element` |
 | `open=true` | `maca_flag`: the attribute is present or absent, never `="false"` |
 
-`on:click=` on the native target is a compile error naming `--target js`, and
-that is the only place the two targets diverge in what they accept. See
-[Targets](a10-targets.md).
+The `on:click=` directive on the native target is a compile error naming
+`--target js`, and that is the only place the two targets diverge in what they
+accept. See [Targets](a10-targets.md).
