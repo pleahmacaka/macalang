@@ -267,7 +267,7 @@ plus a root that gathers them. This is what Maca's own tree looks like:
 # maca.toml, at the root
 [package]
 name = "maca"
-version = "0.2.1"
+version = "0.3.0"
 
 [workspace]
 members = [

@@ -694,8 +694,8 @@ mod tests {
     fn semver_ranges_match() {
         assert!(semver_satisfies("1.4.2", "^1.2.0"));
         assert!(!semver_satisfies("2.0.0", "^1.2.0"));
-        assert!(semver_satisfies("0.2.9", "^0.2.1"));
-        assert!(!semver_satisfies("0.3.0", "^0.2.1"));
+        assert!(semver_satisfies("0.9.9", "^0.9.1"));
+        assert!(!semver_satisfies("0.10.0", "^0.9.1"));
         assert!(semver_satisfies("1.2.9", "~1.2.3"));
         assert!(!semver_satisfies("1.3.0", "~1.2.3"));
         assert!(semver_satisfies("2.5.0", ">=2 <3"));

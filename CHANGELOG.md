@@ -1,5 +1,83 @@
 # Changelog
 
+## 0.3.0
+
+The theme of this release is that a page written in Maca should be a Maca
+program and nothing else. `tabpane`, a browser start page built on 0.2.1,
+needed a build script, a hand-written JavaScript block, a generated module and
+a `refresh()` after every write. None of that is left, and each thing that
+replaced it is a language feature rather than a special case.
+
+### Added
+
+* The standard library rides **inside the binary**. All eight `modules/*`
+  packages are compiled into `maca`, so `import std/json` resolves in a project
+  that has never seen this repository; a project's own copy still wins.
+* Every `modules/*` and `apps/*` is its own package with its own `maca.toml`,
+  and the root is the **workspace** that gathers them. The nearest manifest
+  that states a key answers for it.
+* **Building is declared, not flagged**: `[build] target`, `out`, `mcu`,
+  `classpath` and `bin` are properties of the project, and a flag on the line
+  wins over the manifest.
+* `return`, and a **named function nested in a function**, which is what lets a
+  view keep its own helpers beside the state they read.
+* `data("path")` reads a file while the program is built, into the type the
+  binding declares.
+* `stored(key, default)`: the name starts as whatever the browser saved, and
+  assigning it saves it again. `web/storage`, `web/time`, `web/file` and
+  `web/format` are the browser as ordinary Maca.
+* `import css "npm:pkg"` and `import js "npm:pkg"` name a package rather than a
+  path inside one.
+* **JS**: assignment is the update. A handler assigns and the view repaints
+  once, with no `refresh()`, and the platform's own event names (`onclick=`,
+  `value=`) are what a page writes.
+* A view can contribute a **list of elements, or none**, so a part of a page
+  that is sometimes absent is `Element[]` returning `[]`.
+* The six list edits a page makes: `set`, `insert`, `remove`, `index_of_by`,
+  `enumerate`, `sort_by`.
+* **JS**: `std/json`'s `encode` and `decode` are written from the record and
+  sum types the program declares, as they already were natively. One suite
+  holds both back ends to the same wire format and the same diagnostics, field
+  for field.
+* **JS**: `await` suspends. A function that reaches one becomes `async`, worked
+  out by a fixpoint over the call graph, and a call to it waits, so a handler
+  that waits for the reader is written the way every other handler is.
+* `web/file`'s `pick_text(accept) -> str` answers with the file's text instead
+  of writing it into a slot named by a string.
+* A hyphen names a **custom element**: `iconify-icon(class=…, icon=…)` is a
+  call like any other tag, on both the JS and the native back end.
+* **JS**: a view called as a child is rebuilt when the state it reads changes,
+  so a view that answers `[]` while a page is locked appears when it is not.
+* `value=form.title` writes back the way `value=name` already did: a field or
+  an element of something writable is writable.
+* A script asset is run as an ES module when it is one, decided the way node
+  decides it.
+
+### Fixed
+
+* `maca build --target js` runs the type checker, as every other target
+  already did, and leaves no page behind when it refuses.
+* A name one function keeps to itself is not the same name another function
+  reads.
+* **native**: a top-level name a function writes is a variable. Every write was
+  going into a local that the end of the block threw away, so a handler that
+  counted counted to one forever, and the JS target disagreed silently.
+* **JS**: a page's state is what its initialisers compute. Anything but a
+  literal became `null`, so a page built on `local_start(…)` or a constructor
+  mounted against nulls.
+* **JS**: `==` on a sum compares what it is. It was `===`, so a payload variant
+  never equalled an equal one, and a nullary one stopped equalling itself once
+  it had been read through the state proxy.
+* **JS**: an event handler written as a call waits for the event instead of
+  running while the page is built.
+* **JS**: a record update in an arrow-function body is an object, not a block.
+* A capitalized pattern is a constructor, so a misspelt one is a diagnostic
+  naming the variant that was meant rather than a name that matches everything.
+* **native**: an attribute given a function says so, whatever the attribute is
+  called, instead of reaching `cc`.
+* A selective import keeps every declaration its module's `import js` block
+  provides, so importing one function of a bridge no longer costs the others.
+
 ## 0.2.1
 
 The theme of this release is that a name should mean what its scope says it
