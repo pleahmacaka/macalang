@@ -1259,6 +1259,7 @@ impl<'a> Cx<'a> {
                 self.push(&format!("    return {name}_{};", vars[0]));
             }
             self.push("}");
+            self.emit_sum_json_name(name, vars, tagged);
         }
         self.push("");
 
@@ -3328,6 +3329,14 @@ impl<'a> Cx<'a> {
                 self.html_element(env, tag, args)
             };
         }
+        if let Expr::Ident(f) = callee
+            && matches!(f.as_str(), "encode" | "decode")
+            && self.generics.contains_key(f)
+            && args.len() == 1
+            && lookup(env, f).is_none()
+        {
+            return self.module_call(env, "json", f, args, expected);
+        }
         if let Expr::Field { base, name } = callee {
             if let Expr::Ident(m) = &**base {
                 if name == "splat"
@@ -3651,6 +3660,32 @@ impl<'a> Cx<'a> {
         ("0 /* unsupported call */".into(), CTy::Unknown)
     }
 
+    /// The JSON text for a value of this type, as one expression, or `None` where the type has no JSON form.
+    fn json_text_of(&mut self, code: &str, t: &CTy) -> Option<String> {
+        Some(match t {
+            CTy::Int => format!("maca_from_int({code})"),
+            CTy::Float | CTy::F32 => format!("maca_from_float({code})"),
+            CTy::Bool => format!("maca_from_bool({code})"),
+            CTy::Str => format!("maca_json_quote({code})"),
+            CTy::Sum(s) => format!("maca_json_quote({s}_to_json_name({code}))"),
+            CTy::Rec(r) => format!("{r}_to_json({code})"),
+            CTy::Arr(e) => {
+                let an = arr_name(e);
+                let v = self.temp();
+                let piece = self.json_text_of(&format!("{v}.data[_i]"), e)?;
+                format!(
+                    "({{ {an} {v} = {code}; maca_sb _sb; maca_sb_init(&_sb); \
+                     maca_sb_putc(&_sb, '['); \
+                     for (int64_t _i = 0; _i < {v}.len; _i++) {{ \
+                     if (_i) maca_sb_putc(&_sb, ','); \
+                     maca_str _p = {piece}; maca_sb_puts(&_sb, _p); maca_drop_str(_p); }} \
+                     maca_sb_putc(&_sb, ']'); maca_sb_finish(&_sb); }})"
+                )
+            }
+            _ => return None,
+        })
+    }
+
     fn module_call(
         &mut self,
         env: &mut Env,
@@ -3662,10 +3697,16 @@ impl<'a> Cx<'a> {
         match (module, member) {
             ("json", "encode") => {
                 let (c, t) = self.arg_typed(env, &args[0]);
-                match t {
-                    CTy::Rec(r) => (format!("{r}_to_json({c})"), CTy::Str),
-                    CTy::Sum(s) => (format!("{s}_to_str({c})"), CTy::Str),
-                    _ => (c, CTy::Str),
+                match self.json_text_of(&c, &t) {
+                    Some(code) => (code, CTy::Str),
+                    None => {
+                        self.problem(format!(
+                            "`encode`: `{}` has no JSON form; a record, a sum, a \
+                             primitive or a list of those does",
+                            c_type(&t)
+                        ));
+                        ("\"null\"".into(), CTy::Str)
+                    }
                 }
             }
             ("json", "decode") => {
@@ -3675,7 +3716,14 @@ impl<'a> Cx<'a> {
                         format!("{r}_from_json(maca_json_parse({c}))"),
                         CTy::Rec(r.clone()),
                     ),
-                    _ => (format!("maca_json_parse({c})"), CTy::Unknown),
+                    _ => {
+                        self.problem(
+                            "`decode`: say what it reads into, as in \
+                             `c: Config = decode(text)`"
+                                .to_string(),
+                        );
+                        ("\"\"".into(), CTy::Str)
+                    }
                 }
             }
             _ => {
@@ -4331,6 +4379,77 @@ impl<'a> Cx<'a> {
         self.concat(&pieces)
     }
 
+    /// A sum's JSON spelling: the variant's own name in lower case, and back again.
+    fn emit_sum_json_name(&mut self, name: &str, vars: &[String], tagged: bool) {
+        self.push(&format!("static maca_str {name}_to_json_name({name} v) {{"));
+        self.push(&format!(
+            "    switch (v{}) {{",
+            if tagged { ".tag" } else { "" }
+        ));
+        for v in vars {
+            let tag = if tagged {
+                format!("{name}_tag_{v}")
+            } else {
+                format!("{name}_{v}")
+            };
+            self.push(&format!(
+                "        case {tag}: return \"{}\";",
+                v.to_lowercase()
+            ));
+        }
+        self.push("    }");
+        self.push("    return \"\";");
+        self.push("}");
+        self.push(&format!(
+            "static {name} {name}_from_json_name(maca_str s, maca_str field) {{"
+        ));
+        for v in vars {
+            let make = if tagged {
+                let zeros = self
+                    .variant_payloads
+                    .get(v)
+                    .map(|p| {
+                        p.iter()
+                            .map(|t| format!("({}){{0}}", c_type(t)))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or_default();
+                format!("{name}_{v}({zeros})")
+            } else {
+                format!("{name}_{v}")
+            };
+            self.push(&format!(
+                "    if (maca_str_eq(s, \"{}\")) return {make};",
+                v.to_lowercase()
+            ));
+        }
+        let choices: Vec<String> = vars.iter().map(|v| v.to_lowercase()).collect();
+        self.push(&format!(
+            "    maca_fail(maca_concat_n(5, \"field `\", field, \"`: \\\"\", s, \
+             \"\\\" is not one of {}\"));",
+            choices.join(", ")
+        ));
+        let first = &vars[0];
+        let make_first = if tagged {
+            let zeros = self
+                .variant_payloads
+                .get(first)
+                .map(|p| {
+                    p.iter()
+                        .map(|t| format!("({}){{0}}", c_type(t)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_default();
+            format!("{name}_{first}({zeros})")
+        } else {
+            format!("{name}_{first}")
+        };
+        self.push(&format!("    return {make_first};"));
+        self.push("}");
+    }
+
     fn emit_to_json(&mut self, name: &str) {
         let fields = self.records[name].clone();
         self.push(&format!("static maca_str {name}_to_json({name} v) {{"));
@@ -4358,7 +4477,7 @@ impl<'a> Cx<'a> {
             )),
             CTy::Str => self.push(&format!("    maca_sb_put_json_str(&sb, {access});")),
             CTy::Sum(s) => self.push(&format!(
-                "    maca_sb_put_json_str(&sb, {s}_to_str({access}));"
+                "    maca_sb_put_json_str(&sb, {s}_to_json_name({access}));"
             )),
             CTy::Rec(r) => self.push(&format!("    maca_sb_puts(&sb, {r}_to_json({access}));")),
             CTy::Arr(e) => {
@@ -4385,6 +4504,7 @@ impl<'a> Cx<'a> {
     fn emit_from_json(&mut self, name: &str) {
         let fields = self.records[name].clone();
         self.push(&format!("static {name} {name}_from_json(maca_json* j) {{"));
+        self.push(&format!("    j = maca_json_object(j, \"{name}\");"));
         self.push(&format!("    {name} v;"));
         for (fname, fty) in &fields {
             self.emit_json_read(&format!("v.{}", cid(fname)), fname, fty);
@@ -4394,23 +4514,35 @@ impl<'a> Cx<'a> {
     }
 
     fn emit_json_read(&mut self, dest: &str, key: &str, t: &CTy) {
-        let get = format!("maca_json_get(j, \"{key}\")");
+        let want = |kind: &str| format!("maca_json_want(j, \"{key}\", {kind})");
         match t {
-            CTy::Int => self.push(&format!("    {dest} = maca_json_int({get});")),
-            CTy::Float | CTy::F32 => self.push(&format!("    {dest} = maca_json_float({get});")),
-            CTy::Bool => self.push(&format!("    {dest} = maca_json_bool({get});")),
-            CTy::Str => self.push(&format!("    {dest} = maca_json_str({get});")),
-            CTy::Sum(s) => self.push(&format!("    {dest} = {s}_from_str(maca_json_str({get}));")),
-            CTy::Rec(r) => self.push(&format!("    {dest} = {r}_from_json({get});")),
+            CTy::Int => self.push(&format!("    {dest} = maca_json_int({});", want("MJ_NUM"))),
+            CTy::Float | CTy::F32 => self.push(&format!(
+                "    {dest} = maca_json_float({});",
+                want("MJ_NUM")
+            )),
+            CTy::Bool => self.push(&format!(
+                "    {dest} = maca_json_bool({});",
+                want("MJ_BOOL")
+            )),
+            CTy::Str => self.push(&format!("    {dest} = maca_json_str({});", want("MJ_STR"))),
+            CTy::Sum(s) => self.push(&format!(
+                "    {dest} = {s}_from_json_name(maca_json_str({}), \"{key}\");",
+                want("MJ_STR")
+            )),
+            CTy::Rec(r) => self.push(&format!("    {dest} = {r}_from_json({});", want("MJ_OBJ"))),
             CTy::Arr(e) => {
                 let an = arr_name(e);
                 let a = self.temp();
                 let idx = self.temp();
                 self.push(&format!(
-                    "    {{ maca_json* {a} = {get}; {an} _acc = {an}_new();"
+                    "    {{ maca_json* {a} = {}; {an} _acc = {an}_new();",
+                    want("MJ_ARR")
                 ));
-                self.push(&format!("      if ({a} && {a}->kind == MJ_ARR) for (int64_t {idx} = 0; {idx} < {a}->arr.len; {idx}++) {{"));
-                let elem_read = json_read_inline(&format!("{a}->arr.items[{idx}]"), e);
+                self.push(&format!(
+                    "      for (int64_t {idx} = 0; {idx} < {a}->arr.len; {idx}++) {{"
+                ));
+                let elem_read = json_read_inline(&format!("{a}->arr.items[{idx}]"), e, key);
                 self.push(&format!("        {an}_push(&_acc, {elem_read});"));
                 self.push("      }");
                 self.push(&format!("      {dest} = _acc; }}"));
@@ -4420,13 +4552,13 @@ impl<'a> Cx<'a> {
                 let o = self.temp();
                 let idx = self.temp();
                 self.push(&format!(
-                    "    {{ maca_json* {o} = {get}; {mn} _m = {mn}_new();"
+                    "    {{ maca_json* {o} = {}; {mn} _m = {mn}_new();",
+                    want("MJ_OBJ")
                 ));
                 self.push(&format!(
-                    "      if ({o} && {o}->kind == MJ_OBJ) for (int64_t {idx} = 0; \
-                     {idx} < {o}->obj.len; {idx}++) {{"
+                    "      for (int64_t {idx} = 0; {idx} < {o}->obj.len; {idx}++) {{"
                 ));
-                let read = json_read_inline(&format!("{o}->obj.vals[{idx}]"), v);
+                let read = json_read_inline(&format!("{o}->obj.vals[{idx}]"), v, key);
                 self.push(&format!(
                     "        {mn}_set(&_m, {o}->obj.keys[{idx}], {read});"
                 ));
@@ -4445,14 +4577,14 @@ impl<'a> Cx<'a> {
     }
 }
 
-/// Inline reader for an array element (`maca_json*` expression → element value).
-fn json_read_inline(j: &str, t: &CTy) -> String {
+/// Inline reader for one element of a field's list or map, which reports under that field's name.
+fn json_read_inline(j: &str, t: &CTy, field: &str) -> String {
     match t {
         CTy::Int => format!("maca_json_int({j})"),
         CTy::Float => format!("maca_json_float({j})"),
         CTy::Bool => format!("maca_json_bool({j})"),
         CTy::Str => format!("maca_json_str({j})"),
-        CTy::Sum(s) => format!("{s}_from_str(maca_json_str({j}))"),
+        CTy::Sum(s) => format!("{s}_from_json_name(maca_json_str({j}), \"{field}\")"),
         CTy::Rec(r) => format!("{r}_from_json({j})"),
         _ => "0".into(),
     }
@@ -4582,6 +4714,7 @@ fn to_str(code: &str, t: &CTy) -> String {
         CTy::Float | CTy::F32 => format!("maca_from_float({code})"),
         CTy::Bool => format!("maca_from_bool({code})"),
         CTy::Unknown => format!("maca_from_int({code})"),
+        CTy::Sum(s) => format!("{s}_to_str({code})"),
         _ => code.to_string(),
     }
 }

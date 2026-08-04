@@ -1,6 +1,17 @@
 // std/json: JSON, written in Maca.
+//
+// Two halves. `encode` and `decode` are the typed pair: the compiler writes
+// them from the record and sum types the program declares, so a page never
+// spells a field twice. Everything else here reads and writes JSON as text,
+// for the shapes no type describes.
 
 import std/text
+
+/// The JSON text for `value`, written from the record and sum types it is built out of.
+encode(value: a) -> str
+
+/// `text` read into the type the binding declares, failing with the field that did not match.
+decode(text: str) -> a
 
 /// A JSON string literal, with the five escapes the format requires.
 quote(s: str) -> str =>

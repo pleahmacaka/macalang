@@ -53,9 +53,13 @@ Called as methods through UFCS: `s.trim()` is `trim(s)`.
 | `map(f)` `filter(f)` | `T[]` |
 | `reduce(init, f)` `fold(init, f)` | a single value |
 | `sort()` `reverse()` | `T[]` |
+| `sort_by(key)` | `T[]`, ordered by `key(x)`, stable |
 | `push(x)` `pop()` | a new list |
+| `set(i, x)` `insert(i, x)` `remove(i)` | a new list, edited at `i` |
 | `slice(from, to)` | `to` is **exclusive** |
 | `contains(x)` `index_of(x)` | search |
+| `index_of_by(f)` | the first index where `f(x)`, else `-1` |
+| `enumerate()` | `{index, value}[]` |
 | `sum()` `min()` `max()` | numeric |
 | `first()` `last()` `get(i)` | elements |
 | `length()` | `int` |
@@ -196,6 +200,82 @@ There is no `async` keyword. See [Effects and Async](a7-effects.md).
 | `styles()` | the CSS for the utility classes this module writes |
 
 See [The UI Syntax](a11-ui.md).
+
+## JSON
+
+`import std/json` brings in two halves. `encode` and `decode` are the typed
+pair: the compiler writes them from the record and sum types the program
+declares, so a page never spells a field twice. The rest of the module reads
+and writes JSON as text, for the shapes no type describes.
+
+```maca
+import std/json
+
+Layout = List | Grid
+Link   = { title: str, url: str }
+Config = { columns: int, layout: Layout, links: Link[] }
+
+save(c: Config) -> unit => write_file("conf.json", encode(c))
+
+load(text: str) -> Config {
+    c: Config = decode(text)
+    c
+}
+```
+
+`encode(value)` takes the value's static type and writes the JSON for it: a
+record becomes an object with one member per field, **in the order the record
+declares them**; a list becomes an array; `int`, `float`, `bool` and `str`
+become themselves.
+
+`decode(text)` reads into whatever the binding says. That is where the type
+comes from, so it has to be written down: `c: Config = decode(text)`. A bare
+`decode(text)` with nothing to read into is a build error saying so.
+
+### How a sum maps
+
+**A variant is its own name in lower case.** `Layout = List | Grid` is stored
+as `"list"` and `"grid"`, and read back the same way. The rule is total in both
+directions because Maca capitalises variants and JSON string enums are
+conventionally lower case, so no third spelling is involved and nothing has to
+be configured.
+
+A variant that carries a payload has no JSON form beyond its name, so a type
+that round-trips through JSON should be an enumeration and keep its data in
+record fields.
+
+### What decode says when the text does not match
+
+It fails, and the message names the field. `try` catches it, exactly as it
+catches any other failure ([Errors](09-errors.md)):
+
+```maca
+why = try load(text)
+if why != "" {
+    warn("bad config: {why}")
+}
+```
+
+| The text | The message |
+|---|---|
+| `{"columns": "three", …}` | ``field `columns`: expected a number, got a string`` |
+| `{"layout": "grid", …}` with no `columns` | ``field `columns`: expected a number, and the object has no such field`` |
+| `{"layout": "table", …}` | ``field `layout`: "table" is not one of list, grid`` |
+| `[1, 2, 3]` | ``` `Config`: expected an object, got a list ``` |
+
+A field inside a nested record or a list element reports under its own name, so
+a link missing `url` says `url` and not `links`.
+
+### The text half
+
+| Function | Does |
+|---|---|
+| `quote(s)` | `s` as a JSON string literal |
+| `array_of_str(xs)` `array_of_int(xs)` | an array from a list |
+| `object_of(keys, values)` | an object from parallel lists |
+| `get(src, key)` | the raw text of a member, `""` when absent |
+| `get_int(src, key, dflt)` `get_bool(src, key)` | read one member |
+| `items(src)` | the elements of an array, each as raw text |
 
 ## Errors
 

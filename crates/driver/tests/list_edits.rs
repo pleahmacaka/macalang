@@ -31,6 +31,12 @@ fn a_list_is_edited_in_place_only_where_nobody_else_holds_it() {
     suite("list_edits");
 }
 
+/// `encode`/`decode` round-trip a record with a nested list and a sum, and name the field when the text does not match.
+#[test]
+fn json_is_written_and_read_from_the_declared_type() {
+    suite("json_typed");
+}
+
 /// An index the list does not have has to be *skipped*, not written: no answer changes when it is written, so valgrind is what sees it.
 #[test]
 fn an_edit_out_of_range_writes_nothing() {

@@ -53,9 +53,13 @@ UFCS로 메서드처럼 호출합니다. `s.trim()`은 `trim(s)`입니다.
 | `map(f)` `filter(f)` | `T[]` |
 | `reduce(init, f)` `fold(init, f)` | 값 하나 |
 | `sort()` `reverse()` | `T[]` |
+| `sort_by(key)` | `key(x)` 기준으로 정렬한 `T[]`, 안정적 |
 | `push(x)` `pop()` | 새 리스트 |
+| `set(i, x)` `insert(i, x)` `remove(i)` | `i`를 편집한 새 리스트 |
 | `slice(from, to)` | `to`는 **제외** |
 | `contains(x)` `index_of(x)` | 검색 |
+| `index_of_by(f)` | `f(x)`가 참인 첫 인덱스, 없으면 `-1` |
+| `enumerate()` | `{index, value}[]` |
 | `sum()` `min()` `max()` | 수치 |
 | `first()` `last()` `get(i)` | 원소 |
 | `length()` | `int` |
@@ -192,6 +196,79 @@ while !at_eof() {
 | `styles()` | 이 모듈이 쓴 유틸리티 클래스의 CSS |
 
 [UI 문법](a11-ui.md)을 보세요.
+
+## JSON
+
+`import std/json`은 두 부분을 가져옵니다. `encode`와 `decode`는 타입이 붙은
+쌍입니다. 프로그램이 선언한 레코드와 합 타입에서 컴파일러가 이 둘을 써 주므로,
+페이지가 필드 이름을 두 번 적을 일이 없습니다. 모듈의 나머지는 JSON을 텍스트로
+읽고 씁니다. 어떤 타입도 설명하지 않는 모양을 위한 것입니다.
+
+```maca
+import std/json
+
+Layout = List | Grid
+Link   = { title: str, url: str }
+Config = { columns: int, layout: Layout, links: Link[] }
+
+save(c: Config) -> unit => write_file("conf.json", encode(c))
+
+load(text: str) -> Config {
+    c: Config = decode(text)
+    c
+}
+```
+
+`encode(value)`는 값의 정적 타입을 보고 그에 맞는 JSON을 씁니다. 레코드는 필드
+하나에 멤버 하나인 객체가 되고, 순서는 **레코드가 선언한 순서** 그대로입니다.
+리스트는 배열이 되고, `int`/`float`/`bool`/`str`은 그대로입니다.
+
+`decode(text)`는 바인딩이 말하는 타입으로 읽습니다. 타입이 거기서 오므로 반드시
+적어야 합니다. `c: Config = decode(text)`처럼요. 읽어 담을 곳이 없는 맨
+`decode(text)`는 그렇게 말하는 빌드 오류입니다.
+
+### 합 타입이 매핑되는 방식
+
+**변형은 자기 이름의 소문자입니다.** `Layout = List | Grid`는 `"list"`와
+`"grid"`로 저장되고 같은 방식으로 다시 읽힙니다. Maca는 변형을 대문자로
+시작하고 JSON 문자열 열거는 관례적으로 소문자이므로, 세 번째 표기가 끼어들지
+않고 설정할 것도 없이 양방향 모두 전면적입니다.
+
+페이로드를 가진 변형은 이름 말고는 JSON 형태가 없습니다. JSON을 왕복하는
+타입은 열거형으로 두고 데이터는 레코드 필드에 담으십시오.
+
+### 텍스트가 타입과 맞지 않을 때 decode가 하는 말
+
+실패하고, 메시지가 필드 이름을 말합니다. 다른 실패와 똑같이 `try`가
+잡습니다([오류](09-errors.md)).
+
+```maca
+why = try load(text)
+if why != "" {
+    warn("bad config: {why}")
+}
+```
+
+| 텍스트 | 메시지 |
+|---|---|
+| `{"columns": "three", …}` | ``field `columns`: expected a number, got a string`` |
+| `columns`가 없는 `{"layout": "grid", …}` | ``field `columns`: expected a number, and the object has no such field`` |
+| `{"layout": "table", …}` | ``field `layout`: "table" is not one of list, grid`` |
+| `[1, 2, 3]` | ``` `Config`: expected an object, got a list ``` |
+
+중첩된 레코드나 리스트 원소 안의 필드는 자기 이름으로 보고합니다. `url`이 빠진
+링크는 `links`가 아니라 `url`이라고 말합니다.
+
+### 텍스트 쪽
+
+| 함수 | 하는 일 |
+|---|---|
+| `quote(s)` | `s`를 JSON 문자열 리터럴로 |
+| `array_of_str(xs)` `array_of_int(xs)` | 리스트로 배열 만들기 |
+| `object_of(keys, values)` | 병렬 리스트로 객체 만들기 |
+| `get(src, key)` | 멤버의 원본 텍스트, 없으면 `""` |
+| `get_int(src, key, dflt)` `get_bool(src, key)` | 멤버 하나 읽기 |
+| `items(src)` | 배열의 원소들, 각각 원본 텍스트로 |
 
 ## 에러
 

@@ -200,6 +200,14 @@ struct maca_json {
 };
 maca_json* maca_json_parse(maca_str text);      /* aborts on parse error */
 maca_json* maca_json_get(maca_json* o, const char* key); /* NULL if absent */
+/* The two readers a typed `json.decode` uses. Where the untyped accessors
+   below answer with a zero, these `fail` with a message that names the field
+   and says what the declared type needed there, because a decode that quietly
+   returns zeros is a wrong answer with nothing to say for itself. */
+maca_json* maca_json_want(maca_json* o, maca_str field, maca_json_kind kind);
+maca_json* maca_json_object(maca_json* j, maca_str type);
+/* `s` as a JSON string literal, quotes and escapes included. */
+maca_str maca_json_quote(maca_str s);
 int64_t maca_json_int(maca_json* j);
 double maca_json_float(maca_json* j);
 bool maca_json_bool(maca_json* j);
@@ -1432,6 +1440,47 @@ maca_json* maca_json_get(maca_json* o, const char* key) {
     if (!o || o->kind != MJ_OBJ) return NULL;
     for (int64_t i = 0; i < o->obj.len; i++) if (strcmp(o->obj.keys[i], key) == 0) return o->obj.vals[i];
     return NULL;
+}
+maca_str maca_json_quote(maca_str s) {
+    maca_sb sb; maca_sb_init(&sb);
+    maca_sb_put_json_str(&sb, s);
+    return maca_sb_finish(&sb);
+}
+static maca_str mj_kind_name(maca_json_kind k) {
+    switch (k) {
+        case MJ_NULL: return "null";
+        case MJ_BOOL: return "a boolean";
+        case MJ_NUM: return "a number";
+        case MJ_STR: return "a string";
+        case MJ_ARR: return "a list";
+        case MJ_OBJ: return "an object";
+    }
+    return "a value";
+}
+maca_json* maca_json_want(maca_json* o, maca_str field, maca_json_kind kind) {
+    maca_json* v = maca_json_get(o, field);
+    maca_sb sb; maca_sb_init(&sb);
+    maca_sb_puts(&sb, "field `"); maca_sb_puts(&sb, field);
+    maca_sb_puts(&sb, "`: expected "); maca_sb_puts(&sb, mj_kind_name(kind));
+    if (!v) {
+        maca_sb_puts(&sb, ", and the object has no such field");
+        maca_fail(maca_sb_finish(&sb));
+    }
+    if (v->kind != kind) {
+        maca_sb_puts(&sb, ", got "); maca_sb_puts(&sb, mj_kind_name(v->kind));
+        maca_fail(maca_sb_finish(&sb));
+    }
+    maca_drop_str(maca_sb_finish(&sb));
+    return v;
+}
+maca_json* maca_json_object(maca_json* j, maca_str type) {
+    if (j && j->kind == MJ_OBJ) return j;
+    maca_sb sb; maca_sb_init(&sb);
+    maca_sb_puts(&sb, "`"); maca_sb_puts(&sb, type);
+    maca_sb_puts(&sb, "`: expected an object, got ");
+    maca_sb_puts(&sb, j ? mj_kind_name(j->kind) : "nothing");
+    maca_fail(maca_sb_finish(&sb));
+    return j;
 }
 int64_t maca_json_int(maca_json* j) { return j && j->kind == MJ_NUM ? (int64_t)j->num : 0; }
 double maca_json_float(maca_json* j) { return j && j->kind == MJ_NUM ? j->num : 0.0; }
