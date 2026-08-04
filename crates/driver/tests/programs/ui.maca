@@ -128,3 +128,55 @@ test_a_local_shadows_the_tag_of_the_same_name() {
 }
 
 apply(f, x: int) -> int => f(x)
+
+Row = { title: str, icon: str }
+
+pencil(on: bool) -> Element[] {
+    if !on {
+        return []
+    }
+
+    [button(class="pencil", "edit")]
+}
+
+row(link: Row, on: bool) -> Element =>
+    li(class="row",
+       [i(class="icon", link.icon), span(class="title", link.title)]
+           ++ pencil(on))
+
+test_a_view_that_renders_nothing_adds_no_node() {
+    assert_eq(section(pencil(false)), "<section></section>",
+              "an empty list contributes nothing at all")
+    assert_eq(section(pencil(true)),
+              "<section><button class=\"pencil\">edit</button></section>",
+              "and a full one contributes its element")
+}
+
+test_a_list_of_children_is_spliced_into_the_parent() {
+    link = Row { title = "Docs", icon = "book" }
+
+    assert_eq(row(link, false),
+              "<li class=\"row\"><i class=\"icon\">book</i>"
+                  ++ "<span class=\"title\">Docs</span></li>",
+              "two children and no pencil")
+    assert_eq(row(link, true),
+              "<li class=\"row\"><i class=\"icon\">book</i>"
+                  ++ "<span class=\"title\">Docs</span>"
+                  ++ "<button class=\"pencil\">edit</button></li>",
+              "and three when the pencil is there")
+}
+
+test_a_mapped_list_is_one_child_per_element() {
+    ls = [Row { title = "a", icon = "x" }, Row { title = "b", icon = "y" }]
+
+    assert_eq(ul(ls.map(l => li(l.title))), "<ul><li>a</li><li>b</li></ul>",
+              "one element per row")
+    assert_eq(ul(ls.filter(l => l.title == "z").map(l => li(l.title))),
+              "<ul></ul>", "and none when nothing is left")
+}
+
+test_a_list_literal_is_a_child_where_it_is_written() {
+    assert_eq(div([span("a"), span("b")], "tail"),
+              "<div><span>a</span><span>b</span>tail</div>",
+              "in the order the arguments are in")
+}

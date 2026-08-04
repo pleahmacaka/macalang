@@ -1010,6 +1010,7 @@ impl<'a> Cx<'a> {
                     _ if self.records.contains_key(n) => CTy::Rec(n.into()),
                     _ if self.sums.contains_key(n) => CTy::Sum(n.into()),
                     "Path" => CTy::Str,
+                    "Element" => CTy::Str,
                     _ => CTy::Unknown,
                 }
             }
@@ -3031,7 +3032,8 @@ impl<'a> Cx<'a> {
 
     /// Names that resolve globally (so referencing them isn't a capture).
     fn is_known_global(&self, n: &str) -> bool {
-        self.fns.contains_key(n)
+        maca_parser::is_backend_intrinsic(n)
+            || self.fns.contains_key(n)
             || self.let_names.contains(n)
             || self.variant_of.contains_key(n)
             || self.modules.contains(n)
@@ -3288,6 +3290,18 @@ impl<'a> Cx<'a> {
                 }
                 Arg::Pos(e) => {
                     let (c, t) = self.expr(env, e, Some(&CTy::Str));
+                    if let CTy::Arr(inner) = &t
+                        && matches!(**inner, CTy::Str)
+                    {
+                        let v = self.temp();
+                        kids.push(Piece {
+                            code: format!(
+                                "({{ StrArr {v} = {c}; maca_join({v}.data, {v}.len, \"\"); }})"
+                            ),
+                            owned: true,
+                        });
+                        continue;
+                    }
                     kids.push(Piece::rendered(&c, &t, self.fresh.allocates(e)));
                 }
             }

@@ -30,6 +30,7 @@ pub fn emit(m: &Module) -> JsOut {
 
     let variants = collect_variants(m);
     set_variants(&variants);
+    set_fns(m);
 
     for item in &m.items {
         collect_class_strings(item, &mut cx.classes);
@@ -482,6 +483,18 @@ thread_local! {
     static VARIANTS: std::cell::RefCell<BTreeMap<String, usize>> = const { std::cell::RefCell::new(BTreeMap::new()) };
     /// One frame per function being emitted, holding the names it has already declared, so a write from a nested definition assigns rather than shadows.
     static SCOPES: std::cell::RefCell<Vec<BTreeSet<String>>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// The module's own top-level functions and what each says it returns, so a definition shadows the tag of the same name and a view declares itself.
+    static FNS: std::cell::RefCell<BTreeMap<String, Option<Type>>> = const { std::cell::RefCell::new(BTreeMap::new()) };
+}
+
+fn set_fns(m: &Module) {
+    let mut out = BTreeMap::new();
+    for item in &m.items {
+        if let Stmt::Fn(f) = item {
+            out.insert(f.name.clone(), f.ret.clone());
+        }
+    }
+    FNS.with(|s| *s.borrow_mut() = out);
 }
 
 /// Is `n` a name some enclosing function already declared?
@@ -883,7 +896,19 @@ fn jcall(callee: &Expr, args: &[Arg]) -> String {
             "((_s)=>_s&&_s.length?_s.charCodeAt(0):-1)({})",
             a.first().cloned().unwrap_or_default()
         ),
+        Expr::Ident(t) if is_html_tag(t) => jelement(&format!("{t:?}"), args),
+        Expr::Ident(t) if t == "element" && !FNS.with(|f| f.borrow().contains_key(t)) => {
+            match args.split_first() {
+                Some((Arg::Pos(tag), rest)) => jelement(&jexpr(tag), rest),
+                _ => "document.createElement(\"div\")".into(),
+            }
+        }
         Expr::Ident(f) => format!("{f}({})", a.join(", ")),
+        Expr::Field { base, name } if FNS.with(|m| m.borrow().contains_key(name)) => {
+            let mut all = vec![jexpr(base)];
+            all.extend(a.clone());
+            format!("{name}({})", all.join(", "))
+        }
         Expr::Field { base, name } => match method(name, &jexpr(base), &a) {
             Some(js) => js,
             None => format!("{}.{name}({})", jexpr(base), a.join(", ")),
@@ -1064,13 +1089,14 @@ impl Cx {
 
     /// Emit code that builds `expr` (an element call), returning its var name.
     fn element(&mut self, e: &Expr, out: &mut String) -> String {
-        let is_element = matches!(
-            e,
-            Expr::Call { callee, .. } if matches!(callee.as_ref(), Expr::Ident(t) if is_html_tag(t))
-        );
+        let is_element = is_tag_call(e);
         if !is_element {
             let v = self.fresh();
             let expr = jexpr(e);
+            if contributes_elements(e) {
+                out.push_str(&format!("  const {v} = _node({expr});\n"));
+                return v;
+            }
             out.push_str(&format!("  const {v} = document.createTextNode({expr});\n"));
             if is_dynamic(e) {
                 out.push_str(&format!(
@@ -1145,6 +1171,9 @@ impl Cx {
                     prop,
                     value,
                 } => self.handler(&v, prop, value, out),
+                Arg::Pos(child) if !is_tag_call(child) && contributes_elements(child) => {
+                    out.push_str(&format!("  _append({v}, {});\n", jexpr(child)));
+                }
                 Arg::Pos(child) => {
                     let cv = self.element(child, out);
                     out.push_str(&format!("  {v}.appendChild({cv});\n"));
@@ -1276,6 +1305,26 @@ impl Cx {
              \x20 else if (v === false || v == null) el.removeAttribute(k);\n\
              \x20 else el.setAttribute(k, v);\n\
              }}\n\
+             function _node(x) {{\n\
+             \x20 return x && x.nodeType ? x : document.createTextNode(String(x));\n\
+             }}\n\
+             function _append(p, c) {{\n\
+             \x20 if (c === null || c === undefined) return;\n\
+             \x20 if (Array.isArray(c)) {{ for (const x of c) _append(p, x); return; }}\n\
+             \x20 p.appendChild(_node(c));\n\
+             }}\n\
+             function _el(tag, props, kids) {{\n\
+             \x20 const n = document.createElement(tag);\n\
+             \x20 for (const k of Object.keys(props)) {{\n\
+             \x20   const v = props[k];\n\
+             \x20   if (k === \"class\") n.className = v;\n\
+             \x20   else if (k === \"html\") n.innerHTML = v;\n\
+             \x20   else if (k.startsWith(\"on:\")) n.addEventListener(k.slice(3), _turn(v));\n\
+             \x20   else _attr(n, k, v);\n\
+             \x20 }}\n\
+             \x20 for (const c of kids) _append(n, c);\n\
+             \x20 return n;\n\
+             }}\n\
              function build() {{\n\
              \x20 _depth += 1;\n\
              \x20 try {{\n{build_body}    return {root};\n\
@@ -1321,6 +1370,93 @@ fn event_name(attr: &str) -> Option<&str> {
 /// Is `name` an HTML element tag (so `name(...)` in a view builds a DOM node), as opposed to a text-returning function call used as a child?
 fn is_html_tag(name: &str) -> bool {
     maca_parser::is_ui_element_tag(name)
+        && !FNS.with(|f| f.borrow().contains_key(name))
+        && !declared(name)
+        && !STATE.with(|s| s.borrow().contains(name))
+}
+
+/// `div(…)`: a call the view builds a node from directly, with its attributes bound.
+fn is_tag_call(e: &Expr) -> bool {
+    matches!(e, Expr::Call { callee, .. } if matches!(callee.as_ref(), Expr::Ident(t) if is_html_tag(t)))
+}
+
+/// A view built out of tags, so a call in child position contributes the nodes it made rather than its text.
+fn contributes_elements(e: &Expr) -> bool {
+    match e {
+        Expr::List(_) => true,
+        Expr::Binary {
+            op: BinOp::Concat,
+            lhs,
+            rhs,
+        } => contributes_elements(lhs) || contributes_elements(rhs),
+        Expr::Call { callee, args } => match callee.as_ref() {
+            Expr::Ident(t) if is_html_tag(t) => true,
+            Expr::Ident(t) if t == "element" => true,
+            Expr::Ident(f) => FNS.with(|m| m.borrow().get(f).is_some_and(is_element_ty)),
+            Expr::Field { name, .. } if name == "map" => {
+                args.first().is_some_and(|a| match arg_expr(a) {
+                    Expr::Lambda { body, .. } => contributes_elements(body),
+                    _ => false,
+                })
+            }
+            _ => false,
+        },
+        Expr::If { then, els, .. } => {
+            tail_contributes(then) || els.as_deref().is_some_and(tail_contributes)
+        }
+        Expr::Block(stmts) => tail_contributes(stmts),
+        Expr::Match { arms, .. } => arms.iter().any(|a| contributes_elements(&a.body)),
+        _ => false,
+    }
+}
+
+/// Does the value a block hands back come out of tags?
+fn tail_contributes(stmts: &[Stmt]) -> bool {
+    stmts.iter().any(|s| match s {
+        Stmt::Expr(Expr::Return(Some(e))) => contributes_elements(e),
+        Stmt::Expr(e) => contributes_elements(e),
+        _ => false,
+    })
+}
+
+/// `Element` or `Element[]`: the signature that says a function hands back nodes.
+fn is_element_ty(t: &Option<Type>) -> bool {
+    match t {
+        Some(Type::Name(segs)) => segs.last().is_some_and(|n| n == "Element"),
+        Some(Type::Array(inner)) | Some(Type::Paren(inner)) => {
+            is_element_ty(&Some((**inner).clone()))
+        }
+        _ => false,
+    }
+}
+
+/// `tag(attr=value, …, child, …)` as a value: one call that builds the node.
+fn jelement(tag: &str, args: &[Arg]) -> String {
+    let mut props: Vec<String> = Vec::new();
+    let mut kids: Vec<String> = Vec::new();
+    for a in args {
+        match a {
+            Arg::Named { name, value } => {
+                let key = match event_name(name) {
+                    Some(ev) => format!("on:{ev}"),
+                    None => name.clone(),
+                };
+                props.push(format!("{key:?}: {}", jexpr(value)));
+            }
+            Arg::Directive {
+                kind: Dir::On,
+                prop,
+                value,
+            } => props.push(format!("\"on:{prop}\": {}", jexpr(value))),
+            Arg::Directive { prop, value, .. } => props.push(format!("{prop:?}: {}", jexpr(value))),
+            Arg::Pos(e) => kids.push(jexpr(e)),
+        }
+    }
+    format!(
+        "_el({tag}, {{ {} }}, [{}])",
+        props.join(", "),
+        kids.join(", ")
+    )
 }
 
 const HTML: &str = "<!doctype html>\n\

@@ -231,7 +231,16 @@ and which manifest answers.
   state (or calls a function) re-renders; a text-returning call used as a child
   (`span(fmt(x))`) is a text node, not an element (only known HTML tags build
   elements); `html=expr` sets `innerHTML`; transpiled functions resolve state
-  names to `state.x` so handlers can read and mutate state. The browser
+  names to `state.x` so handlers can read and mutate state.
+  **A child may be a list of elements.** `Element` is the type of a rendered
+  element (a `str` natively, a DOM node on `js`) and `Element[]` a list of
+  them; each element of the list is a child in its place, `++` joins two such
+  lists, and `[]` contributes *nothing at all* on either target, which is what
+  replaces a `class="hidden"` ternary. A function says so in its signature
+  (`-> Element` / `-> Element[]`), which is what tells the compiler the call
+  hands back nodes rather than text.
+  (`crates/driver/tests/programs/ui.maca`,
+  `crates/backend_js/tests/element_lists.rs`.) The browser
   playground itself is a single Maca file (`apps/playground/playground.maca`)
   compiled by this backend, carrying its styles and the WebAssembly-bridge
   runtime inline via `import css`/`import js` raw-string blocks.

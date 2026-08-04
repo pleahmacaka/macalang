@@ -223,6 +223,39 @@ heading(level: int, text: str) -> str =>
 It also reaches `<main>`, which no call can name, because every program defines
 `main` and the definition wins.
 
+## Children that are lists
+
+A positional argument may be an `Element[]` rather than an `Element`, and then
+each element of the list is a child in its place. `[]` contributes nothing at
+all: no node on `js`, no markup natively.
+
+| Form | Contributes |
+|---|---|
+| `[a, b]` | two children, in order |
+| `xs.map(f)` | one child per element |
+| `a ++ b` | the children of both lists |
+| `[]` | nothing |
+| a call declared `-> Element[]` | whatever that view returned |
+| a call declared `-> Element` | that one element |
+
+`Element` is the type of a rendered element: `str` natively, a DOM node on
+`js`. The declaration is what the compiler reads, so a view that hands back
+nodes says so:
+
+```maca
+toolbar(locked: bool) -> Element[] {
+    if locked {
+        return []
+    }
+
+    [div(class="toolbar", button("edit"))]
+}
+```
+
+A function returning `str` is unaffected: it is still a child rendered as text.
+This is what replaces a `class="hidden"` ternary; the node is not built rather
+than built and hidden.
+
 ## Styles are generated, not linked
 
 Classes are written in `class=` using Tailwind's utility names, and the compiler
