@@ -117,6 +117,13 @@ test_a_tag_nothing_shadows_still_works() {
     assert_eq(span("tag"), "<span>tag</span>", "no definition in the way")
 }
 
+test_a_local_named_like_a_function_is_still_a_value_in_an_attribute() {
+    code = "note"
+
+    assert_eq(a(data-kind=code, "x"), "<a data-kind=\"note\">x</a>",
+              "the local, not the function of the same name")
+}
+
 test_a_hyphenated_name_is_a_custom_element() {
     assert_eq(iconify-icon(class="big", icon="lucide:lock"),
               "<iconify-icon class=\"big\" icon=\"lucide:lock\"></iconify-icon>",

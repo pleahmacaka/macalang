@@ -3343,6 +3343,17 @@ impl<'a> Cx<'a> {
         (format!("maca_element({tag}, {attrs}, {kids})"), CTy::Str)
     }
 
+    /// Is this attribute value a function rather than a value, which only a live DOM has anything to do with?
+    fn is_handler(&self, env: &Env, value: &Expr) -> bool {
+        match value {
+            Expr::Lambda { .. } => true,
+            Expr::Ident(n) => {
+                self.fns.contains_key(n) && lookup(env, n).is_none() && !self.let_names.contains(n)
+            }
+            _ => false,
+        }
+    }
+
     /// Lower an element call's arguments into (attribute pieces, child pieces).
     fn html_args(&mut self, env: &mut Env, args: &[Arg]) -> (Vec<Piece>, Vec<Piece>) {
         let mut attrs: Vec<Piece> = Vec::new();
@@ -3350,6 +3361,13 @@ impl<'a> Cx<'a> {
         for a in args {
             match a {
                 Arg::Named { name, value } => {
+                    if self.is_handler(env, value) {
+                        self.problem(format!(
+                            "`{name}=` is given a function, and there is nothing here to \
+                             call it: markup is text. Build this with `--target js`"
+                        ));
+                        continue;
+                    }
                     let (v, t) = self.expr(env, value, Some(&CTy::Str));
                     if name == "class" {
                         self.note_classes(value);

@@ -26,22 +26,31 @@ fn ui_renders_to_html_natively() {
 /// A DOM handler cannot work in a string, and says so rather than emitting markup that silently does nothing.
 #[test]
 fn event_handlers_are_rejected_on_the_native_target() {
+    for (case, attr) in [
+        ("directive", "on:click=go"),
+        ("vanilla", "onclick=go"),
+        ("lambda", "onclick=(e => 0)"),
+        ("two-way", "value=(v => 0)"),
+    ] {
+        refuses(case, attr);
+    }
+}
+
+/// Build a one-attribute page natively and report what the compiler said about it.
+fn refuses(case: &str, attr: &str) {
     if unsupported_host() {
         return;
     }
 
     let dir = std::env::temp_dir().join("maca-native-ui");
     std::fs::create_dir_all(&dir).expect("scratch dir");
-    let file = dir.join("handler.maca");
+    let file = dir.join(format!("handler-{case}.maca"));
     std::fs::write(
         &file,
-        r#"go() -> int => 0
-
-main() -> int {
-    info(button(on:click=go, "press"))
-    0
-}
-"#,
+        format!(
+            "go() -> int => 0\n\n\
+             main() -> int {{\n    info(button({attr}, \"press\"))\n    0\n}}\n"
+        ),
     )
     .expect("write source");
 
@@ -54,9 +63,40 @@ main() -> int {
         String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
     assert!(
         !out.status.success(),
-        "an event handler should not compile natively:\n{text}"
+        "`{attr}` should not compile natively:\n{text}"
     );
-    assert!(text.contains("--target js"), "unhelpful message:\n{text}");
+    assert!(
+        text.contains("--target js"),
+        "`{attr}` gave an unhelpful message:\n{text}"
+    );
+}
+
+/// A quoted `onclick` is what HTML has always had, and it is text like any other attribute.
+#[test]
+fn a_quoted_handler_is_still_an_ordinary_attribute() {
+    if unsupported_host() {
+        return;
+    }
+
+    let dir = std::env::temp_dir().join("maca-native-ui");
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let file = dir.join("inline.maca");
+    std::fs::write(
+        &file,
+        "main() -> int {\n    info(button(onclick=\"alert(1)\", \"press\"))\n    0\n}\n",
+    )
+    .expect("write source");
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args(["run", &file.to_string_lossy()])
+        .output()
+        .expect("spawn maca run");
+    let said = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(
+        out.status.success() && said.contains("onclick=\"alert(1)\""),
+        "a string belongs in the markup:\n{said}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 /// The source `crates/backend_js/tests/view_state.rs` repaints: building it goes to the target that has a DOM, and forcing the other one refuses rather than printing a page whose button is dead.
