@@ -215,6 +215,34 @@ maca.set("locked", local_start("homepage.locked", maca.get("locked")));
 `import web/storage` 없이 쓴 `stored(…)`는 무슨 임포트를 더해야 하는지 이름으로
 말해 주는 빌드 오류입니다.
 
+### 독자가 고른 파일
+
+`web/file`에는 호출이 둘 있습니다. `download(name, text)`는 파일을 건네고,
+`pick_text(accept)`는 파일을 청해서 그 글을 답으로 줍니다.
+
+```maca
+import { pick_text } from web/file
+
+import_config() {
+    text = await pick_text("application/json")
+
+    if text == "" {
+        return
+    }
+
+    next: Config = decode(text)
+    commit(next, "imported")
+}
+```
+
+고르개는 곧바로 답할 수 없으므로 그 호출은 중단점이고, 그것을 읽는 것이
+`await`입니다. 독자가 아무것도 고르지 않으면 `""`입니다. `import_config`는
+스스로를 async라 선언하지 않으며, 그것을 부르는 단추도 그렇습니다.
+[async는 색이 아니라 효과입니다](a7-effects.md). JS 대상에서는 어느 함수가
+`await`에 닿는지를 컴파일러가 알아내어 꼭 그 함수들에만 `async`를 붙이므로,
+이 핸들러도 다른 모든 핸들러와 똑같이 씁니다. 기다리기 전에 쓴 것은 기다리는
+동안 화면에 있고, 그 뒤에 쓴 것은 답이 닿을 때 다시 그려집니다.
+
 ### 브라우저 밖에서
 
 구현이 `import js` 블록인 모듈은 다른 어디에서도 돌릴 것이 없습니다. 그래서 다른

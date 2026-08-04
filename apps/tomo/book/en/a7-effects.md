@@ -77,7 +77,7 @@ the FFI boundary.
 | Target | What a suspension point becomes |
 |---|---|
 | native (C) | `maca_spawn` / `maca_await` / `maca_sleep_ms`: pthread-backed futures in the runtime, so a suspension point is a real thread boundary |
-| JS | the event loop; the same three operations map onto its scheduling |
+| JS | `await`, and an `async function` for every function that reaches one: the compiler works out which those are, so a handler that waits for the reader is written the same as one that does not |
 | playground | evaluated eagerly by the interpreter, so a program's output is the same and its timing is not |
 | Nix (config) | rejected; see below |
 

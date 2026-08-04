@@ -9,8 +9,8 @@ import { safe_name } from web/format
 download(name: str, text: str) -> bool =>
     browser_download(safe_name(name), text)
 
-/// Open the reader's file picker for the kinds `accept` names, and answer whether one was opened.
-ask_text(accept: str, into: str) -> bool
+/// The text of a file the reader picks among the kinds `accept` names, or "" if they pick none.
+pick_text(accept: str) -> str
 
 /// Hand `text` to the browser under a name it has already been told is safe.
 browser_download(name: str, text: str) -> bool
@@ -29,17 +29,18 @@ maca.provide({
     URL.revokeObjectURL(url);
     return true;
   },
-  ask_text: (accept, into) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = accept;
-    input.addEventListener("change", () => {
-      const file = input.files && input.files[0];
-      if (!file) return;
-      file.text().then((text) => maca.set(into, text));
-    });
-    input.click();
-    return true;
-  },
+  pick_text: (accept) =>
+    new Promise((settle) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = accept;
+      input.addEventListener("cancel", () => settle(""));
+      input.addEventListener("change", () => {
+        const file = input.files && input.files[0];
+        if (!file) return settle("");
+        file.text().then(settle, () => settle(""));
+      });
+      input.click();
+    }),
 });
 """

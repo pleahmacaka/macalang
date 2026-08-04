@@ -53,6 +53,7 @@ pub fn emit(m: &Module) -> JsOut {
     set_json_fns(m);
     set_declared_tys(m);
     set_record_fields(m);
+    set_suspending(m);
 
     for item in &m.items {
         collect_class_strings(item, &mut cx.classes);
@@ -256,16 +257,25 @@ function _touch(name) {
   if (_depth === 0) _flush();
 }
 // One turn: everything a handler assigns is collected, and the view is repainted
-// once, when the handler returns.
+// once, when the handler returns. A handler that suspends gets a turn per stretch
+// between suspensions, so what it wrote before waiting is on screen while it waits.
 function _turn(f) {
   return function () {
     _depth += 1;
+    let out;
     try {
-      return f.apply(this, arguments);
+      out = f.apply(this, arguments);
     } finally {
       _depth -= 1;
       if (_depth === 0) _flush();
     }
+    if (out !== null && typeof out === "object" && typeof out.then === "function") {
+      return out.then((v) => {
+        if (_depth === 0) _flush();
+        return v;
+      });
+    }
+    return out;
   };
 }
 function _run(bs) {
@@ -609,7 +619,11 @@ fn emit_fn(f: &FnDef) -> String {
     SCOPES.with(|s| {
         s.borrow_mut().pop();
     });
-    format!("function {}({params}) {{\n{body}\n}}", f.name)
+    let waits = match suspends(&f.name) {
+        true => "async ",
+        false => "",
+    };
+    format!("{waits}function {}({params}) {{\n{body}\n}}", f.name)
 }
 
 /// Where the value of a statement-position expression has to end up.
@@ -810,6 +824,8 @@ thread_local! {
     static DECLARED_TYS: std::cell::RefCell<BTreeMap<String, String>> = const { std::cell::RefCell::new(BTreeMap::new()) };
     /// Each record type's fields, in the order it declares them.
     static RECORD_FIELDS: std::cell::RefCell<BTreeMap<String, Vec<String>>> = const { std::cell::RefCell::new(BTreeMap::new()) };
+    /// The functions that suspend, so a call to one waits and the caller suspends in turn.
+    static SUSPENDING: std::cell::RefCell<BTreeSet<String>> = const { std::cell::RefCell::new(BTreeSet::new()) };
     /// What the module asked for and could not be given.
     static PROBLEMS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
 }
@@ -846,6 +862,70 @@ fn set_declared_tys(m: &Module) {
         }
     }
     DECLARED_TYS.with(|s| *s.borrow_mut() = out);
+}
+
+/// Which functions suspend: the ones that `await`, and then the ones that call those, until nothing more is added.
+fn set_suspending(m: &Module) {
+    let mut out: BTreeSet<String> = m
+        .items
+        .iter()
+        .filter_map(|it| match it {
+            Stmt::Fn(f) if fn_awaits(f) => Some(f.name.clone()),
+            _ => None,
+        })
+        .collect();
+    loop {
+        let grown: BTreeSet<String> = m
+            .items
+            .iter()
+            .filter_map(|it| match it {
+                Stmt::Fn(f) if !out.contains(&f.name) && fn_calls_any(f, &out) => {
+                    Some(f.name.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        if grown.is_empty() {
+            break;
+        }
+        out.extend(grown);
+    }
+    SUSPENDING.with(|s| *s.borrow_mut() = out);
+}
+
+fn suspends(name: &str) -> bool {
+    SUSPENDING.with(|s| s.borrow().contains(name))
+}
+
+/// A call to a function that suspends is the value it settles on, so the caller waits for it, which is what makes the caller suspend too.
+fn waited(name: &str, call: String) -> String {
+    match suspends(name) {
+        true => format!("(await {call})"),
+        false => call,
+    }
+}
+
+/// Does this definition write `await` anywhere in its body?
+fn fn_awaits(f: &FnDef) -> bool {
+    fn_body_has(f, &|e| matches!(e, Expr::Await(_)))
+}
+
+/// Does this definition call one of these names?
+fn fn_calls_any(f: &FnDef, names: &BTreeSet<String>) -> bool {
+    fn_body_has(f, &|e| match e {
+        Expr::Call { callee, .. } => match callee {
+            c if matches!(&**c, Expr::Ident(n) if names.contains(n)) => true,
+            c => matches!(&**c, Expr::Field { name, .. } if names.contains(name)),
+        },
+        _ => false,
+    })
+}
+
+fn fn_body_has(f: &FnDef, want: &dyn Fn(&Expr) -> bool) -> bool {
+    let mut hit = false;
+    maca_parser::ast::walk_stmt(&Stmt::Fn(f.clone()), &mut |e| hit = hit || want(e));
+
+    hit
 }
 
 /// The order each record type declares its fields in, which is the order every value of it is built and written in.
@@ -1250,7 +1330,8 @@ fn jexpr(e: &Expr) -> String {
 
             out
         }
-        Expr::Await(x) | Expr::Spawn(x) => jexpr(x),
+        Expr::Await(x) => format!("(await {})", jexpr(x)),
+        Expr::Spawn(x) => jexpr(x),
         Expr::Lambda { params, body, .. } => {
             let ps = params
                 .iter()
@@ -1545,13 +1626,13 @@ fn jcall(callee: &Expr, args: &[Arg]) -> String {
                 _ => "document.createElement(\"div\")".into(),
             }
         }
-        Expr::Ident(f) => format!("{f}({})", a.join(", ")),
+        Expr::Ident(f) => waited(f, format!("{f}({})", a.join(", "))),
         Expr::Field { base, name }
             if FNS.with(|m| m.borrow().contains_key(name)) && !method_beats_ufcs(name) =>
         {
             let mut all = vec![jexpr(base)];
             all.extend(a.clone());
-            format!("{name}({})", all.join(", "))
+            waited(name, format!("{name}({})", all.join(", ")))
         }
         Expr::Field { base, name } => match method(name, &jexpr(base), &a) {
             Some(js) => js,

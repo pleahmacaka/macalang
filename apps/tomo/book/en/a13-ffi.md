@@ -223,6 +223,35 @@ declared functions. A program that only wants the sugar never calls them, and
 `stored(…)` without `import web/storage` is a build error naming the import to
 add.
 
+### A file the reader picks
+
+`web/file` has two calls. `download(name, text)` offers a file; `pick_text(accept)`
+asks for one, and it answers with the text:
+
+```maca
+import { pick_text } from web/file
+
+import_config() {
+    text = await pick_text("application/json")
+
+    if text == "" {
+        return
+    }
+
+    next: Config = decode(text)
+    commit(next, "imported")
+}
+```
+
+The picker cannot answer at once, so the call is a suspension point and `await`
+is what reads it: `""` when the reader picks nothing. `import_config` never
+declares itself async, and neither does the button that calls it;
+[async is an effect, not a colour](a7-effects.md). On the JS target the compiler
+works out which functions reach an `await` and writes `async` on exactly those,
+so the handler is written the way every other handler is. What a handler wrote
+before it waited is on screen while it waits, and what it writes afterwards
+repaints when it lands.
+
 ### Off the browser
 
 A module whose implementation is an `import js` block has nothing to run

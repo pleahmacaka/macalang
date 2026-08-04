@@ -38,6 +38,7 @@ function fire(node, event, value) {
 }
 function counted(f) { paints = 0; f(); return paints; }
 function err(f) { try { f(); return "no throw"; } catch (e) { return String(e.message); } }
+function settled() { return new Promise((r) => setTimeout(r, 0)); }
 "#;
 
 /// Emit `src`, mount it into the DOM stub under Node, then evaluate each expression in `calls` and return one output line per expression.
@@ -80,11 +81,11 @@ fn node(src: &str, calls: &[&str]) -> (std::process::Output, String) {
         .unwrap();
 
     let mut d = String::from(DOM);
-    d.push_str("const m = require(\"./app.js\");\nwith (m) {\n");
+    d.push_str("const m = require(\"./app.js\");\n(async () => {\nwith (m) {\n");
     for c in calls {
-        d.push_str(&format!("  console.log(String({c}));\n"));
+        d.push_str(&format!("  console.log(String(await ({c})));\n"));
     }
-    d.push_str("}\n");
+    d.push_str("}\n})();\n");
     std::fs::File::create(dir.join("run.js"))
         .unwrap()
         .write_all(d.as_bytes())
@@ -487,6 +488,59 @@ fn a_computed_binding_stays_reactive_after_the_page_starts() {
     );
     assert_eq!(out[0], "dark|work|false|2|hi home|6");
     assert_eq!(out[1], "dark|work|false|2|hi home|9");
+}
+
+/// A handler that waits for the reader, which is what a file picker is.
+const WAITING: &str = "\
+note = \"\"
+count = 0
+
+pick() -> str
+
+taken(text: str) {
+    note = text
+    count = count + 1
+}
+
+load() {
+    text = await pick()
+
+    if text == \"\" {
+        note = \"nothing\"
+
+        return
+    }
+
+    taken(text)
+}
+
+main() -> Element =>
+    div(
+        button(onclick=load, \"open\")
+        span(note)
+        span(\"{count}\")
+    )
+
+import js \"\"\"
+let settle = null;
+globalThis.answer = (t) => settle(t);
+maca.provide({ pick: () => new Promise((s) => { settle = s; }) });
+\"\"\"
+";
+
+#[test]
+fn a_handler_that_waits_for_an_answer_carries_on_when_it_arrives() {
+    let out = run(
+        WAITING,
+        &[
+            "(fire(el(\"button\"), \"click\"), view())",
+            "(answer(\"here\"), settled().then(view))",
+            "state.count",
+        ],
+    );
+    assert_eq!(out[0], "open||0", "nothing is written while it waits");
+    assert_eq!(out[1], "open|here|1", "the view follows once the answer lands");
+    assert_eq!(out[2], "1");
 }
 
 #[test]
