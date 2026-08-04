@@ -1,7 +1,3 @@
-// A recursive *record* type: a node holds a list of child nodes of its own
-// type. The C backend forward-declares the struct so the `Tree`/`TreeArr`
-// definition cycle resolves. `size` walks the tree; `main` builds a small one.
-
 Tree = {
     label: str
     kids:  Tree[]

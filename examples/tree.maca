@@ -1,7 +1,3 @@
-// Recursive sum types: a binary tree and a linked list. Self-referential
-// payloads are boxed (heap pointers) so the tagged union stays finite; pattern
-// matches transparently dereference them.
-
 Tree = Leaf(int) | Node(Tree, Tree)
 
 total(t: Tree) -> int {

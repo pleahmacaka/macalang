@@ -1,13 +1,3 @@
-// A function that takes any number of trailing arguments.
-//
-// `...rest: int` is written with the type of *one* argument, because that is
-// what a call site writes. Inside the body `rest` is an `int[]`, so it is a
-// list like any other. The call site is what builds it, which is why a variadic
-// call and the explicit-list call it stands for compile to the same thing.
-//
-// The variadic parameter comes last, and it is the only one: everything after
-// it would have nothing left to bind.
-
 total(...rest: int) -> int {
     n = 0
     for v in rest {
@@ -16,10 +6,6 @@ total(...rest: int) -> int {
     n
 }
 
-// A fixed parameter in front still binds positionally; the rest collects. Note
-// what is *not* here: there is no way to hand an existing list to a variadic,
-// because the collection happens at the call site. Take an `int[]` when the
-// caller already has one.
 labelled(name: str, ...rest: int) -> str {
     n = 0
     for v in rest {

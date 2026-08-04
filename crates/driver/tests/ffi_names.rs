@@ -1,9 +1,3 @@
-//! A binding named after a foreign namespace is still a binding.
-//!
-//! The values are asserted in Maca (`tests/programs/ffi_names.maca`); this side
-//! runs it and checks the count, because a suite that reports "no tests found"
-//! also exits zero.
-
 mod common;
 use common::*;
 
@@ -36,8 +30,6 @@ fn a_binding_shadows_a_foreign_namespace_of_the_same_name() {
 
 #[test]
 fn a_genuine_foreign_call_still_reaches_the_library() {
-    // The shadowing rule must not have closed the door it was guarding: with no
-    // binding called `c`, `c.something(…)` is still the FFI namespace.
     if !have("cc") {
         eprintln!("skipping: no cc");
         return;

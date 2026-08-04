@@ -1,6 +1,3 @@
-//! JVM target: `maca build --target jvm` emits Java that compiles and runs.
-//! Skips when there's no JDK (`javac`/`java`).
-
 mod common;
 use common::*;
 
@@ -56,7 +53,6 @@ fn fabric_mod_implements_modinitializer() {
     let dir = std::env::temp_dir().join("maca-fabric-test");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("stub/net/fabricmc/api")).unwrap();
-    // a stub of the Fabric interface, so javac can resolve it
     std::fs::write(
         dir.join("stub/net/fabricmc/api/ModInitializer.java"),
         "package net.fabricmc.api;\npublic interface ModInitializer { void onInitialize(); }\n",
@@ -73,7 +69,6 @@ fn fabric_mod_implements_modinitializer() {
             .success()
     );
 
-    // the mod source (mirrors apps/mcmod/mod.maca)
     let modsrc = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/mcmod/mod.maca");
     let out = dir.join("out");
     let build = Command::new(maca())
@@ -96,7 +91,6 @@ fn fabric_mod_implements_modinitializer() {
     );
     assert!(out.join("Mod.class").exists(), "Mod.class not produced");
 
-    // invoke onInitialize through the ModInitializer interface
     std::fs::write(
         out.join("Runner.java"),
         "public class Runner { public static void main(String[] a) {\n  net.fabricmc.api.ModInitializer m = new Mod.ExampleMod();\n  m.onInitialize();\n} }\n",

@@ -1,7 +1,3 @@
-// Maca identifiers that happen to be C reserved words (`double`, `new`, `long`,
-// `default`, `class`, …) compile correctly: the native backend escapes them so
-// the emitted C stays valid. UFCS method calls resolve their real return type.
-
 Config = {
     default: int
     class: str

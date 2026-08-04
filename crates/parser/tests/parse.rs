@@ -61,8 +61,6 @@ fn roundtrip_dot() {
     roundtrip("dot.maca");
 }
 
-// ---- targeted grammar cases ---------------------------------------------
-
 fn clean(src: &str) -> maca_parser::Module {
     let p = parse(src);
     assert!(p.errors.is_empty(), "unexpected errors: {:?}", p.errors);
@@ -72,7 +70,6 @@ fn clean(src: &str) -> maca_parser::Module {
 #[test]
 fn ctor_vs_for_header_brace() {
     use maca_parser::{Expr, Stmt};
-    // `for t in xs { .. }`: the `{` is the body, not an `xs { .. }` ctor.
     let m = clean("f() {\n    for t in xs {\n        g(t)\n    }\n}");
     let Stmt::Fn(f) = &m.items[0] else { panic!() };
     let Some(maca_parser::FnBody::Block(b)) = &f.body else {
@@ -100,7 +97,6 @@ fn roundtrip_tour() {
 #[test]
 fn range_binds_looser_than_arithmetic() {
     use maca_parser::{BinOp, Expr, Stmt};
-    // `0..n - 1` must read as `0 .. (n - 1)`, not `(0..n) - 1`.
     let m = clean("f(n: int) => 0..n - 1");
     let Stmt::Fn(f) = &m.items[0] else { panic!() };
     let Some(maca_parser::FnBody::Expr(e)) = &f.body else {
@@ -116,10 +112,7 @@ fn range_binds_looser_than_arithmetic() {
     );
 }
 
-/// `(T, U) -> R` is a type. A function passed as an argument still needs no
-/// annotation (an unannotated parameter that is called in the body is one),
-/// but a function *kept* in a record field is declared before anything calls
-/// it, so there has to be a way to write it down.
+/// `(T, U) -> R` is a type.
 #[test]
 fn a_function_type_is_surface_syntax() {
     let p = parse("f(pred: (str) -> bool) -> int => 0\n");
@@ -133,14 +126,11 @@ fn a_function_type_is_surface_syntax() {
     assert_eq!(ps.len(), 1);
     assert!(matches!(&**r, Type::Name(n) if n == &["bool".to_string()]));
 
-    // and it round-trips through the printer
     let printed = maca_parser::print_module(&p.module);
     assert!(printed.contains("(str) -> bool"), "{printed}");
 }
 
-/// The parentheses are not optional and a list of types is not a type. Both
-/// have to be refusals rather than silence, because the shape they are nearest
-/// to, a grouped type, is one the parser accepts.
+/// The parentheses are not optional and a list of types is not a type.
 #[test]
 fn a_type_list_without_an_arrow_is_refused() {
     assert!(!parse("f(x: (str, int)) -> int => 0\n").errors.is_empty());
@@ -151,9 +141,6 @@ fn a_type_list_without_an_arrow_is_refused() {
 
 #[test]
 fn malformed_params_terminate() {
-    // The parser must report errors and *terminate* rather than spin forever
-    // (regression: the param loop used to make no progress and OOM). The
-    // playground parses arbitrary user input, so robustness here matters.
     let _ = parse("g(a: , , ->) {}\n");
     let _ = parse("h(/ <io,,, > ) => 0\n");
     let _ = parse("k(f: (,) -> ) => 0\n");
@@ -179,8 +166,6 @@ fn ternary_is_not_propagate() {
 #[test]
 fn match_guard_arm() {
     use maca_parser::{Expr, Stmt};
-    // `_ if cond => body`: the guard must not swallow the arm's `=>` as a
-    // lambda arrow.
     let m = clean(
         "f(x: int) -> int =>\n    match true {\n        _ if x > 0 => 1\n        _ => 0\n    }\n",
     );
@@ -266,9 +251,6 @@ fn roundtrip_generic_record() {
 
 #[test]
 fn malformed_input_does_not_hang() {
-    // a reserved word where a field name is expected used to loop forever.
-    // (`from` is no longer one, because `{ from }` is a perfectly good
-    // shorthand field now, so the cases here use words that still are.)
     for src in [
         "f(p: P) -> int { match p { { match } => 1 } }\n",
         "R = {\n    while: int\n}\n",
@@ -276,7 +258,6 @@ fn malformed_input_does_not_hang() {
         "x = ) ( } {\n",
     ] {
         let p = parse(src);
-        // it must terminate and report errors, not run out of memory
         assert!(!p.errors.is_empty(), "expected parse errors for {src:?}");
     }
 }
@@ -323,7 +304,6 @@ fn roundtrip_collections() {
 
 #[test]
 fn await_and_spawn_bind_tighter_than_binary() {
-    // `await a + await b` must parse as `(await a) + (await b)`.
     let m = parse("f() -> int => await a + await b\n").module;
     let maca_parser::Stmt::Fn(f) = &m.items[0] else {
         panic!("not a fn")
@@ -346,7 +326,6 @@ fn await_and_spawn_bind_tighter_than_binary() {
 
 #[test]
 fn arrow_body_can_be_a_comma_list() {
-    // `make() -> int[] => 1, 2, 3`: a bracketless list is a valid arrow body
     let m = clean("make() -> int[] => 1, 2, 3\n");
     let maca_parser::Stmt::Fn(f) = &m.items[0] else {
         panic!("not a fn")
@@ -362,7 +341,6 @@ fn arrow_body_can_be_a_comma_list() {
 
 #[test]
 fn index_is_postfix_not_a_list() {
-    // `xs[i]` after an expression is a subscript; a leading `[..]` is a list
     let m = clean("f(xs: int[]) -> int => xs[0]\n");
     let maca_parser::Stmt::Fn(f) = &m.items[0] else {
         panic!("not a fn")
@@ -378,8 +356,6 @@ fn index_is_postfix_not_a_list() {
 
 #[test]
 fn a_lambda_can_declare_its_return_type() {
-    // `(a, b) -> T => …`. The annotation is what a trait-impl method needs when
-    // it has to match a signature the compiler cannot read.
     let m = parsed("use_it() -> int {\n    f = (a, b) -> Element => g(a, b)\n    0\n}\n");
     let Stmt::Fn(fd) = &m.items[0] else { panic!() };
     let Some(FnBody::Block(stmts)) = &fd.body else {
@@ -394,7 +370,6 @@ fn a_lambda_can_declare_its_return_type() {
     assert_eq!(params.len(), 2);
     assert!(ret.is_some(), "an annotation was written");
 
-    // and it survives a print / re-parse round trip
     let printed = print_module(&m);
     let again = parse(&printed);
     assert!(again.errors.is_empty(), "{printed}: {:?}", again.errors);
@@ -428,9 +403,7 @@ fn a_lambda_parameter_can_declare_its_type() {
     assert!(params[1].ty.is_none(), "the second is not");
 }
 
-/// A top-level `name = (…) => …` *is* a function definition. There is nothing
-/// to capture at module scope, and lowering it as a closure produced a constant
-/// no call site could reach.
+/// A top-level `name = (…) => …` *is* a function definition.
 #[test]
 fn a_top_level_lambda_binding_becomes_a_function() {
     let m = parsed("twice = (x) -> int => x * 2\n");
@@ -460,8 +433,6 @@ fn a_local_lambda_binding_stays_a_lambda() {
 
 #[test]
 fn an_arrow_after_a_call_is_still_a_signature_not_a_lambda() {
-    // `-> T` only heads a lambda when a `=>` follows the type. A function
-    // definition must keep parsing as one.
     let m = parsed("f(a: int) -> int => a\n");
     assert!(
         matches!(&m.items[0], Stmt::Fn(_)),
@@ -477,36 +448,15 @@ fn parsed(src: &str) -> maca_parser::Module {
     p.module
 }
 
-// ---- a `{` after a function's `=>` --------------------------------------
-
 /// `f() -> int => { a = 1 \n a }` is a block, not a record literal.
-///
-/// It was read as a record: the fields came out as `a = 1` and a punned `a`, so
-/// the JS backend emitted `return { a: 1, a: a };` (a duplicate key and a
-/// reference to an `a` that was never declared) and the native path reported a
-/// mismatch against `{ a: any }`, a record the author never wrote.
-///
-/// The arrow form is parsed straight into `FnBody::Block`, because
-/// `f() -> T => { … }` and `f() -> T { … }` are the same function; every back
-/// end already lowers a block body, and the printer prints back the spelling
-/// without the spare `=>`.
 #[test]
 fn an_arrow_body_that_binds_and_then_reads_a_name_is_a_block() {
     for src in [
         "f() -> int => {\n    a = 1\n    a\n}\n",
         "f() -> int => {\n    a = 1\n    b = a + 1\n    a + b\n}\n",
-        // one statement, no binding at all
         "f() -> int => {\n    41 + 1\n}\n",
-        // A name bound and then reassigned. Every entry here is a `name =
-        // value`, so the repeated name is the only thing that rules the record
-        // out, and it is the only shape where that is true: a block whose last
-        // statement is an assignment has no value to return, so this case
-        // cannot be asserted by running it.
         "f() -> int => {\n    a = 1\n    a = 2\n}\n",
-        // a punned `{ x, y }` is a bare identifier per entry, same as above
         "f(x: int, y: int) -> int => {\n    x\n    y\n}\n",
-        // nothing at all: `{}` is an empty block, and a record with no fields
-        // is not a thing worth having a second spelling for
         "f() -> int => {}\n",
     ] {
         let m = parsed(src);
@@ -521,23 +471,13 @@ fn an_arrow_body_that_binds_and_then_reads_a_name_is_a_block() {
     }
 }
 
-/// The record body the ambiguity is about still works, because a comma
-/// separates record fields and never separates statements.
-///
-/// Only a comma at the brace's *own* depth separates two fields, and only the
-/// matching `}` ends the body. A field value carries commas and braces of its
-/// own, so both of those are load-bearing: counting a nested comma cuts a field
-/// value in half (`tags = [1` then `2]`), and stopping at the first `}` cuts the
-/// body off inside a nested literal. Either way this record stops parsing as
-/// one, so both shapes are here.
+/// The record body the ambiguity is about still works, because a comma separates record fields and never separates statements.
 #[test]
 fn a_comma_separated_arrow_body_is_a_record_literal() {
     for src in [
         "mk() -> Point => { x = 1, y = 2 }\n",
         "mk() -> Point => {\n    x = 1,\n    y = 2\n}\n",
-        // commas inside a field's own brackets and parens
         "mk() -> Point => { x = [1, 2].length(), y = max(3, 4) }\n",
-        // a nested record literal, whose `}` is not this body's
         "mk() -> Line => { a = { x = 1, y = 2 }, b = { x = 3, y = 4 } }\n",
     ] {
         let m = parsed(src);
@@ -552,13 +492,10 @@ fn a_comma_separated_arrow_body_is_a_record_literal() {
     }
 }
 
-/// With every entry a distinct `name = value` and only newlines between them,
-/// both readings hold and neither is taken. Refused by name, with both
-/// spellings, rather than silently picking one.
+/// With every entry a distinct `name = value` and only newlines between them, both readings hold and neither is taken.
 #[test]
 fn an_arrow_body_that_reads_both_ways_is_refused() {
     for src in [
-        // a single field, which is also a single binding statement
         "mk() -> Point => { x = 1 }\n",
         "mk() -> Point => {\n    x = 1\n    y = 2\n}\n",
     ] {
@@ -576,8 +513,7 @@ fn an_arrow_body_that_reads_both_ways_is_refused() {
     }
 }
 
-/// An arrow body that is not a brace at all is untouched, including the
-/// bracketless comma list.
+/// An arrow body that is not a brace at all is untouched, including the bracketless comma list.
 #[test]
 fn arrow_bodies_that_are_not_braces_are_unchanged() {
     for src in [
@@ -596,13 +532,7 @@ fn arrow_bodies_that_are_not_braces_are_unchanged() {
     }
 }
 
-/// The pretty-printer prints an arrow-block body back as a block body, so the
-/// two spellings converge on the one the parser keeps.
-///
-/// This is `print_module`, which is what an editor's format command gets over
-/// the LSP and what `maca.fmt` answers over MCP. `maca fmt` on the command line
-/// is a different thing on purpose: it re-indents the original text, because
-/// the lexer drops comments and a print-based `fmt` would delete them.
+/// The pretty-printer prints an arrow-block body back as a block body, so the two spellings converge on the one the parser keeps.
 #[test]
 fn the_printer_prints_an_arrow_block_body_without_the_arrow() {
     let printed = print_module(&parsed("f() -> int => {\n    a = 1\n    a\n}\n"));
@@ -610,7 +540,6 @@ fn the_printer_prints_an_arrow_block_body_without_the_arrow() {
         printed.contains("f() -> int {") && !printed.contains("=>"),
         "expected a block body, got:\n{printed}"
     );
-    // and the printed form parses to the same thing
     assert_eq!(
         parse(&printed).module,
         parsed("f() -> int {\n    a = 1\n    a\n}\n")

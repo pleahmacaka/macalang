@@ -1,19 +1,3 @@
-// What `profile` promises, run.
-//
-// Colour is off through the whole file: `maca test` is run with `NO_COLOR`,
-// and the escape codes a terminal would get are not what these tests are about.
-// That is why the palette is asked for its codes directly in one test: with
-// colour off there is nothing in the output to read them from. The width
-// assertions are unaffected either way, because a column is a column.
-//
-// Most of the trace tests work from `sample()`, a run whose numbers were
-// worked out on paper first. A self-time test that computes its expectation
-// the way the code does is a test of nothing.
-//
-// Two tests are slower than the rest on purpose: one replays a trace at a
-// quarter speed, which really sleeps, and one takes twenty thousand marks,
-// because the fault it watches for shows up about once in three thousand.
-
 import profile/trace
 import profile/record
 import profile/play
@@ -27,17 +11,6 @@ ReplayLog = "/tmp/maca-test-profile-replay"
 node(n: str, a: int, b: int, d: int, p: int) -> Span =>
     Span { name = n, start = a, end = b, depth = d, parent = p, closed = true }
 
-// The run every tree test measures against:
-//
-//   root  0..110                 self 10   (110 less its three children)
-//     a     0..40                self 30   (40 less b)
-//       b     0..10              self 10
-//     a    40..70                self 30
-//     c    70..100               self 30
-//
-// `a` appears twice, so the summary has a name with two calls; the ten
-// milliseconds between `c` ending and `root` ending are what root kept for
-// itself.
 sample() -> Trace =>
     trace("sample", [
         node("root", 0, 110, 0, -1),
@@ -47,15 +20,12 @@ sample() -> Trace =>
         node("c", 70, 100, 1, 0),
     ])
 
-// A list of span indices, as text. `join` is for lists of strings.
 ids(xs: int[]) -> str {
     parts = xs.map(v => str(v))
 
     parts.join(",")
 }
 
-// A loop rather than `sleep_ms`, which is a suspension point and would make
-// these tests about the scheduler.
 burn(ms: int) -> int {
     until = now_ms() + ms
     spins = 0
@@ -64,8 +34,6 @@ burn(ms: int) -> int {
     }
     spins
 }
-
-// ---- the trace as a tree --------------------------------------------------
 
 test_a_span_knows_how_long_it_lasted() {
     assert_eq(str(duration(node("x", 5, 17, 0, -1))), "12", "17 less 5")
@@ -89,9 +57,6 @@ test_an_empty_trace_answers_every_question_with_nothing() {
     assert_eq(str(origin(empty)), "0", "and it began at zero")
 }
 
-// A trace that begins somewhere other than zero: one assembled by hand, or
-// read back from a file written by something that did not rebase. Every
-// question about its extent has to be answered from its own numbers.
 test_a_trace_that_did_not_begin_at_zero_is_measured_from_where_it_did() {
     late = trace("late", [
         node("a", 1000, 1010, 0, -1),
@@ -102,9 +67,6 @@ test_a_trace_that_did_not_begin_at_zero_is_measured_from_where_it_did() {
     assert_eq(str(wall(late)), "30", "and lasted thirty, not a thousand and thirty")
 }
 
-// Recording appends spans in the order they opened, so the earliest start is
-// the first span's. Nothing else guarantees that, and scaling a chart from the
-// wrong end draws every bar before it off the left of the page.
 test_the_run_begins_at_the_earliest_start_not_the_first_one_listed() {
     jumbled = trace("jumbled", [node("b", 50, 60, 0, -1), node("a", 0, 10, 0, -1)])
 
@@ -117,10 +79,6 @@ test_roots_are_the_spans_inside_nothing() {
     assert_eq(str(roots(sample()).get(0)), "0", "and it is the first span")
 }
 
-// A truncated file, or a trace stitched together out of two, can leave a span
-// pointing at an index that is not there. It used to be drawn by the chart and
-// never mentioned by the timeline: one run, two views, no complaint from
-// either.
 test_a_span_whose_parent_is_not_there_is_treated_as_a_root() {
     adrift = trace("adrift", [
         node("kept", 0, 10, 0, -1),
@@ -132,8 +90,6 @@ test_a_span_whose_parent_is_not_there_is_treated_as_a_root() {
     assert_eq(str(child_time(adrift, 0)), "0", "and `kept` is charged for neither")
 }
 
-// The same rule, doing the other job it is there for: a parent index may only
-// point backwards, so no trace can describe a loop for the walk to fall into.
 test_a_span_cannot_be_its_own_parent() {
     knot = trace("knot", [node("self", 0, 5, 0, 0)])
 
@@ -175,8 +131,6 @@ test_self_time_is_the_duration_a_span_did_not_hand_to_a_child() {
     assert_eq(str(self_time(sample(), 4)), "30", "c had no children")
 }
 
-// Every millisecond belongs to exactly one span (the innermost one running at
-// the time), so the self times have to add up to the run.
 test_self_times_add_up_to_the_whole_run() {
     t = sample()
     total = self_time(t, 0) + self_time(t, 1) + self_time(t, 2)
@@ -210,8 +164,6 @@ test_find_span_answers_with_minus_one_rather_than_guessing() {
     assert_eq(str(find_span(sample(), "a")), "1", "the first of two")
     assert_eq(str(find_span(sample(), "absent")), "-1", "nothing named that")
 }
-
-// ---- writing and reading --------------------------------------------------
 
 test_a_trace_survives_the_round_trip_intact() {
     there = to_json(sample())
@@ -252,8 +204,6 @@ test_text_that_is_not_a_trace_reads_as_an_empty_one() {
     assert_eq(str(span_count(from_json(to_json(trace("e", []))))), "0",
               "and an empty trace round-trips to an empty trace")
 }
-
-// ---- recording ------------------------------------------------------------
 
 test_a_recorder_starts_with_nothing_in_it() {
     r = recorder("run")
@@ -322,8 +272,6 @@ test_span_closes_its_own_region_and_whatever_the_body_left_open() {
 
 leave_one_open(r: Rec) -> Rec => r.start("left-open")
 
-// An extra `stop` must not leave the recorder owing one, or the next region
-// opened would be recorded a level shallower than it really is.
 test_over_stopping_cannot_drive_the_depth_below_zero() {
     r = recorder("run").start("outer").stop().stop().stop().start("after")
     t = finish(r)
@@ -341,10 +289,6 @@ test_mark_records_an_instant_rather_than_a_region() {
     assert_eq(leaked(t).join(","), "", "and it is closed, not hanging")
 }
 
-// A `mark` built out of a `start` and a `stop` reads the clock twice, and the
-// two readings straddle a millisecond boundary about once in three thousand:
-// a one-millisecond instant, and a test of one `mark` that fails for nobody's
-// reason. Twenty thousand of them cost fifteen milliseconds and catch six.
 test_a_mark_takes_no_time_however_many_are_taken() {
     stretched = 0
     for i in 1..20000 {
@@ -366,8 +310,6 @@ test_finish_leaves_the_recorder_usable() {
     assert_eq(str(span_count(later)), "2", "and the one taken after")
 }
 
-// ---- playback -------------------------------------------------------------
-
 test_every_span_becomes_one_enter_and_one_leave() {
     evs = events(sample())
 
@@ -386,8 +328,6 @@ test_events_come_out_in_the_order_they_happened() {
     assert(evs.get(3).at >= evs.get(2).at, "and nothing goes backwards")
 }
 
-// Three regions open in the same millisecond here. Time alone cannot order
-// them; the walk can, and the sort has to leave that answer alone.
 test_events_sharing_a_millisecond_keep_their_nesting() {
     evs = events(sample())
 
@@ -397,10 +337,6 @@ test_events_sharing_a_millisecond_keep_their_nesting() {
     assert(evs.get(2).enter, "all three are enters")
 }
 
-// A trace whose spans are not in the order they opened (one assembled by
-// hand, or stitched together out of two files) is where the sort earns its
-// place. A recorded trace comes out of the walk already ordered and never
-// reaches it, which is the only reason `events` is affordable at all.
 test_events_the_walk_hands_over_out_of_order_are_sorted_by_time() {
     jumbled = trace("jumbled", [
         node("root", 0, 100, 0, -1),
@@ -422,9 +358,6 @@ test_an_event_points_back_at_its_span() {
     assert_eq(str(evs.get(2).depth), "2", "recorded two levels down")
 }
 
-// The `0` here is deliberately not the first event's timestamp: a trace that
-// begins at 1000 would answer 1000 for the first event if `gap_before` reached
-// past the start of the list for something to subtract.
 test_gap_before_is_the_wait_between_two_events() {
     evs = events(sample())
     late = events(trace("late", [node("a", 1000, 1010, 0, -1)]))
@@ -436,9 +369,6 @@ test_gap_before_is_the_wait_between_two_events() {
     assert_eq(str(gap_before(evs, 99)), "0", "and an index past the end")
 }
 
-// The whole line, not a fragment of it: the stamp ends in two spaces of its
-// own, so a `contains` check for four spaces passes whether the indent is two
-// characters per level or one.
 test_narrate_indents_by_depth_and_says_which_way_it_went() {
     said = narrate(sample())
 
@@ -468,10 +398,6 @@ test_replaying_an_empty_trace_does_nothing_at_all() {
               "no events, and no sleeping to find that out")
 }
 
-// The one test here that really sleeps, and the only way to tell a paced
-// replay from one that walks the list as fast as it can. Two hundred
-// milliseconds of recorded gap, replayed at a quarter speed, is fifty
-// milliseconds of waiting: not none of it, and not all of it.
 test_replay_sleeps_for_the_share_of_the_run_it_was_given() {
     evs = events(trace("slow", [node("wait", 0, 200, 0, -1)]))
 
@@ -489,8 +415,6 @@ test_replay_sleeps_for_the_share_of_the_run_it_was_given() {
 }
 
 ignore_event(i: int) -> int => 0
-
-// ---- the text chart -------------------------------------------------------
 
 test_the_chart_has_a_row_for_every_level() {
     rows = lines(flame(sample(), 60))
@@ -524,9 +448,6 @@ test_a_bar_is_as_wide_as_its_share_of_the_run() {
     assert(width(narrow.get(3)) < 11, "b took under a tenth of the run")
 }
 
-// The row is mostly the blank run in front of the bar, so its width says
-// nothing about whether a bar was drawn at all. What is left after the blanks
-// is the sliver, and that is what has to be there.
 test_a_span_that_took_no_measurable_time_still_appears() {
     blip = trace("blip", [
         node("all", 0, 100, 0, -1),
@@ -538,9 +459,6 @@ test_a_span_that_took_no_measurable_time_still_appears() {
     assert_eq(rows.get(2).trim(), "▏", "the instant is drawn, not dropped")
 }
 
-// Three regions the chart has fewer columns than it has spans for. Rounding
-// puts each bar's left edge behind where the last one ended, and a bar drawn
-// from there rather than from the cursor makes the row longer than the chart.
 test_bars_crowded_into_one_column_cannot_push_the_row_past_its_width() {
     crowd = trace("crowd", [
         node("all", 0, 100, 0, -1),
@@ -554,9 +472,6 @@ test_bars_crowded_into_one_column_cannot_push_the_row_past_its_width() {
     assert(rows.get(2).starts_with("▏▏"), "and the two instants are both there")
 }
 
-// A cut label is padded back out to the width the layout already counted for
-// it. Two columns per Hangul character means the cut can land a column short,
-// and everything to the right of it then draws a column early.
 test_a_row_keeps_its_width_when_a_label_is_cut_mid_character() {
     wide = trace("wide", [
         node("all", 0, 100, 0, -1),
@@ -569,8 +484,6 @@ test_a_row_keeps_its_width_when_a_label_is_cut_mid_character() {
     assert_eq(str(width(rows.get(2))), "100", "and so does the row that was cut")
 }
 
-// Everything inside one millisecond: `wall` is zero, and the chart has to lay
-// out against it without dividing by it.
 test_a_run_too_short_to_measure_still_charts() {
     blink = trace("blink", [node("a", 7, 7, 0, -1), node("b", 7, 7, 0, -1)])
 
@@ -594,9 +507,6 @@ test_an_empty_trace_charts_as_a_note_rather_than_a_blank() {
            "an empty string would look like a bug in the chart")
 }
 
-// The byte length matters as much as the column count: a character cut in half
-// is drawn by a terminal as a replacement glyph of its own width, which pushes
-// every bar to the right of it out of line.
 test_a_label_is_cut_only_where_a_character_ends() {
     assert_eq(fit("hello", 20), "hello", "a label that fits is untouched")
     assert_eq(fit("hello", 3), "hel", "and one that does not is cut")
@@ -618,8 +528,6 @@ test_percent_of_nothing_is_zero_rather_than_a_division_by_zero() {
     assert_eq("{percent(0, 4):.1}", "0.0", "none of it")
     assert_eq("{percent(5, 0):.1}", "0.0", "and nothing to be a share of")
 }
-
-// ---- the SVG chart --------------------------------------------------------
 
 test_the_svg_is_a_whole_document() {
     svg = flame_svg(sample(), 800)
@@ -671,8 +579,6 @@ test_a_frame_too_narrow_for_its_name_is_drawn_without_one() {
            "but the tooltip still names it")
 }
 
-// A rectangle of no width draws nothing at all, so an instant would vanish
-// from the picture without leaving a tick where it happened.
 test_an_instant_still_has_a_rectangle_in_the_svg() {
     blip = trace("blip", [
         node("all", 0, 100, 0, -1),
@@ -684,9 +590,6 @@ test_an_instant_still_has_a_rectangle_in_the_svg() {
     assert(svg.contains("<title>instant: 0ms"), "and the instant is a frame")
 }
 
-// The palette is asked directly. The terminal chart's colours cannot be seen
-// from here (`maca test` runs with `NO_COLOR`, so `paint` hands back the
-// plain string), and the promise being made is about the codes themselves.
 test_two_bars_that_touch_are_never_the_same_colour() {
     assert(sgr(0) != sgr(1), "adjacent bars differ in the terminal chart")
     assert(swatch(0) != swatch(1), "and adjacent frames differ in the svg")
@@ -694,15 +597,11 @@ test_two_bars_that_touch_are_never_the_same_colour() {
     assert_eq(swatch(6), swatch(0), "and the svg palette cycles with it")
 }
 
-// In a terminal red means something went wrong. A region that took a long time
-// has not gone wrong, and colouring it red sends a reader hunting for a fault.
 test_no_bar_is_ever_drawn_in_red() {
     for i in 0..11 {
         assert(sgr(i) != "31" && sgr(i) != "91", "no bar is red")
     }
 }
-
-// ---- the summary ----------------------------------------------------------
 
 test_the_summary_counts_every_span_with_the_same_name_once() {
     a = stat_of(summary(sample()), "a")
@@ -734,8 +633,6 @@ test_the_summary_is_ordered_by_self_time() {
     assert_eq(stats.get(3).name, "b", "and the lightest last")
 }
 
-// Two names with the same self time must not swap places between runs, or a
-// diff of two reports is noise.
 test_names_that_tie_keep_the_order_they_were_recorded_in() {
     stats = summary(sample())
 
@@ -774,8 +671,6 @@ test_an_empty_trace_summarises_as_a_note() {
     assert_eq(str(summary(trace("e", [])).length()), "0", "and there are no rows")
 }
 
-// "Show me the top two" is the second thing anybody asks a profile for, and it
-// is a slice of `summary`, so the table has to accept one.
 test_a_table_can_be_drawn_from_rows_the_caller_picked() {
     top = stats_table(summary(sample()).slice(0, 2))
     rows = lines(top)
@@ -786,8 +681,6 @@ test_a_table_can_be_drawn_from_rows_the_caller_picked() {
     assert(stats_table(summary(trace("e", []))).contains("nothing recorded"),
            "an empty pick reads the same as an empty trace")
 }
-
-// ---- the two halves agree -------------------------------------------------
 
 test_a_recorded_run_charts_and_summarises_without_special_casing() {
     r = recorder("live").start("outer")

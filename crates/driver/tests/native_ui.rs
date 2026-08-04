@@ -1,22 +1,9 @@
-//! UI elements and Tailwind on the native target.
-//!
-//! The JS backend turns `div(class="…", child)` into a reactive DOM. On native
-//! there is no DOM, so the same syntax renders to an HTML *string*, which is
-//! what a static site generator needs, and what `apps/tomo` was doing by hand
-//! with string concatenation and a literal `<style>` block while the language
-//! had a UI syntax and a Tailwind engine sitting unused.
-//!
-//! The rendering itself is asserted in Maca, in `tests/programs/ui.maca`. What
-//! stays here is the case that has no value to assert on: an event handler
-//! must *fail* to compile, so there is no program to run.
-
 mod common;
 use common::*;
 
 use std::process::Command;
 
-/// Elements, escaping, composition, `styles()`, hyphenated and boolean
-/// attributes, runtime tags, and tag shadowing.
+/// Elements, escaping, composition, `styles()`, hyphenated and boolean attributes, runtime tags, and tag shadowing.
 #[test]
 fn ui_renders_to_html_natively() {
     if unsupported_host() {
@@ -36,8 +23,7 @@ fn ui_renders_to_html_natively() {
     );
 }
 
-/// A DOM handler cannot work in a string, and says so rather than emitting
-/// markup that silently does nothing.
+/// A DOM handler cannot work in a string, and says so rather than emitting markup that silently does nothing.
 #[test]
 fn event_handlers_are_rejected_on_the_native_target() {
     if unsupported_host() {

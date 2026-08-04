@@ -1,28 +1,3 @@
-// A gpui counter in Maca -- what the Rust source backend reaches for.
-//
-// Build with `maca build --target rust examples/gpui_counter.maca`, alongside a
-// maca.toml declaring the crate:
-//
-//   [rust-dependencies]
-//   gpui = { git = "https://github.com/zed-industries/zed" }
-//
-// What the Rust backend lowers today (verified against a local stand-in trait
-// in crates/driver/tests/rust_backend.rs::foreign_trait_impl_runs):
-//   * `Counter : Render = { ... }`     -> `impl Render for Counter { ... }`
-//   * a leading `self` parameter        -> `&mut self`                        (2.1)
-//   * a mutating method (`count = ...`) -> returns `()` (an event handler)
-//   * `n => n + 1`                       -> a `move |n| ...` closure
-//   * `div().flex().child(x)`            -> method-chain passthrough
-//   * `Duration.from_secs(5)` etc.       -> `Type::assoc(...)` without `::`
-//   * `(self, w: Window, ...)`            -> `&mut Window` (a foreign type is
-//                                            borrowed, never owned by Maca)
-//   * `... -> AnyElement =>`                -> the method's declared return type
-//
-// The `render` return type is written out rather than inferred: the backend
-// does not read gpui's source, so a foreign return type is an annotation. That
-// is the same bargain every foreign call makes -- rustc is the authority on
-// Rust, and Maca does not keep a second copy of its type rules.
-
 import rust "gpui::div"
 import rust "gpui::Render"
 import rust "gpui::IntoElement"
@@ -35,10 +10,6 @@ Counter = {
 }
 
 Counter : Render = {
-    // `self` -> `&mut self`; the builder chain passes through as-is. gpui's
-    // `Render::render` returns `impl IntoElement`, and Rust lets an impl name a
-    // concrete type where the trait wrote `impl Trait` -- so the annotation is
-    // the whole answer, and `.into_any_element()` produces the value.
     render = (self, window: Window, cx: Context Counter) -> AnyElement =>
         div()
             .flex()
@@ -54,8 +25,6 @@ Counter : Render = {
 }
 
 main() -> int {
-    // A headless smoke of the state + handler the UI drives (no window needed):
-    // constructing the model and mutating it through the same value path.
     c = Counter { count = 41 }
     info("counter starts at {c.count}")
     0

@@ -1,6 +1,3 @@
-// The other half: the same private name, a different signature, a different
-// answer. Nothing about this file says anything about alpha, which is the point.
-
 /// `n` written the way beta writes it.
 beta_reading(n: int) -> str => reading(n)
 

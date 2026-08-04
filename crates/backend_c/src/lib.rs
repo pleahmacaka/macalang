@@ -1,17 +1,3 @@
-//! maca-backend-c: lower the AST to C.
-//!
-//! Type-directed lowering. Records become C structs, nullary sums become
-//! enums, `T[]` becomes a monomorphized dynamic array (via the runtime's
-//! `MACA_DEFINE_ARRAY` macro), and `std/json` encode/decode are generated
-//! per record/sum type. Strings are heap `maca_str`; interpolation folds to
-//! `maca_concat`. `match` lowers to an if-else chain, `?` is transparent, and
-//! `fail msg` calls `maca_fail`, a clean stderr message + `exit(1)` (the
-//! runtime file/JSON helpers still abort). `reify`/`try e` catches a
-//! failure via setjmp/longjmp, yielding the caught message (or "").
-//!
-//! GNU statement expressions (`({ ...; v; })`, supported by `zig cc`/clang) are
-//! used for inline list literals.
-
 mod ownership;
 
 use maca_parser::ast::*;
@@ -25,9 +11,7 @@ pub fn emit(m: &Module) -> String {
     cx.finish()
 }
 
-/// Emit C, or the list of codegen limitations the module hit. The driver uses
-/// this so an unsupported construct surfaces as a clean error instead of
-/// silently-wrong C reaching the compiler.
+/// Emit C, or the list of codegen limitations the module hit.
 pub fn emit_checked(m: &Module) -> Result<String, Vec<String>> {
     let mut cx = Cx::new(m);
     cx.collect();
@@ -48,8 +32,7 @@ pub fn needs_async(c_src: &str) -> bool {
         || c_src.contains("maca_sleep_ms")
 }
 
-/// Header names from `import c "header.h"` (FFI). The driver provides bindings +
-/// links the corresponding library.
+/// Header names from `import c "header.h"` (FFI).
 pub fn c_imports(m: &Module) -> Vec<String> {
     m.items
         .iter()
@@ -60,39 +43,31 @@ pub fn c_imports(m: &Module) -> Vec<String> {
         .collect()
 }
 
-/// Backend-facing type. Independent of the checker's `Ty`; carries exactly what
-/// codegen needs to pick C types and (de)serializers.
+/// Backend-facing type.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum CTy {
     Int,
-    Float, // f64 / double
-    F32,   // f32 / float (distinct from Float for the SIMD C ABI)
+    Float,
+    F32,
     Str,
     Bool,
     Unit,
     Rec(String),
     Sum(String),
     Arr(Box<CTy>),
-    /// `Map str V`: a string-keyed hash map, monomorphized on its value type
-    /// the same way an array is on its element type. Keys are always `str`, so
-    /// only the value type varies.
+    /// `Map str V`: a string-keyed hash map, monomorphized on its value type the same way an array is on its element type.
     Map(Box<CTy>),
-    /// SIMD vector, e.g. `f32x8` → { name: "f32x8", scalar_c: "float", lanes: 8 }
+    /// SIMD vector, e.g. `f32x8` → { name: "f32x8", scalar_c: "float", lanes: 8 }.
     Vec {
         name: String,
         scalar_c: String,
         lanes: usize,
     },
-    /// A closure value, carrying its arity. The runtime has one struct per
-    /// arity (`maca_closure`, `maca_closure2`), so a local holding a two-
-    /// parameter lambda has to be declared as the matching one.
+    /// A closure value, carrying its arity.
     Closure2(Box<CTy>),
     /// A concurrent computation handle (`spawn e`), awaited with `await`.
-    /// Lowers to `maca_future*`; its result is boxed as `int64_t` for the slice.
     Future,
-    /// A first-class function value (a lambda). Lowers to `maca_closure`.
-    /// Its result type: the boundary word is an `int64_t`, so a call site needs
-    /// this to unbox a record result back into a record.
+    /// A first-class function value (a lambda).
     Closure(Box<CTy>),
     Unknown,
 }
@@ -120,90 +95,52 @@ fn parse_vec_c(name: &str) -> Option<(String, usize)> {
 struct Cx<'a> {
     m: &'a Module,
     out: String,
-    /// The parameter types a lambda about to be lowered will be called with,
-    /// set for the duration of lowering that one lambda. From the callee's
-    /// signature at a call site, or from the field's declared type where the
-    /// lambda is being stored in a record.
+    /// The parameter types a lambda about to be lowered will be called with, set for the duration of lowering that one lambda.
     lambda_hint: Option<Vec<CTy>>,
-    // declarations
-    sums: BTreeMap<String, Vec<String>>, // sum name -> variants
-    variant_of: HashMap<String, String>, // variant -> sum name
-    variant_payloads: HashMap<String, Vec<CTy>>, // variant -> payload field types
-    records: BTreeMap<String, Vec<(String, CTy)>>, // record name -> ordered fields
-    /// Which of `records` were synthesized from an anonymous literal's shape
-    /// rather than written by the author. A diagnostic must not name one: the
-    /// author never typed `MacaAnon_x_int_y_int` and cannot act on it.
+    sums: BTreeMap<String, Vec<String>>,
+    variant_of: HashMap<String, String>,
+    variant_payloads: HashMap<String, Vec<CTy>>,
+    records: BTreeMap<String, Vec<(String, CTy)>>,
+    /// Which of `records` were synthesized from an anonymous literal's shape rather than written by the author.
     anon_records: HashSet<String>,
     /// `Rec.field` -> the parameter types of a field declared `(T, U) -> R`.
-    /// `CTy::Closure` carries only the return type, and a lambda stored in such
-    /// a field has nothing else to read its parameter types off, so it typed
-    /// them `int` and read a string argument as an address.
     record_fn_params: HashMap<String, Vec<CTy>>,
-    rec_order: Vec<String>,         // topo order
-    modules: HashSet<String>,       // imported module names (json, dirs, …)
-    lets: Vec<(String, CTy, Expr)>, // top-level `let`/value bindings
+    rec_order: Vec<String>,
+    modules: HashSet<String>,
+    lets: Vec<(String, CTy, Expr)>,
     let_names: HashSet<String>,
-    fns: HashMap<String, (Vec<CTy>, CTy)>, // fn name -> (param types, ret)
+    fns: HashMap<String, (Vec<CTy>, CTy)>,
     /// Variadic fn name -> how many parameters come before the `...` one.
-    /// Everything from that index on is collected into the last parameter, so
-    /// this is the only number a call site needs to know.
     variadics: HashMap<String, usize>,
-    arr_elems: HashSet<CTy>, // array element types to instantiate
-    map_vals: HashSet<CTy>,  // map value types to instantiate
+    arr_elems: HashSet<CTy>,
+    map_vals: HashSet<CTy>,
     /// `(fn name, param index)` pairs that hold a function value.
     closure_params: HashSet<(String, usize)>,
-    vecs: BTreeSet<(String, String, usize)>, // SIMD vector types (name, scalar_c, lanes)
+    vecs: BTreeSet<(String, String, usize)>,
     tmp: usize,
-    // lambdas hoisted to top-level `static` functions (closures carry a heap env)
     hoisted_decls: Vec<String>,
     hoisted_defs: Vec<String>,
     lambda_count: usize,
-    /// top-level fns already wrapped as a closure value (`f` passed by name);
-    /// the boxing thunk is emitted once per fn.
+    /// top-level fns already wrapped as a closure value (`f` passed by name).
     fn_thunks: HashSet<String>,
-    // generic functions, monomorphized per concrete instantiation
     generics: HashMap<String, FnDef>,
-    spec_pending: Vec<(String, Vec<CTy>)>, // instantiations to emit
-    /// C container types already defined, and the point in the output where
-    /// more can still go. A specialization discovers what it needs long after
-    /// the definitions were written: a generic whose local is `a[][]` or
-    /// `Map str a` named a type the program had never been given.
+    spec_pending: Vec<(String, Vec<CTy>)>,
+    /// C container types already defined, and the point in the output where more can still go.
     emitted_containers: HashSet<String>,
     /// The type variables of the specialization being emitted, if any.
-    ///
-    /// Parameters and the return type were substituted at the signature and
-    /// the body was lowered without them, so a local annotated with the
-    /// element type (`out: a[] = []` in a generic `sort_by`) was declared as
-    /// the fallback array and the C compiler rejected the push into it. A
-    /// generic function that cannot name its own element type in a local is
-    /// one you can only write in one line.
     type_subst: HashMap<String, CTy>,
-    spec_done: HashSet<(String, Vec<CTy>)>, // already emitted
-    // codegen limitations hit while lowering, surfaced as clean errors instead
-    // of silently emitting wrong C.
+    spec_done: HashSet<(String, Vec<CTy>)>,
     problems: Vec<String>,
-    // Tailwind utility names seen in a `class=` attribute, so `styles()` can
-    // emit only the rules the program actually uses.
     classes: BTreeSet<String>,
-    /// Which expressions produce a string the binding becomes the only owner
-    /// of. See `ownership`.
+    /// Which expressions produce a string the binding becomes the only owner of.
     fresh: Fresh,
     /// The flattened pieces of the concatenation just lowered, if it was one.
     concat_pieces: Option<Vec<Piece>>,
-    /// Names the function being lowered may append to in place. See
-    /// `ownership::appendable_names`. Whole-body, because a list appended to in
-    /// a loop is reassigned three blocks below the binding that aliased it.
+    /// Names the function being lowered may append to in place.
     appendable: HashSet<String>,
-    /// What each local was bound to, while the array types are being
-    /// collected. A list literal's type is its first element's, and an element
-    /// that is itself a name had no type at all here, so `[e]` where `e` is an
-    /// `int[]` registered nothing and the C compiler was handed an `IntArrArr`
-    /// that had never been defined.
+    /// What each local was bound to, while the array types are being collected.
     local_tys: HashMap<String, CTy>,
-    /// Locals currently holding a string this scope will release. Consulted
-    /// where a name is reassigned, which can be several blocks below the one
-    /// that declared it: a loop that rebuilds an accumulator has to let go of
-    /// the previous round, or the loop is the leak.
+    /// Locals currently holding a string this scope will release.
     owned_strs: HashSet<String>,
 }
 
@@ -250,10 +187,6 @@ impl<'a> Cx<'a> {
     }
 
     /// The finished translation unit.
-    ///
-    /// `styles()` lowers to `MACA_STYLES`, which can only be defined once every
-    /// `class=` in the module has been seen, so it is prepended here, after
-    /// lowering rather than during it.
     fn finish(mut self) -> String {
         if !self.out.contains("MACA_STYLES") {
             return self.out;
@@ -264,14 +197,11 @@ impl<'a> Cx<'a> {
         sorted.sort_by_key(|c| (maca_backend_js::order(c), (*c).clone()));
         for c in sorted {
             if let Some(r) = maca_backend_js::rule(c) {
-                // the sheet becomes a C string literal, so its backslashes,
-                // which are the selector escapes, have to survive that trip
                 css.push_str(&r.replace('\\', "\\\\"));
                 css.push_str("\\n");
             }
         }
         let def = format!("#define MACA_STYLES \"{css}\"\n");
-        // after the includes, before anything that uses it
         match self.out.find("\n\n") {
             Some(i) => {
                 self.out.insert_str(i + 2, &def);
@@ -281,19 +211,12 @@ impl<'a> Cx<'a> {
         }
     }
 
-    /// Record a codegen limitation. The placeholder C keeps the output
-    /// well-formed for tests, but `emit_checked` turns any recorded problem into
-    /// a hard error so a real build never ships silently-wrong code.
+    /// Record a codegen limitation.
     fn problem(&mut self, msg: impl Into<String>) {
         self.problems.push(msg.into());
     }
 
     /// Record the utility names in a `class=` value.
-    ///
-    /// The value is often a call rather than a literal, as in `md_class("pre")`,
-    /// so the whole module is scanned separately (see `collect`); this catches
-    /// the direct case. A class assembled from run-time data can't be in the
-    /// sheet, which is the same limitation Tailwind itself has.
     fn note_classes(&mut self, value: &Expr) {
         if let Expr::Str(parts) = value {
             for p in parts {
@@ -322,20 +245,14 @@ impl<'a> Cx<'a> {
         })
     }
 
-    /// A name no source program can collide with, for a value the lowering
-    /// needs to hold on to for a statement.
+    /// A name no source program can collide with, for a value the lowering needs to hold on to for a statement.
     fn temp(&mut self) -> String {
         self.tmp += 1;
         format!("_t{}", self.tmp)
     }
 
-    // ---- collection -------------------------------------------------------
-
-    /// Emit a payload-bearing sum as `{ tag; union { … } as; }` plus a
-    /// constructor `Sum_Variant(payload…)` per variant.
+    /// Emit a payload-bearing sum as `{ tag; union { … } as; }` plus a constructor `Sum_Variant(payload…)` per variant.
     fn emit_tagged_sum(&mut self, name: &str, vars: &[String]) {
-        // recursive sums are named structs (forward-declared elsewhere) so a
-        // self-referential payload can be stored as a `Name*` pointer.
         let recursive = self.sum_is_recursive(name);
         let tags = vars
             .iter()
@@ -368,7 +285,6 @@ impl<'a> Cx<'a> {
             }
         }
         if recursive {
-            // plain string (not format!): one brace closes the union, one the struct
             self.push("} as; };");
         } else {
             self.push(&format!("}} as; }} {name};"));
@@ -378,7 +294,6 @@ impl<'a> Cx<'a> {
             let params = if p.is_empty() {
                 "void".to_string()
             } else {
-                // constructors take payloads by value; boxing is internal
                 p.iter()
                     .enumerate()
                     .map(|(i, t)| format!("{} _{i}", c_type(t)))
@@ -403,8 +318,7 @@ impl<'a> Cx<'a> {
         }
     }
 
-    /// A sum with at least one payload-carrying variant → a tagged struct/union
-    /// (as opposed to a plain C enum).
+    /// A sum with at least one payload-carrying variant → a tagged struct/union (as opposed to a plain C enum).
     fn is_tagged(&self, sum: &str) -> bool {
         self.sums.get(sum).is_some_and(|vs| {
             vs.iter()
@@ -413,14 +327,9 @@ impl<'a> Cx<'a> {
     }
 
     fn collect(&mut self) {
-        // Tailwind candidates from every string literal in the module, not just
-        // `class=` sites: a program that names its classes in a helper has the
-        // literals in that helper's body.
         for item in &self.m.items {
             maca_backend_js::collect_class_strings(item, &mut self.classes);
         }
-        // register record names up front so both sum payload types and (later)
-        // record field types can reference a record declared anywhere in the file
         for item in &self.m.items {
             if let Stmt::Bind(b) = item
                 && let Expr::Ident(name) = &b.target
@@ -429,10 +338,6 @@ impl<'a> Cx<'a> {
                 self.records.entry(name.clone()).or_default();
             }
         }
-        // Types can reference each other (and themselves) in any order, so
-        // register every sum and record *name* before resolving any payload or
-        // field type. Otherwise a self-referential payload (`Tree = Node(Tree,
-        // Tree)`) or a forward reference resolves to `Unknown` → `int64_t`.
         for item in &self.m.items {
             match item {
                 Stmt::Import(im) => {
@@ -456,7 +361,6 @@ impl<'a> Cx<'a> {
                 _ => {}
             }
         }
-        // now every type name is known: resolve sum payloads and record fields.
         for item in &self.m.items {
             if let Stmt::Bind(b) = item
                 && let Expr::Ident(name) = &b.target
@@ -474,26 +378,14 @@ impl<'a> Cx<'a> {
             }
         }
         self.closure_params = closure_params(&self.m.items);
-        // The primitive arrays are always defined. They are a handful of
-        // `static inline` functions each, which the C compiler drops if unused,
-        // and having them unconditionally removes a whole class of bug: a type
-        // that only becomes reachable while a body is being lowered, such as
-        // the element type of a `.map`'s result or `chars()` used on its own,
-        // was registered after the typedefs had already been written out.
         for t in [CTy::Int, CTy::Str, CTy::Float, CTy::Bool] {
             self.arr_elems.insert(t);
         }
-        // fn signatures, lets
         for item in &self.m.items {
             match item {
                 Stmt::Fn(f) => {
                     if let Some(at) = f.params.iter().position(|p| p.variadic) {
                         self.variadics.insert(f.name.clone(), at);
-                        // A list of function values is not a container this back
-                        // end has: `arr_name` maps a closure element to `IntArr`,
-                        // so declaring one redefines the integer array as an
-                        // array of closures and every `int[]` in the program
-                        // stops compiling. Refused where it is written.
                         if is_fn_type(f.params[at].ty.as_ref()) {
                             self.problem(format!(
                                 "`{}`: a variadic of function type is not \
@@ -503,15 +395,9 @@ impl<'a> Cx<'a> {
                             ));
                         }
                     }
-                    // a generic function (type-variable params/ret) is not emitted
-                    // as one C function; it is monomorphized per call site.
                     if fn_is_generic(f) {
                         self.generics.insert(f.name.clone(), f.clone());
                     } else {
-                        // an unannotated parameter that holds a function value
-                        // → `maca_closure`. Surface Maca has no function-type
-                        // syntax, so this is how a higher-order parameter is
-                        // recognized (see `closure_params`).
                         let params = f
                             .params
                             .iter()
@@ -526,11 +412,6 @@ impl<'a> Cx<'a> {
                                 }
                             })
                             .collect::<Vec<_>>();
-                        // No `-> T`? Infer it from an arrow body, which *is* the
-                        // function's value. Otherwise the return type stays
-                        // `Unit` and callers don't convert the result (a
-                        // `"{inc(41)}"` would pass an int where a string is
-                        // wanted). A block body keeps `Unit`.
                         let ret = match (&f.ret, &f.body) {
                             (Some(t), _) => self.cty(t),
                             (None, Some(FnBody::Expr(e))) => self.infer_ret(e),
@@ -559,7 +440,6 @@ impl<'a> Cx<'a> {
                 _ => {}
             }
         }
-        // array element types from record fields
         let fields: Vec<CTy> = self
             .records
             .values()
@@ -573,14 +453,12 @@ impl<'a> Cx<'a> {
         self.topo_records();
     }
 
-    /// Instantiate array types for list literals that don't come from a record
-    /// field (e.g. `let xs = 1, 2, 3`).
+    /// Instantiate array types for list literals that don't come from a record field (e.g. `let xs = 1, 2, 3`).
     fn collect_list_arrays(&mut self) {
         let items = self.m.items.clone();
         for item in &items {
             match item {
                 Stmt::Fn(f) => {
-                    // one function's locals say nothing about the next one's
                     self.local_tys.clear();
                     for p in &f.params {
                         if p.ty.is_some() {
@@ -603,8 +481,6 @@ impl<'a> Cx<'a> {
         for s in stmts {
             match s {
                 Stmt::Bind(b) => {
-                    // a local's declared type instantiates its container:
-                    // `counts: Map str int = map()` needs `IntMap` defined
                     for t in &b.tys {
                         let cty = self.cty(t);
                         self.note_arr(&cty);
@@ -637,7 +513,6 @@ impl<'a> Cx<'a> {
                 es.iter().for_each(|x| self.walk_expr(x));
             }
             Expr::Call { callee, args } => {
-                // `f32x8.splat(k)`: register the vector type for its typedef
                 if let Expr::Field { base, name } = callee.as_ref() {
                     if name == "splat"
                         && let Expr::Ident(v) = base.as_ref()
@@ -645,18 +520,10 @@ impl<'a> Cx<'a> {
                     {
                         self.vecs.insert((v.clone(), sc, ln));
                     }
-                    // `s.split(sep)` and `s.chars()` both yield a `str[]`, so
-                    // register `StrArr` so its typedef/ops are emitted before
-                    // any function body uses it. Without this, `chars()` only
-                    // compiled when it was passed straight to a parameter
-                    // declared `str[]` (which registered the type as a side
-                    // effect); used on its own it emitted a reference to an
-                    // undeclared `StrArr`.
                     if name == "split" || name == "chars" {
                         self.note_arr(&CTy::Arr(Box::new(CTy::Str)));
                     }
                 }
-                // `list_dir(path)` likewise yields a `str[]`.
                 if let Expr::Ident(f) = callee.as_ref()
                     && f == "list_dir"
                 {
@@ -672,10 +539,6 @@ impl<'a> Cx<'a> {
                 }
             }
             Expr::Ctor { fields, .. } | Expr::Record(fields) => {
-                // An anonymous record literal has no declared type, so its
-                // struct is synthesized from the shape and registered here,
-                // before any typedef is emitted, which is why it happens in the
-                // prepass rather than when the expression is lowered.
                 if let Expr::Record(fs) = e {
                     let shape = self.anon_shape(fs);
                     for (_, t) in &shape {
@@ -705,8 +568,6 @@ impl<'a> Cx<'a> {
                 self.walk_expr(rhs);
             }
             Expr::Range { lo, hi } => {
-                // a range materialized in value position is an `int[]`; register
-                // the array type so its typedef/ops are emitted.
                 self.note_arr(&CTy::Arr(Box::new(CTy::Int)));
                 self.walk_expr(lo);
                 self.walk_expr(hi);
@@ -758,9 +619,6 @@ impl<'a> Cx<'a> {
         }
     }
     /// The type an arrow body yields, for a function that declared no `-> T`.
-    /// Covers the shapes that actually appear (`x + 1`, a comparison, a call, a
-    /// ternary, a literal); anything else stays `Unknown`, the gradual escape
-    /// hatch, rather than the wrong concrete type.
     fn infer_ret(&self, e: &Expr) -> CTy {
         match e {
             Expr::Binary { op, lhs, rhs } => match op {
@@ -774,7 +632,6 @@ impl<'a> Cx<'a> {
                 | BinOp::Or => CTy::Bool,
                 BinOp::Concat => CTy::Str,
                 _ => {
-                    // arithmetic: take whichever side we can name
                     let l = self.infer_ret(lhs);
                     if l != CTy::Unknown {
                         l
@@ -787,7 +644,6 @@ impl<'a> Cx<'a> {
                 UnOp::Not => CTy::Bool,
                 UnOp::Neg => self.infer_ret(expr),
             },
-            // both branches should agree; the `then` side names it
             Expr::Ternary { then, els, .. } => {
                 let t = self.infer_ret(then);
                 if t != CTy::Unknown {
@@ -807,9 +663,6 @@ impl<'a> Cx<'a> {
             Expr::Bool(_) => CTy::Bool,
             Expr::Str(_) | Expr::Path(_) => CTy::Str,
             Expr::Ctor { name, .. } => CTy::Rec(name.clone()),
-            // a list literal's type is its first element's, one level up, so a
-            // record field holding `[1, 2, 3]` is an `int[]` and not an opaque
-            // scalar
             Expr::List(es) => es
                 .first()
                 .map(|x| CTy::Arr(Box::new(self.shallow_cty(x))))
@@ -822,8 +675,6 @@ impl<'a> Cx<'a> {
                 .or_else(|| self.local_tys.get(n).cloned())
                 .unwrap_or(CTy::Unknown),
             Expr::Call { callee, .. } => match &**callee {
-                // a constructor call like `Circle(2.0)` has the sum's type, so a
-                // list of them (`Circle(x), Rect(w, h)`) registers `ShapeArr`.
                 Expr::Ident(n) => self
                     .variant_of
                     .get(n)
@@ -837,11 +688,6 @@ impl<'a> Cx<'a> {
     }
 
     /// The field list of an anonymous record literal, sorted by name.
-    ///
-    /// Sorted, so `{ x = 1, y = 2 }` and `{ y = 2, x = 1 }` are the same type,
-    /// which is what "structural" has to mean for the two to be assignable to
-    /// one another. Field types come from `shallow_cty`, the same function the
-    /// lowering uses, so the struct and its compound literal cannot disagree.
     fn anon_shape(&self, fs: &[Field]) -> Vec<(String, CTy)> {
         let mut out: Vec<(String, CTy)> = fs
             .iter()
@@ -857,20 +703,7 @@ impl<'a> Cx<'a> {
         out
     }
 
-    /// The declared record a literal is being written into, if the context
-    /// names one and the literal only writes fields that record has.
-    ///
-    /// The field test is what keeps this honest, and it is not dead weight
-    /// behind the checker. `ctor` reads the *declaration* and looks each field
-    /// up in the literal, so a field the record does not declare is dropped and
-    /// one the literal omits is zeroed. Constructing a `Point` out of
-    /// `{ host = "x" }` would therefore compile to `{ .x = 0, .y = 0 }` with the
-    /// value gone, and out of `{ x = 9 }` to `{ .x = 9, .y = 0 }` with a `y`
-    /// nobody wrote. An annotated position is checked before it gets here, but a
-    /// list element is not: `Expr::List` unifies its elements and *ignores* the
-    /// error, so `[mk_point(), { host = "x" }]` reaches codegen with the element
-    /// type already settled as `Point`. Both halves are refused here by name,
-    /// because a dropped value and a zeroed field are the same silence.
+    /// The declared record a literal is being written into, if the context names one and the literal only writes fields that record has.
     fn expected_record(&mut self, expected: Option<&CTy>, fields: &[Field]) -> Option<String> {
         let CTy::Rec(name) = expected? else {
             return None;
@@ -892,17 +725,12 @@ impl<'a> Cx<'a> {
             .map(|(d, _)| d)
             .filter(|d| !named.contains(d))
             .collect();
-        // A synthesized shape is not a name the author can be told about, so
-        // that case falls back to the literal's own struct exactly as before.
         if self.anon_records.contains(name) {
             return stray.is_empty().then(|| name.clone());
         }
         if stray.is_empty() && missing.is_empty() {
             return Some(name.clone());
         }
-        // One reason, the sharpest one: a literal of another shape entirely has
-        // a stray field *and* misses every declared one, and listing all of
-        // them buries the field that actually names the mistake.
         let name = name.clone();
         if stray.is_empty() {
             for k in missing {
@@ -928,8 +756,6 @@ impl<'a> Cx<'a> {
                 self.arr_elems.insert((**e).clone());
                 self.note_arr(e);
             }
-            // a map's typedef needs its value type instantiated too, and
-            // `.keys()` yields a `str[]`, so that array comes along with it
             CTy::Map(v) => {
                 self.map_vals.insert((**v).clone());
                 self.arr_elems.insert(CTy::Str);
@@ -954,8 +780,7 @@ impl<'a> Cx<'a> {
         )
     }
 
-    /// Remember the parameter types of every field declared as a function, so
-    /// a lambda written straight into one can be lowered against them.
+    /// Remember the parameter types of every field declared as a function.
     fn note_fn_fields(&mut self, rec: &str, decl: &Expr) {
         let Expr::Record(fs) = decl else { return };
         for f in fs {
@@ -964,11 +789,6 @@ impl<'a> Cx<'a> {
                 ty: Type::Fn(ps, _),
             } = f
             {
-                // Everything crosses the closure boundary boxed as one
-                // `int64_t`, and a function value is two words, so a field
-                // whose function takes another function has nowhere to put it.
-                // Saying so beats the C compiler saying it about a generated
-                // thunk nobody wrote.
                 if ps.iter().any(|t| matches!(t, Type::Fn(_, _))) {
                     self.problem(format!(
                         "`{rec}.{name}` takes a function as an argument, which \
@@ -982,8 +802,7 @@ impl<'a> Cx<'a> {
         }
     }
 
-    /// Register the container types a body's local annotations name, now that
-    /// the type variables in them are known.
+    /// Register the container types a body's local annotations name, now that the type variables in them are known.
     fn note_local_containers(&mut self, stmts: &[Stmt]) {
         for st in stmts {
             if let Stmt::Bind(b) = st {
@@ -1019,13 +838,10 @@ impl<'a> Cx<'a> {
         }
     }
 
-    /// Combined dependency order over both records and tagged sums: a node is
-    /// emitted only after every record / tagged-sum it references by value.
-    /// (Plain sums are enums with no struct dependency and are excluded.)
+    /// Combined dependency order over both records and tagged sums.
     fn struct_order(&self) -> Vec<String> {
         let mut seen = HashSet::new();
         let mut order = Vec::new();
-        // deterministic node set (BTreeMap key order): records then tagged sums
         for n in self.records.keys() {
             self.struct_visit(n, &mut seen, &mut order);
         }
@@ -1048,8 +864,7 @@ impl<'a> Cx<'a> {
         }
         order.push(n.to_string());
     }
-    /// Names referenced strictly *by value* (arrays are heap pointers and so
-    /// break value cycles). Used for recursion detection.
+    /// Names referenced strictly *by value* (arrays are heap pointers and so break value cycles).
     fn value_deps(&self, n: &str) -> Vec<String> {
         let mut deps = Vec::new();
         if let Some(fields) = self.records.get(n) {
@@ -1090,11 +905,7 @@ impl<'a> Cx<'a> {
     fn sum_is_recursive(&self, name: &str) -> bool {
         self.reaches(name, name)
     }
-    /// A record is recursive when it can reach itself through struct-shaped
-    /// references (which recurse through arrays). Since a record can never hold
-    /// another by value in a cycle (infinite size), any such cycle passes
-    /// through an array, e.g. `Expr { children: Expr[] }`. Such a record needs
-    /// a forward declaration so its element array can be declared first.
+    /// A record is recursive when it can reach itself through struct-shaped references (which recurse through arrays).
     fn rec_is_recursive(&self, name: &str) -> bool {
         if !self.records.contains_key(name) {
             return false;
@@ -1111,15 +922,12 @@ impl<'a> Cx<'a> {
         }
         false
     }
-    /// A payload slot is boxed (stored behind a pointer) when it is a sum that
-    /// can reach the enclosing sum, the value cycle that would make the struct
-    /// infinitely sized. Records-in-cycles are not boxed (a documented limit).
+    /// A payload slot is boxed (stored behind a pointer) when it is a sum that can reach the enclosing sum, the value cycle that would make the struct infinitely sized.
     fn is_boxed(&self, sum: &str, t: &CTy) -> bool {
         matches!(t, CTy::Sum(n) if self.reaches(n, sum))
     }
 
-    /// Names of records / tagged sums referenced by value in a node's fields
-    /// (record) or variant payloads (tagged sum).
+    /// Names of records / tagged sums referenced by value in a node's fields (record) or variant payloads (tagged sum).
     fn struct_deps(&self, n: &str) -> Vec<String> {
         let mut deps = Vec::new();
         if let Some(fields) = self.records.get(n) {
@@ -1133,9 +941,6 @@ impl<'a> Cx<'a> {
             for v in vars {
                 if let Some(p) = self.variant_payloads.get(v) {
                     for t in p {
-                        // a boxed slot is a pointer, so it needs only a forward
-                        // declaration, not the full definition, so it is not an
-                        // ordering dependency (this breaks the value cycle).
                         if self.is_boxed(n, t) {
                             continue;
                         }
@@ -1165,8 +970,6 @@ impl<'a> Cx<'a> {
         }
         self.rec_order.push(n.to_string());
     }
-
-    // ---- type conversion --------------------------------------------------
 
     fn cty(&self, t: &Type) -> CTy {
         match t {
@@ -1198,13 +1001,7 @@ impl<'a> Cx<'a> {
             Type::Array(t) => CTy::Arr(Box::new(self.cty(t))),
             Type::Opt(t) => self.cty(t),
             Type::Paren(t) => self.cty(t),
-            // `(T, U) -> R` is a function value. The runtime has one struct per
-            // arity, so the arity is what picks the C type; everything crosses
-            // the boundary boxed as `int64_t` and the return type is what says
-            // how to read the answer back.
             Type::Fn(ps, r) => closure_ty(ps.len(), self.cty(r)),
-            // `Map str V`: the key type is written for readability and checked
-            // by the type checker; codegen only needs the value type.
             Type::Apply(base, args) if matches!(&**base, Type::Name(s) if s.last().is_some_and(|n| n == "Map")) => {
                 CTy::Map(Box::new(args.last().map_or(CTy::Unknown, |t| self.cty(t))))
             }
@@ -1216,19 +1013,11 @@ impl<'a> Cx<'a> {
     }
 
     /// The C type a parameter is *declared* with.
-    ///
-    /// `...rest: int` is written with one argument's type, because that is what
-    /// a call site writes; the C parameter is the `IntArr` the trailing
-    /// arguments were collected into. One list, one parameter: the callee has
-    /// an ordinary signature and knows nothing about how many arguments were
-    /// spelled out.
     fn param_cty(&self, p: &Param) -> CTy {
         let t = self.cty_opt(&p.ty);
         if p.variadic { CTy::Arr(Box::new(t)) } else { t }
     }
 }
-
-// ---- emission ------------------------------------------------------------
 
 impl<'a> Cx<'a> {
     fn push(&mut self, s: &str) {
@@ -1243,8 +1032,6 @@ impl<'a> Cx<'a> {
         self.push("#include <stdbool.h>");
         self.push("");
 
-        // SIMD vector typedefs (clang ext_vector_type; ABI-compatible with the
-        // LLVM <N x T> used by the LLVM backend for the same functions)
         let vecs: Vec<_> = self.vecs.iter().cloned().collect();
         for (name, scalar, lanes) in &vecs {
             self.push(&format!(
@@ -1255,10 +1042,6 @@ impl<'a> Cx<'a> {
             self.push("");
         }
 
-        // Plain (nullary-only) sums are C enums with no struct dependencies, so
-        // emit them up front. Tagged sums (payloads) and records are structs that
-        // may reference each other by value, so they are emitted together in
-        // dependency order below; their to_str/from_str follow.
         let sums: Vec<(String, Vec<String>)> = self
             .sums
             .iter()
@@ -1274,8 +1057,6 @@ impl<'a> Cx<'a> {
                 self.push(&format!("typedef enum {{ {variants} }} {name};"));
             }
         }
-        // recursive tagged sums are named structs, forward-declared so a
-        // self-referential payload can hold a `Name*`.
         for (name, _) in &sums {
             if self.is_tagged(name) && self.sum_is_recursive(name) {
                 self.push(&format!("typedef struct {name} {name};"));
@@ -1283,19 +1064,8 @@ impl<'a> Cx<'a> {
         }
         self.push("");
 
-        // primitive-element arrays. Record- and sum-element arrays are structs
-        // themselves, so they wait until their element type is defined (emitted
-        // with / after the struct block below).
-        // Keyed on the C name, not the Maca type: several types share one array
-        // (a closure, a future and a value of unknown type all cross as
-        // `int64_t`, so all three are `IntArr`), and a set keyed on the type
-        // emitted the same `typedef` twice, which C rejects.
         let mut emitted_arr: HashSet<String> = HashSet::new();
         let mut elems: Vec<CTy> = self.arr_elems.iter().cloned().collect();
-        // Shallowest first: `IntArrArr`'s element is `IntArr`, so `IntArr` has
-        // to be a complete type before the outer array's struct names it. A
-        // HashSet's order is arbitrary, which made `int[][]` compile or not
-        // depending on the hash seed.
         elems.sort_by_key(|e| (arr_depth(e), arr_name(e)));
         for e in &elems {
             if !matches!(e, CTy::Rec(_) | CTy::Sum(_)) && !emitted_arr.contains(&arr_name(e)) {
@@ -1308,8 +1078,6 @@ impl<'a> Cx<'a> {
                 self.emitted_containers.insert(arr_name(e));
             }
         }
-        // string-keyed maps, monomorphized on the value type. Sorted so the
-        // generated C is byte-identical run to run.
         let mut vals: Vec<CTy> = self.map_vals.iter().cloned().collect();
         vals.sort_by_key(map_name);
         for v in &vals {
@@ -1320,14 +1088,6 @@ impl<'a> Cx<'a> {
         }
         self.push("");
 
-        // Recursive records (`Expr { children: Expr[] }`) form a definition
-        // cycle: the record body needs its element-array type complete, but the
-        // array's ops need the record's `sizeof`, which needs it complete. We
-        // break it with a C forward declaration: name the record struct,
-        // declare the element array *struct* (a bare `Elem* data` needs only
-        // the forward decl), then close the record body, then emit the array
-        // *ops* once the record is sized. `cyclic_arr_elems` are the element
-        // types deferred this way.
         let cyclic: HashSet<String> = self
             .records
             .keys()
@@ -1339,8 +1099,6 @@ impl<'a> Cx<'a> {
             for n in &cyclic {
                 self.push(&format!("typedef struct {n} {n};"));
             }
-            // element arrays over any cyclic record, gathered from every field
-            // and every stray array use, declared (struct only) up front.
             let mut want: Vec<CTy> = Vec::new();
             let consider = |e: &CTy, want: &mut Vec<CTy>| {
                 if let CTy::Rec(r) = e
@@ -1376,16 +1134,8 @@ impl<'a> Cx<'a> {
             self.push("");
         }
 
-        // Records and tagged sums are structs that may reference each other by
-        // value (a sum payload holds a record, a record field holds a sum), so
-        // they are emitted together in one dependency order. Record-element
-        // arrays are interleaved just before the struct that first needs them
-        // (the element type must be defined before MACA_DEFINE_ARRAY, which uses
-        // `sizeof(Elem)`). Plain (nullary) sums were emitted as enums above and
-        // carry no struct dependency.
         let struct_order = self.struct_order();
         for name in &struct_order {
-            // emit any record/sum-element arrays this struct references first
             let field_ctys: Vec<CTy> = if let Some(fs) = self.records.get(name) {
                 fs.iter().map(|(_, t)| t.clone()).collect()
             } else {
@@ -1410,8 +1160,6 @@ impl<'a> Cx<'a> {
             }
             if self.records.contains_key(name) {
                 let fields = self.records[name].clone();
-                // a recursive record was forward-declared, so close its named
-                // struct; a plain record gets the usual anonymous typedef.
                 if cyclic.contains(name) {
                     self.push(&format!("struct {name} {{"));
                 } else {
@@ -1430,13 +1178,9 @@ impl<'a> Cx<'a> {
                 self.emit_tagged_sum(name, &vars);
             }
         }
-        // now every record is sized: emit the deferred element-array ops.
         for e in &cyclic_arr_elems {
             self.push(&format!("MACA_ARRAY_OPS({}, {})", arr_name(e), c_type(e)));
         }
-        // record/sum-element arrays that aren't a struct field but arise
-        // elsewhere (e.g. a top-level `let xs = R{}, R{}` or an index target):
-        // now that every struct is defined, emit their MACA_DEFINE_ARRAY.
         for e in &elems {
             if matches!(e, CTy::Rec(_) | CTy::Sum(_)) && !emitted_arr.contains(&arr_name(e)) {
                 self.push(&format!(
@@ -1450,10 +1194,6 @@ impl<'a> Cx<'a> {
         }
         self.push("");
 
-        // sum to_str/from_str (json codegen needs them). Plain and tagged sums
-        // both get them; for tagged sums the payload is dropped in from_str, a
-        // documented limitation. Emitted after the struct block so tagged-sum
-        // constructors are already defined.
         for (name, vars) in &sums {
             let tagged = self.is_tagged(name);
             self.push(&format!("static maca_str {name}_to_str({name} v) {{"));
@@ -1505,7 +1245,6 @@ impl<'a> Cx<'a> {
         }
         self.push("");
 
-        // json forward decls + defs (records only; sums use to_str/from_str)
         let order = self.rec_order.clone();
         for name in &order {
             self.push(&format!("static maca_str {name}_to_json({name} v);"));
@@ -1517,10 +1256,6 @@ impl<'a> Cx<'a> {
             self.emit_from_json(name);
         }
 
-        // top-level let accessors: declared here, defined below with the
-        // function bodies. A constant holding a lambda hoists that lambda to a
-        // `static` function, and the hoist has to land *before* the accessor
-        // that takes its address, which only the deferred region guarantees.
         let lets = self.lets.clone();
         for (name, cty, init) in &lets {
             let ret = self.let_ty(cty, init);
@@ -1531,16 +1266,11 @@ impl<'a> Cx<'a> {
         self.push(LATE_CONTAINERS);
         self.push("");
 
-        // user fn forward decls (SIMD kernels are defined on the LLVM path, so
-        // they are declared `extern` here and skipped in the def loop)
         for item in &self.m.items {
             if let Stmt::Fn(f) = item {
-                // generic fns are emitted per-instantiation, not once
                 if f.name == "main" || self.generics.contains_key(&f.name) {
                     continue;
                 }
-                // bodyless fns are foreign (FFI) declarations; SIMD kernels live
-                // on the LLVM path. Both are `extern`.
                 if f.body.is_none() || self.is_simd_fn(&f.name) {
                     self.push(&format!("extern {};", self.fn_sig(f)));
                 } else {
@@ -1550,10 +1280,6 @@ impl<'a> Cx<'a> {
         }
         self.push("");
 
-        // user fn defs (skip SIMD kernels: the LLVM backend defines them).
-        // Emit into a scratch buffer first: lowering a body may hoist lambdas to
-        // top-level `static` functions, which must be declared/defined *before*
-        // the functions that take their address.
         let saved = std::mem::take(&mut self.out);
         for (name, cty, init) in &lets {
             let ret = self.let_ty(cty, init);
@@ -1575,8 +1301,6 @@ impl<'a> Cx<'a> {
                 self.push("");
             }
         }
-        // drain the monomorphization worklist: emitting a specialization may
-        // request further ones (generic calling generic), so loop until empty.
         while let Some((name, ctys)) = self.spec_pending.pop() {
             if !self.spec_done.insert((name.clone(), ctys.clone())) {
                 continue;
@@ -1599,9 +1323,7 @@ impl<'a> Cx<'a> {
         self.out.push_str(&defs);
     }
 
-    /// Definitions for containers nobody knew about until a generic was
-    /// specialized, shallowest first so an outer array names a complete inner
-    /// one.
+    /// Definitions for containers nobody knew about until a generic was specialized, shallowest first so an outer array names a complete inner one.
     fn late_containers(&mut self) -> String {
         let mut elems: Vec<CTy> = self
             .arr_elems
@@ -1637,21 +1359,11 @@ impl<'a> Cx<'a> {
         out
     }
 
-    /// The C type of a top-level constant: its annotation, or what its
-    /// initialiser says.
-    ///
-    /// A call to something the program defines takes that function's return
-    /// type: `Started = start()` was a `str` because the shallow guess never
-    /// looked the callee up, and the accessor then returned a `bool` as a
-    /// pointer.
+    /// The C type of a top-level constant: its annotation, or what its initialiser says.
     fn let_ty(&self, cty: &CTy, init: &Expr) -> CTy {
         if *cty != CTy::Unknown {
             return cty.clone();
         }
-        // A call says what it returns. Written UFCS it says the same thing:
-        // `command(…).opt(…)` is `opt(command(…), …)`, and reading only the
-        // `f(x)` spelling gave a builder chain the fallback type and then
-        // returned a record where a string was declared.
         if let Expr::Call { callee, .. } = init
             && let Some(f) = called_name(callee)
             && let Some((_, ret)) = self.fns.get(f)
@@ -1663,15 +1375,6 @@ impl<'a> Cx<'a> {
     }
 
     /// A user function's C signature.
-    ///
-    /// Emitted `static` by its callers, always: everything a program defines
-    /// lives in one translation unit and is only called from it, while the
-    /// engines beside it (the runtime, the socket glue) are separate objects
-    /// full of libc calls. A program that defined `listen` gave the linker two
-    /// of them, the glue's `listen(srv, 512)` bound to the Maca one, and the
-    /// server bound to a port nobody named. Internal linkage makes a name
-    /// collision with libc impossible rather than merely unlikely, and lets the
-    /// C compiler inline across the whole program while it is there.
     fn fn_sig(&self, f: &FnDef) -> String {
         let (params, ret) = &self.fns[&f.name];
         let ps: Vec<String> = f
@@ -1703,12 +1406,8 @@ impl<'a> Cx<'a> {
             .collect();
 
         if f.name == "main" {
-            // `_maca_argc`/`_maca_argv` rather than the conventional names: a
-            // Maca `main(argv: str[])` would otherwise be shadowed by C's own
-            // parameter and fail to compile.
             self.push("int main(int _maca_argc, char** _maca_argv) {");
             self.push("    maca_init();");
-            // build args: str[]
             if let Some((pname, _)) = f.params.first().map(|p| (p.name.clone(), ())) {
                 env.push((pname.clone(), CTy::Arr(Box::new(CTy::Str))));
                 let pc = cid(&pname);
@@ -1751,9 +1450,6 @@ impl<'a> Cx<'a> {
                 };
                 self.block(&mut env, stmts, &sink, 1);
             }
-            // an arrow body that is itself a control-flow expression (a `match`,
-            // `if`, or block returning a value) routes through the Sink like a
-            // block body would, instead of the value-only `expr()` path.
             Some(FnBody::Expr(e)) if is_control(e) => {
                 let sink = if ret == CTy::Unit {
                     Sink::Discard
@@ -1763,18 +1459,11 @@ impl<'a> Cx<'a> {
                 self.stmt_expr(&mut env, e, &sink, 1);
             }
             Some(FnBody::Expr(e)) => {
-                // An arrow body *is* the function's value, so it is returned
-                // even with no `-> T` declared: an undeclared return type is
-                // `CTy::Unit`, which still lowers to a C `int64_t`, so
-                // discarding here would fall off the end of a non-void function
-                // and hand back garbage (`twice(f, x) => f(f(x))` segfaulted).
                 let (c, _) = self.expr(&mut env, e, Some(&ret));
                 self.push(&format!("    return {c};"));
             }
             None => {}
         }
-        // A block body with no declared return type discards its statements,
-        // so terminate it rather than running off the end.
         if ret == CTy::Unit && matches!(&f.body, Some(FnBody::Block(_))) {
             self.push("    return 0;");
         }
@@ -1791,14 +1480,12 @@ fn lookup(env: &Env, n: &str) -> Option<CTy> {
         .map(|(_, t)| t.clone())
 }
 
-/// Where the value of a block / control-flow expression goes. This is what lets
-/// `if`/`match`/block be used in value position (`let x = if c { … } else { … }`):
-/// each branch tail is lowered against the same sink.
+/// Where the value of a block / control-flow expression goes.
 #[derive(Clone)]
 enum Sink {
-    Discard,             // statement position: value ignored
-    Return(CTy),         // tail of a value-returning function
-    Assign(String, CTy), // assign the result into an existing variable
+    Discard,
+    Return(CTy),
+    Assign(String, CTy),
 }
 
 impl Sink {
@@ -1819,34 +1506,17 @@ impl<'a> Cx<'a> {
 
     fn block(&mut self, env: &mut Env, stmts: &[Stmt], sink: &Sink, ind: usize) {
         let base = env.len();
-        // Perceus, the codegen half: a local that owns a heap buffer and cannot
-        // outlive this block is dropped when the block ends, which returns the
-        // buffer to the free-list for the next allocation of that size to reuse.
-        // `escaping` is the conservative half; see `note_escapes`.
         let escaping = escaping_names(stmts);
-        // A string answers a narrower question than an array does; see
-        // `ownership`. `retained` is that question; `escaping` stays the array
-        // answer, because every copy of a `T[]` shares one buffer.
         let retained = self.fresh.retained(stmts, Tail::Flows);
-        // Two different questions, and an accumulator answers them differently.
-        // Releasing the *previous* value on each reassignment is right even for
-        // a name the block goes on to return, because the value being replaced
-        // is dead either way; releasing the name at the end of the block is
-        // not, because that is the value the caller gets.
         let kept_apart_from_result = self.fresh.retained(stmts, Tail::Read);
         let mut owned: Vec<(String, CTy)> = Vec::new();
         for (i, s) in stmts.iter().enumerate() {
             let last = i + 1 == stmts.len();
             match s {
-                // a declaration: a bare `x = e` that first introduces `x` (its
-                // const-ness is a checker concern). A bare assignment to a name
-                // already in scope is a reassignment (handled below).
                 Stmt::Bind(b) if matches!(&b.target, Expr::Ident(n) if lookup(env, n).is_none()) => {
                     if let Expr::Ident(name) = &b.target {
                         let ann = b.tys.first().map(|t| self.cty(t));
                         if is_control(&b.value) {
-                            // `let x = if/match/block …`: declare, then assign
-                            // the result in each branch tail via an Assign sink.
                             let ty = ann
                                 .clone()
                                 .unwrap_or_else(|| self.result_cty(env, &b.value));
@@ -1859,8 +1529,6 @@ impl<'a> Cx<'a> {
                             let ty = ann.unwrap_or(cty);
                             self.indent(ind);
                             self.push(&format!("{} {} = {code};", c_type(&ty), cid(name)));
-                            // Owned iff the buffer is fresh (not another name's)
-                            // and the name never leaves this block.
                             let mine = match &ty {
                                 CTy::Str => {
                                     if self.owns_str(name, stmts, &kept_apart_from_result) {
@@ -1881,15 +1549,8 @@ impl<'a> Cx<'a> {
                         }
                     }
                 }
-                // reassignment: a non-`let` bind to an in-scope lvalue, a bare
-                // name (`i = i + 1`, drives counters/`while`), an element
-                // (`xs[i] = v`), or a field (`p.x = v`).
                 Stmt::Bind(b) => {
                     if let Expr::Ident(name) = &b.target {
-                        // `xs = xs.push(v)` on a list nothing else holds is an
-                        // append, not a copy. Written as a copy it is quadratic:
-                        // building an eight-thousand element list took half a
-                        // second and left every intermediate buffer behind.
                         if let Some(code) = self.accumulating_push(
                             env,
                             name,
@@ -1905,11 +1566,6 @@ impl<'a> Cx<'a> {
                             let (code, _) = self.expr(env, &b.value, Some(&ty));
                             self.indent(ind);
                             if self.owned_strs.contains(name) {
-                                // The new value is usually built out of the old
-                                // one (`out = out ++ row`), so the old pointer
-                                // is held until the new one exists and released
-                                // afterwards, so an accumulator gives back every
-                                // round but the last.
                                 let old = self.temp();
                                 self.push(&format!(
                                     "{{ maca_str {old} = {n}; {n} = {code}; \
@@ -1926,15 +1582,6 @@ impl<'a> Cx<'a> {
                         self.push(&format!("{lv} = {code};"));
                     }
                 }
-                // The statement that carries the block's value out, with
-                // locals still to release: the value is computed into a name
-                // first, so the release happens after everything has been read
-                // and before the value leaves.
-                //
-                // Dropping first is what a block whose result *is* built out of
-                // its locals cannot survive: `emit_call` names `args` in the
-                // very expression it returns, and releasing `args` first handed
-                // the string back to the free list and then read it.
                 Stmt::Expr(e) if last && !matches!(sink, Sink::Discard) && !owned.is_empty() => {
                     let ty = sink.cty().cloned().unwrap_or(CTy::Unknown);
                     let held = self.temp();
@@ -1970,14 +1617,6 @@ impl<'a> Cx<'a> {
     }
 
     /// `xs = xs.push(v)` lowered as an append, when that cannot be observed.
-    ///
-    /// The copy exists because `ys = xs.push(v)` must leave `xs` alone: a list
-    /// is a value. Assigning back to the same name is the case where the old
-    /// value is unreachable the moment the new one exists, so there is nothing
-    /// to leave alone. Two conditions make that true rather than merely likely:
-    /// no second name may hold the list, and every value it is ever given must
-    /// be a list of its own rather than somebody else's: `xs = ys` followed by
-    /// `xs = xs.push(v)` would otherwise append to `ys`.
     fn accumulating_push(
         &mut self,
         env: &mut Env,
@@ -2007,11 +1646,6 @@ impl<'a> Cx<'a> {
     }
 
     /// May this block release the string `name` holds?
-    ///
-    /// Only if every value it is ever given is one nothing else is holding, and
-    /// nothing keeps it: an accumulator qualifies, a name handed to a function
-    /// or stored in a list does not. Reassignments count wherever they are, and
-    /// the one inside the loop is the whole point.
     fn owns_str(&self, name: &str, stmts: &[Stmt], retained: &HashSet<String>) -> bool {
         if retained.contains(name) {
             return false;
@@ -2025,24 +1659,11 @@ impl<'a> Cx<'a> {
         all_fresh
     }
 
-    /// Build one string out of `pieces`, giving back the ones this expression
-    /// made.
-    ///
-    /// Two savings, and the second is the larger. One call means one
-    /// allocation, where a chain of `maca_concat` built and abandoned a string
-    /// per operator. And a piece that exists only to be copied into the result
-    /// (the rendering of a number, a helper's return value, an attribute) is
-    /// named, so it can be released the moment the result exists. Those pieces
-    /// have no name in the source, which is why nothing used to release them:
-    /// `"<td>{n}</td>"` allocated four strings per call and kept all four.
+    /// Build one string out of `pieces`, giving back the ones this expression made.
     fn concat(&mut self, pieces: &[Piece]) -> String {
         let pieces: Vec<&Piece> = pieces.iter().filter(|p| p.code != "\"\"").collect();
         match pieces.as_slice() {
             [] => return "\"\"".into(),
-            // A lone owned piece is already the answer. A borrowed one is not:
-            // handing back somebody else's pointer would make this expression's
-            // value an alias, and the binding it lands in would release a
-            // string it does not own.
             [one] if one.owned => return one.code.clone(),
             _ => {}
         }
@@ -2051,13 +1672,6 @@ impl<'a> Cx<'a> {
             let args: Vec<&str> = pieces.iter().map(|p| p.code.as_str()).collect();
             return format!("maca_concat_n({n}, {})", args.join(", "));
         }
-        // Every piece that could be doing something is named, not just the ones
-        // to release, because the names are what fix the order: arguments to
-        // one call are evaluated in whatever order the C compiler likes, and
-        // naming only some of them would run a chain neither left to right nor
-        // right to left, decided by an ownership judgement the source does not
-        // show. A literal or a bare variable is left alone, because reading one
-        // is not an event anybody can observe.
         let (mut lets, mut args, mut drops) = (Vec::new(), Vec::new(), Vec::new());
         for p in pieces {
             if p.releasable() || !p.is_settled() {
@@ -2080,9 +1694,7 @@ impl<'a> Cx<'a> {
         )
     }
 
-    /// Release each owned local's buffer. `maca_drop` takes the last owner's
-    /// count to zero and hands the block back to the free-list; a NULL buffer
-    /// (an array that was never pushed to) is a no-op.
+    /// Release each owned local's buffer.
     fn emit_drops(&mut self, owned: &[(String, CTy)], ind: usize) {
         for (name, ty) in owned {
             let v = cid(name);
@@ -2091,8 +1703,6 @@ impl<'a> Cx<'a> {
                 CTy::Map(_) => self.push(&format!(
                     "maca_drop({v}.keys); maca_drop({v}.vals); maca_drop({v}.used);"
                 )),
-                // a string *is* the pointer, so it is released directly; a
-                // literal or a static reaches the same call and is left alone
                 CTy::Str => self.push(&format!("maca_drop_str({v});")),
                 _ => self.push(&format!("maca_drop({v}.data);")),
             }
@@ -2109,9 +1719,7 @@ impl<'a> Cx<'a> {
         }
     }
 
-    /// Infer the C type of a control-flow expression used in value position, by
-    /// looking at a branch tail. Leaves are type-inferred by a dry lowering
-    /// (emitted code is rolled back). Falls back to `int64_t` via `Unknown`.
+    /// Infer the C type of a control-flow expression used in value position, by looking at a branch tail.
     fn result_cty(&mut self, env: &Env, e: &Expr) -> CTy {
         match e {
             Expr::If { then, els, .. } => {
@@ -2134,10 +1742,6 @@ impl<'a> Cx<'a> {
             Expr::Block(stmts) => tail_expr(stmts)
                 .map(|e| self.result_cty(env, e))
                 .unwrap_or(CTy::Unit),
-            // A loop and a jump have no value. Falling through to the leaf case
-            // below asked `expr` for their type, which asked `result_cty`
-            // again, so the compiler overflowed its stack on
-            // `y = 1 + (while false { 2 })`.
             Expr::For { .. } | Expr::While { .. } | Expr::Break | Expr::Continue => CTy::Unit,
             leaf => {
                 let save = self.out.len();
@@ -2150,14 +1754,11 @@ impl<'a> Cx<'a> {
         }
     }
 
-    /// Emit a control-flow expression (for/match/if/block), routing its value to
-    /// `sink` (Discard in statement position, Return/Assign in value position).
+    /// Emit a control-flow expression (for/match/if/block), routing its value to `sink` (Discard in statement position, Return/Assign in value position).
     fn stmt_expr(&mut self, env: &mut Env, e: &Expr, sink: &Sink, ind: usize) {
         match e {
             Expr::Block(stmts) => self.block(env, stmts, sink, ind),
             Expr::For { pat, iter, body } if matches!(&**iter, Expr::Range { .. }) => {
-                // `for i in lo..hi` is a counting loop, no array materialized.
-                // Ranges are inclusive of `hi`, so the guard is `<=`.
                 let Expr::Range { lo, hi } = &**iter else {
                     unreachable!()
                 };
@@ -2180,7 +1781,6 @@ impl<'a> Cx<'a> {
                 self.push("} }");
             }
             Expr::For { pat, iter, body } => {
-                // a `for` loop has no value; its body is always in statement position
                 let (ic, ity) = self.expr(env, iter, None);
                 let elem = match ity {
                     CTy::Arr(e) => *e,
@@ -2255,10 +1855,6 @@ impl<'a> Cx<'a> {
             CTy::Arr(e) => (**e).clone(),
             _ => CTy::Unknown,
         };
-        // A guard can fail after its pattern matches, so the arm must be able to
-        // fall through to the next one, which an `if/else if` chain cannot
-        // express. Only when some arm has a guard do we switch to independent
-        // `if` blocks with a `goto` past the rest once an arm fully matches.
         if arms.iter().any(|a| a.guard.is_some()) {
             let end = format!("_m{}", self.temp());
             for arm in arms {
@@ -2299,8 +1895,6 @@ impl<'a> Cx<'a> {
             let (cond, binds) = self.pattern_cond(&sv, &sty, &elem, &arm.pat);
             let kw = if i == 0 { "if" } else { "else if" };
             self.indent(ind);
-            // a catch-all (`cond == "1"`) is `else {` only after a prior arm;
-            // as the first arm it must stay a real `if (1) {`
             if cond == "1" && i > 0 {
                 self.push("else {");
             } else {
@@ -2330,35 +1924,26 @@ impl<'a> Cx<'a> {
     ) -> (String, Vec<(String, String, CTy)>) {
         match p {
             Pattern::Wild => ("1".into(), vec![]),
-            // literal patterns → an equality test against the scrutinee
             Pattern::Int(n) => (format!("{sv} == {n}"), vec![]),
             Pattern::Float(f) => (format!("{sv} == {f}"), vec![]),
             Pattern::Bool(b) => (
                 format!("{sv} == {}", if *b { "true" } else { "false" }),
                 vec![],
             ),
-            // a string literal against a string scrutinee (vs. the list-of-chars
-            // case handled below for array scrutinees)
             Pattern::Str(lit) if matches!(sty, CTy::Str) => {
                 (format!("maca_str_eq({sv}, {})", c_str(lit)), vec![])
             }
-            // A variant may reach here as a bare `Bind` (bare `Red`) or a `Ctor`
-            // (`Red()` / `Circle(x)`); against a sum scrutinee it is a tag test,
-            // not a binding; mirror the checker's `is_variant` disambiguation.
             Pattern::Bind(n) | Pattern::Ctor { name: n, args: _ } if matches!(sty, CTy::Sum(s) if self.sums.get(s).is_some_and(|vs| vs.iter().any(|v| v == n))) =>
             {
                 let CTy::Sum(s) = sty else { unreachable!() };
                 if self.is_tagged(s) {
                     let cond = format!("{sv}.tag == {s}_tag_{n}");
-                    // extract payload bindings from a `Circle(x, y)` pattern
                     let mut binds = Vec::new();
                     if let Pattern::Ctor { args, .. } = p {
                         let ptys = self.variant_payloads.get(n).cloned().unwrap_or_default();
                         for (i, a) in args.iter().enumerate() {
                             if let Pattern::Bind(bn) = a {
                                 let bty = ptys.get(i).cloned().unwrap_or(CTy::Unknown);
-                                // a boxed (recursive) payload is a pointer, so
-                                // deref to bind the value.
                                 let deref = if self.is_boxed(s, &bty) { "*" } else { "" };
                                 binds.push((
                                     bn.clone(),
@@ -2377,8 +1962,6 @@ impl<'a> Cx<'a> {
                     (format!("{sv} == {s}_{n}"), vec![])
                 }
             }
-            // a record pattern `{ x, y }` is irrefutable (always matches) but
-            // binds each field: `x` = `sv.x`. Shorthand (`x`) and `x: name` bind.
             Pattern::Record(fields) if matches!(sty, CTy::Rec(_)) => {
                 let CTy::Rec(rname) = sty else { unreachable!() };
                 let decl = self.records.get(rname).cloned().unwrap_or_default();
@@ -2392,7 +1975,7 @@ impl<'a> Cx<'a> {
                     let bn = match sub {
                         None => Some(fname.clone()),
                         Some(Pattern::Bind(b)) => Some(b.clone()),
-                        _ => None, // nested destructuring inside a field: deferred
+                        _ => None,
                     };
                     if let Some(bn) = bn {
                         binds.push((
@@ -2448,8 +2031,6 @@ impl<'a> Cx<'a> {
                 }
                 (conds.join(" && "), binds)
             }
-            // `A | B => …`: any alternative matches; bindings come from the
-            // first alternative (mirrors the checker's bind_pattern).
             Pattern::Or(alts) => {
                 let mut conds = Vec::new();
                 let mut binds = Vec::new();
@@ -2470,16 +2051,7 @@ impl<'a> Cx<'a> {
         }
     }
 
-    // ---- expressions ------------------------------------------------------
-
-    /// Lower `e`, and leave behind the flattened pieces if it was a
-    /// concatenation.
-    ///
-    /// `a ++ b ++ c` parses left-nested, so the outer `++` needs the inner
-    /// one's pieces rather than the string it built out of them, since the whole
-    /// point is that the inner string is never built. The note is cleared for
-    /// anything else, so a concatenation nested inside a call is not mistaken
-    /// for the call's own.
+    /// Lower `e`, and leave behind the flattened pieces if it was a concatenation.
     fn expr(&mut self, env: &mut Env, e: &Expr, expected: Option<&CTy>) -> (String, CTy) {
         let out = self.expr_inner(env, e, expected);
         if !matches!(
@@ -2504,11 +2076,6 @@ impl<'a> Cx<'a> {
             Expr::Path(p) => (c_str(p), CTy::Str),
             Expr::Ident(n) => self.ident(env, n),
             Expr::Ctor { name, fields } => self.ctor(env, name, fields),
-            // A record literal. Where the context names a declared record it
-            // constructs *that* record, so `p: Point = { x = 5, y = 6 }` is one
-            // `Point` and not a lookalike struct that would need a cast at
-            // every assignment. With no expectation the struct synthesized from
-            // the shape in the prepass is what it builds.
             Expr::Record(fields) => {
                 let name = self
                     .expected_record(expected, fields)
@@ -2520,10 +2087,6 @@ impl<'a> Cx<'a> {
             Expr::Field { base, name } => self.field(env, base, name),
             Expr::Index { base, index } => self.index(env, base, index),
             Expr::Range { lo, hi } => {
-                // materialize `lo..hi` (inclusive) as an `int[]` in value position
-                // (e.g. `xs = 0..n`); `for i in lo..hi` uses a counting loop with
-                // no array at all. The whole span is sized in one allocation and
-                // filled in a tight loop, with no per-element push/realloc.
                 let (lc, _) = self.expr(env, lo, Some(&CTy::Int));
                 let (hc, _) = self.expr(env, hi, Some(&CTy::Int));
                 let an = arr_name(&CTy::Int);
@@ -2561,15 +2124,9 @@ impl<'a> Cx<'a> {
                 )
             }
             Expr::Try(x) => self.expr(env, x, expected),
-            // `fail msg` is a clean error exit with the message (was a bare abort()
-            // that discarded the message and raised SIGABRT). `maca_fail` is
-            // noreturn; the trailing `0` only keeps the expression well-typed.
             Expr::Fail(msg) => {
                 let (mc, _) = self.expr(env, msg, Some(&CTy::Str));
                 let ty = expected.cloned().unwrap_or(CTy::Unit);
-                // `maca_fail` is noreturn, so the value after the comma is
-                // never produced, but C still type-checks the expression, and
-                // a bare `0` is the wrong type wherever the branch is a struct.
                 let zero = match &ty {
                     CTy::Rec(_) | CTy::Sum(_) | CTy::Arr(_) | CTy::Map(_) => {
                         format!("({}){{0}}", c_type(&ty))
@@ -2578,12 +2135,7 @@ impl<'a> Cx<'a> {
                 };
                 (format!("(maca_fail({mc}), {zero})"), ty)
             }
-            // `try e` / `reify e` run `e` under a failure handler; the value is
-            // the caught message (a `str`), or "" on success. setjmp must be
-            // inline (not wrapped in a helper), so a GNU statement-expression.
             Expr::Lambda { params, body, .. } => self.emit_lambda(env, params, body),
-            // `base with { f = v, … }` is a functional record update: copy
-            // the base struct (a value type) and overwrite the named fields.
             Expr::With { base, fields } => self.with_update(env, base, fields),
             Expr::Reify(x) => {
                 let jb = self.temp();
@@ -2598,30 +2150,17 @@ impl<'a> Cx<'a> {
                     CTy::Str,
                 )
             }
-            // colorblind async. `spawn f(x)` schedules `f(x)` on the runtime's
-            // worker pool and yields a `maca_future*`; `await fut` blocks the
-            // caller until it resolves, returning the (int64-boxed) result. No
-            // `async` keyword and no ABI change: an async fn is an ordinary fn.
             Expr::Spawn(inner) => match &**inner {
                 Expr::Call { callee, args } if matches!(&**callee, Expr::Ident(_)) => {
                     let Expr::Ident(f) = &**callee else {
                         unreachable!()
                     };
-                    // Every argument, not just the first. `spawn f(a, b)` used
-                    // to compile with `b` dropped and the thread reading
-                    // whatever happened to be in that register: a server
-                    // spawned with a port and a handler bound to neither.
                     if args.len() > 2 {
                         self.problem(format!(
                             "`spawn {f}(…)` takes at most two arguments; \
                              pass the rest in a record"
                         ));
                     }
-                    // A task boundary carries integer-width slots, and a
-                    // variadic's parameter is the list its arguments were
-                    // collected into: three words, and built by a call this
-                    // one bypasses. `spawn grow(9)` handed the callee a 9 where
-                    // it expected the list and printed a pointer.
                     if self.variadics.contains_key(f) {
                         self.problem(format!(
                             "`spawn {f}(…)` cannot take a variadic: a task takes \
@@ -2631,12 +2170,6 @@ impl<'a> Cx<'a> {
                     }
                     let typed: Vec<(String, CTy)> =
                         args.iter().map(|x| self.arg_typed(env, x)).collect();
-                    // The task boundary carries one integer-width slot per
-                    // argument. A closure is two words; a float is not an
-                    // integer and the C cast truncates it; a record is not a
-                    // value a slot can hold. Each was silently wrong, with
-                    // `spawn fadd(1.5, 2.5)` coming back as 3.4e+175, so each
-                    // is named instead of guessed at.
                     for (_, t) in &typed {
                         let what = match t {
                             CTy::Closure(_) | CTy::Closure2(_) => "a function value",
@@ -2672,15 +2205,6 @@ impl<'a> Cx<'a> {
                 let (fc, _) = self.expr(env, inner, None);
                 (format!("maca_await({fc})"), CTy::Int)
             }
-            // `if`, `match` and a block are values wherever a value goes, not
-            // only where a statement can be hung underneath them. A binding and
-            // a return already lower them through a `Sink`; here the same
-            // lowering is wrapped in a statement expression, so a record field,
-            // a call argument or a list element can be a multi-way choice
-            // written beside the thing it decides.
-            // …but only the shapes that *have* a value. A loop runs for its
-            // effect and `break` leaves one, so neither is an expression, and
-            // `[1, break]` emitted C with a `break` outside any loop.
             other
                 if is_control(other)
                     && !matches!(
@@ -2713,8 +2237,6 @@ impl<'a> Cx<'a> {
             return (cid(n), t);
         }
         if let Some(sum) = self.variant_of.get(n).cloned() {
-            // a tagged sum's nullary variant is a constructor call `Sum_n()`;
-            // a plain enum's variant is the enum constant `Sum_n`.
             if self.is_tagged(&sum) {
                 return (format!("{sum}_{n}()"), CTy::Sum(sum));
             }
@@ -2727,26 +2249,16 @@ impl<'a> Cx<'a> {
                 .unwrap_or(CTy::Unknown);
             return (format!("mv_{n}()"), ty);
         }
-        // a top-level function referenced by name (not called) is a function
-        // *value* → wrap it in a `maca_closure` so it can be passed to a
-        // higher-order parameter (`run(cs, i, is_alpha)`).
         if self.fns.contains_key(n) {
             return self.fn_value_closure(n);
         }
         (cid(n), CTy::Unknown)
     }
 
-    /// A `maca_closure` that calls top-level fn `name`, boxing its argument(s)
-    /// and result across the uniform closure ABI. The boxing thunk is hoisted
-    /// once; capturing nothing, the closure's env is `NULL`.
+    /// A `maca_closure` that calls top-level fn `name`, boxing its argument(s) and result across the uniform closure ABI.
     fn fn_value_closure(&mut self, name: &str) -> (String, CTy) {
         let (params, ret) = self.fns[name].clone();
         let arity = params.len();
-        // The closure ABI is fixed-arity, and the collection into a list is
-        // something the call site does, so a variadic reached through a closure
-        // would be handed one element where it expects the whole list. The
-        // checker rejects this; the guard is here because a lowering that can
-        // only be wrong should not be reachable by a second route.
         if self.variadics.contains_key(name) {
             self.problem(format!(
                 "`{name}` is variadic, so it cannot be used as a function value"
@@ -2788,16 +2300,8 @@ impl<'a> Cx<'a> {
         )
     }
 
-    /// Lower a lambda in a function-value position: a `maca_closure` with
-    /// default `int` parameters (the shape `.parallel`/first-class calls use).
+    /// Lower a lambda in a function-value position.
     fn emit_lambda(&mut self, env: &Env, params: &[Param], body: &Expr) -> (String, CTy) {
-        // No element type from the call site (this is a bare lambda value, e.g.
-        // one handed to a higher-order *parameter*), so read the body for what
-        // it does to each parameter. Without this, `s => s == "c"` typed `s` as
-        // an integer and compared a string pointer to it.
-        // The annotation first: a lambda parameter may say what it is, and a
-        // written type outranks every inference. Then what the callee calls it
-        // with, then what the body does to it.
         let hint = self.lambda_hint.clone();
         let ptys: Vec<CTy> = params
             .iter()
@@ -2816,13 +2320,6 @@ impl<'a> Cx<'a> {
     }
 
     /// The type a lambda parameter must have, read off the place it is passed.
-    ///
-    /// `req => serve_file(root, req)` says nothing about `req` on its own, but
-    /// `serve_file` declares its second parameter a `Request`, so `req` is one.
-    /// This is stronger than guessing from the methods the body calls, because
-    /// a declared signature is a fact rather than a hint, and it is what lets a
-    /// handler take a record at all: unboxed as an `int`, `req.path` reads a
-    /// field off an integer.
     fn param_ty_from_use(&self, name: &str, body: &Expr) -> Option<CTy> {
         let mut found = None;
         self.scan_passed_to(name, body, &mut found);
@@ -2841,10 +2338,6 @@ impl<'a> Cx<'a> {
                 if n != name {
                     continue;
                 }
-                // Past a variadic's fixed count the parameter is the *list* the
-                // arguments were collected into, so what this name is passed as
-                // is one element of it: `v => grow(v)` typed `v` as the whole
-                // `IntArr` and pushed a list into a list of ints.
                 let slot = match self.variadics.get(f) {
                     Some(&at) if i >= at => match ptys.get(at) {
                         Some(CTy::Arr(e)) => Some((**e).clone()),
@@ -2863,10 +2356,6 @@ impl<'a> Cx<'a> {
         if found.is_some() {
             return;
         }
-        // An inner lambda that rebinds the name is talking about a different
-        // parameter. Descending into it typed the *outer* one from the inner
-        // one's use: `apply(n => … xs.map(n => show(n)) …)` made the outer `n`
-        // a `str` and the call passed it a 7.
         if let Expr::Lambda { params, .. } = e
             && params.iter().any(|p| p.name == name)
         {
@@ -2876,12 +2365,6 @@ impl<'a> Cx<'a> {
     }
 
     /// The type a lambda handed to `callee` at position `index` is called with.
-    ///
-    /// This is the fact the call site actually has: `listen(port, handler)`
-    /// forwards `handler` to `answer`, which calls it with a `parse_request`
-    /// result, so a lambda written `req => …` at that position takes a
-    /// `Request`, and nothing had to guess. Resolution follows forwarding, the
-    /// same way `closure_params` does, and gives up rather than looping.
     fn callee_param_ty(&self, callee: &str, index: usize, fuel: usize) -> Option<CTy> {
         if fuel == 0 {
             return None;
@@ -2891,17 +2374,12 @@ impl<'a> Cx<'a> {
             _ => None,
         })?;
         let param = f.params.get(index)?;
-        // A variadic parameter names the collected list, not the argument at
-        // this position, so how the body uses it says nothing about a lambda
-        // written here.
         if param.variadic {
             return None;
         }
         let pname = &param.name;
         let body = f.body.as_ref()?;
 
-        // What the function knows about its own locals: a parameter's declared
-        // type, and a binding whose value is a call to something with one.
         let mut env: Vec<(String, CTy)> = f
             .params
             .iter()
@@ -2940,7 +2418,6 @@ impl<'a> Cx<'a> {
     ) {
         if let Expr::Call { callee, args } = e {
             match &**callee {
-                // `handler(r)`: the argument's type is the parameter's type.
                 Expr::Ident(n) if n == pname => {
                     if let Some(Arg::Pos(Expr::Ident(a))) = args.first()
                         && let Some((_, t)) = env.iter().find(|(k, _)| k == a)
@@ -2948,7 +2425,6 @@ impl<'a> Cx<'a> {
                         *direct = Some(t.clone());
                     }
                 }
-                // `answer(handler, raw)`: ask `answer` instead.
                 Expr::Ident(g) if forwarded.is_none() => {
                     for (i, a) in args.iter().enumerate() {
                         if matches!(a, Arg::Pos(Expr::Ident(n)) if n == pname) {
@@ -2966,12 +2442,7 @@ impl<'a> Cx<'a> {
         }
     }
 
-    /// Lower a lambda to a `maca_closure`: a hoisted function plus a heap
-    /// environment holding the captured free variables. Supports capturing and
-    /// non-capturing lambdas with any body shape. `param_tys` gives the (known)
-    /// parameter types: higher-order methods pass the element type; other sites
-    /// default to `int`. Returns `(closure-value, body-result-type)`; boundary
-    /// values (params/result) are boxed as `int64_t` (a str/pointer fits).
+    /// Lower a lambda to a `maca_closure`.
     fn emit_closure(
         &mut self,
         env: &Env,
@@ -2979,39 +2450,21 @@ impl<'a> Cx<'a> {
         body: &Expr,
         param_tys: &[CTy],
     ) -> (String, CTy) {
-        // A lambda body is a scope of its own, and the enclosing function's
-        // answer about what may be appended to in place says nothing about it:
-        // everything a lambda touches it either captured or was handed. Nothing
-        // inside one appends in place.
         let saved_appendable = std::mem::take(&mut self.appendable);
 
-        // free variables captured from the enclosing scope
         let mut bound: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
         let mut refs = HashSet::new();
         free_vars(body, &bound, &mut refs);
         bound.clear();
         let mut caps: Vec<(String, CTy)> = refs
             .into_iter()
-            // A name the enclosing scope binds is captured whatever else in the
-            // program is called that, because a local shadows a global here as
-            // it does everywhere else in the language. Asking only
-            // `is_known_global` dropped it: `under(at: str, css: str) =>
-            // css.split("\n").map(l => at ++ l)` lost `at` from the environment
-            // the moment any other file in the slice defined a top-level `at`,
-            // and the body then read that *global* instead.
-            //
-            // Against a function that is loud, because `ident` hands back a
-            // `maca_closure` and `++` refuses one. Against a top-level *binding*
-            // it is silent: `mv_name()` is a string, so the program links, runs,
-            // and quietly uses the module's value. Both are in
-            // `crates/driver/tests/programs/lambdas.maca`.
             .filter(|n| lookup(env, n).is_some() || !self.is_known_global(n))
             .map(|n| {
                 let t = self.cap_ty(env, &n);
                 (n, t)
             })
             .collect();
-        caps.sort_by(|a, b| a.0.cmp(&b.0)); // deterministic layout
+        caps.sort_by(|a, b| a.0.cmp(&b.0));
 
         let id = self.lambda_count;
         self.lambda_count += 1;
@@ -3058,10 +2511,6 @@ impl<'a> Cx<'a> {
             ));
             lenv.push((p.name.clone(), pt));
         }
-        // A block / `if` / `match` body is a statement shape, so it goes
-        // through the same `Sink` the rest of the backend uses: assign the
-        // value in each tail, then box that once. Evaluating it as an
-        // expression is what made `(n) => { a = n * 2  a > 10 }` unsupported.
         let ret = if is_control(body) {
             let ret = self.result_cty(&lenv, body);
             self.push(&format!("    {} _r;", c_type(&ret)));
@@ -3099,9 +2548,7 @@ impl<'a> Cx<'a> {
         (val, ret)
     }
 
-    /// Emit one monomorphized copy of a generic function for a concrete tuple of
-    /// argument types (mangled name, concrete param/ret types). The body flows
-    /// concrete types via the env, so type-variable references resolve correctly.
+    /// Emit one monomorphized copy of a generic function for a concrete tuple of argument types (mangled name, concrete param/ret types).
     fn emit_specialization(&mut self, name: &str, arg_ctys: &[CTy]) {
         let genf = self.generics[name].clone();
         let subst = self.build_subst(&genf, arg_ctys);
@@ -3140,9 +2587,6 @@ impl<'a> Cx<'a> {
         self.hoisted_decls.push(format!("static {sig};"));
         let saved = std::mem::take(&mut self.out);
         let saved_subst = std::mem::replace(&mut self.type_subst, subst);
-        // A specialization is a function body, and it was being lowered
-        // against whatever `appendable` the last ordinary function left
-        // behind, so a generic appended to a caller's list in place.
         let saved_appendable = std::mem::replace(
             &mut self.appendable,
             ownership::appendable_names(&genf, self.fresh.defined()),
@@ -3161,18 +2605,11 @@ impl<'a> Cx<'a> {
                 self.block(&mut env, stmts, &sink, 1);
             }
             Some(FnBody::Expr(e)) => {
-                // An arrow body *is* the function's value, so it is returned
-                // even with no `-> T` declared: an undeclared return type is
-                // `CTy::Unit`, which still lowers to a C `int64_t`, so
-                // discarding here would fall off the end of a non-void function
-                // and hand back garbage (`twice(f, x) => f(f(x))` segfaulted).
                 let (c, _) = self.expr(&mut env, e, Some(&ret));
                 self.push(&format!("    return {c};"));
             }
             None => {}
         }
-        // A block body with no declared return type discards its statements,
-        // so terminate it rather than running off the end.
         if ret == CTy::Unit && matches!(&genf.body, Some(FnBody::Block(_))) {
             self.push("    return 0;");
         }
@@ -3183,21 +2620,11 @@ impl<'a> Cx<'a> {
         self.hoisted_defs.push(def);
     }
 
-    /// type-variable name → concrete `CTy`, from a generic fn's params vs. the
-    /// concrete argument types at a call.
-    ///
-    /// Matched structurally, not just where a parameter is written as a bare
-    /// variable. `first(xs: a[]) -> a` is the most natural generic signature
-    /// there is, and reading only the bare form bound nothing from it, so the
-    /// return type fell back to the default and the caller got an integer where
-    /// an element was declared.
+    /// type-variable name → concrete `CTy`, from a generic fn's params vs. the concrete argument types at a call.
     fn build_subst(&self, genf: &FnDef, arg_ctys: &[CTy]) -> HashMap<String, CTy> {
         let mut m = HashMap::new();
         for (p, cty) in genf.params.iter().zip(arg_ctys) {
             if let Some(t) = &p.ty {
-                // A variadic's written type is one element's, matched against
-                // the list the call site collected, so bind through the array,
-                // or `...xs: a` would decide that `a` is `int[]`.
                 let against = match (p.variadic, cty) {
                     (true, CTy::Arr(e)) => e,
                     _ => cty,
@@ -3217,9 +2644,6 @@ impl<'a> Cx<'a> {
             Type::Array(inner) => CTy::Arr(Box::new(self.subst_cty(inner, subst))),
             Type::Opt(inner) => self.subst_cty(inner, subst),
             Type::Paren(inner) => self.subst_cty(inner, subst),
-            // `Map str a` is an application, and reading it as opaque meant a
-            // generic returning one was declared with the fallback map and its
-            // body returned the real one.
             Type::Apply(base, args) if matches!(&**base, Type::Name(n) if n.last().is_some_and(|h| h == "Map")) => {
                 CTy::Map(Box::new(
                     args.last()
@@ -3238,16 +2662,12 @@ impl<'a> Cx<'a> {
             .map_or(CTy::Unit, |t| self.subst_cty(t, &subst))
     }
 
-    /// The C type of a captured free variable (a function-local of the enclosing
-    /// scope). Top-level lets are globals (excluded upstream), so this only sees
-    /// locals, which live in `env`.
+    /// The C type of a captured free variable (a function-local of the enclosing scope).
     fn cap_ty(&self, env: &Env, n: &str) -> CTy {
         lookup(env, n).unwrap_or(CTy::Unknown)
     }
 
-    /// Higher-order list methods whose lambda argument must be lowered with the
-    /// element type as its parameter type: `.map`, `.filter`, `.reduce`. Returns
-    /// `None` (fall through to the generic UFCS path) if the shape doesn't match.
+    /// Higher-order list methods whose lambda argument must be lowered with the element type as its parameter type.
     fn list_hof(
         &mut self,
         env: &mut Env,
@@ -3263,9 +2683,6 @@ impl<'a> Cx<'a> {
             }
             _ => None,
         };
-        // A named top-level function passed where a lambda is expected
-        // (`xs.filter(is_even)`): reuse the function-value closure so
-        // `.map`/`.filter`/`.reduce` accept it as readily as a lambda.
         let named_fn = |a: Option<&Arg>, cx: &Self| match a {
             Some(Arg::Pos(Expr::Ident(n))) if cx.fns.contains_key(n) => Some(n.clone()),
             _ => None,
@@ -3293,11 +2710,6 @@ impl<'a> Cx<'a> {
                 Some((code, CTy::Arr(Box::new(ret))))
             }
             "filter" => {
-                // A closure the caller already holds: a higher-order parameter
-                // forwarded to `.filter` rather than a lambda written here.
-                // `filter` can take one because its result type is the receiver's
-                // element type; `map`'s would depend on the closure's return,
-                // which an opaque value doesn't carry.
                 let held = match args.first() {
                     Some(Arg::Pos(Expr::Ident(n)))
                         if matches!(lookup(env, n), Some(CTy::Closure(_) | CTy::Closure2(_))) =>
@@ -3430,8 +2842,7 @@ impl<'a> Cx<'a> {
         )
     }
 
-    /// `base with { f = v }` → `({ T _t = base; _t.f = v; _t; })`. The base's
-    /// record type supplies each overwritten field's C type (for coercion).
+    /// `base with { f = v }` → `({ T _t = base; _t.f = v; _t; })`.
     fn with_update(&mut self, env: &mut Env, base: &Expr, fields: &[Field]) -> (String, CTy) {
         let (bc, bt) = self.expr(env, base, None);
         let CTy::Rec(rname) = bt else {
@@ -3489,13 +2900,6 @@ impl<'a> Cx<'a> {
     }
 
     /// The trailing arguments of a variadic call, collected into one list.
-    ///
-    /// Deliberately the same C a list literal in that position would produce:
-    /// `total(1, 2, 3)` and `total([1, 2, 3])` allocate one buffer each, so the
-    /// sugar costs nothing and inherits an ownership story that already exists
-    /// rather than inventing one. C's own `stdarg.h` was not an option, since a
-    /// promoted `...` argument list is invisible to the reference counting, so
-    /// a `maca_str` passed through it would have no owner at all.
     fn collect_rest(&mut self, env: &mut Env, tail: &[Arg], elem: &CTy) -> String {
         let pieces: Vec<String> = tail
             .iter()
@@ -3504,12 +2908,7 @@ impl<'a> Cx<'a> {
         self.list_of(&pieces, elem)
     }
 
-    /// `receiver.f(…)` where `f` is variadic: the receiver joins the arguments
-    /// and the tail past the fixed count is collected, exactly as for `f(…)`.
-    ///
-    /// `at` is the fixed parameter count, and the receiver occupies the first of
-    /// them, so with `at == 0` the receiver is itself the first collected
-    /// element, which is what `f(x, …)` means.
+    /// `receiver.f(…)` where `f` is variadic.
     fn ufcs_variadic(
         &mut self,
         env: &mut Env,
@@ -3519,9 +2918,6 @@ impl<'a> Cx<'a> {
         at: usize,
     ) -> (String, CTy) {
         let Some((params, ret)) = self.fns.get(name).cloned() else {
-            // A generic reached UFCS-style has no monomorphized name to call;
-            // that hole predates variadics, but a variadic one would compound it
-            // with an argument count nothing checks.
             self.problem(format!(
                 "`{name}` is generic and variadic, so it cannot be called \
                  UFCS-style. Write `{name}(…)`"
@@ -3535,7 +2931,6 @@ impl<'a> Cx<'a> {
         let mut fixed = vec![rc.to_string()];
         let mut rest = Vec::new();
         for (i, x) in args.iter().enumerate() {
-            // +1 for the receiver already in `fixed`
             let slot = i + 1;
             if slot < at {
                 fixed.push(self.arg_expected(env, x, params.get(slot)).0);
@@ -3565,23 +2960,8 @@ impl<'a> Cx<'a> {
     }
 
     /// `tag(attr=value, …, child, …)` → the HTML text for that element.
-    ///
-    /// Named arguments become attributes, positional ones children. A void
-    /// element takes no children and closes itself. Children are already
-    /// strings, either a nested element lowered by this same function or any
-    /// expression converted with `to_str`, so the whole tree is one
-    /// concatenation with no intermediate representation.
-    ///
-    /// Attribute values are escaped; children are *not*, because a child is
-    /// either another element (already markup) or text the program chose to
-    /// put there. A generator that has to emit `<pre>` around code it escaped
-    /// itself cannot have the renderer escape it again.
     fn html_element(&mut self, env: &mut Env, tag: &str, args: &[Arg]) -> (String, CTy) {
         let (attrs, kids) = self.html_args(env, args);
-        // The whole element is one concatenation: open tag, each rendered
-        // attribute, each child, close tag. Nesting them pairwise built a
-        // string per bracket and per attribute, and an element deep in a page
-        // was rebuilt into its parent once for every level above it.
         let mut pieces = vec![Piece::literal(format!("\"<{tag}\""))];
         pieces.extend(attrs);
         pieces.push(Piece::literal("\">\"".into()));
@@ -3596,14 +2976,7 @@ impl<'a> Cx<'a> {
         (self.concat(&pieces), CTy::Str)
     }
 
-    /// `element(tag, attr=value, …, child, …)` is the same element, with the
-    /// tag itself an expression.
-    ///
-    /// A document generator picks tags from its input: a heading's depth chooses
-    /// `h1`…`h6`, a table row chooses `th` or `td`. The static form cannot say
-    /// that, and without this every such site falls back to string
-    /// concatenation. Voidness is settled in the runtime, since the tag isn't
-    /// known until then.
+    /// `element(tag, attr=value, …, child, …)` is the same element, with the tag itself an expression.
     fn dynamic_element(&mut self, env: &mut Env, args: &[Arg]) -> (String, CTy) {
         let Some((Arg::Pos(tag_expr), rest)) = args.split_first() else {
             self.problem("`element` needs a tag name as its first argument".to_string());
@@ -3625,20 +2998,10 @@ impl<'a> Cx<'a> {
             match a {
                 Arg::Named { name, value } => {
                     let (v, t) = self.expr(env, value, Some(&CTy::Str));
-                    // `class` is where Tailwind utilities are written, so its
-                    // literals are collected for the generated stylesheet.
                     if name == "class" {
                         self.note_classes(value);
                     }
-                    // `data-tomo` is one identifier, not a subtraction: an
-                    // attached `-` is part of a name, a spaced one is the
-                    // operator. So a hyphenated attribute needs no rewriting.
                     let key = name.replace('"', "");
-                    // A bool decides whether the attribute *exists*. HTML reads
-                    // every value as true (`hidden="false"` still hides), so
-                    // `open=false` has to emit nothing at all.
-                    // both build the rendered attribute, so both are this
-                    // expression's to release once it has been copied in
                     let code = if t == CTy::Bool {
                         format!("maca_flag(\"{key}\", {v})")
                     } else {
@@ -3646,7 +3009,6 @@ impl<'a> Cx<'a> {
                     };
                     attrs.push(Piece { code, owned: true });
                 }
-                // `on:click=…` is a DOM handler; there is no DOM in a string.
                 Arg::Directive { prop, .. } => {
                     self.problem(format!(
                         "`on:{prop}` needs a live DOM; build this with `--target js`"
@@ -3668,18 +3030,6 @@ impl<'a> Cx<'a> {
         args: &[Arg],
         expected: Option<&CTy>,
     ) -> (String, CTy) {
-        // A UI element tag on the native target renders to an HTML *string*.
-        //
-        // The JS backend turns these into a reactive DOM; there is no DOM here,
-        // so `div(class="x", "hi")` becomes the text `<div class="x">hi</div>`.
-        // That is what a static site generator needs, and it means a program
-        // that emits HTML can be written in Maca's own UI syntax instead of
-        // concatenating angle brackets by hand.
-        // A user's own definition always wins. `label`, `main`, `section`,
-        // `code`, `p`, `a`, `form`, `option` are all HTML tags *and* names
-        // people give their functions; hijacking a defined name would break
-        // working programs (it broke `examples/record_pattern.maca`, which has
-        // a `label(pos: bool) -> str`).
         if let Expr::Ident(tag) = callee
             && (maca_parser::is_ui_element_tag(tag) || tag == "element")
             && !self.fns.contains_key(tag)
@@ -3692,10 +3042,8 @@ impl<'a> Cx<'a> {
                 self.html_element(env, tag, args)
             };
         }
-        // module.member(...) and UFCS receiver.method(...)
         if let Expr::Field { base, name } = callee {
             if let Expr::Ident(m) = &**base {
-                // `f32x8.splat(k)` → a broadcast compound literal
                 if name == "splat"
                     && let Some((_, lanes)) = parse_vec_c(m)
                 {
@@ -3711,28 +3059,16 @@ impl<'a> Cx<'a> {
                         },
                     );
                 }
-                // A binding in scope wins, the same rule a UI tag already
-                // follows above. `import c "http.h"` registers `c` as a module,
-                // and any module a program imports drags its own foreign imports
-                // in with it, so a parameter called `c` became an FFI namespace
-                // and `c.is_whitespace()` was emitted as a comment.
                 if self.modules.contains(m) && lookup(env, m).is_none() {
                     return self.module_call(env, m, name, args, expected);
                 }
             }
-            // UFCS: receiver.method(args)
             let (rc, rty) = self.expr(env, base, None);
-            // higher-order list methods lower their lambda with the element type
             if let CTy::Arr(elem) = &rty
                 && let Some(res) = self.list_hof(env, &rc, elem, name, args)
             {
                 return res;
             }
-            // A field holding a function is *called*, not used as a receiver.
-            // `app.handle(req)` where `handle` is declared `(Request) -> Response`
-            // means the function in that field; reading it as UFCS asked the
-            // linker for a `handle` nobody wrote, which is what made a route
-            // table impossible to write down.
             if let CTy::Rec(r) = &rty
                 && let Some(f) = self.field_ty(r, name)
                 && matches!(f, CTy::Closure(_) | CTy::Closure2(_))
@@ -3745,11 +3081,6 @@ impl<'a> Cx<'a> {
                     expected,
                 );
             }
-            // A variadic written UFCS-style. `x.f(y, z)` is `f(x, y, z)`, so the
-            // receiver is an argument like any other and the tail still has to
-            // be collected. `ufcs` is handed lowered strings and cannot do it,
-            // which is how `bag.tally(1, 2)` reached `cc` as three arguments to
-            // a two-parameter function.
             if let Some(&at) = self.variadics.get(name) {
                 return self.ufcs_variadic(env, &rc, name, args, at);
             }
@@ -3757,19 +3088,12 @@ impl<'a> Cx<'a> {
             return self.ufcs(&rc, &rty, name, &a);
         }
         if let Expr::Ident(name) = callee {
-            // calling a local that holds a closure value: `f = v => …; f(x)`
             if let Some(t @ (CTy::Closure(_) | CTy::Closure2(_))) = lookup(env, name) {
                 return self.call_closure(env, &cid(name), &t, args, expected);
             }
-            // coercions need the argument type
             if name == "str" {
                 let (c, t) = self.arg_typed(env, &args[0]);
                 return match t {
-                    // `str(s)` on a string has nothing to convert, and used to
-                    // hand back the argument, which made it the one producer
-                    // the ownership analysis trusts that did not produce
-                    // anything, so its caller released a string it was only
-                    // lent. A conversion that returns a value builds one.
                     CTy::Str => (format!("maca_str_copy({c})"), CTy::Str),
                     _ => (to_str(&c, &t), CTy::Str),
                 };
@@ -3788,13 +3112,10 @@ impl<'a> Cx<'a> {
                     _ => (format!("((double)({c}))"), CTy::Float),
                 };
             }
-            // `sleep_ms(ms)` is an async suspension point (the runtime yields the
-            // task for `ms`). Comma-expr with 0 keeps it a well-typed unit value.
             if name == "sleep_ms" && args.len() == 1 {
                 let a = self.arg(env, &args[0]);
                 return (format!("(maca_sleep_ms({a}), 0)"), CTy::Unit);
             }
-            // ---- math prelude (always available; __builtin_* needs no -lm) ----
             if args.len() == 1
                 && matches!(
                     name.as_str(),
@@ -3858,8 +3179,6 @@ impl<'a> Cx<'a> {
                     CTy::Int,
                 );
             }
-            // `chr(n)` / `ord(s)`: a byte and the one-character string that
-            // holds it, in both directions.
             if name == "chr" && args.len() == 1 {
                 let a = self.arg(env, &args[0]);
                 return (format!("maca_chr({a})"), CTy::Str);
@@ -3868,7 +3187,6 @@ impl<'a> Cx<'a> {
                 let a = self.arg(env, &args[0]);
                 return (format!("maca_ord({a})"), CTy::Int);
             }
-            // `len(x)`: array length (the backing `.len`) or string byte length
             if name == "len" && args.len() == 1 {
                 let (c, t) = self.arg_typed(env, &args[0]);
                 return match t {
@@ -3876,21 +3194,10 @@ impl<'a> Cx<'a> {
                     _ => (format!("({c}).len"), CTy::Int),
                 };
             }
-            // a generic function → monomorphize per concrete argument types
             if let Some(genf) = self.generics.get(name).cloned() {
-                // A lambda argument needs the parameter type the generic
-                // declared for it, with the variables settled from the
-                // arguments given concretely: `sort_by(rows, r => r.name)`
-                // otherwise typed `r` as an integer and read a field off it.
                 let declared = self.declared_lambda_params(name, args, env);
                 let fixed = self.variadics.get(name).copied();
                 let spelled = fixed.unwrap_or(args.len()).min(args.len());
-                // The parameter's declared type is the expected type for its
-                // argument, which is what lets an empty `[]` passed to a
-                // `str[]` parameter know its element type. Without it the
-                // argument decided on its own and specialized the callee on
-                // `any[]`, so the body used an int array where the signature
-                // promised strings.
                 let want: Vec<Option<CTy>> = genf
                     .params
                     .iter()
@@ -3906,12 +3213,6 @@ impl<'a> Cx<'a> {
                         got
                     })
                     .collect();
-                // A generic variadic (`largest(...xs: a) -> a`) is specialized
-                // on the *list* the trailing arguments were collected into, so
-                // the element type has to be known before they are collected,
-                // and nothing declares it, so the arguments say. Lowered once
-                // and reused: lowering again to ask its type would hoist a
-                // second copy of any lambda among them.
                 if fixed.is_some() {
                     let tail: Vec<(String, CTy)> = args[spelled..]
                         .iter()
@@ -3939,37 +3240,20 @@ impl<'a> Cx<'a> {
                 );
                 return (code, ret);
             }
-            // a payload sum constructor: `Circle(5)` → `Shape_Circle(5)`
             if let Some(sum) = self.variant_of.get(name).cloned()
                 && self.is_tagged(&sum)
             {
                 let a: Vec<String> = args.iter().map(|x| self.arg(env, x)).collect();
                 return (format!("{sum}_{name}({})", a.join(", ")), CTy::Sum(sum));
             }
-            // a known user function: lower each argument with the matching
-            // parameter type as its expected type (so `[]` and other
-            // context-typed literals resolve correctly).
             if let Some((params, ret)) = self.fns.get(name).cloned() {
-                // What the callee *declared* it will call a lambda with, with
-                // its type variables settled from the other arguments. A
-                // generic `sort_by(xs: a[], key: (a) -> str)` called with a
-                // `Row[]` says `key` takes a `Row`; without that the lambda's
-                // parameter was an integer and `r.name` dereferenced it.
                 let declared = self.declared_lambda_params(name, args, env);
-                // A variadic takes the arguments past its fixed ones as one
-                // list, so only the fixed ones line up with a parameter.
                 let fixed = self.variadics.get(name).copied();
                 let spelled = fixed.unwrap_or(args.len()).min(args.len());
                 let mut a: Vec<String> = args[..spelled]
                     .iter()
                     .enumerate()
                     .map(|(i, x)| {
-                        // A lambda written into a function-value position takes
-                        // its parameter type from what the callee calls it
-                        // with. That is a fact the program states, as against
-                        // reading a field name and guessing which record it
-                        // belongs to, which typed `apply(v => v.path…)` as a
-                        // record and dereferenced whatever `v` happened to be.
                         if matches!(x, Arg::Pos(Expr::Lambda { .. })) {
                             self.lambda_hint = declared
                                 .get(&i)
@@ -3994,17 +3278,9 @@ impl<'a> Cx<'a> {
             if let Some(cfn) = console_fn(name) {
                 return (format!("{cfn}({})", a.join(", ")), CTy::Unit);
             }
-            // `styles()` is the stylesheet for the Tailwind utilities this
-            // program uses. Generated at compile time from every `class=`
-            // literal in the module, so nothing unused ships and no hand-written
-            // CSS is needed. The string is emitted at the end of codegen, once
-            // every class has been seen.
             if name == "styles" && a.is_empty() {
                 return ("MACA_STYLES".into(), CTy::Str);
             }
-            // `map()` is an empty map. Its value type comes from the context it
-            // is being assigned into (`counts: Map str int = map()`), the same
-            // way an empty list literal gets its element type.
             if name == "map" && a.is_empty() {
                 let v = match expected {
                     Some(CTy::Map(v)) => (**v).clone(),
@@ -4013,7 +3289,6 @@ impl<'a> Cx<'a> {
                 self.note_arr(&CTy::Map(Box::new(v.clone())));
                 return (format!("{}_new()", map_name(&v)), CTy::Map(Box::new(v)));
             }
-            // file I/O builtins.
             match name.as_str() {
                 "read_file" => return (format!("maca_read_file({})", a.join(", ")), CTy::Str),
                 "write_file" => {
@@ -4035,8 +3310,6 @@ impl<'a> Cx<'a> {
                 "copy_bytes" => {
                     return (format!("maca_copy_bytes({})", a.join(", ")), CTy::Bool);
                 }
-                // processes. `args` is a `str[]`, so the buffer and its length
-                // are unpacked at the call site the way `.split` results are.
                 "exec" | "capture" => {
                     let (cmd, args) = (&a[0], &a[1]);
                     let fn_name = format!("maca_{name}");
@@ -4046,25 +3319,15 @@ impl<'a> Cx<'a> {
                 "env" => return (format!("maca_env({})", a.join(", ")), CTy::Str),
                 "cwd" => return ("maca_cwd()".into(), CTy::Str),
                 "chdir" => return (format!("maca_chdir({})", a.join(", ")), CTy::Bool),
-                // stdin
                 "read_line" => return ("maca_read_line()".into(), CTy::Str),
                 "at_eof" => return ("maca_at_eof()".into(), CTy::Bool),
                 "read_stdin" => return ("maca_read_stdin()".into(), CTy::Str),
-                // time, UTC throughout
                 "now_ms" => return ("maca_now_ms()".into(), CTy::Int),
                 "now_iso" => return ("maca_now_iso()".into(), CTy::Str),
                 "format_time" => {
                     return (format!("maca_format_time({})", a.join(", ")), CTy::Str);
                 }
-                // assertions: report and carry on, so one run finds every
-                // failure rather than only the first
                 "assert" => return (format!("maca_assert({})", a.join(", ")), CTy::Bool),
-                // `assert_eq` compares what it is given as text, so a number is
-                // rendered on the way in. Passing one through unchanged handed
-                // an `int64_t` to a `const char*` parameter, which the C
-                // compiler allowed with a warning and `strcmp` dereferenced.
-                // `assert_eq(width(s), 5, …)` is the obvious thing to write and
-                // it crashed the whole suite before the first result printed.
                 "assert_eq" => {
                     let shown: Vec<String> = args
                         .iter()
@@ -4077,11 +3340,8 @@ impl<'a> Cx<'a> {
                     return (format!("maca_assert_eq({})", shown.join(", ")), CTy::Bool);
                 }
                 "failures" => return ("maca_failures()".into(), CTy::Int),
-                // allocator counters: how a program can see reuse happening
                 "alloc_count" => return ("(int64_t)maca_alloc_count()".into(), CTy::Int),
                 "reuse_count" => return ("(int64_t)maca_reuse_count()".into(), CTy::Int),
-                // `list_dir(p)` → a `str[]` of entry names, built from the
-                // runtime's malloc'd array (mirrors how `.split` lowers).
                 "list_dir" => {
                     self.note_arr(&CTy::Arr(Box::new(CTy::Str)));
                     return (
@@ -4096,7 +3356,6 @@ impl<'a> Cx<'a> {
                 _ => {}
             }
             let _ = expected;
-            // an FFI/foreign function (declared, provided by C glue): a direct call
             return (format!("{}({})", cid(name), a.join(", ")), CTy::Unknown);
         }
         self.problem("call target is not a function name (higher-order call value unsupported)");
@@ -4140,9 +3399,7 @@ impl<'a> Cx<'a> {
         }
     }
 
-    /// For each argument position holding a lambda, the parameter types the
-    /// callee declared for it (`(T, U) -> R`), with any type variables settled
-    /// from the arguments the call site gives concretely.
+    /// For each argument position holding a lambda, the parameter types the callee declared for it (`(T, U) -> R`), with any type variables settled from the arguments the call site gives concretely.
     fn declared_lambda_params(
         &mut self,
         callee: &str,
@@ -4153,8 +3410,6 @@ impl<'a> Cx<'a> {
         let Some(def) = self.fn_def(callee) else {
             return out;
         };
-        // the concrete types of the arguments that are not themselves lambdas,
-        // which is what settles the variables a lambda's type mentions
         let mut subst: HashMap<String, CTy> = HashMap::new();
         for (i, p) in def.params.iter().enumerate() {
             let Some(t) = &p.ty else { continue };
@@ -4196,14 +3451,7 @@ impl<'a> Cx<'a> {
             .map(|(_, t)| t.clone())
     }
 
-    /// Call through a closure value, however it was reached: a local, a
-    /// parameter, or a record field.
-    ///
-    /// Arguments and the result cross the boundary boxed as `int64_t`, so the
-    /// return type has to come from somewhere. A declared `(T) -> R` says it;
-    /// otherwise the context does, because `answer(handler, raw) -> Response`
-    /// calling `handler(r)` means a `Response` comes back, and reading that as
-    /// an integer is the difference between a record and its address.
+    /// Call through a closure value, however it was reached: a local, a parameter, or a record field.
     fn call_closure(
         &mut self,
         env: &mut Env,
@@ -4215,10 +3463,6 @@ impl<'a> Cx<'a> {
         let (CTy::Closure(r) | CTy::Closure2(r)) = ty else {
             return ("0 /* not a function */".into(), CTy::Unknown);
         };
-        // The runtime has one call shape per arity, so a call that does not
-        // match one is a diagnostic here; passed through, it reached
-        // `maca_call2` with a one-argument closure and the C compiler reported
-        // a type it had never been shown.
         let want = if matches!(ty, CTy::Closure2(_)) { 2 } else { 1 };
         if args.len() != want {
             self.problem(format!(
@@ -4228,11 +3472,6 @@ impl<'a> Cx<'a> {
         }
         let boxed: Vec<(String, CTy)> = args.iter().map(|x| self.arg_typed(env, x)).collect();
         let bx: Vec<String> = boxed.iter().map(|(c, t)| box_i64(c, t)).collect();
-        // What the caller expects wins over what the closure says, because a
-        // closure reached through an *unannotated* parameter says `int` whether
-        // or not that is true, since it was inferred from being called, not
-        // declared. A written `(Request) -> Response` is the fallback, and it
-        // is the answer wherever the context has no opinion.
         let ret = match expected {
             Some(t) if !matches!(t, CTy::Unknown | CTy::Unit) => t.clone(),
             _ => (**r).clone(),
@@ -4257,13 +3496,6 @@ impl<'a> Cx<'a> {
                 format!("maca_join({rc}.data, {rc}.len, {})", arg0()),
                 CTy::Str,
             ),
-            // ---- map methods -------------------------------------------------
-            //
-            // `set` and `remove` return the map rather than mutating in place,
-            // so a map behaves like every other value in the language: `m =
-            // m.set(k, v)`. The copy is shallow (the same buffers with an
-            // updated count), which is why the receiver is a statement
-            // expression rather than a call on a temporary.
             (CTy::Map(v), "set") => {
                 let mn = map_name(v);
                 (
@@ -4282,8 +3514,6 @@ impl<'a> Cx<'a> {
                     CTy::Map(v.clone()),
                 )
             }
-            // `get(k, default)`: a miss returns the default rather than a
-            // sentinel, because the language has no null to return.
             (CTy::Map(v), "get") => {
                 let mn = map_name(v);
                 let dflt = a.get(1).cloned().unwrap_or_else(|| zero_value(v));
@@ -4291,7 +3521,6 @@ impl<'a> Cx<'a> {
             }
             (CTy::Map(v), "has") => (format!("{}_has({rc}, {})", map_name(v), arg0()), CTy::Bool),
             (CTy::Map(v), "length") => (format!("{}_len({rc})", map_name(v)), CTy::Int),
-            // sorted, so walking a map twice writes the same file twice
             (CTy::Map(v), "keys") => {
                 let mn = map_name(v);
                 (
@@ -4303,7 +3532,6 @@ impl<'a> Cx<'a> {
                     CTy::Arr(Box::new(CTy::Str)),
                 )
             }
-            // ---- list methods (closure-free; map/filter/reduce are in list_hof) ----
             (CTy::Arr(e), "sort") if matches!(**e, CTy::Int | CTy::Float | CTy::Str) => {
                 let an = arr_name(e);
                 let sorter = match **e {
@@ -4409,13 +3637,6 @@ impl<'a> Cx<'a> {
                     (**e).clone(),
                 )
             }
-            // `.first()`, `.last()` and `.get(i)` answer for a position that
-            // may not be there, so each answers with the element type's empty
-            // value rather than reading past the buffer. The interpreter has
-            // always done this; the C back end read `data[0]` of an array that
-            // was never pushed to (a NULL buffer) and `data[-1]` of an empty
-            // one, and the self-hosted parser looked three tokens past the end
-            // of every identifier it scanned.
             (CTy::Arr(e), "first") => {
                 let an = arr_name(e);
                 (
@@ -4436,8 +3657,6 @@ impl<'a> Cx<'a> {
                     (**e).clone(),
                 )
             }
-            // `.length()` and `.get(i)`: a method spelling of `len(xs)` / `xs[i]`,
-            // used by the self-hosted lexer's index-walk over a char array.
             (CTy::Arr(_), "length") => (format!("({rc}).len"), CTy::Int),
             (CTy::Arr(e), "get") => {
                 let an = arr_name(e);
@@ -4452,7 +3671,6 @@ impl<'a> Cx<'a> {
                     (**e).clone(),
                 )
             }
-            // `.slice(from, to)` is a fresh sub-array over the half-open range.
             (CTy::Arr(e), "slice") => {
                 let an = arr_name(e);
                 (
@@ -4465,8 +3683,6 @@ impl<'a> Cx<'a> {
                     CTy::Arr(e.clone()),
                 )
             }
-            // string stdlib: UFCS methods on `str` (gradual `Unknown` receivers
-            // too, since foreign/inferred strings often land as Unknown).
             (CTy::Str | CTy::Unknown, "trim") => (format!("maca_trim({rc})"), CTy::Str),
             (CTy::Str | CTy::Unknown, "upper") => (format!("maca_upper({rc})"), CTy::Str),
             (CTy::Str | CTy::Unknown, "lower") => (format!("maca_lower({rc})"), CTy::Str),
@@ -4490,8 +3706,6 @@ impl<'a> Cx<'a> {
                 format!("maca_substr({rc}, {}, {})", arg0(), arg1()),
                 CTy::Str,
             ),
-            // `slice` takes an exclusive end, the same as the list method; the
-            // two names mean two things and each keeps its own convention
             (CTy::Str, "slice") => (
                 format!("maca_str_slice({rc}, {}, {})", arg0(), arg1()),
                 CTy::Str,
@@ -4499,7 +3713,6 @@ impl<'a> Cx<'a> {
             (CTy::Str | CTy::Unknown, "repeat") => {
                 (format!("maca_repeat({rc}, {})", arg0()), CTy::Str)
             }
-            // `pad_start`/`pad_end` take an optional pad string (default " ").
             (CTy::Str | CTy::Unknown, "pad_start") => (
                 format!(
                     "maca_pad_start({rc}, {}, {})",
@@ -4536,9 +3749,6 @@ impl<'a> Cx<'a> {
                 ),
                 CTy::Str,
             ),
-            // `x.fixed(n)` is `x` with n decimal places. Written on a float, but
-            // an int receiver is accepted and widened, so `{n:.2}` works on any
-            // number rather than failing on the one case the user didn't expect.
             (CTy::Float | CTy::Int | CTy::Unknown, "fixed") => {
                 (format!("maca_fixed((double)({rc}), {})", arg0()), CTy::Str)
             }
@@ -4553,8 +3763,6 @@ impl<'a> Cx<'a> {
                     CTy::Arr(Box::new(CTy::Str)),
                 )
             }
-            // byte-length + per-byte access + character classes: the primitives
-            // the self-hosted lexer scans source with (`std/str`).
             (CTy::Str | CTy::Unknown, "length") => (format!("maca_strlen({rc})"), CTy::Int),
             (CTy::Str | CTy::Unknown, "at") => (format!("maca_str_at({rc}, {})", arg0()), CTy::Str),
             (CTy::Str | CTy::Unknown, "chars") => {
@@ -4584,15 +3792,7 @@ impl<'a> Cx<'a> {
                     CTy::Arr(Box::new(CTy::Int)),
                 )
             }
-            // a user function called UFCS-style: `x.f(y)` → `f(x, y)`. Resolve
-            // its real return type and escape a C-keyword name.
             _ => {
-                // A method the receiver's type is documented to have, that this
-                // back end cannot lower for *this* element type, used to fall
-                // through to a call of a function nobody wrote. `xs.sort()` on
-                // a `str[][]` compiled to `sort(rows)` and the C compiler
-                // reported that a `str` parameter called `sort` was not
-                // callable: a true statement about the wrong program.
                 if !self.fns.contains_key(method)
                     && !self.generics.contains_key(method)
                     && known_method(rty, method)
@@ -4621,10 +3821,7 @@ impl<'a> Cx<'a> {
         }
     }
 
-    /// A writable location for `target = value`: a nested `xs[i]` / `p.field`
-    /// chain resolved to its C lvalue plus (optionally) the element type. Bare
-    /// identifiers are handled directly by the caller. Returns `None` for
-    /// non-assignable targets, which are then ignored (as before).
+    /// A writable location for `target = value`.
     fn lvalue(&mut self, env: &mut Env, target: &Expr) -> Option<(String, Option<CTy>)> {
         match target {
             Expr::Index { base, index } => {
@@ -4652,8 +3849,7 @@ impl<'a> Cx<'a> {
         }
     }
 
-    /// `base[index]` is element access. Arrays index the backing buffer
-    /// (`arr.data[i]`); strings yield a one-character `str` via `maca_str_at`.
+    /// `base[index]` is element access.
     fn index(&mut self, env: &mut Env, base: &Expr, idx: &Expr) -> (String, CTy) {
         let (bc, bty) = self.expr(env, base, None);
         let (ic, _) = self.expr(env, idx, Some(&CTy::Int));
@@ -4688,16 +3884,10 @@ impl<'a> Cx<'a> {
 
     fn binary(&mut self, env: &mut Env, op: BinOp, lhs: &Expr, rhs: &Expr) -> (String, CTy) {
         let (lc, lt) = self.expr(env, lhs, None);
-        // taken before the right-hand side is lowered, or it would describe
-        // that instead
         let left_pieces = self.concat_pieces.take();
         let (rc, rt) = self.expr(env, rhs, None);
         self.concat_pieces = None;
 
-        // Operator overloading: when the left operand is a user type (record /
-        // sum) and a function with the operator's canonical name exists, the
-        // operator desugars to a call: `a + b` → `add(a, b)`. Primitives keep
-        // the native operator.
         if matches!(lt, CTy::Rec(_) | CTy::Sum(_))
             && let Some(name) = overload_name(op)
             && let Some((_, ret)) = self.fns.get(name).cloned()
@@ -4708,16 +3898,7 @@ impl<'a> Cx<'a> {
         use BinOp::*;
         match op {
             Div if matches!(lt, CTy::Str) => (format!("maca_path_join({lc}, {rc})"), CTy::Str),
-            // `++` is string concat on strings, array concat on arrays.
-            //
-            // A non-string operand is converted, not passed through: `"h" ++ 3`
-            // used to hand an `int64_t` to a `maca_str` parameter, compile
-            // without complaint, and segfault at run time reading address 3.
             Concat if matches!(lt, CTy::Str) || matches!(rt, CTy::Str) => {
-                // One call takes its operands as varargs, where the two-operand
-                // form took them as declared parameters, so a value with no
-                // text form used to be a compile error naming the types and
-                // would now be read as a pointer and dereferenced.
                 for t in [&lt, &rt] {
                     if !can_concat(t) {
                         self.problem(format!(
@@ -4755,7 +3936,6 @@ impl<'a> Cx<'a> {
             }
             Lt | Gt | Le | Ge => (format!("({lc} {} {rc})", bin_op(op)), CTy::Bool),
             And | Or => (format!("({lc} {} {rc})", bin_op(op)), CTy::Bool),
-            // `Pipe` is desugared by the parser and never arrives here.
             Union | Pipe => (lc, lt),
         }
     }
@@ -4766,9 +3946,7 @@ impl<'a> Cx<'a> {
     fn arg_typed(&mut self, env: &mut Env, a: &Arg) -> (String, CTy) {
         self.arg_expected(env, a, None)
     }
-    /// Lower a call argument with an optional expected type, which lets an empty
-    /// list literal `[]` take its element type from the callee's parameter
-    /// (e.g. `scan(cs, 0, [])` where the 3rd param is `Token[]`).
+    /// Lower a call argument with an optional expected type, which lets an empty list literal `[]` take its element type from the callee's parameter (e.g. `scan(cs, 0, [])` where the 3rd param is `Token[]`).
     fn arg_expected(&mut self, env: &mut Env, a: &Arg, expected: Option<&CTy>) -> (String, CTy) {
         match a {
             Arg::Pos(e) | Arg::Named { value: e, .. } | Arg::Directive { value: e, .. } => {
@@ -4798,8 +3976,6 @@ impl<'a> Cx<'a> {
         }
         self.concat(&pieces)
     }
-
-    // ---- json codegen -----------------------------------------------------
 
     fn emit_to_json(&mut self, name: &str) {
         let fields = self.records[name].clone();
@@ -4842,8 +4018,6 @@ impl<'a> Cx<'a> {
                 self.push("    }");
                 self.push("    maca_sb_putc(&sb, ']');");
             }
-            // a map has no ordered JSON shape without a key ordering the
-            // format guarantees, and this serializer emits records
             CTy::Map(_)
             | CTy::Unit
             | CTy::Unknown
@@ -4887,8 +4061,6 @@ impl<'a> Cx<'a> {
                 self.push("      }");
                 self.push(&format!("      {dest} = _acc; }}"));
             }
-            // A JSON object is a string-keyed map, which is what a `Map str V`
-            // is, so it decodes rather than being dropped.
             CTy::Map(v) => {
                 let mn = map_name(v);
                 let o = self.temp();
@@ -4907,9 +4079,6 @@ impl<'a> Cx<'a> {
                 self.push("      }");
                 self.push(&format!("      {dest} = _m; }}"));
             }
-            // Nothing in JSON stands for a closure, a task or a vector, so the
-            // field gets its type's empty value; `0` was invalid C the moment
-            // the type was a struct.
             CTy::Unit
             | CTy::Unknown
             | CTy::Vec { .. }
@@ -4934,8 +4103,6 @@ fn json_read_inline(j: &str, t: &CTy) -> String {
         _ => "0".into(),
     }
 }
-
-// ---- free helpers --------------------------------------------------------
 
 fn body_as_block(e: &Expr) -> &Expr {
     e
@@ -4981,8 +4148,7 @@ fn c_type(t: &CTy) -> String {
     }
 }
 
-/// The closure struct for a given arity. The runtime declares one per arity, so
-/// the type a local is *declared* with has to match the one it is built as.
+/// The closure struct for a given arity.
 fn closure_ty(arity: usize, ret: CTy) -> CTy {
     if arity >= 2 {
         CTy::Closure2(Box::new(ret))
@@ -4992,11 +4158,6 @@ fn closure_ty(arity: usize, ret: CTy) -> CTy {
 }
 
 /// Is `method` one the checker accepts on a receiver of this type?
-///
-/// The two lists are the checker's, so this asks exactly the question the
-/// checker answered: a name it accepted and this back end did not lower is a
-/// gap between them, and saying so is more use than a C error naming the
-/// generated call.
 fn known_method(rty: &CTy, method: &str) -> bool {
     match rty {
         CTy::Arr(_) => maca_core::LIST_METHODS.contains(&method),
@@ -5032,8 +4193,7 @@ fn arr_name(elem: &CTy) -> String {
     }
 }
 
-/// The monomorphized map type name for a value type: `Map str int` is
-/// `IntMap`, mirroring how `int[]` is `IntArr`.
+/// The monomorphized map type name for a value type.
 fn map_name(val: &CTy) -> String {
     match val {
         CTy::Int => "IntMap".into(),
@@ -5056,15 +4216,6 @@ fn zero_value(t: &CTy) -> String {
         CTy::Arr(e) => format!("{}_new()", arr_name(e)),
         CTy::Map(v) => format!("{}_new()", map_name(v)),
         CTy::Int | CTy::Unit | CTy::Unknown | CTy::Future => "0".into(),
-        // Zeroed, not merely declared: this is what an absent element answers
-        // with, and an indeterminate struct is a different wrong answer every
-        // time it is read.
-        //
-        // Everything else lands here rather than on `0`, because whether a type
-        // is a scalar in C is not something to guess at: a sum type is an enum
-        // until one of its variants carries a payload and then it is a struct,
-        // and `0` in the other arm of a bounds check stopped every program that
-        // indexed a list of them from compiling at all.
         _ => format!("({{ {0} _z; memset(&_z, 0, sizeof _z); _z; }})", c_type(t)),
     }
 }
@@ -5075,11 +4226,6 @@ fn to_str(code: &str, t: &CTy) -> String {
         CTy::Int => format!("maca_from_int({code})"),
         CTy::Float | CTy::F32 => format!("maca_from_float({code})"),
         CTy::Bool => format!("maca_from_bool({code})"),
-        // A value whose type we couldn't name, typically a call through a
-        // closure parameter (`f(x)` where `f` is higher-order). Everything
-        // crosses the closure ABI as `int64_t`, so render it as one; without
-        // this the raw integer is handed to a `maca_str` parameter and the
-        // program crashes.
         CTy::Unknown => format!("maca_from_int({code})"),
         _ => code.to_string(),
     }
@@ -5100,8 +4246,7 @@ fn console_fn(name: &str) -> Option<&'static str> {
     })
 }
 
-/// The canonical function name an operator overloads to for user types
-/// (`a + b` → `add(a, b)`), or `None` for operators that never overload.
+/// The canonical function name an operator overloads to for user types (`a + b` → `add(a, b)`), or `None` for operators that never overload.
 fn overload_name(op: BinOp) -> Option<&'static str> {
     Some(match op {
         BinOp::Add => "add",
@@ -5140,11 +4285,7 @@ fn bin_op(op: BinOp) -> &'static str {
     }
 }
 
-/// Escape a Maca identifier that collides with a C (or common C++) reserved
-/// word so the emitted C stays valid. Applied uniformly at every function /
-/// variable / parameter / field emission site; a no-op for ordinary names, so
-/// it never changes output for non-colliding identifiers. JSON keys keep the
-/// original (unescaped) name.
+/// Escape a Maca identifier that collides with a C (or common C++) reserved word so the emitted C stays valid.
 fn cid(name: &str) -> String {
     const KW: &[&str] = &[
         "auto",
@@ -5184,7 +4325,6 @@ fn cid(name: &str) -> String {
         "bool",
         "complex",
         "imaginary",
-        // common C++ keywords (some C compilers / headers reserve them too)
         "new",
         "delete",
         "class",
@@ -5232,10 +4372,6 @@ fn infer_cty_shallow(e: &Expr) -> CTy {
         Expr::Float(_) => CTy::Float,
         Expr::Bool(_) => CTy::Bool,
         Expr::Str(_) | Expr::Path(_) => CTy::Str,
-        // `a / b` is a path join when either side is a path-shaped literal, and
-        // arithmetic otherwise. Treating every `/` as a join emitted
-        // `Quot = 10 / 5` as a `str` accessor returning an integer, which
-        // compiled with a warning and segfaulted on first use.
         Expr::Binary {
             op: BinOp::Div,
             lhs,
@@ -5257,9 +4393,6 @@ fn infer_cty_shallow(e: &Expr) -> CTy {
             CTy::Arr(Box::new(elem))
         }
         Expr::Lambda { params, .. } => closure_ty(params.len(), CTy::Int),
-        // A prelude conversion says what it returns. Without this a constant
-        // like `UpperA = ord("A")` fell through to the `str` default below and
-        // every arithmetic use of it was a pointer.
         Expr::Call { callee, .. } => match callee.as_ref() {
             Expr::Ident(f) => match f.as_str() {
                 "ord" | "int" | "len" => CTy::Int,
@@ -5269,8 +4402,6 @@ fn infer_cty_shallow(e: &Expr) -> CTy {
             },
             _ => CTy::Str,
         },
-        // Arithmetic keeps its operands' type; a comparison answers `bool`.
-        // `++` and `/` stay `str`, which is the cases above this one.
         Expr::Binary {
             op: BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Mod | BinOp::Shl | BinOp::Shr,
             lhs,
@@ -5293,9 +4424,6 @@ fn infer_cty_shallow(e: &Expr) -> CTy {
             op: UnOp::Neg,
             expr,
         } => infer_cty_shallow(expr),
-        // Everything else, including a call to a user function whose return
-        // type this shallow pass cannot see, is a string, which is what most
-        // top-level constants are.
         _ => CTy::Str,
     }
 }
@@ -5308,8 +4436,7 @@ fn import_name(im: &Import) -> Option<String> {
     }
 }
 
-/// `A | Circle(int) | Rect(int, int)` → variants with payload types (bare ident
-/// = nullary, `Name(T, …)` = a payload-carrying variant).
+/// `A | Circle(int) | Rect(int, int)` → variants with payload types (bare ident = nullary, `Name(T, …)` = a payload-carrying variant).
 fn sum_variants(e: &Expr) -> Option<Vec<(String, Vec<Type>)>> {
     fn arg_ty(e: &Expr) -> Type {
         fn path(e: &Expr, out: &mut Vec<String>) {
@@ -5362,9 +4489,7 @@ fn sum_variants(e: &Expr) -> Option<Vec<(String, Vec<Type>)>> {
     }
 }
 
-/// A function is generic if any parameter or the return type mentions a
-/// type variable.
-/// A written type that is `(T, U) -> R`, through any parentheses around it.
+/// A function is generic if any parameter or the return type mentions a type variable.
 fn is_fn_type(t: Option<&Type>) -> bool {
     match t {
         Some(Type::Fn(..)) => true,
@@ -5390,19 +4515,9 @@ fn type_has_tyvar(t: &Type) -> bool {
 }
 
 /// Bind every type variable in `declared` to the matching part of `concrete`.
-///
-/// Only where the two shapes agree. A declared `a[]` against a concrete array
-/// binds the element; against anything else it binds nothing, which leaves the
-/// variable to the fallback rather than to a guess.
 fn bind_vars(declared: &Type, concrete: &CTy, m: &mut HashMap<String, CTy>) {
     match (declared, concrete) {
         (Type::Name(segs), _) if segs.len() == 1 && is_type_var_name(&segs[0]) => {
-            // The first parameter to mention a variable used to settle it, even
-            // when it had nothing to say. `first_of(xs: a[], fallback: a)` called
-            // as `first_of([], "none")` bound `a` from the empty list, so the
-            // return came back as an `int64_t` holding a string pointer and
-            // `assert_eq` compared the address. A binding that knows something
-            // replaces one that does not.
             match m.get(&segs[0]) {
                 Some(prev) if is_settled(prev) => {}
                 _ => {
@@ -5417,20 +4532,12 @@ fn bind_vars(declared: &Type, concrete: &CTy, m: &mut HashMap<String, CTy>) {
                 bind_vars(last, v, m);
             }
         }
-        // A closure carries only its return type across the boundary, so that
-        // is the only part of a `(a) -> b` a call site can settle.
         (Type::Fn(_, r), CTy::Closure(ret) | CTy::Closure2(ret)) => bind_vars(r, ret, m),
         _ => {}
     }
 }
 
-/// A generic function's specialized C name for a concrete argument tuple, e.g.
-/// `id__int`, `id__str`, `id__Box`.
-/// Whether a type has nothing left to learn from a call site. A declared type
-/// that still holds a variable does not, and offering it as the expected type
-/// would settle an argument on `any` rather than on what the argument is: for
-/// `first_of(xs: a[], …)`, `a[]` reads as an array of nothing, and `["x"]`
-/// handed that as its expectation stops being a `str[]`.
+/// A generic function's specialized C name for a concrete argument tuple, e.g. `id__int`, `id__str`, `id__Box`.
 fn is_settled(t: &CTy) -> bool {
     match t {
         CTy::Unknown => false,
@@ -5460,9 +4567,6 @@ fn cty_tag(t: &CTy) -> String {
         CTy::Arr(e) => format!("arr{}", cty_tag(e)),
         CTy::Vec { name, .. } => name.clone(),
         CTy::Future => "future".into(),
-        // The return type is part of the tag. Without it `apply_to(r, name_of)`
-        // and `apply_to(r, size_of)` mangled to one name and the C compiler
-        // reported two functions with the same symbol and different types.
         CTy::Closure(r) => format!("fn{}", cty_tag(r)),
         CTy::Closure2(r) => format!("fn2{}", cty_tag(r)),
         CTy::Unknown => "any".into(),
@@ -5470,17 +4574,11 @@ fn cty_tag(t: &CTy) -> String {
 }
 
 /// Box a C value of type `t` into an `int64_t` for the closure-call boundary.
-/// A `str` (pointer) fits via `intptr_t`; a `float`/`double` is bit-preserved.
 fn box_i64(code: &str, t: &CTy) -> String {
     match t {
         CTy::Str => format!("(int64_t)(intptr_t)({code})"),
         CTy::Float => format!("maca_box_f64({code})"),
         CTy::F32 => format!("maca_box_f64((double)({code}))"),
-        // A struct does not fit in the boundary word, so it crosses by
-        // reference: a heap copy whose address is the boxed value. Without
-        // this, `people.filter(p => p.age > 18)` emitted `(int64_t)(a_record)`
-        // and the C compiler rejected the cast, ruling out a closure over a
-        // list of records, which is most of what `map`/`filter` are for.
         CTy::Rec(_) | CTy::Sum(_) | CTy::Arr(_) | CTy::Map(_) | CTy::Vec { .. } => {
             let ct = c_type(t);
             format!(
@@ -5497,8 +4595,6 @@ fn unbox_i64(code: &str, t: &CTy) -> String {
         CTy::Bool => format!("(bool)({code})"),
         CTy::Float => format!("maca_unbox_f64({code})"),
         CTy::F32 => format!("(float)maca_unbox_f64({code})"),
-        // the mirror of `box_i64`: the boundary word is the address of a heap
-        // copy, so read it back through that pointer
         CTy::Rec(_) | CTy::Sum(_) | CTy::Arr(_) | CTy::Map(_) | CTy::Vec { .. } => {
             format!("(*({}*)(intptr_t)({code}))", c_type(t))
         }
@@ -5506,10 +4602,7 @@ fn unbox_i64(code: &str, t: &CTy) -> String {
     }
 }
 
-/// Collect the names invoked as a call callee anywhere in `e` (`f(x)` adds
-/// `f`). Used to recognize a higher-order parameter: an unannotated param that
-/// is called must hold a function value. A full structural walk mirroring
-/// `free_vars`' reach.
+/// Collect the names invoked as a call callee anywhere in `e` (`f(x)` adds `f`).
 fn callee_idents(e: &Expr, out: &mut HashSet<String>) {
     match e {
         Expr::Call { callee, args } => {
@@ -5613,9 +4706,7 @@ fn callee_idents_stmts(stmts: &[Stmt], out: &mut HashSet<String>) {
     }
 }
 
-/// Collect the free variables of `e`: identifiers referenced but not bound by
-/// an enclosing binder inside `e` (lambda params, `for`/`match` patterns, block
-/// bindings). Used to compute a lambda's captures.
+/// Collect the free variables of `e`.
 fn free_vars(e: &Expr, bound: &HashSet<String>, out: &mut HashSet<String>) {
     match e {
         Expr::Ident(n) => {
@@ -5784,9 +4875,7 @@ fn rec_dep(t: &CTy) -> Option<String> {
     }
 }
 
-/// Struct-shaped dependency: a record or a sum referenced by value (the caller
-/// filters plain sums, which need no ordering). Recurses through arrays since
-/// `MACA_DEFINE_ARRAY` embeds `sizeof(Elem)`.
+/// Struct-shaped dependency: a record or a sum referenced by value (the caller filters plain sums, which need no ordering).
 fn struct_dep(t: &CTy) -> Option<String> {
     match t {
         CTy::Rec(n) | CTy::Sum(n) => Some(n.clone()),
@@ -5795,8 +4884,7 @@ fn struct_dep(t: &CTy) -> Option<String> {
     }
 }
 
-/// A strictly by-value type reference (arrays are heap pointers, so they do NOT
-/// propagate a value cycle). Used for recursion detection / boxing.
+/// A strictly by-value type reference (arrays are heap pointers, so they do NOT propagate a value cycle).
 fn value_dep(t: &CTy) -> Option<String> {
     match t {
         CTy::Rec(n) | CTy::Sum(n) => Some(n.clone()),
@@ -5805,11 +4893,6 @@ fn value_dep(t: &CTy) -> Option<String> {
 }
 
 /// The struct name for an anonymous record's shape.
-///
-/// Derived from the shape rather than from a counter, so the same literal
-/// written in two different functions is one struct and the two values are
-/// assignable to each other. `{ host = "x", port = 80 }` becomes
-/// `MacaAnon_host_str_port_int`, which is also readable in the generated C.
 fn anon_record_name(fields: &[(String, CTy)]) -> String {
     let mut s = String::from("MacaAnon");
     for (n, t) in fields {
@@ -5836,13 +4919,6 @@ fn ty_tag(t: &CTy) -> String {
 }
 
 /// What a lambda's body says its parameter is.
-///
-/// A lambda written at a call site gets its parameter type from the receiver's
-/// element type. One written for a higher-order *parameter* has no such
-/// context, so the body is the evidence: compared against a string, concatenated
-/// with one, or sent a string-only method means `str`; compared against a float
-/// means `float`. Anything else stays the integer default, which is also how a
-/// pointer crosses the closure boundary.
 fn lambda_param_ty(name: &str, body: &Expr) -> Option<CTy> {
     let mut found = None;
     scan_param_use(name, body, &mut found);
@@ -5863,8 +4939,6 @@ fn scan_param_use(name: &str, e: &Expr, found: &mut Option<CTy>) {
             }
         }
         Expr::Call { callee, .. } => {
-            // methods only a `str` has; `length`/`slice`/`contains` are on
-            // both, so they say nothing
             const STR_ONLY: &[&str] = &[
                 "split",
                 "trim",
@@ -5899,17 +4973,6 @@ fn scan_param_use(name: &str, e: &Expr, found: &mut Option<CTy>) {
 }
 
 /// Which unannotated parameters hold a function value.
-///
-/// Surface Maca has no function-type syntax, so a higher-order parameter is
-/// recognized from use. Calling it is the obvious evidence: `pred(x)` means
-/// `pred` is a function. But a parameter is just as often *forwarded*: the
-/// public `any_of(xs, pred)` hands `pred` to a recursive `scan_any(xs, i, pred)`
-/// that does the calling. Looking only at the immediate body typed the two ends
-/// of that pair differently, and the C compiler rejected the call.
-///
-/// So this runs to a fixpoint: a parameter is a function value if it is called,
-/// or if it is passed into a position already known to be one. Two functions
-/// that forward to each other settle in one extra round.
 fn closure_params(items: &[Stmt]) -> HashSet<(String, usize)> {
     let fns: Vec<&FnDef> = items
         .iter()
@@ -5919,8 +4982,6 @@ fn closure_params(items: &[Stmt]) -> HashSet<(String, usize)> {
         })
         .collect();
     let mut out: HashSet<(String, usize)> = HashSet::new();
-    // seed: a parameter that is called in its own body, or handed to a list
-    // method that takes a function
     for f in &fns {
         let mut callees = HashSet::new();
         if let Some(body) = &f.body {
@@ -5933,11 +4994,6 @@ fn closure_params(items: &[Stmt]) -> HashSet<(String, usize)> {
             }
         }
     }
-    // seed: a parameter that is *handed* a lambda somewhere. Evidence from the
-    // call site rather than the body, which is the only evidence there is for a
-    // declaration with no body: an `import c` engine taking a handler is
-    // exactly that, and typed as `int64_t` it took the address of half a
-    // closure.
     let declared: HashSet<&str> = fns.iter().map(|f| f.name.as_str()).collect();
     let mut given_lambda: HashSet<(String, usize)> = HashSet::new();
     for f in &fns {
@@ -5952,7 +5008,6 @@ fn closure_params(items: &[Stmt]) -> HashSet<(String, usize)> {
             out.insert((name, i));
         }
     }
-    // propagate: `f` forwards its parameter into a known function position
     loop {
         let mut grew = false;
         for f in &fns {
@@ -6013,8 +5068,7 @@ fn lambda_args(e: &Expr, declared: &HashSet<&str>, out: &mut HashSet<(String, us
     walk_children(e, &mut |c| lambda_args(c, declared, out));
 }
 
-/// Bare identifiers handed to a list method that takes a function, as in
-/// `xs.filter(pred)`. Evidence that the name holds one, the same as calling it.
+/// Bare identifiers handed to a list method that takes a function, as in `xs.filter(pred)`.
 fn hof_method_args_body(b: &FnBody, out: &mut HashSet<String>) {
     match b {
         FnBody::Expr(e) => hof_method_args(e, out),
@@ -6029,8 +5083,6 @@ fn hof_method_args(e: &Expr, out: &mut HashSet<String>) {
     if let Expr::Call { callee, args } = e
         && let Expr::Field { name, .. } = &**callee
     {
-        // the argument index the function goes in: `reduce`/`fold` take the
-        // seed first
         let at = match name.as_str() {
             "map" | "filter" | "parallel" => 0,
             "reduce" | "fold" => 1,
@@ -6043,8 +5095,7 @@ fn hof_method_args(e: &Expr, out: &mut HashSet<String>) {
     walk_children(e, &mut |c| hof_method_args(c, out));
 }
 
-/// Every `g(…, x, …)` in a body, as `(g, index, x)` for a bare-identifier
-/// argument: the shape that forwards a value on unchanged.
+/// Every `g(…, x, …)` in a body, as `(g, index, x)` for a bare-identifier argument.
 fn forwarded_args_body(b: &FnBody, out: &mut Vec<(String, usize, String)>) {
     match b {
         FnBody::Expr(e) => forwarded_args(e, out),
@@ -6077,43 +5128,24 @@ fn arr_depth(t: &CTy) -> usize {
     }
 }
 
-/// Types whose value carries a heap buffer this back end allocated and can
-/// therefore name. A record's fields may be heap too, but the record does not
-/// own them exclusively, so it is left out.
+/// Types whose value carries a heap buffer this back end allocated and can therefore name.
 fn owns_heap(t: &CTy) -> bool {
     matches!(t, CTy::Arr(_) | CTy::Map(_))
 }
 
 /// Names that may outlive the statement list they are bound in.
-///
-/// The analysis is deliberately lopsided. Missing an escape frees a buffer
-/// someone still holds; missing a *non*-escape only means the program keeps
-/// memory it could have released, which is exactly what it did before any of
-/// this existed. So a name counts as escaping the moment it appears anywhere
-/// its value could be kept: a call argument, a list or record element, another
-/// binding's value, the tail expression, a `return` or `fail`.
-///
-/// The one position that does *not* escape is the receiver of a method call.
-/// Every array and map method in this back end builds a fresh buffer or reads
-/// one (none stores its receiver), so `xs.length()` and `xs.sort()` leave `xs`
-/// owned by the block that built it. Without that exemption almost nothing
-/// would qualify, since a value you never look at is not worth building.
 fn escaping_names(stmts: &[Stmt]) -> HashSet<String> {
     let mut out = HashSet::new();
     let n = stmts.len();
     for (i, s) in stmts.iter().enumerate() {
         match s {
-            // the tail expression carries the block's value out
             Stmt::Expr(e) if i + 1 == n => note_escapes_all(e, &mut out),
             Stmt::Expr(e) => note_escapes(e, &mut out),
             Stmt::Bind(b) => {
-                // a value bound to another name is now that name's problem
                 note_escapes_all(&b.value, &mut out);
                 note_escapes(&b.target, &mut out);
             }
             Stmt::Fn(f) => match &f.body {
-                // a nested function can capture, so treat its whole body as an
-                // escape context
                 Some(FnBody::Expr(e)) => note_escapes_all(e, &mut out),
                 Some(FnBody::Block(ss)) => ss.iter().for_each(|s| match s {
                     Stmt::Expr(e) | Stmt::Bind(Bind { value: e, .. }) => {
@@ -6129,7 +5161,7 @@ fn escaping_names(stmts: &[Stmt]) -> HashSet<String> {
     out
 }
 
-/// Every name in `e` escapes. Used where the expression's value is kept.
+/// Every name in `e` escapes.
 fn note_escapes_all(e: &Expr, out: &mut HashSet<String>) {
     if let Expr::Ident(n) = e {
         out.insert(n.clone());
@@ -6142,7 +5174,6 @@ fn note_escapes(e: &Expr, out: &mut HashSet<String>) {
     if let Expr::Call { callee, args } = e
         && let Expr::Field { base, .. } = &**callee
     {
-        // the receiver is read, not retained; its own children still count
         if !matches!(&**base, Expr::Ident(_)) {
             note_escapes(base, out);
         }
@@ -6158,13 +5189,6 @@ fn note_escapes(e: &Expr, out: &mut HashSet<String>) {
 }
 
 /// The expressions a block's statements carry, one level down.
-///
-/// This used to match `Stmt::Expr` and `Stmt::Bind` and nothing else, so a
-/// function nested inside a block was invisible to every consumer of
-/// `walk_children`, including the escape analysis that decides what a buffer
-/// outlives. `maca_parser::ast::walk_stmt` covers every statement shape; this
-/// is the shallow form of it, which is what these callers recurse through
-/// themselves.
 fn stmt_children(ss: &[Stmt], f: &mut dyn FnMut(&Expr)) {
     for s in ss {
         match s {
@@ -6257,19 +5281,11 @@ fn walk_children(e: &Expr, f: &mut dyn FnMut(&Expr)) {
 #[derive(Clone)]
 struct Piece {
     code: String,
-    /// Nothing outside this expression is holding these bytes: a literal, or a
-    /// block built right here. A piece read out of a variable, a field or a
-    /// list element is not, since releasing one of those would take the
-    /// string out from under whoever still has it.
+    /// Nothing outside this expression is holding these bytes: a literal, or a block built right here.
     owned: bool,
 }
 
 /// Can a value of this type be an operand of `++` beside a string?
-///
-/// A scalar is rendered on the way in and `Unknown` is passed through, which is
-/// what an unannotated parameter needs. A record, a list, a map, a closure or a
-/// vector has no text form, and saying so is the whole difference between a
-/// diagnostic and a segfault.
 fn can_concat(t: &CTy) -> bool {
     matches!(
         t,
@@ -6279,13 +5295,6 @@ fn can_concat(t: &CTy) -> bool {
 
 impl Piece {
     /// An operand of `++` where the other side is a string.
-    ///
-    /// A *known* scalar is rendered on the way in: `"h" ++ 3` used to hand an
-    /// `int64_t` to a `maca_str` parameter, compile with a warning nobody
-    /// reads, and segfault dereferencing address 3. A value of unknown type is
-    /// passed through instead: in a concatenation it is a string
-    /// (`greet(n) => "hi " ++ n` with no annotation on `n`), and rendering it
-    /// as an integer would print its address.
     fn operand(code: &str, t: &CTy, owned: bool) -> Piece {
         match t {
             CTy::Int | CTy::Float | CTy::F32 | CTy::Bool => Piece::rendered(code, t, owned),
@@ -6296,9 +5305,7 @@ impl Piece {
         }
     }
 
-    /// A piece whose value is written out as text: an interpolation, or an
-    /// element's child. Rendering builds a string, and the one it builds is
-    /// this expression's to release.
+    /// A piece whose value is written out as text: an interpolation, or an element's child.
     fn rendered(code: &str, t: &CTy, owned: bool) -> Piece {
         match t {
             CTy::Str => Piece {
@@ -6322,8 +5329,7 @@ impl Piece {
         self.owned && !self.code.starts_with('"')
     }
 
-    /// Is reading this piece an event? A literal and a bare variable are the
-    /// two shapes that cannot be, so they need no name to pin their order.
+    /// Is reading this piece an event?
     fn is_settled(&self) -> bool {
         self.code.starts_with('"')
             || self

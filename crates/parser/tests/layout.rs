@@ -1,9 +1,3 @@
-//! Where an `import` looks, on a real directory tree.
-//!
-//! These are about the filesystem rather than about values, which is why they
-//! are here rather than in Maca: each one builds a project on disk and asks
-//! `resolve_module_path` what a written import means inside it.
-
 use maca_parser::modules::{Layout, resolve_module, resolve_module_path};
 use std::path::{Path, PathBuf};
 
@@ -61,8 +55,7 @@ impl Drop for Project {
 
 const MANIFEST: &str = "[package]\nname = \"p\"\n";
 
-/// `modules/` is a search root, so a package is imported by its own name from
-/// anywhere in the tree, not by the path from the importer to it.
+/// `modules/` is a search root, so a package is imported by its own name from anywhere in the tree, not by the path from the importer to it.
 #[test]
 fn a_package_under_modules_is_imported_by_name() {
     let p = Project::new("byname");
@@ -76,8 +69,7 @@ fn a_package_under_modules_is_imported_by_name() {
     );
 }
 
-/// A file inside a package is reached by its path, and the directory holding it
-/// is not itself a module: there is no entry file, so `http` names nothing.
+/// A file inside a package is reached by its path, and the directory holding it is not itself a module.
 #[test]
 fn a_directory_is_not_a_module_but_its_files_are() {
     let p = Project::new("dir");
@@ -97,8 +89,7 @@ fn a_directory_is_not_a_module_but_its_files_are() {
     );
 }
 
-/// An installed dependency is a search root too, so it is written by its own
-/// name: the directory `maca add` chose never appears in anybody's source.
+/// An installed dependency is a search root too, so it is written by its own name.
 #[test]
 fn an_installed_dependency_needs_no_prefix() {
     let p = Project::new("installed");
@@ -112,8 +103,7 @@ fn an_installed_dependency_needs_no_prefix() {
     );
 }
 
-/// A single-package repository puts its code in `src/` and needs no manifest
-/// entry to say so.
+/// A single-package repository puts its code in `src/` and needs no manifest entry to say so.
 #[test]
 fn a_polyrepo_src_is_a_search_root_by_default() {
     let p = Project::new("src");
@@ -156,9 +146,7 @@ fn the_roots_are_renameable() {
     );
 }
 
-/// `apps` is deliberately not a search root: two applications may each have a
-/// `conf`, and neither should silently answer for the other. An application is
-/// reached by its written path.
+/// `apps` is deliberately not a search root.
 #[test]
 fn apps_is_not_a_search_root() {
     let p = Project::new("apps");
@@ -181,13 +169,7 @@ fn apps_is_not_a_search_root() {
     );
 }
 
-/// The written path still wins over the search roots, so a module sitting
-/// beside its importer is not shadowed by a same-named package.
-///
-/// The colliding file is `modules/selfhost/token.maca` and not
-/// `modules/token.maca`: the latter is never a candidate for the path
-/// `selfhost/token`, so a fixture built that way resolves the same under any
-/// ordering and pins nothing.
+/// The written path still wins over the search roots.
 #[test]
 fn a_written_path_beats_a_search_root() {
     let p = Project::new("written");
@@ -202,23 +184,7 @@ fn a_written_path_beats_a_search_root() {
     );
 }
 
-/// A directory that shares a package's name shadows the package. This is the
-/// sharp edge of the rule above, pinned here so a change to it is a change to a
-/// test rather than a surprise: the tree had a top-level `bench/` beside
-/// `modules/bench/`, whose files the whole benchmark subsystem imports as
-/// `bench/…`, and which one `import bench/stat` meant was decided by which file
-/// happened to exist.
-///
-/// It was closed by moving the directory. Reordering the search to put the
-/// roots first was tried and reverted: it does not fix the case where the
-/// shadowing directory is under `apps/` (the ancestor walk reaches that
-/// directory before the root), and it lets an installed dependency under
-/// `maca_modules/` outrank the project's own source.
-///
-/// So the order stands and the shadowing is reported instead: resolution still
-/// answers with the written path, and now also says which file that hid.
-/// `imports::collect` refuses the import rather than compiling one of the two in
-/// silence.
+/// A directory that shares a package's name shadows the package.
 #[test]
 fn a_directory_of_the_same_name_shadows_a_package() {
     let p = Project::new("collide");
@@ -240,9 +206,7 @@ fn a_directory_of_the_same_name_shadows_a_package() {
     );
 }
 
-/// An import naming one file names one file. Every ordinary resolution has to
-/// come back clean, or a diagnostic about two files fires on programs that have
-/// only one.
+/// An import naming one file names one file.
 #[test]
 fn an_unambiguous_import_shadows_nothing() {
     let p = Project::new("clean");
@@ -261,9 +225,6 @@ fn an_unambiguous_import_shadows_nothing() {
 }
 
 /// An installed dependency does not take over a path the project itself wrote.
-/// `maca_modules` is a search root like the others, so without the written
-/// path coming first, `maca add`ing anything called `tools` would answer for
-/// this project's own `tools/`.
 #[test]
 fn an_installed_dependency_does_not_outrank_the_projects_own_source() {
     let p = Project::new("vendor");
@@ -278,10 +239,7 @@ fn an_installed_dependency_does_not_outrank_the_projects_own_source() {
     );
 }
 
-/// The search stops at the project root: a stray `modules/` in a parent
-/// directory is somebody else's, and reaching it would let the compiler and the
-/// language server, whose own search is bounded by the workspace, disagree
-/// about where a name is defined.
+/// The search stops at the project root.
 #[test]
 fn the_search_stops_at_the_project_root() {
     let outer = Project::new("outer");

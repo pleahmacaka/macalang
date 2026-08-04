@@ -1,6 +1,3 @@
-//! Native-toolchain smoke test: with no WSL but a host `cc`, `maca run` must
-//! compile and execute a program end to end. Skips if neither is usable.
-
 mod common;
 use common::*;
 
@@ -9,7 +6,6 @@ use std::process::Command;
 
 #[test]
 fn hello_runs_natively() {
-    // Only meaningful on a plain Linux host (no WSL) with a C compiler.
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -32,14 +28,6 @@ fn hello_runs_natively() {
 }
 
 /// `apps/cli_tool/`: the `cli` package used the way a program uses it.
-///
-/// An application, not a fixture, so it lives under `apps/` with the other
-/// programs and is named by its written path: `apps/` is deliberately not an
-/// import search root.
-///
-/// Run three ways, because a command line has three outcomes and only one of
-/// them is the happy path: help printed and nothing done, a refusal naming what
-/// was wrong, and the work itself.
 #[test]
 fn the_cli_example_helps_refuses_and_runs() {
     if have_wsl() || !have("cc") {
@@ -103,19 +91,6 @@ fn the_cli_example_helps_refuses_and_runs() {
 }
 
 /// The other four package demos under `apps/`, each run to its last line.
-///
-/// Nothing compiled these while they sat in `examples/`, and under `apps/` they
-/// need it: `apps/bench_demo` imports `bench/…` from a directory whose sibling
-/// is `apps/bench`, which is the shape that hides a package. That collision is
-/// refused rather than resolved silently, but only for a build that happens, so
-/// this is the build that happens.
-///
-/// Two things are asserted, and each caught a mutation the other let through.
-/// The needle is text only the program's *final* line prints. A header that
-/// the last section prints before doing its work is not one, because emptying
-/// that section then leaves the test green. And the exit status: a demo whose `main`
-/// returns non-zero, or that fails after its last `info`, prints every needle
-/// on its way out.
 #[test]
 fn the_package_demos_run_natively() {
     if have_wsl() || !have("cc") {
@@ -124,8 +99,6 @@ fn the_package_demos_run_natively() {
     }
     for (app, last) in [
         ("bench_demo", "5 cases:"),
-        // The fourth of `narrate`'s four moments, which the section header is
-        // printed before. The arrow is what keeps it off the summary table.
         ("profile_demo", "→ sort words"),
         ("signal_demo", "nothing to patch"),
         ("tambo_demo", "unanswered route names: 0"),
@@ -181,7 +154,6 @@ fn recursion_and_arithmetic_run_natively() {
 
 #[test]
 fn multi_file_imports_resolve_and_run() {
-    // `maca build main.maca` inlines local `import` modules in dependency order.
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -213,8 +185,6 @@ fn multi_file_imports_resolve_and_run() {
 
 #[test]
 fn selective_import_runs_and_drops_unused() {
-    // `import { name } from module` inlines only the named definition and its
-    // same-module dependency closure; everything else in the module is dropped.
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -230,7 +200,7 @@ fn selective_import_runs_and_drops_unused() {
         dir.join("mathutil.maca"),
         "square(x: int) -> int => x * x\n\
          cube(x: int) -> int => square(x) * x\n\
-         boom(x: int) -> int => x / 0\n", // referencing this would divide by zero
+         boom(x: int) -> int => x / 0\n",
     )
     .unwrap();
     std::fs::write(
@@ -248,16 +218,11 @@ fn selective_import_runs_and_drops_unused() {
         "selective import didn't resolve cube/square: stdout {stdout}\nstderr {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    // `cube` exits with 64; had `boom` been inlined and reached it'd trap, but
-    // it's dropped entirely: the closure pulled in only cube + square.
     assert_eq!(out.status.code(), Some(64), "exit code should be cube(4)");
 }
 
 #[test]
 fn higher_order_params_run_natively() {
-    // A function passed by name to an unannotated `pred` parameter, then called
-    // inside the callee. The C backend wraps the fn in a closure and lowers the
-    // param call through the closure ABI.
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -296,8 +261,6 @@ fn higher_order_params_run_natively() {
 
 #[test]
 fn recursive_record_runs_natively() {
-    // A recursive record (`Tree { kids: Tree[] }`) compiles through the C
-    // backend's forward-declaration path and walks correctly at run time.
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -330,7 +293,6 @@ fn operator_overloading_runs_natively() {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
     }
-    // (1,2)+(3,4) = (4,6); *2 = (8,12)
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args(["run", &example_str("operators.maca")])
         .output()
@@ -345,8 +307,6 @@ fn operator_overloading_runs_natively() {
 
 #[test]
 fn sqlite_ffi_runs_natively_with_system_sqlite() {
-    // Real C FFI: on a plain Linux host the driver links system sqlite with the
-    // host cc. Needs libsqlite3 headers; skip where they're absent.
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -362,7 +322,6 @@ fn sqlite_ffi_runs_natively_with_system_sqlite() {
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    // rows come back ordered by age: ada (36) then alan (41)
     for want in ["ada is 36", "alan is 41"] {
         assert!(
             stdout.contains(want),
@@ -441,7 +400,6 @@ fn async_spawn_await_runs_natively() {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
     }
-    // two spawned tasks resolve to 20 and 40; awaiting both sums to 60.
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args(["run", &example_str("async.maca")])
         .output()
@@ -470,7 +428,6 @@ fn string_stdlib_runs_natively() {
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    // split → 3 cols; trim/lower normalize; upper/contains/replace/substr/index_of
     for want in [
         "cols: 3",
         "name",
@@ -509,7 +466,6 @@ fn fail_exits_cleanly_with_message() {
     let dir = std::env::temp_dir().join("maca-fail-test");
     std::fs::create_dir_all(&dir).unwrap();
     let f = dir.join("fail.maca");
-    // `fail msg` must print "error: <msg>" to stderr and exit 1 (not SIGABRT)
     std::fs::write(
         &f,
         "check(n: int) -> int {\n    if n < 0 {\n        fail \"negative input\"\n    }\n    n\n}\n\nmain() -> int {\n    info(\"{check(0 - 1)}\")\n    0\n}\n",
@@ -638,7 +594,6 @@ fn try_catches_failure_natively() {
         .output()
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    // the failure is caught: execution continues and exits cleanly
     assert!(stdout.contains("recovered"), "stdout: {stdout}");
     assert_eq!(
         out.status.code(),
@@ -686,7 +641,6 @@ fn generics_monomorphize_and_run_natively() {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
     }
-    // record instantiation is the case a single-int64_t stamp cannot compile
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args(["run", &example_str("generic_record.maca")])
         .output()
@@ -809,7 +763,6 @@ fn recursive_sum_types_run_natively() {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
     }
-    // boxed recursive payloads: tree fold + list length
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args(["run", &example_str("tree.maca")])
         .output()
@@ -834,8 +787,6 @@ fn sum_with_record_payload_runs_natively() {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
     }
-    // sum declared before the record it carries: the combined topo order must
-    // define the record struct first, or the C won't compile.
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args(["run", &example_str("sum_record.maca")])
         .output()
@@ -851,8 +802,6 @@ fn sum_with_record_payload_runs_natively() {
 
 #[test]
 fn microkernel_boots_natively() {
-    // the capstone stress test: a whole microkernel simulation must compile and
-    // run end to end (and exercises the build cache on the second CI build).
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -888,8 +837,6 @@ fn microkernel_boots_natively() {
 
 #[test]
 fn file_io_builtins_run_natively() {
-    // read_file / write_file / file_exists / make_dir / list_dir: the
-    // filesystem primitives a build tool needs.
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -899,7 +846,6 @@ fn file_io_builtins_run_natively() {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
     }
-    // start from a clean directory so `list_dir` counts are deterministic
     let _ = std::fs::remove_dir_all("/tmp/maca_fileio_example");
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args(["run", &example_str("fileio.maca")])
@@ -907,11 +853,11 @@ fn file_io_builtins_run_natively() {
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
     for want in [
-        "read 4 lines",    // read_file round-trips what write_file wrote
-        "one.md exists",   // file_exists is true for a written file
-        "nope.md missing", // ...and false for an absent one
-        "pages: 2",        // make_dir + list_dir see both files
-        "first: one.md",   // list_dir is sorted, so builds are reproducible
+        "read 4 lines",
+        "one.md exists",
+        "nope.md missing",
+        "pages: 2",
+        "first: one.md",
         "second: two.md",
     ] {
         assert!(
@@ -923,9 +869,6 @@ fn file_io_builtins_run_natively() {
 }
 
 /// `maca test`: chapter 12 of the handbook, executed.
-///
-/// The suites live in `tests/programs/testsuite/` rather than in a Rust string
-/// literal, because they are the same Maca the chapter prints.
 #[test]
 fn maca_test_runs_test_prefixed_functions() {
     let wsl = Command::new("wsl")
@@ -938,7 +881,6 @@ fn maca_test_runs_test_prefixed_functions() {
         return;
     }
 
-    // Passing: two tests, plus a `main` that must be replaced rather than run.
     let (ok, out, _) = maca_test("passing");
     assert!(ok, "passing tests should exit 0:\n{out}");
     assert!(out.contains("running 2 tests"), "count wrong:\n{out}");
@@ -948,8 +890,6 @@ fn maca_test_runs_test_prefixed_functions() {
         "the file's own main was executed:\n{out}"
     );
 
-    // Failing: every test still runs, each is marked, and the exit code is the
-    // number of failed assertions: two, from three tests.
     let (ok, out, code) = maca_test("failing");
     assert!(!ok, "a failing suite must exit non-zero");
     assert_eq!(code, Some(2), "the exit code is the failure count:\n{out}");
@@ -961,13 +901,11 @@ fn maca_test_runs_test_prefixed_functions() {
     for want in ["got:  got", "want: want", "one is not greater than two"] {
         assert!(out.contains(want), "expected {want:?} in:\n{out}");
     }
-    // The passing test after two failures still ran and still reported.
     assert!(
         out.contains("test_a_passing_one_still_runs\n    ok"),
         "a later test was skipped:\n{out}"
     );
 
-    // `fail` is not `assert`: it ends the program where it happened.
     let (ok, out, _) = maca_test("aborting");
     assert!(!ok, "`fail` must exit non-zero");
     assert!(
@@ -976,14 +914,12 @@ fn maca_test_runs_test_prefixed_functions() {
     );
     assert!(out.contains("deliberate"), "failure message lost:\n{out}");
 
-    // A file with no tests is not an error.
     let (ok, out, _) = maca_test("no_tests");
     assert!(ok, "no tests should not be a failure:\n{out}");
     assert!(out.contains("no tests found"), "should say so:\n{out}");
 }
 
-/// Run `tests/programs/testsuite/<name>.maca` through `maca test`. Returns
-/// success, stdout+stderr together, and the exit code.
+/// Run `tests/programs/testsuite/<name>.maca` through `maca test`.
 fn maca_test(name: &str) -> (bool, String, Option<i32>) {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/programs/testsuite")
@@ -999,9 +935,6 @@ fn maca_test(name: &str) -> (bool, String, Option<i32>) {
 
 #[test]
 fn functions_without_a_declared_return_type_return_their_value() {
-    // An arrow body *is* the function's value. Before this was fixed, a
-    // function with no `-> T` discarded its body and fell off the end of a
-    // non-void C function, returning garbage (and often segfaulting).
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -1016,8 +949,6 @@ fn functions_without_a_declared_return_type_return_their_value() {
     let f = dir.join("ret.maca");
     std::fs::write(
         &f,
-        // no `-> T` anywhere: a plain arithmetic body, a comparison (bool), a
-        // string concat, and a call through a higher-order parameter
         "inc(x) => x + 1\n\
          big(x) => x > 10\n\
          greet(n) => \"hi \" ++ n\n\
@@ -1050,9 +981,6 @@ fn functions_without_a_declared_return_type_return_their_value() {
 
 #[test]
 fn list_methods_accept_a_named_function() {
-    // `xs.filter(is_even)`: a top-level function passed where a lambda is
-    // expected. Previously only literal lambdas were accepted and this emitted
-    // a call to an undeclared C function.
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -1095,9 +1023,6 @@ fn list_methods_accept_a_named_function() {
 
 #[test]
 fn handbook_examples_all_run() {
-    // `examples/handbook.maca` collects every runnable claim The Maca Handbook
-    // makes. Writing the book found five real compiler bugs, so its examples
-    // are executed here. Documentation that isn't run is a claim, not a fact.
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -1113,27 +1038,25 @@ fn handbook_examples_all_run() {
         .expect("spawn maca");
     let stdout = String::from_utf8_lossy(&out.stdout);
     for want in [
-        "record: 3 4 -> 5", // ctor, field access, `with`
-        "bindings: 1 100",  // mutable vs const
-        "sides: 4",         // sum type + match
-        "list: 10 3 60",    // first/length/reduce
-        "named fn: 2",      // a named fn passed to .filter
-        "inferred: 42 42",  // undeclared return types
-        "sum_to: 55",       // `for` over an inclusive range
+        "record: 3 4 -> 5",
+        "bindings: 1 100",
+        "sides: 4",
+        "list: 10 3 60",
+        "named fn: 2",
+        "inferred: 42 42",
+        "sum_to: 55",
         "ternary: pass",
-        "patterns: empty / one: 7 / head 1, then 2 more", // list patterns
-        "propagate: 42",                                  // `?`
-        "try: [division by zero] []",                     // `try` gives the message, not the value
-        "strings: ababab 007 2",                          // repeat/pad_start/split
-        "braces: {} {}",                                  // both literal-brace escapes
-        "fmt: [3.14] [    42] [ok  ] [  ok  ] [007]",     // interpolation format specs
-        // UI elements on the native target: attributes, children, and the
-        // three forms an identifier can't express on its own
+        "patterns: empty / one: 7 / head 1, then 2 more",
+        "propagate: 42",
+        "try: [division by zero] []",
+        "strings: ababab 007 2",
+        "braces: {} {}",
+        "fmt: [3.14] [    42] [ok  ] [  ok  ] [007]",
         "ui: <article class=\"prose\"><h1>Hi</h1><span>Body</span></article>",
-        "attrs: <div data-kind=\"note\">seen</div>", // hyphenated name, false flag absent
+        "attrs: <div data-kind=\"note\">seen</div>",
         "flag: <details open><summary>more</summary>text</details>",
-        "dyn: <h2 id=\"s\">Deep</h2>", // a tag chosen at run time
-        "styles: true false",          // the sheet is tree-shaken
+        "dyn: <h2 id=\"s\">Deep</h2>",
+        "styles: true false",
     ] {
         assert!(
             stdout.contains(want),
@@ -1146,17 +1069,6 @@ fn handbook_examples_all_run() {
 
 #[test]
 fn concurrent_runs_of_the_same_program_dont_collide() {
-    // Concurrent `maca run`s of the same source used to collide twice over.
-    //
-    // Warm cache: each process installs the cached binary at the same path, and
-    // copying over a file another process is *executing* fails with ETXTBSY
-    // ("Text file busy"). The cache now installs via a temp file + rename.
-    //
-    // Cold cache: each process runs `cc -o` into that same path, and one that
-    // execs while another is still linking gets the same ETXTBSY. `run` now
-    // names its throwaway binary per process. This is the case that actually
-    // broke CI: the warm path was covered, the cold one wasn't, and CI starts
-    // cold every time.
     let wsl = Command::new("wsl")
         .arg("true")
         .output()
@@ -1169,7 +1081,6 @@ fn concurrent_runs_of_the_same_program_dont_collide() {
     let dir = std::env::temp_dir().join("maca-concurrent-run");
     std::fs::create_dir_all(&dir).unwrap();
     let f = dir.join("spin.maca");
-    // a little work, so the runs genuinely overlap
     std::fs::write(
         &f,
         "sum_to(n: int) -> int {\n    t = 0\n    for i in 1..n {\n        t = t + i\n    }\n    t\n}\n\
@@ -1177,8 +1088,6 @@ fn concurrent_runs_of_the_same_program_dont_collide() {
     )
     .unwrap();
 
-    // Both races, in order: cold (no cache at all, every process compiles and
-    // links), then warm (the cache is primed and every process installs).
     for cold in [true, false] {
         if !cold {
             let _ = Command::new(env!("CARGO_BIN_EXE_maca"))
@@ -1222,8 +1131,7 @@ fn check_racers(handles: Vec<std::thread::JoinHandle<std::process::Output>>, col
     }
 }
 
-/// Lambdas at every position: a top-level one is a function, a local one is a
-/// closure, and both may carry types.
+/// Lambdas at every position: a top-level one is a function, a local one is a closure, and both may carry types.
 #[test]
 fn lambdas_run_natively() {
     let wsl = Command::new("wsl")
@@ -1248,9 +1156,7 @@ fn lambdas_run_natively() {
     );
 }
 
-/// A function kept in a record field: the route table, the reducer, the
-/// builder. `(T, U) -> R` is the type that makes it writable; the assertions
-/// are in Maca, in `tests/programs/function_fields.maca`.
+/// A function kept in a record field: the route table, the reducer, the builder.
 #[test]
 fn a_function_can_be_kept_in_a_record_field() {
     if have_wsl() || !have("cc") {
@@ -1274,9 +1180,7 @@ fn a_function_can_be_kept_in_a_record_field() {
     }
 }
 
-/// A generic function that names its own element type: a type variable bound
-/// from inside a parameter's type, and a local declared with it. Assertions in
-/// `tests/programs/generics.maca`.
+/// A generic function that names its own element type.
 #[test]
 fn a_generic_can_name_its_own_element_type() {
     if have_wsl() || !have("cc") {
@@ -1296,10 +1200,7 @@ fn a_generic_can_name_its_own_element_type() {
     );
 }
 
-/// `xs = xs.push(v)` is an append where nothing else holds the list, and a copy
-/// everywhere else. Assertions in `tests/programs/accumulate.maca`, run plain
-/// and poisoned, because a buffer moved out from under a second holder is
-/// exactly what a released-memory pattern would show.
+/// `xs = xs.push(v)` is an append where nothing else holds the list, and a copy everywhere else.
 #[test]
 fn a_list_accumulates_without_copying_itself() {
     if have_wsl() || !have("cc") {
@@ -1324,9 +1225,6 @@ fn a_list_accumulates_without_copying_itself() {
 
 #[test]
 fn native_backend_regressions_still_hold() {
-    // List patterns, `chars()` registering its array type, `++` converting a
-    // non-string operand, and anonymous record literals. Each one is a bug
-    // that *compiled*, so each is asserted in Maca and run by `maca test`.
     let wsl = Command::new("wsl")
         .arg("true")
         .output()

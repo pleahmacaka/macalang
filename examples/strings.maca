@@ -1,6 +1,3 @@
-// String stdlib, the everyday text operations a data/DB tool leans on:
-// split a header row, normalize names, test and rewrite labels.
-
 main() -> int {
     row = "  Name , AGE ,  City  "
     parts = row.split(",")

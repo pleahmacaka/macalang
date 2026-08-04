@@ -1,11 +1,3 @@
-//! `maca`: the Maca toolchain CLI.
-//!
-//! Commands: `init` (scaffold), `build`/`run` (compile a `.maca` program to C
-//! and link a native binary), `watch` (rebuild+rerun on change), `fmt` (indent
-//! normalization, style from `maca.toml [format]`), `lint` (style + type
-//! diagnostics). Codegen prefers `zig cc` (static musl) through WSL when
-//! present; otherwise it falls back to the host's native `cc`/`clang`.
-
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -38,7 +30,6 @@ fn main() {
         Some("bindgen") => bindgen::cmd_bindgen(&args[1..]),
         Some("--help" | "-h" | "help") | None => usage(),
         Some(other) => {
-            // maca.toml [scripts] alias?
             if let Some(cmd) = script_alias(other) {
                 run_script(&cmd);
             } else {
@@ -50,9 +41,9 @@ fn main() {
     }
 }
 
-/// Formatting style. Defaults match the codebase: 4-space soft indent.
+/// Formatting style.
 struct FmtStyle {
-    unit: String, // one indent level's whitespace
+    unit: String,
 }
 
 /// Read `[format]` from `maca.toml` (indent_style = "space"|"tab", indent_size = N).
@@ -100,10 +91,6 @@ fn cmd_fmt(args: &[String]) {
     for src in &files {
         let source =
             std::fs::read_to_string(src).unwrap_or_else(|e| die(&format!("cannot read: {e}")));
-        // Parse only to reject broken files; never reformat through the AST
-        // (the lexer drops comments, so a print-based `fmt` would delete them).
-        // `fmt` re-indents the *original* text by bracket depth, preserving all
-        // content: comments, blank lines, and intra-line spacing.
         let parsed = maca_parser::parse(&source);
         if !parsed.errors.is_empty() {
             die(&format!(
@@ -172,8 +159,7 @@ fn write_if_absent(path: &Path, contents: &str) {
     println!("  create {}", path.display());
 }
 
-/// `maca profile <file> [-o out.svg]`: run under Callgrind and render a flame
-/// graph SVG (+ a text profile on stdout). Native-only (needs `cc` + `valgrind`).
+/// `maca profile <file> [-o out.svg]`.
 fn cmd_profile(args: &[String]) {
     let mut src = None;
     let mut out_svg = None;
@@ -194,7 +180,6 @@ fn cmd_profile(args: &[String]) {
         die("profile: needs valgrind on PATH (uses --tool=callgrind)");
     }
 
-    // front-end + emit C
     let source =
         std::fs::read_to_string(&src).unwrap_or_else(|e| die(&format!("cannot read: {e}")));
     let parsed = maca_parser::parse(&source);
@@ -218,7 +203,6 @@ fn cmd_profile(args: &[String]) {
     std::fs::write(dir.join("main.c"), &c_src).unwrap_or_else(|e| die(&e.to_string()));
     maca_runtime::write_to(&dir).unwrap_or_else(|e| die(&e.to_string()));
 
-    // build with debug info (no strip), instrumentation-friendly
     let bin = dir.join(stem(&src));
     let build = Command::new("cc")
         .args(["-O2", "-g", "-fno-omit-frame-pointer"])
@@ -237,7 +221,6 @@ fn cmd_profile(args: &[String]) {
         ));
     }
 
-    // run under callgrind
     let cg = dir.join("callgrind.out");
     eprintln!("profiling under callgrind (this is slower than a normal run)…");
     let run = Command::new("valgrind")
@@ -255,7 +238,6 @@ fn cmd_profile(args: &[String]) {
     let cg_text =
         std::fs::read_to_string(&cg).unwrap_or_else(|e| die(&format!("read callgrind: {e}")));
 
-    // text profile + flame graph
     print!("{}", profile::text_profile(&cg_text));
     let svg = profile::flamegraph_svg(&cg_text);
     let out = out_svg.unwrap_or_else(|| PathBuf::from(format!("{}.svg", stem(&src))));
@@ -264,7 +246,6 @@ fn cmd_profile(args: &[String]) {
 }
 
 /// Hot reload: rebuild + rerun whenever the source (or its directory) changes.
-/// Polls mtimes: no extra deps, works anywhere `maca run` does.
 fn cmd_watch(args: &[String]) {
     let Some(src) = args.first().map(PathBuf::from) else {
         die("watch: expected a .maca file");
@@ -297,8 +278,7 @@ fn cmd_watch(args: &[String]) {
     }
 }
 
-/// Warn on a Capitalized *local* binding (`A = 1`). It's a constant by
-/// convention, but `const a = …` is clearer. Recurses into nested blocks.
+/// Warn on a Capitalized *local* binding (`A = 1`).
 fn lint_capital_consts(stmts: &[maca_parser::Stmt], src: &Path, issues: &mut Vec<String>) {
     use maca_parser::{Expr, Stmt};
     for s in stmts {
@@ -341,17 +321,12 @@ fn lint_capital_consts_expr(e: &maca_parser::Expr, src: &Path, issues: &mut Vec<
     }
 }
 
-/// The width rule is about *code*. A long string literal is like a long
-/// comment (a C template, a URL, a test program), and rewrapping it would
-/// change or disfigure it, so the line is measured with its literals collapsed.
-/// Comments are exempt outright, since `chars()` over a UTF-8 comment measures
-/// something nobody is reading.
+/// The width rule is about *code*.
 fn too_wide(line: &str) -> bool {
     !line.trim_start().starts_with("//") && collapse_strings(line).chars().count() > 80
 }
 
-/// Replace the contents of every `"…"` literal with nothing, keeping the
-/// quotes, so an unterminated one cannot hide the rest of the line.
+/// Replace the contents of every `"…"` literal with nothing, keeping the quotes.
 fn collapse_strings(line: &str) -> String {
     let mut out = String::new();
     let mut quoted = false;
@@ -373,11 +348,6 @@ fn collapse_strings(line: &str) -> String {
 }
 
 /// Does this line hold a whole `if` block, opened and closed?
-///
-/// The line must *start* with the keyword (an `if ` in the middle is a string
-/// or a comment) and *end* with the closing brace. Without the second half
-/// this fired on every `} else if cond {`, which is one line of a chain and
-/// exactly the shape the style guide asks for.
 fn single_line_if(line: &str) -> bool {
     let t = line.trim();
     let opens = t.starts_with("if ") || t.starts_with("} else if ");
@@ -385,11 +355,6 @@ fn single_line_if(line: &str) -> bool {
 }
 
 fn cmd_lint(args: &[String]) {
-    // `EffectInConfig` and `UnknownOption` only exist in config mode, and
-    // nothing about a file says which mode it is for. `maca build --target
-    // nix` is where that is decided. Linting always in program mode meant
-    // `maca lint` reported "no issues" on the two fixtures written to fail,
-    // while advertising itself as a substitute for `maca.check`.
     let config = args.iter().any(|a| a == "--config");
     let Some(src) = args
         .iter()
@@ -402,8 +367,6 @@ fn cmd_lint(args: &[String]) {
         std::fs::read_to_string(&src).unwrap_or_else(|e| die(&format!("cannot read: {e}")));
     let mut issues: Vec<String> = Vec::new();
 
-    // Style, matching `tools/lint.maca`: the two are the same rules, and a
-    // disagreement between them means one of them is lying about the codebase.
     for (i, line) in source.lines().enumerate() {
         if too_wide(line) {
             issues.push(format!(
@@ -420,10 +383,6 @@ fn cmd_lint(args: &[String]) {
             ));
         }
     }
-    // Semantic diagnostics see the imports resolved, the way `build` does.
-    // Checking the file alone reported every `join` and `read_lines` in a
-    // script as an undefined name, which is a linter crying wolf about the
-    // exact thing it exists to catch.
     let parsed = maca_parser::parse(&source);
     let whole = load_with_imports(&src).unwrap_or_else(|_| source.clone());
     let mode = if config {
@@ -435,8 +394,6 @@ fn cmd_lint(args: &[String]) {
         issues.push(format!("{}: {:?}: {}", src.display(), d.kind, d.msg));
     }
 
-    // style: a Capitalized local binding is a constant by convention, but the
-    // explicit `const` reads better. (Type/constructor names stay capitalized.)
     for item in &parsed.module.items {
         if let maca_parser::Stmt::Fn(f) = item
             && let Some(maca_parser::FnBody::Block(stmts)) = &f.body
@@ -471,28 +428,10 @@ fn outside_raw_blocks(src: &str) -> Vec<&str> {
     out
 }
 
-/// Normalize indentation to `unit` without reflowing. Each line's existing
-/// indent depth (in levels, inferred from the file's own indent step) is
-/// re-emitted with `unit`, so a 4-space file re-formatted with the default
-/// 4-space style is unchanged (idempotent), while tab↔space / size changes
-/// convert cleanly. This preserves every author choice that isn't pure
-/// leading whitespace: comments, blank lines, and expression-continuation
-/// alignment (`=>` bodies, ternary chains) all survive intact.
+/// Normalize indentation to `unit` without reflowing.
 fn reindent(src: &str, unit: &str) -> String {
-    // A raw `"""…"""` block holds foreign source (CSS, JavaScript, a C
-    // template) with its own indentation, which is not this file's to
-    // normalize and not this file's to measure. The playground embeds a
-    // two-space-indented stylesheet, and that alone set the step for the whole
-    // program.
     let code: Vec<&str> = outside_raw_blocks(src);
 
-    // The file's indent step is the *narrowest* non-empty indent: one level.
-    //
-    // It used to be the gcd of every leading width, which a continuation line
-    // aligned under an open paren destroys: one argument list broken at column
-    // 14 makes the gcd 2, every four-space indent read as two levels, and the
-    // whole file come back at eight. Across this repository the gcd is 1 or 2
-    // in twenty-three files and the minimum is 4 in every single one.
     let step = code
         .iter()
         .filter(|l| !l.trim().is_empty())
@@ -517,15 +456,6 @@ fn reindent(src: &str, unit: &str) -> String {
             continue;
         }
         let lead = raw.len() - raw.trim_start().len();
-        // An indent that isn't a whole number of levels is alignment, not
-        // structure: a continuation sitting under an open paren, or a
-        // parameter lined up with the one above it. Re-indenting those to the
-        // nearest level is what turned
-        //
-        //     object_of(["id", "title"],
-        //               [str(t.id), quote(t.title)])
-        //
-        // into a second line three levels deep and pointing at nothing.
         if lead % step != 0 {
             out.push_str(raw);
             out.push('\n');
@@ -561,7 +491,6 @@ fn script_alias(name: &str) -> Option<String> {
 }
 
 fn run_script(cmd: &str) {
-    // `maca <alias>` runs its command through the shell
     let status = if cfg!(windows) {
         Command::new("cmd").args(["/C", cmd]).status()
     } else {
@@ -622,8 +551,6 @@ fn cmd_build(args: &[String]) {
     let Some(src) = src else {
         die("build: expected a .maca file");
     };
-    // Auto-detect config (nix) / UI (js) sources so a bare `maca build` doesn't
-    // fall through to the native path and emit confusing cc/linker errors.
     if !explicit_target && let Ok(source) = std::fs::read_to_string(&src) {
         let parsed = maca_parser::parse(&source);
         if let Some((detected, why)) = detect_target(&parsed.module) {
@@ -677,9 +604,6 @@ fn cmd_build(args: &[String]) {
         }
         return;
     }
-    // A `--target` nobody recognises used to fall through to the native path
-    // and report "built …", so a typo produced a binary for the wrong target
-    // and said nothing.
     if !target.is_empty() && target != "native" && target != "c" {
         die(&format!(
             "unknown target `{target}`; expected one of \
@@ -693,12 +617,9 @@ fn cmd_build(args: &[String]) {
     }
 }
 
-/// Infer a non-native build target from the source shape, so a bare
-/// `maca build` on a config or UI file does the right thing instead of failing
-/// on the native path. Only fires on unambiguous signals.
+/// Infer a non-native build target from the source shape.
 fn detect_target(m: &maca_parser::Module) -> Option<(&'static str, &'static str)> {
     use maca_parser::{Import, Stmt, Type};
-    // config mode: imports nixpkgs
     let imports_nixpkgs = m.items.iter().any(|it| match it {
         Stmt::Import(Import::Module(segs)) => segs.last().map(String::as_str) == Some("nixpkgs"),
         Stmt::Import(Import::Bare(n)) => n == "nixpkgs",
@@ -707,7 +628,6 @@ fn detect_target(m: &maca_parser::Module) -> Option<(&'static str, &'static str)
     if imports_nixpkgs {
         return Some(("nix", "source imports nixpkgs (config mode)"));
     }
-    // UI mode: a function returns `Element`
     let returns_element = m.items.iter().any(|it| match it {
         Stmt::Fn(f) => matches!(&f.ret, Some(Type::Name(segs)) if segs.last().map(String::as_str) == Some("Element")),
         _ => false,
@@ -718,7 +638,7 @@ fn detect_target(m: &maca_parser::Module) -> Option<(&'static str, &'static str)
     None
 }
 
-/// Config mode → a NixOS module. Checked in the pure `<>` config context.
+/// Config mode → a NixOS module.
 fn build_nix(src: &Path, out: &Path) -> Result<(), String> {
     let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
@@ -739,10 +659,7 @@ fn build_nix(src: &Path, out: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Rust target → Rust source, then a native binary at `out`. With no external
-/// crates this is a single-file `rustc` compile (fast); with `[rust-dependencies]`
-/// it generates a throwaway Cargo project and builds that (R3). The emitted
-/// `.rs` is written next to `out` and kept.
+/// Rust target → Rust source, then a native binary at `out`.
 fn build_rust(src: &Path, out: &Path) -> Result<String, String> {
     let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
@@ -758,9 +675,6 @@ fn build_rust(src: &Path, out: &Path) -> Result<String, String> {
         return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
     }
 
-    // Resolve foreign imports against `[rust-dependencies]`. An unresolved import
-    // is a hard error. Silently dropping it (the pre-R3 behavior) let a program
-    // look like it compiled while its real crate call was simply missing.
     let deps = rust_dependencies(src);
     validate_rust_imports(&parsed.module, &deps)?;
     validate_rust_bodies(&parsed.module)?;
@@ -773,7 +687,6 @@ fn build_rust(src: &Path, out: &Path) -> Result<String, String> {
     std::fs::write(&rs_path, &rs).map_err(|e| e.to_string())?;
 
     if deps.is_empty() {
-        // No crates.io dependencies → a single-file `rustc` compile.
         if !have("rustc") {
             return Ok(format!(
                 "emitted {} (no rustc on PATH to compile)",
@@ -795,15 +708,12 @@ fn build_rust(src: &Path, out: &Path) -> Result<String, String> {
         return Ok(format!("built {}", out.display()));
     }
 
-    // Dependencies present → build through Cargo.
     build_rust_cargo(&rs, &deps, &rust_patch(src), out)
 }
 
-/// Reject foreign imports the Rust target can't satisfy, and any `import rust`
-/// that names a crate not declared in `[rust-dependencies]`.
+/// Reject foreign imports the Rust target can't satisfy, and any `import rust` that names a crate not declared in `[rust-dependencies]`.
 fn validate_rust_imports(m: &maca_parser::Module, deps: &[(String, String)]) -> Result<(), String> {
     use maca_parser::ast::{Import, Stmt};
-    // crate roots that need no declaration.
     const BUILTIN: &[&str] = &["std", "core", "alloc", "crate", "self", "super"];
     let declared: std::collections::HashSet<&str> = deps.iter().map(|(n, _)| n.as_str()).collect();
     for it in &m.items {
@@ -812,9 +722,6 @@ fn validate_rust_imports(m: &maca_parser::Module, deps: &[(String, String)]) -> 
         };
         match lang.as_str() {
             "rust" => {
-                // A raw Rust block (`import rust """…"""`), anything that isn't a
-                // bare `a::b::c` path, is emitted verbatim, not a crate reference,
-                // so it needs no `[rust-dependencies]` entry.
                 let is_path = !spec.trim().is_empty()
                     && spec
                         .trim()
@@ -823,7 +730,6 @@ fn validate_rust_imports(m: &maca_parser::Module, deps: &[(String, String)]) -> 
                 if !is_path {
                     continue;
                 }
-                // first path segment = the crate root.
                 let krate = spec
                     .trim()
                     .split("::")
@@ -853,12 +759,7 @@ fn validate_rust_imports(m: &maca_parser::Module, deps: &[(String, String)]) -> 
     Ok(())
 }
 
-/// A freestanding image has no libc and no console, and its `main` is the reset
-/// handler's callee rather than a process entry point.
-///
-/// Both facts used to surface as C compiler noise (`call to undeclared
-/// function 'info'`, `conflicting types for 'main'`) about a file the user
-/// never wrote.
+/// A freestanding image has no libc and no console, and its `main` is the reset handler's callee rather than a process entry point.
 fn validate_freestanding(m: &maca_parser::Module) -> Result<(), String> {
     use maca_parser::ast::{Expr, Stmt};
 
@@ -898,19 +799,9 @@ fn validate_freestanding(m: &maca_parser::Module) -> Result<(), String> {
 }
 
 /// The output builtins, which all write to a stream a bare-metal target lacks.
-///
-/// `maca_core::IO_FNS` is the same set: the effect checker's reason for
-/// calling them impure is that they touch a console, which is this check's
-/// reason for refusing them. Two lists meant `panic` was in one and not the
-/// other, and slipped through onto bare metal.
 use maca_core::IO_FNS as CONSOLE;
 
-/// A trait-impl method's foreign-typed parameter is a mutable borrow of a value
-/// the crate owns, so it must not outlive the call: returning it, or storing it
-/// in a record or a list, would need a lifetime Maca has no way to name.
-///
-/// Rust would reject it too, but with an error about a type the user never
-/// wrote. This says which parameter and why.
+/// A trait-impl method's foreign-typed parameter is a mutable borrow of a value the crate owns, so it must not outlive the call.
 fn validate_borrowed_params(m: &maca_parser::Module) -> Result<(), String> {
     use maca_parser::ast::{Expr, Stmt};
 
@@ -974,9 +865,7 @@ fn is_foreign_type_name(
     }
 }
 
-/// Does `name` leave the method, as the body's value, or inside a record, a
-/// list or a closure that outlives it? Being passed to another call does not
-/// count: that is a reborrow, which is the whole point of taking one.
+/// Does `name` leave the method, as the body's value, or inside a record, a list or a closure that outlives it?
 fn escapes(body: &maca_parser::ast::Expr, name: &str) -> bool {
     use maca_parser::ast::{Expr, Field, Stmt};
 
@@ -990,7 +879,6 @@ fn escapes(body: &maca_parser::ast::Expr, name: &str) -> bool {
         found
     }
 
-    // the body's own value
     let tail = match body {
         Expr::Block(stmts) => match stmts.last() {
             Some(Stmt::Expr(e)) => e,
@@ -1002,7 +890,6 @@ fn escapes(body: &maca_parser::ast::Expr, name: &str) -> bool {
         return true;
     }
 
-    // stored in a structure, or captured by a closure that is itself the value
     let mut stored = false;
     maca_parser::ast::walk_expr(body, &mut |x| match x {
         Expr::Record(fields) | Expr::Ctor { fields, .. } => {
@@ -1023,9 +910,6 @@ fn escapes(body: &maca_parser::ast::Expr, name: &str) -> bool {
 }
 
 /// A bodyless function is an FFI declaration: the body lives in a C library.
-/// There is no C ABI bridge on the Rust path, so there is nothing to call: the
-/// emitter would write `unimplemented!()` and the program would build and then
-/// panic at run time. Say so at compile time instead.
 fn validate_rust_bodies(m: &maca_parser::Module) -> Result<(), String> {
     use maca_parser::ast::Stmt;
     let bodyless: Vec<&str> = m
@@ -1049,12 +933,6 @@ fn validate_rust_bodies(m: &maca_parser::Module) -> Result<(), String> {
 }
 
 /// A record field declared `(T) -> R` reaches only the native and JS back ends.
-///
-/// Rust would need the field boxed, the record's derives dropped and the call
-/// spelled `(r.f)(x)`; Java would need a functional interface and an explicit
-/// `.apply`. Both were emitted as if none of that mattered, and the failure
-/// arrived from `rustc` or `javac` describing generated code the reader never
-/// wrote. Refusing here says which field, and which target.
 fn validate_no_function_fields(m: &maca_parser::Module, target: &str) -> Result<(), String> {
     use maca_parser::{Expr, Field, Stmt, Type};
     for it in &m.items {
@@ -1078,9 +956,7 @@ fn validate_no_function_fields(m: &maca_parser::Module, target: &str) -> Result<
     Ok(())
 }
 
-/// `[rust-dependencies]` from the `maca.toml` nearest `src` (searching upward),
-/// as `(name, raw-rhs)` pairs: the RHS is preserved verbatim so both a bare
-/// version (`"1"`) and a table (`{ git = "…" }`) round-trip into `Cargo.toml`.
+/// `[rust-dependencies]` from the `maca.toml` nearest `src` (searching upward), as `(name, raw-rhs)` pairs.
 fn rust_dependencies(src: &Path) -> Vec<(String, String)> {
     manifest_section(src, "[rust-dependencies]")
 }
@@ -1136,9 +1012,7 @@ fn find_manifest(src: &Path) -> Option<PathBuf> {
     }
 }
 
-/// The `Cargo.toml` for the throwaway build project. Each dep RHS is re-emitted
-/// verbatim: a bare version string gets quoted, a `{ … }` table (git/path deps)
-/// or an already-quoted value passes through unchanged.
+/// The `Cargo.toml` for the throwaway build project.
 fn cargo_manifest(deps: &[(String, String)], patch: &[(String, String)]) -> String {
     let entries = |kv: &[(String, String)]| {
         let mut out = String::new();
@@ -1152,9 +1026,6 @@ fn cargo_manifest(deps: &[(String, String)], patch: &[(String, String)]) -> Stri
         }
         out
     };
-    // `[rust-patch]` becomes Cargo's `[patch.crates-io]`, which is how a local
-    // checkout or a fork is substituted for a published crate, the thing you
-    // need the moment a dependency needs a one-line fix.
     let patch_toml = if patch.is_empty() {
         String::new()
     } else {
@@ -1168,9 +1039,7 @@ fn cargo_manifest(deps: &[(String, String)], patch: &[(String, String)]) -> Stri
     )
 }
 
-/// Build the emitted Rust through a throwaway Cargo project so `[rust-dependencies]`
-/// resolve. The generated `Cargo.toml` re-emits each dep RHS verbatim (a bare
-/// version gets quoted, a `{ … }` table is passed through).
+/// Build the emitted Rust through a throwaway Cargo project so `[rust-dependencies]` resolve.
 fn build_rust_cargo(
     rs: &str,
     deps: &[(String, String)],
@@ -1203,7 +1072,6 @@ fn build_rust_cargo(
 }
 
 /// JVM target → Java source (and `javac` to `.class` when a JDK is present).
-/// The class name is the file stem, capitalized. `out` names the output dir.
 fn build_jvm(src: &Path, out: Option<&Path>, classpath: Option<&str>) -> Result<String, String> {
     let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
@@ -1238,9 +1106,6 @@ fn build_jvm(src: &Path, out: Option<&Path>, classpath: Option<&str>) -> Result<
         }
         let o = cmd.output().map_err(|e| format!("javac: {e}"))?;
         if !o.status.success() {
-            // Interop code often needs external jars (e.g. the Minecraft/Fabric
-            // API) that aren't on the CLI classpath, so keep the emitted .java
-            // and warn rather than fail; a Gradle build compiles it with its deps.
             return Ok(format!(
                 "emitted {} (javac could not resolve all types; pass --cp, or build via Gradle):\n{}",
                 java_path.display(),
@@ -1269,15 +1134,13 @@ fn capitalize(s: &str) -> String {
     }
 }
 
-/// The smallest `dev.maca` that produces a working shell, shown when there
-/// isn't one, so the next step is a copy rather than a search.
+/// The smallest `dev.maca` that produces a working shell, shown when there isn't one.
 const STARTER_DEV: &str = "    import nixpkgs\n\n\
      \x20   dev.name     = \"myapp\"\n\
      \x20   dev.packages = rustc, cargo\n\
      \x20   dev.env      = { RUST_BACKTRACE = \"1\" }\n";
 
-/// `maca dev [dev.maca] [-o flake.nix]`: compile a Maca-defined dev
-/// environment to a `flake.nix` devShell, replacing a hand-written flake.
+/// `maca dev [dev.maca] [-o flake.nix]`.
 fn cmd_dev(args: &[String]) {
     let mut src = PathBuf::from("dev.maca");
     let mut out = PathBuf::from("flake.nix");
@@ -1290,9 +1153,6 @@ fn cmd_dev(args: &[String]) {
     }
     let source = match std::fs::read_to_string(&src) {
         Ok(s) => s,
-        // `maca init` does not scaffold one, because a Nix dev shell is
-        // optional. Saying only "not found" leaves the reader with no idea
-        // what the file they are missing would contain.
         Err(_) if !src.exists() => die(&format!(
             "no {} here. It describes the dev shell, in Maca:\n\n\
              {STARTER_DEV}\n\
@@ -1305,11 +1165,9 @@ fn cmd_dev(args: &[String]) {
     if !parsed.errors.is_empty() {
         die(&format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
     }
-    // dev config is pure (no effects), so check in Config mode
     let diags = maca_core::check(&parsed.module, maca_core::Mode::Config);
     let real: Vec<_> = diags
         .iter()
-        // `dev.*` isn't a NixOS option namespace; that diagnostic is expected here
         .filter(|d| !matches!(d.kind, maca_core::DiagKind::UnknownOption))
         .collect();
     if !real.is_empty() {
@@ -1328,9 +1186,6 @@ fn cmd_dev(args: &[String]) {
         out.display()
     );
 
-    // Windows: also emit native dev-env scripts under .maca/dev/ (scoop/choco/
-    // winget). The flake above ignores scoop.*/choco.*/winget.*, so Nix hosts
-    // are unaffected; Windows hosts get a portable, project-local toolchain.
     if let Some(win) = maca_backend_nix::emit_windows_dev(&parsed.module) {
         let dir = PathBuf::from(".maca").join("dev");
         if let Err(e) = std::fs::create_dir_all(&dir) {
@@ -1350,8 +1205,6 @@ fn cmd_dev(args: &[String]) {
             activate.display(),
             win.managers.join(", ")
         );
-        // On Windows, provision the toolchain immediately (portable scoop into
-        // .maca\dev); elsewhere the scripts are emitted for the target host.
         if cfg!(windows) {
             println!("provisioning… (running setup.ps1)");
             let status = std::process::Command::new("powershell")
@@ -1371,8 +1224,7 @@ fn cmd_dev(args: &[String]) {
     }
 }
 
-/// Embedded target → freestanding C + startup + linker script, cross-compiled
-/// to a bare-metal firmware image (ELF + raw .bin) with clang/lld.
+/// Embedded target → freestanding C + startup + linker script, cross-compiled to a bare-metal firmware image (ELF + raw .bin) with clang/lld.
 fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<String, String> {
     let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
@@ -1443,7 +1295,6 @@ fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<Stri
             String::from_utf8_lossy(&o.stderr)
         ));
     }
-    // raw binary + size report
     let bin = out_dir.join("firmware.bin");
     if have("llvm-objcopy") {
         let _ = Command::new("llvm-objcopy")
@@ -1476,16 +1327,6 @@ fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<Stri
 }
 
 /// UI mode → one self-contained, deployable `index.html`.
-///
-/// Styles and the transpiled app are inlined, and so is every asset the program
-/// declares: `import wasm "path"` becomes a base64 `<script>` (with id
-/// `wasm-b64`), `import css "path"` a `<style>` ahead of the generated one, and
-/// `import js "path"` a `<script>` ahead of the app. A page ships as a single
-/// file with no external requests. `maca build --target js app.maca` → deploy
-/// it.
-///
-/// The page's `<title>` (and `lang`, and description) comes from `[page]` in
-/// the `maca.toml` nearest the source, falling back to the file's stem.
 fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
     let source = load_with_imports(src)?;
     let parsed = maca_parser::parse(&source);
@@ -1494,10 +1335,6 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
     }
     let out = maca_backend_js::emit(&parsed.module);
 
-    // Declared assets, in the order they are written. A stylesheet goes in the
-    // head *before* the generated `<style>`, so the app's own utilities win
-    // over a vendor sheet; a script goes in the body next to the wasm blob,
-    // after `#app` exists and before the app that may use it.
     let base = src.parent().unwrap_or(Path::new("."));
     let mut head_assets = String::new();
     let mut assets = String::new();
@@ -1545,44 +1382,26 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
 
     std::fs::create_dir_all(out_dir).map_err(|e| e.to_string())?;
     std::fs::write(out_dir.join("index.html"), page).map_err(|e| e.to_string())?;
-    // also emit the modules separately (for non-inline hosting / tooling); the
-    // self-contained index.html above is the single-file deployable.
     std::fs::write(out_dir.join("app.js"), &out.js).map_err(|e| e.to_string())?;
     std::fs::write(out_dir.join("app.css"), &out.css).map_err(|e| e.to_string())?;
     Ok(())
 }
 
 /// An asset a page declares, read at build time.
-///
-/// The error names the import as it was written *and* the path it resolved to:
-/// an asset path is relative to the source file, not to the directory the build
-/// was started from, so "no such file" without both is a message about nothing.
-/// It is an error rather than a skipped asset because the page it produces is
-/// the deployable, and a page missing its stylesheet looks like a CSS bug, in
-/// the browser, later.
 fn read_asset(base: &Path, lang: &str, spec: &str) -> Result<Vec<u8>, String> {
     let path = base.join(spec);
     std::fs::read(&path).map_err(|e| format!("import {lang} \"{spec}\": {}: {e}", path.display()))
 }
 
-/// The same, as text: a stylesheet or a script is inlined as source, so bytes
-/// that are not UTF-8 are a named error here rather than a mangled page.
+/// The same, as text: a stylesheet or a script is inlined as source.
 fn asset_text(base: &Path, lang: &str, spec: &str) -> Result<String, String> {
     let bytes = read_asset(base, lang, spec)?;
     String::from_utf8(bytes).map_err(|e| format!("import {lang} \"{spec}\": not UTF-8 text: {e}"))
 }
 
-/// Text inlined into a `<style>` or `<script>` element, with the sequences that
-/// would end that element early escaped.
-///
-/// An HTML parser closes a raw-text element at the first `</style` or
-/// `</script`, wherever it appears, including inside a JavaScript string, and
-/// everything after it becomes markup. Both languages allow the sequence only
-/// inside a string, a comment or a regex, where a backslash before the slash
-/// changes nothing, which is why escaping it is safe and dropping the asset is
-/// not.
+/// Text inlined into a `<style>` or `<script>` element, with the sequences that would end that element early escaped.
 fn close_safe(text: &str) -> String {
-    let lower = text.to_ascii_lowercase(); // ASCII-only, so byte offsets still line up
+    let lower = text.to_ascii_lowercase();
     let mut out = String::with_capacity(text.len());
     let mut i = 0;
     while let Some(off) = lower[i..].find("</") {
@@ -1600,8 +1419,7 @@ fn close_safe(text: &str) -> String {
     out
 }
 
-/// Escape a manifest value for HTML text or an attribute value. A page title is
-/// somebody's prose, so `Tom & Jerry` is a title and not a broken entity.
+/// Escape a manifest value for HTML text or an attribute value.
 fn html_text(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -1617,24 +1435,14 @@ fn html_text(s: &str) -> String {
     out
 }
 
-/// `[page]` in `maca.toml`: what the page *is*, as distinct from what its file
-/// happens to be called.
+/// `[page]` in `maca.toml`: what the page *is*, as distinct from what its file happens to be called.
 struct Page {
     title: Option<String>,
     lang: Option<String>,
     description: Option<String>,
 }
 
-/// Read `[page]` from the `maca.toml` nearest the source (searching upward, as
-/// `[rust-dependencies]` does).
-///
-/// The JS target named every page after its source file, so a start page in
-/// `home.maca` was `<title>home</title>` and the project patched the emitted
-/// HTML afterwards with a string replace keyed on that word: rename the file
-/// and the replace quietly matched nothing.
-///
-/// An unrecognised key is an error, not a default. A misspelt `titel` that
-/// silently produced the old title is the same failure with a longer detour.
+/// Read `[page]` from the `maca.toml` nearest the source (searching upward, as `[rust-dependencies]` does).
 fn page_config(src: &Path) -> Result<Page, String> {
     let mut page = Page {
         title: None,
@@ -1657,22 +1465,12 @@ fn page_config(src: &Path) -> Result<Page, String> {
     Ok(page)
 }
 
-/// `maca build --target tauri app.maca -o out`: scaffold a complete,
-/// `cargo tauri build`-able Tauri v2 desktop app from a Maca UI. Emits:
-///   out/dist/         the compiled Maca UI (index.html, app.js, app.css) + a
-///                     bridge that exposes `macaInvoke(arg)` to the frontend
-///   out/src-tauri/    a Tauri v2 Rust shell (Cargo.toml, tauri.conf.json,
-///                     build.rs, src/main.rs) registering a `maca_run` command
-///   out/src-tauri/bin/backend   the native `backend.maca` (if present), run by
-///                     the command, so the whole app is Maca, Tauri just the shell.
+/// `maca build --target tauri app.maca -o out`.
 fn build_tauri(src: &Path, out: &Path) -> Result<String, String> {
     let name = sanitize_ident(&stem(src));
-    // The window's title is the page's title: one app, one name. `[page] title`
-    // in maca.toml answers for both, and the file stem is the fallback for both.
     let title = page_config(src)?.title.unwrap_or_else(|| stem(src));
     let dist = out.join("dist");
 
-    // 1. the UI (reuses the JS backend), plus the invoke bridge
     build_js(src, &dist)?;
     let bridge = "// Tauri bridge: call a Maca native command from the UI.\n\
         // `macaInvoke(arg)` runs the bundled `backend` binary with `arg` and\n\
@@ -1684,14 +1482,12 @@ fn build_tauri(src: &Path, out: &Path) -> Result<String, String> {
         \x20 return '(no tauri runtime)';\n\
         };\n";
     std::fs::write(dist.join("bridge.js"), bridge).map_err(|e| e.to_string())?;
-    // reference the bridge from index.html
     let index = dist.join("index.html");
     if let Ok(html) = std::fs::read_to_string(&index) {
         let html = html.replace("</body>", "<script src=\"bridge.js\"></script>\n</body>");
         std::fs::write(&index, html).map_err(|e| e.to_string())?;
     }
 
-    // 2. the native backend command (sibling backend.maca, if any)
     let backend = src.parent().unwrap_or(Path::new(".")).join("backend.maca");
     let bin_dir = out.join("src-tauri").join("bin");
     let mut has_backend = false;
@@ -1701,7 +1497,6 @@ fn build_tauri(src: &Path, out: &Path) -> Result<String, String> {
         has_backend = true;
     }
 
-    // 3. the Tauri v2 Rust shell
     let st = out.join("src-tauri");
     std::fs::create_dir_all(st.join("src")).map_err(|e| e.to_string())?;
     std::fs::write(st.join("Cargo.toml"), tauri_cargo_toml(&name)).map_err(|e| e.to_string())?;
@@ -1821,11 +1616,6 @@ fn base64(data: &[u8]) -> String {
 }
 
 /// The `main` that runs the tests.
-///
-/// Each test is bracketed by `failures()` so the report says which one failed
-/// rather than only that something did, and the process exits with the number
-/// of failed assertions. A test that `fail`s still aborts outright: that is
-/// the hard-failure path, and the name printed before it identifies it.
 fn generated_runner(tests: &[String]) -> String {
     let plural = if tests.len() == 1 { "" } else { "s" };
     let mut out = String::new();
@@ -1865,11 +1655,6 @@ fn line(depth: usize, text: &str) -> String {
 }
 
 /// `maca test <file.maca>`: run every `test_`-prefixed function in the file.
-///
-/// The file's own `main` (if any) is dropped and replaced with a generated one
-/// that calls each test in turn. Assertions come from the `assert`/`assert_eq`
-/// builtins: they report and keep going, so one run reports every failure, and
-/// the exit code is how many failed.
 fn cmd_test(args: &[String]) {
     let Some(src) = args.first().map(PathBuf::from) else {
         die("test: expected a .maca file");
@@ -1894,16 +1679,6 @@ fn cmd_test(args: &[String]) {
         return;
     }
 
-    // Rebuild the module without its `main` and without its local imports,
-    // then append the generated runner.
-    //
-    // The local imports have already been inlined by `load_with_imports`;
-    // leaving them in the printed source would inline every module a second
-    // time when the generated file is compiled, and every function in them
-    // would be defined twice. A *foreign* import is not inlined and must stay:
-    // `import c "http.h"` is how the module says which engine it links
-    // against, and dropping it left a suite of passing assertions that would
-    // not link.
     let items: Vec<maca_parser::Stmt> = parsed
         .module
         .items
@@ -1943,11 +1718,6 @@ fn cmd_test(args: &[String]) {
 }
 
 /// `maca -m http.serve [args…]`: run a function out of a module.
-///
-/// The generated entry module goes under `.maca/run/` in the project root, not
-/// a temp directory: `import http` inside it has to mean the same package it
-/// means anywhere else in the project, and import resolution is relative to the
-/// importing file.
 fn cmd_module(args: &[String]) {
     let Some(spec) = args.first() else {
         die("-m: expected a module, e.g. `maca -m http.serve`");
@@ -1959,10 +1729,6 @@ fn cmd_module(args: &[String]) {
     let root =
         maca_parser::modules::project_root(Path::new(".")).unwrap_or_else(|| PathBuf::from("."));
 
-    // `http.serve` reads two ways: the module `http` and its `serve`, or the
-    // module `http/serve` run under its own name. Both are ordinary paths, so
-    // whichever exists is the one that was meant, and a package needs no entry
-    // file to be runnable by a name that reads well.
     let whole = spec.replace('.', "/");
     let (module, named, path) = match entry::resolve(&module, &root) {
         Some(p) => (module, named, p),
@@ -2003,9 +1769,6 @@ fn cmd_module(args: &[String]) {
     let call = entry::call_shape(def).unwrap_or_else(|e| die(&format!("-m: {e}")));
     let answer = entry::answer_of(def);
 
-    // A module whose entry point is called `main` is already a program: it is
-    // compiled as itself. Generating a wrapper would put a second `main` in the
-    // same translation unit, and the call would bind to the wrapper's.
     let (source, cleanup) = if function == "main" {
         (path.clone(), None)
     } else {
@@ -2013,15 +1776,6 @@ fn cmd_module(args: &[String]) {
         if let Err(e) = std::fs::create_dir_all(&shim_dir) {
             die(&format!("-m: cannot create {}: {e}", shim_dir.display()));
         }
-        // The leading `-` is load-bearing: an import resolves against the
-        // importing file's own directory first, so a shim called `http.maca`
-        // importing `http` found itself. No identifier can begin with `-`, so
-        // no import can name this file however the project is laid out.
-        // The function is in the name, and the file is not reused: two `-m`
-        // runs in one project raced on a shim named only for the module, and
-        // each ran whichever function the other had just written, silently,
-        // with the wrong exit code. The pid keeps concurrent runs of the *same*
-        // spec apart too.
         let shim = shim_dir.join(format!(
             "-entry-{}-{function}-{}.maca",
             module.replace('/', "-"),
@@ -2067,7 +1821,6 @@ fn cmd_run(args: &[String]) {
     if let Err(e) = compile(&src, &out) {
         die(&e);
     }
-    // Run the produced binary: natively when there's no WSL, else through WSL.
     let status = if have_wsl() {
         Command::new("wsl")
             .arg(to_wsl(&out))
@@ -2080,9 +1833,7 @@ fn cmd_run(args: &[String]) {
     std::process::exit(status.code().unwrap_or(1));
 }
 
-/// A fingerprint that changes whenever the compiler itself does (its version
-/// plus its binary's mtime), so a rebuilt/upgraded `maca` invalidates the cache
-/// even though the crate version string is unchanged during development.
+/// A fingerprint that changes whenever the compiler itself does (its version plus its binary's mtime).
 fn compiler_fingerprint() -> String {
     let mtime = std::env::current_exe()
         .ok()
@@ -2096,16 +1847,11 @@ fn compiler_fingerprint() -> String {
 
 use maca_parser::imports::load_with_imports;
 
-/// Read → parse → typecheck → emit C → `zig cc` → a native binary at `out`,
-/// backed by the content-addressed build cache: an unchanged source is copied
-/// straight from the cache (skipping the whole pipeline), and a fresh build is
-/// stored back.
+/// Read → parse → typecheck → emit C → `zig cc` → a native binary at `out`, backed by the content-addressed build cache.
 fn compile(src: &Path, out: &Path) -> Result<(), String> {
     let source = load_with_imports(src)?;
     let key = build_cache::artifact_key(&source, &compiler_fingerprint(), "native");
     if let Some(cached) = build_cache::get(&key) {
-        // transparent: `run` must stay silent, and stderr clean for callers that
-        // check it. Set MACA_VERBOSE=1 to see cache hits.
         build_cache::place(&cached, out)?;
         if std::env::var("MACA_VERBOSE").is_ok() {
             eprintln!("  reused cached build [{key}]");
@@ -2146,12 +1892,9 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
     std::fs::write(dir.join("main.c"), &c_src).map_err(|e| e.to_string())?;
     maca_runtime::write_to(&dir).map_err(|e| e.to_string())?;
 
-    // C FFI: link a real library (native dynamic build with rpath, since a
-    // glibc lib can't static-link into a musl binary).
     let c_imports = maca_backend_c::c_imports(&parsed.module);
     if c_imports.iter().any(|h| h.contains("sqlite")) {
         maca_runtime::write_sqlite_glue(&dir).map_err(|e| e.to_string())?;
-        // Plain Linux host (no WSL/nix): link the system sqlite with host cc.
         if !have_wsl() {
             let o = Command::new("cc")
                 .arg(dir.join("main.c"))
@@ -2201,12 +1944,10 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
         return Ok(());
     }
 
-    // Python FFI (feature-gated): embeds CPython.
     if parsed.module.items.iter().any(|it| {
         matches!(it, maca_parser::Stmt::Import(maca_parser::Import::Foreign { lang, .. }) if lang == "py")
     }) {
         maca_runtime::write_py_glue(&dir).map_err(|e| e.to_string())?;
-        // Plain Linux host: use python3-config to find the embed flags.
         if !have_wsl() {
             let includes = capture_cmd("python3-config", &["--includes"])?;
             let ldflags = capture_cmd("python3-config", &["--ldflags", "--embed"])
@@ -2254,10 +1995,6 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
         return Ok(());
     }
 
-    // Engines that are pure libc (sockets and pthreads), so they link into
-    // the static musl build alongside the runtime with nothing to find on the
-    // host. Each is an ordinary translation unit; naming them in one list is
-    // what keeps the two link paths below from growing a flag apiece.
     let glue = socket_glue(&c_imports, &dir)?;
     if use_async {
         maca_runtime::write_async(&dir).map_err(|e| e.to_string())?;
@@ -2266,12 +2003,10 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
         std::fs::write(dir.join("simd.ll"), &llvm.ir).map_err(|e| e.to_string())?;
     }
 
-    // No WSL/zig? Link with the host's native cc (plain builds only).
     if !have_wsl() {
         return link_native(&dir, out, use_async, &glue, use_simd);
     }
 
-    // `zig cc` through WSL, with the invariant musl target flags.
     let zig = |files: &[String]| -> Result<std::process::Output, String> {
         let mut args: Vec<String> = ["nix", "shell", "nixpkgs#zig", "-c", "zig", "cc"]
             .iter()
@@ -2284,8 +2019,6 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
             .map_err(|e| format!("failed to run zig via wsl: {e}"))
     };
 
-    // Extra translation units + link flags common to both the cached-object and
-    // the fallback all-in-one path.
     let mut extras: Vec<String> = Vec::new();
     if use_async {
         extras.push(to_wsl(&dir.join("maca_async.c")));
@@ -2293,22 +2026,14 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
     for g in &glue {
         extras.push(to_wsl(g));
     }
-    // Unconditional: the allocator takes a mutex, so every program links
-    // pthreads whether or not it ever says `spawn`.
     extras.push("-pthread".into());
     let _ = use_async;
     if use_simd {
-        // the LLVM IR object (clang compiles .ll directly); enable AVX
         extras.push(to_wsl(&dir.join("simd.ll")));
         extras.push("-mavx2".into());
     }
     let target = ["-target", "x86_64-linux-musl"].map(String::from);
 
-    // Fast path: compile the invariant runtime to a cached object once (per
-    // compiler + target), so a *changed* program recompiles only its own
-    // main.c, the same trick `link_native` uses on the host. On any hiccup we
-    // fall through to the original all-in-one invocation, which cannot be slower
-    // or less correct than before this optimization existed.
     let rt_c = dir.join("maca_runtime.c");
     let rt_src = std::fs::read(&rt_c).unwrap_or_default();
     let rt_key = build_cache::hash(&[&rt_src, compiler_fingerprint().as_bytes(), b"zig-musl-O2"]);
@@ -2344,12 +2069,8 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
         {
             return Ok(());
         }
-        // Linking against the cached object failed, so fall through and rebuild
-        // everything in one shot below.
     }
 
-    // Fallback (and the pre-optimization behavior): compile main.c + the runtime
-    // together in a single invocation.
     let mut files = vec![to_wsl(&dir.join("main.c")), to_wsl(&rt_c)];
     files.extend(extras);
     files.extend(["-I".into(), to_wsl(&dir), "-o".into(), to_wsl(out)]);
@@ -2365,22 +2086,12 @@ fn compile_inner(src: &Path, source: &str, out: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// A scratch directory for one compile: the generated `main.c`, the runtime
-/// sources, and the object files.
-///
-/// Per *process*, not per source. Two concurrent `maca run`/`maca build` of the
-/// same file used to share it, so one process would rewrite `main.c` and the
-/// runtime objects while another was linking them, producing undefined
-/// references to `maca_init` and friends, or ETXTBSY on the output binary.
-/// Nothing here is worth sharing: the artifact cache
-/// (`build_cache`, content-addressed) is what makes rebuilds fast, and it lives
-/// elsewhere. This is pure scratch.
+/// A scratch directory for one compile.
 fn build_dir(src: &Path) -> PathBuf {
     std::env::temp_dir().join(format!("maca-build-{}-{}", stem(src), std::process::id()))
 }
 
-/// `import nix "F"` evaluates F at build time and binds the result (the file
-/// stem) as a constant the program can use: the Nix boundary value.
+/// `import nix "F"` evaluates F at build time and binds the result (the file stem) as a constant the program can use.
 fn inject_nix_imports(m: &mut maca_parser::Module, src: &Path) -> Result<(), String> {
     use maca_parser::{Bind, Expr, Import, Stmt, StrPart};
     let dir = src.parent().unwrap_or(Path::new("."));
@@ -2461,9 +2172,7 @@ fn stem(p: &Path) -> String {
         .unwrap_or_else(|| "out".into())
 }
 
-/// Is a working WSL available? The default toolchain shells out to
-/// `wsl … zig cc` (NixOS side); when there's no WSL we fall back to a native
-/// `cc`/`clang` so `maca build`/`run` work on a plain Linux host too.
+/// Is a working WSL available?
 fn have_wsl() -> bool {
     Command::new("wsl")
         .arg("true")
@@ -2497,13 +2206,7 @@ fn have(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// The engines an `import c "…"` asks for that need nothing but libc, written
-/// out ready to compile.
-///
-/// These are not FFI in the usual sense: there is no library on the host to
-/// find, no headers to locate, no `-l` flag. `mqtt.h` and `http.h` name engines
-/// the runtime carries, so a program that imports one still links static-musl
-/// and still runs anywhere.
+/// The engines an `import c "…"` asks for that need nothing but libc, written out ready to compile.
 fn socket_glue(c_imports: &[String], dir: &Path) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
     let mut want =
@@ -2519,8 +2222,7 @@ fn socket_glue(c_imports: &[String], dir: &Path) -> Result<Vec<PathBuf>, String>
     Ok(out)
 }
 
-/// Link the plain (no-FFI) build with the host's native C compiler. `clang` is
-/// used when SIMD IR is present (it compiles `.ll`); otherwise `cc`.
+/// Link the plain (no-FFI) build with the host's native C compiler.
 fn link_native(
     dir: &Path,
     out: &Path,
@@ -2530,9 +2232,6 @@ fn link_native(
 ) -> Result<(), String> {
     let cc = if use_simd { "clang" } else { "cc" };
 
-    // The C runtime is invariant per compiler version, so compile it once to a
-    // cached object and reuse it: a changed program only recompiles its own
-    // `main.c`, not the whole runtime.
     let rt_c = dir.join("maca_runtime.c");
     let rt_src = std::fs::read(&rt_c).unwrap_or_default();
     let rt_key = build_cache::hash(&[
@@ -2674,7 +2373,6 @@ mod rust_target_tests {
             "table passed through: {m}"
         );
         assert!(m.contains("path = \"src/main.rs\""), "{m}");
-        // `[rust-patch]` becomes Cargo's crates-io patch table
         assert!(
             m.contains("[patch.crates-io]\nserde = { path = \"../serde\" }"),
             "patch table missing: {m}"

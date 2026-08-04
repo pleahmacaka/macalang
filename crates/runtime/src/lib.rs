@@ -1,16 +1,3 @@
-//! maca-runtime: the C runtime linked into every native binary.
-//!
-//! `minconsole`, heap strings + a string builder, typed dynamic array and map
-//! macros, a small robust JSON parser, file/dir/stdin/time helpers, and the
-//! reference-counted allocator behind Perceus, for which the code generator
-//! emits the dup/drop calls, so a discarded buffer returns to the free-list
-//! rather than
-//! being held until exit.
-//!
-//! Style note: defensive C in the spirit of sqlite: every allocation checked,
-//! bounds respected, no undefined behavior on malformed input (parse errors
-//! abort with a message rather than corrupt memory).
-
 /// `maca_runtime.h`: declarations + the array macro used by generated code.
 pub const RUNTIME_H: &str = r##"#ifndef MACA_RUNTIME_H
 #define MACA_RUNTIME_H
@@ -333,7 +320,7 @@ maca_str maca_json_str(maca_json* j);
 #endif
 "##;
 
-/// `maca_runtime.c`
+/// `maca_runtime.c`.
 pub const RUNTIME_C: &str = r##"#define _GNU_SOURCE
 #include "maca_runtime.h"
 #include <stdio.h>
@@ -1431,9 +1418,7 @@ bool maca_json_bool(maca_json* j) { return j && j->kind == MJ_BOOL ? j->b : fals
 maca_str maca_json_str(maca_json* j) { return j && j->kind == MJ_STR && j->str ? maca_str_copy(j->str) : ""; }
 "##;
 
-/// `maca_async.h`: the concurrency runtime interface. Always includable; the
-/// implementation (`maca_async.c`) is only linked when a program uses async, so
-/// a purely sequential binary carries no scheduler symbols.
+/// `maca_async.h`: the concurrency runtime interface.
 pub const ASYNC_H: &str = r##"#ifndef MACA_ASYNC_H
 #define MACA_ASYNC_H
 #include <stdint.h>
@@ -1470,10 +1455,7 @@ void maca_sleep_ms(int64_t ms);
 #endif
 "##;
 
-/// `maca_async.c`: the colorblind-async slice, a bounded POSIX-thread worker
-/// pool and a cancellation token. Structured: all workers join before return.
-/// A suspension point is a real thread boundary, which keeps the runtime small
-/// enough to read at the cost of a thread per task.
+/// `maca_async.c`: the colorblind-async slice, a bounded POSIX-thread worker pool and a cancellation token.
 pub const ASYNC_C: &str = r##"#include "maca_async.h"
 #include "maca_runtime.h"
 #include <pthread.h>
@@ -1589,11 +1571,7 @@ pub fn write_async(dir: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// FFI binding glue for `import c "sqlite3.h"`. These thin wrappers own the
-/// C-side pointers (`sqlite3*`, `sqlite3_stmt*`) that Maca surface syntax can't
-/// express, and expose plain `str`/`int` signatures. Real libsqlite3 does the
-/// work. (For a new library, `maca bindgen <header.h>` scaffolds the extern
-/// declarations from its prototypes.)
+/// FFI binding glue for `import c "sqlite3.h"`.
 pub const SQLITE_GLUE: &str = r#"#include "maca_runtime.h"
 #include <sqlite3.h>
 
@@ -1658,9 +1636,7 @@ pub fn write_sqlite_glue(dir: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// FFI binding glue for `import py "module"`. Embeds CPython, and is
-/// **feature-gated** because it links libpython (a much larger, dynamic binary). `py_call(m, f)`
-/// imports module `m`, calls its no-arg function `f`, and returns `str(result)`.
+/// FFI binding glue for `import py "module"`.
 pub const PY_GLUE: &str = r#"#define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include "maca_runtime.h"
@@ -1739,11 +1715,7 @@ pub fn write_py_glue(dir: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// `std/mqtt` engine (for `import c "mqtt.h"`): a minimal MQTT 3.1.1 broker +
-/// client over TCP: CONNECT/CONNACK, SUBSCRIBE/SUBACK, PUBLISH (QoS 0),
-/// PINGREQ, and `+`/`#` topic wildcards. Threaded (one thread per client) so
-/// the broker serves many concurrent clients. Sockets/pthreads are in musl
-/// libc, so this links static-musl with no external library.
+/// `std/mqtt` engine (for `import c "mqtt.h"`).
 pub const MQTT_GLUE: &str = r#"#define _GNU_SOURCE
 #include "maca_runtime.h"
 #include <stdio.h>
@@ -1957,18 +1929,6 @@ pub fn write_mqtt_glue(dir: &std::path::Path) -> std::io::Result<()> {
 }
 
 /// `modules/http` engine (for `import c "http.h"`): an HTTP/1.1 server.
-///
-/// A thread per connection with keep-alive, which is what the runtime already
-/// links for `spawn`/`await` and for the MQTT broker: no event loop, no
-/// external library, and it still holds a few thousand concurrent connections
-/// on a normal machine.
-///
-/// The split with Maca is at raw bytes on purpose. C owns the socket, the
-/// accept loop, request framing (`Content-Length`, and the header/body
-/// boundary) and writing the reply; everything above that, parsing a request
-/// into fields, routing, building a response, is Maca, where it can be read
-/// and tested. The handler is an ordinary Maca closure, called across the same
-/// `maca_closure` ABI `xs.map(f)` uses.
 pub const HTTP_GLUE: &str = r##"#define _GNU_SOURCE
 #include "maca_runtime.h"
 #include <stdio.h>

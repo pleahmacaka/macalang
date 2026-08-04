@@ -1,36 +1,9 @@
-// highlight: the syntax highlighter for tomo's fenced code blocks.
-//
-// The renderer hands every fence its language tag and the block's raw source,
-// and gets back HTML: one `<span class="tok-…">` per token, everything escaped.
-// A tag with no highlighter falls through to plain escaped text, so an unknown
-// language is rendered *unstyled* rather than mangled by rules written for a
-// different one.
-//
-// Adding a language is one function and one arm of `dispatch`:
-//
-//     hl_ini(src: str) -> str => hl_words(src, ";", IniWords)
-//
-// plus `else if lang == "ini" { hl_ini(src) }`. `tomo.maca` does not change: it
-// calls `highlight(lang, src)` and knows nothing about any language, Maca
-// included.
-//
-// The Maca scanner follows `crates/lexer` instead of guessing, because what
-// separates a highlighter that works from one that looks right until it doesn't
-// is all lexical, and this book is full of the cases: an attached `x?` against
-// a spaced `c ? a : b`, a format spec `{x:>8}` against a ternary inside an
-// interpolation, `"""…"""`, `///` against `//`, `data-tomo` against `a - b`.
-// Where the two could drift, a comment names the lexer function being mirrored.
-
 import { escape_html } from std/text
 
-// ---- the hook -------------------------------------------------------------
-
-/// One fenced code block as HTML: `src` tokenized under the fence's `lang` tag
-/// and escaped. An unknown tag comes back escaped and otherwise untouched.
+/// One fenced code block as HTML: `src` tokenized under the fence's `lang` tag and escaped.
 highlight(lang: str, src: str) -> str =>
     dispatch(canon(lang.lower()), src)
 
-// Tags as people write them, folded onto the names `dispatch` answers to.
 canon(lang: str) -> str {
     if lang == "bash" || lang == "shell" || lang == "console" {
         "sh"
@@ -65,11 +38,7 @@ dispatch(lang: str, src: str) -> str {
     }
 }
 
-// ---- emitting -------------------------------------------------------------
-
-/// One token as markup. An empty class means plain text: the surrounding
-/// `<code>` already carries the right colour, and a span around every
-/// identifier would double the size of every page to say nothing.
+/// One token as markup.
 tok(cls: str, text: str) -> str {
     if text == "" {
         ""
@@ -79,13 +48,6 @@ tok(cls: str, text: str) -> str {
         span(class=cls, escape_html(text))
     }
 }
-
-// ---- reading characters ---------------------------------------------------
-//
-// Every scan below looks ahead, and `cs.get(i)` past the end is not a question
-// worth asking twice, so `ch` answers "" and every character-class test goes
-// through `one_of`, which rejects "" rather than matching it the way
-// `"abc".contains("")` does.
 
 ch(cs: str[], i: int) -> str {
     if i < 0 || i >= cs.length() {
@@ -98,7 +60,6 @@ ch(cs: str[], i: int) -> str {
 one_of(set: str, cur: str) -> bool =>
     cur != "" && set.contains(cur)
 
-// Does the source at `i` begin with `want`?
 starts(cs: str[], i: int, want: str) -> bool =>
     starts_at(cs, i, want.chars(), 0)
 
@@ -115,7 +76,6 @@ starts_at(cs: str[], i: int, want: str[], j: int) -> bool {
 text_of(cs: str[], i: int, j: int) -> str =>
     cs.slice(i, j).join("")
 
-// The index of the newline that ends the line holding `i`, or the end.
 line_end(cs: str[], i: int) -> int {
     if i >= cs.length() || ch(cs, i) == "\n" {
         i
@@ -124,7 +84,6 @@ line_end(cs: str[], i: int) -> int {
     }
 }
 
-// Just past the `*/` that closes a block comment opened before `i`.
 block_end(cs: str[], i: int) -> int {
     if i >= cs.length() {
         i
@@ -160,11 +119,6 @@ digit_run(cs: str[], i: int) -> int {
 is_hex(cur: str) -> bool =>
     cur.is_ascii_digit() || one_of("abcdefABCDEF", cur)
 
-// ---- numbers --------------------------------------------------------------
-
-// A numeric literal, radix prefixes and `_` separators included. The lexer
-// takes `0xFFFF_FFFF` and `1_000_000`, and a scanner that stopped at the `_`
-// would paint half of one and leave the rest as an identifier.
 number_end(cs: str[], i: int) -> int {
     mark = ch(cs, i + 1)
 
@@ -175,8 +129,6 @@ number_end(cs: str[], i: int) -> int {
     }
 }
 
-// `0x` is only a prefix when a digit of that radix follows it; otherwise it is
-// the number `0` and then a name, which is how the lexer reads it too.
 radix_opens(cs: str[], i: int, mark: str) -> bool =>
     ch(cs, i + 2) == "_" || is_radix_digit(ch(cs, i + 2), mark)
 
@@ -188,7 +140,6 @@ radix_end(cs: str[], i: int, mark: str) -> int {
     }
 }
 
-// The digit set follows the radix, so `0b12` is `0b1` and then a `2`.
 is_radix_digit(cur: str, mark: str) -> bool {
     if mark == "x" || mark == "X" {
         is_hex(cur)
@@ -199,8 +150,6 @@ is_radix_digit(cur: str, mark: str) -> bool {
     }
 }
 
-// A `.` is a decimal point only with a digit behind it: `1.5` is a float and
-// `xs.0` is not.
 frac_end(cs: str[], j: int) -> int {
     if ch(cs, j) == "." && ch(cs, j + 1).is_ascii_digit() {
         digit_run(cs, j + 1)
@@ -209,12 +158,6 @@ frac_end(cs: str[], j: int) -> int {
     }
 }
 
-// ---- Maca -----------------------------------------------------------------
-
-// One token's worth of output, plus the two pieces of lexer state the token
-// after it depends on: whether an operand has just been completed (which is
-// what tells `/tmp` from a division), and how deep the `{`…`}` nesting is
-// (which is what tells a block's closing brace from an interpolation's).
 Scan = {
     out: str
     at: int
@@ -228,13 +171,6 @@ scanned(out: str, at: int, operand: bool, depth: int) -> Scan =>
 hl_maca(src: str) -> str =>
     mc_run(src.chars(), 0, false, false, 0, "").out
 
-// Scan code from `i` to the end (or, inside an interpolation, to the `}` that
-// closes it).
-//
-// A newline ends an interpolation too. The lexer has no such rule because a
-// `"…"` string cannot reach one: a string that meets a newline is an error. A
-// highlighter has to render the broken file anyway, and stopping here is what
-// keeps one unbalanced brace from colouring the rest of the chapter.
 mc_run(cs: str[], i: int, interp: bool, operand: bool, depth: int,
        out: str) -> Scan {
     if i >= cs.length() || (interp && depth == 0 && mc_ends(ch(cs, i))) {
@@ -248,9 +184,6 @@ mc_run(cs: str[], i: int, interp: bool, operand: bool, depth: int,
 mc_ends(cur: str) -> bool =>
     cur == "\}" || cur == "\n"
 
-// One token. The order of the tests is the lexer's: trivia is skipped before
-// anything else, which is the only reason `//` is a comment rather than the
-// path literal `/` + `/` would otherwise be.
 mc_token(cs: str[], i: int, interp: bool, operand: bool, depth: int) -> Scan {
     cur = ch(cs, i)
 
@@ -273,9 +206,6 @@ mc_token(cs: str[], i: int, interp: bool, operand: bool, depth: int) -> Scan {
     } else if cur == "\{" {
         scanned(tok("tok-punct", cur), i + 1, false, depth + 1)
     } else if cur == "\}" {
-        // A closing brace completes an operand, exactly as `)` and `]` do.
-        // `expect_operand` lists `RBrace` beside `RParen` and `RBracket`. Read
-        // the other way, `f(x) } /tmp` coloured a division as a path literal.
         scanned(tok("tok-punct", cur), i + 1, true, depth - 1)
     } else if cur == "?" {
         mc_question(cs, i, depth)
@@ -294,15 +224,11 @@ mc_token(cs: str[], i: int, interp: bool, operand: bool, depth: int) -> Scan {
     }
 }
 
-// The two-character operators, kept as one token so `->` is not a minus and a
-// greater-than. `...` falls out as `..` and `.`, which look the same.
 Op2 = " -> => == != <= >= << >> ++ || |> && .. "
 
 mc_op2(cs: str[], i: int) -> bool =>
     Op2.contains(" " ++ text_of(cs, i, i + 2) ++ " ")
 
-// A `/* … */` comment is one span however many lines it covers, which is what
-// `<pre>` wants: the span carries the colour and the newlines carry themselves.
 mc_block_comment(cs: str[], i: int, operand: bool, depth: int) -> Scan {
     j = block_end(cs, i + 2)
 
@@ -315,9 +241,6 @@ mc_number(cs: str[], i: int, depth: int) -> Scan {
     scanned(tok("tok-num", text_of(cs, i, j)), j, true, depth)
 }
 
-// `///` marks API documentation (the marker `tools/macadoc.maca` reads to
-// decide an item is public), while `////` is a rule of slashes and an ordinary
-// remark. Both editor grammars in `editor/` draw the line in the same place.
 mc_line_comment(cs: str[], i: int, operand: bool, depth: int) -> Scan {
     j = line_end(cs, i)
     doc = starts(cs, i, "///") && ch(cs, i + 3) != "/"
@@ -326,9 +249,6 @@ mc_line_comment(cs: str[], i: int, operand: bool, depth: int) -> Scan {
     scanned(tok(cls, text_of(cs, i, j)), j, operand, depth)
 }
 
-// `x?` propagates a failure; `c ? x : y` is a ternary. Whitespace before the
-// `?` is the whole difference, in the lexer and here, so the propagating one
-// is coloured as the control flow it is and the ternary as an operator.
 mc_question(cs: str[], i: int, depth: int) -> Scan {
     spaced = i == 0 || one_of(" \t\n\r", ch(cs, i - 1))
 
@@ -339,12 +259,6 @@ mc_question(cs: str[], i: int, depth: int) -> Scan {
     }
 }
 
-// ---- Maca: words ----------------------------------------------------------
-
-// The lexer's keyword set. `from` is not in it: the lexer does not reserve the
-// word, the parser only reads it in `import { … } from a/b`, and this book has
-// a record field and a parameter called `from` that are ordinary names. It is
-// handled separately, by the line it sits on.
 Keywords = " const as if else for in while break continue match import with"
     ++ " fail try alias await spawn "
 
@@ -370,9 +284,6 @@ mc_word(cs: str[], i: int, depth: int) -> Scan {
     }
 }
 
-// Is the word at `i` on a line that opens with `import`? That is the only
-// place `from` means anything to the parser, and it is what separates the
-// `from` in `import { x } from a/b` from a field or a parameter of that name.
 import_line(cs: str[], i: int) -> bool =>
     starts(cs, skip_blanks(cs, line_start(cs, i)), "import ")
 
@@ -384,11 +295,6 @@ line_start(cs: str[], i: int) -> int {
     }
 }
 
-// An identifier carries a Nix-style internal hyphen: `data-tomo` is one name
-// while `a - b` is a subtraction, because only a `-` directly between word
-// characters joins. `x-1` is a subtraction too, because a digit does not
-// start a word. This is `lex_ident`, and it is what lets a hyphenated HTML
-// attribute need no workaround.
 mc_word_end(cs: str[], i: int) -> int {
     j = word_run(cs, i)
 
@@ -399,8 +305,6 @@ mc_word_end(cs: str[], i: int) -> int {
     }
 }
 
-// A capitalized name is a type or a constructor; the primitives and the SIMD
-// vector types are types spelled in lower case.
 is_type(w: str) -> bool =>
     starts_upper(w) || Prims.contains(" " ++ w ++ " ") || is_simd(w)
 
@@ -410,7 +314,6 @@ starts_upper(w: str) -> bool {
     first.is_alpha() && first == first.upper()
 }
 
-// `f32x4`, `i8x16`: the vector types the LLVM span uses.
 is_simd(w: str) -> bool {
     at = w.index_of("x")
 
@@ -432,14 +335,6 @@ all_digits(cs: str[], i: int) -> bool {
     }
 }
 
-// A function definition's own name, found the way the parser finds one: the
-// name starts a line, and its `(` is followed (past the parameter list) by
-// `->`, `=>` or `{`.
-//
-// Both halves are load-bearing. Without the lookahead an `import`-less snippet
-// that opens with a call would be read as a definition; without the
-// line-start test every `info(…)` in every example body would be one, and this
-// book is mostly example bodies.
 is_definition(cs: str[], i: int, j: int) -> bool {
     close = paren_end(cs, j)
 
@@ -450,8 +345,6 @@ is_definition(cs: str[], i: int, j: int) -> bool {
 at_line_start(cs: str[], i: int) -> bool =>
     i == 0 || ch(cs, i - 1) == "\n"
 
-// The `)` matching the `(` at `i`, or -1. A parameter list may wrap across
-// lines, so this does not stop at one.
 paren_end(cs: str[], i: int) -> int =>
     paren_scan(cs, i + 1, 1)
 
@@ -471,8 +364,6 @@ paren_scan(cs: str[], i: int, open: int) -> int {
     }
 }
 
-// Spaces and tabs only: a newline cannot separate `)` from the `->` that
-// follows it, because the lexer would end the statement there.
 skip_blanks(cs: str[], i: int) -> int {
     if one_of(" \t", ch(cs, i)) {
         skip_blanks(cs, i + 1)
@@ -484,11 +375,6 @@ skip_blanks(cs: str[], i: int) -> int {
 opens_body(cs: str[], i: int) -> bool =>
     starts(cs, i, "->") || starts(cs, i, "=>") || ch(cs, i) == "\{"
 
-// ---- Maca: paths ----------------------------------------------------------
-
-// `/tmp`, `./x`, `../x`, `~/x`: a path literal, and only where an operand is
-// expected. A spaced `/` between two operands is division, which is the whole
-// reason this scanner carries `operand` around. Mirrors `starts_path`.
 mc_path_here(cs: str[], i: int) -> bool {
     cur = ch(cs, i)
     next = ch(cs, i + 1)
@@ -521,11 +407,6 @@ path_run(cs: str[], i: int) -> int {
     }
 }
 
-// ---- Maca: strings --------------------------------------------------------
-
-// A raw `"""…"""` block: no escapes and no interpolation, so it is one span
-// however many braces and quotes are inside it. This is what lets a CSS or JS
-// block embedded in a `.maca` file survive being highlighted as Maca.
 mc_raw(cs: str[], i: int, depth: int) -> Scan {
     j = raw_end(cs, i + 3)
 
@@ -542,14 +423,10 @@ raw_end(cs: str[], i: int) -> int {
     }
 }
 
-// The body of a `"…"` string, from just after the opening quote. `text` is the
-// literal run gathered so far and `out` the spans already closed off.
 mc_str(cs: str[], i: int, text: str, out: str, depth: int) -> Scan {
     cur = ch(cs, i)
 
     if cur == "" || cur == "\n" {
-        // A string that reaches a newline is a lexer error. Ending it here is
-        // what stops one unbalanced quote from painting the rest of the page.
         scanned(out ++ tok("tok-str", text), i, true, depth)
     } else if cur == "\"" {
         scanned(out ++ tok("tok-str", text ++ cur), i + 1, true, depth)
@@ -564,11 +441,6 @@ mc_str(cs: str[], i: int, text: str, out: str, depth: int) -> Scan {
     }
 }
 
-// `{` opens an interpolated expression, and the expression is scanned as
-// code, which is where a good half of the interesting code in this book
-// lives.
-// Nesting works because this recurses: a string inside an interpolation
-// arrives back at `mc_str`, and its own `{` arrives back here.
 mc_interp(cs: str[], i: int, text: str, out: str, depth: int) -> Scan {
     opened = out ++ tok("tok-str", text) ++ tok("tok-interp", "\{")
     inner = mc_run(cs, i + 1, true, false, 0, opened)
@@ -579,13 +451,6 @@ mc_interp(cs: str[], i: int, text: str, out: str, depth: int) -> Scan {
     mc_str(cs, at, "", inner.out ++ tail, depth)
 }
 
-// The length of the format spec starting at the `:` at `i`, or 0 when this
-// colon separates a ternary's arms instead.
-//
-// Three things have to hold, and together they leave `"{c ? a : b}"` no way to
-// be read as a spec: the colon is attached to the expression before it (Maca
-// writes a ternary spaced), every character from there to the `}` is a spec
-// character, and there is at least one. Mirrors `fmt_spec_here`.
 mc_spec_len(cs: str[], i: int) -> int {
     before = ch(cs, i - 1)
 
@@ -614,16 +479,6 @@ mc_spec(cs: str[], i: int, depth: int) -> Scan {
     scanned(tok("tok-interp", text_of(cs, i, j)), j, true, depth)
 }
 
-// ---- every other language -------------------------------------------------
-
-// A scanner for the languages a handbook quotes rather than teaches: line
-// comments, `/* … */`, quoted strings, numbers, a keyword list, and
-// punctuation. `marker` is the line-comment marker ("" for a language with
-// none) and `words` is a space-delimited keyword list.
-//
-// It is deliberately shallow. A wrong guess about a language nobody is reading
-// closely is worse than a plain-looking block, so this claims only what every
-// one of them agrees on.
 hl_words(src: str, marker: str, words: str) -> str =>
     gen_run(src.chars(), 0, marker, words, "")
 
@@ -647,9 +502,6 @@ gen_run(cs: str[], i: int, marker: str, words: str, out: str) -> str {
     } else if one_of("+-*%=<>!|&:?~$", cur) {
         gen_run(cs, i + 1, marker, words, out ++ tok("tok-op", cur))
     } else {
-        // `/` is left plain deliberately. It is a division in perhaps one block
-        // in this book and a path separator in dozens, and a tinted slash
-        // between every segment of a URL is the noisiest thing on the page.
         gen_run(cs, i + 1, marker, words, out ++ tok("", cur))
     }
 }
@@ -658,13 +510,6 @@ gen_take(cs: str[], i: int, j: int, marker: str, words: str, out: str,
          cls: str) -> str =>
     gen_run(cs, j, marker, words, out ++ tok(cls, text_of(cs, i, j)))
 
-// A quoted string, which here may span lines: a shell block that pipes a whole
-// program into a file is one, and cutting the string at the newline coloured
-// half a program as text and the other half as code.
-//
-// An opening quote with no partner anywhere is not treated as a string at all.
-// That is the fallback that keeps a stray apostrophe from colouring everything
-// after it, which is the failure the line limit was there to prevent.
 gen_string(cs: str[], i: int, marker: str, words: str, out: str,
            q: str) -> str {
     j = quote_end(cs, i + 1, q)
@@ -697,10 +542,6 @@ gen_word(cs: str[], i: int, marker: str, words: str, out: str) -> str {
     gen_run(cs, j, marker, words, out ++ tok(gen_class(cs, j, words, w), w))
 }
 
-// A keyword, a key, or plain text. Colouring the left of an assignment is what
-// makes a `.toml`, a `.nix` or a rule of CSS readable at all. Those files are
-// mostly keys, and none of them has enough keywords to carry a block on its
-// own.
 gen_class(cs: str[], j: int, words: str, w: str) -> str {
     if words.contains(" " ++ w ++ " ") {
         "tok-kw"
@@ -711,10 +552,6 @@ gen_class(cs: str[], j: int, words: str, w: str) -> str {
     }
 }
 
-// A word is a key when what follows it is a single `=` or `:`. Doubling
-// excludes the comparisons (`a == b` and a `::`), which are not assignments
-// any of these languages, and `://` excludes the scheme of a URL, which is
-// otherwise the most common "key" in a chapter about installing things.
 is_key(cs: str[], j: int) -> bool {
     at = skip_blanks(cs, j)
     cur = ch(cs, at)
@@ -725,10 +562,6 @@ is_key(cs: str[], j: int) -> bool {
 is_scheme(cs: str[], at: int) -> bool =>
     ch(cs, at) == ":" && ch(cs, at + 1) == "/" && ch(cs, at + 2) == "/"
 
-// `font-size`, `app.maca`, `--target`: a `-` or a `.` between word characters
-// belongs to the word, and a run of leading dashes opens one. A command line
-// is most of what an `sh` block is, and a flag read as two subtractions and a
-// name reads as noise.
 gen_word_end(cs: str[], i: int) -> int =>
     gen_word_tail(cs, dash_run(cs, i))
 
@@ -758,8 +591,6 @@ gen_flag_here(cs: str[], i: int) -> bool {
     ch(cs, i) == "-" && boundary && (is_word_start(next) || next == "-")
 }
 
-// ---- one function per language --------------------------------------------
-
 NixWords = " let in rec inherit with import assert or if then else true false"
     ++ " null "
 
@@ -779,14 +610,12 @@ hl_nix(src: str) -> str =>
 hl_toml(src: str) -> str =>
     hl_words(src, "#", " true false ")
 
-// JSON has no comments, and a marker of "" is how a language says so.
 hl_json(src: str) -> str =>
     hl_words(src, "", " true false null ")
 
 hl_sh(src: str) -> str =>
     hl_words(src, "#", ShWords)
 
-// CSS's only comment is `/* … */`, which every language here gets anyway.
 hl_css(src: str) -> str =>
     hl_words(src, "", " @media @import @font-face from to important ")
 
@@ -796,52 +625,12 @@ hl_js(src: str) -> str =>
 hl_ps(src: str) -> str =>
     hl_words(src, "#", PsWords)
 
-// ---- the theme ------------------------------------------------------------
-
-/// The stylesheet for the token classes above, for `tomo.maca` to put in the
-/// page's one `<style>` beside `base_css()` and the generated utilities.
-///
-/// Hand-written, and the only reason is the palette. Colour on this page is
-/// otherwise a Tailwind utility, but `text-…` accepts a *named* colour only
-/// (`text-[#cf222e]` is read as a font size), and the named set that clears
-/// 4.5:1 against the light `bg-zinc-100` of a code block is violet-600 and the
-/// zinc ramp. One hue is not a syntax theme. So the ten colours below are
-/// written out, in the shape `base_css()` already established for a rule that
-/// belongs to the document rather than to an element, and every one of them is
-/// contrast-checked against `bg-zinc-100` in light and `bg-zinc-800` in dark.
-///
-/// Nothing here distinguishes a comment from code by colour alone: a comment is
-/// italic and a doc comment is italic and semibold, so the two survive a
-/// monochrome print and a reader who does not see the difference between grey
-/// and green.
-///
-/// The dark palette is emitted twice, under two different selectors, because
-/// the colour scheme is not the only thing that makes a surface dark. The front
-/// page's hero panel is `bg-zinc-950 dark:bg-black`: dark in *both* schemes. It
-/// read as unhighlighted in light mode because the scheme said light and it got
-/// `#0a3069` strings on near-black. So a block that is dark whatever the scheme
-/// says so with `class="code-dark"`, and the palette follows the surface.
-///
-/// The dark palette is written once and re-selected rather than pasted a second
-/// time, because a palette kept in two places is a palette where one of them is
-/// stale.
+/// The stylesheet for the token classes above, for `tomo.maca` to put in the page's one `<style>` beside `base_css()` and the generated utilities.
 code_css() -> str =>
     light_css()
         ++ "@media (prefers-color-scheme: dark) \{\n" ++ dark_css() ++ "\}\n"
         ++ under(".code-dark ", dark_css())
 
-// The same rules again under a descendant selector.
-//
-// One rule per line, each starting at column 0 with its `.`, is what makes this
-// a line prefix rather than a CSS parser, and it is why the two palettes below
-// are written one rule per line. The palettes end with a newline, so the last
-// line is empty and is left alone: prefixing it would emit a selector with no
-// rule after it.
-//
-// The lambda captures `at`, which the C backend used to drop whenever anything
-// else in the program defined a top-level `at`, and `site_home.maca` does. It
-// was written with `replace` to avoid the capture until the backend was fixed;
-// `crates/driver/tests/programs/lambdas.maca` is what holds that fixed.
 under(at: str, css: str) -> str =>
     css.split("\n").map(l => l == "" ? "" : at ++ l).join("\n")
 

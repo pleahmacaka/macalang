@@ -1,36 +1,10 @@
-//! maca-wasm: a tiny `wasm32-unknown-unknown` surface over the front-end +
-//! emitters, for the browser playground.
-//!
-//! No `wasm-bindgen`: the ABI is raw exports over linear memory so the `.wasm`
-//! builds with a plain `cargo build --target wasm32-unknown-unknown` and loads
-//! with `WebAssembly.instantiate` alone (no JS glue, no toolchain).
-//!
-//!   * `alloc(len) -> ptr`: reserve `len` bytes for the caller to fill
-//!   * `dealloc(ptr, len)`: release a buffer returned by any of the below
-//!   * `run(ptr, len, mode) -> (ptr<<32)|len`: parse + check + emit, returning
-//!     a UTF-8 JSON blob the caller reads out of memory and then frees.
-//!   * `lsp(ptr, len, off)`: every language-server answer for one caret
-//!   * `version()`: the compiler's version string
-//!   * `hover(ptr, len, off)`: hover alone, which `lsp` also carries
-//!
-//! `mode`: 0 = program (native/JS), 1 = config (Nix).
-//!
-//! The packing is `wasm32`-only: it folds a 32-bit pointer into the high half of
-//! a `u64`, so a 64-bit host cannot call the exports. [`compile_json`] and
-//! [`lsp_json`] are the same work as plain Rust functions, which is what a
-//! native test asserts the JSON contract against.
-
 use maca_core::{DiagKind, Mode};
 use maca_parser::ast::*;
 
-/// The tree-walking interpreter the playground runs programs with. Public so a
-/// native test can check it against the answers the C backend gives: it is a
-/// third implementation of Maca's semantics, and nothing else compares them.
+/// The tree-walking interpreter the playground runs programs with.
 pub mod interp;
 
-/// Hand ownership of `bytes` (as an exact-length boxed slice) to the caller and
-/// return `(ptr << 32) | len`. Exact length matters: [`dealloc`] frees using
-/// `len` as the allocation size, so the box must be sized exactly `len`.
+/// Hand ownership of `bytes` (as an exact-length boxed slice) to the caller and return `(ptr << 32) | len`.
 fn leak_bytes(bytes: Vec<u8>) -> u64 {
     let boxed: Box<[u8]> = bytes.into_boxed_slice();
     let len = boxed.len();
@@ -38,8 +12,7 @@ fn leak_bytes(bytes: Vec<u8>) -> u64 {
     ((ptr as u64) << 32) | (len as u64)
 }
 
-/// Reserve `len` bytes and hand back the pointer. The caller writes source
-/// bytes here before calling [`run`].
+/// Reserve `len` bytes and hand back the pointer.
 #[unsafe(no_mangle)]
 pub extern "C" fn alloc(len: usize) -> *mut u8 {
     let boxed: Box<[u8]> = vec![0u8; len].into_boxed_slice();
@@ -58,9 +31,7 @@ pub unsafe extern "C" fn dealloc(ptr: *mut u8, len: usize) {
     }
 }
 
-/// Parse, check, and emit `src`. Returns `(out_ptr << 32) | out_len` locating a
-/// leaked UTF-8 JSON string in linear memory; the caller reads it and calls
-/// [`dealloc`].
+/// Parse, check, and emit `src`.
 ///
 /// # Safety
 /// `ptr`/`len` must describe a valid UTF-8 buffer from [`alloc`].
@@ -72,15 +43,13 @@ pub unsafe extern "C" fn run(ptr: *const u8, len: usize, mode: u32) -> u64 {
     leak_bytes(json.into_bytes())
 }
 
-/// Version string, for the playground footer. `(ptr<<32)|len`.
+/// Version string, for the playground footer.
 #[unsafe(no_mangle)]
 pub extern "C" fn version() -> u64 {
     leak_bytes(env!("CARGO_PKG_VERSION").as_bytes().to_vec())
 }
 
-/// LSP hover at `off` (byte offset): the signature/type of the identifier under
-/// the caret, or "" if none. Reuses the same analysis as the native `maca-lsp`.
-/// `(ptr<<32)|len`.
+/// LSP hover at `off` (byte offset).
 ///
 /// # Safety
 /// `ptr`/`len` must describe a valid UTF-8 buffer from [`alloc`].
@@ -92,12 +61,7 @@ pub unsafe extern "C" fn hover(ptr: *const u8, len: usize, off: usize) -> u64 {
     leak_bytes(h.into_bytes())
 }
 
-/// Everything the language server can say about the caret in one call: hover,
-/// signature help, the definition site, and every reference to the binding.
-/// `(ptr<<32)|len` locating the JSON described by [`lsp_json`].
-///
-/// One export rather than four because the editor asks all four questions about
-/// the same caret, and each separate export would re-lex and re-parse the file.
+/// Everything the language server can say about the caret in one call.
 ///
 /// # Safety
 /// `ptr`/`len` must describe a valid UTF-8 buffer from [`alloc`].
@@ -109,17 +73,6 @@ pub unsafe extern "C" fn lsp(ptr: *const u8, len: usize, off: usize) -> u64 {
 }
 
 /// The language-server answers for one caret position, as JSON:
-///
-/// ```json
-/// { "hover": "fib(n: int) -> int",
-///   "signature": { "label": "…", "params": ["n: int"], "active": 0 },
-///   "definition": { "line": 3, "col": 1, "endLine": 3, "endCol": 4 },
-///   "references": [ { "line": 3, "col": 1, "endLine": 3, "endCol": 4 } ] }
-/// ```
-///
-/// Positions are Monaco's convention (1-based, columns in UTF-16 units) so the
-/// editor can use them without a second conversion; `signature` and
-/// `definition` are `null` when there is nothing to say.
 pub fn lsp_json(src: &str, off: usize) -> String {
     let mut out = String::from("{\"hover\":");
     push_json_str(&mut out, &maca_lsp::hover(src, off).unwrap_or_default());
@@ -184,29 +137,10 @@ fn kind_str(k: DiagKind) -> &'static str {
 }
 
 /// The playground's whole result, as JSON (built by hand to keep deps zero).
-///
-/// ```json
-/// { "parseErrors": ["…"],
-///   "diagnostics": [{"kind":"TypeMismatch","msg":"…"}],
-///   "outputs": {"C":"…","JS":"…","CSS":"…"} | {"Nix":"…"},
-///   "limits": {"C": ["`on:click` needs a live DOM, build with --target js"]} }
-/// ```
-///
-/// A target appears in `outputs` when it lowered the whole module and in
-/// `limits` when it refused a construct by name. Never both: code a backend
-/// disowned is code that would not compile, so the playground must not show it
-/// as if it would.
-///
-/// The JS backend's `html` is not carried. It is a fixed four-line shell that
-/// loads `app.js` and `app.css`, identical for every program, so a reader shown
-/// it learns nothing about their own source. `CSS` is the opposite: it is the
-/// stylesheet generated for exactly the utilities *this* module names.
 pub fn compile_json(src: &str, mode: u32) -> String {
     let parsed = maca_parser::parse(src);
     let mut out = String::from("{");
 
-    // syntax-highlight tokens (from the real lexer, so they survive parse
-    // errors) and the definition outline (from the parsed module).
     out.push_str("\"tokens\":");
     out.push_str(&tokens_json(src));
     out.push_str(",\"symbols\":");
@@ -221,7 +155,6 @@ pub fn compile_json(src: &str, mode: u32) -> String {
     }
     out.push(']');
 
-    // type/effect diagnostics
     let diags = if parsed.errors.is_empty() {
         maca_core::check(&parsed.module, mode_of(mode))
     } else {
@@ -240,17 +173,9 @@ pub fn compile_json(src: &str, mode: u32) -> String {
     }
     out.push(']');
 
-    // editor markers (Monaco-ready 1-based line/col spans) so the LSP can draw
-    // squiggles on the offending token. Parse errors carry a real byte span;
-    // semantic diagnostics anchor on the first `backticked` name in the message
-    // (usually the offending identifier), falling back to the file start.
     out.push_str(",\"markers\":");
     out.push_str(&markers_json(src, &parsed.errors, &diags));
 
-    // backend outputs (only when the source parses), and the constructs a
-    // backend refused. Both C and Nix go through `emit_checked`: their
-    // unchecked `emit` answers with plausible-looking code for a construct they
-    // cannot lower, and a playground that shows it is teaching the wrong thing.
     let mut js_exports: Vec<String> = Vec::new();
     let mut limits: Vec<(&str, Vec<String>)> = Vec::new();
     out.push_str(",\"outputs\":{");
@@ -302,7 +227,6 @@ pub fn compile_json(src: &str, mode: u32) -> String {
     }
     out.push('}');
 
-    // callable function names in the emitted JS (for `import` interop)
     out.push_str(",\"jsExports\":[");
     for (i, n) in js_exports.iter().enumerate() {
         if i > 0 {
@@ -312,8 +236,6 @@ pub fn compile_json(src: &str, mode: u32) -> String {
     }
     out.push(']');
 
-    // run the program (Program mode only): captured stdout + an execution
-    // profile, so the playground can show real output and where the time went.
     if parsed.errors.is_empty() && matches!(mode_of(mode), Mode::Program) {
         let r = interp::run(&parsed.module);
         out.push_str(",\"run\":{\"output\":");
@@ -345,9 +267,7 @@ pub fn compile_json(src: &str, mode: u32) -> String {
     out
 }
 
-/// A syntax-highlight kind for a token. Kept as small integers the JS bridge
-/// maps to CSS classes: 0 punct, 1 keyword, 2 number, 3 string, 4 ident,
-/// 5 type/constructor (capitalized), 6 operator.
+/// A syntax-highlight kind for a token.
 fn tok_kind(t: &maca_lexer::Tok) -> u8 {
     use maca_lexer::Tok::*;
     match t {
@@ -369,9 +289,7 @@ fn tok_kind(t: &maca_lexer::Tok) -> u8 {
     }
 }
 
-/// Tokens as `[[start, len, kind], …]` (byte offsets). Newline/Eof layout
-/// tokens are dropped; the JS highlighter fills the gaps (whitespace, comments)
-/// itself.
+/// Tokens as `[[start, len, kind], …]` (byte offsets).
 fn tokens_json(src: &str) -> String {
     let lexed = maca_lexer::lex(src);
     let mut out = String::from("[");
@@ -394,8 +312,7 @@ fn tokens_json(src: &str) -> String {
     out
 }
 
-/// The definition outline: top-level functions, type declarations, named
-/// values, and (config mode) option paths, each with a 1-based source line.
+/// The definition outline: top-level functions, type declarations, named values, and (config mode) option paths, each with a 1-based source line.
 fn symbols_json(src: &str, module: &Module) -> String {
     let mut out = String::from("[");
     let mut first = true;
@@ -465,8 +382,7 @@ fn ty_name(t: &Type) -> String {
     }
 }
 
-/// A one-line summary of a type declaration's right-hand side: variant tags for
-/// a sum, field names for a record.
+/// A one-line summary of a type declaration's right-hand side.
 fn type_detail(value: &Expr) -> String {
     fn ctors(e: &Expr, out: &mut Vec<String>) {
         match e {
@@ -516,9 +432,7 @@ fn dotted_path(e: &Expr) -> String {
     }
 }
 
-/// First 1-based line whose trimmed start is `name` followed by a non-identifier
-/// char (top-level defs begin at column 0), or 0 if not found. The AST is
-/// span-free, so the outline recovers positions by matching the source.
+/// First 1-based line whose trimmed start is `name` followed by a non-identifier char (top-level defs begin at column 0), or 0 if not found.
 fn find_line(src: &str, name: &str) -> usize {
     let matches = |s: &str| -> bool {
         s.strip_prefix(name).is_some_and(|rest| {
@@ -527,9 +441,6 @@ fn find_line(src: &str, name: &str) -> usize {
                 .is_none_or(|c| !c.is_alphanumeric() && c != '_' && c != '.')
         })
     };
-    // Top-level defs begin at column 0. Prefer an un-indented match so a call
-    // above the definition (indented) doesn't shadow it; fall back to a trimmed
-    // match only if nothing starts at column 0.
     let mut fallback = 0;
     for (i, line) in src.lines().enumerate() {
         if matches(line) {
@@ -542,8 +453,7 @@ fn find_line(src: &str, name: &str) -> usize {
     fallback
 }
 
-/// Byte offset → Monaco (1-based line, 1-based column). Column counts UTF-16
-/// code units (Monaco's convention): an astral char (emoji) is two units.
+/// Byte offset → Monaco (1-based line, 1-based column).
 fn line_col(src: &str, byte: usize) -> (usize, usize) {
     let b = byte.min(src.len());
     let mut line = 1usize;
@@ -562,8 +472,7 @@ fn line_col(src: &str, byte: usize) -> (usize, usize) {
     (line, col)
 }
 
-/// Pull `(start, end)` and the trailing message out of a flattened parse-error
-/// string like `parse (12, 15): unexpected token`.
+/// Pull `(start, end)` and the trailing message out of a flattened parse-error string like `parse (12, 15): unexpected token`.
 fn parse_error_span(s: &str) -> Option<((usize, usize), &str)> {
     let open = s.find('(')?;
     let close = open + s[open..].find(')')?;
@@ -582,9 +491,7 @@ fn first_backtick(msg: &str) -> Option<&str> {
     Some(&rest[..b])
 }
 
-/// First whole-word occurrence of `name` in *code*, skipping `//` comments and
-/// `"…"` string literals, as a byte span. Anchoring a diagnostic marker on a
-/// mention inside a comment/string would draw the squiggle in the wrong place.
+/// First whole-word occurrence of `name` in *code*, skipping `//` comments and `"…"` string literals, as a byte span.
 fn find_word(src: &str, name: &str) -> Option<(usize, usize)> {
     if name.is_empty() {
         return None;
@@ -595,13 +502,11 @@ fn find_word(src: &str, name: &str) -> Option<(usize, usize)> {
     let mut i = 0;
     while i < bytes.len() {
         match bytes[i] {
-            // line comment: skip to end of line
             b'/' if bytes.get(i + 1) == Some(&b'/') => {
                 while i < bytes.len() && bytes[i] != b'\n' {
                     i += 1;
                 }
             }
-            // string literal: skip to the closing quote (respecting \" escapes)
             b'"' => {
                 i += 1;
                 while i < bytes.len() && bytes[i] != b'"' {
@@ -625,9 +530,7 @@ fn find_word(src: &str, name: &str) -> Option<(usize, usize)> {
     None
 }
 
-/// Build the `markers` array: precise spans for parse errors, best-effort spans
-/// for semantic diagnostics. All are `error` severity (the compiler rejects
-/// every one of them).
+/// Build the `markers` array: precise spans for parse errors, best-effort spans for semantic diagnostics.
 fn markers_json(src: &str, parse_errors: &[String], diags: &[maca_core::Diagnostic]) -> String {
     let mut out = String::from("[");
     let mut first = true;
@@ -716,9 +619,7 @@ mod tests {
     }
 
     #[test]
-    /// `chr` and `ord` must mean the same thing here as they do natively, or
-    /// the playground quietly runs a different language. The domain is the
-    /// agreed one: `chr` answers "" outside 1..255, and the pair round-trips.
+    /// `chr` and `ord` must mean the same thing here as they do natively, or the playground quietly runs a different language.
     fn chr_and_ord_match_the_native_domain() {
         let json = compile_json(
             "main() -> int {\n    \
@@ -746,7 +647,6 @@ mod tests {
             json.contains("\"output\":\"55\\n\""),
             "fib(10) wrong: {json}"
         );
-        // the shared renderer produces an HTML flame graph rooted at main, with fib
         assert!(
             json.contains("\"flameSvg\":\"<div"),
             "no flame html: {json}"
@@ -761,7 +661,6 @@ mod tests {
 
     #[test]
     fn range_for_loop_runs() {
-        // inclusive: `1..100` sums to 5050; `1..5` is a 5-element int[].
         let json = compile_json(
             "main() -> int {\n    sum = 0\n    for i in 1..100 {\n        sum = sum + i\n    }\n    xs = 1..5\n    info(\"{sum} {len(xs)} {xs[0]}\")\n    0\n}\n",
             0,
@@ -808,8 +707,6 @@ mod tests {
 
     #[test]
     fn closures_and_list_methods_run_in_interp() {
-        // capturing lambda + map/filter/reduce/sort/sum + first-class closure,
-        // all in the playground interpreter (must match the native C backend).
         let src = "main() -> int {\n\
             \x20   xs = 5, 3, 1, 4, 2\n\
             \x20   k = 10\n\
@@ -831,8 +728,6 @@ mod tests {
 
     #[test]
     fn async_spawn_await_runs_in_interp() {
-        // The playground interpreter runs colorblind async eagerly; results match
-        // the concurrent native runtime (20 + 40 = 60).
         let src = "work(n: int) -> int {\n    sleep_ms(1)\n    n * 2\n}\nmain() -> int {\n    a = spawn work(10)\n    b = spawn work(20)\n    info(\"{await a + await b}\")\n    0\n}\n";
         let json = compile_json(src, 0);
         assert!(
@@ -843,7 +738,6 @@ mod tests {
 
     #[test]
     fn find_line_prefers_definition_over_earlier_call() {
-        // `helper` is called (indented) before it is defined at column 0.
         let src = "main() -> int {\n    helper()\n    0\n}\nhelper() -> int => 1\n";
         assert_eq!(
             find_line(src, "helper"),
@@ -854,7 +748,6 @@ mod tests {
 
     #[test]
     fn line_col_counts_utf16_units() {
-        // 😀 is one scalar but two UTF-16 units; the `x` after it is column 3.
         let src = "😀x";
         let bx = src.char_indices().nth(1).unwrap().0;
         assert_eq!(line_col(src, bx), (1, 3));
@@ -862,8 +755,6 @@ mod tests {
 
     #[test]
     fn string_stdlib_runs_in_interp() {
-        // split/trim/lower/upper/contains/replace/substr/index_of all run in the
-        // playground interpreter and agree with the native C backend.
         let src = "main() -> int {\n\
             \x20   row = \"a, B ,c\"\n\
             \x20   parts = row.split(\",\")\n\
@@ -886,11 +777,9 @@ mod tests {
 
     #[test]
     fn find_word_skips_comments_and_strings() {
-        // `foo` appears in a comment and a string before the real definition.
         let src = "// foo is broken\nmsg = \"foo\"\nfoo() -> int => 1\n";
         let (a, b) = find_word(src, "foo").expect("should find the code occurrence");
         assert_eq!(&src[a..b], "foo");
-        // the match must be the def on line 3, not the comment/string mentions
         assert!(
             a > src.find("\"foo\"").unwrap(),
             "anchored on comment/string, not code"

@@ -1,13 +1,3 @@
-//! `maca bindgen <header.h>`: generate Maca FFI declarations from a C header.
-//!
-//! A lightweight prototype scanner (no libclang): it strips comments and
-//! preprocessor lines, splits the remaining text into `;`-terminated
-//! declarations, and turns each function prototype `RET NAME(PARAMS)` into a
-//! Maca extern declaration `name(arg: T, …) -> R`. C types map to Maca's:
-//! `char*`/`const char*` → `str`, other pointers → `int` (an opaque handle),
-//! `double`/`float` → `float`, and the integer family → `int`. Good enough for
-//! the common C API surface; hand-edit the result for anything exotic.
-
 use std::path::{Path, PathBuf};
 
 pub fn cmd_bindgen(args: &[String]) {
@@ -69,8 +59,7 @@ pub fn generate(src: &str, header: &Path) -> String {
     out
 }
 
-/// Remove `//` and `/* */` comments and `#` preprocessor lines, collapsing the
-/// rest to whitespace-separated tokens across lines.
+/// Remove `//` and `/* */` comments and `#` preprocessor lines, collapsing the rest to whitespace-separated tokens across lines.
 fn strip(src: &str) -> String {
     let mut s = String::with_capacity(src.len());
     let b = src.as_bytes();
@@ -113,7 +102,6 @@ fn prototype(decl: &str) -> Option<String> {
     }
     let head = &decl[..open];
     let params = &decl[open + 1..close];
-    // skip typedefs, struct/enum/union decls, and anything with no name
     if head.contains("typedef")
         || head.contains("struct")
         || head.contains("enum")
@@ -121,11 +109,9 @@ fn prototype(decl: &str) -> Option<String> {
     {
         return None;
     }
-    // a function pointer (`(*name)`) or macro call isn't a plain prototype
     if params.contains("(*") || decl.contains("=") {
         return None;
     }
-    // the name is the last identifier in the head; the return type is the rest.
     let name = last_ident(head)?;
     if name.is_empty() {
         return None;
@@ -136,8 +122,7 @@ fn prototype(decl: &str) -> Option<String> {
     Some(format!("{name}({ps}) -> {ret}"))
 }
 
-/// The trailing C identifier of a string (`const char *sqlite3_libversion` →
-/// `sqlite3_libversion`), skipping trailing `*`/spaces.
+/// The trailing C identifier of a string (`const char *sqlite3_libversion` → `sqlite3_libversion`), skipping trailing `*`/spaces.
 fn last_ident(s: &str) -> Option<String> {
     let t = s.trim_end_matches(['*', ' ', '\t', '\n']);
     let start = t
@@ -163,7 +148,6 @@ fn map_params(params: &str) -> String {
             let raw = raw.trim();
             let name = last_ident(raw).filter(|n| !is_c_type_word(n));
             let ty = match &name {
-                // a named parameter: type is everything before the name
                 Some(n) => map_type(raw[..raw.len().saturating_sub(n.len())].trim()),
                 None => map_type(raw),
             };
@@ -174,8 +158,7 @@ fn map_params(params: &str) -> String {
         .join(", ")
 }
 
-/// A bare type keyword that shouldn't be mistaken for a parameter name (an
-/// unnamed `int` parameter's "last identifier" is `int`).
+/// A bare type keyword that shouldn't be mistaken for a parameter name (an unnamed `int` parameter's "last identifier" is `int`).
 fn is_c_type_word(w: &str) -> bool {
     matches!(
         w,
@@ -201,15 +184,14 @@ fn is_c_type_word(w: &str) -> bool {
     )
 }
 
-/// Map a C type to a Maca type: `char*` → `str`, other pointers → `int`
-/// (opaque handle), floating types → `float`, everything else → `int`.
+/// Map a C type to a Maca type: `char*` → `str`, other pointers → `int` (opaque handle), floating types → `float`, everything else → `int`.
 fn map_type(c: &str) -> &'static str {
     let t = c.trim();
     if t.contains('*') {
         if t.contains("char") && !t.contains("char**") {
             return "str";
         }
-        return "int"; // opaque handle
+        return "int";
     }
     if t.contains("double") || t.contains("float") {
         return "float";

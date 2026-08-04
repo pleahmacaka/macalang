@@ -1,37 +1,7 @@
-// bench/cases/catalog: the corpus as a list you can walk.
-//
-// Forty-six cases across four groups, each with a name, a group, a default
-// workload size, and a way to run it by name.
-//
-//   import { case_names, run_case, default_size } from bench/cases/catalog
-//   import { measure, quick } from bench/time
-//
-//   for name in case_names() {
-//       size = default_size(name)
-//       info(line_of(measure(name, size, v => run_case(name, v), quick())))
-//   }
-//
-// `run_case` costs a name comparison per call: it walks a list to find the
-// group and then an `if` chain to find the case. For a case that takes
-// microseconds that is nothing; for the fastest primitives it is measurable.
-// Pass the case function directly when the number has to be exact:
-//
-//   measure("record field", 2000, record_field, defaults())
-//
-// which is what `examples/bench_demo.maca` does, and why this module is for
-// running the whole corpus rather than for quoting one number out of it.
-//
-// The dispatch exists because a function value cannot live in a record field,
-// so there is no list of `Case { name, run }` to iterate. An `if` chain over
-// names is what the language gives instead, and it is at least honest about
-// what it costs.
-
 import bench/cases/prim
 import bench/cases/algo
 import bench/cases/inter
 import bench/cases/adv
-
-// ---- the names -----------------------------------------------------------------
 
 /// The primitives: what everything else is built out of.
 prim_names() -> str[] =>
@@ -95,45 +65,24 @@ names_in(group: str) -> str[] {
 groups() -> str[] =>
     ["primitives", "elementary", "intermediate", "advanced"]
 
-// ---- the sizes -------------------------------------------------------------------
-
-// n² table cells, each of them a byte comparison, which is the expensive kind.
 table_cases() -> str[] =>
     ["edit distance", "lcs"]
 
-// Cost is per byte of a string the case builds and walks. A byte costs far more
-// than an integer does here (`at(i)` hands back a one-character string), so
-// these want a shorter input than a list case with the same shape.
 byte_cases() -> str[] =>
     ["run-length", "base convert", "json tokenize"]
 
-// Quadratic for a reason worth seeing rather than hiding: `push` copies, so
-// building a list of n costs n²/2 element moves, and the three textbook sorts
-// are quadratic by definition.
 quadratic_cases() -> str[] =>
     ["list push", "bubble sort", "insertion sort", "selection sort"]
 
-// n² again, but each step is integer arithmetic rather than a byte compare.
 steep_cases() -> str[] =>
     ["knapsack", "dijkstra", "topological sort"]
 
-// A few machine instructions per element, so they need a longer list before
-// they clear the clock at a sane iteration count.
 cheap_cases() -> str[] =>
     ["record build", "record field", "list index", "list iterate", "reverse",
      "sum/min/max", "balanced brackets", "ring queue", "string scan",
      "factorial", "gcd"]
 
 /// The workload size a case runs at when nobody says otherwise.
-///
-/// Not one number for the whole corpus. The bands below are cost classes: a
-/// case is in one because of how its work grows, and sizing by class is what
-/// keeps one pass over all forty-six down to about twenty milliseconds. Within
-/// that the cases are not level, since a call ranges from under a microsecond
-/// (`int arithmetic`) to a few milliseconds (`json tokenize`), and they do not
-/// need to be. `bench/time` calibrates each case's iteration count separately,
-/// so a cheap case is measured by running it more often, not by being given a
-/// bigger input than the shape of its work makes sense at.
 default_size(name: str) -> int {
     if name == "fib recursive" {
         22
@@ -144,9 +93,6 @@ default_size(name: str) -> int {
     } else if name == "matrix multiply" {
         32
     } else if name == "heap ops" {
-        // Quadratic twice over: every push copies the heap and every pop slices
-        // it. 400 took ten milliseconds a call, which is a hundredth of the
-        // samples of everything else.
         150
     } else if table_cases().contains(name) {
         60
@@ -164,11 +110,6 @@ default_size(name: str) -> int {
 }
 
 /// What the size means for this case, for a report that has to say so.
-///
-/// Four of the cases take a number that is not a count of anything (a
-/// Fibonacci index, a board side, a matrix side), and a reader who assumed
-/// otherwise would read `n-queens` at 7 as a tiny workload rather than a
-/// forty-thousand-placement search.
 size_unit(name: str) -> str {
     if name == "fib recursive" || name == "fib iterative" {
         "index"
@@ -181,10 +122,7 @@ size_unit(name: str) -> str {
     }
 }
 
-// ---- running one by name -----------------------------------------------------------
-
 /// Run the case called `name` at workload size `n`, and return its checksum.
-/// An unknown name answers 0 and runs nothing.
 run_case(name: str, n: int) -> int {
     if prim_names().contains(name) {
         run_prim(name, n)

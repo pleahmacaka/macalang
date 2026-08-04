@@ -1,42 +1,8 @@
-//! Who is holding this string, and may the block that built it let go?
-//!
-//! A `maca_str` is a `const char*`. Nothing about the value says whether it
-//! points at a block this runtime allocated, at a literal in `.rodata`, or at
-//! bytes some other value is still using. Until that question has an answer,
-//! the only safe thing to do with a string is to keep it forever, which
-//! is what the back end used to do. A program that built a page per request
-//! grew by every page it had ever built.
-//!
-//! Two facts make an answer possible.
-//!
-//! The runtime keeps a promise: every `maca_str` a runtime helper returns is a
-//! block it just allocated or a static literal, never one of its arguments.
-//! (The shortcuts that used to return an argument unchanged, `replace` with an
-//! empty needle and `pad` of an already-wide string, now copy.) So the
-//! *producer* of a string is knowable from the expression that produced it.
-//!
-//! And retention is visible in the source: a string is kept only where the
-//! program puts it somewhere, in another binding, a list, a record field, an
-//! argument to a function that might store it. Reading one does not keep it,
-//! because every reader copies what it needs. That distinction is the whole
-//! difference between this analysis and the array one next door, which counts
-//! any mention at all: `out = out ++ row` *reads* `out`, so an accumulator
-//! built up in a loop is still the block's to release, one iteration at a time.
-//!
-//! Both halves fail safe. A producer this module does not recognize is not
-//! fresh, and a position it does not recognize retains, so an unknown shape
-//! costs memory that is held too long, which is exactly what the program did
-//! before any of this existed.
-
 use maca_parser::ast::*;
 use std::collections::{HashMap, HashSet};
 
 /// Runtime helpers that hand back a string of their own making.
-///
-/// Called by name, so a module that defines its own `trim` shadows the entry
-/// and gets nothing. The caller checks that before asking.
 const FRESH_METHODS: &[&str] = &[
-    // `str`: every one of these builds its result
     "trim",
     "upper",
     "lower",
@@ -49,8 +15,6 @@ const FRESH_METHODS: &[&str] = &[
     "pad_center",
     "at",
     "fixed",
-    // `T[]`: `join` builds a string; the accessors return an element, which
-    // belongs to the list, so they are deliberately absent
     "join",
 ];
 
@@ -75,11 +39,6 @@ const FRESH_FNS: &[&str] = &[
 ];
 
 /// Calls that read their arguments and keep none of them.
-///
-/// A name that reaches only these is still held by exactly one binding. Each
-/// entry also never returns one of its arguments, so the caller cannot end up
-/// with a second name for the same bytes. `max(a, b)` is missing for that
-/// reason, not by oversight.
 const BORROWING_FNS: &[&str] = &[
     "info",
     "warn",
@@ -120,10 +79,6 @@ const BORROWING_FNS: &[&str] = &[
 ];
 
 /// Methods that read their receiver and arguments and keep neither.
-///
-/// Every `str` method qualifies. The list methods here are the ones that
-/// answer a question or build something new; `push`, `set` and the
-/// closure-taking ones are absent because they store what they are given.
 const BORROWING_METHODS: &[&str] = &[
     "length",
     "split",
@@ -153,27 +108,14 @@ const BORROWING_METHODS: &[&str] = &[
 ];
 
 /// What the module's own functions do with a string they return.
-///
-/// A call is the one producer whose freshness cannot be read off the call site:
-/// `page(20)` builds a string, `first_line(text)` might hand back a slice of
-/// its argument, and both are spelled the same. So it is answered once for the
-/// whole module, by looking at what each function returns.
 pub struct Fresh {
     fns: HashSet<String>,
-    /// Names the module defines. A definition shadows a runtime helper, so a
-    /// module with its own `trim` gets the module's answer, not the table's.
+    /// Names the module defines.
     defined: HashSet<String>,
 }
 
 impl Fresh {
-    /// Work out which functions return a string the caller becomes the only
-    /// owner of.
-    ///
-    /// Least fixed point from "nothing is fresh": each round marks a function
-    /// whose every returned expression is fresh *given what is known so far*,
-    /// and the rounds stop when a pass adds nothing. Starting pessimistic is
-    /// what makes recursion safe: `walk(dir)` calling itself never talks
-    /// itself into a freshness it has not earned.
+    /// Work out which functions return a string the caller becomes the only owner of.
     pub fn of(m: &Module) -> Fresh {
         let mut defined = HashSet::new();
         collect_defined(&m.items, &mut defined);
@@ -207,11 +149,7 @@ impl Fresh {
     /// Does `e`, evaluated here, produce a string nothing else is holding?
     pub fn allocates(&self, e: &Expr) -> bool {
         match e {
-            // a literal is in `.rodata` and an interpolation is a concat chain;
-            // releasing either is right, since a release only reaches a block
-            // this allocator handed out
             Expr::Str(_) | Expr::Path(_) => true,
-            // `++` concatenates and `/` joins paths, and both build
             Expr::Binary {
                 op: BinOp::Concat | BinOp::Div,
                 ..
@@ -234,11 +172,6 @@ impl Fresh {
         match body {
             FnBody::Expr(e) => self.returned(params, e, &[]),
             FnBody::Block(ss) => {
-                // A local named as the result is fresh when the local itself
-                // is: `page` builds `out` a piece at a time and hands it back,
-                // and refusing that would leave the common shape unowned. What
-                // it must not do is hand the same string somewhere else on the
-                // way out, so retention is measured with the tail left out.
                 let kept = self.retained(ss, Tail::Read);
                 self.returned_from(params, ss, &kept)
             }
@@ -250,7 +183,6 @@ impl Fresh {
         let locals = self.fresh_locals(params, ss, kept);
         match ss.last() {
             Some(Stmt::Expr(e)) => self.returned(params, e, &locals),
-            // a body that ends in a binding has no value to return
             _ => false,
         }
     }
@@ -281,17 +213,6 @@ impl Fresh {
     }
 
     /// Locals in `ss` that hold a string nobody else is holding.
-    ///
-    /// A name qualifies when every value it is ever given is fresh (the first
-    /// one and every reassignment anywhere below, including inside a loop) and
-    /// nothing keeps it.
-    ///
-    /// A parameter never qualifies, however it is assigned. Its first value is
-    /// the caller's argument, which is not in this body to be looked at:
-    /// `norm(s) { if !s.starts_with("/") { s = "/" ++ s }  s }` assigns a fresh
-    /// string on one path and hands back the caller's own pointer on the other,
-    /// and counting only the assignment it can see called the whole function a
-    /// producer.
     fn fresh_locals(
         &self,
         params: &HashSet<String>,
@@ -318,10 +239,6 @@ impl Fresh {
 }
 
 /// Every `name = value` in the subtree, however deeply nested.
-///
-/// A loop body reassigns the accumulator declared above it, so a walk that
-/// stopped at this statement list would call an accumulator fresh on the
-/// strength of its first value alone.
 pub fn each_bind(ss: &[Stmt], f: &mut impl FnMut(&str, &Expr)) {
     for s in ss {
         if let Stmt::Bind(b) = s
@@ -371,17 +288,12 @@ fn stmt_blocks(s: &Stmt, f: &mut impl FnMut(&[Stmt])) {
 pub enum Tail {
     /// It leaves the block, so a name there is handed to the caller.
     Flows,
-    /// It is only read. Used when asking what a body keeps *apart from* what
-    /// it returns.
+    /// It is only read.
     Read,
 }
 
 impl Fresh {
     /// Names whose string may be kept somewhere this statement list cannot see.
-    ///
-    /// The default is retention: a call goes on the list unless the callee is
-    /// one of the borrowing helpers above. Everything a container holds goes on
-    /// it, and so does anything a lambda could capture.
     pub fn retained(&self, stmts: &[Stmt], tail: Tail) -> HashSet<String> {
         let mut out = HashSet::new();
         self.retain_stmts(stmts, tail, &mut out);
@@ -389,10 +301,6 @@ impl Fresh {
     }
 
     /// Does this callee read what it is given without keeping any of it?
-    ///
-    /// A name in one of the tables, and not one the module has redefined:
-    /// `length` is the runtime's until a module writes its own, and then what
-    /// it does with a string is not visible from here.
     fn borrowing(&self, callee: &Expr) -> bool {
         match callee {
             Expr::Ident(f) => !self.defined.contains(f) && BORROWING_FNS.contains(&f.as_str()),
@@ -410,15 +318,12 @@ impl Fresh {
             match s {
                 Stmt::Bind(b) => {
                     self.flows_out(&b.value, out);
-                    // `xs[i] = s` and `p.f = s` put the value in the container;
-                    // the container expression itself is only read.
                     if !matches!(&b.target, Expr::Ident(_)) {
                         self.reads(&b.target, out);
                     }
                 }
                 Stmt::Expr(e) if last && tail == Tail::Flows => self.flows_out(e, out),
                 Stmt::Expr(e) => self.reads(e, out),
-                // a nested function can capture anything it names
                 Stmt::Fn(f) => match &f.body {
                     Some(FnBody::Expr(e)) => keep_all(e, out),
                     Some(FnBody::Block(ss)) => ss
@@ -447,8 +352,7 @@ impl Fresh {
         }
     }
 
-    /// The expression is evaluated and its parts read. Sub-positions that do
-    /// keep a value are marked as they are reached.
+    /// The expression is evaluated and its parts read.
     fn reads(&self, e: &Expr, out: &mut HashSet<String>) {
         match e {
             Expr::Ident(_) | Expr::Int(_) | Expr::Float(_) | Expr::Bool(_) | Expr::Unit => {}
@@ -460,15 +364,12 @@ impl Fresh {
                     }
                 }
             }
-            // a container holds what it is given
             Expr::List(items) => items.iter().for_each(|i| keep_all(i, out)),
             Expr::Record(fs) | Expr::Ctor { fields: fs, .. } => keep_fields(fs, out),
             Expr::With { base, fields } => {
                 keep_all(base, out);
                 keep_fields(fields, out);
             }
-            // a lambda outlives the expression that wrote it, and so does
-            // anything it captured; a task the same
             Expr::Lambda { body, .. } => keep_all(body, out),
             Expr::Spawn(x) | Expr::Await(x) | Expr::Fail(x) => keep_all(x, out),
             Expr::Assign { target, value } => {
@@ -478,11 +379,6 @@ impl Fresh {
             Expr::Call { callee, args } => {
                 let borrows = self.borrowing(callee);
                 match callee.as_ref() {
-                    // Written UFCS, the receiver *is* argument zero, so it is
-                    // kept by exactly the calls that keep an argument.
-                    // Exempting it made `s.wrap()` release a string that
-                    // `wrap(s)` correctly held on to: the same program, spelled
-                    // two ways, one of them handing back recycled bytes.
                     Expr::Field { base, .. } if borrows => self.reads(base, out),
                     Expr::Field { base, .. } => keep_all(base, out),
                     other => self.reads(other, out),
@@ -540,30 +436,9 @@ impl Fresh {
 }
 
 /// Names this function may append to in place.
-///
-/// Three things have to be true, and each of them was learned by a program
-/// that got a wrong answer without it.
-///
-/// The name must not be a **parameter**. A parameter *is* a second handle by
-/// construction (the buffer belongs to the caller), so `add_all(dst, src) {
-/// for v in src { dst = dst.push(v) } }` reallocated the caller's list and left
-/// its pointer dangling. This is the most ordinary helper anyone writes.
-///
-/// The name must not be a **loop pattern variable**, which is bound to
-/// `it.data[i]`, a struct copy sharing the row's buffer.
-///
-/// And every value it is ever given, **anywhere in the function**, must be a
-/// list of its own: a literal, or an append to itself. Asked per block, `xs =
-/// ys` in an enclosing block was invisible and the append went to `ys`.
 pub fn appendable_names(f: &FnDef, defined: &HashSet<String>) -> HashSet<String> {
     let aliased = aliased_names(f, defined);
     let mut own: HashMap<String, bool> = HashMap::new();
-    // A parameter is a second handle by construction, so appending to one in
-    // place reallocates a list the caller still holds. A *variadic* parameter is
-    // the exception, and the only one: the list it holds was built by the call
-    // site for this call out of arguments that were never a list, so no caller
-    // has a name for it. `aliased_names` still applies: a body that gives it a
-    // second holder loses the append the same way any local would.
     let mut barred: HashSet<String> = f
         .params
         .iter()
@@ -633,14 +508,6 @@ fn pattern_names(p: &Pattern, out: &mut HashSet<String>) {
 }
 
 /// Names this function gives a second holder to.
-///
-/// A list is a value: `ys = xs` and `f(xs)` both leave two ways to reach one
-/// buffer, and appending through one of them in place would be visible through
-/// the other. A method receiver is not one of those (every method here either
-/// reads its receiver or returns a new list), and neither is a `for` iterand.
-///
-/// Whole-body, not per block: a list appended to inside a loop is reassigned
-/// three blocks below the binding that aliased it.
 pub fn aliased_names(f: &FnDef, defined: &HashSet<String>) -> HashSet<String> {
     let mut out = HashSet::new();
     let Some(body) = &f.body else {
@@ -657,8 +524,6 @@ fn alias_in_stmts(ss: &[Stmt], defined: &HashSet<String>, out: &mut HashSet<Stri
     for s in ss {
         match s {
             Stmt::Bind(b) => {
-                // the value flows into another name, unless it is that name
-                // appending to itself
                 if !self_append(&b.target, &b.value) {
                     keep_all(&b.value, out);
                 }
@@ -680,15 +545,8 @@ fn self_append(target: &Expr, value: &Expr) -> bool {
 fn alias_in_expr(e: &Expr, defined: &HashSet<String>, out: &mut HashSet<String>) {
     let mut go = |x: &Expr| alias_in_expr(x, defined, out);
     match e {
-        // naming a list is not holding it: what holds it is the position the
-        // name is in, and those are the arms below
         Expr::Ident(_) => {}
         Expr::Call { callee, args } => {
-            // A helper that only reads what it is given keeps nothing, so its
-            // arguments are read too. Without this, `info("{xs.length()}")`,
-            // or an `assert_eq` in a test, was enough to say a second holder
-            // existed, and the whole optimisation switched itself off wherever
-            // anybody looked at the list.
             let borrows = borrowing_call(callee, defined);
             match callee.as_ref() {
                 Expr::Field { base, .. } => alias_in_expr(base, defined, out),
@@ -696,17 +554,12 @@ fn alias_in_expr(e: &Expr, defined: &HashSet<String>, out: &mut HashSet<String>)
             }
             for a in args {
                 match arg_expr(a) {
-                    // an interpolation renders a value; it cannot keep one
                     x @ Expr::Str(_) => alias_in_expr(x, defined, out),
                     x if borrows => alias_in_expr(x, defined, out),
                     x => keep_all(x, out),
                 }
             }
         }
-        // A loop holds its own handle on what it iterates, for the length of
-        // the loop: the lowering copies the list struct into a temporary, and
-        // that temporary shares the buffer. Appending in place could move the
-        // buffer out from under it, so iterating counts as a second holder.
         Expr::For { iter, body, .. } => {
             keep_all(iter, out);
             alias_in_stmts(body, defined, out);
@@ -745,13 +598,11 @@ fn alias_in_expr(e: &Expr, defined: &HashSet<String>, out: &mut HashSet<String>)
                 }
             }
         }
-        // everything else that names a list keeps it
         _ => keep_all(e, out),
     }
 }
 
-/// Does this callee only read what it is given? A name the module has redefined
-/// answers for itself, whatever the tables say.
+/// Does this callee only read what it is given?
 fn borrowing_call(callee: &Expr, defined: &HashSet<String>) -> bool {
     match callee {
         Expr::Ident(f) => !defined.contains(f) && BORROWING_FNS.contains(&f.as_str()),
@@ -762,8 +613,7 @@ fn borrowing_call(callee: &Expr, defined: &HashSet<String>) -> bool {
     }
 }
 
-/// A record's fields hold what they are given, however each one is written:
-/// `{ name = s }`, the shorthand `{ s }`, and a bare element alike.
+/// A record's fields hold what they are given, however each one is written.
 fn keep_fields(fs: &[Field], out: &mut HashSet<String>) {
     for f in fs {
         match f {
@@ -777,10 +627,6 @@ fn keep_fields(fs: &[Field], out: &mut HashSet<String>) {
 }
 
 /// Everything named in here may be kept.
-///
-/// `walk_names`, not `walk_expr`: `{ s }` mentions `s` and holds no expression
-/// for it, so a walk over expressions alone said a list of shorthand records
-/// kept nothing.
 fn keep_all(e: &Expr, out: &mut HashSet<String>) {
     walk_names(e, &mut |n| {
         out.insert(n.to_string());
@@ -839,8 +685,7 @@ mod tests {
         assert!(f.fns.contains("greet"));
     }
 
-    /// A function that hands back its own argument does not, because the
-    /// caller would be releasing a string it was only lent.
+    /// A function that hands back its own argument does not, because the caller would be releasing a string it was only lent.
     #[test]
     fn a_returned_argument_is_not() {
         let f = fresh("same(n: str) -> str => n\n");
@@ -885,8 +730,7 @@ mod tests {
         assert!(!f.fns.contains("walk"));
     }
 
-    /// The names a block's statements keep, for a module that defines nothing
-    /// but the function under test.
+    /// The names a block's statements keep, for a module that defines nothing but the function under test.
     fn kept(src: &str) -> HashSet<String> {
         let m = module(src);
         let Stmt::Fn(FnDef {
@@ -899,23 +743,20 @@ mod tests {
         Fresh::of(&m).retained(ss, Tail::Flows)
     }
 
-    /// Reading a name is not keeping it, and that is what lets an accumulator
-    /// be released one iteration at a time.
+    /// Reading a name is not keeping it, and that is what lets an accumulator be released one iteration at a time.
     #[test]
     fn concatenation_reads_its_operands() {
         let kept = kept("f() -> int {\n    a = \"x\"\n    b = a ++ \"y\"\n    0\n}\n");
         assert!(!kept.contains("a"), "read, not kept: {kept:?}");
     }
 
-    /// Handing a name to a function the module wrote does keep it: what that
-    /// function does with the string is not visible from here.
+    /// Handing a name to a function the module wrote does keep it.
     #[test]
     fn an_argument_to_an_unknown_call_is_kept() {
         assert!(kept("f() -> int {\n    a = \"x\"\n    remember(a)\n    0\n}\n").contains("a"));
     }
 
-    /// Written UFCS, the receiver is argument zero, so the two spellings of the
-    /// same call have to agree about it.
+    /// Written UFCS, the receiver is argument zero, so the two spellings of the same call have to agree about it.
     #[test]
     fn a_receiver_is_kept_by_whatever_keeps_an_argument() {
         assert!(
@@ -932,8 +773,7 @@ mod tests {
         );
     }
 
-    /// A module's own definition wins over the table: what its `length` does
-    /// with a string is not something this list can answer for.
+    /// A module's own definition wins over the table.
     #[test]
     fn a_redefined_helper_is_no_longer_borrowing() {
         let src = "length(s: str) -> int => 0\n\n                   f() -> int {\n    a = \"x\"\n    n = a.length()\n    0\n}\n";
@@ -948,9 +788,7 @@ mod tests {
         assert!(Fresh::of(&m).retained(ss, Tail::Flows).contains("a"));
     }
 
-    /// A container holds what it is given, whatever shape it is written in,
-    /// including the shorthand, which names a variable and holds no expression
-    /// for a walk over expressions to find.
+    /// A container holds what it is given, whatever shape it is written in, including the shorthand, which names a variable and holds no expression for a walk over expressions to find.
     #[test]
     fn a_container_keeps_its_elements() {
         assert!(kept("f() -> int {\n    a = \"x\"\n    xs = [a]\n    0\n}\n").contains("a"));
@@ -965,9 +803,7 @@ mod tests {
         );
     }
 
-    /// A parameter's first value is the caller's, which is not in this body to
-    /// be looked at, so a function that rewrites one on some paths and hands
-    /// it back on others is not a producer.
+    /// A parameter's first value is the caller's, which is not in this body to be looked at.
     #[test]
     fn a_conditionally_rewritten_parameter_is_not_fresh() {
         let f = fresh(

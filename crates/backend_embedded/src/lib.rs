@@ -1,21 +1,3 @@
-//! maca-backend-embedded: lower Maca to **freestanding C** for bare-metal
-//! microcontrollers (ARM Cortex-M / RISC-V), plus the startup code and linker
-//! script needed to turn it into a firmware image.
-//!
-//! Embedded firmware is a small language subset (no heap, no OS, no stdlib)
-//! driving hardware through **memory-mapped I/O**. Rather than fight the hosted
-//! C backend's runtime coupling, this is a focused emitter over that subset:
-//! `int` → `uint32_t`, functions, arithmetic, `if`, an infinite `for _ in
-//! forever()` loop, and a small set of MMIO intrinsics.
-//!
-//! Intrinsics (recognised by call name):
-//!   * `mmio_write(addr, val)` / `mmio_read(addr)`: 32-bit volatile access
-//!   * `set_bits(addr, mask)` / `clear_bits(addr, mask)` / `toggle_bits(addr,mask)`
-//!   * `bit(n)` = `1<<n`; `shl`/`shr`/`bit_or`/`bit_and`
-//!   * `delay(n)`: calibrated busy-wait; `nop()`: a single `nop`
-//!
-//! `main()` is the firmware entry, invoked by the reset handler.
-
 use maca_parser::ast::*;
 
 /// A microcontroller target: how to drive clang + the memory map.
@@ -31,7 +13,7 @@ pub struct Mcu {
 }
 
 impl Mcu {
-    /// Resolve a `--mcu` name. Defaults to a generic Cortex-M4 (STM32F4-like).
+    /// Resolve a `--mcu` name.
     pub fn resolve(name: &str) -> Option<Mcu> {
         Some(match name {
             "cortex-m0" | "cortex-m0plus" => Mcu {
@@ -76,10 +58,7 @@ impl Mcu {
 }
 
 thread_local! {
-    /// Constructs this target cannot honour, collected while lowering. A
-    /// freestanding MCU has no allocator and no libc, so a good part of the
-    /// language genuinely does not fit, but it has to be said by name at
-    /// compile time, not turned into a plausible-looking `0u`.
+    /// Constructs this target cannot honour, collected while lowering.
     static PROBLEMS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
@@ -88,8 +67,6 @@ fn problem(msg: impl Into<String>) {
 }
 
 /// Emit freestanding C, or the list of constructs the target cannot honour.
-/// The driver uses this so an unsupported construct is a clean error rather
-/// than C that compiles and computes something else.
 pub fn emit_c_checked(m: &Module) -> Result<String, Vec<String>> {
     PROBLEMS.with(|p| p.borrow_mut().clear());
     let out = emit_c(m);
@@ -106,14 +83,11 @@ pub fn emit_c(m: &Module) -> String {
     let mut out = String::new();
     out.push_str(PREAMBLE);
     out.push('\n');
-    // top-level bindings → const globals (register addresses, masks, …)
     let mut had_const = false;
     for it in &m.items {
         if let Stmt::Bind(b) = it
             && let Expr::Ident(name) = &b.target
         {
-            // A sum or record declaration is a binding too, and lowering one to
-            // a `uint32_t` const yields C naming variants that do not exist.
             if matches!(
                 b.value,
                 Expr::Binary {
@@ -214,7 +188,6 @@ fn emit_fn(f: &FnDef) -> String {
     };
     let body = match &f.body {
         Some(FnBody::Block(stmts)) => cblock(stmts, ret != "void", 1),
-        // `name() => { … }` parses as an expression body holding a block
         Some(FnBody::Expr(e)) if matches!(&**e, Expr::Block(_)) => {
             let Expr::Block(stmts) = &**e else {
                 unreachable!()
@@ -236,8 +209,6 @@ fn emit_fn(f: &FnDef) -> String {
 fn cblock(stmts: &[Stmt], wants_value: bool, ind: usize) -> String {
     let pad = "    ".repeat(ind);
     let mut out = String::new();
-    // names declared in this block: first `x =` declares (with a type), a later
-    // `x =` reassigns (C forbids re-declaring in the same scope).
     let mut declared: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (i, s) in stmts.iter().enumerate() {
         let last = i + 1 == stmts.len();
@@ -251,8 +222,6 @@ fn cblock(stmts: &[Stmt], wants_value: bool, ind: usize) -> String {
                     };
                     out.push_str(&format!("{pad}{decl}{n} = {};\n", cexpr(&b.value)));
                 }
-                // `p.f = v` and `xs[i] = v` are ordinary C stores. Emitting only
-                // the right-hand side left `v;`, which C accepts in silence.
                 Expr::Field { .. } | Expr::Index { .. } => {
                     out.push_str(&format!(
                         "{pad}{} = {};\n",
@@ -293,7 +262,6 @@ fn cblock(stmts: &[Stmt], wants_value: bool, ind: usize) -> String {
 
 fn cfor(pat: &Pattern, iter: &Expr, body: &[Stmt], ind: usize) -> String {
     let pad = "    ".repeat(ind);
-    // `for _ in forever()` → an infinite loop
     if let Expr::Call { callee, .. } = iter
         && matches!(&**callee, Expr::Ident(n) if n == "forever")
     {
@@ -302,7 +270,6 @@ fn cfor(pat: &Pattern, iter: &Expr, body: &[Stmt], ind: usize) -> String {
             cblock(body, false, ind + 1)
         );
     }
-    // otherwise treat the iterator as a count: `for i in N` → 0..N
     let v = match pat {
         Pattern::Bind(n) => n.clone(),
         _ => "_i".into(),
@@ -359,9 +326,7 @@ fn cexpr(e: &Expr) -> String {
                 BinOp::Ge => ">=",
                 BinOp::And => "&&",
                 BinOp::Or => "||",
-                BinOp::Union => "|", // surface `|` as bit-or in embedded
-                // `++` was reaching the `+` fallback, so a concatenation
-                // silently became pointer arithmetic.
+                BinOp::Union => "|",
                 BinOp::Concat => {
                     problem(
                         "`++` needs an allocator; the embedded target is \
@@ -382,13 +347,9 @@ fn cexpr(e: &Expr) -> String {
         Expr::Call { callee, args } => ccall(callee, args),
         Expr::Field { base, name } => format!("{}.{name}", cexpr(base)),
         Expr::Index { base, index } => format!("{}[{}]", cexpr(base), cexpr(index)),
-        // `a = b` is an expression in C too.
         Expr::Assign { target, value } => {
             format!("({} = {})", cexpr(target), cexpr(value))
         }
-        // Everything else used to become the literal `0u`, which C accepts
-        // wherever a `uint32_t` is wanted, so a `match` in firmware compiled to
-        // the number zero. Name it instead.
         other => {
             problem(format!(
                 "{} is not lowered on the embedded target",

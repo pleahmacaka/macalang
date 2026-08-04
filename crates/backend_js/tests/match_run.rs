@@ -1,24 +1,12 @@
-//! The JS backend's `match`, executed rather than read.
-//!
-//! Every constructor, list and record pattern used to lower to the condition
-//! `true` with no bindings, so the first arm always won and payload names were
-//! never declared. An emitted-text assertion cannot see that, because the text
-//! looks plausible either way, so these tests run the module under Node and
-//! assert what it computes.
-
 use std::io::Write;
 use std::process::Command;
 
 /// Emit `src`, then evaluate `calls` against it in Node and return the output.
-/// Each element of `calls` is a JS expression; one line of output comes back per
-/// expression, in order.
 fn run(src: &str, calls: &[&str]) -> Vec<String> {
     let p = maca_parser::parse(src);
     assert!(p.errors.is_empty(), "parse: {:?}", p.errors);
     let js = maca_backend_js::emit(&p.module).js;
 
-    // Tests in one binary share a process id, so the directory is keyed on the
-    // program itself; otherwise concurrent cases overwrite each other's module.
     let mut h = std::collections::hash_map::DefaultHasher::new();
     std::hash::Hash::hash(&(src, calls), &mut h);
     let key = std::hash::Hasher::finish(&h);
@@ -72,9 +60,6 @@ main() -> int => 0
 
 #[test]
 fn a_nullary_variant_selects_its_own_arm() {
-    // The arm order matters: with the old `true` condition every call answered
-    // "red", which is also what a correct first arm answers, so the test asks
-    // for the ones that are *not* first.
     let out = run(COLOR, &["name(mk_green())", "name(mk_blue())", "name(Red)"]);
     assert_eq!(out, vec!["green", "blue", "red"]);
 }
@@ -100,8 +85,6 @@ main() -> int => 0
 
 #[test]
 fn a_constructor_pattern_binds_its_payload() {
-    // `Rect` is the second arm and takes two arguments; the old lowering both
-    // chose `Circle` and left `w`/`h` undeclared.
     let out = run(SHAPE, &["area(Rect(3.0, 4.0))", "area(Circle(2.0))"]);
     assert_eq!(out, vec!["12", "12"]);
 }
@@ -149,9 +132,6 @@ fn a_list_pattern_tests_length_and_binds_elements() {
             "rest_head([1, 2, 3], 9)",
         ],
     );
-    // `[]` is the first arm, so a wrong `head_or([7,8])` answers 9; `[a, b]`
-    // must reject a three-element list rather than matching it; `rest_head`
-    // shows the rest binding really is the tail.
     assert_eq!(out, vec!["9", "7", "2", "9", "2"]);
 }
 
@@ -184,7 +164,6 @@ fn a_record_pattern_binds_its_fields() {
             "first_title([{ title: \"ship\", done: false }])",
         ],
     );
-    // `first_title([])` must fall past the list arm to "empty".
     assert_eq!(out, vec!["write", "empty", "ship"]);
 }
 
@@ -235,8 +214,6 @@ main() -> int => 0
 
 #[test]
 fn use_strict_stays_the_first_statement() {
-    // Variant constructors are spliced in near the top; put them above the
-    // directive and it silently stops being one.
     let p = maca_parser::parse(COLOR);
     let js = maca_backend_js::emit(&p.module).js;
     assert!(

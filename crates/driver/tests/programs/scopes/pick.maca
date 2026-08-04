@@ -1,10 +1,3 @@
-// The third module: it reaches both `fits` and writes the name.
-//
-// Only one of the two is API, so only one of them is a name this file can be
-// referring to. Moving the private one out of the way used to take this
-// reference along with it, and the call then ran the helper of a module this
-// file has no business knowing about.
-
 import gauge
 import snug
 

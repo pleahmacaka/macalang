@@ -1,21 +1,3 @@
-//! The documentation's examples, compiled against the real tree.
-//!
-//! `crates/mcp/tests/docs.rs` already runs `maca.check` over every ```maca
-//! block in `llms.txt`, `SKILL.md` and `README.md`, which catches a block that
-//! does not parse or calls something it never defines. It cannot catch a bad
-//! *import*: `check` reads source text and never touches the filesystem, so
-//! `import { nosuchfn } from http/server` passes it.
-//!
-//! That is the failure this file exists for. README advertised
-//! `import { serve, text } from http/server` (`http/server` defines neither
-//! name) and every check in the repository was green, because the example had
-//! only ever been verified by pasting it into a file with the missing pieces
-//! added. An example is a claim about the packages as they are, and the only
-//! way to check that claim is to build it where they live.
-//!
-//! A block naming no import is left to the `maca.check` pass; building all of
-//! them would cost a C compile each for no extra coverage.
-
 mod common;
 use common::*;
 
@@ -48,8 +30,7 @@ fn imports_a_package(block: &str) -> bool {
         .any(|l| l.trim_start().starts_with("import ") && !l.contains('"'))
 }
 
-/// A block is an excerpt, not a program: give it an entry point when it has
-/// none, so what is being tested is the import rather than the block's shape.
+/// A block is an excerpt, not a program.
 fn as_program(block: &str) -> String {
     if block.contains("main(") {
         block.to_string()
@@ -75,9 +56,6 @@ fn documented_imports_name_things_that_exist() {
             if !imports_a_package(block) {
                 continue;
             }
-            // Written at the repository root, because that is where `modules/`
-            // resolves from, the same reason a reader's own project has to be
-            // a project.
             let src = repo().join(format!(".maca-doc-{}-{i}.maca", file.replace('.', "-")));
             std::fs::write(&src, as_program(block)).expect("write the block");
 

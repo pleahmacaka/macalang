@@ -1,8 +1,3 @@
-// A tour of Maca surface syntax: one small program that exercises most of the
-// language and type-checks clean. (`examples/bad/*` show what gets rejected.)
-
-/* Block comments work too. */
-
 Shape = Circle(float) | Rect(float, float)
 Point = {
     x: int
@@ -31,11 +26,9 @@ collatz_steps(start: int) -> int {
 fib(n: int) -> int =>
     n < 2 ? n : fib(n - 1) + fib(n - 2)
 
-// UFCS: `x.double()` is sugar for `double(x)`
 double(n: int) -> int => n * 2
 
 main() -> int {
-    // `1..5` is inclusive at both ends: five elements, not four.
     xs = 1..5
     xs[0] = 10
     acc = 0

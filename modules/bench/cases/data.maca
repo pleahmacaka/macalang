@@ -1,34 +1,7 @@
-// bench/cases/data: the inputs every case is measured on.
-//
-// A benchmark's input has to be the same on every machine and in every run, or
-// two numbers that look comparable are not. Nothing here reads a clock, a file,
-// or an environment variable: `numbers(1000)` is the same thousand integers
-// today as it was last week, which is what makes last week's baseline worth
-// keeping.
-//
-//   import { numbers, ascending, sentence } from bench/cases/data
-//
-//   xs = numbers(500)          // the same 500 pseudo-random ints, always
-//
-// Sizes are meant to be modest. `repeated` builds a list by allocating it once
-// and assigning into it, because `xs.push(v)` in a loop copies the whole list
-// every time: building a list of n by pushing is O(n²), and at n = 20000 that
-// is twenty seconds of the benchmark measuring the list builder instead of the
-// case. `bench/cases/prim`'s `list_push` measures that on purpose, at a size
-// small enough to survive it.
-
-/// The generator's starting state. Any odd-ish constant does; this one is the
-/// classic glibc seed and is here so a reader can recognise what the sequence
-/// is rather than wondering whether it was tuned to flatter something.
+/// The generator's starting state.
 Seed = 12345
 
 /// The next state of a linear congruential generator.
-///
-/// Not a good random number source and not trying to be. What a benchmark needs
-/// from its input is that it is unsorted, spread out, and identical every time,
-/// and an LCG is the cheapest thing that is all three. Cheap matters, because
-/// the generator runs inside the timed region for any case that builds its own
-/// input.
 next_rand(state: int) -> int =>
     (state * 1103515245 + 12345) % 2147483648
 
@@ -37,8 +10,6 @@ repeated(n: int, v: int) -> int[] {
     if n <= 0 {
         []
     } else {
-        // `1..n` allocates the whole list in one go. Assigning into it is O(1)
-        // per element; pushing onto a growing list is not.
         xs = 1..n
         i = 0
         while i < n {
@@ -76,8 +47,7 @@ ascending(n: int) -> int[] {
     xs
 }
 
-/// `n-1, …, 1, 0`: the worst case for an insertion sort and the best case for
-/// nothing, which is why it is worth having.
+/// `n-1, …, 1, 0`: the worst case for an insertion sort and the best case for nothing, which is why it is worth having.
 descending(n: int) -> int[] {
     xs = zeros(n)
     i = 0
@@ -89,9 +59,6 @@ descending(n: int) -> int[] {
 }
 
 /// `n` bytes of mixed letters, digits and spaces.
-///
-/// Built by repetition and then cut to length, so it costs one allocation
-/// rather than n concatenations. A scanning case should be measuring the scan.
 sentence(n: int) -> str {
     if n <= 0 {
         ""
@@ -102,9 +69,7 @@ sentence(n: int) -> str {
     }
 }
 
-/// A string of `n` bytes with long runs of repeated characters: what
-/// run-length encoding is for, and what it is embarrassed by when there are
-/// none.
+/// A string of `n` bytes with long runs of repeated characters.
 runs(n: int) -> str {
     out = ""
     letters = "aabbbccccdeeeee"
@@ -117,11 +82,6 @@ runs(n: int) -> str {
 }
 
 /// An order-sensitive fingerprint of a list.
-///
-/// Cases return one of these instead of the list itself, because a case has to
-/// return an `int` for the timing loop to accumulate. Order-sensitive is the
-/// point: a sort that returns the right multiset in the wrong order has to fail
-/// its test, and a plain sum would pass it.
 checksum(xs: int[]) -> int {
     acc = 0
     for x in xs {
@@ -131,11 +91,5 @@ checksum(xs: int[]) -> int {
 }
 
 /// A copy of `xs` that can be written to without writing to `xs`.
-///
-/// Binding a list to a new name aliases it, and `ys[i] = v` then writes through
-/// to the original. A sort that skipped this would mutate the caller's list, so
-/// the second iteration of the timing loop would sort an already-sorted list and
-/// the reported cost would be the best case, measured once and averaged over
-/// however many iterations calibration happened to pick.
 copy_of(xs: int[]) -> int[] =>
     xs.slice(0, xs.length())

@@ -14,13 +14,10 @@ test_capture_returns_stdout() {
     assert_eq(output("echo", ["hello"]), "hello", "and `output` trims it")
 }
 
-// The whole reason not to build a command line as a string: a shell would read
-// this as two arguments.
 test_an_argument_holding_a_space_stays_one_argument() {
     assert_eq(output("echo", ["-n", "a b"]), "a b", "one argument, one word")
 }
 
-// Likewise for the characters a shell would expand.
 test_an_argument_is_not_expanded() {
     assert_eq(output("echo", ["-n", "$HOME"]), "$HOME", "no variable expansion")
     assert_eq(output("echo", ["-n", "*"]), "*", "no globbing")

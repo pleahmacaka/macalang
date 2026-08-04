@@ -1,16 +1,3 @@
-// cli/help: `--help`, rendered from the same value the parser reads.
-//
-// Help that is written by hand goes stale the first time an option is renamed,
-// and nothing fails when it does: the command still runs, and only the person
-// reading `--help` is misled. Here it is derived, so a spelling can only be
-// wrong in one place at a time.
-//
-//   info(help(Greet))
-//
-// The layout is the one a terminal reads well: a title line, a usage line you
-// can copy, then arguments and options in the order they were declared, one per
-// line with the column of descriptions aligned.
-
 import { Cmd, Opt } from cli/spec
 import { bold, dim, grey, pad, width } from cli/style
 
@@ -43,9 +30,6 @@ arg_usage(c: Cmd, i: int, acc: str) -> str {
     }
 }
 
-// The width of the widest left column, so the descriptions line up. Measured
-// with `width`, which does not count escape codes. Aligning to the bytes of a
-// bold name indents the column by the length of the escape.
 column(c: Cmd) -> int {
     w = 10
     for a in c.args {
@@ -63,8 +47,6 @@ column(c: Cmd) -> int {
     w + 2
 }
 
-// `-n, --times`, or four spaces where there is no short form, so the long
-// names stay in one column whether or not their neighbours have a letter.
 left_of(o: Opt) -> str =>
     o.short == "" ? "    --{o.long}" : "-{o.short}, --{o.long}"
 
@@ -88,7 +70,5 @@ opt_lines(c: Cmd, i: int, acc: str) -> str {
     }
 }
 
-// `--help` is understood by every command without being declared, so it is
-// printed the same way: last, where a reader expects it.
 help_line(c: Cmd) -> str =>
     "  " ++ pad("-h, --help", column(c)) ++ dim("show this and exit") ++ "\n"

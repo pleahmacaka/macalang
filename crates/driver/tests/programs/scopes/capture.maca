@@ -1,10 +1,3 @@
-// A lambda capturing a parameter that another module defines at top level.
-//
-// The capture is the whole point. An ordinary function body resolves the
-// parameter correctly on every back end; a lambda's captured name is the one
-// place it lost to the top level, and the C back end then passed the *function*
-// on as a closure value where a `str` was expected.
-
 /// Every line of `s` with `column` in front of it, joined with a bar.
 indent_lines(s: str, column: str) -> str =>
     s.split("\n").map(l => prefixed(l, column)).join("|")

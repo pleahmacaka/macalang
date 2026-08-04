@@ -1,12 +1,3 @@
-//! maca-backend-llvm: emit LLVM IR for the SIMD span of the hybrid backend.
-//!
-//! Only functions whose signature mentions a SIMD vector type (`f32x8`,
-//! `i32x4`, …) are lowered here; everything else stays on the C path. The
-//! emitted IR uses native `<N x T>` vectors and `llvm.vector.reduce.*`
-//! intrinsics, is compiled to an object by `zig cc file.ll`, and links against
-//! the C objects over the shared C ABI (vector args pass in SSE/AVX registers,
-//! matching clang's `ext_vector_type`).
-
 use maca_parser::ast::*;
 use std::collections::BTreeSet;
 
@@ -123,8 +114,6 @@ fn emit_fn(f: &FnDef, decls: &mut BTreeSet<String>) -> Option<String> {
             (n.clone(), t.clone()),
         ));
     }
-    // single-expression kernel or a block that binds intermediates and ends in
-    // the return expression (`p = a * b; p.sum()`).
     let (val, _) = match &f.body {
         Some(FnBody::Expr(e)) => cx.expr(e)?,
         Some(FnBody::Block(stmts)) => cx.block(stmts)?,
@@ -140,7 +129,7 @@ struct Ctx<'a> {
     out: String,
     n: u32,
     decls: &'a mut BTreeSet<String>,
-    /// flat scope (SIMD kernels are small): name → (ssa value, llvm type)
+    /// flat scope (SIMD kernels are small): name → (ssa value, llvm type).
     env: Vec<(String, (String, String))>,
 }
 
@@ -150,9 +139,7 @@ impl<'a> Ctx<'a> {
         format!("%v{}", self.n)
     }
 
-    /// A block body: each `x = e` binds an SSA local, and the block's value is
-    /// its last expression. SIMD kernels are pure, so non-final expression
-    /// statements carry no effects and are ignored.
+    /// A block body: each `x = e` binds an SSA local, and the block's value is its last expression.
     fn block(&mut self, stmts: &[Stmt]) -> Option<(String, String)> {
         let mut last = None;
         for s in stmts {
@@ -219,7 +206,6 @@ impl<'a> Ctx<'a> {
                     .push_str(&format!("  {t} = {inst} {lt} {lv}, {rv}\n"));
                 Some((t, lt))
             }
-            // reductions: `(v).sum()` / `(v).max()`
             Expr::Call { callee, args } if args.is_empty() => {
                 let Expr::Field { base, name } = callee.as_ref() else {
                     return None;

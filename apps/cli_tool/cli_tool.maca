@@ -1,20 +1,3 @@
-// A command line, end to end: what it accepts, what it refuses, what it shows.
-//
-// Run it:
-//
-//   maca run apps/cli_tool/cli_tool.maca --help
-//   maca run apps/cli_tool/cli_tool.maca modules/cli --sort lines
-//   maca run apps/cli_tool/cli_tool.maca modules/cli --srot lines
-//
-// No `--` before the program's own arguments: `maca run` forwards it, and this
-// parser reads it as the end-of-options marker, so `-- --help` asks for a
-// directory named `--help` instead of printing the page.
-//
-// The command is one value. The parser reads it to decide what an argument
-// means, `--help` is printed from it, and a misspelt option is answered with
-// the nearest name out of the same list, so a renamed option cannot leave a
-// stale help line or an error message that names nothing.
-
 import { command, opt, flag, arg } from cli/spec
 import { parse, value, on, count } from cli/parse
 import { help, usage } from cli/help
@@ -62,12 +45,6 @@ run(dir: str, sort: str, top: int, totals: bool) -> int {
     }
 }
 
-// Every file in `dir`, ordered and cut to `top`.
-//
-// Sorting happens on a list of `<key>|<name>` strings rather than on the rows,
-// because `sort` orders by the whole value and a list of lists has no single
-// value to order by. Building the key is also where the choice of order lives,
-// which is one place rather than two comparators.
 walk(dir: str, order: str, top: int) -> str[][] {
     keyed: str[] = []
     for name in list_dir(dir) {

@@ -1,13 +1,3 @@
-// taskr: a task list on disk, in about sixty lines.
-//
-//   maca run examples/taskr.maca add write the docs
-//   maca run examples/taskr.maca list
-//   maca run examples/taskr.maca done 1
-//
-// A record, a sum type, `match` over the argument list, and `std/json` for the
-// file. The store lives under `$XDG_DATA_HOME` when that is set and beside you
-// when it isn't.
-
 import std/json
 import std/path
 import std/proc
@@ -22,12 +12,6 @@ Task = {
 
 store_path() -> str =>
     join(env_or("XDG_DATA_HOME", "."), "taskr.json")
-
-// ---- the file ---------------------------------------------------------------
-//
-// `std/json` reads an array as raw element text and an object a field at a
-// time, so a record goes to and from JSON by hand. That is the whole of the
-// mapping for a three-field task.
 
 load() -> Task[] {
     path = store_path()
@@ -53,8 +37,6 @@ json_of(t: Task) -> str =>
     object_of(["id", "title", "status"],
               [str(t.id), quote(t.title), quote(name_of(t.status))])
 
-// A sum type is not a string, and the two directions are written out rather
-// than derived, which is what makes a `match` here exhaustive.
 name_of(s: Status) -> str =>
     match s {
         Todo  => "todo"
@@ -71,8 +53,6 @@ status_of(name: str) -> Status {
         Todo
     }
 }
-
-// ---- commands ---------------------------------------------------------------
 
 add(tasks: Task[], title: str) -> Task[] =>
     tasks.push(Task { id = next_id(tasks), title = title, status = Todo })

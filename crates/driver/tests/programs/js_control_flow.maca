@@ -1,26 +1,3 @@
-// Control flow that has to survive the trip through a back end.
-//
-// Every function here puts an `if`, a `match` or a block where a *statement*
-// goes, and then does something from inside it that only works if the branch
-// is still part of the enclosing function: leaves a loop, skips an iteration,
-// or writes a name the function above it owns.
-//
-// The JS back end used to lower each of those to an IIFE, and both halves of
-// that were wrong. `break` and `continue` cannot cross a function boundary, so
-// `maca build --target js apps/site/home.maca` emitted an `app.js` that node
-// refused to parse, naming `bench/stat`'s `descend`; `isqrt` below is that
-// shape. A `var` written inside the IIFE declared a fresh local instead of
-// assigning the enclosing one, which is worse: no error, just an answer
-// computed from a variable that never changed.
-//
-// This file is run twice. `crates/driver/tests/js_target.rs` runs it natively,
-// which is what makes the answers below the *native* backend's answers rather
-// than a guess; `crates/backend_js/tests/control_flow_run.rs` emits it and runs
-// the same assertions under node. A back end that disagrees turns one of them
-// red.
-
-// ---- leaving a loop from inside a statement-position `if` -----------------
-
 first_over(xs: int[], limit: int) -> int {
     i = 0
 
@@ -48,13 +25,6 @@ sum_odd(xs: int[]) -> int {
     total
 }
 
-// The shape that found the defect: a search that stops when the next step
-// would not improve on the one before it. `bench/stat`'s `descend` is this
-// loop, written as Newton's method over floats.
-//
-// The step here is a multiplication rather than a division on purpose. `int /
-// int` truncates natively and does not in JS, which is a real divergence and a
-// separate one; a fixture shared by both back ends must not depend on it.
 isqrt(v: int) -> int {
     at = 1
     step = 0
@@ -69,8 +39,6 @@ isqrt(v: int) -> int {
     }
     at
 }
-
-// ---- the same, in a `for` loop, which the back end has to emit at all -----
 
 count_until(xs: int[], limit: int) -> int {
     seen = 0
@@ -96,8 +64,6 @@ sum_non_negative(xs: int[]) -> int {
     total
 }
 
-// The loop variable is an ordinary local: a body may write it, and what the
-// next pass binds is unaffected.
 bump_all(xs: int[]) -> int {
     total = 0
 
@@ -117,7 +83,6 @@ triangle(n: int) -> int {
     total
 }
 
-// A `break` leaves the loop it is in and no other.
 grid_hits(rows: int) -> int {
     hits = 0
 
@@ -131,8 +96,6 @@ grid_hits(rows: int) -> int {
     }
     hits
 }
-
-// ---- leaving a loop from inside a statement-position `match` --------------
 
 scan_to_zero(xs: int[]) -> int {
     i = 0
@@ -161,9 +124,6 @@ sum_but_ones(xs: int[]) -> int {
     total
 }
 
-// An arm that binds a name and then writes it. The binding is the arm's own
-// local, so the write is a write and not a second declaration of a name the
-// host language has already fixed.
 grown(x: int) -> int {
     out = 0
 
@@ -176,8 +136,6 @@ grown(x: int) -> int {
     out
 }
 
-// A local may be named anything Maca allows, including whatever a back end
-// might have picked for its own scrutinee temporary.
 odd_name(x: int) -> int {
     out = 0
 
@@ -191,7 +149,6 @@ odd_name(x: int) -> int {
     out
 }
 
-// Two `match`es in one body: neither may answer for the other's scrutinee.
 pair_words(a: int, b: int) -> str {
     first = "?"
     second = "?"
@@ -207,7 +164,6 @@ pair_words(a: int, b: int) -> str {
     "{first}+{second}"
 }
 
-// A `match` inside another's arm, which is the same question one level down.
 nested_word(a: int, b: int) -> str {
     word = "?"
 
@@ -222,8 +178,6 @@ nested_word(a: int, b: int) -> str {
     }
     word
 }
-
-// ---- writing a name the enclosing function owns ---------------------------
 
 size_of(x: int) -> str {
     tag = "small"
@@ -258,8 +212,6 @@ named(x: int) -> str {
     name
 }
 
-// A `match` arm with more than one statement is a block, and a block in
-// statement position is the same case again.
 step_word(x: int) -> str {
     n = 0
     word = "?"
@@ -277,10 +229,6 @@ step_word(x: int) -> str {
     "{word}:{n}"
 }
 
-// ---- `if` is still an expression ------------------------------------------
-
-// The value of the chosen branch is the value of the `if`, and a branch that
-// also writes an enclosing local does both.
 report(x: int) -> str {
     seen = "no"
 
@@ -293,7 +241,6 @@ report(x: int) -> str {
     seen ++ "/" ++ word
 }
 
-// An `if` as the whole body: the branch's value is what the function returns.
 sign_word(x: int) -> str {
     if x > 0 {
         "positive"
@@ -304,7 +251,6 @@ sign_word(x: int) -> str {
     }
 }
 
-// A `match` in value position, bound to a name.
 roman(x: int) -> str {
     word = match x {
         1 => "i"
@@ -313,8 +259,6 @@ roman(x: int) -> str {
     }
     word ++ "!"
 }
-
-// ---- the assertions -------------------------------------------------------
 
 test_break_leaves_the_loop_from_inside_an_if() {
     assert_eq(first_over([1, 2, 30, 4], 10), 2, "stops at the first over")

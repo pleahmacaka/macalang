@@ -1,17 +1,3 @@
-// profile_demo: a small program that measures itself.
-//
-//   maca run apps/profile_demo/profile_demo.maca
-//
-// It does three real pieces of work (builds a paragraph, sorts its words, and
-// walks a directory tree) with a span around each, then prints the flame
-// chart and the summary table and writes the trace out as JSON and SVG.
-//
-// The recorder is a value carried through the program. That is the whole
-// convention: a function that wants to be measured takes it and gives it back.
-// Where a function also has a result, the pair gets a name (`Scan` below),
-// because Maca has no tuple and a second traversal to collect the same numbers
-// would be measured too.
-
 import profile/record
 import profile/flame
 import profile/report
@@ -41,8 +27,6 @@ main() -> int {
     t = finish(found.rec.stop())
 
     info(flame(t, 74))
-    // One span per directory means the full table is mostly names that cost
-    // nothing. The eight heaviest are the report; the rest is the trace file.
     info(stats_table(summary(t).slice(0, 8)))
     report_on(t, prose, ranked, found)
     0
@@ -67,11 +51,6 @@ report_on(t: Trace, prose: str, ranked: str[], found: Scan) {
     }
 }
 
-// ---- the work being measured ----------------------------------------------
-
-// Enough string building to take a measurable number of milliseconds. Each
-// step concatenates onto the whole paragraph, so the cost grows with it,
-// which is exactly the shape a profile is supposed to make visible.
 paragraph(n: int, acc: str) -> str {
     if n <= 0 {
         acc
@@ -88,9 +67,6 @@ Scan = {
     rows: int,
 }
 
-// One span per directory, nested the way the tree is. The span is named for
-// the directory's own segment rather than its whole path: a chart labelled
-// with `modules/profile/tests` in every bar has no room left for the numbers.
 scan(r: Rec, dir: str) -> Scan {
     opened = r.start(last_segment(dir))
     walked = scan_entries(opened, dir, list_dir(dir), 0, 0, 0, 0)

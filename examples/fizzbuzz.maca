@@ -1,6 +1,3 @@
-// FizzBuzz: exercises `%`, `while`, reassignment, and `match` on a computed tag.
-// Returns a code per number: 0 = plain, 1 = Fizz, 2 = Buzz, 3 = FizzBuzz.
-
 code(n: int) -> int {
     by3 = n % 3 == 0
     by5 = n % 5 == 0
@@ -32,7 +29,6 @@ run(upto: int) -> int {
 }
 
 main() -> int {
-    // 1..15 → multiples of 3 or 5: 3,5,6,9,10,12,15 = 7
     info("{run(15)}")
     0
 }

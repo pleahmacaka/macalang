@@ -1,14 +1,3 @@
-// What one namespace does to modules that never imported each other.
-//
-// Two modules keep a same-named private helper; a third binds as a parameter
-// the name a fourth defines at top level. Neither program used to get as far as
-// running: the first failed as a type error reported against the wrong file,
-// the second as C that would not compile.
-//
-// The last three are the case that did run, with the wrong answer: `pick`
-// reaches one published `fits` and one private one, and repairing the collision
-// bound it to the private one.
-
 import alpha
 import beta
 import top
@@ -24,15 +13,11 @@ test_a_captured_parameter_beats_another_modules_top_level() {
     assert_eq(indent_lines("a\nb", ">"), ">a|>b", "the parameter won")
 }
 
-// The moved name still answers where it was asked for: repairing the shadow
-// must not cost the module its own function.
 test_the_shadowed_top_level_still_answers() {
     assert_eq(column("ab", 4), "ab  ", "top's own column")
     assert_eq(column("abcd", 2), "abcd", "already wide enough")
 }
 
-// Both `fits` type-check against `pick`'s call, so nothing but the number says
-// which one it reached: 4 is the published reading, 12 is snug's private one.
 test_a_third_module_reaches_the_published_definition() {
     assert_eq(str(picked()), "4", "pick meant the gauge")
     assert_eq(str(snug_use()), "6", "and snug still has its own")

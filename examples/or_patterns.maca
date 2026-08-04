@@ -1,5 +1,3 @@
-// `A | B` or-patterns in `match`, over enum variants and integer literals.
-
 Color = Red | Green | Blue
 
 warmth(c: Color) -> str {

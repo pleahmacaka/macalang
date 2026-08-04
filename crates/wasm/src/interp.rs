@@ -1,13 +1,3 @@
-//! A small tree-walking interpreter over the Maca AST, for the browser
-//! playground: it *runs* a program (capturing `info`/`print` output) and
-//! collects a lightweight execution profile (per-function call counts, total
-//! calls, max recursion depth, evaluation steps). It is not the language's
-//! semantics of record (the native C backend is), but it mirrors them closely
-//! enough to demonstrate behaviour and cost in the playground.
-//!
-//! Values are copied (records and lists are value types, matching the native
-//! lowering), so `let q = p; q.x = 1` never disturbs `p`.
-
 use maca_parser::ast::*;
 use maca_profile::FnCost;
 use std::collections::HashMap;
@@ -15,8 +5,7 @@ use std::fmt::Write as _;
 
 /// Cap on evaluation steps so a runaway loop can't hang the browser tab.
 const STEP_LIMIT: u64 = 30_000_000;
-/// Cap on call depth so unbounded recursion reports cleanly instead of
-/// overflowing the wasm stack.
+/// Cap on call depth so unbounded recursion reports cleanly instead of overflowing the wasm stack.
 const DEPTH_LIMIT: u64 = 6_000;
 
 #[derive(Clone, Debug)]
@@ -40,8 +29,7 @@ pub enum Value {
     },
 }
 
-/// Non-local control flow: loop control, a raised failure, or the step/depth
-/// guard tripping (which is not catchable by `try`).
+/// Non-local control flow: loop control, a raised failure, or the step/depth guard tripping (which is not catchable by `try`).
 enum Signal {
     Break,
     Continue,
@@ -52,8 +40,7 @@ enum Signal {
 type Eval = Result<Value, Signal>;
 
 pub struct Profile {
-    /// the flame graph, rendered by the shared `maca-profile` renderer (the same
-    /// one `maca profile` uses natively; here fed by interpreter step counts).
+    /// the flame graph, rendered by the shared `maca-profile` renderer (the same one `maca profile` uses natively; here fed by interpreter step counts).
     pub flame_svg: String,
     pub total_calls: u64,
     pub max_depth: u64,
@@ -91,8 +78,6 @@ pub fn run(module: &Module) -> RunResult {
         },
     }
 
-    // assemble the shared cost model: self cost per function + inclusive cost
-    // per call edge, then render the same flame graph the native profiler draws.
     let mut fns: HashMap<String, FnCost> = HashMap::new();
     for (name, self_c) in &it.self_steps {
         fns.entry(name.clone()).or_default().self_cost = *self_c;
@@ -103,8 +88,6 @@ pub fn run(module: &Module) -> RunResult {
             fc.calls.insert(callee.clone(), *cost);
         }
     }
-    // HTML (percentage widths) so it fills the playground panel exactly, with
-    // no fixed intrinsic width and no horizontal scroll, while rows stay tall.
     let flame_svg = maca_profile::flamegraph_html_from(&fns, "steps");
 
     RunResult {
@@ -123,14 +106,12 @@ pub fn run(module: &Module) -> RunResult {
 
 struct Interp<'a> {
     fns: HashMap<String, &'a FnDef>,
-    /// variant name → arity (0 for a nullary variant like `Nil`)
+    /// variant name → arity (0 for a nullary variant like `Nil`).
     variants: HashMap<String, usize>,
     out: String,
     total_calls: u64,
     max_depth: u64,
     steps: u64,
-    // profiling: an active-frame stack (name + self-step counter), plus the
-    // accumulated self cost per function and inclusive cost per call edge.
     stack: Vec<(String, u64)>,
     self_steps: HashMap<String, u64>,
     edges: HashMap<String, HashMap<String, u64>>,
@@ -174,7 +155,6 @@ impl<'a> Interp<'a> {
 
     fn tick(&mut self) -> Result<(), Signal> {
         self.steps += 1;
-        // attribute this step to the function currently executing (self cost)
         if let Some(top) = self.stack.last_mut() {
             top.1 += 1;
         }
@@ -199,8 +179,6 @@ impl<'a> Interp<'a> {
         for (p, v) in f.params.iter().zip(args) {
             scope.push((p.name.clone(), v));
         }
-        // profiling: push a frame, run, then fold its self cost and the
-        // inclusive cost of this activation onto the caller's call edge.
         let before = self.steps;
         self.stack.push((f.name.clone(), 0));
         let result = match &f.body {
@@ -233,9 +211,6 @@ impl<'a> Interp<'a> {
                 Stmt::Bind(b) => {
                     let v = self.eval(&b.value, scope, depth)?;
                     match &b.target {
-                        // a bare `x = e` first introducing `x` declares a new
-                        // binding (mutable or const); an assignment to an existing
-                        // name reassigns it (the checker rejects const reassigns).
                         Expr::Ident(n) if !scope.iter().any(|(k, _)| k == n) => {
                             scope.push((n.clone(), v));
                         }
@@ -316,7 +291,6 @@ impl<'a> Interp<'a> {
                 }))
             }
             Expr::Index { base, index } => {
-                // index must be evaluated before the mutable borrow of `base`
                 let i = match self.eval(index, scope, depth)? {
                     Value::Int(i) => i as usize,
                     _ => 0,
@@ -361,9 +335,6 @@ impl<'a> Interp<'a> {
                         payload: vec![],
                     })
                 } else if let Some(f) = self.fns.get(n).copied() {
-                    // a top-level function referenced by name is a function
-                    // value → a closure over its definition (mirrors the C
-                    // backend, so higher-order params work in the playground).
                     let body = match &f.body {
                         Some(FnBody::Expr(e)) => (**e).clone(),
                         Some(FnBody::Block(stmts)) => Expr::Block(stmts.clone()),
@@ -427,13 +398,12 @@ impl<'a> Interp<'a> {
                 })
             }
             Expr::Range { lo, hi } => {
-                // inclusive: lo..hi counts lo, lo+1, …, hi
                 let a = to_i64(&self.eval(lo, scope, depth)?);
                 let b = to_i64(&self.eval(hi, scope, depth)?);
                 let mut xs = Vec::new();
                 let mut i = a;
                 while i <= b {
-                    self.tick()?; // per-element, so a runaway range trips the step limit cleanly
+                    self.tick()?;
                     xs.push(Value::Int(i));
                     i += 1;
                 }
@@ -561,12 +531,7 @@ impl<'a> Interp<'a> {
                 Err(Signal::Fail(m)) => Ok(Value::Str(m)),
                 Err(e) => Err(e),
             },
-            // The playground interpreter is single-threaded, so colorblind async
-            // runs eagerly: `spawn e` computes `e` now and `await` is a no-op on
-            // the value. Results match the concurrent runtime; only interleaving
-            // (which the interpreter doesn't model) differs.
             Expr::Spawn(x) | Expr::Await(x) => self.eval(x, scope, depth),
-            // a lambda captures its enclosing scope by value
             Expr::Lambda { params, body, .. } => Ok(Value::Closure {
                 params: params.clone(),
                 body: Box::new((**body).clone()),
@@ -575,8 +540,7 @@ impl<'a> Interp<'a> {
         }
     }
 
-    /// Apply a closure value to arguments (used by first-class calls and the
-    /// higher-order list methods).
+    /// Apply a closure value to arguments (used by first-class calls and the higher-order list methods).
     fn call_closure(&mut self, c: &Value, args: Vec<Value>, depth: u64) -> Eval {
         let Value::Closure {
             params,
@@ -597,7 +561,6 @@ impl<'a> Interp<'a> {
     }
 
     fn binary(&mut self, op: BinOp, lhs: &Expr, rhs: &Expr, scope: &mut Scope, depth: u64) -> Eval {
-        // short-circuit boolean operators
         if matches!(op, BinOp::And | BinOp::Or) {
             let l = truthy(&self.eval(lhs, scope, depth)?);
             return match op {
@@ -620,8 +583,6 @@ impl<'a> Interp<'a> {
         let l = self.eval(lhs, scope, depth)?;
         let r = self.eval(rhs, scope, depth)?;
 
-        // operator overloading: a user function named for the operator, when the
-        // left operand is a record or variant.
         if matches!(l, Value::Record(_) | Value::Variant { .. })
             && let Some(name) = overload_name(op)
             && let Some(f) = self.fns.get(name).copied()
@@ -653,7 +614,6 @@ impl<'a> Interp<'a> {
     }
 
     fn call(&mut self, callee: &Expr, args: &[Arg], scope: &mut Scope, depth: u64) -> Eval {
-        // UFCS: `recv.method(a)` → `method(recv, a)`
         if let Expr::Field { base, name } = callee {
             let recv = self.eval(base, scope, depth)?;
             let mut vals = vec![recv];
@@ -667,7 +627,6 @@ impl<'a> Interp<'a> {
             for a in args {
                 vals.push(self.eval(arg_expr(a), scope, depth)?);
             }
-            // a local holding a closure value: `f = v => …; f(x)`
             if let Some((_, c @ Value::Closure { .. })) =
                 scope.iter().rev().find(|(k, _)| k == name)
             {
@@ -679,8 +638,7 @@ impl<'a> Interp<'a> {
         Ok(Value::Unit)
     }
 
-    /// Higher-order list methods: the receiver is `vals[0]` (a List) and the
-    /// callback/value is `vals[1]`. Returns `None` if `name` isn't one.
+    /// Higher-order list methods: the receiver is `vals[0]` (a List) and the callback/value is `vals[1]`.
     fn list_method(&mut self, name: &str, vals: &[Value], depth: u64) -> Option<Eval> {
         let list = match vals.first() {
             Some(Value::List(xs)) => xs.clone(),
@@ -689,8 +647,6 @@ impl<'a> Interp<'a> {
         let f = vals.get(1).cloned();
         let run = |me: &mut Self, c: &Value, x: Value| me.call_closure(c, vec![x], depth);
         let out: Eval = match name {
-            // `parallel` differs from `map` only in where the work runs, and
-            // there is no second thread here, so the answer is the same.
             "map" | "parallel" => {
                 let Some(c) = &f else {
                     return Some(Ok(Value::List(list)));
@@ -770,8 +726,6 @@ impl<'a> Interp<'a> {
             "max" => Ok(fold_minmax(&list, false)),
             "first" => Ok(list.first().cloned().unwrap_or(Value::Unit)),
             "last" => Ok(list.last().cloned().unwrap_or(Value::Unit)),
-            // index-walk primitives, mirroring the C backend (used by the
-            // self-hosted lexer/parser).
             "length" => Ok(Value::Int(list.len() as i64)),
             "get" => {
                 let i = int_of(vals.get(1));
@@ -793,11 +747,9 @@ impl<'a> Interp<'a> {
     }
 
     fn apply_named(&mut self, name: &str, vals: Vec<Value>, depth: u64) -> Eval {
-        // higher-order + list methods (UFCS on a List receiver)
         if let Some(res) = self.list_method(name, &vals, depth) {
             return res;
         }
-        // builtins
         match name {
             "info" | "warn" | "err" | "notice" | "debug" | "crit" | "alert" | "emerg" | "panic" => {
                 let s = vals.first().map(display).unwrap_or_default();
@@ -817,9 +769,6 @@ impl<'a> Interp<'a> {
                     _ => 0,
                 }));
             }
-            // A byte and the string holding it. Bytes, not code points: a
-            // Maca string is bytes on every other target, and the playground
-            // agreeing about that is the point of it being the same language.
             "chr" => {
                 let b = match vals.first() {
                     Some(Value::Int(n)) if *n > 0 && *n < 256 => *n as u32,
@@ -853,8 +802,6 @@ impl<'a> Interp<'a> {
                     _ => 0.0,
                 }));
             }
-            // string stdlib (UFCS on `str`): byte-oriented, mirroring the C
-            // backend so the playground and native builds agree on ASCII text.
             "trim" => return Ok(Value::Str(str_of(vals.first()).trim().to_string())),
             "upper" => return Ok(Value::Str(str_of(vals.first()).to_uppercase())),
             "lower" => return Ok(Value::Str(str_of(vals.first()).to_lowercase())),
@@ -862,8 +809,6 @@ impl<'a> Interp<'a> {
                 let n = int_of(vals.get(1)).max(0) as usize;
                 return Ok(Value::Str(str_of(vals.first()).repeat(n)));
             }
-            // pad to a width with an optional pad string (default a space); a
-            // string already at least that wide is returned unchanged.
             "pad_start" | "pad_end" => {
                 let s = str_of(vals.first());
                 let w = int_of(vals.get(1)).max(0) as usize;
@@ -882,8 +827,6 @@ impl<'a> Interp<'a> {
                     s + &fill
                 }));
             }
-            // centre within a width; an odd remainder goes on the right, so a
-            // column of centred cells stays flush left.
             "pad_center" => {
                 let s = str_of(vals.first());
                 let w = int_of(vals.get(1)).max(0) as usize;
@@ -900,8 +843,6 @@ impl<'a> Interp<'a> {
                 let right: String = p.chars().cycle().take(w - n - (w - n) / 2).collect();
                 return Ok(Value::Str(left + &s + &right));
             }
-            // `x.fixed(n)`: n decimal places. Accepts an int receiver too, so
-            // `{n:.2}` works on any number.
             "fixed" => {
                 let x = float_of(vals.first());
                 let n = int_of(vals.get(1)).clamp(0, 17) as usize;
@@ -945,9 +886,6 @@ impl<'a> Interp<'a> {
                 let len = int_of(vals.get(2));
                 return Ok(Value::Str(byte_substr(&s, start, len)));
             }
-            // A string `slice` takes an end offset where `substr` takes a
-            // length. `list_method` handles the list receiver and returns before
-            // this, so only a string reaches here.
             "slice" => {
                 let s = str_of(vals.first());
                 let from = int_of(vals.get(1));
@@ -971,8 +909,6 @@ impl<'a> Interp<'a> {
                 }
                 return Ok(Value::Str(String::new()));
             }
-            // byte-length, per-byte access, and character classes: the scanner
-            // primitives (byte-oriented to match the C runtime on ASCII source).
             "length" => return Ok(Value::Int(str_of(vals.first()).len() as i64)),
             "at" => {
                 let s = str_of(vals.first());
@@ -1002,10 +938,7 @@ impl<'a> Interp<'a> {
                     b.map(|c| c.is_ascii_alphabetic()).unwrap_or(false),
                 ));
             }
-            // async suspension point, a no-op in the synchronous playground
-            // interpreter (results match; only real-time waiting is elided).
             "sleep_ms" => return Ok(Value::Unit),
-            // math prelude
             "sqrt" => return Ok(Value::Float(to_f64(&vals[0]).sqrt())),
             "floor" => return Ok(Value::Float(to_f64(&vals[0]).floor())),
             "ceil" => return Ok(Value::Float(to_f64(&vals[0]).ceil())),
@@ -1071,7 +1004,6 @@ impl<'a> Interp<'a> {
             }
             _ => {}
         }
-        // sum constructor
         if let Some(&arity) = self.variants.get(name) {
             let _ = arity;
             return Ok(Value::Variant {
@@ -1079,25 +1011,19 @@ impl<'a> Interp<'a> {
                 payload: vals,
             });
         }
-        // user function
         if let Some(f) = self.fns.get(name).copied() {
             return self.call_fn(f, vals, depth + 1);
         }
-        // Returning unit here made every unimplemented or misspelt call answer
-        // quietly, in the one place people try the language out.
         Err(Signal::Limit(format!(
             "`{name}` is not a function the playground knows"
         )))
     }
 
-    /// Try to bind `pat` against `v`, pushing bindings onto `scope`. Returns
-    /// whether it matched (partial bindings on a non-match are truncated by the
-    /// caller via `scope` base).
+    /// Try to bind `pat` against `v`, pushing bindings onto `scope`.
     fn matches(&mut self, pat: &Pattern, v: &Value, scope: &mut Scope) -> bool {
         match pat {
             Pattern::Wild => true,
             Pattern::Bind(n) => {
-                // a bare capitalized name may be a nullary variant tag
                 if self.variants.get(n) == Some(&0) {
                     matches!(v, Value::Variant { tag, .. } if tag == n)
                 } else {
@@ -1321,8 +1247,7 @@ fn to_f64(v: &Value) -> f64 {
     }
 }
 
-/// A `Value` as its string form, for the string-stdlib builtins (`str`
-/// receivers/args stringify; non-strings fall back to their display form).
+/// A `Value` as its string form, for the string-stdlib builtins (`str` receivers/args stringify; non-strings fall back to their display form).
 fn str_of(v: Option<&Value>) -> String {
     v.map(display).unwrap_or_default()
 }
@@ -1336,8 +1261,7 @@ fn int_of(v: Option<&Value>) -> i64 {
     }
 }
 
-/// A `float` argument (0.0 if absent/non-numeric). An int is widened, so
-/// `x.fixed(n)` works on any number.
+/// A `float` argument (0.0 if absent/non-numeric).
 fn float_of(v: Option<&Value>) -> f64 {
     match v {
         Some(Value::Float(f)) => *f,
@@ -1346,8 +1270,7 @@ fn float_of(v: Option<&Value>) -> f64 {
     }
 }
 
-/// `substr` over a byte range, clamped and snapped to char boundaries so it
-/// never panics on multibyte input (exact byte semantics for ASCII, matching C).
+/// `substr` over a byte range, clamped and snapped to char boundaries so it never panics on multibyte input (exact byte semantics for ASCII, matching C).
 fn byte_substr(s: &str, start: i64, len: i64) -> String {
     let n = s.len() as i64;
     let start = start.clamp(0, n);
@@ -1435,7 +1358,6 @@ fn overload_name(op: BinOp) -> Option<&'static str> {
 }
 
 /// Variant name → arity for a `A | B(int) | C(int, int)` sum declaration.
-/// Returns `None` when `value` isn't a sum type.
 fn sum_variants(value: &Expr) -> Option<Vec<(String, usize)>> {
     fn collect(e: &Expr, out: &mut Vec<(String, usize)>) -> bool {
         match e {
@@ -1479,8 +1401,6 @@ mod tests {
 
     #[test]
     fn scan_primitives_match_native() {
-        // the str/array scan methods the self-hosted lexer uses, exercised
-        // through the playground interpreter so it agrees with the C backend.
         let src = "main() -> int {\n\
             s = \"a1 b\"\n\
             cs = s.chars()\n\
@@ -1497,7 +1417,6 @@ mod tests {
 
     #[test]
     fn higher_order_fn_by_name() {
-        // a function passed by name to a `pred` parameter and called there.
         let src = "even(n: int) -> bool => n % 2 == 0\n\n\
             count_if(xs: int[], i: int, pred) -> int =>\n\
                 i >= xs.length() ? 0 : (pred(xs.get(i)) ? 1 : 0) + count_if(xs, i + 1, pred)\n\n\
@@ -1511,7 +1430,6 @@ mod tests {
 
     #[test]
     fn recursive_record_walks() {
-        // a record holding a list of itself runs in the interpreter too.
         let src = "Tree = {\n    label: str\n    kids: Tree[]\n}\n\n\
             leaf(l: str) -> Tree => Tree { label = l, kids = [] }\n\n\
             size(t: Tree) -> int => 1 + ks(t.kids, 0)\n\n\

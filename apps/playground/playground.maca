@@ -1,23 +1,5 @@
-// The Maca playground: a single self-contained .maca file, styled with Maca's
-// integrated Tailwind. The UI, state, and handlers are Maca; the only inline
-// foreign code is the WebAssembly-bridge runtime (`import js`) and one small
-// `import css` block for the definition-outline rows.
-// Build:  maca build --target js playground.maca
-//
-// What the page is for: everything the compiler can do to a program should be
-// one click away from the program. So the right pane is not "the output", it is
-// every artifact the front end produced from this source, including the ones a
-// back end refused to produce and said why. The Preview tab runs the emitted
-// JS for real, which is the one thing about this language that has to be seen
-// rather than described.
-
-// the compiler itself, embedded as base64 into the built index.html by
-// `maca build --target js` (read by the bridge below via id "wasm-b64")
 import wasm "../../target/wasm32-unknown-unknown/release/maca_wasm.wasm"
 
-// Styles the generated-Tailwind classes can't express: the definition-outline
-// rows. Small, scoped, data-free. The layout stays in Maca's integrated
-// Tailwind, and the editor (Monaco) carries its own theme.
 import css """
 .ol-item { display: flex; align-items: baseline; gap: .4rem; padding: .2rem .5rem;
   border-radius: .3rem; cursor: pointer; white-space: nowrap; overflow: hidden;
@@ -744,18 +726,6 @@ import js """
 })();
 """
 
-// ---- the examples --------------------------------------------------------
-//
-// Every example is a Maca constant here rather than a string in the bridge, so
-// a reader finds them where the rest of the page lives and
-// `crates/wasm/tests/playground.rs` can compile each one and fail the build
-// when it stops checking clean. Four of the six that used to live in the
-// bridge taught `let`, which Maca does not have, and the page shipped a
-// diagnostic on every one of them.
-//
-// A `"""…"""` block is raw: it spans lines, interpolates nothing, and needs no
-// escaping, so an example reads exactly as it will read in the editor.
-
 const HelloSrc = """
 main() -> int {
     info("Hello from Maca")
@@ -936,8 +906,6 @@ services.openssh = {
 }
 """
 
-// What an example is: the program, the mode to compile it in, the pane that
-// shows it off, and the one line that says why it is here.
 Example = {
     src:  str
     mode: int
@@ -945,7 +913,6 @@ Example = {
     note: str
 }
 
-// The picker's `<option>` values, in one place, each beside its program.
 example(name: str) -> Example {
     if name == "page" {
         Example { src = PageSrc, mode = 0, tab = "Preview",
@@ -974,20 +941,10 @@ example(name: str) -> Example {
     }
 }
 
-// ---- reactive state ------------------------------------------------------
-//
-// The editor (Monaco, or the textarea fallback) owns the source text and the
-// bridge exposes it as mcSource()/mcSetSource(), because only the editor knows
-// what the caret has done to it. What belongs here is what the page decides:
-// which mode to compile in, which pane to show, and the note under the picker.
 mode = 0
 tab  = "Console"
 note = ""
 
-// ---- handlers ------------------------------------------------------------
-
-// Rebuilding the preview restarts the program inside it, so it happens only
-// while somebody is looking at it. Switching to the tab renders it too.
 run() {
     mcCompile(mcSource(), mode)
 
@@ -998,9 +955,6 @@ run() {
     update()
 }
 
-// Called once, by the bridge, as soon as an editor exists. A shared link
-// carries a program and a mode in the fragment and the bridge is what read the
-// URL; with no link, the page opens on the smallest program there is.
 start() {
     shared = mcUrlProgram()
 
@@ -1016,8 +970,6 @@ start() {
     }
 }
 
-// Put an example in the editor and open the pane that shows it off. The raw
-// block each program lives in starts with a newline, which `trim` drops.
 load(name: str) {
     picked = example(name)
     mcSetSource(picked.src.trim())
@@ -1032,9 +984,6 @@ pickExample() {
     load(mcPicked())
 }
 
-// Config mode is a different mode of the language, not a different output
-// format: the module is the configuration and it must be pure. Switching moves
-// to a pane that mode can actually fill.
 useProgram() {
     mode = 0
     tab  = "Console"
@@ -1059,15 +1008,11 @@ showJs()      { tab = "JS"           update() }
 showCss()     { tab = "CSS"          update() }
 showNix()     { tab = "Nix"          update() }
 
-// The only tab with a side effect: the preview is an iframe the bridge builds,
-// and it is pointless to rebuild it while it is out of sight.
 showPreview() {
     tab = "Preview"
     mcRenderPreview()
     update()
 }
-
-// ---- classes -------------------------------------------------------------
 
 const TabOn = "px-3 py-1 text-sm rounded cursor-pointer bg-zinc-800 text-zinc-100"
 const TabOff = "px-3 py-1 text-sm rounded cursor-pointer text-zinc-400"
@@ -1076,9 +1021,6 @@ const Picker = "px-2 py-1 text-sm rounded border border-zinc-700 bg-zinc-900 tex
 const TextPane = "flex-1 min-h-0 overflow-auto p-4 font-mono text-sm whitespace-pre-wrap break-words text-zinc-200"
 const PreviewPane = "flex-1 min-h-0 overflow-hidden bg-white"
 
-// A tab carries three states: not available in this mode, selected, and
-// selectable. The first is `hidden` rather than greyed out, because a pane that
-// cannot fill in this mode is not a thing to click and find empty.
 tabClass(name: str) -> str {
     if !tabInMode(name) {
         "hidden"
@@ -1097,9 +1039,6 @@ tabInMode(name: str) -> bool {
     }
 }
 
-// Both result panes stay in the tree, because the js back end builds the view
-// once and reacts by re-setting text, classes and attributes. So the inactive
-// one is hidden rather than removed, and the preview keeps running underneath.
 textPaneClass() -> str =>
     tab == "Preview" ? "hidden" : TextPane
 
@@ -1109,17 +1048,8 @@ previewPaneClass() -> str =>
 modeClass(want: int) -> str =>
     mode == want ? TabOn : TabOff
 
-// ---- view (styled with Maca's integrated Tailwind) -----------------------
-
 main() -> Element =>
     div(class="flex flex-col h-screen bg-zinc-900 text-zinc-100 font-sans"
-        // The same Pretendard the rest of the site links, rather than the
-        // Latin-only subset that used to be inlined here: it carried 95 Latin
-        // glyphs and no Hangul, so Korean fell back to system-ui on the one
-        // page that shows Korean source. The playground is served from
-        // `play/`, so the sheet is one level up. The js back end owns the
-        // document and this program owns what hangs off `#app`; a stylesheet
-        // link is honoured there too, and `link` renders as nothing.
         link(rel="stylesheet", href="../fonts/pretendard.css")
         header(class="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-zinc-800 bg-zinc-950"
             span(class="font-mono font-bold text-violet-400", "◆ Maca playground")
@@ -1128,8 +1058,6 @@ main() -> Element =>
             button(class=modeClass(0), on:click=useProgram, "program")
             button(class=modeClass(1), on:click=useConfig, "config")
             select(id="examples", class=Picker, on:change=pickExample
-                // The placeholder is what a shared link shows: the program in
-                // the editor is then nobody's example.
                 option(value="", "examples")
                 option(value="hello", "hello")
                 option(value="page", "a page")
@@ -1151,9 +1079,7 @@ main() -> Element =>
                 div(class="flex-1 min-h-0 overflow-auto p-1", html=mcOutline())
             )
             div(class="flex-1 min-w-0 grid grid-cols-2"
-                // Monaco mounts here, or the textarea fallback offline.
                 div(id="editor", class="relative min-h-0 h-full overflow-hidden border-r border-zinc-800 bg-zinc-900")
-                // Every artifact the front end produced, one click apart.
                 div(class="flex flex-col min-w-0 min-h-0 bg-zinc-950"
                     div(class="flex items-center gap-1 px-2 pt-2 border-b border-zinc-800 overflow-x-auto"
                         button(class=tabClass("Diagnostics"),

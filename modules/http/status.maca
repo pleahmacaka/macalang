@@ -1,11 +1,4 @@
-// http/status: status codes, and what they are called.
-//
-// A response line needs the number and the phrase. Clients ignore the phrase,
-// but people read logs, and `500 Internal Server Error` says more to a reader
-// at 3am than `500`.
-
-/// The reason phrase for a status code. An unknown code is not an error,
-/// because HTTP allows any three digits, so it gets the phrase for its class.
+/// The reason phrase for a status code.
 reason(code: int) -> str {
     if code == 200 {
         "OK"
@@ -50,8 +43,6 @@ reason(code: int) -> str {
     }
 }
 
-// The phrase for a code nothing above names. Better than an empty phrase,
-// which some proxies treat as a malformed response line.
 class_reason(code: int) -> str {
     if code < 200 {
         "Informational"
@@ -66,14 +57,11 @@ class_reason(code: int) -> str {
     }
 }
 
-/// Did this code succeed? `2xx` and nothing else; a redirect is not a success
-/// to the code that has to decide whether to keep going.
+/// Did this code succeed?
 is_ok(code: int) -> bool =>
     code >= 200 && code < 300
 
-/// The MIME type for a filename's extension, `application/octet-stream` when
-/// nothing matches. A browser shown the wrong type will render a stylesheet as
-/// text or refuse a script outright, so this is not decoration.
+/// The MIME type for a filename's extension, `application/octet-stream` when nothing matches.
 content_type(path: str) -> str {
     ext = extension_of(path)
 
@@ -112,8 +100,6 @@ content_type(path: str) -> str {
     }
 }
 
-// The lowercased extension, or "" when the last path segment has no dot. The
-// dot has to be in the *segment*: `/a.b/README` has no extension.
 extension_of(path: str) -> str {
     segment = last_segment(path)
     at = last_dot(segment, segment.length() - 1)

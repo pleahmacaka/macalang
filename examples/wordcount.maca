@@ -1,4 +1,3 @@
-// A word tally, built up step by step.
 Tally = {
     word: str
     count: int

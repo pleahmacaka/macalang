@@ -1,22 +1,9 @@
-//! Variadic parameters: `f(...rest: T)` takes any number of trailing arguments
-//! and sees them as a `T[]`.
-//!
-//! The behaviour is asserted in Maca, in `tests/programs/variadic.maca`, and run
-//! by `maca test`. This file is the runner plus the two things that are about
-//! the *process* rather than the values: a poisoned run, and the programs that
-//! must fail to compile.
-
 mod common;
 use common::*;
 
 use std::process::Command;
 
 /// The whole suite, plain and with released blocks poisoned.
-///
-/// A variadic call builds a list at the call site and the callee may grow it in
-/// place, so a stale handle to a freed buffer is exactly the failure this
-/// feature could introduce. `MACA_POISON=1` fills a released block with `0xDD`,
-/// which turns reading one into a wrong answer instead of a lucky one.
 #[test]
 fn variadic_arguments_collect_into_a_list() {
     if have_wsl() || !have("cc") {
@@ -61,50 +48,43 @@ fn rejected(name: &str, expect: &str) {
     );
 }
 
-/// Too few fixed arguments. A variadic relaxes the *upper* bound only.
+/// Too few fixed arguments.
 #[test]
 fn too_few_fixed_arguments_is_rejected() {
     rejected("bad_variadic_arity", "expects at least 1 argument");
 }
 
-/// A variadic that is not the last parameter: nothing says where the collection
-/// stops.
+/// A variadic that is not the last parameter: nothing says where the collection stops.
 #[test]
 fn a_variadic_before_another_parameter_is_rejected() {
     rejected("bad_variadic_not_last", "must be last");
 }
 
-/// Passed by name rather than called. There is no arity to pass.
+/// Passed by name rather than called.
 #[test]
 fn a_variadic_as_a_function_value_is_rejected() {
     rejected("bad_variadic_value", "cannot be used as a function value");
 }
 
-/// `spawn f(…)` bypasses the call site that would do the collecting, and a task
-/// slot could not carry the list anyway. It used to print a pointer.
+/// `spawn f(…)` bypasses the call site that would do the collecting, and a task slot could not carry the list anyway.
 #[test]
 fn spawning_a_variadic_is_rejected() {
     rejected("bad_variadic_spawn", "cannot take a variadic");
 }
 
-/// A variadic of function type. `arr_name` puts a closure element on the same
-/// array name as an integer one, so declaring one redefined `IntArr` as an array
-/// of closures and every `int[]` in the program stopped compiling.
+/// A variadic of function type.
 #[test]
 fn a_variadic_of_function_type_is_rejected() {
     rejected("bad_variadic_fn_type", "variadic of function type");
 }
 
-/// No annotation, so nothing says what the collected list holds. The back end
-/// picks the integer array: `firstf(1.5, 2.5)` compiled clean and answered
-/// `1.0`, which is the reason this is a rule and not a default.
+/// No annotation, so nothing says what the collected list holds.
 #[test]
 fn an_unannotated_variadic_is_rejected() {
     rejected("bad_variadic_unannotated", "needs its element type");
 }
 
-/// A variadic `main`. Nothing calls it, so nothing collects; the process hands
-/// an entry point its command line as a `str[]`.
+/// A variadic `main`.
 #[test]
 fn a_variadic_main_is_rejected() {
     rejected("bad_variadic_main", "`main` cannot be variadic");

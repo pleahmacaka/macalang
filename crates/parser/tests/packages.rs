@@ -1,11 +1,3 @@
-//! Which file a name comes from.
-//!
-//! A package is a directory of modules and a module is a file; there is no
-//! entry file and no index, so `modules/http/server.maca` is `http/server` and
-//! that is the only thing it is. These build real packages on disk and inline
-//! them the way a build does, because the whole question is which file a name
-//! came from.
-
 use maca_parser::imports::load_with_imports;
 use std::path::{Path, PathBuf};
 
@@ -46,8 +38,7 @@ fn inlined(entry: &Path) -> Result<String, String> {
     load_with_imports(entry)
 }
 
-/// The shape the layout exists for: a package's files are reached by the path
-/// they are at, from anywhere in the tree.
+/// The shape the layout exists for.
 #[test]
 fn a_package_file_is_imported_by_its_path() {
     let p = Project::new("path");
@@ -64,8 +55,7 @@ fn a_package_file_is_imported_by_its_path() {
     assert!(src.contains("listen(port: int) -> int"), "{src}");
 }
 
-/// A package's files may import each other by path too, and only what is asked
-/// for comes along.
+/// A package's files may import each other by path too, and only what is asked for comes along.
 #[test]
 fn a_package_file_may_import_its_neighbour() {
     let p = Project::new("neighbour");
@@ -93,8 +83,7 @@ fn a_package_file_may_import_its_neighbour() {
     );
 }
 
-/// A name a module does not define is an error naming that module: there is
-/// no index that might have meant something else.
+/// A name a module does not define is an error naming that module.
 #[test]
 fn a_name_a_module_does_not_define_is_refused() {
     let p = Project::new("missing");
@@ -109,9 +98,7 @@ fn a_name_a_module_does_not_define_is_refused() {
     assert!(err.contains("'nope'"), "names the name: {err}");
 }
 
-/// A directory is not a module. Importing one is the same mistake as importing
-/// a file that isn't there, and it is reported as one rather than resolving to
-/// whatever happens to be inside.
+/// A directory is not a module.
 #[test]
 fn a_directory_is_not_a_module() {
     let p = Project::new("dir");
@@ -125,8 +112,7 @@ fn a_directory_is_not_a_module() {
     assert!(err.contains("no module `http`"), "{err}");
 }
 
-/// An installed dependency is written by its own name. Where `maca add` put it
-/// is the toolchain's business and appears in nobody's source.
+/// An installed dependency is written by its own name.
 #[test]
 fn an_installed_dependency_is_written_by_its_name() {
     let p = Project::new("installed");
@@ -144,9 +130,6 @@ fn an_installed_dependency_is_written_by_its_name() {
 }
 
 /// A file inside a project resolves against *that* project or not at all.
-/// Falling back to the working directory let a build started from one project
-/// pick up another's packages, a build whose meaning depended on where it was
-/// run, and one the language server could never agree with.
 #[test]
 fn a_project_does_not_borrow_another_projects_packages() {
     let a = Project::new("borrow-a");
@@ -165,10 +148,7 @@ fn a_project_does_not_borrow_another_projects_packages() {
     assert!(got.is_err(), "resolved another project's package: {got:?}");
 }
 
-/// Two files in one package may each keep a helper to themselves. Everything
-/// inlines into one translation unit, so without qualification the C compiler
-/// reported a redefinition of a function the reader never wrote twice, and
-/// "you cannot split a package into files" is not a package system.
+/// Two files in one package may each keep a helper to themselves.
 #[test]
 fn two_files_may_share_a_private_helper_name() {
     let p = Project::new("private");
@@ -195,10 +175,7 @@ fn two_files_may_share_a_private_helper_name() {
     );
 }
 
-/// A type a package keeps to itself is renamed everywhere it is *written*, not
-/// only where it is built. A signature still saying `Box` names a type nothing
-/// declares, and the C back end gave the parameter a fallback type and then
-/// failed to compile the package against itself.
+/// A type a package keeps to itself is renamed everywhere it is *written*, not only where it is built.
 #[test]
 fn a_private_type_is_renamed_in_signatures_too() {
     let p = Project::new("privty");
@@ -219,10 +196,7 @@ fn a_private_type_is_renamed_in_signatures_too() {
     );
 }
 
-/// A type named in a requested definition's signature is part of that
-/// definition, whatever the module thinks: nothing can call `parse(c: Cmd, …)`
-/// without writing `Cmd`, and renaming it left every caller naming a type that
-/// no longer existed.
+/// A type named in a requested definition's signature is part of that definition, whatever the module thinks.
 #[test]
 fn a_type_in_a_requested_signature_keeps_its_name() {
     let p = Project::new("surface");
@@ -244,9 +218,7 @@ fn a_type_in_a_requested_signature_keeps_its_name() {
     );
 }
 
-/// Qualifying a private name leaves alone the functions that mean something
-/// else by it. A package with a private `at` rewrote `at + 1` inside any
-/// function with a parameter called `at`, and left the parameter untouched.
+/// Qualifying a private name leaves alone the functions that mean something else by it.
 #[test]
 fn qualification_skips_a_name_a_function_rebinds() {
     let p = Project::new("shadow");
@@ -271,10 +243,6 @@ fn qualification_skips_a_name_a_function_rebinds() {
 }
 
 /// An imported module's syntax errors are the program's syntax errors.
-///
-/// Dropping them left the parser's partial tree to be sliced and inlined, so a
-/// file that would not compile on its own compiled to something *else* once
-/// something imported it.
 #[test]
 fn a_syntax_error_in_an_imported_module_is_reported() {
     let p = Project::new("badsyntax");
@@ -292,8 +260,7 @@ fn a_syntax_error_in_an_imported_module_is_reported() {
     assert!(err.contains("parse error"), "and says what is wrong: {err}");
 }
 
-/// A name someone asked for by hand keeps the spelling they asked for:
-/// qualifying it would break the caller that named it.
+/// A name someone asked for by hand keeps the spelling they asked for.
 #[test]
 fn a_requested_name_keeps_its_spelling() {
     let p = Project::new("requested");

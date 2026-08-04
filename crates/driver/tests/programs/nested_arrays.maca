@@ -1,9 +1,3 @@
-// Nested array types are emitted in dependency order.
-//
-// `IntArrArr`'s element is `IntArr`, so the inner type has to be complete
-// first. The element set is a hash set, so before it was sorted whether
-// `int[][]` compiled at all depended on the iteration order.
-
 grid_of_products(n: int) -> int[][] {
     grid: int[][] = []
     for i in 1..n {

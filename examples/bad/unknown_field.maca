@@ -1,5 +1,3 @@
-// `titel` is a typo. Without the check it binds nothing, `title` stays empty,
-// and the program runs.
 Config = {
     host:  str
     title: str

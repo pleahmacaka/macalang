@@ -1,13 +1,3 @@
-// http/request: one request, as fields rather than as bytes.
-//
-// The server hands the handler the raw request text; this turns it into
-// something with a method, a path, a query and headers, so a handler never has
-// to know where the `\r\n`s are.
-//
-// Parsing is deliberately forgiving about line endings, because HTTP says
-// `\r\n` and hand-written clients send `\n`, and deliberately strict about the
-// request line, because a request line that isn't three words is not a request.
-
 import { split_once, index_of_from } from std/text
 
 /// One request, parsed.
@@ -15,21 +5,16 @@ Request = {
     method:  str
     /// The path with the query string removed, and percent-escapes decoded.
     path:    str
-    /// Everything after `?`, undecoded. See `query_value`.
+    /// Everything after `?`, undecoded.
     query:   str
     version: str
-    /// The header block, still raw. Read it with `header`.
+    /// The header block, still raw.
     headers: str
     body:    str
 }
 
-/// Parse a raw request. A request that does not begin with a three-word line
-/// comes back with an empty method, which is a handler's cue to answer 400
-/// rather than guess.
+/// Parse a raw request.
 parse_request(raw: str) -> Request {
-    // The head is normalized; the body is not. Rewriting `\r\n` across the
-    // whole request corrupted every upload that contained one: a 14-byte body
-    // arrived as 12 and no longer matched the length that was sent.
     split = split_head(raw)
     head = normalize_endings(split.get(0))
     body = split.get(1)
@@ -48,8 +33,6 @@ parse_request(raw: str) -> Request {
     }
 }
 
-// The header block and the body, split at the blank line. HTTP says `\r\n\r\n`
-// and hand-written clients send `\n\n`, so whichever comes first wins.
 split_head(raw: str) -> str[] {
     crlf = raw.index_of("\r\n\r\n")
     lf = raw.index_of("\n\n")
@@ -63,15 +46,10 @@ split_head(raw: str) -> str[] {
     }
 }
 
-// Inside the head, `\r\n` and `\n` both mean "next line", so the rest of this
-// file only has to know about one of them.
 normalize_endings(raw: str) -> str =>
     raw.replace("\r\n", "\n")
 
 /// A header's value, or "" when it is absent.
-///
-/// The name is matched case-insensitively, because `Content-Type` and
-/// `content-type` are the same header and a client picks whichever it likes.
 header(r: Request, name: str) -> str =>
     scan_headers(r.headers.split("\n"), 0, name.lower())
 
@@ -91,9 +69,7 @@ header_name(line: str) -> str =>
 header_value(line: str) -> str =>
     split_once(line, ":").get(1).trim()
 
-/// A query parameter's value, or "" when absent. `?a=1&b=2` → `query_value(r,
-/// "b")` is `"2"`. Values are percent-decoded and `+` means a space, which is
-/// what a form posts.
+/// A query parameter's value, or "" when absent.
 query_value(r: Request, name: str) -> str =>
     scan_pairs(r.query.split("&"), 0, name)
 
@@ -111,8 +87,7 @@ scan_pairs(pairs: str[], i: int, want: str) -> str {
     }
 }
 
-/// Decode `%XX` escapes. A malformed escape is left as written rather than
-/// dropped: mangling a path is worse than serving one that does not exist.
+/// Decode `%XX` escapes.
 percent_decode(s: str) -> str =>
     decode_from(s, 0, "")
 

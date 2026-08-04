@@ -1,14 +1,3 @@
-//! What the jvm backend lowers, and what it refuses by name.
-//!
-//! `jexpr` ended in `_ => "null"`, and `null` is assignable to every Java
-//! reference type, so an unlowered construct type-checked and the program ran
-//! with a hole in it. The worst case was `Expr::Lambda`: a closure handed to a
-//! Java API became `null`, and registering a callback is what this target is
-//! for.
-//!
-//! Where a JDK is present the emitted Java is compiled and run, because
-//! compiling is not answering.
-
 use std::process::Command;
 
 fn emit(src: &str) -> Result<String, Vec<String>> {
@@ -74,13 +63,6 @@ fn run(src: &str) -> Option<String> {
 
 #[test]
 fn a_lambda_is_a_java_lambda_not_null() {
-    // A closure handed to a Java API is what this target is for (a Fabric mod
-    // registers callbacks), and it used to emit `null`, which is assignable to
-    // any functional interface, so it compiled and the callback did nothing.
-    //
-    // Only the emission is asserted: calling one through an unannotated Maca
-    // parameter needs that parameter to be a functional interface rather than
-    // `Object`, which this backend does not yet do.
     let java =
         ok("register(cb) {\n    cb(1)\n}\n\nmain() -> int {\n    register(v => v + 1)\n    0\n}\n");
     assert!(
@@ -116,8 +98,6 @@ main() -> int {
 
 #[test]
 fn a_string_pattern_is_a_case_label_not_a_second_default() {
-    // Both `Str` and `Bool` used to fall to `default`, so two such arms were a
-    // `duplicate default label` error from javac.
     let src = "\
 grade(s: str) -> int {
     match s {
@@ -153,8 +133,6 @@ fn a_bool_pattern_is_refused_because_java_cannot_switch_on_one() {
 
 #[test]
 fn a_payload_pattern_is_refused_rather_than_dropping_its_binding() {
-    // `Circle(r) => r * r` emitted `case Circle ->` and javac said
-    // "cannot find symbol: r".
     let msg = refused(
         "Shape = Circle(int) | Rect(int, int)\n\narea(s: Shape) -> int {\n    match s {\n        Circle(r) => r * r\n        Rect(w, h) => w * h\n    }\n}\n",
     );
@@ -164,10 +142,6 @@ fn a_payload_pattern_is_refused_rather_than_dropping_its_binding() {
 
 #[test]
 fn a_literal_matching_no_declared_record_is_refused_rather_than_becoming_null() {
-    // A literal whose shape belongs to a declared record now takes that record's
-    // name, since the checker accepts it there. One that matches nothing still
-    // has no type for a Java `new`, and the refusal names the fields written so
-    // the author can see what it looked for.
     let msg = refused("f() -> int {\n    p = { x = 1, y = 2 }\n    p.x\n}\n");
     assert!(msg.contains("no declared record"), "{msg}");
     assert!(
@@ -195,7 +169,6 @@ fn a_refusal_names_a_construct_not_generated_java() {
 
 #[test]
 fn enums_records_and_arithmetic_still_lower_and_run() {
-    // The refusals must not have swallowed the subset that already worked.
     let src = "\
 Status = Todo | Done
 

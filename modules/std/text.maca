@@ -1,16 +1,6 @@
 // std/text: string work that sits one level above the `str` builtins.
-//
-// The builtins are the primitives: `split`, `trim`, `substr`, `index_of`,
-// `chars`, the character classes. This module is what you keep rewriting on top
-// of them: splitting once rather than everywhere, stripping a prefix only if
-// it is there, folding a paragraph to a width.
-//
-//   import std/text
-//   import { lines, dedent } from std/text
 
-/// The lines of `s`, without their terminators. A trailing newline does not
-/// produce a final empty line, which is what makes `read_file(p).lines()` count
-/// what a person would count.
+/// The lines of `s`, without their terminators.
 lines(s: str) -> str[] {
     parts = s.replace("\r\n", "\n").split("\n")
     n = parts.length()
@@ -22,8 +12,7 @@ lines(s: str) -> str[] {
     }
 }
 
-/// Whitespace-separated words, with empty runs dropped. `split(" ")` alone
-/// leaves an empty string wherever two spaces met.
+/// Whitespace-separated words, with empty runs dropped.
 words(s: str) -> str[] =>
     keep_nonempty(s.replace("\t", " ").replace("\n", " ").split(" "), 0, [])
 
@@ -37,8 +26,7 @@ keep_nonempty(xs: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// Split on the *first* occurrence only: `split_once("a=b=c", "=")` is
-/// `["a", "b=c"]`. A separator that isn't there gives the whole string and "".
+/// Split on the *first* occurrence only: `split_once("a=b=c", "=")` is `["a", "b=c"]`.
 split_once(s: str, sep: str) -> str[] {
     at = s.index_of(sep)
 
@@ -49,8 +37,7 @@ split_once(s: str, sep: str) -> str[] {
     }
 }
 
-/// Remove `p` from the front, or leave `s` alone. Distinct from `replace`,
-/// which would take it from the middle too.
+/// Remove `p` from the front, or leave `s` alone.
 strip_prefix(s: str, p: str) -> str {
     if s.starts_with(p) {
         s.slice(p.length(), s.length())
@@ -59,8 +46,7 @@ strip_prefix(s: str, p: str) -> str {
     }
 }
 
-/// Remove `p` from the end, or leave `s` alone. The other half of
-/// `strip_prefix`, and the one that turns a filename into a stem.
+/// Remove `p` from the end, or leave `s` alone.
 strip_suffix(s: str, p: str) -> str {
     if s.ends_with(p) {
         s.slice(0, s.length() - p.length())
@@ -70,10 +56,6 @@ strip_suffix(s: str, p: str) -> str {
 }
 
 /// `index_of` starting from `start`, as an absolute index, or -1.
-///
-/// The builtin always searches from the beginning, so scanning a string for a
-/// second occurrence means slicing first and adding the offset back, which is
-/// what two programs in this repository each wrote out by hand.
 index_of_from(s: str, pat: str, start: int) -> int {
     at = if start < 0 { 0 } else { start }
 
@@ -105,11 +87,6 @@ scan_last(s: str, pat: str, at: int, best: int) -> int {
 }
 
 /// The text between `open` and `close`, or "" if either marker is missing.
-///
-/// Both markers must be there. A version that returned the whole remainder on
-/// a missing `close` existed alongside this one, and the two were used against
-/// each other's output, so a malformed input parsed one way in the generator
-/// and the other way in the test that checked it.
 between(s: str, open: str, close: str) -> str {
     at = s.index_of(open)
 
@@ -128,20 +105,13 @@ between(s: str, open: str, close: str) -> str {
 }
 
 /// The four characters that would otherwise be markup, as entities.
-///
-/// `&` goes first, or the `&` of an entity written by a later replacement gets
-/// escaped a second time. The quote is included because a value that is safe
-/// in an element is not automatically safe in an attribute, and three copies
-/// of this function each omitted it and each documented a different reason why
-/// that was fine.
 escape_html(s: str) -> str =>
     s.replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace("\"", "&quot;")
 
-/// How many non-overlapping times `pat` occurs in `s`. An empty needle matches
-/// nothing rather than matching everywhere.
+/// How many non-overlapping times `pat` occurs in `s`.
 count(s: str, pat: str) -> int {
     if pat.length() == 0 {
         0
@@ -160,8 +130,7 @@ count_from(s: str, pat: str, at: int, n: int) -> int {
     }
 }
 
-/// `Title Case`, one word at a time. Byte-based like the rest of `str`, so it
-/// upper-cases ASCII and leaves everything else as it found it.
+/// `Title Case`, one word at a time.
 title_case(s: str) -> str =>
     join_words(words(s).map(capitalize), 0, "")
 
@@ -183,8 +152,7 @@ join_words(ws: str[], i: int, acc: str) -> str {
     }
 }
 
-/// Add `pad` to the start of every line. An empty line stays empty: trailing
-/// whitespace in generated output is noise a diff will show you forever.
+/// Add `pad` to the start of every line.
 indent(s: str, pad: str) -> str =>
     lines(s).map(l => pad_unless_empty(l, pad)).join("\n")
 
@@ -197,8 +165,6 @@ pad_unless_empty(line: str, pad: str) -> str {
 }
 
 /// Remove the longest run of leading spaces common to every non-empty line.
-/// What a raw `"""…"""` block needs when it is written inside an indented
-/// function but has to come out flush.
 dedent(s: str) -> str {
     cut = common_indent(lines(s), 0, -1)
 
@@ -217,8 +183,6 @@ drop_indent(line: str, cut: int) -> str {
     }
 }
 
-// The narrowest indent among the non-empty lines. `best` starts at -1, which
-// means "no line has been seen yet", distinct from an indent of 0.
 common_indent(ls: str[], i: int, best: int) -> int {
     if i < ls.length() {
         common_indent(ls, i + 1, narrower(best, ls.get(i)))
@@ -249,9 +213,7 @@ leading_spaces(cs: str[], i: int) -> int {
     }
 }
 
-/// Fold `s` to lines of at most `width` bytes, breaking between words. A word
-/// longer than the width gets a line to itself rather than being cut in half,
-/// so a URL survives wrapping.
+/// Fold `s` to lines of at most `width` bytes, breaking between words.
 wrap(s: str, width: int) -> str =>
     fill(words(s), 0, width, "", "")
 
@@ -267,8 +229,6 @@ next_word(ws: str[], i: int, width: int, cur: str, out: str) -> str {
     w = ws.get(i)
     joined = if cur == "" { w } else { cur ++ " " ++ w }
 
-    // `cur == ""` means the word is alone on its line already: it is too long
-    // for the width and there is nothing to break it away from.
     if joined.length() <= width || cur == "" {
         fill(ws, i + 1, width, joined, out)
     } else {

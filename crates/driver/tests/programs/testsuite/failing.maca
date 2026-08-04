@@ -1,6 +1,3 @@
-// A failed assertion is counted, not fatal: every test here runs, and the exit
-// code is the number of assertions that failed.
-
 test_a_failure_shows_both_sides() {
     assert_eq("got", "want", "the two disagree")
 }

@@ -1,5 +1,3 @@
-// Polymorphic identity used at two distinct types in one program: each use is
-// instantiated with fresh type variables, so `int` and `str` don't collide.
 id(x: a) -> a => x
 
 pick(cond: bool, x: a, y: a) -> a =>

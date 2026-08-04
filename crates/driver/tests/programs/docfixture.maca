@@ -1,7 +1,10 @@
 // A module written the awkward ways, so MacaDoc is read on more than std.
 // Every shape here is one that produced wrong output at some point, and this
-// blurb is itself one of them: it has no blank line, which used to give the
-// module an empty card.
+// blurb is itself one of them: an indented run in a module blurb is an example,
+// and it has to arrive as code coloured by the same scanner a signature goes
+// through rather than as a sentence.
+//
+//     import crates/driver/tests/programs/docfixture
 
 //// A slash rule. Four slashes are punctuation someone drew, not a doc
 //// comment, so the helper below it stays out of the reference.

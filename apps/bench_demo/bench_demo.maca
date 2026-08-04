@@ -1,19 +1,3 @@
-// bench_demo: measuring a handful of the corpus and printing the table.
-//
-//   maca run apps/bench_demo/bench_demo.maca
-//
-// Nine cases, three samples each, about a second in total. `quick()` is used
-// on purpose and the footer says so: three samples of fifteen milliseconds is
-// enough to see a tenfold difference and nowhere near enough to see a five
-// percent one. `defaults()` is what a number you intend to quote is measured
-// with.
-//
-// Each candidate is passed to `measure` by name. That is the whole calling
-// convention: a function `(size: int) -> int` goes in as a parameter, because a
-// function value cannot be stored in a record field and so there is no list of
-// cases to loop over. `bench/cases/catalog` has the version that runs all
-// forty-six by name, at the cost of a string comparison per call.
-
 import { measure, quick, Result } from bench/time
 import { table_of, heading, footnote } from bench/report
 import { compare, comparison_table, summary, Tolerance } from bench/compare
@@ -45,14 +29,6 @@ main() -> int {
     0
 }
 
-// A comparison needs two runs, and a demo has one. Halving the iteration count
-// of a stored result doubles its cost per call, so this makes a baseline that
-// every case has moved against, which is what the table is here to show.
-//
-// A real caller loads the baseline instead:
-//
-//   before = load("bench/baseline.json")
-//   info(comparison_table(compare(before, results, Tolerance)))
 against_baseline(now: Result[]) -> str {
     deltas = compare(pretend_older(now, 0, []), now, Tolerance)
 

@@ -1,9 +1,3 @@
-// `spawn f(x)` cannot start a variadic.
-//
-// A task boundary carries integer-width slots and the collection into a list is
-// something an ordinary call site does, which `spawn` is not: it passed the
-// callee a 9 where the list was expected, and the program printed a pointer.
-
 grow(...seed: int) -> int => seed.length()
 
 main() -> int {

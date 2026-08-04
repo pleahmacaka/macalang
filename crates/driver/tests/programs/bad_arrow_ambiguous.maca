@@ -1,7 +1,3 @@
-// Every entry a distinct `name = value`, separated only by newlines: this is a
-// record literal and a block at once, and the parser refuses it by name rather
-// than picking one silently.
-
 Point = { x: int, y: int }
 
 mk() -> Point => {

@@ -1,14 +1,3 @@
-// selfhost/parser: a recursive-descent parser slice, written in Maca.
-//
-// Consumes the `Token[]` from lexer.maca and produces `Expr` nodes from
-// ast.maca. Maca surface has no tuples, so a parse step threads its result as a
-// `PExpr { node, next }` record: the parsed node plus the next token index.
-//
-// It is a slice of the real grammar, not all of it, and it grows one construct
-// at a time, each addition gated by compiling and running what it emits.
-// Anything it cannot parse is a token it walks past, not a diagnostic: the
-// stage-0 front-end is still the one that rejects bad input.
-
 import selfhost/token
 import selfhost/ast
 import selfhost/lexer
@@ -45,9 +34,6 @@ PBlock = {
 mk_pblock(bstmts: Stmt[], bnext: int) -> PBlock =>
     PBlock { bstmts, bnext }
 
-// `anext` is past the closing bracket; `PParams.pnext` sits on it. The two
-// differ because a parameter list's caller has a `->` to look at next and a
-// call's does not.
 PArgs = {
     aitems: Expr[]
     anext: int
@@ -56,13 +42,10 @@ PArgs = {
 mk_pargs(aitems: Expr[], anext: int) -> PArgs =>
     PArgs { aitems, anext }
 
-// ---- function definitions -------------------------------------------------
-
-// fn := ident '(' params ')' [ '->' type ] ( '=>' expr | '{' stmt* '}' )
 parse_fn(ts: Token[], i: int) -> PStmt {
     name = ts.get(i).text
-    pp = parse_params(ts, i + 2, [])   // i+1 is '(' ; params start at i+2
-    afterp = pp.pnext + 1              // skip ')'
+    pp = parse_params(ts, i + 2, [])
+    afterp = pp.pnext + 1
     body_at = after_return_type(ts, afterp)
 
     if ts.get(body_at).kind == LBrace {
@@ -72,8 +55,6 @@ parse_fn(ts: Token[], i: int) -> PStmt {
     }
 }
 
-// "" for a signature with no `-> R`. The emitters read that as `int`/`i64`
-// rather than as an error, which is what makes an unannotated function compile.
 return_type(ts: Token[], at: int) -> str {
     if ts.get(at).kind != Arrow {
         ""
@@ -84,8 +65,6 @@ return_type(ts: Token[], at: int) -> str {
     }
 }
 
-// Kept separate from `return_type` so the two never disagree about how many
-// tokens a `[]` suffix costs.
 after_return_type(ts: Token[], at: int) -> int {
     if ts.get(at).kind != Arrow {
         at
@@ -98,20 +77,19 @@ after_return_type(ts: Token[], at: int) -> int {
 
 mk_arrow_fn(ts: Token[], name: str, ret: str, params: Expr[],
             at: int) -> PStmt {
-    be = parse_expr(ts, at + 1)        // skip '=>'
+    be = parse_expr(ts, at + 1)
     mk_pstmt(s_fn(name, ret, params, [s_expr(be.node)]), be.next)
 }
 
 mk_block_fn(ts: Token[], name: str, ret: str, params: Expr[],
             at: int) -> PStmt {
-    pb = parse_block(ts, at + 1, [])   // skip '{'
+    pb = parse_block(ts, at + 1, [])
     mk_pstmt(s_fn(name, ret, params, pb.bstmts), pb.bnext)
 }
 
-// block := '{' ( ident '=' expr | expr )* '}'
 parse_block(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
     if ts.get(i).kind == RBrace {
-        mk_pblock(acc, i + 1)          // skip '}'
+        mk_pblock(acc, i + 1)
     } else if ts.get(i).kind == TIdent && ts.get(i + 1).kind == Eq {
         parse_bind_stmt(ts, i, acc)
     } else {
@@ -121,7 +99,7 @@ parse_block(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
 
 parse_bind_stmt(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
     name = ts.get(i).text
-    v = parse_expr(ts, i + 2)          // skip 'name ='
+    v = parse_expr(ts, i + 2)
     parse_block(ts, v.next, acc ++ [s_bind(name, v.node)])
 }
 
@@ -130,17 +108,11 @@ parse_expr_stmt(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
     parse_block(ts, e.next, acc ++ [s_expr(e.node)])
 }
 
-// The lexer drops newlines, so items sit back-to-back with nothing separating
-// them: each parse step has to return exactly where the next one begins or the
-// rest of the file is read at the wrong offset.
-//
-// `import` lines are walked past rather than recorded. The driver has already
-// resolved and inlined them by the time this runs.
 parse_module(ts: Token[], i: int, acc: Stmt[]) -> Module {
     if ts.get(i).kind == Eof {
         Module { items = acc }
     } else if ts.get(i).kind == KwImport {
-        parse_module(ts, import_end(ts, i + 1), acc)   // skip the import path
+        parse_module(ts, import_end(ts, i + 1), acc)
     } else if is_record_decl(ts, i) {
         parse_record_decl(ts, i, acc)
     } else if is_sum_decl(ts, i) {
@@ -156,9 +128,6 @@ binds_a_name(ts: Token[], i: int) -> bool =>
 is_record_decl(ts: Token[], i: int) -> bool =>
     binds_a_name(ts, i) && ts.get(i + 2).kind == LBrace
 
-// `Name = A | B` and `Name = Circle(int) | Rect(int, int)`. A payload puts a
-// `(` where the bar would be, so both openings count; the capitalized first
-// variant is what separates a sum from `X = f(1)`.
 is_sum_decl(ts: Token[], i: int) -> bool {
     if !binds_a_name(ts, i) || ts.get(i + 2).kind != TIdent {
         false
@@ -169,12 +138,9 @@ is_sum_decl(ts: Token[], i: int) -> bool {
     }
 }
 
-// A sum's variants are capitalized and a called function's name is not, which
-// is the whole of what separates `Color = Red | Green` from `x = f(1)`.
 is_upper(w: str) -> bool =>
     w.length() > 0 && w.at(0).is_alpha() && w.at(0).upper() == w.at(0)
 
-// `i` is on the first path segment, and a path is `Ident ('/' Ident)*`.
 import_end(ts: Token[], i: int) -> int {
     if ts.get(i + 1).kind == Slash {
         import_end(ts, i + 2)
@@ -183,16 +149,12 @@ import_end(ts: Token[], i: int) -> int {
     }
 }
 
-// `i` is on the name, so the first variant is at `i + 2`, past `Name =`.
 parse_sum_decl(ts: Token[], i: int, acc: Stmt[]) -> Module {
     name = ts.get(i).text
     sv = parse_variants(ts, i + 2, [])
     parse_module(ts, sv.pnext, acc ++ [s_sum(name, sv.params)])
 }
 
-// A payload's declared types ride as the variant node's children, which is what
-// lets the Rust emitter write a real `enum Shape { Circle(i64) }` rather than a
-// tag and a row of untyped cells.
 parse_variants(ts: Token[], i: int, acc: Expr[]) -> PParams {
     v = parse_variant(ts, i)
     seen = acc ++ [v.node]
@@ -214,7 +176,6 @@ parse_variant(ts: Token[], i: int) -> PExpr {
     }
 }
 
-// `i` sits on the first type, past the `(`.
 parse_payload(ts: Token[], i: int, v: Expr) -> PExpr {
     if ts.get(i).kind == RParen {
         mk_pexpr(v, i + 1)
@@ -231,16 +192,12 @@ parse_fn_item(ts: Token[], i: int, acc: Stmt[]) -> Module {
     parse_module(ts, ps.snext, acc ++ [ps.snode])
 }
 
-// `i` is on the name, so the fields start at `i + 3`, past `Name = {`.
 parse_record_decl(ts: Token[], i: int, acc: Stmt[]) -> Module {
     name = ts.get(i).text
     rf = parse_fields(ts, i + 3, [])
-    // skip the closing brace
     parse_module(ts, rf.pnext + 1, acc ++ [s_record(name, rf.params)])
 }
 
-// `pnext` lands *on* the closing brace, not past it. The caller skips it,
-// because a record declaration and a record literal end differently.
 parse_fields(ts: Token[], i: int, acc: Expr[]) -> PParams {
     if ts.get(i).kind == RBrace {
         mk_pparams(acc, i)
@@ -251,14 +208,12 @@ parse_fields(ts: Token[], i: int, acc: Expr[]) -> PParams {
 
 parse_one_field(ts: Token[], i: int, acc: Expr[]) -> PParams {
     fname = ts.get(i).text
-    ftype = ts.get(i + 2).text       // 'name : Type'
+    ftype = ts.get(i + 2).text
     seen = acc ++ [e_param(fname, ftype)]
 
     parse_fields(ts, skip_comma(ts, i + 3), seen)
 }
 
-// A comma between items is optional in this grammar. A newline separates them
-// just as well, and the lexer has already dropped it.
 skip_comma(ts: Token[], i: int) -> int {
     if ts.get(i).kind == Comma {
         i + 1
@@ -281,8 +236,6 @@ parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
     parse_params(ts, skip_comma(ts, after_param_type(ts, i)), seen)
 }
 
-// "" for an unannotated parameter. The checker reads that as gradual rather
-// than as an error. See `param_ty` in check.maca.
 param_type(ts: Token[], i: int) -> str {
     if ts.get(i + 1).kind != Colon {
         ""
@@ -303,13 +256,6 @@ after_param_type(ts: Token[], i: int) -> int {
     }
 }
 
-// expr := precedence-climbing over primaries. `prec_of` gives each binary
-// operator its binding power (0 = not an operator); `parse_bin` consumes
-// operators of at least `min_prec`, recursing at `p + 1` for left-associative
-// binding, so `a + b * c` parses correctly as `a + (b * c)`.
-// Binding power, tightest first: `* / %` > `+ - ++` > comparison > `&&` > `||`.
-// `parse_expr` starts at 1 so `||` (the loosest) is still consumed; a trailing
-// ternary, looser still, is handled after `parse_bin` returns.
 prec_of(k: Kind) -> int {
     is_cmp = k == EqEq || k == NotEq || k == Lt || k == Gt || k == Le || k == Ge
 
@@ -328,8 +274,6 @@ prec_of(k: Kind) -> int {
     }
 }
 
-// expr := binary [ '?' expr ':' expr ]. A trailing ternary is lowest-
-// precedence and right-associative (its branches recurse through parse_expr).
 parse_expr(ts: Token[], i: int) -> PExpr {
     lhs = parse_bin(ts, parse_primary(ts, i), 1)
 
@@ -341,8 +285,8 @@ parse_expr(ts: Token[], i: int) -> PExpr {
 }
 
 parse_ternary(ts: Token[], cond: PExpr) -> PExpr {
-    then = parse_expr(ts, cond.next + 1)      // skip '?'
-    els = parse_expr(ts, then.next + 1)       // skip ':'
+    then = parse_expr(ts, cond.next + 1)
+    els = parse_expr(ts, then.next + 1)
     mk_pexpr(e_ternary(cond.node, then.node, els.node), els.next)
 }
 
@@ -364,7 +308,6 @@ climb(ts: Token[], lhs: PExpr, p: int, min_prec: int) -> PExpr {
     parse_bin(ts, mk_pexpr(node, rhs.next), min_prec)
 }
 
-// primary := atom { '.' field | '.' method '(' args ')' }
 parse_primary(ts: Token[], i: int) -> PExpr =>
     parse_postfix(ts, parse_atom(ts, i))
 
@@ -376,8 +319,6 @@ parse_postfix(ts: Token[], e: PExpr) -> PExpr {
     }
 }
 
-// A `.name`: a method call `recv.name(args)` when a `(` follows, else a plain
-// field access.
 parse_dot(ts: Token[], e: PExpr) -> PExpr {
     name = ts.get(e.next + 1).text
     after = e.next + 2
@@ -394,12 +335,6 @@ parse_method(ts: Token[], recv: Expr, name: str, lparen: int) -> PExpr {
     parse_postfix(ts, mk_pexpr(e_method(recv, name, a.aitems), a.anext))
 }
 
-// A string literal, interpolations included.
-//
-// `"n = {x}"` desugars here, in the parser, to `"n = " ++ str(x)`. The concat
-// and `str` forms both back ends already emit. That is the same trick stage-0
-// uses for format specs: spell the sugar once, in front of the emitters, and
-// every target gets it without knowing.
 str_node(raw: str) -> Expr {
     if raw.contains("\{") {
         interp_node(raw)
@@ -411,8 +346,6 @@ str_node(raw: str) -> Expr {
 interp_node(raw: str) -> Expr =>
     join_parts(split_interp(raw.chars(), 0, false, "", []), 0, e_str(""))
 
-// Alternating literal and expression pieces: even indices are literal text,
-// odd indices are the source of an interpolation.
 split_interp(cs: str[], i: int, inside: bool, cur: str,
              acc: str[]) -> str[] {
     if i >= cs.length() {
@@ -448,21 +381,15 @@ add_part(acc: Expr, piece: str, i: int) -> Expr {
     } else if i % 2 == 1 {
         e_binary("++", acc, e_call("str", [parse_fragment(piece)]))
     } else if piece == "" {
-        // Two interpolations in a row leave an empty literal between them.
         acc
     } else {
         e_binary("++", acc, e_str(piece))
     }
 }
 
-// Parse an interpolation's source. It is a whole expression in its own right,
-// so it goes back through the lexer and the expression parser, which is what
-// makes `"{a + b}"` and `"{f(x)}"` work rather than only bare names.
 parse_fragment(src: str) -> Expr =>
     parse_expr(lex(src), 0).node
 
-// atom := '-'|'!' atom | int | float | str | bool | ident [call | record]
-//       | '(' expr ')'
 parse_atom(ts: Token[], i: int) -> PExpr {
     t = ts.get(i)
     match t.kind {
@@ -481,8 +408,6 @@ parse_atom(ts: Token[], i: int) -> PExpr {
     }
 }
 
-// The elements go through the argument collector's shape, stopping at `]`
-// instead of `)`: a list literal and an argument list differ only in that.
 parse_list(ts: Token[], i: int) -> PExpr {
     el = parse_list_elems(ts, i + 1, [])
     mk_pexpr(e_list(el.aitems), el.anext)
@@ -490,7 +415,7 @@ parse_list(ts: Token[], i: int) -> PExpr {
 
 parse_list_elems(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     if ts.get(i).kind == RBracket {
-        mk_pargs(acc, i + 1)            // skip ']'
+        mk_pargs(acc, i + 1)
     } else {
         parse_one_elem(ts, i, acc)
     }
@@ -502,26 +427,23 @@ parse_one_elem(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     parse_list_elems(ts, skip_comma(ts, e.next), acc ++ [e.node])
 }
 
-// match := 'match' expr '{' ( pattern '=>' expr )* '}'
 parse_match(ts: Token[], i: int) -> PExpr {
-    scrut = parse_expr(ts, i + 1)          // after 'match'
-    arms = parse_arms(ts, scrut.next + 1, [scrut.node])   // skip '{'
+    scrut = parse_expr(ts, i + 1)
+    arms = parse_arms(ts, scrut.next + 1, [scrut.node])
     mk_pexpr(e_match(arms.aitems), arms.anext)
 }
 
 parse_arms(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     if ts.get(i).kind == RBrace {
-        mk_pargs(acc, i + 1)               // skip '}'
+        mk_pargs(acc, i + 1)
     } else {
         parse_one_arm(ts, i, acc)
     }
 }
 
-// A pattern's binders ride as its children, so an arm with none is a bare
-// ident and the emitters can tell a tag test from a destructuring by length.
 parse_one_arm(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     p = parse_pattern(ts, i)
-    body = parse_expr(ts, p.next + 1)      // skip '=>'
+    body = parse_expr(ts, p.next + 1)
 
     parse_arms(ts, body.next, acc ++ [p.node, body.node])
 }
@@ -546,14 +468,11 @@ parse_binders(ts: Token[], i: int, p: Expr) -> PExpr {
     }
 }
 
-// Prefix negation: `-e` binds tighter than any binary operator, so it wraps the
-// following primary.
 parse_neg(ts: Token[], i: int) -> PExpr {
     operand = parse_primary(ts, i + 1)
     mk_pexpr(e_unary("-", operand.node), operand.next)
 }
 
-// Same tight binding as `parse_neg`, for the same reason.
 parse_not(ts: Token[], i: int) -> PExpr {
     operand = parse_primary(ts, i + 1)
     mk_pexpr(e_unary("!", operand.node), operand.next)
@@ -561,14 +480,9 @@ parse_not(ts: Token[], i: int) -> PExpr {
 
 parse_paren(ts: Token[], i: int) -> PExpr {
     inner = parse_expr(ts, i + 1)
-    mk_pexpr(inner.node, inner.next + 1)   // skip the closing ')'
+    mk_pexpr(inner.node, inner.next + 1)
 }
 
-// An ident may head a call `name(...)`, a record literal `Name { f = v, … }`,
-// or stand alone. A record literal is recognized only when the brace opens a
-// `field =` assignment, so a `match`'s `scrutinee { pat => … }` (whose brace is
-// followed by `pat =>`, not `field =`) is left for the match parser, not eaten
-// as a record literal.
 parse_call_or_ident(ts: Token[], i: int) -> PExpr {
     name = ts.get(i).text
 
@@ -588,7 +502,6 @@ opens_record_lit(ts: Token[], i: int) -> bool {
     opens && named && ts.get(i + 3).kind == Eq
 }
 
-// `i` is on the type name, so the fields start at `i + 2`, past `Name {`.
 parse_record_lit(ts: Token[], i: int, name: str) -> PExpr {
     rf = parse_lit_fields(ts, i + 2, [])
     mk_pexpr(e_record(name, rf.aitems), rf.anext)
@@ -596,7 +509,7 @@ parse_record_lit(ts: Token[], i: int, name: str) -> PExpr {
 
 parse_lit_fields(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     if ts.get(i).kind == RBrace {
-        mk_pargs(acc, i + 1)            // skip '}'
+        mk_pargs(acc, i + 1)
     } else {
         parse_one_lit_field(ts, i, acc)
     }
@@ -604,20 +517,20 @@ parse_lit_fields(ts: Token[], i: int, acc: Expr[]) -> PArgs {
 
 parse_one_lit_field(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     fname = ts.get(i).text
-    v = parse_expr(ts, i + 2)           // 'field = value'
+    v = parse_expr(ts, i + 2)
     seen = acc ++ [e_binary("=", e_ident(fname), v.node)]
 
     parse_lit_fields(ts, skip_comma(ts, v.next), seen)
 }
 
 parse_call(ts: Token[], i: int, name: str) -> PExpr {
-    a = parse_args(ts, i + 2, [])      // i+1 is '(' ; args start at i+2
+    a = parse_args(ts, i + 2, [])
     mk_pexpr(e_call(name, a.aitems), a.anext)
 }
 
 parse_args(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     if ts.get(i).kind == RParen {
-        mk_pargs(acc, i + 1)            // skip ')'
+        mk_pargs(acc, i + 1)
     } else {
         parse_one_arg(ts, i, acc)
     }

@@ -1,4 +1,3 @@
-// Maca native backend: the `greet` command the UI invokes.
 main(args: str[]) -> int {
     name = args.join(" ")
     info("Hello, {name}!")

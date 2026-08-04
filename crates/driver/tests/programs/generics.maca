@@ -1,19 +1,9 @@
-// A generic function that names its own element type.
-//
-// `first(xs: a[]) -> a` is the most natural generic signature there is, and
-// two things had to be true before it worked. A call has to bind `a` by looking
-// *into* the argument's type rather than only at a parameter written as a bare
-// variable. And the body has to be lowered knowing what `a` turned out to be,
-// or a local declared `a[]` is the fallback array and nothing can be put in it.
-
 Row = { name: str, size: int }
 
 label(r: Row) -> str => r.name
 
 size_key(r: Row) -> str => str(r.size).pad_start(6, "0")
 
-// The shape that needed both fixes: a type variable inside the parameter's
-// type, a local of that type, and a function parameter over it.
 sort_by(xs: a[], key: (a) -> str) -> a[] {
     ranked: str[] = []
     for x in xs {
@@ -38,9 +28,6 @@ pick(xs: a[], key: (a) -> str, want: str, i: int) -> a {
 
 first_of(xs: a[]) -> a => xs.get(0)
 
-// A local whose type mentions the variable and is a *container*: the pass that
-// instantiates array and map types runs long before this is specialized, so the
-// C type it names has to be defined late or not at all.
 group_pairs(xs: a[]) -> a[][] {
     out: a[][] = []
     for x in xs {
@@ -59,8 +46,6 @@ index_by(xs: a[], key: (a) -> str) -> Map str a {
     m
 }
 
-// The same generic at two different return types: the mangled name has to tell
-// them apart or the C compiler is handed one symbol with two signatures.
 apply_to(x: a, f: (a) -> b) -> b => f(x)
 
 size_of(r: Row) -> int => r.size
@@ -115,7 +100,6 @@ test_a_generic_local_may_be_a_container_of_the_element_type() {
     assert_eq(indexed.get("a", Row { name = "?", size = 0 }).name, "a", "keyed by name")
 }
 
-// A lambda, not a named function, which is the whole point of taking a key.
 test_a_lambda_may_be_passed_where_a_function_type_is_declared() {
     rows = [Row { name = "c", size = 3 }, Row { name = "a", size = 1 }]
     sorted = sort_by(rows, r => r.name)

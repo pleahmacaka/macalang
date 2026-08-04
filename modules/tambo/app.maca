@@ -1,47 +1,3 @@
-// tambo/app: the routing table, declared by chaining.
-//
-// A tambo is a waystation on the Inca road: the place a traveller stops along
-// a route. That is what a handler is, so that is the name.
-//
-//     Site = app()
-//         .route("GET", "/", "home")
-//         .route("GET", "/user/:id", "show_user")
-//         .route("POST", "/user", "create_user")
-//         .fallback("not_found")
-//
-// Two things in that declaration went the opposite way to the obvious one, and
-// both are worth reading before the rest of the file.
-//
-// The third argument is the *name* of a handler, not the handler. Maca has no
-// function values in record fields, so a table holding handlers could not be a
-// value at all. A table of names turns out to be the better shape anyway: the
-// program gets one `match` where every handler is named, in one place, and the
-// table stays data: printable, countable, checkable.
-//
-//     handle(ctx: Ctx) -> Response {
-//         match ctx.name {
-//             "home" => text("hello")
-//             "show_user" => text(ctx.param("id"))
-//             _ => pass()
-//         }
-//     }
-//
-// What that costs is that a name and its arm can drift apart with nothing to
-// catch it. `tambo/dispatch` buys it back at startup: `serve` asks `handle`
-// for every declared name before it binds a port, and refuses to start, naming
-// the ones with no arm. A missing arm is a mistake in the program, so it is
-// reported as one, never as a 404, which would send whoever reads the log
-// hunting a routing bug that is not there.
-//
-// The method is an argument rather than the function name. `.get(…)` is what
-// this wanted to be, and it cannot be: a compiled Maca program has one
-// namespace, so a top-level three-argument `get` captures every
-// `m.get(key, fallback)` in it, tambo's own included, and the build fails
-// inside a file the author never opened. `.on(…)` was the next choice, and
-// `cli/parse` has that one already, for a flag. So `route` for every method,
-// which costs a few characters and puts the method in the column
-// `routes_table` prints it in.
-
 import { bind_path, more_specific } from tambo/route
 
 /// One row of the table.
@@ -55,23 +11,19 @@ Route = {
 /// A routing table, plus the three handlers that are not routes.
 App = {
     routes: Route[]
-    /// Runs before the route, for every request. "" for none.
+    /// Runs before the route, for every request.
     before: str
-    /// Runs after it, with the response so far in `ctx.reply`. "" for none.
+    /// Runs after it, with the response so far in `ctx.reply`.
     after: str
-    /// Runs when nothing matched. "" leaves tambo's own 404.
+    /// Runs when nothing matched.
     fallback: str
 }
 
-/// An empty app. Everything below adds one thing to it and hands it back, so a
-/// table is written as a chain and reads as the list it is.
+/// An empty app.
 app() -> App =>
     App { routes = [], before = "", after = "", fallback = "" }
 
 /// `method pattern` → the handler called `name`.
-///
-/// The method is upper-cased on the way in, because a client's is too and a
-/// table that only answered `Get` would answer nothing.
 route(a: App, method: str, pattern: str, name: str) -> App =>
     a with {
         routes = a.routes.push(Route {
@@ -81,27 +33,15 @@ route(a: App, method: str, pattern: str, name: str) -> App =>
         })
     }
 
-/// The handler for a request nothing matched. Without one, that is a 404 with
-/// the status as its body.
+/// The handler for a request nothing matched.
 fallback(a: App, name: str) -> App =>
     a with { fallback = name }
 
-/// The handler every request passes through first: a log line, a clock start,
-/// an authorization check. Answering anything but `pass()` stops the request
-/// there, which is how the check refuses.
-///
-/// A misspelt name here is the one drift `missing_handlers` cannot catch, and
-/// it fails open: `pass()` is both "no such arm" and "let this through", so a
-/// `.before("gaurd")` silently admits everybody. Assert the arm in your own
-/// tests: call `handle` with the hook's name and check it does not pass.
+/// The handler every request passes through first: a log line, a clock start, an authorization check.
 before(a: App, name: str) -> App =>
     a with { before = name }
 
-/// The handler every response passes through last, with the response in
-/// `ctx.reply`. Answering `pass()` leaves it alone.
-///
-/// Misspelling this name is silent too, for the same reason, but it costs a
-/// header rather than a locked door.
+/// The handler every response passes through last, with the response in `ctx.reply`.
 after(a: App, name: str) -> App =>
     a with { after = name }
 
@@ -111,18 +51,11 @@ Pick = {
     name: str
     pattern: str
     params: Map str str
-    /// The methods this path *would* have answered to, when `ok` is false. A
-    /// non-empty list means 405 rather than 404: the path exists and the
-    /// method is the thing that was wrong, and saying so saves a caller from
-    /// hunting a URL that was right all along.
+    /// The methods this path *would* have answered to, when `ok` is false.
     allowed: str[]
 }
 
 /// The route a method and path chose, if any.
-///
-/// Every matching route is considered and the most specific wins. See
-/// `more_specific` in `tambo/route`. Declaration order only breaks a tie
-/// between patterns of identical shape.
 lookup(a: App, method: str, path: str) -> Pick {
     want = method.upper()
     best = nothing()
@@ -142,13 +75,9 @@ lookup(a: App, method: str, path: str) -> Pick {
         i = i + 1
     }
 
-    // `sort` so `Allow:` reads the same on every run. A header that shuffles
-    // between builds is a diff nobody can review.
     best.ok ? best : best with { allowed = others.sort() }
 }
 
-// Keep whichever of the two is more specific, and the incumbent on a tie,
-// which is what makes declaration order a tie-break rather than a priority.
 better(best: Pick, r: Route, hit: Bound) -> Pick {
     if best.ok && !more_specific(r.pattern, best.pattern) {
         best
@@ -164,12 +93,7 @@ nothing() -> Pick {
     Pick { ok = false, name = "", pattern = "", params = empty, allowed = [] }
 }
 
-/// The routing table as text, one route to a line, in declaration order. An
-/// app with no routes gives "".
-///
-/// For a program that wants to print what it serves. Reading it against the
-/// `match` in the source is how you check that the two agree by eye;
-/// `missing_handlers` is how you check it by machine.
+/// The routing table as text, one route to a line, in declaration order.
 routes_table(a: App) -> str =>
     rows(a.routes, 0, []).join("\n")
 
@@ -184,8 +108,5 @@ rows(rs: Route[], i: int, acc: str[]) -> str[] {
     }
 }
 
-// A column that always ends in at least one space. Padding alone does nothing
-// to a value already wider than the column, and `/user/:id/posts/:post/edit`
-// is wider than 26, so the pattern ran straight into the handler's name.
 column(s: str, w: int) -> str =>
     (s ++ " ").pad_end(w, " ")

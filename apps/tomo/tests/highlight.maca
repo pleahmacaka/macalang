@@ -1,17 +1,5 @@
-// Behaviour tests for `apps/tomo/highlight`, run with
-// `maca test apps/tomo/tests/highlight.maca`.
-//
-// Each case is one of the lexical distinctions the highlighter exists to get
-// right, written as the smallest source that can go wrong. What is asserted is
-// which span a piece of text lands in, never a whole HTML string: the theme is
-// free to change without this file being rewritten.
-//
-// The inputs are Maca source *inside* Maca source, so a brace meant for the
-// highlighter is written `\{` and a quote `\"`.
-
 import { highlight } from apps/tomo/highlight
 
-// The markup one class wraps `text` in, as a probe to search the output for.
 kw(text: str) -> str => "<span class=\"tok-kw\">{text}</span>"
 
 op(text: str) -> str => "<span class=\"tok-op\">{text}</span>"
@@ -31,15 +19,12 @@ test_keywords_types_and_definitions() {
     assert(out.contains(op("-&gt;")), "an arrow is one token: {out}")
 }
 
-// A call that opens a line is not a definition, and example bodies are full of
-// them.
 test_a_call_is_not_a_definition() {
     out = highlight("maca", "info(\"x\")\n")
 
     assert(!out.contains("tok-fn"), "info(...) is a call: {out}")
 }
 
-// The attached/spaced rule, which the whole language leans on, twice.
 test_attached_propagate_versus_spaced_ternary() {
     prop = highlight("maca", "x = read()?\n")
     tern = highlight("maca", "y = a ? b : c\n")
@@ -58,8 +43,6 @@ test_format_spec_versus_ternary_in_an_interpolation() {
            "a ternary inside a string: {tern}")
 }
 
-// An interpolated expression is code, and a string nested inside one is a
-// string again.
 test_interpolations_are_scanned_as_code() {
     out = highlight("maca", "s = \"n=\{1 + 2\}\"\n")
     nested = highlight("maca", "s = \"\{f(\"in\")\}\"\n")
@@ -83,7 +66,6 @@ test_comments_and_doc_comments_differ() {
     assert(out.contains("<span class=\"tok-com\">// note</span>"), "plain")
 }
 
-// A `"""…"""` block is one string however many quotes and braces are in it.
 test_raw_strings_are_one_token() {
     out = highlight("maca", "css() -> str => \"\"\"a\{b\}c\"\"\"\n")
 
@@ -91,17 +73,12 @@ test_raw_strings_are_one_token() {
     assert(out.contains("a\{b\}c"), "the body survives whole: {out}")
 }
 
-// The failure this is here to prevent: one unbalanced quote colouring the rest
-// of the file as a string.
 test_an_unterminated_string_ends_at_the_line() {
     out = highlight("maca", "a = \"oops\nconst b = 1\n")
 
     assert(out.contains(kw("const")), "the next line is still code: {out}")
 }
 
-// `from` is a keyword to the parser in one place and a name everywhere else.
-// This book has both: `import { x } from a/b`, and a record field called
-// `from`.
 test_from_is_a_keyword_only_in_an_import() {
     imp = highlight("maca", "import \{ centroid \} from geometry\n")
     field = highlight("maca", "Line = \{\n    from: Point\n\}\n")
@@ -127,7 +104,6 @@ test_radix_literals_keep_their_separators() {
     assert(out.contains(num("1.5")), "a float is one token")
 }
 
-// `/tmp` is a path where an operand is expected; `a / b` is a division.
 test_paths_only_where_an_operand_is_expected() {
     path = highlight("maca", "p = /tmp/x\n")
     div = highlight("maca", "q = a / b\n")
@@ -136,9 +112,6 @@ test_paths_only_where_an_operand_is_expected() {
     assert(div.contains(op("/")), "a spaced slash divides: {div}")
 }
 
-// The three closers complete an operand together: `expect_operand` lists
-// `RBrace` beside `RParen` and `RBracket`. Reading `}` the other way made the
-// slash after it open a path literal instead of dividing.
 test_every_closer_completes_an_operand() {
     brace = highlight("maca", "n = f(x) \} /tmp\n")
     bracket = highlight("maca", "n = xs[0] /tmp\n")
@@ -155,7 +128,6 @@ test_everything_is_escaped() {
     assert(!out.contains("<b>"), "no raw tag reaches the page")
 }
 
-// The hook: a tag with no highlighter is escaped and otherwise left alone.
 test_an_unknown_tag_falls_through_to_plain_text() {
     out = highlight("brainfuck", "+[-]<>\n")
 
@@ -178,8 +150,6 @@ test_a_shell_block_keeps_its_flags_whole() {
     assert(!out.contains(op("-")), "no bare operator in a command: {out}")
 }
 
-// A URL is the commonest thing in an install chapter, and it is not an
-// assignment however much its `:` looks like one.
 test_a_url_is_not_a_key() {
     out = highlight("sh", "curl -fsSL https://example.com/x.sh | bash\n")
 
@@ -187,8 +157,6 @@ test_a_url_is_not_a_key() {
     assert(!out.contains(op("/")), "a path separator is not division")
 }
 
-// A shell block that writes a whole program to a file is one string across
-// several lines; an apostrophe with no partner is not a string at all.
 test_a_generic_string_spans_lines_but_never_runs_away() {
     both = highlight("sh", "echo 'a\nb' > f\n")
     lone = highlight("sh", "echo it's fine\nmaca run f\n")

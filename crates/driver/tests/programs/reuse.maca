@@ -1,8 +1,3 @@
-// Perceus, the throughput half: a loop that builds and discards a value should
-// reuse one buffer rather than asking the allocator for a new one every round.
-//
-// Without codegen-inserted drops the reuse rate is 0.
-
 build(n: int) -> int[] {
     xs = []
     for i in 1..n {

@@ -1,42 +1,13 @@
-// cli/parse: a command line, read against what the command said it accepts.
-//
-// A refusal is a value, not an exit. The command decides what to do about a
-// bad argument (print help, suggest a fix, carry on with a default), and a
-// parser that called `exit` for it would take that decision away and make the
-// whole thing untestable besides.
-//
-//   got = parse(Greet, args)
-//   if got.error != "" {
-//       err(got.error)
-//       info(help(Greet))
-//       1
-//   } else {
-//       greet(got.value("name", ""), got.count("times", 1))
-//   }
-//
-// What is accepted:
-//
-//   --long value    --long=value    -s value    -s=value
-//   --flag          -f              -abc        (flags, bundled)
-//   --              everything after this is positional, whatever it looks like
-//
-// What is refused, by name: an option the command does not declare, a value
-// missing from an option that takes one, a positional too many, and a
-// positional missing. Each says what was wrong; the first three also say what
-// would have worked.
-
 import { find_long, find_short, found, long_names } from cli/spec
 
 Parsed = {
-    /// Every option given, by long name. A flag that was given is "true".
+    /// Every option given, by long name.
     opts: Map str str,
     /// The positionals, in order.
     args: str[],
-    /// Empty when the line was understood. Otherwise one line saying what was
-    /// wrong with it.
+    /// Empty when the line was understood.
     error: str,
-    /// Was `--help` or `-h` asked for? A command checks this before its
-    /// arguments, because `cmd --help` should work when the arguments do not.
+    /// Was `--help` or `-h` asked for?
     wants_help: bool,
 }
 
@@ -81,16 +52,11 @@ parse(c: Cmd, argv: str[]) -> Parsed {
     out.error != "" || out.wants_help ? out : check_args(c, out)
 }
 
-// Where reading one argument got to, and what it made of it. Two answers from
-// one step, which a record says and a return value cannot.
 Step = { parsed: Parsed, next: int }
 
-// Stop here, with a reason. The index still advances so the caller's loop can
-// end normally rather than on a special case.
 refuse(p: Parsed, why: str, i: int) -> Step =>
     Step { parsed = p with { error = why }, next = i + 1 }
 
-// `--name`, `--name value`, or `--name=value`.
 take_long(c: Cmd, p: Parsed, body: str, argv: str[], i: int) -> Step {
     cut = body.index_of("=")
     name = cut >= 0 ? body.substr(0, cut) : body
@@ -115,7 +81,6 @@ take_long(c: Cmd, p: Parsed, body: str, argv: str[], i: int) -> Step {
     }
 }
 
-// `-s`, `-s value`, `-s=value`, or a bundle of flags like `-abc`.
 take_short(c: Cmd, p: Parsed, body: str, argv: str[], i: int) -> Step {
     cut = body.index_of("=")
     name = cut >= 0 ? body.substr(0, cut) : body.substr(0, 1)
@@ -127,8 +92,6 @@ take_short(c: Cmd, p: Parsed, body: str, argv: str[], i: int) -> Step {
     } else if o.takes && cut >= 0 {
         Step { parsed = set(p, o.long, inline), next = i + 1 }
     } else if o.takes && body.length() > 1 {
-        // `-n3` is not `-n 3`. Two spellings for one thing is how `-n3` and
-        // `-n 3` end up meaning different numbers in the same program.
         why = "`-{name}` takes a value"
         refuse(p, why ++ ". Write `-{name} <value>` or `-{name}=<value>`", i)
     } else if o.takes {
@@ -142,8 +105,6 @@ take_short(c: Cmd, p: Parsed, body: str, argv: str[], i: int) -> Step {
     }
 }
 
-// `-abc` is three flags. A short that takes a value cannot be one of them: it
-// would need an argument, and there is nowhere in a bundle to put one.
 bundle(c: Cmd, p: Parsed, body: str, at: int) -> Parsed {
     if at >= body.length() || p.error != "" {
         p
@@ -178,8 +139,6 @@ needs_value(given: str, what: str) -> str =>
         ? "`{given}` needs a value"
         : "`{given}` needs a value: {what}"
 
-// The closest name within `best` edits, or "" when nothing is close. Bounded so
-// a wild typo gets no suggestion rather than a confusing one.
 nearest(want: str, names: str[], i: int, found: str, best: int) -> str {
     if i >= names.length() {
         found
@@ -191,7 +150,6 @@ nearest(want: str, names: str[], i: int, found: str, best: int) -> str {
     }
 }
 
-// Levenshtein, one row at a time, which is enough for `--verbsoe`.
 distance(a: str, b: str) -> int {
     prev = row(b.length() + 1, 0, [])
     i = 0
@@ -219,10 +177,6 @@ least(a: int, b: int, c: int) -> int {
     m < c ? m : c
 }
 
-// Too few positionals, or too many. Then each one is filed under the name the
-// command gave it, so `value("name", …)` reads a positional and an option the
-// same way. The command declared both, and which is which is a spelling
-// decision the reader of the command's body should not have to remember.
 check_args(c: Cmd, p: Parsed) -> Parsed {
     want = c.args.length()
     got = p.args.length()
@@ -243,25 +197,19 @@ name_args(c: Cmd, p: Parsed, i: int) -> Parsed {
     if i >= c.args.length() || i >= p.args.length() {
         p
     } else if c.args.get(i).many {
-        // the last one holds everything left, joined by a space for the name
-        // and reachable one at a time through `from(i)`
         set(p, c.args.get(i).name, p.args.slice(i, p.args.length()).join(" "))
     } else {
         name_args(c, set(p, c.args.get(i).name, p.args.get(i)), i + 1)
     }
 }
 
-/// The value given for `name`, or `fallback`. A command reads its options
-/// through this rather than through the map, so a name that was never declared
-/// reads as its default instead of as "".
+/// The value given for `name`, or `fallback`.
 value(p: Parsed, name: str, fallback: str) -> str => p.opts.get(name, fallback)
 
 /// Whether a flag was given.
 on(p: Parsed, name: str) -> bool => p.opts.get(name, "") == "true"
 
-/// A numeric option, or `fallback` when it was not given. A value that is not a
-/// number reads as 0, which `int` already does. Validating it is the command's
-/// business, since only the command knows what range is sensible.
+/// A numeric option, or `fallback` when it was not given.
 count(p: Parsed, name: str, fallback: int) -> int {
     v = p.opts.get(name, "")
     v == "" ? fallback : int(v)

@@ -1,10 +1,3 @@
-// String ownership, the throughput half: a loop that builds and discards
-// strings should hand the buffers back and get them again, not ask the
-// allocator for a new one every time.
-//
-// Without released strings this program allocated twenty thousand blocks and
-// kept every one of them. The reuse rate is what says otherwise.
-
 render(i: int) -> str => "<li>" ++ str(i) ++ "</li>"
 
 main() -> int {
@@ -18,8 +11,6 @@ main() -> int {
 
     assert_eq(str(total), "215500", "every row was built and measured")
 
-    // as a share of every allocation asked for, not of the ones that had to
-    // call malloc. The second reads as thousands of percent once reuse works
     reused = reuse_count() * 100 / (reuse_count() + alloc_count())
     info("reused={reused}%")
     assert(reused > 95, "almost every string came off the free-list")

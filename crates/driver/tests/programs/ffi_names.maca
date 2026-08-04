@@ -1,27 +1,12 @@
-// A binding named after a foreign namespace is still a binding.
-//
-// `import c "http.h"` registers `c` as the C FFI namespace, and a module drags
-// its own foreign imports along when it is inlined, so importing `http/server`
-// put `c` in scope for the whole program. A parameter called `c` then read as
-// that namespace: `c.is_whitespace()` was emitted as `/* c.is_whitespace */ ()`
-// and `cc` answered `expected expression before ')' token`.
-//
-// The rule it broke is the one a UI tag already follows: a definition or a
-// local always shadows a name the language supplies. `py` is here for the same
-// reason, since it is the other prefix.
-
 import http/server
 
-// A parameter, which is the shape the bug was found in.
 blank(c: str) -> bool => c.is_whitespace()
 
-// A local, which is bound rather than passed.
 trimmed() -> str {
     c = "  x  "
     c.trim()
 }
 
-// A `for` pattern variable, which the loop binds on each round.
 spaces(cs: str[]) -> int {
     n = 0
     for c in cs {
@@ -32,10 +17,8 @@ spaces(cs: str[]) -> int {
     n
 }
 
-// A lambda parameter, which is bound inside the closure rather than the frame.
 blanks(cs: str[]) -> int => cs.filter(c => c.is_whitespace()).length()
 
-// The other namespace prefix, and a name that is not one at all.
 py_local() -> str {
     py = "3.13"
     py.split(".").get(0)

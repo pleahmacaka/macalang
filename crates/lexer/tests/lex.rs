@@ -22,7 +22,6 @@ fn norm(s: &str) -> String {
 }
 
 /// Golden snapshot: lex an example, compare its dump to a committed file.
-/// Run with `UPDATE_GOLDEN=1 cargo test -p maca-lexer` to (re)generate.
 fn check_golden(name: &str) {
     let src = fs::read_to_string(examples_dir().join(name)).unwrap();
     let l = lex(&src);
@@ -59,11 +58,8 @@ fn golden_system() {
     check_golden("system.maca");
 }
 
-// ---- targeted rules ------------------------------------------------------
-
 #[test]
 fn path_literal_vs_divide() {
-    // operand position -> path literal
     assert_eq!(
         toks("x = /tmp"),
         vec![
@@ -73,7 +69,6 @@ fn path_literal_vs_divide() {
             Tok::Eof,
         ]
     );
-    // between operands -> divide/join operator
     assert_eq!(
         toks("a / b"),
         vec![
@@ -83,7 +78,6 @@ fn path_literal_vs_divide() {
             Tok::Eof,
         ]
     );
-    // relative and home paths
     assert_eq!(
         toks("import ./x.maca"),
         vec![Tok::Import, Tok::Path("./x.maca".into()), Tok::Eof,]
@@ -144,8 +138,6 @@ fn literal_braces() {
 
 #[test]
 fn trailing_comma_continues() {
-    // A trailing comma joins the next line: no Newline between the elements.
-    // (no Newline between a and b; the trailing newline at EOF is dropped)
     let t = toks("xs = a,\n     b\n");
     assert_eq!(
         t,
@@ -162,7 +154,6 @@ fn trailing_comma_continues() {
 
 #[test]
 fn multiline_ternary_joins() {
-    // Ternary `?`/`:` at line start continue the previous expression.
     let src = "v =\n    c\n        ? x\n        : y\n";
     let t = toks(src);
     assert_eq!(
@@ -191,7 +182,6 @@ fn hyphen_identifiers() {
             Tok::Eof,
         ]
     );
-    // subtraction still lexes as an operator when spaced
     assert_eq!(
         toks("a - b"),
         vec![
@@ -211,7 +201,6 @@ fn unterminated_string_reports_error() {
 
 #[test]
 fn raw_triple_quoted_string_is_verbatim() {
-    // a raw string keeps braces and quotes literally, no interpolation
     let lexed = maca_lexer::lex("x = \"\"\"a { b } \"c\" {d}\"\"\"\n");
     let texts: Vec<String> = lexed
         .tokens
@@ -229,7 +218,6 @@ fn raw_triple_quoted_string_is_verbatim() {
         vec!["a { b } \"c\" {d}".to_string()],
         "raw text not verbatim: {texts:?}"
     );
-    // no interpolation tokens were produced
     assert!(
         !lexed
             .tokens
@@ -238,16 +226,6 @@ fn raw_triple_quoted_string_is_verbatim() {
         "raw string interpolated"
     );
 }
-
-// ---- literal braces in strings --------------------------------------------
-//
-// `{` starts an interpolation, so a literal brace must be escaped. Getting that
-// wrong used to be silent: `"{"` opened an interpolation, the following `"`
-// opened a *nested* string, and that string swallowed source up to the next
-// quote, so the program compiled with the wrong text baked in. (It hid a real
-// bug in `tools/lint.maca`, whose single-line-`if` rule tested `contains("{")`
-// and therefore never matched anything.) A `"…"` string now stops at end of
-// line.
 
 fn errs(src: &str) -> Vec<String> {
     maca_lexer::lex(src)
@@ -275,7 +253,6 @@ fn a_bare_brace_in_a_string_is_an_error_not_a_silent_swallow() {
         e.iter().any(|m| m.contains("spans a line")),
         "expected a spans-a-line diagnostic, got {e:?}"
     );
-    // and it says how to fix it
     assert!(
         e.iter().any(|m| m.contains("\\{") && m.contains("{{")),
         "the diagnostic should name both brace escapes, got {e:?}"
@@ -292,7 +269,6 @@ fn both_brace_escapes_produce_a_literal_brace() {
 
 #[test]
 fn interpolation_and_raw_strings_still_work() {
-    // an unescaped brace is still an interpolation
     let toks = maca_lexer::lex(r#"x = "n={n}""#);
     assert!(toks.errors.is_empty(), "{:?}", toks.errors);
     assert!(
@@ -300,16 +276,8 @@ fn interpolation_and_raw_strings_still_work() {
             .iter()
             .any(|t| t.tok == maca_lexer::Tok::InterpStart)
     );
-    // a raw string is exempt: it may span lines and hold bare braces
     assert!(errs("x = \"\"\"a {\n} b\"\"\"").is_empty());
 }
-
-// ---- interpolation format specs --------------------------------------------
-//
-// `"{x:>8}"` ends in a format spec; `"{c ? a : b}"` ends in a ternary. Both use
-// a colon inside an interpolation, so the lexer separates them by attachment:
-// a spec's colon has no space before it, a ternary's does. That is the same
-// rule that already distinguishes `x?` from `c ? x : y`.
 
 fn specs(src: &str) -> Vec<String> {
     maca_lexer::lex(src)
@@ -330,7 +298,6 @@ fn a_format_spec_is_lexed_as_one_token() {
     assert_eq!(specs(r#""{x:^8}""#), vec!["^8"]);
     assert_eq!(specs(r#""{n:08}""#), vec!["08"]);
     assert_eq!(specs(r#""{pi:>10.3}""#), vec![">10.3"]);
-    // the expression before it is lexed normally
     assert_eq!(specs(r#""{a[0]:^5} {r.f:>2}""#), vec!["^5", ">2"]);
 }
 
@@ -343,23 +310,17 @@ fn a_spaced_colon_is_still_a_ternary() {
         "ternary read as a spec"
     );
     assert!(toks.tokens.iter().any(|t| t.tok == maca_lexer::Tok::Colon));
-    // and a ternary whose arms are strings, as the handbook writes it
     assert!(specs(r#""{n > 0 ? "yes" : "no"}""#).is_empty());
 }
 
 #[test]
 fn a_colon_outside_an_interpolation_is_not_a_spec() {
-    // type annotations are the common case
     assert!(specs("f(x: int) -> int => x").is_empty());
     assert!(specs("Point = {\n    x: int\n}").is_empty());
 }
 
 #[test]
 fn a_leading_boolean_operator_continues_the_line() {
-    // A long condition breaks either way: the operator can end the line or
-    // begin the next one. `&&` used to be accepted only at the end, while
-    // `||` was accepted at both, so the same condition parsed or didn't
-    // depending on which operator it happened to use.
     for (src, op) in [
         ("ok = a\n    && b\n", Tok::AmpAmp),
         ("ok = a\n    || b\n", Tok::BarBar),

@@ -1,13 +1,3 @@
-//! Every file that states the project's version states the same one.
-//!
-//! Six files carry it and nothing compared them, so a release could ship a
-//! `maca --version` that disagreed with the npm package, the Zed extension and
-//! the changelog it was cut from. Each of those is read by a different tool, so
-//! the disagreement surfaces as four separate confusing reports rather than as
-//! one build failure. The version is also what `install.sh` resolves and what
-//! the release workflow tags, which is why the changelog's newest heading is in
-//! here too: a release with no entry is a release nobody can read.
-
 use std::path::{Path, PathBuf};
 
 fn repo() -> PathBuf {
@@ -20,10 +10,6 @@ fn read(rel: &str) -> String {
 }
 
 /// The value of the first `key`-ish line, with quotes stripped.
-///
-/// Deliberately a line scan and not a TOML/JSON parse: the point is to read
-/// what a human editing the file sees, and pulling in two parsers to compare
-/// six strings would be more machinery than the thing it checks.
 fn field(src: &str, key: &str) -> String {
     for line in src.lines() {
         let line = line.trim();
@@ -49,8 +35,6 @@ fn newest_release(changelog: &str) -> String {
     for line in changelog.lines() {
         if let Some(rest) = line.strip_prefix("## ") {
             let v = rest.trim();
-            // `## Unreleased` is a heading too, and letting it answer here would
-            // make the check pass for exactly the release it exists to catch.
             if v.chars().next().is_some_and(|c| c.is_ascii_digit()) {
                 return v.to_string();
             }
@@ -61,7 +45,6 @@ fn newest_release(changelog: &str) -> String {
 
 #[test]
 fn every_file_that_states_the_version_agrees() {
-    // The workspace is the source of truth: it is what `maca --version` reports.
     let want = field(&read("Cargo.toml"), "version");
     assert!(
         want.split('.').count() == 3 && want.chars().next().is_some_and(|c| c.is_ascii_digit()),
@@ -97,9 +80,7 @@ fn every_file_that_states_the_version_agrees() {
     );
 }
 
-/// The Zed extension's two files are one release of one thing, and its README
-/// documents that pairing, so the example there has to be the version it
-/// describes rather than whatever it said when it was written.
+/// The Zed extension's two files are one release of one thing, and its README documents that pairing.
 #[test]
 fn the_zed_readme_shows_the_version_it_documents() {
     let want = field(&read("editor/zed-maca/extension.toml"), "version");
@@ -111,10 +92,6 @@ fn the_zed_readme_shows_the_version_it_documents() {
 }
 
 /// A guard on the guard: the reader above has to be able to say "no".
-///
-/// A field scan that quietly returned the same string for every input would
-/// make the comparison above pass whatever the files said, which is the shape
-/// this whole file exists to prevent.
 #[test]
 fn the_field_reader_reads_the_field() {
     assert_eq!(field("version = \"1.2.3\"", "version"), "1.2.3");
@@ -133,10 +110,7 @@ fn the_field_reader_reads_the_field() {
     );
 }
 
-/// Nothing outside the files above should be hard-coding the version, because a
-/// copy nobody compares is a copy that goes stale. `build_cache.rs` holds one on
-/// purpose: it is a fixture proving that a version change busts the cache key,
-/// so it is named here rather than left to look like an oversight.
+/// Nothing outside the files above should be hard-coding the version, because a copy nobody compares is a copy that goes stale.
 #[test]
 fn no_other_source_file_hard_codes_the_version() {
     let want = field(&read("Cargo.toml"), "version");

@@ -1,19 +1,3 @@
-//! What the built page says it is, and what it carries.
-//!
-//! `maca build --target js` names the page after its source file and inlines
-//! nothing but the program, so a project that wanted a title of its own, a
-//! vendor stylesheet or a third-party script had to patch the emitted HTML
-//! afterwards with string replaces (`html.replace("<title>home</title>", …)`).
-//! Three ways to be silently wrong: the title match depends on the file's name,
-//! and either replace failing is a no-op nobody is told about.
-//!
-//! So the page's identity comes from `[page]` in `maca.toml`, and its assets
-//! from `import css "path"` / `import js "path"`, which are read at build time
-//! and inlined. A path that does not resolve fails the build, naming the file.
-//!
-//! The assertions are on the built `index.html` rather than in Maca, because
-//! what is under test is the build's product, not a value a program can see.
-
 mod common;
 use common::*;
 
@@ -34,7 +18,7 @@ fn write(dir: &Path, rel: &str, text: &str) {
     std::fs::write(p, text).unwrap();
 }
 
-/// The UI every case below builds. `imports` is what the page declares above it.
+/// The UI every case below builds.
 fn app(dir: &Path, imports: &str) {
     write(
         dir,
@@ -66,8 +50,6 @@ fn built_page(dir: &Path) -> String {
 fn errors(o: &std::process::Output) -> String {
     String::from_utf8_lossy(&o.stdout).to_string() + &String::from_utf8_lossy(&o.stderr)
 }
-
-// ---- [page] ---------------------------------------------------------------
 
 #[test]
 fn the_title_comes_from_the_manifest() {
@@ -123,7 +105,6 @@ fn the_language_and_the_description_come_from_the_manifest() {
 
 #[test]
 fn a_title_is_escaped_rather_than_pasted() {
-    // A title is somebody's prose, and prose has ampersands in it.
     let dir = project("escape");
     write(&dir, "maca.toml", "[page]\ntitle = \"Ben & Jerry <b>\"\n");
     app(&dir, "");
@@ -137,8 +118,6 @@ fn a_title_is_escaped_rather_than_pasted() {
 
 #[test]
 fn an_unknown_page_key_fails_the_build_naming_it() {
-    // A misspelt key that silently kept the old title is the failure this
-    // section exists to remove, with a longer detour.
     let dir = project("unknown-key");
     write(&dir, "maca.toml", "[page]\ntitel = \"tabpane\"\n");
     app(&dir, "");
@@ -152,10 +131,7 @@ fn an_unknown_page_key_fails_the_build_naming_it() {
     );
 }
 
-// ---- assets ---------------------------------------------------------------
-
-/// A vendor stylesheet and a vendor script, with bytes no generated page could
-/// contain by accident.
+/// A vendor stylesheet and a vendor script, with bytes no generated page could contain by accident.
 fn vendor(dir: &Path) {
     write(
         dir,
@@ -187,8 +163,6 @@ fn a_declared_stylesheet_and_script_are_inlined_into_the_page() {
         page.contains("globalThis.vendorIconifyMarker = 1;"),
         "the script's bytes belong in the page\n{page}"
     );
-    // Inlined, not referenced: a <link> or a <script src> to a file the build
-    // never copied is the failure mode this replaces.
     assert!(
         !page.contains("vendor/daisyui.css") && !page.contains("vendor/iconify-icon.js"),
         "the page should not point at files beside it\n{page}"
@@ -209,9 +183,6 @@ fn a_declared_stylesheet_and_script_are_inlined_into_the_page() {
 
 #[test]
 fn an_asset_cannot_close_the_element_it_is_inlined_into() {
-    // An HTML parser ends a <script> at the first `</script`, even inside a
-    // JavaScript string, and reads the rest of the page as markup. Inlining is
-    // what makes this our problem, so the sequence is escaped on the way in.
     let dir = project("closing-tag");
     write(&dir, "vendor/writer.js", "document.write(\"</script>\");\n");
     write(
@@ -233,8 +204,6 @@ fn an_asset_cannot_close_the_element_it_is_inlined_into() {
         page.contains("content: \"<\\/style>\""),
         "the stylesheet's closing tag should be escaped\n{page}"
     );
-    // The app still follows the vendor script, which is only true if the vendor
-    // script did not end its own element early.
     let vendor_js = page.find("document.write").unwrap();
     let app_js = page.find("\"use strict\"").expect("the app's own script");
     assert!(
@@ -259,9 +228,6 @@ fn a_missing_asset_fails_the_build_naming_the_file() {
 
 #[test]
 fn a_raw_block_is_still_inline_source_and_not_a_path() {
-    // The quoted form names a file and the `"""…"""` form is the source itself.
-    // Told apart wrongly, this program looks for a file called
-    // `.inline-marker { … }`.
     let dir = project("inline");
     app(
         &dir,
@@ -276,10 +242,6 @@ fn a_raw_block_is_still_inline_source_and_not_a_path() {
 
 #[test]
 fn both_forms_survive_the_formatter_and_the_module_inliner() {
-    // `maca fmt` and the module inliner both reprint source through the
-    // pretty-printer. It has to write a raw block back as a raw block: printed
-    // as a quoted string, an inline stylesheet would come back as the name of a
-    // file that does not exist.
     let dir = project("roundtrip");
     vendor(&dir);
     write(
@@ -305,8 +267,6 @@ fn both_forms_survive_the_formatter_and_the_module_inliner() {
         "the formatter must not rewrite an asset import\n{source}"
     );
 
-    // The selectively imported module is reprinted from its tree, raw block and
-    // all, so both forms have to reach the page.
     let page = built_page(&dir);
     assert!(page.contains(".module-marker { color: olive }"), "{page}");
     assert!(
@@ -317,8 +277,6 @@ fn both_forms_survive_the_formatter_and_the_module_inliner() {
 
 #[test]
 fn the_desktop_window_takes_the_page_title_too() {
-    // One app, one name: `--target tauri` builds the same page and titles the
-    // window from the same line.
     let dir = project("tauri");
     write(&dir, "maca.toml", "[page]\ntitle = \"tabpane\"\n");
     app(&dir, "");

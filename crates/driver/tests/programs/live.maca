@@ -1,15 +1,7 @@
-// Perceus, the correctness half: a value that escapes its block (aliased,
-// returned, kept in an outer binding, stored in a longer-lived structure)
-// must not be dropped.
-//
-// Run under valgrind. A dropped-too-early buffer usually reads as garbage long
-// before valgrind is consulted, so the assertions come first.
-
 keep(xs: int[]) -> int[] => xs
 
 sum_of(xs: int[]) -> int => xs.reduce(0, (a, b) => a + b)
 
-// Two names, one buffer.
 check_an_alias_keeps_both_names_alive() {
     a = [1, 2, 3]
     b = a
@@ -20,7 +12,6 @@ check_an_alias_keeps_both_names_alive() {
     assert_eq(str(sum_of(b)), "6", "reading through the alias")
 }
 
-// Built in a loop, one of them kept out of it.
 check_a_value_lifted_out_of_a_loop_survives() {
     kept = []
     for i in 1..50 {
@@ -60,7 +51,6 @@ check_a_value_returned_from_a_function_survives() {
     assert_eq(str(c.get(0)), "9", "and holds what it was given")
 }
 
-// Arrays of arrays: the inner buffers outlive the block that built them.
 check_inner_buffers_outlive_their_block() {
     rows: int[][] = []
     for i in 1..30 {

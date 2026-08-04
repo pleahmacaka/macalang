@@ -1,31 +1,15 @@
-// microkernel: a message-passing microkernel, simulated in Maca.
-//
-// It's a real stress test for the compiler (sum types, records, ranges, `match`,
-// nested loops, dozens of functions) and a faithful model of a small L4-style
-// kernel: a round-robin priority scheduler over a struct-of-arrays task table, a
-// bump allocator, synchronous IPC through per-task mailboxes, and a capability-
-// checked syscall dispatch. It runs entirely in userland: `maca run` boots it,
-// schedules the tasks to completion, and prints the trace.
-//
-// State that the scheduler mutates lives in `main`'s local arrays (Maca values
-// are copied, so helpers stay pure); the many helpers do the decision-making.
-
-// ---- constants -----------------------------------------------------------
 NTASKS   = 6 as const
-QUANTUM  = 3 as const     // scheduler time-slice, in ticks
-HEAP_CAP = 4096 as const  // bytes in the simulated kernel heap
-MAX_TICK = 400 as const   // safety bound on the boot loop
+QUANTUM  = 3 as const
+HEAP_CAP = 4096 as const
+MAX_TICK = 400 as const
 
-// task states
 READY   = 0 as const
 RUNNING = 1 as const
 BLOCKED = 2 as const
 ZOMBIE  = 3 as const
 
-// ---- syscalls (a capability-tagged request a running task makes) ---------
 Syscall = Compute(int) | Send(int) | Recv | Yield | Exit
 
-// classify a syscall for the trace / capability check
 syscall_name(s: Syscall) -> str =>
     match s {
         Compute(n) => "compute"
@@ -35,12 +19,11 @@ syscall_name(s: Syscall) -> str =>
         Exit => "exit"
     }
 
-// a capability mask: bit per syscall class a task is allowed to make
 CAP_COMPUTE = 1 as const
 CAP_SEND    = 2 as const
 CAP_RECV    = 4 as const
-CAP_WORKER  = 3 as const   // compute | send
-CAP_SERVER  = 5 as const   // compute | recv
+CAP_WORKER  = 3 as const
+CAP_SERVER  = 5 as const
 
 syscall_cap(s: Syscall) -> int =>
     match s {
@@ -51,7 +34,6 @@ syscall_cap(s: Syscall) -> int =>
         Exit => 0
     }
 
-// is a capability present in a mask?
 has_cap(mask: int, cap: int) -> bool {
     if cap == 0 {
         true
@@ -60,7 +42,6 @@ has_cap(mask: int, cap: int) -> bool {
     }
 }
 
-// ---- scheduler decisions (pure) ------------------------------------------
 is_ready(state: int) -> bool => state == READY
 
 state_name(state: int) -> str =>
@@ -71,7 +52,6 @@ state_name(state: int) -> str =>
         _ => "dead"
     }
 
-// round-robin among READY tasks, highest priority first, starting after `last`
 pick_next(states: int[], prios: int[], n: int, last: int) -> int {
     best = 0 - 1
     best_prio = 0 - 1
@@ -100,7 +80,6 @@ count_state(states: int[], n: int, want: int) -> int {
 all_dead(states: int[], n: int) -> bool =>
     count_state(states, n, ZOMBIE) == n
 
-// ---- bump allocator (pure math over the current break) -------------------
 align_up(x: int, a: int) -> int => (x + a - 1) / a * a
 
 can_alloc(brk: int, size: int) -> bool =>
@@ -108,8 +87,6 @@ can_alloc(brk: int, size: int) -> bool =>
 
 next_brk(brk: int, size: int) -> int => align_up(brk, 8) + size
 
-// ---- the "work" a task performs while it holds the CPU --------------------
-// each compute step is a little CPU burn so the profile has something to show
 burn(seed: int, rounds: int) -> int {
     acc = seed
     for _ in 1..rounds {
@@ -118,9 +95,6 @@ burn(seed: int, rounds: int) -> int {
     acc
 }
 
-// decide what syscall a task makes this quantum, from its remaining work.
-// kind 1 = worker (sends to a server, else computes), 2 = server (drains its
-// mailbox, else computes), 0 = compute-only.
 decide(kind: int, work_left: int, inbox: int) -> Syscall {
     if work_left <= 0 {
         Exit
@@ -133,7 +107,6 @@ decide(kind: int, work_left: int, inbox: int) -> Syscall {
     }
 }
 
-// ---- IPC ------------------------------------------------------------------
 mailbox_gain(cur: int) -> int => cur + 1
 mailbox_drain(cur: int) -> int {
     if cur > 0 {
@@ -143,7 +116,6 @@ mailbox_drain(cur: int) -> int {
     }
 }
 
-// ---- reporting ------------------------------------------------------------
 pct(part: int, whole: int) -> int {
     if whole == 0 {
         0
@@ -166,14 +138,9 @@ banner(title: str) {
     info("└────────────────────────────────────────────┘")
 }
 
-// ---- boot -----------------------------------------------------------------
 main() -> int {
     banner("maca microkernel: boot")
 
-    // struct-of-arrays task table. task kinds: 1 = worker (sends), 2 = server
-    // (receives), 0 = compute-only. priorities and work budgets vary.
-    // task 3 is a worker whose capability is missing SEND. When it tries to
-    // send, the kernel refuses the syscall and reaps it (a capability fault).
     kinds  = 1, 2, 0, 1, 2, 0
     prios  = 5, 9, 3, 5, 9, 2
     caps   = CAP_WORKER, CAP_SERVER, CAP_COMPUTE,
@@ -203,7 +170,6 @@ main() -> int {
     while tick < MAX_TICK && !all_dead(states, NTASKS) {
         cur = pick_next(states, prios, NTASKS, last)
         if cur < 0 {
-            // nobody READY, so unblock everyone waiting on IPC (timer wakeup)
             for i in 0..NTASKS - 1 {
                 if states[i] == BLOCKED {
                     states[i] = READY
@@ -216,13 +182,11 @@ main() -> int {
         last = cur
         states[cur] = RUNNING
 
-        // run the task for up to QUANTUM ticks
         slice = 0
         while slice < QUANTUM && states[cur] == RUNNING {
             sc = decide(kinds[cur], work[cur], inbox[cur])
             cap = syscall_cap(sc)
 
-            // capability check: a task without the cap is refused and killed
             if !has_cap(caps[cur], cap) {
                 info("t{tick} task {cur}: DENIED {syscall_name(sc)} (cap fault)")
                 denied = denied + 1
@@ -272,7 +236,6 @@ main() -> int {
             tick = tick + 1
         }
         quanta[cur] = quanta[cur] + 1
-        // a still-RUNNING task is preempted back to READY at quantum end
         if states[cur] == RUNNING {
             states[cur] = READY
         }

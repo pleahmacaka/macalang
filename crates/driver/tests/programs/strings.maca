@@ -1,27 +1,15 @@
-// String ownership, the correctness half: a string a block built is released
-// when the block ends, and one it was only lent is not.
-//
-// Run under valgrind, and again with MACA_POISON=1, which overwrites a released
-// block. Without that switch a release that came too early usually reads as the
-// value that happened to still be sitting there, and the test passes anyway.
-
 Row = { label: str, note: str }
 
 Holder = { s: str }
 
 Shape = Circle(float) | Square(int)
 
-// Hands back what it was given. The caller is holding those bytes, so nothing
-// the caller does with the result may release them.
 lent(s: str) -> str => s
 
-// Builds its result, so the caller becomes the only one holding it.
 built(n: int) -> str => "row-" ++ str(n)
 
 pick(a: str, b: str, first: bool) -> str => first ? a : b
 
-// Rewrites its argument on one path and hands it straight back on the other.
-// Only the caller knows where the untouched one came from.
 maybe_bang(s: str, yes: bool) -> str {
     if yes {
         s = s ++ "!"
@@ -29,8 +17,6 @@ maybe_bang(s: str, yes: bool) -> str {
     s
 }
 
-// Keeps what it is given. Called `wrap(s)` or `s.wrap()`, it is the same
-// function and the same promise.
 wrap(s: str) -> Holder => Holder { s = s }
 
 show(s: Shape) -> str {
@@ -40,8 +26,6 @@ show(s: Shape) -> str {
     }
 }
 
-// An accumulator: rebuilt every round, returned at the end. Each round's
-// previous value is dead the moment the next one exists.
 page(n: int) -> str {
     out = ""
     for i in 1..n {
@@ -136,8 +120,6 @@ check_interpolation_reads_its_pieces_without_keeping_them() {
     assert_eq(name, "maca", "and the piece it read twice is still there")
 }
 
-// A list of strings, rebuilt many times: the buffers have to come back, and
-// the one row held out of the loop has to survive all of it.
 check_rows_are_reused_without_losing_the_one_kept() {
     kept = ""
     for round in 1..200 {
@@ -153,13 +135,9 @@ check_rows_are_reused_without_losing_the_one_kept() {
     assert_eq(kept, "1.2.3.4.5.6.7.8.!", "the row lifted out of the loop")
 }
 
-// `str(x)` renders a value. Given a string there is nothing to render, and
-// the answer used to be the argument itself, so the caller released bytes it
-// had only been shown.
 check_rendering_a_string_does_not_take_it_from_its_owner() {
     s = "hello" ++ "-world"
     shown = "[" ++ str(s) ++ "]"
-    // a string of the same size, which lands on the freed block if there was one
     other = "AAAAA" ++ "AAAAAA"
 
     assert_eq(shown, "[hello-world]", "the rendering")
@@ -169,8 +147,6 @@ check_rendering_a_string_does_not_take_it_from_its_owner() {
 
 check_a_conditionally_rewritten_parameter_belongs_to_the_caller() {
     a = "hi" ++ " there"
-    // in a loop, so a result released at the end of one round is read again at
-    // the start of the next
     for i in 1..3 {
         untouched = maybe_bang(a, false)
         assert_eq(untouched, "hi there", "the path that changed nothing")
@@ -182,7 +158,6 @@ check_a_conditionally_rewritten_parameter_belongs_to_the_caller() {
     assert_eq(a, "hi there", "and the caller's own")
 }
 
-// Written UFCS, the receiver is argument zero. The two spellings have to agree.
 check_a_receiver_is_kept_by_whatever_keeps_an_argument() {
     held = Holder { s = "" }
     for i in 1..3 {
@@ -195,8 +170,6 @@ check_a_receiver_is_kept_by_whatever_keeps_an_argument() {
     assert_eq(filler, "zzzzzzzzzzyyy", "the string built afterwards")
 }
 
-// `{ s }` is `{ s = s }` written short, and the record keeps the string either
-// way.
 check_a_shorthand_field_keeps_its_string() {
     held = Holder { s = "" }
     for i in 1..3 {
@@ -210,8 +183,6 @@ check_a_shorthand_field_keeps_its_string() {
     assert_eq(filler, "zzzzzzzzzzyyy", "the string built afterwards")
 }
 
-// Splitting on nothing has nothing to split, and used to answer with the
-// receiver itself.
 check_splitting_on_nothing_answers_with_its_own_string() {
     parts: str[] = []
     for i in 1..2 {
@@ -223,9 +194,6 @@ check_splitting_on_nothing_answers_with_its_own_string() {
     assert_eq(parts.get(0), "abcdef", "holding the whole string")
 }
 
-// A list of a sum type whose variants carry payloads: the position that may not
-// be there has to answer with a value of the element type, and a sum is a
-// struct as soon as one variant carries something.
 check_a_list_of_payload_variants_can_be_indexed() {
     ss = [Circle(1.0), Square(2)]
 

@@ -1,23 +1,3 @@
-// tambo/ctx: what a handler is given.
-//
-// A request, already taken apart: the method and path, the segments the
-// pattern bound, the query as a map, the headers as a map, and the body. Plus
-// what the routing decided: `name`, the handler this call stands in for, and
-// `route`/`pattern`, the route that matched.
-//
-//     hello(ctx: Ctx) -> Response =>
-//         text("hi {ctx.param("name")}, from {ctx.query("where")}")
-//
-// Call that parameter `ctx` and not `c`. `http/server` links its socket with
-// `import c "http.h"`, which takes the name `c` for the C namespace, and after
-// that nothing in the program called `c` is a record any more: not a
-// parameter, not a local. `c.status` on a `Response` bound as `c = dispatch(…)`
-// compiles, runs, and prints a pointer. Nothing warns. The same goes for `py`,
-// `js` and `css`, which other modules take the same way.
-//
-// Building a context takes no socket. `probe("GET", "/user/7")` is a whole
-// one, which is what lets a handler be tested by calling it.
-
 import { Request, percent_decode } from http/request
 import { Response } from http/response
 import { pass } from tambo/reply
@@ -27,21 +7,12 @@ import { split_once } from std/text
 Ctx = {
     method: str
     /// The path with the query removed and percent-escapes decoded.
-    ///
-    /// Decoded *before* it is routed, which is `http/request`'s doing and
-    /// worth knowing: a `%2F` a client sent inside one segment has become an
-    /// ordinary separator by the time a pattern sees it, so `/user/a%2Fb`
-    /// takes the `/user/:id/:rest` route and not `/user/:id`.
     path: str
-    /// The handler being called: a route's name, a hook's name, or the
-    /// fallback's. This is what the dispatch `match` matches on.
+    /// The handler being called: a route's name, a hook's name, or the fallback's.
     name: str
-    /// The name of the route that matched, "" when nothing did. The same as
-    /// `name` inside a route handler; a hook reads it to tell where it is.
+    /// The name of the route that matched, "" when nothing did.
     route: str
-    /// The pattern that matched, "" when nothing did. What a log line should
-    /// carry instead of the path: `/user/:id` is one line in a log and
-    /// `/user/8814` is a million.
+    /// The pattern that matched, "" when nothing did.
     pattern: str
     params: Map str str
     query: Map str str
@@ -49,14 +20,8 @@ Ctx = {
     headers: Map str str
     body: str
     /// `now_ms()` at the moment the request was taken apart.
-    ///
-    /// A hook answers with a response, not with a context, so a `before` hook
-    /// has no way to hand the clock to an `after` hook. Stamping the arrival
-    /// here means the `after` hook can subtract and get a timing header
-    /// without the two hooks having to share anything at all.
     arrived: int
-    /// What the route answered. Only an `after` hook has any use for it;
-    /// everywhere else it is `pass()`.
+    /// What the route answered.
     reply: Response
 }
 
@@ -65,10 +30,6 @@ param(ctx: Ctx, name: str) -> str =>
     ctx.params.get(name, "")
 
 /// A bound segment as a number, or `fallback` when it is absent.
-///
-/// A segment that is present but not a number reads as 0, the same as
-/// `int("x")`. Whether that is acceptable is the handler's business, since
-/// only the handler knows what range makes sense.
 param_int(ctx: Ctx, name: str, fallback: int) -> int {
     v = ctx.params.get(name, "")
 
@@ -88,9 +49,6 @@ header(ctx: Ctx, name: str) -> str =>
     ctx.headers.get(name.lower(), "")
 
 /// The context for `req`, routed to `name`.
-///
-/// `tambo/dispatch` calls this; a test calls `probe` instead. The arguments are
-/// in the order the router learns them: what matched, then what it bound.
 context(req: Request, name: str, route: str, pattern: str,
         params: Map str str) -> Ctx =>
     Ctx {
@@ -108,12 +66,6 @@ context(req: Request, name: str, route: str, pattern: str,
     }
 
 /// A context with nothing in it but a method and a path.
-///
-/// What a handler test wants, and what `missing_handlers` calls every handler
-/// with. Fill the rest in with `with`: `probe("GET", "/") with { name = "x" }`.
-///
-/// `arrived` is 0 rather than the clock, so nothing a test asserts about a
-/// probe changes between one run and the next.
 probe(method: str, path: str) -> Ctx {
     empty: Map str str = map()
 
@@ -133,14 +85,6 @@ probe(method: str, path: str) -> Ctx {
 }
 
 /// `a=1&b=two` as a map, with `%XX` decoded and `+` read as a space.
-///
-/// A key given twice keeps the last value. A map has one slot per key, and
-/// giving `query` a list return for the sake of `?tag=a&tag=b` would make
-/// every ordinary lookup pay for a case no handler here has.
-///
-/// A pair with no key (`?=v`, or the nothing between two `&`s) is dropped.
-/// Storing it would put a value under "" where `query(ctx, "")` could find it,
-/// and no client ever meant to send that.
 parse_query(q: str) -> Map str str {
     empty: Map str str = map()
 
@@ -166,21 +110,10 @@ add_pairs(ps: str[], i: int, acc: Map str str) -> Map str str {
     }
 }
 
-// `+` means a space in a query string and in a form body, and nowhere else:
-// a `+` in a path is a plus, which is why this is not `percent_decode`.
-//
-// The `+` goes first and the `%XX` second, and swapping the two is wrong in a
-// way nothing shouts about: `%2B` is how a client sends a literal plus, and
-// decoding it before the replace turns that plus into a space.
 decode_form(s: str) -> str =>
     percent_decode(s.replace("+", " "))
 
 /// A raw header block as a map, names lower-cased and values trimmed.
-///
-/// A line with no `:`, and a line whose name is empty, are both dropped rather
-/// than stored: a request whose head carries a stray line is still a request,
-/// and a handler asking for `content-type`, or for "", must not be able to
-/// get one back that was never sent.
 parse_headers(block: str) -> Map str str {
     empty: Map str str = map()
 

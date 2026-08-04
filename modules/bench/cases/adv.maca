@@ -1,35 +1,10 @@
-// bench/cases/adv: the ones with a real idea in them.
-//
-// Knuth-Morris-Pratt, edit distance, longest common subsequence, the 0/1
-// knapsack, n-queens, union-find, Dijkstra, topological sort, an LRU cache, and
-// a JSON tokenizer. Between them they cover the shapes the rest of the corpus
-// does not: a table filled in two dimensions, a search that backtracks, a graph,
-// and a scanner with state.
-//
-//   import { edit_distance, dijkstra } from bench/cases/adv
-//
-//   edit_distance("kitten", "sitting")     // 3
-//
-// Every one of these has a textbook answer that is easy to check, which is why
-// they are worth benchmarking: a case whose correctness you cannot state is a
-// case you will eventually optimise into being wrong.
-
 import { ascending, zeros, repeated } from bench/cases/data
 import { sentence, checksum } from bench/cases/data
 
-/// The distance a Dijkstra run reports for a node it could not reach. Large
-/// enough to lose every comparison, small enough that adding an edge weight to
-/// it does not overflow.
+/// The distance a Dijkstra run reports for a node it could not reach.
 Unreachable = 1000000000
 
-// ---- Knuth-Morris-Pratt ------------------------------------------------------
-
-/// For each prefix of `needle`, the length of its longest proper prefix that is
-/// also a suffix.
-///
-/// This table is the whole algorithm. It says, when a match fails at position
-/// `i`, how far back the pattern can be slid without missing anything, which
-/// is what lets the text pointer never move backwards.
+/// For each prefix of `needle`, the length of its longest proper prefix that is also a suffix.
 kmp_table(needle: str) -> int[] {
     table = zeros(needle.length())
     len = 0
@@ -78,19 +53,11 @@ kmp_search(hay: str, needle: str) -> int {
     }
 }
 
-/// The same near-miss search as `find_substring_case`, so the two numbers are
-/// directly comparable and the comparison is the point.
+/// The same near-miss search as `find_substring_case`, so the two numbers are directly comparable and the comparison is the point.
 kmp_search_case(n: int) -> int =>
     kmp_search(sentence(n), "the quick brown cat")
 
-// ---- edit distance -------------------------------------------------------------
-
-/// The fewest single-character insertions, deletions and substitutions that
-/// turn `a` into `b`.
-///
-/// Two rows, not a full table. The recurrence only ever looks one row back, so
-/// the `n × m` table costs `m`, which for two thousand-character strings is
-/// the difference between eight kilobytes and eight megabytes.
+/// The fewest single-character insertions, deletions and substitutions that turn `a` into `b`.
 edit_distance(a: str, b: str) -> int {
     previous = ascending(b.length() + 1)
     current = zeros(b.length() + 1)
@@ -124,15 +91,7 @@ least_of(a: int, b: int, c: int) -> int {
 edit_distance_case(n: int) -> int =>
     edit_distance(sentence(n), sentence(n).upper())
 
-// ---- longest common subsequence ---------------------------------------------------
-
-/// The length of the longest sequence of characters appearing, in order but not
-/// necessarily together, in both `a` and `b`.
-///
-/// Same two-row trick as `edit_distance`, and the same recurrence shape, which
-/// is why the two are usually confused. The difference is that this one takes
-/// the *larger* of the neighbours, because it is counting agreement rather than
-/// paying for disagreement.
+/// The length of the longest sequence of characters appearing, in order but not necessarily together, in both `a` and `b`.
 lcs_length(a: str, b: str) -> int {
     previous = zeros(b.length() + 1)
     current = zeros(b.length() + 1)
@@ -158,14 +117,7 @@ lcs_length(a: str, b: str) -> int {
 lcs_case(n: int) -> int =>
     lcs_length(sentence(n), sentence(n).replace("o", "0"))
 
-// ---- 0/1 knapsack -----------------------------------------------------------------
-
-/// The best total value that fits in `capacity`, taking each item once or not
-/// at all.
-///
-/// One row, filled from the right. Going right to left is what makes it 0/1
-/// rather than unbounded: each item's own update is never read again while that
-/// item is being considered, so nothing can be taken twice.
+/// The best total value that fits in `capacity`, taking each item once or not at all.
 knapsack(weights: int[], values: int[], capacity: int) -> int {
     best = zeros(capacity + 1)
     item = 0
@@ -182,8 +134,7 @@ knapsack(weights: int[], values: int[], capacity: int) -> int {
     best[capacity]
 }
 
-/// `n` items in a knapsack of `2n`, so the table is `n × 2n` and the size
-/// parameter moves the work quadratically.
+/// `n` items in a knapsack of `2n`, so the table is `n × 2n` and the size parameter moves the work quadratically.
 knapsack_case(n: int) -> int {
     weights = zeros(n)
     values = zeros(n)
@@ -196,20 +147,11 @@ knapsack_case(n: int) -> int {
     knapsack(weights, values, 2 * n)
 }
 
-// ---- n-queens -----------------------------------------------------------------------
-
-/// How many ways `n` queens fit on an `n × n` board with none attacking
-/// another.
-///
-/// 1, 0, 0, 2, 10, 4, 40, 92 for `n` = 1 through 8, a sequence worth knowing,
-/// because it catches an off-by-one in the diagonal test that a spot check on
-/// one board size will not.
+/// How many ways `n` queens fit on an `n × n` board with none attacking another.
 n_queens(n: int) -> int {
     if n <= 0 {
         0
     } else {
-        // Three occupancy maps: one per column, one per ↘ diagonal (row-col,
-        // shifted to be non-negative), one per ↙ diagonal (row+col).
         columns = repeated(n, 0)
         down = repeated(2 * n, 0)
         up = repeated(2 * n, 0)
@@ -240,18 +182,11 @@ place_queen(n: int, row: int, columns: int[], down: int[], up: int[]) -> int {
     }
 }
 
-/// `n` is the board side. 8 is 2,000 or so placements; 10 is 35,000.
+/// `n` is the board side.
 n_queens_case(n: int) -> int =>
     n_queens(n)
 
-// ---- union-find -----------------------------------------------------------------------
-
 /// Disjoint sets over `0 … n-1`.
-///
-/// `parent` and `size` are written in place by `uf_root` and `uf_union`, which
-/// is what path compression is: the query rewrites the structure. A version
-/// that returned a new `Uf` would copy both lists on every lookup and undo the
-/// thing that makes this near-constant time.
 Uf = {
     parent: int[],
     size: int[],
@@ -261,10 +196,6 @@ uf_of(n: int) -> Uf =>
     Uf { parent = ascending(n), size = repeated(n, 1) }
 
 /// The representative of `x`'s set, flattening the path on the way.
-///
-/// Path halving rather than a second pass: pointing each node at its
-/// grandparent as the walk goes up gives the same amortised bound in one pass,
-/// and one pass is easier to get right.
 uf_root(uf: Uf, x: int) -> int {
     at = x
     while uf.parent[at] != at {
@@ -274,11 +205,7 @@ uf_root(uf: Uf, x: int) -> int {
     at
 }
 
-/// Merge the sets holding `a` and `b`. Answers whether they were separate,
-/// which is what a cycle check and a Kruskal step both actually ask.
-///
-/// The smaller tree hangs off the larger, so no path gets longer than it has
-/// to.
+/// Merge the sets holding `a` and `b`.
 uf_union(uf: Uf, a: int, b: int) -> bool {
     ra = uf_root(uf, a)
     rb = uf_root(uf, b)
@@ -307,9 +234,7 @@ uf_groups(uf: Uf) -> int {
     found
 }
 
-/// Join `n` elements in a pattern that builds long chains before compressing
-/// them, then count what is left. With `i` and `i*2 % n` joined for every `i`,
-/// the answer is one group for most `n` and a handful for the rest.
+/// Join `n` elements in a pattern that builds long chains before compressing them, then count what is left.
 union_find_case(n: int) -> int {
     uf = uf_of(n)
     i = 0
@@ -320,15 +245,7 @@ union_find_case(n: int) -> int {
     uf_groups(uf)
 }
 
-// ---- Dijkstra -------------------------------------------------------------------------
-
-/// Shortest distances from `source`, over an `n × n` weight matrix where -1
-/// means no edge.
-///
-/// The `n²` form with a linear scan for the nearest unvisited node, not the
-/// heap form. On the dense little graphs this is measured on, the scan wins.
-/// A heap is the right answer when the edges are few, and saying which is which
-/// is most of what knowing the algorithm is worth.
+/// Shortest distances from `source`, over an `n × n` weight matrix where -1 means no edge.
 dijkstra(weight: int[], n: int, source: int) -> int[] {
     if n <= 0 {
         []
@@ -356,7 +273,6 @@ walk_graph(weight: int[], n: int, source: int) -> int[] {
     distance
 }
 
-// The closest node nothing has settled yet, or -1 when the rest is unreachable.
 nearest(distance: int[], settled: int[], n: int) -> int {
     best = -1
     i = 0
@@ -383,8 +299,6 @@ relax_from(weight: int[], distance: int[], n: int, at: int) {
 }
 
 /// A ring of `n` nodes with a few chords across it, solved from node 0.
-/// Returns the sum of the distances, which is a single number that changes if
-/// any one of them is wrong.
 dijkstra_case(n: int) -> int {
     weight = repeated(n * n, -1)
     i = 0
@@ -400,14 +314,7 @@ dijkstra_case(n: int) -> int {
     total
 }
 
-// ---- topological sort ---------------------------------------------------------------------
-
-/// An order in which `n` nodes can be visited with every edge pointing
-/// forwards, or an empty list when the edges contain a cycle.
-///
-/// Kahn's algorithm: repeatedly take a node nothing depends on. The empty
-/// answer for a cycle is not an error code. It is the algorithm's actual
-/// output, since a graph with a cycle has no such order.
+/// An order in which `n` nodes can be visited with every edge pointing forwards, or an empty list when the edges contain a cycle.
 topo_sort(edges: int[], n: int) -> int[] {
     incoming = repeated(n, 0)
     e = 0
@@ -453,14 +360,7 @@ topo_sort(edges: int[], n: int) -> int[] {
     written == n ? out : []
 }
 
-/// A chain, `0 → 1 → … → n-1`. Every edge runs from a lower index to a higher
-/// one, so there is no cycle and the answer is always a full ordering, and
-/// since a chain admits exactly one ordering, the answer is `0, 1, …, n-1`,
-/// which a test can check without reimplementing Kahn's algorithm.
-///
-/// A chain is also the shape this implementation is slowest on: only one node
-/// is ever ready, and taking it rescans the whole edge list, so the case is
-/// `n²` rather than the `n + e` a queue of edges-by-source would give.
+/// A chain, `0 → 1 → … → n-1`.
 topo_sort_case(n: int) -> int {
     edges = zeros(2 * (n - 1 > 0 ? n - 1 : 0))
     at = 0
@@ -474,15 +374,7 @@ topo_sort_case(n: int) -> int {
     checksum(topo_sort(edges, n))
 }
 
-// ---- an LRU cache -------------------------------------------------------------------------
-
-/// How many of `keys` were already cached, with room for `capacity` of them and
-/// the least recently used one thrown out.
-///
-/// The recency order is a plain list, moved by hand. That is `O(capacity)` per
-/// access and it is the right shape at the sizes a cache like this really has:
-/// a hash map and a linked list beat it somewhere north of a few hundred
-/// entries, and below that they lose to the pointer chasing.
+/// How many of `keys` were already cached, with room for `capacity` of them and the least recently used one thrown out.
 lru_hits(keys: int[], capacity: int) -> int {
     if capacity <= 0 {
         0
@@ -500,8 +392,6 @@ lru_hits(keys: int[], capacity: int) -> int {
                 if held < capacity {
                     held = held + 1
                 }
-                // The last slot is the least recently used one, so an insert
-                // and an eviction are the same move.
                 recent[held - 1] = k
                 promote(recent, held - 1)
             }
@@ -534,12 +424,6 @@ promote(recent: int[], from: int) {
 }
 
 /// `n` accesses in a cache of 16, keyed by the squares modulo 100.
-///
-/// The squares were chosen over a stride like `i * 37`: a stride visits every
-/// key in the space before revisiting any of them, so with a cache smaller than
-/// the space it hits exactly zero times and the case measures eviction only.
-/// The squares cluster (0 and 25 come round every tenth access), so this both
-/// hits and evicts, which is what a cache does.
 lru_case(n: int) -> int {
     keys = zeros(n)
     i = 0
@@ -550,13 +434,7 @@ lru_case(n: int) -> int {
     lru_hits(keys, 16)
 }
 
-// ---- a JSON tokenizer ---------------------------------------------------------------------
-
-/// JSON split into its tokens: punctuation one character each, strings whole
-/// and still quoted, numbers and bare words as they are, whitespace dropped.
-///
-/// Not a parser. It is the half of a parser that touches every byte, which is
-/// the half worth measuring.
+/// JSON split into its tokens: punctuation one character each, strings whole and still quoted, numbers and bare words as they are, whitespace dropped.
 json_tokens(src: str) -> str[] {
     out: str[] = []
     i = 0
@@ -572,12 +450,6 @@ json_tokens(src: str) -> str[] {
 }
 
 /// How many tokens `src` has, without building them.
-///
-/// This is the one the benchmark runs. `json_tokens` returns the tokens, and
-/// `push` copies the whole list each time, so collecting thirteen thousand of
-/// them costs eighty million pointer moves and the case would be measuring the
-/// list rather than the scanner. Counting walks the same bytes through the same
-/// helpers and allocates nothing; a test asserts the two agree.
 json_token_count(src: str) -> int {
     found = 0
     i = 0
@@ -592,8 +464,6 @@ json_token_count(src: str) -> int {
     found
 }
 
-// One past the token starting at `i`, or `i` itself when that byte is
-// whitespace and there is no token there.
 token_end(src: str, i: int) -> int {
     c = src.at(i)
 
@@ -611,8 +481,6 @@ token_end(src: str, i: int) -> int {
 is_punctuation(c: str) -> bool =>
     c == "\{" || c == "\}" || c == "[" || c == "]" || c == ":" || c == ","
 
-// One past the closing quote. A backslash takes the next byte with it, which is
-// what stops an escaped quote from ending the string.
 string_end(src: str, from: int) -> int {
     i = from
     while i < src.length() {
@@ -638,11 +506,6 @@ word_end(src: str, from: int) -> int {
 }
 
 /// A JSON array of `n` objects, for the tokenizer to chew on.
-///
-/// Every object is the same text, built with one `repeat` rather than `n`
-/// pushes. The tokenizer does not look at what the bytes say, only at what
-/// shape they are, so identical rows cost it exactly what varied ones would,
-/// and building them varied would put more time in the setup than in the scan.
 json_sample(n: int) -> str {
     if n <= 0 {
         "[]"
@@ -653,7 +516,6 @@ json_sample(n: int) -> str {
     }
 }
 
-/// `n` is the number of objects in the document, not its length in bytes:
-/// about 36 bytes and 13 tokens each.
+/// `n` is the number of objects in the document, not its length in bytes.
 json_tokenize_case(n: int) -> int =>
     json_token_count(json_sample(n))

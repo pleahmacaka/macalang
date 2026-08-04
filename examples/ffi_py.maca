@@ -1,7 +1,5 @@
 import py "platform"
 
-// Foreign declarations, bound to the CPython glue. `py_call` is no-arg;
-// `py_call_s`/`py_call_i` pass a single string/int argument.
 py_call(module: str, func: str) -> str
 py_call_s(module: str, func: str, arg: str) -> str
 py_call_i(module: str, func: str, n: int) -> str

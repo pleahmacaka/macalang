@@ -1,17 +1,3 @@
-// http/serve: the working directory, over HTTP.
-//
-//     maca -m http.serve              # port 8000, the working directory
-//     maca -m http.serve 3000 site    # port and directory
-//
-// For looking at a built site without installing anything. A directory is
-// served through its `index.html` when it has one; there is no listing, because
-// a server that volunteers a file list is a server that eventually volunteers
-// the wrong one.
-//
-// This is one program written with the library next door: `http/server`
-// listens, `http/request` parses, `http/response` builds. Reading which
-// file each name came from is the point of writing the path.
-
 import { listen } from http/server
 import { Request } from http/request
 import { Response, file, status } from http/response
@@ -45,23 +31,10 @@ serve_file(root: str, req: Request) -> Response {
     }
 }
 
-// The file a path names inside `root`, or "" when the path escapes it.
-//
-// `..` is the whole reason this is a function: a request for
-// `/../../etc/passwd` is not a mistake anyone makes by accident, and a server
-// that resolves it has handed over the machine.
-//
-// Both sides go through `real_path`, which resolves `..`, `.` *and symlinks*.
-// Comparing normalized text alone let a symlink inside the root point out of
-// it, so `site/link -> /etc/passwd` was served with a 200, because no amount
-// of string arithmetic can see where a link goes.
 under(root: str, path: str) -> str {
     base = real_path(root)
     joined = join(base, path)
     resolved = real_path(joined)
-    // A path naming nothing cannot be a symlink out of the root, but it can
-    // still be written with `..`, so it is normalized instead, and the caller
-    // answers 404 rather than 403.
     inside = if resolved == "" { normalize(joined) } else { resolved }
 
     if base != "" && (inside == base || inside.starts_with(base ++ "/")) {

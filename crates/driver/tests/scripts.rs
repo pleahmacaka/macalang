@@ -1,32 +1,15 @@
-//! The repository's own scripts, compiled.
-//!
-//! Building the site, building the wasm into the npm package, and running the
-//! benchmarks were three bash/Python scripts. They are Maca programs now: the
-//! toolchain's own tooling written in the language it compiles, which is the
-//! same argument `tools/bindgen.maca` and `tools/lint.maca` already make.
-//!
-//! A script nothing compiles rots quietly: it is only run at release time, so a
-//! rename in `std/` breaks it months before anyone finds out. This builds each
-//! one. It does not *run* them (that needs a wasm target, a network, and
-//! several minutes), but a script that compiles cannot have lost a function it
-//! calls.
-
 mod common;
 use common::*;
 
 use std::process::Command;
 
-/// Compile `script` from the repository root, where its `import std/…` and its
-/// own relative paths resolve.
+/// Compile `script` from the repository root, where its `import std/…` and its own relative paths resolve.
 fn builds(script: &str) {
     if have_wsl() || !have("cc") {
         eprintln!("skipping {script}: needs a host cc and no wsl");
         return;
     }
 
-    // Keyed on the path, not its length: two scripts whose names happen to be
-    // the same length would otherwise share an output file and race, because
-    // these run in parallel.
     let slug = script.replace(['/', '.'], "-");
     let out = std::env::temp_dir().join(format!("maca-script-{slug}"));
     let result = Command::new(env!("CARGO_BIN_EXE_maca"))

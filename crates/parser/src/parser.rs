@@ -1,11 +1,3 @@
-//! Hand-written recursive-descent + Pratt parser over the lexer's token stream.
-//!
-//! Layout is already resolved by the lexer (newlines are real tokens, suppressed
-//! where they continue), so the parser treats `Newline` as a statement/field
-//! separator and otherwise ignores it. `no_brace` mode is set while parsing a
-//! control-flow header (`if`/`for`/`match` scrutinee) so a following `{` is read
-//! as the block, not a `Name { .. }` constructor.
-
 use crate::ast::*;
 use crate::braces::{self, ArrowBrace};
 use maca_lexer::{Span, Tok, Token};
@@ -32,8 +24,6 @@ impl Parser {
             no_brace: false,
         }
     }
-
-    // ---- cursor -----------------------------------------------------------
 
     fn peek(&self) -> &Tok {
         &self.toks[self.i.min(self.toks.len() - 1)].tok
@@ -84,8 +74,6 @@ impl Parser {
         } else {
             let found = self.peek().clone();
             self.err(format!("expected identifier, found {found:?}"));
-            // consume the offending token so callers that loop on `ident()`
-            // (record fields/patterns, params) can't stall on it forever
             if !self.at_eof() {
                 self.bump();
             }
@@ -103,8 +91,6 @@ impl Parser {
         }
     }
 
-    // ---- module -----------------------------------------------------------
-
     pub fn parse_module(&mut self) -> Module {
         let mut items = Vec::new();
         self.skip_newlines();
@@ -112,7 +98,7 @@ impl Parser {
             let before = self.i;
             items.push(self.parse_stmt());
             if self.i == before {
-                self.bump(); // guarantee progress on error
+                self.bump();
             }
             self.skip_newlines();
         }
@@ -147,8 +133,6 @@ impl Parser {
         }
         self.expect(Tok::Eq, "'=' in binding");
         let value = self.parse_list_expr();
-        // A binding is a constant if it used `const`, a trailing `as const`, or a
-        // Capitalized name (the convention; the linter nudges toward explicit).
         let as_const = self.at(Tok::As) && matches!(self.peekn(1), Tok::Const);
         if as_const {
             self.bump();
@@ -197,7 +181,7 @@ impl Parser {
     }
 
     fn parse_import(&mut self) -> Import {
-        self.bump(); // import
+        self.bump();
         match self.peek().clone() {
             Tok::LBrace => {
                 self.bump();
@@ -208,10 +192,6 @@ impl Parser {
                     self.skip_seps();
                 }
                 self.expect(Tok::RBrace, "'}'");
-                // `from` is an ordinary identifier everywhere else. It is far
-                // too natural a parameter name (`copy(from, to)`) to spend a
-                // keyword on, and here the grammar already knows what follows a
-                // selective import's brace list.
                 match self.peek().clone() {
                     Tok::Ident(n) if n == "from" => {
                         self.bump();
@@ -251,10 +231,7 @@ impl Parser {
         }
     }
 
-    /// Is the string that starts here a raw `"""…"""` block rather than an
-    /// ordinary `"…"`? The lexer opens both with the same `StrOpen`, so the one
-    /// surviving trace of which was written is the token's width: three quotes
-    /// or one.
+    /// Is the string that starts here a raw `"""…"""` block rather than an ordinary `"…"`?
     fn at_raw_string(&self) -> bool {
         let (start, end) = self.span();
         end - start == 3
@@ -269,7 +246,7 @@ impl Parser {
     }
 
     fn parse_alias(&mut self) -> Stmt {
-        self.bump(); // alias
+        self.bump();
         let name = self.ident();
         self.expect(Tok::Eq, "'=' in alias");
         let value = self.parse_expr();
@@ -287,7 +264,7 @@ impl Parser {
             None
         };
         let effects = if self.at(Tok::Slash) && matches!(self.peekn(1), Tok::Lt) {
-            self.bump(); // /
+            self.bump();
             Some(self.parse_effect_row())
         } else {
             None
@@ -309,17 +286,9 @@ impl Parser {
     }
 
     /// The body after a function's `=>`.
-    ///
-    /// A bracketless comma list is a valid arrow body (`make() -> int[] => 1,
-    /// 2, 3`) and a single expression parses unchanged. The one shape that has
-    /// to be decided is a leading `{`, which is a record literal and a block at
-    /// the same time.
     fn parse_arrow_body(&mut self, name: &str) -> FnBody {
         if self.at(Tok::LBrace) {
             match self.arrow_brace() {
-                // `f() -> T => { … }` means `f() -> T { … }`, so it is parsed
-                // as one: every back end already lowers a block body, and the
-                // printer prints back the spelling without the spare `=>`.
                 ArrowBrace::Block => return FnBody::Block(self.parse_block()),
                 ArrowBrace::Record => {}
                 ArrowBrace::Both => {
@@ -336,10 +305,6 @@ impl Parser {
     }
 
     /// Decide the `{` at the cursor, which follows this function's `=>`.
-    ///
-    /// The scan lives in `braces` because the language server needs the same
-    /// answer from the same tokens, and a second copy of it there was already
-    /// wrong about this case.
     fn arrow_brace(&self) -> ArrowBrace {
         braces::arrow_brace(&self.toks, self.i)
     }
@@ -359,7 +324,7 @@ impl Parser {
             ps.push(Param { name, ty, variadic });
             self.skip_seps();
             if self.i == before {
-                self.bump(); // guarantee progress on malformed params (no infinite loop)
+                self.bump();
             }
         }
         ps
@@ -373,14 +338,12 @@ impl Parser {
             effs.push(self.ident());
             self.eat(Tok::Comma);
             if self.i == before {
-                self.bump(); // guarantee progress on a malformed effect row
+                self.bump();
             }
         }
         self.expect(Tok::Gt, "'>'");
         effs
     }
-
-    // ---- types ------------------------------------------------------------
 
     fn parse_type(&mut self) -> Type {
         let head = self.parse_type_postfix();
@@ -420,9 +383,6 @@ impl Parser {
                 }
                 Type::Name(segs)
             }
-            // `(T)` is a grouped type; `(T, U) -> R` and `() -> R` are the
-            // type of a function value. Which one it is cannot be known before
-            // the `)`, so both are parsed the same way and the arrow decides.
             Tok::LParen => {
                 self.bump();
                 let mut parts = Vec::new();
@@ -455,8 +415,6 @@ impl Parser {
         }
     }
 
-    // ---- expressions ------------------------------------------------------
-
     fn parse_expr(&mut self) -> Expr {
         if let Some(e) = self.typed_lambda() {
             return e;
@@ -474,16 +432,11 @@ impl Parser {
     }
 
     /// `(a: T, b) [-> R] => body`: a lambda whose parameters carry types.
-    ///
-    /// A parameter list is not an expression, so the usual route (parse an
-    /// expression, then reinterpret it as parameters) cannot see the `: T`.
-    /// When the tokens ahead are a parenthesized list followed by the lambda
-    /// arrow, the list is parsed as what it is.
     fn typed_lambda(&mut self) -> Option<Expr> {
         if !self.at(Tok::LParen) || !self.typed_params_ahead() {
             return None;
         }
-        self.bump(); // '('
+        self.bump();
         let params = self.parse_params();
         self.expect(Tok::RParen, "')'");
         let ret = if self.eat(Tok::Arrow) {
@@ -499,11 +452,7 @@ impl Parser {
         })
     }
 
-    /// Does a `(` here open a parameter list with at least one `name: Type` in
-    /// it, closed and followed by the lambda arrow? Only then is it worth
-    /// parsing as parameters rather than as an expression. `(a, b) => …` is
-    /// handled fine by the existing path, and `(a + b)` must stay an
-    /// expression.
+    /// Does a `(` here open a parameter list with at least one `name: Type` in it, closed and followed by the lambda arrow?
     fn typed_params_ahead(&self) -> bool {
         let mut depth = 0usize;
         let mut typed = false;
@@ -517,8 +466,6 @@ impl Parser {
                         break;
                     }
                 }
-                // a `:` directly inside this list is a parameter's type; deeper
-                // in, it belongs to a nested list or a ternary.
                 Tok::Colon if depth == 1 => typed = true,
                 Tok::Eof => return false,
                 _ => {}
@@ -531,13 +478,7 @@ impl Parser {
         matches!(self.peekn(i + 1), Tok::FatArrow | Tok::Arrow)
     }
 
-    /// The arrow between a lambda's parameters and its body, with an optional
-    /// return type in front of it: `(a, b) => …` or `(a, b) -> T => …`.
-    ///
-    /// `Some(None)` is a lambda with no annotation, `Some(Some(t))` one with,
-    /// and `None` means this was not a lambda at all. A declared type is what a
-    /// trait-impl method needs when it has to match a signature the compiler
-    /// cannot read.
+    /// The arrow between a lambda's parameters and its body, with an optional return type in front of it.
     fn lambda_ret(&mut self) -> Option<Option<Type>> {
         if self.eat(Tok::FatArrow) {
             return Some(None);
@@ -552,8 +493,6 @@ impl Parser {
     }
 
     /// Is this `-> T` the head of a lambda rather than a function signature?
-    /// Only a `=>` after the type makes it one, so scan forward for it before
-    /// the next token that could not be part of a type.
     fn lambda_arrow_ahead(&self) -> bool {
         let mut i = 1;
         loop {
@@ -572,13 +511,8 @@ impl Parser {
         }
     }
 
-    /// Lambda bodies additionally allow a `{ … }` block, the UI setter form
-    /// `x = e` (assign expr), and nested lambdas.
+    /// Lambda bodies additionally allow a `{ … }` block, the UI setter form `x = e` (assign expr), and nested lambdas.
     fn parse_lambda_body(&mut self) -> Expr {
-        // `=> { … }` is a block, the way a match arm's `=> { … }` is. An
-        // anonymous record still has its own syntax everywhere a value is
-        // wanted; what it cannot be is the *whole* body of a lambda, which is
-        // the same trade a match arm already makes.
         if self.at(Tok::LBrace) {
             return Expr::Block(self.parse_block());
         }
@@ -620,9 +554,7 @@ impl Parser {
         }
     }
 
-    /// `lo..hi`, an inclusive integer range (lo … hi), one notch looser than
-    /// the binary operators so `1..n - 1` reads as `1..(n - 1)`. Non-associative:
-    /// a range isn't itself a range endpoint.
+    /// `lo..hi`, an inclusive integer range (lo … hi), one notch looser than the binary operators so `1..n - 1` reads as `1..(n - 1)`.
     fn parse_range(&mut self) -> Expr {
         let lo = self.parse_binary(0);
         if self.eat(Tok::DotDot) {
@@ -695,13 +627,9 @@ impl Parser {
                 expr: Box::new(self.parse_unary()),
             }
         } else if self.at(Tok::Await) {
-            // `await e` binds tighter than binary ops: `await a + await b`
-            // is `(await a) + (await b)`. No `async` keyword: the async effect
-            // is inferred (colorblind async).
             self.bump();
             Expr::Await(Box::new(self.parse_unary()))
         } else if self.at(Tok::Spawn) {
-            // `spawn e` runs `e` concurrently and yields a Future.
             self.bump();
             Expr::Spawn(Box::new(self.parse_unary()))
         } else {
@@ -733,8 +661,6 @@ impl Parser {
                     e = Expr::Try(Box::new(e));
                 }
                 Tok::LBracket => {
-                    // postfix subscript `base[index]` (a `[` in primary position
-                    // is a bracketed list literal, handled in parse_primary)
                     self.bump();
                     let index = self.parse_expr();
                     self.expect(Tok::RBracket, "']'");
@@ -864,7 +790,7 @@ impl Parser {
                 self.peek(),
                 Tok::RParen | Tok::RBracket | Tok::RBrace | Tok::Eof
             ) {
-                break; // trailing comma
+                break;
             }
             es.push(self.parse_expr());
         }
@@ -938,10 +864,10 @@ impl Parser {
                 && matches!(self.peekn(2), Tok::Ident(_))
                 && matches!(self.peekn(3), Tok::Eq);
             if is_dir {
-                self.bump(); // name
-                self.bump(); // :
+                self.bump();
+                self.bump();
                 let prop = self.ident();
-                self.bump(); // =
+                self.bump();
                 let kind = if n == "bind" { Dir::Bind } else { Dir::On };
                 return Arg::Directive {
                     kind,
@@ -950,8 +876,8 @@ impl Parser {
                 };
             }
             if matches!(self.peekn(1), Tok::Eq) {
-                self.bump(); // name
-                self.bump(); // =
+                self.bump();
+                self.bump();
                 return Arg::Named {
                     name: n,
                     value: self.parse_expr(),
@@ -993,19 +919,7 @@ impl Parser {
         Expr::Str(parts)
     }
 
-    /// Desugar `"{x:>8}"`'s spec into ordinary calls. A format spec is not a
-    /// new evaluation rule. It is spelling for things you could already write
-    /// by hand, so it lowers here and every back end gets it for free:
-    ///
-    /// ```text
-    ///   {x:.2}   →  x.fixed(2)
-    ///   {x:>8}   →  str(x).pad_start(8, " ")
-    ///   {x:<8}   →  str(x).pad_end(8, " ")
-    ///   {x:^8}   →  str(x).pad_center(8, " ")
-    ///   {x:08}   →  str(x).pad_start(8, "0")
-    /// ```
-    ///
-    /// Grammar: `[<|>|^] [0] width [. precision]`, every part optional.
+    /// Desugar `"{x:>8}"`'s spec into ordinary calls.
     fn apply_fmt_spec(&mut self, e: Expr, spec: &str) -> Expr {
         let mut rest = spec;
         let align = match rest.chars().next() {
@@ -1015,14 +929,12 @@ impl Parser {
             }
             _ => None,
         };
-        // a leading zero means zero-fill, and implies right alignment
         let zero = rest.starts_with('0') && rest.len() > 1;
         let (width, precision) = match rest.split_once('.') {
             Some((w, p)) => (w, Some(p)),
             None => (rest, None),
         };
 
-        // precision first: it produces the text that padding then aligns
         let mut out = match precision {
             Some(p) => match p.parse::<i64>() {
                 Ok(n) => call_method(e, "fixed", vec![Expr::Int(n)]),
@@ -1087,7 +999,7 @@ impl Parser {
     }
 
     fn parse_if(&mut self) -> Expr {
-        self.bump(); // if
+        self.bump();
         let save = self.no_brace;
         self.no_brace = true;
         let cond = self.parse_expr();
@@ -1110,7 +1022,7 @@ impl Parser {
     }
 
     fn parse_for(&mut self) -> Expr {
-        self.bump(); // for
+        self.bump();
         let save = self.no_brace;
         self.no_brace = true;
         let pat = self.parse_pattern_atom();
@@ -1126,7 +1038,7 @@ impl Parser {
     }
 
     fn parse_while(&mut self) -> Expr {
-        self.bump(); // while
+        self.bump();
         let save = self.no_brace;
         self.no_brace = true;
         let cond = self.parse_expr();
@@ -1139,7 +1051,7 @@ impl Parser {
     }
 
     fn parse_match(&mut self) -> Expr {
-        self.bump(); // match
+        self.bump();
         let save = self.no_brace;
         self.no_brace = true;
         let scrut = self.parse_expr();
@@ -1164,8 +1076,6 @@ impl Parser {
 
     fn parse_arm(&mut self) -> Arm {
         let pat = self.parse_pattern_top();
-        // A guard is a boolean expression; parse it at ternary level so the
-        // arm's own `=>` isn't mistaken for a lambda arrow (`_ if c => body`).
         let guard = if self.eat(Tok::If) {
             Some(self.parse_ternary())
         } else {
@@ -1195,8 +1105,6 @@ impl Parser {
         self.expect(Tok::RBrace, "'}'");
         stmts
     }
-
-    // ---- patterns ---------------------------------------------------------
 
     fn parse_pattern_top(&mut self) -> Pattern {
         let first = self.parse_or_pattern();
@@ -1250,10 +1158,6 @@ impl Parser {
                 Pattern::Bool(false)
             }
             Tok::StrOpen => Pattern::Str(self.parse_string_literal()),
-            // A bracketed list pattern: `[]`, `[x]`, `[x, y]`, `[x, ..rest]`.
-            // The bracketless spelling (`x, ..rest`) is handled by
-            // `parse_pattern_top`; brackets additionally make the empty and
-            // single-element cases expressible.
             Tok::LBracket => {
                 self.bump();
                 let mut elems = Vec::new();
@@ -1358,22 +1262,7 @@ impl Parser {
     }
 }
 
-/// The language word an `import <lang> "…"` records, given which string form
-/// was written.
-///
-/// `css` and `js` are the two foreign languages a page can carry either way: a
-/// raw `"""…"""` block *is* the source, and a quoted `"…"` *names a file* the
-/// build reads and inlines. `Import::Foreign` keeps one string and no flag, so
-/// the two forms are told apart by the language word instead: the file forms
-/// become `stylesheet` and `script`, which `print.rs` writes back as `css` and
-/// `js`, so what the author wrote survives a round trip.
-///
-/// Recording nothing was not an option. A quoted string and a raw block reach
-/// the tree identical, so a build that read one as a path would read the other
-/// as a path too, and a stylesheet block would fail as a missing file. Deciding
-/// from the string's *contents* (a leading `./`, an ending in `.css`) is the
-/// silent-wrong-answer version of the same question: a path spelled without the
-/// marker would land in the page as a CSS rule and no one would be told.
+/// The language word an `import <lang> "…"` records, given which string form was written.
 fn foreign_lang(lang: Ident, raw: bool) -> Ident {
     match lang.as_str() {
         "css" if !raw => "stylesheet".into(),
@@ -1383,17 +1272,6 @@ fn foreign_lang(lang: Ident, raw: bool) -> Ident {
 }
 
 /// `lhs |> rhs`: the piped value becomes `rhs`'s first argument.
-///
-/// `x |> f` is `f(x)`, and `x |> f(a, b)` is `f(x, a, b)`: what is written to
-/// the right of the arrow reads as the call it will become, with the subject
-/// left out because the arrow supplies it. A pipeline is then the order the
-/// steps happen in rather than the reverse, which is the whole reason to write
-/// one.
-///
-/// Desugaring here rather than lowering per backend is what keeps the answer
-/// the same everywhere. It was a `BinOp` for a while, and every backend
-/// evaluated it to the left operand and discarded the right, so `3 |> double`
-/// was `3`, with no diagnostic anywhere.
 fn piped(lhs: Expr, rhs: Expr) -> Expr {
     match rhs {
         Expr::Call { callee, args } => {
@@ -1408,8 +1286,7 @@ fn piped(lhs: Expr, rhs: Expr) -> Expr {
     }
 }
 
-/// `recv.name(args…)`: a UFCS method call, which is a call whose callee is a
-/// field access.
+/// `recv.name(args…)`: a UFCS method call, which is a call whose callee is a field access.
 fn call_method(recv: Expr, name: &str, args: Vec<Expr>) -> Expr {
     Expr::Call {
         callee: Box::new(Expr::Field {

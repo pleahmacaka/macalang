@@ -1,25 +1,7 @@
-// profile/flame: a trace, drawn.
-//
-// Two renderers over the same layout: one for a terminal and one for a report
-// or a browser. Both put depth 0 at the top and read downwards, because that is
-// the order the spans were opened and the order the text chart has to be
-// printed in anyway. A chart that grew upwards would disagree with the
-// narration printed beside it.
-//
-//   info(flame(t, 72))
-//   write_file("build/flame.svg", flame_svg(t, 1000))
-//
-// Width in the text chart is measured in columns, never bytes. A bar carries
-// escape codes, which take bytes and no columns; a name in Korean takes three
-// bytes and two columns per character. `length()` is wrong in both directions,
-// and wrong only once the chart reaches a terminal that renders either.
-
 import profile/trace
 import { paint, bold, dim, yellow, width, pad, pad_left } from cli/style
 import { escape_html } from std/text
 
-// How a trace's milliseconds map onto the chart's width. Computed once and
-// carried, rather than asking the trace for its extent inside every bar.
 Scale = {
     base: int,
     total: int,
@@ -29,9 +11,6 @@ Scale = {
 scale_of(t: Trace, cols: int) -> Scale =>
     Scale { base = origin(t), total = wall(t), cols = cols }
 
-// A moment, as a position across the chart. A run with no measurable extent
-// (everything inside one millisecond) collapses to column zero rather than
-// dividing by it, and every bar then falls back to its minimum width.
 column(sc: Scale, at: int) -> int {
     if sc.total <= 0 {
         0
@@ -40,14 +19,7 @@ column(sc: Scale, at: int) -> int {
     }
 }
 
-// ---- the terminal chart ---------------------------------------------------
-
 /// The trace as a text flame chart `cols` columns wide.
-///
-/// One line per level of nesting; each span a bar whose width is its share of
-/// the run. The bars are bracketed as well as coloured, so the chart still says
-/// where each region begins and ends when it is piped into a file and the
-/// colour is gone.
 flame(t: Trace, cols: int) -> str {
     if span_count(t) == 0 {
         dim("(nothing recorded)")
@@ -65,18 +37,12 @@ chart_head(t: Trace) -> str {
     bold(t.label) ++ dim(counts)
 }
 
-// "1 span", not "1 spans". The heading is the first line of the chart and the
-// only thing on it; a plural that does not agree reads as a bug in the tool
-// rather than as a run with one region in it.
 plural(n: int, noun: str) -> str {
     ending = n == 1 ? "" : "s"
 
     "{n} {noun}{ending}"
 }
 
-// A region that never closed is drawn running to the end of the trace, which
-// looks exactly like a region that took a long time. The note is what tells
-// the two apart.
 leak_note(t: Trace) -> str {
     open = leaked(t)
 
@@ -96,9 +62,6 @@ chart_rows(t: Trace, sc: Scale, d: int, acc: str[]) -> str[] {
     }
 }
 
-// Bars are placed left to right with a cursor, in columns rather than in the
-// string being built: the string is longer than it looks wherever a colour
-// starts, so the gap between two bars cannot be worked out from it.
 lay_out(t: Trace, sc: Scale, ids: int[], i: int, cursor: int,
         acc: str) -> str {
     if i >= ids.length() {
@@ -114,9 +77,6 @@ lay_out(t: Trace, sc: Scale, ids: int[], i: int, cursor: int,
     }
 }
 
-// Rounding can put a bar's left edge behind where the previous bar ended. It is
-// pushed right rather than drawn over: two bars sharing a column would read as
-// one region, and the row would be a column narrower than every other row.
 bar_start(sc: Scale, s: Span, cursor: int) -> int {
     left = column(sc, s.start)
 
@@ -129,9 +89,6 @@ bar_width(sc: Scale, s: Span, from: int) -> int {
     w < 1 ? 1 : w
 }
 
-// A bar narrower than its own brackets is drawn as a sliver. Something that
-// took no measurable time still happened, and a chart that dropped it would
-// have a hole where a `mark` was.
 bar_text(s: Span, w: int) -> str {
     if w < 3 {
         "▏".repeat(w)
@@ -140,14 +97,6 @@ bar_text(s: Span, w: int) -> str {
     }
 }
 
-// As much of the label as `room` columns will hold: name and duration, or the
-// name alone, or as much of the name as fits with an ellipsis for the rest.
-//
-// The cut branch is padded like the other two. `fit` stops at a character
-// boundary, so a two-column character that will not fit leaves a column spare,
-// and `lay_out` has already counted that column. Measured: a 100-column chart
-// whose first label was cut mid-Hangul came out 99 columns wide, with every bar
-// after it one place to the left.
 inside(name: str, ms: int, room: int) -> str {
     full = "{name} {ms}ms"
 
@@ -160,14 +109,7 @@ inside(name: str, ms: int, room: int) -> str {
     }
 }
 
-/// `s` padded out to `w` columns, counting what shows rather than what is
-/// stored. A cell aligned to the bytes of a coloured string is aligned to
-/// The longest prefix of `s` that fits in `n` columns, cut only where a
-/// character ends.
-///
-/// Slicing to a byte count would cut a multi-byte character in half, and a
-/// terminal draws the half it is given: a replacement glyph of its own width,
-/// which pushes every bar to the right of it out of line.
+/// `s` padded out to `w` columns, counting what shows rather than what is stored.
 fit(s: str, n: int) -> str {
     if width(s) <= n {
         s
@@ -188,8 +130,6 @@ widest_prefix(s: str, n: int, i: int, best: int) -> int {
     }
 }
 
-// A byte in the range 0x80 to 0xBF continues the character before it, so it is
-// not a place the string can be cut.
 on_boundary(s: str, i: int) -> bool {
     if i >= s.length() {
         true
@@ -200,9 +140,6 @@ on_boundary(s: str, i: int) -> bool {
     }
 }
 
-// Six hues cycled by span index, so two bars that touch are never the same
-// colour. Red is not among them: in a terminal red means something went wrong,
-// and a slow region is not a broken one.
 tint(i: int, s: str) -> str => paint(sgr(i), s)
 
 sgr(i: int) -> str {
@@ -211,14 +148,7 @@ sgr(i: int) -> str {
     codes.get(i % codes.length())
 }
 
-// ---- the SVG chart --------------------------------------------------------
-
 /// The same chart as a self-contained SVG `px` pixels wide.
-///
-/// No stylesheet, no script, no font file: every colour and size is an
-/// attribute, so the file can be opened on its own, dropped into a report, or
-/// inlined in a page without carrying anything with it. Each rectangle holds a
-/// `<title>`, which is the tooltip a browser shows on hover.
 flame_svg(t: Trace, px: int) -> str {
     inset = 8
     rows = levels(t)
@@ -229,11 +159,8 @@ flame_svg(t: Trace, px: int) -> str {
     svg_open(px, high) ++ svg_backdrop(t, px, high, inset) ++ body ++ "</svg>\n"
 }
 
-// The band above the chart holding the label and the totals.
 svg_head_h() -> int => 38
 
-// The pitch between levels. A frame is three pixels shorter, which is the line
-// between one level and the next.
 svg_row() -> int => 22
 
 svg_open(px: int, high: int) -> str {
@@ -274,9 +201,6 @@ svg_frame(t: Trace, sc: Scale, inset: int, i: int) -> str {
     "<g>" ++ tip ++ box ++ svg_label(s, left, y, w) ++ "</g>\n"
 }
 
-// Every frame is at least two pixels wide. A zero-width rectangle draws
-// nothing at all, and a `mark` would vanish from the picture without leaving
-// so much as a tick where it happened.
 frame_width(sc: Scale, s: Span, inset: int, left: int) -> int {
     w = inset + column(sc, s.end) - left
 
@@ -290,9 +214,6 @@ svg_rect(x: int, y: int, w: int, i: int) -> str {
     "<rect {size} {look}/>"
 }
 
-// The label is dropped rather than clipped when the frame is narrow. SVG text
-// does not wrap or truncate on its own, so a name drawn in a frame too small
-// for it runs across every frame to its right.
 svg_label(s: Span, x: int, y: int, w: int) -> str {
     room = (w - 8) / 7
 
@@ -314,8 +235,7 @@ svg_tip(t: Trace, i: int) -> str {
     escape_html(s.name) ++ ": {duration(s)}ms ({share:.1}%), " ++ own
 }
 
-/// `part` as a percentage of `whole`, and zero rather than a division by zero
-/// when nothing was measured.
+/// `part` as a percentage of `whole`, and zero rather than a division by zero when nothing was measured.
 percent(part: int, whole: int) -> float {
     if whole <= 0 {
         0.0
@@ -324,8 +244,6 @@ percent(part: int, whole: int) -> float {
     }
 }
 
-// The SVG counterpart of `sgr`: the same six hues, light enough that the dark
-// label drawn on top of them stays readable.
 swatch(i: int) -> str {
     fills = ["#7fd6d0", "#8fd694", "#e3cd7a", "#9db6ea", "#cba4dd", "#8ad4e8"]
 

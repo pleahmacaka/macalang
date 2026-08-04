@@ -1,6 +1,3 @@
-// One `name = value` and no comma: a one-field record literal and a one-binding
-// block read the same, so neither is taken.
-
 Counter = { n: int }
 
 start() -> Counter => { n = 0 }

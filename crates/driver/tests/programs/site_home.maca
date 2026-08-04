@@ -1,17 +1,3 @@
-// The front page's benchmark section and its "Get started" button, run and read
-// back.
-//
-// The page is a Maca program that writes HTML, so what is asserted is the HTML
-// it wrote: every number on it against the numbers in `apps/bench/results.json`,
-// and the button against the book that has to answer it. The arithmetic behind
-// those numbers is imported and exercised directly as well, because a page can
-// be right by accident and a formula cannot.
-//
-// Run from the repository root, which is where `maca`, the data and the book
-// are:
-//
-//   maca test crates/driver/tests/programs/site_home.maca
-
 import std/proc
 import { join } from std/path
 import { between, split_once } from std/text
@@ -24,16 +10,11 @@ import { timed_runs, StartChapter, BenchData, BenchReport } from apps/site/home
 import { chip_tone, is_behind, mine_tone } from apps/site/home
 import { copies, english, korean } from apps/site/home
 
-// The compiler the page is built with. The Rust runner passes the one `cargo
-// test` just built; running this file by hand picks up the release binary.
 maca() -> str =>
     env_or("MACA", "target/release/maca")
 
 Out = "/tmp/maca-site-home"
 
-// The three pages, freshly written. Rebuilt per test rather than once, because
-// there is nowhere to keep it: the alternative is a stale directory answering
-// for a generator that has since stopped working.
 built() -> str {
     remove_dir(Out)
     make_dir(Out)
@@ -47,10 +28,6 @@ root() -> str =>
 runs() -> Result[] =>
     load(BenchData)
 
-// ---- the arithmetic ---------------------------------------------------------
-//
-// One kernel measured twice, so a threshold can be walked across on purpose.
-
 Kernel = "fib"
 
 pair(mine: int, base: int) -> Result[] =>
@@ -61,9 +38,6 @@ sample(name: str, ms: int, answer: int) -> Result =>
     Result { name = name, size = 1, iters = 1, samples = [ms],
              checksum = answer }
 
-// The `Standing` a run reports, as a word this file owns. Not the page's word:
-// a test that asserted the copy would pass on a page whose verdicts were all
-// computed backwards, so long as the words themselves were still spelled right.
 word(rs: Result[]) -> str =>
     match standing(rs, Kernel) {
         Ahead  => "ahead"
@@ -72,8 +46,6 @@ word(rs: Result[]) -> str =>
         Absent => "absent"
     }
 
-// Two timings within `bench/compare`'s tolerance are the same timing. It is 5%,
-// so 4% apart is level and 8% apart is not, in both directions.
 test_a_difference_under_the_tolerance_is_not_a_difference() {
     assert_eq(word(pair(104, 100)), "level", "4% behind is noise")
     assert_eq(word(pair(96, 100)), "level", "so is 4% ahead")
@@ -87,8 +59,6 @@ test_the_ratio_is_over_c() {
     assert_eq("{ratio(pair(100, 100), Kernel):.1}", "1.0", "level")
 }
 
-// A bar is drawn as a share of the slower time on its row, so the longer bar is
-// always the whole track and the shorter one is the ratio, seen.
 test_a_bar_is_the_share_of_the_slower_time() {
     assert_eq(str(bar_width(259.0, 259.0)), "100", "the slower bar fills")
     assert_eq(str(bar_width(97.0, 259.0)), "37", "the faster one is its share")
@@ -97,8 +67,6 @@ test_a_bar_is_the_share_of_the_slower_time() {
     assert_eq(str(bar_width(200.0, 0.0)), "0", "nor does one over nothing")
 }
 
-// A toolchain the measuring host did not have is a hole in the data. Reported as
-// a zero it would read as infinitely fast, and it would win.
 test_a_toolchain_the_host_lacked_is_a_hole_not_a_zero() {
     lonely = [sample(case_name(Kernel, "Maca"), 100, 42)]
 
@@ -108,8 +76,6 @@ test_a_toolchain_the_host_lacked_is_a_hole_not_a_zero() {
     assert_eq(ms_text(168.0), "168 ms", "against a time it has")
 }
 
-// The comparison is six programs computing one answer, and the page says so. It
-// may only say so while the stored checksums agree.
 test_columns_that_disagree_are_not_verified() {
     disagreeing = [sample(case_name(Kernel, "Maca"), 100, 42),
                    sample(case_name(Kernel, "C"), 100, 43)]
@@ -119,11 +85,6 @@ test_columns_that_disagree_are_not_verified() {
     assert(all_verified(runs()), "and the stored run agrees with itself")
 }
 
-// ---- the numbers on the page ------------------------------------------------
-
-// Every cell of the table, derived here from the file through `bench/time`
-// rather than read off the page. This is the test that makes a transcribed
-// number impossible: no figure below is written down anywhere in this file.
 test_every_measured_number_is_on_the_page() {
     page = root()
     rs = runs()
@@ -154,8 +115,6 @@ absent_langs(page: str, rs: Result[], algo: str, ls: str[], i: int,
     }
 }
 
-// The median and the multiple of C's time, spelled out here so that the page's
-// own formatting is compared against something rather than against itself.
 cell(rs: Result[], algo: str, lang: str) -> str {
     ms = timing(rs, algo, lang)
     base = timing(rs, algo, "C")
@@ -163,16 +122,6 @@ cell(rs: Result[], algo: str, lang: str) -> str {
     "{ms:.0} (×{ms / base:.1})"
 }
 
-// ---- the columns ------------------------------------------------------------
-
-// Six languages in a row of numbers is only a comparison if each number is
-// under the name of the language that produced it, and the header and the rows
-// are two separate expressions that can disagree about how many columns there
-// are. Deleting the `workload` header cell shifts every remaining label one
-// column left: the workload is then headed `Maca`, Maca's time is headed `C`,
-// and Python's has no header at all. Every number on the page is still the
-// right number, which is exactly why asking whether the numbers are present
-// cannot see it, and it passed every other assertion in this file.
 test_each_column_is_under_its_own_language() {
     page = root()
     rs = runs()
@@ -184,22 +133,15 @@ test_each_column_is_under_its_own_language() {
               "and every measurement sits under its own language")
 }
 
-// The labels of the header row, in order.
 column_labels(page: str) -> str[] =>
     row_cells(between(bench_table(page), "<thead>", "</thead>"))
 
 bench_table(page: str) -> str =>
     between(page, "<table", "</table>")
 
-// One row's cells, in order. A `<th>` and a `<td>` are the same thing to a
-// reader looking down a column, so the row is normalised to one closing tag
-// before it is split, and a cell's text is whatever follows the tag that
-// opened it: every cell here is escaped, so none of them holds a `>`.
 row_cells(row: str) -> str[] =>
     but_last(row.replace("</th>", "</td>").split("</td>"), 0, [])
 
-// Splitting on a closing tag leaves one fragment after the last one, which is
-// the rest of the row rather than a cell.
 but_last(parts: str[], i: int, acc: str[]) -> str[] {
     if i + 1 >= parts.length() {
         acc
@@ -214,9 +156,6 @@ after_tag(frag: str) -> str {
     parts.get(parts.length() - 1)
 }
 
-// The body row for one kernel, found by the name in its first cell rather than
-// by its position, so that a reordered table still reads correctly here and
-// only a mislabelled column fails.
 kernel_cells(page: str, algo: str) -> str[] =>
     row_for(between(bench_table(page), "<tbody>", "</tbody>").split("<tr>"),
             0, algo)
@@ -252,8 +191,6 @@ misplaced(page: str, rs: Result[], ks: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-// The kernel is column 0, the workload column 1, and language `j` column
-// `j + 2`. Anything else names what it found instead.
 off_column(rs: Result[], algo: str, cs: str[], ls: str[], j: int,
            acc: str[]) -> str[] {
     if j >= ls.length() {
@@ -275,8 +212,6 @@ off_workload(algo: str, cs: str[]) -> str[] {
     }
 }
 
-// A row shorter than the header reads as an empty cell rather than dying, so
-// the assertion names the column instead of the suite naming an index.
 at(cs: str[], i: int) -> str {
     if i >= cs.length() {
         ""
@@ -285,9 +220,6 @@ at(cs: str[], i: int) -> str {
     }
 }
 
-// The bars carry the same two times again, as labels, and their lengths are each
-// time's share of the slower of the two. `sieve` is the row where those two are
-// far enough apart that a wrong denominator could not pass unnoticed.
 test_the_bars_are_drawn_from_the_measurements() {
     page = root()
     rs = runs()
@@ -304,10 +236,6 @@ test_the_bars_are_drawn_from_the_measurements() {
     assert(page.contains(ms_text(base)), "and the faster one")
 }
 
-// A benchmark page that says only where the language wins is an advertisement.
-// Every kernel behind C is marked as behind and named in the paragraph under the
-// bars, and that paragraph's own claims about them are checked here: that the
-// one it explains is the largest, and that the others really do only trail.
 test_the_page_says_where_maca_loses() {
     page = root()
     rs = runs()
@@ -323,8 +251,6 @@ test_the_page_says_where_maca_loses() {
     assert(page.contains("bound by memory bandwidth"), "the note says why")
 }
 
-// A kernel the note names arrives inside a `<code>` span, because the note is
-// prose and `prose` renders a backtick run as code.
 all_named(page: str, ks: str[], i: int) -> bool {
     if i >= ks.length() {
         true
@@ -345,13 +271,8 @@ worst_of(rs: Result[], ks: str[], i: int, worst: str) -> str {
     }
 }
 
-// The one loss the page explains by name, named here because the sentence beside
-// it in the copy names it there.
 Explained = "sieve"
 
-// "trails by a margin a single timed run cannot separate from noise" is a claim
-// about a number. Every loss except the explained one has to be within a fifth of
-// C, or that sentence needs writing again.
 only_trailing(rs: Result[], ks: str[], i: int) -> bool {
     if i >= ks.length() {
         true
@@ -365,14 +286,6 @@ only_trailing(rs: Result[], ks: str[], i: int) -> bool {
 occurrences(haystack: str, needle: str) -> int =>
     haystack.split(needle).length() - 1
 
-// The bars are the part of this section a reader takes in without reading, so
-// the rows behind C are drawn in an accent the rest are not. The verdict beside
-// each bar says the same thing in words, which is what stops the colour from
-// carrying the meaning alone, and it is also what let both accents be replaced
-// by the ordinary tone with every other assertion in this file still green.
-//
-// The tones are asked of the page's own functions rather than spelled out, so
-// this checks that a loss is drawn differently, not that it is drawn in amber.
 test_a_kernel_behind_c_is_drawn_unlike_one_that_is_not() {
     page = root()
     rs = runs()
@@ -400,9 +313,6 @@ not_behind(rs: Result[], ks: str[], i: int) -> str {
     }
 }
 
-// Every kernel is on the page under the workload it was given, and every
-// language it was measured against is named. A contender dropped from the table
-// is a comparison quietly narrowed to flatter, and nothing else would notice.
 test_every_kernel_and_language_is_named() {
     page = root()
 
@@ -429,17 +339,9 @@ all_present(page: str, wanted: str[], i: int) -> bool {
     }
 }
 
-// `JS (node)` and `primes ≤ 10⁷` reach the page as themselves; nothing in either
-// list is a character the page escapes. Stated as a function so that the day one
-// of them is, this is where it gets handled.
 escaped(text: str) -> str =>
     text
 
-// ---- provenance -------------------------------------------------------------
-
-// A benchmark without its machine and its flags is a rumour, and one nobody can
-// re-run is one nobody has to believe. The host is compared against the
-// harness's own record of it, not against a string typed here.
 test_the_page_states_where_the_numbers_came_from() {
     page = root()
     host = between(read_file(BenchReport), "_Host: ", ". Times")
@@ -453,12 +355,6 @@ test_the_page_states_where_the_numbers_came_from() {
     assert(page.contains("cc -O2"), "with the flags it was built at")
 }
 
-// ---- the button -------------------------------------------------------------
-
-// "Get started" used to be an anchor to the install band further down the page.
-// It leads into the handbook now, in the reader's own language: the root page is
-// English and links `en/…`, and the Korean landing sits one directory down and
-// links back up into `ko/…`.
 test_get_started_leads_into_the_handbook() {
     dir = built()
     page = read_file(join(dir, "index.html"))
@@ -474,9 +370,6 @@ test_get_started_leads_into_the_handbook() {
            "though the band with the one command is still there")
 }
 
-// The chapter has to exist in every language the page offers, and `book.toml`
-// has to list it: a chapter file the table of contents does not mention is not
-// published, so the button would land on nothing in the language that lost it.
 test_the_chapter_it_opens_is_published_in_every_language() {
     toml = read_file("apps/tomo/book.toml")
 
@@ -499,10 +392,6 @@ chapters_exist(cs: Copy[], i: int) -> bool {
 chapter(lang: str) -> str =>
     "apps/tomo/book/" ++ lang ++ "/" ++ StartChapter ++ ".md"
 
-// ---- both languages ---------------------------------------------------------
-
-// The Korean page carries the whole section, not the heading with an English
-// body: the same numbers, and the verdict in Korean.
 test_the_korean_page_carries_the_same_benchmark() {
     ko = read_file(join(built(), "ko/home.html"))
 
@@ -513,18 +402,6 @@ test_the_korean_page_carries_the_same_benchmark() {
            "over the same measurement")
 }
 
-// ---- the stylesheet ---------------------------------------------------------
-
-// Every utility the page mentions has to have produced a rule. An unknown one is
-// not an error anywhere: the browser drops it and the layout is quietly a little
-// wrong, which is why `tools/build-site.maca` checks this over every page of the
-// assembled site. It is checked here too because this suite runs without
-// building the handbook and the playground first, and because a bar's width is
-// the one thing on this page that a class could not have carried.
-//
-// The selectors are compared with their backslashes taken out rather than by
-// escaping each class name, which is the same test without a second copy of the
-// escaping table.
 test_every_utility_on_the_page_has_a_rule() {
     page = root()
     sheet = between(page, "<style>", "</style>").replace("\\", "")
@@ -534,9 +411,6 @@ test_every_utility_on_the_page_has_a_rule() {
               "every class on the page has a rule")
 }
 
-// Every distinct class named by a `class="…"` attribute. The page has no
-// `<script>`, and a code sample's own `<` arrives as `&lt;`, so every one of
-// these is an attribute on a real tag.
 mentioned(page: str) -> str[] =>
     named(page.split(" class=\""), 1, [])
 
@@ -559,10 +433,6 @@ unruled(sheet: str, cs: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-// The selector has to end where the class does, or a dead class that is a prefix
-// of a live one passes. A rule is always `.name` followed by a space, a
-// pseudo-class `:` or the `[` of an attribute selector. `language-…` is a hook
-// for a highlighter and is not meant to have one.
 has_rule(sheet: str, class: str) -> bool {
     sel = "." ++ class
 
@@ -570,12 +440,6 @@ has_rule(sheet: str, class: str) -> bool {
         || sheet.contains(sel ++ ":") || sheet.contains(sel ++ "[")
 }
 
-// ---- the code on the page ---------------------------------------------------
-
-// The front page's own examples went out as escaped plain text for as long as
-// the page existed. `highlight` was written for the handbook and the API pages
-// and the one page that shows the language first never called it, so the first
-// Maca anybody reads was the only Maca on the site with no colour in it.
 test_the_examples_on_the_front_page_are_highlighted() {
     page = root()
 
@@ -583,19 +447,12 @@ test_the_examples_on_the_front_page_are_highlighted() {
            "a keyword is a token, not escaped text")
     assert(page.contains("<span class=\"tok-str\">"),
            "and so is a string literal")
-    // The hero panel and the feature cards are two separate call sites, and one
-    // of them was highlighted while the other was not for the whole of the
-    // change that added this.
     assert(between(page, "code-dark", "</pre>").contains("tok-kw"),
            "the hero panel is highlighted")
     assert(between(page, "language-maca", "</pre>").contains("tok-kw"),
            "and so is the first feature card")
 }
 
-// The hero panel is `bg-zinc-950 dark:bg-black`: dark under *both* colour
-// schemes. The syntax theme keys off the scheme, so in light mode it handed
-// that near-black panel the light palette and painted strings `#0a3069` navy on
-// black. A surface that is dark whatever the scheme says has to say so.
 test_the_always_dark_panel_gets_the_dark_palette() {
     page = root()
 
@@ -605,11 +462,6 @@ test_the_always_dark_panel_gets_the_dark_palette() {
            "and the hero panel asks for it")
 }
 
-// ---- responsiveness ---------------------------------------------------------
-
-// Eight columns of numbers that must not wrap is wider than a phone. The house
-// rule is that wide content scrolls inside its own box and the page never
-// scrolls sideways, so the table is inside a scroller and its cells say so.
 test_the_wide_table_scrolls_inside_its_own_box() {
     page = root()
 

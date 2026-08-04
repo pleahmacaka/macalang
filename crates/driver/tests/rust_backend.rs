@@ -1,7 +1,3 @@
-//! End-to-end test for `maca build --target rust`: emit Rust, compile it with
-//! `rustc`, run the binary, and check its output / exit code. Skips if `rustc`
-//! isn't on PATH (it always is in this workspace).
-
 mod common;
 use common::*;
 
@@ -42,7 +38,6 @@ fn hello_and_recursion_and_loops_run_via_rust() {
         eprintln!("skipping: no rustc on PATH");
         return;
     }
-    // hello: exit code is the returned int.
     let (out, code) = build_and_run(
         "hello",
         "main() -> int {\n    info(\"Hello, World\")\n    0\n}\n",
@@ -50,14 +45,12 @@ fn hello_and_recursion_and_loops_run_via_rust() {
     assert!(out.contains("Hello, World"), "hello stdout: {out}");
     assert_eq!(code, Some(0));
 
-    // recursion + interpolation.
     let (out, _) = build_and_run(
         "fib",
         "fib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\n\nmain() -> int {\n    info(\"fib(10)={fib(10)}\")\n    0\n}\n",
     );
     assert!(out.contains("fib(10)=55"), "fib stdout: {out}");
 
-    // records + nullary sum + match + while + for + list + reassignment.
     let (out, code) = build_and_run(
         "core",
         "Color = Red | Green | Blue\n\
@@ -69,8 +62,6 @@ fn hello_and_recursion_and_loops_run_via_rust() {
     assert!(out.contains("warmth=1 sum=15 px=3"), "core stdout: {out}");
     assert_eq!(code, Some(15), "main exit code should be sum_to(5)=15");
 
-    // payload sum (data-carrying variants), incl. a record payload and value
-    // reuse: the shape gpql needs (`Outcome = Rows(Grid) | Affected(int)`).
     let (out, code) = build_and_run(
         "payload_sum",
         "Grid = {\n    rows: int\n    cols: int\n}\n\
@@ -91,9 +82,6 @@ fn foreign_std_type_compiles_and_runs() {
         eprintln!("skipping: no rustc on PATH");
         return;
     }
-    // `import rust "std::time::Duration"`, `Duration.from_secs(5)` (associated
-    // fn), `d.as_secs()` (instance method): a real std type, no external crate,
-    // through the single-file rustc path.
     let (out, code) = build_and_run(
         "foreign_std",
         "import rust \"std::time::Duration\"\n\n\
@@ -112,8 +100,6 @@ fn closure_passed_to_a_callback_api_runs() {
         eprintln!("skipping: no rustc on PATH");
         return;
     }
-    // R4: a Maca closure escapes into a foreign higher-order function (defined in
-    // an `import rust` raw block) and is invoked there.
     let (out, code) = build_and_run(
         "closure",
         "import rust \"\"\"\nfn apply(f: impl Fn(i64) -> i64, x: i64) -> i64 { f(x) }\n\"\"\"\n\n\
@@ -129,10 +115,6 @@ fn foreign_trait_impl_runs() {
         eprintln!("skipping: no rustc on PATH");
         return;
     }
-    // R5: `Counter : Greet = { … }` → `impl Greet for Counter`. The trait is
-    // supplied locally via a raw block (real gpui isn't available offline), which
-    // is exactly the shape `examples/gpui_counter.maca` uses against gpui's
-    // `Render`. A leading `self` → `&mut self`; a mutating method returns unit.
     let (out, code) = build_and_run(
         "trait_impl",
         "import rust \"\"\"\ntrait Greet {\n    fn value(&mut self) -> i64;\n    fn bump(&mut self);\n}\n\"\"\"\n\n\
@@ -144,10 +126,7 @@ fn foreign_trait_impl_runs() {
     assert_eq!(code, Some(42), "value() should be 42");
 }
 
-/// `[rust-dependencies]` → a generated Cargo project. Verifies the manifest is
-/// written correctly and, when the crate is resolvable (cargo present + crate
-/// cached/online), that the dependency builds and links. Skips gracefully in a
-/// hermetic CI with no crate cache or network.
+/// `[rust-dependencies]` → a generated Cargo project.
 #[test]
 fn rust_dependencies_drive_a_cargo_build() {
     if !have("cargo") {
@@ -176,8 +155,6 @@ fn rust_dependencies_drive_a_cargo_build() {
         .output()
         .expect("spawn maca build --target rust");
 
-    // The Cargo.toml is written before cargo runs, so it exists whether or not
-    // the offline build resolves the crate.
     let manifest = std::env::temp_dir()
         .join("maca-build-prog")
         .join("cargo/Cargo.toml");
@@ -201,10 +178,6 @@ fn rust_dependencies_drive_a_cargo_build() {
 }
 
 /// Colorblind async reaches the Rust target too.
-///
-/// `spawn e` becomes a `JoinHandle` and `await h` joins it, the same shape the
-/// C runtime gives it with pthreads. There is still no `async` keyword and no
-/// function colour: a function that spawns is an ordinary function.
 #[test]
 fn spawn_and_await_run_via_rust() {
     if !have("rustc") {
@@ -225,8 +198,7 @@ fn spawn_and_await_run_via_rust() {
     assert_eq!(code, Some(0));
 }
 
-/// A record literal with no type name gets a struct synthesized for its shape,
-/// on this target as on the native one.
+/// A record literal with no type name gets a struct synthesized for its shape, on this target as on the native one.
 #[test]
 fn anonymous_records_run_via_rust() {
     if !have("rustc") {
@@ -251,9 +223,7 @@ fn anonymous_records_run_via_rust() {
     assert_eq!(code, Some(0));
 }
 
-/// A bodyless function is an FFI declaration, and the Rust path has no C ABI
-/// bridge to satisfy it. The emitter used to write `unimplemented!()`, so the
-/// program built, linked, and panicked the first time it reached the call.
+/// A bodyless function is an FFI declaration, and the Rust path has no C ABI bridge to satisfy it.
 #[test]
 fn a_bodyless_function_is_rejected_rather_than_emitted_as_a_panic() {
     let dir = std::env::temp_dir().join("maca-rust-bodyless");
@@ -297,12 +267,6 @@ fn a_bodyless_function_is_rejected_rather_than_emitted_as_a_panic() {
 }
 
 /// A trait-impl method can declare its return type.
-///
-/// gpui's `Render::render` returns `impl IntoElement`, which the backend cannot
-/// see: it does not read the crate's source. Rust lets an impl name a concrete
-/// type where the trait wrote `impl Trait`, so writing the type out is the whole
-/// answer. Without the annotation the return type is guessed from the body, and
-/// a builder chain guesses `i64`.
 #[test]
 fn a_trait_method_can_declare_its_return_type() {
     if !have("rustc") {
@@ -333,12 +297,6 @@ fn a_trait_method_can_declare_its_return_type() {
 }
 
 /// A trait method's foreign-typed parameter is a mutable borrow.
-///
-/// Rust trait methods take their arguments that way (`w: &mut Window`,
-/// `cx: &mut Context<Self>`), and Maca never owns a value from a crate it does
-/// not read. So a parameter whose type this module does not declare lowers to
-/// `&mut T`, call sites pass `&mut`, and it is passed on rather than `.clone()`d
-/// (a `&mut T` has no `clone`).
 #[test]
 fn a_foreign_typed_parameter_is_a_mutable_borrow() {
     if !have("rustc") {
@@ -366,10 +324,7 @@ fn a_foreign_typed_parameter_is_a_mutable_borrow() {
     assert!(out.contains("42"), "{out}");
 }
 
-/// A borrow may be read and passed on, but not kept. Storing it would outlive
-/// the call, and the lifetime that would need has no spelling in Maca, so it
-/// is refused here, naming the parameter, rather than by `rustc` naming a type
-/// the user never wrote.
+/// A borrow may be read and passed on, but not kept.
 #[test]
 fn a_borrowed_parameter_may_not_be_stored() {
     let dir = std::env::temp_dir().join("maca-rust-escape");

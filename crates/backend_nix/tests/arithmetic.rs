@@ -1,15 +1,3 @@
-//! Arithmetic in a config, and what config mode refuses.
-//!
-//! `value()` handled only literals, idents, lists and records and ended in
-//! `_ => "null"`. `Expr::Binary` was absent, so `port = 8000 + offset` emitted
-//! `port = null;`, and Nix accepts `null` as an option value, so the config
-//! built and the service listened on nothing.
-//!
-//! Nix is not on this host, so these read the emitted expression rather than
-//! evaluating it. The shapes asserted are the ones `nix-instantiate --eval`
-//! would reduce; `builtins.div` and the `a - (a / b) * b` remainder are the
-//! two that are not simply infix.
-
 fn nix(src: &str) -> String {
     let p = maca_parser::parse(src);
     assert!(p.errors.is_empty(), "parse: {:?}", p.errors);
@@ -43,8 +31,6 @@ fn subtraction_and_multiplication_are_lowered() {
 
 #[test]
 fn division_is_spelled_out_rather_than_a_slash() {
-    // A bare `/` between values is a path separator in Nix, so `100 / 4` there
-    // is not the division it looks like.
     let out = nix("services.ssh.port = 100 / 4\n");
     assert!(out.contains("builtins.div 100 4"), "{out}");
 }
@@ -83,7 +69,6 @@ fn negation_is_lowered() {
 
 #[test]
 fn string_concatenation_uses_nix_plus_not_list_append() {
-    // Nix `++` is list concatenation; `+` is what joins strings.
     let out = nix("services.ssh.banner = \"a\" ++ \"b\"\n");
     assert!(out.contains(" + "), "{out}");
     assert!(!out.contains("++"), "emitted a list append:\n{out}");
@@ -115,7 +100,6 @@ fn a_refusal_names_the_construct_not_the_generated_nix() {
 
 #[test]
 fn a_plain_config_still_emits() {
-    // The refusals must not have swallowed what already worked.
     let out = nix("services.ssh.enable = true\nusers.alice.packages = git, ripgrep\n");
     assert!(out.contains("true"), "{out}");
     assert!(out.contains("pkgs.git"), "{out}");

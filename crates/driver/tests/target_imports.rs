@@ -1,14 +1,3 @@
-//! Every build target resolves `import a/b`.
-//!
-//! `load_with_imports` ran on exactly two paths, rust and native. `build_nix`,
-//! `build_jvm`, `build_embedded` and `build_js` each read one file and parsed
-//! it, so an imported module's definitions never reached the output.
-//!
-//! The JS case was a silent success: the driver printed `built x-web/` and
-//! exited 0, and the page threw `ReferenceError` in the browser, far from the
-//! compiler that caused it. `modules/signal/dom.maca` documented the symptom in
-//! prose and told readers to deliver from a native build instead.
-
 mod common;
 use common::*;
 
@@ -84,8 +73,6 @@ fn js_inlines_the_imported_module_and_the_result_runs() {
         "imported definition missing:\n{src}"
     );
 
-    // Reading the file is not enough: the definition could be emitted after
-    // its use, or the module could fail to load at all.
     let run = Command::new("node")
         .arg("-e")
         .arg(format!(
@@ -207,7 +194,6 @@ fn a_diamond_inlines_the_shared_module_once() {
         eprintln!("skipping: no node");
         return;
     }
-    // Two copies is a redeclaration in JS and a duplicate symbol in C.
     let dir = project("diamond");
     write(&dir, "lib/base.maca", "base_val() -> int => 7\n");
     write(
@@ -299,8 +285,6 @@ fn an_import_cycle_terminates_rather_than_hanging() {
     write(&dir, "lib/x.maca", "import lib/y\nfrom_x() -> int => 1\n");
     write(&dir, "lib/y.maca", "import lib/x\nfrom_y() -> int => 2\n");
     write(&dir, "app.maca", "import lib/x\n\nmain() -> int => 0\n");
-    // The assertion is that this returns at all; a cycle used to be reachable
-    // only on two of the seven targets, so it was never exercised on the rest.
     let o = build(&dir, "js", "out", &[]);
     let _ = o.status;
 }

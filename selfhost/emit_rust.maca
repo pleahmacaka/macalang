@@ -1,24 +1,9 @@
-// selfhost/emit_rust: a Rust emitter over the AST, written in Maca.
-//
-// The Maca-written sibling of emit_c: the `--target rust` back end, written in
-// Maca rather than living only in the stage-0 crate. It mirrors
-// `maca-backend-rust` over whatever the stage-1 parser can read, and grows the
-// way emit_c does.
-//
-// Both back ends are held to one answer: the gate compiles the *same* emitted
-// program with `cc` and with `rustc` and checks the two exit alike. A back end
-// tested only against its own output can agree with nothing but itself.
-
 import selfhost/token
 import selfhost/ast
 
-// A Rust integer literal carries an `i64` suffix, so it isn't inferred as `i32`
-// and then clash with Maca's `int` = `i64` in arithmetic.
 rust_int(n: int) -> str =>
     "{str(n)}i64"
 
-// Owned, not `&'static str`: `++` produces a `String` and a signature says
-// `String`, so a literal that stayed borrowed would need a cast at every use.
 rust_str(s: str) -> str =>
     "\"" ++ s ++ "\".to_string()"
 
@@ -41,7 +26,6 @@ remit_expr(e: Expr) -> str =>
         _        => "0i64"
     }
 
-// Rust has no ternary; `if` is already an expression there.
 remit_ternary(e: Expr) -> str {
     cond = remit_expr(e.children.get(0))
     then = remit_expr(e.children.get(1))
@@ -53,8 +37,6 @@ remit_ternary(e: Expr) -> str {
 remit_match(e: Expr) -> str =>
     "match {remit_expr(e.children.get(0))} {{ {remit_arms(e.children, 1)} }}"
 
-// Maca's `length` and `count` collapse back into one `len()` here. The split
-// exists for C's sake (see emit_c), not for Rust's.
 remit_method(e: Expr) -> str {
     recv = remit_expr(e.children.get(0))
 
@@ -70,9 +52,6 @@ remit_method(e: Expr) -> str {
     }
 }
 
-// Matched by name before the fallback, exactly as `emit_call` does it, so both
-// back ends shadow a user `info`/`print`/`str` the same way rather than one
-// target quietly calling something the other does not.
 remit_call(e: Expr) -> str {
     args = remit_args(e.children, 0)
 
@@ -87,8 +66,6 @@ remit_call(e: Expr) -> str {
     }
 }
 
-// `++` goes through `format!` rather than `+`: Rust's `+` on strings consumes
-// its left operand, and the AST gives no way to know whether that is safe.
 remit_binary(e: Expr) -> str {
     l = remit_expr(e.children.get(0))
     r = remit_expr(e.children.get(1))
@@ -100,8 +77,6 @@ remit_binary(e: Expr) -> str {
     }
 }
 
-// A bare variant pattern resolves through the `use Color::*;` that `remit_sum`
-// emits, so nothing here has to know which enum the scrutinee belongs to.
 remit_arms(cs: Expr[], i: int) -> str {
     if i + 1 >= cs.length() {
         ""
@@ -111,8 +86,6 @@ remit_arms(cs: Expr[], i: int) -> str {
     }
 }
 
-// `Circle(r)`: the binders go straight through, because Rust's own pattern
-// syntax is the one Maca borrowed.
 remit_pat(p: Expr) -> str {
     if p.children.length() == 0 {
         p.text
@@ -130,14 +103,9 @@ remit_lit_fields(fs: Expr[]) -> str =>
 remit_lit_field(f: Expr) -> str =>
     "{f.children.get(0).text}: {remit_expr(f.children.get(1))}"
 
-// `i` is 1 for a method call, whose first child is the receiver.
 remit_args(xs: Expr[], i: int) -> str =>
     xs.slice(i, xs.length()).map(remit_expr).join(", ")
 
-// ---- function emission ----------------------------------------------------
-
-// An unwritten type defaults to `i64` because a signature with no return type
-// is the common case. `int` is `i64`, not `i32`, so it cannot silently narrow.
 rtype(ty: str) -> str {
     if ty.ends_with("[]") {
         "Vec<i64>"
@@ -154,10 +122,6 @@ rtype(ty: str) -> str {
     }
 }
 
-// Maca's `main` returns an exit code and Rust's returns nothing, so the body
-// moves to `__maca_main` and a real `main` exits with it, the same wrapping
-// `maca-backend-rust` does. Literal Rust braces are written `{{`/`}}` so they
-// aren't read as Maca string interpolation.
 remit_fn(s: Stmt) -> str {
     body = remit_stmts(s.body, 0)
 
@@ -182,9 +146,6 @@ remit_stmts(body: Stmt[], i: int) -> str {
     }
 }
 
-// The last expression drops its semicolon so it becomes the block's tail value.
-// Maca's last-expression-is-the-value rule is Rust's too, which is why this
-// back end needs no `return` and no inferred local types.
 remit_stmt(s: Stmt, is_last: bool) -> str {
     if s.kind == SBind {
         "let {s.name} = {remit_expr(s.value)};"
@@ -208,8 +169,6 @@ remit_item(s: Stmt) -> str {
     }
 }
 
-// `Clone` on every record, because Maca records are values and a field access
-// or a `with` update reads as a copy at the source level.
 remit_struct(s: Stmt) -> str {
     fields = s.params.map(remit_struct_field).join(", ")
 
@@ -219,10 +178,6 @@ remit_struct(s: Stmt) -> str {
 remit_struct_field(f: Expr) -> str =>
     "{f.text}: {rtype(f.ty)}"
 
-// `use Color::*;` follows the enum so a bare `Green` in the emitted body
-// resolves. The AST keeps variant references bare, with no enum to qualify by.
-// `PartialEq` is for `==` on a variant, which `remit_binary` passes straight
-// through to Rust; a `match` needs no derive at all.
 remit_sum(s: Stmt) -> str {
     variants = s.params.map(remit_variant).join(", ")
 
@@ -230,8 +185,6 @@ remit_sum(s: Stmt) -> str {
         ++ "use {s.name}::*;"
 }
 
-// A payload variant is native here (`Circle(i64)`), so `Circle(2)` in the
-// source is already a valid constructor call and needs no shim.
 remit_variant(v: Expr) -> str {
     if v.children.length() == 0 {
         v.text

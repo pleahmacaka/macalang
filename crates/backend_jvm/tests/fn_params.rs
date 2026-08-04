@@ -1,17 +1,3 @@
-//! A function-typed parameter, called through a Java functional interface.
-//!
-//! `emit_method` typed a parameter with no annotation as `Object`, so a
-//! function-valued parameter was uncallable: `register(cb) { cb(1) }` emitted
-//! `Object cb` and `cb(1L)`, and javac answered `cannot find symbol: method
-//! cb(long)` and `Object is not a functional interface`. The lambda at the call
-//! site compiled to a lambda, correctly, and then had nowhere to go.
-//!
-//! Maca writes no function type at a parameter, so its use in the body is the
-//! only evidence there is; this mirrors what `maca_backend_c`'s `closure_params`
-//! decides for the native target. What Java needs beyond the decision is a type,
-//! and since an unannotated parameter is a `long` everywhere else in this
-//! emitter, the generated interfaces are `long`-typed too.
-
 use std::process::Command;
 
 fn emit(src: &str, class: &str) -> Result<String, Vec<String>> {
@@ -103,8 +89,6 @@ main() -> int {
 
 #[test]
 fn a_callback_whose_result_is_discarded_becomes_a_consumer() {
-    // Java splits these and one cannot stand in for the other: a lambda whose
-    // body is a `void` call is not a `Function`.
     let src = "\
 register(cb) {
     cb(1)
@@ -170,7 +154,6 @@ fn an_interface_is_declared_once_per_shape_and_only_when_used() {
 
 #[test]
 fn a_parameter_taking_more_arguments_than_java_can_express_is_refused() {
-    // Java stops at BiFunction, so this has to be said rather than emitted.
     let msg = refused(
         "quad(f, x: int) -> int => f(x, x, x, x)\nmain() -> int => 0\n",
         "F",
@@ -188,7 +171,6 @@ fn a_parameter_taking_more_arguments_than_java_can_express_is_refused() {
 
 #[test]
 fn an_annotated_parameter_keeps_its_declared_type() {
-    // The inference must only apply where there is no annotation to read.
     let java = ok("f(n: int) -> int => n + 1\nmain() -> int => 0\n", "G");
     assert!(java.contains("long n"), "lost the declared type:\n{java}");
 }
@@ -201,7 +183,6 @@ fn a_parameter_that_is_never_called_stays_a_plain_value() {
 
 #[test]
 fn a_lambda_handed_straight_to_a_java_api_still_works() {
-    // The mcmod shape: the interface type comes from Java, not from inference.
     let java = ok(
         "import java \"java.util.ArrayList\"\n\nmain() -> int {\n    xs = ArrayList()\n    xs.forEach(v => info(str(v)))\n    0\n}\n",
         "I",

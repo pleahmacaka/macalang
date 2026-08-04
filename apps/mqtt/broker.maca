@@ -1,6 +1,5 @@
 import c "mqtt.h"
 
-// std/mqtt engine (threaded broker: CONNECT/SUBSCRIBE/PUBLISH, +/# wildcards).
 mqtt_broker_run(port: int) -> int
 
 main() -> int {

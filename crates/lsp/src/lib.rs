@@ -1,8 +1,3 @@
-//! maca-lsp: language-server features as pure functions over `.maca` source:
-//! located diagnostics, hover, completion, document symbols, go-to-definition,
-//! and the code actions in `actions`. The stdio JSON-RPC transport lives in
-//! `main.rs`.
-
 pub mod actions;
 pub mod binding;
 pub mod workspace;
@@ -30,18 +25,14 @@ pub fn diagnostics(src: &str, config: bool) -> Vec<String> {
         .collect()
 }
 
-/// A diagnostic with a byte span into `src`, so the editor can squiggle the
-/// offending code instead of anchoring everything at the top of the file.
+/// A diagnostic with a byte span into `src`.
 pub struct Located {
     pub start: usize,
     pub end: usize,
     pub message: String,
 }
 
-/// Diagnostics with real byte spans. Parse/lex errors carry their span in the
-/// message (`parse (a, b): …`); type/effect diagnostics are anchored on the
-/// first back-quoted name found in the source code (skipping comments/strings),
-/// falling back to the file start.
+/// Diagnostics with real byte spans.
 pub fn diagnostics_located(src: &str, config: bool) -> Vec<Located> {
     let parsed = parse(src);
     if !parsed.errors.is_empty() {
@@ -87,8 +78,7 @@ pub struct Symbol {
     pub end: usize,
 }
 
-/// Top-level definitions in source order (functions, type declarations, and
-/// bindings), each with the byte span of its name.
+/// Top-level definitions in source order (functions, type declarations, and bindings), each with the byte span of its name.
 pub fn document_symbols(src: &str) -> Vec<Symbol> {
     let parsed = parse(src);
     let mut out = Vec::new();
@@ -98,7 +88,6 @@ pub fn document_symbols(src: &str) -> Vec<Symbol> {
             Stmt::Alias { name, .. } => (name.clone(), 23),
             Stmt::Bind(b) => match &b.target {
                 Expr::Ident(n) => {
-                    // a Capitalized binding to a sum/record is a type declaration
                     let is_type = n.chars().next().is_some_and(|c| c.is_uppercase())
                         && matches!(
                             &b.value,
@@ -122,8 +111,7 @@ pub fn document_symbols(src: &str) -> Vec<Symbol> {
     out
 }
 
-/// The definition span of the identifier at `byte_offset`, if it names a
-/// top-level function, type, or binding.
+/// The definition span of the identifier at `byte_offset`, if it names a top-level function, type, or binding.
 pub fn definition(src: &str, byte_offset: usize) -> Option<(usize, usize)> {
     let word = word_at(src, byte_offset)?;
     document_symbols(src)
@@ -132,8 +120,7 @@ pub fn definition(src: &str, byte_offset: usize) -> Option<(usize, usize)> {
         .map(|s| (s.start, s.end))
 }
 
-/// Byte offset → (0-based line, 0-based UTF-16 character), the inverse of
-/// `position_to_offset`, for turning spans into LSP ranges.
+/// Byte offset → (0-based line, 0-based UTF-16 character), the inverse of `position_to_offset`, for turning spans into LSP ranges.
 pub fn offset_to_position(src: &str, byte: usize) -> (usize, usize) {
     let byte = byte.min(src.len());
     let mut line = 0usize;
@@ -152,8 +139,7 @@ pub fn offset_to_position(src: &str, byte: usize) -> (usize, usize) {
     (line, col)
 }
 
-/// Pull a `(start, end)` byte span out of a flattened parse/lex error like
-/// `parse (12, 15): unexpected token` or `lex (3, 4): …`.
+/// Pull a `(start, end)` byte span out of a flattened parse/lex error like `parse (12, 15): unexpected token` or `lex (3, 4): …`.
 fn span_in_message(msg: &str) -> Option<(usize, usize)> {
     let open = msg.find('(')?;
     let close = open + msg[open..].find(')')?;
@@ -169,13 +155,6 @@ fn first_backtick(msg: &str) -> Option<&str> {
 }
 
 /// The name in a message that identifies *where* it happened.
-///
-/// The first quoted name usually is that name. A misspelt method is the
-/// exception: `` `str` has no method `lenght` `` leads with the receiver's
-/// type, so the squiggle landed on the first `str` in the file, which is
-/// typically a parameter's annotation several lines away from the typo. The
-/// quick fix is offered at the cursor, so an error marker that points at the
-/// wrong line is an error marker the fix cannot be reached from.
 fn anchor_name(msg: &str) -> Option<&str> {
     match msg.split_once("has no method `") {
         Some((_, rest)) => rest.split('`').next(),
@@ -183,13 +162,7 @@ fn anchor_name(msg: &str) -> Option<&str> {
     }
 }
 
-/// First whole-word occurrence of `name` in *code* (skipping `//` comments and
-/// `"…"` strings), so a diagnostic anchors on the real identifier rather than
-/// on a mention of it in prose.
-///
-/// References and rename used to be built on the all-occurrences form of this;
-/// they resolve the binding properly now (see `binding`), and anchoring one
-/// diagnostic is all that is left.
+/// First whole-word occurrence of `name` in *code* (skipping `//` comments and `"…"` strings).
 fn code_word_span(src: &str, name: &str) -> Option<(usize, usize)> {
     if name.is_empty() {
         return None;
@@ -226,12 +199,7 @@ fn code_word_span(src: &str, name: &str) -> Option<(usize, usize)> {
     None
 }
 
-/// Every reference to the binding under the cursor, its definition and every
-/// use alike, as byte spans. Powers `textDocument/references`,
-/// `documentHighlight` and, with a new name, `textDocument/rename`.
-///
-/// Scoped, not textual: see `binding`. A local's uses stop at the end of its
-/// function, and a field is never confused with a variable of the same name.
+/// Every reference to the binding under the cursor, its definition and every use alike, as byte spans.
 pub fn references(src: &str, byte_offset: usize) -> Vec<(usize, usize)> {
     match binding::resolve(src, byte_offset) {
         Some(b) => binding::spans(src, &b),
@@ -239,8 +207,7 @@ pub fn references(src: &str, byte_offset: usize) -> Vec<(usize, usize)> {
     }
 }
 
-/// Byte span of a top-level definition's name: a line starting (at column 0)
-/// with `name` followed by a non-identifier char.
+/// Byte span of a top-level definition's name.
 fn top_level_span(src: &str, name: &str) -> Option<(usize, usize)> {
     let mut off = 0;
     for line in src.split_inclusive('\n') {
@@ -257,16 +224,10 @@ fn top_level_span(src: &str, name: &str) -> Option<(usize, usize)> {
     None
 }
 
-/// Signature help for the call the cursor sits inside: the callee's signature,
-/// its parameter labels, and which parameter is being typed.
-///
-/// Scans backwards from the cursor for the innermost unclosed `(`, reads the
-/// identifier before it, and counts the top-level commas between there and the
-/// cursor to pick the active parameter.
+/// Signature help for the call the cursor sits inside.
 pub fn signature_help(src: &str, byte_offset: usize) -> Option<(String, Vec<String>, usize)> {
     let b = src.as_bytes();
     let off = byte_offset.min(b.len());
-    // walk back to the `(` that opens the innermost enclosing call
     let mut depth = 0i32;
     let mut commas = 0usize;
     let mut i = off;
@@ -280,7 +241,7 @@ pub fn signature_help(src: &str, byte_offset: usize) -> Option<(String, Vec<Stri
             b'(' if depth == 0 => break i,
             b'(' => depth -= 1,
             b',' if depth == 0 => commas += 1,
-            b'\n' if depth == 0 => return None, // don't cross a line boundary
+            b'\n' if depth == 0 => return None,
             _ => {}
         }
     };
@@ -301,7 +262,6 @@ pub fn signature_help(src: &str, byte_offset: usize) -> Option<(String, Vec<Stri
             format!("{}{}: {ty}", if p.variadic { "..." } else { "" }, p.name)
         })
         .collect();
-    // clamp: a variadic tail keeps highlighting its last parameter
     let active = commas.min(labels.len().saturating_sub(1));
     Some((fn_sig(&f), labels, active))
 }
@@ -329,8 +289,7 @@ pub fn hover(src: &str, byte_offset: usize) -> Option<String> {
     }
 }
 
-/// Whether a source should be checked in config (Nix) mode. The heuristic: it
-/// imports nixpkgs or drives a top-level NixOS/home option namespace.
+/// Whether a source should be checked in config (Nix) mode.
 pub fn is_config_source(src: &str) -> bool {
     src.lines().any(|l| {
         let t = l.trim();
@@ -343,15 +302,12 @@ pub fn is_config_source(src: &str) -> bool {
     })
 }
 
-/// LSP (0-based line, character) → byte offset into `src`. `character` is a
-/// UTF-16 code-unit index (the LSP/Monaco convention), mapped to a byte offset
-/// that always lands on a char boundary, even for multibyte (CJK/emoji) source.
+/// LSP (0-based line, character) → byte offset into `src`.
 pub fn position_to_offset(src: &str, line: usize, character: usize) -> usize {
     let mut off = 0;
     for (i, l) in src.split_inclusive('\n').enumerate() {
         if i == line {
             let content = l.strip_suffix('\n').unwrap_or(l);
-            // consume `character` UTF-16 code units, returning the byte offset
             let mut u16s = 0usize;
             for (b, ch) in content.char_indices() {
                 if u16s >= character {
@@ -366,9 +322,7 @@ pub fn position_to_offset(src: &str, line: usize, character: usize) -> usize {
     off.min(src.len())
 }
 
-/// The identifier prefix immediately before `offset` (for completion). Snaps
-/// `offset` down to a char boundary first, so it never panics on multibyte
-/// source (the running LSP feeds arbitrary offsets here on every keystroke).
+/// The identifier prefix immediately before `offset` (for completion).
 pub fn prefix_at(src: &str, offset: usize) -> String {
     let bytes = src.as_bytes();
     let mut end = offset.min(src.len());
@@ -383,8 +337,7 @@ pub fn prefix_at(src: &str, offset: usize) -> String {
     src[start..end].to_string()
 }
 
-/// Program-mode completion: user-defined top-level function names plus the
-/// builtin type names, filtered by `prefix`.
+/// Program-mode completion: user-defined top-level function names plus the builtin type names, filtered by `prefix`.
 pub fn program_completions(src: &str, prefix: &str) -> Vec<String> {
     let parsed = parse(src);
     let mut names: Vec<String> = parsed

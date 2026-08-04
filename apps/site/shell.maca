@@ -1,35 +1,14 @@
-// shell: the page furniture the site's generators share.
-//
-// `apps/site/home.maca` writes the front page and `tools/macadoc.maca` writes
-// the API reference. They had a `base_css`, a `title_tag`, a `body_tag`, a
-// `page_class` and a `CodeSpan` each, and the copies drifted: one `title_tag`
-// escaped its text and one did not, one `page_class` carried `break-keep` and
-// one did not, and the two `CodeSpan`s disagreed about a padding.
-//
-// `apps/tomo` deliberately does not import this. It builds other people's
-// books, and this is the chrome of one particular site.
-//
-// Not gated on its own: it has no `main` to build. Both importers are, in
-// `crates/driver/tests/scripts.rs`, so a break here fails two suites.
-
 import { escape_html } from std/text
 
 /// The project's source, named once.
 Repo = "https://github.com/pleahmacaka/macalang"
 
-/// Told to the browser rather than to any element: a page carrying both
-/// palettes wants scrollbars and form controls to follow the reader's system
-/// setting, and no utility can say that.
+/// Told to the browser rather than to any element.
 base_css() -> str =>
     """html{color-scheme:light dark}
 """
 
 /// `<title>`, escaped.
-///
-/// The escaping is *inside*, so there is one contract rather than one per
-/// caller. `title` and `body` are also parameter names all over these files,
-/// and a user definition wins over a tag, which is the other reason these two
-/// exist at all.
 title_tag(text: str) -> str =>
     title(escape_html(text))
 
@@ -37,25 +16,10 @@ body_tag(classes: str, inner: str) -> str =>
     body(class=classes, inner)
 
 /// Pretendard, which `font-sans` names first and which no page ever fetched.
-///
-/// Naming a family is not loading it: without this every reader without the
-/// font installed got system-ui, and the Korean pages are the ones that showed
-/// it. Linked rather than inlined because the sheet is 92 `@font-face` rules
-/// and 55 KB of `unicode-range` table shared by every page, so one fetch covers
-/// the site and the browser pulls only the shards a page's characters need.
-///
-/// `up` is the page's own path back to the site root, and it has to be
-/// relative: the site is published under a subpath
-/// (`pleahmacaka.github.io/macalang/`), where `/fonts/…` asks the domain root
-/// and gets nothing.
 font_link(up: str) -> str =>
     link(rel="stylesheet", href=up ++ "fonts/pretendard.css")
 
 /// The body's typography and colours, over a chosen font stack.
-///
-/// `break-keep` is here for every language, not just Korean: it only changes
-/// text that would otherwise break inside a word, which Korean does by default
-/// (a heading split `돌아갈` as `돌` / `아갈`) and English never does.
 page_class(font: str) -> str =>
     font ++ " text-base leading-relaxed break-keep bg-white dark:bg-zinc-950"
         ++ " text-zinc-900 dark:text-zinc-100"

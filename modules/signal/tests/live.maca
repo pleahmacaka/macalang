@@ -1,22 +1,7 @@
-// A region, and a patch applied to markup rather than to a DOM.
-//
-// `signal/dom`'s browser half sets `innerHTML` on the nodes a patch names; its
-// native half, `apply_patch`, does the same thing to the page string. The two
-// have to agree, and everything here is about the second one, because it is the
-// one that can be checked without a browser and the one an incremental
-// generator's self-check rests on.
-//
-// The cases that matter are the ones where a careless implementation looks
-// right: a region that wraps another element of its own tag, a tag whose name is
-// a prefix of a longer one, two nodes bound to one key, and a key nothing is
-// bound to.
-
 import { Store, store, set, clear_changed } from signal/store
 import { text_node, class_node, value_input, selector } from signal/dom
 import { html_node, patch, patch_json, patch_script,
          apply_patch } from signal/dom
-
-// ---- binding a region -----------------------------------------------------
 
 test_a_region_carries_its_key_and_its_markup() {
     s = store().set("body", "<p>one</p>")
@@ -27,8 +12,6 @@ test_a_region_carries_its_key_and_its_markup() {
     assert(html.contains("<p>one</p>"), "the value went in unescaped")
 }
 
-// The difference between the two bindings, and the reason a region is the one a
-// generator uses and never the one input goes into.
 test_a_region_does_not_escape_where_a_text_node_does() {
     s = store().set("k", "<b>x</b>")
 
@@ -36,8 +19,6 @@ test_a_region_does_not_escape_where_a_text_node_does() {
     assert(text_node(s, "div", "k").contains("&lt;b&gt;x&lt;/b&gt;"),
            "text is escaped")
 }
-
-// ---- the patch as data ----------------------------------------------------
 
 test_patch_json_is_the_array_patch_script_wraps() {
     s = store().set("a", "1").set("b", "2")
@@ -55,8 +36,6 @@ test_an_empty_patch_is_an_empty_array_and_no_script() {
     assert_eq(patch_json(s), "[]", "nothing changed, nothing to send")
     assert_eq(patch_script(s), "", "and nothing to run")
 }
-
-// ---- applying a patch to markup -------------------------------------------
 
 test_a_region_is_replaced_by_the_value_the_op_carries() {
     s = store().set("body", "<p>one</p>")
@@ -79,9 +58,6 @@ test_a_text_node_is_replaced_escaped() {
               "text arrives as text, however it is spelled")
 }
 
-// A patch is applied to the markup it was computed against, so the rest of the
-// page has to come out the other side untouched. This is the claim that makes
-// the whole design worth having.
 test_everything_outside_the_region_is_left_alone() {
     s = store().set("body", "old")
     page = "<div id=\"top\">before</div>"
@@ -96,9 +72,6 @@ test_everything_outside_the_region_is_left_alone() {
     assert(out.contains(">new</section>"), "with the region replaced")
 }
 
-// `querySelectorAll` patches every match, so the text side has to as well. A
-// version that stopped at the first left the second node showing the old value
-// and called the page correct.
 test_every_node_bound_to_the_key_is_patched() {
     s = store().set("n", "1")
     page = text_node(s, "span", "n") ++ "|" ++ text_node(s, "b", "n")
@@ -118,12 +91,6 @@ test_an_op_nothing_is_bound_to_changes_nothing() {
               "a key with no node is a patch with no effect")
 }
 
-// A region wrapping an element of its own tag closes at the *second* close tag.
-// Taking the first cut the region in half and left its tail outside, which reads
-// as a page that half-updated.
-// The assertion is the whole string and not a `contains`: stopping at the first
-// `</div>` leaves an extra one behind, and every substring anyone would think to
-// check is still there in the broken output.
 test_a_region_holding_its_own_tag_closes_in_the_right_place() {
     s = store().set("k", "<div>inner</div>")
     page = html_node(s, "div", "k") ++ "<p>tail</p>"
@@ -135,8 +102,6 @@ test_a_region_holding_its_own_tag_closes_in_the_right_place() {
               "the region closed at its own close tag, not at its child's")
 }
 
-// `<div` is also the start of `<divider>`. Counting that as a nested `<div>`
-// walked the scan past the close it was looking for.
 test_a_longer_tag_sharing_the_prefix_is_not_a_nested_tag() {
     s = store().set("k", "<divider></divider>")
     page = html_node(s, "div", "k") ++ "<p>tail</p>"
@@ -167,9 +132,6 @@ test_an_input_keeps_its_markup_value_in_step() {
            "the rendered value follows the store")
 }
 
-// The marker on the page holds the key as an attribute value, where a quote is
-// `&quot;`. Searching for the raw key found nothing and left the node alone,
-// silently.
 test_a_key_holding_a_quote_is_still_found() {
     key = "say \"hi\""
     s = store().set(key, "one")
@@ -181,12 +143,6 @@ test_a_key_holding_a_quote_is_still_found() {
     assert(selector(key).contains("\\\""), "the CSS selector escapes instead")
 }
 
-// ---- the claim an incremental build rests on ------------------------------
-//
-// Patching the last build's page has to equal rebuilding it. Everything above
-// is a piece of this; this is the shape a generator asserts.
-
-// Two regions and some fixed furniture, which is what a generated page is.
 demo_page(s: Store) -> str =>
     "<body><header>fixed</header>"
         ++ html_node(s, "article", "body")

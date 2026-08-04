@@ -1,17 +1,3 @@
-// bindgen: generate Maca FFI declarations from a C header, written in Maca.
-//
-// A port of the stage-0 Rust implementation (crates/driver/src/bindgen.rs) into
-// Maca itself: the compiler's tooling should be written in the language it
-// compiles. It is a lightweight prototype scanner (no libclang): strip
-// comments and preprocessor lines, split what's left into `;`-terminated
-// declarations, and turn each `RET NAME(PARAMS)` prototype into a Maca extern
-// declaration `name(arg: T, …) -> R`.
-//
-// Type mapping: `char*` → `str`, other pointers → `int` (an opaque handle),
-// `double`/`float` → `float`, and the integer family → `int`.
-//
-// Run it with:  maca run tools/bindgen.maca [header.h] [out.maca]
-
 import { index_of_from, last_index_of } from std/text
 import { basename } from std/path
 import { command, rest } from cli/spec
@@ -19,14 +5,9 @@ import { parse, from } from cli/parse
 import { help } from cli/help
 import { ok, bad, dim } from cli/style
 
-// ---- small string helpers -------------------------------------------------
-
 is_ident_char(c: str) -> bool =>
     c.is_alpha() || c.is_ascii_digit() || c == "_"
 
-// ---- comment / preprocessor stripping -------------------------------------
-
-// Drop `/* … */` blocks. Recurses on the remainder so several blocks go.
 strip_blocks(s: str) -> str {
     open = s.index_of("/*")
     close = if open < 0 { -1 } else { index_of_from(s, "*/", open) }
@@ -39,7 +20,6 @@ strip_blocks(s: str) -> str {
     }
 }
 
-// Drop `//` line comments and `#` preprocessor lines.
 strip_lines(lines: str[], i: int, acc: str) -> str {
     if i >= lines.length() {
         acc
@@ -62,8 +42,6 @@ clean_line(line: str) -> str {
 strip(src: str) -> str =>
     strip_lines(strip_blocks(src).split("\n"), 0, "")
 
-// ---- type mapping ---------------------------------------------------------
-
 map_type(c: str) -> str {
     t = c.trim()
 
@@ -72,7 +50,6 @@ map_type(c: str) -> str {
     } else if t.contains("char") && !t.contains("char**") {
         "str"
     } else {
-        // Any other pointer is an opaque handle.
         "int"
     }
 }
@@ -85,8 +62,6 @@ scalar_type(t: str) -> str {
     }
 }
 
-// A bare type keyword must not be mistaken for a parameter name: an unnamed
-// `int` parameter's "last identifier" is `int` itself.
 is_c_type_word(w: str) -> bool =>
     w == "void" || w == "int" || w == "char" || w == "short" || w == "long"
         || w == "float" || w == "double" || w == "unsigned" || w == "signed"
@@ -95,11 +70,6 @@ is_c_type_word(w: str) -> bool =>
         || w == "uint8_t" || w == "uint16_t"
         || w == "uint32_t" || w == "uint64_t"
 
-// ---- identifier extraction ------------------------------------------------
-
-// The trailing C identifier of a string (`const char *sqlite3_libversion` →
-// `sqlite3_libversion`), skipping trailing `*` and spaces. "" when there is
-// none, or when it starts with a digit.
 last_ident(s: str) -> str {
     t = trim_trailing(s.trim())
     start = ident_start(t, t.length())
@@ -112,7 +82,6 @@ last_ident(s: str) -> str {
     }
 }
 
-// Strip trailing `*` and whitespace.
 trim_trailing(s: str) -> str {
     trailing = s.ends_with("*") || s.ends_with(" ") || s.ends_with("\t")
 
@@ -123,7 +92,6 @@ trim_trailing(s: str) -> str {
     }
 }
 
-// Walk back over identifier characters to find where the last one starts.
 ident_start(s: str, at: int) -> int {
     if at <= 0 || !is_ident_char(s.at(at - 1)) {
         at
@@ -131,8 +99,6 @@ ident_start(s: str, at: int) -> int {
         ident_start(s, at - 1)
     }
 }
-
-// ---- parameters -----------------------------------------------------------
 
 map_params(params: str) -> str {
     p = params.trim()
@@ -157,7 +123,6 @@ join_params(ps: str[], i: int) -> str {
 one_param(raw_in: str, i: int) -> str {
     raw = raw_in.trim()
     id = last_ident(raw)
-    // A bare type keyword isn't a name, so synthesize `a0`, `a1`, ….
     named = id.length() > 0 && !is_c_type_word(id)
 
     if !named {
@@ -167,15 +132,10 @@ one_param(raw_in: str, i: int) -> str {
     }
 }
 
-// ---- prototypes -----------------------------------------------------------
-
-// Is this declaration something other than a plain function prototype?
 skip_decl(head: str, params: str, decl: str) -> bool =>
     head.contains("typedef") || head.contains("struct") || head.contains("enum")
         || head.contains("union") || params.contains("(*") || decl.contains("=")
 
-// The Maca declaration for one `;`-separated chunk, or "" when it isn't a
-// prototype.
 prototype(chunk: str) -> str {
     decl = chunk.trim()
     open = decl.index_of("(")
@@ -202,9 +162,6 @@ proto_parts(decl: str, open: int, close: int) -> str {
     }
 }
 
-// ---- generation -----------------------------------------------------------
-
-// Every prototype in the cleaned source, one declaration per line.
 decls(chunks: str[], i: int, acc: str) -> str {
     if i >= chunks.length() {
         acc
@@ -233,10 +190,6 @@ generate(src: str, header_name: str) -> str {
         ++ body
 }
 
-// ---- entry point ----------------------------------------------------------
-
-
-// A sample header, so the tool demonstrates itself when run with no argument.
 sample_header() -> str =>
     "/* a sample C header */\n"
         ++ "#include <stddef.h>\n"
@@ -246,11 +199,6 @@ sample_header() -> str =>
         ++ "double sqlite3_column_double(sqlite3_stmt*, int iCol);\n"
         ++ "int sqlite3_close(sqlite3*);\n"
 
-// `bindgen [header.h] [out.maca]`. Both positionals are optional (with no
-// header the sample above stands in, with no destination the module is
-// printed), and `cli/spec` has no optional positional, because something a
-// command cannot run without is an argument and everything else is an option.
-// So the two arrive together as `rest` and are told apart by position here.
 Spec = command("bindgen", "a C header, as Maca FFI declarations")
     .rest("path", "the header to read, then where to write the module")
 
@@ -287,9 +235,6 @@ emit(paths: str[]) -> int {
     }
 }
 
-// Standard output is the default so the tool composes with a pipe. `--out`
-// says so on the terminal instead, because a program that writes a file and
-// prints nothing looks like a program that did nothing.
 deliver(text: str, dest: str) -> int {
     if dest == "" {
         print(text)

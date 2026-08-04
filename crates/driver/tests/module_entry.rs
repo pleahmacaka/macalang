@@ -1,9 +1,3 @@
-//! `maca -m <module>[.<function>]`, driven the way a person would.
-//!
-//! Each of these builds a project on disk and runs the real binary in it: the
-//! question is which file a module name resolves to and what the process exits
-//! with, and neither is visible from inside a Maca program.
-
 mod common;
 use common::*;
 
@@ -64,11 +58,7 @@ fn skip() -> bool {
     false
 }
 
-/// The shape the whole feature exists for: one function out of a package, run
-/// straight from the command line. `http.serve` reads as the module `http` and
-/// its `serve`, or as the module `http/serve` under its own name. Both are
-/// ordinary paths, so whichever exists is the one that was meant, and no entry
-/// file is needed to make the spelling read well.
+/// The shape the whole feature exists for.
 #[test]
 fn a_package_function_runs_from_the_command_line() {
     if skip() {
@@ -85,7 +75,6 @@ fn a_package_function_runs_from_the_command_line() {
          serve() -> int {\n    info(listen(8080))\n    0\n}\n",
     );
 
-    // both spellings reach the same function
     for spec in ["http.serve", "http/serve"] {
         let out = p.run(&[spec]);
         assert!(out.status.success(), "{spec}: {}", stderr(&out));
@@ -114,8 +103,7 @@ fn a_bare_module_runs_its_main() {
     assert!(stdout(&out).contains("hello from the module"));
 }
 
-/// Failing that, the function named after the module, so a one-function
-/// package runs under its own name with nothing else written down.
+/// Failing that, the function named after the module.
 #[test]
 fn a_module_without_a_main_runs_its_namesake() {
     if skip() {
@@ -219,9 +207,7 @@ fn the_refusals_name_what_is_missing() {
     );
 }
 
-/// The generated entry module is an implementation detail and must not survive
-/// the run, nor be importable while it exists. A shim named after its own
-/// module resolved `import http` to itself and failed to link.
+/// The generated entry module is an implementation detail and must not survive the run, nor be importable while it exists.
 #[test]
 fn the_generated_entry_leaves_nothing_behind() {
     if skip() {

@@ -1,17 +1,3 @@
-//! The checker's method lists must match what the back end can actually lower.
-//!
-//! `maca-core` rejects a method a `str` or `T[]` doesn't have, so a typo is a
-//! diagnostic instead of `undefined reference to 'slice'` from the linker. That
-//! check is only as good as its lists, and a hand-maintained list rots: the
-//! first version of it was missing `parallel` and `join` and invented `count`,
-//! `get` and `fixed` on `str`.
-//!
-//! So the lists are not trusted: they are executed. Every name in them is
-//! compiled and run against a real receiver here. A name the back end can't
-//! lower fails to build; a name the back end *can* lower but that is missing
-//! from the list gets rejected by the checker as a typo, which the second half
-//! of this file catches.
-
 mod common;
 use common::*;
 
@@ -32,8 +18,7 @@ fn run(name: &str, src: &str) -> (bool, String) {
     )
 }
 
-/// One call per documented `str` method, in one program. It has to compile and
-/// run, which means the checker accepted every name and the back end lowered it.
+/// One call per documented `str` method, in one program.
 #[test]
 fn every_str_method_the_checker_allows_actually_works() {
     if have_wsl() || !have("cc") {
@@ -63,7 +48,6 @@ fn every_str_method_the_checker_allows_actually_works() {
         "s.at(0).is_ascii_digit() ? 1 : 0",
         "s.at(0).is_alpha() ? 1 : 0",
     ];
-    // one is exercised per documented method
     assert_eq!(
         calls.len(),
         maca_core::STR_METHODS.len(),
@@ -83,8 +67,6 @@ fn every_list_method_the_checker_allows_actually_works() {
         eprintln!("skipping: needs a host cc and no wsl");
         return;
     }
-    // `join` needs a str[] and the rest an int[], so they run in one program
-    // over two receivers.
     let int_calls = [
         "xs.map(v => v * 2).length()",
         "xs.filter(v => v > 1).length()",
@@ -152,8 +134,7 @@ fn every_map_method_the_checker_allows_actually_works() {
     assert!(ok, "a documented map method doesn't work:\n{out}");
 }
 
-/// The point of the whole exercise: a misspelt method is a diagnostic naming
-/// the closest real one, not a linker error about a C symbol.
+/// The point of the whole exercise.
 #[test]
 fn a_misspelt_method_is_a_diagnostic_with_a_suggestion() {
     if have_wsl() || !have("cc") {
@@ -169,7 +150,6 @@ fn a_misspelt_method_is_a_diagnostic_with_a_suggestion() {
             "main() -> int {\n    info(\"{[1, 2].mapp(v => v)}\")\n    0\n}\n",
             "did you mean `map`",
         ),
-        // a map's method set is closed the same way
         (
             "main() -> int {\n    m: Map str int = map()\n    info(\"{m.lenght()}\")\n    0\n}\n",
             "did you mean `length`",
@@ -185,15 +165,13 @@ fn a_misspelt_method_is_a_diagnostic_with_a_suggestion() {
     }
 }
 
-/// Gradual typing still has to work: a method on an `any` receiver, or one the
-/// program defines itself, must not be flagged.
+/// Gradual typing still has to work.
 #[test]
 fn gradual_and_user_defined_methods_are_not_flagged() {
     if have_wsl() || !have("cc") {
         eprintln!("skipping: needs a host cc and no wsl");
         return;
     }
-    // a user function used UFCS-style on a str receiver
     let (ok, out) = run(
         "user_method",
         "shout(s: str) -> str => s.upper() ++ \"!\"\n\n\

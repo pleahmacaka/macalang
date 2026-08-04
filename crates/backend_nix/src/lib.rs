@@ -1,16 +1,3 @@
-//! maca-backend-nix: lower config-mode Maca to an idiomatic NixOS module.
-//!
-//! Routing + the config-mode conveniences from the spec:
-//!   * `system.*` → NixOS options; `user.*` → home-manager (`home-manager.users.<u>`)
-//!   * implicit enable: a `services.X = { .. }` / program block injects `enable = true`
-//!   * smart values: `system.fonts = pkg, …` hoists to `fonts.packages`
-//!   * `system.packages` → `environment.systemPackages`
-//!   * `user.home.dirs = …` → non-destructive `xdg.userDirs`
-//!   * `name: Program : pkg = { .. }` merge → `programs.name`
-//!
-//! Output is a `{ config, pkgs, lib, ... }:` module. Package references
-//! (bare idents and `nixpkgs.x`) become `pkgs.x`.
-
 use maca_parser::ast::*;
 
 pub fn emit(m: &Module) -> String {
@@ -18,9 +5,7 @@ pub fn emit(m: &Module) -> String {
 }
 
 thread_local! {
-    /// Constructs config mode cannot express. Nix accepts `null` as a value
-    /// everywhere, so an unlowered expression used to become a plausible option
-    /// setting instead of an error.
+    /// Constructs config mode cannot express.
     static PROBLEMS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
@@ -40,15 +25,7 @@ pub fn emit_checked(m: &Module) -> Result<String, Vec<String>> {
     }
 }
 
-/// Config-mode → a **dev-environment flake** (`flake.nix`), replacing a
-/// hand-written flake. Reads `dev.*` bindings:
-///   * `dev.name = "…"`        → shell description
-///   * `dev.packages = a, b`   → `mkShell { packages = [ pkgs.a pkgs.b ]; }`
-///   * `dev.env = { K = "v" }` → shell environment variables
-///   * `dev.shellHook = "…"`   → `shellHook`
-///
-/// The flake is self-contained (nixpkgs input only, multi-system via
-/// `genAttrs`) so `nix develop` works with no extra inputs.
+/// Config-mode → a **dev-environment flake** (`flake.nix`), replacing a hand-written flake.
 pub fn emit_flake(m: &Module) -> String {
     let mut name = "dev".to_string();
     let mut packages = String::from("[ ]");
@@ -114,24 +91,17 @@ pub fn emit_flake(m: &Module) -> String {
     )
 }
 
-/// A native Windows dev environment generated from `scoop.*` / `choco.*` /
-/// `winget.*` config: a project-local install under `.maca/dev/` plus an
-/// activation script that injects PATH and env vars. `maca dev` writes these on
-/// Windows (and generates them everywhere for inspection); `flake.nix` ignores
-/// the Windows config entirely (it only reads `dev.*` + `nixpkgs`).
+/// A native Windows dev environment generated from `scoop.*` / `choco.*` / `winget.*` config.
 pub struct WindowsDev {
-    /// `setup.ps1`, which installs the configured tools (scoop is portable into
-    /// `.maca/dev/scoop`; choco/winget install system-wide when present).
+    /// `setup.ps1`, which installs the configured tools (scoop is portable into `.maca/dev/scoop`; choco/winget install system-wide when present).
     pub setup: String,
-    /// `activate.ps1`, sourced to enter the env: puts the tools on `PATH`,
-    /// sets `dev.env`, and auto-detects `JAVA_HOME` for a scoop-installed JDK.
+    /// `activate.ps1`, sourced to enter the env.
     pub activate: String,
     /// Which package managers the config uses (for the CLI message).
     pub managers: Vec<String>,
 }
 
-/// Generate the Windows dev environment, or `None` if no `scoop`/`choco`/
-/// `winget` packages are declared.
+/// Generate the Windows dev environment, or `None` if no `scoop`/`choco`/ `winget` packages are declared.
 pub fn emit_windows_dev(m: &Module) -> Option<WindowsDev> {
     let mut name = "dev".to_string();
     let (mut scoop, mut buckets, mut choco, mut winget) =
@@ -229,7 +199,6 @@ pub fn emit_windows_dev(m: &Module) -> Option<WindowsDev> {
         a.push_str(&format!("$env:{k} = \"{}\"\n", ps_escape(v)));
     }
     if !scoop.is_empty() {
-        // point JAVA_HOME at a scoop-installed JDK/JRE, if any (jdk/jre test)
         a.push_str(
             "$jdk = Get-ChildItem -Path (Join-Path $env:SCOOP \"apps\") -Directory -ErrorAction SilentlyContinue |\n\
              \x20   Where-Object { $_.Name -match \"jdk|jre|temurin|openjdk|zulu|corretto|liberica\" } | Select-Object -First 1\n\
@@ -247,8 +216,7 @@ pub fn emit_windows_dev(m: &Module) -> Option<WindowsDev> {
     })
 }
 
-/// Bare package names from a `pkg, pkg, …` list (idents or strings); a dotted
-/// `bucket.pkg` becomes `bucket/pkg` (scoop's bucket-qualified form).
+/// Bare package names from a `pkg, pkg, …` list (idents or strings).
 fn plain_list(v: &Expr) -> Vec<String> {
     let items: Vec<&Expr> = match v {
         Expr::List(es) => es.iter().collect(),
@@ -322,7 +290,6 @@ fn emit_bind(b: &Bind, top: &mut Vec<String>, hm: &mut Vec<String>) {
     let path = path_of(&b.target);
     let p: Vec<&str> = path.iter().map(String::as_str).collect();
 
-    // `name: Program : pkg = { .. }` is a typed program merge
     if !b.tys.is_empty() && p.len() == 1 {
         hm.push(format!(
             "programs.{} = {};",
@@ -337,10 +304,7 @@ fn emit_bind(b: &Bind, top: &mut Vec<String>, hm: &mut Vec<String>) {
             "environment.systemPackages = {};",
             pkg_list(&b.value)
         )),
-        ["system", "fonts"] => {
-            // smart value: fonts hoist to fonts.packages
-            top.push(format!("fonts.packages = {};", pkg_list(&b.value)))
-        }
+        ["system", "fonts"] => top.push(format!("fonts.packages = {};", pkg_list(&b.value))),
         ["user", "packages"] => hm.push(format!("home.packages = {};", pkg_list(&b.value))),
         ["user", "home", "dirs"] => hm.push(xdg_user_dirs(&b.value)),
         ["services", svc] => top.push(format!(
@@ -348,7 +312,6 @@ fn emit_bind(b: &Bind, top: &mut Vec<String>, hm: &mut Vec<String>) {
             record_with_enable(&b.value)
         )),
         _ => {
-            // generic: networking.hostName, system.stateVersion, …
             top.push(format!("{} = {};", path.join("."), value(&b.value)));
         }
     }
@@ -385,15 +348,13 @@ fn record_with_enable(v: &Expr) -> String {
     out
 }
 
-/// Coalesce `f = a, b` (Value followed by Bare entries) into `f = [ a b ];`,
-/// and render `key = value;` / `key = <nested>;` fields.
+/// Coalesce `f = a, b` (Value followed by Bare entries) into `f = [ a b ];`, and render `key = value;` / `key = <nested>;` fields.
 fn record_fields(fields: &[Field]) -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < fields.len() {
         match &fields[i] {
             Field::Value { name, value: v } => {
-                // gather trailing bare entries → list value
                 let mut extra = Vec::new();
                 let mut j = i + 1;
                 while let Some(Field::Bare(e)) = fields.get(j) {
@@ -458,8 +419,6 @@ fn value(e: &Expr) -> String {
             value(els)
         ),
         Expr::Unit => "null".into(),
-        // `null` is a value Nix accepts everywhere, so an unlowered construct
-        // used to become a plausible option setting rather than an error.
         other => {
             problem(format!("{} is not a config value", describe(other)));
             "null".into()
@@ -467,8 +426,7 @@ fn value(e: &Expr) -> String {
     }
 }
 
-/// An operator in a config value. Nix has `+ - *` directly, integer division
-/// and truncating remainder through `builtins.div`, and no shifts at all.
+/// An operator in a config value.
 fn binary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
     let (l, r) = (value(lhs), value(rhs));
     let infix = |o: &str| format!("({l} {o} {r})");
@@ -476,11 +434,7 @@ fn binary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
         BinOp::Add => infix("+"),
         BinOp::Sub => infix("-"),
         BinOp::Mul => infix("*"),
-        // Spelled out rather than `/`, which Nix reads as a path separator when
-        // it is not surrounded by whitespace.
         BinOp::Div => format!("(builtins.div {l} {r})"),
-        // Nix has no modulo; `a - (a / b) * b` is it, and `builtins.div`
-        // truncates toward zero, so this is the same remainder Maca's `%` gives.
         BinOp::Mod => format!("({l} - (builtins.div {l} {r}) * {r})"),
         BinOp::Eq => infix("=="),
         BinOp::Ne => infix("!="),
@@ -490,7 +444,6 @@ fn binary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
         BinOp::Ge => infix(">="),
         BinOp::And => infix("&&"),
         BinOp::Or => infix("||"),
-        // Nix `+` concatenates strings; `++` there is for lists.
         BinOp::Concat => infix("+"),
         BinOp::Shl | BinOp::Shr => {
             problem(format!(

@@ -22,12 +22,6 @@ fn maca_blocks(md: &str) -> Vec<String> {
 }
 
 /// Every `maca` example in the documentation must pass `maca.check`.
-///
-/// Each block is checked on its own, because that is how it is read: an
-/// example calling a function the block never defines is an example nobody can
-/// run. `README.md` is here for the same reason the other two are: its blocks
-/// were written by hand and verified by pasting them into a file with the
-/// missing pieces added, which checks a program the reader will never see.
 #[test]
 fn llm_docs_examples_check_clean() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");

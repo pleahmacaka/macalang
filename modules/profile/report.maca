@@ -1,28 +1,8 @@
-// profile/report: where the time went, per name.
-//
-// The flame chart shows one run laid out in time. This shows the same run
-// added up: for every span name, how often it ran, how long it held, how long
-// it spent in its own code, and what share of the whole that was.
-//
-//   info(summary_table(t))
-//   info(stats_table(summary(t).slice(0, 5)))     // just the top five
-//
-// Self time is the column to read. A span whose entire duration is one slow
-// child is not itself slow, and a table ranked by duration puts every caller
-// above the thing it was waiting for, which is how a profile ends up blaming
-// `main`.
-
 import profile/trace
 import { percent, fit } from profile/flame
 import { bold, dim, grey, width, pad, pad_left } from cli/style
 
 /// One row: a name, and everything the run has to say about it.
-///
-/// `total` adds up the duration of every span with this name. For a name that
-/// calls itself that counts the nested time more than once, which is why it is
-/// not the column the table is sorted by. `own` cannot double-count: every
-/// millisecond is charged to exactly one span, the innermost one running at
-/// the time.
 Stat = {
     name: str,
     calls: int,
@@ -32,10 +12,6 @@ Stat = {
 }
 
 /// Every name in the trace, heaviest self time first.
-///
-/// Names that tie keep the order they were first recorded in, so two runs of
-/// the same program produce the same table and a diff of two reports shows
-/// only what actually moved.
 summary(t: Trace) -> Stat[] {
     counted = tally(t, 0, [])
     shared = with_shares(counted, wall(t), 0, [])
@@ -43,8 +19,7 @@ summary(t: Trace) -> Stat[] {
     by_self(shared, 0, [])
 }
 
-/// The row for `name`, or a zeroed one if the trace never recorded it. Saves a
-/// caller hunting through the list to assert about a single region.
+/// The row for `name`, or a zeroed one if the trace never recorded it.
 stat_of(stats: Stat[], name: str) -> Stat {
     at = index_named(stats, name, 0)
 
@@ -79,8 +54,6 @@ charge(acc: Stat[], s: Span, own: int) -> Stat[] {
     }
 }
 
-// Rebuilt around the row rather than written through with `xs[i] = …`, which
-// updates every other name for the same list, including a caller's copy.
 bump(acc: Stat[], at: int, ms: int, own: int) -> Stat[] {
     was = acc.get(at)
     now = was with {
@@ -112,9 +85,6 @@ with_shares(stats: Stat[], whole: int, i: int, acc: Stat[]) -> Stat[] {
     }
 }
 
-// A stable insertion sort. `sort` orders ints, not records, and stability is
-// what makes ties fall back to the order the names were first seen instead of
-// to whatever the sort happened to do.
 by_self(stats: Stat[], i: int, acc: Stat[]) -> Stat[] {
     if i >= stats.length() {
         acc
@@ -140,19 +110,10 @@ rank_of(acc: Stat[], own: int, i: int) -> int {
     }
 }
 
-// ---- the table ------------------------------------------------------------
-
 /// The summary as a table: name, calls, total, self, share.
 summary_table(t: Trace) -> str => stats_table(summary(t))
 
-/// The same table over rows the caller picked: the top five, everything above
-/// a threshold, one name being watched. `summary(t).slice(0, 5)` is the common
-/// one, and there is no other way to say it: the name column is sized to the
-/// rows given, so a short table is no wider than it needs to be.
-///
-/// Written here rather than with `cli/show`, which cannot be linked into the
-/// same program as `std/text`, and `profile/trace` reaches `std/text` through
-/// `std/json`. `profile/flame` has the note.
+/// The same table over rows the caller picked.
 stats_table(stats: Stat[]) -> str {
     if stats.length() == 0 {
         dim("(nothing recorded)")
@@ -184,8 +145,6 @@ stat_row(s: Stat, w: int) -> str =>
     row_text(fit(s.name, w), str(s.calls), "{s.total}ms", "{s.own}ms",
              "{s.share:.1}%", w)
 
-// The name is the only column that grows; the four number columns are fixed,
-// because a table whose columns move between runs cannot be diffed.
 row_text(name: str, calls: str, total: str, own: str, share: str,
          w: int) -> str {
     left = pad(name, w) ++ "  " ++ pad_left(calls, 5)
@@ -194,9 +153,6 @@ row_text(name: str, calls: str, total: str, own: str, share: str,
     left ++ mid ++ "  " ++ pad_left(share, 7)
 }
 
-// Measured in columns, not bytes: a name in Korean is three bytes and two
-// columns per character, and a table sized by `length()` leaves the number
-// columns hanging a long way to the right of it.
 name_column(stats: Stat[], i: int, best: int) -> int {
     if i >= stats.length() {
         best

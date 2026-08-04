@@ -1,19 +1,3 @@
-// Dev mode against the static build: a patch has to land where a rebuild does.
-//
-// This is the claim the whole incremental path rests on. Take a chapter page
-// built from one version of its Markdown, take the ops a rebuild from the next
-// version produced, apply them, and the result has to be the page that rebuild
-// wrote, byte for byte.
-//
-// It is a strong assertion on purpose. It does not only say the regions were
-// patched correctly; it says nothing *outside* a region depends on the Markdown.
-// A fourth content-dependent part of the page that nobody thought to bind shows
-// up here as a difference, rather than as a dev server that slowly drifts from
-// the file it claims to be showing.
-//
-// The store work below is what `apps/tomo/dev.maca` does per round, written out
-// so the assertion is about the regions and not about a file watcher.
-
 import { Dev, Parts, parts_of, page_key, region_key, chapter_page,
          published } from apps/tomo/tomo
 import { Store, store, set, clear_changed } from signal/store
@@ -26,25 +10,16 @@ Title = "Handbook"
 
 Langs = "en,ko"
 
-// Dev mode as the watcher turns it on.
 developing() -> Dev => Dev { on = true, extra = dev_head() }
 
-// The chapter list a rebuild sees. A chapter's title is its own first heading,
-// which is why the sidebar of every page in the book depends on it.
 titles_for(first: str) -> str[] => [first, "Beta"]
 
-// Chapter one's page in `lang`, built from `md`, with `first` the title that
-// Markdown gives it. The language is a parameter because the book ships two and
-// a page's regions are keyed by it: an assertion that only ever names one
-// language cannot tell a key that carries it from a key that does not.
 built_in(lang: str, d: Dev, md: str, first: str) -> str =>
     chapter_page(d, Title, Langs, lang, Chs, titles_for(first), 0,
                  parts_of(Chs, titles_for(first), 0, md))
 
 built(d: Dev, md: str, first: str) -> str => built_in("en", d, md, first)
 
-// One rebuild's regions, into the store. Three writes, and the store decides
-// which of them were changes.
 rebuilt_in(lang: str, s: Store, md: str, first: str) -> Store {
     key = page_key(lang, Chs.get(0))
     p = parts_of(Chs, titles_for(first), 0, md)
@@ -56,8 +31,6 @@ rebuilt_in(lang: str, s: Store, md: str, first: str) -> Store {
 
 rebuilt(s: Store, md: str, first: str) -> Store =>
     rebuilt_in("en", s, md, first)
-
-// ---- a patch equals a rebuild ---------------------------------------------
 
 test_a_prose_edit_patches_to_the_same_page_as_a_rebuild() {
     v1 = "# Alpha\n\nfirst\n"
@@ -72,9 +45,6 @@ test_a_prose_edit_patches_to_the_same_page_as_a_rebuild() {
               "the patched page is the rebuilt page")
 }
 
-// A heading is the one edit that reaches out of the chapter: it renames the
-// entry in the sidebar of every page, and adds or removes a line in this page's
-// own heading list.
 test_a_heading_edit_patches_the_two_navigation_regions_as_well() {
     v1 = "# Alpha\n\nprose\n"
     v2 = "# Omega\n\nprose\n"
@@ -101,9 +71,6 @@ test_a_new_heading_reaches_the_heading_list() {
     assert(patch_json(s).contains("#later"), "with an anchor for the new one")
 }
 
-// An edit that takes a node away, which is the direction a patch is easiest to
-// get wrong in: the region has to shrink to the rebuild's length rather than keep
-// the tail of what it used to hold.
 test_removing_a_heading_patches_to_the_same_page_as_a_rebuild() {
     v1 = "# Alpha\n\nprose\n\n## Later\n\nmore\n"
     v2 = "# Alpha\n\nprose\n"
@@ -117,8 +84,6 @@ test_removing_a_heading_patches_to_the_same_page_as_a_rebuild() {
     assert(!patch_json(s).contains("#later"), "and the anchor is gone")
 }
 
-// A chapter cut back to its heading, which is the shrink taken to its limit: two
-// of the three regions become empty and the elements holding them stay.
 test_a_chapter_emptied_of_prose_patches_to_the_rebuild() {
     v1 = "# Alpha\n\nprose\n"
     v2 = "# Alpha\n"
@@ -129,9 +94,6 @@ test_a_chapter_emptied_of_prose_patches_to_the_rebuild() {
               built(developing(), v2, "Alpha"), "emptied to the rebuild")
 }
 
-// Two saves with no reload in between, which is what an afternoon of editing is.
-// The second patch is applied to a page the first one already changed, so a patch
-// that only lands on freshly built markup passes every test above and fails here.
 test_two_saves_in_a_row_land_on_the_third_rebuild() {
     v1 = "# Alpha\n\none\n"
     v2 = "# Alpha\n\ntwo\n\n## Mid\n\nx\n"
@@ -146,10 +108,6 @@ test_two_saves_in_a_row_land_on_the_third_rebuild() {
               "and the second landed on top of it")
 }
 
-// A save that changed nothing is the common case with an editor that writes on a
-// timer, and it has to be silent: an op for a value that did not move would
-// repaint a node for no reason, and a page full of those is a reload with extra
-// steps.
 test_a_save_that_changed_nothing_produces_no_ops() {
     md = "# Alpha\n\nprose\n"
     s = rebuilt(store(), md, "Alpha").clear_changed()
@@ -160,11 +118,6 @@ test_a_save_that_changed_nothing_produces_no_ops() {
               built(developing(), md, "Alpha"), "and the page is untouched")
 }
 
-// A translated book is many pages holding the same three regions, and the only
-// thing that tells one page's region from another's is the language in its key.
-// So a save in one language has to land on that language's page and slide off
-// every other: the second assertion is the one that says the key carries the
-// language, and it is the one a key built from the chapter alone would fail.
 test_a_save_in_one_language_leaves_the_other_languages_page_alone() {
     v1 = "# 알파\n\n하나\n"
     v2 = "# 알파\n\n둘\n"
@@ -180,10 +133,6 @@ test_a_save_in_one_language_leaves_the_other_languages_page_alone() {
               "and the English page, which no op names, was not touched")
 }
 
-// ---- what the patch leaves alone ------------------------------------------
-
-// This is what makes dev mode worth more than a reload. The reader's own state
-// lives in nodes no region contains, so no save can reach it.
 test_a_save_cannot_reset_the_search_box_or_shut_the_sidebar() {
     v1 = "# Alpha\n\nprose\n"
     v2 = "# Omega\n\nprose\n"
@@ -199,8 +148,6 @@ test_a_save_cannot_reset_the_search_box_or_shut_the_sidebar() {
            "whose open state is the reader's, not the builder's")
 }
 
-// ---- the published page ---------------------------------------------------
-
 test_the_published_page_carries_none_of_the_dev_machinery() {
     md = "# Alpha\n\nprose\n"
     out = built(published(), md, "Alpha")
@@ -210,10 +157,6 @@ test_the_published_page_carries_none_of_the_dev_machinery() {
     assert(!out.contains("macaSignal"), "and no patcher")
 }
 
-// Dev mode adds two attributes to three elements and one script to the head, and
-// changes nothing else, so what a reader sees in dev is what gets published.
-// Stripping the additions back out and comparing is how to say that in one
-// assertion instead of a list of things that had better not have moved.
 test_dev_mode_adds_only_markers_and_a_script() {
     md = "# Alpha\n\nprose\n"
     stripped = built(developing(), md, "Alpha")
@@ -226,7 +169,6 @@ test_dev_mode_adds_only_markers_and_a_script() {
               "the published page, plus markers and one script")
 }
 
-// The attributes one region adds, as they appear in the markup.
 mark(part: str) -> str =>
     " data-signal=\"" ++ region_key(part, page_key("en", Chs.get(0)))
         ++ "\" data-signal-as=\"html\""

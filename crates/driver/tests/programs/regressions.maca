@@ -1,13 +1,3 @@
-// Native-backend regressions, each one a bug that compiled.
-//
-// A program that fails to build announces itself. These four did not: they
-// produced a binary, and the binary was wrong.
-
-// ---- list patterns --------------------------------------------------------
-//
-// `[]`, `[x]`, `[x, y]`, `[x, ..rest]`: brackets alongside the bracketless
-// spelling. Before this, an empty list had no pattern at all.
-
 kind(xs: int[]) -> int =>
     match xs {
         []     => 0
@@ -40,14 +30,6 @@ test_a_rest_binder_works_bracketed_and_bare() {
     assert_eq(str(bare_tail_len([1, 2, 3])), "2", "x, ..rest")
 }
 
-// ---- chars() registers its array type -------------------------------------
-//
-// The C backend registers array types in a prepass, and `chars()` was not one
-// of the expressions that registered `StrArr`. It compiled only when the result
-// went straight into a parameter declared `str[]`, which registered the type as
-// a side effect; standalone it emitted a reference to an undeclared `StrArr`
-// and failed in the C compiler.
-
 test_chars_works_without_a_str_array_parameter_in_sight() {
     n = "abc".chars().length()
     cs = "hello".chars()
@@ -57,13 +39,6 @@ test_chars_works_without_a_str_array_parameter_in_sight() {
     assert_eq(cs.get(1), "e", "and indexable")
     assert_eq(str("xy".chars().length()), "2", "inside an interpolation")
 }
-
-// ---- `++` converts a non-string operand -----------------------------------
-//
-// `"h" ++ level` used to emit `maca_concat("h", level)`: an `int64_t` handed
-// to a `maca_str` parameter. C accepts it with a warning nobody reads, and the
-// program segfaults dereferencing address 3. It compiled, so it looked like a
-// language feature; it just crashed.
 
 test_concat_converts_an_int_operand() {
     level = 3
@@ -77,15 +52,6 @@ test_concat_converts_every_scalar_type() {
 
     assert_eq(joined, "n=4 f=1.5 b=true", "int, float and bool")
 }
-
-// ---- anonymous record literals --------------------------------------------
-//
-// The parser and the checker always accepted `{ host = "x", port = 80 }`; the
-// native backend rejected it, so in practice every record had to be declared
-// first. A struct is now synthesized per distinct shape, and the shape is
-// sorted by field name, so the same fields written in a different order are
-// the same type, which is what "structural" has to mean for the two to be
-// assignable.
 
 test_an_anonymous_record_needs_no_declaration() {
     c = { host = "localhost", port = 8080 }
@@ -117,14 +83,6 @@ test_an_anonymous_record_takes_a_functional_update() {
     assert_eq(str(c.port), "80", "and the original is untouched")
 }
 
-// ---- the pipe operator ----------------------------------------------------
-//
-// `|>` lexed, parsed, and then every backend evaluated it to the left operand
-// and threw the right one away. `3 |> double` was `3`, on native, on JS and in
-// the checker, with no diagnostic anywhere. Meanwhile `llms.txt` told agents
-// the operator existed. It is a parser desugar now, so a backend cannot get it
-// wrong: `x |> f` is `f(x)` and `x |> f(a)` is `f(x, a)`.
-
 twice(x: int) -> int => x * 2
 
 plus(a: int, b: int) -> int => a + b
@@ -147,9 +105,6 @@ test_pipes_chain_left_to_right() {
     assert_eq("{3 |> twice |> twice |> plus(1)}", "13", "3, 6, 12, then 13")
 }
 
-// Arithmetic binds tighter than the arrow, so the left side is the whole sum
-// rather than its last term, which is the only reading that makes a pipeline
-// readable without brackets.
 test_a_pipe_binds_looser_than_arithmetic() {
     assert_eq("{1 + 2 |> twice}", "6", "(1 + 2) piped, not 1 + (2 piped)")
 }

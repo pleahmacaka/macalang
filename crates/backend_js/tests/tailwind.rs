@@ -1,15 +1,7 @@
-//! The utility engine: variants, arbitrary values, and rule ordering.
-//!
-//! Without variants a utility system can only express the unconditional case,
-//! so anything with a theme, a hover state or a breakpoint falls back to
-//! hand-written CSS, which is the thing utilities exist to replace. These are
-//! the cases that kept `apps/tomo` on a raw `<style>` block.
-
 use maca_backend_js::{css_escape, order, rule};
 
 #[test]
 fn variants_wrap_the_rule() {
-    // state variants extend the selector
     assert_eq!(
         rule("hover:bg-white").unwrap(),
         ".hover\\:bg-white:hover { background-color:#ffffff; }"
@@ -18,12 +10,9 @@ fn variants_wrap_the_rule() {
         rule("first:mt-0").unwrap(),
         ".first\\:mt-0:first-child { margin-top:0; }"
     );
-    // pseudo-elements
     assert!(rule("after:content-none").unwrap().contains("::after"));
     assert!(rule("marker:text-black").unwrap().contains("::marker"));
-    // `[open]`, for a <details>
     assert!(rule("open:font-bold").unwrap().contains("[open]"));
-    // media variants wrap it
     assert!(
         rule("dark:bg-black")
             .unwrap()
@@ -48,14 +37,12 @@ fn variants_chain() {
     assert!(r.contains(":hover"), "{r}");
 }
 
-/// Without arbitrary values the system is a fixed menu, and anything off the
-/// scale sends you back to writing CSS by hand.
+/// Without arbitrary values the system is a fixed menu, and anything off the scale sends you back to writing CSS by hand.
 #[test]
 fn arbitrary_values_work() {
     assert!(rule("text-[0.9em]").unwrap().contains("font-size:0.9em"));
     assert!(rule("max-w-[42rem]").unwrap().contains("max-width:42rem"));
     assert!(rule("dark:bg-[#191919]").unwrap().contains("#191919"));
-    // underscores become spaces, so a multi-part value fits in an attribute
     assert!(
         rule("grid-cols-[16rem_minmax(0,44rem)]")
             .unwrap()
@@ -73,17 +60,13 @@ fn selectors_escape_every_special_character() {
     assert_eq!(css_escape("dark:bg-[#191919]"), "dark\\:bg-\\[\\#191919\\]");
 }
 
-/// CSS breaks ties by source order, so a variant must be emitted after the
-/// plain utility it overrides. Getting this wrong made `max-md:block` lose to
-/// `grid` and the narrow layout silently never applied.
+/// CSS breaks ties by source order, so a variant must be emitted after the plain utility it overrides.
 #[test]
 fn plain_utilities_sort_before_the_variants_that_override_them() {
     assert!(order("grid") < order("max-md:block"));
     assert!(order("bg-white") < order("dark:bg-black"));
     assert!(order("block") < order("md:flex"));
-    // a smaller max-width query is the more specific one, so it comes later
     assert!(order("max-lg:block") < order("max-sm:block"));
-    // and a larger min-width query is the more specific one
     assert!(order("sm:flex") < order("lg:flex"));
 }
 
@@ -118,17 +101,11 @@ fn document_utilities_exist() {
     ] {
         assert!(rule(c).is_some(), "`{c}` should be a utility");
     }
-    // the reading measure and a 2px underline offset are exact, not approximate
     assert!(rule("max-w-2xl").unwrap().contains("42rem"));
     assert!(rule("underline-offset-2").unwrap().contains("2px"));
 }
 
-/// A border width with no style is invisible, because CSS defaults
-/// `border-style` to `none`. The unparameterized `border-l` always emitted
-/// both; `border-l-2` emitted only the width, so it drew nothing and said
-/// nothing. `border-x` and `border-y` then shipped emitting *nothing*, and
-/// `border-x-[3px]` shipped as a width with no style all over again: three
-/// spellings of one mistake, so all three are checked here.
+/// A border width with no style is invisible, because CSS defaults `border-style` to `none`.
 #[test]
 fn every_border_spelling_carries_its_style() {
     for (class, sides) in [
@@ -156,10 +133,7 @@ fn every_border_spelling_carries_its_style() {
     }
 }
 
-/// Every utility the front page and the API reference reach for. A class the
-/// engine doesn't know generates nothing at all: no warning, no error, just a
-/// layout that is quietly a little wrong. So the ones this repository's own
-/// pages depend on are named here.
+/// Every utility the front page and the API reference reach for.
 #[test]
 fn the_utilities_the_site_uses_all_generate_rules() {
     for class in [
@@ -197,9 +171,7 @@ fn the_utilities_the_site_uses_all_generate_rules() {
     }
 }
 
-/// `font-mono` must not lead with a proportional family. Pretendard is the
-/// de-facto Korean UI face and is installed widely enough that naming it first
-/// rendered every code block on the Korean pages in a sans-serif.
+/// `font-mono` must not lead with a proportional family.
 #[test]
 fn the_monospace_stack_is_monospace() {
     let css = maca_backend_js::rule("font-mono").unwrap();
@@ -216,18 +188,9 @@ fn the_monospace_stack_is_monospace() {
     );
 }
 
-/// `tools/build-site.maca` reimplements this escaper in Maca, because it has to
-/// build the same selector the stylesheet contains in order to ask whether a
-/// class has a rule. Its copy asked the *opposite* question, "is this not
-/// alphanumeric", and `is_alpha` is byte-based, so every byte of a non-ASCII
-/// class name came out escaped on one side and raw on the other, failing the
-/// whole site build with a false "classes with no CSS rule".
-///
-/// The two are checked against each other here so a change to this list is a
-/// failing test rather than a broken build later.
+/// `tools/build-site.maca` reimplements this escaper in Maca, because it has to build the same selector the stylesheet contains in order to ask whether a class has a rule.
 #[test]
 fn the_escaper_matches_the_one_build_site_reimplements() {
-    // Every punctuation class the emitted pages actually carry.
     for (class, want) in [
         ("max-w-[64rem]", r"max-w-\[64rem\]"),
         ("dark:bg-zinc-950", r"dark\:bg-zinc-950"),
@@ -239,9 +202,6 @@ fn the_escaper_matches_the_one_build_site_reimplements() {
         assert_eq!(css_escape(class), want, "escaping {class}");
     }
 
-    // And the rule itself, spelled out: these are escaped, `-` and `_` and
-    // alphanumerics are not. `tools/build-site.maca`'s `needs_escape` names the
-    // same set.
     for ch in "/.:[](),#%'\"!$&*+;<=>?@^`{|}~".chars() {
         let one = ch.to_string();
         assert_eq!(

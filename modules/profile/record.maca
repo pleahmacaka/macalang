@@ -1,40 +1,6 @@
-// profile/record: putting spans around the parts of a program.
-//
-// The recorder is a value you carry. Maca has no global to hide it in and no
-// destructor to close a region for you, and rather than apologise for that this
-// module leans on it: a function that wants to be measured takes the recorder
-// and gives it back, so the shape of the measurement is the shape of the call
-// graph and nothing is ever timed by accident.
-//
-//   r = recorder("build")
-//   r = r.start("parse")
-//   r = r.stop()
-//   r = span(r, "check", check_everything)
-//   t = finish(r)
-//
-// Recording computes nothing: `start` and `stop` append one mark each, and the
-// tree is built once, inside `finish`. A region costs a `now_ms` and a list
-// push while it is being recorded, but a push copies the list, so the cost
-// does grow with the length of the recording. Measured: a thousand regions
-// record in 47ms, four thousand in 6.3s.
-//
-// The clock is `now_ms` too, so a millisecond is the smallest thing any of
-// this can see. A region that returns faster than that measures zero, and a
-// program built out of such regions charts as a row of slivers over `0ms`:
-// not a broken profile, one saying the run is beneath its resolution.
-//
-// Both point the same way: measure the loop, not the iteration. A few hundred
-// regions is free and legible; one per iteration is neither, and the profile
-// would be mostly of itself.
-
 import profile/trace
 
 /// One end of a region: the moment it opened or closed.
-///
-/// A leave carries no name. Which region it closes is settled by the marks
-/// before it, and a name written down twice is a name that can disagree with
-/// itself: a `stop("parse")` that names the wrong region would have to either
-/// lie or fail, and there is nothing useful for it to do.
 Mark = {
     name: str,
     at: int,
@@ -42,22 +8,16 @@ Mark = {
 }
 
 /// A recording in progress.
-///
-/// `open` is how deep the recording currently is. It is carried rather than
-/// counted from the marks, so `span` can ask how deep it was without walking
-/// everything recorded so far.
 Rec = {
     label: str,
     marks: Mark[],
     open: int,
 }
 
-/// A fresh recorder. `label` names the run and travels into the trace, so a
-/// file of traces says which is which.
+/// A fresh recorder.
 recorder(label: str) -> Rec => Rec { label = label, marks = [], open = 0 }
 
-/// Open a region named `name`. Regions nest: whatever is open when this is
-/// called becomes its parent.
+/// Open a region named `name`.
 start(r: Rec, name: str) -> Rec =>
     r with {
         marks = r.marks.push(Mark { name = name, at = now_ms(), enter = true }),
@@ -65,33 +25,13 @@ start(r: Rec, name: str) -> Rec =>
     }
 
 /// Close the innermost open region.
-///
-/// A `stop` with nothing open is dropped when the trace is built, rather than
-/// closing something at random: an extra `stop` on an error path would
-/// otherwise re-parent every region recorded after it, and the chart would be
-/// wrong everywhere except where the mistake was.
 stop(r: Rec) -> Rec =>
     r with {
         marks = r.marks.push(Mark { name = "", at = now_ms(), enter = false }),
         open = r.open > 0 ? r.open - 1 : 0,
     }
 
-/// A region around a call (`start`, the work, `stop`) with no way to forget
-/// the stop.
-///
-/// `body` takes the recorder and returns it, which is the whole convention.
-/// It has to be a **named** function: a lambda's parameter does not get the
-/// record type back from the closure ABI yet, and `span(r, "x", v => …)` fails
-/// in the C compiler rather than in the checker.
-///
-/// Anything the body left open is closed here too. A single `stop` would close
-/// the body's forgotten region instead of this one, and every span recorded
-/// afterwards would hang off the wrong parent, so the mistake would show up
-/// everywhere except where it was made.
-//
-// The body's result is passed straight on rather than bound to a local first.
-// A closure's result carries no type through a binding: `ran = body(…)` makes
-// `ran` an integer, and the C compiler is the one that says so.
+/// A region around a call (`start`, the work, `stop`) with no way to forget the stop.
 span(r: Rec, name: str, body) -> Rec =>
     close_down_to(body(start(r, name)), r.open)
 
@@ -104,13 +44,6 @@ close_down_to(r: Rec, want: int) -> Rec {
 }
 
 /// An instant rather than a region: a zero-length span at the current moment.
-/// For punctuating a timeline (the cache went cold here, the retry happened
-/// here) where a duration would be a fiction.
-//
-// Not `stop(start(r, name))`. That reads the clock twice, and two readings a
-// few hundred nanoseconds apart straddle a millisecond boundary about once in
-// several thousand, which is a `mark` that lasted 1ms, and a test asserting
-// the documented zero that fails for nobody's reason. One reading, both marks.
 mark(r: Rec, name: str) -> Rec {
     at = now_ms()
     opened = r.marks.push(Mark { name = name, at = at, enter = true })
@@ -118,38 +51,22 @@ mark(r: Rec, name: str) -> Rec {
     r with { marks = opened.push(Mark { name = "", at = at, enter = false }) }
 }
 
-/// How many regions are open right now. Zero at the end of a well-behaved run,
-/// and worth asserting on in a test that claims to have closed everything.
+/// How many regions are open right now.
 open_count(r: Rec) -> int => r.open
 
-/// Milliseconds since the first mark. Zero before anything is recorded.
+/// Milliseconds since the first mark.
 elapsed(r: Rec) -> int {
     n = r.marks.length()
 
     n == 0 ? 0 : now_ms() - r.marks.get(0).at
 }
 
-// The state of the walk that turns marks into spans: the spans built so far,
-// and the indices of the ones still open, innermost last.
 Build = {
     spans: Span[],
     open: int[],
 }
 
-/// The trace of everything recorded so far. The recorder is left alone, so a
-/// long run can take a trace at each milestone and keep going.
-///
-/// Times are rebased on the first mark: a span's `start` is milliseconds into
-/// the run rather than milliseconds since 1970. Two runs are then comparable
-/// without subtracting epochs at every call site, and the JSON is small enough
-/// to read.
-///
-/// A region still open when this is called runs to *now* and is flagged
-/// `closed = false`. Dropping it instead would take its children out of the
-/// tree with it, which loses exactly the work that was still running when
-/// somebody gave up and killed the program. Ending it at the last recorded
-/// mark would be worse than useless: a region that hung would be drawn as the
-/// shortest thing in the chart.
+/// The trace of everything recorded so far.
 finish(r: Rec) -> Trace {
     marks = r.marks
 
@@ -174,8 +91,6 @@ build_spans(ms: Mark[], base: int, i: int, b: Build) -> Build {
     }
 }
 
-// A span opens where the marks say, ends there for now, and is not closed
-// until a leave says so. `finish` reads that flag to find what leaked.
 opened(b: Build, m: Mark, base: int) -> Build {
     n = b.open.length()
     inside = n > 0 ? b.open.get(n - 1) : -1
@@ -207,17 +122,11 @@ ended(b: Build, m: Mark, base: int) -> Build {
     }
 }
 
-// The one place a span is revisited after it was appended. `xs[i] = …` writes
-// through every name for the list rather than producing a new one. Measured:
-// `b = close(a, 0, 7)` leaves `a` closed too. That is safe only because this
-// list was built inside `finish` and nothing outside has seen it.
 closed_at(xs: Span[], i: int, at: int) -> Span[] {
     xs[i] = xs.get(i) with { end = at, closed = true }
     xs
 }
 
-// A region left open runs to `now`, and keeps `closed = false` so a reader can
-// still tell it from one that ended there honestly.
 extend_open(xs: Span[], open: int[], i: int, now: int) -> Span[] {
     if i >= open.length() {
         xs

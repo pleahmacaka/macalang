@@ -1,15 +1,3 @@
-//! The standard library surface that appendix C documents, executed.
-//!
-//! Appendix C used to carry a "What is missing" list: no hash map, no file
-//! metadata, no stdin, no time, no assertions, no string `slice`. Each of
-//! those is now a real builtin, and each is exercised here, because a
-//! documented library that nothing runs is a claim rather than a fact.
-//!
-//! Most of it is asserted in Maca, in `modules/std/tests/builtins.maca`, and run by
-//! `maca test`. What stays here is the two cases that are about the *process*
-//! rather than the values: reading piped stdin, and what a failing assertion
-//! writes and returns.
-
 mod common;
 use common::*;
 
@@ -17,7 +5,6 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 /// Write `src` to a scratch file and `maca run` it with `stdin` on its input.
-/// Returns the exit status and stdout+stderr together.
 fn run_with(name: &str, src: &str, stdin: &str) -> (bool, String) {
     let dir = std::env::temp_dir().join("maca-stdlib-test");
     std::fs::create_dir_all(&dir).expect("scratch dir");
@@ -96,9 +83,6 @@ fn stdin_can_be_read() {
 }
 
 /// Assertions report and keep going, and `failures()` is what a test returns.
-///
-/// Aborting on the first failure means fixing a suite takes as many runs as it
-/// has bugs; counting them means one run tells you everything.
 #[test]
 fn assertions_count_rather_than_abort() {
     if unsupported_host() {
@@ -129,7 +113,6 @@ main() -> int {
         out.contains("clean: 0"),
         "a passing test should count 0:\n{out}"
     );
-    // Both failures ran: the first didn't stop the second.
     assert!(
         out.contains("assertion failed: deliberate"),
         "no report:\n{out}"

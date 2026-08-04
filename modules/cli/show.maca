@@ -1,27 +1,6 @@
-// cli/show: the shapes a terminal reads well.
-//
-// A table, a rule, a panel, a list of pairs. Each returns a string rather than
-// printing one, so the same call can go to the screen, into a test, or into a
-// file, and so a caller can put two of them side by side without this module
-// having an opinion about it.
-//
-//   info(table(["file", "lines"], rows))
-//   info(rule("Results"))
-//   info(kv("target", "native"))
-//
-// Every width here is measured with `cli/style`'s `width`, which does not count
-// escape codes. A column aligned to the bytes of a coloured cell is aligned to
-// characters nobody can see, and the misalignment only appears once somebody
-// turns colour on.
-
 import { bold, dim, grey, pad, pad_left, width } from cli/style
 
 /// A table with a header row, columns as wide as their widest cell.
-///
-/// `rows` is a list of rows, each a list of cells. A row shorter than the
-/// header is padded out rather than refused: a table is usually built from data
-/// that is missing a field somewhere, and losing the whole table to that is a
-/// worse answer than an empty cell.
 table(header: str[], rows: str[][]) -> str {
     cols = header.length()
     w = widths(header, rows, cols)
@@ -48,9 +27,7 @@ table(header: str[], rows: str[][]) -> str {
     out
 }
 
-/// The same table with the numeric columns right-aligned. A column counts as
-/// numeric when every cell in it is one, which is the rule a reader would apply
-/// looking at it.
+/// The same table with the numeric columns right-aligned.
 table_aligned(header: str[], rows: str[][]) -> str {
     cols = header.length()
     w = widths(header, rows, cols)
@@ -114,8 +91,6 @@ row_text(row: str[], w: int[], cols: int) -> str {
     out
 }
 
-// A column is numeric when it has at least one value and every value in it is
-// a number. An empty column is not numeric, because there is nothing to align.
 numeric_column(rows: str[][], i: int) -> bool =>
     filled(rows, i, 0) && all_numeric(rows, i, 0)
 
@@ -168,15 +143,11 @@ rule(title: str) -> str {
     }
 }
 
-/// A box around `body`, with `title` in its top edge. For the one thing on
-/// screen that has to be read rather than skimmed: an error, a summary.
+/// A box around `body`, with `title` in its top edge.
 panel(title: str, body: str) -> str {
     lines = body.split("\n")
     inner = widest(lines, 0, width(title) + 2)
 
-    // one dash for each column the title and its two spaces do not fill, plus
-    // the corner. The row below is `│ ` + inner + ` │`, and an edge that was
-    // one short lined up with nothing
     edge = "─".repeat(inner - width(title) - 1)
     out = grey("┌─ ") ++ bold(title) ++ grey(" " ++ edge ++ "┐")
     out = out ++ "\n"
@@ -196,17 +167,13 @@ widest(lines: str[], i: int, best: int) -> int {
     }
 }
 
-/// `  key    value`: a labelled fact, with the label dimmed so the value is
-/// what the eye lands on.
+/// ` key value`: a labelled fact, with the label dimmed so the value is what the eye lands on.
 kv(key: str, value: str) -> str => "  " ++ dim(pad(key, 14)) ++ value
 
 /// A bulleted line.
 bullet(s: str) -> str => "  " ++ grey("•") ++ " " ++ s
 
-/// `[####----]  n%`: a progress bar of a given width.
-///
-/// Returns the bar rather than drawing it, so a caller decides whether to
-/// overwrite a line or print a new one. Drawing it in place is `redraw`.
+/// `[####----] n%`: a progress bar of a given width.
 bar(done: int, total: int, w: int) -> str {
     share = total > 0 ? done * w / total : 0
     filled = share > w ? w : (share < 0 ? 0 : share)
@@ -216,10 +183,6 @@ bar(done: int, total: int, w: int) -> str {
 }
 
 /// The same line, rewritten in place: carriage return, no newline.
-///
-/// Only where output is a terminal. Piped into a file, every redraw would be a
-/// separate line and a build log would be a thousand copies of one bar; there
-/// it prints nothing, and the caller's final `info` is the whole record.
 redraw(s: str) {
     if is_tty() {
         print("\r" ++ s)

@@ -1,34 +1,12 @@
-// bench/compare: this run against a stored one.
-//
-// A benchmark that cannot be compared to last week is a number nobody acts on.
-// This pairs a fresh set of results with a baseline by case name and says, for
-// each pair, how much moved and in which direction.
-//
-//   import { compare, comparison_table, regressed } from bench/compare
-//   import { load } from bench/store
-//
-//   deltas = compare(load("bench/baseline.json"), results, Tolerance)
-//   info(comparison_table(deltas))
-//
-// The comparison is on ns/op, not on wall-clock milliseconds. Two runs almost
-// never choose the same iteration count: the machine was busier, the candidate
-// got faster, the harness calibrated differently. So the milliseconds are not
-// comparable and the per-operation cost is.
-
 import { Result, ns_per_op, resolved } from bench/time
 import { grouped } from bench/report
 import { table_aligned } from cli/show
 import { ok, bad, note, yellow } from cli/style
 
 /// What happened to one case since the baseline.
-///
-/// `Fresh` and `Missing` are not failures. A corpus grows and shrinks, and a
-/// comparison that treated a new case as a regression against zero would report
-/// a catastrophe every time somebody added one.
 Verdict = Faster | Slower | Same | Fresh | Missing | Unclear
 
-/// How much a case moved. `ratio` is now over baseline, so 0.80 is a fifth
-/// faster and 1.25 is a quarter slower.
+/// How much a case moved.
 Delta = {
     name: str,
     size: int,
@@ -38,17 +16,10 @@ Delta = {
     verdict: Verdict,
 }
 
-/// The fraction a case has to move before it counts as having moved. Five
-/// percent: below that, two runs on the same machine and the same binary
-/// routinely disagree, and calling that a regression trains everybody to
-/// ignore the report.
+/// The fraction a case has to move before it counts as having moved.
 Tolerance = 0.05
 
-/// Pair every case in `now` with its baseline, then list the baseline cases
-/// that `now` no longer has.
-///
-/// Order is `now`'s order followed by the disappearances, because the run the
-/// reader just did is the one they are looking at.
+/// Pair every case in `now` with its baseline, then list the baseline cases that `now` no longer has.
 compare(before: Result[], now: Result[], tolerance: float) -> Delta[] =>
     paired(before, now, 0, tolerance, []) ++ dropped(before, now, 0, [])
 
@@ -89,10 +60,6 @@ delta(before: Result, now: Result, tolerance: float) -> Delta {
     }
 }
 
-// No ratio for a pair the verdict has already refused to compare. The row used
-// to print `0.500  -50.0%` beside `! not comparable`, which sends the reader
-// off after the regression the verdict exists to say is not there, and
-// `percent_change` handed the same number to anyone who asked for it directly.
 comparable(v: Verdict) -> bool {
     match v {
         Faster => true
@@ -104,10 +71,6 @@ comparable(v: Verdict) -> bool {
     }
 }
 
-// The comparison is only meaningful when both runs resolved above the clock
-// *and* did the same amount of work. A case whose size changed between runs is
-// a different case wearing the same name, and reporting it as 3× slower would
-// send somebody looking for a regression that is a corpus edit.
 judged(before: Result, now: Result, was: float, is_now: float,
        tolerance: float) -> Verdict {
     if before.size != now.size {
@@ -145,8 +108,6 @@ scan_names(rs: Result[], name: str, i: int) -> int {
     }
 }
 
-// ---- reading the answer -----------------------------------------------------
-
 /// The word for a verdict.
 label(v: Verdict) -> str {
     match v {
@@ -159,13 +120,7 @@ label(v: Verdict) -> str {
     }
 }
 
-/// The verdict with the mark that goes in front of it: `✓ faster`, `✗
-/// slower`. Colour follows `cli/style`, so a piped report is plain text.
-///
-/// The two "look at this" verdicts spell out what `cli/style`'s `warn` would
-/// give them. Importing that name here would shadow the builtin `warn`, which
-/// prints rather than returning, and every later call in the file would have
-/// silently changed meaning.
+/// The verdict with the mark that goes in front of it: `✓ faster`, `✗ slower`.
 marked(v: Verdict) -> str {
     match v {
         Faster => ok(label(v))
@@ -178,8 +133,6 @@ marked(v: Verdict) -> str {
 }
 
 /// How far a case moved, as a signed percentage, so `-20` is a fifth faster.
-/// Zero when there is nothing to compare: no baseline, or a pair the verdict
-/// refused.
 percent_change(d: Delta) -> float {
     if d.ratio <= 0.0 || d.base_ns <= 0.0 {
         0.0
@@ -188,7 +141,7 @@ percent_change(d: Delta) -> float {
     }
 }
 
-/// Did anything get slower? The one question a CI step asks.
+/// Did anything get slower?
 regressed(ds: Delta[]) -> bool =>
     count_of(ds, Slower) > 0
 
@@ -206,15 +159,7 @@ tally(ds: Delta[], want: Verdict, i: int, acc: int) -> int {
     }
 }
 
-/// One line saying how the run went as a whole, for the top of a report or the
-/// end of a CI log.
-///
-/// The counts add up to the case count in front of them. They did not: a run
-/// of four where one case had vanished and two were unmeasurable read
-/// "4 cases: 0 faster, 0 slower, 0 unchanged, 1 new", which a reader takes for
-/// a quiet run rather than for three cases nobody looked at. The two extra
-/// counts are named only when they are not zero, so an ordinary run still
-/// reads as one short sentence.
+/// One line saying how the run went as a whole, for the top of a report or the end of a CI log.
 summary(ds: Delta[]) -> str {
     head = "{ds.length()} cases: {count_of(ds, Faster)} faster,"
         ++ " {count_of(ds, Slower)} slower, {count_of(ds, Same)} unchanged,"
@@ -229,8 +174,6 @@ summary(ds: Delta[]) -> str {
     }
 }
 
-// ---- the table --------------------------------------------------------------
-
 /// The column headings, in the order `comparison_row` fills them.
 comparison_columns() -> str[] =>
     ["case", "size", "was ns/op", "now ns/op", "ratio", "change", ""]
@@ -239,10 +182,6 @@ comparison_row(d: Delta) -> str[] =>
     [d.name, grouped(d.size), ns_cell(d.base_ns), ns_cell(d.now_ns),
      ratio_cell(d), change_cell(d), marked(d.verdict)]
 
-// An empty cell, not a 0 and not a dash, for a side of the comparison that
-// does not exist. A zero in a numeric column reads as a measurement, and a dash
-// makes `cli/show` stop seeing the column as numeric, which un-right-aligns
-// every number in it to say one thing the verdict column already says.
 ns_cell(ns: float) -> str {
     if ns <= 0.0 {
         ""

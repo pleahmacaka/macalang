@@ -1,21 +1,9 @@
-// selfhost/main: the stage-1 driver entry.
-//
-// `maca build selfhost/main.maca` resolves these imports to the sibling
-// modules (the stage-0 driver inlines local imports in dependency order), so
-// the whole front-end builds from this one entry point. Toward the bootstrap:
-//   maca build selfhost/main.maca -o maca1     # stage-0 (Rust) builds stage-1
-//   ./maca1 build selfhost/main.maca -o maca2  # stage-1 builds itself
-//   diff maca1-output maca2-output             # fixed point ⇒ self-hosted
-
 import selfhost/lexer
 import selfhost/parser
 import selfhost/check
 import selfhost/emit_c
 import selfhost/emit_rust
 
-// `maca1 <in.maca> <out.c> [rust]` is what makes a differential test possible:
-// the same source through stage-0 and stage-1, and the two must agree. With no
-// arguments it runs `demo`, which is where the gate reads its assertions from.
 main(args: str[]) -> int {
     if args.length() >= 2 {
         compile_file(args)
@@ -46,8 +34,6 @@ demo() -> int {
     info("checked: type {type_of(tree.node)}, {count_errors(tree.node)} errors")
     info("emitted: {emit_unit(tree.node)}")
 
-    // Built by hand rather than parsed: the point is the checker's answer, and
-    // a parsed `"hi" + 1` would prove the parser first and the checker second.
     bad = e_binary("+", e_str("hi"), e_int(1))
     info("checked: {show(bad)} → type {type_of(bad)}, {count_errors(bad)} errors")
 
@@ -60,8 +46,6 @@ demo() -> int {
     info("module ({mod.items.length()} fns):")
     info(emit_module(mod))
 
-    // One clean function and one `int + str` clash, so the count is 1 rather
-    // than 0 or 2. A checker that answered per module would say the wrong one.
     prog2 = "ok() -> int => 1 + 2 bad() -> int => 1 + \"x\""
     mod2 = parse_module(lex(prog2), 0, [])
     info("module check: {check_module(mod2)} type errors")
@@ -76,34 +60,23 @@ demo() -> int {
     tern = parse_expr(lex("a > b ? a : b"), 0)
     info("ternary: {show(tern.node)}")
 
-    // `0 - -n`, not `-n`: the second minus has to be read as a prefix after an
-    // operator, which is where a precedence-climbing parser usually goes wrong.
     neg = parse_expr(lex("0 - -n"), 0)
     info("unary: {show(neg.node)}")
 
     md = parse_expr(lex("a % b + 1"), 0)
     info("modulo: {show(md.node)}")
 
-    // Three precedence levels in one expression: `a < b && c || d` has to group
-    // as `((a < b && c) || d)`, which pins comparison, `&&` and `||` at once.
     logic = parse_expr(lex("a < b && c || d"), 0)
     info("logic: {show(logic.node)}")
 
-    // A non-`int` parameter type has to survive the whole way from the parsed
-    // signature to the emitted declaration, in both back ends. Nothing else in
-    // the demo would notice if `str` quietly became `int`.
     sig = parse_fn(lex("tag(s: str, n: int) -> int => n"), 0)
     info("typed sig C:    {emit_fn(sig.snode)}")
     info("typed sig Rust: {remit_fn(sig.snode)}")
 
-    // `true`/`false` are the one literal the two targets disagree about: C has
-    // no keyword worth using here, Rust has nothing else.
     bfn = parse_fn(lex("flag() -> bool => true"), 0)
     info("bool fn C:    {emit_fn(bfn.snode)}")
     info("bool fn Rust: {remit_fn(bfn.snode)}")
 
-    // `2.0` must scan as one token, not `2` `.` `0`. What decides is the digit
-    // *after* the dot, which is also what keeps `1.max(2)` a method call.
     ffn = parse_fn(lex("scale(x: float) -> float => x * 2.0"), 0)
     info("float fn C:    {emit_fn(ffn.snode)}")
     info("float fn Rust: {remit_fn(ffn.snode)}")
@@ -120,33 +93,22 @@ demo() -> int {
     info("match C:    {emit_fn(mt.snode)}")
     info("match Rust: {remit_fn(mt.snode)}")
 
-    // `w == "let"` has to compare by value. In C that means `strcmp`, and
-    // getting it wrong is silent: pointer equality compiles and is almost always
-    // false. Every keyword match in a real Maca lexer rests on this.
     se = parse_fn(lex("kw(w: str) -> int => w == \"let\" ? 1 : 0"), 0)
     info("streq C:    {emit_fn(se.snode)}")
     info("streq Rust: {remit_fn(se.snode)}")
 
-    // Interpolation is desugared in the parser into the `++` and `str` forms
-    // both back ends already emit, so neither back end needed changing for it.
     ip = parse_fn(lex("label(n: int) -> str => \"n = \{n\}!\""), 0)
     info("interp C:    {emit_fn(ip.snode)}")
     info("interp Rust: {remit_fn(ip.snode)}")
 
-    // An interpolation holds a whole expression, not just a name. It goes back
-    // through the lexer and the expression parser to get there.
     ip2 = parse_expr(lex("\"sum \{a + b\} done\""), 0)
     info("interp expr: {show(ip2.node)}")
 
-    // Four checks whose answers are 1, 1, 1 and 0. A checker that reported
-    // nothing would pass three of them, which is why the clean one is here too.
     info("check arity: {check_module(parse_module(lex("add(a: int, b: int) -> int => a + b use() -> int => add(1)"), 0, []))}")
     info("check return: {check_module(parse_module(lex("bad() -> str => 1 + 2"), 0, []))}")
     info("check calls: {check_module(parse_module(lex("n() -> int => 1 s() -> str => \"a\" mix() -> int => s() + 1"), 0, []))}")
     info("check clean: {check_module(parse_module(lex("add(a: int, b: int) -> int => a + b use() -> int => add(1, 2)"), 0, []))}")
 
-    // Two variants of different widths, so C has to size its cell row by the
-    // wider one. A single-variant sum would not catch that.
     sm = parse_module(lex("Shape = Circle(int) | Rect(int, int)"), 0, [])
     info("payload C:    {emit_module(sm)}")
     info("payload Rust: {remit_module(sm)}")
@@ -171,32 +133,20 @@ demo() -> int {
     info("at C:    {emit_fn(at.snode)}")
     info("at Rust: {remit_fn(at.snode)}")
 
-    // The list has to live on the heap: a C array built in the callee's frame
-    // would be dangling by the time the caller read it.
     ar = parse_fn(lex("total(xs: int[]) -> int => xs.get(0) + xs.get(1) + xs.count()"), 0)
     info("array C:    {emit_fn(ar.snode)}")
     info("array Rust: {remit_fn(ar.snode)}")
 
-    // The shape of every real selfhost source: imports, then a sum, then a
-    // function. The count is 2, so the imports have to be walked past rather
-    // than parsed into items.
     real = "import std/str import selfhost/token Kind = TInt | TStr classify(k: Kind) -> int => match k {{ TInt => 1 TStr => 2 }}"
     rm = parse_module(lex(real), 0, [])
     info("real file: {rm.items.length()} items after skipping imports")
 
-    // The one case that is compiled and *run* rather than inspected. Every
-    // feature above appears in it, multiplied together so that any one of them
-    // going wrong changes the exit code: `(40 + 2) * 1 * 1 * 1 * 1 * 1` = 42.
-    // A demo whose output is only read is a demo that can emit nonsense.
     program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} Shape = Circle(int) | Rect(int, int) area(sh: Shape) -> int => match sh {{ Circle(r) => r * r Rect(w, h) => w * h }} hi(a: str, b: str) -> int => (a ++ b) == \"hello\" ? 1 : 0 chk(n: int) -> int => (\"v\" ++ str(n)) == \"v42\" ? 1 : 0 slen(s: str) -> int => s.length() head(xs: int[]) -> int => xs.get(0) main() -> int {{ q = Point {{ x = 40, y = 9 }} ys = [1, 99] info(\"self-hosted!\") (fld(q) + code(Green)) * hi(\"hel\", \"lo\") * chk(42) * slen(\"z\") * head(ys) * area(Rect(1, 1)) }}"
     prog_mod = parse_module(lex(program), 0, [])
     info("=== emitted program ===")
     info(emit_module(prog_mod))
     info("=== end program ===")
 
-    // The same program through the Rust back end. The gate compiles what is
-    // between the markers with `rustc` and checks it exits 42 as well, so the
-    // two emitters are held to one answer rather than each to its own.
     info("=== emitted rust ===")
     info(remit_module(prog_mod))
     info("=== end rust ===")

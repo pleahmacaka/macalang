@@ -1,49 +1,3 @@
-// http/dev: a dev-mode page that learns what changed instead of reloading.
-//
-// The transport half of `signal/dom`. A generator rebuilds, the store says which
-// regions of a page moved, `signal/dom` turns that into ops, and this carries
-// them to the browser, which patches those nodes and nothing else. Scroll
-// position, an open `<details>`, a half-typed search box: all still there,
-// because nothing else on the page was touched.
-//
-//     f = feed(".maca/dev/hmr")
-//     publish(f, gen, patch_json(regions))       # the builder, after a rebuild
-//
-//     listen(port, req => is_poll(req) ? answer(f, req, 25000)
-//                                      : serve_file(root, req))
-//
-// A page opts in with `dev_head()` in its `<head>` and nothing else. A published
-// page gets none of it, which is why that is a function the dev build calls
-// rather than something the page shell always emits.
-//
-// **Long poll, not server-sent events**, and the reason is one file over:
-// `http/response`'s `render` computes one `Content-Length` and writes one reply,
-// and `http_accept_loop` is one request in, one response out. An event stream
-// has to hold the connection and write again later, which is a change to the C
-// engine and to every handler's type. A long poll needs neither: a handler with
-// nothing to say yet simply has not answered, and the accept loop is a thread
-// per connection, so a waiting poll blocks nobody. What the browser gets is the
-// same either way, one message per change.
-//
-// **The channel is a directory**, not a variable. Maca has no globals and the
-// handler runs on another thread, so the builder and the server agree on a
-// generation counter and one file per generation. That also means they can be
-// two processes: a build script that wants to publish a patch does not have to
-// own a server, and a server restarting does not lose the client's place.
-//
-// A patch is a delta, so a client that missed one cannot be caught up by the
-// next. Two answers to that, and both are here because the alternative is a page
-// that quietly drifts from the source it claims to show: a poll behind by more
-// than one generation is sent every delta in between, in order, and a poll
-// behind by more than `Keep` of them is told to reload.
-//
-// Which leaves the question of where a page that has just loaded is, and the
-// answer is that it is current: its markup came off disk, and disk is what the
-// newest generation wrote. So its first poll names no generation at all and is
-// told one. Reading a page that names none as a page at generation 0 asked the
-// feed for every delta ever published, which past the window is a reload, and a
-// reload is another page that names none. See `Fresh`.
-
 import { Request, query_value } from http/request
 import { Response, json } from http/response
 import { runtime_script } from signal/dom
@@ -52,42 +6,19 @@ import { runtime_script } from signal/dom
 Feed = { dir: str }
 
 /// A feed under `dir`, which is created if it is not there yet.
-///
-/// Put it outside the directory being served. A feed inside it is reachable as
-/// a file, which is a second way to read the same thing and a way for a stale
-/// copy to be published with the site.
 feed(dir: str) -> Feed {
     make_dir(dir)
     Feed { dir = dir }
 }
 
-// How many generations of patches to keep on disk. It is a window rather than a
-// history: a client that has been away longer than this is told to reload, so
-// the only thing a bigger number buys is a longer nap for a laptop lid.
 Keep = 16
 
-// Between two reads of the generation counter while a poll is waiting. Short
-// enough that a save feels immediate, long enough that an idle connection is
-// not a syscall storm.
 Step = 100
 
-/// The path the browser polls. Named once, so the script and the handler cannot
-/// disagree about it.
+/// The path the browser polls.
 PollPath = "/_maca/hmr"
 
-// ---- publishing -----------------------------------------------------------
-
 /// Publish `ops` as generation `gen`, and say whether it went.
-///
-/// The patch is written before the counter, and that order is the whole
-/// reliability of the channel: a poll that has seen a counter always finds the
-/// patch it names. Written the other way, a client is told about a generation
-/// whose file is still half a write long.
-///
-/// A patch that could not be written at all is the same rule taken to its end,
-/// so the counter does not move for it either: a read-only work directory or a
-/// full disk announces nothing, rather than announcing a generation that every
-/// poll then has to be answered for with a reload.
 publish(f: Feed, gen: int, ops: str) -> bool {
     if write_file(patch_file(f, gen), ops) {
         remove_file(patch_file(f, gen - Keep))
@@ -121,38 +52,15 @@ patch_of(f: Feed, gen: int) -> str {
 
 patch_file(f: Feed, gen: int) -> str => f.dir ++ "/" ++ str(gen) ++ ".json"
 
-// ---- the endpoint ---------------------------------------------------------
-
-/// Is this the dev channel's own request? Everything else is the site.
+/// Is this the dev channel's own request?
 is_poll(req: Request) -> bool => req.path == PollPath
 
 /// Answer a poll, holding the connection for up to `budget_ms`.
-///
-/// Long enough that an idle editor is not a request a second; short enough that
-/// a proxy, or a laptop closing its lid, does not decide the connection died.
-/// A client re-polls either way, so a timeout costs one round trip and no state.
 answer(f: Feed, req: Request, budget_ms: int) -> Response =>
     json(waited(f, seen(req), budget_ms))
 
-// A client that names no generation at all: a page that has just come off disk
-// and does not know where it is.
-//
-// It is deliberately not 0. Zero is a real place: where a page loaded before
-// anything was published sits, and that page does need generation 1's ops. So
-// reading "I have just loaded" as "I am at 0" was wrong in the other direction.
-// A page served at generation 20 was sent every delta since 1, and once the feed
-// had pruned any of them it was told to reload instead. The poller starts over
-// on every load, including the load a reload causes, so that was a page that
-// reloaded forever.
 Fresh = -1
 
-// The generation the client already has, or `Fresh` when it has not said.
-//
-// A supplied value below zero reads as zero. Nothing a browser sends is
-// negative, but `gen` is a number off a query string, and `?gen=-1` named a
-// range of generations no feed can hold every file for, so the answer was a
-// reload where the ops would have done. It is also what keeps `ops_since`'s
-// range bounded by anything other than `have_all` happening to say no first.
 seen(req: Request) -> int {
     named = query_value(req, "gen")
 
@@ -165,11 +73,6 @@ seen(req: Request) -> int {
     }
 }
 
-// Wait until there is something to say, or until the budget runs out.
-//
-// A client that has just loaded is never waited on: there is always something to
-// tell it, which is where it is, and `Fresh` is below every generation so the
-// loop does not run.
 waited(f: Feed, since: int, budget_ms: int) -> str {
     left = budget_ms
     gen = generation(f)
@@ -184,13 +87,6 @@ waited(f: Feed, since: int, budget_ms: int) -> str {
 }
 
 /// One poll's answer, as the JSON the client reads.
-///
-/// Three shapes, and a client has to handle all three: nothing happened, here
-/// is what happened, and I cannot tell you what happened so start again.
-///
-/// A client that has just loaded gets the first shape whatever the generation
-/// is. The files it loaded were the ones the newest generation wrote, so it is
-/// told where it is and has nothing to apply.
 message(f: Feed, since: int, gen: int) -> str {
     if since == Fresh || gen <= since {
         "\{\"gen\":{gen}\}"
@@ -201,12 +97,7 @@ message(f: Feed, since: int, gen: int) -> str {
     }
 }
 
-/// Every generation after `since` up to `gen`, as one array of ops in published
-/// order.
-///
-/// Applying them in order is what a client that missed a round needs: a later op
-/// for the same key overwrites an earlier one, so the merged array lands on the
-/// markup a single rebuild would have written.
+/// Every generation after `since` up to `gen`, as one array of ops in published order.
 ops_since(f: Feed, since: int, gen: int) -> str =>
     "[" ++ merged(f, since + 1, gen, []).join(",") ++ "]"
 
@@ -219,8 +110,6 @@ merged(f: Feed, at: int, gen: int, acc: str[]) -> str[] {
     }
 }
 
-// A JSON array's elements, without its brackets, so two arrays can be joined
-// into one.
 unbracketed(arr: str) -> str {
     t = arr.trim()
 
@@ -231,9 +120,7 @@ unbracketed(arr: str) -> str {
     }
 }
 
-/// Is every generation between `since` and `gen` still on disk, whole? A client
-/// behind by more than `Keep` of them cannot be patched, and has to be told so
-/// rather than sent the ones that survived.
+/// Is every generation between `since` and `gen` still on disk, whole?
 have_all(f: Feed, since: int, gen: int) -> bool => present(f, since + 1, gen)
 
 present(f: Feed, at: int, gen: int) -> bool {
@@ -246,57 +133,21 @@ present(f: Feed, at: int, gen: int) -> bool {
     }
 }
 
-// Is `gen`'s patch on disk and finished?
-//
-// Existing is not enough, and what the difference costs is a page that stops
-// updating and does not say so. A write that ran out of disk leaves a file
-// holding the first half of an array; `file_exists` calls that a published
-// generation, the poll merges it into its answer, and the browser is sent a
-// JSON body that stops in the middle of a string. `JSON.parse` throws, the
-// poller waits a second and asks the same question again, and it goes on doing
-// that for as long as the tab is open. A patch is a JSON array, so a last
-// character of `]` is the cheapest thing that says the writer reached the end
-// of one. A directory standing where the file goes reads as "" and fails the
-// same test, which is the answer it deserves.
 whole(f: Feed, gen: int) -> bool {
     at = patch_file(f, gen)
 
     file_exists(at) && read_file(at).trim().ends_with("]")
 }
 
-// ---- the browser side -----------------------------------------------------
-
-/// What a dev-mode page needs in its `<head>`, and the whole of it: the patcher
-/// from `signal/dom` and the loop that feeds it.
+/// What a dev-mode page needs in its `<head>`, and the whole of it.
 dev_head() -> str => runtime_script() ++ poll_script()
 
 /// The poll loop, in a `<script>`.
 poll_script() -> str => script(poll_js())
 
-// The path is handed to the script as data rather than written into it, because
-// the script is a raw block and a raw block interpolates nothing. `PollPath` is
-// named once above and this is what carries it across.
 poll_js() -> str =>
     "window.macaDevPath=\"" ++ PollPath ++ "\";\n" ++ Poller
 
-// `XMLHttpRequest` and `var`, to match the patcher next door. Both are the
-// oldest thing that works, on purpose: this is the one script on a dev page that
-// has to run before anything on the page has been checked.
-//
-// Every path ends in another poll, and none of them ends in one immediately: a
-// server answering instantly with nothing new would otherwise be a hot loop
-// rather than a wait.
-//
-// Polling does not start until the document is parsed. The script sits in the
-// `<head>`, so a patch that arrived before `</body>` would look up nodes that do
-// not exist yet, find none, and leave that region showing the old text with
-// nothing to tell it otherwise until the next save.
-//
-// The first request names no generation, and the answer to it is where this page
-// is: the markup came off disk, and disk is what the newest generation wrote.
-// Sending 0 instead claimed the page predated every patch ever published, which
-// past the feed's window is a reload, and a reload starts the script again with
-// the same claim. See `Fresh`.
 Poller = """
 (function () {
   var gen = -1;

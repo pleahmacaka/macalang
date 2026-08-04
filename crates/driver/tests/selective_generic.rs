@@ -1,10 +1,3 @@
-//! A parameter's declared type is what its argument is lowered against.
-//!
-//! The values are asserted in Maca (`tests/programs/selective_generic.maca`);
-//! this side runs it and checks the count, and separately builds a selective
-//! import of every module in the tree, which is the shape the defect was found
-//! in and the one nothing was exercising.
-
 mod common;
 use common::*;
 
@@ -33,14 +26,7 @@ fn a_parameters_declared_type_reaches_its_argument() {
     assert!(text.contains("3 tests passed"), "{text}");
 }
 
-/// A selective import naming one function, which is the shape the defect was
-/// found in.
-///
-/// `flame` calls `chart_rows(t, sc, 0, [])`, whose `acc` is declared `str[]`.
-/// Sliced down to that one name the callee is specialized, and the empty list
-/// decided its own type: the specialization took an int array and returned it
-/// as the `str[]` the signature promised. Naming every export instead makes the
-/// slice equal the whole module, which is why the sweep below cannot see this.
+/// A selective import naming one function, which is the shape the defect was found in.
 #[test]
 fn a_selective_import_of_one_name_types_the_helpers_it_pulls() {
     if !have("cc") {
@@ -79,18 +65,6 @@ main() -> int => 0
 }
 
 /// A record type reached through a selective import is concrete, not generic.
-///
-/// `imports::fresh` renames an inlined module's items to `<module>__<name>`,
-/// and a module stem is lowercase, so `Tone` declared in `pal.maca` reaches the
-/// back end as `pal__Tone` and `is_type_var_name` read the leading `p` and
-/// called it a type variable. Every helper taking a list of it was then
-/// monomorphized instead of emitted, and `cc` was handed a call to a function
-/// that does not exist and an undeclared `pal__ToneArr`.
-///
-/// Two files, because one file is the case that already worked: nothing is
-/// renamed until a module is inlined. And the entry names only `sheet`, whose
-/// own signature is `-> str`, because naming the helper or the type puts the
-/// record back in the slice's own signature and the defect disappears.
 #[test]
 fn a_record_type_from_an_inlined_module_is_not_a_type_variable() {
     if !have("cc") {
@@ -142,29 +116,10 @@ main() -> int {
 
     let text = String::from_utf8_lossy(&o.stdout).to_string() + &String::from_utf8_lossy(&o.stderr);
     assert!(o.status.success(), "{text}");
-    // The value, not just the exit status: a specialization that compiled but
-    // took the wrong element type would still have run.
     assert!(text.contains("a1b2"), "{text}");
 }
 
-/// A lambda inside an inlined module captures the module's own parameter, even
-/// when the entry defines a function spelling the name the same way.
-///
-/// `emit_closure` decided what to capture by asking `is_known_global`, which
-/// answers for the *whole* inlined program. `render(at: str, …)` therefore
-/// stopped capturing `at` the moment anything else in the slice defined an
-/// `at`, and the lambda body read that function as a value instead: `++` was
-/// handed a `maca_closure2` and the native backend refused the program. Nothing
-/// is renamed until a module is inlined and a one-file program rarely has two
-/// `at`s, which is why it took a slice this wide to show. `apps/tomo/highlight`
-/// is where it was found, against `at` in `site_home.maca`.
-///
-/// Both lowering paths are here, because a specialization builds its own `env`
-/// and would not have been fixed by the same line otherwise: `render` takes the
-/// record list concretely, `render_any` takes it as `e[]` and is monomorphized.
-/// The value is asserted, not the exit status: the record element type was
-/// right in the emitted C either way, and the capture is the only thing the
-/// printed string can disagree about.
+/// A lambda inside an inlined module captures the module's own parameter, even when the entry defines a function spelling the name the same way.
 #[test]
 fn a_lambda_in_an_inlined_module_captures_its_own_parameter() {
     if !have("cc") {
@@ -230,14 +185,7 @@ main() -> int {
     );
 }
 
-/// Every top-level function a module defines, which is what a selective import
-/// of it can name.
-///
-/// All of them go into one import rather than one import each. There are 607
-/// across `modules/`, and a build apiece is minutes; naming them together still
-/// pulls the union of their closures, which is what the defect needed. What it
-/// gives up is isolation: this says a module has a name that does not slice, not
-/// which one.
+/// Every top-level function a module defines, which is what a selective import of it can name.
 fn exports(path: &Path) -> Vec<String> {
     let Ok(src) = std::fs::read_to_string(path) else {
         return Vec::new();
@@ -262,10 +210,6 @@ fn exports(path: &Path) -> Vec<String> {
 
 #[test]
 fn every_module_builds_both_selectively_and_whole() {
-    // A module that only ever gets imported whole can carry a defect that only
-    // the sliced form shows, and the other way round: `cli/help` used `Cmd`
-    // without importing `cli/spec`, so neither form worked, and nothing noticed
-    // because everything that wanted it also imported the spec.
     if !have("cc") {
         eprintln!("skipping: no cc");
         return;

@@ -1,32 +1,3 @@
-// run: the benchmark harness, Maca vs C / Rust / Go / JS / Python.
-//
-// Two families of workload:
-//   * recursion-bound integer kernels  (fib, tak, ackermann): call overhead
-//   * compute-bound loops/arrays/float (sieve, mandel, matmul)
-//
-// Every implementation computes the *same* result, verified against `expected`.
-// Compiled languages are built once at -O2/-O; then execution is timed (median
-// of N runs, one warmup). Maca goes through the `maca` CLI (Maca → C →
-// `cc -O2`), so it should land in C's ballpark (the "C-tier native" claim)
-// while staying far ahead of interpreted Python and JIT'd JS on call-bound
-// code.
-//
-//   maca run apps/bench/run.maca [--runs N] [--only KERNEL]
-//
-// Writes results.json and results.md beside itself, and reads results.json
-// *before* overwriting it, so an ordinary run also says what moved since the
-// last one. A harness that only printed a table could not answer the question a
-// benchmark is run to answer.
-//
-// The statistics, the file format and the comparison are `modules/bench`'s:
-// `bench/stat` has the median and the spread, `bench/store` reads and writes a
-// run, `bench/compare` pairs two of them. What is left here is the part that is
-// specific to timing *other languages' binaries*: building them, running them,
-// and checking that they all computed the same number.
-//
-// The reference implementations under `ref/` stay in their own languages:
-// they are the comparison. The harness around them does not need to be.
-
 import std/proc
 import { join } from std/path
 import { Result, median_ms, spread_ms } from bench/time
@@ -42,21 +13,17 @@ import { help } from cli/help
 
 Tmp = "/tmp/maca-bench"
 
-// The record and the baseline are the same file: read before the run, written
-// after, so nobody has to remember to save one.
 Baseline = "apps/bench/results.json"
 Report = "apps/bench/results.md"
 
 RunsDefault = 5
 
-// Families, in report order.
 recursion_kernels() -> str[] => ["fib", "tak", "ackermann"]
 compute_kernels() -> str[] => ["sieve", "mandel", "matmul"]
 
 kernels() -> str[] =>
     recursion_kernels() ++ compute_kernels()
 
-// Every column must print this, or the number it produced is not comparable.
 expected(algo: str) -> int {
     if algo == "fib" {
         102334155
@@ -73,7 +40,6 @@ expected(algo: str) -> int {
     }
 }
 
-// What the kernel is actually asked to compute, for the report.
 params(algo: str) -> str {
     if algo == "fib" {
         "fib(40)"
@@ -90,31 +56,14 @@ params(algo: str) -> str {
     }
 }
 
-// Ordered fastest-family-first for the table.
 langs() -> str[] =>
     ["Maca", "C", "Rust", "Go", "JS (node)", "Python"]
 
-// One case is one kernel in one language. The name is what a run is filed
-// under and what two runs are paired by, so it is spelled in one place.
 case_name(algo: str, lang: str) -> str =>
     algo ++ "/" ++ lang
 
-// ---- one measurement ------------------------------------------------------
-
-// A timed contender, as a `bench/time` result.
-//
-// `size` and `iters` are both 1 because the unit here is one whole process,
-// not one call: what is being compared is what six toolchains do with the same
-// kernel end to end, start-up included. `checksum` is the number the program
-// printed. The field exists so that a case which got faster and changed its
-// answer reads as broken rather than as an improvement.
-//
-// Samples are whole milliseconds. Every kernel here runs for hundreds of them,
-// so the clock's resolution sits three digits below the signal, which is also
-// why the ns/op column of the comparison table is nine digits with information
-// in only the leading three.
 time_cmd(algo: str, lang: str, cmd: str, args: str[], runs: int) -> Result {
-    capture(cmd, args)                                    // warmup
+    capture(cmd, args)
     taken: int[] = []
     printed = ""
 
@@ -128,10 +77,6 @@ time_cmd(algo: str, lang: str, cmd: str, args: str[], runs: int) -> Result {
              samples = taken, checksum = int(printed) }
 }
 
-// ---- building the contenders ----------------------------------------------
-
-// Each language's compiled binary, or the interpreter invocation that runs its
-// source. `""` for a toolchain this host doesn't have.
 Runner = {
     lang: str
     cmd: str
@@ -166,8 +111,6 @@ build_maca(algo: str) -> Runner {
     }
 }
 
-// `cc -O2 x.c -o out` and `rustc -O x.rs -o out` take their flags in the same
-// shape, so one function covers both.
 build_native(lang: str, tool: str, opt: str, algo: str, suffix: str) -> Runner {
     if !have(tool) {
         no_runner(lang)
@@ -183,7 +126,6 @@ build_native(lang: str, tool: str, opt: str, algo: str, suffix: str) -> Runner {
     }
 }
 
-// Go puts its build cache in $HOME by default, which a CI runner may not have.
 build_go(algo: str) -> Runner {
     if !have("go") {
         no_runner("Go")
@@ -206,8 +148,6 @@ interpreted(lang: str, tool: str, args: str[]) -> Runner {
     }
 }
 
-// ---- the run ---------------------------------------------------------------
-
 Spec = command("bench", "Maca against C, Rust, Go, JS and Python")
     .opt("runs", "n", "timed runs per contender, after one warm-up",
          str(RunsDefault))
@@ -228,8 +168,6 @@ main(argv: str[]) -> int {
     }
 }
 
-// `--only` names a kernel, and a misspelling is answered with the list rather
-// than with an empty run that looks like everything passing.
 chosen(only: str) -> str[] {
     if only == "" {
         kernels()
@@ -250,9 +188,6 @@ measure_all(algos: str[], runs: int) -> int {
     0
 }
 
-// A `--only tak` run has nothing to say about `fib`. Paired against the whole
-// baseline it reports the thirty cases it never attempted as having vanished,
-// which buries the six it did.
 baseline_for(algos: str[], before: Result[]) -> Result[] =>
     before.filter(r => algos.contains(kernel_of(r)))
 
@@ -274,7 +209,6 @@ time_runners(rs: Runner[], i: int, algo: str, runs: int,
     if i >= rs.length() {
         acc
     } else if rs.get(i).cmd == "" {
-        // No toolchain for this language on this host; the column stays empty.
         time_runners(rs, i + 1, algo, runs, acc)
     } else {
         r = time_cmd(algo, rs.get(i).lang, rs.get(i).cmd, rs.get(i).args, runs)
@@ -283,12 +217,6 @@ time_runners(rs: Runner[], i: int, algo: str, runs: int,
     }
 }
 
-// Printed as each contender finishes rather than at the end: a suite that says
-// nothing for two minutes looks exactly like one that hung.
-//
-// The spread is beside the median because a median alone cannot be read. Two
-// numbers a hundred milliseconds apart mean nothing if the samples of either
-// scatter by two hundred.
 report(algo: str, lang: str, r: Result) {
     line = "  {lang:<10}{median_ms(r):>9.0} ms  ±{spread_ms(r):<7.1}"
     mark = r.checksum == expected(algo)
@@ -298,8 +226,6 @@ report(algo: str, lang: str, r: Result) {
     info(line ++ mark)
 }
 
-// ---- against the last run ---------------------------------------------------
-
 against(before: Result[], now: Result[]) {
     if before.length() == 0 {
         info(note("no baseline in {Baseline}; this run becomes one"))
@@ -307,15 +233,10 @@ against(before: Result[], now: Result[]) {
         deltas = compare(before, now, Tolerance)
         info(rule("since the last run"))
         info(comparison_table(deltas))
-        // The op is one whole process here, so the ns/op columns run to nine
-        // digits. The ratio is the column to read.
         info(regressed(deltas) ? bad(summary(deltas)) : ok(summary(deltas)))
     }
 }
 
-// A partial run is not a record. `--only` is for iterating on one kernel, and
-// writing its handful of rows over the file would delete the other five
-// kernels' numbers and leave a results.md that reads as the whole benchmark.
 record(algos: str[], now: Result[]) {
     if algos.length() < kernels().length() {
         info(note("partial run: {Baseline} and {Report} left alone"))
@@ -326,9 +247,6 @@ record(algos: str[], now: Result[]) {
     }
 }
 
-// ---- the published report ---------------------------------------------------
-
-// One cell: the median, and how many times slower than C it is.
 cell(rs: Result[], algo: str, lang: str, base: float) -> str {
     at = find(rs, case_name(algo, lang))
 

@@ -1,7 +1,3 @@
-// A module whose API includes a name another module in the same program binds as
-// a parameter. Neither imports the other, so neither can mean the other's
-// `column`, and only inlining brought the two together.
-
 /// `s` widened to `w` characters with trailing spaces.
 column(s: str, w: int) -> str {
     short = w - s.length()

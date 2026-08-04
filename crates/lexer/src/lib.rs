@@ -1,20 +1,3 @@
-//! maca-lexer: significant-newline tokenizer for Maca.
-//!
-//! Turns source text into `Token`s. The tricky parts live here so the parser
-//! sees a clean stream:
-//!
-//!   * Significant newlines. A `Newline` is emitted between statements/fields,
-//!     but suppressed inside `()`/`[]`, after a trailing operator/comma/opener,
-//!     and before a continuation token (`?`, `:`, `.`, a closer, `else`/`with`).
-//!     This is what lets a multi-line ternary body or method chain parse.
-//!   * Path literals: `/tmp`, `./x`, `../x`, `~/x`, only in operand position.
-//!     A spaced `/` between two operands is the divide/path-join operator.
-//!   * String interpolation: `"a {e} b"` lowers to
-//!     `StrOpen StrText InterpStart <tokens> InterpEnd StrText StrClose`,
-//!     with `{{`/`}}` as literal braces.
-//!   * Attached `x?` (propagate) vs spaced `c ? x : y` (ternary), decided by
-//!     whether whitespace precedes the `?`.
-
 use std::fmt::Write as _;
 
 /// Byte range `[start, end)` into the source.
@@ -22,13 +5,11 @@ pub type Span = (usize, usize);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Tok {
-    // literals
     Int(i64),
     Float(f64),
     Ident(String),
     True,
     False,
-    // string pieces
     StrOpen,
     StrText(String),
     InterpStart,
@@ -37,7 +18,6 @@ pub enum Tok {
     InterpEnd,
     StrClose,
     Path(String),
-    // keywords
     Const,
     As,
     If,
@@ -55,14 +35,12 @@ pub enum Tok {
     Alias,
     Await,
     Spawn,
-    // grouping
     LParen,
     RParen,
     LBracket,
     RBracket,
     LBrace,
     RBrace,
-    // punctuation / operators
     Comma,
     Colon,
     Dot,
@@ -71,28 +49,27 @@ pub enum Tok {
     Eq,
     EqEq,
     NotEq,
-    Bang, // ! (logical not)
+    Bang,
     Lt,
     Gt,
     Le,
     Ge,
-    Arrow,    // ->
-    FatArrow, // =>
+    Arrow,
+    FatArrow,
     Plus,
     Minus,
     Star,
     Slash,
-    Percent,      // %
-    Shl,          // <<
-    Shr,          // >>
-    PlusPlus,     // ++
-    Bar,          // |
-    BarBar,       // ||
-    PipeGt,       // |>
-    AmpAmp,       // &&
-    Question,     // spaced ternary `?`
-    QuestionPost, // attached postfix `x?`
-    // layout
+    Percent,
+    Shl,
+    Shr,
+    PlusPlus,
+    Bar,
+    BarBar,
+    PipeGt,
+    AmpAmp,
+    Question,
+    QuestionPost,
     Newline,
     Eof,
 }
@@ -115,8 +92,7 @@ pub struct Lexed {
     pub errors: Vec<LexError>,
 }
 
-/// Tokenize `src`. Errors are collected, not fatal, so a best-effort token
-/// stream always comes back (handy for the LSP later).
+/// Tokenize `src`.
 pub fn lex(src: &str) -> Lexed {
     Lexer::new(src).run()
 }
@@ -160,10 +136,10 @@ struct Lexer<'a> {
     end: usize,
     tokens: Vec<Token>,
     errors: Vec<LexError>,
-    group_depth: i32, // () and [] nesting; suppresses newlines
+    group_depth: i32,
     braces: Vec<Brace>,
     mode: Mode,
-    leading_ws: bool, // whitespace/comment/newline seen just before current token
+    leading_ws: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -181,8 +157,6 @@ impl<'a> Lexer<'a> {
             leading_ws: true,
         }
     }
-
-    // ---- cursor -----------------------------------------------------------
 
     fn peek(&self) -> char {
         self.chars.get(self.i).map(|c| c.1).unwrap_or('\0')
@@ -219,8 +193,6 @@ impl<'a> Lexer<'a> {
             .map(|t| &t.tok)
     }
 
-    // ---- driver -----------------------------------------------------------
-
     fn run(mut self) -> Lexed {
         loop {
             match self.mode {
@@ -253,8 +225,8 @@ impl<'a> Lexer<'a> {
         self.group_depth > 0 || matches!(self.braces.last(), Some(Brace::Interp))
     }
 
-    /// Skip spaces, comments, and newlines. Returns whether a newline was seen.
-    #[allow(clippy::nonminimal_bool)] // the positive form reads clearer here
+    /// Skip spaces, comments, and newlines.
+    #[allow(clippy::nonminimal_bool)]
     fn skip_trivia(&mut self) -> bool {
         self.leading_ws = false;
         let mut saw_nl = false;
@@ -295,7 +267,7 @@ impl<'a> Lexer<'a> {
     fn last_is_trailing_cont(&self) -> bool {
         use Tok::*;
         match self.last_sig() {
-            None => true, // suppress leading newlines at file start
+            None => true,
             Some(t) => matches!(
                 t,
                 Comma
@@ -346,8 +318,6 @@ impl<'a> Lexer<'a> {
             ')' | ']' | '}' => true,
             '.' => !self.peek_n(1).is_ascii_digit(),
             '|' => true,
-            // `&&` and `++` can only continue an expression; a bare `&` or `+`
-            // could open a new one, so only the doubled form breaks the line.
             '&' => self.peek_n(1) == '&',
             '+' => self.peek_n(1) == '+',
             c if is_ident_start(c) => {
@@ -372,8 +342,7 @@ impl<'a> Lexer<'a> {
         s
     }
 
-    /// True when an operand is expected next (start of expression), which is
-    /// where a leading `/`, `./`, `~` begins a path literal rather than an op.
+    /// True when an operand is expected next (start of expression), which is where a leading `/`, `./`, `~` begins a path literal rather than an op.
     fn expect_operand(&self) -> bool {
         use Tok::*;
         match self.last_sig() {
@@ -395,13 +364,10 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    // ---- code tokens ------------------------------------------------------
-
     fn lex_code(&mut self) {
         let start = self.byte();
         let c = self.peek();
 
-        // path literals, only where an operand is expected
         if self.expect_operand() && self.starts_path(c) {
             return self.lex_path();
         }
@@ -432,7 +398,7 @@ impl<'a> Lexer<'a> {
             ':' if self.fmt_spec_here().is_some() => {
                 let spec = self.fmt_spec_here().unwrap();
                 for _ in 0..=spec.len() {
-                    self.bump(); // the `:` and the spec characters
+                    self.bump();
                 }
                 self.push(Tok::FmtSpec(spec), (start, self.byte()));
             }
@@ -478,9 +444,6 @@ impl<'a> Lexer<'a> {
                 self.push(tok, (start, self.byte()));
             }
             '"' => {
-                // raw triple-quoted string `"""…"""`: everything verbatim until
-                // the closing `"""`: no interpolation, no escapes. For embedding
-                // foreign source (CSS/JS) in a `.maca` file.
                 if self.peek_n(1) == '"' && self.peek_n(2) == '"' {
                     self.bump();
                     self.bump();
@@ -540,8 +503,6 @@ impl<'a> Lexer<'a> {
         while is_ident_continue(self.peek()) {
             s.push(self.bump());
         }
-        // Nix-style internal hyphen: `noto-fonts`, `home-manager`. Only a `-`
-        // directly between word chars joins; `a - b` and `x-1` stay operators.
         while self.peek() == '-' && is_ident_start(self.peek_n(1)) {
             s.push(self.bump());
             while is_ident_continue(self.peek()) {
@@ -574,8 +535,6 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_number(&mut self, start: usize) {
-        // Radix prefixes: 0x / 0b / 0o (with optional `_` digit separators),
-        // essential for register addresses and bit masks.
         if self.peek() == '0' {
             let (radix, valid): (u32, fn(char) -> bool) = match self.peek_n(1) {
                 'x' | 'X' => (16, |c| c.is_ascii_hexdigit()),
@@ -584,8 +543,8 @@ impl<'a> Lexer<'a> {
                 _ => (0, |_| false),
             };
             if radix != 0 && (valid(self.peek_n(2)) || self.peek_n(2) == '_') {
-                self.bump(); // 0
-                self.bump(); // x/b/o
+                self.bump();
+                self.bump();
                 let mut digits = String::new();
                 while valid(self.peek()) || self.peek() == '_' {
                     let c = self.bump();
@@ -596,8 +555,6 @@ impl<'a> Lexer<'a> {
                 let span = (start, self.byte());
                 match i64::from_str_radix(&digits, radix) {
                     Ok(n) => self.push(Tok::Int(n), span),
-                    // hardware addresses can exceed i64::MAX (e.g. 0xFFFF_FFFF fits,
-                    // but wider masks may not); fall back to the bit pattern.
                     Err(_) => match u64::from_str_radix(&digits, radix) {
                         Ok(u) => self.push(Tok::Int(u as i64), span),
                         Err(_) => self.error(format!("integer 0x{digits} out of range"), span),
@@ -615,7 +572,7 @@ impl<'a> Lexer<'a> {
         }
         let is_float = self.peek() == '.' && self.peek_n(1).is_ascii_digit();
         if is_float {
-            s.push(self.bump()); // .
+            s.push(self.bump());
             while self.peek().is_ascii_digit() {
                 s.push(self.bump());
             }
@@ -633,8 +590,6 @@ impl<'a> Lexer<'a> {
             }
         }
     }
-
-    // ---- paths ------------------------------------------------------------
 
     fn starts_path(&self, c: char) -> bool {
         match c {
@@ -654,15 +609,7 @@ impl<'a> Lexer<'a> {
         self.push(Tok::Path(s), (start, self.byte()));
     }
 
-    /// The format spec starting at the current `:`, if this colon closes an
-    /// interpolation rather than separating a ternary's arms.
-    ///
-    /// Three things must hold, and together they leave no ambiguity with
-    /// `"{c ? a : b}"`: we are directly inside a `{…}` interpolation, the colon
-    /// is *attached* to the expression before it (Maca writes a ternary spaced,
-    /// `c ? x : y`, the same attached-vs-spaced rule that distinguishes `x?`
-    /// from `c ? x : y`), and every character from here to the closing `}` is a
-    /// spec character. Returns the spec without its colon.
+    /// The format spec starting at the current `:`, if this colon closes an interpolation rather than separating a ternary's arms.
     fn fmt_spec_here(&self) -> Option<String> {
         if !matches!(self.braces.last(), Some(Brace::Interp)) {
             return None;
@@ -682,8 +629,6 @@ impl<'a> Lexer<'a> {
             i += 1;
         }
     }
-
-    // ---- strings ----------------------------------------------------------
 
     fn lex_str_chunk(&mut self) {
         let start = self.byte();
@@ -710,12 +655,6 @@ impl<'a> Lexer<'a> {
                     self.mode = Mode::Code;
                     return;
                 }
-                // A `"…"` string stays on its line. Without this, a stray `{`
-                // (`"{"`, where a literal brace needs `\{` or `{{`) opens an
-                // interpolation, the following `"` opens a *nested* string, and
-                // that string quietly swallows the rest of the file up to the
-                // next quote. The program still compiles, with the wrong text
-                // baked in. Multi-line text is what `"""…"""` is for.
                 '\n' => {
                     if !s.is_empty() {
                         self.push(Tok::StrText(s), (start, self.byte()));
@@ -785,11 +724,6 @@ fn is_path_char(c: char) -> bool {
 }
 
 /// Is `word` a keyword rather than an identifier?
-///
-/// One list, read from the same place the lexer decides. Anything that needs to
-/// know, whether that is `maca -m` refusing to run a module whose name no
-/// program could import, an editor, or a linter, asks here rather than keeping
-/// a copy that drifts the next time a keyword is added.
 pub fn is_keyword(word: &str) -> bool {
     matches!(
         lex(word).tokens.first().map(|t| &t.tok),

@@ -1,73 +1,36 @@
-// lint: the Maca style linter, written in Maca.
-//
-// A port of the style half of `maca lint` (crates/driver/src/main.rs) into the
-// language itself, extended to walk a directory so it can check a whole tree.
-// The semantic half (type/effect diagnostics) stays in the compiler, which owns
-// the checker; everything here is line-level style that Maca can judge for
-// itself.
-//
-// Rules:
-//   - a line over 80 columns (comments exempt: prose wraps differently)
-//   - a single-line `if … { … }` block, which the style guide breaks apart
-//   - trailing whitespace
-//   - a hard tab (Maca indents with four spaces)
-//
-// Run it with:  maca run tools/lint.maca [path…]
-// With no path it lints the repository's own Maca sources.
-
 import { command, rest } from cli/spec
 import { parse, from } from cli/parse
 import { help } from cli/help
 import { dim, ok, bad } from cli/style
 import { find, read_lines } from std/fs
 
-// ---- one file -------------------------------------------------------------
-
-// Where a complaint is and what it is about, kept apart from how it prints.
-// The report styles the location and the count is a list length, neither of
-// which is true of a pile of pre-formatted lines.
 Issue = {
     path: str,
     line: int,
     what: str,
 }
 
-// Does this line hold a whole `if` block, opened and closed? The line must
-// *start* with the keyword: an `if ` in the middle is a string or a comment
-// (this very file mentions one), and a ternary `c ? a : b` legitimately fits
-// on one line, so both are exempt.
 single_line_if(line: str) -> bool {
     t = line.trim()
     opens = t.starts_with("if ") || t.starts_with("} else if ")
     opens && t.contains("\{") && t.ends_with("\}") && !t.contains("? ")
 }
 
-// The width rule exists so *code* stays readable at 80 columns. A long string
-// literal is like a long comment (a C template, a URL, a test program), and
-// rewrapping it would change or disfigure it. So the line is measured with its
-// string literals collapsed: `info("…200 chars…")` counts as `info("")` and
-// passes, while genuinely wide code still fails.
-//
-// `str.length()` counts bytes, so a UTF-8 comment would over-count; comments
-// are exempt outright.
 too_wide(line: str) -> bool =>
     !line.trim().starts_with("//") && collapse_strings(line).length() > 80
 
-// Replace the contents of every `"…"` literal with nothing, keeping the quotes.
 collapse_strings(line: str) -> str =>
     collapse(line.chars(), 0, false, "")
 
-// `quoted` says whether we are inside a literal; the quote characters
-// themselves are always kept, so an unterminated quote can't hide the line.
 collapse(cs: str[], i: int, quoted: bool, acc: str) -> str {
     if i >= cs.length() {
         acc
     } else if cs.get(i) == "\\" && quoted {
-        collapse(cs, i + 2, quoted, acc)           // an escape, e.g. `\"`
+        collapse(cs, i + 2, quoted, acc)
     } else if cs.get(i) == "\"" {
         collapse(cs, i + 1, !quoted, acc ++ "\"")
     } else if quoted {
-        collapse(cs, i + 1, quoted, acc)           // the collapsed contents
+        collapse(cs, i + 1, quoted, acc)
     } else {
         collapse(cs, i + 1, quoted, acc ++ cs.get(i))
     }
@@ -76,20 +39,17 @@ collapse(cs: str[], i: int, quoted: bool, acc: str) -> str {
 has_trailing_space(line: str) -> bool =>
     line.length() > 0 && (line.ends_with(" ") || line.ends_with("\t"))
 
-// Every complaint about one line (empty when the line is clean).
 line_issues(path: str, no: int, line: str) -> Issue[] =>
     say(path, no, too_wide(line), "line exceeds 80 columns")
         ++ say(path, no, single_line_if(line),
                "single-line `if` block; break it across lines")
         ++ space_issues(path, no, line)
 
-// The rules that apply to any text, Maca or foreign.
 space_issues(path: str, no: int, line: str) -> Issue[] =>
     say(path, no, has_trailing_space(line), "trailing whitespace")
         ++ say(path, no, line.contains("\t"),
                "hard tab; Maca indents with four spaces")
 
-// One complaint, or nothing at all.
 say(path: str, no: int, hit: bool, what: str) -> Issue[] {
     if hit {
         [Issue { path = path, line = no, what = what }]
@@ -98,11 +58,6 @@ say(path: str, no: int, hit: bool, what: str) -> Issue[] {
     }
 }
 
-// Walk the file, threading whether we are inside a raw `"""…"""` block. Those
-// hold foreign text (the CSS and JS a `.maca` UI carries inline), so the two
-// rules about *Maca* code shape (width, single-line `if`) are suspended there,
-// for the same reason a long string literal is exempt. Whitespace hygiene
-// still applies: a trailing space is noise in any language.
 scan_lines(path: str, ls: str[], i: int, raw: bool, acc: Issue[]) -> Issue[] {
     if i >= ls.length() {
         acc
@@ -118,8 +73,6 @@ scan_lines(path: str, ls: str[], i: int, raw: bool, acc: Issue[]) -> Issue[] {
     }
 }
 
-// Does this line open or close a raw block? An odd number of `"""` flips the
-// state; a one-line `"""x"""` has two and leaves it alone.
 odd_fence(line: str) -> bool =>
     count_fences(line.chars(), 0, 0) % 2 == 1
 
@@ -139,11 +92,6 @@ fence_at(cs: str[], i: int) -> bool =>
 lint_file(path: str) -> Issue[] =>
     scan_lines(path, read_lines(path), 0, false, [])
 
-// ---- a tree ---------------------------------------------------------------
-
-// `std/fs` already walks recursively and asks `is_dir` about each entry. The
-// walk written here instead treated "`list_dir` found nothing" as "not a
-// directory", so an empty directory and a file were the same thing to it.
 lint_tree(dir: str) -> Issue[] =>
     lint_each(find(dir, ".maca"), 0, [])
 
@@ -155,10 +103,6 @@ lint_each(paths: str[], i: int, acc: Issue[]) -> Issue[] {
     }
 }
 
-// A path is a file or a tree, and one that is not there yields nothing: the
-// default list names every directory that could hold Maca source, and a
-// checkout without one of them is not a style violation. An explicitly given
-// path that is missing is refused before it gets here.
 lint_path(path: str) -> Issue[] {
     if is_dir(path) {
         lint_tree(path)
@@ -169,11 +113,6 @@ lint_path(path: str) -> Issue[] {
     }
 }
 
-// ---- entry point ----------------------------------------------------------
-
-// What gets linted when no path is given: Maca linting Maca. Every path in the
-// repository that holds Maca source is here, and nothing is exempt: a style
-// the codebase doesn't hold to isn't a style.
 default_paths() -> str[] =>
     ["examples", "selfhost", "tools", "modules", "apps", "packages",
      "crates/driver/tests/programs", "dev.maca"]
@@ -203,8 +142,6 @@ lint(paths: str[]) -> int {
     }
 }
 
-// A path someone typed is refused when it isn't there. Silently linting
-// nothing would exit 0 and read as a pass.
 lint_given(paths: str[]) -> int {
     absent = paths.filter(p => !file_exists(p))
 

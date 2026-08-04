@@ -1,24 +1,10 @@
-// selfhost/lexer: a character-level scanner for Maca, written in Maca.
-//
-// Recursive/functional (Maca surface has no `while`): `scan` walks a character
-// array by index, appending tokens. The `str` primitives it leans on
-// (`chars`, `length`, `get`, `slice`, and the `is_*` predicates) are the
-// stdlib contract the stage-1 compiler builds on. See std/README.md.
-
 import selfhost/token
-
-// ---- character classes ----------------------------------------------------
 
 is_space(c: str) -> bool => c.is_whitespace()
 is_digit(c: str) -> bool => c.is_ascii_digit()
 is_alpha(c: str) -> bool => c.is_alpha() || c == "_"
 is_alnum(c: str) -> bool => is_alpha(c) || is_digit(c)
 
-// ---- span helpers ---------------------------------------------------------
-
-// `pred` is deliberately unannotated: the stage-0 backend types a parameter
-// that is *called* in the body as a closure, which is how a predicate is passed
-// with no function-type syntax in the surface language.
 run_end(cs: str[], i: int, pred) -> int {
     if i < cs.length() && pred(cs.get(i)) {
         run_end(cs, i + 1, pred)
@@ -29,8 +15,6 @@ run_end(cs: str[], i: int, pred) -> int {
 
 span(cs: str[], i: int, j: int) -> str =>
     cs.slice(i, j).join("")
-
-// ---- the scanner ----------------------------------------------------------
 
 lex(src: str) -> Token[] {
     cs = src.chars()
@@ -56,8 +40,6 @@ step(cs: str[], i: int, out: Token[]) -> Token[] {
     }
 }
 
-// `i` sits on the opening quote. Escapes are left verbatim. Unescaping is the
-// parser's job, because an interpolation has to be re-lexed anyway.
 lex_string(cs: str[], i: int, out: Token[]) -> Token[] {
     j = string_end(cs, i + 1)
     text = span(cs, i + 1, j)
@@ -78,8 +60,6 @@ lex_word(cs: str[], i: int, out: Token[]) -> Token[] {
     scan(cs, j, out ++ [mk_token(keyword_kind(text), text, i)])
 }
 
-// A `.` only starts a fraction when a digit follows it. `1.` stays an int and
-// leaves the dot behind, so `1.max(2)` is a method call rather than a float.
 lex_number(cs: str[], i: int, out: Token[]) -> Token[] {
     j = run_end(cs, i, is_digit)
     has_fraction = j + 1 < cs.length() && cs.get(j) == "."
@@ -97,8 +77,6 @@ lex_float(cs: str[], i: int, dot: int, out: Token[]) -> Token[] {
     scan(cs, k, out ++ [mk_token(TFloat, span(cs, i, k), i)])
 }
 
-// Two-character operators are tried first, and only from a closed list: a
-// greedy pair would read the `- -` in `a - -b` as one token.
 lex_punct(cs: str[], i: int, out: Token[], c: str) -> Token[] {
     nxt = if i + 1 < cs.length() { cs.get(i + 1) } else { "" }
     two = c ++ nxt

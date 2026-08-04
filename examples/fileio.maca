@@ -1,7 +1,3 @@
-// File I/O builtins: reading, writing, existence checks, directory creation,
-// and listing. These are what a real tool (a build script, a static-site
-// generator like `apps/tomo`) needs to touch the filesystem.
-
 main() -> int {
     dir = "/tmp/maca_fileio_example"
     make_dir(dir ++ "/pages")
@@ -15,8 +11,6 @@ main() -> int {
     info(file_exists(dir ++ "/pages/one.md") ? "one.md exists" : "one.md missing")
     info(file_exists(dir ++ "/pages/nope.md") ? "nope.md exists" : "nope.md missing")
 
-    // Sorted, so a generator that walks a directory twice writes the same
-    // output twice.
     entries = list_dir(dir ++ "/pages")
     info("pages: {entries.length()}")
     info("first: {entries.get(0)}")

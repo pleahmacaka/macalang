@@ -1,26 +1,10 @@
-// selfhost/ast: the AST for the Maca-in-Maca compiler (stage 1).
-//
-// The classic bootstrap shape: a `kind` tag (a nullary sum → C enum) plus a
-// record carrying every possible field, most of them empty on any given node.
-//
-// A real tagged union would be the better AST, and stage-0 compiles one. It is
-// not used here because stage-1's own back ends cannot: `emit_c` lowers a
-// payload variant to a row of `long` cells and `emit_rust` writes the payload
-// type verbatim, so neither can express a variant that holds another `Expr`.
-// An AST the compiler could not compile is not an AST it can be written in.
-
 import selfhost/token
-
-// ---- expression kinds -----------------------------------------------------
 
 ExprKind =
     EInt | EFloat | EStr | EBool | EIdent
     | ECall | EField | EBinary | EUnary | ETernary
     | EList | ERecord | ELambda | EBlock | EMatch | EMethod
 
-// One expression node. `children` holds sub-expressions (call args, operands,
-// list elements); `text` names idents/operators; `ival` carries int literals;
-// `ty` carries a declared type name for a parameter ident (empty otherwise).
 Expr = {
     kind:     ExprKind
     text:     str
@@ -29,12 +13,8 @@ Expr = {
     children: Expr[]
 }
 
-// ---- statement kinds ------------------------------------------------------
-
 StmtKind = SExpr | SBind | SFn | SRecord | SSum
 
-// One top-level or block statement. Records and sums reuse `params` rather
-// than adding fields only they would fill. See `s_record` and `s_sum`.
 Stmt = {
     kind:   StmtKind
     name:   str
@@ -48,8 +28,6 @@ Module = {
     items: Stmt[]
 }
 
-// ---- constructors ---------------------------------------------------------
-
 e_int(n: int) -> Expr =>
     Expr { kind = EInt, text = "", ival = n, ty = "", children = [] }
 
@@ -59,13 +37,9 @@ e_ident(name: str) -> Expr =>
 e_param(name: str, ty: str) -> Expr =>
     Expr { kind = EIdent, text = name, ival = 0, ty, children = [] }
 
-// The same shape as `e_param` under a second name, for a sum variant's payload
-// slot, where the interesting part is the type rather than the binder.
 e_typed(name: str, ty: str) -> Expr =>
     Expr { kind = EIdent, text = name, ival = 0, ty, children = [] }
 
-// Grows a variant's payload list and a match pattern's binder list as each is
-// read; the parser has the child before it has anywhere to put it.
 with_child(e: Expr, c: Expr) -> Expr =>
     Expr { kind = e.kind, text = e.text, ival = e.ival, ty = e.ty,
            children = e.children ++ [c] }
@@ -73,13 +47,9 @@ with_child(e: Expr, c: Expr) -> Expr =>
 e_str(s: str) -> Expr =>
     Expr { kind = EStr, text = s, ival = 0, ty = "", children = [] }
 
-// The source spelling, not a bool field: C wants `1`/`0` and Rust wants the
-// keyword, so the emitters decide and the AST stays neutral.
 e_bool(text: str) -> Expr =>
     Expr { kind = EBool, text, ival = 0, ty = "", children = [] }
 
-// A float literal; the source spelling is kept verbatim in `text` (it doesn't
-// fit `ival`), e.g. "1.5".
 e_float(text: str) -> Expr =>
     Expr { kind = EFloat, text, ival = 0, ty = "", children = [] }
 
@@ -96,22 +66,15 @@ e_ternary(cond: Expr, then: Expr, els: Expr) -> Expr =>
 e_unary(op: str, operand: Expr) -> Expr =>
     Expr { kind = EUnary, text = op, ival = 0, ty = "", children = [operand] }
 
-// Each field rides as an `EBinary("=", EIdent(field), value)`: the flat AST has
-// no pair node, and `children` is the only list a node has.
 e_record(tyname: str, fields: Expr[]) -> Expr =>
     Expr { kind = ERecord, text = tyname, ival = 0, ty = "", children = fields }
 
 e_field(base: Expr, name: str) -> Expr =>
     Expr { kind = EField, text = name, ival = 0, ty = "", children = [base] }
 
-// `children` is `[scrut, pat0, body0, …]`: arms flattened in pairs, because a
-// node has one child list and no room for a second. Each pattern is a bare
-// ident: a variant name, or `_` for the wildcard.
 e_match(children: Expr[]) -> Expr =>
     Expr { kind = EMatch, text = "", ival = 0, ty = "", children = children }
 
-// The receiver is `children.get(0)` and the arguments follow it, so every
-// consumer slices from 1 rather than reading a separate field.
 e_method(recv: Expr, name: str, args: Expr[]) -> Expr =>
     Expr { kind = EMethod, text = name, ival = 0, ty = "",
            children = [recv] ++ args }
@@ -128,21 +91,14 @@ s_bind(name: str, value: Expr) -> Stmt =>
 s_fn(name: str, ret: str, params: Expr[], body: Stmt[]) -> Stmt =>
     Stmt { kind = SFn, name, value = e_ident(name), ret, params, body }
 
-// Fields ride in `params` as typed idents, reusing the function machinery: a
-// field and a parameter are both a name with a type, and one list is enough.
 s_record(name: str, fields: Expr[]) -> Stmt =>
     Stmt { kind = SRecord, name, value = e_ident(name), ret = "",
            params = fields, body = [] }
 
-// Variants ride in `params` too, each carrying its payload types as children.
 s_sum(name: str, variants: Expr[]) -> Stmt =>
     Stmt { kind = SSum, name, value = e_ident(name), ret = "",
            params = variants, body = [] }
 
-// ---- pretty-printer (recursive over the AST) ------------------------------
-
-// Source-like text, not source: parenthesised everywhere so the shape the
-// parser built is visible. It is how a parse is asserted about in a test.
 show(e: Expr) -> str =>
     match e.kind {
         EInt    => str(e.ival)
@@ -162,6 +118,5 @@ show(e: Expr) -> str =>
         _       => "?"
     }
 
-// `i` is 1 for a method call, whose first child is the receiver.
 show_args(xs: Expr[], i: int) -> str =>
     xs.slice(i, xs.length()).map(show).join(", ")

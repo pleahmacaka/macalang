@@ -1,27 +1,6 @@
-// profile/play: a trace, in the order it happened.
-//
-// The tree says what contains what. This says what came next: every span
-// flattened into the two moments it has, sorted by time. That is the form you
-// want when the question is chronological rather than structural: printing a
-// run as it happened, animating it, or stepping through it beside a log.
-//
-//   for line in narrate(t) { info(line) }
-//   replay(events(t), 10, show_one)      // ten times faster than it ran
-//
-// `replay` is the only thing here that sleeps, and only when asked to: pace 0
-// walks the whole trace as fast as the machine can, which is what a test wants
-// and what a program that only needs the order wants too.
-//
-// Flattening is quadratic in the number of spans, because appending to a list
-// copies it: a thousand-span trace takes about 0.15s, four thousand about 20s.
-// This is a diagnostic over a run that has already happened, not something to
-// call in a loop, and a trace that large has stopped saying anything a person
-// can read anyway.
-
 import profile/trace
 
-/// One end of one span. `span` is its index in the trace, so a caller who
-/// needs more than the name has somewhere to look it up.
+/// One end of one span.
 Event = {
     name: str,
     at: int,
@@ -31,26 +10,12 @@ Event = {
 }
 
 /// Every enter and leave in the trace, in the order they happened.
-///
-/// Built by walking the tree, and sorted by time only if the walk did not
-/// already deliver it in that order. Sorting alone would not do: at
-/// millisecond resolution a parent and its first child usually open in the
-/// same millisecond, and the timestamps cannot say which came first. The walk
-/// can, and the sort is stable, so it does not undo that answer.
 events(t: Trace) -> Event[] {
     walked = walk_kids(t, roots(t), 0, [])
 
     in_order(walked, 1) ? walked : by_time(walked, 0, [])
 }
 
-// A recorded trace leaves the walk already in time order: a region opens
-// before the first region inside it, each of those closes before the next one
-// opens, and the last closes before the region holding them does. The sort is
-// for a trace assembled by hand, where none of that need hold.
-//
-// It is worth one pass to find out. `insert_by_time` copies the list three
-// times per event, and at four thousand spans that is twenty-five seconds of a
-// profiler's own time, spent, until this check, on every trace it ever built.
 in_order(evs: Event[], i: int) -> bool {
     if i >= evs.length() {
         true
@@ -85,10 +50,6 @@ edge(s: Span, i: int, enter: bool) -> Event =>
         enter = enter,
     }
 
-// A stable insertion sort. `sort` handles ints, not records, and a sort that
-// reordered the ties would throw away the only part of the ordering the
-// timestamps could not supply. It is quadratic and it is not cheap. See
-// `in_order`, which is why a recorded trace does not come through here.
 by_time(evs: Event[], i: int, acc: Event[]) -> Event[] {
     if i >= evs.length() {
         acc
@@ -104,8 +65,6 @@ insert_by_time(acc: Event[], e: Event) -> Event[] {
     head ++ acc.slice(at, acc.length())
 }
 
-// The first position holding a later time. Inserting there puts `e` after
-// everything recorded at the same millisecond, which is what keeps it stable.
 first_later(acc: Event[], at: int, i: int) -> int {
     if i >= acc.length() {
         i
@@ -116,8 +75,7 @@ first_later(acc: Event[], at: int, i: int) -> int {
     }
 }
 
-/// How many milliseconds separate event `i` from the one before it. Zero for
-/// the first event, and for anything that happened in the same millisecond.
+/// How many milliseconds separate event `i` from the one before it.
 gap_before(evs: Event[], i: int) -> int {
     if i <= 0 || i >= evs.length() {
         0
@@ -126,16 +84,7 @@ gap_before(evs: Event[], i: int) -> int {
     }
 }
 
-/// Walk `evs` in time order, calling `on_event` with the index of each. Returns
-/// how many events were played.
-///
-/// `pace` is the percentage of the original time to spend on the way: 100
-/// replays at the speed it ran, 10 is ten times faster, 200 is half speed, and
-/// 0 does not sleep at all.
-///
-/// `on_event` is handed the index rather than the event because a callback
-/// takes exactly one argument, and the index is the one value from which a
-/// caller can reach everything else, since it is holding `evs` already.
+/// Walk `evs` in time order, calling `on_event` with the index of each.
 replay(evs: Event[], pace: int, on_event) -> int {
     step(evs, pace, 0, on_event)
 
@@ -156,8 +105,7 @@ step(evs: Event[], pace: int, i: int, on_event) -> int {
     }
 }
 
-/// One event as a line: when it happened, how deep it was, and which way it
-/// went. `→` opened a region and `←` closed one.
+/// One event as a line: when it happened, how deep it was, and which way it went.
 narrate_line(e: Event) -> str {
     arrow = e.enter ? "→" : "←"
     stamp = "{e.at:>6}ms  "
@@ -166,10 +114,6 @@ narrate_line(e: Event) -> str {
 }
 
 /// The whole trace as lines, one per event, in the order they happened.
-///
-/// This is `replay` with a pace of zero and printing for a callback, written
-/// out because it is what most callers wanted: a test can compare the lines,
-/// and nothing has to sleep to produce them.
 narrate(t: Trace) -> str[] => narrate_all(events(t), 0, [])
 
 narrate_all(evs: Event[], i: int, acc: str[]) -> str[] {

@@ -1,11 +1,3 @@
-//! maca-lsp: a Language Server for `.maca`, speaking LSP over stdio with
-//! `Content-Length` framing. Wraps the pure analysis functions in `lib.rs`:
-//! live diagnostics (parse + type/effect), hover (signatures/types), and
-//! completion (config option namespaces or top-level names), go-to-definition,
-//! document symbols, find-references, rename, signature help, and formatting.
-//!
-//! Editors launch this binary and talk JSON-RPC to it. See `editor/zed-maca`.
-
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
@@ -20,10 +12,8 @@ fn main() {
 
 #[derive(Default)]
 struct Server {
-    docs: HashMap<String, String>, // uri → text
-    /// The folder the editor opened, from `initialize`. Renaming a top-level
-    /// name has to reach the modules that import it, and this is where they
-    /// are looked for.
+    docs: HashMap<String, String>,
+    /// The folder the editor opened, from `initialize`.
     root: Option<PathBuf>,
 }
 
@@ -54,23 +44,15 @@ impl Server {
                     id,
                     json!({
                         "capabilities": {
-                            "textDocumentSync": 1, // Full
+                            "textDocumentSync": 1,
                             "hoverProvider": true,
                             "completionProvider": { "triggerCharacters": ["."] },
                             "documentSymbolProvider": true,
                             "definitionProvider": true,
                             "referencesProvider": true,
                             "documentHighlightProvider": true,
-                            // `prepareSupport` lets the editor ask what the cursor
-                            // is on before it opens the rename box, so the box is
-                            // pre-filled with the name and refuses to open at all
-                            // on a keyword or a comment.
                             "renameProvider": { "prepareProvider": true },
                             "signatureHelpProvider": { "triggerCharacters": ["(", ","] },
-                            // The kinds are advertised so an editor can put the
-                            // quick fixes on the error lightbulb and keep the
-                            // refactorings on the refactor menu, where a reader
-                            // of the file expects to find them.
                             "codeActionProvider": {
                                 "codeActionKinds": ["quickfix", "refactor.rewrite"]
                             },
@@ -93,7 +75,6 @@ impl Server {
                     .pointer("/params/textDocument/uri")?
                     .as_str()?
                     .to_string();
-                // Full sync: the last content change holds the whole document.
                 let changes = req.pointer("/params/contentChanges")?.as_array()?;
                 let text = changes.last()?.get("text")?.as_str()?.to_string();
                 self.publish(&uri, &text, out);
@@ -186,9 +167,6 @@ impl Server {
                 let (Some(text), Some(off)) = self.where_at(req) else {
                     return Some(reply(id, json!([])));
                 };
-                // kind 1 = Text. The protocol also has Read and Write, which
-                // would need to know which occurrence is the binding site;
-                // `binding` knows the scope but not yet the direction.
                 let spans: Vec<Value> = maca_lsp::references(&text, off)
                     .into_iter()
                     .map(|(s, e)| json!({ "range": range(&text, s, e), "kind": 1 }))
@@ -207,9 +185,6 @@ impl Server {
                             "placeholder": b.name,
                         }),
                     )),
-                    // Null is the protocol's "nothing renameable here", which
-                    // is what stops the editor opening a rename box over a
-                    // keyword or a comment.
                     None => Some(reply(id, Value::Null)),
                 }
             }
@@ -225,16 +200,9 @@ impl Server {
                 let Some(binding) = maca_lsp::binding::resolve(&text, off) else {
                     return Some(reply(id, Value::Null));
                 };
-                // The editor hands over whatever was typed. `1x` or `if` turns
-                // a working file into one that doesn't parse, and a rename that
-                // reports success is the wrong way to find that out.
                 if !maca_lsp::binding::is_renameable_to(new_name) {
                     return Some(self.refuse(id, out, &format!("`{new_name}` is not a name")));
                 }
-                // A field is renamed in one file, so a field whose record lives
-                // in another module can only be renamed half-way: the literal
-                // here, not the declaration there. Half is worse than none, it
-                // reports success and breaks the build.
                 if binding.scope == maca_lsp::Scope::Field
                     && !maca_lsp::binding::declares_field(&text, &binding.name)
                 {
@@ -249,20 +217,12 @@ impl Server {
                     ));
                 }
 
-                // A top-level name is visible to every module that imports it,
-                // so the edit spans files: renaming only the open one leaves
-                // those callers naming something that no longer exists, and
-                // the editor reports success while the build breaks.
                 let mut changes = serde_json::Map::new();
                 match (self.root.as_deref(), path_of(uri)) {
                     (Some(root), Some(file)) => {
                         for (path, spans) in
                             maca_lsp::workspace::rename_edits(root, &file, &text, &binding)
                         {
-                            // The open document's own URI is whatever the
-                            // editor sent; re-deriving it from the path would
-                            // not necessarily match, and an unmatched URI is a
-                            // dropped buffer edit.
                             let (key, src) = if path == file {
                                 (uri.to_string(), text.clone())
                             } else {
@@ -274,7 +234,6 @@ impl Server {
                             changes.insert(key, edits_in(&src, &spans, new_name));
                         }
                     }
-                    // No workspace: the open document is all there is.
                     _ => {
                         let spans = maca_lsp::binding::spans(&text, &binding);
                         changes.insert(uri.to_string(), edits_in(&text, &spans, new_name));
@@ -288,9 +247,6 @@ impl Server {
             "textDocument/codeAction" => {
                 let text = self.doc_at(req).unwrap_or_default();
                 let uri = req.pointer("/params/textDocument/uri")?.as_str()?;
-                // The client sends the diagnostics it currently holds, but the
-                // buffer here is the truth and they may be a keystroke stale,
-                // so the actions are computed from the source again.
                 let (from, to) = self.selection(req, &text);
                 let config = maca_lsp::is_config_source(&text);
                 let actions: Vec<Value> = maca_lsp::code_actions(&text, from, to, config)
@@ -318,7 +274,6 @@ impl Server {
             "textDocument/formatting" => {
                 let text = self.doc_at(req).unwrap_or_default();
                 let parsed = maca_parser::parse(&text);
-                // never reformat source that doesn't parse
                 if !parsed.errors.is_empty() {
                     return Some(reply(id, json!([])));
                 }
@@ -334,7 +289,7 @@ impl Server {
             }
             "shutdown" => Some(reply(id, Value::Null)),
             _ if id.is_some() => Some(error(id, -32601, "method not found")),
-            _ => None, // an unhandled notification
+            _ => None,
         }
     }
 
@@ -344,12 +299,6 @@ impl Server {
     }
 
     /// The document and cursor offset a positional request names.
-    ///
-    /// Returned as a pair rather than propagated with `?`, because the caller
-    /// must still answer: `handle` returning `None` writes no reply at all, and
-    /// a request with an `id` and no response hangs the client until it gives
-    /// up. A hover over a document the server never saw `didOpen` for wedged
-    /// the editor for exactly that reason.
     fn where_at(&self, req: &Value) -> (Option<String>, Option<usize>) {
         let Some(text) = self.doc_at(req) else {
             return (None, None);
@@ -358,23 +307,20 @@ impl Server {
         (Some(text), off)
     }
 
-    /// Answer a rename with "nothing happened", and say why in the editor's
-    /// status area, because silence would read as success.
+    /// Answer a rename with "nothing happened", and say why in the editor's status area, because silence would read as success.
     fn refuse(&self, id: Option<Value>, out: &mut impl Write, why: &str) -> Value {
         write_message(
             out,
             &json!({
                 "jsonrpc": "2.0",
                 "method": "window/showMessage",
-                // 2 = Warning
                 "params": { "type": 2, "message": why }
             }),
         );
         reply(id, Value::Null)
     }
 
-    /// The byte range a `range`-carrying request names. A bare cursor arrives
-    /// as an empty range, which is the common case for a code action.
+    /// The byte range a `range`-carrying request names.
     fn selection(&self, req: &Value, text: &str) -> (usize, usize) {
         let at = |ptr: &str| {
             let pos = req.pointer(ptr)?;
@@ -394,7 +340,6 @@ impl Server {
     }
 
     fn completions(&self, text: &str, prefix: &str) -> Vec<String> {
-        // a dotted prefix's last segment drives config namespace completion
         let last = prefix.rsplit('.').next().unwrap_or(prefix);
         if maca_lsp::is_config_source(text) {
             maca_lsp::config_completions(last)
@@ -410,7 +355,7 @@ impl Server {
             .map(|d| {
                 json!({
                     "range": range(text, d.start, d.end),
-                    "severity": 1, // Error
+                    "severity": 1,
                     "source": "maca",
                     "message": d.message,
                 })
@@ -439,12 +384,7 @@ fn edits_in(src: &str, spans: &[(usize, usize)], new_name: &str) -> Value {
     )
 }
 
-/// `file:///a/b` → `/a/b`. Percent-escapes are decoded because a path with a
-/// space arrives as `%20` and would otherwise name a file that isn't there.
-///
-/// `file:///c%3A/proj/x.maca` → `c:/proj/x.maca`: a Windows drive letter comes
-/// through as an absolute path whose first segment is the drive, and the
-/// leading slash has to go or nothing on that host resolves.
+/// `file:///a/b` → `/a/b`.
 fn path_of(uri: &str) -> Option<PathBuf> {
     let rest = uri.strip_prefix("file://")?;
     let rest = rest.strip_prefix("localhost").unwrap_or(rest);
@@ -456,10 +396,7 @@ fn path_of(uri: &str) -> Option<PathBuf> {
     Some(PathBuf::from(decoded))
 }
 
-/// The inverse. Everything outside the URI unreserved set is escaped, so a
-/// project directory with a space produces a key the editor can match: without
-/// this the round-trip was asymmetric (`path_of` decoded and `uri_of` did not
-/// encode) and an edit keyed by a raw-space URI was silently dropped.
+/// The inverse.
 fn uri_of(path: &Path) -> String {
     let s = path.to_string_lossy().replace('\\', "/");
     let s = if s.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
@@ -482,11 +419,6 @@ fn uri_of(path: &Path) -> String {
 }
 
 /// Decode `%XX` escapes back into bytes, then into text.
-///
-/// Bytes, not `char`s: a Korean directory arrives as three escapes per
-/// character, and pushing each byte as a `char` re-encoded it as three
-/// characters of mojibake: a path that named nothing, so the workspace walk
-/// found no files and the rename silently shrank to the open buffer.
 fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(s.len());
@@ -523,11 +455,11 @@ fn read_message(input: &mut impl BufRead) -> Option<Value> {
     loop {
         let mut line = String::new();
         if input.read_line(&mut line).ok()? == 0 {
-            return None; // EOF
+            return None;
         }
         let trimmed = line.trim_end_matches(['\r', '\n']);
         if trimmed.is_empty() {
-            break; // end of headers
+            break;
         }
         if let Some(v) = trimmed.strip_prefix("Content-Length:") {
             len = v.trim().parse().ok()?;
@@ -582,8 +514,6 @@ mod tests {
                 .get("completionProvider")
                 .is_some()
         );
-        // An unadvertised provider is never asked, so the feature is as absent
-        // as if it were not written.
         let kinds = &resp["result"]["capabilities"]["codeActionProvider"]["codeActionKinds"];
         assert_eq!(kinds[0], "quickfix", "code actions: {resp}");
     }
@@ -592,7 +522,6 @@ mod tests {
     fn didopen_publishes_diagnostics_for_bad_code() {
         let mut s = Server::default();
         let mut out = Vec::new();
-        // a type error: return type int, body is a string
         let src = "f() -> int => \"oops\"\n";
         s.handle(
             &json!({
@@ -623,7 +552,6 @@ mod tests {
                 "params": { "textDocument": { "uri": "file:///t.maca", "text": src } } }),
             &mut out,
         );
-        // hover over `add` (line 0, char 1)
         let resp = s
             .handle(
                 &json!({ "id": 2, "method": "textDocument/hover",
@@ -647,7 +575,6 @@ mod tests {
     fn diagnostics_point_at_the_offending_code() {
         let mut s = Server::default();
         let mut out = Vec::new();
-        // `slugify` is undefined; the marker must land on line 1, not line 0.
         let src = "main() -> int {\n    x = slugify(1)\n    0\n}\n";
         open(&mut s, &mut out, "file:///t.maca", src);
         let text = String::from_utf8(out).unwrap();
@@ -688,7 +615,6 @@ mod tests {
     fn definition_jumps_to_the_defining_line() {
         let mut s = Server::default();
         let mut out = Vec::new();
-        // `helper` is called on line 1 and defined on line 4.
         let src = "main() -> int {\n    helper()\n    0\n}\nhelper() -> int => 1\n";
         open(&mut s, &mut out, "file:///t.maca", src);
         let resp = s
@@ -708,7 +634,6 @@ mod tests {
     fn formatting_returns_a_full_document_edit() {
         let mut s = Server::default();
         let mut out = Vec::new();
-        // messy spacing the canonical printer will normalize
         let src = "main( )   ->int=>0\n";
         open(&mut s, &mut out, "file:///t.maca", src);
         let resp = s

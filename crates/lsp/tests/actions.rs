@@ -1,14 +1,3 @@
-//! What the editor's lightbulb offers, and what applying it leaves behind.
-//!
-//! Every test here has two halves, because either one alone passes for the
-//! wrong reason. "Is it offered" catches an action that never appears; it says
-//! nothing about the edit. "Does the result still mean the right thing" is the
-//! half that matters, and it is asserted by *applying* the edit and running the
-//! whole front end over the result: the file has to parse, and the diagnostic
-//! the fix claimed has to be gone. An action whose edit mangles the file is a
-//! worse outcome than no action at all, since the editor reports success either
-//! way.
-
 use maca_lsp::{Action, apply_edits, code_actions};
 
 /// The actions on offer with the cursor sitting on `needle`.
@@ -28,9 +17,7 @@ fn titles(actions: &[Action]) -> Vec<&str> {
     actions.iter().map(|a| a.title.as_str()).collect()
 }
 
-/// Apply the action and hand back a file the whole front end accepts as
-/// well-formed. Panics with the offending source, because a quick fix that
-/// produces something unparseable is the failure this suite exists for.
+/// Apply the action and hand back a file the whole front end accepts as well-formed.
 fn applied(src: &str, action: &Action) -> String {
     let out = apply_edits(src, &action.edits);
     let parsed = maca_parser::parse(&out);
@@ -45,8 +32,6 @@ fn applied(src: &str, action: &Action) -> String {
 fn diagnostics(src: &str) -> Vec<String> {
     maca_lsp::diagnostics(src, false)
 }
-
-// ---- Immutable ------------------------------------------------------------
 
 #[test]
 fn reassigning_a_const_offers_the_declaration_that_makes_it_mutable() {
@@ -66,9 +51,7 @@ fn reassigning_a_const_offers_the_declaration_that_makes_it_mutable() {
     );
 }
 
-/// The other spelling of the same declaration. `const x = e` and
-/// `x = e as const` bind the same thing, and the edit that unbinds it is at the
-/// opposite end of the line.
+/// The other spelling of the same declaration.
 #[test]
 fn the_as_const_spelling_is_fixed_at_its_own_end() {
     let src = "main() -> int {\n    limit = 5 as const\n    limit = 6\n    limit\n}\n";
@@ -82,9 +65,7 @@ fn the_as_const_spelling_is_fixed_at_its_own_end() {
     );
 }
 
-/// A Capitalized name is a constant with no `const` to drop. The only edit that
-/// would make it mutable renames it, which is a rename, so nothing is offered
-/// rather than something that looks like a fix and is not.
+/// A Capitalized name is a constant with no `const` to drop.
 #[test]
 fn a_capitalized_constant_gets_no_mutable_fix() {
     let src = "main() -> int {\n    Limit = 5\n    Limit = 6\n    Limit\n}\n";
@@ -97,8 +78,7 @@ fn a_capitalized_constant_gets_no_mutable_fix() {
     );
 }
 
-/// Two functions, one name. The fix has to reach the declaration in the
-/// function the cursor is in, and `binding` is what knows which that is.
+/// Two functions, one name.
 #[test]
 fn the_fix_edits_the_declaration_in_the_cursors_own_function() {
     let src = "one() -> int {\n    const limit = 1\n    limit\n}\n\n\
@@ -111,8 +91,6 @@ fn the_fix_edits_the_declaration_in_the_cursors_own_function() {
     );
     assert!(out.contains("    limit = 2\n"), "wrong one edited: {out}");
 }
-
-// ---- UndefinedName: a phantom keyword -------------------------------------
 
 #[test]
 fn a_phantom_return_is_dropped() {
@@ -140,9 +118,7 @@ fn a_phantom_let_is_dropped() {
     );
 }
 
-/// `null` reaches the same diagnostic and is the one that is not a deletion:
-/// what replaces it is a sum type the author has to design, so there is no
-/// edit to offer.
+/// `null` reaches the same diagnostic and is the one that is not a deletion.
 #[test]
 fn a_phantom_null_gets_no_fix() {
     let src = "f() -> int {\n    x = null\n    1\n}\n";
@@ -152,8 +128,6 @@ fn a_phantom_null_gets_no_fix() {
     );
     assert!(at(src, "null").is_empty(), "offered a fix for `null`");
 }
-
-// ---- UndefinedName: a misspelt method -------------------------------------
 
 #[test]
 fn a_misspelt_method_takes_the_checkers_suggestion() {
@@ -168,8 +142,7 @@ fn a_misspelt_method_takes_the_checkers_suggestion() {
     );
 }
 
-/// The closed method sets are per receiver, so a list typo gets the list's
-/// nearest name, not the string's.
+/// The closed method sets are per receiver, so a list typo gets the list's nearest name, not the string's.
 #[test]
 fn a_misspelt_list_method_is_fixed_too() {
     let src = "f(xs: int[]) -> int {\n    xs.frist()\n}\n";
@@ -178,9 +151,7 @@ fn a_misspelt_list_method_is_fixed_too() {
     assert!(out.contains("xs.first()"), "not respelt: {out}");
 }
 
-/// Two typos, one message. The cursor picks which call is respelt, and the
-/// other is left for its own invocation: an edit at both would be a fix the
-/// user asked for once and got twice.
+/// Two typos, one message.
 #[test]
 fn only_the_call_under_the_cursor_is_respelt() {
     let src = "f(s: str) -> int {\n    a = s.lenght()\n    b = s.lenght()\n    a + b\n}\n";
@@ -192,8 +163,6 @@ fn only_the_call_under_the_cursor_is_respelt() {
         "the wrong call was respelt"
     );
 }
-
-// ---- NonExhaustive --------------------------------------------------------
 
 #[test]
 fn a_short_match_offers_the_arms_it_is_missing() {
@@ -210,9 +179,7 @@ fn a_short_match_offers_the_arms_it_is_missing() {
     );
 }
 
-/// A payload variant needs somewhere to put its payload. `Rect =>` type-checks
-/// (the checker's exhaustiveness is by name), so only the arity read off the
-/// declaration keeps the generated pattern usable.
+/// A payload variant needs somewhere to put its payload.
 #[test]
 fn a_payload_variant_gets_a_pattern_with_room_for_it() {
     let src = "Shape = Circle(int) | Rect(int, int)\n\n\
@@ -227,9 +194,7 @@ fn a_payload_variant_gets_a_pattern_with_room_for_it() {
     );
 }
 
-/// A one-line `match` has its closing brace behind an arm, so the new arm has
-/// to be pushed onto a line of its own. Written in front of the brace as it
-/// stands, the two arms would run together with nothing between them.
+/// A one-line `match` has its closing brace behind an arm, so the new arm has to be pushed onto a line of its own.
 #[test]
 fn a_one_line_match_is_opened_up_rather_than_run_together() {
     let src = "Color = Red | Green\n\nname(c: Color) -> str => match c { Red => \"r\" }\n";
@@ -244,9 +209,6 @@ fn a_one_line_match_is_opened_up_rather_than_run_together() {
         !out.lines().any(|l| l.ends_with(' ')),
         "left trailing whitespace: {out:?}"
     );
-    // The parser is happy either way, which is why "it still parses" is not
-    // the whole assertion: the arm has to land on a line of its own or the
-    // fix hands back a line nobody would have written.
     assert!(
         out.lines()
             .any(|l| l.trim() == "Green => fail \"todo: Green\""),
@@ -254,10 +216,7 @@ fn a_one_line_match_is_opened_up_rather_than_run_together() {
     );
 }
 
-/// A `match` inside another one's arm is the one the cursor is in. Reaching for
-/// the outer match instead would put an arm of the inner sum among the outer
-/// sum's arms, which the checker rejects by leaving the diagnostic exactly
-/// where it was.
+/// A `match` inside another one's arm is the one the cursor is in.
 #[test]
 fn the_arms_go_into_the_innermost_match() {
     let src = "Color = Red | Green\nSize = Big | Small\n\n\
@@ -277,8 +236,7 @@ fn the_arms_go_into_the_innermost_match() {
     );
 }
 
-/// Two short matches on one type produce two diagnostics with the same text,
-/// and only the cursor tells them apart.
+/// Two short matches on one type produce two diagnostics with the same text, and only the cursor tells them apart.
 #[test]
 fn the_arms_go_into_the_match_the_cursor_is_in() {
     let src = "Color = Red | Green\n\n\
@@ -291,13 +249,10 @@ fn the_arms_go_into_the_match_the_cursor_is_in() {
         out.contains("Red => \"b\"\n        Green => fail"),
         "the arms landed in the wrong match: {out}"
     );
-    // and the other one is still short, so its own diagnostic remains
     assert_eq!(diagnostics(&out).len(), 1, "{:?}", diagnostics(&out));
 }
 
-/// A cursor outside every `match` has no match to fill in, whatever the
-/// diagnostic says. The diagnostic's own anchor is the sum's declaration,
-/// which is nowhere near the arms.
+/// A cursor outside every `match` has no match to fill in, whatever the diagnostic says.
 #[test]
 fn the_arms_fix_is_not_offered_away_from_the_match() {
     let src = "Color = Red | Green\n\n\
@@ -311,8 +266,6 @@ fn the_arms_fix_is_not_offered_away_from_the_match() {
     );
 }
 
-// ---- the refactorings -----------------------------------------------------
-
 #[test]
 fn a_capitalized_local_offers_the_explicit_const() {
     let src = "main() -> int {\n    Limit = 5\n    Limit\n}\n";
@@ -324,9 +277,7 @@ fn a_capitalized_local_offers_the_explicit_const() {
     assert_eq!(out, "main() -> int {\n    const Limit = 5\n    Limit\n}\n");
 }
 
-/// A name already declared `const` has nothing to make explicit, and the
-/// assignment further down is not a declaration at all: `const Limit = 6` in
-/// front of it would be saying something else entirely.
+/// A name already declared `const` has nothing to make explicit, and the assignment further down is not a declaration at all.
 #[test]
 fn an_explicit_const_is_not_offered_twice() {
     let src = "main() -> int {\n    const Limit = 5\n    Limit = 6\n    Limit\n}\n";
@@ -340,9 +291,7 @@ fn an_explicit_const_is_not_offered_twice() {
     }
 }
 
-/// The linter's rule is about *locals*. A Capitalized name at the top level is
-/// usually a record or a sum, and `const Point = { x: int }` is not what
-/// anybody meant by a type declaration.
+/// The linter's rule is about *locals*.
 #[test]
 fn a_top_level_type_is_not_nudged_toward_const() {
     let src = "Point = {\n    x: int\n}\n\nmain() -> int => 0\n";
@@ -354,10 +303,7 @@ fn a_top_level_type_is_not_nudged_toward_const() {
     );
 }
 
-/// Every function in the file has a body, so the offer has to be about the one
-/// the cursor is in. Offered for all of them, the editor shows a menu of
-/// identically titled entries and the first one rewrites a function the user
-/// was not looking at.
+/// Every function in the file has a body, so the offer has to be about the one the cursor is in.
 #[test]
 fn a_body_refactor_belongs_to_the_function_the_cursor_is_in() {
     let src = "a() -> int => 1\n\nb() -> int => 2\n";
@@ -383,9 +329,7 @@ fn a_body_switches_from_an_arrow_to_a_block_and_back() {
     assert_eq!(back, arrow, "the round trip did not come back");
 }
 
-/// The body's text is moved, not reprinted, so what the author wrote about it
-/// comes along. Reprinting the item from the AST would drop this comment
-/// silently.
+/// The body's text is moved, not reprinted, so what the author wrote about it comes along.
 #[test]
 fn a_comment_on_the_body_survives_the_switch() {
     let src = "f() -> int => 1 + 2 // why\n";
@@ -393,15 +337,7 @@ fn a_comment_on_the_body_survives_the_switch() {
     assert_eq!(out, "f() -> int {\n    1 + 2 // why\n}\n");
 }
 
-/// A comment on a line of its own has nowhere to go in a `=> e` body, and an
-/// action that dropped it would be deleting the author's prose to save two
-/// characters.
-///
-/// The comment *after* the expression is the case the parser cannot catch: the
-/// result of dropping it parses and checks perfectly, and the only thing wrong
-/// with it is that a line the author wrote is gone. A comment before is caught
-/// twice over, since taking it for the body leaves a function with no body at
-/// all.
+/// A comment on a line of its own has nowhere to go in a `=> e` body, and an action that dropped it would be deleting the author's prose to save two characters.
 #[test]
 fn a_block_with_its_own_comment_line_is_left_alone() {
     for src in [
@@ -417,9 +353,7 @@ fn a_block_with_its_own_comment_line_is_left_alone() {
     }
 }
 
-/// `f() -> int[] => 1, 2` is a bracketless comma list, not one expression, and
-/// `{ 1, 2 }` is not a block. The action is not offered rather than offered and
-/// wrong.
+/// `f() -> int[] => 1, 2` is a bracketless comma list, not one expression, and `{ 1, 2 }` is not a block.
 #[test]
 fn a_bracketless_comma_list_body_is_not_wrapped_in_a_block() {
     let src = "f() -> int[] => 1, 2\n";
@@ -442,10 +376,7 @@ fn a_block_of_several_statements_stays_a_block() {
     );
 }
 
-// ---- the guard rails ------------------------------------------------------
-
-/// Nothing is offered for a file that does not parse. There is no checker
-/// answer to act on, and no reliable place to put an edit.
+/// Nothing is offered for a file that does not parse.
 #[test]
 fn a_file_that_does_not_parse_offers_nothing() {
     let src = "f() -> int => (\n";
@@ -453,10 +384,7 @@ fn a_file_that_does_not_parse_offers_nothing() {
     assert!(code_actions(src, 0, src.len(), false).is_empty());
 }
 
-/// The claim every action makes: applying it leaves a file that parses and has
-/// strictly fewer diagnostics than before. Asserted over every action this
-/// suite's fixtures can produce, at every offset, because an action is offered
-/// at a cursor and any cursor is a real one.
+/// The claim every action makes: applying it leaves a file that parses and has strictly fewer diagnostics than before.
 #[test]
 fn every_offered_action_leaves_a_file_that_still_parses() {
     let fixtures = [

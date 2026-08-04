@@ -1,30 +1,10 @@
-//! Modules that never imported each other, sharing one namespace.
-//!
-//! Inlining flattens every module into a single translation unit, so a name
-//! written in one file could be answered by a definition in another. What the
-//! resolver does about that is checked in `maca-parser`'s own suites, on the
-//! combined source; what is here is the part only a real build can answer,
-//! because both failures happened after resolution and before anything ran.
-//!
-//! The assertions are in Maca, in `tests/programs/scopes/suite.maca`. This is
-//! the runner that checks the exit code.
-
 mod common;
 use common::*;
 
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Two modules with the same private helper, a lambda capturing a parameter
-/// another module defines at top level, and a third module written against one
-/// of two same-named definitions it can reach.
-///
-/// Before the repair, none of the three reached the assertions with the right
-/// answer. The first was a `TypeMismatch` in `alpha_reading` against beta's
-/// signature; the second was `incompatible type for argument 2 of 'prefixed'`
-/// out of the C compiler, the captured `column` having been lowered as a
-/// function value. The third compiled and ran, and returned 12 where the module
-/// it was written against says 4.
+/// Two modules with the same private helper, a lambda capturing a parameter another module defines at top level, and a third module written against one of two same-named definitions it can reach.
 #[test]
 fn modules_do_not_answer_for_each_others_names() {
     if have_wsl() || !have("cc") {

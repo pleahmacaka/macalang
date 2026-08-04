@@ -1,6 +1,3 @@
-//! Hermetic tests for the Rust backend: assert the emitted Rust source (no
-//! rustc needed; the driver's `rust_backend` test covers real compilation).
-
 fn rs(src: &str) -> String {
     let p = maca_parser::parse(src);
     assert!(p.errors.is_empty(), "parse: {:?}", p.errors);
@@ -35,9 +32,6 @@ fn records_become_structs_sums_become_enums() {
 
 #[test]
 fn payload_sum_becomes_a_data_enum() {
-    // A variant with a payload, `Circle(int)`, must become `Circle(i64)`, not
-    // be mis-parsed as an addition of function calls. Construction and match
-    // arms are both qualified `Enum::Variant`.
     let out = rs("Shape = Circle(int) | Rect(int, int)\n\
          area(s: Shape) -> int =>\n    match s {\n        Circle(r) => r * r\n        Rect(w, h) => w * h\n    }\n\n\
          main() -> int { area(Circle(5)) }\n");
@@ -61,9 +55,6 @@ fn payload_sum_becomes_a_data_enum() {
 
 #[test]
 fn record_payload_sum_and_value_reuse() {
-    // A record-carrying variant (gpql's `Outcome = Rows(Grid) | Affected(int)`)
-    // needs the struct to derive `PartialEq` too, and a value used twice must be
-    // cloned rather than moved.
     let out = rs("Grid = {\n    rows: int\n}\n\
          Outcome = Rows(Grid) | Affected(int)\n\
          rows_of(o: Outcome) -> int =>\n    match o {\n        Rows(g) => g.rows\n        Affected(n) => n\n    }\n\n\
@@ -81,10 +72,6 @@ fn record_payload_sum_and_value_reuse() {
 
 #[test]
 fn foreign_type_calls_use_associated_path() {
-    // Maca has no `::` surface syntax: a call on a foreign (capitalized,
-    // non-local) type is its constructor, and `Type.assoc(a)` is an associated
-    // function. Integer literals in foreign-call position drop the `i64` suffix
-    // so Rust infers the parameter type (u64 here).
     let out = rs("import rust \"std::time::Duration\"\n\n\
          main() -> int {\n    d = Duration.from_secs(5)\n    b = Buffer()\n    0\n}\n");
     assert!(out.contains("use std::time::Duration;"), "no use: {out}");
@@ -100,7 +87,6 @@ fn foreign_type_calls_use_associated_path() {
 
 #[test]
 fn instance_method_stays_dotted() {
-    // a call on a *value* is still an instance method, not an associated path.
     let out = rs("main() -> int {\n    xs = [1, 2, 3]\n    len(xs)\n}\n");
     assert!(
         !out.contains("xs::"),
@@ -110,8 +96,6 @@ fn instance_method_stays_dotted() {
 
 #[test]
 fn closures_lower_to_move_closures() {
-    // R4: a lambda escapes into a (foreign) callback, so it must be a `move`
-    // closure with inferred parameter types.
     let out = rs("main() -> int {\n    f = (n) => n + 1\n    0\n}\n");
     assert!(out.contains("move |n| {"), "closure not `move`: {out}");
     assert!(out.contains("(n + 1i64)"), "closure body: {out}");
@@ -119,9 +103,6 @@ fn closures_lower_to_move_closures() {
 
 #[test]
 fn foreign_trait_impl_lowers_to_impl_block() {
-    // R5: `Name : Trait = { m = (self, …) => … }` → `impl Trait for Name`, a
-    // leading `self` becomes `&mut self`, and the return type is inferred (a
-    // getter → i64, a mutation → unit).
     let out = rs("Counter = {\n    count: int\n}\n\
          Counter : Greet = {\n    value = (self) => self.count + 1\n    bump = (self) => self.count = self.count + 1\n}\n");
     assert!(
@@ -144,7 +125,6 @@ fn foreign_trait_impl_lowers_to_impl_block() {
 
 #[test]
 fn import_rust_raw_block_is_verbatim() {
-    // a raw block passes through unwrapped; a bare path becomes a `use`.
     let out = rs(
         "import rust \"\"\"\nfn helper() -> i64 { 1 }\n\"\"\"\nimport rust \"std::process\"\nmain() -> int => 0\n",
     );
@@ -161,7 +141,6 @@ fn import_rust_raw_block_is_verbatim() {
 
 #[test]
 fn variant_reference_is_qualified() {
-    // a bare `Green` must emit `Color::Green`, and a match arm likewise.
     let out = rs(
         "Color = Red | Green | Blue\nrank(c: Color) -> int =>\n    match c {\n        Red => 0\n        _ => 1\n    }\n\nmain() -> int { rank(Green) }\n",
     );
@@ -171,8 +150,6 @@ fn variant_reference_is_qualified() {
 
 #[test]
 fn reassignment_is_not_a_new_binding() {
-    // the first `acc = 0` is a `let`, the later `acc = acc + i` a reassignment,
-    // else the loop variable never changes (an infinite loop).
     let out = rs(
         "sum_to(n: int) -> int {\n    acc = 0\n    i = 1\n    while i <= n {\n        acc = acc + i\n        i = i + 1\n    }\n    acc\n}\n",
     );

@@ -1,10 +1,3 @@
-//! maca-parser: token stream → AST.
-//!
-//! Hand-written recursive-descent + Pratt (a documented deviation from the
-//! brief's chumsky suggestion: zero deps and direct control over the
-//! significant-newline layout). See `parser` for the grammar, `print` for the
-//! canonical pretty-printer used by the roundtrip test.
-
 pub mod ast;
 pub mod braces;
 pub mod imports;
@@ -17,17 +10,10 @@ pub use braces::{Brace, brace_kind};
 pub use parser::{ParseError, Parser};
 pub use print::print_module;
 
-/// Is `name` an HTML element tag? In a view, `name(...)` builds a DOM node
-/// rather than calling a function, so these open-ended tag names are valid
-/// undefined-looking calls (the reactive-UI DSL). The single source of truth,
-/// shared by the JS backend (which lowers them to `createElement`) and the type
-/// checker (which must not flag them as undefined functions).
+/// Is `name` an HTML element tag?
 pub fn is_ui_element_tag(name: &str) -> bool {
     matches!(
         name,
-        // document structure, only reachable on the native target, where an
-        // element renders to text and a program emits a whole page. The JS
-        // backend mounts into an existing document and never builds these.
         "html"
             | "head"
             | "title"
@@ -94,11 +80,7 @@ pub fn is_ui_element_tag(name: &str) -> bool {
     )
 }
 
-/// Is `name` a backend intrinsic the checker must not treat as an undefined
-/// call? Covers the embedded target's MMIO/bit primitives (lowered by
-/// `maca-backend-embedded`, not user-defined) and the UI element tags. Shared
-/// so the type checker's undefined-call diagnostic stays in sync with what the
-/// backends actually resolve.
+/// Is `name` a backend intrinsic the checker must not treat as an undefined call?
 pub fn is_backend_intrinsic(name: &str) -> bool {
     is_ui_element_tag(name)
         || matches!(
@@ -116,11 +98,7 @@ pub fn is_backend_intrinsic(name: &str) -> bool {
                 | "delay"
                 | "nop"
                 | "forever"
-                // file I/O builtins (lowered by the C backend to the runtime)
-                // the stylesheet for the Tailwind utilities the module uses,
-                // generated at compile time by the back end
                 | "styles"
-                // an element whose tag is an expression: `element("h" ++ n, …)`
                 | "element"
                 | "read_file"
                 | "write_file"
@@ -134,30 +112,22 @@ pub fn is_backend_intrinsic(name: &str) -> bool {
                 | "remove_file"
                 | "remove_dir"
                 | "copy_bytes"
-                // processes
                 | "exec"
                 | "capture"
                 | "env"
                 | "cwd"
                 | "chdir"
-                // stdin
                 | "read_line"
                 | "at_eof"
                 | "read_stdin"
-                // time (UTC)
                 | "now_ms"
                 | "now_iso"
                 | "format_time"
-                // assertions: report and continue, so one run finds every
-                // failure; `failures()` is the count a test returns
                 | "assert"
                 | "assert_eq"
                 | "failures"
-                // allocator counters: how many blocks were requested, and how
-                // many of those came back off the free-list instead of malloc
                 | "alloc_count"
                 | "reuse_count"
-                // an empty `Map str V`, typed by what it is assigned into
                 | "map"
         )
 }
@@ -168,8 +138,7 @@ pub struct Parsed {
     pub errors: Vec<String>,
 }
 
-/// Lex then parse. Lexer and parser errors are flattened into one list; an
-/// empty list means a clean parse.
+/// Lex then parse.
 pub fn parse(src: &str) -> Parsed {
     let lexed = maca_lexer::lex(src);
     let mut errors: Vec<String> = lexed
@@ -187,19 +156,12 @@ pub fn parse(src: &str) -> Parsed {
 }
 
 /// A top-level `name = (a, b) [-> T] => body` *is* a function definition.
-///
-/// There is nothing to capture at module scope, so lowering it as a closure
-/// buys nothing and costs a heap environment, and the C backend emitted a
-/// constant accessor whose name no call site knew, so calling one failed to
-/// link. Rewriting it here means every back end and the checker see a function,
-/// which is what the source says.
 fn lift_top_level_lambdas(m: &mut Module) {
     for item in &mut m.items {
         let Stmt::Bind(b) = item else { continue };
         let Expr::Ident(name) = &b.target else {
             continue;
         };
-        // `x: T = (…) => …` declares the binding's own type; leave it alone.
         if !b.tys.is_empty() {
             continue;
         }

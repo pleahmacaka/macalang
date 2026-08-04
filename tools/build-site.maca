@@ -1,20 +1,3 @@
-// build-site: build the published site (the handbook and the playground) and
-// check it, written in Maca.
-//
-// This exists so there is exactly one definition of "build the site", run both
-// by `.github/workflows/pages.yml` and by hand. When the workflow held its own
-// copy of these steps I verified them locally by retyping from memory, changed
-// the root page's links, and shipped a workflow that still grepped for the old
-// ones. Local and CI now run the same file or neither does.
-//
-//   maca run tools/build-site.maca [outdir]        # default: _site
-//   MACA=target/debug/maca maca run tools/build-site.maca
-//
-// Assumes `maca` is already built at target/release/maca (`MACA` names a
-// different one) and the wasm compiler at
-// target/wasm32-unknown-unknown/release, which `import wasm` in the playground
-// embeds by that exact path. The workflow builds both first, and so should you.
-
 import { conf_value } from apps/tomo/conf
 import std/proc
 import std/fs
@@ -26,23 +9,11 @@ import { parse, from } from cli/parse
 import { help } from cli/help
 import { bold, dim, grey, ok, bad } from cli/style
 
-// The compiler the site is built with. `MACA` overrides it, the way
-// `crates/driver/tests/programs/sitegen.maca` overrides it, so a developer who
-// has only run `cargo build` can build the site with what they have instead of
-// discovering the hard way that the release binary on disk is three weeks old.
 maca() -> str =>
     env_or("MACA", "target/release/maca")
 
-// Named once: `--help` prints it and `main` falls back to it, and the two
-// being different strings is a `--help` that lies.
 OutDefault = "_site"
 
-// The output directory is a positional and stays one. `README.md` and the
-// workflow both spell it `build-site _site`, and a tool nobody can invoke the
-// documented way is worse than a tool with a plain interface. `cli/spec` has
-// no optional positional (something a command cannot run without is an
-// argument, everything else is an option), so it arrives as `rest` and the
-// default is applied here, exactly as `tools/bindgen.maca` does it.
 Spec = command("build-site", "build and check the published site")
     .rest("outdir", "where to assemble the site ({OutDefault} by default)")
 
@@ -79,82 +50,29 @@ build(out: str) -> int {
     check(out)
 }
 
-// Each step announces itself before it runs, because every one of them is slow
-// enough that silence reads as a hang.
-//
-// On stderr, and that is the whole point. `info` writes to stdout, which the C
-// runtime leaves block-buffered whenever it is a pipe, so in a CI log every
-// `==>` line arrived at exit, *after* the output of the child processes it was
-// introducing, and the running commentary described a build that had already
-// finished. stderr is unbuffered, so these land where they belong. The site
-// itself is the output of this program; what it says while working is not.
 announce(what: str) -> bool {
     err(grey("==>") ++ " " ++ bold(what))
     true
 }
 
-// tomo.maca resolves `apps/tomo` relative to the working directory, so this
-// runs from the repository root.
 build_handbook() -> bool {
     announce("handbook")
     run(maca(), ["run", "apps/tomo/tomo.maca"])
 }
 
-// Pretendard, where every page's `<link>` says it is.
-//
-// `font-sans` has named Pretendard first for as long as the site has existed
-// and nothing ever served it, so a reader without it installed silently got
-// system-ui: on the Korean pages that is the whole book. The pages link
-// `<up>fonts/pretendard.css`, so the sheet and its shards have to sit at the
-// site root.
-//
-// Installed into `apps/tomo/site` rather than straight into the output,
-// because that is the tree a developer previews from as well: `assemble`
-// copies it wholesale, so one copy serves both and neither can have fonts the
-// other lacks.
-//
-// `into` is a parameter so that `crates/driver/tests/programs/sitegen.maca`
-// can lay out a site the same way this does, out of this definition rather
-// than out of a second one that agrees with it today.
 install_fonts(into: str) -> bool =>
     copy_tree("apps/tomo/fonts", join(into, "fonts")) > 0
 
-// The front page replaces the landing pages tomo just wrote (`/index.html`
-// and `<lang>/home.html`, the same addresses), so it has to run after the
-// handbook, and this is the only place either of them is invoked.
-//
-// Tomo builds other people's books, where a Markdown `home.md` landing is the
-// right thing. This book's front page is a designed page in the UI syntax, so
-// for this book the landing is written here instead.
 build_front_page() -> bool {
     announce("front page")
     drop_landings(landing_pages(), 0)
     run(maca(), ["run", "apps/site/home.maca", "apps/tomo/site"])
 }
 
-// Tomo writes a landing for every language whether or not the book has a
-// `home.md` (without one it writes the picker), so these paths always exist by
-// the time the front page runs. Removing them first means a front page that
-// fails to build leaves nothing behind to be mistaken for it, rather than
-// silently publishing tomo's picker under the site's own address.
-//
-// Derived from the same `languages` tomo builds from, because a written-down
-// copy of that list is a list that drifts: a third language would have added a
-// landing this stopped clearing, and the failure is a published picker rather
-// than an error.
 landing_pages() -> str[] =>
     ["apps/tomo/site/index.html"]
         ++ book_languages().map(c => "apps/tomo/site/" ++ c ++ "/home.html")
 
-// The book's languages, in order; the first is the default, which is the one
-// `/index.html` is written in.
-//
-// Read with tomo's own `conf_value`, not a second reader written here. The one
-// written here searched the whole file, so a commented-out `# languages =
-// ["fr"]` above the real key won: the build then cleared a landing that does
-// not exist and left tomo's picker at the two addresses the front page was
-// supposed to replace: the precise failure deriving this list was meant to
-// prevent.
 book_languages() -> str[] {
     toml = read_file("apps/tomo/book.toml")
     codes = conf_value(toml, "languages").split(",").map(c => c.trim())
@@ -176,13 +94,6 @@ drop_landings(paths: str[], i: int) -> bool {
     }
 }
 
-// The modules `std/README.md` advertises, in the order it lists them.
-//
-// Read out of the table rather than written down again here. Globbing `std/`
-// would pull in `modules/std/tests/*.maca`, and a second copy of the list is a list
-// that drifts. The reference's contents are checked against this same table
-// by `crates/driver/tests/programs/sitegen.maca`, so it is the one place a
-// module is named.
 std_modules() -> str[] =>
     module_paths(read_lines("modules/std/README.md"), 0, [])
 
@@ -203,11 +114,6 @@ build_api_reference() -> bool {
               ++ std_modules())
 }
 
-// Built from inside its own directory only so that `-o out` lands in
-// `apps/playground/out`, which `.gitignore` names and `assemble` copies from.
-// `import wasm` is resolved against the source file rather than the working
-// directory, so it would be found either way; the two `..` on the compiler are
-// the price of the `cd`, not of the asset.
 build_playground() -> bool {
     announce("playground")
     run_in("apps/playground", "../../" ++ maca(),
@@ -221,14 +127,8 @@ assemble(out: str) -> bool {
     copy_tree("apps/tomo/site", out)
     copy_tree("apps/playground/out", join(out, "play"))
 
-    // Jekyll would otherwise drop files and directories beginning with `_`.
     write_file(join(out, ".nojekyll"), "")
 }
-
-// ---- checking -------------------------------------------------------------
-//
-// A site that built is not a site that works. Each of these is a way the build
-// has actually broken.
 
 check(out: str) -> int {
     announce("checking")
@@ -251,17 +151,6 @@ check(out: str) -> int {
     0
 }
 
-// Every utility class a page mentions has to have produced a rule.
-//
-// A class the engine doesn't know is not a compile error and not a runtime
-// error: the browser drops it and the layout is quietly a little wrong. That
-// is how `border-l-2` shipped a border with no style and, once that was fixed,
-// how `border-y` shipped with no border at all. Checking the emitted CSS
-// against the emitted HTML turns the whole family of them into a build
-// failure.
-//
-// `language-…` is exempt: it is a hook for a syntax highlighter, and is not
-// meant to produce a rule.
 require_live_css(out: str) -> bool {
     pages = find(out, ".html")
     dead = str_unique(dead_in_pages(pages, 0, []))
@@ -294,11 +183,6 @@ dead_in_page(path: str) -> str[] {
     }
 }
 
-// Every `<style>` block, not the first one. Reading one meant a page with two
-// sheets had every class in the second reported dead, and matching the tag as
-// the literal `<style>` meant a `<style type="text/css">` exempted its whole
-// page from checking. A check that can be switched off by an attribute is
-// worse than no check, because it reads as a pass.
 stylesheets(src: str, at: int, acc: str) -> str {
     rest = src.slice(at, src.length())
     open = rest.index_of("<style")
@@ -321,14 +205,6 @@ unruled(cs: str[], i: int, sheet: str, acc: str[]) -> str[] {
     }
 }
 
-// The selector has to end where the class ends. Asking whether the sheet
-// merely *contains* `.rounded-l` was answered by `.rounded-lg`, so any dead
-// class that is a prefix of a live one passed, and `rounded-l` is a real
-// Tailwind utility this engine does not implement.
-//
-// A rule is always `.{escaped}` followed by ` {`, a pseudo-class `:`, or the
-// `[` of an attribute selector, so those three are the whole list of ways it
-// can end.
 has_rule(sheet: str, class: str) -> bool {
     sel = "." ++ css_escape(class)
 
@@ -336,8 +212,6 @@ has_rule(sheet: str, class: str) -> bool {
         || sheet.contains(sel ++ ":") || sheet.contains(sel ++ "[")
 }
 
-// The escaping `styles()` applies to a selector. A `:` or a `[` is punctuation
-// to a CSS parser, so a utility carrying one is written `.max-w-\[64rem\]`.
 css_escape(class: str) -> str =>
     escape_chars(class.chars(), 0, "")
 
@@ -351,29 +225,13 @@ escape_chars(cs: str[], i: int, out: str) -> str {
     }
 }
 
-// The same list the emitter escapes, not its complement.
-//
-// This asked "is it *not* alphanumeric, `-` or `_`", the opposite rule, and
-// `is_alpha` is byte-based, so every byte of a non-ASCII class name came out
-// escaped here and unescaped in the stylesheet. The selector then matched
-// nothing and the whole build failed with a false "classes with no CSS rule".
-// The source of truth is `css_escape` in `crates/backend_js/src/lib.rs`.
 needs_escape(c: str) -> bool =>
     "/.:[]()," .contains(c) || "#%'\"!$&*+;<=>?@^`\{|\}~".contains(c)
 
-// Every distinct class named by a `class="…"` attribute on an opening tag.
 classes_in(src: str) -> str[] =>
     str_unique(str_flatten(attr_values(without_scripts(src))
                                .map(v => v.split(" "))))
 
-// Read attributes from tags, not from running text. A handbook chapter shows
-// `article(class="prose", …)` as a code sample, and those characters in prose
-// are not a class the page uses. Escaping is what makes the distinction
-// reliable: a sample's own `<` arrives as `&lt;`, so it cannot open a tag.
-//
-// Splitting on `<` once keeps this linear. Walking the string and re-slicing
-// from each tag is quadratic, and the playground page is a quarter of a
-// megabyte.
 attr_values(src: str) -> str[] =>
     tag_classes(src.split("<"), 0, [])
 
@@ -405,10 +263,6 @@ class_of(tag: str) -> str[] {
     }
 }
 
-// A `class="…"` inside a `<script>` is JavaScript assembling markup at run
-// time, usually out of concatenated fragments: `'<b class="'+C.hit+'">'`.
-// Those are not classes the page mentions; they are source that happens to
-// contain the same eight characters.
 without_scripts(src: str) -> str =>
     drop_blocks(src, "<script", "</script>", "")
 
@@ -430,10 +284,6 @@ drop_blocks(src: str, open: str, close: str, out: str) -> str {
     }
 }
 
-// The pages a reader can reach directly, and the search index each language
-// needs. An empty file counts as missing: a failed render writes one.
-// Every module gets a page, not just the first one: naming two of the eight
-// meant six could vanish or come out empty with the check still green.
 required_pages() -> str[] =>
     ["index.html", "en/index.html", "ko/index.html",
      "en/search-index.js", "ko/search-index.js", "play/index.html",
@@ -460,12 +310,6 @@ all_present(pages: str[], i: int, out: str) -> bool {
     }
 }
 
-// Every link the root page offers must resolve, and must name a file: a bare
-// `en/` directory only becomes index.html when a web server says so, and this
-// book is meant to open off disk too.
-//
-// The root is the landing page, so it links the handbook in its own language
-// and offers the other language's landing.
 require_root_links(out: str) -> bool {
     root = read_file(join(out, "index.html"))
 
@@ -480,13 +324,6 @@ require_root_links(out: str) -> bool {
     }
 }
 
-// The sheet every page links, and the shard its first rule asks for.
-//
-// A missing font is the failure that looks like success: the page renders, in
-// the next family down the stack, and only a reader who knows what Pretendard
-// looks like can tell. Checking the shard too, not just the sheet, is what
-// catches a copy that brought the 55 KB of `@font-face` rules and none of the
-// 92 files they name.
 require_fonts(out: str) -> bool {
     sheet = join(out, "fonts/pretendard.css")
 
@@ -503,8 +340,6 @@ require_fonts(out: str) -> bool {
     }
 }
 
-// The playground carries the wasm compiler inline; without it the page is a
-// shell that loads and does nothing.
 require_embedded_wasm(out: str) -> bool {
     size = file_size(join(out, "play/index.html"))
 

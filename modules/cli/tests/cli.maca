@@ -1,9 +1,3 @@
-// What `cli` promises, run.
-//
-// Colour is forced off through the whole file: the escape codes a terminal
-// would get are the one thing these tests should not be about, and
-// `cli/style`'s own tests turn it back on where that *is* the question.
-
 import { command, opt, flag, arg, rest } from cli/spec
 import { find_long, find_short, found } from cli/spec
 import { parse, value, on, count, at, from } from cli/parse
@@ -22,8 +16,6 @@ Run = command("run", "Run a program")
     .rest("argv", "arguments passed through")
     .flag("quiet", "q", "say nothing")
 
-// ---- the spec ------------------------------------------------------------
-
 test_a_command_remembers_what_it_was_given() {
     assert_eq(Greet.name, "greet", "its name")
     assert_eq(Greet.about, "Say hello to someone", "its description")
@@ -38,16 +30,12 @@ test_an_option_is_found_by_either_spelling() {
     assert(!found(Greet.find_long("nope")), "and one that is not there is not")
 }
 
-// A flag with no short form must not answer to the empty string, or every
-// unrecognised `-` would match the first one declared.
 test_an_empty_short_name_matches_nothing() {
     Plain = command("x", "").flag("verbose", "", "chatty")
 
     assert(!found(Plain.find_short("")), "the empty short name is not a match")
     assert(found(Plain.find_long("verbose")), "the long one still is")
 }
-
-// ---- parsing -------------------------------------------------------------
 
 test_a_positional_is_read_by_its_declared_name() {
     got = parse(Greet, ["ada"])
@@ -88,8 +76,6 @@ test_flags_bundle_but_an_option_does_not() {
     assert(bad.error.contains("cannot be bundled"), "an option cannot: {bad.error}")
 }
 
-// `-n3` and `-n 3` looking like the same thing is how they end up meaning
-// different numbers in one program.
 test_a_short_option_will_not_take_a_value_attached() {
     got = parse(Greet, ["ada", "-n3"])
 
@@ -121,16 +107,12 @@ test_help_is_understood_without_being_declared() {
     assert(!parse(Greet, ["ada"]).wants_help, "and not otherwise")
 }
 
-// `cmd --help` has to work when the arguments do not, or a person who cannot
-// remember the arguments cannot find out what they are.
 test_help_wins_over_a_bad_command_line() {
     got = parse(Greet, ["--help"])
 
     assert(got.wants_help, "help was asked for")
     assert_eq(got.error, "", "and the missing argument is not raised")
 }
-
-// ---- refusals ------------------------------------------------------------
 
 test_an_unknown_option_is_named_with_the_nearest_one() {
     got = parse(Greet, ["--tmies", "3", "ada"])
@@ -173,16 +155,12 @@ test_an_extra_argument_says_how_many_were_expected() {
     assert(got.error.contains("takes 1"), "and the count")
 }
 
-// The first complaint is the one to fix; reading on past it produces errors
-// that are consequences of the first.
 test_only_the_first_refusal_is_reported() {
     got = parse(Greet, ["--nope", "--alsonope"])
 
     assert(got.error.contains("--nope"), "the first: {got.error}")
     assert(!got.error.contains("--alsonope"), "and not the second")
 }
-
-// ---- help ----------------------------------------------------------------
 
 test_usage_shows_every_argument_in_order() {
     assert_eq(usage(Greet), "greet [options] <name>", "one argument")
@@ -200,8 +178,6 @@ test_help_lists_what_the_command_accepts() {
     assert(page.contains("-h, --help"), "and help itself")
 }
 
-// A flag has no default to show. Printing `(default: )` after every one of
-// them was the first version of this.
 test_a_flag_advertises_no_default() {
     page = help(Greet)
 
@@ -215,8 +191,6 @@ test_an_option_with_no_short_name_keeps_the_column() {
 
     assert(page.contains("    --output"), "indented into the long column")
 }
-
-// ---- what shows on screen ------------------------------------------------
 
 test_a_table_gives_every_column_its_widest_cell() {
     out = table(["a", "bb"], [["xxxx", "y"], ["z", "wwwww"]])
@@ -273,10 +247,6 @@ test_a_pair_and_a_bullet_are_indented_the_same() {
     assert(bullet("x").starts_with("  "), "a bullet")
 }
 
-// ---- measuring -----------------------------------------------------------
-
-// Every width here is a column count. A cell measured in bytes indents the one
-// beside it by the length of an encoding nobody can see.
 test_width_counts_columns_not_bytes() {
     assert_eq(str(width("abc")), "3", "ascii")
     assert_eq(str(width("한국어")), "6", "three wide characters")

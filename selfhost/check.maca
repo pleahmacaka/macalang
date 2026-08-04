@@ -1,43 +1,25 @@
-// selfhost/check: the type checker over the AST, written in Maca.
-//
-// This is where the checker lives now. It carries an environment: the module's
-// function signatures, its record fields, its sum variants, and the locals and
-// parameters in scope. That is what turns "count the arithmetic mismatches"
-// into checking a program: a call's arity, a call's result type, a field that
-// the record doesn't have, a body that disagrees with its declared return.
-//
-// Gradual `any` is still the escape hatch, and it is deliberate: a name the
-// module doesn't declare is foreign, not wrong.
-
 import selfhost/token
 import selfhost/ast
 
-// Parallel lists rather than a map, because the slice of Maca that stage-1
-// compiles has no map, and because it keeps the whole environment one flat
-// value, so extending a scope is a copy and unwinding one is free.
 Env = {
-    names:  str[]     // locals and parameters in scope
-    types:  str[]     // their types, positionally
-    fns:    str[]     // function names declared in the module
-    rets:   str[]     // their declared return types
-    arity:  int[]     // their parameter counts
-    fields: str[]     // "Record.field"
-    ftypes: str[]     // that field's type
-    ctors:  str[]     // sum variant names
-    owners: str[]     // the sum each variant belongs to
+    names:  str[]
+    types:  str[]
+    fns:    str[]
+    rets:   str[]
+    arity:  int[]
+    fields: str[]
+    ftypes: str[]
+    ctors:  str[]
+    owners: str[]
 }
 
 empty_env() -> Env =>
     Env { names = [], types = [], fns = [], rets = [], arity = [],
           fields = [], ftypes = [], ctors = [], owners = [] }
 
-// `env` with one more name bound. Copying rather than mutating keeps a
-// binding's scope exactly the statements after it.
 bind(env: Env, name: str, ty: str) -> Env =>
     env with { names = env.names ++ [name], types = env.types ++ [ty] }
 
-// "" means *not in scope*. No real type is spelled "", so the sentinel cannot
-// collide with an answer. `param_ty` turns an unwritten type into "any" first.
 lookup(env: Env, name: str) -> str {
     at = env.names.index_of(name)
 
@@ -47,8 +29,6 @@ lookup(env: Env, name: str) -> str {
         env.types.get(at)
     }
 }
-
-// ---- building the environment from a module -------------------------------
 
 env_of_module(m: Module) -> Env =>
     collect_items(m.items, 0, empty_env())
@@ -100,10 +80,6 @@ add_ctors(env: Env, sum: str, vs: Expr[], i: int) -> Env {
 add_ctor(env: Env, v: str, sum: str) -> Env =>
     env with { ctors = env.ctors ++ [v], owners = env.owners ++ [sum] }
 
-// ---- types ----------------------------------------------------------------
-
-// Two types are not types: "any" is gradual, and "error" marks a mismatch this
-// pass has already counted, so `disagrees` knows not to count it twice.
 type_in(e: Expr, env: Env) -> str =>
     match e.kind {
         EInt     => "int"
@@ -122,8 +98,6 @@ type_in(e: Expr, env: Env) -> str =>
         _        => "any"
     }
 
-// A local shadows a variant of the same name, matching the surface language,
-// where a user definition always shadows a name the language supplies.
 ident_type(e: Expr, env: Env) -> str {
     local = lookup(env, e.text)
     variant = env.ctors.index_of(e.text)
@@ -137,9 +111,6 @@ ident_type(e: Expr, env: Env) -> str {
     }
 }
 
-// A variant is called like a function (`Circle(2)`), so both tables are
-// consulted before falling back. An unknown name stays gradual on purpose: a
-// module does not declare what it imports, and foreign is not wrong.
 call_type(e: Expr, env: Env) -> str {
     declared = env.fns.index_of(e.text)
     variant = env.ctors.index_of(e.text)
@@ -161,7 +132,6 @@ ret_or_any(r: str) -> str {
     }
 }
 
-// The builtins the emitters lower directly.
 builtin_type(name: str) -> str {
     if name == "str" {
         "str"
@@ -174,8 +144,6 @@ builtin_type(name: str) -> str {
     }
 }
 
-// A field of an unknown receiver is gradual, not an error: the receiver may be
-// a value from a module this pass never saw.
 field_type(e: Expr, env: Env) -> str {
     recv = type_in(e.children.get(0), env)
     at = env.fields.index_of(recv ++ "." ++ e.text)
@@ -187,8 +155,6 @@ field_type(e: Expr, env: Env) -> str {
     }
 }
 
-// The first arm decides. Arms that disagree are not caught here. The stage-0
-// checker is what reports that, and duplicating it would risk the two drifting.
 match_type(e: Expr, env: Env) -> str {
     if e.children.length() >= 3 {
         type_in(e.children.get(2), env)
@@ -197,8 +163,6 @@ match_type(e: Expr, env: Env) -> str {
     }
 }
 
-// `++` is the string operator, so it answers before the operands are examined
-// at all. Concatenating two gradual values is still a string.
 binop_in(e: Expr, env: Env) -> str {
     is_cmp = e.text == "==" || e.text == "!=" || e.text == "<"
         || e.text == ">" || e.text == "<=" || e.text == ">="
@@ -223,10 +187,6 @@ arith_type(lt: str, rt: str) -> str {
     }
 }
 
-// ---- errors ---------------------------------------------------------------
-
-// Counts, rather than collecting diagnostics: stage-1 has no span to point at
-// yet, and a number is enough for the gate to assert on.
 errors_in(e: Expr, env: Env) -> int {
     mismatch = if type_in(e, env) == "error" { 1 } else { 0 }
 
@@ -241,8 +201,6 @@ child_errors(xs: Expr[], i: int, env: Env) -> int {
     }
 }
 
-// A call to a *declared* function with the wrong number of arguments. An
-// undeclared name is foreign, so its arity is not ours to check.
 arity_error(e: Expr, env: Env) -> int {
     if e.kind != ECall {
         0
@@ -260,8 +218,6 @@ wrong_arity(env: Env, declared: int, given: int) -> int {
     }
 }
 
-// ---- functions and modules ------------------------------------------------
-
 check_fn_in(s: Stmt, env: Env) -> int {
     inner = bind_params(env, s.params, 0)
 
@@ -277,7 +233,6 @@ bind_params(env: Env, ps: Expr[], i: int) -> Env {
     }
 }
 
-// An unannotated parameter is gradual rather than wrong.
 param_ty(ty: str) -> str {
     if ty == "" {
         "any"
@@ -286,8 +241,6 @@ param_ty(ty: str) -> str {
     }
 }
 
-// The scope is threaded forward, so a binding is visible to what follows it and
-// to nothing before: a body is checked in one pass, with no hoisting.
 check_body(stmts: Stmt[], i: int, env: Env) -> int {
     if i >= stmts.length() {
         0
@@ -305,8 +258,6 @@ extend(env: Env, s: Stmt) -> Env {
     }
 }
 
-// A declared "any" or an inferred "any" agrees with anything. That is what
-// gradual means, and it is why an unannotated function is never wrong here.
 return_error(s: Stmt, env: Env) -> int {
     actual = body_type(s, env)
 
@@ -326,8 +277,6 @@ body_type(s: Stmt, env: Env) -> str {
     }
 }
 
-// Stops one short of the end: the last statement is the one being typed, and a
-// binding does not bring itself into scope.
 scope_of(s: Stmt, env: Env) -> Env =>
     fold_binds(s.body, 0, s.body.length() - 1, env)
 
@@ -343,7 +292,6 @@ disagrees(declared: str, actual: str) -> bool {
     if declared == "" || declared == "any" || actual == "any" {
         false
     } else if actual == "error" {
-        // Already counted where it arose; reporting it again would double it.
         false
     } else {
         declared != actual
@@ -369,11 +317,6 @@ check_item(s: Stmt, env: Env) -> int {
         0
     }
 }
-
-// ---- the shallow entry points ---------------------------------------------
-//
-// Kept because an expression is often checked on its own, with no module around
-// it, which is exactly an empty environment.
 
 type_of(e: Expr) -> str =>
     type_in(e, empty_env())

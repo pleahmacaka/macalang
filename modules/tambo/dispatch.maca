@@ -1,33 +1,3 @@
-// tambo/dispatch: one request, from the table to the response.
-//
-// This is the framework, and it takes no socket. `dispatch(app, req, handle)`
-// is a function from a parsed request to a response, so every routing rule
-// below can be checked by calling it:
-//
-//     reply = dispatch(Site, parse_request(raw), handle)
-//
-// `handle` is one function of one `Ctx`, and `ctx.name` says which handler it
-// is standing in for. There is exactly one of it because a Maca function value
-// takes one argument and cannot live in a record. See `tambo/app` for what
-// that constraint buys.
-//
-// The order a request goes through:
-//
-//   1. the `before` hook, if there is one. Anything but `pass()` is the
-//      answer, and the route does not run at all.
-//   2. otherwise the route, chosen by `lookup`, or a 405 when the path
-//      matched under another method, or the `fallback`, or a 404.
-//   3. `scrub`, which takes the body off any 5xx, whichever of those built it.
-//   4. the `after` hook, if there is one, with the response in `ctx.reply`.
-//
-// Steps 3 and 4 run whatever happened above them. The hooks see a request the
-// guard refused and a path that matched nothing as readily as a 200, because a
-// log that skips the requests which failed is a log nobody can use.
-//
-// It is called `dispatch` and not `run` so that a site which also imports
-// `std/proc` still compiles: Maca has one namespace per program, and two
-// top-level `run`s are two definitions of one name.
-
 import { App, Pick, Route, lookup } from tambo/app
 import { bind_path, sample_path } from tambo/route
 import { Ctx, context, probe } from tambo/ctx
@@ -46,14 +16,9 @@ dispatch(a: App, req: Request, handle) -> Response {
     after_hook(a, base, scrub(answer), handle)
 }
 
-// Every call into `handle` goes through here, and it exists for the `->
-// Response`. What a function value returns arrives boxed, and a declared type
-// is what unboxes it; a caller that binds `handle(ctx)` straight into a local
-// gets an integer, and the field accesses on it compile to nonsense.
 ask(ctx: Ctx, handle) -> Response =>
     handle(ctx)
 
-// The `before` hook, or `pass()` when the app declared none.
 before_hook(a: App, ctx: Ctx, handle) -> Response {
     if a.before == "" {
         pass()
@@ -62,7 +27,6 @@ before_hook(a: App, ctx: Ctx, handle) -> Response {
     }
 }
 
-// What the route said, or the 405/404 that stands in for it.
 route_answer(a: App, pick: Pick, ctx: Ctx, handle) -> Response {
     if pick.ok {
         route_or_gap(pick, ctx, handle)
@@ -73,10 +37,6 @@ route_answer(a: App, pick: Pick, ctx: Ctx, handle) -> Response {
     }
 }
 
-// A route whose name has no arm in `handle` is a mistake in the program, not
-// in the request, so it is logged by name and answered 500. `serve` will not
-// have started at all, which is where this is meant to be caught; reaching
-// here means the app was driven by `dispatch` directly.
 route_or_gap(pick: Pick, ctx: Ctx, handle) -> Response {
     out = ask(ctx with { name = pick.name }, handle)
 
@@ -89,8 +49,6 @@ route_or_gap(pick: Pick, ctx: Ctx, handle) -> Response {
     }
 }
 
-// Nothing matched. The app's `fallback` gets first refusal; tambo's 404 is
-// what is left, including when the fallback itself passes.
 missing_answer(a: App, ctx: Ctx, handle) -> Response {
     if a.fallback == "" {
         status(404)
@@ -101,9 +59,6 @@ missing_answer(a: App, ctx: Ctx, handle) -> Response {
     }
 }
 
-// The `after` hook sees the response in `ctx.reply` and either replaces it or
-// passes. It runs after `scrub`, so it is the one place a 5xx can be given a
-// body on purpose.
 after_hook(a: App, ctx: Ctx, r: Response, handle) -> Response {
     if a.after == "" {
         r
@@ -115,30 +70,6 @@ after_hook(a: App, ctx: Ctx, r: Response, handle) -> Response {
 }
 
 /// The route names `handle` has no arm for.
-///
-/// Every route is asked once, and the fallback after them; whatever answers
-/// `pass()` is named here, in declaration order. A name two routes share is
-/// asked once and named once.
-///
-/// Each route is asked through a context built from that route: its own
-/// method, a path its own pattern matches, and the parameters that pattern
-/// binds. That matters: an arm reading `ctx.method == "POST"` or
-/// `param(ctx, "id")` and passing otherwise is an ordinary arm, and asking it
-/// about `GET /` with nothing bound reported half of a correct site as
-/// missing.
-///
-/// What no probe can settle is an arm that answers `pass()` for the sample
-/// too. A missing arm and an arm that passes are the same answer, so such a
-/// handler is reported, and the fix is to answer the sample.
-///
-/// That is also why hooks are not asked at all: `pass()` is what a `before`
-/// hook says to let a request through, so a hook with no arm and a hook that
-/// admits everything are the same answer from here. A misspelt `.before(…)`
-/// name is therefore silent, and it fails open. Assert those arms yourself.
-///
-/// This calls the handlers for real, so a handler with a side effect will
-/// perform it, which is a fair argument for keeping the side effects in the
-/// hooks, where this does not reach.
 missing_handlers(a: App, handle) -> str[] {
     gaps: str[] = []
     asked: str[] = []
@@ -161,9 +92,6 @@ missing_handlers(a: App, handle) -> str[] {
     fallback_gap(a, asked, gaps, handle)
 }
 
-// The context a route's handler would be given by a request that took it. Not
-// the same request the site will get, but the same shape, which is as close as
-// anything can come before a client exists.
 route_probe(r: Route) -> Ctx {
     path = sample_path(r.pattern)
 
@@ -175,8 +103,6 @@ route_probe(r: Route) -> Ctx {
     }
 }
 
-// The fallback, asked last and only if no route already answered for its name.
-// It gets a path no pattern was written for, because that is when it runs.
 fallback_gap(a: App, asked: str[], gaps: str[], handle) -> str[] {
     if a.fallback == "" || asked.contains(a.fallback) {
         gaps
@@ -188,10 +114,6 @@ fallback_gap(a: App, asked: str[], gaps: str[], handle) -> str[] {
 }
 
 /// Serve `a` on `port` until the process ends.
-///
-/// It will not start when a route names a handler `handle` has no arm for, and
-/// says which. Holding names in the table is what makes that answerable before
-/// a request arrives, and answering it here is what pays for the trade.
 serve(a: App, port: int, handle) -> int {
     gaps = missing_handlers(a, handle)
 

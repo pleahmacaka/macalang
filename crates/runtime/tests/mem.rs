@@ -1,6 +1,3 @@
-//! Memory tests: the reuse free-list and valgrind-cleanliness. Compiles
-//! small C drivers against the runtime via `zig cc` in WSL; skips without it.
-
 use maca_testsupport::{BuildLock, to_wsl};
 
 use std::path::PathBuf;
@@ -15,7 +12,6 @@ fn wsl_ready() -> bool {
 }
 
 /// Write runtime + a C main, compile to a static binary, return its path.
-/// `with_async` also links the concurrency runtime.
 fn build_opt(main_c: &str, dirname: &str, with_async: bool) -> PathBuf {
     let _lk = BuildLock::acquire();
     let dir = std::env::temp_dir().join(dirname);
@@ -119,7 +115,6 @@ fn valgrind_clean() {
         return;
     }
     let bin = build(CHURN_C, "maca-mem-churn");
-    // valgrind via nix; skip if it cannot be provisioned
     let probe = Command::new("wsl")
         .args([
             "sh",
@@ -167,8 +162,6 @@ fn cancellation_stops_workers() {
         return;
     }
     let bin = build_opt(CANCEL_C, "maca-cancel", true);
-    // The program terminating at all proves cancellation works (workers spin
-    // in `while (!cancelled)`); a positive count proves they actually ran.
     let out = Command::new("wsl").arg(to_wsl(&bin)).output().unwrap();
     assert!(
         out.status.success(),

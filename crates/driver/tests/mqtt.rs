@@ -1,6 +1,3 @@
-//! Capstone 12a: MQTT broker + client (pure `.maca`, std/mqtt engine).
-//! Pub/sub roundtrip with a `test/#` wildcard, and ≥100 concurrent subscribers.
-
 mod common;
 use common::*;
 
@@ -35,7 +32,6 @@ fn mqtt_broker_serves_pubsub_and_100_clients() {
     let broker = to_wsl(&build("broker.maca", "maca-mqbroker"));
     let client = to_wsl(&build("client.maca", "maca-mqclient"));
 
-    // One broker; a 1-client roundtrip, then 100 concurrent subscribers.
     let script = format!(
         r#"
 pkill -x maca-mqbroker 2>/dev/null || true
@@ -56,8 +52,6 @@ echo "CONCURRENT: $(grep -l concurrent-msg mqc_*.out 2>/dev/null | wc -l)"
 kill $BR 2>/dev/null || true
 "#
     );
-    // `-e` runs the command directly; backgrounded broker persists across the
-    // script's steps (plain `wsl sh -c` tears it down).
     let out = Command::new("wsl")
         .args(["-e", "sh", "-c", &script])
         .output()

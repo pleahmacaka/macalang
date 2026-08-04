@@ -1,42 +1,3 @@
-// apps/tomo/dev: the handbook, rebuilt into a patch instead of a reload.
-//
-//     maca -m apps/tomo/dev                  # 8000, work in .maca/dev/tomo
-//     maca -m apps/tomo/dev 3000 /tmp/w      # a port and a work directory
-//     maca -m apps/tomo/dev 3000 /tmp/w /bk  # and a book to read
-//
-// Saving a chapter re-renders that chapter and sends the browser the nodes that
-// changed: the prose, the page's own heading list, and the chapter list when a
-// title moved. Nothing else is touched, so the sidebar stays open where it was
-// left, the search box keeps what was typed into it, and a reader three screens
-// into a chapter does not get thrown back to the top of it.
-//
-// The published book carries none of this. `build_book` writes exactly the bytes
-// it wrote before regions existed, and this is a second entry point rather than
-// a flag on that one. What dev mode adds to a page is two inert attributes on
-// three elements and one `<script>` in the head.
-//
-// **Two stores, and the difference between them is the whole design.**
-//
-// `srcs` holds each chapter's Markdown and answers "did anything change at
-// all". It is the cheap guard: a round reads every chapter file and renders none
-// of them, so an idle editor costs a handful of reads a second and nothing else.
-//
-// `regions` holds each page's three rendered regions and answers "what
-// changed", which is the patch. A write of the value a key already holds is not
-// a change, so editing prose without touching a heading yields one op for the
-// prose and none for the two navigation regions, and a save that changed nothing
-// yields no patch at all. That property is `signal/store`'s, and this file gets
-// it by using the store rather than a map.
-//
-// `regions` is also the build's memo: every page file on disk is written out of
-// it. So a heading edit, which changes the chapter list on *every* page, rewrites
-// all of them while re-rendering only the one chapter whose Markdown moved.
-//
-// The loop over languages and chapters is this file's own rather than
-// `build_book`'s, and that is the cost of a store being a value: threading one
-// through `build_book`'s recursion would have changed six signatures in the
-// published path to carry something only dev mode reads.
-
 import { Dev, Parts, parts_of, page_key, region_key, chapter_page,
          write_chapter, chapter_source, chapter_titles, volume_titles,
          side_items, write_search_index, write_index,
@@ -62,21 +23,13 @@ Book = {
     chs:   str[],
 }
 
-// How long a poll is held open before it answers with "nothing yet". A browser
-// re-polls immediately, so this is only how often an idle tab says hello.
 Budget = 25000
 
-// Between two rounds of looking at the sources.
 Interval = 300
 
 main(args: str[]) -> int => serve(args)
 
 /// Serve the book and keep an open page in step with `book/`.
-///
-/// `root` is the directory holding `book.toml` and `book/`, and it is an
-/// argument so a test can point the whole loop at a copy: editing a chapter is
-/// what this exists to react to, and a test that did it in place would be
-/// editing the handbook.
 serve(args: str[]) -> int {
     port = args.length() > 0 ? int(args.get(0)) : 8000
     work = args.length() > 1 ? args.get(1) : ".maca/dev/tomo"
@@ -89,8 +42,6 @@ serve(args: str[]) -> int {
         out = site_dir(work)
         make_dir(out)
         info("tomo dev on http://localhost:{port}/ (work in {work})")
-        // The site is built into `work` rather than into `site/`, so a dev
-        // session never leaves dev-marked pages where the published book goes.
         spawn host(port, work)
         watch(book_at(root, out), feed(hmr_dir(work)))
     }
@@ -112,23 +63,12 @@ book_at(root: str, out: str) -> Book {
     }
 }
 
-// ---- the server -----------------------------------------------------------
-
-// The dev channel first, then the site as ordinary files. `http/serve` already
-// answers a path with a file and refuses one that climbs out of the root, so
-// this adds one route and inherits the rest.
-//
-// It takes the work directory and not the two directories under it, because
-// `spawn` passes at most two arguments and a record for one string would be a
-// record for the sake of the call.
 host(port: int, work: str) -> int {
     f = feed(hmr_dir(work))
     listen(port, req => reply(f, site_dir(work), req))
 }
 
-/// The two directories a dev session owns: the site it serves, and the channel
-/// it publishes patches through. The channel is not under the site, so it is not
-/// reachable as a file.
+/// The two directories a dev session owns.
 site_dir(work: str) -> str => work ++ "/site"
 
 hmr_dir(work: str) -> str => work ++ "/hmr"
@@ -141,20 +81,6 @@ reply(f: Feed, out: str, req: Request) -> Response {
     }
 }
 
-// ---- the watch loop -------------------------------------------------------
-
-// Rebuild whenever the sources move.
-//
-// The first round runs against empty stores, so everything reads as changed and
-// the whole book is built. Nothing is published for it: the files that round
-// wrote are the files a browser will load, so there is no patch to catch up on
-// and a page that has just arrived is already current.
-//
-// The counter is read off the feed rather than started at zero, so restarting
-// the server continues the numbering the last session reached. Starting over
-// republished generation 1 with the counter already at 20, and a tab left open
-// across the restart then saw the number go backwards, decided nothing had
-// happened and stopped updating until its reader reloaded by hand.
 watch(b: Book, f: Feed) -> int {
     srcs = store()
     regions = store()
@@ -168,12 +94,6 @@ watch(b: Book, f: Feed) -> int {
             regions = rebuild(b, regions, srcs)
 
             if primed {
-                // The counter advances whether or not the write lands, so a
-                // patch that could not be written is a hole in the feed rather
-                // than a number nobody used. A client that missed it is then
-                // behind a generation nothing can supply, and `http/dev` answers
-                // that with a reload: those ops are gone, and saying so is the
-                // only honest answer left.
                 gen = gen + 1
 
                 if publish(f, gen, patch_json(regions)) {
@@ -198,18 +118,9 @@ watch(b: Book, f: Feed) -> int {
     0
 }
 
-// A prose edit patches one region, which is the common case, so the line that
-// reports it should read as English rather than as a counter.
 regions_patched(n: int) -> str =>
     n == 1 ? "1 region patched" : "{n} regions patched"
 
-// ---- reading the sources --------------------------------------------------
-
-// Every file a page is built from, into `srcs`.
-//
-// `book.toml` is one of them: the chapter list and the section labels come out
-// of it, so a change there is as much a change to every page as a chapter edit
-// is.
 read_sources(b: Book, srcs: Store) -> Store =>
     read_langs(b, srcs.set("src:book.toml",
                            read_file(b.root ++ "/book.toml")),
@@ -227,8 +138,6 @@ read_langs(b: Book, srcs: Store, codes: str[], li: int) -> Store {
 read_chapters(b: Book, srcs: Store, fallback: str, lang: str,
               ci: int) -> Store {
     if ci >= b.chs.length() {
-        // The landing page's source, which is a chapter as far as reading it
-        // goes and is not in the chapter list.
         read_one(b, srcs, fallback, lang, "home")
     } else {
         one = read_one(b, srcs, fallback, lang, b.chs.get(ci))
@@ -236,13 +145,6 @@ read_chapters(b: Book, srcs: Store, fallback: str, lang: str,
     }
 }
 
-// A chapter's Markdown under `src:<lang>/<entry>`.
-//
-// A section heading is a label in `book.toml` rather than a file, and a chapter
-// a translation has not reached falls back to the default language's. Both are
-// what `chapter_source` already answers, so neither is decided twice: editing
-// the English chapter behind an untranslated Korean page changes both pages,
-// which is what the published build does too.
 read_one(b: Book, srcs: Store, fallback: str, lang: str, ch: str) -> Store {
     src = chapter_source(b.root, lang, fallback, ch)
 
@@ -253,10 +155,6 @@ read_one(b: Book, srcs: Store, fallback: str, lang: str, ch: str) -> Store {
     }
 }
 
-// ---- one round's rebuild --------------------------------------------------
-
-// Re-render what moved, refresh what depends on it, and write every page out of
-// the result.
 rebuild(b: Book, regions: Store, srcs: Store) -> Store {
     codes = b.langs.split(",")
     out = rebuild_langs(b, regions, srcs, codes, 0)
@@ -274,9 +172,6 @@ rebuild_langs(b: Book, regions: Store, srcs: Store, codes: str[],
     }
 }
 
-// One language. Titles are resolved first because every page's chapter list
-// holds all of them, so a heading edit in chapter three is a change to the
-// sidebar of chapter thirty.
 rebuild_lang(b: Book, regions: Store, srcs: Store, lang: str,
              fallback: str) -> Store {
     titles = chapter_titles(b.root, b.langs, lang, fallback, b.chs, 0)
@@ -289,7 +184,6 @@ rebuild_lang(b: Book, regions: Store, srcs: Store, lang: str,
     fresh
 }
 
-// Every page's three regions, into the store.
 render_pages(b: Book, regions: Store, srcs: Store, lang: str, fallback: str,
              titles: str[], ci: int) -> Store {
     if ci >= b.chs.length() {
@@ -300,21 +194,12 @@ render_pages(b: Book, regions: Store, srcs: Store, lang: str, fallback: str,
     }
 }
 
-// One page's regions.
-//
-// The prose and the heading list are re-rendered only when this chapter's own
-// source moved, because that is the expensive half. The chapter list is rebuilt
-// every round regardless, and is cheap: it is string work over titles already
-// read, and it has to be, since another chapter's heading changes it.
 render_page(b: Book, regions: Store, srcs: Store, lang: str, fallback: str,
             titles: str[], ci: int) -> Store {
     ch = b.chs.get(ci)
     key = page_key(lang, ch)
     src = chapter_source(b.root, lang, fallback, ch)
 
-    // A section heading is a label in `book.toml` and not a page, so it has no
-    // regions. Giving it one put a copy of the whole chapter list in the patch
-    // per section heading, and no page on earth had a node for any of them.
     if src == "" || !file_exists(src) {
         regions
     } else {
@@ -331,12 +216,6 @@ render_page(b: Book, regions: Store, srcs: Store, lang: str, fallback: str,
     }
 }
 
-// Every page file, written out of the store.
-//
-// A page whose chapter did not change still gets written, because a heading
-// somewhere else may have changed its sidebar. Nothing is re-rendered to do it:
-// the parts come back out of `regions`, which is what makes the expensive path
-// the one a Markdown edit takes and nothing else.
 write_pages(b: Book, regions: Store, lang: str, fallback: str, titles: str[],
             ci: int) -> int {
     if ci >= b.chs.length() {

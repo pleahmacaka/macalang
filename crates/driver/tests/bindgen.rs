@@ -1,6 +1,3 @@
-//! `maca bindgen`: C header → Maca FFI declarations. Verifies the generated
-//! Maca both looks right and parses/type-checks clean.
-
 use std::process::Command;
 
 const HEADER: &str = r#"
@@ -34,7 +31,6 @@ fn generates_bindings_from_a_header() {
     assert!(out.status.success(), "bindgen failed");
     let maca = String::from_utf8_lossy(&out.stdout);
 
-    // C types map to Maca types; void returns become int; char* becomes str.
     for want in [
         "import c \"mylib.h\"",
         "mylib_open(path: str) -> int",
@@ -45,7 +41,6 @@ fn generates_bindings_from_a_header() {
     ] {
         assert!(maca.contains(want), "missing {want:?}:\n{maca}");
     }
-    // typedef / struct declarations are not emitted as functions
     assert!(
         !maca.contains("mylib_ctx("),
         "struct/typedef leaked into output:\n{maca}"
@@ -63,7 +58,6 @@ fn generated_bindings_parse_and_typecheck() {
         .output()
         .expect("spawn maca bindgen");
     let mut maca = String::from_utf8_lossy(&out.stdout).to_string();
-    // add a user so the checker sees the externs called with the right types
     maca.push_str("\nmain() -> int {\n    info(mylib_version())\n    mylib_close(0)\n    0\n}\n");
 
     let parsed = maca_parser::parse(&maca);

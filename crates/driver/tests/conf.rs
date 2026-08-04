@@ -1,9 +1,3 @@
-//! `apps/tomo/conf.maca`: the `book.toml` reader the handbook builder and the
-//! site build share.
-//!
-//! The assertions are in Maca (`tests/programs/conf.maca`). What stays here is
-//! the process: running them needs a compiler on disk.
-
 mod common;
 use common::*;
 

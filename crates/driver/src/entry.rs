@@ -1,35 +1,7 @@
-//! `maca -m <module>[.<function>]`: run a function out of a module.
-//!
-//! A package under `modules/` is a thing you import, not a program, and until
-//! now the only way to run something in one was to write a file whose whole
-//! body was one call. That file is boilerplate, and boilerplate that has to be
-//! committed somewhere is boilerplate everybody writes slightly differently.
-//!
-//!     maca -m http.serve          # modules/http, its `serve`
-//!     maca -m http                # modules/http, its `main` or its `http`
-//!     maca -m std/text            # a path names a module too
-//!
-//! What is actually compiled is a generated entry module: an import of the
-//! target and a `main` that calls it. It is written under `.maca/run/` in the
-//! project root rather than a temp directory, because that is what makes
-//! `import http` inside it mean the same package it would mean anywhere else in
-//! the project. A module whose entry point is already called `main` skips all
-//! of that and is compiled as itself, because a second `main` in one
-//! translation unit is the wrapper's, and the call would bind to that one.
-//!
-//! A function is called with the leftover command line when it takes a `str[]`,
-//! and with nothing when it takes nothing. Anything else is a clean error
-//! naming the signature, rather than a C compiler complaining about arity.
-
 use maca_parser::ast::{FnDef, Stmt, Type};
 use std::path::{Path, PathBuf};
 
 /// Split `http.serve` into its module and function.
-///
-/// The dot is the separator, and only the last one: `std.text.lines` is
-/// `std/text` and `lines`, so a dotted spelling works as well as a slashed one.
-/// With no dot, the function is decided after the module is read: see
-/// [`entry_function`].
 pub fn parse_spec(spec: &str) -> (String, Option<String>) {
     match spec.rsplit_once('.') {
         Some((m, f)) if !m.is_empty() && !f.is_empty() => (m.replace('.', "/"), Some(f.into())),
@@ -38,13 +10,6 @@ pub fn parse_spec(spec: &str) -> (String, Option<String>) {
 }
 
 /// Is this a module path a program could have written?
-///
-/// A leading dot, a trailing dot and an absolute path all reached resolution
-/// and failed somewhere further in: `maca -m .run_it` searched `/run_it.maca`,
-/// outside the project entirely, because joining an absolute segment replaces
-/// the base. A keyword segment resolved to a real file and then failed to parse
-/// inside a generated shim the user could not see. All of them are the same
-/// answer: that is not a module name.
 pub fn module_name_error(spec: &str, module: &str) -> Option<String> {
     if spec.starts_with('.') || spec.ends_with('.') {
         return Some(format!("`{spec}` starts or ends with a dot"));
@@ -64,19 +29,12 @@ pub fn module_name_error(spec: &str, module: &str) -> Option<String> {
 }
 
 /// The module file `spec` names, resolved the way an `import` would be.
-///
-/// Resolution is relative to a file in the project root, so `-m` and an
-/// `import` written in that project mean the same thing by the same name.
 pub fn resolve(module: &str, root: &Path) -> Option<PathBuf> {
     let segs: Vec<String> = module.split('/').map(str::to_string).collect();
     maca_parser::modules::resolve_module_path(&segs, &root.join("_m.maca"))
 }
 
 /// The function to call when the spec named no function.
-///
-/// `main` first: a module that can be run says so by defining one. Otherwise
-/// the function named after the module, which is what makes a one-function
-/// package (`modules/serve.maca` defining `serve`) run under its own name.
 pub fn entry_function(module: &str, items: &[Stmt]) -> Option<String> {
     let own = module.rsplit('/').next().unwrap_or(module);
     for want in [&"main", &own] {
@@ -166,16 +124,11 @@ pub fn answer_of(f: &FnDef) -> Answer {
 }
 
 /// The source of the entry module to compile.
-///
-/// A selective import, so only the entry point and what it needs come along:
-/// running one function out of a package should not drag in the rest of it.
 pub fn entry_source(module: &str, function: &str, call: &Call, answer: &Answer) -> String {
     let invoke = match call {
         Call::Nothing => format!("{function}()"),
         Call::Args => format!("{function}(args)"),
     };
-    // `args` is bound whether or not it is passed on, so the generated `main`
-    // has one shape and an unused binding is the only cost.
     let body = match answer {
         Answer::Code => format!("    {invoke}\n"),
         Answer::Success => format!("    {invoke} ? 0 : 1\n"),
@@ -266,7 +219,6 @@ mod tests {
         let items = maca_parser::parse("other() -> int => 1\n").module.items;
         assert_eq!(entry_function("http", &items), None);
 
-        // a nested path is named by its last segment
         let items = maca_parser::parse("text() -> int => 1\n").module.items;
         assert_eq!(entry_function("std/text", &items).as_deref(), Some("text"));
     }

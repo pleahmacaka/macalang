@@ -1,15 +1,3 @@
-// What tambo promises, run.
-//
-// Almost all of it runs without a socket, which is the design working: the
-// router is a function from a table and a request to a response, so a routing
-// rule is checked by calling it rather than by starting a server and asking.
-// The last two tests bind a real port, because "it also works over TCP" is a
-// claim no pure test can make.
-//
-// Nothing here (parameter or local) is called `c`. `http/server` links its
-// socket with `import c "http.h"`, and after that a `c` is not a record: the
-// field reads compile and answer with a pointer.
-
 import { app, route, before, after, fallback, lookup,
          routes_table } from tambo/app
 import { bind_path, more_specific, param_names, sample_path } from tambo/route
@@ -22,10 +10,6 @@ import { parse_request, Request } from http/request
 import { Response, text, status, with_header, render } from http/response
 import { get } from http/server
 
-// ---- the app under test ---------------------------------------------------
-
-// `/user/new` is declared *after* `/user/:id` on purpose: the specificity rule
-// is what has to pick it, not the order.
 Site = app()
     .route("GET", "/", "home")
     .route("GET", "/user/:id", "show_user")
@@ -50,14 +34,11 @@ handle(ctx: Ctx) -> Response {
     }
 }
 
-// One request against `Site`, with no socket anywhere.
 answer(method: str, target: str) -> Response =>
     dispatch(Site, request(method, target), handle)
 
 request(method: str, target: str) -> Request =>
     parse_request("{method} {target} HTTP/1.1\r\nHost: h\r\n\r\n")
-
-// ---- patterns -------------------------------------------------------------
 
 test_a_literal_pattern_matches_only_itself() {
     assert(bind_path("/about", "/about").ok, "the path it names")
@@ -73,8 +54,6 @@ test_a_parameter_binds_one_segment_under_its_name() {
     assert_eq(got.params.get("id", "?"), "7", "the segment, by name")
 }
 
-// The bug this rule exists for: `/user/:id` answering `/user/7/posts/3` and
-// handing the handler an id of "7" with the rest thrown away.
 test_a_parameter_does_not_swallow_the_segments_after_it() {
     assert(!bind_path("/user/:id", "/user/a/b").ok, "two segments, one hole")
     assert(!bind_path("/user/:id", "/user").ok, "and none is not one either")
@@ -117,15 +96,11 @@ test_a_wildcard_still_needs_the_prefix_it_was_written_with() {
     assert(!bind_path("/files/*", "/other/a").ok, "and so is another prefix")
 }
 
-// Only the last segment is a wildcard. Anywhere else there is nothing useful
-// for it to mean, so it is literal text and matches a literal `*`.
 test_a_star_that_is_not_last_is_literal_text() {
     assert(bind_path("/a/*/b", "/a/*/b").ok, "it matches a real star")
     assert(!bind_path("/a/*/b", "/a/x/b").ok, "and nothing else")
 }
 
-// `is_param` wants something after the colon. Without that rule a bare `:`
-// would bind a segment under the name "", which no handler could ask for.
 test_a_bare_colon_is_literal_text_and_binds_nothing() {
     assert(bind_path("/:", "/:").ok, "it matches a real colon")
     assert(!bind_path("/:", "/x").ok, "and nothing else")
@@ -155,8 +130,6 @@ test_a_pattern_lists_the_names_it_binds() {
     assert_eq(param_names("/about").length(), 0, "and a literal binds nothing")
 }
 
-// ---- which route wins -----------------------------------------------------
-
 test_literal_text_beats_a_parameter_beats_a_wildcard() {
     assert(more_specific("/user/new", "/user/:id"), "literal over parameter")
     assert(more_specific("/files/:name", "/files/*"), "parameter over wildcard")
@@ -164,8 +137,6 @@ test_literal_text_beats_a_parameter_beats_a_wildcard() {
 }
 
 test_the_first_segment_the_two_disagree_on_decides() {
-    // `/a/:b/c` is literal where `/a/b/:c` is a parameter at index 2, so it
-    // wins there and index 3 never gets a say.
     assert(more_specific("/a/b/:c", "/a/:b/c"), "index 2 settles it")
     assert(!more_specific("/a/:b/c", "/a/b/:c"), "and settles it once")
 }
@@ -175,9 +146,6 @@ test_two_patterns_of_the_same_shape_are_a_tie() {
     assert(!more_specific("/b/:y", "/a/:x"), "in either direction")
 }
 
-// A `*` that is not last is literal text to `bind_path`, so it has to be
-// literal text to the ranking too. Ranked as a wildcard, `/a/:x/b` outranked
-// `/a/*/b` and took the one path `/a/*/b` spells out exactly.
 test_a_star_that_is_not_last_ranks_as_the_literal_text_it_is() {
     assert(more_specific("/a/*/b", "/a/:x/b"), "literal star beats parameter")
     assert(!more_specific("/a/:x/b", "/a/*/b"), "and not the other way")
@@ -191,16 +159,10 @@ test_a_literal_star_route_answers_the_path_that_spells_it_out() {
     assert_eq(lookup(Star, "GET", "/a/q/b").name, "param", "and the other")
 }
 
-// Two patterns whose shapes agree as far as both go can never match one path,
-// so this only has to be an answer. It has to be a consistent one, though:
-// `lookup` keeps a single running best and that is only right if the
-// comparison is a total order.
 test_a_shape_that_is_a_prefix_of_another_ranks_below_it() {
     assert(more_specific("/a/:x", "/a"), "the longer one spells out more")
     assert(!more_specific("/a", "/a/:x"), "and it is answered once")
 }
-
-// ---- lookup ---------------------------------------------------------------
 
 test_an_empty_app_matches_nothing() {
     got = lookup(app(), "GET", "/")
@@ -218,9 +180,6 @@ test_lookup_returns_the_route_and_what_it_bound() {
     assert_eq(got.params.get("id", "?"), "42", "and the segment it bound")
 }
 
-// The failure this prevents: adding `/user/:id` above `/user/new` retires
-// `/user/new` without touching it, and the table stops being readable as a
-// list because its order has become load-bearing.
 test_a_looser_route_declared_first_does_not_shadow_a_tighter_one() {
     got = lookup(Site, "GET", "/user/new")
 
@@ -253,8 +212,6 @@ test_a_path_nothing_declared_reports_no_methods_at_all() {
     assert_eq(got.allowed.length(), 0, "and nothing to suggest")
 }
 
-// `Allow: GET, GET` is what a header built by appending every match looks
-// like, and a client reading it learns nothing it did not already know.
 test_the_allowed_methods_name_each_method_once() {
     Two = app().route("GET", "/x/:id", "a")
                .route("GET", "/x/*", "b")
@@ -280,8 +237,6 @@ test_the_table_prints_one_line_per_route_in_declaration_order() {
     assert(lines.get(5).starts_with("DELETE"), "and each row is its own route")
 }
 
-// Padding does nothing to a value already wider than its column, so a long
-// pattern used to run straight into the name and give one unreadable word.
 test_a_pattern_wider_than_its_column_still_ends_in_a_space() {
     Long = app().route("GET", "/user/:id/posts/:post/comments", "deep")
     line = routes_table(Long)
@@ -293,8 +248,6 @@ test_a_pattern_wider_than_its_column_still_ends_in_a_space() {
 test_an_app_with_no_routes_prints_an_empty_table() {
     assert_eq(routes_table(app()), "", "nothing declared, nothing listed")
 }
-
-// ---- the context ----------------------------------------------------------
 
 test_a_query_string_parses_into_a_map() {
     q = parse_query("a=1&b=two")
@@ -327,8 +280,6 @@ test_an_empty_query_is_an_empty_map() {
     assert_eq(parse_query("&&").length(), 0, "and separators alone are empty")
 }
 
-// A value filed under "" is one `query(ctx, "")` could find, and no client
-// ever meant to send it.
 test_a_query_pair_with_no_key_is_dropped() {
     q = parse_query("=v&a=1")
 
@@ -336,8 +287,6 @@ test_a_query_pair_with_no_key_is_dropped() {
     assert_eq(q.get("a", "?"), "1", "and the real one is not")
 }
 
-// `%2B` is how a client sends a literal plus. The `+`→space pass has to run
-// first: decode it before that and the plus the caller sent becomes a space.
 test_an_encoded_plus_is_still_a_plus() {
     q = parse_query("a=x%2By&b=x+y")
 
@@ -352,8 +301,6 @@ test_headers_are_lower_cased_and_trimmed() {
     assert_eq(h.get("x-trace", "?"), "7", "and the next line too")
 }
 
-// A head with a stray line is still a head. Filing that line under itself
-// would let `header(ctx, "nonsense")` answer for something never sent.
 test_a_header_line_with_no_colon_is_dropped() {
     h = parse_headers("Host: h\r\nnonsense\r\nAccept: */*")
 
@@ -361,8 +308,6 @@ test_a_header_line_with_no_colon_is_dropped() {
     assert_eq(h.get("accept", "?"), "*/*", "and the line after it survives")
 }
 
-// The same reasoning as the line with no colon: a header filed under "" is one
-// `header(ctx, "")` could get back, and nothing sent it.
 test_a_header_line_with_no_name_is_dropped() {
     h = parse_headers(": orphan\r\nHost: h")
 
@@ -370,7 +315,6 @@ test_a_header_line_with_no_name_is_dropped() {
     assert_eq(h.get("host", "?"), "h", "and the real one is not")
 }
 
-// A client picks its own capitals, so a handler must not have to guess them.
 test_a_header_is_found_however_the_client_capitalised_it() {
     ctx = probe("GET", "/") with {
         headers = parse_headers("X-Trace-Id: 7"),
@@ -394,9 +338,6 @@ test_a_context_reads_its_pieces_by_name() {
     assert_eq(ctx.arrived, 0, "a probe's clock is fixed so tests are too")
 }
 
-// Every accessor answers "" on an empty context, so asking an empty one
-// cannot tell `query` from `header` from `param`. One name in all three maps
-// at once can.
 test_each_accessor_reads_its_own_map() {
     ctx = probe("GET", "/f/a/b") with {
         params = bind_path("/f/:name/*", "/f/a/b").params,
@@ -419,8 +360,6 @@ test_a_numeric_parameter_falls_back_when_it_is_absent() {
               "and the fallback on an empty context")
 }
 
-// The context `dispatch` would build for a GET of `target`, reached the only
-// way a test can reach it: through a handler that hands it back.
 dispatch_context(target: str) -> Ctx {
     picked = lookup(Site, "GET", target)
 
@@ -431,8 +370,6 @@ dispatch_context(target: str) -> Ctx {
         params = picked.params,
     }
 }
-
-// ---- replies --------------------------------------------------------------
 
 test_pass_is_the_one_answer_that_says_nothing() {
     assert(passed(pass()), "a pass passes")
@@ -449,8 +386,6 @@ test_a_5xx_body_is_replaced_by_its_status() {
     assert(got.body.starts_with("500 Internal Server Error"), "just the status")
 }
 
-// Whatever went wrong may have left half a body on the socket already, so the
-// connection is not one to hand back to the next request.
 test_a_failure_hangs_up_rather_than_keeping_the_connection() {
     assert(broke("anything").close, "broke closes")
     assert(scrub(broke("anything")).close, "and scrubbing keeps that")
@@ -463,8 +398,6 @@ test_scrub_leaves_everything_below_500_alone() {
     assert(scrub(status(404)).body.contains("Not Found"), "and its body")
 }
 
-// `status(204)` would give the response a body naming the status, and a client
-// reading a 204 with 15 bytes after it treats those bytes as the next reply.
 test_a_204_carries_no_body() {
     assert_eq(no_content().status, 204, "the status")
     assert_eq(no_content().body, "", "and nothing after it")
@@ -489,15 +422,11 @@ test_a_json_object_takes_encoded_values_as_they_are() {
     assert(got.headers.get(0).contains("application/json"), "typed as JSON")
 }
 
-// A key with no value would have to be given a null, and a null a caller never
-// wrote is worse than an object one field short.
 test_a_json_object_stops_at_the_shorter_of_the_two_lists() {
     assert_eq(json_of(["a", "b"], ["1"]).body, "\{\"a\":1\}", "spare key")
     assert_eq(json_of(["a"], ["1", "2"]).body, "\{\"a\":1\}", "spare value")
     assert_eq(json_of([], []).body, "\{\}", "and nothing at all")
 }
-
-// ---- dispatch -------------------------------------------------------------
 
 test_a_route_answers_with_its_handlers_reply() {
     assert_eq(answer("GET", "/").body, "root", "the root")
@@ -512,9 +441,6 @@ test_a_query_string_does_not_change_which_route_matched() {
               "the query is off the path before it is routed")
 }
 
-// The query reaching a handler as a map is a different claim from the query
-// not disturbing the routing, and only one of the two survives building the
-// context out of `req.path` instead of `req.query`.
 test_a_handler_is_handed_the_query_as_a_map() {
     Echo = app().route("GET", "/echo", "echo")
     got = dispatch(Echo, request("GET", "/echo?say=hi+there&n=2"), echo_handle)
@@ -530,18 +456,12 @@ echo_handle(ctx: Ctx) -> Response {
     }
 }
 
-// `http/request` decodes the path before anything routes on it, so a `%2F` a
-// client sent inside one segment is an ordinary separator by the time a
-// pattern sees it. Pinned here because a handler reading `param(ctx, "id")`
-// has to know it can never contain a slash.
 test_an_encoded_slash_is_routed_as_the_separator_it_decodes_to() {
     got = answer("GET", "/user/9%2Fposts%2Fx")
 
     assert_eq(got.body, "9/x", "it took the two-parameter route")
 }
 
-// The one status where a body is forbidden outright, carried all the way
-// through dispatch rather than only out of `no_content`.
 test_a_204_route_answers_with_nothing_after_the_headers() {
     got = answer("DELETE", "/user/7")
 
@@ -549,8 +469,6 @@ test_a_204_route_answers_with_nothing_after_the_headers() {
     assert_eq(got.body, "", "and none sent")
 }
 
-// `pass()` is status 0, which is not a status. Every path out of `dispatch`
-// has to have turned it into something a client can read.
 test_dispatch_never_answers_with_a_pass() {
     assert(answer("GET", "/").status >= 100, "a route that answered")
     assert(answer("GET", "/nowhere").status >= 100, "a path nothing matched")
@@ -591,8 +509,6 @@ fallback_handle(ctx: Ctx) -> Response {
     }
 }
 
-// A fallback that passes is a fallback that is not there, and the request
-// still has to be answered.
 test_a_fallback_that_passes_still_gets_tambos_404() {
     Custom = Site.fallback("nothing_here")
     got = dispatch(Custom, request("GET", "/nowhere"), handle)
@@ -600,8 +516,6 @@ test_a_fallback_that_passes_still_gets_tambos_404() {
     assert_eq(got.status, 404, "the built-in 404 is what is left")
 }
 
-// The whole trade of holding names rather than functions, tested: a name with
-// no arm is reported as a program bug, not served as a missing page.
 test_a_route_whose_name_has_no_arm_is_a_500_and_not_a_404() {
     Typo = app().route("GET", "/x", "handler_that_does_not_exist")
     got = dispatch(Typo, request("GET", "/x"), handle)
@@ -618,8 +532,6 @@ test_a_failed_handler_does_not_tell_the_caller_what_broke() {
     assert(got.body.starts_with("500 "), "only the status is")
 }
 
-// ---- hooks ----------------------------------------------------------------
-
 Guarded = Site.before("guard").after("stamp")
 
 guarded_handle(ctx: Ctx) -> Response {
@@ -633,7 +545,6 @@ guarded_handle(ctx: Ctx) -> Response {
     }
 }
 
-// The request carries the key, so the guard passes and the route answers.
 with_key(target: str) -> Response =>
     dispatch(Guarded,
              parse_request("GET {target} HTTP/1.1\r\nX-Key: open\r\n\r\n"),
@@ -653,9 +564,6 @@ test_a_before_hook_that_answers_stops_the_request() {
     assert(!got.body.contains("root"), "and the route never ran")
 }
 
-// "Stops the request" means the route does not run. The rest of the pipeline
-// does: a timing header or an access log that recorded only the requests which
-// got through would be missing exactly the ones worth looking at.
 test_the_after_hook_still_runs_when_the_before_hook_refused() {
     got = dispatch(Guarded, request("GET", "/user/7"), guarded_handle)
 
@@ -663,8 +571,6 @@ test_the_after_hook_still_runs_when_the_before_hook_refused() {
     assert(got.headers.contains("X-Route: /user/:id"), "and was still stamped")
 }
 
-// Scrubbing is `dispatch`'s, not `broke`'s, so it has to cover the responses
-// `broke` did not build, including the one from a guard that fell over.
 test_a_5xx_from_a_before_hook_is_scrubbed_too() {
     Leaky = Site.before("leak")
     got = dispatch(Leaky, request("GET", "/"), leak_handle)
@@ -689,9 +595,6 @@ leak_handle(ctx: Ctx) -> Response {
     }
 }
 
-// The documented meaning of `pass()` from an `after` hook. Without this the
-// branch that keeps the response is never taken, and a hook that declined
-// would replace the answer with a status-0 nothing.
 test_an_after_hook_that_passes_leaves_the_response_alone() {
     Quiet = Site.after("quiet")
     got = dispatch(Quiet, request("GET", "/"), quiet_handle)
@@ -711,8 +614,6 @@ test_an_after_hook_can_add_to_the_response() {
     assert(got.headers.contains("X-Route: /user/:id"), "with the hook's header")
 }
 
-// A hook's own `ctx.name` is the hook's, so `route` and `pattern` are the only
-// way it can say which request it is standing beside.
 test_a_hook_is_told_which_route_it_is_standing_beside() {
     got = with_key("/user/7")
 
@@ -721,8 +622,6 @@ test_a_hook_is_told_which_route_it_is_standing_beside() {
            "and nothing when nothing matched")
 }
 
-// A log or a timing header that skipped the requests which failed would be a
-// log nobody could use, so the hooks run for a 404 as much as for a 200.
 test_the_hooks_run_for_a_request_that_matched_nothing() {
     got = dispatch(Guarded,
                    parse_request("GET /nowhere HTTP/1.1\r\nX-Key: open\r\n\r\n"),
@@ -732,8 +631,6 @@ test_the_hooks_run_for_a_request_that_matched_nothing() {
     assert(got.headers.contains("X-Route: "), "and the after hook still ran")
 }
 
-// `scrub` runs before the after hook, which is what lets a site put an error
-// page back on deliberately.
 test_an_after_hook_sees_the_scrubbed_5xx() {
     Watched = app().route("GET", "/boom", "boom").after("show_error")
     got = dispatch(Watched, request("GET", "/boom"), error_page_handle)
@@ -751,8 +648,6 @@ error_page_handle(ctx: Ctx) -> Response {
         handle(ctx)
     }
 }
-
-// ---- the audit ------------------------------------------------------------
 
 test_every_route_in_the_test_app_has_an_arm() {
     assert_eq(missing_handlers(Site, handle).length(), 0,
@@ -780,8 +675,6 @@ test_a_name_used_by_two_routes_is_audited_once() {
               "one name, one complaint")
 }
 
-// A name can be a route's and the fallback's at once. Asking it in both places
-// would name it twice in one complaint, which reads as two mistakes.
 test_a_name_that_is_both_a_route_and_the_fallback_is_audited_once() {
     Both = app().route("GET", "/x", "shared").fallback("shared")
 
@@ -789,9 +682,6 @@ test_a_name_that_is_both_a_route_and_the_fallback_is_audited_once() {
               "one name, one complaint")
 }
 
-// The audit asked every handler about `GET /` with nothing bound, so an arm
-// that only answers its own method (an ordinary POST arm) looked missing,
-// and `serve` refused to start a site that was entirely correct.
 test_the_audit_asks_a_route_under_its_own_method() {
     Posts = app().route("POST", "/note", "add")
 
@@ -802,8 +692,6 @@ test_the_audit_asks_a_route_under_its_own_method() {
 method_handle(ctx: Ctx) -> Response =>
     ctx.name == "add" && ctx.method == "POST" ? no_content() : pass()
 
-// Same failure, other half: an arm that reads what its pattern binds was asked
-// about a context that bound nothing.
 test_the_audit_gives_a_route_what_its_own_pattern_binds() {
     Users = app().route("GET", "/user/:id", "show")
 
@@ -814,9 +702,6 @@ test_the_audit_gives_a_route_what_its_own_pattern_binds() {
 param_handle(ctx: Ctx) -> Response =>
     param(ctx, "id") == "" ? pass() : text("user")
 
-// What no probe can settle. A missing arm and an arm that passes are the same
-// answer, so an arm that declines the sample is reported, and the fix is to
-// answer the sample, not to loosen the audit.
 test_an_arm_that_passes_for_its_own_sample_is_still_reported() {
     Picky = app().route("GET", "/thing/:id", "thing")
 
@@ -827,9 +712,6 @@ test_an_arm_that_passes_for_its_own_sample_is_still_reported() {
 picky_handle(ctx: Ctx) -> Response =>
     param(ctx, "id") == "42" ? text("the one") : pass()
 
-// The hazard the audit cannot cover at all, written down as the assertion a
-// site should copy: a hook's `pass()` means "carry on", so a misspelt
-// `.before(…)` name is silent and admits everybody.
 test_a_hook_arm_is_something_a_site_has_to_assert_for_itself() {
     guard = guarded_handle(probe("GET", "/") with { name = "guard" })
 
@@ -845,16 +727,8 @@ test_a_server_with_a_gap_refuses_to_start() {
               "it exits rather than binding a port it would answer wrong")
 }
 
-// A port the audit must never reach. `serve` returns before binding when there
-// is a gap, so nothing listens here, and if that ever stops being true this
-// test hangs, which is the loudest way to find out.
 PortInUse = 34899
 
-// ---- over a real socket ---------------------------------------------------
-
-// The one thing a pure test cannot claim. `spawn` puts the accept loop on its
-// own thread and the test does the asking, the same shape `http/server`'s own
-// suite uses.
 Port = 34893
 
 serve_here() -> int =>

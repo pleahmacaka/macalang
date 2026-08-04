@@ -1,5 +1,3 @@
-// Sum types with payloads (tagged unions): each variant can carry data.
-
 Shape = Circle(int) | Rect(int, int)
 
 area(s: Shape) -> int {

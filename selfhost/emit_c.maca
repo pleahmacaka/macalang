@@ -1,19 +1,6 @@
-// selfhost/emit_c: a C emitter over the AST, written in Maca.
-//
-// The back end of the self-hosted pipeline: with lexer, parser and checker in
-// front of it, this closes lex → parse → check → emit, all in Maca. It mirrors
-// the stage-0 C backend over whatever the stage-1 parser can read, and grows
-// into the full `maca-backend-c` port one construct at a time.
-//
-// Nothing here reports an error. A node it does not recognise emits `0`, which
-// is wrong but compiles. Stage-0 is what rejects a program, and a second
-// diagnostic here would only be a second thing to keep in agreement.
-
 import selfhost/token
 import selfhost/ast
 
-// Concatenated rather than interpolated: `"\"{s}\""` is three escapes deep and
-// unreadable at the point where the quoting is what matters.
 quoted(s: str) -> str =>
     "\"" ++ s ++ "\""
 
@@ -52,7 +39,6 @@ emit_ternary(e: Expr) -> str {
     "({cond} ? {then} : {els})"
 }
 
-// Elements are widened to the `long` cell type the variadic `maca_listv` reads.
 emit_list(e: Expr) -> str {
     n = e.children.length()
 
@@ -62,10 +48,6 @@ emit_list(e: Expr) -> str {
 emit_cell(e: Expr) -> str =>
     "(long)({emit_expr(e)})"
 
-// A string's length and a list's are two names here (`length` and `count`),
-// because the receiver's type is not known at this point and C will not
-// overload. The unknown method falls through to member-call syntax rather than
-// failing, which keeps the emitter usable while the slice is still growing.
 emit_method(e: Expr) -> str {
     recv = emit_expr(e.children.get(0))
 
@@ -82,9 +64,6 @@ emit_method(e: Expr) -> str {
     }
 }
 
-// A builtin is matched by name *before* the ordinary-call fallback, so a user
-// function called `info`, `print` or `str` is never the one emitted. Stage-0
-// resolves those names the same way, which is why the two agree about them.
 emit_call(e: Expr) -> str {
     args = emit_args(e.children, 0)
 
@@ -99,10 +78,6 @@ emit_call(e: Expr) -> str {
     }
 }
 
-// A string comparison has to go through `strcmp`: C's `==` on `char*` compares
-// pointers, so `w == "let"` would be false for every string but a literal the
-// compiler happened to intern. One operand being a literal is the only signal
-// available here, which is why the test looks at the operands' kinds.
 emit_binary(e: Expr) -> str {
     l = e.children.get(0)
     r = e.children.get(1)
@@ -118,14 +93,9 @@ emit_binary(e: Expr) -> str {
     }
 }
 
-// A ternary chain rather than a `switch`: `match` is an expression in Maca, and
-// a C `switch` is a statement. Running out of arms is the final else, so a
-// match with no `_` still produces a valid expression.
 emit_match(e: Expr) -> str =>
     emit_arms(emit_expr(e.children.get(0)), e.children, 1)
 
-// A match is over one sum, so one arm carrying binders means every arm in it
-// tests a tag rather than the value itself.
 emit_arms(scrut: str, cs: Expr[], i: int) -> str =>
     emit_arms_at(scrut, cs, i, any_bound(cs, 1))
 
@@ -160,8 +130,6 @@ test(scrut: str, pat: Expr, tagged: bool) -> str {
     }
 }
 
-// A pattern with binders opens a scope that names the payload slots, so the
-// arm body can read them.
 arm_body(scrut: str, pat: Expr, body: Expr) -> str {
     if pat.children.length() == 0 {
         emit_expr(body)
@@ -178,29 +146,18 @@ bind_slots(scrut: str, bs: Expr[], i: int) -> str {
     }
 }
 
-// Designated initializers, so a record literal does not have to be written in
-// field-declaration order to compile.
 emit_lit_fields(fs: Expr[], i: int) -> str =>
     fs.map(emit_lit_field).join(", ")
 
 emit_lit_field(f: Expr) -> str =>
     ".{f.children.get(0).text} = {emit_expr(f.children.get(1))}"
 
-// `i` is 1 for a method call, whose first child is the receiver.
 emit_args(xs: Expr[], i: int) -> str =>
     xs.slice(i, xs.length()).map(emit_expr).join(", ")
 
-// Literal C braces are written `{{`/`}}` so they aren't read as Maca string
-// interpolation. Every emitted brace in this file is doubled for that reason.
 emit_unit(e: Expr) -> str =>
     "int main(void) {{ return {emit_expr(e)}; }}"
 
-// ---- function emission ----------------------------------------------------
-
-// `bool` becomes `int` rather than pulling in <stdbool.h>, and an unwritten
-// type defaults to `int` because a signature with no return type is the common
-// case. Any other name is a user type, emitted verbatim: `emit_struct` and
-// `emit_sum` `typedef` theirs, so no `struct`/`enum` keyword is needed here.
 type_c(ty: str) -> str {
     if ty.ends_with("[]") {
         "MacaList"
@@ -233,9 +190,6 @@ emit_stmts(body: Stmt[], i: int) -> str {
     }
 }
 
-// A local's type is guessed from the value's *shape*, not from the checker: C
-// has no `auto` worth using here and the emitter runs without an environment.
-// Rust's `let` infers it, which is why only this back end carries this.
 local_c_type(e: Expr) -> str =>
     match e.kind {
         EStr    => "const char*"
@@ -254,8 +208,6 @@ concat_c_type(e: Expr) -> str {
     }
 }
 
-// Maca's last expression is the value, so the caller has to say which statement
-// that is. The emitter cannot see the end of the body from inside one.
 emit_stmt(s: Stmt, is_last: bool) -> str {
     if s.kind == SBind {
         "{local_c_type(s.value)} {s.name} = {emit_expr(s.value)};"
@@ -266,8 +218,6 @@ emit_stmt(s: Stmt, is_last: bool) -> str {
     }
 }
 
-// The runtime this back end needs, small enough to inline: `++`, `str(n)` and
-// list literals each lower to one of these helpers.
 c_preamble() -> str =>
     "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <stdarg.h>\n" ++
     "static char* maca_cat(const char* a, const char* b) {{ char* r = malloc(strlen(a) + strlen(b) + 1); strcpy(r, a); strcat(r, b); return r; }}\n" ++
@@ -275,9 +225,6 @@ c_preamble() -> str =>
     "typedef struct {{ long* data; int len; }} MacaList;\n" ++
     "static MacaList maca_listv(int n, ...) {{ MacaList l; l.data = malloc(n * sizeof(long)); l.len = n; va_list ap; va_start(ap, n); for (int i = 0; i < n; i++) l.data[i] = va_arg(ap, long); va_end(ap); return l; }}\n"
 
-// Items keep source order, and C needs a type declared before it is used. That
-// holds because a Maca file declares its records above the functions that take
-// them; there is no forward-declaration pass to fall back on if one doesn't.
 emit_module(m: Module) -> str =>
     c_preamble() ++ m.items.map(emit_item).join("\n")
 
@@ -291,8 +238,6 @@ emit_item(s: Stmt) -> str {
     }
 }
 
-// `typedef`, not a bare `struct`, so `type_c` can emit a user type's name on
-// its own and nothing has to remember which names need the `struct` keyword.
 emit_struct(s: Stmt) -> str {
     fields = s.params.map(emit_struct_field).join(" ")
 
@@ -302,14 +247,6 @@ emit_struct(s: Stmt) -> str {
 emit_struct_field(f: Expr) -> str =>
     "{type_c(f.ty)} {f.text};"
 
-// A sum. With no payloads it is a plain C enum, which is what a nullary sum
-// wants and costs nothing.
-//
-// With payloads it is a tag plus a flat row of `long` slots, wide enough for
-// the widest variant, the same integer cell the list literals use. Each
-// variant also gets a constructor *named after itself*, so an ordinary call
-// `Circle(2)` in the source compiles with no call-site knowledge of which
-// names are variants.
 emit_sum(s: Stmt) -> str {
     if payload_arity(s.params, 0) == 0 {
         variants = s.params.map(variant_name).join(", ")
@@ -371,8 +308,6 @@ emit_ctor(sum: str, v: Expr) -> str =>
         ++ "{{ {sum} _v; _v.tag = {v.text}_tag; "
         ++ ctor_assigns(v.children, 0) ++ "return _v; }}\n"
 
-// A nullary variant's constructor takes `void`, not an empty parameter list:
-// in C the empty list means "unspecified", not "none".
 ctor_params(ps: Expr[], i: int) -> str {
     if ps.length() == 0 {
         "void"

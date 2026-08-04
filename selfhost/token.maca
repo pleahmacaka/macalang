@@ -1,11 +1,3 @@
-// selfhost/token: the token model for the Maca-in-Maca compiler (stage 1).
-//
-// Written in Maca. Compiled by the stage-0 Rust `maca` today; the goal is for a
-// built stage-1 to compile this same source. Gated in CI by the stage-0
-// parser + checker (see crates/driver/tests/selfhost.rs).
-
-// Nullary variants only, so this lowers to a plain C enum and a token stays a
-// value the emitters can compare with `==`.
 Kind =
     TInt | TFloat | TIdent | TStr | TPath
     | KwLet | KwIf | KwElse | KwFor | KwIn | KwMatch
@@ -42,7 +34,6 @@ keyword_kind(w: str) -> Kind =>
         "false"  => KwFalse
         _        => TIdent
     }
-
 
 mk_token(kind: Kind, text: str, pos: int) -> Token =>
     Token { kind, text, pos }

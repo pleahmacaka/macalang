@@ -1,12 +1,3 @@
-//! A `{` after a function's `=>`, and a record literal meeting the record type
-//! it is written into.
-//!
-//! The behaviour is asserted in Maca, in `tests/programs/arrow_records.maca`,
-//! and run by `maca test`. This file is the runner plus the part that is about
-//! the *process* rather than the values: the programs that must not compile, and
-//! the emitted JS, because the arrow-block defect was visible on both back ends
-//! and only one of them was refusing it.
-
 mod common;
 use common::*;
 
@@ -32,8 +23,7 @@ fn an_arrow_block_is_a_block_and_a_literal_meets_its_record_type() {
     );
 }
 
-/// A program that must not compile, and the words the diagnostic owes the
-/// reader.
+/// A program that must not compile, and the words the diagnostic owes the reader.
 fn rejected(name: &str, expect: &str) {
     let program = program(name);
     let out = Command::new(maca())
@@ -55,10 +45,7 @@ fn rejected(name: &str, expect: &str) {
     );
 }
 
-/// Every entry a distinct `name = value` with only newlines between them reads
-/// as a record literal and as a block at the same time. Neither is taken, and
-/// the refusal shows both spellings, because a compiler that guesses here is
-/// back to the silence this fixed.
+/// Every entry a distinct `name = value` with only newlines between them reads as a record literal and as a block at the same time.
 #[test]
 fn an_arrow_body_that_reads_both_ways_is_refused() {
     for bad in ["bad_arrow_ambiguous", "bad_arrow_one_field"] {
@@ -68,24 +55,14 @@ fn an_arrow_body_that_reads_both_ways_is_refused() {
     }
 }
 
-/// Meeting a named record type is also what checks the literal against it. A
-/// record literal is open on purpose, so a field nobody wrote would otherwise be
-/// silently zero, which is exactly what the `Point { … }` spelling refuses.
+/// Meeting a named record type is also what checks the literal against it.
 #[test]
 fn a_literal_written_into_a_record_type_must_name_its_fields() {
     rejected("bad_record_missing_field", "missing field `y`");
     rejected("bad_record_extra_field", "unexpected field `z`");
 }
 
-/// The one position the checker does not cover, because `Expr::List` unifies its
-/// elements and ignores the error so a gradual list can be heterogeneous. The
-/// element type is settled by the first element, and the native emitter builds a
-/// record from the *declaration*, so a literal of another shape would drop its
-/// own field and zero the record's. Refused in the back end by name.
-///
-/// Both halves of that sentence are a refusal. A stray field is a value that
-/// goes nowhere; a field the literal never writes is a zero nobody asked for,
-/// and `[corner(), { x = 9 }]` used to compile and print `9 0`.
+/// The one position the checker does not cover, because `Expr::List` unifies its elements and ignores the error so a gradual list can be heterogeneous.
 #[test]
 fn a_literal_of_another_shape_where_a_record_is_wanted_is_refused() {
     rejected(
@@ -98,11 +75,7 @@ fn a_literal_of_another_shape_where_a_record_is_wanted_is_refused() {
     );
 }
 
-/// The JS backend emitted `return { a: 1, a: a };` for the arrow-block form: a
-/// duplicate key, plus a reference to an `a` that was never declared, so `node`
-/// answered `ReferenceError: a is not defined`. Assert on the emitted source
-/// rather than only on the native run, because the native path failed loudly and
-/// this one shipped.
+/// The JS backend emitted `return { a: 1, a: a };` for the arrow-block form.
 #[test]
 fn the_js_backend_emits_a_block_and_not_a_record() {
     if !have("node") {
@@ -131,7 +104,6 @@ fn the_js_backend_emits_a_block_and_not_a_record() {
     );
     let js = std::fs::read_to_string(out_dir.join("app.js")).expect("emitted app.js");
 
-    // `several()` binds two names and returns an expression over both.
     let body = js
         .split("function several(")
         .nth(1)
@@ -148,7 +120,6 @@ fn the_js_backend_emits_a_block_and_not_a_record() {
         "the block came out as a record again:\n{body}"
     );
 
-    // And the whole suite runs under node, which is where the bad key showed up.
     let ran = Command::new("node")
         .arg("-e")
         .arg(format!(

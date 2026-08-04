@@ -1,16 +1,10 @@
-//! Real end-to-end backend test: drive the `maca` binary to compile and run an
-//! example, then assert on its output. Requires WSL + zig; skips otherwise so
-//! `cargo test` stays green on hosts without the native toolchain.
-
 mod common;
 use common::*;
 
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Cross-process build lock: nix/zig can't be hammered by ~a dozen concurrent
-/// invocations (lock contention), so integration tests serialize the compile
-/// step. Held for the test body; released on drop, stale locks (>5min) stolen.
+/// Cross-process build lock: nix/zig can't be hammered by ~a dozen concurrent invocations (lock contention).
 
 #[test]
 fn hello_builds_and_runs() {
@@ -53,7 +47,6 @@ fn taskr_add_list_roundtrip() {
         eprintln!("skipping taskr_add_list_roundtrip: wsl not available");
         return;
     }
-    // isolated, deterministic store
     Command::new("wsl")
         .args([
             "sh",
@@ -65,13 +58,11 @@ fn taskr_add_list_roundtrip() {
 
     assert!(taskr(&[]).contains("usage"), "no-args should print usage");
 
-    // add one, it round-trips through JSON on the next list
     assert!(taskr(&["add", "buy milk"]).contains("added: buy milk"));
     let l1 = taskr(&["list"]);
     assert!(l1.contains("#1") && l1.contains("buy milk"), "list1: {l1}");
     assert!(l1.contains("[ ]"), "unchecked box expected: {l1}");
 
-    // add a second, ids increment and both persist
     taskr(&["add", "walk dog"]);
     let l2 = taskr(&["list"]);
     assert!(l2.contains("#1") && l2.contains("buy milk"), "list2: {l2}");
@@ -103,8 +94,7 @@ fn parallel_runs() {
     );
 }
 
-/// Compile an example WITHOUT stripping (keeps symbols for nm/objdump). Mirrors
-/// the driver's pipeline including async and SIMD (LLVM IR) linkage.
+/// Compile an example WITHOUT stripping (keeps symbols for nm/objdump).
 fn build_unstripped(name: &str) -> PathBuf {
     let _lk = BuildLock::acquire();
     let src = std::fs::read_to_string(example_str(name)).unwrap();
@@ -206,7 +196,6 @@ fn simd_hybrid_correct() {
         return;
     }
     let _lk = BuildLock::acquire();
-    // dot8(splat 2, splat 3) = 8 lanes * (2*3) = 48; C main calls the LLVM kernel
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args(["run", &example_str("simd.maca")])
         .output()
@@ -226,14 +215,11 @@ fn simd_uses_llvm_vector_instructions() {
         eprintln!("skipping simd_uses_llvm_vector_instructions: wsl not available");
         return;
     }
-    // The LLVM path must produce real 256-bit AVX vector ops (8-wide → faster
-    // than scalar). objdump the dot8 kernel and require a packed-vector mul.
     let dis = objdump("simd.maca");
     assert!(
         dis.contains("vmulps") || dis.contains("vfmadd") || dis.contains("%ymm"),
         "expected AVX vector instructions from the LLVM SIMD path"
     );
-    // and the C path alone (no SIMD) must not
     let hello = objdump("hello.maca");
     assert!(
         !hello.contains("%ymm"),
@@ -274,7 +260,6 @@ fn nix_config_accepted() {
     );
     assert!(nix.contains("xdg.userDirs"), "missing xdg.userDirs");
 
-    // nix-instantiate must accept the generated module
     let ni = Command::new("wsl")
         .args([
             "sh",
@@ -308,8 +293,6 @@ console.log(JSON.stringify({tag:root.tagName,cls:root.className,kids:root.childr
 
 #[test]
 fn build_auto_detects_ui_target() {
-    // no --target on a view (`-> Element`) auto-selects js instead of failing
-    // on the native path with confusing linker errors.
     let dir = std::env::temp_dir().join("maca-detect-ui");
     let _ = std::fs::remove_dir_all(&dir);
     let r = Command::new(env!("CARGO_BIN_EXE_maca"))
@@ -354,7 +337,6 @@ fn js_ui_renders_and_binds() {
         String::from_utf8_lossy(&r.stderr)
     );
 
-    // tree-shaken Tailwind: only used classes ship
     let css = std::fs::read_to_string(dir.join("app.css")).unwrap();
     for used in [".flex ", ".flex-col ", ".text-center "] {
         assert!(css.contains(used), "css missing {used}: {css}");
@@ -364,7 +346,6 @@ fn js_ui_renders_and_binds() {
         "css shipped unused classes: {css}"
     );
 
-    // headless render + reactivity via Node with a DOM stub
     std::fs::write(dir.join("harness.js"), JS_HARNESS).unwrap();
     let wsl_dir = to_wsl(&dir);
     let out = Command::new("wsl")
@@ -409,8 +390,6 @@ fn ffi_c_sqlite_roundtrip() {
         eprintln!("skipping ffi_c_sqlite_roundtrip: wsl not available");
         return;
     }
-    // import c "sqlite3.h": open :memory:, create, insert, then iterate the
-    // full result set reading multiple columns per row.
     let out = run_example_str("ffi_sqlite.maca");
     assert!(out.contains("ada is 36"), "sqlite row 1: {out}");
     assert!(out.contains("alan is 41"), "sqlite row 2: {out}");
@@ -422,15 +401,12 @@ fn ffi_nix_value() {
         eprintln!("skipping ffi_nix_value: wsl not available");
         return;
     }
-    // import nix "./answer.nix" evaluates `21 * 2` at build time
     let out = run_example_str("ffi_nix.maca");
     assert_eq!(out.trim(), "42", "nix value: {out}");
 }
 
 #[test]
 fn ffi_py_calls_python() {
-    // On a plain Linux host the driver links libpython via `python3-config`;
-    // on the WSL/Nix path it pulls `nixpkgs#python3`. Skip if neither is usable.
     let has_pyconfig = Command::new("python3-config")
         .arg("--includes")
         .output()
@@ -440,7 +416,6 @@ fn ffi_py_calls_python() {
         eprintln!("skipping ffi_py_calls_python: no python3-config and no wsl");
         return;
     }
-    // python_version() → a version string; sqrt(144) and basename() pass args
     let out = run_example_str("ffi_py.maca");
     let first = out.lines().next().unwrap_or("").trim();
     assert!(

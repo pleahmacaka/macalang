@@ -1,28 +1,6 @@
-// bench/cases/prim: the operations everything else is built out of.
-//
-// Integer and float arithmetic, string building and scanning, list push and
-// index and iterate, map set and get, record construction and field access.
-// These are the numbers you need before any of the algorithm cases mean
-// anything: a sort that looks slow is a different problem depending on whether
-// a list subscript costs one nanosecond or forty.
-//
-//   import { int_arith, list_index } from bench/cases/prim
-//   import { measure, defaults } from bench/time
-//
-//   r = measure("int arithmetic", 5000, int_arith, defaults())
-//
-// Every case takes the workload size and returns a checksum, so the same call
-// is both the thing being timed and the thing a test asserts against. Each one
-// builds whatever input it needs inside the timed region. There is no setup
-// hook, because a setup function would have to be stored next to the case and a
-// function value cannot live in a record field. Where the setup is O(n) and the
-// work is O(n), that is roughly a factor of two on the reported cost, and it is
-// the same factor in every run, so a comparison against a baseline is unharmed.
-
 import { ascending, sentence } from bench/cases/data
 
-/// A point, for the record cases. Two fields: enough to have a layout, small
-/// enough that the case measures construction rather than copying.
+/// A point, for the record cases.
 Pt = { x: int, y: int }
 
 /// Integer add, multiply, divide and remainder, `n` times.
@@ -36,17 +14,7 @@ int_arith(n: int) -> int {
     acc
 }
 
-/// Float conversion, division and addition, `n` times, reported as thousandths
-/// so the checksum is an integer without being 0.
-///
-/// The harmonic sum grows without bound but slowly, which is what a benchmark
-/// wants: no overflow at any size, and no size at which the accumulator is so
-/// large that adding the next term rounds to no change at all.
-///
-/// No `sqrt` here on purpose. It is a builtin, but the native back end does not
-/// link libm, so a call to it that the C compiler cannot fold fails at link
-/// time. See `root` in `bench/stat` for the same problem answered the other
-/// way.
+/// Float conversion, division and addition, `n` times, reported as thousandths so the checksum is an integer without being 0.
 float_arith(n: int) -> int {
     acc = 0.0
     i = 1
@@ -68,8 +36,7 @@ str_concat(n: int) -> int {
     out.length()
 }
 
-/// The same, through string interpolation: a number formatted and spliced in
-/// `n` times. The gap against `str_concat` is what interpolation costs.
+/// The same, through string interpolation: a number formatted and spliced in `n` times.
 str_interp(n: int) -> int {
     out = ""
     i = 0
@@ -80,11 +47,7 @@ str_interp(n: int) -> int {
     out.length()
 }
 
-/// Walk `n` bytes classifying each one; returns letters and digits packed into
-/// one number.
-///
-/// Byte-at-a-time scanning through `at` is what a lexer does, so this is the
-/// primitive under `selfhost`'s front end more than it is a string benchmark.
+/// Walk `n` bytes classifying each one; returns letters and digits packed into one number.
 str_scan(n: int) -> int {
     text = sentence(n)
     letters = 0
@@ -103,11 +66,6 @@ str_scan(n: int) -> int {
 }
 
 /// Grow a list one element at a time; returns the sum of what went in.
-///
-/// This is the expensive one, and deliberately so. `push` returns a new list,
-/// so building a list of `n` this way copies `n(n-1)/2` elements. It is
-/// quadratic, and a case that measures it at a size where that shows is more
-/// use than a comment saying it might.
 list_push(n: int) -> int {
     xs: int[] = []
     i = 0
@@ -130,9 +88,7 @@ list_index(n: int) -> int {
     acc
 }
 
-/// Read the same `n` elements with `for … in`. Same answer as `list_index`, so
-/// the difference between the two is the cost of the loop form and nothing
-/// else.
+/// Read the same `n` elements with `for … in`.
 list_iterate(n: int) -> int {
     acc = 0
     for x in ascending(n) {
@@ -152,8 +108,7 @@ map_set(n: int) -> int {
     m.length()
 }
 
-/// Insert `n` keys and then read every one back; returns the sum of the values
-/// that came out. Subtract `map_set` at the same size to get the lookup cost.
+/// Insert `n` keys and then read every one back; returns the sum of the values that came out.
 map_get(n: int) -> int {
     m: Map str int = map()
     i = 0
@@ -183,8 +138,7 @@ record_build(n: int) -> int {
     acc
 }
 
-/// Read both fields of one record `n` times, construction held out, so the
-/// gap against `record_build` is what building one costs.
+/// Read both fields of one record `n` times, construction held out, so the gap against `record_build` is what building one costs.
 record_field(n: int) -> int {
     p = Pt { x = 3, y = 4 }
     acc = 0

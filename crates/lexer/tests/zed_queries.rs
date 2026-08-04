@@ -1,10 +1,3 @@
-//! Guard the Zed extension's tree-sitter queries against grammar drift.
-//!
-//! The `.scm` files are consumed by Zed, not by the Rust workspace, so nothing
-//! else would notice if a grammar rule were renamed out from under them. These
-//! checks are deliberately lightweight (no tree-sitter dependency): every node
-//! type a query names must still exist in `grammar.js`.
-
 use std::path::PathBuf;
 
 fn repo(rel: &str) -> PathBuf {
@@ -17,22 +10,18 @@ fn read(rel: &str) -> String {
     std::fs::read_to_string(repo(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"))
 }
 
-/// Node types named by a query: the identifiers written as `(name`. Comments,
-/// string literals (a regex inside `#match?` can contain `(alt|alt)`), and
-/// `(#predicate? …)` forms are skipped, so only real node names are returned.
+/// Node types named by a query: the identifiers written as `(name`.
 fn node_types(scm: &str) -> Vec<String> {
     let mut out = Vec::new();
     let b = scm.as_bytes();
     let mut i = 0;
     while i < b.len() {
-        // skip comments
         if b[i] == b';' {
             while i < b.len() && b[i] != b'\n' {
                 i += 1;
             }
             continue;
         }
-        // skip string literals
         if b[i] == b'"' {
             i += 1;
             while i < b.len() && b[i] != b'"' {
@@ -75,8 +64,6 @@ fn zed_queries_reference_only_real_grammar_rules() {
 
 #[test]
 fn outline_query_covers_functions_and_type_declarations() {
-    // The symbol picker must list both kinds of top-level definition; a
-    // regression here silently empties Zed's outline.
     let scm = read("editor/zed-maca/languages/maca/outline.scm");
     assert!(
         scm.contains("(function"),

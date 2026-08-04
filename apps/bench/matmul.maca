@@ -1,5 +1,3 @@
-// Naive N×N integer matrix multiply (flat arrays), checksummed mod 1e9+7.
-// O(n³) nested loops over arrays.
 matmul(n: int) -> int {
     a = 0..(n * n)
     b = 0..(n * n)

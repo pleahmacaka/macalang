@@ -1,39 +1,11 @@
-// tambo/route: a path pattern, and what it binds from a path.
-//
-// Two kinds of hole. `:name` binds one segment; a trailing `*` binds all of
-// the path that is left. Every other segment is literal text that has to be
-// there, exactly.
-//
-//     bind_path("/user/:id", "/user/7").params.get("id", "")    // "7"
-//     bind_path("/files/*", "/files/a/b").params.get("*", "")   // "a/b"
-//
-// Nothing here knows about an app, a request or a response, which is what lets
-// the routing rules be checked by calling them.
-
 /// What a pattern bound from a path.
 Bound = {
     ok: bool
-    /// The bound segments, by name. What a trailing `*` swallowed is filed
-    /// under `"*"`, so one map holds every capture and a handler has one place
-    /// to look.
+    /// The bound segments, by name.
     params: Map str str
 }
 
 /// Match `path` against `pattern`.
-///
-/// Segment counts have to agree exactly, so `/user/:id` does not match
-/// `/user/a/b`, and a trailing slash is a segment like any other, so `/a` and
-/// `/a/` are different paths and only one of them matches `/a`. Both rules are
-/// here because the alternative is a route quietly answering for a path its
-/// author never wrote down.
-///
-/// A `:name` will not bind an empty segment: `/user/` is not a `/user/:id`
-/// with an id of "". An empty parameter is the shape of a bug in the caller,
-/// and a handler that has to check for one has gained nothing over a 404.
-///
-/// A pattern binding the same name twice keeps the last segment, the way a
-/// repeated query key does. Nothing rejects it, because a pattern is written
-/// once by hand and `param_names` shows the duplicate to anyone looking.
 bind_path(pattern: str, path: str) -> Bound {
     ps = pattern.split("/")
     xs = path.split("/")
@@ -46,8 +18,6 @@ bind_path(pattern: str, path: str) -> Bound {
             bind_segments(ps, xs, 0, ps.length(), empty)
         }
     } else if xs.length() < ps.length() {
-        // `/files/*` wants at least `/files/`. A bare `/files` is a different
-        // path and gets the 404 it asked for.
         miss()
     } else {
         upto = ps.length() - 1
@@ -57,9 +27,6 @@ bind_path(pattern: str, path: str) -> Bound {
     }
 }
 
-// `upto` stops short of a trailing `*`, which `match_one` has already bound to
-// the rest of the path: a wildcard is not a segment and must not be compared
-// as one.
 bind_segments(ps: str[], xs: str[], i: int, upto: int,
               acc: Map str str) -> Bound {
     if i >= upto {
@@ -84,42 +51,18 @@ miss() -> Bound {
 }
 
 /// Is `a` a more specific pattern than `b`?
-///
-/// Compared segment by segment, left to right: literal text beats `:name`, and
-/// `:name` beats a trailing `*`. The first segment where the two disagree
-/// decides, so `/user/new` wins over `/user/:id` and `/files/logo.png` wins
-/// over `/files/*`, in whichever order they were declared.
-///
-/// Only a *trailing* `*` counts as a wildcard here, because that is the only
-/// place `bind_path` treats one as a hole. A `*` anywhere else is literal text
-/// and is ranked as literal text; scoring it as a wildcard let `/a/:x/b`
-/// outrank `/a/*/b` on the one path `/a/*/b` spells out exactly.
-///
-/// Two patterns of the same shape are a tie, and `tambo/app` gives a tie to
-/// whichever was declared first. So declaration order is a tie-break and never
-/// a way to shadow: a loose route written above a tight one cannot take its
-/// traffic. The alternative is first-match-wins, where adding a route near the
-/// top of the table silently retires one further down.
 more_specific(a: str, b: str) -> bool {
     left = a.split("/")
     right = b.split("/")
     at = first_difference(left, right, 0)
 
     if at < 0 {
-        // One shape is a prefix of the other, and two such patterns can never
-        // match the same path: the shorter would have to end in a trailing
-        // `*`, and the longer's segment at that index would then be literal
-        // text, so they would have disagreed there instead of getting here.
-        // This only has to be *an* answer. Longer wins, which keeps the
-        // comparison a total order and so keeps `lookup`'s single pass right.
         left.length() > right.length()
     } else {
         rank(left, at) > rank(right, at)
     }
 }
 
-// The first index where two patterns disagree about how specific they are, or
-// -1 when they agree everywhere both have a segment.
 first_difference(a: str[], b: str[], i: int) -> int {
     if i >= a.length() || i >= b.length() {
         -1
@@ -130,9 +73,6 @@ first_difference(a: str[], b: str[], i: int) -> int {
     }
 }
 
-// How specific segment `i` of `ps` is. Literal text is the most, a wildcard
-// the least. It takes the whole pattern rather than the one segment because
-// whether a `*` is a wildcard depends on where it is.
 rank(ps: str[], i: int) -> int {
     if is_wildcard(ps, i) {
         0
@@ -144,7 +84,6 @@ rank(ps: str[], i: int) -> int {
 }
 
 /// The names a pattern binds, in order, with `"*"` last when it has one.
-/// What a table listing wants, and what a test asserts against.
 param_names(pattern: str) -> str[] =>
     collect_names(pattern.split("/"), 0, [])
 
@@ -161,14 +100,6 @@ collect_names(ps: str[], i: int, acc: str[]) -> str[] {
 }
 
 /// A path this pattern matches, with each `:name` standing in for itself.
-///
-///     sample_path("/user/:id")   // "/user/id"
-///     sample_path("/files/*")    // "/files/"
-///
-/// For printing an example URL, and for `missing_handlers`, which has to ask a
-/// handler whether it exists before there is a request to ask it about. A
-/// trailing `*` becomes an empty rest, because an empty rest is the one thing
-/// such a pattern certainly matches.
 sample_path(pattern: str) -> str =>
     sample_segments(pattern.split("/"), 0, []).join("/")
 
@@ -184,18 +115,12 @@ sample_segments(ps: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-// Only the *last* segment can be a wildcard. A `*` in the middle is literal
-// text: a pattern that swallowed the tail from halfway along could never say
-// what came after it, so there is nothing useful for it to mean. Everything
-// that has an opinion about wildcards asks this, so there is one rule and not
-// four copies of it drifting apart.
 is_wildcard(ps: str[], i: int) -> bool =>
     ps.get(i) == "*" && i == ps.length() - 1
 
 ends_in_wildcard(ps: str[]) -> bool =>
     ps.length() > 0 && is_wildcard(ps, ps.length() - 1)
 
-// A bare `:` binds nothing under no name, so it is literal text too.
 is_param(seg: str) -> bool =>
     seg.starts_with(":") && seg.length() > 1
 

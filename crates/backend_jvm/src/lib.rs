@@ -1,29 +1,7 @@
-//! maca-backend-jvm: lower Maca to Java source (JVM interop).
-//!
-//! Java is the substrate for JVM ecosystems, notably Minecraft (Fabric/Forge)
-//! modding. This backend transpiles Maca to a `.java` file that `javac`
-//! compiles, so Maca can call Java APIs and implement Java interfaces directly.
-//!
-//! Mapping:
-//!   * top-level functions → `static` methods
-//!   * records → Java `record`s; sums (nullary) → `enum`s
-//!   * `Name : Iface = { m() {…} }` → `class Name implements Iface { … }`
-//!     (this is how you write a Fabric `ModInitializer`)
-//!   * `import java "pkg.Class"` → `import pkg.Class;`
-//!   * a capitalized call `Pos(1,2,3)` → `new Pos(1, 2, 3)`; `obj.m(a)` →
-//!     `obj.m(a)`; `Blocks.STONE` → `Blocks.STONE`
-//!
-//! Type/expression coverage is the functional core plus interop pass-through;
-//! unknown types map to their name verbatim (a Java type).
-
 use maca_parser::ast::*;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Emit a Java compilation unit named `class_name` (usually the file stem, or
-/// overridden by `package`/entry conventions). `package` is optional.
-/// Emit Java, or the list of constructs this backend does not lower. The driver
-/// uses this so an unsupported construct is a clean error naming what the author
-/// wrote, rather than a `null` javac accepts anywhere a reference is wanted.
+/// Emit a Java compilation unit named `class_name` (usually the file stem, or overridden by `package`/entry conventions).
 pub fn emit_checked(
     m: &Module,
     class_name: &str,
@@ -59,8 +37,6 @@ pub fn emit(m: &Module, class_name: &str, package: Option<&str>) -> String {
     if !cx.imports.is_empty() {
         out.push('\n');
     }
-    // One declaration per distinct shape actually used, above the class that
-    // names it.
     let mut ifaces: Vec<String> = fnps
         .values()
         .filter(|s| s.arity <= 2)
@@ -118,8 +94,8 @@ impl Cx {
     }
 
     fn emit_members(&mut self, m: &Module, class_name: &str) -> String {
-        let mut types = String::new(); // top-level enums/records
-        let mut members = String::new(); // wrapper-class methods + nested classes
+        let mut types = String::new();
+        let mut members = String::new();
 
         for it in &m.items {
             match it {
@@ -132,8 +108,6 @@ impl Cx {
                         } else if let (Some(ty), Some(ms)) =
                             (b.tys.first(), lambda_fields(&b.value))
                         {
-                            // `Name : Iface = { m = () => … }` → a nested static
-                            // class so it can call the wrapper's static helpers.
                             members.push_str(&self.emit_class(name, ty, &ms));
                         }
                     }
@@ -183,8 +157,6 @@ impl Cx {
                     )
                 })
                 .collect();
-            // interface method return types are unknown here → void; a call/expr
-            // body is emitted as a statement.
             ms.push_str(&format!(
                 "public void {mname}({}) {{\n    {};\n}}\n\n",
                 ps.join(", "),
@@ -231,8 +203,6 @@ impl Cx {
         start_fn_scope(&f.name, &f.params);
         let body = match &f.body {
             Some(FnBody::Block(stmts)) => jblock(stmts, false),
-            // The trailing `0` of `main() -> int => 0` is the exit code, not a
-            // statement, and Java rejects a bare value as one.
             Some(FnBody::Expr(e)) if is_pure_value(e) => String::new(),
             Some(FnBody::Expr(e)) => format!("    {};\n", jexpr(e)),
             None => String::new(),
@@ -241,9 +211,7 @@ impl Cx {
     }
 }
 
-// ---- statements -----------------------------------------------------------
-
-/// A block of statements → Java. `wants_value` returns the final expression.
+/// A block of statements → Java.
 fn jblock(stmts: &[Stmt], wants_value: bool) -> String {
     let mut out = String::new();
     for (i, s) in stmts.iter().enumerate() {
@@ -279,11 +247,7 @@ fn jblock(stmts: &[Stmt], wants_value: bool) -> String {
                     out.push_str(&jif_stmt(e));
                 } else if last && wants_value {
                     out.push_str(&format!("    return {};\n", jexpr(e)));
-                } else if matches!(e, Expr::Break | Expr::Continue) {
-                    out.push_str(&format!("    {};\n", jexpr(e)));
                 } else if !is_pure_value(e) {
-                    // a bare value in statement position is a no-op (e.g. the
-                    // trailing `0` of a Maca `main`); Java rejects it, so skip.
                     out.push_str(&format!("    {};\n", jexpr(e)));
                 }
             }
@@ -321,8 +285,6 @@ fn jif_stmt(e: &Expr) -> String {
     out
 }
 
-// ---- expressions ----------------------------------------------------------
-
 fn jexpr(e: &Expr) -> String {
     match e {
         Expr::Int(n) => format!("{n}L"),
@@ -341,7 +303,6 @@ fn jexpr(e: &Expr) -> String {
             format!("({} ? {} : {})", jexpr(cond), jexpr(then), jexpr(els))
         }
         Expr::If { cond, then, els } => {
-            // if-expression → ternary (branch is the last expr of each block)
             let t = block_value(then);
             let e = els
                 .as_ref()
@@ -350,14 +311,10 @@ fn jexpr(e: &Expr) -> String {
             format!("({} ? {} : {})", jexpr(cond), t, e)
         }
         Expr::Call { callee, args } => jcall(callee, args),
-        // A Java record keeps its components private and exposes an accessor of
-        // the same name, so reading one is `p.x()`. A field of a foreign Java
-        // object is a real field and stays `o.x`.
         Expr::Field { base, name } if RECORD_FIELD_NAMES.with(|m| m.borrow().contains(name)) => {
             format!("{}.{name}()", jexpr(base))
         }
         Expr::Field { base, name } => format!("{}.{name}", jexpr(base)),
-        // List.get needs an int index; Maca ints are Java longs, so narrow it
         Expr::Index { base, index } => format!("{}.get((int)({}))", jexpr(base), jexpr(index)),
         Expr::Record(fields) | Expr::Ctor { fields, .. } => jctor(e, fields),
         Expr::List(es) => {
@@ -369,10 +326,6 @@ fn jexpr(e: &Expr) -> String {
         Expr::Match { scrut, arms } => jmatch(scrut, arms),
         Expr::Block(stmts) => block_value(stmts),
         Expr::Try(x) => jexpr(x),
-        // A Java lambda. This is the target's headline use case, since a Fabric
-        // mod registers callbacks, and it used to become `null`, which is
-        // assignable to any functional interface, so it compiled and the
-        // callback did nothing.
         Expr::Lambda { params, body, .. } => {
             let ps: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
             format!("({}) -> {}", ps.join(", "), jexpr(body))
@@ -380,8 +333,6 @@ fn jexpr(e: &Expr) -> String {
         Expr::Assign { target, value } => format!("({} = {})", jexpr(target), jexpr(value)),
         Expr::Break => "break".into(),
         Expr::Continue => "continue".into(),
-        // `null` is assignable to every Java reference type, so an unlowered
-        // construct type-checked and the program ran with a hole in it.
         other => {
             problem(format!(
                 "{} is not lowered by the jvm backend",
@@ -395,37 +346,27 @@ fn jexpr(e: &Expr) -> String {
 thread_local! {
     /// Constructs this backend does not lower, collected while emitting.
     static PROBLEMS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
-    /// Names already bound in the function being emitted. A later `x = e` is a
-    /// reassignment; re-emitting the type made it a redeclaration, which javac
-    /// rejects.
+    /// Names already bound in the function being emitted.
     static DECLARED: std::cell::RefCell<std::collections::BTreeSet<String>> =
         const { std::cell::RefCell::new(std::collections::BTreeSet::new()) };
-    /// Declared record name -> its fields, in declaration order. A Java record's
-    /// constructor is positional, so a literal written in another order has to
-    /// be reordered or the values land in the wrong components.
+    /// Declared record name -> its fields, in declaration order.
     static RECORD_FIELDS: std::cell::RefCell<BTreeMap<String, Vec<String>>> =
         const { std::cell::RefCell::new(BTreeMap::new()) };
-    /// Every field name any declared record has. A Java record keeps its
-    /// components private and exposes an accessor of the same name, so reading
-    /// one is `p.x()` rather than `p.x`; without types this is what tells a
-    /// record field from a field of a foreign Java object.
+    /// Every field name any declared record has.
     static RECORD_FIELD_NAMES: std::cell::RefCell<BTreeSet<String>> =
         const { std::cell::RefCell::new(BTreeSet::new()) };
     /// Function-typed parameters of every top-level function in the module.
     static FN_PARAMS: std::cell::RefCell<BTreeMap<(String, usize), Fnp>> =
         const { std::cell::RefCell::new(BTreeMap::new()) };
-    /// Those belonging to the function being emitted, by parameter name, so a
-    /// call site knows to invoke the interface method rather than a static.
+    /// Those belonging to the function being emitted, by parameter name.
     static IN_SCOPE: std::cell::RefCell<BTreeMap<String, Fnp>> =
         const { std::cell::RefCell::new(BTreeMap::new()) };
-    /// variant name → its enum. Java needs `Status.Done` everywhere except a
-    /// `case` label, where the bare name is the only spelling allowed.
+    /// variant name → its enum.
     static VARIANT_OF: std::cell::RefCell<std::collections::BTreeMap<String, String>> =
         const { std::cell::RefCell::new(std::collections::BTreeMap::new()) };
 }
 
-/// Begin a function: its parameters are already bound, so a `x = e` naming one
-/// is a reassignment rather than a declaration that would shadow it.
+/// Begin a function: its parameters are already bound.
 fn start_scope(params: &[Param]) {
     DECLARED.with(|d| {
         let mut d = d.borrow_mut();
@@ -436,8 +377,7 @@ fn start_scope(params: &[Param]) {
     });
 }
 
-/// Begin a function: note which of its parameters are functions, so a call to
-/// one lowers to the interface's method instead of a static of the same name.
+/// Begin a function: note which of its parameters are functions.
 fn start_fn_scope(name: &str, params: &[Param]) {
     let all = FN_PARAMS.with(|m| m.borrow().clone());
     IN_SCOPE.with(|s| {
@@ -481,7 +421,6 @@ fn note_record(name: &str, fields: &[String]) {
 }
 
 /// The one declared record whose fields are exactly `written`, if there is one.
-/// Two records sharing a shape have no single answer, so those are refused.
 fn record_of_shape(written: &[String]) -> Result<String, Vec<String>> {
     let mut want: Vec<String> = written.to_vec();
     want.sort();
@@ -522,22 +461,11 @@ fn problem(msg: impl Into<String>) {
     PROBLEMS.with(|p| p.borrow_mut().push(msg.into()));
 }
 
-/// A parameter with no declared type that is *called* in the body is a
-/// function. Maca writes no function type at a parameter, so its use in the
-/// body is the only evidence there is; this mirrors the decision
-/// `maca_backend_c`'s `closure_params` makes for the native target.
-///
-/// What Java needs beyond that decision is a *type*, and there is none to read.
-/// The generated interfaces are `long`-typed because Maca's `int` is a Java
-/// `long` and that is what an unannotated parameter is treated as everywhere
-/// else in this emitter. A callback over strings or records would need its type
-/// written down, which this target does not accept yet, so it is refused by name
-/// rather than emitted as something that will not compile.
+/// A parameter with no declared type that is *called* in the body is a function.
 #[derive(Clone, Copy, PartialEq)]
 struct Fnp {
     arity: usize,
-    /// Whether the call's value is used. Java splits these: a `Function` returns
-    /// and a `Consumer` does not, and one cannot stand in for the other.
+    /// Whether the call's value is used.
     returns: bool,
 }
 
@@ -571,16 +499,13 @@ impl Fnp {
     }
 }
 
-/// Every function parameter of `items` that is used as a function, keyed by the
-/// declaring function's name and the parameter's position.
+/// Every function parameter of `items` that is used as a function, keyed by the declaring function's name and the parameter's position.
 fn fn_params(items: &[Stmt]) -> BTreeMap<(String, usize), Fnp> {
     let mut out = BTreeMap::new();
     for it in items {
         let Stmt::Fn(f) = it else { continue };
         let Some(body) = &f.body else { continue };
         let mut uses: BTreeMap<String, Fnp> = BTreeMap::new();
-        // A function with no declared return type discards its tail value, so a
-        // call in that position is a Consumer rather than a Function.
         collect_calls_body(body, &mut uses, f.ret.is_some());
         for (i, p) in f.params.iter().enumerate() {
             if p.ty.is_none()
@@ -593,9 +518,7 @@ fn fn_params(items: &[Stmt]) -> BTreeMap<(String, usize), Fnp> {
     out
 }
 
-/// Record each `name(args)` in `body`. `valued` says whether the expression's
-/// value is used where it appears, which is what decides `Function` vs
-/// `Consumer`.
+/// Record each `name(args)` in `body`.
 fn collect_calls_body(body: &FnBody, out: &mut BTreeMap<String, Fnp>, valued: bool) {
     match body {
         FnBody::Expr(e) => collect_calls(e, out, valued),
@@ -608,7 +531,6 @@ fn collect_calls_stmts(stmts: &[Stmt], out: &mut BTreeMap<String, Fnp>, tail_val
         let last = i + 1 == stmts.len();
         match s {
             Stmt::Bind(b) => collect_calls(&b.value, out, true),
-            // a bare call in the middle of a block discards its value
             Stmt::Expr(e) => collect_calls(e, out, last && tail_valued),
             _ => {}
         }
@@ -623,8 +545,6 @@ fn collect_calls(e: &Expr, out: &mut BTreeMap<String, Fnp>, valued: bool) {
                     arity: args.len(),
                     returns: valued,
                 };
-                // A name called for its value anywhere is a Function: a
-                // Consumer could not stand in, while the reverse is harmless.
                 let keep = match out.get(n) {
                     Some(prev) if prev.returns => *prev,
                     _ => sig,
@@ -729,11 +649,9 @@ fn jbinary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
         Ge => ">=",
         And => "&&",
         Or => "||",
-        // string / value concat and everything else
         Concat => return format!("({l} + {r})"),
         Union | Pipe => return l,
     };
-    // `==`/`!=` on strings → .equals (best effort: only when a side is a literal)
     if matches!(op, Eq | Ne) && (is_str(lhs) || is_str(rhs)) {
         let base = format!("java.util.Objects.equals({l}, {r})");
         return if op == Ne { format!("!{base}") } else { base };
@@ -762,12 +680,9 @@ fn jcall(callee: &Expr, args: &[Arg]) -> String {
         Expr::Ident(f) if f == "len" => {
             format!("({}).size()", a.first().cloned().unwrap_or_default())
         }
-        // Capitalized target → constructor (`Pos(1,2)` → `new Pos(1, 2)`)
         Expr::Ident(f) if f.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
             format!("new {f}({})", a.join(", "))
         }
-        // A function-typed parameter is not a static of the same name; Java
-        // reaches it through the interface's single method.
         Expr::Ident(f) if IN_SCOPE.with(|s| s.borrow().contains_key(f)) => {
             let sig = IN_SCOPE.with(|s| s.borrow()[f]);
             format!("{f}.{}({})", sig.call(), a.join(", "))
@@ -779,8 +694,6 @@ fn jcall(callee: &Expr, args: &[Arg]) -> String {
 }
 
 fn jctor(e: &Expr, fields: &[Field]) -> String {
-    // (field name, value) in the order written, which is not necessarily the
-    // order the record declares.
     let written: Vec<(String, String)> = fields
         .iter()
         .filter_map(|f| match f {
@@ -793,10 +706,6 @@ fn jctor(e: &Expr, fields: &[Field]) -> String {
 
     let name = match e {
         Expr::Ctor { name, .. } => name.clone(),
-        // An anonymous literal takes the name of the one declared record with
-        // its shape. Telling the author to "declare a record type" was advice
-        // they could not follow once the checker accepted the literal straight
-        // into a declared one.
         _ => match record_of_shape(&names) {
             Ok(found) => found,
             Err(hits) if hits.is_empty() => {
@@ -820,9 +729,6 @@ fn jctor(e: &Expr, fields: &[Field]) -> String {
         },
     };
 
-    // A Java record's constructor is positional, so the values follow the
-    // declaration rather than the literal. Writing them in the order they
-    // appear put `{ y = 2, x = 1 }` into `Point(2, 1)`, silently.
     let order = RECORD_FIELDS.with(|m| m.borrow().get(&name).cloned());
     let vals: Vec<String> = match &order {
         Some(decl) => {
@@ -841,23 +747,17 @@ fn jctor(e: &Expr, fields: &[Field]) -> String {
             }
             out
         }
-        // A capitalized call that is not a declared record is Java interop, so
-        // the arguments are the author's own order.
         None => written.into_iter().map(|(_, v)| v).collect(),
     };
     format!("new {name}({})", vals.join(", "))
 }
 
 fn jmatch(scrut: &Expr, arms: &[Arm]) -> String {
-    // enum/value match → a Java switch expression
     let mut out = format!("switch ({}) {{\n", jexpr(scrut));
     for a in arms {
         let label = match &a.pat {
             Pattern::Wild => "default".to_string(),
             Pattern::Bind(n) => format!("case {n}"),
-            // A payload pattern's arguments were dropped, so the arm body named
-            // variables javac never saw. Sums lower to a plain Java enum, which
-            // carries no payload to bind in the first place.
             Pattern::Ctor { name, args } if !args.is_empty() => {
                 problem(format!(
                     "`{name}(…)` binds a payload; a sum lowers to a Java enum                      on this target, which carries none"
@@ -866,9 +766,6 @@ fn jmatch(scrut: &Expr, arms: &[Arm]) -> String {
             }
             Pattern::Ctor { name, .. } => format!("case {name}"),
             Pattern::Int(n) => format!("case {n}"),
-            // Java switches on strings, so this is a real label. It used to
-            // fall to `default`, and two such arms were a duplicate-default
-            // error from javac.
             Pattern::Str(v) => format!("case {}", java_str_lit(v)),
             other => {
                 problem(format!(
@@ -915,12 +812,9 @@ fn jstr(parts: &[StrPart]) -> String {
     if all_text {
         pieces.join(" + ")
     } else {
-        // ensure the expression starts as a String
         format!("(\"\" + {})", pieces.join(" + "))
     }
 }
-
-// ---- types & helpers ------------------------------------------------------
 
 fn jtype(t: &Type) -> String {
     match t {
@@ -935,16 +829,13 @@ fn jtype(t: &Type) -> String {
                 "str" | "bytes" => "String".into(),
                 "bool" => "boolean".into(),
                 "unit" | "()" => "void".into(),
-                // lowercase single-segment = type variable → Object
                 _ if segs.len() == 1 && is_type_var_name(&n) => "Object".into(),
-                _ => n, // nominal / Java interop type, verbatim
+                _ => n,
             }
         }
         Type::Array(inner) => format!("java.util.List<{}>", boxed(inner)),
         Type::Opt(inner) => boxed(inner),
         Type::Paren(inner) => jtype(inner),
-        // Java has a functional interface per shape; one parameter covers what
-        // this back end can carry across the boundary today.
         Type::Fn(ps, r) => match ps.len() {
             0 => format!("java.util.function.Supplier<{}>", boxed(r)),
             _ => format!(
@@ -985,8 +876,7 @@ fn is_str(e: &Expr) -> bool {
     matches!(e, Expr::Str(_))
 }
 
-/// A side-effect-free value expression, useless (and illegal) as a Java
-/// statement, so it is dropped when it appears in statement position.
+/// A side-effect-free value expression, useless (and illegal) as a Java statement.
 fn is_pure_value(e: &Expr) -> bool {
     matches!(
         e,
@@ -1094,8 +984,6 @@ mod tests {
 
     #[test]
     fn index_narrows_to_int() {
-        // Java List.get takes an int; Maca ints are longs, so the subscript
-        // must narrow the index or javac rejects it.
         let j = java("f(xs: int[]) -> int => xs[1]\n");
         assert!(j.contains(".get((int)("), "index not narrowed to int:\n{j}");
     }

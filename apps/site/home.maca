@@ -1,38 +1,8 @@
-// The front page, written in Maca.
-//
-// Not Markdown: a landing page is a designed thing, and the language has an
-// element syntax and a Tailwind engine. The copy is data and the layout is
-// element calls over it, so a translation is a value rather than a second copy
-// of the page.
-//
-//   maca run apps/site/home.maca [outdir]     # default: apps/tomo/site
-//
-// Run from the repository root: the benchmark section reads the harness's
-// measurements out of `apps/bench/`, resolved against the working directory, the
-// same way `apps/tomo/tomo.maca` resolves its book.
-//
-// Writes <out>/index.html and <out>/<lang>/home.html for every language, which
-// is the URL shape tomo uses for a book's landing pages, and this page
-// replaces tomo's for the handbook's own site. `tools/build-site.maca` does
-// that replacement in one place; nothing here should be run by hand into a
-// directory tomo also writes.
-//
-// What the page says is keyed by a sum type rather than a list position:
-// `Topic`, `Spec` and `Caveat` below. A translation that drops a card is a
-// NonExhaustive error from the checker, not a shorter page nobody notices.
-
 import std/path
 import { between } from std/text
 import apps/site/shell
 import { highlight, code_css } from apps/tomo/highlight
 
-// The benchmark section reads the harness's own output and reuses the harness's
-// own vocabulary. `bench/store` reads the JSON it wrote, `bench/time` says what
-// a set of samples means, `bench/compare` owns the threshold below which two
-// timings are the same timing, and `apps/bench/run` knows which kernels there
-// are, which family each belongs to, what workload each was given and what a
-// case is filed under. None of that is retyped here, because a retyped
-// benchmark number is a number that goes stale without anybody noticing.
 import { Result, median_ms } from bench/time
 import { load, find } from bench/store
 import { Tolerance } from bench/compare
@@ -42,15 +12,10 @@ import { recursion_kernels, compute_kernels } from apps/bench/run
 InstallUrl = "https://raw.githubusercontent.com/pleahmacaka/macalang/main"
     ++ "/install.sh"
 
-// ---- what the page argues ---------------------------------------------------
-
-// A feature card, a line in the spec strip, and a reason not to use this.
 Topic  = Config | Async | Markup | Values
 Spec   = Types | Memory | Output | Colour
 Caveat = Ecosystem | Cycles | Young
 
-// The benchmark section: a group of kernels, where Maca landed on one of them,
-// and a line of provenance under the whole thing.
 Family     = Recursion | Compute
 Standing   = Ahead | Level | Behind | Absent
 Provenance = Host | Tools | Runs | Answers | Repro
@@ -65,7 +30,6 @@ families() -> Family[] => Recursion, Compute
 
 provenance() -> Provenance[] => Host, Tools, Runs, Answers, Repro
 
-// Every target the driver accepts. Native needs no flag; the rest are one.
 targets() -> str[] =>
     ["native", "js", "jvm", "rust", "nix", "embedded", "tauri"]
 
@@ -79,14 +43,8 @@ Feature = {
     body:  str
 }
 
-// The strings that are the same in every language: the page's furniture, and
-// the code, which is code.
 Copy = {
     lang:      str
-    // The language's own name for itself, and its `og:locale`. Fields rather
-    // than a `lang == "ko"` ladder somewhere else: a third language is then a
-    // missing-field error on this record, which is where the translator is
-    // already looking, instead of a page quietly labelled English.
     endonym:   str
     locale:    str
     title:     str
@@ -102,15 +60,9 @@ Copy = {
     tgt_title: str
     tgt_sub:   str
     install:   str
-    // The install band shows the one command; the handbook's installing
-    // chapter carries the rest, and this is the link to it.
     install_more: str
     bench_title:  str
     bench_sub:    str
-    // Where Maca loses, and why. One string rather than something keyed by
-    // kernel, because it is about one kernel for one reason. The suite asserts
-    // that kernel is still the only loss, so a re-run that changes which one it
-    // is turns this paragraph red rather than leaving it quietly wrong.
     bench_note:   str
     bench_readme: str
     bench_full:   str
@@ -124,15 +76,7 @@ Copy = {
     lang_label: str
 }
 
-// The order here is the order of the language switcher, and the first is the
-// one `/index.html` is written in.
 copies() -> Copy[] => english(), korean()
-
-// ---- code samples -----------------------------------------------------------
-//
-// Each is a program that compiles. They live outside the per-language copy
-// because code is not translated, and a card that paired the wrong sample with
-// the wrong title would be the page's own claim failing on the page.
 
 sample(t: Topic) -> str =>
     match t {
@@ -181,8 +125,6 @@ ValueSample = """shift(p: Point, dx: int) -> Point =>
 InstallSample = """curl -fsSL """ ++ InstallUrl ++ """ | bash
 maca init hello && cd hello
 maca run main.maca"""
-
-// ---- English ----------------------------------------------------------------
 
 english() -> Copy =>
     Copy {
@@ -320,9 +262,6 @@ en_prov(p: Provenance, rs: Result[]) -> Fact =>
                         value = "`" ++ ReproCommand ++ "`" }
     }
 
-// The claim the whole comparison rests on: six programs that agree on the
-// answer. Stated only when the stored checksums actually do agree, because a
-// page is the wrong place to find out that they don't.
 en_answers(rs: Result[]) -> str {
     if all_verified(rs) {
         "every language printed the same checksum"
@@ -330,8 +269,6 @@ en_answers(rs: Result[]) -> str {
         "checksums disagree on {disagreeing(rs)}"
     }
 }
-
-// ---- Korean -----------------------------------------------------------------
 
 korean() -> Copy =>
     Copy {
@@ -470,11 +407,6 @@ ko_answers(rs: Result[]) -> str {
     }
 }
 
-// ---- picking a language -----------------------------------------------------
-//
-// One `if` per kind of content, in one place. A third language is a `Copy`
-// added to `copies()` and a branch added to each of these three.
-
 fact_of(c: Copy, s: Spec) -> Fact {
     if c.lang == "ko" {
         ko_fact(s)
@@ -523,11 +455,6 @@ prov_of(c: Copy, p: Provenance, rs: Result[]) -> Fact {
     }
 }
 
-// ---- page -------------------------------------------------------------------
-
-// `up` is the path back to the site root: "" from `/index.html`, "../" from a
-// language directory. `rs` is the benchmark run, read once by `main` rather than
-// once per page.
 page(c: Copy, up: str, rs: Result[]) -> str =>
     "<!doctype html>\n"
         ++ html(lang=c.lang,
@@ -560,8 +487,6 @@ page(c: Copy, up: str, rs: Result[]) -> str =>
                            limits(c))
                     ++ site_footer(c))) ++ "\n"
 
-// `/index.html` and `<lang>/home.html` are the same page for the default
-// language, so one of them has to say which is the address.
 canonical(c: Copy, up: str) -> str {
     if c.lang == default_lang() {
         up ++ "index.html"
@@ -573,8 +498,6 @@ canonical(c: Copy, up: str) -> str {
 default_lang() -> str =>
     copies().get(0).lang
 
-// One `alternate` per language, plus the `x-default` a crawler uses for a
-// reader whose language is neither.
 alternates(up: str) -> str =>
     copies().map(o => alternate(o, up)).join("")
         ++ link(rel="alternate", hreflang="x-default",
@@ -586,18 +509,11 @@ alternate(o: Copy, up: str) -> str =>
 wrap() -> str =>
     "max-w-[64rem] mx-auto px-6"
 
-// Off-screen until it is tabbed to, which is the whole point of it.
 skip_link(c: Copy) -> str =>
     a(class="absolute left-[-9999px] focus:left-2 focus:top-2 focus:z-10"
             ++ " bg-white dark:bg-zinc-950 px-4 py-2 rounded-md"
             ++ " border border-zinc-300 dark:border-zinc-700 text-inherit",
       href="#content", escape_html(c.skip))
-
-// ---- header -----------------------------------------------------------------
-//
-// The header wraps rather than scrolling: five items at 0.9rem plus a Korean
-// "플레이그라운드" is wider than a phone, and the house rule is that wide
-// content scrolls inside its own box, never the page.
 
 top_nav(c: Copy, up: str) -> str =>
     header(class="border-b border-zinc-200 dark:border-zinc-800",
@@ -618,11 +534,6 @@ top_nav(c: Copy, up: str) -> str =>
                 a(class=quiet_link(), href=Repo, "GitHub")
                 lang_switch(c, up))))
 
-// The wordmark goes to this language's front page, not the site's: a Korean
-// reader clicking the name should not land in English. For the default
-// language that page *is* the root, which is also what `rel=canonical` says,
-// so `en/home.html` links out to the address it is a copy of rather than to
-// itself.
 home_href(c: Copy, up: str) -> str {
     if c.lang == default_lang() {
         up ++ "index.html"
@@ -635,14 +546,11 @@ quiet_link() -> str =>
     "no-underline text-zinc-600 dark:text-zinc-400 hover:text-black"
         ++ " dark:hover:text-white focus:underline"
 
-// Two languages, two links. A `<select>` cannot navigate without script, and
-// this is the one control a reader who landed on the wrong language needs.
 lang_switch(c: Copy, up: str) -> str =>
     nav(aria-label=c.lang_label,
         class="flex items-center gap-2 text-[0.8rem]",
         copies().map(o => lang_link(c, up, o)).join(""))
 
-// A language is named in itself, in every language's switcher.
 lang_link(c: Copy, up: str, other: Copy) -> str {
     if other.lang == c.lang {
         span(class="font-semibold", aria-current="page", other.endonym)
@@ -651,8 +559,6 @@ lang_link(c: Copy, up: str, other: Copy) -> str {
           lang=other.lang, other.endonym)
     }
 }
-
-// ---- hero -------------------------------------------------------------------
 
 hero(c: Copy, up: str) -> str =>
     section(class=wrap() ++ " py-14 md:py-20 grid gap-10"
@@ -671,17 +577,6 @@ hero(c: Copy, up: str) -> str =>
                 a(class=ghost_btn(), href=Repo, "GitHub")))
         code_panel(HeroSample, "maca"))
 
-// The handbook chapter "Get started" leads to, in the reader's own language.
-//
-// It used to be `#install`, an anchor to the band further down this page, and
-// that band is three lines of shell. Someone who has decided to try the thing
-// wants the chapter that also covers Windows, `PATH`, and the C compiler that is
-// the one real requirement. The band stays where it is, as the one command a
-// visitor can copy without leaving; what it cannot hold now links here.
-//
-// A chapter is published at `<lang>/<stem>.html` (see `apps/tomo/tomo.maca`),
-// and this stem is the first entry of the book's "Getting Started" section in
-// `apps/tomo/book.toml`.
 StartChapter = "01-installing"
 
 start_href(c: Copy, up: str) -> str =>
@@ -698,18 +593,11 @@ ghost_btn() -> str =>
         ++ " text-inherit hover:bg-zinc-100 dark:hover:bg-zinc-900"
         ++ " focus:underline"
 
-// A code block is wide and pre-formatted, so it scrolls inside itself rather
-// than making the page scroll sideways on a phone.
-//
-// `code-dark` is not decoration: this panel is dark under both colour schemes,
-// so it has to ask for the dark syntax palette rather than let the scheme pick.
 code_panel(src: str, lang: str) -> str =>
     pre(class="code-dark bg-zinc-950 dark:bg-black text-zinc-100 rounded-lg p-5"
               ++ " overflow-x-auto text-[0.85rem] leading-relaxed m-0"
               ++ " border border-zinc-800 min-w-0",
         code(class="font-mono language-" ++ lang, highlight(lang, src)))
-
-// ---- the strip that puts it in a box ----------------------------------------
 
 spec_strip(c: Copy) -> str =>
     section(class="border-y border-zinc-200 dark:border-zinc-800"
@@ -722,13 +610,8 @@ fact_cell(f: Fact) -> str =>
         div(class=fact_label(), escape_html(f.label))
         div(class="mt-1 font-medium", escape_html(f.value)))
 
-// Shared with the benchmark section's provenance cells, which are the same kind
-// of thing said in the same voice: two of them drifted apart when they were two
-// strings.
 fact_label() -> str =>
     "text-[0.75rem] uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
-
-// ---- features ---------------------------------------------------------------
 
 features(c: Copy) -> str =>
     section(class=wrap() ++ " py-16",
@@ -754,38 +637,18 @@ feature_card(f: Feature, src: str) -> str =>
                   ++ " text-[0.8rem] m-0 min-w-0",
             code(class="font-mono language-maca", highlight("maca", src))))
 
-// ---- benchmarks -------------------------------------------------------------
-//
-// Every figure in this section is read out of the harness's own output at build
-// time. Nothing is transcribed: the kernels, their order, the family each
-// belongs to, the workload each was given and the language names all come from
-// `apps/bench/run`, and each number is a median `bench/time` computes from the
-// samples `bench/store` read back. A benchmark page whose numbers were typed in
-// is a page that is wrong one run later and says nothing about when.
-
 BenchData = "apps/bench/results.json"
 
-// The harness writes its rendered tables beside the data, and the machine it
-// measured on is stated there and nowhere else, which is why the host is read
-// out of a Markdown file rather than asked of the host: this page is built
-// wherever it is built, the numbers were not, and `uname` here would quietly
-// relabel someone else's measurements as ours.
 BenchReport = "apps/bench/results.md"
 
 ReproCommand = "maca run apps/bench/run.maca"
 
-// How each contender was built. Beside the numbers, because a benchmark without
-// its flags is a rumour. Not translated: these are program names and flags.
 Toolchains = "Maca `maca build` → `cc -O2`, C `cc -O2`, Rust `rustc -O`,"
     ++ " Go `go build`, JS `node`, Python `python3`"
 
-// The two contenders this page reads by name. Maca compiles through C, so C is
-// the ceiling, and every ratio here is over it.
 MacaLang = "Maca"
 BaseLang = "C"
 
-// The stored run. `main` calls this once and threads it into every page: `load`
-// parses the whole document, and the section asks it dozens of questions.
 bench_runs() -> Result[] =>
     load(BenchData)
 
@@ -795,9 +658,6 @@ family_kernels(f: Family) -> str[] =>
         Compute   => compute_kernels()
     }
 
-// The median of the samples one kernel took in one language, or a negative
-// number when the run holds no such case. A toolchain the measuring host did
-// not have is a hole in the data, and a hole is not a zero.
 timing(rs: Result[], algo: str, lang: str) -> float {
     at = find(rs, case_name(algo, lang))
 
@@ -808,7 +668,6 @@ timing(rs: Result[], algo: str, lang: str) -> float {
     }
 }
 
-// How many times C's time Maca took, or 0.0 when either side is missing.
 ratio(rs: Result[], algo: str) -> float {
     mine = timing(rs, algo, MacaLang)
     base = timing(rs, algo, BaseLang)
@@ -820,12 +679,6 @@ ratio(rs: Result[], algo: str) -> float {
     }
 }
 
-// Where Maca landed on one kernel.
-//
-// The threshold is `bench/compare`'s `Tolerance`: the fraction a timing has to
-// move before it counts as having moved at all. Two runs of the same binary on
-// the same machine routinely disagree by less than that, so calling a 2%
-// difference a win would be reading noise out loud.
 standing(rs: Result[], algo: str) -> Standing {
     r = ratio(rs, algo)
 
@@ -847,9 +700,6 @@ is_behind(rs: Result[], algo: str) -> bool =>
     }
 
 /// The kernels Maca is slower than C on, in the harness's order.
-///
-/// Public because the page makes a claim about them in prose, and the suite
-/// checks that claim against this.
 losses(rs: Result[]) -> str[] =>
     kept(rs, kernels(), 0, [])
 
@@ -863,8 +713,6 @@ kept(rs: Result[], ks: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-// What one language printed for one kernel, or 0 when it did not run it. Every
-// kernel here answers with a large number, so 0 is safe as "no case".
 answer(rs: Result[], algo: str, lang: str) -> int {
     at = find(rs, case_name(algo, lang))
 
@@ -875,9 +723,6 @@ answer(rs: Result[], algo: str, lang: str) -> int {
     }
 }
 
-// Did every language that ran this kernel compute the same thing? The harness
-// checks this while it measures; this checks the file it wrote, because the
-// claim is made here.
 verified(rs: Result[], algo: str) -> bool {
     want = answer(rs, algo, MacaLang)
 
@@ -899,8 +744,6 @@ agree(rs: Result[], algo: str, ls: str[], i: int, want: int) -> bool {
 all_verified(rs: Result[]) -> bool =>
     unverified(rs, kernels(), 0, []).length() == 0
 
-// The kernels whose columns disagree, named, so that a page which cannot make
-// the claim says which kernel took it away instead of dropping the line.
 disagreeing(rs: Result[]) -> str =>
     unverified(rs, kernels(), 0, []).join(", ")
 
@@ -914,9 +757,6 @@ unverified(rs: Result[], ks: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-// How many times each contender was run. Read from the data rather than stated,
-// because the harness takes `--runs N`: a page claiming five samples over a file
-// holding one is a page telling a small lie about its own evidence.
 timed_runs(rs: Result[]) -> int {
     if rs.length() == 0 {
         0
@@ -934,8 +774,6 @@ bench_host() -> str {
 
     stated
 }
-
-// ---- the benchmark section --------------------------------------------------
 
 bench_band(c: Copy, rs: Result[]) -> str =>
     section(id="benchmarks",
@@ -958,9 +796,6 @@ family_group(c: Copy, rs: Result[], f: Family) -> str =>
         div(class="mt-5 grid gap-5",
             family_kernels(f).map(k => kernel_row(c, rs, k)).join("")))
 
-// One kernel: what it is, where Maca landed, and the two bars that say so. The
-// pair is scaled to the slower of the two, so the longer bar is always the full
-// track and the shorter one is the ratio, drawn.
 kernel_row(c: Copy, rs: Result[], algo: str) -> str {
     mine = timing(rs, algo, MacaLang)
     base = timing(rs, algo, BaseLang)
@@ -983,8 +818,6 @@ verdict_chip(c: Copy, rs: Result[], algo: str) -> str =>
          escape_html(ratio_text(rs, algo)
                      ++ standing_of(c, standing(rs, algo))))
 
-// `×2.7 `. The trailing space is here rather than in the copy because there is
-// nothing to separate when there is no ratio to state.
 ratio_text(rs: Result[], algo: str) -> str {
     r = ratio(rs, algo)
 
@@ -995,9 +828,6 @@ ratio_text(rs: Result[], algo: str) -> str {
     }
 }
 
-// The only colour on the page, spent on the only thing a reader must not miss:
-// the kernel where Maca is behind. The word beside it says the same, so the
-// colour is not carrying the meaning by itself.
 mine_tone(rs: Result[], algo: str) -> str {
     if is_behind(rs, algo) {
         "bg-amber-500 dark:bg-amber-400"
@@ -1014,13 +844,6 @@ chip_tone(rs: Result[], algo: str) -> str {
     }
 }
 
-// A bar's length is a measurement, not a design decision, so it is an inline
-// `width` rather than a utility class. `styles()` generates rules for the class
-// strings it can see in the source, so a class assembled at run time
-// (`"w-[" ++ str(pct) ++ "%]"`) would reach the browser with no rule behind it
-// and the bar would be invisible, silently, which is the failure mode this
-// whole site is checked for. The track is a flex child, so the percentage is a
-// percentage of whatever width the phone or the desktop left for it.
 bar_row(who: str, ms: float, worst: float, tone: str) -> str =>
     div(class="flex items-center gap-3",
         span(class="w-[3.2rem] shrink-0 text-[0.78rem] text-zinc-500"
@@ -1032,9 +855,6 @@ bar_row(who: str, ms: float, worst: float, tone: str) -> str =>
         span(class="w-[4.6rem] shrink-0 text-right font-mono tabular-nums"
                    ++ " text-[0.78rem]", escape_html(ms_text(ms))))
 
-// A bar as a percentage of its track, against the slower time on the row. The
-// floor is 2%: a bar rounded down to nothing reads as missing data rather than
-// as a small number.
 bar_width(ms: float, worst: float) -> int {
     if ms <= 0.0 || worst <= 0.0 {
         0
@@ -1053,16 +873,10 @@ ms_text(ms: float) -> str {
     }
 }
 
-// The whole measurement, every language, in the harness's order. The bars above
-// are the argument; this is the data they were read off, and it is on the page
-// so that a reader who suspects the argument of picking its comparisons can
-// check without cloning anything.
 bench_table(c: Copy, rs: Result[]) -> str =>
     div(class="mt-10",
         p(class="text-[0.85rem] text-zinc-500 dark:text-zinc-400 m-0",
           prose(c.tbl_note))
-        // Wide by construction: eight columns of unbreakable numbers. It scrolls
-        // inside this box so the page never scrolls sideways on a phone.
         div(class="mt-3 overflow-x-auto",
             table(class="w-full border-collapse text-[0.82rem]",
                 thead(tr(head_cell(c.tbl_kernel) ++ head_cell(c.tbl_workload)
@@ -1085,8 +899,6 @@ body_cell() -> str =>
     "border-b border-zinc-100 dark:border-zinc-900 px-3 py-2 align-top"
         ++ " whitespace-nowrap"
 
-// The median and how many times C's time it was, as text. Not a bar: eight
-// columns of bars at phone width is a picture of nothing.
 lang_cell(rs: Result[], algo: str, lang: str) -> str =>
     td(class=body_cell() ++ " font-mono tabular-nums " ++ cell_tone(lang),
        escape_html(cell_text(rs, algo, lang)))
@@ -1112,9 +924,6 @@ cell_text(rs: Result[], algo: str, lang: str) -> str {
     }
 }
 
-// Where the numbers came from and how to get your own. A benchmark without its
-// machine and its flags is not reproducible, and one nobody can reproduce is one
-// nobody has to believe.
 bench_provenance(c: Copy, rs: Result[]) -> str =>
     div(class="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800",
         div(class="grid gap-5 sm:grid-cols-2 md:grid-cols-3",
@@ -1129,16 +938,11 @@ bench_provenance(c: Copy, rs: Result[]) -> str =>
 bench_doc(file: str) -> str =>
     Repo ++ "/blob/main/apps/bench/" ++ file
 
-// A fact whose value is prose rather than a phrase: two of these carry a
-// command, and a command that renders as running text is a command nobody can
-// pick out of the line.
 prov_cell(f: Fact) -> str =>
     div(class="min-w-0",
         div(class=fact_label(), escape_html(f.label))
         div(class="mt-1 text-[0.85rem] text-zinc-600 dark:text-zinc-400",
             prose(f.value)))
-
-// ---- targets ----------------------------------------------------------------
 
 targets_band(c: Copy) -> str =>
     section(class="border-t border-zinc-200 dark:border-zinc-800",
@@ -1152,12 +956,6 @@ target_chip(t: str) -> str =>
     span(class="inline-block px-3 py-1 rounded-full text-[0.85rem] font-mono"
                ++ " border border-zinc-300 dark:border-zinc-700", escape_html(t))
 
-// ---- install ----------------------------------------------------------------
-
-// The one command, and a link to the chapter that carries the rest of the
-// story. What used to be duplicated here was the *instructions*; a single
-// copyable line is not a second place to update, and `install.sh` is checked
-// against this URL by the suite either way.
 install_band(c: Copy, up: str) -> str =>
     section(id="install", class="border-t border-zinc-200 dark:border-zinc-800"
                                 ++ " bg-zinc-50 dark:bg-zinc-900",
@@ -1167,8 +965,6 @@ install_band(c: Copy, up: str) -> str =>
             p(class="mt-4 text-[0.9rem] m-0",
               a(class="underline text-inherit", href=start_href(c, up),
                 escape_html(c.install_more)))))
-
-// ---- honest limits ----------------------------------------------------------
 
 limits(c: Copy) -> str =>
     section(class=wrap() ++ " py-14",
@@ -1190,11 +986,6 @@ site_footer(c: Copy) -> str =>
               a(class="underline text-inherit", href=Repo,
                 "github.com/pleahmacaka/macalang"))))
 
-// ---- copy as markup ---------------------------------------------------------
-
-// A sentence of copy, where a backtick span is a piece of code. `--target nix`
-// is a flag, and printing the backticks around it is worse than not marking it
-// at all, so the one bit of markup the copy uses is the one it renders.
 prose(s: str) -> str {
     parts = s.split("`")
 
@@ -1215,8 +1006,6 @@ spans(parts: str[], i: int, out: str) -> str {
         spans(parts, i + 1, out ++ escape_html(parts.get(i)))
     }
 }
-
-// ---- entry ------------------------------------------------------------------
 
 main(args: str[]) -> int {
     out = if args.length() > 0 { args.get(0) } else { "apps/tomo/site" }
@@ -1252,14 +1041,6 @@ write_langs(out: str, cs: Copy[], i: int, rs: Result[]) -> int {
     }
 }
 
-// A write that isn't checked is a build that reports success having produced
-// nothing: the directory may not exist, or the disk may be full, and
-// `write_file` says neither.
-//
-// Checked against the length written, not against zero. The default output
-// directory always already holds the previous build's pages, so "the file is
-// non-empty" was satisfied by the file that was there before: three failed
-// writes reported three files written.
 write_page(path: str, markup: str) -> int {
     write_file(path, markup)
 

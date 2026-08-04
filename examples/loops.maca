@@ -1,5 +1,3 @@
-// Imperative loops: `while`, `break`, `continue`, and reassignment.
-
 sum_to(n: int) -> int {
     acc = 0
     i = 1

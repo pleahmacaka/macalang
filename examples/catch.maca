@@ -1,6 +1,3 @@
-// `try` / `reify` catches a failure so execution can continue.
-// `fail` inside a `try` is caught (no exit); an uncaught `fail` exits 1.
-
 boom() -> int {
     fail "kaboom"
     0

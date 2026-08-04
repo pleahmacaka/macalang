@@ -1,53 +1,28 @@
-// A `{` after a function's `=>`, and a record literal meeting the record type
-// it is written into.
-//
-// Two defects met here. `f() -> int => { a = 1 \n a }` was read as a record
-// literal, so the block's statements became fields: a duplicate `a` key on the
-// JS backend and a mismatch against `{ a: any }` natively, about a record
-// nobody wrote. And a declared `Point` never unified with a structurally
-// identical `{ x = 5, y = 6 }`, so the two halves the language already had
-// could not be put together.
-//
-// The values are what this file asserts. The refusals (an arrow body that reads
-// both ways, a literal missing a field) are about a program that must not
-// compile, so they live in the Rust runner beside it.
-
 Point = { x: int, y: int }
 Line = { a: Point, b: Point }
 Named = { at: Point, label: str }
 
-// The block form, one statement.
 one() -> int => {
     41 + 1
 }
 
-// The block form, several statements, ending in the value.
 several() -> int => {
     a = 1
     b = a + 1
     a + b * 20
 }
 
-// A block that reassigns a name it bound and then reads it.
-//
-// The repeated name is the second piece of evidence, because no record has two
-// `a` fields, but the trailing bare `a` is what settles this one. The shape
-// where the repetition is the *only* evidence has no final expression, so it
-// has no value to assert on and is covered by `crates/parser/tests/parse.rs`.
 reassigning() -> int => {
     a = 1
     a = a + 6
     a
 }
 
-// A block whose value is a string, so a wrong reading cannot pass by accident
-// on an integer.
 greeting(who: str) -> str => {
     head = "hello, "
     head ++ who
 }
 
-// The record body, which a comma separates the way no block does.
 origin() -> Point => { x = 0, y = 0 }
 
 corner() -> Point => {
@@ -55,10 +30,8 @@ corner() -> Point => {
     y = 4
 }
 
-// The same literal reaching a named record through a parameter.
 manhattan(p: Point) -> int => p.x + p.y
 
-// And through a nested field and a list element.
 diagonal(l: Line) -> int => manhattan(l.b) - manhattan(l.a)
 
 total(ps: Point[]) -> int {
@@ -114,8 +87,6 @@ test_a_literal_becomes_the_record_type_a_list_element_names() {
     assert_eq(str(total(ps)), "10", "and the list is a `Point[]`")
 }
 
-// A record whose fields are not all the same type, so a wrong field order in
-// the emitted struct is a wrong answer rather than a coincidence.
 test_a_literals_fields_land_in_the_right_slots() {
     n: Named = { at = { x = 7, y = 8 }, label = "corner" }
 
@@ -123,8 +94,6 @@ test_a_literals_fields_land_in_the_right_slots() {
     assert_eq(str(n.at.y), "8", "and the nested record beside it")
 }
 
-// The named spelling still means what it always did, and the two are the same
-// type: a value built one way passes where the other is wanted.
 test_the_named_and_anonymous_spellings_are_one_type() {
     named = Point { x = 2, y = 3 }
     anon: Point = { x = 2, y = 3 }
@@ -134,8 +103,6 @@ test_the_named_and_anonymous_spellings_are_one_type() {
     assert_eq(str(manhattan(named) - manhattan(anon)), "0", "and they agree")
 }
 
-// `with` is declared on the record, so a literal that became a `Point` can be
-// updated by it. A structural lookalike could not.
 test_a_literal_that_became_a_record_can_be_updated() {
     p: Point = { x = 1, y = 1 }
     moved = p with { y = 41 }

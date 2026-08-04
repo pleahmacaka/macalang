@@ -1,13 +1,8 @@
-// First-class functions + the list stdlib. Lambdas capture their environment
-// (`k` below), and `.map`/`.filter`/`.reduce`/`.sort` and friends are UFCS
-// methods on any array.
-
 square(n: int) -> int => n * n
 
 main() -> int {
     xs = 5, 3, 1, 4, 2
 
-    // `reduce` takes a seed and a two-parameter lambda; the others take one.
     k = 10
     shifted = xs.map(v => v + k)
     squares = xs.map(v => square(v))

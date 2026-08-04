@@ -1,16 +1,3 @@
-//! Records on the JVM: naming, constructor order, and field reads.
-//!
-//! A Java `record` keeps its components private and its constructor is
-//! positional, and neither of those matched what the emitter did. The values
-//! were passed in the order the literal wrote them, so `{ y = 2, x = 1 }` became
-//! `Point(2, 1)` with the fields swapped and nothing saying so, and a field read
-//! emitted `p.x` where a record exposes `p.x()`.
-//!
-//! The third case came from the checker learning to unify an anonymous literal
-//! with a named record of the same shape: the emitter's advice to "declare a
-//! record type" was impossible to follow on a program where the record was
-//! declared and the literal written straight into it.
-
 use std::process::Command;
 
 fn emit(src: &str, class: &str) -> Result<String, Vec<String>> {
@@ -80,9 +67,6 @@ fn run(src: &str, class: &str) -> Option<Vec<String>> {
 
 #[test]
 fn a_record_constructor_follows_the_declaration_not_the_literal() {
-    // A Java record's constructor is positional. Passing the values in the order
-    // they were written put `{ y = 2, x = 1 }` into `Point(2, 1)`, so the fields
-    // were swapped and nothing said so.
     let src = "\
 Point = { x: int, y: int }
 
@@ -102,7 +86,6 @@ main() -> int {
 
 #[test]
 fn a_record_field_is_read_through_its_accessor() {
-    // A Java record keeps its components private, so `p.x` does not compile.
     let src = "\
 Point = { x: int, y: int }
 
@@ -143,7 +126,6 @@ main() -> int {
 
 #[test]
 fn a_literal_missing_a_declared_field_is_refused() {
-    // There is no value to pass for the component the literal never wrote.
     let msg = refused(
         "Point = { x: int, y: int }\n\nhalf() -> Point => Point { x = 1 }\n\nmain() -> int => 0\n",
         "M",

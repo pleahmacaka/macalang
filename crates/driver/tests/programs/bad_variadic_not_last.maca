@@ -1,9 +1,3 @@
-// A variadic parameter has to be last.
-//
-// The trailing arguments are collected into it, so a parameter after it could
-// not be told from one more of them: in `odd(1, 2, "x")` nothing says where the
-// collection stops.
-
 odd(...rest: int, tail: str) -> int => rest.length()
 
 main() -> int {

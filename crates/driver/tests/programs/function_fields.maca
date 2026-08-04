@@ -1,11 +1,3 @@
-// A function kept in a record field, and called out of it.
-//
-// A function passed as an argument needs no annotation: an unannotated
-// parameter that is called in the body is one. A function *stored* does need
-// one, because a field is declared before anything calls it. `(T, U) -> R` is
-// how that is written, and this file is the set of shapes it has to support:
-// the route table, the reducer, the builder, the lambda kept for later.
-
 Route = { path: str, handle: (str) -> str }
 
 Reducer = { name: str, step: (int, int) -> int }
@@ -26,13 +18,8 @@ mul(a: int, b: int) -> int => a * b
 
 page(q: str) -> Res => Res { code = 200, body = "<h1>{q}</h1>" }
 
-// A closure reached through an *unannotated* parameter says it returns `int`,
-// because that was inferred from being called rather than written down. What
-// the caller expects has to win, or a record comes back as its address.
 answer(handler, q: str) -> Res => handler(q)
 
-// The shape the whole feature exists for: a table of routes, each naming what
-// answers it, walked until one matches.
 pick(rs: Route[], path: str, q: str, i: int) -> str {
     if i >= rs.length() {
         "404"
@@ -78,8 +65,6 @@ test_a_field_takes_two_arguments() {
     assert_eq(str(fold_with(product, [1, 2, 3, 4], 1)), "24", "multiplied")
 }
 
-// The return type is declared, so what comes back is a record rather than the
-// integer everything crosses the closure boundary as.
 test_a_field_may_return_a_record() {
     m = Maker { build = page }
     r = m.build("Title")
@@ -102,7 +87,6 @@ test_a_field_holding_a_function_can_be_replaced() {
     assert_eq(second.handle("q"), "about:q", "and the update took")
 }
 
-// A lambda in a field captures the same way a lambda anywhere does.
 test_a_captured_value_survives_being_stored() {
     prefix = "pre-" ++ "fix"
     r = Route { path = "/cap", handle = q => prefix ++ ":" ++ q }
@@ -112,9 +96,6 @@ test_a_captured_value_survives_being_stored() {
     assert_eq(filler, "AAAAAAAA", "and the string built afterwards")
 }
 
-// The hint a stored lambda gets has to carry *every* parameter, not only the
-// first: this one's second parameter is a string, and typed as an integer it
-// renders an address.
 test_a_stored_lambda_gets_all_its_parameter_types() {
     t = Tagger { tag = (n, s) => "{s}#{n}" }
 

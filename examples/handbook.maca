@@ -1,14 +1,3 @@
-// Every runnable claim The Maca Handbook makes, in one program.
-//
-// The handbook (apps/tomo/book/) teaches the language by example; this file is
-// those examples, executed. Writing the book turned up five real compiler bugs
-// (a discarded arrow body, an uninferred return type, list methods rejecting a
-// named function, a missing `maca test`, and no empty-list pattern), so the
-// examples are kept here and gated. Documentation that isn't run is a claim,
-// not a fact.
-
-// --- ch2: values and types -------------------------------------------------
-
 Point = {
     x: int
     y: int
@@ -23,14 +12,10 @@ sides(s: Shape) -> int =>
         Triangle => 3
     }
 
-// --- ch3: functions and control flow ---------------------------------------
-
 is_even(n: int) -> bool => n % 2 == 0
 
-// a function with no declared return type: its arrow body *is* its value
 inc(x) => x + 1
 
-// an unannotated parameter that is called is inferred to be a function
 run_twice(f, x) => f(f(x))
 
 sum_to(n: int) -> int {
@@ -48,12 +33,9 @@ describe(xs: int[]) -> str =>
         [x, ..rest] => "head {x}, then {rest.length()} more"
     }
 
-// --- ch7: errors -----------------------------------------------------------
-
 divide(a: int, b: int) -> int =>
     b == 0 ? fail "division by zero" : a / b
 
-// `?` propagates a failure to the caller
 checked(n: int) -> int {
     v = divide(84, n)?
     v
@@ -71,13 +53,10 @@ main() -> int {
 
     info("sides: {sides(Square)}")
 
-    // A named function goes where a lambda goes. The list methods used to
-    // reject one, which is a bug the book found by writing the example.
     xs = [10, 20, 30]
     info("list: {xs.first()} {xs.length()} {xs.reduce(0, (a, b) => a + b)}")
     info("named fn: {[1, 2, 3, 4].filter(is_even).length()}")
 
-    // inferred return types, including through a higher-order parameter
     info("inferred: {inc(41)} {run_twice(n => n + 1, 40)}")
 
     info("sum_to: {sum_to(10)}")
@@ -85,40 +64,25 @@ main() -> int {
     info("ternary: {score >= 60 ? "pass" : "fail"}")
     info("patterns: {describe([])} / {describe([7])} / {describe([1, 2, 3])}")
 
-    // errors: `?` propagates; `try` yields the failure's *message*, and the
-    // empty string when nothing failed, not the success value.
     info("propagate: {checked(2)}")
     info("try: [{try divide(10, 0)}] [{try divide(10, 2)}]")
 
     info("strings: {"ab".repeat(3)} {"7".pad_start(3, "0")} {"A,B".split(",").length()}")
 
-    // a literal brace: doubled, or backslash-escaped. Both spell the same thing
-    // ("{" alone would open an interpolation the quote never closes: an error).
     info("braces: {{}} \{\}")
 
-    // format specs: [align][0][width][.precision], desugared to ordinary calls
     pi = 3.14159265
     info("fmt: [{pi:.2}] [{42:>6}] [{"ok":<4}] [{"ok":^6}] [{7:03}]")
 
-    // ch15: user interfaces. On native an element renders to HTML text. Named
-    // arguments become attributes, positional ones children.
-    // (`p(…)` would be the local `p` above: a binding shadows a tag, which is
-    // what stops a program's own `label`/`code`/`main` becoming markup.)
     info("ui: {article(class="prose", h1("Hi") span("Body"))}")
-    // a hyphenated attribute is written with the hyphen (attached `-` is part
-    // of an identifier); a bool decides whether the attribute exists at all;
-    // `element` takes its tag as a value.
     info("attrs: {div(data-kind="note", hidden=false, "seen")}")
     info("flag: {details(open=true, summary("more") "text")}")
     info("dyn: {element("h" ++ 2, id="s", "Deep")}")
-    // `styles()` is the stylesheet for the utilities this program writes, and
-    // nothing else: the `prose` class above is not a utility, so no rule.
     sheet = styles()
     info("styles: {sheet.contains(".font-bold")} {sheet.contains(".text-9xl")}")
 
     0
 }
 
-// `class=` strings anywhere in the module are collected, not just at use sites.
 button_class() -> str =>
     "font-bold hover:bg-zinc-100 dark:bg-zinc-800 md:px-4"

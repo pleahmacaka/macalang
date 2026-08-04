@@ -1,6 +1,3 @@
-// Functional record update: `base with { field = value }` yields a copy of the
-// record with the named fields overwritten; the original binding is unchanged.
-
 Config = {
     host: str
     port: int

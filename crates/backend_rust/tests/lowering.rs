@@ -1,15 +1,3 @@
-//! What the rust backend lowers, and what it refuses by name.
-//!
-//! Two catch-alls made wrong answers look like right ones. `expr` ended in
-//! `Default::default()`, which type-checks wherever a value is wanted, so
-//! `break` inside a `while` became a value and the loop could not terminate.
-//! `pat_match` ended in `_`, so a float, record or list pattern became a
-//! wildcard; rustc reports an *unreachable pattern warning* for the arms it
-//! swallows, and the build succeeds with the first arm always winning.
-//!
-//! Where rustc is on PATH the emitted program is compiled and run, because
-//! compiling is not answering.
-
 use std::process::Command;
 
 fn emit(src: &str) -> Result<String, Vec<String>> {
@@ -109,7 +97,6 @@ fn break_and_continue_are_lowered_not_defaulted() {
 
 #[test]
 fn a_loop_with_break_terminates_and_answers() {
-    // The whole point: as `Default::default()` this program hangs.
     let Some(out) = run(BREAKS) else { return };
     assert_eq!(out.lines().collect::<Vec<_>>(), vec!["5", "12"]);
 }
@@ -137,7 +124,6 @@ main() -> int {
 
 #[test]
 fn a_float_pattern_is_refused_rather_than_becoming_a_wildcard() {
-    // As two `_` arms this compiles with only a warning and always answers "a".
     let msg = refused(
         "pick(x: float) -> str {\n    match x {\n        1.5 => \"a\"\n        2.5 => \"b\"\n        _ => \"c\"\n    }\n}\n",
     );
@@ -158,7 +144,6 @@ fn a_list_pattern_is_refused_rather_than_becoming_a_wildcard() {
 
 #[test]
 fn a_refusal_message_has_no_stray_indentation() {
-    // A wrapped message read as one run-on line with a gap in the middle.
     let msg = refused(
         "pick(x: float) -> str {\n    match x {\n        1.5 => \"a\"\n        _ => \"c\"\n    }\n}\n",
     );
@@ -167,7 +152,6 @@ fn a_refusal_message_has_no_stray_indentation() {
 
 #[test]
 fn sum_variants_and_guards_still_lower() {
-    // The refusals must not have swallowed the patterns that do work.
     let src = "\
 Shape = Circle(int) | Rect(int, int)
 
@@ -189,10 +173,6 @@ main() -> int {
 
 #[test]
 fn an_anonymous_literal_takes_the_declared_records_name() {
-    // The checker unifies a literal with a named record of the same shape, so
-    // this type-checks. Rust has no structural typing, so emitting the struct
-    // synthesized for the shape gave `expected Point, found MacaAnon_x_int_y_int`,
-    // a rustc error about generated code the author never wrote.
     let src = "\
 Point = { x: int, y: int }
 
@@ -217,8 +197,6 @@ main() -> int {
 
 #[test]
 fn a_shape_two_records_share_is_refused_by_name() {
-    // There is no Rust type that is both, so rustc would have named the
-    // synthesized struct instead of the records that collide.
     let msg = refused(
         "Point = { x: int, y: int }\nPair = { x: int, y: int }\n\ncorner() -> Point {\n    { x = 1, y = 2 }\n}\n\nmain() -> int => 0\n",
     );

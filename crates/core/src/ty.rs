@@ -1,10 +1,3 @@
-//! Types, unification, and effect sets.
-//!
-//! Unification is deliberately *gradual*: `Any` unifies with anything and never
-//! produces an error. That is the escape hatch that lets the checker stay
-//! optimistic about unknown stdlib/foreign values (their boundary type is
-//! `any`) while still catching a genuine mismatch between two concrete types.
-
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -15,12 +8,10 @@ pub enum Ty {
     Bool,
     Bytes,
     Unit,
-    /// Named nominal type with optional args: `Status`, `Task`, `Array T`,
-    /// `Map k v`, sized numerics (`i32`), SIMD vectors (`f32x8`), `Element`…
+    /// Named nominal type with optional args.
     Con(String, Vec<Ty>),
     Fn(Vec<Ty>, Box<Ty>),
-    /// Structural record. `open` records tolerate extra/missing fields (row
-    /// polymorphism, lightweight): field access always yields an open record.
+    /// Structural record.
     Rec {
         fields: BTreeMap<String, Ty>,
         open: bool,
@@ -37,10 +28,6 @@ impl Ty {
 }
 
 /// A (rank-1) polymorphic type scheme: `ty` with `vars` universally quantified.
-/// Function signatures are generalized into schemes at declaration and
-/// *instantiated* with fresh variables at each use site. That is what makes a
-/// generic like `id(x: a) -> a` usable at `int` and `str` in the same program
-/// without the two uses colliding.
 #[derive(Clone, Debug)]
 pub struct Scheme {
     pub vars: Vec<u32>,
@@ -57,14 +44,7 @@ impl Scheme {
     }
 }
 
-/// Is `n` a type *variable* by the language's naming convention? Nominal types
-/// are capitalized (`Task`, `Array`), primitives are keywords (`int`, `str`),
-/// and sized-numeric / SIMD lane types start with `i`/`u`/`f` + a digit
-/// (`i32`, `f32x8`). Everything else lowercase (`a`, `k`, `value`) is a
-/// type variable.
-///
-/// The C and JVM backends monomorphize against the same rule, so it is spelled
-/// once, beside the AST all three read.
+/// Is `n` a type *variable* by the language's naming convention?
 pub use maca_parser::ast::is_type_var_name;
 
 /// Union-find inference context.
@@ -80,8 +60,7 @@ impl Infer {
         Ty::Var(id)
     }
 
-    /// Instantiate a scheme: give each quantified variable a fresh copy so a
-    /// polymorphic function can be used at many types independently.
+    /// Instantiate a scheme: give each quantified variable a fresh copy so a polymorphic function can be used at many types independently.
     pub fn instantiate(&mut self, s: &Scheme) -> Ty {
         if s.vars.is_empty() {
             return s.ty.clone();
@@ -105,7 +84,7 @@ impl Infer {
         }
     }
 
-    /// Unify two types. Returns `Err` only on a concrete/concrete clash.
+    /// Unify two types.
     pub fn unify(&mut self, a: &Ty, b: &Ty) -> Result<(), String> {
         let a = self.resolve(a);
         let b = self.resolve(b);
@@ -114,7 +93,7 @@ impl Infer {
             (Ty::Var(i), Ty::Var(j)) if i == j => Ok(()),
             (Ty::Var(i), t) | (t, Ty::Var(i)) => {
                 if occurs(i, &t, self) {
-                    self.subst[i as usize] = Some(Ty::Any); // avoid infinite type
+                    self.subst[i as usize] = Some(Ty::Any);
                 } else {
                     self.subst[i as usize] = Some(t);
                 }
@@ -133,7 +112,6 @@ impl Infer {
                 Ok(())
             }
             (Ty::Opt(x), Ty::Opt(y)) => self.unify(&x, &y),
-            // nullable coercion: `T` unifies with `T?`
             (Ty::Opt(x), y) | (y, Ty::Opt(x)) => self.unify(&x, &y),
             (Ty::Fn(p1, r1), Ty::Fn(p2, r2)) if p1.len() == p2.len() => {
                 for (x, y) in p1.iter().zip(&p2) {
@@ -240,8 +218,6 @@ pub fn show(t: &Ty) -> String {
         Ty::Any => "any".into(),
     }
 }
-
-// ---- effects -------------------------------------------------------------
 
 /// Algebraic effect set: `io`, `net`, `os`, `async`, `exn`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

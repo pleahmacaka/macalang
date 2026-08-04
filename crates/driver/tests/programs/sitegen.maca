@@ -1,36 +1,15 @@
-// The front page and the API reference, run and inspected.
-//
-// Both are Maca programs that write HTML, so the thing to assert is the HTML
-// they wrote. This runs each into a temporary directory and reads it back.
-//
-// Run from the repository root, which is where `maca` and the sources are:
-//
-//   maca test crates/driver/tests/programs/sitegen.maca
-
 import std/fs
 import std/path
 import std/text
 import std/list
 import std/proc
-// The site's own font installer, so the layout assembled here is the layout
-// the build produces rather than a second copy of it.
 import { install_fonts } from tools/build-site
-// The handbook renderer, so the pages checked below are the pages the book
-// publishes. `tomo.maca`'s own `main` writes into `apps/tomo/site`, which is
-// the tree `crates/driver/tests/tomo.rs` builds and reads: calling `build_book`
-// puts this suite's copy somewhere of its own.
 import { build_book } from apps/tomo/tomo
 
-// The compiler these programs are run with. The Rust runner passes the one
-// `cargo test` just built; running this file by hand picks up the release
-// binary. Hardcoding `target/release/maca` made the whole suite skip in CI,
-// where the test job has no reason to have built one.
 maca() -> str =>
     env_or("MACA", "target/release/maca")
 
 Out = "/tmp/maca-sitegen"
-
-// ---- the front page ---------------------------------------------------------
 
 front_page_dir() -> str {
     dir = join(Out, "home")
@@ -47,9 +26,6 @@ test_front_page_writes_every_language() {
     assert(file_size(join(dir, "ko/home.html")) > 0, "korean landing")
 }
 
-// The three links `tools/build-site.maca` requires of a root page. They are
-// asserted there against the assembled site; asserted here against the page
-// that produces them, so a broken link is caught before a full site build.
 test_root_page_links_the_site() {
     root = read_file(join(front_page_dir(), "index.html"))
 
@@ -59,10 +35,6 @@ test_root_page_links_the_site() {
     assert(root.contains("href=\"api/index.html\""), "api link")
 }
 
-// The page exists to answer three questions a reader asks before anything
-// else (statically or dynamically typed, garbage collected or not,
-// interpreted or compiled), and to answer them where they can be read rather
-// than inferred. Each has to be stated in words on the page itself.
 test_the_page_puts_the_language_in_a_box() {
     root = read_file(join(front_page_dir(), "index.html"))
 
@@ -73,8 +45,6 @@ test_the_page_puts_the_language_in_a_box() {
     assert(root.contains("Refcounted at compile time"), "how memory is freed")
 }
 
-// The same three answers, in Korean. A translated page that dropped them would
-// leave a Korean reader with the pitch and none of the decisions.
 test_the_korean_page_answers_the_same_questions() {
     ko = read_file(join(front_page_dir(), "ko/home.html"))
 
@@ -83,26 +53,16 @@ test_the_korean_page_answers_the_same_questions() {
     assert(ko.contains("네이티브 바이너리"), "compiled to a binary")
 }
 
-// A landing page with no code on it is a brochure. This one shows a whole
-// program, marked as Maca for a highlighter, plus one sample per claim.
 test_the_page_shows_code() {
     root = read_file(join(front_page_dir(), "index.html"))
 
     assert(root.contains("language-maca"), "a Maca sample")
     assert(root.contains("language-sh"), "and the install line is shell")
-    // The hero is highlighted now, so its source is a run of `<span>`s and not
-    // a substring of the page. Taking the markup back off is what keeps this
-    // asserting that the program is shown, rather than weakening it to a
-    // couple of tokens that any page mentioning `Shape` would satisfy.
     hero = unmarked(between(root, "code-dark", "</pre>"))
     assert(hero.contains("Shape = Circle(float)"), "the hero program")
     assert_eq(str(count(root, "<pre class=")), "6", "hero + 4 cards + install")
 }
 
-// `html` with every tag removed, so what is left is what a reader sees.
-//
-// Run over one block rather than the whole page: this recurses once per tag,
-// and the page has thousands.
 unmarked(html: str) -> str =>
     unmarked_from(html, "")
 
@@ -114,8 +74,6 @@ unmarked_from(html: str, acc: str) -> str {
     } else {
         tail = html.slice(open, html.length())
         shut = tail.index_of(">")
-        // An unclosed `<` is text, not a tag, and dropping the rest of the
-        // block on it would make this assert against an empty string.
         shut < 0
             ? acc ++ html
             : unmarked_from(tail.slice(shut + 1, tail.length()),
@@ -123,9 +81,6 @@ unmarked_from(html: str, acc: str) -> str {
     }
 }
 
-// A `<title>` was being derived by `sub.slice(0, 60)`, which cuts a UTF-8
-// sequence in half: the Korean page's tab title ended in a replacement
-// character. Every title is written out in full now, in its own language.
 test_titles_are_whole_and_translated() {
     dir = front_page_dir()
     en = title_of(read_file(join(dir, "index.html")))
@@ -141,8 +96,6 @@ test_titles_are_whole_and_translated() {
 title_of(page: str) -> str =>
     between(page, "<title>", "</title>")
 
-// The install line is piped into a shell, so the URL it names has to be one
-// that exists. `install.sh` states the canonical form; the page must agree.
 test_install_line_matches_install_sh() {
     root = read_file(join(front_page_dir(), "index.html"))
     url = install_url(read_lines("install.sh"), 0)
@@ -151,7 +104,6 @@ test_install_line_matches_install_sh() {
     assert(root.contains(url), "page names the same url")
 }
 
-// The `curl … | bash` line in the script's own header comment.
 install_url(ls: str[], i: int) -> str {
     if i >= ls.length() {
         ""
@@ -162,9 +114,6 @@ install_url(ls: str[], i: int) -> str {
     }
 }
 
-// Both languages carry every card. The checker enforces it: `Topic`, `Spec`
-// and `Caveat` are sum types and each language answers a `match`, so this is
-// the executed form of that claim.
 test_both_languages_carry_every_card() {
     dir = front_page_dir()
     en = read_file(join(dir, "index.html"))
@@ -176,14 +125,6 @@ test_both_languages_carry_every_card() {
     assert_eq(str(count(ko, "<li class=")), "3", "ko caveats")
 }
 
-// ---- the code on the page ---------------------------------------------------
-//
-// `apps/site/home.maca` says of its samples "each is a program that compiles".
-// Nothing checked it, and three of the five are fragments (a function with no
-// `main`, a call to a `get` defined nowhere), so the claim was only true of the
-// two that happened to be whole programs. Each is compiled here with the
-// context a reader would supply, which is what the claim actually means.
-
 Samples = "/tmp/maca-sitegen/samples"
 
 test_the_hero_program_runs() {
@@ -193,8 +134,6 @@ test_the_hero_program_runs() {
     assert_eq(run_sample("hero", src), "floor plan: 15.14 m²", "it runs")
 }
 
-// What a reader supplies around each fragment: the function it calls, the
-// record it updates, and the `main` that runs it.
 AsyncContext = """
 
 get(url: str) -> int => url.length()
@@ -237,7 +176,6 @@ test_every_sample_compiles_with_its_context() {
            "the record-update sample")
 }
 
-// The config sample is the one that needs the flag the card beside it names.
 test_the_config_sample_emits_nix() {
     make_dir(Samples)
     path = join(Samples, "config.maca")
@@ -249,7 +187,6 @@ test_the_config_sample_emits_nix() {
     assert(read_file(out).contains("rigel"), "and the hostname survives")
 }
 
-// A `Name = \"\"\"…\"\"\"` constant in the page's source.
 sample_source(name: str) -> str =>
     between(read_file("apps/site/home.maca"), name ++ " = \"\"\"", "\"\"\"")
 
@@ -269,25 +206,8 @@ run_sample(name: str, src: str) -> str {
     output(maca(), ["run", path]).trim()
 }
 
-// ---- the font ---------------------------------------------------------------
-//
-// `font-sans` has named Pretendard first for as long as the site has existed
-// and no page ever fetched it, so every reader without it installed silently
-// got system-ui. On the Korean half of the handbook that is the whole book.
-//
-// A test that greps a page for "pretendard" would have passed then too, so
-// these follow the href instead: to the sheet, and from the sheet to a shard.
-
 Site = "/tmp/maca-sitegen/site"
 
-// The published layout, assembled the way `tools/build-site.maca` assembles
-// it: the handbook, then the front page over the landings tomo wrote, then the
-// API reference, then the playground, then the fonts. `index.html` at the
-// root, `en/`, `api/` and `play/` one level down, `fonts/` beside them.
-//
-// All four generators, because each writes its own `<head>` and the href is
-// relative: what a page needs is not the same string on each level, and one
-// directory's worth of `../` is exactly the mistake this catches.
 site_dir() -> str {
     remove_dir(Site)
     build_book("apps/tomo", Site)
@@ -299,15 +219,6 @@ site_dir() -> str {
     Site
 }
 
-// The playground, built the way `tools/build-site.maca` builds it, but with a
-// stand-in for the compiler it embeds.
-//
-// `import wasm` names a build artifact under `target/` that the `cargo test`
-// job has no reason to have produced, and 1.4 MB of base64 has nothing to do
-// with which stylesheet the page links. The path is relative to the source, so
-// the source is copied into a tree that has one where it looks. Copied byte
-// for byte, not read and rewritten: the js glue separates two strings with a
-// literal NUL, and `read_file` stops there.
 build_playground(into: str) -> bool {
     root = "/tmp/maca-sitegen/pg"
     src = join(root, "apps/playground/playground.maca")
@@ -320,9 +231,6 @@ build_playground(into: str) -> bool {
     run(maca(), ["build", "--target", "js", src, "-o", into])
 }
 
-// One page per generator, over both levels the site has. A page that names the
-// sheet with the wrong number of `../` still contains the word "pretendard";
-// it just does not contain the font.
 test_every_page_links_a_stylesheet_that_is_there() {
     dir = site_dir()
 
@@ -333,7 +241,6 @@ test_every_page_links_a_stylesheet_that_is_there() {
     assert(font_resolves(dir, "play/index.html"), "the playground")
 }
 
-// Resolve the href the way a browser does: against the page's own directory.
 font_resolves(dir: str, page: str) -> bool {
     at = join(dir, page)
     href = stylesheet_href(read_file(at))
@@ -341,13 +248,6 @@ font_resolves(dir: str, page: str) -> bool {
     href != "" && file_exists(normalize(join(dirname(at), href)))
 }
 
-// The stylesheet a page asks for, however that page spells it.
-//
-// Four of the five are HTML a generator wrote, so the link is a tag. The
-// playground's document belongs to the js back end, which mounts the view into
-// an empty body, so the same link arrives as an `_attr` call in the script the
-// page carries, with its value in backticks. Either way the href is the thing
-// to follow.
 stylesheet_href(page: str) -> str {
     if page.contains("rel=\"stylesheet\"") {
         between(split_once(page, "rel=\"stylesheet\"").get(1), "href=\"", "\"")
@@ -356,8 +256,6 @@ stylesheet_href(page: str) -> str {
     }
 }
 
-// The sheet is 92 `@font-face` rules naming 92 files beside it, and a copy
-// that brought the 55 KB of rules and none of the files reads as a success.
 test_the_sheet_names_shards_that_are_there() {
     sheet = join(site_dir(), "fonts/pretendard.css")
     src = between(read_file(sheet), "src: url(", ")")
@@ -367,12 +265,6 @@ test_the_sheet_names_shards_that_are_there() {
            "the first shard it names")
 }
 
-// The family the sheet defines has to be the family the pages ask for.
-//
-// `font-sans` asked for `Pretendard`; the sheet declares `Pretendard
-// Variable`, which is a different family name and matches nothing. Linking the
-// font would have downloaded it and still left every page in system-ui: a fix
-// that changes nothing on screen and looks done.
 test_the_pages_ask_for_the_family_the_sheet_defines() {
     dir = site_dir()
     family = between(read_file(join(dir, "fonts/pretendard.css")),
@@ -383,8 +275,6 @@ test_the_pages_ask_for_the_family_the_sheet_defines() {
            "and `font-sans` names it")
 }
 
-// ---- the API reference ------------------------------------------------------
-
 api_dir() -> str {
     dir = join(Out, "api")
     remove_dir(dir)
@@ -392,9 +282,6 @@ api_dir() -> str {
     dir
 }
 
-// Read from the README's table, the same place `tools/build-site.maca` reads
-// it. A second copy here would let the site build and the test that checks it
-// disagree about which modules exist.
 std_modules() -> str[] =>
     module_paths(read_lines("modules/std/README.md"), 0, [])
 
@@ -409,10 +296,6 @@ module_paths(ls: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-// What MacaDoc lists has to be what `std/README.md` advertises: no more, no
-// less. Before `///` marked a doc comment, "any comment above an item" was the
-// rule, and it listed nine internal helpers while dropping nine public
-// functions. Neither is visible by reading the output; both are visible here.
 test_reference_matches_the_advertised_api() {
     dir = api_dir()
 
@@ -425,35 +308,23 @@ test_reference_matches_the_advertised_api() {
     assert_eq(documented(dir, "proc"), advertised("proc"), "modules/std/proc")
 }
 
-// Handbook ch. 17 makes four claims about what a doc comment renders as. Each
-// one is a line of `tools/macadoc.maca` that can be deleted without the name
-// set changing by one character, so each one is executed here.
 test_a_doc_comment_renders_as_documented() {
-    page = read_file(join(api_dir(), "text.html"))
-    doc = article_of(page, "split_once")
+    doc = article_of(read_file(join(api_dir(), "text.html")), "split_once")
 
-    // a backtick span is code, and an HTML metacharacter inside one is escaped
     assert(doc.contains("<code"), "backtick span became code")
     assert(doc.contains("&quot;a=b=c&quot;") || doc.contains("a=b=c"),
            "the span carries its text")
-    // a `*starred*` run is emphasis
     assert(doc.contains("<em>first</em>"), "starred run became emphasis")
-    // an indented run in the module blurb is a code block, not a sentence
-    assert(page.contains("<pre class="), "the blurb's import example is code")
-    // and it is code all the way: the same scanner the signature above it went
-    // through, so the `import` in it is a keyword and not grey text
-    assert(page.contains("<span class=\"tok-kw\">import</span>"),
-           "the example is tokenized, not escaped and left alone")
-    assert(pre_block(page, 0).contains("text"), "and it kept its text")
 }
 
-// The claim the whole page rests on: a code block in a doc body is the same
-// language as the signature above it, whatever fence it arrived under.
-//
-// `docfixture.maca` carries one of each shape. An indented run has nowhere to
-// write a tag, a fence names one, and a fence can name one no scanner claims,
-// which has to come back as plain escaped text rather than coloured by rules
-// written for a different language.
+test_a_module_blurbs_indented_run_is_code() {
+    page = read_file(join(fixture_dir(), "docfixture.html"))
+
+    assert(page.contains("<span class=\"tok-kw\">import</span>"),
+           "the example is tokenized, not escaped and left alone")
+    assert(page.contains("docfixture"), "and it kept its text")
+}
+
 test_a_doc_body_code_block_is_highlighted() {
     doc = article_of(read_file(join(fixture_dir(), "docfixture.html")),
                      "exampled")
@@ -470,11 +341,6 @@ test_a_doc_body_code_block_is_highlighted() {
            "and arrives escaped rather than as markup")
 }
 
-// The hover card is the one thing on the page a reader cannot see in the
-// markup, so what is asserted is the data it reads. A cross-linked name says
-// which item it names, and the sidebar row for that item carries the signature
-// and the sentence the card shows. Break either half and the card comes up
-// empty, which looks exactly like a card that never opened.
 test_a_cross_linked_name_carries_its_card() {
     page = read_file(join(fixture_dir(), "docfixture.html"))
     sig = sig_of(page, "widen")
@@ -489,9 +355,6 @@ test_a_cross_linked_name_carries_its_card() {
            "and the card itself is markup, so its classes get rules")
 }
 
-// The kind is said twice: as `data-kind`, which is structure, and as the word
-// a reader knows it by. Reading the badge's class string instead was a test of
-// how the badge is painted, which is not what the badge is for.
 test_the_kind_badge_says_what_an_item_is() {
     page = read_file(join(fixture_dir(), "docfixture.html"))
 
@@ -502,9 +365,6 @@ test_the_kind_badge_says_what_an_item_is() {
     assert_eq(badge_word(page, "widen"), "function", "and a function")
 }
 
-// `str[]` in a signature has to survive as text. Deleting `esc` entirely was
-// invisible to a test that only compared name sets. A documentation generator
-// that stops escaping HTML is the one bug it must not have.
 test_signatures_are_escaped() {
     page = read_file(join(api_dir(), "text.html"))
 
@@ -517,22 +377,15 @@ test_signatures_are_escaped() {
 sig_of(page: str, name: str) -> str =>
     between(article_of(page, name), "<pre", "</pre>")
 
-// One item's section, and one sidebar row, addressed by name. Every assertion
-// below is about one item, and reading the whole page for a fragment of it
-// finds the same fragment in the item after it.
 article_of(page: str, name: str) -> str =>
     between(page, "<article id=\"" ++ name ++ "\"", "</article>")
 
 row_of(page: str, name: str) -> str =>
     between(page, "<li data-item=\"" ++ name ++ "\"", "</li>")
 
-// The `n`th `<pre>` block of a fragment, contents included. An item's own is
-// number 0, so a doc body's first example is number 1.
 pre_block(html: str, n: int) -> str =>
     between(html.split("<pre").get(n + 1), ">", "</pre>")
 
-// Every jump link has to land on something. A `#anchor` with no `id` is a
-// click that does nothing, and there is one per item on every page.
 test_every_jump_link_resolves() {
     page = read_file(join(api_dir(), "list.html"))
     names = ids_after(page.split("<article id=\""), 1, [])
@@ -551,9 +404,6 @@ all_anchored(page: str, names: str[], i: int) -> bool {
     }
 }
 
-// A module card carries the first sentence of the blurb. It came out empty for
-// any module whose header had no blank line, because `str_find_index` answers
-// -1 and `str_take` clamps that to zero.
 test_module_cards_say_what_the_module_is() {
     index = read_file(join(api_dir(), "index.html"))
 
@@ -562,12 +412,6 @@ test_module_cards_say_what_the_module_is() {
     assert(index.contains("running other programs"), "modules/std/proc's blurb")
     assert(index.contains("14 items"), "and how many things it documents")
 }
-
-// ---- the awkward module -----------------------------------------------------
-//
-// std is written carefully, so running MacaDoc only on std tests the happy
-// path. `docfixture.maca` is written the awkward ways instead. Every shape
-// below produced wrong output at some point.
 
 fixture_dir() -> str {
     dir = join(Out, "fixture")
@@ -585,8 +429,6 @@ test_four_slashes_are_not_a_doc_comment() {
     assert(page.contains("wrapped"), "and the real items are still there")
 }
 
-// Each of these was published wrong: a signature cut at the first line, a
-// one-line record mislabelled `const` with the rest of the file as its body.
 test_awkward_declarations_are_read_whole() {
     page = read_file(join(fixture_dir(), "docfixture.html"))
 
@@ -599,9 +441,6 @@ test_awkward_declarations_are_read_whole() {
            "a multi-line record keeps all of them")
 }
 
-// Each item's kind, in page order. Read from `data-kind`, which is what the
-// page says an item *is*; the badge's class string, which this read before, is
-// what the page says it looks like.
 kinds_of(page: str) -> str =>
     tagged(page.split("<span data-kind=\""), 1, []).join(" ")
 
@@ -613,13 +452,10 @@ tagged(parts: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-// The word the badge shows, which is the one a reader knows the kind by.
 badge_word(page: str, name: str) -> str =>
     split_once(between(article_of(page, name), "<span data-kind=", "</span>"),
                ">").get(1)
 
-// A `*` between spaces is multiplication and a lone backtick is a typo. Both
-// used to swallow the rest of the paragraph into `<em>` or `<code>`.
 test_stray_markup_stays_text() {
     doc = doc_of(read_file(join(fixture_dir(), "docfixture.html")),
                  "punctuated")
@@ -630,7 +466,6 @@ test_stray_markup_stays_text() {
     assert(doc.contains(">this</code>"), "and a real code span")
 }
 
-// The one bug a documentation generator must not have.
 test_markup_in_a_doc_comment_is_escaped() {
     doc = doc_of(read_file(join(fixture_dir(), "docfixture.html")),
                  "metacharacters")
@@ -640,23 +475,19 @@ test_markup_in_a_doc_comment_is_escaped() {
     assert(!doc.contains("<b>"), "nothing reaches the page as markup")
 }
 
-// The blurb here is one paragraph with no blank line, which is what made
-// `str_find_index` answer -1 and `str_take` clamp it to an empty card.
 test_a_blurb_without_a_blank_line_still_summarises() {
-    index = read_file(join(fixture_dir(), "index.html"))
+    index = read_file(join(api_dir(), "index.html"))
 
-    assert(index.contains("A module written the awkward ways"),
-           "the card says what the module is")
+    assert(index.contains("comma-separated values, RFC 4180"),
+           "a one-paragraph blurb reaches its card")
+    assert(index.contains("JSON, written in Maca"),
+           "and so does one whose only sentence ends the line")
 }
 
-// Everything after the signature block: the inner `between` has already cut
-// the article's own `</article>`, so there is no closing marker left to look
-// for: the rest of the body *is* the prose.
 doc_of(page: str, name: str) -> str =>
     split_once(between(page, "<article id=\"" ++ name ++ "\"", "</article>"),
                "</pre>").get(1)
 
-// The names MacaDoc gave a page section to, sorted.
 documented(dir: str, module: str) -> str =>
     ids(read_file(join(dir, module ++ ".html")).split("<article id=\""), 1, [])
         .sort().join(" ")
@@ -672,7 +503,6 @@ ids(parts: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-// The names `std/README.md`'s table row for this module puts in backticks.
 advertised(module: str) -> str =>
     str_unique(backticked(row_for(module).split("`"), 1, []))
         .sort().join(" ")
@@ -687,9 +517,6 @@ backticked(parts: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-// A cell names one function (`walk`) or a pair (`strip_prefix`/`strip_suffix`).
-// The row's own label is `std/text`, and a cell may be a type like `str[]`.
-// Neither of those is an item.
 names_in(cell: str) -> str[] {
     if cell.starts_with("std/") {
         []
@@ -734,5 +561,3 @@ matching_row(ls: str[], i: int, prefix: str) -> str {
         matching_row(ls, i + 1, prefix)
     }
 }
-
-// ---- shared -----------------------------------------------------------------

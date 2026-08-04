@@ -1,23 +1,3 @@
-//! Statement-position control flow, emitted and then executed under node.
-//!
-//! `if`, `match` and a block are expressions in Maca and statements in JS, and
-//! the back end used to resolve that by lowering every one of them as a value:
-//! a ternary whose branches were IIFEs. An IIFE is a function boundary, and two
-//! things a branch may legitimately do cannot cross one.
-//!
-//! `break` and `continue` are a SyntaxError there, so `maca build --target js
-//! apps/site/home.maca` wrote an `app.js` node could not parse at all. A
-//! reassignment is worse: `tag = "big"` inside a branch lowered to `var tag =
-//! "big"` *inside the arrow function*, declaring a fresh local and leaving the
-//! enclosing one alone, so the program ran and answered with a variable that
-//! had never changed.
-//!
-//! The program run here is `crates/driver/tests/programs/js_control_flow.maca`,
-//! the same file `crates/driver/tests/js_target.rs` runs natively. Sharing it
-//! is the point: the expected values are not written down twice, so a back end
-//! that disagrees with native turns one of the two suites red rather than
-//! quietly agreeing with itself.
-
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
@@ -27,9 +7,7 @@ fn fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../driver/tests/programs/js_control_flow.maca")
 }
 
-/// `assert`/`assert_eq` are Maca builtins with no JS lowering: they arrive as
-/// bare calls, which resolve on the global object. `assert_eq` compares what it
-/// is given as text, the way the native `maca_assert_eq` does.
+/// `assert`/`assert_eq` are Maca builtins with no JS lowering.
 const SHIMS: &str = r#"globalThis.assert = function (c, m) {
   if (!c) throw new Error("assert failed: " + m);
 };
@@ -68,8 +46,6 @@ fn the_emitted_program_computes_what_the_native_one_computes() {
         .write_all(js.as_bytes())
         .unwrap();
 
-    // Parseable first, so a syntax error names itself instead of arriving as a
-    // module that would not load.
     let checked = Command::new("node")
         .arg("--check")
         .arg(&module)
@@ -98,8 +74,6 @@ fn the_emitted_program_computes_what_the_native_one_computes() {
         String::from_utf8_lossy(&out.stderr)
     );
 
-    // A run that found no tests passes vacuously, so count them: the fixture's
-    // `test_` functions all have to have reached JS and been called.
     let want = src.lines().filter(|l| l.starts_with("test_")).count();
     assert!(want > 0, "the fixture has no tests");
     assert!(

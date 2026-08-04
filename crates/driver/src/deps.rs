@@ -1,25 +1,3 @@
-//! maca's package manager: `maca add`, `maca update`, `maca upgrade`.
-//!
-//! Dependencies live in `maca.toml` under `[dependencies]`, one line per dep:
-//!
-//! ```toml
-//! [dependencies]
-//! axios  = "npm:axios"                       # the npm registry, verbatim
-//! mylib  = "git+https://github.com/u/mylib"  # any git remote (+ `#ref`)
-//! utils  = "^1.2.0"                           # the maca registry
-//! ```
-//!
-//! `maca add <spec>` parses the spec, resolves a concrete version, fetches it
-//! into `maca_modules/<name>/`, and records both the request (in `maca.toml`)
-//! and the resolved version (in `maca.lock`). `maca update` re-resolves every
-//! dependency to the latest matching version. `maca upgrade` self-updates the
-//! `maca` toolchain from its GitHub releases.
-//!
-//! The registry protocol is deliberately npm-compatible: `GET <registry>/<name>`
-//! returns a JSON document with `dist-tags` and `versions`, and each version
-//! carries `dist.tarball` (a `.tgz`) and `dist.integrity`. So the same resolver
-//! serves both `npm:` and maca-registry packages.
-
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -49,7 +27,6 @@ pub fn parse_spec(spec: &str) -> Result<(String, Source), String> {
     }
     if let Some(rest) = spec.strip_prefix("npm:") {
         let (pkg, req) = split_version(rest);
-        // a scoped package keeps its `@scope/`; the bare name is the last segment
         let name = pkg.rsplit('/').next().unwrap_or(pkg).to_string();
         return Ok((
             name,
@@ -76,8 +53,7 @@ pub fn parse_spec(spec: &str) -> Result<(String, Source), String> {
     ))
 }
 
-/// Split `name[@version]`, honouring a leading `@scope`. Missing version →
-/// `latest`.
+/// Split `name[@version]`, honouring a leading `@scope`.
 fn split_version(s: &str) -> (&str, String) {
     if let Some(idx) = s.rfind('@')
         && idx > 0
@@ -109,8 +85,6 @@ struct Resolved {
 fn registry_url() -> String {
     read_toml_value("registry", "url").unwrap_or_else(|| DEFAULT_REGISTRY.to_string())
 }
-
-// ---- commands ------------------------------------------------------------
 
 /// `maca add <spec>…`: add and fetch one or more dependencies.
 pub fn cmd_add(args: &[String]) {
@@ -236,8 +210,6 @@ pub fn cmd_upgrade(_args: &[String]) {
     }
 }
 
-// ---- resolution ----------------------------------------------------------
-
 fn resolve(src: &Source, registry: &str) -> Result<Resolved, String> {
     match src {
         Source::Npm { pkg, req } => resolve_registry(NPM_REGISTRY, pkg, req),
@@ -254,10 +226,7 @@ fn resolve(src: &Source, registry: &str) -> Result<Resolved, String> {
     }
 }
 
-/// Resolve against an npm-compatible registry. `latest` and exact versions hit
-/// the version manifest directly; a semver *range* (`^1.2`, `~3`, `>=2 <3`,
-/// `1.x`) fetches the full package document and picks the highest published
-/// version that satisfies it.
+/// Resolve against an npm-compatible registry.
 fn resolve_registry(base: &str, pkg: &str, req: &str) -> Result<Resolved, String> {
     let exact = req == "latest" || req.is_empty() || parse_semver(req).is_some();
     if exact {
@@ -268,7 +237,6 @@ fn resolve_registry(base: &str, pkg: &str, req: &str) -> Result<Resolved, String
             serde_json::from_str(&body).map_err(|e| format!("bad registry JSON: {e}"))?;
         return resolved_from_manifest(&v);
     }
-    // a range: fetch the package document listing every version, pick the max
     let url = format!("{base}/{}", enc(pkg));
     let body = http_get(url).map_err(|e| format!("registry fetch failed: {e}"))?;
     let doc: serde_json::Value =
@@ -306,8 +274,7 @@ fn resolved_from_manifest(v: &serde_json::Value) -> Result<Resolved, String> {
     })
 }
 
-/// Parse `major.minor.patch` (a leading `v` and any `-prerelease`/`+build`
-/// suffix are ignored) into a comparable tuple. Returns `None` for non-versions.
+/// Parse `major.minor.patch` (a leading `v` and any `-prerelease`/`+build` suffix are ignored) into a comparable tuple.
 fn parse_semver(s: &str) -> Option<(u64, u64, u64)> {
     let s = s.trim().trim_start_matches('v');
     let core = s.split(['-', '+']).next().unwrap_or(s);
@@ -327,9 +294,7 @@ fn cmp_semver(a: &str, b: &str) -> std::cmp::Ordering {
         .cmp(&parse_semver(b).unwrap_or((0, 0, 0)))
 }
 
-/// Does version `ver` satisfy the semver range `range`? Supports `||` (or),
-/// space-separated comparators (and), `^`, `~`, `>=`/`>`/`<=`/`<`/`=`, exact
-/// versions, and `x`/`*` wildcards (`1.x`, `1.2.*`).
+/// Does version `ver` satisfy the semver range `range`?
 fn semver_satisfies(ver: &str, range: &str) -> bool {
     let Some(v) = parse_semver(ver) else {
         return false;
@@ -376,7 +341,6 @@ fn comparator_matches(v: (u64, u64, u64), c: &str) -> bool {
             }
         }
     }
-    // wildcards: `1.x`, `1.2.*`, `*`
     if c == "*" || c == "x" {
         return true;
     }
@@ -392,11 +356,8 @@ fn comparator_matches(v: (u64, u64, u64), c: &str) -> bool {
         }
         return true;
     }
-    // a bare version: exact match
     parse_semver(c) == Some(v)
 }
-
-// ---- fetch ---------------------------------------------------------------
 
 fn fetch(name: &str, src: &Source, r: &Resolved) -> Result<(), String> {
     let dir = PathBuf::from(MODULES_DIR).join(name);
@@ -411,8 +372,7 @@ fn fetch(name: &str, src: &Source, r: &Resolved) -> Result<(), String> {
     }
 }
 
-/// Download a `.tgz` and extract it, stripping the archive's top-level dir
-/// (npm tarballs wrap everything in `package/`).
+/// Download a `.tgz` and extract it, stripping the archive's top-level dir (npm tarballs wrap everything in `package/`).
 fn download_tgz(url: &str, dir: &Path) -> Result<(), String> {
     let tmp = dir.join(".pkg.tgz");
     run("curl", &["-fsSL", "-o", &tmp.to_string_lossy(), url])?;
@@ -461,8 +421,6 @@ fn git_ls_remote(url: &str, reff: Option<&str>) -> Result<String, String> {
         .ok_or_else(|| format!("no ref `{}` in {url}", reff.unwrap_or("HEAD")))
 }
 
-// ---- self-upgrade --------------------------------------------------------
-
 fn self_replace(url: &str) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let tmp = exe.with_extension("new");
@@ -472,13 +430,11 @@ fn self_replace(url: &str) -> Result<(), String> {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755));
     }
-    // rename over the running binary (allowed on unix; the open fd keeps running)
     std::fs::rename(&tmp, &exe).map_err(|e| format!("cannot replace {}: {e}", exe.display()))?;
     Ok(())
 }
 
 fn target_triple() -> &'static str {
-    // matches the release-asset naming used by install.sh
     if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         "x86_64-linux"
     } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
@@ -493,8 +449,6 @@ fn target_triple() -> &'static str {
         "unknown"
     }
 }
-
-// ---- maca.toml [dependencies] --------------------------------------------
 
 fn ensure_manifest() {
     if !Path::new(MANIFEST).exists() {
@@ -526,8 +480,7 @@ pub fn manifest_deps() -> Vec<(String, String)> {
     out
 }
 
-/// Insert or replace `name = "spec"` inside `[dependencies]`, creating the
-/// section if needed. Line-oriented, to match the driver's toml handling.
+/// Insert or replace `name = "spec"` inside `[dependencies]`, creating the section if needed.
 fn manifest_put(name: &str, spec: &str) -> Result<(), String> {
     let existing = std::fs::read_to_string(MANIFEST).unwrap_or_default();
     let line = format!("{name} = \"{spec}\"");
@@ -536,13 +489,11 @@ fn manifest_put(name: &str, spec: &str) -> Result<(), String> {
     let deps_at = lines.iter().position(|l| l.trim() == "[dependencies]");
     match deps_at {
         Some(start) => {
-            // section end = next `[` header, or EOF
             let end = lines[start + 1..]
                 .iter()
                 .position(|l| l.trim().starts_with('['))
                 .map(|p| start + 1 + p)
                 .unwrap_or(lines.len());
-            // replace an existing `name = …` in the section, else insert
             let key = format!("{name} =");
             if let Some(i) = lines[start + 1..end]
                 .iter()
@@ -586,8 +537,6 @@ fn read_toml_value(section: &str, key: &str) -> Option<String> {
     }
     None
 }
-
-// ---- maca.lock -----------------------------------------------------------
 
 /// Append or replace a package entry in `maca.lock`.
 fn lock_put(name: &str, spec: &str, src: &Source, r: &Resolved) -> Result<(), String> {
@@ -658,8 +607,6 @@ fn read_lock() -> Vec<(String, String)> {
     out
 }
 
-// ---- small helpers -------------------------------------------------------
-
 fn http_get(url: impl AsRef<str>) -> Result<String, String> {
     let out = Command::new("curl")
         .args(["-fsSL", "-A", "maca-cli", url.as_ref()])
@@ -705,19 +652,15 @@ mod tests {
 
     #[test]
     fn semver_ranges_match() {
-        // caret: compatible-within-major
         assert!(semver_satisfies("1.4.2", "^1.2.0"));
         assert!(!semver_satisfies("2.0.0", "^1.2.0"));
         assert!(semver_satisfies("0.2.9", "^0.2.1"));
         assert!(!semver_satisfies("0.3.0", "^0.2.1"));
-        // tilde: patch-level within minor
         assert!(semver_satisfies("1.2.9", "~1.2.3"));
         assert!(!semver_satisfies("1.3.0", "~1.2.3"));
-        // comparators (and / or)
         assert!(semver_satisfies("2.5.0", ">=2 <3"));
         assert!(!semver_satisfies("3.0.0", ">=2 <3"));
         assert!(semver_satisfies("4.1.0", "^1.0.0 || ^4.0.0"));
-        // wildcards + exact
         assert!(semver_satisfies("1.9.9", "1.x"));
         assert!(!semver_satisfies("2.0.0", "1.x"));
         assert!(semver_satisfies("1.2.3", "1.2.3"));
@@ -756,7 +699,6 @@ mod tests {
                 }
             )
         );
-        // scoped package: name is the last segment, req split off the trailing @
         assert_eq!(
             parse_spec("npm:@scope/pkg@2.0.0").unwrap(),
             (
@@ -830,7 +772,6 @@ mod tests {
         assert!(t.contains("[dependencies]"), "{t}");
         assert!(t.contains("axios = \"npm:axios\""), "{t}");
 
-        // replacing keeps a single entry
         manifest_put("axios", "npm:axios@2.0.0").unwrap();
         let t = std::fs::read_to_string(MANIFEST).unwrap();
         assert_eq!(t.matches("axios =").count(), 1, "{t}");

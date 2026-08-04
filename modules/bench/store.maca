@@ -1,40 +1,7 @@
-// bench/store: results on disk, so a run can be compared to last week's.
-//
-// A benchmark number that exists only in a terminal that has since scrolled is
-// a number nobody can act on. This writes a run as JSON and reads it back
-// exactly, which is the whole requirement: `bench/compare` needs last week's
-// numbers to mean what they meant last week.
-//
-//   import { save, load } from bench/store
-//
-//   save("bench/baseline.json", results)
-//   before = load("bench/baseline.json")
-//
-// Samples are stored raw rather than pre-summarised. Every statistic in
-// `bench/stat` is recoverable from the samples and none is recoverable from
-// another, so a stored run can answer a question that had not been asked when
-// it was written, including one from a version of `bench/stat` that did not
-// exist yet.
-//
-// The JSON is written and read here rather than through `std/json`, which does
-// this better, for one reason: `std/json` exports a top-level `get(str, str)`,
-// and a program that has one miscompiles `xs.get(i)` on a `str[]`: the UFCS
-// call resolves to the two-string function and the list element comes back as
-// another list element. `bench/report` is full of such calls and so is
-// `cli/show` underneath it. Until that is fixed, a benchmark module that
-// dragged `std/json` into every program using it would be handing its callers a
-// silent wrong answer, so the reader and writer below are the cheaper trade.
-// Nothing here is named for a list or string method, on purpose.
-
 import { Result } from bench/time
 
-/// Bumped when the stored shape changes. A reader that finds a version it does
-/// not know refuses the file rather than guessing at the fields, because a
-/// baseline that was silently mis-read becomes a regression report about
-/// nothing.
+/// Bumped when the stored shape changes.
 Version = 1
-
-// ---- writing ---------------------------------------------------------------
 
 /// A run as a JSON document: a version, and the results in the order given.
 to_json(rs: Result[]) -> str =>
@@ -62,8 +29,7 @@ int_csv(xs: int[], i: int, acc: str[]) -> str {
     }
 }
 
-/// A JSON string literal. The five escapes the format requires, and no others.
-/// A raw newline inside a string is what hand-rolled emitters get wrong.
+/// A JSON string literal.
 encode_str(s: str) -> str =>
     "\"" ++ s.replace("\\", "\\\\")
              .replace("\"", "\\\"")
@@ -71,13 +37,7 @@ encode_str(s: str) -> str =>
              .replace("\r", "\\r")
              .replace("\t", "\\t") ++ "\""
 
-// ---- reading ---------------------------------------------------------------
-
 /// The results in a document written by `to_json`.
-///
-/// A document from an unknown version, or one with no `results` array, reads as
-/// an empty list. The caller then reports "no baseline" instead of comparing
-/// against invented numbers.
 from_json(src: str) -> Result[] {
     if field_int(src, "version", 0) != Version {
         []
@@ -112,7 +72,6 @@ int_list(raw: str[], i: int, acc: int[]) -> int[] {
 }
 
 /// The raw text of `key`'s value in a JSON object, or "" when it is absent.
-/// A nested array or object comes back whole, for handing to `elements`.
 field(src: str, key: str) -> str {
     marker = "\"" ++ key ++ "\":"
     at = src.index_of(marker)
@@ -124,8 +83,7 @@ field(src: str, key: str) -> str {
     }
 }
 
-/// `field`, with the quotes taken off and the escapes undone: what a string
-/// value actually says.
+/// `field`, with the quotes taken off and the escapes undone: what a string value actually says.
 field_str(src: str, key: str) -> str =>
     bare(field(src, key))
 
@@ -152,8 +110,6 @@ value_from(src: str, at: int) -> str {
     }
 }
 
-// The index just past a balanced bracketed run. A bracket inside a string does
-// not count toward the depth, which is why this cannot be a counter alone.
 bracket_end(s: str, i: int, depth: int) -> int {
     if i >= s.length() {
         i
@@ -170,8 +126,6 @@ bracket_end(s: str, i: int, depth: int) -> int {
     }
 }
 
-// `i` starts *inside* the string, past the opening quote. A backslash consumes
-// what follows it, so an escaped quote does not end the run.
 quoted_end(s: str, i: int) -> int {
     if i >= s.length() {
         i
@@ -205,8 +159,6 @@ elements(src: str) -> str[] {
     }
 }
 
-// A depth- and quote-aware split on commas. A comma inside a nested array or
-// inside a string is not a separator, which is the entire difficulty.
 split_at_depth(s: str, i: int, depth: int, cur: str, acc: str[]) -> str[] {
     if i >= s.length() {
         cur.trim() == "" ? acc : acc.push(bare(cur))
@@ -230,8 +182,6 @@ step(c: str) -> int {
     }
 }
 
-// A lone `"` is not a quoted element, which is why the length is tested before
-// the ends are: `t.slice(1, 0)` on a one-character string is not a value.
 bare(s: str) -> str {
     t = s.trim()
 
@@ -243,13 +193,6 @@ bare(s: str) -> str {
 }
 
 /// Undo `encode_str`.
-///
-/// One left-to-right pass, not a chain of `replace`s, and no ordering of that
-/// chain would have done. A name holding a backslash and then an `n` is written
-/// `\\n`: undoing `\n` first reads the second and third bytes as an escape and
-/// answers a backslash and a newline, while undoing `\\` first leaves a `\n`
-/// for the next replacement to eat and loses the backslash instead. Only a scan
-/// that consumes the escape it has just recognised gets the name back.
 decode_str(s: str) -> str =>
     unescaped(s, 0, "")
 
@@ -273,25 +216,15 @@ unescape_one(c: str) -> str {
     } else if c == "\"" || c == "\\" {
         c
     } else {
-        // An escape `encode_str` never writes: a `\u` from some other
-        // producer. Leaving it exactly as it was written loses nothing; the
-        // alternative is dropping a backslash that meant something.
         "\\" ++ c
     }
 }
 
-// ---- files -----------------------------------------------------------------
-
-/// Write a run to `path`. Answers whether it landed, so a caller can say so
-/// rather than reporting a saved baseline that is not there.
+/// Write a run to `path`.
 save(path: str, rs: Result[]) -> bool =>
     write_file(path, to_json(rs) ++ "\n")
 
 /// Read a run from `path`, or an empty list when there is nothing there.
-///
-/// A missing file is not an error. The first run of a new benchmark has no
-/// baseline by definition, and that case has to be ordinary rather than
-/// exceptional or nobody ever runs the first one.
 load(path: str) -> Result[] {
     if !file_exists(path) {
         []

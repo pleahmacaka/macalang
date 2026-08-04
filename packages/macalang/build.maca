@@ -1,17 +1,3 @@
-// build: compile the wasm compiler and copy it into the npm package.
-//
-// Run before publishing or testing `packages/macalang`. `index.js` reads
-// `maca_wasm.wasm` from beside itself, so the package is only publishable once
-// this has put a current one there.
-//
-//   maca run packages/macalang/build.maca         # from the repository root
-//
-// The wasm it writes is a build artifact and the repository does not carry one:
-// a checked-in binary drifts from the crates it was built out of, and a
-// front-end that answers last month's questions is a worse thing to ship than
-// no front-end at all. `test.mjs` says so instead of passing quietly, by
-// checking the export list before it checks anything else.
-
 import std/proc
 import std/path
 

@@ -1,20 +1,8 @@
 // std/proc: running other programs, for the scripts a project needs.
-//
-// `exec`, `capture`, `env`, `cwd` and `chdir` are the builtins. This module is
-// what a build script keeps rewriting on top of them: run a step and stop if it
-// fails, run one inside a directory, find a tool on PATH.
-//
-// There is no shell anywhere in here, including in `have`. `exec("cp", ["a
-// b.txt", dest])` passes one argument holding a space, not two. That is the
-// failure a shell script only finds once someone's checkout has a space in its
-// path.
-//
-//   import std/proc
 
 import std/path
 
-/// Run `cmd`, and stop the whole program if it fails. What a build step wants:
-/// carrying on after a failed compile just buries the error further up.
+/// Run `cmd`, and stop the whole program if it fails.
 run(cmd: str, args: str[]) -> bool {
     code = exec(cmd, args)
 
@@ -29,8 +17,7 @@ run(cmd: str, args: str[]) -> bool {
 try_run(cmd: str, args: str[]) -> bool =>
     exec(cmd, args) == 0
 
-/// Run `cmd` with `dir` as the working directory, then change back. A script
-/// that leaves the process somewhere else makes every later path a guess.
+/// Run `cmd` with `dir` as the working directory, then change back.
 run_in(dir: str, cmd: str, args: str[]) -> bool {
     back = cwd()
 
@@ -48,26 +35,20 @@ run_in(dir: str, cmd: str, args: str[]) -> bool {
     }
 }
 
-/// The trimmed stdout of `cmd`. The usual reason to capture one is a version
-/// string or a path, and both arrive with a trailing newline.
+/// The trimmed stdout of `cmd`.
 output(cmd: str, args: str[]) -> str =>
     capture(cmd, args).trim()
 
-/// Where `cmd` lives on PATH, or "". Asked before using an optional tool, so a
-/// script can say what is missing rather than dying inside it.
-///
-/// PATH is walked here rather than handed to `command -v`, because reaching for
-/// a shell to answer "is there a shell?" is the wrong shape.
+/// Where `cmd` lives on PATH, or "".
 which(cmd: str) -> str {
     if cmd.contains("/") {
-        // Already a path; PATH does not apply to it.
         found_or_empty(cmd)
     } else {
         search_path(env("PATH").split(":"), 0, cmd)
     }
 }
 
-/// Is `cmd` on PATH at all? `which` when you only need the yes or no.
+/// Is `cmd` on PATH at all?
 have(cmd: str) -> bool =>
     which(cmd) != ""
 

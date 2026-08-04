@@ -1,18 +1,7 @@
-//! maca-mcp: LLM-native tools for the generate → verify → fix loop.
-//!
-//! These are the tool implementations behind the MCP server:
-//!   * `maca.check(code)`  → diagnostics (parse + type/effect)
-//!   * `maca.fmt(code)`    → canonical formatting
-//!   * `maca.stdlib(query)`→ prelude/stdlib signatures
-//!   * `maca.options(q)`   → known NixOS option namespaces
-//!   * `maca.spec(section)`→ spec text
-//!
-//! The stdio JSON-RPC transport (`src/main.rs`) is a thin wrapper over these.
-
 use maca_core::{DiagKind, Mode, check as core_check};
 use maca_parser::{parse, print_module};
 
-/// `maca.check`: return human-readable diagnostics. Empty = clean.
+/// `maca.check`: return human-readable diagnostics.
 pub fn check(code: &str, config: bool) -> Vec<String> {
     let parsed = parse(code);
     if !parsed.errors.is_empty() {
@@ -40,7 +29,7 @@ fn kind_name(k: DiagKind) -> &'static str {
     }
 }
 
-/// `maca.fmt`: canonical formatting (parse → print). Errs on a bad parse.
+/// `maca.fmt`: canonical formatting (parse → print).
 pub fn fmt(code: &str) -> Result<String, Vec<String>> {
     let parsed = parse(code);
     if !parsed.errors.is_empty() {

@@ -1,12 +1,3 @@
-// A function that takes any number of trailing arguments, and everything the
-// collection into a list has to get right.
-//
-// `...rest: T` is written with the type of *one* argument, because that is what
-// a call site writes; inside the body `rest` is a `T[]`. The call site builds
-// that list, so a variadic call and the explicit-list call it is sugar for
-// compile to the same C, which is what the allocation counts below assert,
-// rather than an answer that would be identical either way.
-
 Point = {
     x: int
     y: int
@@ -16,7 +7,6 @@ Bag = {
     n: int
 }
 
-// The plainest shape: nothing fixed, everything collected.
 total(...rest: int) -> int {
     n = 0
     for v in rest {
@@ -25,9 +15,6 @@ total(...rest: int) -> int {
     n
 }
 
-// The same function written the long way round. Every allocation claim below is
-// stated as "the variadic costs what this costs", so the assertion survives a
-// change in how lists grow.
 total_list(rest: int[]) -> int {
     n = 0
     for v in rest {
@@ -36,12 +23,8 @@ total_list(rest: int[]) -> int {
     n
 }
 
-// A fixed parameter before the variadic: `sep` lines up with the first
-// argument, and everything after it is collected.
 joined(sep: str, ...parts: str) -> str => parts.join(sep)
 
-// A variadic of a record type: the collected list is a `PointArr`, and the
-// body reads fields off its elements.
 span(...ps: Point) -> int {
     n = 0
     for p in ps {
@@ -50,8 +33,6 @@ span(...ps: Point) -> int {
     n
 }
 
-// UFCS makes the receiver the first argument, so `bag.tally(1, 2)` is
-// `tally(bag, 1, 2)`: `bag` fills the fixed parameter and the rest collect.
 tally(b: Bag, ...more: int) -> int {
     t = b.n
     for v in more {
@@ -60,20 +41,13 @@ tally(b: Bag, ...more: int) -> int {
     t
 }
 
-// With nothing fixed, a UFCS receiver is itself the first collected element.
 counted(...xs: int) -> int => xs.length()
 
-// A generic variadic: the element type is settled by the arguments, and one
-// specialization is emitted per element type it is called with.
 first_of(...xs: a) -> a => xs.first()
 
-// Recursion through a variadic: each call site builds its own list.
 countdown(n: int, ...seen: int) -> int =>
     n == 0 ? seen.length() : countdown(n - 1, n, n)
 
-// A float element is a `FloatArr`, not an integer array holding reinterpreted
-// bits, which is what an unannotated variadic would have got, so this is the
-// positive half of the rule that the element type must be written down.
 sumf(...xs: float) -> float {
     t = 0.0
     for v in xs {
@@ -82,10 +56,6 @@ sumf(...xs: float) -> float {
     t
 }
 
-// An element type that is itself a list, so an argument can be a `[]` with
-// nothing in it to say what it holds. The call site has to hand each one the
-// element type the parameter declared; without it the empty list came out an
-// integer array and the push into a `StrArrArr` was a C type error.
 rows(...rs: str[]) -> int {
     n = 0
     for r in rs {
@@ -94,9 +64,6 @@ rows(...rs: str[]) -> int {
     n
 }
 
-// A closure parameter in a fixed slot, in front of the variadic: the lambda
-// takes its type from the parameter it is written into and the tail still
-// collects past it.
 applied(f, ...xs: int) -> int {
     n = 0
     for v in xs {
@@ -105,12 +72,6 @@ applied(f, ...xs: int) -> int {
     n
 }
 
-// The variadic parameter holds a list the call site built for this call alone,
-// so appending to it in place cannot be observed by anybody. This is the
-// shape that says whether the ownership analysis agrees. Written as a copy it is
-// quadratic. The values are read back through an interpolation *after* enough
-// rounds to force several reallocations, so a buffer moved out from under a
-// stale handle is a wrong answer rather than an unread one.
 grow_variadic(...seed: int) -> str {
     for i in 1..2000 {
         seed = seed.push(i)
@@ -118,9 +79,6 @@ grow_variadic(...seed: int) -> str {
     "{seed.length()}:{seed.get(0)}:{seed.get(1)}:{seed.get(2001)}"
 }
 
-// The same body behind an ordinary list parameter, where the copy has to stay:
-// the caller is still holding that list, so appending in place would reallocate
-// it underneath them.
 grow_param(seed: int[]) -> str {
     for i in 1..2000 {
         seed = seed.push(i)
@@ -128,9 +86,6 @@ grow_param(seed: int[]) -> str {
     "{seed.length()}:{seed.get(0)}:{seed.get(1)}:{seed.get(2001)}"
 }
 
-// And a variadic parameter the body gives a second holder to: `keep` is looking
-// at the same buffer, so the append has to copy after all. Being a variadic
-// buys the exclusion from the parameter rule, not an exemption from aliasing.
 grow_aliased(...seed: int) -> str {
     keep = seed
     for i in 1..2000 {
@@ -138,8 +93,6 @@ grow_aliased(...seed: int) -> str {
     }
     "{keep.length()}:{keep.get(0)}:{seed.length()}:{seed.get(2001)}"
 }
-
-// ---- answers --------------------------------------------------------------
 
 test_no_arguments_collect_to_an_empty_list() {
     assert_eq(str(total()), "0", "nothing to add")
@@ -177,8 +130,6 @@ test_a_generic_variadic_specializes_per_element_type() {
     assert_eq(first_of("a", "b"), "a", "and a str list, from one signature")
 }
 
-// `x.f(y)` is `f(x, y)`, and the collection has to happen there too. Written
-// UFCS it reached the C compiler as three arguments to a two-parameter function.
 test_ufcs_collects_the_arguments_past_the_receiver() {
     bag = Bag { n = 10 }
 
@@ -191,9 +142,6 @@ test_a_ufcs_receiver_is_the_first_collected_element() {
     assert_eq(str(n.counted(1, 2)), "3", "receiver counts as an element")
 }
 
-// A lambda parameter with no annotation is typed from what the body does with
-// it, and a variadic callee's parameter is the *list*, so `v => total(v, 1)`
-// typed `v` as a whole `int[]` and pushed a list into a list of ints.
 test_a_lambda_can_pass_its_parameter_to_a_variadic() {
     f = v => total(v, 1)
 
@@ -205,8 +153,6 @@ test_a_variadic_can_recurse() {
     assert_eq(str(countdown(0, 5, 6, 7)), "3", "or three, on the first")
 }
 
-// `1.5` read back as `1.0` is what a variadic collected into the wrong array
-// looks like, and it is an answer, so only an answer catches it.
 test_a_float_variadic_keeps_its_element_type() {
     assert_eq(str(sumf(1.5, 2.25)), "3.75", "doubles, not truncated ints")
     assert_eq(str(sumf()), "0.0", "and an empty float list")
@@ -222,12 +168,6 @@ test_a_closure_parameter_can_precede_a_variadic() {
     assert_eq(str(applied(v => v * 2)), "0", "and nothing to apply it to")
 }
 
-// ---- memory ---------------------------------------------------------------
-
-// An answer is the same whether the collected list was built once or twice, so
-// the answers above cannot tell. This can: the variadic call must cost exactly
-// what the list-literal call it is sugar for costs. Two buffers per call would
-// mean the lowering copies what it just built.
 test_a_variadic_call_costs_what_the_list_it_sugars_costs() {
     before = alloc_count() + reuse_count()
     sugar = 0
@@ -251,8 +191,6 @@ test_a_variadic_call_costs_what_the_list_it_sugars_costs() {
     )
 }
 
-// Zero arguments is the case that should cost nothing at all: an empty list has
-// no buffer to allocate.
 test_a_variadic_call_with_no_arguments_allocates_nothing() {
     before = alloc_count() + reuse_count()
     seen = 0
@@ -265,9 +203,6 @@ test_a_variadic_call_with_no_arguments_allocates_nothing() {
     assert_eq(str(spent), "0", "an empty list allocated {spent} buffers")
 }
 
-// The variadic parameter is the one parameter a body may append to in place:
-// the list was built by the call site for this call, so no caller has a name for
-// it. Two thousand rounds is a copy per round if the analysis disagrees.
 test_a_variadic_parameter_grows_in_place() {
     before = alloc_count() + reuse_count()
     got = grow_variadic(1, 2)
@@ -277,9 +212,6 @@ test_a_variadic_parameter_grows_in_place() {
     assert(spent < 40, "copied instead of growing: {spent} for 2000 rounds")
 }
 
-// And an ordinary list parameter is still not: the caller is holding it. Same
-// body, one difference in the signature. This is what fails if the exclusion
-// of parameters is dropped wholesale instead of narrowed to the variadic one.
 test_an_ordinary_list_parameter_still_copies() {
     held = [1, 2]
     before = alloc_count() + reuse_count()
@@ -291,9 +223,6 @@ test_an_ordinary_list_parameter_still_copies() {
     assert_eq(str(held.length()), "2", "and the caller's list did not move")
 }
 
-// Nor is a variadic parameter the body aliased: `keep` holds the buffer the
-// appends would have moved, so it copies like any aliased local. Read through
-// `keep` after the reallocations, which is where a stale handle shows.
 test_an_aliased_variadic_parameter_still_copies() {
     before = alloc_count() + reuse_count()
     got = grow_aliased(1, 2)

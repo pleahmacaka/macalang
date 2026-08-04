@@ -1,15 +1,3 @@
-//! Every UFCS method, lowered to JS and executed.
-//!
-//! `jcall` handed each method name straight to JS, which was wrong twice over.
-//! Some do not exist there: `.length` is a property, so `xs.length()` threw
-//! `TypeError`. The dangerous ones are those that exist and mean something else:
-//! `push` returns the new *length*, and `sort` compares as strings, so
-//! `[10, 9, 2].sort()` came back `[10, 2, 9]`.
-//!
-//! Expected values here are the answers the **native** backend gives for the
-//! same expression. The native path is the reference, and a target that
-//! disagrees with it is wrong even when its own answer looks reasonable.
-
 use std::io::Write;
 use std::process::Command;
 
@@ -116,9 +104,7 @@ const EXPECTED: &[(&str, &str)] = &[
     ("s_contains", "true"),
     ("s_starts_with", "true"),
     ("s_ends_with", "true"),
-    // every occurrence, which JS `replace` would not have done
     ("s_replace", "\"a-b-c\""),
-    // `substr(start, len)`, not JS `slice(start, end)`
     ("s_substr", "\"ell\""),
     ("s_slice", "\"el\""),
     ("s_index_of", "2"),
@@ -126,7 +112,6 @@ const EXPECTED: &[(&str, &str)] = &[
     ("s_repeat", "\"ababab\""),
     ("s_pad_start", "\"007\""),
     ("s_pad_end", "\"700\""),
-    // the shortfall splits left-biased
     ("s_pad_center", "\"..x...\""),
     ("s_split", "3"),
     ("s_chars", "3"),
@@ -139,11 +124,9 @@ const EXPECTED: &[(&str, &str)] = &[
     ("l_filter", "2"),
     ("l_reduce", "6"),
     ("l_fold", "16"),
-    // the one that mattered most: JS's default sort puts 10 before 9
     ("l_sort", "[2,9,10]"),
     ("l_sort_str", "\"a|b|c\""),
     ("l_reverse", "[3,2,1]"),
-    // JS `push` returns the new length, not the list
     ("l_push", "[1,2,3]"),
     ("l_pop", "[1,2]"),
     ("l_slice", "[2,3]"),
@@ -177,8 +160,6 @@ fn every_method_computes_what_the_native_backend_computes() {
 
 #[test]
 fn every_name_in_both_closed_sets_has_a_lowering() {
-    // The sets are the contract. Without this, adding a method to `maca-core`
-    // silently leaves JS emitting a name that does not exist there.
     let covered: std::collections::BTreeSet<&str> = EXPECTED
         .iter()
         .map(|(f, _)| {
@@ -200,8 +181,6 @@ fn every_name_in_both_closed_sets_has_a_lowering() {
 
 #[test]
 fn a_list_method_does_not_mutate_its_receiver() {
-    // Maca lists are values. JS `sort`, `reverse` and `push` all mutate, so the
-    // answer could look right while a second holder of the list saw the change.
     let src = r#"
 after_sort() -> str {
     xs = [3, 1, 2]
@@ -256,8 +235,6 @@ fn use_strict_stays_the_first_statement() {
 
 #[test]
 fn a_field_holding_a_function_is_still_called_directly() {
-    // Only Maca's own method names are rewritten; anything else is a record
-    // field or a foreign JS call and must pass through untouched.
     let js = maca_backend_js::emit(&maca_parser::parse("f(r) -> int => r.handler(1)\n").module).js;
     assert!(js.contains("r.handler(1)"), "rewrote a field call:\n{js}");
 }

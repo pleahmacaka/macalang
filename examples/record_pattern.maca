@@ -1,6 +1,3 @@
-// Destructuring a record with a match pattern, unary `!`, and `++` string
-// concat, plus a record field whose type is declared later in the file.
-
 Line = {
     head: Point
     tail: Point

@@ -1,6 +1,3 @@
-// List and string subscripting with `xs[i]`, plus element and field
-// assignment through an lvalue (`xs[i] = v`, `p.field = v`).
-
 Point = {
     x: int
     y: int

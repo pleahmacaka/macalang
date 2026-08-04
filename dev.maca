@@ -1,10 +1,3 @@
-// The Maca dev environment, defined in Maca: the source for flake.nix.
-// Regenerate the flake with:  maca dev
-//
-// Everything the compiler and its backends need: Rust toolchain (stage-0),
-// the C/native path, the LLVM tools used by the embedded target, and a JDK
-// for the JVM/Minecraft backend.
-
 import nixpkgs
 
 dev.name = "macalang"
@@ -21,10 +14,6 @@ dev.env = {
 
 dev.shellHook = "echo 'maca dev shell: cargo build | cargo test | maca --version'"
 
-// Windows hosts have no nix; `maca dev` provisions the same toolchain natively
-// with scoop/choco/winget instead. These are ignored when emitting flake.nix,
-// so Nix/Linux hosts are unaffected. Tools install portably under .maca\dev\;
-// `. .\.maca\dev\activate.ps1` puts them on PATH and sets JAVA_HOME from the JDK.
 scoop.buckets = main, java
 scoop.packages =
     main.rust,

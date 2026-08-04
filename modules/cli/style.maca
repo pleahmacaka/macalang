@@ -1,25 +1,4 @@
-// cli/style: colour and weight, and the decision of whether to use any.
-//
-// The decision comes first, because it is the part programs get wrong. The
-// same command is read by a person and piped into a file, and only the first
-// wants escape codes; a log full of `ESC[1m` is worse than a log with no
-// emphasis at all. So every function here asks `enabled()` and returns the
-// plain string when the answer is no. There is no styled and unstyled pair of
-// call sites to keep in step, and no flag to thread through six layers.
-//
-//   import { bold, dim, red, paint } from cli/style
-//
-//   info(bold("Building") ++ " " ++ dim(path))
-//
-// `NO_COLOR` turns it off and `FORCE_COLOR` turns it on, in that order of
-// surprise: a person who set `NO_COLOR` meant it everywhere, and a person who
-// set `FORCE_COLOR` is piping into something that renders colour.
-
 /// Should output carry escape codes right now?
-///
-/// `NO_COLOR` wins over everything, then `FORCE_COLOR`, then whether standard
-/// output is a terminal. The environment is read on every call rather than
-/// cached, which costs a `getenv` and buys a module with no start-up order.
 enabled() -> bool {
     if env("NO_COLOR") != "" {
         false
@@ -31,9 +10,6 @@ enabled() -> bool {
 }
 
 /// `s` wrapped in an SGR code, or `s` unchanged where colour is off.
-///
-/// The escape is built once here so nothing else in the module, or in a
-/// program using it, has to spell `\x1b[` correctly.
 paint(code: str, s: str) -> str {
     if !enabled() || s == "" {
         s
@@ -43,12 +19,6 @@ paint(code: str, s: str) -> str {
 }
 
 /// How many columns `s` takes on screen.
-///
-/// Bytes are the wrong unit twice over. An escape sequence occupies none, so a
-/// table that measured styled text by its length aligned its columns to
-/// characters nobody can see. And a character outside ASCII takes two to four
-/// bytes to store while occupying one or two columns, so measuring `한국어` as
-/// nine pushed every cell beside it nine spaces right.
 width(s: str) -> int {
     n = s.length()
     out = 0
@@ -69,9 +39,6 @@ width(s: str) -> int {
     out
 }
 
-// How many bytes the character starting with `b` occupies. A stray
-// continuation byte counts as one, so a string that is not valid UTF-8 is
-// measured wrongly rather than scanned forever.
 utf8_len(b: int) -> int {
     if b >= 240 {
         4
@@ -84,9 +51,6 @@ utf8_len(b: int) -> int {
     }
 }
 
-// The character at `i`, given how many bytes it takes. Assembled with
-// arithmetic rather than shifts because that is all it is: each continuation
-// byte carries six bits, so every byte multiplies what came before by 64.
 codepoint(s: str, i: int, len: int) -> int {
     lead = ord(s.at(i))
     cp = lead - lead_base(len)
@@ -98,7 +62,6 @@ codepoint(s: str, i: int, len: int) -> int {
     cp
 }
 
-// What a lead byte adds on top of the character's own bits.
 lead_base(len: int) -> int {
     if len == 4 {
         240
@@ -116,9 +79,6 @@ tail(s: str, i: int) -> int {
     b >= 128 ? b - 128 : 0
 }
 
-// How many columns one character takes. The wide ranges are the ones a
-// terminal draws in two cells (the CJK and Hangul blocks, and the fullwidth
-// forms), and a combining mark is drawn on top of what came before it.
 columns(cp: int) -> int {
     if cp >= 768 && cp <= 879 {
         0
@@ -143,7 +103,6 @@ columns(cp: int) -> int {
     }
 }
 
-// An SGR sequence runs from `ESC[` to the first letter that ends it.
 skip_escape(s: str, from: int) -> int {
     n = s.length()
     i = from
@@ -194,9 +153,7 @@ magenta(s: str) -> str => paint("35", s)
 cyan(s: str) -> str => paint("36", s)
 grey(s: str) -> str => paint("90", s)
 
-/// The four things a command line says about what happened, each with the
-/// marker and colour it always has, so `ok` looks the same in every program
-/// that uses this module, which is the point of putting it here.
+/// The four things a command line says about what happened, each with the marker and colour it always has.
 ok(s: str) -> str => green("✓") ++ " " ++ s
 warn(s: str) -> str => yellow("!") ++ " " ++ s
 bad(s: str) -> str => red("✗") ++ " " ++ s

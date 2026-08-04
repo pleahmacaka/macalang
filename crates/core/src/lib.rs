@@ -1,20 +1,3 @@
-//! maca-core: name/type/effect checking over the parser's AST.
-//!
-//! Pragmatic gradual checker (see docs/SPEC.md): unification-based inference
-//! with an `any` escape hatch for unknown stdlib/foreign values, made *strict*
-//! on the four diagnostics the acceptance requires:
-//!   * type mismatch (annotated return / `let x: T =`),
-//!   * non-exhaustive `match` on a nominal sum,
-//!   * effects used in config mode (must be pure `<>`),
-//!   * unknown NixOS option root in config mode.
-//!
-//! Function signatures are generalized into rank-1 type schemes and
-//! instantiated per call site, so generics like `id(x: a) -> a` are usable at
-//! many types. Inference over un-annotated bindings stays monomorphic, and
-//! effect rows unify by set rather than by row variable, both bought
-//! deliberately, because the strictness this checker owes its users is on the
-//! diagnostics above, and rank-1 plus gradual `any` reaches them.
-
 mod ty;
 
 use maca_parser::ast::*;
@@ -35,13 +18,9 @@ pub enum DiagKind {
     NonExhaustive,
     EffectInConfig,
     UnknownOption,
-    /// Reassignment of a constant. A bare `x = 1` binds a constant; only a
-    /// `let x = 1` binding is mutable, so a later `x = 2` on a bare binding is
-    /// an error.
+    /// Reassignment of a constant.
     Immutable,
-    /// A direct call to a name that is not defined anywhere: no local, no
-    /// user function, no import/alias, no builtin. Caught here so it surfaces
-    /// as a clean diagnostic instead of a broken-C link error at codegen.
+    /// A direct call to a name that is not defined anywhere.
     UndefinedName,
 }
 
@@ -51,7 +30,7 @@ pub struct Diagnostic {
     pub msg: String,
 }
 
-/// Check a module. An empty result means it passed.
+/// Check a module.
 pub fn check(module: &Module, mode: Mode) -> Vec<Diagnostic> {
     let mut c = Checker::new(mode);
     c.collect(module);
@@ -60,10 +39,6 @@ pub fn check(module: &Module, mode: Mode) -> Vec<Diagnostic> {
 }
 
 /// Prelude functions that carry the `io` effect.
-///
-/// Public because the freestanding-target check refuses exactly these: the
-/// reason they are impure is that they write to a console, and a bare-metal
-/// image has none. It kept its own copy, which was missing `panic`.
 pub const IO_FNS: &[&str] = &[
     "info", "warn", "err", "debug", "notice", "crit", "alert", "emerg", "panic", "print", "input",
 ];
@@ -72,10 +47,7 @@ const IO_METHODS: &[&str] = &["read", "write", "exists", "remove", "append", "cr
 /// Prelude functions that carry the `async` effect (suspension points).
 const ASYNC_FNS: &[&str] = &["sleep_ms"];
 
-/// Every method a `str` receiver accepts. Not a wish-list: `crates/core/tests`
-/// compiles a program using all of them, so a name here that the back end can't
-/// lower fails the build, and one it *can* lower that is missing here would be
-/// rejected as a typo. Note the absences: `str` has no `get` and no `join`.
+/// Every method a `str` receiver accepts.
 pub const STR_METHODS: &[&str] = &[
     "length",
     "split",
@@ -104,22 +76,12 @@ pub const STR_METHODS: &[&str] = &[
 pub const MAP_METHODS: &[&str] = &["set", "get", "has", "remove", "keys", "length"];
 
 /// Every method a `T[]` receiver accepts, gated the same way.
-///
-/// Some are refined further by the element type (`join` wants `str[]`, `sum`
-/// wants numbers) and the back end reports that. This list is about catching a
-/// misspelt name, which is a different job from checking the element type.
 pub const LIST_METHODS: &[&str] = &[
     "map", "filter", "reduce", "fold", "sort", "reverse", "push", "pop", "slice", "contains",
     "index_of", "sum", "min", "max", "first", "last", "get", "length", "parallel", "join",
 ];
 
 /// Top-level NixOS / home-manager option namespaces we recognize.
-///
-/// Public because the language server completes from it and the MCP server
-/// answers `maca.options` from it. Each kept its own copy until the three
-/// disagreed: the checker accepted `virtualisation.docker.enable` while the
-/// LSP would never offer `virtualisation`, and neither of the other two knew
-/// about `imports`.
 pub const NIXOS_ROOTS: &[&str] = &[
     "networking",
     "system",
@@ -156,28 +118,17 @@ struct Checker {
     globals: HashMap<String, Scheme>,
     records: HashMap<String, BTreeMap<String, Ty>>,
     sums: HashMap<String, Vec<String>>,
-    /// sum variant -> its payload field types (empty for a nullary variant)
+    /// sum variant -> its payload field types (empty for a nullary variant).
     variant_payloads: HashMap<String, Vec<Ty>>,
-    /// User-declared function name -> (fixed param count, is variadic). Used to
-    /// catch call-arity mistakes: a variadic wants *at least* the fixed count,
-    /// everything else wants exactly it.
+    /// User-declared function name -> (fixed param count, is variadic).
     fn_arity: HashMap<String, (usize, bool)>,
-    type_decls: HashSet<usize>, // item indices that are type declarations
+    type_decls: HashSet<usize>,
     local_names: HashSet<String>,
-    /// Per-function mutability of local names: `let x` → true, bare `x = e` →
-    /// false (a constant). Reassigning a `false` entry is an error. Cleared and
-    /// restored around each function body.
+    /// Per-function mutability of local names: `let x` → true, bare `x = e` → false (a constant).
     mut_of: HashMap<String, bool>,
-    /// The program pulls in Rust via `import rust` (a path or a raw block whose
-    /// contents the checker can't see), so unknown lowercase calls are treated as
-    /// gradual foreign items rather than `UndefinedName` (§2.4).
+    /// The program pulls in Rust via `import rust` (a path or a raw block whose contents the checker can't see).
     gradual_foreign: bool,
     /// Set for exactly one `infer` call: the callee of a direct `f(…)`.
-    ///
-    /// A variadic function has no arity as a *value*, since the collection
-    /// into a list happens at the call site, so `f` alone is an error while `f(…)`
-    /// is not, and the two are the same `Expr::Ident`. Consumed at the top of
-    /// `infer`, so a nested expression never inherits it.
     callee_pos: bool,
     diags: Vec<Diagnostic>,
 }
@@ -209,21 +160,6 @@ impl Checker {
     }
 
     /// A keyword Maca doesn't have, used as if it did.
-    ///
-    /// `return x` parses as the identifier `return` next to `x` and reaches the
-    /// C backend, which mangles the C keyword and emits `return_mc`, so the
-    /// first thing a newcomer sees is `'return_mc' undeclared`, from a compiler
-    /// they didn't invoke, about a file they didn't write. These are the words
-    /// people actually reach for; each gets told what Maca does instead.
-    ///
-    /// Only *undefined* names land here, so a program that legitimately binds
-    /// `type` or `func` keeps working.
-    ///
-    /// Each hint leads with the form that works and mentions the missing word
-    /// second, because the other order was read as a refusal. "Maca has no
-    /// `return`" landed first and the reader concluded the capability was
-    /// missing, when Maca has exactly Rust's rule; one user had to argue the
-    /// point before finding out the language already did what they wanted.
     fn phantom_keyword(&mut self, name: &str) {
         if self.mode != Mode::Program || self.gradual_foreign {
             return;
@@ -257,14 +193,6 @@ impl Checker {
     }
 
     /// The three things a `...rest: T` parameter has to be.
-    ///
-    /// It has to be **last**, because the trailing arguments are collected into
-    /// it and a parameter after it could not be told from one more of them. It
-    /// has to be **annotated**, because `T` is what the collected list's
-    /// elements are: with no annotation the back end has no element type and
-    /// picks one, which is a silently wrong list rather than an error. And it
-    /// cannot be **`main`**, whose arguments come from the process, not from a
-    /// call site that could do the collecting.
     fn check_variadic(&mut self, f: &FnDef) {
         let Some(at) = f.params.iter().position(|p| p.variadic) else {
             return;
@@ -303,14 +231,6 @@ impl Checker {
     }
 
     /// A variadic function is callable and nothing else.
-    ///
-    /// Collecting the trailing arguments into a list is something the *call
-    /// site* does, so a variadic function only exists as a call. As a value it
-    /// has no arity to give: a function type is written `(T, U) -> R` and has
-    /// no variadic spelling, and the closure ABI every back end passes function
-    /// values through is fixed-arity. Handing one to a higher-order parameter or
-    /// storing it in a record field would pass a callee expecting a list an
-    /// argument that is one element.
     fn check_not_variadic_value(&mut self, name: &str) {
         if self.fn_arity.get(name).is_some_and(|&(_, v)| v) {
             self.diag(
@@ -324,8 +244,6 @@ impl Checker {
         }
     }
 
-    // ---- pass 1: collect declarations ------------------------------------
-
     fn collect(&mut self, m: &Module) {
         for f in IO_FNS {
             self.globals.insert(
@@ -338,21 +256,12 @@ impl Checker {
             ("float", Ty::Fn(vec![Ty::Any], Box::new(Ty::Float))),
             ("str", Ty::Fn(vec![Ty::Any], Box::new(Ty::Str))),
             ("len", Ty::Fn(vec![Ty::Any], Box::new(Ty::Int))),
-            // A byte and the one-character string holding it. Maca strings are
-            // bytes, so these are the pair every decoder needs: percent
-            // escapes, base64, a character class written as arithmetic.
             ("chr", Ty::Fn(vec![Ty::Int], Box::new(Ty::Str))),
             ("real_path", Ty::Fn(vec![Ty::Str], Box::new(Ty::Str))),
-            // whether stdout is a terminal, which is what colour output has to
-            // ask before writing an escape code into a file somebody will read
-            // later
             ("is_tty", Ty::Fn(vec![], Box::new(Ty::Bool))),
             ("ord", Ty::Fn(vec![Ty::Str], Box::new(Ty::Int))),
             ("input", Ty::Fn(vec![], Box::new(Ty::Str))),
-            // `sleep_ms(ms)`: an async suspension point (the async effect is
-            // added in `eff`); yields nothing.
             ("sleep_ms", Ty::Fn(vec![Ty::Int], Box::new(Ty::Unit))),
-            // math prelude (always available, no import)
             ("sqrt", Ty::Fn(vec![Ty::Any], Box::new(Ty::Float))),
             ("floor", Ty::Fn(vec![Ty::Any], Box::new(Ty::Float))),
             ("ceil", Ty::Fn(vec![Ty::Any], Box::new(Ty::Float))),
@@ -389,9 +298,6 @@ impl Checker {
                     self.local_names.insert(f.name.clone());
                     self.check_variadic(f);
                     let variadic = f.params.iter().any(|p| p.variadic);
-                    // For a variadic the stored count is the *fixed* one: the
-                    // trailing arguments are collected into the last parameter,
-                    // so a call passes at least this many and any number more.
                     let arity = f.params.len() - usize::from(variadic);
                     self.fn_arity.insert(f.name.clone(), (arity, variadic));
                 }
@@ -406,8 +312,6 @@ impl Checker {
                             let sum = Ty::Con(name.clone(), vec![]);
                             for (v, ptys) in vars {
                                 let payloads: Vec<Ty> = ptys.iter().map(ast_ty).collect();
-                                // a payload variant is a constructor *function*;
-                                // a nullary variant is just a value of the sum
                                 let scheme = if payloads.is_empty() {
                                     Scheme::mono(sum.clone())
                                 } else {
@@ -447,8 +351,6 @@ impl Checker {
                 }
             }
             Import::Foreign { lang, .. } => {
-                // `import rust` brings in items the checker can't see (a crate
-                // path or a raw block), so relax undefined-name checking.
                 if lang == "rust" {
                     self.gradual_foreign = true;
                 }
@@ -459,10 +361,7 @@ impl Checker {
         }
     }
 
-    /// Generalize a function signature into a polymorphic scheme: each distinct
-    /// lowercase type-variable name (`a`, `k`, `value`) becomes one fresh
-    /// inference variable shared across every occurrence, and all such variables
-    /// are quantified.
+    /// Generalize a function signature into a polymorphic scheme.
     fn sig_scheme(&mut self, f: &FnDef) -> Scheme {
         let mut vars: HashMap<String, Ty> = HashMap::new();
         let params: Vec<Ty> = f
@@ -472,8 +371,6 @@ impl Checker {
                 let t =
                     p.ty.as_ref()
                         .map_or(Ty::Any, |t| self.ast_ty_v(t, &mut vars));
-                // A variadic's written type is one argument's; the parameter
-                // holds the list they were collected into.
                 if p.variadic { Ty::array(t) } else { t }
             })
             .collect();
@@ -491,8 +388,7 @@ impl Checker {
         }
     }
 
-    /// Like [`ast_ty`] but maps type-variable names through `vars`, minting one
-    /// fresh inference variable per distinct name.
+    /// Like [`ast_ty`] but maps type-variable names through `vars`, minting one fresh inference variable per distinct name.
     fn ast_ty_v(&mut self, t: &Type, vars: &mut HashMap<String, Ty>) -> Ty {
         match t {
             Type::Name(segs) if segs.len() == 1 && ty::is_type_var_name(&segs[0]) => vars
@@ -517,8 +413,6 @@ impl Checker {
         }
     }
 
-    // ---- pass 2: check ----------------------------------------------------
-
     fn run(&mut self, m: &Module) {
         for (i, item) in m.items.iter().enumerate() {
             match item {
@@ -527,11 +421,6 @@ impl Checker {
                 Stmt::Alias { value, .. } if self.mode == Mode::Config => {
                     self.check_config_effects(value);
                 }
-                // A config module is its bindings; an expression standing alone
-                // produces no option and is dropped from the emitted Nix. A
-                // pure one is merely dead, but `info("…")` at the top level
-                // looked like it ran and did not: the build succeeded and the
-                // line was simply gone.
                 Stmt::Expr(e) if self.mode == Mode::Config => {
                     self.check_config_effects(e);
                 }
@@ -547,7 +436,6 @@ impl Checker {
             .iter()
             .map(|p| (p.name.clone(), param_ty(p)))
             .collect();
-        // fresh mutability scope for this body; params are exempt (mutable).
         let saved_mut = std::mem::take(&mut self.mut_of);
         for p in &f.params {
             self.mut_of.insert(p.name.clone(), true);
@@ -566,33 +454,12 @@ impl Checker {
     }
 
     /// Unify an annotation with the value it annotates.
-    ///
-    /// The argument order is the message. `Infer::unify(a, b)` reports `a` as
-    /// *expected* and `b` as *found*, so passing the value first told the
-    /// author their annotation was the surprise: `p: Point = { x = 5, y = 6 }`
-    /// came back as "expected { x: int, y: int }, found Point", which is
-    /// exactly backwards from what they wrote. The annotation is what is
-    /// expected; the value is what was found.
     fn unify_ann(&mut self, want: &Ty, got: &Ty) -> Result<(), String> {
         let (w, g) = self.meet_records(want, got);
         self.inf.unify(&w, &g)
     }
 
-    /// A declared record type and a structurally identical record literal are
-    /// one type, so bring the two spellings together before unifying.
-    ///
-    /// `Point` is nominal everywhere else in the language and a literal
-    /// `{ x = 5, y = 6 }` is structural, so unification saw two unrelated types
-    /// and refused. The literal *becomes* the named type rather than staying
-    /// structural: the record's struct already exists, so no second one is
-    /// synthesized and no conversion is needed, and the value keeps everything
-    /// a `Point` can do (a declared field's type, `with`, an overloaded
-    /// operator) instead of a lookalike that can do less.
-    ///
-    /// Expanding here rather than inside `Infer::unify` is deliberate: what
-    /// `Point` stands for is the checker's record table, which `Infer` cannot
-    /// see. Recursion is bounded by the literal, which is finite even when the
-    /// record refers to itself, because a name only expands opposite a `Rec`.
+    /// A declared record type and a structurally identical record literal are one type.
     fn meet_records(&self, want: &Ty, got: &Ty) -> (Ty, Ty) {
         let w = self.inf.resolve(want);
         let g = self.inf.resolve(got);
@@ -606,7 +473,6 @@ impl Checker {
                 let (decl, lit) = self.meet_fields(&decl, &w);
                 (lit, decl)
             }
-            // reach through a list (`Point[]` against `{ … }[]`) and a nullable
             (Ty::Con(n, wa), Ty::Con(m, ga)) if n == m && wa.len() == ga.len() => {
                 let met: Vec<(Ty, Ty)> = wa
                     .iter()
@@ -626,8 +492,7 @@ impl Checker {
         }
     }
 
-    /// The fields a named record declares, as a closed structural type. `None`
-    /// for anything that is not a bare declared record name.
+    /// The fields a named record declares, as a closed structural type.
     fn declared_shape(&self, t: &Ty) -> Option<Ty> {
         let Ty::Con(n, args) = t else { return None };
         if !args.is_empty() {
@@ -639,13 +504,7 @@ impl Checker {
         })
     }
 
-    /// Line a declared record's fields up with a literal's, recursively, and
-    /// close the literal.
-    ///
-    /// A record literal is open on purpose, because field access is
-    /// row-polymorphic. Left open against a declaration, `p: Point = { x = 5 }`
-    /// would pass with `y` never written and silently zero, which is the bug
-    /// `check_record_fields` exists to catch on the `Point { … }` spelling.
+    /// Line a declared record's fields up with a literal's, recursively, and close the literal.
     fn meet_fields(&self, decl: &Ty, lit: &Ty) -> (Ty, Ty) {
         let (Ty::Rec { fields: df, .. }, Ty::Rec { fields: lf, .. }) = (decl, lit) else {
             return (decl.clone(), lit.clone());
@@ -676,10 +535,7 @@ impl Checker {
         )
     }
 
-    /// Relax an *annotation* type: a bare, capitalized nominal that isn't a
-    /// declared record/sum is a foreign / interop type (a Java interface, a Nix
-    /// value, …). Treat it gradually as `any` rather than a strict nominal, so
-    /// `Mod : ModInitializer = { … }` type-checks.
+    /// Relax an *annotation* type: a bare, capitalized nominal that isn't a declared record/sum is a foreign / interop type (a Java interface, a Nix value, …).
     fn relax_ann(&self, t: Ty) -> Ty {
         match &t {
             Ty::Con(n, args)
@@ -710,8 +566,6 @@ impl Checker {
             }
         }
     }
-
-    // ---- config-mode checks ----------------------------------------------
 
     fn check_config_effects(&mut self, e: &Expr) {
         let effs = self.eff(e);
@@ -773,10 +627,7 @@ impl Checker {
             }
             Expr::Try(x) => acc = self.eff(x).union(EffSet::of(EXN)),
             Expr::Fail(x) => acc = self.eff(x).union(EffSet::of(EXN)),
-            // `reify`/`try` catches failures, so it discharges the `exn` effect
             Expr::Reify(x) => acc = EffSet(self.eff(x).0 & !EXN),
-            // colorblind async: `await`/`spawn` add the `async` effect (inferred,
-            // never written, because there is no `async` keyword).
             Expr::Await(x) | Expr::Spawn(x) => acc = self.eff(x).union(EffSet::of(ASYNC)),
             Expr::Field { base, .. } => acc = self.eff(base),
             Expr::Index { base, index } => acc = self.eff(base).union(self.eff(index)),
@@ -850,19 +701,12 @@ impl Checker {
         acc
     }
 
-    // ---- inference --------------------------------------------------------
-
     fn infer_block(&mut self, env: &mut Env, stmts: &[Stmt]) -> Ty {
         let base = env.len();
         let mut last = Ty::Unit;
         for s in stmts {
             match s {
                 Stmt::Bind(b) => {
-                    // Mutability: a bare lowercase `x = e` binds a mutable local;
-                    // `const x`, `x = e as const`, or a Capitalized name binds a
-                    // constant (`is_const`). Reassigning a constant is an error;
-                    // reassigning a mutable is fine. A bare reassignment of a
-                    // global is left to the global.
                     if let Expr::Ident(n) = &b.target {
                         match self.mut_of.get(n).copied() {
                             Some(false) => self.diag(
@@ -871,7 +715,7 @@ impl Checker {
                             ),
                             Some(true) => {
                                 if b.is_const {
-                                    self.mut_of.insert(n.clone(), false); // re-bound as const
+                                    self.mut_of.insert(n.clone(), false);
                                 }
                             }
                             None => {
@@ -888,11 +732,6 @@ impl Checker {
                             let name = target_name(&b.target);
                             self.diag(DiagKind::TypeMismatch, format!("in `{name}`: {e}"));
                         }
-                        // The annotation is what the binding *is*. Keeping the
-                        // inferred type instead loses it whenever the value is
-                        // gradual: `counts: Map str int = map()` would stay
-                        // `any`, and a misspelt method on it would sail past
-                        // the closed-method-set check to the linker.
                         vty = at;
                     }
                     if let Expr::Ident(n) = &b.target {
@@ -963,11 +802,6 @@ impl Checker {
                 Ty::Con(name.clone(), vec![])
             }
             Expr::Call { callee, args } => {
-                // Arity: a direct call of a user function (not shadowed by a
-                // local of the same name) must pass the declared number of
-                // arguments, or, for a variadic, at least the fixed ones. Too
-                // few fixed arguments is still an error: the collection cannot
-                // invent the one that is missing.
                 let mut fixed = None;
                 if let Expr::Ident(name) = &**callee
                     && lookup(env, name).is_none()
@@ -992,12 +826,6 @@ impl Checker {
                         );
                     }
                 }
-                // Undefined direct call: a bare lowercase `foo(...)` that is
-                // neither a local, a user function, an import/alias, nor a
-                // builtin resolves to nothing the native backend can emit and
-                // would become a broken-C call. Flag it here as a clean error.
-                // (Capitalized names are constructors; UFCS `x.m(...)` and calls
-                // through a value stay gradual.)
                 if self.mode == Mode::Program
                     && !self.gradual_foreign
                     && let Expr::Ident(name) = &**callee
@@ -1014,8 +842,6 @@ impl Checker {
                         format!("call to undefined function `{name}`"),
                     );
                 }
-                // UFCS on a known primitive receiver: a method outside the
-                // closed set is a typo, not gradual foreign code.
                 if let Expr::Field { base, name } = &**callee {
                     let bt = self.infer(env, base);
                     self.check_method(&bt, name);
@@ -1025,11 +851,6 @@ impl Checker {
                 let ats: Vec<Ty> = args.iter().map(|a| self.infer_arg(env, a)).collect();
                 match self.inf.resolve(&ct) {
                     Ty::Fn(params, ret) => {
-                        // The signature says `rest: T[]`, one parameter; the
-                        // call says N arguments of `T`. Unroll the tail so each
-                        // trailing argument is checked against the element
-                        // type, and against each other, since one type variable
-                        // is shared by all of them.
                         let params = match fixed {
                             Some(n) if params.len() == n + 1 => {
                                 let elem = match self.inf.resolve(&params[n]) {
@@ -1042,9 +863,6 @@ impl Checker {
                             }
                             _ => params,
                         };
-                        // A concrete/concrete clash between a declared parameter
-                        // and its argument is a real error (`Any`/vars never
-                        // clash, so unknown-stdlib calls stay silent).
                         for (i, (p, a)) in params.iter().zip(&ats).enumerate() {
                             if let Err(e) = self.unify_ann(p, a) {
                                 let name = target_name(callee);
@@ -1069,8 +887,6 @@ impl Checker {
                 let _ = self.inf.unify(&it, &Ty::Int);
                 match self.inf.resolve(&bt) {
                     Ty::Con(n, args) if n == "Array" && args.len() == 1 => args[0].clone(),
-                    // `str[i]` yields a single-character `str`; unknown/gradual
-                    // bases stay `any` so foreign collections aren't rejected
                     Ty::Con(n, _) if n == "str" || n == "bytes" => Ty::Con(n, vec![]),
                     _ => Ty::Any,
                 }
@@ -1078,8 +894,6 @@ impl Checker {
             Expr::Range { lo, hi } => {
                 let lt = self.infer(env, lo);
                 let rt = self.infer(env, hi);
-                // `int` first: it is what the range expects, and `unify` names
-                // its first argument as the expected one.
                 if let Err(e) = self.inf.unify(&Ty::Int, &lt) {
                     self.diag(
                         DiagKind::TypeMismatch,
@@ -1203,8 +1017,6 @@ impl Checker {
                 self.infer(env, x);
                 Ty::Any
             }
-            // `spawn e : Future a` where `e : a`; `await (Future a) : a`. No
-            // `async` keyword: the async effect is inferred by `eff` above.
             Expr::Spawn(x) => {
                 let a = self.infer(env, x);
                 Ty::Con("Future".into(), vec![a])
@@ -1213,7 +1025,6 @@ impl Checker {
                 let t = self.infer(env, x);
                 match self.inf.resolve(&t) {
                     Ty::Con(n, args) if n == "Future" && args.len() == 1 => args[0].clone(),
-                    // gradual: awaiting an unknown/foreign value yields `any`
                     _ => Ty::Any,
                 }
             }
@@ -1257,17 +1068,7 @@ impl Checker {
         }
     }
 
-    /// A record literal has to name every field the record declares, and no
-    /// field it doesn't.
-    ///
-    /// A missing one used to be silently zero (`""` for a `str`, `0` for an
-    /// `int`), so a page whose copy lives in a record shipped a link with no
-    /// text and a heading with no words, compiling clean the whole way. A
-    /// *misspelt* one is worse: the value goes nowhere and the field it was
-    /// meant for stays empty.
-    ///
-    /// `base with { f = v }` is the update form and is deliberately partial;
-    /// only a construction is checked.
+    /// A record literal has to name every field the record declares, and no field it doesn't.
     fn check_record_fields(&mut self, name: &str, fields: &[Field]) {
         if self.mode != Mode::Program {
             return;
@@ -1275,8 +1076,6 @@ impl Checker {
         let Some(declared) = self.records.get(name).cloned() else {
             return;
         };
-        // `Field::Bare` is a positional child in the UI syntax, not a named
-        // field; a literal carrying one isn't a record construction.
         if fields.iter().any(|f| matches!(f, Field::Bare(_))) {
             return;
         }
@@ -1317,24 +1116,10 @@ impl Checker {
     }
 
     /// A UFCS method call on a receiver whose type we actually know.
-    ///
-    /// Method calls are gradual on purpose: `any` receivers reach foreign and
-    /// unknown-stdlib code, and rejecting those would make the escape hatch
-    /// useless. But when the receiver is a `str` or a `T[]`, the set of methods
-    /// is closed and a name outside it is a typo. It used to sail through the
-    /// checker and die in the linker:
-    ///
-    /// ```text
-    /// undefined reference to `slice'
-    /// ```
-    ///
-    /// which is a message about a C symbol, for a Maca programmer who wrote
-    /// `s.slice(1, 3)` and wanted `substr`.
     fn check_method(&mut self, recv: &Ty, name: &str) {
         if self.mode != Mode::Program || self.gradual_foreign {
             return;
         }
-        // a user-defined function of the same name is a legitimate UFCS target
         if self.globals.contains_key(name) {
             return;
         }
@@ -1371,8 +1156,6 @@ impl Checker {
 
     fn binary_ty(&mut self, op: BinOp, lt: Ty, rt: Ty) -> Ty {
         use BinOp::*;
-        // Operator overloading: on a user type (record/sum), an operator resolves
-        // to a same-named function (`a + b` → `add`), taking its return type.
         if let Ty::Con(n, _) = self.inf.resolve(&lt)
             && (self.records.contains_key(&n) || self.sums.contains_key(&n))
             && let Some(name) = overload_fn_name(op)
@@ -1389,13 +1172,11 @@ impl Checker {
                 let _ = self.inf.unify(&lt, &rt);
                 self.inf.resolve(&lt)
             }
-            // integer-only operators
             Mod | Shl | Shr => {
                 let _ = self.inf.unify(&lt, &Ty::Int);
                 let _ = self.inf.unify(&rt, &Ty::Int);
                 Ty::Int
             }
-            // `Pipe` is desugared by the parser and never arrives here.
             Union | Pipe => Ty::Any,
         }
     }
@@ -1407,12 +1188,9 @@ impl Checker {
                     return;
                 }
                 env.push((n.clone(), scrut.clone()));
-                // a pattern-bound name (loop var, match capture) is exempt from
-                // the constant rule, so treat it as mutable.
                 self.mut_of.insert(n.clone(), true);
             }
             Pattern::Ctor { name, args } => {
-                // bind each payload sub-pattern at the variant's declared type
                 let tys = self.variant_payloads.get(name).cloned().unwrap_or_default();
                 for (i, a) in args.iter().enumerate() {
                     self.bind_pattern(env, a, tys.get(i).unwrap_or(&Ty::Any));
@@ -1507,8 +1285,6 @@ fn cover(p: &Pattern, variants: &[String], covered: &mut HashSet<String>, catcha
     }
 }
 
-// ---- helpers -------------------------------------------------------------
-
 /// Operator → overload function name for user types (mirror of the C backend).
 fn overload_fn_name(op: BinOp) -> Option<&'static str> {
     use BinOp::*;
@@ -1536,11 +1312,6 @@ fn lookup(env: &Env, name: &str) -> Option<Ty> {
 }
 
 /// The type a parameter has *inside the body*.
-///
-/// `...rest: int` is written with the type of one argument, because that is
-/// what a call site writes; the body sees the `int[]` they were collected into,
-/// so it can iterate them. Every reader of a parameter's type wants this one,
-/// not `p.ty`.
 fn param_ty(p: &Param) -> Ty {
     let t = p.ty.as_ref().map_or(Ty::Any, ast_ty);
     if p.variadic { Ty::array(t) } else { t }
@@ -1557,8 +1328,6 @@ fn ast_ty(t: &Type) -> Ty {
                 "bool" => Ty::Bool,
                 "bytes" => Ty::Bytes,
                 "unit" | "()" => Ty::Unit,
-                // Outside a generalizing signature, an un-bound type variable is
-                // treated gradually (`any`) rather than as a nominal type.
                 _ if segs.len() == 1 && ty::is_type_var_name(&n) => Ty::Any,
                 _ => Ty::Con(n, vec![]),
             }
@@ -1575,8 +1344,6 @@ fn ast_ty(t: &Type) -> Ty {
 }
 
 /// `A | Circle(int) | Rect(int, int)` → variants with their payload types.
-/// A leaf is either a bare ident (nullary) or a call `Name(T, …)` whose args
-/// are type names.
 fn sum_variants(e: &Expr) -> Option<Vec<(String, Vec<Type>)>> {
     fn go(e: &Expr, out: &mut Vec<(String, Vec<Type>)>) -> bool {
         match e {
@@ -1663,9 +1430,6 @@ fn root_ident(e: &Expr) -> Option<String> {
 }
 
 /// The closest name in `pool` to `name`, if one is close enough to suggest.
-///
-/// Plain edit distance, capped so a wrong guess isn't offered: "did you mean"
-/// is only useful when it is usually right.
 fn nearest<'a>(name: &str, pool: &[&'a str]) -> Option<&'a str> {
     let limit = match name.len() {
         0..=3 => 1,

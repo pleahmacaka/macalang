@@ -1,7 +1,3 @@
-//! Maca AST. Span-free on purpose: the parse→print→parse roundtrip test checks
-//! structural equality, so nodes carry no source positions. Parse errors still
-//! report token spans, which is where a reader needs them.
-
 pub type Ident = String;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -20,29 +16,26 @@ pub enum Stmt {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Import {
-    /// `import std/json` → `["std", "json"]`
+    /// `import std/json` → `["std", "json"]`.
     Module(Vec<Ident>),
-    /// `import { a, b } from m`
+    /// `import { a, b } from m`.
     Names {
         names: Vec<Ident>,
         module: Vec<Ident>,
     },
-    /// `import ./x.maca`
+    /// `import ./x.maca`.
     Path(String),
-    /// `import nixpkgs`
+    /// `import nixpkgs`.
     Bare(Ident),
-    /// `import c "sqlite3.h"` / `import nix "./x.nix"` / `import py "numpy"`
+    /// `import c "sqlite3.h"` / `import nix "./x.nix"` / `import py "numpy"`.
     Foreign { lang: Ident, spec: String },
 }
 
-/// `[const] target [: T [: Base ...]] = value [as const]`
-///
-/// A bare lowercase `x = e` binds a *mutable* variable; `const x = e`,
-/// `x = e as const`, or a Capitalized name binds a *constant* (`is_const`).
+/// `[const] target [: T [: Base ...]] = value [as const]`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Bind {
     pub is_const: bool,
-    pub target: Expr, // Ident or dotted Field path (config: networking.hostName)
+    pub target: Expr,
     pub tys: Vec<Type>,
     pub value: Expr,
 }
@@ -52,7 +45,7 @@ pub struct FnDef {
     pub name: Ident,
     pub params: Vec<Param>,
     pub ret: Option<Type>,
-    pub effects: Option<Vec<Ident>>, // `/ <io, net>`
+    pub effects: Option<Vec<Ident>>,
     pub body: Option<FnBody>,
 }
 
@@ -71,22 +64,12 @@ pub struct Param {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
-    Name(Vec<Ident>),            // int / Status / nixpkgs.zed
-    Apply(Box<Type>, Vec<Type>), // Map k v
-    Array(Box<Type>),            // T[]
-    Opt(Box<Type>),              // T?
+    Name(Vec<Ident>),
+    Apply(Box<Type>, Vec<Type>),
+    Array(Box<Type>),
+    Opt(Box<Type>),
     Paren(Box<Type>),
     /// `(T, U) -> R`: the type of a function value.
-    ///
-    /// A function passed as an argument needs no type: an unannotated parameter
-    /// that is *called* in the body is one. A function kept in a record field
-    /// does need one, because a field is declared before anything calls it,
-    /// which is why a route table, a middleware chain and a list of subscribers
-    /// were all impossible to write down.
-    ///
-    /// The parentheses are required. `str -> str` would have to be told apart
-    /// from a return type by lookahead, and a type that means something
-    /// different depending on what follows it is not worth the two characters.
     Fn(Vec<Type>, Box<Type>),
 }
 
@@ -116,11 +99,11 @@ pub enum Expr {
     Index {
         base: Box<Expr>,
         index: Box<Expr>,
-    }, // `xs[i]`
+    },
     Range {
         lo: Box<Expr>,
         hi: Box<Expr>,
-    }, // `lo..hi` (inclusive: lo … hi)
+    },
     Unary {
         op: UnOp,
         expr: Box<Expr>,
@@ -157,9 +140,7 @@ pub enum Expr {
     Continue,
     Lambda {
         params: Vec<Param>,
-        /// `(a, b) -> T => …`: an optional declared return type. A lambda
-        /// usually infers, but a trait-impl method has to match a signature the
-        /// compiler cannot read, so it can be written out.
+        /// `(a, b) -> T => …`: an optional declared return type.
         ret: Option<Type>,
         body: Box<Expr>,
     },
@@ -167,15 +148,15 @@ pub enum Expr {
         base: Box<Expr>,
         fields: Vec<Field>,
     },
-    Try(Box<Expr>),   // postfix `x?`
-    Fail(Box<Expr>),  // `fail e`
-    Reify(Box<Expr>), // `try e`
-    Await(Box<Expr>), // `await e`: suspend until the future resolves
-    Spawn(Box<Expr>), // `spawn e`: run `e` concurrently, yields a Future
+    Try(Box<Expr>),
+    Fail(Box<Expr>),
+    Reify(Box<Expr>),
+    Await(Box<Expr>),
+    Spawn(Box<Expr>),
     Assign {
         target: Box<Expr>,
         value: Box<Expr>,
-    }, // UI setter `age = int(v)`
+    },
     Block(Vec<Stmt>),
 }
 
@@ -245,33 +226,24 @@ pub enum BinOp {
     Sub,
     Mul,
     Div,
-    Mod,    // %
-    Shl,    // <<
-    Shr,    // >>
-    Concat, // ++
+    Mod,
+    Shl,
+    Shr,
+    Concat,
     Eq,
     Ne,
     Lt,
     Gt,
     Le,
     Ge,
-    And,   // &&
-    Or,    // ||
-    Union, // |  (sum types / rows)
-    /// `|>`. Never reaches a backend: the parser rewrites `x |> f` to `f(x)`
-    /// as it builds the node, and this variant only carries the operator's
-    /// precedence through `bin_op`. Lowering it per backend instead meant
-    /// three separate arms that all evaluated to the left operand and dropped
-    /// the right, so `3 |> double` was `3` on every target and nothing said so.
+    And,
+    Or,
+    Union,
+    /// `|>`.
     Pipe,
 }
 
 /// Visit `e` and every expression inside it, outermost first.
-///
-/// Each backend used to carry its own copy of this walk, each covering the
-/// variants that backend happened to need, which is how `chars()` went years
-/// without registering its array type. One walk, over every variant, means a
-/// new `Expr` variant is a compile error here rather than a silent gap there.
 pub fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
     f(e);
     match e {
@@ -371,22 +343,12 @@ fn walk_fields(fields: &[Field], f: &mut impl FnMut(&Expr)) {
     for field in fields {
         match field {
             Field::Value { value, .. } | Field::Bare(value) => walk_expr(value, f),
-            // A shorthand names a variable but holds no `Expr` to hand over.
-            // See `walk_names`, which is the walk to use when the question is
-            // which names an expression mentions.
             Field::Type { .. } | Field::Shorthand(_) => {}
         }
     }
 }
 
 /// Every variable name `e` mentions.
-///
-/// `walk_expr` visits expressions, and `{ s }` mentions `s` without containing
-/// an expression for it, since the shorthand carries a bare `Ident`. Anything
-/// asking *which names does this use* has to see through that, or `{ s }` and
-/// `{ s = s }` answer differently: the first told the C back end that nothing
-/// was holding `s`, so the block that built it released it while the record it
-/// had just been put into still pointed at the bytes.
 pub fn walk_names(e: &Expr, f: &mut impl FnMut(&str)) {
     walk_expr(e, &mut |c| match c {
         Expr::Ident(n) => f(n),
@@ -420,16 +382,6 @@ pub fn walk_stmt(s: &Stmt, f: &mut impl FnMut(&Expr)) {
 }
 
 /// Rename every free reference to `from` into `to`, throughout `s`.
-///
-/// Used when two modules inlined into one program each define a private helper
-/// under the same name. Everything lands in one translation unit, so one of the
-/// two has to be renamed, and it has to be renamed in its own module's
-/// references as well as at its definition.
-///
-/// Shadowing is not tracked: a local called `helper` inside a module whose
-/// `helper` is being renamed is renamed too. That is a rename of something to
-/// an unused name (the qualified form is fresh by construction), so it is
-/// harmless, and the alternative is scope analysis this pass has no need of.
 pub fn rename_ident(s: &mut Stmt, from: &str, to: &str) {
     match s {
         Stmt::Expr(e) => rename_in_expr(e, from, to),
@@ -448,22 +400,9 @@ pub fn rename_ident(s: &mut Stmt, from: &str, to: &str) {
             if fd.name == from {
                 fd.name = to.to_string();
             }
-            // A function that binds this name means something else by it, so
-            // its body is left alone: a package with a private `at` used to
-            // rewrite `at + 1` inside any function with a parameter called
-            // `at`, leaving the parameter itself untouched and the arithmetic
-            // pointing at a function. Skipping the whole body is coarse, and a
-            // use *before* the shadow is bound loses its rename too, but it is
-            // coarse in the direction where the name still means what the
-            // reader thinks it does.
             if binds(fd, from) {
                 return;
             }
-            // A record declared privately is renamed where it is *written* as
-            // well as where it is built: a package's own `Box` becomes
-            // `pkg__Box`, and a signature still saying `Box` names a type
-            // nothing declares. The C back end then gave the parameter a
-            // fallback type and the program failed to compile against itself.
             for p in &mut fd.params {
                 if let Some(t) = &mut p.ty {
                     rename_in_type(t, from, to);
@@ -482,8 +421,7 @@ pub fn rename_ident(s: &mut Stmt, from: &str, to: &str) {
     }
 }
 
-/// Does this function give `name` a meaning of its own: a parameter, a local,
-/// a loop variable, or a lambda's parameter?
+/// Does this function give `name` a meaning of its own.
 fn binds(fd: &FnDef, name: &str) -> bool {
     if fd.params.iter().any(|p| p.name == name) {
         return true;
@@ -602,8 +540,6 @@ fn rename_in_expr(e: &mut Expr, from: &str, to: &str) {
                 rename_in_expr(arg_expr_mut(a), from, to);
             }
         }
-        // The field *name* is a field, not a binding, so only the base is
-        // renamed.
         Expr::Field { base, .. } => rename_in_expr(base, from, to),
         Expr::Index { base, index } => {
             rename_in_expr(base, from, to);
@@ -683,19 +619,12 @@ pub fn arg_expr(a: &Arg) -> &Expr {
 }
 
 /// Is this expression a *record type declaration* rather than a record value?
-///
-/// `P = { x: int }` declares a type, and every field is `name: Type`.
-/// `P { x = 1 }` builds one. Three backends each carried a byte-identical copy of this, and
-/// they name the same source-level distinction, so they share one.
 pub fn is_record_type(e: &Expr) -> bool {
     matches!(e, Expr::Record(fs) if !fs.is_empty()
         && fs.iter().all(|f| matches!(f, Field::Type { .. })))
 }
 
 /// The literal text of an interpolated string, with the interpolations dropped.
-///
-/// What a backend needs when a string has to be known at compile time: a Nix
-/// attribute path, a Tailwind class list.
 pub fn plain_text(parts: &[StrPart]) -> String {
     parts
         .iter()
@@ -707,19 +636,6 @@ pub fn plain_text(parts: &[StrPart]) -> String {
 }
 
 /// Is `n` a type *variable* rather than a concrete type?
-///
-/// Lowercase and not one of the primitives, and not a sized numeric like `i32`
-/// or a SIMD `f32x4`. The C and JVM backends monomorphize against this and must
-/// agree with the checker about which names are generic.
-///
-/// A name carrying `__` is a *qualified* one, so it is concrete however it
-/// starts. `imports::fresh` renames an inlined module's items to
-/// `<module>__<name>`, and a module stem is lowercase, so `Tone` declared in
-/// `highlight.maca` arrives here as `highlight__Tone` and read as a variable.
-/// Every record type reached through a selective import was then treated as
-/// generic: `tone_css(tones: Tone[])` was monomorphized instead of emitted, and
-/// the C compiler was handed a call to a function that does not exist and an
-/// undeclared `highlight__ToneArr`.
 pub fn is_type_var_name(n: &str) -> bool {
     let b = n.as_bytes();
     !b.is_empty()

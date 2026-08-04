@@ -1,7 +1,3 @@
-//! `maca fmt` must be safe: idempotent, comment-preserving, no reflow. It
-//! normalizes indentation only, so the golden examples (already 4-space) are
-//! left byte-for-byte unchanged.
-
 mod common;
 use common::*;
 
@@ -18,7 +14,6 @@ fn examples() -> Vec<PathBuf> {
 
 #[test]
 fn examples_are_already_formatted() {
-    // Default style is 4-space; the examples are 4-space, so --check is clean.
     let mut args = vec!["fmt".to_string(), "--check".to_string()];
     for p in examples() {
         args.push(p.to_string_lossy().into_owned());
@@ -42,8 +37,6 @@ fn fmt_preserves_comments_and_is_idempotent() {
     let src = "// a leading comment\nfoo(x: int) -> int =>\n    x > 0\n        ? x   // inline note\n        : 0\n";
     std::fs::write(&f, src).unwrap();
 
-    // Twice, so the assertions below run against a twice-formatted file: a
-    // formatter that drops a comment only on the second pass is caught here.
     for _ in 0..2 {
         let out = Command::new(maca())
             .args(["fmt", &f.to_string_lossy()])
@@ -64,12 +57,10 @@ fn fmt_preserves_comments_and_is_idempotent() {
         after.contains("// inline note"),
         "inline comment dropped:\n{after}"
     );
-    // the ternary continuation indentation is preserved (not flattened)
     assert!(
         after.contains("        ? x"),
         "continuation indent lost:\n{after}"
     );
-    // idempotent: a --check now passes
     let chk = Command::new(maca())
         .args(["fmt", "--check", &f.to_string_lossy()])
         .output()
@@ -77,11 +68,7 @@ fn fmt_preserves_comments_and_is_idempotent() {
     assert!(chk.status.success(), "fmt not idempotent");
 }
 
-/// `fmt` used to infer the file's indent step as the gcd of every leading
-/// width, which one continuation line aligned under an open paren destroys: a
-/// second argument at column 14 makes the gcd 2, every four-space indent reads
-/// as two levels, and the file comes back at eight. The gcd was 1 or 2 in
-/// twenty-three files in this repository.
+/// `fmt` used to infer the file's indent step as the gcd of every leading width, which one continuation line aligned under an open paren destroys.
 #[test]
 fn an_aligned_continuation_does_not_double_the_indent() {
     let src = "f(t: int) -> str =>\n\
@@ -99,21 +86,16 @@ fn an_aligned_continuation_does_not_double_the_indent() {
     );
 }
 
-/// And it must not re-indent the aligned line itself. An indent that isn't a
-/// whole number of levels is alignment, not structure.
+/// And it must not re-indent the aligned line itself.
 #[test]
 fn alignment_survives_formatting() {
     let src = "f() -> str =>\n\
                \x20   pair(one,\n\
                \x20        two)\n";
-    // `two` sits at column 9, under the `(` of `pair(`, not a multiple of the
-    // four-space level, and so not the formatter's to move.
     assert_eq!(formatted(src, "align"), src, "the aligned argument moved");
 }
 
-/// A raw `"""…"""` block holds foreign source with its own indentation. The
-/// playground embeds a two-space-indented stylesheet, and measuring it set the
-/// step for the whole program.
+/// A raw `"""…"""` block holds foreign source with its own indentation.
 #[test]
 fn a_raw_block_is_neither_measured_nor_reindented() {
     let src = "Css = \"\"\"\n\

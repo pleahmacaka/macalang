@@ -1,8 +1,3 @@
-//! Canonical pretty-printer. Output is not meant to match the original source
-//! byte-for-byte; it only has to re-parse to the same AST (the roundtrip test).
-//! Compound expressions are parenthesized so precedence survives:
-//! grouping `(e)` parses back to `e`, so extra parens are harmless.
-
 use crate::ast::*;
 use std::fmt::Write;
 
@@ -51,17 +46,9 @@ fn import(s: &mut String, im: &Import) {
             let _ = write!(s, "import {n}");
         }
         Import::Foreign { lang, spec } => match lang.as_str() {
-            // An inline page block. It can only have come from a `"""…"""`
-            // block, because a *quoted* css/js import is the file form and
-            // parses as `stylesheet`/`script`, so the content cannot contain
-            // `"""` and goes straight back out. Escaping it into a one-line
-            // `"…"` would tell the next reader of this source, and the next
-            // build, to go and read a file by that name.
             "css" | "js" => {
                 let _ = write!(s, "import {lang} \"\"\"{spec}\"\"\"");
             }
-            // The file forms, written back as the language word the author
-            // used. `maca fmt` is not allowed to rename an import.
             "stylesheet" => {
                 let _ = write!(s, "import css \"{}\"", escape(spec));
             }
@@ -76,9 +63,6 @@ fn import(s: &mut String, im: &Import) {
 }
 
 fn bind(s: &mut String, b: &Bind) {
-    // Re-emit const-ness so it re-parses identically: a Capitalized name is
-    // already a constant by convention (no keyword); a lowercase constant needs
-    // an explicit `const `; a mutable binding is bare.
     let capital =
         matches!(&b.target, Expr::Ident(n) if n.chars().next().is_some_and(|c| c.is_uppercase()));
     if b.is_const && !capital {
@@ -191,8 +175,6 @@ fn expr(s: &mut String, e: &Expr) {
             let _ = write!(s, "{n}");
         }
         Expr::Float(f) => {
-            // keep the decimal point so a whole-number float (`2.0`) doesn't
-            // print as `2` and re-parse as an `int`.
             if f.fract() == 0.0 && f.is_finite() {
                 let _ = write!(s, "{f:.1}");
             } else {
@@ -304,9 +286,6 @@ fn expr(s: &mut String, e: &Expr) {
         Expr::Break => s.push_str("break"),
         Expr::Continue => s.push_str("continue"),
         Expr::Lambda { params, ret, body } => {
-            // A single bare parameter needs no parens, but an annotated
-            // lambda does, or `x -> T => …` would re-parse as a function
-            // signature.
             if params.len() == 1 && !params[0].variadic && params[0].ty.is_none() && ret.is_none() {
                 s.push_str(&params[0].name);
             } else {
@@ -326,8 +305,6 @@ fn expr(s: &mut String, e: &Expr) {
                 let _ = write!(s, " -> {}", ty(t));
             }
             s.push_str(" => ");
-            // `=> { … }` is a block, so a record body needs its parentheses
-            // back or it would re-parse as one.
             if matches!(&**body, Expr::Record(_)) {
                 s.push('(');
                 expr(s, body);
@@ -491,9 +468,6 @@ fn pattern(s: &mut String, p: &Pattern) {
             }
             s.push_str(" }");
         }
-        // Always bracketed. The bracketless spelling is only unambiguous when
-        // there is something to see: an empty list prints as nothing, and a
-        // lone `[x]` prints as `x`, which reparses as "bind anything".
         Pattern::List { elems, rest } => {
             s.push('[');
             for (i, e) in elems.iter().enumerate() {

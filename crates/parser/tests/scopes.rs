@@ -1,11 +1,3 @@
-//! What inlining does to two modules that never imported each other.
-//!
-//! Everything lands in one translation unit, so a name written in one file can
-//! be answered by a definition in another. These build a project on disk and ask
-//! `load_with_imports` what the flattened program says, which is the last point
-//! at which the answer is still readable: after this it is C, and the failures
-//! this pass exists for all surfaced as somebody else's diagnostic.
-
 use maca_parser::imports::load_with_imports;
 use std::path::{Path, PathBuf};
 
@@ -53,10 +45,7 @@ fn times(text: &str, needle: &str) -> usize {
         .count()
 }
 
-// ---- two modules, one private name ----------------------------------------
-
-/// The collision this pass exists for. Both helpers survive, under names of
-/// their own, and each module's own call goes to its own.
+/// The collision this pass exists for.
 #[test]
 fn two_modules_may_each_keep_a_private_helper() {
     let p = Project::new("private");
@@ -87,8 +76,7 @@ fn two_modules_may_each_keep_a_private_helper() {
     );
 }
 
-/// A `///` block is what marks an item API, so a documented name keeps it: the
-/// private side of the collision is the side that moves.
+/// A `///` block is what marks an item API, so a documented name keeps it.
 #[test]
 fn a_documented_name_keeps_it_and_the_private_one_moves() {
     let p = Project::new("documented");
@@ -117,8 +105,7 @@ fn a_documented_name_keeps_it_and_the_private_one_moves() {
     );
 }
 
-/// A name an importer asked for by hand is that module's API however it is
-/// commented, so it does not move out from under the importer.
+/// A name an importer asked for by hand is that module's API however it is commented.
 #[test]
 fn a_name_asked_for_by_hand_is_api() {
     let p = Project::new("asked");
@@ -145,9 +132,7 @@ fn a_name_asked_for_by_hand_is_api() {
     );
 }
 
-/// Where both sides are API, there is nothing to move, and the clash is
-/// reported naming both files rather than left to surface as a type error
-/// against whichever signature won.
+/// Where both sides are API, there is nothing to move, and the clash is reported naming both files rather than left to surface as a type error against whichever signature won.
 #[test]
 fn a_clash_between_two_api_names_names_both_files() {
     let p = Project::new("clash");
@@ -170,10 +155,7 @@ fn a_clash_between_two_api_names_names_both_files() {
     assert!(err.contains("two.maca"), "names the second file: {err}");
 }
 
-/// A UFCS call writes the function as a field of its first argument, and the
-/// rename cannot follow it. So the name stays where it is: leaving a collision
-/// to be reported is a worse answer than a repair, and a repair that loses a
-/// call site is worse than both.
+/// A UFCS call writes the function as a field of its first argument, and the rename cannot follow it.
 #[test]
 fn a_name_called_ufcs_is_left_alone() {
     let p = Project::new("ufcs");
@@ -197,12 +179,7 @@ fn a_name_called_ufcs_is_left_alone() {
     assert!(err.contains("snip"), "names the name: {err}");
 }
 
-/// A third module reaching both sides of the collision means the API side, and
-/// repairing the collision must not take its reference along.
-///
-/// This one compiled and ran, with the wrong answer: the private definition
-/// moved, every module that could reach it was rewritten, and a call written
-/// against the documented function ran a helper of a module never opened.
+/// A third module reaching both sides of the collision means the API side, and repairing the collision must not take its reference along.
 #[test]
 fn a_third_module_means_the_published_definition() {
     let p = Project::new("meant");
@@ -236,9 +213,7 @@ fn a_third_module_means_the_published_definition() {
     );
 }
 
-/// Where no one of the definitions in reach is the API one, nothing in the
-/// referring module says which it meant, and it is refused naming that file.
-/// The alternative is a call bound by which definition happened to move first.
+/// Where no one of the definitions in reach is the API one, nothing in the referring module says which it meant, and it is refused naming that file.
 #[test]
 fn a_reference_nothing_settles_is_refused() {
     let p = Project::new("unsettled");
@@ -270,10 +245,7 @@ fn a_reference_nothing_settles_is_refused() {
     );
 }
 
-// ---- a top level against another module's binding --------------------------
-
-/// A lambda capturing a parameter, and another module defining that name at top
-/// level. The top level moves; the parameter is left saying what it says.
+/// A lambda capturing a parameter, and another module defining that name at top level.
 #[test]
 fn a_captured_parameter_is_not_shadowed_by_another_module() {
     let p = Project::new("capture");
@@ -310,9 +282,7 @@ fn a_captured_parameter_is_not_shadowed_by_another_module() {
     );
 }
 
-/// A module that imports the definition may legitimately mean both it and a
-/// local of the same name, so nothing is moved on its account: which one a line
-/// means is a question about that file.
+/// A module that imports the definition may legitimately mean both it and a local of the same name, so nothing is moved on its account.
 #[test]
 fn a_module_that_imports_the_name_does_not_move_it() {
     let p = Project::new("importer");
@@ -337,8 +307,7 @@ fn a_module_that_imports_the_name_does_not_move_it() {
     );
 }
 
-/// The entry file's names are what the person running the program typed, so a
-/// collision with one of them is repaired on the module's side.
+/// The entry file's names are what the person running the program typed.
 #[test]
 fn the_entry_files_own_names_are_never_moved() {
     let p = Project::new("entry");
@@ -363,9 +332,7 @@ fn the_entry_files_own_names_are_never_moved() {
     );
 }
 
-/// A module that defines `main` *is* the program, and `main` is the symbol the
-/// linker asks for. Moving it because some unrelated module happens to bind the
-/// name would leave a program with no entry point at all.
+/// A module that defines `main` *is* the program, and `main` is the symbol the linker asks for.
 #[test]
 fn a_programs_main_is_never_moved() {
     let p = Project::new("mainguard");
@@ -384,10 +351,7 @@ fn a_programs_main_is_never_moved() {
     );
 }
 
-/// `maca test` finds a suite by looking for `test_…` in the *flattened* program,
-/// so a module's test function is read from outside the source the way `main` is.
-/// Renaming one does not fail: it makes the test disappear, and a suite that
-/// silently runs fewer tests than it has is worse than one that will not build.
+/// `maca test` finds a suite by looking for `test_…` in the *flattened* program.
 #[test]
 fn a_modules_test_function_is_never_moved() {
     let p = Project::new("suiteguard");
@@ -407,9 +371,7 @@ fn a_modules_test_function_is_never_moved() {
     );
 }
 
-/// A body-less declaration *is* the symbol some library provides, so its name is
-/// not this pass's to change: `atol` renamed to `ffi__atol` asked the linker for
-/// a symbol nothing defines.
+/// A body-less declaration *is* the symbol some library provides, so its name is not this pass's to change.
 #[test]
 fn a_foreign_declaration_keeps_the_symbols_name() {
     let p = Project::new("foreign");
@@ -435,11 +397,7 @@ fn a_foreign_declaration_keeps_the_symbols_name() {
     );
 }
 
-// ---- one written import, two files ----------------------------------------
-
-/// The shadowing this repository closed by moving a directory, now said out
-/// loud: a top-level `bench/` beside `modules/bench/` makes `import bench/stat`
-/// name two files, and nothing in the import line says which.
+/// The shadowing this repository closed by moving a directory, now said out loud.
 #[test]
 fn an_import_that_names_two_files_is_refused() {
     let p = Project::new("ambiguous");
@@ -458,9 +416,7 @@ fn an_import_that_names_two_files_is_refused() {
     }
 }
 
-/// One file reached two ways is not two files. From inside `modules/`, the
-/// written path and the `modules` root find the same `pkg/two.maca`, and a check
-/// that only compared rules rather than files refused every package in the tree.
+/// One file reached two ways is not two files.
 #[test]
 fn one_file_found_by_both_rules_is_not_ambiguous() {
     let p = Project::new("samefile");
@@ -478,9 +434,7 @@ fn one_file_found_by_both_rules_is_not_ambiguous() {
     assert!(flat.contains("from_two"), "the module came along:\n{flat}");
 }
 
-/// An installed dependency losing to the project's own source is the documented
-/// precedence, not an accident: `maca_modules` is a directory `maca add` made,
-/// and a vendored copy is meant to be overridable.
+/// An installed dependency losing to the project's own source is the documented precedence, not an accident.
 #[test]
 fn a_vendored_copy_being_outranked_is_not_ambiguous() {
     let p = Project::new("vendor");

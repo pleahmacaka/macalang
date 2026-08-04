@@ -1,9 +1,3 @@
-// A variadic accepts *at least* its fixed parameters, and this call gives none.
-//
-// Collecting the trailing arguments cannot invent the one that is missing, so
-// `label` has no value. Rejected here rather than compiled into a C call one
-// argument short.
-
 tag(label: str, ...rest: int) -> int => rest.length()
 
 main() -> int {

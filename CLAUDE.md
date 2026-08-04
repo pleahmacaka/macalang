@@ -60,8 +60,9 @@ with string literals collapsed, so a long C template or URL is exempt exactly
 as a long comment is. Gated by `crates/driver/tests/lint_port.rs`, which
 requires the whole repository to pass it. `macadoc.maca` is the API-doc
 generator (rustdoc's job for Maca: a `///` block above an item is what makes it
-API, an ordinary `//` explains a helper to the next reader; the Reference's
-tooling chapter documents the marker, and
+API, and the leading `//` block of a `modules/std` file is that module's own
+blurb on the generated index; the Reference's tooling chapter documents the
+marker, and
 `crates/driver/tests/programs/sitegen.maca` fails if what it lists ever differs
 from what `modules/std/README.md` advertises). And there is
 `build-site.maca`, which builds and checks the published site for both CI and a
@@ -112,8 +113,8 @@ the helpers it believed it was importing.
 ### The packages (`modules/*`)
 
 Seven, all ordinary Maca source, all with a suite under `<pkg>/tests/` run by
-`maca test`. Read `modules/cli/` first; it is the house standard for
-structure and comment voice.
+`maca test`. Read `modules/cli/` first; it is the house standard for how a
+package is laid out and how its `///` summaries are worded.
 
 | package | what it is | tests |
 |---|---|---|
@@ -222,10 +223,30 @@ definition cycle resolves, with `MACA_ARRAY_STRUCT` before the body and
   branch, flip the comparison, remove the feature outright, then confirm the
   test goes red. Ten mutations against the append analysis left six green,
   including deleting the whole optimisation.
+- **The code carries no comments.** No `//` line comment, no `//!` inner doc,
+  no `/* … */` block, in `crates/**/*.rs` or in any `.maca` file. A name, a
+  signature or a test says what a comment used to. When you want to explain
+  something, the options in order are: rename it, split it, or write a test
+  whose name is the sentence you were about to write. Prose about the design
+  belongs in the handbook (`apps/tomo/book/**`) or `docs/SPEC.md`, which are
+  documentation and are not covered by this rule.
+- **`///` is the exception, and it is one line.** `///` is what marks an item
+  as API: `tools/macadoc.maca` builds the reference pages from it, and
+  `crates/driver/tests/programs/sitegen.maca` fails when those pages and
+  `modules/std/README.md` disagree, so deleting a `///` deletes a feature.
+  Write exactly one line, a complete English sentence summarising the item. No
+  second line and no second paragraph. Two things are allowed past that because
+  a tool demands them: a `# Safety` section, which clippy requires on a public
+  `unsafe fn`, and the leading `//` blurb of a `modules/std` file, whose first
+  line is what the generated index prints on that module's card.
+- **One surviving line, where absence would mislead.** A single `//` line may
+  stay only where deleting it would leave the code actively misleading, and
+  `crates/driver/tests/programs/docfixture.maca` is exempt outright because its
+  comments are the test data `sitegen.maca` asserts on. Neither is an opening
+  to keep prose you are fond of.
 - **Readable over clever.** `if`/`else if`/`else` works in value position on
   every back end, so a multi-way choice is a chain of guards with each condition
-  beside the branch it selects. A ternary is for one binary choice. Prefer code
-  that reads to a comment explaining code that doesn't.
+  beside the branch it selects. A ternary is for one binary choice.
 - **Native is hybrid.** C backend is the default for everything; the LLVM path
   exists **only** for the SIMD span. Both link over the C ABI.
 - **Golden examples are the regression set.** The code blocks in the spec become

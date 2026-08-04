@@ -1,18 +1,7 @@
-//! Guard: the editor grammar must stay in sync with the lexer's keyword set.
-//!
-//! `editor/maca.tmLanguage.json` lists the words the highlighter paints as
-//! keywords. If a keyword is added to / removed from the lexer without updating
-//! the grammar (or vice versa), this fails.
-
 use maca_lexer::{Tok, lex};
 use std::path::PathBuf;
 
 /// The lexer's reserved words (mirrors the `match` in `lex_ident`).
-///
-/// `from` is deliberately absent: it is grammar in a selective import and an
-/// ordinary identifier everywhere else, so that `copy(from, to)` compiles. The
-/// editor grammars still colour it, which is the right call for a reader: a
-/// highlighter's job is to show intent, not to enumerate reserved words.
 const LEXER_KEYWORDS: &[&str] = &[
     "const", "as", "if", "else", "for", "in", "while", "break", "continue", "match", "import",
     "with", "fail", "try", "alias", "await", "spawn",
@@ -36,7 +25,6 @@ fn lexer_keywords_are_reserved() {
             "`{kw}` should lex as a keyword, got {first:?}"
         );
     }
-    // `true`/`false` are their own tokens too.
     assert!(matches!(lex("true").tokens[0].tok, Tok::True));
     assert!(matches!(lex("false").tokens[0].tok, Tok::False));
 }
@@ -51,8 +39,7 @@ fn textmate_grammar_names_every_keyword() {
     }
 }
 
-/// The Monarch grammar (embedded in `apps/playground/playground.maca`) and the Zed
-/// tree-sitter queries (`highlights.scm`) also name every keyword.
+/// The Monarch grammar (embedded in `apps/playground/playground.maca`) and the Zed tree-sitter queries (`highlights.scm`) also name every keyword.
 #[test]
 fn monarch_and_zed_grammars_name_every_keyword() {
     let monarch = repo("apps/playground/playground.maca");
@@ -60,9 +47,6 @@ fn monarch_and_zed_grammars_name_every_keyword() {
     assert!(!monarch.is_empty(), "playground.maca missing");
     assert!(!zed.is_empty(), "highlights.scm missing");
     for kw in LEXER_KEYWORDS {
-        // `import`/`from` are matched by dedicated rules in the Zed grammar, so
-        // they may not appear in the ident-keyword alternation, so check
-        // Monarch for those and both for the rest.
         assert!(
             monarch.contains(&format!("\"{kw}\"")),
             "Monarch grammar missing keyword `{kw}`"
@@ -73,9 +57,7 @@ fn monarch_and_zed_grammars_name_every_keyword() {
     }
 }
 
-/// Words that are NOT Maca keywords must lex as plain identifiers. This is a
-/// guard so no grammar re-introduces a phantom `let`/`return`/`fn`/`type`
-/// keyword that the language does not actually have.
+/// Words that are NOT Maca keywords must lex as plain identifiers.
 #[test]
 fn phantom_keywords_are_not_reserved() {
     for word in ["let", "return", "fn", "type", "def", "var"] {
@@ -85,7 +67,6 @@ fn phantom_keywords_are_not_reserved() {
             "`{word}` is not a Maca keyword but lexed as {first:?}"
         );
     }
-    // and no editor grammar should list them as keywords/reserved words
     let tm = repo("editor/maca.tmLanguage.json");
     let zed = repo("editor/zed-maca/languages/maca/highlights.scm");
     for phantom in ["let", "return"] {

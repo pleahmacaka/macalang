@@ -1,29 +1,9 @@
-//! Local module resolution for the native `build`/`run` path.
-//!
-//! Two import shapes name a local `.maca` module:
-//!
-//! - **whole-module**: `import a/b` (`Import::Module`) or a single-word
-//!   `import a` (`Import::Bare`): the entire sibling module is inlined.
-//! - **selective**: `import { foo, bar } from a/b` (`Import::Names`), only the
-//!   named top-level definitions are inlined, together with the transitive
-//!   closure of same-module definitions they reference (so the slice still
-//!   compiles). A name that the module doesn't define is a clean error rather
-//!   than a dangling reference.
-//!
-//! Everything is inlined into one translation unit (dependency order, each
-//! module once), so `maca build a.maca` sees a single source string. Foreign
-//! imports (`import c "…"`, `nixpkgs`, stdlib builtins) resolve to no file and
-//! are left for the backend.
-
 use crate::ast::*;
 use crate::modules::{import_resolution, import_segments, import_target, names_a_file};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-/// Read a program and inline every local module it imports (transitively). A
-/// whole-module import contributes the module's full source text; a selective
-/// import contributes only the requested definitions and their same-module
-/// dependency closure. A program with no local imports is just its own text.
+/// Read a program and inline every local module it imports (transitively).
 pub fn load_with_imports(entry: &Path) -> Result<String, String> {
     let mut g = Graph::default();
     collect(entry, &mut g)?;
@@ -56,8 +36,6 @@ pub fn load_with_imports(entry: &Path) -> Result<String, String> {
     let mut combined = String::new();
     for u in &units {
         if u.verbatim {
-            // Preserve the module verbatim (comments, formatting). Its own
-            // `import` lines are no-ops for codegen.
             combined.push_str(&u.src);
         } else {
             combined.push_str(&crate::print_module(&Module {
@@ -72,15 +50,11 @@ pub fn load_with_imports(entry: &Path) -> Result<String, String> {
 /// One module's contribution to the flat translation unit.
 struct Unit {
     path: PathBuf,
-    /// The module's own text. Emitted as it was written while nothing has
-    /// rewritten the module, which keeps its comments and its formatting in the
-    /// program the back end reads.
+    /// The module's own text.
     src: String,
-    /// What the module contributes: every item for a whole-module import, the
-    /// requested slice for a selective one.
+    /// What the module contributes: every item for a whole-module import, the requested slice for a selective one.
     items: Vec<Stmt>,
-    /// Whether `src` still says what `items` do. A rename clears this, and the
-    /// module is printed from its tree instead.
+    /// Whether `src` still says what `items` do.
     verbatim: bool,
 }
 
@@ -116,24 +90,6 @@ type Reach = HashMap<PathBuf, HashSet<PathBuf>>;
 type Asked = HashMap<PathBuf, BTreeSet<String>>;
 
 /// Keep two modules' names apart once they share one namespace.
-///
-/// Inlining flattens every module into a single translation unit, so a name
-/// written in one file can be answered by a definition in another that the
-/// first never imported. Two shapes of that, and both used to fail in a file
-/// the author was not looking at:
-///
-/// * two modules define the same name, and the checker types a call in one of
-///   them against the other's signature (`profile/flame` and `profile/report`
-///   each keeping a `helper`);
-/// * one module's top level answers for a name another module binds as a
-///   parameter, which the C back end turns into a function value where a
-///   lambda captured it (`cli/style`'s `pad` against the `pad` parameter of
-///   `std/text`'s `indent`).
-///
-/// Both are repaired by moving a name. `rename_ident` rewrites a definition
-/// together with its references and declines to touch a function that gives the
-/// name a meaning of its own, which is exactly the distinction both shapes turn
-/// on, so it is asked rather than reimplemented here.
 fn separate_scopes(units: &mut [Unit], g: &Graph, entry: &Path) -> Result<(), String> {
     let scope = Scope::of(units, g, entry);
     separate_definitions(units, &scope)?;
@@ -149,8 +105,7 @@ struct Scope {
     asked: Asked,
     /// The program's own file, whose names nothing here renames.
     entry: PathBuf,
-    /// Names written as a field or inside a pattern anywhere in the program,
-    /// which is where a rename cannot follow them.
+    /// Names written as a field or inside a pattern anywhere in the program, which is where a rename cannot follow them.
     members: HashSet<String>,
     /// Per module, in `units` order, the names that module binds itself.
     bound: Vec<BTreeSet<String>>,
@@ -170,11 +125,6 @@ impl Scope {
 }
 
 /// Two modules defining one name: move the private one out of the way.
-///
-/// A collision has two possible repairs, so the private side moves and the API
-/// side keeps the name a caller and a crash trace both show. Where neither side
-/// can move, the clash is reported naming both files, because the alternative
-/// is a diagnostic about the file the author was not editing.
 fn separate_definitions(units: &mut [Unit], scope: &Scope) -> Result<(), String> {
     let mut owners: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for (i, u) in units.iter().enumerate() {
@@ -209,18 +159,6 @@ fn separate_definitions(units: &mut [Unit], scope: &Scope) -> Result<(), String>
 }
 
 /// Which of several same-named definitions a third module means.
-///
-/// A module that neither defines the name nor binds it, and can reach two of the
-/// definitions, is written against exactly one of them, and moving the other
-/// must not take its reference along. Left to `reaches` alone the reference went
-/// to whichever definition moved, so a call written against a documented
-/// function silently ran a private helper of a module the author never opened.
-///
-/// What says which is the same rule the rest of this pass uses: a private
-/// definition is not a name another module can be referring to, so where exactly
-/// one of the definitions in reach is API, that is the one. Where none is, or
-/// more than one is, nothing in the module's source distinguishes them, and the
-/// reference is refused rather than bound by the order the moves happened in.
 fn meanings(
     units: &[Unit],
     os: &[usize],
@@ -278,15 +216,7 @@ fn ambiguous_reference(units: &[Unit], at: usize, in_reach: &[usize], name: &str
     )
 }
 
-/// A top level answering for a name another module binds locally: move the top
-/// level, so the binding means what it says.
-///
-/// Every module that binds the name is evidence, including one that imports the
-/// definition and means both. `can_move` is what settles those: a module that
-/// binds the name *and* can reach the definition would keep a reference the
-/// rename cannot follow, so nothing moves on its account. Filtering here as
-/// well was tried, and no program can tell the difference: the case it would
-/// have suppressed is exactly the case `can_move` refuses.
+/// A top level answering for a name another module binds locally.
 fn separate_bindings(units: &mut [Unit], scope: &Scope) {
     let mut owner: HashMap<String, usize> = HashMap::new();
     for (i, u) in units.iter().enumerate() {
@@ -303,9 +233,6 @@ fn separate_bindings(units: &mut [Unit], scope: &Scope) {
         }
     }
     let mut taken: HashSet<String> = owner.keys().cloned().collect();
-    // `separate_definitions` ran first, so every top-level name is answered by
-    // one module and there is nothing left for a third module to be ambiguous
-    // about.
     let settled = HashMap::new();
     for (name, u) in moves {
         if !can_move(units, u, &name, scope, &settled) {
@@ -317,24 +244,6 @@ fn separate_bindings(units: &mut [Unit], scope: &Scope) {
 }
 
 /// May this module's `name` be renamed without losing a reference to it?
-///
-/// Everything the flat translation unit holds is rewritten together, so the bar
-/// is that every reference follows. Four kinds do not.
-///
-/// A name read from outside the source: `main` is the entry symbol, `maca test`
-/// finds a suite by looking for `test_…`, a body-less declaration *is* the
-/// symbol some library provides, and the entry file's own names are what the
-/// person running the program typed.
-///
-/// A name written as a field or a pattern, which `rename_ident` deliberately
-/// leaves alone. `r.start("build")` is a UFCS call the C back end lowers to
-/// `start(r, "build")`, so renaming the definition and not the call left the
-/// call naming a function nothing defines.
-///
-/// A name this module binds itself as well as defines, where the rename would
-/// skip the function holding the binding and leave its reference behind.
-///
-/// And a name some module that reaches this one binds, for the same reason.
 fn can_move(
     units: &[Unit],
     owner: usize,
@@ -354,11 +263,6 @@ fn can_move(
 }
 
 /// Does moving `owner`'s `name` rewrite this module?
-///
-/// The module that defines it, and every module that can reach the definition
-/// and has no definition of its own to mean instead, except one `meanings` has
-/// already settled on a different definition for, whose reference this move is
-/// not about.
 fn rewritten_by(
     units: &[Unit],
     i: usize,
@@ -398,17 +302,7 @@ fn move_name(
     }
 }
 
-/// Which of `names` this module gives a meaning of its own to: a parameter, a
-/// local, a loop variable, a lambda's argument.
-///
-/// Answered by renaming all of them away at once and seeing which are still
-/// referred to. `rename_ident` declines to rewrite a function that binds the
-/// name, so whatever survives is bound by this module. Asking the rename itself
-/// instead of keeping a second copy of its scope rules here is what makes this
-/// answer and the repair agree.
-///
-/// Only names the module refers to at all are asked about: one it never writes
-/// cannot survive the probe, and the probe costs a walk per name.
+/// Which of `names` this module gives a meaning of its own to.
 fn own_bindings(unit: &Unit, names: &BTreeSet<String>) -> BTreeSet<String> {
     let mut refs = BTreeSet::new();
     unit.items.iter().for_each(|st| refs_in_stmt(st, &mut refs));
@@ -428,11 +322,6 @@ fn own_bindings(unit: &Unit, names: &BTreeSet<String>) -> BTreeSet<String> {
 }
 
 /// Every name this module writes as a field or inside a pattern.
-///
-/// These are the positions `rename_ident` holds still: a field name is a field,
-/// not a binding. The C back end reads two of them as calls, though, since
-/// `x.f(y)` is `f(x, y)`, so a name appearing here is a name this pass leaves
-/// alone.
 fn members(items: &[Stmt]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for st in items {
@@ -449,27 +338,12 @@ fn members(items: &[Stmt]) -> BTreeSet<String> {
 }
 
 /// Is this name part of what the module offers, rather than one of its workings?
-///
-/// Maca has no export keyword. What it has is the `///` marker: a doc block
-/// directly above an item is what makes the item API, and an ordinary `//`
-/// comment explains a helper to the next reader of the source. That is the rule
-/// `tools/macadoc.maca` publishes the reference from and the one the tooling
-/// chapter documents, so it is the rule used here.
-///
-/// A name an importer asked for by hand is API too, whatever comment sits above
-/// it: `import { pad } from cli/style` is that module being asked for `pad`, and
-/// `maca -m http.serve` generates exactly such an import.
 fn is_api(unit: &Unit, name: &str, asked: &Asked) -> bool {
     documented(&unit.src).contains(name)
         || asked.get(&unit.path).is_some_and(|ns| ns.contains(name))
 }
 
 /// The names carrying a `///` block directly above them.
-///
-/// A fourth slash means it is a rule somebody drew rather than a doc block, and
-/// a blank line or an ordinary comment in between breaks the attachment. Both
-/// follow `tools/macadoc.maca`, so what counts as API here is what gets
-/// published as API there.
 fn documented(src: &str) -> HashSet<String> {
     let mut out = HashSet::new();
     let mut docs = false;
@@ -488,12 +362,7 @@ fn documented(src: &str) -> HashSet<String> {
     out
 }
 
-/// The name a top-level declaration line introduces: `name(` for a function,
-/// `Name =` for a type or a constant. An indented line is inside something else
-/// and declares nothing at this level.
-///
-/// A line this cannot read counts as undocumented, which is the safe direction:
-/// a name is only ever moved when every reference to it moves too.
+/// The name a top-level declaration line introduces.
 fn declared_name(line: &str) -> Option<String> {
     if line.starts_with(char::is_whitespace) {
         return None;
@@ -551,8 +420,6 @@ fn import_closure(g: &Graph) -> Reach {
             .collect();
         closure.insert(path.clone(), direct);
     }
-    // To a fixpoint rather than by recursion: two modules may import each other,
-    // and `g.order` is not a topological order when they do.
     let paths: Vec<PathBuf> = closure.keys().cloned().collect();
     let mut changed = true;
     while changed {
@@ -606,28 +473,10 @@ fn clashing_definitions(units: &[Unit], kept: &[usize], name: &str) -> String {
 }
 
 /// Qualify a module's private definitions with the module's own name.
-///
-/// Everything is inlined into one translation unit, so two files that each keep
-/// a `helper` to themselves collide, and "two files in a package cannot share
-/// a private name" defeats the point of splitting a package into files at all.
-/// The failure was a C `redefinition` error naming a function the reader never
-/// wrote twice.
-///
-/// Only *private* names move. A name some importer asked for by hand is the
-/// name it was asked for, and renaming it would break the caller; a private
-/// name is one nobody asked of this module, so nothing outside can be referring
-/// to it. Every one of them is qualified rather than only the ones that happen
-/// to clash today, because a collision that appears when an unrelated file
-/// gains a helper is a collision nobody can see coming, and because
-/// `alpha__helper` in a stack trace says more than `helper` did.
 fn qualify_private(items: &mut [Stmt], want: &BTreeSet<String>, path: &Path) {
     let Some(stem) = path.file_stem().map(|s| s.to_string_lossy().into_owned()) else {
         return;
     };
-    // A body-less function is a foreign declaration: its name *is* the symbol
-    // the engine provides, so it is the module's to expose and not the
-    // module's to rename. Qualifying `http_listen` asked the linker for
-    // `server__http_listen`, which nothing defines.
     let foreign: HashSet<&str> = items
         .iter()
         .filter_map(|st| match st {
@@ -636,12 +485,6 @@ fn qualify_private(items: &mut [Stmt], want: &BTreeSet<String>, path: &Path) {
         })
         .collect();
 
-    // A type named in a requested definition's signature is part of that
-    // definition however the module feels about it: nothing can call
-    // `parse(c: Cmd, …)` without writing `Cmd`, and a `Cmd` renamed to
-    // `spec__Cmd` left every caller naming a type that no longer exists. So the
-    // public surface grows from the requested names through their signatures,
-    // and through the field types of the types those reach.
     let public = surface(items, want);
 
     let private: Vec<String> = items
@@ -659,12 +502,7 @@ fn qualify_private(items: &mut [Stmt], want: &BTreeSet<String>, path: &Path) {
     }
 }
 
-/// The names an importer can be expected to write: the ones it asked for, plus
-/// every type reachable from their signatures.
-///
-/// Bodies are deliberately not followed. A helper a public function *calls* is
-/// still private, since the caller never names it, and following calls would
-/// make the whole module public the moment one function was exported.
+/// The names an importer can be expected to write.
 fn surface<'a>(items: &'a [Stmt], want: &BTreeSet<String>) -> BTreeSet<&'a str> {
     let mut out: BTreeSet<&str> = items
         .iter()
@@ -692,8 +530,7 @@ fn surface<'a>(items: &'a [Stmt], want: &BTreeSet<String>) -> BTreeSet<&'a str> 
     }
 }
 
-/// The type names a definition writes where a caller can see them: a function's
-/// parameters and return, a record's field types, a sum's payload types.
+/// The type names a definition writes where a caller can see them.
 fn sig_refs(st: &Stmt, out: &mut BTreeSet<String>) {
     match st {
         Stmt::Fn(f) => {
@@ -706,9 +543,6 @@ fn sig_refs(st: &Stmt, out: &mut BTreeSet<String>) {
                 refs_in_type(t, out);
             }
         }
-        // `P = { x: T }` and `S = A(T) | B` are both a binding whose value
-        // describes a type, so the declaration is where the field and payload
-        // types are written.
         Stmt::Bind(b) => {
             b.tys.iter().for_each(|t| refs_in_type(t, out));
             refs_in_expr(&b.value, out);
@@ -719,11 +553,9 @@ fn sig_refs(st: &Stmt, out: &mut BTreeSet<String>) {
 
 /// How much of a module to inline.
 enum Sel {
-    /// The whole module (a `import a/b` / `import a` somewhere wants it, or it
-    /// is the entry file).
+    /// The whole module (a `import a/b` / `import a` somewhere wants it, or it is the entry file).
     All,
-    /// Only these top-level names (from `import { … } from a/b`), later grown to
-    /// their same-module dependency closure.
+    /// Only these top-level names (from `import { … } from a/b`), later grown to their same-module dependency closure.
     Names(BTreeSet<String>),
 }
 
@@ -744,11 +576,6 @@ fn canon(path: &Path) -> PathBuf {
 }
 
 /// Depth-first post-order over local imports; parse each module once.
-///
-/// A slash-path import that resolves to nothing is an error here rather than a
-/// line that does nothing. `import std/str`, a module that has never existed,
-/// sat in four files, and each of them then hand-wrote the helpers it believed
-/// it was importing.
 fn collect(path: &Path, g: &mut Graph) -> Result<(), String> {
     let key = canon(path);
     if g.parsed.contains_key(&key) {
@@ -756,12 +583,6 @@ fn collect(path: &Path, g: &mut Graph) -> Result<(), String> {
     }
     let src = read(path)?;
     let parsed = crate::parse(&src);
-    // An imported module's syntax errors are the program's syntax errors.
-    // Dropping them left the parser's partial tree to be sliced and inlined, so
-    // a file that would not compile on its own compiled to something else once
-    // something imported it. `a + b` continued onto the next line is a clean
-    // refusal in the entry file and was a silently different expression in a
-    // module beside it.
     if !parsed.errors.is_empty() {
         return Err(format!(
             "{}: parse errors:\n  {}",
@@ -794,15 +615,6 @@ fn collect(path: &Path, g: &mut Graph) -> Result<(), String> {
 }
 
 /// One written import, two files.
-///
-/// Refused rather than warned about. The two candidates are different files
-/// with, by construction, the same name, so one of them is being compiled and
-/// the other silently is not, and which is which depends on a directory layout
-/// the import line does not mention. That is not a preference the author
-/// expressed, so there is nothing here to honour; the repair is to rename the
-/// directory or to write a path that names one file, and both are the author's
-/// to make. It costs correct programs nothing: across the 229 imports in this
-/// repository no written path and no search root ever name two different files.
 fn ambiguous(importer: &Path, im: &Import, chosen: &Path, other: &Path) -> String {
     let written = import_segments(im).unwrap_or_default().join("/");
     format!(
@@ -818,15 +630,11 @@ fn ambiguous(importer: &Path, im: &Import, chosen: &Path, other: &Path) -> Strin
     )
 }
 
-/// Effective selection per module: the entry file and any whole-module import
-/// target are `All`; a module reached only through `import { … } from` is
-/// `Names(union of requested)`. `All` always wins over `Names`. Propagated to a
-/// fixpoint so a diamond (one importer wants all, another a slice) is `All`.
+/// Effective selection per module.
 fn resolve_selection(entry: &Path, g: &Graph) -> HashMap<PathBuf, Sel> {
     let mut sel: HashMap<PathBuf, Sel> = HashMap::new();
     sel.insert(canon(entry), Sel::All);
 
-    // Iterate to a fixpoint: seeding a module can turn a later one `All`.
     let mut changed = true;
     while changed {
         changed = false;
@@ -839,7 +647,7 @@ fn resolve_selection(entry: &Path, g: &Graph) -> HashMap<PathBuf, Sel> {
                 };
                 let dep = canon(&dep);
                 let want: Option<Vec<String>> = match im {
-                    Import::Module(_) | Import::Bare(_) => None, // → All
+                    Import::Module(_) | Import::Bare(_) => None,
                     Import::Names { names, .. } => Some(names.clone()),
                     _ => continue,
                 };
@@ -850,12 +658,11 @@ fn resolve_selection(entry: &Path, g: &Graph) -> HashMap<PathBuf, Sel> {
     sel
 }
 
-/// Fold one import edge's request into `sel[dep]`. Returns whether it changed.
+/// Fold one import edge's request into `sel[dep]`.
 fn merge(sel: &mut HashMap<PathBuf, Sel>, dep: PathBuf, want: Option<Vec<String>>) -> bool {
     match (sel.get_mut(&dep), want) {
         (Some(Sel::All), _) => false,
         (_, None) => {
-            // Whole-module import: promote to All.
             sel.insert(dep, Sel::All);
             true
         }
@@ -886,16 +693,12 @@ fn defined_name(st: &Stmt) -> Option<&str> {
     }
 }
 
-/// Slice a module down to `want` plus the transitive closure of the same-module
-/// definitions those items reference. Errors if a requested name isn't defined
-/// in the module (a typo, or a name that lives elsewhere).
+/// Slice a module down to `want` plus the transitive closure of the same-module definitions those items reference.
 fn slice_module(
     module: &Module,
     want: &BTreeSet<String>,
     path: &Path,
 ) -> Result<Vec<Stmt>, String> {
-    // name → item index, and variant → owning type (so referencing a sum
-    // variant pulls in its type definition).
     let mut by_name: HashMap<&str, usize> = HashMap::new();
     let mut variant_owner: HashMap<String, String> = HashMap::new();
     for (i, st) in module.items.iter().enumerate() {
@@ -916,8 +719,6 @@ fn slice_module(
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.display().to_string());
 
-    // Seed the worklist from the requested names (mapping a requested variant
-    // to its owning type).
     let mut queue: Vec<usize> = Vec::new();
     let mut visited: HashSet<usize> = HashSet::new();
     for name in want {
@@ -940,10 +741,6 @@ fn slice_module(
         }
     }
 
-    // Grow the closure: every referenced name that this module defines (or a
-    // referenced variant's owning type) is pulled in too. Over-inclusion is
-    // harmless, since a spuriously matched local name just compiles unused,
-    // so no scope analysis is needed.
     while let Some(idx) = queue.pop() {
         let mut refs = BTreeSet::new();
         refs_in_stmt(&module.items[idx], &mut refs);
@@ -961,12 +758,6 @@ fn slice_module(
         }
     }
 
-    // Emit in original source order for stable, readable output.
-    //
-    // A foreign import comes along whatever was selected. `import c "http.h"`
-    // is not a definition anybody can ask for by name. It is the module saying
-    // which engine its functions are compiled against, and dropping it left the
-    // slice referring to symbols the link step was never told to provide.
     Ok(module
         .items
         .iter()
@@ -976,8 +767,7 @@ fn slice_module(
         .collect())
 }
 
-/// The variant names of a sum-type value `A | B(x) | C`. Non-union values yield
-/// nothing.
+/// The variant names of a sum-type value `A | B(x) | C`.
 fn sum_variants(value: &Expr) -> Vec<String> {
     fn go(e: &Expr, out: &mut Vec<String>) {
         match e {
@@ -991,7 +781,6 @@ fn sum_variants(value: &Expr) -> Vec<String> {
             }
             Expr::Ident(n) => out.push(n.clone()),
             Expr::Ctor { name, .. } => out.push(name.clone()),
-            // `Circle(float)`: a variant with payload parses as a call.
             Expr::Call { callee, .. } => {
                 if let Expr::Ident(n) = &**callee {
                     out.push(n.clone());
@@ -1001,7 +790,6 @@ fn sum_variants(value: &Expr) -> Vec<String> {
         }
     }
     let mut out = Vec::new();
-    // Only treat a top-level union as a sum type; a lone ident value is an alias.
     if matches!(
         value,
         Expr::Binary {
@@ -1013,11 +801,6 @@ fn sum_variants(value: &Expr) -> Vec<String> {
     }
     out
 }
-
-// --- reference collection -------------------------------------------------
-// Collect *every* referenced name (identifiers, constructors, type heads).
-// Deliberately ignores scoping: pulling in a spurious same-named top-level
-// definition is harmless, whereas missing one breaks the compile.
 
 fn refs_in_stmt(st: &Stmt, out: &mut BTreeSet<String>) {
     match st {
@@ -1206,9 +989,6 @@ fn refs_in_pattern(p: &Pattern, out: &mut BTreeSet<String>) {
             }
         }
         Pattern::Or(alts) => alts.iter().for_each(|a| refs_in_pattern(a, out)),
-        // Wild / literals / plain binds reference nothing top-level. A
-        // `Pattern::Bind` shadows, but we don't remove it from the ref set of
-        // the enclosing item, since over-inclusion is harmless.
         _ => {}
     }
 }

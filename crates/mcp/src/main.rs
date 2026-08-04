@@ -1,7 +1,3 @@
-//! Maca MCP server: newline-delimited JSON-RPC 2.0 over stdio. Exposes the
-//! LLM-native tools (`maca.check`, `maca.fmt`, `maca.stdlib`, `maca.options`,
-//! `maca.spec`) so an agent can run the generate → verify → fix loop.
-
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 
@@ -42,7 +38,7 @@ fn main() {
                     "result": { "content": [ { "type": "text", "text": text } ] }
                 })
             }
-            _ if !has_id => continue, // a notification (e.g. notifications/initialized)
+            _ if !has_id => continue,
             _ => json!({
                 "jsonrpc": "2.0", "id": id,
                 "error": { "code": -32601, "message": "method not found" }

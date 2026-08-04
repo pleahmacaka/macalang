@@ -1,17 +1,3 @@
-//! `tools/lint.maca`: the Maca style linter, written in Maca.
-//!
-//! Like `tools/bindgen.maca`, this is compiler tooling ported into the language
-//! it compiles. The gate checks the four rules actually fire, that a clean file
-//! reports clean, that the exit code distinguishes the two, and that the tool
-//! finds `tools/` itself clean, so the linter and the code it lints stay in
-//! agreement.
-//!
-//! The single-line-`if` rule earns its own assertion. It silently matched
-//! *nothing* for a while: the rule tested `line.contains("{")`, and a bare `{`
-//! in a Maca string opens an interpolation, so the literal never held a brace.
-//! The lexer now rejects that (see `crates/lexer/tests/lex.rs`); this test makes
-//! sure the rule it broke stays fixed.
-
 mod common;
 use common::*;
 
@@ -42,9 +28,6 @@ fn every_rule_fires_and_a_clean_file_is_clean() {
     let dir = std::env::temp_dir().join("maca-lint-port");
     let _ = std::fs::create_dir_all(&dir);
 
-    // one file, one violation of each rule, in rule order. The wide line is
-    // *code*, not a long string; a long string literal is deliberately exempt
-    // (see `a_long_string_literal_is_not_a_long_line`).
     let bad = dir.join("bad.maca");
     let wide = "+ 1 ".repeat(25) + "+ 1";
     std::fs::write(
@@ -77,7 +60,6 @@ fn every_rule_fires_and_a_clean_file_is_clean() {
     }
     assert!(report.contains("4 issues"), "wrong count:\n{report}");
 
-    // a file that breaks no rule
     let good = dir.join("good.maca");
     std::fs::write(&good, "main() -> int {\n    0\n}\n").unwrap();
     let (ok, report) = lint(&good.to_string_lossy());
@@ -85,7 +67,7 @@ fn every_rule_fires_and_a_clean_file_is_clean() {
     assert!(report.contains("clean"), "expected `clean`, got:\n{report}");
 }
 
-/// Ternaries and prose are exempt. A linter that cries wolf gets turned off.
+/// Ternaries and prose are exempt.
 #[test]
 fn the_single_line_if_rule_does_not_fire_on_ternaries_or_comments() {
     if have_wsl() || !have("cc") {
@@ -106,11 +88,7 @@ fn the_single_line_if_rule_does_not_fire_on_ternaries_or_comments() {
     assert!(ok, "no rule should fire here:\n{report}");
 }
 
-/// Maca linting Maca. Run with no argument the linter checks every directory
-/// holding Maca source (`examples/`, `selfhost/`, `tools/`, `modules/`,
-/// `apps/` and `packages/`), so this asserts the whole tree stays clean. A
-/// style the codebase doesn't actually hold to isn't a style, and an exemption
-/// list is how a style becomes one nobody holds to.
+/// Maca linting Maca.
 #[test]
 fn the_repository_passes_its_own_linter() {
     if have_wsl() || !have("cc") {
@@ -130,10 +108,7 @@ fn the_repository_passes_its_own_linter() {
     );
 }
 
-/// The width rule measures code, not text: a line is over-long only once its
-/// string literals are collapsed. A 200-character C template inside a string
-/// (`selfhost/emit_c.maca` is full of them) can't be rewrapped without changing
-/// what it emits, so it is exempt exactly as a long comment is.
+/// The width rule measures code, not text.
 #[test]
 fn a_long_string_literal_is_not_a_long_line() {
     if have_wsl() || !have("cc") {
@@ -152,7 +127,6 @@ fn a_long_string_literal_is_not_a_long_line() {
     let (ok, report) = lint(&f.to_string_lossy());
     assert!(ok, "a long string literal should be exempt:\n{report}");
 
-    // but the code *around* a string still counts
     let g = dir.join("wide2.maca");
     let pad = " ".repeat(70);
     std::fs::write(

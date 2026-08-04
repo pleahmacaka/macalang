@@ -1,6 +1,3 @@
-//! Embedded target: `maca build --target embedded` produces a valid bare-metal
-//! Cortex-M firmware image. Skips when clang can't cross-compile.
-
 mod common;
 use common::*;
 
@@ -41,20 +38,15 @@ fn blink_builds_a_cortex_m_image() {
     let elf = out.join("firmware.elf");
     let bin = out.join("firmware.bin");
     assert!(elf.exists(), "no ELF produced");
-    // The raw .bin is only produced when llvm-objcopy is present; the ELF is the
-    // authoritative artifact, so skip the byte-level checks if it's missing.
     if !bin.exists() {
         eprintln!("skipping .bin vector-table check: no llvm-objcopy");
         return;
     }
 
-    // The image begins with the Cortex-M vector table: word 0 = initial stack
-    // pointer, word 1 = reset vector (address | Thumb bit).
     let img = std::fs::read(&bin).unwrap();
     assert!(img.len() >= 8, "image too small");
     let sp = u32::from_le_bytes([img[0], img[1], img[2], img[3]]);
     let reset = u32::from_le_bytes([img[4], img[5], img[6], img[7]]);
-    // RAM origin 0x20000000 + 128K
     assert_eq!(
         sp, 0x2002_0000,
         "initial SP should be top of RAM, got {sp:#010x}"
@@ -87,7 +79,6 @@ fn mmio_lowers_to_read_modify_write() {
         .success();
     assert!(ok);
     let c = std::fs::read_to_string(out.join("firmware.c")).unwrap();
-    // set_bits(odr, bit(12)) → volatile |= (1 << 12)
     assert!(c.contains("volatile uint32_t"), "no MMIO in emitted C");
     assert!(
         c.contains("|= (uint32_t)((1u << (12u)))"),
@@ -96,9 +87,7 @@ fn mmio_lowers_to_read_modify_write() {
     assert!(c.contains("Reset_Handler"), "no reset handler");
 }
 
-/// A freestanding image has no libc and no console, and its `main` is called by
-/// the reset handler rather than by a process. Both used to reach the user as C
-/// compiler noise about a file they never wrote.
+/// A freestanding image has no libc and no console, and its `main` is called by the reset handler rather than by a process.
 #[test]
 fn a_hosted_program_is_refused_with_a_reason() {
     let dir = std::env::temp_dir().join("maca-embedded-hosted");
@@ -110,8 +99,6 @@ fn a_hosted_program_is_refused_with_a_reason() {
             "main() {\n    info(\"hi\")\n}\n",
             "needs a console",
         ),
-        // `panic` is an output builtin too. The check kept its own list of
-        // them, that list was missing this one, and it reached the image.
         (
             "panic",
             "main() {\n    panic(\"boom\")\n}\n",

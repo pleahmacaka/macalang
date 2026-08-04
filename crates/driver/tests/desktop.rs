@@ -1,9 +1,3 @@
-//! Capstone: the Tauri desktop app. `maca build --target tauri` scaffolds a
-//! complete, buildable Tauri v2 project from a Maca UI + a Maca native backend.
-//! Verified without WSL/Tauri: the scaffold structure, the compiled backend
-//! binary's output, and (via a Node DOM + `__TAURI__` stub) the UI → bridge →
-//! backend → view round-trip.
-
 mod common;
 use common::*;
 
@@ -16,7 +10,6 @@ fn app_path(name: &str) -> String {
 
 #[test]
 fn tauri_scaffold_is_complete_and_runs() {
-    // build_tauri compiles the backend with the host cc, so needs cc and no wsl.
     if have_wsl() || !have("cc") {
         eprintln!("skipping tauri scaffold: needs a native cc and no wsl");
         return;
@@ -40,7 +33,6 @@ fn tauri_scaffold_is_complete_and_runs() {
         String::from_utf8_lossy(&r.stderr)
     );
 
-    // every piece of a buildable Tauri v2 project is present
     for rel in [
         "dist/index.html",
         "dist/app.js",
@@ -54,7 +46,6 @@ fn tauri_scaffold_is_complete_and_runs() {
         assert!(out.join(rel).exists(), "missing generated file: {rel}");
     }
 
-    // the config points at the UI; the shell registers the maca_run command
     let conf = std::fs::read_to_string(out.join("src-tauri/tauri.conf.json")).unwrap();
     assert!(
         conf.contains("\"frontendDist\": \"../dist\""),
@@ -71,7 +62,6 @@ fn tauri_scaffold_is_complete_and_runs() {
         "index.html doesn't load the bridge"
     );
 
-    // the bundled backend binary runs and produces the greeting
     let b = Command::new(out.join("src-tauri/bin/backend"))
         .arg("Ada")
         .output()
@@ -82,8 +72,6 @@ fn tauri_scaffold_is_complete_and_runs() {
         String::from_utf8_lossy(&b.stdout)
     );
 
-    // headless round-trip: Node loads the UI + bridge with a __TAURI__ stub whose
-    // invoke runs the same backend, clicks Greet, and checks the view updated.
     if have("node") {
         headless_roundtrip(&out);
     }

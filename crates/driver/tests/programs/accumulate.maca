@@ -1,24 +1,7 @@
-// A list built up a value at a time, and everything that must stop it being
-// built up in place.
-//
-// `xs = xs.push(v)` copies, because a list is a value and `ys = xs.push(v)` has
-// to leave `xs` alone. Assigning back to the same name is the case where the
-// old value is unreachable the moment the new one exists, so there it is an
-// append. Written as a copy it is quadratic: eight thousand elements took half
-// a second and left every intermediate buffer behind.
-//
-// Everything below is a shape where a second holder exists and the copy has to
-// stay. Each one is the same program written twice: once through the name being
-// appended to, once through the other holder, and the two answers say whether
-// the optimisation was applied where it should not have been.
-
 Box = { items: int[] }
 
 size_of(xs: int[]) -> int => xs.length()
 
-// The most ordinary helper there is, and the one that made the first version of
-// this unsound: `dst` is the caller's buffer, so appending to it in place
-// reallocated a list the caller was still holding.
 add_all(dst: int[], src: int[]) -> int[] {
     for v in src {
         dst = dst.push(v)
@@ -26,7 +9,6 @@ add_all(dst: int[], src: int[]) -> int[] {
     dst
 }
 
-// The shape it is for.
 build(n: int) -> int[] {
     out: int[] = []
     for i in 1..n {
@@ -35,7 +17,6 @@ build(n: int) -> int[] {
     out
 }
 
-// Two accumulators in one block, so neither may be confused for the other.
 split_evens(n: int) -> int {
     evens: int[] = []
     odds: int[] = []
@@ -49,10 +30,6 @@ split_evens(n: int) -> int {
     evens.length() * 100 + odds.length()
 }
 
-// The assertions below check *answers*, and an answer is the same whether the
-// list was copied or appended to, so on their own they cannot tell whether the
-// optimisation happened at all. This one can: building two thousand elements by
-// copying is two thousand buffers.
 test_an_accumulator_does_not_rebuild_itself_every_round() {
     before = alloc_count() + reuse_count()
     big = build(2000)
@@ -62,8 +39,6 @@ test_an_accumulator_does_not_rebuild_itself_every_round() {
     assert(spent < 40, "grew in place: {spent} allocations for 2000 elements")
 }
 
-// The same shape where a second name exists: here the copy is required, and the
-// cost of it is how we know it happened.
 test_a_second_holder_costs_a_copy_a_round() {
     base: int[] = []
     keep = base
@@ -90,8 +65,6 @@ test_two_accumulators_do_not_mix() {
     assert_eq(str(split_evens(10)), "505", "five even, five odd")
 }
 
-// A second name for the same list. Appending through one must not be visible
-// through the other.
 test_a_copy_is_kept_when_another_name_holds_the_list() {
     a = [1, 2]
     b = a
@@ -101,8 +74,6 @@ test_a_copy_is_kept_when_another_name_holds_the_list() {
     assert_eq(str(b.length()), "2", "and the other did not")
 }
 
-// A list handed to a function may be kept by it, so the caller cannot append in
-// place afterwards.
 test_a_copy_is_kept_after_the_list_is_passed_to_a_function() {
     c = [1, 2]
     n = size_of(c)
@@ -121,13 +92,6 @@ test_a_copy_is_kept_when_a_record_holds_the_list() {
     assert_eq(str(held.items.length()), "2", "the record did not")
 }
 
-// A loop holds its own handle on what it iterates: the lowering copies the list
-// struct, and that copy shares the buffer. Appending in place could move the
-// buffer out from under it.
-// What the loop reads is a copy of the list struct, sharing the buffer.
-// Appending in place can reallocate and leave that copy pointing at freed
-// memory, so the values the loop *sees* are the assertion, not the values the
-// list ends up with. Enough rounds to force the reallocation.
 test_appending_to_the_list_being_iterated_reads_the_original() {
     f: int[] = []
     for i in 1..8 {
@@ -144,9 +108,6 @@ test_appending_to_the_list_being_iterated_reads_the_original() {
     assert_eq("{f.get(8)}", "1", "and they are the originals, in order")
 }
 
-// A parameter is a second handle by construction: what it points at belongs to
-// the caller. Read the caller's *elements* afterwards, not its length: a
-// length survives a reallocation that leaves the buffer dangling.
 test_a_parameter_is_the_callers_list() {
     a = [1, 2, 3, 4]
     b = [7, 8]
@@ -157,9 +118,6 @@ test_a_parameter_is_the_callers_list() {
     assert_eq("{a.get(3)}", "4", "all of it")
 }
 
-// A list built from another list is that other list's business. Enough elements
-// to force a reallocation, and the original read element by element. Appending
-// in place would move the buffer and leave the other name pointing at nothing.
 test_a_copy_is_kept_when_the_accumulator_started_as_an_alias() {
     base = [1, 2]
     g = base
@@ -181,10 +139,6 @@ test_strings_accumulate_the_same_way() {
     assert_eq(words.join(","), "w1,w2,w3,w4", "every one, in order")
 }
 
-// `[e]` where `e` is itself a list: the literal's type is its first element's,
-// and an element that is a name had no type during the pass that instantiates
-// array types, so the C compiler was handed a list-of-lists it had never been
-// given a definition for.
 test_a_list_literal_may_hold_a_list() {
     e = [1, 2]
     nested = [e]

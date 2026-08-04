@@ -1,17 +1,6 @@
 // std/list: the list operations that aren't builtins.
-//
-// `map`, `filter`, `reduce`, `sort`, `slice` and friends are UFCS methods on
-// any `T[]`. This module is the next layer: the shapes you reach for once you
-// have those, written as ordinary functions because they need types the method
-// set can't spell (a pair of lists, a predicate that answers about the whole
-// list rather than an element).
-//
-//   import std/list
-//   import { any_of, chunk } from std/list
 
-/// Does any element satisfy `pred`? Short of a `break`, this is the readable
-/// way to ask; `.filter(pred).length() > 0` walks the whole list and
-/// allocates.
+/// Does any element satisfy `pred`?
 any_of(xs: int[], pred) -> bool =>
     scan_any(xs, 0, pred)
 
@@ -25,8 +14,7 @@ scan_any(xs: int[], i: int, pred) -> bool {
     }
 }
 
-/// Does every element satisfy `pred`? An empty list passes, which is what
-/// makes `all_of(rules, ok)` behave when there are no rules yet.
+/// Does every element satisfy `pred`?
 all_of(xs: int[], pred) -> bool =>
     scan_all(xs, 0, pred)
 
@@ -40,8 +28,7 @@ scan_all(xs: int[], i: int, pred) -> bool {
     }
 }
 
-/// The index of the first element satisfying `pred`, or -1. `index_of`
-/// matches a value; this matches a question.
+/// The index of the first element satisfying `pred`, or -1.
 find_index(xs: int[], pred) -> int =>
     scan_find(xs, 0, pred)
 
@@ -59,18 +46,14 @@ scan_find(xs: int[], i: int, pred) -> int {
 count_if(xs: int[], pred) -> int =>
     xs.filter(pred).length()
 
-/// The first `n` elements. `n` clamps rather than failing, so `take(xs, 100)`
-/// on a short list is the short list.
+/// The first `n` elements.
 take(xs: int[], n: int) -> int[] =>
     xs.slice(0, clamp(n, xs.length()))
 
-/// Everything after the first `n` elements: the other half of `take`, and
-/// clamping the same way.
+/// Everything after the first `n` elements: the other half of `take`, and clamping the same way.
 drop(xs: int[], n: int) -> int[] =>
     xs.slice(clamp(n, xs.length()), xs.length())
 
-// An index brought into `0..len`, so a caller's arithmetic can't walk off
-// either end of the list.
 clamp(n: int, len: int) -> int {
     if n < 0 {
         0
@@ -99,9 +82,7 @@ chunk_from(xs: int[], at: int, size: int, acc: int[][]) -> int[][] {
     }
 }
 
-/// One list of the pairwise sums, stopping at the shorter input. The language
-/// has no tuple, so `zip` proper needs a record; this is the arithmetic case,
-/// which is the one that comes up.
+/// One list of the pairwise sums, stopping at the shorter input.
 zip_add(a: int[], b: int[]) -> int[] =>
     zip_add_from(a, b, 0, [])
 
@@ -125,9 +106,7 @@ flatten_from(xss: int[][], i: int, acc: int[]) -> int[] {
     }
 }
 
-/// Values in first-seen order, duplicates dropped. Order is preserved on
-/// purpose: sorting first would be faster and would also throw away the one
-/// property that makes the result useful for output.
+/// Values in first-seen order, duplicates dropped.
 unique(xs: int[]) -> int[] =>
     unique_from(xs, 0, [])
 
@@ -141,8 +120,7 @@ unique_from(xs: int[], i: int, acc: int[]) -> int[] {
     }
 }
 
-/// `[lo, lo+1, …, hi]`, empty when `hi < lo`. The `lo..hi` range is a loop
-/// header; this is the value.
+/// `[lo, lo+1, …, hi]`, empty when `hi < lo`.
 range(lo: int, hi: int) -> int[] {
     if hi < lo {
         []
@@ -158,30 +136,6 @@ range_from(at: int, hi: int, acc: int[]) -> int[] {
         range_from(at + 1, hi, acc.push(at))
     }
 }
-
-// ---- the same, for `str[]` ------------------------------------------------
-//
-// A second copy, not a type variable. `a[]` here does compile, and it is worse
-// than this, measured rather than assumed:
-//
-//   * an unannotated `pred` has no declared type for the call site to
-//     substitute into, so its closure lowers with an `int` parameter whatever
-//     the element type is. `count_if(floats, v => big(v))` then answered 3
-//     where `floats.filter(v => big(v)).length()` answered 2, in one program,
-//     exit 0. A `str[]` survives it by accident, because the lambda's type
-//     is inferred from the body, which is exactly why a suite testing `int[]`
-//     and `str[]` said the change was fine.
-//   * `chunk` and `flatten` name `a[][]`, whose concrete form doesn't exist
-//     until a call site picks the element type, which is after the C typedefs
-//     are written. `chunk(chunk(xs, 2), 1)` emits a type the file never
-//     defines.
-//   * a record element reaches `cc` as a raw error where `int[]` gave a clean
-//     `TypeMismatch`.
-//
-// Deleting these five bought five deleted functions and cost a silent wrong
-// answer. Generic element types belong here once the closure ABI carries the
-// element type and array typedefs are emitted after instantiation. Both are
-// stage-1 work.
 
 /// `unique` for a `str[]`.
 str_unique(xs: str[]) -> str[] =>

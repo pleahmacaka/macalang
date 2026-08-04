@@ -1,32 +1,14 @@
-//! `std/`: the Maca-source standard library, executed.
-//!
-//! `std/` was a README describing builtins. It is now importable Maca: `text`,
-//! `list`, `path`, `json`, `csv`, `fs`, `proc`. Each has a suite of `test_…`
-//! functions under `modules/std/tests/`, and this runs them all through
-//! `maca test`. A library nothing runs is a claim rather than a fact, and the
-//! suites are written in the language they ship with, so they also gate the
-//! compiler.
-//!
-//! The assertions live in the Maca; this file only reports the exit code,
-//! which `maca test` sets to the number of failed assertions.
-
 mod common;
 use common::*;
 
 use std::process::Command;
 
-/// Run every `test_…` function in `modules/std/tests/<name>.maca`. The suite
-/// runs from
-/// the repository root so `import std/…` resolves.
+/// Run every `test_…` function in `modules/std/tests/<name>.maca`.
 fn suite(name: &str) {
     package_suite(&format!("std/tests/{name}"));
 }
 
 /// The same, for any package: `modules/<path>.maca`.
-///
-/// Colour is forced off, because a suite that renders terminal output has to
-/// assert on the text and the escape codes are decided by whether the test
-/// runner happens to have a terminal attached.
 fn package_suite(path: &str) {
     if have_wsl() || !have("cc") {
         eprintln!("skipping modules/{path}: needs a host cc and no wsl");
@@ -53,8 +35,7 @@ fn text_module() {
     suite("text");
 }
 
-/// `cli`, the command-line package: what a command accepts, read off one
-/// value, and what it prints.
+/// `cli`, the command-line package: what a command accepts, read off one value, and what it prints.
 #[test]
 fn cli_module() {
     package_suite("cli/tests/cli");
@@ -91,11 +72,6 @@ fn proc_module() {
 }
 
 /// Every function `std/README.md` advertises is defined by the module it names.
-///
-/// The table is the first thing anyone reads to find out what `std/` holds, so
-/// a name that drifted out of it (renamed, moved, removed) sends a reader to
-/// a function that isn't there. The suites above prove the modules work; this
-/// proves the index of them is honest.
 #[test]
 fn the_std_readme_names_functions_that_exist() {
     let readme = std::fs::read_to_string(repo().join("modules/std/README.md"))
@@ -116,7 +92,6 @@ fn the_std_readme_names_functions_that_exist() {
             });
 
         for name in backticked(body) {
-            // `str_`-prefixed twins` and the like are prose, not a call.
             if name.ends_with('_') {
                 continue;
             }

@@ -1,19 +1,14 @@
-//! Hermetic tests for the C backend: assert the emitted C source directly, with
-//! no compiler/WSL required (the `driver` run tests cover actual execution).
-
 fn c(src: &str) -> String {
     let p = maca_parser::parse(src);
     assert!(p.errors.is_empty(), "parse: {:?}", p.errors);
     maca_backend_c::emit(&p.module)
 }
 
-/// Return the body of function `name` from emitted C (between its `{` and the
-/// matching top-level `}`), for focused assertions.
+/// Return the body of function `name` from emitted C (between its `{` and the matching top-level `}`), for focused assertions.
 fn func(src: &str, name: &str) -> String {
     let out = c(src);
     let sig = out.match_indices(&format!("{name}(")).find_map(|(i, _)| {
         let rest = &out[i..];
-        // the definition, not the forward declaration (which ends in `;`)
         rest.find('{').and_then(|b| {
             if rest[..b].contains(';') {
                 None
@@ -27,7 +22,6 @@ fn func(src: &str, name: &str) -> String {
 
 #[test]
 fn value_position_if_declares_then_assigns() {
-    // regression: `let x = if …` must not silently become `x = 0`
     let body = func(
         "pick(c: bool) -> int {\n    b = if c { 100 } else { 200 }\n    b\n}\n",
         "pick",
@@ -48,7 +42,6 @@ fn value_position_ternary() {
 
 #[test]
 fn enum_match_is_a_tag_test() {
-    // regression: nullary variant patterns must compare tags, not bind + `else`
     let src = "Color = Red | Green | Blue\n\nscore(x: Color) -> int {\n    match x {\n        Red => 1\n        Green => 2\n        Blue => 3\n    }\n}\n";
     let body = func(src, "score");
     assert!(body.contains("== Color_Red"), "no tag test:\n{body}");
@@ -56,7 +49,6 @@ fn enum_match_is_a_tag_test() {
         body.contains("== Color_Green") && body.contains("== Color_Blue"),
         "{body}"
     );
-    // first arm must be a real `if`, not a bare `else`
     assert!(body.contains("if ("), "{body}");
     assert!(
         !body.contains("Color Red = "),
@@ -80,7 +72,6 @@ fn sum_and_record_types() {
 #[test]
 fn string_interpolation_builds_a_string() {
     let out = c("main() -> int {\n    n = 5\n    info(\"n is {n}\")\n    0\n}\n");
-    // interpolation lowers through the maca_str / fmt runtime, not a bare literal
     assert!(out.contains("maca_") && out.contains("n is"), "{out}");
 }
 
@@ -147,11 +138,8 @@ fn match_guard_and_int_patterns() {
         "classify(n: int) -> str {\n    match n {\n        x if x < 0 => \"neg\"\n        0 => \"zero\"\n        _ => \"other\"\n    }\n}\n",
         "classify",
     );
-    // the guard condition is emitted (not dropped)
     assert!(body.contains("< 0)"), "guard condition missing:\n{body}");
-    // an integer-literal pattern lowers to an equality test, not a catch-all
     assert!(body.contains("== 0"), "int pattern not tested:\n{body}");
-    // guarded matches fall through via goto
     assert!(body.contains("goto"), "no fall-through for guards:\n{body}");
 }
 
@@ -176,7 +164,6 @@ fn or_patterns_combine_with_logical_or() {
     let out = c(
         "C = A | B | D\nf(c: C) -> int {\n    match c {\n        A | B => 1\n        D => 2\n    }\n}\n",
     );
-    // an or-pattern's alternatives are OR'd (each a tag test)
     assert!(
         out.contains("== C_A") && out.contains("== C_B"),
         "or alts missing:\n{out}"
@@ -204,14 +191,12 @@ fn payload_sum_is_a_tagged_union() {
     let out = c(
         "Shape = Circle(int) | Rect(int, int)\narea(s: Shape) -> int {\n    match s {\n        Circle(r) => r * r\n        Rect(w, h) => w * h\n    }\n}\n",
     );
-    // tagged struct + tag enum + per-variant constructor
     assert!(out.contains("Shape_tag"), "no tag enum:\n{out}");
     assert!(out.contains("union"), "no union:\n{out}");
     assert!(
         out.contains("static Shape Shape_Circle(int64_t _0)"),
         "no ctor:\n{out}"
     );
-    // match extracts payload from the union and tag-tests
     assert!(
         out.contains(".tag == Shape_tag_Circle"),
         "no tag test:\n{out}"
@@ -224,19 +209,14 @@ fn payload_sum_is_a_tagged_union() {
 
 #[test]
 fn recursive_sum_boxes_self_referential_payload() {
-    // In `Tree = Leaf(int) | Node(Tree, Tree)` the recursive payload must be a
-    // pointer (`Tree*`), heap-allocated in the constructor, and dereferenced
-    // when a match binds it. Otherwise the struct is infinitely sized.
     let out = c(
         "Tree = Leaf(int) | Node(Tree, Tree)\ntotal(t: Tree) -> int {\n    match t {\n        Leaf(n) => n\n        Node(l, r) => total(l) + total(r)\n    }\n}\n",
     );
-    // named forward-declared struct (so a self-pointer is legal)
     assert!(
         out.contains("typedef struct Tree Tree;"),
         "no forward decl:\n{out}"
     );
     assert!(out.contains("struct Tree {"), "not a named struct:\n{out}");
-    // the payload slot is a pointer, allocated in the constructor
     assert!(
         out.contains("Tree* _0;") && out.contains("Tree* _1;"),
         "payload not boxed:\n{out}"
@@ -245,9 +225,7 @@ fn recursive_sum_boxes_self_referential_payload() {
         out.contains("maca_alloc(sizeof(Tree))"),
         "box not heap-allocated:\n{out}"
     );
-    // a bound recursive payload is dereferenced
     assert!(out.contains("= *"), "boxed bind not dereferenced:\n{out}");
-    // a non-recursive int payload stays by value
     assert!(
         out.contains("int64_t _0;"),
         "int payload should be by value:\n{out}"
@@ -256,9 +234,6 @@ fn recursive_sum_boxes_self_referential_payload() {
 
 #[test]
 fn tagged_sum_with_record_payload_orders_record_first() {
-    // A sum carrying a record payload must have the record's struct defined
-    // *before* the tagged-sum struct, even when the sum is declared first in
-    // source (regression: combined records+sums topo order).
     let out = c(
         "Shape = Dot | At(P)\nP = {\n    x: int\n    y: int\n}\nf(s: Shape) -> int {\n    match s {\n        At(p) => p.x\n        Dot => 0\n    }\n}\n",
     );
@@ -268,7 +243,6 @@ fn tagged_sum_with_record_payload_orders_record_first() {
         p_at < shape_at,
         "record P must be emitted before Shape:\n{out}"
     );
-    // the payload field is the record by value, not int64_t
     assert!(
         out.contains("P _0;"),
         "payload not typed as record P:\n{out}"
@@ -277,8 +251,6 @@ fn tagged_sum_with_record_payload_orders_record_first() {
 
 #[test]
 fn record_with_tagged_sum_field_orders_sum_first() {
-    // The reverse dependency: a record field whose type is a tagged sum must
-    // have the sum struct defined before the record struct.
     let out = c("Holder = {\n    shape: Shape\n}\nShape = Dot | At(int)\n");
     let shape_at = out.find("} Shape;").expect("no Shape struct");
     let holder_at = out.find("} Holder;").expect("no Holder struct");
@@ -307,13 +279,11 @@ fn reify_installs_a_handler() {
 #[test]
 fn non_capturing_lambda_is_a_closure() {
     let out = c("main() -> int {\n    xs = 1, 2, 3\n    ys = xs.parallel(v => v + 1)\n    0\n}\n");
-    // a lambda lowers to a hoisted fn taking the closure env + a boxed arg
     assert!(
         out.contains("static int64_t _lam0(void* _envp, int64_t _a0)"),
         "lambda not a closure:\n{out}"
     );
     assert!(out.contains("(v + 1)"), "lambda body wrong:\n{out}");
-    // non-capturing → a NULL environment
     assert!(
         out.contains("NULL }"),
         "non-capturing closure should have a null env:\n{out}"
@@ -323,7 +293,6 @@ fn non_capturing_lambda_is_a_closure() {
 
 #[test]
 fn capturing_lambda_builds_an_environment() {
-    // a captured outer variable `k` is stored in a heap env, not miscompiled.
     let out = c(
         "main() -> int {\n    k = 3\n    xs = 1, 2\n    ys = xs.parallel(v => v * k)\n    0\n}\n",
     );
@@ -347,7 +316,6 @@ fn generic_fn_is_monomorphized() {
     let out = c(
         "id(x: a) -> a => x\nBox = {\n    v: int\n}\nmain() -> int {\n    n: int = id(42)\n    b: Box = id(Box { v = 7 })\n    s: str = id(\"hi\")\n    0\n}\n",
     );
-    // one specialized copy per distinct instantiation, each with the right C type
     assert!(
         out.contains("int64_t id__int(int64_t x)"),
         "no int specialization:\n{out}"
@@ -360,12 +328,10 @@ fn generic_fn_is_monomorphized() {
         out.contains("Box id__Box(Box x)"),
         "no record specialization:\n{out}"
     );
-    // calls are rewritten to the mangled names
     assert!(
         out.contains("id__int(42)"),
         "int call not rewritten:\n{out}"
     );
-    // the generic template itself is not emitted as a single int64_t function
     assert!(
         !out.contains("int64_t id(int64_t x)"),
         "generic emitted monomorphically:\n{out}"
@@ -374,20 +340,16 @@ fn generic_fn_is_monomorphized() {
 
 #[test]
 fn c_keyword_identifiers_are_escaped() {
-    // a fn/param/var/field named like a C keyword must not emit invalid C
     let out = c(
         "Config = {\n    default: int\n}\ndouble(n: int) -> int => n * 2\nmain() -> int {\n    new = 5\n    c = Config { default = double(new) }\n    info(\"{c.default}\")\n    0\n}\n",
     );
-    // the keyword `double` is escaped at definition and call sites
     assert!(out.contains("double_mc("), "fn name not escaped:\n{out}");
     assert!(
         !out.contains("int64_t double("),
         "raw C keyword fn emitted:\n{out}"
     );
-    // the field `default` and the var `new` are escaped
     assert!(out.contains("default_mc"), "field/var not escaped:\n{out}");
     assert!(out.contains("new_mc"), "var not escaped:\n{out}");
-    // ordinary names are untouched
     assert!(
         out.contains("Config"),
         "type name should be unchanged:\n{out}"
@@ -396,13 +358,9 @@ fn c_keyword_identifiers_are_escaped() {
 
 #[test]
 fn ufcs_call_resolves_return_type() {
-    // `x.f()` where `f` returns int must be usable as an int (interpolation
-    // wraps it), not fall back to an unknown type
     let out = c(
         "twice(n: int) -> int => n * 2\nmain() -> int {\n    x = 3\n    info(\"{x.twice()}\")\n    0\n}\n",
     );
-    // the int return flows into maca_from_int (string interpolation), proving the
-    // UFCS call resolved to int rather than an unknown type
     assert!(
         out.contains("maca_from_int(twice(x))"),
         "UFCS int result not formatted:\n{out}"
@@ -442,7 +400,6 @@ fn string_index_uses_str_at() {
 
 #[test]
 fn index_and_field_assignment_are_lvalues() {
-    // `xs[i] = v` and `p.f = v` must write through the lvalue, not no-op
     let body = func(
         "P = {\n    x: int\n}\nf(xs: int[], p: P) -> int {\n    xs[0] = 9\n    p.x = 5\n    0\n}\n",
         "f",
@@ -456,8 +413,6 @@ fn index_and_field_assignment_are_lvalues() {
 
 #[test]
 fn record_update_copies_and_overwrites() {
-    // `base with { … }` must copy the struct and assign only the named fields,
-    // not miscompile to `0 /* unsupported */`.
     let body = func(
         "P = {\n    x: int\n    y: int\n}\nf(p: P) -> P => p with { x = 9 }\n",
         "f",
@@ -487,9 +442,7 @@ fn record_pattern_binds_fields() {
     );
 }
 
-/// `++` on strings is string concatenation, not the array kind. One call
-/// carries the whole chain: `a ++ b ++ c` allocates once, where a nested pair
-/// of `maca_concat`s built a string for the first `++` and abandoned it.
+/// `++` on strings is string concatenation, not the array kind.
 #[test]
 fn string_concat_is_one_call_for_the_whole_chain() {
     let out = c("g(n: str) -> str => \"hi \" ++ n\n");
@@ -522,8 +475,6 @@ fn unary_not_and_forward_record() {
 
 #[test]
 fn float_and_int_coercions_lower_to_casts() {
-    // `float(x)` / `int(x)` are builtin coercions, not calls to a user function
-    // (a missing `float` builtin used to emit an undefined `float_mc` reference).
     let out = c("f(px: int, n: int) -> float => float(px) / float(n)\n");
     assert!(out.contains("(double)"), "float() not a cast:\n{out}");
     assert!(
@@ -536,8 +487,6 @@ fn float_and_int_coercions_lower_to_casts() {
 
 #[test]
 fn string_stdlib_lowers_to_runtime_calls() {
-    // UFCS string methods lower to the maca_* runtime helpers; `split` builds a
-    // StrArr from the returned buffer and registers the StrArr typedef.
     let out = c(
         "main() -> int {\n    s = \"a,b\"\n    parts = s.split(\",\")\n    x = s.trim().upper()\n    y = s.contains(\"a\")\n    z = s.replace(\"a\", \"b\")\n    w = s.substr(0, 1)\n    i = s.index_of(\"b\")\n    0\n}\n",
     );
@@ -564,8 +513,6 @@ fn string_stdlib_lowers_to_runtime_calls() {
 
 #[test]
 fn spawn_and_await_lower_to_runtime_futures() {
-    // colorblind async: `spawn f(x)` -> maca_spawn, `await` -> maca_await, and
-    // `sleep_ms` -> maca_sleep_ms. No `async` keyword anywhere.
     let out = c(
         "work(n: int) -> int {\n    sleep_ms(1)\n    n * 2\n}\nmain() -> int {\n    a = spawn work(21)\n    x = await a\n    info(\"{x}\")\n    0\n}\n",
     );
@@ -590,8 +537,6 @@ fn spawn_and_await_lower_to_runtime_futures() {
 
 #[test]
 fn closures_capture_and_list_methods_lower() {
-    // a capturing lambda becomes a heap env + maca_closure; map/filter/reduce
-    // lower to closure calls; sort/sum use the runtime/inline helpers.
     let out = c(
         "main() -> int {\n    xs = 1, 2, 3\n    k = 10\n    a = xs.map(v => v + k)\n    b = xs.filter(v => v > 1)\n    t = xs.reduce(0, (acc, x) => acc + x)\n    s = xs.sort()\n    info(\"{a[0]} {len(b)} {t} {s[0]} {xs.sum()}\")\n    0\n}\n",
     );
@@ -614,8 +559,6 @@ fn closures_capture_and_list_methods_lower() {
 
 #[test]
 fn emit_checked_flags_unsupported_instead_of_silent_zero() {
-    // `with` on a non-record can't lower; emit_checked must report it, not emit
-    // a silently-wrong `0`.
     let src = "main() -> int {\n    x = 5\n    y = x with { a = 1 }\n    0\n}\n";
     let m = maca_parser::parse(src).module;
     let res = maca_backend_c::emit_checked(&m);
@@ -628,7 +571,6 @@ fn emit_checked_flags_unsupported_instead_of_silent_zero() {
         "wrong problem message"
     );
 
-    // a normal program still succeeds
     let ok = maca_parser::parse(
         "main() -> int {\n    xs = 1, 2, 3\n    info(\"{xs.sum()}\")\n    0\n}\n",
     )
@@ -640,10 +582,6 @@ fn emit_checked_flags_unsupported_instead_of_silent_zero() {
 }
 
 /// A value with no text form is a diagnostic, not a pointer dereference.
-///
-/// The two-operand `maca_concat` took declared parameters, so handing it a
-/// record was a C type error naming both types. One variadic call takes
-/// whatever it is given, so the refusal has to be made here.
 #[test]
 fn concatenating_a_value_with_no_text_form_is_refused() {
     for (src, want) in [
@@ -665,8 +603,6 @@ fn concatenating_a_value_with_no_text_form_is_refused() {
         );
     }
 
-    // an unannotated parameter is still a string as far as `++` is concerned;
-    // refusing it would reject `greet(n) => "hi " ++ n`
     let ok = maca_parser::parse("greet(n) -> str => \"hi \" ++ n\n").module;
     assert!(
         maca_backend_c::emit_checked(&ok).is_ok(),
@@ -674,10 +610,7 @@ fn concatenating_a_value_with_no_text_form_is_refused() {
     );
 }
 
-/// A `++` chain runs left to right, whatever the ownership analysis decides to
-/// name. Naming only the pieces to release left the order to the C compiler for
-/// the rest, which is neither the order the source is written in nor a stable
-/// one.
+/// A `++` chain runs left to right, whatever the ownership analysis decides to name.
 #[test]
 fn a_concat_chain_evaluates_in_source_order() {
     let out = c(
@@ -697,9 +630,7 @@ fn a_concat_chain_evaluates_in_source_order() {
     );
 }
 
-/// Several Maca types share one C array: a closure, a future and a value of
-/// unknown type all cross as `int64_t`, so all three are `IntArr`. Emitting the
-/// definitions keyed on the Maca type wrote the same `typedef` twice.
+/// Several Maca types share one C array.
 #[test]
 fn one_array_type_is_defined_once_however_many_types_share_it() {
     let out = c(
@@ -709,9 +640,7 @@ fn one_array_type_is_defined_once_however_many_types_share_it() {
     assert_eq!(defs, 1, "IntArr defined {defs} times:\n{out}");
 }
 
-/// `assert_eq` compares what it is given as text, so a number is rendered on
-/// the way in. Passing one through unchanged handed an `int64_t` to a
-/// `const char*` parameter, which `strcmp` then dereferenced.
+/// `assert_eq` compares what it is given as text, so a number is rendered on the way in.
 #[test]
 fn assert_eq_renders_what_it_is_given() {
     let out = c("main() -> int {\n    assert_eq(3, 3, \"same\")\n    failures()\n}\n");
@@ -726,9 +655,7 @@ fn assert_eq_renders_what_it_is_given() {
     );
 }
 
-/// A method the checker accepts on a receiver, that this back end cannot lower
-/// for that element type, is a diagnostic here rather than a C error naming the
-/// generated call. `xs.sort()` on a `str[][]` compiled to `sort(rows)`.
+/// A method the checker accepts on a receiver, that this back end cannot lower for that element type, is a diagnostic here rather than a C error naming the generated call.
 #[test]
 fn a_method_that_cannot_be_lowered_says_so() {
     let m = maca_parser::parse(
@@ -742,9 +669,7 @@ fn a_method_that_cannot_be_lowered_says_so() {
     );
 }
 
-/// An absent element answers with its type's empty value, and a sum whose
-/// variants carry payloads is a struct, so `0` in the other arm of the bounds
-/// check stopped every program indexing a list of them from compiling.
+/// An absent element answers with its type's empty value, and a sum whose variants carry payloads is a struct.
 #[test]
 fn a_list_of_payload_variants_can_be_indexed() {
     let out = c(
@@ -763,9 +688,6 @@ fn a_list_of_payload_variants_can_be_indexed() {
 
 #[test]
 fn recursive_record_forward_declares_to_break_the_array_cycle() {
-    // `Node { kids: Node[] }` is a definition cycle: the struct body needs the
-    // element-array type, the array's ops need the struct's size. The backend
-    // forward-declares the record and splits the array into struct-then-ops.
     let out = c("Node = {\n    name: str\n    kids: Node[]\n}\n\nmain() -> int { 0 }\n");
     assert!(
         out.contains("typedef struct Node Node;"),
@@ -783,7 +705,6 @@ fn recursive_record_forward_declares_to_break_the_array_cycle() {
         out.contains("MACA_ARRAY_OPS(NodeArr, Node)"),
         "element array ops not emitted after the body:\n{out}"
     );
-    // ordering: forward decl < array struct < body < array ops
     let fwd = out.find("typedef struct Node Node;").unwrap();
     let arr_s = out.find("MACA_ARRAY_STRUCT(NodeArr").unwrap();
     let body = out.find("struct Node {").unwrap();
@@ -796,7 +717,6 @@ fn recursive_record_forward_declares_to_break_the_array_cycle() {
 
 #[test]
 fn str_and_array_scan_primitives_lower() {
-    // the methods the self-hosted lexer scans source with.
     let body = func(
         "scan(s: str) -> int {\n    cs = s.chars()\n    n = cs.length()\n    c = cs.get(0)\n    ws = c.is_whitespace()\n    d = c.is_ascii_digit()\n    a = c.is_alpha()\n    l = s.length()\n    sub = cs.slice(0, 2)\n    n + l\n}\n",
         "scan",
@@ -826,23 +746,18 @@ fn str_and_array_scan_primitives_lower() {
 
 #[test]
 fn higher_order_param_and_fn_value_lower_to_closures() {
-    // an unannotated param that is called is typed `maca_closure`; a fn passed
-    // by name is wrapped in a closure with a boxing thunk.
     let src = "even(n: int) -> bool => n % 2 == 0\n\n\
         apply(pred, x: int) -> bool => pred(x)\n\n\
         main() -> int {\n    apply(even, 4) ? 0 : 1\n}\n";
     let out = c(src);
-    // the callee param is a closure in `apply`'s signature
     assert!(
         out.contains("maca_closure") && out.contains("apply("),
         "higher-order param not typed as a closure:\n{out}"
     );
-    // `even` passed by name gets a boxing thunk and a closure literal
     assert!(
         out.contains("even__fnval"),
         "fn value not wrapped in a thunk:\n{out}"
     );
-    // and the param call goes through the closure ABI
     let body = func(src, "apply");
     assert!(
         body.contains("maca_call1"),
@@ -852,8 +767,6 @@ fn higher_order_param_and_fn_value_lower_to_closures() {
 
 #[test]
 fn empty_list_argument_takes_its_element_type_from_the_callee() {
-    // `seed([])` where `seed(xs: str[])` must build a StrArr, not the default
-    // IntArr: the call threads the parameter type as the literal's expected.
     let body = func(
         "seed(xs: str[]) -> int => xs.length()\n\nmain() -> int {\n    seed([])\n}\n",
         "main",

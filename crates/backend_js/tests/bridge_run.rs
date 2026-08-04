@@ -1,22 +1,7 @@
-//! The JS bridge, executed rather than read.
-//!
-//! An `import js` block used to talk to Maca through two names nothing had
-//! promised it: `state`, this generator's own local, and `update()`. It also had
-//! to write `window.f = …` for every function the Maca side declared, because a
-//! Maca call lowers to a bare call that resolves on the global object. The
-//! `maca` object is what replaces both, so what these tests assert is what the
-//! program computes with it: a block writing state and the view seeing it, Maca
-//! calling a function the block supplied, and a name nobody declared being
-//! rejected instead of quietly doing nothing.
-//!
-//! An emitted-text assertion cannot see any of that. `state.form_titel = x` is
-//! plausible text and a silent no-op at run time, which is the whole bug.
-
 use std::io::Write;
 use std::process::Command;
 
-/// A DOM small enough to mount into and read back: elements, text nodes, and
-/// the `textContent` a reactive bind writes.
+/// A DOM small enough to mount into and read back.
 const DOM: &str = "\
 function makeNode(tag) {\n\
   return { tagName: String(tag).toUpperCase(), className: \"\", _a: {}, children: [],\n\
@@ -36,15 +21,12 @@ function view(n) {\n\
 // A throw is an answer here, so report the message the same way as a value.\n\
 function err(f) { try { f(); return \"no throw\"; } catch (e) { return String(e.message); } }\n";
 
-/// Emit `src`, mount it into the DOM stub under Node, then evaluate each
-/// expression in `calls` and return one output line per expression.
+/// Emit `src`, mount it into the DOM stub under Node, then evaluate each expression in `calls` and return one output line per expression.
 fn run(src: &str, calls: &[&str]) -> Vec<String> {
     let p = maca_parser::parse(src);
     assert!(p.errors.is_empty(), "parse: {:?}", p.errors);
     let js = maca_backend_js::emit(&p.module).js;
 
-    // Tests in one binary share a process id, so the directory is keyed on the
-    // program itself; otherwise concurrent cases overwrite each other's module.
     let mut h = std::collections::hash_map::DefaultHasher::new();
     std::hash::Hash::hash(&(src, calls), &mut h);
     let key = std::hash::Hasher::finish(&h);
@@ -81,8 +63,7 @@ fn run(src: &str, calls: &[&str]) -> Vec<String> {
         .collect()
 }
 
-/// A view over one piece of state, plus a block that writes it two ways: once
-/// while the module loads, and once from a function the test calls later.
+/// A view over one piece of state, plus a block that writes it two ways.
 const TITLE: &str = "\
 title = \"none\"
 
@@ -99,21 +80,12 @@ main() -> Element => div(span(title))
 fn a_block_writes_declared_state_and_the_view_sees_it() {
     let out = run(
         TITLE,
-        &[
-            // written before the app mounted: the first render already has it
-            "view()",
-            "read()",
-            // written afterwards: `set` refreshes, so the bound node follows
-            "(later(\"open\"), view())",
-            "read()",
-        ],
+        &["view()", "read()", "(later(\"open\"), view())", "read()"],
     );
     assert_eq!(out, ["boot", "boot", "open", "open"]);
 }
 
-/// A function declared in Maca and implemented by the block, called from both
-/// sides: by the view as it mounts, and by the test through the Maca function
-/// that wraps it.
+/// A function declared in Maca and implemented by the block, called from both sides.
 const HOST: &str = "\
 ask(who: str) -> str
 
@@ -129,18 +101,11 @@ main() -> Element => div(greet(\"you\"))
 #[test]
 fn maca_calls_a_function_the_block_supplied() {
     let out = run(HOST, &["greet(\"bob\")", "view()"]);
-    // The view is built by `mount()` at load, which is after the block ran, so
-    // the implementation is in place by the time the first render calls it.
     assert_eq!(out, ["hi BOB", "hi YOU"]);
 }
 
 #[test]
 fn an_unimplemented_host_function_names_itself() {
-    // The same declarations with nothing provided, and a view that does not
-    // call it (an unimplemented call during `mount()` fails the whole load,
-    // which is a different report). Without the stub this was a bare call to a
-    // global nobody assigned: `ask is not defined`, thrown from inside `greet`,
-    // naming neither the boundary nor what to do about it.
     let src = "\
 ask(who: str) -> str
 
@@ -155,8 +120,7 @@ main() -> Element => div(span(\"idle\"))
     );
 }
 
-/// Two names and one of them a constant, so every rejection has a near miss
-/// beside it that must still work.
+/// Two names and one of them a constant, so every rejection has a near miss beside it that must still work.
 const DECLARED: &str = "\
 title = \"none\"
 Limit = 3
@@ -183,7 +147,6 @@ fn a_name_the_program_never_declared_is_rejected() {
             "err(probe.getTypo)",
             "err(probe.setConst)",
             "err(probe.provideTypo)",
-            // the typo must not have written anything on its way to throwing
             "JSON.stringify(state)",
         ],
     );
@@ -208,8 +171,6 @@ fn a_name_the_program_never_declared_is_rejected() {
 
 #[test]
 fn a_batch_set_checks_every_name_before_writing_any() {
-    // Half-applying it would be worse than refusing: the view would show a
-    // state no program ever produced, and the throw would look unrelated to it.
     let out = run(
         DECLARED,
         &[
@@ -225,10 +186,6 @@ fn a_batch_set_checks_every_name_before_writing_any() {
 
 #[test]
 fn the_old_state_and_update_names_still_work() {
-    // Kept working on purpose: `apps/playground/playground.maca` calls
-    // `update()` from its own block, and the driver's harness reads `state`.
-    // The bridge is what a new program should reach for, not a wall the
-    // existing ones hit.
     let out = run(
         TITLE,
         &[
