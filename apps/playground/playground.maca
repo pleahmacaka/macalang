@@ -342,6 +342,11 @@ import js """
   // opening example here, which is why the examples do not need to exist twice.
   let editor = null, monaco = null;
   let PENDING_SRC = "";
+  window.mcRepaint = function () {
+    maca.refresh();
+    return true;
+  };
+
   window.mcSource = function () {
     if (editor) return editor.getValue();
     const ta = document.getElementById("ed");
@@ -726,6 +731,26 @@ import js """
 })();
 """
 
+mcCompile(src: str, mode: int) -> bool
+mcSource() -> str
+mcSetSource(text: str) -> bool
+mcRenderPreview() -> bool
+mcTab(tab: str) -> str
+mcRunBadge() -> str
+mcStatus() -> str
+mcVersion() -> str
+mcOutline() -> str
+mcHover() -> str
+mcFlame() -> str
+mcMs() -> str
+mcStats() -> str
+mcPicked() -> str
+mcSetPicked(name: str) -> bool
+mcShare(mode: int) -> bool
+mcUrlProgram() -> str
+mcUrlMode() -> int
+mcRepaint() -> bool
+
 const HelloSrc = """
 main() -> int {
     info("Hello from Maca")
@@ -953,7 +978,7 @@ run() {
         mcRenderPreview()
     }
 
-    update()
+    mcRepaint()
 }
 
 start() {
@@ -999,7 +1024,7 @@ useConfig() {
 
 share() {
     mcShare(mode)
-    update()
+    mcRepaint()
 }
 
 showDiag()    { tab = "Diagnostics" }

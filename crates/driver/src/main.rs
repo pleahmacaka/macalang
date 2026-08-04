@@ -1358,6 +1358,14 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
     if !parsed.errors.is_empty() {
         return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
     }
+    let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
+    if !diags.is_empty() {
+        let msgs: Vec<_> = diags
+            .iter()
+            .map(|d| format!("{:?}: {}", d.kind, d.msg))
+            .collect();
+        return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
+    }
     let out = maca_backend_js::emit(&parsed.module);
 
     let base = src.parent().unwrap_or(Path::new("."));
