@@ -12,13 +12,20 @@ pub struct JsOut {
 pub fn emit(m: &Module) -> JsOut {
     let mut cx = Cx::default();
 
+    let mut computed: Vec<(String, Expr)> = Vec::new();
     for item in &m.items {
         if let Stmt::Bind(b) = item
             && let Expr::Ident(name) = &b.target
             && sum_variants(&b.value).is_none()
             && !is_record_type(&b.value)
         {
-            cx.state.push((name.clone(), js_init(&b.value)));
+            match js_init(&b.value) {
+                Some(literal) => cx.state.push((name.clone(), literal)),
+                None => {
+                    cx.state.push((name.clone(), "undefined".into()));
+                    computed.push((name.clone(), b.value.clone()));
+                }
+            }
             if b.is_const {
                 cx.consts.insert(name.clone());
             }
@@ -36,6 +43,17 @@ pub fn emit(m: &Module) -> JsOut {
     for item in &m.items {
         collect_class_strings(item, &mut cx.classes);
     }
+
+    SCOPES.with(|s| s.borrow_mut().push(BTreeSet::new()));
+    push_frame(Frame::default());
+    let state_init = computed
+        .iter()
+        .map(|(name, value)| format!("\x20 state.{name} = {};\n", jexpr(value)))
+        .collect::<String>();
+    pop_frame();
+    SCOPES.with(|s| {
+        s.borrow_mut().pop();
+    });
 
     let main_fn = m.items.iter().find_map(|it| match it {
         Stmt::Fn(f) if f.name == "main" => Some(f),
@@ -74,7 +92,7 @@ pub fn emit(m: &Module) -> JsOut {
         s.borrow_mut().pop();
     });
 
-    let mut js = cx.finish(&build_body, &root_var);
+    let mut js = cx.finish(&build_body, &root_var, &state_init);
 
     let mut exports = Vec::new();
     let mut fn_defs = String::new();
@@ -1582,7 +1600,7 @@ impl Cx {
         )
     }
 
-    fn finish(&self, build_body: &str, root: &str) -> String {
+    fn finish(&self, build_body: &str, root: &str, state_init: &str) -> String {
         format!(
             "// ---- the app ----\n\
              function _attr(el, k, v) {{\n\
@@ -1649,6 +1667,8 @@ impl Cx {
              }}\n\
              let _root = null;\n\
              function mount(target) {{ _root = build(); target.appendChild(_root); return _root; }}\n\
+             function _start() {{\n{state_init}}}\n\
+             _start();\n\
              if (typeof document !== \"undefined\" && document.getElementById) {{\n\
              \x20 const app = document.getElementById(\"app\");\n\
              \x20 if (app) mount(app);\n\
@@ -1829,13 +1849,16 @@ const HTML: &str = "<!doctype html>\n\
 <link rel=\"stylesheet\" href=\"app.css\">\n</head>\n\
 <body>\n<div id=\"app\"></div>\n<script src=\"app.js\"></script>\n</body>\n</html>\n";
 
-fn js_init(e: &Expr) -> String {
+/// The literal a top-level binding can be written into the state object with, or `None` when it has to be computed once the program's functions exist.
+fn js_init(e: &Expr) -> Option<String> {
     match e {
-        Expr::Str(parts) => format!("{:?}", plain_text(parts)),
-        Expr::Int(n) => n.to_string(),
-        Expr::Float(f) => format!("{f}"),
-        Expr::Bool(b) => b.to_string(),
-        _ => "null".into(),
+        Expr::Str(parts) if parts.iter().all(|p| matches!(p, StrPart::Text(_))) => {
+            Some(format!("{:?}", plain_text(parts)))
+        }
+        Expr::Int(n) => Some(n.to_string()),
+        Expr::Float(f) => Some(format!("{f}")),
+        Expr::Bool(b) => Some(b.to_string()),
+        _ => None,
     }
 }
 

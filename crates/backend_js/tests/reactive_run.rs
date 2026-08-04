@@ -423,6 +423,72 @@ fn refresh_is_still_how_something_outside_maca_reaches_the_view() {
     assert_eq!(out[3], "n2");
 }
 
+/// Every shape of top-level binding a page actually writes: a call, a constructor, a record, a list, and a name that reads another binding.
+const INITIALISERS: &str = "\
+Mode = Dark | Light
+
+Panel = {
+    title: str
+    open: bool
+}
+
+const Home = \"home\"
+
+blank() -> Panel => Panel { title = Home, open = true }
+
+theme = Dark
+panel = blank()
+tabs = [Home, \"work\"]
+greeting = \"hi {Home}\"
+width = 2 * 3
+
+label() -> str =>
+    match theme {
+        Dark => \"dark\"
+        Light => \"light\"
+    }
+
+main() -> Element =>
+    div(
+        span(label())
+        span(panel.title)
+        span(\"{panel.open}\")
+        span(\"{tabs.length()}\")
+        span(greeting)
+        span(\"{width}\")
+    )
+";
+
+#[test]
+fn a_top_level_binding_computed_by_a_call_is_not_null() {
+    let out = run(
+        INITIALISERS,
+        &[
+            "view()",
+            "state.panel.title",
+            "JSON.stringify(state.tabs)",
+            "state.theme.$",
+        ],
+    );
+    assert_eq!(out[0], "dark|home|true|2|hi home|6");
+    assert_eq!(out[1], "home");
+    assert_eq!(out[2], "[\"home\",\"work\"]");
+    assert_eq!(out[3], "Dark", "a constructor is the value, not null");
+}
+
+#[test]
+fn a_computed_binding_stays_reactive_after_the_page_starts() {
+    let out = run(
+        INITIALISERS,
+        &[
+            "(maca.set(\"panel\", { title: \"work\", open: false }), view())",
+            "(maca.set(\"width\", 9), view())",
+        ],
+    );
+    assert_eq!(out[0], "dark|work|false|2|hi home|6");
+    assert_eq!(out[1], "dark|work|false|2|hi home|9");
+}
+
 #[test]
 fn a_view_that_assigns_state_says_so_instead_of_looping_forever() {
     let src = "\
