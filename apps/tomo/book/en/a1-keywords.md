@@ -1,6 +1,6 @@
 # Keywords
 
-Maca reserves 21 words. That is the whole list: a language you can hold in your
+Maca reserves 22 words. That is the whole list: a language you can hold in your
 head is a design goal, not an accident.
 
 The words it pointedly does *not* reserve are the second table, and they matter
@@ -18,6 +18,7 @@ with what Maca does instead.
 | `while` | loop while a condition holds |
 | `break` | leave the innermost loop |
 | `continue` | next iteration |
+| `return` | leave a function early; the last expression is still its value |
 | `match` | destructure and branch |
 | `import` | bring in a module, or a foreign library |
 | `with` | functional record update: `p with { y = 5 }` |
@@ -43,7 +44,6 @@ were* a keyword, the compiler tells you what Maca does instead.
 |---|---|
 | `fn`, `func`, `def` | a function is `name(a: T) -> R { … }` or `=> e` |
 | `let`, `var` | `x = e` binds; `const x = e` makes it constant |
-| `return` | a function's last expression is its value |
 | `type`, `struct`, `enum`, `class` | `Name = { f: T }` or `Name = A \| B` |
 | `async` | async is an inferred effect; use `spawn` and `await` |
 | `null`, `nil`, `None` | there is no null; use a sum type |

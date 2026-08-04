@@ -301,11 +301,19 @@ fn emit_fn(f: &FnDef) -> String {
         .map(|p| p.name.clone())
         .collect::<Vec<_>>()
         .join(", ");
+    declare(&f.name);
+    SCOPES.with(|s| {
+        s.borrow_mut()
+            .push(f.params.iter().map(|p| p.name.clone()).collect())
+    });
     let body = match &f.body {
         Some(FnBody::Expr(e)) => format!("  return {};", jexpr(e)),
         Some(FnBody::Block(stmts)) => jblock(stmts),
         None => String::new(),
     };
+    SCOPES.with(|s| {
+        s.borrow_mut().pop();
+    });
     format!("function {}({params}) {{\n{body}\n}}", f.name)
 }
 
@@ -351,14 +359,18 @@ fn jbind(b: &Bind) -> String {
     match &b.target {
         Expr::Ident(n) => {
             let is_state = STATE.with(|s| s.borrow().contains(n));
+            let fresh = !is_state && !declared(n);
+            if fresh {
+                declare(n);
+            }
             if is_branching(&b.value) {
-                let decl = if is_state {
-                    String::new()
-                } else {
+                let decl = if fresh {
                     format!("  var {n};\n")
+                } else {
+                    String::new()
                 };
                 format!("{decl}{}", jstmt(&b.value, &Sink::Assign(jname(n))))
-            } else if is_state {
+            } else if is_state || !fresh {
                 format!("  {} = {};\n", jname(n), jexpr(&b.value))
             } else {
                 format!("  var {n} = {};\n", jexpr(&b.value))
@@ -407,6 +419,10 @@ fn jstmt(e: &Expr, sink: &Sink) -> String {
         Expr::For { pat, iter, body } => jfor(pat, iter, body),
         Expr::Break => "  break;\n".into(),
         Expr::Continue => "  continue;\n".into(),
+        Expr::Return(v) => match v {
+            Some(x) => format!("  return {};\n", jexpr(x)),
+            None => "  return;\n".into(),
+        },
         _ => deliver(&jexpr(e), sink),
     }
 }
@@ -417,6 +433,7 @@ fn jfor(pat: &Pattern, iter: &Expr, body: &[Stmt]) -> String {
         Pattern::Bind(n) if !is_variant(n) => (n.clone(), String::new()),
         p => ("_it".to_string(), jpattern(p, "_it").1),
     };
+    declare(&name);
     let mut out = format!("  for (var {name} of {}) {{\n", jexpr(iter));
     if !binds.is_empty() {
         out.push_str(&format!("  {binds}\n"));
@@ -463,6 +480,22 @@ thread_local! {
     static STATE: std::cell::RefCell<BTreeSet<String>> = const { std::cell::RefCell::new(BTreeSet::new()) };
     /// Sum-type variant names and their payload arity.
     static VARIANTS: std::cell::RefCell<BTreeMap<String, usize>> = const { std::cell::RefCell::new(BTreeMap::new()) };
+    /// One frame per function being emitted, holding the names it has already declared, so a write from a nested definition assigns rather than shadows.
+    static SCOPES: std::cell::RefCell<Vec<BTreeSet<String>>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Is `n` a name some enclosing function already declared?
+fn declared(n: &str) -> bool {
+    SCOPES.with(|s| s.borrow().iter().any(|f| f.contains(n)))
+}
+
+/// Record that this function declares `n`.
+fn declare(n: &str) {
+    SCOPES.with(|s| {
+        if let Some(top) = s.borrow_mut().last_mut() {
+            top.insert(n.to_string());
+        }
+    });
 }
 fn set_state_names(names: &BTreeSet<String>) {
     STATE.with(|s| *s.borrow_mut() = names.clone());
@@ -597,6 +630,9 @@ fn jexpr(e: &Expr) -> String {
             jexpr(x)
         ),
         Expr::Match { scrut, arms } => jmatch(scrut, arms),
+        Expr::Return(_) => "(() => { throw new Error(\"`return` is a statement, \
+             so it has no value here\"); })()"
+            .into(),
         _ => "null".into(),
     }
 }
@@ -627,7 +663,10 @@ fn jpattern(pat: &Pattern, sv: &str) -> (String, String) {
     match pat {
         Pattern::Wild => ("true".into(), String::new()),
         Pattern::Bind(n) if is_variant(n) => (format!("{sv}.$ === {n:?}"), String::new()),
-        Pattern::Bind(n) => ("true".into(), format!("var {n} = {sv}; ")),
+        Pattern::Bind(n) => {
+            declare(n);
+            ("true".into(), format!("var {n} = {sv}; "))
+        }
         Pattern::Int(n) => (format!("{sv} === {n}"), String::new()),
         Pattern::Float(f) => (format!("{sv} === {f}"), String::new()),
         Pattern::Bool(b) => (format!("{sv} === {b}"), String::new()),
@@ -649,7 +688,10 @@ fn jpattern(pat: &Pattern, sv: &str) -> (String, String) {
             let mut binds = String::new();
             for (fname, sub) in fields {
                 match sub {
-                    None => binds.push_str(&format!("var {fname} = {sv}.{fname}; ")),
+                    None => {
+                        declare(fname);
+                        binds.push_str(&format!("var {fname} = {sv}.{fname}; "));
+                    }
                     Some(p) => {
                         let (c, b) = jpattern(p, &format!("{sv}.{fname}"));
                         if c != "true" {
@@ -679,6 +721,7 @@ fn jpattern(pat: &Pattern, sv: &str) -> (String, String) {
                 binds.push_str(&b);
             }
             if let Some(Pattern::Bind(rn)) = rest.as_deref() {
+                declare(rn);
                 binds.push_str(&format!("var {rn} = {sv}.slice({n}); "));
             }
             (format!("({})", conds.join(" && ")), binds)

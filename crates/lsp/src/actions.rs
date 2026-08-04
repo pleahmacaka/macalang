@@ -177,7 +177,7 @@ impl Cursor<'_> {
         let Some(name) = backticks(&d.msg).first().copied() else {
             return;
         };
-        if !matches!(name, "return" | "let" | "var") {
+        if !matches!(name, "let" | "var") {
             return;
         }
         let Some(t) = self

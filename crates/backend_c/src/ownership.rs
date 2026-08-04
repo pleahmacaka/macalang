@@ -411,6 +411,11 @@ impl Fresh {
                 self.reads(els, out);
             }
             Expr::Try(x) | Expr::Reify(x) => self.reads(x, out),
+            Expr::Return(v) => {
+                if let Some(x) = v {
+                    self.flows_out(x, out);
+                }
+            }
             Expr::If { cond, then, els } => {
                 self.reads(cond, out);
                 self.retain_stmts(then, Tail::Flows, out);

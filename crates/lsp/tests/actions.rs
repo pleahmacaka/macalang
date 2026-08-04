@@ -93,19 +93,6 @@ fn the_fix_edits_the_declaration_in_the_cursors_own_function() {
 }
 
 #[test]
-fn a_phantom_return_is_dropped() {
-    let src = "f() -> int {\n    x = 1\n    return x\n}\n";
-    let acts = at(src, "return");
-    let out = applied(src, titled(&acts, "drop the `return`"));
-    assert_eq!(out, "f() -> int {\n    x = 1\n    x\n}\n");
-    assert!(
-        diagnostics(&out).is_empty(),
-        "left: {:?}",
-        diagnostics(&out)
-    );
-}
-
-#[test]
 fn a_phantom_let_is_dropped() {
     let src = "f() -> int {\n    let x = 1\n    x\n}\n";
     let acts = at(src, "let");

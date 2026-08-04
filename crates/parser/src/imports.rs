@@ -934,6 +934,11 @@ fn refs_in_expr(e: &Expr, out: &mut BTreeSet<String>) {
             }
             refs_in_expr(body, out);
         }
+        Expr::Return(v) => {
+            if let Some(x) = v {
+                refs_in_expr(x, out);
+            }
+        }
         Expr::With { base, fields } => {
             refs_in_expr(base, out);
             fields.iter().for_each(|f| refs_in_field(f, out));

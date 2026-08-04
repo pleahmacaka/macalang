@@ -138,6 +138,8 @@ pub enum Expr {
     },
     Break,
     Continue,
+    /// `return` / `return e`: leave the enclosing function early.
+    Return(Option<Box<Expr>>),
     Lambda {
         params: Vec<Param>,
         /// `(a, b) -> T => …`: an optional declared return type.
@@ -322,6 +324,11 @@ pub fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
             walk_stmts(body, f);
         }
         Expr::Lambda { body, .. } => walk_expr(body, f),
+        Expr::Return(v) => {
+            if let Some(x) = v {
+                walk_expr(x, f);
+            }
+        }
         Expr::Try(x) | Expr::Fail(x) | Expr::Reify(x) | Expr::Await(x) | Expr::Spawn(x) => {
             walk_expr(x, f)
         }
@@ -584,6 +591,11 @@ fn rename_in_expr(e: &mut Expr, from: &str, to: &str) {
             body.iter_mut().for_each(|x| rename_ident(x, from, to));
         }
         Expr::Lambda { body, .. } => rename_in_expr(body, from, to),
+        Expr::Return(v) => {
+            if let Some(x) = v {
+                rename_in_expr(x, from, to);
+            }
+        }
         Expr::Try(x) | Expr::Fail(x) | Expr::Reify(x) | Expr::Await(x) | Expr::Spawn(x) => {
             rename_in_expr(x, from, to)
         }

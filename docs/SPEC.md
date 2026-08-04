@@ -72,6 +72,31 @@ and which manifest answers.
 - **Closures / first-class functions.** A lambda `v => …` captures its enclosing
   scope; lowered to a `maca_closure` (code pointer + heap env), one ABI for
   capturing and non-capturing lambdas, callable as a value (`f = v => …; f(x)`).
+- **`return`, for leaving a function early.** A function's last expression is
+  still its value; `return` is the guard that gets out before reaching it, so
+  the body after a guard need not be nested inside an `else`. `return` with no
+  value leaves a function that declares no result; `return e` leaves one that
+  declares `-> T`, and `e` is checked against `T`. `return` is a **statement**:
+  it stands on a line of its own, or as the tail of an `if`/`match`/`for`/
+  `while` branch. Anywhere the value would have nowhere to go (a ternary arm, a
+  call argument, an operand, a lambda body, an `=> e` function body) it is a
+  `TypeMismatch` naming the function, before any backend sees it. Lowered to the
+  host language's own `return` on native C, JS, Rust, JVM and embedded C; config
+  mode has no function to leave and says so.
+  (`crates/driver/tests/programs/early_return.maca`.)
+- **A named function nested in a function.** A block may define a function, and
+  that function reads and **writes** the scope enclosing it, so a view can own
+  its state and define its handlers beside it. It is a closure value, so it is
+  passed, stored in a `(T, U) -> R` field, and may outlive the call that made
+  it. Scope is the block's one rule: a nested definition is in scope **from
+  where it is written**, not before, because a closure captures when it is
+  made. That rules out mutual recursion and self-recursion between nested
+  definitions, each with its own diagnostic pointing at the top level. A local
+  that any nested definition **assigns** is shared by all of them (the C backend
+  gives it a heap cell both reach); one that none assigns is copied, as a
+  lambda's captures always were. Native C and JS lower it; `rust`, `jvm`,
+  `embedded` and the playground interpreter refuse it by name.
+  (`crates/driver/tests/programs/nested_fns.maca`.)
 - **List stdlib (UFCS on `T[]`):** `map`/`filter`/`reduce`/`fold` (closures
   typed by the element), `sort`/`reverse`/`push`/`pop`/`contains`/`index_of`/
   `sum`/`min`/`max`/`first`/`last`. String stdlib on `str`

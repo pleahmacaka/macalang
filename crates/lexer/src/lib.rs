@@ -27,6 +27,7 @@ pub enum Tok {
     While,
     Break,
     Continue,
+    Return,
     Match,
     Import,
     With,
@@ -519,6 +520,7 @@ impl<'a> Lexer<'a> {
             "while" => Tok::While,
             "break" => Tok::Break,
             "continue" => Tok::Continue,
+            "return" => Tok::Return,
             "match" => Tok::Match,
             "import" => Tok::Import,
             "with" => Tok::With,
@@ -737,6 +739,7 @@ pub fn is_keyword(word: &str) -> bool {
                 | Tok::While
                 | Tok::Break
                 | Tok::Continue
+                | Tok::Return
                 | Tok::Match
                 | Tok::Import
                 | Tok::With

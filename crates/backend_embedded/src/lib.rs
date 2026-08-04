@@ -246,6 +246,10 @@ fn cblock(stmts: &[Stmt], wants_value: bool, ind: usize) -> String {
             }
             Stmt::Expr(Expr::Break) => out.push_str(&format!("{pad}break;\n")),
             Stmt::Expr(Expr::Continue) => out.push_str(&format!("{pad}continue;\n")),
+            Stmt::Expr(Expr::Return(v)) => match v {
+                Some(x) => out.push_str(&format!("{pad}return {};\n", cexpr(x))),
+                None => out.push_str(&format!("{pad}return;\n")),
+            },
             Stmt::Expr(e @ Expr::If { .. }) => out.push_str(&cif(e, ind)),
             Stmt::Expr(e) => {
                 if last && wants_value {
@@ -254,6 +258,12 @@ fn cblock(stmts: &[Stmt], wants_value: bool, ind: usize) -> String {
                     out.push_str(&format!("{pad}{};\n", cexpr(e)));
                 }
             }
+            Stmt::Fn(f) => problem(format!(
+                "`{}` is defined inside another function, which the embedded \
+                 backend does not lower: a closure needs a heap and this target \
+                 has no allocator. Lift `{}` to the top level",
+                f.name, f.name
+            )),
             _ => {}
         }
     }
@@ -375,6 +385,7 @@ fn describe(e: &Expr) -> &'static str {
         Expr::With { .. } => "a record update",
         Expr::If { .. } => "`if` in value position",
         Expr::Block(_) => "a block in value position",
+        Expr::Return(_) => "`return` in value position",
         _ => "this construct",
     }
 }

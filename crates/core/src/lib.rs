@@ -130,6 +130,10 @@ struct Checker {
     gradual_foreign: bool,
     /// Set for exactly one `infer` call: the callee of a direct `f(…)`.
     callee_pos: bool,
+    /// The function a `return` leaves: its name and its declared result type.
+    ret_of: Vec<(String, Option<Ty>)>,
+    /// Nested function names the current block defines below the point being checked.
+    nested_later: HashSet<String>,
     diags: Vec<Diagnostic>,
 }
 
@@ -148,6 +152,8 @@ impl Checker {
             mut_of: HashMap::new(),
             gradual_foreign: false,
             callee_pos: false,
+            ret_of: Vec::new(),
+            nested_later: HashSet::new(),
             diags: Vec::new(),
         }
     }
@@ -165,7 +171,6 @@ impl Checker {
             return;
         }
         let hint = match name {
-            "return" => "a function's last expression is its value, so drop the `return`",
             "let" | "var" => {
                 "write `x = e` for a variable, `const x = e` for a constant; \
                  no `let`/`var` keyword"
@@ -430,26 +435,171 @@ impl Checker {
     }
 
     fn check_fn(&mut self, f: &FnDef) {
+        self.check_fn_in(&Env::new(), f, false);
+    }
+
+    /// Check a function body, with `outer` the enclosing scope a nested definition reads and writes.
+    fn check_fn_in(&mut self, outer: &Env, f: &FnDef, nested: bool) {
         let Some(body) = &f.body else { return };
-        let mut env: Env = f
-            .params
-            .iter()
-            .map(|p| (p.name.clone(), param_ty(p)))
-            .collect();
-        let saved_mut = std::mem::take(&mut self.mut_of);
+        let mut env: Env = outer.to_vec();
+        env.extend(f.params.iter().map(|p| (p.name.clone(), param_ty(p))));
+        let saved_mut = if nested {
+            self.mut_of.clone()
+        } else {
+            std::mem::take(&mut self.mut_of)
+        };
         for p in &f.params {
             self.mut_of.insert(p.name.clone(), true);
         }
+        let declared = f.ret.as_ref().map(|t| {
+            let t = ast_ty(t);
+            self.relax_ann(t)
+        });
+        self.ret_of.push((f.name.clone(), declared.clone()));
+        self.check_return_sites(&f.name, body);
         let bty = match body {
             FnBody::Block(stmts) => self.infer_block(&mut env, stmts),
             FnBody::Expr(e) => self.infer(&mut env, e),
         };
+        self.ret_of.pop();
         self.mut_of = saved_mut;
-        if let Some(ret) = &f.ret {
-            let rt = self.relax_ann(ast_ty(ret));
-            if let Err(e) = self.unify_ann(&rt, &bty) {
-                self.diag(DiagKind::TypeMismatch, format!("in `{}`: {e}", f.name));
+        if let Some(rt) = declared
+            && let Err(e) = self.unify_ann(&rt, &bty)
+        {
+            self.diag(DiagKind::TypeMismatch, format!("in `{}`: {e}", f.name));
+        }
+    }
+
+    /// A nested definition is a value bound where it is written, so it cannot name itself.
+    fn check_nested_self_reference(&mut self, f: &FnDef) {
+        let Some(body) = &f.body else { return };
+        let mut names = HashSet::new();
+        match body {
+            FnBody::Expr(e) => walk_names(e, &mut |n| {
+                names.insert(n.to_string());
+            }),
+            FnBody::Block(stmts) => {
+                for s in stmts {
+                    walk_stmt(s, &mut |e| {
+                        if let Expr::Ident(n) = e {
+                            names.insert(n.clone());
+                        }
+                    });
+                }
             }
+        }
+        if names.contains(&f.name) {
+            self.diag(
+                DiagKind::UndefinedName,
+                format!(
+                    "`{}` is a nested function, which is a value bound where it is \
+                     written, so it cannot name itself; move `{}` to the top level, \
+                     where a function is in scope everywhere",
+                    f.name, f.name
+                ),
+            );
+        }
+    }
+
+    /// Report every `return` written where there is no function for it to leave.
+    fn check_return_sites(&mut self, name: &str, body: &FnBody) {
+        match body {
+            FnBody::Block(stmts) => self.returns_in_stmts(name, stmts),
+            FnBody::Expr(e) => self.returns_in_value(name, e),
+        }
+    }
+
+    fn returns_in_stmts(&mut self, name: &str, stmts: &[Stmt]) {
+        for s in stmts {
+            match s {
+                Stmt::Expr(e) => self.returns_in_stmt(name, e),
+                Stmt::Bind(b) if is_control(&b.value) => self.returns_in_stmt(name, &b.value),
+                Stmt::Bind(b) => self.returns_in_value(name, &b.value),
+                Stmt::Alias { value, .. } => self.returns_in_value(name, value),
+                Stmt::Fn(_) | Stmt::Import(_) => {}
+            }
+        }
+    }
+
+    /// A place a `return` can stand: the backends lower it to the host language's own `return`.
+    fn returns_in_stmt(&mut self, name: &str, e: &Expr) {
+        match e {
+            Expr::Return(v) => {
+                if let Some(x) = v {
+                    self.returns_in_value(name, x);
+                }
+            }
+            Expr::Block(stmts) => self.returns_in_stmts(name, stmts),
+            Expr::If { cond, then, els } => {
+                self.returns_in_value(name, cond);
+                self.returns_in_stmts(name, then);
+                if let Some(e) = els {
+                    self.returns_in_stmts(name, e);
+                }
+            }
+            Expr::Match { scrut, arms } => {
+                self.returns_in_value(name, scrut);
+                for a in arms {
+                    if let Some(g) = &a.guard {
+                        self.returns_in_value(name, g);
+                    }
+                    self.returns_in_stmt(name, &a.body);
+                }
+            }
+            Expr::For { iter, body, .. } => {
+                self.returns_in_value(name, iter);
+                self.returns_in_stmts(name, body);
+            }
+            Expr::While { cond, body } => {
+                self.returns_in_value(name, cond);
+                self.returns_in_stmts(name, body);
+            }
+            other => self.returns_in_value(name, other),
+        }
+    }
+
+    /// What a `return` carries, against what the function it leaves declared.
+    fn check_returned(&mut self, given: Option<Ty>) {
+        let Some((name, declared)) = self.ret_of.last().cloned() else {
+            return;
+        };
+        match (declared, given) {
+            (Some(want), Some(got)) => {
+                if let Err(e) = self.unify_ann(&want, &got) {
+                    self.diag(DiagKind::TypeMismatch, format!("in `{name}`: {e}"));
+                }
+            }
+            (None, Some(_)) => self.diag(
+                DiagKind::TypeMismatch,
+                format!(
+                    "`{name}` declares no result, so `return <value>` has nothing to \
+                     return it to; write `{name}(…) -> T`"
+                ),
+            ),
+            (Some(want), None) if !matches!(self.inf.resolve(&want), Ty::Unit | Ty::Any) => self
+                .diag(
+                    DiagKind::TypeMismatch,
+                    format!(
+                        "`{name}` returns `{}`, so a bare `return` leaves without one; \
+                         write `return <value>`",
+                        show(&self.inf.resolve(&want))
+                    ),
+                ),
+            _ => {}
+        }
+    }
+
+    /// Everywhere below here is an expression, so a `return` in it has nowhere to go.
+    fn returns_in_value(&mut self, name: &str, e: &Expr) {
+        if has_return(e) {
+            self.diag(
+                DiagKind::TypeMismatch,
+                format!(
+                    "in `{name}`: this `return` stands inside an expression, where \
+                     there is no statement to leave from; `return` goes on a line of \
+                     its own, or in an `if`/`match` branch"
+                ),
+            );
         }
     }
 
@@ -670,6 +820,7 @@ impl Checker {
             }
             Expr::Assign { value, .. } => acc = self.eff(value),
             Expr::Block(stmts) => acc = self.eff_stmts(stmts),
+            Expr::Return(Some(x)) => acc = self.eff(x),
             _ => {}
         }
         acc
@@ -695,6 +846,11 @@ impl Checker {
                 Stmt::Expr(e) => self.eff(e),
                 Stmt::Bind(b) => self.eff(&b.value),
                 Stmt::Alias { value, .. } => self.eff(value),
+                Stmt::Fn(f) => match &f.body {
+                    Some(FnBody::Expr(e)) => self.eff(e),
+                    Some(FnBody::Block(ss)) => self.eff_stmts(ss),
+                    None => EffSet::empty(),
+                },
                 _ => EffSet::empty(),
             });
         }
@@ -704,6 +860,14 @@ impl Checker {
     fn infer_block(&mut self, env: &mut Env, stmts: &[Stmt]) -> Ty {
         let base = env.len();
         let mut last = Ty::Unit;
+        let later: HashSet<String> = stmts
+            .iter()
+            .filter_map(|s| match s {
+                Stmt::Fn(f) => Some(f.name.clone()),
+                _ => None,
+            })
+            .collect();
+        let saved_later = std::mem::replace(&mut self.nested_later, later);
         for s in stmts {
             match s {
                 Stmt::Bind(b) => {
@@ -741,15 +905,20 @@ impl Checker {
                 }
                 Stmt::Expr(e) => last = self.infer(env, e),
                 Stmt::Fn(f) => {
+                    self.nested_later.remove(&f.name);
+                    self.check_nested_self_reference(f);
                     let params = f.params.iter().map(param_ty).collect();
                     let ret = f.ret.as_ref().map_or(Ty::Any, ast_ty);
                     env.push((f.name.clone(), Ty::Fn(params, Box::new(ret))));
-                    self.check_fn(f);
+                    let outer = env.clone();
+                    self.check_fn_in(&outer, f, true);
+                    self.mut_of.insert(f.name.clone(), false);
                     last = Ty::Unit;
                 }
                 _ => last = Ty::Unit,
             }
         }
+        self.nested_later = saved_later;
         env.truncate(base);
         last
     }
@@ -837,10 +1006,16 @@ impl Checker {
                     && !self.globals.contains_key(name)
                     && !maca_parser::is_backend_intrinsic(name)
                 {
-                    self.diag(
-                        DiagKind::UndefinedName,
-                        format!("call to undefined function `{name}`"),
-                    );
+                    let msg = if self.nested_later.contains(name) {
+                        format!(
+                            "`{name}` is defined further down this block; a nested \
+                             function is in scope from where it is written, so move \
+                             `{name}` above its first use"
+                        )
+                    } else {
+                        format!("call to undefined function `{name}`")
+                    };
+                    self.diag(DiagKind::UndefinedName, msg);
                 }
                 if let Expr::Field { base, name } = &**callee {
                     let bt = self.infer(env, base);
@@ -984,6 +1159,11 @@ impl Checker {
                 Ty::Unit
             }
             Expr::Break | Expr::Continue => Ty::Unit,
+            Expr::Return(v) => {
+                let given = v.as_ref().map(|x| self.infer(env, x));
+                self.check_returned(given);
+                self.inf.fresh()
+            }
             Expr::Lambda { params, body, .. } => {
                 let base = env.len();
                 let pts: Vec<Ty> = params
@@ -1309,6 +1489,77 @@ fn lookup(env: &Env, name: &str) -> Option<Ty> {
         .rev()
         .find(|(n, _)| n == name)
         .map(|(_, t)| t.clone())
+}
+
+/// Does this expression reach a statement context, where a `return` can stand?
+fn is_control(e: &Expr) -> bool {
+    matches!(
+        e,
+        Expr::If { .. }
+            | Expr::Match { .. }
+            | Expr::For { .. }
+            | Expr::While { .. }
+            | Expr::Block(_)
+    )
+}
+
+/// Is there a `return` in here that belongs to the function being checked, rather than to a nested definition of its own?
+fn has_return(e: &Expr) -> bool {
+    match e {
+        Expr::Return(_) => true,
+        Expr::Str(parts) => parts
+            .iter()
+            .any(|p| matches!(p, StrPart::Interp(x) if has_return(x))),
+        Expr::List(xs) => xs.iter().any(has_return),
+        Expr::Record(fs) | Expr::Ctor { fields: fs, .. } => fs.iter().any(has_return_field),
+        Expr::With { base, fields } => has_return(base) || fields.iter().any(has_return_field),
+        Expr::Call { callee, args } => {
+            has_return(callee) || args.iter().any(|a| has_return(arg_expr(a)))
+        }
+        Expr::Field { base, .. } => has_return(base),
+        Expr::Index { base, index } => has_return(base) || has_return(index),
+        Expr::Range { lo, hi } => has_return(lo) || has_return(hi),
+        Expr::Unary { expr, .. } => has_return(expr),
+        Expr::Binary { lhs, rhs, .. } => has_return(lhs) || has_return(rhs),
+        Expr::Ternary { cond, then, els } => {
+            has_return(cond) || has_return(then) || has_return(els)
+        }
+        Expr::If { cond, then, els } => {
+            has_return(cond)
+                || has_return_stmts(then)
+                || els.as_ref().is_some_and(|e| has_return_stmts(e))
+        }
+        Expr::Match { scrut, arms } => {
+            has_return(scrut)
+                || arms
+                    .iter()
+                    .any(|a| a.guard.as_ref().is_some_and(has_return) || has_return(&a.body))
+        }
+        Expr::For { iter, body, .. } => has_return(iter) || has_return_stmts(body),
+        Expr::While { cond, body } => has_return(cond) || has_return_stmts(body),
+        Expr::Lambda { body, .. } => has_return(body),
+        Expr::Try(x) | Expr::Fail(x) | Expr::Reify(x) | Expr::Await(x) | Expr::Spawn(x) => {
+            has_return(x)
+        }
+        Expr::Assign { target, value } => has_return(target) || has_return(value),
+        Expr::Block(ss) => has_return_stmts(ss),
+        _ => false,
+    }
+}
+
+fn has_return_field(f: &Field) -> bool {
+    match f {
+        Field::Value { value, .. } | Field::Bare(value) => has_return(value),
+        Field::Type { .. } | Field::Shorthand(_) => false,
+    }
+}
+
+fn has_return_stmts(stmts: &[Stmt]) -> bool {
+    stmts.iter().any(|s| match s {
+        Stmt::Expr(e) | Stmt::Alias { value: e, .. } => has_return(e),
+        Stmt::Bind(b) => has_return(&b.value),
+        Stmt::Fn(_) | Stmt::Import(_) => false,
+    })
 }
 
 /// The type a parameter has *inside the body*.

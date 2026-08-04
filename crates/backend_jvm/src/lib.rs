@@ -251,6 +251,13 @@ fn jblock(stmts: &[Stmt], wants_value: bool) -> String {
                     out.push_str(&format!("    {};\n", jexpr(e)));
                 }
             }
+            Stmt::Fn(f) => problem(format!(
+                "`{}` is defined inside another function, which the jvm backend \
+                 does not lower: a Java lambda captures an effectively final \
+                 variable, so a write to the enclosing scope has nowhere to go. \
+                 Lift `{}` to the top level",
+                f.name, f.name
+            )),
             _ => {}
         }
     }
@@ -333,6 +340,10 @@ fn jexpr(e: &Expr) -> String {
         Expr::Assign { target, value } => format!("({} = {})", jexpr(target), jexpr(value)),
         Expr::Break => "break".into(),
         Expr::Continue => "continue".into(),
+        Expr::Return(v) => match v {
+            Some(x) => format!("return {}", jexpr(x)),
+            None => "return".into(),
+        },
         other => {
             problem(format!(
                 "{} is not lowered by the jvm backend",

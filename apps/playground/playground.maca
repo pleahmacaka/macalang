@@ -477,7 +477,7 @@ import js """
       ],
     });
     m.languages.setMonarchTokensProvider("maca", {
-      keywords: ["const", "as", "if", "else", "for", "in", "while", "break", "continue", "match", "import", "from", "with", "fail", "try", "alias", "await", "spawn", "true", "false"],
+      keywords: ["const", "as", "if", "else", "for", "in", "while", "break", "continue", "return", "match", "import", "from", "with", "fail", "try", "alias", "await", "spawn", "true", "false"],
       typeKeywords: ["int", "float", "str", "bool", "bytes"],
       tokenizer: {
         root: [
@@ -559,7 +559,7 @@ import js """
         const range = { startLineNumber: pos.lineNumber, endLineNumber: pos.lineNumber, startColumn: w.startColumn, endColumn: w.endColumn };
         const K = m.languages.CompletionItemKind, items = [];
         const add = (label, kind, detail) => items.push({ label, kind, insertText: label, range, detail });
-        ["const", "as", "if", "else", "for", "in", "while", "break", "continue", "match", "import", "with", "fail", "try", "true", "false"].forEach(k => add(k, K.Keyword));
+        ["const", "as", "if", "else", "for", "in", "while", "break", "continue", "return", "match", "import", "with", "fail", "try", "true", "false"].forEach(k => add(k, K.Keyword));
         ["int", "float", "str", "bool", "bytes"].forEach(t => add(t, K.TypeParameter, "type"));
         ["info", "warn", "err", "print", "len", "str", "int", "float"].forEach(b => add(b, K.Function, "builtin"));
         for (const s of (last && last.symbols || [])) {

@@ -568,7 +568,7 @@ fn a_selective_import_only_carries_the_names_it_asks_for() {
 #[test]
 fn a_quick_fix_comes_back_as_a_workspace_edit() {
     let (_child, mut stdin, mut stdout) = session(None);
-    let src = "f() -> int {\n    x = 1\n    return x\n}\n";
+    let src = "f() -> int {\n    let x = 1\n    x\n}\n";
     let open = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"file:///q.maca","text":"{}"}}}}}}"#,
         src.replace('\n', "\\n")
@@ -577,14 +577,14 @@ fn a_quick_fix_comes_back_as_a_workspace_edit() {
     let diag = read_frame(&mut stdout);
     assert!(diag.contains("UndefinedName"), "diagnostics: {diag}");
 
-    let ask = r#"{"jsonrpc":"2.0","id":2,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///q.maca"},"range":{"start":{"line":2,"character":4},"end":{"line":2,"character":4}},"context":{"diagnostics":[]}}}"#;
+    let ask = r#"{"jsonrpc":"2.0","id":2,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///q.maca"},"range":{"start":{"line":1,"character":4},"end":{"line":1,"character":4}},"context":{"diagnostics":[]}}}"#;
     stdin.write_all(frame(ask).as_bytes()).unwrap();
     let got = read_frame(&mut stdout);
-    assert!(got.contains("drop the `return`"), "code actions: {got}");
+    assert!(got.contains("drop the `let`"), "code actions: {got}");
     assert!(got.contains("\"quickfix\""), "no kind: {got}");
     assert!(got.contains("file:///q.maca"), "edit is not keyed: {got}");
 
-    let none = r#"{"jsonrpc":"2.0","id":3,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///q.maca"},"range":{"start":{"line":1,"character":4},"end":{"line":1,"character":4}},"context":{"diagnostics":[]}}}"#;
+    let none = r#"{"jsonrpc":"2.0","id":3,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///q.maca"},"range":{"start":{"line":2,"character":4},"end":{"line":2,"character":4}},"context":{"diagnostics":[]}}}"#;
     stdin.write_all(frame(none).as_bytes()).unwrap();
     let empty = read_frame(&mut stdout);
     assert!(empty.contains("\"result\":[]"), "expected none: {empty}");

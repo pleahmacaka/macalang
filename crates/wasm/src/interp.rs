@@ -33,6 +33,7 @@ pub enum Value {
 enum Signal {
     Break,
     Continue,
+    Return(Value),
     Fail(String),
     Limit(String),
 }
@@ -186,6 +187,10 @@ impl<'a> Interp<'a> {
             Some(FnBody::Block(stmts)) => self.block(stmts, &mut scope, depth),
             None => Ok(Value::Unit),
         };
+        let result = match result {
+            Err(Signal::Return(v)) => Ok(v),
+            other => other,
+        };
         let self_c = self.stack.pop().map(|(_, c)| c).unwrap_or(0);
         *self.self_steps.entry(f.name.clone()).or_default() += self_c;
         let incl = self.steps - before;
@@ -223,6 +228,16 @@ impl<'a> Interp<'a> {
                     if is_last {
                         last = v;
                     }
+                }
+                Stmt::Fn(f) => {
+                    scope.truncate(base);
+                    return Err(Signal::Fail(format!(
+                        "`{}` is defined inside another function, which the \
+                         playground interpreter cannot run: it copies what a \
+                         closure captures, so a write to the enclosing scope \
+                         would be lost. Build it with `maca build` instead.",
+                        f.name
+                    )));
                 }
                 _ => {}
             }
@@ -493,6 +508,13 @@ impl<'a> Interp<'a> {
             }
             Expr::Break => Err(Signal::Break),
             Expr::Continue => Err(Signal::Continue),
+            Expr::Return(v) => {
+                let value = match v {
+                    Some(x) => self.eval(x, scope, depth)?,
+                    None => Value::Unit,
+                };
+                Err(Signal::Return(value))
+            }
             Expr::With { base, fields } => {
                 let mut b = self.eval(base, scope, depth)?;
                 if let Value::Record(fs) = &mut b {
@@ -557,7 +579,10 @@ impl<'a> Interp<'a> {
         for (i, p) in params.iter().enumerate() {
             sc.push((p.name.clone(), args.get(i).cloned().unwrap_or(Value::Unit)));
         }
-        self.eval(body, &mut sc, depth + 1)
+        match self.eval(body, &mut sc, depth + 1) {
+            Err(Signal::Return(v)) => Ok(v),
+            other => other,
+        }
     }
 
     fn binary(&mut self, op: BinOp, lhs: &Expr, rhs: &Expr, scope: &mut Scope, depth: u64) -> Eval {

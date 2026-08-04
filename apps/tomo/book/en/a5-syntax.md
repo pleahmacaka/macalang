@@ -192,12 +192,25 @@ because a trailing comma is a thing no block has either.
 | `while c { … }` | loop while `c` |
 | `for x in xs { … }` | iterate a list or a range |
 | `break` `continue` | leave, or skip to the next iteration |
+| `return` `return e` | leave the enclosing function |
+| `f(a: T) { … }` | define a function here, over this scope |
 
 `for i in lo..hi` lowers to a counting loop; no list is built. A range in value
 position (`xs = 1..n`) materialises one.
 
-`break` and `continue` have no value, so they cannot be the arm of a ternary:
-`c ? continue : 0` is a `TypeMismatch`.
+`break`, `continue` and `return` have no value, so they cannot be the arm of a
+ternary: `c ? continue : 0` and `c ? return 1 : 2` are both a `TypeMismatch`.
+The same rule sends `return` out of a lambda body and out of an `=> e` function
+body, both of which are values.
+
+`return e` needs the function to declare a result; a bare `return` needs it not
+to. A function's last expression is still its value, so `return` is for leaving
+before it, not for producing it.
+
+A function defined inside a block reads and writes the scope holding it, and is
+a value like any other. It is in scope from where it is written, not before, so
+it can neither call itself nor a sibling defined below it; both are diagnosed.
+See [Closures and Control Flow](11-closures.md).
 
 ## Patterns
 

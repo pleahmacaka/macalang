@@ -181,9 +181,18 @@ alternative is an error about generated code you never wrote.
 | Target | Refuses |
 |---|---|
 | native | `on:click=` and its siblings; an event handler has nowhere to attach in a string |
-| `rust` | a bodyless (FFI) function; `import c` / `import py`; an `import rust` naming an undeclared crate; a borrowed foreign parameter that is returned or stored |
-| `embedded` | `info` and the other console builtins; a `main` with a return type |
-| `nix` | any non-empty effect row; see [Effects and Async](a7-effects.md) |
+| `rust` | a bodyless (FFI) function; `import c` / `import py`; an `import rust` naming an undeclared crate; a borrowed foreign parameter that is returned or stored; a function defined inside another |
+| `jvm` | a function defined inside another |
+| `embedded` | `info` and the other console builtins; a `main` with a return type; a function defined inside another |
+| `nix` | any non-empty effect row; see [Effects and Async](a7-effects.md); `return`, since config mode has no function to leave |
+
+A function defined inside another is refused by three targets for three
+reasons, and all three are about the *write*. Rust will not let two closures
+hold a mutable borrow of one local at once. A Java lambda captures an
+effectively final variable, so there is nowhere for the write to go. Freestanding
+C has no allocator, and a shared local needs a heap cell. Native C and the JS
+backend both lower it; the playground interpreter refuses it as well, because it
+copies what a closure captures and would quietly lose the write.
 
 ## ABI and linking
 

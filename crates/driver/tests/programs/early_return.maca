@@ -1,0 +1,125 @@
+Note = { text: str, ok: bool }
+
+classify(n: int) -> str {
+    if n < 0 {
+        return "negative"
+    }
+
+    if n == 0 {
+        return "zero"
+    }
+
+    "positive"
+}
+
+first_word(s: str) -> str {
+    at = s.index_of(" ")
+
+    if at < 0 {
+        return s
+    }
+
+    s.substr(0, at)
+}
+
+guarded(title: str) -> Note {
+    trimmed = title.trim()
+
+    if trimmed == "" {
+        return Note { text = "title is required", ok = false }
+    }
+
+    Note { text = trimmed, ok = true }
+}
+
+count_to(limit: int) -> int {
+    total = 0
+
+    for i in 1..100 {
+        total = total + i
+
+        if total > limit {
+            return total
+        }
+    }
+
+    -1
+}
+
+skip_the_rest(flag: bool) -> int {
+    n = 1
+
+    if flag {
+        return n
+    }
+
+    n = n + 10
+    n = n + 100
+
+    n
+}
+
+bare_return_leaves(where: str, flag: bool) {
+    write_file(where, "guard")
+
+    if flag {
+        return
+    }
+
+    write_file(where, "the rest ran")
+}
+
+pick(n: int) -> str {
+    match n {
+        1 => {
+            return "one"
+        }
+        2 => "two"
+        _ => "many"
+    }
+}
+
+test_a_guard_returns_before_the_rest() {
+    assert_eq(classify(-4), "negative", "the first guard wins")
+    assert_eq(classify(0), "zero", "the second guard wins")
+    assert_eq(classify(7), "positive", "no guard fires, so the tail is the value")
+}
+
+test_the_last_expression_is_still_the_value() {
+    assert_eq(first_word("hello world"), "hello", "the tail expression runs when no guard returns")
+    assert_eq(first_word("solo"), "solo", "and the guard returns the whole string")
+}
+
+test_a_returned_record_is_the_declared_type() {
+    bad = guarded("   ")
+    good = guarded("  buy milk  ")
+    assert(!bad.ok, "the guard's record says it is not ok")
+    assert_eq(bad.text, "title is required", "the guard says what is wrong")
+    assert(good.ok, "and the tail's record says it is")
+    assert_eq(good.text, "buy milk", "the tail builds the real record")
+}
+
+test_return_leaves_a_loop_and_the_function_with_it() {
+    assert_eq(str(count_to(10)), "15", "return leaves the loop and the function together")
+    assert_eq(str(count_to(1000000)), "-1", "the loop finishes and the tail is the value")
+}
+
+test_an_early_return_skips_every_statement_after_it() {
+    assert_eq(str(skip_the_rest(true)), "1", "the statements after the return never ran")
+    assert_eq(str(skip_the_rest(false)), "111", "and they all run when it does not")
+}
+
+test_a_bare_return_skips_the_rest_of_a_unit_function() {
+    here = "maca_early_return_probe.txt"
+    bare_return_leaves(here, true)
+    assert_eq(read_file(here), "guard", "a bare return left before the second write")
+    bare_return_leaves(here, false)
+    assert_eq(read_file(here), "the rest ran", "and the second write happens without it")
+    remove_file(here)
+}
+
+test_return_leaves_from_inside_a_match_arm() {
+    assert_eq(pick(1), "one", "an arm can return")
+    assert_eq(pick(2), "two", "a sibling arm is still a value")
+    assert_eq(pick(9), "many", "and so is the catch-all")
+}

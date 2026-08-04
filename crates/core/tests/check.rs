@@ -297,7 +297,6 @@ fn ui_element_tags_are_not_undefined() {
 #[test]
 fn phantom_keywords_lead_with_what_maca_does() {
     for (word, opens_with) in [
-        ("return", "a function's last expression is its value"),
         ("let", "write `x = e`"),
         ("var", "write `x = e`"),
         ("fn", "write the signature straight out"),
@@ -324,6 +323,26 @@ fn phantom_keywords_lead_with_what_maca_does() {
         assert!(
             !hint.starts_with("Maca has no"),
             "`{word}` leads with the denial again: {hint:?}"
+        );
+    }
+}
+
+/// `return` left the phantom list because Maca has it now, and it takes the other words' places with it.
+#[test]
+fn return_is_a_keyword_and_not_a_phantom_one() {
+    let d = check_src("f() -> int {\n    return 1\n}\n");
+    assert!(
+        d.is_empty(),
+        "`return` should be accepted, not hinted at: {d:?}"
+    );
+    for word in ["let", "type", "null"] {
+        let src = format!("f() -> int {{\n    {word}\n    1\n}}\n");
+        let d = check_src(&src);
+        assert!(
+            d.iter()
+                .any(|x| x.kind == DiagKind::UndefinedName
+                    && x.msg.starts_with(&format!("`{word}`: "))),
+            "`{word}` stopped being a phantom keyword: {d:?}"
         );
     }
 }

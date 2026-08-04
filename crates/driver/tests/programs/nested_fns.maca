@@ -1,0 +1,157 @@
+Held = { section: int, index: int }
+
+step = 1000
+
+bump(n: int) -> int => n + step
+
+label(tag: str) -> str => "top:" ++ tag
+
+board(locked: bool) -> str {
+    held = 0
+    moves = 0
+
+    grab(section: int, index: int) {
+        if locked {
+            return
+        }
+
+        held = section * 10 + index
+        moves = moves + 1
+    }
+
+    release() {
+        held = 0
+    }
+
+    grab(3, 4)
+    grab(5, 6)
+    release()
+    grab(7, 8)
+
+    "held={held} moves={moves}"
+}
+
+shadowed() -> str {
+    step = 2
+    bump = 5
+
+    label(tag: str) -> str => "{tag}:{step + bump}"
+
+    label("in")
+}
+
+passed_along() -> str {
+    total = 0
+
+    add(n: int) {
+        total = total + n
+    }
+
+    for v in [1, 2, 3, 4] {
+        add(v)
+    }
+
+    apply(add, 10)
+
+    "{total}"
+}
+
+apply(f, n: int) {
+    f(n)
+}
+
+counter() -> str {
+    seen = 0
+
+    tick() -> int {
+        seen = seen + 1
+
+        return seen
+    }
+
+    a = tick()
+    b = tick()
+    c = tick()
+
+    "{a}{b}{c}/{seen}"
+}
+
+aliased() -> str {
+    n = 0
+
+    push(k: int) {
+        n = n + k
+    }
+
+    also = push
+
+    push(7)
+    also(7)
+
+    "{n}"
+}
+
+Knob = { read: (int) -> int, write: (int) -> int }
+
+knob(start: int) -> Knob {
+    level = start
+
+    get(ignored: int) -> int => level
+
+    set(to: int) -> int {
+        level = to
+
+        return level
+    }
+
+    Knob { read = get, write = set }
+}
+
+writes_a_record() -> str {
+    held = Held { section = 0, index = 0 }
+
+    take(section: int) {
+        held = Held { section = section, index = section + 1 }
+    }
+
+    take(2)
+
+    "{held.section},{held.index}"
+}
+
+test_a_nested_function_writes_the_local_that_encloses_it() {
+    assert_eq(board(false), "held=78 moves=3", "every grab and the release reached the one `held`")
+}
+
+test_a_guard_inside_a_nested_function_returns_from_it() {
+    assert_eq(board(true), "held=0 moves=0", "the guard left before either write")
+}
+
+test_a_nested_name_shadows_the_top_level_one_it_spells() {
+    assert_eq(shadowed(), "in:7", "`step` and `bump` are the locals, not the globals")
+    assert_eq(label("out"), "top:out", "and the top-level `label` is untouched")
+}
+
+test_a_nested_function_is_a_value() {
+    assert_eq(passed_along(), "20", "called in a loop and passed to a function that calls it")
+}
+
+test_a_nested_function_returns_a_value_of_its_own() {
+    assert_eq(counter(), "123/3", "each call saw the write the last one made")
+}
+
+test_two_names_for_one_nested_function_share_its_local() {
+    assert_eq(aliased(), "14", "the alias and the name wrote the one `n`")
+}
+
+test_a_nested_function_outlives_the_call_that_made_it() {
+    k = knob(3)
+
+    assert_eq(str(k.read(0)), "3", "the cell survived the call that opened it")
+    assert_eq(str(k.write(9)), "9", "and a write through one handler")
+    assert_eq(str(k.read(0)), "9", "is what the other handler reads")
+}
+
+test_a_nested_function_writes_a_record_local() {
+    assert_eq(writes_a_record(), "2,3", "the enclosing scope reads the record it wrote")
+}

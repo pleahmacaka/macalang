@@ -72,7 +72,7 @@ fn appendix_a_claims_no_keyword_that_isnt_one() {
 #[test]
 fn the_phantom_keywords_the_book_lists_all_produce_a_hint() {
     use maca_core::{DiagKind, Mode, check};
-    for word in ["fn", "let", "var", "return", "type", "null"] {
+    for word in ["fn", "let", "var", "type", "null"] {
         let src = format!("f() -> int {{\n    {word}\n    1\n}}\n");
         let parsed = maca_parser::parse(&src);
         let d = check(&parsed.module, Mode::Program);

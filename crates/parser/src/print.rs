@@ -285,6 +285,13 @@ fn expr(s: &mut String, e: &Expr) {
         }
         Expr::Break => s.push_str("break"),
         Expr::Continue => s.push_str("continue"),
+        Expr::Return(v) => {
+            s.push_str("return");
+            if let Some(x) = v {
+                s.push(' ');
+                expr(s, x);
+            }
+        }
         Expr::Lambda { params, ret, body } => {
             if params.len() == 1 && !params[0].variadic && params[0].ty.is_none() && ret.is_none() {
                 s.push_str(&params[0].name);

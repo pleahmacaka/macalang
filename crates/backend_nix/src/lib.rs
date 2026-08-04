@@ -480,6 +480,7 @@ fn describe(e: &Expr) -> &'static str {
         Expr::Await(_) | Expr::Spawn(_) => "`await`/`spawn` (config mode is pure)",
         Expr::Ctor { .. } => "a sum value",
         Expr::Path(_) => "a path expression",
+        Expr::Return(_) => "`return` (config mode has no function to leave)",
         _ => "this construct",
     }
 }

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 /// The lexer's reserved words (mirrors the `match` in `lex_ident`).
 const LEXER_KEYWORDS: &[&str] = &[
     "const", "as", "if", "else", "for", "in", "while", "break", "continue", "match", "import",
-    "with", "fail", "try", "alias", "await", "spawn",
+    "return", "with", "fail", "try", "alias", "await", "spawn",
 ];
 
 fn repo(rel: &str) -> String {
@@ -60,7 +60,7 @@ fn monarch_and_zed_grammars_name_every_keyword() {
 /// Words that are NOT Maca keywords must lex as plain identifiers.
 #[test]
 fn phantom_keywords_are_not_reserved() {
-    for word in ["let", "return", "fn", "type", "def", "var"] {
+    for word in ["let", "fn", "type", "def", "var"] {
         let first = &lex(word).tokens[0].tok;
         assert!(
             matches!(first, Tok::Ident(_)),
@@ -69,7 +69,7 @@ fn phantom_keywords_are_not_reserved() {
     }
     let tm = repo("editor/maca.tmLanguage.json");
     let zed = repo("editor/zed-maca/languages/maca/highlights.scm");
-    for phantom in ["let", "return"] {
+    for phantom in ["let", "type"] {
         assert!(
             !tm.contains(&format!("|{phantom})")),
             "TextMate lists phantom keyword `{phantom}`"

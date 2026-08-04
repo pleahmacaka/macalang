@@ -293,6 +293,13 @@ impl Cx {
                         lines.push(format!("{c};"));
                     }
                 }
+                Stmt::Fn(f) => self.problem(format!(
+                    "`{}` is defined inside another function, which the rust \
+                     backend does not lower: two closures that write one enclosing \
+                     local do not pass the borrow checker. Lift `{}` to the top \
+                     level and pass what it needs",
+                    f.name, f.name
+                )),
                 _ => {}
             }
         }
@@ -411,6 +418,10 @@ impl Cx {
             }
             Expr::Break => ("break".into(), false),
             Expr::Continue => ("continue".into(), false),
+            Expr::Return(v) => match v {
+                Some(x) => (format!("return {}", self.expr(x).0), false),
+                None => ("return".into(), false),
+            },
             Expr::With { base, fields } => {
                 let (b, _) = self.expr(base);
                 let mut out = format!("{{ let mut _w = {b}.clone(); ");

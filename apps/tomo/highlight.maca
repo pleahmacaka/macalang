@@ -259,7 +259,7 @@ mc_question(cs: str[], i: int, depth: int) -> Scan {
     }
 }
 
-Keywords = " const as if else for in while break continue match import with"
+Keywords = " const as if else for in while break continue return match import with"
     ++ " fail try alias await spawn "
 
 Prims = " int float str bool bytes unit i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 "

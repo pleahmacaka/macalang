@@ -730,6 +730,14 @@ impl Parser {
                 self.bump();
                 Expr::Continue
             }
+            Tok::Return => {
+                self.bump();
+                if self.at_end_of_stmt() {
+                    Expr::Return(None)
+                } else {
+                    Expr::Return(Some(Box::new(self.parse_expr())))
+                }
+            }
             Tok::Fail => {
                 self.bump();
                 Expr::Fail(Box::new(self.parse_expr()))
@@ -744,6 +752,14 @@ impl Parser {
                 Expr::Unit
             }
         }
+    }
+
+    /// Is there nothing left on this line for `return` to carry back?
+    fn at_end_of_stmt(&self) -> bool {
+        matches!(
+            self.peek(),
+            Tok::Newline | Tok::RBrace | Tok::RParen | Tok::Comma | Tok::Eof
+        )
     }
 
     fn parse_group(&mut self) -> Expr {

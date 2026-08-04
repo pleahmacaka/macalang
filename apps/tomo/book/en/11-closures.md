@@ -113,6 +113,139 @@ countdown(start: int) -> int {
 the list methods (`map`/`filter`/`reduce`) over explicit loops. They are
 usually shorter and say what they mean.
 
+## Leaving early with `return`
+
+A function's last expression is its value. That is still true, and most
+functions never need anything else. But a guard at the top of a function is a
+different job: it wants to *stop*, and without a way to say so the entire rest
+of the body has to be nested inside an `else` to get out of its way.
+
+`return` is that way to say so:
+
+```maca
+save(title: str) -> str {
+    trimmed = title.trim()
+
+    if trimmed == "" {
+        return "title is required"
+    }
+
+    // the rest, not indented under an `else`
+    store(trimmed)
+    "saved"
+}
+```
+
+The two forms are the two shapes of function. `return e` leaves a function that
+declares a result, and `e` is checked against that result type. A bare `return`
+leaves a function that declares none:
+
+```maca
+log_unless(quiet: bool, line: str) {
+    if quiet {
+        return
+    }
+
+    info(line)
+}
+```
+
+`return` is a **statement**. It goes on a line of its own, or as the tail of an
+`if`, `match`, `for` or `while` branch, which is every place a function has
+something to leave *from*. Written where a value was wanted instead, the
+compiler says so by name rather than guessing:
+
+```maca
+label = ok ? return 1 : 2     // rejected: this `return` stands inside an expression
+```
+
+A lambda is in that category too: its body *is* its value, so write the value.
+Use `return` in a named function, and the value in a lambda.
+
+## A function inside a function
+
+A block can define a function, and that function can read and *write* the scope
+around it. That is what lets a view own its state and keep its handlers next to
+it, instead of threading everything through parameters:
+
+```maca
+board() -> str {
+    held = 0
+    moves = 0
+
+    grab(section: int) {
+        if section < 0 {
+            return
+        }
+
+        held = section
+        moves = moves + 1
+    }
+
+    release() {
+        held = 0
+    }
+
+    grab(4)
+    release()
+
+    "held={held} after {moves} move(s)"
+}
+```
+
+`grab` and `release` write the same `held` the enclosing body reads: a local
+that any nested definition assigns is *shared* by all of them. One that none of
+them assigns is copied when the definition is made, exactly as a lambda's
+captures always were.
+
+A nested definition is a value bound where it is written, and it obeys the same
+rule every other binding in a block does: **it is in scope from that line
+onward, and not before.** A closure captures when it is made, so a name used
+above its definition would have nothing to capture. Two consequences follow, and
+each has its own diagnostic:
+
+```maca
+main() -> int {
+    go() -> int {
+        return go()          // rejected: a nested function cannot name itself
+    }
+
+    first() -> int => second()
+    second() -> int => 1     // rejected: `second` is defined further down
+    first()
+}
+```
+
+If you want either, lift the function to the top level, where every function is
+in scope everywhere.
+
+Because it is a value, a nested definition can be passed, stored in a record
+field declared `(T) -> R`, and handed back to the caller. It keeps working after
+the call that made it returns: what it captured lives on the heap for as long as
+something can still reach it.
+
+```maca
+Knob = { read: (int) -> int, write: (int) -> int }
+
+knob(start: int) -> Knob {
+    level = start
+
+    get(ignored: int) -> int => level
+
+    set(to: int) -> int {
+        level = to
+
+        return level
+    }
+
+    Knob { read = get, write = set }
+}
+```
+
+Native C and the JS backend both lower this. The `rust`, `jvm` and `embedded`
+targets refuse it by name, and the reference chapter on
+[Targets](a10-targets.md) says why.
+
 ## Error propagation
 
 A fallible call is marked at the call site with a trailing `?`, which returns

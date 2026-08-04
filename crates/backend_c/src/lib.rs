@@ -142,6 +142,14 @@ struct Cx<'a> {
     local_tys: HashMap<String, CTy>,
     /// Locals currently holding a string this scope will release.
     owned_strs: HashSet<String>,
+    /// How a `return` leaves the function being lowered: its C result type, and whether that result crosses the closure ABI boxed.
+    returns: (CTy, bool),
+    /// Locals of the function being lowered that a nested definition assigns, so they live in a heap cell both can reach.
+    cells: HashSet<String>,
+    /// The declared result type of the nested definition about to be lowered as a closure.
+    closure_ret: Option<CTy>,
+    /// Local names bound to a closure that takes no arguments.
+    nullary: HashSet<String>,
 }
 
 impl<'a> Cx<'a> {
@@ -183,6 +191,10 @@ impl<'a> Cx<'a> {
             fresh: Fresh::of(m),
             concat_pieces: None,
             owned_strs: HashSet::new(),
+            returns: (CTy::Unit, false),
+            cells: HashSet::new(),
+            closure_ret: None,
+            nullary: HashSet::new(),
         }
     }
 
@@ -1395,9 +1407,36 @@ impl<'a> Cx<'a> {
         )
     }
 
+    /// A parameter a nested definition assigns gets a cell too, so the write is the one the enclosing body reads.
+    fn move_params_into_cells(&mut self, env: &Env) {
+        let taken: Vec<(String, CTy)> = env
+            .iter()
+            .filter(|(n, _)| self.cells.contains(n))
+            .cloned()
+            .collect();
+        for (n, t) in taken {
+            let ct = c_type(&t);
+            self.push(&format!(
+                "    {ct}* {c} = ({ct}*)maca_alloc(sizeof({ct})); *{c} = {};",
+                cid(&n),
+                c = cell_of(&n)
+            ));
+        }
+    }
+
     fn emit_fn(&mut self, f: &FnDef) {
         self.appendable = ownership::appendable_names(f, self.fresh.defined());
         let (params, ret) = self.fns[&f.name].clone();
+        self.cells = captured_writes(f.body.as_ref());
+        self.appendable.retain(|n| !self.cells.contains(n.as_str()));
+        self.returns = (
+            if f.name == "main" {
+                CTy::Int
+            } else {
+                ret.clone()
+            },
+            false,
+        );
         let mut env: Env = f
             .params
             .iter()
@@ -1408,6 +1447,7 @@ impl<'a> Cx<'a> {
         if f.name == "main" {
             self.push("int main(int _maca_argc, char** _maca_argv) {");
             self.push("    maca_init();");
+            self.move_params_into_cells(&env);
             if let Some((pname, _)) = f.params.first().map(|p| (p.name.clone(), ())) {
                 env.push((pname.clone(), CTy::Arr(Box::new(CTy::Str))));
                 let pc = cid(&pname);
@@ -1441,6 +1481,7 @@ impl<'a> Cx<'a> {
         }
 
         self.push(&format!("static {} {{", self.fn_sig(f)));
+        self.move_params_into_cells(&env);
         match &f.body {
             Some(FnBody::Block(stmts)) => {
                 let sink = if ret == CTy::Unit {
@@ -1504,6 +1545,28 @@ impl<'a> Cx<'a> {
         }
     }
 
+    /// Declare a local with nothing in it yet: a heap cell when a nested definition writes it, so both scopes write the one value.
+    fn open_cell(&mut self, name: &str, ty: &CTy) {
+        let t = c_type(ty);
+        if self.cells.contains(name) {
+            self.push(&format!(
+                "{t}* {c} = ({t}*)maca_alloc(sizeof({t}));",
+                c = cell_of(name)
+            ));
+        } else {
+            self.push(&format!("{t} {};", cid(name)));
+        }
+    }
+
+    /// How the C reaches a local: through its cell when a nested definition writes it, and by name otherwise.
+    fn local_ref(&self, n: &str) -> String {
+        if self.cells.contains(n) {
+            format!("(*{})", cell_of(n))
+        } else {
+            cid(n)
+        }
+    }
+
     fn block(&mut self, env: &mut Env, stmts: &[Stmt], sink: &Sink, ind: usize) {
         let base = env.len();
         let escaping = escaping_names(stmts);
@@ -1521,9 +1584,18 @@ impl<'a> Cx<'a> {
                                 .clone()
                                 .unwrap_or_else(|| self.result_cty(env, &b.value));
                             self.indent(ind);
-                            self.push(&format!("{} {};", c_type(&ty), cid(name)));
+                            self.open_cell(name, &ty);
                             env.push((name.clone(), ty.clone()));
-                            self.stmt_expr(env, &b.value, &Sink::Assign(cid(name), ty), ind);
+                            let slot = self.local_ref(name);
+                            self.stmt_expr(env, &b.value, &Sink::Assign(slot, ty), ind);
+                        } else if self.cells.contains(name) {
+                            let (code, cty) = self.expr(env, &b.value, ann.as_ref());
+                            let ty = ann.unwrap_or(cty);
+                            self.indent(ind);
+                            self.open_cell(name, &ty);
+                            self.indent(ind);
+                            self.push(&format!("{} = {code};", self.local_ref(name)));
+                            env.push((name.clone(), ty));
                         } else {
                             let (code, cty) = self.expr(env, &b.value, ann.as_ref());
                             let ty = ann.unwrap_or(cty);
@@ -1570,10 +1642,10 @@ impl<'a> Cx<'a> {
                                 self.push(&format!(
                                     "{{ maca_str {old} = {n}; {n} = {code}; \
                                      maca_drop_str({old}); }}",
-                                    n = cid(name)
+                                    n = self.local_ref(name)
                                 ));
                             } else {
-                                self.push(&format!("{} = {code};", cid(name)));
+                                self.push(&format!("{} = {code};", self.local_ref(name)));
                             }
                         }
                     } else if let Some((lv, ty)) = self.lvalue(env, &b.target) {
@@ -1605,6 +1677,13 @@ impl<'a> Cx<'a> {
                     } else {
                         let (code, _) = self.expr(env, e, cur.cty());
                         self.emit_sink(cur, &code, ind);
+                    }
+                }
+                Stmt::Fn(f) => {
+                    if let Some((code, ty)) = self.nested_fn(env, f) {
+                        self.indent(ind);
+                        self.push(&format!("{} {} = {code};", c_type(&ty), cid(&f.name)));
+                        env.push((f.name.clone(), ty));
                     }
                 }
                 _ => {}
@@ -1742,7 +1821,11 @@ impl<'a> Cx<'a> {
             Expr::Block(stmts) => tail_expr(stmts)
                 .map(|e| self.result_cty(env, e))
                 .unwrap_or(CTy::Unit),
-            Expr::For { .. } | Expr::While { .. } | Expr::Break | Expr::Continue => CTy::Unit,
+            Expr::For { .. }
+            | Expr::While { .. }
+            | Expr::Break
+            | Expr::Continue
+            | Expr::Return(_) => CTy::Unit,
             leaf => {
                 let save = self.out.len();
                 let tmp = self.tmp;
@@ -1822,6 +1905,18 @@ impl<'a> Cx<'a> {
             Expr::Continue => {
                 self.indent(ind);
                 self.push("continue;");
+            }
+            Expr::Return(v) => {
+                let (rt, boxed) = self.returns.clone();
+                let code = match v {
+                    Some(x) => {
+                        let (c, _) = self.expr(env, x, Some(&rt));
+                        if boxed { box_i64(&c, &rt) } else { c }
+                    }
+                    None => "0".into(),
+                };
+                self.indent(ind);
+                self.push(&format!("return {code};"));
             }
             Expr::Match { scrut, arms } => self.match_stmt(env, scrut, arms, sink, ind),
             Expr::If { cond, then, els } => {
@@ -2234,7 +2329,7 @@ impl<'a> Cx<'a> {
 
     fn ident(&mut self, env: &Env, n: &str) -> (String, CTy) {
         if let Some(t) = lookup(env, n) {
-            return (cid(n), t);
+            return (self.local_ref(n), t);
         }
         if let Some(sum) = self.variant_of.get(n).cloned() {
             if self.is_tagged(&sum) {
@@ -2451,10 +2546,20 @@ impl<'a> Cx<'a> {
         param_tys: &[CTy],
     ) -> (String, CTy) {
         let saved_appendable = std::mem::take(&mut self.appendable);
+        let saved_returns = self.returns.clone();
 
         let mut bound: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
         let mut refs = HashSet::new();
         free_vars(body, &bound, &mut refs);
+        let mut written = HashSet::new();
+        let outer_cells: HashSet<String> = self
+            .cells
+            .iter()
+            .filter(|n| !bound.contains(*n))
+            .cloned()
+            .collect();
+        writes_under_nesting(body, &outer_cells, true, &mut written);
+        refs.extend(written.into_iter().filter(|n| lookup(env, n).is_some()));
         bound.clear();
         let mut caps: Vec<(String, CTy)> = refs
             .into_iter()
@@ -2465,17 +2570,29 @@ impl<'a> Cx<'a> {
             })
             .collect();
         caps.sort_by(|a, b| a.0.cmp(&b.0));
+        let shared: HashSet<String> = caps
+            .iter()
+            .map(|(n, _)| n.clone())
+            .filter(|n| self.cells.contains(n))
+            .collect();
 
         let id = self.lambda_count;
         self.lambda_count += 1;
         let fname = format!("_lam{id}");
         let ename = format!("_lam{id}_env");
         let two = params.len() >= 2;
+        let field_ty = |n: &str, t: &CTy| {
+            if shared.contains(n) {
+                format!("{}*", c_type(t))
+            } else {
+                c_type(t)
+            }
+        };
 
         if !caps.is_empty() {
             let fields = caps
                 .iter()
-                .map(|(n, t)| format!("{} {};", c_type(t), cid(n)))
+                .map(|(n, t)| format!("{} {};", field_ty(n, t), cell_or_name(&shared, n)))
                 .collect::<Vec<_>>()
                 .join(" ");
             self.hoisted_decls
@@ -2488,15 +2605,23 @@ impl<'a> Cx<'a> {
         };
         self.hoisted_decls.push(format!("{sig};"));
 
+        let mut inner_cells = shared.clone();
+        inner_cells.extend(writes_below(body));
+        let saved_cells = std::mem::replace(&mut self.cells, inner_cells);
+
         let saved = std::mem::take(&mut self.out);
         self.push(&format!("{sig} {{"));
+        if params.is_empty() {
+            self.push("    (void)_a0;");
+        }
         let mut lenv: Env = Vec::new();
         if caps.is_empty() {
             self.push("    (void)_envp;");
         } else {
             self.push(&format!("    {ename}* _e = ({ename}*)_envp;"));
             for (n, t) in &caps {
-                self.push(&format!("    {} {} = _e->{};", c_type(t), cid(n), cid(n)));
+                let slot = cell_or_name(&shared, n);
+                self.push(&format!("    {} {slot} = _e->{slot};", field_ty(n, t)));
                 lenv.push((n.clone(), t.clone()));
             }
         }
@@ -2511,21 +2636,24 @@ impl<'a> Cx<'a> {
             ));
             lenv.push((p.name.clone(), pt));
         }
+        let declared = self.closure_ret.take();
         let ret = if is_control(body) {
-            let ret = self.result_cty(&lenv, body);
+            let ret = declared.unwrap_or_else(|| self.result_cty(&lenv, body));
+            self.returns = (ret.clone(), true);
             self.push(&format!("    {} _r;", c_type(&ret)));
             self.stmt_expr(&mut lenv, body, &Sink::Assign("_r".into(), ret.clone()), 1);
             self.push(&format!("    return {};", box_i64("_r", &ret)));
             ret
         } else {
             let (bc, bt) = self.expr(&mut lenv, body, None);
-            let ret = if bt == CTy::Unknown { CTy::Int } else { bt };
+            let ret = declared.unwrap_or(if bt == CTy::Unknown { CTy::Int } else { bt });
             self.push(&format!("    return {};", box_i64(&bc, &ret)));
             ret
         };
         self.push("}");
         let def = std::mem::replace(&mut self.out, saved);
         self.hoisted_defs.push(def);
+        self.cells = saved_cells;
 
         let (ctype, cast) = if two {
             ("maca_closure2", "(int64_t(*)(void*,int64_t,int64_t))")
@@ -2537,15 +2665,66 @@ impl<'a> Cx<'a> {
         } else {
             let mut fills = String::new();
             for (n, _) in &caps {
-                let (outer, _) = self.ident(env, n);
-                fills.push_str(&format!("_e->{} = {}; ", cid(n), outer));
+                let slot = cell_or_name(&shared, n);
+                let outer = if shared.contains(n) {
+                    cell_of(n)
+                } else {
+                    self.ident(env, n).0
+                };
+                fills.push_str(&format!("_e->{slot} = {outer}; "));
             }
             format!(
                 "({{ {ename}* _e = ({ename}*)maca_alloc(sizeof({ename})); {fills}({ctype}){{ {cast}{fname}, _e }}; }})"
             )
         };
         self.appendable = saved_appendable;
+        self.returns = saved_returns;
         (val, ret)
+    }
+
+    /// A named definition inside a block: a closure bound to its name, sharing the scope that encloses it.
+    fn nested_fn(&mut self, env: &Env, f: &FnDef) -> Option<(String, CTy)> {
+        let body = match f.body.as_ref()? {
+            FnBody::Block(stmts) => Expr::Block(stmts.clone()),
+            FnBody::Expr(e) => (**e).clone(),
+        };
+        if f.params.len() > 2 {
+            self.problem(format!(
+                "`{}` is defined inside another function and takes {} arguments; \
+                 a nested definition takes at most two, so lift it to the top level",
+                f.name,
+                f.params.len()
+            ));
+            return None;
+        }
+        if f.params.iter().any(|p| p.variadic) {
+            self.problem(format!(
+                "`{}` is defined inside another function, so it cannot be variadic; \
+                 lift it to the top level",
+                f.name
+            ));
+            return None;
+        }
+        let ptys: Vec<CTy> = f
+            .params
+            .iter()
+            .map(|p| {
+                p.ty.as_ref()
+                    .map(|t| self.cty(t))
+                    .or_else(|| self.param_ty_from_use(&p.name, &body))
+                    .or_else(|| lambda_param_ty(&p.name, &body))
+                    .unwrap_or(CTy::Int)
+            })
+            .collect();
+        self.closure_ret = f.ret.as_ref().map(|t| self.cty(t));
+        let (val, ret) = self.emit_closure(env, &f.params, &body, &ptys);
+        self.closure_ret = None;
+        if f.params.is_empty() {
+            self.nullary.insert(f.name.clone());
+        } else {
+            self.nullary.remove(&f.name);
+        }
+        Some((val, closure_ty(f.params.len(), ret)))
     }
 
     /// Emit one monomorphized copy of a generic function for a concrete tuple of argument types (mangled name, concrete param/ret types).
@@ -2591,10 +2770,14 @@ impl<'a> Cx<'a> {
             &mut self.appendable,
             ownership::appendable_names(&genf, self.fresh.defined()),
         );
+        let saved_cells = std::mem::replace(&mut self.cells, captured_writes(genf.body.as_ref()));
+        self.appendable.retain(|n| !self.cells.contains(n.as_str()));
+        let saved_returns = std::mem::replace(&mut self.returns, (ret.clone(), false));
         if let Some(FnBody::Block(stmts)) = &genf.body {
             self.note_local_containers(&stmts.clone());
         }
         self.push(&format!("static {sig} {{"));
+        self.move_params_into_cells(&env);
         match &genf.body {
             Some(FnBody::Block(stmts)) => {
                 let sink = if ret == CTy::Unit {
@@ -2616,6 +2799,8 @@ impl<'a> Cx<'a> {
         self.push("}");
         self.type_subst = saved_subst;
         self.appendable = saved_appendable;
+        self.cells = saved_cells;
+        self.returns = saved_returns;
         let def = std::mem::replace(&mut self.out, saved);
         self.hoisted_defs.push(def);
     }
@@ -3079,6 +3264,7 @@ impl<'a> Cx<'a> {
                     &f,
                     args,
                     expected,
+                    1,
                 );
             }
             if let Some(&at) = self.variadics.get(name) {
@@ -3089,7 +3275,9 @@ impl<'a> Cx<'a> {
         }
         if let Expr::Ident(name) = callee {
             if let Some(t @ (CTy::Closure(_) | CTy::Closure2(_))) = lookup(env, name) {
-                return self.call_closure(env, &cid(name), &t, args, expected);
+                let target = self.local_ref(name);
+                let want = usize::from(!self.nullary.contains(name));
+                return self.call_closure(env, &target, &t, args, expected, want);
             }
             if name == "str" {
                 let (c, t) = self.arg_typed(env, &args[0]);
@@ -3459,11 +3647,16 @@ impl<'a> Cx<'a> {
         ty: &CTy,
         args: &[Arg],
         expected: Option<&CTy>,
+        one: usize,
     ) -> (String, CTy) {
         let (CTy::Closure(r) | CTy::Closure2(r)) = ty else {
             return ("0 /* not a function */".into(), CTy::Unknown);
         };
-        let want = if matches!(ty, CTy::Closure2(_)) { 2 } else { 1 };
+        let want = if matches!(ty, CTy::Closure2(_)) {
+            2
+        } else {
+            one
+        };
         if args.len() != want {
             self.problem(format!(
                 "this function value takes {want} argument(s), not {}",
@@ -4115,6 +4308,7 @@ fn is_control(e: &Expr) -> bool {
             | Expr::While { .. }
             | Expr::Break
             | Expr::Continue
+            | Expr::Return(_)
             | Expr::Match { .. }
             | Expr::If { .. }
             | Expr::Block(_)
@@ -4282,6 +4476,127 @@ fn bin_op(op: BinOp) -> &'static str {
         BinOp::And => "&&",
         BinOp::Or => "||",
         _ => "/*op*/",
+    }
+}
+
+/// The heap cell a local lives in when a nested definition assigns it.
+fn cell_of(name: &str) -> String {
+    format!("_cell_{}", cid(name))
+}
+
+/// The C name a captured variable goes by: its cell when the capture is shared, its own name when it is a copy.
+fn cell_or_name(shared: &HashSet<String>, name: &str) -> String {
+    if shared.contains(name) {
+        cell_of(name)
+    } else {
+        cid(name)
+    }
+}
+
+/// Every local of this body that a definition nested inside it assigns.
+fn writes_below(body: &Expr) -> HashSet<String> {
+    let mut out = HashSet::new();
+    writes_under_nesting(body, &HashSet::new(), false, &mut out);
+    out
+}
+
+/// Every local a nested definition inside this body assigns, so the write has to reach the enclosing scope.
+fn captured_writes(body: Option<&FnBody>) -> HashSet<String> {
+    let mut out = HashSet::new();
+    match body {
+        Some(FnBody::Expr(e)) => writes_under_nesting(e, &HashSet::new(), false, &mut out),
+        Some(FnBody::Block(ss)) => stmt_writes_under_nesting(ss, &HashSet::new(), false, &mut out),
+        None => {}
+    }
+    out
+}
+
+fn writes_under_nesting(
+    e: &Expr,
+    bound: &HashSet<String>,
+    inside: bool,
+    out: &mut HashSet<String>,
+) {
+    match e {
+        Expr::Lambda { params, body, .. } => {
+            let mut b = bound.clone();
+            b.extend(params.iter().map(|p| p.name.clone()));
+            writes_under_nesting(body, &b, true, out);
+        }
+        Expr::Assign { target, value } => {
+            if let Expr::Ident(n) = &**target
+                && inside
+                && bound.contains(n)
+            {
+                out.insert(n.clone());
+            }
+            writes_under_nesting(value, bound, inside, out);
+        }
+        Expr::Block(ss) => stmt_writes_under_nesting(ss, bound, inside, out),
+        Expr::If { cond, then, els } => {
+            writes_under_nesting(cond, bound, inside, out);
+            stmt_writes_under_nesting(then, bound, inside, out);
+            if let Some(e) = els {
+                stmt_writes_under_nesting(e, bound, inside, out);
+            }
+        }
+        Expr::For { pat, iter, body } => {
+            writes_under_nesting(iter, bound, inside, out);
+            let mut b = bound.clone();
+            bind_pat(pat, &mut b);
+            stmt_writes_under_nesting(body, &b, inside, out);
+        }
+        Expr::While { cond, body } => {
+            writes_under_nesting(cond, bound, inside, out);
+            stmt_writes_under_nesting(body, bound, inside, out);
+        }
+        Expr::Match { scrut, arms } => {
+            writes_under_nesting(scrut, bound, inside, out);
+            for a in arms {
+                let mut b = bound.clone();
+                bind_pat(&a.pat, &mut b);
+                writes_under_nesting(&a.body, &b, inside, out);
+            }
+        }
+        other => walk_children(other, &mut |c| writes_under_nesting(c, bound, inside, out)),
+    }
+}
+
+fn stmt_writes_under_nesting(
+    stmts: &[Stmt],
+    bound: &HashSet<String>,
+    inside: bool,
+    out: &mut HashSet<String>,
+) {
+    let mut b = bound.clone();
+    for s in stmts {
+        match s {
+            Stmt::Bind(bd) => {
+                writes_under_nesting(&bd.value, &b, inside, out);
+                if let Expr::Ident(n) = &bd.target {
+                    if inside && b.contains(n) {
+                        out.insert(n.clone());
+                    }
+                    b.insert(n.clone());
+                } else {
+                    writes_under_nesting(&bd.target, &b, inside, out);
+                }
+            }
+            Stmt::Expr(e) | Stmt::Alias { value: e, .. } => {
+                writes_under_nesting(e, &b, inside, out)
+            }
+            Stmt::Fn(f) => {
+                let mut inner = b.clone();
+                inner.extend(f.params.iter().map(|p| p.name.clone()));
+                match &f.body {
+                    Some(FnBody::Expr(e)) => writes_under_nesting(e, &inner, true, out),
+                    Some(FnBody::Block(ss)) => stmt_writes_under_nesting(ss, &inner, true, out),
+                    None => {}
+                }
+                b.insert(f.name.clone());
+            }
+            Stmt::Import(_) => {}
+        }
     }
 }
 
@@ -4775,6 +5090,11 @@ fn free_vars(e: &Expr, bound: &HashSet<String>, out: &mut HashSet<String>) {
             }
             free_vars(body, &b, out);
         }
+        Expr::Return(v) => {
+            if let Some(x) = v {
+                free_vars(x, bound, out);
+            }
+        }
         Expr::If { cond, then, els } => {
             free_vars(cond, bound, out);
             free_vars_stmts(then, bound, out);
@@ -4833,6 +5153,13 @@ fn free_vars_stmts(stmts: &[Stmt], bound: &HashSet<String>, out: &mut HashSet<St
             }
             Stmt::Expr(e) | Stmt::Alias { value: e, .. } => free_vars(e, &b, out),
             Stmt::Fn(f) => {
+                let mut inner = b.clone();
+                inner.extend(f.params.iter().map(|p| p.name.clone()));
+                match &f.body {
+                    Some(FnBody::Expr(e)) => free_vars(e, &inner, out),
+                    Some(FnBody::Block(ss)) => free_vars_stmts(ss, &inner, out),
+                    None => {}
+                }
                 b.insert(f.name.clone());
             }
             Stmt::Import(_) => {}
@@ -5273,6 +5600,7 @@ fn walk_children(e: &Expr, f: &mut dyn FnMut(&Expr)) {
             stmts(body, f);
         }
         Expr::Block(ss) => stmts(ss, f),
+        Expr::Return(Some(v)) => f(v),
         _ => {}
     }
 }
