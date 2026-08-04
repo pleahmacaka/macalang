@@ -181,6 +181,48 @@ fn a_declared_stylesheet_and_script_are_inlined_into_the_page() {
     );
 }
 
+/// A browser runs an ES module only when the page says it is one, so a script's `export` is a SyntaxError that takes the whole file with it.
+#[test]
+fn an_es_module_asset_is_run_as_a_module() {
+    let dir = project("esm");
+    write(&dir, "vendor/widget.mjs", "export const widget = 1;\n");
+    write(&dir, "vendor/legacy.js", "globalThis.legacyMarker = 1;\n");
+    app(
+        &dir,
+        "import js \"vendor/widget.mjs\"\nimport js \"vendor/legacy.js\"\n",
+    );
+
+    let page = built_page(&dir);
+    let module = page.find("export const widget").expect("the module's bytes");
+    let classic = page.find("globalThis.legacyMarker").expect("the script's bytes");
+    let opened = |at: usize| page[..at].rfind("<script").expect("an opening tag");
+    assert!(
+        page[opened(module)..module].contains("type=\"module\""),
+        "an .mjs asset is a module\n{page}"
+    );
+    assert!(
+        !page[opened(classic)..classic].contains("type=\"module\""),
+        "an ordinary script is not\n{page}"
+    );
+}
+
+/// The package states which of its files are modules, the same way node reads it.
+#[test]
+fn a_package_that_calls_its_scripts_modules_is_believed() {
+    let dir = project("esm-package");
+    write(&dir, "vendor/package.json", "{ \"type\": \"module\" }\n");
+    write(&dir, "vendor/widget.js", "export const widget = 1;\n");
+    app(&dir, "import js \"vendor/widget.js\"\n");
+
+    let page = built_page(&dir);
+    let at = page.find("export const widget").expect("the module's bytes");
+    let opened = page[..at].rfind("<script").expect("an opening tag");
+    assert!(
+        page[opened..at].contains("type=\"module\""),
+        "`type: module` makes a .js file a module\n{page}"
+    );
+}
+
 #[test]
 fn an_asset_cannot_close_the_element_it_is_inlined_into() {
     let dir = project("closing-tag");

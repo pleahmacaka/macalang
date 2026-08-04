@@ -1395,7 +1395,14 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
             }
             "script" => {
                 let text = asset_text(src, "js", spec)?;
-                assets.push_str(&format!("<script>\n{}\n</script>\n", close_safe(&text)));
+                let kind = match is_es_module(&asset_path(src, "js", spec)?) {
+                    true => " type=\"module\"",
+                    false => "",
+                };
+                assets.push_str(&format!(
+                    "<script{kind}>\n{}\n</script>\n",
+                    close_safe(&text)
+                ));
             }
             _ => {}
         }
@@ -1462,6 +1469,35 @@ fn asset_path(src: &Path, lang: &str, spec: &str) -> Result<PathBuf, String> {
         Some(pkg) => deps::package_asset(src, lang, pkg),
         None => Ok(src.parent().unwrap_or(Path::new(".")).join(spec)),
     }
+}
+
+/// Is this script an ES module, so the page has to run it as one? Node's own rule: the extension, and otherwise the `type` of the nearest `package.json`.
+fn is_es_module(path: &Path) -> bool {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some("mjs") => true,
+        Some("cjs") => false,
+        _ => declared_module_type(path),
+    }
+}
+
+/// Does the package this file belongs to say its `.js` files are modules?
+fn declared_module_type(path: &Path) -> bool {
+    for dir in path.ancestors().skip(1) {
+        let manifest = dir.join("package.json");
+        if !manifest.is_file() {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&manifest) else {
+            return false;
+        };
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+            return false;
+        };
+
+        return json.get("type").and_then(|t| t.as_str()) == Some("module");
+    }
+
+    false
 }
 
 /// An asset a page declares, read at build time.
