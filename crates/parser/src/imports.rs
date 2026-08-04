@@ -774,11 +774,20 @@ fn slice_module(
         }
     }
 
+    let carries_a_block = module
+        .items
+        .iter()
+        .any(|st| matches!(st, Stmt::Import(Import::Foreign { .. })));
+
     Ok(module
         .items
         .iter()
         .enumerate()
-        .filter(|(i, st)| visited.contains(i) || matches!(st, Stmt::Import(Import::Foreign { .. })))
+        .filter(|(i, st)| {
+            visited.contains(i)
+                || matches!(st, Stmt::Import(Import::Foreign { .. }))
+                || (carries_a_block && matches!(st, Stmt::Fn(f) if f.body.is_none()))
+        })
         .map(|(_, st)| st.clone())
         .collect())
 }

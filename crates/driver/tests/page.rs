@@ -331,3 +331,35 @@ fn the_desktop_window_takes_the_page_title_too() {
         "the window title should come from [page]\n{conf}"
     );
 }
+
+/// A bridge module declares what its `import js` block provides, and the block provides all of it, so slicing one declaration away leaves the block naming a function the program no longer declares.
+#[test]
+fn a_selective_import_keeps_every_declaration_its_block_provides() {
+    let dir = project("bridge");
+    write(
+        &dir,
+        "lib/clock.maca",
+        "/// The hour and minute.\nclock_time() -> str\n\n\
+         /// Today, written out.\nclock_date() -> str\n\n\
+         import js \"\"\"\nmaca.provide({\n\
+         \x20 clock_time: () => \"12:00\",\n\
+         \x20 clock_date: () => \"2026-08-04\",\n});\n\"\"\"\n",
+    );
+    write(
+        &dir,
+        "home.maca",
+        "import { clock_time } from lib/clock\n\n\
+         main() -> Element =>\n    div(class=\"card\" span(clock_time()))\n",
+    );
+
+    let page = built_page(&dir);
+    let app = std::fs::read_to_string(dir.join("out/app.js")).expect("app.js");
+    assert!(
+        app.contains("const _declared = [\"clock_time\", \"clock_date\"]"),
+        "the block provides both, so the program declares both:\n{app}"
+    );
+    assert!(
+        page.contains("clock_date: () =>"),
+        "the block is in the page:\n{page}"
+    );
+}
