@@ -675,7 +675,7 @@ fn jbind(b: &Bind) -> String {
 fn jbind_typed(b: &Bind) -> String {
     match &b.target {
         Expr::Ident(n) => {
-            let is_state = STATE.with(|s| s.borrow().contains(n));
+            let is_state = STATE.with(|s| s.borrow().contains(n)) && !declared(n);
             let fresh = !is_state && !declared(n);
             if fresh {
                 declare(n);
@@ -1183,7 +1183,7 @@ fn is_variant(n: &str) -> bool {
 }
 /// A bare identifier → `state.x` when it names reactive state, `x.v` when it is a view's own cell, else itself.
 fn jname(n: &str) -> String {
-    if STATE.with(|s| s.borrow().contains(n)) {
+    if STATE.with(|s| s.borrow().contains(n)) && !declared(n) {
         format!("state.{n}")
     } else if is_cell(n) {
         format!("{n}.v")

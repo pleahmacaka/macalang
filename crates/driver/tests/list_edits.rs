@@ -37,6 +37,12 @@ fn json_is_written_and_read_from_the_declared_type() {
     suite("json_typed");
 }
 
+/// A top-level name a function writes is the program's state, and every later read sees the write.
+#[test]
+fn module_state_is_written_and_read_back() {
+    suite("module_state");
+}
+
 /// An index the list does not have has to be *skipped*, not written: no answer changes when it is written, so valgrind is what sees it.
 #[test]
 fn an_edit_out_of_range_writes_nothing() {

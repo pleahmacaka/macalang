@@ -109,6 +109,8 @@ struct Cx<'a> {
     modules: HashSet<String>,
     lets: Vec<(String, CTy, Expr)>,
     let_names: HashSet<String>,
+    /// The top-level names some function writes, which is what makes them variables rather than values.
+    written_lets: HashSet<String>,
     fns: HashMap<String, (Vec<CTy>, CTy)>,
     /// Variadic fn name -> how many parameters come before the `...` one.
     variadics: HashMap<String, usize>,
@@ -170,6 +172,7 @@ impl<'a> Cx<'a> {
             modules: HashSet::new(),
             lets: Vec::new(),
             let_names: HashSet::new(),
+            written_lets: HashSet::new(),
             fns: HashMap::new(),
             variadics: HashMap::new(),
             arr_elems: HashSet::new(),
@@ -466,6 +469,36 @@ impl<'a> Cx<'a> {
         }
         self.collect_list_arrays();
         self.topo_records();
+        self.collect_written_lets();
+    }
+
+    /// A top-level name a function assigns is the program's own state, so it is a variable rather than the value it started as.
+    fn collect_written_lets(&mut self) {
+        let mut written = HashSet::new();
+        for item in &self.m.items {
+            let Stmt::Fn(f) = item else { continue };
+            let taken: HashSet<&str> = f.params.iter().map(|p| p.name.as_str()).collect();
+            let mut note = |name: &str| {
+                if self.let_names.contains(name) && !taken.contains(name) {
+                    written.insert(name.to_string());
+                }
+            };
+            maca_parser::ast::walk_stmt(item, &mut |e| {
+                if let Expr::Assign { target, .. } = e
+                    && let Expr::Ident(n) = &**target
+                {
+                    note(n);
+                }
+            });
+            for_each_stmt(f, &mut |s| {
+                if let Stmt::Bind(b) = s
+                    && let Expr::Ident(n) = &b.target
+                {
+                    note(n);
+                }
+            });
+        }
+        self.written_lets = written;
     }
 
     /// Instantiate array types for list literals that don't come from a record field (e.g. `let xs = 1, 2, 3`).
@@ -1277,8 +1310,13 @@ impl<'a> Cx<'a> {
         let lets = self.lets.clone();
         for (name, cty, init) in &lets {
             let ret = self.let_ty(cty, init);
-            self.push(&format!("static {} mv_{name}(void);", c_type(&ret)));
+            if self.written_lets.contains(name) {
+                self.push(&format!("static {} mv_{name};", c_type(&ret)));
+            } else {
+                self.push(&format!("static {} mv_{name}(void);", c_type(&ret)));
+            }
         }
+        self.push("static void maca_module_init(void);");
         self.push("");
 
         self.push(LATE_CONTAINERS);
@@ -1299,15 +1337,25 @@ impl<'a> Cx<'a> {
         self.push("");
 
         let saved = std::mem::take(&mut self.out);
+        let mut starts: Vec<String> = Vec::new();
         for (name, cty, init) in &lets {
             let ret = self.let_ty(cty, init);
             let mut env: Env = Vec::new();
             let (code, _) = self.expr(&mut env, init, None);
-            self.push(&format!(
-                "static {} mv_{name}(void) {{ return {code}; }}",
-                c_type(&ret)
-            ));
+            if self.written_lets.contains(name) {
+                starts.push(format!("    mv_{name} = {code};"));
+            } else {
+                self.push(&format!(
+                    "static {} mv_{name}(void) {{ return {code}; }}",
+                    c_type(&ret)
+                ));
+            }
         }
+        self.push("static void maca_module_init(void) {");
+        for line in &starts {
+            self.push(line);
+        }
+        self.push("}");
         self.push("");
         for item in self.m.items.clone() {
             if let Stmt::Fn(f) = &item
@@ -1397,6 +1445,9 @@ impl<'a> Cx<'a> {
         if *cty != CTy::Unknown {
             return cty.clone();
         }
+        if let Some(sum) = self.sum_named(init) {
+            return CTy::Sum(sum);
+        }
         if let Expr::Call { callee, .. } = init
             && let Some(f) = called_name(callee)
             && let Some((_, ret)) = self.fns.get(f)
@@ -1405,6 +1456,20 @@ impl<'a> Cx<'a> {
             return ret.clone();
         }
         infer_cty_shallow(init)
+    }
+
+    /// The sum type this expression constructs, written as a bare variant or as one applied to its payload.
+    fn sum_named(&self, e: &Expr) -> Option<String> {
+        let name = match e {
+            Expr::Ident(n) => n,
+            Expr::Call { callee, .. } => match callee.as_ref() {
+                Expr::Ident(n) => n,
+                _ => return None,
+            },
+            _ => return None,
+        };
+
+        self.variant_of.get(name).cloned()
     }
 
     /// A user function's C signature.
@@ -1468,6 +1533,7 @@ impl<'a> Cx<'a> {
         if f.name == "main" {
             self.push("int main(int _maca_argc, char** _maca_argv) {");
             self.push("    maca_init();");
+            self.push("    maca_module_init();");
             self.move_params_into_cells(&env);
             if let Some((pname, _)) = f.params.first().map(|p| (p.name.clone(), ())) {
                 env.push((pname.clone(), CTy::Arr(Box::new(CTy::Str))));
@@ -1597,7 +1663,10 @@ impl<'a> Cx<'a> {
         for (i, s) in stmts.iter().enumerate() {
             let last = i + 1 == stmts.len();
             match s {
-                Stmt::Bind(b) if matches!(&b.target, Expr::Ident(n) if lookup(env, n).is_none()) => {
+                Stmt::Bind(b)
+                    if matches!(&b.target, Expr::Ident(n)
+                        if lookup(env, n).is_none() && !self.written_lets.contains(n)) =>
+                {
                     if let Expr::Ident(name) = &b.target {
                         let ann = b.tys.first().map(|t| self.cty(t));
                         if is_control(&b.value) {
@@ -1655,7 +1724,12 @@ impl<'a> Cx<'a> {
                             self.push(&code);
                             continue;
                         }
-                        if let Some(ty) = lookup(env, name) {
+                        if lookup(env, name).is_none() && self.written_lets.contains(name) {
+                            let (slot, ty) = self.ident(env, name);
+                            let (code, _) = self.expr(env, &b.value, Some(&ty));
+                            self.indent(ind);
+                            self.push(&format!("{slot} = {code};"));
+                        } else if let Some(ty) = lookup(env, name) {
                             let (code, _) = self.expr(env, &b.value, Some(&ty));
                             self.indent(ind);
                             if self.owned_strs.contains(name) {
@@ -2376,7 +2450,11 @@ impl<'a> Cx<'a> {
             let ty = found
                 .map(|(_, t, init)| self.let_ty(&t, &init))
                 .unwrap_or(CTy::Unknown);
-            return (format!("mv_{n}()"), ty);
+            let call = match self.written_lets.contains(n) {
+                true => format!("mv_{n}"),
+                false => format!("mv_{n}()"),
+            };
+            return (call, ty);
         }
         if self.fns.contains_key(n) {
             return self.fn_value_closure(n);
@@ -4247,6 +4325,10 @@ impl<'a> Cx<'a> {
                 };
                 Some((format!("({bc}).{}", cid(name)), fty))
             }
+            Expr::Ident(n) if lookup(env, n).is_none() && self.written_lets.contains(n) => {
+                let (slot, ty) = self.ident(env, n);
+                Some((slot, Some(ty)))
+            }
             _ => None,
         }
     }
@@ -4891,6 +4973,42 @@ fn stmt_writes_under_nesting(
             }
             Stmt::Import(_) => {}
         }
+    }
+}
+
+/// Visit every statement inside a definition, including the ones a control-flow expression holds.
+fn for_each_stmt(f: &FnDef, visit: &mut impl FnMut(&Stmt)) {
+    match &f.body {
+        Some(FnBody::Expr(e)) => stmts_in_expr(e, visit),
+        Some(FnBody::Block(ss)) => stmts_in_block(ss, visit),
+        None => {}
+    }
+}
+
+fn stmts_in_block(stmts: &[Stmt], visit: &mut impl FnMut(&Stmt)) {
+    for s in stmts {
+        visit(s);
+        match s {
+            Stmt::Bind(b) => stmts_in_expr(&b.value, visit),
+            Stmt::Expr(e) | Stmt::Alias { value: e, .. } => stmts_in_expr(e, visit),
+            Stmt::Fn(f) => for_each_stmt(f, visit),
+            Stmt::Import(_) => {}
+        }
+    }
+}
+
+fn stmts_in_expr(e: &Expr, visit: &mut impl FnMut(&Stmt)) {
+    match e {
+        Expr::Block(ss) | Expr::While { body: ss, .. } | Expr::For { body: ss, .. } => {
+            stmts_in_block(ss, visit)
+        }
+        Expr::If { then, els, .. } => {
+            stmts_in_block(then, visit);
+            if let Some(els) = els {
+                stmts_in_block(els, visit);
+            }
+        }
+        other => walk_children(other, &mut |c| stmts_in_expr(c, visit)),
     }
 }
 

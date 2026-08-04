@@ -108,3 +108,44 @@ fn decode_with_nothing_to_read_into_says_so() {
         "a refused build must leave no page behind"
     );
 }
+
+/// The same suite on the JS target, so what a page's state does and what a program's state does are one thing.
+#[test]
+fn module_state_holds_on_the_js_target() {
+    if !have("node") {
+        eprintln!("skipping: no node");
+        return;
+    }
+    let out = std::env::temp_dir().join(format!("maca-state-js-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&out);
+    let built = Command::new(maca())
+        .current_dir(repo())
+        .args([
+            "build",
+            "--target",
+            "js",
+            &program("module_state").display().to_string(),
+            "-o",
+            &out.display().to_string(),
+        ])
+        .output()
+        .expect("spawn maca build");
+    assert!(
+        built.status.success(),
+        "the module-state suite did not build to JS:\n{}\n{}",
+        String::from_utf8_lossy(&built.stdout),
+        String::from_utf8_lossy(&built.stderr),
+    );
+
+    std::fs::write(out.join("run.js"), SHIMS).unwrap();
+    let ran = Command::new("node")
+        .arg(out.join("run.js"))
+        .output()
+        .expect("spawn node");
+    assert!(
+        ran.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&ran.stdout),
+        String::from_utf8_lossy(&ran.stderr),
+    );
+}
