@@ -178,7 +178,10 @@ pub fn emit(m: &Module) -> JsOut {
         c => format!("// ---- sum variants ----\n{c}"),
     };
     if js.contains("_jenc(") || js.contains("_jdec(") {
-        head.push_str(&format!("// ---- json ----\n{}", json_support(m, &variants)));
+        head.push_str(&format!(
+            "// ---- json ----\n{}",
+            json_support(m, &variants)
+        ));
     }
     let js = match head.is_empty() {
         true => js,

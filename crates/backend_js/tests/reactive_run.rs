@@ -583,7 +583,10 @@ reading() -> str {
 
 main() -> Element => div(button(onclick=go, \"go\") span(reading()))
 ";
-    let out = run(src, &["view()", "(fire(el(\"button\"), \"click\"), view())"]);
+    let out = run(
+        src,
+        &["view()", "(fire(el(\"button\"), \"click\"), view())"],
+    );
     assert_eq!(out[0], "go|idle", "a variant read through the state proxy");
     assert_eq!(out[1], "go|busy2", "and one with a payload");
 }
@@ -611,7 +614,10 @@ main() -> Element =>
     assert_eq!(out[0], "ICONIFY-ICON");
     assert_eq!(out[1], "big lucide:lock");
     assert_eq!(out[2], "1");
-    assert_eq!(out[3], "lucide:lock-open", "and its attributes are reactive");
+    assert_eq!(
+        out[3], "lucide:lock-open",
+        "and its attributes are reactive"
+    );
 }
 
 /// A handler that waits for the reader, which is what a file picker is.
@@ -663,7 +669,10 @@ fn a_handler_that_waits_for_an_answer_carries_on_when_it_arrives() {
         ],
     );
     assert_eq!(out[0], "open||0", "nothing is written while it waits");
-    assert_eq!(out[1], "open|here|1", "the view follows once the answer lands");
+    assert_eq!(
+        out[1], "open|here|1",
+        "the view follows once the answer lands"
+    );
     assert_eq!(out[2], "1");
 }
 

@@ -98,7 +98,10 @@ fn decode_with_nothing_to_read_into_says_so() {
         .expect("spawn maca build");
     let said = String::from_utf8_lossy(&built.stderr).to_string()
         + &String::from_utf8_lossy(&built.stdout);
-    assert!(!built.status.success(), "the build should have failed: {said}");
+    assert!(
+        !built.status.success(),
+        "the build should have failed: {said}"
+    );
     assert!(
         said.contains("say what it reads into"),
         "the diagnostic should name the fix: {said}"

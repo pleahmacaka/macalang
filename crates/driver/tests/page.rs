@@ -193,8 +193,12 @@ fn an_es_module_asset_is_run_as_a_module() {
     );
 
     let page = built_page(&dir);
-    let module = page.find("export const widget").expect("the module's bytes");
-    let classic = page.find("globalThis.legacyMarker").expect("the script's bytes");
+    let module = page
+        .find("export const widget")
+        .expect("the module's bytes");
+    let classic = page
+        .find("globalThis.legacyMarker")
+        .expect("the script's bytes");
     let opened = |at: usize| page[..at].rfind("<script").expect("an opening tag");
     assert!(
         page[opened(module)..module].contains("type=\"module\""),
@@ -215,7 +219,9 @@ fn a_package_that_calls_its_scripts_modules_is_believed() {
     app(&dir, "import js \"vendor/widget.js\"\n");
 
     let page = built_page(&dir);
-    let at = page.find("export const widget").expect("the module's bytes");
+    let at = page
+        .find("export const widget")
+        .expect("the module's bytes");
     let opened = page[..at].rfind("<script").expect("an opening tag");
     assert!(
         page[opened..at].contains("type=\"module\""),

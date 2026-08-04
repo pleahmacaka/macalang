@@ -160,11 +160,7 @@ fn the_js_backend_agrees_with_the_native_one() {
     );
 
     let probe = out_dir.join("probe.js");
-    std::fs::write(
-        &probe,
-        "console.log(require(\"./app.js\").board());\n".to_string(),
-    )
-    .expect("write probe");
+    std::fs::write(&probe, "console.log(require(\"./app.js\").board());\n").expect("write probe");
 
     let ran = Command::new("node").arg(&probe).output().expect("run node");
     let said = String::from_utf8_lossy(&ran.stdout);
