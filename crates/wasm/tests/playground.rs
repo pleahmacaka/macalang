@@ -147,41 +147,67 @@ fn lsp_answers_hover_signature_definition_and_references() {
     assert!(j.contains("\"active\":1"), "wrong parameter: {j}");
 }
 
-/// Every `mc…` the Maca half calls is defined by the bridge.
-#[test]
-fn every_bridge_function_the_page_calls_exists() {
-    let m = parsed();
-    let bridge: String = m
-        .items
+/// The `import js` block, as one string.
+fn block(m: &Module) -> String {
+    m.items
         .iter()
         .filter_map(|it| match it {
             Stmt::Import(Import::Foreign { lang, spec }) if lang == "js" => Some(spec.clone()),
             _ => None,
         })
-        .collect();
-    assert!(!bridge.is_empty(), "no import js block");
+        .collect()
+}
 
-    let debug = format!("{:?}", m.items);
-    let mut names: Vec<String> = Vec::new();
-    let mut rest = debug.as_str();
-    while let Some(at) = rest.find("Ident(\"mc") {
-        rest = &rest[at + "Ident(\"".len()..];
-        let end = rest.find('"').unwrap();
-        let name = rest[..end].to_string();
-        if !names.contains(&name) {
-            names.push(name);
-        }
-        rest = &rest[end..];
-    }
+/// Every function the page declares with no body, which is the whole boundary.
+fn host_functions(m: &Module) -> Vec<String> {
+    m.items
+        .iter()
+        .filter_map(|it| match it {
+            Stmt::Fn(f) if f.body.is_none() => Some(f.name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every declared function the page calls is one the block hands back through the bridge.
+#[test]
+fn every_declared_function_is_provided_by_the_block() {
+    let m = parsed();
+    let js = block(&m);
+    assert!(!js.is_empty(), "no import js block");
+    assert!(
+        js.contains("maca.provide("),
+        "the block reaches the page some other way than the bridge"
+    );
+    assert!(
+        !js.contains("window.mc"),
+        "the block is hanging functions on `window` again; `maca.provide` is \
+         what the page declared them for"
+    );
+
+    let names = host_functions(&m);
     assert!(names.len() >= 10, "only found {names:?}; the scan broke");
-
     for name in &names {
         assert!(
-            bridge.contains(&format!("window.{name} =")),
-            "the page calls {name}() and the bridge never defines it, so the \
-             button that reaches it throws"
+            js.contains(&format!("{name}:")),
+            "the page declares `{name}` and the block never provides it, so the \
+             first call to it throws"
         );
     }
+
+    let answered = under_node(
+        &maca_backend_js::emit(&m).js,
+        &[
+            "(m.run(), \"ran\")",
+            "m.outlineHtml().length > 0",
+            "m.statusLine().length > 0",
+        ],
+    );
+    assert_eq!(
+        answered,
+        vec!["\"ran\"", "true", "true"],
+        "a page function reached the bridge and got nothing back"
+    );
 }
 
 /// Every example the picker offers, as `(constant name, program)`.
@@ -487,11 +513,20 @@ fn the_panes_say_what_actually_happened() {
 
     let broken = maca_wasm::compile_json("main() -> int {\n    0\n", 0);
     let program_as_config = maca_wasm::compile_json("main() -> int {\n    0\n}\n", 1);
+    let shown = |json: &str, mode: u32| {
+        format!(
+            "(m.state.ready = true, m.state.mode = {mode}, \
+             m.present(JSON.stringify({json})))"
+        )
+    };
     let calls = [
-        format!("(mcShow({broken}, 0), mcTab(\"Console\"))"),
-        format!("(mcShow({program_as_config}, 1), mcTab(\"Diagnostics\"))"),
-        format!("(mcShow({program_as_config}, 1), mcTab(\"Nix\"))"),
-        format!("(mcShow({program_as_config}, 1), mcStatus())"),
+        format!("({}, m.paneText(\"Console\"))", shown(&broken, 0)),
+        format!(
+            "({}, m.paneText(\"Diagnostics\"))",
+            shown(&program_as_config, 1)
+        ),
+        format!("({}, m.paneText(\"Nix\"))", shown(&program_as_config, 1)),
+        format!("({}, m.statusLine())", shown(&program_as_config, 1)),
     ];
     let refs: Vec<&str> = calls.iter().map(String::as_str).collect();
     let said = under_node(&js, &refs);

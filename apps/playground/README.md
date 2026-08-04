@@ -1,14 +1,45 @@
 # Maca playground
 
 The browser playground for Maca, **written in Maca**, one file:
-`playground.maca`. The UI, state, and event handlers are Maca, styled with
-Maca's integrated Tailwind (the JS backend generates the CSS from the utility
-classes). The only inline foreign code is the WebAssembly-bridge runtime (an
-`import js` block that instantiates the compiler and reads its result out of
-linear memory) and a small `import css` block (the token/outline colours).
-Pretendard is not inlined: the page links `../fonts/pretendard.css`, the same
-sheet the rest of the site links, so the Korean it renders has Hangul to render
-it with. The compiler itself is pulled in with `import wasm`.
+`playground.maca`. The UI, the state, the handlers, and every sentence the page
+says are Maca, styled with Maca's integrated Tailwind (the JS backend generates
+the CSS from the utility classes). Pretendard is not inlined: the page links
+`../fonts/pretendard.css`, the same sheet the rest of the site links, so the
+Korean it renders has Hangul to render it with. The compiler itself is pulled
+in with `import wasm`.
+
+## The boundary
+
+The `import js` block is the host, and the whole of what it may be reached by
+is the `maca` bridge ([the FFI chapter](../tomo/book/en/a13-ffi.md) documents
+it). The top of `playground.maca` declares fifteen functions with no body,
+which is the contract:
+
+```maca
+compile(src: str, mode: int) -> str
+symbols() -> Sym[]
+emitted(pane: str) -> str
+outcome() -> Outcome
+```
+
+The block answers them with `maca.provide({ compile, symbols, … })`, and a name
+nothing implements says so on the first call instead of arriving as
+`undefined`. The other direction is four state names the host writes with
+`maca.set`: `ready`, `trouble`, `version` and `editor`. Nothing hangs on
+`window`.
+
+What is behind the boundary is the browser and nothing else: instantiating the
+WebAssembly compiler and reading its packed return value out of linear memory,
+the Monaco editor and its textarea fallback, the URL fragment, the clipboard
+and history call behind Share, and the sandboxed iframe the Preview runs in.
+Which examples exist, what each tab shows, what the status line says, when the
+flame chart appears: all of that is Maca, and all of it is a pure function of
+the declared state plus what those accessors answer.
+
+There is no repaint call anywhere in the Maca half. Writing a declared state
+name is the update, so a handler that assigns is the whole of what it writes.
+The one `maca.refresh()` left is in the host, on the one thing Maca cannot see:
+a compile result arriving, and the caret moving inside the editor.
 
 ## What the page shows
 
@@ -25,11 +56,19 @@ every artifact the front end produced from this source.
   names.
 - **Nix**, in config mode. The mode is a switch in the header, so the same page
   compiles a program or a configuration.
+- **Definitions**, the document outline: every function, type, value and config
+  option the program declares, with its signature; click one to jump to it.
 - **Diagnostics**, which carries type and effect errors *and* the back ends'
   refusals. Each back end names a construct it cannot lower rather than emitting
   code that would not compile, and that refusal is what a target's tab shows in
-  place of code. Load the `a page` example and read the C tab: a two-way binding
-  needs a DOM, and it says so.
+  place of code. In config mode it also names the functions a configuration has
+  no place for, because an empty module the page called clean is worse than an
+  error.
+
+The tabs a mode has no answer for are not offered: config mode shows
+Diagnostics, Definitions and Nix, and nothing else. The profiler strip appears
+only when there is a flame graph to put in it. At narrow widths the two panes
+stack instead of sitting side by side.
 
 The header's **Share** button writes the whole program into the URL fragment. A
 fragment is the one part of a URL a browser never sends, so the link carries the
@@ -55,8 +94,6 @@ language mode wired to the in-browser compiler:
 - **Autocomplete**: keywords, builtin types and functions, and the program's own
   top-level definitions.
 - **Diagnostics** as editor markers, plus the full text in the Diagnostics tab.
-- **A definition outline** (document symbols: functions, types, values, config
-  options); click to jump to the definition.
 - **A flame-graph profiler** with the wall-clock time, reusing the native
   `maca profile` renderer (`maca-profile`) fed by the interpreter's step counts.
 
@@ -92,7 +129,8 @@ happens when it does not come back. That is the whole flow: `maca init`, write
 |---|---|
 | UI, state, handlers, examples | `playground.maca` (Maca) |
 | styling | Tailwind utility classes to CSS by the JS backend (`crates/backend_js`) |
-| host runtime (wasm bridge, editor glue, preview iframe, share link) | `import js """…"""` block inside `playground.maca` |
+| the panes, the status line, the outline markup | `playground.maca` (Maca), reading the declared accessors |
+| host (wasm bridge, editor, preview iframe, URL fragment, clipboard) | `import js """…"""` block inside `playground.maca`, reached only through `maca.provide` / `maca.set` |
 | token/outline colours | one `import css """…"""` block of scoped classes |
 | font | `<link>` to `../fonts/pretendard.css`, shared with the rest of the site |
 | compiler, analysis, interpreter | `import wasm "…/maca_wasm.wasm"`: the `run`, `lsp` and `version` exports, embedded as base64 by `maca build` |

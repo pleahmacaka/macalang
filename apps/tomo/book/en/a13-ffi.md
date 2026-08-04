@@ -157,6 +157,15 @@ work, because programs were written against them. They are this backend's own
 locals rather than a promise, though: `maca` is the part that is documented, and
 the part a new program should reach for.
 
+### A whole program built on it
+
+`apps/playground/playground.maca` is the worked example. It declares fifteen
+functions with no body and four state names, and that is the entire surface its
+`import js` block is reached by. Everything on the other side is a browser
+capability with no Maca spelling: the WebAssembly instance, the Monaco editor,
+the URL fragment, the clipboard, the sandboxed preview iframe. Everything on
+this side, including every sentence the page prints, is Maca.
+
 ## When to reach for FFI
 
 The honest guidance: prefer a Maca implementation where the work is

@@ -1,105 +1,91 @@
 import wasm "../../target/wasm32-unknown-unknown/release/maca_wasm.wasm"
 
+Sym = {
+    kind:   str
+    name:   str
+    detail: str
+    line:   int
+}
+
+Problem = {
+    kind:  str
+    where: str
+    msg:   str
+}
+
+Outcome = {
+    ran:       bool
+    output:    str
+    error:     str
+    exited:    bool
+    exit:      int
+    steps:     int
+    calls:     int
+    depth:     int
+    truncated: bool
+    flame:     str
+}
+
+Shared = {
+    program: str
+    mode:    int
+}
+
+compile(src: str, mode: int) -> str
+show(answer: str) -> bool
+source() -> str
+edit(text: str) -> bool
+reveal(line: int) -> bool
+hovered() -> str
+pick(name: str) -> bool
+share_link(mode: int) -> str
+opened() -> Shared
+micros() -> int
+problems() -> Problem[]
+symbols() -> Sym[]
+emitted(pane: str) -> str
+outcome() -> Outcome
+preview(js: str, css: str) -> bool
+
 import css """
-.ol-item { display: flex; align-items: baseline; gap: .4rem; padding: .2rem .5rem;
-  border-radius: .3rem; cursor: pointer; white-space: nowrap; overflow: hidden;
-  text-overflow: ellipsis; }
-.ol-item:hover { background: #1c1c22; }
+.ol-item { display: flex; align-items: baseline; gap: .45rem;
+  padding: .25rem .5rem; border-radius: .35rem; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ol-item:hover { background: #26262c; }
 .ol-name { color: #e6e3f0; }
 .ol-detail { color: #6b6b78; font-size: .72rem; }
-.ol-kind { font-size: .58rem; text-transform: uppercase; letter-spacing: .04em;
-  padding: .05rem .32rem; border-radius: .25rem; font-weight: 600; flex: none; }
+.ol-kind { font-size: .58rem; text-transform: uppercase; letter-spacing: .05em;
+  padding: .1rem .35rem; border-radius: .25rem; font-weight: 600; flex: none; }
 .ol-fn { background: #2a2350; color: #c4b5fd; }
 .ol-type { background: #3a2a12; color: #fbbf24; }
 .ol-value { background: #0f2f28; color: #34d399; }
 .ol-option { background: #102a3a; color: #38bdf8; }
-.ol-empty { color: #5f6577; padding: .4rem .5rem; font-size: .8rem; }
+.ol-empty { color: #5f6577; padding: .6rem; font-size: .8rem;
+  font-family: ui-monospace, Menlo, monospace; }
+#preview iframe { width: 100%; height: 100%; border: 0; background: #ffffff; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #303038; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #3d3d47; }
+::-webkit-scrollbar-corner, ::-webkit-scrollbar-track { background: transparent; }
 """
 
 import js """
 "use strict";
-// Host shim for the Maca-authored playground (playground.maca → app.js).
-//
-// The Maca app owns the UI, state, and control flow; this file provides the
-// browser-API glue Maca can't express itself: instantiating the WebAssembly
-// compiler, reading its packed return value out of linear memory, and holding
-// the last result so the app's `mc*` getters can read it. Think of it as the
-// playground's runtime, the way `maca-runtime` is the native runtime.
-//
-// The example programs are NOT here. They are Maca constants in the Maca half
-// of this file, which is where a reader looks for them and where a test can
-// check that each one still compiles clean.
 (function () {
-  let ex = null;       // wasm exports
-  let last = null;     // last compile result (parsed JSON)
-  let lastMode = 0;    // the mode `last` was compiled in (0 program, 1 config)
-  let lastMs = 0;      // wall-clock of the last compile+run
-  let version = "";
-  let statusText = "loading…";
-
-  // ---- a shareable link, with nothing sent anywhere -------------------------
-  //
-  // `#p=<base64url source>&m=<mode>`. A fragment is the one part of a URL the
-  // browser never puts on the wire, so the link carries the whole program to
-  // whoever opens it and to nobody else. No server, no paste service, no id.
-  function b64urlEncode(text) {
-    const bytes = new TextEncoder().encode(text);
-    let bin = "";
-    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  }
-  function b64urlDecode(text) {
-    const bin = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return new TextDecoder().decode(bytes);
-  }
-  let urlProgram = "";
-  let urlMode = 0;
-  try {
-    const parts = {};
-    for (const kv of location.hash.replace(/^#/, "").split("&")) {
-      const eq = kv.indexOf("=");
-      if (eq > 0) parts[kv.slice(0, eq)] = kv.slice(eq + 1);
-    }
-    if (parts.p) {
-      urlProgram = b64urlDecode(parts.p);
-      urlMode = parts.m === "1" ? 1 : 0;
-    }
-  } catch (e) {
-    urlProgram = "";   // a hand-edited fragment is not a reason to show nothing
-  }
-  window.mcUrlProgram = function () { return urlProgram; };
-  window.mcUrlMode = function () { return urlMode; };
-  window.mcShare = function (mode) {
-    const link = location.origin + location.pathname +
-      "#p=" + b64urlEncode(window.mcSource()) + "&m=" + (mode | 0);
-    // Into the address bar first: that works with the clipboard blocked, and it
-    // is what makes the tab itself reloadable.
-    history.replaceState(null, "", link);
-    statusText = "link is in the address bar";
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(link).then(function () {
-        statusText = "link copied";
-        if (typeof update === "function") update();
-      }, function () {});
-    }
+  const EMPTY = {
+    parseErrors: [], diagnostics: [], limits: {}, outputs: {},
+    symbols: [], markers: [], run: null,
   };
+  let ex = null;
+  let last = EMPTY;
+  let spent = 0;
+  let ed = null;
+  let mo = null;
+  let pending = "";
+  let previewKey = null;
+  let opening = true;
 
-  // ---- the example picker ---------------------------------------------------
-  // Reading a <select> and writing its selection is browser API; which examples
-  // exist, and what each one says, is Maca.
-  window.mcPicked = function () {
-    const el = document.getElementById("examples");
-    return el ? el.value : "hello";
-  };
-  window.mcSetPicked = function (name) {
-    const el = document.getElementById("examples");
-    if (el) el.value = name;
-  };
-
-  // ---- wasm bridge ---------------------------------------------------------
-  function b64ToBytes(b64) {
+  function bytesOf(b64) {
     const bin = atob(b64.trim());
     const arr = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
@@ -112,366 +98,228 @@ import js """
     ex.dealloc(ptr, len);
     return out;
   }
-  function wasmRun(src, mode) {
-    const bytes = new TextEncoder().encode(src);
-    const p = ex.alloc(bytes.length);
-    mem().set(bytes, p);
-    const json = readPacked(ex.run(p, bytes.length, mode));
-    ex.dealloc(p, bytes.length);
-    return JSON.parse(json);
+  function into(src) {
+    const b = new TextEncoder().encode(src);
+    const p = ex.alloc(b.length);
+    mem().set(b, p);
+    return [p, b.length];
   }
-
-  // ---- content helpers -----------------------------------------------------
-  //
-  // A back end's refusal belongs with the type errors: it is a compile-time no,
-  // decided by name, and the reason a target's tab is empty.
-  function refusals(r) {
-    const out = [];
-    const limits = (r && r.limits) || {};
-    for (const target of Object.keys(limits)) {
-      for (const why of limits[target]) out.push([target, why]);
-    }
-    return out;
-  }
-  // Definitions a configuration has no place for. Config mode's root module
-  // *is* the configuration: a function is code, and the Nix back end drops it
-  // without a word, so a whole program compiled as config comes back "clean"
-  // with an empty module. Named here because an empty answer the page calls
-  // clean is worse than an error.
-  function configDrops() {
-    if (lastMode !== 1) return [];
-    return ((last && last.symbols) || [])
-      .filter(function (s) { return s.kind === "fn"; })
-      .map(function (s) { return s.name; });
-  }
-  function diagText(r) {
-    const lines = [];
-    for (const e of r.parseErrors || []) lines.push("parse: " + e);
-    for (const d of r.diagnostics || []) lines.push(d.kind + ": " + d.msg);
-    for (const [target, why] of refusals(r)) {
-      lines.push(target + " back end: " + why);
-    }
-    for (const name of configDrops()) {
-      lines.push("config mode: `" + name + "` is a function, and a " +
-        "configuration is options rather than code, so it is not in the Nix");
-    }
-    if (!lines.length) return "✓ parsed and type-checked clean";
-    return lines.join("\n");
-  }
-
-  // A UI program is one whose `main` is declared to return an Element. That
-  // declaration is what the js back end mounts and what the C back end renders
-  // to an HTML string, and it is also why the interpreter refuses to run it: a
-  // tag call needs a DOM and the interpreter has none.
-  function isUiProgram() {
-    return ((last && last.symbols) || []).some(function (s) {
-      return s.name === "main" && (s.detail || "").indexOf("-> Element") >= 0;
-    });
-  }
-  const UI_NOTE =
-    "`main` returns an Element, so this program builds a page instead of " +
-    "printing one.\n\nThe Preview tab runs it for real; JS and CSS are what " +
-    "it compiled to. Running it\nhere reports an unknown tag because the " +
-    "interpreter has no DOM to build into.";
-
-  // `run` is absent for exactly two reasons, and they are not the same reason:
-  // config mode has nothing to run, and a program that does not parse has
-  // nothing to run *yet*. Console is the opening tab, so the first thing a
-  // mistyped brace used to say was that the reader had picked config mode.
-  function consoleText(r) {
-    if ((r.parseErrors || []).length) {
-      return "(nothing ran: fix the parse error in Diagnostics first)";
-    }
-    if (isUiProgram()) return UI_NOTE;
-    const ran = r.run;
-    if (!ran) return "(config mode is pure, so there is nothing to run)";
-    let body = ran.output || "";
-    if (ran.error) {
-      body += (body && !body.endsWith("\n") ? "\n" : "") + "⚠ " + ran.error;
-    }
-    return body || "(no output)";
-  }
-
-  // What a target says when it refused, rather than the code it did not write.
-  function limitText(target) {
-    const why = refusals(last).filter(function (r) { return r[0] === target; });
-    if (!why.length) return "";
-    return "the " + target + " back end will not lower this program:\n\n" +
-      why.map(function (r) { return "  " + r[1]; }).join("\n") +
-      "\n\nEvery back end has this channel: it names the construct it cannot " +
-      "carry rather\nthan emitting code that would not compile.";
-  }
-
-  // Why a target's tab is blank, when nothing was refused either. `lastMode`
-  // rather than a guess: every branch here used to end in a sentence about
-  // config mode, which a program-mode reader was told for no reason.
-  function emptyNote(tab) {
-    if ((last.parseErrors || []).length) return "(fix the parse error first)";
-    if (lastMode === 1) {
-      return "(config mode emits Nix and nothing else)";
-    }
-    if (tab === "Nix") {
-      return "(Nix is what config mode emits: switch to config in the header)";
-    }
-    return "(nothing here: " + tab + " came back empty for this program)";
-  }
-
-  function fmtN(n) {
-    if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
-    if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
-    if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
-    return String(n);
-  }
-
-  // ---- API consumed by the Maca app (global `mc*` functions) ---------------
-  //
-  // One door for "a compile result arrived": everything the panes read comes
-  // from here, and `mcCompile` is this plus the wasm call. Anything that
-  // compiled elsewhere (a worker, a server, a test) uses the same door.
-  window.mcShow = function (result, mode) {
-    lastMode = mode | 0;
-    last = typeof result === "string" ? JSON.parse(result) : result;
-    const n = (last.parseErrors || []).length +
-      (last.diagnostics || []).length + refusals(last).length +
-      configDrops().length;
-    statusText = n ? (n + " diagnostic" + (n > 1 ? "s" : "")) : "compiled clean";
-    if (window.mcMarkers) window.mcMarkers();
-  };
-  window.mcCompile = function (src, mode) {
-    if (!ex) { statusText = "loading…"; return; }
-    try {
-      const t0 = performance.now();
-      const result = wasmRun(src, mode | 0);
-      lastMs = performance.now() - t0;
-      window.mcShow(result, mode);
-    } catch (e) {
-      window.mcShow(
-        { parseErrors: ["internal: " + e.message], diagnostics: [], outputs: {} },
-        mode);
-      statusText = "error";
-    }
-  };
-  // The text pane's body. Preview is the one tab that is not text: it has its
-  // own element, and asking for it here would answer with a note nobody sees.
-  window.mcTab = function (tab) {
-    if (!last || tab === "Preview") return "";
-    if (tab === "Diagnostics") return diagText(last);
-    if (tab === "Console") return consoleText(last);
-    const refused = limitText(tab);
-    if (refused) return refused;
-    const code = (last.outputs || {})[tab];
-    if (!code) return emptyNote(tab);
-    // The switch in the header puts any program one click from config mode, so
-    // say what the module left out rather than showing a short one.
-    const dropped = tab === "Nix" ? configDrops() : [];
-    if (dropped.length) {
-      return "this configuration does not carry " + dropped.join(", ") +
-        ": a config module is options, not code.\n\n" + code;
-    }
-    return code;
-  };
-  // What the run answered with, in the width of a word: the exit status is in
-  // the JSON and used to be nowhere on the page.
-  window.mcRunBadge = function () {
-    if (!last) return "";
-    if (isUiProgram()) return "builds a page";
-    const ran = last.run;
-    if (!ran) return "";
-    if (ran.error) return "failed";
-    return ran.exit === null ? "ran" : "exit " + ran.exit;
-  };
-  window.mcFlame = function () {
-    const p = last && last.run && last.run.profile;
-    return (p && p.flameSvg) || "";
-  };
-  window.mcStatus = function () { return statusText; };
-  window.mcVersion = function () { return version ? "maca " + version + " (wasm)" : ""; };
-
-  // ---- live preview: the emitted JS, actually running ----------------------
-  //
-  // Byte for byte the JS and CSS that `maca build --target js` would write,
-  // running in a sandboxed iframe. Rebuilt only when the emitted code changes,
-  // so editing a comment does not restart the program under the cursor.
-  let previewKey = null;
-  window.mcRenderPreview = function () {
-    const host = document.getElementById("preview");
-    if (!host) return;
-    const emitted = (last && last.outputs) || {};
-    const js = emitted.JS || "";
-    if (!js || !isUiProgram()) {
-      previewKey = null;
-      host.innerHTML = '<div class="ol-empty">' + esc(previewNote()) + "</div>";
-      return;
-    }
-    const css = emitted.CSS || "";
-    // A separator no source can contain, so a change to either half is a
-    // change to the key. Written as an escape rather than as the byte
-    // itself: a raw block is raw, and a literal NUL in this file makes the
-    // page it emits unreadable to anything that stops at one.
-    const key = css + "\0" + js;
-    if (key === previewKey) return;
-    previewKey = key;
-    const frame = document.createElement("iframe");
-    frame.setAttribute("sandbox", "allow-scripts");
-    frame.setAttribute("title", "preview");
-    frame.style.cssText = "width:100%;height:100%;border:0;background:#ffffff";
-    // A program whose own text contains `</script` would otherwise close the
-    // tag early and the rest of it would render as page content.
-    frame.srcdoc = '<!doctype html><meta charset="utf-8"><style>' + css +
-      '</style><div id="app"></div><script>' +
-      js.replace(/<\/script/gi, "<\\/script") + "<\/script>";
-    host.innerHTML = "";
-    host.appendChild(frame);
-  };
-  function previewNote() {
-    if (!last) return "compiling";
-    if ((last.parseErrors || []).length) return "the program does not parse yet";
-    if (!(last.outputs || {}).JS) return "config mode has no page to build";
-    return "no page here: declare main() -> Element and return a tag call, " +
-      "such as div(class=\"p-4\", \"hello\")";
-  }
-
-  // ---- shared helpers ------------------------------------------------------
-  function esc(s) {
-    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
-
-  // The active editor is Monaco when its CDN is reachable, else a plain
-  // textarea (offline / strict-CSP fallback). These two accessors hide which.
-  // Empty until the Maca app's `start()` puts either the shared program or the
-  // opening example here, which is why the examples do not need to exist twice.
-  let editor = null, monaco = null;
-  let PENDING_SRC = "";
-  window.mcRepaint = function () {
-    maca.refresh();
-    return true;
-  };
-
-  window.mcSource = function () {
-    if (editor) return editor.getValue();
-    const ta = document.getElementById("ed");
-    return ta ? ta.value : PENDING_SRC;
-  };
-  window.mcSetSource = function (text) {
-    PENDING_SRC = text || "";
-    if (editor) editor.setValue(PENDING_SRC);
-    else { const ta = document.getElementById("ed"); if (ta) ta.value = PENDING_SRC; }
-  };
-
-  // Everything the language server has to say about one caret, in one call:
-  // hover, signature help, the definition site, and every reference. The editor
-  // asks all four about the same position, and a call each would re-parse the
-  // file four times.
-  //
-  // `off` is a UTF-16 offset (Monaco's unit) and the wasm wants bytes, so the
-  // prefix is re-encoded to convert. The ranges coming back are already
-  // 1-based line/column with UTF-16 columns, which is what Monaco wants.
-  function wasmLsp(src, off) {
+  function ask(src, off) {
     if (!ex || !ex.lsp) return null;
     try {
-      const bytes = new TextEncoder().encode(src);
       const boff = new TextEncoder().encode(src.slice(0, off)).length;
-      const p = ex.alloc(bytes.length); mem().set(bytes, p);
-      const out = readPacked(ex.lsp(p, bytes.length, boff));
-      ex.dealloc(p, bytes.length);
+      const [p, n] = into(src);
+      const out = readPacked(ex.lsp(p, n, boff));
+      ex.dealloc(p, n);
       return JSON.parse(out);
-    } catch (e) { return null; }
-  }
-  function wasmHover(src, off) {
-    const info = wasmLsp(src, off);
-    return (info && info.hover) || "";
-  }
-  function monacoRange(r) {
-    return {
-      startLineNumber: r.line, startColumn: r.col,
-      endLineNumber: r.endLine, endColumn: r.endCol,
-    };
+    } catch (e) {
+      return null;
+    }
   }
 
-  // ---- definition outline (document symbols) -------------------------------
-  window.mcOutline = function () {
-    const syms = (last && last.symbols) || [];
-    if (!syms.length) return '<div class="ol-empty">no definitions</div>';
-    let html = "";
-    for (const s of syms) {
-      const detail = s.detail ? '<span class="ol-detail">' + esc(s.detail) + "</span>" : "";
-      html +=
-        '<div class="ol-item" onclick="mcGoto(' + (s.line | 0) + ')">' +
-        '<span class="ol-kind ol-' + s.kind + '">' + esc(s.kind) + "</span>" +
-        '<span class="ol-name">' + esc(s.name) + "</span>" + detail + "</div>";
+  function b64url(text) {
+    const b = new TextEncoder().encode(text);
+    let bin = "";
+    for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function unb64url(text) {
+    const bin = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+    const b = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(b);
+  }
+  const shared = { program: "", mode: 0 };
+  try {
+    const parts = {};
+    for (const kv of location.hash.replace(/^#/, "").split("&")) {
+      const eq = kv.indexOf("=");
+      if (eq > 0) parts[kv.slice(0, eq)] = kv.slice(eq + 1);
     }
-    return html;
-  };
-  window.mcGoto = function (line) {
-    if (line < 1) return;
-    if (editor) {
-      editor.revealLineInCenterIfOutsideViewport(line);
-      editor.setPosition({ lineNumber: line, column: 1 });
-      editor.focus();
-    } else {
-      const ta = document.getElementById("ed");
-      if (!ta) return;
-      const lines = ta.value.split("\n");
+    if (parts.p) {
+      shared.program = unb64url(parts.p);
+      shared.mode = parts.m === "1" ? 1 : 0;
+    }
+  } catch (e) {
+    shared.program = "";
+  }
+
+  function textarea() { return document.getElementById("ed"); }
+  function read() {
+    if (ed) return ed.getValue();
+    const ta = textarea();
+    return ta ? ta.value : pending;
+  }
+  function caret() {
+    if (ed) {
+      const pos = ed.getPosition();
+      return pos ? ed.getModel().getOffsetAt(pos) : 0;
+    }
+    const ta = textarea();
+    if (!ta || document.activeElement !== ta) return -1;
+    return ta.selectionStart | 0;
+  }
+  function paint() {
+    if (!ed || !mo) return;
+    const sev = {
+      error: mo.MarkerSeverity.Error,
+      warning: mo.MarkerSeverity.Warning,
+      info: mo.MarkerSeverity.Info,
+    };
+    mo.editor.setModelMarkers(ed.getModel(), "maca",
+      (last.markers || []).map(function (m) {
+        return {
+          severity: sev[m.severity] || mo.MarkerSeverity.Error,
+          message: m.message,
+          startLineNumber: m.line, startColumn: m.col,
+          endLineNumber: m.endLine, endColumn: m.endCol,
+        };
+      }));
+  }
+
+  maca.provide({
+    compile: function (src, mode) {
+      if (!ex) return "";
+      const t0 = performance.now();
+      try {
+        const [p, n] = into(src);
+        const json = readPacked(ex.run(p, n, mode | 0));
+        ex.dealloc(p, n);
+        spent = Math.round((performance.now() - t0) * 1000);
+        return json;
+      } catch (e) {
+        spent = 0;
+        return JSON.stringify({ parseErrors: ["internal: " + e.message] });
+      }
+    },
+    show: function (answer) {
+      try {
+        last = JSON.parse(answer);
+      } catch (e) {
+        last = EMPTY;
+      }
+      paint();
+      maca.refresh();
+      return true;
+    },
+    source: read,
+    edit: function (text) {
+      pending = text || "";
+      if (ed) ed.setValue(pending);
+      else {
+        const ta = textarea();
+        if (ta) ta.value = pending;
+      }
+      return true;
+    },
+    reveal: function (line) {
+      if (line < 1) return false;
+      if (ed) {
+        ed.revealLineInCenterIfOutsideViewport(line);
+        ed.setPosition({ lineNumber: line, column: 1 });
+        ed.focus();
+        return true;
+      }
+      const ta = textarea();
+      if (!ta) return false;
+      const ls = ta.value.split("\n");
       let off = 0;
-      for (let i = 0; i < line - 1 && i < lines.length; i++) off += lines[i].length + 1;
+      for (let i = 0; i < line - 1 && i < ls.length; i++) off += ls[i].length + 1;
       ta.focus();
       ta.setSelectionRange(off, off);
-    }
-    if (typeof update === "function") update();
-  };
-
-  // ---- LSP hover (signature/type of the identifier under the caret) --------
-  window.mcHover = function () {
-    const src = window.mcSource();
-    let off = 0;
-    if (editor) {
-      const pos = editor.getPosition();
-      if (pos) off = editor.getModel().getOffsetAt(pos);
-    } else {
-      const ta = document.getElementById("ed");
-      if (!ta || document.activeElement !== ta) return "";
-      off = ta.selectionStart | 0;
-    }
-    const info = wasmHover(src, off);
-    return info ? "ⓘ " + info : "";
-  };
-
-  // ---- profiler split: a prominent wall-clock, then the counters -----------
-  window.mcMs = function () {
-    if (!last || !last.run) return "-";
-    return lastMs.toFixed(lastMs < 10 ? 2 : 1) + " ms";
-  };
-  window.mcStats = function () {
-    const p = last && last.run && last.run.profile;
-    if (!p) return "run a program to profile it";
-    const t = p.truncated ? ", truncated" : "";
-    return `${fmtN(p.steps)} steps, ${fmtN(p.totalCalls)} calls, depth ${fmtN(p.maxDepth)}${t}`;
-  };
-
-  // ---- diagnostics as editor markers (squiggles) --------------------------
-  // the wasm returns Monaco-ready spans (precise for parse errors, best-effort
-  // for semantic diagnostics), all as errors: the compiler rejects them all.
-  function setMarkers() {
-    if (!editor || !monaco || !last) return;
-    const sev = {
-      error: monaco.MarkerSeverity.Error,
-      warning: monaco.MarkerSeverity.Warning,
-      info: monaco.MarkerSeverity.Info,
-    };
-    const ms = (last.markers || []).map(function (m) {
+      return true;
+    },
+    hovered: function () {
+      const off = caret();
+      if (off < 0) return "";
+      const info = ask(read(), off);
+      return (info && info.hover) || "";
+    },
+    pick: function (name) {
+      const el = document.getElementById("examples");
+      if (el) el.value = name;
+      return true;
+    },
+    share_link: function (mode) {
+      const url = location.origin + location.pathname +
+        "#p=" + b64url(read()) + "&m=" + (mode | 0);
+      try {
+        history.replaceState(null, "", url);
+      } catch (e) {
+        return "";
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(function () {}, function () {});
+      }
+      return url;
+    },
+    opened: function () { return { program: shared.program, mode: shared.mode }; },
+    micros: function () { return spent; },
+    problems: function () {
+      const out = [];
+      for (const e of last.parseErrors || []) {
+        out.push({ kind: "parse", where: "", msg: e });
+      }
+      for (const d of last.diagnostics || []) {
+        out.push({ kind: "check", where: d.kind, msg: d.msg });
+      }
+      const limits = last.limits || {};
+      for (const target of Object.keys(limits)) {
+        for (const why of limits[target]) {
+          out.push({ kind: "refusal", where: target, msg: why });
+        }
+      }
+      return out;
+    },
+    symbols: function () {
+      return (last.symbols || []).map(function (s) {
+        return {
+          kind: s.kind || "value", name: s.name || "",
+          detail: s.detail || "", line: s.line | 0,
+        };
+      });
+    },
+    emitted: function (pane) { return (last.outputs || {})[pane] || ""; },
+    outcome: function () {
+      const r = last.run;
+      const p = (r && r.profile) || {};
       return {
-        severity: sev[m.severity] || monaco.MarkerSeverity.Error,
-        message: m.message,
-        startLineNumber: m.line, startColumn: m.col,
-        endLineNumber: m.endLine, endColumn: m.endCol,
+        ran: !!r,
+        output: (r && r.output) || "",
+        error: (r && r.error) || "",
+        exited: !!(r && r.exit !== null && r.exit !== undefined),
+        exit: (r && r.exit) | 0,
+        steps: p.steps | 0,
+        calls: p.totalCalls | 0,
+        depth: p.maxDepth | 0,
+        truncated: !!p.truncated,
+        flame: p.flameSvg || "",
       };
-    });
-    monaco.editor.setModelMarkers(editor.getModel(), "maca", ms);
-  }
-  window.mcMarkers = setMarkers;
+    },
+    preview: function (js, css) {
+      const host = document.getElementById("preview");
+      if (!host) return false;
+      if (!js) {
+        previewKey = null;
+        host.innerHTML = "";
+        return false;
+      }
+      const key = css.length + ":" + css + js;
+      if (key === previewKey) return true;
+      previewKey = key;
+      const frame = document.createElement("iframe");
+      frame.setAttribute("sandbox", "allow-scripts");
+      frame.setAttribute("title", "preview");
+      frame.srcdoc = "<!doctype html><meta charset=\"utf-8\"><style>" + css +
+        "</style><div id=\"app\"></div><script>" +
+        js.replace(/<\/script/gi, "<\\/script") + "<\/script>";
+      host.innerHTML = "";
+      host.appendChild(frame);
+      return true;
+    },
+  });
 
-  // ---- register the Maca language, theme, and LSP providers with Monaco ----
-  function defineMacaLanguage(m) {
+  function macaLanguage(m) {
     m.languages.register({ id: "maca" });
     m.languages.setLanguageConfiguration("maca", {
       comments: { lineComment: "//", blockComment: ["/*", "*/"] },
@@ -486,20 +334,15 @@ import js """
       typeKeywords: ["int", "float", "str", "bool", "bytes"],
       tokenizer: {
         root: [
-          // `///` is a doc comment, what macadoc reads as API. Listed first
-          // so the plain `//` rule doesn't claim it.
           [/\/\/\/[^\/].*$|\/\/\/$/, "comment.doc"],
           [/\/\/.*$/, "comment"],
           [/\/\*/, "comment", "@block"],
           [/"{3}/, "string", "@raw"],
           [/"/, "string", "@str"],
-          // path literals (mirror the lexer): ~, ./, ../, or / + a path char.
-          // A bare / needs a following path char so `a / b` stays division.
           [/(?:~|\.\.?\/|\/(?=[A-Za-z0-9_.~/-]))[A-Za-z0-9_.~/-]*/, "string"],
           [/\b\d[\d_]*\.\d[\d_]*\b/, "number.float"],
           [/\b0[xXbBoO][0-9a-fA-F_]+\b/, "number.hex"],
           [/\b\d[\d_]*\b/, "number"],
-          // idents carry Nix-style internal hyphens (rust-analyzer, home-manager)
           [/[A-Z]\w*(?:-[A-Za-z_]\w*)*/, "type"],
           [/[a-z_]\w*(?:-[A-Za-z_]\w*)*/, { cases: { "@keywords": "keyword", "@typeKeywords": "type", "@default": "identifier" } }],
           [/[{}()\[\]]/, "@brackets"],
@@ -552,10 +395,17 @@ import js """
         "editor.lineHighlightBackground": "#1f1f23",
       },
     });
+    const span = function (r) {
+      return {
+        startLineNumber: r.line, startColumn: r.col,
+        endLineNumber: r.endLine, endColumn: r.endCol,
+      };
+    };
     m.languages.registerHoverProvider("maca", {
       provideHover: function (model, pos) {
-        const info = wasmHover(model.getValue(), model.getOffsetAt(pos));
-        return info ? { contents: [{ value: "```maca\n" + info + "\n```" }] } : null;
+        const info = ask(model.getValue(), model.getOffsetAt(pos));
+        const hover = info && info.hover;
+        return hover ? { contents: [{ value: "```maca\n" + hover + "\n```" }] } : null;
       },
     });
     m.languages.registerCompletionItemProvider("maca", {
@@ -567,28 +417,23 @@ import js """
         ["const", "as", "if", "else", "for", "in", "while", "break", "continue", "return", "match", "import", "with", "fail", "try", "true", "false"].forEach(k => add(k, K.Keyword));
         ["int", "float", "str", "bool", "bytes"].forEach(t => add(t, K.TypeParameter, "type"));
         ["info", "warn", "err", "print", "len", "str", "int", "float"].forEach(b => add(b, K.Function, "builtin"));
-        for (const s of (last && last.symbols || [])) {
+        for (const s of last.symbols || []) {
           add(s.name, s.kind === "type" ? K.Struct : s.kind === "fn" ? K.Function : K.Variable, s.detail || s.kind);
         }
         return { suggestions: items };
       },
     });
-    // Signature help while the call is still being typed: the callee's
-    // signature, with the parameter under the caret picked out. `maca-lsp`
-    // counts the commas, so the answer is the same one the editor gives.
     m.languages.registerSignatureHelpProvider("maca", {
       signatureHelpTriggerCharacters: ["(", ","],
       provideSignatureHelp: function (model, pos) {
-        const info = wasmLsp(model.getValue(), model.getOffsetAt(pos));
+        const info = ask(model.getValue(), model.getOffsetAt(pos));
         const sig = info && info.signature;
         if (!sig) return null;
         return {
           value: {
             signatures: [{
               label: sig.label,
-              parameters: (sig.params || []).map(function (p) {
-                return { label: p };
-              }),
+              parameters: (sig.params || []).map(function (p) { return { label: p }; }),
             }],
             activeSignature: 0,
             activeParameter: sig.active | 0,
@@ -597,88 +442,74 @@ import js """
         };
       },
     });
-    // Ctrl-click / F12 jumps to where the name is bound.
     m.languages.registerDefinitionProvider("maca", {
       provideDefinition: function (model, pos) {
-        const info = wasmLsp(model.getValue(), model.getOffsetAt(pos));
+        const info = ask(model.getValue(), model.getOffsetAt(pos));
         const at = info && info.definition;
-        return at ? { uri: model.uri, range: monacoRange(at) } : null;
+        return at ? { uri: model.uri, range: span(at) } : null;
       },
     });
-    // Resting on a name marks every other mention of the *same binding*, which
-    // is scope-aware rather than a text search: a parameter named `n` in one
-    // function does not light up an `n` in another.
     m.languages.registerDocumentHighlightProvider("maca", {
       provideDocumentHighlights: function (model, pos) {
-        const info = wasmLsp(model.getValue(), model.getOffsetAt(pos));
+        const info = ask(model.getValue(), model.getOffsetAt(pos));
         return ((info && info.references) || []).map(function (r) {
-          return {
-            range: monacoRange(r),
-            kind: m.languages.DocumentHighlightKind.Text,
-          };
+          return { range: span(r), kind: m.languages.DocumentHighlightKind.Text };
         });
       },
     });
   }
 
-  // The first render is `start()`, not `run()`: only the Maca side knows which
-  // program to open with, and only the bridge has read the URL fragment.
-  let started = false;
   function firstRender() {
-    if (!started && typeof start === "function") {
-      started = true;
+    if (opening) {
+      opening = false;
       start();
-    } else if (typeof run === "function") {
+    } else {
       run();
     }
   }
 
-  // ---- mount Monaco (from CDN); fall back to a plain textarea if it can't ---
-  const MONACO_CDN = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
-  function mountMonaco() {
+  const CDN = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
+  function mountEditor() {
     const host = document.getElementById("editor");
     if (!host) return;
-    // cross-domain worker proxy (the worker imports the real one from the CDN)
     window.MonacoEnvironment = {
       getWorkerUrl: function () {
         return "data:text/javascript;charset=utf-8," + encodeURIComponent(
-          "self.MonacoEnvironment={baseUrl:'" + MONACO_CDN + "/'};importScripts('" + MONACO_CDN + "/base/worker/workerMain.js');"
+          "self.MonacoEnvironment={baseUrl:'" + CDN + "/'};importScripts('" + CDN + "/base/worker/workerMain.js');"
         );
       },
     };
-    // if the CDN can't be reached (offline / strict CSP), fall back to a plain
-    // textarea so there's always a usable editor.
     let fell = false;
     const fallback = function () {
-      if (fell || editor) return;
+      if (fell || ed) return;
       fell = true;
-      buildFallback(host);
+      plainEditor(host);
       firstRender();
     };
     const timer = setTimeout(fallback, 6000);
     const s = document.createElement("script");
-    s.src = MONACO_CDN + "/loader.js";
+    s.src = CDN + "/loader.js";
     s.onload = function () {
-      require.config({ paths: { vs: MONACO_CDN } });
+      require.config({ paths: { vs: CDN } });
       require(["vs/editor/editor.main"], function () {
         if (fell) return;
         clearTimeout(timer);
-        monaco = window.monaco;
-        defineMacaLanguage(monaco);
-        editor = monaco.editor.create(host, {
-          value: PENDING_SRC, language: "maca", theme: "maca-dark",
+        mo = window.monaco;
+        macaLanguage(mo);
+        ed = mo.editor.create(host, {
+          value: pending, language: "maca", theme: "maca-dark",
           fontFamily: "ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace",
           fontSize: 13, tabSize: 4, insertSpaces: true, minimap: { enabled: false },
           automaticLayout: true, scrollBeyondLastLine: false, smoothScrolling: true,
           padding: { top: 12, bottom: 12 }, renderLineHighlight: "line",
         });
         let t;
-        editor.onDidChangeModelContent(function () {
+        ed.onDidChangeModelContent(function () {
           clearTimeout(t);
-          t = setTimeout(function () { if (typeof run === "function") run(); }, 120);
+          t = setTimeout(run, 120);
         });
-        editor.onDidChangeCursorPosition(function () { if (typeof update === "function") update(); });
-        statusText = "ready (monaco)";
+        ed.onDidChangeCursorPosition(function () { maca.refresh(); });
+        maca.set({ editor: "monaco" });
         firstRender();
       });
     };
@@ -686,70 +517,46 @@ import js """
     document.head.appendChild(s);
   }
 
-  // Plain-textarea fallback: real monospace, tab-to-indent, recompiles on input.
-  function buildFallback(host) {
+  function plainEditor(host) {
     host.innerHTML = "";
     const ta = document.createElement("textarea");
-    ta.id = "ed"; ta.spellcheck = false; ta.value = PENDING_SRC; ta.setAttribute("wrap", "off");
+    ta.id = "ed";
+    ta.spellcheck = false;
+    ta.value = pending;
+    ta.setAttribute("wrap", "off");
     ta.style.cssText = "position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;" +
       "margin:0;border:0;padding:16px;resize:none;outline:none;background:#18181b;color:#e6e3f0;" +
       "font-family:ui-monospace,'JetBrains Mono',Menlo,monospace;font-size:13px;line-height:1.55;" +
       "white-space:pre;tab-size:4;overflow:auto;caret-color:#a78bfa";
-    ta.addEventListener("input", function () { if (typeof run === "function") run(); });
-    ta.addEventListener("keyup", function () { if (typeof update === "function") update(); });
-    ta.addEventListener("click", function () { if (typeof update === "function") update(); });
+    ta.addEventListener("input", run);
+    ta.addEventListener("keyup", function () { maca.refresh(); });
+    ta.addEventListener("click", function () { maca.refresh(); });
     ta.addEventListener("keydown", function (e) {
-      if (e.key === "Tab") {
-        e.preventDefault();
-        const a = ta.selectionStart, b = ta.selectionEnd;
-        ta.value = ta.value.slice(0, a) + "    " + ta.value.slice(b);
-        ta.selectionStart = ta.selectionEnd = a + 4;
-        if (typeof run === "function") run();
-      }
+      if (e.key !== "Tab") return;
+      e.preventDefault();
+      const a = ta.selectionStart, b = ta.selectionEnd;
+      ta.value = ta.value.slice(0, a) + "    " + ta.value.slice(b);
+      ta.selectionStart = ta.selectionEnd = a + 4;
+      run();
     });
     host.appendChild(ta);
-    statusText = "ready (textarea)";
+    maca.set({ editor: "textarea" });
   }
 
-  // ---- boot: load the wasm compiler, mount the editor, render --------------
   (async function boot() {
+    await Promise.resolve();
     try {
-      const bytes = b64ToBytes(document.getElementById("wasm-b64").textContent);
-      const { instance } = await WebAssembly.instantiate(bytes, {});
+      const b = bytesOf(document.getElementById("wasm-b64").textContent);
+      const { instance } = await WebAssembly.instantiate(b, {});
       ex = instance.exports;
-      version = readPacked(ex.version());
-      statusText = "ready";
-      // by now (post-await) the Maca app has mounted, so #editor exists and
-      // run()/update() are defined.
-      mountMonaco();
-      if (typeof update === "function") update();
+      maca.set({ ready: true, version: readPacked(ex.version()) });
     } catch (e) {
-      statusText = "wasm failed: " + e.message;
-      if (typeof update === "function") update();
+      maca.set({ trouble: "the compiler did not load: " + e.message });
     }
+    mountEditor();
   })();
 })();
 """
-
-mcCompile(src: str, mode: int) -> bool
-mcSource() -> str
-mcSetSource(text: str) -> bool
-mcRenderPreview() -> bool
-mcTab(tab: str) -> str
-mcRunBadge() -> str
-mcStatus() -> str
-mcVersion() -> str
-mcOutline() -> str
-mcHover() -> str
-mcFlame() -> str
-mcMs() -> str
-mcStats() -> str
-mcPicked() -> str
-mcSetPicked(name: str) -> bool
-mcShare(mode: int) -> bool
-mcUrlProgram() -> str
-mcUrlMode() -> int
-mcRepaint() -> bool
 
 const HelloSrc = """
 main() -> int {
@@ -761,11 +568,13 @@ main() -> int {
 const PageSrc = """
 // A page rather than a print. A tag name called as a function is an element:
 // named args are attributes, positional args are children. `value=` on a state
-// name is
-// two-way, so typing re-renders exactly the nodes that mention the state.
+// name is two-way, so typing re-renders exactly the nodes that mention it.
+// There is no repaint call, and there is not meant to be: assigning `who` is
+// the request.
 //
-// The Preview tab runs this. The C tab refuses it, and says why: the same call
-// renders to an HTML string natively, but a live binding needs a DOM.
+// The Preview tab runs this for real. The C tab is the same program rendered
+// to an HTML string, which is what a site generator wants; the JS tab is what
+// the Preview is running.
 who = "world"
 
 main() -> Element =>
@@ -779,8 +588,8 @@ main() -> Element =>
 
 const TourSrc = """
 // A tour of Maca's surface syntax in one program that type-checks clean.
-// There is no `fn`, no `let`, no `return` and no `type`: a bare `x = e` binds a
-// mutable name, `const x = e` a constant, and the last expression is the value.
+// There is no `fn`, no `let` and no `type`: a bare `x = e` binds a mutable
+// name, `const x = e` a constant, and the last expression is the value.
 
 /* Block comments work too. */
 
@@ -880,6 +689,40 @@ main() -> int {
 }
 """
 
+const GuardSrc = """
+// `return` leaves a function early, so a guard stands where it belongs rather
+// than pushing the real work into an `else`. The tail is still the value, and
+// both work in one function.
+classify(n: int) -> str {
+    if n < 0 {
+        return "negative"
+    }
+    if n == 0 {
+        return "zero"
+    }
+    n % 2 == 0 ? "even" : "odd"
+}
+
+// `return` is a statement, so it stands on a line of its own or as the tail of
+// a branch. A ternary arm or a call argument is a TypeMismatch naming the
+// function, because the value would have nowhere to go.
+first_even(xs: int[]) -> int {
+    for x in xs {
+        if x % 2 == 0 {
+            return x
+        }
+    }
+    -1
+}
+
+main() -> int {
+    info("{classify(-3)}, {classify(0)}, {classify(7)}, {classify(8)}")
+    info("first even of 3 5 8 10: {first_even([3, 5, 8, 10])}")
+    info("first even of 1 3 5: {first_even([1, 3, 5])}")
+    0
+}
+"""
+
 const AsyncSrc = """
 // Colorblind async: there is no `async` keyword, and no second colour of
 // function. `spawn f(x)` starts the call and answers a Future, `await` waits
@@ -941,110 +784,409 @@ Example = {
 
 example(name: str) -> Example {
     if name == "page" {
-        Example { src = PageSrc, mode = 0, tab = "Preview",
-                  note = "a tag call is an element; Preview runs it" }
-    } else if name == "tour" {
-        Example { src = TourSrc, mode = 0, tab = "Console",
-                  note = "most of the surface syntax in one program" }
-    } else if name == "tree" {
-        Example { src = TreeSrc, mode = 0, tab = "Console",
-                  note = "recursive sums, and match that must be exhaustive" }
-    } else if name == "list" {
-        Example { src = ListSrc, mode = 0, tab = "Console",
-                  note = "closures, and a function passed with no annotation" }
-    } else if name == "async" {
-        Example { src = AsyncSrc, mode = 0, tab = "Console",
-                  note = "spawn and await with no async keyword anywhere" }
-    } else if name == "format" {
-        Example { src = FormatSrc, mode = 0, tab = "Console",
-                  note = "an interpolation carrying [align][0][width][.prec]" }
-    } else if name == "config" {
-        Example { src = ConfigSrc, mode = 1, tab = "Nix",
-                  note = "the same language, compiled to a NixOS module" }
-    } else {
-        Example { src = HelloSrc, mode = 0, tab = "Console",
-                  note = "the smallest whole program" }
+        return Example { src = PageSrc, mode = 0, tab = "Preview",
+                         note = "a tag call is an element; Preview runs it" }
     }
+    if name == "tour" {
+        return Example { src = TourSrc, mode = 0, tab = "Console",
+                         note = "most of the surface syntax in one program" }
+    }
+    if name == "tree" {
+        return Example { src = TreeSrc, mode = 0, tab = "Console",
+                         note = "recursive sums, and match that must be exhaustive" }
+    }
+    if name == "list" {
+        return Example { src = ListSrc, mode = 0, tab = "Console",
+                         note = "closures, and a function passed with no annotation" }
+    }
+    if name == "guard" {
+        return Example { src = GuardSrc, mode = 0, tab = "Console",
+                         note = "a guard that leaves the function early" }
+    }
+    if name == "async" {
+        return Example { src = AsyncSrc, mode = 0, tab = "Console",
+                         note = "spawn and await with no async keyword anywhere" }
+    }
+    if name == "format" {
+        return Example { src = FormatSrc, mode = 0, tab = "Console",
+                         note = "an interpolation carrying [align][0][width][.prec]" }
+    }
+    if name == "config" {
+        return Example { src = ConfigSrc, mode = 1, tab = "Nix",
+                         note = "the same language, compiled to a NixOS module" }
+    }
+    Example { src = HelloSrc, mode = 0, tab = "Console",
+              note = "the smallest whole program" }
 }
 
 mode = 0
-tab  = "Console"
+tab = "Console"
 note = ""
+ready = false
+trouble = ""
+version = ""
+editor = ""
 
 run() {
-    mcCompile(mcSource(), mode)
+    answer = compile(source(), mode)
 
-    if tab == "Preview" {
-        mcRenderPreview()
+    if answer == "" {
+        return
     }
+    present(answer)
+}
 
-    mcRepaint()
+present(answer: str) {
+    show(answer)
+    syncPreview()
 }
 
 start() {
-    shared = mcUrlProgram()
+    link = opened()
 
-    if shared == "" {
+    if link.program == "" {
         load("hello")
-    } else {
-        mcSetSource(shared)
-        mcSetPicked("")
-        mode = mcUrlMode()
-        tab = mode == 1 ? "Nix" : "Console"
-        note = "loaded from a shared link"
-        run()
+        return
     }
+    edit(link.program)
+    pick("")
+    mode = link.mode
+    tab = mode == 1 ? "Nix" : "Console"
+    note = "loaded from a shared link"
+    run()
 }
 
 load(name: str) {
     picked = example(name)
-    mcSetSource(picked.src.trim())
-    mcSetPicked(name)
+
+    edit(picked.src.trim())
+    pick(name)
     mode = picked.mode
     tab = picked.tab
     note = picked.note
     run()
 }
 
-pickExample() {
-    load(mcPicked())
-}
-
 useProgram() {
     mode = 0
-    tab  = "Console"
+    tab = "Console"
     run()
 }
 
 useConfig() {
     mode = 1
-    tab  = "Nix"
+    tab = "Nix"
     run()
 }
 
 share() {
-    mcShare(mode)
-    mcRepaint()
+    url = share_link(mode)
+
+    note = url == "" ? "this page cannot rewrite its own address"
+                     : "the whole program is in the address bar"
 }
 
-showDiag()    { tab = "Diagnostics" }
-showConsole() { tab = "Console" }
-showC()       { tab = "C" }
-showJs()      { tab = "JS" }
-showCss()     { tab = "CSS" }
-showNix()     { tab = "Nix" }
-
-showPreview() {
-    tab = "Preview"
-    mcRenderPreview()
+choose(which: str) {
+    tab = which
+    syncPreview()
 }
 
-const TabOn = "px-3 py-1 text-sm rounded cursor-pointer bg-zinc-800 text-zinc-100"
-const TabOff = "px-3 py-1 text-sm rounded cursor-pointer text-zinc-400"
-const Secondary = "px-2 py-1 text-sm rounded border border-zinc-700 text-zinc-300 cursor-pointer"
-const Picker = "px-2 py-1 text-sm rounded border border-zinc-700 bg-zinc-900 text-zinc-300 cursor-pointer"
-const TextPane = "flex-1 min-h-0 overflow-auto p-4 font-mono text-sm whitespace-pre-wrap break-words text-zinc-200"
-const PreviewPane = "flex-1 min-h-0 overflow-hidden bg-white"
+syncPreview() {
+    if tab != "Preview" || !buildsAPage() {
+        preview("", "")
+        return
+    }
+    preview(emitted("JS"), emitted("CSS"))
+}
+
+buildsAPage() -> bool {
+    for s in symbols() {
+        if s.name == "main" && s.detail.contains("-> Element") {
+            return true
+        }
+    }
+    false
+}
+
+brokenSource() -> bool {
+    for p in problems() {
+        if p.kind == "parse" {
+            return true
+        }
+    }
+    false
+}
+
+configDrops() -> str[] {
+    out = []
+
+    if mode != 1 {
+        return out
+    }
+    for s in symbols() {
+        if s.kind == "fn" {
+            out = out.push(s.name)
+        }
+    }
+    out
+}
+
+refusalText(pane: str) -> str {
+    why = []
+
+    for p in problems() {
+        if p.kind == "refusal" && p.where == pane {
+            why = why.push("  " ++ p.msg)
+        }
+    }
+    if len(why) == 0 {
+        return ""
+    }
+    "the {pane} back end will not lower this program:\n\n"
+        ++ why.join("\n")
+        ++ "\n\nEvery back end has this channel: it names the construct it "
+        ++ "cannot carry\nrather than emitting code that would not compile."
+}
+
+problemLine(p: Problem) -> str {
+    if p.kind == "parse" {
+        p.msg
+    } else if p.kind == "refusal" {
+        "{p.where} back end: {p.msg}"
+    } else {
+        "{p.where}: {p.msg}"
+    }
+}
+
+dropLine(name: str) -> str =>
+    "config mode: `{name}` is a function, and a configuration is options "
+        ++ "rather than code, so it is not in the Nix"
+
+diagnosticsText() -> str {
+    lines = []
+
+    for p in problems() {
+        lines = lines.push(problemLine(p))
+    }
+    for name in configDrops() {
+        lines = lines.push(dropLine(name))
+    }
+    if len(lines) == 0 {
+        return "parsed and type-checked clean"
+    }
+    lines.join("\n")
+}
+
+const UiNote = "`main` returns an Element, so this program builds a page instead of printing one.\n\nThe Preview tab runs it for real; JS and CSS are what it compiled to. Running it\nhere reports an unknown tag, because the interpreter has no DOM to build into."
+
+consoleText() -> str {
+    if trouble != "" {
+        return "(nothing ran: {trouble})"
+    }
+    if !ready {
+        return "(the compiler is still arriving)"
+    }
+    if brokenSource() {
+        return "(nothing ran: fix the parse error in Diagnostics first)"
+    }
+    if buildsAPage() {
+        return UiNote
+    }
+    ran = outcome()
+    if !ran.ran {
+        return "(config mode is pure, so there is nothing to run)"
+    }
+    if ran.error != "" {
+        return ran.output ++ "\n! " ++ ran.error
+    }
+    ran.output == "" ? "(no output)" : ran.output
+}
+
+emptyNote(pane: str) -> str {
+    if brokenSource() {
+        "(fix the parse error first)"
+    } else if mode == 1 {
+        "(config mode emits Nix and nothing else)"
+    } else if pane == "Nix" {
+        "(Nix is what config mode emits: switch to config in the header)"
+    } else {
+        "(nothing here: {pane} came back empty for this program)"
+    }
+}
+
+paneText(pane: str) -> str {
+    if pane == "Preview" || pane == "Definitions" {
+        return ""
+    }
+    if pane == "Diagnostics" {
+        return diagnosticsText()
+    }
+    if pane == "Console" {
+        return consoleText()
+    }
+    refused = refusalText(pane)
+    if refused != "" {
+        return refused
+    }
+    code = emitted(pane)
+    if code == "" {
+        return emptyNote(pane)
+    }
+    dropped = pane == "Nix" ? configDrops() : []
+    if len(dropped) == 0 {
+        return code
+    }
+    "this configuration does not carry {dropped.join(", ")}: a config module "
+        ++ "is options, not code.\n\n" ++ code
+}
+
+previewNote() -> str {
+    if brokenSource() {
+        "the program does not parse yet"
+    } else if emitted("JS") == "" {
+        "config mode has no page to build"
+    } else {
+        "no page here: declare main() -> Element and return a tag call, such as div(class=\"p-4\", \"hello\")"
+    }
+}
+
+escaped(s: str) -> str =>
+    s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+outlineHtml() -> str {
+    row(s: Sym) -> str =>
+        "<div class='ol-item' onclick='reveal({s.line})'>"
+            ++ "<span class='ol-kind ol-{s.kind}'>{s.kind}</span>"
+            ++ "<span class='ol-name'>{escaped(s.name)}</span>"
+            ++ "<span class='ol-detail'>{escaped(s.detail)}</span></div>"
+
+    found = symbols()
+    if len(found) == 0 {
+        return "<div class='ol-empty'>no definitions in this program</div>"
+    }
+    out = ""
+    for s in found {
+        out = out ++ row(s)
+    }
+    out
+}
+
+plural(n: int) -> str =>
+    n == 1 ? "" : "s"
+
+verdict() -> str {
+    n = len(problems()) + len(configDrops())
+
+    n == 0 ? "compiled clean" : "{n} diagnostic{plural(n)}"
+}
+
+statusLine() -> str {
+    if trouble != "" {
+        return trouble
+    }
+    if !ready {
+        return "loading the compiler"
+    }
+    verdict()
+}
+
+versionLine() -> str =>
+    version == "" ? "" : "maca {version} (wasm)"
+
+editorLine() -> str =>
+    editor == "" ? "" : "{editor} editor"
+
+runBadge() -> str {
+    if buildsAPage() {
+        return "builds a page"
+    }
+    ran = outcome()
+    if !ran.ran {
+        return ""
+    }
+    if ran.error != "" {
+        return "failed"
+    }
+    ran.exited ? "exit {ran.exit}" : "ran"
+}
+
+timing() -> str {
+    us = micros()
+
+    if us <= 0 {
+        return ""
+    }
+    tenths = int((us + 50) / 100)
+    "{int(tenths / 10)}.{tenths % 10} ms"
+}
+
+scaled(n: int, unit: int) -> str {
+    tenths = int(n * 10 / unit)
+
+    "{int(tenths / 10)}.{tenths % 10}"
+}
+
+counted(n: int) -> str {
+    if n >= 1000000000 {
+        "{scaled(n, 1000000000)}B"
+    } else if n >= 1000000 {
+        "{scaled(n, 1000000)}M"
+    } else if n >= 1000 {
+        "{scaled(n, 1000)}k"
+    } else {
+        "{n}"
+    }
+}
+
+stats() -> str {
+    ran = outcome()
+
+    if !ran.ran {
+        return "run a program to profile it"
+    }
+    tail = ran.truncated ? ", truncated" : ""
+    "{counted(ran.steps)} step{plural(ran.steps)}, "
+        ++ "{counted(ran.calls)} call{plural(ran.calls)}, "
+        ++ "depth {counted(ran.depth)}{tail}"
+}
+
+flameSvg() -> str =>
+    outcome().flame
+
+const Shell = "flex flex-col h-screen bg-zinc-950 text-zinc-100 font-sans"
+const Bar = "flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 border-b border-zinc-800 bg-zinc-900"
+const Brand = "font-mono text-sm font-bold text-violet-400 whitespace-nowrap"
+const Kicker = "text-xs uppercase tracking-widest text-zinc-600 whitespace-nowrap max-sm:hidden"
+const Segment = "flex items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-950 p-1"
+const ModeOn = "px-2.5 py-1 text-xs font-semibold rounded-md border-0 bg-violet-500 text-zinc-950 cursor-pointer"
+const ModeOff = "px-2.5 py-1 text-xs rounded-md border-0 bg-transparent text-zinc-400 cursor-pointer hover:text-zinc-100"
+const Picker = "px-2 py-1 text-xs rounded-md border border-zinc-800 bg-zinc-950 text-zinc-300 cursor-pointer"
+const Ghost = "px-3 py-1 text-xs rounded-md border border-zinc-700 bg-transparent text-zinc-300 cursor-pointer hover:text-zinc-100 hover:border-zinc-500"
+const Primary = "px-3 py-1 text-xs font-semibold rounded-md border-0 bg-violet-500 text-zinc-950 cursor-pointer hover:bg-violet-400"
+const Split = "flex-1 min-h-0 flex flex-col md:flex-row"
+const EditorSide = "flex flex-col flex-1 min-h-0 min-w-0 border-b border-zinc-800 md:border-b-0 md:border-r md:border-zinc-800"
+const OutputSide = "flex flex-col flex-1 min-h-0 min-w-0 bg-zinc-950"
+const PaneHead = "flex items-center gap-2 px-3 py-2 border-b border-zinc-800 bg-zinc-900"
+const PaneTitle = "text-xs uppercase tracking-wider text-zinc-500 font-semibold"
+const Meta = "text-xs font-mono text-zinc-500 tabular-nums whitespace-nowrap"
+const Tabs = "flex items-center gap-1 px-2 py-2 border-b border-zinc-800 bg-zinc-900 overflow-x-auto"
+const TabOn = "px-3 py-1.5 text-xs rounded-md border-0 bg-zinc-800 text-violet-300 font-medium cursor-pointer whitespace-nowrap"
+const TabOff = "px-3 py-1.5 text-xs rounded-md border-0 bg-transparent text-zinc-500 cursor-pointer whitespace-nowrap hover:text-zinc-200"
+const TextPane = "flex-1 min-h-0 m-0 overflow-auto p-4 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-zinc-300"
+const OutlinePane = "flex-1 min-h-0 overflow-auto p-2"
+const PreviewPane = "flex-1 min-h-0 flex flex-col"
+const PreviewFrame = "flex-1 min-h-0 overflow-hidden bg-white"
+const PreviewNote = "p-4 font-mono text-sm leading-relaxed text-zinc-500"
+const Profiler = "flex-none border-t border-zinc-800 p-3 bg-zinc-900"
+const Foot = "flex items-center gap-3 px-4 py-2 text-xs border-t border-zinc-800 bg-zinc-900"
+
+tabInMode(name: str) -> bool {
+    if mode == 1 {
+        name == "Diagnostics" || name == "Definitions" || name == "Nix"
+    } else {
+        name != "Nix"
+    }
+}
 
 tabClass(name: str) -> str {
     if !tabInMode(name) {
@@ -1056,88 +1198,108 @@ tabClass(name: str) -> str {
     }
 }
 
-tabInMode(name: str) -> bool {
-    if mode == 1 {
-        name == "Diagnostics" || name == "Nix"
-    } else {
-        name != "Nix"
-    }
-}
+modeClass(want: int) -> str =>
+    mode == want ? ModeOn : ModeOff
 
 textPaneClass() -> str =>
-    tab == "Preview" ? "hidden" : TextPane
+    tab == "Preview" || tab == "Definitions" ? "hidden" : TextPane
+
+outlinePaneClass() -> str =>
+    tab == "Definitions" ? OutlinePane : "hidden"
 
 previewPaneClass() -> str =>
     tab == "Preview" ? PreviewPane : "hidden"
 
-modeClass(want: int) -> str =>
-    mode == want ? TabOn : TabOff
+previewFrameClass() -> str =>
+    buildsAPage() ? PreviewFrame : "hidden"
+
+previewNoteClass() -> str =>
+    buildsAPage() ? "hidden" : PreviewNote
+
+profilerClass() -> str =>
+    flameSvg() == "" ? "hidden" : Profiler
 
 main() -> Element =>
-    div(class="flex flex-col h-screen bg-zinc-900 text-zinc-100 font-sans"
+    div(class=Shell
         link(rel="stylesheet", href="../fonts/pretendard.css")
-        header(class="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-zinc-800 bg-zinc-950"
-            span(class="font-mono font-bold text-violet-400", "◆ Maca playground")
-            span(class="text-xs text-zinc-500 uppercase tracking-wide", "written in Maca")
-            div(class="w-4")
-            button(class=modeClass(0), onclick=useProgram, "program")
-            button(class=modeClass(1), onclick=useConfig, "config")
-            select(id="examples", class=Picker, onchange=pickExample
+        header(class=Bar
+            span(class=Brand, "◆ maca")
+            span(class=Kicker, "playground")
+            div(class=Segment
+                button(class=modeClass(0), onclick=useProgram, "program")
+                button(class=modeClass(1), onclick=useConfig, "config")
+            )
+            select(id="examples", class=Picker,
+                   onchange=(e => load(e.target.value))
                 option(value="", "examples")
                 option(value="hello", "hello")
                 option(value="page", "a page")
                 option(value="tour", "the syntax")
                 option(value="tree", "sum types")
                 option(value="list", "closures")
+                option(value="guard", "early return")
                 option(value="async", "async")
                 option(value="format", "format specs")
                 option(value="config", "config mode")
             )
-            span(class="text-xs text-zinc-500 truncate max-w-sm", note)
+            span(class="text-xs text-zinc-500 truncate max-w-sm max-sm:hidden", note)
             div(class="flex-1")
-            button(class=Secondary, onclick=share, "Share")
-            button(class="px-3 py-1 text-sm font-semibold rounded bg-violet-500 text-zinc-950 cursor-pointer", onclick=run, "Run ▶")
+            button(class=Ghost, onclick=share, "Share")
+            button(class=Primary, onclick=run, "Run")
         )
-        div(class="flex-1 min-h-0 flex"
-            aside(class="w-56 flex-none min-h-0 flex flex-col border-r border-zinc-800 bg-zinc-950"
-                div(class="px-3 py-2 text-xs uppercase tracking-wide text-zinc-500 font-semibold border-b border-zinc-800", "Definitions")
-                div(class="flex-1 min-h-0 overflow-auto p-1", html=mcOutline())
+        div(class=Split
+            section(class=EditorSide
+                div(class=PaneHead
+                    span(class=PaneTitle, "source")
+                    div(class="flex-1")
+                    span(class=Meta, timing())
+                )
+                div(id="editor",
+                    class="relative flex-1 min-h-0 overflow-hidden bg-zinc-900")
             )
-            div(class="flex-1 min-w-0 grid grid-cols-2"
-                div(id="editor", class="relative min-h-0 h-full overflow-hidden border-r border-zinc-800 bg-zinc-900")
-                div(class="flex flex-col min-w-0 min-h-0 bg-zinc-950"
-                    div(class="flex items-center gap-1 px-2 pt-2 border-b border-zinc-800 overflow-x-auto"
-                        button(class=tabClass("Diagnostics"),
-                               onclick=showDiag, "Diagnostics")
-                        button(class=tabClass("Console"),
-                               onclick=showConsole, "Console")
-                        button(class=tabClass("Preview"),
-                               onclick=showPreview, "Preview")
-                        button(class=tabClass("C"), onclick=showC, "C")
-                        button(class=tabClass("JS"), onclick=showJs, "JS")
-                        button(class=tabClass("CSS"), onclick=showCss, "CSS")
-                        button(class=tabClass("Nix"), onclick=showNix, "Nix")
+            section(class=OutputSide
+                div(class=Tabs
+                    button(class=tabClass("Diagnostics"),
+                           onclick=(e => choose("Diagnostics")), "Diagnostics")
+                    button(class=tabClass("Console"),
+                           onclick=(e => choose("Console")), "Console")
+                    button(class=tabClass("Preview"),
+                           onclick=(e => choose("Preview")), "Preview")
+                    button(class=tabClass("Definitions"),
+                           onclick=(e => choose("Definitions")), "Definitions")
+                    button(class=tabClass("C"),
+                           onclick=(e => choose("C")), "C")
+                    button(class=tabClass("JS"),
+                           onclick=(e => choose("JS")), "JS")
+                    button(class=tabClass("CSS"),
+                           onclick=(e => choose("CSS")), "CSS")
+                    button(class=tabClass("Nix"),
+                           onclick=(e => choose("Nix")), "Nix")
+                    div(class="flex-1")
+                    span(class=Meta, runBadge())
+                )
+                pre(class=textPaneClass(), paneText(tab))
+                div(class=outlinePaneClass(), html=outlineHtml())
+                div(class=previewPaneClass()
+                    div(id="preview", class=previewFrameClass())
+                    div(class=previewNoteClass(), previewNote())
+                )
+                div(class=profilerClass()
+                    div(class="flex items-baseline gap-2 mb-2"
+                        span(class=PaneTitle, "profiler")
                         div(class="flex-1")
-                        span(class="pr-2 text-xs font-mono text-zinc-500 tabular-nums whitespace-nowrap", mcRunBadge())
+                        span(class=Meta, stats())
                     )
-                    pre(class=textPaneClass(), mcTab(tab))
-                    div(id="preview", class=previewPaneClass())
-                    div(class="flex-none border-t border-zinc-800 p-4"
-                        div(class="flex items-baseline gap-2 mb-2"
-                            span(class="text-xs uppercase tracking-wide text-zinc-500 font-semibold", "Profiler")
-                            div(class="flex-1")
-                            span(class="text-sm font-semibold tabular-nums text-violet-300", mcMs())
-                            span(class="text-xs text-zinc-500 tabular-nums", mcStats())
-                        )
-                        div(class="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950", html=mcFlame())
-                    )
+                    div(class="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950",
+                        html=flameSvg())
                 )
             )
         )
-        footer(class="flex items-center gap-3 px-4 py-2 text-xs border-t border-zinc-800 bg-zinc-950"
-            span(class="font-mono text-zinc-400 truncate", mcHover())
+        footer(class=Foot
+            span(class="font-mono text-zinc-400 truncate", hovered())
             div(class="flex-1")
-            span(class="text-zinc-500", mcStatus())
-            span(class="font-mono text-zinc-500", mcVersion())
+            span(class="text-zinc-500 whitespace-nowrap", statusLine())
+            span(class="font-mono text-zinc-600 whitespace-nowrap", editorLine())
+            span(class="font-mono text-zinc-600 whitespace-nowrap", versionLine())
         )
     )

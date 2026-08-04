@@ -120,10 +120,26 @@ not to the grammars fails the build.
 ## The playground
 
 `apps/playground/playground.maca` is a browser playground: an editor, live
-diagnostics, and the ability to run a program and see its C and JavaScript
-output. It is a single Maca file compiled by the JavaScript backend, with its
-own host glue and stylesheet carried inline in raw strings. It is worth reading
-as an example of a real program in the language.
+diagnostics, and every artifact the front end produced from the program in one
+tab strip. Console is the interpreter's output and the exit status, Preview
+runs the emitted JavaScript for real in a sandboxed iframe, Definitions is the
+document outline, C, JS and CSS are what the back ends wrote, and Nix is what
+config mode emits. A tab a mode has no answer for is not offered, and the
+profiler strip appears only when there is a flame graph to put in it. At narrow
+widths the editor and the output stack rather than sitting side by side.
+
+It is a single Maca file compiled by the JavaScript backend, and it is worth
+reading as the worked example of two things this book documents elsewhere. The
+first is [the `maca` bridge](a13-ffi.md): the file opens with fifteen
+signatures that have no body, which is the whole of what the `import js` block
+is allowed to be reached by, and the block answers them with `maca.provide`.
+Everything behind that boundary is the browser and nothing else, the
+WebAssembly instance, the editor, the URL fragment, the clipboard, the preview
+iframe. Which examples exist, what each pane says, what the status line reads:
+all Maca. The second is [assignment as the update](a11-ui.md). The Maca half
+contains no repaint call at all; writing `tab` or `mode` repaints the nodes
+that read them. The single `maca.refresh()` left is in the host, for the one
+thing Maca cannot see happen: a compile result arriving.
 
 ## Profiling
 
