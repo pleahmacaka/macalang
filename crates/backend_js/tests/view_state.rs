@@ -8,7 +8,17 @@ function makeNode(tag) {
     _a: {}, _on: {}, children: [],
     setAttribute(k, v) { this._a[k] = v; }, removeAttribute(k) { delete this._a[k]; },
     addEventListener(k, f) { (this._on[k] = this._on[k] || []).push(f); },
-    appendChild(c) { this.children.push(c); return c; } };
+    appendChild(c) { this.children.push(c); return c; },
+    insertBefore(c, before) {
+      const at = this.children.indexOf(before);
+      this.children.splice(at < 0 ? this.children.length : at, 0, c);
+      return c;
+    },
+    removeChild(c) {
+      const at = this.children.indexOf(c);
+      if (at >= 0) this.children.splice(at, 1);
+      return c;
+    } };
 }
 function makeText(t) {
   const n = { nodeType: 3, _t: String(t), _p: 0 };
@@ -23,7 +33,9 @@ global.document = { activeElement: null, createElement: makeNode, createTextNode
   getElementById: (id) => (id === "app" ? app : null) };
 function view(n) {
   n = n || app;
-  return n.nodeType === 3 ? String(n.textContent) : n.children.map(view).join("|");
+  if (n.nodeType === 3) return String(n.textContent);
+  return n.children.filter((c) => c.nodeType !== 3 || c.textContent !== "")
+    .map(view).join("|");
 }
 function nodes(name, n) {
   n = n || app;

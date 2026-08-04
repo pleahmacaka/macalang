@@ -7,7 +7,17 @@ const DOM: &str = r#"function makeNode(tag) {
     children: [], innerHTML: "",
     setAttribute(k, v) { this._a[k] = v; }, removeAttribute(k) { delete this._a[k]; },
     addEventListener(k, f) { (this._on[k] = this._on[k] || []).push(f); },
-    appendChild(c) { this.children.push(c); return c; } };
+    appendChild(c) { this.children.push(c); return c; },
+    insertBefore(c, before) {
+      const at = this.children.indexOf(before);
+      this.children.splice(at < 0 ? this.children.length : at, 0, c);
+      return c;
+    },
+    removeChild(c) {
+      const at = this.children.indexOf(c);
+      if (at >= 0) this.children.splice(at, 1);
+      return c;
+    } };
 }
 function makeText(t) { return { nodeType: 3, textContent: String(t) }; }
 const app = makeNode("div");
@@ -107,12 +117,22 @@ main() -> Element =>
 fn a_view_that_returns_the_empty_list_adds_no_node() {
     let out = run(
         TOOLBAR,
-        &["view()", "count(\"div\")", "(state.locked = false, view())"],
+        &[
+            "view()",
+            "count(\"div\")",
+            "(state.locked = false, view())",
+            "(state.locked = true, view())",
+        ],
     );
     assert_eq!(
         out,
-        ["section{span{title}}", "1", "section{span{title}}"],
-        "the empty list contributes nothing, and `div` is only the mount point"
+        [
+            "section{span{title}}",
+            "1",
+            "section{span{title}div.bar{edit}}",
+            "section{span{title}}"
+        ],
+        "the empty list contributes nothing, and the view follows the state it reads"
     );
 }
 

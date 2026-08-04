@@ -149,6 +149,15 @@ one repaint, after the loop.
 **A write that changes nothing is not an update.** Assigning the value a name
 already holds marks nothing dirty and repaints nothing.
 
+That is per *node*, and a view is more than a node. A child that is a call to a
+view (`toolbar()`, `dialog()`) is a whole subtree, and its shape depends on what
+the view read: `toolbar()` answers `[]` while the page is locked and a row of
+buttons once it is not. So a view child is anchored where it was written and
+**rebuilt** when the state it reads changes, its old nodes and their bindings
+dropped together. Its locals are made afresh with it, which is why a rebuild
+watches the program's state and not the view's own: waking on a local would
+throw away the write that woke it.
+
 `update()` remains, and so does `maca.refresh()`, for the case the rule cannot
 see: something outside Maca moved, and a node that reads it has to be told. A
 view that *assigns* state is a different matter: it would repaint itself

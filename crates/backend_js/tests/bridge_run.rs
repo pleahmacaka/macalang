@@ -6,7 +6,11 @@ const DOM: &str = "\
 function makeNode(tag) {\n\
   return { tagName: String(tag).toUpperCase(), className: \"\", _a: {}, children: [],\n\
     setAttribute(k, v) { this._a[k] = v; }, removeAttribute(k) { delete this._a[k]; },\n\
-    addEventListener() {}, appendChild(c) { this.children.push(c); return c; } };\n\
+    addEventListener() {}, appendChild(c) { this.children.push(c); return c; },\n\
+    insertBefore(c, b) { const i = this.children.indexOf(b); \
+this.children.splice(i < 0 ? this.children.length : i, 0, c); return c; },\n\
+    removeChild(c) { const i = this.children.indexOf(c); \
+if (i >= 0) this.children.splice(i, 1); return c; } };\n\
 }\n\
 const app = makeNode(\"div\");\n\
 global.document = { createElement: makeNode,\n\
@@ -16,7 +20,9 @@ global.document = { createElement: makeNode,\n\
 // would see rather than which node holds it.\n\
 function view(n) {\n\
   n = n || app;\n\
-  return n.nodeType === 3 ? String(n.textContent) : n.children.map(view).join(\"|\");\n\
+  if (n.nodeType === 3) return String(n.textContent);\n\
+  return n.children.filter((c) => c.nodeType !== 3 || c.textContent !== \"\")\n\
+    .map(view).join(\"|\");\n\
 }\n\
 // A throw is an answer here, so report the message the same way as a value.\n\
 function err(f) { try { f(); return \"no throw\"; } catch (e) { return String(e.message); } }\n";

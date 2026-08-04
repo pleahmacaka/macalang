@@ -4,11 +4,21 @@ use std::process::Command;
 /// A DOM that can be typed into and clicked, and that counts every repaint of a text node.
 const DOM: &str = r#"let paints = 0;
 function makeNode(tag) {
-  return { tagName: String(tag).toUpperCase(), className: "", value: "", _a: {}, _on: {},
+  return { nodeType: 1, tagName: String(tag).toUpperCase(), className: "", value: "", _a: {}, _on: {},
     children: [],
     setAttribute(k, v) { this._a[k] = v; }, removeAttribute(k) { delete this._a[k]; },
     addEventListener(k, f) { (this._on[k] = this._on[k] || []).push(f); },
-    appendChild(c) { this.children.push(c); return c; } };
+    appendChild(c) { this.children.push(c); return c; },
+    insertBefore(c, before) {
+      const at = this.children.indexOf(before);
+      this.children.splice(at < 0 ? this.children.length : at, 0, c);
+      return c;
+    },
+    removeChild(c) {
+      const at = this.children.indexOf(c);
+      if (at >= 0) this.children.splice(at, 1);
+      return c;
+    } };
 }
 function makeText(t) {
   const n = { nodeType: 3, _t: String(t) };
@@ -23,7 +33,9 @@ global.document = { activeElement: null, createElement: makeNode, createTextNode
   getElementById: (id) => (id === "app" ? app : null) };
 function view(n) {
   n = n || app;
-  return n.nodeType === 3 ? String(n.textContent) : n.children.map(view).join("|");
+  if (n.nodeType === 3) return String(n.textContent);
+  return n.children.filter((c) => c.nodeType !== 3 || c.textContent !== "")
+    .map(view).join("|");
 }
 function nodes(name, n) {
   n = n || app;
@@ -488,6 +500,92 @@ fn a_computed_binding_stays_reactive_after_the_page_starts() {
     );
     assert_eq!(out[0], "dark|work|false|2|hi home|6");
     assert_eq!(out[1], "dark|work|false|2|hi home|9");
+}
+
+/// A handler written as a call, and two views whose whole subtree follows the state they read.
+const SUBTREE: &str = "\
+Mode = Idle | Busy(int)
+
+locked = true
+mode = Idle
+
+lock(next: bool) {
+    locked = next
+}
+
+work(n: int) {
+    mode = Busy(n)
+}
+
+toolbar() -> Element[] {
+    if locked {
+        return []
+    }
+
+    [div(class=\"bar\", button(onclick=work(7), \"go\"))]
+}
+
+label() -> Element =>
+    match mode {
+        Idle => span(\"idle\")
+        Busy(n) => span(\"busy {n}\")
+    }
+
+main() -> Element =>
+    section(
+        button(onclick=lock(false), \"unlock\")
+        toolbar()
+        label()
+    )
+";
+
+#[test]
+fn a_view_child_is_rebuilt_when_the_state_it_reads_changes() {
+    let out = run(
+        SUBTREE,
+        &[
+            "view()",
+            "(fire(el(\"button\"), \"click\"), view())",
+            "(fire(el(\"button\", 1), \"click\"), view())",
+        ],
+    );
+    assert_eq!(out[0], "unlock|idle", "the empty list contributes nothing");
+    assert_eq!(out[1], "unlock|go|idle", "unlocking brings the toolbar in");
+    assert_eq!(
+        out[2], "unlock|go|busy 7",
+        "a handler written as a call fires when the event does, not while the page is built"
+    );
+}
+
+/// Two variants of the same sum are the same value, whether or not they came through the state proxy.
+#[test]
+fn a_sum_is_compared_by_what_it_is() {
+    let src = "\
+Mode = Idle | Busy(int)
+
+Held = { mode: Mode }
+
+held = Held { mode = Idle }
+
+go() { held = held with { mode = Busy(2) } }
+
+reading() -> str {
+    if held.mode == Busy(2) {
+        return \"busy2\"
+    }
+
+    if held.mode == Idle {
+        return \"idle\"
+    }
+
+    \"other\"
+}
+
+main() -> Element => div(button(onclick=go, \"go\") span(reading()))
+";
+    let out = run(src, &["view()", "(fire(el(\"button\"), \"click\"), view())"]);
+    assert_eq!(out[0], "go|idle", "a variant read through the state proxy");
+    assert_eq!(out[1], "go|busy2", "and one with a payload");
 }
 
 #[test]

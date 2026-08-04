@@ -215,6 +215,9 @@ let _depth = 0;
 function _reactive(name, v) {
   if (v === null || typeof v !== "object") return v;
   if (!Array.isArray(v) && Object.getPrototypeOf(v) !== Object.prototype) return v;
+  // A sum variant is a value, not a container: wrapping it would make two reads
+  // of the same variant two different objects.
+  if (typeof v.$ === "string") return v;
   let p = _proxies.get(v);
   if (p === undefined) {
     p = new Proxy(v, {
@@ -286,6 +289,13 @@ function _run(bs) {
     _depth -= 1;
   }
 }
+// A rebuilt subtree's nodes are gone, so the bindings that painted them are too.
+function _reap() {
+  if (!_binds.some((b) => b.dead)) return;
+  const keep = _binds.filter((b) => !b.dead);
+  _binds.length = 0;
+  for (const b of keep) _binds.push(b);
+}
 function _flush() {
   for (let pass = 0; _dirty.size > 0; pass += 1) {
     if (pass === 8) {
@@ -294,12 +304,15 @@ function _flush() {
     }
     const names = _dirty;
     _dirty = new Set();
-    _run(_binds.filter((b) => b.deps === null || b.deps.some((n) => names.has(n))));
+    _reap();
+    _run(_binds.filter((b) => !b.dead && (b.deps === null || b.deps.some((n) => names.has(n)))));
   }
+  _reap();
 }
 function update() {
   _dirty = new Set();
-  _run(_binds);
+  _reap();
+  _run(_binds.filter((b) => !b.dead));
 }
 "#;
 
@@ -1263,6 +1276,16 @@ fn is_dynamic(e: &Expr) -> bool {
     }
 }
 
+/// What a whole subtree is rebuilt for: the names the child reads, and when that is out of reach, every name the program can write.
+///
+/// Never `null`. A rebuild makes the view's locals afresh, so waking on a write to one of them would throw away what the write was for.
+fn rebuild_deps(child: &Expr) -> String {
+    match deps(child) {
+        None => "_vars".into(),
+        Some(_) => dep_list(child),
+    }
+}
+
 /// The dependency list a `_bind` is registered with: the names it reads, or `null` for "whenever anything changed".
 fn dep_list(e: &Expr) -> String {
     match deps(e) {
@@ -1572,8 +1595,8 @@ fn jbinary(op: BinOp, lhs: &Expr, rhs: &Expr) -> String {
         Mod => "%",
         Shl => "<<",
         Shr => ">>",
-        Eq => "===",
-        Ne => "!==",
+        Eq => return format!("_meq({l}, {r})"),
+        Ne => return format!("!_meq({l}, {r})"),
         Lt => "<",
         Gt => ">",
         Le => "<=",
@@ -1697,6 +1720,18 @@ fn method(name: &str, recv: &str, args: &[String]) -> Option<String> {
 
 /// Helpers the method lowerings call, emitted only when one is used.
 const METHOD_HELPERS: &[(&str, &str)] = &[
+    (
+        "_meq",
+        "function _meq(a, b) {\n\
+         \x20 if (a === b) return true;\n\
+         \x20 if (a === null || b === null) return false;\n\
+         \x20 if (typeof a !== \"object\" || typeof b !== \"object\") return false;\n\
+         \x20 if (Array.isArray(a) !== Array.isArray(b)) return false;\n\
+         \x20 const ka = Object.keys(a);\n\
+         \x20 if (ka.length !== Object.keys(b).length) return false;\n\
+         \x20 return ka.every((k) => _meq(a[k], b[k]));\n\
+         }",
+    ),
     (
         "_mstr",
         "function _mstr(v) {\n  if (v !== null && typeof v === \"object\" && typeof v.$ === \"string\") return v.$;\n  return String(v);\n}",
@@ -1926,7 +1961,15 @@ impl Cx {
                     value,
                 } => self.handler(&v, prop, value, out),
                 Arg::Pos(child) if !is_tag_call(child) && contributes_elements(child) => {
-                    out.push_str(&format!("  _append({v}, {});\n", jexpr(child)));
+                    if is_dynamic(child) {
+                        out.push_str(&format!(
+                            "  _kids({v}, {}, () => {});\n",
+                            rebuild_deps(child),
+                            jexpr(child)
+                        ));
+                    } else {
+                        out.push_str(&format!("  _append({v}, {});\n", jexpr(child)));
+                    }
                 }
                 Arg::Pos(child) => {
                     let cv = self.element(child, out);
@@ -1941,7 +1984,7 @@ impl Cx {
     fn handler(&self, v: &str, event: &str, value: &Expr, out: &mut String) {
         out.push_str(&format!(
             "  {v}.addEventListener(\"{event}\", _turn({}));\n",
-            jexpr(value)
+            handler_value(value)
         ));
     }
 
@@ -2035,6 +2078,28 @@ impl Cx {
              \x20 _bind([b.$t], () => {{\n\
              \x20   if (document.activeElement !== n) n[k] = b.read();\n\
              \x20 }});\n\
+             }}\n\
+             function _kids(p, deps, make) {{\n\
+             \x20 const mark = document.createTextNode(\"\");\n\
+             \x20 p.appendChild(mark);\n\
+             \x20 let live = [];\n\
+             \x20 let mine = [];\n\
+             \x20 const paint = () => {{\n\
+             \x20   for (const b of mine) b.dead = true;\n\
+             \x20   for (const n of live) p.removeChild(n);\n\
+             \x20   live = [];\n\
+             \x20   const at = _binds.length;\n\
+             \x20   const made = make();\n\
+             \x20   mine = _binds.slice(at);\n\
+             \x20   const xs = Array.isArray(made) ? made : made == null ? [] : [made];\n\
+             \x20   for (const x of xs) {{\n\
+             \x20     const node = _node(x);\n\
+             \x20     p.insertBefore(node, mark);\n\
+             \x20     live.push(node);\n\
+             \x20   }}\n\
+             \x20 }};\n\
+             \x20 paint();\n\
+             \x20 _bind(deps, paint);\n\
              }}\n\
              function _kid(n, c) {{\n\
              \x20 const first = c.$d();\n\
@@ -2201,6 +2266,18 @@ fn writable(target: &Expr) -> Option<(String, String, String)> {
             let set = format!("{get} = $v");
             (is_cell(n) || (state && !konst)).then(|| (dep_key(n), get, set))
         }
+        Expr::Field { base, name } => {
+            let (key, _, _) = writable(base)?;
+            let get = format!("{}.{name}", jexpr(base));
+            let set = format!("{get} = $v");
+            Some((key, get, set))
+        }
+        Expr::Index { base, index } => {
+            let (key, _, _) = writable(base)?;
+            let get = format!("{}[{}]", jexpr(base), jexpr(index));
+            let set = format!("{get} = $v");
+            Some((key, get, set))
+        }
         Expr::Lambda { params, body, .. } => {
             let Expr::Assign { target: t, value } = body.as_ref() else {
                 return None;
@@ -2215,20 +2292,28 @@ fn writable(target: &Expr) -> Option<(String, String, String)> {
 }
 
 /// `tag(attr=value, …, child, …)` as a value: one call that builds the node.
+/// What an event is handed: a name or a lambda is the handler itself, and anything else is what to do when it fires, so it waits for the event rather than running while the page is built.
+fn handler_value(value: &Expr) -> String {
+    match value {
+        Expr::Ident(_) | Expr::Lambda { .. } | Expr::Field { .. } => jexpr(value),
+        other => format!("(() => {})", arrow_body(other)),
+    }
+}
+
 fn jelement(tag: &str, args: &[Arg]) -> String {
     let mut props: Vec<String> = Vec::new();
     let mut kids: Vec<String> = Vec::new();
     for a in args {
         match a {
             Arg::Named { name, value } => match event_name(name) {
-                Some(ev) => props.push(format!("\"on:{ev}\": {}", jexpr(value))),
+                Some(ev) => props.push(format!("\"on:{ev}\": {}", handler_value(value))),
                 None => props.push(format!("{name:?}: {}", jprop(name, value))),
             },
             Arg::Directive {
                 kind: Dir::On,
                 prop,
                 value,
-            } => props.push(format!("\"on:{prop}\": {}", jexpr(value))),
+            } => props.push(format!("\"on:{prop}\": {}", handler_value(value))),
             Arg::Directive {
                 kind: Dir::Bind,
                 prop,
