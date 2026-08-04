@@ -957,7 +957,7 @@ fn jexpr(e: &Expr) -> String {
                 .map(|p| p.name.clone())
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("(({ps}) => {})", jexpr(body))
+            format!("(({ps}) => {})", arrow_body(body))
         }
         Expr::Fail(x) => format!("(() => {{ throw new Error(String({})); }})()", jexpr(x)),
         Expr::Reify(x) => format!(
@@ -970,6 +970,17 @@ fn jexpr(e: &Expr) -> String {
             .into(),
         _ => "null".into(),
     }
+}
+
+/// The body of an arrow function, parenthesised when it opens with a brace, which JS would otherwise read as a block.
+fn arrow_body(body: &Expr) -> String {
+    let code = jexpr(body);
+
+    if code.starts_with('{') {
+        return format!("({code})");
+    }
+
+    code
 }
 
 /// `match` in expression position → an IIFE with an if-chain.

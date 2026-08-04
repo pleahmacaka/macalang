@@ -70,6 +70,15 @@ fn record_update_is_object_spread() {
 }
 
 #[test]
+fn a_record_update_in_an_arrow_body_stays_an_object() {
+    let out = js("P = {\n    x: int\n}\nbump(ps: P[]) -> P[] => ps.map(p => p with { x = 9 })\n");
+    assert!(
+        out.contains("=> ({ ...p,"),
+        "the arrow body is a block, so `...p` is a rest parameter:\n{out}"
+    );
+}
+
+#[test]
 fn string_concat_uses_plus_or_concat() {
     let out = js("greet(n: str) -> str => \"hi {n}\"\n");
     assert!(out.contains("hi"), "interpolation dropped:\n{out}");
