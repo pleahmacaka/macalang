@@ -32,12 +32,18 @@ xs[2] = 99
 | `reduce(init, f)` | `U` | `f(acc, x)` left to right |
 | `fold(init, f)` | `U` | same |
 | `sort()` | `T[]` | ascending |
+| `sort_by(key)` | `T[]` | ascending by `key(x)`, an `int`, `float` or `str` |
 | `reverse()` | `T[]` | |
 | `push(x)` | `T[]` | a longer list |
 | `pop()` | `T[]` | a shorter list |
+| `set(i, x)` | `T[]` | element `i` replaced |
+| `insert(i, x)` | `T[]` | `x` at `i`, the rest shifted along |
+| `remove(i)` | `T[]` | element `i` gone, the gap closed |
 | `slice(from, to)` | `T[]` | `to` is exclusive |
 | `contains(x)` | `bool` | |
 | `index_of(x)` | `int` | `-1` when absent |
+| `index_of_by(f)` | `int` | the first `x` where `f(x)`, else `-1` |
+| `enumerate()` | `{index, value}[]` | each element with its position |
 | `sum()` `min()` `max()` | `T` | numeric lists |
 | `first()` `last()` | `T` | |
 | `get(i)` | `T` | same as `xs[i]` |
@@ -62,8 +68,32 @@ sorted = ys.sort()
 ```
 
 That is worth internalising. `xs.push(9)` is not a statement that grows `xs`; it
-is an expression whose value is the longer list. [Memory](04-memory.md)
-explains why writing it this way is not the performance mistake it looks like.
+is an expression whose value is the longer list. The same is true of `set`,
+`insert` and `remove`, which are the other three ways to hand back an edited
+list. [Memory](04-memory.md) explains why writing them this way is not the
+performance mistake it looks like.
+
+An index a list does not have leaves it alone: `xs.set(9, 0)` and
+`xs.remove(-1)` are the list unchanged, and `xs.insert(99, 0)` puts the value
+at the end, because clamping is the same rule `get` and `slice` already keep.
+
+`sort_by` orders on a key rather than on the element, and it is stable, so
+elements with equal keys stay in the order they were in:
+
+```maca
+ws = ["bb", "a", "cc", "d"]
+info(ws.sort_by(w => w.length()).join(","))   // a,d,bb,cc
+```
+
+`index_of_by` is `index_of` with a question instead of a value, and
+`enumerate()` pairs each element with its position, which is what a loop that
+needs both is usually reaching for:
+
+```maca
+for e in ["a", "b"].enumerate() {
+    info("{e.index}: {e.value}")              // 0: a, then 1: b
+}
+```
 
 `slice` takes a start and an **exclusive** end, so `xs.slice(1, 3)` is two
 elements:

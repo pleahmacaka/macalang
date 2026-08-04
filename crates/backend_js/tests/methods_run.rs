@@ -91,6 +91,13 @@ l_last() -> int => [7, 8].last()
 l_get() -> int => [7, 8].get(1)
 l_join() -> str => ["a", "b"].join("-")
 l_parallel() -> int => [1, 2, 3].parallel(v => v * 2).sum()
+l_set() -> int[] => [1, 2, 3].set(1, 9)
+l_set_past_end() -> int[] => [1, 2, 3].set(7, 9)
+l_insert() -> int[] => [1, 2].insert(0, 9)
+l_remove() -> int[] => [1, 2, 3].remove(1)
+l_index_of_by() -> int => [4, 7, 9].index_of_by(v => v > 5)
+l_enumerate() -> str => ["a", "b"].enumerate().map(e => "{e.index}{e.value}").join("|")
+l_sort_by() -> str => ["bbb", "a", "cc"].sort_by(v => v.length()).join("|")
 
 main() -> int => 0
 "#;
@@ -141,6 +148,13 @@ const EXPECTED: &[(&str, &str)] = &[
     ("l_get", "8"),
     ("l_join", "\"a-b\""),
     ("l_parallel", "12"),
+    ("l_set", "[1,9,3]"),
+    ("l_set_past_end", "[1,2,3]"),
+    ("l_insert", "[9,1,2]"),
+    ("l_remove", "[1,3]"),
+    ("l_index_of_by", "1"),
+    ("l_enumerate", "\"0a|1b\""),
+    ("l_sort_by", "\"a|cc|bbb\""),
 ];
 
 #[test]
@@ -164,7 +178,9 @@ fn every_name_in_both_closed_sets_has_a_lowering() {
         .iter()
         .map(|(f, _)| {
             let bare = f.trim_start_matches("s_").trim_start_matches("l_");
-            bare.trim_end_matches("_missing").trim_end_matches("_str")
+            bare.trim_end_matches("_missing")
+                .trim_end_matches("_str")
+                .trim_end_matches("_past_end")
         })
         .collect();
     let mut missing = Vec::new();

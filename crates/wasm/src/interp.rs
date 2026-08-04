@@ -737,6 +737,72 @@ impl<'a> Interp<'a> {
                 r.pop();
                 Ok(Value::List(r))
             }
+            "set" => {
+                let mut r = list;
+                let i = int_of(vals.get(1));
+                if let (Some(v), true) = (vals.get(2).cloned(), i >= 0 && (i as usize) < r.len()) {
+                    r[i as usize] = v;
+                }
+                Ok(Value::List(r))
+            }
+            "insert" => {
+                let mut r = list;
+                let at = (int_of(vals.get(1)).max(0) as usize).min(r.len());
+                if let Some(v) = vals.get(2).cloned() {
+                    r.insert(at, v);
+                }
+                Ok(Value::List(r))
+            }
+            "remove" => {
+                let mut r = list;
+                let i = int_of(vals.get(1));
+                if i >= 0 && (i as usize) < r.len() {
+                    r.remove(i as usize);
+                }
+                Ok(Value::List(r))
+            }
+            "enumerate" => Ok(Value::List(
+                list.into_iter()
+                    .enumerate()
+                    .map(|(i, v)| {
+                        Value::Record(vec![
+                            ("index".into(), Value::Int(i as i64)),
+                            ("value".into(), v),
+                        ])
+                    })
+                    .collect(),
+            )),
+            "index_of_by" => {
+                let Some(c) = &f else {
+                    return Some(Ok(Value::Int(-1)));
+                };
+                let mut at = -1;
+                for (i, x) in list.iter().enumerate() {
+                    match run(self, c, x.clone()) {
+                        Ok(v) if truthy(&v) => {
+                            at = i as i64;
+                            break;
+                        }
+                        Ok(_) => {}
+                        Err(e) => return Some(Err(e)),
+                    }
+                }
+                Ok(Value::Int(at))
+            }
+            "sort_by" => {
+                let Some(c) = &f else {
+                    return Some(Ok(Value::List(list)));
+                };
+                let mut keyed = Vec::with_capacity(list.len());
+                for x in list {
+                    match run(self, c, x.clone()) {
+                        Ok(k) => keyed.push((k, x)),
+                        Err(e) => return Some(Err(e)),
+                    }
+                }
+                keyed.sort_by(|a, b| cmp_values(&a.0, &b.0));
+                Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect()))
+            }
             "contains" => Ok(Value::Bool(
                 f.map(|x| list.iter().any(|e| equal(e, &x)))
                     .unwrap_or(false),

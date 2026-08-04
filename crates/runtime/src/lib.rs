@@ -81,6 +81,9 @@ maca_str maca_from_int(int64_t n);
 maca_str maca_from_float(double d);
 maca_str maca_from_bool(bool b);
 bool maca_str_eq(maca_str a, maca_str b);
+/* Byte order, the same order `maca_sort_str` puts a list in, so a `sort_by`
+   with a `str` key agrees with a plain `sort`. */
+int maca_str_cmp(maca_str a, maca_str b);
 maca_str maca_join(maca_str* data, int64_t len, maca_str sep);
 maca_str maca_str_at(maca_str s, int64_t i); /* single-char str at byte i ("" if OOB) */
 maca_str maca_chr(int64_t b);               /* the one-byte string holding b   */
@@ -231,6 +234,23 @@ maca_str maca_json_str(maca_json* j);
         Name r = Name##_new();                                                 \
         for (int64_t i = from; i < a.len; i++) Name##_push(&r, a.data[i]);     \
         return r;                                                              \
+    }                                                                          \
+    /* An index the list does not have leaves it alone, which is what `get`    \
+       and `slice` already do: one out-of-range rule for the whole family. */  \
+    static inline void Name##_put(Name* a, int64_t at, Elem x) {               \
+        if (at >= 0 && at < a->len) a->data[at] = x;                           \
+    }                                                                          \
+    static inline void Name##_insert(Name* a, int64_t at, Elem x) {            \
+        if (at < 0) at = 0;                                                    \
+        if (at > a->len) at = a->len;                                          \
+        Name##_push(a, x);                                                     \
+        for (int64_t i = a->len - 1; i > at; i--) a->data[i] = a->data[i - 1]; \
+        a->data[at] = x;                                                       \
+    }                                                                          \
+    static inline void Name##_erase(Name* a, int64_t at) {                     \
+        if (at < 0 || at >= a->len) return;                                    \
+        for (int64_t i = at; i + 1 < a->len; i++) a->data[i] = a->data[i + 1]; \
+        a->len--;                                                              \
     }
 
 /* A string-keyed hash map, monomorphized on its value type exactly as arrays
@@ -650,6 +670,7 @@ bool maca_str_eq(maca_str a, maca_str b) {
     if (!a || !b) return false;
     return strcmp(a, b) == 0;
 }
+int maca_str_cmp(maca_str a, maca_str b) { return strcmp(a ? a : "", b ? b : ""); }
 maca_str maca_join(maca_str* data, int64_t len, maca_str sep) {
     maca_sb sb; maca_sb_init(&sb);
     for (int64_t i = 0; i < len; i++) {

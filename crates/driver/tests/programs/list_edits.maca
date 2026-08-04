@@ -1,0 +1,212 @@
+Link = { title: str, rank: int }
+
+grow_front(n: int) -> int[] {
+    out: int[] = []
+    for i in 1..n {
+        out = out.insert(0, i)
+    }
+    out
+}
+
+shrink(n: int) -> int[] {
+    out: int[] = []
+    for i in 1..n {
+        out = out.push(i)
+    }
+    for i in 1..n / 2 {
+        out = out.remove(0)
+    }
+    out
+}
+
+overwrite(n: int) -> int[] {
+    out: int[] = []
+    for i in 1..n {
+        out = out.push(0)
+    }
+    for i in 1..n {
+        out = out.set(i - 1, i)
+    }
+    out
+}
+
+edit_all(dst: int[]) -> int[] {
+    dst = dst.insert(0, 9)
+    dst = dst.set(1, 8)
+    dst = dst.remove(2)
+    dst
+}
+
+test_set_replaces_one_element() {
+    xs = [1, 2, 3]
+
+    assert_eq("{xs.set(1, 9).get(1)}", "9", "the middle one")
+    assert_eq("{xs.set(-1, 9).get(0)}", "1", "a negative index changes nothing")
+    assert_eq("{xs.set(7, 9).get(2)}", "3", "and neither does one past the end")
+    assert_eq("{xs.get(1)}", "2", "the list it was asked about is untouched")
+}
+
+test_insert_shifts_the_rest_along() {
+    xs = [1, 2, 3]
+
+    assert_eq("{xs.insert(0, 9).get(0)}", "9", "at the front")
+    assert_eq("{xs.insert(0, 9).get(1)}", "1", "pushing the old first along")
+    assert_eq("{xs.insert(1, 9).get(1)}", "9", "in the middle")
+    assert_eq("{xs.insert(3, 9).get(3)}", "9", "at the end")
+    assert_eq("{xs.insert(99, 9).get(3)}", "9", "past the end is at the end")
+    assert_eq("{xs.insert(-4, 9).get(0)}", "9", "before the start is at the start")
+    assert_eq("{xs.insert(-1, 9).get(0)}", "9", "and so is just before it")
+    assert_eq("{xs.length()}", "3", "and the original did not grow")
+}
+
+test_remove_closes_the_gap() {
+    xs = [1, 2, 3]
+
+    assert_eq("{xs.remove(1).get(1)}", "3", "the middle one goes")
+    assert_eq("{xs.remove(1).length()}", "2", "one shorter")
+    assert_eq("{xs.remove(9).length()}", "3", "an index it does not have")
+    assert_eq("{xs.remove(-1).length()}", "3", "and a negative one")
+    assert_eq("{xs.length()}", "3", "the original is still whole")
+}
+
+test_index_of_by_finds_the_first_match() {
+    xs = [4, 7, 9, 7]
+
+    assert_eq("{xs.index_of_by(v => v == 7)}", "1", "the first, not the last")
+    assert_eq("{xs.index_of_by(v => v > 100)}", "-1", "nothing matches")
+}
+
+test_index_of_by_reads_a_record_field() {
+    ls = [Link { title = "a", rank = 3 }, Link { title = "b", rank = 1 }]
+
+    assert_eq("{ls.index_of_by(l => l.rank == 1)}", "1", "by field")
+}
+
+test_enumerate_pairs_an_index_with_a_value() {
+    out: str[] = []
+    for e in ["a", "b", "c"].enumerate() {
+        out = out.push("{e.index}:{e.value}")
+    }
+
+    assert_eq(out.join(","), "0:a,1:b,2:c", "index and value, in order")
+}
+
+test_enumerate_of_nothing_is_nothing() {
+    empty: str[] = []
+
+    assert_eq("{empty.enumerate().length()}", "0", "no pairs")
+}
+
+test_sort_by_orders_on_a_str_key() {
+    ls = [Link { title = "c", rank = 2 }, Link { title = "a", rank = 3 },
+          Link { title = "b", rank = 1 }]
+
+    assert_eq(ls.sort_by(l => l.title).map(l => l.title).join(","), "a,b,c",
+              "alphabetical")
+}
+
+test_sort_by_orders_on_an_int_key() {
+    ls = [Link { title = "c", rank = 2 }, Link { title = "a", rank = 3 },
+          Link { title = "b", rank = 1 }]
+
+    assert_eq(ls.sort_by(l => l.rank).map(l => l.title).join(","), "b,c,a",
+              "by rank")
+    assert_eq(ls.map(l => l.title).join(","), "c,a,b", "the original is unsorted")
+}
+
+test_sort_by_keeps_the_order_of_equal_keys() {
+    ws = ["bb", "a", "cc", "d"]
+
+    assert_eq(ws.sort_by(w => w.length()).join(","), "a,d,bb,cc",
+              "`a` before `d`, `bb` before `cc`")
+}
+
+test_an_accumulator_that_inserts_does_not_rebuild_itself() {
+    before = alloc_count() + reuse_count()
+    big = grow_front(2000)
+    spent = alloc_count() + reuse_count() - before
+
+    assert_eq("{big.length()}", "2000", "every round is in it")
+    assert_eq("{big.get(0)}", "2000", "the last one is at the front")
+    assert_eq("{big.get(1999)}", "1", "and the first is at the back")
+    assert(spent < 40, "grew in place: {spent} allocations for 2000 elements")
+}
+
+test_an_accumulator_that_removes_does_not_rebuild_itself() {
+    before = alloc_count() + reuse_count()
+    left = shrink(2000)
+    spent = alloc_count() + reuse_count() - before
+
+    assert_eq("{left.length()}", "1000", "half of them went")
+    assert_eq("{left.get(0)}", "1001", "from the front")
+    assert(spent < 40, "shrank in place: {spent} allocations")
+}
+
+test_an_accumulator_that_writes_does_not_rebuild_itself() {
+    before = alloc_count() + reuse_count()
+    filled = overwrite(2000)
+    spent = alloc_count() + reuse_count() - before
+
+    assert_eq("{filled.get(0)}", "1", "the first slot was written")
+    assert_eq("{filled.get(1999)}", "2000", "and the last")
+    assert(spent < 40, "wrote in place: {spent} allocations")
+}
+
+test_a_second_holder_costs_a_copy_a_round() {
+    base: int[] = []
+    keep = base
+    before = alloc_count() + reuse_count()
+    for i in 1..200 {
+        base = base.insert(0, i)
+    }
+    spent = alloc_count() + reuse_count() - before
+
+    assert_eq("{base.length()}", "200", "the one written to grew")
+    assert_eq("{keep.length()}", "0", "and the other name did not move")
+    assert(spent > 200, "copied every round: {spent} for 200 elements")
+}
+
+test_an_edit_of_a_list_someone_else_holds_leaves_theirs_alone() {
+    a = [1, 2, 3]
+    b = a
+    a = a.set(0, 9)
+    a = a.remove(2)
+
+    assert_eq("{a.get(0)}", "9", "the one edited was written")
+    assert_eq("{a.length()}", "2", "and shortened")
+    assert_eq("{b.get(0)}", "1", "the other still reads its own first")
+    assert_eq("{b.length()}", "3", "and is still whole")
+}
+
+test_a_parameter_is_the_callers_list() {
+    a = [1, 2, 3]
+    b = edit_all(a)
+
+    assert_eq("{b.get(0)}", "9", "the helper edited its own copy")
+    assert_eq("{b.get(1)}", "8", "all three edits landed")
+    assert_eq("{b.length()}", "3", "one in, one out")
+    assert_eq("{a.get(0)}", "1", "and the caller's list is untouched")
+    assert_eq("{a.get(2)}", "3", "all of it")
+    assert_eq("{a.length()}", "3", "including its length")
+}
+
+main() -> int {
+    test_set_replaces_one_element()
+    test_insert_shifts_the_rest_along()
+    test_remove_closes_the_gap()
+    test_index_of_by_finds_the_first_match()
+    test_index_of_by_reads_a_record_field()
+    test_enumerate_pairs_an_index_with_a_value()
+    test_enumerate_of_nothing_is_nothing()
+    test_sort_by_orders_on_a_str_key()
+    test_sort_by_orders_on_an_int_key()
+    test_sort_by_keeps_the_order_of_equal_keys()
+    test_an_accumulator_that_inserts_does_not_rebuild_itself()
+    test_an_accumulator_that_removes_does_not_rebuild_itself()
+    test_an_accumulator_that_writes_does_not_rebuild_itself()
+    test_a_second_holder_costs_a_copy_a_round()
+    test_an_edit_of_a_list_someone_else_holds_leaves_theirs_alone()
+    test_a_parameter_is_the_callers_list()
+
+    failures()
+}

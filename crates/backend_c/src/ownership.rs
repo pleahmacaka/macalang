@@ -105,6 +105,7 @@ const BORROWING_METHODS: &[&str] = &[
     "sum",
     "has",
     "keys",
+    "index_of_by",
 ];
 
 /// What the module's own functions do with a string they return.
@@ -458,7 +459,7 @@ pub fn appendable_names(f: &FnDef, defined: &HashSet<String>) -> HashSet<String>
         FnBody::Expr(e) => vec![Stmt::Expr((**e).clone())],
     };
     each_bind(&stmts, &mut |name, value| {
-        let fresh = matches!(value, Expr::List(_)) || is_self_push(name, value);
+        let fresh = matches!(value, Expr::List(_)) || self_update_method(name, value).is_some();
         own.entry(name.to_string())
             .and_modify(|ok| *ok &= fresh)
             .or_insert(fresh);
@@ -476,13 +477,21 @@ pub fn appendable_names(f: &FnDef, defined: &HashSet<String>) -> HashSet<String>
         .collect()
 }
 
-/// `xs = xs.push(v)`, the only shape that hands a list back to itself.
-fn is_self_push(name: &str, value: &Expr) -> bool {
-    let Expr::Call { callee, .. } = value else {
-        return false;
+/// `xs = xs.push(v)` and its siblings: the shapes that hand a list straight back to the name that held it.
+pub fn self_update_method<'a>(name: &str, value: &'a Expr) -> Option<(&'a str, &'a [Arg])> {
+    let Expr::Call { callee, args } = value else {
+        return None;
     };
-    matches!(callee.as_ref(), Expr::Field { base, name: m }
-        if m == "push" && matches!(base.as_ref(), Expr::Ident(b) if b == name))
+    let Expr::Field { base, name: m } = callee.as_ref() else {
+        return None;
+    };
+    let same = matches!(base.as_ref(), Expr::Ident(b) if b == name);
+    let arity = match m.as_str() {
+        "push" | "remove" => 1,
+        "set" | "insert" => 2,
+        _ => return None,
+    };
+    (same && args.len() == arity).then_some((m.as_str(), args.as_slice()))
 }
 
 fn pattern_names(p: &Pattern, out: &mut HashSet<String>) {
@@ -544,7 +553,7 @@ fn alias_in_stmts(ss: &[Stmt], defined: &HashSet<String>, out: &mut HashSet<Stri
 }
 
 fn self_append(target: &Expr, value: &Expr) -> bool {
-    matches!(target, Expr::Ident(name) if is_self_push(name, value))
+    matches!(target, Expr::Ident(name) if self_update_method(name, value).is_some())
 }
 
 fn alias_in_expr(e: &Expr, defined: &HashSet<String>, out: &mut HashSet<String>) {

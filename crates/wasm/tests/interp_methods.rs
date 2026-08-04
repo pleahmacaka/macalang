@@ -129,6 +129,22 @@ const CASES: &[(&str, &str)] = &[
     ("[7, 8].get(1)", "8"),
     ("[\"a\", \"b\"].join(\"-\")", "a-b"),
     ("[1, 2, 3].parallel(v => v * 2).sum()", "12"),
+    ("[1, 2, 3].set(1, 9).get(1)", "9"),
+    ("[1, 2, 3].set(7, 9).get(1)", "2"),
+    ("[1, 2].insert(0, 9).get(0)", "9"),
+    ("[1, 2].insert(99, 9).get(2)", "9"),
+    ("[1, 2, 3].remove(1).get(1)", "3"),
+    ("[1, 2, 3].remove(9).length()", "3"),
+    ("[4, 7, 9].index_of_by(v => v > 5)", "1"),
+    ("[4, 7, 9].index_of_by(v => v > 90)", "-1"),
+    (
+        "[\"a\", \"b\"].enumerate().map(e => \"{e.index}{e.value}\").join(\"|\")",
+        "0a|1b",
+    ),
+    (
+        "[\"bbb\", \"a\", \"cc\"].sort_by(v => v.length()).join(\"|\")",
+        "a|cc|bbb",
+    ),
 ];
 
 #[test]

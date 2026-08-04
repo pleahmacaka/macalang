@@ -87,6 +87,12 @@ fn every_list_method_the_checker_allows_actually_works() {
         "xs.get(0)",
         "xs.length()",
         "xs.parallel(v => v * 2).length()",
+        "xs.set(1, 9).length()",
+        "xs.insert(0, 9).length()",
+        "xs.remove(0).length()",
+        "xs.index_of_by(v => v > 1)",
+        "xs.enumerate().length()",
+        "xs.sort_by(v => v * -1).length()",
     ];
     let str_calls = ["ss.join(\"-\").length()"];
     assert_eq!(

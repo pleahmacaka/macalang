@@ -99,9 +99,29 @@ and which manifest answers.
   (`crates/driver/tests/programs/nested_fns.maca`.)
 - **List stdlib (UFCS on `T[]`):** `map`/`filter`/`reduce`/`fold` (closures
   typed by the element), `sort`/`reverse`/`push`/`pop`/`contains`/`index_of`/
-  `sum`/`min`/`max`/`first`/`last`. String stdlib on `str`
+  `sum`/`min`/`max`/`first`/`last`, plus the editing and searching pair:
+  `set(i, x)`/`insert(i, x)`/`remove(i)` (a new list, edited at `i`; an index
+  the list does not have leaves it alone, and `insert` clamps, which is the
+  rule `get` and `slice` already keep), `sort_by(key)` (stable, on an `int`,
+  `float` or `str` key), `index_of_by(pred)` (the first index the predicate
+  accepts, else `-1`) and `enumerate()` (a `{index, value}[]`). `set`, `insert`
+  and `remove` obey the same ownership rule as `push`: `xs = xs.insert(0, v)`
+  edits in place, `ys = xs.insert(0, v)` copies. String stdlib on `str`
   (`split`/`trim`/`upper`/…). Math prelude (`sqrt`/`pow`/`abs`/`min`/`max`/
-  `clamp`/`gcd`/…), always available. (`examples/{collections,strings,math}.maca`.)
+  `clamp`/`gcd`/…), always available. (`examples/{collections,strings,math}.maca`,
+  `crates/driver/tests/programs/list_edits.maca`.)
+- **Typed JSON (`import std/json`).** `encode(value)` and `decode(text)` are
+  written by the compiler from the record and sum types the program declares:
+  a record is an object with one member per field in declaration order, a list
+  is an array, and the primitives are themselves. `decode` reads into whatever
+  the binding says (`c: Config = decode(text)`), so a bare `decode(text)` with
+  no destination is a build error. **A sum is its variant name in lower case**
+  (`Layout = List | Grid` is stored `"list"`/`"grid"`), which is total in both
+  directions because Maca capitalises variants; a variant with a payload has no
+  JSON form beyond its name. Text that does not match the type `fail`s with a
+  message naming the field (`field `columns`: expected a number, got a
+  string`), so `try` catches it like any other failure. The rest of `std/json`
+  stays the untyped text layer. (`crates/driver/tests/programs/json_typed.maca`.)
 - Ternary is spaced `c ? x : y`; error-propagation is attached `x?`.
 - Operator overloading (no new syntax): on a user type, an operator resolves to
   a same-named function: `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →

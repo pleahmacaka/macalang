@@ -926,6 +926,12 @@ fn method(name: &str, recv: &str, args: &[String]) -> Option<String> {
         "reverse" => format!("[...({recv})].reverse()"),
         "push" => format!("[...({recv}), {}]", arg(0)),
         "pop" => format!("({recv}).slice(0, -1)"),
+        "set" => format!("_mset({recv}, {}, {})", arg(0), arg(1)),
+        "insert" => format!("_mins({recv}, {}, {})", arg(0), arg(1)),
+        "remove" => format!("_mrem({recv}, {})", arg(0)),
+        "index_of_by" => format!("({recv}).findIndex({})", arg(0)),
+        "enumerate" => format!("({recv}).map((v, i) => ({{ index: i, value: v }}))"),
+        "sort_by" => format!("_msortby({recv}, {})", arg(0)),
         "sum" => format!("({recv}).reduce((_a, _b) => _a + _b, 0)"),
         "min" => format!("_mpick({recv}, -1)"),
         "max" => format!("_mpick({recv}, 1)"),
@@ -977,6 +983,22 @@ const METHOD_HELPERS: &[(&str, &str)] = &[
         "_mlast",
         "function _mlast(xs) { return xs[xs.length - 1]; }",
     ),
+    (
+        "_msortby",
+        "function _msortby(xs, key) {\n  return xs.map((v) => [key(v), v]).sort((a, b) => _mcmp(a[0], b[0])).map((p) => p[1]);\n}",
+    ),
+    (
+        "_mset",
+        "function _mset(xs, i, v) { const r = xs.slice(); if (i >= 0 && i < r.length) r[i] = v; return r; }",
+    ),
+    (
+        "_mins",
+        "function _mins(xs, i, v) { const r = xs.slice(); r.splice(Math.max(0, Math.min(i, r.length)), 0, v); return r; }",
+    ),
+    (
+        "_mrem",
+        "function _mrem(xs, i) { const r = xs.slice(); if (i >= 0 && i < r.length) r.splice(i, 1); return r; }",
+    ),
 ];
 
 /// The helper definitions `js` actually calls, in dependency order.
@@ -984,7 +1006,8 @@ fn method_helpers_for(js: &str) -> String {
     let mut out = String::new();
     for (name, def) in METHOD_HELPERS {
         let needed = js.contains(&format!("{name}("))
-            || (*name == "_mcmp" && (js.contains("_msort(") || js.contains("_mpick(")));
+            || (*name == "_mcmp"
+                && (js.contains("_msort(") || js.contains("_mpick(") || js.contains("_msortby(")));
         if needed && !out.contains(def) {
             out.push_str(def);
             out.push('\n');

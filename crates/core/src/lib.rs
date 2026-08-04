@@ -77,8 +77,32 @@ pub const MAP_METHODS: &[&str] = &["set", "get", "has", "remove", "keys", "lengt
 
 /// Every method a `T[]` receiver accepts, gated the same way.
 pub const LIST_METHODS: &[&str] = &[
-    "map", "filter", "reduce", "fold", "sort", "reverse", "push", "pop", "slice", "contains",
-    "index_of", "sum", "min", "max", "first", "last", "get", "length", "parallel", "join",
+    "map",
+    "filter",
+    "reduce",
+    "fold",
+    "sort",
+    "sort_by",
+    "reverse",
+    "push",
+    "pop",
+    "set",
+    "insert",
+    "remove",
+    "slice",
+    "contains",
+    "index_of",
+    "index_of_by",
+    "enumerate",
+    "sum",
+    "min",
+    "max",
+    "first",
+    "last",
+    "get",
+    "length",
+    "parallel",
+    "join",
 ];
 
 /// Top-level NixOS / home-manager option namespaces we recognize.

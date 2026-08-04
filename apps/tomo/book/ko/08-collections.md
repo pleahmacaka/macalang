@@ -32,12 +32,18 @@ xs[2] = 99
 | `reduce(init, f)` | `U` | `f(acc, x)`, 왼쪽부터 |
 | `fold(init, f)` | `U` | 같음 |
 | `sort()` | `T[]` | 오름차순 |
+| `sort_by(key)` | `T[]` | `key(x)`(`int`/`float`/`str`) 기준 오름차순 |
 | `reverse()` | `T[]` | |
 | `push(x)` | `T[]` | 더 긴 리스트 |
 | `pop()` | `T[]` | 더 짧은 리스트 |
+| `set(i, x)` | `T[]` | `i`번째를 바꾼 리스트 |
+| `insert(i, x)` | `T[]` | `i`에 `x`를 넣고 나머지를 밀어냄 |
+| `remove(i)` | `T[]` | `i`번째를 빼고 빈자리를 메움 |
 | `slice(from, to)` | `T[]` | `to`는 **제외** |
 | `contains(x)` | `bool` | |
 | `index_of(x)` | `int` | 없으면 `-1` |
+| `index_of_by(f)` | `int` | `f(x)`가 참인 첫 `x`, 없으면 `-1` |
+| `enumerate()` | `{index, value}[]` | 각 원소와 그 위치 |
 | `sum()` `min()` `max()` | `T` | 수치 리스트 |
 | `first()` `last()` | `T` | |
 | `get(i)` | `T` | `xs[i]`와 같음 |
@@ -62,8 +68,30 @@ sorted = ys.sort()
 ```
 
 이건 몸에 익혀둘 가치가 있습니다. `xs.push(9)`는 `xs`를 늘리는 문장이 아니라,
-더 긴 리스트를 값으로 갖는 식입니다. 왜 이렇게 쓰는 것이 보기와 달리 성능
-실수가 아닌지는 [메모리](04-memory.md)가 설명합니다.
+더 긴 리스트를 값으로 갖는 식입니다. 편집한 리스트를 돌려주는 나머지 셋,
+`set`, `insert`, `remove`도 마찬가지입니다. 왜 이렇게 쓰는 것이 보기와 달리
+성능 실수가 아닌지는 [메모리](04-memory.md)가 설명합니다.
+
+리스트에 없는 인덱스는 아무 일도 일으키지 않습니다. `xs.set(9, 0)`과
+`xs.remove(-1)`은 그대로인 리스트이고, `xs.insert(99, 0)`은 값을 맨 뒤에
+놓습니다. `get`과 `slice`가 이미 지키는 그 자르기 규칙 그대로입니다.
+
+`sort_by`는 원소가 아니라 키로 정렬하며, 안정적입니다. 키가 같은 원소들은
+원래 순서를 지킵니다.
+
+```maca
+ws = ["bb", "a", "cc", "d"]
+info(ws.sort_by(w => w.length()).join(","))   // a,d,bb,cc
+```
+
+`index_of_by`는 값 대신 질문을 받는 `index_of`이고, `enumerate()`는 각 원소를
+그 위치와 짝지어 줍니다. 둘 다 필요한 반복문이 보통 찾던 것이 이것입니다.
+
+```maca
+for e in ["a", "b"].enumerate() {
+    info("{e.index}: {e.value}")              // 0: a, 그다음 1: b
+}
+```
 
 `slice`는 시작과 **제외되는** 끝을 받으므로 `xs.slice(1, 3)`은 원소 두 개입니다.
 

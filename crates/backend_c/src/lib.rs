@@ -127,6 +127,8 @@ struct Cx<'a> {
     spec_pending: Vec<(String, Vec<CTy>)>,
     /// C container types already defined, and the point in the output where more can still go.
     emitted_containers: HashSet<String>,
+    /// Record structs already written out, so one discovered while lowering still gets a definition.
+    emitted_structs: HashSet<String>,
     /// The type variables of the specialization being emitted, if any.
     type_subst: HashMap<String, CTy>,
     spec_done: HashSet<(String, Vec<CTy>)>,
@@ -182,6 +184,7 @@ impl<'a> Cx<'a> {
             generics: HashMap::new(),
             spec_pending: Vec::new(),
             emitted_containers: HashSet::new(),
+            emitted_structs: HashSet::new(),
             type_subst: HashMap::new(),
             spec_done: HashSet::new(),
             problems: Vec::new(),
@@ -1147,6 +1150,7 @@ impl<'a> Cx<'a> {
         }
 
         let struct_order = self.struct_order();
+        self.emitted_structs.extend(struct_order.iter().cloned());
         for name in &struct_order {
             let field_ctys: Vec<CTy> = if let Some(fs) = self.records.get(name) {
                 fs.iter().map(|(_, t)| t.clone()).collect()
@@ -1337,6 +1341,22 @@ impl<'a> Cx<'a> {
 
     /// Definitions for containers nobody knew about until a generic was specialized, shallowest first so an outer array names a complete inner one.
     fn late_containers(&mut self) -> String {
+        let mut out = String::new();
+        let late_recs: Vec<String> = self
+            .records
+            .keys()
+            .filter(|n| !self.emitted_structs.contains(*n))
+            .cloned()
+            .collect();
+        for name in &late_recs {
+            let fields = self.records[name].clone();
+            out.push_str("typedef struct {\n");
+            for (fname, t) in &fields {
+                out.push_str(&format!("    {} {};\n", c_type(t), cid(fname)));
+            }
+            out.push_str(&format!("}} {name};\n"));
+            self.emitted_structs.insert(name.clone());
+        }
         let mut elems: Vec<CTy> = self
             .arr_elems
             .iter()
@@ -1344,7 +1364,6 @@ impl<'a> Cx<'a> {
             .cloned()
             .collect();
         elems.sort_by_key(|e| (arr_depth(e), arr_name(e)));
-        let mut out = String::new();
         for e in &elems {
             out.push_str(&format!(
                 "MACA_DEFINE_ARRAY({}, {})\n",
@@ -1695,7 +1714,7 @@ impl<'a> Cx<'a> {
         }
     }
 
-    /// `xs = xs.push(v)` lowered as an append, when that cannot be observed.
+    /// `xs = xs.push(v)` and the other self-updates, lowered as a mutation, when that cannot be observed.
     fn accumulating_push(
         &mut self,
         env: &mut Env,
@@ -1704,15 +1723,7 @@ impl<'a> Cx<'a> {
         stmts: &[Stmt],
         kept: &HashSet<String>,
     ) -> Option<String> {
-        let Expr::Call { callee, args } = value else {
-            return None;
-        };
-        let Expr::Field { base, name: m } = callee.as_ref() else {
-            return None;
-        };
-        if m != "push" || args.len() != 1 || !matches!(base.as_ref(), Expr::Ident(b) if b == name) {
-            return None;
-        }
+        let (m, args) = ownership::self_update_method(name, value)?;
         let Some(CTy::Arr(elem)) = lookup(env, name) else {
             return None;
         };
@@ -1720,8 +1731,29 @@ impl<'a> Cx<'a> {
         if !self.appendable.contains(name) {
             return None;
         }
-        let (v, _) = self.expr(env, arg_expr(&args[0]), Some(&elem));
-        Some(format!("{}_push(&{}, {v});", arr_name(&elem), cid(name)))
+        let an = arr_name(&elem);
+        let xs = cid(name);
+        let at = |cx: &mut Self, env: &mut Env| cx.expr(env, arg_expr(&args[0]), Some(&CTy::Int)).0;
+        Some(match m {
+            "push" => {
+                let (v, _) = self.expr(env, arg_expr(&args[0]), Some(&elem));
+                format!("{an}_push(&{xs}, {v});")
+            }
+            "remove" => {
+                let i = at(self, env);
+                format!("{an}_erase(&{xs}, {i});")
+            }
+            "set" => {
+                let i = at(self, env);
+                let (v, _) = self.expr(env, arg_expr(&args[1]), Some(&elem));
+                format!("{an}_put(&{xs}, {i}, {v});")
+            }
+            _ => {
+                let i = at(self, env);
+                let (v, _) = self.expr(env, arg_expr(&args[1]), Some(&elem));
+                format!("{an}_insert(&{xs}, {i}, {v});")
+            }
+        })
     }
 
     /// May this block release the string `name` holds?
@@ -2919,6 +2951,61 @@ impl<'a> Cx<'a> {
                 );
                 Some((code, CTy::Arr(Box::new(elem.clone()))))
             }
+            "index_of_by" => {
+                let clos = match named_fn(args.first(), self) {
+                    Some(n) => self.fn_value_closure(&n).0,
+                    None => {
+                        let (params, body) = lambda(args.first())?;
+                        self.emit_closure(env, &params, &body, std::slice::from_ref(elem))
+                            .0
+                    }
+                };
+                let boxed = box_i64("_s.data[_i]", elem);
+                let code = format!(
+                    "({{ {src} _s = {rc}; maca_closure _f = {clos}; int64_t _r = -1; \
+                     for (int64_t _i = 0; _i < _s.len; _i++) if (maca_call1(_f, {boxed})) {{ _r = _i; break; }} _r; }})"
+                );
+                Some((code, CTy::Int))
+            }
+            "sort_by" => {
+                let (clos, key) = match named_fn(args.first(), self) {
+                    Some(n) => {
+                        let ret = self.fns[&n].1.clone();
+                        (self.fn_value_closure(&n).0, ret)
+                    }
+                    None => {
+                        let (params, body) = lambda(args.first())?;
+                        self.emit_closure(env, &params, &body, std::slice::from_ref(elem))
+                    }
+                };
+                self.note_arr(&CTy::Arr(Box::new(key.clone())));
+                let kn = arr_name(&key);
+                let kt = c_type(&key);
+                if !matches!(key, CTy::Int | CTy::Float | CTy::F32 | CTy::Str) {
+                    self.problem(
+                        "`sort_by` needs a key that orders: an int, a float or a str".to_string(),
+                    );
+                }
+                let boxed = box_i64("_r.data[_i]", elem);
+                let read = unbox_i64(&format!("maca_call1(_f, {boxed})"), &key);
+                let ahead = if matches!(key, CTy::Str) {
+                    "maca_str_cmp(_k.data[_j], _kv) > 0"
+                } else {
+                    "_k.data[_j] > _kv"
+                };
+                let code = format!(
+                    "({{ {src} _r = {src}_concat({rc}, {src}_new()); maca_closure _f = {clos}; \
+                     {kn} _k = {kn}_new(); \
+                     for (int64_t _i = 0; _i < _r.len; _i++) {kn}_push(&_k, {read}); \
+                     for (int64_t _i = 1; _i < _r.len; _i++) {{ \
+                     {elem_c} _v = _r.data[_i]; {kt} _kv = _k.data[_i]; int64_t _j = _i - 1; \
+                     while (_j >= 0 && {ahead}) {{ _r.data[_j + 1] = _r.data[_j]; \
+                     _k.data[_j + 1] = _k.data[_j]; _j--; }} \
+                     _r.data[_j + 1] = _v; _k.data[_j + 1] = _kv; }} _r; }})",
+                    elem_c = c_type(elem)
+                );
+                Some((code, CTy::Arr(Box::new(elem.clone()))))
+            }
             "reduce" | "fold" => {
                 let (initc, acc_ty) = self.arg_typed(env, args.first()?);
                 let clos = match named_fn(args.get(1), self) {
@@ -3678,6 +3765,21 @@ impl<'a> Cx<'a> {
         (unbox_i64(&call, &ret), ret)
     }
 
+    /// The record `enumerate` pairs an element with, named exactly as the literal `{ index = i, value = v }` would be.
+    fn entry_record(&mut self, elem: &CTy) -> String {
+        let shape = vec![
+            ("index".to_string(), CTy::Int),
+            ("value".to_string(), elem.clone()),
+        ];
+        let name = anon_record_name(&shape);
+        if !self.records.contains_key(&name) {
+            self.anon_records.insert(name.clone());
+            self.records.insert(name.clone(), shape);
+        }
+        self.note_arr(&CTy::Arr(Box::new(CTy::Rec(name.clone()))));
+        name
+    }
+
     fn ufcs(&mut self, rc: &str, rty: &CTy, method: &str, a: &[String]) -> (String, CTy) {
         let arg0 = || a.first().cloned().unwrap_or_default();
         let arg1 = || a.get(1).cloned().unwrap_or_default();
@@ -3765,6 +3867,51 @@ impl<'a> Cx<'a> {
                         "({{ {an} _s = {an}_concat({rc}, {an}_new()); if (_s.len > 0) _s.len--; _s; }})"
                     ),
                     CTy::Arr(e.clone()),
+                )
+            }
+            (CTy::Arr(e), "set") => {
+                let an = arr_name(e);
+                (
+                    format!(
+                        "({{ {an} _s = {an}_concat({rc}, {an}_new()); {an}_put(&_s, {}, {}); _s; }})",
+                        arg0(),
+                        arg1()
+                    ),
+                    CTy::Arr(e.clone()),
+                )
+            }
+            (CTy::Arr(e), "insert") => {
+                let an = arr_name(e);
+                (
+                    format!(
+                        "({{ {an} _s = {an}_concat({rc}, {an}_new()); {an}_insert(&_s, {}, {}); _s; }})",
+                        arg0(),
+                        arg1()
+                    ),
+                    CTy::Arr(e.clone()),
+                )
+            }
+            (CTy::Arr(e), "remove") => {
+                let an = arr_name(e);
+                (
+                    format!(
+                        "({{ {an} _s = {an}_concat({rc}, {an}_new()); {an}_erase(&_s, {}); _s; }})",
+                        arg0()
+                    ),
+                    CTy::Arr(e.clone()),
+                )
+            }
+            (CTy::Arr(e), "enumerate") => {
+                let src = arr_name(e);
+                let entry = self.entry_record(e);
+                let dst = arr_name(&CTy::Rec(entry.clone()));
+                (
+                    format!(
+                        "({{ {src} _s = {rc}; {dst} _r = {dst}_new(); \
+                         for (int64_t _i = 0; _i < _s.len; _i++) \
+                         {dst}_push(&_r, ({entry}){{ .index = _i, .value = _s.data[_i] }}); _r; }})"
+                    ),
+                    CTy::Arr(Box::new(CTy::Rec(entry))),
                 )
             }
             (CTy::Arr(e), "contains") => {
