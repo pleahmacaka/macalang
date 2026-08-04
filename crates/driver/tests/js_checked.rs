@@ -48,6 +48,131 @@ fn a_call_to_a_name_nothing_defines_is_refused() {
     );
 }
 
+/// A view's locals are that view instance's state, so a sibling that reads one
+/// has to hear about it here rather than as a `ReferenceError` in the browser.
+#[test]
+fn reading_another_function_s_local_is_refused_by_name() {
+    let (ok, text, _) = built(
+        "paneClass() -> str => tab == \"Preview\" ? \"on\" : \"off\"\n\
+         \n\
+         main() -> Element {\n\
+         \x20 tab = \"Console\"\n\
+         \n\
+         \x20 choose(which: str) {\n\
+         \x20   tab = which\n\
+         \x20 }\n\
+         \n\
+         \x20 div(button(onclick=(e => choose(\"Preview\")), \"go\") span(tab))\n\
+         }\n",
+        "sibling",
+    );
+
+    assert!(!ok, "the build succeeded:\n{text}");
+    assert!(text.contains("UndefinedName"), "{text}");
+    assert!(
+        text.contains("`tab`"),
+        "the diagnostic must name it:\n{text}"
+    );
+    assert!(
+        text.contains("local of another function"),
+        "and say where state two functions share belongs:\n{text}"
+    );
+}
+
+/// A handler's own scratch local is the same mistake one level down, and gets the same answer.
+#[test]
+fn reading_a_nested_handler_s_own_local_is_refused_by_name() {
+    let (ok, text, _) = built(
+        "board() -> Element {\n\
+         \x20 grab() {\n\
+         \x20   held = 1\n\
+         \x20 }\n\
+         \n\
+         \x20 div(button(onclick=grab, \"grab\") span(\"{held}\"))\n\
+         }\n\
+         \n\
+         main() -> Element => div(board())\n",
+        "nestedlocal",
+    );
+
+    assert!(!ok, "the build succeeded:\n{text}");
+    assert!(
+        text.contains("`held` is a local of another function"),
+        "a name bound inside a nested function is one of its locals:\n{text}"
+    );
+}
+
+/// Calling another function's nested handler is one diagnostic, not the call check and the read check both.
+#[test]
+fn calling_another_function_s_nested_handler_is_named_once() {
+    let (ok, text, _) = built(
+        "board() -> Element {\n\
+         \x20 grab() {\n\
+         \x20   held = 1\n\
+         \x20 }\n\
+         \n\
+         \x20 div(button(onclick=grab, \"grab\"))\n\
+         }\n\
+         \n\
+         main() -> Element {\n\
+         \x20 grab()\n\
+         \x20 div(board())\n\
+         }\n",
+        "once",
+    );
+
+    assert!(!ok, "the build succeeded:\n{text}");
+    assert_eq!(
+        text.matches("UndefinedName").count(),
+        1,
+        "one name, one complaint:\n{text}"
+    );
+}
+
+/// The same shape with the state left where both can see it is the fix, and has to keep building.
+#[test]
+fn top_level_state_two_functions_share_still_builds() {
+    let (ok, text, out) = built(
+        "tab = \"Console\"\n\
+         \n\
+         paneClass() -> str => tab == \"Preview\" ? \"on\" : \"off\"\n\
+         \n\
+         choose(which: str) {\n\
+         \x20 tab = which\n\
+         }\n\
+         \n\
+         main() -> Element =>\n\
+         \x20 div(button(onclick=(e => choose(\"Preview\")), \"go\")\n\
+         \x20     span(class=paneClass(), tab))\n",
+        "shared",
+    );
+
+    assert!(ok, "{text}");
+    assert!(out.join("index.html").exists(), "no page was written");
+}
+
+/// A name a view keeps to itself is still ordinary: nothing outside reads it, and it compiles.
+#[test]
+fn a_view_local_only_its_own_handler_writes_still_builds() {
+    let (ok, text, out) = built(
+        "board() -> Element {\n\
+         \x20 grip = 0\n\
+         \n\
+         \x20 grab() {\n\
+         \x20   grip = grip + 1\n\
+         \x20 }\n\
+         \n\
+         \x20 div(button(onclick=grab, \"grab\") span(\"{grip}\"))\n\
+         }\n\
+         \n\
+         main() -> Element => div(board())\n",
+        "viewlocal",
+    );
+
+    assert!(ok, "{text}");
+    assert!(out.join("index.html").exists(), "no page was written");
+}
+
 #[test]
 fn a_type_mismatch_is_refused() {
     refused(

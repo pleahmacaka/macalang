@@ -180,3 +180,29 @@ test_a_list_literal_is_a_child_where_it_is_written() {
               "<div><span>a</span><span>b</span>tail</div>",
               "in the order the arguments are in")
 }
+
+board(taps: int) -> Element {
+    grip = "idle"
+
+    grab(index: int) {
+        grip = "held {index}"
+    }
+
+    if taps > 0 {
+        grab(taps)
+    }
+
+    div(span(grip))
+}
+
+test_a_view_local_a_nested_function_writes_renders_where_it_ended() {
+    assert_eq(board(0), "<div><span>idle</span></div>", "nothing wrote it")
+    assert_eq(board(2), "<div><span>held 2</span></div>",
+              "the write reached the markup")
+}
+
+test_two_calls_to_the_same_view_do_not_share_a_local() {
+    assert_eq(board(1) ++ board(0),
+              "<div><span>held 1</span></div><div><span>idle</span></div>",
+              "the second call starts over")
+}

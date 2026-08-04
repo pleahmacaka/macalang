@@ -158,6 +158,8 @@ struct Checker {
     ret_of: Vec<(String, Option<Ty>)>,
     /// Nested function names the current block defines below the point being checked.
     nested_later: HashSet<String>,
+    /// Every name some function declares inside its own body, so a read from outside it can say so.
+    fn_locals: HashSet<String>,
     diags: Vec<Diagnostic>,
 }
 
@@ -178,6 +180,7 @@ impl Checker {
             callee_pos: false,
             ret_of: Vec::new(),
             nested_later: HashSet::new(),
+            fn_locals: HashSet::new(),
             diags: Vec::new(),
         }
     }
@@ -190,9 +193,9 @@ impl Checker {
     }
 
     /// A keyword Maca doesn't have, used as if it did.
-    fn phantom_keyword(&mut self, name: &str) {
+    fn phantom_keyword(&mut self, name: &str) -> bool {
         if self.mode != Mode::Program || self.gradual_foreign {
-            return;
+            return false;
         }
         let hint = match name {
             "let" | "var" => {
@@ -215,10 +218,37 @@ impl Checker {
                 "a sum type with an empty variant says what the absence means, \
                  and `match` makes you handle it; Maca has no null"
             }
-            "true_" | "false_" => return,
-            _ => return,
+            "true_" | "false_" => return false,
+            _ => return false,
         };
         self.diag(DiagKind::UndefinedName, format!("`{name}`: {hint}"));
+        true
+    }
+
+    /// A name read here that some other function keeps to itself, which a view's own state makes easy to reach for.
+    fn check_name_in_scope(&mut self, name: &str) {
+        if self.mode != Mode::Program || self.gradual_foreign {
+            return;
+        }
+        if maca_parser::is_backend_intrinsic(name) {
+            return;
+        }
+        let msg = if self.nested_later.contains(name) {
+            format!(
+                "`{name}` is defined further down this block; a nested \
+                 function is in scope from where it is written, so move \
+                 `{name}` above its first use"
+            )
+        } else if self.fn_locals.contains(name) {
+            format!(
+                "`{name}` is a local of another function, and a local is \
+                 reachable only inside the one that declares it; state two \
+                 functions share is written at the top level"
+            )
+        } else {
+            return;
+        };
+        self.diag(DiagKind::UndefinedName, msg);
     }
 
     /// The three things a `...rest: T` parameter has to be.
@@ -325,6 +355,7 @@ impl Checker {
                     let scheme = self.sig_scheme(f);
                     self.globals.insert(f.name.clone(), scheme);
                     self.local_names.insert(f.name.clone());
+                    collect_fn_locals(f, &mut self.fn_locals);
                     self.check_variadic(f);
                     let variadic = f.params.iter().any(|p| p.variadic);
                     let arity = f.params.len() - usize::from(variadic);
@@ -972,7 +1003,9 @@ impl Checker {
                     None => match self.globals.get(n).cloned() {
                         Some(s) => self.inf.instantiate(&s),
                         None => {
-                            self.phantom_keyword(n);
+                            if !self.phantom_keyword(n) && !callee_pos {
+                                self.check_name_in_scope(n);
+                            }
                             Ty::Any
                         }
                     },
@@ -1513,6 +1546,33 @@ fn lookup(env: &Env, name: &str) -> Option<Ty> {
         .rev()
         .find(|(n, _)| n == name)
         .map(|(_, t)| t.clone())
+}
+
+/// Every name `f` declares inside itself: its parameters, its bindings, and the same for anything nested in it.
+fn collect_fn_locals(f: &FnDef, out: &mut HashSet<String>) {
+    for p in &f.params {
+        out.insert(p.name.clone());
+    }
+    if let Some(FnBody::Block(stmts)) = &f.body {
+        collect_bound_names(stmts, out);
+    }
+}
+
+fn collect_bound_names(stmts: &[Stmt], out: &mut HashSet<String>) {
+    for s in stmts {
+        match s {
+            Stmt::Bind(b) => {
+                if let Expr::Ident(n) = &b.target {
+                    out.insert(n.clone());
+                }
+            }
+            Stmt::Fn(nested) => {
+                out.insert(nested.name.clone());
+                collect_fn_locals(nested, out);
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Does this expression reach a statement context, where a `return` can stand?

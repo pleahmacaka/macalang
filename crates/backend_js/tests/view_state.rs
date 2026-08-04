@@ -475,3 +475,127 @@ main() -> Element => div(button(onclick=bump, \"+\") span(\"{total(n, 10)}\"))
     );
     assert_eq!(out[2], "+|13");
 }
+
+/// A view's own parameter, which a nested handler writes.
+const PARAM: &str = "\
+counter(start: int) -> Element {
+    bump() {
+        start = start + 1
+    }
+
+    div(button(onclick=bump, \"+\") span(\"{start}\"))
+}
+
+main() -> Element => div(counter(5) counter(9))
+";
+
+#[test]
+fn a_parameter_a_nested_handler_writes_is_the_instance_s_state_too() {
+    let out = run(
+        PARAM,
+        &[
+            "view()",
+            "(fire(el(\"button\"), \"click\"), view())",
+            "counted(() => fire(el(\"button\", 1), \"click\"))",
+            "view()",
+        ],
+    );
+    assert_eq!(out[0], "+|5|+|9");
+    assert_eq!(
+        out[1], "+|6|+|9",
+        "the argument became this call's own cell"
+    );
+    assert_eq!(out[2], "1", "and the other instance's node is not painted");
+    assert_eq!(out[3], "+|6|+|10");
+}
+
+/// The lambda spelling of a handler, writing the view's local with no named function in between.
+const LAMBDA: &str = "\
+row() -> Element {
+    n = 0
+
+    div(button(onclick=(e => n = n + 1), \"+\") span(\"{n}\"))
+}
+
+main() -> Element => div(row() row())
+";
+
+#[test]
+fn a_lambda_handler_writing_a_view_local_repaints_it() {
+    let out = run(
+        LAMBDA,
+        &[
+            "view()",
+            "(fire(el(\"button\"), \"click\"), view())",
+            "counted(() => fire(el(\"button\"), \"click\"))",
+            "view()",
+        ],
+    );
+    assert_eq!(out[0], "+|0|+|0");
+    assert_eq!(out[1], "+|1|+|0", "a lambda is a handler the same way");
+    assert_eq!(out[2], "1");
+    assert_eq!(out[3], "+|2|+|0");
+}
+
+/// A handler on `main`'s own tree, writing three names at once.
+const MAIN_BATCH: &str = "\
+main() -> Element {
+    a = 0
+    b = 0
+
+    go() {
+        a = 1
+        b = 2
+    }
+
+    div(button(onclick=go, \"go\") span(\"{a}\") span(\"{b}\") span(tick()))
+}
+
+tick() -> str => \"tick\"
+";
+
+#[test]
+fn a_handler_on_main_s_own_tree_is_one_turn() {
+    let out = run(
+        MAIN_BATCH,
+        &["counted(() => fire(el(\"button\"), \"click\"))", "view()"],
+    );
+    assert_eq!(out[0], "3", "two names, one pass, three nodes read them");
+    assert_eq!(out[1], "go|1|2|tick");
+}
+
+/// A local the view's own straight line writes a second time.
+const REWRITTEN: &str = "\
+row() -> Element {
+    n = 0
+
+    bump() {
+        n = n + 1
+    }
+
+    label = \"n is {n}\"
+    label = label ++ \"!\"
+
+    div(button(onclick=bump, \"go\") span(label) span(\"{n}\"))
+}
+
+main() -> Element => div(row())
+";
+
+#[test]
+fn a_view_local_written_twice_is_a_straight_line_not_a_derivation() {
+    let out = run(
+        REWRITTEN,
+        &[
+            "view()",
+            "(fire(el(\"button\"), \"click\"), view())",
+            "counted(() => fire(el(\"button\"), \"click\"))",
+        ],
+    );
+    assert_eq!(out[0], "go|n is 0!|0");
+    assert_eq!(
+        out[1], "go|n is 0!|1",
+        "recomputing the first write would drop the second"
+    );
+    assert_eq!(out[2], "1", "and only the node that reads `n` is painted");
+}
