@@ -1424,6 +1424,7 @@ impl Checker {
                 if self.is_variant(n) {
                     return;
                 }
+                self.check_pattern_name(n, scrut);
                 env.push((n.clone(), scrut.clone()));
                 self.mut_of.insert(n.clone(), true);
             }
@@ -1464,6 +1465,32 @@ impl Checker {
 
     fn is_variant(&self, name: &str) -> bool {
         self.sums.values().any(|vs| vs.iter().any(|v| v == name))
+    }
+
+    /// A Capitalized name in a pattern is a constructor, so one nothing declares is a misspelling rather than a name that matches everything.
+    fn check_pattern_name(&mut self, name: &str, scrut: &Ty) {
+        if self.mode != Mode::Program || !name.starts_with(char::is_uppercase) {
+            return;
+        }
+        let of = match self.inf.resolve(scrut) {
+            Ty::Con(n, _) => self.sums.get(&n).cloned().unwrap_or_default(),
+            _ => Vec::new(),
+        };
+        let choices: Vec<&str> = match of.is_empty() {
+            true => self.sums.values().flatten().map(String::as_str).collect(),
+            false => of.iter().map(String::as_str).collect(),
+        };
+        let tail = nearest(name, &choices).map_or(
+            "a pattern that binds what it matched is lowercase".to_string(),
+            |alt| format!("did you mean `{alt}`?"),
+        );
+        self.diag(
+            DiagKind::UndefinedName,
+            format!(
+                "`{name}` is capitalized, so it is a constructor, and nothing declares \
+                 one by that name: {tail}"
+            ),
+        );
     }
 
     fn check_exhaustive(&mut self, scrut: &Ty, arms: &[Arm]) {

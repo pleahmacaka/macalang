@@ -1,0 +1,13 @@
+Mode = Idle | Busy
+
+name(m: Mode) -> str =>
+    match m {
+        Busi => "busy"
+        Idle => "idle"
+    }
+
+main() -> int {
+    info(name(Busy))
+
+    0
+}

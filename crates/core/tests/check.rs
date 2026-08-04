@@ -282,6 +282,38 @@ fn undefined_call_rejected() {
     );
 }
 
+/// A capitalized pattern is a constructor, so a misspelt one is a name nothing declares rather than a binding that matches everything.
+#[test]
+fn misspelt_variant_pattern_rejected() {
+    assert_has(
+        "examples/bad/misspelt_variant.maca",
+        Mode::Program,
+        DiagKind::UndefinedName,
+    );
+}
+
+/// The diagnostic names the variant that was meant, and a lowercase pattern still binds.
+#[test]
+fn a_misspelt_variant_is_told_which_one_was_meant() {
+    let said: Vec<String> = diags("examples/bad/misspelt_variant.maca", Mode::Program)
+        .iter()
+        .map(|d| d.msg.clone())
+        .collect();
+    assert!(
+        said.iter().any(|m| m.contains("did you mean `Busy`?")),
+        "{said:?}"
+    );
+
+    let binding = "Mode = Idle | Busy\n\nname(m: Mode) -> str =>\n    \
+                   match m {\n        Idle => \"idle\"\n        other => \"{other}\"\n    }\n";
+    let ok = maca_parser::parse(binding);
+    let left = check(&ok.module, Mode::Program);
+    assert!(
+        left.is_empty(),
+        "a lowercase pattern binds what it matched: {left:?}"
+    );
+}
+
 #[test]
 fn ui_element_tags_are_not_undefined() {
     let src = "main() -> Element =>\n    div(\n        button(\"ok\")\n        input(placeholder=\"name\")\n    )\n";

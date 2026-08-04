@@ -112,6 +112,19 @@ the `return`
 말이죠. 단어는 곁가지이고, 대신 무엇을 쓰는지가 메시지입니다. 전체 목록은
 [키워드](a1-keywords.md)를 보세요.
 
+**패턴**에 쓰인 대문자 이름도 여기서 다룹니다.
+
+```
+UndefinedName: `Busi` is capitalized, so it is a constructor, and nothing
+declares one by that name: did you mean `Busy`?
+```
+
+패턴은 두 관례를 구별해야만 하는 자리입니다. 둘 다 그냥 이름이기 때문입니다.
+`Busy`는 그 변형에 맞고, `busy`는 맞은 것을 이름에 묶습니다. 그래서 잘못 적은
+변형은 소리 없이 *모든 것*에 맞는 패턴이 되고, 그 아래 팔들은 닿지 않게 되는데도
+`match`는 여전히 빠짐없어 보입니다. 어느 쪽을 썼는지는 대문자 여부가 정하며,
+이는 대문자로 시작하는 이름이 상수가 되는 것과 같은 규칙입니다.
+
 ## UnknownOption
 
 config 모드에서, 컴파일러가 모르는 옵션 **네임스페이스**에 대한 대입입니다.

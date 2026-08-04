@@ -115,6 +115,20 @@ first, and a reader took away that a function could not hand a value back, when
 Maca has exactly Rust's rule. The word is the aside; what to write instead is the
 message. See [Keywords](a1-keywords.md) for the full list of those.
 
+And it covers a capitalised name in a **pattern**:
+
+```
+UndefinedName: `Busi` is capitalized, so it is a constructor, and nothing
+declares one by that name: did you mean `Busy`?
+```
+
+A pattern is where the two conventions have to be told apart, because both are
+just a name: `Busy` matches the variant, `busy` binds whatever was matched. So a
+misspelt variant is a pattern that matches *everything*, silently, and the arms
+below it become unreachable while `match` still looks exhaustive. Capitalisation
+is what decides which one you wrote, the same rule that makes a Capitalized
+binding a constant.
+
 ## UnknownOption
 
 In config mode, an assignment to an option **namespace** the compiler does not
