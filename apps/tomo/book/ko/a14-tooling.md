@@ -253,7 +253,7 @@ Rust 타깃의 의존성은 `[rust-dependencies]` 테이블에 넣으면 Cargo�
 # 루트의 maca.toml
 [package]
 name = "maca"
-version = "0.3.0"
+version = "0.3.1"
 
 [workspace]
 members = [

@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.3.1
+
+`maca install` was written one commit after 0.3.0 was cut, so the released
+binary did not have the command the `pleahmacaka/macalang` action calls to
+fetch what a project's `maca.toml` names. A project using the action got a
+toolchain that installed and self-verified, then failed on its own second
+step.
+
+### Added
+
+* `maca install` fetches what `maca.toml` names at the versions `maca.lock`
+  pinned, and says so when there is nothing to fetch. This is what the
+  composite action's `install` input runs.
+
+### Changed
+
+* The tree is four directories. `selfhost/`, `editor/`, `packages/` and
+  `examples/` moved under `apps/`, because a compiler written in Maca, an
+  extension that runs inside an editor, a package a program builds, and a
+  corpus of programs are all applications. `apps/lint`'s default paths went
+  from six roots to three as a result.
+
+### Fixed
+
+* Every program target refuses the same diagnostic. Each target calls the
+  checker from its own site, so one that stopped asking was wrong on that
+  target alone; `c`, `js`, `jvm`, `rust` and `embedded` are now covered by a
+  test that names the guilty target.
+
 ## 0.3.0
 
 The theme of this release is that a page written in Maca should be a Maca

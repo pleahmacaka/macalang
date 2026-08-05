@@ -10,7 +10,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "maca-backend-c"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "maca-backend-js",
  "maca-core",
@@ -19,14 +19,14 @@ dependencies = [
 
 [[package]]
 name = "maca-backend-embedded"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "maca-parser",
 ]
 
 [[package]]
 name = "maca-backend-js"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "maca-core",
  "maca-parser",
@@ -34,42 +34,42 @@ dependencies = [
 
 [[package]]
 name = "maca-backend-jvm"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "maca-parser",
 ]
 
 [[package]]
 name = "maca-backend-llvm"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "maca-parser",
 ]
 
 [[package]]
 name = "maca-backend-nix"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "maca-parser",
 ]
 
 [[package]]
 name = "maca-backend-rust"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "maca-parser",
 ]
 
 [[package]]
 name = "maca-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "maca-parser",
 ]
 
 [[package]]
 name = "maca-driver"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "maca-backend-c",
  "maca-backend-embedded",
@@ -90,11 +90,11 @@ dependencies = [
 
 [[package]]
 name = "maca-lexer"
-version = "0.3.0"
+version = "0.3.1"
 
 [[package]]
 name = "maca-lsp"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "maca-core",
  "maca-lexer",
@@ -104,7 +104,7 @@ dependencies = [
 
 [[package]]
 name = "maca-mcp"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "maca-core",
  "maca-parser",
@@ -113,11 +113,11 @@ dependencies = [
 
 [[package]]
 name = "maca-options"
-version = "0.3.0"
+version = "0.3.1"
 
 [[package]]
 name = "maca-parser"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "maca-lexer",
  "maca-stdlib",
@@ -125,26 +125,26 @@ dependencies = [
 
 [[package]]
 name = "maca-profile"
-version = "0.3.0"
+version = "0.3.1"
 
 [[package]]
 name = "maca-runtime"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "maca-testsupport",
 ]
 
 [[package]]
 name = "maca-stdlib"
-version = "0.3.0"
+version = "0.3.1"
 
 [[package]]
 name = "maca-testsupport"
-version = "0.3.0"
+version = "0.3.1"
 
 [[package]]
 name = "maca-wasm"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "maca-backend-c",
  "maca-backend-js",
