@@ -4,6 +4,20 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* The site is a directory rather than one long page. `/` is eight cells on a
+  hairline lattice, each numbered, each ending in a figure computed at build
+  time and the committed file that figure came from; the features, the
+  benchmarks, the evaluations, the targets, the install and the limits are six
+  documents behind it, in both languages, fifteen pages in all.
+* The evaluation scores are on the site, and the headline is the plain `spec`
+  row rather than the retry row, because this project's own README says the
+  retry figure is not yet evidence.
+* Black and white. The amber loss accent is gone: a losing benchmark bar is a
+  hollow rule and the losing verdict is the filled chip, so rank is carried by
+  ink rather than by hue, and nothing on the site is rounded.
+* Languages are a dropdown. The row of side by side links is gone, replaced by
+  one JavaScript-free `details` disclosure the whole site shares.
+
 * A grid cell can say where it sits: `col-span-4`, `col-span-full`,
   `row-span-2`, `col-start-3`, `col-end-9` and `grid-rows-3` produce CSS, and a
   breakpoint reaches them. `grid-cols-12` on its own was twelve equal columns

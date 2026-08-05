@@ -1,6 +1,7 @@
-import std/path
+import { join } from std/path
 import { between } from std/text
 import apps/site/shell
+import apps/site/data
 import { highlight, code_css } from apps/tomo/highlight
 
 import { Result, median_ms } from bench/time
@@ -70,6 +71,16 @@ Copy = {
     tbl_workload: str
     tbl_note:     str
     lim_title: str
+    lim_sub:   str
+    eval_title: str
+    eval_sub:   str
+    eval_note:  str
+    eval_caveat: str
+    docs_sub:   str
+    api_sub:    str
+    install_body: str
+    prov_label: str
+    back_home:  str
     footer:    str
     skip:      str
     nav_label: str
@@ -171,6 +182,25 @@ english() -> Copy =>
         tbl_note = "Median time in milliseconds, lower is better, and in"
             ++ " brackets the multiple of C's time.",
         lim_title = "Not for you if",
+        lim_sub = "Three things this language does not do, stated at the same"
+            ++ " size as the things it does.",
+        eval_title = "Evaluations",
+        eval_sub = "pass@1 over a mechanically ported HumanEval set, by what"
+            ++ " the model was told.",
+        eval_note = "Giving a model the specification roughly triples pass@1."
+            ++ " That is what this measures, and the figure is read from"
+            ++ " `apps/evals/BASELINE.md` at build time rather than typed here.",
+        eval_caveat = "One run is one sample. The set is 25 problems, so one"
+            ++ " solved problem is four points, and the retry column's results"
+            ++ " straddle the plain spec column across runs. The site leads"
+            ++ " with the spec figure because the retry figure is not yet"
+            ++ " evidence.",
+        docs_sub = "The handbook, from installing to the back ends.",
+        api_sub = "Every documented item in the standard library.",
+        install_body = "One command fetches the release for this platform,"
+            ++ " and `maca init` writes a project that already builds.",
+        prov_label = "Source",
+        back_home = "Back to the directory",
         footer = "Criticism welcome, particularly the kind that says which of"
             ++ " those boxes is the wrong one.",
         skip = "Skip to content",
@@ -312,6 +342,24 @@ korean() -> Copy =>
         tbl_note = "밀리초 단위 중앙값, 낮을수록 좋습니다. 괄호 안은 C"
             ++ " 대비 배수입니다.",
         lim_title = "이럴 땐 맞지 않습니다",
+        lim_sub = "이 언어가 하지 않는 세 가지를, 하는 것들과 같은 크기로"
+            ++ " 적었습니다.",
+        eval_title = "평가",
+        eval_sub = "기계적으로 옮긴 HumanEval 문제들에 대한 pass@1을, 모델에게"
+            ++ " 무엇을 알려주었는지에 따라 잰 것입니다.",
+        eval_note = "모델에게 명세를 주면 pass@1이 대략 세 배가 됩니다. 이"
+            ++ " 수치가 재는 것이 그것이고, 숫자는 여기에 적어둔 것이 아니라"
+            ++ " 빌드할 때 `apps/evals/BASELINE.md`에서 읽습니다.",
+        eval_caveat = "한 번의 실행은 한 번의 표본입니다. 문제가 25개이므로 한"
+            ++ " 문제가 4점이고, 재시도 열의 결과는 실행마다 명세 열 주위에"
+            ++ " 걸쳐 있습니다. 재시도 수치는 아직 근거가 아니어서 사이트는"
+            ++ " 명세 수치를 앞세웁니다.",
+        docs_sub = "설치부터 백엔드까지, 핸드북 전체입니다.",
+        api_sub = "표준 라이브러리의 문서화된 항목 전부입니다.",
+        install_body = "명령 하나가 이 플랫폼의 릴리즈를 받아오고, `maca init`이"
+            ++ " 이미 빌드되는 프로젝트를 만들어 줍니다.",
+        prov_label = "출처",
+        back_home = "목록으로",
         footer = "비판을 환영합니다. 특히 저 칸들 중 어느 것이 잘못된"
             ++ " 선택인지 짚어 주는 쪽으로요.",
         skip = "본문으로 건너뛰기",
@@ -455,187 +503,28 @@ prov_of(c: Copy, p: Provenance, rs: Result[]) -> Fact {
     }
 }
 
-page(c: Copy, up: str, rs: Result[]) -> str =>
-    "<!doctype html>\n"
-        ++ html(lang=c.lang,
-            head(
-                meta(charset="utf-8")
-                meta(name="viewport",
-                     content="width=device-width,initial-scale=1")
-                meta(name="description", content=c.descr)
-                meta(property="og:title", content=c.title)
-                meta(property="og:description", content=c.descr)
-                meta(property="og:type", content="website")
-                meta(property="og:locale", content=c.locale)
-                meta(name="twitter:card", content="summary")
-                link(rel="canonical", href=canonical(c, up))
-                alternates(up)
-                title_tag(c.title)
-                font_link(up)
-                style(base_css() ++ code_css() ++ styles())
-            )
-            body_tag(page_class("font-sans"),
-                skip_link(c)
-                    ++ top_nav(c, up)
-                    ++ element("main", id="content", tabindex="-1",
-                           hero(c, up)
-                           spec_strip(c)
-                           features(c)
-                           bench_band(c, rs)
-                           targets_band(c)
-                           install_band(c, up)
-                           limits(c))
-                    ++ site_footer(c))) ++ "\n"
 
-canonical(c: Copy, up: str) -> str {
-    if c.lang == default_lang() {
-        up ++ "index.html"
-    } else {
-        up ++ c.lang ++ "/home.html"
-    }
-}
 
 default_lang() -> str =>
     copies().get(0).lang
 
-alternates(up: str) -> str =>
-    copies().map(o => alternate(o, up)).join("")
-        ++ link(rel="alternate", hreflang="x-default",
-                href=canonical(copies().get(0), up))
 
-alternate(o: Copy, up: str) -> str =>
-    link(rel="alternate", hreflang=o.lang, href=canonical(o, up))
 
-wrap() -> str =>
-    "max-w-[64rem] mx-auto px-6"
-
-skip_link(c: Copy) -> str =>
-    a(class="absolute left-[-9999px] focus:left-2 focus:top-2 focus:z-10"
-            ++ " bg-white dark:bg-zinc-950 px-4 py-2 rounded-md"
-            ++ " border border-zinc-300 dark:border-zinc-700 text-inherit",
-      href="#content", escape_html(c.skip))
-
-top_nav(c: Copy, up: str) -> str =>
-    header(class="border-b border-zinc-200 dark:border-zinc-800",
-        div(class=wrap() ++ " flex flex-wrap items-center justify-between"
-                  ++ " gap-x-5 gap-y-2 py-3",
-            a(class="font-bold text-[1.1rem] no-underline text-inherit"
-                    ++ " focus:underline",
-              href=home_href(c, up), "Maca")
-            nav(aria-label=c.nav_label,
-                class="flex flex-wrap items-center gap-x-5 gap-y-2"
-                      ++ " text-[0.9rem]",
-                a(class=quiet_link(), href=up ++ c.lang ++ "/index.html",
-                  escape_html(c.nav_docs))
-                a(class=quiet_link(), href=up ++ "api/index.html",
-                  escape_html(c.nav_api))
-                a(class=quiet_link(), href=up ++ "play/index.html",
-                  escape_html(c.cta_play))
-                a(class=quiet_link(), href=Repo, "GitHub")
-                lang_switch(c, up))))
-
-home_href(c: Copy, up: str) -> str {
-    if c.lang == default_lang() {
-        up ++ "index.html"
-    } else {
-        up ++ c.lang ++ "/home.html"
-    }
-}
-
-quiet_link() -> str =>
-    "no-underline text-zinc-600 dark:text-zinc-400 hover:text-black"
-        ++ " dark:hover:text-white focus:underline"
-
-lang_switch(c: Copy, up: str) -> str =>
-    nav(aria-label=c.lang_label,
-        class="flex items-center gap-2 text-[0.8rem]",
-        copies().map(o => lang_link(c, up, o)).join(""))
-
-lang_link(c: Copy, up: str, other: Copy) -> str {
-    if other.lang == c.lang {
-        span(class="font-semibold", aria-current="page", other.endonym)
-    } else {
-        a(class=quiet_link(), href=up ++ other.lang ++ "/home.html",
-          lang=other.lang, other.endonym)
-    }
-}
-
-hero(c: Copy, up: str) -> str =>
-    section(class=wrap() ++ " py-14 md:py-20 grid gap-10"
-                  ++ " md:grid-cols-2 md:items-center",
-        div(class="min-w-0",
-            h1(class="font-bold text-[2.25rem] md:text-[2.75rem]"
-                     ++ " leading-tight tracking-tight m-0",
-               escape_html(c.headline))
-            p(class="mt-5 text-[1.05rem] text-zinc-600 dark:text-zinc-400",
-              prose(c.sub))
-            div(class="mt-8 flex flex-wrap gap-3",
-                a(class=primary_btn(), href=start_href(c, up),
-                  escape_html(c.cta_start))
-                a(class=ghost_btn(), href=up ++ "play/index.html",
-                  escape_html(c.cta_play))
-                a(class=ghost_btn(), href=Repo, "GitHub")))
-        code_panel(HeroSample, "maca"))
 
 StartChapter = "01-installing"
 
 start_href(c: Copy, up: str) -> str =>
     up ++ c.lang ++ "/" ++ StartChapter ++ ".html"
 
-primary_btn() -> str =>
-    "inline-block px-5 py-2 rounded-md no-underline font-medium"
-        ++ " text-[0.95rem] bg-zinc-900 dark:bg-zinc-100 text-white"
-        ++ " dark:text-black focus:underline"
 
-ghost_btn() -> str =>
-    "inline-block px-5 py-2 rounded-md no-underline font-medium"
-        ++ " text-[0.95rem] border border-zinc-300 dark:border-zinc-700"
-        ++ " text-inherit hover:bg-zinc-100 dark:hover:bg-zinc-900"
-        ++ " focus:underline"
 
-code_panel(src: str, lang: str) -> str =>
-    pre(class="code-dark bg-zinc-950 dark:bg-black text-zinc-100 rounded-lg p-5"
-              ++ " overflow-x-auto text-[0.85rem] leading-relaxed m-0"
-              ++ " border border-zinc-800 min-w-0",
-        code(class="font-mono language-" ++ lang, highlight(lang, src)))
 
-spec_strip(c: Copy) -> str =>
-    section(class="border-y border-zinc-200 dark:border-zinc-800"
-                  ++ " bg-zinc-50 dark:bg-zinc-900",
-        div(class=wrap() ++ " py-8 grid gap-6 grid-cols-2 md:grid-cols-4",
-            specs().map(s => fact_cell(fact_of(c, s))).join("")))
 
-fact_cell(f: Fact) -> str =>
-    div(
-        div(class=fact_label(), escape_html(f.label))
-        div(class="mt-1 font-medium", escape_html(f.value)))
 
-fact_label() -> str =>
-    "text-[0.75rem] uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
 
-features(c: Copy) -> str =>
-    section(class=wrap() ++ " py-16",
-        h2(class=band_title(), escape_html(c.box_title))
-        p(class=band_sub(), prose(c.box_sub))
-        div(class="mt-10 grid gap-6 md:grid-cols-2",
-            topics().map(t => feature_card(feature_of(c, t), sample(t)))
-                    .join("")))
 
-band_title() -> str =>
-    "font-bold text-[1.6rem] tracking-tight m-0"
 
-band_sub() -> str =>
-    "mt-2 text-zinc-600 dark:text-zinc-400"
 
-feature_card(f: Feature, src: str) -> str =>
-    article(class="rounded-lg border border-zinc-200 dark:border-zinc-800"
-                  ++ " p-6 flex flex-col gap-4 min-w-0",
-        h3(class="font-semibold text-[1.1rem] m-0", escape_html(f.title))
-        p(class="text-[0.95rem] text-zinc-600 dark:text-zinc-400 m-0",
-          prose(f.body))
-        pre(class="bg-zinc-100 dark:bg-zinc-900 rounded-md p-4 overflow-x-auto"
-                  ++ " text-[0.8rem] m-0 min-w-0",
-            code(class="font-mono language-maca", highlight("maca", src))))
 
 BenchData = "apps/bench/results.json"
 
@@ -775,18 +664,6 @@ bench_host() -> str {
     stated
 }
 
-bench_band(c: Copy, rs: Result[]) -> str =>
-    section(id="benchmarks",
-            class="border-t border-zinc-200 dark:border-zinc-800",
-        div(class=wrap() ++ " py-14",
-            h2(class=band_title(), escape_html(c.bench_title))
-            p(class=band_sub() ++ " max-w-[46rem]", prose(c.bench_sub))
-            families().map(f => family_group(c, rs, f)).join("")
-            p(class="mt-9 max-w-[46rem] text-[0.95rem] text-zinc-600"
-                    ++ " dark:text-zinc-400", prose(c.bench_note))
-            bench_table(c, rs)
-            bench_provenance(c, rs)))
-
 family_group(c: Copy, rs: Result[], f: Family) -> str =>
     div(class="mt-10",
         h3(class="font-semibold text-[1.05rem] m-0",
@@ -813,7 +690,7 @@ kernel_row(c: Copy, rs: Result[], algo: str) -> str {
 }
 
 verdict_chip(c: Copy, rs: Result[], algo: str) -> str =>
-    span(class="inline-block rounded-full px-2 py-[0.1rem] text-[0.72rem]"
+    span(class="inline-block px-2 py-[0.1rem] text-[0.72rem]"
                ++ " font-medium " ++ chip_tone(rs, algo),
          escape_html(ratio_text(rs, algo)
                      ++ standing_of(c, standing(rs, algo))))
@@ -828,17 +705,19 @@ ratio_text(rs: Result[], algo: str) -> str {
     }
 }
 
+/// A loss is a hole in the ink rather than a colour, so the site reads in one hue.
 mine_tone(rs: Result[], algo: str) -> str {
     if is_behind(rs, algo) {
-        "bg-amber-500 dark:bg-amber-400"
+        "bg-white dark:bg-black border border-black dark:border-white"
     } else {
         "bg-zinc-900 dark:bg-zinc-100"
     }
 }
 
+/// The losing verdict is the filled one, so the page states its losses louder than its wins.
 chip_tone(rs: Result[], algo: str) -> str {
     if is_behind(rs, algo) {
-        "bg-amber-400 text-black"
+        "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black"
     } else {
         "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
     }
@@ -848,9 +727,9 @@ bar_row(who: str, ms: float, worst: float, tone: str) -> str =>
     div(class="flex items-center gap-3",
         span(class="w-[3.2rem] shrink-0 text-[0.78rem] text-zinc-500"
                    ++ " dark:text-zinc-400", escape_html(who))
-        span(class="flex-1 min-w-0 h-2 rounded-full bg-zinc-100"
+        span(class="flex-1 min-w-0 h-2 bg-zinc-100"
                    ++ " dark:bg-zinc-900 overflow-hidden",
-             span(class="block h-2 rounded-full " ++ tone,
+             span(class="block h-2 " ++ tone,
                   style="width:{bar_width(ms, worst)}%"))
         span(class="w-[4.6rem] shrink-0 text-right font-mono tabular-nums"
                    ++ " text-[0.78rem]", escape_html(ms_text(ms))))
@@ -939,52 +818,406 @@ bench_doc(file: str) -> str =>
     Repo ++ "/blob/main/apps/bench/" ++ file
 
 prov_cell(f: Fact) -> str =>
-    div(class="min-w-0",
-        div(class=fact_label(), escape_html(f.label))
-        div(class="mt-1 text-[0.85rem] text-zinc-600 dark:text-zinc-400",
-            prose(f.value)))
+    div(class=Cell,
+        div(class=Eyebrow, escape_html(f.label))
+        div(class="mt-3 " ++ Muted, prose(f.value)))
 
-targets_band(c: Copy) -> str =>
-    section(class="border-t border-zinc-200 dark:border-zinc-800",
-        div(class=wrap() ++ " py-14",
-            h2(class=band_title(), escape_html(c.tgt_title))
-            p(class=band_sub(), prose(c.tgt_sub))
-            div(class="mt-6 flex flex-wrap gap-2",
-                targets().map(target_chip).join(""))))
 
-target_chip(t: str) -> str =>
-    span(class="inline-block px-3 py-1 rounded-full text-[0.85rem] font-mono"
-               ++ " border border-zinc-300 dark:border-zinc-700", escape_html(t))
 
-install_band(c: Copy, up: str) -> str =>
-    section(id="install", class="border-t border-zinc-200 dark:border-zinc-800"
-                                ++ " bg-zinc-50 dark:bg-zinc-900",
-        div(class=wrap() ++ " py-14",
-            h2(class=band_title(), escape_html(c.install))
-            div(class="mt-6", code_panel(InstallSample, "sh"))
-            p(class="mt-4 text-[0.9rem] m-0",
-              a(class="underline text-inherit", href=start_href(c, up),
-                escape_html(c.install_more)))))
 
-limits(c: Copy) -> str =>
-    section(class=wrap() ++ " py-14",
-        h2(class=band_title(), escape_html(c.lim_title))
-        ul(class="mt-5 grid gap-3 list-none p-0 text-zinc-600"
-                 ++ " dark:text-zinc-400",
-           caveats().map(v => limit_item(caveat_of(c, v))).join("")))
 
-limit_item(text: str) -> str =>
-    li(class="pl-4 border-l-2 border-zinc-300 dark:border-zinc-700",
-       prose(text))
 
-site_footer(c: Copy) -> str =>
+
+/// Every page the site writes, which is also the order the directory lists them.
+Key = Home | Language | Benchmarks | Evals | Targets | Install | Limits
+
+keys() -> Key[] =>
+    Language, Benchmarks, Evals, Targets, Install, Limits
+
+/// The file a key is written to, under a language directory.
+page_file(k: Key) -> str =>
+    match k {
+        Home       => "home"
+        Language   => "language"
+        Benchmarks => "benchmarks"
+        Evals      => "evals"
+        Targets    => "targets"
+        Install    => "install"
+        Limits     => "limits"
+    }
+
+/// Where a key sits in the directory, printed as a two digit ordinal.
+ordinal(k: Key) -> str =>
+    match k {
+        Home       => "00"
+        Language   => "01"
+        Benchmarks => "02"
+        Evals      => "03"
+        Targets    => "04"
+        Install    => "05"
+        Limits     => "06"
+    }
+
+title_of(c: Copy, k: Key) -> str =>
+    match k {
+        Home       => c.title
+        Language   => c.box_title
+        Benchmarks => c.bench_title
+        Evals      => c.eval_title
+        Targets    => c.tgt_title
+        Install    => c.install
+        Limits     => c.lim_title
+    }
+
+blurb_of(c: Copy, k: Key) -> str =>
+    match k {
+        Home       => c.sub
+        Language   => c.box_sub
+        Benchmarks => c.bench_sub
+        Evals      => c.eval_sub
+        Targets    => c.tgt_sub
+        Install    => c.install_more
+        Limits     => c.lim_sub
+    }
+
+/// The default language is written twice: once at the root and once under its own directory.
+page_href(o: Copy, up: str, k: Key) -> str =>
+    up ++ o.lang ++ "/" ++ page_file(k) ++ ".html"
+
+home_href(c: Copy, up: str) -> str {
+    if c.lang == default_lang() {
+        return up ++ "index.html"
+    }
+
+    page_href(c, up, Home)
+}
+
+canonical(c: Copy, up: str, k: Key) -> str {
+    if k == Home && c.lang == default_lang() {
+        return up ++ "index.html"
+    }
+
+    page_href(c, up, k)
+}
+
+alternates(up: str, k: Key) -> str =>
+    copies().map(o => link(rel="alternate", hreflang=o.lang,
+                           href=canonical(o, up, k))).join("")
+        ++ link(rel="alternate", hreflang="x-default",
+                href=canonical(copies().get(0), up, k))
+
+/// The whole chrome every page on this site shares.
+document(c: Copy, up: str, k: Key, ...body: str) -> str =>
+    "<!doctype html>\n"
+        ++ html(lang=c.lang,
+            head(
+                meta(charset="utf-8")
+                meta(name="viewport",
+                     content="width=device-width,initial-scale=1")
+                meta(name="description", content=c.descr)
+                meta(property="og:title", content=title_of(c, k))
+                meta(property="og:description", content=c.descr)
+                meta(property="og:type", content="website")
+                meta(property="og:locale", content=c.locale)
+                meta(name="twitter:card", content="summary")
+                link(rel="canonical", href=canonical(c, up, k))
+                alternates(up, k)
+                title_tag(c.title)
+                font_link(up)
+                style(base_css() ++ code_css() ++ styles())
+            )
+            body_tag(page_class("font-sans"),
+                skip_link(c)
+                    ++ masthead(c, up)
+                    ++ element("main", id="content", tabindex="-1",
+                               body.join(""))
+                    ++ colophon(c))) ++ "\n"
+
+skip_link(c: Copy) -> str =>
+    a(class="absolute left-[-9999px] focus:left-2 focus:top-2 focus:z-30"
+            ++ " bg-white dark:bg-zinc-950 px-4 py-2 border border-zinc-300"
+            ++ " dark:border-zinc-700 text-inherit",
+      href="#content", escape_html(c.skip))
+
+masthead(c: Copy, up: str) -> str =>
+    header(class="border-b border-zinc-200 dark:border-zinc-800",
+        div(class=Frame ++ " flex flex-wrap items-center justify-between"
+                  ++ " gap-x-6 gap-y-3 py-4",
+            a(class="font-bold text-[1.1rem] no-underline text-inherit"
+                    ++ " tracking-tight focus:underline",
+              href=home_href(c, up), "Maca")
+            nav(aria-label=c.nav_label,
+                class="flex flex-wrap items-center gap-x-6 gap-y-3",
+                a(class=NavLink, href=up ++ c.lang ++ "/index.html",
+                  escape_html(c.nav_docs))
+                a(class=NavLink, href=up ++ "api/index.html",
+                  escape_html(c.nav_api))
+                a(class=NavLink, href=up ++ "play/index.html",
+                  escape_html(c.cta_play))
+                a(class=NavLink, href=Repo, "GitHub")
+                lang_control(c, up, Home))))
+
+/// The language control: one disclosure, never a row of links.
+lang_control(c: Copy, up: str, k: Key) -> str =>
+    nav(aria-label=c.lang_label, class="relative shrink-0",
+        details(data-site="lang",
+            lang_summary(c.endonym)
+            ul(class=LangMenu,
+               copies().map(o => lang_option(c, up, k, o)).join(""))))
+
+lang_option(c: Copy, up: str, k: Key, other: Copy) -> str {
+    if other.lang == c.lang {
+        return lang_item_current(other.endonym)
+    }
+
+    lang_item(other.endonym, page_href(other, up, k), other.lang)
+}
+
+colophon(c: Copy) -> str =>
     footer(class="border-t border-zinc-200 dark:border-zinc-800",
-        div(class=wrap() ++ " py-10 text-[0.9rem] text-zinc-500"
-                  ++ " dark:text-zinc-400",
+        div(class=Frame ++ " py-10 " ++ Muted,
             p(class="m-0", prose(c.footer))
             p(class="mt-2 m-0",
-              a(class="underline text-inherit", href=Repo,
+              a(class=InlineLink, href=Repo,
                 "github.com/pleahmacaka/macalang"))))
+
+/// The front page: a banner, four facts, and the eight places the site goes.
+directory_page(c: Copy, up: str, rs: Result[]) -> str =>
+    document(c, up, Home,
+        section(class=Frame ++ " py-14 md:py-20 grid gap-10 md:grid-cols-12"
+                      ++ " md:items-center",
+            div(class="md:col-span-7 min-w-0",
+                div(class=Eyebrow, escape_html(release_version()))
+                h1(class="mt-4 m-0 " ++ Display, escape_html(c.headline))
+                p(class="mt-5 m-0 " ++ Lead, prose(c.sub))
+                div(class="mt-8 flex flex-wrap gap-3",
+                    a(class=Primary, href=start_href(c, up),
+                      escape_html(c.cta_start))
+                    a(class=Ghost, href=up ++ "play/index.html",
+                      escape_html(c.cta_play))))
+            div(class="md:col-span-5 min-w-0",
+                code_panel(HeroSample, "maca")))
+        section(class=Frame ++ " pb-14",
+            div(class=lattice("grid-cols-2 md:grid-cols-4"),
+                specs().map(sp => fact_cell(fact_of(c, sp))).join("")))
+        section(class=Frame ++ " pb-14",
+            div(class=lattice("grid-cols-1 sm:grid-cols-2 md:grid-cols-4"),
+                keys().map(k => dest_cell(c, up, k, rs)).join("")
+                    ++ handbook_cell(c, up) ++ reference_cell(c, up)))
+        install_strip(c, up))
+
+/// One destination, which ends in a figure and the file that figure came from.
+dest_cell(c: Copy, up: str, k: Key, rs: Result[]) -> str {
+    r = reading_of(k, rs)
+
+    a(class=CellLink, href=page_href(c, up, k),
+      div(class=Ordinal, ordinal(k))
+      div(class="mt-3 " ++ CellTitle, escape_html(title_of(c, k)))
+      div(class="mt-2 " ++ Muted, escape_html(one_line(blurb_of(c, k))))
+      div(class="mt-5 " ++ Figure, escape_html(r.value))
+      div(class="mt-1 " ++ Unit, escape_html(r.unit))
+      div(class="mt-3 " ++ Source, escape_html(r.from)))
+}
+
+handbook_cell(c: Copy, up: str) -> str {
+    r = handbook_reading()
+
+    a(class=CellLink, href=up ++ c.lang ++ "/index.html",
+      div(class=Ordinal, "07")
+      div(class="mt-3 " ++ CellTitle, escape_html(c.nav_docs))
+      div(class="mt-2 " ++ Muted, escape_html(c.docs_sub))
+      div(class="mt-5 " ++ Figure, escape_html(r.value))
+      div(class="mt-1 " ++ Unit, escape_html(r.unit))
+      div(class="mt-3 " ++ Source, escape_html(r.from)))
+}
+
+reference_cell(c: Copy, up: str) -> str {
+    r = reference_reading()
+
+    a(class=CellLink, href=up ++ "api/index.html",
+      div(class=Ordinal, "08")
+      div(class="mt-3 " ++ CellTitle, escape_html(c.nav_api))
+      div(class="mt-2 " ++ Muted, escape_html(c.api_sub))
+      div(class="mt-5 " ++ Figure, escape_html(r.value))
+      div(class="mt-1 " ++ Unit, escape_html(r.unit))
+      div(class="mt-3 " ++ Source, escape_html(r.from)))
+}
+
+/// The figure a destination carries, computed from a committed file.
+reading_of(k: Key, rs: Result[]) -> Reading =>
+    match k {
+        Home       => release_reading()
+        Language   => Reading { value = "{topics().length()}",
+                                unit = "capabilities", from = SiteCopy }
+        Benchmarks => Reading { value = "{ahead_count(rs)} of"
+                                        ++ " {kernels().length()}",
+                                unit = "kernels at or ahead of C",
+                                from = BenchData }
+        Evals      => eval_reading()
+        Targets    => Reading { value = "{targets().length()}",
+                                unit = "back ends", from = SiteCopy }
+        Install    => release_reading()
+        Limits     => Reading { value = "{caveats().length()}",
+                                unit = "known caveats", from = SiteCopy }
+    }
+
+SiteCopy = "apps/site/home.maca"
+
+ahead_count(rs: Result[]) -> int =>
+    kernels().filter(k => !is_behind(rs, k)).length()
+
+/// A blurb is one sentence in a cell, however many it is on its own page.
+one_line(s: str) -> str {
+    cut = s.split(".")
+
+    if cut.length() < 2 {
+        return s
+    }
+
+    cut.get(0) ++ "."
+}
+
+fact_cell(f: Fact) -> str =>
+    div(class=Cell,
+        div(class=Eyebrow, escape_html(f.label))
+        div(class="mt-3 font-medium", escape_html(f.value)))
+
+code_panel(src: str, lang: str) -> str =>
+    pre(class=CodePlate,
+        code(class="font-mono language-" ++ lang, highlight(lang, src)))
+
+install_strip(c: Copy, up: str) -> str =>
+    section(id="install", class="border-t border-zinc-200 dark:border-zinc-800",
+        div(class=Frame ++ " py-10",
+            div(class=Eyebrow, escape_html(c.install))
+            div(class="mt-4 " ++ CodeLight,
+                code(class="font-mono language-sh",
+                     highlight("sh", InstallLine)))
+            p(class="mt-4 m-0 " ++ Muted,
+              a(class=InlineLink, href=page_href(c, up, Install),
+                escape_html(c.install_more)))))
+
+InstallLine = "curl -fsSL " ++ InstallUrl ++ " | bash"
+
+/// The head of a numbered document: its ordinal, its title, and where its facts come from.
+doc_head(c: Copy, up: str, k: Key, from: str) -> str =>
+    section(class=Frame ++ " py-12 md:py-16 grid gap-8 md:grid-cols-12",
+        div(class="md:col-span-8 min-w-0",
+            div(class=Eyebrow, ordinal(k) ++ " / "
+                               ++ escape_html(title_of(c, k)))
+            h1(class="mt-4 m-0 " ++ DocTitle, escape_html(title_of(c, k)))
+            p(class="mt-5 m-0 " ++ Lead, prose(blurb_of(c, k))))
+        div(class="md:col-span-4 min-w-0",
+            div(class=Cell,
+                div(class=Eyebrow, escape_html(c.prov_label))
+                div(class="mt-3 " ++ Source, escape_html(from)))))
+
+/// Every document ends by saying where it sits and what is next.
+doc_foot(c: Copy, up: str, k: Key) -> str =>
+    section(class=Frame ++ " py-10 border-t border-zinc-200"
+                  ++ " dark:border-zinc-800",
+        a(class=NavLink, href=home_href(c, up), escape_html(c.back_home)))
+
+section_head(title: str) -> str =>
+    h2(class="mt-12 pt-6 border-t border-zinc-200 dark:border-zinc-800 m-0 "
+             ++ Head2, escape_html(title))
+
+/// 01: what the language is, at a size where the samples can be read.
+language_doc(c: Copy, up: str) -> str =>
+    document(c, up, Language,
+        doc_head(c, up, Language, SiteCopy)
+        section(class=Frame ++ " pb-14",
+            div(class="grid gap-px bg-zinc-200 dark:bg-zinc-800 border"
+                      ++ " border-zinc-200 dark:border-zinc-800 md:grid-cols-2",
+                topics().map(t => feature_cell(feature_of(c, t), sample(t)))
+                        .join("")))
+        doc_foot(c, up, Language))
+
+feature_cell(f: Feature, src: str) -> str =>
+    article(class=Cell,
+        h3(class="m-0 " ++ Head3, escape_html(f.title))
+        p(class="mt-3 m-0 " ++ Body, prose(f.body))
+        pre(class="mt-4 " ++ CodeLight,
+            code(class="font-mono language-maca", highlight("maca", src))))
+
+/// 02: the measured argument, with its provenance beside the title.
+bench_doc_page(c: Copy, up: str, rs: Result[]) -> str =>
+    document(c, up, Benchmarks,
+        doc_head(c, up, Benchmarks, BenchData)
+        section(class=Frame ++ " pb-10",
+            div(class=lattice("grid-cols-1 sm:grid-cols-2 md:grid-cols-5"),
+                provenance().map(v => prov_cell(prov_of(c, v, rs))).join("")))
+        section(class=Frame ++ " pb-14",
+            families().map(f => family_group(c, rs, f)).join("")
+            bench_table(c, rs)
+            p(class="mt-6 m-0 " ++ Muted, prose(c.bench_note)))
+        doc_foot(c, up, Benchmarks))
+
+/// 03: pass@1, and the reason the third column is not the headline.
+evals_doc(c: Copy, up: str) -> str =>
+    document(c, up, Evals,
+        doc_head(c, up, Evals, Baseline)
+        section(class=Frame ++ " pb-10",
+            div(class=lattice("grid-cols-1 md:grid-cols-3"),
+                scores().map(score_cell).join("")))
+        section(class=Frame ++ " pb-14",
+            p(class="m-0 " ++ Body, prose(c.eval_note))
+            p(class="mt-4 m-0 " ++ Body, prose(c.eval_caveat)))
+        doc_foot(c, up, Evals))
+
+score_cell(s: Score) -> str =>
+    div(class=Cell,
+        div(class=Eyebrow, escape_html(s.condition))
+        div(class="mt-3 " ++ Figure, "{s.percent}%")
+        div(class="mt-1 " ++ Unit, "{s.passed} of {s.of}")
+        div(class="mt-4",
+            span(class="block h-2 bg-zinc-900 dark:bg-zinc-100",
+                 style="width:{s.percent}%")))
+
+/// 04: what a program may be compiled to.
+targets_doc(c: Copy, up: str) -> str =>
+    document(c, up, Targets,
+        doc_head(c, up, Targets, SiteCopy)
+        section(class=Frame ++ " pb-14",
+            div(class=lattice("grid-cols-1 sm:grid-cols-2 md:grid-cols-4"),
+                targets().map(target_cell).join("")))
+        doc_foot(c, up, Targets))
+
+target_cell(t: str) -> str =>
+    div(class=Cell, div(class="font-mono text-[0.95rem]", escape_html(t)))
+
+/// 05: the one command, and the release it fetches.
+install_doc(c: Copy, up: str) -> str =>
+    document(c, up, Install,
+        doc_head(c, up, Install, Manifest)
+        section(class=Frame ++ " pb-14",
+            pre(class=CodePlate,
+                code(class="font-mono language-sh",
+                     highlight("sh", InstallSample)))
+            p(class="mt-6 m-0 " ++ Body, prose(c.install_body)))
+        doc_foot(c, up, Install))
+
+/// 06: what this language does not do, at the same size as what it does.
+limits_doc(c: Copy, up: str) -> str =>
+    document(c, up, Limits,
+        doc_head(c, up, Limits, SiteCopy)
+        section(class=Frame ++ " pb-14",
+            ul(class=lattice("grid-cols-1 md:grid-cols-3") ++ " list-none m-0"
+                      ++ " p-0",
+               caveats().map(v => li(class=Cell, prose(caveat_of(c, v))))
+                        .join("")))
+        doc_foot(c, up, Limits))
+
+body_for(c: Copy, up: str, k: Key, rs: Result[]) -> str =>
+    match k {
+        Home       => directory_page(c, up, rs)
+        Language   => language_doc(c, up)
+        Benchmarks => bench_doc_page(c, up, rs)
+        Evals      => evals_doc(c, up)
+        Targets    => targets_doc(c, up)
+        Install    => install_doc(c, up)
+        Limits     => limits_doc(c, up)
+    }
 
 main(args: str[]) -> int {
     out = if args.length() > 0 { args.get(0) } else { "apps/tomo/site" }
@@ -996,28 +1229,44 @@ main(args: str[]) -> int {
         fail "no benchmark results in {BenchData}: run `{ReproCommand}`"
     }
 
-    root = write_page(join(out, "index.html"), page(copies().get(0), "", rs))
+    root = write_page(join(out, "index.html"),
+                      directory_page(copies().get(0), "", rs))
     written = root + write_langs(out, copies(), 0, rs)
-    wanted = copies().length() + 1
+    wanted = 1 + copies().length() * (keys().length() + 1)
 
     if written < wanted {
-        err("front page: wrote {written} of {wanted} files under {out}")
+        err("site: wrote {written} of {wanted} files under {out}")
         1
     } else {
-        info("front page: {written} files under {out}")
+        info("site: {written} files under {out}")
         0
     }
 }
 
 write_langs(out: str, cs: Copy[], i: int, rs: Result[]) -> int {
     if i >= cs.length() {
-        0
-    } else {
-        dir = join(out, cs.get(i).lang)
-        make_dir(dir)
-        n = write_page(join(dir, "home.html"), page(cs.get(i), "../", rs))
-        n + write_langs(out, cs, i + 1, rs)
+        return 0
     }
+
+    dir = join(out, cs.get(i).lang)
+    make_dir(dir)
+
+    home = write_page(join(dir, "home.html"),
+                      directory_page(cs.get(i), "../", rs))
+    n = home + write_docs(dir, cs.get(i), keys(), 0, rs)
+
+    n + write_langs(out, cs, i + 1, rs)
+}
+
+write_docs(dir: str, c: Copy, ks: Key[], i: int, rs: Result[]) -> int {
+    if i >= ks.length() {
+        return 0
+    }
+
+    k = ks.get(i)
+    n = write_page(join(dir, page_file(k) ++ ".html"), body_for(c, "../", k, rs))
+
+    n + write_docs(dir, c, ks, i + 1, rs)
 }
 
 write_page(path: str, markup: str) -> int {

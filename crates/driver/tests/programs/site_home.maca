@@ -25,6 +25,10 @@ built() -> str {
 root() -> str =>
     read_file(join(built(), "index.html"))
 
+/// The benchmark argument is its own document now, so the assertions about it describe that page.
+bench_page() -> str =>
+    read_file(join(join(built(), "en"), "benchmarks.html"))
+
 runs() -> Result[] =>
     load(BenchData)
 
@@ -86,7 +90,7 @@ test_columns_that_disagree_are_not_verified() {
 }
 
 test_every_measured_number_is_on_the_page() {
-    page = root()
+    page = bench_page()
     rs = runs()
 
     assert_eq(absent_cells(page, rs, kernels(), 0, []).join(", "), "",
@@ -123,7 +127,7 @@ cell(rs: Result[], algo: str, lang: str) -> str {
 }
 
 test_each_column_is_under_its_own_language() {
-    page = root()
+    page = bench_page()
     rs = runs()
     want = [english().tbl_kernel, english().tbl_workload] ++ langs()
 
@@ -221,7 +225,7 @@ at(cs: str[], i: int) -> str {
 }
 
 test_the_bars_are_drawn_from_the_measurements() {
-    page = root()
+    page = bench_page()
     rs = runs()
     mine = timing(rs, "sieve", "Maca")
     base = timing(rs, "sieve", "C")
@@ -237,7 +241,7 @@ test_the_bars_are_drawn_from_the_measurements() {
 }
 
 test_the_page_says_where_maca_loses() {
-    page = root()
+    page = bench_page()
     rs = runs()
     lost = losses(rs)
 
@@ -287,7 +291,7 @@ occurrences(haystack: str, needle: str) -> int =>
     haystack.split(needle).length() - 1
 
 test_a_kernel_behind_c_is_drawn_unlike_one_that_is_not() {
-    page = root()
+    page = bench_page()
     rs = runs()
     lost = losses(rs)
     same = not_behind(rs, kernels(), 0)
@@ -314,7 +318,7 @@ not_behind(rs: Result[], ks: str[], i: int) -> str {
 }
 
 test_every_kernel_and_language_is_named() {
-    page = root()
+    page = bench_page()
 
     assert(all_present(page, kernels(), 0), "every kernel")
     assert(all_present(page, workloads(kernels(), 0, []), 0), "its workload")
@@ -343,7 +347,7 @@ escaped(text: str) -> str =>
     text
 
 test_the_page_states_where_the_numbers_came_from() {
-    page = root()
+    page = bench_page()
     host = between(read_file(BenchReport), "_Host: ", ". Times")
 
     assert(host != "", "the harness recorded a host")
@@ -351,7 +355,8 @@ test_the_page_states_where_the_numbers_came_from() {
     assert(page.contains("{timed_runs(runs())} per language"),
            "how many runs each contender got")
     assert(page.contains("maca run apps/bench/run.maca"), "how to re-run it")
-    assert(page.contains("apps/bench/README.md"), "and where it is explained")
+    assert(page.contains("apps/bench/results.json"),
+           "and the committed file the figures came from")
     assert(page.contains("cc -O2"), "with the flags it was built at")
 }
 
@@ -393,7 +398,7 @@ chapter(lang: str) -> str =>
     "apps/tomo/book/" ++ lang ++ "/" ++ StartChapter ++ ".md"
 
 test_the_korean_page_carries_the_same_benchmark() {
-    ko = read_file(join(built(), "ko/home.html"))
+    ko = read_file(join(built(), "ko/benchmarks.html"))
 
     assert(ko.contains(korean().bench_title), "the heading, in Korean")
     assert(ko.contains(korean().tbl_note), "the table's unit note too")
@@ -463,7 +468,7 @@ test_the_always_dark_panel_gets_the_dark_palette() {
 }
 
 test_the_wide_table_scrolls_inside_its_own_box() {
-    page = root()
+    page = bench_page()
 
     assert(page.contains("overflow-x-auto\"><table"),
            "the table is inside a scroller")

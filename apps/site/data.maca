@@ -1,5 +1,4 @@
-import std/fs
-import std/path
+import { join } from std/path
 import { between, split_once, strip_prefix, strip_suffix } from std/text
 
 /// A number the site states, and the committed file it was computed from.

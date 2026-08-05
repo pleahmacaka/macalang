@@ -60,7 +60,8 @@ test_the_page_shows_code() {
     assert(root.contains("language-sh"), "and the install line is shell")
     hero = unmarked(between(root, "code-dark", "</pre>"))
     assert(hero.contains("Shape = Circle(float)"), "the hero program")
-    assert_eq(str(count(root, "<pre class=")), "6", "hero + 4 cards + install")
+    assert_eq(str(count(root, "<pre class=")), "1",
+              "the front page is a directory, so the hero is its only listing")
 }
 
 unmarked(html: str) -> str =>
@@ -109,15 +110,21 @@ test_the_front_page_offers_the_installer_the_release_builds() {
 }
 
 
+/// The cards and the caveats each have their own document now, so each is counted where it lives.
 test_both_languages_carry_every_card() {
     dir = front_page_dir()
-    en = read_file(join(dir, "index.html"))
-    ko = read_file(join(dir, "ko/home.html"))
 
-    assert_eq(str(count(en, "<article class=")), "4", "en cards")
-    assert_eq(str(count(ko, "<article class=")), "4", "ko cards")
-    assert_eq(str(count(en, "<li class=")), "3", "en caveats")
-    assert_eq(str(count(ko, "<li class=")), "3", "ko caveats")
+    for lang in ["en", "ko"] {
+        cards = read_file(join(dir, lang ++ "/language.html"))
+        limits = read_file(join(dir, lang ++ "/limits.html"))
+
+        assert_eq(str(count(cards, "<article class=")), "4", "{lang} cards")
+        assert_eq(str(count(limits, "<li class=")), "3", "{lang} caveats")
+    }
+
+    root = read_file(join(dir, "index.html"))
+    assert_eq(str(count(root, "<li class=")), "0",
+              "and the directory carries neither")
 }
 
 Samples = "/tmp/maca-sitegen/samples"
