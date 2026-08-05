@@ -83,6 +83,9 @@ fn a_stub_fails_the_test_it_ships_with() {
 }
 
 /// The harness's arithmetic: one solved problem out of the set is one, not zero and not all.
+///
+/// `MACA` is the binary this test run built. Pointing it at `target/release`
+/// is what made this pass here and fail in CI, which never builds one.
 #[test]
 fn the_harness_counts_what_the_model_actually_solved() {
     if have_wsl() || !have("cc") {
@@ -93,7 +96,7 @@ fn the_harness_counts_what_the_model_actually_solved() {
         .args(["run", "apps/evals/run.maca"])
         .current_dir(repo())
         .env("MACA_EVAL_MODEL", stand_in())
-        .env("MACA", repo().join("target/release/maca"))
+        .env("MACA", maca())
         .output()
         .expect("spawn the harness");
     assert!(
