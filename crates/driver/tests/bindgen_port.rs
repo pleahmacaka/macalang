@@ -46,11 +46,11 @@ fn maca_bindgen_matches_the_rust_implementation() {
     let maca = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args([
             "run",
-            &repo.join("tools/bindgen.maca").to_string_lossy(),
+            &repo.join("apps/bindgen/bindgen.maca").to_string_lossy(),
             &header.to_string_lossy(),
         ])
         .output()
-        .expect("spawn maca run tools/bindgen.maca");
+        .expect("spawn maca run apps/bindgen/bindgen.maca");
     assert!(
         maca.status.success(),
         "maca bindgen failed:\n{}",
@@ -83,7 +83,7 @@ fn maca_bindgen_cli_writes_and_reports_errors() {
         return;
     }
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let tool = repo.join("tools/bindgen.maca");
+    let tool = repo.join("apps/bindgen/bindgen.maca");
     let dir = std::env::temp_dir().join("maca-bindgen-cli");
     let _ = std::fs::create_dir_all(&dir);
 

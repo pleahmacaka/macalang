@@ -1,7 +1,7 @@
 # A Project: A Style Linter
 
 The chapters so far each showed one idea. This one builds a whole tool, and the
-tool is real: `tools/lint.maca` in the repository, the linter that the Maca
+tool is real: `apps/lint/lint.maca` in the repository, the linter that the Maca
 sources are actually held to. It reads files, walks directories, takes command
 line arguments and sets an exit code: the shape of most command line programs.
 
@@ -140,7 +140,7 @@ pre-commit hook.
 ## Running it on itself
 
 ```
-maca run tools/lint.maca
+maca run apps/lint/lint.maca
 ```
 
 The first time this ran it reported issues in its own source. That is the point

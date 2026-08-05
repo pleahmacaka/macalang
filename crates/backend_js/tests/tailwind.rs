@@ -188,7 +188,7 @@ fn the_monospace_stack_is_monospace() {
     );
 }
 
-/// `tools/build-site.maca` reimplements this escaper in Maca, because it has to build the same selector the stylesheet contains in order to ask whether a class has a rule.
+/// `apps/build_site/build_site.maca` reimplements this escaper in Maca, because it has to build the same selector the stylesheet contains in order to ask whether a class has a rule.
 #[test]
 fn the_escaper_matches_the_one_build_site_reimplements() {
     for (class, want) in [

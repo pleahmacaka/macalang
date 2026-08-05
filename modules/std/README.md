@@ -31,10 +31,10 @@ A selective import pulls in only what you name, plus what it needs.
 The table above is the public API, and it is not a promise kept by hand: every
 name in it has a `///` doc comment in its module, every `///` in these modules
 names something in the table, and `crates/driver/tests/programs/sitegen.maca`
-fails if the two ever disagree. `tools/macadoc.maca` renders them:
+fails if the two ever disagree. `apps/macadoc/macadoc.maca` renders them:
 
 ```
-maca run tools/macadoc.maca site/api std/text.maca std/list.maca
+maca run apps/macadoc/macadoc.maca site/api std/text.maca std/list.maca
 ```
 
 Handbook chapter 17 explains the marker.

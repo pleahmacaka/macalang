@@ -1,0 +1,7 @@
+[package]
+name = "lint"
+description = "The style linter this repository has to pass: line width, single-line `if`, trailing whitespace, hard tabs."
+
+[[bin]]
+name = "lint"
+path = "lint.maca"

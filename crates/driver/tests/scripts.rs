@@ -28,7 +28,7 @@ fn builds(script: &str) {
 
 #[test]
 fn the_site_builder_compiles() {
-    builds("tools/build-site.maca");
+    builds("apps/build_site/build_site.maca");
 }
 
 #[test]
@@ -43,12 +43,12 @@ fn the_benchmark_harness_compiles() {
 
 #[test]
 fn the_linter_compiles() {
-    builds("tools/lint.maca");
+    builds("apps/lint/lint.maca");
 }
 
 #[test]
 fn bindgen_compiles() {
-    builds("tools/bindgen.maca");
+    builds("apps/bindgen/bindgen.maca");
 }
 
 #[test]
@@ -58,5 +58,5 @@ fn the_front_page_compiles() {
 
 #[test]
 fn macadoc_compiles() {
-    builds("tools/macadoc.maca");
+    builds("apps/macadoc/macadoc.maca");
 }

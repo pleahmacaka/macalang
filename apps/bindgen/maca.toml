@@ -1,0 +1,7 @@
+[package]
+name = "bindgen"
+description = "A C header read into the Maca FFI declarations that reach the library it describes."
+
+[[bin]]
+name = "bindgen"
+path = "bindgen.maca"

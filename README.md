@@ -233,14 +233,14 @@ Everything published is built by the compiler in this repository, by one
 command:
 
 ```sh
-maca run tools/build-site.maca _site
+maca run apps/build_site/build_site.maca _site
 ```
 
 | Path | What | Built by |
 |---|---|---|
 | `/` | the front page | [`apps/site/home.maca`](apps/site/home.maca) |
 | `/en` `/ko` | The Maca Handbook: *Learning Maca* and *The Reference*, in English and Korean | [`apps/tomo/tomo.maca`](apps/tomo/tomo.maca) |
-| `/api` | the `std/` reference | [`tools/macadoc.maca`](tools/macadoc.maca) |
+| `/api` | the `std/` reference | [`apps/macadoc/macadoc.maca`](apps/macadoc/macadoc.maca) |
 | `/play` | the playground | `maca build --target js` |
 
 Three Maca programs and one `maca build`, so a broken site means a broken

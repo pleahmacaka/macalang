@@ -1,0 +1,7 @@
+[package]
+name = "build_site"
+description = "The published site, built and then checked: every page, and a CSS rule for every class any of them names."
+
+[[bin]]
+name = "build_site"
+path = "build_site.maca"

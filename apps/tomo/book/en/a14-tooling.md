@@ -126,13 +126,13 @@ changed.
 
 ## The linter
 
-`maca lint` covers the semantic checks. Alongside it, `tools/lint.maca` is a
+`maca lint` covers the semantic checks. Alongside it, `apps/lint/lint.maca` is a
 style linter written in Maca itself, which walks a directory tree:
 
 ```
-maca run tools/lint.maca            # the repository's own sources
-maca run tools/lint.maca src        # a directory
-maca run tools/lint.maca a.maca     # one file
+maca run apps/lint/lint.maca            # the repository's own sources
+maca run apps/lint/lint.maca src        # a directory
+maca run apps/lint/lint.maca a.maca     # one file
 ```
 
 It checks four things: lines over 80 columns, a single-line `if` block, trailing
@@ -147,14 +147,14 @@ JavaScript rather than Maca.
 
 ## API documentation
 
-`tools/macadoc.maca` reads a module's declarations, pairs each with the comment
+`apps/macadoc/macadoc.maca` reads a module's declarations, pairs each with the comment
 above it, and writes an HTML reference, which is what rustdoc is to Rust and
-TSDoc is to TypeScript. Like `tools/lint.maca` above, it lives in the repository
+TSDoc is to TypeScript. Like `apps/lint/lint.maca` above, it lives in the repository
 rather than inside the `maca` binary: it is a Maca program, so it is a file you
 run, not a subcommand you install.
 
 ```
-maca run tools/macadoc.maca site/api std/text.maca std/list.maca
+maca run apps/macadoc/macadoc.maca site/api std/text.maca std/list.maca
 ```
 
 Maca has no `export` keyword, and a module is mostly helpers. What makes an item

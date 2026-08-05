@@ -110,7 +110,7 @@ module_paths(ls: str[], i: int, acc: str[]) -> str[] {
 
 build_api_reference() -> bool {
     announce("api reference")
-    run(maca(), ["run", "tools/macadoc.maca", "apps/tomo/site/api"]
+    run(maca(), ["run", "apps/macadoc/macadoc.maca", "apps/tomo/site/api"]
               ++ std_modules())
 }
 

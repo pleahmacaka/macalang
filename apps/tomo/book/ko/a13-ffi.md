@@ -67,7 +67,7 @@ sqlite3_column_double(sqlite3_stmt: int, iCol: int) -> float
 sqlite3_close(sqlite3: int) -> int
 ```
 
-bindgen은 구현이 둘입니다. 컴파일러 안의 원래 Rust 구현과, `tools/bindgen.maca`의
+bindgen은 구현이 둘입니다. 컴파일러 안의 원래 Rust 구현과, `apps/bindgen/bindgen.maca`의
 Maca 포팅본입니다. 테스트가 같은 헤더로 둘을 돌려 출력이 정확히 일치할 것을
 요구합니다. 포팅본이 표류하도록 두지 않습니다.
 

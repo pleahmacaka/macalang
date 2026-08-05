@@ -5,7 +5,7 @@ import std/list
 import std/proc
 import { flat, of_kind, cross_linked, declared, kind_label, is_union,
          item_href, signature, is_doc, is_plain_comment,
-         comment_body, first_sentence } from tools/macadoc
+         comment_body, first_sentence } from apps/macadoc/macadoc
 
 maca() -> str =>
     env_or("MACA", "target/release/maca")
@@ -222,7 +222,7 @@ built() -> str {
     write_file(join(src, "overlay.maca"), Overlay)
     write_file(join(src, "corner.maca"), Corner)
     remove_dir(dir)
-    run(maca(), ["run", "tools/macadoc.maca", dir,
+    run(maca(), ["run", "apps/macadoc/macadoc.maca", dir,
                  join(src, "shapes.maca"), join(src, "draw.maca"),
                  join(src, "overlay.maca"), join(src, "corner.maca")])
     dir

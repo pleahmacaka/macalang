@@ -8,11 +8,11 @@ fn lint(target: &str) -> (bool, String) {
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args([
             "run",
-            &repo().join("tools/lint.maca").to_string_lossy(),
+            &repo().join("apps/lint/lint.maca").to_string_lossy(),
             target,
         ])
         .output()
-        .expect("spawn maca run tools/lint.maca");
+        .expect("spawn maca run apps/lint/lint.maca");
     (
         out.status.success(),
         String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr),
@@ -96,13 +96,13 @@ fn the_repository_passes_its_own_linter() {
         return;
     }
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
-        .args(["run", &repo().join("tools/lint.maca").to_string_lossy()])
+        .args(["run", &repo().join("apps/lint/lint.maca").to_string_lossy()])
         .current_dir(repo())
         .output()
-        .expect("spawn maca run tools/lint.maca");
+        .expect("spawn maca run apps/lint/lint.maca");
     assert!(
         out.status.success(),
-        "the repository does not pass tools/lint.maca:\n{}{}",
+        "the repository does not pass apps/lint/lint.maca:\n{}{}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr),
     );

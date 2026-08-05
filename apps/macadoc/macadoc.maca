@@ -491,7 +491,7 @@ index_page(ms: Module[]) -> str =>
              p(class=ProseClass ++ " " ++ Measure,
                "Every module of the standard library, generated from the"
                    ++ " source by " ++ code(class=CodeSpan,
-                                            "tools/macadoc.maca") ++ ". Press "
+                                            "apps/macadoc/macadoc.maca") ++ ". Press "
                    ++ element("kbd", class=KbdClass, "/") ++ " to search.")
              div(class=Stack ++ " mt-8 gap-4", module_cards(ms, 0))))
 

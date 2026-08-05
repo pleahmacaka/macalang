@@ -122,13 +122,13 @@ config/links.local.json   당신의 것. gitignore 되고, 당신의 빌드가 �
 
 ## 린터
 
-`maca lint`가 의미 검사를 담당합니다. 그 옆에 `tools/lint.maca`가 있는데, Maca
+`maca lint`가 의미 검사를 담당합니다. 그 옆에 `apps/lint/lint.maca`가 있는데, Maca
 자체로 쓰인 스타일 린터이고 디렉터리 트리를 순회합니다.
 
 ```
-maca run tools/lint.maca            # 저장소 자신의 소스
-maca run tools/lint.maca src        # 디렉터리
-maca run tools/lint.maca a.maca     # 파일 하나
+maca run apps/lint/lint.maca            # 저장소 자신의 소스
+maca run apps/lint/lint.maca src        # 디렉터리
+maca run apps/lint/lint.maca a.maca     # 파일 하나
 ```
 
 네 가지를 봅니다. 80칸을 넘는 줄, 한 줄짜리 `if` 블록, 줄 끝 공백, 하드 탭.
@@ -142,11 +142,11 @@ maca run tools/lint.maca a.maca     # 파일 하나
 
 ## API 문서
 
-`tools/macadoc.maca`는 모듈의 선언을 읽고 각각을 그 위의 주석과 짝지어 HTML
+`apps/macadoc/macadoc.maca`는 모듈의 선언을 읽고 각각을 그 위의 주석과 짝지어 HTML
 레퍼런스를 씁니다. Rust의 rustdoc, TypeScript의 TSDoc에 해당하는 것입니다.
 
 ```
-maca run tools/macadoc.maca site/api std/text.maca std/list.maca
+maca run apps/macadoc/macadoc.maca site/api std/text.maca std/list.maca
 ```
 
 Maca에는 `export` 키워드가 없고, 모듈의 대부분은 헬퍼입니다. 어떤 항목을 API로

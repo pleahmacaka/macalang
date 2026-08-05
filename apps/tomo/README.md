@@ -39,7 +39,7 @@ names the thing the book is about, which is not the book's own title.
 
 This book is the case that opts out. Its front page is a designed page in the
 UI syntax rather than a rendered document (`apps/site/home.maca`), written over
-those same three addresses by `tools/build-site.maca`; tomo produces the picker
+those same three addresses by `apps/build_site/build_site.maca`; tomo produces the picker
 and the front page replaces it. Markdown is right for a chapter and for most
 books' landings, and this is the one where it wasn't.
 
@@ -100,7 +100,7 @@ apps/tomo/
 ├── tomo.maca        # Markdown -> HTML, the i18n page shell, the book builder
 ├── dev.maca         # dev mode: build, serve, watch, publish a patch
 ├── highlight.maca   # the syntax highlighter and its theme
-├── conf.maca        # the `book.toml` subset, shared with tools/build-site.maca
+├── conf.maca        # the `book.toml` subset, shared with apps/build_site/build_site.maca
 ├── book.toml        # book config: title, languages, volumes, chapter order
 ├── book/
 │   ├── en/          # English chapters (the default language)

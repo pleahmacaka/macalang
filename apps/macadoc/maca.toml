@@ -1,0 +1,7 @@
+[package]
+name = "macadoc"
+description = "The API pages, built from the `///` line above each item and the `//` blurb each module opens with."
+
+[[bin]]
+name = "macadoc"
+path = "macadoc.maca"

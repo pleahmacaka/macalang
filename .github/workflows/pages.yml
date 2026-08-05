@@ -3,7 +3,7 @@ name: pages
 # Publishes four things, every one of them built by Maca itself:
 #   /                the front page, apps/site/home.maca
 #   /en /ko          The Maca Handbook, rendered by apps/tomo/tomo.maca
-#   /api             the std reference, rendered by tools/macadoc.maca
+#   /api             the std reference, rendered by apps/macadoc/macadoc.maca
 #   /play            the browser playground, one self-contained page
 #
 # All of it comes out of the compiler in this repository: three Maca programs
@@ -70,7 +70,7 @@ jobs:
       # The script is a Maca program, built by the compiler it is publishing
       # the documentation for.
       - name: Build and check the site
-        run: ./target/release/maca run tools/build-site.maca _site
+        run: ./target/release/maca run apps/build_site/build_site.maca _site
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

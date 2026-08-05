@@ -52,23 +52,22 @@ Virtual workspace; members are `crates/*`.
 | `maca-backend-embedded` | freestanding C for bare-metal MCUs (Cortex-M/RISC-V) |
 | `maca-wasm` | `wasm32` front-end for the browser playground (no wasm-bindgen) |
 
-Non-crate dirs: `tools/`, the Maca-written ports of the toolchain. There is
-`bindgen.maca`, kept equivalent to its stage-0 Rust twin by
-`crates/driver/tests/bindgen_port.rs`,
-`lint.maca`, a style linter that walks the tree recursively and checks line
-width / single-line `if` / trailing whitespace / hard tabs. Width is measured
-with string literals collapsed, so a long C template or URL is exempt exactly
-as a long comment is. Gated by `crates/driver/tests/lint_port.rs`, which
-requires the whole repository to pass it. `macadoc.maca` is the API-doc
-generator (rustdoc's job for Maca: a `///` block above an item is what makes it
-API, and the leading `//` block of a `modules/std` file is that module's own
-blurb on the generated index; the Reference's tooling chapter documents the
-marker, and
+**The toolchain's own programs are applications, because that is what they
+are.** There is no `tools/`: a runnable program lives under `apps/` whoever
+wrote it and whoever runs it, so `apps/bindgen/` is kept equivalent to its
+stage-0 Rust twin by `crates/driver/tests/bindgen_port.rs`; `apps/lint/` is a
+style linter that walks the tree recursively and checks line width /
+single-line `if` / trailing whitespace / hard tabs (width is measured with
+string literals collapsed, so a long C template or URL is exempt exactly as a
+long comment is, and `crates/driver/tests/lint_port.rs` requires the whole
+repository to pass it); `apps/macadoc/` is the API-doc generator (rustdoc's job
+for Maca: a `///` block above an item is what makes it API, and the leading
+`//` block of a `modules/std` file is that module's own blurb on the generated
+index; the Reference's tooling chapter documents the marker, and
 `crates/driver/tests/programs/sitegen.maca` fails if what it lists ever differs
-from what `modules/std/README.md` advertises). And there is
-`build-site.maca`, which builds and checks the published site for both CI and a
-human, including a check that every class on every emitted page produced a CSS
-rule.
+from what `modules/std/README.md` advertises); and `apps/build_site/` builds
+and checks the published site for both CI and a human, including a check that
+every class on every emitted page produced a CSS rule.
 **Every script in the repository is a Maca program**: `apps/bench/run.maca` is
 the cross-language benchmark harness, `packages/macalang/build.maca` builds the
 wasm into the npm package. All seven are compiled by
@@ -198,7 +197,8 @@ renders `book/{en,ko}/*.md` into `site/`, built entirely out of the UI syntax
 below plus one line of hand-written CSS; it is also the worked example of that
 syntax, so keep it free of hand-concatenated markup), and `site`, the project's
 front page, `home.maca`, whose copy is keyed by sum types so a translation that
-drops a card is a NonExhaustive error rather than a shorter page),
+drops a card is a NonExhaustive error rather than a shorter page), and the four
+toolchain programs above: `bindgen`, `lint`, `macadoc`, `build_site`.
 `selfhost/` (the Maca compiler written in Maca, stage 1), `editor/`, `docs/`.
 
 **The handbook is two volumes with one table of contents** (`apps/tomo/book.toml`):
@@ -282,7 +282,7 @@ definition cycle resolves, with `MACA_ARRAY_STRUCT` before the body and
   belongs in the handbook (`apps/tomo/book/**`) or `docs/SPEC.md`, which are
   documentation and are not covered by this rule.
 - **`///` is the exception, and it is one line.** `///` is what marks an item
-  as API: `tools/macadoc.maca` builds the reference pages from it, and
+  as API: `apps/macadoc/macadoc.maca` builds the reference pages from it, and
   `crates/driver/tests/programs/sitegen.maca` fails when those pages and
   `modules/std/README.md` disagree, so deleting a `///` deletes a feature.
   Write exactly one line, a complete English sentence summarising the item. No

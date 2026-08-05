@@ -3,7 +3,7 @@ import std/path
 import std/text
 import std/list
 import std/proc
-import { install_fonts } from tools/build-site
+import { install_fonts } from apps/build_site/build_site
 import { build_book } from apps/tomo/tomo
 
 maca() -> str =>
@@ -212,7 +212,7 @@ site_dir() -> str {
     remove_dir(Site)
     build_book("apps/tomo", Site)
     run(maca(), ["run", "apps/site/home.maca", Site])
-    run(maca(), ["run", "tools/macadoc.maca", join(Site, "api")]
+    run(maca(), ["run", "apps/macadoc/macadoc.maca", join(Site, "api")]
                 ++ std_modules())
     build_playground(join(Site, "play"))
     install_fonts(Site)
@@ -278,7 +278,7 @@ test_the_pages_ask_for_the_family_the_sheet_defines() {
 api_dir() -> str {
     dir = join(Out, "api")
     remove_dir(dir)
-    run(maca(), ["run", "tools/macadoc.maca", dir] ++ std_modules())
+    run(maca(), ["run", "apps/macadoc/macadoc.maca", dir] ++ std_modules())
     dir
 }
 
@@ -416,7 +416,7 @@ test_module_cards_say_what_the_module_is() {
 fixture_dir() -> str {
     dir = join(Out, "fixture")
     remove_dir(dir)
-    run(maca(), ["run", "tools/macadoc.maca", dir,
+    run(maca(), ["run", "apps/macadoc/macadoc.maca", dir,
                  "crates/driver/tests/programs/docfixture.maca"])
     dir
 }

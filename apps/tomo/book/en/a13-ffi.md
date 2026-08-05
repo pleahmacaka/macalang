@@ -71,7 +71,7 @@ sqlite3_close(sqlite3: int) -> int
 ```
 
 There are two implementations of bindgen: the original in Rust inside the
-compiler, and a port written in Maca at `tools/bindgen.maca`. A test runs both
+compiler, and a port written in Maca at `apps/bindgen/bindgen.maca`. A test runs both
 over the same header and requires the output to match exactly, so the port is
 not allowed to drift.
 
