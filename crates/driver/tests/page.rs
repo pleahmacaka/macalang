@@ -151,7 +151,7 @@ fn a_declared_stylesheet_and_script_are_inlined_into_the_page() {
     vendor(&dir);
     app(
         &dir,
-        "import css \"vendor/daisyui.css\"\nimport js \"vendor/iconify-icon.js\"\n",
+        "import \"vendor/daisyui.css\"\nimport \"vendor/iconify-icon.js\"\n",
     );
 
     let page = built_page(&dir);
@@ -189,7 +189,7 @@ fn an_es_module_asset_is_run_as_a_module() {
     write(&dir, "vendor/legacy.js", "globalThis.legacyMarker = 1;\n");
     app(
         &dir,
-        "import js \"vendor/widget.mjs\"\nimport js \"vendor/legacy.js\"\n",
+        "import \"vendor/widget.mjs\"\nimport \"vendor/legacy.js\"\n",
     );
 
     let page = built_page(&dir);
@@ -216,7 +216,7 @@ fn a_package_that_calls_its_scripts_modules_is_believed() {
     let dir = project("esm-package");
     write(&dir, "vendor/package.json", "{ \"type\": \"module\" }\n");
     write(&dir, "vendor/widget.js", "export const widget = 1;\n");
-    app(&dir, "import js \"vendor/widget.js\"\n");
+    app(&dir, "import \"vendor/widget.js\"\n");
 
     let page = built_page(&dir);
     let at = page
@@ -240,7 +240,7 @@ fn an_asset_cannot_close_the_element_it_is_inlined_into() {
     );
     app(
         &dir,
-        "import css \"vendor/quote.css\"\nimport js \"vendor/writer.js\"\n",
+        "import \"vendor/quote.css\"\nimport \"vendor/writer.js\"\n",
     );
 
     let page = built_page(&dir);
@@ -263,7 +263,7 @@ fn an_asset_cannot_close_the_element_it_is_inlined_into() {
 #[test]
 fn a_missing_asset_fails_the_build_naming_the_file() {
     let dir = project("missing");
-    app(&dir, "import css \"vendor/missing.css\"\n");
+    app(&dir, "import \"vendor/missing.css\"\n");
 
     let o = build(&dir, "js");
     assert!(!o.status.success(), "a missing asset should fail the build");
@@ -300,7 +300,7 @@ fn both_forms_survive_the_formatter_and_the_module_inliner() {
     );
     app(
         &dir,
-        "import { label_of } from lib/style\nimport css \"vendor/daisyui.css\"\n",
+        "import { label_of } from lib/style\nimport \"vendor/daisyui.css\"\n",
     );
 
     let o = Command::new(maca())
@@ -311,7 +311,7 @@ fn both_forms_survive_the_formatter_and_the_module_inliner() {
 
     let source = std::fs::read_to_string(dir.join("home.maca")).unwrap();
     assert!(
-        source.contains("import css \"vendor/daisyui.css\""),
+        source.contains("import \"vendor/daisyui.css\""),
         "the formatter must not rewrite an asset import\n{source}"
     );
 

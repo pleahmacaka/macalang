@@ -1405,7 +1405,17 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
         let maca_parser::Stmt::Import(maca_parser::Import::Foreign { lang, spec }) = item else {
             continue;
         };
-        match lang.as_str() {
+        let lang = match lang.as_str() {
+            "asset" => {
+                match deps::package_kind(src, spec.trim_start_matches(deps::PACKAGE_PREFIX))? {
+                    "css" => "stylesheet",
+                    "wasm" => "wasm",
+                    _ => "script",
+                }
+            }
+            other => other,
+        };
+        match lang {
             "wasm" => {
                 let bytes = read_asset(src, "wasm", spec)?;
                 assets.push_str(&format!(

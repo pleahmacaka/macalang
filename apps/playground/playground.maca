@@ -1,4 +1,4 @@
-import wasm "../../target/wasm32-unknown-unknown/release/maca_wasm.wasm"
+import "../../target/wasm32-unknown-unknown/release/maca_wasm.wasm"
 
 Sym = {
     kind:   str

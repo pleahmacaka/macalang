@@ -12,7 +12,7 @@ finishing.
 ## The rules models get wrong
 
 - **An asset is named by its extension, not by a keyword.** `import
-  "theme.css"`, not `import css "theme.css"`. To take names out of a package,
+  "theme.css"`, not `import "theme.css"`. To take names out of a package,
   `import { pick_text } from "npm:pkg"`; a snake_case name binds a camelCase
   export.
 

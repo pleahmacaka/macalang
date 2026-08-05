@@ -79,22 +79,23 @@ description = "a browser start page"
 import입니다.
 
 ```maca
-import css "vendor/daisyui.css"       // 파일. 빌드 시점에 읽습니다
-import js "vendor/iconify-icon.js"    // 파일. 빌드 시점에 읽습니다
+import "vendor/daisyui.css"       // 파일. 빌드 시점에 읽습니다
+import "vendor/iconify-icon.js"    // 파일. 빌드 시점에 읽습니다
 
 import css """
 .card { border-radius: 8px }
 """                                   // 인라인으로 쓴 소스 자체
 ```
 
-`import css`나 `import js` 뒤에서 따옴표 문자열은 파일을 가리키고
-`"""…"""` 블록은 소스 자체입니다. 파일은 그것을 import한 소스를 기준으로
+따옴표 문자열은 파일을 가리키고, 확장자가 이미 그것이 무엇인지 말하므로 언어
+이름을 붙이지 않습니다. `"""…"""` 블록은 소스 자체여서 읽어낼 이름이 없고,
+그래서 언어 이름을 그대로 지닙니다. 파일은 그것을 import한 소스를 기준으로
 찾아, 빌드 시점에 읽어 **인라인**합니다. 스타일시트는 생성된 `<style>` 앞의
 `<style>`로 들어가서 앱 자신의 유틸리티가 벤더 시트를 이깁니다. 스크립트는 앱이
 마운트하는 요소 뒤의 `<script>`로 들어갑니다. 링크는 하지 않습니다.
 `index.html` 하나가 배포물 전체이고, 빌드가 복사한 적 없는 파일을 가리키는
 `<link>`는 자리를 옮기기 전까지만 동작하는 페이지이기 때문입니다.
-`import wasm "x.wasm"`은 바이너리에 대한 같은 생각으로, base64로 심습니다.
+`import "x.wasm"`은 바이너리에 대한 같은 생각으로, base64로 심습니다.
 
 가리키는 파일이 없는 경로는 빌드를 실패시키고 그 파일을 이름으로 말합니다.
 이것이 있기 전에 프로젝트들이 하던 대안은 빌드 스크립트가 나온 HTML을 문자열

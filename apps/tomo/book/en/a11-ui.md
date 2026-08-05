@@ -420,14 +420,15 @@ accept. See [Targets](a10-targets.md).
 
 ## A page's assets, and naming a package rather than a path
 
-After `import <lang>`, a raw `"""…"""` block *is* the source and a quoted
-`"…"` *names a file*, read while the page is built and inlined into it. So a
+A raw `"""…"""` block *is* the source and says which language it is. A quoted
+`"…"` *names a file*, read while the page is built and inlined into it, and
+takes no language word because its extension already says what it is. So a
 page carries its vendor stylesheet and its vendor script without linking to
 anything:
 
 ```maca
-import css "vendor/reset.css"
-import js "vendor/iconify-icon.js"
+import "vendor/reset.css"
+import "vendor/iconify-icon.js"
 ```
 
 A path there is resolved against the file that wrote it, and a path that
@@ -438,8 +439,8 @@ installer chose. `npm:` is the prefix `maca.toml` already writes for a
 dependency, and it means the same thing in an asset import:
 
 ```maca
-import css "npm:daisyui"
-import js "npm:iconify-icon"
+import "npm:daisyui"
+import "npm:iconify-icon"
 ```
 
 **The package names its own entry point.** Its `package.json` is read, and the
@@ -460,7 +461,7 @@ Three things are errors rather than a quiet nothing:
 When the entry point is not the file you want, name the file:
 
 ```maca
-import css "npm:daisyui/dist/themes.css"
+import "npm:daisyui/dist/themes.css"
 ```
 
 A scoped package is reached under the bare name `maca add` installed it as, so

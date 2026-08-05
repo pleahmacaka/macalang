@@ -133,7 +133,7 @@ happens when it does not come back. That is the whole flow: `maca init`, write
 | host (wasm bridge, editor, preview iframe, URL fragment, clipboard) | `import js """…"""` block inside `playground.maca`, reached only through `maca.provide` / `maca.set` |
 | token/outline colours | one `import css """…"""` block of scoped classes |
 | fonts | `<link>` to `../fonts/fonts.css`: Pretendard GOV Variable and JetBrainsMono Nerd Font, shared with the rest of the site |
-| compiler, analysis, interpreter | `import wasm "…/maca_wasm.wasm"`: the `run`, `lsp` and `version` exports, embedded as base64 by `maca build` |
+| compiler, analysis, interpreter | `import "…/maca_wasm.wasm"`: the `run`, `lsp` and `version` exports, embedded as base64 by `maca build` |
 
 No hand-written `.html`/`.js`/`.css` and no build wrapper: everything is
 generated from the one `.maca` source by `maca build`.

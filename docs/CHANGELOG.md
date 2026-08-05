@@ -4,6 +4,12 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* The language word on a quoted asset is gone, not just optional. `import css
+  "theme.css"` is refused and names `import "theme.css"`; `import js
+  "npm:pkg"` is refused and names `import { a, b } from "npm:pkg"`. A raw
+  `"""…"""` block keeps its word, because a block of source has no name to read
+  a kind off. A package named without an extension, `import "npm:daisyui"`,
+  says what it is in its own `package.json`.
 * A module value is computed once. `Stamp = now_ms()` was emitted as a
   function, so every read ran it again and answered a different number. Its C
   type was guessed from the initialiser's shape rather than taken from the

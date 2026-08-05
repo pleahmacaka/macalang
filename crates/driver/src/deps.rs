@@ -770,6 +770,45 @@ fn short(sha: &str) -> String {
     sha.chars().take(12).collect()
 }
 
+/// The kind an installed package states it is, for an asset import that named no extension.
+///
+/// `ENTRY_KEYS` is ordered, and a page is a browser, so the first entry the
+/// package states decides: a `style` makes it a stylesheet, a `browser` or
+/// `module` or `main` makes it a script. The package already answers this in
+/// its own manifest, which is why the import does not have to.
+pub fn package_kind(importer: &Path, spec: &str) -> Result<&'static str, String> {
+    let wrote = |why: String| format!("import \"{PACKAGE_PREFIX}{spec}\": {why}");
+    let (name, _) = maca_parser::modules::split_package(spec);
+    if name.is_empty() {
+        return Err(wrote("no package named".into()));
+    }
+    let Some(dir) = maca_parser::modules::installed_dir(&name, importer) else {
+        return Err(wrote(format!(
+            "`{name}` is not installed; run `maca add {PACKAGE_PREFIX}{name}`"
+        )));
+    };
+    let manifest = dir.join("package.json");
+    let text = std::fs::read_to_string(&manifest)
+        .map_err(|e| wrote(format!("{}: {e}", manifest.display())))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| wrote(format!("bad package.json: {e}")))?;
+    for key in ENTRY_KEYS {
+        let Some(value) = json.get(*key).and_then(|v| v.as_str()) else {
+            continue;
+        };
+        for lang in ["css", "js", "wasm"] {
+            if asset_extensions(lang).iter().any(|e| value.ends_with(e)) {
+                return Ok(lang);
+            }
+        }
+    }
+    Err(wrote(format!(
+        "`{name}` states no entry point ({} names no file of a kind a page can carry); \
+         name the file, as in `import \"{PACKAGE_PREFIX}{name}/dist/…\"`",
+        ENTRY_KEYS.join("/")
+    )))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

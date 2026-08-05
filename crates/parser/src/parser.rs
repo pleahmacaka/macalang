@@ -216,6 +216,10 @@ impl Parser {
                         lang: lang.into(),
                         spec,
                     },
+                    None if names_a_package(&spec) => Import::Foreign {
+                        lang: "asset".into(),
+                        spec,
+                    },
                     None => {
                         self.err(format!(
                             "`import \"{spec}\"`: nothing in the name says what this is. \
@@ -234,6 +238,9 @@ impl Parser {
                 if matches!(self.peek(), Tok::StrOpen) {
                     let raw = self.at_raw_string();
                     let spec = self.parse_string_literal();
+                    if !raw && let Some(said) = instead_of_tagging(&first, &spec) {
+                        self.err(said);
+                    }
                     Import::Foreign {
                         lang: foreign_lang(first, raw),
                         spec,
@@ -1307,6 +1314,11 @@ impl Parser {
 /// A stylesheet is a stylesheet because it is called `.css`. Making the author
 /// write the word twice, once as a keyword and once as an extension, is asking
 /// them to keep two facts in step for no reason.
+/// Does this name a package, whose own manifest states the kind, rather than a path?
+fn names_a_package(spec: &str) -> bool {
+    spec.starts_with("npm:")
+}
+
 fn asset_lang(spec: &str) -> Option<&'static str> {
     let path = spec.split(['?', '#']).next().unwrap_or(spec);
     if path.ends_with(".css") {
@@ -1317,6 +1329,27 @@ fn asset_lang(spec: &str) -> Option<&'static str> {
         Some("wasm")
     } else {
         None
+    }
+}
+
+/// What to write instead of tagging a quoted asset with the language it already declares.
+///
+/// A raw `"""…"""` block keeps its tag, because a block of source has no name
+/// to read a kind off. A quoted string does: the extension says what it is, and
+/// a package is named by what is wanted out of it.
+fn instead_of_tagging(lang: &str, spec: &str) -> Option<String> {
+    if !matches!(lang, "css" | "js" | "wasm") {
+        return None;
+    }
+    match asset_lang(spec) {
+        Some(_) => Some(format!(
+            "`import {lang} \"{spec}\"`: the extension already says what this is, \
+             so write `import \"{spec}\"`"
+        )),
+        None => Some(format!(
+            "`import {lang} \"{spec}\"`: say what you want out of it, \
+             `import {{ a, b }} from \"{spec}\"`"
+        )),
     }
 }
 

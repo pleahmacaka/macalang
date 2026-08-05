@@ -248,27 +248,30 @@ and which manifest answers.
   `import "vendor/x.js"`, `import "m.wasm"`. Naming what you want out of a
   package is `import { pick_text } from "npm:pkg"`, and a snake_case name binds
   a camelCase or kebab-case export, so Maca spells it Maca's way.
-- **A page's assets and its identity.** After `import <lang>`, the two string
-  forms mean different things: a raw `"""…"""` block *is* the source, and a
-  quoted `"…"` *names a file*, resolved against the importing source file and
-  read at build time. So `import css """…"""` carries inline CSS while
+- **A page's assets and its identity.** A quoted `"…"` *names* something and
+  carries no language word: the extension says what a file is, and a package
+  says what it is itself. A raw `"""…"""` block keeps its word, because a block
+  of source has no name to read a kind off. So `import css """…"""` carries
+  inline CSS while
   `import "vendor/daisyui.css"` embeds that file's bytes in a `<style>`
   ahead of the generated one, `import "vendor/x.js"` embeds a `<script>`
-  ahead of the app, and `import wasm "x.wasm"` embeds a base64 blob. Every asset
+  ahead of the app, and `import "x.wasm"` embeds a base64 blob. Every asset
   is inlined, never linked: `index.html` is the whole deployable. A path that
   resolves to no file is a build error naming it.
   **An asset import may name a package instead of a path.** `npm:` is the same
   prefix `maca.toml` writes for a dependency, and it means the same thing here,
   so `import "npm:daisyui/dist/full.css"` reaches whatever `maca add npm:daisyui`
   installed and the directory it installed into never appears in the source.
-  The package names its own entry point: the first of `style`, `browser`,
-  `module`, `main` in its `package.json` that names a file of the right kind
-  (`.css` for a stylesheet, `.js`/`.mjs`/`.cjs` for a script, `.wasm` for
-  WebAssembly). Several stated entries are not an ambiguity, because that list
-  is ordered and a page is a browser. A package that states none is an error
-  naming the package and the keys, and `import "npm:daisyui/dist/full.css"`
-  is how a file inside a package is named when its entry point is not the one
-  wanted. A package that is not installed is an error naming it and saying to
+  A package named without an extension, `import "npm:daisyui"`, says what it is
+  in its own manifest: the first of `style`, `browser`, `module`, `main` that
+  names a file a page can carry (`.css` a stylesheet, `.js`/`.mjs`/`.cjs` a
+  script, `.wasm` WebAssembly) is both the kind and the entry. Several stated
+  entries are not an ambiguity, because that list is ordered and a page is a
+  browser. This is why an asset import needs no language word even when there is
+  no extension to read. A package that states none is an error naming it, and
+  `import "npm:daisyui/dist/full.css"` is how a file inside a package is named
+  when the entry it leads with is not the one wanted, which is also the only way
+  to ask for a kind the package does not lead with. A package that is not installed is an error naming it and saying to
   `maca add` it, never a silent fall-through, and a scoped `npm:@scope/pkg` is
   reached under the bare name `maca add` installed it as
   (`crates/driver/tests/assets.rs`).

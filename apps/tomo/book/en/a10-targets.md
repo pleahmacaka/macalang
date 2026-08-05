@@ -80,22 +80,22 @@ A page usually needs a stylesheet or a script that is not Maca. Both are
 imports:
 
 ```maca
-import css "vendor/daisyui.css"       // a file, read at build time
-import js "vendor/iconify-icon.js"    // a file, read at build time
+import "vendor/daisyui.css"       // a file, read at build time
+import "vendor/iconify-icon.js"    // a file, read at build time
 
 import css """
 .card { border-radius: 8px }
 """                                   // the source itself, written inline
 ```
 
-After `import css` or `import js`, a quoted string names a file and a
-`"""…"""` block is the source. The file is resolved against the source that
+A quoted string names a file and says what it is by its extension, so it takes
+no language word; a `"""…"""` block is the source itself and keeps one. The file is resolved against the source that
 imports it, read at build time and **inlined**: a stylesheet lands in a
 `<style>` ahead of the generated one, so the app's own utilities win over a
 vendor sheet; a script lands in a `<script>` after the element the app mounts
 into. Nothing is linked, because `index.html` is the whole deployable and a
 `<link>` to a file the build never copied is a page that works until it is
-somewhere else. `import wasm "x.wasm"` is the same idea for a binary, embedded
+somewhere else. `import "x.wasm"` is the same idea for a binary, embedded
 as base64.
 
 A path that resolves to no file fails the build and names the file. The

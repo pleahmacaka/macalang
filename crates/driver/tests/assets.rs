@@ -71,23 +71,35 @@ fn daisyui(dir: &Path) {
     );
 }
 
+/// A package named without an extension is whatever its own manifest leads with.
 #[test]
 fn a_packages_own_entry_point_reaches_the_page() {
     let dir = project("entry");
     daisyui(&dir);
-    app(
-        &dir,
-        "import css \"npm:daisyui\"\nimport js \"npm:daisyui\"\n",
-    );
+    app(&dir, "import \"npm:daisyui\"\n");
 
     let page = built_page(&dir);
     assert!(
         page.contains(".daisy-marker { color: rebeccapurple }"),
-        "the stylesheet the package names is the one that lands\n{page}"
+        "daisyui states `style`, so that is the entry that lands\n{page}"
     );
     assert!(
+        !page.contains("globalThis.daisyMarker = 1;"),
+        "and the entry it did not lead with is not also pulled in\n{page}"
+    );
+}
+
+/// The entry a package does not lead with is reached by naming the file, which is the only way to ask for a kind.
+#[test]
+fn an_entry_the_package_does_not_lead_with_is_named_as_a_file() {
+    let dir = project("other-entry");
+    daisyui(&dir);
+    app(&dir, "import \"npm:daisyui/lib/index.js\"\n");
+
+    let page = built_page(&dir);
+    assert!(
         page.contains("globalThis.daisyMarker = 1;"),
-        "and so is the script\n{page}"
+        "the file the import named is the one that lands\n{page}"
     );
 }
 
@@ -95,7 +107,7 @@ fn a_packages_own_entry_point_reaches_the_page() {
 fn the_source_never_names_the_directory_maca_add_chose() {
     let dir = project("no-dist-path");
     daisyui(&dir);
-    app(&dir, "import css \"npm:daisyui\"\n");
+    app(&dir, "import \"npm:daisyui\"\n");
 
     let _ = built_page(&dir);
     let source = std::fs::read_to_string(dir.join("home.maca")).unwrap();
@@ -108,7 +120,7 @@ fn the_source_never_names_the_directory_maca_add_chose() {
 #[test]
 fn a_package_that_is_not_installed_fails_the_build_naming_it() {
     let dir = project("missing-package");
-    app(&dir, "import css \"npm:tailwindcss\"\n");
+    app(&dir, "import \"npm:tailwindcss\"\n");
 
     let o = build(&dir);
     assert!(
@@ -126,30 +138,31 @@ fn a_package_that_is_not_installed_fails_the_build_naming_it() {
     );
 }
 
+/// A package that states no entry a page can carry is refused by name, never inlined as nothing.
 #[test]
 fn a_package_with_no_entry_of_that_kind_fails_the_build_naming_it() {
     let dir = project("no-entry");
     install(
         &dir,
-        "iconify-icon",
-        "{ \"name\": \"iconify-icon\", \"main\": \"dist/iconify-icon.js\" }",
+        "typesonly",
+        "{ \"name\": \"typesonly\", \"types\": \"dist/index.d.ts\" }",
     );
     write(
         &dir,
-        "maca_modules/iconify-icon/dist/iconify-icon.js",
-        "1;\n",
+        "maca_modules/typesonly/dist/index.d.ts",
+        "export {};\n",
     );
-    app(&dir, "import css \"npm:iconify-icon\"\n");
+    app(&dir, "import \"npm:typesonly\"\n");
 
     let o = build(&dir);
-    assert!(!o.status.success(), "no stylesheet is not an empty one");
+    assert!(!o.status.success(), "no entry is not an empty one");
     let text = errors(&o);
     assert!(
-        text.contains("iconify-icon") && text.contains("stylesheet"),
-        "the message should name the package and the kind\n{text}"
+        text.contains("typesonly") && text.contains("entry point"),
+        "the message should name the package and what it lacks\n{text}"
     );
     assert!(
-        text.contains("npm:iconify-icon/dist/"),
+        text.contains("npm:typesonly/dist/"),
         "and point at the form that names the file\n{text}"
     );
 }
@@ -178,7 +191,7 @@ fn a_package_that_states_several_entries_answers_with_the_first_one_listed() {
         "maca_modules/many/browser.js",
         "globalThis.pick = 'browser';\n",
     );
-    app(&dir, "import js \"npm:many\"\n");
+    app(&dir, "import \"npm:many\"\n");
 
     let page = built_page(&dir);
     assert!(
@@ -200,7 +213,7 @@ fn a_file_inside_a_package_can_be_named_when_the_entry_is_not_the_one_wanted() {
         "maca_modules/daisyui/dist/themes.css",
         ".theme-marker { color: teal }\n",
     );
-    app(&dir, "import css \"npm:daisyui/dist/themes.css\"\n");
+    app(&dir, "import \"npm:daisyui/dist/themes.css\"\n");
 
     let page = built_page(&dir);
     assert!(page.contains(".theme-marker { color: teal }"), "{page}");
@@ -214,7 +227,7 @@ fn a_file_inside_a_package_can_be_named_when_the_entry_is_not_the_one_wanted() {
 fn a_file_a_package_does_not_hold_fails_the_build_naming_it() {
     let dir = project("bad-subpath");
     daisyui(&dir);
-    app(&dir, "import css \"npm:daisyui/dist/nope.css\"\n");
+    app(&dir, "import \"npm:daisyui/dist/nope.css\"\n");
 
     let o = build(&dir);
     assert!(!o.status.success(), "a missing file should fail the build");
@@ -238,7 +251,7 @@ fn a_scoped_package_is_reached_under_the_name_maca_add_installed_it_as() {
         "maca_modules/starry-night/style/core.css",
         ".starry-marker { color: navy }\n",
     );
-    app(&dir, "import css \"npm:@wooorm/starry-night\"\n");
+    app(&dir, "import \"npm:@wooorm/starry-night\"\n");
 
     let page = built_page(&dir);
     assert!(page.contains(".starry-marker { color: navy }"), "{page}");
@@ -251,7 +264,7 @@ fn a_path_beside_the_source_still_means_that_file() {
     write(&dir, "vendor/local.css", ".local-marker { color: olive }\n");
     app(
         &dir,
-        "import css \"vendor/local.css\"\nimport css \"npm:daisyui\"\n",
+        "import \"vendor/local.css\"\nimport \"npm:daisyui\"\n",
     );
 
     let page = built_page(&dir);
@@ -269,7 +282,7 @@ fn a_package_installed_at_the_project_root_is_found_from_a_source_below_it() {
     write(
         &dir,
         "pages/home.maca",
-        "import css \"npm:daisyui\"\n\nmain() -> Element =>\n    div(\"hello\")\n",
+        "import \"npm:daisyui\"\n\nmain() -> Element =>\n    div(\"hello\")\n",
     );
 
     let o = Command::new(maca())

@@ -412,14 +412,14 @@ main() -> int {
 
 ## 페이지의 애셋, 그리고 경로 대신 패키지를 부르기
 
-`import <lang>` 뒤에서 raw `"""…"""` 블록은 소스 그 자체이고, 따옴표로 감싼
-`"…"`는 파일을 가리킵니다. 그 파일은 페이지를 빌드할 때 읽혀서 페이지 안에
-인라인됩니다. 그래서 페이지는 아무것도 링크하지 않고 벤더 스타일시트와 벤더
+raw `"""…"""` 블록은 소스 그 자체이고 자기가 어느 언어인지 말합니다. 따옴표로
+감싼 `"…"`는 파일을 가리키며, 확장자가 이미 종류를 말하므로 언어 이름을 붙이지
+않습니다. 그 파일은 페이지를 빌드할 때 읽혀서 페이지 안에 인라인됩니다. 그래서 페이지는 아무것도 링크하지 않고 벤더 스타일시트와 벤더
 스크립트를 스스로 지니고 다닙니다.
 
 ```maca
-import css "vendor/reset.css"
-import js "vendor/iconify-icon.js"
+import "vendor/reset.css"
+import "vendor/iconify-icon.js"
 ```
 
 여기서 경로는 그것을 쓴 파일을 기준으로 풀리고, 아무 파일도 가리키지 못하는
@@ -430,8 +430,8 @@ import js "vendor/iconify-icon.js"
 애셋 임포트에서도 같은 뜻입니다.
 
 ```maca
-import css "npm:daisyui"
-import js "npm:iconify-icon"
+import "npm:daisyui"
+import "npm:iconify-icon"
 ```
 
 **진입점은 패키지가 스스로 정합니다.** 패키지의 `package.json`을 읽어서
@@ -452,7 +452,7 @@ WebAssembly는 `.wasm`입니다. 여러 개를 적어 둔 패키지도 모호하
 원하는 파일이 진입점이 아니라면 파일을 직접 부르면 됩니다.
 
 ```maca
-import css "npm:daisyui/dist/themes.css"
+import "npm:daisyui/dist/themes.css"
 ```
 
 스코프가 붙은 패키지는 `maca add`가 설치할 때 쓴 맨 이름으로 닿습니다. 그래서
