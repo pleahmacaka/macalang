@@ -111,6 +111,8 @@ struct Cx<'a> {
     let_names: HashSet<String>,
     /// The top-level names some function writes, which is what makes them variables rather than values.
     written_lets: HashSet<String>,
+    stored_lets: HashSet<String>,
+    let_ctys: HashMap<String, CTy>,
     fns: HashMap<String, (Vec<CTy>, CTy)>,
     /// Variadic fn name -> how many parameters come before the `...` one.
     variadics: HashMap<String, usize>,
@@ -173,6 +175,8 @@ impl<'a> Cx<'a> {
             lets: Vec::new(),
             let_names: HashSet::new(),
             written_lets: HashSet::new(),
+            stored_lets: HashSet::new(),
+            let_ctys: HashMap::new(),
             fns: HashMap::new(),
             variadics: HashMap::new(),
             arr_elems: HashSet::new(),
@@ -499,6 +503,65 @@ impl<'a> Cx<'a> {
             });
         }
         self.written_lets = written;
+        self.collect_stored_lets();
+    }
+
+    /// The module values that live in a static rather than behind a thunk.
+    ///
+    /// A value nothing writes used to be emitted as `mv_n()`, so every read ran
+    /// its initialiser again. For a literal that is free and invisible. For a
+    /// call it is not: `Stamp = now_ms()` answered a different number each time
+    /// it was read, and `Dir = join(tmp, "x-{now_ms()}")` named a directory
+    /// that was never the one just created.
+    fn collect_stored_lets(&mut self) {
+        let mut stored = self.written_lets.clone();
+        for (name, _, init) in &self.lets {
+            if calls_something(init) {
+                stored.insert(name.clone());
+            }
+        }
+        self.stored_lets = stored;
+    }
+
+    /// The order to start the stored values in, so one that names another is started after it.
+    fn start_order(&self) -> Vec<String> {
+        let stored: Vec<String> = self
+            .lets
+            .iter()
+            .map(|(n, _, _)| n.clone())
+            .filter(|n| self.stored_lets.contains(n))
+            .collect();
+        let mut done: HashSet<String> = HashSet::new();
+        let mut out: Vec<String> = Vec::new();
+        for _ in 0..stored.len() {
+            for name in &stored {
+                if done.contains(name) {
+                    continue;
+                }
+                let init = self
+                    .lets
+                    .iter()
+                    .find(|(n, _, _)| n == name)
+                    .map(|(_, _, i)| i);
+                let waits = init.is_some_and(|i| {
+                    let mut named = HashSet::new();
+                    names_read(i, &mut named);
+                    stored
+                        .iter()
+                        .any(|o| o != name && named.contains(o) && !done.contains(o))
+                });
+                if !waits {
+                    done.insert(name.clone());
+                    out.push(name.clone());
+                }
+            }
+        }
+        for name in stored {
+            if !done.contains(&name) {
+                out.push(name);
+            }
+        }
+        out
     }
 
     /// Instantiate array types for list literals that don't come from a record field (e.g. `let xs = 1, 2, 3`).
@@ -1308,12 +1371,12 @@ impl<'a> Cx<'a> {
         }
 
         let lets = self.lets.clone();
-        for (name, cty, init) in &lets {
-            let ret = self.let_ty(cty, init);
-            if self.written_lets.contains(name) {
-                self.push(&format!("static {} mv_{name};", c_type(&ret)));
+        let lowered = self.settled_lets(&lets);
+        for (name, ret, _) in &lowered {
+            if self.stored_lets.contains(name) {
+                self.push(&format!("static {} mv_{name};", c_type(ret)));
             } else {
-                self.push(&format!("static {} mv_{name}(void);", c_type(&ret)));
+                self.push(&format!("static {} mv_{name}(void);", c_type(ret)));
             }
         }
         self.push("static void maca_module_init(void);");
@@ -1337,23 +1400,22 @@ impl<'a> Cx<'a> {
         self.push("");
 
         let saved = std::mem::take(&mut self.out);
-        let mut starts: Vec<String> = Vec::new();
-        for (name, cty, init) in &lets {
-            let ret = self.let_ty(cty, init);
-            let mut env: Env = Vec::new();
-            let (code, _) = self.expr(&mut env, init, None);
-            if self.written_lets.contains(name) {
-                starts.push(format!("    mv_{name} = {code};"));
+        let mut starts: Vec<(String, String)> = Vec::new();
+        for (name, ret, code) in &lowered {
+            if self.stored_lets.contains(name) {
+                starts.push((name.clone(), format!("    mv_{name} = {code};")));
             } else {
                 self.push(&format!(
                     "static {} mv_{name}(void) {{ return {code}; }}",
-                    c_type(&ret)
+                    c_type(ret)
                 ));
             }
         }
         self.push("static void maca_module_init(void) {");
-        for line in &starts {
-            self.push(line);
+        for name in self.start_order() {
+            if let Some((_, line)) = starts.iter().find(|(n, _)| *n == name) {
+                self.push(line);
+            }
         }
         self.push("}");
         self.push("");
@@ -1441,6 +1503,45 @@ impl<'a> Cx<'a> {
     }
 
     /// The C type of a top-level constant: its annotation, or what its initialiser says.
+    /// Lower each module value once, and keep the type the lowering answered.
+    ///
+    /// The declaration used to guess the type from the initialiser's shape
+    /// while the definition lowered it for real. An intrinsic no signature
+    /// table holds guessed `maca_str`, so `Stamp = now_ms()` declared a
+    /// `const char*` and stored an integer in it.
+    fn lower_lets(&mut self, lets: &[(String, CTy, Expr)]) -> Vec<(String, CTy, String)> {
+        let saved = std::mem::take(&mut self.out);
+        let mut out = Vec::new();
+        for (name, cty, init) in lets {
+            let mut env: Env = Vec::new();
+            let (code, got) = self.expr(&mut env, init, None);
+            let declared = self.let_ty(cty, init);
+            let ty = match (&declared, &got) {
+                (CTy::Unknown, g) => g.clone(),
+                (d, CTy::Unknown) => d.clone(),
+                (d, _) if *cty != CTy::Unknown => d.clone(),
+                (_, g) => g.clone(),
+            };
+            self.let_ctys.insert(name.clone(), ty.clone());
+            out.push((name.clone(), ty, code));
+        }
+        self.out = saved;
+        out
+    }
+
+    /// Lower until the types stop moving, so a value naming another gets the type that other one settled on.
+    fn settled_lets(&mut self, lets: &[(String, CTy, Expr)]) -> Vec<(String, CTy, String)> {
+        let mut out = self.lower_lets(lets);
+        for _ in 0..lets.len().min(8) {
+            let before = self.let_ctys.clone();
+            out = self.lower_lets(lets);
+            if self.let_ctys == before {
+                break;
+            }
+        }
+        out
+    }
+
     fn let_ty(&self, cty: &CTy, init: &Expr) -> CTy {
         if *cty != CTy::Unknown {
             return cty.clone();
@@ -2447,10 +2548,12 @@ impl<'a> Cx<'a> {
         }
         if self.let_names.contains(n) {
             let found = self.lets.iter().find(|(name, _, _)| name == n).cloned();
-            let ty = found
-                .map(|(_, t, init)| self.let_ty(&t, &init))
-                .unwrap_or(CTy::Unknown);
-            let call = match self.written_lets.contains(n) {
+            let ty = self.let_ctys.get(n).cloned().unwrap_or_else(|| {
+                found
+                    .map(|(_, t, init)| self.let_ty(&t, &init))
+                    .unwrap_or(CTy::Unknown)
+            });
+            let call = match self.stored_lets.contains(n) {
                 true => format!("mv_{n}"),
                 false => format!("mv_{n}()"),
             };
@@ -4343,7 +4446,7 @@ impl<'a> Cx<'a> {
                 };
                 Some((format!("({bc}).{}", cid(name)), fty))
             }
-            Expr::Ident(n) if lookup(env, n).is_none() && self.written_lets.contains(n) => {
+            Expr::Ident(n) if lookup(env, n).is_none() && self.stored_lets.contains(n) => {
                 let (slot, ty) = self.ident(env, n);
                 Some((slot, Some(ty)))
             }
@@ -6115,4 +6218,26 @@ fn is_void_html(tag: &str) -> bool {
             | "track"
             | "wbr"
     )
+}
+
+/// Does this initialiser call anything, which is what makes running it twice observable?
+fn calls_something(e: &Expr) -> bool {
+    if matches!(e, Expr::Call { .. }) {
+        return true;
+    }
+    let mut found = false;
+    walk_children(e, &mut |c| {
+        if !found {
+            found = calls_something(c);
+        }
+    });
+    found
+}
+
+/// Every name this expression reads, which is what one module value has to wait for in another.
+fn names_read(e: &Expr, out: &mut HashSet<String>) {
+    if let Expr::Ident(n) = e {
+        out.insert(n.clone());
+    }
+    walk_children(e, &mut |c| names_read(c, out));
 }

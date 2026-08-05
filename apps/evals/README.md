@@ -8,9 +8,12 @@ told. Without a number, "the specification helps" is an opinion.
 ```sh
 curl -sSLO https://raw.githubusercontent.com/openai/human-eval/master/data/HumanEval.jsonl.gz
 gunzip HumanEval.jsonl.gz
-maca -m evals.port HumanEval.jsonl     # writes problems/
-MACA_EVAL_MODEL=./your-model maca -m evals
+maca run apps/evals/port.maca HumanEval.jsonl     # writes problems/
+MACA_EVAL_MODEL=./your-model maca run apps/evals/run.maca
 ```
+
+`apps/` is not an import search root, so these are reached by path rather than
+as `-m evals`. Both are run from the top of the repository.
 
 `MACA_EVAL_MODEL` is a command taking one argument, the path to a prompt file,
 and writing Maca to stdout. Anything that satisfies that works, so the harness

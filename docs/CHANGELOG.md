@@ -4,6 +4,11 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* A module value is computed once. `Stamp = now_ms()` was emitted as a
+  function, so every read ran it again and answered a different number. Its C
+  type was guessed from the initialiser's shape rather than taken from the
+  lowering, so an intrinsic was declared `const char*` and given an integer,
+  which crashed.
 * `maca check` and the editor agree with `maca build` about `data(…)` and
   `stored(…)`. Both used to call them undefined, because only the build path
   rewrote them.

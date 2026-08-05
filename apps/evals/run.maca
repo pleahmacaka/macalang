@@ -122,15 +122,22 @@ attempt(problem: str, c: Condition) -> Outcome {
 
 Graded = { passed: bool, why: str }
 
+/// One run's scratch directory, stamped so a second run cannot answer for the first.
+///
+/// The harness and its own test both write a problem's answer under the same
+/// name. One shared directory let a `cargo test` overwrite a real run's file
+/// between the check and the run that grades it, which turns a measured number
+/// into whichever process wrote last.
+Scratch = join(env_or("TMPDIR", "/tmp"), "maca-evals-{now_ms()}")
+
 /// Write the answer beside the test and run it, which is the only grader that counts.
 ///
 /// Pass and fail come from the exit status rather than from the words the
 /// runner printed. Matching on prose is how this scored a passing solution
 /// zero: a one-test file says "1 test passed", not "tests passed".
 grade(problem: str, answer: str) -> Graded {
-    scratch = join(env_or("TMPDIR", "/tmp"), "maca-evals")
-    make_dir(scratch)
-    file = join(scratch, basename(problem))
+    make_dir(Scratch)
+    file = join(Scratch, basename(problem))
     write_file(file, completed(problem, answer))
 
     if !try_run(maca(), ["check", file]) {
@@ -148,9 +155,8 @@ grade(problem: str, answer: str) -> Graded {
 
 /// Hand the prompt to the model as a file, because a prompt is larger than an argument list should carry.
 ask_model(system: str, problem: str) -> str {
-    scratch = join(env_or("TMPDIR", "/tmp"), "maca-evals")
-    make_dir(scratch)
-    prompt = join(scratch, "prompt.txt")
+    make_dir(Scratch)
+    prompt = join(Scratch, "prompt.txt")
     write_file(prompt, system ++ "\n\n" ++ problem)
 
     capture(model(), [prompt])
@@ -158,7 +164,7 @@ ask_model(system: str, problem: str) -> str {
 
 main(argv: str[]) -> int {
     if !file_exists(Problems) {
-        err(bad("no {Problems}: run `maca -m evals.port <HumanEval.jsonl>` first"))
+        err(bad("no {Problems}: run `maca run apps/evals/port.maca <HumanEval.jsonl>` first"))
         1
     } else {
         report(measure(conditions(), 0, []),

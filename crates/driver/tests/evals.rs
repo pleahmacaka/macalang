@@ -126,3 +126,74 @@ fn the_harness_counts_what_the_model_actually_solved() {
         "a condition scored zero, so grading is matching prose again:\n{baseline}"
     );
 }
+
+/// The README's commands are how a person reaches the harness, and `apps/` is not a search root, so a `-m` spelling of them cannot work.
+#[test]
+fn the_readme_names_a_command_that_resolves() {
+    let readme =
+        std::fs::read_to_string(repo().join("apps/evals/README.md")).expect("the README is here");
+
+    let mut named = 0;
+    for line in readme.lines() {
+        let Some(rest) = line.split_once("maca run ").map(|(_, r)| r) else {
+            continue;
+        };
+        let path = rest.split_whitespace().next().expect("a path after `run`");
+        assert!(
+            repo().join(path).is_file(),
+            "the README runs `{path}`, which is not there"
+        );
+        named += 1;
+    }
+    assert!(named >= 2, "the README stopped naming how to run it");
+
+    let out = Command::new(maca())
+        .args(["-m", "evals"])
+        .current_dir(repo())
+        .output()
+        .expect("spawn maca -m");
+    assert!(
+        !out.status.success(),
+        "`-m evals` resolves after all, so the README's reason for a path is gone"
+    );
+}
+
+/// Two runs of the harness must not write a problem's answer to the same file, or whichever wrote last grades both.
+#[test]
+fn each_run_grades_in_a_directory_of_its_own() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let tmp = std::env::temp_dir().join("maca-evals-scratch");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("scratch dir");
+
+    let mut seen = Vec::new();
+    for run in 0..2 {
+        let baseline = tmp.join(format!("BASELINE-{run}.md"));
+        let out = Command::new(maca())
+            .args(["run", "apps/evals/run.maca", &baseline.to_string_lossy()])
+            .current_dir(repo())
+            .env("MACA_EVAL_MODEL", stand_in())
+            .env("MACA", maca())
+            .env("TMPDIR", &tmp)
+            .output()
+            .expect("spawn the harness");
+        assert!(
+            out.status.success(),
+            "run {run} failed:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        seen.push(std::fs::read_to_string(&baseline).expect("a baseline per run"));
+    }
+    assert_eq!(seen[0], seen[1], "the same model scored differently twice");
+
+    let dirs: Vec<String> = std::fs::read_dir(&tmp)
+        .expect("read the scratch")
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    assert!(dirs.len() >= 2, "both runs shared one directory: {dirs:?}");
+}

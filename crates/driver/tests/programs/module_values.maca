@@ -1,0 +1,36 @@
+runs = 0
+
+Once = bump()
+Stamp = now_ms()
+Root = twice(3)
+Tag = "run-{Root}"
+Doubled = twice(21)
+
+bump() -> int {
+    runs = runs + 1
+
+    runs
+}
+
+twice(n: int) -> int => n * 2
+
+test_an_initialiser_runs_once_however_often_the_value_is_read() {
+    first = Once
+    second = Once
+    assert_eq(str(first), str(second), "one value, read twice")
+    assert_eq(str(runs), "1", "and its initialiser ran once")
+}
+
+test_a_value_built_from_another_is_built_from_the_settled_one() {
+    assert_eq(Tag, "run-6", "the value it names")
+    assert_eq(Tag, Tag, "and it says the same thing twice")
+}
+
+test_a_value_from_a_user_function_is_its_return_type() {
+    assert_eq(str(Doubled), "42", "a call to a declared function")
+}
+
+test_a_value_from_an_intrinsic_keeps_the_intrinsic_type() {
+    assert(Stamp > 0, "a clock reading is a number, not a string")
+    assert_eq(str(Stamp - Stamp), "0", "and arithmetic on it works")
+}
