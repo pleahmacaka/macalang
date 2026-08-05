@@ -40,7 +40,7 @@ fn newest_release(changelog: &str) -> String {
             }
         }
     }
-    panic!("no `## <version>` heading in CHANGELOG.md");
+    panic!("no `## <version>` heading in the changelog");
 }
 
 #[test]
@@ -65,7 +65,10 @@ fn every_file_that_states_the_version_agrees() {
             "apps/editor/zed-maca/Cargo.toml",
             field(&read("apps/editor/zed-maca/Cargo.toml"), "version"),
         ),
-        ("CHANGELOG.md", newest_release(&read("CHANGELOG.md"))),
+        (
+            "docs/CHANGELOG.md",
+            newest_release(&read("docs/CHANGELOG.md")),
+        ),
     ];
 
     let wrong: Vec<String> = others

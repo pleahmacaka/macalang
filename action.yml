@@ -7,7 +7,7 @@ branding:
 
 inputs:
   version:
-    description: Which release to install, e.g. "0.3.0". The latest by default.
+    description: Which release to install, e.g. "0.3.1". The latest by default.
     default: latest
   install:
     description: Fetch what `maca.toml` names, at the versions `maca.lock` pinned.
@@ -16,16 +16,31 @@ inputs:
 runs:
   using: composite
   steps:
-    # The installer that ships beside this file, so pinning the action pins the
-    # script too, and a platform with no prebuilt asset falls back to building
-    # the checkout the action was fetched from.
+    # The installer is a binary in the release, not a script in this repository,
+    # so the action fetches the one built for the runner and asks it for the
+    # toolchain. It knows its own platform from how it was built.
     - name: Install maca ${{ inputs.version }}
       shell: bash
       env:
         MACA_VERSION: ${{ inputs.version }}
-        MACA_INSTALL_NIX: "0"
       run: |
-        bash "${{ github.action_path }}/install.sh"
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64)   installer=maca-install-linux-x86_64 ;;
+          Linux-ARM64) installer=maca-install-linux-aarch64 ;;
+          macOS-X64)   installer=maca-install-macos-x86_64 ;;
+          macOS-ARM64) installer=maca-install-macos-aarch64 ;;
+          Windows-X64) installer=maca-install-windows-x86_64.exe ;;
+          *) echo "no Maca installer for $RUNNER_OS-$RUNNER_ARCH" >&2; exit 1 ;;
+        esac
+        if [ "$MACA_VERSION" = latest ]; then
+          from="releases/latest/download"
+        else
+          from="releases/download/$MACA_VERSION"
+        fi
+        curl -fsSL -o "$RUNNER_TEMP/$installer" \
+          "https://github.com/pleahmacaka/macalang/$from/$installer"
+        chmod +x "$RUNNER_TEMP/$installer"
+        "$RUNNER_TEMP/$installer"
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
     - name: Dependencies

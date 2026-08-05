@@ -126,6 +126,7 @@ assemble(out: str) -> bool {
     make_dir(out)
     copy_tree("apps/tomo/site", out)
     copy_tree("apps/playground/out", join(out, "play"))
+    copy_bytes("llms.txt", join(out, "llms.txt"))
 
     write_file(join(out, ".nojekyll"), "")
 }
@@ -144,6 +145,7 @@ check(out: str) -> int {
     require_root_links(out)
     require_embedded_wasm(out)
     require_fonts(out)
+    require_llms_txt(out)
     require_live_css(out)
 
     info(ok("{chapters} {default_lang} pages,"
@@ -320,6 +322,17 @@ require_root_links(out: str) -> bool {
     } else if !root.contains("href=\"play/index.html\"") {
         fail "root page doesn't link the playground"
     } else {
+        true
+    }
+}
+
+require_llms_txt(out: str) -> bool {
+    served = join(out, "llms.txt")
+
+    if file_size(served) != file_size("llms.txt") {
+        fail "llms.txt is not served whole at the site root"
+    } else {
+        info(ok("llms.txt is at the site root, {file_size(served)} bytes"))
         true
     }
 }

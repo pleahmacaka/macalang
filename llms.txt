@@ -113,5 +113,5 @@ and a config module checked as a program comes back clean when it is not.
 ## Links
 
 - `docs/SPEC.md`: the authoritative spec.
-- `SKILL.md`: agent skill (rules + the verify habit).
+- `.claude/skills/macalang/SKILL.md`: the agent skill (rules + the verify habit).
 - `README.md`: install, commands, targets, packages.

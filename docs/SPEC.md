@@ -443,10 +443,12 @@ LSP, MCP server, and a browser playground authored in Maca itself
 (`apps/playground/playground.maca`, compiled by the JS backend) plus the wasm
 front-end (`crates/wasm`).
 
-Every script in the repository is a Maca program too: the site builder, the
-benchmark harness, the linter, `bindgen`, and the npm package's wasm build. The
-one exception is `install.sh`, which runs before there is a `maca` to run
-anything with.
+Every script in the repository is a Maca program: the site builder, the
+benchmark harness, the linter, `bindgen`, and the npm package's wasm build.
+There are no shell scripts left. Installing is a binary in the release,
+`maca-install-<os>-<arch>`, built from `crates/install` by the same matrix that
+builds the toolchain, because it runs where there is no `maca` yet and on a
+Windows runner that has no C compiler to build one with.
 
 The Rust workspace is the frozen **stage-0 bootstrap**; compiler work is
 written in Maca under `apps/selfhost/` and gated by the stage-0 front-end (see

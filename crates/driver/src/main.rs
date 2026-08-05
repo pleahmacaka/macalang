@@ -9,6 +9,7 @@ mod deps;
 mod embed;
 mod entry;
 mod manifest;
+mod sha512;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

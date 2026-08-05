@@ -48,7 +48,7 @@ fn documented_imports_name_things_that_exist() {
     }
 
     let mut built = 0;
-    for file in ["llms.txt", "SKILL.md", "README.md"] {
+    for file in ["llms.txt", ".claude/skills/macalang/SKILL.md", "README.md"] {
         let md =
             std::fs::read_to_string(repo().join(file)).unwrap_or_else(|e| panic!("{file}: {e}"));
 

@@ -2,33 +2,46 @@
 
 Maca는 바이너리 하나와 언어 서버 하나입니다. 설치는 한 줄이면 됩니다.
 
-## macOS와 Linux
+## 설치기를 받아서 실행하기
+
+설치기는 릴리스에 들어 있는 바이너리이고, 플랫폼마다 하나씩 있습니다.
+[최신 릴리스](https://github.com/pleahmacaka/macalang/releases/latest)에서
+자기 것을 고르세요.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/pleahmacaka/macalang/main/install.sh | bash
+curl -fsSL -O https://github.com/pleahmacaka/macalang/releases/latest/download/maca-install-linux-x86_64
+chmod +x maca-install-linux-x86_64
+./maca-install-linux-x86_64
 ```
 
-플랫폼에 맞는 `maca`와 `maca-lsp` 빌드본을 받아 `~/.local/bin`에 넣습니다. 그
-디렉터리가 `PATH`에 없으면 설치 스크립트가 알려주고, 추가할 줄까지 보여줍니다.
+Apple 실리콘 맥이면 `macos-aarch64`, ARM 서버면 `linux-aarch64`로 바꾸면
+됩니다. Windows에서는 `maca-install-windows-x86_64.exe`를 받아서 실행합니다.
 
-체크아웃한 저장소에서도 같은 스크립트가 동작하고, `PREFIX`로 설치 위치를
-정합니다.
+`maca`와 `maca-lsp`를 `~/.local/bin`에 넣고, 그 디렉터리가 `PATH`에 없으면
+추가할 줄을 알려줍니다. 마음을 바꾸는 플래그는 둘입니다.
 
 ```sh
-./install.sh                     # ~/.local/bin
-PREFIX=/usr/local ./install.sh   # /usr/local/bin, sudo가 필요할 수 있음
+./maca-install-linux-x86_64 --prefix /usr/local   # 다른 위치로
+./maca-install-linux-x86_64 --version 0.3.0       # 예전 릴리스로
 ```
 
-## Windows
+환경 변수 `PREFIX`와 `MACA_VERSION`도 같은 둘을 정합니다.
 
-PowerShell에서:
+마지막으로 하는 일은 표준 라이브러리를 import하는 작은 프로그램을 컴파일하고
+실행하는 것입니다. 즉 설치기는 자기가 설치한 컴파일러가 실제로 무언가를
+컴파일하기 전까지는 성공했다고 말하지 않습니다.
 
-```powershell
-irm https://raw.githubusercontent.com/pleahmacaka/macalang/main/install.ps1 | iex
+## GitHub Actions에서
+
+액션이 있고, 두 줄입니다.
+
+```yaml
+- uses: pleahmacaka/macalang@main
+- run: maca build
 ```
 
-바이너리는 `%USERPROFILE%\.local\bin`으로 가고, `$env:PREFIX`로 옮길 수
-있습니다.
+러너에 맞는 설치기를 받아 실행한 뒤 `maca install`을 돌립니다. `maca.toml`이
+이름을 댄 것들을 `maca.lock`이 고정한 버전으로 가져옵니다.
 
 ## 그 밖에 필요한 것
 
@@ -38,16 +51,14 @@ Xcode command line tools가 제공하고, Debian/Ubuntu는 `build-essential`,
 Fedora는 `gcc`입니다. 툴체인의 나머지는 없어도 돌아가지만, 가장 많이 쓸 두
 명령은 그렇지 않습니다.
 
-**Rust는 가끔만.** 설치 스크립트는 플랫폼에 맞는 빌드본이 있으면 받아 쓰고,
-없으면 소스에서 빌드합니다. `cargo`가 필요한 건 그 후자뿐입니다.
-
 **Nix는 두 가지에만.** `maca dev`와 Nix 타깃이 [Nix](https://nixos.org)를
-씁니다. 없으면 설치 스크립트가 Determinate Systems 설치기로 받아줄지 물어보고,
-거절해도 그 둘 말고는 전부 동작합니다. 자동 실행이라면 `MACA_INSTALL_NIX=1`로
-설치, `MACA_INSTALL_NIX=0`으로 건너뛰기를 미리 정할 수 있습니다.
+씁니다. 그 밖에는 아무것도 쓰지 않고, 설치기도 묻지 않습니다. 저 두 명령을
+쓰지 않는다면 Nix는 필요 없습니다. Nix는 Windows 네이티브 빌드가 없어서,
+Windows에서는 `maca dev`가 WSL 아래에서 돕니다.
 
-Nix는 Windows 네이티브 빌드가 없어서, Windows에서는 `maca dev`가 WSL 아래에서
-돕니다. Windows 설치 스크립트는 이걸 알고 있어서 묻지 않습니다.
+**Rust는 컴파일러를 직접 빌드할 때만.** 설치기는 바이너리를 받습니다.
+체크아웃에서 빌드하는 건 `cargo build`이고, Rust 툴체인이 필요한 건 그
+경로뿐입니다.
 
 ## 잘 됐는지 확인하기
 

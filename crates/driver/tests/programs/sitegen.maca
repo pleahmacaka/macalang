@@ -96,23 +96,18 @@ test_titles_are_whole_and_translated() {
 title_of(page: str) -> str =>
     between(page, "<title>", "</title>")
 
-test_install_line_matches_install_sh() {
+test_the_front_page_offers_the_installer_the_release_builds() {
     root = read_file(join(front_page_dir(), "index.html"))
-    url = install_url(read_lines("install.sh"), 0)
+    workflow = read_file(".github/workflows/release.yml")
+    asset = "maca-install-linux-x86_64"
 
-    assert(url != "", "install.sh names a url")
-    assert(root.contains(url), "page names the same url")
+    assert(workflow.contains(asset), "the release builds {asset}")
+    assert(root.contains(asset),
+           "the front page offers the installer the release actually builds")
+    assert(!root.contains("install.sh"),
+           "and does not still offer the script that was deleted")
 }
 
-install_url(ls: str[], i: int) -> str {
-    if i >= ls.length() {
-        ""
-    } else if ls.get(i).contains("https://raw.githubusercontent.com") {
-        between(ls.get(i), "https://", " ")
-    } else {
-        install_url(ls, i + 1)
-    }
-}
 
 test_both_languages_carry_every_card() {
     dir = front_page_dir()

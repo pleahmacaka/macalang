@@ -292,25 +292,20 @@ pub fn cmd_update(_args: &[String]) {
 /// `maca upgrade`: self-update the `maca` toolchain from GitHub releases.
 pub fn cmd_upgrade(_args: &[String]) {
     let cur = env!("CARGO_PKG_VERSION");
-    let body = match http_get(
-        "https://api.github.com/repos/".to_string() + REPO + "/releases/latest",
-    ) {
-        Ok(b) => b,
-        Err(e) => {
-            eprintln!("maca upgrade: cannot reach GitHub releases: {e}");
-            eprintln!(
-                "  install manually: curl -fsSL https://raw.githubusercontent.com/{REPO}/main/install.sh | bash"
-            );
-            std::process::exit(1);
-        }
-    };
+    let body =
+        match http_get("https://api.github.com/repos/".to_string() + REPO + "/releases/latest") {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("maca upgrade: cannot reach GitHub releases: {e}");
+                eprintln!("  install by hand: https://github.com/{REPO}/releases/latest");
+                std::process::exit(1);
+            }
+        };
     let json: serde_json::Value = serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
     let tag = json.get("tag_name").and_then(|v| v.as_str()).unwrap_or("");
     if tag.is_empty() {
         eprintln!("maca upgrade: no published release yet");
-        eprintln!(
-            "  install from source: curl -fsSL https://raw.githubusercontent.com/{REPO}/main/install.sh | bash"
-        );
+        eprintln!("  build from a checkout: cargo build --release -p maca-driver");
         std::process::exit(1);
     }
     let want = tag.trim_start_matches('v');
@@ -337,7 +332,7 @@ pub fn cmd_upgrade(_args: &[String]) {
             "maca upgrade: release {tag} has no asset for {}; build from source:",
             target_triple()
         );
-        eprintln!("  curl -fsSL https://raw.githubusercontent.com/{REPO}/main/install.sh | bash");
+        eprintln!("  build from a checkout: cargo build --release -p maca-driver");
         std::process::exit(1);
     };
     match self_replace(url) {
@@ -506,15 +501,40 @@ fn fetch(name: &str, src: &Source, r: &Resolved) -> Result<(), String> {
         Source::Git { url, .. } => git_fetch_into(url, r.git_sha.as_deref(), &dir),
         _ => {
             let tarball = r.tarball.as_deref().ok_or("registry gave no tarball url")?;
-            download_tgz(tarball, &dir)
+            download_tgz(tarball, r.integrity.as_deref(), &dir)
         }
     }
 }
 
+/// What `integrity` in the lockfile promises about the bytes, checked before anything is unpacked.
+fn verify_integrity(bytes: &[u8], want: &str) -> Result<(), String> {
+    let Some(want_b64) = want.strip_prefix("sha512-") else {
+        return Err(format!(
+            "integrity `{want}` is not a sha512 digest; delete maca.lock to re-resolve"
+        ));
+    };
+    let got = crate::sha512::base64_digest(bytes);
+    if got == want_b64 {
+        return Ok(());
+    }
+    Err(format!(
+        "the download does not match what maca.lock pinned\n  \
+         expected sha512-{want_b64}\n  \
+         got      sha512-{got}"
+    ))
+}
+
 /// Download a `.tgz` and extract it, stripping the archive's top-level dir (npm tarballs wrap everything in `package/`).
-fn download_tgz(url: &str, dir: &Path) -> Result<(), String> {
+fn download_tgz(url: &str, integrity: Option<&str>, dir: &Path) -> Result<(), String> {
     let tmp = dir.join(".pkg.tgz");
     run("curl", &["-fsSL", "-o", &tmp.to_string_lossy(), url])?;
+    if let Some(want) = integrity {
+        let bytes = std::fs::read(&tmp).map_err(|e| e.to_string())?;
+        if let Err(e) = verify_integrity(&bytes, want) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
+    }
     run(
         "tar",
         &[
@@ -762,6 +782,32 @@ mod tests {
              integrity = \"sha512-x\"\n"
                 .to_string(),
         )]
+    }
+
+    /// A pin on a version says nothing about the bytes, so the digest beside it is what a second download is held to.
+    #[test]
+    fn bytes_that_do_not_hash_to_what_the_lock_pinned_are_refused() {
+        let honest = b"the tarball the registry served when the lock was written";
+        let want = format!("sha512-{}", crate::sha512::base64_digest(honest));
+
+        verify_integrity(honest, &want).expect("the bytes the digest was taken from");
+
+        let tampered = b"the tarball the registry served when the lock was writteN";
+        let said =
+            verify_integrity(tampered, &want).expect_err("one flipped bit is a different file");
+        assert!(
+            said.contains("does not match what maca.lock pinned") && said.contains(&want),
+            "the message should say what was expected:\n{said}"
+        );
+    }
+
+    #[test]
+    fn an_integrity_that_is_not_a_sha512_is_named_rather_than_skipped() {
+        let said = verify_integrity(b"anything", "md5-abc").expect_err("only sha512 is understood");
+        assert!(
+            said.contains("md5-abc") && said.contains("maca.lock"),
+            "the message should name the value and what to do:\n{said}"
+        );
     }
 
     /// A lock is what makes a build reproduce: `^4` would resolve to whatever is newest, and the pin is what it gets instead.

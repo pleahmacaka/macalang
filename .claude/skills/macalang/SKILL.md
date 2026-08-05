@@ -1,5 +1,5 @@
 ---
-name: maca
+name: macalang
 description: Write and edit Maca (.maca / maca.toml). Use when creating or editing .maca source or maca.toml manifests, or config-mode NixOS/home-manager modules in Maca. Enforces the minimal syntax and the "always verify with maca.check" habit.
 ---
 

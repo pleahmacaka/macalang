@@ -12,7 +12,8 @@ The extension launches `maca-lsp`, which must be on your PATH. The Maca
 installer puts it next to `maca`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/pleahmacaka/macalang/main/install.sh | bash
+curl -fsSL -O https://github.com/pleahmacaka/macalang/releases/latest/download/maca-install-linux-x86_64
+chmod +x maca-install-linux-x86_64 && ./maca-install-linux-x86_64
 ```
 
 (or `cargo build --release -p maca-lsp` and copy it onto PATH).

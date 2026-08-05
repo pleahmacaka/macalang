@@ -9,8 +9,8 @@ import { Tolerance } from bench/compare
 import { kernels, langs, params, case_name } from apps/bench/run
 import { recursion_kernels, compute_kernels } from apps/bench/run
 
-InstallUrl = "https://raw.githubusercontent.com/pleahmacaka/macalang/main"
-    ++ "/install.sh"
+InstallUrl = "https://github.com/pleahmacaka/macalang/releases/latest"
+    ++ "/download/maca-install-linux-x86_64"
 
 Topic  = Config | Async | Markup | Values
 Spec   = Types | Memory | Output | Colour

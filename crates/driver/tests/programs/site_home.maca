@@ -375,7 +375,7 @@ test_the_chapter_it_opens_is_published_in_every_language() {
 
     assert(toml.contains("\"{StartChapter}\""), "the book lists the chapter")
     assert(chapters_exist(copies(), 0), "and has it in every language")
-    assert(read_file(chapter("en")).contains("install.sh"),
+    assert(read_file(chapter("en")).contains("maca-install"),
            "and it is the chapter that says how to install")
 }
 

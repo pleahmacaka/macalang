@@ -2,33 +2,45 @@
 
 Maca is one binary and a language server. Installing it takes a line.
 
-## macOS and Linux
+## Download the installer, run it
+
+The installer is a binary in the release, one per platform. Pick yours from
+[the latest release](https://github.com/pleahmacaka/macalang/releases/latest):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/pleahmacaka/macalang/main/install.sh | bash
+curl -fsSL -O https://github.com/pleahmacaka/macalang/releases/latest/download/maca-install-linux-x86_64
+chmod +x maca-install-linux-x86_64
+./maca-install-linux-x86_64
 ```
 
-That downloads the prebuilt `maca` and `maca-lsp` for your platform and puts
-them in `~/.local/bin`. If that directory is not already on your `PATH`, the
-installer says so and tells you the line to add.
+Substitute `macos-aarch64` on an Apple silicon Mac, `linux-aarch64` on an ARM
+server, and on Windows download `maca-install-windows-x86_64.exe` and run it.
 
-From a checkout, the same script works, and `PREFIX` chooses where things land:
+It puts `maca` and `maca-lsp` in `~/.local/bin`, and if that is not on your
+`PATH` it prints the line to add. Two flags change its mind:
 
 ```sh
-./install.sh                     # ~/.local/bin
-PREFIX=/usr/local ./install.sh   # /usr/local/bin, which may want sudo
+./maca-install-linux-x86_64 --prefix /usr/local   # somewhere else
+./maca-install-linux-x86_64 --version 0.3.0       # an older release
 ```
 
-## Windows
+`PREFIX` and `MACA_VERSION` in the environment do the same two things.
 
-In PowerShell:
+The last thing it does is compile and run a small program that imports the
+standard library. So the installer does not report success until the compiler
+it installed has actually compiled something.
 
-```powershell
-irm https://raw.githubusercontent.com/pleahmacaka/macalang/main/install.ps1 | iex
+## In GitHub Actions
+
+There is an action, and it is two lines:
+
+```yaml
+- uses: pleahmacaka/macalang@main
+- run: maca build
 ```
 
-Binaries go to `%USERPROFILE%\.local\bin`, and `$env:PREFIX` moves them
-elsewhere.
+It fetches the installer for the runner, then runs `maca install`, which
+fetches what your `maca.toml` names at the versions `maca.lock` pinned.
 
 ## What else you need
 
@@ -38,18 +50,14 @@ On macOS the Xcode command line tools provide it; on Debian or Ubuntu it is
 `build-essential`; on Fedora, `gcc`. Everything else in the toolchain works
 without one, but the two commands you will use most do not.
 
-**Rust, only sometimes.** The installer downloads a prebuilt binary when there
-is one for your platform, and falls back to building from source when there is
-not. Only that fallback needs `cargo`.
-
 **Nix, only for two things.** `maca dev` and the Nix build target want
-[Nix](https://nixos.org). If it is missing, the installer offers to fetch it
-through the Determinate Systems installer; decline and everything except those
-two keeps working. For an unattended run, set `MACA_INSTALL_NIX=1` to accept or
-`MACA_INSTALL_NIX=0` to skip.
+[Nix](https://nixos.org). Nothing else does, and the installer does not ask
+about it: if you never run those two commands you never need it. Nix has no
+native Windows build, so on Windows `maca dev` runs under WSL.
 
-Nix has no native Windows build, so on Windows `maca dev` runs under WSL. The
-Windows installer knows this and does not ask.
+**Rust, only to build the compiler yourself.** The installer downloads a
+binary. Building from a checkout is `cargo build`, and that is the only path
+that wants a Rust toolchain.
 
 ## Checking it worked
 
