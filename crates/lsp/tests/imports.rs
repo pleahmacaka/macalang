@@ -58,3 +58,24 @@ fn formatting_keeps_the_form_that_was_written() {
         assert!(printed.contains(line), "`{line}` came back as:\n{printed}");
     }
 }
+
+/// A page's `data` and `stored` have no definition to find, and an editor holding no filesystem must still not call them undefined.
+#[test]
+fn the_host_forms_are_known_to_the_editor() {
+    let src = "import { decode } from std/json\n\
+               import { local_start, local_store } from web/storage\n\
+               \n\
+               Site = { title: str }\n\
+               \n\
+               site: Site = data(\"links.json\")\n\
+               locked = stored(\"page.locked\", true)\n\
+               \n\
+               main() -> str => site.title\n";
+
+    let diags = maca_lsp::diagnostics_located(src, false);
+    assert!(
+        diags.is_empty(),
+        "a page that reads a file and a stored slot is clean: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}

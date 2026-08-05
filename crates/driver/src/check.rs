@@ -13,7 +13,7 @@ fn diagnose(
 ) -> Result<(String, Vec<Diagnostic>), String> {
     let src = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let whole = maca_parser::imports::load_with_imports(path).unwrap_or_else(|_| src.clone());
-    let parsed = maca_parser::parse(&whole);
+    let mut parsed = maca_parser::parse(&whole);
     if !parsed.errors.is_empty() {
         return Ok((
             src,
@@ -25,6 +25,12 @@ fn diagnose(
                         .with_note("the file did not parse, so nothing after this was checked")
                 })
                 .collect(),
+        ));
+    }
+    if let Err(e) = crate::embed::desugar(&mut parsed.module, path) {
+        return Ok((
+            src,
+            vec![Diagnostic::new(maca_core::DiagKind::UndefinedName, e)],
         ));
     }
     let mode = if config {

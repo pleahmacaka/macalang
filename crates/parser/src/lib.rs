@@ -95,9 +95,15 @@ pub fn is_custom_element_tag(name: &str) -> bool {
         && parts.iter().all(|p| plain(p))
 }
 
+/// Is `name` one of the two calls the driver rewrites before a program is compiled?
+pub fn is_host_form(name: &str) -> bool {
+    matches!(name, "data" | "stored")
+}
+
 /// Is `name` a backend intrinsic the checker must not treat as an undefined call?
 pub fn is_backend_intrinsic(name: &str) -> bool {
     is_ui_element_tag(name)
+        || is_host_form(name)
         || matches!(
             name,
             "mmio_write"

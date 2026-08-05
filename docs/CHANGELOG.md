@@ -2,6 +2,12 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## Unreleased
+
+* `maca check` and the editor agree with `maca build` about `data(…)` and
+  `stored(…)`. Both used to call them undefined, because only the build path
+  rewrote them.
+
 ## 0.3.3
 
 * An import says what it brings in. An asset is named by its extension,
