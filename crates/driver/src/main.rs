@@ -10,6 +10,7 @@ mod embed;
 mod entry;
 mod manifest;
 mod sha512;
+mod spec;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -32,6 +33,7 @@ fn main() {
         Some("update") => deps::cmd_update(&args[1..]),
         Some("upgrade") => deps::cmd_upgrade(&args[1..]),
         Some("bindgen") => bindgen::cmd_bindgen(&args[1..]),
+        Some("spec") => spec::cmd_spec(&args[1..]),
         Some("--help" | "-h" | "help") | None => usage(),
         Some(other) => {
             if let Some(cmd) = script_alias(other) {
@@ -492,6 +494,7 @@ fn usage() {
          \x20 update                      re-resolve dependencies to latest\n\
          \x20 upgrade                     self-update the maca toolchain\n\
          \x20 bindgen <header.h> [-o f]   generate Maca FFI declarations from a C header\n\
+         \x20 spec  --llm                 print the whole specification for a model's context\n\
          \x20 --version                    print the toolchain version\n\
          \n\
          with no file, build/run/test are about the package the directory holds:\n\

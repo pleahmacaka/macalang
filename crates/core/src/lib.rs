@@ -24,6 +24,50 @@ pub enum DiagKind {
     UndefinedName,
 }
 
+/// Every keyword a reader might reach for that Maca does not have, and the form Maca uses instead.
+///
+/// The checker turns these into diagnostics and `maca spec --llm` prints them
+/// as the mistakes-to-avoid section, so the advice a model is given and the
+/// advice the compiler gives cannot drift apart.
+pub const PHANTOM_KEYWORDS: &[(&str, &str)] = &[
+    (
+        "let",
+        "write `x = e` for a variable, `const x = e` for a constant; no `let`/`var` keyword",
+    ),
+    (
+        "fn",
+        "write the signature straight out: `name(arg: T) -> R { … }` or `name(arg: T) -> R => e`; no `fn` keyword",
+    ),
+    (
+        "type",
+        "declare a type by binding it: `Name = { field: T }` for a record, `Name = A | B` for a sum; no `type` keyword",
+    ),
+    (
+        "async",
+        "async is an inferred effect, so any function can `spawn` and `await`; no `async` keyword to write",
+    ),
+    (
+        "null",
+        "a sum type with an empty variant says what the absence means, and `match` makes you handle it; Maca has no null",
+    ),
+];
+
+/// The hint for a phantom keyword, including the spellings that mean the same mistake.
+pub fn phantom_hint(name: &str) -> Option<&'static str> {
+    let canonical = match name {
+        "let" | "var" => "let",
+        "fn" | "func" | "def" => "fn",
+        "type" => "type",
+        "async" | "await_" => "async",
+        "null" | "nil" | "None" | "undefined" => "null",
+        _ => return None,
+    };
+    PHANTOM_KEYWORDS
+        .iter()
+        .find(|(k, _)| *k == canonical)
+        .map(|(_, hint)| *hint)
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Diagnostic {
     pub kind: DiagKind,
@@ -197,29 +241,8 @@ impl Checker {
         if self.mode != Mode::Program || self.gradual_foreign {
             return false;
         }
-        let hint = match name {
-            "let" | "var" => {
-                "write `x = e` for a variable, `const x = e` for a constant; \
-                 no `let`/`var` keyword"
-            }
-            "fn" | "func" | "def" => {
-                "write the signature straight out: `name(arg: T) -> R { … }` or \
-                 `name(arg: T) -> R => e`; no `fn` keyword"
-            }
-            "type" => {
-                "declare a type by binding it: `Name = { field: T }` for a record, \
-                 `Name = A | B` for a sum; no `type` keyword"
-            }
-            "async" | "await_" => {
-                "async is an inferred effect, so any function can \
-                 `spawn` and `await`; no `async` keyword to write"
-            }
-            "null" | "nil" | "None" | "undefined" => {
-                "a sum type with an empty variant says what the absence means, \
-                 and `match` makes you handle it; Maca has no null"
-            }
-            "true_" | "false_" => return false,
-            _ => return false,
+        let Some(hint) = phantom_hint(name) else {
+            return false;
         };
         self.diag(DiagKind::UndefinedName, format!("`{name}`: {hint}"));
         true
