@@ -26,3 +26,9 @@ _site/
 # scratch space the toolchain writes in a project: the dev-shell scripts from
 # `maca dev`, and the entry module `maca -m` generates and removes.
 /.maca/
+
+# corpus outputs: other people's source, and this repository's to generate
+# rather than to carry.
+apps/corpus/collected/
+apps/corpus/corpus.jsonl
+apps/corpus/failures.jsonl

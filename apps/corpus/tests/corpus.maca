@@ -1,0 +1,94 @@
+import { permits, refusal, allowed } from apps/corpus/licence
+import { Record, Failure, record_line, failure_line } from apps/corpus/record
+import std/text
+
+test_a_permissive_licence_is_carried() {
+    assert(permits("MIT"), "MIT")
+    assert(permits("Apache-2.0"), "Apache-2.0")
+    assert(permits("BSD-3-Clause"), "BSD-3-Clause")
+    assert(permits("mit"), "the comparison is not case-sensitive")
+    assert(permits(" ISC "), "surrounding space is not part of the identifier")
+}
+
+test_a_licence_the_corpus_may_not_redistribute_is_refused() {
+    assert(!permits("GPL-3.0"), "GPL-3.0 is copyleft")
+    assert(!permits("AGPL-3.0"), "AGPL-3.0 is copyleft")
+    assert(!permits("SEE LICENSE IN LICENSE.txt"), "a pointer is not a licence")
+    assert(!permits("UNLICENSED"), "UNLICENSED is the opposite of Unlicense")
+}
+
+test_an_unstated_licence_is_not_a_permissive_one() {
+    assert(!permits(""), "no licence stated")
+    assert(!permits("   "), "whitespace is not a licence")
+    assert(refusal("").contains("unstated"), "and the reason says which it was")
+    assert(refusal("GPL-3.0").contains("GPL-3.0"), "or names the one refused")
+}
+
+test_a_choice_of_licences_passes_when_either_branch_does() {
+    assert(permits("MIT OR GPL-3.0"), "the taker may choose MIT")
+    assert(permits("(MIT OR Apache-2.0)"), "parentheses are not part of it")
+    assert(!permits("GPL-3.0 OR AGPL-3.0"), "neither branch is permissive")
+}
+
+test_a_conjunction_needs_every_branch() {
+    assert(permits("MIT AND ISC"), "both are permissive")
+    assert(!permits("MIT AND GPL-3.0"), "one copyleft branch binds the whole")
+}
+
+test_every_allowed_licence_permits_itself() {
+    assert(all_permit(allowed(), 0), "the list and the check agree")
+}
+
+all_permit(ids: str[], i: int) -> bool {
+    if i >= ids.length() {
+        true
+    } else if !permits(ids.get(i)) {
+        false
+    } else {
+        all_permit(ids, i + 1)
+    }
+}
+
+test_a_record_is_one_json_line_with_every_field() {
+    line = record_line(Record {
+        pkg = "leftpad",
+        license = "MIT",
+        ts_source = "export const x = 1",
+        maca_source = "x = 1",
+        test_result = "passed",
+    })
+
+    assert(!line.contains("\n"), "a JSONL record is one line")
+    assert(line.contains("\"pkg\":\"leftpad\""), "pkg")
+    assert(line.contains("\"license\":\"MIT\""), "license, which is required")
+    assert(line.contains("\"ts_source\""), "ts_source")
+    assert(line.contains("\"maca_source\""), "maca_source")
+    assert(line.contains("\"test_result\":\"passed\""), "test_result")
+}
+
+test_a_source_with_quotes_and_newlines_stays_one_line() {
+    line = record_line(Record {
+        pkg = "p",
+        license = "MIT",
+        ts_source = "const s = \"a\nb\"",
+        maca_source = "s = \"a\nb\"",
+        test_result = "passed",
+    })
+
+    assert(!line.contains("\n"),
+           "a newline in the source would otherwise split the record in two")
+    assert(line.contains("\\n"), "it is escaped rather than dropped")
+}
+
+test_a_failure_says_which_stage_rejected_it() {
+    line = failure_line(Failure {
+        pkg = "p",
+        license = "GPL-3.0",
+        stage = "licence",
+        why = "not on the allowed list",
+    })
+
+    assert(line.contains("\"stage\":\"licence\""), "the stage is the signal")
+    assert(line.contains("\"why\""), "and the reason is what improves the translator")
+    assert(!line.contains("\n"), "one line")
+}

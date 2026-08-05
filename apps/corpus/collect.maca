@@ -1,0 +1,86 @@
+// corpus/collect: fetch npm packages the corpus may carry, and refuse the rest.
+
+import std/fs
+import std/text
+import std/path
+import std/list
+import std/proc
+import { get } from std/json
+import { Failure, failure_line } from apps/corpus/record
+import { permits, refusal } from apps/corpus/licence
+import { bold, dim, ok, bad, grey } from cli/style
+
+Collected = "apps/corpus/collected"
+Failures = "apps/corpus/failures.jsonl"
+Registry = "https://registry.npmjs.org"
+
+/// The licence a package states, from its registry metadata.
+///
+/// The check runs here, before a tarball is fetched, because a corpus is
+/// redistributed: bytes never downloaded cannot leak into a record through an
+/// oversight further down the pipeline.
+license_of(metadata: str) -> str =>
+    get(metadata, "license").replace("\"", "").trim()
+
+main(argv: str[]) -> int {
+    if argv.length() == 0 {
+        err(bad("usage: collect <package>…"))
+        1
+    } else {
+        make_dir(Collected)
+        collect_all(argv, 0, 0, 0)
+    }
+}
+
+collect_all(names: str[], i: int, kept: int, refused: int) -> int {
+    if i >= names.length() {
+        info(ok("{kept} collected") ++ dim(", {refused} refused"))
+        refused > 0 && kept == 0 ? 1 : 0
+    } else {
+        name = names.get(i)
+
+        if collect_one(name) {
+            err(ok("  " ++ name))
+            collect_all(names, i + 1, kept + 1, refused)
+        } else {
+            err(grey("  " ++ name ++ ": refused"))
+            collect_all(names, i + 1, kept, refused + 1)
+        }
+    }
+}
+
+collect_one(name: str) -> bool {
+    metadata = capture("curl", ["-sSL", Registry ++ "/" ++ name])
+
+    if metadata.trim() == "" {
+        note(name, "", "fetch", "the registry answered nothing")
+    } else {
+        spdx = license_of(metadata)
+
+        if !permits(spdx) {
+            note(name, spdx, "licence", refusal(spdx))
+        } else {
+            keep(name, spdx)
+        }
+    }
+}
+
+/// Record the package's licence beside its source, so the pipeline never has to guess again.
+keep(name: str, spdx: str) -> bool {
+    dir = join(Collected, name)
+    make_dir(dir)
+    write_file(join(dir, "LICENSE-ID"), spdx)
+    info(dim("  {name}: {spdx}"))
+    true
+}
+
+note(name: str, spdx: str, stage: str, why: str) -> bool {
+    append_file(Failures,
+                failure_line(Failure {
+                    pkg = name,
+                    license = spdx,
+                    stage = stage,
+                    why = why,
+                }) ++ "\n")
+    false
+}

@@ -19,6 +19,7 @@ members = [
     "apps/blink",
     "apps/build_site",
     "apps/cli_tool",
+    "apps/corpus",
     "apps/desktop",
     "apps/evals",
     "apps/lint",

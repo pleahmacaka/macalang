@@ -1,0 +1,11 @@
+[package]
+name = "corpus"
+description = "TypeScript to Maca to JavaScript, with the package's own tests as the oracle."
+
+[[bin]]
+name = "corpus"
+path = "build.maca"
+
+[[bin]]
+name = "collect"
+path = "collect.maca"

@@ -1,0 +1,60 @@
+// corpus/licence: which licences a package may carry into the corpus.
+
+import std/text
+
+/// The licences a collected package may carry.
+///
+/// A corpus is redistributed, so a package whose terms are not on this list is
+/// not collected at all rather than collected and filtered later. The check
+/// belongs at the front of the pipeline: bytes that were never fetched cannot
+/// leak into a record by an oversight downstream.
+allowed() -> str[] =>
+    "MIT", "ISC", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0", "0BSD",
+    "Unlicense", "CC0-1.0"
+
+/// Whether `spdx` is one the corpus may carry.
+///
+/// An `OR` expression passes when any branch does, because the taker chooses.
+/// An `AND` needs every branch, because all of them bind.
+permits(spdx: str) -> bool {
+    id = spdx.trim().replace("(", "").replace(")", "").trim()
+
+    if id == "" {
+        false
+    } else if id.contains(" OR ") {
+        any_permitted(id.split(" OR "), 0)
+    } else if id.contains(" AND ") {
+        all_permitted(id.split(" AND "), 0)
+    } else {
+        listed(id)
+    }
+}
+
+listed(id: str) -> bool =>
+    allowed().filter(a => a.lower() == id.trim().lower()).length() > 0
+
+any_permitted(ids: str[], i: int) -> bool {
+    if i >= ids.length() {
+        false
+    } else if permits(ids.get(i)) {
+        true
+    } else {
+        any_permitted(ids, i + 1)
+    }
+}
+
+all_permitted(ids: str[], i: int) -> bool {
+    if i >= ids.length() {
+        true
+    } else if !permits(ids.get(i)) {
+        false
+    } else {
+        all_permitted(ids, i + 1)
+    }
+}
+
+/// Why a package was not collected, in the words the failure log records.
+refusal(spdx: str) -> str =>
+    spdx.trim() == ""
+        ? "the package states no licence, and an unstated licence is not a permissive one"
+        : "`" ++ spdx.trim() ++ "` is not on the allowed list"

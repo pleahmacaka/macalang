@@ -41,6 +41,20 @@ fn the_benchmark_harness_compiles() {
     builds("apps/bench/run.maca");
 }
 
+/// The corpus pipeline and its collector, whose licence gate decides what may be redistributed.
+#[test]
+fn the_corpus_pipeline_compiles() {
+    builds("apps/corpus/build.maca");
+    builds("apps/corpus/collect.maca");
+}
+
+/// The eval harness and the porter that generates its problems.
+#[test]
+fn the_eval_harness_compiles() {
+    builds("apps/evals/run.maca");
+    builds("apps/evals/port.maca");
+}
+
 #[test]
 fn the_linter_compiles() {
     builds("apps/lint/lint.maca");
