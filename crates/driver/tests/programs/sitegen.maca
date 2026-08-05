@@ -264,6 +264,27 @@ test_the_sheet_names_files_that_are_there() {
            "and the first shard of the prose family")
 }
 
+test_every_chapter_opens_by_saying_what_it_answers() {
+    bare = chapters_opening_with_a_heading(book_chapters(), 0, [])
+
+    assert(bare.length() == 0,
+           "a chapter that starts on a subheading makes the reader guess what"
+               ++ " it is for: {bare.join(", ")}")
+}
+
+book_chapters() -> str[] =>
+    find("apps/tomo/book/en", ".md") ++ find("apps/tomo/book/ko", ".md")
+
+chapters_opening_with_a_heading(fs: str[], i: int, acc: str[]) -> str[] {
+    if i >= fs.length() {
+        acc
+    } else if read_lines(fs.get(i)).get(2).starts_with("#") {
+        chapters_opening_with_a_heading(fs, i + 1, acc.push(fs.get(i)))
+    } else {
+        chapters_opening_with_a_heading(fs, i + 1, acc)
+    }
+}
+
 test_the_book_opens_on_one_table_of_contents_not_two() {
     root = read_file(join(site_dir(), "en/index.html"))
     at = root.index_of("<main")

@@ -1,5 +1,9 @@
 # Closures and Control Flow
 
+A function in Maca is a value: it can be passed, returned, and written
+inline. This chapter is that, and the four ways a program chooses what to do
+next.
+
 ## Functions are values
 
 A top-level function referenced by name is a value, so you can pass it where a

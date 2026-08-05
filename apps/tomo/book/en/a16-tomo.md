@@ -212,6 +212,21 @@ the reader gets a way out before two screens of prose, not after.
 A book with no `home.md` still gets a root page: the language picker this used
 to be. A landing page is something you opt into by writing one.
 
+## Two rules the book holds itself to
+
+**Order lives in one place.** `<lang>/index.html` used to render the whole
+contents list into the page while the sidebar rendered the same list beside it,
+so the reader met two tables of contents and had to work out whether they
+differed. The sidebar carries the order; the page it opens on says what each
+volume is for and where it starts. `sitegen.maca` counts the chapter links on
+that page and fails at anything but one per volume.
+
+**A chapter opens with a sentence, not a subheading.** Landing on `## Functions
+are values` tells you what the section is about, but not what the chapter is
+for or whether you are in the right one. The first line under the title says
+what the page answers. That is also checked, over both languages, because a
+convention nothing enforces is one that holds until the next contributor.
+
 ## Building it
 
 ```

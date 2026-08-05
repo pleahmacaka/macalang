@@ -1,6 +1,7 @@
 # Introduction
 
-Welcome to **The Maca Handbook**.
+**The Maca Handbook** teaches Maca, then stays open beside you as the
+reference.
 
 Maca is a single, typed language for **both programs and infrastructure
 configuration**. The same source you write to build an app is the source you
