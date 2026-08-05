@@ -2,7 +2,7 @@ import std/proc
 import std/path
 
 Wasm = "target/wasm32-unknown-unknown/release/maca_wasm.wasm"
-Package = "packages/macalang"
+Package = "apps/npm"
 
 main() -> int {
     run("cargo", ["build", "-p", "maca-wasm",

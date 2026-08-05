@@ -116,7 +116,7 @@ sum(t: Tree) -> int =>
 ```
 
 The payload is boxed, so the type is not infinitely sized. This is the shape a
-compiler's AST takes, and it is what `selfhost/ast.maca` is built from.
+compiler's AST takes, and it is what `apps/selfhost/ast.maca` is built from.
 
 ## Choosing between a record and a sum
 
@@ -145,7 +145,7 @@ a result, not by convention, but because there is no way to write it down.
 ## Run it
 
 ```
-maca run examples/tree.maca
+maca run apps/examples/tree.maca
 ```
 
 A recursive sum type (a binary tree) built, summed and printed. Then try

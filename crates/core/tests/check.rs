@@ -35,61 +35,61 @@ fn assert_has(rel: &str, mode: Mode, kind: DiagKind) {
 
 #[test]
 fn hello_ok() {
-    assert_clean("examples/hello.maca", Mode::Program);
+    assert_clean("apps/examples/hello.maca", Mode::Program);
 }
 #[test]
 fn taskr_ok() {
-    assert_clean("examples/taskr.maca", Mode::Program);
+    assert_clean("apps/examples/taskr.maca", Mode::Program);
 }
 #[test]
 fn counter_ok() {
-    assert_clean("examples/counter.maca", Mode::Program);
+    assert_clean("apps/examples/counter.maca", Mode::Program);
 }
 #[test]
 fn dot_ok() {
-    assert_clean("examples/dot.maca", Mode::Program);
+    assert_clean("apps/examples/dot.maca", Mode::Program);
 }
 #[test]
 fn system_ok() {
-    assert_clean("examples/system.maca", Mode::Config);
+    assert_clean("apps/examples/system.maca", Mode::Config);
 }
 #[test]
 fn operators_ok() {
-    assert_clean("examples/operators.maca", Mode::Program);
+    assert_clean("apps/examples/operators.maca", Mode::Program);
 }
 #[test]
 fn generic_ok() {
-    assert_clean("examples/generic.maca", Mode::Program);
+    assert_clean("apps/examples/generic.maca", Mode::Program);
 }
 #[test]
 fn keywords_ok() {
-    assert_clean("examples/keywords.maca", Mode::Program);
+    assert_clean("apps/examples/keywords.maca", Mode::Program);
 }
 #[test]
 fn indexing_ok() {
-    assert_clean("examples/indexing.maca", Mode::Program);
+    assert_clean("apps/examples/indexing.maca", Mode::Program);
 }
 #[test]
 fn record_update_ok() {
-    assert_clean("examples/record_update.maca", Mode::Program);
+    assert_clean("apps/examples/record_update.maca", Mode::Program);
 }
 #[test]
 fn recursive_sum_ok() {
-    assert_clean("examples/tree.maca", Mode::Program);
+    assert_clean("apps/examples/tree.maca", Mode::Program);
 }
 #[test]
 fn recursive_record_ok() {
-    assert_clean("examples/recursive_record.maca", Mode::Program);
+    assert_clean("apps/examples/recursive_record.maca", Mode::Program);
 }
 #[test]
 fn sum_record_ok() {
-    assert_clean("examples/sum_record.maca", Mode::Program);
+    assert_clean("apps/examples/sum_record.maca", Mode::Program);
 }
 
 #[test]
 fn type_mismatch_rejected() {
     assert_has(
-        "examples/bad/type_mismatch.maca",
+        "apps/examples/bad/type_mismatch.maca",
         Mode::Program,
         DiagKind::TypeMismatch,
     );
@@ -97,7 +97,7 @@ fn type_mismatch_rejected() {
 #[test]
 fn nonexhaustive_rejected() {
     assert_has(
-        "examples/bad/nonexhaustive.maca",
+        "apps/examples/bad/nonexhaustive.maca",
         Mode::Program,
         DiagKind::NonExhaustive,
     );
@@ -105,7 +105,7 @@ fn nonexhaustive_rejected() {
 #[test]
 fn effect_in_config_rejected() {
     assert_has(
-        "examples/bad/effect_in_config.maca",
+        "apps/examples/bad/effect_in_config.maca",
         Mode::Config,
         DiagKind::EffectInConfig,
     );
@@ -114,7 +114,7 @@ fn effect_in_config_rejected() {
 #[test]
 fn effect_statement_in_config_rejected() {
     assert_has(
-        "examples/bad/effect_statement_in_config.maca",
+        "apps/examples/bad/effect_statement_in_config.maca",
         Mode::Config,
         DiagKind::EffectInConfig,
     );
@@ -122,7 +122,7 @@ fn effect_statement_in_config_rejected() {
 #[test]
 fn unknown_option_rejected() {
     assert_has(
-        "examples/bad/unknown_option.maca",
+        "apps/examples/bad/unknown_option.maca",
         Mode::Config,
         DiagKind::UnknownOption,
     );
@@ -130,7 +130,7 @@ fn unknown_option_rejected() {
 #[test]
 fn arg_mismatch_rejected() {
     assert_has(
-        "examples/bad/arg_mismatch.maca",
+        "apps/examples/bad/arg_mismatch.maca",
         Mode::Program,
         DiagKind::TypeMismatch,
     );
@@ -138,7 +138,7 @@ fn arg_mismatch_rejected() {
 #[test]
 fn arity_rejected() {
     assert_has(
-        "examples/bad/arity.maca",
+        "apps/examples/bad/arity.maca",
         Mode::Program,
         DiagKind::TypeMismatch,
     );
@@ -170,7 +170,7 @@ fn variadic_misuse_rejected() {
 #[test]
 fn missing_record_field_rejected() {
     assert_has(
-        "examples/bad/missing_field.maca",
+        "apps/examples/bad/missing_field.maca",
         Mode::Program,
         DiagKind::TypeMismatch,
     );
@@ -180,7 +180,7 @@ fn missing_record_field_rejected() {
 #[test]
 fn unknown_record_field_rejected() {
     assert_has(
-        "examples/bad/unknown_field.maca",
+        "apps/examples/bad/unknown_field.maca",
         Mode::Program,
         DiagKind::TypeMismatch,
     );
@@ -189,7 +189,7 @@ fn unknown_record_field_rejected() {
 #[test]
 fn branch_mismatch_rejected() {
     assert_has(
-        "examples/bad/branch_mismatch.maca",
+        "apps/examples/bad/branch_mismatch.maca",
         Mode::Program,
         DiagKind::TypeMismatch,
     );
@@ -197,13 +197,13 @@ fn branch_mismatch_rejected() {
 
 #[test]
 fn loops_ok() {
-    assert_clean("examples/loops.maca", Mode::Program);
+    assert_clean("apps/examples/loops.maca", Mode::Program);
 }
 
 #[test]
 fn while_cond_must_be_bool() {
     assert_has(
-        "examples/bad/while_cond.maca",
+        "apps/examples/bad/while_cond.maca",
         Mode::Program,
         DiagKind::TypeMismatch,
     );
@@ -211,23 +211,23 @@ fn while_cond_must_be_bool() {
 
 #[test]
 fn payload_sum_ok() {
-    assert_clean("examples/payload_sum.maca", Mode::Program);
+    assert_clean("apps/examples/payload_sum.maca", Mode::Program);
 }
 
 #[test]
 fn range_ok() {
-    assert_clean("examples/range.maca", Mode::Program);
+    assert_clean("apps/examples/range.maca", Mode::Program);
 }
 
 #[test]
 fn tour_ok() {
-    assert_clean("examples/tour.maca", Mode::Program);
+    assert_clean("apps/examples/tour.maca", Mode::Program);
 }
 
 #[test]
 fn range_end_must_be_int() {
     assert_has(
-        "examples/bad/range_end.maca",
+        "apps/examples/bad/range_end.maca",
         Mode::Program,
         DiagKind::TypeMismatch,
     );
@@ -236,7 +236,7 @@ fn range_end_must_be_int() {
 #[test]
 fn reassign_constant_rejected() {
     assert_has(
-        "examples/bad/reassign_const.maca",
+        "apps/examples/bad/reassign_const.maca",
         Mode::Program,
         DiagKind::Immutable,
     );
@@ -244,19 +244,19 @@ fn reassign_constant_rejected() {
 
 #[test]
 fn mutable_reassign_ok() {
-    assert_clean("examples/loops.maca", Mode::Program);
+    assert_clean("apps/examples/loops.maca", Mode::Program);
 }
 
 #[test]
 fn collections_and_math_examples_typecheck() {
-    assert_clean("examples/collections.maca", Mode::Program);
-    assert_clean("examples/math.maca", Mode::Program);
-    assert_clean("examples/dot.maca", Mode::Program);
+    assert_clean("apps/examples/collections.maca", Mode::Program);
+    assert_clean("apps/examples/math.maca", Mode::Program);
+    assert_clean("apps/examples/dot.maca", Mode::Program);
 }
 
 #[test]
 fn async_example_typechecks() {
-    assert_clean("examples/async.maca", Mode::Program);
+    assert_clean("apps/examples/async.maca", Mode::Program);
 }
 
 #[test]
@@ -276,7 +276,7 @@ fn async_effect_is_inferred_and_banned_in_config() {
 #[test]
 fn undefined_call_rejected() {
     assert_has(
-        "examples/bad/undefined_call.maca",
+        "apps/examples/bad/undefined_call.maca",
         Mode::Program,
         DiagKind::UndefinedName,
     );
@@ -286,7 +286,7 @@ fn undefined_call_rejected() {
 #[test]
 fn misspelt_variant_pattern_rejected() {
     assert_has(
-        "examples/bad/misspelt_variant.maca",
+        "apps/examples/bad/misspelt_variant.maca",
         Mode::Program,
         DiagKind::UndefinedName,
     );
@@ -295,7 +295,7 @@ fn misspelt_variant_pattern_rejected() {
 /// The diagnostic names the variant that was meant, and a lowercase pattern still binds.
 #[test]
 fn a_misspelt_variant_is_told_which_one_was_meant() {
-    let said: Vec<String> = diags("examples/bad/misspelt_variant.maca", Mode::Program)
+    let said: Vec<String> = diags("apps/examples/bad/misspelt_variant.maca", Mode::Program)
         .iter()
         .map(|d| d.msg.clone())
         .collect();

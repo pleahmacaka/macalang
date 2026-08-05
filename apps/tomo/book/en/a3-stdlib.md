@@ -304,6 +304,6 @@ is the same "0 or non-zero" contract as [Testing](12-testing.md).
 
 There are none. `contains`, `starts_with`, `ends_with`, `index_of`, `split` and
 the character classes cover what a program in this language actually reaches for.
-`selfhost/lexer.maca` scans the whole language with `chars`, `at` and three
+`apps/selfhost/lexer.maca` scans the whole language with `chars`, `at` and three
 predicates. And a regex engine is a language of its own to learn, debug and
 implement. Reach for `split` and a loop.

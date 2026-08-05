@@ -33,7 +33,7 @@ fn the_site_builder_compiles() {
 
 #[test]
 fn the_package_builder_compiles() {
-    builds("packages/macalang/build.maca");
+    builds("apps/npm/build.maca");
 }
 
 #[test]

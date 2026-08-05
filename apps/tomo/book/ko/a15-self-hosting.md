@@ -10,11 +10,11 @@
 동결되어 있습니다. 진짜 부트스트랩 버그(멈추는 파서, 잘못 파싱되는 구문)
 때문에만 바뀝니다. 기능을 추가하는 곳이 아닙니다.
 
-**스테이지 1**은 `selfhost/` 아래의 Maca 컴파일러입니다. Maca로 쓰였습니다.
+**스테이지 1**은 `apps/selfhost/` 아래의 Maca 컴파일러입니다. Maca로 쓰였습니다.
 새 컴파일러 작업이 속하는 곳입니다. 스테이지 0이 이것을 컴파일하고, 테스트
 게이트(`crates/driver/tests/selfhost.rs`)가 계속 동작하는지 확인합니다.
 
-규칙은 짧습니다. Rust 크레이트를 키우는 것보다 `selfhost/*.maca`에 추가하는
+규칙은 짧습니다. Rust 크레이트를 키우는 것보다 `apps/selfhost/*.maca`에 추가하는
 쪽을 택하세요.
 
 ## 스테이지 1이 지금 하는 일
@@ -67,7 +67,7 @@ lexer.maca → parser.maca → ast.maca → check.maca → emit_c.maca
 일반적으로 유용한 것으로 드러났습니다.
 
 **문자열 스캐닝.** `chars`, `length`, `at`, `get`, `slice`, 그리고 문자 분류
-`is_whitespace`, `is_ascii_digit`, `is_alpha`. `selfhost/lexer.maca`가 쓰는
+`is_whitespace`, `is_ascii_digit`, `is_alpha`. `apps/selfhost/lexer.maca`가 쓰는
 어휘의 전부입니다. 어떤 토크나이저든 정확히 이 집합을 필요로 합니다.
 
 **재귀 레코드 타입.** AST 노드가 AST 노드의 리스트를 담습니다.
@@ -88,12 +88,12 @@ C에서 이것은 정의 순환입니다. 배열 타입은 구조체의 크기�
 
 ## 소스 읽기
 
-`selfhost/main.maca`가 진입점이고, 테스트 스위트 역할도 겸합니다. 일련의
+`apps/selfhost/main.maca`가 진입점이고, 테스트 스위트 역할도 겸합니다. 일련의
 프로그램을 렉싱, 파싱, 검사, 코드 생성하고 각각을 보고합니다. 현재 상태를 보는
 가장 빠른 방법입니다.
 
 ```
-maca run selfhost/main.maca
+maca run apps/selfhost/main.maca
 ```
 
 파일들은 작고 일부러 평범합니다. `lexer.maca`는 문자 스캐너입니다.

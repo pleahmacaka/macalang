@@ -181,7 +181,7 @@ MacaDoc이 읽는 관례이지 토큰이 아닙니다. "항목 위의 주석은 
 시그니처 도움말, 자동완성, 이름 변경, 포매팅을 제공합니다. LSP를 말하는 에디터면
 무엇이든 쓸 수 있습니다.
 
-저장소에는 `editor/zed-maca`에 Zed 확장이 들어 있습니다. tree-sitter 문법, 구문
+저장소에는 `apps/editor/zed-maca`에 Zed 확장이 들어 있습니다. tree-sitter 문법, 구문
 강조, 아웃라인, 언어 서버 연결이 되어 있습니다. 개발 확장으로 설치하세요. Zed에서
 *Extensions → Install Dev Extension*을 고르고 그 디렉터리를 가리키면 됩니다.
 

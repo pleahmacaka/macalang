@@ -163,7 +163,7 @@ Reference's targets chapter says why.
 
 Worked examples: [`apps/microkernel`](apps/microkernel) (a message-passing
 microkernel, simulated), [`apps/mcmod`](apps/mcmod) (a Fabric mod in Maca),
-[`apps/blink`](apps/blink) (Cortex-M firmware), [`examples/`](examples).
+[`apps/blink`](apps/blink) (Cortex-M firmware), [`apps/examples/`](apps/examples).
 
 ## How fast
 
@@ -191,7 +191,7 @@ still reuses the cached C runtime object. `MACA_NO_CACHE=1` forces a full build;
 ## Use from JavaScript / Bun
 
 The compiler front-end also ships as an npm package,
-[`macalang`](packages/macalang): compile and **import `.maca` from JS**, all in
+[`macalang`](apps/npm): compile and **import `.maca` from JS**, all in
 WebAssembly (no native toolchain):
 
 ```js
@@ -220,10 +220,10 @@ nix develop     # enter the shell
 The installer places a language server, `maca-lsp`, next to `maca`. It gives
 live diagnostics, hover, and completion over LSP (stdio). Editor integrations:
 
-- **Zed**: [`editor/zed-maca`](editor/zed-maca), tree-sitter highlighting +
+- **Zed**: [`apps/editor/zed-maca`](apps/editor/zed-maca), tree-sitter highlighting +
   the `maca-lsp` server. Install as a dev extension (Zed → Extensions → Install
-  Dev Extension → pick `editor/zed-maca`).
-- **TextMate / VS Code grammar**: [`editor/maca.tmLanguage.json`](editor/maca.tmLanguage.json).
+  Dev Extension → pick `apps/editor/zed-maca`).
+- **TextMate / VS Code grammar**: [`apps/editor/maca.tmLanguage.json`](apps/editor/maca.tmLanguage.json).
 - **Playground**: [`apps/playground/playground.maca`](apps/playground/playground.maca),
   the browser playground, itself written in Maca and compiled by the JS backend.
 

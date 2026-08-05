@@ -52,7 +52,7 @@ fetch_both(a: str, b: str) -> str {
 ## 실행해 보기
 
 ```
-maca run examples/async.maca
+maca run apps/examples/async.maca
 ```
 
 각각 50ms를 자는 작업 둘을 함께 spawn하고 await합니다.

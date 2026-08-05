@@ -107,7 +107,7 @@ maca build app/main.maca
 
 import로 닿는 모든 것이 함께 컴파일됩니다. 소스를 나열하는 매니페스트도,
 관리할 빌드 그래프도 없습니다. 셀프호스팅 컴파일러가 정확히 이렇게 빌드됩니다.
-`maca build selfhost/main.maca`가 import 목록으로부터 프론트엔드 전체를
+`maca build apps/selfhost/main.maca`가 import 목록으로부터 프론트엔드 전체를
 컴파일합니다.
 
 ## 모듈 시스템이 멈추는 지점

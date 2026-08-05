@@ -114,7 +114,7 @@ sum(t: Tree) -> int =>
 ```
 
 실린 값은 박싱되므로 타입의 크기가 무한해지지 않습니다. 컴파일러의 AST가 취하는
-모양이고, `selfhost/ast.maca`가 이것으로 만들어져 있습니다.
+모양이고, `apps/selfhost/ast.maca`가 이것으로 만들어져 있습니다.
 
 ## 레코드와 합타입 중 무엇을 고를까
 
@@ -143,7 +143,7 @@ Job = {
 ## 실행해 보기
 
 ```
-maca run examples/tree.maca
+maca run apps/examples/tree.maca
 ```
 
 재귀 합타입, 곧 이진 트리를 만들고, 더하고, 출력합니다. 그다음 안에 있는

@@ -73,7 +73,7 @@ maca run hello.maca
 
 언어 서버는 이미 설치돼 있습니다. 에디터 쪽 설정은 별도 단계입니다.
 
-**Zed**라면 저장소의 `editor/zed-maca`에 확장이 들어 있습니다. tree-sitter
+**Zed**라면 저장소의 `apps/editor/zed-maca`에 확장이 들어 있습니다. tree-sitter
 문법, 강조, 아웃라인, 언어 서버 연결이 되어 있습니다. 체크아웃한 저장소에서
 *Extensions → Install Dev Extension*을 고르고 그 디렉터리를 지정하세요.
 

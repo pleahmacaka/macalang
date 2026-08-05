@@ -157,7 +157,7 @@ evens = [1, 2, 3, 4].filter(is_even)
 ```
 
 `chars`, `at`, 그리고 세 가지 문자 분류가 스캐너를 만드는 재료입니다.
-`selfhost/lexer.maca`는 이것 말고는 아무것도 쓰지 않습니다.
+`apps/selfhost/lexer.maca`는 이것 말고는 아무것도 쓰지 않습니다.
 
 ```maca
 run_digits(cs: str[], i: int) -> int =>
@@ -193,7 +193,7 @@ info("{c == "e"}")      // true
 ## 실행해 보기
 
 ```
-maca run examples/collections.maca
+maca run apps/examples/collections.maca
 ```
 
 위에 나온 리스트 메서드를 하나씩 적용하고 출력합니다. 이 장의 표 두 개는

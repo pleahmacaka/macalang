@@ -124,7 +124,7 @@ through the front door.
 
 ## The larger point: run your documentation
 
-The Maca repository holds a file called `examples/handbook.maca`. It contains
+The Maca repository holds a file called `apps/examples/handbook.maca`. It contains
 every runnable claim this book makes (the record update from
 [Records](05-records.md), the format specs from
 [Common Concepts](03-common-concepts.md), the list patterns from

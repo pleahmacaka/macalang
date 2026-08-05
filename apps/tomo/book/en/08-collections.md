@@ -163,7 +163,7 @@ and so are their conventions.
 ```
 
 `chars`, `at` and the three character classes are what a scanner is built from,
-and `selfhost/lexer.maca` uses nothing else:
+and `apps/selfhost/lexer.maca` uses nothing else:
 
 ```maca
 run_digits(cs: str[], i: int) -> int =>
@@ -199,7 +199,7 @@ byte-exact and safe; it is only indexing that needs care with multi-byte text.
 ## Run it
 
 ```
-maca run examples/collections.maca
+maca run apps/examples/collections.maca
 ```
 
 Every list method above, applied and printed. The two tables in this chapter are

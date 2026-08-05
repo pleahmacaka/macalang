@@ -141,7 +141,7 @@ program, so interop stays smooth while your own code stays strict.
 ## Run it
 
 ```
-maca run examples/strings.maca
+maca run apps/examples/strings.maca
 ```
 
 Every string method and every format spec above, in one program that prints what

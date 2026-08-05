@@ -6,7 +6,7 @@ how often each word appears. It touches records, lists, recursion, pattern-free
 control flow and string handling (most of what the next chapters cover in
 depth) without explaining any of it fully. Read it for the shape.
 
-The finished program lives at `examples/wordcount.maca` in the repository, and
+The finished program lives at `apps/examples/wordcount.maca` in the repository, and
 the test suite runs it, so everything below is known to work.
 
 ## Splitting the text
@@ -140,7 +140,7 @@ main() -> int {
 ## Running it
 
 ```
-maca run examples/wordcount.maca
+maca run apps/examples/wordcount.maca
 ```
 
 ```

@@ -28,7 +28,7 @@ main() -> int {
 라이브러리를 찾습니다. 그래서 평범한 리눅스 머신에서 `-lsqlite3`가 아무 설정 없이
 동작합니다.
 
-`examples/ffi_sqlite.maca`가 진짜 데이터베이스를 열고 진짜 결과 집합을 순회합니다.
+`apps/examples/ffi_sqlite.maca`가 진짜 데이터베이스를 열고 진짜 결과 집합을 순회합니다.
 
 ## 타입 매핑
 

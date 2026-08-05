@@ -110,7 +110,7 @@ keep correct.
   foreign trait impl against a local stand-in trait, `spawn`/`await`, and a real
   `std` type.
 
-`examples/gpui_counter.maca` is the shape a gpui program takes on this backend:
+`apps/examples/gpui_counter.maca` is the shape a gpui program takes on this backend:
 a foreign trait impl with a declared return type, `&mut self` threading, a
 mutating closure in an event handler, a generic foreign type, and a builder
 chain.

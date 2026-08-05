@@ -79,11 +79,11 @@ footing as a type mismatch.
 
 ## Try it
 
-The repository has a real one at `examples/system.maca`. Build it and read the
+The repository has a real one at `apps/examples/system.maca`. Build it and read the
 Nix that comes out:
 
 ```
-maca build examples/system.maca --target nix -o system.nix
+maca build apps/examples/system.maca --target nix -o system.nix
 ```
 
 Then add `delay = sleep_ms(10)` to a copy of it and build again. The error is

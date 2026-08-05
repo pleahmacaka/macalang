@@ -108,7 +108,7 @@ and which manifest answers.
   and `remove` obey the same ownership rule as `push`: `xs = xs.insert(0, v)`
   edits in place, `ys = xs.insert(0, v)` copies. String stdlib on `str`
   (`split`/`trim`/`upper`/…). Math prelude (`sqrt`/`pow`/`abs`/`min`/`max`/
-  `clamp`/`gcd`/…), always available. (`examples/{collections,strings,math}.maca`,
+  `clamp`/`gcd`/…), always available. (`apps/examples/{collections,strings,math}.maca`,
   `crates/driver/tests/programs/list_edits.maca`.)
 - **Typed JSON (`import std/json`).** `encode(value)` and `decode(text)` are
   written by the compiler from the record and sum types the program declares:
@@ -125,44 +125,44 @@ and which manifest answers.
 - Ternary is spaced `c ? x : y`; error-propagation is attached `x?`.
 - Operator overloading (no new syntax): on a user type, an operator resolves to
   a same-named function: `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
-  `concat`, etc. Primitives keep the native operator. (`examples/operators.maca`.)
+  `concat`, etc. Primitives keep the native operator. (`apps/examples/operators.maca`.)
 - Pattern & codegen completeness: record patterns (`match p { { x, y } => … }`),
   the `!` (logical-not) prefix operator, `++` string concat (vs. array concat),
   and record fields that reference a record declared later in the file all work
   natively. The parser no longer hangs on malformed input (a stalled `ident()`
-  now advances). (`examples/record_pattern.maca`.)
+  now advances). (`apps/examples/record_pattern.maca`.)
 - Error model: `fail msg` raises (prints + `exit(1)` if unhandled); `try e` /
   `reify e` catches a failure via runtime setjmp/longjmp and yields the caught
   message (`str`, `""` on success), discharging the `exn` effect; execution
-  continues past a caught failure. (`examples/catch.maca`.)
+  continues past a caught failure. (`apps/examples/catch.maca`.)
 - Sum types with payloads: `Shape = Circle(int) | Rect(int, int)`. Constructors
   are typed as functions (`Circle(10)`), payloads bind in patterns
   (`Circle(r) => r * r`). Native lowering is a tagged struct/union with a
   per-variant constructor; plain (nullary-only) enums are unchanged. Parses with
-  no stage-0 front-end change. (`examples/payload_sum.maca`.) A payload may be a
+  no stage-0 front-end change. (`apps/examples/payload_sum.maca`.) A payload may be a
   record, in either declaration order. The C backend emits records and tagged
   sums in one combined dependency order, so the record struct is defined before a
-  sum that carries it (and vice-versa). (`examples/sum_record.maca`.) Sums may be
+  sum that carries it (and vice-versa). (`apps/examples/sum_record.maca`.) Sums may be
   **recursive** (`Tree = Leaf(int) | Node(Tree, Tree)`, `List = Nil | Cons(int,
   List)`): a self-referential payload is boxed (a heap pointer) so the tagged
   union stays finite; the native backend emits a named, forward-declared struct,
   allocates the box in the constructor, and dereferences it when a match binds it.
-  (`examples/tree.maca`.)
+  (`apps/examples/tree.maca`.)
 - Arithmetic operators: `%` (modulo) and `<<` / `>>` (shifts) join
   `+ - * /`; all integer-only, checked and lowered on every backend.
-  (`examples/fizzbuzz.maca`.)
+  (`apps/examples/fizzbuzz.maca`.)
 - Bindings (no `let`): a bare lowercase `x = e` is a mutable variable;
   `const x = e`, `x = e as const`, or a Capitalized name is a constant.
   Reassigning a constant is rejected (`DiagKind::Immutable`); a Capitalized
-  constant works but `maca lint` warns. (`examples/bad/reassign_const.maca`.)
+  constant works but `maca lint` warns. (`apps/examples/bad/reassign_const.maca`.)
 - Imperative loops: `while cond { … }` with `break`/`continue`, plus
   reassignment of a mutable binding (`i = i + 1`). The `while` condition must be
   `bool`. Lowered to native C, embedded C, and JS.
-  (`examples/loops.maca`; `examples/bad/while_cond.maca` is rejected.)
+  (`apps/examples/loops.maca`; `apps/examples/bad/while_cond.maca` is rejected.)
 - Inclusive integer ranges `lo..hi` (counts `lo … hi`, both ends), an `int[]`
   value. `for i in lo..hi` lowers to a counting loop in C (no array
   materialized); in value position (`xs = 1..n`) it materializes the array.
-  Endpoints must be `int`. (`examples/range.maca`; `examples/bad/range_end.maca`
+  Endpoints must be `int`. (`apps/examples/range.maca`; `apps/examples/bad/range_end.maca`
   is rejected.)
 - Dev environments in Maca (`maca dev`): `dev.maca` (config mode) → a self-
   contained `flake.nix` devShell via the Nix backend's `emit_flake`. `dev.name`,
@@ -184,10 +184,10 @@ and which manifest answers.
 - Subscripting: `xs[i]` reads a list element or a one-character `str` from a
   string; `xs[i] = v` and `p.field = v` assign through the lvalue. Arrays lower
   to the runtime buffer (`arr.data[i]`), strings to `maca_str_at`; JS/JVM/embedded
-  use their native subscript. (`examples/indexing.maca`.)
+  use their native subscript. (`apps/examples/indexing.maca`.)
 - Functional record update: `base with { field = value }` yields a copy of a
   record with the named fields overwritten, leaving the original binding
-  unchanged (C: struct copy; JS: object spread). (`examples/record_update.maca`.)
+  unchanged (C: struct copy; JS: object spread). (`apps/examples/record_update.maca`.)
 - **A record literal is the record type it is written into.** `Point = { x: int,
   y: int }` is nominal, `{ x = 5, y = 6 }` is structural, and the two are one
   type: a literal *becomes* the named record wherever an annotation, a return
@@ -288,7 +288,7 @@ and which manifest answers.
 
 The standard library surface is *The Standard Library* in the handbook's
 reference (`apps/tomo/book/en/a3-stdlib.md`), and the examples are
-`examples/*.maca`. The handbook is two volumes over one chapter list: *Learning
+`apps/examples/*.maca`. The handbook is two volumes over one chapter list: *Learning
 Maca* (`00-`…`18-`) teaches and the *Reference* (`a1-`…`a16-`) answers, and
 `apps/tomo/book.toml` is the order they are read in.
 
@@ -449,20 +449,20 @@ one exception is `install.sh`, which runs before there is a `maca` to run
 anything with.
 
 The Rust workspace is the frozen **stage-0 bootstrap**; compiler work is
-written in Maca under `selfhost/` and gated by the stage-0 front-end (see
-`docs/BOOTSTRAP.md`). Prefer adding to `selfhost/*.maca` over growing the Rust
+written in Maca under `apps/selfhost/` and gated by the stage-0 front-end (see
+`docs/BOOTSTRAP.md`). Prefer adding to `apps/selfhost/*.maca` over growing the Rust
 crates.
 
 ## Golden examples (regression set)
 
-Verbatim from the spec, under `examples/`:
+Verbatim from the spec, under `apps/examples/`:
 `hello.maca`, `taskr.maca` (CLI), `system.maca` (config), `counter.maca` (UI),
-`dot.maca` (SIMD), plus `examples/bad/*.maca` for diagnostics, and the
+`dot.maca` (SIMD), plus `apps/examples/bad/*.maca` for diagnostics, and the
 language-surface goldens (`indexing`, `record_update`, `tree`, `sum_record`,
 `keywords`, `generic`). Changing a design updates this file and the affected
 example together; the spec wins ties.
 
-`examples/` is that set and only that set: a file is there because a test, this
+`apps/examples/` is that set and only that set: a file is there because a test, this
 document, or a handbook chapter names it. A runnable program built on a package
 is an application and lives under `apps/` in a directory of its own
 (`apps/cli_tool`, `apps/bench_demo`, `apps/profile_demo`, `apps/signal_demo`,

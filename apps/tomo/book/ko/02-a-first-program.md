@@ -6,7 +6,7 @@
 건드리는데, 이후 장에서 자세히 다룰 것들이라 여기서는 전부 설명하지 않습니다.
 전체적인 모양만 보시면 됩니다.
 
-완성된 프로그램은 저장소의 `examples/wordcount.maca`에 있고, 테스트 스위트가
+완성된 프로그램은 저장소의 `apps/examples/wordcount.maca`에 있고, 테스트 스위트가
 이를 실행합니다. 그러니 아래 내용은 실제로 동작하는 것이 확인된 것입니다.
 
 ## 문장 쪼개기
@@ -137,7 +137,7 @@ main() -> int {
 ## 실행하기
 
 ```
-maca run examples/wordcount.maca
+maca run apps/examples/wordcount.maca
 ```
 
 ```

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 fn example(name: &str) -> String {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples")
+        .join("../../apps/examples")
         .join(name);
     fs::read_to_string(p).unwrap()
 }

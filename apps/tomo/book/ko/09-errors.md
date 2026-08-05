@@ -96,7 +96,7 @@ Parsed = Found(int) | Missing(str)
 ## 실행해 보기
 
 ```
-maca run examples/catch.maca
+maca run apps/examples/catch.maca
 ```
 
 실패를 일으키고, `try`로 잡고, 그 뒤로 실행이 계속됩니다. 그다음 `try`를 빼고

@@ -11,11 +11,11 @@ compiler work goes.
 frozen: it changes only for genuine bootstrap bugs, such as a parser that hangs
 or a construct that mis-parses. It is not where features are added.
 
-**Stage 1** is the Maca compiler under `selfhost/`, written in Maca. This is
+**Stage 1** is the Maca compiler under `apps/selfhost/`, written in Maca. This is
 where new compiler work belongs. Stage 0 compiles it; a test gate
 (`crates/driver/tests/selfhost.rs`) makes sure it keeps working.
 
-The rule is short: prefer adding to `selfhost/*.maca` over growing the Rust
+The rule is short: prefer adding to `apps/selfhost/*.maca` over growing the Rust
 crates.
 
 ## What stage 1 does today
@@ -72,7 +72,7 @@ out to be generally useful rather than compiler-specific.
 
 **String scanning.** `chars`, `length`, `at`, `get`, `slice`, and the character
 classes `is_whitespace`, `is_ascii_digit`, `is_alpha`. That is the entire
-vocabulary `selfhost/lexer.maca` uses. Any tokeniser needs exactly this set.
+vocabulary `apps/selfhost/lexer.maca` uses. Any tokeniser needs exactly this set.
 
 **Recursive record types.** An AST node holds a list of AST nodes:
 
@@ -92,12 +92,12 @@ self-hosted AST needed it.
 
 ## Reading the source
 
-`selfhost/main.maca` is the entry point, and it doubles as the test suite: it
+`apps/selfhost/main.maca` is the entry point, and it doubles as the test suite: it
 lexes, parses, checks and emits a series of programs and reports on each. Running
 it is the fastest way to see the current state:
 
 ```
-maca run selfhost/main.maca
+maca run apps/selfhost/main.maca
 ```
 
 The files are small and deliberately plain. `lexer.maca` is a character scanner.

@@ -41,8 +41,8 @@ from a source checkout.
   everything else is automated.
 - Bump `version` to match the tag before releasing, in all five files that
   carry one: the root `Cargo.toml` (which every crate inherits, and which
-  `maca --version` prints), `maca.toml`, `packages/macalang/package.json`,
-  `editor/zed-maca/extension.toml` and `editor/zed-maca/Cargo.toml`. The last
+  `maca --version` prints), `maca.toml`, `apps/npm/package.json`,
+  `apps/editor/zed-maca/extension.toml` and `apps/editor/zed-maca/Cargo.toml`. The last
   two have to agree with each other or Zed refuses the extension. The
   installers carry no version of their own: they ask the binary they just
   installed, so there is nothing to bump there.

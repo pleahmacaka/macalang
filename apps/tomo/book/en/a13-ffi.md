@@ -28,7 +28,7 @@ The driver resolves the library through `nix` when it is available, and
 otherwise through the host's `cc` with system headers and libraries, so
 `-lsqlite3` on an ordinary Linux machine works with no configuration.
 
-`examples/ffi_sqlite.maca` opens a real database and iterates a real result set.
+`apps/examples/ffi_sqlite.maca` opens a real database and iterates a real result set.
 
 ## Type mapping
 

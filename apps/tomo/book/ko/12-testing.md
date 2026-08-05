@@ -120,7 +120,7 @@ test_origin_is_the_zero_point() {
 
 ## 더 큰 요점: 문서를 실행하세요
 
-Maca 저장소에는 `examples/handbook.maca`라는 파일이 있습니다. 이 책이 하는
+Maca 저장소에는 `apps/examples/handbook.maca`라는 파일이 있습니다. 이 책이 하는
 실행 가능한 주장 전부([레코드](05-records.md)의 갱신,
 [기본 개념](03-common-concepts.md)의 포맷 스펙,
 [합타입](06-sum-types.md)의 리스트 패턴)가

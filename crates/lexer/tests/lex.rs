@@ -10,7 +10,7 @@ fn toks(src: &str) -> Vec<Tok> {
 }
 
 fn examples_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/examples")
 }
 
 fn golden_dir() -> PathBuf {

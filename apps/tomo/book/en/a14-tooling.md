@@ -190,7 +190,7 @@ There is a language server, `maca-lsp`. It provides diagnostics, hover, go to
 definition, find references, document symbols, signature help, completion,
 rename and formatting. Any editor that speaks LSP can use it.
 
-The repository ships a Zed extension under `editor/zed-maca`, with a tree-sitter
+The repository ships a Zed extension under `apps/editor/zed-maca`, with a tree-sitter
 grammar, syntax highlighting, an outline, and the language server wired up.
 Install it as a dev extension: in Zed, *Extensions → Install Dev Extension*, and
 point it at that directory.

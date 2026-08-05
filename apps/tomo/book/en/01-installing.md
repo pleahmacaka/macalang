@@ -75,7 +75,7 @@ test than `--version`.
 
 The language server is already installed; the editor side is a separate step.
 
-For **Zed**, the repository ships an extension under `editor/zed-maca` with a
+For **Zed**, the repository ships an extension under `apps/editor/zed-maca` with a
 tree-sitter grammar, highlighting, an outline and the server wired up. Install
 it from a checkout: *Extensions → Install Dev Extension*, and choose that
 directory.

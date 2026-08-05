@@ -140,7 +140,7 @@ total   = xs.reduce(0, (a, b) => a + b)
 ## 실행해 보기
 
 ```
-maca run examples/strings.maca
+maca run apps/examples/strings.maca
 ```
 
 위에 나온 문자열 메서드와 포맷 스펙이 전부 들어 있고, 각각이 무엇을 내놓는지

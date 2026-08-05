@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn examples() -> Vec<PathBuf> {
-    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/examples");
     ["hello", "taskr", "generic", "system", "counter", "dot"]
         .iter()
         .map(|n| base.join(format!("{n}.maca")))

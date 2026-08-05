@@ -29,11 +29,11 @@ fn lexer_keywords_are_reserved() {
     assert!(matches!(lex("false").tokens[0].tok, Tok::False));
 }
 
-/// The TextMate grammar (`editor/maca.tmLanguage.json`) names every keyword.
+/// The TextMate grammar (`apps/editor/maca.tmLanguage.json`) names every keyword.
 #[test]
 fn textmate_grammar_names_every_keyword() {
-    let tm = repo("editor/maca.tmLanguage.json");
-    assert!(!tm.is_empty(), "editor/maca.tmLanguage.json missing");
+    let tm = repo("apps/editor/maca.tmLanguage.json");
+    assert!(!tm.is_empty(), "apps/editor/maca.tmLanguage.json missing");
     for kw in LEXER_KEYWORDS {
         assert!(tm.contains(kw), "TextMate grammar missing keyword `{kw}`");
     }
@@ -43,7 +43,7 @@ fn textmate_grammar_names_every_keyword() {
 #[test]
 fn monarch_and_zed_grammars_name_every_keyword() {
     let monarch = repo("apps/playground/playground.maca");
-    let zed = repo("editor/zed-maca/languages/maca/highlights.scm");
+    let zed = repo("apps/editor/zed-maca/languages/maca/highlights.scm");
     assert!(!monarch.is_empty(), "playground.maca missing");
     assert!(!zed.is_empty(), "highlights.scm missing");
     for kw in LEXER_KEYWORDS {
@@ -67,8 +67,8 @@ fn phantom_keywords_are_not_reserved() {
             "`{word}` is not a Maca keyword but lexed as {first:?}"
         );
     }
-    let tm = repo("editor/maca.tmLanguage.json");
-    let zed = repo("editor/zed-maca/languages/maca/highlights.scm");
+    let tm = repo("apps/editor/maca.tmLanguage.json");
+    let zed = repo("apps/editor/zed-maca/languages/maca/highlights.scm");
     for phantom in ["let", "type"] {
         assert!(
             !tm.contains(&format!("|{phantom})")),

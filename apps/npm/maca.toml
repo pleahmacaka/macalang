@@ -1,0 +1,7 @@
+[package]
+name = "npm"
+description = "The macalang npm package: the compiler front-end built to wasm and packed for JavaScript."
+
+[[bin]]
+name = "npm"
+path = "build.maca"

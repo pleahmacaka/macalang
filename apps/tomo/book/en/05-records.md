@@ -156,7 +156,7 @@ the shape somewhere to grow a comment.
 ## Run it
 
 ```
-maca run examples/record_update.maca
+maca run apps/examples/record_update.maca
 ```
 
 `with` on a record, and the original left untouched afterwards. That second half

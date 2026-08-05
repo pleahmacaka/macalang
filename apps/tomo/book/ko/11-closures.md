@@ -255,7 +255,7 @@ config = read_file("app.toml")?      // 실패를 호출자에게 전파
 ## 실행해 보기
 
 ```
-maca run examples/lambda.maca
+maca run apps/examples/lambda.maca
 ```
 
 리스트 메서드에 넘긴 람다, 값으로 쓴 이름 붙은 함수, 지역 변수를 캡처한 클로저.

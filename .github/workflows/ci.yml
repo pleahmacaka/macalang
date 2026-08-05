@@ -90,6 +90,6 @@ jobs:
       - name: Build the compiler
         run: cargo build --release -p maca-driver
       - name: Build wasm into the package
-        run: ./target/release/maca run packages/macalang/build.maca
+        run: ./target/release/maca run apps/npm/build.maca
       - name: Test the package
-        run: node packages/macalang/test.mjs
+        run: node apps/npm/test.mjs

@@ -52,7 +52,7 @@ convenient in a program is a guardrail in config.
 ## Run it
 
 ```
-maca run examples/async.maca
+maca run apps/examples/async.maca
 ```
 
 Two jobs that each sleep 50ms, spawned together and awaited:

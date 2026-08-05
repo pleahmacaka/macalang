@@ -34,7 +34,8 @@ fn a_genuine_foreign_call_still_reaches_the_library() {
         eprintln!("skipping: no cc");
         return;
     }
-    let example = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/ffi_sqlite.maca");
+    let example =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/examples/ffi_sqlite.maca");
     if !example.exists() {
         eprintln!("skipping: no ffi example");
         return;

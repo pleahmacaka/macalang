@@ -98,7 +98,7 @@ plan for; a sum type is for the case you did.
 ## Run it
 
 ```
-maca run examples/catch.maca
+maca run apps/examples/catch.maca
 ```
 
 A failure raised, caught with `try`, and execution continuing past it. Then take

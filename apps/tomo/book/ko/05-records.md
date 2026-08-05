@@ -146,7 +146,7 @@ c = d                                    // 같은 모양이라 괜찮습니다
 ## 실행해 보기
 
 ```
-maca run examples/record_update.maca
+maca run apps/examples/record_update.maca
 ```
 
 레코드에 `with`를 쓰고, 그 뒤에 원본이 그대로인지 확인합니다. 눈여겨볼 것은

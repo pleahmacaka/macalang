@@ -68,7 +68,7 @@ lsp("fib(n: int) -> int => n\n", 0).hover; // "fib(n: int) -> int"
   blocks, records, string interpolation, operator overloading). UI programs
   (`main() -> Element`) also emit `mount`/`build` for the DOM.
 - `maca_wasm.wasm` is built from this repo's `crates/wasm` by `build.maca`, and
-  is not in the repository: run `maca run packages/macalang/build.maca` (or
+  is not in the repository: run `maca run apps/npm/build.maca` (or
   `npm run build`) before `npm test`, and `npm publish` runs it for you. A
   checked-in copy drifts from the crates it came from, so `test.mjs` checks the
   export list before anything else and names the rebuild when it is short.

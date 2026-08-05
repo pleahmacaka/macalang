@@ -106,7 +106,7 @@ maca build app/main.maca
 
 Everything reachable through imports is compiled with it. There is no manifest
 listing sources, no build graph to maintain. The self-hosted compiler is built
-exactly this way: `maca build selfhost/main.maca` compiles the whole front end
+exactly this way: `maca build apps/selfhost/main.maca` compiles the whole front end
 from its import list.
 
 ## Where the module system stops

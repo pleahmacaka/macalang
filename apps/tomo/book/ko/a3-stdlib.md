@@ -297,6 +297,6 @@ if why != "" {
 
 없습니다. `contains`, `starts_with`, `ends_with`, `index_of`, `split`과 문자
 분류가 이 언어로 쓰는 프로그램이 실제로 손을 뻗는 범위를 덮습니다.
-`selfhost/lexer.maca`는 `chars`, `at`과 술어 셋만으로 언어 전체를 훑습니다.
+`apps/selfhost/lexer.maca`는 `chars`, `at`과 술어 셋만으로 언어 전체를 훑습니다.
 그리고 정규식 엔진은 배우고 디버깅하고 구현해야 할 또 하나의 언어입니다.
 `split`과 루프로 충분합니다.

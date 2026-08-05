@@ -50,9 +50,9 @@ fn node_types(scm: &str) -> Vec<String> {
 
 #[test]
 fn zed_queries_reference_only_real_grammar_rules() {
-    let grammar = read("editor/tree-sitter-maca/grammar.js");
+    let grammar = read("apps/editor/tree-sitter-maca/grammar.js");
     for q in ["outline.scm", "indents.scm", "highlights.scm"] {
-        let scm = read(&format!("editor/zed-maca/languages/maca/{q}"));
+        let scm = read(&format!("apps/editor/zed-maca/languages/maca/{q}"));
         for node in node_types(&scm) {
             assert!(
                 grammar.contains(&format!("{node}:")),
@@ -64,7 +64,7 @@ fn zed_queries_reference_only_real_grammar_rules() {
 
 #[test]
 fn outline_query_covers_functions_and_type_declarations() {
-    let scm = read("editor/zed-maca/languages/maca/outline.scm");
+    let scm = read("apps/editor/zed-maca/languages/maca/outline.scm");
     assert!(
         scm.contains("(function"),
         "outline lost function definitions"

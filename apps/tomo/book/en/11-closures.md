@@ -258,7 +258,7 @@ config = read_file("app.toml")?      // propagate a failure to the caller
 ## Run it
 
 ```
-maca run examples/lambda.maca
+maca run apps/examples/lambda.maca
 ```
 
 Lambdas passed to list methods, a named function used as a value, and a closure

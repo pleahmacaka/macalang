@@ -16,7 +16,7 @@ pub fn maca() -> &'static str {
 
 /// A golden example by file name.
 pub fn example(name: &str) -> PathBuf {
-    repo().join("examples").join(name)
+    repo().join("apps").join("examples").join(name)
 }
 
 /// A golden example as a path string, for the suites that pass it to a `Command` rather than opening it.

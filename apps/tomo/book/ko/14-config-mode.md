@@ -77,11 +77,11 @@ UnknownOption: unknown NixOS option namespace `servicez`
 
 ## 실행해 보기
 
-저장소에 진짜 설정이 `examples/system.maca`로 들어 있습니다. 빌드해서 나온
+저장소에 진짜 설정이 `apps/examples/system.maca`로 들어 있습니다. 빌드해서 나온
 Nix를 읽어 보세요.
 
 ```
-maca build examples/system.maca --target nix -o system.nix
+maca build apps/examples/system.maca --target nix -o system.nix
 ```
 
 그다음 사본에 `delay = sleep_ms(10)`을 넣고 다시 빌드해 보세요. 그때 나오는

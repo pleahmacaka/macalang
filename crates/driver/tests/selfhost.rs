@@ -19,7 +19,7 @@ const SELFHOST_FILES: &[&str] = &[
 ];
 
 fn selfhost_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/selfhost")
 }
 
 fn read(name: &str) -> String {

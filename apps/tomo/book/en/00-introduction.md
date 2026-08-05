@@ -74,7 +74,7 @@ If you already know the language, start at
 
 ## Everything here has been run
 
-The repository holds `examples/handbook.maca`: this book's claims, as one
+The repository holds `apps/examples/handbook.maca`: this book's claims, as one
 program the test suite executes. The reference is checked against the compiler
 itself: the keyword list against the lexer, the diagnostics
 against the checker, the method tables against a program that calls every name

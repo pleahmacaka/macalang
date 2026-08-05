@@ -54,16 +54,16 @@ fn every_file_that_states_the_version_agrees() {
     let others: Vec<(&str, String)> = vec![
         ("maca.toml", field(&read("maca.toml"), "version")),
         (
-            "packages/macalang/package.json",
-            field(&read("packages/macalang/package.json"), "\"version\""),
+            "apps/npm/package.json",
+            field(&read("apps/npm/package.json"), "\"version\""),
         ),
         (
-            "editor/zed-maca/extension.toml",
-            field(&read("editor/zed-maca/extension.toml"), "version"),
+            "apps/editor/zed-maca/extension.toml",
+            field(&read("apps/editor/zed-maca/extension.toml"), "version"),
         ),
         (
-            "editor/zed-maca/Cargo.toml",
-            field(&read("editor/zed-maca/Cargo.toml"), "version"),
+            "apps/editor/zed-maca/Cargo.toml",
+            field(&read("apps/editor/zed-maca/Cargo.toml"), "version"),
         ),
         ("CHANGELOG.md", newest_release(&read("CHANGELOG.md"))),
     ];
@@ -83,11 +83,11 @@ fn every_file_that_states_the_version_agrees() {
 /// The Zed extension's two files are one release of one thing, and its README documents that pairing.
 #[test]
 fn the_zed_readme_shows_the_version_it_documents() {
-    let want = field(&read("editor/zed-maca/extension.toml"), "version");
-    let readme = read("editor/zed-maca/README.md");
+    let want = field(&read("apps/editor/zed-maca/extension.toml"), "version");
+    let readme = read("apps/editor/zed-maca/README.md");
     assert!(
         readme.contains(&format!("version = \"{want}\"")),
-        "editor/zed-maca/README.md does not show `version = \"{want}\"`"
+        "apps/editor/zed-maca/README.md does not show `version = \"{want}\"`"
     );
 }
 

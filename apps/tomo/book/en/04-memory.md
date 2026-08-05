@@ -70,7 +70,7 @@ move_up(p: Point) -> Point =>
 cannot collect a cycle, and Maca does not run a cycle collector. A tree, a list,
 an AST: all fine, all acyclic. A doubly-linked list where each node points back
 at its parent will hold itself alive. In practice this is rarely a constraint;
-the compiler in `selfhost/` is a large program built entirely from trees.
+the compiler in `apps/selfhost/` is a large program built entirely from trees.
 
 ## You can watch it happen
 

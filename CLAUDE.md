@@ -53,8 +53,8 @@ Virtual workspace; members are `crates/*`.
 | `maca-wasm` | `wasm32` front-end for the browser playground (no wasm-bindgen) |
 
 **The toolchain's own programs are applications, because that is what they
-are.** There is no `tools/`: a runnable program lives under `apps/` whoever
-wrote it and whoever runs it, so `apps/bindgen/` is kept equivalent to its
+are.** A runnable program lives under `apps/` whoever wrote it and whoever runs
+it, so `apps/bindgen/` is kept equivalent to its
 stage-0 Rust twin by `crates/driver/tests/bindgen_port.rs`; `apps/lint/` is a
 style linter that walks the tree recursively and checks line width /
 single-line `if` / trailing whitespace / hard tabs (width is measured with
@@ -69,7 +69,7 @@ from what `modules/std/README.md` advertises); and `apps/build_site/` builds
 and checks the published site for both CI and a human, including a check that
 every class on every emitted page produced a CSS rule.
 **Every script in the repository is a Maca program**: `apps/bench/run.maca` is
-the cross-language benchmark harness, `packages/macalang/build.maca` builds the
+the cross-language benchmark harness, `apps/npm/build.maca` builds the
 wasm into the npm package. All seven are compiled by
 `crates/driver/tests/scripts.rs`, because a script only run at release time
 rots quietly. The two exceptions are `install.sh` and `install.ps1`, which run
@@ -176,30 +176,40 @@ package is laid out and how its `///` summaries are worded.
 | `signal` | nanostore-style reactive state: `store` (signals, computed, effects) and `dom`, so a native web page updates the nodes that changed rather than re-rendering | 58 |
 | `tambo` | the web framework over `http`: `app`, `route`, `ctx`, `dispatch`, `reply` | 87 |
 
-`examples/` is the **regression set and nothing else**: the spec's code blocks
-verbatim, `examples/bad/` (each rejected with a named diagnostic), and
-`examples/handbook.maca` (the book's claims as one executable program). A file is
-there because a test, `docs/SPEC.md`, or a handbook chapter names it. **A
-runnable program built on a package is an application, so it lives under
-`apps/`**: `bench_demo`, `profile_demo`, `signal_demo`, `tambo_demo` and
-`cli_tool`, one directory and one README each, the same reasoning that moved
-`bench` and `playground` there. `examples/taskr.maca` is the one runnable program
-that stays, because it is also four fixtures: the committed lexer golden-token
-snapshot, the parser round-trip, the `maca fmt --check` golden, and the root
-manifest's `[[bin]]`.
+**The tree is four directories: `apps/`, `crates/`, `docs/`, `modules/`.**
+`modules/` is what a program imports and `crates/` is the frozen stage-0
+bootstrap, so everything else the repository *makes* is an application and lives
+under `apps/`. There is no `tools/`, no `selfhost/`, no `editor/`, no
+`packages/` and no top-level `examples/`; each was a fifth kind of thing that
+had to be explained, and none of them was.
 
-`apps/` (capstones: `mqtt`, `microkernel`, `blink`, `desktop`, `mcmod`,
-the five package demos named above, `bench` (the cross-language harness
-and its C/Rust/Go/JS/Python
-reference kernels), `playground` (the browser playground, a single `.maca`
-file compiled by the JS backend), `tomo` (the i18n handbook builder that
-renders `book/{en,ko}/*.md` into `site/`, built entirely out of the UI syntax
-below plus one line of hand-written CSS; it is also the worked example of that
-syntax, so keep it free of hand-concatenated markup), and `site`, the project's
-front page, `home.maca`, whose copy is keyed by sum types so a translation that
-drops a card is a NonExhaustive error rather than a shorter page), and the four
-toolchain programs above: `bindgen`, `lint`, `macadoc`, `build_site`.
-`selfhost/` (the Maca compiler written in Maca, stage 1), `editor/`, `docs/`.
+`apps/` holds: the capstones (`mqtt`, `microkernel`, `blink`, `desktop`,
+`mcmod`); the five package demos (`bench_demo`, `profile_demo`, `signal_demo`,
+`tambo_demo`, `cli_tool`), one directory and one README each; `bench` (the
+cross-language harness and its C/Rust/Go/JS/Python reference kernels);
+`playground` (the browser playground, a single `.maca` file compiled by the JS
+backend); `tomo` (the i18n handbook builder that renders `book/{en,ko}/*.md`
+into `site/`, built entirely out of the UI syntax below plus one line of
+hand-written CSS; it is also the worked example of that syntax, so keep it free
+of hand-concatenated markup); `site`, the project's front page, `home.maca`,
+whose copy is keyed by sum types so a translation that drops a card is a
+NonExhaustive error rather than a shorter page; the four toolchain programs
+above (`bindgen`, `lint`, `macadoc`, `build_site`); `selfhost`, the Maca
+compiler written in Maca, stage 1; `npm`, the `macalang` npm package and the
+`build.maca` that packs the wasm front-end into it; `editor`, the Zed
+extension, the tree-sitter grammar and the TextMate grammar, which are programs
+that run inside an editor rather than a terminal; and `examples`.
+
+`apps/examples/` is the **regression set and nothing else**: the spec's code
+blocks verbatim, `apps/examples/bad/` (each rejected with a named diagnostic),
+and `apps/examples/handbook.maca` (the book's claims as one executable
+program). A file is there because a test, `docs/SPEC.md`, or a handbook chapter
+names it. It is the one `apps/*` entry with no `maca.toml`, because a package
+states which program it builds and this directory is forty of them plus fifteen
+that must not build at all. `apps/examples/taskr.maca` is the one runnable
+program that stays, because it is also four fixtures: the committed lexer
+golden-token snapshot, the parser round-trip, the `maca fmt --check` golden, and
+the root manifest's `[[bin]]`.
 
 **The handbook is two volumes with one table of contents** (`apps/tomo/book.toml`):
 *Learning Maca*, read front to back once, and *The Reference*, opened at the
@@ -214,14 +224,14 @@ text.
 FFI (`import c "sqlite3.h"` / `import py "…"`) links the real library: through
 `wsl nix` when present, else the **host `cc`** with system headers/libs
 (`-lsqlite3`, `python3-config`), so FFI builds on a plain Linux dev machine
-(`examples/ffi_sqlite.maca` iterates a real result set).
+(`apps/examples/ffi_sqlite.maca` iterates a real result set).
 
 ## Self-hosting
 
 Rust (`crates/*`) is the **frozen stage-0 bootstrap**, so keep it minimal. New
-compiler work is written in Maca under `selfhost/` and gated by the stage-0
+compiler work is written in Maca under `apps/selfhost/` and gated by the stage-0
 front-end (`crates/driver/tests/selfhost.rs`). See `docs/BOOTSTRAP.md`. When a
-change is needed, prefer adding it to `selfhost/*.maca` over growing the Rust
+change is needed, prefer adding it to `apps/selfhost/*.maca` over growing the Rust
 crates; only touch stage-0 for genuine bootstrap bugs (e.g. a parser that hangs
 or mis-parses valid surface syntax).
 
@@ -258,7 +268,7 @@ definition cycle resolves, with `MACA_ARRAY_STRUCT` before the body and
 
 - **Test-gated.** Nothing lands until `cargo test` is green across the
   workspace. A change that can be observed at run time gets a test that runs it;
-  documentation that makes a runnable claim gets one too (`examples/handbook.maca`
+  documentation that makes a runnable claim gets one too (`apps/examples/handbook.maca`
   is the book's claims as an executable program).
 - **Assert in Maca, not in Rust.** A behaviour test is a file of `test_…`
   functions using `assert`/`assert_eq`, run by `maca test`, which reports each
@@ -301,7 +311,7 @@ definition cycle resolves, with `MACA_ARRAY_STRUCT` before the body and
 - **Native is hybrid.** C backend is the default for everything; the LLVM path
   exists **only** for the SIMD span. Both link over the C ABI.
 - **Golden examples are the regression set.** The code blocks in the spec become
-  `examples/*.maca` verbatim; `examples/bad/*.maca` must be rejected with the
+  `apps/examples/*.maca` verbatim; `apps/examples/bad/*.maca` must be rejected with the
   right diagnostic.
 - The spec wins ties. If a design must change, update `docs/SPEC.md` and the
   code together.
@@ -369,7 +379,7 @@ declarations: `char*`→`str`, other pointers→opaque `int`, float family→`fl
 The native `build`/`run` path
 resolves local imports: `import a/b` (and single-word `import a`) inlines a
 sibling `<a/b>.maca` / `<a>.maca` module, transitively, in dependency order, so
-a program can span files (`maca build selfhost/main.maca` builds the whole
+a program can span files (`maca build apps/selfhost/main.maca` builds the whole
 self-hosted front-end from its imports). **Selective import**,
 `import { foo, bar } from a/b`, inlines only the named top-level definitions
 plus the transitive closure of same-module definitions they reference (dead-code
@@ -442,7 +452,7 @@ mode rejects them as impure). C backend lowers to `maca_spawn`/`maca_await`/
 fn is an ordinary fn, with no ABI change). The playground interpreter runs it
 eagerly.
 `await`/`spawn` are unary-precedence prefix operators (`await a + await b` =
-`(await a) + (await b)`). Example: `examples/async.maca`.
+`(await a) + (await b)`). Example: `apps/examples/async.maca`.
 
 Language surface beyond the original cheatsheet: operator overloading;
 `while`/`break`/`continue` + reassignment; inclusive integer ranges `lo..hi`
@@ -469,13 +479,13 @@ syntax (native + interpreter); a **list stdlib**
 as UFCS methods on any `T[]` (`map`/`filter`/`reduce`/`fold` take closures typed
 by the element; `sort`/`reverse`/`push`/`pop`/`contains`/`index_of`/`sum`/`min`/
 `max`/`first`/`last`/`length`/`get`/`slice`; native + interpreter; see
-`examples/collections.maca`); plus the `str` scan primitives
+`apps/examples/collections.maca`); plus the `str` scan primitives
 `chars`/`length`/`at` and the char classes `is_whitespace`/`is_ascii_digit`/
-`is_alpha` (what `selfhost/lexer.maca` scans with);
+`is_alpha` (what `apps/selfhost/lexer.maca` scans with);
 and raw triple-quoted strings (`"""…"""`) with `import js`/`import css` foreign
 blocks that let a `.maca` UI carry its own host glue and styles inline (see
 `apps/playground/playground.maca`). Examples:
-`examples/{indexing,record_update,tree,sum_record,keywords,strings}.maca`.
+`apps/examples/{indexing,record_update,tree,sum_record,keywords,strings}.maca`.
 
 **A function can be kept in a record field**, declared `(T, U) -> R`. The
 parens are required, and this is the only place a function type is written

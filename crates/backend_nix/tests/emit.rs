@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 fn system_nix() -> String {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/system.maca");
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/examples/system.maca");
     let src = fs::read_to_string(p).unwrap();
     let parsed = maca_parser::parse(&src);
     assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
