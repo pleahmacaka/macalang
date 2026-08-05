@@ -1,0 +1,12 @@
+// HumanEval/28: Concatenate list of strings into a single string
+// Write it, and leave the test below alone.
+
+concatenate(strings: str[]) -> str {
+    fail "not written yet"
+}
+
+test_concatenate() {
+    assert_eq(concatenate([]), "", "case")
+    assert_eq(concatenate(["x", "y", "z"]), "xyz", "case")
+    assert_eq(concatenate(["x", "y", "z", "w", "k"]), "xyzwk", "case")
+}

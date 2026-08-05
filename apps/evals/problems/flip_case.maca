@@ -1,0 +1,14 @@
+// HumanEval/27: For a given string, flip lowercase characters to uppercase and uppercase to lowercase.
+// Write it, and leave the test below alone.
+
+flip_case(string: str) -> str {
+    fail "not written yet"
+}
+
+test_flip_case() {
+    assert_eq(flip_case(""), "", "case")
+    assert_eq(flip_case("Hello!"), "hELLO!", "case")
+    assert_eq(
+        flip_case("These violent delights have violent ends"),
+        "tHESE VIOLENT DELIGHTS HAVE VIOLENT ENDS", "case")
+}

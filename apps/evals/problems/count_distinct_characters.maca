@@ -1,0 +1,14 @@
+// HumanEval/16: Given a string, find out how many distinct characters (regardless of case) does it consist of
+// Write it, and leave the test below alone.
+
+count_distinct_characters(string: str) -> int {
+    fail "not written yet"
+}
+
+test_count_distinct_characters() {
+    assert_eq(count_distinct_characters(""), 0, "case")
+    assert_eq(count_distinct_characters("abcde"), 5, "case")
+    assert_eq(count_distinct_characters("abcde' + 'cade' + 'CADE"), 5, "case")
+    assert_eq(count_distinct_characters("aaaaAAAAaaaa"), 1, "case")
+    assert_eq(count_distinct_characters("Jerry jERRY JeRRRY"), 5, "case")
+}

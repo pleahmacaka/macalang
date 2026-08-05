@@ -1,0 +1,12 @@
+// HumanEval/1: Input to this function is a string containing multiple groups of nested parentheses. Your goal is to
+// Write it, and leave the test below alone.
+
+separate_paren_groups(paren_string: str) -> str[] {
+    fail "not written yet"
+}
+
+test_separate_paren_groups() {
+    assert_eq(
+        separate_paren_groups("( ) (( )) (( )( ))"),
+        ["()", "(())", "(()())"], "case")
+}

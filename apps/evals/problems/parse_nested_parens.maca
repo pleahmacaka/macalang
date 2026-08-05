@@ -1,0 +1,16 @@
+// HumanEval/6: Input to this function is a string represented multiple groups for nested parentheses separated by spaces.
+// Write it, and leave the test below alone.
+
+parse_nested_parens(paren_string: str) -> int[] {
+    fail "not written yet"
+}
+
+test_parse_nested_parens() {
+    assert_eq(
+        parse_nested_parens("(()()) ((())) () ((())()())"),
+        [2, 3, 1, 3], "case")
+    assert_eq(
+        parse_nested_parens("() (()) ((())) (((())))"),
+        [1, 2, 3, 4], "case")
+    assert_eq(parse_nested_parens("(()(())((())))"), [4], "case")
+}

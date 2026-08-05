@@ -1,0 +1,14 @@
+// HumanEval/24: For a given number n, find the largest number that divides n evenly, smaller than n
+// Write it, and leave the test below alone.
+
+largest_divisor(n: int) -> int {
+    fail "not written yet"
+}
+
+test_largest_divisor() {
+    assert_eq(largest_divisor(3), 1, "case")
+    assert_eq(largest_divisor(7), 1, "case")
+    assert_eq(largest_divisor(10), 5, "case")
+    assert_eq(largest_divisor(100), 50, "case")
+    assert_eq(largest_divisor(49), 7, "case")
+}

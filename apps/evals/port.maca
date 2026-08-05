@@ -1,0 +1,323 @@
+// evals/port: turn HumanEval's Python into Maca problems, mechanically.
+
+import std/fs
+import std/text
+import std/list
+import { bold, dim, ok, bad } from cli/style
+
+/// One problem, as far as it survives translation.
+Problem = {
+    id: str,
+    entry: str,
+    doc: str,
+    signature: str,
+    cases: str[],
+}
+
+/// Why a problem was left behind, so the list is a work queue rather than a silence.
+Skipped = { id: str, why: str }
+
+Quote = "\""
+Backslash = "\\"
+Open = "\{"
+Close = "\}"
+
+/// A Python type as Maca writes it, or "" when Maca has no word for it.
+maca_type(py: str) -> str {
+    t = py.trim()
+
+    if t == "int" {
+        "int"
+    } else if t == "float" {
+        "float"
+    } else if t == "str" {
+        "str"
+    } else if t == "bool" {
+        "bool"
+    } else if t.starts_with("List[") {
+        inner = maca_type(between(t, "List[", "]"))
+        inner == "" ? "" : inner ++ "[]"
+    } else {
+        ""
+    }
+}
+
+/// A Python literal as Maca writes it, or "" when Maca has no form for it.
+maca_value(py: str) -> str {
+    v = py.trim()
+
+    if v == "True" {
+        "true"
+    } else if v == "False" {
+        "false"
+    } else if v.starts_with("[") && v.ends_with("]") {
+        items = split_top(between_ends(v), 0, 0, "", [])
+        translated = items.map(x => maca_value(x))
+
+        translated.filter(x => x == "").length() > 0
+            ? ""
+            : "[" ++ translated.join(", ") ++ "]"
+    } else if v.starts_with(Quote) || v.starts_with("'") {
+        Quote ++ between_ends(v).replace(Quote, Backslash ++ Quote) ++ Quote
+    } else if is_number(v) {
+        v
+    } else {
+        ""
+    }
+}
+
+between_ends(v: str) -> str =>
+    v.slice(1, v.length() - 1)
+
+is_number(v: str) -> bool {
+    body = v.starts_with("-") ? v.slice(1, v.length()) : v
+
+    body.length() > 0 && all_digits_or_dot(body.chars(), 0)
+}
+
+all_digits_or_dot(cs: str[], i: int) -> bool {
+    if i >= cs.length() {
+        true
+    } else if cs.get(i).is_ascii_digit() || cs.get(i) == "." {
+        all_digits_or_dot(cs, i + 1)
+    } else {
+        false
+    }
+}
+
+/// Split on commas that are not inside a bracket or a quote.
+split_top(s: str, i: int, depth: int, cur: str, acc: str[]) -> str[] {
+    cs = s.chars()
+
+    if i >= cs.length() {
+        cur.trim() == "" ? acc : acc.push(cur.trim())
+    } else {
+        c = cs.get(i)
+
+        if c == "," && depth == 0 {
+            split_top(s, i + 1, depth, "", acc.push(cur.trim()))
+        } else if c == "[" || c == "(" {
+            split_top(s, i + 1, depth + 1, cur ++ c, acc)
+        } else if c == "]" || c == ")" {
+            split_top(s, i + 1, depth - 1, cur ++ c, acc)
+        } else {
+            split_top(s, i + 1, depth, cur ++ c, acc)
+        }
+    }
+}
+
+/// The `def` line of a HumanEval prompt, as a Maca signature, or "" when a type has no Maca word.
+port_signature(prompt: str, entry: str) -> str {
+    marker = "def " ++ entry ++ "("
+    at = prompt.index_of(marker)
+
+    if at < 0 {
+        ""
+    } else {
+        rest = prompt.slice(at + marker.length(), prompt.length())
+        params = between(rest, "", ")")
+        returns = maca_type(between(rest, "-> ", ":"))
+        ported = split_top(params, 0, 0, "", []).map(p => port_param(p))
+
+        returns == "" || ported.filter(p => p == "").length() > 0
+            ? ""
+            : entry ++ "(" ++ ported.join(", ") ++ ") -> " ++ returns
+    }
+}
+
+port_param(p: str) -> str {
+    parts = p.split(":")
+
+    if parts.length() < 2 {
+        ""
+    } else {
+        t = maca_type(parts.get(1))
+        t == "" ? "" : parts.get(0).trim() ++ ": " ++ t
+    }
+}
+
+/// The `assert candidate(…) == …` lines, as `assert_eq` calls.
+port_cases(test: str, entry: str) -> str[] =>
+    ported_lines(read_lines_of(test), 0, entry, [])
+
+read_lines_of(text: str) -> str[] =>
+    text.split("\n")
+
+ported_lines(ls: str[], i: int, entry: str, acc: str[]) -> str[] {
+    if i >= ls.length() {
+        acc
+    } else {
+        one = port_case(ls.get(i).trim(), entry)
+        ported_lines(ls, i + 1, entry, one == "" ? acc : acc.push(one))
+    }
+}
+
+port_case(line: str, entry: str) -> str {
+    if !line.starts_with("assert candidate(") || !line.contains(") == ") {
+        ""
+    } else {
+        args = between(line, "assert candidate(", ") == ")
+        want = maca_value(after_last(line, ") == "))
+        ported = split_top(args, 0, 0, "", []).map(a => maca_value(a))
+
+        want == "" || ported.filter(a => a == "").length() > 0
+            ? ""
+            : one_case(entry, ported.join(", "), want)
+    }
+}
+
+/// One assertion, wrapped when it would run past the width the linter holds every file to.
+one_case(entry: str, args: str, want: str) -> str {
+    flat = "    assert_eq(" ++ entry ++ "(" ++ args ++ "), " ++ want
+        ++ ", \"case\")"
+
+    if flat.length() <= 80 {
+        flat
+    } else {
+        "    assert_eq(\n        " ++ entry ++ "(" ++ args ++ "),\n        "
+            ++ want ++ ", \"case\")"
+    }
+}
+
+after_last(line: str, sep: str) -> str {
+    parts = line.split(sep)
+
+    parts.get(parts.length() - 1).trim()
+}
+
+/// The first line of the docstring, which is what the problem asks for.
+port_doc(prompt: str) -> str {
+    fence = Quote ++ Quote ++ Quote
+    body = between(prompt, fence, fence)
+    first = body.split("\n").filter(l => l.trim() != "")
+
+    first.length() == 0 ? "" : first.get(0).trim()
+}
+
+/// One problem as the `.maca` file the harness hands a model and then runs.
+render(p: Problem) -> str =>
+    "// " ++ p.id ++ ": " ++ p.doc ++ "\n"
+        ++ "// Write it, and leave the test below alone.\n\n"
+        ++ p.signature ++ " " ++ Open ++ "\n    fail " ++ Quote
+        ++ "not written yet" ++ Quote ++ "\n" ++ Close ++ "\n\n"
+        ++ "test_" ++ p.entry ++ "() " ++ Open ++ "\n"
+        ++ p.cases.join("\n") ++ "\n" ++ Close ++ "\n"
+
+main(argv: str[]) -> int {
+    if argv.length() < 1 {
+        err(bad("usage: port <HumanEval.jsonl> [outdir]"))
+        1
+    } else {
+        out = argv.length() > 1 ? argv.get(1) : "apps/evals/problems"
+        port_all(argv.get(0), out)
+    }
+}
+
+port_all(jsonl: str, out: str) -> int {
+    make_dir(out)
+    rows = read_lines(jsonl).filter(l => l.trim() != "")
+    info(bold("porting {rows.length()} problems"))
+
+    kept = write_problems(rows, 0, out, [])
+    skipped = collect_skips(rows, 0, [])
+
+    write_file(join(out, "SKIPPED.md"), skip_report(skipped))
+    info(ok("{kept.length()} ported")
+         ++ dim(", {skipped.length()} left for want of a Maca form"))
+    0
+}
+
+write_problems(rows: str[], i: int, out: str, acc: str[]) -> str[] {
+    if i >= rows.length() {
+        acc
+    } else {
+        p = parse_row(rows.get(i))
+
+        if usable(p) {
+            write_file(join(out, p.entry ++ ".maca"), render(p))
+            write_problems(rows, i + 1, out, acc.push(p.id))
+        } else {
+            write_problems(rows, i + 1, out, acc)
+        }
+    }
+}
+
+usable(p: Problem) -> bool =>
+    p.signature != "" && p.cases.length() > 0
+
+collect_skips(rows: str[], i: int, acc: Skipped[]) -> Skipped[] {
+    if i >= rows.length() {
+        acc
+    } else {
+        p = parse_row(rows.get(i))
+
+        if usable(p) {
+            collect_skips(rows, i + 1, acc)
+        } else {
+            collect_skips(rows, i + 1,
+                          acc.push(Skipped { id = p.id, why = why(p) }))
+        }
+    }
+}
+
+why(p: Problem) -> str {
+    if p.signature == "" {
+        "a parameter or the result has a type Maca does not spell"
+    } else {
+        "no assertion translated: the cases are not plain literals"
+    }
+}
+
+parse_row(line: str) -> Problem {
+    id = json_string(line, "task_id")
+    entry = json_string(line, "entry_point")
+    prompt = json_string(line, "prompt")
+    test = json_string(line, "test")
+
+    Problem {
+        id = id,
+        entry = entry,
+        doc = port_doc(prompt),
+        signature = port_signature(prompt, entry),
+        cases = port_cases(test, entry),
+    }
+}
+
+/// One string field out of a JSON object line, with the escapes HumanEval actually uses.
+json_string(line: str, key: str) -> str {
+    marker = Quote ++ key ++ Quote ++ ": " ++ Quote
+    at = line.index_of(marker)
+
+    if at < 0 {
+        ""
+    } else {
+        rest = line.slice(at + marker.length(), line.length())
+        unescape(scan_string(rest.chars(), 0, ""))
+    }
+}
+
+scan_string(cs: str[], i: int, acc: str) -> str {
+    if i >= cs.length() {
+        acc
+    } else if cs.get(i) == Backslash {
+        scan_string(cs, i + 2, acc ++ cs.get(i) ++ cs.get(i + 1))
+    } else if cs.get(i) == Quote {
+        acc
+    } else {
+        scan_string(cs, i + 1, acc ++ cs.get(i))
+    }
+}
+
+unescape(s: str) -> str =>
+    s.replace(Backslash ++ "n", "\n").replace(Backslash ++ "t", "    ")
+        .replace(Backslash ++ Quote, Quote)
+        .replace(Backslash ++ Backslash, Backslash)
+
+skip_report(skipped: Skipped[]) -> str =>
+    "# Not ported\n\n"
+        ++ "`port.maca` translates a HumanEval problem when every parameter, the\n"
+        ++ "result and every assertion have a Maca form. These do not, and the\n"
+        ++ "reason is the work: a form added to the porter moves a problem out of\n"
+        ++ "this file and into the set.\n\n"
+        ++ "| problem | why |\n|---|---|\n"
+        ++ skipped.map(s => "| `{s.id}` | {s.why} |").join("\n") ++ "\n"

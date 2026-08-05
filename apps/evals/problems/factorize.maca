@@ -1,0 +1,12 @@
+// HumanEval/25: Return list of prime factors of given integer in the order from smallest to largest.
+// Write it, and leave the test below alone.
+
+factorize(n: int) -> int[] {
+    fail "not written yet"
+}
+
+test_factorize() {
+    assert_eq(factorize(2), [2], "case")
+    assert_eq(factorize(4), [2, 2], "case")
+    assert_eq(factorize(8), [2, 2, 2], "case")
+}

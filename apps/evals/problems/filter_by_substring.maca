@@ -1,0 +1,19 @@
+// HumanEval/7: Filter an input list of strings only for ones that contain given substring
+// Write it, and leave the test below alone.
+
+filter_by_substring(strings: str[], substring: str) -> str[] {
+    fail "not written yet"
+}
+
+test_filter_by_substring() {
+    assert_eq(filter_by_substring([], "john"), [], "case")
+    assert_eq(
+        filter_by_substring(["xxx", "asd", "xxy", "john doe", "xxxAAA", "xxx"], "xxx"),
+        ["xxx", "xxxAAA", "xxx"], "case")
+    assert_eq(
+        filter_by_substring(["xxx", "asd", "aaaxxy", "john doe", "xxxAAA", "xxx"], "xx"),
+        ["xxx", "aaaxxy", "xxxAAA", "xxx"], "case")
+    assert_eq(
+        filter_by_substring(["grunt", "trumpet", "prune", "gruesome"], "run"),
+        ["grunt", "prune"], "case")
+}

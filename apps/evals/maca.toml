@@ -1,0 +1,11 @@
+[package]
+name = "evals"
+description = "HumanEval ported to Maca, and the harness that measures pass@1 against it."
+
+[[bin]]
+name = "evals"
+path = "run.maca"
+
+[[bin]]
+name = "port"
+path = "port.maca"

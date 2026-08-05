@@ -1,0 +1,18 @@
+// HumanEval/17: Input to this function is a string representing musical notes in a special ASCII format.
+// Write it, and leave the test below alone.
+
+parse_music(music_string: str) -> int[] {
+    fail "not written yet"
+}
+
+test_parse_music() {
+    assert_eq(parse_music(""), [], "case")
+    assert_eq(parse_music("o o o o"), [4, 4, 4, 4], "case")
+    assert_eq(parse_music(".| .| .| .|"), [1, 1, 1, 1], "case")
+    assert_eq(
+        parse_music("o| o| .| .| o o o o"),
+        [2, 2, 1, 1, 4, 4, 4, 4], "case")
+    assert_eq(
+        parse_music("o| .| o| .| o o| o o|"),
+        [2, 1, 2, 1, 4, 2, 4, 2], "case")
+}

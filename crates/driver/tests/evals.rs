@@ -1,0 +1,121 @@
+mod common;
+use common::*;
+
+use std::process::Command;
+
+/// A model that solves exactly one problem, so the harness's own arithmetic is what is measured.
+const STAND_IN: &str = "#!/bin/sh\n\
+    if grep -q below_zero \"$1\"; then\n\
+    \x20 printf '%s\\n' 'below_zero(operations: int[]) -> bool {' \\\n\
+    \x20   '    balance = 0' \\\n\
+    \x20   '    for i in 0..operations.length() {' \\\n\
+    \x20   '        balance = balance + operations[i]' \\\n\
+    \x20   '        if balance < 0 { return true }' \\\n\
+    \x20   '    }' \\\n\
+    \x20   '    false' \\\n\
+    \x20   '}'\n\
+    else\n\
+    \x20 echo 'nothing()'\n\
+    fi\n";
+
+fn stand_in() -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join("maca-evals-harness");
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let script = dir.join("model.sh");
+    std::fs::write(&script, STAND_IN).expect("write the stand-in");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+            .expect("make it runnable");
+    }
+    script
+}
+
+/// The ported problems are committed, so they have to still be Maca the compiler accepts.
+#[test]
+fn every_ported_problem_compiles_as_a_stub() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let dir = repo().join("apps/evals/problems");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&dir)
+        .expect("the problems are committed")
+        .flatten()
+    {
+        let path = entry.path();
+        if path.extension().is_none_or(|e| e != "maca") {
+            continue;
+        }
+        let out = Command::new(maca())
+            .args(["check", &path.to_string_lossy()])
+            .output()
+            .expect("spawn maca check");
+        assert!(
+            out.status.success(),
+            "{} does not check:\n{}",
+            path.display(),
+            String::from_utf8_lossy(&out.stdout)
+        );
+        checked += 1;
+    }
+    assert!(checked >= 20, "only {checked} problems: the port shrank");
+}
+
+/// A stub has to fail its own test, or the harness would score an unwritten answer as a pass.
+#[test]
+fn a_stub_fails_the_test_it_ships_with() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let problem = repo().join("apps/evals/problems/below_zero.maca");
+    let out = Command::new(maca())
+        .args(["test", &problem.to_string_lossy()])
+        .output()
+        .expect("spawn maca test");
+    assert!(
+        !out.status.success(),
+        "the stub passed, so the harness cannot tell a written answer from an empty one"
+    );
+}
+
+/// The harness's arithmetic: one solved problem out of the set is one, not zero and not all.
+#[test]
+fn the_harness_counts_what_the_model_actually_solved() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping: needs a native cc and no wsl");
+        return;
+    }
+    let out = Command::new(maca())
+        .args(["run", "apps/evals/run.maca"])
+        .current_dir(repo())
+        .env("MACA_EVAL_MODEL", stand_in())
+        .env("MACA", repo().join("target/release/maca"))
+        .output()
+        .expect("spawn the harness");
+    assert!(
+        out.status.success(),
+        "the harness failed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let baseline = std::fs::read_to_string(repo().join("apps/evals/BASELINE.md"))
+        .expect("the run writes a baseline");
+    for condition in ["no spec", "spec", "spec + one check retry"] {
+        assert!(
+            baseline.contains(condition),
+            "`{condition}` is missing from the baseline:\n{baseline}"
+        );
+    }
+    assert!(
+        baseline.contains("| 1 |"),
+        "the stand-in solves exactly one problem and the baseline does not say so:\n{baseline}"
+    );
+    assert!(
+        !baseline.contains("| 0 |"),
+        "a condition scored zero, so grading is matching prose again:\n{baseline}"
+    );
+}

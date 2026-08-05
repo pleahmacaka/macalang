@@ -1,0 +1,13 @@
+// HumanEval/29: Filter an input list of strings only for ones that start with a given prefix.
+// Write it, and leave the test below alone.
+
+filter_by_prefix(strings: str[], prefix: str) -> str[] {
+    fail "not written yet"
+}
+
+test_filter_by_prefix() {
+    assert_eq(filter_by_prefix([], "john"), [], "case")
+    assert_eq(
+        filter_by_prefix(["xxx", "asd", "xxy", "john doe", "xxxAAA", "xxx"], "xxx"),
+        ["xxx", "xxxAAA", "xxx"], "case")
+}

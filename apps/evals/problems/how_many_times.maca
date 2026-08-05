@@ -1,0 +1,13 @@
+// HumanEval/18: Find how many times a given substring can be found in the original string. Count overlaping cases.
+// Write it, and leave the test below alone.
+
+how_many_times(string: str, substring: str) -> int {
+    fail "not written yet"
+}
+
+test_how_many_times() {
+    assert_eq(how_many_times("", "x"), 0, "case")
+    assert_eq(how_many_times("xyxyxyx", "x"), 4, "case")
+    assert_eq(how_many_times("cacacacac", "cac"), 4, "case")
+    assert_eq(how_many_times("john doe", "john"), 1, "case")
+}

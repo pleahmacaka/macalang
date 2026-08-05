@@ -20,6 +20,7 @@ members = [
     "apps/build_site",
     "apps/cli_tool",
     "apps/desktop",
+    "apps/evals",
     "apps/lint",
     "apps/macadoc",
     "apps/mcmod",

@@ -1,0 +1,12 @@
+// HumanEval/11: Input are two strings a and b consisting only of 1s and 0s.
+// Write it, and leave the test below alone.
+
+string_xor(a: str, b: str) -> str {
+    fail "not written yet"
+}
+
+test_string_xor() {
+    assert_eq(string_xor("111000", "101010"), "010010", "case")
+    assert_eq(string_xor("1", "1"), "0", "case")
+    assert_eq(string_xor("0101", "0000"), "0101", "case")
+}
