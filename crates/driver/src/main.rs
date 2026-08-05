@@ -5,6 +5,7 @@ use maca_profile as profile;
 
 mod bindgen;
 mod build_cache;
+mod check;
 mod deps;
 mod embed;
 mod entry;
@@ -34,6 +35,8 @@ fn main() {
         Some("upgrade") => deps::cmd_upgrade(&args[1..]),
         Some("bindgen") => bindgen::cmd_bindgen(&args[1..]),
         Some("spec") => spec::cmd_spec(&args[1..]),
+        Some("check") => check::cmd_check(&args[1..]),
+        Some("fix") => check::cmd_fix(&args[1..]),
         Some("--help" | "-h" | "help") | None => usage(),
         Some(other) => {
             if let Some(cmd) = script_alias(other) {
@@ -495,6 +498,8 @@ fn usage() {
          \x20 upgrade                     self-update the maca toolchain\n\
          \x20 bindgen <header.h> [-o f]   generate Maca FFI declarations from a C header\n\
          \x20 spec  --llm                 print the whole specification for a model's context\n\
+         \x20 check <file.maca>… [--json] diagnostics, for a person or for a program\n\
+         \x20 fix   <file.maca>…          apply the suggestions that are safe to apply\n\
          \x20 --version                    print the toolchain version\n\
          \n\
          with no file, build/run/test are about the package the directory holds:\n\

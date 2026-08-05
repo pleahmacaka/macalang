@@ -57,12 +57,10 @@ pub fn diagnostics_located(src: &str, config: bool) -> Vec<Located> {
     maca_core::check(&parsed.module, mode)
         .iter()
         .map(|d| {
-            let (start, end) = anchor_name(&d.msg)
-                .and_then(|name| code_word_span(src, name))
-                .unwrap_or((0, 1));
+            let span = maca_core::resolve_span(src, d);
             Located {
-                start,
-                end,
+                start: span.start,
+                end: span.end,
                 message: format!("{:?}: {}", d.kind, d.msg),
             }
         })
@@ -145,58 +143,6 @@ fn span_in_message(msg: &str) -> Option<(usize, usize)> {
     let close = open + msg[open..].find(')')?;
     let (a, b) = msg[open + 1..close].split_once(',')?;
     Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
-}
-
-/// The first `` `name` `` token in a message.
-fn first_backtick(msg: &str) -> Option<&str> {
-    let a = msg.find('`')? + 1;
-    let rest = &msg[a..];
-    Some(&rest[..rest.find('`')?])
-}
-
-/// The name in a message that identifies *where* it happened.
-fn anchor_name(msg: &str) -> Option<&str> {
-    match msg.split_once("has no method `") {
-        Some((_, rest)) => rest.split('`').next(),
-        None => first_backtick(msg),
-    }
-}
-
-/// First whole-word occurrence of `name` in *code* (skipping `//` comments and `"…"` strings).
-fn code_word_span(src: &str, name: &str) -> Option<(usize, usize)> {
-    if name.is_empty() {
-        return None;
-    }
-    let b = src.as_bytes();
-    let is_word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
-    let n = name.len();
-    let mut i = 0;
-    while i < b.len() {
-        match b[i] {
-            b'/' if b.get(i + 1) == Some(&b'/') => {
-                while i < b.len() && b[i] != b'\n' {
-                    i += 1;
-                }
-            }
-            b'"' => {
-                i += 1;
-                while i < b.len() && b[i] != b'"' {
-                    i += if b[i] == b'\\' { 2 } else { 1 };
-                }
-                i += 1;
-            }
-            _ => {
-                if b[i..].starts_with(name.as_bytes())
-                    && (i == 0 || !is_word(b[i - 1]))
-                    && (i + n >= b.len() || !is_word(b[i + n]))
-                {
-                    return Some((i, i + n));
-                }
-                i += 1;
-            }
-        }
-    }
-    None
 }
 
 /// Every reference to the binding under the cursor, its definition and every use alike, as byte spans.

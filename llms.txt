@@ -1,5 +1,9 @@
 # Maca
 
+Run `maca spec --llm` for the whole specification in one document, and
+`maca check --json` for diagnostics with stable codes, spans and suggestions.
+
+
 > One typed language for programs **and** infrastructure config. Programs compile to a native binary, JS, the JVM, Rust, or bare-metal firmware; config compiles to Nix. Minimal, rule-based syntax, and enough here to write correct Maca without reading anything else.
 
 Everything a user writes is `.maca` or `maca.toml`. Verify what you generate with the `maca.check` MCP tool (or `maca lint`) and fix every diagnostic before finishing.

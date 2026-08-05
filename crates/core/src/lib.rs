@@ -1,4 +1,10 @@
+mod diagnostic;
 mod ty;
+
+pub use diagnostic::{
+    Applicability, Position, Severity, Span, Suggestion, code_word_span, position, resolve_span,
+    span_at,
+};
 
 use maca_parser::ast::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -52,6 +58,19 @@ pub const PHANTOM_KEYWORDS: &[(&str, &str)] = &[
     ),
 ];
 
+/// Whether the whole fix for a phantom keyword is to delete it.
+///
+/// `let x = e` becomes `x = e` and `fn f()` becomes `f()`, so the keyword is
+/// the entire mistake and removing it is safe without a human reading it.
+/// `null` is not: what absence means is a variant only the author can name, so
+/// that one is reported and never applied.
+pub fn deleting_it_is_the_fix(name: &str) -> bool {
+    matches!(
+        name,
+        "let" | "var" | "fn" | "func" | "def" | "type" | "async"
+    )
+}
+
 /// The hint for a phantom keyword, including the spellings that mean the same mistake.
 pub fn phantom_hint(name: &str) -> Option<&'static str> {
     let canonical = match name {
@@ -72,6 +91,42 @@ pub fn phantom_hint(name: &str) -> Option<&'static str> {
 pub struct Diagnostic {
     pub kind: DiagKind,
     pub msg: String,
+    /// What to do about it, when that is more than the message can carry.
+    pub note: Option<String>,
+    /// The name this is about, so a span is resolved from a field rather than scraped out of the prose.
+    pub anchor: Option<String>,
+    /// The byte range, when the reporting site knew it.
+    pub span: Option<(usize, usize)>,
+    pub suggestions: Vec<Suggestion>,
+}
+
+impl Diagnostic {
+    /// A diagnostic of `kind` saying `msg`, with nothing attached yet.
+    pub fn new(kind: DiagKind, msg: impl Into<String>) -> Self {
+        Diagnostic {
+            kind,
+            msg: msg.into(),
+            note: None,
+            anchor: None,
+            span: None,
+            suggestions: Vec::new(),
+        }
+    }
+
+    pub fn with_anchor(mut self, name: impl Into<String>) -> Self {
+        self.anchor = Some(name.into());
+        self
+    }
+
+    pub fn with_note(mut self, note: impl Into<String>) -> Self {
+        self.note = Some(note.into());
+        self
+    }
+
+    pub fn with_suggestion(mut self, s: Suggestion) -> Self {
+        self.suggestions.push(s);
+        self
+    }
 }
 
 /// Check a module.
@@ -230,10 +285,7 @@ impl Checker {
     }
 
     fn diag(&mut self, kind: DiagKind, msg: impl Into<String>) {
-        self.diags.push(Diagnostic {
-            kind,
-            msg: msg.into(),
-        });
+        self.diags.push(Diagnostic::new(kind, msg));
     }
 
     /// A keyword Maca doesn't have, used as if it did.
@@ -244,7 +296,17 @@ impl Checker {
         let Some(hint) = phantom_hint(name) else {
             return false;
         };
-        self.diag(DiagKind::UndefinedName, format!("`{name}`: {hint}"));
+        let d =
+            Diagnostic::new(DiagKind::UndefinedName, format!("`{name}`: {hint}")).with_anchor(name);
+        self.diags.push(match deleting_it_is_the_fix(name) {
+            true => d.with_suggestion(Suggestion {
+                message: format!("delete `{name}`"),
+                span: None,
+                replacement: String::new(),
+                applicability: Applicability::MachineApplicable,
+            }),
+            false => d,
+        });
         true
     }
 

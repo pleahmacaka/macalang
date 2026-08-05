@@ -80,6 +80,7 @@ dependencies = [
  "maca-backend-rust",
  "maca-core",
  "maca-lexer",
+ "maca-lsp",
  "maca-parser",
  "maca-profile",
  "maca-runtime",

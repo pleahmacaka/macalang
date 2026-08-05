@@ -14,6 +14,7 @@ at <https://pleahmacaka.github.io/macalang/>.
 | [BACKENDS.md](BACKENDS.md) | what each back end emits, and what it refuses. |
 | [DEVENV.md](DEVENV.md) | the development shell, which is itself a Maca file. |
 | [RELEASING.md](RELEASING.md) | how a release is cut and what it contains. |
+| [check-json.schema.json](check-json.schema.json) | the shape `maca check --json` prints, for a tool that reads it. |
 
 The repository's own working rules, for a contributor or an agent, are in
 `CLAUDE.md` at the root and in `.claude/`.

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pleahmacaka.github.io/macalang/check-json.schema.json",
+  "title": "maca check --json",
+  "description": "What `maca check --json` prints: one object, holding every diagnostic for every file it was given. A code names one defect forever and is never reused, so a consumer may branch on it.",
+  "type": "object",
+  "required": ["format", "diagnostics"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "description": "The shape's version. It rises when a field's meaning changes, so a reader can refuse a format it does not know.",
+      "type": "integer",
+      "const": 1
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    }
+  },
+  "$defs": {
+    "position": {
+      "description": "A byte offset and the line and column it falls on. Lines and columns count from one; a column counts characters, so a multi-byte character before it counts once.",
+      "type": "object",
+      "required": [
+        "start",
+        "end",
+        "start_line",
+        "start_column",
+        "end_line",
+        "end_column"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 },
+        "start_line": { "type": "integer", "minimum": 1 },
+        "start_column": { "type": "integer", "minimum": 1 },
+        "end_line": { "type": "integer", "minimum": 1 },
+        "end_column": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "suggestion": {
+      "description": "A replacement for one byte range. `maca fix` applies the machine-applicable ones and no others.",
+      "type": "object",
+      "required": ["message", "span", "replacement", "applicability"],
+      "additionalProperties": false,
+      "properties": {
+        "message": { "type": "string" },
+        "span": { "$ref": "#/$defs/position" },
+        "replacement": {
+          "description": "The text to put in the span's place. Empty means delete it.",
+          "type": "string"
+        },
+        "applicability": {
+          "description": "machine-applicable is always correct and is applied without asking. maybe-incorrect is the likely intent and is offered, never applied.",
+          "enum": ["machine-applicable", "maybe-incorrect"]
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "explain",
+        "note",
+        "file",
+        "span",
+        "suggestions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "description": "The stable code. It names one defect forever and is never reused: retiring a kind retires its code with it, and the next kind takes the next number rather than the free one.",
+          "type": "string",
+          "pattern": "^M[0-9]{4}$"
+        },
+        "severity": { "enum": ["error", "warning"] },
+        "message": {
+          "description": "What is wrong with this occurrence.",
+          "type": "string"
+        },
+        "explain": {
+          "description": "What the code means in general, independent of this occurrence.",
+          "type": "string"
+        },
+        "note": {
+          "description": "What to do about it, when that is more than the message can carry.",
+          "type": ["string", "null"]
+        },
+        "file": { "type": "string" },
+        "span": { "$ref": "#/$defs/position" },
+        "suggestions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/suggestion" }
+        }
+      }
+    }
+  }
+}
