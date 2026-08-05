@@ -2,8 +2,12 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
-## Unreleased
+## 0.3.3
 
+* An import says what it brings in. An asset is named by its extension,
+  `import "npm:daisyui/dist/full.css"`, and a package by the names wanted out
+  of it, `import { iconify_icon } from "npm:iconify-icon"`. A camelCase export
+  answers to its snake_case spelling. `import js` and `import css` are gone.
 * `maca spec --llm` prints the whole language as one generated document, under
   a 15,000 token budget a test enforces.
 * `maca check --json` gives stable codes (`M0001`..`M0007`), spans with line and
