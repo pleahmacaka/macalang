@@ -902,7 +902,7 @@ test_knapsack_takes_each_item_only_once() {
 test_n_queens_matches_the_known_counts() {
     want = [1, 0, 0, 2, 10, 4, 40, 92]
     matched = 0
-    for n in 1..8 {
+    for n in 1..9 {
         if n_queens(n) == want[n - 1] {
             matched = matched + 1
         }

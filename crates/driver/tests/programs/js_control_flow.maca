@@ -77,7 +77,7 @@ bump_all(xs: int[]) -> int {
 triangle(n: int) -> int {
     total = 0
 
-    for i in 1..n {
+    for i in 1..n + 1 {
         total = total + i
     }
     total
@@ -86,8 +86,8 @@ triangle(n: int) -> int {
 grid_hits(rows: int) -> int {
     hits = 0
 
-    for r in 1..rows {
-        for c in 1..3 {
+    for r in 1..rows + 1 {
+        for c in 1..4 {
             if c > r {
                 break
             }

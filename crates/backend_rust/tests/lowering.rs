@@ -98,7 +98,11 @@ fn break_and_continue_are_lowered_not_defaulted() {
 #[test]
 fn a_loop_with_break_terminates_and_answers() {
     let Some(out) = run(BREAKS) else { return };
-    assert_eq!(out.lines().collect::<Vec<_>>(), vec!["5", "12"]);
+    assert_eq!(
+        out.lines().collect::<Vec<_>>(),
+        vec!["5", "6"],
+        "evens_below(6) is 2 + 4: a half-open range stops before its end"
+    );
 }
 
 #[test]

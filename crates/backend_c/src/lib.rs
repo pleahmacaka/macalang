@@ -1963,7 +1963,7 @@ impl<'a> Cx<'a> {
                 let hv = self.temp();
                 self.indent(ind);
                 self.push(&format!(
-                    "{{ int64_t {hv} = {hc}; for (int64_t {var} = {lc}; {var} <= {hv}; {var}++) {{"
+                    "{{ int64_t {hv} = {hc}; for (int64_t {var} = {lc}; {var} < {hv}; {var}++) {{"
                 ));
                 let mut env2 = env.clone();
                 env2.push((var, CTy::Int));
@@ -2300,7 +2300,7 @@ impl<'a> Cx<'a> {
                 (
                     format!(
                         "({{ int64_t {lv} = {lc}, {hv} = {hc}; {an} _a = {an}_new(); \
-                         int64_t {n} = {hv} >= {lv} ? {hv} - {lv} + 1 : 0; \
+                         int64_t {n} = {hv} > {lv} ? {hv} - {lv} : 0; \
                          if ({n} > 0) {{ _a.data = (int64_t*)maca_realloc(0, (size_t){n} * sizeof(int64_t)); \
                          _a.len = {n}; _a.cap = {n}; \
                          for (int64_t {i} = 0; {i} < {n}; {i}++) _a.data[{i}] = {lv} + {i}; }} _a; }})"

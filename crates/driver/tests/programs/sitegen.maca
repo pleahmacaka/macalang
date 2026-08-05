@@ -251,23 +251,46 @@ stylesheet_href(page: str) -> str {
     }
 }
 
-test_the_sheet_names_shards_that_are_there() {
-    sheet = join(site_dir(), "fonts/pretendard.css")
-    src = between(read_file(sheet), "src: url(", ")")
+test_the_sheet_names_files_that_are_there() {
+    sheet = join(site_dir(), "fonts/fonts.css")
+    css = read_file(sheet)
+    mono = between(css, "src: url(", ")")
+    prose = between(css, "src: url(./pretendard-gov/", ")")
 
-    assert(src != "", "the sheet has a src at all")
-    assert(file_exists(normalize(join(dirname(sheet), src))),
-           "the first shard it names")
+    assert(mono != "", "the sheet has a src at all")
+    assert(file_exists(normalize(join(dirname(sheet), mono))),
+           "the first file it names")
+    assert(file_exists(join(dirname(sheet), "pretendard-gov/" ++ prose)),
+           "and the first shard of the prose family")
 }
 
-test_the_pages_ask_for_the_family_the_sheet_defines() {
-    dir = site_dir()
-    family = between(read_file(join(dir, "fonts/pretendard.css")),
-                     "font-family: '", "'")
+test_the_book_opens_on_one_table_of_contents_not_two() {
+    root = read_file(join(site_dir(), "en/index.html"))
+    at = root.index_of("<main")
+    body = root.slice(at, root.length())
+    sidebar = root.slice(0, at)
 
-    assert(family != "", "the sheet declares a family")
-    assert(read_file(join(dir, "index.html")).contains("'" ++ family ++ "'"),
-           "and `font-sans` names it")
+    assert(chapter_links(sidebar) > 20, "the sidebar carries the contents")
+    assert(chapter_links(body) == 2,
+           "and the page beside it links one chapter per volume, not all of them")
+    assert(body.contains("00-introduction.html")
+               && body.contains("a5-syntax.html"),
+           "which is where each volume starts")
+}
+
+chapter_links(html: str) -> int =>
+    html.split(".html\"").length() - 1
+
+test_the_pages_ask_for_both_families_and_nothing_else() {
+    dir = site_dir()
+    page = read_file(join(dir, "index.html"))
+
+    assert(page.contains("'Pretendard GOV Variable'"),
+           "`font-sans` names the prose family the sheet defines")
+    assert(page.contains("'JetBrainsMono Nerd Font'"),
+           "`font-mono` names the code family the sheet defines")
+    assert(!page.contains("ui-monospace") && !page.contains("system-ui"),
+           "and no page falls back to a font nothing fetches")
 }
 
 api_dir() -> str {

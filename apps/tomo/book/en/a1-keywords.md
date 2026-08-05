@@ -69,6 +69,6 @@ Not keywords, but worth listing here because they carry meaning:
 | `->` | a return type |
 | `?` `:` | the ternary, written **spaced** |
 | `?` | attached to an expression: propagate a failure |
-| `..` | an inclusive range, or a rest pattern |
+| `..` | a half-open range, or a rest pattern |
 | `\|` | separates sum-type variants |
 | `_` | a wildcard pattern |

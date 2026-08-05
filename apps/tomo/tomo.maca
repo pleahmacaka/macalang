@@ -529,7 +529,7 @@ base_css() -> str =>
 """
 
 font_link(up: str) -> str =>
-    element("link", rel="stylesheet", href=up ++ "fonts/pretendard.css")
+    element("link", rel="stylesheet", href=up ++ "fonts/fonts.css")
         ++ "\n"
 
 stylesheet() -> str =>
@@ -1076,32 +1076,90 @@ write_index(root: str, out: str, title: str, langs: str, lang: str,
             chs: str[], titles: str[]) -> int {
     dir = out ++ "/" ++ lang
     make_dir(dir)
-    body = h1(class=md_class("h1"), escape_html(title))
-           ++ nav(ol(class="list-none p-0",
-                     "\n" ++ index_items(chs, titles, 0))) ++ "\n"
     side = sidebar(published(), "", title, langs, lang, chs, titles, "",
                    side_items(chs, titles, "", 0), "")
+    body = opening(title, lang, chs, titles)
     write_file(dir ++ "/index.html", page(title, lang, langs, side, body))
     1
 }
 
-index_items(chs: str[], titles: str[], i: int) -> str {
-    if i >= chs.length() {
-        ""
+/// The page the book opens on: what each volume is for and where it starts, because the contents are already beside it in the sidebar.
+opening(title: str, lang: str, chs: str[], titles: str[]) -> str =>
+    h1(class=md_class("h1"), escape_html(title))
+        ++ p(class=md_class("p"), opening_blurb(lang))
+        ++ div(class="grid gap-4 mt-8 md:grid-cols-2",
+               volume_cards(chs, titles, 0, lang))
+        ++ "\n"
+
+opening_blurb(lang: str) -> str {
+    if lang == "ko" {
+        "두 권입니다. 처음이라면 왼쪽 위부터 순서대로 읽고, 찾으러 왔다면"
+            ++ " 필요한 쪽을 바로 여세요."
     } else {
-        index_item(chs.get(i), titles.get(i))
-            ++ index_items(chs, titles, i + 1)
+        "Two volumes. If this is your first time, read the first one in order;"
+            ++ " if you came looking for something, open the page you need."
     }
 }
 
-index_item(entry: str, title: str) -> str {
-    if is_book(entry) {
-        li(data-tomo="book", class=book_class(), escape_html(title))
-    } else if is_section(entry) {
-        li(data-tomo="section", class=sec_class(), escape_html(title))
+volume_cards(chs: str[], titles: str[], i: int, lang: str) -> str {
+    if i >= chs.length() {
+        ""
+    } else if is_book(chs.get(i)) {
+        volume_card(titles.get(i), first_chapter(chs, i + 1),
+                    first_chapter_title(chs, titles, i + 1), lang, i)
+            ++ volume_cards(chs, titles, i + 1, lang)
     } else {
-        li(class="my-0",
-           a(class=link_class(false), href=entry ++ ".html", escape_html(title)))
+        volume_cards(chs, titles, i + 1, lang)
+    }
+}
+
+volume_card(name: str, href: str, first: str, lang: str, at: int) -> str =>
+    a(class="block no-underline text-inherit rounded-lg border p-5"
+            ++ " border-zinc-200 dark:border-zinc-800"
+            ++ " hover:border-violet-400 dark:hover:border-violet-500",
+      href=href == "" ? "index.html" : href ++ ".html",
+      div(class="font-semibold text-[1.1rem]", escape_html(name))
+      p(class="mt-2 mb-3 text-[0.9rem] text-zinc-600 dark:text-zinc-400",
+        volume_blurb(at, lang))
+      span(class="text-[0.85rem] text-violet-600 dark:text-violet-300",
+           starts_with_label(lang) ++ escape_html(first)))
+
+volume_blurb(at: int, lang: str) -> str {
+    if at == 0 && lang == "ko" {
+        "한 번 앞에서 뒤로 읽는 책입니다. 설치부터 시작해서 프로그램 하나를"
+            ++ " 끝까지 만듭니다."
+    } else if at == 0 {
+        "Read front to back, once. It starts at installing and ends with a"
+            ++ " program you have finished."
+    } else if lang == "ko" {
+        "필요한 쪽을 펴서 한 화면 안에서 답을 얻는 책입니다. 문법, 타입,"
+            ++ " 타깃, 툴체인."
+    } else {
+        "Opened at the page you need, and answers in one screen. Syntax,"
+            ++ " types, targets, the toolchain."
+    }
+}
+
+starts_with_label(lang: str) -> str =>
+    lang == "ko" ? "시작: " : "Starts at "
+
+first_chapter(chs: str[], i: int) -> str {
+    if i >= chs.length() {
+        ""
+    } else if is_section(chs.get(i)) {
+        first_chapter(chs, i + 1)
+    } else {
+        chs.get(i)
+    }
+}
+
+first_chapter_title(chs: str[], titles: str[], i: int) -> str {
+    if i >= chs.length() {
+        ""
+    } else if is_section(chs.get(i)) {
+        first_chapter_title(chs, titles, i + 1)
+    } else {
+        titles.get(i)
     }
 }
 

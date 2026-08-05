@@ -4,7 +4,7 @@ The browser playground for Maca, **written in Maca**, one file:
 `playground.maca`. The UI, the state, the handlers, and every sentence the page
 says are Maca, styled with Maca's integrated Tailwind (the JS backend generates
 the CSS from the utility classes). Pretendard is not inlined: the page links
-`../fonts/pretendard.css`, the same sheet the rest of the site links, so the
+`../fonts/fonts.css`, the same sheet the rest of the site links, so the
 Korean it renders has Hangul to render it with. The compiler itself is pulled
 in with `import wasm`.
 
@@ -132,7 +132,7 @@ happens when it does not come back. That is the whole flow: `maca init`, write
 | the panes, the status line, the outline markup | `playground.maca` (Maca), reading the declared accessors |
 | host (wasm bridge, editor, preview iframe, URL fragment, clipboard) | `import js """…"""` block inside `playground.maca`, reached only through `maca.provide` / `maca.set` |
 | token/outline colours | one `import css """…"""` block of scoped classes |
-| font | `<link>` to `../fonts/pretendard.css`, shared with the rest of the site |
+| fonts | `<link>` to `../fonts/fonts.css`: Pretendard GOV Variable and JetBrainsMono Nerd Font, shared with the rest of the site |
 | compiler, analysis, interpreter | `import wasm "…/maca_wasm.wasm"`: the `run`, `lsp` and `version` exports, embedded as base64 by `maca build` |
 
 No hand-written `.html`/`.js`/`.css` and no build wrapper: everything is

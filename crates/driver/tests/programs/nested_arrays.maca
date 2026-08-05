@@ -1,8 +1,8 @@
 grid_of_products(n: int) -> int[][] {
     grid: int[][] = []
-    for i in 1..n {
+    for i in 1..n + 1 {
         row = []
-        for j in 1..n {
+        for j in 1..n + 1 {
             row = row.push(i * j)
         }
         grid = grid.push(row)

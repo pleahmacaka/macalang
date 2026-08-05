@@ -31,7 +31,8 @@ finishing.
 - **`match` must be exhaustive** over a sum type, or include `_`. Arms are
   separated by newlines, not commas.
 - **`xs.push(v)` returns a new list.** Append with `xs = xs.push(v)`.
-- **`for i in 1..n` is inclusive** on both ends.
+- **`lo..hi` is half-open**: it runs from `lo` up to but not including `hi`, so
+  `0..xs.length()` is every index of `xs` and needs no `- 1`.
 - **Config mode is pure `<>`**: no effects (`info`, file I/O, …) in a NixOS/
   home-manager module.
 

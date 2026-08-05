@@ -14,9 +14,9 @@ check_an_alias_keeps_both_names_alive() {
 
 check_a_value_lifted_out_of_a_loop_survives() {
     kept = []
-    for i in 1..50 {
+    for i in 1..51 {
         tmp = []
-        for j in 1..20 {
+        for j in 1..21 {
             tmp = tmp.push(i * j)
         }
         if i == 25 {
@@ -31,7 +31,7 @@ check_a_value_lifted_out_of_a_loop_survives() {
 
 check_a_map_lifted_out_of_a_loop_survives() {
     held: Map str int = map()
-    for i in 1..100 {
+    for i in 1..101 {
         m: Map str int = map()
         m = m.set("x", i).set("y", i * 2)
         if i == 50 {
@@ -53,9 +53,9 @@ check_a_value_returned_from_a_function_survives() {
 
 check_inner_buffers_outlive_their_block() {
     rows: int[][] = []
-    for i in 1..30 {
+    for i in 1..31 {
         row = []
-        for j in 1..5 {
+        for j in 1..6 {
             row = row.push(i + j)
         }
         rows = rows.push(row)

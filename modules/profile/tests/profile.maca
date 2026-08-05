@@ -291,7 +291,7 @@ test_mark_records_an_instant_rather_than_a_region() {
 
 test_a_mark_takes_no_time_however_many_are_taken() {
     stretched = 0
-    for i in 1..20000 {
+    for i in 1..20001 {
         t = finish(recorder("m").mark("here"))
         if duration(t.spans.get(0)) != 0 {
             stretched = stretched + 1

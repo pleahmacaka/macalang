@@ -29,10 +29,10 @@ fib(n: int) -> int =>
 double(n: int) -> int => n * 2
 
 main() -> int {
-    xs = 1..5
+    xs = 1..6
     xs[0] = 10
     acc = 0
-    for i in 0..len(xs) - 1 {
+    for i in 0..len(xs) {
         acc = acc + xs[i]
     }
     info("acc = {acc}, len = {len(xs)}")

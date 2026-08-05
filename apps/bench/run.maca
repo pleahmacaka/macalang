@@ -67,7 +67,7 @@ time_cmd(algo: str, lang: str, cmd: str, args: str[], runs: int) -> Result {
     taken: int[] = []
     printed = ""
 
-    for _ in 1..runs {
+    for _ in 0..runs {
         started = now_ms()
         printed = capture(cmd, args).trim()
         taken = taken.push(now_ms() - started)

@@ -90,7 +90,7 @@ describe(xs: int[]) -> str =>
 ```maca
 sum_to(n: int) -> int {
     total = 0
-    for i in 1..n {          // 1, 2, …, n
+    for i in 0..n {          // 0, 1, …, n - 1
         total = total + i
     }
     total

@@ -37,6 +37,12 @@ fn json_is_written_and_read_from_the_declared_type() {
     suite("json_typed");
 }
 
+/// `lo..hi` runs from `lo` up to but not including `hi`, which is what lets `0..xs.length()` be every index of `xs`.
+#[test]
+fn a_range_is_half_open() {
+    suite("ranges");
+}
+
 /// A top-level name a function writes is the program's state, and every later read sees the write.
 #[test]
 fn module_state_is_written_and_read_back() {

@@ -116,7 +116,7 @@ That is the whole of generics: there are no angle brackets in the language.
 | `42` `3.14` `true` `"hi"` | literals |
 | `0xff` `0b1010` `0o755` `1_000_000` | integer literals; `_` is ignored |
 | `[a, b, c]` | a list |
-| `lo..hi` | an inclusive integer range, an `int[]` |
+| `lo..hi` | a half-open integer range, an `int[]` |
 | `Name { f = v }` | a record literal |
 | `{ f = v }` | a record literal whose type is its fields |
 | `base with { f = v }` | a functional update |

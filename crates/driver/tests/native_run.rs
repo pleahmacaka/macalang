@@ -1083,7 +1083,7 @@ fn concurrent_runs_of_the_same_program_dont_collide() {
     let f = dir.join("spin.maca");
     std::fs::write(
         &f,
-        "sum_to(n: int) -> int {\n    t = 0\n    for i in 1..n {\n        t = t + i\n    }\n    t\n}\n\
+        "sum_to(n: int) -> int {\n    t = 0\n    for i in 1..n + 1 {\n        t = t + i\n    }\n    t\n}\n\
          main() -> int {\n    info(\"{sum_to(200000)}\")\n    0\n}\n",
     )
     .unwrap();

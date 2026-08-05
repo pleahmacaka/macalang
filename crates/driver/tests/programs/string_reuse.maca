@@ -2,8 +2,8 @@ render(i: int) -> str => "<li>" ++ str(i) ++ "</li>"
 
 main() -> int {
     total = 0
-    for round in 1..500 {
-        for i in 1..40 {
+    for round in 1..501 {
+        for i in 1..41 {
             line = render(i)
             total = total + line.length()
         }

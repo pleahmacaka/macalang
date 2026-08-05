@@ -466,7 +466,7 @@ top_bar(title: str) -> str =>
                         ++ " hover:text-black dark:hover:text-white"
                         ++ " focus:underline",
                   href="index.html", "API reference"))
-            span(class="font-mono text-[0.85rem] text-zinc-500"
+            span(class="text-[0.85rem] text-zinc-500"
                        ++ " dark:text-zinc-400",
                  escape_html(title))))
 
@@ -497,7 +497,7 @@ index_page(ms: Module[]) -> str =>
 
 Mono = "font-mono text-[0.9em]"
 
-KbdClass = "font-mono text-[0.7rem] px-1 py-[0.05rem] rounded border"
+KbdClass = "text-[0.7rem] px-1 py-[0.05rem] rounded border"
     ++ " border-zinc-300 dark:border-zinc-700 text-zinc-500"
     ++ " dark:text-zinc-400"
 
@@ -589,7 +589,7 @@ ItemClass = "scroll-mt-20 rounded-xl border border-zinc-200"
     ++ " dark:border-zinc-800 p-5 max-sm:p-4"
 
 anchor_link(name: str) -> str =>
-    a(class="no-underline font-mono text-[0.8rem] text-zinc-400"
+    a(class="no-underline text-[0.8rem] text-zinc-400"
             ++ " dark:text-zinc-600 hover:text-violet-600"
             ++ " dark:hover:text-violet-300 focus:underline",
       href="#" ++ name, title="Link to " ++ name, "#")

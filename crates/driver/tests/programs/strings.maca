@@ -28,7 +28,7 @@ show(s: Shape) -> str {
 
 page(n: int) -> str {
     out = ""
-    for i in 1..n {
+    for i in 1..n + 1 {
         out = out ++ built(i) ++ ";"
     }
     out
@@ -60,7 +60,7 @@ check_a_returned_parameter_is_not_released_twice() {
 
 check_a_string_put_in_a_list_outlives_the_block_that_built_it() {
     names: str[] = []
-    for i in 1..5 {
+    for i in 1..6 {
         names = names.push(built(i))
     }
 
@@ -87,7 +87,7 @@ check_an_alias_keeps_both_names_alive() {
 check_a_string_survives_a_nested_block_that_builds_its_own() {
     outer = "outer-" ++ "value"
     n = 0
-    for i in 1..10 {
+    for i in 1..11 {
         inner = "inner-" ++ str(i)
         n = n + inner.length()
     }
@@ -122,9 +122,9 @@ check_interpolation_reads_its_pieces_without_keeping_them() {
 
 check_rows_are_reused_without_losing_the_one_kept() {
     kept = ""
-    for round in 1..200 {
+    for round in 1..201 {
         row = ""
-        for i in 1..8 {
+        for i in 1..9 {
             row = row ++ "{i}."
         }
         if round == 100 {
@@ -147,7 +147,7 @@ check_rendering_a_string_does_not_take_it_from_its_owner() {
 
 check_a_conditionally_rewritten_parameter_belongs_to_the_caller() {
     a = "hi" ++ " there"
-    for i in 1..3 {
+    for i in 1..4 {
         untouched = maybe_bang(a, false)
         assert_eq(untouched, "hi there", "the path that changed nothing")
     }
@@ -160,7 +160,7 @@ check_a_conditionally_rewritten_parameter_belongs_to_the_caller() {
 
 check_a_receiver_is_kept_by_whatever_keeps_an_argument() {
     held = Holder { s = "" }
-    for i in 1..3 {
+    for i in 1..4 {
         s = "payload-" ++ "abc"
         held = s.wrap()
     }
@@ -172,7 +172,7 @@ check_a_receiver_is_kept_by_whatever_keeps_an_argument() {
 
 check_a_shorthand_field_keeps_its_string() {
     held = Holder { s = "" }
-    for i in 1..3 {
+    for i in 1..4 {
         s = "payload-" ++ "abc"
         boxed = [Holder { s }]
         held = boxed.get(0)
@@ -185,7 +185,7 @@ check_a_shorthand_field_keeps_its_string() {
 
 check_splitting_on_nothing_answers_with_its_own_string() {
     parts: str[] = []
-    for i in 1..2 {
+    for i in 1..3 {
         s = "abc" ++ "def"
         parts = s.split("")
     }

@@ -55,7 +55,7 @@ state_name(state: int) -> str =>
 pick_next(states: int[], prios: int[], n: int, last: int) -> int {
     best = 0 - 1
     best_prio = 0 - 1
-    for step in 1..n {
+    for step in 1..n + 1 {
         i = (last + step) % n
         if is_ready(states[i]) {
             if prios[i] > best_prio {
@@ -69,7 +69,7 @@ pick_next(states: int[], prios: int[], n: int, last: int) -> int {
 
 count_state(states: int[], n: int, want: int) -> int {
     c = 0
-    for i in 0..n - 1 {
+    for i in 0..n {
         if states[i] == want {
             c = c + 1
         }
@@ -89,7 +89,7 @@ next_brk(brk: int, size: int) -> int => align_up(brk, 8) + size
 
 burn(seed: int, rounds: int) -> int {
     acc = seed
-    for _ in 1..rounds {
+    for _ in 0..rounds {
         acc = (acc * 1103515245 + 12345) % 2147483647
     }
     acc
@@ -126,7 +126,7 @@ pct(part: int, whole: int) -> int {
 
 bar(n: int) -> str {
     s = ""
-    for _ in 1..n {
+    for _ in 0..n {
         s = s ++ "#"
     }
     s
@@ -151,7 +151,7 @@ main() -> int {
     quanta = 0, 0, 0, 0, 0, 0
 
     info("tasks online: {NTASKS}, heap: {HEAP_CAP}B, quantum: {QUANTUM} ticks")
-    for i in 0..NTASKS - 1 {
+    for i in 0..NTASKS {
         info("  task {i}: kind={kinds[i]} prio={prios[i]} work={work[i]} cap={caps[i]}")
     }
 
@@ -170,7 +170,7 @@ main() -> int {
     while tick < MAX_TICK && !all_dead(states, NTASKS) {
         cur = pick_next(states, prios, NTASKS, last)
         if cur < 0 {
-            for i in 0..NTASKS - 1 {
+            for i in 0..NTASKS {
                 if states[i] == BLOCKED {
                     states[i] = READY
                 }
@@ -252,10 +252,10 @@ main() -> int {
 
     info("cpu time per task (quanta):")
     total_q = 0
-    for i in 0..NTASKS - 1 {
+    for i in 0..NTASKS {
         total_q = total_q + quanta[i]
     }
-    for i in 0..NTASKS - 1 {
+    for i in 0..NTASKS {
         share = pct(quanta[i], total_q)
         info("  task {i} [{state_name(states[i])}] {bar(quanta[i])} {quanta[i]}q ({share}%)")
     }

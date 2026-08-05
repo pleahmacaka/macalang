@@ -78,14 +78,14 @@ move_up(p: Point) -> Point =>
 ```maca
 build(n: int) -> int[] {
     xs = []
-    for i in 1..n {
+    for i in 0..n {
         xs = xs.push(i)
     }
     xs
 }
 
 main() -> int {
-    for round in 1..500 {
+    for round in 0..500 {
         ys = build(200)
     }
     info("할당의 {reuse_count() * 100 / alloc_count()}% 를 재사용")

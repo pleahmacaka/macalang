@@ -105,13 +105,21 @@ xs.slice(1, 3)      // [20, 30]
 
 ### Ranges
 
-`lo..hi` is an inclusive integer range, and it is an `int[]`:
+`lo..hi` is a half-open integer range, and it is an `int[]`. It runs from `lo`
+up to but not including `hi`, so `0..xs.length()` is exactly the indices of
+`xs`, with no `- 1` to remember:
 
 ```maca
-for i in 1..5 {
-    info("{i}")     // 1 2 3 4 5
+for i in 0..5 {
+    info("{i}")     // 0 1 2 3 4
 }
-info("{(1..100).sum()}")    // 5050
+
+xs = "a", "b", "c"
+for i in 0..xs.length() {
+    info("{i}: {xs[i]}")
+}
+
+info("{(1..101).sum()}")    // 5050, because 101 is not included
 ```
 
 In a `for` header this lowers to a counting loop, and no list is built.

@@ -338,17 +338,24 @@ require_llms_txt(out: str) -> bool {
 }
 
 require_fonts(out: str) -> bool {
-    sheet = join(out, "fonts/pretendard.css")
+    sheet = join(out, "fonts/fonts.css")
 
     if file_size(sheet) <= 0 {
-        fail "no fonts/pretendard.css: every page links it"
+        fail "no fonts/fonts.css: every page links it"
     }
 
-    shard = join(dirname(sheet), between(read_file(sheet), "src: url(", ")"))
+    css = read_file(sheet)
+    mono = join(dirname(sheet), between(css, "src: url(./jetbrains-mono/", ")"))
+    prose = join(dirname(sheet), between(css, "src: url(./pretendard-gov/", ")"))
 
-    if file_size(shard) <= 0 {
-        fail "fonts/pretendard.css names {shard}, which is not there"
+    if file_size(join(dirname(sheet), "jetbrains-mono/"
+                      ++ between(css, "url(./jetbrains-mono/", ")"))) <= 0 {
+        fail "fonts.css names a mono file that is not there: {mono}"
+    } else if file_size(join(dirname(sheet), "pretendard-gov/"
+                             ++ between(css, "url(./pretendard-gov/", ")"))) <= 0 {
+        fail "fonts.css names a prose file that is not there: {prose}"
     } else {
+        info(ok("both families are served, and the first file each names is there"))
         true
     }
 }

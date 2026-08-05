@@ -58,7 +58,7 @@ one above, and nothing warns. [Syntax](a5-syntax.md) has the whole rule.
 |---|---|
 | `c ? x : y` | ternary, written **spaced** |
 | `x?` | propagate a failure, written **attached** |
-| `lo..hi` | inclusive range |
+| `lo..hi` | half-open range, `hi` excluded |
 | `x, ..rest` | rest pattern in a `match` |
 
 The spaced-versus-attached distinction is load-bearing and appears three times in

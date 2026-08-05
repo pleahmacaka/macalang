@@ -1,11 +1,14 @@
 main() -> int {
     sum = 0
-    for i in 1..100 {
+    for i in 1..101 {
         sum = sum + i
     }
-    info("sum 1..100 = {sum}")
+    info("1 through 100 sums to {sum}")
 
-    xs = 1..5
-    info("1..5 has {len(xs)} elements, last {xs[len(xs) - 1]}")
+    xs = 0..5
+    info("0..5 has {len(xs)} elements, from {xs[0]} to {xs[len(xs) - 1]}")
+
+    empty = 5..5
+    info("5..5 has {len(empty)} elements, because the end is not included")
     0
 }

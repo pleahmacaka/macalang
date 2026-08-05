@@ -20,7 +20,7 @@ run_twice(f, x) => f(f(x))
 
 sum_to(n: int) -> int {
     total = 0
-    for i in 1..n {
+    for i in 1..n + 1 {
         total = total + i
     }
     total

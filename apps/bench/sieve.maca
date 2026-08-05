@@ -1,5 +1,5 @@
 count_primes(n: int) -> int {
-    marks = 0..n
+    marks = 0..n + 1
     count = 0
     i = 2
     while i <= n {

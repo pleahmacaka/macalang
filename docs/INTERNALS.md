@@ -127,7 +127,7 @@ eagerly.
 `(await a) + (await b)`). Example: `apps/examples/async.maca`.
 
 Language surface beyond the original cheatsheet: operator overloading;
-`while`/`break`/`continue` + reassignment; inclusive integer ranges `lo..hi`
+`while`/`break`/`continue` + reassignment; half-open integer ranges `lo..hi`
 (counts lo … hi; an `int[]`; `for i in 1..n` lowers to a counting loop in C); `%`, `<<`, `>>` operators;
 hex/binary/octal integer literals with `_` separators; list/string subscripting
 `xs[i]` with lvalue assignment (`xs[i] = v`, `p.f = v`); functional record update

@@ -159,7 +159,7 @@ fn flamegraph_svg_from(fns: &HashMap<String, FnCost>, unit: &str) -> String {
     svg.push_str(&format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" \
          viewBox=\"0 0 {width:.0} {height:.0}\" style=\"display:block\" \
-         font-family=\"Pretendard, ui-monospace, monospace\" font-size=\"12\">\n"
+         font-family=\"'Pretendard GOV Variable', sans-serif\" font-size=\"12\">\n"
     ));
     svg.push_str(&format!(
         "<rect width=\"{width:.0}\" height=\"{height:.0}\" fill=\"#0e0e14\"/>\n\
@@ -237,7 +237,7 @@ pub fn flamegraph_html_from(fns: &HashMap<String, FnCost>, unit: &str) -> String
 
     let mut h = String::new();
     h.push_str(&format!(
-        "<div style=\"font-family:Pretendard,ui-monospace,monospace;background:#0e0e14;\
+        "<div style=\"font-family:'Pretendard GOV Variable',sans-serif;background:#0e0e14;\
          color:#f4f2fb;padding:10px 12px 12px;font-size:12px\">\
          <div style=\"font-weight:600;font-size:13px\">{} flame graph</div>\
          <div style=\"color:#8b8a99;font-size:11px;margin-bottom:8px\">{} {unit}, depth {}</div>\

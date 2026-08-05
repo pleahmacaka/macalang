@@ -1,6 +1,6 @@
 build(n: int) -> int[] {
     xs = []
-    for i in 1..n {
+    for i in 1..n + 1 {
         xs = xs.push(i)
     }
     xs
@@ -8,7 +8,7 @@ build(n: int) -> int[] {
 
 main() -> int {
     total = 0
-    for round in 1..500 {
+    for round in 1..501 {
         ys = build(200)
         total = total + ys.length()
     }

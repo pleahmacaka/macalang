@@ -166,7 +166,7 @@ svg_row() -> int => 22
 svg_open(px: int, high: int) -> str {
     ns = "xmlns=\"http://www.w3.org/2000/svg\""
     box = "viewBox=\"0 0 {px} {high}\""
-    face = "font-family=\"ui-monospace, monospace\" font-size=\"11\""
+    face = "font-family=\"'JetBrainsMono Nerd Font', monospace\" font-size=\"11\""
 
     "<svg {ns} width=\"{px}\" height=\"{high}\" {box} {face}>\n"
 }

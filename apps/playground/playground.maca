@@ -61,7 +61,7 @@ import css """
 .ol-value { background: #0f2f28; color: #34d399; }
 .ol-option { background: #102a3a; color: #38bdf8; }
 .ol-empty { color: #5f6577; padding: .6rem; font-size: .8rem;
-  font-family: ui-monospace, Menlo, monospace; }
+  font-family: 'JetBrainsMono Nerd Font', monospace; }
 #preview iframe { width: 100%; height: 100%; border: 0; background: #ffffff; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #303038; border-radius: 6px; }
@@ -498,7 +498,7 @@ import js """
         macaLanguage(mo);
         ed = mo.editor.create(host, {
           value: pending, language: "maca", theme: "maca-dark",
-          fontFamily: "ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace",
+          fontFamily: "'JetBrainsMono Nerd Font', monospace",
           fontSize: 13, tabSize: 4, insertSpaces: true, minimap: { enabled: false },
           automaticLayout: true, scrollBeyondLastLine: false, smoothScrolling: true,
           padding: { top: 12, bottom: 12 }, renderLineHighlight: "line",
@@ -526,7 +526,7 @@ import js """
     ta.setAttribute("wrap", "off");
     ta.style.cssText = "position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;" +
       "margin:0;border:0;padding:16px;resize:none;outline:none;background:#18181b;color:#e6e3f0;" +
-      "font-family:ui-monospace,'JetBrains Mono',Menlo,monospace;font-size:13px;line-height:1.55;" +
+      "font-family:'JetBrainsMono Nerd Font',monospace;font-size:13px;line-height:1.55;" +
       "white-space:pre;tab-size:4;overflow:auto;caret-color:#a78bfa";
     ta.addEventListener("input", run);
     ta.addEventListener("keyup", function () { maca.refresh(); });
@@ -624,10 +624,10 @@ collatz_steps(from: int) -> int {
 double(n: int) -> int => n * 2
 
 main() -> int {
-    xs = 1..5
+    xs = 1..6
     xs[0] = 10
     acc = 0
-    for i in 0..len(xs) - 1 {
+    for i in 0..len(xs) {
         acc = acc + xs[i]
     }
     info("acc {acc}, len {len(xs)}")
@@ -1221,7 +1221,7 @@ profilerClass() -> str =>
 
 main() -> Element =>
     div(class=Shell
-        link(rel="stylesheet", href="../fonts/pretendard.css")
+        link(rel="stylesheet", href="../fonts/fonts.css")
         header(class=Bar
             span(class=Brand, "◆ maca")
             span(class=Kicker, "playground")

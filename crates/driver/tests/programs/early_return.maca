@@ -35,7 +35,7 @@ guarded(title: str) -> Note {
 count_to(limit: int) -> int {
     total = 0
 
-    for i in 1..100 {
+    for i in 1..101 {
         total = total + i
 
         if total > limit {

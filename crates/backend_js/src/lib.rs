@@ -1331,7 +1331,7 @@ fn jexpr(e: &Expr) -> String {
             format!("[{}]", es.iter().map(jexpr).collect::<Vec<_>>().join(", "))
         }
         Expr::Range { lo, hi } => format!(
-            "Array.from({{length: Math.max(0, ({}) - ({}) + 1)}}, (_, _i) => _i + ({}))",
+            "Array.from({{length: Math.max(0, ({}) - ({}))}}, (_, _i) => _i + ({}))",
             jexpr(hi),
             jexpr(lo),
             jexpr(lo)
@@ -2466,11 +2466,8 @@ fn tailwind(class: &str) -> Option<String> {
         "font-semibold" => "font-weight:600",
         "font-medium" => "font-weight:500",
         "font-normal" => "font-weight:400",
-        "font-sans" => {
-            "font-family:'Pretendard Variable','Pretendard',ui-sans-serif,system-ui,\
-             -apple-system,'Segoe UI',sans-serif"
-        }
-        "font-mono" => "font-family:ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace",
+        "font-sans" => "font-family:'Pretendard GOV Variable',sans-serif",
+        "font-mono" => "font-family:'JetBrainsMono Nerd Font',monospace",
         "uppercase" => "text-transform:uppercase",
         "lowercase" => "text-transform:lowercase",
         "italic" => "font-style:italic",

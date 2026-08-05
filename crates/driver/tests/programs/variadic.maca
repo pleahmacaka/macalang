@@ -73,14 +73,14 @@ applied(f, ...xs: int) -> int {
 }
 
 grow_variadic(...seed: int) -> str {
-    for i in 1..2000 {
+    for i in 1..2001 {
         seed = seed.push(i)
     }
     "{seed.length()}:{seed.get(0)}:{seed.get(1)}:{seed.get(2001)}"
 }
 
 grow_param(seed: int[]) -> str {
-    for i in 1..2000 {
+    for i in 1..2001 {
         seed = seed.push(i)
     }
     "{seed.length()}:{seed.get(0)}:{seed.get(1)}:{seed.get(2001)}"
@@ -88,7 +88,7 @@ grow_param(seed: int[]) -> str {
 
 grow_aliased(...seed: int) -> str {
     keep = seed
-    for i in 1..2000 {
+    for i in 1..2001 {
         seed = seed.push(i)
     }
     "{keep.length()}:{keep.get(0)}:{seed.length()}:{seed.get(2001)}"
@@ -171,14 +171,14 @@ test_a_closure_parameter_can_precede_a_variadic() {
 test_a_variadic_call_costs_what_the_list_it_sugars_costs() {
     before = alloc_count() + reuse_count()
     sugar = 0
-    for i in 1..200 {
+    for i in 1..201 {
         sugar = sugar + total(1, 2, 3)
     }
     spent_sugar = alloc_count() + reuse_count() - before
 
     mid = alloc_count() + reuse_count()
     spelled = 0
-    for i in 1..200 {
+    for i in 1..201 {
         spelled = spelled + total_list([1, 2, 3])
     }
     spent_spelled = alloc_count() + reuse_count() - mid
@@ -194,7 +194,7 @@ test_a_variadic_call_costs_what_the_list_it_sugars_costs() {
 test_a_variadic_call_with_no_arguments_allocates_nothing() {
     before = alloc_count() + reuse_count()
     seen = 0
-    for i in 1..200 {
+    for i in 1..201 {
         seen = seen + total()
     }
     spent = alloc_count() + reuse_count() - before

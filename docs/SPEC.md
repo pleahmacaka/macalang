@@ -50,7 +50,7 @@ and which manifest answers.
 - **Variadic `...rest: T`** is the trailing arguments, collected. The written
   type is one argument's, because that is what a call site writes; inside the
   body `rest` is a `T[]`. Three dots and not two: `..` already means an
-  inclusive range and a list rest pattern, and the ellipsis is *prefix* so the
+  half-open range and a list rest pattern, and the ellipsis is *prefix* so the
   mark is on the parameter rather than on the type. It must be the last
   parameter, must name its element type, and cannot be `main`. A call passes at
   least the fixed parameters and any number more; `f(1, 2, 3)` and `f([1, 2, 3])`

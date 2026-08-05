@@ -83,13 +83,13 @@ empty and single-element cases clearer.
 
 ## Loops
 
-`while` and `for` are statements. `for` walks a list, or an inclusive integer
+`while` and `for` are statements. `for` walks a list, or a half-open integer
 range written with `..`:
 
 ```maca
 sum_to(n: int) -> int {
     total = 0
-    for i in 1..n {          // 1, 2, …, n
+    for i in 0..n {          // 0, 1, …, n - 1
         total = total + i
     }
     total

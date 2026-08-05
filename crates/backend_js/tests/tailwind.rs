@@ -172,19 +172,36 @@ fn the_utilities_the_site_uses_all_generate_rules() {
 }
 
 /// `font-mono` must not lead with a proportional family.
+/// The site vendors exactly two families, so a stack that lists a third is a page rendering in whatever the reader's machine happens to have.
 #[test]
-fn the_monospace_stack_is_monospace() {
-    let css = maca_backend_js::rule("font-mono").unwrap();
+fn each_stack_names_one_vendored_family_and_a_generic() {
+    let mono = maca_backend_js::rule("font-mono").unwrap();
+    let sans = maca_backend_js::rule("font-sans").unwrap();
+
     assert!(
-        !css.contains("Pretendard"),
-        "font-mono leads with a proportional family: {css}"
+        mono.contains("font-family:'JetBrainsMono Nerd Font',monospace;"),
+        "font-mono is the vendored mono, then the generic: {mono}"
     );
-    assert!(css.contains("ui-monospace"));
     assert!(
-        maca_backend_js::rule("font-sans")
-            .unwrap()
-            .contains("Pretendard"),
-        "font-sans should still prefer Pretendard"
+        sans.contains("font-family:'Pretendard GOV Variable',sans-serif;"),
+        "font-sans is the vendored sans, then the generic: {sans}"
+    );
+    for named in [
+        "ui-monospace",
+        "SF Mono",
+        "Menlo",
+        "system-ui",
+        "Segoe UI",
+        "-apple-system",
+    ] {
+        assert!(
+            !mono.contains(named) && !sans.contains(named),
+            "`{named}` is a font nothing fetches, so it renders as the reader's machine decides"
+        );
+    }
+    assert!(
+        !mono.contains("Pretendard"),
+        "font-mono leads with a proportional family: {mono}"
     );
 }
 

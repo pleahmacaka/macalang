@@ -15,9 +15,9 @@ title_tag(text: str) -> str =>
 body_tag(classes: str, inner: str) -> str =>
     body(class=classes, inner)
 
-/// Pretendard, which `font-sans` names first and which no page ever fetched.
+/// The two families the site uses, which `font-sans` and `font-mono` name and which nothing else supplies.
 font_link(up: str) -> str =>
-    link(rel="stylesheet", href=up ++ "fonts/pretendard.css")
+    link(rel="stylesheet", href=up ++ "fonts/fonts.css")
 
 /// The body's typography and colours, over a chosen font stack.
 page_class(font: str) -> str =>

@@ -47,7 +47,7 @@ test_a_map_can_hold_any_value_type() {
 
 test_a_map_survives_growth_and_deletion() {
     m: Map str int = map()
-    for i in 1..200 {
+    for i in 1..201 {
         m = m.set("k{i}", i)
     }
 
@@ -55,7 +55,7 @@ test_a_map_survives_growth_and_deletion() {
     assert_eq(str(m.get("k1", 0)), "1", "the first entry")
     assert_eq(str(m.get("k200", 0)), "200", "the last entry")
 
-    for i in 1..100 {
+    for i in 1..101 {
         m = m.remove("k{i}")
     }
 

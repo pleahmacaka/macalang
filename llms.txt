@@ -28,7 +28,7 @@ Everything a user writes is `.maca` or `maca.toml`. Verify what you generate wit
 - `{` inside a string opens an interpolation; a literal brace is `\{` or `{{`.
 - A binary operator may not begin a continuation line: put `+` at the end of the line above, not the start of the line below.
 - `xs.push(v)` returns a new list; `xs = xs.push(v)` is how you append.
-- `for i in 1..n` is inclusive on both ends.
+- `lo..hi` is half-open: `0..xs.length()` is every index of `xs`.
 
 ## Modes
 

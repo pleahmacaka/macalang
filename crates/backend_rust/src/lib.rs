@@ -362,7 +362,7 @@ impl Cx {
             Expr::Range { lo, hi } => {
                 let (l, _) = self.expr(lo);
                 let (h, _) = self.expr(hi);
-                (format!("({l}..={h})"), false)
+                (format!("({l}..{h})"), false)
             }
             Expr::List(es) => {
                 let items: Vec<String> = es.iter().map(|x| self.expr(x).0).collect();
