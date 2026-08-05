@@ -986,27 +986,6 @@ site_footer(c: Copy) -> str =>
               a(class="underline text-inherit", href=Repo,
                 "github.com/pleahmacaka/macalang"))))
 
-prose(s: str) -> str {
-    parts = s.split("`")
-
-    if parts.length() % 2 == 0 {
-        fail "unclosed backtick in copy: {s}"
-    }
-
-    spans(parts, 0, "")
-}
-
-spans(parts: str[], i: int, out: str) -> str {
-    if i >= parts.length() {
-        out
-    } else if i % 2 == 1 {
-        span = code(class=CodeSpan, escape_html(parts.get(i)))
-        spans(parts, i + 1, out ++ span)
-    } else {
-        spans(parts, i + 1, out ++ escape_html(parts.get(i)))
-    }
-}
-
 main(args: str[]) -> int {
     out = if args.length() > 0 { args.get(0) } else { "apps/tomo/site" }
     make_dir(out)
@@ -1049,5 +1028,27 @@ write_page(path: str, markup: str) -> int {
     } else {
         err("could not write {path}")
         0
+    }
+}
+
+/// Backticks in copy become inline code, so one string per language stays one string.
+prose(s: str) -> str {
+    parts = s.split("`")
+
+    if parts.length() % 2 == 0 {
+        fail "unclosed backtick in copy: {s}"
+    }
+
+    spans(parts, 0, "")
+}
+
+spans(parts: str[], i: int, out: str) -> str {
+    if i >= parts.length() {
+        out
+    } else if i % 2 == 1 {
+        span = code(class=CodeSpan, escape_html(parts.get(i)))
+        spans(parts, i + 1, out ++ span)
+    } else {
+        spans(parts, i + 1, out ++ escape_html(parts.get(i)))
     }
 }
