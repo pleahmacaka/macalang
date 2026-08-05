@@ -1,0 +1,34 @@
+name: Set up Maca
+description: Install the Maca toolchain, and the packages a project's manifest names.
+
+branding:
+  icon: package
+  color: purple
+
+inputs:
+  version:
+    description: Which release to install, e.g. "0.3.0". The latest by default.
+    default: latest
+  install:
+    description: Fetch what `maca.toml` names, at the versions `maca.lock` pinned.
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # The installer that ships beside this file, so pinning the action pins the
+    # script too, and a platform with no prebuilt asset falls back to building
+    # the checkout the action was fetched from.
+    - name: Install maca ${{ inputs.version }}
+      shell: bash
+      env:
+        MACA_VERSION: ${{ inputs.version }}
+        MACA_INSTALL_NIX: "0"
+      run: |
+        bash "${{ github.action_path }}/install.sh"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Dependencies
+      if: inputs.install == 'true'
+      shell: bash
+      run: maca install

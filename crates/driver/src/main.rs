@@ -27,6 +27,7 @@ fn main() {
         Some("profile") => cmd_profile(&args[1..]),
         Some("dev") => cmd_dev(&args[1..]),
         Some("add") => deps::cmd_add(&args[1..]),
+        Some("install") => deps::cmd_install(&args[1..]),
         Some("update") => deps::cmd_update(&args[1..]),
         Some("upgrade") => deps::cmd_upgrade(&args[1..]),
         Some("bindgen") => bindgen::cmd_bindgen(&args[1..]),
@@ -486,6 +487,7 @@ fn usage() {
          \x20 test  [file.maca]            run every `test_…` function in the file\n\
          \x20 profile <file.maca> [-o svg] run under callgrind, render a flame graph\n\
          \x20 add   <spec>…               add a dependency (npm:pkg | git+url | name@ver)\n\
+         \x20 install                     fetch what maca.toml names, at the locked version\n\
          \x20 update                      re-resolve dependencies to latest\n\
          \x20 upgrade                     self-update the maca toolchain\n\
          \x20 bindgen <header.h> [-o f]   generate Maca FFI declarations from a C header\n\

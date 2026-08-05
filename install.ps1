@@ -40,11 +40,16 @@ $asset = "maca-windows-$arch.zip"
 $installedFrom = ""
 
 # ---- try a prebuilt release -------------------------------------------------
-$url = "https://github.com/$Repo/releases/latest/download/$asset"
+$version = if ($env:MACA_VERSION) { $env:MACA_VERSION } else { "latest" }
+$url = if ($version -eq "latest") {
+    "https://github.com/$Repo/releases/latest/download/$asset"
+} else {
+    "https://github.com/$Repo/releases/download/$version/$asset"
+}
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("maca-" + [System.Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 try {
-    Write-Host "downloading $asset from the latest release..."
+    Write-Host "downloading $asset from the $version release..."
     Invoke-WebRequest -Uri $url -OutFile (Join-Path $tmp $asset) -UseBasicParsing
     Expand-Archive -Path (Join-Path $tmp $asset) -DestinationPath $tmp -Force
     foreach ($b in @("maca.exe", "maca-lsp.exe")) {

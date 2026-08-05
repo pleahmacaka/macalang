@@ -196,6 +196,70 @@ fn add_one(spec: &str, registry: &str) -> Result<String, String> {
     Ok(format!("{name}@{} → {}/{name}", r.version, MODULES_DIR))
 }
 
+/// `maca install`: put every dependency the manifest names where the compiler looks for it, at the version the lock pinned.
+pub fn cmd_install(_args: &[String]) {
+    let deps = manifest_deps();
+    if deps.is_empty() {
+        println!("no dependencies in {MANIFEST}");
+        return;
+    }
+    let registry = registry_url();
+    let mut failed = false;
+    for (name, spec) in deps {
+        if std::path::Path::new(MODULES_DIR).join(&name).is_dir() {
+            println!("{name} is already there");
+            continue;
+        }
+        match install_one(&spec, &registry) {
+            Ok(v) => println!("installed {v}"),
+            Err(e) => {
+                eprintln!("maca install {name}: {e}");
+                failed = true;
+            }
+        }
+    }
+    if failed {
+        std::process::exit(1);
+    }
+}
+
+/// Fetch one dependency at the version `maca.lock` recorded for it, resolving afresh only when the lock has nothing to say about this request.
+fn install_one(spec: &str, registry: &str) -> Result<String, String> {
+    let (parsed, src) = parse_spec(spec)?;
+    let r = match locked(&parsed, spec) {
+        Some(r) => r,
+        None => resolve(&src, registry)?,
+    };
+    fetch(&parsed, &src, &r)?;
+    lock_put(&parsed, spec, &src, &r)?;
+    Ok(format!("{parsed}@{} → {}/{parsed}", r.version, MODULES_DIR))
+}
+
+fn locked(name: &str, spec: &str) -> Option<Resolved> {
+    pinned(&read_lock(), name, spec)
+}
+
+/// What the lock pinned for this dependency, and only while what it pinned still answers the request the manifest makes.
+fn pinned(entries: &[(String, String)], name: &str, spec: &str) -> Option<Resolved> {
+    let (_, block) = entries.iter().find(|(n, _)| n == name)?;
+    let field = |key: &str| {
+        block.lines().find_map(|l| {
+            let (k, v) = l.split_once('=')?;
+            (k.trim() == key).then(|| v.trim().trim_matches('"').to_string())
+        })
+    };
+    if field("request").as_deref() != Some(spec) {
+        return None;
+    }
+
+    Some(Resolved {
+        version: field("version")?,
+        tarball: field("resolved"),
+        integrity: field("integrity"),
+        git_sha: field("commit"),
+    })
+}
+
 /// `maca update`: re-resolve every dependency to its latest matching version.
 pub fn cmd_update(_args: &[String]) {
     let deps = manifest_deps();
@@ -689,6 +753,35 @@ fn short(sha: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn lock() -> Vec<(String, String)> {
+        vec![(
+            "daisyui".to_string(),
+            "name = \"daisyui\"\nversion = \"4.12.23\"\nrequest = \"npm:daisyui@^4\"\n\
+             source = \"npm:daisyui\"\nresolved = \"https://example.invalid/d.tgz\"\n\
+             integrity = \"sha512-x\"\n"
+                .to_string(),
+        )]
+    }
+
+    /// A lock is what makes a build reproduce: `^4` would resolve to whatever is newest, and the pin is what it gets instead.
+    #[test]
+    fn a_pinned_version_answers_the_request_that_pinned_it() {
+        let got = pinned(&lock(), "daisyui", "npm:daisyui@^4").expect("the pin");
+        assert_eq!(got.version, "4.12.23");
+        assert_eq!(
+            got.tarball.as_deref(),
+            Some("https://example.invalid/d.tgz")
+        );
+        assert_eq!(got.integrity.as_deref(), Some("sha512-x"));
+    }
+
+    /// Once the manifest asks for something else, the pin is about a question nobody is asking.
+    #[test]
+    fn a_pin_for_another_request_is_not_used() {
+        assert!(pinned(&lock(), "daisyui", "npm:daisyui@^5").is_none());
+        assert!(pinned(&lock(), "iconify-icon", "npm:iconify-icon").is_none());
+    }
 
     #[test]
     fn semver_ranges_match() {

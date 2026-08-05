@@ -286,3 +286,44 @@ fn a_package_installed_at_the_project_root_is_found_from_a_source_below_it() {
         "the walk that finds an imported module finds an installed package too\n{page}"
     );
 }
+
+/// `maca install` is what a checkout runs before it builds: the packages `maca.toml` names, at the versions `maca.lock` pinned.
+#[test]
+fn install_says_so_when_the_manifest_names_nothing() {
+    let dir = project("install-empty");
+    let out = Command::new(maca())
+        .arg("install")
+        .current_dir(&dir)
+        .output()
+        .expect("spawn maca install");
+    assert!(out.status.success(), "{}", errors(&out));
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("no dependencies"),
+        "{}",
+        errors(&out)
+    );
+}
+
+/// A package already in `maca_modules` is left alone, so a second run costs nothing and a vendored copy is not overwritten.
+#[test]
+fn install_leaves_a_package_that_is_already_there() {
+    let dir = project("install-present");
+    std::fs::write(
+        dir.join("maca.toml"),
+        "[package]\nname = \"page\"\n\n[dependencies]\ndaisyui = \"npm:daisyui@^4\"\n",
+    )
+    .unwrap();
+    daisyui(&dir);
+
+    let out = Command::new(maca())
+        .arg("install")
+        .current_dir(&dir)
+        .output()
+        .expect("spawn maca install");
+    assert!(out.status.success(), "{}", errors(&out));
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("daisyui is already there"),
+        "{}",
+        errors(&out)
+    );
+}

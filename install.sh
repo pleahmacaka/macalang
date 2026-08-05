@@ -55,9 +55,12 @@ installed_from=""
 asset=""
 if [ -n "$plat_os" ] && [ -n "$plat_arch" ] && command -v curl >/dev/null 2>&1; then
   asset="maca-${plat_os}-${plat_arch}.tar.gz"
-  url="https://github.com/${REPO}/releases/latest/download/${asset}"
+  case "${MACA_VERSION:-latest}" in
+    latest) url="https://github.com/${REPO}/releases/latest/download/${asset}" ;;
+    *)      url="https://github.com/${REPO}/releases/download/${MACA_VERSION}/${asset}" ;;
+  esac
   tmp="$(mktemp -d)"
-  say "downloading ${asset} from the latest release…"
+  say "downloading ${asset} from the ${MACA_VERSION:-latest} release…"
   if curl -fsSL "$url" -o "$tmp/$asset" 2>/dev/null; then
     tar -xzf "$tmp/$asset" -C "$tmp"
     for b in maca maca-lsp; do
