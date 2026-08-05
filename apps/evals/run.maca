@@ -205,7 +205,8 @@ report(outs: Outcome[], where: str) -> int {
 baseline(outs: Outcome[]) -> str =>
     "# Baseline\n\n"
         ++ "pass@1 over the mechanically ported HumanEval set, by what the model\n"
-        ++ "was told. Regenerate with `maca -m evals` and commit the change.\n\n"
+        ++ "was told. Regenerate with `maca run apps/evals/run.maca` and commit\n"
+        ++ "the change. The model was `{model()}`.\n\n"
         ++ "| condition | passed | of | pass@1 |\n|---|---|---|---|\n"
         ++ rows(conditions(), 0, outs) ++ "\n"
 
