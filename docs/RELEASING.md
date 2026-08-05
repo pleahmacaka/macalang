@@ -13,13 +13,20 @@ the release from the current commit.
 
 ## What the tag builds
 
-[`.github/workflows/release.yml`](../.github/workflows/release.yml) runs two
-matrices over the same five targets, Linux and macOS on `x86_64` and
-`aarch64` plus Windows `x86_64`:
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) creates the
+release once, then runs two matrices over the same five targets, Linux and
+macOS on `x86_64` and `aarch64` plus Windows `x86_64`:
 
 * **the toolchain**, `maca` and `maca-lsp`, packaged as
   `maca-<os>-<arch>.tar.gz` (`.zip` on Windows);
 * **the installer**, `maca-install-<os>-<arch>`, one binary per platform.
+
+The release is created by a job of its own that the matrices wait on, because
+ten legs racing to create it for the same tag means a loser can exhaust its
+retries on `already_exists` and silently drop its asset. 0.3.2 published nine
+of ten that way, and the one it lost was the installer this repository's own
+action downloads, so check the asset list after a release rather than the
+workflow's colour.
 
 The Linux legs also compile and run a program that imports `std/text` from a
 temp directory, which is the only place the carried standard library can be

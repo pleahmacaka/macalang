@@ -22,8 +22,22 @@ permissions:
   contents: write
 
 jobs:
+  # Ten jobs used to race to create the release for the same tag: whichever got
+  # there first won, and a loser could exhaust its retries on `already_exists`
+  # and drop its asset. 0.3.2 published nine of ten that way, and the one it
+  # lost was the installer this repository's own action downloads. The release
+  # is created once here instead, and every leg below only uploads into it.
+  create:
+    name: create the release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
+
   build:
     name: build ${{ matrix.target }}
+    needs: create
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -111,6 +125,7 @@ jobs:
 
   installer:
     name: build maca-install ${{ matrix.target }}
+    needs: create
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
