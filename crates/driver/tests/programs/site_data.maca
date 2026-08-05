@@ -1,0 +1,89 @@
+import { Reading, Score, scores, with_spec, WithSpec } from apps/site/data
+import { eval_reading, handbook_reading, reference_reading } from apps/site/data
+import { release_reading, release_version, book_languages } from apps/site/data
+import { chapter_count, std_modules, unquote } from apps/site/data
+import { Baseline, BookConfig, Manifest, StdDir } from apps/site/data
+
+test_the_baseline_is_read_as_three_conditions() {
+    rows = scores()
+    assert_eq(str(rows.length()), "3", "one row per condition")
+    assert_eq(rows.get(0).condition, "no spec", "the first row")
+    assert_eq(rows.get(1).condition, "spec", "the second row")
+    assert_eq(rows.get(2).condition, "spec + one check retry", "the third row")
+}
+
+test_a_row_agrees_with_its_own_arithmetic() {
+    for s in scores() {
+        assert(s.of > 0, "{s.condition}: the set is not empty")
+        assert(s.passed <= s.of, "{s.condition}: cannot pass more than it ran")
+        assert_eq(str(s.percent), str(s.passed * 100 / s.of),
+                  "{s.condition}: the percentage is the fraction")
+    }
+}
+
+/// The project's own README says the retry column's three runs straddle the plain spec column, so quoting the retry as the headline would be quoting noise.
+test_the_site_leads_with_the_spec_and_not_the_retry() {
+    assert_eq(WithSpec, "spec",
+              "the headline condition is the plain spec row, named literally")
+
+    spec = scores().filter(s => s.condition == "spec")
+    retry = scores().filter(s => s.condition == "spec + one check retry")
+    assert_eq(str(spec.length()), "1", "there is a spec row")
+    assert_eq(str(retry.length()), "1", "there is a retry row")
+
+    assert_eq(with_spec().condition, "spec", "and it is the one that is read")
+    assert_eq(eval_reading().value, "{spec.get(0).percent}%",
+              "the headline figure is the spec row's")
+}
+
+test_every_reading_names_the_file_it_came_from() {
+    readings = [eval_reading(), handbook_reading(), reference_reading(),
+                release_reading()]
+
+    for r in readings {
+        assert(r.value.length() > 0, "a reading has a value")
+        assert(r.unit.length() > 0, "a reading says what it counts")
+        assert(file_exists(r.from) || is_dir(r.from),
+               "`{r.from}` is a committed path")
+    }
+}
+
+test_each_reading_names_its_own_source() {
+    assert_eq(eval_reading().from, Baseline, "the eval figure")
+    assert_eq(handbook_reading().from, BookConfig, "the handbook figure")
+    assert_eq(reference_reading().from, StdDir, "the reference figure")
+    assert_eq(release_reading().from, Manifest, "the release figure")
+}
+
+test_the_version_on_the_site_is_the_version_the_workspace_states() {
+    assert_eq(release_version(), unquote("\"{release_version()}\""),
+              "the reader strips the quotes the manifest writes")
+    assert_eq(str(release_version().split(".").length()), "3",
+              "a bare semver")
+}
+
+test_the_handbook_figure_counts_files_that_are_there() {
+    langs = book_languages()
+    assert_eq(str(langs.length()), "2", "English and Korean")
+    assert_eq(langs.get(0), "en", "the default language is first")
+    assert(chapter_count() > 20, "the handbook is a book")
+}
+
+test_the_reference_figure_counts_modules_that_are_there() {
+    mods = std_modules()
+    assert(mods.length() > 0, "std ships modules")
+
+    for m in mods {
+        assert(file_exists("{StdDir}/{m}.maca"), "`{m}` is a file in {StdDir}")
+    }
+}
+
+/// A lattice paints its container's tint through any track no cell fills, so a cell count that does not divide the columns shows as a grey block.
+test_every_lattice_divides_at_every_breakpoint() {
+    assert_eq(str(4 % 2), "0", "the spec strip over two columns")
+    assert_eq(str(4 % 4), "0", "the spec strip over four columns")
+    assert_eq(str(8 % 2), "0", "the directory over two columns")
+    assert_eq(str(8 % 4), "0", "the directory over four columns")
+    assert_eq(str(scores().length() % 3), "0",
+              "the eval baseline over three columns")
+}

@@ -1,0 +1,171 @@
+import std/fs
+import std/path
+import { between, split_once, strip_prefix, strip_suffix } from std/text
+
+/// A number the site states, and the committed file it was computed from.
+///
+/// Nothing goes on this site as a bare figure. A reader who wants to check a
+/// claim is told where to look in the same breath as the claim.
+Reading = {
+    value: str
+    unit:  str
+    from:  str
+}
+
+Baseline = "apps/evals/BASELINE.md"
+
+BookConfig = "apps/tomo/book.toml"
+
+Manifest = "maca.toml"
+
+StdDir = "modules/std"
+
+BookDir = "apps/tomo/book"
+
+/// pass@1 under one condition, as the committed baseline states it.
+Score = {
+    condition: str
+    passed:    int
+    of:        int
+    percent:   int
+}
+
+/// Every row of the baseline table, in the order the run wrote them.
+scores() -> Score[] =>
+    rows(read_file(Baseline).split("\n"), 0, [])
+
+rows(lines: str[], i: int, acc: Score[]) -> Score[] {
+    if i >= lines.length() {
+        if acc.length() == 0 {
+            fail "{Baseline}: no `| condition | passed |` rows"
+        }
+
+        return acc
+    }
+
+    line = lines.get(i).trim()
+    cells = line.split("|").map(c => c.trim()).filter(c => c.length() > 0)
+
+    if !line.starts_with("|") || cells.length() != 4 {
+        return rows(lines, i + 1, acc)
+    }
+
+    if cells.get(1) == "passed" || !cells.get(3).ends_with("%") {
+        return rows(lines, i + 1, acc)
+    }
+
+    rows(lines, i + 1, acc.push(Score {
+        condition = cells.get(0),
+        passed = int(cells.get(1)),
+        of = int(cells.get(2)),
+        percent = int(cells.get(3).slice(0, cells.get(3).length() - 1))
+    }))
+}
+
+/// The condition the site leads with, which is the specification without the retry.
+///
+/// The retry column is deliberately not the headline: the project's own README
+/// says its three results straddle the plain `spec` column, so quoting it as
+/// the best number would be quoting noise.
+WithSpec = "spec"
+
+with_spec() -> Score {
+    found = scores().filter(s => s.condition == WithSpec)
+
+    if found.length() != 1 {
+        fail "{Baseline}: expected one `{WithSpec}` row, found {found.length()}"
+    }
+
+    found.get(0)
+}
+
+/// pass@1 with the specification, as a reading.
+eval_reading() -> Reading {
+    s = with_spec()
+
+    Reading { value = "{s.percent}%", unit = "pass@1 with the spec",
+              from = Baseline }
+}
+
+/// A manifest value without the quotes it is written inside.
+unquote(s: str) -> str =>
+    strip_suffix(strip_prefix(s, "\""), "\"")
+
+/// The languages the handbook ships in, read from the book's own configuration.
+book_languages() -> str[] {
+    line = read_file(BookConfig).split("\n")
+        .filter(l => l.trim().starts_with("languages"))
+
+    if line.length() == 0 {
+        fail "{BookConfig}: no `languages` key"
+    }
+
+    inside = between(line.get(0), "[", "]")
+
+    inside.split(",").map(c => unquote(c.trim())).filter(c => c.length() > 0)
+}
+
+/// How many chapters the handbook has in its default language.
+chapter_count() -> int {
+    langs = book_languages()
+
+    if langs.length() == 0 {
+        fail "{BookConfig}: `languages` is empty"
+    }
+
+    list_dir(join(BookDir, langs.get(0))).filter(f => f.ends_with(".md"))
+        .length()
+}
+
+/// The handbook's size, as a reading.
+handbook_reading() -> Reading {
+    n = chapter_count()
+
+    if n == 0 {
+        fail "{BookDir}: no chapters"
+    }
+
+    Reading { value = "{n}", unit = "chapters, {book_languages().length()}"
+                                   ++ " languages",
+              from = BookConfig }
+}
+
+/// The modules the standard library ships, which are the pages the reference has.
+std_modules() -> str[] =>
+    list_dir(StdDir).filter(f => f.ends_with(".maca"))
+        .map(f => f.slice(0, f.length() - 5))
+
+/// The reference's size, as a reading.
+reference_reading() -> Reading {
+    n = std_modules().length()
+
+    if n == 0 {
+        fail "{StdDir}: no modules"
+    }
+
+    Reading { value = "{n}", unit = "std modules, English only",
+              from = StdDir }
+}
+
+/// The version the workspace manifest states, which is the one release the site may name.
+release_version() -> str {
+    line = read_file(Manifest).split("\n")
+        .filter(l => l.trim().starts_with("version"))
+
+    if line.length() == 0 {
+        fail "{Manifest}: no `version` key"
+    }
+
+    got = split_once(line.get(0), "=")
+
+    if got.length() != 2 {
+        fail "{Manifest}: `version` has no value"
+    }
+
+    unquote(got.get(1).trim())
+}
+
+/// The current release, as a reading.
+release_reading() -> Reading =>
+    Reading { value = release_version(), unit = "current release",
+              from = Manifest }
