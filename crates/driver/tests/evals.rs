@@ -127,25 +127,34 @@ fn the_harness_counts_what_the_model_actually_solved() {
     );
 }
 
-/// The README's commands are how a person reaches the harness, and `apps/` is not a search root, so a `-m` spelling of them cannot work.
+/// Every command the harness's own prose names has to resolve, and `apps/` is not a search root, so a `-m` spelling of one cannot work.
 #[test]
-fn the_readme_names_a_command_that_resolves() {
-    let readme =
-        std::fs::read_to_string(repo().join("apps/evals/README.md")).expect("the README is here");
-
-    let mut named = 0;
-    for line in readme.lines() {
-        let Some(rest) = line.split_once("maca run ").map(|(_, r)| r) else {
-            continue;
-        };
-        let path = rest.split_whitespace().next().expect("a path after `run`");
+fn the_prose_names_a_command_that_resolves() {
+    for (file, least) in [("apps/evals/README.md", 2), ("apps/evals/BASELINE.md", 1)] {
+        let text =
+            std::fs::read_to_string(repo().join(file)).unwrap_or_else(|e| panic!("{file}: {e}"));
+        let mut named = 0;
+        for line in text.lines() {
+            let Some(rest) = line.split_once("maca run ").map(|(_, r)| r) else {
+                continue;
+            };
+            let path = rest
+                .split_whitespace()
+                .next()
+                .expect("a path after `run`")
+                .trim_end_matches(['`', '.', ',', ')']);
+            assert!(
+                repo().join(path).is_file(),
+                "{file} runs `{path}`, which is not there"
+            );
+            named += 1;
+        }
+        assert!(named >= least, "{file} stopped naming how to run it");
         assert!(
-            repo().join(path).is_file(),
-            "the README runs `{path}`, which is not there"
+            !text.contains("maca -m evals"),
+            "{file} names `-m evals`, which does not resolve"
         );
-        named += 1;
     }
-    assert!(named >= 2, "the README stopped naming how to run it");
 
     let out = Command::new(maca())
         .args(["-m", "evals"])
@@ -154,7 +163,7 @@ fn the_readme_names_a_command_that_resolves() {
         .expect("spawn maca -m");
     assert!(
         !out.status.success(),
-        "`-m evals` resolves after all, so the README's reason for a path is gone"
+        "`-m evals` resolves after all, so the reason for a path is gone"
     );
 }
 
