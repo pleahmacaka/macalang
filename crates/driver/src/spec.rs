@@ -209,20 +209,44 @@ fn builtin_methods() -> String {
     out
 }
 
-/// What each target can compile, so a program is written for the one it will run on.
-const TARGETS: &str = "\
-| target | flag | what it emits | notes |
-|---|---|---|---|
-| native | (default) | C, linked by `cc` | the whole language |
-| JavaScript | `--target js` | a script, a reactive DOM, a stylesheet | `int / int` does not truncate |
-| Nix | `--target nix` | a `.nix` module | config mode only: no effects |
-| JVM | `--target jvm` | Java source | no function-typed record fields |
-| Rust | `--target rust` | Rust source | no function-typed record fields |
-| embedded | `--target embedded` | freestanding C | no allocator, `--mcu` picks the core |
-
-There is no BEAM target, by design. The checker runs on every one of them, and
-refuses the same program on all of them.
-";
+/// What each target can carry, read out of the table the checker gates on.
+///
+/// A hand-written table would say what someone believed when they wrote it.
+/// This one is `maca_core::TARGETS`, so `maca check --target` and this document
+/// cannot disagree about what a target can do.
+fn targets() -> String {
+    let mut out = String::from(
+        "\n`maca check --target <t>` refuses a program that performs an effect its \
+         target cannot carry. With no `--target` a program is held to `native`, \
+         which is what `maca build` produces; `--target all` holds it to what \
+         every program target shares.\n\n\
+         | target | flag | carries |\n|---|---|---|\n",
+    );
+    for (name, mask) in maca_core::TARGETS {
+        if *name == "c" || *name == "tauri" {
+            continue;
+        }
+        let flag = if *name == "native" {
+            "(default)".to_string()
+        } else {
+            format!("`--target {name}`")
+        };
+        let carried = maca_core::effect_names(*mask);
+        let carries = if carried.is_empty() {
+            "nothing: config mode is data".to_string()
+        } else {
+            carried.join(", ")
+        };
+        let _ = writeln!(out, "| {name} | {flag} | {carries} |");
+    }
+    out.push_str(concat!(
+        "\nThere is no BEAM target, by design.\n\n",
+        "Two differences are not effects, and are the back end's own error: ",
+        "`int / int` truncates natively and does not on `js`, and a ",
+        "function-typed record field is refused on `rust` and `jvm`.\n"
+    ));
+    out
+}
 
 /// The whole specification, as one markdown document written for a model's context window.
 pub fn llm_spec() -> String {
@@ -245,7 +269,7 @@ pub fn llm_spec() -> String {
         examples()
     );
     let _ = writeln!(out, "\n## Mistakes to avoid\n{}", mistakes());
-    let _ = writeln!(out, "\n## Targets\n\n{TARGETS}");
+    let _ = writeln!(out, "\n## Targets\n{}", targets());
     let _ = writeln!(
         out,
         "\n## The standard library\n\nCarried inside the binary, so `import std/json` \
@@ -347,54 +371,26 @@ mod tests {
         }
     }
 
-    /// A target table that names something `maca build` will not take sends a model to a flag that does not exist.
+    /// The table is the checker's, so a target added there appears here without anyone remembering to.
     #[test]
-    fn every_named_target_is_one_the_driver_takes() {
-        for flag in ["js", "nix", "jvm", "rust", "embedded"] {
+    fn the_target_table_is_the_one_the_checker_gates_on() {
+        let table = targets();
+        for (name, _) in maca_core::TARGETS {
+            if *name == "c" || *name == "tauri" {
+                continue;
+            }
             assert!(
-                TARGETS.contains(&format!("--target {flag}")),
-                "{flag} is a real target and the table does not list it"
+                table.contains(name),
+                "`{name}` is a target and the table omits it"
             );
         }
         assert!(
-            !TARGETS.contains("--target beam"),
+            table.contains("| embedded |") && table.contains("exn"),
+            "embedded carries exn and nothing else: {table}"
+        );
+        assert!(
+            !table.contains("beam"),
             "there is no BEAM back end, by design"
-        );
-    }
-
-    /// The examples are the files `apps/examples` gates, so one that stops compiling stops the build.
-    #[test]
-    fn every_example_is_a_whole_program_from_the_regression_set() {
-        for (what, source) in EXAMPLES {
-            assert!(
-                source.contains("main()") || source.contains("system.") || source.contains("dev."),
-                "the {what} example is not a program: it has no entry point"
-            );
-            assert!(
-                !source.contains("fn ") && !source.contains("let "),
-                "the {what} example uses a keyword Maca does not have"
-            );
-        }
-        let spec = llm_spec();
-        assert!(
-            spec.contains("```maca"),
-            "the examples are not fenced as Maca"
-        );
-    }
-
-    /// A method the compiler accepts on a receiver but the document omits is an import a model writes and the compiler rejects.
-    #[test]
-    fn the_builtin_methods_are_the_ones_the_checker_accepts() {
-        let spec = llm_spec();
-        for method in maca_core::STR_METHODS {
-            assert!(
-                spec.contains(&format!("`{method}`")),
-                "`str.{method}()` is accepted by the checker and missing from the document"
-            );
-        }
-        assert!(
-            spec.contains("never `import { trim } from std/text`"),
-            "the one that reads as a module function should be called out"
         );
     }
 

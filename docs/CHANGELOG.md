@@ -2,6 +2,16 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## Unreleased
+
+* `maca spec --llm` prints the whole language as one generated document, under
+  a 15,000 token budget a test enforces.
+* `maca check --json` gives stable codes (`M0001`..`M0007`), spans with line and
+  column, notes and suggestions; `maca fix` applies the machine-applicable ones.
+  The schema is `docs/check-json.schema.json`.
+* `maca check --target <t>` refuses an effect the target cannot carry. Config
+  mode's rule, generalised to every target.
+
 ## 0.3.2
 
 * `lo..hi` is half-open: it runs from `lo` up to but not including `hi`, so

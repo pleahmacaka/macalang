@@ -84,6 +84,10 @@ fn a_stub_fails_the_test_it_ships_with() {
 
 /// The harness's arithmetic: one solved problem out of the set is one, not zero and not all.
 ///
+/// The table goes to a path this test owns. Writing the committed one turned a
+/// measured number into whatever ran last, and a `cargo test` quietly replaced
+/// a real model's result with the stand-in's.
+///
 /// `MACA` is the binary this test run built. Pointing it at `target/release`
 /// is what made this pass here and fail in CI, which never builds one.
 #[test]
@@ -92,8 +96,9 @@ fn the_harness_counts_what_the_model_actually_solved() {
         eprintln!("skipping: needs a native cc and no wsl");
         return;
     }
+    let baseline = std::env::temp_dir().join("maca-evals-harness/BASELINE.md");
     let out = Command::new(maca())
-        .args(["run", "apps/evals/run.maca"])
+        .args(["run", "apps/evals/run.maca", &baseline.to_string_lossy()])
         .current_dir(repo())
         .env("MACA_EVAL_MODEL", stand_in())
         .env("MACA", maca())
@@ -105,8 +110,7 @@ fn the_harness_counts_what_the_model_actually_solved() {
         String::from_utf8_lossy(&out.stderr)
     );
 
-    let baseline = std::fs::read_to_string(repo().join("apps/evals/BASELINE.md"))
-        .expect("the run writes a baseline");
+    let baseline = std::fs::read_to_string(&baseline).expect("the run writes a baseline");
     for condition in ["no spec", "spec", "spec + one check retry"] {
         assert!(
             baseline.contains(condition),

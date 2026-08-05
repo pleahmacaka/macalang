@@ -198,12 +198,36 @@ impl Parser {
                     }
                     other => self.err(format!("expected 'from', found {other:?}")),
                 }
+                if matches!(self.peek(), Tok::StrOpen) {
+                    let spec = self.parse_string_literal();
+                    return Import::ForeignNames { names, spec };
+                }
                 let module = self.parse_module_path();
                 Import::Names { names, module }
             }
             Tok::Path(p) => {
                 self.bump();
                 Import::Path(p)
+            }
+            Tok::StrOpen => {
+                let spec = self.parse_string_literal();
+                match asset_lang(&spec) {
+                    Some(lang) => Import::Foreign {
+                        lang: lang.into(),
+                        spec,
+                    },
+                    None => {
+                        self.err(format!(
+                            "`import \"{spec}\"`: nothing in the name says what this is. \
+                             End it in .css, .js or .wasm, or name what you want from it: \
+                             `import {{ a, b }} from \"{spec}\"`"
+                        ));
+                        Import::Foreign {
+                            lang: "script".into(),
+                            spec,
+                        }
+                    }
+                }
             }
             Tok::Ident(first) => {
                 self.bump();
@@ -1275,6 +1299,24 @@ impl Parser {
                 Vec::new()
             }
         }
+    }
+}
+
+/// What `import "…"` is, read off the end of the name.
+///
+/// A stylesheet is a stylesheet because it is called `.css`. Making the author
+/// write the word twice, once as a keyword and once as an extension, is asking
+/// them to keep two facts in step for no reason.
+fn asset_lang(spec: &str) -> Option<&'static str> {
+    let path = spec.split(['?', '#']).next().unwrap_or(spec);
+    if path.ends_with(".css") {
+        Some("stylesheet")
+    } else if path.ends_with(".js") || path.ends_with(".mjs") || path.ends_with(".cjs") {
+        Some("script")
+    } else if path.ends_with(".wasm") {
+        Some("wasm")
+    } else {
+        None
     }
 }
 

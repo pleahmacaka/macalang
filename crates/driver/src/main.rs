@@ -1389,6 +1389,19 @@ fn build_js(src: &Path, out_dir: &Path) -> Result<(), String> {
     let mut head_assets = String::new();
     let mut assets = String::new();
     for item in &parsed.module.items {
+        if let maca_parser::Stmt::Import(maca_parser::Import::ForeignNames { names, spec }) = item {
+            let text = asset_text(src, "js", spec)?;
+            let kind = match is_es_module(&asset_path(src, "js", spec)?) {
+                true => " type=\"module\"",
+                false => "",
+            };
+            assets.push_str(&format!(
+                "<script{kind}>\n{}\n</script>\n",
+                close_safe(&text)
+            ));
+            assets.push_str(&format!("<script>\n{}</script>\n", named_bindings(names)));
+            continue;
+        }
         let maca_parser::Stmt::Import(maca_parser::Import::Foreign { lang, spec }) = item else {
             continue;
         };
@@ -1512,6 +1525,57 @@ fn declared_module_type(path: &Path) -> bool {
 }
 
 /// An asset a page declares, read at build time.
+/// The spellings a JavaScript package might export one Maca name under.
+///
+/// Maca is snake_case and JavaScript is camelCase, so `pick_text` is written in
+/// Maca and exported as `pickText`. A named import tries the name as written,
+/// then camelCase, then kebab-case, and binds the first that is there rather
+/// than making the author spell somebody else's convention.
+fn export_spellings(name: &str) -> Vec<String> {
+    let mut out = vec![name.to_string()];
+    let camel = {
+        let mut s = String::new();
+        let mut upper = false;
+        for c in name.chars() {
+            if c == '_' {
+                upper = true;
+            } else if upper {
+                s.extend(c.to_uppercase());
+                upper = false;
+            } else {
+                s.push(c);
+            }
+        }
+        s
+    };
+    if camel != name {
+        out.push(camel);
+    }
+    let kebab = name.replace('_', "-");
+    if kebab != name {
+        out.push(kebab);
+    }
+    out
+}
+
+/// `const x = <the first spelling the module actually exposes>;` for each imported name.
+fn named_bindings(names: &[String]) -> String {
+    let mut out = String::new();
+    for name in names {
+        let tried: Vec<String> = export_spellings(name)
+            .iter()
+            .map(|s| format!("globalThis[{}]", json_str(s)))
+            .collect();
+        out.push_str(&format!("const {name} = {};\n", tried.join(" ?? ")));
+    }
+    out
+}
+
+/// A JavaScript string literal.
+fn json_str(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 fn read_asset(src: &Path, lang: &str, spec: &str) -> Result<Vec<u8>, String> {
     let path = asset_path(src, lang, spec)?;
     std::fs::read(&path).map_err(|e| format!("import {lang} \"{spec}\": {}: {e}", path.display()))

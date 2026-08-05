@@ -133,6 +133,7 @@ fn kind_str(k: DiagKind) -> &'static str {
         DiagKind::UnknownOption => "UnknownOption",
         DiagKind::Immutable => "Immutable",
         DiagKind::UndefinedName => "UndefinedName",
+        DiagKind::EffectNotOnTarget => "EffectNotOnTarget",
     }
 }
 

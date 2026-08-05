@@ -26,6 +26,7 @@ fn kind_name(k: DiagKind) -> &'static str {
         DiagKind::UnknownOption => "unknown-option",
         DiagKind::Immutable => "immutable",
         DiagKind::UndefinedName => "undefined-name",
+        DiagKind::EffectNotOnTarget => "effect-not-on-target",
     }
 }
 

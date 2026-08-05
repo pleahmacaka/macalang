@@ -243,26 +243,30 @@ and which manifest answers.
   `crates/backend_js/tests/element_lists.rs`.) The browser
   playground itself is a single Maca file (`apps/playground/playground.maca`)
   compiled by this backend, carrying its styles and the WebAssembly-bridge
-  runtime inline via `import css`/`import js` raw-string blocks.
+  runtime inline via `import css`/`import js` raw-string blocks. An **asset**
+  is named by its extension rather than by a keyword: `import "theme.css"`,
+  `import "vendor/x.js"`, `import "m.wasm"`. Naming what you want out of a
+  package is `import { pick_text } from "npm:pkg"`, and a snake_case name binds
+  a camelCase or kebab-case export, so Maca spells it Maca's way.
 - **A page's assets and its identity.** After `import <lang>`, the two string
   forms mean different things: a raw `"""…"""` block *is* the source, and a
   quoted `"…"` *names a file*, resolved against the importing source file and
   read at build time. So `import css """…"""` carries inline CSS while
-  `import css "vendor/daisyui.css"` embeds that file's bytes in a `<style>`
-  ahead of the generated one, `import js "vendor/x.js"` embeds a `<script>`
+  `import "vendor/daisyui.css"` embeds that file's bytes in a `<style>`
+  ahead of the generated one, `import "vendor/x.js"` embeds a `<script>`
   ahead of the app, and `import wasm "x.wasm"` embeds a base64 blob. Every asset
   is inlined, never linked: `index.html` is the whole deployable. A path that
   resolves to no file is a build error naming it.
   **An asset import may name a package instead of a path.** `npm:` is the same
   prefix `maca.toml` writes for a dependency, and it means the same thing here,
-  so `import css "npm:daisyui"` reaches whatever `maca add npm:daisyui`
+  so `import "npm:daisyui/dist/full.css"` reaches whatever `maca add npm:daisyui`
   installed and the directory it installed into never appears in the source.
   The package names its own entry point: the first of `style`, `browser`,
   `module`, `main` in its `package.json` that names a file of the right kind
   (`.css` for a stylesheet, `.js`/`.mjs`/`.cjs` for a script, `.wasm` for
   WebAssembly). Several stated entries are not an ambiguity, because that list
   is ordered and a page is a browser. A package that states none is an error
-  naming the package and the keys, and `import css "npm:daisyui/dist/full.css"`
+  naming the package and the keys, and `import "npm:daisyui/dist/full.css"`
   is how a file inside a package is named when its entry point is not the one
   wanted. A package that is not installed is an error naming it and saying to
   `maca add` it, never a silent fall-through, and a scoped `npm:@scope/pkg` is

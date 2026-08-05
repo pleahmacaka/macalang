@@ -98,6 +98,7 @@ impl DiagKind {
             DiagKind::UnknownOption => "M0004",
             DiagKind::Immutable => "M0005",
             DiagKind::UndefinedName => "M0006",
+            DiagKind::EffectNotOnTarget => "M0007",
         }
     }
 
@@ -110,6 +111,9 @@ impl DiagKind {
             DiagKind::UnknownOption => "the option this sets does not exist",
             DiagKind::Immutable => "a constant is assigned after it is bound",
             DiagKind::UndefinedName => "this name is not defined anywhere in scope",
+            DiagKind::EffectNotOnTarget => {
+                "the target being built for cannot carry the effect this performs"
+            }
         }
     }
 

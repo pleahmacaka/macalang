@@ -175,3 +175,87 @@ fn a_clean_file_is_an_empty_list_and_a_zero_exit() {
     let v: Value = serde_json::from_slice(&out.stdout).expect("JSON");
     assert_eq!(v["diagnostics"].as_array().unwrap().len(), 0);
 }
+
+/// A target that cannot carry an effect refuses the program that performs it, by name.
+#[test]
+fn an_effect_the_target_cannot_carry_is_refused() {
+    let file = scratch(
+        "target.maca",
+        "main() -> int {\n    info(\"hi\")\n    0\n}\n",
+    );
+
+    let native = Command::new(maca())
+        .args(["check", "--target", "native", &file.to_string_lossy()])
+        .output()
+        .expect("spawn maca check");
+    assert!(native.status.success(), "native carries io");
+
+    let embedded = Command::new(maca())
+        .args([
+            "check",
+            "--json",
+            "--target",
+            "embedded",
+            &file.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca check");
+    let v: Value = serde_json::from_slice(&embedded.stdout).expect("JSON");
+    let d = &v["diagnostics"][0];
+    assert_eq!(d["code"], "M0007");
+    assert!(
+        d["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("io") && m.contains("embedded")),
+        "the message names the effect and the target: {d:#}"
+    );
+    assert!(d["note"].as_str().is_some_and(|n| !n.is_empty()));
+}
+
+/// The default is what `maca build` produces, or an unqualified check would refuse almost every program.
+#[test]
+fn no_target_means_native() {
+    let file = scratch(
+        "default.maca",
+        "main() -> int {\n    info(\"hi\")\n    0\n}\n",
+    );
+    let out = Command::new(maca())
+        .args(["check", &file.to_string_lossy()])
+        .output()
+        .expect("spawn maca check");
+    assert!(
+        out.status.success(),
+        "a program that prints should pass an unqualified check:\n{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}
+
+/// `--target all` is the question a library author asks, and it is stricter than any one target.
+#[test]
+fn target_all_is_stricter_than_native() {
+    let file = scratch("all.maca", "main() -> int {\n    info(\"hi\")\n    0\n}\n");
+    let out = Command::new(maca())
+        .args(["check", "--target", "all", &file.to_string_lossy()])
+        .output()
+        .expect("spawn maca check");
+    assert!(
+        !out.status.success(),
+        "io is not carried by every program target, so `all` should refuse it"
+    );
+}
+
+/// A target nobody builds is named as such, with the list, rather than silently checked against nothing.
+#[test]
+fn an_unbuilt_target_is_refused_with_the_list() {
+    let file = scratch("beam.maca", "main() -> int {\n    0\n}\n");
+    let out = Command::new(maca())
+        .args(["check", "--target", "beam", &file.to_string_lossy()])
+        .output()
+        .expect("spawn maca check");
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(said.contains("no target `beam`"), "{said}");
+    assert!(
+        said.contains("embedded"),
+        "and lists the ones that exist: {said}"
+    );
+}

@@ -11,6 +11,11 @@ finishing.
 
 ## The rules models get wrong
 
+- **An asset is named by its extension, not by a keyword.** `import
+  "theme.css"`, not `import css "theme.css"`. To take names out of a package,
+  `import { pick_text } from "npm:pkg"`; a snake_case name binds a camelCase
+  export.
+
 - **No `fn`, no `let`, no `return`, no `type`, no `Result`/`Ok`, no `<>`
   generics.** Functions are `name(x: T) -> R { body }` or `=> expr`, and the
   last expression is the value. Types are declared by binding:

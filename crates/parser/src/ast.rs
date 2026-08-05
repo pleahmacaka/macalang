@@ -29,6 +29,8 @@ pub enum Import {
     Bare(Ident),
     /// `import c "sqlite3.h"` / `import nix "./x.nix"` / `import py "numpy"`.
     Foreign { lang: Ident, spec: String },
+    /// `import { a, b } from "npm:pkg"`: named bindings out of a foreign module.
+    ForeignNames { names: Vec<Ident>, spec: String },
 }
 
 /// `[const] target [: T [: Base ...]] = value [as const]`.

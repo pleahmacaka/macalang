@@ -28,7 +28,70 @@ pub enum DiagKind {
     Immutable,
     /// A direct call to a name that is not defined anywhere.
     UndefinedName,
+    /// An effect the target being built for cannot carry.
+    EffectNotOnTarget,
 }
+
+/// What a target can carry, as the effect set a program compiled for it may have.
+///
+/// Config mode already did this for one target: `check_config_effects` refuses
+/// any effect at all, because a `.nix` module is data. Naming the same thing
+/// for every target is that rule generalised rather than a second mechanism
+/// beside it, and it costs nothing to compute: `EffSet` is already inferred and
+/// already transitive, so a function that calls a function that touches the
+/// filesystem carries `io` without anyone writing it down.
+///
+/// Availability that is not an effect stays out of this. `int / int` rounds
+/// differently on the JS target and a function-typed record field is refused on
+/// `rust` and `jvm`; those are type-level and behavioural, and inventing an
+/// effect for them would be a lie about what an effect is. They are the back
+/// end's own diagnostics, and `maca spec --llm` prints them in its target table.
+pub const TARGETS: &[(&str, u8)] = &[
+    ("native", IO | NET | OS | ASYNC | EXN),
+    ("c", IO | NET | OS | ASYNC | EXN),
+    ("js", IO | NET | ASYNC | EXN),
+    ("jvm", IO | NET | OS | ASYNC | EXN),
+    ("rust", IO | NET | OS | ASYNC | EXN),
+    ("tauri", IO | NET | OS | ASYNC | EXN),
+    ("embedded", EXN),
+    ("nix", 0),
+];
+
+/// The effects in a target's mask, by name, so a caller reads them without touching the bitset.
+pub fn effect_names(mask: u8) -> Vec<&'static str> {
+    EffSet(mask).names()
+}
+
+/// The effects `target` can carry, or `None` when nothing by that name is built.
+pub fn target_effects(target: &str) -> Option<EffSet> {
+    TARGETS
+        .iter()
+        .find(|(name, _)| *name == target)
+        .map(|(_, mask)| EffSet(*mask))
+}
+
+/// What every *program* target can carry at once: `--target all`.
+///
+/// `nix` is left out because it is config mode rather than a program target,
+/// and `Mode::Config` already refuses every effect there. Leaving it in would
+/// make the intersection empty and turn `--target all` into "no program may do
+/// anything", which answers nobody's question.
+///
+/// This is not the default. A library author asks it deliberately, because the
+/// honest answer for a program that calls `info` is that it does not build for
+/// a microcontroller, and saying so unasked would refuse almost every program
+/// anyone has written.
+pub fn common_effects() -> EffSet {
+    EffSet(
+        TARGETS
+            .iter()
+            .filter(|(name, _)| *name != "nix")
+            .fold(u8::MAX, |acc, (_, mask)| acc & mask),
+    )
+}
+
+/// The target an unqualified check holds a program to, which is the one `maca build` defaults to.
+pub const DEFAULT_TARGET: &str = "native";
 
 /// Every keyword a reader might reach for that Maca does not have, and the form Maca uses instead.
 ///
@@ -134,6 +197,23 @@ pub fn check(module: &Module, mode: Mode) -> Vec<Diagnostic> {
     let mut c = Checker::new(mode);
     c.collect(module);
     c.run(module);
+    c.diags
+}
+
+/// The same, and then whether the target being built for can carry what the program does.
+///
+/// `allowed` is the target's effect set. Passing the intersection of every
+/// target is how an unqualified check asks whether a program builds everywhere.
+pub fn check_for_target(
+    module: &Module,
+    mode: Mode,
+    target: &str,
+    allowed: EffSet,
+) -> Vec<Diagnostic> {
+    let mut c = Checker::new(mode);
+    c.collect(module);
+    c.run(module);
+    c.refuse_effects_the_target_cannot_carry(module, target, allowed);
     c.diags
 }
 
@@ -501,6 +581,11 @@ impl Checker {
                 }
                 bind(self, lang.clone());
             }
+            Import::ForeignNames { names, .. } => {
+                for n in names {
+                    bind(self, n.clone());
+                }
+            }
             Import::Bare(n) => bind(self, n.clone()),
             Import::Path(_) => {}
         }
@@ -854,6 +939,41 @@ impl Checker {
                 let name = target_name(&b.target);
                 self.diag(DiagKind::TypeMismatch, format!("in binding `{name}`: {e}"));
             }
+        }
+    }
+
+    /// Every top-level function whose effects the target cannot carry, named with the effect and the target.
+    fn refuse_effects_the_target_cannot_carry(
+        &mut self,
+        module: &Module,
+        target: &str,
+        allowed: EffSet,
+    ) {
+        for item in &module.items {
+            let Stmt::Fn(f) = item else { continue };
+            let effects = match &f.body {
+                Some(FnBody::Block(stmts)) => self.eff_stmts(stmts),
+                Some(FnBody::Expr(e)) => self.eff(e),
+                None => continue,
+            };
+            let refused = EffSet(effects.0 & !allowed.0);
+            if refused.is_empty() {
+                continue;
+            }
+            let names = refused.names().join(", ");
+            self.diags.push(
+                Diagnostic::new(
+                    DiagKind::EffectNotOnTarget,
+                    format!(
+                        "`{}` performs {names}, which {target} cannot carry",
+                        f.name
+                    ),
+                )
+                .with_anchor(&f.name)
+                .with_note(format!(
+                    "build for a target that can, or keep {names} out of the code this target compiles"
+                )),
+            );
         }
     }
 

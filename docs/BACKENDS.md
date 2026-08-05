@@ -16,6 +16,39 @@ implementor's view.
 `maca-backend-llvm` emits LLVM IR for the SIMD span only. Both native paths
 link over the C ABI, so choosing between them is a flag rather than a rewrite.
 
+## What a target can carry
+
+A target is the effect set a program compiled for it may have, and
+`maca_core::TARGETS` is that table:
+
+| target | carries |
+|---|---|
+| native, jvm, rust, tauri | `io`, `net`, `os`, `async`, `exn` |
+| js | `io`, `net`, `async`, `exn`: a browser has no OS |
+| embedded | `exn`: no allocator, no OS, no scheduler |
+| nix | nothing: a config is data |
+
+`maca check --target <t>` refuses a function whose inferred effects the target
+cannot carry, as `M0007`, naming the effect and the target. With no `--target`
+a program is held to `native`, which is what `maca build` produces; `--target
+all` holds it to what every program target shares, which is the question a
+library author asks.
+
+**This is config mode generalised, not a second mechanism.** The
+`check_config_effects` walk already refused every effect for one hard-coded
+target, because a
+`.nix` module is data. `EffSet` is already inferred and already transitive, so a
+function that calls a function that touches the filesystem carries `io` without
+anyone writing it down, and a per-symbol availability manifest would only be
+recomputing that by hand and going stale in the direction that hurts.
+
+Availability that is not an effect stays out of it. `int / int` truncates
+natively and does not on `js`; a function-typed record field is refused on
+`rust` and `jvm`. Those are type-level and behavioural, and inventing an effect
+for "division rounds differently" would be a lie about what an effect is. They
+are the back end's own diagnostics, and `maca spec --llm` prints them beside
+the table.
+
 ## What every one of them owes the others
 
 **The checker runs first, on every target.** Each path calls it from its own

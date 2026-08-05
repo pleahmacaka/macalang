@@ -49,16 +49,21 @@ fn import(s: &mut String, im: &Import) {
             "css" | "js" => {
                 let _ = write!(s, "import {lang} \"\"\"{spec}\"\"\"");
             }
-            "stylesheet" => {
-                let _ = write!(s, "import css \"{}\"", escape(spec));
-            }
-            "script" => {
-                let _ = write!(s, "import js \"{}\"", escape(spec));
+            "stylesheet" | "script" | "wasm" => {
+                let _ = write!(s, "import \"{}\"", escape(spec));
             }
             _ => {
                 let _ = write!(s, "import {lang} \"{}\"", escape(spec));
             }
         },
+        Import::ForeignNames { names, spec } => {
+            let _ = write!(
+                s,
+                "import {{ {} }} from \"{}\"",
+                names.join(", "),
+                escape(spec)
+            );
+        }
     }
 }
 

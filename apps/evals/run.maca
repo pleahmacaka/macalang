@@ -9,6 +9,13 @@ import { bold, dim, ok, bad, grey } from cli/style
 
 Problems = "apps/evals/problems"
 
+/// Where a run writes its table when it is not told otherwise.
+///
+/// A test passes its own path. The committed baseline is written by a
+/// deliberate run and by nothing else, because a suite that overwrites it turns
+/// a measured number into whatever ran last.
+Baseline = "apps/evals/BASELINE.md"
+
 /// What a run is told, which is the whole point of measuring.
 Condition = Bare | Spec | SpecAndCheck
 
@@ -60,12 +67,19 @@ problems() -> str[] =>
 ask(problem: str) -> str =>
     read_file(problem)
 
-/// Replace the stub body with what the model wrote, keeping the test.
+/// Replace the stub body with what the model wrote, keeping the porter's test.
+///
+/// The answer is cut at its own `test_` first. A model handed a file that ends
+/// in a test tends to echo the test back, and appending ours on top of that is
+/// a redefinition the C compiler rejects, which scored a correct solution as a
+/// compile failure.
 completed(problem: str, answer: str) -> str {
     src = read_file(problem)
     at = src.index_of("test_")
+    theirs = answer.index_of("test_")
+    body = theirs < 0 ? answer : answer.slice(0, theirs).trim()
 
-    at < 0 ? answer : answer ++ "\n\n" ++ src.slice(at, src.length())
+    at < 0 ? body : body ++ "\n\n" ++ src.slice(at, src.length())
 }
 
 /// Run one problem under one condition, and say whether its tests passed.
@@ -147,7 +161,8 @@ main(argv: str[]) -> int {
         err(bad("no {Problems}: run `maca -m evals.port <HumanEval.jsonl>` first"))
         1
     } else {
-        report(measure(conditions(), 0, []))
+        report(measure(conditions(), 0, []),
+               argv.length() > 0 ? argv.get(0) : Baseline)
     }
 }
 
@@ -170,13 +185,13 @@ one_condition(ps: str[], i: int, c: Condition, acc: Outcome[]) -> Outcome[] {
     }
 }
 
-report(outs: Outcome[]) -> int {
+report(outs: Outcome[], where: str) -> int {
     if outs.length() == 0 {
         err(bad("nothing measured"))
         1
     } else {
-        write_file("apps/evals/BASELINE.md", baseline(outs))
-        info(ok("wrote apps/evals/BASELINE.md"))
+        write_file(where, baseline(outs))
+        info(ok("wrote " ++ where))
         0
     }
 }

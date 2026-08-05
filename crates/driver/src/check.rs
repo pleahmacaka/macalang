@@ -6,7 +6,11 @@ use std::path::Path;
 pub const FORMAT: u32 = 1;
 
 /// Parse and check one file, returning its diagnostics beside the source they are about.
-fn diagnose(path: &Path, config: bool) -> Result<(String, Vec<Diagnostic>), String> {
+fn diagnose(
+    path: &Path,
+    config: bool,
+    target: Option<&str>,
+) -> Result<(String, Vec<Diagnostic>), String> {
     let src = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let whole = maca_parser::imports::load_with_imports(path).unwrap_or_else(|_| src.clone());
     let parsed = maca_parser::parse(&whole);
@@ -28,7 +32,32 @@ fn diagnose(path: &Path, config: bool) -> Result<(String, Vec<Diagnostic>), Stri
     } else {
         maca_core::Mode::Program
     };
-    let diags = maca_core::check(&parsed.module, mode);
+    let name = target.unwrap_or(maca_core::DEFAULT_TARGET);
+    let diags = if name == "all" {
+        maca_core::check_for_target(
+            &parsed.module,
+            mode,
+            "every program target",
+            maca_core::common_effects(),
+        )
+    } else {
+        let allowed = maca_core::target_effects(name).ok_or_else(|| {
+            format!(
+                "no target `{name}`; built targets are {}, or `all` for what they share",
+                maca_core::TARGETS
+                    .iter()
+                    .map(|(t, _)| *t)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })?;
+        maca_core::check_for_target(
+            &parsed.module,
+            mode,
+            &format!("the `{name}` target"),
+            allowed,
+        )
+    };
     Ok((src, diags))
 }
 
@@ -74,13 +103,36 @@ fn diag_json(path: &Path, src: &str, d: &Diagnostic) -> Value {
     })
 }
 
-/// `maca check [file…] [--json] [--config]`: diagnostics, for a person or for a program.
+/// The target named by `--target x` or `--target=x`, if either is there.
+fn named_target(args: &[String]) -> Option<String> {
+    for (i, a) in args.iter().enumerate() {
+        if let Some(rest) = a.strip_prefix("--target=") {
+            return Some(rest.to_string());
+        }
+        if a == "--target" {
+            return args.get(i + 1).cloned();
+        }
+    }
+    None
+}
+
+/// `maca check [file…] [--json] [--config] [--target <t>]`: diagnostics, for a person or for a program.
 pub fn cmd_check(args: &[String]) {
     let json_out = args.iter().any(|a| a == "--json");
     let config = args.iter().any(|a| a == "--config");
-    let files: Vec<&String> = args.iter().filter(|a| !a.starts_with("--")).collect();
+    let target = named_target(args);
+    let files: Vec<&String> = args
+        .iter()
+        .filter(|a| !a.starts_with("--"))
+        .filter(|a| Some(a.as_str()) != target.as_deref())
+        .collect();
     if files.is_empty() {
-        eprintln!("usage: maca check <file.maca>… [--json] [--config]");
+        eprintln!(
+            "usage: maca check <file.maca>… [--json] [--config] [--target <t>]\n\n\
+             with no --target, a program is held to `native`, which is what \
+             `maca build` produces.\n  --target all holds it to what every \
+             program target shares."
+        );
         std::process::exit(2);
     }
 
@@ -88,7 +140,7 @@ pub fn cmd_check(args: &[String]) {
     let mut failed = false;
     for file in &files {
         let path = Path::new(file.as_str());
-        match diagnose(path, config) {
+        match diagnose(path, config, target.as_deref()) {
             Ok((src, diags)) => {
                 for d in &diags {
                     if json_out {
@@ -158,7 +210,7 @@ pub fn cmd_fix(args: &[String]) {
 
     for file in files {
         let path = Path::new(file.as_str());
-        let Ok((src, diags)) = diagnose(path, config) else {
+        let Ok((src, diags)) = diagnose(path, config, None) else {
             eprintln!("maca fix: cannot read {}", path.display());
             std::process::exit(1);
         };

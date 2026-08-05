@@ -5177,7 +5177,7 @@ fn import_name(im: &Import) -> Option<String> {
     match im {
         Import::Module(segs) => segs.last().cloned(),
         Import::Bare(n) | Import::Foreign { lang: n, .. } => Some(n.clone()),
-        Import::Names { .. } | Import::Path(_) => None,
+        Import::Names { .. } | Import::ForeignNames { .. } | Import::Path(_) => None,
     }
 }
 
