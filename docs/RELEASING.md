@@ -3,8 +3,8 @@
 A release is a tag. The tag is the bare version, with no `v` prefix:
 
 ```sh
-git tag -a 0.3.1 -m "maca 0.3.1"
-git push origin 0.3.1
+git tag -a 0.3.2 -m "maca 0.3.2"
+git push origin 0.3.2
 ```
 
 Where a tag push is not available, run the **release** workflow by hand

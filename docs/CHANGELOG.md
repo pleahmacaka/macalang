@@ -2,6 +2,17 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.3.2
+
+* `lo..hi` is half-open: it runs from `lo` up to but not including `hi`, so
+  `0..xs.length()` is every index of `xs`. This changes what existing programs
+  do, and is the reason for the minor bump rather than a patch.
+* The installer binaries are in the release. 0.3.1 was cut one commit before
+  they existed.
+* Two fonts and no system fallback: Pretendard GOV Variable for prose,
+  JetBrainsMono Nerd Font for code.
+* The handbook opens on one table of contents rather than two.
+
 ## 0.3.1
 
 * `maca install` fetches what `maca.toml` names, at the versions `maca.lock`
