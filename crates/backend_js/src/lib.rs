@@ -2645,6 +2645,15 @@ fn tailwind(class: &str) -> Option<String> {
             v.parse::<u32>().ok()?
         ));
     }
+    if let Some(v) = class.strip_prefix("grid-rows-") {
+        return Some(format!(
+            "grid-template-rows:repeat({},minmax(0,1fr));",
+            v.parse::<u32>().ok()?
+        ));
+    }
+    if let Some(rule) = track_span(class) {
+        return Some(rule);
+    }
 
     let (prefix, val) = class.split_once('-')?;
     let css = match prefix {
@@ -2687,6 +2696,32 @@ fn tailwind(class: &str) -> Option<String> {
 }
 
 /// Tailwind spacing scale → a rem/px length (`4` → `1rem`, `0.5` → `0.125rem`).
+/// A cell's place in the grid: `col-span-4`, `row-span-2`, `col-start-3`, `row-end-5`, and `col-span-full`.
+///
+/// A grid with no way to say how wide a cell is is a stack of equal columns,
+/// which is what `grid-cols-12` alone leaves you with.
+fn track_span(class: &str) -> Option<String> {
+    let (head, val) = class.rsplit_once('-')?;
+    let axis = match head {
+        h if h.starts_with("col") => "column",
+        h if h.starts_with("row") => "row",
+        _ => return None,
+    };
+    let part = head.split_once('-')?.1;
+    match part {
+        "span" if val == "full" => Some(format!("grid-{axis}:1 / -1;")),
+        "span" => Some(format!(
+            "grid-{axis}:span {n} / span {n};",
+            n = val.parse::<u32>().ok()?
+        )),
+        "start" if val == "auto" => Some(format!("grid-{axis}-start:auto;")),
+        "start" => Some(format!("grid-{axis}-start:{};", val.parse::<i32>().ok()?)),
+        "end" if val == "auto" => Some(format!("grid-{axis}-end:auto;")),
+        "end" => Some(format!("grid-{axis}-end:{};", val.parse::<i32>().ok()?)),
+        _ => None,
+    }
+}
+
 fn space(v: &str) -> Option<String> {
     Some(match v {
         "0" => "0".into(),

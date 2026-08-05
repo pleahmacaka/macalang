@@ -4,6 +4,11 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* A grid cell can say where it sits: `col-span-4`, `col-span-full`,
+  `row-span-2`, `col-start-3`, `col-end-9` and `grid-rows-3` produce CSS, and a
+  breakpoint reaches them. `grid-cols-12` on its own was twelve equal columns
+  and no way to be wider than one.
+
 * The language word on a quoted asset is gone, not just optional. `import css
   "theme.css"` is refused and names `import "theme.css"`; `import js
   "npm:pkg"` is refused and names `import { a, b } from "npm:pkg"`. A raw

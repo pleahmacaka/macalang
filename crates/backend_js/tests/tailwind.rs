@@ -232,3 +232,40 @@ fn the_escaper_matches_the_one_build_site_reimplements() {
         assert_eq!(css_escape(&one), one, "{ch:?} should not be escaped");
     }
 }
+
+/// A grid needs to say how wide a cell is, or `grid-cols-12` is twelve equal columns and nothing else.
+#[test]
+fn a_cell_can_say_where_it_sits_in_the_grid() {
+    for (class, want) in [
+        ("col-span-4", "grid-column:span 4 / span 4"),
+        ("col-span-full", "grid-column:1 / -1"),
+        ("row-span-2", "grid-row:span 2 / span 2"),
+        ("col-start-3", "grid-column-start:3"),
+        ("col-end-9", "grid-column-end:9"),
+        ("row-start-2", "grid-row-start:2"),
+        ("col-start-auto", "grid-column-start:auto"),
+        ("grid-rows-3", "grid-template-rows:repeat(3,minmax(0,1fr))"),
+    ] {
+        let got = rule(class).unwrap_or_else(|| panic!("`{class}` has no rule"));
+        assert!(
+            got.contains(want),
+            "`{class}` should set `{want}`, got {got}"
+        );
+    }
+}
+
+/// Placement is a utility like any other, so a breakpoint reaches it.
+#[test]
+fn a_breakpoint_reaches_grid_placement() {
+    let got = rule("md:col-span-6").expect("`md:col-span-6` has no rule");
+    assert!(got.starts_with("@media(min-width:48rem)"), "{got}");
+    assert!(got.contains("grid-column:span 6 / span 6"), "{got}");
+}
+
+/// A placement that names nothing a grid understands is refused rather than emitted as a broken rule.
+#[test]
+fn a_placement_that_is_not_a_number_has_no_rule() {
+    for class in ["col-span-wide", "row-start-first", "col-span-", "colspan-2"] {
+        assert!(rule(class).is_none(), "`{class}` should have no rule");
+    }
+}
