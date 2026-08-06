@@ -166,6 +166,7 @@ type_in(env: Env, e: Expr) -> Typed =>
         ERecord  => typed(walk_args(env, e.children, 0), t_con(e.text, []))
         EWith    => with_type(env, e)
         EField   => field_type(env, e)
+        EMethod  => method_type(env, e)
         EMatch   => match_type(env, e)
         EList    => list_type(env, e)
         _        => typed(env, t_any())
@@ -290,6 +291,39 @@ ternary_type(env: Env, e: Expr) -> Typed {
     other = type_in(then.env, e.children.get(2))
 
     typed(joined(other.env, then.ty, other.ty), then.ty)
+}
+
+method_type(env: Env, e: Expr) -> Typed {
+    recv = type_in(env, e.children.get(0))
+    walked = walk_args(recv.env, e.children, 1)
+
+    typed(walked, method_result(e.text, resolve(walked.infer, recv.ty)))
+}
+
+method_result(name: str, recv: Ty) -> Ty {
+    if name == "length" || name == "count" || name == "index_of" {
+        t_int()
+    } else if name == "at" {
+        t_int()
+    } else if name == "join" {
+        t_str()
+    } else if name == "slice" || name == "push" {
+        recv
+    } else if name == "get" {
+        element_of(recv)
+    } else {
+        t_any()
+    }
+}
+
+element_of(t: Ty) -> Ty {
+    if t.kind == KStr {
+        t_int()
+    } else if t.kind == KCon && t.name == "Array" && t.args.length() == 1 {
+        t.args.get(0)
+    } else {
+        t_any()
+    }
 }
 
 with_type(env: Env, e: Expr) -> Typed {

@@ -175,3 +175,42 @@ test_a_variant_pattern_is_not_touched_by_the_string_rule() {
     assert(rust_of(Tagged).index_of("as_str()") < 0,
            "a sum is not a string, so it is not sliced")
 }
+
+Cat = "join(a: int[], b: int[]) -> int[] => a ++ b"
+
+Span = "span(cs: str[], i: int, j: int) -> str => cs.slice(i, j).join(\"\")"
+
+Find = "at(xs: int[], v: int) -> int => xs.index_of(v)"
+
+Grow = "add(xs: int[], v: int) -> int[] => xs.push(v)"
+
+test_two_arrays_concatenate_as_lists_not_as_strings() {
+    assert(annotated_c(Cat).index_of("maca_list_cat(a, b)") >= 0,
+           "C joins the two blocks")
+    assert(annotated_c(Cat).index_of("maca_cat(a, b)") < 0,
+           "never through the string concat")
+    assert(annotated_rust(Cat).index_of("[a, b].concat()") >= 0,
+           "Rust concatenates the vectors")
+}
+
+test_a_slice_and_a_join_lower_for_a_list() {
+    assert(annotated_c(Span).index_of("maca_list_slice(cs, i, j)") >= 0,
+           "the scanner's own span")
+    assert(annotated_c(Span).index_of("maca_list_join(") >= 0,
+           "and the join that turns it back into text")
+}
+
+test_index_of_picks_a_list_or_a_string() {
+    assert(annotated_c(Find).index_of("maca_list_index_of(xs,") >= 0,
+           "a list scans its cells")
+    assert(annotated_c("at(s: str, n: str) -> int => s.index_of(n)")
+               .index_of("maca_str_index_of(s, n)") >= 0,
+           "a string looks for a substring")
+}
+
+test_push_appends_one_cell() {
+    assert(annotated_c(Grow).index_of("maca_list_cat(xs, maca_listv(1,") >= 0,
+           "one more cell on the end")
+    assert(annotated_rust(Grow).index_of("[xs, vec![v]].concat()") >= 0,
+           "the same in Rust")
+}

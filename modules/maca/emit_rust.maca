@@ -70,6 +70,17 @@ remit_method(e: Expr) -> str {
         "(({recv}).as_bytes()[({idx}) as usize] as i64)"
     } else if e.text == "get" {
         "{recv}[({remit_expr(e.children.get(1))}) as usize]"
+    } else if e.text == "slice" && rlist(e.children.get(0).ty) {
+        lo = remit_expr(e.children.get(1))
+        hi = remit_expr(e.children.get(2))
+        "{recv}[({lo}) as usize..({hi}) as usize].to_vec()"
+    } else if e.text == "index_of" {
+        "({recv}).iter().position(|v| *v == {remit_expr(e.children.get(1))})"
+            ++ ".map(|i| i as i64).unwrap_or(-1)"
+    } else if e.text == "join" {
+        "({recv}).join(&{remit_expr(e.children.get(1))})"
+    } else if e.text == "push" {
+        "[{recv}, vec![{remit_expr(e.children.get(1))}]].concat()"
     } else {
         "{recv}.{e.text}({remit_args(e.children, 1)})"
     }
@@ -93,12 +104,19 @@ remit_binary(e: Expr) -> str {
     l = remit_expr(e.children.get(0))
     r = remit_expr(e.children.get(1))
 
-    if e.text == "++" {
+    on_list = rlist(e.children.get(0).ty) || rlist(e.children.get(1).ty)
+
+    if e.text == "++" && on_list {
+        "[{l}, {r}].concat()"
+    } else if e.text == "++" {
         "format!(\"{{}}{{}}\", {l}, {r})"
     } else {
         "({l} {e.text} {r})"
     }
 }
+
+rlist(ty: str) -> bool =>
+    ty.length() > 2 && ty.slice(ty.length() - 2, ty.length()) == "[]"
 
 remit_arms(cs: Expr[], i: int) -> str {
     if i + 1 >= cs.length() {
