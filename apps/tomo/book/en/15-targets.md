@@ -1,9 +1,8 @@
 # Where a Program Lands
 
 The same source compiles to a native binary, a browser page, the JVM, Rust, a
-microcontroller, and a machine's configuration. Which one you get is a flag.
-There is no `#ifdef`, no per-target subset of the language and no separate
-standard library.
+microcontroller, and a machine's configuration. Which one you get is a flag: no
+`#ifdef`, no per-target subset, no separate standard library.
 
 ## Six flags
 
@@ -18,14 +17,6 @@ maca build app.maca --target nix           # a machine's configuration
 
 ## Native is the one to reach for
 
-With no flag, Maca compiles through C and links a static binary: no runtime to
-ship, no interpreter to start, no collector to pause. The generated C goes to
-whatever compiler your system has.
-
-The question only comes up when something outside the program dictates the
-answer: a browser, a chip, a Java API, a library that would take a month to
-port.
-
 ## The others exist to reach something
 
 | Target | Reaches |
@@ -37,11 +28,9 @@ port.
 | `nix` | the machine the binary runs on |
 
 Each is on the list because it reaches an ecosystem Maca would otherwise have to
-reimplement.
-
-The one people ask for and don't get is BEAM. It would be the first backend
-added for elegance rather than reach; [colorblind async](13-colorblind-async.md)
-already runs on real threads in the C runtime.
+reimplement. The one people ask for and don't get is BEAM: it would be the first
+backend added for elegance rather than reach, and
+[colorblind async](13-colorblind-async.md) already runs on real threads.
 
 ## Try it
 
@@ -50,14 +39,11 @@ maca build hello.maca -o hello
 maca build hello.maca --target rust -o hello.rs
 ```
 
-The second is Rust source you can read. Nothing in `hello.maca` changed.
-
 ## Where the full answer is
 
-[Targets](a10-targets.md) in the reference has every flag, the MMIO vocabulary
-the embedded target adds, the C ABI the native halves agree on, and the exact
-list of what each target **refuses**. A target that cannot honour something says
-so at compile time rather than emitting code that quietly does nothing.
+[Targets](a10-targets.md) has every flag, the MMIO vocabulary the embedded
+target adds, the C ABI the native halves agree on, and the exact list of what
+each target **refuses** at compile time.
 
 The UI syntax the `js` target brings to life is
 [the previous chapter](15-ui.md); the Nix output is

@@ -1,7 +1,7 @@
 # Diagnostics
 
-Every diagnostic the checker emits, what it means, and what to do about it. Six
-kinds, plus the failures that come from further down the pipeline.
+Every diagnostic the checker emits, plus the failures that come from further
+down the pipeline.
 
 ## TypeMismatch
 
@@ -26,8 +26,8 @@ TypeMismatch: ternary branches disagree: type mismatch: expected int, found str
 ```
 
 `if` and `match` are expressions, so their branches have to agree even when you
-were treating the whole thing as a statement. `c ? continue : 0` fails for this
-reason, because `continue` has no value.
+were treating the whole thing as a statement. `c ? continue : 0` fails this way,
+because `continue` has no value.
 
 **Record fields**: a literal names every field the record declares, and no field
 it doesn't:
@@ -37,24 +37,16 @@ TypeMismatch: `Config` is missing field(s): port, title
 TypeMismatch: `Config` has no field `titel`; did you mean `title`?
 ```
 
-A missing field would otherwise be a silent zero, and a misspelt one is worse,
-because the value goes nowhere and the field it was meant for stays empty.
-`base with { f = v }` is the update form and is deliberately partial; only a
-construction is checked.
-
-The anonymous spelling owes the same two things, and the message names the
-binding rather than the type:
+The anonymous spelling owes the same two things, and names the binding rather
+than the type ([The Type System](a6-types.md) is where they meet):
 
 ```
 TypeMismatch: in `p`: record is missing field `y`
 TypeMismatch: in `p`: record has unexpected field `z`
 ```
 
-A record literal is otherwise open. [The Type System](a6-types.md) is where the
-named and anonymous spellings meet.
-
 **Which side is which.** `expected` is always the type the code *declares* and
-`found` is the value that arrived. A pair the other way round is a compiler bug.
+`found` is the value that arrived.
 
 ## NonExhaustive
 
@@ -64,8 +56,7 @@ A `match` doesn't cover every variant.
 NonExhaustive: match on `Color` is not exhaustive; missing: Blue
 ```
 
-Add the arm, or add `_` if you mean "everything else, forever". Prefer the arm:
-`_` opts out of the main reason to use a sum type.
+Add the arm, or `_` if you mean "everything else, forever". Prefer the arm.
 
 ## Immutable
 
@@ -77,42 +68,38 @@ Immutable: cannot reassign constant `Limit`; declare it mutable with
 ```
 
 Three things make a binding constant: `const`, a trailing `as const`, and a
-**Capitalized** name. `Total = 0` is a constant because of the capital letter.
-`maca lint` nudges toward writing `const` explicitly.
+**Capitalized** name, so `Total = 0` is a constant. `maca lint` nudges toward
+writing `const` explicitly.
 
 ## UndefinedName
 
-A name that is defined nowhere: not a local, not a function, not an import, not
-a builtin.
+A name defined nowhere: not a local, not a function, not an import, not a
+builtin.
 
 ```
 UndefinedName: call to undefined function `helprr`
 ```
 
 It applies to lowercase names in call position; capitalised names are
-constructors, and UFCS method calls stay gradual.
-
-It also covers the keywords Maca doesn't have:
+constructors, and UFCS method calls stay gradual. It also covers the keywords
+Maca doesn't have:
 
 ```
 UndefinedName: `return`: a function's last expression is its value, so drop
 the `return`
 ```
 
-Each of those leads with the form that works and mentions the missing word
-second. See [Keywords](a1-keywords.md) for the full list.
-
-And it covers a capitalised name in a **pattern**:
+Each leads with the form that works. See [Keywords](a1-keywords.md) for the full
+list. It also covers a capitalised name in a **pattern**:
 
 ```
 UndefinedName: `Busi` is capitalized, so it is a constructor, and nothing
 declares one by that name: did you mean `Busy`?
 ```
 
-In a pattern the two conventions have to be told apart: `Busy` matches the
-variant, `busy` binds whatever was matched. A misspelt variant is a pattern that
-matches *everything*, silently, and the arms below it become unreachable while
-`match` still looks exhaustive.
+In a pattern, `Busy` matches the variant and `busy` binds whatever was matched.
+A misspelt variant matches *everything*, silently, and the arms below it become
+unreachable while `match` still looks exhaustive.
 
 ## UnknownOption
 
@@ -123,14 +110,13 @@ know.
 UnknownOption: unknown NixOS option namespace `servicez`
 ```
 
-The roots it knows are the NixOS ones (`networking`, `services`, `system`,
-`users`, `environment`, `programs`, `boot`, `hardware`, `security`, `nix`,
-`fonts` and their siblings), plus any local binding in the file.
+It knows the NixOS roots (`networking`, `services`, `system`, `users`,
+`environment`, `programs`, `boot`, `hardware`, `security`, `nix`, `fonts` and
+their siblings), plus any local binding in the file.
 
-The namespace is checked, the leaf is not. `servicez.nginx.enable` is caught
-here; `services.nginx.enabl` goes through to Nix, which rejects it at evaluation
-time with its own message. `maca dev` suppresses this diagnostic entirely,
-because `dev.*` is not a NixOS namespace at all.
+The namespace is checked, the leaf is not: `servicez.nginx.enable` is caught
+here, and `services.nginx.enabl` goes through to Nix. `maca dev` suppresses this
+diagnostic, because `dev.*` is not a NixOS namespace.
 
 ## EffectInConfig
 
@@ -141,20 +127,18 @@ EffectInConfig: config must be pure but this uses effect(s): async
 ```
 
 The message names every row it found, so a configuration that both prints and
-sleeps reports `io, async`.
+sleeps reports `io, async`. Printing, `fail`, `spawn`, `await`, `sleep_ms`, and
+any call through a `net`/`http`/`socket` or `os`/`process` receiver are
+rejected.
 
-Printing, `fail`, `spawn`, `await`, `sleep_ms`, and any call through a
-`net`/`http`/`socket` or `os`/`process` receiver are rejected.
-
-The rows are matched on the *shape* of the call, a known builtin name or a
-method on one of those receivers, so `file.read(p)` is caught and the free
-function `read_file(p)` is not. The rows and what introduces each are
+The rows are matched on the *shape* of the call, so `file.read(p)` is caught and
+the free function `read_file(p)` is not. The rows are
 [Effects and Async](a7-effects.md).
 
 ## Import resolution
 
-These come from before the checker, when the compiler is working out which file
-each `import` names and inlining it.
+These come from before the checker, while it works out which file each `import`
+names.
 
 **An ambiguous import** names two files, and refuses rather than picking one:
 
@@ -167,10 +151,9 @@ apps/x/main.maca: ambiguous import `bench/stat`: it names two files:
   one path names it.
 ```
 
-The written path is tried before the search roots, so a directory beside your
-source that shares a package's name shadows the package. Both candidates are
-real files with the same name, so one is being compiled and the other silently
-is not. Rename the directory, or write a path that names one file.
+The written path is tried before the search roots, so a directory sharing a
+package's name shadows the package, and one of the two files is silently not
+compiled.
 
 **A name defined by more than one module** cannot be inlined, because everything
 becomes one translation unit:
@@ -185,10 +168,6 @@ is inlined into one:
   the program.
 ```
 
-Two files that each keep a *private* helper of the same name are fine: the
-compiler qualifies those with the module's own name. This fires when both are
-API.
-
 **A reference nothing settles** is the same clash seen from a third file:
 
 ```
@@ -200,12 +179,8 @@ reaches, and every module is inlined into one:
   `import { render } from …`, or rename the others.
 ```
 
-There, two modules answer for the name; here, a *third* module writes it and
-nothing in that file says which it meant. A selective import is the answer
-either way.
-
 **An import that resolves to no file** is an error too, including a single-word
-selective import, because there is nothing to select from a builtin:
+selective import:
 
 ```
 apps/x/main.maca: no module `std/str`: `std/str.maca` is not beside this file
@@ -221,7 +196,7 @@ lex (28, 28): string literal spans a line; write `\n`, or use a raw
 """…""" string. (A literal brace is `\{` or `{{`.)
 ```
 
-An ambiguous `=> { … }` is one of these. A record literal and a block read the
+An ambiguous `=> { … }` is one of these: a record literal and a block read the
 same when every entry is a distinct `name = value` and only newlines separate
 them, so neither reading is taken:
 
@@ -232,14 +207,13 @@ block. Write `Name { … }` for the record, or drop the `=>` for the block
 
 [Syntax](a5-syntax.md) has the full rule.
 
-**Backend refusals**: valid code that a particular target cannot emit:
+**Backend refusals**: valid code that a particular target cannot emit, because
+an event handler has nowhere to attach when elements render to a string
+([the UI syntax](a11-ui.md)):
 
 ```
 `on:click` needs a live DOM; build this with `--target js`
 ```
-
-An event handler has nowhere to attach when elements render to a string
-([the UI syntax](a11-ui.md)). Each target refuses what it cannot honour:
 
 | Target | Refuses |
 |---|---|
@@ -249,5 +223,4 @@ An event handler has nowhere to attach when elements render to a string
 
 **C compiler errors** should not happen, and when they do it is a compiler bug
 worth reporting. The method set of a `str` or a `T[]` is closed, so a misspelt
-method is caught before the linker, with a suggestion where there is a near
-miss. Method calls on an `any` receiver stay gradual.
+method is caught before the linker. Calls on an `any` receiver stay gradual.

@@ -13,16 +13,13 @@ boundaries.
 ## Strings
 
 Any `{expr}` inside a `"…"` string is evaluated and spliced in. A **literal**
-brace is escaped, either by doubling it or with a backslash:
+brace is doubled or backslash-escaped:
 
 ```maca
 info("n = {n}")        // interpolates n
 info("{{}}")           // prints {}
 info("\{\}")           // the same, spelled with escapes
 ```
-
-Getting this wrong is a compile error: `"{"` starts an interpolation the closing
-quote never ends.
 
 ### Format specs
 
@@ -37,19 +34,16 @@ info("{n:08}")         // "00000042"  (zero-fill)
 info("{pi:>10.3}")     // "     3.142" (both)
 ```
 
-The spec is `[align][0][width][.precision]`, every part optional. A spec is
-spelling for calls you could write yourself (`{x:.2}` is `x.fixed(2)`, `{x:>8}`
-is `str(x).pad_start(8, " ")`), so the same specs work on every target.
-
-A ternary inside an interpolation still works, because a ternary is written
-*spaced* (`c ? x : y`) and a format spec *attached* (`x:>8`):
+`[align][0][width][.precision]`, every part optional. A spec is spelling for
+calls you could write yourself (`{x:.2}` is `x.fixed(2)`, `{x:>8}` is
+`str(x).pad_start(8, " ")`), so it works on every target.
 
 ```maca
 info("{score >= 60 ? "pass" : "fail"}")
 ```
 
-A `"…"` string stays on one line. Write `\n` for a newline. A **raw** string
-spans lines and interpolates nothing, so braces inside it need no escaping:
+A `"…"` string stays on one line; write `\n` for a newline. A **raw** string
+spans lines and interpolates nothing:
 
 ```maca
 css = """
@@ -66,15 +60,14 @@ count = 0
 count = count + 1   // fine
 ```
 
-A `const`, an `as const`, or a **Capitalized** name binds a **constant**.
-Reassigning it is a compile error:
+A `const`, an `as const`, or a **Capitalized** name binds a **constant**:
 
 ```maca
 const Limit = 100
 Limit = 200         // error: cannot reassign a constant
 ```
 
-There is no `let`. Introducing a name and updating it use the same `=`.
+There is no `let`: introducing a name and updating it use the same `=`.
 
 ## Records
 
@@ -104,12 +97,9 @@ sides(s: Shape) -> int =>
     }
 ```
 
-`match` is exhaustive: leave a variant out and the compiler tells you.
-
 ## Lists
 
-A list holds many values of one type. The stdlib methods are UFCS, so you call
-them with `.`:
+The stdlib methods are UFCS, so you call them with `.`:
 
 ```maca
 xs = [10, 20, 30]
@@ -119,16 +109,14 @@ big     = xs.filter(n => n > 15)      // [20, 30]
 total   = xs.reduce(0, (a, b) => a + b)
 ```
 
-`n => n * 2` is a **lambda**: the same `=>` that gives a named function its
-body, with the name left off. [Closures and Control Flow](11-closures.md) is
-where it gets a chapter.
+`n => n * 2` is a **lambda**: the same `=>` a named function uses, with the name
+left off. [Closures and Control Flow](11-closures.md) is its chapter.
 
 ## Type annotations are inference hints
 
 You annotate function parameters and returns; inside a body, types flow on their
-own. When Maca meets something it cannot know, such as an unknown stdlib value
-or a foreign call, it falls back to a gradual `any` rather than rejecting your
-program.
+own. What Maca cannot know, such as a foreign call, falls back to a gradual
+`any` rather than being rejected.
 
 ## Run it
 
@@ -136,11 +124,7 @@ program.
 maca run apps/examples/strings.maca
 ```
 
-Every string method and every format spec above, in one program that prints what
-each produces.
-
 ## Where the full answer is
 
-[Syntax](a5-syntax.md) in the reference is every form the language has, in
-tables: declarations, expressions, statements, patterns, the string grammar, and
-the rule for when an expression continues onto the next line.
+[Syntax](a5-syntax.md) has every form in tables: declarations, expressions,
+statements, patterns, the string grammar, and the line-continuation rule.

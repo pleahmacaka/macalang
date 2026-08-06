@@ -1,8 +1,7 @@
 # A First Program
 
-One program end to end: a word tally that takes a sentence and reports how often
-each word appears. It lives at `apps/examples/wordcount.maca`, and the test
-suite runs it.
+One program end to end: a word tally that reports how often each word appears in
+a sentence. It lives at `apps/examples/wordcount.maca`.
 
 ## Splitting the text
 
@@ -11,14 +10,11 @@ words(text: str) -> str[] =>
     text.lower().replace(".", " ").replace(",", " ").split(" ")
 ```
 
-`str[]` is a list of strings. Maca writes the element type first and the
-brackets after, like C, not `List<str>`. There are no angle brackets in the
-language at all.
+`str[]` is a list of strings: element type first, brackets after, like C. There
+are no angle brackets in the language at all.
 
-`text.lower()` is a method call on a string, but `str` is a primitive with no
-methods of its own. This is **UFCS**: uniform function call syntax. `x.f(y)`
-means `f(x, y)`, so any function whose first parameter fits can be called this
-way.
+`text.lower()` is **UFCS**, uniform function call syntax: `x.f(y)` means
+`f(x, y)`, so any function whose first parameter fits can be called this way.
 
 The body is an **arrow body**: `=>` followed by a single expression, which is
 the function's result. There is no `return` in Maca.
@@ -32,9 +28,8 @@ Tally = {
 }
 ```
 
-That is a record: Maca's struct. `Name = { … }` declares the type; inside,
-`field: type`. **`:` introduces a type, `=` introduces a value**, everywhere in
-the language.
+A record, Maca's struct. **`:` introduces a type, `=` introduces a value**,
+everywhere in the language.
 
 Recording a sighting of one word:
 
@@ -47,12 +42,9 @@ bump(ts: Tally[], w: str) -> Tally[] {
 }
 ```
 
-A **block body** (braces instead of `=>`), because it needs a local binding
-first. The last expression in the block is the value.
-
-`at = find(...)` binds a local. There is no `let`. `c ? a : b` is the ternary,
-and it is an expression. `++` concatenates: lists here, strings elsewhere.
-`Tally { word = w, count = 1 }` builds a record.
+A **block body**, because it needs a local binding first. The last expression in
+the block is the value. `at = find(...)` binds a local; there is no `let`.
+`c ? a : b` is the ternary, and it is an expression. `++` concatenates.
 
 The two helpers:
 
@@ -66,8 +58,8 @@ replace_at(ts: Tally[], at: int, t: Tally) -> Tally[] {
 }
 ```
 
-`find` is recursive, and carries its own cursor `i` as a parameter. You will see
-this shape constantly. `replace_at` assigns through an index with `ts[at] = t`.
+`find` carries its own cursor `i` as a parameter, a shape you will see
+constantly. `replace_at` assigns through an index.
 
 ## Folding over the words
 
@@ -78,8 +70,8 @@ tally(ws: str[], i: int, acc: Tally[]) -> Tally[] =>
         : tally(ws, i + 1, ws.get(i).length() == 0 ? acc : bump(acc, ws.get(i)))
 ```
 
-An accumulator threaded through a recursive call: the standard fold. Splitting
-on spaces leaves empty strings behind, so empty words are skipped.
+An accumulator threaded through a recursive call. Splitting on spaces leaves
+empty strings behind, so empty words are skipped.
 
 ## Printing
 
@@ -93,10 +85,9 @@ show(ts: Tally[], i: int) -> int {
 }
 ```
 
-The string is **interpolated**: `{expr}` is evaluated and spliced in. `{…:<8}`
-is a format spec (left-align in eight columns).
-[The next chapter](03-common-concepts.md) covers the full spec grammar. `if`
-here is a statement whose value is discarded; the block's value is the `0`.
+`{expr}` is evaluated and spliced in; `{…:<8}` is a format spec, left-align in
+eight columns ([the next chapter](03-common-concepts.md) has the grammar). `if`
+here is a statement whose value is discarded.
 
 ## Main
 
@@ -129,12 +120,11 @@ dog      1
 end      1
 ```
 
-Behind `maca run`, the program was parsed, type-checked, lowered to C, compiled
-by a real C compiler, and the resulting binary cached. A second run of an
-unchanged program skips all of it.
+Behind `maca run`: parsed, type-checked, lowered to C, compiled by a real C
+compiler, and the binary cached. A second run of an unchanged program skips all
+of it.
 
 ## What was not explained
 
 Why `Tally` is a record rather than a class, what happens to the memory when a
-list is rebuilt, why there is no `return`, how `str[]` gets its methods. Those
-are the next chapters.
+list is rebuilt, how `str[]` gets its methods. Those are the next chapters.

@@ -1,8 +1,7 @@
 # Colorblind Async
 
-Most languages split functions into two colors, synchronous and `async`, and the
-colors are contagious. Maca does not have this split. **There is no `async`
-keyword.**
+Most languages split functions into two contagious colors, synchronous and
+`async`. **There is no `async` keyword** in Maca.
 
 ## Async is an inferred effect
 
@@ -12,7 +11,7 @@ Three operations introduce it:
 - `await fut` suspends until the future resolves, and evaluates to its value;
 - `sleep_ms(ms)` is a suspension point.
 
-A function that uses any of them *is* async, with no annotation and no color:
+A function that uses any of them *is* async, with no annotation:
 
 ```maca
 fetch_both(a: str, b: str) -> str {
@@ -22,26 +21,18 @@ fetch_both(a: str, b: str) -> str {
 }
 ```
 
-`fetch_both` never declares itself async, and a plain function calling it does
-not have to change color either.
-
 ## Why this matters
 
-Making a leaf function concurrent doesn't force a rewrite of every caller. The
-same code runs whether or not it happens to suspend, and `await a + await b`
-groups as `(await a) + (await b)`, because `await` is an ordinary prefix
-operator.
+Making a leaf function concurrent doesn't force a rewrite of every caller. And
+`await a + await b` groups as `(await a) + (await b)`, because `await` is an
+ordinary prefix operator.
 
 ## It compiles to real concurrency
 
-On the native path, `spawn`/`await`/`sleep_ms` lower to pthread-backed futures
-in the runtime; an async function is an ordinary function with no ABI change. In
-the browser the same operations map onto the event loop.
-
 ## Effects are checked
 
-In *config mode* (the Nix target), async is impure, so `await`/`spawn`/
-`sleep_ms` are a compile error: infrastructure descriptions must be pure.
+In *config mode*, async is impure, so `await`/`spawn`/`sleep_ms` are a compile
+error: infrastructure descriptions must be pure.
 
 ## Run it
 
@@ -65,13 +56,12 @@ main() -> int {
 }
 ```
 
-Wall time is about 50ms, not 100. Take the two `spawn`s out and call
-`slow_double` directly: same output, twice the wall time, and not one signature
-had to change.
+Wall time is about 50ms, not 100. Take the two `spawn`s out: same output, twice
+the wall time, and not one signature had to change.
 
 ## Where the full answer is
 
-Async is one row of a five-row effect system. [Effects and Async](a7-effects.md)
-in the reference has all five, what introduces each, what `try` *removes*, the
-precedence of `await` and `spawn`, and what a suspension point becomes on each
-target.
+Async is one row of a five-row effect system.
+[Effects and Async](a7-effects.md) has all five, what introduces each, what
+`try` *removes*, the precedence of `await` and `spawn`, and what a suspension
+point becomes on each target.

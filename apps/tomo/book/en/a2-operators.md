@@ -1,7 +1,7 @@
 # Operators and Symbols
 
-Every operator, what it does, and where it binds. The lexical rules that decide
-when two of them are the same character are in [Syntax](a5-syntax.md).
+Every operator, what it does, and where it binds. The lexical rules are in
+[Syntax](a5-syntax.md).
 
 ## Arithmetic
 
@@ -20,8 +20,6 @@ when two of them are the same character are in [Syntax](a5-syntax.md).
 | `&&` `\|\|` | boolean and/or |
 | `!x` | negation |
 
-A long condition can break across lines either way:
-
 ```maca
 ok = a > 0 &&
     b > 0
@@ -30,11 +28,11 @@ fine = a > 0
     && b > 0
 ```
 
-Six may *begin* a line (`&&`, `||`, `++`, `.`, `?` and `:`), because none of
-them can begin an expression. `+`, `*` and the comparisons cannot, and a line
-that starts with one is a parse error. `-` is the trap: it can begin an
-expression, so a leading `-` starts a new statement instead of continuing the
-one above, and nothing warns. [Syntax](a5-syntax.md) has the whole rule.
+A long condition can break either way. Six operators may *begin* a line (`&&`,
+`||`, `++`, `.`, `?` and `:`), because none can begin an expression; `+`, `*`
+and the comparisons cannot, so a line starting with one is a parse error. `-` is
+the trap: it can begin an expression, so a leading `-` starts a new statement and
+nothing warns. [Syntax](a5-syntax.md) has the whole rule.
 
 ## Bitwise
 
@@ -48,8 +46,6 @@ one above, and nothing warns. [Syntax](a5-syntax.md) has the whole rule.
 |---|---|
 | `++` | joins two strings, or two lists |
 
-`+` does not concatenate, so `"1" ++ "2"` and `1 + 2` can never be confused.
-
 ## Control
 
 | Form | Meaning |
@@ -59,11 +55,10 @@ one above, and nothing warns. [Syntax](a5-syntax.md) has the whole rule.
 | `lo..hi` | half-open range, `hi` excluded |
 | `x, ..rest` | rest pattern in a `match` |
 
-The spaced-versus-attached distinction appears three times. A spaced `?` is a
-ternary; an attached one is error propagation. A spaced `:` is a ternary's
-second half; an attached one, inside an interpolation, is a format spec. A
-spaced `-` subtracts while an attached one between two word characters is part
-of the name: `data-id` is one identifier, `a - b` is two operands.
+Spaced versus attached appears three times: a spaced `?` is a ternary and an
+attached one propagates a failure; a spaced `:` is a ternary's second half and an
+attached one inside an interpolation is a format spec; a spaced `-` subtracts
+and an attached one is part of a name, so `data-id` is one identifier.
 
 ## Access
 
@@ -96,9 +91,6 @@ of the name: `data-id` is one identifier, `a - b` is two operands.
 | `{x:^8}` | `"ok"` | `   ok   ` |
 | `{x:08}` | `42` | `00000042` |
 | `{x:>10.3}` | `3.14159` | `     3.142` |
-
-A spec is sugar: `{x:.2}` is `x.fixed(2)` and `{x:>8}` is
-`str(x).pad_start(8, " ")`, so every backend supports them identically.
 
 ## Declarations
 
@@ -133,5 +125,5 @@ A spec is sugar: `{x:.2}` is `x.fixed(2)` and `{x:>8}` is
 9. unary `-` `!` `await` `spawn`
 10. call, index, field, UFCS
 
-`await` and `spawn` binding at unary precedence means `await a + await b` is
+`await` and `spawn` bind at unary precedence, so `await a + await b` is
 `(await a) + (await b)`.

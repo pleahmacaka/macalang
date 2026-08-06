@@ -1,7 +1,8 @@
 # The Standard Library
 
-Most of Maca's "standard library" is compiler and runtime builtins rather than
-Maca source, so it is available on every target.
+Most of the standard library is compiler and runtime builtins rather than Maca
+source, so it is available on every target. The output names come from syslog
+levels; `warn` and below go to stderr.
 
 ## Output
 
@@ -10,8 +11,6 @@ Maca source, so it is available on every target.
 | `print(s)` | write to stdout, no newline |
 | `info(s)` | write a line to stdout |
 | `err(s)` | write a line to stderr |
-
-The names come from syslog levels; `warn` and below go to stderr.
 
 ## Conversion
 
@@ -23,8 +22,6 @@ The names come from syslog levels; `warn` and below go to stderr.
 | `len(x)` | length of a list or string |
 
 ## Strings
-
-Called as methods through UFCS: `s.trim()` is `trim(s)`.
 
 | Method | Result |
 |---|---|
@@ -85,10 +82,8 @@ info("{counts.get("apple", 0)}")     // 3
 info("{counts.get("kiwi", 0)}")      // 0, a miss gives the default
 ```
 
-Keys are `str` and only `str`; an integer key is `str(n)` away. `keys()` comes
-back sorted, so a program that walks a map twice produces the same output twice.
-`get` takes a default rather than returning something empty, because the
-language has no null to return.
+Keys are `str` only; an integer key is `str(n)` away. `keys()` comes back
+sorted. `get` takes a default because the language has no null to return.
 
 ## Math
 
@@ -113,10 +108,8 @@ language has no null to return.
 | `copy_bytes(src, dst)` | byte-for-byte copy |
 
 A missing file's size is `-1` rather than `0`, so an empty file and an absent
-one are distinguishable without a second call.
-
-`copy_bytes` exists because `write_file(dst, read_file(src))` stops at the first
-NUL, which is silently truncating for a wasm module or an image.
+one are distinguishable. `copy_bytes` exists because
+`write_file(dst, read_file(src))` stops at the first NUL.
 
 ## Processes
 
@@ -128,19 +121,16 @@ NUL, which is silently truncating for a wasm module or an image.
 | `cwd()` | the working directory |
 | `chdir(path)` | change it |
 
-There is no shell in between. `args` is a `str[]`, and each element is one
-argument however it is spelled:
+There is no shell in between: each element of `args` is one argument, however it
+is spelled:
 
 ```maca
 exec("cp", ["my notes.txt", dest])   // one file, not two
 exec("echo", ["$HOME"])              // prints $HOME, does not expand it
 ```
 
-`exec` searches `PATH` the way a shell would; a program that isn't there exits
-`127`.
-
-`std/proc` builds the usual conveniences on top: `run` (stop the program if the
-step fails), `try_run`, `run_in` (in a directory, and back again), `output`
+`exec` searches `PATH`; a program that isn't there exits `127`. `std/proc` adds
+`run` (stop the program if the step fails), `try_run`, `run_in`, `output`
 (captured and trimmed), `which`/`have`, `env_or`.
 
 ## Standard input
@@ -150,9 +140,6 @@ step fails), `try_run`, `run_in` (in a directory, and back again), `output`
 | `read_line()` | one line, newline stripped |
 | `at_eof()` | is input exhausted? |
 | `read_stdin()` | all of it |
-
-`at_eof` exists because a blank line and end-of-input both read as the empty
-string:
 
 ```maca
 while !at_eof() {
@@ -169,8 +156,7 @@ while !at_eof() {
 | `now_iso()` | `"YYYY-MM-DDTHH:MM:SSZ"` |
 | `format_time(ms, fmt)` | `strftime` over the instant |
 
-Everything is UTC. A program that wants local time can format the epoch
-milliseconds itself.
+Everything is UTC.
 
 ## Concurrency
 
@@ -196,10 +182,9 @@ See [The UI Syntax](a11-ui.md).
 
 ## JSON
 
-`import std/json` brings in two halves. `encode` and `decode` are the typed
-pair: the compiler writes them from the record and sum types the program
-declares. The rest of the module reads and writes JSON as text, for the shapes
-no type describes.
+`import std/json` brings in two halves. `encode` and `decode` are the typed pair,
+written by the compiler from the record and sum types the program declares; the
+rest reads and writes JSON as text.
 
 ```maca
 import std/json
@@ -216,23 +201,16 @@ load(text: str) -> Config {
 }
 ```
 
-`encode(value)` takes the value's static type and writes the JSON for it: a
-record becomes an object with one member per field, **in the order the record
-declares them**; a list becomes an array; `int`, `float`, `bool` and `str`
-become themselves.
-
-`decode(text)` reads into whatever the binding says, so the type has to be
-written down: `c: Config = decode(text)`. A bare `decode(text)` with nothing to
-read into is a build error.
+`encode(value)` writes the JSON for the value's static type: a record becomes an
+object with one member per field, **in the order the record declares them**; a
+list becomes an array. `decode(text)` reads into whatever the binding says, so
+the type has to be written down. A bare `decode(text)` is a build error.
 
 ### How a sum maps
 
 **A variant is its own name in lower case.** `Layout = List | Grid` is stored as
-`"list"` and `"grid"`, and read back the same way.
-
-A variant that carries a payload has no JSON form beyond its name, so a type
-that round-trips through JSON should be an enumeration and keep its data in
-record fields.
+`"list"` and `"grid"`. A variant carrying a payload has no JSON form beyond its
+name, so a type that round-trips should be an enumeration.
 
 ### What decode says when the text does not match
 
@@ -253,8 +231,7 @@ if why != "" {
 | `{"layout": "table", …}` | ``field `layout`: "table" is not one of list, grid`` |
 | `[1, 2, 3]` | ``` `Config`: expected an object, got a list ``` |
 
-A field inside a nested record or a list element reports under its own name, so
-a link missing `url` says `url` and not `links`.
+A field inside a nested record or list element reports under its own name.
 
 ### The text half
 
@@ -286,11 +263,9 @@ See [Errors](09-errors.md).
 | `failures()` | how many assertions have failed |
 
 A failing assertion reports and keeps going. `failures()` is the number a test
-function returns, the same "0 or non-zero" contract as [Testing](12-testing.md).
+function returns; see [Testing](12-testing.md).
 
 ## Regular expressions
 
-There are none. `contains`, `starts_with`, `ends_with`, `index_of`, `split` and
-the character classes cover what a program in this language reaches for.
-`apps/selfhost/lexer.maca` scans the whole language with `chars`, `at` and three
-predicates. Reach for `split` and a loop.
+There are none. `apps/selfhost/lexer.maca` scans the whole language with
+`chars`, `at` and three predicates. Reach for `split` and a loop.

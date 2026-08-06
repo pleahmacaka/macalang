@@ -27,8 +27,7 @@ Apple 실리콘 맥이면 `macos-aarch64`, ARM 서버면 `linux-aarch64`, Window
 환경 변수 `PREFIX`와 `MACA_VERSION`도 같은 둘을 정합니다.
 
 마지막으로 표준 라이브러리를 import하는 작은 프로그램을 컴파일하고 실행합니다.
-설치한 컴파일러가 실제로 무언가를 컴파일하기 전까지는 성공했다고 말하지
-않습니다.
+그 전까지는 성공했다고 말하지 않습니다.
 
 ## GitHub Actions에서
 
@@ -37,21 +36,18 @@ Apple 실리콘 맥이면 `macos-aarch64`, ARM 서버면 `linux-aarch64`, Window
 - run: maca build
 ```
 
-러너에 맞는 설치기를 받아 실행한 뒤 `maca install`을 돌립니다. `maca.toml`이
-이름을 댄 것들을 `maca.lock`이 고정한 버전으로 가져옵니다.
+러너에 맞는 설치기를 받아 실행한 뒤 `maca install`을 돌립니다.
 
 ## 그 밖에 필요한 것
 
-**C 컴파일러.** Maca는 C를 거쳐 컴파일되므로 `maca build`와 `maca run`이
-파이프라인 끝에서 `cc`나 `clang`을 부릅니다. macOS는 Xcode command line tools,
-Debian/Ubuntu는 `build-essential`, Fedora는 `gcc`입니다.
+**C 컴파일러.** `maca build`와 `maca run`이 파이프라인 끝에서 `cc`나 `clang`을
+부릅니다. macOS는 Xcode command line tools, Debian/Ubuntu는 `build-essential`,
+Fedora는 `gcc`입니다.
 
 **Nix는 두 가지에만.** `maca dev`와 Nix 타깃이 [Nix](https://nixos.org)를
-씁니다. Nix는 Windows 네이티브 빌드가 없어서, Windows에서는 `maca dev`가 WSL
-아래에서 돕니다.
+씁니다. Windows에서는 `maca dev`가 WSL 아래에서 돕니다.
 
-**Rust는 컴파일러를 직접 빌드할 때만.** 체크아웃에서 `cargo build`로 빌드하는
-경로만 Rust 툴체인이 필요합니다.
+**Rust는 컴파일러를 직접 빌드할 때만.**
 
 ## 잘 됐는지 확인하기
 
@@ -70,20 +66,15 @@ maca run hello.maca
 ```
 
 `Hello, World`가 찍히면 컴파일러, C 툴체인, 런타임이 모두 제자리에 있는
-것입니다. `maca run`이 파이프라인 전체를 거치므로 `--version`보다 나은 확인
-방법입니다.
+것입니다.
 
 ## 에디터 지원
 
-언어 서버는 이미 설치돼 있고, 에디터 쪽 설정만 남았습니다.
-
-**Zed**라면 저장소의 `apps/editor/zed-maca`에 확장이 있습니다. tree-sitter
-문법, 강조, 아웃라인, 언어 서버 연결이 되어 있습니다. *Extensions → Install Dev
-Extension*을 고르고 그 디렉터리를 지정하세요.
+**Zed**라면 저장소의 `apps/editor/zed-maca`에 확장이 있습니다.
+*Extensions → Install Dev Extension*을 고르고 그 디렉터리를 지정하세요.
 
 LSP를 말하는 다른 에디터라면 `*.maca` 파일에 대해 `maca-lsp` 바이너리를
-가리키면 됩니다. 진단, 호버, 정의로 이동, 참조 찾기, 문서 심볼, 시그니처
-도움말, 자동완성, 이름 변경, 포매팅을 제공합니다.
+가리키면 됩니다.
 
 ## 아무것도 설치하지 않고
 

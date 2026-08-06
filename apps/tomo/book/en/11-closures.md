@@ -4,8 +4,6 @@ A function in Maca is a value: it can be passed, returned, and written inline.
 
 ## Functions are values
 
-A top-level function referenced by name is a value:
-
 ```maca
 is_even(n: int) -> bool => n % 2 == 0
 evens = [1, 2, 3, 4].filter(is_even)   // [2, 4]
@@ -26,16 +24,16 @@ run_twice(f, x) => f(f(x))
 run_twice(n => n + 1, 40)              // 42
 ```
 
-A lambda infers its return type from its body, and can declare one instead:
+A lambda infers its return type, and can declare one instead:
 
 ```maca
 inc = (n) -> int => n + 1
 ```
 
-Parenthesise the parameters when you annotate. One parameter works either way;
-two do not, because `a, b -> int => …` has no way to say where the list ends.
-You need the annotation when the lambda must match a type the compiler cannot
-see for itself: implementing a Rust trait, in [Targets](a10-targets.md).
+Parenthesise the parameters when you annotate: `a, b -> int => …` has no way to
+say where the list ends. You need the annotation when the lambda must match a
+type the compiler cannot see, which is implementing a Rust trait
+([Targets](a10-targets.md)).
 
 A lambda body may be a block, the way a `match` arm's may:
 
@@ -55,7 +53,7 @@ Parenthesize when you meant the record: `(n) => ({ x = n })`.
 label = if score >= 60 { "pass" } else { "fail" }
 ```
 
-For the common two-way choice there is the spaced ternary:
+For a two-way choice there is the spaced ternary:
 
 ```maca
 label = score >= 60 ? "pass" : "fail"
@@ -63,7 +61,7 @@ label = score >= 60 ? "pass" : "fail"
 
 ## `match`
 
-`match` works on sum types, literals, and lists, and it is exhaustive:
+`match` works on sum types, literals and lists, and it is exhaustive:
 
 ```maca
 describe(xs: int[]) -> str =>
@@ -74,12 +72,9 @@ describe(xs: int[]) -> str =>
     }
 ```
 
-The brackets are optional: `x, ..rest` matches the same way.
-
 ## Loops
 
-`while` and `for` are statements. `for` walks a list, or a half-open integer
-range written with `..`:
+`while` and `for` are statements. `for` walks a list or a `..` range:
 
 ```maca
 sum_to(n: int) -> int {
@@ -104,12 +99,9 @@ countdown(start: int) -> int {
 }
 ```
 
-`break` and `continue` work as you expect. The Maca idiom leans on recursion and
-the list methods over explicit loops.
-
 ## Leaving early with `return`
 
-A guard at the top of a function wants to *stop*, and `return` is how to say so:
+A guard at the top of a function wants to *stop*:
 
 ```maca
 save(title: str) -> str {
@@ -125,8 +117,8 @@ save(title: str) -> str {
 }
 ```
 
-`return e` leaves a function that declares a result, and `e` is checked against
-that result type. A bare `return` leaves a function that declares none:
+`return e` leaves a function that declares a result, checked against that type.
+A bare `return` leaves a function that declares none:
 
 ```maca
 log_unless(quiet: bool, line: str) {
@@ -138,16 +130,14 @@ log_unless(quiet: bool, line: str) {
 }
 ```
 
-`return` is a **statement**. It goes on a line of its own, or as the tail of an
-`if`, `match`, `for` or `while` branch. Written where a value was wanted, the
-compiler says so by name:
+`return` is a **statement**: a line of its own, or the tail of an `if`, `match`,
+`for` or `while` branch. Written where a value was wanted:
 
 ```maca
 label = ok ? return 1 : 2     // rejected: this `return` stands inside an expression
 ```
 
-A lambda's body *is* its value, so write the value. Use `return` in a named
-function, and the value in a lambda.
+A lambda's body *is* its value, so write the value there.
 
 ## A function inside a function
 
@@ -179,12 +169,12 @@ board() -> str {
 }
 ```
 
-A local that any nested definition assigns is *shared* by all of them. One that
-none of them assigns is copied when the definition is made.
+A local that any nested definition assigns is *shared* by all of them; one that
+none assigns is copied when the definition is made.
 
-A nested definition is in scope from the line it is written onward, and not
-before, because a closure captures when it is made. Two consequences follow,
-each with its own diagnostic:
+A nested definition is in scope from where it is written, not before, because a
+closure captures when it is made. Two consequences, each with its own
+diagnostic:
 
 ```maca
 main() -> int {
@@ -198,12 +188,9 @@ main() -> int {
 }
 ```
 
-If you want either, lift the function to the top level.
-
-A nested definition can be passed, stored in a record field declared
-`(T) -> R`, and handed back to the caller. It keeps working after the call that
-made it returns: what it captured lives on the heap for as long as something can
-still reach it.
+A nested definition can be passed, stored in a record field declared `(T) -> R`,
+and handed back to the caller: what it captured lives on the heap for as long as
+something can reach it.
 
 ```maca
 Knob = { read: (int) -> int, write: (int) -> int }
@@ -223,13 +210,12 @@ knob(start: int) -> Knob {
 }
 ```
 
-Native C and the JS backend both lower this. The `rust`, `jvm` and `embedded`
-targets refuse it by name; see [Targets](a10-targets.md).
+Native C and the JS backend lower this; `rust`, `jvm` and `embedded` refuse it
+by name. See [Targets](a10-targets.md).
 
 ## Error propagation
 
-A fallible call is marked at the call site with a trailing `?`, which returns
-early on failure and unwraps on success:
+A trailing `?` returns early on failure and unwraps on success:
 
 ```maca
 config = read_file("app.toml")?      // propagate a failure to the caller
@@ -242,5 +228,5 @@ maca run apps/examples/lambda.maca
 ```
 
 Lambdas passed to list methods, a named function used as a value, and a closure
-that captures a local. All three compile to the same thing, a code pointer and a
-heap environment, which is why they are interchangeable at a call site.
+capturing a local. All three compile to a code pointer and a heap environment,
+which is why they are interchangeable at a call site.

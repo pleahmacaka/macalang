@@ -24,10 +24,8 @@ too_wide(line: str) -> bool =>
     line.length() > 80 && !line.trim().starts_with("//")
 ```
 
-Comments are exempt, because prose wraps differently from code. But run that
-over a real codebase and it fires on lines that are one long *string*, which
-cannot be rewrapped without changing what they mean. So the rule measures the
-line with its strings collapsed:
+Comments are exempt, but that also fires on a line that is one long *string*,
+which cannot be rewrapped. So the rule measures the line with strings collapsed:
 
 ```maca
 too_wide(line: str) -> bool =>
@@ -46,10 +44,6 @@ collapse(cs: str[], i: int, quoted: bool, acc: str) -> str =>
                 : collapse(cs, i + 1, quoted, quoted ? acc : acc ++ cs.get(i)))
 ```
 
-`collapse` is the shape you will write over and over in Maca: a recursive walk
-over `chars()` threading a cursor, a flag, and an accumulator. That change took
-the repository from 65 findings to 13, and all 13 were real.
-
 ## Collecting the complaints
 
 Each rule contributes a line of text, or nothing:
@@ -67,9 +61,6 @@ say(path: str, no: int, hit: bool, what: str) -> str =>
 at(path: str, no: int) -> str =>
     path ++ ":" ++ str(no) ++ ": "
 ```
-
-Building a report as a string, rather than printing as you go, keeps every
-function pure and testable. Only `main` does IO.
 
 ## Reading a file
 
@@ -100,9 +91,6 @@ lint_entry(path: str) -> str =>
         : (list_dir(path).length() > 0 ? lint_dir(path) : "")
 ```
 
-There is no `is_dir` primitive, so `lint_entry` uses the fact that `list_dir` of
-a file finds nothing.
-
 ## Arguments and exit codes
 
 ```maca
@@ -126,17 +114,11 @@ clean() -> int {
 }
 ```
 
-`main(args: str[])` receives the command line. The return value is the exit
-status, so `report_issues` returning `1` is what makes the tool usable in a
-pre-commit hook.
-
 ## Running it on itself
 
 ```
 maca run apps/lint/lint.maca
 ```
-
-The first time this ran it reported issues in its own source.
 
 ## What building it found
 
@@ -145,10 +127,6 @@ ever. In Maca a `{` inside a string opens an interpolation, so `"{"` was not a
 literal brace; it opened an interpolation that the closing quote never ended,
 and the following `"` opened a *nested* string that swallowed source up to the
 next quote. The program compiled. A binding several lines below vanished.
-
-The fix was in two places. A literal brace is `\{` or `{{`, which the rule now
-uses. And a `"…"` string may no longer span a line, so the mistake is a
-diagnostic instead of a silent miscompile.
 
 ## That is Learning Maca
 

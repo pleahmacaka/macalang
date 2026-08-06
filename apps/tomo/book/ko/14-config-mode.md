@@ -18,8 +18,7 @@ services.openssh = {
 }
 ```
 
-평범한 Maca입니다. 대입, 대괄호 없는 콤마 리스트, 레코드. `--target nix`로
-빌드하면 NixOS 모듈이 나옵니다.
+평범한 Maca입니다. `--target nix`로 빌드하면 NixOS 모듈이 나옵니다.
 
 ```
 maca build host.maca --target nix -o host.nix
@@ -38,15 +37,13 @@ maca build host.maca --target nix -o host.nix
 }
 ```
 
-들어간 대로 나오지 않은 줄이 둘 있습니다. `system.packages`는 NixOS의 이름인
-`environment.systemPackages`로 바뀌고, 설정을 한 `services.X` 블록에는 쓰지
-않은 `enable = true`가 붙습니다. 두 재작성은 [설정 모드](a12-config.md)에
-정리되어 있습니다.
+들어간 대로 나오지 않은 줄이 둘 있습니다. `system.packages`는
+`environment.systemPackages`로 바뀌고, 설정을 한 `services.X` 블록에는
+`enable = true`가 붙습니다([설정 모드](a12-config.md)).
 
 ## 설정 모드가 금지하는 것
 
-설정 모드는 *순수*합니다. 프로그램에서는 괜찮던 이펙트가 여기서는 에러가
-됩니다.
+설정 모드는 *순수*합니다.
 
 - `await`/`spawn`/`sleep_ms`: async는 비순수 → **컴파일 에러**.
 - I/O, 네트워크, 프로세스에 손대는 것: 비순수 → **컴파일 에러**.
@@ -60,14 +57,14 @@ EffectInConfig: config must be pure but this uses effect(s): async
 
 ## 옵션 이름은 검사된다
 
-NixOS 모듈이 대입할 수 있는 옵션 네임스페이스를 컴파일러가 알고 있으므로,
-존재하지 않는 네임스페이스는 내 책상에서 잡힙니다.
+컴파일러가 NixOS 옵션 네임스페이스를 알고 있으므로, 존재하지 않는
+네임스페이스는 내 책상에서 잡힙니다.
 
 ```
 UnknownOption: unknown NixOS option namespace `servicez`
 ```
 
-`UnknownOption`과 `EffectInConfig`은 타입 불일치와 같은 자격의 평범한 컴파일
+`UnknownOption`과 `EffectInConfig`은 타입 불일치와 같은 자격의 컴파일
 에러입니다.
 
 ## 실행해 보기
@@ -77,16 +74,14 @@ maca build apps/examples/system.maca --target nix -o system.nix
 ```
 
 나온 Nix를 읽어 보세요. 그다음 사본에 `delay = sleep_ms(10)`을 넣고 다시 빌드해
-보세요. 그때 나오는 에러가 이 장의 요점입니다.
+보세요.
 
 ## 왜 언어를 공유하는가
 
-프로그램과 설정이 같은 언어이므로 타입을 공유하고, 도구를 공유하며, 값까지
-공유할 수 있습니다. 한 번 정의한 포트 번호가 서버가 바인딩하는 그 상수이자
-방화벽이 여는 그 상수입니다.
+한 번 정의한 포트 번호가 서버가 바인딩하는 그 상수이자 방화벽이 여는 그
+상수입니다.
 
 ## 전체 규칙은 어디에
 
 레퍼런스의 [설정 모드](a12-config.md)에 모드가 어떻게 선택되는지, 이펙트 표
-전체, 옵션 검사가 정확히 어디까지 미치는지, 그리고 같은 기계 장치를 호스트가
-아니라 개발 셸에 겨눈 `maca dev`가 있습니다.
+전체, 옵션 검사의 범위, 그리고 `maca dev`가 있습니다.

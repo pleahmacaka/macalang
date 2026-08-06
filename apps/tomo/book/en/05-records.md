@@ -11,19 +11,15 @@ Point = {
 }
 ```
 
-`Name = { … }`, then one `field: type` per line. No commas are needed at line
-ends, though they are allowed.
-
-Building a value uses `=`, not `:`:
+`Name = { … }`, then one `field: type` per line. Commas at line ends are allowed
+and not needed. Building a value uses `=`, not `:`:
 
 ```maca
 p = Point { x = 3, y = 4 }
 ```
 
-**`:` says what something is, `=` says what it holds.** That holds in record
-declarations, record literals, function parameters, and bindings.
-
-Fields are read with a dot:
+**`:` says what something is, `=` says what it holds**, in declarations,
+literals, parameters and bindings. Fields are read with a dot:
 
 ```maca
 info("{p.x}, {p.y}")
@@ -37,18 +33,15 @@ Records are values. To get a changed one, use `with`:
 q = p with { y = 5 }
 ```
 
-`q` is a `Point` with `x = 3, y = 5`; `p` is untouched. Several fields can be
-updated at once, and the fields not mentioned come across unchanged:
+`q` is a `Point` with `x = 3, y = 5`; `p` is untouched. Fields not mentioned come
+across unchanged:
 
 ```maca
 r = p with { x = 0, y = 0 }
 ```
 
-This is not necessarily a copy. When nothing else is holding `p`, the compiler
-is free to make `with` a store into the memory that was already there. See
-[Memory](04-memory.md).
-
-Direct field assignment also exists:
+When nothing else holds `p`, `with` is a store into the memory that was already
+there. See [Memory](04-memory.md). Direct field assignment also exists:
 
 ```maca
 p.x = 10
@@ -69,8 +62,8 @@ scale(r: Rect, k: int) -> Rect =>
     r with { w = r.w * k, h = r.h * k }
 ```
 
-Because of UFCS (`x.f(y)` is `f(x, y)`), those read as methods at the call site
-without ever being declared as ones:
+Because of UFCS (`x.f(y)` is `f(x, y)`), those read as methods at the call
+site:
 
 ```maca
 big = Rect { w = 2, h = 3 }.scale(10)
@@ -96,9 +89,8 @@ Shape = {
 }
 ```
 
-Access nests the obvious way: `l.from.x`.
-
-A record may also refer to *itself*, which is how trees are built:
+Access nests: `l.from.x`. A record may also refer to *itself*, which is how
+trees are built:
 
 ```maca
 Node = {
@@ -113,30 +105,27 @@ and emitting the operations after.
 
 ## Records vs. sum types
 
-A record says "all of these at once". When you need "one of these", that is a
-sum type, the next chapter. The two compose: a sum type's variants can carry
-records, and a record's field can be a sum type.
+A record says "all of these at once"; "one of these" is a sum type, the next
+chapter. The two compose freely.
 
 ## Records without a name
 
-A record literal with no type name in front infers its type from the fields
-present:
+A record literal with no type name infers its type from the fields present:
 
 ```maca
 c = { host = "localhost", port = 8080 }
 info("{c.host}:{c.port}")
 ```
 
-Two literals with the same fields are the same type, whatever order they were
-written in:
+Two literals with the same fields are the same type, in any order:
 
 ```maca
 d = { port = 80, host = "example.com" }
 c = d                                    // fine: same shape
 ```
 
-Reach for it when the shape is used once, in one place. When the shape appears
-more than twice, name it: a named type is what a diagnostic can talk about.
+Reach for it when the shape is used once. When it appears more than twice, name
+it: a named type is what a diagnostic can talk about.
 
 ## Run it
 
@@ -144,6 +133,6 @@ more than twice, name it: a named type is what a diagnostic can talk about.
 maca run apps/examples/record_update.maca
 ```
 
-`with` on a record, and the original left untouched afterwards. The update is a
-store into the same memory when nothing else holds the value, and a copy when
-something does, and the program cannot tell the difference.
+`with` on a record, and the original left untouched. The update is a store when
+nothing else holds the value and a copy when something does, and the program
+cannot tell the difference.

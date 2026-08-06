@@ -1,8 +1,7 @@
 # Collections
 
-Maca has two built-in collections: the list and the string. Both are used
-through UFCS, so `xs.map(f)` is ordinary function application dressed up to read
-left to right.
+Maca has two built-in collections, the list and the string, both used through
+UFCS: `xs.map(f)` is ordinary function application read left to right.
 
 ## Lists
 
@@ -59,7 +58,8 @@ info("{xs.reduce(0, (a, b) => a + b)}")       // 17
 info("{xs.sort().first()}")                   // 1
 ```
 
-The methods that "change" a list return a new one and leave the receiver alone:
+The methods that "change" a list return a new one and leave the receiver
+alone:
 
 ```maca
 ys = [3, 1, 2]
@@ -67,31 +67,26 @@ sorted = ys.sort()
 // ys.first() is still 3; sorted.first() is 1
 ```
 
-`xs.push(9)` is not a statement that grows `xs`; it is an expression whose value
-is the longer list. The same for `set`, `insert` and `remove`. [Memory](04-memory.md)
-explains why this is not the performance mistake it looks like.
+`xs.push(9)` is an expression whose value is the longer list, not a statement
+that grows `xs`; the same for `set`, `insert` and `remove`.
+[Memory](04-memory.md) explains why this is not the performance mistake it looks
+like.
 
-An index a list does not have leaves it alone: `xs.set(9, 0)` and
-`xs.remove(-1)` are the list unchanged, and `xs.insert(99, 0)` puts the value at
-the end.
-
-`sort_by` orders on a key rather than on the element, and it is stable:
+`sort_by` orders on a key rather than the element, and it is stable:
 
 ```maca
 ws = ["bb", "a", "cc", "d"]
 info(ws.sort_by(w => w.length()).join(","))   // a,d,bb,cc
 ```
 
-`index_of_by` is `index_of` with a question instead of a value, and
-`enumerate()` pairs each element with its position:
+`enumerate()` pairs each element with its position, and `slice` takes a start
+and an **exclusive** end:
 
 ```maca
 for e in ["a", "b"].enumerate() {
     info("{e.index}: {e.value}")              // 0: a, then 1: b
 }
 ```
-
-`slice` takes a start and an **exclusive** end:
 
 ```maca
 xs = [10, 20, 30, 40, 50]
@@ -100,8 +95,8 @@ xs.slice(1, 3)      // [20, 30]
 
 ### Ranges
 
-`lo..hi` is a half-open integer range, and it is an `int[]`. `0..xs.length()` is
-exactly the indices of `xs`, with no `- 1` to remember:
+`lo..hi` is a half-open integer range, an `int[]`, so `0..xs.length()` is
+exactly the indices of `xs`:
 
 ```maca
 for i in 0..5 {
@@ -116,12 +111,10 @@ for i in 0..xs.length() {
 info("{(1..101).sum()}")    // 5050, because 101 is not included
 ```
 
-In a `for` header this lowers to a counting loop, and no list is built.
-
 ### Passing a named function
 
-A method that takes a function accepts a lambda or the name of a top-level
-function:
+A method that takes a function accepts a lambda or a top-level function's
+name:
 
 ```maca
 is_even(n: int) -> bool => n % 2 == 0
@@ -129,8 +122,7 @@ is_even(n: int) -> bool => n % 2 == 0
 evens = [1, 2, 3, 4].filter(is_even)
 ```
 
-[Functions and Control Flow](11-closures.md) covers what a function value
-actually is.
+[Functions and Control Flow](11-closures.md) covers what a function value is.
 
 ## Strings
 
@@ -155,16 +147,16 @@ actually is.
 | `at(i)` | `str` | the character at `i` |
 | `is_whitespace()` `is_ascii_digit()` `is_alpha()` | `bool` | character classes |
 
-**`slice` takes an exclusive end, `substr` takes a length.** The names are the
-same on a list and a string, and so are their conventions.
+**`slice` takes an exclusive end, `substr` takes a length.** The names and
+conventions are the same on a list and a string.
 
 ```maca
 "abcdef".slice(1, 3)      // "bc"  (up to, not including, index 3)
 "abcdef".substr(1, 3)     // "bcd" (three characters from index 1)
 ```
 
-`chars`, `at` and the three character classes are what a scanner is built from,
-and `apps/selfhost/lexer.maca` uses nothing else:
+`chars`, `at` and the three character classes are what a scanner is built from;
+`apps/selfhost/lexer.maca` uses nothing else:
 
 ```maca
 run_digits(cs: str[], i: int) -> int =>
@@ -176,7 +168,7 @@ run_digits(cs: str[], i: int) -> int =>
 ### A misspelt method is caught, not linked
 
 Method calls are otherwise gradual, but the method set of a `str` or a `T[]` is
-closed, so a name outside it is a typo. Near misses get a suggestion:
+closed, so a name outside it is a typo, and near misses get a suggestion:
 
 ```
 UndefinedName: `str` has no method `lenght`; did you mean `length`?
@@ -191,9 +183,8 @@ c = "hello".at(1)
 info("{c == "e"}")      // true
 ```
 
-Because `length` counts bytes, a string with non-ASCII text has a length larger
-than its character count. Interpolation, concatenation and comparison are
-byte-exact and safe; only indexing needs care with multi-byte text.
+`length` counts bytes, so non-ASCII text has a length larger than its character
+count. Only indexing needs care with multi-byte text.
 
 ## Run it
 
@@ -201,5 +192,5 @@ byte-exact and safe; only indexing needs care with multi-byte text.
 maca run apps/examples/collections.maca
 ```
 
-Every list method above, applied and printed. The complete method sets, which
-are *closed*, are in [The Standard Library](a3-stdlib.md).
+Every list method above, applied and printed. The complete, *closed* method sets
+are in [The Standard Library](a3-stdlib.md).

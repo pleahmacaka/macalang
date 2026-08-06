@@ -1,5 +1,8 @@
 # Hello, World
 
+Every Maca program starts at `main`, which returns an `int`: the process exit
+code.
+
 ```maca
 main() -> int {
     info("Hello, World")
