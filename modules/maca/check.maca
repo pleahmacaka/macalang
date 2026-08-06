@@ -267,7 +267,7 @@ walk_args(env: Env, args: Expr[], i: int) -> Env {
 builtin_type(name: str) -> Ty {
     if name == "str" {
         t_str()
-    } else if name == "int" {
+    } else if name == "int" || name == "exec" {
         t_int()
     } else if name == "info" || name == "print" {
         t_unit()

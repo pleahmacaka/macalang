@@ -205,6 +205,8 @@ emit_call(e: Expr) -> str {
         "maca_read_file({args})"
     } else if e.text == "write_file" {
         "maca_write_file({args})"
+    } else if e.text == "exec" {
+        "maca_exec({args})"
     } else {
         "{e.text}({args})"
     }
@@ -532,7 +534,7 @@ emit_stmt(s: Stmt, is_last: bool) -> str {
 }
 
 c_preamble() -> str =>
-    "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <stdarg.h>\n#include <ctype.h>\n" ++
+    "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <stdarg.h>\n#include <ctype.h>\n#include <unistd.h>\n#include <sys/wait.h>\n" ++
     "static char* maca_cat(const char* a, const char* b) {{ char* r = malloc(strlen(a) + strlen(b) + 1); strcpy(r, a); strcat(r, b); return r; }}\n" ++
     "static char* maca_int_to_str(int n) {{ char* r = malloc(16); snprintf(r, 16, \"%d\", n); return r; }}\n" ++
     "static char* maca_float_to_str(double x) {{ char* r = malloc(32); if (x == (double)(long long)x && x < 1e15 && x > -1e15) snprintf(r, 32, \"%.1f\", x); else snprintf(r, 32, \"%g\", x); return r; }}\n" ++
@@ -551,6 +553,7 @@ c_preamble() -> str =>
     "static long maca_box(int n, const void* p) {{ void* r = malloc(n); memcpy(r, p, n); return (long)r; }}\n" ++
     "static MacaList maca_chars(const char* s) {{ int n = (int)strlen(s); MacaList l; l.len = n; l.data = malloc((n ? n : 1) * sizeof(long)); for (int i = 0; i < n; i++) {{ char* c = malloc(2); c[0] = s[i]; c[1] = 0; l.data[i] = (long)c; }} return l; }}\n" ++
     "static MacaList maca_args(int argc, char** argv) {{ MacaList l; l.len = argc - 1; l.data = malloc((l.len ? l.len : 1) * sizeof(long)); for (int i = 0; i < l.len; i++) l.data[i] = (long)argv[i + 1]; return l; }}\n" ++
+    "static int maca_exec(const char* cmd, MacaList args) {{ char** argv = malloc((args.len + 2) * sizeof(char*)); argv[0] = (char*)cmd; for (int i = 0; i < args.len; i++) argv[i + 1] = (char*)args.data[i]; argv[args.len + 1] = NULL; pid_t pid = fork(); if (pid < 0) return -1; if (pid == 0) {{ execvp(cmd, argv); _exit(127); }} int st = 0; if (waitpid(pid, &st, 0) < 0) return -1; if (WIFEXITED(st)) return WEXITSTATUS(st); if (WIFSIGNALED(st)) return 128 + WTERMSIG(st); return -1; }}\n" ++
     "static char* maca_read_file(const char* path) {{ FILE* f = fopen(path, \"rb\"); if (!f) {{ char* e = malloc(1); e[0] = 0; return e; }} fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET); char* r = malloc(n + 1); size_t got = fread(r, 1, n, f); r[got] = 0; fclose(f); return r; }}\n" ++
     "static int maca_write_file(const char* path, const char* text) {{ FILE* f = fopen(path, \"wb\"); if (!f) return 0; fputs(text, f); fclose(f); return 1; }}\n"
 

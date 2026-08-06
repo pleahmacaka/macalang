@@ -153,6 +153,13 @@ test_an_unknown_name_stays_gradual() {
               "0", "foreign is not wrong")
 }
 
+test_exec_hands_back_an_exit_code() {
+    assert_eq(count_of("run() -> int => exec(\"cc\", [])"),
+              "0", "an exit code is an int")
+    assert_eq(count_of("run() -> str => exec(\"cc\", [])"),
+              "1", "and it is not a string")
+}
+
 test_a_clean_module_reports_nothing() {
     assert_eq(count_of("add(a: int, b: int) -> int => a + b"
                        ++ " use() -> int => add(1, 2)"),
