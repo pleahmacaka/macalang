@@ -4,6 +4,34 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* **The compiler needs a C compiler and nothing else.** `apps/maca1` follows its own
+  `import` graph and builds an executable, so the loop that produces the compiler no
+  longer passes through Rust. `unit_of` walks the graph depth first, resolving a path
+  from the importing file's own directory (the written path, then `modules/`, then
+  `src/`, then the same three one directory up, which is the order `docs/LAYOUT.md`
+  sets out), and splices an imported file's *tokens* ahead of the importer's, so each
+  file is read and lexed exactly once and a definition precedes its use. Probing a
+  candidate needs no new builtin, because `read_file` already answers `""` for a path
+  that does not open. Nine files resolve from `apps/maca1/main.maca` into 136152 bytes
+  of C, byte-identical to a concatenation of those nine in the order the walk visits
+  them, which is what pins both the set and the order. It is also four times faster
+  than feeding the 96 KB concatenation, 3.0s against 13.7s, because lexing per file
+  dodges the cost of `acc ++ [t]` growing one list to 27000 tokens.
+* **`maca build in.maca -o bin` produces an executable**, through `exec(cmd, args)`.
+  That builtin already existed in stage-0 and was missing from `docs/SPEC.md`; what
+  was missing in Maca was its lowering, which `emit_c.maca` now has as `fork` +
+  `execvp` + `waitpid`, mirroring stage-0's runtime rather than reaching for
+  `system()`. A shell in one stage and not the other is exactly the divergence the
+  differential gate exists to catch, and there being no shell is also why an argument
+  holding a space or a `$` stays one argument.
+* `docs/BOOTSTRAP.md` claimed `cmp maca1 maca2` closes the bootstrap. It cannot:
+  `maca1` comes from stage-0's C back end through one C compiler and `maca2` from
+  `emit_c.maca` through another, so they are different programs by construction. What
+  does hold is the round after, `maca2` against `maca3`, and even there `cc` records
+  the name of the file it was handed in the symbol table, so `-o maca2` and `-o maca3`
+  differ in exactly one byte, the digit. Building both as `maca` in different
+  directories makes them equal without stripping, and three rounds deep they stay
+  equal at 257016 bytes.
 * **The checker accepts the compiler's own source**, 220 errors down to none, and it is
   stronger afterwards rather than more permissive. All 220 were one bug with a lying
   message. `parse_one_lit_field` builds a field as a binary `=`, `binop_type` had no `=`

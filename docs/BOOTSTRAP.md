@@ -12,29 +12,48 @@ stage-0 (Rust, crates/*)  ──compiles──▶  stage-1 (Maca, modules/maca/*
 ```
 
 The bootstrap closes when the compiler, compiled by itself, emits what it emitted
-before. Feed the compiler's own source to each stage in turn:
+before. Point each stage in turn at the compiler's own entry file:
 
 ```sh
-maca build apps/maca1/main.maca -o stage1   # stage-0 (Rust) builds stage-1
-./stage1 whole.maca whole1.c                # stage-1 emits C for the compiler
-cc -o stage2 whole1.c
-./stage2 whole.maca whole2.c                # stage-2 emits it again
-cmp whole1.c whole2.c                       # fixed point ⇒ self-hosted
+maca build apps/maca1/main.maca -o maca1     # stage-0 (Rust) builds stage-1
+mkdir one two
+(cd one && ../maca1 build ../apps/maca1/main.maca -o maca)   # stage-1 builds itself
+(cd two && ../one/maca build ../apps/maca1/main.maca -o maca)
+cmp one/maca two/maca                        # fixed point ⇒ self-hosted
 ```
 
-**This closes.** `stage2_emits_the_c_it_was_built_from` in
-`crates/driver/tests/selfhost.rs` keeps it closed: `whole1.c`, `whole2.c` and
-`whole3.c` are one 129731-byte file, and all three stages print the same 244 lines
-of demo and exit alike. The demo equality is the half that matters most, because
-`cmp` alone can be silent while stage-1 and stage-2 are different programs that
-happen to agree on one input.
+**This closes.** Two tests in `crates/driver/tests/selfhost.rs` keep it closed.
+`the_compiler_resolves_its_own_imports` says that the compiler reads
+`apps/maca1/main.maca`, follows the `import` graph to the eight
+`modules/maca/*.maca` files, and emits one 136152-byte C file that emits itself
+again byte for byte. `stage1_builds_the_binary_that_builds_it` says the stronger
+thing: stage-1 turns that C into an **executable**, and the executable builds a
+byte-identical executable from the same source. That last step adds what `cmp`
+on the C cannot: the host C compiler is deterministic, and the compiler is
+self-sufficient, needing a C compiler and nothing else.
 
-`whole.maca` is the eight `modules/maca/*.maca` files followed by
-`apps/maca1/main.maca`, concatenated, because `apps/maca1` compiles one file and
-does not resolve imports across files yet. Comparing the *binaries* would say all
-of this plus one more thing, that the host C compiler is deterministic, and it
-waits on `apps/maca1` growing a `build` subcommand that drives a C compiler
-itself.
+The two rounds run in **different directories with the same output name**,
+because `cc` records the name of the file it was handed in the binary's symbol
+table: `-o maca2` and `-o maca3` produce two executables that differ in exactly
+one byte, the digit. `strip` makes them equal; building both as `maca` makes them
+equal without stripping.
+
+Comparing the emitted C is still the half that catches a divergence early, and
+the demo equality is the half that matters most, because `cmp` alone can be
+silent while stage-1 and stage-2 are different programs that happen to agree on
+one input.
+
+`apps/maca1` resolves an `import` the way the driver does: `import maca/token`
+means `maca/token.maca`, tried as written from the importing file's own directory
+and then under that directory's `modules/` and `src/` roots, walking up to the
+workspace root, which is the order `docs/LAYOUT.md` sets out and why. Each file
+is lexed once, read once, and its tokens are spliced in ahead of the file that
+imported it, so a definition precedes its use and a file imported twice is
+emitted once. An import that resolves to no file is an error naming it and the
+file that asked. Feeding the concatenation of those nine files still works and
+`stage2_emits_the_c_it_was_built_from` still does it, which is worth keeping: the
+two paths emit the same 136152 bytes and differ only in the order the record and
+enum declarations come out in.
 
 ## Layout of `modules/maca/`
 
@@ -80,8 +99,10 @@ The parsed slice is well past a toy. stage-1 handles:
 - **strings**: value equality (`==`/`!=` → `strcmp`), concatenation (`++` →
   `maca_cat` / `format!`), `str(int)` (→ `maca_int_to_str` / `format!`), and the
   `.length()` / `.at(i)` methods the lexer scans with;
-- the `info`/`print` output builtins (→ `printf` / `println!`), and `import`
-  statements (skipped, because the driver inlines modules).
+- the `info`/`print` output builtins (→ `printf` / `println!`), the file
+  builtins (`read_file`/`write_file`) and `exec` (→ `fork` + `execvp`), and
+  `import` statements, which `parse_items` skips because `apps/maca1` has already
+  followed them and spliced in what they name.
 
 As a capstone the gate compiles and **runs** the multi-feature program the
 self-hosted compiler emits (a `Point` record, a `Color` sum + `match`, string
@@ -104,13 +125,17 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
 - **the lexer and parser**, `token.maca`, `lexer.maca`, `parser.maca`: the
   character scanner (two-char operators, float literals), recursive descent
   with a precedence ladder, function/record/sum declarations, and `import`
-  statements (skipped, because the driver inlines modules)
+  statements, skipped by the parser because the driver resolved them first
 - **the recursive AST**: `ast.maca`, whose `Expr { children: Expr[] }` is what
   drove recursive record types into the stage-0 backend
 - **two back ends**: `emit_c.maca` and `emit_rust.maca`, each turning a module
   into a complete translation unit
-- **multi-file builds**: the gate builds from `apps/maca1/main.maca` and the
-  driver resolves the `import` graph; there is no concatenation step
+- **multi-file builds**: `apps/maca1` reads its entry file, follows every
+  `import` to a file under the search roots `docs/LAYOUT.md` orders, and splices
+  the imported tokens in ahead of the importer's, so nine files compile as one
+  unit with each read once. Cross-file resolution, not concatenation: the tokens
+  are joined rather than the text, which is also why the whole compiler now lexes
+  in a fraction of the time (a per-file scan instead of one 96KB one)
 - **higher-order parameters**: a function passed by name is wrapped in a
   closure, and an unannotated parameter that is called is typed as a function
   value, which is how `lexer.maca` shares one predicate-taking `run_end`
@@ -197,7 +222,11 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
   that absorbs, so one mistake is reported once; an undeclared name stays
   gradual, because foreign is not wrong
 - **a compiler CLI**: `maca1 <in.maca> <out.c> [rust]` reads a source file and
-  writes the emitted source, which is what makes the differential gate possible
+  writes the emitted source, which is what makes the differential gate possible,
+  and `maca1 build <in.maca> -o <bin>` writes `<bin>.c` and then runs `cc` on it,
+  which is what makes the *binary* fixed point possible. The second form is the
+  whole of what "self-sufficient" means: building the compiler needs a C compiler
+  and nothing else
 
 ## The differential gate
 
