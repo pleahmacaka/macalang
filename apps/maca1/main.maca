@@ -1,22 +1,45 @@
+import maca/token
 import maca/lexer
 import maca/parser
 import maca/check
 import maca/emit_c
 import maca/emit_rust
 
+Unit = {
+    seen:    str[]
+    toks:    Token[]
+    errs:    str[]
+    unknown: str[]
+}
+
 main(args: str[]) -> int {
-    if args.length() >= 2 {
+    if args.length() >= 4 && args.get(0) == "build"
+            && args.get(2) == "-o" {
+        build_binary(args.get(1), args.get(3))
+    } else if args.length() >= 2 {
         compile_file(args)
     } else {
         demo()
     }
 }
 
+build_binary(src: str, out: str) -> int {
+    cfile = out ++ ".c"
+    errs = compile_file([src, cfile])
+
+    if errs > 0 {
+        errs
+    } else {
+        exec("cc", [cfile, "-o", out])
+    }
+}
+
 compile_file(args: str[]) -> int {
-    src = read_file(args.get(0))
-    scanned = lex_all(src)
+    unit = unit_of(args.get(0))
+    scanned = end_run(lexed(unit.toks, unit.errs), 0, 0)
     raw = parse_module(scanned.tokens, 0, [])
-    bad = report_all("scan", scanned.errors, 0) +
+    bad = report_all("import", unit.unknown, 0) +
+        report_all("scan", scanned.errors, 0) +
         report_all("parse", raw.errors, 0)
     errs = bad + report_all("check", check_errors(raw), 0)
     m = annotated(raw)
@@ -25,6 +48,124 @@ compile_file(args: str[]) -> int {
 
     write_file(args.get(1), emitted)
     errs
+}
+
+unit_of(entry: str) -> Unit =>
+    load_unit(entry, Unit { seen = [], toks = [], errs = [], unknown = [] })
+
+load_unit(path: str, u: Unit) -> Unit {
+    if u.seen.index_of(path) >= 0 {
+        u
+    } else {
+        got = lex_all(read_file(path))
+        marked = u with { seen = u.seen ++ [path] }
+        deps = load_deps(path, imports_in(got.tokens, 0, []), 0, marked)
+
+        deps with { toks = deps.toks ++ without_eof(got.tokens),
+                    errs = deps.errs ++ got.errors }
+    }
+}
+
+without_eof(ts: Token[]) -> Token[] =>
+    ts.slice(0, live_end(ts, ts.length()))
+
+live_end(ts: Token[], n: int) -> int {
+    if n <= 0 {
+        0
+    } else if ts.get(n - 1).kind == Eof {
+        live_end(ts, n - 1)
+    } else {
+        n
+    }
+}
+
+load_deps(by: str, wants: str[], i: int, u: Unit) -> Unit {
+    if i >= wants.length() {
+        u
+    } else {
+        load_deps(by, wants, i + 1, one_dep(by, wants.get(i), u))
+    }
+}
+
+one_dep(by: str, want: str, u: Unit) -> Unit {
+    at = resolved(by, want)
+
+    if at == "" {
+        u with { unknown = u.unknown ++ ["{want}, imported by {by}"] }
+    } else {
+        load_unit(at, u)
+    }
+}
+
+imports_in(ts: Token[], i: int, acc: str[]) -> str[] {
+    if ts.get(i).kind == Eof {
+        acc
+    } else if ts.get(i).kind == KwImport {
+        imports_in(ts, import_end(ts, i + 1),
+                   acc ++ [import_path(ts, i + 1, "")])
+    } else {
+        imports_in(ts, i + 1, acc)
+    }
+}
+
+import_path(ts: Token[], i: int, acc: str) -> str {
+    if ts.get(i + 1).kind == Slash {
+        import_path(ts, i + 2, acc ++ ts.get(i).text ++ "/")
+    } else {
+        acc ++ ts.get(i).text
+    }
+}
+
+resolved(by: str, want: str) -> str =>
+    search_up(dir_of(by), want ++ ".maca")
+
+search_up(dir: str, want: str) -> str {
+    here = in_base(dir, want)
+
+    if here != "" {
+        here
+    } else if dir == "" {
+        ""
+    } else {
+        search_up(parent_of(dir), want)
+    }
+}
+
+in_base(dir: str, want: str) -> str {
+    own = found(dir ++ want)
+    mods = found(dir ++ "modules/" ++ want)
+
+    if own != "" {
+        own
+    } else if mods != "" {
+        mods
+    } else {
+        found(dir ++ "src/" ++ want)
+    }
+}
+
+found(cand: str) -> str {
+    if read_file(cand) == "" {
+        ""
+    } else {
+        cand
+    }
+}
+
+dir_of(path: str) -> str =>
+    path.slice(0, sep_after(path.chars(), path.length() - 1))
+
+parent_of(dir: str) -> str =>
+    dir_of(dir.slice(0, dir.length() - 1))
+
+sep_after(cs: str[], i: int) -> int {
+    if i < 0 {
+        0
+    } else if cs.get(i) == "/" {
+        i + 1
+    } else {
+        sep_after(cs, i - 1)
+    }
 }
 
 report_all(stage: str, msgs: str[], i: int) -> int {
