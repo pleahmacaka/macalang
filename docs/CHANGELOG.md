@@ -4,6 +4,16 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* The self-hosted compiler has array operations, and types a method call at all.
+  `check.maca` had no rule for a method, so every `.slice(i, j)` came out
+  untyped and a local holding one was declared `int` in C. It types the receiver
+  now, and `.length()`/`.get(i)`/`.slice`/`.index_of`/`.join`/`.push` each choose
+  a list or a string lowering from it. `++` between two lists copies the two
+  blocks rather than running through `maca_cat`. The C preamble gains
+  `maca_list_cat`, `maca_list_slice`, `maca_list_index_of`, `maca_str_index_of`
+  and `maca_list_join`; Rust uses `concat`, a range `to_vec`, `iter().position`
+  and `join`. A program using all of them compiles and runs to the same answer
+  on both back ends.
 * The self-hosted scanner reads an escaped quote and a line comment. `string_end`
   stopped at the first `"` it met, so `"\""` came back as a string cut in half,
   and `//` scanned as two `/` operators. The compiler's own source is full of

@@ -115,6 +115,15 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
   variant, with a constructor named after each variant so an ordinary
   `Circle(2)` compiles without the call site knowing which names are variants;
   in Rust the native enum, where it already is one
+- **array operations, and a method that knows its receiver**: `check.maca` types
+  a method call, which it did not before, so `.length()`, `.get(i)`, `.slice`,
+  `.index_of`, `.join` and `.push` each pick their lowering from the receiver's
+  type rather than from a guess. `++` between two lists is a block copy and not
+  `maca_cat`. C gains `maca_list_cat`/`maca_list_slice`/`maca_list_index_of`/
+  `maca_list_join` beside `maca_listv`; Rust uses `concat`, a range `to_vec`,
+  `iter().position` and `join`. Both back ends compile and run the same program
+  to the same answer, which is what the scanner needs before it can hold a brace
+  stack
 - **an escape and a comment in the scanner**: a `\` inside a string literal
   carries the next character with it, so `"\""` is one token rather than a string
   cut in half, and the escape is kept in the token's text so it re-emits as it
