@@ -8,6 +8,7 @@ use std::process::Command;
 
 /// Source order: definitions before use.
 const SELFHOST_FILES: &[&str] = &[
+    "ty.maca",
     "token.maca",
     "ast.maca",
     "lexer.maca",
@@ -616,4 +617,80 @@ fn stage0_and_stage1_compile_the_same_program_the_same_way() {
         );
         assert_eq!(r2.status.code(), Some(42));
     }
+}
+
+/// What the Maca-written parser reads and the two Maca-written back ends emit for an `if`, asserted in Maca.
+#[test]
+fn the_parser_written_in_maca_reads_an_if() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping selfhost parse suite: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .current_dir(repo())
+        .env("NO_COLOR", "1")
+        .args(["test", "apps/selfhost/tests/parse.maca"])
+        .output()
+        .expect("spawn maca test");
+
+    assert!(
+        out.status.success(),
+        "apps/selfhost/tests/parse.maca:
+{}
+{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
+/// What the Maca-written checker infers, rejects and leaves gradual, asserted in Maca.
+#[test]
+fn the_checker_written_in_maca_holds() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping selfhost check suite: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .current_dir(repo())
+        .env("NO_COLOR", "1")
+        .args(["test", "apps/selfhost/tests/check.maca"])
+        .output()
+        .expect("spawn maca test");
+
+    assert!(
+        out.status.success(),
+        "apps/selfhost/tests/check.maca:
+{}
+{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
+/// The type representation, unification, row unification and schemes, asserted in Maca.
+#[test]
+fn the_type_system_written_in_maca_holds() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping selfhost ty suite: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .current_dir(repo())
+        .env("NO_COLOR", "1")
+        .args(["test", "apps/selfhost/tests/ty.maca"])
+        .output()
+        .expect("spawn maca test");
+
+    assert!(
+        out.status.success(),
+        "apps/selfhost/tests/ty.maca:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
 }

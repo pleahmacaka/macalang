@@ -1,0 +1,133 @@
+import selfhost/lexer
+import selfhost/parser
+import selfhost/check
+
+errors_of(src: str) -> str[] =>
+    check_errors(parse_module(lex(src), 0, []))
+
+count_of(src: str) -> str =>
+    str(errors_of(src).length())
+
+type_named_in(src: str) -> str =>
+    type_of(parse_expr(lex(src), 0).node)
+
+test_type_of_names_what_was_inferred() {
+    assert_eq(type_named_in("1 + 2"), "int", "int arithmetic")
+    assert_eq(type_named_in("1.5 + 2.5"), "float", "float arithmetic")
+    assert_eq(type_named_in("1 < 2"), "bool", "a comparison")
+    assert_eq(type_named_in("\"a\" ++ \"b\""), "str", "a concatenation")
+    assert_eq(type_named_in("1 + \"a\""), "error", "a clash")
+}
+
+test_a_call_argument_must_match_the_signature() {
+    bad = errors_of("take(n: int) -> int => n use() -> int => take(\"x\")")
+    assert_eq(str(bad.length()), "1", "str is not int")
+    assert_eq(bad.get(0), "type mismatch: expected int, found str",
+              "the parameter type is what the argument is checked against")
+}
+
+test_a_call_with_the_right_argument_is_clean() {
+    assert_eq(count_of("take(n: int) -> int => n use() -> int => take(7)"),
+              "0", "int against int")
+}
+
+test_a_call_must_have_the_right_number_of_arguments() {
+    bad = errors_of("add(a: int, b: int) -> int => a + b use() -> int => add(1)")
+    assert_eq(str(bad.length()), "1", "one argument short")
+    assert_eq(bad.get(0), "`add` takes 2 argument(s), given 1",
+              "the count is named")
+}
+
+test_an_unannotated_parameter_is_polymorphic_across_call_sites() {
+    assert_eq(count_of("keep(x) -> int => 1"
+                       ++ " both() -> int => keep(1) + keep(\"s\")"),
+              "0", "each call instantiates its own copy of x")
+}
+
+test_an_unannotated_parameter_is_inferred_from_its_own_body() {
+    bad = errors_of("keep(x) -> int => x + 1"
+                    ++ " use() -> int => keep(\"s\")")
+    assert_eq(str(bad.length()), "1", "the body forced x to a number")
+}
+
+test_inference_does_not_depend_on_declaration_order() {
+    after = count_of("keep(x) -> int => x + 1"
+                     ++ " use() -> int => keep(\"s\")")
+    before = count_of("use() -> int => keep(\"s\")"
+                      ++ " keep(x) -> int => x + 1")
+    assert_eq(before, after, "a call is checked against what the body proved")
+    assert_eq(before, "1", "either way, one error")
+}
+
+test_an_annotated_parameter_is_the_same_type_at_every_call_site() {
+    assert_eq(count_of("keep(x: int) -> int => 1"
+                       ++ " both() -> int => keep(1) + keep(\"s\")"),
+              "1", "int is int everywhere")
+}
+
+test_a_body_must_agree_with_the_declared_return() {
+    bad = errors_of("bad() -> str => 1 + 2")
+    assert_eq(str(bad.length()), "1", "int is not str")
+    assert_eq(bad.get(0), "type mismatch: expected str, found int",
+              "the declared type comes first")
+}
+
+test_a_field_read_carries_the_declared_field_type() {
+    assert_eq(count_of("Point = {{ x: int }} good(p: Point) -> int => p.x"),
+              "0", "x is int")
+    assert_eq(count_of("Point = {{ x: int }} bad(p: Point) -> str => p.x"),
+              "1", "x is int, not str")
+}
+
+test_one_mistake_is_reported_once() {
+    assert_eq(count_of("bad() -> int => 1 + \"x\""),
+              "1", "the return check does not report the same clash again")
+}
+
+test_a_local_does_not_leak_into_the_next_function() {
+    assert_eq(count_of("first() -> int {{ tmp = \"s\" 1 }}"
+                       ++ " second() -> int => tmp"),
+              "0", "tmp is out of scope, so it stays gradual")
+}
+
+test_a_local_takes_the_type_of_what_it_was_bound_to() {
+    assert_eq(count_of("bad() -> int {{ tmp = \"s\" tmp }}"),
+              "1", "tmp is str, and the return says int")
+}
+
+test_a_list_holds_one_type() {
+    assert_eq(count_of("mix() -> int {{ xs = [1, \"a\"] 1 }}"),
+              "1", "int and str cannot share a list")
+    assert_eq(count_of("same() -> int {{ xs = [1, 2] 1 }}"),
+              "0", "two ints can")
+}
+
+test_the_branches_of_a_ternary_are_unified() {
+    assert_eq(count_of("pick(c: bool) -> int => c ? 1 : \"x\""),
+              "1", "one branch is int and the other str")
+}
+
+test_the_arms_of_a_match_are_unified() {
+    assert_eq(count_of("Color = Red | Green"
+                       ++ " pick(c: Color) -> int => match c {{"
+                       ++ " Red => 1 Green => \"x\" }}"),
+              "1", "one arm is int and the other str")
+}
+
+test_plus_is_arithmetic_and_not_concatenation() {
+    bad = errors_of("j(a: str, b: str) -> int => a + b")
+    assert_eq(str(bad.length()), "1", "++ is what joins two strings")
+    assert_eq(bad.get(0), "str is not a number",
+              "two strings unify, so only the operator can reject them")
+}
+
+test_an_unknown_name_stays_gradual() {
+    assert_eq(count_of("use() -> int => foreign(1, 2)"),
+              "0", "foreign is not wrong")
+}
+
+test_a_clean_module_reports_nothing() {
+    assert_eq(count_of("add(a: int, b: int) -> int => a + b"
+                       ++ " use() -> int => add(1, 2)"),
+              "0", "nothing to say")
+}

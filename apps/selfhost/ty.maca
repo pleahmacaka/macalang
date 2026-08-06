@@ -1,0 +1,363 @@
+TyKind =
+    KInt | KFloat | KStr | KBool | KBytes | KUnit | KAny | KError
+    | KVar | KCon | KFn | KRec | KOpt
+
+Ty = {
+    kind:   TyKind
+    name:   str
+    slot:   int
+    args:   Ty[]
+    labels: str[]
+    open:   bool
+}
+
+bare(k: TyKind) -> Ty =>
+    Ty { kind = k, name = "", slot = 0, args = [], labels = [], open = false }
+
+t_int() -> Ty => bare(KInt)
+
+t_float() -> Ty => bare(KFloat)
+
+t_str() -> Ty => bare(KStr)
+
+t_bool() -> Ty => bare(KBool)
+
+t_bytes() -> Ty => bare(KBytes)
+
+t_unit() -> Ty => bare(KUnit)
+
+t_any() -> Ty => bare(KAny)
+
+t_error() -> Ty => bare(KError)
+
+absorbing(t: Ty) -> bool =>
+    t.kind == KAny || t.kind == KError
+
+t_var(slot: int) -> Ty =>
+    bare(KVar) with { slot }
+
+t_con(name: str, args: Ty[]) -> Ty =>
+    bare(KCon) with { name, args }
+
+t_array(el: Ty) -> Ty =>
+    t_con("Array", [el])
+
+t_fn(params: Ty[], ret: Ty) -> Ty =>
+    bare(KFn) with { args = params ++ [ret] }
+
+t_rec(labels: str[], types: Ty[], open: bool) -> Ty =>
+    bare(KRec) with { labels, args = types, open }
+
+t_opt(inner: Ty) -> Ty =>
+    bare(KOpt) with { args = [inner] }
+
+fn_params(t: Ty) -> Ty[] =>
+    t.args.slice(0, t.args.length() - 1)
+
+fn_ret(t: Ty) -> Ty =>
+    t.args.get(t.args.length() - 1)
+
+Infer = {
+    subst: Ty[]
+}
+
+new_infer() -> Infer =>
+    Infer { subst = [] }
+
+Instance = {
+    infer: Infer
+    ty:    Ty
+}
+
+fresh(inf: Infer) -> Instance {
+    made = t_var(inf.subst.length())
+
+    Instance { infer = Infer { subst = inf.subst ++ [made] }, ty = made }
+}
+
+unbound(inf: Infer, slot: int) -> bool {
+    held = inf.subst.get(slot)
+
+    held.kind == KVar && held.slot == slot
+}
+
+resolve(inf: Infer, t: Ty) -> Ty {
+    if t.kind != KVar {
+        t
+    } else if unbound(inf, t.slot) {
+        t
+    } else {
+        resolve(inf, inf.subst.get(t.slot))
+    }
+}
+
+set_slot(inf: Infer, slot: int, t: Ty) -> Infer =>
+    Infer { subst = inf.subst.slice(0, slot) ++ [t]
+                    ++ inf.subst.slice(slot + 1, inf.subst.length()) }
+
+occurs(inf: Infer, slot: int, t: Ty) -> bool {
+    seen = resolve(inf, t)
+
+    if seen.kind == KVar {
+        seen.slot == slot
+    } else {
+        occurs_in(inf, slot, seen.args, 0)
+    }
+}
+
+occurs_in(inf: Infer, slot: int, ts: Ty[], i: int) -> bool {
+    if i >= ts.length() {
+        false
+    } else if occurs(inf, slot, ts.get(i)) {
+        true
+    } else {
+        occurs_in(inf, slot, ts, i + 1)
+    }
+}
+
+bind_var(inf: Infer, slot: int, t: Ty) -> Infer {
+    if occurs(inf, slot, t) {
+        set_slot(inf, slot, t_any())
+    } else {
+        set_slot(inf, slot, t)
+    }
+}
+
+Unify = {
+    infer: Infer
+    error: str
+}
+
+united(inf: Infer) -> Unify =>
+    Unify { infer = inf, error = "" }
+
+clashed(inf: Infer, x: Ty, y: Ty) -> Unify =>
+    Unify { infer = inf,
+            error = "type mismatch: expected {show_ty(x)}, found {show_ty(y)}" }
+
+refused(inf: Infer, why: str) -> Unify =>
+    Unify { infer = inf, error = why }
+
+shape_disagrees(x: Ty, y: Ty) -> bool {
+    if x.kind != y.kind {
+        true
+    } else if x.kind == KCon {
+        x.name != y.name || x.args.length() != y.args.length()
+    } else if x.kind == KFn {
+        x.args.length() != y.args.length()
+    } else {
+        false
+    }
+}
+
+unify(inf: Infer, a: Ty, b: Ty) -> Unify {
+    x = resolve(inf, a)
+    y = resolve(inf, b)
+
+    if absorbing(x) || absorbing(y) {
+        united(inf)
+    } else if x.kind == KVar && y.kind == KVar && x.slot == y.slot {
+        united(inf)
+    } else if x.kind == KVar {
+        united(bind_var(inf, x.slot, y))
+    } else if y.kind == KVar {
+        united(bind_var(inf, y.slot, x))
+    } else if x.kind == KOpt && y.kind != KOpt {
+        unify(inf, x.args.get(0), y)
+    } else if y.kind == KOpt && x.kind != KOpt {
+        unify(inf, x, y.args.get(0))
+    } else if x.kind == KRec && y.kind == KRec {
+        unify_rows(inf, x, y)
+    } else if shape_disagrees(x, y) {
+        clashed(inf, x, y)
+    } else {
+        unify_all(inf, x.args, y.args, 0)
+    }
+}
+
+unify_all(inf: Infer, xs: Ty[], ys: Ty[], i: int) -> Unify {
+    if i >= xs.length() {
+        united(inf)
+    } else {
+        step = unify(inf, xs.get(i), ys.get(i))
+
+        if step.error != "" {
+            step
+        } else {
+            unify_all(step.infer, xs, ys, i + 1)
+        }
+    }
+}
+
+unify_rows(inf: Infer, x: Ty, y: Ty) -> Unify {
+    shared = unify_shared(inf, x, y, 0)
+    extra = unexpected_label(x, y, 0)
+
+    if shared.error != "" {
+        shared
+    } else if extra != "" {
+        refused(shared.infer, "record has unexpected field `{extra}`")
+    } else {
+        united(shared.infer)
+    }
+}
+
+unify_shared(inf: Infer, x: Ty, y: Ty, i: int) -> Unify {
+    if i >= x.labels.length() {
+        united(inf)
+    } else {
+        label = x.labels.get(i)
+        at = y.labels.index_of(label)
+
+        if at < 0 && y.open {
+            unify_shared(inf, x, y, i + 1)
+        } else if at < 0 {
+            refused(inf, "record is missing field `{label}`")
+        } else {
+            step = unify(inf, x.args.get(i), y.args.get(at))
+
+            if step.error != "" {
+                step
+            } else {
+                unify_shared(step.infer, x, y, i + 1)
+            }
+        }
+    }
+}
+
+unexpected_label(x: Ty, y: Ty, i: int) -> str {
+    if i >= y.labels.length() {
+        ""
+    } else if x.labels.index_of(y.labels.get(i)) < 0 && !x.open {
+        y.labels.get(i)
+    } else {
+        unexpected_label(x, y, i + 1)
+    }
+}
+
+Scheme = {
+    slots: int[]
+    ty:    Ty
+}
+
+mono(t: Ty) -> Scheme =>
+    Scheme { slots = [], ty = t }
+
+generalize(inf: Infer, t: Ty) -> Scheme =>
+    Scheme { slots = free_slots(inf, t, []), ty = t }
+
+free_slots(inf: Infer, t: Ty, seen: int[]) -> int[] {
+    known = resolve(inf, t)
+
+    if known.kind == KVar && seen.index_of(known.slot) < 0 {
+        seen ++ [known.slot]
+    } else if known.kind == KVar {
+        seen
+    } else {
+        free_slots_in(inf, known.args, 0, seen)
+    }
+}
+
+free_slots_in(inf: Infer, ts: Ty[], i: int, seen: int[]) -> int[] {
+    if i >= ts.length() {
+        seen
+    } else {
+        free_slots_in(inf, ts, i + 1, free_slots(inf, ts.get(i), seen))
+    }
+}
+
+Batch = {
+    infer: Infer
+    tys:   Ty[]
+}
+
+fresh_many(inf: Infer, n: int, acc: Ty[]) -> Batch {
+    if n <= 0 {
+        Batch { infer = inf, tys = acc }
+    } else {
+        made = fresh(inf)
+
+        fresh_many(made.infer, n - 1, acc ++ [made.ty])
+    }
+}
+
+instantiate(inf: Infer, s: Scheme) -> Instance {
+    made = fresh_many(inf, s.slots.length(), [])
+
+    Instance { infer = made.infer, ty = substitute(s.slots, made.tys, s.ty) }
+}
+
+substitute(slots: int[], tos: Ty[], t: Ty) -> Ty {
+    if t.kind == KVar {
+        at = slots.index_of(t.slot)
+
+        if at < 0 {
+            t
+        } else {
+            tos.get(at)
+        }
+    } else {
+        t with { args = substitute_all(slots, tos, t.args, 0) }
+    }
+}
+
+substitute_all(slots: int[], tos: Ty[], ts: Ty[], i: int) -> Ty[] {
+    if i >= ts.length() {
+        []
+    } else {
+        [substitute(slots, tos, ts.get(i))]
+            ++ substitute_all(slots, tos, ts, i + 1)
+    }
+}
+
+show_ty(t: Ty) -> str =>
+    match t.kind {
+        KInt   => "int"
+        KFloat => "float"
+        KStr   => "str"
+        KBool  => "bool"
+        KBytes => "bytes"
+        KUnit  => "()"
+        KAny   => "any"
+        KError => "error"
+        KVar   => "t{t.slot}"
+        KCon   => show_con(t)
+        KFn    => show_fn(t)
+        KRec   => show_rec(t)
+        KOpt   => "{show_ty(t.args.get(0))}?"
+    }
+
+show_con(t: Ty) -> str {
+    if t.args.length() == 0 {
+        t.name
+    } else {
+        "{t.name} {show_joined(t.args, " ", 0)}"
+    }
+}
+
+show_fn(t: Ty) -> str =>
+    "({show_joined(fn_params(t), ", ", 0)}) -> {show_ty(fn_ret(t))}"
+
+show_rec(t: Ty) -> str =>
+    "{{ {show_fields(t, 0)} }}"
+
+show_fields(t: Ty, i: int) -> str {
+    if i >= t.labels.length() {
+        ""
+    } else if i == t.labels.length() - 1 {
+        "{t.labels.get(i)}: {show_ty(t.args.get(i))}"
+    } else {
+        "{t.labels.get(i)}: {show_ty(t.args.get(i))}, "
+            ++ show_fields(t, i + 1)
+    }
+}
+
+show_joined(ts: Ty[], sep: str, i: int) -> str {
+    if i >= ts.length() {
+        ""
+    } else if i == ts.length() - 1 {
+        show_ty(ts.get(i))
+    } else {
+        show_ty(ts.get(i)) ++ sep ++ show_joined(ts, sep, i + 1)
+    }
+}

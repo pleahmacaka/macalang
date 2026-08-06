@@ -1,49 +1,118 @@
 import selfhost/token
 import selfhost/ast
+import selfhost/ty
 
 Env = {
     names:  str[]
-    types:  str[]
+    types:  Ty[]
     fns:    str[]
-    rets:   str[]
-    arity:  int[]
+    sigs:   Ty[]
     fields: str[]
-    ftypes: str[]
+    ftypes: Ty[]
     ctors:  str[]
     owners: str[]
+    errors: str[]
+    infer:  Infer
 }
 
 empty_env() -> Env =>
-    Env { names = [], types = [], fns = [], rets = [], arity = [],
-          fields = [], ftypes = [], ctors = [], owners = [] }
+    Env { names = [], types = [], fns = [], sigs = [],
+          fields = [], ftypes = [], ctors = [], owners = [],
+          errors = [], infer = new_infer() }
 
-bind(env: Env, name: str, ty: str) -> Env =>
+Typed = {
+    env: Env
+    ty:  Ty
+}
+
+typed(env: Env, ty: Ty) -> Typed =>
+    Typed { env, ty }
+
+Signature = {
+    env: Env
+    tys: Ty[]
+}
+
+bind(env: Env, name: str, ty: Ty) -> Env =>
     env with { names = env.names ++ [name], types = env.types ++ [ty] }
 
-lookup(env: Env, name: str) -> str {
-    at = env.names.index_of(name)
+complain(env: Env, why: str) -> Env =>
+    env with { errors = env.errors ++ [why] }
 
-    if at < 0 {
-        ""
+note(env: Env, why: str) -> Env {
+    if why == "" {
+        env
     } else {
-        env.types.get(at)
+        complain(env, why)
+    }
+}
+
+with_infer(env: Env, inf: Infer) -> Env =>
+    env with { infer = inf }
+
+joined(env: Env, want: Ty, got: Ty) -> Env {
+    step = unify(env.infer, want, got)
+
+    note(with_infer(env, step.infer), step.error)
+}
+
+is_array_name(name: str) -> bool =>
+    name.length() > 2 && name.slice(name.length() - 2, name.length()) == "[]"
+
+ty_named(name: str) -> Ty {
+    if name == "" {
+        t_any()
+    } else if is_array_name(name) {
+        t_array(ty_named(name.slice(0, name.length() - 2)))
+    } else if name == "int" {
+        t_int()
+    } else if name == "float" {
+        t_float()
+    } else if name == "str" {
+        t_str()
+    } else if name == "bool" {
+        t_bool()
+    } else if name == "bytes" {
+        t_bytes()
+    } else {
+        t_con(name, [])
+    }
+}
+
+declared_type(env: Env, decl: str) -> Typed {
+    if decl != "" {
+        typed(env, ty_named(decl))
+    } else {
+        made = fresh(env.infer)
+
+        typed(with_infer(env, made.infer), made.ty)
+    }
+}
+
+param_types(env: Env, ps: Expr[], i: int, acc: Ty[]) -> Signature {
+    if i >= ps.length() {
+        Signature { env, tys = acc }
+    } else {
+        got = declared_type(env, ps.get(i).ty)
+
+        param_types(got.env, ps, i + 1, acc ++ [got.ty])
     }
 }
 
 env_of_module(m: Module) -> Env =>
-    collect_items(m.items, 0, empty_env())
+    collect_items(empty_env(), m.items, 0)
 
-collect_items(items: Stmt[], i: int, env: Env) -> Env {
+collect_items(env: Env, items: Stmt[], i: int) -> Env {
     if i >= items.length() {
         env
     } else {
-        collect_items(items, i + 1, collect_item(items.get(i), env))
+        collect_items(collect_item(env, items.get(i)), items, i + 1)
     }
 }
 
-collect_item(s: Stmt, env: Env) -> Env {
+collect_item(env: Env, s: Stmt) -> Env {
     if s.kind == SFn {
-        add_fn(env, s.name, s.ret, s.params.length())
+        add_fn(env, s)
     } else if s.kind == SRecord {
         add_fields(env, s.name, s.params, 0)
     } else if s.kind == SSum {
@@ -53,273 +122,306 @@ collect_item(s: Stmt, env: Env) -> Env {
     }
 }
 
-add_fn(env: Env, name: str, ret: str, n: int) -> Env =>
-    env with { fns = env.fns ++ [name], rets = env.rets ++ [ret],
-               arity = env.arity ++ [n] }
+add_fn(env: Env, s: Stmt) -> Env {
+    made = param_types(env, s.params, 0, [])
+
+    made.env with { fns = made.env.fns ++ [s.name],
+                    sigs = made.env.sigs ++ [t_fn(made.tys, ty_named(s.ret))] }
+}
 
 add_fields(env: Env, rec: str, fs: Expr[], i: int) -> Env {
     if i >= fs.length() {
         env
     } else {
-        key = rec ++ "." ++ fs.get(i).text
-        add_fields(add_field(env, key, fs.get(i).ty), rec, fs, i + 1)
+        held = env with { fields = env.fields ++ [rec ++ "." ++ fs.get(i).text],
+                          ftypes = env.ftypes ++ [ty_named(fs.get(i).ty)] }
+
+        add_fields(held, rec, fs, i + 1)
     }
 }
-
-add_field(env: Env, key: str, ty: str) -> Env =>
-    env with { fields = env.fields ++ [key], ftypes = env.ftypes ++ [ty] }
 
 add_ctors(env: Env, sum: str, vs: Expr[], i: int) -> Env {
     if i >= vs.length() {
         env
     } else {
-        add_ctors(add_ctor(env, vs.get(i).text, sum), sum, vs, i + 1)
+        held = env with { ctors = env.ctors ++ [vs.get(i).text],
+                          owners = env.owners ++ [sum] }
+
+        add_ctors(held, sum, vs, i + 1)
     }
 }
 
-add_ctor(env: Env, v: str, sum: str) -> Env =>
-    env with { ctors = env.ctors ++ [v], owners = env.owners ++ [sum] }
-
-type_in(e: Expr, env: Env) -> str =>
+type_in(env: Env, e: Expr) -> Typed =>
     match e.kind {
-        EInt     => "int"
-        EFloat   => "float"
-        EStr     => "str"
-        EBool    => "bool"
-        EIdent   => ident_type(e, env)
-        ECall    => call_type(e, env)
-        EBinary  => binop_in(e, env)
-        ETernary => type_in(e.children.get(1), env)
-        EUnary   => type_in(e.children.get(0), env)
-        ERecord  => e.text
-        EField   => field_type(e, env)
-        EMatch   => match_type(e, env)
-        EList    => "list"
-        _        => "any"
+        EInt     => typed(env, t_int())
+        EFloat   => typed(env, t_float())
+        EStr     => typed(env, t_str())
+        EBool    => typed(env, t_bool())
+        EIdent   => ident_type(env, e)
+        ECall    => call_type(env, e)
+        EBinary  => binop_type(env, e)
+        ETernary => ternary_type(env, e)
+        EIf      => ternary_type(env, e)
+        EUnary   => type_in(env, e.children.get(0))
+        ERecord  => typed(walk_args(env, e.children, 0), t_con(e.text, []))
+        EField   => field_type(env, e)
+        EMatch   => match_type(env, e)
+        EList    => list_type(env, e)
+        _        => typed(env, t_any())
     }
 
-ident_type(e: Expr, env: Env) -> str {
-    local = lookup(env, e.text)
+ident_type(env: Env, e: Expr) -> Typed {
+    at = env.names.index_of(e.text)
     variant = env.ctors.index_of(e.text)
 
-    if local != "" {
-        local
+    if at >= 0 {
+        typed(env, env.types.get(at))
     } else if variant >= 0 {
-        env.owners.get(variant)
+        typed(env, t_con(env.owners.get(variant), []))
     } else {
-        "any"
+        typed(env, t_any())
     }
 }
 
-call_type(e: Expr, env: Env) -> str {
+call_type(env: Env, e: Expr) -> Typed {
     declared = env.fns.index_of(e.text)
     variant = env.ctors.index_of(e.text)
 
     if declared >= 0 {
-        ret_or_any(env.rets.get(declared))
+        call_declared(env, e, env.sigs.get(declared))
     } else if variant >= 0 {
-        env.owners.get(variant)
+        typed(walk_args(env, e.children, 0), t_con(env.owners.get(variant), []))
     } else {
-        builtin_type(e.text)
+        typed(walk_args(env, e.children, 0), builtin_type(e.text))
     }
 }
 
-ret_or_any(r: str) -> str {
-    if r == "" {
-        "any"
+call_declared(env: Env, e: Expr, sig: Ty) -> Typed {
+    used = instantiate(env.infer, generalize(env.infer, sig))
+    ready = with_infer(env, used.infer)
+    params = fn_params(used.ty)
+
+    if params.length() != e.children.length() {
+        typed(wrong_arity(ready, e, params.length()), fn_ret(used.ty))
     } else {
-        r
+        typed(unify_args(ready, e.children, params, 0), fn_ret(used.ty))
     }
 }
 
-builtin_type(name: str) -> str {
+wrong_arity(env: Env, e: Expr, wanted: int) -> Env =>
+    complain(env, "`{e.text}` takes {wanted} argument(s), given {e.children.length()}")
+
+unify_args(env: Env, args: Expr[], params: Ty[], i: int) -> Env {
+    if i >= args.length() {
+        env
+    } else {
+        got = type_in(env, args.get(i))
+
+        unify_args(joined(got.env, params.get(i), got.ty), args, params, i + 1)
+    }
+}
+
+walk_args(env: Env, args: Expr[], i: int) -> Env {
+    if i >= args.length() {
+        env
+    } else {
+        walk_args(type_in(env, args.get(i)).env, args, i + 1)
+    }
+}
+
+builtin_type(name: str) -> Ty {
     if name == "str" {
-        "str"
+        t_str()
     } else if name == "int" {
-        "int"
+        t_int()
     } else if name == "info" || name == "print" {
-        "unit"
+        t_unit()
     } else {
-        "any"
+        t_any()
     }
 }
 
-field_type(e: Expr, env: Env) -> str {
-    recv = type_in(e.children.get(0), env)
-    at = env.fields.index_of(recv ++ "." ++ e.text)
+is_compare(op: str) -> bool =>
+    op == "==" || op == "!=" || op == "<" || op == ">"
+        || op == "<=" || op == ">="
 
-    if at < 0 {
-        "any"
-    } else {
-        env.ftypes.get(at)
-    }
-}
+is_logic(op: str) -> bool =>
+    op == "&&" || op == "||"
 
-match_type(e: Expr, env: Env) -> str {
-    if e.children.length() >= 3 {
-        type_in(e.children.get(2), env)
-    } else {
-        "any"
-    }
-}
-
-binop_in(e: Expr, env: Env) -> str {
-    is_cmp = e.text == "==" || e.text == "!=" || e.text == "<"
-        || e.text == ">" || e.text == "<=" || e.text == ">="
+binop_type(env: Env, e: Expr) -> Typed {
+    lhs = type_in(env, e.children.get(0))
+    rhs = type_in(lhs.env, e.children.get(1))
 
     if e.text == "++" {
-        "str"
-    } else if is_cmp {
-        "bool"
+        typed(rhs.env, t_str())
+    } else if is_compare(e.text) {
+        typed(joined(rhs.env, lhs.ty, rhs.ty), t_bool())
+    } else if is_logic(e.text) {
+        typed(rhs.env, t_bool())
     } else {
-        arith_type(type_in(e.children.get(0), env),
-                   type_in(e.children.get(1), env))
+        arith_type(rhs.env, lhs.ty, rhs.ty)
     }
 }
 
-arith_type(lt: str, rt: str) -> str {
-    if lt == "any" || rt == "any" {
-        "int"
-    } else if lt == rt && (lt == "int" || lt == "float") {
-        lt
+numeric(t: Ty) -> bool =>
+    t.kind == KInt || t.kind == KFloat || t.kind == KVar || absorbing(t)
+
+arith_type(env: Env, a: Ty, b: Ty) -> Typed {
+    step = unify(env.infer, a, b)
+    ready = with_infer(env, step.infer)
+    left = resolve(step.infer, a)
+    right = resolve(step.infer, b)
+
+    if step.error != "" {
+        typed(complain(ready, step.error), t_error())
+    } else if !numeric(left) || !numeric(right) {
+        typed(complain(ready, "{show_ty(left)} is not a number"), t_error())
+    } else if left.kind == KFloat || right.kind == KFloat {
+        typed(ready, t_float())
     } else {
-        "error"
+        typed(ready, t_int())
     }
 }
 
-errors_in(e: Expr, env: Env) -> int {
-    mismatch = if type_in(e, env) == "error" { 1 } else { 0 }
+ternary_type(env: Env, e: Expr) -> Typed {
+    cond = type_in(env, e.children.get(0))
+    then = type_in(cond.env, e.children.get(1))
+    other = type_in(then.env, e.children.get(2))
 
-    mismatch + arity_error(e, env) + child_errors(e.children, 0, env)
+    typed(joined(other.env, then.ty, other.ty), then.ty)
 }
 
-child_errors(xs: Expr[], i: int, env: Env) -> int {
-    if i >= xs.length() {
-        0
+field_type(env: Env, e: Expr) -> Typed {
+    base = type_in(env, e.children.get(0))
+    owner = resolve(base.env.infer, base.ty)
+    at = env.fields.index_of(owner.name ++ "." ++ e.text)
+
+    if at < 0 {
+        typed(base.env, t_any())
     } else {
-        errors_in(xs.get(i), env) + child_errors(xs, i + 1, env)
+        typed(base.env, env.ftypes.get(at))
     }
 }
 
-arity_error(e: Expr, env: Env) -> int {
-    if e.kind != ECall {
-        0
+match_type(env: Env, e: Expr) -> Typed {
+    if e.children.length() < 3 {
+        typed(walk_args(env, e.children, 0), t_any())
     } else {
-        declared = env.fns.index_of(e.text)
-        wrong_arity(env, declared, e.children.length())
+        seen = type_in(env, e.children.get(0))
+        first = type_in(seen.env, e.children.get(2))
+
+        typed(unify_from(first.env, e.children, first.ty, 4, 2), first.ty)
     }
 }
 
-wrong_arity(env: Env, declared: int, given: int) -> int {
-    if declared < 0 || env.arity.get(declared) == given {
-        0
+list_type(env: Env, e: Expr) -> Typed {
+    if e.children.length() == 0 {
+        typed(env, t_array(t_any()))
     } else {
-        1
+        first = type_in(env, e.children.get(0))
+
+        typed(unify_from(first.env, e.children, first.ty, 1, 1),
+              t_array(first.ty))
     }
 }
 
-check_fn_in(s: Stmt, env: Env) -> int {
-    inner = bind_params(env, s.params, 0)
+unify_from(env: Env, cs: Expr[], want: Ty, i: int, step: int) -> Env {
+    if i >= cs.length() {
+        env
+    } else {
+        got = type_in(env, cs.get(i))
 
-    check_body(s.body, 0, inner) + return_error(s, inner)
+        unify_from(joined(got.env, want, got.ty), cs, want, i + step, step)
+    }
 }
 
-bind_params(env: Env, ps: Expr[], i: int) -> Env {
+check_fn_in(env: Env, s: Stmt) -> Env {
+    inner = bind_params(env, s.params, signature_params(env, s.name), 0)
+    body = check_body(inner, s.body, 0, t_any())
+    checked = return_check(body.env, s.ret, body.ty)
+
+    checked with { names = env.names, types = env.types }
+}
+
+signature_params(env: Env, name: str) -> Ty[] {
+    at = env.fns.index_of(name)
+
+    if at < 0 {
+        []
+    } else {
+        fn_params(env.sigs.get(at))
+    }
+}
+
+bind_params(env: Env, ps: Expr[], tys: Ty[], i: int) -> Env {
     if i >= ps.length() {
         env
+    } else if i < tys.length() {
+        bind_params(bind(env, ps.get(i).text, tys.get(i)), ps, tys, i + 1)
     } else {
-        bound = bind(env, ps.get(i).text, param_ty(ps.get(i).ty))
-        bind_params(bound, ps, i + 1)
+        got = declared_type(env, ps.get(i).ty)
+
+        bind_params(bind(got.env, ps.get(i).text, got.ty), ps, tys, i + 1)
     }
 }
 
-param_ty(ty: str) -> str {
-    if ty == "" {
-        "any"
-    } else {
-        ty
-    }
-}
-
-check_body(stmts: Stmt[], i: int, env: Env) -> int {
+check_body(env: Env, stmts: Stmt[], i: int, last: Ty) -> Typed {
     if i >= stmts.length() {
-        0
+        typed(env, last)
     } else {
-        here = errors_in(stmts.get(i).value, env)
-        here + check_body(stmts, i + 1, extend(env, stmts.get(i)))
+        got = type_in(env, stmts.get(i).value)
+
+        check_body(extend(got.env, stmts.get(i), got.ty), stmts, i + 1, got.ty)
     }
 }
 
-extend(env: Env, s: Stmt) -> Env {
+extend(env: Env, s: Stmt, ty: Ty) -> Env {
     if s.kind == SBind {
-        bind(env, s.name, type_in(s.value, env))
+        bind(env, s.name, ty)
     } else {
         env
     }
 }
 
-return_error(s: Stmt, env: Env) -> int {
-    actual = body_type(s, env)
-
-    if disagrees(s.ret, actual) {
-        1
-    } else {
-        0
-    }
-}
-
-body_type(s: Stmt, env: Env) -> str {
-    if s.body.length() == 0 {
-        "any"
-    } else {
-        last = s.body.get(s.body.length() - 1)
-        type_in(last.value, scope_of(s, env))
-    }
-}
-
-scope_of(s: Stmt, env: Env) -> Env =>
-    fold_binds(s.body, 0, s.body.length() - 1, env)
-
-fold_binds(stmts: Stmt[], i: int, stop: int, env: Env) -> Env {
-    if i >= stop {
+return_check(env: Env, declared: str, actual: Ty) -> Env {
+    if declared == "" {
         env
     } else {
-        fold_binds(stmts, i + 1, stop, extend(env, stmts.get(i)))
+        joined(env, ty_named(declared), actual)
     }
 }
 
-disagrees(declared: str, actual: str) -> bool {
-    if declared == "" || declared == "any" || actual == "any" {
-        false
-    } else if actual == "error" {
-        false
-    } else {
-        declared != actual
-    }
+checked_module(m: Module) -> Env {
+    start = env_of_module(m)
+    inferred = check_items(start, m.items, 0)
+
+    check_items(with_infer(start, inferred.infer), m.items, 0)
 }
 
 check_module(m: Module) -> int =>
-    check_items(m.items, 0, env_of_module(m))
+    checked_module(m).errors.length()
 
-check_items(items: Stmt[], i: int, env: Env) -> int {
+check_items(env: Env, items: Stmt[], i: int) -> Env {
     if i >= items.length() {
-        0
+        env
     } else {
-        here = check_item(items.get(i), env)
-        here + check_items(items, i + 1, env)
+        check_items(check_item(env, items.get(i)), items, i + 1)
     }
 }
 
-check_item(s: Stmt, env: Env) -> int {
+check_item(env: Env, s: Stmt) -> Env {
     if s.kind == SFn {
-        check_fn_in(s, env)
+        check_fn_in(env, s)
     } else {
-        0
+        env
     }
 }
+
+check_errors(m: Module) -> str[] =>
+    checked_module(m).errors
 
 type_of(e: Expr) -> str =>
-    type_in(e, empty_env())
+    show_ty(type_in(empty_env(), e).ty)
 
 count_errors(e: Expr) -> int =>
-    errors_in(e, empty_env())
+    type_in(empty_env(), e).env.errors.length()

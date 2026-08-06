@@ -1,0 +1,61 @@
+import selfhost/lexer
+import selfhost/parser
+import selfhost/check
+import selfhost/emit_c
+import selfhost/emit_rust
+
+shown(src: str) -> str =>
+    show(parse_expr(lex(src), 0).node)
+
+c_of(src: str) -> str =>
+    emit_fn(parse_fn(lex(src), 0).snode)
+
+rust_of(src: str) -> str =>
+    remit_fn(parse_fn(lex(src), 0).snode)
+
+errors_in(src: str) -> str =>
+    str(check_errors(parse_module(lex(src), 0, [])).length())
+
+Picker = "pick(n: int) -> int => if n > 0 {{ 1 }} else {{ 0 }}"
+
+test_an_if_expression_parses_with_both_branches() {
+    assert_eq(shown("if a > b {{ 1 }} else {{ 2 }}"),
+              "(if (a > b) then 1 else 2)",
+              "condition, then-branch, else-branch")
+}
+
+test_an_else_if_chain_nests_to_the_right() {
+    assert_eq(shown("if a {{ 1 }} else if b {{ 2 }} else {{ 3 }}"),
+              "(if a then 1 else (if b then 2 else 3))",
+              "the second if is the first one's else-branch")
+}
+
+test_an_if_is_an_expression_and_composes() {
+    assert_eq(shown("1 + if a {{ 2 }} else {{ 3 }}"),
+              "(1 + (if a then 2 else 3))",
+              "it sits where any other operand would")
+}
+
+test_an_if_lowers_to_a_ternary_in_c() {
+    assert_eq(c_of(Picker),
+              "int pick(int n) {{ return ((n > 0) ? 1 : 0);  }}",
+              "C has no if-expression, so it is a ternary")
+}
+
+test_an_if_lowers_to_a_native_if_in_rust() {
+    assert_eq(rust_of(Picker),
+              "fn pick(n: i64) -> i64 {{ (if (n > 0i64) {{ 1i64 }} else {{ 0i64 }})  }}",
+              "Rust has one already")
+}
+
+test_an_if_has_the_type_of_its_branches() {
+    assert_eq(errors_in(Picker), "0",
+              "both branches are int, and so is the return")
+    assert_eq(errors_in("pick(n: int) -> str => if n > 0 {{ 1 }} else {{ 0 }}"),
+              "1", "int is not str")
+}
+
+test_the_branches_of_an_if_must_agree() {
+    assert_eq(errors_in("pick(n: int) -> int => if n > 0 {{ 1 }} else {{ \"x\" }}"),
+              "1", "one branch is int and the other str")
+}

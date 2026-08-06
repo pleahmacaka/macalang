@@ -1,0 +1,245 @@
+import selfhost/ty
+
+one_var() -> Instance =>
+    fresh(new_infer())
+
+two_vars() -> Batch =>
+    fresh_many(new_infer(), 2, [])
+
+test_a_primitive_unifies_with_itself() {
+    same = unify(new_infer(), t_int(), t_int())
+    assert_eq(same.error, "", "int is int")
+
+    both = unify(new_infer(), t_str(), t_str())
+    assert_eq(both.error, "", "str is str")
+}
+
+test_two_different_primitives_clash_and_say_which() {
+    clash = unify(new_infer(), t_int(), t_str())
+    assert_eq(clash.error, "type mismatch: expected int, found str",
+              "the expected type comes first")
+}
+
+test_any_unifies_with_anything() {
+    left = unify(new_infer(), t_any(), t_str())
+    right = unify(new_infer(), t_bool(), t_any())
+    assert_eq(left.error, "", "any absorbs str")
+    assert_eq(right.error, "", "any absorbs bool")
+}
+
+test_the_error_type_absorbs_rather_than_cascading() {
+    once = unify(new_infer(), t_error(), t_str())
+    twice = unify(new_infer(), t_int(), t_error())
+    assert_eq(once.error, "", "a type already reported does not report again")
+    assert_eq(twice.error, "", "in either position")
+    assert_eq(show_ty(t_error()), "error", "it prints as error")
+}
+
+test_a_variable_binds_and_resolves_to_the_concrete_type() {
+    made = one_var()
+    bound = unify(made.infer, made.ty, t_str())
+    assert_eq(bound.error, "", "a fresh variable takes any type")
+    assert_eq(show_ty(resolve(bound.infer, made.ty)), "str",
+              "the variable now reads as str")
+}
+
+test_a_variable_bound_twice_must_agree() {
+    made = one_var()
+    once = unify(made.infer, made.ty, t_int())
+    twice = unify(once.infer, made.ty, t_str())
+    assert_eq(twice.error, "type mismatch: expected int, found str",
+              "the second use is checked against the first")
+}
+
+test_two_variables_unify_with_each_other() {
+    made = two_vars()
+    linked = unify(made.infer, made.tys.get(0), made.tys.get(1))
+    assert_eq(linked.error, "", "one variable points at the other")
+
+    settled = unify(linked.infer, made.tys.get(1), t_bool())
+    assert_eq(show_ty(resolve(settled.infer, made.tys.get(0))), "bool",
+              "binding one settles both")
+}
+
+test_an_unbound_variable_shows_as_its_slot() {
+    made = one_var()
+    assert_eq(show_ty(resolve(made.infer, made.ty)), "t0",
+              "nothing has been learned about it yet")
+}
+
+test_the_occurs_check_refuses_an_infinite_type() {
+    made = one_var()
+    looped = unify(made.infer, made.ty, t_array(made.ty))
+    assert_eq(looped.error, "", "the binding is not an error, it is widened")
+    assert_eq(show_ty(resolve(looped.infer, made.ty)), "any",
+              "t0 = Array t0 would never terminate")
+}
+
+test_a_constructor_unifies_by_name_and_argument_count() {
+    ok = unify(new_infer(), t_array(t_int()), t_array(t_int()))
+    assert_eq(ok.error, "", "Array int is Array int")
+
+    inner = unify(new_infer(), t_array(t_int()), t_array(t_str()))
+    assert_eq(inner.error, "type mismatch: expected int, found str",
+              "the element types are unified")
+
+    named = unify(new_infer(), t_con("Map", [t_str()]), t_array(t_str()))
+    assert_eq(named.error, "type mismatch: expected Map str, found Array str",
+              "a different constructor is a different type")
+}
+
+test_a_constructor_argument_can_bind_a_variable() {
+    made = one_var()
+    found = unify(made.infer, t_array(made.ty), t_array(t_int()))
+    assert_eq(found.error, "", "the element type flows in")
+    assert_eq(show_ty(resolve(found.infer, made.ty)), "int",
+              "Array t0 against Array int learns t0 = int")
+}
+
+test_a_function_unifies_by_arity_then_by_parts() {
+    ok = unify(new_infer(), t_fn([t_int()], t_bool()),
+               t_fn([t_int()], t_bool()))
+    assert_eq(ok.error, "", "same shape")
+
+    arity = unify(new_infer(), t_fn([t_int()], t_bool()),
+                  t_fn([t_int(), t_int()], t_bool()))
+    assert_eq(arity.error,
+              "type mismatch: expected (int) -> bool, found (int, int) -> bool",
+              "one parameter is not two")
+
+    ret = unify(new_infer(), t_fn([t_int()], t_bool()),
+                t_fn([t_int()], t_str()))
+    assert_eq(ret.error, "type mismatch: expected bool, found str",
+              "the return type is unified too")
+}
+
+closed_ab() -> Ty =>
+    t_rec(["a", "b"], [t_int(), t_str()], false)
+
+test_a_closed_record_needs_exactly_its_fields() {
+    ok = unify(new_infer(), closed_ab(), closed_ab())
+    assert_eq(ok.error, "", "the same row")
+
+    missing = unify(new_infer(), closed_ab(),
+                    t_rec(["a"], [t_int()], false))
+    assert_eq(missing.error, "record is missing field `b`",
+              "a closed row names what is absent")
+
+    extra = unify(new_infer(), t_rec(["a"], [t_int()], false),
+                  closed_ab())
+    assert_eq(extra.error, "record has unexpected field `b`",
+              "a closed row names what is spare")
+}
+
+test_a_records_field_types_are_unified() {
+    clash = unify(new_infer(), closed_ab(),
+                  t_rec(["a", "b"], [t_int(), t_bool()], false))
+    assert_eq(clash.error, "type mismatch: expected str, found bool",
+              "field b disagrees")
+}
+
+test_an_open_row_tolerates_the_fields_it_does_not_name() {
+    absent = unify(new_infer(), closed_ab(),
+                   t_rec(["a"], [t_int()], true))
+    assert_eq(absent.error, "", "an open row may be missing b")
+
+    spare = unify(new_infer(), t_rec(["a"], [t_int()], true),
+                  closed_ab())
+    assert_eq(spare.error, "", "an open row may carry a spare b")
+}
+
+test_a_row_field_can_bind_a_variable() {
+    made = one_var()
+    found = unify(made.infer, t_rec(["a"], [made.ty], false),
+                  t_rec(["a"], [t_bool()], false))
+    assert_eq(found.error, "", "the field type flows in")
+    assert_eq(show_ty(resolve(found.infer, made.ty)), "bool",
+              "a: t0 against a: bool learns t0 = bool")
+}
+
+test_a_row_is_matched_by_label_not_by_position() {
+    swapped = unify(new_infer(), closed_ab(),
+                    t_rec(["b", "a"], [t_str(), t_int()], false))
+    assert_eq(swapped.error, "", "order does not matter")
+}
+
+test_an_optional_unifies_with_the_type_inside_it() {
+    inside = unify(new_infer(), t_opt(t_int()), t_int())
+    assert_eq(inside.error, "", "int? accepts int")
+
+    both = unify(new_infer(), t_opt(t_int()), t_opt(t_int()))
+    assert_eq(both.error, "", "int? accepts int?")
+
+    wrong = unify(new_infer(), t_opt(t_int()), t_str())
+    assert_eq(wrong.error, "type mismatch: expected int, found str",
+              "int? does not accept str")
+}
+
+test_a_monomorphic_scheme_quantifies_nothing() {
+    plain = mono(t_int())
+    assert_eq(str(plain.slots.length()), "0", "nothing to instantiate")
+
+    used = instantiate(new_infer(), plain)
+    assert_eq(show_ty(used.ty), "int", "instantiating a mono scheme is a copy")
+}
+
+test_generalize_quantifies_the_variables_still_unknown() {
+    made = two_vars()
+    scheme = generalize(made.infer,
+                        t_fn([made.tys.get(0)], made.tys.get(1)))
+    assert_eq(str(scheme.slots.length()), "2", "both parameters are free")
+}
+
+test_generalize_leaves_a_variable_that_is_already_known() {
+    made = two_vars()
+    settled = unify(made.infer, made.tys.get(0), t_int())
+    scheme = generalize(settled.infer,
+                        t_fn([made.tys.get(0)], made.tys.get(1)))
+    assert_eq(str(scheme.slots.length()), "1", "only the second is free")
+}
+
+identity_scheme(inf: Infer, v: Ty) -> Scheme =>
+    generalize(inf, t_fn([v], v))
+
+test_instantiating_twice_gives_two_independent_copies() {
+    made = one_var()
+    scheme = identity_scheme(made.infer, made.ty)
+
+    first = instantiate(made.infer, scheme)
+    second = instantiate(first.infer, scheme)
+
+    as_int = unify(second.infer, fn_ret(first.ty), t_int())
+    assert_eq(as_int.error, "", "the first copy is used at int")
+
+    as_str = unify(as_int.infer, fn_ret(second.ty), t_str())
+    assert_eq(as_str.error, "",
+              "the second copy is still free, so str is fine")
+}
+
+test_one_copy_of_a_scheme_stays_linked_to_itself() {
+    made = one_var()
+    scheme = identity_scheme(made.infer, made.ty)
+    used = instantiate(made.infer, scheme)
+
+    argument = unify(used.infer, fn_params(used.ty).get(0), t_int())
+    assert_eq(argument.error, "", "the parameter takes int")
+    assert_eq(show_ty(resolve(argument.infer, fn_ret(used.ty))), "int",
+              "the return type is the same variable, so it is int too")
+}
+
+test_show_ty_renders_every_shape() {
+    assert_eq(show_ty(t_int()), "int", "int")
+    assert_eq(show_ty(t_float()), "float", "float")
+    assert_eq(show_ty(t_str()), "str", "str")
+    assert_eq(show_ty(t_bool()), "bool", "bool")
+    assert_eq(show_ty(t_bytes()), "bytes", "bytes")
+    assert_eq(show_ty(t_unit()), "()", "unit")
+    assert_eq(show_ty(t_any()), "any", "any")
+    assert_eq(show_ty(t_var(7)), "t7", "a variable is its slot")
+    assert_eq(show_ty(t_con("Color", [])), "Color", "a bare constructor")
+    assert_eq(show_ty(t_array(t_int())), "Array int", "an applied constructor")
+    assert_eq(show_ty(t_fn([t_int(), t_str()], t_bool())),
+              "(int, str) -> bool", "a function")
+    assert_eq(show_ty(closed_ab()), "{{ a: int, b: str }}", "a row")
+    assert_eq(show_ty(t_opt(t_int())), "int?", "an optional")
+}

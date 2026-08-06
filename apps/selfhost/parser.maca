@@ -401,6 +401,7 @@ parse_atom(ts: Token[], i: int) -> PExpr {
         KwTrue   => mk_pexpr(e_bool("true"), i + 1)
         KwFalse  => mk_pexpr(e_bool("false"), i + 1)
         KwMatch  => parse_match(ts, i)
+        KwIf     => parse_if(ts, i)
         LBracket => parse_list(ts, i)
         TIdent   => parse_call_or_ident(ts, i)
         LParen   => parse_paren(ts, i)
@@ -425,6 +426,26 @@ parse_one_elem(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     e = parse_expr(ts, i)
 
     parse_list_elems(ts, skip_comma(ts, e.next), acc ++ [e.node])
+}
+
+parse_if(ts: Token[], i: int) -> PExpr {
+    cond = parse_expr(ts, i + 1)
+    then = parse_expr(ts, cond.next + 1)
+    els = parse_else(ts, then.next + 1)
+
+    mk_pexpr(e_if(cond.node, then.node, els.node), els.next)
+}
+
+parse_else(ts: Token[], i: int) -> PExpr {
+    if ts.get(i).kind != KwElse {
+        mk_pexpr(e_ident("?"), i)
+    } else if ts.get(i + 1).kind == KwIf {
+        parse_if(ts, i + 1)
+    } else {
+        branch = parse_expr(ts, i + 2)
+
+        mk_pexpr(branch.node, branch.next + 1)
+    }
 }
 
 parse_match(ts: Token[], i: int) -> PExpr {

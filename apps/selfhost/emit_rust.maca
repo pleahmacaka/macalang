@@ -17,6 +17,7 @@ remit_expr(e: Expr) -> str =>
         ECall    => remit_call(e)
         EBinary  => remit_binary(e)
         ETernary => remit_ternary(e)
+        EIf      => remit_ternary(e)
         EUnary   => "({e.text}{remit_expr(e.children.get(0))})"
         ERecord  => "{e.text} {{ {remit_lit_fields(e.children)} }}"
         EField   => "{remit_expr(e.children.get(0))}.{e.text}"

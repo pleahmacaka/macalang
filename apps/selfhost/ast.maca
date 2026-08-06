@@ -2,7 +2,7 @@ import selfhost/token
 
 ExprKind =
     EInt | EFloat | EStr | EBool | EIdent
-    | ECall | EField | EBinary | EUnary | ETernary
+    | ECall | EField | EBinary | EUnary | ETernary | EIf
     | EList | ERecord | ELambda | EBlock | EMatch | EMethod
 
 Expr = {
@@ -63,6 +63,10 @@ e_ternary(cond: Expr, then: Expr, els: Expr) -> Expr =>
     Expr { kind = ETernary, text = "", ival = 0, ty = "",
            children = [cond, then, els] }
 
+e_if(cond: Expr, then: Expr, els: Expr) -> Expr =>
+    Expr { kind = EIf, text = "", ival = 0, ty = "",
+           children = [cond, then, els] }
+
 e_unary(op: str, operand: Expr) -> Expr =>
     Expr { kind = EUnary, text = op, ival = 0, ty = "", children = [operand] }
 
@@ -109,6 +113,7 @@ show(e: Expr) -> str =>
         ECall   => "{e.text}({show_args(e.children, 0)})"
         EBinary => "({show(e.children.get(0))} {e.text} {show(e.children.get(1))})"
         ETernary => "({show(e.children.get(0))} ? {show(e.children.get(1))} : {show(e.children.get(2))})"
+        EIf     => "(if {show(e.children.get(0))} then {show(e.children.get(1))} else {show(e.children.get(2))})"
         EUnary  => "({e.text}{show(e.children.get(0))})"
         ERecord => "{e.text} {{ {show_args(e.children, 0)} }}"
         EField  => "{show(e.children.get(0))}.{e.text}"
