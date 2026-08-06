@@ -4,6 +4,15 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* An escaped brace in a string is a brace. The scanner keeps `\{` in a token's text,
+  so `str_node` read it as an interpolation and `split_interp` cut the string at it:
+  the emitter was handed a part whose text was a lone backslash and wrote an
+  unterminated C literal, which derailed the C compiler for the rest of the file and
+  hid every error after it. An escape now carries its next character with it, the
+  interpolation test only fires on a brace that is neither escaped nor doubled, and
+  the literal the emitter writes has the backslash removed. With the mask gone the
+  real count for the compiler's own source is 26 C errors, none of them about a
+  string.
 * The C the self-hosted compiler emits for its own source went from 215 errors to
   8. Almost all of them were one omission: `emit_module` wrote items in source
   order and C wants a declaration before a use, so 81 calls were to undeclared
