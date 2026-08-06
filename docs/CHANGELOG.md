@@ -4,6 +4,18 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* A function is a value in the emitted C, and the count for the compiler's own
+  source falls 26 to 8. A function type is spelled the way `ty.maca` already prints
+  one, `(int, str) -> bool`, so `surface_of` can write it into the tree and the C
+  back end can read the real parameter and result types back out of it: a
+  higher-order parameter is declared `int (*pred)(const char*)` and the call goes
+  through a pointer whose type matches its callee exactly, not a cast. Annotating an
+  item now writes the inferred parameter types back into the declaration, which is
+  what the emitter reads. `.map(f)` lowers to a loop that calls the function
+  directly, so it needs no pointer at all. A deep resolve was needed as well: the
+  plain one stops at the top level, so a parameter's result variable stayed unbound
+  and the spelling came out with nothing after the arrow. The Rust back end reads
+  the same spelling as `fn(String) -> i64`.
 * An escaped brace in a string is a brace. The scanner keeps `\{` in a token's text,
   so `str_node` read it as an interpolation and `split_interp` cut the string at it:
   the emitter was handed a part whose text was a lone backslash and wrote an
