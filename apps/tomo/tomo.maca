@@ -597,7 +597,7 @@ lang_summary_class() -> str =>
 
 lang_menu_class() -> str =>
     "absolute right-0 z-10 mt-1 p-1 list-none bg-white dark:bg-zinc-900"
-        ++ " border border-zinc-200 dark:border-zinc-700 "
+        ++ " border border-zinc-200 dark:border-zinc-700"
 
 wrap_class() -> str =>
     "grid grid-cols-[16rem_minmax(0,44rem)] gap-12 justify-center"

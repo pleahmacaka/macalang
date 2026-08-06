@@ -161,7 +161,7 @@ require_live_css(out: str) -> bool {
 
     if dead.length() > 0 {
         named = dead.join(", ")
-        fail "classes with no CSS rule: {named}"
+        fail "{dead.length()} classes with no CSS rule: {named}"
     } else {
         info(ok("every utility on {pages.length()} pages has a rule"))
         true
@@ -232,9 +232,14 @@ escape_chars(cs: str[], i: int, out: str) -> str {
 needs_escape(c: str) -> bool =>
     "/.:[]()," .contains(c) || "#%'\"!$&*+;<=>?@^`\{|\}~".contains(c)
 
+/// Every class named on the page, which is what the stylesheet has to answer for.
+///
+/// A class attribute that ends in a space splits into an empty token, and an
+/// empty token has no rule, so the gate used to fail while naming nothing.
 classes_in(src: str) -> str[] =>
     str_unique(str_flatten(attr_values(without_scripts(src))
                                .map(v => v.split(" "))))
+        .filter(c => c.trim().length() > 0)
 
 attr_values(src: str) -> str[] =>
     tag_classes(src.split("<"), 0, [])
