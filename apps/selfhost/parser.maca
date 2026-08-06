@@ -314,9 +314,17 @@ parse_primary(ts: Token[], i: int) -> PExpr =>
 parse_postfix(ts: Token[], e: PExpr) -> PExpr {
     if ts.get(e.next).kind == Dot {
         parse_dot(ts, e)
+    } else if ts.get(e.next).kind == KwWith {
+        parse_with(ts, e)
     } else {
         e
     }
+}
+
+parse_with(ts: Token[], base: PExpr) -> PExpr {
+    rf = parse_lit_fields(ts, base.next + 2, [])
+
+    parse_postfix(ts, mk_pexpr(e_with(base.node, rf.aitems), rf.anext))
 }
 
 parse_dot(ts: Token[], e: PExpr) -> PExpr {
@@ -519,8 +527,9 @@ parse_call_or_ident(ts: Token[], i: int) -> PExpr {
 opens_record_lit(ts: Token[], i: int) -> bool {
     opens = ts.get(i + 1).kind == LBrace
     named = ts.get(i + 2).kind == TIdent
+    after = ts.get(i + 3).kind
 
-    opens && named && ts.get(i + 3).kind == Eq
+    opens && named && (after == Eq || after == Comma)
 }
 
 parse_record_lit(ts: Token[], i: int, name: str) -> PExpr {
@@ -538,10 +547,16 @@ parse_lit_fields(ts: Token[], i: int, acc: Expr[]) -> PArgs {
 
 parse_one_lit_field(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     fname = ts.get(i).text
-    v = parse_expr(ts, i + 2)
-    seen = acc ++ [e_binary("=", e_ident(fname), v.node)]
 
-    parse_lit_fields(ts, skip_comma(ts, v.next), seen)
+    if ts.get(i + 1).kind != Eq {
+        parse_lit_fields(ts, skip_comma(ts, i + 1),
+                         acc ++ [e_binary("=", e_ident(fname), e_ident(fname))])
+    } else {
+        v = parse_expr(ts, i + 2)
+
+        parse_lit_fields(ts, skip_comma(ts, v.next),
+                         acc ++ [e_binary("=", e_ident(fname), v.node)])
+    }
 }
 
 parse_call(ts: Token[], i: int, name: str) -> PExpr {

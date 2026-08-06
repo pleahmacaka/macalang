@@ -59,3 +59,45 @@ test_the_branches_of_an_if_must_agree() {
     assert_eq(errors_in("pick(n: int) -> int => if n > 0 {{ 1 }} else {{ \"x\" }}"),
               "1", "one branch is int and the other str")
 }
+
+Bumper = "bump(p: Point) -> Point => p with {{ x = 1 }}"
+
+test_a_record_update_parses_as_a_base_and_its_fields() {
+    assert_eq(shown("p with {{ x = 1, y = 2 }}"),
+              "p with {{ (x = 1), (y = 2) }}",
+              "the base, then only the fields named")
+}
+
+test_a_shorthand_field_repeats_the_name_as_its_value() {
+    assert_eq(shown("Point {{ x, y = 2 }}"),
+              "Point {{ (x = x), (y = 2) }}",
+              "`{{ x }}` is `{{ x = x }}`")
+}
+
+test_a_record_update_takes_a_shorthand_field_too() {
+    assert_eq(shown("p with {{ x }}"), "p with {{ (x = x) }}",
+              "the same rule inside with")
+}
+
+test_a_record_update_copies_before_it_assigns_in_c() {
+    assert_eq(c_of(Bumper),
+              "Point bump(Point p) {{ return ({{ __typeof__(p) _w = p;"
+                  ++ " _w.x = 1; _w; }});  }}",
+              "C has no update expression, so it is a statement expression")
+}
+
+test_a_record_update_copies_before_it_assigns_in_rust() {
+    assert_eq(rust_of(Bumper),
+              "fn bump(p: Point) -> Point {{ {{ let mut _w = p;"
+                  ++ " _w.x = 1i64; _w }}  }}",
+              "a block that mutates its own copy")
+}
+
+test_a_record_update_has_the_type_of_its_base() {
+    assert_eq(errors_in("Point = {{ x: int }}"
+                        ++ " bump(p: Point) -> Point => p with {{ x = 1 }}"),
+              "0", "the update is still a Point")
+    assert_eq(errors_in("Point = {{ x: int }}"
+                        ++ " bump(p: Point) -> int => p with {{ x = 1 }}"),
+              "1", "a Point is not an int")
+}

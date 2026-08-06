@@ -3,7 +3,7 @@ import selfhost/token
 ExprKind =
     EInt | EFloat | EStr | EBool | EIdent
     | ECall | EField | EBinary | EUnary | ETernary | EIf
-    | EList | ERecord | ELambda | EBlock | EMatch | EMethod
+    | EList | ERecord | EWith | ELambda | EBlock | EMatch | EMethod
 
 Expr = {
     kind:     ExprKind
@@ -73,6 +73,10 @@ e_unary(op: str, operand: Expr) -> Expr =>
 e_record(tyname: str, fields: Expr[]) -> Expr =>
     Expr { kind = ERecord, text = tyname, ival = 0, ty = "", children = fields }
 
+e_with(base: Expr, fields: Expr[]) -> Expr =>
+    Expr { kind = EWith, text = "", ival = 0, ty = "",
+           children = [base] ++ fields }
+
 e_field(base: Expr, name: str) -> Expr =>
     Expr { kind = EField, text = name, ival = 0, ty = "", children = [base] }
 
@@ -116,6 +120,7 @@ show(e: Expr) -> str =>
         EIf     => "(if {show(e.children.get(0))} then {show(e.children.get(1))} else {show(e.children.get(2))})"
         EUnary  => "({e.text}{show(e.children.get(0))})"
         ERecord => "{e.text} {{ {show_args(e.children, 0)} }}"
+        EWith   => "{show(e.children.get(0))} with {{ {show_args(e.children, 1)} }}"
         EField  => "{show(e.children.get(0))}.{e.text}"
         EMatch  => "match {show(e.children.get(0))} {{ ... }}"
         EMethod => "{show(e.children.get(0))}.{e.text}({show_args(e.children, 1)})"

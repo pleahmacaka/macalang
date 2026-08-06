@@ -164,6 +164,7 @@ type_in(env: Env, e: Expr) -> Typed =>
         EIf      => ternary_type(env, e)
         EUnary   => type_in(env, e.children.get(0))
         ERecord  => typed(walk_args(env, e.children, 0), t_con(e.text, []))
+        EWith    => with_type(env, e)
         EField   => field_type(env, e)
         EMatch   => match_type(env, e)
         EList    => list_type(env, e)
@@ -289,6 +290,12 @@ ternary_type(env: Env, e: Expr) -> Typed {
     other = type_in(then.env, e.children.get(2))
 
     typed(joined(other.env, then.ty, other.ty), then.ty)
+}
+
+with_type(env: Env, e: Expr) -> Typed {
+    base = type_in(env, e.children.get(0))
+
+    typed(walk_args(base.env, e.children, 1), base.ty)
 }
 
 field_type(env: Env, e: Expr) -> Typed {

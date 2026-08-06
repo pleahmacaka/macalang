@@ -17,6 +17,7 @@ emit_expr(e: Expr) -> str =>
         EIf      => emit_ternary(e)
         EUnary   => "({e.text}{emit_expr(e.children.get(0))})"
         ERecord  => "({e.text}){{ {emit_lit_fields(e.children, 0)} }}"
+        EWith    => emit_with(e)
         EField   => "{emit_expr(e.children.get(0))}.{e.text}"
         EMatch   => emit_match(e)
         EMethod  => emit_method(e)
@@ -144,6 +145,23 @@ bind_slots(scrut: str, bs: Expr[], i: int) -> str {
         ""
     } else {
         "long {bs.get(i).text} = {scrut}._{i}; {bind_slots(scrut, bs, i + 1)}"
+    }
+}
+
+emit_with(e: Expr) -> str {
+    base = emit_expr(e.children.get(0))
+
+    "({{ __typeof__({base}) _w = {base}; {emit_updates(e.children, 1)}_w; }})"
+}
+
+emit_updates(fs: Expr[], i: int) -> str {
+    if i >= fs.length() {
+        ""
+    } else {
+        f = fs.get(i)
+        set = "_w.{f.children.get(0).text} = {emit_expr(f.children.get(1))}; "
+
+        set ++ emit_updates(fs, i + 1)
     }
 }
 
