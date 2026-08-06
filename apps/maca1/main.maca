@@ -18,7 +18,7 @@ compile_file(args: str[]) -> int {
     raw = parse_module(scanned.tokens, 0, [])
     bad = report_all("scan", scanned.errors, 0) +
         report_all("parse", raw.errors, 0)
-    errs = bad + check_module(raw)
+    errs = bad + report_all("check", check_errors(raw), 0)
     m = annotated(raw)
     want_rust = args.length() >= 3 && args.get(2) == "rust"
     emitted = if want_rust { remit_module(m) } else { emit_module(m) }
