@@ -122,3 +122,17 @@ test_a_search_argument_is_a_pattern() {
     assert(ra_rust(RaFind).index_of("(s).ends_with(t.as_str())") >= 0,
            "and so does ends_with")
 }
+
+test_a_function_parameter_is_a_rust_function_pointer() {
+    assert_eq(rtype("(str) -> int"), "fn(String) -> i64",
+              "one parameter and a result")
+    assert_eq(rtype("(int, str) -> bool"), "fn(i64, String) -> bool",
+              "two parameters keep their order")
+    assert_eq(rtype("(str) -> int[]"), "fn(String) -> Vec<i64>",
+              "a list result is still a list")
+}
+
+test_a_plain_type_is_untouched_by_the_function_case() {
+    assert_eq(rtype("str"), "String", "no arrow, no change")
+    assert_eq(rtype("int[]"), "Vec<i64>", "nor for a list")
+}

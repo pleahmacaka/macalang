@@ -1,5 +1,6 @@
 import maca/lexer
 import maca/parser
+import maca/ty
 import maca/check
 
 errors_of(src: str) -> str[] =>
@@ -10,6 +11,9 @@ count_of(src: str) -> str =>
 
 type_named_in(src: str) -> str =>
     type_of(parse_expr(lex(src), 0).node)
+
+param_surface(src: str, at: int, of: int) -> str =>
+    annotated(parse_module(lex(src), 0, [])).items.get(at).params.get(of).ty
 
 test_type_of_names_what_was_inferred() {
     assert_eq(type_named_in("1 + 2"), "int", "int arithmetic")
@@ -141,6 +145,24 @@ test_a_called_parameter_is_inferred_as_a_function() {
     assert_eq(count_of(Higher ++ " no(c: int) -> bool => true"
                        ++ " use(xs: str[]) -> int => run(xs, no)"),
               "1", "an int parameter is not the str p was called with")
+}
+
+Ret = "run(xs: str[], p) -> int => p(xs.get(0))"
+
+test_an_inferred_parameter_type_is_written_into_the_tree() {
+    assert_eq(param_surface(Ret, 0, 1), "(str) -> int",
+              "a back end reads the shape rather than guessing at it")
+    assert_eq(param_surface(Ret, 0, 0), "str[]",
+              "a declared parameter keeps the type it was written with")
+}
+
+test_a_function_type_is_spelled_with_its_parameters_and_its_result() {
+    assert_eq(surface_of(t_fn([], t_int())), "() -> int",
+              "no parameters is an empty list, not a missing one")
+    assert_eq(surface_of(t_fn([t_int(), t_str()], t_bool())),
+              "(int, str) -> bool", "the parameters are comma separated")
+    assert_eq(surface_of(t_fn([t_str()], t_array(t_str()))),
+              "(str) -> str[]", "the result carries its own spelling")
 }
 
 test_a_called_parameter_carries_its_result_type() {

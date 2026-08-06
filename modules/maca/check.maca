@@ -524,6 +524,7 @@ surface_of(t: Ty) -> str =>
         KBool  => "bool"
         KBytes => "bytes"
         KCon   => con_surface(t)
+        KFn    => fn_surface(t)
         KOpt   => surface_of(t.args.get(0))
         _      => ""
     }
@@ -533,6 +534,19 @@ con_surface(t: Ty) -> str {
         surface_of(t.args.get(0)) ++ "[]"
     } else {
         t.name
+    }
+}
+
+fn_surface(t: Ty) -> str =>
+    "({surface_joined(fn_params(t), 0)}) -> {surface_of(fn_ret(t))}"
+
+surface_joined(ts: Ty[], i: int) -> str {
+    if i >= ts.length() {
+        ""
+    } else if i == ts.length() - 1 {
+        surface_of(ts.get(i))
+    } else {
+        surface_of(ts.get(i)) ++ ", " ++ surface_joined(ts, i + 1)
     }
 }
 
@@ -553,9 +567,42 @@ annotate_item(env: Env, s: Stmt) -> Stmt {
     if s.kind != SFn {
         s
     } else {
-        inner = bind_params(env, s.params, signature_params(env, s.name), 0)
+        tys = signature_params(env, s.name)
+        inner = bind_params(env, s.params, tys, 0)
 
-        s with { body = annotate_body(inner, s.body, 0, []) }
+        s with { params = annotate_params(env.infer, s.params, tys, 0),
+                 body = annotate_body(inner, s.body, 0, []) }
+    }
+}
+
+annotate_params(inf: Infer, ps: Expr[], tys: Ty[], i: int) -> Expr[] {
+    if i >= ps.length() {
+        []
+    } else {
+        [annotate_param(inf, ps.get(i), tys, i)]
+            ++ annotate_params(inf, ps, tys, i + 1)
+    }
+}
+
+annotate_param(inf: Infer, p: Expr, tys: Ty[], i: int) -> Expr {
+    if i >= tys.length() {
+        p
+    } else {
+        p with { ty = surface_of(grounded(inf, tys.get(i))) }
+    }
+}
+
+grounded(inf: Infer, t: Ty) -> Ty {
+    seen = resolve(inf, t)
+
+    seen with { args = grounded_all(inf, seen.args, 0) }
+}
+
+grounded_all(inf: Infer, ts: Ty[], i: int) -> Ty[] {
+    if i >= ts.length() {
+        []
+    } else {
+        [grounded(inf, ts.get(i))] ++ grounded_all(inf, ts, i + 1)
     }
 }
 

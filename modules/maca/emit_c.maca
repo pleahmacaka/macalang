@@ -62,13 +62,16 @@ c_cells(el: str, cs: Expr[], i: int) -> str {
     }
 }
 
-c_cell(el: str, e: Expr) -> str {
+c_cell(el: str, e: Expr) -> str =>
+    c_cell_of(el, emit_expr(e))
+
+c_cell_of(el: str, code: str) -> str {
     if c_boxed(el) {
         ct = type_c(el)
 
-        "maca_box(sizeof({ct}), ({ct}[]){{ {emit_expr(e)} }})"
+        "maca_box(sizeof({ct}), ({ct}[]){{ {code} }})"
     } else {
-        "(long)({emit_expr(e)})"
+        "(long)({code})"
     }
 }
 
@@ -125,6 +128,8 @@ emit_method(e: Expr) -> str {
     } else if e.text == "push" {
         "maca_list_cat({recv}, maca_listv(1,"
             ++ " {c_cell(el, e.children.get(1))}))"
+    } else if e.text == "map" {
+        emit_map(e)
     } else if e.text == "chars" {
         "maca_chars({recv})"
     } else if e.text == "is_whitespace" {
@@ -143,6 +148,26 @@ emit_method(e: Expr) -> str {
         "(strstr({recv}, {emit_expr(e.children.get(1))}) != NULL)"
     } else {
         "{recv}.{e.text}({emit_args(e.children, 1)})"
+    }
+}
+
+emit_map(e: Expr) -> str {
+    src = emit_expr(e.children.get(0))
+    cell = c_cell_at("_m", c_elem_of(e.children.get(0).ty), "_i")
+    f = e.children.get(1)
+    got = c_cell_of(c_map_elem(f), "{emit_expr(f)}({cell})")
+
+    "({{ MacaList _m = {src}; MacaList _r; _r.len = _m.len;"
+        ++ " _r.data = malloc((_r.len ? _r.len : 1) * sizeof(long));"
+        ++ " for (int _i = 0; _i < _m.len; _i++) _r.data[_i] = {got};"
+        ++ " _r; }})"
+}
+
+c_map_elem(f: Expr) -> str {
+    if is_fn_type(f.ty) {
+        fn_ret_of(f.ty)
+    } else {
+        ""
     }
 }
 
@@ -325,8 +350,44 @@ emit_args(xs: Expr[], i: int) -> str =>
 emit_unit(e: Expr) -> str =>
     "int main(void) {{ return {emit_expr(e)}; }}"
 
+is_fn_type(ty: str) -> bool =>
+    ty.index_of(") -> ") >= 0
+
+fn_ret_of(ty: str) -> str =>
+    ty.slice(ty.index_of(") -> ") + 5, ty.length())
+
+fn_params_of(ty: str) -> str =>
+    ty.slice(1, ty.index_of(") -> "))
+
+c_decl(ty: str, name: str) -> str {
+    if !is_fn_type(ty) {
+        "{type_c(ty)} {name}"
+    } else {
+        rt = type_c(fn_ret_of(ty))
+        ps = c_fn_params(fn_params_of(ty))
+
+        "{rt} (*{name})({ps})"
+    }
+}
+
+c_fn_params(ps: str) -> str {
+    at = ps.index_of(", ")
+
+    if ps == "" {
+        "void"
+    } else if at < 0 {
+        type_c(ps)
+    } else {
+        rest = c_fn_params(ps.slice(at + 2, ps.length()))
+
+        "{type_c(ps.slice(0, at))}, {rest}"
+    }
+}
+
 type_c(ty: str) -> str {
-    if is_list_type(ty) {
+    if is_fn_type(ty) {
+        c_decl(ty, "")
+    } else if is_list_type(ty) {
         "MacaList"
     } else if ty == "float" {
         "double"
@@ -356,7 +417,7 @@ c_params(ps: Expr[], i: int) -> str {
 }
 
 emit_param(p: Expr) -> str =>
-    "{type_c(p.ty)} {p.text}"
+    c_decl(p.ty, p.text)
 
 emit_stmts(body: Stmt[], i: int) -> str {
     if i >= body.length() {

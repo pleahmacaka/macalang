@@ -227,8 +227,34 @@ rclone(ty: str) -> str {
     }
 }
 
+r_is_fn(ty: str) -> bool =>
+    ty.index_of(") -> ") >= 0
+
+r_fn_ret(ty: str) -> str =>
+    ty.slice(ty.index_of(") -> ") + 5, ty.length())
+
+r_fn_params(ty: str) -> str =>
+    ty.slice(1, ty.index_of(") -> "))
+
+r_param_types(list: str, at: int, acc: str) -> str {
+    cut = list.index_of(", ")
+
+    if list == "" {
+        acc
+    } else if cut < 0 {
+        acc ++ rtype(list)
+    } else {
+        head = rtype(list.slice(0, cut))
+        rest = list.slice(cut + 2, list.length())
+
+        r_param_types(rest, at + 1, acc ++ head ++ ", ")
+    }
+}
+
 rtype(ty: str) -> str {
-    if ty.ends_with("[]") {
+    if r_is_fn(ty) {
+        "fn({r_param_types(r_fn_params(ty), 0, "")}) -> {rtype(r_fn_ret(ty))}"
+    } else if ty.ends_with("[]") {
         "Vec<{rtype(relem(ty))}>"
     } else if ty == "float" {
         "f64"

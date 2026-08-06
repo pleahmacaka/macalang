@@ -10,6 +10,10 @@ Rec = "R = {{ n: int }} "
 
 Sum = "C = A | B "
 
+Higher = "p(c: str) -> bool => true "
+    ++ "run(xs: str[], f) -> bool => f(xs.get(0)) "
+    ++ "use(xs: str[]) -> bool => run(xs, p)"
+
 test_a_record_element_is_read_back_as_a_record() {
     out = c_for(Rec ++ "f(xs: R[]) -> int => xs.get(0).n")
 
@@ -194,6 +198,54 @@ test_upper_copies_a_string_and_folds_a_single_byte() {
            "a str is uppercased into a fresh block, never in place")
     assert(one.index_of("toupper((unsigned char)(((int)s[0])))") >= 0,
            "a byte folds with toupper, which is how a type name is spotted")
+}
+
+test_a_called_parameter_is_declared_as_a_function_pointer() {
+    out = c_for(Higher)
+
+    assert(out.index_of("int run(MacaList xs, int (*f)(const char*))") >= 0,
+           "the parameter carries the type the call site proved it has")
+    assert(out.index_of("int run(MacaList xs, int (*f)(const char*));") >= 0,
+           "and the prototype says the same, or the two would conflict")
+    assert(out.index_of("MacaList xs, int f") < 0,
+           "an int is not callable, which is what C said before")
+    assert(out.index_of("int p(const char* c)") >= 0,
+           "the callee keeps its own signature, so the pointer is not a lie")
+}
+
+test_a_function_type_in_type_position_is_an_abstract_declarator() {
+    assert_eq(type_c("(int) -> str"), "const char* (*)(int)",
+              "the name's place is left empty where there is no name")
+    assert_eq(type_c("() -> int"), "int (*)(void)",
+              "no parameters is void, not an unspecified list")
+    assert_eq(type_c("(int, str) -> bool"), "int (*)(int, const char*)",
+              "every parameter is converted in turn")
+    assert_eq(type_c("(int) -> str[]"), "MacaList (*)(int)",
+              "a function is spotted before the list its result ends with")
+}
+
+test_a_mapped_function_is_called_on_the_element_it_declared() {
+    out = c_for(Rec ++ "n(r: R) -> int => r.n"
+                ++ " f(xs: R[]) -> int[] => xs.map(n)")
+
+    assert(out.index_of("n((*(R*)_m.data[_i]))") >= 0,
+           "the cell is unboxed to the record the callee takes by value")
+    assert(out.index_of("xs.map(n)") < 0,
+           "a MacaList has no map member, which is what C said before")
+    assert(out.index_of("for (int _i = 0; _i < _m.len; _i++)") >= 0,
+           "the map is a loop, so no call goes through a retyped pointer")
+}
+
+test_a_mapped_result_is_boxed_when_the_callee_returns_a_record() {
+    boxed = c_for(Rec ++ "w(k: int) -> R => R {{ n = k }}"
+                  ++ " f(xs: int[]) -> R[] => xs.map(w)")
+    flat = c_for(Rec ++ "n(r: R) -> int => r.n"
+                 ++ " f(xs: R[]) -> int[] => xs.map(n)")
+
+    assert(boxed.index_of("maca_box(sizeof(R), (R[]){{ w(") >= 0,
+           "the callee's return type is what decides the cell's shape")
+    assert(flat.index_of("_r.data[_i] = (long)(n(") >= 0,
+           "an int fits a cell, so it is written straight in")
 }
 
 test_the_last_str_methods_lower_to_the_c_library() {
