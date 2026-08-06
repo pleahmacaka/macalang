@@ -98,7 +98,7 @@ fn selfhost_frontend_compiles_and_runs() {
     let run = Command::new(&bin).output().expect("run selfhost front-end");
     let stdout = String::from_utf8_lossy(&run.stdout);
     assert!(
-        stdout.contains("scanned 9 tokens from 14 chars"),
+        stdout.contains("scanned 12 tokens from 14 chars"),
         "lexer output wrong: {stdout}"
     );
     assert!(
