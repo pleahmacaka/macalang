@@ -4,6 +4,16 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* The self-hosted compiler reads every one of its own eight files with nothing to
+  report. Three things stood between it and that. A record field declared as an
+  array (`tys: Ty[]`) threw the field walk off, because it stepped three tokens
+  for `name : Type` and an array type is five, so every record with a list field
+  desynchronised the rest of the file. A string literal inside an interpolation
+  (`"{show_joined(xs, " ", 0)}"`) ended the outer string at its first quote; the
+  scan skips a `{…}` region now, and `{{`/`}}` still mean a literal brace. And the
+  block-or-record test did not look at the token after a closing bracket, so the
+  `if` in `at = index_of(x)` followed by `if …` read as a record field rather than
+  as two statements. Eight files, 0 scan errors, 0 parse errors, 451 lines of C.
 * The self-hosted parser cannot read past the end of its token list. Every list
   it walks stopped only at its own closing bracket, so a call, a list literal, a
   record body, a parameter list, a match arm, a payload or a block that ran to the
