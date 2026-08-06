@@ -167,6 +167,7 @@ type_in(env: Env, e: Expr) -> Typed =>
         EWith    => with_type(env, e)
         EField   => field_type(env, e)
         EMethod  => method_type(env, e)
+        EBlock   => block_type(env, e)
         EMatch   => match_type(env, e)
         EList    => list_type(env, e)
         _        => typed(env, t_any())
@@ -307,6 +308,13 @@ ternary_type(env: Env, e: Expr) -> Typed {
     other = type_in(then.env, e.children.get(2))
 
     typed(joined(other.env, then.ty, other.ty), then.ty)
+}
+
+block_type(env: Env, e: Expr) -> Typed {
+    inner = check_body(env, e.stmts, 0, t_any())
+    last = type_in(inner.env, e.children.get(0))
+
+    typed(last.env with { names = env.names, types = env.types }, last.ty)
 }
 
 method_type(env: Env, e: Expr) -> Typed {

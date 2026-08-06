@@ -256,3 +256,33 @@ test_a_declaration_still_needs_its_parentheses() {
     assert_eq(items_of("f -> int => 1"), "0",
               "without `(` it is not a function declaration")
 }
+
+Guarded = "pick(n: int) -> int => if n > 0 {{ d = n * 2 d + 1 }} else {{ 0 }}"
+
+test_a_branch_with_a_binding_is_a_block() {
+    assert_eq(shown("if c {{ d = 1 d }} else {{ 2 }}"),
+              "(if c then ? else 2)",
+              "the branch is a block node, which the printer does not spell out")
+}
+
+test_a_block_branch_lowers_to_a_statement_expression_in_c() {
+    assert(c_of(Guarded).index_of("({{ int d = (n * 2); (d + 1); }})") >= 0,
+           "C declares the local inside a statement expression")
+}
+
+test_a_block_branch_lowers_to_a_block_in_rust() {
+    assert(rust_of(Guarded).index_of("{{ let d = (n * 2i64); (d + 1i64) }}") >= 0,
+           "Rust ends the block in its value")
+}
+
+test_a_block_branch_types_by_its_last_expression() {
+    assert_eq(errors_in(Guarded), "0", "the block is an int, and so is the return")
+    assert_eq(errors_in("pick(n: int) -> str => if n > 0 {{ d = n d }} else {{ 0 }}"),
+              "1", "both branches are int, so only the str return disagrees")
+}
+
+test_a_block_binding_does_not_escape_its_branch() {
+    assert_eq(errors_in("pick(n: int) -> int {{"
+                        ++ " q = if n > 0 {{ d = n d }} else {{ 0 }} q }}"),
+              "0", "d is gone by the time q is bound")
+}

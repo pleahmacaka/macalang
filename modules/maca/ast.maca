@@ -13,6 +13,7 @@ Expr = {
     ival:     int
     ty:       str
     children: Expr[]
+    stmts:    Stmt[]
 }
 
 StmtKind = SExpr | SBind | SFn | SRecord | SSum
@@ -32,66 +33,75 @@ Module = {
 }
 
 e_int(n: int) -> Expr =>
-    Expr { kind = EInt, text = "", ival = n, ty = "", children = [] }
+    Expr { kind = EInt, text = "", ival = n, ty = "", children = [],
+           stmts = [] }
 
 e_ident(name: str) -> Expr =>
-    Expr { kind = EIdent, text = name, ival = 0, ty = "", children = [] }
+    Expr { kind = EIdent, text = name, ival = 0, ty = "", children = [],
+           stmts = [] }
 
 e_param(name: str, ty: str) -> Expr =>
-    Expr { kind = EIdent, text = name, ival = 0, ty, children = [] }
+    Expr { kind = EIdent, text = name, ival = 0, ty, children = [], stmts = [] }
 
 e_typed(name: str, ty: str) -> Expr =>
-    Expr { kind = EIdent, text = name, ival = 0, ty, children = [] }
+    Expr { kind = EIdent, text = name, ival = 0, ty, children = [], stmts = [] }
 
 with_child(e: Expr, c: Expr) -> Expr =>
     Expr { kind = e.kind, text = e.text, ival = e.ival, ty = e.ty,
-           children = e.children ++ [c] }
+           children = e.children ++ [c], stmts = e.stmts }
 
 e_str(s: str) -> Expr =>
-    Expr { kind = EStr, text = s, ival = 0, ty = "", children = [] }
+    Expr { kind = EStr, text = s, ival = 0, ty = "", children = [], stmts = [] }
 
 e_bool(text: str) -> Expr =>
-    Expr { kind = EBool, text, ival = 0, ty = "", children = [] }
+    Expr { kind = EBool, text, ival = 0, ty = "", children = [], stmts = [] }
 
 e_float(text: str) -> Expr =>
-    Expr { kind = EFloat, text, ival = 0, ty = "", children = [] }
+    Expr { kind = EFloat, text, ival = 0, ty = "", children = [], stmts = [] }
 
 e_call(callee: str, args: Expr[]) -> Expr =>
-    Expr { kind = ECall, text = callee, ival = 0, ty = "", children = args }
+    Expr { kind = ECall, text = callee, ival = 0, ty = "", children = args,
+           stmts = [] }
 
 e_binary(op: str, lhs: Expr, rhs: Expr) -> Expr =>
-    Expr { kind = EBinary, text = op, ival = 0, ty = "", children = [lhs, rhs] }
+    Expr { kind = EBinary, text = op, ival = 0, ty = "",
+           children = [lhs, rhs], stmts = [] }
 
 e_ternary(cond: Expr, then: Expr, els: Expr) -> Expr =>
     Expr { kind = ETernary, text = "", ival = 0, ty = "",
-           children = [cond, then, els] }
+           children = [cond, then, els], stmts = [] }
 
 e_if(cond: Expr, then: Expr, els: Expr) -> Expr =>
     Expr { kind = EIf, text = "", ival = 0, ty = "",
-           children = [cond, then, els] }
+           children = [cond, then, els], stmts = [] }
 
 e_unary(op: str, operand: Expr) -> Expr =>
-    Expr { kind = EUnary, text = op, ival = 0, ty = "", children = [operand] }
+    Expr { kind = EUnary, text = op, ival = 0, ty = "",
+           children = [operand], stmts = [] }
 
 e_record(tyname: str, fields: Expr[]) -> Expr =>
-    Expr { kind = ERecord, text = tyname, ival = 0, ty = "", children = fields }
+    Expr { kind = ERecord, text = tyname, ival = 0, ty = "",
+           children = fields, stmts = [] }
 
 e_with(base: Expr, fields: Expr[]) -> Expr =>
     Expr { kind = EWith, text = "", ival = 0, ty = "",
-           children = [base] ++ fields }
+           children = [base] ++ fields, stmts = [] }
 
 e_field(base: Expr, name: str) -> Expr =>
-    Expr { kind = EField, text = name, ival = 0, ty = "", children = [base] }
+    Expr { kind = EField, text = name, ival = 0, ty = "",
+           children = [base], stmts = [] }
 
 e_match(children: Expr[]) -> Expr =>
-    Expr { kind = EMatch, text = "", ival = 0, ty = "", children = children }
+    Expr { kind = EMatch, text = "", ival = 0, ty = "",
+           children = children, stmts = [] }
 
 e_method(recv: Expr, name: str, args: Expr[]) -> Expr =>
     Expr { kind = EMethod, text = name, ival = 0, ty = "",
-           children = [recv] ++ args }
+           children = [recv] ++ args, stmts = [] }
 
 e_list(elems: Expr[]) -> Expr =>
-    Expr { kind = EList, text = "", ival = 0, ty = "", children = elems }
+    Expr { kind = EList, text = "", ival = 0, ty = "", children = elems,
+           stmts = [] }
 
 s_expr(value: Expr) -> Stmt =>
     Stmt { kind = SExpr, name = "", value, ret = "", params = [], body = [] }
@@ -133,3 +143,7 @@ show(e: Expr) -> str =>
 
 show_args(xs: Expr[], i: int) -> str =>
     xs.slice(i, xs.length()).map(show).join(", ")
+
+e_block(stmts: Stmt[], last: Expr) -> Expr =>
+    Expr { kind = EBlock, text = "", ival = 0, ty = "",
+           children = [last], stmts }

@@ -18,6 +18,7 @@ emit_expr(e: Expr) -> str =>
         EUnary   => "({e.text}{emit_expr(e.children.get(0))})"
         ERecord  => "({e.text}){{ {emit_lit_fields(e.children, 0)} }}"
         EWith    => emit_with(e)
+        EBlock   => emit_block(e)
         EField   => "{emit_expr(e.children.get(0))}.{e.text}"
         EMatch   => emit_match(e)
         EMethod  => emit_method(e)
@@ -165,6 +166,17 @@ bind_slots(scrut: str, bs: Expr[], i: int) -> str {
         ""
     } else {
         "long {bs.get(i).text} = {scrut}._{i}; {bind_slots(scrut, bs, i + 1)}"
+    }
+}
+
+emit_block(e: Expr) -> str =>
+    "({{ {block_stmts(e.stmts, 0)}{emit_expr(e.children.get(0))}; }})"
+
+block_stmts(body: Stmt[], i: int) -> str {
+    if i >= body.length() {
+        ""
+    } else {
+        "{emit_stmt(body.get(i), false)} {block_stmts(body, i + 1)}"
     }
 }
 

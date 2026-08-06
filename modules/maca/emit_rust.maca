@@ -21,6 +21,7 @@ remit_expr(e: Expr) -> str =>
         EUnary   => "({e.text}{remit_expr(e.children.get(0))})"
         ERecord  => "{e.text} {{ {remit_lit_fields(e.children)} }}"
         EWith    => remit_with(e)
+        EBlock   => remit_block(e)
         EField   => "{remit_expr(e.children.get(0))}.{e.text}"
         EMatch   => remit_match(e)
         EMethod  => remit_method(e)
@@ -139,6 +140,17 @@ remit_pat(p: Expr) -> str {
 
 binder_name(b: Expr) -> str =>
     b.text
+
+remit_block(e: Expr) -> str =>
+    "{{ {rblock_stmts(e.stmts, 0)}{remit_expr(e.children.get(0))} }}"
+
+rblock_stmts(body: Stmt[], i: int) -> str {
+    if i >= body.length() {
+        ""
+    } else {
+        "{remit_stmt(body.get(i), false)} {rblock_stmts(body, i + 1)}"
+    }
+}
 
 remit_with(e: Expr) -> str =>
     "{{ let mut _w = {remit_expr(e.children.get(0))};"
