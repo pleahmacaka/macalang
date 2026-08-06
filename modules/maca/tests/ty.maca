@@ -1,4 +1,4 @@
-import selfhost/ty
+import maca/ty
 
 one_var() -> Instance =>
     fresh(new_infer())

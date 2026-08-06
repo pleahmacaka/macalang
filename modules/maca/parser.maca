@@ -1,6 +1,6 @@
-import selfhost/token
-import selfhost/ast
-import selfhost/lexer
+import maca/token
+import maca/ast
+import maca/lexer
 
 PExpr = {
     node: Expr

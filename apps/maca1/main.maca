@@ -1,8 +1,8 @@
-import selfhost/lexer
-import selfhost/parser
-import selfhost/check
-import selfhost/emit_c
-import selfhost/emit_rust
+import maca/lexer
+import maca/parser
+import maca/check
+import maca/emit_c
+import maca/emit_rust
 
 main(args: str[]) -> int {
     if args.length() >= 2 {
@@ -138,7 +138,7 @@ demo() -> int {
     info("array C:    {emit_fn(ar.snode)}")
     info("array Rust: {remit_fn(ar.snode)}")
 
-    real = "import std/str import selfhost/token Kind = TInt | TStr classify(k: Kind) -> int => match k {{ TInt => 1 TStr => 2 }}"
+    real = "import std/str import maca/token Kind = TInt | TStr classify(k: Kind) -> int => match k {{ TInt => 1 TStr => 2 }}"
     rm = parse_module(lex(real), 0, [])
     info("real file: {rm.items.length()} items after skipping imports")
 

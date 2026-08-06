@@ -1,0 +1,7 @@
+[package]
+name = "maca1"
+description = "The stage-1 compiler binary: drives the maca package over a file, or runs its own demo."
+
+[[bin]]
+name = "maca1"
+path = "main.maca"

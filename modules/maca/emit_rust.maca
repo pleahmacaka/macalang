@@ -1,5 +1,5 @@
-import selfhost/token
-import selfhost/ast
+import maca/token
+import maca/ast
 
 rust_int(n: int) -> str =>
     "{str(n)}i64"

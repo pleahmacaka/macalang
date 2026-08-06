@@ -1,4 +1,6 @@
-import selfhost/token
+// maca/ast: the compiler's own tree, and the printer a diagnostic quotes it with.
+
+import maca/token
 
 ExprKind =
     EInt | EFloat | EStr | EBool | EIdent

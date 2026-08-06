@@ -1,4 +1,4 @@
-import selfhost/token
+import maca/token
 
 is_space(c: str) -> bool => c.is_whitespace()
 is_digit(c: str) -> bool => c.is_ascii_digit()

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 /// Source order: definitions before use.
-const SELFHOST_FILES: &[&str] = &[
+const COMPILER_FILES: &[&str] = &[
     "ty.maca",
     "token.maca",
     "ast.maca",
@@ -16,34 +16,37 @@ const SELFHOST_FILES: &[&str] = &[
     "check.maca",
     "emit_c.maca",
     "emit_rust.maca",
-    "main.maca",
 ];
 
-fn selfhost_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/selfhost")
+/// The compiler itself, which a program reaches as the `maca` package.
+fn compiler_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../modules/maca")
+}
+
+/// The binary that drives it.
+fn cli_main() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/maca1/main.maca")
 }
 
 fn read(name: &str) -> String {
-    fs::read_to_string(selfhost_dir().join(name)).unwrap_or_else(|e| panic!("read {name}: {e}"))
+    fs::read_to_string(compiler_dir().join(name)).unwrap_or_else(|e| panic!("read {name}: {e}"))
 }
 
 /// The whole front-end as one translation unit (the driver builds a single file; concatenation stands in for cross-file module resolution).
 fn concatenated() -> String {
-    SELFHOST_FILES
-        .iter()
-        .map(|n| read(n))
-        .collect::<Vec<_>>()
-        .join("\n")
+    let mut parts: Vec<String> = COMPILER_FILES.iter().map(|n| read(n)).collect();
+    parts.push(fs::read_to_string(cli_main()).expect("read apps/maca1/main.maca"));
+    parts.join("\n")
 }
 
 #[test]
 fn every_selfhost_file_parses() {
-    for name in SELFHOST_FILES {
+    for name in COMPILER_FILES {
         let src = read(name);
         let parsed = maca_parser::parse(&src);
         assert!(
             parsed.errors.is_empty(),
-            "selfhost/{name} parse errors: {:?}",
+            "maca/{name} parse errors: {:?}",
             parsed.errors
         );
     }
@@ -76,7 +79,7 @@ fn selfhost_frontend_compiles_and_runs() {
     let _ = std::fs::create_dir_all(&dir);
     let bin = dir.join("frontend");
 
-    let entry = selfhost_dir().join("main.maca");
+    let entry = cli_main();
     let build = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args([
             "build",
@@ -471,7 +474,7 @@ fn the_selfhost_front_end_reads_nothing_it_does_not_own() {
     let build = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args([
             "build",
-            &selfhost_dir().join("main.maca").to_string_lossy(),
+            &cli_main().to_string_lossy(),
             "-o",
             &bin.to_string_lossy(),
         ])
@@ -509,7 +512,7 @@ fn stage0_and_stage1_compile_the_same_program_the_same_way() {
     let build = Command::new(env!("CARGO_BIN_EXE_maca"))
         .args([
             "build",
-            &selfhost_dir().join("main.maca").to_string_lossy(),
+            &cli_main().to_string_lossy(),
             "-o",
             &maca1.to_string_lossy(),
         ])
@@ -631,13 +634,13 @@ fn the_parser_written_in_maca_reads_an_if() {
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .current_dir(repo())
         .env("NO_COLOR", "1")
-        .args(["test", "apps/selfhost/tests/parse.maca"])
+        .args(["test", "modules/maca/tests/parse.maca"])
         .output()
         .expect("spawn maca test");
 
     assert!(
         out.status.success(),
-        "apps/selfhost/tests/parse.maca:
+        "modules/maca/tests/parse.maca:
 {}
 {}",
         String::from_utf8_lossy(&out.stdout),
@@ -657,13 +660,13 @@ fn the_checker_written_in_maca_holds() {
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .current_dir(repo())
         .env("NO_COLOR", "1")
-        .args(["test", "apps/selfhost/tests/check.maca"])
+        .args(["test", "modules/maca/tests/check.maca"])
         .output()
         .expect("spawn maca test");
 
     assert!(
         out.status.success(),
-        "apps/selfhost/tests/check.maca:
+        "modules/maca/tests/check.maca:
 {}
 {}",
         String::from_utf8_lossy(&out.stdout),
@@ -683,13 +686,13 @@ fn the_type_system_written_in_maca_holds() {
     let out = Command::new(env!("CARGO_BIN_EXE_maca"))
         .current_dir(repo())
         .env("NO_COLOR", "1")
-        .args(["test", "apps/selfhost/tests/ty.maca"])
+        .args(["test", "modules/maca/tests/ty.maca"])
         .output()
         .expect("spawn maca test");
 
     assert!(
         out.status.success(),
-        "apps/selfhost/tests/ty.maca:\n{}\n{}",
+        "modules/maca/tests/ty.maca:\n{}\n{}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr),
     );

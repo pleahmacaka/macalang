@@ -1,5 +1,5 @@
-import selfhost/token
-import selfhost/ast
+import maca/token
+import maca/ast
 
 quoted(s: str) -> str =>
     "\"" ++ s ++ "\""

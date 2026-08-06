@@ -1,6 +1,6 @@
-import selfhost/token
-import selfhost/ast
-import selfhost/ty
+import maca/token
+import maca/ast
+import maca/ty
 
 Env = {
     names:  str[]

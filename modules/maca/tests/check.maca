@@ -1,6 +1,6 @@
-import selfhost/lexer
-import selfhost/parser
-import selfhost/check
+import maca/lexer
+import maca/parser
+import maca/check
 
 errors_of(src: str) -> str[] =>
     check_errors(parse_module(lex(src), 0, []))

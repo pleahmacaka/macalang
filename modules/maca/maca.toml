@@ -1,7 +1,3 @@
 [package]
-name = "selfhost"
+name = "maca"
 description = "The Maca compiler written in Maca: lex, parse, check, emit C and Rust."
-
-[[bin]]
-name = "selfhost"
-path = "main.maca"
