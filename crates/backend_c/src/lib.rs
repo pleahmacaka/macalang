@@ -968,12 +968,19 @@ impl<'a> Cx<'a> {
             return;
         }
         seen.insert(n.to_string());
+        // an array element whose own type names us back by value is the cycle the forward declaration covers, and ordering it first is what makes the C invalid
+        for d in self.struct_deps(n) {
+            let known = self.records.contains_key(&d) || self.is_tagged(&d);
+            if known && !self.reaches(&d, n) {
+                self.struct_visit(&d, seen, order);
+            }
+        }
+        order.push(n.to_string());
         for d in self.struct_deps(n) {
             if self.records.contains_key(&d) || self.is_tagged(&d) {
                 self.struct_visit(&d, seen, order);
             }
         }
-        order.push(n.to_string());
     }
     /// Names referenced strictly *by value* (arrays are heap pointers and so break value cycles).
     fn value_deps(&self, n: &str) -> Vec<String> {

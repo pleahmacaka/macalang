@@ -101,3 +101,9 @@ fn assert_valgrind_quiet(bin: &PathBuf) {
         String::from_utf8_lossy(&out.stdout)
     );
 }
+
+/// Two records that name each other, one reached only through an array: the body of the one holding the array must come first, or the C is invalid.
+#[test]
+fn a_record_pair_that_names_each_other_is_emitted_in_a_usable_order() {
+    suite("mutual_records");
+}
