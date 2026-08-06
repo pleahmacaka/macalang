@@ -344,3 +344,26 @@ test_an_empty_list_is_not_a_trailing_comma_in_c() {
     assert(annotated_c("f() -> int[] => []").index_of("maca_listv(0, )") < 0,
            "which is what C refused to parse")
 }
+
+Backslash = "\\"
+
+OneBrace = "{{"
+
+test_an_escaped_brace_does_not_open_an_interpolation() {
+    src = "a" ++ Backslash ++ OneBrace ++ "b"
+    assert(!has_interp(src.chars(), 0),
+           "a backslash before a brace is a brace, not an interpolation")
+    assert(has_interp(("a" ++ OneBrace ++ "b").chars(), 0),
+           "a bare brace still opens one")
+}
+
+test_an_escaped_brace_loses_its_backslash_in_the_literal() {
+    src = "a" ++ Backslash ++ OneBrace ++ "b"
+    assert_eq(plain_braces(src.chars(), 0, ""), "a" ++ OneBrace ++ "b",
+              "what the emitter writes is one brace")
+}
+
+test_a_doubled_brace_is_still_one_brace() {
+    assert(!has_interp((OneBrace ++ OneBrace).chars(), 0),
+           "the doubled form is not an interpolation either")
+}

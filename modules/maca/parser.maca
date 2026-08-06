@@ -368,10 +368,42 @@ parse_method(ts: Token[], recv: Expr, name: str, lparen: int) -> PExpr {
 }
 
 str_node(raw: str) -> Expr {
-    if raw.contains("\{") {
+    if has_interp(raw.chars(), 0) {
         interp_node(raw)
     } else {
-        e_str(raw)
+        e_str(plain_braces(raw.chars(), 0, ""))
+    }
+}
+
+has_interp(cs: str[], i: int) -> bool {
+    if i >= cs.length() {
+        false
+    } else if cs.get(i) == "\\" {
+        has_interp(cs, i + 2)
+    } else if pair_at(cs, i, "\{") {
+        has_interp(cs, i + 2)
+    } else if cs.get(i) == "\{" {
+        true
+    } else {
+        has_interp(cs, i + 1)
+    }
+}
+
+plain_braces(cs: str[], i: int, acc: str) -> str {
+    if i >= cs.length() {
+        acc
+    } else if escaped_brace(cs, i) {
+        plain_braces(cs, i + 2, acc ++ cs.get(i + 1))
+    } else {
+        plain_braces(cs, i + 1, acc ++ cs.get(i))
+    }
+}
+
+escaped_brace(cs: str[], i: int) -> bool {
+    if cs.get(i) != "\\" || i + 1 >= cs.length() {
+        false
+    } else {
+        cs.get(i + 1) == "\{" || cs.get(i + 1) == "\}"
     }
 }
 
@@ -392,7 +424,9 @@ interp_step(cs: str[], i: int, inside: bool, cur: str, acc: str[]) -> str[] {
     opens = c == "\{" && !inside
     closes = c == "\}" && inside
 
-    if pair_at(cs, i, "\{") || pair_at(cs, i, "\}") {
+    if escaped_brace(cs, i) {
+        split_interp(cs, i + 2, inside, cur ++ cs.get(i + 1), acc)
+    } else if pair_at(cs, i, "\{") || pair_at(cs, i, "\}") {
         split_interp(cs, i + 2, inside, cur ++ c, acc)
     } else if opens || closes {
         split_interp(cs, i + 1, !inside, "", acc ++ [cur])
