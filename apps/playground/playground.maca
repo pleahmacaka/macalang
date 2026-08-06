@@ -375,24 +375,24 @@ import js """
     m.editor.defineTheme("maca-dark", {
       base: "vs-dark", inherit: true,
       rules: [
-        { token: "comment", foreground: "7d8590", fontStyle: "italic" },
-        { token: "comment.doc", foreground: "8b9cb0", fontStyle: "italic" },
-        { token: "keyword", foreground: "c792ea" },
-        { token: "type", foreground: "ffcb6b" },
-        { token: "string", foreground: "c3e88d" },
-        { token: "string.escape", foreground: "89ddff" },
-        { token: "number", foreground: "f78c6c" },
-        { token: "operator", foreground: "89ddff" },
-        { token: "delimiter", foreground: "89ddff" },
-        { token: "identifier", foreground: "e6e3f0" },
+        { token: "comment", foreground: "8b949e", fontStyle: "italic" },
+        { token: "comment.doc", foreground: "7ee787", fontStyle: "italic" },
+        { token: "keyword", foreground: "ff7b72" },
+        { token: "type", foreground: "ffa657" },
+        { token: "string", foreground: "a5d6ff" },
+        { token: "string.escape", foreground: "56d4dd" },
+        { token: "number", foreground: "79c0ff" },
+        { token: "operator", foreground: "c9d1d9" },
+        { token: "delimiter", foreground: "9aa4b0" },
+        { token: "identifier", foreground: "e4e4e7" },
       ],
       colors: {
-        "editor.background": "#18181b",
-        "editor.foreground": "#e6e3f0",
+        "editor.background": "#000000",
+        "editor.foreground": "#e4e4e7",
         "editorLineNumber.foreground": "#3f3f46",
-        "editorCursor.foreground": "#a78bfa",
-        "editor.selectionBackground": "#3b3564",
-        "editor.lineHighlightBackground": "#1f1f23",
+        "editorCursor.foreground": "#ffffff",
+        "editor.selectionBackground": "#27272a",
+        "editor.lineHighlightBackground": "#0a0a0a",
       },
     });
     const span = function (r) {
@@ -527,7 +527,7 @@ import js """
     ta.style.cssText = "position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;" +
       "margin:0;border:0;padding:16px;resize:none;outline:none;background:#18181b;color:#e6e3f0;" +
       "font-family:'JetBrainsMono Nerd Font',monospace;font-size:13px;line-height:1.55;" +
-      "white-space:pre;tab-size:4;overflow:auto;caret-color:#a78bfa";
+      "white-space:pre;tab-size:4;overflow:auto;caret-color:#ffffff";
     ta.addEventListener("input", run);
     ta.addEventListener("keyup", function () { maca.refresh(); });
     ta.addEventListener("click", function () { maca.refresh(); });
