@@ -87,9 +87,9 @@ demo() -> int {
     info("typed sig C:    {emit_fn(sig.snode)}")
     info("typed sig Rust: {remit_fn(sig.snode)}")
 
-    bfn = parse_fn(lex("flag() -> bool => true"), 0)
-    info("bool fn C:    {emit_fn(bfn.snode)}")
-    info("bool fn Rust: {remit_fn(bfn.snode)}")
+    bo = parse_fn(lex("flag() -> bool => true"), 0)
+    info("bool fn C:    {emit_fn(bo.snode)}")
+    info("bool fn Rust: {remit_fn(bo.snode)}")
 
     ffn = parse_fn(lex("scale(x: float) -> float => x * 2.0"), 0)
     info("float fn C:    {emit_fn(ffn.snode)}")
@@ -147,9 +147,9 @@ demo() -> int {
     info("at C:    {emit_fn(at.snode)}")
     info("at Rust: {remit_fn(at.snode)}")
 
-    ar = parse_fn(lex("total(xs: int[]) -> int => xs.get(0) + xs.get(1) + xs.count()"), 0)
-    info("array C:    {emit_fn(ar.snode)}")
-    info("array Rust: {remit_fn(ar.snode)}")
+    arr = parse_fn(lex("total(xs: int[]) -> int => xs.get(0) + xs.get(1) + xs.count()"), 0)
+    info("array C:    {emit_fn(arr.snode)}")
+    info("array Rust: {remit_fn(arr.snode)}")
 
     real = "import std/str import maca/token Kind = TInt | TStr classify(k: Kind) -> int => match k {{ TInt => 1 TStr => 2 }}"
     rm = parse_module(lex(real), 0, [])

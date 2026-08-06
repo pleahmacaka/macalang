@@ -188,6 +188,65 @@ test_the_preamble_defines_every_helper_the_emitter_calls() {
     assert(out.index_of("maca_upper(const char* s)") >= 0, "upper of a str")
     assert(out.index_of("maca_str_slice(const char* s,") >= 0, "a str slice")
     assert(out.index_of("maca_ends_with(const char* s,") >= 0, "a str suffix")
+    assert(out.index_of("maca_args(int argc, char** argv)") >= 0, "argv")
+}
+
+test_a_main_that_takes_arguments_gets_a_c_shim() {
+    out = c_for("main(args: str[]) -> int => args.length()")
+
+    assert(out.index_of("int maca_main(MacaList args)") >= 0,
+           "the Maca body keeps its list parameter, under another name")
+    assert(out.index_of("int maca_main(MacaList args);") >= 0,
+           "and the prototype is renamed with it, or the two would conflict")
+    assert(out.index_of("int main(int argc, char** argv)"
+                        ++ " {{ return maca_main(maca_args(argc, argv)); }}")
+               >= 0,
+           "while the real main builds the list out of what C hands it")
+    assert(out.index_of("int main(MacaList") < 0,
+           "a main whose first parameter is not an int is what C refused")
+}
+
+test_a_main_with_no_parameters_is_left_exactly_as_it_was() {
+    out = c_for("main() -> int => 42")
+
+    assert(out.index_of("int main() {{ return 42;") >= 0,
+           "nothing to build means no shim, and C's own main already fits")
+    assert(out.index_of("maca_main") < 0,
+           "renaming it would have left the program with no entry point")
+}
+
+test_int_reads_a_string_and_leaves_a_number_alone() {
+    from_str = c_for("f(t: str) -> int => int(t)")
+    from_int = c_for("f(v: int) -> int => int(v)")
+
+    assert(from_str.index_of("return atoi(t);") >= 0,
+           "a string becomes a number by being read, not by being cast")
+    assert(from_str.index_of("int(t)") < 0,
+           "int is a C keyword, so a call spelled that way is not an expression")
+    assert(from_int.index_of("return v;") >= 0,
+           "an int already is one, so the conversion disappears")
+    assert(from_int.index_of("atoi") < 0,
+           "handing atoi an int is the pointer conversion C warns about")
+}
+
+test_read_file_hands_back_a_fresh_block_of_its_own() {
+    out = c_for("f(p: str) -> int {{ src = read_file(p) src.length() }}")
+
+    assert(out.index_of("const char* src = maca_read_file(p);") >= 0,
+           "the contents are a string, so the local that holds them is one")
+    assert(out.index_of("= read_file(") < 0,
+           "the bare name was an undeclared call returning an implicit int")
+    assert(out.index_of("char* maca_read_file(const char* path)") >= 0,
+           "and the preamble defines it, allocating what it hands back")
+}
+
+test_write_file_lowers_to_the_helper_the_preamble_defines() {
+    out = c_for("f(p: str, t: str) -> int => write_file(p, t)")
+
+    assert(out.index_of("return maca_write_file(p, t);") >= 0,
+           "the call reaches a function C has been shown a declaration of")
+    assert(out.index_of("int maca_write_file(const char* path,") >= 0,
+           "which is the preamble's, beside every other helper")
 }
 
 test_upper_copies_a_string_and_folds_a_single_byte() {
@@ -246,6 +305,39 @@ test_a_mapped_result_is_boxed_when_the_callee_returns_a_record() {
            "the callee's return type is what decides the cell's shape")
     assert(flat.index_of("_r.data[_i] = (long)(n(") >= 0,
            "an int fits a cell, so it is written straight in")
+}
+
+test_a_string_element_is_found_by_content_and_not_by_address() {
+    out = c_for("f(xs: str[], w: str) -> int => xs.index_of(w)")
+    has = c_for("f(xs: str[], w: str) -> bool => xs.contains(w)")
+    cells = c_for("f(xs: int[], v: int) -> int => xs.index_of(v)")
+
+    assert(out.index_of("maca_list_index_of_str(xs, w)") >= 0,
+           "two equal strings at different addresses are the same element")
+    assert(out.index_of("maca_list_index_of(xs, (long)(w))") < 0,
+           "comparing the cells compared the addresses, so every lookup missed")
+    assert(has.index_of("(maca_list_index_of_str(xs, w) >= 0)") >= 0,
+           "contains asks the same question, so it reads the same way")
+    assert(cells.index_of("maca_list_index_of(xs, (long)(v))") >= 0,
+           "an int is its own value, so the cell comparison still stands")
+    assert(c_for("f() -> int => 1")
+               .index_of("maca_list_index_of_str(MacaList a,") >= 0,
+           "and the preamble defines it beside the helper it stands next to")
+}
+
+test_two_strings_compare_by_content_with_no_literal_in_sight() {
+    out = c_for("f(a: str, b: str) -> bool => a == b")
+    ne = c_for("f(a: str, b: str) -> bool => a != b")
+    cells = c_for("f(a: int, b: int) -> bool => a == b")
+
+    assert(out.index_of("(strcmp(a, b) == 0)") >= 0,
+           "the type says str, so the comparison reads the bytes")
+    assert(out.index_of("return (a == b);") < 0,
+           "comparing two char pointers asks whether they are one block")
+    assert(ne.index_of("(strcmp(a, b) != 0)") >= 0,
+           "and the negation is the same call against a different answer")
+    assert(cells.index_of("return (a == b);") >= 0,
+           "an int compares as an int, literal or not")
 }
 
 test_the_last_str_methods_lower_to_the_c_library() {
