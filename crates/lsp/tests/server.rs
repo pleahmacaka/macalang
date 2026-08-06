@@ -5,6 +5,20 @@ fn frame(body: &str) -> String {
     format!("Content-Length: {}\r\n\r\n{}", body.len(), body)
 }
 
+/// A path as a `file://` URI. The percent-encoding is what keeps a Windows path out of the JSON escapes: a raw `C:\Users` spells `\U`, and the request never parses.
+fn file_uri(p: &std::path::Path) -> String {
+    let mut out = String::from("file://");
+    for b in p.to_string_lossy().bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
 /// A scratch workspace no other run can be inside.
 fn scratch(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("maca-lsp-{tag}-{}", std::process::id()));
@@ -190,15 +204,15 @@ fn renaming_a_top_level_name_reaches_every_importer() {
     let mut stdout = BufReader::new(child.0.stdout.take().unwrap());
 
     let init = format!(
-        r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"rootUri":"file://{}"}}}}"#,
-        root.display()
+        r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"rootUri":"{}"}}}}"#,
+        file_uri(&root)
     );
     stdin.write_all(frame(&init).as_bytes()).unwrap();
     let caps = read_frame(&mut stdout);
     assert!(caps.contains("prepareProvider"), "initialize: {caps}");
     assert!(caps.contains("documentHighlightProvider"), "{caps}");
 
-    let uri = format!("file://{}", main.display());
+    let uri = file_uri(&main);
     let open = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","text":"{text}"}}}}}}"#
     );
@@ -293,7 +307,7 @@ fn session(
     let mut stdin = child.0.stdin.take().unwrap();
     let mut stdout = BufReader::new(child.0.stdout.take().unwrap());
     let params = match root {
-        Some(r) => format!(r#"{{"rootUri":"file://{}"}}"#, r.display()),
+        Some(r) => format!(r#"{{"rootUri":"{}"}}"#, file_uri(r)),
         None => "{}".to_string(),
     };
     let init = format!(r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{params}}}"#);
@@ -385,7 +399,7 @@ fn a_rename_follows_imports_transitively() {
     std::fs::write(&main, text.replace("\\n", "\n")).unwrap();
 
     let (_child, mut stdin, mut stdout) = session(Some(&root));
-    let uri = format!("file://{}", main.display());
+    let uri = file_uri(&main);
     let open = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","text":"{text}"}}}}}}"#
     );
@@ -420,7 +434,7 @@ fn a_field_declared_elsewhere_is_not_renamed_half_way() {
     std::fs::write(&main, text.replace("\\n", "\n").replace("\\\"", "\"")).unwrap();
 
     let (_child, mut stdin, mut stdout) = session(Some(&root));
-    let uri = format!("file://{}", main.display());
+    let uri = file_uri(&main);
     let open = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","text":"{text}"}}}}}}"#
     );
@@ -457,17 +471,6 @@ fn a_workspace_path_survives_the_uri_round_trip() {
         let text = "import lib/util\\n\\nmain() -> int => helper(3)\\n";
         std::fs::write(&main, text.replace("\\n", "\n")).unwrap();
 
-        let esc = |p: &std::path::Path| {
-            p.to_string_lossy()
-                .bytes()
-                .map(|b| match b {
-                    b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
-                        (b as char).to_string()
-                    }
-                    _ => format!("%{b:02X}"),
-                })
-                .collect::<String>()
-        };
         let (_child, mut stdin, mut stdout) = {
             let mut child = Child(
                 Command::new(env!("CARGO_BIN_EXE_maca-lsp"))
@@ -479,15 +482,15 @@ fn a_workspace_path_survives_the_uri_round_trip() {
             let mut si = child.0.stdin.take().unwrap();
             let mut so = BufReader::new(child.0.stdout.take().unwrap());
             let init = format!(
-                r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"rootUri":"file://{}"}}}}"#,
-                esc(&root)
+                r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"rootUri":"{}"}}}}"#,
+                file_uri(&root)
             );
             si.write_all(frame(&init).as_bytes()).unwrap();
             let _ = read_frame(&mut so);
             (child, si, so)
         };
 
-        let uri = format!("file://{}", esc(&main));
+        let uri = file_uri(&main);
         let open = format!(
             r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","text":"{text}"}}}}}}"#
         );
@@ -540,7 +543,7 @@ fn a_selective_import_only_carries_the_names_it_asks_for() {
     std::fs::write(&main, text.replace("\\n", "\n")).unwrap();
 
     let (_child, mut stdin, mut stdout) = session(Some(&root));
-    let uri = format!("file://{}", main.display());
+    let uri = file_uri(&main);
     let open = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","text":"{text}"}}}}}}"#
     );

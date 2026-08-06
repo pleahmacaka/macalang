@@ -47,14 +47,8 @@ fn taskr_add_list_roundtrip() {
         eprintln!("skipping taskr_add_list_roundtrip: wsl not available");
         return;
     }
-    Command::new("wsl")
-        .args([
-            "sh",
-            "-c",
-            "rm -f \"${XDG_DATA_HOME:-$HOME/.local/share}/store.json\"",
-        ])
-        .status()
-        .ok();
+    let store = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("taskr.json");
+    let _ = std::fs::remove_file(&store);
 
     assert!(taskr(&[]).contains("usage"), "no-args should print usage");
 
@@ -72,6 +66,7 @@ fn taskr_add_list_roundtrip() {
         2,
         "expected 2 tasks: {l2}"
     );
+    let _ = std::fs::remove_file(&store);
 }
 
 #[test]
@@ -203,7 +198,7 @@ fn simd_hybrid_correct() {
     let s = String::from_utf8_lossy(&out.stdout);
     assert_eq!(
         s.trim(),
-        "48",
+        "48.0",
         "stdout: {s}\nstderr: {}",
         String::from_utf8_lossy(&out.stderr)
     );

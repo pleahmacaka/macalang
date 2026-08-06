@@ -152,7 +152,7 @@ fn the_compilers_copy_is_the_last_thing_asked() {
 
     let carried = resolve(&main, "std/text").expect("the compiler carries std/text");
     assert!(
-        carried.starts_with(real(&maca_stdlib::holder())),
+        real(&carried).starts_with(real(&maca_stdlib::holder())),
         "with nothing of its own the project gets the carried copy, not {}",
         carried.display()
     );
@@ -184,7 +184,7 @@ fn a_carried_package_reads_the_projects_replacement_too() {
 
     let json = resolve(&main, "std/json").expect("the compiler carries std/json");
     assert!(
-        json.starts_with(real(&maca_stdlib::holder())),
+        real(&json).starts_with(real(&maca_stdlib::holder())),
         "std/json is the carried one: {}",
         json.display()
     );
