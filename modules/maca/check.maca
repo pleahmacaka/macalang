@@ -362,6 +362,8 @@ method_result(name: str, recv: Ty) -> Ty {
         t_int()
     } else if name == "join" {
         t_str()
+    } else if name == "chars" {
+        t_array(t_str())
     } else if name == "slice" || name == "push" {
         recv
     } else if name == "get" {

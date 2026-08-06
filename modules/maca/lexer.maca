@@ -19,13 +19,17 @@ span(cs: str[], i: int, j: int) -> str =>
 Lexed = {
     tokens: Token[]
     errors: str[]
+    pos: int
 }
 
 lexed(tokens: Token[], errors: str[]) -> Lexed =>
-    Lexed { tokens, errors }
+    Lexed { tokens, errors, pos = 0 }
 
 keep(acc: Lexed, t: Token) -> Lexed =>
     acc with { tokens = acc.tokens ++ [t] }
+
+moved(acc: Lexed, i: int) -> Lexed =>
+    acc with { pos = i }
 
 note_error(acc: Lexed, msg: str) -> Lexed =>
     acc with { errors = acc.errors ++ [msg] }
@@ -35,15 +39,20 @@ lex(src: str) -> Token[] =>
 
 lex_all(src: str) -> Lexed {
     cs = src.chars()
+    scanned = scan(cs, lexed([], []), cs.length())
 
-    scan(cs, 0, lexed([], []))
+    end_run(scanned, cs.length(), 0)
 }
 
-scan(cs: str[], i: int, out: Lexed) -> Lexed {
-    if i >= cs.length() {
-        end_run(out, i, 0)
+scan(cs: str[], out: Lexed, hi: int) -> Lexed {
+    mid = out.pos + (hi - out.pos) / 2
+
+    if out.pos >= hi {
+        out
+    } else if hi - out.pos == 1 {
+        step(cs, out)
     } else {
-        step(cs, i, out)
+        scan(cs, scan(cs, out, mid), hi)
     }
 }
 
@@ -55,11 +64,12 @@ end_run(out: Lexed, i: int, n: int) -> Lexed {
     }
 }
 
-step(cs: str[], i: int, out: Lexed) -> Lexed {
+step(cs: str[], out: Lexed) -> Lexed {
+    i = out.pos
     c = cs.get(i)
     match true {
-        _ if is_space(c)   => scan(cs, i + 1, out)
-        _ if comments(cs, i) => scan(cs, line_end(cs, i), out)
+        _ if is_space(c)   => moved(out, i + 1)
+        _ if comments(cs, i) => moved(out, line_end(cs, i))
         _ if c == "\""     => lex_string(cs, i, out)
         _ if is_digit(c)   => lex_number(cs, i, out)
         _ if is_alpha(c)   => lex_word(cs, i, out)
@@ -81,7 +91,9 @@ line_end(cs: str[], i: int) -> int {
 lex_string(cs: str[], i: int, out: Lexed) -> Lexed {
     j = string_end(cs, i + 1)
     text = span(cs, i + 1, j)
-    scan(cs, j + 1, keep(unterminated(out, cs, j), mk_token(TStr, text, i)))
+    held = keep(unterminated(out, cs, j), mk_token(TStr, text, i))
+
+    moved(held, j + 1)
 }
 
 string_end(cs: str[], i: int) -> int {
@@ -136,7 +148,8 @@ quoted_end(cs: str[], i: int) -> int {
 lex_word(cs: str[], i: int, out: Lexed) -> Lexed {
     j = run_end(cs, i, is_alnum)
     text = span(cs, i, j)
-    scan(cs, j, keep(out, mk_token(keyword_kind(text), text, i)))
+
+    moved(keep(out, mk_token(keyword_kind(text), text, i)), j)
 }
 
 lex_number(cs: str[], i: int, out: Lexed) -> Lexed {
@@ -147,13 +160,14 @@ lex_number(cs: str[], i: int, out: Lexed) -> Lexed {
     if has_fraction {
         lex_float(cs, i, j, out)
     } else {
-        scan(cs, j, keep(out, mk_token(TInt, span(cs, i, j), i)))
+        moved(keep(out, mk_token(TInt, span(cs, i, j), i)), j)
     }
 }
 
 lex_float(cs: str[], i: int, dot: int, out: Lexed) -> Lexed {
     k = run_end(cs, dot + 1, is_digit)
-    scan(cs, k, keep(out, mk_token(TFloat, span(cs, i, k), i)))
+
+    moved(keep(out, mk_token(TFloat, span(cs, i, k), i)), k)
 }
 
 lex_punct(cs: str[], i: int, out: Lexed, c: str) -> Lexed {
@@ -161,9 +175,9 @@ lex_punct(cs: str[], i: int, out: Lexed, c: str) -> Lexed {
     two = c ++ nxt
 
     if is_two_char(two) {
-        scan(cs, i + 2, keep(out, mk_token(two_char_kind(two), two, i)))
+        moved(keep(out, mk_token(two_char_kind(two), two, i)), i + 2)
     } else {
-        scan(cs, i + 1, keep(unknown(out, c, i), mk_token(punct_kind(c), c, i)))
+        moved(keep(unknown(out, c, i), mk_token(punct_kind(c), c, i)), i + 1)
     }
 }
 
