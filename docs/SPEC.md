@@ -142,7 +142,11 @@ and which manifest answers.
   no stage-0 front-end change. (`apps/examples/payload_sum.maca`.) A payload may be a
   record, in either declaration order. The C backend emits records and tagged
   sums in one combined dependency order, so the record struct is defined before a
-  sum that carries it (and vice-versa). (`apps/examples/sum_record.maca`.) Sums may be
+  sum that carries it (and vice-versa). (`apps/examples/sum_record.maca`.) That
+  order follows a field held **by value**; a `T[]` field is a heap pointer the
+  forward declaration already covers, so two records may name each other as long
+  as one side reaches the other only through an array
+  (`crates/driver/tests/programs/mutual_records.maca`). Sums may be
   **recursive** (`Tree = Leaf(int) | Node(Tree, Tree)`, `List = Nil | Cons(int,
   List)`): a self-referential payload is boxed (a heap pointer) so the tagged
   union stays finite; the native backend emits a named, forward-declared struct,

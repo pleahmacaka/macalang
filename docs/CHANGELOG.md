@@ -4,6 +4,14 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* Two records may name each other when one side is reached only through an array.
+  The C backend ordered struct bodies by every field, arrays included, so a pair
+  like `Block { entries: Entry[] }` and `Entry { child: Block }` could be emitted
+  with `Entry` first and the C would not compile: `field has incomplete type`. A
+  body only needs its **by-value** fields complete, since an array is a heap
+  pointer the forward declaration already covers, and that is what the order
+  follows now. This is what lets the compiler's own tree hold a block of
+  statements inside an expression.
 * The self-hosted parser says what it stepped over, and `++` between two lists is
   a list. `Module` carries an error list beside its items, so a token that starts
   no declaration is named with its offset rather than dropped, and `apps/maca1`
