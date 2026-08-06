@@ -4,6 +4,13 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* The self-hosted checker writes what it inferred into the tree, and the two Maca
+  back ends read it rather than guessing from an expression's shape. `.length()`
+  on an array is the list's own field and on a string is `strlen`; `.get(i)` is an
+  element or a byte by the same rule; and a local's C type is the type its
+  initialiser was lowered to, so `t = 1.5 * 2.0` is a `double` where the shape of
+  a `*` could only say `int`. This is what a compiler needs before it can read its
+  own source, where `ts.length()` and `s.length()` sit side by side.
 * The self-hosted compiler reads a record update and a shorthand field.
   `base with { field = value }` lowers to a C statement expression over
   `__typeof__` and to a Rust block that mutates its own copy, so neither back end

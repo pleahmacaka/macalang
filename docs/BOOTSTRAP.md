@@ -120,6 +120,12 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
   itself. Branches hold a single expression; the 26 places in
   `apps/selfhost/*.maca` that bind a local inside a branch still need their
   bindings hoisted above the `if`
+- **a typed tree**: `annotated` walks a checked module and writes each
+  expression's inferred type into the `ty` the AST already carries, so a back end
+  reads a type rather than guessing from an expression's shape. That is what
+  separates `ts.length()` from `s.length()`, an element from a byte in `.get(i)`,
+  and a `double` local from an `int` one. An unannotated tree still emits what it
+  used to, which is why the demo output is unchanged
 - **a record update and a shorthand field**: `base with { field = value }`
   copies and then assigns, as a C statement expression over `__typeof__` and as
   a Rust block that mutates its own copy, so neither back end needs the record's
