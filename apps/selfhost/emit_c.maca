@@ -132,6 +132,8 @@ any_bound(cs: Expr[], i: int) -> bool {
 test(scrut: str, pat: Expr, tagged: bool) -> str {
     if tagged {
         "{scrut}.tag == {pat.text}_tag"
+    } else if pat.kind == EStr {
+        "(strcmp({scrut}, {quoted(pat.text)}) == 0)"
     } else {
         "{scrut} == {pat.text}"
     }

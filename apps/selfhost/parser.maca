@@ -478,7 +478,11 @@ parse_one_arm(ts: Token[], i: int, acc: Expr[]) -> PArgs {
 }
 
 parse_pattern(ts: Token[], i: int) -> PExpr {
-    named = e_ident(ts.get(i).text)
+    named = if ts.get(i).kind == TStr {
+        str_node(ts.get(i).text)
+    } else {
+        e_ident(ts.get(i).text)
+    }
 
     if ts.get(i + 1).kind == LParen {
         parse_binders(ts, i + 2, named)

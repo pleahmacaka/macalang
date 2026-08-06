@@ -37,7 +37,28 @@ remit_ternary(e: Expr) -> str {
 }
 
 remit_match(e: Expr) -> str =>
-    "match {remit_expr(e.children.get(0))} {{ {remit_arms(e.children, 1)} }}"
+    "match {remit_match_on(e)} {{ {remit_arms(e.children, 1)} }}"
+
+remit_match_on(e: Expr) -> str {
+    scrut = remit_expr(e.children.get(0))
+
+    if has_str_arm(e.children, 1) {
+        "{scrut}.as_str()"
+    } else {
+        scrut
+    }
+}
+
+has_str_arm(cs: Expr[], i: int) -> bool {
+    if i + 1 >= cs.length() {
+        false
+    } else if cs.get(i).kind == EStr {
+        true
+    } else {
+        has_str_arm(cs, i + 2)
+    }
+}
+
 
 remit_method(e: Expr) -> str {
     recv = remit_expr(e.children.get(0))
@@ -89,7 +110,9 @@ remit_arms(cs: Expr[], i: int) -> str {
 }
 
 remit_pat(p: Expr) -> str {
-    if p.children.length() == 0 {
+    if p.kind == EStr {
+        "\"{p.text}\""
+    } else if p.children.length() == 0 {
         p.text
     } else {
         "{p.text}({p.children.map(binder_name).join(", ")})"

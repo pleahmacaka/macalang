@@ -144,3 +144,34 @@ test_a_local_takes_its_c_type_from_the_lowering() {
                .index_of("const char* t =") >= 0,
            "a call takes the type its declaration returns")
 }
+
+Keyword = "kw(w: str) -> int => match w {{ \"let\" => 1 \"if\" => 2 _ => 0 }}"
+
+Tagged = "rank(c: Color) -> int => match c {{ Red => 1 Green => 2 }}"
+
+test_a_string_pattern_is_compared_by_content_in_c() {
+    assert(c_of(Keyword).index_of("strcmp(w, \"let\") == 0") >= 0,
+           "a string pattern goes through strcmp")
+    assert(c_of(Keyword).index_of("w == let") < 0,
+           "never a pointer compare against an undeclared name")
+}
+
+test_a_string_pattern_matches_a_slice_in_rust() {
+    assert(rust_of(Keyword).index_of("w.as_str()") >= 0,
+           "a String is matched as a str slice")
+    assert(rust_of(Keyword).index_of("\"let\" =>") >= 0,
+           "the pattern keeps its quotes")
+}
+
+Payload = "area(s: Shape) -> int => match s {{ Circle(r) => r Rect(w, h) => w }}"
+
+test_a_variant_pattern_is_not_touched_by_the_string_rule() {
+    assert(c_of(Tagged).index_of("c == Red") >= 0,
+           "a nullary sum is a C enum, so its variants compare as values")
+    assert(c_of(Payload).index_of("s.tag == Circle_tag") >= 0,
+           "a payload sum still dispatches on its tag")
+    assert(rust_of(Tagged).index_of("Red =>") >= 0,
+           "Rust matches the bare variant name")
+    assert(rust_of(Tagged).index_of("as_str()") < 0,
+           "a sum is not a string, so it is not sliced")
+}
