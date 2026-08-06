@@ -1,0 +1,42 @@
+import maca/token
+import maca/lexer
+
+count_of(src: str) -> str =>
+    str(lex(src).length())
+
+text_at(src: str, i: int) -> str =>
+    lex(src).get(i).text
+
+Escaped = "\"a\\\"b\""
+
+test_a_string_holds_an_escaped_quote_without_ending() {
+    assert_eq(count_of(Escaped), "2",
+              "one string token and the Eof, not a string cut in half")
+    assert_eq(text_at(Escaped, 0), "a\\\"b",
+              "the escape stays in the text, so it re-emits as it was written")
+}
+
+test_a_plain_string_still_ends_at_its_quote() {
+    assert_eq(count_of("\"ab\""), "2", "one string and the Eof")
+    assert_eq(text_at("\"ab\"", 0), "ab", "no escapes to keep")
+}
+
+test_a_line_comment_is_skipped() {
+    assert_eq(count_of("// a note\nx"), "2",
+              "the note is trivia, leaving the name and the Eof")
+    assert_eq(text_at("// a note\nx", 0), "x", "the name after the note")
+}
+
+test_a_comment_may_end_the_file() {
+    assert_eq(count_of("x // trailing"), "2", "the name and the Eof")
+}
+
+test_a_lone_slash_is_still_division() {
+    assert_eq(count_of("a / b"), "4", "name, slash, name, Eof")
+    assert_eq(text_at("a / b", 1), "/", "the operator survives")
+}
+
+test_the_blurb_line_of_this_package_lexes() {
+    assert_eq(count_of("// maca/ast: the compiler's own tree.\nimport maca/token"),
+              "5", "the comment goes, the import statement stays")
+}

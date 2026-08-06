@@ -32,11 +32,23 @@ scan(cs: str[], i: int, out: Token[]) -> Token[] {
 step(cs: str[], i: int, out: Token[]) -> Token[] {
     c = cs.get(i)
     match true {
-        _ if is_space(c)  => scan(cs, i + 1, out)
-        _ if c == "\""    => lex_string(cs, i, out)
-        _ if is_digit(c)  => lex_number(cs, i, out)
-        _ if is_alpha(c)  => lex_word(cs, i, out)
-        _                 => lex_punct(cs, i, out, c)
+        _ if is_space(c)   => scan(cs, i + 1, out)
+        _ if comments(cs, i) => scan(cs, line_end(cs, i), out)
+        _ if c == "\""     => lex_string(cs, i, out)
+        _ if is_digit(c)   => lex_number(cs, i, out)
+        _ if is_alpha(c)   => lex_word(cs, i, out)
+        _                  => lex_punct(cs, i, out, c)
+    }
+}
+
+comments(cs: str[], i: int) -> bool =>
+    cs.get(i) == "/" && i + 1 < cs.length() && cs.get(i + 1) == "/"
+
+line_end(cs: str[], i: int) -> int {
+    if i < cs.length() && cs.get(i) != "\n" {
+        line_end(cs, i + 1)
+    } else {
+        i
     }
 }
 
@@ -47,10 +59,14 @@ lex_string(cs: str[], i: int, out: Token[]) -> Token[] {
 }
 
 string_end(cs: str[], i: int) -> int {
-    if i < cs.length() && cs.get(i) != "\"" {
-        string_end(cs, i + 1)
-    } else {
+    if i >= cs.length() {
         i
+    } else if cs.get(i) == "\\" {
+        string_end(cs, i + 2)
+    } else if cs.get(i) == "\"" {
+        i
+    } else {
+        string_end(cs, i + 1)
     }
 }
 

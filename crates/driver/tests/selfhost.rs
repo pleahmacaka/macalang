@@ -622,6 +622,32 @@ fn stage0_and_stage1_compile_the_same_program_the_same_way() {
     }
 }
 
+/// What the Maca-written lexer makes of an escape and a comment, asserted in Maca.
+#[test]
+fn the_lexer_written_in_maca_holds() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping selfhost lex suite: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .current_dir(repo())
+        .env("NO_COLOR", "1")
+        .args(["test", "modules/maca/tests/lex.maca"])
+        .output()
+        .expect("spawn maca test");
+
+    assert!(
+        out.status.success(),
+        "modules/maca/tests/lex.maca:
+{}
+{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
 /// What the Maca-written parser reads and the two Maca-written back ends emit for an `if`, asserted in Maca.
 #[test]
 fn the_parser_written_in_maca_reads_an_if() {
