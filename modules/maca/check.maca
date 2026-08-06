@@ -255,13 +255,29 @@ binop_type(env: Env, e: Expr) -> Typed {
     rhs = type_in(lhs.env, e.children.get(1))
 
     if e.text == "++" {
-        typed(rhs.env, t_str())
+        typed(rhs.env, concat_type(rhs.env, lhs.ty, rhs.ty))
     } else if is_compare(e.text) {
         typed(joined(rhs.env, lhs.ty, rhs.ty), t_bool())
     } else if is_logic(e.text) {
         typed(rhs.env, t_bool())
     } else {
         arith_type(rhs.env, lhs.ty, rhs.ty)
+    }
+}
+
+is_list(t: Ty) -> bool =>
+    t.kind == KCon && t.name == "Array"
+
+concat_type(env: Env, a: Ty, b: Ty) -> Ty {
+    left = resolve(env.infer, a)
+    right = resolve(env.infer, b)
+
+    if is_list(left) {
+        left
+    } else if is_list(right) {
+        right
+    } else {
+        t_str()
     }
 }
 
@@ -482,7 +498,8 @@ con_surface(t: Ty) -> str {
 }
 
 annotated(m: Module) -> Module =>
-    Module { items = annotate_items(checked_module(m), m.items, 0, []) }
+    Module { items = annotate_items(checked_module(m), m.items, 0, []),
+             errors = m.errors }
 
 annotate_items(env: Env, items: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
     if i >= items.length() {

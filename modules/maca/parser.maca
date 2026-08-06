@@ -108,21 +108,27 @@ parse_expr_stmt(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
     parse_block(ts, e.next, acc ++ [s_expr(e.node)])
 }
 
-parse_module(ts: Token[], i: int, acc: Stmt[]) -> Module {
+parse_module(ts: Token[], i: int, acc: Stmt[]) -> Module =>
+    parse_items(ts, i, acc, [])
+
+parse_items(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
     if ts.get(i).kind == Eof {
-        Module { items = acc }
+        Module { items = acc, errors = bad }
     } else if ts.get(i).kind == KwImport {
-        parse_module(ts, import_end(ts, i + 1), acc)
+        parse_items(ts, import_end(ts, i + 1), acc, bad)
     } else if is_record_decl(ts, i) {
-        parse_record_decl(ts, i, acc)
+        parse_record_decl(ts, i, acc, bad)
     } else if is_sum_decl(ts, i) {
-        parse_sum_decl(ts, i, acc)
+        parse_sum_decl(ts, i, acc, bad)
     } else if starts_fn(ts, i) {
-        parse_fn_item(ts, i, acc)
+        parse_fn_item(ts, i, acc, bad)
     } else {
-        parse_module(ts, i + 1, acc)
+        parse_items(ts, i + 1, acc, bad ++ [skipped(ts, i)])
     }
 }
+
+skipped(ts: Token[], i: int) -> str =>
+    "no declaration starts at `{ts.get(i).text}` (offset {ts.get(i).pos})"
 
 starts_fn(ts: Token[], i: int) -> bool =>
     ts.get(i).kind == TIdent && ts.get(i + 1).kind == LParen
@@ -154,10 +160,10 @@ import_end(ts: Token[], i: int) -> int {
     }
 }
 
-parse_sum_decl(ts: Token[], i: int, acc: Stmt[]) -> Module {
+parse_sum_decl(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
     name = ts.get(i).text
     sv = parse_variants(ts, i + 2, [])
-    parse_module(ts, sv.pnext, acc ++ [s_sum(name, sv.params)])
+    parse_items(ts, sv.pnext, acc ++ [s_sum(name, sv.params)], bad)
 }
 
 parse_variants(ts: Token[], i: int, acc: Expr[]) -> PParams {
@@ -192,15 +198,15 @@ parse_payload(ts: Token[], i: int, v: Expr) -> PExpr {
     }
 }
 
-parse_fn_item(ts: Token[], i: int, acc: Stmt[]) -> Module {
+parse_fn_item(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
     ps = parse_fn(ts, i)
-    parse_module(ts, ps.snext, acc ++ [ps.snode])
+    parse_items(ts, ps.snext, acc ++ [ps.snode], bad)
 }
 
-parse_record_decl(ts: Token[], i: int, acc: Stmt[]) -> Module {
+parse_record_decl(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
     name = ts.get(i).text
     rf = parse_fields(ts, i + 3, [])
-    parse_module(ts, rf.pnext + 1, acc ++ [s_record(name, rf.params)])
+    parse_items(ts, rf.pnext + 1, acc ++ [s_record(name, rf.params)], bad)
 }
 
 parse_fields(ts: Token[], i: int, acc: Expr[]) -> PParams {

@@ -16,7 +16,9 @@ compile_file(args: str[]) -> int {
     src = read_file(args.get(0))
     scanned = lex_all(src)
     raw = parse_module(scanned.tokens, 0, [])
-    errs = report_all(scanned.errors, 0) + check_module(raw)
+    bad = report_all("scan", scanned.errors, 0) +
+        report_all("parse", raw.errors, 0)
+    errs = bad + check_module(raw)
     m = annotated(raw)
     want_rust = args.length() >= 3 && args.get(2) == "rust"
     emitted = if want_rust { remit_module(m) } else { emit_module(m) }
@@ -25,13 +27,13 @@ compile_file(args: str[]) -> int {
     errs
 }
 
-report_all(msgs: str[], i: int) -> int {
+report_all(stage: str, msgs: str[], i: int) -> int {
     if i >= msgs.length() {
         msgs.length()
     } else {
-        info("lex error: {msgs.get(i)}")
+        info("{stage} error: {msgs.get(i)}")
 
-        report_all(msgs, i + 1)
+        report_all(stage, msgs, i + 1)
     }
 }
 

@@ -27,7 +27,8 @@ Stmt = {
 }
 
 Module = {
-    items: Stmt[]
+    items:  Stmt[]
+    errors: str[]
 }
 
 e_int(n: int) -> Expr =>

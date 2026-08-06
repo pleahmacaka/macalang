@@ -218,10 +218,31 @@ test_push_appends_one_cell() {
 items_of(src: str) -> str =>
     str(parse_module(lex(src), 0, []).items.length())
 
+bad_of(src: str) -> str[] =>
+    parse_module(lex(src), 0, []).errors
+
 test_a_token_that_starts_nothing_is_stepped_over() {
     assert_eq(items_of("a"), "0",
               "a bare name is no declaration, and the walk still ends")
     assert_eq(items_of("# @ ?"), "0", "nor is a row of punctuation")
+}
+
+test_what_the_walk_steps_over_is_reported() {
+    bad = bad_of("a")
+    assert_eq(str(bad.length()), "1", "the bare name is not silently dropped")
+    assert_eq(bad.get(0), "no declaration starts at `a` (offset 0)",
+              "and the message names it and where it sat")
+    assert_eq(str(bad_of("f() -> int => 1").length()), "0",
+              "a file the parser reads whole says nothing")
+}
+
+test_a_list_concatenation_is_a_list_and_not_a_string() {
+    assert(annotated_c("g(xs: int[], v: int) -> int[] {{ t = xs ++ [v] t }}")
+               .index_of("MacaList t =") >= 0,
+           "the result of joining two lists is a list")
+    assert(annotated_c("g(a: str, b: str) -> str {{ t = a ++ b t }}")
+               .index_of("const char* t =") >= 0,
+           "and joining two strings is still a string")
 }
 
 test_the_walk_still_reaches_what_follows_the_junk() {
