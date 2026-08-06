@@ -262,7 +262,7 @@ fn candidates(base: &Path, segs: &[String], layout: &Layout, out: &mut Vec<(Path
 
 /// The standard library the compiler carries, which answers for an import only once the project has been asked and had nothing.
 fn builtin(segs: &[String]) -> Option<PathBuf> {
-    module_file(&under(&maca_stdlib::root()?, segs))
+    module_file(&under(maca_stdlib::root()?, segs))
 }
 
 /// The directory whose project answers an import: the importing file's own, unless that file is the compiler's copy of a package, whose imports belong to the project that asked for it.
