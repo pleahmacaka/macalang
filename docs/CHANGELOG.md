@@ -4,6 +4,8 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* An empty list literal is `maca_listv(0)` and not `maca_listv(0, )`, which C
+  refused as a missing expression.
 * A `match` arm may carry a guard, and every declaration of the compiler's own
   source now reaches its output. `_ if a > 5 => …` was read as if the guard were
   the arm's body, so `step` in `lexer.maca` swallowed the four functions after it.

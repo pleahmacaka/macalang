@@ -45,7 +45,11 @@ emit_ternary(e: Expr) -> str {
 emit_list(e: Expr) -> str {
     n = e.children.length()
 
-    "maca_listv({str(n)}, {e.children.map(emit_cell).join(", ")})"
+    if n == 0 {
+        "maca_listv(0)"
+    } else {
+        "maca_listv({str(n)}, {e.children.map(emit_cell).join(", ")})"
+    }
 }
 
 emit_cell(e: Expr) -> str =>
