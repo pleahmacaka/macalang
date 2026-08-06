@@ -44,7 +44,7 @@ remit_method(e: Expr) -> str {
 
     if e.text == "length" || e.text == "count" {
         "(({recv}).len() as i64)"
-    } else if e.text == "at" {
+    } else if e.text == "at" || (e.text == "get" && e.children.get(0).ty == "str") {
         idx = remit_expr(e.children.get(1))
         "(({recv}).as_bytes()[({idx}) as usize] as i64)"
     } else if e.text == "get" {

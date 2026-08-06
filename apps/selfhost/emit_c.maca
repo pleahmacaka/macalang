@@ -52,12 +52,14 @@ emit_cell(e: Expr) -> str =>
 
 emit_method(e: Expr) -> str {
     recv = emit_expr(e.children.get(0))
+    on_list = is_list_type(e.children.get(0).ty)
+    on_str = e.children.get(0).ty == "str"
 
-    if e.text == "length" {
-        "((int)strlen({recv}))"
-    } else if e.text == "count" {
+    if e.text == "count" || (e.text == "length" && on_list) {
         "({recv}.len)"
-    } else if e.text == "at" {
+    } else if e.text == "length" {
+        "((int)strlen({recv}))"
+    } else if e.text == "at" || (e.text == "get" && on_str) {
         "((int){recv}[{emit_expr(e.children.get(1))}])"
     } else if e.text == "get" {
         "((int){recv}.data[{emit_expr(e.children.get(1))}])"
@@ -65,6 +67,9 @@ emit_method(e: Expr) -> str {
         "{recv}.{e.text}({emit_args(e.children, 1)})"
     }
 }
+
+is_list_type(ty: str) -> bool =>
+    ty.length() > 2 && ty.slice(ty.length() - 2, ty.length()) == "[]"
 
 emit_call(e: Expr) -> str {
     args = emit_args(e.children, 0)
@@ -209,7 +214,15 @@ emit_stmts(body: Stmt[], i: int) -> str {
     }
 }
 
-local_c_type(e: Expr) -> str =>
+local_c_type(e: Expr) -> str {
+    if e.ty != "" {
+        type_c(e.ty)
+    } else {
+        guessed_c_type(e)
+    }
+}
+
+guessed_c_type(e: Expr) -> str =>
     match e.kind {
         EStr    => "const char*"
         EFloat  => "double"

@@ -427,6 +427,73 @@ check_item(env: Env, s: Stmt) -> Env {
 check_errors(m: Module) -> str[] =>
     checked_module(m).errors
 
+surface_of(t: Ty) -> str =>
+    match t.kind {
+        KInt   => "int"
+        KFloat => "float"
+        KStr   => "str"
+        KBool  => "bool"
+        KBytes => "bytes"
+        KCon   => con_surface(t)
+        KOpt   => surface_of(t.args.get(0))
+        _      => ""
+    }
+
+con_surface(t: Ty) -> str {
+    if t.name == "Array" && t.args.length() == 1 {
+        surface_of(t.args.get(0)) ++ "[]"
+    } else {
+        t.name
+    }
+}
+
+annotated(m: Module) -> Module =>
+    Module { items = annotate_items(checked_module(m), m.items, 0, []) }
+
+annotate_items(env: Env, items: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
+    if i >= items.length() {
+        acc
+    } else {
+        annotate_items(env, items, i + 1,
+                       acc ++ [annotate_item(env, items.get(i))])
+    }
+}
+
+annotate_item(env: Env, s: Stmt) -> Stmt {
+    if s.kind != SFn {
+        s
+    } else {
+        inner = bind_params(env, s.params, signature_params(env, s.name), 0)
+
+        s with { body = annotate_body(inner, s.body, 0, []) }
+    }
+}
+
+annotate_body(env: Env, stmts: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
+    if i >= stmts.length() {
+        acc
+    } else {
+        st = stmts.get(i)
+        got = type_in(env, st.value)
+        marked = st with { value = annotate_expr(env, st.value) }
+
+        annotate_body(extend(got.env, st, got.ty), stmts, i + 1, acc ++ [marked])
+    }
+}
+
+annotate_expr(env: Env, e: Expr) -> Expr =>
+    e with { ty = surface_of(type_in(env, e).ty),
+             children = annotate_children(env, e.children, 0, []) }
+
+annotate_children(env: Env, cs: Expr[], i: int, acc: Expr[]) -> Expr[] {
+    if i >= cs.length() {
+        acc
+    } else {
+        annotate_children(env, cs, i + 1,
+                          acc ++ [annotate_expr(env, cs.get(i))])
+    }
+}
+
 type_of(e: Expr) -> str =>
     show_ty(type_in(empty_env(), e).ty)
 

@@ -14,8 +14,9 @@ main(args: str[]) -> int {
 
 compile_file(args: str[]) -> int {
     src = read_file(args.get(0))
-    m = parse_module(lex(src), 0, [])
-    errs = check_module(m)
+    raw = parse_module(lex(src), 0, [])
+    errs = check_module(raw)
+    m = annotated(raw)
     want_rust = args.length() >= 3 && args.get(2) == "rust"
     emitted = if want_rust { remit_module(m) } else { emit_module(m) }
 

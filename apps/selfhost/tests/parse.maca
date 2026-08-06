@@ -101,3 +101,46 @@ test_a_record_update_has_the_type_of_its_base() {
                         ++ " bump(p: Point) -> int => p with {{ x = 1 }}"),
               "1", "a Point is not an int")
 }
+
+annotated_c(src: str) -> str =>
+    emit_module(annotated(parse_module(lex(src), 0, [])))
+
+annotated_rust(src: str) -> str =>
+    remit_module(annotated(parse_module(lex(src), 0, [])))
+
+test_the_checker_writes_the_type_it_inferred_into_the_tree() {
+    m = annotated(parse_module(lex("n(s: str) -> int => s.length()"), 0, []))
+    body = m.items.get(0).body.get(0).value
+    assert_eq(body.children.get(0).ty, "str",
+              "the receiver knows it is a string")
+}
+
+test_an_array_length_is_not_a_string_length_in_c() {
+    assert(annotated_c("n(xs: int[]) -> int => xs.length()")
+                  .index_of("(xs.len)") >= 0,
+           "an array reads its own length field")
+    assert(annotated_c("n(s: str) -> int => s.length()")
+                  .index_of("strlen(s)") >= 0,
+           "a string still goes through strlen")
+}
+
+test_a_string_index_is_a_byte_and_an_array_index_is_an_element() {
+    assert(annotated_c("n(s: str) -> int => s.get(0)")
+                  .index_of("(int)s[0]") >= 0,
+           "get on a string is the byte at that offset")
+    assert(annotated_c("n(xs: int[]) -> int => xs.get(0)")
+                  .index_of("xs.data[0]") >= 0,
+           "get on an array is the element")
+    assert(annotated_rust("n(s: str) -> int => s.get(0)")
+                  .index_of("as_bytes()") >= 0,
+           "Rust indexes a String's bytes")
+}
+
+test_a_local_takes_its_c_type_from_the_lowering() {
+    assert(annotated_c("n() -> float {{ t = 1.5 * 2.0 t }}")
+               .index_of("double t =") >= 0,
+           "float arithmetic is a double, which the shape of a `*` cannot say")
+    assert(annotated_c("s() -> str => \"a\" n() -> str {{ t = s() t }}")
+               .index_of("const char* t =") >= 0,
+           "a call takes the type its declaration returns")
+}
