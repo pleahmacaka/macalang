@@ -163,7 +163,8 @@ type_in(env: Env, e: Expr) -> Typed =>
         ETernary => ternary_type(env, e)
         EIf      => ternary_type(env, e)
         EUnary   => type_in(env, e.children.get(0))
-        ERecord  => typed(walk_args(env, e.children, 0), t_con(e.text, []))
+        ERecord  => typed(check_fields(env, e.text, e.children, 0),
+                          t_con(e.text, []))
         EWith    => with_type(env, e)
         EField   => field_type(env, e)
         EMethod  => method_type(env, e)
@@ -283,6 +284,14 @@ is_logic(op: str) -> bool =>
     op == "&&" || op == "||"
 
 binop_type(env: Env, e: Expr) -> Typed {
+    if e.text == "=" {
+        type_in(env, e.children.get(1))
+    } else {
+        operator_type(env, e)
+    }
+}
+
+operator_type(env: Env, e: Expr) -> Typed {
     lhs = type_in(env, e.children.get(0))
     rhs = type_in(lhs.env, e.children.get(1))
 
@@ -385,8 +394,28 @@ element_of(t: Ty) -> Ty {
 
 with_type(env: Env, e: Expr) -> Typed {
     base = type_in(env, e.children.get(0))
+    owner = resolve(base.env.infer, base.ty)
 
-    typed(walk_args(base.env, e.children, 1), base.ty)
+    typed(check_fields(base.env, owner.name, e.children, 1), base.ty)
+}
+
+check_fields(env: Env, rec: str, fs: Expr[], i: int) -> Env {
+    if i >= fs.length() {
+        env
+    } else {
+        check_fields(field_set(env, rec, fs.get(i)), rec, fs, i + 1)
+    }
+}
+
+field_set(env: Env, rec: str, f: Expr) -> Env {
+    at = env.fields.index_of(rec ++ "." ++ f.children.get(0).text)
+    got = type_in(env, f)
+
+    if at < 0 {
+        got.env
+    } else {
+        joined(got.env, env.ftypes.get(at), got.ty)
+    }
 }
 
 field_type(env: Env, e: Expr) -> Typed {

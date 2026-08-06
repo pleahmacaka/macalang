@@ -118,6 +118,29 @@ test_the_arms_of_a_match_are_unified() {
               "1", "one arm is int and the other str")
 }
 
+Lit = "Box = {{ n: int }} "
+
+test_a_record_literal_field_is_checked_against_the_declared_type() {
+    assert_eq(count_of(Lit ++ "ok() -> Box => Box {{ n = 1 }}"),
+              "0", "an int belongs in an int field")
+    bad = errors_of(Lit ++ "no() -> Box => Box {{ n = \"s\" }}")
+    assert_eq(str(bad.length()), "1", "a str does not")
+    assert_eq(bad.get(0), "type mismatch: expected int, found str",
+              "the field's declared type is what the value answers to")
+}
+
+test_a_record_update_field_is_checked_against_the_declared_type() {
+    assert_eq(count_of(Lit ++ "ok(b: Box) -> Box => b with {{ n = 2 }}"),
+              "0", "an int belongs in an int field")
+    assert_eq(count_of(Lit ++ "no(b: Box) -> Box => b with {{ n = \"s\" }}"),
+              "1", "a str does not, and `with` knows the record from its base")
+}
+
+test_a_field_binding_is_not_an_arithmetic_operator() {
+    assert_eq(count_of("Tag = {{ s: str }} ok() -> Tag => Tag {{ s = \"a\" }}"),
+              "0", "`=` names a field, so a str field is not a number")
+}
+
 test_plus_is_arithmetic_and_not_concatenation() {
     bad = errors_of("j(a: str, b: str) -> int => a + b")
     assert_eq(str(bad.length()), "1", "++ is what joins two strings")
