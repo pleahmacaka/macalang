@@ -4,6 +4,20 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* A list may hold something that does not fit a cell. `MacaList` carries one
+  `long` per cell, so `Ty[]`, `Token[]` and `Expr[]` — every list in the compiler's
+  own source — emitted `(long)(v)` on a struct and the C would not compile. A
+  non-scalar element is boxed now (`maca_box(sizeof(R), (R[]){ v })`, read back as
+  `(*(R*)xs.data[i])`), which keeps one C array type so nothing depends on
+  declaration order; a `str` cell is read as `const char*` rather than as `int`.
+  Rust had the same bug from the other side: `rtype` mapped every `T[]` to
+  `Vec<i64>`, so it recurses on the element now (`Vec<R>`, `Vec<String>`,
+  `Vec<Vec<i64>>`), `get` clones a cell that is not `Copy`, a `join` separator is a
+  slice, and a record derives `PartialEq` so a list of them can be searched.
+  Annotating an expression walks a block's statements too, so a binding inside an
+  `if` branch is typed like any other. Across the compiler's eight files the C
+  errors fall 329 to 215 with none of them about a cell, and the Rust class this
+  caused falls 104 to 7.
 * An empty list literal is `maca_listv(0)` and not `maca_listv(0, )`, which C
   refused as a missing expression.
 * A `match` arm may carry a guard, and every declaration of the compiler's own
