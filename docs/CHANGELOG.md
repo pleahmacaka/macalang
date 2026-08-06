@@ -4,6 +4,13 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* The self-hosted parser says what it stepped over, and `++` between two lists is
+  a list. `Module` carries an error list beside its items, so a token that starts
+  no declaration is named with its offset rather than dropped, and `apps/maca1`
+  prints the scan and parse errors separately and counts both into its exit
+  status. `binop_type` typed every `++` as `str`, so a local holding
+  `xs ++ [v]` was declared `const char*` in C even though the operands lowered as
+  lists; it takes the list type from whichever side has one.
 * The self-hosted scanner has somewhere to put a problem, and the parser cannot
   run off the end. `lex_all` returns the tokens **and** the errors, so a byte with
   no token kind and a string whose quote never closes are reported instead of
