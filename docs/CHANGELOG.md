@@ -5,8 +5,8 @@ Newest first. Versions are bare semver; the tag is the version.
 ## Unreleased
 
 * A list may hold something that does not fit a cell. `MacaList` carries one
-  `long` per cell, so `Ty[]`, `Token[]` and `Expr[]` — every list in the compiler's
-  own source — emitted `(long)(v)` on a struct and the C would not compile. A
+  `long` per cell, so `Ty[]`, `Token[]` and `Expr[]`, every list in the compiler's
+  own source, emitted `(long)(v)` on a struct and the C would not compile. A
   non-scalar element is boxed now (`maca_box(sizeof(R), (R[]){ v })`, read back as
   `(*(R*)xs.data[i])`), which keeps one C array type so nothing depends on
   declaration order; a `str` cell is read as `const char*` rather than as `int`.
