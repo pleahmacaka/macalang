@@ -196,7 +196,6 @@ pub fn resolve_module_path(segs: &[String], importer: &Path) -> Option<PathBuf> 
 pub fn resolve_module(segs: &[String], importer: &Path) -> Option<Resolved> {
     let last = segs.last()?;
     let own = importer.parent().unwrap_or_else(|| Path::new("."));
-    let joined = segs.join("/");
     let asked = asking(own);
     let dir = asked.as_path();
     let layout = layout_for(&dir.join("_m.maca"));
@@ -204,16 +203,16 @@ pub fn resolve_module(segs: &[String], importer: &Path) -> Option<Resolved> {
 
     let stop = workspace_root(dir);
     for base in dir.ancestors() {
-        candidates(base, &joined, &layout, &mut found);
+        candidates(base, segs, &layout, &mut found);
         if stop.as_deref().is_some_and(|s| same_dir(base, s)) {
             break;
         }
     }
     if found.is_empty() && stop.is_none() {
-        candidates(Path::new("."), &joined, &layout, &mut found);
+        candidates(Path::new("."), segs, &layout, &mut found);
     }
     if found.is_empty() {
-        let chosen = module_file(&own.join(last)).or_else(|| builtin(&joined))?;
+        let chosen = module_file(&own.join(last)).or_else(|| builtin(segs))?;
         return Some(Resolved {
             chosen,
             shadowed: None,
@@ -235,13 +234,22 @@ fn hides(chosen: Found, other: Found) -> bool {
     )
 }
 
+/// `<base>/a/b` for the written import `a/b`, pushed a segment at a time so the path reads with the platform's own separator rather than mixing both in a diagnostic.
+fn under(base: &Path, segs: &[String]) -> PathBuf {
+    let mut path = base.to_path_buf();
+    for s in segs {
+        path.push(s);
+    }
+    path
+}
+
 /// Every file `<base>` offers for one written import, best first.
-fn candidates(base: &Path, path: &str, layout: &Layout, out: &mut Vec<(PathBuf, Found)>) {
-    if let Some(hit) = module_file(&base.join(path)) {
+fn candidates(base: &Path, segs: &[String], layout: &Layout, out: &mut Vec<(PathBuf, Found)>) {
+    if let Some(hit) = module_file(&under(base, segs)) {
         out.push((hit, Found::Written));
     }
     for r in &layout.roots {
-        if let Some(hit) = module_file(&base.join(r).join(path)) {
+        if let Some(hit) = module_file(&under(&base.join(r), segs)) {
             let rule = if r == INSTALLED {
                 Found::Installed
             } else {
@@ -253,8 +261,8 @@ fn candidates(base: &Path, path: &str, layout: &Layout, out: &mut Vec<(PathBuf, 
 }
 
 /// The standard library the compiler carries, which answers for an import only once the project has been asked and had nothing.
-fn builtin(path: &str) -> Option<PathBuf> {
-    module_file(&maca_stdlib::root()?.join(path))
+fn builtin(segs: &[String]) -> Option<PathBuf> {
+    module_file(&under(&maca_stdlib::root()?, segs))
 }
 
 /// The directory whose project answers an import: the importing file's own, unless that file is the compiler's copy of a package, whose imports belong to the project that asked for it.

@@ -411,8 +411,9 @@ fn an_import_that_names_two_files_is_refused() {
     let err = p.flatten(&app).expect_err("should refuse");
     assert!(err.contains("ambiguous"), "says what is wrong: {err}");
     assert!(err.contains("bench/stat"), "names the import: {err}");
+    let flat = err.replace('\\', "/");
     for want in ["modules/bench/stat.maca", "bench/stat.maca"] {
-        assert!(err.contains(want), "names {want}: {err}");
+        assert!(flat.contains(want), "names {want}: {err}");
     }
 }
 
