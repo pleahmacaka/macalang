@@ -115,6 +115,12 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
   variant, with a constructor named after each variant so an ordinary
   `Circle(2)` compiles without the call site knowing which names are variants;
   in Rust the native enum, where it already is one
+- **an escape and a comment in the scanner**: a `\` inside a string literal
+  carries the next character with it, so `"\""` is one token rather than a string
+  cut in half, and the escape is kept in the token's text so it re-emits as it
+  was written. `//` to the end of the line is trivia. Both are what the
+  compiler's own source is made of, `\"` throughout the emitters and one `//`
+  blurb the package index reads, so neither file could be scanned without them
 - **`if` as an expression**: `if c { a } else if d { b } else { e }`, where an
   `else if` nests to the right, lowered to a C ternary chain and to a native
   Rust `if`. This is the construct the compiler's own source is written in, 315

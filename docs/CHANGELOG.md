@@ -4,6 +4,11 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* The self-hosted scanner reads an escaped quote and a line comment. `string_end`
+  stopped at the first `"` it met, so `"\""` came back as a string cut in half,
+  and `//` scanned as two `/` operators. The compiler's own source is full of
+  `\"` and carries the `//` blurb its package index prints, so it could not be
+  scanned at all before this.
 * The self-hosted checker writes what it inferred into the tree, and the two Maca
   back ends read it rather than guessing from an expression's shape. `.length()`
   on an array is the list's own field and on a string is `strlen`; `.get(i)` is an
