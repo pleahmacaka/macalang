@@ -51,7 +51,7 @@ declarations: `char*`→`str`, other pointers→opaque `int`, float family→`fl
 The native `build`/`run` path
 resolves local imports: `import a/b` (and single-word `import a`) inlines a
 sibling `<a/b>.maca` / `<a>.maca` module, transitively, in dependency order, so
-a program can span files (`maca build apps/selfhost/main.maca` builds the whole
+a program can span files (`maca build apps/maca1/main.maca` builds the whole
 self-hosted front-end from its imports). **Selective import**,
 `import { foo, bar } from a/b`, inlines only the named top-level definitions
 plus the transitive closure of same-module definitions they reference (dead-code
@@ -154,7 +154,7 @@ by the element; `sort`/`reverse`/`push`/`pop`/`contains`/`index_of`/`sum`/`min`/
 `max`/`first`/`last`/`length`/`get`/`slice`; native + interpreter; see
 `apps/examples/collections.maca`); plus the `str` scan primitives
 `chars`/`length`/`at` and the char classes `is_whitespace`/`is_ascii_digit`/
-`is_alpha` (what `apps/selfhost/lexer.maca` scans with);
+`is_alpha` (what `modules/maca/lexer.maca` scans with);
 and raw triple-quoted strings (`"""…"""`) with `import js`/`import css` foreign
 blocks that let a `.maca` UI carry its own host glue and styles inline (see
 `apps/playground/playground.maca`). Examples:

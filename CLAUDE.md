@@ -31,8 +31,8 @@ The tree is four directories, and each answers one question:
 
 | | |
 |---|---|
-| `modules/` | what a program imports. Eight packages, all ordinary Maca, all with a suite under `<pkg>/tests/`. They ride **inside** the `maca` binary. |
-| `apps/` | everything this repository builds: the capstones, the demos, the toolchain's own programs, the handbook builder, the playground, the compiler written in Maca, and `apps/examples`, which is the regression corpus. |
+| `modules/` | what a program imports. Nine packages, all ordinary Maca, all with a suite under `<pkg>/tests/`. They ride **inside** the `maca` binary. `modules/maca` is the compiler itself, so a Maca program can lex and parse Maca. |
+| `apps/` | everything this repository builds: the capstones, the demos, the toolchain's own programs, the handbook builder, the playground, `apps/maca1` which drives the compiler package, and `apps/examples`, which is the regression corpus. |
 | `crates/` | the frozen Rust stage-0 bootstrap, plus `crates/install`, the installer. Keep it minimal. |
 | `docs/` | the spec, the changelog, and how this thing is built. |
 
@@ -65,9 +65,9 @@ they are the ones that get broken from the inside:
 ## Self-hosting
 
 Rust (`crates/*`) is the **frozen stage-0 bootstrap**, so keep it minimal. New
-compiler work is written in Maca under `apps/selfhost/` and gated by the stage-0
+compiler work is written in Maca under `modules/maca/` and gated by the stage-0
 front-end (`crates/driver/tests/selfhost.rs`). See `docs/BOOTSTRAP.md`. When a
-change is needed, prefer adding it to `apps/selfhost/*.maca` over growing the Rust
+change is needed, prefer adding it to `modules/maca/*.maca` over growing the Rust
 crates; only touch stage-0 for genuine bootstrap bugs (e.g. a parser that hangs
 or mis-parses valid surface syntax).
 

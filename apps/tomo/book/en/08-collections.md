@@ -156,7 +156,7 @@ conventions are the same on a list and a string.
 ```
 
 `chars`, `at` and the three character classes are what a scanner is built from;
-`apps/selfhost/lexer.maca` uses nothing else:
+`modules/maca/lexer.maca` uses nothing else:
 
 ```maca
 run_digits(cs: str[], i: int) -> int =>

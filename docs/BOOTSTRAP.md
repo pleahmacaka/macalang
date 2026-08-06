@@ -2,10 +2,10 @@
 
 Maca compiles itself, in stages. The Rust workspace is the **stage-0
 bootstrap**, frozen in scope, kept only as capable as it must be to compile
-the stage-1 compiler. Compiler work goes into `apps/selfhost/`, written in Maca.
+the stage-1 compiler. Compiler work goes into `modules/maca/`, written in Maca.
 
 ```
-stage-0 (Rust, crates/*)  ──compiles──▶  stage-1 (Maca, apps/selfhost/*.maca)
+stage-0 (Rust, crates/*)  ──compiles──▶  stage-1 (Maca, modules/maca/*.maca)
                                               │
                                               └──compiles──▶ stage-1 again
                                                              (must be identical)
@@ -15,12 +15,12 @@ The bootstrap closes when a stage-1 binary built by stage-0 rebuilds itself
 byte-for-byte:
 
 ```sh
-maca build apps/selfhost/main.maca -o maca1      # stage-0 (Rust) builds stage-1
-./maca1 build apps/selfhost/main.maca -o maca2   # stage-1 builds itself
+maca build apps/maca1/main.maca -o maca1      # stage-0 (Rust) builds stage-1
+./maca1 build apps/maca1/main.maca -o maca2   # stage-1 builds itself
 cmp maca1 maca2                             # fixed point ⇒ self-hosted
 ```
 
-## Layout of `apps/selfhost/`
+## Layout of `modules/maca/`
 
 | file | stage | role |
 |---|---|---|
@@ -32,7 +32,9 @@ cmp maca1 maca2                             # fixed point ⇒ self-hosted
 | `check.maca` | 1 | the type checker over `Ty`: an `Env` of signatures, record fields, sum variants and locals, threading one substitution through the whole module |
 | `emit_c.maca` | 1 | a C emitter over the AST → C source (with a `<string.h>`/`<stdlib.h>`/`<stdio.h>` + `maca_cat`/`maca_int_to_str` preamble) |
 | `emit_rust.maca` | 1 | a Rust emitter over the same AST → Rust source (the `--target rust` back end, in Maca) |
-| `main.maca` | 1 | driver entry; lexes + parses + checks + emits samples through both back ends |
+
+The binary that drives them is `apps/maca1/main.maca`: it compiles a named file
+through the package, or runs the demo the gate reads.
 
 ## How the gate works
 
@@ -40,7 +42,7 @@ The stage-1 **front-end compiles and runs as a native binary, and emits
 through two back ends written in Maca** (`emit_c.maca` and `emit_rust.maca`).
 The gate, `crates/driver/tests/selfhost.rs`, requires that
 
-1. every `apps/selfhost/*.maca` **parses** with no errors,
+1. every `modules/maca/*.maca` **parses** with no errors,
 2. the concatenated module **type-/effect-checks clean**, and
 3. where a native `cc` is available, the concatenated compiler **builds and
    runs** the whole `lex → parse → check → emit` pipeline, then compiles the
@@ -91,7 +93,7 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
   drove recursive record types into the stage-0 backend
 - **two back ends**: `emit_c.maca` and `emit_rust.maca`, each turning a module
   into a complete translation unit
-- **multi-file builds**: the gate builds from `apps/selfhost/main.maca` and the
+- **multi-file builds**: the gate builds from `apps/maca1/main.maca` and the
   driver resolves the `import` graph; there is no concatenation step
 - **higher-order parameters**: a function passed by name is wrapped in a
   closure, and an unannotated parameter that is called is typed as a function
@@ -118,7 +120,7 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
   Rust `if`. This is the construct the compiler's own source is written in, 315
   branches of it, so it is the one that had to arrive before stage-1 could read
   itself. Branches hold a single expression; the 26 places in
-  `apps/selfhost/*.maca` that bind a local inside a branch still need their
+  `modules/maca/*.maca` that bind a local inside a branch still need their
   bindings hoisted above the `if`
 - **a typed tree**: `annotated` walks a checked module and writes each
   expression's inferred type into the `ty` the AST already carries, so a back end
@@ -168,7 +170,7 @@ two compilers, which is the whole risk the bootstrap carries.
 
 Stage-1 is a compiler for the subset of Maca that stage-1 is written in. That
 is not a limitation to be worked around; it is the loop the bootstrap runs on.
-Each feature is added to `apps/selfhost/` when the self-hosted compiler needs it to
+Each feature is added to `modules/maca/` when the self-hosted compiler needs it to
 compile itself, and the dual-backend compile-and-run gate is what says it
 arrived.
 
@@ -178,7 +180,7 @@ The two stages own different halves of the type system, and the line between
 them has moved. The **type representation and unification are Maca now**:
 `ty.maca` is `crates/core/src/ty.rs` rewritten, variables and all, so
 substitution, the occurs check, row unification over open and closed records,
-and `generalize`/`instantiate` are gated by `apps/selfhost/tests/ty.maca` rather
+and `generalize`/`instantiate` are gated by `modules/maca/tests/ty.maca` rather
 than by Rust. What is still only in `maca-core` is the checker over the *whole*
 surface (`lib.rs`), the effect set, and generic monomorphization. Stage-0 is
 retired when those are written in Maca as well, which is the same
@@ -190,4 +192,4 @@ Every feature added to the Rust compiler is a feature the Maca compiler must
 also implement to self-host. That is the whole argument for keeping stage-0
 small: type-system work that would otherwise grow `maca-core` (full HM over
 inferred bindings, row unification, generic monomorphization) belongs in
-`apps/selfhost/check.maca`, where it is written once, in Maca, instead of twice.
+`modules/maca/check.maca`, where it is written once, in Maca, instead of twice.

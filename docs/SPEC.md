@@ -386,7 +386,7 @@ it is relative to the directory that manifest sits in. An unknown key under
 
 ## The standard library travels with the compiler
 
-**`maca` carries its own standard library.** All eight packages under
+**`maca` carries its own standard library.** All nine packages under
 `modules/` (`std`, `cli`, `http`, `bench`, `profile`, `signal`, `tambo`, `web`)
 are compiled into the binary, the way `maca-runtime` compiles the C runtime
 into it, so `import std/json` means the same thing in a downloaded release as
@@ -460,8 +460,8 @@ builds the toolchain, because it runs where there is no `maca` yet and on a
 Windows runner that has no C compiler to build one with.
 
 The Rust workspace is the frozen **stage-0 bootstrap**; compiler work is
-written in Maca under `apps/selfhost/` and gated by the stage-0 front-end (see
-`docs/BOOTSTRAP.md`). Prefer adding to `apps/selfhost/*.maca` over growing the Rust
+written in Maca under `modules/maca/` and gated by the stage-0 front-end (see
+`docs/BOOTSTRAP.md`). Prefer adding to `modules/maca/*.maca` over growing the Rust
 crates.
 
 ## Golden examples (regression set)

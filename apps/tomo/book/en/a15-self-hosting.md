@@ -8,7 +8,7 @@ Maca is being bootstrapped, and this is where new compiler work goes.
 frozen: it changes only for genuine bootstrap bugs, such as a parser that hangs
 or a construct that mis-parses.
 
-**Stage 1** is the Maca compiler under `apps/selfhost/`, written in Maca. This
+**Stage 1** is the Maca compiler under `modules/maca/`, written in Maca. This
 is where new compiler work belongs. Stage 0 compiles it; a test gate
 (`crates/driver/tests/selfhost.rs`) makes sure it keeps working.
 
@@ -64,11 +64,11 @@ struct before the record body and emitting its operations after.
 
 ## Reading the source
 
-`apps/selfhost/main.maca` is the entry point, and it doubles as the test suite:
+`apps/maca1/main.maca` is the entry point, and it doubles as the test suite:
 it lexes, parses, checks and emits a series of programs and reports on each.
 
 ```
-maca run apps/selfhost/main.maca
+maca run apps/maca1/main.maca
 ```
 
 ## Where the two stages differ

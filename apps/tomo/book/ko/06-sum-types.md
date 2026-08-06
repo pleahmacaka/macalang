@@ -106,7 +106,7 @@ sum(t: Tree) -> int =>
 ```
 
 실린 값은 박싱되므로 타입의 크기가 무한해지지 않습니다.
-`apps/selfhost/ast.maca`가 이것으로 만들어져 있습니다.
+`modules/maca/ast.maca`가 이것으로 만들어져 있습니다.
 
 ## 레코드와 합타입 중 무엇을 고를까
 

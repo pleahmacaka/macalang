@@ -267,5 +267,5 @@ function returns; see [Testing](12-testing.md).
 
 ## Regular expressions
 
-There are none. `apps/selfhost/lexer.maca` scans the whole language with
+There are none. `modules/maca/lexer.maca` scans the whole language with
 `chars`, `at` and three predicates. Reach for `split` and a loop.

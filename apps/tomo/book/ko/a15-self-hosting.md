@@ -7,11 +7,11 @@ Maca는 부트스트랩 중이고, 이 장은 그 모양입니다.
 **스테이지 0**은 `crates/` 아래의 Rust 컴파일러입니다. 동결되어 있고, 진짜
 부트스트랩 버그 때문에만 바뀝니다.
 
-**스테이지 1**은 `apps/selfhost/` 아래의 Maca 컴파일러입니다. 새 컴파일러 작업이
+**스테이지 1**은 `modules/maca/` 아래의 Maca 컴파일러입니다. 새 컴파일러 작업이
 속하는 곳입니다. 스테이지 0이 이것을 컴파일하고, 테스트
 게이트(`crates/driver/tests/selfhost.rs`)가 계속 동작하는지 확인합니다.
 
-Rust 크레이트를 키우는 것보다 `apps/selfhost/*.maca`에 추가하는 쪽을 택하세요.
+Rust 크레이트를 키우는 것보다 `modules/maca/*.maca`에 추가하는 쪽을 택하세요.
 
 ## 스테이지 1이 지금 하는 일
 
@@ -49,7 +49,7 @@ lexer.maca → parser.maca → ast.maca → check.maca → emit_c.maca
 ## 이것을 가능하게 한 두 기능
 
 **문자열 스캐닝.** `chars`, `length`, `at`, `get`, `slice`, 그리고 문자 분류
-`is_whitespace`, `is_ascii_digit`, `is_alpha`. `apps/selfhost/lexer.maca`가 쓰는
+`is_whitespace`, `is_ascii_digit`, `is_alpha`. `modules/maca/lexer.maca`가 쓰는
 어휘의 전부입니다.
 
 **재귀 레코드 타입.** AST 노드가 AST 노드의 리스트를 담습니다.
@@ -68,11 +68,11 @@ C에서 이것은 정의 순환입니다. 백엔드는 레코드 본문 앞에 �
 
 ## 소스 읽기
 
-`apps/selfhost/main.maca`가 진입점이고 테스트 스위트 역할도 겸합니다. 일련의
+`apps/maca1/main.maca`가 진입점이고 테스트 스위트 역할도 겸합니다. 일련의
 프로그램을 렉싱, 파싱, 검사, 코드 생성하고 각각을 보고합니다.
 
 ```
-maca run apps/selfhost/main.maca
+maca run apps/maca1/main.maca
 ```
 
 `lexer.maca`는 문자 스캐너, `parser.maca`는 우선순위 표가 붙은 재귀 하향,

@@ -27,7 +27,7 @@ embedded용 `--mcu`와 JVM 클래스패스용 `--cp`.
 ## 바이너리가 지니고 다니는 것
 
 `maca`는 자기 완결적입니다. 모든 네이티브 빌드가 링크하는 **C 런타임**, 그리고
-**표준 라이브러리** 여덟 패키지 전부(`std`, `cli`, `http`, `bench`, `profile`,
+**표준 라이브러리** 아홉 패키지 전부(`std`, `cli`, `http`, `bench`, `profile`,
 `signal`, `tambo`, `web`)가 그 안에 들어 있습니다. 릴리스는 `maca`와
 `maca-lsp` 둘뿐입니다.
 

@@ -20,7 +20,7 @@ Newest first. Versions are bare semver; the tag is the version.
 * The self-hosted compiler reads `if`. `if c { a } else if d { b } else { e }`
   parses to a new AST node that nests to the right, types by unifying its
   branches, and lowers to a C ternary chain and a native Rust `if`. It is the
-  construct `apps/selfhost/*.maca` is written in, 315 branches of it, so nothing
+  construct `modules/maca/*.maca` is written in, 315 branches of it, so nothing
   else about reading its own source could start until it landed.
 * `crates/options` is gone. An empty crate: no code, no dependencies, and
   nothing referred to it.
@@ -43,12 +43,12 @@ Newest first. Versions are bare semver; the tag is the version.
   `.gitattributes` keeps `.maca` at LF, so a CRLF checkout no longer makes
   `maca fmt --check` call every golden example unformatted.
 
-* The type system is Maca. `apps/selfhost/ty.maca` is `crates/core/src/ty.rs`
+* The type system is Maca. `modules/maca/ty.maca` is `crates/core/src/ty.rs`
   rewritten in the language it type-checks: `Ty` with type variables, the
   substitution and the occurs check, unification over constructors, functions,
   optionals and **rows** (an open record tolerates the fields it does not name,
   a closed one names what is missing or spare), plus `generalize` and
-  `instantiate`. `apps/selfhost/tests/ty.maca` is the gate, 24 assertions in
+  `instantiate`. `modules/maca/tests/ty.maca` is the gate, 24 assertions in
   Maca rather than in Rust.
 * The self-hosted checker unifies instead of comparing type names.
   `check.maca` now carries `Ty` everywhere and threads one substitution through

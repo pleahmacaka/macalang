@@ -17,7 +17,7 @@ sum and record type declarations, control flow (`if` / `match` / `for` /
 (operators with precedence, ternary, calls, field/index, lambdas, ranges,
 string interpolation with `{{`/`}}` brace escapes).
 
-All 33 `examples/*.maca` and every `selfhost/*.maca` parse with zero error
+All 33 `examples/*.maca` and every `modules/maca/*.maca` parse with zero error
 nodes. (The `apps/microkernel` freestanding-asm intrinsics and `apps/mcmod`
 JVM-annotation surface remain out of scope.)
 

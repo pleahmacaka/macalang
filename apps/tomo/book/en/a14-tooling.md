@@ -27,7 +27,7 @@ binary, package manager or test runner to install.
 ## What the binary carries
 
 Inside `maca`: the **C runtime** every native build links against, and the
-**standard library**, all eight packages (`std`, `cli`, `http`, `bench`,
+**standard library**, all nine packages (`std`, `cli`, `http`, `bench`,
 `profile`, `signal`, `tambo`, `web`). A release is `maca` and `maca-lsp`.
 
 The first import nothing in your project answers unpacks the copy, once, into

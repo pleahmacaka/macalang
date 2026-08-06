@@ -98,7 +98,7 @@ apps    = "services"
 
 ## 컴파일러가 지니고 다니는 표준 라이브러리
 
-`maca`는 여덟 패키지를 모두 안에 지니고 다닙니다. `std`, `cli`, `http`,
+`maca`는 아홉 패키지를 모두 안에 지니고 다닙니다. `std`, `cli`, `http`,
 `bench`, `profile`, `signal`, `tambo`, `web`입니다.
 
 컴파일러는 *소스*를 해결하고 인라인하므로 그 사본은 디스크에 닿아야 합니다.

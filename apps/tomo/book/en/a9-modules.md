@@ -90,7 +90,7 @@ The keys are read line by line, so a commented-out key is a comment.
 
 ## The standard library the compiler carries
 
-`maca` has all eight packages inside it: `std`, `cli`, `http`, `bench`,
+`maca` has all nine packages inside it: `std`, `cli`, `http`, `bench`,
 `profile`, `signal`, `tambo`, `web`. A downloaded release is one file that knows
 what `import std/json` means.
 

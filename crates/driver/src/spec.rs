@@ -54,7 +54,7 @@ fn blurb(source: &str) -> Option<String> {
 /// Every documented item of `std`, signature only, grouped by module.
 ///
 /// `std` is indexed item by item because it is what an ordinary program
-/// imports. The other seven packages get a line each: listing their internals
+/// imports. The other eight packages get a line each: listing their internals
 /// costs eleven thousand tokens and answers a question almost nobody writing a
 /// program is asking.
 fn stdlib_index() -> String {
@@ -83,7 +83,7 @@ fn stdlib_index() -> String {
 /// The packages beside `std`, one line each, so a model knows they exist and what to ask for.
 fn other_packages() -> String {
     let mut out = String::from(
-        "\nBeside `std`, seven packages ride in the same binary. \
+        "\nBeside `std`, eight packages ride in the same binary. \
                                 Run `maca spec --llm --package <name>` for one of their indexes.\n\n",
     );
     let mut names: Vec<&str> = maca_stdlib::packages()
