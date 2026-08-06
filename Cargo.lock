@@ -117,10 +117,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "maca-options"
-version = "0.3.3"
-
-[[package]]
 name = "maca-parser"
 version = "0.3.3"
 dependencies = [
