@@ -87,7 +87,8 @@ EffectInConfig: config must be pure but this uses effect(s): async
 
 왼쪽 열은 모양의 목록입니다. 자유 빌트인 `read_file`, `capture`, `exec`는 어느
 행에도 없으므로 그것을 호출하는 설정은 컴파일됩니다. 허가가 아니라 검사가 닿는
-범위로 읽으십시오.
+범위로 읽으십시오. 이 검사는 [이펙트와 async](a7-effects.md)의 이펙트 시스템을
+함수 대신 모듈 전체에 겨눈 것입니다.
 
 ## 옵션은 네임스페이스 단위로 검사됩니다
 

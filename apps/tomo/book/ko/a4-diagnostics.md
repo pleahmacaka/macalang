@@ -213,6 +213,9 @@ block. Write `Name { … }` for the record, or drop the `=>` for the block
 `on:click` needs a live DOM; build this with `--target js`
 ```
 
+요소가 문자열로 렌더링될 때([UI 문법](a11-ui.md)) 이벤트 핸들러는 붙을 자리가
+없습니다.
+
 | 타깃 | 거부하는 것 |
 |---|---|
 | native | `on:click=`와 그 형제들 |
