@@ -4,6 +4,13 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* A `match` arm may carry a guard, and every declaration of the compiler's own
+  source now reaches its output. `_ if a > 5 => …` was read as if the guard were
+  the arm's body, so `step` in `lexer.maca` swallowed the four functions after it.
+  A guard is its own node: the C back end tests it (`&&`-ed with the pattern when
+  there is one) and Rust writes `pat if guard =>`. `{{` inside a string was
+  desugared as an interpolation of nothing, giving `maca_cat("", …)` where a
+  literal brace belongs. 341 of 341 functions across the eight files are emitted.
 * The self-hosted compiler reads every one of its own eight files with nothing to
   report. Three things stood between it and that. A record field declared as an
   array (`tys: Ty[]`) threw the field walk off, because it stepped three tokens
