@@ -123,7 +123,7 @@ emit_arms(scrut: str, cs: Expr[], i: int) -> str =>
 emit_arms_at(scrut: str, cs: Expr[], i: int, tagged: bool) -> str {
     if i + 1 >= cs.length() {
         "0"
-    } else if cs.get(i).text == "_" {
+    } else if cs.get(i).text == "_" && cs.get(i).kind != EGuard {
         emit_expr(cs.get(i + 1))
     } else {
         cond = test(scrut, cs.get(i), tagged)
@@ -133,10 +133,18 @@ emit_arms_at(scrut: str, cs: Expr[], i: int, tagged: bool) -> str {
     }
 }
 
+bound_pat(p: Expr) -> bool {
+    if p.kind == EGuard {
+        bound_pat(p.children.get(0))
+    } else {
+        p.children.length() > 0
+    }
+}
+
 any_bound(cs: Expr[], i: int) -> bool {
     if i >= cs.length() {
         false
-    } else if cs.get(i).children.length() > 0 {
+    } else if bound_pat(cs.get(i)) {
         true
     } else {
         any_bound(cs, i + 2)
@@ -144,7 +152,9 @@ any_bound(cs: Expr[], i: int) -> bool {
 }
 
 test(scrut: str, pat: Expr, tagged: bool) -> str {
-    if tagged {
+    if pat.kind == EGuard {
+        guard_test(scrut, pat, tagged)
+    } else if tagged {
         "{scrut}.tag == {pat.text}_tag"
     } else if pat.kind == EStr {
         "(strcmp({scrut}, {quoted(pat.text)}) == 0)"
@@ -153,8 +163,20 @@ test(scrut: str, pat: Expr, tagged: bool) -> str {
     }
 }
 
+guard_test(scrut: str, pat: Expr, tagged: bool) -> str {
+    when = emit_expr(pat.children.get(1))
+
+    if pat.children.get(0).text == "_" {
+        when
+    } else {
+        "({test(scrut, pat.children.get(0), tagged)} && {when})"
+    }
+}
+
 arm_body(scrut: str, pat: Expr, body: Expr) -> str {
-    if pat.children.length() == 0 {
+    if pat.kind == EGuard {
+        arm_body(scrut, pat.children.get(0), body)
+    } else if pat.children.length() == 0 {
         emit_expr(body)
     } else {
         "({{ {bind_slots(scrut, pat.children, 0)}{emit_expr(body)}; }})"

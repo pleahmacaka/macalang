@@ -392,12 +392,17 @@ interp_step(cs: str[], i: int, inside: bool, cur: str, acc: str[]) -> str[] {
     opens = c == "\{" && !inside
     closes = c == "\}" && inside
 
-    if opens || closes {
+    if pair_at(cs, i, "\{") || pair_at(cs, i, "\}") {
+        split_interp(cs, i + 2, inside, cur ++ c, acc)
+    } else if opens || closes {
         split_interp(cs, i + 1, !inside, "", acc ++ [cur])
     } else {
         split_interp(cs, i + 1, inside, cur ++ c, acc)
     }
 }
+
+pair_at(cs: str[], i: int, c: str) -> bool =>
+    cs.get(i) == c && i + 1 < cs.length() && cs.get(i + 1) == c
 
 join_parts(parts: str[], i: int, acc: Expr) -> Expr {
     if i >= parts.length() {
@@ -509,10 +514,20 @@ parse_arms(ts: Token[], i: int, acc: Expr[]) -> PArgs {
 }
 
 parse_one_arm(ts: Token[], i: int, acc: Expr[]) -> PArgs {
-    p = parse_pattern(ts, i)
+    p = parse_guarded(ts, parse_pattern(ts, i))
     body = parse_expr(ts, p.next + 1)
 
     parse_arms(ts, body.next, acc ++ [p.node, body.node])
+}
+
+parse_guarded(ts: Token[], p: PExpr) -> PExpr {
+    if ts.get(p.next).kind != KwIf {
+        p
+    } else {
+        when = parse_expr(ts, p.next + 1)
+
+        mk_pexpr(e_guard(p.node, when.node), when.next)
+    }
 }
 
 parse_pattern(ts: Token[], i: int) -> PExpr {

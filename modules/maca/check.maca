@@ -168,6 +168,7 @@ type_in(env: Env, e: Expr) -> Typed =>
         EField   => field_type(env, e)
         EMethod  => method_type(env, e)
         EBlock   => block_type(env, e)
+        EGuard   => typed(walk_args(env, e.children, 0), t_bool())
         EMatch   => match_type(env, e)
         EList    => list_type(env, e)
         _        => typed(env, t_any())

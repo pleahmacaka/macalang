@@ -129,7 +129,9 @@ remit_arms(cs: Expr[], i: int) -> str {
 }
 
 remit_pat(p: Expr) -> str {
-    if p.kind == EStr {
+    if p.kind == EGuard {
+        "{remit_pat(p.children.get(0))} if {remit_expr(p.children.get(1))}"
+    } else if p.kind == EStr {
         "\"{p.text}\""
     } else if p.children.length() == 0 {
         p.text

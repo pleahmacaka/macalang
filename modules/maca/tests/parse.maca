@@ -320,3 +320,20 @@ test_a_call_before_a_branch_marks_a_block_not_a_record() {
                        ++ " else {{ 3 }} }}"),
               "1", "a `)` before an `if` is two statements, not a field")
 }
+
+Guardy = "pick(a: int) -> int => match true {{"
+    ++ " _ if a > 5 => 1 _ if a > 0 => 2 _ => 0 }}"
+
+test_a_match_arm_may_carry_a_guard() {
+    assert(c_of(Guardy).index_of("(a > 5) ? 1") >= 0,
+           "the guard is the arm's test in C")
+    assert(c_of(Guardy).index_of("1._0") < 0,
+           "a guard's two children are not payload binders")
+    assert(rust_of(Guardy).index_of("_ if (a > 5i64) =>") >= 0,
+           "Rust writes the guard where it belongs")
+}
+
+test_a_doubled_brace_is_one_brace_and_not_an_interpolation() {
+    assert(c_of("open() -> str => \"{{{{ x }}}}\"").index_of("maca_int_to_str") < 0,
+           "a literal brace is not lowered as an interpolation")
+}

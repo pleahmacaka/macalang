@@ -6,6 +6,7 @@ ExprKind =
     EInt | EFloat | EStr | EBool | EIdent
     | ECall | EField | EBinary | EUnary | ETernary | EIf
     | EList | ERecord | EWith | ELambda | EBlock | EMatch | EMethod
+    | EGuard
 
 Expr = {
     kind:     ExprKind
@@ -143,6 +144,10 @@ show(e: Expr) -> str =>
 
 show_args(xs: Expr[], i: int) -> str =>
     xs.slice(i, xs.length()).map(show).join(", ")
+
+e_guard(pat: Expr, when: Expr) -> Expr =>
+    Expr { kind = EGuard, text = pat.text, ival = 0, ty = "",
+           children = [pat, when], stmts = [] }
 
 e_block(stmts: Stmt[], last: Expr) -> Expr =>
     Expr { kind = EBlock, text = "", ival = 0, ty = "",
