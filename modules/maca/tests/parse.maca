@@ -286,3 +286,17 @@ test_a_block_binding_does_not_escape_its_branch() {
                         ++ " q = if n > 0 {{ d = n d }} else {{ 0 }} q }}"),
               "0", "d is gone by the time q is bound")
 }
+
+test_a_list_that_never_closes_stops_at_the_end_of_input() {
+    assert_eq(items_of("f() -> int => g(1, 2"), "1",
+              "the call runs to the end of input without leaving the token list")
+    assert_eq(items_of("f() -> int => [1, 2"), "1", "so does a list literal")
+    assert_eq(items_of("R = {{ a: int"), "1",
+              "a record whose brace never shuts keeps the fields it found")
+}
+
+test_a_sum_that_never_closes_stops_at_the_end_of_input() {
+    assert_eq(items_of("K =\n    A | B |"), "1",
+              "a trailing bar leaves the variant list, it does not read past Eof")
+    assert_eq(items_of("K = A(int"), "1", "nor does an unclosed payload")
+}

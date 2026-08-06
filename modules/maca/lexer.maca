@@ -41,9 +41,17 @@ lex_all(src: str) -> Lexed {
 
 scan(cs: str[], i: int, out: Lexed) -> Lexed {
     if i >= cs.length() {
-        keep(out, mk_token(Eof, "", i))
+        end_run(out, i, 0)
     } else {
         step(cs, i, out)
+    }
+}
+
+end_run(out: Lexed, i: int, n: int) -> Lexed {
+    if n >= 4 {
+        out
+    } else {
+        end_run(keep(out, mk_token(Eof, "", i)), i, n + 1)
     }
 }
 

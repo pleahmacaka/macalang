@@ -88,7 +88,7 @@ mk_block_fn(ts: Token[], name: str, ret: str, params: Expr[],
 }
 
 parse_block(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
-    if ts.get(i).kind == RBrace {
+    if ts.get(i).kind == Eof || ts.get(i).kind == RBrace {
         mk_pblock(acc, i + 1)
     } else if ts.get(i).kind == TIdent && ts.get(i + 1).kind == Eq {
         parse_bind_stmt(ts, i, acc)
@@ -167,6 +167,14 @@ parse_sum_decl(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
 }
 
 parse_variants(ts: Token[], i: int, acc: Expr[]) -> PParams {
+    if ts.get(i).kind != TIdent {
+        mk_pparams(acc, i)
+    } else {
+        one_variant(ts, i, acc)
+    }
+}
+
+one_variant(ts: Token[], i: int, acc: Expr[]) -> PParams {
     v = parse_variant(ts, i)
     seen = acc ++ [v.node]
 
@@ -188,7 +196,7 @@ parse_variant(ts: Token[], i: int) -> PExpr {
 }
 
 parse_payload(ts: Token[], i: int, v: Expr) -> PExpr {
-    if ts.get(i).kind == RParen {
+    if ts.get(i).kind == Eof || ts.get(i).kind == RParen {
         mk_pexpr(v, i + 1)
     } else if ts.get(i).kind == Comma {
         parse_payload(ts, i + 1, v)
@@ -210,7 +218,7 @@ parse_record_decl(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
 }
 
 parse_fields(ts: Token[], i: int, acc: Expr[]) -> PParams {
-    if ts.get(i).kind == RBrace {
+    if ts.get(i).kind == Eof || ts.get(i).kind == RBrace {
         mk_pparams(acc, i)
     } else {
         parse_one_field(ts, i, acc)
@@ -234,7 +242,7 @@ skip_comma(ts: Token[], i: int) -> int {
 }
 
 parse_params(ts: Token[], i: int, acc: Expr[]) -> PParams {
-    if ts.get(i).kind == RParen {
+    if ts.get(i).kind == Eof || ts.get(i).kind == RParen {
         mk_pparams(acc, i)
     } else {
         parse_one_param(ts, i, acc)
@@ -434,7 +442,7 @@ parse_list(ts: Token[], i: int) -> PExpr {
 }
 
 parse_list_elems(ts: Token[], i: int, acc: Expr[]) -> PArgs {
-    if ts.get(i).kind == RBracket {
+    if ts.get(i).kind == Eof || ts.get(i).kind == RBracket {
         mk_pargs(acc, i + 1)
     } else {
         parse_one_elem(ts, i, acc)
@@ -488,7 +496,7 @@ parse_match(ts: Token[], i: int) -> PExpr {
 }
 
 parse_arms(ts: Token[], i: int, acc: Expr[]) -> PArgs {
-    if ts.get(i).kind == RBrace {
+    if ts.get(i).kind == Eof || ts.get(i).kind == RBrace {
         mk_pargs(acc, i + 1)
     } else {
         parse_one_arm(ts, i, acc)
@@ -517,7 +525,7 @@ parse_pattern(ts: Token[], i: int) -> PExpr {
 }
 
 parse_binders(ts: Token[], i: int, p: Expr) -> PExpr {
-    if ts.get(i).kind == RParen {
+    if ts.get(i).kind == Eof || ts.get(i).kind == RParen {
         mk_pexpr(p, i + 1)
     } else if ts.get(i).kind == Comma {
         parse_binders(ts, i + 1, p)
@@ -586,7 +594,7 @@ parse_record_lit(ts: Token[], i: int, name: str) -> PExpr {
 }
 
 parse_lit_fields(ts: Token[], i: int, acc: Expr[]) -> PArgs {
-    if ts.get(i).kind == RBrace {
+    if ts.get(i).kind == Eof || ts.get(i).kind == RBrace {
         mk_pargs(acc, i + 1)
     } else {
         parse_one_lit_field(ts, i, acc)
@@ -613,7 +621,7 @@ parse_call(ts: Token[], i: int, name: str) -> PExpr {
 }
 
 parse_args(ts: Token[], i: int, acc: Expr[]) -> PArgs {
-    if ts.get(i).kind == RParen {
+    if ts.get(i).kind == Eof || ts.get(i).kind == RParen {
         mk_pargs(acc, i + 1)
     } else {
         parse_one_arg(ts, i, acc)
