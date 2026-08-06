@@ -4,6 +4,17 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* The self-hosted parser cannot read past the end of its token list. Every list
+  it walks stopped only at its own closing bracket, so a call, a list literal, a
+  record body, a parameter list, a match arm, a payload or a block that ran to the
+  end of input kept reading into memory that was not the list. On its own source
+  that reached a byte pattern that looked like an integer token holding a null
+  pointer, and `atoll(NULL)` took the process down: three of the compiler's own
+  eight files crashed it. All nine loops stop at `Eof` now, `parse_variants`
+  checks that a name follows a `|`, and the scanner ends the stream with a run of
+  `Eof` tokens so a three-token lookahead cannot leave the list either. The
+  compiler now reads all eight of its own files without crashing, emitting 428
+  lines of C and reporting 31 constructs it cannot yet parse.
 * An `if` branch may hold more than one statement. `Expr` carries a `stmts` list
   now, so a branch that binds a local is a block node rather than something the
   parser could not read: C lowers it to a statement expression
