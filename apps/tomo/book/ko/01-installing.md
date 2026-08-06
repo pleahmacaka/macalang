@@ -1,12 +1,11 @@
 # 설치하기
 
-Maca는 바이너리 하나와 언어 서버 하나입니다. 설치는 한 줄이면 됩니다.
+Maca는 바이너리 하나와 언어 서버 하나입니다.
 
 ## 설치기를 받아서 실행하기
 
-설치기는 릴리스에 들어 있는 바이너리이고, 플랫폼마다 하나씩 있습니다.
 [최신 릴리스](https://github.com/pleahmacaka/macalang/releases/latest)에서
-자기 것을 고르세요.
+플랫폼에 맞는 설치기를 고르세요.
 
 ```sh
 curl -fsSL -O https://github.com/pleahmacaka/macalang/releases/latest/download/maca-install-linux-x86_64
@@ -14,11 +13,11 @@ chmod +x maca-install-linux-x86_64
 ./maca-install-linux-x86_64
 ```
 
-Apple 실리콘 맥이면 `macos-aarch64`, ARM 서버면 `linux-aarch64`로 바꾸면
-됩니다. Windows에서는 `maca-install-windows-x86_64.exe`를 받아서 실행합니다.
+Apple 실리콘 맥이면 `macos-aarch64`, ARM 서버면 `linux-aarch64`, Windows에서는
+`maca-install-windows-x86_64.exe`입니다.
 
 `maca`와 `maca-lsp`를 `~/.local/bin`에 넣고, 그 디렉터리가 `PATH`에 없으면
-추가할 줄을 알려줍니다. 마음을 바꾸는 플래그는 둘입니다.
+추가할 줄을 알려줍니다. 플래그는 둘입니다.
 
 ```sh
 ./maca-install-linux-x86_64 --prefix /usr/local   # 다른 위치로
@@ -27,13 +26,11 @@ Apple 실리콘 맥이면 `macos-aarch64`, ARM 서버면 `linux-aarch64`로 바�
 
 환경 변수 `PREFIX`와 `MACA_VERSION`도 같은 둘을 정합니다.
 
-마지막으로 하는 일은 표준 라이브러리를 import하는 작은 프로그램을 컴파일하고
-실행하는 것입니다. 즉 설치기는 자기가 설치한 컴파일러가 실제로 무언가를
-컴파일하기 전까지는 성공했다고 말하지 않습니다.
+마지막으로 표준 라이브러리를 import하는 작은 프로그램을 컴파일하고 실행합니다.
+설치한 컴파일러가 실제로 무언가를 컴파일하기 전까지는 성공했다고 말하지
+않습니다.
 
 ## GitHub Actions에서
-
-액션이 있고, 두 줄입니다.
 
 ```yaml
 - uses: pleahmacaka/macalang@main
@@ -45,20 +42,16 @@ Apple 실리콘 맥이면 `macos-aarch64`, ARM 서버면 `linux-aarch64`로 바�
 
 ## 그 밖에 필요한 것
 
-**C 컴파일러.** 진짜로 필요한 건 이것 하나입니다. Maca는 C를 거쳐 컴파일되므로
-`maca build`와 `maca run`이 파이프라인 끝에서 `cc`나 `clang`을 부릅니다. macOS는
-Xcode command line tools가 제공하고, Debian/Ubuntu는 `build-essential`,
-Fedora는 `gcc`입니다. 툴체인의 나머지는 없어도 돌아가지만, 가장 많이 쓸 두
-명령은 그렇지 않습니다.
+**C 컴파일러.** Maca는 C를 거쳐 컴파일되므로 `maca build`와 `maca run`이
+파이프라인 끝에서 `cc`나 `clang`을 부릅니다. macOS는 Xcode command line tools,
+Debian/Ubuntu는 `build-essential`, Fedora는 `gcc`입니다.
 
 **Nix는 두 가지에만.** `maca dev`와 Nix 타깃이 [Nix](https://nixos.org)를
-씁니다. 그 밖에는 아무것도 쓰지 않고, 설치기도 묻지 않습니다. 저 두 명령을
-쓰지 않는다면 Nix는 필요 없습니다. Nix는 Windows 네이티브 빌드가 없어서,
-Windows에서는 `maca dev`가 WSL 아래에서 돕니다.
+씁니다. Nix는 Windows 네이티브 빌드가 없어서, Windows에서는 `maca dev`가 WSL
+아래에서 돕니다.
 
-**Rust는 컴파일러를 직접 빌드할 때만.** 설치기는 바이너리를 받습니다.
-체크아웃에서 빌드하는 건 `cargo build`이고, Rust 툴체인이 필요한 건 그
-경로뿐입니다.
+**Rust는 컴파일러를 직접 빌드할 때만.** 체크아웃에서 `cargo build`로 빌드하는
+경로만 Rust 툴체인이 필요합니다.
 
 ## 잘 됐는지 확인하기
 
@@ -82,11 +75,11 @@ maca run hello.maca
 
 ## 에디터 지원
 
-언어 서버는 이미 설치돼 있습니다. 에디터 쪽 설정은 별도 단계입니다.
+언어 서버는 이미 설치돼 있고, 에디터 쪽 설정만 남았습니다.
 
-**Zed**라면 저장소의 `apps/editor/zed-maca`에 확장이 들어 있습니다. tree-sitter
-문법, 강조, 아웃라인, 언어 서버 연결이 되어 있습니다. 체크아웃한 저장소에서
-*Extensions → Install Dev Extension*을 고르고 그 디렉터리를 지정하세요.
+**Zed**라면 저장소의 `apps/editor/zed-maca`에 확장이 있습니다. tree-sitter
+문법, 강조, 아웃라인, 언어 서버 연결이 되어 있습니다. *Extensions → Install Dev
+Extension*을 고르고 그 디렉터리를 지정하세요.
 
 LSP를 말하는 다른 에디터라면 `*.maca` 파일에 대해 `maca-lsp` 바이너리를
 가리키면 됩니다. 진단, 호버, 정의로 이동, 참조 찾기, 문서 심볼, 시그니처
@@ -94,9 +87,8 @@ LSP를 말하는 다른 에디터라면 `*.maca` 파일에 대해 `maca-lsp` 바
 
 ## 아무것도 설치하지 않고
 
-[플레이그라운드](../play/)는 브라우저 안에서 컴파일러를 돌립니다. WebAssembly로
-빌드한 같은 컴파일러입니다. 그래서 툴체인을 설치할지 정하기 전에 다음 몇 장을
-먼저 따라가 볼 수 있습니다.
+[플레이그라운드](../play/)는 같은 컴파일러를 WebAssembly로 빌드해 브라우저
+안에서 돌립니다.
 
 ## 최신으로 유지하기
 

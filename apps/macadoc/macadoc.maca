@@ -419,11 +419,11 @@ Wrap = "max-w-[78rem] mx-auto px-6"
 Shell = "grid grid-cols-[16rem_minmax(0,52rem)] gap-10 justify-center px-6"
     ++ " py-10 max-md:block max-md:max-w-[52rem] max-md:mx-auto max-md:px-5"
 
-PreClass = "mt-3 bg-zinc-50 dark:bg-zinc-900 rounded-lg border"
+PreClass = "mt-3 bg-zinc-50 dark:bg-zinc-900 border"
     ++ " border-zinc-200 dark:border-zinc-800 p-4 overflow-x-auto"
     ++ " text-[0.85rem] m-0"
 
-SigClass = "mt-3 bg-zinc-50 dark:bg-zinc-900 rounded-lg border"
+SigClass = "mt-3 bg-zinc-50 dark:bg-zinc-900 border"
     ++ " border-zinc-200 dark:border-zinc-800 px-4 py-3 overflow-x-auto"
     ++ " text-[0.9rem] m-0"
 
@@ -472,8 +472,8 @@ top_bar(title: str) -> str =>
 
 hover_card() -> str =>
     div(id="macadoc-card", hidden=true,
-        class="absolute z-50 max-w-[26rem] pointer-events-none rounded-lg"
-              ++ " border border-zinc-200 dark:border-zinc-700 shadow-lg"
+        class="absolute z-50 max-w-[26rem] pointer-events-none"
+              ++ " border border-zinc-200 dark:border-zinc-700"
               ++ " bg-white dark:bg-zinc-900 p-3",
         pre(class="m-0 overflow-x-auto text-[0.8rem]",
             code(class=Mono, ""))
@@ -497,7 +497,7 @@ index_page(ms: Module[]) -> str =>
 
 Mono = "font-mono text-[0.9em]"
 
-KbdClass = "text-[0.7rem] px-1 py-[0.05rem] rounded border"
+KbdClass = "text-[0.7rem] px-1 py-[0.05rem] border"
     ++ " border-zinc-300 dark:border-zinc-700 text-zinc-500"
     ++ " dark:text-zinc-400"
 
@@ -510,7 +510,7 @@ module_cards(ms: Module[], i: int) -> str {
 }
 
 module_card(m: Module) -> str =>
-    a(class="block no-underline text-inherit rounded-xl border"
+    a(class="block no-underline text-inherit border"
             ++ " border-zinc-200 dark:border-zinc-800 p-5 hover:bg-zinc-50"
             ++ " dark:hover:bg-zinc-900 hover:border-zinc-300"
             ++ " dark:hover:border-zinc-700",
@@ -585,13 +585,13 @@ entry(ms: Module[], m: Module, it: Item) -> str =>
         signature_block(ms, m, it)
         div(class=Measure, prose(it.doc)))
 
-ItemClass = "scroll-mt-20 rounded-xl border border-zinc-200"
+ItemClass = "scroll-mt-20 border border-zinc-200"
     ++ " dark:border-zinc-800 p-5 max-sm:p-4"
 
 anchor_link(name: str) -> str =>
     a(class="no-underline text-[0.8rem] text-zinc-400"
-            ++ " dark:text-zinc-600 hover:text-violet-600"
-            ++ " dark:hover:text-violet-300 focus:underline",
+            ++ " dark:text-zinc-600 hover:text-black"
+            ++ " dark:hover:text-white focus:underline",
       href="#" ++ name, title="Link to " ++ name, "#")
 
 signature_block(ms: Module[], m: Module, it: Item) -> str =>
@@ -697,7 +697,7 @@ kind_word(kind: str) -> str {
 }
 
 badge_class(kind: str) -> str =>
-    "px-2 py-[0.1rem] rounded-full text-[0.7rem] uppercase tracking-wide"
+    "px-2 py-[0.1rem] text-[0.7rem] uppercase tracking-wide"
         ++ " border font-semibold kind-" ++ kind
 
 doc_css() -> str =>
@@ -749,7 +749,7 @@ search_box() -> str =>
               placeholder="Search names and types",
               aria-label="Search names and types", autocomplete="off",
               class="w-full px-2 py-1 pr-7 border border-zinc-200"
-                    ++ " dark:border-zinc-700 rounded bg-white"
+                    ++ " dark:border-zinc-700 bg-white"
                     ++ " dark:bg-zinc-900 text-[0.85rem]")
         span(class="absolute right-2 top-[0.35rem] pointer-events-none",
              element("kbd", class=KbdClass, "/")))
@@ -768,7 +768,7 @@ module_tree(m: Module, cur: str) -> str {
     here = m.name == cur
 
     details(data-mod=m.name, open=here,
-        summary(class="cursor-pointer py-1 rounded font-mono font-semibold"
+        summary(class="cursor-pointer py-1 font-mono font-semibold"
                       ++ " text-[0.82rem] " ++ summary_class(here),
                 escape_html(m.name))
         div(class="pb-2", kind_groups(m, here, 0)))
@@ -776,7 +776,7 @@ module_tree(m: Module, cur: str) -> str {
 
 summary_class(here: bool) -> str {
     if here {
-        "text-violet-600 dark:text-violet-300"
+        "text-zinc-500 dark:text-zinc-500"
     } else {
         "hover:text-black dark:hover:text-white"
     }
@@ -842,7 +842,7 @@ side_rows(m: Module, items: Item[], here: bool, i: int) -> str {
 side_row(m: Module, it: Item, here: bool) -> str =>
     li(data-item=it.name, data-sig=flat(it.sig),
        data-brief=plain(first_sentence(it.doc)), class="m-0",
-       a(class="block px-2 py-[0.15rem] rounded no-underline font-mono"
+       a(class="block px-2 py-[0.15rem] no-underline font-mono"
                ++ " text-[0.8rem] text-zinc-600 dark:text-zinc-400"
                ++ " hover:bg-zinc-100 dark:hover:bg-zinc-800"
                ++ " hover:text-black dark:hover:text-white",

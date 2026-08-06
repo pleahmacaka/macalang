@@ -1,10 +1,10 @@
 # Installing
 
-Maca is one binary and a language server. Installing it takes a line.
+Maca is one binary and a language server.
 
 ## Download the installer, run it
 
-The installer is a binary in the release, one per platform. Pick yours from
+Pick your platform from
 [the latest release](https://github.com/pleahmacaka/macalang/releases/latest):
 
 ```sh
@@ -26,38 +26,32 @@ It puts `maca` and `maca-lsp` in `~/.local/bin`, and if that is not on your
 
 `PREFIX` and `MACA_VERSION` in the environment do the same two things.
 
-The last thing it does is compile and run a small program that imports the
-standard library. So the installer does not report success until the compiler
-it installed has actually compiled something.
+It finishes by compiling and running a small program that imports the standard
+library, so it does not report success until the compiler it installed has
+compiled something.
 
 ## In GitHub Actions
-
-There is an action, and it is two lines:
 
 ```yaml
 - uses: pleahmacaka/macalang@main
 - run: maca build
 ```
 
-It fetches the installer for the runner, then runs `maca install`, which
-fetches what your `maca.toml` names at the versions `maca.lock` pinned.
+It fetches the installer for the runner, then runs `maca install`, which fetches
+what your `maca.toml` names at the versions `maca.lock` pinned.
 
 ## What else you need
 
-**A C compiler.** This is the one real requirement. Maca compiles through C, so
-`maca build` and `maca run` invoke `cc` or `clang` at the end of the pipeline.
-On macOS the Xcode command line tools provide it; on Debian or Ubuntu it is
-`build-essential`; on Fedora, `gcc`. Everything else in the toolchain works
-without one, but the two commands you will use most do not.
+**A C compiler.** Maca compiles through C, so `maca build` and `maca run` invoke
+`cc` or `clang` at the end of the pipeline. On macOS the Xcode command line
+tools provide it; on Debian or Ubuntu it is `build-essential`; on Fedora, `gcc`.
 
 **Nix, only for two things.** `maca dev` and the Nix build target want
-[Nix](https://nixos.org). Nothing else does, and the installer does not ask
-about it: if you never run those two commands you never need it. Nix has no
-native Windows build, so on Windows `maca dev` runs under WSL.
+[Nix](https://nixos.org). Nix has no native Windows build, so on Windows
+`maca dev` runs under WSL.
 
-**Rust, only to build the compiler yourself.** The installer downloads a
-binary. Building from a checkout is `cargo build`, and that is the only path
-that wants a Rust toolchain.
+**Rust, only to build the compiler yourself.** Building from a checkout is
+`cargo build`.
 
 ## Checking it worked
 
@@ -83,8 +77,8 @@ test than `--version`.
 
 The language server is already installed; the editor side is a separate step.
 
-For **Zed**, the repository ships an extension under `apps/editor/zed-maca` with a
-tree-sitter grammar, highlighting, an outline and the server wired up. Install
+For **Zed**, the repository ships an extension under `apps/editor/zed-maca` with
+a tree-sitter grammar, highlighting, an outline and the server wired up. Install
 it from a checkout: *Extensions → Install Dev Extension*, and choose that
 directory.
 
@@ -94,9 +88,8 @@ references, document symbols, signature help, completion, rename and formatting.
 
 ## Without installing anything
 
-The [playground](../play/) runs the compiler in your browser (it is the same
-compiler, built for WebAssembly), so you can work through the next few chapters
-before deciding to install a toolchain at all.
+The [playground](../play/) runs the same compiler in your browser, built for
+WebAssembly.
 
 ## Keeping it current
 

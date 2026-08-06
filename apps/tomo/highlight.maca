@@ -613,8 +613,71 @@ hl_toml(src: str) -> str =>
 hl_json(src: str) -> str =>
     hl_words(src, "", " true false null ")
 
+/// A shell line is a command, its flags and its words, not a C expression.
+///
+/// The generic tokenizer marked the `:` in `https://`, the `+` in `chmod +x`
+/// and the `0.3` in a version string, because it reads punctuation as
+/// operators and digits as numbers. A shell reader wants the command it is
+/// about to run to stand out and nothing else to.
 hl_sh(src: str) -> str =>
-    hl_words(src, "#", ShWords)
+    sh_run(src.chars(), 0, true, "")
+
+sh_run(cs: str[], i: int, at_command: bool, out: str) -> str {
+    cur = ch(cs, i)
+
+    if cur == "" {
+        return out
+    }
+
+    if cur == "#" {
+        return sh_run(cs, line_end(cs, i), false,
+                      out ++ tok("tok-com", text_of(cs, i, line_end(cs, i))))
+    }
+
+    if cur == "\"" || cur == "'" {
+        j = quote_end(cs, i + 1, cur)
+
+        if j < 0 {
+            return sh_run(cs, i + 1, false, out ++ tok("", cur))
+        }
+
+        return sh_run(cs, j, false, out ++ tok("tok-str", text_of(cs, i, j)))
+    }
+
+    if cur == "\n" || cur == "|" || cur == ";" || cur == "&" {
+        return sh_run(cs, i + 1, true, out ++ tok("", cur))
+    }
+
+    if cur == " " || cur == "\t" {
+        return sh_run(cs, i + 1, at_command, out ++ tok("", cur))
+    }
+
+    j = sh_word_end(cs, i)
+    word = text_of(cs, i, j)
+
+    if word.starts_with("-") || ShWords.contains(" " ++ word ++ " ") {
+        return sh_run(cs, j, ShWords.contains(" " ++ word ++ " "),
+                      out ++ tok("tok-kw", word))
+    }
+
+    if at_command {
+        return sh_run(cs, j, false, out ++ tok("tok-fn", word))
+    }
+
+    sh_run(cs, j, false, out ++ tok("", word))
+}
+
+/// A shell word runs to whitespace or to something that starts a new command.
+sh_word_end(cs: str[], i: int) -> int {
+    cur = ch(cs, i)
+
+    if cur == "" || cur == " " || cur == "\t" || cur == "\n" || cur == "|"
+       || cur == ";" || cur == "&" || cur == "#" {
+        i
+    } else {
+        sh_word_end(cs, i + 1)
+    }
+}
 
 hl_css(src: str) -> str =>
     hl_words(src, "", " @media @import @font-face from to important ")

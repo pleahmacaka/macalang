@@ -1,11 +1,6 @@
 # Keywords
 
-Maca reserves 22 words. That is the whole list: a language you can hold in your
-head is a design goal, not an accident.
-
-The words it pointedly does *not* reserve are the second table, and they matter
-as much: each one is a habit from another language that the compiler answers
-with what Maca does instead.
+Maca reserves 22 words.
 
 | Keyword | Purpose |
 |---|---|
@@ -30,15 +25,13 @@ with what Maca does instead.
 | `true` | boolean |
 | `false` | boolean |
 
-`from` is *not* on this list. It appears in a selective import, but only there.
-Everywhere else it is an ordinary identifier, because `copy(from, to)` is too
-natural a parameter name to spend a keyword on.
+`from` is *not* on this list. It appears in a selective import, but only there;
+everywhere else it is an ordinary identifier.
 
 ## Words Maca does not reserve
 
-These are the ones people reach for from other languages. None of them is a
-keyword, and using one as an identifier is legal. But if you use one *as if it
-were* a keyword, the compiler tells you what Maca does instead.
+None of these is a keyword, and using one as an identifier is legal. Use one *as
+if it were* a keyword and the compiler tells you what Maca does instead.
 
 | Not a keyword | What Maca does |
 |---|---|
@@ -52,13 +45,10 @@ were* a keyword, the compiler tells you what Maca does instead.
 | `impl`, `trait`, `self` | a free function plus UFCS is the method |
 | `new` | a record literal is `Name { f = v }` |
 
-Because these are not reserved, a variable called `type` or a function called
-`new` compiles. The C backend mangles names that collide with C keywords, so
-`double`, `class` and `switch` all work as Maca identifiers too.
+The C backend mangles names that collide with C keywords, so `double`, `class`
+and `switch` all work as Maca identifiers too.
 
 ## Contextual punctuation
-
-Not keywords, but worth listing here because they carry meaning:
 
 | Token | Meaning |
 |---|---|

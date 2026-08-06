@@ -20,8 +20,7 @@ when two of them are the same character are in [Syntax](a5-syntax.md).
 | `&&` `\|\|` | boolean and/or |
 | `!x` | negation |
 
-A long condition can break across lines either way: leave the operator at the
-end of the line, or start the next line with it. Both read as one expression:
+A long condition can break across lines either way:
 
 ```maca
 ok = a > 0 &&
@@ -49,8 +48,7 @@ one above, and nothing warns. [Syntax](a5-syntax.md) has the whole rule.
 |---|---|
 | `++` | joins two strings, or two lists |
 
-`+` does not concatenate. `++` is a separate operator precisely so that
-`"1" ++ "2"` and `1 + 2` can never be confused.
+`+` does not concatenate, so `"1" ++ "2"` and `1 + 2` can never be confused.
 
 ## Control
 
@@ -61,12 +59,11 @@ one above, and nothing warns. [Syntax](a5-syntax.md) has the whole rule.
 | `lo..hi` | half-open range, `hi` excluded |
 | `x, ..rest` | rest pattern in a `match` |
 
-The spaced-versus-attached distinction is load-bearing and appears three times in
-the language. A spaced `?` is a ternary; an attached one is error propagation. A
-spaced `:` is a ternary's second half; an attached one, inside an interpolation,
-is a format spec. And a spaced `-` subtracts while an attached one between two
-word characters is part of the name: `data-id` is one identifier, `a - b` is
-two operands.
+The spaced-versus-attached distinction appears three times. A spaced `?` is a
+ternary; an attached one is error propagation. A spaced `:` is a ternary's
+second half; an attached one, inside an interpolation, is a format spec. A
+spaced `-` subtracts while an attached one between two word characters is part
+of the name: `data-id` is one identifier, `a - b` is two operands.
 
 ## Access
 
@@ -137,4 +134,4 @@ A spec is sugar: `{x:.2}` is `x.fixed(2)` and `{x:>8}` is
 10. call, index, field, UFCS
 
 `await` and `spawn` binding at unary precedence means `await a + await b` is
-`(await a) + (await b)`, which is what you want.
+`(await a) + (await b)`.

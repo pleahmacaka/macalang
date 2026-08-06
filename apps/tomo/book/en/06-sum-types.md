@@ -1,8 +1,6 @@
 # Sum Types and Matching
 
-A record says *all of these at once*. A sum type says *exactly one of these*. It
-is the other half of the data model, and the one that makes illegal states
-impossible to write down.
+A record says *all of these at once*. A sum type says *exactly one of these*.
 
 ## Declaring
 
@@ -28,12 +26,9 @@ t = Rect(3, 4)
 ```
 
 There is no `enum` keyword and no `struct` keyword. A type declaration is
-`Name = …`, and what follows decides which kind it is. Braces make a record,
-bars make a sum.
+`Name = …`: braces make a record, bars make a sum.
 
 ## Matching
-
-`match` takes a value apart:
 
 ```maca
 area(s: Shape) -> int =>
@@ -43,11 +38,11 @@ area(s: Shape) -> int =>
     }
 ```
 
-Each arm is `pattern => expression`. A variant's payload is bound by naming it in
-the pattern: `Circle(r)` matches a circle and binds its field to `r`.
+Each arm is `pattern => expression`. A variant's payload is bound by naming it
+in the pattern: `Circle(r)` matches a circle and binds its field to `r`.
 
-`match` is an **expression**, so it can be a whole arrow body, as here. It can
-also stand as a statement.
+`match` is an **expression**, so it can be a whole arrow body. It can also stand
+as a statement.
 
 ## Exhaustiveness
 
@@ -61,15 +56,14 @@ name(c: Color) -> str =>
     }
 ```
 
-and you get a diagnostic rather than a surprise at run time:
+and you get a diagnostic:
 
 ```
 NonExhaustive: match on `Color` is not exhaustive; missing: Blue
 ```
 
-This is the payoff for sum types. Add a variant to `Color` a year later and the
-compiler walks you to every `match` that now has a hole. A language with an
-`enum` of integers and a `switch` cannot do that.
+Add a variant to `Color` a year later and the compiler walks you to every
+`match` that now has a hole.
 
 The catch-all `_` matches anything:
 
@@ -81,12 +75,11 @@ is_red(c: Color) -> bool =>
     }
 ```
 
-Use it when you mean "everything else, forever", not to silence a warning you
-would rather have.
+Use it when you mean "everything else, forever".
 
 ## Matching lists
 
-Patterns are not only for sum types. A list can be taken apart by shape:
+A list can be taken apart by shape:
 
 ```maca
 describe(xs: int[]) -> str =>
@@ -97,13 +90,13 @@ describe(xs: int[]) -> str =>
     }
 ```
 
-`[]` matches an empty list, `[x]` a list of exactly one, `[x, ..rest]` a head and
-the remainder. The brackets may be dropped when it is unambiguous: `x, ..rest`
-means the same as `[x, ..rest]`.
+`[]` matches an empty list, `[x]` a list of exactly one, `[x, ..rest]` a head
+and the remainder. The brackets may be dropped when it is unambiguous:
+`x, ..rest` means the same as `[x, ..rest]`.
 
 ## Recursive sums
 
-A variant can carry the type being declared, which is how you build a tree:
+A variant can carry the type being declared:
 
 ```maca
 Tree = Leaf | Node(int, Tree, Tree)
@@ -115,18 +108,15 @@ sum(t: Tree) -> int =>
     }
 ```
 
-The payload is boxed, so the type is not infinitely sized. This is the shape a
-compiler's AST takes, and it is what `apps/selfhost/ast.maca` is built from.
+The payload is boxed, so the type is not infinitely sized. This is the shape
+`apps/selfhost/ast.maca` is built from.
 
 ## Choosing between a record and a sum
 
-The question to ask is whether the fields are simultaneous or alternative.
-
-A user has a name *and* an email: record. A payment is a card *or* a transfer
-*or* an invoice: sum. A request that is pending has no response body, and one
-that failed has no result: that is a sum, even though it is tempting to write a
-record with three nullable fields. Maca has no null, so the temptation is easier
-to resist than it is elsewhere.
+Ask whether the fields are simultaneous or alternative. A user has a name *and*
+an email: record. A payment is a card *or* a transfer *or* an invoice: sum. A
+request that is pending has no response body, and one that failed has no result:
+sum. Maca has no null.
 
 The two nest freely:
 
@@ -139,8 +129,8 @@ Job = {
 }
 ```
 
-Now a `Job` cannot be simultaneously done and failed, and cannot be done without
-a result, not by convention, but because there is no way to write it down.
+A `Job` cannot be simultaneously done and failed, and cannot be done without a
+result, because there is no way to write it down.
 
 ## Run it
 
@@ -148,6 +138,5 @@ a result, not by convention, but because there is no way to write it down.
 maca run apps/examples/tree.maca
 ```
 
-A recursive sum type (a binary tree) built, summed and printed. Then try
-deleting one arm of a `match` in it and building again: the diagnostic names the
-variant you dropped, which is the entire reason to reach for a sum type.
+A recursive sum type built, summed and printed. Delete one arm of a `match` in
+it and build again: the diagnostic names the variant you dropped.

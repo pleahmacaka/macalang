@@ -1,25 +1,15 @@
 # A First Program
 
-The best way to meet a language is to build something small in it. This chapter
-writes one program end to end: a word tally that takes a sentence and reports
-how often each word appears. It touches records, lists, recursion, pattern-free
-control flow and string handling (most of what the next chapters cover in
-depth) without explaining any of it fully. Read it for the shape.
-
-The finished program lives at `apps/examples/wordcount.maca` in the repository, and
-the test suite runs it, so everything below is known to work.
+One program end to end: a word tally that takes a sentence and reports how often
+each word appears. It lives at `apps/examples/wordcount.maca`, and the test
+suite runs it.
 
 ## Splitting the text
-
-Start with the input and the smallest useful step: turning a sentence into
-words.
 
 ```maca
 words(text: str) -> str[] =>
     text.lower().replace(".", " ").replace(",", " ").split(" ")
 ```
-
-Three things are worth noticing.
 
 `str[]` is a list of strings. Maca writes the element type first and the
 brackets after, like C, not `List<str>`. There are no angle brackets in the
@@ -28,14 +18,12 @@ language at all.
 `text.lower()` is a method call on a string, but `str` is a primitive with no
 methods of its own. This is **UFCS**: uniform function call syntax. `x.f(y)`
 means `f(x, y)`, so any function whose first parameter fits can be called this
-way. The chain reads left to right in the order the work happens.
+way.
 
 The body is an **arrow body**: `=>` followed by a single expression, which is
 the function's result. There is no `return` in Maca.
 
 ## Counting
-
-A word and its count belong together, so give them a name:
 
 ```maca
 Tally = {
@@ -45,11 +33,10 @@ Tally = {
 ```
 
 That is a record: Maca's struct. `Name = { … }` declares the type; inside,
-`field: type`. Note the two different meanings of the punctuation, which is
-consistent everywhere in the language: **`:` introduces a type, `=` introduces
-a value**.
+`field: type`. **`:` introduces a type, `=` introduces a value**, everywhere in
+the language.
 
-Now the operation that does the real work, which records a sighting of one word:
+Recording a sighting of one word:
 
 ```maca
 bump(ts: Tally[], w: str) -> Tally[] {
@@ -60,16 +47,12 @@ bump(ts: Tally[], w: str) -> Tally[] {
 }
 ```
 
-This function has a **block body** (braces instead of `=>`) because it needs a
-local binding first. The last expression in the block is still the value; again,
-no `return`.
+A **block body** (braces instead of `=>`), because it needs a local binding
+first. The last expression in the block is the value.
 
 `at = find(...)` binds a local. There is no `let`. `c ? a : b` is the ternary,
-and it is an expression, so it can be the whole body. `++` concatenates: lists
-here, strings elsewhere.
-
-`Tally { word = w, count = 1 }` builds a record. Type name, then `field = value`
-pairs, with `=` because these are values.
+and it is an expression. `++` concatenates: lists here, strings elsewhere.
+`Tally { word = w, count = 1 }` builds a record.
 
 The two helpers:
 
@@ -84,10 +67,7 @@ replace_at(ts: Tally[], at: int, t: Tally) -> Tally[] {
 ```
 
 `find` is recursive, and carries its own cursor `i` as a parameter. You will see
-this shape constantly in Maca code. It is how the compiler itself is written.
-
-`replace_at` shows the other side: `ts[at] = t` assigns through an index. Maca
-is not a pure language; it prefers expressions.
+this shape constantly. `replace_at` assigns through an index with `ts[at] = t`.
 
 ## Folding over the words
 
@@ -99,8 +79,7 @@ tally(ws: str[], i: int, acc: Tally[]) -> Tally[] =>
 ```
 
 An accumulator threaded through a recursive call: the standard fold. Splitting
-on spaces leaves empty strings behind (`"a.  b"` produces one), so empty words
-are skipped rather than counted.
+on spaces leaves empty strings behind, so empty words are skipped.
 
 ## Printing
 
@@ -114,13 +93,10 @@ show(ts: Tally[], i: int) -> int {
 }
 ```
 
-`info` prints a line. The string is **interpolated**: `{expr}` is evaluated and
-spliced in. `{…:<8}` is a format spec (left-align in eight columns), so the
-counts line up. [The next chapter](03-common-concepts.md) covers the full spec
-grammar.
-
-`if` here is a statement whose value is discarded; the block's value is the `0`
-on the last line.
+The string is **interpolated**: `{expr}` is evaluated and spliced in. `{…:<8}`
+is a format spec (left-align in eight columns).
+[The next chapter](03-common-concepts.md) covers the full spec grammar. `if`
+here is a statement whose value is discarded; the block's value is the `0`.
 
 ## Main
 
@@ -134,8 +110,7 @@ main() -> int {
 }
 ```
 
-`main() -> int` is the entry point, and its result is the process exit status:
-`0` for success, as everywhere else.
+`main`'s result is the process exit status.
 
 ## Running it
 
@@ -154,14 +129,12 @@ dog      1
 end      1
 ```
 
-`maca run` compiles and executes in one step. Behind that, the program was
-parsed, type-checked, lowered to C, compiled by a real C compiler, and the
-resulting binary cached. A second run of an unchanged program skips all of it.
+Behind `maca run`, the program was parsed, type-checked, lowered to C, compiled
+by a real C compiler, and the resulting binary cached. A second run of an
+unchanged program skips all of it.
 
 ## What was not explained
 
-Deliberately: why `Tally` is a record rather than a class, what happens to the
-memory when a list is rebuilt, why there is no `return`, how `str[]` gets its
-methods. Those are the next chapters. What matters here is that a program is a
-list of functions, a function is a signature and an expression, and the language
-gets out of the way.
+Why `Tally` is a record rather than a class, what happens to the memory when a
+list is rebuilt, why there is no `return`, how `str[]` gets its methods. Those
+are the next chapters.

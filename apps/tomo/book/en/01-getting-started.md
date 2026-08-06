@@ -1,8 +1,5 @@
 # Hello, World
 
-Every Maca program starts at `main`, which returns an `int`: the process exit
-code. Here is the whole thing:
-
 ```maca
 main() -> int {
     info("Hello, World")
@@ -25,12 +22,11 @@ returns an `int`. There is no `fn` keyword: a name, a parameter list, and a
 `-> Type` is all a function definition is.
 
 The braces hold a **block**, and a block's value is its last expression. Here
-that is `0`, so that is what `main` returns. Because `main`'s return value is
-the process exit status, `0` means success. Return anything else to signal
-failure.
+that is `0`, which `main` returns as the process exit status. Return anything
+else to signal failure.
 
 `info` prints a line. It is one of a small family named after syslog levels;
-`warn` and below go to standard error instead.
+`warn` and below go to standard error.
 
 ## Arrow bodies
 
@@ -40,8 +36,7 @@ A function whose body is a single expression can skip the braces and use `=>`:
 double(n: int) -> int => n * 2
 ```
 
-That is exactly equivalent to `double(n: int) -> int { n * 2 }`. Use whichever
-reads better.
+That is equivalent to `double(n: int) -> int { n * 2 }`.
 
 ## Building instead of running
 
@@ -51,7 +46,5 @@ reads better.
 maca build hello.maca -o hello
 ./hello
 ```
-
-Next: the values and types those functions pass around.
 
 [On to a first real program.](02-a-first-program.md)

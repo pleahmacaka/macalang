@@ -1,9 +1,7 @@
 # A Project: A Style Linter
 
-The chapters so far each showed one idea. This one builds a whole tool, and the
-tool is real: `apps/lint/lint.maca` in the repository, the linter that the Maca
-sources are actually held to. It reads files, walks directories, takes command
-line arguments and sets an exit code: the shape of most command line programs.
+`apps/lint/lint.maca` is the linter the Maca sources are held to. It reads
+files, walks directories, takes command line arguments and sets an exit code.
 
 ## What it does
 
@@ -12,8 +10,6 @@ whitespace, a hard tab. Given a path it reports every violation and exits
 non-zero; given nothing it lints the repository's own sources.
 
 ## Starting with one line
-
-The smallest useful piece is a predicate over a single line.
 
 ```maca
 has_trailing_space(line: str) -> bool =>
@@ -28,10 +24,9 @@ too_wide(line: str) -> bool =>
     line.length() > 80 && !line.trim().starts_with("//")
 ```
 
-Comments are exempt, because prose wraps differently from code. But run that over
-a real codebase and it fires on lines that are one long *string* (a C template,
-a URL, a test program), which cannot be rewrapped without changing what they
-mean. A comment and a string literal are the same case. So the rule measures the
+Comments are exempt, because prose wraps differently from code. But run that
+over a real codebase and it fires on lines that are one long *string*, which
+cannot be rewrapped without changing what they mean. So the rule measures the
 line with its strings collapsed:
 
 ```maca
@@ -52,8 +47,8 @@ collapse(cs: str[], i: int, quoted: bool, acc: str) -> str =>
 ```
 
 `collapse` is the shape you will write over and over in Maca: a recursive walk
-over `chars()` threading state: here a cursor, a flag, and an accumulator. That
-change took the repository from 65 findings to 13, and all 13 were real.
+over `chars()` threading a cursor, a flag, and an accumulator. That change took
+the repository from 65 findings to 13, and all 13 were real.
 
 ## Collecting the complaints
 
@@ -83,9 +78,9 @@ lint_file(path: str) -> str =>
     scan_lines(path, read_file(path).split("\n"), 0, false, "")
 ```
 
-`read_file` returns the contents as a `str`. Splitting on newline gives the
-lines. The `false` is the "inside a raw string" flag. Raw `"""…"""` blocks hold
-foreign CSS and JavaScript, and the Maca-shape rules should not apply to them.
+`read_file` returns the contents as a `str`. The `false` is the "inside a raw
+string" flag: raw `"""…"""` blocks hold foreign CSS and JavaScript, and the
+Maca-shape rules should not apply to them.
 
 ## Walking a directory
 
@@ -106,9 +101,7 @@ lint_entry(path: str) -> str =>
 ```
 
 There is no `is_dir` primitive, so `lint_entry` uses the fact that `list_dir` of
-a file finds nothing. That is the kind of compromise a small standard library
-forces, and it is worth writing the comment that says so rather than leaving the
-next reader to work it out.
+a file finds nothing.
 
 ## Arguments and exit codes
 
@@ -143,35 +136,29 @@ pre-commit hook.
 maca run apps/lint/lint.maca
 ```
 
-The first time this ran it reported issues in its own source. That is the point
-of the exercise: a linter you do not run on yourself is a suggestion.
+The first time this ran it reported issues in its own source.
 
 ## What building it found
 
-Writing this tool found a compiler bug, and the way it found it is instructive.
 The single-line-`if` rule tested `line.contains("{")`, and matched nothing,
 ever. In Maca a `{` inside a string opens an interpolation, so `"{"` was not a
-literal brace; it opened an interpolation that the closing quote never ended, and
-the following `"` opened a *nested* string that swallowed source up to the next
-quote. The program compiled. A binding several lines below vanished.
+literal brace; it opened an interpolation that the closing quote never ended,
+and the following `"` opened a *nested* string that swallowed source up to the
+next quote. The program compiled. A binding several lines below vanished.
 
-The fix was in two places. A literal brace is `\{` or `{{`, which was already
-true and which the rule now uses. And a `"…"` string may no longer span a line,
-so the mistake is a diagnostic instead of a silent miscompile.
-
-Building real tools in a young language is how the language gets finished.
+The fix was in two places. A literal brace is `\{` or `{{`, which the rule now
+uses. And a `"…"` string may no longer span a line, so the mistake is a
+diagnostic instead of a silent miscompile.
 
 ## That is Learning Maca
 
 You have the language: values, records, sum types, collections, errors,
-functions, modules, memory, tests, and a tour of the four things Maca does
-differently. It is enough to write real programs, and this chapter was one.
+functions, modules, memory, tests, and the four things Maca does differently.
 
-What is left is the part a book cannot teach, only answer. **[The
-Reference](a5-syntax.md)** starts at the grammar and goes through the type
-system, the effect rows, the ownership rules, the module resolution order, every
-target and what each one refuses, the UI syntax in full, the toolchain, the
-standard library and every diagnostic.
+**[The Reference](a5-syntax.md)** starts at the grammar and goes through the
+type system, the effect rows, the ownership rules, the module resolution order,
+every target and what each one refuses, the UI syntax in full, the toolchain,
+the standard library and every diagnostic.
 
 Three entrances worth knowing by name:
 

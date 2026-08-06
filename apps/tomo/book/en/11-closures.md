@@ -1,13 +1,10 @@
 # Closures and Control Flow
 
-A function in Maca is a value: it can be passed, returned, and written
-inline. This chapter is that, and the four ways a program chooses what to do
-next.
+A function in Maca is a value: it can be passed, returned, and written inline.
 
 ## Functions are values
 
-A top-level function referenced by name is a value, so you can pass it where a
-function is expected:
+A top-level function referenced by name is a value:
 
 ```maca
 is_even(n: int) -> bool => n % 2 == 0
@@ -22,7 +19,7 @@ bumped = [1, 2, 3].map(n => n + step)  // [11, 12, 13]
 ```
 
 An unannotated parameter that is *called* in the body is inferred to be a
-function, so higher-order code needs no special syntax:
+function:
 
 ```maca
 run_twice(f, x) => f(f(x))
@@ -38,8 +35,7 @@ inc = (n) -> int => n + 1
 Parenthesise the parameters when you annotate. One parameter works either way;
 two do not, because `a, b -> int => …` has no way to say where the list ends.
 You need the annotation when the lambda must match a type the compiler cannot
-see for itself. That happens in one place, and it is in the reference:
-implementing a Rust trait, in [Targets](a10-targets.md).
+see for itself: implementing a Rust trait, in [Targets](a10-targets.md).
 
 A lambda body may be a block, the way a `match` arm's may:
 
@@ -50,12 +46,10 @@ classify = (n) -> str => {
 }
 ```
 
-Which means a bare `{ … }` after `=>` is that block, not an anonymous record.
+So a bare `{ … }` after `=>` is that block, not an anonymous record.
 Parenthesize when you meant the record: `(n) => ({ x = n })`.
 
 ## `if` as an expression
-
-Control flow produces values. `if`/`else` is an expression:
 
 ```maca
 label = if score >= 60 { "pass" } else { "fail" }
@@ -69,8 +63,7 @@ label = score >= 60 ? "pass" : "fail"
 
 ## `match`
 
-`match` is the workhorse. It works on sum types, literals, and lists, and it is
-exhaustive:
+`match` works on sum types, literals, and lists, and it is exhaustive:
 
 ```maca
 describe(xs: int[]) -> str =>
@@ -81,9 +74,7 @@ describe(xs: int[]) -> str =>
     }
 ```
 
-The brackets are optional: `x, ..rest` matches the same way, in keeping with
-Maca's bracketless comma lists. Use whichever reads better; brackets make the
-empty and single-element cases clearer.
+The brackets are optional: `x, ..rest` matches the same way.
 
 ## Loops
 
@@ -114,17 +105,11 @@ countdown(start: int) -> int {
 ```
 
 `break` and `continue` work as you expect. The Maca idiom leans on recursion and
-the list methods (`map`/`filter`/`reduce`) over explicit loops. They are
-usually shorter and say what they mean.
+the list methods over explicit loops.
 
 ## Leaving early with `return`
 
-A function's last expression is its value. That is still true, and most
-functions never need anything else. But a guard at the top of a function is a
-different job: it wants to *stop*, and without a way to say so the entire rest
-of the body has to be nested inside an `else` to get out of its way.
-
-`return` is that way to say so:
+A guard at the top of a function wants to *stop*, and `return` is how to say so:
 
 ```maca
 save(title: str) -> str {
@@ -140,9 +125,8 @@ save(title: str) -> str {
 }
 ```
 
-The two forms are the two shapes of function. `return e` leaves a function that
-declares a result, and `e` is checked against that result type. A bare `return`
-leaves a function that declares none:
+`return e` leaves a function that declares a result, and `e` is checked against
+that result type. A bare `return` leaves a function that declares none:
 
 ```maca
 log_unless(quiet: bool, line: str) {
@@ -155,22 +139,20 @@ log_unless(quiet: bool, line: str) {
 ```
 
 `return` is a **statement**. It goes on a line of its own, or as the tail of an
-`if`, `match`, `for` or `while` branch, which is every place a function has
-something to leave *from*. Written where a value was wanted instead, the
-compiler says so by name rather than guessing:
+`if`, `match`, `for` or `while` branch. Written where a value was wanted, the
+compiler says so by name:
 
 ```maca
 label = ok ? return 1 : 2     // rejected: this `return` stands inside an expression
 ```
 
-A lambda is in that category too: its body *is* its value, so write the value.
-Use `return` in a named function, and the value in a lambda.
+A lambda's body *is* its value, so write the value. Use `return` in a named
+function, and the value in a lambda.
 
 ## A function inside a function
 
 A block can define a function, and that function can read and *write* the scope
-around it. That is what lets a view own its state and keep its handlers next to
-it, instead of threading everything through parameters:
+around it:
 
 ```maca
 board() -> str {
@@ -197,16 +179,12 @@ board() -> str {
 }
 ```
 
-`grab` and `release` write the same `held` the enclosing body reads: a local
-that any nested definition assigns is *shared* by all of them. One that none of
-them assigns is copied when the definition is made, exactly as a lambda's
-captures always were.
+A local that any nested definition assigns is *shared* by all of them. One that
+none of them assigns is copied when the definition is made.
 
-A nested definition is a value bound where it is written, and it obeys the same
-rule every other binding in a block does: **it is in scope from that line
-onward, and not before.** A closure captures when it is made, so a name used
-above its definition would have nothing to capture. Two consequences follow, and
-each has its own diagnostic:
+A nested definition is in scope from the line it is written onward, and not
+before, because a closure captures when it is made. Two consequences follow,
+each with its own diagnostic:
 
 ```maca
 main() -> int {
@@ -220,13 +198,12 @@ main() -> int {
 }
 ```
 
-If you want either, lift the function to the top level, where every function is
-in scope everywhere.
+If you want either, lift the function to the top level.
 
-Because it is a value, a nested definition can be passed, stored in a record
-field declared `(T) -> R`, and handed back to the caller. It keeps working after
-the call that made it returns: what it captured lives on the heap for as long as
-something can still reach it.
+A nested definition can be passed, stored in a record field declared
+`(T) -> R`, and handed back to the caller. It keeps working after the call that
+made it returns: what it captured lives on the heap for as long as something can
+still reach it.
 
 ```maca
 Knob = { read: (int) -> int, write: (int) -> int }
@@ -247,8 +224,7 @@ knob(start: int) -> Knob {
 ```
 
 Native C and the JS backend both lower this. The `rust`, `jvm` and `embedded`
-targets refuse it by name, and the reference chapter on
-[Targets](a10-targets.md) says why.
+targets refuse it by name; see [Targets](a10-targets.md).
 
 ## Error propagation
 
@@ -266,7 +242,5 @@ maca run apps/examples/lambda.maca
 ```
 
 Lambdas passed to list methods, a named function used as a value, and a closure
-that captures a local. All three compile to the same thing (a code pointer and
-a heap environment), which is why they are interchangeable at a call site.
-
-Next: putting functions in more than one file.
+that captures a local. All three compile to the same thing, a code pointer and a
+heap environment, which is why they are interchangeable at a call site.

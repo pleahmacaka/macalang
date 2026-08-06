@@ -38,7 +38,8 @@ md_class(kind: str) -> str {
     } else if kind == "p" {
         "my-4"
     } else if kind == "pre" {
-        "bg-zinc-100 dark:bg-zinc-800 p-4 rounded-md overflow-x-auto my-4"
+        "bg-zinc-50 dark:bg-zinc-900 border border-zinc-200"
+        ++ " dark:border-zinc-800 p-4 overflow-x-auto my-4"
     } else if kind == "quote" {
         "border-l-2 border-zinc-300 dark:border-zinc-600 pl-4 my-4"
             ++ " text-zinc-600 dark:text-zinc-400"
@@ -127,7 +128,7 @@ code_spans(s: str) -> str {
         s
     } else {
         s.substr(0, open)
-            ++ code(class="bg-zinc-100 dark:bg-zinc-800 px-1 rounded-sm"
+            ++ code(class="bg-zinc-100 dark:bg-zinc-800 px-1"
                           ++ " font-mono text-[0.88em]",
                     s.substr(open + 1, close - open - 1))
             ++ code_spans(s.substr(close + 1, s.length() - close - 1))
@@ -569,7 +570,7 @@ chapter_link_side(right: bool) -> str {
 }
 
 link_class(current: bool) -> str =>
-    "block px-2 py-1 rounded no-underline" ++ link_state_class(current)
+    "block px-2 py-1 no-underline" ++ link_state_class(current)
 
 link_state_class(current: bool) -> str {
     if current {
@@ -591,12 +592,12 @@ book_class() -> str =>
 
 lang_summary_class() -> str =>
     "cursor-pointer px-2 py-1 border border-zinc-200 dark:border-zinc-700"
-        ++ " rounded text-zinc-500 whitespace-nowrap list-none"
+        ++ " text-zinc-500 whitespace-nowrap list-none"
         ++ " details-marker:hidden"
 
 lang_menu_class() -> str =>
     "absolute right-0 z-10 mt-1 p-1 list-none bg-white dark:bg-zinc-900"
-        ++ " border border-zinc-200 dark:border-zinc-700 rounded-md shadow-lg"
+        ++ " border border-zinc-200 dark:border-zinc-700 "
 
 wrap_class() -> str =>
     "grid grid-cols-[16rem_minmax(0,44rem)] gap-12 justify-center"
@@ -744,7 +745,7 @@ side_item(entry: str, title: str, cur: str) -> str {
 search_box() -> str =>
     input(id="q", type="search", placeholder="search", autocomplete="off",
           class="w-full my-2 px-2 py-1 border border-zinc-200"
-                ++ " dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
+                ++ " dark:border-zinc-700 bg-white dark:bg-zinc-900"
                 ++ " text-[0.85rem]")
     ++ ul(id="hits", class="list-none m-0 p-0")
     ++ script(src="search-index.js")
@@ -983,7 +984,7 @@ calls_to_action(langs: str, lang: str, up: str) -> str =>
 Repo = "https://github.com/pleahmacaka/macalang"
 
 cta_class(primary: bool) -> str {
-    base = "inline-block px-4 py-2 rounded-md no-underline font-sans"
+    base = "inline-block px-4 py-2 no-underline font-sans"
         ++ " text-[0.9rem]"
 
     if primary {
@@ -1114,14 +1115,14 @@ volume_cards(chs: str[], titles: str[], i: int, lang: str) -> str {
 }
 
 volume_card(name: str, href: str, first: str, lang: str, at: int) -> str =>
-    a(class="block no-underline text-inherit rounded-lg border p-5"
+    a(class="block no-underline text-inherit border p-5"
             ++ " border-zinc-200 dark:border-zinc-800"
-            ++ " hover:border-violet-400 dark:hover:border-violet-500",
+            ++ "",
       href=href == "" ? "index.html" : href ++ ".html",
       div(class="font-semibold text-[1.1rem]", escape_html(name))
       p(class="mt-2 mb-3 text-[0.9rem] text-zinc-600 dark:text-zinc-400",
         volume_blurb(at, lang))
-      span(class="text-[0.85rem] text-violet-600 dark:text-violet-300",
+      span(class="text-[0.85rem] text-zinc-500 dark:text-zinc-400",
            starts_with_label(lang) ++ escape_html(first)))
 
 volume_blurb(at: int, lang: str) -> str {

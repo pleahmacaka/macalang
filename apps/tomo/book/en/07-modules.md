@@ -1,7 +1,6 @@
 # Modules
 
-A program stops fitting in one file quickly. Maca's answer is deliberately
-small: a file is a module, and `import` pulls one in.
+A file is a module, and `import` pulls one in.
 
 ## A file is a module
 
@@ -33,8 +32,7 @@ main() -> int {
 }
 ```
 
-`origin` is called unqualified. An import brings names in flat. There is no
-`geometry.origin()` form, because there is no namespace to qualify with.
+An import brings names in flat. There is no `geometry.origin()` form.
 
 A nested path uses `/`, matching the directory layout:
 
@@ -52,28 +50,20 @@ It **inlines**. The imported module's definitions are spliced into the program
 before type checking. There is no separate compilation unit, no object file per
 module, no link step between your own modules.
 
-That has one consequence worth knowing: names are global once imported. Two
-modules that both define `parse` will collide. In a large program, prefix by
-convention (`json_parse`, `toml_parse`) or split further.
+Names are global once imported. Two modules that both define `parse` will
+collide; prefix by convention (`json_parse`, `toml_parse`) or split further.
 
 ## Importing only what you need
-
-Importing a whole module to use one function drags in everything it defines.
-Selective import fixes that:
 
 ```maca
 import { origin, dist2 } from geometry
 ```
 
 Only `origin` and `dist2` come across, along with, transitively, whatever *they*
-reference from the same module. `origin` returns a `Point`, so `Point` comes with
-it automatically; you do not have to list the types your functions mention.
+reference from the same module. `origin` returns a `Point`, so `Point` comes
+with it automatically.
 
-This is dead-code elimination at the module boundary. On a large module it is the
-difference between compiling everything and compiling what you use.
-
-Naming something the module doesn't define is a clean error, not a dangling
-reference discovered later by the C compiler:
+Naming something the module doesn't define is a clean error:
 
 ```
 maca: import { centroid } from geometry: 'centroid' is not defined in that module
@@ -90,11 +80,10 @@ import js """…"""
 import css """…"""
 ```
 
-The first two link a real library, and [the FFI reference](a13-ffi.md) covers
-them. The last two embed
-raw text for the JavaScript backend, so a `.maca` user interface can carry its
-own host glue and stylesheet inline. They take a triple-quoted string, which
-spans lines and interpolates nothing, so CSS braces need no escaping.
+The first two link a real library; see [the FFI reference](a13-ffi.md). The last
+two embed raw text for the JavaScript backend, so a `.maca` user interface can
+carry its own host glue and stylesheet inline. They take a triple-quoted string,
+which spans lines and interpolates nothing.
 
 ## Building a multi-file program
 
@@ -104,38 +93,31 @@ Point the driver at the file with `main` in it:
 maca build app/main.maca
 ```
 
-Everything reachable through imports is compiled with it. There is no manifest
-listing sources, no build graph to maintain. The self-hosted compiler is built
-exactly this way: `maca build apps/selfhost/main.maca` compiles the whole front end
-from its import list.
+Everything reachable through imports is compiled with it. No manifest listing
+sources, no build graph. The self-hosted compiler is built this way:
+`maca build apps/selfhost/main.maca`.
 
 ## Where the module system stops
 
 No visibility modifiers: everything a module defines is importable. No
-namespacing beyond the file. No versioned module registry.
-
-This is a small language for programs that fit in a repository, and the module
-system is sized to match. If that changes, it will change in the direction of
-selective import, which already gives you the "explicit surface" benefit of
-`pub` without a keyword.
+namespacing beyond the file. No versioned module registry. Selective import
+already gives you the "explicit surface" benefit of `pub` without a keyword.
 
 ## Run it
 
 Put the `geometry.maca` above in a directory, and beside it a `main.maca` with
-the `import geometry` version from the top of this chapter. Then:
+the `import geometry` version. Then:
 
 ```
 maca run main.maca
 ```
 
-One command, two files, no manifest. Now move `geometry.maca` into a
-`modules/` subdirectory and run the same command. It still resolves, because
-`modules/` is a search root.
+One command, two files, no manifest. Now move `geometry.maca` into a `modules/`
+subdirectory and run the same command. It still resolves, because `modules/` is
+a search root.
 
 ## Where the full answer is
 
 [Modules and Layout](a9-modules.md) in the reference is the resolution order in
 full: which directories are searched, in what sequence, where the walk stops,
 and why the "a file beside the program" rule comes last rather than first.
-
-Next: what happens to the memory all these values live in.

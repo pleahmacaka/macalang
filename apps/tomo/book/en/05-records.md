@@ -1,7 +1,6 @@
 # Records
 
-A record groups named fields under a type name. It is Maca's struct, and it is
-the workhorse of the language.
+A record groups named fields under a type name. It is Maca's struct.
 
 ## Declaring and building
 
@@ -12,9 +11,8 @@ Point = {
 }
 ```
 
-The declaration reads `Name = { … }`, the same `=` that binds a value, because
-a type declaration *is* a binding at the top level. Inside, one `field: type`
-per line. No commas are needed at line ends, though they are allowed.
+`Name = { … }`, then one `field: type` per line. No commas are needed at line
+ends, though they are allowed.
 
 Building a value uses `=`, not `:`:
 
@@ -22,9 +20,8 @@ Building a value uses `=`, not `:`:
 p = Point { x = 3, y = 4 }
 ```
 
-This is the single most useful punctuation rule in Maca: **`:` says what
-something is, `=` says what it holds.** It holds in record declarations, record
-literals, function parameters, and bindings.
+**`:` says what something is, `=` says what it holds.** That holds in record
+declarations, record literals, function parameters, and bindings.
 
 Fields are read with a dot:
 
@@ -47,22 +44,17 @@ updated at once, and the fields not mentioned come across unchanged:
 r = p with { x = 0, y = 0 }
 ```
 
-This is not necessarily a copy. [Memory](04-memory.md) explains why: when
-nothing else is
-holding `p`, the compiler is free to make `with` a store into the memory that was
-already there. Writing the functional version and getting the imperative
-performance is the whole design.
+This is not necessarily a copy. When nothing else is holding `p`, the compiler
+is free to make `with` a store into the memory that was already there. See
+[Memory](04-memory.md).
 
-Direct field assignment also exists, for when a record is a local you are
-building up:
+Direct field assignment also exists:
 
 ```maca
 p.x = 10
 ```
 
 ## Records in signatures
-
-A record type is used like any other:
 
 ```maca
 Rect = {
@@ -77,8 +69,8 @@ scale(r: Rect, k: int) -> Rect =>
     r with { w = r.w * k, h = r.h * k }
 ```
 
-And because of UFCS (`x.f(y)` is `f(x, y)`), those read as methods at the call
-site without ever being declared as ones:
+Because of UFCS (`x.f(y)` is `f(x, y)`), those read as methods at the call site
+without ever being declared as ones:
 
 ```maca
 big = Rect { w = 2, h = 3 }.scale(10)
@@ -86,7 +78,7 @@ info("area: {big.area()}")
 ```
 
 There is no `impl` block, no `self`, and no distinction between a "method" and a
-"function whose first argument is a Rect". A free function is all you need.
+"function whose first argument is a Rect".
 
 ## Records containing records
 
@@ -115,25 +107,20 @@ Node = {
 }
 ```
 
-This works, and it is worth knowing why it needs help from the compiler. In C, a
-struct containing an array of itself is a definition cycle: the array type needs
-the struct's size, and the struct needs the array. Maca's C backend breaks it by
-forward-declaring the array struct before the record body and emitting the
-operations after, so the cycle resolves. You never see any of this; it matters
-only because it means self-referential records are a supported thing rather than
-an accident.
+In C a struct containing an array of itself is a definition cycle. Maca's C
+backend breaks it by forward-declaring the array struct before the record body
+and emitting the operations after.
 
 ## Records vs. sum types
 
 A record says "all of these at once". When you need "one of these", that is a
-sum type, which is the next chapter. The two compose: a sum type's variants
-can carry records, and a record's field can be a sum type. Most real data
-models are a handful of each.
+sum type, the next chapter. The two compose: a sum type's variants can carry
+records, and a record's field can be a sum type.
 
 ## Records without a name
 
-A record literal with no type name in front (`{ host = "x", port = 80 }`)
-infers its type from the fields present:
+A record literal with no type name in front infers its type from the fields
+present:
 
 ```maca
 c = { host = "localhost", port = 8080 }
@@ -141,17 +128,15 @@ info("{c.host}:{c.port}")
 ```
 
 Two literals with the same fields are the same type, whatever order they were
-written in, so one can be assigned to the other:
+written in:
 
 ```maca
 d = { port = 80, host = "example.com" }
 c = d                                    // fine: same shape
 ```
 
-Reach for it when the shape is used once, in one place: a pair of values to
-return together, a row about to be rendered. When the shape appears more than
-twice, name it. A named type is what a diagnostic can talk about, and it gives
-the shape somewhere to grow a comment.
+Reach for it when the shape is used once, in one place. When the shape appears
+more than twice, name it: a named type is what a diagnostic can talk about.
 
 ## Run it
 
@@ -159,7 +144,6 @@ the shape somewhere to grow a comment.
 maca run apps/examples/record_update.maca
 ```
 
-`with` on a record, and the original left untouched afterwards. That second half
-is the claim worth watching: the update is a store into the same memory when
-nothing else holds the value, and a copy when something does, and the program
-cannot tell the difference.
+`with` on a record, and the original left untouched afterwards. The update is a
+store into the same memory when nothing else holds the value, and a copy when
+something does, and the program cannot tell the difference.

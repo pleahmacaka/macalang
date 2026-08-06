@@ -1,8 +1,8 @@
 # Collections
 
-Maca has two built-in collections: the list and the string. Both come with a
-library of methods, and both are used through UFCS, so `xs.map(f)` is ordinary
-function application dressed up to read left to right.
+Maca has two built-in collections: the list and the string. Both are used
+through UFCS, so `xs.map(f)` is ordinary function application dressed up to read
+left to right.
 
 ## Lists
 
@@ -67,18 +67,15 @@ sorted = ys.sort()
 // ys.first() is still 3; sorted.first() is 1
 ```
 
-That is worth internalising. `xs.push(9)` is not a statement that grows `xs`; it
-is an expression whose value is the longer list. The same is true of `set`,
-`insert` and `remove`, which are the other three ways to hand back an edited
-list. [Memory](04-memory.md) explains why writing them this way is not the
-performance mistake it looks like.
+`xs.push(9)` is not a statement that grows `xs`; it is an expression whose value
+is the longer list. The same for `set`, `insert` and `remove`. [Memory](04-memory.md)
+explains why this is not the performance mistake it looks like.
 
 An index a list does not have leaves it alone: `xs.set(9, 0)` and
-`xs.remove(-1)` are the list unchanged, and `xs.insert(99, 0)` puts the value
-at the end, because clamping is the same rule `get` and `slice` already keep.
+`xs.remove(-1)` are the list unchanged, and `xs.insert(99, 0)` puts the value at
+the end.
 
-`sort_by` orders on a key rather than on the element, and it is stable, so
-elements with equal keys stay in the order they were in:
+`sort_by` orders on a key rather than on the element, and it is stable:
 
 ```maca
 ws = ["bb", "a", "cc", "d"]
@@ -86,8 +83,7 @@ info(ws.sort_by(w => w.length()).join(","))   // a,d,bb,cc
 ```
 
 `index_of_by` is `index_of` with a question instead of a value, and
-`enumerate()` pairs each element with its position, which is what a loop that
-needs both is usually reaching for:
+`enumerate()` pairs each element with its position:
 
 ```maca
 for e in ["a", "b"].enumerate() {
@@ -95,8 +91,7 @@ for e in ["a", "b"].enumerate() {
 }
 ```
 
-`slice` takes a start and an **exclusive** end, so `xs.slice(1, 3)` is two
-elements:
+`slice` takes a start and an **exclusive** end:
 
 ```maca
 xs = [10, 20, 30, 40, 50]
@@ -105,9 +100,8 @@ xs.slice(1, 3)      // [20, 30]
 
 ### Ranges
 
-`lo..hi` is a half-open integer range, and it is an `int[]`. It runs from `lo`
-up to but not including `hi`, so `0..xs.length()` is exactly the indices of
-`xs`, with no `- 1` to remember:
+`lo..hi` is a half-open integer range, and it is an `int[]`. `0..xs.length()` is
+exactly the indices of `xs`, with no `- 1` to remember:
 
 ```maca
 for i in 0..5 {
@@ -161,9 +155,8 @@ actually is.
 | `at(i)` | `str` | the character at `i` |
 | `is_whitespace()` `is_ascii_digit()` `is_alpha()` | `bool` | character classes |
 
-A string has both, and they mean different things: **`slice` takes an exclusive
-end, `substr` takes a length.** The names are the same on a list and a string,
-and so are their conventions.
+**`slice` takes an exclusive end, `substr` takes a length.** The names are the
+same on a list and a string, and so are their conventions.
 
 ```maca
 "abcdef".slice(1, 3)      // "bc"  (up to, not including, index 3)
@@ -182,9 +175,8 @@ run_digits(cs: str[], i: int) -> int =>
 
 ### A misspelt method is caught, not linked
 
-Method calls are otherwise gradual (an `any` receiver reaches foreign code the
-checker cannot see), but the method set of a `str` or a `T[]` is closed, so a
-name outside it is a typo. Near misses get a suggestion:
+Method calls are otherwise gradual, but the method set of a `str` or a `T[]` is
+closed, so a name outside it is a typo. Near misses get a suggestion:
 
 ```
 UndefinedName: `str` has no method `lenght`; did you mean `length`?
@@ -192,8 +184,7 @@ UndefinedName: `str` has no method `lenght`; did you mean `length`?
 
 ## Strings and characters
 
-Maca has no character type. `at(i)` gives a one-character `str`, and comparison
-works the way you would hope:
+Maca has no character type. `at(i)` gives a one-character `str`:
 
 ```maca
 c = "hello".at(1)
@@ -201,8 +192,8 @@ info("{c == "e"}")      // true
 ```
 
 Because `length` counts bytes, a string with non-ASCII text has a length larger
-than its character count. Interpolation, concatenation and comparison are all
-byte-exact and safe; it is only indexing that needs care with multi-byte text.
+than its character count. Interpolation, concatenation and comparison are
+byte-exact and safe; only indexing needs care with multi-byte text.
 
 ## Run it
 
@@ -210,6 +201,5 @@ byte-exact and safe; it is only indexing that needs care with multi-byte text.
 maca run apps/examples/collections.maca
 ```
 
-Every list method above, applied and printed. The two tables in this chapter are
-the everyday subset; the complete method sets (which are *closed*, and checked)
-are in [The Standard Library](a3-stdlib.md).
+Every list method above, applied and printed. The complete method sets, which
+are *closed*, are in [The Standard Library](a3-stdlib.md).

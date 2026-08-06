@@ -1,8 +1,7 @@
 # The Standard Library
 
 Most of Maca's "standard library" is compiler and runtime builtins rather than
-Maca source. That keeps it available on every target: the same `xs.map(f)`
-works in the native binary, the browser playground and the JVM output.
+Maca source, so it is available on every target.
 
 ## Output
 
@@ -68,8 +67,7 @@ Called as methods through UFCS: `s.trim()` is `trim(s)`.
 
 ## Maps
 
-`Map str V` is a string-keyed hash map, monomorphized on its value type the way
-an array is on its element type.
+`Map str V` is a string-keyed hash map, monomorphized on its value type.
 
 | Method | Result |
 |---|---|
@@ -87,11 +85,8 @@ info("{counts.get("apple", 0)}")     // 3
 info("{counts.get("kiwi", 0)}")      // 0, a miss gives the default
 ```
 
-Keys are `str` and only `str`. One key type is one hash and one comparison, and
-an integer key is `str(n)` away. `keys()` comes back sorted, so a program that
-walks a map twice produces the same output twice, which matters when the output
-is a file under version control.
-
+Keys are `str` and only `str`; an integer key is `str(n)` away. `keys()` comes
+back sorted, so a program that walks a map twice produces the same output twice.
 `get` takes a default rather than returning something empty, because the
 language has no null to return.
 
@@ -117,12 +112,11 @@ language has no null to return.
 | `remove_dir(path)` | delete a directory and its contents |
 | `copy_bytes(src, dst)` | byte-for-byte copy |
 
-A missing file's size is `-1` rather than `0`, so an empty file and an absent one
-are distinguishable without a second call.
+A missing file's size is `-1` rather than `0`, so an empty file and an absent
+one are distinguishable without a second call.
 
 `copy_bytes` exists because `write_file(dst, read_file(src))` stops at the first
-NUL, which is fine for source but silently truncating for a wasm module or an
-image.
+NUL, which is silently truncating for a wasm module or an image.
 
 ## Processes
 
@@ -142,9 +136,8 @@ exec("cp", ["my notes.txt", dest])   // one file, not two
 exec("echo", ["$HOME"])              // prints $HOME, does not expand it
 ```
 
-That is the difference from a command string, and it is the whole reason these
-are builtins rather than a `system()` wrapper. `exec` searches `PATH` the way a
-shell would; a program that isn't there exits `127`.
+`exec` searches `PATH` the way a shell would; a program that isn't there exits
+`127`.
 
 `std/proc` builds the usual conveniences on top: `run` (stop the program if the
 step fails), `try_run`, `run_in` (in a directory, and back again), `output`
@@ -176,8 +169,8 @@ while !at_eof() {
 | `now_iso()` | `"YYYY-MM-DDTHH:MM:SSZ"` |
 | `format_time(ms, fmt)` | `strftime` over the instant |
 
-Everything is UTC. Local time needs a zone database and a policy for what to do
-without one; a program that wants it can format the epoch milliseconds itself.
+Everything is UTC. A program that wants local time can format the epoch
+milliseconds itself.
 
 ## Concurrency
 
@@ -205,8 +198,8 @@ See [The UI Syntax](a11-ui.md).
 
 `import std/json` brings in two halves. `encode` and `decode` are the typed
 pair: the compiler writes them from the record and sum types the program
-declares, so a page never spells a field twice. The rest of the module reads
-and writes JSON as text, for the shapes no type describes.
+declares. The rest of the module reads and writes JSON as text, for the shapes
+no type describes.
 
 ```maca
 import std/json
@@ -228,17 +221,14 @@ record becomes an object with one member per field, **in the order the record
 declares them**; a list becomes an array; `int`, `float`, `bool` and `str`
 become themselves.
 
-`decode(text)` reads into whatever the binding says. That is where the type
-comes from, so it has to be written down: `c: Config = decode(text)`. A bare
-`decode(text)` with nothing to read into is a build error saying so.
+`decode(text)` reads into whatever the binding says, so the type has to be
+written down: `c: Config = decode(text)`. A bare `decode(text)` with nothing to
+read into is a build error.
 
 ### How a sum maps
 
-**A variant is its own name in lower case.** `Layout = List | Grid` is stored
-as `"list"` and `"grid"`, and read back the same way. The rule is total in both
-directions because Maca capitalises variants and JSON string enums are
-conventionally lower case, so no third spelling is involved and nothing has to
-be configured.
+**A variant is its own name in lower case.** `Layout = List | Grid` is stored as
+`"list"` and `"grid"`, and read back the same way.
 
 A variant that carries a payload has no JSON form beyond its name, so a type
 that round-trips through JSON should be an enumeration and keep its data in
@@ -246,8 +236,8 @@ record fields.
 
 ### What decode says when the text does not match
 
-It fails, and the message names the field. `try` catches it, exactly as it
-catches any other failure ([Errors](09-errors.md)):
+It fails, and the message names the field. `try` catches it
+([Errors](09-errors.md)):
 
 ```maca
 why = try load(text)
@@ -295,15 +285,12 @@ See [Errors](09-errors.md).
 | `assert_eq(got, want, msg)` | report both sides if they differ |
 | `failures()` | how many assertions have failed |
 
-A failing assertion reports and keeps going. Aborting on the first one means
-fixing a suite takes as many runs as it has bugs; counting them means one run
-tells you everything. `failures()` is the number a test function returns, which
-is the same "0 or non-zero" contract as [Testing](12-testing.md).
+A failing assertion reports and keeps going. `failures()` is the number a test
+function returns, the same "0 or non-zero" contract as [Testing](12-testing.md).
 
 ## Regular expressions
 
 There are none. `contains`, `starts_with`, `ends_with`, `index_of`, `split` and
-the character classes cover what a program in this language actually reaches for.
+the character classes cover what a program in this language reaches for.
 `apps/selfhost/lexer.maca` scans the whole language with `chars`, `at` and three
-predicates. And a regex engine is a language of its own to learn, debug and
-implement. Reach for `split` and a loop.
+predicates. Reach for `split` and a loop.
