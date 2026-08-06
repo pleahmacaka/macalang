@@ -89,10 +89,47 @@ string_end(cs: str[], i: int) -> int {
         i
     } else if cs.get(i) == "\\" {
         string_end(cs, i + 2)
+    } else if doubled(cs, i, "{{") || doubled(cs, i, "}}") {
+        string_end(cs, i + 2)
+    } else if cs.get(i) == "{{" {
+        string_end(cs, interp_end(cs, i + 1, 1))
     } else if cs.get(i) == "\"" {
         i
     } else {
         string_end(cs, i + 1)
+    }
+}
+
+doubled(cs: str[], i: int, c: str) -> bool =>
+    cs.get(i) == c && i + 1 < cs.length() && cs.get(i + 1) == c
+
+interp_end(cs: str[], i: int, depth: int) -> int {
+    if i >= cs.length() {
+        i
+    } else if cs.get(i) == "\\" {
+        interp_end(cs, i + 2, depth)
+    } else if cs.get(i) == "\"" {
+        interp_end(cs, quoted_end(cs, i + 1) + 1, depth)
+    } else if cs.get(i) == "{{" {
+        interp_end(cs, i + 1, depth + 1)
+    } else if cs.get(i) == "}}" && depth == 1 {
+        i + 1
+    } else if cs.get(i) == "}}" {
+        interp_end(cs, i + 1, depth - 1)
+    } else {
+        interp_end(cs, i + 1, depth)
+    }
+}
+
+quoted_end(cs: str[], i: int) -> int {
+    if i >= cs.length() {
+        i
+    } else if cs.get(i) == "\\" {
+        quoted_end(cs, i + 2)
+    } else if cs.get(i) == "\"" {
+        i
+    } else {
+        quoted_end(cs, i + 1)
     }
 }
 

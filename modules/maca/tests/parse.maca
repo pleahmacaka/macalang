@@ -300,3 +300,23 @@ test_a_sum_that_never_closes_stops_at_the_end_of_input() {
               "a trailing bar leaves the variant list, it does not read past Eof")
     assert_eq(items_of("K = A(int"), "1", "nor does an unclosed payload")
 }
+
+test_a_record_field_may_be_an_array() {
+    assert_eq(items_of("R = {{\n    xs: int[]\n    n: int\n}}"), "1",
+              "an array field does not throw the field walk off")
+    assert_eq(errors_in("R = {{ xs: int[] }} f(r: R) -> int => r.xs.length()"),
+              "0", "and the field keeps its element type")
+}
+
+test_a_string_inside_an_interpolation_does_not_end_the_string() {
+    assert_eq(items_of("g(a: int[], s: str) -> str => s"
+                       ++ " f(a: int[]) -> str => \"x {{g(a, \" \")}} y\""),
+              "2", "the quote inside the braces belongs to the interpolation")
+}
+
+test_a_call_before_a_branch_marks_a_block_not_a_record() {
+    assert_eq(items_of("f(t: int) -> int {{"
+                       ++ " if t == 0 {{ at = g(t)\n if at < 0 {{ 1 }} else {{ 2 }} }}"
+                       ++ " else {{ 3 }} }}"),
+              "1", "a `)` before an `if` is two statements, not a field")
+}

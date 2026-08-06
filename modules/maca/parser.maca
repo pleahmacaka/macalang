@@ -227,11 +227,16 @@ parse_fields(ts: Token[], i: int, acc: Expr[]) -> PParams {
 
 parse_one_field(ts: Token[], i: int, acc: Expr[]) -> PParams {
     fname = ts.get(i).text
-    ftype = ts.get(i + 2).text
+    listed = is_listed(ts, i + 2)
+    ftype = if listed { ts.get(i + 2).text ++ "[]" } else { ts.get(i + 2).text }
+    after = if listed { i + 5 } else { i + 3 }
     seen = acc ++ [e_param(fname, ftype)]
 
-    parse_fields(ts, skip_comma(ts, i + 3), seen)
+    parse_fields(ts, skip_comma(ts, after), seen)
 }
+
+is_listed(ts: Token[], at: int) -> bool =>
+    ts.get(at + 1).kind == LBracket && ts.get(at + 2).kind == RBracket
 
 skip_comma(ts: Token[], i: int) -> int {
     if ts.get(i).kind == Comma {
@@ -567,24 +572,46 @@ opens_record_lit(ts: Token[], i: int) -> bool {
     after = ts.get(i + 3).kind
 
     opens && named && (after == Eq || after == Comma)
-        && comma_at_depth(ts, i + 2, 0)
+        && !block_shaped(ts, i + 2, 0)
 }
 
-comma_at_depth(ts: Token[], i: int, depth: int) -> bool {
+ends_value(k: Kind) -> bool =>
+    k == TIdent || k == TInt || k == TFloat || k == TStr
+        || k == RParen || k == RBracket || k == KwTrue || k == KwFalse
+
+starts_value(k: Kind) -> bool =>
+    k == TIdent || k == TInt || k == TFloat || k == TStr
+        || k == KwIf || k == KwMatch || k == KwTrue || k == KwFalse
+        || k == Bang
+
+block_shaped(ts: Token[], i: int, depth: int) -> bool {
     kind = ts.get(i).kind
 
     if kind == Eof {
         false
     } else if kind == RBrace && depth == 0 {
         false
-    } else if kind == Comma && depth == 0 {
-        true
     } else if kind == LBrace || kind == LParen || kind == LBracket {
-        comma_at_depth(ts, i + 1, depth + 1)
-    } else if kind == RBrace || kind == RParen || kind == RBracket {
-        comma_at_depth(ts, i + 1, depth - 1)
+        block_shaped(ts, i + 1, depth + 1)
     } else {
-        comma_at_depth(ts, i + 1, depth)
+        block_after(ts, i, closes(kind, depth))
+    }
+}
+
+closes(kind: Kind, depth: int) -> int {
+    if kind == RBrace || kind == RParen || kind == RBracket {
+        depth - 1
+    } else {
+        depth
+    }
+}
+
+block_after(ts: Token[], i: int, depth: int) -> bool {
+    if depth == 0 && ends_value(ts.get(i).kind)
+            && starts_value(ts.get(i + 1).kind) {
+        true
+    } else {
+        block_shaped(ts, i + 1, depth)
     }
 }
 
