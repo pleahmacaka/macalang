@@ -127,6 +127,8 @@ assemble(out: str) -> bool {
     copy_tree("apps/tomo/site", out)
     copy_tree("apps/playground/out", join(out, "play"))
     copy_bytes("llms.txt", join(out, "llms.txt"))
+    copy_bytes("apps/site/install.sh", join(out, "install"))
+    copy_bytes("apps/site/install.ps1", join(out, "install.ps1"))
 
     write_file(join(out, ".nojekyll"), "")
 }

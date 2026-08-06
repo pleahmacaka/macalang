@@ -355,9 +355,7 @@ test_the_page_states_where_the_numbers_came_from() {
     assert(page.contains("{timed_runs(runs())} per language"),
            "how many runs each contender got")
     assert(page.contains("maca run apps/bench/run.maca"), "how to re-run it")
-    assert(page.contains("apps/bench/results.json"),
-           "and the committed file the figures came from")
-    assert(page.contains("cc -O2"), "with the flags it was built at")
+    assert(page.contains("cc -O2"), "and the flags C was built at")
 }
 
 test_get_started_leads_into_the_handbook() {

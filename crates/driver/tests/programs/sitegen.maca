@@ -38,7 +38,7 @@ test_root_page_links_the_site() {
 test_the_page_puts_the_language_in_a_box() {
     root = read_file(join(front_page_dir(), "index.html"))
 
-    assert(root.contains("Statically typed"), "says whether it is typed")
+    assert(root.contains("Typed, compiled"), "says whether it is typed")
     assert(root.contains("no garbage collector"), "says whether it collects")
     assert(root.contains("native binary"), "says what it compiles to")
     assert(root.contains("Static, inferred"), "and again in the spec strip")
@@ -63,6 +63,9 @@ test_the_page_shows_code() {
     assert_eq(str(count(root, "<pre class=")), "1",
               "the front page is a directory, so the hero is its only listing")
 }
+
+stripped(html: str) -> str =>
+    unmarked(html)
 
 unmarked(html: str) -> str =>
     unmarked_from(html, "")
@@ -97,16 +100,30 @@ test_titles_are_whole_and_translated() {
 title_of(page: str) -> str =>
     between(page, "<title>", "</title>")
 
+/// The front page shows one line per platform; the script behind it is what has to name an asset the release builds.
 test_the_front_page_offers_the_installer_the_release_builds() {
     root = read_file(join(front_page_dir(), "index.html"))
     workflow = read_file(".github/workflows/release.yml")
-    asset = "maca-install-linux-x86_64"
+    posix = read_file("apps/site/install.sh")
+    windows = read_file("apps/site/install.ps1")
 
-    assert(workflow.contains(asset), "the release builds {asset}")
-    assert(root.contains(asset),
-           "the front page offers the installer the release actually builds")
-    assert(!root.contains("install.sh"),
-           "and does not still offer the script that was deleted")
+    for asset in ["maca-install-linux-x86_64", "maca-install-macos-aarch64",
+                  "maca-install-windows-x86_64.exe"] {
+        assert(workflow.contains(asset), "the release builds {asset}")
+    }
+
+    assert(posix.contains("maca-install-$os-$arch"),
+           "the posix script names the asset by what it detected")
+    assert(windows.contains("maca-install-windows-"),
+           "and the windows one names its own")
+
+    plain = stripped(root)
+    assert(plain.contains("curl -fsSL https://pleahmacaka.github.io/macalang"
+                          ++ "/install | sh"),
+           "the front page shows the posix line")
+    assert(plain.contains("irm https://pleahmacaka.github.io/macalang"
+                          ++ "/install.ps1 | iex"),
+           "and the windows one")
 }
 
 
@@ -133,7 +150,7 @@ test_the_hero_program_runs() {
     src = sample_source("HeroSample")
 
     assert(src.contains("Shape = Circle(float)"), "found the sample")
-    assert_eq(run_sample("hero", src), "floor plan: 15.14 m²", "it runs")
+    assert_eq(run_sample("hero", src), "15.14 m2", "it runs")
 }
 
 AsyncContext = """

@@ -81,6 +81,7 @@ Copy = {
     install_body: str
     prov_label: str
     back_home:  str
+    play_unit:  str
     footer:    str
     skip:      str
     nav_label: str
@@ -106,8 +107,8 @@ area(s: Shape) -> float =>
     }
 
 main() -> int {
-    floor = [Circle(1.0), Rect(3.0, 4.0)]
-    info("floor plan: {floor.map(area).sum():.2} m²")
+    plan = [Circle(1.0), Rect(3.0, 4.0)]
+    info("{plan.map(area).sum():.2} m2")
     0
 }"""
 
@@ -148,20 +149,18 @@ english() -> Copy =>
             ++ " UI, or the NixOS module for the machine it runs on.",
         nav_docs = "Handbook",
         nav_api = "API",
-        headline = "One typed language for programs and the machines they"
-            ++ " run on",
-        sub = "Statically typed, compiled to a native binary, and no garbage"
-            ++ " collector. The language that writes your service describes the"
-            ++ " machine it is deployed to.",
+        headline = "One language for machines",
+        sub = "Typed, compiled, no garbage collector. The language that writes"
+            ++ " your service also describes the machine it runs on.",
         cta_start = "Get started",
         cta_play = "Playground",
-        box_title = "Is this the right tool for you?",
+        box_title = "The language",
         box_sub = "The decisions that put a language in a box, stated plainly.",
-        tgt_title = "One source, seven targets",
+        tgt_title = "Targets",
         tgt_sub = "Native is the default. The rest are a flag.",
         install = "Install",
         install_more = "Full install instructions",
-        bench_title = "How fast is it?",
+        bench_title = "Benchmarks",
         bench_sub = "Every kernel below is one algorithm written out in each"
             ++ " language, on one machine, with every column verified to have"
             ++ " computed the same answer. The bars are Maca against C, because"
@@ -181,28 +180,24 @@ english() -> Copy =>
         tbl_workload = "workload",
         tbl_note = "Median time in milliseconds, lower is better, and in"
             ++ " brackets the multiple of C's time.",
-        lim_title = "Not for you if",
-        lim_sub = "Three things this language does not do, stated at the same"
-            ++ " size as the things it does.",
+        lim_title = "Limits",
+        lim_sub = "What this language does not do.",
         eval_title = "Evaluations",
         eval_sub = "pass@1 over a mechanically ported HumanEval set, by what"
             ++ " the model was told.",
-        eval_note = "Giving a model the specification roughly triples pass@1."
-            ++ " That is what this measures, and the figure is read from"
-            ++ " `apps/evals/BASELINE.md` at build time rather than typed here.",
-        eval_caveat = "One run is one sample. The set is 25 problems, so one"
-            ++ " solved problem is four points, and the retry column's results"
-            ++ " straddle the plain spec column across runs. The site leads"
-            ++ " with the spec figure because the retry figure is not yet"
-            ++ " evidence.",
+        eval_note = "Model: `claude-haiku-4-5`. Task: 25 HumanEval problems"
+            ++ " ported to Maca. Graded by compiling the answer and running the"
+            ++ " problem's own tests; pass@1 is one attempt per problem.",
+        eval_caveat = "25 problems is a small set: one solved problem moves"
+            ++ " the figure four points, so treat a single run as a sample.",
         docs_sub = "The handbook, from installing to the back ends.",
         api_sub = "Every documented item in the standard library.",
-        install_body = "One command fetches the release for this platform,"
-            ++ " and `maca init` writes a project that already builds.",
+        install_body = "The line above fetches the build for your machine."
+            ++ " Then `maca init` writes a project that already builds.",
         prov_label = "Source",
         back_home = "Back to the directory",
-        footer = "Criticism welcome, particularly the kind that says which of"
-            ++ " those boxes is the wrong one.",
+        footer = "Apache-2.0.",
+        play_unit = "install required",
         skip = "Skip to content",
         nav_label = "Site",
         lang_label = "Language"
@@ -311,14 +306,14 @@ korean() -> Copy =>
             ++ " 만듭니다.",
         nav_docs = "핸드북",
         nav_api = "API 문서",
-        headline = "프로그램과 그것이 돌아갈 기계를, 하나의 타입 있는 언어로",
-        sub = "정적 타입, 네이티브 바이너리로 컴파일, 가비지 컬렉터 없음."
-            ++ " 서비스를 쓰는 그 언어가 그 서비스가 배포될 기계도 기술합니다.",
+        headline = "기계를 위한 하나의 언어",
+        sub = "정적 타입, 네이티브 컴파일, GC 없음. 서비스를 쓰는 언어가 그"
+            ++ " 서비스가 도는 기계도 기술합니다.",
         cta_start = "시작하기",
         cta_play = "플레이그라운드",
-        box_title = "당신에게 맞는 도구인가요?",
+        box_title = "언어",
         box_sub = "언어를 어느 칸에 넣을지 정하는 결정들을, 돌려 말하지 않고.",
-        tgt_title = "하나의 소스, 일곱 개의 타깃",
+        tgt_title = "타깃",
         tgt_sub = "네이티브가 기본입니다. 나머지는 플래그 하나입니다.",
         install = "설치",
         install_more = "설치 안내 전체 보기",
@@ -341,27 +336,24 @@ korean() -> Copy =>
         tbl_workload = "작업량",
         tbl_note = "밀리초 단위 중앙값, 낮을수록 좋습니다. 괄호 안은 C"
             ++ " 대비 배수입니다.",
-        lim_title = "이럴 땐 맞지 않습니다",
-        lim_sub = "이 언어가 하지 않는 세 가지를, 하는 것들과 같은 크기로"
-            ++ " 적었습니다.",
+        lim_title = "한계",
+        lim_sub = "이 언어가 하지 않는 것들입니다.",
         eval_title = "평가",
         eval_sub = "기계적으로 옮긴 HumanEval 문제들에 대한 pass@1을, 모델에게"
             ++ " 무엇을 알려주었는지에 따라 잰 것입니다.",
-        eval_note = "모델에게 명세를 주면 pass@1이 대략 세 배가 됩니다. 이"
-            ++ " 수치가 재는 것이 그것이고, 숫자는 여기에 적어둔 것이 아니라"
-            ++ " 빌드할 때 `apps/evals/BASELINE.md`에서 읽습니다.",
-        eval_caveat = "한 번의 실행은 한 번의 표본입니다. 문제가 25개이므로 한"
-            ++ " 문제가 4점이고, 재시도 열의 결과는 실행마다 명세 열 주위에"
-            ++ " 걸쳐 있습니다. 재시도 수치는 아직 근거가 아니어서 사이트는"
-            ++ " 명세 수치를 앞세웁니다.",
+        eval_note = "모델은 `claude-haiku-4-5`, 문제는 Maca로 옮긴 HumanEval"
+            ++ " 25개입니다. 답을 컴파일해 그 문제의 테스트를 돌려서 채점하고,"
+            ++ " pass@1은 문제당 한 번의 시도입니다.",
+        eval_caveat = "25개는 작은 집합입니다. 한 문제가 4점을 움직이니 한"
+            ++ " 번의 실행은 표본으로 보십시오.",
         docs_sub = "설치부터 백엔드까지, 핸드북 전체입니다.",
         api_sub = "표준 라이브러리의 문서화된 항목 전부입니다.",
-        install_body = "명령 하나가 이 플랫폼의 릴리즈를 받아오고, `maca init`이"
-            ++ " 이미 빌드되는 프로젝트를 만들어 줍니다.",
+        install_body = "위 한 줄이 당신의 기계에 맞는 빌드를 받아옵니다."
+            ++ " 그다음 `maca init`이 바로 빌드되는 프로젝트를 만듭니다.",
         prov_label = "출처",
         back_home = "목록으로",
-        footer = "비판을 환영합니다. 특히 저 칸들 중 어느 것이 잘못된"
-            ++ " 선택인지 짚어 주는 쪽으로요.",
+        footer = "Apache-2.0.",
+        play_unit = "설치 필요 없음",
         skip = "본문으로 건너뛰기",
         nav_label = "사이트",
         lang_label = "언어"
@@ -832,7 +824,7 @@ prov_cell(f: Fact) -> str =>
 Key = Home | Language | Benchmarks | Evals | Targets | Install | Limits
 
 keys() -> Key[] =>
-    Language, Benchmarks, Evals, Targets, Install, Limits
+    Language, Benchmarks, Evals, Targets, Limits
 
 /// The file a key is written to, under a language directory.
 page_file(k: Key) -> str =>
@@ -854,8 +846,8 @@ ordinal(k: Key) -> str =>
         Benchmarks => "02"
         Evals      => "03"
         Targets    => "04"
-        Install    => "05"
-        Limits     => "06"
+        Install    => "09"
+        Limits     => "05"
     }
 
 title_of(c: Copy, k: Key) -> str =>
@@ -987,8 +979,7 @@ directory_page(c: Copy, up: str, rs: Result[]) -> str =>
         section(class=Frame ++ " py-14 md:py-20 grid gap-10 md:grid-cols-12"
                       ++ " md:items-center",
             div(class="md:col-span-7 min-w-0",
-                div(class=Eyebrow, escape_html(release_version()))
-                h1(class="mt-4 m-0 " ++ Display, escape_html(c.headline))
+                h1(class="m-0 " ++ Display, escape_html(c.headline))
                 p(class="mt-5 m-0 " ++ Lead, prose(c.sub))
                 div(class="mt-8 flex flex-wrap gap-3",
                     a(class=Primary, href=start_href(c, up),
@@ -1003,7 +994,8 @@ directory_page(c: Copy, up: str, rs: Result[]) -> str =>
         section(class=Frame ++ " pb-14",
             div(class=lattice("grid-cols-1 sm:grid-cols-2 md:grid-cols-4"),
                 keys().map(k => dest_cell(c, up, k, rs)).join("")
-                    ++ handbook_cell(c, up) ++ reference_cell(c, up)))
+                    ++ handbook_cell(c, up) ++ reference_cell(c, up)
+                    ++ play_cell(c, up)))
         install_strip(c, up))
 
 /// One destination, which ends in a figure and the file that figure came from.
@@ -1013,35 +1005,36 @@ dest_cell(c: Copy, up: str, k: Key, rs: Result[]) -> str {
     a(class=CellLink, href=page_href(c, up, k),
       div(class=Ordinal, ordinal(k))
       div(class="mt-3 " ++ CellTitle, escape_html(title_of(c, k)))
-      div(class="mt-2 " ++ Muted, escape_html(one_line(blurb_of(c, k))))
       div(class="mt-5 " ++ Figure, escape_html(r.value))
-      div(class="mt-1 " ++ Unit, escape_html(r.unit))
-      div(class="mt-3 " ++ Source, escape_html(r.from)))
+      div(class="mt-1 " ++ Unit, escape_html(r.unit)))
 }
 
 handbook_cell(c: Copy, up: str) -> str {
     r = handbook_reading()
 
     a(class=CellLink, href=up ++ c.lang ++ "/index.html",
-      div(class=Ordinal, "07")
+      div(class=Ordinal, "06")
       div(class="mt-3 " ++ CellTitle, escape_html(c.nav_docs))
-      div(class="mt-2 " ++ Muted, escape_html(c.docs_sub))
       div(class="mt-5 " ++ Figure, escape_html(r.value))
-      div(class="mt-1 " ++ Unit, escape_html(r.unit))
-      div(class="mt-3 " ++ Source, escape_html(r.from)))
+      div(class="mt-1 " ++ Unit, escape_html(r.unit)))
 }
 
 reference_cell(c: Copy, up: str) -> str {
     r = reference_reading()
 
     a(class=CellLink, href=up ++ "api/index.html",
-      div(class=Ordinal, "08")
+      div(class=Ordinal, "07")
       div(class="mt-3 " ++ CellTitle, escape_html(c.nav_api))
-      div(class="mt-2 " ++ Muted, escape_html(c.api_sub))
       div(class="mt-5 " ++ Figure, escape_html(r.value))
-      div(class="mt-1 " ++ Unit, escape_html(r.unit))
-      div(class="mt-3 " ++ Source, escape_html(r.from)))
+      div(class="mt-1 " ++ Unit, escape_html(r.unit)))
 }
+
+play_cell(c: Copy, up: str) -> str =>
+    a(class=CellLink, href=up ++ "play/index.html",
+      div(class=Ordinal, "08")
+      div(class="mt-3 " ++ CellTitle, escape_html(c.cta_play))
+      div(class="mt-5 " ++ Figure, "0")
+      div(class="mt-1 " ++ Unit, escape_html(c.play_unit)))
 
 /// The figure a destination carries, computed from a committed file.
 reading_of(k: Key, rs: Result[]) -> Reading =>
@@ -1086,31 +1079,36 @@ code_panel(src: str, lang: str) -> str =>
     pre(class=CodePlate,
         code(class="font-mono language-" ++ lang, highlight(lang, src)))
 
+/// Two lines, one per platform, the way a reader expects to find them.
 install_strip(c: Copy, up: str) -> str =>
     section(id="install", class="border-t border-zinc-200 dark:border-zinc-800",
         div(class=Frame ++ " py-10",
-            div(class=Eyebrow, escape_html(c.install))
-            div(class="mt-4 " ++ CodeLight,
-                code(class="font-mono language-sh",
-                     highlight("sh", InstallLine)))
-            p(class="mt-4 m-0 " ++ Muted,
-              a(class=InlineLink, href=page_href(c, up, Install),
-                escape_html(c.install_more)))))
+            div(class=lattice("grid-cols-1 md:grid-cols-2"),
+                install_cell("macOS, Linux, WSL", PosixInstall)
+                install_cell("Windows", WindowsInstall))))
 
-InstallLine = "curl -fsSL " ++ InstallUrl ++ " | bash"
+install_cell(os: str, line: str) -> str =>
+    div(class=Cell,
+        div(class=Eyebrow, escape_html(os))
+        div(class="mt-3 overflow-x-auto",
+            code(class="font-mono text-[0.85rem] language-sh",
+                 highlight("sh", line))))
+
+SiteRoot = "https://pleahmacaka.github.io/macalang"
+
+PosixInstall = "curl -fsSL " ++ SiteRoot ++ "/install | sh"
+
+WindowsInstall = "powershell -c \"irm " ++ SiteRoot ++ "/install.ps1 | iex\""
 
 /// The head of a numbered document: its ordinal, its title, and where its facts come from.
-doc_head(c: Copy, up: str, k: Key, from: str) -> str =>
+doc_head(c: Copy, up: str, k: Key) -> str =>
     section(class=Frame ++ " py-12 md:py-16 grid gap-8 md:grid-cols-12",
         div(class="md:col-span-8 min-w-0",
             div(class=Eyebrow, ordinal(k) ++ " / "
                                ++ escape_html(title_of(c, k)))
             h1(class="mt-4 m-0 " ++ DocTitle, escape_html(title_of(c, k)))
             p(class="mt-5 m-0 " ++ Lead, prose(blurb_of(c, k))))
-        div(class="md:col-span-4 min-w-0",
-            div(class=Cell,
-                div(class=Eyebrow, escape_html(c.prov_label))
-                div(class="mt-3 " ++ Source, escape_html(from)))))
+        div(class="md:col-span-4 min-w-0"))
 
 /// Every document ends by saying where it sits and what is next.
 doc_foot(c: Copy, up: str, k: Key) -> str =>
@@ -1125,7 +1123,7 @@ section_head(title: str) -> str =>
 /// 01: what the language is, at a size where the samples can be read.
 language_doc(c: Copy, up: str) -> str =>
     document(c, up, Language,
-        doc_head(c, up, Language, SiteCopy)
+        doc_head(c, up, Language)
         section(class=Frame ++ " pb-14",
             div(class="grid gap-px bg-zinc-200 dark:bg-zinc-800 border"
                       ++ " border-zinc-200 dark:border-zinc-800 md:grid-cols-2",
@@ -1143,7 +1141,7 @@ feature_cell(f: Feature, src: str) -> str =>
 /// 02: the measured argument, with its provenance beside the title.
 bench_doc_page(c: Copy, up: str, rs: Result[]) -> str =>
     document(c, up, Benchmarks,
-        doc_head(c, up, Benchmarks, BenchData)
+        doc_head(c, up, Benchmarks)
         section(class=Frame ++ " pb-10",
             div(class=lattice("grid-cols-1 sm:grid-cols-2 md:grid-cols-5"),
                 provenance().map(v => prov_cell(prov_of(c, v, rs))).join("")))
@@ -1156,7 +1154,7 @@ bench_doc_page(c: Copy, up: str, rs: Result[]) -> str =>
 /// 03: pass@1, and the reason the third column is not the headline.
 evals_doc(c: Copy, up: str) -> str =>
     document(c, up, Evals,
-        doc_head(c, up, Evals, Baseline)
+        doc_head(c, up, Evals)
         section(class=Frame ++ " pb-10",
             div(class=lattice("grid-cols-1 md:grid-cols-3"),
                 scores().map(score_cell).join("")))
@@ -1177,7 +1175,7 @@ score_cell(s: Score) -> str =>
 /// 04: what a program may be compiled to.
 targets_doc(c: Copy, up: str) -> str =>
     document(c, up, Targets,
-        doc_head(c, up, Targets, SiteCopy)
+        doc_head(c, up, Targets)
         section(class=Frame ++ " pb-14",
             div(class=lattice("grid-cols-1 sm:grid-cols-2 md:grid-cols-4"),
                 targets().map(target_cell).join("")))
@@ -1189,7 +1187,7 @@ target_cell(t: str) -> str =>
 /// 05: the one command, and the release it fetches.
 install_doc(c: Copy, up: str) -> str =>
     document(c, up, Install,
-        doc_head(c, up, Install, Manifest)
+        doc_head(c, up, Install)
         section(class=Frame ++ " pb-14",
             pre(class=CodePlate,
                 code(class="font-mono language-sh",
@@ -1200,7 +1198,7 @@ install_doc(c: Copy, up: str) -> str =>
 /// 06: what this language does not do, at the same size as what it does.
 limits_doc(c: Copy, up: str) -> str =>
     document(c, up, Limits,
-        doc_head(c, up, Limits, SiteCopy)
+        doc_head(c, up, Limits)
         section(class=Frame ++ " pb-14",
             ul(class=lattice("grid-cols-1 md:grid-cols-3") ++ " list-none m-0"
                       ++ " p-0",
