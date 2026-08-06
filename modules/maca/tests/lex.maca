@@ -40,3 +40,31 @@ test_the_blurb_line_of_this_package_lexes() {
     assert_eq(count_of("// maca/ast: the compiler's own tree.\nimport maca/token"),
               "5", "the comment goes, the import statement stays")
 }
+
+errors_of(src: str) -> str[] =>
+    lex_all(src).errors
+
+test_a_clean_source_reports_nothing() {
+    assert_eq(str(errors_of("f(x: int) -> int => x + 1").length()), "0",
+              "nothing to say about valid source")
+}
+
+test_an_unknown_character_is_reported_not_swallowed() {
+    bad = errors_of("a # b")
+    assert_eq(str(bad.length()), "1", "the `#` has no token kind")
+    assert_eq(bad.get(0), "unexpected character `#` at 2",
+              "and the message says which character and where")
+}
+
+test_an_unterminated_string_is_reported() {
+    bad = errors_of("\"abc")
+    assert_eq(str(bad.length()), "1", "the quote never closes")
+    assert_eq(bad.get(0), "unterminated string", "said plainly")
+}
+
+test_the_tokens_still_come_back_beside_the_errors() {
+    both = lex_all("a # b")
+    assert_eq(str(both.tokens.length()), "4",
+              "name, the unknown character, name, Eof: recovery keeps scanning")
+    assert_eq(str(both.errors.length()), "1", "and the problem is recorded")
+}

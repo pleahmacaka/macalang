@@ -16,20 +16,38 @@ run_end(cs: str[], i: int, pred) -> int {
 span(cs: str[], i: int, j: int) -> str =>
     cs.slice(i, j).join("")
 
-lex(src: str) -> Token[] {
-    cs = src.chars()
-    scan(cs, 0, [])
+Lexed = {
+    tokens: Token[]
+    errors: str[]
 }
 
-scan(cs: str[], i: int, out: Token[]) -> Token[] {
+lexed(tokens: Token[], errors: str[]) -> Lexed =>
+    Lexed { tokens, errors }
+
+keep(acc: Lexed, t: Token) -> Lexed =>
+    acc with { tokens = acc.tokens ++ [t] }
+
+note_error(acc: Lexed, msg: str) -> Lexed =>
+    acc with { errors = acc.errors ++ [msg] }
+
+lex(src: str) -> Token[] =>
+    lex_all(src).tokens
+
+lex_all(src: str) -> Lexed {
+    cs = src.chars()
+
+    scan(cs, 0, lexed([], []))
+}
+
+scan(cs: str[], i: int, out: Lexed) -> Lexed {
     if i >= cs.length() {
-        out ++ [mk_token(Eof, "", i)]
+        keep(out, mk_token(Eof, "", i))
     } else {
         step(cs, i, out)
     }
 }
 
-step(cs: str[], i: int, out: Token[]) -> Token[] {
+step(cs: str[], i: int, out: Lexed) -> Lexed {
     c = cs.get(i)
     match true {
         _ if is_space(c)   => scan(cs, i + 1, out)
@@ -52,10 +70,10 @@ line_end(cs: str[], i: int) -> int {
     }
 }
 
-lex_string(cs: str[], i: int, out: Token[]) -> Token[] {
+lex_string(cs: str[], i: int, out: Lexed) -> Lexed {
     j = string_end(cs, i + 1)
     text = span(cs, i + 1, j)
-    scan(cs, j + 1, out ++ [mk_token(TStr, text, i)])
+    scan(cs, j + 1, keep(unterminated(out, cs, j), mk_token(TStr, text, i)))
 }
 
 string_end(cs: str[], i: int) -> int {
@@ -70,13 +88,13 @@ string_end(cs: str[], i: int) -> int {
     }
 }
 
-lex_word(cs: str[], i: int, out: Token[]) -> Token[] {
+lex_word(cs: str[], i: int, out: Lexed) -> Lexed {
     j = run_end(cs, i, is_alnum)
     text = span(cs, i, j)
-    scan(cs, j, out ++ [mk_token(keyword_kind(text), text, i)])
+    scan(cs, j, keep(out, mk_token(keyword_kind(text), text, i)))
 }
 
-lex_number(cs: str[], i: int, out: Token[]) -> Token[] {
+lex_number(cs: str[], i: int, out: Lexed) -> Lexed {
     j = run_end(cs, i, is_digit)
     has_fraction = j + 1 < cs.length() && cs.get(j) == "."
         && is_digit(cs.get(j + 1))
@@ -84,23 +102,23 @@ lex_number(cs: str[], i: int, out: Token[]) -> Token[] {
     if has_fraction {
         lex_float(cs, i, j, out)
     } else {
-        scan(cs, j, out ++ [mk_token(TInt, span(cs, i, j), i)])
+        scan(cs, j, keep(out, mk_token(TInt, span(cs, i, j), i)))
     }
 }
 
-lex_float(cs: str[], i: int, dot: int, out: Token[]) -> Token[] {
+lex_float(cs: str[], i: int, dot: int, out: Lexed) -> Lexed {
     k = run_end(cs, dot + 1, is_digit)
-    scan(cs, k, out ++ [mk_token(TFloat, span(cs, i, k), i)])
+    scan(cs, k, keep(out, mk_token(TFloat, span(cs, i, k), i)))
 }
 
-lex_punct(cs: str[], i: int, out: Token[], c: str) -> Token[] {
+lex_punct(cs: str[], i: int, out: Lexed, c: str) -> Lexed {
     nxt = if i + 1 < cs.length() { cs.get(i + 1) } else { "" }
     two = c ++ nxt
 
     if is_two_char(two) {
-        scan(cs, i + 2, out ++ [mk_token(two_char_kind(two), two, i)])
+        scan(cs, i + 2, keep(out, mk_token(two_char_kind(two), two, i)))
     } else {
-        scan(cs, i + 1, out ++ [mk_token(punct_kind(c), c, i)])
+        scan(cs, i + 1, keep(unknown(out, c, i), mk_token(punct_kind(c), c, i)))
     }
 }
 
@@ -146,3 +164,19 @@ punct_kind(c: str) -> Kind =>
         ">" => Gt
         _   => TIdent
     }
+
+unterminated(out: Lexed, cs: str[], j: int) -> Lexed {
+    if j >= cs.length() {
+        note_error(out, "unterminated string")
+    } else {
+        out
+    }
+}
+
+unknown(out: Lexed, c: str, i: int) -> Lexed {
+    if punct_kind(c) == TIdent {
+        note_error(out, "unexpected character `{c}` at {i}")
+    } else {
+        out
+    }
+}

@@ -117,10 +117,15 @@ parse_module(ts: Token[], i: int, acc: Stmt[]) -> Module {
         parse_record_decl(ts, i, acc)
     } else if is_sum_decl(ts, i) {
         parse_sum_decl(ts, i, acc)
-    } else {
+    } else if starts_fn(ts, i) {
         parse_fn_item(ts, i, acc)
+    } else {
+        parse_module(ts, i + 1, acc)
     }
 }
+
+starts_fn(ts: Token[], i: int) -> bool =>
+    ts.get(i).kind == TIdent && ts.get(i + 1).kind == LParen
 
 binds_a_name(ts: Token[], i: int) -> bool =>
     ts.get(i).kind == TIdent && ts.get(i + 1).kind == Eq

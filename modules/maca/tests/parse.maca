@@ -214,3 +214,24 @@ test_push_appends_one_cell() {
     assert(annotated_rust(Grow).index_of("[xs, vec![v]].concat()") >= 0,
            "the same in Rust")
 }
+
+items_of(src: str) -> str =>
+    str(parse_module(lex(src), 0, []).items.length())
+
+test_a_token_that_starts_nothing_is_stepped_over() {
+    assert_eq(items_of("a"), "0",
+              "a bare name is no declaration, and the walk still ends")
+    assert_eq(items_of("# @ ?"), "0", "nor is a row of punctuation")
+}
+
+test_the_walk_still_reaches_what_follows_the_junk() {
+    assert_eq(items_of("a f() -> int => 1"), "1",
+              "the function after the stray name is still read")
+    assert_eq(items_of("f() -> int => 1 a"), "1",
+              "and a stray name after one does not lose it")
+}
+
+test_a_declaration_still_needs_its_parentheses() {
+    assert_eq(items_of("f -> int => 1"), "0",
+              "without `(` it is not a function declaration")
+}

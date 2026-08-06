@@ -14,14 +14,25 @@ main(args: str[]) -> int {
 
 compile_file(args: str[]) -> int {
     src = read_file(args.get(0))
-    raw = parse_module(lex(src), 0, [])
-    errs = check_module(raw)
+    scanned = lex_all(src)
+    raw = parse_module(scanned.tokens, 0, [])
+    errs = report_all(scanned.errors, 0) + check_module(raw)
     m = annotated(raw)
     want_rust = args.length() >= 3 && args.get(2) == "rust"
     emitted = if want_rust { remit_module(m) } else { emit_module(m) }
 
     write_file(args.get(1), emitted)
     errs
+}
+
+report_all(msgs: str[], i: int) -> int {
+    if i >= msgs.length() {
+        msgs.length()
+    } else {
+        info("lex error: {msgs.get(i)}")
+
+        report_all(msgs, i + 1)
+    }
 }
 
 demo() -> int {
