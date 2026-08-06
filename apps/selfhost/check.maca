@@ -477,7 +477,8 @@ annotate_body(env: Env, stmts: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
         got = type_in(env, st.value)
         marked = st with { value = annotate_expr(env, st.value) }
 
-        annotate_body(extend(got.env, st, got.ty), stmts, i + 1, acc ++ [marked])
+        annotate_body(extend(got.env, st, got.ty), stmts, i + 1,
+                      acc ++ [marked])
     }
 }
 
