@@ -394,6 +394,8 @@ plain_braces(cs: str[], i: int, acc: str) -> str {
         acc
     } else if escaped_brace(cs, i) {
         plain_braces(cs, i + 2, acc ++ cs.get(i + 1))
+    } else if pair_at(cs, i, "\{") || pair_at(cs, i, "\}") {
+        plain_braces(cs, i + 2, acc ++ cs.get(i))
     } else {
         plain_braces(cs, i + 1, acc ++ cs.get(i))
     }
@@ -426,7 +428,7 @@ interp_step(cs: str[], i: int, inside: bool, cur: str, acc: str[]) -> str[] {
 
     if escaped_brace(cs, i) {
         split_interp(cs, i + 2, inside, cur ++ cs.get(i + 1), acc)
-    } else if pair_at(cs, i, "\{") || pair_at(cs, i, "\}") {
+    } else if !inside && (pair_at(cs, i, "\{") || pair_at(cs, i, "\}")) {
         split_interp(cs, i + 2, inside, cur ++ c, acc)
     } else if opens || closes {
         split_interp(cs, i + 1, !inside, "", acc ++ [cur])

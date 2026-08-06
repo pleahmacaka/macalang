@@ -363,7 +363,27 @@ test_an_escaped_brace_loses_its_backslash_in_the_literal() {
               "what the emitter writes is one brace")
 }
 
+CloseBrace = "}}"
+
+Reopen = "f(n: int) -> str => \"a {{n}}}} b\""
+
 test_a_doubled_brace_is_still_one_brace() {
     assert(!has_interp((OneBrace ++ OneBrace).chars(), 0),
            "the doubled form is not an interpolation either")
+    assert_eq(plain_braces((OneBrace ++ OneBrace).chars(), 0, ""), OneBrace,
+              "and the literal it writes is the one brace it stands for")
+    assert_eq(plain_braces((CloseBrace ++ CloseBrace).chars(), 0, ""),
+              CloseBrace, "the closing pair collapses the same way")
+}
+
+test_a_string_literal_compares_by_content_without_a_typed_tree() {
+    assert(c_of("kw(w: str) -> int => w == \"let\" ? 1 : 0")
+               .index_of("(strcmp(w, \"let\") == 0)") >= 0,
+           "no inferred type on the tree leaves the literal to go by")
+}
+
+test_a_doubled_brace_after_an_interpolation_closes_it_first() {
+    assert(c_of(Reopen).index_of("maca_int_to_str(n)), \"" ++ CloseBrace
+                                 ++ " b\")") >= 0,
+           "the brace that shuts the hole is not half of the pair after it")
 }
