@@ -4,6 +4,15 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* The self-hosted scanner has somewhere to put a problem, and the parser cannot
+  run off the end. `lex_all` returns the tokens **and** the errors, so a byte with
+  no token kind and a string whose quote never closes are reported instead of
+  being flattened into an identifier; `apps/maca1` prints them and counts them
+  into its exit status. `parse_module` used to hand any leading token to the
+  function-declaration parser, which read past the end of the token list: a file
+  holding the single name `a` took the whole process down. It now requires a
+  `name (` before it reads a declaration and steps over anything else, so the
+  walk always advances.
 * The self-hosted compiler has array operations, and types a method call at all.
   `check.maca` had no rule for a method, so every `.slice(i, j)` came out
   untyped and a local holding one was declared `int` in C. It types the receiver

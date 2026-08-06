@@ -115,6 +115,14 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
   variant, with a constructor named after each variant so an ordinary
   `Circle(2)` compiles without the call site knowing which names are variants;
   in Rust the native enum, where it already is one
+- **an error channel out of the scanner, and a parser that always advances**:
+  `lex_all` returns a `Lexed` of the tokens beside the errors, so an unknown byte
+  and an unterminated string are said out loud rather than flattened into an
+  identifier, and `apps/maca1` prints them and counts them into its exit status.
+  `parse_module` requires a `name (` before it reads a declaration and steps over
+  what is not one, which is what stops it reading past the end of the token list.
+  The parser has no error list of its own yet, so what it steps over is skipped
+  quietly; that is the next thing
 - **array operations, and a method that knows its receiver**: `check.maca` types
   a method call, which it did not before, so `.length()`, `.get(i)`, `.slice`,
   `.index_of`, `.join` and `.push` each pick their lowering from the receiver's
