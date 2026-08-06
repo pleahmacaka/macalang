@@ -4,6 +4,23 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* The C the self-hosted compiler emits for its own source went from 215 errors to
+  8. Almost all of them were one omission: `emit_module` wrote items in source
+  order and C wants a declaration before a use, so 81 calls were to undeclared
+  functions and 57 more conflicted with a later definition. It emits the types, then
+  every prototype, then every body, and `emit_fn` and the prototype share one
+  parameter list so the two cannot drift. `str(x)` chose `maca_int_to_str` whatever
+  it was given: it reads the argument's inferred type now, so a `str` is itself, a
+  `float` and a `bool` get their own helper. The scan builtins the lexer is written
+  in had no lowering at all and fell through to `recv.method(...)`, which is not C:
+  `chars`, `is_whitespace`, `is_ascii_digit`, `is_alpha`, `upper`, `contains`,
+  `slice` on a string, and `ends_with`. Two of them are `ctype.h` and needed no
+  helper.
+* A higher-order parameter is inferred and a function name is a value. `run_end(cs,
+  i, pred)` left `pred` as a type variable, because a call only looked in the
+  module's own signatures, and a function passed by name typed as `any`, so it
+  matched anything. A call to a local unifies it with a function type built from the
+  arguments, and a name that is a declared function carries that signature.
 * A list may hold something that does not fit a cell. `MacaList` carries one
   `long` per cell, so `Ty[]`, `Token[]` and `Expr[]`, every list in the compiler's
   own source, emitted `(long)(v)` on a struct and the C would not compile. A
