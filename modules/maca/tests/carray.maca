@@ -1,0 +1,102 @@
+import maca/lexer
+import maca/parser
+import maca/check
+import maca/emit_c
+
+c_for(src: str) -> str =>
+    emit_module(annotated(parse_module(lex(src), 0, [])))
+
+Rec = "R = {{ n: int }} "
+
+Sum = "C = A | B "
+
+test_a_record_element_is_read_back_as_a_record() {
+    out = c_for(Rec ++ "f(xs: R[]) -> int => xs.get(0).n")
+
+    assert(out.index_of("(*(R*)xs.data[0]).n") >= 0,
+           "the cell is a boxed R, so the field reads through the pointer")
+    assert(out.index_of("((int)xs.data[0]).n") < 0,
+           "and never as an int, which is not a structure or union")
+}
+
+test_a_record_element_is_boxed_into_the_cell() {
+    out = c_for(Rec ++ "f() -> R[] => [R {{ n = 1 }}]")
+
+    assert(out.index_of("maca_box(sizeof(R), (R[]){{ (R){{ .n = 1 }} }})") >= 0,
+           "a record is copied to the heap and the cell holds its address")
+    assert(out.index_of("(long)((R){{ .n = 1 }})") < 0,
+           "a struct is not an arithmetic type, so it cannot be cast to long")
+}
+
+test_the_preamble_carries_the_box_helper() {
+    assert(c_for("f() -> int => 1").index_of("maca_box(int n,") >= 0,
+           "every emitted unit can box, because any list may hold a record")
+}
+
+test_a_push_boxes_the_element_it_appends() {
+    out = c_for(Rec ++ "g(xs: R[]) -> R[] => xs.push(R {{ n = 2 }})")
+
+    assert(out.index_of("maca_listv(1, maca_box(sizeof(R),") >= 0,
+           "the appended cell is boxed like any other")
+    assert(out.index_of("(long)(R)") < 0,
+           "the old lowering cast the struct itself, and lost its parentheses")
+}
+
+test_the_element_type_comes_from_the_receiver_not_the_index() {
+    out = c_for(Rec ++ "h(xs: R[]) -> R => xs.get(1)")
+
+    assert(out.index_of("R h(MacaList xs)") >= 0,
+           "a list is one C type whatever it holds")
+    assert(out.index_of("(*(R*)xs.data[1])") >= 0,
+           "and the element type is read off the receiver's own type")
+}
+
+test_a_sum_element_is_boxed_and_compares_as_a_value() {
+    out = c_for(Sum ++ "f(xs: C[]) -> int => xs.get(0) == A ? 1 : 0")
+
+    assert(out.index_of("(*(C*)xs.data[0]) == A") >= 0,
+           "an enum cell is unboxed before the comparison")
+}
+
+test_a_float_element_is_boxed_because_a_cell_would_truncate_it() {
+    out = c_for("f(xs: float[]) -> float => xs.get(0)")
+
+    assert(out.index_of("(*(double*)xs.data[0])") >= 0,
+           "a double read out of a long cell would have lost its fraction")
+}
+
+test_a_field_of_a_boxed_element_reads_through_the_box() {
+    out = c_for("R = {{ ys: int[] }} f(rs: R[]) -> int => rs.get(0).ys.length()")
+
+    assert(out.index_of("(*(R*)rs.data[0]).ys.len") >= 0,
+           "the record comes out of the box, then the field out of the record")
+}
+
+test_a_string_element_is_read_back_as_a_string() {
+    out = c_for("f(xs: str[]) -> int => xs.get(0).length()")
+
+    assert(out.index_of("(const char*)xs.data[0]") >= 0,
+           "a str cell is a pointer, not an int")
+    assert(out.index_of("((int)xs.data[0])") < 0,
+           "reading it as an int is what strlen refused")
+}
+
+test_an_int_list_is_left_exactly_as_it_was() {
+    out = c_for("f(xs: int[], v: int) -> int[] => xs.push(xs.get(0) + v)")
+
+    assert(out.index_of("((int)xs.data[0])") >= 0,
+           "an int fits a cell, so it is read straight out")
+    assert(out.index_of("maca_listv(1, (long)(") >= 0,
+           "and written straight in, with no box in sight")
+    assert(out.index_of("maca_box") == out.index_of("maca_box(int n,"),
+           "the only mention of the helper is the preamble that defines it")
+}
+
+test_a_list_whose_element_is_unknown_is_still_a_list() {
+    out = c_for("f() -> int {{ z = [] z.length() }}")
+
+    assert(out.index_of("(z.len)") >= 0,
+           "an empty list has no element type, but it is a list all the same")
+    assert(out.index_of("strlen(z)") < 0,
+           "it is certainly not a string")
+}

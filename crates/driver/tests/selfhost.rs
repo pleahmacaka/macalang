@@ -622,6 +622,58 @@ fn stage0_and_stage1_compile_the_same_program_the_same_way() {
     }
 }
 
+/// How the C back end carries an element that does not fit a cell, asserted in Maca.
+#[test]
+fn the_c_back_end_puts_a_record_in_a_list() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping selfhost carray suite: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .current_dir(repo())
+        .env("NO_COLOR", "1")
+        .args(["test", "modules/maca/tests/carray.maca"])
+        .output()
+        .expect("spawn maca test");
+
+    assert!(
+        out.status.success(),
+        "modules/maca/tests/carray.maca:
+{}
+{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
+/// What the Rust back end makes of a vector whose element is not an integer, asserted in Maca.
+#[test]
+fn the_rust_back_end_types_a_vectors_element() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping selfhost rarray suite: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .current_dir(repo())
+        .env("NO_COLOR", "1")
+        .args(["test", "modules/maca/tests/rarray.maca"])
+        .output()
+        .expect("spawn maca test");
+
+    assert!(
+        out.status.success(),
+        "modules/maca/tests/rarray.maca:
+{}
+{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
 /// What the Maca-written lexer makes of an escape and a comment, asserted in Maca.
 #[test]
 fn the_lexer_written_in_maca_holds() {

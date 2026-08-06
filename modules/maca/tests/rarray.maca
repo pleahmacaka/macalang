@@ -1,0 +1,77 @@
+import maca/lexer
+import maca/parser
+import maca/check
+import maca/emit_rust
+
+ra_rust(src: str) -> str =>
+    remit_module(annotated(parse_module(lex(src), 0, [])))
+
+RaRecord = "R = {{ n: int }} f(xs: R[]) -> int => xs.get(0).n"
+
+RaStr = "g(xs: str[]) -> str => xs.get(0)"
+
+RaFloat = "h(xs: float[]) -> float => xs.get(0)"
+
+RaInt = "k(xs: int[]) -> int => xs.get(0)"
+
+RaNode = "Node = {{ kids: Node[], n: int }}"
+
+RaSum = "Color = Red | Green  p(cs: Color[]) -> int => 1"
+
+RaJoin = "j(xs: str[]) -> str => xs.join(\", \")"
+
+test_a_record_element_is_the_record_and_not_an_int() {
+    assert(ra_rust(RaRecord).index_of("xs: Vec<R>") >= 0,
+           "a list of records is a Vec of that record")
+    assert(ra_rust(RaRecord).index_of("Vec<i64>") < 0,
+           "never the i64 fallback")
+}
+
+test_a_string_element_is_a_string() {
+    assert(ra_rust(RaStr).index_of("xs: Vec<String>") >= 0,
+           "str[] carries Strings")
+}
+
+test_a_float_element_is_an_f64() {
+    assert(ra_rust(RaFloat).index_of("xs: Vec<f64>") >= 0,
+           "float[] carries f64")
+}
+
+test_an_int_element_is_still_an_i64() {
+    assert(ra_rust(RaInt).index_of("xs: Vec<i64>") >= 0,
+           "int[] is what it always was")
+}
+
+test_a_sum_element_is_the_enum() {
+    assert(ra_rust(RaSum).index_of("cs: Vec<Color>") >= 0,
+           "a list of variants is a Vec of the enum")
+}
+
+test_a_nested_array_nests_the_vector() {
+    assert_eq(rtype("int[][]"), "Vec<Vec<i64>>", "the element recurses")
+    assert_eq(rtype("str[][]"), "Vec<Vec<String>>", "and it recurses again")
+    assert_eq(relem("R[]"), "R", "the element of R[] is R")
+    assert_eq(rtype("[]"), "Vec<i64>", "an unsolved element stays i64")
+}
+
+test_a_record_field_of_its_own_type_keeps_that_type() {
+    assert(ra_rust(RaNode).index_of("kids: Vec<Node>") >= 0,
+           "a self-referential field is a Vec of the record")
+}
+
+test_a_cell_that_is_not_copy_is_cloned() {
+    assert(ra_rust(RaStr).index_of("as usize].clone()") >= 0,
+           "a String cannot be moved out of a Vec index")
+    assert(ra_rust(RaInt).index_of(".clone()") < 0,
+           "an i64 is Copy, so the cell is read in place")
+}
+
+test_a_record_is_comparable_so_a_list_can_be_searched() {
+    assert(ra_rust(RaRecord).index_of("#[derive(Clone, PartialEq)]") >= 0,
+           "index_of compares cells, so an element derives PartialEq")
+}
+
+test_a_join_separator_is_a_slice() {
+    assert(ra_rust(RaJoin).index_of(".as_str())") >= 0,
+           "a Vec<String> joins on a &str, never on a &String")
+}

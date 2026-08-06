@@ -542,9 +542,13 @@ annotate_body(env: Env, stmts: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
     }
 }
 
-annotate_expr(env: Env, e: Expr) -> Expr =>
+annotate_expr(env: Env, e: Expr) -> Expr {
+    inner = check_body(env, e.stmts, 0, t_any())
+
     e with { ty = surface_of(type_in(env, e).ty),
-             children = annotate_children(env, e.children, 0, []) }
+             stmts = annotate_body(env, e.stmts, 0, []),
+             children = annotate_children(inner.env, e.children, 0, []) }
+}
 
 annotate_children(env: Env, cs: Expr[], i: int, acc: Expr[]) -> Expr[] {
     if i >= cs.length() {

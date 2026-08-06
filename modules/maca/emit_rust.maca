@@ -70,7 +70,8 @@ remit_method(e: Expr) -> str {
         idx = remit_expr(e.children.get(1))
         "(({recv}).as_bytes()[({idx}) as usize] as i64)"
     } else if e.text == "get" {
-        "{recv}[({remit_expr(e.children.get(1))}) as usize]"
+        cell = "{recv}[({remit_expr(e.children.get(1))}) as usize]"
+        cell ++ rclone(e.children.get(0).ty)
     } else if e.text == "slice" && rlist(e.children.get(0).ty) {
         lo = remit_expr(e.children.get(1))
         hi = remit_expr(e.children.get(2))
@@ -79,7 +80,7 @@ remit_method(e: Expr) -> str {
         "({recv}).iter().position(|v| *v == {remit_expr(e.children.get(1))})"
             ++ ".map(|i| i as i64).unwrap_or(-1)"
     } else if e.text == "join" {
-        "({recv}).join(&{remit_expr(e.children.get(1))})"
+        "({recv}).join({remit_expr(e.children.get(1))}.as_str())"
     } else if e.text == "push" {
         "[{recv}, vec![{remit_expr(e.children.get(1))}]].concat()"
     } else {
@@ -178,9 +179,22 @@ remit_lit_field(f: Expr) -> str =>
 remit_args(xs: Expr[], i: int) -> str =>
     xs.slice(i, xs.length()).map(remit_expr).join(", ")
 
+relem(ty: str) -> str =>
+    ty.ends_with("[]") ? ty.slice(0, ty.length() - 2) : ty
+
+rclone(ty: str) -> str {
+    el = rtype(relem(ty))
+
+    if el == "i64" || el == "f64" || el == "bool" {
+        ""
+    } else {
+        ".clone()"
+    }
+}
+
 rtype(ty: str) -> str {
     if ty.ends_with("[]") {
-        "Vec<i64>"
+        "Vec<{rtype(relem(ty))}>"
     } else if ty == "float" {
         "f64"
     } else if ty == "str" {
@@ -244,7 +258,7 @@ remit_item(s: Stmt) -> str {
 remit_struct(s: Stmt) -> str {
     fields = s.params.map(remit_struct_field).join(", ")
 
-    "#[derive(Clone)]\nstruct {s.name} {{ {fields} }}"
+    "#[derive(Clone, PartialEq)]\nstruct {s.name} {{ {fields} }}"
 }
 
 remit_struct_field(f: Expr) -> str =>
