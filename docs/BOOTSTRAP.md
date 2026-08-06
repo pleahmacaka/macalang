@@ -28,7 +28,8 @@ cmp maca1 maca2                             # fixed point ⇒ self-hosted
 | `ast.maca` | 1 | the recursive `Expr`/`Stmt`/`Module` AST (typed params/returns, records, sums, match, methods) + an AST pretty-printer |
 | `lexer.maca` | 1 | character-level scanner incl. two-char operators + float literals (`lex : str -> Token[]`) |
 | `parser.maca` | 1 | recursive descent → expressions (precedence, ternary, unary, calls, field/method, records, match), function/record/sum declarations, and `import` skipping |
-| `check.maca` | 1 | the type checker: an `Env` of signatures, record fields, sum variants and locals; result types, arity, field types, declared returns |
+| `ty.maca` | 1 | the type representation (`Ty`, `Scheme`), the substitution `Infer`, unification including rows, and `generalize`/`instantiate` |
+| `check.maca` | 1 | the type checker over `Ty`: an `Env` of signatures, record fields, sum variants and locals, threading one substitution through the whole module |
 | `emit_c.maca` | 1 | a C emitter over the AST → C source (with a `<string.h>`/`<stdlib.h>`/`<stdio.h>` + `maca_cat`/`maca_int_to_str` preamble) |
 | `emit_rust.maca` | 1 | a Rust emitter over the same AST → Rust source (the `--target rust` back end, in Maca) |
 | `main.maca` | 1 | driver entry; lexes + parses + checks + emits samples through both back ends |
@@ -112,11 +113,29 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
   variant, with a constructor named after each variant so an ordinary
   `Circle(2)` compiles without the call site knowing which names are variants;
   in Rust the native enum, where it already is one
-- **a checker with an environment**: the module's function signatures, record
-  fields and sum variants, plus the locals and parameters in scope. Arity, a
-  call's result type, a field's type, and a body that disagrees with its
-  declared return are all errors now; an undeclared name stays gradual, because
-  foreign is not wrong
+- **`if` as an expression**: `if c { a } else if d { b } else { e }`, where an
+  `else if` nests to the right, lowered to a C ternary chain and to a native
+  Rust `if`. This is the construct the compiler's own source is written in, 315
+  branches of it, so it is the one that had to arrive before stage-1 could read
+  itself. Branches hold a single expression; the 26 places in
+  `apps/selfhost/*.maca` that bind a local inside a branch still need their
+  bindings hoisted above the `if`
+- **a checker that unifies**: the module's function signatures, record fields
+  and sum variants, plus the locals and parameters in scope, all carried as
+  `Ty` rather than as a type's name. A signature is a function type, so a call
+  checks its arguments and not merely their number; a `+` between two strings
+  is rejected by the operator; a list, the arms of a `match` and the branches of
+  a ternary are unified with each other; and one substitution is threaded
+  through the module, so an **unannotated parameter is a fresh variable solved
+  by how it is used**. Its variable is shared with the body, so `keep(x) -> int
+  => x + 1` narrows `x` to a number and then rejects `keep("s")`; where the body
+  says nothing, the parameter is generalized at the declaration and instantiated
+  at each call, so `keep(x) -> int => 1` is usable at `int` in one call and `str`
+  in the next. The module is checked **twice**, the first pass to infer and the
+  second to report, so what a body proves reaches a call written above it and
+  declaration order does not change the answer. A clash produces an error type
+  that absorbs, so one mistake is reported once; an undeclared name stays
+  gradual, because foreign is not wrong
 - **a compiler CLI**: `maca1 <in.maca> <out.c> [rust]` reads a source file and
   writes the emitted source, which is what makes the differential gate possible
 
@@ -143,12 +162,15 @@ arrived.
 
 So the boundary moves by writing Maca, not by planning.
 
-The two stages own different halves of the type system, and that split is
-visible in the source: `check.maca` reasons about a module's own declarations
-(signatures, record fields, sum variants, locals) while the generalization and
-row unification live in `maca-core`. Stage-0 is retired when the second half is
-written in Maca as well, which is the same increment-and-gate loop as everything
-above it, run once more.
+The two stages own different halves of the type system, and the line between
+them has moved. The **type representation and unification are Maca now**:
+`ty.maca` is `crates/core/src/ty.rs` rewritten, variables and all, so
+substitution, the occurs check, row unification over open and closed records,
+and `generalize`/`instantiate` are gated by `apps/selfhost/tests/ty.maca` rather
+than by Rust. What is still only in `maca-core` is the checker over the *whole*
+surface (`lib.rs`), the effect set, and generic monomorphization. Stage-0 is
+retired when those are written in Maca as well, which is the same
+increment-and-gate loop as everything above it, run once more.
 
 ## Why the Rust side stays minimal
 

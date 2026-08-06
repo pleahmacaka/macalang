@@ -4,6 +4,52 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* The self-hosted compiler reads `if`. `if c { a } else if d { b } else { e }`
+  parses to a new AST node that nests to the right, types by unifying its
+  branches, and lowers to a C ternary chain and a native Rust `if`. It is the
+  construct `apps/selfhost/*.maca` is written in, 315 branches of it, so nothing
+  else about reading its own source could start until it landed.
+* `crates/options` is gone. An empty crate: no code, no dependencies, and
+  nothing referred to it.
+* An ambiguous import names its two files with one separator. The candidate
+  paths were built by joining the written import onto a directory, so on Windows
+  the diagnostic read `…\modules\bench/stat.maca`, half one way and half the
+  other. The path is pushed a segment at a time now.
+* Ten tests that only ever ran on a Windows box were failing there, and none of
+  them for a reason worth calling environmental. The LSP tests built a `file://`
+  URI by interpolating a path, so a Windows path spelled `\U` inside the JSON
+  and the server never parsed the request; one `file_uri` helper now
+  percent-encodes at every call site, which is what the single passing test had
+  been doing by hand. Two standard-library resolution tests compared a raw path
+  against a canonicalised prefix, which cannot match once `canonicalize` adds
+  Windows' verbatim prefix. `taskr`'s suite deleted `store.json` under
+  `$XDG_DATA_HOME` while the program writes `taskr.json` beside itself, so the
+  store grew by two tasks a run and every run after the first one failed. The
+  SIMD test wanted `48` from a dot product that is an `f32`, and `str` on a float
+  keeps its point on every back end, so `48.0` is the answer. And
+  `.gitattributes` keeps `.maca` at LF, so a CRLF checkout no longer makes
+  `maca fmt --check` call every golden example unformatted.
+
+* The type system is Maca. `apps/selfhost/ty.maca` is `crates/core/src/ty.rs`
+  rewritten in the language it type-checks: `Ty` with type variables, the
+  substitution and the occurs check, unification over constructors, functions,
+  optionals and **rows** (an open record tolerates the fields it does not name,
+  a closed one names what is missing or spare), plus `generalize` and
+  `instantiate`. `apps/selfhost/tests/ty.maca` is the gate, 24 assertions in
+  Maca rather than in Rust.
+* The self-hosted checker unifies instead of comparing type names.
+  `check.maca` now carries `Ty` everywhere and threads one substitution through
+  the whole module, so a signature is a function type and a call checks its
+  arguments rather than only counting them; a list, the arms of a `match` and
+  the branches of a ternary agree with each other; `+` between two strings is
+  rejected by the operator; and an **unannotated parameter is a fresh variable
+  solved by how it is used**. The body narrows it, so `keep(x) -> int => x + 1`
+  rejects `keep("s")`, and where the body says nothing it is generalized at the
+  declaration and instantiated per call, so `keep(x) -> int => 1` may be used at
+  `int` in one call and `str` in the next. A module is checked twice, once to
+  infer and once to report, so declaration order does not change the answer. A
+  clash yields an error type that absorbs, so one mistake is reported once.
+
 * The site is a directory rather than one long page. `/` is eight cells on a
   hairline lattice, each numbered, each ending in a figure computed at build
   time and the committed file that figure came from; the features, the
