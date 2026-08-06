@@ -622,6 +622,177 @@ fn stage0_and_stage1_compile_the_same_program_the_same_way() {
     }
 }
 
+/// The compiler's own source, emitted as C, compiles and runs.
+#[test]
+fn the_compilers_own_source_compiles_as_c() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping self-compile: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+    let dir = std::env::temp_dir().join("maca-self-c");
+    let _ = std::fs::create_dir_all(&dir);
+
+    let maca1 = dir.join("maca1");
+    let build = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            &cli_main().to_string_lossy(),
+            "-o",
+            &maca1.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca build");
+    assert!(
+        build.status.success(),
+        "stage-0 could not build stage-1:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let whole = dir.join("whole.maca");
+    std::fs::write(&whole, concatenated()).unwrap();
+    let c_path = dir.join("whole.c");
+    let _ = std::fs::remove_file(&c_path);
+    Command::new(&maca1)
+        .arg(&whole)
+        .arg(&c_path)
+        .output()
+        .expect("stage-1 emit");
+    let emitted = std::fs::read_to_string(&c_path).expect("stage-1 wrote no C");
+    assert!(
+        emitted.contains("int main(int argc, char** argv)"),
+        "a main that takes arguments needs the argc/argv shim"
+    );
+
+    let stage2 = dir.join("stage2");
+    let cc = Command::new("cc")
+        .arg(&c_path)
+        .arg("-o")
+        .arg(&stage2)
+        .output()
+        .expect("cc");
+    assert!(
+        cc.status.success(),
+        "the C the compiler emits for itself does not compile:\n{}",
+        String::from_utf8_lossy(&cc.stderr)
+    );
+
+    let run = Command::new(&stage2).output().expect("run stage-2");
+    assert_eq!(run.status.code(), Some(0), "stage-2 should exit 0");
+    assert!(
+        String::from_utf8_lossy(&run.stdout).contains("scanned 12 tokens from 14 chars"),
+        "stage-2 did not run the demo it was built from"
+    );
+
+    let tiny = dir.join("tiny.maca");
+    std::fs::write(&tiny, "add(a: int, b: int) -> int => a + b\n").unwrap();
+    let tiny_c = dir.join("tiny.c");
+    Command::new(&stage2)
+        .arg(&tiny)
+        .arg(&tiny_c)
+        .output()
+        .expect("stage-2 emit");
+    assert!(
+        std::fs::read_to_string(&tiny_c)
+            .expect("stage-2 wrote no C")
+            .contains("int add(int a, int b) { return (a + b);"),
+        "stage-2 should compile a program of its own"
+    );
+}
+
+/// The bootstrap fixed point: the compiler stage-1 compiled emits the C it was itself built from.
+#[test]
+fn stage2_emits_the_c_it_was_built_from() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping fixed point: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+    let dir = std::env::temp_dir().join("maca-fixed-point");
+    let _ = fs::create_dir_all(&dir);
+
+    let maca1 = dir.join("maca1");
+    let build = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            &cli_main().to_string_lossy(),
+            "-o",
+            &maca1.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca build");
+    assert!(
+        build.status.success(),
+        "stage-0 could not build stage-1:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let whole = dir.join("whole.maca");
+    fs::write(&whole, concatenated()).unwrap();
+
+    let first = dir.join("whole1.c");
+    let _ = fs::remove_file(&first);
+    Command::new(&maca1)
+        .arg(&whole)
+        .arg(&first)
+        .output()
+        .expect("stage-1 emit");
+    let one = fs::read_to_string(&first).expect("stage-1 wrote no C");
+
+    let stage2 = dir.join("stage2");
+    let cc = Command::new("cc")
+        .arg(&first)
+        .arg("-o")
+        .arg(&stage2)
+        .output()
+        .expect("cc");
+    assert!(
+        cc.status.success(),
+        "the C stage-1 emits for the compiler does not compile:\n{}",
+        String::from_utf8_lossy(&cc.stderr)
+    );
+
+    let second = dir.join("whole2.c");
+    let _ = fs::remove_file(&second);
+    Command::new(&stage2)
+        .arg(&whole)
+        .arg(&second)
+        .output()
+        .expect("stage-2 emit");
+    let two = fs::read_to_string(&second).expect("stage-2 wrote no C");
+
+    let at = one.bytes().zip(two.bytes()).position(|(a, b)| a != b);
+    assert!(
+        at.is_none() && one.len() == two.len(),
+        "stage-2 emitted different C from what it was built from, \
+         first difference at byte {at:?}, of {} bytes against {}",
+        one.len(),
+        two.len()
+    );
+
+    let stage3 = dir.join("stage3");
+    let cc3 = Command::new("cc")
+        .arg(&second)
+        .arg("-o")
+        .arg(&stage3)
+        .output()
+        .expect("cc");
+    assert!(
+        cc3.status.success(),
+        "the C stage-2 emits does not compile:\n{}",
+        String::from_utf8_lossy(&cc3.stderr)
+    );
+
+    let d1 = Command::new(&maca1).output().expect("run stage-1");
+    let d2 = Command::new(&stage2).output().expect("run stage-2");
+    assert_eq!(
+        String::from_utf8_lossy(&d1.stdout),
+        String::from_utf8_lossy(&d2.stdout),
+        "stage-1 and stage-2 are not the same program"
+    );
+    assert_eq!(d1.status.code(), d2.status.code(), "and they exit alike");
+}
+
 /// How the C back end carries an element that does not fit a cell, asserted in Maca.
 #[test]
 fn the_c_back_end_puts_a_record_in_a_list() {
