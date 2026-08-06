@@ -115,6 +115,13 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
   variant, with a constructor named after each variant so an ordinary
   `Circle(2)` compiles without the call site knowing which names are variants;
   in Rust the native enum, where it already is one
+- **a block inside an expression**: `Expr` carries a `stmts` list beside its
+  children, so an `if` branch that binds a local is a block node. C emits a
+  statement expression and Rust a block that ends in its value, and a binding
+  inside a branch does not escape it. The alternative was rewriting the 39
+  branches of the compiler's own source that bind a local; a record literal now
+  needs the comma the spec always asked for, which is what stops `if c { d = 1 d }`
+  reading as a record
 - **an error channel out of the scanner, and a parser that always advances**:
   `lex_all` returns a `Lexed` of the tokens beside the errors, so an unknown byte
   and an unterminated string are said out loud rather than flattened into an

@@ -4,6 +4,17 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* An `if` branch may hold more than one statement. `Expr` carries a `stmts` list
+  now, so a branch that binds a local is a block node rather than something the
+  parser could not read: C lowers it to a statement expression
+  (`({ int d = …; e; })`) and Rust to a block that ends in its value. Both compile
+  and run to the same answer. This is what the compiler's own source is written
+  in, 39 branches of it, and it is the alternative to rewriting all 39 to fit a
+  parser that could only read one expression.
+* A record literal needs a comma at the brace's own depth, as the spec always
+  said. `opens_record_lit` asked only for a `name =`, so the condition of
+  `if c { d = 1 d }` was read as the record literal `c { d = 1, d }`. Requiring the
+  comma is what separates a record from a block.
 * Two records may name each other when one side is reached only through an array.
   The C backend ordered struct bodies by every field, arrays included, so a pair
   like `Block { entries: Entry[] }` and `Entry { child: Block }` could be emitted
