@@ -793,6 +793,186 @@ fn stage2_emits_the_c_it_was_built_from() {
     assert_eq!(d1.status.code(), d2.status.code(), "and they exit alike");
 }
 
+/// One marker per file the compiler must have resolved, in the order a C translation unit needs.
+const RESOLVED_MARKERS: &[&str] = &[
+    "Token mk_token(",
+    "Lexed lex_all(",
+    "Expr e_int(int n)",
+    "Module parse_module(",
+    "Ty bare(TyKind k)",
+    "Env empty_env(",
+    "const char* c_preamble(",
+    "const char* remit_module(",
+    "Unit unit_of(",
+];
+
+/// The compiler follows its own `import` graph, with no concatenation step.
+#[test]
+fn the_compiler_resolves_its_own_imports() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping import resolution: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+    let dir = std::env::temp_dir().join("maca-imports");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("scratch dir");
+
+    let maca1 = dir.join("maca1");
+    let build = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            &cli_main().to_string_lossy(),
+            "-o",
+            &maca1.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca build");
+    assert!(
+        build.status.success(),
+        "stage-0 could not build stage-1:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let first = dir.join("one.c");
+    let emit = Command::new(&maca1)
+        .arg(cli_main())
+        .arg(&first)
+        .output()
+        .expect("stage-1 emit from the entry file");
+    assert!(
+        emit.status.success(),
+        "stage-1 reported {} error(s) resolving its own imports:\n{}",
+        emit.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&emit.stdout)
+    );
+    let one = fs::read_to_string(&first).expect("stage-1 wrote no C");
+
+    for marker in RESOLVED_MARKERS {
+        assert!(
+            one.contains(marker),
+            "the resolved unit is missing `{marker}`, so a file was not reached"
+        );
+    }
+    let kind = one.find("} Kind;").expect("the token enum");
+    let ty = one.find("} Ty;").expect("the type record");
+    assert!(
+        kind < ty,
+        "an imported file must be emitted before the file that imports it"
+    );
+
+    let stage2 = dir.join("stage2");
+    let cc = Command::new("cc")
+        .arg(&first)
+        .arg("-o")
+        .arg(&stage2)
+        .output()
+        .expect("cc");
+    assert!(
+        cc.status.success(),
+        "the C the resolved unit emits does not compile:\n{}",
+        String::from_utf8_lossy(&cc.stderr)
+    );
+
+    let second = dir.join("two.c");
+    Command::new(&stage2)
+        .arg(cli_main())
+        .arg(&second)
+        .output()
+        .expect("stage-2 emit");
+    let two = fs::read_to_string(&second).expect("stage-2 wrote no C");
+    let at = one.bytes().zip(two.bytes()).position(|(a, b)| a != b);
+    assert!(
+        at.is_none() && one.len() == two.len(),
+        "the resolved unit is not a fixed point, first difference at byte {at:?}, \
+         of {} bytes against {}",
+        one.len(),
+        two.len()
+    );
+
+    let d1 = Command::new(&maca1).output().expect("run stage-1");
+    let d2 = Command::new(&stage2).output().expect("run stage-2");
+    assert_eq!(
+        String::from_utf8_lossy(&d1.stdout),
+        String::from_utf8_lossy(&d2.stdout),
+        "the stage built from the import graph is a different program"
+    );
+}
+
+/// The binary fixed point: the compiler builds an executable, and that executable builds itself byte for byte.
+#[test]
+fn stage1_builds_the_binary_that_builds_it() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping binary fixed point: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+    let dir = std::env::temp_dir().join("maca-binary-fixed-point");
+    let _ = fs::remove_dir_all(&dir);
+    let (one, two) = (dir.join("one"), dir.join("two"));
+    fs::create_dir_all(&one).expect("scratch dir");
+    fs::create_dir_all(&two).expect("scratch dir");
+
+    let maca1 = dir.join("maca1");
+    let build = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .args([
+            "build",
+            &cli_main().to_string_lossy(),
+            "-o",
+            &maca1.to_string_lossy(),
+        ])
+        .output()
+        .expect("spawn maca build");
+    assert!(
+        build.status.success(),
+        "stage-0 could not build stage-1:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let built = Command::new(&maca1)
+        .current_dir(&one)
+        .args(["build", &cli_main().to_string_lossy(), "-o", "maca"])
+        .output()
+        .expect("stage-1 build");
+    assert!(
+        built.status.success(),
+        "stage-1 could not build a binary:\n{}",
+        String::from_utf8_lossy(&built.stdout)
+    );
+
+    let again = Command::new(one.join("maca"))
+        .current_dir(&two)
+        .args(["build", &cli_main().to_string_lossy(), "-o", "maca"])
+        .output()
+        .expect("stage-2 build");
+    assert!(
+        again.status.success(),
+        "stage-2 could not build a binary:\n{}",
+        String::from_utf8_lossy(&again.stdout)
+    );
+
+    let (a, b) = (
+        fs::read(one.join("maca")).expect("stage-2 binary"),
+        fs::read(two.join("maca")).expect("stage-3 binary"),
+    );
+    let at = a.iter().zip(b.iter()).position(|(x, y)| x != y);
+    assert!(
+        at.is_none() && a.len() == b.len(),
+        "the binary is not a fixed point, first difference at byte {at:?}, \
+         of {} bytes against {}",
+        a.len(),
+        b.len()
+    );
+
+    let ran = Command::new(two.join("maca"))
+        .output()
+        .expect("run stage-3");
+    assert!(
+        String::from_utf8_lossy(&ran.stdout).contains("scanned 12 tokens from 14 chars"),
+        "the binary the compiler built does not run the demo"
+    );
+}
+
 /// How the C back end carries an element that does not fit a cell, asserted in Maca.
 #[test]
 fn the_c_back_end_puts_a_record_in_a_list() {
