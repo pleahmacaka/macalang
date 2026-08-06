@@ -210,7 +210,9 @@ and which manifest answers.
     `=>` (`maca fmt` itself only re-indents, so it keeps either);
   - every entry is a distinct `name = value` and a comma sits at the brace's own
     depth, which no block has, and it is a **record literal** (a trailing comma
-    counts, so `{ x = 1, }` is one);
+    counts, so `{ x = 1, }` is one). An entry may be written as the bare field
+    name, which is that name as its own value: `Point { x, y }` is
+    `Point { x = x, y = y }`;
   - every entry is a distinct `name = value` with only newlines between them, and
     both readings hold, so **neither is taken**: refused by name, showing the
     record spelling (`Name { … }`) and the block spelling (drop the `=>`).

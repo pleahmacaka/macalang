@@ -4,6 +4,12 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* The self-hosted compiler reads a record update and a shorthand field.
+  `base with { field = value }` lowers to a C statement expression over
+  `__typeof__` and to a Rust block that mutates its own copy, so neither back end
+  needs to know the record's name. A field written as a bare name is that name as
+  its own value, which the spec described only as `name = value` although stage-0
+  has always accepted it and the compiler's own source is written in it.
 * The self-hosted compiler reads `if`. `if c { a } else if d { b } else { e }`
   parses to a new AST node that nests to the right, types by unifying its
   branches, and lowers to a C ternary chain and a native Rust `if`. It is the

@@ -120,6 +120,12 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
   itself. Branches hold a single expression; the 26 places in
   `apps/selfhost/*.maca` that bind a local inside a branch still need their
   bindings hoisted above the `if`
+- **a record update and a shorthand field**: `base with { field = value }`
+  copies and then assigns, as a C statement expression over `__typeof__` and as
+  a Rust block that mutates its own copy, so neither back end needs the record's
+  name. A field written as a bare name is that name as its own value, which is
+  how `Token { kind, text, pos }` is spelled throughout the compiler's own
+  source
 - **a checker that unifies**: the module's function signatures, record fields
   and sum variants, plus the locals and parameters in scope, all carried as
   `Ty` rather than as a type's name. A signature is a function type, so a call
