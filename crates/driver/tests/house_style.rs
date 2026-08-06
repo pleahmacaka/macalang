@@ -15,7 +15,13 @@ const BANNED: [(char, &str); 3] = [
 fn is_skipped(name: &str) -> bool {
     matches!(
         name,
-        ".git" | "target" | "node_modules" | "site" | "maca_modules" | ".maca" | "fonts"
+        ".git"
+            | "target"
+            | "node_modules"
+            | "site"
+            | "maca_modules"
+            | ".maca"
+            | "fonts"
             | "graphify-out"
     )
 }
