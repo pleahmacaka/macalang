@@ -100,3 +100,111 @@ test_a_list_whose_element_is_unknown_is_still_a_list() {
     assert(out.index_of("strlen(z)") < 0,
            "it is certainly not a string")
 }
+
+test_a_function_is_declared_before_any_body() {
+    out = c_for("f() -> int => g() g() -> int => 1")
+    proto = out.index_of("int g();")
+    body = out.index_of("int f() {{")
+
+    assert(proto >= 0,
+           "C wants a declaration before the call, so every function gets one")
+    assert(body > proto,
+           "and the prototypes land ahead of the first body, not beside it")
+}
+
+test_a_prototype_carries_the_definitions_parameter_types() {
+    out = c_for("f(a: str, b: int[]) -> int => 0")
+
+    assert(out.index_of("int f(const char* a, MacaList b);") >= 0,
+           "a prototype that disagreed with the definition is a conflict")
+}
+
+test_a_record_is_defined_before_the_prototype_naming_it() {
+    out = c_for("f() -> R => R {{ n = 1 }} " ++ Rec)
+    made = out.index_of("}} R;")
+
+    assert(made >= 0, "the record is still emitted")
+    assert(out.index_of("R f();") > made,
+           "a type written below its user is hoisted above the prototypes")
+}
+
+test_str_of_a_str_is_the_string_itself() {
+    out = c_for("f(s: str) -> str => str(s)")
+
+    assert(out.index_of("return s;") >= 0,
+           "a string needs no conversion, so str(s) is s")
+    assert(out.index_of("maca_int_to_str(s)") < 0,
+           "handing a char pointer to an int parameter is what that did")
+}
+
+test_str_picks_its_helper_from_the_arguments_type() {
+    fl = c_for("f(x: float) -> str => str(x)")
+    bl = c_for("f(b: bool) -> str => str(b)")
+    it = c_for("f(n: int) -> str => str(n)")
+
+    assert(fl.index_of("maca_float_to_str(x)") >= 0,
+           "a double read as an int loses everything after the point")
+    assert(bl.index_of("maca_bool_to_str(b)") >= 0,
+           "a bool spells itself true or false, not 1")
+    assert(it.index_of("maca_int_to_str(n)") >= 0,
+           "and an int keeps the helper it always had")
+}
+
+test_chars_is_a_list_of_one_character_cells() {
+    out = c_for("f(s: str) -> int {{ cs = s.chars() 0 }}")
+
+    assert(out.index_of("MacaList cs = maca_chars(s);") >= 0,
+           "the scanner walks a list of cells, and each cell is a str")
+    assert(out.index_of("s.chars()") < 0,
+           "a method call on a char pointer is not C at all")
+    assert(out.index_of("maca_chars(const char* s)") >= 0,
+           "and the preamble carries the helper that builds the list")
+}
+
+test_a_character_class_reads_a_byte_from_either_receiver() {
+    cell = c_for("f(c: str) -> bool => c.is_whitespace()")
+    digit = c_for("f(c: str) -> bool => c.is_ascii_digit()")
+    code = c_for("f(s: str) -> bool => s.at(0).is_alpha()")
+
+    assert(cell.index_of("(isspace((unsigned char)(c)[0]) != 0)") >= 0,
+           "a one-character str is classified by its first byte")
+    assert(digit.index_of("(isdigit((unsigned char)(c)[0]) != 0)") >= 0,
+           "the same for a digit, which is what a number literal starts on")
+    assert(code.index_of("(isalpha((unsigned char)(((int)s[0]))) != 0)") >= 0,
+           "and .at already produced a byte, so it is classified as it is")
+    assert(cell.index_of("#include <ctype.h>") >= 0,
+           "the three classes are the C library's, so the header comes too")
+}
+
+test_the_preamble_defines_every_helper_the_emitter_calls() {
+    out = c_for("f() -> int => 1")
+
+    assert(out.index_of("maca_float_to_str(double x)") >= 0, "str of a float")
+    assert(out.index_of("maca_bool_to_str(int b)") >= 0, "str of a bool")
+    assert(out.index_of("maca_upper(const char* s)") >= 0, "upper of a str")
+    assert(out.index_of("maca_str_slice(const char* s,") >= 0, "a str slice")
+    assert(out.index_of("maca_ends_with(const char* s,") >= 0, "a str suffix")
+}
+
+test_upper_copies_a_string_and_folds_a_single_byte() {
+    whole = c_for("f(s: str) -> str => s.upper()")
+    one = c_for("f(s: str) -> int => s.at(0).upper()")
+
+    assert(whole.index_of("maca_upper(s)") >= 0,
+           "a str is uppercased into a fresh block, never in place")
+    assert(one.index_of("toupper((unsigned char)(((int)s[0])))") >= 0,
+           "a byte folds with toupper, which is how a type name is spotted")
+}
+
+test_the_last_str_methods_lower_to_the_c_library() {
+    has = c_for("f(s: str) -> bool => s.contains(\"x\")")
+    cut = c_for("f(s: str) -> str => s.slice(0, 2)")
+    tail = c_for("f(s: str) -> bool => s.ends_with(\"[]\")")
+
+    assert(has.index_of("(strstr(s, \"x\") != NULL)") >= 0,
+           "contains is a substring search")
+    assert(cut.index_of("maca_str_slice(s, 0, 2)") >= 0,
+           "a str slice copies bytes, where a list slice copies cells")
+    assert(tail.index_of("maca_ends_with(s, \"[]\")") >= 0,
+           "and a list type is spotted by the suffix its name ends with")
+}

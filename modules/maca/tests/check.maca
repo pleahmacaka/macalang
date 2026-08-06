@@ -131,3 +131,25 @@ test_a_clean_module_reports_nothing() {
                        ++ " use() -> int => add(1, 2)"),
               "0", "nothing to say")
 }
+
+Higher = "run(xs: str[], p) -> int => p(xs.get(0)) ? 1 : 0"
+
+test_a_called_parameter_is_inferred_as_a_function() {
+    assert_eq(count_of(Higher ++ " ok(c: str) -> bool => true"
+                       ++ " use(xs: str[]) -> int => run(xs, ok)"),
+              "0", "ok matches the shape p was used at")
+    assert_eq(count_of(Higher ++ " no(c: int) -> bool => true"
+                       ++ " use(xs: str[]) -> int => run(xs, no)"),
+              "1", "an int parameter is not the str p was called with")
+}
+
+test_a_called_parameter_carries_its_result_type() {
+    assert_eq(count_of("run(xs: str[], p) -> int => p(xs.get(0))"
+                       ++ " ok(c: str) -> int => 1"
+                       ++ " use(xs: str[]) -> int => run(xs, ok)"),
+              "0", "p returns what run returns")
+    assert_eq(count_of("run(xs: str[], p) -> int => p(xs.get(0))"
+                       ++ " ok(c: str) -> str => \"a\""
+                       ++ " use(xs: str[]) -> int => run(xs, ok)"),
+              "1", "a str result does not fit an int return")
+}

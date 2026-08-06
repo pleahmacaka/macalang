@@ -20,6 +20,16 @@ RaSum = "Color = Red | Green  p(cs: Color[]) -> int => 1"
 
 RaJoin = "j(xs: str[]) -> str => xs.join(\", \")"
 
+RaChars = "c(s: str) -> str => s.chars().join(\"\")"
+
+RaMap = "u(s: str) -> str => s.upper()"
+    ++ "  m(xs: str[]) -> str => xs.map(u).join(\", \")"
+
+RaPred = "p(c: str) -> bool =>"
+    ++ " c.is_whitespace() || c.is_ascii_digit() || c.is_alpha()"
+
+RaFind = "q(s: str, t: str) -> bool => s.contains(t) && s.ends_with(t)"
+
 test_a_record_element_is_the_record_and_not_an_int() {
     assert(ra_rust(RaRecord).index_of("xs: Vec<R>") >= 0,
            "a list of records is a Vec of that record")
@@ -74,4 +84,41 @@ test_a_record_is_comparable_so_a_list_can_be_searched() {
 test_a_join_separator_is_a_slice() {
     assert(ra_rust(RaJoin).index_of(".as_str())") >= 0,
            "a Vec<String> joins on a &str, never on a &String")
+}
+
+test_chars_is_a_vector_of_one_character_strings() {
+    assert(ra_rust(RaChars).index_of("collect::<Vec<String>>()") >= 0,
+           "chars() collects, so the result is indexable and joinable")
+    assert(ra_rust(RaChars).index_of("s.chars()") < 0,
+           "never a bare Chars iterator, which joins nothing")
+}
+
+test_map_over_a_list_goes_through_an_iterator() {
+    assert(ra_rust(RaMap).index_of(".into_iter().map(u)") >= 0,
+           "Rust has map on an iterator, not on a Vec")
+    assert(ra_rust(RaMap).index_of("collect::<Vec<_>>()") >= 0,
+           "and the result is collected back into a Vec")
+}
+
+test_upper_is_the_rust_spelling() {
+    assert(ra_rust(RaMap).index_of("(s).to_uppercase()") >= 0,
+           "upper() is to_uppercase()")
+}
+
+test_a_character_class_reads_the_first_character() {
+    out = ra_rust(RaPred)
+
+    assert(out.index_of("chars().next().map_or(false, |c| c.is_whitespace())")
+           >= 0, "a one-character str tests its only char")
+    assert(out.index_of("|c| c.is_ascii_digit()") >= 0,
+           "is_ascii_digit is spelled the same on a char")
+    assert(out.index_of("|c| c.is_ascii_alphabetic()") >= 0,
+           "is_alpha is is_ascii_alphabetic, which Rust has")
+}
+
+test_a_search_argument_is_a_pattern() {
+    assert(ra_rust(RaFind).index_of("(s).contains(t.as_str())") >= 0,
+           "contains takes a &str pattern, never a String")
+    assert(ra_rust(RaFind).index_of("(s).ends_with(t.as_str())") >= 0,
+           "and so does ends_with")
 }

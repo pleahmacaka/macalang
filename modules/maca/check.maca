@@ -177,26 +177,56 @@ type_in(env: Env, e: Expr) -> Typed =>
 ident_type(env: Env, e: Expr) -> Typed {
     at = env.names.index_of(e.text)
     variant = env.ctors.index_of(e.text)
+    declared = env.fns.index_of(e.text)
 
     if at >= 0 {
         typed(env, env.types.get(at))
     } else if variant >= 0 {
         typed(env, t_con(env.owners.get(variant), []))
+    } else if declared >= 0 {
+        fn_value(env, env.sigs.get(declared))
     } else {
         typed(env, t_any())
     }
 }
 
+fn_value(env: Env, sig: Ty) -> Typed {
+    used = instantiate(env.infer, generalize(env.infer, sig))
+
+    typed(with_infer(env, used.infer), used.ty)
+}
+
 call_type(env: Env, e: Expr) -> Typed {
     declared = env.fns.index_of(e.text)
     variant = env.ctors.index_of(e.text)
+    local = env.names.index_of(e.text)
 
     if declared >= 0 {
         call_declared(env, e, env.sigs.get(declared))
     } else if variant >= 0 {
         typed(walk_args(env, e.children, 0), t_con(env.owners.get(variant), []))
+    } else if local >= 0 {
+        call_local(env, e, env.types.get(local))
     } else {
         typed(walk_args(env, e.children, 0), builtin_type(e.text))
+    }
+}
+
+call_local(env: Env, e: Expr, held: Ty) -> Typed {
+    made = arg_types(env, e.children, 0, [])
+    res = fresh(made.env.infer)
+    ready = with_infer(made.env, res.infer)
+
+    typed(joined(ready, held, t_fn(made.tys, res.ty)), res.ty)
+}
+
+arg_types(env: Env, args: Expr[], i: int, acc: Ty[]) -> Signature {
+    if i >= args.length() {
+        Signature { env, tys = acc }
+    } else {
+        got = type_in(env, args.get(i))
+
+        arg_types(got.env, args, i + 1, acc ++ [got.ty])
     }
 }
 

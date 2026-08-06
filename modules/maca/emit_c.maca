@@ -111,6 +111,11 @@ emit_method(e: Expr) -> str {
     } else if e.text == "slice" && on_list {
         "maca_list_slice({recv}, {emit_expr(e.children.get(1))},"
             ++ " {emit_expr(e.children.get(2))})"
+    } else if e.text == "slice" {
+        "maca_str_slice({recv}, {emit_expr(e.children.get(1))},"
+            ++ " {emit_expr(e.children.get(2))})"
+    } else if e.text == "ends_with" {
+        "maca_ends_with({recv}, {emit_expr(e.children.get(1))})"
     } else if e.text == "index_of" && on_list {
         "maca_list_index_of({recv}, {c_cell(el, e.children.get(1))})"
     } else if e.text == "index_of" {
@@ -120,8 +125,32 @@ emit_method(e: Expr) -> str {
     } else if e.text == "push" {
         "maca_list_cat({recv}, maca_listv(1,"
             ++ " {c_cell(el, e.children.get(1))}))"
+    } else if e.text == "chars" {
+        "maca_chars({recv})"
+    } else if e.text == "is_whitespace" {
+        "(isspace((unsigned char){c_char(recv, on_str)}) != 0)"
+    } else if e.text == "is_ascii_digit" {
+        "(isdigit((unsigned char){c_char(recv, on_str)}) != 0)"
+    } else if e.text == "is_alpha" {
+        "(isalpha((unsigned char){c_char(recv, on_str)}) != 0)"
+    } else if e.text == "upper" && on_str {
+        "maca_upper({recv})"
+    } else if e.text == "upper" {
+        "toupper((unsigned char){c_char(recv, on_str)})"
+    } else if e.text == "contains" && on_list {
+        "(maca_list_index_of({recv}, {c_cell(el, e.children.get(1))}) >= 0)"
+    } else if e.text == "contains" {
+        "(strstr({recv}, {emit_expr(e.children.get(1))}) != NULL)"
     } else {
         "{recv}.{e.text}({emit_args(e.children, 1)})"
+    }
+}
+
+c_char(recv: str, on_str: bool) -> str {
+    if on_str {
+        "({recv})[0]"
+    } else {
+        "({recv})"
     }
 }
 
@@ -136,9 +165,29 @@ emit_call(e: Expr) -> str {
     } else if e.text == "print" {
         "printf(\"%s\", {args})"
     } else if e.text == "str" {
-        "maca_int_to_str({args})"
+        c_str_of(c_arg_ty(e.children), args)
     } else {
         "{e.text}({args})"
+    }
+}
+
+c_arg_ty(cs: Expr[]) -> str {
+    if cs.length() == 0 {
+        ""
+    } else {
+        cs.get(0).ty
+    }
+}
+
+c_str_of(ty: str, args: str) -> str {
+    if ty == "str" {
+        args
+    } else if ty == "float" {
+        "maca_float_to_str({args})"
+    } else if ty == "bool" {
+        "maca_bool_to_str({args})"
+    } else {
+        "maca_int_to_str({args})"
     }
 }
 
@@ -277,7 +326,7 @@ emit_unit(e: Expr) -> str =>
     "int main(void) {{ return {emit_expr(e)}; }}"
 
 type_c(ty: str) -> str {
-    if ty.ends_with("[]") {
+    if is_list_type(ty) {
         "MacaList"
     } else if ty == "float" {
         "double"
@@ -291,9 +340,19 @@ type_c(ty: str) -> str {
 }
 
 emit_fn(s: Stmt) -> str {
-    params = s.params.map(emit_param).join(", ")
+    params = c_params(s.params, 0)
 
     "{type_c(s.ret)} {s.name}({params}) {{ {emit_stmts(s.body, 0)} }}"
+}
+
+c_params(ps: Expr[], i: int) -> str {
+    if i >= ps.length() {
+        ""
+    } else if i == ps.length() - 1 {
+        emit_param(ps.get(i))
+    } else {
+        "{emit_param(ps.get(i))}, {c_params(ps, i + 1)}"
+    }
 }
 
 emit_param(p: Expr) -> str =>
@@ -323,8 +382,19 @@ guessed_c_type(e: Expr) -> str =>
         ERecord => e.text
         EList   => "MacaList"
         EBinary => concat_c_type(e)
+        EMethod => method_c_type(e)
         _       => "int"
     }
+
+method_c_type(e: Expr) -> str {
+    if e.text == "chars" {
+        "MacaList"
+    } else if e.text == "upper" {
+        "const char*"
+    } else {
+        "int"
+    }
+}
 
 concat_c_type(e: Expr) -> str {
     if e.text == "++" {
@@ -345,28 +415,69 @@ emit_stmt(s: Stmt, is_last: bool) -> str {
 }
 
 c_preamble() -> str =>
-    "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <stdarg.h>\n" ++
+    "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <stdarg.h>\n#include <ctype.h>\n" ++
     "static char* maca_cat(const char* a, const char* b) {{ char* r = malloc(strlen(a) + strlen(b) + 1); strcpy(r, a); strcat(r, b); return r; }}\n" ++
     "static char* maca_int_to_str(int n) {{ char* r = malloc(16); snprintf(r, 16, \"%d\", n); return r; }}\n" ++
+    "static char* maca_float_to_str(double x) {{ char* r = malloc(32); if (x == (double)(long long)x && x < 1e15 && x > -1e15) snprintf(r, 32, \"%.1f\", x); else snprintf(r, 32, \"%g\", x); return r; }}\n" ++
+    "static const char* maca_bool_to_str(int b) {{ return b ? \"true\" : \"false\"; }}\n" ++
+    "static char* maca_upper(const char* s) {{ size_t n = strlen(s); char* r = malloc(n + 1); for (size_t i = 0; i < n; i++) r[i] = toupper((unsigned char)s[i]); r[n] = 0; return r; }}\n" ++
     "typedef struct {{ long* data; int len; }} MacaList;\n" ++
     "static MacaList maca_listv(int n, ...) {{ MacaList l; l.data = malloc(n * sizeof(long)); l.len = n; va_list ap; va_start(ap, n); for (int i = 0; i < n; i++) l.data[i] = va_arg(ap, long); va_end(ap); return l; }}\n" ++
     "static MacaList maca_list_cat(MacaList a, MacaList b) {{ MacaList l; l.len = a.len + b.len; l.data = malloc((l.len ? l.len : 1) * sizeof(long)); memcpy(l.data, a.data, a.len * sizeof(long)); memcpy(l.data + a.len, b.data, b.len * sizeof(long)); return l; }}\n" ++
     "static MacaList maca_list_slice(MacaList a, int lo, int hi) {{ if (lo < 0) lo = 0; if (hi > a.len) hi = a.len; if (hi < lo) hi = lo; MacaList l; l.len = hi - lo; l.data = malloc((l.len ? l.len : 1) * sizeof(long)); memcpy(l.data, a.data + lo, l.len * sizeof(long)); return l; }}\n" ++
     "static int maca_list_index_of(MacaList a, long v) {{ for (int i = 0; i < a.len; i++) if (a.data[i] == v) return i; return -1; }}\n" ++
     "static int maca_str_index_of(const char* a, const char* b) {{ const char* p = strstr(a, b); return p ? (int)(p - a) : -1; }}\n" ++
+    "static char* maca_str_slice(const char* s, int from, int to) {{ int n = (int)strlen(s); if (from < 0) from = 0; if (to > n) to = n; if (to < from) to = from; int m = to - from; char* r = malloc(m + 1); memcpy(r, s + from, m); r[m] = 0; return r; }}\n" ++
+    "static int maca_ends_with(const char* s, const char* suf) {{ size_t n = strlen(s), m = strlen(suf); return m <= n && memcmp(s + n - m, suf, m) == 0; }}\n" ++
     "static char* maca_list_join(MacaList a, const char* sep) {{ size_t n = 1; for (int i = 0; i < a.len; i++) n += strlen((const char*)a.data[i]) + strlen(sep); char* r = malloc(n); r[0] = 0; for (int i = 0; i < a.len; i++) {{ if (i) strcat(r, sep); strcat(r, (const char*)a.data[i]); }} return r; }}\n" ++
-    "static long maca_box(int n, const void* p) {{ void* r = malloc(n); memcpy(r, p, n); return (long)r; }}\n"
+    "static long maca_box(int n, const void* p) {{ void* r = malloc(n); memcpy(r, p, n); return (long)r; }}\n" ++
+    "static MacaList maca_chars(const char* s) {{ int n = (int)strlen(s); MacaList l; l.len = n; l.data = malloc((n ? n : 1) * sizeof(long)); for (int i = 0; i < n; i++) {{ char* c = malloc(2); c[0] = s[i]; c[1] = 0; l.data[i] = (long)c; }} return l; }}\n"
 
 emit_module(m: Module) -> str =>
-    c_preamble() ++ m.items.map(emit_item).join("\n")
+    c_preamble() ++ emit_types(m.items, 0) ++ emit_protos(m.items, 0)
+        ++ emit_bodies(m.items, 0)
+
+is_type_item(s: Stmt) -> bool =>
+    s.kind == SRecord || s.kind == SSum
+
+emit_types(items: Stmt[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else if is_type_item(items.get(i)) {
+        "{emit_item(items.get(i))}\n{emit_types(items, i + 1)}"
+    } else {
+        emit_types(items, i + 1)
+    }
+}
+
+emit_protos(items: Stmt[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else if is_type_item(items.get(i)) {
+        emit_protos(items, i + 1)
+    } else {
+        "{emit_proto(items.get(i))}\n{emit_protos(items, i + 1)}"
+    }
+}
+
+emit_bodies(items: Stmt[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else if is_type_item(items.get(i)) {
+        emit_bodies(items, i + 1)
+    } else {
+        "{emit_fn(items.get(i))}\n{emit_bodies(items, i + 1)}"
+    }
+}
+
+emit_proto(s: Stmt) -> str =>
+    "{type_c(s.ret)} {s.name}({c_params(s.params, 0)});"
 
 emit_item(s: Stmt) -> str {
     if s.kind == SRecord {
         emit_struct(s)
-    } else if s.kind == SSum {
-        emit_sum(s)
     } else {
-        emit_fn(s)
+        emit_sum(s)
     }
 }
 

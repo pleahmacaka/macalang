@@ -61,10 +61,45 @@ has_str_arm(cs: Expr[], i: int) -> bool {
 }
 
 
+rchar_pred(name: str) -> str {
+    if name == "is_whitespace" {
+        "is_whitespace"
+    } else if name == "is_ascii_digit" {
+        "is_ascii_digit"
+    } else if name == "is_alpha" {
+        "is_ascii_alphabetic"
+    } else {
+        ""
+    }
+}
+
+rstr_helper(name: str) -> bool =>
+    name == "upper" || name == "contains" || name == "ends_with" ||
+    rchar_pred(name) != ""
+
+remit_str_method(e: Expr, recv: str) -> str {
+    pred = rchar_pred(e.text)
+
+    if pred != "" {
+        "({recv}).chars().next().map_or(false, |c| c.{pred}())"
+    } else if e.text == "upper" {
+        "({recv}).to_uppercase()"
+    } else {
+        "({recv}).{e.text}({remit_expr(e.children.get(1))}.as_str())"
+    }
+}
+
 remit_method(e: Expr) -> str {
     recv = remit_expr(e.children.get(0))
 
-    if e.text == "length" || e.text == "count" {
+    if rstr_helper(e.text) {
+        remit_str_method(e, recv)
+    } else if e.text == "chars" {
+        "({recv}).chars().map(|c| c.to_string()).collect::<Vec<String>>()"
+    } else if e.text == "map" {
+        "({recv}).into_iter().map({remit_expr(e.children.get(1))})" ++
+        ".collect::<Vec<_>>()"
+    } else if e.text == "length" || e.text == "count" {
         "(({recv}).len() as i64)"
     } else if e.text == "at" || (e.text == "get" && e.children.get(0).ty == "str") {
         idx = remit_expr(e.children.get(1))
