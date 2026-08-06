@@ -4,6 +4,22 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* **The checker accepts the compiler's own source**, 220 errors down to none, and it is
+  stronger afterwards rather than more permissive. All 220 were one bug with a lying
+  message. `parse_one_lit_field` builds a field as a binary `=`, `binop_type` had no `=`
+  case, so every `field = value` in the compiler fell through to `arith_type`, and
+  `Ty { kind = k, name = "", ... }` alone was six of them. The complaint printed only the
+  left type, which is why 220 of them read `any is not a number` and grouping by message
+  gave thirteen useless buckets: the count per class is what said this was one bug, not
+  thirty. Typing `=` as its value closes all 220 on its own, but on its own it would also
+  make `Point { x = "s" }` pass silently, because `ERecord` and `EWith` used `walk_args`,
+  which types a field's value and throws the type away. No record literal had ever been
+  checked against its declared field types. `check_fields` does that now, and takes the
+  record name for a `with` from the resolved type of its base, so `p with { x = "s" }` is
+  caught too. 220 fake errors is why nobody noticed a whole construct was unchecked.
+  `check_module` reported a count and no messages, so what any of the 220 said was
+  invisible; `apps/maca1` now prints them the way it already printed scan and parse
+  errors.
 * **The bootstrap fixed point closes.** The compiler, compiled by itself, emits what
   it emitted before: `whole1.c`, `whole2.c` and `whole3.c` are one 129731-byte file,
   and stage-1, stage-2 and stage-3 print the same 244 lines and exit alike. Four
