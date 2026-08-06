@@ -4,6 +4,43 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* **The bootstrap fixed point closes.** The compiler, compiled by itself, emits what
+  it emitted before: `whole1.c`, `whole2.c` and `whole3.c` are one 129731-byte file,
+  and stage-1, stage-2 and stage-3 print the same 244 lines and exit alike. Four
+  one-line causes stood in the way, and the last one is the reason both halves are
+  asserted: `cmp` was already silent while stage-1 and stage-2 were still different
+  programs, stable at the wrong value. `plain_braces` collapsed `\{` but not `{{`, so
+  a literal without an interpolation kept its doubling, which is every string in the C
+  preamble, and a stray brace then made `opens_record_lit` fire and nest without end
+  until stage-2 walked off the token array. `interp_step` read `}}` as an escaped
+  brace even inside an interpolation, where the first one has to close it.
+  `index_of` and `contains` on a `str[]` lowered to a helper that compares cells, so
+  every `env.fns.index_of(name)` missed, stage-2's checker knew no names, and the
+  untyped tree that came out of it was 1155 C errors. And `==` between two strings
+  chose `strcmp` from the syntax rather than the type, so the very predicates that
+  recognise `{{` compared pointers. `stage2_emits_the_c_it_was_built_from` runs the
+  whole ladder and asserts both halves.
+* The compiler's own source compiles as C, the last eight errors down to none, and
+  `the_compilers_own_source_compiles_as_c` keeps it that way. The eight were four
+  things. A `main` that takes arguments emits `int maca_main(MacaList)` beside a real
+  `int main(int argc, char** argv)` that builds the list and calls it, while a `main`
+  taking nothing still emits exactly `int main()`. `int(x)` lowers the way `str(x)`
+  already did, a no-op on an int and `atoi` otherwise. `read_file` and `write_file`
+  have helpers, each returning a fresh block. And the demo bound `bfn` and `ar` twice
+  in one body, which Maca allows and C does not. The emitted C links, runs the demo it
+  was built from, and compiles a small program of its own.
+* Lexing a long source no longer exhausts the stack. The lexer was a continuation
+  chain, `scan` to `step` to `lex_word` and back to `scan` for the next token, so depth
+  grew with the input: 91 KB of compiler source is about 100k frames against an 8 MB
+  stack. The emitted C is a genuine tail call and clang turns it into a jump, which is
+  why the compiler built by `zig cc` survived and the one built by gcc took SIGSEGV on
+  the same input, so the depth had to come out of the Maca instead of being wished onto
+  the C compiler. `scan` halves a character range rather than walking it, and every
+  `lex_*` returns with the cursor moved rather than calling `scan` itself. Depth is
+  logarithmic, 34 frames for 91 KB, with the optimisation or without it, and token and
+  error order are unchanged because the left half finishes before the right begins.
+  `.chars()` types as `str[]` rather than `any`, which the restructure exposed: a local
+  bound from it had `length()` lowered to `strlen` on a list.
 * A function is a value in the emitted C, and the count for the compiler's own
   source falls 26 to 8. A function type is spelled the way `ty.maca` already prints
   one, `(int, str) -> bool`, so `surface_of` can write it into the tree and the C

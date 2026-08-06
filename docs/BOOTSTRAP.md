@@ -7,18 +7,34 @@ the stage-1 compiler. Compiler work goes into `modules/maca/`, written in Maca.
 ```
 stage-0 (Rust, crates/*)  ──compiles──▶  stage-1 (Maca, modules/maca/*.maca)
                                               │
-                                              └──compiles──▶ stage-1 again
-                                                             (must be identical)
+                                              └──compiles──▶ stage-2
+                                                             (emits the same C)
 ```
 
-The bootstrap closes when a stage-1 binary built by stage-0 rebuilds itself
-byte-for-byte:
+The bootstrap closes when the compiler, compiled by itself, emits what it emitted
+before. Feed the compiler's own source to each stage in turn:
 
 ```sh
-maca build apps/maca1/main.maca -o maca1      # stage-0 (Rust) builds stage-1
-./maca1 build apps/maca1/main.maca -o maca2   # stage-1 builds itself
-cmp maca1 maca2                             # fixed point ⇒ self-hosted
+maca build apps/maca1/main.maca -o stage1   # stage-0 (Rust) builds stage-1
+./stage1 whole.maca whole1.c                # stage-1 emits C for the compiler
+cc -o stage2 whole1.c
+./stage2 whole.maca whole2.c                # stage-2 emits it again
+cmp whole1.c whole2.c                       # fixed point ⇒ self-hosted
 ```
+
+**This closes.** `stage2_emits_the_c_it_was_built_from` in
+`crates/driver/tests/selfhost.rs` keeps it closed: `whole1.c`, `whole2.c` and
+`whole3.c` are one 129731-byte file, and all three stages print the same 244 lines
+of demo and exit alike. The demo equality is the half that matters most, because
+`cmp` alone can be silent while stage-1 and stage-2 are different programs that
+happen to agree on one input.
+
+`whole.maca` is the eight `modules/maca/*.maca` files followed by
+`apps/maca1/main.maca`, concatenated, because `apps/maca1` compiles one file and
+does not resolve imports across files yet. Comparing the *binaries* would say all
+of this plus one more thing, that the host C compiler is deterministic, and it
+waits on `apps/maca1` growing a `build` subcommand that drives a C compiler
+itself.
 
 ## Layout of `modules/maca/`
 
