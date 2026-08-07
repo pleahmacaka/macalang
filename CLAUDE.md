@@ -33,7 +33,7 @@ The tree is four directories, and each answers one question:
 |---|---|
 | `modules/` | what a program imports. Nine packages, all ordinary Maca, all with a suite under `<pkg>/tests/`. They ride **inside** the `maca` binary. `modules/maca` is the compiler itself, so a Maca program can lex and parse Maca. |
 | `apps/` | everything this repository builds: the capstones, the demos, the toolchain's own programs, the handbook builder, the playground, `apps/maca1` which drives the compiler package, and `apps/examples`, which is the regression corpus. |
-| `crates/` | the frozen Rust stage-0 bootstrap, plus `crates/install`, the installer. Keep it minimal. |
+| `crates/` | the frozen Rust stage-0 bootstrap, plus `crates/install`, the installer. Keep it minimal. Every line of it is due to go: a Maca program compiles to a native binary, so nothing here needs to be Rust, the installer included. |
 | `docs/` | the spec, the changelog, and how this thing is built. |
 
 `modules/*` and `src/*` are import search roots, so `modules/std/text.maca` is

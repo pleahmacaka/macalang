@@ -5,9 +5,8 @@ name: ci
 # YAML. What is worth checking is that no *program* has been smuggled into it:
 # every multi-line `run:` block below installs the Rust or C toolchain that the
 # Maca compiler is built with and runs on, so each one executes before there is
-# a `maca` to run anything with, the same reason the installer is a Rust binary.
-# Anything after that point is one command, and where the command does real
-# work it is `maca run <something>.maca`.
+# a `maca` to run anything with. Anything after that point is one command, and
+# where the command does real work it is `maca run <something>.maca`.
 #
 # Runs on every branch push (so feature branches get CI, not just main), on
 # pull requests, and on manual dispatch.
