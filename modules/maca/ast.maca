@@ -6,7 +6,7 @@ ExprKind =
     EInt | EFloat | EStr | EBool | EIdent
     | ECall | EField | EBinary | EUnary | ETernary | EIf
     | EList | ERecord | EWith | ELambda | EBlock | EMatch | EMethod
-    | EGuard | EWhile | EFor | EJump
+    | EGuard | EWhile | EFor | EJump | EBad
 
 Expr = {
     kind:     ExprKind
@@ -40,6 +40,9 @@ e_int(n: int) -> Expr =>
 e_ident(name: str) -> Expr =>
     Expr { kind = EIdent, text = name, ival = 0, ty = "", children = [],
            stmts = [] }
+
+e_bad(text: str) -> Expr =>
+    Expr { kind = EBad, text, ival = 0, ty = "", children = [], stmts = [] }
 
 e_param(name: str, ty: str) -> Expr =>
     Expr { kind = EIdent, text = name, ival = 0, ty, children = [], stmts = [] }

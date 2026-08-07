@@ -615,7 +615,7 @@ parse_atom(ts: Token[], i: int) -> PExpr {
         LBracket => parse_list(ts, i)
         TIdent   => parse_call_or_ident(ts, i)
         LParen   => parse_paren(ts, i)
-        _        => mk_pexpr(e_ident("?"), i + 1)
+        _        => mk_pexpr(e_bad(ts.get(i).text), i + 1)
     }
 }
 

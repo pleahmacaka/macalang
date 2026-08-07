@@ -307,3 +307,15 @@ test_a_typed_binding_is_the_type_it_declares() {
     assert_eq(count_of("f() -> int {{ s: str = \"a\" s }}"), "1",
               "so returning it as an int is refused")
 }
+
+test_input_no_production_reads_is_reported_not_swallowed() {
+    bad = errors_of("f() -> int => :")
+    assert_eq(str(bad.length()), "1", "an unreadable token is not nothing")
+    assert_eq(bad.get(0), "no expression starts at `:`",
+              "the token is named, so the message says where to look")
+}
+
+test_a_swallowed_argument_does_not_pass_for_a_clean_module() {
+    assert_eq(count_of("g(n: int) -> int => n use() -> int => g(:)"),
+              "1", "silence here emitted `?` into the C and still exited zero")
+}
