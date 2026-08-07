@@ -352,3 +352,19 @@ test_the_last_str_methods_lower_to_the_c_library() {
     assert(tail.index_of("maca_ends_with(s, \"[]\")") >= 0,
            "and a list type is spotted by the suffix its name ends with")
 }
+
+test_a_constant_is_emitted_once_at_file_scope() {
+    out = c_for("Seed = 1000 f() -> int => Seed")
+
+    assert(out.index_of("static const int Seed = 1000;") >= 0,
+           "a top-level binding is a definition, not a statement")
+    assert(out.index_of("Seed = 1000") < out.index_of("int f("),
+           "and stands before the function that reads it")
+}
+
+test_a_raise_prints_and_leaves() {
+    out = c_for("f() -> int {{ fail \"gone\" }}")
+
+    assert(out.index_of("exit(1)") >= 0, "fail does not return")
+    assert(out.index_of("stderr") >= 0, "and says why on the error stream")
+}

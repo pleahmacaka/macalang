@@ -387,3 +387,16 @@ test_a_doubled_brace_after_an_interpolation_closes_it_first() {
                                  ++ " b\")") >= 0,
            "the brace that shuts the hole is not half of the pair after it")
 }
+
+test_a_top_level_binding_is_a_declaration() {
+    m = parse_module(lex("Seed = 1000 f() -> int => Seed"), 0, [])
+
+    assert_eq(str(m.items.length()), "2", "the constant is an item of its own")
+    assert_eq(str(m.errors.length()), "0", "and not a skipped declaration")
+    assert_eq(m.items.get(0).name, "Seed", "named by what it binds")
+}
+
+test_fail_carries_the_message_it_raises() {
+    assert_eq(shown("fail \"gone\""), "(failgone)",
+              "fail is a prefix over the value it raises")
+}

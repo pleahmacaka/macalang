@@ -205,3 +205,17 @@ test_a_called_parameter_carries_its_result_type() {
                        ++ " use(xs: str[]) -> int => run(xs, ok)"),
               "1", "a str result does not fit an int return")
 }
+
+test_fail_fits_whatever_return_it_stands_in_for() {
+    assert_eq(count_of("f(xs: int[]) -> bool {{ fail \"unwritten\" }}"), "0",
+              "a raise is not a str where a bool was declared")
+    assert_eq(count_of("g() -> int[] {{ fail \"unwritten\" }}"), "0",
+              "nor a str where a list was declared")
+}
+
+test_a_top_level_constant_is_a_name_the_module_knows() {
+    assert_eq(count_of("Seed = 1000 f() -> int => Seed"), "0",
+              "a constant is in scope for every function under it")
+    assert_eq(count_of("Name = \"m\" f() -> int => Name"), "1",
+              "and carries the type of the value it binds")
+}

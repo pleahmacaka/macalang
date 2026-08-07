@@ -15,7 +15,7 @@ emit_expr(e: Expr) -> str =>
         EBinary  => emit_binary(e)
         ETernary => emit_ternary(e)
         EIf      => emit_ternary(e)
-        EUnary   => "({e.text}{emit_expr(e.children.get(0))})"
+        EUnary   => emit_unary(e)
         ERecord  => "({e.text}){{ {emit_lit_fields(e.children, 0)} }}"
         EWith    => emit_with(e)
         EBlock   => emit_block(e)
@@ -25,6 +25,15 @@ emit_expr(e: Expr) -> str =>
         EList    => emit_list(e)
         _        => "0"
     }
+
+emit_unary(e: Expr) -> str {
+    if e.text == "fail" {
+        "({{ fprintf(stderr, \"%s\\n\", {emit_expr(e.children.get(0))}); "
+            ++ "exit(1); 0; }})"
+    } else {
+        "({e.text}{emit_expr(e.children.get(0))})"
+    }
+}
 
 emit_bool(e: Expr) -> str {
     if e.text == "true" {
@@ -558,8 +567,22 @@ c_preamble() -> str =>
     "static int maca_write_file(const char* path, const char* text) {{ FILE* f = fopen(path, \"wb\"); if (!f) return 0; fputs(text, f); fclose(f); return 1; }}\n"
 
 emit_module(m: Module) -> str =>
-    c_preamble() ++ emit_types(m.items, 0) ++ emit_protos(m.items, 0)
-        ++ emit_bodies(m.items, 0)
+    c_preamble() ++ emit_types(m.items, 0) ++ emit_consts(m.items, 0)
+        ++ emit_protos(m.items, 0) ++ emit_bodies(m.items, 0)
+
+emit_consts(items: Stmt[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else if items.get(i).kind == SBind {
+        "{emit_const(items.get(i))}\n{emit_consts(items, i + 1)}"
+    } else {
+        emit_consts(items, i + 1)
+    }
+}
+
+emit_const(s: Stmt) -> str =>
+    "static const {guessed_c_type(s.value)} {s.name} = "
+        ++ "{emit_expr(s.value)};"
 
 is_type_item(s: Stmt) -> bool =>
     s.kind == SRecord || s.kind == SSum

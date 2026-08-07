@@ -136,3 +136,16 @@ test_a_plain_type_is_untouched_by_the_function_case() {
     assert_eq(rtype("str"), "String", "no arrow, no change")
     assert_eq(rtype("int[]"), "Vec<i64>", "nor for a list")
 }
+
+test_a_constant_takes_a_borrowed_string_not_an_owned_one() {
+    out = remit_module(annotated(parse_module(lex("Name = \"m\""), 0, [])))
+
+    assert(out.index_of("const Name: &str = \"m\";") >= 0,
+           "String is not constructible in a const, &str is")
+}
+
+test_a_raise_is_a_panic() {
+    out = remit_fn(parse_fn(lex("f() -> int {{ fail \"gone\" }}"), 0).snode)
+
+    assert(out.index_of("panic!") >= 0, "a raise diverges, so it fits any type")
+}

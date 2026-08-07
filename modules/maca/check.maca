@@ -117,9 +117,18 @@ collect_item(env: Env, s: Stmt) -> Env {
         add_fields(env, s.name, s.params, 0)
     } else if s.kind == SSum {
         add_ctors(env, s.name, s.params, 0)
+    } else if s.kind == SBind {
+        add_const(env, s)
     } else {
         env
     }
+}
+
+add_const(env: Env, s: Stmt) -> Env {
+    got = type_in(env, s.value)
+
+    got.env with { names = got.env.names ++ [s.name],
+                   types = got.env.types ++ [got.ty] }
 }
 
 add_fn(env: Env, s: Stmt) -> Env {
@@ -162,7 +171,7 @@ type_in(env: Env, e: Expr) -> Typed =>
         EBinary  => binop_type(env, e)
         ETernary => ternary_type(env, e)
         EIf      => ternary_type(env, e)
-        EUnary   => type_in(env, e.children.get(0))
+        EUnary   => unary_type(env, e)
         ERecord  => typed(check_fields(env, e.text, e.children, 0),
                           t_con(e.text, []))
         EWith    => with_type(env, e)
@@ -174,6 +183,16 @@ type_in(env: Env, e: Expr) -> Typed =>
         EList    => list_type(env, e)
         _        => typed(env, t_any())
     }
+
+unary_type(env: Env, e: Expr) -> Typed {
+    inner = type_in(env, e.children.get(0))
+
+    if e.text == "fail" {
+        typed(inner.env, t_any())
+    } else {
+        inner
+    }
+}
 
 ident_type(env: Env, e: Expr) -> Typed {
     at = env.names.index_of(e.text)

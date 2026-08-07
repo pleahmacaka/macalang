@@ -18,7 +18,7 @@ remit_expr(e: Expr) -> str =>
         EBinary  => remit_binary(e)
         ETernary => remit_ternary(e)
         EIf      => remit_ternary(e)
-        EUnary   => "({e.text}{remit_expr(e.children.get(0))})"
+        EUnary   => remit_unary(e)
         ERecord  => "{e.text} {{ {remit_lit_fields(e.children)} }}"
         EWith    => remit_with(e)
         EBlock   => remit_block(e)
@@ -28,6 +28,14 @@ remit_expr(e: Expr) -> str =>
         EList    => "vec![{remit_args(e.children, 0)}]"
         _        => "0i64"
     }
+
+remit_unary(e: Expr) -> str {
+    if e.text == "fail" {
+        "panic!(\"{{}}\", {remit_expr(e.children.get(0))})"
+    } else {
+        "({e.text}{remit_expr(e.children.get(0))})"
+    }
+}
 
 remit_ternary(e: Expr) -> str {
     cond = remit_expr(e.children.get(0))
@@ -311,10 +319,26 @@ remit_item(s: Stmt) -> str {
         remit_struct(s)
     } else if s.kind == SSum {
         remit_sum(s)
+    } else if s.kind == SBind {
+        remit_const(s)
     } else {
         remit_fn(s)
     }
 }
+
+remit_const(s: Stmt) -> str =>
+    "const {s.name}: {rconst_type(s.value)} = {rconst_value(s.value)};"
+
+rconst_type(e: Expr) -> str =>
+    match e.kind {
+        EStr   => "&str"
+        EFloat => "f64"
+        EBool  => "bool"
+        _      => "i64"
+    }
+
+rconst_value(e: Expr) -> str =>
+    e.kind == EStr ? "\"{e.text}\"" : remit_expr(e)
 
 remit_struct(s: Stmt) -> str {
     fields = s.params.map(remit_struct_field).join(", ")
