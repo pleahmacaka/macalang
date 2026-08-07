@@ -26,7 +26,7 @@ lexed(tokens: Token[], errors: str[]) -> Lexed =>
     Lexed { tokens, errors, pos = 0 }
 
 keep(acc: Lexed, t: Token) -> Lexed =>
-    acc with { tokens = acc.tokens ++ [t] }
+    acc with { tokens = acc.tokens.push(t) }
 
 moved(acc: Lexed, i: int) -> Lexed =>
     acc with { pos = i }
@@ -45,16 +45,29 @@ lex_all(src: str) -> Lexed {
 }
 
 scan(cs: str[], out: Lexed, hi: int) -> Lexed {
-    mid = out.pos + (hi - out.pos) / 2
-
     if out.pos >= hi {
         out
     } else if hi - out.pos == 1 {
         step(cs, out)
     } else {
-        scan(cs, scan(cs, out, mid), hi)
+        halves(cs, out, hi, out.pos + (hi - out.pos) / 2)
     }
 }
+
+halves(cs: str[], out: Lexed, hi: int, mid: int) -> Lexed {
+    left = scan(cs, emptied(out), mid)
+    right = scan(cs, emptied(left), hi)
+
+    merged_runs(out, left, right)
+}
+
+emptied(acc: Lexed) -> Lexed =>
+    Lexed { tokens = [], errors = [], pos = acc.pos }
+
+merged_runs(out: Lexed, left: Lexed, right: Lexed) -> Lexed =>
+    Lexed { tokens = out.tokens ++ left.tokens ++ right.tokens,
+            errors = out.errors ++ left.errors ++ right.errors,
+            pos = right.pos }
 
 end_run(out: Lexed, i: int, n: int) -> Lexed {
     if n >= 4 {
@@ -70,6 +83,7 @@ step(cs: str[], out: Lexed) -> Lexed {
     match true {
         _ if is_space(c)   => moved(out, i + 1)
         _ if comments(cs, i) => moved(out, line_end(cs, i))
+        _ if triple(cs, i) => lex_raw(cs, i, out)
         _ if c == "\""     => lex_string(cs, i, out)
         _ if is_digit(c)   => lex_number(cs, i, out)
         _ if is_alpha(c)   => lex_word(cs, i, out)
@@ -85,6 +99,56 @@ line_end(cs: str[], i: int) -> int {
         line_end(cs, i + 1)
     } else {
         i
+    }
+}
+
+triple(cs: str[], i: int) -> bool =>
+    cs.get(i) == "\"" && at_or_blank(cs, i + 1) == "\""
+        && at_or_blank(cs, i + 2) == "\""
+
+raw_end(cs: str[], i: int) -> int {
+    if i + 2 >= cs.length() {
+        cs.length()
+    } else if triple(cs, i) {
+        i
+    } else {
+        raw_end(cs, i + 1)
+    }
+}
+
+lex_raw(cs: str[], i: int, out: Lexed) -> Lexed {
+    j = raw_end(cs, i + 3)
+    text = escape_raw(span(cs, i + 3, j).chars(), 0, "")
+    held = keep(unterminated(out, cs, j), mk_token(TStr, text, i))
+
+    moved(held, j + 3)
+}
+
+escape_raw(cs: str[], i: int, acc: str) -> str {
+    if i >= cs.length() {
+        acc
+    } else {
+        escape_raw(cs, i + 1, acc ++ raw_char(cs.get(i)))
+    }
+}
+
+raw_char(c: str) -> str {
+    if c == "\\" {
+        "\\\\"
+    } else if c == "\"" {
+        "\\\""
+    } else if c == "\n" {
+        "\\n"
+    } else if c == "\r" {
+        "\\r"
+    } else if c == "\t" {
+        "\\t"
+    } else if c == "{{" {
+        "{{{{"
+    } else if c == "}}" {
+        "}}}}"
+    } else {
+        c
     }
 }
 
@@ -170,11 +234,21 @@ lex_float(cs: str[], i: int, dot: int, out: Lexed) -> Lexed {
     moved(keep(out, mk_token(TFloat, span(cs, i, k), i)), k)
 }
 
-lex_punct(cs: str[], i: int, out: Lexed, c: str) -> Lexed {
-    nxt = if i + 1 < cs.length() { cs.get(i + 1) } else { "" }
-    two = c ++ nxt
+at_or_blank(cs: str[], i: int) -> str {
+    if i < cs.length() {
+        cs.get(i)
+    } else {
+        ""
+    }
+}
 
-    if is_two_char(two) {
+lex_punct(cs: str[], i: int, out: Lexed, c: str) -> Lexed {
+    two = c ++ at_or_blank(cs, i + 1)
+    three = two ++ at_or_blank(cs, i + 2)
+
+    if three == "..." {
+        moved(keep(out, mk_token(Ellipsis, three, i)), i + 3)
+    } else if is_two_char(two) {
         moved(keep(out, mk_token(two_char_kind(two), two, i)), i + 2)
     } else {
         moved(keep(unknown(out, c, i), mk_token(punct_kind(c), c, i)), i + 1)
@@ -183,10 +257,12 @@ lex_punct(cs: str[], i: int, out: Lexed, c: str) -> Lexed {
 
 is_two_char(s: str) -> bool =>
     s == "->" || s == "=>" || s == "==" || s == "!=" ||
-    s == "<=" || s == ">=" || s == "++" || s == "&&" || s == "||"
+    s == "<=" || s == ">=" || s == "++" || s == "&&" || s == "||" ||
+    s == ".."
 
 two_char_kind(s: str) -> Kind =>
     match s {
+        ".." => DotDot
         "->" => Arrow
         "=>" => FatArrow
         "==" => EqEq

@@ -81,3 +81,58 @@ test_the_tokens_still_come_back_beside_the_errors() {
               "name, the unknown character, name, Eof run: recovery keeps going")
     assert_eq(str(both.errors.length()), "1", "and the problem is recorded")
 }
+
+Quote = "\""
+
+Raw = Quote ++ Quote ++ Quote
+
+OpenBrace = "{{"
+
+test_a_raw_string_takes_its_body_verbatim() {
+    src = Raw ++ "a" ++ Quote ++ "b" ++ Raw
+
+    assert_eq(count_of(src), "5", "one string token and the Eof run")
+    assert_eq(text_at(src, 0), "a\\\"b",
+              "the quote inside is escaped, so it re-emits as it was written")
+}
+
+test_a_raw_string_doubles_the_braces_it_holds() {
+    src = Raw ++ "h" ++ OpenBrace ++ "c" ++ "}}" ++ Raw
+
+    assert_eq(text_at(src, 0), "h" ++ OpenBrace ++ OpenBrace ++ "c}}}}",
+              "a brace is doubled, so the parser reads it as a literal one")
+}
+
+test_a_raw_string_that_never_closes_is_still_an_error() {
+    both = lex_all(Raw ++ "a b c")
+
+    assert_eq(str(both.errors.length()), "1", "the run to EOF is reported")
+    assert_eq(both.errors.get(0), "unterminated string",
+              "with the message an unclosed string has always had")
+}
+
+test_an_ordinary_string_is_not_a_raw_one() {
+    assert_eq(count_of(Quote ++ "ab" ++ Quote), "5", "one string and the run")
+    assert_eq(count_of("(" ++ Quote ++ Quote ++ ")"), "7",
+              "an empty string beside a paren is not three quotes")
+}
+
+test_two_dots_are_a_range_and_three_are_an_ellipsis() {
+    assert_eq(count_of("0..5"), "7", "int, `..`, int, and the Eof run")
+    assert_eq(text_at("0..5", 1), "..", "the two dots are one token")
+    assert_eq(text_at("...rest", 0), "...", "and three dots are one more")
+    assert_eq(text_at("a.b", 1), ".", "a lone dot is still a field access")
+}
+
+test_a_loop_keyword_is_a_keyword_and_from_is_a_name() {
+    assert(lex("while")[0].kind == KwWhile, "while opens a loop")
+    assert(lex("break")[0].kind == KwBreak, "break leaves one")
+    assert(lex("continue")[0].kind == KwContinue, "continue goes round again")
+    assert(lex("from")[0].kind == TIdent,
+           "from only reads as a keyword inside an import, so it stays a name")
+}
+
+test_a_source_of_many_tokens_costs_no_more_than_its_length() {
+    assert_eq(count_of(widened("a ", 14)), "16388",
+              "16384 names and the Eof run, from a source built by doubling")
+}
