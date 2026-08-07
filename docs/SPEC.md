@@ -175,11 +175,12 @@ and which manifest answers.
   reassignment of a mutable binding (`i = i + 1`). The `while` condition must be
   `bool`. Lowered to native C, embedded C, and JS.
   (`apps/examples/loops.maca`; `apps/examples/bad/while_cond.maca` is rejected.)
-- Inclusive integer ranges `lo..hi` (counts `lo … hi`, both ends), an `int[]`
-  value. `for i in lo..hi` lowers to a counting loop in C (no array
-  materialized); in value position (`xs = 1..n`) it materializes the array.
-  Endpoints must be `int`. (`apps/examples/range.maca`; `apps/examples/bad/range_end.maca`
-  is rejected.)
+- Half-open integer ranges `lo..hi` (counts `lo … hi - 1`, so `5..5` is empty),
+  an `int[]` value. `for i in lo..hi` lowers to a counting loop in C (no array
+  materialized) in the frozen stage-0 backend; the Maca-written backend
+  materializes it through `maca_range` in both positions, which `xs = 1..n`
+  needs anyway. Endpoints must be `int`. (`apps/examples/range.maca`;
+  `apps/examples/bad/range_end.maca` is rejected.)
 - Dev environments in Maca (`maca dev`): `dev.maca` (config mode) → a self-
   contained `flake.nix` devShell via the Nix backend's `emit_flake`. `dev.name`,
   `dev.packages = a, b`, `dev.env = { K = "v" }`, `dev.shellHook`. Replaces a
@@ -201,6 +202,10 @@ and which manifest answers.
   string; `xs[i] = v` and `p.field = v` assign through the lvalue. Arrays lower
   to the runtime buffer (`arr.data[i]`), strings to `maca_str_at`; JS/JVM/embedded
   use their native subscript. (`apps/examples/indexing.maca`.)
+- **A string is indexed by byte.** `length`, `at`, `get`, `slice` and `chars`
+  all count bytes, and `at(i)` is therefore the one-byte `str` at offset `i`,
+  never a code point. That is what `maca_str_at` does and what `chr`/`ord`
+  assume, so a caller assembling UTF-8 does it a byte at a time on purpose.
 - Functional record update: `base with { field = value }` yields a copy of a
   record with the named fields overwritten, leaving the original binding
   unchanged (C: struct copy; JS: object spread). (`apps/examples/record_update.maca`.)
