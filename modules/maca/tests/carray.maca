@@ -174,8 +174,9 @@ test_a_character_class_reads_a_byte_from_either_receiver() {
            "a one-character str is classified by its first byte")
     assert(digit.index_of("(isdigit((unsigned char)(c)[0]) != 0)") >= 0,
            "the same for a digit, which is what a number literal starts on")
-    assert(code.index_of("(isalpha((unsigned char)(((int)s[0]))) != 0)") >= 0,
-           "and .at already produced a byte, so it is classified as it is")
+    assert(code.index_of("(isalpha((unsigned char)(maca_str_at(s, 0))[0])"
+                         ++ " != 0)") >= 0,
+           "and .at produced a one-character str, read by its first byte")
     assert(cell.index_of("#include <ctype.h>") >= 0,
            "the three classes are the C library's, so the header comes too")
 }
@@ -249,14 +250,15 @@ test_write_file_lowers_to_the_helper_the_preamble_defines() {
            "which is the preamble's, beside every other helper")
 }
 
-test_upper_copies_a_string_and_folds_a_single_byte() {
+test_upper_copies_a_string_and_folds_a_single_character() {
     whole = c_for("f(s: str) -> str => s.upper()")
-    one = c_for("f(s: str) -> int => s.at(0).upper()")
+    one = c_for("f(s: str) -> str => s.at(0).upper()")
 
     assert(whole.index_of("maca_upper(s)") >= 0,
            "a str is uppercased into a fresh block, never in place")
-    assert(one.index_of("toupper((unsigned char)(((int)s[0])))") >= 0,
-           "a byte folds with toupper, which is how a type name is spotted")
+    assert(one.index_of("maca_upper(maca_str_at(s, 0))") >= 0,
+           "one character folds the same way, which is how a type name"
+               ++ " is spotted")
 }
 
 test_a_called_parameter_is_declared_as_a_function_pointer() {

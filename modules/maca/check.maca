@@ -74,10 +74,30 @@ ty_named(name: str) -> Ty {
         t_bool()
     } else if name == "bytes" {
         t_bytes()
+    } else if is_type_var(name) {
+        t_any()
     } else {
         t_con(name, [])
     }
 }
+
+is_type_var(name: str) -> bool {
+    if name == "unit" || name.index_of("__") >= 0 {
+        false
+    } else if !starts_lower(name) {
+        false
+    } else {
+        !sized_number(name)
+    }
+}
+
+starts_lower(name: str) -> bool =>
+    name.length() > 0 && name.at(0).is_alpha()
+        && name.at(0).upper() != name.at(0)
+
+sized_number(name: str) -> bool =>
+    name.length() > 1 && name.at(1).is_ascii_digit()
+        && (name.at(0) == "i" || name.at(0) == "u" || name.at(0) == "f")
 
 declared_type(env: Env, decl: str) -> Typed {
     if decl != "" {
@@ -126,9 +146,10 @@ collect_item(env: Env, s: Stmt) -> Env {
 
 add_const(env: Env, s: Stmt) -> Env {
     got = type_in(env, s.value)
+    held = if s.ret != "" { ty_named(s.ret) } else { got.ty }
 
     got.env with { names = got.env.names ++ [s.name],
-                   types = got.env.types ++ [got.ty] }
+                   types = got.env.types ++ [held] }
 }
 
 add_fn(env: Env, s: Stmt) -> Env {
@@ -181,8 +202,54 @@ type_in(env: Env, e: Expr) -> Typed =>
         EGuard   => typed(walk_args(env, e.children, 0), t_bool())
         EMatch   => match_type(env, e)
         EList    => list_type(env, e)
+        EWhile   => while_type(env, e)
+        EFor     => for_type(env, e)
+        ELambda  => lambda_type(env, e)
         _        => typed(env, t_any())
     }
+
+lambda_type(env: Env, e: Expr) -> Typed {
+    ps = lambda_params(e)
+    made = param_types(env, ps, 0, [])
+    inner = bind_params(made.env, ps, made.tys, 0)
+    body = type_in(inner, lambda_body(e))
+
+    typed(body.env with { names = env.names, types = env.types },
+          t_fn(made.tys, body.ty))
+}
+
+while_type(env: Env, e: Expr) -> Typed {
+    cond = type_in(env, e.children.get(0))
+    ready = joined(cond.env, t_bool(), cond.ty)
+    inner = check_stmts(ready, e.stmts, 0)
+
+    typed(inner with { names = env.names, types = env.types }, t_unit())
+}
+
+for_type(env: Env, e: Expr) -> Typed {
+    over = type_in(env, e.children.get(0))
+    el = element_of(resolve(over.env.infer, over.ty))
+    inner = check_stmts(bind(over.env, e.text, el), e.stmts, 0)
+
+    typed(inner with { names = env.names, types = env.types }, t_unit())
+}
+
+check_stmts(env: Env, stmts: Stmt[], i: int) -> Env {
+    if i >= stmts.length() {
+        env
+    } else {
+        st = stmts.get(i)
+        got = stmt_type(env, st, false)
+
+        check_stmts(extend(got.env, st, got.ty), stmts, i + 1)
+    }
+}
+
+range_type(env: Env, a: Ty, b: Ty) -> Typed {
+    lo = joined(env, t_int(), a)
+
+    typed(joined(lo, t_int(), b), t_array(t_int()))
+}
 
 unary_type(env: Env, e: Expr) -> Typed {
     inner = type_in(env, e.children.get(0))
@@ -284,16 +351,48 @@ walk_args(env: Env, args: Expr[], i: int) -> Env {
 }
 
 builtin_type(name: str) -> Ty {
-    if name == "str" {
+    if is_str_builtin(name) {
         t_str()
-    } else if name == "int" || name == "exec" {
+    } else if is_float_builtin(name) {
+        t_float()
+    } else if is_int_builtin(name) {
         t_int()
-    } else if name == "info" || name == "print" {
+    } else if is_bool_builtin(name) {
+        t_bool()
+    } else if name == "list_dir" {
+        t_array(t_str())
+    } else if is_io_builtin(name) {
         t_unit()
     } else {
         t_any()
     }
 }
+
+is_str_builtin(name: str) -> bool =>
+    name == "str" || name == "chr" || name == "input" || name == "capture"
+        || name == "read_file" || name == "env" || name == "cwd"
+        || name == "real_path"
+
+is_float_builtin(name: str) -> bool =>
+    name == "float" || name == "sqrt" || name == "floor" || name == "ceil"
+        || name == "round" || name == "pow" || name == "sin" || name == "cos"
+        || name == "tan" || name == "log" || name == "exp"
+
+is_int_builtin(name: str) -> bool =>
+    name == "int" || name == "exec" || name == "len" || name == "ord"
+        || name == "sign" || name == "gcd" || name == "now_ms"
+        || name == "file_size" || name == "modified_ms"
+
+is_bool_builtin(name: str) -> bool =>
+    name == "write_file" || name == "file_exists" || name == "make_dir"
+        || name == "is_dir" || name == "remove_file" || name == "remove_dir"
+        || name == "copy_bytes" || name == "chdir" || name == "is_tty"
+
+is_io_builtin(name: str) -> bool =>
+    name == "info" || name == "print" || name == "err" || name == "warn"
+        || name == "debug" || name == "notice" || name == "crit"
+        || name == "alert" || name == "emerg" || name == "panic"
+        || name == "sleep_ms"
 
 is_compare(op: str) -> bool =>
     op == "==" || op == "!=" || op == "<" || op == ">"
@@ -316,12 +415,14 @@ operator_type(env: Env, e: Expr) -> Typed {
 
     if e.text == "++" {
         typed(rhs.env, concat_type(rhs.env, lhs.ty, rhs.ty))
+    } else if e.text == ".." {
+        range_type(rhs.env, lhs.ty, rhs.ty)
     } else if is_compare(e.text) {
         typed(joined(rhs.env, lhs.ty, rhs.ty), t_bool())
     } else if is_logic(e.text) {
         typed(rhs.env, t_bool())
     } else {
-        arith_type(rhs.env, lhs.ty, rhs.ty)
+        arith_type(rhs.env, e.text, lhs.ty, rhs.ty)
     }
 }
 
@@ -344,7 +445,53 @@ concat_type(env: Env, a: Ty, b: Ty) -> Ty {
 numeric(t: Ty) -> bool =>
     t.kind == KInt || t.kind == KFloat || t.kind == KVar || absorbing(t)
 
-arith_type(env: Env, a: Ty, b: Ty) -> Typed {
+overload_name(op: str) -> str {
+    if op == "+" {
+        "add"
+    } else if op == "-" {
+        "sub"
+    } else if op == "*" {
+        "mul"
+    } else if op == "/" {
+        "div"
+    } else {
+        ""
+    }
+}
+
+declares_field(env: Env, owner: str, i: int) -> bool {
+    if i >= env.fields.length() {
+        false
+    } else if env.fields.get(i).index_of(owner ++ ".") == 0 {
+        true
+    } else {
+        declares_field(env, owner, i + 1)
+    }
+}
+
+is_nominal(env: Env, t: Ty) -> bool =>
+    t.kind == KCon && t.name != "Array"
+        && (env.owners.index_of(t.name) >= 0 || declares_field(env, t.name, 0))
+
+overload_at(env: Env, op: str, left: Ty) -> int {
+    if overload_name(op) == "" || !is_nominal(env, left) {
+        0 - 1
+    } else {
+        env.fns.index_of(overload_name(op))
+    }
+}
+
+arith_type(env: Env, op: str, a: Ty, b: Ty) -> Typed {
+    at = overload_at(env, op, resolve(env.infer, a))
+
+    if at >= 0 {
+        typed(env, fn_ret(env.sigs.get(at)))
+    } else {
+        numeric_type(env, a, b)
+    }
+}
+
+numeric_type(env: Env, a: Ty, b: Ty) -> Typed {
     step = unify(env.infer, a, b)
     ready = with_infer(env, step.infer)
     left = resolve(step.infer, a)
@@ -352,12 +499,14 @@ arith_type(env: Env, a: Ty, b: Ty) -> Typed {
 
     if step.error != "" {
         typed(complain(ready, step.error), t_error())
-    } else if !numeric(left) || !numeric(right) {
-        typed(complain(ready, "{show_ty(left)} is not a number"), t_error())
     } else if left.kind == KFloat || right.kind == KFloat {
         typed(ready, t_float())
-    } else {
+    } else if numeric(left) {
         typed(ready, t_int())
+    } else if left.kind == KCon {
+        typed(ready, left)
+    } else {
+        typed(complain(ready, "{show_ty(left)} is not a number"), t_error())
     }
 }
 
@@ -387,7 +536,7 @@ method_result(name: str, recv: Ty) -> Ty {
     if name == "length" || name == "count" || name == "index_of" {
         t_int()
     } else if name == "at" {
-        t_int()
+        element_of(recv)
     } else if name == "join" {
         t_str()
     } else if name == "chars" {
@@ -403,7 +552,7 @@ method_result(name: str, recv: Ty) -> Ty {
 
 element_of(t: Ty) -> Ty {
     if t.kind == KStr {
-        t_int()
+        t_str()
     } else if t.kind == KCon && t.name == "Array" && t.args.length() == 1 {
         t.args.get(0)
     } else {
@@ -515,17 +664,28 @@ check_body(env: Env, stmts: Stmt[], i: int, last: Ty) -> Typed {
     if i >= stmts.length() {
         typed(env, last)
     } else {
-        got = type_in(env, stmts.get(i).value)
+        st = stmts.get(i)
+        got = stmt_type(env, st, i == stmts.length() - 1)
 
-        check_body(extend(got.env, stmts.get(i), got.ty), stmts, i + 1, got.ty)
+        check_body(extend(got.env, st, got.ty), stmts, i + 1, got.ty)
+    }
+}
+
+stmt_type(env: Env, s: Stmt, is_last: bool) -> Typed {
+    if is_last || s.kind != SExpr || s.value.kind != EIf {
+        type_in(env, s.value)
+    } else {
+        typed(walk_args(env, s.value.children, 0), t_unit())
     }
 }
 
 extend(env: Env, s: Stmt, ty: Ty) -> Env {
-    if s.kind == SBind {
-        bind(env, s.name, ty)
-    } else {
+    if s.kind != SBind {
         env
+    } else if s.ret != "" {
+        bind(env, s.name, ty_named(s.ret))
+    } else {
+        bind(env, s.name, ty)
     }
 }
 
@@ -660,12 +820,20 @@ annotate_body(env: Env, stmts: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
     if i >= stmts.length() {
         acc
     } else {
-        st = stmts.get(i)
+        st = reassigned(env, stmts.get(i))
         got = type_in(env, st.value)
         marked = st with { value = annotate_expr(env, st.value) }
 
         annotate_body(extend(got.env, st, got.ty), stmts, i + 1,
                       acc ++ [marked])
+    }
+}
+
+reassigned(env: Env, s: Stmt) -> Stmt {
+    if s.kind == SBind && env.names.index_of(s.name) >= 0 {
+        s with { kind = SSet }
+    } else {
+        s
     }
 }
 

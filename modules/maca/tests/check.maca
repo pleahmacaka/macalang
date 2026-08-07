@@ -219,3 +219,91 @@ test_a_top_level_constant_is_a_name_the_module_knows() {
     assert_eq(count_of("Name = \"m\" f() -> int => Name"), "1",
               "and carries the type of the value it binds")
 }
+
+Loop = "f(n: int) -> int {{ i = 0 while i < n {{ i = i + 1 }} i }}"
+
+test_a_while_condition_must_be_a_bool() {
+    assert_eq(count_of(Loop), "0", "a comparison is a bool")
+    bad = errors_of("f() -> int {{ while 5 {{ info(\"x\") }} 0 }}")
+    assert_eq(str(bad.length()), "1", "5 is not a condition")
+    assert_eq(bad.get(0), "type mismatch: expected bool, found int",
+              "and the diagnostic says which side is wrong")
+}
+
+test_a_range_counts_between_two_ints() {
+    assert_eq(count_of("f(n: int) -> int[] => 0..n"), "0", "both ends are int")
+    assert_eq(count_of("f() -> int[] => 0..\"ten\""), "1",
+              "a str end is refused")
+    assert_eq(type_named_in("1..5"), "Array int", "a range is a list of int")
+}
+
+test_a_for_binder_takes_the_element_type() {
+    assert_eq(count_of("f(xs: str[]) -> int {{ for s in xs"
+                       ++ " {{ info(s) }} 0 }}"), "0",
+              "the binder is a str, which info accepts")
+    assert_eq(count_of("g(n: int) -> int => n"
+                       ++ " f(xs: str[]) -> int {{ for s in xs"
+                       ++ " {{ g(s) }} 0 }}"), "1",
+              "and it is not an int, so a call that wants one is refused")
+}
+
+test_a_string_index_is_a_one_character_string() {
+    assert_eq(count_of("f(s: str) -> str => s.at(0)"), "0",
+              "at gives a str, which is what the handbook promises")
+    bad = errors_of("f(s: str) -> int => s.at(0)")
+    assert_eq(str(bad.length()), "1", "so it is not an int")
+    assert_eq(bad.get(0), "type mismatch: expected int, found str",
+              "and the mismatch names both")
+    assert_eq(count_of("f(xs: int[]) -> int => xs.get(0)"), "0",
+              "a list element is still the element")
+}
+
+test_a_lowercase_type_variable_fits_whatever_it_is_given() {
+    assert_eq(count_of("id(x: a) -> a => x use() -> int => id(5) + id(6)"),
+              "0", "a is a variable, not a nominal type named a")
+    assert_eq(count_of("f(v: f32x8) -> f32x8 => v"), "0",
+              "and a sized number is concrete, so it unifies with itself")
+    assert_eq(count_of("f(p: Point) -> int => p"), "1",
+              "a capitalised type is still nominal and still checked")
+}
+
+test_arithmetic_over_a_nominal_type_takes_its_own_result() {
+    assert_eq(count_of("dot(a: f32x8, b: f32x8) -> f32x8 => a * b"), "0",
+              "a vector times a vector is a vector")
+    assert_eq(count_of("V = {{ x: int }} add(a: V, b: V) -> V => a"
+                       ++ " use(p: V, q: V) -> V => p + q"), "0",
+              "a record with an `add` beside it takes that result")
+    assert_eq(count_of("V = {{ x: int }} mul(a: V, n: int) -> V => a"
+                       ++ " twice(p: V) -> V => p * 2"), "0",
+              "and the overload settles the result before the two sides meet")
+    bad = errors_of("j(a: str, b: str) -> int => a + b")
+    assert_eq(str(bad.length()), "1", "++ is still what joins two strings")
+    assert_eq(bad.get(0), "str is not a number", "and `+` still says so")
+}
+
+test_a_statement_if_has_no_value_to_agree_on() {
+    assert_eq(count_of("f(n: int) -> int {{ q = 0 b = true"
+                       ++ " if n > 0 {{ b = false }} else {{ q = 1 }} q }}"),
+              "0", "the branches of a statement if need not agree")
+    assert_eq(count_of("f(n: int) -> int =>"
+                       ++ " if n > 0 {{ 1 }} else {{ \"x\" }}"), "1",
+              "but in value position they still must")
+}
+
+test_a_builtin_carries_the_type_its_result_has() {
+    assert_eq(count_of("f(n: int) -> float => float(n) / 2.0"), "0",
+              "float() is a float, so the division is one too")
+    assert_eq(count_of("f(n: int) -> int => float(n)"), "1",
+              "and it is not an int")
+    assert_eq(count_of("f(p: str) -> bool => file_exists(p)"), "0",
+              "an existence test is a bool")
+    assert_eq(count_of("f() -> str[] => list_dir(\".\")"), "0",
+              "and a listing is a list of str")
+}
+
+test_a_typed_binding_is_the_type_it_declares() {
+    assert_eq(count_of("f() -> str {{ s: str = \"a\" s }}"), "0",
+              "the annotation is what the name carries")
+    assert_eq(count_of("f() -> int {{ s: str = \"a\" s }}"), "1",
+              "so returning it as an int is refused")
+}

@@ -26,8 +26,24 @@ remit_expr(e: Expr) -> str =>
         EMatch   => remit_match(e)
         EMethod  => remit_method(e)
         EList    => "vec![{remit_args(e.children, 0)}]"
+        EJump    => e.text
+        EWhile   => remit_while(e)
+        EFor     => remit_for(e)
+        ELambda  => remit_lambda(e)
         _        => "0i64"
     }
+
+remit_lambda(e: Expr) -> str =>
+    "|{lambda_params(e).map(binder_name).join(", ")}|"
+        ++ " {remit_expr(lambda_body(e))}"
+
+remit_while(e: Expr) -> str =>
+    "while {remit_expr(e.children.get(0))}"
+        ++ " {{ {rblock_stmts(e.stmts, 0)}}}"
+
+remit_for(e: Expr) -> str =>
+    "for {e.text} in {remit_expr(e.children.get(0))}"
+        ++ " {{ {rblock_stmts(e.stmts, 0)}}}"
 
 remit_unary(e: Expr) -> str {
     if e.text == "fail" {
@@ -97,6 +113,9 @@ remit_str_method(e: Expr, recv: str) -> str {
     }
 }
 
+rstr_index(e: Expr) -> bool =>
+    (e.text == "at" || e.text == "get") && e.children.get(0).ty == "str"
+
 remit_method(e: Expr) -> str {
     recv = remit_expr(e.children.get(0))
 
@@ -109,7 +128,11 @@ remit_method(e: Expr) -> str {
         ".collect::<Vec<_>>()"
     } else if e.text == "length" || e.text == "count" {
         "(({recv}).len() as i64)"
-    } else if e.text == "at" || (e.text == "get" && e.children.get(0).ty == "str") {
+    } else if rstr_index(e) {
+        idx = remit_expr(e.children.get(1))
+        "{{ let _i = ({idx}) as usize;"
+            ++ " ({recv}).get(_i.._i + 1).unwrap_or(\"\").to_string() }}"
+    } else if e.text == "at" {
         idx = remit_expr(e.children.get(1))
         "(({recv}).as_bytes()[({idx}) as usize] as i64)"
     } else if e.text == "get" {
@@ -151,13 +174,26 @@ remit_binary(e: Expr) -> str {
 
     on_list = rlist(e.children.get(0).ty) || rlist(e.children.get(1).ty)
 
-    if e.text == "++" && on_list {
+    lhs = e.children.get(0)
+
+    if e.text == "=" && lhs.kind == EMethod && lhs.text == "get" {
+        rstore(lhs, r)
+    } else if e.text == ".." {
+        "(({l})..({r})).collect::<Vec<i64>>()"
+    } else if e.text == "++" && on_list {
         "[{l}, {r}].concat()"
     } else if e.text == "++" {
         "format!(\"{{}}{{}}\", {l}, {r})"
     } else {
         "({l} {e.text} {r})"
     }
+}
+
+rstore(l: Expr, value: str) -> str {
+    holder = remit_expr(l.children.get(0))
+    ix = remit_expr(l.children.get(1))
+
+    "{holder}[({ix}) as usize] = {value}"
 }
 
 rlist(ty: str) -> bool =>
@@ -194,7 +230,42 @@ rblock_stmts(body: Stmt[], i: int) -> str {
     if i >= body.length() {
         ""
     } else {
-        "{remit_stmt(body.get(i), false)} {rblock_stmts(body, i + 1)}"
+        here = remit_stmt(body.get(i), false, rmut(body, i + 1, body.get(i)))
+
+        "{here} {rblock_stmts(body, i + 1)}"
+    }
+}
+
+rmut(body: Stmt[], i: int, s: Stmt) -> bool {
+    if s.kind != SBind {
+        false
+    } else {
+        rassigned_in(body, i, s.name)
+    }
+}
+
+rassigned_in(body: Stmt[], i: int, name: str) -> bool {
+    if i >= body.length() {
+        false
+    } else if body.get(i).kind == SSet && body.get(i).name == name {
+        true
+    } else if rassigned_deep(body.get(i).value, name) {
+        true
+    } else {
+        rassigned_in(body, i + 1, name)
+    }
+}
+
+rassigned_deep(e: Expr, name: str) -> bool =>
+    rassigned_in(e.stmts, 0, name) || rassigned_any(e.children, 0, name)
+
+rassigned_any(cs: Expr[], i: int, name: str) -> bool {
+    if i >= cs.length() {
+        false
+    } else if rassigned_deep(cs.get(i), name) {
+        true
+    } else {
+        rassigned_any(cs, i + 1, name)
     }
 }
 
@@ -280,7 +351,10 @@ rtype(ty: str) -> str {
 remit_fn(s: Stmt) -> str {
     body = remit_stmts(s.body, 0)
 
-    if s.name == "main" {
+    if s.body.length() == 0 {
+        params = s.params.map(remit_param).join(", ")
+        "extern \"C\" {{ fn {s.name}({params}) -> {rtype(s.ret)}; }}"
+    } else if s.name == "main" {
         "fn __maca_main() -> i64 {{ {body} }}\n"
             ++ "fn main() {{ std::process::exit(__maca_main() as i32); }}"
     } else {
@@ -296,18 +370,32 @@ remit_stmts(body: Stmt[], i: int) -> str {
     if i >= body.length() {
         ""
     } else {
-        here = remit_stmt(body.get(i), i == body.length() - 1)
+        last = i == body.length() - 1
+        here = remit_stmt(body.get(i), last, rmut(body, i + 1, body.get(i)))
         "{here} {remit_stmts(body, i + 1)}"
     }
 }
 
-remit_stmt(s: Stmt, is_last: bool) -> str {
-    if s.kind == SBind {
-        "let {s.name} = {remit_expr(s.value)};"
+remit_stmt(s: Stmt, is_last: bool, movable: bool) -> str {
+    if s.kind == SSet {
+        "{s.name} = {remit_expr(s.value)};"
+    } else if s.kind == SBind && s.ret != "" {
+        "let {rmut_word(movable)}{s.name}: {rtype(s.ret)}"
+            ++ " = {remit_expr(s.value)};"
+    } else if s.kind == SBind {
+        "let {rmut_word(movable)}{s.name} = {remit_expr(s.value)};"
     } else if is_last {
         remit_expr(s.value)
     } else {
         "{remit_expr(s.value)};"
+    }
+}
+
+rmut_word(movable: bool) -> str {
+    if movable {
+        "mut "
+    } else {
+        ""
     }
 }
 

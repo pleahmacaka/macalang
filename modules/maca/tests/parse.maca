@@ -124,16 +124,18 @@ test_an_array_length_is_not_a_string_length_in_c() {
            "a string still goes through strlen")
 }
 
-test_a_string_index_is_a_byte_and_an_array_index_is_an_element() {
-    assert(annotated_c("n(s: str) -> int => s.get(0)")
-                  .index_of("(int)s[0]") >= 0,
-           "get on a string is the byte at that offset")
+test_a_string_index_is_one_character_and_an_array_index_an_element() {
+    assert(annotated_c("n(s: str) -> str => s.get(0)")
+                  .index_of("maca_str_at(s, 0)") >= 0,
+           "get on a string is the one-character str at that offset")
     assert(annotated_c("n(xs: int[]) -> int => xs.get(0)")
                   .index_of("xs.data[0]") >= 0,
            "get on an array is the element")
-    assert(annotated_rust("n(s: str) -> int => s.get(0)")
-                  .index_of("as_bytes()") >= 0,
-           "Rust indexes a String's bytes")
+    assert(annotated_rust("n(s: str) -> str => s.get(0)")
+                  .index_of("get(_i.._i + 1)") >= 0,
+           "Rust takes the one-byte slice and owns it")
+    assert_eq(errors_in("n(s: str) -> int => s.at(0)"), "1",
+              "a one-character str is not an int")
 }
 
 test_a_local_takes_its_c_type_from_the_lowering() {
@@ -399,4 +401,185 @@ test_a_top_level_binding_is_a_declaration() {
 test_fail_carries_the_message_it_raises() {
     assert_eq(shown("fail \"gone\""), "(failgone)",
               "fail is a prefix over the value it raises")
+}
+
+Counter = "run(n: int) -> int {{ i = 0 while i < n {{ i = i + 1 }} i }}"
+
+test_a_while_loop_is_a_statement_with_a_condition_and_a_body() {
+    assert_eq(str(bad_of(Counter).length()), "0",
+              "the loop is read whole, so nothing is skipped")
+    assert(c_of(Counter).index_of("while ((i < n))") >= 0,
+           "C has a while of its own")
+    assert(rust_of(Counter).index_of("while (i < n)") >= 0, "so does Rust")
+}
+
+test_a_loop_body_reassigns_rather_than_redeclaring() {
+    out = annotated_c(Counter)
+
+    assert(out.index_of("i = (i + 1);") >= 0,
+           "the second write to i is an assignment")
+    assert(out.index_of("int i = (i + 1);") < 0,
+           "never a fresh declaration, which would loop for ever")
+}
+
+Jumper = "run(n: int) -> int {{ i = 0 while true {{ if i > n {{ break }}"
+    ++ " i = i + 1 }} i }}"
+
+test_break_and_continue_are_the_loop_keywords_not_names() {
+    assert(c_of(Jumper).index_of("break") >= 0, "break lowers to C's break")
+    assert(parse_expr(lex("break"), 0).node.kind == EJump,
+           "break is a jump of its own, never a name the program declared")
+    assert(parse_expr(lex("continue"), 0).node.kind == EJump,
+           "the same for continue")
+    assert_eq(shown("break"), "break", "and it prints as what it is")
+}
+
+Walker = "total(xs: int[]) -> int {{ acc = 0 for x in xs"
+    ++ " {{ acc = acc + x }} acc }}"
+
+test_a_for_loop_binds_one_element_at_a_time() {
+    assert_eq(str(bad_of(Walker).length()), "0", "the loop is read whole")
+    assert(annotated_c(Walker).index_of("int x = ((int)_f.data[_fi]);") >= 0,
+           "C walks the block and names each cell")
+    assert(annotated_rust(Walker).index_of("for x in xs") >= 0,
+           "Rust already has the loop")
+}
+
+test_a_range_counts_from_its_low_end_to_below_its_high_one() {
+    assert(annotated_c("f(n: int) -> int[] => 0..n")
+               .index_of("maca_range(0, n)") >= 0,
+           "the range materialises as a list")
+    assert_eq(shown("1..n + 1"), "(1 .. (n + 1))",
+              "`..` binds looser than `+`, so the end is the whole sum")
+}
+
+Extern = "py_call(m: str) -> str\nmain() -> int => 0"
+
+test_a_declaration_with_no_body_is_a_prototype() {
+    assert_eq(items_of(Extern), "2",
+              "the bodyless declaration and main are two items")
+    assert_eq(str(bad_of(Extern).length()), "0", "and neither is skipped")
+    assert(annotated_c(Extern).index_of("const char* py_call(const char* m);")
+               >= 0, "C gets the prototype")
+    assert(annotated_c(Extern).index_of("const char* py_call(const char* m) {{")
+               < 0, "and no definition, which would be a second symbol")
+}
+
+test_a_declaration_still_needs_a_body_to_get_one() {
+    assert(annotated_c("f() -> int => 1").index_of("int f() {{ return 1;") >= 0,
+           "a function that has a body still gets it emitted")
+}
+
+test_a_nested_array_and_an_applied_type_are_read_whole() {
+    nested = parse_module(lex("chunk(xs: int[]) -> int[][] => []"), 0, [])
+    assert_eq(nested.items.get(0).ret, "int[][]",
+              "the second `[]` belongs to the return type")
+    assert_eq(items_of("chunk(xs: int[]) -> int[][] => []"), "1",
+              "and it does not throw the walk off")
+    m = parse_module(lex("q(a: Map str str, n: int) -> int => n"), 0, [])
+    assert_eq(str(m.items.get(0).params.length()), "2",
+              "`Map str str` is one type, not three parameters")
+    assert_eq(m.items.get(0).params.get(0).ty, "Map str str",
+              "and the parameter keeps the whole applied type")
+}
+
+test_a_record_field_keeps_an_applied_type_too() {
+    m = parse_module(lex("R = {{\n    q: Map str str\n    n: int\n}}"), 0, [])
+    assert_eq(str(m.items.get(0).params.length()), "2", "two fields")
+    assert_eq(m.items.get(0).params.get(0).ty, "Map str str",
+              "the field type is not truncated to its head")
+}
+
+Header = "run(n: int) -> int {{ i = 0 while i < n {{ acc = 1 i = i + 1 }} i }}"
+
+test_a_loop_header_cannot_open_a_record_literal() {
+    assert_eq(str(bad_of(Header ++ " after() -> int => 1").length()), "0",
+              "the brace after the condition opens the body")
+    assert_eq(items_of(Header ++ " after() -> int => 1"), "2",
+              "so the declaration after the loop is still found")
+}
+
+test_a_record_literal_is_still_a_record_literal() {
+    assert_eq(shown("Point {{ x = 1, y = 2 }}"),
+              "Point {{ (x = 1), (y = 2) }}",
+              "outside a header a brace after a name is the literal")
+}
+
+test_a_lambda_is_an_expression_with_parameters_and_a_body() {
+    assert_eq(items_of("f(xs: int[]) -> int[] => xs.map(v => v * v)"), "1",
+              "the arrow inside the call is a lambda, not stray arguments")
+    assert_eq(str(bad_of("f(xs: int[]) -> int[] => xs.map(v => v * v)")
+                      .length()), "0", "and nothing is skipped")
+    assert(annotated_rust("f(xs: int[]) -> int[] => xs.map(v => v * v)")
+               .index_of("|v| (v * v)") >= 0, "Rust writes its own closure")
+    assert_eq(shown("(a, b) => a + b"), "?",
+              "a two-parameter lambda is one node")
+}
+
+test_a_lambda_argument_is_counted_as_one_argument() {
+    assert_eq(errors_in("pick(xs: int[], f) -> int => 0"
+                        ++ " use(xs: int[]) -> int => pick(xs, v => v > 2)"),
+              "0", "two arguments, the second a lambda")
+    assert_eq(errors_in("pick(xs: int[], f) -> int => 0"
+                        ++ " use(xs: int[]) -> int => pick(xs)"),
+              "1", "and a missing one is still an arity error")
+}
+
+test_a_subscript_reads_and_writes_through_the_lvalue() {
+    assert(annotated_c("f(xs: int[]) -> int => xs[0]")
+               .index_of("((int)xs.data[0])") >= 0, "a read is the cell")
+    assert(annotated_c("f(xs: int[], v: int) -> int {{ xs[0] = v xs[0] }}")
+               .index_of("xs.data[0] = (long)(v);") >= 0,
+           "a write assigns the cell, which a cast could not")
+}
+
+test_a_bracketless_comma_list_is_one_list_value() {
+    m = parse_module(lex("Stages = \"a\", \"b\", \"c\""), 0, [])
+    assert_eq(str(m.items.length()), "1", "one binding, not three")
+    assert_eq(str(m.errors.length()), "0", "and no stray comma is skipped")
+    assert_eq(shown("[1, 2]"), "[1, 2]", "a bracketed list is unchanged")
+    assert_eq(items_of("f() -> int[] => 1, 2, 3"), "1",
+              "an arrow body takes the list too")
+}
+
+test_a_comma_list_in_a_block_is_one_list_value() {
+    assert(annotated_c("f() -> int[] {{ xs = 5, 3, 1 xs }}")
+               .index_of("maca_listv(3,") >= 0,
+           "three cells, not one with the rest dropped")
+}
+
+test_a_typed_binding_declares_its_own_type() {
+    assert(annotated_c("f() -> int {{ n: int = 5 n }}")
+               .index_of("int n = 5;") >= 0,
+           "the annotation is the local's C type")
+    assert(annotated_c("f() -> int {{ n: int = 5 n }}").index_of("int int =")
+               < 0, "and the type name is never bound as the local")
+    assert(c_of("f() -> str {{ t: str = g() t }}")
+               .index_of("const char* t =") >= 0,
+           "an annotation outranks what the shape of the value guesses")
+    m = parse_module(lex("limit: int = 10 f() -> int => limit"), 0, [])
+    assert_eq(str(m.items.length()), "2", "a typed constant is a declaration")
+    assert_eq(str(m.errors.length()), "0", "and not a skipped one")
+}
+
+test_a_const_and_an_alias_are_read_as_the_bindings_they_are() {
+    assert_eq(items_of("const limit = 10 f() -> int => limit"), "2",
+              "`const` is a marker before an ordinary binding")
+    assert_eq(str(bad_of("const limit = 10 f() -> int => limit").length()),
+              "0", "and the marker itself is not a skipped declaration")
+    assert_eq(items_of("NTASKS = 6 as const f() -> int => NTASKS"), "2",
+              "`as const` is a marker after the value")
+    assert_eq(str(bad_of("NTASKS = 6 as const f() -> int => NTASKS")
+                      .length()), "0", "nor is that one")
+    assert_eq(items_of("alias user = other f() -> int => 0"), "2",
+              "an alias binds a name like any other")
+    assert_eq(str(bad_of("alias user = other f() -> int => 0").length()),
+              "0", "and the alias keyword is read, not stepped over")
+}
+
+test_a_bare_name_is_still_no_declaration() {
+    assert_eq(items_of("q"), "0", "a name alone declares nothing")
+    assert_eq(str(bad_of("q").length()), "1", "and it is reported")
+    assert_eq(items_of("q: int"), "0",
+              "nor does an ascription without a value")
 }

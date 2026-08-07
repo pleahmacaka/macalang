@@ -6,7 +6,7 @@ ExprKind =
     EInt | EFloat | EStr | EBool | EIdent
     | ECall | EField | EBinary | EUnary | ETernary | EIf
     | EList | ERecord | EWith | ELambda | EBlock | EMatch | EMethod
-    | EGuard
+    | EGuard | EWhile | EFor | EJump
 
 Expr = {
     kind:     ExprKind
@@ -17,7 +17,7 @@ Expr = {
     stmts:    Stmt[]
 }
 
-StmtKind = SExpr | SBind | SFn | SRecord | SSum
+StmtKind = SExpr | SBind | SSet | SFn | SRecord | SSum
 
 Stmt = {
     kind:   StmtKind
@@ -110,6 +110,9 @@ s_expr(value: Expr) -> Stmt =>
 s_bind(name: str, value: Expr) -> Stmt =>
     Stmt { kind = SBind, name, value, ret = "", params = [], body = [] }
 
+s_bind_typed(name: str, ty: str, value: Expr) -> Stmt =>
+    Stmt { kind = SBind, name, value, ret = ty, params = [], body = [] }
+
 s_fn(name: str, ret: str, params: Expr[], body: Stmt[]) -> Stmt =>
     Stmt { kind = SFn, name, value = e_ident(name), ret, params, body }
 
@@ -139,6 +142,9 @@ show(e: Expr) -> str =>
         EMatch  => "match {show(e.children.get(0))} {{ ... }}"
         EMethod => "{show(e.children.get(0))}.{e.text}({show_args(e.children, 1)})"
         EList   => "[{show_args(e.children, 0)}]"
+        EJump   => e.text
+        EWhile  => "while {show(e.children.get(0))} {{ ... }}"
+        EFor    => "for {e.text} in {show(e.children.get(0))} {{ ... }}"
         _       => "?"
     }
 
@@ -148,6 +154,28 @@ show_args(xs: Expr[], i: int) -> str =>
 e_guard(pat: Expr, when: Expr) -> Expr =>
     Expr { kind = EGuard, text = pat.text, ival = 0, ty = "",
            children = [pat, when], stmts = [] }
+
+e_while(cond: Expr, body: Stmt[]) -> Expr =>
+    Expr { kind = EWhile, text = "", ival = 0, ty = "",
+           children = [cond], stmts = body }
+
+e_lambda(params: Expr[], body: Expr) -> Expr =>
+    Expr { kind = ELambda, text = "", ival = 0, ty = "",
+           children = params ++ [body], stmts = [] }
+
+lambda_body(e: Expr) -> Expr =>
+    e.children.get(e.children.length() - 1)
+
+lambda_params(e: Expr) -> Expr[] =>
+    e.children.slice(0, e.children.length() - 1)
+
+e_for(binder: str, over: Expr, body: Stmt[]) -> Expr =>
+    Expr { kind = EFor, text = binder, ival = 0, ty = "",
+           children = [over], stmts = body }
+
+e_jump(word: str) -> Expr =>
+    Expr { kind = EJump, text = word, ival = 0, ty = "", children = [],
+           stmts = [] }
 
 e_block(stmts: Stmt[], last: Expr) -> Expr =>
     Expr { kind = EBlock, text = "", ival = 0, ty = "",

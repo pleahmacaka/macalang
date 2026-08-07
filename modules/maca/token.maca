@@ -1,10 +1,11 @@
 Kind =
     TInt | TFloat | TIdent | TStr | TPath
     | KwLet | KwIf | KwElse | KwFor | KwIn | KwMatch
-    | KwImport | KwFrom | KwWith | KwFail | KwTry | KwAlias
+    | KwWhile | KwBreak | KwContinue
+    | KwImport | KwWith | KwFail | KwTry | KwAlias
     | KwTrue | KwFalse
     | LParen | RParen | LBracket | RBracket | LBrace | RBrace
-    | Comma | Colon | Dot | Arrow | FatArrow
+    | Comma | Colon | Dot | DotDot | Ellipsis | Arrow | FatArrow
     | Eq | EqEq | NotEq | Lt | Gt | Le | Ge | AmpAmp | PipePipe
     | Plus | Minus | Star | Slash | Percent | PlusPlus | Bar
     | Question | QuestionPost | Bang
@@ -23,9 +24,11 @@ keyword_kind(w: str) -> Kind =>
         "else"   => KwElse
         "for"    => KwFor
         "in"     => KwIn
+        "while"  => KwWhile
+        "break"  => KwBreak
+        "continue" => KwContinue
         "match"  => KwMatch
         "import" => KwImport
-        "from"   => KwFrom
         "with"   => KwWith
         "fail"   => KwFail
         "try"    => KwTry
