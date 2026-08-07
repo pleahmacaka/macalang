@@ -190,6 +190,26 @@ test_the_preamble_defines_every_helper_the_emitter_calls() {
     assert(out.index_of("maca_str_slice(const char* s,") >= 0, "a str slice")
     assert(out.index_of("maca_ends_with(const char* s,") >= 0, "a str suffix")
     assert(out.index_of("maca_args(int argc, char** argv)") >= 0, "argv")
+    assert(out.index_of("maca_trim(const char* s)") >= 0, "a trimmed str")
+    assert(out.index_of("maca_lower(const char* s)") >= 0, "a lowered str")
+    assert(out.index_of("maca_starts_with(const char* s,") >= 0, "a str prefix")
+    assert(out.index_of("maca_repeat(const char* s,") >= 0, "a repeated str")
+    assert(out.index_of("maca_replace(const char* s,") >= 0, "a replaced run")
+    assert(out.index_of("maca_list_reverse(MacaList a)") >= 0, "a reversed list")
+    assert(out.index_of("maca_list_sorted(MacaList a,") >= 0, "a sorted list")
+    assert(out.index_of("maca_list_insert(MacaList a,") >= 0, "an insertion")
+    assert(out.index_of("maca_list_remove(MacaList a,") >= 0, "a removal")
+    assert(out.index_of("maca_list_set(MacaList a,") >= 0, "a cell written")
+    assert(out.index_of("maca_range(int lo,") >= 0, "a half-open range")
+}
+
+test_a_fold_reads_the_cell_at_a_type_wider_than_a_cell() {
+    least = c_for("f(xs: float[]) -> float => xs.min()")
+
+    assert(least.index_of("double _a =") >= 0,
+           "the accumulator is the element type, not the cell type")
+    assert(least.index_of("if ((*(double*)_q.data[_qi]) < _a)") >= 0,
+           "and a float cell is read through its box, or the compare is on bits")
 }
 
 test_a_main_that_takes_arguments_gets_a_c_shim() {
@@ -369,4 +389,77 @@ test_a_raise_prints_and_leaves() {
 
     assert(out.index_of("exit(1)") >= 0, "fail does not return")
     assert(out.index_of("stderr") >= 0, "and says why on the error stream")
+}
+
+test_a_string_method_calls_a_helper_that_returns_a_fresh_block() {
+    assert(c_for("f(s: str) -> str => s.trim()")
+               .index_of("maca_trim(s)") >= 0, "trim")
+    assert(c_for("f(s: str) -> str => s.lower()")
+               .index_of("maca_lower(s)") >= 0, "lower")
+    assert(c_for("f(s: str) -> str => s.repeat(3)")
+               .index_of("maca_repeat(s, 3)") >= 0, "repeat")
+    assert(c_for("f(s: str) -> str => s.replace(\"a\", \"b\")")
+               .index_of("maca_replace(s, \"a\", \"b\")") >= 0, "replace")
+    assert(c_for("f(s: str) -> bool => s.starts_with(\"a\")")
+               .index_of("maca_starts_with(s, \"a\")") >= 0, "starts_with")
+}
+
+test_a_sort_picks_its_comparator_from_the_element_type() {
+    assert(c_for("f(xs: int[]) -> int[] => xs.sort()")
+               .index_of("maca_list_sorted(xs, 0)") >= 0,
+           "a cell compares as a number")
+    assert(c_for("f(xs: str[]) -> str[] => xs.sort()")
+               .index_of("maca_list_sorted(xs, 1)") >= 0,
+           "and a str cell by its content, or the order is by address")
+}
+
+test_a_list_edit_copies_rather_than_writing_through_the_receiver() {
+    assert(c_for("f(xs: int[]) -> int[] => xs.reverse()")
+               .index_of("maca_list_reverse(xs)") >= 0, "reverse")
+    assert(c_for("f(xs: int[]) -> int[] => xs.insert(0, 9)")
+               .index_of("maca_list_insert(xs, 0, (long)(9))") >= 0, "insert")
+    assert(c_for("f(xs: int[]) -> int[] => xs.remove(0)")
+               .index_of("maca_list_remove(xs, 0)") >= 0, "remove")
+    assert(c_for("f(xs: int[]) -> int[] => xs.set(0, 9)")
+               .index_of("maca_list_set(xs, 0, (long)(9))") >= 0, "set")
+}
+
+test_a_fold_over_a_list_reads_the_cell_at_the_elements_type() {
+    total = c_for("f(xs: int[]) -> int => xs.sum()")
+    least = c_for("f(xs: int[]) -> int => xs.min()")
+
+    assert(total.index_of("_a += ((int)_q.data[_qi])") >= 0,
+           "a sum accumulates the cell read as its own type")
+    assert(least.index_of("if (((int)_q.data[_qi]) < _a)") >= 0,
+           "and min compares the same reading, not the raw cell")
+}
+
+test_a_lambda_is_inlined_where_the_loop_needs_it() {
+    kept = c_for("f(xs: int[]) -> int[] => xs.filter(v => v > 1)")
+    folded = c_for("f(xs: int[]) -> int => xs.reduce(0, (a, b) => a + b)")
+
+    assert(kept.index_of("if (({{ int v = ((int)_m.data[_i]); (v > 1); }}))") >= 0,
+           "the predicate becomes a statement expression, not a call")
+    assert(folded.index_of("_acc = ({{ int a = _acc;") >= 0,
+           "and the reducer takes the accumulator as its first binder")
+}
+
+Loop = "f(n: int) -> int {{ i = 0 while i < n {{ i = i + 1 }} i }}"
+
+test_a_loop_body_is_a_statement_and_the_function_still_returns() {
+    out = c_for(Loop)
+
+    assert(out.index_of("while ((i < n)) {{ i = (i + 1); }}") >= 0,
+           "the condition is a value and the body is a statement")
+    assert(out.index_of("return i;") >= 0,
+           "a body that ends after a loop still answers with its last value")
+}
+
+test_a_for_binds_the_element_and_a_break_leaves() {
+    each = c_for("f(xs: int[]) -> int {{ t = 0 for v in xs {{ t = t + v }} t }}")
+    out = c_for("f(n: int) -> int {{ i = 0 while i < n {{ break }} i }}")
+
+    assert(each.index_of("int v = ((int)_f.data[_fi]);") >= 0,
+           "the binder is the element, read at the element's type")
+    assert(out.index_of("break;") >= 0, "and a jump is the C keyword")
 }

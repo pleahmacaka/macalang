@@ -531,7 +531,31 @@ method_type(env: Env, e: Expr) -> Typed {
     recv = type_in(env, e.children.get(0))
     walked = walk_args(recv.env, e.children, 1)
 
-    typed(walked, method_result(e.text, resolve(walked.infer, recv.ty)))
+    if e.text == "map" && e.children.length() == 2 {
+        mapped_type(recv.env, resolve(recv.env.infer, recv.ty),
+                    e.children.get(1))
+    } else if e.text == "filter" && e.children.length() == 2 {
+        sifted_type(recv.env, resolve(recv.env.infer, recv.ty),
+                    e.children.get(1))
+    } else {
+        typed(walked, method_result(e.text, resolve(walked.infer, recv.ty)))
+    }
+}
+
+mapped_type(env: Env, recv: Ty, f: Expr) -> Typed {
+    got = type_in(env, f)
+    res = fresh(got.env.infer)
+    ready = joined(with_infer(got.env, res.infer), got.ty,
+                   t_fn([element_of(recv)], res.ty))
+
+    typed(ready, t_array(resolve(ready.infer, res.ty)))
+}
+
+sifted_type(env: Env, recv: Ty, f: Expr) -> Typed {
+    got = type_in(env, f)
+    ready = joined(got.env, got.ty, t_fn([element_of(recv)], t_bool()))
+
+    typed(ready, recv)
 }
 
 method_result(name: str, recv: Ty) -> Ty {
@@ -547,10 +571,38 @@ method_result(name: str, recv: Ty) -> Ty {
         recv
     } else if name == "get" {
         element_of(recv)
+    } else if is_reshaping_method(name) {
+        recv
+    } else if is_picking_method(name) {
+        element_of(recv)
+    } else if is_text_method(name) {
+        t_str()
+    } else if name == "split" {
+        t_array(t_str())
+    } else if is_asking_method(name) {
+        t_bool()
     } else {
         t_any()
     }
 }
+
+is_reshaping_method(name: str) -> bool =>
+    name == "pop" || name == "reverse" || name == "sort" || name == "set"
+        || name == "insert" || name == "remove"
+
+is_picking_method(name: str) -> bool =>
+    name == "sum" || name == "min" || name == "max" || name == "first"
+        || name == "last"
+
+is_text_method(name: str) -> bool =>
+    name == "trim" || name == "lower" || name == "upper"
+        || name == "replace" || name == "repeat" || name == "substr"
+        || name == "pad_start" || name == "pad_end"
+
+is_asking_method(name: str) -> bool =>
+    name == "starts_with" || name == "ends_with" || name == "contains"
+        || name == "is_whitespace" || name == "is_ascii_digit"
+        || name == "is_alpha"
 
 element_of(t: Ty) -> Ty {
     if t.kind == KStr {
@@ -782,8 +834,17 @@ annotate_item(env: Env, s: Stmt) -> Stmt {
         tys = signature_params(env, s.name)
         inner = bind_params(env, s.params, tys, 0)
 
-        s with { params = annotate_params(env.infer, s.params, tys, 0),
+        s with { ret = erased_ret(s.ret),
+                 params = annotate_params(env.infer, s.params, tys, 0),
                  body = annotate_body(inner, s.body, 0, []) }
+    }
+}
+
+erased_ret(ret: str) -> str {
+    if ty_named(ret).kind == KAny {
+        ""
+    } else {
+        ret
     }
 }
 
@@ -843,8 +904,18 @@ annotate_expr(env: Env, e: Expr) -> Expr {
     inner = check_body(env, e.stmts, 0, t_any())
 
     e with { ty = surface_of(type_in(env, e).ty),
-             stmts = annotate_body(env, e.stmts, 0, []),
+             stmts = annotate_body(looped(env, e), e.stmts, 0, []),
              children = annotate_children(inner.env, e.children, 0, []) }
+}
+
+looped(env: Env, e: Expr) -> Env {
+    if e.kind != EFor || e.children.length() == 0 {
+        env
+    } else {
+        over = type_in(env, e.children.get(0))
+
+        bind(over.env, e.text, element_of(resolve(over.env.infer, over.ty)))
+    }
 }
 
 annotate_children(env: Env, cs: Expr[], i: int, acc: Expr[]) -> Expr[] {

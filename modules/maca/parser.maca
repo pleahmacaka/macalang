@@ -611,11 +611,22 @@ parse_atom(ts: Token[], i: int) -> PExpr {
         KwFor    => parse_for(ts, i)
         KwBreak  => mk_pexpr(e_jump("break"), i + 1)
         KwContinue => mk_pexpr(e_jump("continue"), i + 1)
+        KwReturn => parse_return(ts, i)
         KwFail   => parse_fail(ts, i)
         LBracket => parse_list(ts, i)
         TIdent   => parse_call_or_ident(ts, i)
         LParen   => parse_paren(ts, i)
         _        => mk_pexpr(e_bad(ts.get(i).text), i + 1)
+    }
+}
+
+parse_return(ts: Token[], i: int) -> PExpr {
+    if ts.get(i + 1).kind == RBrace || ts.get(i + 1).kind == Eof {
+        mk_pexpr(e_leave([]), i + 1)
+    } else {
+        left = parse_expr(ts, i + 1)
+
+        mk_pexpr(e_leave([left.node]), left.next)
     }
 }
 

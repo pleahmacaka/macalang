@@ -180,6 +180,10 @@ e_jump(word: str) -> Expr =>
     Expr { kind = EJump, text = word, ival = 0, ty = "", children = [],
            stmts = [] }
 
+e_leave(value: Expr[]) -> Expr =>
+    Expr { kind = EJump, text = "return", ival = 0, ty = "",
+           children = value, stmts = [] }
+
 e_block(stmts: Stmt[], last: Expr) -> Expr =>
     Expr { kind = EBlock, text = "", ival = 0, ty = "",
            children = [last], stmts }

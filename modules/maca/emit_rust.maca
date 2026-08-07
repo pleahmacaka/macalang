@@ -26,12 +26,20 @@ remit_expr(e: Expr) -> str =>
         EMatch   => remit_match(e)
         EMethod  => remit_method(e)
         EList    => "vec![{remit_args(e.children, 0)}]"
-        EJump    => e.text
+        EJump    => rjump(e)
         EWhile   => remit_while(e)
         EFor     => remit_for(e)
         ELambda  => remit_lambda(e)
         _        => "0i64"
     }
+
+rjump(e: Expr) -> str {
+    if e.children.length() == 0 {
+        e.text
+    } else {
+        "{e.text} {remit_expr(e.children.get(0))}"
+    }
+}
 
 remit_lambda(e: Expr) -> str =>
     "|{lambda_params(e).map(binder_name).join(", ")}|"

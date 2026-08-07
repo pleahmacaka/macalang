@@ -1,7 +1,7 @@
 Kind =
     TInt | TFloat | TIdent | TStr | TPath
     | KwLet | KwIf | KwElse | KwFor | KwIn | KwMatch
-    | KwWhile | KwBreak | KwContinue
+    | KwWhile | KwBreak | KwContinue | KwReturn
     | KwImport | KwWith | KwFail | KwTry | KwAlias
     | KwTrue | KwFalse
     | LParen | RParen | LBracket | RBracket | LBrace | RBrace
@@ -27,6 +27,7 @@ keyword_kind(w: str) -> Kind =>
         "while"  => KwWhile
         "break"  => KwBreak
         "continue" => KwContinue
+        "return" => KwReturn
         "match"  => KwMatch
         "import" => KwImport
         "with"   => KwWith
