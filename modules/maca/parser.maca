@@ -122,9 +122,17 @@ parse_items(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
         parse_sum_decl(ts, i, acc, bad)
     } else if starts_fn(ts, i) {
         parse_fn_item(ts, i, acc, bad)
+    } else if binds_a_name(ts, i) {
+        parse_const_item(ts, i, acc, bad)
     } else {
         parse_items(ts, i + 1, acc, bad ++ [skipped(ts, i)])
     }
+}
+
+parse_const_item(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
+    got = parse_expr(ts, i + 2)
+
+    parse_items(ts, got.next, acc ++ [s_bind(ts.get(i).text, got.node)], bad)
 }
 
 skipped(ts: Token[], i: int) -> str =>
@@ -153,10 +161,24 @@ is_upper(w: str) -> bool =>
     w.length() > 0 && w.at(0).is_alpha() && w.at(0).upper() == w.at(0)
 
 import_end(ts: Token[], i: int) -> int {
-    if ts.get(i + 1).kind == Slash {
+    if ts.get(i).kind == LBrace {
+        import_end(ts, selection_end(ts, i + 1) + 2)
+    } else if ts.get(i).kind == TStr {
+        i + 1
+    } else if ts.get(i + 1).kind == TStr {
+        i + 2
+    } else if ts.get(i + 1).kind == Slash {
         import_end(ts, i + 2)
     } else {
         i + 1
+    }
+}
+
+selection_end(ts: Token[], i: int) -> int {
+    if ts.get(i).kind == Eof || ts.get(i).kind == RBrace {
+        i
+    } else {
+        selection_end(ts, i + 1)
     }
 }
 
@@ -475,11 +497,18 @@ parse_atom(ts: Token[], i: int) -> PExpr {
         KwFalse  => mk_pexpr(e_bool("false"), i + 1)
         KwMatch  => parse_match(ts, i)
         KwIf     => parse_if(ts, i)
+        KwFail   => parse_fail(ts, i)
         LBracket => parse_list(ts, i)
         TIdent   => parse_call_or_ident(ts, i)
         LParen   => parse_paren(ts, i)
         _        => mk_pexpr(e_ident("?"), i + 1)
     }
+}
+
+parse_fail(ts: Token[], i: int) -> PExpr {
+    raised = parse_expr(ts, i + 1)
+
+    mk_pexpr(e_unary("fail", raised.node), raised.next)
 }
 
 parse_list(ts: Token[], i: int) -> PExpr {

@@ -90,10 +90,12 @@ load_deps(by: str, wants: str[], i: int, u: Unit) -> Unit {
 one_dep(by: str, want: str, u: Unit) -> Unit {
     at = resolved(by, want)
 
-    if at == "" {
-        u with { unknown = u.unknown ++ ["{want}, imported by {by}"] }
-    } else {
+    if at != "" {
         load_unit(at, u)
+    } else if want.index_of("/") < 0 {
+        u
+    } else {
+        u with { unknown = u.unknown ++ ["{want}, imported by {by}"] }
     }
 }
 
@@ -102,9 +104,19 @@ imports_in(ts: Token[], i: int, acc: str[]) -> str[] {
         acc
     } else if ts.get(i).kind == KwImport {
         imports_in(ts, import_end(ts, i + 1),
-                   acc ++ [import_path(ts, i + 1, "")])
+                   acc ++ import_names(ts, i + 1))
     } else {
         imports_in(ts, i + 1, acc)
+    }
+}
+
+import_names(ts: Token[], i: int) -> str[] {
+    if ts.get(i).kind == LBrace {
+        import_names(ts, selection_end(ts, i + 1) + 2)
+    } else if ts.get(i).kind == TStr || ts.get(i + 1).kind == TStr {
+        []
+    } else {
+        [import_path(ts, i, "")]
     }
 }
 
