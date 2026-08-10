@@ -26,8 +26,12 @@ main(args: str[]) -> int {
         info("maca {Version}")
 
         0
-    } else if args.length() >= 2 {
+    } else if args.length() >= 2 && args.get(0).ends_with(".maca") {
         compile_file(args)
+    } else if args.length() >= 1 {
+        err("maca: no command `{args.get(0)}`. Try build, run, test or check.")
+
+        2
     } else {
         demo()
     }

@@ -140,6 +140,10 @@ and which manifest answers.
   `concat`, etc. Primitives keep the native operator. (`apps/examples/operators.maca`.)
 - Pattern & codegen completeness: record patterns (`match p { { x, y } => … }`),
   the `!` (logical-not) prefix operator, `++` string concat (vs. array concat),
+  `+` as a second spelling of that join when *both* sides are strings or both
+  are lists (so `"a" + "b"` and `[1] + [2]` mean what `++` means, while a number
+  beside a string stays a mistake, which is what keeps `+` from silently
+  stringifying),
   and record fields that reference a record declared later in the file all work
   natively. The parser no longer hangs on malformed input (a stalled `ident()`
   now advances). (`apps/examples/record_pattern.maca`.)

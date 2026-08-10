@@ -453,11 +453,11 @@ remit_binary(e: Expr) -> str {
         rstore(lhs, r)
     } else if e.text == ".." {
         "Rc::new((({l})..({r})).collect::<Vec<i64>>())"
-    } else if e.text == "++" && on_list {
+    } else if rjoins(e) && on_list {
         "{{ let mut _v = {l};"
             ++ " Rc::make_mut(&mut _v).extend(({r}).iter().cloned());"
             ++ " _v }}"
-    } else if e.text == "++" {
+    } else if rjoins(e) {
         "format!(\"{{}}{{}}\", {l}, {r})"
     } else {
         "({l} {e.text} {r})"
@@ -469,6 +469,14 @@ rstore(l: Expr, value: str) -> str {
     ix = remit_expr(l.children.get(1))
 
     "Rc::make_mut(&mut {holder})[({ix}) as usize] = {value}"
+}
+
+rjoins(e: Expr) -> bool {
+    l = e.children.get(0)
+    r = e.children.get(1)
+
+    e.text == "++" || (e.text == "+" && ((l.ty == "str" && r.ty == "str")
+                                            || (rlist(l.ty) && rlist(r.ty))))
 }
 
 rlist(ty: str) -> bool =>

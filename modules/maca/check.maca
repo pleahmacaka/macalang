@@ -429,7 +429,7 @@ operator_type(env: Env, e: Expr) -> Typed {
     lhs = type_in(env, e.children.get(0))
     rhs = type_in(lhs.env, e.children.get(1))
 
-    if e.text == "++" {
+    if e.text == "++" || joins(rhs.env, e.text, lhs.ty, rhs.ty) {
         typed(rhs.env, concat_type(rhs.env, lhs.ty, rhs.ty))
     } else if e.text == ".." {
         range_type(rhs.env, lhs.ty, rhs.ty)
@@ -444,6 +444,14 @@ operator_type(env: Env, e: Expr) -> Typed {
 
 is_list(t: Ty) -> bool =>
     t.kind == KCon && t.name == "Array"
+
+joins(env: Env, op: str, a: Ty, b: Ty) -> bool {
+    left = resolve(env.infer, a)
+    right = resolve(env.infer, b)
+
+    op == "+" && ((left.kind == KStr && right.kind == KStr)
+                      || (is_list(left) && is_list(right)))
+}
 
 concat_type(env: Env, a: Ty, b: Ty) -> Ty {
     left = resolve(env.infer, a)

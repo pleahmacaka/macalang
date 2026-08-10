@@ -4511,6 +4511,13 @@ impl<'a> Cx<'a> {
         }
 
         use BinOp::*;
+        // `+` joins what it is given: two numbers add, and anything with a text
+        // or a list form concatenates, which is what `++` always did.
+        let op = match op {
+            Add if matches!(lt, CTy::Str) && matches!(rt, CTy::Str) => Concat,
+            Add if matches!(lt, CTy::Arr(_)) && matches!(rt, CTy::Arr(_)) => Concat,
+            other => other,
+        };
         match op {
             Div if matches!(lt, CTy::Str) => (format!("maca_path_join({lc}, {rc})"), CTy::Str),
             Concat if matches!(lt, CTy::Str) || matches!(rt, CTy::Str) => {

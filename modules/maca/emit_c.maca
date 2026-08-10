@@ -536,6 +536,11 @@ c_int_of(ty: str, args: str) -> str {
 c_is_str(e: Expr) -> bool =>
     e.kind == EStr || e.ty == "str"
 
+c_joins(op: str, l: Expr, r: Expr) -> bool =>
+    op == "++" || (op == "+" && ((c_is_str(l) && c_is_str(r))
+                                     || (is_list_type(l.ty)
+                                             && is_list_type(r.ty))))
+
 emit_binary(e: Expr) -> str {
     l = e.children.get(0)
     r = e.children.get(1)
@@ -546,9 +551,10 @@ emit_binary(e: Expr) -> str {
         c_store(l, r)
     } else if e.text == ".." {
         "maca_range({emit_expr(l)}, {emit_expr(r)})"
-    } else if e.text == "++" && (is_list_type(l.ty) || is_list_type(r.ty)) {
+    } else if c_joins(e.text, l, r)
+            && (is_list_type(l.ty) || is_list_type(r.ty)) {
         "maca_list_cat({emit_expr(l)}, {emit_expr(r)})"
-    } else if e.text == "++" {
+    } else if c_joins(e.text, l, r) {
         "maca_cat({emit_expr(l)}, {emit_expr(r)})"
     } else if is_str_eq {
         "(strcmp({emit_expr(l)}, {emit_expr(r)}) {e.text} 0)"
