@@ -259,6 +259,8 @@ unary_type(env: Env, e: Expr) -> Typed {
 
     if e.text == "fail" {
         typed(inner.env, t_any())
+    } else if e.text == "try" {
+        typed(inner.env, t_str())
     } else {
         inner
     }

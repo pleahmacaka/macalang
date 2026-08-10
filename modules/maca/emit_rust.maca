@@ -90,6 +90,8 @@ remit_for(e: Expr) -> str =>
 remit_unary(e: Expr) -> str {
     if e.text == "fail" {
         "panic!(\"{{}}\", {remit_expr(e.children.get(0))})"
+    } else if e.text == "try" {
+        "maca_try(|| {{ let _ = {remit_expr(e.children.get(0))}; }})"
     } else {
         "({e.text}{remit_expr(e.children.get(0))})"
     }
@@ -458,7 +460,7 @@ remit_binary(e: Expr) -> str {
             ++ " Rc::make_mut(&mut _v).extend(({r}).iter().cloned());"
             ++ " _v }}"
     } else if rjoins(e) {
-        "format!(\"{{}}{{}}\", {l}, {r})"
+        "({l} + &{r})"
     } else {
         "({l} {e.text} {r})"
     }
@@ -845,6 +847,7 @@ rust_preamble() -> str =>
     "#[allow(dead_code)]\nfn maca_substr(s: String, at: i64, n: i64) -> String {{ let a = (at.max(0) as usize).min(s.len()); let b = (a + n.max(0) as usize).min(s.len()); s.get(a..b).unwrap_or(\"\").to_string() }}\n" ++
     "#[allow(dead_code)]\nfn maca_pad_start(s: String, w: i64) -> String {{ let w = w.max(0) as usize; if s.len() >= w {{ s }} else {{ format!(\"{{}}{{}}\", \" \".repeat(w - s.len()), s) }} }}\n" ++
     "#[allow(dead_code)]\nfn maca_pad_end(s: String, w: i64) -> String {{ let w = w.max(0) as usize; if s.len() >= w {{ s }} else {{ format!(\"{{}}{{}}\", s, \" \".repeat(w - s.len())) }} }}\n" ++
+    "#[allow(dead_code)]\nfn maca_try<F: FnOnce()>(f: F) -> String {{ let hushed = std::panic::take_hook(); std::panic::set_hook(Box::new(|_| {{}})); let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)); std::panic::set_hook(hushed); match out {{ Ok(_) => String::new(), Err(e) => e.downcast_ref::<String>().cloned().unwrap_or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()).unwrap_or_default()) }} }}\n" ++
     "#[allow(dead_code)]\nfn maca_is_tty() -> bool {{ false }}\n" ++
     "#[allow(dead_code)]\nfn maca_chdir(p: String) -> bool {{ std::env::set_current_dir(p).is_ok() }}\n" ++
     "#[allow(dead_code)]\nfn maca_now_ms() -> i64 {{ std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0) }}\n" ++

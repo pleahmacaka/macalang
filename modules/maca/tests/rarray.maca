@@ -240,6 +240,22 @@ test_a_foreign_call_keeps_its_unsafe_in_one_wrapper() {
            "and the call site stays outside it")
 }
 
+test_a_caught_failure_is_an_unwind_that_is_stopped() {
+    out = ra_rust("boom() -> int {{ fail \"x\" 0 }} f() -> str => try boom()")
+
+    assert(out.index_of("maca_try(|| ") >= 0,
+           "a raise unwinds, so catching it is catching the unwind")
+    assert(out.index_of("catch_unwind") >= 0,
+           "and the preamble defines what the call reaches")
+}
+
+test_a_join_is_an_expression_and_not_a_nested_macro() {
+    out = ra_rust("f(a: str, b: str, c: str) -> str => a ++ b ++ c")
+
+    assert(out.index_of("+ &") >= 0,
+           "nested format! ran rustc out of recursion on a long chain")
+}
+
 test_a_raise_is_a_panic() {
     out = remit_fn(parse_fn(lex("f() -> int {{ fail \"gone\" }}"), 0).snode)
 

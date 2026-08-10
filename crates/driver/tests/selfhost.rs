@@ -239,7 +239,8 @@ fn selfhost_frontend_compiles_and_runs() {
         "C string-concat lowering wrong: {stdout}"
     );
     assert!(
-        stdout.contains("concat Rust: fn wrap(s: String) -> String { format!(\"{}{}\", format!(\"{}{}\", \"[\".to_string(), s), \"]\".to_string())"),
+        // A nested `format!` per `++` ran rustc out of recursion once the preamble grew.
+        stdout.contains("concat Rust: fn wrap(s: String) -> String { ((\"[\".to_string() + &s) + &\"]\".to_string())"),
         "Rust string-concat lowering wrong: {stdout}"
     );
 
@@ -250,7 +251,7 @@ fn selfhost_frontend_compiles_and_runs() {
         "C int-to-string lowering wrong: {stdout}"
     );
     assert!(
-        stdout.contains("str Rust: fn numbered(n: i64) -> String { format!(\"{}{}\", \"#\".to_string(), format!(\"{}\", n))"),
+        stdout.contains("str Rust: fn numbered(n: i64) -> String { (\"#\".to_string() + &format!(\"{}\", n))"),
         "Rust int-to-string lowering wrong: {stdout}"
     );
 
@@ -319,7 +320,7 @@ fn selfhost_frontend_compiles_and_runs() {
         "C interpolation lowering wrong: {stdout}"
     );
     assert!(
-        stdout.contains("interp Rust: fn label(n: i64) -> String { format!(\"{}{}\", format!(\"{}{}\", \"n = \".to_string(), format!(\"{}\", n)), \"!\".to_string())"),
+        stdout.contains("interp Rust: fn label(n: i64) -> String { ((\"n = \".to_string() + &format!(\"{}\", n)) + &\"!\".to_string())"),
         "Rust interpolation lowering wrong: {stdout}"
     );
     assert!(
