@@ -12,9 +12,10 @@ Kind =
     | Comment | Newline | Eof
 
 Token = {
-    kind: Kind
-    text: str
-    pos:  int
+    kind:  Kind
+    text:  str
+    pos:   int
+    fresh: bool
 }
 
 keyword_kind(w: str) -> Kind =>
@@ -40,4 +41,4 @@ keyword_kind(w: str) -> Kind =>
     }
 
 mk_token(kind: Kind, text: str, pos: int) -> Token =>
-    Token { kind, text, pos }
+    Token { kind, text, pos, fresh = false }

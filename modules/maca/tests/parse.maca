@@ -117,6 +117,25 @@ test_a_subtraction_in_argument_position_is_still_a_subtraction() {
               "a hyphen run names an attribute only when `=` closes it")
 }
 
+test_a_list_is_matched_by_its_shape() {
+    assert_eq(errors_in("f(xs: int[]) -> str => match xs {{\n"
+                        ++ "[] => \"none\"\n[x] => \"one\"\n"
+                        ++ "[x, ..rest] => \"more\"\n}}"),
+              "0", "empty, exactly one, and one with a rest behind it")
+    assert(annotated_c("f(xs: int[]) -> str => match xs {{"
+                       ++ " [] => \"none\" _ => \"some\" }}")
+               .index_of(".len == 0") >= 0,
+           "an empty list is a length nobody has to bind")
+}
+
+test_a_bracket_that_opens_a_line_is_not_an_index() {
+    assert_eq(errors_in("f(xs: int[]) -> str => match xs {{"
+                        ++ " [x] => \"one\"\n [x, y] => \"two\" _ => \"more\" }}"),
+              "0", "the next arm's `[` was read as an index on the last body")
+    assert_eq(errors_in("f(s: str) -> str =>\n    s.trim()\n        .upper()"),
+              "0", "while a `.` that opens a line still continues the chain")
+}
+
 test_a_match_arm_may_answer_with_a_block() {
     assert_eq(errors_in("C = A | B f(c: C) -> int => match c {{"
                         ++ " A => {{ n = 1 n + 1 }} B => 0 }}"),

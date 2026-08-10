@@ -467,7 +467,9 @@ parse_primary(ts: Token[], i: int) -> PExpr =>
     parse_postfix(ts, parse_atom(ts, i))
 
 parse_postfix(ts: Token[], e: PExpr) -> PExpr {
-    if ts.get(e.next).kind == Dot {
+    if ts.get(e.next).kind == LBracket && ts.get(e.next).fresh {
+        e
+    } else if ts.get(e.next).kind == Dot {
         parse_dot(ts, e)
     } else if ts.get(e.next).kind == LBracket {
         parse_index(ts, e)
@@ -804,10 +806,27 @@ parse_pattern(ts: Token[], i: int) -> PExpr {
 
     if ts.get(i).kind == LBrace {
         parse_fields_pattern(ts, i + 1, e_ident("{{}}"))
+    } else if ts.get(i).kind == LBracket {
+        parse_cells_pattern(ts, i + 1, e_ident("[]"))
     } else if ts.get(i + 1).kind == LParen {
         parse_binders(ts, i + 2, named)
     } else {
         mk_pexpr(named, i + 1)
+    }
+}
+
+/// `[]`, `[x]` and `[x, ..rest]`: the cells the arm names, and whether a rest closes them.
+parse_cells_pattern(ts: Token[], i: int, p: Expr) -> PExpr {
+    if ts.get(i).kind == Eof || ts.get(i).kind == RBracket {
+        mk_pexpr(p, i + 1)
+    } else if ts.get(i).kind == Comma {
+        parse_cells_pattern(ts, i + 1, p)
+    } else if ts.get(i).kind == DotDot || ts.get(i).kind == Ellipsis {
+        parse_cells_pattern(ts, i + 2,
+                            with_child(p with { text = "[..]" },
+                                       e_ident(ts.get(i + 1).text)))
+    } else {
+        parse_cells_pattern(ts, i + 1, with_child(p, e_ident(ts.get(i).text)))
     }
 }
 

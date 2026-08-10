@@ -581,20 +581,21 @@ c_store(l: Expr, r: Expr) -> str {
 }
 
 emit_match(e: Expr) -> str =>
-    emit_arms(emit_expr(e.children.get(0)), e.children, 1)
+    emit_arms(emit_expr(e.children.get(0)), e.children, 1,
+              c_elem_of(e.children.get(0).ty))
 
-emit_arms(scrut: str, cs: Expr[], i: int) -> str =>
-    emit_arms_at(scrut, cs, i, any_bound(cs, 1))
+emit_arms(scrut: str, cs: Expr[], i: int, el: str) -> str =>
+    emit_arms_at(scrut, cs, i, any_bound(cs, 1), el)
 
-emit_arms_at(scrut: str, cs: Expr[], i: int, tagged: bool) -> str {
+emit_arms_at(scrut: str, cs: Expr[], i: int, tagged: bool, el: str) -> str {
     if i + 1 >= cs.length() {
         "0"
     } else if cs.get(i).text == "_" && cs.get(i).kind != EGuard {
         emit_expr(cs.get(i + 1))
     } else {
         cond = test(scrut, cs.get(i), tagged)
-        body = arm_body(scrut, cs.get(i), cs.get(i + 1))
-        rest = emit_arms_at(scrut, cs, i + 2, tagged)
+        body = arm_body(scrut, cs.get(i), cs.get(i + 1), el)
+        rest = emit_arms_at(scrut, cs, i + 2, tagged, el)
         "({cond} ? {body} : {rest})"
     }
 }
@@ -602,7 +603,7 @@ emit_arms_at(scrut: str, cs: Expr[], i: int, tagged: bool) -> str {
 bound_pat(p: Expr) -> bool {
     if p.kind == EGuard {
         bound_pat(p.children.get(0))
-    } else if is_alt_pat(p) || is_fields_pat(p) {
+    } else if is_alt_pat(p) || is_fields_pat(p) || is_cells_pat(p) {
         false
     } else {
         p.children.length() > 0
@@ -622,12 +623,41 @@ any_bound(cs: Expr[], i: int) -> bool {
 is_alt_pat(p: Expr) -> bool =>
     p.kind == EBinary && p.text == "|"
 
+is_cells_pat(p: Expr) -> bool =>
+    p.kind == EIdent && (p.text == "[]" || p.text == "[..]")
+
+/// `[x, ..rest]` matches from that many cells on; `[x]` matches exactly that many.
+cells_test(scrut: str, p: Expr) -> str {
+    n = p.children.length()
+
+    if p.text == "[..]" {
+        "{scrut}.len >= {str(n - 1)}"
+    } else {
+        "{scrut}.len == {str(n)}"
+    }
+}
+
+bind_cells(scrut: str, p: Expr, el: str, i: int) -> str {
+    if i >= p.children.length() {
+        ""
+    } else if p.text == "[..]" && i == p.children.length() - 1 {
+        "MacaList {c_id(p.children.get(i).text)} ="
+            ++ " maca_list_slice({scrut}, {str(i)}, {scrut}.len);"
+    } else {
+        "{type_c(el)} {c_id(p.children.get(i).text)} ="
+            ++ " {c_cell_at(scrut, el, str(i))};"
+            ++ " {bind_cells(scrut, p, el, i + 1)}"
+    }
+}
+
 test(scrut: str, pat: Expr, tagged: bool) -> str {
     if pat.kind == EGuard {
         guard_test(scrut, pat, tagged)
     } else if is_alt_pat(pat) {
         "({test(scrut, pat.children.get(0), tagged)}"
             ++ " || {test(scrut, pat.children.get(1), tagged)})"
+    } else if is_cells_pat(pat) {
+        cells_test(scrut, pat)
     } else if is_fields_pat(pat) {
         "1"
     } else if tagged {
@@ -653,9 +683,11 @@ guard_test(scrut: str, pat: Expr, tagged: bool) -> str {
 is_fields_pat(p: Expr) -> bool =>
     p.kind == EIdent && p.text == "{{}}"
 
-arm_body(scrut: str, pat: Expr, body: Expr) -> str {
+arm_body(scrut: str, pat: Expr, body: Expr, arm_elem: str) -> str {
     if pat.kind == EGuard {
-        arm_body(scrut, pat.children.get(0), body)
+        arm_body(scrut, pat.children.get(0), body, arm_elem)
+    } else if is_cells_pat(pat) && pat.children.length() > 0 {
+        "({{ {bind_cells(scrut, pat, arm_elem, 0)}{emit_expr(body)}; }})"
     } else if pat.children.length() == 0 || is_alt_pat(pat) {
         emit_expr(body)
     } else if is_fields_pat(pat) {
