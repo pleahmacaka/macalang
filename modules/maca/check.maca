@@ -800,7 +800,25 @@ check_item(env: Env, s: Stmt) -> Env {
 }
 
 check_errors(m: Module) -> str[] =>
-    checked_module(m).errors
+    checked_module(m).errors ++ clashing_names(m.items, 0, [], [])
+
+/// Imports flatten into one module, so two packages defining one name is a clash, not a shadow.
+clashing_names(items: Stmt[], i: int, seen: str[], acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind != SFn {
+        clashing_names(items, i + 1, seen, acc)
+    } else if seen.index_of(items.get(i).name) >= 0 {
+        clashing_names(items, i + 1, seen,
+                       acc ++ [clash_of(items.get(i).name)])
+    } else {
+        clashing_names(items, i + 1, seen ++ [items.get(i).name], acc)
+    }
+}
+
+clash_of(name: str) -> str =>
+    "`{name}` is defined twice; imports share one namespace, so two"
+        ++ " packages cannot both name a function this"
 
 surface_of(t: Ty) -> str =>
     match t.kind {

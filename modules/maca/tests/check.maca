@@ -320,6 +320,16 @@ test_input_no_production_reads_is_reported_not_swallowed() {
               "the token is named, so the message says where to look")
 }
 
+test_one_name_defined_twice_is_named_as_a_clash() {
+    bad = errors_of("count(s: str) -> int => 1 count(n: int) -> int => 2")
+
+    assert_eq(str(bad.length()), "1", "the second definition is the problem")
+    assert(bad.get(0).contains("`count` is defined twice"),
+           "and it says which name, because the C it emits will not")
+    assert_eq(count_of("a() -> int => 1 b() -> int => 2"), "0",
+              "two different names are not a clash")
+}
+
 test_an_element_is_the_html_text_it_renders() {
     assert_eq(count_of("shell(body: str) -> str => div(class=\"wrap\", body)"),
               "0", "a tag no one declared is an element, and one reads as str")
