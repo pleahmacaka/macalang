@@ -27,6 +27,8 @@ main(args: str[]) -> int {
         check_only(args.get(1))
     } else if args.length() >= 2 && args.get(0) == "fmt" {
         format_file(args.get(1), args.length() >= 3 && args.get(2) == "--check")
+    } else if args.length() >= 1 && tooled(args.get(0)) {
+        run_file(tool_path(args.get(0)), args.slice(1, args.length()))
     } else if args.length() >= 1 && args.get(0) == "init" {
         init_project(args.length() >= 2 ? args.get(1) : ".")
     } else if args.length() >= 1 && args.get(0) == "--version" {
@@ -118,6 +120,20 @@ flag_after(args: str[], name: str) -> str {
 }
 
 /// `-o` names a binary for the native target and the emitted source for any other.
+tooled(name: str) -> bool =>
+    name == "lint" || name == "doc" || name == "bindgen"
+
+/// The tools are Maca programs of their own, so the CLI runs them rather than linking them.
+tool_path(name: str) -> str {
+    if name == "lint" {
+        "apps/lint/lint.maca"
+    } else if name == "doc" {
+        "apps/macadoc/macadoc.maca"
+    } else {
+        "apps/bindgen/bindgen.maca"
+    }
+}
+
 build_out(src: str, out: str, target: str) -> int {
     if target == "" || target == "native" || target == "c" {
         build_binary(src, out)
