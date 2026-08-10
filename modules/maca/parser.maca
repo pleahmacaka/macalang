@@ -761,7 +761,8 @@ parse_arms(ts: Token[], i: int, acc: Expr[]) -> PArgs {
 }
 
 parse_one_arm(ts: Token[], i: int, acc: Expr[]) -> PArgs {
-    p = parse_guarded(ts, parse_alts(ts, parse_pattern(ts, i)))
+    p = parse_guarded(ts, parse_alts(ts, parse_commas(ts,
+                                                     parse_pattern(ts, i))))
     body = parse_arm_body(ts, p.next + 1)
 
     parse_arms(ts, body.next, acc ++ [p.node, body.node])
@@ -773,6 +774,28 @@ parse_arm_body(ts: Token[], i: int) -> PExpr {
         parse_branch(ts, i)
     } else {
         parse_expr(ts, i)
+    }
+}
+
+/// `"done", id => …` matches a list by position without brackets around it.
+parse_commas(ts: Token[], p: PExpr) -> PExpr {
+    if ts.get(p.next).kind != Comma {
+        p
+    } else {
+        gathered(ts, mk_pexpr(with_child(e_ident("[]"), p.node), p.next))
+    }
+}
+
+gathered(ts: Token[], p: PExpr) -> PExpr {
+    if ts.get(p.next).kind != Comma {
+        p
+    } else if ts.get(p.next + 1).kind == DotDot {
+        mk_pexpr(with_child(p.node with { text = "[..]" },
+                            e_ident(ts.get(p.next + 2).text)), p.next + 3)
+    } else {
+        next = parse_pattern(ts, p.next + 1)
+
+        gathered(ts, mk_pexpr(with_child(p.node, next.node), next.next))
     }
 }
 
