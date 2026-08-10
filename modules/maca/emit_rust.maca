@@ -510,7 +510,9 @@ rbind_fields(scrut: str, fs: Expr[], i: int) -> str {
 }
 
 remit_pat(p: Expr) -> str {
-    if p.kind == EGuard {
+    if p.kind == EBinary && p.text == "|" {
+        "{remit_pat(p.children.get(0))} | {remit_pat(p.children.get(1))}"
+    } else if p.kind == EGuard {
         "{remit_pat(p.children.get(0))} if {remit_expr(p.children.get(1))}"
     } else if p.kind == EStr {
         "\"{p.text}\""

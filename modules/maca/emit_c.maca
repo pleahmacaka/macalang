@@ -602,6 +602,8 @@ emit_arms_at(scrut: str, cs: Expr[], i: int, tagged: bool) -> str {
 bound_pat(p: Expr) -> bool {
     if p.kind == EGuard {
         bound_pat(p.children.get(0))
+    } else if is_alt_pat(p) || is_fields_pat(p) {
+        false
     } else {
         p.children.length() > 0
     }
@@ -617,9 +619,15 @@ any_bound(cs: Expr[], i: int) -> bool {
     }
 }
 
+is_alt_pat(p: Expr) -> bool =>
+    p.kind == EBinary && p.text == "|"
+
 test(scrut: str, pat: Expr, tagged: bool) -> str {
     if pat.kind == EGuard {
         guard_test(scrut, pat, tagged)
+    } else if is_alt_pat(pat) {
+        "({test(scrut, pat.children.get(0), tagged)}"
+            ++ " || {test(scrut, pat.children.get(1), tagged)})"
     } else if is_fields_pat(pat) {
         "1"
     } else if tagged {
@@ -648,7 +656,7 @@ is_fields_pat(p: Expr) -> bool =>
 arm_body(scrut: str, pat: Expr, body: Expr) -> str {
     if pat.kind == EGuard {
         arm_body(scrut, pat.children.get(0), body)
-    } else if pat.children.length() == 0 {
+    } else if pat.children.length() == 0 || is_alt_pat(pat) {
         emit_expr(body)
     } else if is_fields_pat(pat) {
         "({{ {bind_fields(scrut, pat.children, 0)}{emit_expr(body)}; }})"

@@ -400,6 +400,16 @@ test_a_child_that_is_not_text_is_rendered_as_text() {
            "and a list of children is one run of them, not a printed list")
 }
 
+test_one_arm_may_match_either_of_two_patterns() {
+    out = c_for("C = R | G | B f(c: C) -> str => match c {{"
+                ++ " R | G => \"warm\" B => \"cold\" }}")
+
+    assert(out.index_of("||") >= 0,
+           "either alternative reaching the body is what `|` means")
+    assert(out.index_of("\"warm\"") >= 0 && out.index_of("\"cold\"") >= 0,
+           "and both arms still have their own body")
+}
+
 test_a_record_pattern_binds_the_fields_it_names() {
     out = c_for("L = {{ a: int, b: int }}"
                 ++ " f(l: L) -> int => match l {{ {{ a, b }} => b - a }}")

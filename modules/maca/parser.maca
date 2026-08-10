@@ -759,10 +759,21 @@ parse_arms(ts: Token[], i: int, acc: Expr[]) -> PArgs {
 }
 
 parse_one_arm(ts: Token[], i: int, acc: Expr[]) -> PArgs {
-    p = parse_guarded(ts, parse_pattern(ts, i))
+    p = parse_guarded(ts, parse_alts(ts, parse_pattern(ts, i)))
     body = parse_expr(ts, p.next + 1)
 
     parse_arms(ts, body.next, acc ++ [p.node, body.node])
+}
+
+/// `Red | Green => …` is one arm that matches either, so the alternatives hang off one node.
+parse_alts(ts: Token[], p: PExpr) -> PExpr {
+    if ts.get(p.next).kind != Bar {
+        p
+    } else {
+        next = parse_pattern(ts, p.next + 1)
+
+        parse_alts(ts, mk_pexpr(e_binary("|", p.node, next.node), next.next))
+    }
 }
 
 parse_guarded(ts: Token[], p: PExpr) -> PExpr {
