@@ -52,3 +52,16 @@ test_a_lambda_is_an_arrow() {
               "function f() {{ return call(((x) => (x + 1))); }}",
               "the one form both languages share")
 }
+
+test_a_match_is_a_chain_of_questions() {
+    assert_eq(js_of("f(n: int) -> str => match n {{ 1 => \"one\" _ => \"more\" }}"),
+              "function f(n) {{ return (n === 1 ? \"one\" : \"more\"); }}",
+              "each arm asks once, and the underscore answers the rest")
+}
+
+test_a_loop_is_the_loop_javascript_writes() {
+    assert_eq(js_of("f(xs: int[]) -> int {{ n = 0 for x in xs {{ seen(x) }} n }}"),
+              "function f(xs) {{ let n = 0; for (const x of xs)"
+                  ++ " {{ seen(x); }} return n; }}",
+              "a for over a list needs no index, and no semicolon behind it")
+}

@@ -35,8 +35,34 @@ jemit_expr(e: Expr) -> str =>
         EMethod  => jemit_method(e)
         EList    => "[{jemit_args(e.children, 0)}]"
         ELambda  => jemit_lambda(e)
+        EMatch   => jemit_match(e)
+        EWhile   => jemit_while(e)
+        EFor     => jemit_for(e)
+        EJump    => e.text
         _        => "undefined"
     }
+
+jemit_while(e: Expr) -> str =>
+    "while ({jemit_expr(e.children.get(0))}) {{ {jemit_stmts(e.stmts, 0)} }}"
+
+jemit_for(e: Expr) -> str =>
+    "for (const {jid(e.text)} of {jemit_expr(e.children.get(0))})"
+        ++ " {{ {jemit_stmts(e.stmts, 0)} }}"
+
+jemit_match(e: Expr) -> str =>
+    jemit_arms(e.children, 1, jemit_expr(e.children.get(0)))
+
+/// Arms are pattern and answer in turn, and `_` is the one that always matches.
+jemit_arms(cs: Expr[], i: int, scrut: str) -> str {
+    if i + 1 >= cs.length() {
+        "undefined"
+    } else if cs.get(i).text == "_" {
+        jemit_expr(cs.get(i + 1))
+    } else {
+        "({scrut} === {jemit_expr(cs.get(i))} ? {jemit_expr(cs.get(i + 1))}"
+            ++ " : {jemit_arms(cs, i + 2, scrut)})"
+    }
+}
 
 jemit_ternary(e: Expr) -> str =>
     "({jemit_expr(e.children.get(0))} ? {jemit_expr(e.children.get(1))}"
@@ -115,6 +141,8 @@ jemit_block(e: Expr) -> str =>
 jemit_stmts(body: Stmt[], i: int) -> str {
     if i >= body.length() {
         ""
+    } else if i == body.length() - 1 {
+        jemit_stmt(body.get(i))
     } else {
         "{jemit_stmt(body.get(i))} {jemit_stmts(body, i + 1)}"
     }
@@ -125,10 +153,15 @@ jemit_stmt(s: Stmt) -> str {
         "let {jid(s.name)} = {jemit_expr(s.value)};"
     } else if s.kind == SSet {
         "{jid(s.name)} = {jemit_expr(s.value)};"
+    } else if is_loop(s.value) {
+        jemit_expr(s.value)
     } else {
         "{jemit_expr(s.value)};"
     }
 }
+
+is_loop(e: Expr) -> bool =>
+    e.kind == EWhile || e.kind == EFor
 
 jemit_fn(s: Stmt) -> str =>
     "function {jid(s.name)}({jemit_params(s.params, 0)}) {{ "
