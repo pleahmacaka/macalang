@@ -330,6 +330,15 @@ test_one_name_defined_twice_is_named_as_a_clash() {
               "two different names are not a clash")
 }
 
+test_a_pattern_binds_its_payload_to_the_type_the_variant_declared() {
+    assert_eq(count_of("S = C(float) | R(float, float)"
+                       ++ " area(s: S) -> float => match s {{"
+                       ++ " C(r) => 3.14 * r * r R(w, h) => w * h }}"),
+              "0", "an unbound payload settled on int and clashed with float")
+    assert_eq(count_of("S = C(int) f(s: S) -> str => match s {{ C(n) => n }}"),
+              "1", "and a payload the variant declared int is not a str")
+}
+
 test_element_is_the_name_the_spec_gives_rendered_text() {
     assert_eq(count_of("view() -> Element => div(\"hi\")"), "0",
               "a rendered element is a str natively, and Element names it")

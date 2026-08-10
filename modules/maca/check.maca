@@ -11,13 +11,14 @@ Env = {
     ftypes: Ty[]
     ctors:  str[]
     owners: str[]
+    slots:  str[]
     errors: str[]
     infer:  Infer
 }
 
 empty_env() -> Env =>
     Env { names = [], types = [], fns = [], sigs = [],
-          fields = [], ftypes = [], ctors = [], owners = [],
+          fields = [], ftypes = [], ctors = [], owners = [], slots = [],
           errors = [], infer = new_infer() }
 
 Typed = {
@@ -175,7 +176,8 @@ add_ctors(env: Env, sum: str, vs: Expr[], i: int) -> Env {
         env
     } else {
         held = env with { ctors = env.ctors ++ [vs.get(i).text],
-                          owners = env.owners ++ [sum] }
+                          owners = env.owners ++ [sum],
+                          slots = env.slots ++ [slot_types(vs.get(i))] }
 
         add_ctors(held, sum, vs, i + 1)
     }
@@ -676,14 +678,58 @@ field_type(env: Env, e: Expr) -> Typed {
     }
 }
 
+/// The payload types a variant carries, joined, so one list can hold them beside the name.
+slot_types(v: Expr) -> str =>
+    v.children.map(binder_type).join(",")
+
+binder_type(b: Expr) -> str =>
+    b.ty
+
 match_type(env: Env, e: Expr) -> Typed {
     if e.children.length() < 3 {
         typed(walk_args(env, e.children, 0), t_any())
     } else {
         seen = type_in(env, e.children.get(0))
-        first = type_in(seen.env, e.children.get(2))
+        first = type_in(bound_arm(seen.env, e.children.get(1)),
+                        e.children.get(2))
 
-        typed(unify_from(first.env, e.children, first.ty, 4, 2), first.ty)
+        typed(unify_arms(first.env, e.children, first.ty, 3), first.ty)
+    }
+}
+
+unify_arms(env: Env, cs: Expr[], want: Ty, i: int) -> Env {
+    if i + 1 >= cs.length() {
+        env
+    } else {
+        got = type_in(bound_arm(env, cs.get(i)), cs.get(i + 1))
+
+        unify_arms(joined(got.env, want, got.ty), cs, want, i + 2)
+    }
+}
+
+/// `C(r)` binds `r` to what the variant declared it carries, so the arm reads it as that.
+bound_arm(env: Env, pat: Expr) -> Env {
+    if pat.kind == EGuard {
+        bound_arm(env, pat.children.get(0))
+    } else if pat.children.length() == 0 {
+        env
+    } else {
+        at = env.ctors.index_of(pat.text)
+
+        if at < 0 {
+            env
+        } else {
+            bind_slots_of(env, pat.children, env.slots.get(at).split(","), 0)
+        }
+    }
+}
+
+bind_slots_of(env: Env, bs: Expr[], tys: str[], i: int) -> Env {
+    if i >= bs.length() || i >= tys.length() {
+        env
+    } else {
+        bind_slots_of(bind(env, bs.get(i).text, ty_named(tys.get(i))),
+                      bs, tys, i + 1)
     }
 }
 
