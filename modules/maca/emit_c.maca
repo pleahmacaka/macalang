@@ -620,6 +620,8 @@ any_bound(cs: Expr[], i: int) -> bool {
 test(scrut: str, pat: Expr, tagged: bool) -> str {
     if pat.kind == EGuard {
         guard_test(scrut, pat, tagged)
+    } else if is_fields_pat(pat) {
+        "1"
     } else if tagged {
         "{scrut}.tag == {pat.text}_tag"
     } else if pat.kind == EStr {
@@ -639,13 +641,29 @@ guard_test(scrut: str, pat: Expr, tagged: bool) -> str {
     }
 }
 
+/// `{ a, b }` names fields rather than slots, so it matches anything and binds by name.
+is_fields_pat(p: Expr) -> bool =>
+    p.kind == EIdent && p.text == "{{}}"
+
 arm_body(scrut: str, pat: Expr, body: Expr) -> str {
     if pat.kind == EGuard {
         arm_body(scrut, pat.children.get(0), body)
     } else if pat.children.length() == 0 {
         emit_expr(body)
+    } else if is_fields_pat(pat) {
+        "({{ {bind_fields(scrut, pat.children, 0)}{emit_expr(body)}; }})"
     } else {
         "({{ {bind_slots(scrut, pat.children, 0)}{emit_expr(body)}; }})"
+    }
+}
+
+bind_fields(scrut: str, fs: Expr[], i: int) -> str {
+    if i >= fs.length() {
+        ""
+    } else {
+        "__typeof__({scrut}.{c_id(fs.get(i).text)}) {c_id(fs.get(i).text)}"
+            ++ " = {scrut}.{c_id(fs.get(i).text)};"
+            ++ " {bind_fields(scrut, fs, i + 1)}"
     }
 }
 

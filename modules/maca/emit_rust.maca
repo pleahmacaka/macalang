@@ -135,7 +135,8 @@ rbranch(e: Expr) -> str {
 }
 
 remit_match(e: Expr) -> str =>
-    "match {remit_match_on(e)} {{ {remit_arms(e.children, 1)} }}"
+    "match {remit_match_on(e)} {{"
+        ++ " {remit_arms(e.children, 1, remit_expr(e.children.get(0)))} }}"
 
 remit_match_on(e: Expr) -> str {
     scrut = remit_expr(e.children.get(0))
@@ -484,12 +485,27 @@ rjoins(e: Expr) -> bool {
 rlist(ty: str) -> bool =>
     ty.length() > 2 && ty.slice(ty.length() - 2, ty.length()) == "[]"
 
-remit_arms(cs: Expr[], i: int) -> str {
+remit_arms(cs: Expr[], i: int, scrut: str) -> str {
     if i + 1 >= cs.length() {
         ""
+    } else if rfields_pat(cs.get(i)) {
+        "_ => {{ {rbind_fields(scrut, cs.get(i).children, 0)}"
+            ++ "{remit_expr(cs.get(i + 1))} \}, "
     } else {
         arm = "{remit_pat(cs.get(i))} => {remit_expr(cs.get(i + 1))}, "
-        arm ++ remit_arms(cs, i + 2)
+        arm ++ remit_arms(cs, i + 2, scrut)
+    }
+}
+
+rfields_pat(p: Expr) -> bool =>
+    p.kind == EIdent && p.text == "{{}}"
+
+rbind_fields(scrut: str, fs: Expr[], i: int) -> str {
+    if i >= fs.length() {
+        ""
+    } else {
+        "let {rid(fs.get(i).text)} = {scrut}.{rid(fs.get(i).text)}.clone(); "
+            ++ rbind_fields(scrut, fs, i + 1)
     }
 }
 
