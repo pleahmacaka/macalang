@@ -1,0 +1,18 @@
+import lint/rules
+
+test_a_line_past_the_width_is_an_issue() {
+    assert(too_wide("x" ++ "y".repeat(120)), "a long line is caught")
+    assert(!too_wide("short()"), "and a short one is not")
+}
+
+test_an_if_on_one_line_is_an_issue() {
+    assert(single_line_if("    if a > b {{ c }}"),
+           "a brace closing on the same line is the rule this names")
+    assert(!single_line_if("    if a > b {{"),
+           "while an opened block is how it should be written")
+}
+
+test_a_trailing_space_is_an_issue() {
+    assert(has_trailing_space("done() "), "one space past the end")
+    assert(!has_trailing_space("done()"), "and none when it ends clean")
+}
