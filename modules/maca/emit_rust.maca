@@ -405,8 +405,10 @@ rpick2(e: Expr) -> str {
 rshown(cs: Expr[], i: int) -> str {
     if i >= cs.length() {
         "String::new()"
+    } else if cs.get(i).kind == EList && cs.get(i).children.length() == 0 {
+        "\"[]\".to_string()"
     } else {
-        "format!(\"{{}}\", {remit_expr(cs.get(i))})"
+        rstr_of(cs.get(i).ty, remit_expr(cs.get(i)))
     }
 }
 
