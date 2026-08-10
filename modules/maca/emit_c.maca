@@ -533,6 +533,11 @@ c_int_of(ty: str, args: str) -> str {
     }
 }
 
+/// Two `char*` compared with `<` compares addresses, so every comparison on text goes through strcmp.
+c_compare(op: str) -> bool =>
+    op == "==" || op == "!=" || op == "<" || op == ">"
+        || op == "<=" || op == ">="
+
 c_is_str(e: Expr) -> bool =>
     e.kind == EStr || e.ty == "str"
 
@@ -544,7 +549,7 @@ c_joins(op: str, l: Expr, r: Expr) -> bool =>
 emit_binary(e: Expr) -> str {
     l = e.children.get(0)
     r = e.children.get(1)
-    is_cmp = e.text == "==" || e.text == "!="
+    is_cmp = c_compare(e.text)
     is_str_eq = is_cmp && (c_is_str(l) || c_is_str(r))
 
     if e.text == "=" && l.kind == EMethod && l.text == "get" {

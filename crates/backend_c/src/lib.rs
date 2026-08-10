@@ -4556,6 +4556,11 @@ impl<'a> Cx<'a> {
                     (format!("({lc} {} {rc})", bin_op(op)), CTy::Bool)
                 }
             }
+            // Two `char*` compared with `<` compares addresses, which is not an order anybody meant.
+            Lt | Gt | Le | Ge if matches!(lt, CTy::Str) || matches!(rt, CTy::Str) => (
+                format!("(strcmp({lc}, {rc}) {} 0)", bin_op(op)),
+                CTy::Bool,
+            ),
             Lt | Gt | Le | Ge => (format!("({lc} {} {rc})", bin_op(op)), CTy::Bool),
             And | Or => (format!("({lc} {} {rc})", bin_op(op)), CTy::Bool),
             Union | Pipe => (lc, lt),
