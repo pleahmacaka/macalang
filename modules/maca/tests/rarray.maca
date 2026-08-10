@@ -163,6 +163,34 @@ test_an_element_builds_the_same_html_in_rust() {
            "the call needs the definition, which Rust has no runtime for")
 }
 
+test_an_if_with_no_else_is_a_statement_not_a_value() {
+    out = ra_rust("f(n: int) -> int {{ c = 0 if n > 0 {{ c = 1 }} c }}")
+
+    assert(out.index_of("if (n > 0i64) {{") >= 0,
+           "Rust has a statement if, so no branch needs inventing")
+    assert(out.index_of("?") < 0,
+           "`?` is the marker for a missing else, never something to emit")
+}
+
+test_an_assertion_is_the_runtime_call_and_not_the_macro() {
+    out = ra_rust("t() -> int {{ assert_eq(\"a\", \"a\", \"same\") 0 }}")
+
+    assert(out.index_of("maca_assert_eq(") >= 0,
+           "`assert_eq!` is a macro in Rust, so the call needs its own name")
+    assert(out.index_of("fn maca_assert_eq(got: String") >= 0,
+           "and the preamble defines what the call reaches")
+}
+
+test_a_string_search_takes_a_pattern_not_a_string() {
+    out = ra_rust("f(s: str, p: str) -> bool => s.starts_with(p)")
+    cut = ra_rust("f(s: str) -> str[] => s.split(\",\")")
+
+    assert(out.index_of(".starts_with(p.clone().as_str())") >= 0,
+           "a String is not a Pattern, and every search wants one")
+    assert(cut.index_of("Rc::new((s.clone()).split(") >= 0,
+           "a split hands back a counted list like any other")
+}
+
 test_a_raise_is_a_panic() {
     out = remit_fn(parse_fn(lex("f() -> int {{ fail \"gone\" }}"), 0).snode)
 

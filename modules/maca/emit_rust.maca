@@ -96,11 +96,40 @@ remit_unary(e: Expr) -> str {
 }
 
 remit_ternary(e: Expr) -> str {
-    cond = remit_expr(e.children.get(0))
-    then = remit_expr(e.children.get(1))
-    els = remit_expr(e.children.get(2))
+    if rmissing_else(e.children.get(2)) {
+        rif_stmt(e)
+    } else {
+        cond = remit_expr(e.children.get(0))
+        then = remit_expr(e.children.get(1))
+        els = remit_expr(e.children.get(2))
 
-    "(if {cond} {{ {then} }} else {{ {els} }})"
+        "(if {cond} {{ {then} }} else {{ {els} }})"
+    }
+}
+
+rmissing_else(e: Expr) -> bool =>
+    e.kind == EIdent && e.text == "?"
+
+rif_stmt(e: Expr) -> str {
+    cond = remit_expr(e.children.get(0))
+    then = rbranch(e.children.get(1))
+    els = e.children.get(2)
+
+    if rmissing_else(els) {
+        "if {cond} {then}"
+    } else {
+        "if {cond} {then} else {rbranch(els)}"
+    }
+}
+
+rbranch(e: Expr) -> str {
+    if e.kind == EIf {
+        rif_stmt(e)
+    } else if e.kind == EBlock {
+        "{{ {rblock_stmts(e.stmts, 0)}{remit_expr(e.children.get(0))}; }}"
+    } else {
+        "{{ {remit_expr(e)}; }}"
+    }
 }
 
 remit_match(e: Expr) -> str =>
@@ -140,8 +169,11 @@ rchar_pred(name: str) -> str {
 }
 
 rstr_helper(name: str) -> bool =>
-    name == "upper" || name == "contains" || name == "ends_with" ||
-    rchar_pred(name) != ""
+    name == "upper" || name == "lower" || name == "trim"
+        || name == "contains" || name == "ends_with" || name == "starts_with"
+        || name == "replace" || name == "split" || name == "repeat"
+        || name == "substr" || name == "pad_start" || name == "pad_end"
+        || rchar_pred(name) != ""
 
 remit_str_method(e: Expr, recv: str) -> str {
     pred = rchar_pred(e.text)
@@ -150,8 +182,31 @@ remit_str_method(e: Expr, recv: str) -> str {
         "({recv}).chars().next().map_or(false, |c| c.{pred}())"
     } else if e.text == "upper" {
         "({recv}).to_uppercase()"
+    } else if e.text == "lower" {
+        "({recv}).to_lowercase()"
+    } else if e.text == "trim" {
+        "({recv}).trim().to_string()"
+    } else if e.text == "repeat" {
+        "({recv}).repeat(({rarg(e, 1)}) as usize)"
+    } else if e.text == "substr" {
+        "maca_substr({recv}, {rarg(e, 1)}, {rarg(e, 2)})"
+    } else if e.text == "pad_start" || e.text == "pad_end" {
+        "maca_{e.text}({recv}, {rarg(e, 1)})"
+    } else if e.text == "replace" {
+        "({recv}).replace({rarg(e, 1)}.as_str(), {rarg(e, 2)}.as_str())"
+    } else if e.text == "split" {
+        "Rc::new(({recv}).split({rarg(e, 1)}.as_str())"
+            ++ ".map(|p| p.to_string()).collect::<Vec<String>>())"
     } else {
-        "({recv}).{e.text}({remit_expr(e.children.get(1))}.as_str())"
+        "({recv}).{e.text}({rarg(e, 1)}.as_str())"
+    }
+}
+
+rarg(e: Expr, i: int) -> str {
+    if i >= e.children.length() {
+        "Default::default()"
+    } else {
+        remit_expr(e.children.get(i))
     }
 }
 
@@ -219,6 +274,19 @@ remit_call(e: Expr) -> str {
         "format!(\"{{}}\", {args})"
     } else if e.text == "int" {
         rint_of(rarg_ty(e.children), args)
+    } else if e.text == "float" {
+        "(({args}) as f64)"
+    } else if e.text == "len" {
+        rlen_of(rarg_ty(e.children), args)
+    } else if e.text == "err" || e.text == "warn" {
+        "eprintln!(\"{{}}\", {args})"
+    } else if e.text == "assert_eq" {
+        "maca_assert_eq({rshown(e.children, 0)}, {rshown(e.children, 1)},"
+            ++ " {rshown(e.children, 2)})"
+    } else if rmath_call(e.text) {
+        "(({args}) as f64).{e.text}()"
+    } else if rpicking(e.text) && e.children.length() == 2 {
+        rpick2(e)
     } else if rruntime_call(e.text) {
         "maca_{e.text}({args})"
     } else {
@@ -226,8 +294,42 @@ remit_call(e: Expr) -> str {
     }
 }
 
+rlen_of(ty: str, args: str) -> str {
+    if rlist(ty) {
+        "(({args}).len() as i64)"
+    } else {
+        "(({args}).len() as i64)"
+    }
+}
+
+rmath_call(name: str) -> bool =>
+    name == "sqrt" || name == "floor" || name == "ceil" || name == "round"
+        || name == "sin" || name == "cos" || name == "tan" || name == "exp"
+
+rpicking(name: str) -> bool =>
+    name == "min" || name == "max"
+
+rpick2(e: Expr) -> str {
+    a = remit_expr(e.children.get(0))
+    b = remit_expr(e.children.get(1))
+
+    "({a}).{e.text}({b})"
+}
+
+rshown(cs: Expr[], i: int) -> str {
+    if i >= cs.length() {
+        "String::new()"
+    } else {
+        "format!(\"{{}}\", {remit_expr(cs.get(i))})"
+    }
+}
+
 rruntime_call(name: str) -> bool =>
     name == "read_file" || name == "write_file" || name == "exec"
+        || name == "assert" || name == "failures" || name == "sleep_ms"
+        || name == "make_dir" || name == "remove_dir" || name == "remove_file"
+        || name == "file_exists" || name == "is_dir" || name == "env"
+        || name == "cwd" || name == "panic"
 
 rarg_ty(cs: Expr[]) -> str {
     if cs.length() == 0 {
@@ -470,6 +572,8 @@ remit_stmts(body: Stmt[], i: int) -> str {
 remit_stmt(s: Stmt, is_last: bool, movable: bool) -> str {
     if s.kind == SSet {
         "{rid(s.name)} = {remit_expr(s.value)};"
+    } else if s.value.kind == EIf && rmissing_else(s.value.children.get(2)) {
+        rif_stmt(s.value)
     } else if s.kind == SBind && s.ret != "" {
         "let {rmut_word(movable)}{rid(s.name)}: {rtype(s.ret)}"
             ++ " = {remit_expr(s.value)};"
@@ -500,7 +604,23 @@ rust_preamble() -> str =>
     "#[allow(dead_code)]\nfn maca_element(tag: String, attrs: String, kids: String) -> String {{ if [\"area\", \"base\", \"br\", \"col\", \"embed\", \"hr\", \"img\", \"input\", \"link\", \"meta\", \"source\", \"track\", \"wbr\"].contains(&tag.as_str()) {{ format!(\"<{{}}{{}}>\", tag, attrs) }} else {{ format!(\"<{{}}{{}}>{{}}</{{}}>\", tag, attrs, kids, tag) }} }}\n" ++
     "#[allow(dead_code)]\nfn maca_read_file(path: String) -> String {{ std::fs::read_to_string(path).unwrap_or_default() }}\n" ++
     "#[allow(dead_code)]\nfn maca_write_file(path: String, text: String) -> bool {{ std::fs::write(path, text).is_ok() }}\n" ++
-    "#[allow(dead_code)]\nfn maca_exec(cmd: String, args: Rc<Vec<String>>) -> i64 {{ match std::process::Command::new(cmd).args(args.iter()).status() {{ Ok(s) => s.code().unwrap_or(-1) as i64, Err(_) => -1 }} }}\n"
+    "#[allow(dead_code)]\nfn maca_exec(cmd: String, args: Rc<Vec<String>>) -> i64 {{ match std::process::Command::new(cmd).args(args.iter()).status() {{ Ok(s) => s.code().unwrap_or(-1) as i64, Err(_) => -1 }} }}\n" ++
+    "use std::cell::Cell;\nthread_local!(static MACA_FAILED: Cell<i64> = Cell::new(0));\n" ++
+    "#[allow(dead_code)]\nfn maca_failures() -> i64 {{ MACA_FAILED.with(|c| c.get()) }}\n" ++
+    "#[allow(dead_code)]\nfn maca_assert(cond: bool, msg: String) -> bool {{ if cond {{ return true; }} MACA_FAILED.with(|c| c.set(c.get() + 1)); eprintln!(\"assertion failed: {{}}\", if msg.is_empty() {{ \"(no message)\".to_string() }} else {{ msg }}); false }}\n" ++
+    "#[allow(dead_code)]\nfn maca_assert_eq(got: String, want: String, msg: String) -> bool {{ if got == want {{ return true; }} MACA_FAILED.with(|c| c.set(c.get() + 1)); eprintln!(\"assertion failed: {{}}\\n  got:  {{}}\\n  want: {{}}\", if msg.is_empty() {{ \"(no message)\".to_string() }} else {{ msg }}, got, want); false }}\n" ++
+    "#[allow(dead_code)]\nfn maca_panic(msg: String) {{ eprintln!(\"{{}}\", msg); std::process::exit(1); }}\n" ++
+    "#[allow(dead_code)]\nfn maca_sleep_ms(ms: i64) {{ if ms > 0 {{ std::thread::sleep(std::time::Duration::from_millis(ms as u64)); }} }}\n" ++
+    "#[allow(dead_code)]\nfn maca_make_dir(p: String) -> bool {{ std::fs::create_dir_all(p).is_ok() }}\n" ++
+    "#[allow(dead_code)]\nfn maca_remove_dir(p: String) -> bool {{ std::fs::remove_dir(p).is_ok() }}\n" ++
+    "#[allow(dead_code)]\nfn maca_remove_file(p: String) -> bool {{ std::fs::remove_file(p).is_ok() }}\n" ++
+    "#[allow(dead_code)]\nfn maca_file_exists(p: String) -> bool {{ std::path::Path::new(&p).exists() }}\n" ++
+    "#[allow(dead_code)]\nfn maca_is_dir(p: String) -> bool {{ std::path::Path::new(&p).is_dir() }}\n" ++
+    "#[allow(dead_code)]\nfn maca_env(name: String) -> String {{ std::env::var(name).unwrap_or_default() }}\n" ++
+    "#[allow(dead_code)]\nfn maca_cwd() -> String {{ std::env::current_dir().map(|p| p.display().to_string()).unwrap_or_default() }}\n" ++
+    "#[allow(dead_code)]\nfn maca_substr(s: String, at: i64, n: i64) -> String {{ let a = (at.max(0) as usize).min(s.len()); let b = (a + n.max(0) as usize).min(s.len()); s.get(a..b).unwrap_or(\"\").to_string() }}\n" ++
+    "#[allow(dead_code)]\nfn maca_pad_start(s: String, w: i64) -> String {{ let w = w.max(0) as usize; if s.len() >= w {{ s }} else {{ format!(\"{{}}{{}}\", \" \".repeat(w - s.len()), s) }} }}\n" ++
+    "#[allow(dead_code)]\nfn maca_pad_end(s: String, w: i64) -> String {{ let w = w.max(0) as usize; if s.len() >= w {{ s }} else {{ format!(\"{{}}{{}}\", s, \" \".repeat(w - s.len())) }} }}\n"
 
 remit_item(s: Stmt) -> str {
     if s.kind == SRecord {
