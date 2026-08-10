@@ -12,6 +12,7 @@ Env = {
     ctors:  str[]
     owners: str[]
     slots:  str[]
+    varargs: str[]
     errors: str[]
     infer:  Infer
 }
@@ -19,7 +20,7 @@ Env = {
 empty_env() -> Env =>
     Env { names = [], types = [], fns = [], sigs = [],
           fields = [], ftypes = [], ctors = [], owners = [], slots = [],
-          errors = [], infer = new_infer() }
+          varargs = [], errors = [], infer = new_infer() }
 
 Typed = {
     env: Env
@@ -157,7 +158,18 @@ add_fn(env: Env, s: Stmt) -> Env {
     made = param_types(env, s.params, 0, [])
 
     made.env with { fns = made.env.fns ++ [s.name],
-                    sigs = made.env.sigs ++ [t_fn(made.tys, ty_named(s.ret))] }
+                    sigs = made.env.sigs ++ [t_fn(made.tys, ty_named(s.ret))],
+                    varargs = made.env.varargs ++ rest_taker(s) }
+}
+
+rest_taker(s: Stmt) -> str[] {
+    n = s.params.length()
+
+    if n > 0 && s.params.get(n - 1).ival == 1 {
+        [s.name]
+    } else {
+        []
+    }
 }
 
 add_fields(env: Env, rec: str, fs: Expr[], i: int) -> Env {
@@ -329,12 +341,18 @@ call_declared(env: Env, e: Expr, sig: Ty) -> Typed {
     ready = with_infer(env, used.infer)
     params = fn_params(used.ty)
 
-    if params.length() != e.children.length() {
+    if takes_rest(ready, e, params.length()) {
+        typed(unify_args(ready, e.children.slice(0, params.length() - 1),
+                         params, 0), fn_ret(used.ty))
+    } else if params.length() != e.children.length() {
         typed(wrong_arity(ready, e, params.length()), fn_ret(used.ty))
     } else {
         typed(unify_args(ready, e.children, params, 0), fn_ret(used.ty))
     }
 }
+
+takes_rest(env: Env, e: Expr, wanted: int) -> bool =>
+    env.varargs.index_of(e.text) >= 0 && e.children.length() >= wanted - 1
 
 wrong_arity(env: Env, e: Expr, wanted: int) -> Env =>
     complain(env, "`{e.text}` takes {wanted} argument(s), given {e.children.length()}")
@@ -991,10 +1009,26 @@ reassigned(env: Env, s: Stmt) -> Stmt {
 annotate_expr(env: Env, e: Expr) -> Expr {
     if is_element_call(env, e) {
         annotate_expr(env, lowered_element(env, e))
+    } else if is_rest_call(env, e) {
+        annotated_node(env, gathered_rest(env, e))
     } else {
         annotated_node(env, e)
     }
 }
+
+is_rest_call(env: Env, e: Expr) -> bool =>
+    e.kind == ECall && env.varargs.index_of(e.text) >= 0
+
+/// Every argument past the fixed ones becomes the one list the callee declared.
+gathered_rest(env: Env, e: Expr) -> Expr {
+    at = fixed_arity(env, e.text)
+
+    e with { children = e.children.slice(0, at)
+                        ++ [e_list(e.children.slice(at, e.children.length()))] }
+}
+
+fixed_arity(env: Env, name: str) -> int =>
+    fn_params(env.sigs.get(env.fns.index_of(name))).length() - 1
 
 annotated_node(env: Env, e: Expr) -> Expr {
     inner = check_body(env, e.stmts, 0, t_any())

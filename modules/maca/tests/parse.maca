@@ -147,6 +147,16 @@ test_a_comma_pattern_matches_a_list_without_brackets() {
            "a cell the pattern spells out is compared, not bound")
 }
 
+test_a_rest_parameter_is_one_list_the_call_fills() {
+    assert_eq(errors_in("total(...rest: int) -> int => 0\n"
+                        ++ "f() -> int => total(1, 2, 3)"),
+              "0", "a variadic takes as many arguments as the call hands it")
+    assert(annotated_c("total(...rest: int) -> int => 0\n"
+                       ++ "f() -> int => total(1, 2)")
+               .index_of("total(maca_listv(") >= 0,
+           "the loose arguments arrive as the one list the callee declared")
+}
+
 test_a_match_arm_may_answer_with_a_block() {
     assert_eq(errors_in("C = A | B f(c: C) -> int => match c {{"
                         ++ " A => {{ n = 1 n + 1 }} B => 0 }}"),

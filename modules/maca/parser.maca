@@ -388,10 +388,18 @@ parse_params(ts: Token[], i: int, acc: Expr[]) -> PParams {
 }
 
 parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
-    seen = acc ++ [e_param(ts.get(i).text, param_type(ts, i))]
-
-    parse_params(ts, skip_comma(ts, after_param_type(ts, i)), seen)
+    if ts.get(i).kind == Ellipsis {
+        parse_params(ts, skip_comma(ts, after_param_type(ts, i + 1)),
+                     acc ++ [rest_param(ts, i + 1)])
+    } else {
+        parse_params(ts, skip_comma(ts, after_param_type(ts, i)),
+                     acc ++ [e_param(ts.get(i).text, param_type(ts, i))])
+    }
 }
+
+/// `...rest: int` is one parameter holding every argument left, so it is a list.
+rest_param(ts: Token[], i: int) -> Expr =>
+    e_param(ts.get(i).text, param_type(ts, i) ++ "[]") with { ival = 1 }
 
 param_type(ts: Token[], i: int) -> str {
     if ts.get(i + 1).kind != Colon {
