@@ -16,7 +16,7 @@ Unit = {
 main(args: str[]) -> int {
     if args.length() >= 4 && args.get(0) == "build"
             && args.get(2) == "-o" {
-        build_binary(args.get(1), args.get(3))
+        build_out(args.get(1), args.get(3), flag_after(args, "--target"))
     } else if args.length() >= 2 && args.get(0) == "run" {
         run_file(args.get(1), args.slice(2, args.length()))
     } else if args.length() >= 2 && args.get(0) == "test" {
@@ -102,6 +102,29 @@ format_file(src: str, only_check: bool) -> int {
         write_file(src, after)
 
         0
+    }
+}
+
+flag_after(args: str[], name: str) -> str {
+    at = args.index_of(name)
+
+    if at < 0 || at + 1 >= args.length() {
+        ""
+    } else {
+        args.get(at + 1)
+    }
+}
+
+/// `-o` names a binary for the native target and the emitted source for any other.
+build_out(src: str, out: str, target: str) -> int {
+    if target == "" || target == "native" || target == "c" {
+        build_binary(src, out)
+    } else if target == "rust" {
+        compile_file([src, out, "rust"])
+    } else {
+        err("maca: no target `{target}`. Try native or rust.")
+
+        2
     }
 }
 

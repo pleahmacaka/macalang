@@ -193,6 +193,46 @@ fn maca1_scaffolds_a_project_that_runs() {
     assert!(String::from_utf8_lossy(&ran.stdout).contains("hello"));
 }
 
+/// `--target` picks the back end, and `-o` names a binary for the native one and the source for the rest.
+#[test]
+fn maca1_builds_for_the_target_it_is_given() {
+    let dir = std::env::temp_dir().join("maca1-cli-target");
+    let Some(bin) = maca1(&dir) else { return };
+    let file = dir.join("t.maca");
+    std::fs::write(&file, "main() -> int {\n    info(\"hi\")\n    0\n}\n").unwrap();
+
+    let rs = dir.join("t.rs");
+    let made = Command::new(&bin)
+        .args([
+            "build",
+            &file.to_string_lossy(),
+            "-o",
+            &rs.to_string_lossy(),
+            "--target",
+            "rust",
+        ])
+        .output()
+        .expect("spawn maca1 build --target rust");
+    assert_eq!(made.status.code(), Some(0));
+    assert!(
+        std::fs::read_to_string(&rs).unwrap().starts_with("use std::rc::Rc;"),
+        "the Rust target writes Rust"
+    );
+
+    let no = Command::new(&bin)
+        .args([
+            "build",
+            &file.to_string_lossy(),
+            "-o",
+            &dir.join("x").to_string_lossy(),
+            "--target",
+            "nowhere",
+        ])
+        .output()
+        .expect("spawn maca1 build --target nowhere");
+    assert_eq!(no.status.code(), Some(2), "a target nobody serves is a usage error");
+}
+
 /// A suite that imports resolves from where its own file is, not from wherever a scratch file landed.
 #[test]
 fn maca1_runs_a_suite_that_imports_a_module() {
