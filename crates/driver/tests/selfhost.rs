@@ -16,6 +16,7 @@ const COMPILER_FILES: &[&str] = &[
     "check.maca",
     "emit_c.maca",
     "emit_rust.maca",
+    "emit_js.maca",
     "print.maca",
 ];
 

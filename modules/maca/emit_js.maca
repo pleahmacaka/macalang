@@ -1,12 +1,9 @@
 import maca/ast
 
-JsReserved = "arguments await case catch class const debugger default delete do "
-    ++ "enum eval export extends finally function implements in instanceof "
-    ++ "interface let new null package private protected public static super "
-    ++ "switch this throw typeof var void yield"
+JsReserved = " arguments await case catch class const debugger default delete do enum eval export extends finally function implements in instanceof interface let new null package private protected public static super switch this throw typeof var void yield "
 
 jid(name: str) -> str {
-    if JsReserved.split(" ").index_of(name) >= 0 {
+    if JsReserved.index_of(" {name} ") >= 0 {
         name ++ "_"
     } else {
         name
@@ -153,14 +150,14 @@ jemit_stmt(s: Stmt) -> str {
         "let {jid(s.name)} = {jemit_expr(s.value)};"
     } else if s.kind == SSet {
         "{jid(s.name)} = {jemit_expr(s.value)};"
-    } else if is_loop(s.value) {
+    } else if js_loop(s.value) {
         jemit_expr(s.value)
     } else {
         "{jemit_expr(s.value)};"
     }
 }
 
-is_loop(e: Expr) -> bool =>
+js_loop(e: Expr) -> bool =>
     e.kind == EWhile || e.kind == EFor
 
 jemit_fn(s: Stmt) -> str =>

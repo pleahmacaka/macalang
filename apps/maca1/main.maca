@@ -4,6 +4,7 @@ import maca/parser
 import maca/check
 import maca/emit_c
 import maca/emit_rust
+import maca/emit_js
 import maca/print
 
 Unit = {
@@ -120,10 +121,10 @@ flag_after(args: str[], name: str) -> str {
 build_out(src: str, out: str, target: str) -> int {
     if target == "" || target == "native" || target == "c" {
         build_binary(src, out)
-    } else if target == "rust" {
-        compile_file([src, out, "rust"])
+    } else if target == "rust" || target == "js" {
+        compile_file([src, out, target])
     } else {
-        err("maca: no target `{target}`. Try native or rust.")
+        err("maca: no target `{target}`. Try native, rust or js.")
 
         2
     }
@@ -224,8 +225,14 @@ compile_file(args: str[]) -> int {
         report_all("parse", raw.errors, 0)
     errs = bad + report_all("check", check_errors(raw), 0)
     m = annotated(raw)
-    want_rust = args.length() >= 3 && args.get(2) == "rust"
-    emitted = if want_rust { remit_module(m) } else { emit_module(m) }
+    asked = args.length() >= 3 ? args.get(2) : ""
+    emitted = if asked == "rust" {
+        remit_module(m)
+    } else if asked == "js" {
+        jemit_module(m)
+    } else {
+        emit_module(m)
+    }
 
     write_file(args.get(1), emitted)
     errs
