@@ -18,15 +18,19 @@ span(cs: str[], i: int, j: int) -> str =>
 
 Lexed = {
     tokens: Token[]
+    marks: Token[]
     errors: str[]
     pos: int
 }
 
 lexed(tokens: Token[], errors: str[]) -> Lexed =>
-    Lexed { tokens, errors, pos = 0 }
+    Lexed { tokens, marks = [], errors, pos = 0 }
 
 keep(acc: Lexed, t: Token) -> Lexed =>
     acc with { tokens = acc.tokens.push(t) }
+
+mark(acc: Lexed, t: Token) -> Lexed =>
+    acc with { marks = acc.marks.push(t) }
 
 moved(acc: Lexed, i: int) -> Lexed =>
     acc with { pos = i }
@@ -36,6 +40,10 @@ note_error(acc: Lexed, msg: str) -> Lexed =>
 
 lex(src: str) -> Token[] =>
     lex_all(src).tokens
+
+/// The comments, in source order, which a formatter needs and a parser must not see.
+lex_marked(src: str) -> Token[] =>
+    lex_all(src).marks
 
 lex_all(src: str) -> Lexed {
     cs = src.chars()
@@ -62,10 +70,11 @@ halves(cs: str[], out: Lexed, hi: int, mid: int) -> Lexed {
 }
 
 emptied(acc: Lexed) -> Lexed =>
-    Lexed { tokens = [], errors = [], pos = acc.pos }
+    Lexed { tokens = [], marks = [], errors = [], pos = acc.pos }
 
 merged_runs(out: Lexed, left: Lexed, right: Lexed) -> Lexed =>
     Lexed { tokens = out.tokens ++ left.tokens ++ right.tokens,
+            marks = out.marks ++ left.marks ++ right.marks,
             errors = out.errors ++ left.errors ++ right.errors,
             pos = right.pos }
 
@@ -82,13 +91,19 @@ step(cs: str[], out: Lexed) -> Lexed {
     c = cs.get(i)
     match true {
         _ if is_space(c)   => moved(out, i + 1)
-        _ if comments(cs, i) => moved(out, line_end(cs, i))
+        _ if comments(cs, i) => lex_comment(cs, i, out)
         _ if triple(cs, i) => lex_raw(cs, i, out)
         _ if c == "\""     => lex_string(cs, i, out)
         _ if is_digit(c)   => lex_number(cs, i, out)
         _ if is_alpha(c)   => lex_word(cs, i, out)
         _                  => lex_punct(cs, i, out, c)
     }
+}
+
+lex_comment(cs: str[], i: int, out: Lexed) -> Lexed {
+    j = line_end(cs, i)
+
+    moved(mark(out, mk_token(Comment, span(cs, i, j), i)), j)
 }
 
 comments(cs: str[], i: int) -> bool =>

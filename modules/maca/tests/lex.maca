@@ -1,6 +1,35 @@
 import maca/token
 import maca/lexer
 
+test_a_comment_is_kept_beside_the_stream_not_inside_it() {
+    marks = lex_marked("a = 1 // why\nb = 2 // and why not")
+    plain = lex("a = 1 // why\nb = 2")
+
+    assert_eq(str(marks.length()), "2",
+              "a formatter that drops a comment is not a formatter")
+    assert_eq(marks.get(0).text, "// why",
+              "and what it kept is the line as written")
+    assert_eq(str(comment_count(plain, 0)), "0",
+              "while the parser is handed a stream with none in it")
+}
+
+test_a_comment_inside_a_string_is_not_a_comment() {
+    marks = lex_marked("a = \"http://x\"")
+
+    assert_eq(str(marks.length()), "0",
+              "the two slashes are text, and only the lexer can tell")
+}
+
+comment_count(ts: Token[], i: int) -> int {
+    if i >= ts.length() {
+        0
+    } else if ts.get(i).kind == Comment {
+        1 + comment_count(ts, i + 1)
+    } else {
+        comment_count(ts, i + 1)
+    }
+}
+
 count_of(src: str) -> str =>
     str(lex(src).length())
 

@@ -9,7 +9,7 @@ Kind =
     | Eq | EqEq | NotEq | Lt | Gt | Le | Ge | AmpAmp | PipePipe
     | Plus | Minus | Star | Slash | Percent | PlusPlus | Bar
     | Question | QuestionPost | Bang
-    | Newline | Eof
+    | Comment | Newline | Eof
 
 Token = {
     kind: Kind
