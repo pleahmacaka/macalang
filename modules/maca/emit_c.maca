@@ -807,11 +807,16 @@ c_fn_params(ps: str) -> str {
     }
 }
 
+is_map_type(ty: str) -> bool =>
+    ty.length() > 4 && ty.slice(0, 4) == "Map "
+
 type_c(ty: str) -> str {
     if is_fn_type(ty) {
         c_decl(ty, "")
     } else if is_list_type(ty) {
         "MacaList"
+    } else if is_map_type(ty) {
+        "MacaMap"
     } else if ty == "float" {
         "double"
     } else if ty == "str" || ty == "Element" {
@@ -1019,6 +1024,11 @@ c_preamble() -> str =>
     "static const char* maca_bool_to_str(int b) {{ return b ? \"true\" : \"false\"; }}\n" ++
     "static char* maca_upper(const char* s) {{ size_t n = strlen(s); char* r = malloc(n + 1); for (size_t i = 0; i < n; i++) r[i] = toupper((unsigned char)s[i]); r[n] = 0; return r; }}\n" ++
     "typedef struct {{ long* data; int len; }} MacaList;\n" ++
+    "typedef struct {{ MacaList keys; MacaList vals; }} MacaMap;\n" ++
+    "static MacaMap maca_map_new(void) {{ MacaMap m; m.keys.data = NULL; m.keys.len = 0; m.vals.data = NULL; m.vals.len = 0; return m; }}\n" ++
+    "static int maca_map_at(MacaMap m, const char* k) {{ for (int i = 0; i < m.keys.len; i++) if (strcmp((const char*)m.keys.data[i], k) == 0) return i; return -1; }}\n" ++
+    "static int maca_map_has(MacaMap m, const char* k) {{ return maca_map_at(m, k) >= 0; }}\n" ++
+    "static MacaList maca_map_keys(MacaMap m) {{ return m.keys; }}\n" ++
     "static MacaList maca_listv(int n, ...) {{ MacaList l; l.data = malloc(n * sizeof(long)); l.len = n; va_list ap; va_start(ap, n); for (int i = 0; i < n; i++) l.data[i] = va_arg(ap, long); va_end(ap); return l; }}\n" ++
     "static MacaList maca_list_cat(MacaList a, MacaList b) {{ MacaList l; l.len = a.len + b.len; l.data = malloc((l.len ? l.len : 1) * sizeof(long)); memcpy(l.data, a.data, a.len * sizeof(long)); memcpy(l.data + a.len, b.data, b.len * sizeof(long)); return l; }}\n" ++
     "static MacaList maca_list_slice(MacaList a, int lo, int hi) {{ if (lo < 0) lo = 0; if (hi > a.len) hi = a.len; if (hi < lo) hi = lo; MacaList l; l.len = hi - lo; l.data = malloc((l.len ? l.len : 1) * sizeof(long)); memcpy(l.data, a.data + lo, l.len * sizeof(long)); return l; }}\n" ++
