@@ -117,6 +117,15 @@ test_a_subtraction_in_argument_position_is_still_a_subtraction() {
               "a hyphen run names an attribute only when `=` closes it")
 }
 
+test_a_match_arm_may_answer_with_a_block() {
+    assert_eq(errors_in("C = A | B f(c: C) -> int => match c {{"
+                        ++ " A => {{ n = 1 n + 1 }} B => 0 }}"),
+              "0", "an arm answers the way a branch of an `if` does")
+    assert(shown("match c {{ A => {{ n = 1 n }} B => 0 }}")
+               .index_of("match c") >= 0,
+           "and the arm after it is still read")
+}
+
 annotated_c(src: str) -> str =>
     emit_module(annotated(parse_module(lex(src), 0, [])))
 

@@ -760,9 +760,18 @@ parse_arms(ts: Token[], i: int, acc: Expr[]) -> PArgs {
 
 parse_one_arm(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     p = parse_guarded(ts, parse_alts(ts, parse_pattern(ts, i)))
-    body = parse_expr(ts, p.next + 1)
+    body = parse_arm_body(ts, p.next + 1)
 
     parse_arms(ts, body.next, acc ++ [p.node, body.node])
+}
+
+/// An arm may answer with a block, the same way a branch of an `if` does.
+parse_arm_body(ts: Token[], i: int) -> PExpr {
+    if ts.get(i).kind == LBrace {
+        parse_branch(ts, i)
+    } else {
+        parse_expr(ts, i)
+    }
 }
 
 /// `Red | Green => …` is one arm that matches either, so the alternatives hang off one node.
