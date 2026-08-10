@@ -177,6 +177,18 @@ test_a_function_written_inside_a_body_is_a_local() {
               "0", "and it may carry a block for a body")
 }
 
+test_a_map_is_a_type_and_its_lookups_are_its_own() {
+    assert(annotated_c("f(m: Map str str) -> str => m.get(\"a\")")
+               .index_of("maca_map_get") >= 0,
+           "a key reads through the map runtime, not a list index")
+    assert(annotated_c("f(m: Map str str) -> bool => m.has(\"a\")")
+               .index_of("maca_map_has") >= 0,
+           "and asking whether a key is there has its own call")
+    assert(annotated_c("f(m: Map str str) -> int => m.length()")
+               .index_of(".keys.len") >= 0,
+           "a map's length is how many keys it holds")
+}
+
 test_a_match_arm_may_answer_with_a_block() {
     assert_eq(errors_in("C = A | B f(c: C) -> int => match c {{"
                         ++ " A => {{ n = 1 n + 1 }} B => 0 }}"),

@@ -158,6 +158,27 @@ c_elem_of(ty: str) -> str {
     }
 }
 
+map_method(name: str) -> bool =>
+    name == "get" || name == "set" || name == "has" || name == "keys"
+        || name == "length" || name == "count"
+
+/// A map is two lists side by side, so a key is an index into both.
+emit_map_method(e: Expr, recv: str) -> str {
+    key = e.children.length() > 1 ? emit_expr(e.children.get(1)) : ""
+
+    if e.text == "keys" {
+        "maca_map_keys({recv})"
+    } else if e.text == "length" || e.text == "count" {
+        "({recv}.keys.len)"
+    } else if e.text == "has" {
+        "maca_map_has({recv}, {key})"
+    } else if e.text == "set" {
+        "maca_map_set({recv}, {key}, (long)({emit_expr(e.children.get(2))}))"
+    } else {
+        "((const char*)maca_map_get({recv}, {key}))"
+    }
+}
+
 emit_method(e: Expr) -> str {
     recv = emit_expr(e.children.get(0))
     rty = e.children.get(0).ty
@@ -165,7 +186,9 @@ emit_method(e: Expr) -> str {
     on_str = rty == "str"
     el = c_elem_of(rty)
 
-    if e.text == "count" || (e.text == "length" && on_list) {
+    if is_map_type(rty) && map_method(e.text) {
+        emit_map_method(e, recv)
+    } else if e.text == "count" || (e.text == "length" && on_list) {
         "({recv}.len)"
     } else if e.text == "length" {
         "((int)strlen({recv}))"
@@ -1029,6 +1052,8 @@ c_preamble() -> str =>
     "static int maca_map_at(MacaMap m, const char* k) {{ for (int i = 0; i < m.keys.len; i++) if (strcmp((const char*)m.keys.data[i], k) == 0) return i; return -1; }}\n" ++
     "static int maca_map_has(MacaMap m, const char* k) {{ return maca_map_at(m, k) >= 0; }}\n" ++
     "static MacaList maca_map_keys(MacaMap m) {{ return m.keys; }}\n" ++
+    "static long maca_map_get(MacaMap m, const char* k) {{ int i = maca_map_at(m, k); return i < 0 ? 0 : m.vals.data[i]; }}\n" ++
+    "static MacaMap maca_map_set(MacaMap m, const char* k, long v) {{ int i = maca_map_at(m, k); MacaMap r; if (i >= 0) {{ r = m; r.vals.data = malloc((m.vals.len ? m.vals.len : 1) * sizeof(long)); memcpy(r.vals.data, m.vals.data, m.vals.len * sizeof(long)); r.vals.data[i] = v; return r; }} r.keys.len = m.keys.len + 1; r.vals.len = m.vals.len + 1; r.keys.data = malloc(r.keys.len * sizeof(long)); r.vals.data = malloc(r.vals.len * sizeof(long)); memcpy(r.keys.data, m.keys.data, m.keys.len * sizeof(long)); memcpy(r.vals.data, m.vals.data, m.vals.len * sizeof(long)); r.keys.data[m.keys.len] = (long)k; r.vals.data[m.vals.len] = v; return r; }}\n" ++
     "static MacaList maca_listv(int n, ...) {{ MacaList l; l.data = malloc(n * sizeof(long)); l.len = n; va_list ap; va_start(ap, n); for (int i = 0; i < n; i++) l.data[i] = va_arg(ap, long); va_end(ap); return l; }}\n" ++
     "static MacaList maca_list_cat(MacaList a, MacaList b) {{ MacaList l; l.len = a.len + b.len; l.data = malloc((l.len ? l.len : 1) * sizeof(long)); memcpy(l.data, a.data, a.len * sizeof(long)); memcpy(l.data + a.len, b.data, b.len * sizeof(long)); return l; }}\n" ++
     "static MacaList maca_list_slice(MacaList a, int lo, int hi) {{ if (lo < 0) lo = 0; if (hi > a.len) hi = a.len; if (hi < lo) hi = lo; MacaList l; l.len = hi - lo; l.data = malloc((l.len ? l.len : 1) * sizeof(long)); memcpy(l.data, a.data + lo, l.len * sizeof(long)); return l; }}\n" ++
