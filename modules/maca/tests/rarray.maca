@@ -31,48 +31,56 @@ RaPred = "p(c: str) -> bool =>"
 RaFind = "q(s: str, t: str) -> bool => s.contains(t) && s.ends_with(t)"
 
 test_a_record_element_is_the_record_and_not_an_int() {
-    assert(ra_rust(RaRecord).index_of("xs: Vec<R>") >= 0,
+    assert(ra_rust(RaRecord).index_of("xs: Rc<Vec<R>>") >= 0,
            "a list of records is a Vec of that record")
     assert(ra_rust(RaRecord).index_of("Vec<i64>") < 0,
            "never the i64 fallback")
 }
 
 test_a_string_element_is_a_string() {
-    assert(ra_rust(RaStr).index_of("xs: Vec<String>") >= 0,
+    assert(ra_rust(RaStr).index_of("xs: Rc<Vec<String>>") >= 0,
            "str[] carries Strings")
 }
 
 test_a_float_element_is_an_f64() {
-    assert(ra_rust(RaFloat).index_of("xs: Vec<f64>") >= 0,
+    assert(ra_rust(RaFloat).index_of("xs: Rc<Vec<f64>>") >= 0,
            "float[] carries f64")
 }
 
 test_an_int_element_is_still_an_i64() {
-    assert(ra_rust(RaInt).index_of("xs: Vec<i64>") >= 0,
+    assert(ra_rust(RaInt).index_of("xs: Rc<Vec<i64>>") >= 0,
            "int[] is what it always was")
 }
 
 test_a_sum_element_is_the_enum() {
-    assert(ra_rust(RaSum).index_of("cs: Vec<Color>") >= 0,
+    assert(ra_rust(RaSum).index_of("cs: Rc<Vec<Color>>") >= 0,
            "a list of variants is a Vec of the enum")
 }
 
+test_a_list_is_counted_rather_than_copied_when_it_is_passed() {
+    assert(ra_rust(RaInt).index_of("Rc<Vec<i64>>") >= 0,
+           "a parameter is owned, so a plain Vec would deep copy at every call")
+    assert(ra_rust(RaInt).index_of("use std::rc::Rc;") >= 0,
+           "and the count needs the import that names it")
+}
+
 test_a_nested_array_nests_the_vector() {
-    assert_eq(rtype("int[][]"), "Vec<Vec<i64>>", "the element recurses")
-    assert_eq(rtype("str[][]"), "Vec<Vec<String>>", "and it recurses again")
+    assert_eq(rtype("int[][]"), "Rc<Vec<Rc<Vec<i64>>>>", "the element recurses")
+    assert_eq(rtype("str[][]"), "Rc<Vec<Rc<Vec<String>>>>",
+              "and it recurses again")
     assert_eq(relem("R[]"), "R", "the element of R[] is R")
-    assert_eq(rtype("[]"), "Vec<i64>", "an unsolved element stays i64")
+    assert_eq(rtype("[]"), "Rc<Vec<i64>>", "an unsolved element stays i64")
 }
 
 test_a_record_field_of_its_own_type_keeps_that_type() {
-    assert(ra_rust(RaNode).index_of("kids: Vec<Node>") >= 0,
+    assert(ra_rust(RaNode).index_of("kids: Rc<Vec<Node>>") >= 0,
            "a self-referential field is a Vec of the record")
 }
 
 test_a_cell_that_is_not_copy_is_cloned() {
     assert(ra_rust(RaStr).index_of("as usize].clone()") >= 0,
            "a String cannot be moved out of a Vec index")
-    assert(ra_rust(RaInt).index_of(".clone()") < 0,
+    assert(ra_rust(RaInt).index_of("as usize].clone()") < 0,
            "an i64 is Copy, so the cell is read in place")
 }
 
@@ -94,14 +102,14 @@ test_chars_is_a_vector_of_one_character_strings() {
 }
 
 test_map_over_a_list_goes_through_an_iterator() {
-    assert(ra_rust(RaMap).index_of(".into_iter().map(u)") >= 0,
+    assert(ra_rust(RaMap).index_of(".iter().cloned().map(u)") >= 0,
            "Rust has map on an iterator, not on a Vec")
     assert(ra_rust(RaMap).index_of("collect::<Vec<_>>()") >= 0,
            "and the result is collected back into a Vec")
 }
 
 test_upper_is_the_rust_spelling() {
-    assert(ra_rust(RaMap).index_of("(s).to_uppercase()") >= 0,
+    assert(ra_rust(RaMap).index_of(".to_uppercase()") >= 0,
            "upper() is to_uppercase()")
 }
 
@@ -117,9 +125,9 @@ test_a_character_class_reads_the_first_character() {
 }
 
 test_a_search_argument_is_a_pattern() {
-    assert(ra_rust(RaFind).index_of("(s).contains(t.as_str())") >= 0,
+    assert(ra_rust(RaFind).index_of(".contains(t.clone().as_str())") >= 0,
            "contains takes a &str pattern, never a String")
-    assert(ra_rust(RaFind).index_of("(s).ends_with(t.as_str())") >= 0,
+    assert(ra_rust(RaFind).index_of(".ends_with(t.clone().as_str())") >= 0,
            "and so does ends_with")
 }
 
@@ -128,13 +136,13 @@ test_a_function_parameter_is_a_rust_function_pointer() {
               "one parameter and a result")
     assert_eq(rtype("(int, str) -> bool"), "fn(i64, String) -> bool",
               "two parameters keep their order")
-    assert_eq(rtype("(str) -> int[]"), "fn(String) -> Vec<i64>",
+    assert_eq(rtype("(str) -> int[]"), "fn(String) -> Rc<Vec<i64>>",
               "a list result is still a list")
 }
 
 test_a_plain_type_is_untouched_by_the_function_case() {
     assert_eq(rtype("str"), "String", "no arrow, no change")
-    assert_eq(rtype("int[]"), "Vec<i64>", "nor for a list")
+    assert_eq(rtype("int[]"), "Rc<Vec<i64>>", "nor for a list")
 }
 
 test_a_constant_takes_a_borrowed_string_not_an_owned_one() {

@@ -206,8 +206,8 @@ test_two_arrays_concatenate_as_lists_not_as_strings() {
            "C joins the two blocks")
     assert(annotated_c(Cat).index_of("maca_cat(a, b)") < 0,
            "never through the string concat")
-    assert(annotated_rust(Cat).index_of("[a, b].concat()") >= 0,
-           "Rust concatenates the vectors")
+    assert(annotated_rust(Cat).index_of("Rc::make_mut(&mut _v).extend(") >= 0,
+           "Rust extends the left vector, in place when nothing else holds it")
 }
 
 test_a_slice_and_a_join_lower_for_a_list() {
@@ -228,8 +228,8 @@ test_index_of_picks_a_list_or_a_string() {
 test_push_appends_one_cell() {
     assert(annotated_c(Grow).index_of("maca_list_cat(xs, maca_listv(1,") >= 0,
            "one more cell on the end")
-    assert(annotated_rust(Grow).index_of("[xs, vec![v]].concat()") >= 0,
-           "the same in Rust")
+    assert(annotated_rust(Grow).index_of("Rc::make_mut(&mut _v).push(v)") >= 0,
+           "Rust pushes onto the same vector when its count is one")
 }
 
 items_of(src: str) -> str =>
@@ -456,8 +456,8 @@ test_a_for_loop_binds_one_element_at_a_time() {
     assert_eq(str(bad_of(Walker).length()), "0", "the loop is read whole")
     assert(annotated_c(Walker).index_of("int x = ((int)_f.data[_fi]);") >= 0,
            "C walks the block and names each cell")
-    assert(annotated_rust(Walker).index_of("for x in xs") >= 0,
-           "Rust already has the loop")
+    assert(annotated_rust(Walker).index_of("for x in (xs.clone()).iter()") >= 0,
+           "Rust already has the loop, and the count is what it walks")
 }
 
 test_a_range_counts_from_its_low_end_to_below_its_high_one() {

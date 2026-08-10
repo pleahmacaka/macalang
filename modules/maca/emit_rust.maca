@@ -7,13 +7,34 @@ rust_int(n: int) -> str =>
 rust_str(s: str) -> str =>
     "\"" ++ s ++ "\".to_string()"
 
+RustReserved = " as async await become box break const continue crate do dyn else enum extern false final fn for if impl in let loop macro match mod move mut override priv pub ref return self Self static struct super trait true try type typeof union unsafe unsized use virtual where while yield "
+
+rid(name: str) -> str {
+    if RustReserved.index_of(" {name} ") >= 0 {
+        "{name}_mc"
+    } else {
+        name
+    }
+}
+
+rcopy(ty: str) -> bool =>
+    ty == "" || ty == "int" || ty == "float" || ty == "bool" || r_is_fn(ty)
+
+rowned(ty: str) -> str {
+    if rcopy(ty) {
+        ""
+    } else {
+        ".clone()"
+    }
+}
+
 remit_expr(e: Expr) -> str =>
     match e.kind {
         EInt     => rust_int(e.ival)
         EFloat   => "{e.text}_f64"
         EStr     => rust_str(e.text)
         EBool    => e.text
-        EIdent   => e.text
+        EIdent   => "{rid(e.text)}{rowned(e.ty)}"
         ECall    => remit_call(e)
         EBinary  => remit_binary(e)
         ETernary => remit_ternary(e)
@@ -22,16 +43,29 @@ remit_expr(e: Expr) -> str =>
         ERecord  => "{e.text} {{ {remit_lit_fields(e.children)} }}"
         EWith    => remit_with(e)
         EBlock   => remit_block(e)
-        EField   => "{remit_expr(e.children.get(0))}.{e.text}"
+        EField   => "{rfield(e)}"
         EMatch   => remit_match(e)
         EMethod  => remit_method(e)
-        EList    => "vec![{remit_args(e.children, 0)}]"
+        EList    => "Rc::new(vec![{remit_args(e.children, 0)}])"
         EJump    => rjump(e)
         EWhile   => remit_while(e)
         EFor     => remit_for(e)
         ELambda  => remit_lambda(e)
         _        => "0i64"
     }
+
+rfield(e: Expr) -> str =>
+    "{rplace(e.children.get(0))}.{rid(e.text)}{rowned(e.ty)}"
+
+rplace(e: Expr) -> str {
+    if e.kind == EIdent {
+        rid(e.text)
+    } else if e.kind == EField {
+        "{rplace(e.children.get(0))}.{rid(e.text)}"
+    } else {
+        remit_expr(e)
+    }
+}
 
 rjump(e: Expr) -> str {
     if e.children.length() == 0 {
@@ -50,7 +84,7 @@ remit_while(e: Expr) -> str =>
         ++ " {{ {rblock_stmts(e.stmts, 0)}}}"
 
 remit_for(e: Expr) -> str =>
-    "for {e.text} in {remit_expr(e.children.get(0))}"
+    "for {rid(e.text)} in ({remit_expr(e.children.get(0))}).iter().cloned()"
         ++ " {{ {rblock_stmts(e.stmts, 0)}}}"
 
 remit_unary(e: Expr) -> str {
@@ -130,10 +164,12 @@ remit_method(e: Expr) -> str {
     if rstr_helper(e.text) {
         remit_str_method(e, recv)
     } else if e.text == "chars" {
-        "({recv}).chars().map(|c| c.to_string()).collect::<Vec<String>>()"
+        "Rc::new(({recv}).chars().map(|c| c.to_string())"
+            ++ ".collect::<Vec<String>>())"
     } else if e.text == "map" {
-        "({recv}).into_iter().map({remit_expr(e.children.get(1))})" ++
-        ".collect::<Vec<_>>()"
+        "Rc::new(({recv}).iter().cloned()"
+            ++ ".map({remit_expr(e.children.get(1))})"
+            ++ ".collect::<Vec<_>>())"
     } else if e.text == "length" || e.text == "count" {
         "(({recv}).len() as i64)"
     } else if rstr_index(e) {
@@ -149,14 +185,24 @@ remit_method(e: Expr) -> str {
     } else if e.text == "slice" && rlist(e.children.get(0).ty) {
         lo = remit_expr(e.children.get(1))
         hi = remit_expr(e.children.get(2))
-        "{recv}[({lo}) as usize..({hi}) as usize].to_vec()"
+        "Rc::new({recv}[({lo}) as usize..({hi}) as usize].to_vec())"
+    } else if e.text == "slice" {
+        lo = remit_expr(e.children.get(1))
+        hi = remit_expr(e.children.get(2))
+        "({recv}).get(({lo}) as usize..({hi}) as usize)"
+            ++ ".unwrap_or(\"\").to_string()"
+    } else if e.text == "index_of" && e.children.get(0).ty == "str" {
+        "({recv}).find({remit_expr(e.children.get(1))}.as_str())"
+            ++ ".map(|i| i as i64).unwrap_or(-1)"
     } else if e.text == "index_of" {
         "({recv}).iter().position(|v| *v == {remit_expr(e.children.get(1))})"
             ++ ".map(|i| i as i64).unwrap_or(-1)"
     } else if e.text == "join" {
         "({recv}).join({remit_expr(e.children.get(1))}.as_str())"
     } else if e.text == "push" {
-        "[{recv}, vec![{remit_expr(e.children.get(1))}]].concat()"
+        "{{ let mut _v = {recv};"
+            ++ " Rc::make_mut(&mut _v).push({remit_expr(e.children.get(1))});"
+            ++ " _v }}"
     } else {
         "{recv}.{e.text}({remit_args(e.children, 1)})"
     }
@@ -171,8 +217,33 @@ remit_call(e: Expr) -> str {
         "print!(\"{{}}\", {args})"
     } else if e.text == "str" {
         "format!(\"{{}}\", {args})"
+    } else if e.text == "int" {
+        rint_of(rarg_ty(e.children), args)
+    } else if rruntime_call(e.text) {
+        "maca_{e.text}({args})"
     } else {
-        "{e.text}({args})"
+        "{rid(e.text)}({args})"
+    }
+}
+
+rruntime_call(name: str) -> bool =>
+    name == "read_file" || name == "write_file" || name == "exec"
+
+rarg_ty(cs: Expr[]) -> str {
+    if cs.length() == 0 {
+        ""
+    } else {
+        cs.get(0).ty
+    }
+}
+
+rint_of(ty: str, args: str) -> str {
+    if ty == "int" {
+        args
+    } else if ty == "float" || ty == "bool" {
+        "(({args}) as i64)"
+    } else {
+        "({args}).trim().parse::<i64>().unwrap_or(0)"
     }
 }
 
@@ -187,9 +258,11 @@ remit_binary(e: Expr) -> str {
     if e.text == "=" && lhs.kind == EMethod && lhs.text == "get" {
         rstore(lhs, r)
     } else if e.text == ".." {
-        "(({l})..({r})).collect::<Vec<i64>>()"
+        "Rc::new((({l})..({r})).collect::<Vec<i64>>())"
     } else if e.text == "++" && on_list {
-        "[{l}, {r}].concat()"
+        "{{ let mut _v = {l};"
+            ++ " Rc::make_mut(&mut _v).extend(({r}).iter().cloned());"
+            ++ " _v }}"
     } else if e.text == "++" {
         "format!(\"{{}}{{}}\", {l}, {r})"
     } else {
@@ -198,10 +271,10 @@ remit_binary(e: Expr) -> str {
 }
 
 rstore(l: Expr, value: str) -> str {
-    holder = remit_expr(l.children.get(0))
+    holder = rplace(l.children.get(0))
     ix = remit_expr(l.children.get(1))
 
-    "{holder}[({ix}) as usize] = {value}"
+    "Rc::make_mut(&mut {holder})[({ix}) as usize] = {value}"
 }
 
 rlist(ty: str) -> bool =>
@@ -229,7 +302,7 @@ remit_pat(p: Expr) -> str {
 }
 
 binder_name(b: Expr) -> str =>
-    b.text
+    rid(b.text)
 
 remit_block(e: Expr) -> str =>
     "{{ {rblock_stmts(e.stmts, 0)}{remit_expr(e.children.get(0))} }}"
@@ -286,7 +359,7 @@ remit_updates(fs: Expr[], i: int) -> str {
         ""
     } else {
         f = fs.get(i)
-        set = "_w.{f.children.get(0).text} = {remit_expr(f.children.get(1))}; "
+        set = "_w.{rid(f.children.get(0).text)} = {remit_expr(f.children.get(1))}; "
 
         set ++ remit_updates(fs, i + 1)
     }
@@ -296,7 +369,7 @@ remit_lit_fields(fs: Expr[]) -> str =>
     fs.map(remit_lit_field).join(", ")
 
 remit_lit_field(f: Expr) -> str =>
-    "{f.children.get(0).text}: {remit_expr(f.children.get(1))}"
+    "{rid(f.children.get(0).text)}: {remit_expr(f.children.get(1))}"
 
 remit_args(xs: Expr[], i: int) -> str =>
     xs.slice(i, xs.length()).map(remit_expr).join(", ")
@@ -342,7 +415,7 @@ rtype(ty: str) -> str {
     if r_is_fn(ty) {
         "fn({r_param_types(r_fn_params(ty), 0, "")}) -> {rtype(r_fn_ret(ty))}"
     } else if ty.ends_with("[]") {
-        "Vec<{rtype(relem(ty))}>"
+        "Rc<Vec<{rtype(relem(ty))}>>"
     } else if ty == "float" {
         "f64"
     } else if ty == "str" {
@@ -361,18 +434,28 @@ remit_fn(s: Stmt) -> str {
 
     if s.body.length() == 0 {
         params = s.params.map(remit_param).join(", ")
-        "extern \"C\" {{ fn {s.name}({params}) -> {rtype(s.ret)}; }}"
+        "extern \"C\" {{ fn {rid(s.name)}({params}) -> {rtype(s.ret)}; }}"
     } else if s.name == "main" {
-        "fn __maca_main() -> i64 {{ {body} }}\n"
-            ++ "fn main() {{ std::process::exit(__maca_main() as i32); }}"
+        params = s.params.map(remit_param).join(", ")
+        "fn __maca_main({params}) -> i64 {{ {body} }}\n"
+            ++ "fn main() {{ std::process::exit(__maca_main("
+            ++ "{rust_argv(s.params)}) as i32); }}"
     } else {
         params = s.params.map(remit_param).join(", ")
-        "fn {s.name}({params}) -> {rtype(s.ret)} {{ {body} }}"
+        "fn {rid(s.name)}({params}) -> {rtype(s.ret)} {{ {body} }}"
+    }
+}
+
+rust_argv(params: Expr[]) -> str {
+    if params.length() == 0 {
+        ""
+    } else {
+        "Rc::new(std::env::args().skip(1).collect())"
     }
 }
 
 remit_param(p: Expr) -> str =>
-    "{p.text}: {rtype(p.ty)}"
+    "{rid(p.text)}: {rtype(p.ty)}"
 
 remit_stmts(body: Stmt[], i: int) -> str {
     if i >= body.length() {
@@ -386,12 +469,12 @@ remit_stmts(body: Stmt[], i: int) -> str {
 
 remit_stmt(s: Stmt, is_last: bool, movable: bool) -> str {
     if s.kind == SSet {
-        "{s.name} = {remit_expr(s.value)};"
+        "{rid(s.name)} = {remit_expr(s.value)};"
     } else if s.kind == SBind && s.ret != "" {
-        "let {rmut_word(movable)}{s.name}: {rtype(s.ret)}"
+        "let {rmut_word(movable)}{rid(s.name)}: {rtype(s.ret)}"
             ++ " = {remit_expr(s.value)};"
     } else if s.kind == SBind {
-        "let {rmut_word(movable)}{s.name} = {remit_expr(s.value)};"
+        "let {rmut_word(movable)}{rid(s.name)} = {remit_expr(s.value)};"
     } else if is_last {
         remit_expr(s.value)
     } else {
@@ -411,9 +494,13 @@ remit_module(m: Module) -> str =>
     rust_preamble() ++ m.items.map(remit_item).join("\n")
 
 rust_preamble() -> str =>
+    "use std::rc::Rc;\n" ++
     "#[allow(dead_code)]\nfn maca_attr(name: String, value: String) -> String {{ if name.is_empty() {{ return String::new(); }} let q = value.replace('&', \"&amp;\").replace('<', \"&lt;\").replace('>', \"&gt;\").replace('\"', \"&quot;\"); format!(\" {{}}={{}}{{}}{{}}\", name, '\"', q, '\"') }}\n" ++
     "#[allow(dead_code)]\nfn maca_flag(name: String, on: bool) -> String {{ if on && !name.is_empty() {{ format!(\" {{}}\", name) }} else {{ String::new() }} }}\n" ++
-    "#[allow(dead_code)]\nfn maca_element(tag: String, attrs: String, kids: String) -> String {{ if [\"area\", \"base\", \"br\", \"col\", \"embed\", \"hr\", \"img\", \"input\", \"link\", \"meta\", \"source\", \"track\", \"wbr\"].contains(&tag.as_str()) {{ format!(\"<{{}}{{}}>\", tag, attrs) }} else {{ format!(\"<{{}}{{}}>{{}}</{{}}>\", tag, attrs, kids, tag) }} }}\n"
+    "#[allow(dead_code)]\nfn maca_element(tag: String, attrs: String, kids: String) -> String {{ if [\"area\", \"base\", \"br\", \"col\", \"embed\", \"hr\", \"img\", \"input\", \"link\", \"meta\", \"source\", \"track\", \"wbr\"].contains(&tag.as_str()) {{ format!(\"<{{}}{{}}>\", tag, attrs) }} else {{ format!(\"<{{}}{{}}>{{}}</{{}}>\", tag, attrs, kids, tag) }} }}\n" ++
+    "#[allow(dead_code)]\nfn maca_read_file(path: String) -> String {{ std::fs::read_to_string(path).unwrap_or_default() }}\n" ++
+    "#[allow(dead_code)]\nfn maca_write_file(path: String, text: String) -> bool {{ std::fs::write(path, text).is_ok() }}\n" ++
+    "#[allow(dead_code)]\nfn maca_exec(cmd: String, args: Rc<Vec<String>>) -> i64 {{ match std::process::Command::new(cmd).args(args.iter()).status() {{ Ok(s) => s.code().unwrap_or(-1) as i64, Err(_) => -1 }} }}\n"
 
 remit_item(s: Stmt) -> str {
     if s.kind == SRecord {
@@ -428,7 +515,7 @@ remit_item(s: Stmt) -> str {
 }
 
 remit_const(s: Stmt) -> str =>
-    "const {s.name}: {rconst_type(s.value)} = {rconst_value(s.value)};"
+    "const {rid(s.name)}: {rconst_type(s.value)} = {rconst_value(s.value)};"
 
 rconst_type(e: Expr) -> str =>
     match e.kind {
@@ -448,7 +535,7 @@ remit_struct(s: Stmt) -> str {
 }
 
 remit_struct_field(f: Expr) -> str =>
-    "{f.text}: {rtype(f.ty)}"
+    "{rid(f.text)}: {rtype(f.ty)}"
 
 remit_sum(s: Stmt) -> str {
     variants = s.params.map(remit_variant).join(", ")

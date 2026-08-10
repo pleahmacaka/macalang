@@ -331,7 +331,7 @@ fn selfhost_frontend_compiles_and_runs() {
         "C dynamic-array lowering wrong: {stdout}"
     );
     assert!(
-        stdout.contains("array Rust: fn total(xs: Vec<i64>) -> i64 { ((xs[(0i64) as usize] + xs[(1i64) as usize]) + ((xs).len() as i64))"),
+        stdout.contains("array Rust: fn total(xs: Rc<Vec<i64>>) -> i64 { ((xs[(0i64) as usize] + xs[(1i64) as usize]) + ((xs).len() as i64))"),
         "Rust dynamic-array lowering wrong: {stdout}"
     );
 
@@ -417,12 +417,12 @@ fn selfhost_frontend_compiles_and_runs() {
             && rs_src.contains("fn hi(a: String, b: String) -> i64")
             && rs_src.contains("fn chk(n: i64) -> i64")
             && rs_src.contains("fn slen(s: String) -> i64")
-            && rs_src.contains("fn head(xs: Vec<i64>) -> i64")
+            && rs_src.contains("fn head(xs: Rc<Vec<i64>>) -> i64")
             && rs_src.contains("fn __maca_main() -> i64"),
         "emitted Rust missing record/sum/functions:\n{rs_src}"
     );
     assert!(
-        rs_src.contains("Point { x: 40i64, y: 9i64 }") && rs_src.contains("match c { Red =>"),
+        rs_src.contains("Point { x: 40i64, y: 9i64 }") && rs_src.contains("match c.clone() { Red =>"),
         "Rust record literal / match wrong:\n{rs_src}"
     );
     let rsfile = dir.join("emitted.rs");
