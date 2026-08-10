@@ -8,6 +8,7 @@ import maca/print
 
 Unit = {
     seen:    str[]
+    names:   str[]
     toks:    Token[]
     errs:    str[]
     unknown: str[]
@@ -231,7 +232,8 @@ compile_file(args: str[]) -> int {
 }
 
 unit_of(entry: str) -> Unit =>
-    load_unit(entry, Unit { seen = [], toks = [], errs = [], unknown = [] })
+    load_unit(entry, Unit { seen = [], names = [], toks = [], errs = [],
+                            unknown = [] })
 
 load_unit(path: str, u: Unit) -> Unit {
     if u.seen.index_of(path) >= 0 {
@@ -241,8 +243,60 @@ load_unit(path: str, u: Unit) -> Unit {
         marked = u with { seen = u.seen ++ [path] }
         deps = load_deps(path, imports_in(got.tokens, 0, []), 0, marked)
 
-        deps with { toks = deps.toks ++ without_eof(got.tokens),
-                    errs = deps.errs ++ got.errors }
+        spliced(deps, got.tokens, got.errors)
+    }
+}
+
+/// A name this file defines belongs to this file, so an earlier claim on it makes this one a rename.
+spliced(deps: Unit, whole: Token[], errs: str[]) -> Unit {
+    mine = fn_names(parse_module(whole, 0, []).items, 0, [])
+    taken = clashing(mine, deps.names, 0, [])
+    toks = without_eof(whole)
+    kept = taken.length() == 0 ? toks
+        : renamed(toks, taken, str(deps.seen.length()), 0)
+
+    deps with { toks = deps.toks ++ kept,
+                names = deps.names ++ mine,
+                errs = deps.errs ++ errs }
+}
+
+fn_names(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind == SFn {
+        fn_names(items, i + 1, acc ++ [items.get(i).name])
+    } else {
+        fn_names(items, i + 1, acc)
+    }
+}
+
+clashing(mine: str[], taken: str[], i: int, acc: str[]) -> str[] {
+    if i >= mine.length() {
+        acc
+    } else if taken.index_of(mine.get(i)) >= 0 {
+        clashing(mine, taken, i + 1, acc ++ [mine.get(i)])
+    } else {
+        clashing(mine, taken, i + 1, acc)
+    }
+}
+
+renamed(ts: Token[], taken: str[], tag: str, i: int) -> Token[] {
+    out: Token[] = []
+    at = i
+
+    while at < ts.length() {
+        out = out.push(one_renamed(ts.get(at), taken, tag))
+        at = at + 1
+    }
+
+    out
+}
+
+one_renamed(t: Token, taken: str[], tag: str) -> Token {
+    if t.kind == TIdent && taken.index_of(t.text) >= 0 {
+        mk_token(TIdent, "{t.text}__{tag}", t.pos)
+    } else {
+        t
     }
 }
 

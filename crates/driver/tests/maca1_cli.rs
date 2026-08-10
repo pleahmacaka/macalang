@@ -233,6 +233,51 @@ fn maca1_builds_for_the_target_it_is_given() {
     assert_eq!(no.status.code(), Some(2), "a target nobody serves is a usage error");
 }
 
+/// Two packages may each name a function `count`: a name a file defines is that file's, whoever else claimed it.
+#[test]
+fn maca1_lets_two_packages_name_one_function() {
+    let dir = std::env::temp_dir().join("maca1-cli-scope");
+    let Some(bin) = maca1(&dir) else { return };
+    let project = dir.join("p");
+    for sub in ["pa", "pb"] {
+        std::fs::create_dir_all(project.join(sub)).unwrap();
+    }
+    std::fs::write(
+        project.join("pa/one.maca"),
+        "count(s: str) -> int => s.length()\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("pb/two.maca"),
+        "count(n: int) -> int => n + 1\ntwice(n: int) -> int => count(n) + count(n)\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("main.maca"),
+        "import pa/one\nimport pb/two\n\nmain() -> int {\n    \
+         info(str(count(\"abc\")))\n    info(str(twice(1)))\n    0\n}\n",
+    )
+    .unwrap();
+
+    let out = Command::new(&bin)
+        .current_dir(&project)
+        .args(["run", "main.maca"])
+        .output()
+        .expect("spawn maca1 run");
+
+    let said = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "two packages naming one function is not a clash:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        said.contains('3') && said.contains('4'),
+        "each call reached its own package's function, not the other's: {said}"
+    );
+}
+
 /// A suite that imports resolves from where its own file is, not from wherever a scratch file landed.
 #[test]
 fn maca1_runs_a_suite_that_imports_a_module() {
