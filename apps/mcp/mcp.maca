@@ -1,0 +1,181 @@
+import std/json
+import std/text
+
+Protocol = "2024-11-05"
+
+Server = "maca"
+
+Sections = "sections: syntax | effects | modes | types"
+
+Signatures = "info(s: str) -> () / <io>", "warn(s: str) -> () / <io>",
+    "err(s: str) -> () / <io>", "debug(s: str) -> () / <io>",
+    "read_line() -> str / <io>", "int(x: any) -> int", "str(x: any) -> str",
+    "len(xs: t[]) -> int", "json.encode(x: t) -> str",
+    "json.decode(s: str) -> t", "dirs.data -> Path",
+    "Path.read() -> str / <io>", "Path.write(s: str) -> () / <io>",
+    "Path.exists() -> bool / <io>", "str[].join(sep: str) -> str",
+    "int[].parallel(f) -> int[] / <async>"
+
+Roots = "boot", "environment", "fileSystems", "hardware", "networking", "nix",
+    "programs", "security", "services", "sound", "swapDevices", "system",
+    "systemd", "time", "users", "virtualisation", "xdg"
+
+Tools = """[
+{"name":"maca.check","description":"Type/effect-check Maca code; returns diagnostics.","inputSchema":{"type":"object","properties":{"code":{"type":"string","description":"Maca source"},"config":{"type":"boolean"}},"required":["code"]}},
+{"name":"maca.fmt","description":"Format Maca code canonically.","inputSchema":{"type":"object","properties":{"code":{"type":"string","description":"Maca source"}},"required":["code"]}},
+{"name":"maca.stdlib","description":"Search stdlib/prelude signatures.","inputSchema":{"type":"object","properties":{"query":{"type":"string","description":"substring"}}}},
+{"name":"maca.options","description":"Known NixOS option namespaces by prefix.","inputSchema":{"type":"object","properties":{"prefix":{"type":"string","description":"prefix"}}}},
+{"name":"maca.spec","description":"Spec reference (syntax|effects|modes|types).","inputSchema":{"type":"object","properties":{"section":{"type":"string","description":"section"}}}}
+]"""
+
+matching(xs: str[], query: str, i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else if query == "" || xs.get(i).contains(query) {
+        matching(xs, query, i + 1, acc ++ [xs.get(i)])
+    } else {
+        matching(xs, query, i + 1, acc)
+    }
+}
+
+starting(xs: str[], prefix: str, i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else if xs.get(i).starts_with(prefix) {
+        starting(xs, prefix, i + 1, acc ++ [xs.get(i)])
+    } else {
+        starting(xs, prefix, i + 1, acc)
+    }
+}
+
+spec_for(section: str) -> str {
+    if section == "syntax" || section == "grammar" {
+        "No `fn`/`type`/`Result`/`<>`. Field `:` = type, `=` = value,"
+            ++ " `Name \{ = \}` = ctor.\nFunctions: `f(x: T) -> R \{ body \}`"
+            ++ " or `=> expr`. Variadic `...rest: T`.\nTernary is spaced"
+            ++ " `c ? x : y`; error-propagate is attached `x?`. `fail e`"
+            ++ " raises.\nBracketless comma lists; significant newlines;"
+            ++ " records newline/comma separated.\nGenerics: lowercase type"
+            ++ " vars, applied by juxtaposition; postfix `T[]` / `T?`."
+    } else if section == "effects" {
+        "Koka-style, inferred: io, net, os, async, exn."
+            ++ " Config mode forces `<>`."
+    } else if section == "modes" {
+        "General mode -> native/JS (`main`)."
+            ++ " Config mode -> Nix (root module, pure `<>`)."
+    } else if section == "types" {
+        "Gradual, structural, row-polymorphic. HM + `any` boundary."
+            ++ " Sums nominal, exhaustive."
+    } else {
+        Sections
+    }
+}
+
+scratch_file(kind: str) -> str {
+    root = env("TMPDIR") == "" ? "/tmp" : env("TMPDIR")
+
+    "{root}/maca-mcp-{kind}-{str(now_ms())}.maca"
+}
+
+through_toolchain(code: str, kind: str, extra: str[]) -> str {
+    path = scratch_file(kind)
+
+    write_file(path, code)
+    out = capture("maca", [kind] ++ extra ++ [path])
+    back = read_file(path)
+
+    remove_file(path)
+
+    kind == "fmt" ? back : out.trim()
+}
+
+check_tool(code: str, config: bool) -> str {
+    said = through_toolchain(code, "check",
+                             config ? ["--config"] : [])
+
+    said == "" ? "ok: no diagnostics" : said
+}
+
+call_tool(name: str, args: str) -> str {
+    if name == "maca.check" {
+        check_tool(json_str(args, "code"), get_bool(args, "config"))
+    } else if name == "maca.fmt" {
+        through_toolchain(json_str(args, "code"), "fmt", [])
+    } else if name == "maca.stdlib" {
+        matching(Signatures, json_str(args, "query"), 0, []).join("\n")
+    } else if name == "maca.options" {
+        starting(Roots, json_str(args, "prefix"), 0, []).join("\n")
+    } else if name == "maca.spec" {
+        spec_for(json_str(args, "section"))
+    } else {
+        "unknown tool: {name}"
+    }
+}
+
+json_str(src: str, key: str) -> str =>
+    unquoted(get(src, key))
+
+unquoted(raw: str) -> str {
+    if raw.length() >= 2 && raw.starts_with("\"") {
+        undo_escapes(raw.slice(1, raw.length() - 1))
+    } else {
+        raw
+    }
+}
+
+undo_escapes(s: str) -> str =>
+    s.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r")
+        .replace("\\\"", "\"").replace("\\\\", "\\")
+
+result_of(id: str, body: str) -> str =>
+    "\{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{body}\}"
+
+initialize_body() -> str =>
+    "\{\"protocolVersion\":{quote(Protocol)},\"capabilities\":\{\"tools\":\{\}\},"
+        ++ "\"serverInfo\":\{\"name\":{quote(Server)},\"version\":\"0.1.0\"\}\}"
+
+text_body(said: str) -> str =>
+    "\{\"content\":[\{\"type\":\"text\",\"text\":{quote(said)}\}]\}"
+
+answer(line: str) -> str {
+    id = get(line, "id")
+    method = json_str(line, "method")
+
+    if id == "" {
+        ""
+    } else if method == "initialize" {
+        result_of(id, initialize_body())
+    } else if method == "tools/list" {
+        result_of(id, "\{\"tools\":{Tools}\}")
+    } else if method == "tools/call" {
+        result_of(id, text_body(tool_reply(get(line, "params"))))
+    } else {
+        "\{\"jsonrpc\":\"2.0\",\"id\":{id},\"error\":"
+            ++ "\{\"code\":-32601,\"message\":\"method not found\"\}\}"
+    }
+}
+
+tool_reply(params: str) -> str =>
+    call_tool(json_str(params, "name"), get(params, "arguments"))
+
+serve(seen: int) -> int {
+    line = read_line()
+
+    if line == "" {
+        seen
+    } else {
+        said = answer(line.trim())
+
+        if said != "" {
+            info(said)
+        }
+
+        serve(seen + 1)
+    }
+}
+
+main() -> int {
+    serve(0)
+
+    0
+}

@@ -354,6 +354,8 @@ remit_call(e: Expr) -> str {
             ++ " {rshown(e.children, 2)})"
     } else if e.text == "map" && e.children.length() == 0 {
         "Rc::new(std::collections::BTreeMap::new())"
+    } else if e.text == "read_line" {
+        "maca_input(String::new())"
     } else if e.text == "clamp" {
         "({rarg(e, 0)}).clamp({rarg(e, 1)}, {rarg(e, 2)})"
     } else if e.text == "abs" || e.text == "signum" {
@@ -419,8 +421,7 @@ rruntime_call(name: str) -> bool =>
         || name == "file_exists" || name == "is_dir" || name == "env"
         || name == "cwd" || name == "panic" || name == "is_tty"
         || name == "now_ms" || name == "list_dir" || name == "file_size"
-        || name == "chr" || name == "ord" || name == "input"
-        || name == "chdir"
+        || name == "chr" || name == "ord" || name == "chdir"
 
 rarg_ty(cs: Expr[]) -> str {
     if cs.length() == 0 {

@@ -381,11 +381,11 @@ test_a_boolean_attribute_is_present_or_absent_not_a_value() {
 }
 
 test_a_prelude_call_spelled_like_a_tag_is_still_the_prelude_call() {
-    read = c_for("f() -> str => input(\"name: \")")
+    read = c_for("f() -> str => read_line()")
     mine = c_for("label(n: int) -> str => str(n) use() -> str => label(1)")
 
-    assert(read.index_of("maca_input(\"name: \")") >= 0,
-           "`input` reads a line, and a prelude call is not an element")
+    assert(read.index_of("maca_input(\"\")") >= 0,
+           "`input` is a tag, so the line reader answers to another name")
     assert(mine.index_of("maca_element(\"label\"") < 0,
            "nor is a tag name this module declares for itself")
 }

@@ -383,7 +383,7 @@ is_prelude_call(name: str) -> bool =>
         || is_bool_builtin(name) || is_io_builtin(name)
 
 is_str_builtin(name: str) -> bool =>
-    name == "str" || name == "chr" || name == "input" || name == "capture"
+    name == "str" || name == "chr" || name == "read_line" || name == "capture"
         || name == "read_file" || name == "env" || name == "cwd"
         || name == "real_path" || name == "maca_attr" || name == "maca_flag"
         || name == "maca_element"

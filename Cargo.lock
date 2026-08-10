@@ -104,15 +104,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "maca-mcp"
-version = "0.3.3"
-dependencies = [
- "maca-core",
- "maca-parser",
- "serde_json",
-]
-
-[[package]]
 name = "maca-parser"
 version = "0.3.3"
 dependencies = [

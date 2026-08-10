@@ -1,0 +1,61 @@
+import apps/mcp/mcp
+import std/json
+
+test_a_notification_carrying_no_id_is_answered_with_nothing() {
+    assert_eq(answer("\{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"\}"), "",
+              "a notification wants no reply, and writing one is a protocol"
+                  ++ " error")
+}
+
+test_initialize_names_the_protocol_and_the_server() {
+    said = answer("\{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"\}")
+
+    assert(said.contains("\"id\":1"), "the reply carries the request's id")
+    assert(said.contains("2024-11-05"), "and the protocol version")
+    assert(said.contains("\"name\":\"maca\""), "and who is answering")
+}
+
+test_a_method_nobody_serves_is_an_error_not_a_silence() {
+    said = answer("\{\"id\":7,\"method\":\"nope\"\}")
+
+    assert(said.contains("-32601"), "the code JSON-RPC reserves for it")
+    assert(said.contains("method not found"), "and the words for a reader")
+}
+
+test_the_tool_list_names_every_tool_that_can_be_called() {
+    said = answer("\{\"id\":2,\"method\":\"tools/list\"\}")
+
+    assert(said.contains("maca.check"), "check is offered")
+    assert(said.contains("maca.fmt"), "fmt is offered")
+    assert(said.contains("maca.spec"), "spec is offered")
+}
+
+test_a_search_with_no_query_hands_back_everything() {
+    all = call_tool("maca.stdlib", "\{\}")
+    one = call_tool("maca.stdlib", "\{\"query\":\"join\"\}")
+
+    assert(all.contains("info(s: str)"), "an empty query filters nothing")
+    assert(one.contains("join"), "and a query keeps what matches")
+    assert(!one.contains("info(s: str)"), "and drops what does not")
+}
+
+test_an_option_prefix_keeps_only_the_namespaces_under_it() {
+    said = call_tool("maca.options", "\{\"prefix\":\"s\"\}")
+
+    assert(said.contains("services"), "services is under s")
+    assert(!said.contains("boot"), "boot is not")
+}
+
+test_a_spec_section_answers_and_an_unknown_one_lists_the_sections() {
+    assert(call_tool("maca.spec", "\{\"section\":\"effects\"\}")
+               .contains("Koka"), "effects names the system it follows")
+    assert(call_tool("maca.spec", "\{\"section\":\"nope\"\}")
+               .contains("sections:"), "and an unknown one says what there is")
+}
+
+test_a_json_string_is_read_back_without_its_quotes_or_escapes() {
+    assert_eq(json_str("\{\"k\":\"a\\nb\"\}", "k"), "a\nb",
+              "the escape is the text, not two characters")
+    assert_eq(json_str("\{\"k\":\"v\"\}", "missing"), "",
+              "a key that is not there reads as nothing")
+}

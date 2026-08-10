@@ -3239,6 +3239,7 @@ impl<'a> Cx<'a> {
                     | "ord"
                     | "true"
                     | "false"
+                    | "read_line"
                     | "read_file"
                     | "write_file"
                     | "file_exists"
@@ -3794,6 +3795,8 @@ impl<'a> Cx<'a> {
                 return (format!("{}_new()", map_name(&v)), CTy::Map(Box::new(v)));
             }
             match name.as_str() {
+                // `input` is also an HTML tag, so the line reader needs a name no element takes.
+                "read_line" => return ("maca_input()".to_string(), CTy::Str),
                 "read_file" => return (format!("maca_read_file({})", a.join(", ")), CTy::Str),
                 "write_file" => {
                     return (format!("maca_write_file({})", a.join(", ")), CTy::Bool);

@@ -121,6 +121,7 @@ pub fn is_backend_intrinsic(name: &str) -> bool {
                 | "forever"
                 | "styles"
                 | "element"
+                | "read_line"
                 | "read_file"
                 | "write_file"
                 | "file_exists"

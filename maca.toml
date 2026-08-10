@@ -27,6 +27,7 @@ members = [
     "apps/lint",
     "apps/maca1",
     "apps/macadoc",
+    "apps/mcp",
     "apps/mcmod",
     "apps/microkernel",
     "apps/mqtt",

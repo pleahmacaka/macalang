@@ -1,0 +1,7 @@
+[package]
+name = "maca-mcp"
+description = "An MCP server over stdio, answering a model's questions about Maca by asking the toolchain rather than by holding a second copy of it."
+
+[[bin]]
+name = "maca-mcp"
+path = "mcp.maca"

@@ -402,6 +402,8 @@ emit_call(e: Expr) -> str {
         "maca_read_file({args})"
     } else if e.text == "write_file" {
         "maca_write_file({args})"
+    } else if e.text == "read_line" {
+        "maca_input(\"\")"
     } else if e.text == "exec" {
         "maca_exec({args})"
     } else if e.text == "assert" {
@@ -468,7 +470,7 @@ c_runtime_call(name: str) -> bool =>
     c_char_call(name) || c_file_call(name) || c_host_call(name)
 
 c_char_call(name: str) -> bool =>
-    name == "chr" || name == "ord" || name == "input" || name == "now_ms"
+    name == "chr" || name == "ord" || name == "now_ms"
         || name == "now_iso" || name == "format_time" || name == "sleep_ms"
 
 c_file_call(name: str) -> bool =>

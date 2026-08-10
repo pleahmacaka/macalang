@@ -17,7 +17,6 @@ Virtual workspace; members are `crates/*`.
 | `maca-stdlib` | the `modules/*` packages, compiled into the binary and unpacked on demand |
 | `maca-options` | `options.json` → Maca option types |
 | `maca-lsp` | language server: `lib.rs` (analysis fns) + `main.rs` (LSP stdio server) |
-| `maca-mcp` | Maca MCP server (LLM-native tools) |
 | `maca-driver` | the `maca` CLI |
 | `maca-testsupport` | host probes + the cross-crate build lock, for the integration suites |
 | `maca-profile` | the flame-graph renderer, shared by `maca profile` and the playground |
@@ -46,10 +45,12 @@ every class on every emitted page produced a CSS rule.
 the cross-language benchmark harness, `apps/npm/build.maca` builds the
 wasm into the npm package. All seven are compiled by
 `crates/driver/tests/scripts.rs`, because a script only run at release time
-rots quietly. There are no shell scripts left to be an exception: installing is
-`crates/install`, a binary in the release, because it runs *before* there is a
-`maca` to run anything with and is built on a Windows runner that has no C
-compiler to build a Maca program with.
+rots quietly. There are no shell scripts left to be an exception, and no Rust
+ones either: installing is `apps/install/`, a Maca program shipped as a binary
+in the release, which reads its own platform from `uname` at run time rather
+than from how it was built. `apps/mcp/` is the MCP server, and it answers a
+model by calling the toolchain rather than by holding a second copy of the
+checker and the formatter.
 **Maca code lives under `modules/`, `apps/` and `src/`.** `modules/*` and
 `src/*` are import search roots, so `modules/std/text.maca` is written
 `std/text` and `modules/http/server.maca` is written `http/server`, from
