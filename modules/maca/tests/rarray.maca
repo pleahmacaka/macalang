@@ -213,6 +213,25 @@ test_a_function_with_no_declared_return_takes_the_type_of_its_tail() {
            "the tail is what the function hands back, and i64 is not it")
 }
 
+test_a_program_that_calls_nothing_foreign_emits_no_unsafe() {
+    out = ra_rust("R = {{ n: int }} f(xs: R[]) -> int => xs.get(0).n"
+                  ++ " g(s: str) -> str => s.upper()"
+                  ++ " h(m: Map str int) -> int => m.get(\"k\")")
+
+    assert(out.index_of("unsafe") < 0,
+           "Maca has no raw pointer and no transmute, so nothing needs it")
+}
+
+test_a_foreign_call_keeps_its_unsafe_in_one_wrapper() {
+    out = ra_rust("now_parts() -> int\nuse() -> int => now_parts()")
+
+    assert(out.index_of("fn now_parts() -> i64 {{ unsafe {{"
+                        ++ " now_parts_raw() }} }}") >= 0,
+           "Rust cannot cross the C ABI safely, so the block is the boundary")
+    assert(out.index_of("unsafe {{ now_parts_raw() }} }} }}") < 0,
+           "and the call site stays outside it")
+}
+
 test_a_raise_is_a_panic() {
     out = remit_fn(parse_fn(lex("f() -> int {{ fail \"gone\" }}"), 0).snode)
 

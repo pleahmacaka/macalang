@@ -202,6 +202,27 @@ remit_str_method(e: Expr, recv: str) -> str {
     }
 }
 
+rmap_method_of(e: Expr, recv: str) -> str {
+    if e.text == "get" {
+        "({recv}).get(&{rarg(e, 1)}).cloned().unwrap_or_default()"
+    } else if e.text == "has" || e.text == "contains" {
+        "({recv}).contains_key(&{rarg(e, 1)})"
+    } else if e.text == "keys" {
+        "Rc::new(({recv}).keys().cloned().collect::<Vec<_>>())"
+    } else if e.text == "values" {
+        "Rc::new(({recv}).values().cloned().collect::<Vec<_>>())"
+    } else if e.text == "set" {
+        "{{ let mut _m = {recv};"
+            ++ " Rc::make_mut(&mut _m).insert({rarg(e, 1)}, {rarg(e, 2)});"
+            ++ " _m }}"
+    } else if e.text == "remove" {
+        "{{ let mut _m = {recv};"
+            ++ " Rc::make_mut(&mut _m).remove(&{rarg(e, 1)}); _m }}"
+    } else {
+        "(({recv}).len() as i64)"
+    }
+}
+
 rlist_method(name: str) -> bool =>
     name == "sum" || name == "min" || name == "max" || name == "first"
         || name == "last" || name == "pop" || name == "reverse"
@@ -298,6 +319,8 @@ remit_method(e: Expr) -> str {
             ++ ".map(|i| i as i64).unwrap_or(-1)"
     } else if e.text == "join" {
         "({recv}).join({remit_expr(e.children.get(1))}.as_str())"
+    } else if rmap_key(e.children.get(0).ty) != "" {
+        rmap_method_of(e, recv)
     } else if rlist(e.children.get(0).ty) && rlist_method(e.text) {
         rlist_method_of(e, recv)
     } else if e.text == "push" {
@@ -329,6 +352,10 @@ remit_call(e: Expr) -> str {
     } else if e.text == "assert_eq" {
         "maca_assert_eq({rshown(e.children, 0)}, {rshown(e.children, 1)},"
             ++ " {rshown(e.children, 2)})"
+    } else if e.text == "map" && e.children.length() == 0 {
+        "Rc::new(std::collections::BTreeMap::new())"
+    } else if e.text == "clamp" {
+        "({rarg(e, 0)}).clamp({rarg(e, 1)}, {rarg(e, 2)})"
     } else if e.text == "abs" || e.text == "signum" {
         "({args}).abs()"
     } else if e.text == "sign" {
@@ -391,6 +418,7 @@ rruntime_call(name: str) -> bool =>
         || name == "cwd" || name == "panic" || name == "is_tty"
         || name == "now_ms" || name == "list_dir" || name == "file_size"
         || name == "chr" || name == "ord" || name == "input"
+        || name == "chdir"
 
 rarg_ty(cs: Expr[]) -> str {
     if cs.length() == 0 {
@@ -642,8 +670,7 @@ remit_fn(s: Stmt) -> str {
     body = remit_stmts(s.body, 0)
 
     if s.body.length() == 0 {
-        params = s.params.map(remit_param).join(", ")
-        "extern \"C\" {{ fn {rid(s.name)}({params}) -> {rtype(s.ret)}; }}"
+        rforeign(s)
     } else if s.name == "main" {
         params = s.params.map(remit_param).join(", ")
         "fn __maca_main({params}) -> i64 {{ {body} }}\n"
@@ -653,6 +680,16 @@ remit_fn(s: Stmt) -> str {
         params = s.params.map(remit_param).join(", ")
         "fn {rid(s.name)}({params}) -> {rret(s)} {{ {body} }}"
     }
+}
+
+rforeign(s: Stmt) -> str {
+    params = s.params.map(remit_param).join(", ")
+    args = s.params.map(binder_name).join(", ")
+    ret = rtype(s.ret)
+
+    "unsafe extern \"C\" {{ fn {rid(s.name)}_raw({params}) -> {ret}; }}\n"
+        ++ "fn {rid(s.name)}({params}) -> {ret}"
+        ++ " {{ unsafe {{ {rid(s.name)}_raw({args}) }} }}"
 }
 
 rret(s: Stmt) -> str {
@@ -747,6 +784,7 @@ rust_preamble() -> str =>
     "#[allow(dead_code)]\nfn maca_pad_start(s: String, w: i64) -> String {{ let w = w.max(0) as usize; if s.len() >= w {{ s }} else {{ format!(\"{{}}{{}}\", \" \".repeat(w - s.len()), s) }} }}\n" ++
     "#[allow(dead_code)]\nfn maca_pad_end(s: String, w: i64) -> String {{ let w = w.max(0) as usize; if s.len() >= w {{ s }} else {{ format!(\"{{}}{{}}\", s, \" \".repeat(w - s.len())) }} }}\n" ++
     "#[allow(dead_code)]\nfn maca_is_tty() -> bool {{ false }}\n" ++
+    "#[allow(dead_code)]\nfn maca_chdir(p: String) -> bool {{ std::env::set_current_dir(p).is_ok() }}\n" ++
     "#[allow(dead_code)]\nfn maca_now_ms() -> i64 {{ std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0) }}\n" ++
     "#[allow(dead_code)]\nfn maca_file_size(p: String) -> i64 {{ std::fs::metadata(p).map(|m| m.len() as i64).unwrap_or(-1) }}\n" ++
     "#[allow(dead_code)]\nfn maca_chr(b: i64) -> String {{ char::from_u32(b as u32).map(|c| c.to_string()).unwrap_or_default() }}\n" ++

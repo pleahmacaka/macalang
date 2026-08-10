@@ -399,7 +399,8 @@ is_int_builtin(name: str) -> bool =>
         || name == "file_size" || name == "modified_ms"
 
 is_bool_builtin(name: str) -> bool =>
-    name == "write_file" || name == "file_exists" || name == "make_dir"
+    name == "assert" || name == "assert_eq"
+        || name == "write_file" || name == "file_exists" || name == "make_dir"
         || name == "is_dir" || name == "remove_file" || name == "remove_dir"
         || name == "copy_bytes" || name == "chdir" || name == "is_tty"
 
