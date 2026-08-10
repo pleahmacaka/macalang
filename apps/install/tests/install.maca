@@ -1,0 +1,55 @@
+import apps/install/install
+
+test_a_named_release_and_the_latest_one_are_different_urls() {
+    assert(download_url("latest", "a.tar.gz")
+               .ends_with("releases/latest/download/a.tar.gz"),
+           "latest has no version in its path")
+    assert(download_url("9.9.9", "a.tar.gz")
+               .ends_with("releases/download/9.9.9/a.tar.gz"),
+           "a named one does")
+}
+
+test_the_asset_is_read_off_what_uname_says() {
+    assert_eq(asset_for("Linux x86_64"), "maca-linux-x86_64.tar.gz",
+              "the kernel names the platform and the machine names the arch")
+    assert_eq(asset_for("Darwin arm64"), "maca-macos-aarch64.tar.gz",
+              "macOS spells its own arch arm64, and the release spells it"
+                  ++ " aarch64")
+    assert_eq(asset_for("Linux aarch64"), "maca-linux-aarch64.tar.gz",
+              "which is already how Linux spells it")
+    assert_eq(asset_for("Windows x86_64"), "maca-windows-x86_64.zip",
+              "Windows ships a zip, not a tarball")
+    assert_eq(asset_for("Plan9 x86_64"), "",
+              "no release is built for a platform with no name here")
+}
+
+test_an_arch_that_is_not_named_falls_back_to_the_wide_one() {
+    assert_eq(arch_of("Linux"), "", "with no machine there is no arch")
+    assert_eq(arch_of("Linux i686"), "x86_64",
+              "the only two releases are x86_64 and aarch64")
+}
+
+test_a_flag_that_wants_a_value_and_does_not_get_one_says_so() {
+    short = parse_args(["--version"], 0, defaults())
+    unknown = parse_args(["--nope"], 0, defaults())
+
+    assert(short.error.contains("--version"), "the flag names itself")
+    assert(unknown.error.contains("--nope"), "and so does an unknown one")
+    assert(unknown.error.contains("usage"), "which is worth showing usage for")
+}
+
+test_the_flags_set_the_version_and_the_prefix() {
+    o = parse_args(["--version", "9.9.9", "--prefix", "/opt/maca"], 0,
+                   defaults())
+
+    assert_eq(o.version, "9.9.9", "the version the flag named")
+    assert_eq(o.prefix, "/opt/maca", "and the directory")
+    assert_eq(o.error, "", "with nothing to complain about")
+}
+
+test_help_stops_before_anything_is_downloaded() {
+    o = parse_args(["--help"], 0, defaults())
+
+    assert(o.done, "asking for usage is not asking for an install")
+    assert_eq(o.error, "", "and it is not an error either")
+}

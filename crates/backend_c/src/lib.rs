@@ -5196,6 +5196,9 @@ fn cid(name: &str) -> String {
         "virtual",
         "friend",
         "using",
+        "unix",
+        "linux",
+        "i386",
     ];
     if KW.contains(&name) {
         format!("{name}_mc")

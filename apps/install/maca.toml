@@ -1,0 +1,7 @@
+[package]
+name = "maca-install"
+description = "Puts the Maca toolchain on this machine, downloading the release its own platform is built for."
+
+[[bin]]
+name = "maca-install"
+path = "install.maca"

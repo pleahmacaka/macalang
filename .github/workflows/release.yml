@@ -132,44 +132,31 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
             asset: maca-install-linux-x86_64
           - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
             asset: maca-install-linux-aarch64
-          - os: macos-latest
-            target: x86_64-apple-darwin
+          - os: macos-13
             asset: maca-install-macos-x86_64
           - os: macos-latest
-            target: aarch64-apple-darwin
             asset: maca-install-macos-aarch64
           - os: windows-latest
-            target: x86_64-pc-windows-msvc
             asset: maca-install-windows-x86_64.exe
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
-        run: |
-          rustup toolchain install stable --profile minimal --no-self-update
-          rustup target add ${{ matrix.target }}
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }} -p maca-install
+        run: rustup toolchain install stable --profile minimal --no-self-update
 
-      # The installer knows its own platform from how it was built, so the
-      # asset name has to match the leg that produced it or a reader downloads
-      # a binary that asks for somebody else's tarball.
-      - name: Name it for the platform it was built for
-        if: runner.os != 'Windows'
+      # The installer is a Maca program, so building it needs the compiler
+      # first. It reads its own platform from `uname` at run time, so each leg
+      # only has to run on the machine the asset is named for.
+      - name: Build the compiler
+        run: cargo build --release -p maca-driver
+      - name: Build
         shell: bash
         run: |
           mkdir -p dist
-          cp "target/${{ matrix.target }}/release/maca-install" "dist/${{ matrix.asset }}"
-      - name: Name it for the platform it was built for (windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item target\${{ matrix.target }}\release\maca-install.exe "dist\${{ matrix.asset }}"
+          ./target/release/maca build apps/install/install.maca \
+            -o "dist/${{ matrix.asset }}"
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2

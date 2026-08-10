@@ -23,6 +23,7 @@ members = [
     "apps/corpus",
     "apps/desktop",
     "apps/evals",
+    "apps/install",
     "apps/lint",
     "apps/maca1",
     "apps/macadoc",

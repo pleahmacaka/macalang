@@ -1,0 +1,310 @@
+import std/text
+
+Repo = "pleahmacaka/macalang"
+
+Options = {
+    version: str
+    prefix:  str
+    error:   str
+    done:    bool
+}
+
+platform() -> str {
+    named = capture("uname", ["-sm"]).trim()
+
+    if named != "" {
+        named
+    } else if env("OS") != "" {
+        "Windows x86_64"
+    } else {
+        ""
+    }
+}
+
+asset_for(uname: str) -> str {
+    machine = arch_of(uname)
+
+    if uname.starts_with("Linux") {
+        "maca-linux-{machine}.tar.gz"
+    } else if uname.starts_with("Darwin") {
+        "maca-macos-{machine}.tar.gz"
+    } else if uname.starts_with("Windows") {
+        "maca-windows-x86_64.zip"
+    } else {
+        ""
+    }
+}
+
+arch_of(uname: str) -> str {
+    cut = uname.index_of(" ")
+
+    if cut < 0 {
+        ""
+    } else {
+        wide_name(uname.slice(cut + 1, uname.length()).trim())
+    }
+}
+
+wide_name(machine: str) -> str {
+    if machine == "arm64" || machine == "aarch64" {
+        "aarch64"
+    } else {
+        "x86_64"
+    }
+}
+
+on_windows() -> bool =>
+    env("OS") != ""
+
+binaries() -> str[] {
+    if on_windows() {
+        ["maca.exe", "maca-lsp.exe"]
+    } else {
+        ["maca", "maca-lsp"]
+    }
+}
+
+home() -> str {
+    unix = env("HOME")
+
+    if unix != "" {
+        unix
+    } else if env("USERPROFILE") != "" {
+        env("USERPROFILE")
+    } else {
+        "."
+    }
+}
+
+temp_root() -> str {
+    named = env("TMPDIR")
+
+    if named != "" {
+        named
+    } else if env("TEMP") != "" {
+        env("TEMP")
+    } else {
+        "/tmp"
+    }
+}
+
+download_url(version: str, asset: str) -> str {
+    base = "https://github.com/{Repo}/releases"
+
+    if version == "latest" {
+        "{base}/latest/download/{asset}"
+    } else {
+        "{base}/download/{version}/{asset}"
+    }
+}
+
+usage() -> str =>
+    "maca-install: put the Maca toolchain on this machine\n\n"
+        ++ "usage: maca-install [--version <x.y.z>] [--prefix <dir>]\n\n"
+        ++ "  --version   which release, e.g. 9.9.9 (default: latest)\n"
+        ++ "  --prefix    where to install; the binaries go in <prefix>/bin\n"
+        ++ "              (default: {home()}/.local)\n\n"
+        ++ "MACA_VERSION and PREFIX set the same two things."
+
+defaults() -> Options {
+    version = env("MACA_VERSION")
+    prefix = env("PREFIX")
+
+    Options { version = version == "" ? "latest" : version,
+              prefix = prefix == "" ? "{home()}/.local" : prefix,
+              error = "", done = false }
+}
+
+parse_args(args: str[], i: int, o: Options) -> Options {
+    if i >= args.length() || o.error != "" || o.done {
+        o
+    } else {
+        parse_args(args, next_arg(args, i), one_arg(args, i, o))
+    }
+}
+
+next_arg(args: str[], i: int) -> int {
+    if wants_value(args.get(i)) {
+        i + 2
+    } else {
+        i + 1
+    }
+}
+
+wants_value(flag: str) -> bool =>
+    flag == "--version" || flag == "-v" || flag == "--prefix" || flag == "-p"
+
+one_arg(args: str[], i: int, o: Options) -> Options {
+    flag = args.get(i)
+    missing = wants_value(flag) && i + 1 >= args.length()
+
+    if missing {
+        o with { error = "{flag} wants a value" }
+    } else if flag == "--version" || flag == "-v" {
+        o with { version = args.get(i + 1) }
+    } else if flag == "--prefix" || flag == "-p" {
+        o with { prefix = args.get(i + 1) }
+    } else if flag == "--help" || flag == "-h" {
+        o with { done = true }
+    } else {
+        o with { error = "unknown option `{flag}`\n\n{usage()}" }
+    }
+}
+
+fetch(url: str, into: str) -> bool =>
+    exec("curl", ["-fsSL", "-o", into, url]) == 0
+
+unpack(archive: str, into: str) -> bool =>
+    exec("tar", ["-xf", archive, "-C", into]) == 0
+
+place(from: str, to: str) -> bool {
+    remove_file(to)
+
+    if !copy_bytes(from, to) {
+        false
+    } else if on_windows() {
+        true
+    } else {
+        exec("chmod", ["755", to]) == 0
+    }
+}
+
+place_all(names: str[], work: str, bin: str, i: int, acc: str[]) -> str[] {
+    if i >= names.length() {
+        acc
+    } else if !file_exists("{work}/{names.get(i)}") {
+        place_all(names, work, bin, i + 1, acc)
+    } else if place("{work}/{names.get(i)}", "{bin}/{names.get(i)}") {
+        place_all(names, work, bin, i + 1, acc ++ [names.get(i)])
+    } else {
+        place_all(names, work, bin, i + 1, acc)
+    }
+}
+
+report_placed(names: str[], bin: str, i: int) -> int {
+    if i >= names.length() {
+        0
+    } else {
+        info("installed {names.get(i)} -> {bin}/{names.get(i)}")
+
+        report_placed(names, bin, i + 1)
+    }
+}
+
+Probe = """import { lines } from std/text
+
+main() -> int {
+    lines("a\nb").length() == 2 ? 0 : 1
+}
+"""
+
+verify(maca: str, work: str) -> bool {
+    probe = "{work}/probe.maca"
+
+    write_file(probe, Probe)
+
+    exec(maca, ["run", probe]) == 0
+}
+
+on_path(bin: str) -> bool =>
+    env("PATH").contains(bin)
+
+path_hint(bin: str) -> str {
+    if on_windows() {
+        "setx PATH \"{bin};%PATH%\""
+    } else {
+        "echo 'export PATH=\"{bin}:$PATH\"' >> ~/.profile"
+    }
+}
+
+install(o: Options) -> int {
+    asset = asset_for(platform())
+
+    if asset == "" {
+        err("maca-install: no release is built for {platform()}")
+
+        1
+    } else {
+        carry_out(o, asset)
+    }
+}
+
+carry_out(o: Options, asset: str) -> int {
+    bin = "{o.prefix}/bin"
+    work = "{temp_root()}/maca-install-{str(now_ms())}"
+
+    make_dir(bin)
+    make_dir(work)
+    info("downloading {asset} ({o.version} release)")
+
+    if !fetch(download_url(o.version, asset), "{work}/{asset}") {
+        err("maca-install: could not download {download_url(o.version, asset)}")
+
+        1
+    } else if !unpack("{work}/{asset}", work) {
+        err("maca-install: {asset} did not unpack")
+
+        1
+    } else {
+        settle(o, work, bin, asset)
+    }
+}
+
+settle(o: Options, work: str, bin: str, asset: str) -> int {
+    placed = place_all(binaries(), work, bin, 0, [])
+    wanted = binaries().join(", ")
+
+    if placed.length() == 0 {
+        err("maca-install: {asset} contained none of {wanted}")
+
+        1
+    } else {
+        report_placed(placed, bin, 0)
+
+        finish(work, bin, placed.get(0))
+    }
+}
+
+finish(work: str, bin: str, first: str) -> int {
+    ran = verify("{bin}/{first}", work)
+
+    remove_dir(work)
+
+    if !ran {
+        err("maca-install: installed, but compiling a program that imports"
+                ++ " std failed. `maca build` and `maca run` need a C compiler"
+                ++ " (cc or clang) on PATH.")
+
+        1
+    } else {
+        info("verified: the installed compiler ran a program that imports std")
+
+        advise(bin)
+    }
+}
+
+advise(bin: str) -> int {
+    if !on_path(bin) {
+        info("\nadd it to your PATH:\n  {path_hint(bin)}")
+    }
+
+    info("\ndone. Try: maca init myapp")
+
+    0
+}
+
+main(args: str[]) -> int {
+    o = parse_args(args, 0, defaults())
+
+    if o.done {
+        info(usage())
+
+        0
+    } else if o.error != "" {
+        info(o.error)
+
+        2
+    } else {
+        install(o)
+    }
+}
