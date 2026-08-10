@@ -25,6 +25,8 @@ main(args: str[]) -> int {
         check_only(args.get(1))
     } else if args.length() >= 2 && args.get(0) == "fmt" {
         format_file(args.get(1), args.length() >= 3 && args.get(2) == "--check")
+    } else if args.length() >= 1 && args.get(0) == "init" {
+        init_project(args.length() >= 2 ? args.get(1) : ".")
     } else if args.length() >= 1 && args.get(0) == "--version" {
         info("maca {Version}")
 
@@ -51,6 +53,39 @@ check_only(src: str) -> int {
         report_all("scan", scanned.errors, 0) +
         report_all("parse", raw.errors, 0) +
         report_all("check", check_errors(raw), 0)
+}
+
+init_project(root: str) -> int {
+    name = leaf_of(root)
+
+    make_dir(root)
+    write_absent("{root}/maca.toml",
+                 "[package]\nname = \"{name}\"\n\n[[bin]]\n"
+                     ++ "path = \"main.maca\"\n")
+    write_absent("{root}/main.maca",
+                 "main() -> int \{\n    info(\"hello\")\n    0\n\}\n")
+    info("initialized Maca project `{name}` in {root}")
+
+    0
+}
+
+write_absent(path: str, text: str) -> bool {
+    if file_exists(path) {
+        false
+    } else {
+        write_file(path, text)
+    }
+}
+
+leaf_of(root: str) -> str {
+    cut = sep_after(root.chars(), root.length() - 1)
+    tail = root.slice(cut, root.length())
+
+    if tail == "" || tail == "." {
+        "app"
+    } else {
+        tail
+    }
 }
 
 format_file(src: str, only_check: bool) -> int {

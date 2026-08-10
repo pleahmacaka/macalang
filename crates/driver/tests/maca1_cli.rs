@@ -162,6 +162,37 @@ fn maca1_formats_in_place_and_settles() {
     );
 }
 
+/// `init` scaffolds a project, and what it scaffolds has to run.
+#[test]
+fn maca1_scaffolds_a_project_that_runs() {
+    let dir = std::env::temp_dir().join("maca1-cli-init");
+    let Some(bin) = maca1(&dir) else { return };
+    let project = dir.join("fresh");
+    let _ = std::fs::remove_dir_all(&project);
+
+    let made = Command::new(&bin)
+        .args(["init", &project.to_string_lossy()])
+        .output()
+        .expect("spawn maca1 init");
+    assert_eq!(made.status.code(), Some(0));
+
+    let toml = std::fs::read_to_string(project.join("maca.toml")).unwrap();
+    assert!(toml.contains("name = \"fresh\""), "named for its directory: {toml}");
+
+    let ran = Command::new(&bin)
+        .current_dir(&project)
+        .args(["run", "main.maca"])
+        .output()
+        .expect("spawn maca1 run");
+    assert_eq!(
+        ran.status.code(),
+        Some(0),
+        "a scaffold that does not run is not a scaffold:\n{}",
+        String::from_utf8_lossy(&ran.stderr)
+    );
+    assert!(String::from_utf8_lossy(&ran.stdout).contains("hello"));
+}
+
 /// A suite that imports resolves from where its own file is, not from wherever a scratch file landed.
 #[test]
 fn maca1_runs_a_suite_that_imports_a_module() {
