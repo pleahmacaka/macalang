@@ -88,6 +88,27 @@ jemit_method(e: Expr) -> str {
         "{recv}.length"
     } else if e.text == "get" || e.text == "at" {
         "{recv}[{jemit_expr(e.children.get(1))}]"
+    } else if e.text == "chars" {
+        "Array.from({recv})"
+    } else if e.text == "upper" {
+        "{recv}.toUpperCase()"
+    } else if e.text == "lower" {
+        "{recv}.toLowerCase()"
+    } else if e.text == "index_of" {
+        "{recv}.indexOf({jemit_args(e.children, 1)})"
+    } else if e.text == "push" {
+        "[...{recv}, {jemit_args(e.children, 1)}]"
+    } else if e.text == "set" {
+        "{recv}.map((v, i) => i === {jemit_expr(e.children.get(1))}"
+            ++ " ? {jemit_expr(e.children.get(2))} : v)"
+    } else if e.text == "contains" {
+        "{recv}.includes({jemit_args(e.children, 1)})"
+    } else if e.text == "is_whitespace" {
+        "/\\s/.test({recv})"
+    } else if e.text == "is_ascii_digit" {
+        "/[0-9]/.test({recv})"
+    } else if e.text == "is_alpha" {
+        "/[A-Za-z]/.test({recv})"
     } else {
         "{recv}.{jid(e.text)}({jemit_args(e.children, 1)})"
     }

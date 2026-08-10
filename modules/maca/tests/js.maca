@@ -65,3 +65,24 @@ test_a_loop_is_the_loop_javascript_writes() {
                   ++ " {{ seen(x); }} return n; }}",
               "a for over a list needs no index, and no semicolon behind it")
 }
+
+test_a_method_javascript_spells_differently_is_translated() {
+    assert_eq(js_of("f(s: str) -> str => s.upper()"),
+              "function f(s) {{ return s.toUpperCase(); }}",
+              "the same idea under another name")
+    assert_eq(js_of("f(xs: int[], v: int) -> int => xs.index_of(v)"),
+              "function f(xs, v) {{ return xs.indexOf(v); }}",
+              "and the one method both languages have on both types")
+}
+
+test_an_append_copies_rather_than_mutating() {
+    assert_eq(js_of("f(xs: int[], v: int) -> int[] => xs.push(v)"),
+              "function f(xs, v) {{ return [...xs, v]; }}",
+              "push answers a new list, so the spread is the honest reading")
+}
+
+test_a_character_test_is_a_pattern() {
+    assert_eq(js_of("f(c: str) -> bool => c.is_ascii_digit()"),
+              "function f(c) {{ return /[0-9]/.test(c); }}",
+              "a one-character class, not a range comparison")
+}
