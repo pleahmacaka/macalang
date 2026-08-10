@@ -1,0 +1,161 @@
+import maca/ast
+
+JsReserved = "arguments await case catch class const debugger default delete do "
+    ++ "enum eval export extends finally function implements in instanceof "
+    ++ "interface let new null package private protected public static super "
+    ++ "switch this throw typeof var void yield"
+
+jid(name: str) -> str {
+    if JsReserved.split(" ").index_of(name) >= 0 {
+        name ++ "_"
+    } else {
+        name
+    }
+}
+
+js_str(s: str) -> str =>
+    "\"{s}\""
+
+jemit_expr(e: Expr) -> str =>
+    match e.kind {
+        EInt     => str(e.ival)
+        EFloat   => e.text
+        EStr     => js_str(e.text)
+        EBool    => e.text
+        EIdent   => jid(e.text)
+        ECall    => jemit_call(e)
+        EBinary  => jemit_binary(e)
+        ETernary => jemit_ternary(e)
+        EIf      => jemit_ternary(e)
+        EUnary   => "({e.text}{jemit_expr(e.children.get(0))})"
+        ERecord  => "{{ {jemit_fields(e.children, 0)} }}"
+        EWith    => jemit_with(e)
+        EBlock   => jemit_block(e)
+        EField   => "{jemit_expr(e.children.get(0))}.{jid(e.text)}"
+        EMethod  => jemit_method(e)
+        EList    => "[{jemit_args(e.children, 0)}]"
+        ELambda  => jemit_lambda(e)
+        _        => "undefined"
+    }
+
+jemit_ternary(e: Expr) -> str =>
+    "({jemit_expr(e.children.get(0))} ? {jemit_expr(e.children.get(1))}"
+        ++ " : {jemit_expr(e.children.get(2))})"
+
+jemit_binary(e: Expr) -> str {
+    l = jemit_expr(e.children.get(0))
+    r = jemit_expr(e.children.get(1))
+
+    if e.text == "++" {
+        "({l} + {r})"
+    } else if e.text == "==" || e.text == "!=" {
+        "({l} {e.text}= {r})"
+    } else {
+        "({l} {e.text} {r})"
+    }
+}
+
+jemit_call(e: Expr) -> str =>
+    "{jid(e.text)}({jemit_args(e.children, 0)})"
+
+jemit_method(e: Expr) -> str {
+    recv = jemit_expr(e.children.get(0))
+
+    if e.text == "length" {
+        "{recv}.length"
+    } else if e.text == "get" || e.text == "at" {
+        "{recv}[{jemit_expr(e.children.get(1))}]"
+    } else {
+        "{recv}.{jid(e.text)}({jemit_args(e.children, 1)})"
+    }
+}
+
+jemit_lambda(e: Expr) -> str =>
+    "(({jemit_params(lambda_params(e), 0)}) => {jemit_expr(lambda_body(e))})"
+
+jemit_with(e: Expr) -> str =>
+    "Object.assign({{}}, {jemit_expr(e.children.get(0))},"
+        ++ " {{ {jemit_fields(e.children.slice(1, e.children.length()), 0)} }})"
+
+jemit_fields(fs: Expr[], i: int) -> str {
+    if i >= fs.length() {
+        ""
+    } else if i == fs.length() - 1 {
+        "{jid(fs.get(i).text)}: {jemit_expr(fs.get(i).children.get(0))}"
+    } else {
+        "{jid(fs.get(i).text)}: {jemit_expr(fs.get(i).children.get(0))}, "
+            ++ jemit_fields(fs, i + 1)
+    }
+}
+
+jemit_args(xs: Expr[], i: int) -> str {
+    if i >= xs.length() {
+        ""
+    } else if i == xs.length() - 1 {
+        jemit_expr(xs.get(i))
+    } else {
+        "{jemit_expr(xs.get(i))}, " ++ jemit_args(xs, i + 1)
+    }
+}
+
+jemit_params(ps: Expr[], i: int) -> str {
+    if i >= ps.length() {
+        ""
+    } else if i == ps.length() - 1 {
+        jid(ps.get(i).text)
+    } else {
+        "{jid(ps.get(i).text)}, " ++ jemit_params(ps, i + 1)
+    }
+}
+
+jemit_block(e: Expr) -> str =>
+    "(() => {{ {jemit_stmts(e.stmts, 0)} return"
+        ++ " {jemit_expr(e.children.get(0))}; }})()"
+
+jemit_stmts(body: Stmt[], i: int) -> str {
+    if i >= body.length() {
+        ""
+    } else {
+        "{jemit_stmt(body.get(i))} {jemit_stmts(body, i + 1)}"
+    }
+}
+
+jemit_stmt(s: Stmt) -> str {
+    if s.kind == SBind {
+        "let {jid(s.name)} = {jemit_expr(s.value)};"
+    } else if s.kind == SSet {
+        "{jid(s.name)} = {jemit_expr(s.value)};"
+    } else {
+        "{jemit_expr(s.value)};"
+    }
+}
+
+jemit_fn(s: Stmt) -> str =>
+    "function {jid(s.name)}({jemit_params(s.params, 0)}) {{ "
+        ++ "{jemit_body(s.body, 0)} }}"
+
+jemit_body(body: Stmt[], i: int) -> str {
+    if i >= body.length() {
+        ""
+    } else if i == body.length() - 1 && body.get(i).kind == SExpr {
+        "return {jemit_expr(body.get(i).value)};"
+    } else {
+        "{jemit_stmt(body.get(i))} {jemit_body(body, i + 1)}"
+    }
+}
+
+/// Every function of the module, in source order, as one script.
+jemit_module(m: Module) -> str =>
+    jemit_items(m.items, 0)
+
+jemit_items(items: Stmt[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else if items.get(i).kind != SFn {
+        jemit_items(items, i + 1)
+    } else if items.get(i).body.length() == 0 {
+        jemit_items(items, i + 1)
+    } else {
+        "{jemit_fn(items.get(i))}\n{jemit_items(items, i + 1)}"
+    }
+}

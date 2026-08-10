@@ -1,0 +1,54 @@
+import maca/lexer
+import maca/parser
+import maca/emit_js
+
+js_of(src: str) -> str =>
+    jemit_fn(parse_fn(lex(src), 0).snode)
+
+test_a_function_becomes_a_function() {
+    assert_eq(js_of("add(a: int, b: int) -> int => a + b"),
+              "function add(a, b) {{ return (a + b); }}",
+              "the types go away and the body is the return")
+}
+
+test_a_name_javascript_has_taken_is_renamed() {
+    assert_eq(js_of("f(new: int) -> int => new"),
+              "function f(new_) {{ return new_; }}",
+              "a parameter cannot be spelled like a keyword")
+}
+
+test_a_join_is_a_plus_and_equality_is_strict() {
+    assert_eq(js_of("f(a: str, b: str) -> str => a ++ b"),
+              "function f(a, b) {{ return (a + b); }}",
+              "one operator joins strings on this target")
+    assert_eq(js_of("f(a: int) -> bool => a == 1"),
+              "function f(a) {{ return (a === 1); }}",
+              "loose equality is never what the source meant")
+}
+
+test_a_binding_precedes_the_answer_it_feeds() {
+    assert_eq(js_of("f(a: int) -> int {{ n = a + 1 n * 2 }}"),
+              "function f(a) {{ let n = (a + 1); return (n * 2); }}",
+              "every statement but the last, then the return")
+}
+
+test_a_field_reads_the_same_on_this_target() {
+    assert_eq(js_of("f(p: Point) -> int => p.x"),
+              "function f(p) {{ return p.x; }}",
+              "a field is a dot either way")
+}
+
+test_a_list_is_an_array_and_length_is_a_property() {
+    assert_eq(js_of("f(xs: int[]) -> int => xs.length()"),
+              "function f(xs) {{ return xs.length; }}",
+              "length is not called on this target")
+    assert_eq(js_of("f(xs: int[]) -> int => xs.get(0)"),
+              "function f(xs) {{ return xs[0]; }}",
+              "and an index is brackets rather than a method")
+}
+
+test_a_lambda_is_an_arrow() {
+    assert_eq(js_of("f() -> int => call(x => x + 1)"),
+              "function f() {{ return call(((x) => (x + 1))); }}",
+              "the one form both languages share")
+}
