@@ -152,10 +152,42 @@ mk_block_fn(ts: Token[], name: str, ret: str, params: Expr[],
 parse_block(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
     if ts.get(i).kind == Eof || ts.get(i).kind == RBrace {
         mk_pblock(acc, i + 1)
+    } else if starts_local_fn(ts, i) {
+        parse_local_fn(ts, i, acc)
     } else if binds_a_name(ts, i) {
         parse_bind_stmt(ts, i, acc)
     } else {
         parse_expr_stmt(ts, i, acc)
+    }
+}
+
+starts_local_fn(ts: Token[], i: int) -> bool {
+    if !starts_fn(ts, i) {
+        false
+    } else {
+        at = after_return_type(ts, parse_params(ts, i + 2, []).pnext + 1)
+
+        ts.get(at).kind == FatArrow || ts.get(at).kind == LBrace
+    }
+}
+
+/// A function written inside a body is the name of a lambda, because C has no nested function.
+parse_local_fn(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
+    made = parse_fn(ts, i)
+    held = made.snode
+
+    parse_block(ts, made.snext,
+                acc ++ [s_bind(held.name,
+                               e_lambda(held.params, body_expr(held.body)))])
+}
+
+body_expr(stmts: Stmt[]) -> Expr {
+    n = stmts.length()
+
+    if n == 1 && stmts.get(0).kind == SExpr {
+        stmts.get(0).value
+    } else {
+        e_block(stmts.slice(0, n - 1), stmts.get(n - 1).value)
     }
 }
 

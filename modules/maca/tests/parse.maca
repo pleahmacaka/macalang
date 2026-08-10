@@ -166,6 +166,17 @@ test_a_tag_a_function_also_names_is_still_a_tag() {
               "1", "while one argument still has to be the type it declares")
 }
 
+test_a_function_written_inside_a_body_is_a_local() {
+    assert_eq(errors_in("f(n: int) -> int {{\n"
+                        ++ "twice(x: int) -> int => x + x\n"
+                        ++ "twice(n)\n}}"),
+              "0", "a nested declaration is not a call with a type in it")
+    assert_eq(errors_in("f(n: int) -> int {{\n"
+                        ++ "twice(x: int) -> int {{ x + x }}\n"
+                        ++ "twice(n)\n}}"),
+              "0", "and it may carry a block for a body")
+}
+
 test_a_match_arm_may_answer_with_a_block() {
     assert_eq(errors_in("C = A | B f(c: C) -> int => match c {{"
                         ++ " A => {{ n = 1 n + 1 }} B => 0 }}"),
