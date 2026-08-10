@@ -68,7 +68,7 @@ ty_named(name: str) -> Ty {
         t_int()
     } else if name == "float" {
         t_float()
-    } else if name == "str" {
+    } else if name == "str" || name == "Element" {
         t_str()
     } else if name == "bool" {
         t_bool()

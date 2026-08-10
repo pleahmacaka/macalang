@@ -330,6 +330,15 @@ test_one_name_defined_twice_is_named_as_a_clash() {
               "two different names are not a clash")
 }
 
+test_element_is_the_name_the_spec_gives_rendered_text() {
+    assert_eq(count_of("view() -> Element => div(\"hi\")"), "0",
+              "a rendered element is a str natively, and Element names it")
+    assert_eq(count_of("view() -> Element[] => [div(\"a\"), div(\"b\")]"), "0",
+              "and a list of them is a list of those")
+    assert_eq(count_of("view() -> Element => 1"), "1",
+              "which is still not a number")
+}
+
 test_an_element_is_the_html_text_it_renders() {
     assert_eq(count_of("shell(body: str) -> str => div(class=\"wrap\", body)"),
               "0", "a tag no one declared is an element, and one reads as str")

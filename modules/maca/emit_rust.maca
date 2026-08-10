@@ -686,7 +686,7 @@ rtype(ty: str) -> str {
             ++ " {rtype(rmap_val(ty))}>>"
     } else if ty == "float" {
         "f64"
-    } else if ty == "str" {
+    } else if ty == "str" || ty == "Element" {
         "String"
     } else if ty == "bool" {
         "bool"

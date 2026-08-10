@@ -766,7 +766,7 @@ type_c(ty: str) -> str {
         "MacaList"
     } else if ty == "float" {
         "double"
-    } else if ty == "str" {
+    } else if ty == "str" || ty == "Element" {
         "const char*"
     } else if ty == "" || ty == "int" || ty == "bool" {
         "int"
