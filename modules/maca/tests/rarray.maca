@@ -191,6 +191,28 @@ test_a_string_search_takes_a_pattern_not_a_string() {
            "a split hands back a counted list like any other")
 }
 
+test_a_map_is_an_ordered_table_so_a_run_repeats() {
+    out = ra_rust("T = {{ opts: Map str int }} f(t: T) -> int => 0")
+
+    assert(out.index_of("Rc<std::collections::BTreeMap<String, i64>>") >= 0,
+           "a hash order would make two runs of the compiler disagree")
+}
+
+test_an_empty_list_leaves_its_element_type_to_be_inferred() {
+    out = ra_rust("f() -> int[] => []")
+
+    assert(out.index_of("Rc::new(vec![])") >= 0,
+           "the checker leaves an empty list open, so pinning it named i64"
+               ++ " where a Vec<Ty> was wanted")
+}
+
+test_a_function_with_no_declared_return_takes_the_type_of_its_tail() {
+    out = ra_rust("t() {{ assert_eq(\"a\", \"a\", \"m\") }}")
+
+    assert(out.index_of("-> bool") >= 0,
+           "the tail is what the function hands back, and i64 is not it")
+}
+
 test_a_raise_is_a_panic() {
     out = remit_fn(parse_fn(lex("f() -> int {{ fail \"gone\" }}"), 0).snode)
 

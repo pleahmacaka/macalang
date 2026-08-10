@@ -202,6 +202,50 @@ remit_str_method(e: Expr, recv: str) -> str {
     }
 }
 
+rlist_method(name: str) -> bool =>
+    name == "sum" || name == "min" || name == "max" || name == "first"
+        || name == "last" || name == "pop" || name == "reverse"
+        || name == "sort" || name == "set" || name == "insert"
+        || name == "remove" || name == "filter" || name == "reduce"
+
+rlist_method_of(e: Expr, recv: str) -> str {
+    el = relem(e.children.get(0).ty)
+
+    if e.text == "sum" {
+        "({recv}).iter().cloned().sum::<{rtype(el)}>()"
+    } else if e.text == "min" || e.text == "max" {
+        "({recv}).iter().cloned().{e.text}().unwrap_or_default()"
+    } else if e.text == "first" {
+        "({recv}).first().cloned().unwrap_or_default()"
+    } else if e.text == "last" {
+        "({recv}).last().cloned().unwrap_or_default()"
+    } else if e.text == "pop" {
+        "Rc::new(({recv})[..({recv}).len().saturating_sub(1)].to_vec())"
+    } else if e.text == "reverse" {
+        "{{ let mut _v = {recv}; Rc::make_mut(&mut _v).reverse(); _v }}"
+    } else if e.text == "sort" {
+        "{{ let mut _v = {recv};"
+            ++ " Rc::make_mut(&mut _v).sort_by(|a, b| a.partial_cmp(b)"
+            ++ ".unwrap_or(std::cmp::Ordering::Equal)); _v }}"
+    } else if e.text == "remove" {
+        "{{ let mut _v = {recv}; let _i = ({rarg(e, 1)}) as usize;"
+            ++ " if _i < _v.len() {{ Rc::make_mut(&mut _v).remove(_i); }} _v }}"
+    } else if e.text == "insert" {
+        "{{ let mut _v = {recv};"
+            ++ " let _i = (({rarg(e, 1)}) as usize).min(_v.len());"
+            ++ " Rc::make_mut(&mut _v).insert(_i, {rarg(e, 2)}); _v }}"
+    } else if e.text == "set" {
+        "{{ let mut _v = {recv}; let _i = ({rarg(e, 1)}) as usize;"
+            ++ " if _i < _v.len() {{ Rc::make_mut(&mut _v)[_i] = {rarg(e, 2)}; }}"
+            ++ " _v }}"
+    } else if e.text == "filter" {
+        "Rc::new(({recv}).iter().cloned().filter(|_x|"
+            ++ " ({rarg(e, 1)})(_x.clone())).collect::<Vec<_>>())"
+    } else {
+        "({recv}).iter().cloned().fold({rarg(e, 2)}, {rarg(e, 1)})"
+    }
+}
+
 rarg(e: Expr, i: int) -> str {
     if i >= e.children.length() {
         "Default::default()"
@@ -254,6 +298,8 @@ remit_method(e: Expr) -> str {
             ++ ".map(|i| i as i64).unwrap_or(-1)"
     } else if e.text == "join" {
         "({recv}).join({remit_expr(e.children.get(1))}.as_str())"
+    } else if rlist(e.children.get(0).ty) && rlist_method(e.text) {
+        rlist_method_of(e, recv)
     } else if e.text == "push" {
         "{{ let mut _v = {recv};"
             ++ " Rc::make_mut(&mut _v).push({remit_expr(e.children.get(1))});"
@@ -267,11 +313,11 @@ remit_call(e: Expr) -> str {
     args = remit_args(e.children, 0)
 
     if e.text == "info" {
-        "println!(\"{{}}\", {args})"
+        "println!(\"{{}}\", {rstr_of(rarg_ty(e.children), args)})"
     } else if e.text == "print" {
-        "print!(\"{{}}\", {args})"
+        "print!(\"{{}}\", {rstr_of(rarg_ty(e.children), args)})"
     } else if e.text == "str" {
-        "format!(\"{{}}\", {args})"
+        rstr_of(rarg_ty(e.children), args)
     } else if e.text == "int" {
         rint_of(rarg_ty(e.children), args)
     } else if e.text == "float" {
@@ -279,10 +325,18 @@ remit_call(e: Expr) -> str {
     } else if e.text == "len" {
         rlen_of(rarg_ty(e.children), args)
     } else if e.text == "err" || e.text == "warn" {
-        "eprintln!(\"{{}}\", {args})"
+        "eprintln!(\"{{}}\", {rstr_of(rarg_ty(e.children), args)})"
     } else if e.text == "assert_eq" {
         "maca_assert_eq({rshown(e.children, 0)}, {rshown(e.children, 1)},"
             ++ " {rshown(e.children, 2)})"
+    } else if e.text == "abs" || e.text == "signum" {
+        "({args}).abs()"
+    } else if e.text == "sign" {
+        "({args}).signum()"
+    } else if e.text == "pow" {
+        "({rarg(e, 0)} as f64).powf({rarg(e, 1)} as f64)"
+    } else if e.text == "log" {
+        "(({args}) as f64).ln()"
     } else if rmath_call(e.text) {
         "(({args}) as f64).{e.text}()"
     } else if rpicking(e.text) && e.children.length() == 2 {
@@ -294,11 +348,16 @@ remit_call(e: Expr) -> str {
     }
 }
 
-rlen_of(ty: str, args: str) -> str {
+rlen_of(ty: str, args: str) -> str =>
+    "(({args}).len() as i64)"
+
+rstr_of(ty: str, args: str) -> str {
     if rlist(ty) {
-        "(({args}).len() as i64)"
+        "format!(\"[{{}}]\", ({args}).iter()"
+            ++ ".map(|_c| format!(\"{{}}\", _c))"
+            ++ ".collect::<Vec<String>>().join(\", \"))"
     } else {
-        "(({args}).len() as i64)"
+        "format!(\"{{}}\", {args})"
     }
 }
 
@@ -329,7 +388,9 @@ rruntime_call(name: str) -> bool =>
         || name == "assert" || name == "failures" || name == "sleep_ms"
         || name == "make_dir" || name == "remove_dir" || name == "remove_file"
         || name == "file_exists" || name == "is_dir" || name == "env"
-        || name == "cwd" || name == "panic"
+        || name == "cwd" || name == "panic" || name == "is_tty"
+        || name == "now_ms" || name == "list_dir" || name == "file_size"
+        || name == "chr" || name == "ord" || name == "input"
 
 rarg_ty(cs: Expr[]) -> str {
     if cs.length() == 0 {
@@ -440,7 +501,20 @@ rassigned_in(body: Stmt[], i: int, name: str) -> bool {
 }
 
 rassigned_deep(e: Expr, name: str) -> bool =>
-    rassigned_in(e.stmts, 0, name) || rassigned_any(e.children, 0, name)
+    rstored_into(e, name) || rassigned_in(e.stmts, 0, name)
+        || rassigned_any(e.children, 0, name)
+
+rstored_into(e: Expr, name: str) -> bool {
+    if e.kind != EBinary || e.text != "=" {
+        false
+    } else {
+        lhs = e.children.get(0)
+
+        lhs.kind == EMethod && lhs.text == "get"
+            && lhs.children.get(0).kind == EIdent
+            && lhs.children.get(0).text == name
+    }
+}
 
 rassigned_any(cs: Expr[], i: int, name: str) -> bool {
     if i >= cs.length() {
@@ -489,6 +563,36 @@ rclone(ty: str) -> str {
     }
 }
 
+rmap_key(ty: str) -> str {
+    rest = rmap_rest(ty)
+    cut = rest.index_of(" ")
+
+    if cut < 0 {
+        ""
+    } else {
+        rest.slice(0, cut)
+    }
+}
+
+rmap_val(ty: str) -> str {
+    rest = rmap_rest(ty)
+    cut = rest.index_of(" ")
+
+    if cut < 0 {
+        ""
+    } else {
+        rest.slice(cut + 1, rest.length())
+    }
+}
+
+rmap_rest(ty: str) -> str {
+    if ty.length() > 4 && ty.slice(0, 4) == "Map " {
+        ty.slice(4, ty.length())
+    } else {
+        ""
+    }
+}
+
 r_is_fn(ty: str) -> bool =>
     ty.index_of(") -> ") >= 0
 
@@ -518,6 +622,9 @@ rtype(ty: str) -> str {
         "fn({r_param_types(r_fn_params(ty), 0, "")}) -> {rtype(r_fn_ret(ty))}"
     } else if ty.ends_with("[]") {
         "Rc<Vec<{rtype(relem(ty))}>>"
+    } else if rmap_key(ty) != "" {
+        "Rc<std::collections::BTreeMap<{rtype(rmap_key(ty))},"
+            ++ " {rtype(rmap_val(ty))}>>"
     } else if ty == "float" {
         "f64"
     } else if ty == "str" {
@@ -544,7 +651,25 @@ remit_fn(s: Stmt) -> str {
             ++ "{rust_argv(s.params)}) as i32); }}"
     } else {
         params = s.params.map(remit_param).join(", ")
-        "fn {rid(s.name)}({params}) -> {rtype(s.ret)} {{ {body} }}"
+        "fn {rid(s.name)}({params}) -> {rret(s)} {{ {body} }}"
+    }
+}
+
+rret(s: Stmt) -> str {
+    if s.ret != "" {
+        rtype(s.ret)
+    } else {
+        rtype(rtail_ty(s.body))
+    }
+}
+
+rtail_ty(body: Stmt[]) -> str {
+    if body.length() == 0 {
+        ""
+    } else if body.get(body.length() - 1).kind != SExpr {
+        ""
+    } else {
+        body.get(body.length() - 1).value.ty
     }
 }
 
@@ -620,7 +745,14 @@ rust_preamble() -> str =>
     "#[allow(dead_code)]\nfn maca_cwd() -> String {{ std::env::current_dir().map(|p| p.display().to_string()).unwrap_or_default() }}\n" ++
     "#[allow(dead_code)]\nfn maca_substr(s: String, at: i64, n: i64) -> String {{ let a = (at.max(0) as usize).min(s.len()); let b = (a + n.max(0) as usize).min(s.len()); s.get(a..b).unwrap_or(\"\").to_string() }}\n" ++
     "#[allow(dead_code)]\nfn maca_pad_start(s: String, w: i64) -> String {{ let w = w.max(0) as usize; if s.len() >= w {{ s }} else {{ format!(\"{{}}{{}}\", \" \".repeat(w - s.len()), s) }} }}\n" ++
-    "#[allow(dead_code)]\nfn maca_pad_end(s: String, w: i64) -> String {{ let w = w.max(0) as usize; if s.len() >= w {{ s }} else {{ format!(\"{{}}{{}}\", s, \" \".repeat(w - s.len())) }} }}\n"
+    "#[allow(dead_code)]\nfn maca_pad_end(s: String, w: i64) -> String {{ let w = w.max(0) as usize; if s.len() >= w {{ s }} else {{ format!(\"{{}}{{}}\", s, \" \".repeat(w - s.len())) }} }}\n" ++
+    "#[allow(dead_code)]\nfn maca_is_tty() -> bool {{ false }}\n" ++
+    "#[allow(dead_code)]\nfn maca_now_ms() -> i64 {{ std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0) }}\n" ++
+    "#[allow(dead_code)]\nfn maca_file_size(p: String) -> i64 {{ std::fs::metadata(p).map(|m| m.len() as i64).unwrap_or(-1) }}\n" ++
+    "#[allow(dead_code)]\nfn maca_chr(b: i64) -> String {{ char::from_u32(b as u32).map(|c| c.to_string()).unwrap_or_default() }}\n" ++
+    "#[allow(dead_code)]\nfn maca_ord(s: String) -> i64 {{ s.bytes().next().map(|b| b as i64).unwrap_or(-1) }}\n" ++
+    "#[allow(dead_code)]\nfn maca_input(prompt: String) -> String {{ use std::io::Write; if !prompt.is_empty() {{ print!(\"{{}}\", prompt); let _ = std::io::stdout().flush(); }} let mut s = String::new(); let _ = std::io::stdin().read_line(&mut s); s.trim_end_matches('\\n').to_string() }}\n" ++
+    "#[allow(dead_code)]\nfn maca_list_dir(p: String) -> Rc<Vec<String>> {{ let mut v: Vec<String> = std::fs::read_dir(p).map(|d| d.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().to_string()).collect()).unwrap_or_default(); v.sort(); Rc::new(v) }}\n"
 
 remit_item(s: Stmt) -> str {
     if s.kind == SRecord {
