@@ -16,6 +16,10 @@ main(args: str[]) -> int {
     if args.length() >= 4 && args.get(0) == "build"
             && args.get(2) == "-o" {
         build_binary(args.get(1), args.get(3))
+    } else if args.length() >= 2 && args.get(0) == "run" {
+        run_file(args.get(1), args.slice(2, args.length()))
+    } else if args.length() >= 2 && args.get(0) == "test" {
+        test_file(args.get(1))
     } else if args.length() >= 2 {
         compile_file(args)
     } else {
@@ -31,6 +35,81 @@ build_binary(src: str, out: str) -> int {
         errs
     } else {
         exec("cc", [cfile, "-o", out])
+    }
+}
+
+scratch_path(kind: str) -> str {
+    root = env("TMPDIR")
+
+    if root == "" {
+        "/tmp/maca1-{kind}-{str(now_ms())}"
+    } else {
+        "{root}/maca1-{kind}-{str(now_ms())}"
+    }
+}
+
+run_file(src: str, rest: str[]) -> int {
+    out = scratch_path("run")
+    built = build_binary(src, out)
+
+    if built != 0 {
+        built
+    } else {
+        code = exec(out, rest)
+
+        remove_file(out)
+        remove_file("{out}.c")
+
+        code
+    }
+}
+
+test_file(src: str) -> int {
+    unit = unit_of(src)
+    scanned = end_run(lexed(unit.toks, unit.errs), 0, 0)
+    raw = parse_module(scanned.tokens, 0, [])
+    names = test_names(raw.items, 0, [])
+
+    if names.length() == 0 {
+        info("no test_ functions in {src}")
+
+        0
+    } else {
+        run_tests(src, names)
+    }
+}
+
+test_names(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind == SFn
+            && items.get(i).name.starts_with("test_") {
+        test_names(items, i + 1, acc ++ [items.get(i).name])
+    } else {
+        test_names(items, i + 1, acc)
+    }
+}
+
+run_tests(src: str, names: str[]) -> int {
+    driver = "{dir_of(src)}maca1-test-{str(now_ms())}.maca"
+
+    write_file(driver, read_file(src) ++ test_main(names, 0, ""))
+
+    code = run_file(driver, [])
+
+    remove_file(driver)
+
+    code
+}
+
+test_main(names: str[], i: int, acc: str) -> str {
+    if i >= names.length() {
+        "\nmain() -> int \{\n" ++ acc ++ "    failures()\n\}\n"
+    } else {
+        call = "    info(\"  " ++ names.get(i) ++ "\")\n    "
+            ++ names.get(i) ++ "()\n"
+
+        test_main(names, i + 1, acc ++ call)
     }
 }
 
