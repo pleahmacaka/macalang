@@ -6,15 +6,47 @@ import maca/ast
 Indent = "    "
 
 print_module(m: Module) -> str =>
-    print_items(m.items, 0, "")
+    print_items(m.items, [], 0, 0, "")
 
-print_items(items: Stmt[], i: int, acc: str) -> str {
+/// The module as Maca, with every comment back on the item it was written above.
+print_marked(m: Module, marks: Token[]) -> str =>
+    print_items(m.items, marks, 0, 0, "")
+
+print_items(items: Stmt[], marks: Token[], i: int, seen: int,
+            acc: str) -> str {
     if i >= items.length() {
-        acc
-    } else if i == items.length() - 1 {
-        acc + print_item(items.get(i)) + "\n"
+        acc + trailing_marks(marks, seen, "")
     } else {
-        print_items(items, i + 1, acc + print_item(items.get(i)) + "\n\n")
+        here = acc + marks_before(marks, seen, items.get(i).pos, "")
+        gap = i == items.length() - 1 ? "\n" : "\n\n"
+
+        print_items(items, marks, i + 1,
+                    past(marks, seen, items.get(i).pos),
+                    here + print_item(items.get(i)) + gap)
+    }
+}
+
+marks_before(marks: Token[], from: int, upto: int, acc: str) -> str {
+    if from >= marks.length() || marks.get(from).pos >= upto {
+        acc
+    } else {
+        marks_before(marks, from + 1, upto, acc + marks.get(from).text + "\n")
+    }
+}
+
+trailing_marks(marks: Token[], from: int, acc: str) -> str {
+    if from >= marks.length() {
+        acc
+    } else {
+        trailing_marks(marks, from + 1, acc + marks.get(from).text + "\n")
+    }
+}
+
+past(marks: Token[], from: int, upto: int) -> int {
+    if from >= marks.length() || marks.get(from).pos >= upto {
+        from
+    } else {
+        past(marks, from + 1, upto)
     }
 }
 

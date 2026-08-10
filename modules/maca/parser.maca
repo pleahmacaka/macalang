@@ -194,15 +194,23 @@ parse_items(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
     } else if ts.get(i).kind == KwAlias || is_const_word(ts, i) {
         parse_items(ts, i + 1, acc, bad)
     } else if is_record_decl(ts, i) {
-        parse_record_decl(ts, i, acc, bad)
+        stamped(parse_record_decl(ts, i, acc, bad), acc.length(), ts.get(i).pos)
     } else if is_sum_decl(ts, i) {
-        parse_sum_decl(ts, i, acc, bad)
+        stamped(parse_sum_decl(ts, i, acc, bad), acc.length(), ts.get(i).pos)
     } else if starts_fn(ts, i) {
-        parse_fn_item(ts, i, acc, bad)
+        stamped(parse_fn_item(ts, i, acc, bad), acc.length(), ts.get(i).pos)
     } else if binds_a_name(ts, i) {
-        parse_const_item(ts, i, acc, bad)
+        stamped(parse_const_item(ts, i, acc, bad), acc.length(), ts.get(i).pos)
     } else {
         parse_items(ts, i + 1, acc, bad ++ [skipped(ts, i)])
+    }
+}
+
+stamped(m: Module, at: int, p: int) -> Module {
+    if at >= m.items.length() {
+        m
+    } else {
+        m with { items = m.items.set(at, at_pos(m.items.get(at), p)) }
     }
 }
 

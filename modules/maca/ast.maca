@@ -24,6 +24,7 @@ Stmt = {
     name:   str
     value:  Expr
     ret:    str
+    pos:    int
     params: Expr[]
     body:   Stmt[]
 }
@@ -112,23 +113,27 @@ e_list(elems: Expr[]) -> Expr =>
            stmts = [] }
 
 s_expr(value: Expr) -> Stmt =>
-    Stmt { kind = SExpr, name = "", value, ret = "", params = [], body = [] }
+    Stmt { kind = SExpr, name = "", value, ret = "", pos = 0,
+           params = [], body = [] }
 
 s_bind(name: str, value: Expr) -> Stmt =>
-    Stmt { kind = SBind, name, value, ret = "", params = [], body = [] }
+    Stmt { kind = SBind, name, value, ret = "", pos = 0, params = [],
+           body = [] }
 
 s_bind_typed(name: str, ty: str, value: Expr) -> Stmt =>
-    Stmt { kind = SBind, name, value, ret = ty, params = [], body = [] }
+    Stmt { kind = SBind, name, value, ret = ty, pos = 0, params = [],
+           body = [] }
 
 s_fn(name: str, ret: str, params: Expr[], body: Stmt[]) -> Stmt =>
-    Stmt { kind = SFn, name, value = e_ident(name), ret, params, body }
+    Stmt { kind = SFn, name, value = e_ident(name), ret, pos = 0, params,
+           body }
 
 s_record(name: str, fields: Expr[]) -> Stmt =>
-    Stmt { kind = SRecord, name, value = e_ident(name), ret = "",
+    Stmt { kind = SRecord, name, value = e_ident(name), ret = "", pos = 0,
            params = fields, body = [] }
 
 s_sum(name: str, variants: Expr[]) -> Stmt =>
-    Stmt { kind = SSum, name, value = e_ident(name), ret = "",
+    Stmt { kind = SSum, name, value = e_ident(name), ret = "", pos = 0,
            params = variants, body = [] }
 
 show(e: Expr) -> str =>
@@ -192,3 +197,6 @@ e_leave(value: Expr[]) -> Expr =>
 e_block(stmts: Stmt[], last: Expr) -> Expr =>
     Expr { kind = EBlock, text = "", ival = 0, ty = "",
            children = [last], stmts }
+
+at_pos(s: Stmt, p: int) -> Stmt =>
+    s with { pos = p }

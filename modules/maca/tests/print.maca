@@ -1,3 +1,4 @@
+import maca/token
 import maca/lexer
 import maca/parser
 import maca/print
@@ -34,6 +35,30 @@ test_printing_is_idempotent() {
            "nor is one that only settles for a function")
     assert(round_trips("f(xs: int[]) -> int {{ t = xs.get(0)\nt + 1 }}"),
            "nor one that only settles without a method call")
+}
+
+marked(src: str) -> str =>
+    print_marked(parse_module(lex(src), 0, []), lex_marked(src))
+
+test_a_comment_lands_back_above_the_item_it_was_written_above() {
+    out = marked("// why\nf() -> int => 1")
+
+    assert_eq(out, "// why\nf() -> int =>\n    1\n",
+              "a formatter that drops a comment is not a formatter")
+}
+
+test_a_comment_between_two_items_stays_between_them() {
+    out = marked("a() -> int => 1\n// about b\nb() -> int => 2")
+
+    assert(out.index_of("// about b\nb()") >= 0,
+           "it belongs to what follows it, not to what came before")
+}
+
+test_a_comment_after_the_last_item_is_still_written() {
+    out = marked("f() -> int => 1\n// the end")
+
+    assert(out.ends_with("// the end\n"),
+           "nothing is dropped for having nothing after it")
 }
 
 test_two_items_are_separated_by_a_blank_line() {

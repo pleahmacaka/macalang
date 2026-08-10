@@ -55,7 +55,7 @@ check_only(src: str) -> int {
 
 format_file(src: str, only_check: bool) -> int {
     before = read_file(src)
-    after = print_module(parse_module(lex(before), 0, []))
+    after = print_marked(parse_module(lex(before), 0, []), lex_marked(before))
 
     if before == after {
         0
