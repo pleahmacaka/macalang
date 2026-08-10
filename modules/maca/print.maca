@@ -187,14 +187,48 @@ print_method(e: Expr) -> str =>
     print_expr(e.children.get(0)) + ".{e.text}(" +
         print_args(e.children, 1, "") + ")"
 
+/// Binding power, so a child only wears brackets when dropping them would rebind it.
+op_power(op: str) -> int {
+    if op == "*" || op == "/" || op == "%" {
+        6
+    } else if op == "+" || op == "-" || op == "++" {
+        5
+    } else if op == ".." {
+        4
+    } else if op == "==" || op == "!=" || op == "<" || op == ">"
+            || op == "<=" || op == ">=" {
+        3
+    } else if op == "&&" {
+        2
+    } else if op == "||" {
+        1
+    } else {
+        0
+    }
+}
+
 print_binary(e: Expr) -> str {
-    l = print_expr(e.children.get(0))
-    r = print_expr(e.children.get(1))
+    mine = op_power(e.text)
+    l = print_operand(e.children.get(0), mine, 0)
+    r = print_operand(e.children.get(1), mine, 1)
 
     if e.text == "=" {
         l + " = " + r
     } else {
-        "(" + l + " {e.text} " + r + ")"
+        l + " {e.text} " + r
+    }
+}
+
+print_operand(c: Expr, mine: int, side: int) -> str {
+    inner = print_expr(c)
+
+    if c.kind != EBinary || c.text == "=" {
+        inner
+    } else if op_power(c.text) < mine || (op_power(c.text) == mine
+                                              && side == 1) {
+        "(" + inner + ")"
+    } else {
+        inner
     }
 }
 

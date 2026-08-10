@@ -11,13 +11,28 @@ round_trips(src: str) -> bool =>
 
 test_a_function_prints_back_as_maca() {
     assert_eq(printed("add(a: int,b: int)->int=>a+b"),
-              "add(a: int, b: int) -> int =>\n    (a + b)\n",
+              "add(a: int, b: int) -> int =>\n    a + b\n",
               "the canonical form spaces the parameters and the arrow")
+}
+
+test_a_bracket_is_written_only_where_dropping_it_would_rebind() {
+    assert_eq(printed("f() -> int => 1 + 2 * 3"),
+              "f() -> int =>\n    1 + 2 * 3\n",
+              "times already binds tighter than plus")
+    assert_eq(printed("f() -> int => (1 + 2) * 3"),
+              "f() -> int =>\n    (1 + 2) * 3\n",
+              "here it does not, so the bracket stays")
+    assert_eq(printed("f() -> int => 1 - (2 - 3)"),
+              "f() -> int =>\n    1 - (2 - 3)\n",
+              "and the right of an equal power keeps its own grouping")
+    assert_eq(printed("f() -> int => 1 - 2 - 3"),
+              "f() -> int =>\n    1 - 2 - 3\n",
+              "while the left of one does not need it")
 }
 
 test_a_block_body_keeps_its_braces_and_one_indent() {
     assert_eq(printed("f(n: int) -> int {{ t = n * n\nt }}"),
-              "f(n: int) -> int \{\n    t = (n * n)\n    t\n\}\n",
+              "f(n: int) -> int \{\n    t = n * n\n    t\n\}\n",
               "each statement is one line at one indent")
 }
 
