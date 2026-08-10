@@ -124,6 +124,44 @@ fn maca1_names_its_own_version() {
     );
 }
 
+/// `fmt` rewrites in place and settles: running it twice must not move the file again.
+#[test]
+fn maca1_formats_in_place_and_settles() {
+    let dir = std::env::temp_dir().join("maca1-cli-fmt");
+    let Some(bin) = maca1(&dir) else { return };
+    let file = dir.join("f.maca");
+    std::fs::write(&file, "add(a: int,b: int)->int=>a+b\n").unwrap();
+
+    let flagged = Command::new(&bin)
+        .args(["fmt", &file.to_string_lossy(), "--check"])
+        .output()
+        .expect("spawn maca1 fmt --check");
+    assert_eq!(flagged.status.code(), Some(1), "--check writes nothing, it reports");
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "add(a: int,b: int)->int=>a+b\n",
+        "and leaves the file alone"
+    );
+
+    let done = Command::new(&bin)
+        .args(["fmt", &file.to_string_lossy()])
+        .output()
+        .expect("spawn maca1 fmt");
+    assert_eq!(done.status.code(), Some(0), "formatting succeeds");
+    let once = std::fs::read_to_string(&file).unwrap();
+    assert!(once.contains("add(a: int, b: int) -> int"), "{once}");
+
+    let again = Command::new(&bin)
+        .args(["fmt", &file.to_string_lossy(), "--check"])
+        .output()
+        .expect("spawn maca1 fmt --check");
+    assert_eq!(
+        again.status.code(),
+        Some(0),
+        "a formatter that moves on the second run is not canonical"
+    );
+}
+
 /// A suite that imports resolves from where its own file is, not from wherever a scratch file landed.
 #[test]
 fn maca1_runs_a_suite_that_imports_a_module() {

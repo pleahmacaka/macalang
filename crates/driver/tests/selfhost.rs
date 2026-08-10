@@ -16,6 +16,7 @@ const COMPILER_FILES: &[&str] = &[
     "check.maca",
     "emit_c.maca",
     "emit_rust.maca",
+    "print.maca",
 ];
 
 /// The compiler itself, which a program reaches as the `maca` package.

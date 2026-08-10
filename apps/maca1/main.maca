@@ -4,6 +4,7 @@ import maca/parser
 import maca/check
 import maca/emit_c
 import maca/emit_rust
+import maca/print
 
 Unit = {
     seen:    str[]
@@ -22,6 +23,8 @@ main(args: str[]) -> int {
         test_file(args.get(1))
     } else if args.length() >= 2 && args.get(0) == "check" {
         check_only(args.get(1))
+    } else if args.length() >= 2 && args.get(0) == "fmt" {
+        format_file(args.get(1), args.length() >= 3 && args.get(2) == "--check")
     } else if args.length() >= 1 && args.get(0) == "--version" {
         info("maca {Version}")
 
@@ -48,6 +51,23 @@ check_only(src: str) -> int {
         report_all("scan", scanned.errors, 0) +
         report_all("parse", raw.errors, 0) +
         report_all("check", check_errors(raw), 0)
+}
+
+format_file(src: str, only_check: bool) -> int {
+    before = read_file(src)
+    after = print_module(parse_module(lex(before), 0, []))
+
+    if before == after {
+        0
+    } else if only_check {
+        info("{src}: not formatted")
+
+        1
+    } else {
+        write_file(src, after)
+
+        0
+    }
 }
 
 build_binary(src: str, out: str) -> int {

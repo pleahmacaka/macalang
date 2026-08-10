@@ -1,0 +1,182 @@
+// maca/print: the module written back as Maca, which is what `maca fmt` hands to a file.
+
+import maca/token
+import maca/ast
+
+Indent = "    "
+
+print_module(m: Module) -> str =>
+    print_items(m.items, 0, "")
+
+print_items(items: Stmt[], i: int, acc: str) -> str {
+    if i >= items.length() {
+        acc
+    } else if i == items.length() - 1 {
+        acc + print_item(items.get(i)) + "\n"
+    } else {
+        print_items(items, i + 1, acc + print_item(items.get(i)) + "\n\n")
+    }
+}
+
+print_item(s: Stmt) -> str {
+    if s.kind == SRecord {
+        "{s.name} = \{ " + print_fields(s.params, 0, "") + " \}"
+    } else if s.kind == SSum {
+        "{s.name} = " + print_variants(s.params, 0, "")
+    } else if s.kind == SBind {
+        "{s.name} = " + print_expr(s.value)
+    } else {
+        print_fn(s)
+    }
+}
+
+print_fields(fs: Expr[], i: int, acc: str) -> str {
+    if i >= fs.length() {
+        acc
+    } else if i == fs.length() - 1 {
+        acc + "{fs.get(i).text}: {fs.get(i).ty}"
+    } else {
+        print_fields(fs, i + 1, acc + "{fs.get(i).text}: {fs.get(i).ty}, ")
+    }
+}
+
+print_variants(vs: Expr[], i: int, acc: str) -> str {
+    if i >= vs.length() {
+        acc
+    } else if i == vs.length() - 1 {
+        acc + print_variant(vs.get(i))
+    } else {
+        print_variants(vs, i + 1, acc + print_variant(vs.get(i)) + " | ")
+    }
+}
+
+print_variant(v: Expr) -> str {
+    if v.children.length() == 0 {
+        v.text
+    } else {
+        "{v.text}(" + print_payloads(v.children, 0, "") + ")"
+    }
+}
+
+print_payloads(ps: Expr[], i: int, acc: str) -> str {
+    if i >= ps.length() {
+        acc
+    } else if i == ps.length() - 1 {
+        acc + ps.get(i).ty
+    } else {
+        print_payloads(ps, i + 1, acc + ps.get(i).ty + ", ")
+    }
+}
+
+print_fn(s: Stmt) -> str {
+    head = "{s.name}(" + print_params(s.params, 0, "") + ")" + print_ret(s.ret)
+
+    if s.body.length() == 1 && s.body.get(0).kind == SExpr {
+        head + " =>\n" + Indent + print_expr(s.body.get(0).value)
+    } else {
+        head + " \{\n" + print_body(s.body, 0, "") + "\}"
+    }
+}
+
+print_ret(ret: str) -> str {
+    if ret == "" {
+        ""
+    } else {
+        " -> {ret}"
+    }
+}
+
+print_params(ps: Expr[], i: int, acc: str) -> str {
+    if i >= ps.length() {
+        acc
+    } else if i == ps.length() - 1 {
+        acc + print_param(ps.get(i))
+    } else {
+        print_params(ps, i + 1, acc + print_param(ps.get(i)) + ", ")
+    }
+}
+
+print_param(p: Expr) -> str {
+    if p.ty == "" {
+        p.text
+    } else {
+        "{p.text}: {p.ty}"
+    }
+}
+
+print_body(body: Stmt[], i: int, acc: str) -> str {
+    if i >= body.length() {
+        acc
+    } else {
+        print_body(body, i + 1, acc + Indent + print_stmt(body.get(i)) + "\n")
+    }
+}
+
+print_stmt(s: Stmt) -> str {
+    if s.kind == SBind && s.ret != "" {
+        "{s.name}: {s.ret} = " + print_expr(s.value)
+    } else if s.kind == SBind || s.kind == SSet {
+        "{s.name} = " + print_expr(s.value)
+    } else {
+        print_expr(s.value)
+    }
+}
+
+print_expr(e: Expr) -> str =>
+    match e.kind {
+        EInt     => str(e.ival)
+        EFloat   => e.text
+        EStr     => "\"" + e.text + "\""
+        EBool    => e.text
+        EIdent   => e.text
+        ECall    => "{e.text}(" + print_args(e.children, 0, "") + ")"
+        EAttr    => "{e.text}=" + print_expr(e.children.get(0))
+        EBinary  => print_binary(e)
+        ETernary => print_ternary(e)
+        EIf      => print_ternary(e)
+        EUnary   => e.text + print_expr(e.children.get(0))
+        EField   => print_expr(e.children.get(0)) + ".{e.text}"
+        EMethod  => print_method(e)
+        EList    => "[" + print_args(e.children, 0, "") + "]"
+        ERecord  => "{e.text} \{ " + print_args(e.children, 0, "") + " \}"
+        EJump    => print_jump(e)
+        _        => "?"
+    }
+
+print_jump(e: Expr) -> str {
+    if e.children.length() == 0 {
+        e.text
+    } else {
+        e.text + " " + print_expr(e.children.get(0))
+    }
+}
+
+print_method(e: Expr) -> str =>
+    print_expr(e.children.get(0)) + ".{e.text}(" +
+        print_args(e.children, 1, "") + ")"
+
+print_binary(e: Expr) -> str {
+    l = print_expr(e.children.get(0))
+    r = print_expr(e.children.get(1))
+
+    if e.text == "=" {
+        l + " = " + r
+    } else {
+        "(" + l + " {e.text} " + r + ")"
+    }
+}
+
+print_ternary(e: Expr) -> str =>
+    print_expr(e.children.get(0)) + " ? " +
+        print_expr(e.children.get(1)) + " : " +
+        print_expr(e.children.get(2))
+
+print_args(xs: Expr[], i: int, acc: str) -> str {
+    if i >= xs.length() {
+        acc
+    } else if i == xs.length() - 1 {
+        acc + print_expr(xs.get(i))
+    } else {
+        print_args(xs, i + 1, acc + print_expr(xs.get(i)) + ", ")
+    }
+}

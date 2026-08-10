@@ -1,0 +1,43 @@
+import maca/lexer
+import maca/parser
+import maca/print
+
+printed(src: str) -> str =>
+    print_module(parse_module(lex(src), 0, []))
+
+round_trips(src: str) -> bool =>
+    printed(printed(src)) == printed(src)
+
+test_a_function_prints_back_as_maca() {
+    assert_eq(printed("add(a: int,b: int)->int=>a+b"),
+              "add(a: int, b: int) -> int =>\n    (a + b)\n",
+              "the canonical form spaces the parameters and the arrow")
+}
+
+test_a_block_body_keeps_its_braces_and_one_indent() {
+    assert_eq(printed("f(n: int) -> int {{ t = n * n\nt }}"),
+              "f(n: int) -> int \{\n    t = (n * n)\n    t\n\}\n",
+              "each statement is one line at one indent")
+}
+
+test_a_record_and_a_sum_print_on_one_line() {
+    assert_eq(printed("Point = {{ x: int, y: int }}"),
+              "Point = \{ x: int, y: int \}\n", "fields keep their types")
+    assert_eq(printed("Color = Red | Green"), "Color = Red | Green\n",
+              "and variants keep their bar")
+}
+
+test_printing_is_idempotent() {
+    assert(round_trips("add(a: int, b: int) -> int => a + b"),
+           "a formatter that moves on the second run is not canonical")
+    assert(round_trips("Point = {{ x: int }} f(p: Point) -> int => p.x"),
+           "nor is one that only settles for a function")
+    assert(round_trips("f(xs: int[]) -> int {{ t = xs.get(0)\nt + 1 }}"),
+           "nor one that only settles without a method call")
+}
+
+test_two_items_are_separated_by_a_blank_line() {
+    assert_eq(printed("a() -> int => 1 b() -> int => 2"),
+              "a() -> int =>\n    1\n\nb() -> int =>\n    2\n",
+              "a reader needs the gap, and the file ends with one newline")
+}
