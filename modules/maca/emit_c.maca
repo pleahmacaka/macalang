@@ -417,7 +417,9 @@ is_list_type(ty: str) -> bool =>
 emit_call(e: Expr) -> str {
     args = emit_args(e.children, 0)
 
-    if e.text == "info" {
+    if e.text == "map" && e.children.length() == 0 {
+        "maca_map_new()"
+    } else if e.text == "info" {
         "printf(\"%s\\n\", {args})"
     } else if e.text == "print" {
         "printf(\"%s\", {args})"

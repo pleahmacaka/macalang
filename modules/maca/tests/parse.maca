@@ -187,6 +187,9 @@ test_a_map_is_a_type_and_its_lookups_are_its_own() {
     assert(annotated_c("f(m: Map str str) -> int => m.length()")
                .index_of(".keys.len") >= 0,
            "a map's length is how many keys it holds")
+    assert(annotated_c("f() -> Map str str => map()")
+               .index_of("maca_map_new()") >= 0,
+           "and an empty one is a call, because there is no literal yet")
 }
 
 test_a_match_arm_may_answer_with_a_block() {
