@@ -174,9 +174,28 @@ jemit_body(body: Stmt[], i: int) -> str {
     }
 }
 
-/// Every function of the module, in source order, as one script.
+JsPreamble = """
+const str = x => String(x);
+const info = x => console.log(x);
+const int = x => Math.trunc(Number(x));
+const float = x => Number(x);
+const len = x => x.length;
+const abs = Math.abs, min = Math.min, max = Math.max;
+"""
+
+/// Every function of the module, in source order, with the shims its calls need.
 jemit_module(m: Module) -> str =>
-    jemit_items(m.items, 0)
+    JsPreamble ++ jemit_items(m.items, 0) ++ jemit_entry(m.items, 0)
+
+jemit_entry(items: Stmt[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else if items.get(i).kind == SFn && items.get(i).name == "main" {
+        "\nmain();\n"
+    } else {
+        jemit_entry(items, i + 1)
+    }
+}
 
 jemit_items(items: Stmt[], i: int) -> str {
     if i >= items.length() {
