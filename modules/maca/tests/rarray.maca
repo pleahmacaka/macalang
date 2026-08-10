@@ -145,11 +145,19 @@ test_a_plain_type_is_untouched_by_the_function_case() {
     assert_eq(rtype("int[]"), "Rc<Vec<i64>>", "nor for a list")
 }
 
-test_a_constant_takes_a_borrowed_string_not_an_owned_one() {
-    out = remit_module(annotated(parse_module(lex("Name = \"m\""), 0, [])))
+test_a_constant_that_allocates_is_a_function_not_a_const() {
+    one = ra_rust("Name = \"m\" use() -> str => Name")
+    many = ra_rust("Stages = \"a\", \"b\" use() -> str[] => Stages")
+    plain = ra_rust("Seed = 1000 use() -> int => Seed")
 
-    assert(out.index_of("const Name: &str = \"m\";") >= 0,
-           "String is not constructible in a const, &str is")
+    assert(one.index_of("fn Name() -> String") >= 0,
+           "a Rust const cannot allocate, and every String does")
+    assert(one.index_of("Name()") >= 0,
+           "so each mention of it becomes the call that builds it")
+    assert(many.index_of("fn Stages() -> Rc<Vec<String>>") >= 0,
+           "a list constant is the same story")
+    assert(plain.index_of("const Seed: i64 = 1000i64;") >= 0,
+           "an int allocates nothing, so it stays a const")
 }
 
 test_an_element_builds_the_same_html_in_rust() {

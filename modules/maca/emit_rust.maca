@@ -759,7 +759,58 @@ rmut_word(movable: bool) -> str {
 }
 
 remit_module(m: Module) -> str =>
-    rust_preamble() ++ m.items.map(remit_item).join("\n")
+    rust_preamble()
+        ++ remit_items(m.items, rlazy_names(m.items, 0, []), 0)
+
+remit_items(items: Stmt[], lz: str[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else {
+        "{remit_item(rlazy_stmt(items.get(i), lz))}\n{remit_items(items, lz, i + 1)}"
+    }
+}
+
+rlazy_names(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind == SBind && !rscalar(items.get(i).value) {
+        rlazy_names(items, i + 1, acc ++ [items.get(i).name])
+    } else {
+        rlazy_names(items, i + 1, acc)
+    }
+}
+
+rscalar(e: Expr) -> bool =>
+    e.kind == EInt || e.kind == EFloat || e.kind == EBool
+
+rlazy_stmt(s: Stmt, lz: str[]) -> Stmt =>
+    s with { value = rlazy_expr(s.value, lz),
+             body = rlazy_body(s.body, lz, 0, []) }
+
+rlazy_body(body: Stmt[], lz: str[], i: int, acc: Stmt[]) -> Stmt[] {
+    if i >= body.length() {
+        acc
+    } else {
+        rlazy_body(body, lz, i + 1, acc ++ [rlazy_stmt(body.get(i), lz)])
+    }
+}
+
+rlazy_expr(e: Expr, lz: str[]) -> Expr {
+    if e.kind == EIdent && lz.index_of(e.text) >= 0 {
+        e_call(e.text, []) with { ty = e.ty }
+    } else {
+        e with { children = rlazy_children(e.children, lz, 0, []),
+                 stmts = rlazy_body(e.stmts, lz, 0, []) }
+    }
+}
+
+rlazy_children(cs: Expr[], lz: str[], i: int, acc: Expr[]) -> Expr[] {
+    if i >= cs.length() {
+        acc
+    } else {
+        rlazy_children(cs, lz, i + 1, acc ++ [rlazy_expr(cs.get(i), lz)])
+    }
+}
 
 rust_preamble() -> str =>
     "use std::rc::Rc;\n" ++
@@ -806,19 +857,37 @@ remit_item(s: Stmt) -> str {
     }
 }
 
-remit_const(s: Stmt) -> str =>
-    "const {rid(s.name)}: {rconst_type(s.value)} = {rconst_value(s.value)};"
-
-rconst_type(e: Expr) -> str =>
-    match e.kind {
-        EStr   => "&str"
-        EFloat => "f64"
-        EBool  => "bool"
-        _      => "i64"
+remit_const(s: Stmt) -> str {
+    if rscalar(s.value) {
+        "const {rid(s.name)}: {rconst_type(s.value)} = {remit_expr(s.value)};"
+    } else {
+        "fn {rid(s.name)}() -> {rconst_type(s.value)} {{ {remit_expr(s.value)} }}"
     }
+}
 
-rconst_value(e: Expr) -> str =>
-    e.kind == EStr ? "\"{e.text}\"" : remit_expr(e)
+rconst_type(e: Expr) -> str {
+    if e.kind == EFloat {
+        "f64"
+    } else if e.kind == EBool {
+        "bool"
+    } else if e.kind == EStr {
+        "String"
+    } else if e.kind == EList {
+        "Rc<Vec<{rcell_type(e.children)}>>"
+    } else if e.ty != "" {
+        rtype(e.ty)
+    } else {
+        "i64"
+    }
+}
+
+rcell_type(cs: Expr[]) -> str {
+    if cs.length() == 0 {
+        "i64"
+    } else {
+        rconst_type(cs.get(0))
+    }
+}
 
 remit_struct(s: Stmt) -> str {
     fields = s.params.map(remit_struct_field).join(", ")
