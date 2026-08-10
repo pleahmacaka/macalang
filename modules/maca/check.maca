@@ -307,7 +307,9 @@ call_type(env: Env, e: Expr) -> Typed {
     variant = env.ctors.index_of(e.text)
     local = env.names.index_of(e.text)
 
-    if declared >= 0 {
+    if declared >= 0 && tag_wins(env, e, declared) {
+        typed(walk_args(env, e.children, 0), builtin_type(e.text))
+    } else if declared >= 0 {
         call_declared(env, e, env.sigs.get(declared))
     } else if variant >= 0 {
         typed(walk_args(env, e.children, 0), t_con(env.owners.get(variant), []))
@@ -1040,8 +1042,16 @@ annotated_node(env: Env, e: Expr) -> Expr {
 
 is_element_call(env: Env, e: Expr) -> bool =>
     e.kind == ECall && is_element_tag(e.text) && !is_prelude_call(e.text)
-        && env.fns.index_of(e.text) < 0 && env.ctors.index_of(e.text) < 0
+        && env.ctors.index_of(e.text) < 0 && env.names.index_of(e.text) < 0
+        && (env.fns.index_of(e.text) < 0
+            || tag_wins(env, e, env.fns.index_of(e.text)))
+
+/// A tag some function also names stays the tag when the call cannot be that function.
+tag_wins(env: Env, e: Expr, declared: int) -> bool =>
+    is_element_tag(e.text) && !is_prelude_call(e.text)
         && env.names.index_of(e.text) < 0
+        && env.varargs.index_of(e.text) < 0
+        && fn_params(env.sigs.get(declared)).length() != e.children.length()
 
 lowered_element(env: Env, e: Expr) -> Expr =>
     e_call("maca_element",

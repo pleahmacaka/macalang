@@ -157,6 +157,15 @@ test_a_rest_parameter_is_one_list_the_call_fills() {
            "the loose arguments arrive as the one list the callee declared")
 }
 
+test_a_tag_a_function_also_names_is_still_a_tag() {
+    assert_eq(errors_in("html(s: str) -> str => s\n"
+                        ++ "f() -> str => html(\"a\", \"b\", \"c\")"),
+              "0", "three arguments cannot be the one-parameter function")
+    assert_eq(errors_in("html(s: str) -> str => s\n"
+                        ++ "f() -> str => html(1)"),
+              "1", "while one argument still has to be the type it declares")
+}
+
 test_a_match_arm_may_answer_with_a_block() {
     assert_eq(errors_in("C = A | B f(c: C) -> int => match c {{"
                         ++ " A => {{ n = 1 n + 1 }} B => 0 }}"),
