@@ -20,11 +20,30 @@ main(args: str[]) -> int {
         run_file(args.get(1), args.slice(2, args.length()))
     } else if args.length() >= 2 && args.get(0) == "test" {
         test_file(args.get(1))
+    } else if args.length() >= 2 && args.get(0) == "check" {
+        check_only(args.get(1))
+    } else if args.length() >= 1 && args.get(0) == "--version" {
+        info("maca {Version}")
+
+        0
     } else if args.length() >= 2 {
         compile_file(args)
     } else {
         demo()
     }
+}
+
+Version = "0.3.3"
+
+check_only(src: str) -> int {
+    unit = unit_of(src)
+    scanned = end_run(lexed(unit.toks, unit.errs), 0, 0)
+    raw = parse_module(scanned.tokens, 0, [])
+
+    report_all("import", unit.unknown, 0) +
+        report_all("scan", scanned.errors, 0) +
+        report_all("parse", raw.errors, 0) +
+        report_all("check", check_errors(raw), 0)
 }
 
 build_binary(src: str, out: str) -> int {

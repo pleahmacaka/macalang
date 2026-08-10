@@ -80,6 +80,50 @@ fn maca1_runs_every_test_function_and_counts_the_failures() {
     );
 }
 
+/// `check` reports without building, and its exit code is how many things it found.
+#[test]
+fn maca1_checks_without_building() {
+    let dir = std::env::temp_dir().join("maca1-cli-check");
+    let Some(bin) = maca1(&dir) else { return };
+    let good = dir.join("good.maca");
+    let bad = dir.join("bad.maca");
+    std::fs::write(&good, "f(n: int) -> int => n + 1\n").unwrap();
+    std::fs::write(&bad, "f() -> int => \"x\"\n").unwrap();
+
+    let ok = Command::new(&bin)
+        .args(["check", &good.to_string_lossy()])
+        .output()
+        .expect("spawn maca1 check");
+    assert_eq!(ok.status.code(), Some(0), "nothing to say about a clean file");
+
+    let no = Command::new(&bin)
+        .args(["check", &bad.to_string_lossy()])
+        .output()
+        .expect("spawn maca1 check");
+    assert_eq!(no.status.code(), Some(1), "one mismatch is one error");
+    assert!(
+        String::from_utf8_lossy(&no.stdout).contains("expected int, found str"),
+        "and the message names both types"
+    );
+}
+
+/// The toolchain answers for its own version, because an installer verifies with it.
+#[test]
+fn maca1_names_its_own_version() {
+    let dir = std::env::temp_dir().join("maca1-cli-version");
+    let Some(bin) = maca1(&dir) else { return };
+
+    let out = Command::new(&bin)
+        .arg("--version")
+        .output()
+        .expect("spawn maca1 --version");
+
+    assert!(
+        String::from_utf8_lossy(&out.stdout).starts_with("maca "),
+        "the shape `maca-install` reads back after installing"
+    );
+}
+
 /// A suite that imports resolves from where its own file is, not from wherever a scratch file landed.
 #[test]
 fn maca1_runs_a_suite_that_imports_a_module() {
