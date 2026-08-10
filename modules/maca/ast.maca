@@ -6,7 +6,7 @@ ExprKind =
     EInt | EFloat | EStr | EBool | EIdent
     | ECall | EField | EBinary | EUnary | ETernary | EIf
     | EList | ERecord | EWith | ELambda | EBlock | EMatch | EMethod
-    | EGuard | EWhile | EFor | EJump | EBad
+    | EGuard | EWhile | EFor | EJump | EAttr | EBad
 
 Expr = {
     kind:     ExprKind
@@ -103,6 +103,10 @@ e_method(recv: Expr, name: str, args: Expr[]) -> Expr =>
     Expr { kind = EMethod, text = name, ival = 0, ty = "",
            children = [recv] ++ args, stmts = [] }
 
+e_attr(name: str, value: Expr) -> Expr =>
+    Expr { kind = EAttr, text = name, ival = 0, ty = "", children = [value],
+           stmts = [] }
+
 e_list(elems: Expr[]) -> Expr =>
     Expr { kind = EList, text = "", ival = 0, ty = "", children = elems,
            stmts = [] }
@@ -145,6 +149,7 @@ show(e: Expr) -> str =>
         EMatch  => "match {show(e.children.get(0))} {{ ... }}"
         EMethod => "{show(e.children.get(0))}.{e.text}({show_args(e.children, 1)})"
         EList   => "[{show_args(e.children, 0)}]"
+        EAttr   => "{e.text}={show(e.children.get(0))}"
         EJump   => e.text
         EWhile  => "while {show(e.children.get(0))} {{ ... }}"
         EFor    => "for {e.text} in {show(e.children.get(0))} {{ ... }}"

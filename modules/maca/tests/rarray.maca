@@ -144,6 +144,17 @@ test_a_constant_takes_a_borrowed_string_not_an_owned_one() {
            "String is not constructible in a const, &str is")
 }
 
+test_an_element_builds_the_same_html_in_rust() {
+    out = ra_rust("shell(body: str) -> str => div(class=\"wrap\", body)")
+
+    assert(out.index_of("maca_element(\"div\".to_string()") >= 0,
+           "both back ends reach the same element through the same call")
+    assert(out.index_of("maca_attr(\"class\".to_string()") >= 0,
+           "and write the attribute the same way")
+    assert(out.index_of("fn maca_element(tag: String") >= 0,
+           "the call needs the definition, which Rust has no runtime for")
+}
+
 test_a_raise_is_a_panic() {
     out = remit_fn(parse_fn(lex("f() -> int {{ fail \"gone\" }}"), 0).snode)
 

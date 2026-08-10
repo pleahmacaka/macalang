@@ -201,6 +201,7 @@ type_in(env: Env, e: Expr) -> Typed =>
         EBlock   => block_type(env, e)
         EBad     => typed(complain(env, "no expression starts at "
                                         ++ "`{e.text}`"), t_error())
+        EAttr    => type_in(env, e.children.get(0))
         EGuard   => typed(walk_args(env, e.children, 0), t_bool())
         EMatch   => match_type(env, e)
         EList    => list_type(env, e)
@@ -365,15 +366,27 @@ builtin_type(name: str) -> Ty {
         t_array(t_str())
     } else if is_io_builtin(name) {
         t_unit()
+    } else if is_element_tag(name) {
+        t_str()
     } else {
         t_any()
     }
 }
 
+ElementTags = " html head title meta link style script body div span p pre code a button input textarea select option label form header footer main section article nav aside ul ol li table thead tbody tr td th h1 h2 h3 h4 h5 h6 img svg canvas small strong em b i hr br blockquote figure figcaption details summary dialog progress meter video audio "
+
+is_element_tag(name: str) -> bool =>
+    ElementTags.index_of(" {name} ") >= 0
+
+is_prelude_call(name: str) -> bool =>
+    is_str_builtin(name) || is_float_builtin(name) || is_int_builtin(name)
+        || is_bool_builtin(name) || is_io_builtin(name)
+
 is_str_builtin(name: str) -> bool =>
     name == "str" || name == "chr" || name == "input" || name == "capture"
         || name == "read_file" || name == "env" || name == "cwd"
-        || name == "real_path"
+        || name == "real_path" || name == "maca_attr" || name == "maca_flag"
+        || name == "maca_element"
 
 is_float_builtin(name: str) -> bool =>
     name == "float" || name == "sqrt" || name == "floor" || name == "ceil"
@@ -901,12 +914,78 @@ reassigned(env: Env, s: Stmt) -> Stmt {
 }
 
 annotate_expr(env: Env, e: Expr) -> Expr {
+    if is_element_call(env, e) {
+        annotate_expr(env, lowered_element(env, e))
+    } else {
+        annotated_node(env, e)
+    }
+}
+
+annotated_node(env: Env, e: Expr) -> Expr {
     inner = check_body(env, e.stmts, 0, t_any())
 
     e with { ty = surface_of(type_in(env, e).ty),
              stmts = annotate_body(looped(env, e), e.stmts, 0, []),
              children = annotate_children(inner.env, e.children, 0, []) }
 }
+
+is_element_call(env: Env, e: Expr) -> bool =>
+    e.kind == ECall && is_element_tag(e.text) && !is_prelude_call(e.text)
+        && env.fns.index_of(e.text) < 0 && env.ctors.index_of(e.text) < 0
+        && env.names.index_of(e.text) < 0
+
+lowered_element(env: Env, e: Expr) -> Expr =>
+    e_call("maca_element",
+           [e_str(e.text), element_attrs(env, e.children, 0, e_str("")),
+            element_kids(env, e.children, 0, e_str(""))])
+
+element_attrs(env: Env, cs: Expr[], i: int, acc: Expr) -> Expr {
+    if i >= cs.length() {
+        acc
+    } else if cs.get(i).kind != EAttr {
+        element_attrs(env, cs, i + 1, acc)
+    } else {
+        element_attrs(env, cs, i + 1,
+                      e_binary("++", acc, one_attribute(env, cs.get(i))))
+    }
+}
+
+one_attribute(env: Env, a: Expr) -> Expr {
+    value = a.children.get(0)
+
+    if resolve(env.infer, type_in(env, value).ty).kind == KBool {
+        e_call("maca_flag", [e_str(a.text), value])
+    } else {
+        e_call("maca_attr", [e_str(a.text), as_html_text(env, value)])
+    }
+}
+
+element_kids(env: Env, cs: Expr[], i: int, acc: Expr) -> Expr {
+    if i >= cs.length() {
+        acc
+    } else if cs.get(i).kind == EAttr {
+        element_kids(env, cs, i + 1, acc)
+    } else {
+        element_kids(env, cs, i + 1,
+                     e_binary("++", acc, as_html_text(env, cs.get(i))))
+    }
+}
+
+as_html_text(env: Env, v: Expr) -> Expr {
+    t = resolve(env.infer, type_in(env, v).ty)
+
+    if t.kind == KStr {
+        v
+    } else if is_str_list(env.infer, t) {
+        e_method(v, "join", [e_str("")])
+    } else {
+        e_call("str", [v])
+    }
+}
+
+is_str_list(inf: Infer, t: Ty) -> bool =>
+    t.kind == KCon && t.name == "Array" && t.args.length() == 1
+        && resolve(inf, t.args.get(0)).kind == KStr
 
 looped(env: Env, e: Expr) -> Env {
     if e.kind != EFor || e.children.length() == 0 {

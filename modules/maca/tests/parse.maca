@@ -102,6 +102,21 @@ test_a_record_update_has_the_type_of_its_base() {
               "1", "a Point is not an int")
 }
 
+test_a_named_call_argument_carries_the_name_it_was_given() {
+    assert_eq(shown("div(class=\"wrap\", body)"), "div(class=wrap, body)",
+              "the name belongs to the argument, the value is what follows")
+}
+
+test_a_hyphenated_attribute_name_is_one_name() {
+    assert_eq(shown("div(aria-label=\"x\")"), "div(aria-label=x)",
+              "the platform spells it with a hyphen and so does this")
+}
+
+test_a_subtraction_in_argument_position_is_still_a_subtraction() {
+    assert_eq(shown("f(a - b, c)"), "f((a - b), c)",
+              "a hyphen run names an attribute only when `=` closes it")
+}
+
 annotated_c(src: str) -> str =>
     emit_module(annotated(parse_module(lex(src), 0, [])))
 

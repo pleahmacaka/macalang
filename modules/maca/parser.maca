@@ -936,7 +936,44 @@ parse_args(ts: Token[], i: int, acc: Expr[]) -> PArgs {
 }
 
 parse_one_arg(ts: Token[], i: int, acc: Expr[]) -> PArgs {
-    a = parse_expr(ts, i)
+    named = attr_name_end(ts, i)
 
-    parse_args(ts, skip_comma(ts, a.next), acc ++ [a.node])
+    if named > i {
+        v = parse_expr(ts, named + 1)
+
+        parse_args(ts, skip_comma(ts, v.next),
+                   acc ++ [e_attr(attr_name(ts, i, named, ""), v.node)])
+    } else {
+        a = parse_expr(ts, i)
+
+        parse_args(ts, skip_comma(ts, a.next), acc ++ [a.node])
+    }
+}
+
+attr_name_end(ts: Token[], i: int) -> int {
+    end = name_run_end(ts, i)
+
+    if ts.get(end).kind == Eq {
+        end
+    } else {
+        i
+    }
+}
+
+name_run_end(ts: Token[], i: int) -> int {
+    if ts.get(i).kind == Eof {
+        i
+    } else if ts.get(i + 1).kind == Minus && ts.get(i + 2).kind == TIdent {
+        name_run_end(ts, i + 2)
+    } else {
+        i + 1
+    }
+}
+
+attr_name(ts: Token[], i: int, end: int, acc: str) -> str {
+    if i >= end {
+        acc
+    } else {
+        attr_name(ts, i + 1, end, acc ++ ts.get(i).text)
+    }
 }

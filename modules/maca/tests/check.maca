@@ -315,6 +315,18 @@ test_input_no_production_reads_is_reported_not_swallowed() {
               "the token is named, so the message says where to look")
 }
 
+test_an_element_is_the_html_text_it_renders() {
+    assert_eq(count_of("shell(body: str) -> str => div(class=\"wrap\", body)"),
+              "0", "a tag no one declared is an element, and one reads as str")
+    assert_eq(count_of("shell(body: str) -> int => div(class=\"wrap\", body)"),
+              "1", "so handing it back as an int is refused")
+}
+
+test_a_declared_name_beats_the_tag_it_is_spelled_like() {
+    assert_eq(count_of("code(n: int) -> int => n use() -> int => code(1)"),
+              "0", "`code` is a tag, and this module declares it anyway")
+}
+
 test_a_swallowed_argument_does_not_pass_for_a_clean_module() {
     assert_eq(count_of("g(n: int) -> int => n use() -> int => g(:)"),
               "1", "silence here emitted `?` into the C and still exited zero")

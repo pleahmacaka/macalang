@@ -408,7 +408,12 @@ rmut_word(movable: bool) -> str {
 }
 
 remit_module(m: Module) -> str =>
-    m.items.map(remit_item).join("\n")
+    rust_preamble() ++ m.items.map(remit_item).join("\n")
+
+rust_preamble() -> str =>
+    "#[allow(dead_code)]\nfn maca_attr(name: String, value: String) -> String {{ if name.is_empty() {{ return String::new(); }} let q = value.replace('&', \"&amp;\").replace('<', \"&lt;\").replace('>', \"&gt;\").replace('\"', \"&quot;\"); format!(\" {{}}={{}}{{}}{{}}\", name, '\"', q, '\"') }}\n" ++
+    "#[allow(dead_code)]\nfn maca_flag(name: String, on: bool) -> String {{ if on && !name.is_empty() {{ format!(\" {{}}\", name) }} else {{ String::new() }} }}\n" ++
+    "#[allow(dead_code)]\nfn maca_element(tag: String, attrs: String, kids: String) -> String {{ if [\"area\", \"base\", \"br\", \"col\", \"embed\", \"hr\", \"img\", \"input\", \"link\", \"meta\", \"source\", \"track\", \"wbr\"].contains(&tag.as_str()) {{ format!(\"<{{}}{{}}>\", tag, attrs) }} else {{ format!(\"<{{}}{{}}>{{}}</{{}}>\", tag, attrs, kids, tag) }} }}\n"
 
 remit_item(s: Stmt) -> str {
     if s.kind == SRecord {

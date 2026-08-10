@@ -308,8 +308,8 @@ demo() -> int {
     rm = parse_module(lex(real), 0, [])
     info("real file: {rm.items.length()} items after skipping imports")
 
-    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} Shape = Circle(int) | Rect(int, int) area(sh: Shape) -> int => match sh {{ Circle(r) => r * r Rect(w, h) => w * h }} hi(a: str, b: str) -> int => (a ++ b) == \"hello\" ? 1 : 0 chk(n: int) -> int => (\"v\" ++ str(n)) == \"v42\" ? 1 : 0 slen(s: str) -> int => s.length() head(xs: int[]) -> int => xs.get(0) main() -> int {{ q = Point {{ x = 40, y = 9 }} ys = [1, 99] info(\"self-hosted!\") (fld(q) + code(Green)) * hi(\"hel\", \"lo\") * chk(42) * slen(\"z\") * head(ys) * area(Rect(1, 1)) }}"
-    prog_mod = parse_module(lex(program), 0, [])
+    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} Shape = Circle(int) | Rect(int, int) area(sh: Shape) -> int => match sh {{ Circle(r) => r * r Rect(w, h) => w * h }} hi(a: str, b: str) -> int => (a ++ b) == \"hello\" ? 1 : 0 chk(n: int) -> int => (\"v\" ++ str(n)) == \"v42\" ? 1 : 0 slen(s: str) -> int => s.length() head(xs: int[]) -> int => xs.get(0) el(s: str) -> int => div(class = \"w\", s).length() == 22 ? 1 : 0 main() -> int {{ q = Point {{ x = 40, y = 9 }} ys = [1, 99] info(\"self-hosted!\") (fld(q) + code(Green)) * hi(\"hel\", \"lo\") * chk(42) * slen(\"z\") * head(ys) * area(Rect(1, 1)) * el(\"x\") }}"
+    prog_mod = annotated(parse_module(lex(program), 0, []))
     info("=== emitted program ===")
     info(emit_module(prog_mod))
     info("=== end program ===")

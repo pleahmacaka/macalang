@@ -362,6 +362,44 @@ test_two_strings_compare_by_content_with_no_literal_in_sight() {
            "an int compares as an int, literal or not")
 }
 
+test_an_element_lowers_to_the_html_the_runtime_builds() {
+    out = c_for("shell(body: str) -> str => div(class=\"wrap\", body)")
+
+    assert(out.index_of("maca_element(\"div\"") >= 0,
+           "the tag is a value, so a void tag needs no second rule here")
+    assert(out.index_of("maca_attr(\"class\", \"wrap\")") >= 0,
+           "a named argument is an attribute, and its value is escaped")
+    assert(out.index_of("static char* maca_element(const char* tag") >= 0,
+           "and the call needs the definition the preamble carries")
+}
+
+test_a_boolean_attribute_is_present_or_absent_not_a_value() {
+    out = c_for("f(on: bool) -> str => button(disabled=on, \"go\")")
+
+    assert(out.index_of("maca_flag(\"disabled\", on)") >= 0,
+           "an attribute that is false is not written at all")
+}
+
+test_a_prelude_call_spelled_like_a_tag_is_still_the_prelude_call() {
+    read = c_for("f() -> str => input(\"name: \")")
+    mine = c_for("label(n: int) -> str => str(n) use() -> str => label(1)")
+
+    assert(read.index_of("maca_input(\"name: \")") >= 0,
+           "`input` reads a line, and a prelude call is not an element")
+    assert(mine.index_of("maca_element(\"label\"") < 0,
+           "nor is a tag name this module declares for itself")
+}
+
+test_a_child_that_is_not_text_is_rendered_as_text() {
+    out = c_for("f(n: int) -> str => span(n)")
+    many = c_for("f(xs: str[]) -> str => ul(xs)")
+
+    assert(out.index_of("maca_int_to_str(n)") >= 0,
+           "a child is text, so a number is shown")
+    assert(many.index_of("maca_list_join(xs, \"\")") >= 0,
+           "and a list of children is one run of them, not a printed list")
+}
+
 test_the_last_str_methods_lower_to_the_c_library() {
     has = c_for("f(s: str) -> bool => s.contains(\"x\")")
     cut = c_for("f(s: str) -> str => s.slice(0, 2)")
