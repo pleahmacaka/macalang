@@ -336,8 +336,10 @@ test_the_target_a_package_builds_for_can_be_declared() {
     dir = declared_build("build-target", "target = \"js\"\n")
 
     assert_eq(str(rc_in(dir, ["build"])), "0", "a declared target needs no flag")
-    assert(read_file(dir ++ "/main").contains("function"),
+    assert(read_file(dir ++ "/main-web/app.js").contains("function"),
            "what landed is the JavaScript the manifest asked for")
+    assert(file_exists(dir ++ "/main-web/index.html"),
+           "and the page that carries it")
 }
 
 test_where_a_build_lands_can_be_declared() {
@@ -435,4 +437,55 @@ test_fmt_formats_every_file_it_is_given() {
     assert_eq(str(rc_in(dir, ["fmt", "one.maca", "two.maca"])), "0", "both ran")
     assert(read_file(one).contains("\n    info"), "the first was formatted")
     assert(read_file(two).contains("\n    info"), "and so was the second")
+}
+
+test_a_named_binary_is_the_one_that_gets_built() {
+    dir = two_binaries("ws-bin-flag", "")
+
+    assert_eq(str(rc_in(dir, ["build", "--bin", "other"])), "0", "--bin ran")
+    assert(file_exists(dir ++ "/other"), "the named binary is the one built")
+    assert(!file_exists(dir ++ "/main"), "and the other was left alone")
+}
+
+listed_members() -> str[] {
+    found = []
+    inside = false
+
+    for line in lines(read_file("maca.toml")) {
+        cut = line.trim()
+
+        if cut.starts_with("members") {
+            inside = true
+        } else if inside && cut.starts_with("]") {
+            inside = false
+        } else if inside && cut.contains("\"") {
+            found = found.push(between(cut, "\"", "\""))
+        }
+    }
+
+    found
+}
+
+test_every_member_this_repository_lists_is_a_package() {
+    members = listed_members()
+
+    assert(members.length() >= 21,
+           "only {str(members.length())} members were read out of the root "
+               ++ "manifest, so the reading above went wrong")
+
+    for m in members {
+        said = read_file(m ++ "/maca.toml")
+
+        assert(said.contains("[package]") && said.contains("name ="),
+               "{m} does not say what it is")
+        assert(!said.contains("version ="),
+               "{m} repeats a version the workspace already states")
+
+        for line in lines(said) {
+            if line.trim().starts_with("path =") {
+                assert(file_exists(m ++ "/" ++ between(line, "\"", "\"")),
+                       "{m}: a [[bin]] path names no file")
+            }
+        }
+    }
 }

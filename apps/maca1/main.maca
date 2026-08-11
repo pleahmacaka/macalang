@@ -607,8 +607,9 @@ build_out(src: str, out: str, target: str, mcu: str) -> int {
         build_firmware(src, out, mcu)
     } else if target == "wasm" {
         build_wasm(src, out)
-    } else if target == "rust" || target == "js" || target == "nix"
-            || target == "jvm" {
+    } else if target == "js" {
+        build_page(src, out)
+    } else if target == "rust" || target == "nix" || target == "jvm" {
         compile_file([src, out, target])
     } else {
         err("maca: no target `{target}`. Try native, rust, js, nix, "
@@ -617,6 +618,472 @@ build_out(src: str, out: str, target: str, mcu: str) -> int {
         2
     }
 }
+
+/// The js target is a directory, and every other target is one named file.
+default_out(src: str, target: str) -> str =>
+    target == "js" ? stem_of(src) ++ "-web" : stem_of(src)
+
+PageAsset = {
+    kind:  str
+    spec:  str
+    names: str
+    text:  str
+}
+
+Found = {
+    kind: str
+    file: str
+    why:  str
+}
+
+NpmPrefix = "npm:"
+PackageJson = "package.json"
+
+/// `[page]` in `maca.toml` says what the page is, as against what its file is called.
+page_keys() -> str[] =>
+    ["title", "lang", "description"]
+
+/// A misspelled `[page]` key is silently nothing, so it is named instead.
+stray_page_key(chain: str[], i: int) -> str {
+    if i >= chain.length() {
+        ""
+    } else {
+        here = stray_of(table_keys(read_file(chain.get(i) ++ Manifest),
+                                   "[page]"), page_keys(), 0)
+
+        here != "" ? here : stray_page_key(chain, i + 1)
+    }
+}
+
+page_setting(chain: str[], key: str, dflt: str) -> str {
+    got = chain_value(chain, 0, "[page]", key)
+
+    got == "" ? dflt : got
+}
+
+/// The js target is a directory that opens with no server: an `index.html` carrying every asset the program named, beside the `app.js` it was built from.
+build_page(src: str, dir: str) -> int {
+    chain = chain_of(src)
+    stray = stray_page_key(chain, 0)
+
+    if stray != "" {
+        err("maca.toml [page]: unknown key `{stray}` (known: "
+            ++ page_keys().join(", ") ++ ")")
+
+        2
+    } else {
+        make_dir(dir)
+        errs = compile_file([src, "{dir}/app.js", "js"])
+
+        errs > 0 ? errs : page_written(src, dir, chain)
+    }
+}
+
+page_written(src: str, dir: str, chain: str[]) -> int {
+    assets = page_assets(unit_of(src).seen, 0, [])
+    found = resolved_assets(src, assets, 0, [])
+    bad = asset_errors(found, 0, [])
+
+    if bad.length() > 0 {
+        report_all("asset", bad, 0)
+    } else {
+        js = read_file("{dir}/app.js")
+
+        write_file("{dir}/app.css", "")
+        write_file("{dir}/index.html",
+                   page_html(src, chain, assets, found, js))
+
+        0
+    }
+}
+
+/// Every asset the files of a program import, in the order the page inlines them.
+page_assets(files: str[], i: int, acc: PageAsset[]) -> PageAsset[] {
+    if i >= files.length() {
+        acc
+    } else {
+        text = read_file(files.get(i))
+
+        page_assets(files, i + 1,
+                    acc ++ assets_in(text, lex_all(text).tokens, 0, []))
+    }
+}
+
+assets_in(src: str, ts: Token[], i: int, acc: PageAsset[]) -> PageAsset[] {
+    if ts.get(i).kind == Eof {
+        acc
+    } else if ts.get(i).kind == KwImport {
+        assets_in(src, ts, import_end(ts, i + 1), acc ++ asset_at(src, ts,
+                                                                 i + 1))
+    } else {
+        assets_in(src, ts, i + 1, acc)
+    }
+}
+
+/// A quoted import is a file the page carries, a tagged block is source the page carries as written, and a selective one from a script binds the names it asked that script for.
+asset_at(src: str, ts: Token[], i: int) -> PageAsset[] {
+    at = ts.get(i).kind == LBrace ? selection_end(ts, i + 1) + 2 : i
+
+    if ts.get(i).kind == TStr {
+        [PageAsset { kind = asset_kind(ts.get(i).text),
+                     spec = ts.get(i).text, names = "", text = "" }]
+    } else if ts.get(i).kind == LBrace && ts.get(at).kind == TStr {
+        [PageAsset { kind = "script", spec = ts.get(at).text,
+                     names = asked_names(ts, i + 1, []).join(" "), text = "" }]
+    } else if tagged_block(src, ts, i) {
+        [PageAsset { kind = ts.get(i).text == "css" ? "stylesheet" : "script",
+                     spec = "", names = "",
+                     text = raw_block(src, ts.get(i + 1).pos) }]
+    } else {
+        []
+    }
+}
+
+/// `import css """…"""` and `import js """…"""`: a block of source, not a path.
+tagged_block(src: str, ts: Token[], i: int) -> bool =>
+    (ts.get(i).text == "css" || ts.get(i).text == "js")
+        && ts.get(i + 1).kind == TStr
+        && src.slice(ts.get(i + 1).pos, ts.get(i + 1).pos + 3) == "\"\"\""
+
+/// The block as it was written, taken off the source rather than the token, whose text is escaped for a string literal.
+raw_block(src: str, at: int) -> str {
+    rest = src.slice(at + 3, src.length())
+    ends = rest.index_of("\"\"\"")
+
+    ends < 0 ? rest : rest.slice(0, ends)
+}
+
+asked_names(ts: Token[], i: int, acc: str[]) -> str[] {
+    if ts.get(i).kind == RBrace || ts.get(i).kind == Eof {
+        acc
+    } else if ts.get(i).kind == TIdent {
+        asked_names(ts, i + 1, acc ++ [ts.get(i).text])
+    } else {
+        asked_names(ts, i + 1, acc)
+    }
+}
+
+/// What slot of the page a name asks for, which its extension is what says.
+asset_kind(spec: str) -> str {
+    path = spec.split("?").get(0).split("#").get(0)
+
+    if path.ends_with(".css") {
+        "stylesheet"
+    } else if path.ends_with(".js") || path.ends_with(".mjs")
+              || path.ends_with(".cjs") {
+        "script"
+    } else if path.ends_with(".wasm") {
+        "wasm"
+    } else if path.starts_with(NpmPrefix) {
+        "package"
+    } else {
+        ""
+    }
+}
+
+resolved_assets(src: str, xs: PageAsset[], i: int, acc: Found[]) -> Found[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        resolved_assets(src, xs, i + 1,
+                        acc ++ [resolved_asset(src, xs.get(i))])
+    }
+}
+
+asset_errors(xs: Found[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else if xs.get(i).why == "" {
+        asset_errors(xs, i + 1, acc)
+    } else {
+        asset_errors(xs, i + 1, acc ++ [xs.get(i).why])
+    }
+}
+
+/// The file an asset import names: a package's own entry point after `npm:`, and otherwise a path beside the program.
+resolved_asset(src: str, a: PageAsset) -> Found {
+    file = dir_of(src) ++ a.spec
+
+    if a.text != "" {
+        Found { kind = a.kind, file = "", why = "" }
+    } else if a.spec.starts_with(NpmPrefix) {
+        package_found(src, a.spec.slice(NpmPrefix.length(), a.spec.length()),
+                      a.kind)
+    } else if a.kind == "" {
+        Found { kind = "", file = "", why = "" }
+    } else if file_exists(file) {
+        Found { kind = a.kind, file = file, why = "" }
+    } else {
+        Found { kind = a.kind, file = "",
+                why = "import \"{a.spec}\": {file} is not there" }
+    }
+}
+
+package_found(src: str, spec: str, kind: str) -> Found {
+    name = package_name(spec)
+    sub = package_sub(spec)
+    dir = installed_at(dir_of(src), name)
+    said = "import \"{NpmPrefix}{spec}\": "
+
+    if name == "" {
+        Found { kind = kind, file = "", why = said ++ "no package named" }
+    } else if dir == "" {
+        Found { kind = kind, file = "",
+                why = said ++ "`{name}` is not installed; run "
+                    ++ "`maca add {NpmPrefix}{name}`" }
+    } else if sub == "" {
+        package_entry(dir, name, said)
+    } else if file_exists("{dir}/{sub}") {
+        Found { kind = kind, file = "{dir}/{sub}", why = "" }
+    } else {
+        Found { kind = kind, file = "",
+                why = said ++ "`{name}` has no `{sub}`" }
+    }
+}
+
+/// The entry point a package states, best first, which is the one it leads with.
+package_entry(dir: str, name: str, said: str) -> Found {
+    entry = first_entry(read_file("{dir}/{PackageJson}"), entry_keys(), 0)
+    file = "{dir}/" ++ (entry.starts_with("./")
+                            ? entry.slice(2, entry.length()) : entry)
+
+    if entry == "" {
+        Found { kind = "", file = "",
+                why = said ++ "`{name}` states no entry point ("
+                    ++ entry_keys().join("/") ++ " names no file of a kind a "
+                    ++ "page can carry); name the file, as in `import "
+                    ++ "\"{NpmPrefix}{name}/dist/…\"`" }
+    } else if !file_exists(file) {
+        Found { kind = "", file = "",
+                why = said ++ "`{name}` states \"{entry}\", which is not "
+                    ++ "there" }
+    } else {
+        Found { kind = asset_kind(entry), file = file, why = "" }
+    }
+}
+
+/// The `package.json` keys a package states an entry point under, best first.
+entry_keys() -> str[] =>
+    ["style", "browser", "module", "main"]
+
+first_entry(text: str, keys: str[], i: int) -> str {
+    if i >= keys.length() {
+        ""
+    } else {
+        got = pkg_entry(text, keys.get(i))
+
+        asset_kind(got) != "" ? got : first_entry(text, keys, i + 1)
+    }
+}
+
+/// One string value of a `package.json`, which is as much JSON as an entry is.
+pkg_entry(text: str, key: str) -> str {
+    cs = text.chars()
+    at = text.index_of("\"{key}\"")
+    from = at < 0 ? -1 : next_quote(cs, at + key.length() + 2)
+
+    from < 0 ? "" : quoted_upto(cs, from + 1, [])
+}
+
+next_quote(cs: str[], i: int) -> int {
+    if i >= cs.length() || cs.get(i) == "," || cs.get(i) == "\}" {
+        -1
+    } else if cs.get(i) == "\"" {
+        i
+    } else {
+        next_quote(cs, i + 1)
+    }
+}
+
+quoted_upto(cs: str[], i: int, acc: str[]) -> str {
+    if i >= cs.length() || cs.get(i) == "\"" {
+        acc.join("")
+    } else {
+        quoted_upto(cs, i + 1, acc ++ [cs.get(i)])
+    }
+}
+
+/// The directory `maca add` left a package in, found from the file importing it.
+installed_at(dir: str, name: str) -> str {
+    at = "{dir}{DepsDir}/{name}"
+
+    if is_dir(at) {
+        at
+    } else if dir == "" {
+        ""
+    } else {
+        installed_at(parent_of(dir), name)
+    }
+}
+
+/// A package is installed under the name `maca add` gave it, which drops the scope.
+package_name(spec: str) -> str =>
+    unscoped(spec).split("/").get(0)
+
+package_sub(spec: str) -> str {
+    rest = unscoped(spec)
+    at = rest.index_of("/")
+
+    at < 0 ? "" : rest.slice(at + 1, rest.length())
+}
+
+unscoped(spec: str) -> str {
+    at = spec.index_of("/")
+
+    if !spec.starts_with("@") {
+        spec
+    } else if at < 0 {
+        ""
+    } else {
+        spec.slice(at + 1, spec.length())
+    }
+}
+
+page_html(src: str, chain: str[], assets: PageAsset[], found: Found[],
+          js: str) -> str {
+    title = html_text(page_setting(chain, "title", stem_of(src)))
+    lang = page_setting(chain, "lang", "")
+    desc = page_setting(chain, "description", "")
+    opened = lang == "" ? "<html>" : "<html lang=\"{html_text(lang)}\">"
+    meta = desc == "" ? ""
+        : "<meta name=\"description\" content=\"{html_text(desc)}\">\n"
+
+    "<!doctype html>\n{opened}\n<head>\n<meta charset=\"utf-8\">\n"
+        ++ "<meta name=\"viewport\" content=\"width=device-width,"
+        ++ "initial-scale=1\">\n{meta}<title>{title}</title>\n"
+        ++ inlined(assets, found, 0, [], true)
+        ++ "<style>\n\n</style>\n</head>\n<body>\n<div id=\"app\"></div>\n"
+        ++ inlined(assets, found, 0, [], false)
+        ++ "<script>\n{js}\n</script>\n</body>\n</html>\n"
+}
+
+/// A stylesheet belongs in the head, and a script after the element it mounts into.
+inlined(assets: PageAsset[], found: Found[], i: int, acc: str[],
+        head: bool) -> str {
+    if i >= assets.length() {
+        acc.join("")
+    } else if head == (found.get(i).kind == "stylesheet") {
+        inlined(assets, found, i + 1,
+                acc ++ [one_inlined(assets.get(i), found.get(i))], head)
+    } else {
+        inlined(assets, found, i + 1, acc, head)
+    }
+}
+
+one_inlined(a: PageAsset, f: Found) -> str {
+    body = close_safe(a.text != "" ? a.text : read_file(f.file))
+
+    if f.kind == "stylesheet" {
+        "<style>\n" ++ body ++ "\n</style>\n"
+    } else if f.kind == "wasm" {
+        "<script id=\"wasm-b64\" type=\"application/octet-stream\">"
+            ++ base64_of(f.file) ++ "</script>\n"
+    } else if f.kind == "script" && a.names != "" {
+        script_open(a, f) ++ body ++ "\n</script>\n<script>\n"
+            ++ named_bindings(a.names.split(" "), 0, []) ++ "</script>\n"
+    } else if f.kind == "script" {
+        script_open(a, f) ++ body ++ "\n</script>\n"
+    } else {
+        ""
+    }
+}
+
+/// A block written in the program is a plain script; a file is whatever node would call it.
+script_open(a: PageAsset, f: Found) -> str =>
+    a.text == "" && es_module(f.file) ? "<script type=\"module\">\n"
+        : "<script>\n"
+
+/// Node's own rule for what a script is: the extension, and otherwise the `type` the nearest `package.json` declares.
+es_module(path: str) -> bool {
+    if path.ends_with(".mjs") {
+        true
+    } else if path.ends_with(".cjs") {
+        false
+    } else {
+        module_package(dir_of(path))
+    }
+}
+
+module_package(dir: str) -> bool {
+    text = read_file("{dir}{PackageJson}")
+
+    if text != "" {
+        pkg_entry(text, "type") == "module"
+    } else if dir == "" {
+        false
+    } else {
+        module_package(parent_of(dir))
+    }
+}
+
+/// Text inlined into a `<style>` or a `<script>`, with what would end that element early escaped.
+close_safe(text: str) -> str {
+    parts = text.split("</")
+
+    rejoined(parts, 1, [parts.get(0)])
+}
+
+rejoined(parts: str[], i: int, acc: str[]) -> str {
+    if i >= parts.length() {
+        acc.join("")
+    } else {
+        lead = parts.get(i).slice(0, 6).lower()
+        mark = lead.starts_with("style") || lead.starts_with("script")
+            ? "<\\/" : "</"
+
+        rejoined(parts, i + 1, acc ++ [mark, parts.get(i)])
+    }
+}
+
+/// A manifest value escaped for HTML text or for an attribute value.
+html_text(s: str) -> str =>
+    s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        .replace("\"", "&quot;").replace("'", "&#39;")
+
+/// `const x = <the first spelling the script exposes>;` for each name asked for.
+named_bindings(names: str[], i: int, acc: str[]) -> str {
+    if i >= names.length() {
+        acc.join("")
+    } else {
+        bound = "const {names.get(i)} = "
+            ++ first_there(spellings(names.get(i)), 0, []) ++ ";\n"
+
+        named_bindings(names, i + 1, acc ++ [bound])
+    }
+}
+
+first_there(ss: str[], i: int, acc: str[]) -> str {
+    if i >= ss.length() {
+        acc.join(" ?? ")
+    } else {
+        first_there(ss, i + 1, acc ++ ["globalThis[\"{ss.get(i)}\"]"])
+    }
+}
+
+/// Maca is snake_case and JavaScript is camelCase, so a named import tries the name as written, then camelCase, then kebab-case.
+spellings(name: str) -> str[] {
+    camel = camel_of(name.chars(), 0, [], false)
+    kebab = name.replace("_", "-")
+    held = camel == name ? [name] : [name, camel]
+
+    kebab == name ? held : held ++ [kebab]
+}
+
+camel_of(cs: str[], i: int, acc: str[], up: bool) -> str {
+    if i >= cs.length() {
+        acc.join("")
+    } else if cs.get(i) == "_" {
+        camel_of(cs, i + 1, acc, true)
+    } else if up {
+        camel_of(cs, i + 1, acc ++ [cs.get(i).upper()], false)
+    } else {
+        camel_of(cs, i + 1, acc ++ [cs.get(i)], false)
+    }
+}
+
+/// A Maca string stops at a NUL, so a wasm module's bytes are encoded before read.
+base64_of(file: str) -> str =>
+    capture("sh", ["-c", "base64 \"$0\" | tr -d '\\n'", file]).trim()
 
 /// The wasm target is the C back end linked by `zig cc` against wasi-libc.
 build_wasm(src: str, out: str) -> int {
@@ -840,9 +1307,9 @@ build_cmd(args: str[]) -> int {
         1
     } else {
         out = build_setting(args, chain, "-o", "out")
+        target = build_setting(args, chain, "--target", "target")
 
-        build_out(src, out == "" ? stem_of(src) : out,
-                  build_setting(args, chain, "--target", "target"),
+        build_out(src, out == "" ? default_out(src, target) : out, target,
                   build_setting(args, chain, "--mcu", "mcu"))
     }
 }
@@ -880,17 +1347,17 @@ stray_build_key(chain: str[], i: int) -> str {
         ""
     } else {
         here = stray_of(table_keys(read_file(chain.get(i) ++ Manifest),
-                                   "[build]"), 0)
+                                   "[build]"), build_keys(), 0)
 
         here != "" ? here : stray_build_key(chain, i + 1)
     }
 }
 
-stray_of(keys: str[], i: int) -> str {
+stray_of(keys: str[], known: str[], i: int) -> str {
     if i >= keys.length() {
         ""
-    } else if build_keys().index_of(keys.get(i)) >= 0 {
-        stray_of(keys, i + 1)
+    } else if known.index_of(keys.get(i)) >= 0 {
+        stray_of(keys, known, i + 1)
     } else {
         keys.get(i)
     }

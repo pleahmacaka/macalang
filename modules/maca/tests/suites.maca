@@ -68,6 +68,12 @@ test_the_language_server_rules_hold() {
             ++ "checked the way every other suite is")
 }
 
+test_the_figures_the_front_page_states_are_read_off_a_file() {
+    assert_eq(suite_code("crates/driver/tests/programs/site_data.maca"), 0,
+        "every number the site prints is read off a committed file, so the "
+            ++ "readers are held to those files")
+}
+
 test_a_line_is_read_by_a_name_no_element_takes() {
     src = scratch() ++ "/readline.maca"
     write_file(src, "main() -> int {{\n    line = read_line()\n"

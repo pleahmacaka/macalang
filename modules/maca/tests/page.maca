@@ -1,0 +1,446 @@
+import std/proc
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+/// A scratch project of its own, so one case cannot read what another wrote.
+project(name: str) -> str {
+    dir = "{env_or("TMPDIR", "/tmp")}/maca-page/{name}"
+
+    exec("rm", ["-rf", dir])
+    make_dir(dir)
+
+    dir
+}
+
+put(dir: str, rel: str, text: str) {
+    make_dir(dir ++ "/" ++ dirname(rel))
+    write_file("{dir}/{rel}", text)
+}
+
+/// The UI every case below builds.
+app(dir: str, imports: str) {
+    put(dir, "home.maca",
+        imports ++ "\nmain() -> Element =>\n"
+            ++ "    div(class=\"card\" \"hello\")\n")
+}
+
+built(dir: str) -> str =>
+    capture("sh", ["-c", "cd \"$0\" && \"$1\" build --target js home.maca "
+                       ++ "-o out 2>&1", dir, maca_bin()])
+
+page_of(dir: str) -> str {
+    said = built(dir)
+
+    assert(file_exists("{dir}/out/index.html"), "no page was built: {said}")
+
+    read_file("{dir}/out/index.html")
+}
+
+refused(dir: str) -> str {
+    said = built(dir)
+
+    assert(!file_exists("{dir}/out/index.html"),
+           "the build should have failed, and it wrote a page: {said}")
+
+    said
+}
+
+carries(page: str, want: str, why: str) {
+    assert(page.index_of(want) >= 0, "{why}\nlooked for: {want}")
+}
+
+/// The tag that opened the element `want` sits inside.
+opening(page: str, want: str) -> str {
+    at = page.index_of(want)
+
+    assert(at >= 0, "the page does not carry {want}")
+
+    page.slice(0, at).slice(last_open(page.slice(0, at)), at)
+}
+
+last_open(head: str) -> int {
+    parts = head.split("<script")
+
+    head.length() - parts.get(parts.length() - 1).length()
+}
+
+test_the_title_comes_from_the_manifest() {
+    dir = project("title")
+    put(dir, "maca.toml", "[page]\ntitle = \"tabpane\"\n")
+    app(dir, "")
+
+    page = page_of(dir)
+
+    carries(page, "<title>tabpane</title>", "the manifest names the page")
+    assert(page.index_of("<title>home</title>") < 0,
+           "the file's stem should not still name it")
+}
+
+test_without_a_page_section_the_title_is_the_file_stem() {
+    dir = project("stem")
+    app(dir, "")
+
+    page = page_of(dir)
+
+    carries(page, "<title>home</title>", "the stem is the fallback")
+    carries(page, "<html>", "no [page] lang means no lang attribute")
+}
+
+test_the_language_and_the_description_come_from_the_manifest() {
+    dir = project("meta")
+    put(dir, "maca.toml",
+        "[page]\ntitle = \"탭페인\"\nlang = \"ko\"\n"
+            ++ "description = \"a browser start page\"\n")
+    app(dir, "")
+
+    page = page_of(dir)
+
+    carries(page, "<html lang=\"ko\">", "the manifest states the language")
+    carries(page,
+            "<meta name=\"description\" content=\"a browser start page\">",
+            "and the description")
+    carries(page, "<title>탭페인</title>", "and the title")
+}
+
+test_a_title_is_escaped_rather_than_pasted() {
+    dir = project("escape")
+    put(dir, "maca.toml", "[page]\ntitle = \"Ben & Jerry <b>\"\n")
+    app(dir, "")
+
+    carries(page_of(dir), "<title>Ben &amp; Jerry &lt;b&gt;</title>",
+            "a title is text, not markup")
+}
+
+test_an_unknown_page_key_fails_the_build_naming_it() {
+    dir = project("unknown-key")
+    put(dir, "maca.toml", "[page]\ntitel = \"tabpane\"\n")
+    app(dir, "")
+
+    assert(refused(dir).index_of("titel") >= 0,
+           "the message should name the key")
+}
+
+vendor(dir: str) {
+    put(dir, "vendor/daisyui.css",
+        ".vendor-marker \{ color: rebeccapurple \}\n")
+    put(dir, "vendor/iconify-icon.js", "globalThis.vendorIconifyMarker = 1;\n")
+}
+
+test_a_declared_stylesheet_and_script_are_inlined_into_the_page() {
+    dir = project("assets")
+    vendor(dir)
+    app(dir, "import \"vendor/daisyui.css\"\n"
+                 ++ "import \"vendor/iconify-icon.js\"\n")
+
+    page = page_of(dir)
+
+    carries(page, ".vendor-marker \{ color: rebeccapurple \}",
+            "the stylesheet's bytes belong in the page")
+    carries(page, "globalThis.vendorIconifyMarker = 1;",
+            "the script's bytes belong in the page")
+    assert(page.index_of("vendor/daisyui.css") < 0
+               && page.index_of("vendor/iconify-icon.js") < 0,
+           "the page should not point at files beside it")
+    assert(page.index_of(".vendor-marker") < page.index_of("<div id=\"app\">"),
+           "a vendor sheet belongs in the head")
+    assert(page.index_of("globalThis.vendorIconifyMarker")
+               > page.index_of("<div id=\"app\">"),
+           "a vendor script belongs after the element the app mounts into")
+}
+
+test_an_es_module_asset_is_run_as_a_module() {
+    dir = project("esm")
+    put(dir, "vendor/widget.mjs", "export const widget = 1;\n")
+    put(dir, "vendor/legacy.js", "globalThis.legacyMarker = 1;\n")
+    app(dir, "import \"vendor/widget.mjs\"\nimport \"vendor/legacy.js\"\n")
+
+    page = page_of(dir)
+
+    assert(opening(page, "export const widget").index_of("type=\"module\"")
+               >= 0,
+           "an .mjs asset is a module")
+    assert(opening(page, "globalThis.legacyMarker").index_of("type=\"module\"")
+               < 0,
+           "an ordinary script is not")
+}
+
+test_a_package_that_calls_its_scripts_modules_is_believed() {
+    dir = project("esm-package")
+    put(dir, "vendor/package.json", "\{ \"type\": \"module\" \}\n")
+    put(dir, "vendor/widget.js", "export const widget = 1;\n")
+    app(dir, "import \"vendor/widget.js\"\n")
+
+    assert(opening(page_of(dir), "export const widget")
+               .index_of("type=\"module\"") >= 0,
+           "`type: module` makes a .js file a module")
+}
+
+test_an_asset_cannot_close_the_element_it_is_inlined_into() {
+    dir = project("closing-tag")
+    put(dir, "vendor/writer.js", "document.write(\"</script>\");\n")
+    put(dir, "vendor/quote.css", ".q::after \{ content: \"</style>\" \}\n")
+    app(dir, "import \"vendor/quote.css\"\nimport \"vendor/writer.js\"\n")
+
+    page = page_of(dir)
+
+    carries(page, "document.write(\"<\\/script>\")",
+            "the script's closing tag should be escaped")
+    carries(page, "content: \"<\\/style>\"",
+            "the stylesheet's closing tag should be escaped")
+}
+
+test_a_missing_asset_fails_the_build_naming_the_file() {
+    dir = project("missing")
+    app(dir, "import \"vendor/missing.css\"\n")
+
+    assert(refused(dir).index_of("vendor/missing.css") >= 0,
+           "the message should name the file")
+}
+
+test_a_selective_import_binds_every_spelling_the_script_may_use() {
+    dir = project("named")
+    put(dir, "vendor/pick.js", "globalThis.pickText = () => \"ok\";\n")
+    app(dir, "import \{ pick_text \} from \"vendor/pick.js\"\n")
+
+    page = page_of(dir)
+
+    carries(page, "const pick_text = globalThis[\"pick_text\"] ?? "
+                      ++ "globalThis[\"pickText\"] ?? globalThis[\"pick-text\"]",
+            "a name is tried as written, then camelCase, then kebab-case")
+    carries(page, "globalThis.pickText = () =>",
+            "and the script it came from is on the page")
+}
+
+install(dir: str, name: str, manifest: str) {
+    put(dir, "maca_modules/{name}/package.json", manifest)
+}
+
+daisyui(dir: str) {
+    install(dir, "daisyui",
+            "\{ \"name\": \"daisyui\", \"version\": \"4.0.0\", "
+                ++ "\"main\": \"lib/index.js\", \"style\": \"dist/full.css\" \}")
+    put(dir, "maca_modules/daisyui/dist/full.css",
+        ".daisy-marker \{ color: rebeccapurple \}\n")
+    put(dir, "maca_modules/daisyui/lib/index.js", "globalThis.daisyMarker = 1;\n")
+}
+
+test_a_packages_own_entry_point_reaches_the_page() {
+    dir = project("entry")
+    daisyui(dir)
+    app(dir, "import \"npm:daisyui\"\n")
+
+    page = page_of(dir)
+
+    carries(page, ".daisy-marker \{ color: rebeccapurple \}",
+            "daisyui states `style`, so that is the entry that lands")
+    assert(page.index_of("globalThis.daisyMarker = 1;") < 0,
+           "and the entry it did not lead with is not also pulled in")
+}
+
+test_an_entry_the_package_does_not_lead_with_is_named_as_a_file() {
+    dir = project("other-entry")
+    daisyui(dir)
+    app(dir, "import \"npm:daisyui/lib/index.js\"\n")
+
+    carries(page_of(dir), "globalThis.daisyMarker = 1;",
+            "the file the import named is the one that lands")
+}
+
+test_a_package_that_is_not_installed_fails_the_build_naming_it() {
+    dir = project("missing-package")
+    app(dir, "import \"npm:tailwindcss\"\n")
+
+    said = refused(dir)
+
+    assert(said.index_of("tailwindcss") >= 0,
+           "the message should name the package")
+    assert(said.index_of("maca add npm:tailwindcss") >= 0,
+           "and say how to install it")
+}
+
+test_a_package_with_no_entry_of_that_kind_fails_the_build_naming_it() {
+    dir = project("no-entry")
+    install(dir, "typesonly",
+            "\{ \"name\": \"typesonly\", \"types\": \"dist/index.d.ts\" \}")
+    put(dir, "maca_modules/typesonly/dist/index.d.ts", "export \{\};\n")
+    app(dir, "import \"npm:typesonly\"\n")
+
+    said = refused(dir)
+
+    assert(said.index_of("typesonly") >= 0 && said.index_of("entry point") >= 0,
+           "the message should name the package and what it lacks")
+    assert(said.index_of("npm:typesonly/dist/") >= 0,
+           "and point at the form that names the file")
+}
+
+test_a_package_that_states_several_entries_answers_with_the_first_listed() {
+    dir = project("several")
+    install(dir, "many",
+            "\{ \"name\": \"many\", \"main\": \"main.js\", "
+                ++ "\"module\": \"module.js\", \"browser\": \"browser.js\" \}")
+    put(dir, "maca_modules/many/main.js", "globalThis.pick = 'main';\n")
+    put(dir, "maca_modules/many/module.js", "globalThis.pick = 'module';\n")
+    put(dir, "maca_modules/many/browser.js", "globalThis.pick = 'browser';\n")
+    app(dir, "import \"npm:many\"\n")
+
+    page = page_of(dir)
+
+    carries(page, "globalThis.pick = 'browser';",
+            "a page is a browser, so `browser` outranks `module` and `main`")
+    assert(page.index_of("globalThis.pick = 'main';") < 0,
+           "and only one of them lands")
+}
+
+test_a_file_inside_a_package_can_be_named() {
+    dir = project("subpath")
+    daisyui(dir)
+    put(dir, "maca_modules/daisyui/dist/themes.css",
+        ".theme-marker \{ color: teal \}\n")
+    app(dir, "import \"npm:daisyui/dist/themes.css\"\n")
+
+    page = page_of(dir)
+
+    carries(page, ".theme-marker \{ color: teal \}", "the named file lands")
+    assert(page.index_of(".daisy-marker") < 0,
+           "the named file is the one that lands, not the entry point")
+}
+
+test_a_file_a_package_does_not_hold_fails_the_build_naming_it() {
+    dir = project("bad-subpath")
+    daisyui(dir)
+    app(dir, "import \"npm:daisyui/dist/nope.css\"\n")
+
+    said = refused(dir)
+
+    assert(said.index_of("dist/nope.css") >= 0
+               && said.index_of("daisyui") >= 0,
+           "the message should name the package and the file")
+}
+
+test_a_scoped_package_is_reached_under_the_name_it_was_installed_as() {
+    dir = project("scoped")
+    install(dir, "starry-night",
+            "\{ \"name\": \"@wooorm/starry-night\", "
+                ++ "\"style\": \"style/core.css\" \}")
+    put(dir, "maca_modules/starry-night/style/core.css",
+        ".starry-marker \{ color: navy \}\n")
+    app(dir, "import \"npm:@wooorm/starry-night\"\n")
+
+    carries(page_of(dir), ".starry-marker \{ color: navy \}",
+            "the scope is dropped, as `maca add` drops it")
+}
+
+test_a_path_beside_the_source_still_means_that_file() {
+    dir = project("relative")
+    daisyui(dir)
+    put(dir, "vendor/local.css", ".local-marker \{ color: olive \}\n")
+    app(dir, "import \"vendor/local.css\"\nimport \"npm:daisyui\"\n")
+
+    page = page_of(dir)
+
+    carries(page, ".local-marker \{ color: olive \}",
+            "a relative path is unchanged by the package form existing")
+    carries(page, ".daisy-marker", "and the package still lands")
+}
+
+test_a_package_at_the_project_root_is_found_from_a_source_below_it() {
+    dir = project("nested")
+    daisyui(dir)
+    put(dir, "pages/home.maca",
+        "import \"npm:daisyui\"\n\nmain() -> Element =>\n"
+            ++ "    div(\"hello\")\n")
+
+    said = capture("sh",
+                   ["-c", "cd \"$0\" && \"$1\" build --target js "
+                        ++ "pages/home.maca -o out 2>&1", dir, maca_bin()])
+
+    assert(file_exists("{dir}/out/index.html"), "no page was built: {said}")
+    carries(read_file("{dir}/out/index.html"), ".daisy-marker",
+            "the walk that finds a module finds an installed package too")
+}
+
+test_a_block_written_in_the_program_is_carried_as_written() {
+    dir = project("inline")
+    app(dir, "import css \"\"\"\n.inline-marker \{ color: teal \}\n\"\"\"\n"
+                 ++ "import js \"\"\"\nglobalThis.inlineMarker = 1;\n\"\"\"\n")
+
+    page = page_of(dir)
+
+    carries(page, ".inline-marker \{ color: teal \}",
+            "a block of css is source, not a path")
+    carries(page, "globalThis.inlineMarker = 1;",
+            "and so is a block of js")
+    assert(page.index_of(".inline-marker") < page.index_of("<div id=\"app\">"),
+           "a block of css still belongs in the head")
+}
+
+test_a_block_an_imported_module_writes_reaches_the_page_too() {
+    dir = project("module-block")
+    put(dir, "lib/style.maca",
+        "import css \"\"\"\n.module-marker \{ color: olive \}\n\"\"\"\n\n"
+            ++ "label_of(n: str) -> str => n\n")
+    app(dir, "import \{ label_of \} from lib/style\n")
+
+    carries(page_of(dir), ".module-marker \{ color: olive \}",
+            "a page carries what every file of the program declared")
+}
+
+test_a_wasm_module_rides_in_the_page_as_base64() {
+    dir = project("wasm")
+    put(dir, "vendor/keep.txt", "")
+    exec("sh", ["-c", "printf '\\000asm\\001\\000\\000\\000' > \"$0\"",
+                "{dir}/vendor/tiny.wasm"])
+    app(dir, "import \"vendor/tiny.wasm\"\n")
+
+    page = page_of(dir)
+
+    carries(page, "<script id=\"wasm-b64\" type=\"application/octet-stream\">",
+            "the bytes ride in an element a script can read them out of")
+    carries(page, "AGFzbQEAAAA=",
+            "and they are the module's own bytes, base64 as written")
+}
+
+said_by(dir: str, cmd: str) -> str =>
+    capture("sh", ["-c", "cd \"$0\" && \"$1\" {cmd} 2>&1", dir, maca_bin()])
+
+/// `maca install` is what a checkout runs before it builds: the packages the manifest names, at the versions the lock pinned.
+test_install_says_so_when_the_manifest_names_nothing() {
+    dir = project("install-empty")
+    put(dir, "maca.toml", "[package]\nname = \"page\"\n")
+
+    said = said_by(dir, "install")
+
+    assert(said.index_of("no dependencies") >= 0,
+           "an empty manifest is said so, not installed: {said}")
+}
+
+/// A package already in `maca_modules` is left alone, so a second run costs nothing and a vendored copy is not overwritten.
+test_install_leaves_a_package_that_is_already_there() {
+    dir = project("install-present")
+    put(dir, "maca.toml",
+        "[package]\nname = \"page\"\n\n[dependencies]\n"
+            ++ "daisyui = \"npm:daisyui@^4\"\n")
+    daisyui(dir)
+
+    said = said_by(dir, "install")
+
+    assert(said.index_of("daisyui is already there") >= 0,
+           "a package that is there is left there: {said}")
+}
+
+test_the_source_never_names_the_directory_maca_add_chose() {
+    dir = project("no-dist-path")
+    daisyui(dir)
+    app(dir, "import \"npm:daisyui\"\n")
+
+    page_of(dir)
+    source = read_file("{dir}/home.maca")
+
+    assert(source.index_of("maca_modules") < 0
+               && source.index_of("dist/full.css") < 0,
+           "the program names the package, not where it was installed")
+}

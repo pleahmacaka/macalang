@@ -38,6 +38,20 @@ table: `-o maca2` and `-o maca3` produce two executables that differ in exactly
 one byte, the digit. `strip` makes them equal; building both as `maca` makes them
 equal without stripping.
 
+`modules/maca/tests/bootstrap.maca` is the same argument written in Maca, and it
+is the half that survives the deletion of `crates/`. It runs three rounds, each
+in a directory of its own under the one output name, and asserts four things: the
+unit the compiler resolves out of its own `import` graph carries a marker from
+every file it reaches; the C is a fixed point; the binary is one too; and the
+compiler running the suite and the compiler it has just built make the same
+program of one source. Three rounds rather than two, because comparing the first
+round to the second only says anything when the compiler that ran the suite was
+already the current one. Every build it runs is a `MACA_NO_CACHE=1` build, since
+a cache hit would answer for a compiler that is not the one under test. Three
+compiler builds is about fifty seconds, which is why it is not in the named list
+in `crates/driver/tests/maca_suites.rs`; running it is
+`maca test modules/maca/tests/bootstrap.maca` and nothing else.
+
 Comparing the emitted C is still the half that catches a divergence early, and
 the demo equality is the half that matters most, because `cmp` alone can be
 silent while stage-1 and stage-2 are different programs that happen to agree on
