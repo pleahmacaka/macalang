@@ -893,3 +893,27 @@ test_a_shift_binds_looser_than_a_sum_and_tighter_than_a_comparison() {
     assert_eq(shown("a >> 1 >> 2"), "((a >> 1) >> 2)",
               "two shifts of equal power run left to right")
 }
+
+n_stmts(src: str) -> int =>
+    parse_fn(lex("f() -> int \{ {src} \}"), 0).snode.body.length()
+
+test_a_lambda_in_an_argument_does_not_start_a_local_function() {
+    assert_eq(str(n_stmts("x = [1, 2].reduce(0, (a, b) => a + b)")), "1",
+              "a bind whose value ends in a lambda")
+    assert_eq(str(n_stmts("info([1, 2].reduce(0, (a, b) => a + b))")), "1",
+              "the fat arrow belongs to the argument, not to a declaration")
+    assert_eq(str(n_stmts("info(str([1, 2].reduce(0, (a, b) => a + b)))")),
+              "1", "however deep the parenthesised lambda sits")
+    assert_eq(str(n_stmts("info(str([1, 2].map(v => v * 2).sum()))")), "1",
+              "a lambda whose parameter needs no parentheses")
+    assert_eq(str(n_stmts("info(str((1 + 2) * 3))")), "1",
+              "parentheses with no lambda behind them")
+}
+
+test_a_real_local_function_is_still_read_as_one() {
+    assert_eq(str(n_stmts("double(n: int) -> int => n * 2")), "1",
+              "an arrow body after the closing paren of its own parameters")
+    assert_eq(str(n_stmts("double(n: int) -> int \{ n * 2 \}\n"
+                              ++ "info(str(double(2)))")), "2",
+              "a block body, and the call that follows it")
+}

@@ -367,3 +367,8 @@ test_print_writes_without_a_newline() {
     assert_eq(ran(in_main("    info(\"a\")")).output, "a\n",
               "info does")
 }
+
+test_a_lambda_inside_a_call_argument_answers() {
+    assert_eq(said(in_main("    info(str([1, 2].reduce(0, (a, b) => a + b)))")),
+              "3", "the call is one statement and it adds the two")
+}

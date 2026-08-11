@@ -169,7 +169,7 @@ starts_local_fn(ts: Token[], i: int) -> bool {
     if !starts_fn(ts, i) {
         false
     } else {
-        at = after_return_type(ts, parse_params(ts, i + 2, []).pnext + 1)
+        at = after_return_type(ts, paren_end(ts, i + 2, 0) + 1)
 
         ts.get(at).kind == FatArrow || ts.get(at).kind == LBrace
     }
