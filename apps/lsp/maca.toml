@@ -1,0 +1,7 @@
+[package]
+name = "maca-lsp"
+description = "A language server over stdio: the checker's answer, reshaped into publishDiagnostics for whatever editor is holding the buffer."
+
+[[bin]]
+name = "maca-lsp"
+path = "lsp.maca"

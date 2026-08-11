@@ -1,0 +1,95 @@
+import apps/lsp/lsp
+import std/json
+
+opened(src: str) -> str =>
+    "\{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":"
+        ++ "\{\"textDocument\":\{\"uri\":\"file:///t.maca\",\"languageId\":"
+        ++ "\"maca\",\"version\":1,\"text\":" ++ quote(src) ++ "\}\}\}"
+
+test_initialize_names_the_server_and_asks_for_whole_documents() {
+    said = answer("\{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"\}")
+
+    assert(said.contains("\"id\":1"), "the reply carries the request's id")
+    assert(said.contains("\"textDocumentSync\":1"),
+           "the client is told to send whole documents, because the checker "
+               ++ "reads a file and not a delta")
+    assert(said.contains("maca-lsp"), "and who is answering")
+}
+
+test_a_notification_carrying_no_id_is_answered_with_nothing() {
+    assert_eq(answer("\{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"\}"), "",
+              "a notification wants no reply, and writing one is a protocol "
+                  ++ "error")
+}
+
+test_a_request_nobody_serves_is_an_error_not_a_silence() {
+    said = answer("\{\"id\":7,\"method\":\"textDocument/hover\"\}")
+
+    assert(said.contains("-32601"), "the code JSON-RPC reserves for it")
+    assert(said.contains("method not found"), "and the words for a reader")
+}
+
+test_shutdown_is_answered_so_the_client_may_stop_waiting() {
+    said = answer("\{\"id\":9,\"method\":\"shutdown\"\}")
+
+    assert(said.contains("\"result\":null"), "nothing is the whole answer")
+}
+
+test_every_line_the_checker_said_becomes_one_diagnostic() {
+    said = published("file:///t.maca",
+                     ["check error: call to undefined function `nope`",
+                      "parse error: no expression starts at `)`"])
+
+    assert(said.contains("textDocument/publishDiagnostics"),
+           "the notification is the one the client listens for")
+    assert(said.contains("file:///t.maca"), "against the buffer it was about")
+    assert(said.contains("\"severity\":1"), "the checker only refuses")
+    assert(said.contains("undefined function"), "the first line is carried")
+    assert(said.contains("no expression starts"), "and so is the second")
+}
+
+test_nothing_to_say_is_published_as_an_empty_list() {
+    said = published("file:///t.maca", [])
+
+    assert(said.contains("\"diagnostics\":[]"),
+           "a clean file has to clear the squiggles, so silence is not an "
+               ++ "option")
+}
+
+test_a_closed_buffer_has_its_diagnostics_taken_back() {
+    said = answer("\{\"method\":\"textDocument/didClose\",\"params\":"
+                      ++ "\{\"textDocument\":\{\"uri\":\"file:///t.maca\"\}\}\}")
+
+    assert(said.contains("\"diagnostics\":[]"),
+           "a file nobody is looking at keeps no problems")
+}
+
+test_a_frame_names_the_length_of_the_body_in_bytes() {
+    assert_eq(framed("\{\}"), "Content-Length: 2\r\n\r\n\{\}",
+              "the header counts bytes, and the blank line ends it")
+}
+
+test_the_next_header_riding_on_the_body_line_is_kept_for_the_next_message() {
+    chunk = "\{\"id\":1\}Content-Length: 33\r"
+
+    assert_eq(body_in(chunk, 8), "\{\"id\":1\}",
+              "the body is exactly what the length said")
+    assert_eq(after_body(chunk, 8), "Content-Length: 33",
+              "and what follows opens the next message, because a frame ends "
+                  ++ "without a newline")
+}
+
+test_a_broken_buffer_is_published_as_the_checkers_own_words() {
+    said = answer(opened("main() -> int \{\n    nope(1)\n\n    0\n\}\n"))
+
+    assert(said.contains("textDocument/publishDiagnostics"),
+           "an open buffer is checked without being asked")
+    assert(said.contains("nope"), "and the checker's sentence is the message")
+}
+
+test_a_clean_buffer_is_published_with_nothing_to_say() {
+    said = answer(opened("main() -> int => 0\n"))
+
+    assert(said.contains("\"diagnostics\":[]"),
+           "the same path has to answer nothing for a file that checks")
+}

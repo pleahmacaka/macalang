@@ -1,0 +1,123 @@
+import std/json
+import { lines } from std/text
+import { env_or } from std/proc
+
+Header = "Content-Length: "
+
+capabilities() -> str =>
+    "\{\"capabilities\":\{\"textDocumentSync\":1\},\"serverInfo\":"
+        ++ "\{\"name\":\"maca-lsp\",\"version\":\"0.1.0\"\}\}"
+
+reply_of(id: str, body: str) -> str =>
+    "\{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{body}\}"
+
+unserved(id: str) -> str =>
+    "\{\"jsonrpc\":\"2.0\",\"id\":{id},\"error\":\{\"code\":-32601,"
+        ++ "\"message\":\"method not found\"\}\}"
+
+/// A diagnostic sits on line one, because the checker answers in sentences.
+diagnostic_of(said: str) -> str =>
+    "\{\"range\":\{\"start\":\{\"line\":0,\"character\":0\},\"end\":"
+        ++ "\{\"line\":0,\"character\":0\}\},\"severity\":1,"
+        ++ "\"source\":\"maca\",\"message\":{quote(said)}\}"
+
+each_diagnostic(said: str[], i: int, acc: str[]) -> str[] {
+    if i >= said.length() {
+        acc
+    } else {
+        each_diagnostic(said, i + 1, acc.push(diagnostic_of(said.get(i))))
+    }
+}
+
+published(uri: str, said: str[]) -> str =>
+    "\{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\","
+        ++ "\"params\":\{\"uri\":{quote(uri)},\"diagnostics\":["
+        ++ each_diagnostic(said, 0, []).join(",") ++ "]\}\}"
+
+scratch_file() -> str {
+    root = env_or("TMPDIR", "/tmp")
+
+    "{root}/maca-lsp-{str(now_ms())}.maca"
+}
+
+complaints(src: str) -> str[] {
+    path = scratch_file()
+
+    write_file(path, src)
+    said = capture(env_or("MACA", "maca"), ["check", path])
+    remove_file(path)
+
+    lines(said)
+}
+
+carries_a_buffer(method: str) -> bool =>
+    method == "textDocument/didOpen" || method == "textDocument/didChange"
+
+answer(msg: str) -> str {
+    id = get(msg, "id")
+    method = unwrap(get(msg, "method"))
+
+    if method == "initialize" {
+        reply_of(id, capabilities())
+    } else if method == "shutdown" {
+        reply_of(id, "null")
+    } else if carries_a_buffer(method) {
+        published(unwrap(get(msg, "uri")),
+                  complaints(unwrap(get(msg, "text"))))
+    } else if method == "textDocument/didClose" {
+        published(unwrap(get(msg, "uri")), [])
+    } else if id == "" {
+        ""
+    } else {
+        unserved(id)
+    }
+}
+
+framed(body: str) -> str =>
+    "{Header}{str(body.length())}\r\n\r\n{body}"
+
+body_in(chunk: str, want: int) -> str =>
+    chunk.slice(0, want)
+
+after_body(chunk: str, want: int) -> str =>
+    chunk.slice(want, chunk.length()).trim()
+
+wanted(first: str, len: int) -> int {
+    line = first == "" ? read_line() : first
+
+    if line.trim() == "" {
+        len
+    } else if line.starts_with(Header) {
+        wanted("", int(line.slice(Header.length(), line.length()).trim()))
+    } else {
+        wanted("", len)
+    }
+}
+
+serve(pending: str) -> int {
+    want = wanted(pending, 0)
+
+    if want <= 0 {
+        0
+    } else {
+        chunk = read_line()
+        body = body_in(chunk, want)
+        said = answer(body)
+
+        if said != "" {
+            print(framed(said))
+        }
+
+        if unwrap(get(body, "method")) == "exit" {
+            0
+        } else {
+            serve(after_body(chunk, want))
+        }
+    }
+}
+
+main() -> int {
+    serve("")
+
+    0
+}

@@ -25,6 +25,7 @@ members = [
     "apps/evals",
     "apps/install",
     "apps/lint",
+    "apps/lsp",
     "apps/maca1",
     "apps/macadoc",
     "apps/mcp",
