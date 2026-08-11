@@ -353,3 +353,50 @@ test_a_variant_that_carries_its_own_sum_carries_a_pointer_to_it() {
     assert(made.index_of("Tree l = *(Tree*)t._0") >= 0,
            "and the arm reads it back through that pointer: {made}")
 }
+
+test_a_function_kept_in_a_field_is_called_through_the_field() {
+    made = built_c("Route = {{ path: str, handle: (str) -> str }}\n"
+                   ++ "home(q: str) -> str => q\n"
+                   ++ "main() -> int {{\n"
+                   ++ "    r = Route {{ path = \"/\", handle = home }}\n"
+                   ++ "    r.handle(\"x\") == \"x\" ? 0 : 1\n}}")
+
+    assert(made.index_of("const char* (*handle)(const char*); }} Route;") >= 0,
+           "the field is a pointer to a function: {made}")
+    assert(made.index_of("r.handle(\"x\")") >= 0,
+           "and the call reads the field it is stored in: {made}")
+    assert(made.index_of(" handle(r,") < 0,
+           "rather than a function of that name the module never declared")
+}
+
+test_a_record_literal_with_no_name_gets_a_struct_of_its_shape() {
+    made = built_c("main() -> int {{\n"
+                   ++ "    c = {{ host = \"h\", port = 8080 }}\n"
+                   ++ "    d = {{ port = 80, host = \"e\" }}\n"
+                   ++ "    c = d\n    c.port\n}}")
+
+    assert(made.index_of("typedef struct {{ const char* host; long port; }}"
+                             ++ " MacaAnon_host_str_port_int;") >= 0,
+           "the shape became a struct named for its sorted fields: {made}")
+    assert(made.index_of("MacaAnon_host_str_port_int c = ") >= 0
+               && made.index_of("MacaAnon_host_str_port_int d = ") >= 0,
+           "and the other spelling of one shape is that same type: {made}")
+}
+
+test_a_generic_calling_a_generic_passes_on_its_element_type() {
+    made = built_c("Row = {{ name: str }}\n"
+                   ++ "head_of(xs: a[], k: (a) -> str) -> a"
+                   ++ " => at_of(xs, k, 0)\n"
+                   ++ "at_of(xs: a[], k: (a) -> str, i: int) -> a"
+                   ++ " => xs.get(i)\n"
+                   ++ "name_of(r: Row) -> str => r.name\n"
+                   ++ "main() -> int {{\n"
+                   ++ "    head_of([Row {{ name = \"a\" }}], name_of).name"
+                   ++ " == \"a\" ? 0 : 1\n}}")
+
+    assert(made.index_of("Row at_of__arrRow_fnstr_int(MacaList xs,"
+                             ++ " const char* (*k)(Row), long i)") >= 0,
+           "the inner call was specialised at the outer element type: {made}")
+    assert(made.index_of("arrany") < 0,
+           "not at the variable the generic body still spells: {made}")
+}

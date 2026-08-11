@@ -161,6 +161,16 @@ test_a_suite_holding_no_test_is_not_a_failure() {
         "and the runner says so rather than passing in silence")
 }
 
+test_a_generic_names_its_own_element_type() {
+    assert_eq(suite_code("crates/driver/tests/programs/generics.maca"), 0,
+        "a type variable bound inside a parameter reaches the call it makes")
+}
+
+test_the_native_back_end_regressions_still_hold() {
+    assert_eq(suite_code("crates/driver/tests/programs/regressions.maca"), 0,
+        "list patterns, pipes and a record literal nothing declared")
+}
+
 test_the_config_reader_reads_what_it_claims() {
     assert_eq(suite_code("crates/driver/tests/programs/conf.maca"), 0,
         "a suite that also carries a `main` is still a suite")

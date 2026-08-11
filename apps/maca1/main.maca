@@ -659,9 +659,16 @@ build_out(src: str, out: str, target: str, mcu: str) -> int {
     }
 }
 
-/// The js target is a directory, and every other target is one named file.
-default_out(src: str, target: str) -> str =>
-    target == "js" ? stem_of(src) ++ "-web" : stem_of(src)
+/// The js target is a directory, the rust target a source file, the rest a name.
+default_out(src: str, target: str) -> str {
+    if target == "js" {
+        stem_of(src) ++ "-web"
+    } else if target == "rust" {
+        stem_of(src) ++ ".rs"
+    } else {
+        stem_of(src)
+    }
+}
 
 PageAsset = {
     kind:  str

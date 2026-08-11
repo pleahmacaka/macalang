@@ -234,13 +234,18 @@ monorepo(tag: str) -> str {
     make_dir(dir ++ "/modules/greet")
     make_dir(dir ++ "/apps/hello")
     write_file(dir ++ "/maca.toml",
-        "[package]\nname = \"repo\"\n\n[workspace]\nmembers = [\n"
+        "[package]\nname = \"repo\"\nversion = \"9.9.9\"\n\n"
+            ++ "[workspace]\nmembers = [\n"
             ++ "    \"modules/greet\",\n    \"apps/hello\",\n]\n\n"
             ++ "[scripts]\ngo = \"echo workspace-script-ok\"\n")
     write_file(dir ++ "/modules/greet/maca.toml",
                "[package]\nname = \"greet\"\n")
     write_file(dir ++ "/modules/greet/say.maca",
                "greeting(who: str) -> str => \"hi \" ++ who\n")
+    make_dir(dir ++ "/modules/greet/tests")
+    write_file(dir ++ "/modules/greet/tests/say.maca",
+        "import greet/say\n\ntest_the_name_is_the_one_greeted() {{\n"
+            ++ "    assert_eq(greeting(\"ana\"), \"hi ana\", \"named\")\n}}\n")
     write_file(dir ++ "/apps/hello/maca.toml",
         "[package]\nname = \"hello\"\n\n[[bin]]\nname = \"hello\"\n"
             ++ "path = \"main.maca\"\n")
@@ -265,6 +270,31 @@ test_a_root_key_the_member_is_silent_about_is_inherited() {
 
     assert_eq(out_in(at, ["go"]).trim(), "workspace-script-ok",
               "the nearest manifest that states a key answers for it")
+}
+
+test_a_root_format_key_reaches_a_member_that_states_none() {
+    dir = monorepo("ws-format-inherit")
+
+    write_file(dir ++ "/maca.toml",
+        "[package]\nname = \"repo\"\n\n[workspace]\n"
+            ++ "members = [\"modules/greet\", \"apps/hello\"]\n\n"
+            ++ "[format]\nindent_style = \"space\"\nindent_size = 8\n")
+    write_file(dir ++ "/apps/hello/wide.maca", "main() -> int {{\n  0\n}}\n")
+
+    assert_eq(str(rc_in(dir, ["fmt", "apps/hello/wide.maca"])), "0", "fmt ran")
+    assert(read_file(dir ++ "/apps/hello/wide.maca").contains("\n        0\n"),
+           "the eight the root declared reached a member that states none")
+}
+
+test_a_bare_test_runs_the_packages_own_suites() {
+    at = monorepo("ws-bare-test") ++ "/modules/greet"
+
+    said = out_in(at, ["test"])
+    assert(said.contains("greet 9.9.9"),
+           "the heading names the package and the version it takes: {said}")
+    assert(said.contains("1 of 1 suites passed"),
+           "the suite under tests/ is the one that ran: {said}")
+    assert_eq(str(rc_in(at, ["test"])), "0", "and it passed")
 }
 
 test_a_member_that_is_listed_but_absent_is_named() {
@@ -340,6 +370,14 @@ test_the_target_a_package_builds_for_can_be_declared() {
            "what landed is the JavaScript the manifest asked for")
     assert(file_exists(dir ++ "/main-web/index.html"),
            "and the page that carries it")
+}
+
+test_a_declared_rust_target_names_its_source_for_what_it_holds() {
+    dir = declared_build("build-target-rust", "target = \"rust\"\n")
+
+    assert_eq(str(rc_in(dir, ["build"])), "0", "a declared target needs no flag")
+    assert(read_file(dir ++ "/main.rs").starts_with("use std::rc::Rc;"),
+           "the rust back end writes rust, under a name that says so")
 }
 
 test_where_a_build_lands_can_be_declared() {
@@ -533,9 +571,7 @@ test_a_flag_beats_the_target_the_manifest_declared() {
 
     assert_eq(str(rc_in(at, ["build", "--target", "rust"])), "0",
               "the flag on the line ran")
-    emitted = file_exists(at ++ "/main.rs") ? read_file(at ++ "/main.rs")
-        : read_file(at ++ "/main")
-    assert(emitted.starts_with("use std::rc::Rc;"),
+    assert(read_file(at ++ "/main.rs").starts_with("use std::rc::Rc;"),
            "the back end the flag named is the one that wrote the source")
     assert(!file_exists(at ++ "/main-web"),
            "and the declared one did not run at all")

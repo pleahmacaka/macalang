@@ -378,6 +378,29 @@ test_a_block_written_in_the_program_is_carried_as_written() {
            "a block of css still belongs in the head")
 }
 
+test_both_forms_survive_the_formatter_and_the_module_inliner() {
+    dir = project("roundtrip")
+
+    vendor(dir)
+    put(dir, "lib/style.maca",
+        "import css \"\"\"\n.module-marker \{ color: olive \}\n\"\"\"\n\n"
+            ++ "label_of(n: str) -> str => n\n")
+    app(dir, "import \{ label_of \} from lib/style\n"
+                 ++ "import \"vendor/daisyui.css\"\n")
+
+    assert_eq(str(exec(maca_bin(), ["fmt", "{dir}/home.maca"])), "0",
+              "the formatter ran over a program that imports both forms")
+    carries(read_file("{dir}/home.maca"), "import \"vendor/daisyui.css\"",
+            "an asset import is not a thing the formatter may rewrite")
+
+    page = page_of(dir)
+
+    carries(page, ".module-marker \{ color: olive \}",
+            "the block a module wrote still reaches the page")
+    carries(page, ".vendor-marker \{ color: rebeccapurple \}",
+            "and so do the bytes of the file beside it")
+}
+
 test_a_block_an_imported_module_writes_reaches_the_page_too() {
     dir = project("module-block")
     put(dir, "lib/style.maca",

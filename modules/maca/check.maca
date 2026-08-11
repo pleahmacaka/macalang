@@ -768,12 +768,28 @@ method_type(env: Env, e: Expr) -> Typed {
     } else if e.text == "filter" && e.children.length() == 2 {
         sifted_type(recv.env, resolve(recv.env.infer, recv.ty),
                     e.children.get(1))
+    } else if field_fn_ty(env, resolve(recv.env.infer, recv.ty),
+                          e.text).kind == KFn {
+        typed(walk_args(recv.env, e.children, 1),
+              fn_ret(field_fn_ty(env, resolve(recv.env.infer, recv.ty),
+                                 e.text)))
     } else if is_ufcs_call(env, e, resolve(recv.env.infer, recv.ty)) {
         call_type(env, e_call(e.text, e.children))
     } else {
         walked = walk_args(recv.env, e.children, 1)
 
         typed(walked, method_result(e.text, resolve(walked.infer, recv.ty)))
+    }
+}
+
+/// The type of a record's field, when the receiver is a record that names one.
+field_fn_ty(env: Env, recv: Ty, name: str) -> Ty {
+    at = env.fields.index_of(recv.name ++ "." ++ name)
+
+    if recv.kind != KCon || at < 0 {
+        t_any()
+    } else {
+        env.ftypes.get(at)
     }
 }
 
@@ -1659,10 +1675,20 @@ annotate_expr(env: Env, e: Expr) -> Expr {
         annotate_expr(env, lowered_element(env, e))
     } else if is_rest_call(env, e) {
         annotated_node(env, gathered_rest(env, e))
+    } else if is_field_call(env, e) {
+        annotated_node(env, e with { ival = 1 })
     } else {
         annotated_node(env, e)
     }
 }
+
+/// A record field holding a function is called through the field, not by name.
+is_field_call(env: Env, e: Expr) -> bool =>
+    e.kind == EMethod
+        && field_fn_ty(env,
+                       resolve(env.infer,
+                               type_in(env, e.children.get(0)).ty),
+                       e.text).kind == KFn
 
 is_rest_call(env: Env, e: Expr) -> bool =>
     e.kind == ECall && env.varargs.index_of(e.text) >= 0
@@ -1865,8 +1891,10 @@ LiftedBody = {
 
 /// A lambda used as a value becomes a function of its own, which every back end already passes by name.
 lifted(m: Module) -> Module {
-    got = lift_items(m.items, 0,
-                     Lift { items = [], tops = top_names(m.items, 0, []),
+    named = named_anons(m)
+    got = lift_items(named.items, 0,
+                     Lift { items = [],
+                            tops = top_names(named.items, 0, []),
                             n = 0 })
 
     Module { items = got.items, errors = m.errors }
@@ -2211,6 +2239,129 @@ reads_all_stmts(ss: Stmt[], i: int, bound: str[]) -> bool {
     }
 }
 
+/// A record literal with no name gets a struct of its own shape to be.
+named_anons(m: Module) -> Module {
+    fixed = anon_stmts(m.items, 0)
+
+    Module { items = fixed ++ anon_decls(anon_in_stmts(fixed, 0), 0, []),
+             errors = m.errors }
+}
+
+anon_stmts(ss: Stmt[], i: int) -> Stmt[] {
+    if i >= ss.length() {
+        []
+    } else {
+        [anon_stmt(ss.get(i))] ++ anon_stmts(ss, i + 1)
+    }
+}
+
+anon_stmt(s: Stmt) -> Stmt =>
+    s with { value = anon_expr(s.value), body = anon_stmts(s.body, 0) }
+
+anon_expr(e: Expr) -> Expr =>
+    e with { text = anon_text(e), stmts = anon_stmts(e.stmts, 0),
+             children = anon_kids(e.children, 0) }
+
+anon_kids(cs: Expr[], i: int) -> Expr[] {
+    if i >= cs.length() {
+        []
+    } else {
+        [anon_expr(cs.get(i))] ++ anon_kids(cs, i + 1)
+    }
+}
+
+/// Two literals of one shape share a name, so the field list is sorted first.
+anon_text(e: Expr) -> str {
+    if e.kind != ERecord || e.text != "" || e.children.length() == 0 {
+        e.text
+    } else if !anon_named_fields(e.children, 0) {
+        e.text
+    } else {
+        "MacaAnon_" ++ anon_tags(e.children, 0, []).sort().join("_")
+    }
+}
+
+anon_named_fields(fs: Expr[], i: int) -> bool {
+    if i >= fs.length() {
+        true
+    } else if !anon_field_named(fs.get(i)) {
+        false
+    } else {
+        anon_named_fields(fs, i + 1)
+    }
+}
+
+anon_field_named(f: Expr) -> bool {
+    if f.kind != EBinary || f.text != "=" || f.children.length() < 2 {
+        false
+    } else {
+        anon_word(f.children.get(0).text)
+    }
+}
+
+anon_word(name: str) -> bool =>
+    name != "" && (name.at(0).is_alpha() || name.at(0) == "_")
+
+anon_tags(fs: Expr[], i: int, acc: str[]) -> str[] {
+    if i >= fs.length() {
+        acc
+    } else {
+        anon_tags(fs, i + 1, acc ++ [anon_tag(fs.get(i))])
+    }
+}
+
+anon_tag(f: Expr) -> str =>
+    "{f.children.get(0).text}_{type_tag(f.children.get(1).ty)}"
+
+is_anon_lit(e: Expr) -> bool =>
+    e.kind == ERecord && e.text.index_of("MacaAnon_") == 0
+
+anon_in_stmts(ss: Stmt[], i: int) -> Expr[] {
+    if i >= ss.length() {
+        []
+    } else {
+        anon_in_stmt(ss.get(i)) ++ anon_in_stmts(ss, i + 1)
+    }
+}
+
+anon_in_stmt(s: Stmt) -> Expr[] =>
+    anon_in_expr(s.value) ++ anon_in_stmts(s.body, 0)
+
+anon_in_expr(e: Expr) -> Expr[] {
+    under = anon_in_kids(e.children, 0) ++ anon_in_stmts(e.stmts, 0)
+
+    is_anon_lit(e) ? [e] ++ under : under
+}
+
+anon_in_kids(cs: Expr[], i: int) -> Expr[] {
+    if i >= cs.length() {
+        []
+    } else {
+        anon_in_expr(cs.get(i)) ++ anon_in_kids(cs, i + 1)
+    }
+}
+
+anon_decls(es: Expr[], i: int, seen: str[]) -> Stmt[] {
+    if i >= es.length() {
+        []
+    } else if seen.index_of(es.get(i).text) >= 0 {
+        anon_decls(es, i + 1, seen)
+    } else {
+        [s_record(es.get(i).text, anon_fields(es.get(i).children, 0))]
+            ++ anon_decls(es, i + 1, seen ++ [es.get(i).text])
+    }
+}
+
+anon_fields(fs: Expr[], i: int) -> Expr[] {
+    if i >= fs.length() {
+        []
+    } else {
+        [e_param(fs.get(i).children.get(0).text,
+                 fs.get(i).children.get(1).ty)]
+            ++ anon_fields(fs, i + 1)
+    }
+}
+
 Want = {
     name: str
     tys:  str[]
@@ -2246,7 +2397,7 @@ monomorphic(m: Module) -> Module {
     } else {
         first = mono_items(m.items, 0, [],
                            Poly { gens, wants = [], done = [] })
-        grown = expanded(first.at, 0, [])
+        grown = expanded(checked_module(m), first.at, 0, [])
 
         Module { items = first.stmts ++ grown.stmts, errors = m.errors }
     }
@@ -2279,10 +2430,30 @@ any_type_var(ps: Expr[], i: int) -> bool {
 
 /// A name the type table answers nothing for is the one thing left that it can be.
 has_type_var(name: str) -> bool {
+    cut = name.index_of(") -> ")
+
     if is_array_name(name) {
         has_type_var(name.slice(0, name.length() - 2))
+    } else if cut >= 0 {
+        var_in_each(name.slice(1, cut))
+            || has_type_var(name.slice(cut + 5, name.length()))
+    } else if map_type_val(name) != "" {
+        has_type_var(map_type_key(name)) || has_type_var(map_type_val(name))
     } else {
         name != "" && ty_named(name).kind == KAny
+    }
+}
+
+var_in_each(list: str) -> bool {
+    cut = list.index_of(", ")
+
+    if list == "" {
+        false
+    } else if cut < 0 {
+        has_type_var(list)
+    } else {
+        has_type_var(list.slice(0, cut))
+            || var_in_each(list.slice(cut + 2, list.length()))
     }
 }
 
@@ -2403,7 +2574,7 @@ type_tag(ty: str) -> str {
     }
 }
 
-expanded(at: Poly, i: int, acc: Stmt[]) -> PolyBody {
+expanded(env: Env, at: Poly, i: int, acc: Stmt[]) -> PolyBody {
     if i >= at.wants.length() {
         PolyBody { stmts = acc, at }
     } else {
@@ -2411,13 +2582,13 @@ expanded(at: Poly, i: int, acc: Stmt[]) -> PolyBody {
         name = mangled(w)
 
         if at.done.index_of(name) >= 0 {
-            expanded(at, i + 1, acc)
+            expanded(env, at, i + 1, acc)
         } else {
             g = at.gens.get(generic_at(at.gens, w.name, 0))
-            one = mono_stmt(specialised(g, w, name),
+            one = mono_stmt(annotate_item(env, specialised(g, w, name)),
                             at with { done = at.done ++ [name] })
 
-            expanded(one.at, i + 1, acc ++ one.stmts)
+            expanded(env, one.at, i + 1, acc ++ one.stmts)
         }
     }
 }
@@ -2425,20 +2596,49 @@ expanded(at: Poly, i: int, acc: Stmt[]) -> PolyBody {
 specialised(g: Stmt, w: Want, name: str) -> Stmt =>
     g with { name,
              ret = specialised_ty(g, w.tys, g.ret),
-             params = specialised_params(g.params, w.tys, 0) }
+             params = specialised_params(g, g.params, w.tys, 0),
+             body = ground_body(g, w.tys, g.body, 0) }
 
-specialised_params(ps: Expr[], tys: str[], i: int) -> Expr[] {
-    if i >= ps.length() {
+ground_body(g: Stmt, tys: str[], ss: Stmt[], i: int) -> Stmt[] {
+    if i >= ss.length() {
         []
     } else {
-        [specialised_param(ps.get(i), tys, i)]
-            ++ specialised_params(ps, tys, i + 1)
+        [ground_stmt(g, tys, ss.get(i))] ++ ground_body(g, tys, ss, i + 1)
     }
 }
 
-specialised_param(p: Expr, tys: str[], i: int) -> Expr {
+ground_stmt(g: Stmt, tys: str[], s: Stmt) -> Stmt =>
+    s with { ret = specialised_ty(g, tys, s.ret),
+             value = ground_expr(g, tys, s.value),
+             body = ground_body(g, tys, s.body, 0) }
+
+ground_expr(g: Stmt, tys: str[], e: Expr) -> Expr =>
+    e with { stmts = ground_body(g, tys, e.stmts, 0),
+             children = ground_kids(g, tys, e.children, 0) }
+
+ground_kids(g: Stmt, tys: str[], cs: Expr[], i: int) -> Expr[] {
+    if i >= cs.length() {
+        []
+    } else {
+        [ground_expr(g, tys, cs.get(i))] ++ ground_kids(g, tys, cs, i + 1)
+    }
+}
+
+specialised_params(g: Stmt, ps: Expr[], tys: str[], i: int) -> Expr[] {
+    if i >= ps.length() {
+        []
+    } else {
+        [specialised_param(g, ps.get(i), tys, i)]
+            ++ specialised_params(g, ps, tys, i + 1)
+    }
+}
+
+/// An argument whose own type is still unknown leaves the declaration to say what it is.
+specialised_param(g: Stmt, p: Expr, tys: str[], i: int) -> Expr {
     if i >= tys.length() {
         p
+    } else if tys.get(i) == "" {
+        p with { ty = specialised_ty(g, tys, p.ty) }
     } else {
         p with { ty = tys.get(i) }
     }
@@ -2447,10 +2647,35 @@ specialised_param(p: Expr, tys: str[], i: int) -> Expr {
 specialised_ty(g: Stmt, tys: str[], ty: str) -> str {
     if is_array_name(ty) {
         specialised_ty(g, tys, ty.slice(0, ty.length() - 2)) ++ "[]"
+    } else if map_type_val(ty) != "" {
+        "Map {specialised_ty(g, tys, map_type_key(ty))}"
+            ++ " {specialised_ty(g, tys, map_type_val(ty))}"
+    } else if ty.index_of(") -> ") >= 0 {
+        specialised_fn(g, tys, ty)
     } else if !has_type_var(ty) {
         ty
     } else {
         var_type(g.params, tys, 0, ty)
+    }
+}
+
+specialised_fn(g: Stmt, tys: str[], ty: str) -> str {
+    cut = ty.index_of(") -> ")
+
+    "({specialised_each(g, tys, ty.slice(1, cut))}) -> "
+        ++ specialised_ty(g, tys, ty.slice(cut + 5, ty.length()))
+}
+
+specialised_each(g: Stmt, tys: str[], list: str) -> str {
+    cut = list.index_of(", ")
+
+    if list == "" {
+        ""
+    } else if cut < 0 {
+        specialised_ty(g, tys, list)
+    } else {
+        "{specialised_ty(g, tys, list.slice(0, cut))}, "
+            ++ specialised_each(g, tys, list.slice(cut + 2, list.length()))
     }
 }
 

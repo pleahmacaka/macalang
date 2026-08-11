@@ -40,7 +40,7 @@ test_the_preamble_carries_the_box_helper() {
 test_a_push_boxes_the_element_it_appends() {
     out = c_for(Rec ++ "g(xs: R[]) -> R[] => xs.push(R {{ n = 2 }})")
 
-    assert(out.index_of("maca_listv(1, maca_box(sizeof(R),") >= 0,
+    assert(out.index_of("maca_list_pushed(xs, maca_box(sizeof(R),") >= 0,
            "the appended cell is boxed like any other")
     assert(out.index_of("(long)(R)") < 0,
            "the old lowering cast the struct itself, and lost its parentheses")
@@ -90,7 +90,7 @@ test_an_int_list_is_left_exactly_as_it_was() {
 
     assert(out.index_of("((long)xs.data[0])") >= 0,
            "an int fits a cell, so it is read straight out")
-    assert(out.index_of("maca_listv(1, (long)(") >= 0,
+    assert(out.index_of("maca_list_pushed(xs, (long)(") >= 0,
            "and written straight in, with no box in sight")
     assert(out.index_of("maca_box") == out.index_of("maca_box(int n,"),
            "the only mention of the helper is the preamble that defines it")
