@@ -1,0 +1,95 @@
+import std/proc
+import std/text
+
+maca_bin() -> str =>
+    env_or("MACA", "target/release/maca")
+
+scratch() -> str {
+    dir = env_or("TMPDIR", "/tmp") ++ "/maca-corpus-docs"
+    make_dir(dir)
+
+    dir
+}
+
+documented_files() -> str[] =>
+    ["llms.txt", ".claude/skills/macalang/SKILL.md", "README.md"]
+
+maca_blocks(md: str) -> str[] =>
+    scan_blocks(lines(md), 0, false, [], [])
+
+scan_blocks(ls: str[], i: int, inside: bool, cur: str[], acc: str[]) -> str[] {
+    if i >= ls.length() {
+        acc
+    } else if !inside && ls.get(i).trim().starts_with("```maca") {
+        scan_blocks(ls, i + 1, true, [], acc)
+    } else if inside && ls.get(i).trim().starts_with("```") {
+        scan_blocks(ls, i + 1, false, [], acc.push(cur.join("\n")))
+    } else if inside {
+        scan_blocks(ls, i + 1, true, cur.push(ls.get(i)), acc)
+    } else {
+        scan_blocks(ls, i + 1, false, cur, acc)
+    }
+}
+
+imports_a_package(block: str) -> bool =>
+    lines(block)
+        .filter(l => l.trim().starts_with("import ") && !l.contains("\""))
+        .length() > 0
+
+as_program(block: str) -> str =>
+    block.contains("main(") ? block : block ++ "\nmain() -> int => 0\n"
+
+test_a_fenced_block_is_read_back_as_the_program_it_shows() {
+    md = ["prose", "```maca", "import std/text", "", "main() -> int => 0",
+          "```", "more prose", "```", "not maca", "```"].join("\n")
+
+    assert_eq(maca_blocks(md).length(), 1,
+        "only a ```maca fence opens a block")
+    assert_eq(maca_blocks(md).get(0),
+        ["import std/text", "", "main() -> int => 0"].join("\n"),
+        "and the fences themselves are not part of it")
+    assert(imports_a_package(maca_blocks(md).get(0)),
+        "a bare import names a package the repository provides")
+    assert(!imports_a_package("import \"./local\"\nmain() -> int => 0"),
+        "a quoted import names a file, which proves nothing about a package")
+    assert_eq(as_program("greet() -> str => \"hi\""),
+        "greet() -> str => \"hi\"\nmain() -> int => 0\n",
+        "an excerpt with no main is given one, so it can be built")
+}
+
+test_every_documented_import_names_something_that_exists() {
+    built = 0
+
+    for file in documented_files() {
+        for block in maca_blocks(read_file(file)) {
+            if imports_a_package(block) {
+                src = scratch() ++ "/doc.maca"
+                write_file(src, as_program(block))
+                built = built + 1
+
+                assert_eq(exec(maca_bin(),
+                    ["build", src, "-o", scratch() ++ "/doc.out"]), 0,
+                    "a documented example in {file} does not build:\n{block}")
+            }
+        }
+    }
+
+    assert(built > 0,
+        "no documented example imports a package: either the docs stopped "
+            ++ "showing one, or the reading above stopped recognising it")
+}
+
+test_the_corpus_rules_hold() {
+    assert_eq(exec(maca_bin(), ["test", "apps/corpus/tests/corpus.maca"]), 0,
+        "the licence gate and the record shape are what decide whether the "
+            ++ "corpus may be redistributed")
+}
+
+test_the_allowed_list_holds_no_copyleft() {
+    src = read_file("apps/corpus/licence.maca")
+
+    for refused in ["GPL", "AGPL", "LGPL", "SSPL", "CC-BY-SA"] {
+        assert(!src.contains("\"" ++ refused),
+            "`{refused}` is on the allowed list, and a corpus is redistributed")
+    }
+}

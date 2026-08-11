@@ -1,0 +1,186 @@
+import std/proc
+
+scratch() -> str =>
+    env_or("TMPDIR", "/tmp") ++ "/maca-refusals"
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+entry_project() -> str {
+    root = scratch() ++ "/entry"
+
+    make_dir(scratch())
+    make_dir(root)
+    make_dir(root ++ "/modules")
+    write_file(root ++ "/maca.toml", "[package]\nname = \"p\"\n")
+    write_file(root ++ "/modules/status.maca",
+        "code() -> int => 0\n\nneeds(port: int) -> int => port\n")
+    write_file(root ++ "/modules/quiet.maca", "helper() -> int => 0\n")
+
+    root
+}
+
+pair_project() -> str {
+    root = scratch() ++ "/pair"
+
+    make_dir(scratch())
+    make_dir(root)
+    write_file(root ++ "/maca.toml",
+        "[package]\nname = \"pair\"\n\n[[bin]]\nname = \"a\"\npath = \"a.maca\"\n"
+            ++ "\n[[bin]]\nname = \"b\"\npath = \"b.maca\"\n")
+    write_file(root ++ "/a.maca", "main() -> int {{\n    info(\"A\")\n    0\n}}\n")
+    write_file(root ++ "/b.maca", "main() -> int {{\n    info(\"B\")\n    0\n}}\n")
+
+    root
+}
+
+bare_project() -> str {
+    root = scratch() ++ "/bare"
+
+    make_dir(scratch())
+    make_dir(root)
+
+    root
+}
+
+said_in(dir: str, args: str[]) -> str {
+    bin = maca_bin()
+    back = cwd()
+
+    chdir(dir)
+    said = capture_err(bin, args)
+    chdir(back)
+
+    said
+}
+
+code_in(dir: str, args: str[]) -> int {
+    bin = maca_bin()
+    back = cwd()
+
+    chdir(dir)
+    code = exec(bin, args)
+    chdir(back)
+
+    code
+}
+
+refused(path: str, want: str) -> bool {
+    said = capture(maca_bin(), ["check", path])
+
+    assert_eq(str(exec(maca_bin(), ["check", path])), "1",
+        "{path} was not refused with one error: {said}")
+    assert(said.contains(want), "{path}: wanted {want}, said {said}")
+
+    true
+}
+
+test_the_bad_corpus_is_refused_and_told_why() {
+    refused("apps/examples/bad/type_mismatch.maca", "expected int, found str")
+    refused("apps/examples/bad/arg_mismatch.maca", "expected int, found str")
+    refused("apps/examples/bad/branch_mismatch.maca", "expected int, found str")
+    refused("apps/examples/bad/range_end.maca", "expected int, found str")
+    refused("apps/examples/bad/while_cond.maca", "expected bool, found int")
+    refused("apps/examples/bad/arity.maca", "`greet` takes 1 argument(s), given 2")
+}
+
+test_the_golden_examples_are_still_accepted() {
+    for name in ["hello", "tour", "loops", "sum_record", "recursive_record", "async"] {
+        assert_eq(str(exec(maca_bin(), ["check", "apps/examples/{name}.maca"])), "0",
+            "{name} is a golden example and has to check clean")
+    }
+}
+
+test_every_back_end_refuses_the_same_type_error() {
+    make_dir(scratch())
+    src = scratch() ++ "/mismatch.maca"
+
+    write_file(src, "add(a: int, b: int) -> int => a + b\n\n"
+        ++ "main() -> int {{\n    add(\"not an int\", 2)\n}}\n")
+
+    for target in ["c", "js", "jvm", "rust", "nix", "embedded"] {
+        built = ["build", src, "-o", scratch() ++ "/out-{target}", "--target", target]
+
+        assert(exec(maca_bin(), built) != 0,
+            "{target} accepted a program the checker rejects")
+        assert(capture(maca_bin(), built)
+            .contains("type mismatch: expected int, found str"),
+            "{target} refused it without naming the mismatch")
+    }
+}
+
+test_check_answers_on_stdout_and_counts_on_the_exit_code() {
+    make_dir(scratch())
+    good = scratch() ++ "/good.maca"
+    bad = scratch() ++ "/bad.maca"
+
+    write_file(good, "f(n: int) -> int => n + 1\n")
+    write_file(bad, "f() -> int => \"x\"\n")
+
+    assert_eq(str(exec(maca_bin(), ["check", good])), "0",
+        "nothing to say about a clean file")
+    assert_eq(str(exec(maca_bin(), ["check", bad])), "1", "one mismatch is one error")
+    assert(capture(maca_bin(), ["check", bad]).contains("expected int, found str"),
+        "and the message names both types")
+    assert_eq(capture_err(maca_bin(), ["check", bad]), "",
+        "a diagnostic is what check was asked for, so it is not on stderr")
+}
+
+test_a_module_that_is_not_there_is_named_with_where_it_was_looked_for() {
+    said = said_in(entry_project(), ["-m", "nosuch.thing"])
+
+    assert(said.contains("no module `nosuch"), "names the module: {said}")
+    assert(said.contains("nosuch/thing.maca"), "and where it looked: {said}")
+}
+
+test_a_function_the_module_does_not_define_is_named() {
+    said = said_in(entry_project(), ["-m", "status.missing"])
+
+    assert(said.contains("no function `missing`"), "{said}")
+}
+
+test_an_entry_point_the_command_line_cannot_fill_is_refused() {
+    said = said_in(entry_project(), ["-m", "status.needs"])
+
+    assert(said.contains("port: int"), "names the signature: {said}")
+    assert(said.contains("one `str[]`"), "says what would work instead: {said}")
+}
+
+test_a_module_with_nothing_to_run_is_told_to_name_a_function() {
+    said = said_in(entry_project(), ["-m", "quiet"])
+
+    assert(said.contains("no `main`"), "{said}")
+    assert(said.contains("maca -m quiet.something"), "suggests the fix: {said}")
+}
+
+test_every_module_refusal_is_a_usage_error() {
+    root = entry_project()
+
+    for spec in ["nosuch.thing", "status.missing", "status.needs", "quiet"] {
+        assert_eq(str(code_in(root, ["-m", spec])), "2",
+            "-m {spec} should be refused as a usage error")
+    }
+}
+
+test_two_binaries_and_no_choice_is_refused_with_both_names() {
+    root = pair_project()
+    said = said_in(root, ["run"])
+
+    assert_eq(str(code_in(root, ["run"])), "2",
+        "two binaries and no --bin is a usage error")
+    assert(said.contains("declares 2 binaries"), "says what it found: {said}")
+    assert(said.contains("one of a, b"), "and names them: {said}")
+}
+
+test_no_manifest_and_no_file_is_refused_by_name() {
+    root = bare_project()
+    said = said_in(root, ["run"])
+
+    assert_eq(str(code_in(root, ["run"])), "2",
+        "no manifest and no file is a usage error")
+    assert(said.contains("no maca.toml here"),
+        "the message says what is missing: {said}")
+}

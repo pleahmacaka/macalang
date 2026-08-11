@@ -1,0 +1,331 @@
+import std/proc
+
+maca_bin() -> str =>
+    env_or("MACA", "target/release/maca")
+
+scratch(sub: str) -> str {
+    dir = env_or("TMPDIR", "/tmp") ++ "/maca-corpus-" ++ sub
+    make_dir(dir)
+
+    dir
+}
+
+fixture(sub: str, name: str, src: str) -> str {
+    path = scratch(sub) ++ "/" ++ name
+    write_file(path, src)
+
+    path
+}
+
+example(name: str) -> str =>
+    "apps/examples/" ++ name ++ ".maca"
+
+ran(path: str) -> str =>
+    output(maca_bin(), ["run", path])
+
+ran_example(name: str) -> str =>
+    ran(example(name))
+
+quiet_exit(cmd: str, line: str) -> int =>
+    exec("sh", ["-c", "'{cmd}' {line} > /dev/null 2>&1"])
+
+exit_of(path: str) -> int =>
+    quiet_exit(maca_bin(), "run '{path}'")
+
+test_hello_is_the_program_the_first_page_shows() {
+    assert_eq(ran_example("hello"), "Hello, World",
+        "the shortest program in the book still greets")
+}
+
+test_a_pattern_example_chooses_the_arm_it_named() {
+    assert_eq(ran_example("match_guard"),
+        ["negative", "zero", "small", "big", "two"].join("\n"),
+        "a guard selects on the value, not on the shape alone")
+    assert_eq(ran_example("or_patterns"),
+        ["warm", "cold", "low", "high"].join("\n"),
+        "one arm may stand for several variants")
+    assert_eq(ran_example("record_pattern"),
+        ["4", "true", "side: right"].join("\n"),
+        "a record is taken apart in the pattern")
+    assert_eq(ran_example("payload_sum"),
+        ["100", "12"].join("\n"),
+        "a variant carries its payload into the arm that matched")
+}
+
+test_a_data_example_prints_the_values_it_holds() {
+    assert_eq(ran_example("generic_record"),
+        ["hello", "42", "7"].join("\n"),
+        "a generic record is one type per element type")
+    assert_eq(ran_example("record_update"),
+        ["localhost:80 tls=false",
+         "localhost:443 tls=true",
+         "localhost:8080 tls=false"].join("\n"),
+        "an update copies the record and replaces one field")
+    assert_eq(ran_example("recursive_record"), "tree has 5 nodes",
+        "a record that holds its own type walks")
+    assert_eq(ran_example("indexing"),
+        ["10 30", "3", "m", "4", "99", "42 2"].join("\n"),
+        "indexing reaches lists, strings and maps alike")
+    assert_eq(ran_example("keywords"),
+        ["10", "20", "7 hi", "99"].join("\n"),
+        "a name C reserves is still a name here")
+}
+
+test_a_function_example_applies_what_it_was_given() {
+    assert_eq(ran_example("lambda"), ["1", "4", "9", "16"].join("\n"),
+        "a lambda is a value the list method calls")
+    assert_eq(ran_example("parallel"), ["1", "4", "9", "16"].join("\n"),
+        "the parallel map answers in order")
+    assert_eq(ran_example("operators"), "8,12",
+        "an overloaded operator dispatches on its record")
+    assert_eq(ran_example("generic"), "hello",
+        "a generic function is monomorphised per call")
+    assert_eq(exit_of(example("generic")), 5,
+        "and the value main answers is the exit code")
+}
+
+test_a_loop_example_counts_to_where_it_stops() {
+    assert_eq(ran_example("loops"), ["55", "5"].join("\n"),
+        "a while and a for reach the same total")
+    assert_eq(ran_example("fizzbuzz"), "7",
+        "fizzbuzz counts what it printed")
+    assert_eq(ran_example("range"),
+        ["1 through 100 sums to 5050",
+         "0..5 has 5 elements, from 0 to 4",
+         "5..5 has 0 elements, because the end is not included"].join("\n"),
+        "a range excludes its end")
+}
+
+test_a_prelude_example_computes_what_it_claims() {
+    assert_eq(ran_example("math"),
+        ["sqrt(144)=12.0 floor(3.9)=3.0 ceil(3.1)=4.0",
+         "pow(2,10)=1024.0 round(2.5)=3.0",
+         "abs=7 sign=-1",
+         "min=4 max=9 clamp=10",
+         "gcd(54,24)=6"].join("\n"),
+        "every arithmetic the prelude promises")
+    assert_eq(ran_example("strings"),
+        ["cols: 3", "name", "age", "city", "EMPLOYEES TABLE",
+         "has Table: true", "prefix true suffix true",
+         "Employees View", "Employees", "index 10", "---------",
+         "007", "ab...", "    hi"].join("\n"),
+        "splitting, casing, padding and truncating")
+    assert_eq(ran_example("wordcount"),
+        ["7 distinct words", "the      3", "quick    1", "brown    1",
+         "fox      1", "lazy     1", "dog      1", "end      1"].join("\n"),
+        "a map counted and a column padded")
+    assert_eq(ran_example("tour"),
+        ["acc = 24, len = 5",
+         "p.y = 2, q.y = 9, q.double = 18",
+         "circle = 12.56, rect = 12.0",
+         "ok = true, collatz(27) = 111, fib(10) = 55"].join("\n"),
+        "the tour is the language in four lines")
+}
+
+test_a_concurrency_example_joins_before_it_answers() {
+    assert_eq(ran_example("async"), "20 + 40 = 60",
+        "two spawns and an await add up")
+}
+
+test_a_failure_that_is_caught_leaves_nothing_behind() {
+    assert_eq(ran_example("catch"), "recovered",
+        "try answers with the recovery, not the failure")
+    assert_eq(exit_of(example("catch")), 0,
+        "a caught failure is not an exit code")
+    assert_eq(capture_err(maca_bin(), ["run", example("catch")]), "",
+        "and it is not a diagnostic either")
+}
+
+test_a_vector_example_reduces_the_lane_it_widened() {
+    assert_eq(ran_example("simd"), "48.0",
+        "eight lanes multiplied and summed")
+    assert_eq(ran_example("dot"), "dot8=48.0 scaled_sum=30",
+        "the same dot product beside an ordinary list")
+}
+
+test_the_file_example_writes_then_reads_what_it_wrote() {
+    assert_eq(ran_example("fileio"),
+        ["read 4 lines", "one.md exists", "nope.md missing",
+         "pages: 2", "first: one.md", "second: two.md"].join("\n"),
+        "write, read, exists and walk, in one program")
+}
+
+test_a_package_demo_reaches_its_last_line() {
+    demos = ["bench_demo", "profile_demo", "signal_demo", "tambo_demo"]
+    ends = ["5 cases:", "→ sort words", "nothing to patch",
+            "unanswered route names: 0"]
+
+    for i in 0..demos.length() {
+        app = demos.get(i)
+        said = ran("apps/{app}/{app}.maca")
+
+        assert(said.contains(ends.get(i)),
+            "{app} stopped before its last line: {said}")
+        assert_eq(exit_of("apps/{app}/{app}.maca"), 0,
+            "{app} printed its last line and then failed")
+    }
+}
+
+test_the_microkernel_boots_schedules_and_halts() {
+    said = ran("apps/microkernel/kernel.maca")
+
+    assert(said.contains("maca microkernel: boot"), "no boot banner: {said}")
+    assert(said.contains("cap fault"), "no capability check: {said}")
+    assert(said.contains("tasks retired  : 5/6"),
+        "the scheduler retired a different set: {said}")
+    assert_eq(exit_of("apps/microkernel/kernel.maca"), 0,
+        "the kernel should halt cleanly")
+}
+
+test_the_cli_example_helps_refuses_and_runs() {
+    bin = scratch("cli") ++ "/cli_tool"
+
+    assert_eq(exec(maca_bin(),
+        ["build", "apps/cli_tool/cli_tool.maca", "-o", bin]), 0,
+        "the cli demo builds")
+
+    help = output(bin, ["--help"])
+    assert(help.contains("-s, --sort"), "help lists the options: {help}")
+    assert(help.contains("(default: name)"), "and their defaults: {help}")
+
+    wrong = ["modules/cli", "--srot", "lines"]
+    assert_eq(quiet_exit(bin, "modules/cli --srot lines"), 1,
+        "a misspelt option is a failure")
+    assert(capture_err(bin, wrong).contains("did you mean `--sort`"),
+        "and it names the option that was meant")
+
+    said = output(bin, ["modules/cli", "--top", "3", "--totals"])
+    assert(said.contains("parse.maca"), "the run lists files: {said}")
+    assert(said.contains("3 file(s) counted"), "and honours --top: {said}")
+    assert(said.contains("bytes"), "and --totals: {said}")
+}
+
+test_recursion_and_arithmetic_reach_the_same_answer_twice() {
+    src = fixture("fx", "fib.maca",
+        ["fib(n: int) -> int =>",
+         "    n < 2 ? n : fib(n - 1) + fib(n - 2)",
+         "",
+         "main() -> int {{",
+         "    info(\"{{fib(20)}}\")",
+         "    0",
+         "}}",
+         ""].join("\n"))
+
+    assert_eq(ran(src), "6765", "fib(20)")
+}
+
+test_an_import_resolves_a_function_in_a_sibling_file() {
+    fixture("imports", "mathlib.maca", "twice(n: int) -> int => n * 2\n")
+    src = fixture("imports", "main.maca",
+        ["import mathlib",
+         "",
+         "main() -> int {{",
+         "    info(\"{{twice(21)}}\")",
+         "    0",
+         "}}",
+         ""].join("\n"))
+
+    assert_eq(ran(src), "42", "the imported function ran")
+}
+
+test_a_selective_import_takes_only_the_name_it_asked_for() {
+    fixture("selective", "mathutil.maca",
+        ["square(x: int) -> int => x * x",
+         "cube(x: int) -> int => square(x) * x",
+         "boom(x: int) -> int => x / 0",
+         ""].join("\n"))
+    src = fixture("selective", "main.maca",
+        ["import {{ cube }} from mathutil",
+         "",
+         "main() -> int {{",
+         "    info(\"cube(4)={{cube(4)}}\")",
+         "    cube(4)",
+         "}}",
+         ""].join("\n"))
+
+    assert_eq(ran(src), "cube(4)=64",
+        "cube came through, and square came with it")
+    assert_eq(exit_of(src), 64, "the exit code is what main answered")
+}
+
+test_a_function_passed_as_a_parameter_is_called_through() {
+    src = fixture("fx", "higher.maca",
+        ["even(n: int) -> bool => n % 2 == 0",
+         "",
+         "count_if(xs: int[], i: int, pred) -> int =>",
+         "    i >= xs.length() ? 0"
+             ++ " : (pred(xs.get(i)) ? 1 : 0) + count_if(xs, i + 1, pred)",
+         "",
+         "main() -> int {{",
+         "    xs = 1, 2, 3, 4, 5, 6",
+         "    info(\"evens={{count_if(xs, 0, even)}}\")",
+         "    0",
+         "}}",
+         ""].join("\n"))
+
+    assert_eq(ran(src), "evens=3", "the predicate decided three of six")
+}
+
+test_a_list_method_accepts_a_named_function() {
+    src = fixture("fx", "methods.maca",
+        ["is_even(n: int) -> bool => n % 2 == 0",
+         "double(n: int) -> int => n * 2",
+         "add(a: int, b: int) -> int => a + b",
+         "",
+         "main() -> int {{",
+         "    info(\"filter={{[1, 2, 3, 4].filter(is_even).length()}}\")",
+         "    info(\"map={{[1, 2, 3].map(double).get(2)}}\")",
+         "    info(\"reduce={{[1, 2, 3, 4].reduce(0, add)}}\")",
+         "    info(\"lambda={{[1, 2, 3, 4].filter(n => n > 2).length()}}\")",
+         "    0",
+         "}}",
+         ""].join("\n"))
+
+    assert_eq(ran(src),
+        ["filter=2", "map=6", "reduce=10", "lambda=2"].join("\n"),
+        "a name and a lambda are the same argument")
+}
+
+test_a_match_on_strings_routes_by_its_arms() {
+    src = fixture("fx", "route.maca",
+        ["route(c: str) -> int {{",
+         "    match c {{",
+         "        \"add\" => 1",
+         "        \"del\" => 2",
+         "        _ => 0",
+         "    }}",
+         "}}",
+         "",
+         "main() -> int {{",
+         "    a = route(\"add\")",
+         "    b = route(\"del\")",
+         "    z = route(\"x\")",
+         "    info(\"{{a}} {{b}} {{z}}\")",
+         "    0",
+         "}}",
+         ""].join("\n"))
+
+    assert_eq(ran(src), "1 2 0", "two arms and the catch-all")
+}
+
+test_fail_stops_the_program_with_the_message_it_was_given() {
+    src = fixture("fx", "refuse.maca",
+        ["check(n: int) -> int {{",
+         "    if n < 0 {{",
+         "        fail \"negative input\"",
+         "    }}",
+         "    n",
+         "}}",
+         "",
+         "main() -> int {{",
+         "    info(\"{{check(0 - 1)}}\")",
+         "    0",
+         "}}",
+         ""].join("\n"))
+
+    said = capture_err(maca_bin(), ["run", src])
+
+    assert(said.contains("error: negative input"),
+        "the message reaches stderr: {said}")
+    assert_eq(exit_of(src), 1, "and `fail` exits 1")
+}

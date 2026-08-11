@@ -1,0 +1,160 @@
+import std/proc
+import std/text
+
+scratch() -> str =>
+    env_or("TMPDIR", "/tmp") ++ "/maca-cli-tooling"
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+fixture(name: str, src: str) -> str {
+    dir = scratch()
+    make_dir(dir)
+    at = dir ++ "/" ++ name
+    write_file(at, src)
+
+    at
+}
+
+package_dir(tag: str) -> str {
+    dir = scratch() ++ "/" ++ tag
+    remove_dir(dir)
+    make_dir(dir)
+
+    dir
+}
+
+out_in(dir: str, args: str[]) -> str {
+    bin = maca_bin()
+    back = cwd()
+    chdir(dir)
+    got = capture(bin, args)
+    chdir(back)
+
+    got
+}
+
+err_in(dir: str, args: str[]) -> str {
+    bin = maca_bin()
+    back = cwd()
+    chdir(dir)
+    got = capture_err(bin, args)
+    chdir(back)
+
+    got
+}
+
+rc_in(dir: str, args: str[]) -> int {
+    bin = maca_bin()
+    back = cwd()
+    chdir(dir)
+    rc = exec(bin, args)
+    chdir(back)
+
+    rc
+}
+
+repeated(word: str, n: int, acc: str[]) -> str[] {
+    if n <= 0 {
+        acc
+    } else {
+        repeated(word, n - 1, acc.push(word))
+    }
+}
+
+lint_says(name: str, src: str) -> str =>
+    capture(maca_bin(), ["lint", fixture(name, src)])
+
+lint_rc(name: str, src: str) -> int =>
+    exec(maca_bin(), ["lint", fixture(name, src)])
+
+test_lint_flags_a_line_past_eighty_columns() {
+    src = "total = " ++ repeated("value", 20, []).join(" + ") ++ "\n"
+
+    said = lint_says("wide.maca", src)
+    assert(said.contains("80 columns"), "the rule names the width: {said}")
+    assert_eq(str(lint_rc("wide.maca", src)), "1",
+              "a seeded issue is a failing exit status")
+}
+
+test_lint_does_not_flag_a_long_string_literal() {
+    src = "x = \"" ++ repeated("a", 200, []).join("") ++ "\"\n"
+
+    assert_eq(str(lint_rc("literal.maca", src)), "0",
+              "a long string literal is not a long line")
+}
+
+test_lint_does_not_flag_an_else_if_chain() {
+    src = "pick(n: int) -> str {{\n    if n > 1 {{\n        \"many\"\n"
+        ++ "    }} else if n == 1 {{\n        \"one\"\n"
+        ++ "    }} else {{\n        \"none\"\n    }}\n}}\n"
+
+    assert_eq(str(lint_rc("chain.maca", src)), "0",
+              "an else-if chain is the house style, not a violation")
+}
+
+test_lint_resolves_imports_before_calling_a_name_undefined() {
+    src = "import std/path\n\nmain() -> int {{\n"
+        ++ "    info(join(\"a\", \"b\"))\n    0\n}}\n"
+
+    said = lint_says("import.maca", src)
+    assert(!said.contains("UndefinedName"), "join comes from std/path: {said}")
+}
+
+test_a_script_alias_runs_the_line_that_table_gives_it() {
+    dir = package_dir("script")
+    write_file(dir ++ "/maca.toml", "[scripts]\ngo = \"echo maca-script-ok\"\n")
+
+    assert_eq(out_in(dir, ["go"]).trim(), "maca-script-ok",
+              "a [scripts] name is a command of its own")
+}
+
+test_a_library_with_no_bin_is_told_so_rather_than_building_the_roots() {
+    dir = package_dir("library")
+    write_file(dir ++ "/maca.toml", "[package]\nname = \"greet\"\n")
+    write_file(dir ++ "/say.maca", "greeting(who: str) -> str => \"hi \" ++ who\n")
+
+    said = err_in(dir, ["build"])
+    assert(said.contains("greet"), "the message names the package: {said}")
+    assert(said.contains("[[bin]]"), "and what it lacks: {said}")
+    assert_eq(str(rc_in(dir, ["build"])), "2", "there is nothing to build")
+}
+
+two_binaries(tag: str, declared: str) -> str {
+    dir = package_dir(tag)
+    write_file(dir ++ "/main.maca", "main() -> int => 0\n")
+    write_file(dir ++ "/other.maca", "main() -> int => 3\n")
+    write_file(dir ++ "/maca.toml",
+        "[package]\nname = \"hello\"\n\n" ++ declared
+            ++ "[[bin]]\nname = \"hello\"\npath = \"main.maca\"\n\n"
+            ++ "[[bin]]\nname = \"other\"\npath = \"other.maca\"\n")
+
+    dir
+}
+
+test_two_binaries_need_the_one_to_build_naming() {
+    dir = two_binaries("choose", "")
+
+    said = err_in(dir, ["build"])
+    assert(said.contains("hello") && said.contains("other"),
+           "the message lists the names to choose from: {said}")
+    assert_eq(str(rc_in(dir, ["build"])), "2", "which one was meant")
+}
+
+test_the_binary_a_package_builds_by_default_can_be_declared() {
+    dir = two_binaries("default-bin", "[build]\nbin = \"other\"\n\n")
+
+    assert_eq(str(rc_in(dir, ["build"])), "0", "a declared bin needs no flag")
+    assert(file_exists(dir ++ "/other"), "the declared binary is the one built")
+    assert(!file_exists(dir ++ "/main"), "and the one it did not name was not")
+}
+
+test_the_version_the_binary_reports_is_the_one_the_manifest_declares() {
+    declared = between(read_file("maca.toml"), "version = \"", "\"")
+
+    assert_eq(capture(maca_bin(), ["--version"]).trim(), "maca {declared}",
+              "the binary reports the version its own manifest states")
+}
