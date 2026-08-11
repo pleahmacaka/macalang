@@ -483,7 +483,7 @@ fn usage() {
          \n\
          commands:\n\
          \x20 init  [dir]                  scaffold a new project (maca.toml, main.maca)\n\
-         \x20 build [file.maca] [-o out]   compile (native | --target nix|js|jvm|rust|embedded|tauri)\n\
+         \x20 build [file.maca] [-o out]   compile (native | --target nix|js|jvm|rust|tauri)\n\
          \x20 run   [file.maca] [args..]   compile and run\n\
          \x20 -m    <module>[.<fn>] [args..]  run a function out of a module\n\
          \x20 dev   [dev.maca] [-o flake]  generate a dev-shell flake.nix from Maca\n\
@@ -505,8 +505,8 @@ fn usage() {
          with no file, build/run/test are about the package the directory holds:\n\
          \x20 its [[bin]] (choose with --bin <name>), and its `tests` directory\n\
          \n\
-         build targets: native (default), --target nix | js | jvm | rust | embedded | tauri\n\
-         \x20 embedded also takes --mcu cortex-m0|m3|m4|riscv32; jvm takes --cp <jars>\n\
+         build targets: native (default), --target nix | js | jvm | rust | tauri\n\
+         \x20 jvm takes --cp <jars>\n\
          \n\
          [build] in maca.toml declares target, out, mcu, classpath and bin, so a\n\
          \x20 project builds by saying `maca build`; a flag on the line still wins"
@@ -517,7 +517,6 @@ fn usage() {
 struct Declared {
     target: Option<String>,
     out: Option<PathBuf>,
-    mcu: Option<String>,
     classpath: Option<String>,
     bin: Option<String>,
 }
@@ -544,7 +543,6 @@ fn declared_build(chain: &manifest::Chain) -> Result<Declared, String> {
         out: chain
             .value("[build]", "out")
             .map(|(dir, v)| dir.join(manifest::unquote(&v))),
-        mcu: text("mcu"),
         classpath: text("classpath"),
         bin: text("bin"),
     })
@@ -555,7 +553,6 @@ fn cmd_build(args: &[String]) {
     let mut out: Option<PathBuf> = None;
     let mut target: Option<String> = None;
     let mut classpath: Option<String> = None;
-    let mut mcu: Option<String> = None;
     let mut bin: Option<String> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -564,7 +561,9 @@ fn cmd_build(args: &[String]) {
             "--target" => target = it.next().cloned(),
             "--bin" => bin = it.next().cloned(),
             "--cp" | "--classpath" => classpath = it.next().cloned(),
-            "--mcu" => mcu = it.next().cloned(),
+            "--mcu" => {
+                let _ = it.next();
+            }
             _ => src = Some(PathBuf::from(a)),
         }
     }
@@ -572,7 +571,6 @@ fn cmd_build(args: &[String]) {
     check_workspace_of(&src);
     let declared = declared_build(&manifest::Chain::for_source(&src)).unwrap_or_else(|e| die(&e));
     let out = out.or(declared.out);
-    let mcu = mcu.or(declared.mcu).unwrap_or_default();
     let classpath = classpath.or(declared.classpath);
     let mut target = target.or(declared.target);
     if target.is_none()
@@ -624,17 +622,10 @@ fn cmd_build(args: &[String]) {
         }
         return;
     }
-    if target == "embedded" || target == "baremetal" || target == "mcu" {
-        match build_embedded(&src, out.as_deref(), &mcu) {
-            Ok(msg) => println!("{msg}"),
-            Err(e) => die(&e),
-        }
-        return;
-    }
     if !target.is_empty() && target != "native" && target != "c" {
         die(&format!(
             "unknown target `{target}`; expected one of \
-             nix, js, jvm, rust, embedded, tauri, or none for native"
+             nix, js, jvm, rust, tauri, or none for native"
         ));
     }
     let out = out.unwrap_or_else(|| PathBuf::from(stem(&src)));
@@ -839,48 +830,6 @@ fn validate_rust_imports(m: &maca_parser::Module, deps: &[(String, String)]) -> 
     }
     Ok(())
 }
-
-/// A freestanding image has no libc and no console, and its `main` is the reset handler's callee rather than a process entry point.
-fn validate_freestanding(m: &maca_parser::Module) -> Result<(), String> {
-    use maca_parser::ast::{Expr, Stmt};
-
-    for it in &m.items {
-        if let Stmt::Fn(f) = it
-            && f.name == "main"
-            && f.ret.is_some()
-        {
-            return Err(
-                "`main` returns nothing on a freestanding target. There is no \
-                 process to hand an exit code to; the reset handler calls it and \
-                 halts when it returns"
-                    .into(),
-            );
-        }
-    }
-
-    let mut used: Option<String> = None;
-    for it in &m.items {
-        maca_parser::ast::walk_stmt(it, &mut |e| {
-            if let Expr::Call { callee, .. } = e
-                && let Expr::Ident(n) = &**callee
-                && CONSOLE.contains(&n.as_str())
-                && used.is_none()
-            {
-                used = Some(n.clone());
-            }
-        });
-    }
-    match used {
-        Some(n) => Err(format!(
-            "`{n}` needs a console, and a freestanding image has none: no libc, \
-             no stdout. Drive a UART or a debug port with `mmio_write` instead"
-        )),
-        None => Ok(()),
-    }
-}
-
-/// The output builtins, which all write to a stream a bare-metal target lacks.
-use maca_core::IO_FNS as CONSOLE;
 
 /// A trait-impl method's foreign-typed parameter is a mutable borrow of a value the crate owns, so it must not outlive the call.
 fn validate_borrowed_params(m: &maca_parser::Module) -> Result<(), String> {
@@ -1262,109 +1211,6 @@ fn cmd_dev(args: &[String]) {
             println!("on Windows, run:  powershell -File {}", setup.display());
         }
     }
-}
-
-/// Embedded target → freestanding C + startup + linker script, cross-compiled to a bare-metal firmware image (ELF + raw .bin) with clang/lld.
-fn build_embedded(src: &Path, out: Option<&Path>, mcu_name: &str) -> Result<String, String> {
-    reject_browser_modules(src, "embedded")?;
-    let source = load_with_imports(src)?;
-    let parsed = maca_parser::parse(&source);
-    if !parsed.errors.is_empty() {
-        return Err(format!("parse errors:\n  {}", parsed.errors.join("\n  ")));
-    }
-    let diags = maca_core::check(&parsed.module, maca_core::Mode::Program);
-    if !diags.is_empty() {
-        let msgs: Vec<_> = diags
-            .iter()
-            .map(|d| format!("{:?}: {}", d.kind, d.msg))
-            .collect();
-        return Err(format!("type errors:\n  {}", msgs.join("\n  ")));
-    }
-    validate_freestanding(&parsed.module)?;
-
-    let mcu = maca_backend_embedded::Mcu::resolve(mcu_name)
-        .ok_or_else(|| format!("unknown --mcu {mcu_name:?} (try cortex-m0/m3/m4, riscv32)"))?;
-
-    let out_dir = out
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(format!("{}-fw", stem(src))));
-    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
-    let c_path = out_dir.join("firmware.c");
-    let ld_path = out_dir.join("link.ld");
-    let fw = maca_backend_embedded::emit_c_checked(&parsed.module).map_err(|probs| {
-        format!(
-            "unsupported by the embedded backend:\n  {}",
-            probs.join("\n  ")
-        )
-    })?;
-    std::fs::write(&c_path, fw).map_err(|e| e.to_string())?;
-    std::fs::write(&ld_path, maca_backend_embedded::linker_script(&mcu))
-        .map_err(|e| e.to_string())?;
-
-    if !have("clang") {
-        return Ok(format!(
-            "emitted {} + {} for {} (no clang on PATH to cross-compile)",
-            c_path.display(),
-            ld_path.display(),
-            mcu.name
-        ));
-    }
-    let elf = out_dir.join("firmware.elf");
-    let o = Command::new("clang")
-        .args([
-            &format!("--target={}", mcu.triple),
-            &format!("-mcpu={}", mcu.cpu),
-        ])
-        .args([
-            "-ffreestanding",
-            "-nostdlib",
-            "-Os",
-            "-ffunction-sections",
-            "-fdata-sections",
-        ])
-        .arg("-fuse-ld=lld")
-        .arg(format!("-Wl,-T,{}", ld_path.display()))
-        .arg("-Wl,--gc-sections")
-        .arg("-o")
-        .arg(&elf)
-        .arg(&c_path)
-        .output()
-        .map_err(|e| format!("clang: {e}"))?;
-    if !o.status.success() {
-        return Err(format!(
-            "cross-compile failed:\n{}",
-            String::from_utf8_lossy(&o.stderr)
-        ));
-    }
-    let bin = out_dir.join("firmware.bin");
-    if have("llvm-objcopy") {
-        let _ = Command::new("llvm-objcopy")
-            .args(["-O", "binary"])
-            .arg(&elf)
-            .arg(&bin)
-            .status();
-    }
-    let size = if have("llvm-size") {
-        String::from_utf8_lossy(
-            &Command::new("llvm-size")
-                .arg(&elf)
-                .output()
-                .map(|o| o.stdout)
-                .unwrap_or_default(),
-        )
-        .trim()
-        .to_string()
-    } else {
-        String::new()
-    };
-    Ok(format!(
-        "built firmware for {} → {}\n{}\n  flash: 0x{:08X}  ram: 0x{:08X}",
-        mcu.name,
-        elf.display(),
-        size,
-        mcu.flash_origin,
-        mcu.ram_origin
-    ))
 }
 
 /// UI mode → one self-contained, deployable `index.html`.

@@ -22,7 +22,6 @@ Virtual workspace; members are `crates/*`.
 | `maca-profile` | the flame-graph renderer, shared by `maca profile` and the playground |
 | `maca-backend-jvm` | core IR → Java source (JVM interop; Minecraft/Fabric) |
 | `maca-backend-rust` | core IR → Rust source (crates.io interop; `--target rust`) |
-| `maca-backend-embedded` | freestanding C for bare-metal MCUs (Cortex-M/RISC-V) |
 | `maca-wasm` | `wasm32` front-end for the browser playground (no wasm-bindgen) |
 
 **The toolchain's own programs are applications, because that is what they

@@ -111,25 +111,6 @@ fn jvm_inlines_the_imported_module() {
 }
 
 #[test]
-fn embedded_inlines_the_imported_module() {
-    let dir = project("embedded");
-    write(&dir, "lib/reg.maca", "mask(n: int) -> int => 1 << n\n");
-    write(
-        &dir,
-        "app.maca",
-        "import lib/reg\n\nmain() {\n    mmio_write(0x40020C14, mask(12))\n}\n",
-    );
-    let o = build(&dir, "embedded", "out", &["--mcu", "cortex-m4"]);
-    assert!(
-        o.status.success(),
-        "build failed: {}",
-        String::from_utf8_lossy(&o.stderr)
-    );
-    let c = std::fs::read_to_string(dir.join("out/firmware.c")).unwrap();
-    assert!(c.contains("mask("), "imported definition missing:\n{c}");
-}
-
-#[test]
 fn nix_reads_an_imported_config_fragment() {
     let dir = project("nix");
     write(&dir, "lib/ports.maca", "services.ssh.port = 2222\n");
@@ -263,12 +244,7 @@ fn a_selective_import_brings_only_what_it_names() {
 
 #[test]
 fn an_import_that_names_no_file_is_an_error_on_every_target() {
-    for (target, extra) in [
-        ("js", &[][..]),
-        ("jvm", &[]),
-        ("nix", &[]),
-        ("embedded", &["--mcu", "cortex-m4"]),
-    ] {
+    for (target, extra) in [("js", &[][..]), ("jvm", &[]), ("nix", &[])] {
         let dir = project(&format!("missing-{target}"));
         write(&dir, "app.maca", "import lib/nope\n\nmain() -> int => 0\n");
         let o = build(&dir, target, "out", extra);
@@ -295,11 +271,6 @@ fn a_program_with_no_imports_still_builds_on_every_target() {
         ("js", &[][..], "main() -> int => 0\n"),
         ("jvm", &[], "main() -> int => 0\n"),
         ("nix", &[], "services.ssh.enable = true\n"),
-        (
-            "embedded",
-            &["--mcu", "cortex-m4"],
-            "main() {\n    mmio_write(0x40020C14, 1)\n}\n",
-        ),
     ] {
         let dir = project(&format!("plain-{target}"));
         write(&dir, "app.maca", src);

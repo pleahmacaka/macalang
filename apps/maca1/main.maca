@@ -584,17 +584,66 @@ tool_path(name: str) -> str {
     }
 }
 
-build_out(src: str, out: str, target: str) -> int {
+build_out(src: str, out: str, target: str, mcu: str) -> int {
     if target == "" || target == "native" || target == "c" {
         build_binary(src, out)
+    } else if target == "embedded" {
+        build_firmware(src, out, mcu)
     } else if target == "rust" || target == "js" || target == "nix"
-            || target == "embedded" || target == "jvm" {
+            || target == "jvm" {
         compile_file([src, out, target])
     } else {
         err("maca: no target `{target}`. Try native, rust, js, nix, "
             ++ "embedded or jvm.")
 
         2
+    }
+}
+
+/// Firmware is three files: the freestanding C, the memory map it is placed by, and the image clang links from the two.
+build_firmware(src: str, dir: str, mcu: str) -> int {
+    m = emb_mcu(mcu)
+
+    if m.name == "" {
+        err("maca: no --mcu `{mcu}`. Try cortex-m0, cortex-m3, cortex-m4 "
+            ++ "or riscv32.")
+
+        2
+    } else {
+        make_dir(dir)
+
+        errs = compile_file([src, "{dir}/firmware.c", "embedded"])
+
+        if errs > 0 {
+            errs
+        } else {
+            write_file("{dir}/link.ld", emb_linker_script(m))
+
+            cross_compile(m, dir)
+        }
+    }
+}
+
+cross_compile(m: Mcu, dir: str) -> int {
+    built = exec("clang", ["--target={m.triple}", "-mcpu={m.cpu}",
+                           "-ffreestanding", "-nostdlib", "-Os",
+                           "-ffunction-sections", "-fdata-sections",
+                           "-fuse-ld=lld", "-Wl,-T,{dir}/link.ld",
+                           "-Wl,--gc-sections", "-o", "{dir}/firmware.elf",
+                           "{dir}/firmware.c"])
+
+    if built != 0 {
+        err("maca: clang did not link the firmware; {dir}/firmware.c and "
+            ++ "{dir}/link.ld are written")
+
+        built
+    } else {
+        exec("llvm-objcopy", ["-O", "binary", "{dir}/firmware.elf",
+                              "{dir}/firmware.bin"])
+
+        info("built firmware for {m.name} → {dir}/firmware.elf")
+
+        0
     }
 }
 
@@ -623,7 +672,8 @@ build_cmd(args: str[]) -> int {
         out = flag_after(args, "-o")
         named_out = out == "" ? stem_of(src) : out
 
-        build_out(src, named_out, flag_after(args, "--target"))
+        build_out(src, named_out, flag_after(args, "--target"),
+                  flag_after(args, "--mcu"))
     }
 }
 

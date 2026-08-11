@@ -11,7 +11,7 @@ implementor's view.
 | `--target nix` | `maca-backend-nix` | a `.nix` module | config mode |
 | `--target jvm` | `maca-backend-jvm` | Java source | Maven, Minecraft |
 | `--target rust` | `maca-backend-rust` | Rust source | crates.io |
-| `--target embedded` | `maca-backend-embedded` | freestanding C | Cortex-M, RISC-V |
+| `--target embedded` | `modules/maca/emit_embedded.maca` | freestanding C + a linker script, linked by clang/lld | Cortex-M, RISC-V |
 
 `maca-backend-llvm` emits LLVM IR for the SIMD span only. Both native paths
 link over the C ABI, so choosing between them is a flag rather than a rewrite.

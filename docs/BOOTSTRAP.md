@@ -276,11 +276,13 @@ What the remaining failures are, in the order they block deletion:
   cannot simply be carried in the preamble: they need `-lsqlite3` and
   `-lpython3`, and `build_binary` runs `cc` with no flags at all. The manifest
   has to name them before the runtime can.
-- **the driver itself.** Every crate is reachable from `maca-driver`, so nothing
-  under `crates/` can go until `apps/maca1` covers what the driver does:
-  `watch`, `dev`, `add`/`install`/`update`/`upgrade`, `spec`, `fix`, the
-  manifest chain and `[[bin]]` resolution, link flags, and the LLVM path, which
-  exists only for the SIMD span. `crates/wasm` is not a back end: it is the
+- **the driver itself.** Every crate is reachable from `maca-driver`, so a crate
+  leaves when the driver stops calling it, and a leaf back end leaves as soon as
+  `apps/maca1` serves its target whole. `maca-backend-embedded` was the first
+  out: `emit_embedded.maca` already emitted the firmware C byte for byte, and
+  the memory map plus the clang call were the rest of it. What the driver still
+  has to itself is `fix` and the LLVM path, which exists only for the SIMD span.
+  `crates/wasm` is not a back end: it is the
   compiler built for the browser, so its Maca answer is building `apps/maca1`
   for a wasm target rather than writing an emitter.
 

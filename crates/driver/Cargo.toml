@@ -18,7 +18,6 @@ maca-backend-nix = { path = "../backend_nix" }
 maca-backend-js = { path = "../backend_js" }
 maca-backend-jvm = { path = "../backend_jvm" }
 maca-backend-rust = { path = "../backend_rust" }
-maca-backend-embedded = { path = "../backend_embedded" }
 maca-runtime = { path = "../runtime" }
 maca-stdlib = { path = "../stdlib" }
 maca-profile = { path = "../profile" }

@@ -153,3 +153,27 @@ test_a_shift_is_the_bit_move_a_register_mask_is_written_with() {
     assert(c.index_of("return 0u;") < 0,
            "an operator this target has is not quietly answered with zero")
 }
+
+test_a_core_is_a_triple_a_memory_map_and_a_default() {
+    assert_eq(emb_mcu("cortex-m4").triple, "thumbv7em-none-eabi",
+              "the core clang is asked for")
+    assert_eq(emb_mcu("").name, "cortex-m4",
+              "no --mcu is the core the default names")
+    assert_eq(emb_mcu("riscv32").ram, "0x80000000",
+              "a RISC-V part holds its RAM where a Cortex-M holds flash")
+    assert_eq(emb_mcu("z80").name, "",
+              "a core nothing answers to resolves to no core at all")
+}
+
+test_the_linker_script_places_the_vector_table_at_the_flash_origin() {
+    ld = emb_linker_script(emb_mcu("cortex-m4"))
+
+    assert(ld.index_of("ENTRY(Reset_Handler)") >= 0,
+           "the image starts at the reset handler")
+    assert(ld.index_of("FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 512K") >= 0,
+           "flash is where the part boots from")
+    assert(ld.index_of("_estack = ORIGIN(RAM) + LENGTH(RAM);") >= 0,
+           "the initial stack pointer is the top of RAM")
+    assert(ld.index_of(".isr_vector : {{ KEEP(*(.isr_vector)) }} > FLASH") >= 0,
+           "the vector table is kept, or the part boots into nothing")
+}

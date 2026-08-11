@@ -4,7 +4,7 @@ use common::*;
 use std::path::PathBuf;
 use std::process::Command;
 
-const PROGRAM_TARGETS: [&str; 5] = ["c", "js", "jvm", "rust", "embedded"];
+const PROGRAM_TARGETS: [&str; 4] = ["c", "js", "jvm", "rust"];
 
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("maca-checks-{}-{name}", std::process::id()));
