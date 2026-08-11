@@ -718,8 +718,150 @@ test_cmd(args: str[]) -> int {
 check_cmd(args: str[]) -> int {
     src = entry_of("check", args)
 
-    src == "" ? 2 : check_only(src)
+    if src == "" {
+        2
+    } else if args.index_of("--json") >= 0 {
+        check_json(src)
+    } else {
+        check_only(src)
+    }
 }
+
+/// `maca check <file> --json`: the diagnostics, shaped as check-json.schema.json promises.
+check_json(path: str) -> int {
+    unit = unit_of(path)
+    scanned = end_run(lexed(unit.toks, unit.errs), 0, 0)
+    raw = parse_module(scanned.tokens, 0, [])
+    broke = unit.unknown ++ scanned.errors ++ raw.errors
+    said = broke.length() > 0
+        ? unparsed(broke, 0, [])
+        : check_diagnostics(raw)
+    body = diag_list(path, read_file(path), said, 0, [])
+
+    info("\{\"format\":1,\"diagnostics\":[" ++ body.join(",") ++ "]\}")
+
+    said.length() == 0 ? 0 : 1
+}
+
+/// Nothing after a scan or parse failure was checked, and the note says so.
+unparsed(xs: str[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        said = Diagnostic { code = "M0001", message = xs.get(i), pos = 0,
+                            note = "the file did not parse, so nothing"
+                                ++ " after this was checked" }
+
+        unparsed(xs, i + 1, acc.push(said))
+    }
+}
+
+diag_list(path: str, text: str, ds: Diagnostic[], i: int,
+          acc: str[]) -> str[] {
+    if i >= ds.length() {
+        acc
+    } else {
+        one = diag_json(path, text, ds.get(i))
+
+        diag_list(path, text, ds, i + 1, acc.push(one))
+    }
+}
+
+diag_json(path: str, text: str, d: Diagnostic) -> str {
+    name = quoted_name(d.message)
+    at = anchor_at(text, name, d.pos)
+    lo = at < 0 ? at_or_zero(text, d.pos) : at
+    hi = at < 0 ? lo : lo + name.length()
+
+    "\{\"code\":" ++ json_text(d.code)
+        ++ ",\"severity\":\"error\",\"message\":" ++ json_text(d.message)
+        ++ ",\"explain\":" ++ json_text(diag_explain(d.code))
+        ++ ",\"note\":" ++ note_json(d.note)
+        ++ ",\"file\":" ++ json_text(path)
+        ++ ",\"span\":" ++ spot_json(text, lo, hi)
+        ++ ",\"suggestions\":[]\}"
+}
+
+note_json(note: str) -> str =>
+    note == "" ? "null" : json_text(note)
+
+spot_json(text: str, lo: int, hi: int) -> str =>
+    "\{\"start\":" ++ str(lo) ++ ",\"end\":" ++ str(hi)
+        ++ ",\"start_line\":" ++ str(line_at(text, lo))
+        ++ ",\"start_column\":" ++ str(col_at(text, lo))
+        ++ ",\"end_line\":" ++ str(line_at(text, hi))
+        ++ ",\"end_column\":" ++ str(col_at(text, hi)) ++ "\}"
+
+json_text(s: str) -> str =>
+    "\"" ++ s.replace("\\", "\\\\")
+             .replace("\"", "\\\"")
+             .replace("\n", "\\n")
+             .replace("\r", "\\r")
+             .replace("\t", "\\t") ++ "\""
+
+line_at(text: str, at: int) -> int =>
+    text.slice(0, at).split("\n").length()
+
+col_at(text: str, at: int) -> int {
+    before = text.slice(0, at).split("\n")
+
+    before.get(before.length() - 1).length() + 1
+}
+
+/// The name a message is about, which is the first thing it puts in backticks.
+quoted_name(msg: str) -> str {
+    open = msg.index_of("`")
+    rest = open < 0 ? "" : msg.slice(open + 1, msg.length())
+    shut = rest.index_of("`")
+
+    shut < 0 ? "" : rest.slice(0, shut)
+}
+
+/// The name's first whole word at or after the statement it came from, or -1 when this file has none.
+anchor_at(text: str, name: str, from: int) -> int {
+    ahead = name == "" ? -1 : word_from(text, name, at_or_zero(text, from))
+
+    if ahead >= 0 {
+        ahead
+    } else if name == "" {
+        -1
+    } else {
+        word_from(text, name, 0)
+    }
+}
+
+at_or_zero(text: str, at: int) -> int =>
+    at > 0 && at < text.length() ? at : 0
+
+word_from(text: str, name: str, from: int) -> int {
+    n = name.length()
+    last = text.length() - n
+    i = from < 0 ? 0 : from
+    found = -1
+
+    while i <= last {
+        if word_here(text, name, i, n) {
+            found = i
+            break
+        }
+        i = i + 1
+    }
+
+    found
+}
+
+word_here(text: str, name: str, at: int, n: int) -> bool {
+    if text.at(at) != name.at(0) {
+        false
+    } else if word_char(text.at(at - 1)) || word_char(text.at(at + n)) {
+        false
+    } else {
+        text.slice(at, at + n) == name
+    }
+}
+
+word_char(c: str) -> bool =>
+    c != "" && (c.is_alpha() || c.is_ascii_digit() || c == "_")
 
 entry_of(cmd: str, args: str[]) -> str {
     named = first_named(args)

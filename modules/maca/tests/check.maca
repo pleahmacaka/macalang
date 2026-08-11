@@ -9,6 +9,38 @@ errors_of(src: str) -> str[] =>
 count_of(src: str) -> str =>
     str(errors_of(src).length())
 
+diags_of(src: str) -> Diagnostic[] =>
+    check_diagnostics(parse_module(lex(src), 0, []))
+
+test_a_diagnostic_carries_a_code_and_where_its_statement_starts() {
+    ds = diags_of("Color = Red | Green\nshade(c: Color) -> int =>\n"
+                      ++ "    match c {{ Red => 1 }}\n")
+    assert_eq(str(ds.length()), "1", "one variant is left unhandled")
+    assert_eq(ds.get(0).code, "M0002", "a match with a hole has its own code")
+    assert(ds.get(0).pos > 0,
+           "and it names the statement it came from: {ds.get(0).pos}")
+}
+
+test_a_config_refusal_carries_the_code_for_what_it_refused() {
+    ds = diags_of("system.stateVersion = \"24.05\"\n"
+                      ++ "netwroking.hostName = \"box\"")
+    assert_eq(str(ds.length()), "1", "one namespace nobody declares")
+    assert_eq(ds.get(0).code, "M0004", "an unknown option has its own code")
+    assert(ds.get(0).pos > 0, "the second statement is not the first")
+}
+
+test_the_sentences_are_the_messages_the_records_carry() {
+    src = "take(n: int) -> int => n use() -> int => take(\"x\")"
+    assert_eq(errors_of(src).get(0), diags_of(src).get(0).message,
+              "check_errors is check_diagnostics read as prose")
+}
+
+test_every_code_a_diagnostic_can_carry_explains_itself() {
+    assert(diag_explain("M0001") != "", "M0001 says what it means")
+    assert(diag_explain("M0006") != "", "M0006 says what it means")
+    assert_eq(diag_explain("M9999"), "", "and a code nobody issues says nothing")
+}
+
 type_named_in(src: str) -> str =>
     type_of(parse_expr(lex(src), 0).node)
 

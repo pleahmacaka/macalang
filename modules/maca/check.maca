@@ -2,6 +2,14 @@ import maca/token
 import maca/ast
 import maca/ty
 
+/// One defect: the code that names it forever, what is wrong here, and where.
+Diagnostic = {
+    code:    str
+    message: str
+    note:    str
+    pos:     int
+}
+
 Env = {
     names:  str[]
     types:  Ty[]
@@ -14,14 +22,35 @@ Env = {
     slots:  str[]
     varargs: str[]
     frozen: str[]
-    errors: str[]
+    errors: Diagnostic[]
     infer:  Infer
+    here:   int
 }
 
 empty_env() -> Env =>
     Env { names = [], types = [], fns = [], sigs = [],
           fields = [], ftypes = [], ctors = [], owners = [], slots = [],
-          varargs = [], frozen = [], infer = new_infer(), errors = [] }
+          varargs = [], frozen = [], infer = new_infer(), errors = [],
+          here = 0 }
+
+/// What a code means in general, apart from the occurrence that raised it.
+diag_explain(code: str) -> str =>
+    match code {
+        "M0001" => "a value is used where a different type is required"
+        "M0002" => "a `match` leaves a variant unhandled"
+        "M0003" => "config mode has no effects, and this call performs one"
+        "M0004" => "the option this sets does not exist"
+        "M0005" => "a constant is assigned after it is bound"
+        "M0006" => "this name is not defined anywhere in scope"
+        _       => ""
+    }
+
+diag_message(d: Diagnostic) -> str =>
+    d.message
+
+/// A defect a whole statement is answerable for, placed where that statement starts.
+diag_at(s: Stmt, code: str, why: str) -> Diagnostic =>
+    Diagnostic { code, message = why, note = "", pos = s.pos }
 
 Typed = {
     env: Env
@@ -40,7 +69,14 @@ bind(env: Env, name: str, ty: Ty) -> Env =>
     env with { names = env.names ++ [name], types = env.types ++ [ty] }
 
 complain(env: Env, why: str) -> Env =>
-    env with { errors = env.errors ++ [why] }
+    complain_as(env, "M0001", why)
+
+/// A defect the checker can name exactly carries its own code, so a tool branches on it.
+complain_as(env: Env, code: str, why: str) -> Env {
+    said = Diagnostic { code, message = why, note = "", pos = env.here }
+
+    env with { errors = env.errors ++ [said] }
+}
 
 note(env: Env, why: str) -> Env {
     if why == "" {
@@ -359,7 +395,7 @@ unknown_call(env: Env, name: str) -> Env {
     } else if is_host_builtin(name) {
         env
     } else {
-        complain(env, "call to undefined function `{name}`")
+        complain_as(env, "M0006", "call to undefined function `{name}`")
     }
 }
 
@@ -902,7 +938,7 @@ check_arms(env: Env, e: Expr, scrut: Ty) -> Env {
         if left.length() == 0 {
             env
         } else {
-            complain(env,
+            complain_as(env, "M0002",
                 "match on `{scrut.name}` is not exhaustive; missing: {named}")
         }
     }
@@ -993,9 +1029,10 @@ named_pattern(env: Env, pat: Expr) -> Env {
     } else if env.ctors.index_of(pat.text) >= 0 {
         env
     } else {
-        complain(env, "`{pat.text}` is capitalized, so it is a constructor,"
-                          ++ " and nothing declares one by that name:"
-                          ++ " {ctor_hint(env, pat.text)}")
+        complain_as(env, "M0006",
+                    "`{pat.text}` is capitalized, so it is a constructor,"
+                        ++ " and nothing declares one by that name:"
+                        ++ " {ctor_hint(env, pat.text)}")
     }
 }
 
@@ -1211,8 +1248,9 @@ extend(env: Env, s: Stmt, ty: Ty) -> Env {
     if s.kind != SBind {
         env
     } else if env.frozen.index_of(s.name) >= 0 {
-        complain(env, "cannot reassign constant `{s.name}`; declare it"
-                          ++ " mutable with `{s.name} = …` (no `const`)")
+        complain_as(env, "M0005", "cannot reassign constant `{s.name}`;"
+                                      ++ " declare it mutable with"
+                                      ++ " `{s.name} = …` (no `const`)")
     } else if s.ret != "" {
         sealed(bind(joined(env, ty_named(s.ret), ty), s.name,
                     ty_named(s.ret)), s)
@@ -1258,16 +1296,20 @@ check_items(env: Env, items: Stmt[], i: int) -> Env {
 
 check_item(env: Env, s: Stmt) -> Env {
     if s.kind == SFn {
-        check_fn_in(env, s)
+        check_fn_in(env with { here = s.pos }, s)
     } else {
         env
     }
 }
 
-check_errors(m: Module) -> str[] =>
+/// Every defect found, each carrying its code and where the statement it came from starts.
+check_diagnostics(m: Module) -> Diagnostic[] =>
     checked_module(m).errors ++ clashing_names(m.items, 0, [], [])
         ++ variadic_errors(m.items, 0, [])
         ++ config_errors(m.items)
+
+check_errors(m: Module) -> str[] =>
+    check_diagnostics(m).map(diag_message)
 
 NixosRoots = " networking system services users user environment programs"
     ++ " fonts boot hardware security nix nixpkgs virtualisation systemd"
@@ -1275,7 +1317,7 @@ NixosRoots = " networking system services users user environment programs"
     ++ " documentation location "
 
 /// A dotted path left of `=` is how config mode writes an option, and a program has no such statement.
-config_errors(items: Stmt[]) -> str[] =>
+config_errors(items: Stmt[]) -> Diagnostic[] =>
     writes_an_option(items, 0) ? config_refusals(items, 0, []) : []
 
 writes_an_option(items: Stmt[], i: int) -> bool {
@@ -1289,7 +1331,7 @@ writes_an_option(items: Stmt[], i: int) -> bool {
     }
 }
 
-config_refusals(items: Stmt[], i: int, acc: str[]) -> str[] {
+config_refusals(items: Stmt[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
     if i >= items.length() {
         acc
     } else {
@@ -1297,22 +1339,22 @@ config_refusals(items: Stmt[], i: int, acc: str[]) -> str[] {
     }
 }
 
-config_refusal(s: Stmt) -> str[] {
+config_refusal(s: Stmt) -> Diagnostic[] {
     if s.kind == SFn {
         s.body.length() == 0 && is_io_builtin(s.name)
-            ? [impure_config(s.name)]
+            ? [diag_at(s, "M0003", impure_config(s.name))]
             : []
     } else if s.kind != SBind {
         []
     } else {
-        impure_value(s.value) ++ misspelt_option(s.name)
+        impure_value(s) ++ misspelt_option(s)
     }
 }
 
-impure_value(e: Expr) -> str[] {
-    called = effectful_call(e)
+impure_value(s: Stmt) -> Diagnostic[] {
+    called = effectful_call(s.value)
 
-    called == "" ? [] : [impure_config(called)]
+    called == "" ? [] : [diag_at(s, "M0003", impure_config(called))]
 }
 
 impure_config(name: str) -> str =>
@@ -1347,15 +1389,14 @@ effectful_in(xs: Expr[], i: int) -> str {
 }
 
 /// A namespace no module declares is refused only when it is a misspelling of one, because NixOS options are an open set.
-misspelt_option(name: str) -> str[] {
-    root = option_root(name)
+misspelt_option(s: Stmt) -> Diagnostic[] {
+    root = option_root(s.name)
     near = root == "" || known_root(root)
         ? ""
         : nearest_ctor(root, nixos_roots(), 0, "", hint_span(root))
+    why = "unknown NixOS option namespace `{root}`: did you mean `{near}`?"
 
-    near == ""
-        ? []
-        : ["unknown NixOS option namespace `{root}`: did you mean `{near}`?"]
+    near == "" ? [] : [diag_at(s, "M0004", why)]
 }
 
 option_root(name: str) -> str {
@@ -1371,22 +1412,25 @@ nixos_roots() -> str[] =>
     NixosRoots.trim().split(" ")
 
 /// Imports flatten into one module, so two packages defining one name is a clash, not a shadow.
-clashing_names(items: Stmt[], i: int, seen: str[], acc: str[]) -> str[] {
+clashing_names(items: Stmt[], i: int, seen: str[],
+               acc: Diagnostic[]) -> Diagnostic[] {
     if i >= items.length() {
         acc
     } else if items.get(i).kind != SFn {
         clashing_names(items, i + 1, seen, acc)
     } else if seen.index_of(items.get(i).name) >= 0 {
-        clashing_names(items, i + 1, seen,
-                       acc ++ [clash_of(items.get(i).name)])
+        clashing_names(items, i + 1, seen, acc ++ [clash_of(items.get(i))])
     } else {
         clashing_names(items, i + 1, seen ++ [items.get(i).name], acc)
     }
 }
 
-clash_of(name: str) -> str =>
-    "`{name}` is defined twice; imports share one namespace, so two"
+clash_of(s: Stmt) -> Diagnostic {
+    why = "`{s.name}` is defined twice; imports share one namespace, so two"
         ++ " packages cannot both name a function this"
+
+    diag_at(s, "M0001", why)
+}
 
 surface_of(t: Ty) -> str =>
     match t.kind {
@@ -2138,7 +2182,7 @@ matched_var(declared: str, concrete: str, v: str) -> str {
 }
 
 /// A rest parameter says what its list holds, and `main` is filled from the command line rather than by a caller.
-variadic_errors(items: Stmt[], i: int, acc: str[]) -> str[] {
+variadic_errors(items: Stmt[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
     if i >= items.length() {
         acc
     } else {
@@ -2146,21 +2190,27 @@ variadic_errors(items: Stmt[], i: int, acc: str[]) -> str[] {
     }
 }
 
-rest_misuse(s: Stmt) -> str[] {
+rest_misuse(s: Stmt) -> Diagnostic[] {
+    why = rest_misuse_why(s)
+
+    why == "" ? [] : [diag_at(s, "M0001", why)]
+}
+
+rest_misuse_why(s: Stmt) -> str {
     if s.kind != SFn {
-        []
+        ""
     } else if rest_before_the_end(s.params, 0) {
-        ["type mismatch: `{s.name}`: a rest parameter must be last, so"
-             ++ " nothing says where the arguments it gathers stop"]
+        "type mismatch: `{s.name}`: a rest parameter must be last, so"
+            ++ " nothing says where the arguments it gathers stop"
     } else if rest_taker(s).length() == 0 {
-        []
+        ""
     } else if s.name == "main" {
-        ["type mismatch: `main` takes no rest parameter, because the"
-             ++ " command line fills one `str[]`"]
+        "type mismatch: `main` takes no rest parameter, because the"
+            ++ " command line fills one `str[]`"
     } else if s.params.get(s.params.length() - 1).ty == "[]" {
-        ["type mismatch: `{s.name}` has a rest parameter with no type, so"
-             ++ " nothing says what the list it gathers holds"]
+        "type mismatch: `{s.name}` has a rest parameter with no type, so"
+            ++ " nothing says what the list it gathers holds"
     } else {
-        []
+        ""
     }
 }
