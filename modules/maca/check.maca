@@ -379,7 +379,8 @@ is_register_builtin(name: str) -> bool =>
         || name == "forever"
 
 callable(env: Env, held: Ty) -> bool =>
-    resolve(env.infer, held).kind == KFn || resolve(env.infer, held).kind == KVar
+    resolve(env.infer, held).kind == KFn
+        || resolve(env.infer, held).kind == KVar
 
 call_local(env: Env, e: Expr, held: Ty) -> Typed {
     made = arg_types(env, e.children, 0, [])

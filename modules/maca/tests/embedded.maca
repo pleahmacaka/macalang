@@ -68,9 +68,10 @@ test_a_field_store_is_emitted_rather_than_dropped() {
 }
 
 test_a_store_is_a_whole_statement_rather_than_a_value_dropped() {
-    c = emb_c_of([s_fn("set_reg", "", [e_param("p", "int"), e_param("v", "int")],
-                       [s_expr(e_binary("=", e_field(e_ident("p"), "reg"),
-                                        e_binary("+", e_ident("v"), e_int(1))))])])
+    ps = [e_param("p", "int"), e_param("v", "int")]
+    add = e_binary("+", e_ident("v"), e_int(1))
+    store = e_binary("=", e_field(e_ident("p"), "reg"), add)
+    c = emb_c_of([s_fn("set_reg", "", ps, [s_expr(store)])])
 
     assert(c.index_of("(p.reg = (v + 1u));") >= 0,
            "the whole assignment is emitted, so a computed right-hand side is not lost")
