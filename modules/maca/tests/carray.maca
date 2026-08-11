@@ -425,8 +425,8 @@ test_a_record_pattern_binds_the_fields_it_names() {
 
     assert(out.index_of("a = ") >= 0 && out.index_of("b = ") >= 0,
            "the names in the pattern are what the body reads")
-    assert(out.index_of("(1 ?") >= 0,
-           "a record pattern matches whatever carries those fields")
+    assert(out.index_of("(1 ?") < 0,
+           "the only arm is the tail, so nothing is tested to reach it")
 }
 
 test_a_caught_failure_hands_back_its_message_and_carries_on() {

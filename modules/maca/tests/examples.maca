@@ -76,6 +76,21 @@ test_a_data_example_prints_the_values_it_holds() {
         "a name C reserves is still a name here")
 }
 
+test_a_recursive_sum_walks_to_the_leaves_it_holds() {
+    assert_eq(ran_example("tree"), ["6", "3"].join("\n"),
+        "a variant that carries its own type is followed all the way down")
+}
+
+test_a_collection_example_maps_filters_folds_and_calls_a_local() {
+    assert_eq(ran_example("collections"),
+        ["shifted0=15 sq2=1 evens=2 total=15",
+         "sorted=15 rev=2 sum=15 min=1 max=5",
+         "has4=true idx1=2 first=5 last=2",
+         "names=alice, bob, eve",
+         "inc(41)=42"].join("\n"),
+        "a lambda bound to a local is called like any other function")
+}
+
 test_a_function_example_applies_what_it_was_given() {
     assert_eq(ran_example("lambda"), ["1", "4", "9", "16"].join("\n"),
         "a lambda is a value the list method calls")
@@ -313,6 +328,28 @@ test_a_match_on_strings_routes_by_its_arms() {
     assert_eq(ran(src), "1 2 0", "two arms and the catch-all")
 }
 
+test_a_function_with_no_declared_return_answers_with_its_value() {
+    src = fixture("fx", "inferred.maca",
+        ["inc(x) => x + 1",
+         "big(x) => x > 10",
+         "greet(n) => \"hi \" ++ n",
+         "twice(g, x) => g(g(x))",
+         "",
+         "main() -> int {{",
+         "    name = \"maca\"",
+         "    info(\"inc={{inc(41)}}\")",
+         "    info(\"big={{big(50)}}\")",
+         "    info(\"greet={{greet(name)}}\")",
+         "    info(\"twice={{twice(n => n + 1, 40)}}\")",
+         "    0",
+         "}}",
+         ""].join("\n"))
+
+    assert_eq(ran(src),
+        ["inc=42", "big=true", "greet=hi maca", "twice=42"].join("\n"),
+        "the body and the call sites together say what each one is")
+}
+
 test_fail_stops_the_program_with_the_message_it_was_given() {
     src = fixture("fx", "refuse.maca",
         ["check(n: int) -> int {{",
@@ -333,4 +370,68 @@ test_fail_stops_the_program_with_the_message_it_was_given() {
     assert(said.contains("error: negative input"),
         "the message reaches stderr: {said}")
     assert_eq(exit_of(src), 1, "and `fail` exits 1")
+}
+
+taskr_said(store: str, line: str) -> str =>
+    output("sh", ["-c", "XDG_DATA_HOME='{store}' '{maca_bin()}' run "
+                        ++ "apps/examples/taskr.maca {line}"]).trim()
+
+test_the_task_list_keeps_what_it_was_told_between_runs() {
+    store = scratch("taskr")
+    remove_file(store ++ "/taskr.json")
+
+    assert(taskr_said(store, "").contains("usage"),
+        "no argument at all is the usage line")
+    assert_eq(taskr_said(store, "add buy milk"), "added: buy milk",
+        "a bare literal arm matches one cell of the argument list")
+    assert(taskr_said(store, "list").contains("[ ] #1  buy milk"),
+        "and `list`, which is one cell and no comma, reaches its arm")
+    assert_eq(taskr_said(store, "done 1"), "done: #1",
+        "the two-cell arm still binds its second cell")
+    assert(taskr_said(store, "list").contains("[x] #1  buy milk"),
+        "the store the last run wrote is the store this one reads")
+}
+
+test_a_nix_file_is_a_value_the_program_reads_at_build_time() {
+    assert_eq(ran_example("ffi_nix"), "42",
+        "`import nix` binds the file under its own name")
+}
+
+test_a_machine_description_compiles_to_a_nixos_module() {
+    out = scratch("cfg") ++ "/system.nix"
+    exec(maca_bin(), ["build", "--target", "nix", example("system"),
+                      "-o", out])
+    made = read_file(out)
+
+    assert(made.contains("enable = true"),
+        "a service block is given the enable it implies")
+    assert(made.contains("fonts.packages"),
+        "and the font list is hoisted where NixOS keeps it")
+    assert(made.contains("xdg.userDirs"),
+        "the home directories reach home-manager")
+    assert_eq(quiet_exit("nix-instantiate", "--parse '{out}'"), 0,
+        "and nix itself parses what was written")
+}
+
+test_a_constant_two_files_both_name_still_compiles() {
+    fixture("consts", "alpha.maca",
+        ["Baseline = \"alpha\"",
+         "alpha_says() -> str => Baseline",
+         ""].join("\n"))
+    fixture("consts", "beta.maca",
+        ["Baseline = \"beta\"",
+         "beta_says() -> str => Baseline",
+         ""].join("\n"))
+    src = fixture("consts", "main.maca",
+        ["import {{ alpha_says }} from alpha",
+         "import {{ beta_says }} from beta",
+         "",
+         "main() -> int {{",
+         "    info(\"{{alpha_says()}} {{beta_says()}}\")",
+         "    0",
+         "}}",
+         ""].join("\n"))
+
+    assert_eq(ran(src), "alpha beta",
+        "a top level constant is renamed on the loser, like a function")
 }

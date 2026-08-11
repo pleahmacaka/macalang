@@ -345,7 +345,7 @@ one_char_kind(cs: str[], i: int, c: str) -> Kind {
 is_two_char(s: str) -> bool =>
     s == "->" || s == "=>" || s == "==" || s == "!=" ||
     s == "<=" || s == ">=" || s == "++" || s == "&&" || s == "||" ||
-    s == "<<" || s == ">>" || s == ".."
+    s == "<<" || s == ">>" || s == ".." || s == "|>"
 
 two_char_kind(s: str) -> Kind =>
     match s {
@@ -361,6 +361,7 @@ two_char_kind(s: str) -> Kind =>
         "++" => PlusPlus
         "&&" => AmpAmp
         "||" => PipePipe
+        "|>" => PipeGt
         _    => TIdent
     }
 

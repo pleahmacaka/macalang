@@ -8,6 +8,7 @@ Kind =
     | Comma | Colon | Dot | DotDot | Ellipsis | Arrow | FatArrow
     | Eq | EqEq | NotEq | Lt | Gt | Le | Ge | AmpAmp | PipePipe
     | Plus | Minus | Star | Slash | Percent | PlusPlus | Bar | Shl | Shr
+    | PipeGt
     | Question | QuestionPost | Bang
     | Comment | Newline | Eof
 

@@ -745,39 +745,44 @@ c_store(l: Expr, r: Expr) -> str {
 
 emit_match(e: Expr) -> str =>
     emit_arms(emit_expr(e.children.get(0)), e.children, 1,
-              c_elem_of(e.children.get(0).ty))
+              c_elem_of(e.children.get(0).ty), e.children.get(0).ty)
 
 /// A match run for its effect answers nothing, so its arms are statements.
 emit_match_stmt(e: Expr) -> str =>
     stmt_arms(emit_expr(e.children.get(0)), e.children, 1,
-              any_bound(e.children, 1), c_elem_of(e.children.get(0).ty))
+              any_bound(e.children, 1), c_elem_of(e.children.get(0).ty),
+              e.children.get(0).ty)
 
-stmt_arms(scrut: str, cs: Expr[], i: int, tagged: bool, el: str) -> str {
+stmt_arms(scrut: str, cs: Expr[], i: int, tagged: bool, el: str,
+          sum: str) -> str {
     if i + 1 >= cs.length() {
         ""
     } else if cs.get(i).text == "_" && cs.get(i).kind != EGuard {
         "{{ {emit_expr(cs.get(i + 1))}; }}"
     } else {
-        head = "if ({test(scrut, cs.get(i), tagged)})"
-            ++ " {{ {arm_body(scrut, cs.get(i), cs.get(i + 1), el)}; }}"
-        rest = stmt_arms(scrut, cs, i + 2, tagged, el)
+        head = "if ({test(scrut, cs.get(i), tagged, el)})"
+            ++ " {{ {arm_body(scrut, cs.get(i), cs.get(i + 1), el, sum)}; }}"
+        rest = stmt_arms(scrut, cs, i + 2, tagged, el, sum)
 
         rest == "" ? head : "{head} else {rest}"
     }
 }
 
-emit_arms(scrut: str, cs: Expr[], i: int, el: str) -> str =>
-    emit_arms_at(scrut, cs, i, any_bound(cs, 1), el)
+emit_arms(scrut: str, cs: Expr[], i: int, el: str, sum: str) -> str =>
+    emit_arms_at(scrut, cs, i, any_bound(cs, 1), el, sum)
 
-emit_arms_at(scrut: str, cs: Expr[], i: int, tagged: bool, el: str) -> str {
+emit_arms_at(scrut: str, cs: Expr[], i: int, tagged: bool, el: str,
+             sum: str) -> str {
     if i + 1 >= cs.length() {
         "0"
     } else if cs.get(i).text == "_" && cs.get(i).kind != EGuard {
         emit_expr(cs.get(i + 1))
+    } else if i + 3 >= cs.length() && cs.get(i).kind != EGuard {
+        arm_body(scrut, cs.get(i), cs.get(i + 1), el, sum)
     } else {
-        cond = test(scrut, cs.get(i), tagged)
-        body = arm_body(scrut, cs.get(i), cs.get(i + 1), el)
-        rest = emit_arms_at(scrut, cs, i + 2, tagged, el)
+        cond = test(scrut, cs.get(i), tagged, el)
+        body = arm_body(scrut, cs.get(i), cs.get(i + 1), el, sum)
+        rest = emit_arms_at(scrut, cs, i + 2, tagged, el, sum)
         "({cond} ? {body} : {rest})"
     }
 }
@@ -848,16 +853,18 @@ bind_cells(scrut: str, p: Expr, el: str, i: int) -> str {
     }
 }
 
-test(scrut: str, pat: Expr, tagged: bool) -> str {
+test(scrut: str, pat: Expr, tagged: bool, el: str) -> str {
     if pat.kind == EGuard {
-        guard_test(scrut, pat, tagged)
+        guard_test(scrut, pat, tagged, el)
     } else if is_alt_pat(pat) {
-        "({test(scrut, pat.children.get(0), tagged)}"
-            ++ " || {test(scrut, pat.children.get(1), tagged)})"
+        "({test(scrut, pat.children.get(0), tagged, el)}"
+            ++ " || {test(scrut, pat.children.get(1), tagged, el)})"
     } else if is_cells_pat(pat) {
         cells_test(scrut, pat)
     } else if is_fields_pat(pat) || is_bind_pat(pat) {
         "1"
+    } else if pat.kind == EStr && el != "" {
+        one_cell_test(scrut, pat, el)
     } else if tagged {
         "{scrut}.tag == {pat.text}_tag"
     } else if pat.kind == EStr {
@@ -867,7 +874,12 @@ test(scrut: str, pat: Expr, tagged: bool) -> str {
     }
 }
 
-guard_test(scrut: str, pat: Expr, tagged: bool) -> str {
+/// A bare literal against a list is the one-cell list pattern its comma never spelled.
+one_cell_test(scrut: str, pat: Expr, el: str) -> str =>
+    "{scrut}.len == 1 && strcmp({c_cell_at(scrut, el, "0")},"
+        ++ " {quoted(pat.text)}) == 0"
+
+guard_test(scrut: str, pat: Expr, tagged: bool, el: str) -> str {
     when = emit_expr(pat.children.get(1))
 
     if pat.children.get(0).text == "_" {
@@ -875,7 +887,7 @@ guard_test(scrut: str, pat: Expr, tagged: bool) -> str {
     } else if is_bind_pat(pat.children.get(0)) {
         "({{ {bind_one(scrut, pat.children.get(0))}{when}; }})"
     } else {
-        "({test(scrut, pat.children.get(0), tagged)} && {when})"
+        "({test(scrut, pat.children.get(0), tagged, el)} && {when})"
     }
 }
 
@@ -896,9 +908,10 @@ c_lower_name(name: str) -> bool =>
 bind_one(scrut: str, p: Expr) -> str =>
     "__typeof__({scrut}) {c_id(p.text)} = {scrut}; "
 
-arm_body(scrut: str, pat: Expr, body: Expr, arm_elem: str) -> str {
+arm_body(scrut: str, pat: Expr, body: Expr, arm_elem: str,
+         sum: str) -> str {
     if pat.kind == EGuard {
-        arm_body(scrut, pat.children.get(0), body, arm_elem)
+        arm_body(scrut, pat.children.get(0), body, arm_elem, sum)
     } else if is_cells_pat(pat) && pat.children.length() > 0 {
         "({{ {bind_cells(scrut, pat, arm_elem, 0)}{emit_expr(body)}; }})"
     } else if is_bind_pat(pat) {
@@ -908,7 +921,7 @@ arm_body(scrut: str, pat: Expr, body: Expr, arm_elem: str) -> str {
     } else if is_fields_pat(pat) {
         "({{ {bind_fields(scrut, pat.children, 0)}{emit_expr(body)}; }})"
     } else {
-        "({{ {bind_slots(scrut, pat.children, 0)}{emit_expr(body)}; }})"
+        "({{ {bind_slots(scrut, pat.children, sum, 0)}{emit_expr(body)}; }})"
     }
 }
 
@@ -922,12 +935,15 @@ bind_fields(scrut: str, fs: Expr[], i: int) -> str {
     }
 }
 
-bind_slots(scrut: str, bs: Expr[], i: int) -> str {
+bind_slots(scrut: str, bs: Expr[], sum: str, i: int) -> str {
     if i >= bs.length() {
         ""
+    } else if bs.get(i).ty == sum && type_c(sum) == sum {
+        "{sum} {c_id(bs.get(i).text)} = *({sum}*){scrut}._{i};"
+            ++ " {bind_slots(scrut, bs, sum, i + 1)}"
     } else {
         "__typeof__({scrut}._{i}) {c_id(bs.get(i).text)} = {scrut}._{i};"
-            ++ " {bind_slots(scrut, bs, i + 1)}"
+            ++ " {bind_slots(scrut, bs, sum, i + 1)}"
     }
 }
 
@@ -1091,6 +1107,16 @@ emit_stmts(body: Stmt[], i: int, ret: str) -> str {
     }
 }
 
+bind_c_decl(s: Stmt) -> str {
+    held = s.ret != "" ? s.ret : s.value.ty
+
+    if is_fn_type(held) {
+        c_decl(held, c_id(s.name))
+    } else {
+        "{bind_c_type(s)} {c_id(s.name)}"
+    }
+}
+
 bind_c_type(s: Stmt) -> str {
     if s.ret != "" {
         type_c(s.ret)
@@ -1172,7 +1198,7 @@ emit_stmt(s: Stmt, is_last: bool, ret: str) -> str {
     if s.kind == SSet {
         "{c_id(s.name)} = {emit_expr(s.value)};"
     } else if s.kind == SBind {
-        "{bind_c_type(s)} {c_id(s.name)} = {emit_expr(s.value)};"
+        "{bind_c_decl(s)} = {emit_expr(s.value)};"
     } else if is_loop(s.value) {
         emit_loop(s.value)
     } else if s.value.kind == EIf && !is_last {
@@ -1494,10 +1520,10 @@ emit_consts(items: Stmt[], i: int) -> str {
 
 emit_const(s: Stmt) -> str {
     if c_constant(s.value) {
-        "static {c_held(s)}{bind_c_type(s)} {c_id(s.name)} = "
+        "static {c_held(s)}{bind_c_decl(s)} = "
             ++ "{emit_expr(s.value)};"
     } else {
-        "static {bind_c_type(s)} {c_id(s.name)};"
+        "static {bind_c_decl(s)};"
     }
 }
 
@@ -1717,7 +1743,7 @@ emit_ctor(s: Stmt, v: Expr) -> str {
     } else {
         "static inline {s.name} {v.text}({ctor_params(s, v.children, 0)}) "
             ++ "{{ {s.name} _v; _v.tag = {v.text}_tag; "
-            ++ ctor_assigns(v.children, 0) ++ "return _v; }}\n"
+            ++ ctor_assigns(s, v.children, 0) ++ "return _v; }}\n"
     }
 }
 
@@ -1727,16 +1753,24 @@ ctor_params(s: Stmt, ps: Expr[], i: int) -> str {
     } else if i >= ps.length() {
         ""
     } else if i == ps.length() - 1 {
-        "{slot_type(s, i, 0)} _{i}"
+        "{ctor_slot(s, ps, i)} _{i}"
     } else {
-        "{slot_type(s, i, 0)} _{i}, {ctor_params(s, ps, i + 1)}"
+        "{ctor_slot(s, ps, i)} _{i}, {ctor_params(s, ps, i + 1)}"
     }
 }
 
-ctor_assigns(ps: Expr[], i: int) -> str {
+/// A constructor takes its own payload by value, whatever the shared slot holds.
+ctor_slot(s: Stmt, ps: Expr[], i: int) -> str =>
+    ps.get(i).ty == s.name ? s.name : slot_type(s, i, 0)
+
+ctor_assigns(s: Stmt, ps: Expr[], i: int) -> str {
     if i >= ps.length() {
         ""
+    } else if ps.get(i).ty == s.name {
+        "{s.name}* _b{i} = ({s.name}*)malloc(sizeof({s.name}));"
+            ++ " *_b{i} = _{i}; _v._{i} = (long)_b{i};"
+            ++ " {ctor_assigns(s, ps, i + 1)}"
     } else {
-        "_v._{i} = _{i}; {ctor_assigns(ps, i + 1)}"
+        "_v._{i} = _{i}; {ctor_assigns(s, ps, i + 1)}"
     }
 }

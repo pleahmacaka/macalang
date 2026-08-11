@@ -1,4 +1,5 @@
 import maca/lexer
+import maca/ast
 import maca/parser
 import maca/check
 import maca/emit_c
@@ -15,6 +16,12 @@ rust_of(src: str) -> str =>
 
 errors_in(src: str) -> str =>
     str(check_errors(parse_module(lex(src), 0, [])).length())
+
+items_in(src: str) -> int =>
+    parse_module(lex(src), 0, []).items.length()
+
+parse_errors_in(src: str) -> int =>
+    parse_module(lex(src), 0, []).errors.length()
 
 Picker = "pick(n: int) -> int => if n > 0 {{ 1 }} else {{ 0 }}"
 
@@ -892,6 +899,92 @@ test_a_shift_binds_looser_than_a_sum_and_tighter_than_a_comparison() {
               "and the shifted value is what the comparison asks about")
     assert_eq(shown("a >> 1 >> 2"), "((a >> 1) >> 2)",
               "two shifts of equal power run left to right")
+}
+
+lambda_shown(src: str) -> str =>
+    show(lambda_body(parse_expr(lex(src), 0).node))
+
+param_ty(src: str, i: int) -> str =>
+    parse_fn(lex(src), 0).snode.params.get(i).ty
+
+n_params(src: str) -> int =>
+    parse_fn(lex(src), 0).snode.params.length()
+
+brace_escaped() -> str =>
+    "a \{ b"
+        ++ " tail"
+
+brace_doubled() -> str =>
+    "a {{ b"
+        ++ " tail"
+
+test_a_parameter_may_be_declared_a_function() {
+    assert_eq(param_ty("apply(x: int, f: (int) -> str) -> str => f(x)", 1),
+              "(int) -> str",
+              "the arrow and its parentheses are the parameter's whole type")
+    assert_eq(param_ty("run(g: () -> int) -> int => g()", 0), "() -> int",
+              "a function of no arguments still names what it returns")
+    assert_eq(param_ty("fold(r: (int, int) -> int, s: int) -> int => s", 0),
+              "(int, int) -> int", "two of them, in the order written")
+    assert_eq(param_ty("pick(xs: a[], key: (a) -> str) -> a => xs.get(0)", 1),
+              "(a) -> str", "a type variable inside the arrow type")
+    assert_eq(str(n_params("fold(r: (int, int) -> int, s: int) -> int => s")),
+              "2", "the inner `)` does not end the parameter list")
+}
+
+test_a_function_parameter_becomes_a_pointer_in_c() {
+    assert_eq(c_of("call(f: (int) -> int, n: int) -> int => f(n)"),
+              "long call(long (*f)(long), long n) {{ return f(n);  }}",
+              "C spells a parameter holding a function as a pointer to one")
+}
+
+test_a_lambda_may_declare_the_type_it_returns() {
+    assert_eq(lambda_shown("(n) -> int => n * 2"), "(n * 2)",
+              "the body is what follows the fat arrow, not the return type")
+    assert_eq(lambda_shown("() -> int => 7"), "7",
+              "and one that takes nothing has a body all the same")
+    assert_eq(str(items_in("twice = (n) -> int => n * 2")), "1",
+              "a return type between the parameters and the body")
+    assert_eq(str(parse_errors_in("origin = () -> Point => Point {{ x = 0 }}")),
+              "0", "and no parameters at all is still a lambda")
+    assert_eq(str(n_stmts("x = [1, 2].reduce(0, (a, b) => a + b)")), "1",
+              "a lambda without one is read as it always was")
+}
+
+test_one_declared_function_parameter_serves_two_return_types() {
+    assert_eq(errors_in("label(r: int) -> str => \"x\"\n"
+                            ++ "size(r: int) -> int => r\n"
+                            ++ "apply(x: a, f: (a) -> b) -> b => f(x)\n"
+                            ++ "main() -> int {{\n"
+                            ++ "    info(apply(1, label))\n"
+                            ++ "    info(str(apply(1, size)))\n"
+                            ++ "    0\n}}\n"),
+              "0",
+              "a declared arrow type is a function type, so one call does "
+                  ++ "not pin the next one's return")
+}
+
+test_a_pipe_makes_its_left_side_the_first_argument() {
+    assert_eq(shown("3 |> twice"), "twice(3)",
+              "the value became the only argument")
+    assert_eq(shown("3 |> plus(4)"), "plus(3, 4)",
+              "piped value first, written arguments after")
+    assert_eq(shown("3 |> twice |> plus(1)"), "plus(twice(3), 1)",
+              "and a chain runs left to right")
+}
+
+test_a_pipe_binds_looser_than_arithmetic_and_tighter_than_or() {
+    assert_eq(shown("1 + 2 |> twice"), "twice((1 + 2))",
+              "the sum is piped, not the 2")
+    assert_eq(shown("a || b |> f"), "(a || f(b))",
+              "and `||` is the looser of the two")
+}
+
+test_a_literal_brace_survives_a_continued_string() {
+    assert_eq(brace_escaped(), brace_doubled(),
+              "the escaped and the doubled spelling read the same")
+    assert_eq(str(brace_doubled().length()), "10",
+              "and the `++` line after the brace is still part of the string")
 }
 
 n_stmts(src: str) -> int =>

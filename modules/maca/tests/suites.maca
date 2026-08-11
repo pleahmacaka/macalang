@@ -84,6 +84,30 @@ test_a_line_is_read_by_a_name_no_element_takes() {
             ++ "no element already takes")
 }
 
+test_a_suite_drops_the_main_it_writes_for_itself() {
+    src = scratch() ++ "/own_main.maca"
+
+    write_file(src, "main() -> int {{\n    info(\"main must not run\")\n"
+        ++ "    99\n}}\n\ntest_the_suite_still_runs() {{\n"
+        ++ "    assert_eq(str(1 + 1), \"2\", \"the runner ran it\")\n}}\n")
+
+    assert_eq(exec(maca_bin(), ["test", src]), 0,
+        "the runner writes the entry point, so a suite holding a `main` of "
+            ++ "its own is not two definitions of one name")
+
+    said = capture(maca_bin(), ["test", src])
+
+    assert(said.contains("test_the_suite_still_runs"),
+        "the test did not run:\n{said}")
+    assert(!said.contains("main must not run"),
+        "the suite's own main ran:\n{said}")
+}
+
+test_the_config_reader_reads_what_it_claims() {
+    assert_eq(suite_code("crates/driver/tests/programs/conf.maca"), 0,
+        "a suite that also carries a `main` is still a suite")
+}
+
 test_modules_do_not_answer_for_each_others_names() {
     suite = "crates/driver/tests/programs/scopes/suite.maca"
 

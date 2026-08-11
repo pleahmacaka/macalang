@@ -25,6 +25,8 @@ Env = {
     frozen: str[]
     errors: Diagnostic[]
     infer:  Infer
+    holes:  int[]
+    fills:  Ty[]
     here:   int
 }
 
@@ -32,7 +34,7 @@ empty_env() -> Env =>
     Env { names = [], types = [], fns = [], sigs = [],
           fields = [], ftypes = [], ctors = [], owners = [], slots = [],
           varargs = [], frozen = [], infer = new_infer(), errors = [],
-          here = 0 }
+          holes = [], fills = [], here = 0 }
 
 /// What a code means in general, apart from the occurrence that raised it.
 diag_explain(code: str) -> str =>
@@ -104,6 +106,8 @@ is_array_name(name: str) -> bool =>
 ty_named(name: str) -> Ty {
     if name == "" {
         t_any()
+    } else if name.index_of(") -> ") >= 0 {
+        ty_fn_named(name)
     } else if is_array_name(name) {
         t_array(ty_named(name.slice(0, name.length() - 2)))
     } else if name == "int" {
@@ -120,6 +124,27 @@ ty_named(name: str) -> Ty {
         t_any()
     } else {
         t_con(name, [])
+    }
+}
+
+/// A parameter declared `(int, str) -> bool` holds a function, so it unifies with one.
+ty_fn_named(name: str) -> Ty {
+    cut = name.index_of(") -> ")
+
+    t_fn(fn_arg_tys(name.slice(1, cut), []),
+         ty_named(name.slice(cut + 5, name.length())))
+}
+
+fn_arg_tys(list: str, acc: Ty[]) -> Ty[] {
+    cut = list.index_of(", ")
+
+    if list == "" {
+        acc
+    } else if cut < 0 {
+        acc ++ [ty_named(list)]
+    } else {
+        fn_arg_tys(list.slice(cut + 2, list.length()),
+                   acc ++ [ty_named(list.slice(0, cut))])
     }
 }
 
@@ -196,10 +221,11 @@ add_const(env: Env, s: Stmt) -> Env {
 
 add_fn(env: Env, s: Stmt) -> Env {
     made = param_types(env, s.params, 0, [])
+    back = declared_type(made.env, s.ret)
 
-    made.env with { fns = made.env.fns ++ [s.name],
-                    sigs = made.env.sigs ++ [t_fn(made.tys, ty_named(s.ret))],
-                    varargs = made.env.varargs ++ rest_taker(s) }
+    back.env with { fns = back.env.fns ++ [s.name],
+                    sigs = back.env.sigs ++ [t_fn(made.tys, back.ty)],
+                    varargs = back.env.varargs ++ rest_taker(s) }
 }
 
 rest_before_the_end(ps: Expr[], i: int) -> bool {
@@ -358,16 +384,10 @@ ident_type(env: Env, e: Expr) -> Typed {
                             ++ " `{e.text}(xs: T[])` and pass a list"),
               t_error())
     } else if declared >= 0 {
-        fn_value(env, env.sigs.get(declared))
+        typed(env, env.sigs.get(declared))
     } else {
         typed(env, t_any())
     }
-}
-
-fn_value(env: Env, sig: Ty) -> Typed {
-    used = instantiate(env.infer, generalize(env.infer, sig))
-
-    typed(with_infer(env, used.infer), used.ty)
 }
 
 call_type(env: Env, e: Expr) -> Typed {
@@ -445,12 +465,61 @@ call_declared(env: Env, e: Expr, sig: Ty) -> Typed {
     params = fn_params(used.ty)
 
     if takes_rest(ready, e, params.length()) {
-        typed(unify_args(ready, e.children.slice(0, params.length() - 1),
-                         params, 0), fn_ret(used.ty))
+        typed(noted_shapes(unify_args(ready,
+                                      e.children.slice(0,
+                                                       params.length() - 1),
+                                      params, 0),
+                           sig.args, used.ty.args, 0),
+              fn_ret(used.ty))
     } else if params.length() != e.children.length() {
         typed(wrong_arity(ready, e, params.length()), fn_ret(used.ty))
     } else {
-        typed(unify_args(ready, e.children, params, 0), fn_ret(used.ty))
+        typed(noted_shapes(unify_args(ready, e.children, params, 0),
+                           sig.args, used.ty.args, 0),
+              fn_ret(used.ty))
+    }
+}
+
+/// A call solves its own copy of a signature, so the shape it settled on is kept aside.
+noted_shapes(env: Env, want: Ty[], got: Ty[], i: int) -> Env {
+    if i >= want.length() || i >= got.length() {
+        env
+    } else {
+        noted_shapes(noted_shape(env, want.get(i), got.get(i)), want, got,
+                     i + 1)
+    }
+}
+
+noted_shape(env: Env, want: Ty, got: Ty) -> Env {
+    hole = resolve(env.infer, want)
+    seen = grounded(env.infer, got)
+
+    if hole.kind != KVar || seen.kind == KVar
+            || env.holes.index_of(hole.slot) >= 0 {
+        env
+    } else {
+        env with { holes = env.holes ++ [hole.slot],
+                   fills = env.fills ++ [seen] }
+    }
+}
+
+/// What a slot ended up being: what unification proved, or else what a call site used.
+solved_ty(env: Env, t: Ty) -> Ty {
+    seen = resolve(env.infer, t)
+    at = seen.kind == KVar ? env.holes.index_of(seen.slot) : 0 - 1
+
+    if at >= 0 {
+        env.fills.get(at)
+    } else {
+        seen with { args = solved_all(env, seen.args, 0) }
+    }
+}
+
+solved_all(env: Env, ts: Ty[], i: int) -> Ty[] {
+    if i >= ts.length() {
+        []
+    } else {
+        [solved_ty(env, ts.get(i))] ++ solved_all(env, ts, i + 1)
     }
 }
 
@@ -1167,10 +1236,23 @@ unify_from(env: Env, cs: Expr[], want: Ty, i: int, step: int) -> Env {
 check_fn_in(env: Env, s: Stmt) -> Env {
     inner = bind_params(env, s.params, signature_params(env, s.name), 0)
     body = check_body(inner, s.body, 0, t_any())
-    checked = return_check(body.env, s.ret, body.ty)
+    told = s.ret == "" && s.body.length() > 0
+        ? joined(body.env, signature_ret(env, s.name), body.ty)
+        : body.env
+    checked = return_check(told, s.ret, body.ty)
 
     checked with { names = env.names, types = env.types,
                    frozen = env.frozen }
+}
+
+signature_ret(env: Env, name: str) -> Ty {
+    at = env.fns.index_of(name)
+
+    if at < 0 {
+        t_any()
+    } else {
+        fn_ret(env.sigs.get(at))
+    }
 }
 
 signature_params(env: Env, name: str) -> Ty[] {
@@ -1493,9 +1575,17 @@ annotate_item(env: Env, s: Stmt) -> Stmt {
 
         keep = s.body.length() > 0
 
-        s with { ret = erased_ret(s.ret, keep),
-                 params = annotate_params(env.infer, s.params, tys, 0, keep),
+        s with { ret = erased_ret(item_ret(env, s), keep),
+                 params = annotate_params(env, s.params, tys, 0, keep),
                  body = annotate_body(inner, s.body, 0, []) }
+    }
+}
+
+item_ret(env: Env, s: Stmt) -> str {
+    if s.ret != "" || s.body.length() == 0 {
+        s.ret
+    } else {
+        surface_of(solved_ty(env, signature_ret(env, s.name)))
     }
 }
 
@@ -1509,21 +1599,23 @@ erased_ret(ret: str, keep: bool) -> str {
     }
 }
 
-annotate_params(inf: Infer, ps: Expr[], tys: Ty[], i: int,
+annotate_params(env: Env, ps: Expr[], tys: Ty[], i: int,
                 keep: bool) -> Expr[] {
     if i >= ps.length() {
         []
     } else {
-        [annotate_param(inf, ps.get(i), tys, i, keep)]
-            ++ annotate_params(inf, ps, tys, i + 1, keep)
+        [annotate_param(env, ps.get(i), tys, i, keep)]
+            ++ annotate_params(env, ps, tys, i + 1, keep)
     }
 }
 
-annotate_param(inf: Infer, p: Expr, tys: Ty[], i: int, keep: bool) -> Expr {
+annotate_param(env: Env, p: Expr, tys: Ty[], i: int, keep: bool) -> Expr {
     if i >= tys.length() || (keep && has_type_var(p.ty)) {
         p
+    } else if !keep {
+        p with { ty = surface_of(grounded(env.infer, tys.get(i))) }
     } else {
-        p with { ty = surface_of(grounded(inf, tys.get(i))) }
+        p with { ty = surface_of(solved_ty(env, tys.get(i))) }
     }
 }
 
@@ -1588,8 +1680,9 @@ fixed_arity(env: Env, name: str) -> int =>
 
 annotated_node(env: Env, e: Expr) -> Expr {
     inner = check_body(env, e.stmts, 0, t_any())
+    seen = type_in(env, e)
 
-    e with { ty = surface_of(type_in(env, e).ty),
+    e with { ty = surface_of(solved_ty(seen.env, seen.ty)),
              stmts = annotate_body(looped(env, e), e.stmts, 0, []),
              children = annotate_children(inner.env, e, 0, []) }
 }
@@ -1689,6 +1782,8 @@ annotate_children(env: Env, e: Expr, i: int, acc: Expr[]) -> Expr[] {
 child_scope(env: Env, e: Expr, i: int) -> Env {
     if e.kind == EMatch && i >= 2 && i % 2 == 0 {
         arm_scope(env, e.children.get(0), e.children.get(i - 1))
+    } else if e.kind == EMatch && i >= 1 {
+        arm_scope(env, e.children.get(0), e.children.get(i))
     } else if e.kind == EMethod && i > 0 && e.children.get(i).kind == ELambda {
         lambda_scope(env, e, i)
     } else {

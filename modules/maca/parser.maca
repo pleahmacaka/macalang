@@ -65,8 +65,38 @@ PType = {
 mk_ptype(tname: str, tnext: int) -> PType =>
     PType { tname, tnext }
 
-scan_type(ts: Token[], i: int) -> PType =>
-    type_post(ts, type_apply(ts, i + 1, ts.get(i).text))
+scan_type(ts: Token[], i: int) -> PType {
+    if ts.get(i).kind == LParen {
+        fn_type(ts, i, paren_end(ts, i + 1, 0))
+    } else {
+        type_post(ts, type_apply(ts, i + 1, ts.get(i).text))
+    }
+}
+
+/// `(int, str) -> bool` names a function, and every back end reads that spelling back.
+fn_type(ts: Token[], i: int, shut: int) -> PType {
+    args = fn_type_args(ts, i + 1, shut, "")
+
+    if ts.get(shut + 1).kind != Arrow {
+        mk_ptype("", shut + 1)
+    } else {
+        ret = scan_type(ts, shut + 2)
+
+        mk_ptype("({args}) -> {ret.tname}", ret.tnext)
+    }
+}
+
+fn_type_args(ts: Token[], i: int, shut: int, acc: str) -> str {
+    if i >= shut {
+        acc
+    } else {
+        one = scan_type(ts, i)
+        sep = acc == "" ? "" : ", "
+
+        fn_type_args(ts, skip_comma(ts, one.tnext), shut,
+                     acc ++ sep ++ one.tname)
+    }
+}
 
 type_apply(ts: Token[], i: int, head: str) -> PType {
     if is_upper(head) && type_arg_at(ts, i) {
@@ -512,14 +542,16 @@ prec_of(k: Kind) -> int {
     is_cmp = k == EqEq || k == NotEq || k == Lt || k == Gt || k == Le || k == Ge
 
     if k == Star || k == Slash || k == Percent {
-        7
+        8
     } else if k == Plus || k == Minus || k == PlusPlus {
-        6
+        7
     } else if k == Shl || k == Shr {
-        5
+        6
     } else if k == DotDot {
-        4
+        5
     } else if is_cmp {
+        4
+    } else if k == PipeGt {
         3
     } else if k == AmpAmp {
         2
@@ -559,9 +591,22 @@ parse_bin(ts: Token[], lhs: PExpr, min_prec: int) -> PExpr {
 climb(ts: Token[], lhs: PExpr, p: int, min_prec: int) -> PExpr {
     op = ts.get(lhs.next).text
     rhs = parse_bin(ts, parse_primary(ts, lhs.next + 1), p + 1)
-    node = e_binary(op, lhs.node, rhs.node)
+    node = op == "|>" ? piped(lhs.node, rhs.node)
+                      : e_binary(op, lhs.node, rhs.node)
 
     parse_bin(ts, mk_pexpr(node, rhs.next), min_prec)
+}
+
+/// `x |> f(a)` is `f(x, a)`, so the piped value arrives as the first argument.
+piped(lhs: Expr, rhs: Expr) -> Expr {
+    if rhs.kind == ECall {
+        e_call(rhs.text, [lhs] ++ rhs.children)
+    } else if rhs.kind == EMethod {
+        rhs with { children = [rhs.children.get(0), lhs]
+                       ++ rhs.children.slice(1, rhs.children.length()) }
+    } else {
+        e_call(rhs.text, [lhs])
+    }
 }
 
 parse_primary(ts: Token[], i: int) -> PExpr =>
@@ -1064,7 +1109,7 @@ paren_end(ts: Token[], i: int, depth: int) -> int {
 parse_paren(ts: Token[], i: int) -> PExpr {
     shut = paren_end(ts, i + 1, 0)
 
-    if ts.get(shut + 1).kind == FatArrow {
+    if ts.get(after_return_type(ts, shut + 1)).kind == FatArrow {
         parse_lambda(ts, i)
     } else {
         mk_pexpr(parse_expr(ts, i + 1).node, shut + 1)
@@ -1073,7 +1118,7 @@ parse_paren(ts: Token[], i: int) -> PExpr {
 
 parse_lambda(ts: Token[], i: int) -> PExpr {
     pp = parse_params(ts, i + 1, [])
-    body = parse_expr(ts, pp.pnext + 2)
+    body = parse_expr(ts, after_return_type(ts, pp.pnext + 1) + 1)
 
     mk_pexpr(e_lambda(pp.params, body.node), body.next)
 }

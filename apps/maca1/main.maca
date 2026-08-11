@@ -189,11 +189,51 @@ leaf_of(root: str) -> str {
     }
 }
 
+/// `[format]` says what one level of indentation is written with.
+indent_unit(chain: str[]) -> str {
+    size = chain_value(chain, 0, "[format]", "indent_size")
+    wide = size == "" ? 4 : int(size)
+
+    chain_value(chain, 0, "[format]", "indent_style") == "tab"
+        ? "\t"
+        : space_run(wide)
+}
+
+space_run(n: int) -> str =>
+    n <= 0 ? "" : " " ++ space_run(n - 1)
+
+/// The printer writes four spaces a level, so the declared unit replaces them.
+reindent(text: str, unit: str) -> str =>
+    unit == "    " ? text
+                   : reindent_lines(text.split("\n"), unit, 0, []).join("\n")
+
+reindent_lines(lines: str[], unit: str, i: int, acc: str[]) -> str[] {
+    if i >= lines.length() {
+        acc
+    } else {
+        reindent_lines(lines, unit, i + 1,
+                       acc ++ [reindent_line(lines.get(i), unit)])
+    }
+}
+
+reindent_line(line: str, unit: str) -> str {
+    n = indent_width(line, 0)
+
+    unit_times(unit, n / 4) ++ space_run(n % 4) ++ line.slice(n, line.length())
+}
+
+unit_times(unit: str, n: int) -> str =>
+    n <= 0 ? "" : unit ++ unit_times(unit, n - 1)
+
+indent_width(line: str, i: int) -> int =>
+    i < line.length() && line.at(i) == " " ? indent_width(line, i + 1) : i
+
 format_file(src: str, only_check: bool) -> int {
     before = read_file(src)
-    after = print_source(before)
+    unit = indent_unit(chain_of(src))
+    after = reindent(print_source(before), unit)
 
-    if after != print_source(after) {
+    if after != reindent(print_source(after), unit) {
         err("{src}: left as it is, the formatter cannot write it back")
 
         1
@@ -1409,8 +1449,21 @@ test_package(chain: str[]) -> int {
         dir = chain.get(0) ++ tests_dir(chain)
         suites = suite_files(dir, list_dir(dir), 0, [])
 
-        suites.length() == 0 ? no_suites(dir) : ran_suites(suites, 0, 0)
+        if suites.length() == 0 {
+            no_suites(dir)
+        } else {
+            info(package_heading(chain) ++ ": {suites.length()} suites")
+
+            ran_suites(suites, 0, 0)
+        }
     }
+}
+
+/// The package a bare `maca test` is testing, and the version it carries.
+package_heading(chain: str[]) -> str {
+    got = chain_value(chain, 0, "[package]", "version")
+
+    got == "" ? package_of(chain) : package_of(chain) ++ " " ++ got
 }
 
 /// `[package] tests` renames the directory the suites live in.
@@ -2108,13 +2161,42 @@ test_names(items: Stmt[], i: int, acc: str[]) -> str[] {
 run_tests(src: str, names: str[]) -> int {
     driver = "{dir_of(src)}maca1-test-{str(now_ms())}.maca"
 
-    write_file(driver, read_file(src) ++ test_main(names, 0, ""))
+    write_file(driver,
+               without_main(read_file(src)) ++ test_main(names, 0, ""))
 
     code = run_file(driver, [])
 
     remove_file(driver)
 
     code
+}
+
+/// A suite supplies its tests, and the runner supplies the entry point, so an own `main` is dropped.
+without_main(src: str) -> str {
+    items = parse_module(lex(src), 0, []).items
+    at = main_item(items, 0)
+
+    at < 0 ? src : cut_out(src, items.get(at).pos, item_start(items, at + 1))
+}
+
+main_item(items: Stmt[], i: int) -> int {
+    if i >= items.length() {
+        0 - 1
+    } else if items.get(i).kind == SFn && items.get(i).name == "main" {
+        i
+    } else {
+        main_item(items, i + 1)
+    }
+}
+
+item_start(items: Stmt[], i: int) -> int =>
+    i >= items.length() ? 0 - 1 : items.get(i).pos
+
+cut_out(src: str, from: int, upto: int) -> str {
+    cs = src.chars()
+    tail = upto < 0 ? [] : cs.slice(upto, cs.length())
+
+    cs.slice(0, from).join("") ++ tail.join("")
 }
 
 test_main(names: str[], i: int, acc: str) -> str {
@@ -2226,11 +2308,41 @@ selected(ts: Token[], i: int, at: str, acc: str[]) -> str[] {
     }
 }
 
+/// `import nix "f.nix"` binds what that file evaluates to, under the name it is called.
+nix_valued(path: str, src: str) -> str =>
+    src.index_of("import nix") < 0
+        ? src
+        : nix_bound(dir_of(path), lex_all(src).tokens, 0, "") ++ src
+
+nix_bound(dir: str, ts: Token[], i: int, acc: str) -> str {
+    if ts.get(i).kind == Eof {
+        acc
+    } else if ts.get(i).kind == KwImport && ts.get(i + 1).text == "nix"
+            && ts.get(i + 2).kind == TStr {
+        nix_bound(dir, ts, i + 3, acc ++ nix_binding(dir, ts.get(i + 2).text))
+    } else {
+        nix_bound(dir, ts, i + 1, acc)
+    }
+}
+
+nix_binding(dir: str, spec: str) -> str {
+    got = capture("nix-instantiate", ["--eval", dir ++ spec]).trim()
+
+    got == "" ? "" : "{nix_name(spec)} = {got}\n"
+}
+
+nix_name(spec: str) -> str {
+    leaf = spec.slice(sep_after(spec.chars(), spec.length() - 1),
+                      spec.length())
+
+    leaf.ends_with(".nix") ? leaf.slice(0, leaf.length() - 4) : leaf
+}
+
 load_unit(path: str, u: Unit) -> Unit {
     if u.seen.index_of(path) >= 0 {
         u
     } else {
-        got = lex_all(read_file(path))
+        got = lex_all(nix_valued(path, read_file(path)))
         marked = u with { seen = u.seen ++ [path] }
         deps = load_deps(path, imports_in(got.tokens, 0, []), 0, marked)
 
@@ -2305,7 +2417,7 @@ owned_by(mine: str[], path: str, i: int, acc: str[]) -> str[] {
 fn_names(items: Stmt[], i: int, acc: str[]) -> str[] {
     if i >= items.length() {
         acc
-    } else if items.get(i).kind == SFn {
+    } else if items.get(i).name != "" {
         fn_names(items, i + 1, acc ++ [items.get(i).name])
     } else {
         fn_names(items, i + 1, acc)

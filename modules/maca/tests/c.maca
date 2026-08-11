@@ -13,6 +13,11 @@ gate_c(src: str) -> str =>
 whole_c(src: str) -> str =>
     emit_module(annotated(parse_module(lex(src), 0, [])))
 
+built_c(src: str) -> str =>
+    emit_module(annotated(monomorphic(lifted(annotated(
+        parse_module(lex(src), 0, []))))))
+        .slice(GateRuntime.length(), 1000000)
+
 test_a_program_carries_only_the_runtime_blocks_it_calls() {
     plain = whole_c("main() -> int => 0")
     threaded = whole_c("w(n: int) -> int => n * 2\n"
@@ -99,11 +104,23 @@ test_a_variant_is_compared_by_tag_rather_than_bound() {
 
     assert(made.index_of("typedef enum {{ Red, Green, Blue }} Color;") >= 0,
            "a sum with no payload is a C enum")
-    assert(made.index_of("(x == Red ?") >= 0 && made.index_of("x == Green") >= 0
-               && made.index_of("x == Blue") >= 0,
-           "every arm asks the tag")
+    assert(made.index_of("(x == Red ?") >= 0 && made.index_of("x == Green") >= 0,
+           "every arm but the last asks the tag")
+    assert(made.index_of("x == Blue") < 0,
+           "and the last arm is the tail the chain falls to")
     assert(made.index_of("Color Red =") < 0,
            "a variant in a pattern is a tag, not a name the arm binds")
+}
+
+test_a_match_that_answers_a_record_ends_in_the_record() {
+    made = gate_c("P = {{ n: int }} C = A | B "
+                  ++ "pick(c: C) -> P {{ match c {{"
+                  ++ " A => P {{ n = 1 }} B => P {{ n = 2 }} }} }}")
+
+    assert(made.index_of(": 0)") < 0,
+           "an int fallback beside a struct is C the compiler refuses")
+    assert(made.index_of(".n = 2 })") >= 0,
+           "so the last arm is what the chain ends in")
 }
 
 test_a_record_is_a_struct_of_the_fields_it_declared() {
@@ -299,4 +316,40 @@ test_a_shift_lowers_to_the_c_shift() {
            "and the other direction is the other operator")
     assert(made.index_of("(1 < 0)") < 0,
            "not a comparison against nothing and a number thrown away")
+}
+
+test_a_local_that_holds_a_function_is_declared_as_a_pointer_to_one() {
+    made = built_c("main() -> int {{\n    inc = n => n + 1\n"
+                   ++ "    info(\"{{inc(41)}}\")\n    0\n}}")
+
+    assert(made.index_of("long (*inc)(long) = maca_lambda_0") >= 0,
+           "the name sits inside the parentheses, over the real parameter"
+               ++ " list: {made}")
+    assert(made.index_of("(*)(") < 0,
+           "a declarator with no name inside it is not C: {made}")
+}
+
+test_a_parameter_nothing_declared_is_what_its_callers_pass() {
+    made = built_c("greet(n) => \"hi \" ++ n\n"
+                   ++ "main() -> int {{\n    info(greet(\"bob\"))\n"
+                   ++ "    0\n}}")
+
+    assert(made.index_of("const char* greet(const char* n)") >= 0,
+           "`++` constrains nothing, so the call site is what says it: {made}")
+}
+
+test_a_variant_that_carries_its_own_sum_carries_a_pointer_to_it() {
+    made = built_c("Tree = Leaf(int) | Node(Tree, Tree)\n"
+                   ++ "total(t: Tree) -> int {{\n    match t {{\n"
+                   ++ "        Leaf(n) => n\n"
+                   ++ "        Node(l, r) => total(l) + total(r)\n"
+                   ++ "    }}\n}}\n"
+                   ++ "main() -> int => total(Node(Leaf(1), Leaf(2)))")
+
+    assert(made.index_of("static inline Tree Node(Tree _0, Tree _1)") >= 0,
+           "the constructor takes what the variant declared: {made}")
+    assert(made.index_of("*_b0 = _0; _v._0 = (long)_b0") >= 0,
+           "a struct cannot contain itself, so the payload goes to the heap")
+    assert(made.index_of("Tree l = *(Tree*)t._0") >= 0,
+           "and the arm reads it back through that pointer: {made}")
 }
