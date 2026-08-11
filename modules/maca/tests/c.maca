@@ -10,6 +10,26 @@ gate_c(src: str) -> str =>
     emit_module(annotated(parse_module(lex(src), 0, [])))
         .slice(GateRuntime.length(), 1000000)
 
+whole_c(src: str) -> str =>
+    emit_module(annotated(parse_module(lex(src), 0, [])))
+
+test_a_program_carries_only_the_runtime_blocks_it_calls() {
+    plain = whole_c("main() -> int => 0")
+    threaded = whole_c("w(n: int) -> int => n * 2\n"
+                       ++ "main() -> int {{ a = spawn w(10)\n await a }}")
+    ran = whole_c("main() -> int => exec(\"true\", [])")
+
+    assert(plain.index_of("pthread") < 0 && plain.index_of("sys/wait.h") < 0
+               && plain.index_of("sys/socket.h") < 0,
+           "a hello world carries no thread, no process and no socket runtime")
+    assert(threaded.index_of("#include <pthread.h>") >= 0
+               && threaded.index_of("maca_spawn") >= 0,
+           "a program that spawns carries the threads it asked for")
+    assert(ran.index_of("#include <sys/wait.h>") >= 0
+               && ran.index_of("pthread") < 0,
+           "running another program brings the process block and nothing else")
+}
+
 test_a_choice_in_value_position_is_a_ternary() {
     made = gate_c("pick(c: bool) -> int {{ b = if c {{ 100 }} else {{ 200 }} b }}")
 

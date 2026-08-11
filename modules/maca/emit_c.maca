@@ -1233,7 +1233,7 @@ c_zero(ty: str) -> str {
 }
 
 c_preamble() -> str =>
-    "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <stdarg.h>\n#include <ctype.h>\n#include <unistd.h>\n#include <sys/wait.h>\n#include <sys/stat.h>\n#include <dirent.h>\n#include <time.h>\n#include <setjmp.h>\n#include <pthread.h>\n#include <stdint.h>\n#include <strings.h>\n#include <sys/time.h>\n#include <sys/socket.h>\n#include <netinet/in.h>\n#include <netinet/tcp.h>\n#include <arpa/inet.h>\n" ++
+    "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <stdarg.h>\n#include <ctype.h>\n#include <unistd.h>\n#include <sys/stat.h>\n#include <dirent.h>\n#include <time.h>\n#include <setjmp.h>\n#include <stdint.h>\n#include <strings.h>\n#include <sys/time.h>\n" ++
     "typedef float f32x4 __attribute__((vector_size(16)));\ntypedef float f32x8 __attribute__((vector_size(32)));\ntypedef double f64x2 __attribute__((vector_size(16)));\ntypedef double f64x4 __attribute__((vector_size(32)));\ntypedef int i32x4 __attribute__((vector_size(16)));\ntypedef int i32x8 __attribute__((vector_size(32)));\n" ++
     "static jmp_buf maca_handlers[256];\nstatic int maca_handler_top = 0;\nstatic const char* maca_caught = \"\";\n" ++
     "static jmp_buf* maca_try_push(void) {{ return &maca_handlers[maca_handler_top++]; }}\n" ++
@@ -1269,7 +1269,6 @@ c_preamble() -> str =>
     "static long maca_box(int n, const void* p) {{ void* r = malloc(n); memcpy(r, p, n); return (long)r; }}\n" ++
     "static MacaList maca_chars(const char* s) {{ int n = (int)strlen(s); MacaList l; l.len = n; l.data = malloc((n ? n : 1) * sizeof(long)); for (int i = 0; i < n; i++) {{ char* c = malloc(2); c[0] = s[i]; c[1] = 0; l.data[i] = (long)c; }} return l; }}\n" ++
     "static MacaList maca_args(int argc, char** argv) {{ MacaList l; l.len = argc - 1; l.data = malloc((l.len ? l.len : 1) * sizeof(long)); for (int i = 0; i < l.len; i++) l.data[i] = (long)argv[i + 1]; return l; }}\n" ++
-    "static int maca_exec(const char* cmd, MacaList args) {{ char** argv = malloc((args.len + 2) * sizeof(char*)); argv[0] = (char*)cmd; for (int i = 0; i < args.len; i++) argv[i + 1] = (char*)args.data[i]; argv[args.len + 1] = NULL; pid_t pid = fork(); if (pid < 0) return -1; if (pid == 0) {{ execvp(cmd, argv); _exit(127); }} int st = 0; if (waitpid(pid, &st, 0) < 0) return -1; if (WIFEXITED(st)) return WEXITSTATUS(st); if (WIFSIGNALED(st)) return 128 + WTERMSIG(st); return -1; }}\n" ++
     "static char* maca_read_file(const char* path) {{ struct stat st; if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {{ char* e = malloc(1); e[0] = 0; return e; }} FILE* f = fopen(path, \"rb\"); if (!f) {{ char* e = malloc(1); e[0] = 0; return e; }} fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET); char* r = malloc(n + 1); size_t got = fread(r, 1, n, f); r[got] = 0; fclose(f); return r; }}\n" ++
     "static int maca_write_file(const char* path, const char* text) {{ FILE* f = fopen(path, \"wb\"); if (!f) return 0; fputs(text, f); fclose(f); return 1; }}\n" ++
     "static char* maca_str_at(const char* s, int i) {{ char* r = malloc(2); r[0] = (i >= 0 && i < (int)strlen(s)) ? s[i] : 0; r[1] = 0; return r; }}\n" ++
@@ -1309,20 +1308,55 @@ c_preamble() -> str =>
     "static char* maca_now_iso(void) {{ time_t t = time(NULL); struct tm g; gmtime_r(&t, &g); char* r = malloc(32); strftime(r, 32, \"%Y-%m-%dT%H:%M:%SZ\", &g); return r; }}\n" ++
     "static char* maca_format_time(long ms, const char* fmt) {{ time_t t = (time_t)(ms / 1000); struct tm g; gmtime_r(&t, &g); char* r = malloc(128); if (!strftime(r, 128, fmt, &g)) r[0] = 0; return r; }}\n" ++
     "static void maca_sleep_ms(int ms) {{ if (ms > 0) usleep((unsigned)ms * 1000); }}\n" ++
-    "typedef long (*MacaTask)(long);\ntypedef long (*MacaTask2)(long, long);\n" ++
-    "typedef struct {{ pthread_t th; MacaTask fn; MacaTask2 fn2; long a; long b; long out; int done; }} MacaFuture;\n" ++
-    "static void* maca_task_run(void* p) {{ MacaFuture* f = (MacaFuture*)p; f->out = f->fn2 ? f->fn2(f->a, f->b) : f->fn(f->a); return NULL; }}\n" ++
-    "static MacaFuture* maca_spawn(MacaTask fn, long a) {{ MacaFuture* f = malloc(sizeof(MacaFuture)); f->fn = fn; f->fn2 = 0; f->a = a; f->b = 0; f->out = 0; f->done = 0; pthread_create(&f->th, NULL, maca_task_run, f); return f; }}\n" ++
-    "static MacaFuture* maca_spawn2(MacaTask2 fn, long a, long b) {{ MacaFuture* f = malloc(sizeof(MacaFuture)); f->fn = 0; f->fn2 = fn; f->a = a; f->b = b; f->out = 0; f->done = 0; pthread_create(&f->th, NULL, maca_task_run, f); return f; }}\n" ++
-    "static long maca_await(MacaFuture* f) {{ if (!f) return 0; if (!f->done) {{ pthread_join(f->th, NULL); f->done = 1; }} return f->out; }}\n" ++
     "static char* maca_input(const char* prompt) {{ if (prompt && *prompt) {{ printf(\"%s\", prompt); fflush(stdout); }} size_t cap = 128, n = 0; char* b = malloc(cap); int c; while ((c = fgetc(stdin)) != EOF && c != '\\n') {{ if (n + 1 >= cap) {{ cap *= 2; char* g = malloc(cap); memcpy(g, b, n); b = g; }} b[n++] = (char)c; }} b[n] = 0; return b; }}\n" ++
     "static char* maca_attr(const char* name, const char* value) {{ if (!name || !*name) return maca_cat(\"\", \"\"); size_t n = strlen(name), v = strlen(value); char* r = malloc(n + v * 6 + 5); char* w = r; *w++ = ' '; memcpy(w, name, n); w += n; *w++ = '='; *w++ = '\"'; for (size_t i = 0; i < v; i++) {{ char c = value[i]; if (c == '&') {{ memcpy(w, \"&amp;\", 5); w += 5; }} else if (c == '<') {{ memcpy(w, \"&lt;\", 4); w += 4; }} else if (c == '>') {{ memcpy(w, \"&gt;\", 4); w += 4; }} else if (c == '\"') {{ memcpy(w, \"&quot;\", 6); w += 6; }} else {{ *w++ = c; }} }} *w++ = '\"'; *w = 0; return r; }}\n" ++
     "static char* maca_flag(const char* name, int on) {{ if (!on || !name || !*name) return maca_cat(\"\", \"\"); return maca_cat(\" \", name); }}\n" ++
     "static int maca_void_tag(const char* t) {{ const char* v[] = {{\"area\", \"base\", \"br\", \"col\", \"embed\", \"hr\", \"img\", \"input\", \"link\", \"meta\", \"source\", \"track\", \"wbr\", 0}}; for (int i = 0; v[i]; i++) if (strcmp(t, v[i]) == 0) return 1; return 0; }}\n" ++
-    "static char* maca_element(const char* tag, const char* attrs, const char* kids) {{ size_t t = strlen(tag), a = strlen(attrs), k = strlen(kids); char* r = malloc(t * 2 + a + k + 6); char* w = r; *w++ = '<'; memcpy(w, tag, t); w += t; memcpy(w, attrs, a); w += a; *w++ = '>'; if (!maca_void_tag(tag)) {{ memcpy(w, kids, k); w += k; *w++ = '<'; *w++ = '/'; memcpy(w, tag, t); w += t; *w++ = '>'; }} *w = 0; return r; }}\n" ++
-    "static char* maca_capture_fd(const char* cmd, MacaList args, int child_fd) {{ int fd[2]; if (pipe(fd) < 0) return maca_cat(\"\", \"\"); char** argv = malloc((size_t)(args.len + 2) * sizeof(char*)); argv[0] = (char*)cmd; for (int i = 0; i < args.len; i++) argv[i + 1] = (char*)args.data[i]; argv[args.len + 1] = NULL; pid_t pid = fork(); if (pid < 0) {{ close(fd[0]); close(fd[1]); return maca_cat(\"\", \"\"); }} if (pid == 0) {{ close(fd[0]); dup2(fd[1], child_fd); close(fd[1]); execvp(cmd, argv); _exit(127); }} close(fd[1]); size_t cap = 4096, n = 0; char* b = malloc(cap); ssize_t got; while ((got = read(fd[0], b + n, cap - n - 1)) > 0) {{ n += (size_t)got; if (n + 1 >= cap) {{ cap *= 2; char* g = malloc(cap); memcpy(g, b, n); b = g; }} }} close(fd[0]); int st = 0; waitpid(pid, &st, 0); b[n] = 0; return b; }}\n" ++
-    "static char* maca_capture(const char* cmd, MacaList args) {{ return maca_capture_fd(cmd, args, 1); }}\n" ++
-    "static char* maca_capture_err(const char* cmd, MacaList args) {{ return maca_capture_fd(cmd, args, 2); }}\n" ++
+    "static char* maca_element(const char* tag, const char* attrs, const char* kids) {{ size_t t = strlen(tag), a = strlen(attrs), k = strlen(kids); char* r = malloc(t * 2 + a + k + 6); char* w = r; *w++ = '<'; memcpy(w, tag, t); w += t; memcpy(w, attrs, a); w += a; *w++ = '>'; if (!maca_void_tag(tag)) {{ memcpy(w, kids, k); w += k; *w++ = '<'; *w++ = '/'; memcpy(w, tag, t); w += t; *w++ = '>'; }} *w = 0; return r; }}\n"
+
+c_uses(code: str, name: str) -> bool =>
+    code.index_of(name) >= 0
+
+c_net_headers() -> str =>
+    "#include <pthread.h>\n#include <sys/socket.h>\n" ++
+    "#include <netinet/in.h>\n#include <netinet/tcp.h>\n" ++
+    "#include <arpa/inet.h>\n"
+
+c_process(code: str) -> str {
+    if c_uses(code, "maca_exec") || c_uses(code, "maca_capture") {
+        "#include <sys/wait.h>\n" ++
+        "static int maca_exec(const char* cmd, MacaList args) {{ char** argv = malloc((args.len + 2) * sizeof(char*)); argv[0] = (char*)cmd; for (int i = 0; i < args.len; i++) argv[i + 1] = (char*)args.data[i]; argv[args.len + 1] = NULL; pid_t pid = fork(); if (pid < 0) return -1; if (pid == 0) {{ execvp(cmd, argv); _exit(127); }} int st = 0; if (waitpid(pid, &st, 0) < 0) return -1; if (WIFEXITED(st)) return WEXITSTATUS(st); if (WIFSIGNALED(st)) return 128 + WTERMSIG(st); return -1; }}\n" ++
+        "static char* maca_capture_fd(const char* cmd, MacaList args, int child_fd) {{ int fd[2]; if (pipe(fd) < 0) return maca_cat(\"\", \"\"); char** argv = malloc((size_t)(args.len + 2) * sizeof(char*)); argv[0] = (char*)cmd; for (int i = 0; i < args.len; i++) argv[i + 1] = (char*)args.data[i]; argv[args.len + 1] = NULL; pid_t pid = fork(); if (pid < 0) {{ close(fd[0]); close(fd[1]); return maca_cat(\"\", \"\"); }} if (pid == 0) {{ close(fd[0]); dup2(fd[1], child_fd); close(fd[1]); execvp(cmd, argv); _exit(127); }} close(fd[1]); size_t cap = 4096, n = 0; char* b = malloc(cap); ssize_t got; while ((got = read(fd[0], b + n, cap - n - 1)) > 0) {{ n += (size_t)got; if (n + 1 >= cap) {{ cap *= 2; char* g = malloc(cap); memcpy(g, b, n); b = g; }} }} close(fd[0]); int st = 0; waitpid(pid, &st, 0); b[n] = 0; return b; }}\n" ++
+        "static char* maca_capture(const char* cmd, MacaList args) {{ return maca_capture_fd(cmd, args, 1); }}\n" ++
+        "static char* maca_capture_err(const char* cmd, MacaList args) {{ return maca_capture_fd(cmd, args, 2); }}\n"
+    } else {
+        ""
+    }
+}
+
+c_threads(code: str) -> str {
+    if c_uses(code, "maca_spawn") || c_uses(code, "MacaFuture") {
+        "#include <pthread.h>\n" ++
+        "typedef long (*MacaTask)(long);\ntypedef long (*MacaTask2)(long, long);\n" ++
+        "typedef struct {{ pthread_t th; MacaTask fn; MacaTask2 fn2; long a; long b; long out; int done; }} MacaFuture;\n" ++
+        "static void* maca_task_run(void* p) {{ MacaFuture* f = (MacaFuture*)p; f->out = f->fn2 ? f->fn2(f->a, f->b) : f->fn(f->a); return NULL; }}\n" ++
+        "static MacaFuture* maca_spawn(MacaTask fn, long a) {{ MacaFuture* f = malloc(sizeof(MacaFuture)); f->fn = fn; f->fn2 = 0; f->a = a; f->b = 0; f->out = 0; f->done = 0; pthread_create(&f->th, NULL, maca_task_run, f); return f; }}\n" ++
+        "static MacaFuture* maca_spawn2(MacaTask2 fn, long a, long b) {{ MacaFuture* f = malloc(sizeof(MacaFuture)); f->fn = 0; f->fn2 = fn; f->a = a; f->b = b; f->out = 0; f->done = 0; pthread_create(&f->th, NULL, maca_task_run, f); return f; }}\n" ++
+        "static long maca_await(MacaFuture* f) {{ if (!f) return 0; if (!f->done) {{ pthread_join(f->th, NULL); f->done = 1; }} return f->out; }}\n"
+    } else {
+        ""
+    }
+}
+
+c_sockets(code: str) -> str {
+    if c_uses(code, "http_listen") || c_uses(code, "http_fetch") {
+        c_net_headers() ++ c_http()
+    } else {
+        ""
+    }
+}
+
+c_http() -> str =>
     "#define MACA_HTTP_MAX (1 << 20)\n" ++
     "#define MACA_HTTP_IDLE 30\n" ++
     "typedef const char* (*MacaHttpFn)(const char*);\n" ++
@@ -1345,6 +1379,7 @@ c_mqtt(protos: str) -> str {
     if protos.index_of("mqtt_") < 0 {
         ""
     } else {
+        c_net_headers() ++
         "#define MACA_MQTT_MAX_SUBS 8192\n" ++
         "typedef struct {{ int fd; char pat[256]; }} MacaMqttSub;\n" ++
         "static MacaMqttSub maca_mqtt_subs[MACA_MQTT_MAX_SUBS];\n" ++
@@ -1370,10 +1405,11 @@ c_mqtt(protos: str) -> str {
 
 emit_module(m: Module) -> str {
     protos = emit_protos(m.items, 0)
+    code = protos ++ emit_starts(m.items) ++ emit_bodies(m.items, 0)
 
-    c_preamble() ++ emit_types(m.items, 0) ++ emit_consts(m.items, 0)
-        ++ protos ++ emit_starts(m.items)
-        ++ emit_bodies(m.items, 0) ++ c_mqtt(protos)
+    c_preamble() ++ c_process(code) ++ c_threads(code) ++ c_sockets(code)
+        ++ emit_types(m.items, 0) ++ emit_consts(m.items, 0) ++ code
+        ++ c_mqtt(protos)
 }
 
 emit_consts(items: Stmt[], i: int) -> str {
