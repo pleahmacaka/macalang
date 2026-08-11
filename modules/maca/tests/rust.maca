@@ -126,3 +126,13 @@ test_a_shift_lowers_to_the_rust_shift() {
     assert(made.index_of("<< n") >= 0, "Rust moves the bits of an i64 the same way")
     assert(made.index_of(">> 1") >= 0, "and moves them back")
 }
+
+test_a_binder_the_arm_writes_is_mutable() {
+    made = gate_rust("grown(x: int) -> int {{ out = 0"
+                         ++ " match x {{ v => {{ v = v + 1 out = v }} }} out }}")
+
+    assert(made.index_of("mut v => ") >= 0,
+           "Maca reassigns the binder where Rust would shadow it")
+    assert(made.index_of("v = (v + 1i64)") >= 0,
+           "so the arm writes the name rather than declaring it again")
+}

@@ -1652,9 +1652,26 @@ child_scope(env: Env, e: Expr, i: int) -> Env {
 arm_scope(env: Env, scrut: Expr, pat: Expr) -> Env {
     seen = type_in(env, scrut)
 
-    bound_cells(bound_arm(seen.env, pat), pat,
+    bound_cells(bound_whole(bound_arm(seen.env, pat), pat, seen.ty), pat,
                 element_of(resolve(seen.env.infer, seen.ty)))
 }
+
+/// A lowercase pattern names the whole value, so writing it is a reassignment and never a second binding.
+bound_whole(env: Env, pat: Expr, t: Ty) -> Env {
+    if pat.kind == EGuard {
+        bound_whole(env, pat.children.get(0), t)
+    } else if pat.kind != EIdent || pat.children.length() > 0 {
+        env
+    } else if starts_upper(pat.text) || !whole_binder(pat.text) {
+        env
+    } else {
+        bind(env, pat.text, t)
+    }
+}
+
+whole_binder(name: str) -> bool =>
+    name != "_" && name != "[]" && name != "[..]" && name != "{{}}"
+        && name != "true" && name != "false"
 
 lambda_scope(env: Env, e: Expr, i: int) -> Env {
     ps = lambda_params(e.children.get(i))

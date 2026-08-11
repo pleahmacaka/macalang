@@ -129,7 +129,7 @@ usage() -> int {
 
 /// A `[scripts]` name in the manifest here is a command, so `maca <name>` runs what it names.
 unknown_cmd(name: str) -> int {
-    script = toml_value(read_file(Manifest), "[scripts]", name)
+    script = chain_value(here_chain(), 0, "[scripts]", name)
 
     if script != "" {
         run_script(script)
@@ -660,7 +660,8 @@ build_binary(src: str, out: str) -> int {
 
 /// `[build] cflags` in the manifest here, the flags a program needs to link.
 cc_flags() -> str[] =>
-    nonempty(toml_value(read_file(Manifest), "[build]", "cflags").split(" "), 0, [])
+    nonempty(chain_value(here_chain(), 0, "[build]", "cflags").split(" "),
+             0, [])
 
 build_cmd(args: str[]) -> int {
     named = build_src(args, 1, "")
@@ -668,6 +669,8 @@ build_cmd(args: str[]) -> int {
 
     if src == "" {
         2
+    } else if named != "" && !workspace_ok(chain_of(src)) {
+        1
     } else {
         out = flag_after(args, "-o")
         named_out = out == "" ? stem_of(src) : out
@@ -695,7 +698,9 @@ takes_value(a: str) -> bool =>
 run_cmd(args: str[]) -> int {
     named = first_named(args)
 
-    if named != "" {
+    if named != "" && !workspace_ok(chain_of(named)) {
+        1
+    } else if named != "" {
         run_file(named, args.slice(2, args.length()))
     } else {
         src = declared_bin("run", flag_after(args, "--bin"))
@@ -738,6 +743,222 @@ stem_of(src: str) -> str {
 
 Manifest = "maca.toml"
 
+/// Every directory at or above `from` holding a manifest, nearest first, ending at the workspace root.
+manifest_chain(from: str) -> str[] {
+    dirs = manifest_dirs(rooted(from), [])
+
+    upto(dirs, workspace_at(dirs, dirs.length() - 1), 0, [])
+}
+
+/// A relative directory has no ancestors, so the walk starts from the real one.
+rooted(from: str) -> str {
+    at = real_path(from == "" ? "." : from)
+
+    at == "" ? "" : at ++ "/"
+}
+
+manifest_dirs(dir: str, acc: str[]) -> str[] {
+    if dir == "" {
+        acc
+    } else if file_exists(dir ++ Manifest) {
+        manifest_dirs(parent_of(dir), acc ++ [dir])
+    } else {
+        manifest_dirs(parent_of(dir), acc)
+    }
+}
+
+/// The chain ends at the outermost `[workspace]`, and at the nearest manifest when no workspace holds it.
+workspace_at(dirs: str[], i: int) -> int {
+    if i < 0 {
+        dirs.length() == 0 ? -1 : 0
+    } else if declares_workspace(read_file(dirs.get(i) ++ Manifest)) {
+        i
+    } else {
+        workspace_at(dirs, i - 1)
+    }
+}
+
+declares_workspace(toml: str) -> bool =>
+    heads(toml.split("\n"), 0, "[workspace]")
+
+heads(lines: str[], i: int, want: str) -> bool {
+    if i >= lines.length() {
+        false
+    } else if lines.get(i).trim() == want {
+        true
+    } else {
+        heads(lines, i + 1, want)
+    }
+}
+
+upto(dirs: str[], stop: int, i: int, acc: str[]) -> str[] {
+    if stop < 0 || i > stop {
+        acc
+    } else {
+        upto(dirs, stop, i + 1, acc ++ [dirs.get(i)])
+    }
+}
+
+here_chain() -> str[] =>
+    manifest_chain(".")
+
+chain_of(src: str) -> str[] =>
+    manifest_chain(dir_of(src))
+
+/// One key, off the nearest manifest on the chain that states it.
+chain_value(chain: str[], i: int, table: str, key: str) -> str {
+    if i >= chain.length() {
+        ""
+    } else {
+        got = toml_value(read_file(chain.get(i) ++ Manifest), table, key)
+
+        got != "" ? got : chain_value(chain, i + 1, table, key)
+    }
+}
+
+/// A workspace whose list and whose tree disagree is a wrong answer waiting to happen, so it is refused first.
+workspace_ok(chain: str[]) -> bool {
+    why = workspace_problem(chain)
+
+    if why == "" {
+        true
+    } else {
+        err("maca: {why}")
+
+        false
+    }
+}
+
+workspace_problem(chain: str[]) -> str {
+    if chain.length() == 0 {
+        ""
+    } else {
+        root = chain.get(chain.length() - 1)
+        nested = nested_workspace(chain, root, 0)
+
+        if nested != "" {
+            nested
+        } else {
+            members_problem(root, members_of(read_file(root ++ Manifest)))
+        }
+    }
+}
+
+nested_workspace(chain: str[], root: str, i: int) -> str {
+    if i >= chain.length() {
+        ""
+    } else if chain.get(i) != root
+            && declares_workspace(read_file(chain.get(i) ++ Manifest)) {
+        "{chain.get(i)}{Manifest}: [workspace] inside a workspace; only "
+            ++ "{root}{Manifest} declares one"
+    } else {
+        nested_workspace(chain, root, i + 1)
+    }
+}
+
+members_problem(root: str, ms: str[]) -> str {
+    listed = member_refusal(root, ms, 0)
+
+    listed != "" ? listed : stray_in(root, ms, parents_of(ms, 0, []), 0)
+}
+
+/// A member says what it is, in a manifest of its own.
+member_refusal(root: str, ms: str[], i: int) -> str {
+    if i >= ms.length() {
+        ""
+    } else if read_file("{root}{ms.get(i)}/{Manifest}") == "" {
+        "{root}{Manifest}: [workspace] member `{ms.get(i)}` has no {Manifest}"
+    } else if named_package("{root}{ms.get(i)}/{Manifest}") {
+        member_refusal(root, ms, i + 1)
+    } else {
+        "{root}{ms.get(i)}/{Manifest}: a workspace member states its own "
+            ++ "[package] name"
+    }
+}
+
+named_package(file: str) -> bool =>
+    toml_value(read_file(file), "[package]", "name") != ""
+
+/// The directories the member list reaches into, which is where a package it forgot would sit.
+parents_of(ms: str[], i: int, acc: str[]) -> str[] {
+    if i >= ms.length() {
+        acc
+    } else {
+        up = dir_of(ms.get(i))
+
+        parents_of(ms, i + 1, acc.index_of(up) >= 0 ? acc : acc ++ [up])
+    }
+}
+
+stray_in(root: str, ms: str[], parents: str[], i: int) -> str {
+    if i >= parents.length() {
+        ""
+    } else {
+        found = stray_at(root, ms, parents.get(i),
+                         list_dir(root ++ parents.get(i)), 0)
+
+        found != "" ? found : stray_in(root, ms, parents, i + 1)
+    }
+}
+
+stray_at(root: str, ms: str[], parent: str, names: str[], i: int) -> str {
+    if i >= names.length() {
+        ""
+    } else if file_exists("{root}{parent}{names.get(i)}/{Manifest}")
+            && ms.index_of(parent ++ names.get(i)) < 0 {
+        "{root}{Manifest}: `{parent}{names.get(i)}` holds a {Manifest} but is "
+            ++ "not a [workspace] member; list it or delete it"
+    } else {
+        stray_at(root, ms, parent, names, i + 1)
+    }
+}
+
+/// `members = ["a", "b"]`, however many lines the list is written across.
+members_of(toml: str) -> str[] {
+    lines = toml.split("\n")
+    at = key_line(lines, 0, "", "[workspace]", "members")
+
+    at < 0 ? [] : cleaned(bracketed(list_body(lines, at, "")).split(","),
+                          0, [])
+}
+
+key_line(lines: str[], i: int, at: str, table: str, key: str) -> int {
+    if i >= lines.length() {
+        -1
+    } else if toml_head(lines.get(i)) != "" {
+        key_line(lines, i + 1, toml_head(lines.get(i)), table, key)
+    } else if at == table && toml_key(lines.get(i)) == key {
+        i
+    } else {
+        key_line(lines, i + 1, at, table, key)
+    }
+}
+
+list_body(lines: str[], i: int, acc: str) -> str {
+    if i >= lines.length() || acc.index_of("]") >= 0 {
+        acc
+    } else {
+        list_body(lines, i + 1, acc ++ lines.get(i).trim())
+    }
+}
+
+bracketed(s: str) -> str {
+    a = s.index_of("[")
+    b = s.index_of("]")
+
+    a < 0 || b <= a ? "" : s.slice(a + 1, b)
+}
+
+cleaned(xs: str[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        one = unquoted(xs.get(i).trim())
+
+        cleaned(xs, i + 1, one == "" ? acc : acc ++ [one])
+    }
+}
+
 Bin = {
     name: str
     path: str
@@ -745,21 +966,24 @@ Bin = {
 
 /// The file a command works on when the command line named none: a `[[bin]]` of the package here.
 declared_bin(cmd: str, want: str) -> str {
-    toml = read_file(Manifest)
+    chain = here_chain()
 
-    if toml == "" {
+    if chain.length() == 0 {
         err("{cmd}: expected a .maca file, and there is no {Manifest} here to name one")
 
         ""
+    } else if !workspace_ok(chain) {
+        ""
     } else {
-        chosen_bin(cmd, toml, want)
+        chosen_bin(cmd, chain, want)
     }
 }
 
-chosen_bin(cmd: str, toml: str, want: str) -> str {
-    pkg = package_of(toml)
-    bins = bins_of(toml.split("\n"), 0, [])
-    asked = want == "" ? toml_value(toml, "[build]", "bin") : want
+chosen_bin(cmd: str, chain: str[], want: str) -> str {
+    own = chain.get(0)
+    pkg = package_of(chain)
+    bins = bins_of(read_file(own ++ Manifest).split("\n"), 0, [])
+    asked = want == "" ? chain_value(chain, 0, "[build]", "bin") : want
     at = bin_pick(bins, asked)
     n = bins.length()
     names = bin_names(bins, 0, "")
@@ -774,15 +998,17 @@ chosen_bin(cmd: str, toml: str, want: str) -> str {
 
         ""
     } else {
-        bin_file(cmd, bins.get(at))
+        bin_file(cmd, own, bins.get(at))
     }
 }
 
-bin_file(cmd: str, b: Bin) -> str {
-    if file_exists(b.path) {
-        b.path
+bin_file(cmd: str, dir: str, b: Bin) -> str {
+    at = dir ++ b.path
+
+    if file_exists(at) {
+        at
     } else {
-        err("{cmd}: [[bin]] `{b.name}` names {b.path}, which is not a file")
+        err("{cmd}: [[bin]] `{b.name}` names {at}, which is not a file")
 
         ""
     }
@@ -818,8 +1044,8 @@ bin_names(bins: Bin[], i: int, acc: str) -> str {
     }
 }
 
-package_of(toml: str) -> str {
-    got = toml_value(toml, "[package]", "name")
+package_of(chain: str[]) -> str {
+    got = chain_value(chain, 0, "[package]", "name")
 
     got == "" ? "this package" : got
 }

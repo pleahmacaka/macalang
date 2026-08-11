@@ -226,3 +226,98 @@ test_dev_without_a_dev_file_shows_the_starter_it_wants() {
     assert(said.contains("dev.packages"),
            "the message carries a starter the reader can paste: {said}")
 }
+
+/// A root that gathers a library and an application, the way this repository does.
+monorepo(tag: str) -> str {
+    dir = package_dir(tag)
+
+    make_dir(dir ++ "/modules/greet")
+    make_dir(dir ++ "/apps/hello")
+    write_file(dir ++ "/maca.toml",
+        "[package]\nname = \"repo\"\n\n[workspace]\nmembers = [\n"
+            ++ "    \"modules/greet\",\n    \"apps/hello\",\n]\n\n"
+            ++ "[scripts]\ngo = \"echo workspace-script-ok\"\n")
+    write_file(dir ++ "/modules/greet/maca.toml",
+               "[package]\nname = \"greet\"\n")
+    write_file(dir ++ "/modules/greet/say.maca",
+               "greeting(who: str) -> str => \"hi \" ++ who\n")
+    write_file(dir ++ "/apps/hello/maca.toml",
+        "[package]\nname = \"hello\"\n\n[[bin]]\nname = \"hello\"\n"
+            ++ "path = \"main.maca\"\n")
+    write_file(dir ++ "/apps/hello/main.maca",
+        "import greet/say\n\nmain() -> int {{\n"
+            ++ "    info(greeting(\"world\"))\n    0\n}}\n")
+
+    dir
+}
+
+test_a_package_builds_and_runs_from_its_own_directory() {
+    at = monorepo("ws-run") ++ "/apps/hello"
+
+    assert_eq(str(rc_in(at, ["build"])), "0", "a bare build inside a member")
+    assert(file_exists(at ++ "/main"), "the [[bin]] it declares was built")
+    assert_eq(out_in(at, ["run"]).trim(), "hi world",
+              "and its imports still reach the roots above its own manifest")
+}
+
+test_a_root_key_the_member_is_silent_about_is_inherited() {
+    at = monorepo("ws-script") ++ "/apps/hello"
+
+    assert_eq(out_in(at, ["go"]).trim(), "workspace-script-ok",
+              "the nearest manifest that states a key answers for it")
+}
+
+test_a_member_that_is_listed_but_absent_is_named() {
+    dir = monorepo("ws-ghost")
+
+    write_file(dir ++ "/maca.toml",
+        "[package]\nname = \"repo\"\n\n[workspace]\n"
+            ++ "members = [\"modules/greet\", \"apps/ghost\"]\n")
+    said = err_in(dir ++ "/apps/hello", ["build"])
+
+    assert(said.contains("apps/ghost"), "a listed member exists: {said}")
+}
+
+test_a_member_without_a_package_name_is_named() {
+    dir = monorepo("ws-nameless")
+
+    write_file(dir ++ "/apps/hello/maca.toml",
+               "[[bin]]\npath = \"main.maca\"\n")
+    said = err_in(dir, ["build", "apps/hello/main.maca"])
+
+    assert(said.contains("apps/hello") && said.contains("name"),
+           "the message names the manifest and the key: {said}")
+}
+
+test_a_stray_directory_does_not_become_a_package() {
+    dir = monorepo("ws-stray")
+
+    make_dir(dir ++ "/apps/notes")
+    write_file(dir ++ "/apps/notes/jot.maca", "main() -> int => 0\n")
+
+    assert_eq(str(rc_in(dir ++ "/apps/hello", ["build"])), "0",
+              "a directory with no maca.toml is not a member")
+}
+
+test_a_package_the_workspace_does_not_list_is_named() {
+    dir = monorepo("ws-undeclared")
+
+    make_dir(dir ++ "/apps/scratch")
+    write_file(dir ++ "/apps/scratch/maca.toml",
+               "[package]\nname = \"scratch\"\n")
+    said = err_in(dir ++ "/apps/hello", ["build"])
+
+    assert(said.contains("apps/scratch"),
+           "the list and the tree must agree: {said}")
+}
+
+test_a_member_may_not_declare_a_workspace_of_its_own() {
+    dir = monorepo("ws-nested")
+
+    write_file(dir ++ "/apps/hello/maca.toml",
+        "[package]\nname = \"hello\"\n\n[workspace]\nmembers = []\n\n"
+            ++ "[[bin]]\nname = \"hello\"\npath = \"main.maca\"\n")
+    said = err_in(dir ++ "/apps/hello", ["build"])
+
+    assert(said.contains("[workspace]"), "one workspace per tree: {said}")
+}

@@ -353,3 +353,30 @@ test_a_shift_lowers_to_the_javascript_shift() {
               "function half(n) {{ return (n >> 1); }}",
               "and so does the other direction")
 }
+
+test_an_arm_may_write_the_name_its_pattern_bound() {
+    out = js_module("grown(x: int) -> int {{ out = 0"
+                        ++ " match x {{ v => {{ v = v + 1 out = v }} }} out }}")
+
+    assert(out.index_of("var v = _s; {{ v = (v + 1);") >= 0,
+           "the arm named the whole value, so writing it is a write")
+    assert(out.index_of("let v = (v + 1)") < 0,
+           "a second binding reads itself before it exists")
+}
+
+test_a_tag_is_the_html_it_stands_for() {
+    out = js_module("main() -> Element => div(class=\"x\" \"hi\")")
+
+    assert(out.index_of("maca_element(\"div\"") >= 0,
+           "the checker lowered the tag, and the emitter keeps the call")
+    assert(out.index_of("function maca_element(") >= 0,
+           "so the JavaScript that builds the markup travels with the program")
+    assert(out.index_of("function maca_attr(") >= 0,
+           "and the one that writes an attribute with it")
+}
+
+test_the_greatest_common_divisor_is_a_helper() {
+    assert_eq(js_of("f(a: int, b: int) -> int => gcd(a, b)"),
+              "function f(a, b) {{ return _mgcd(a, b); }}",
+              "no `Math` carries it, so the program does")
+}
