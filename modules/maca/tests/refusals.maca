@@ -95,6 +95,32 @@ test_the_bad_corpus_is_refused_and_told_why() {
             ++ " `count = …` (no `const`)")
 }
 
+test_a_config_file_is_refused_for_what_a_nixos_module_cannot_do() {
+    refused("apps/examples/bad/effect_in_config.maca",
+        "config must be pure, and `info` performs io")
+    refused("apps/examples/bad/effect_statement_in_config.maca",
+        "config must be pure, and `info` performs io")
+    refused("apps/examples/bad/unknown_option.maca",
+        "unknown NixOS option namespace `netwrking`: did you mean"
+            ++ " `networking`?")
+}
+
+test_a_dotted_binding_is_what_makes_a_file_config_mode() {
+    make_dir(scratch())
+    program = scratch() ++ "/effectful.maca"
+    config = scratch() ++ "/pure.maca"
+
+    write_file(program, "info(\"before main\")\n\n"
+        ++ "main() -> int {{\n    info(\"hello\")\n    0\n}}\n")
+    write_file(config, "networking.hostName = \"rigel\"\n"
+        ++ "boot.loader.systemd_boot = true\n")
+
+    assert_eq(str(exec(maca_bin(), ["check", program])), "0",
+        "a program names no option, so no purity rule reaches it")
+    assert_eq(str(exec(maca_bin(), ["check", config])), "0",
+        "a config file that names known options and runs nothing is clean")
+}
+
 test_the_golden_examples_are_still_accepted() {
     for name in ["hello", "tour", "loops", "sum_record", "recursive_record",
                  "async", "taskr", "counter", "dot", "system", "operators",

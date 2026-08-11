@@ -1245,6 +1245,99 @@ check_item(env: Env, s: Stmt) -> Env {
 check_errors(m: Module) -> str[] =>
     checked_module(m).errors ++ clashing_names(m.items, 0, [], [])
         ++ variadic_errors(m.items, 0, [])
+        ++ config_errors(m.items)
+
+NixosRoots = " networking system services users user environment programs"
+    ++ " fonts boot hardware security nix nixpkgs virtualisation systemd"
+    ++ " i18n time sound xdg home imports console powerManagement"
+    ++ " documentation location "
+
+/// A dotted path left of `=` is how config mode writes an option, and a program has no such statement.
+config_errors(items: Stmt[]) -> str[] =>
+    writes_an_option(items, 0) ? config_refusals(items, 0, []) : []
+
+writes_an_option(items: Stmt[], i: int) -> bool {
+    if i >= items.length() {
+        false
+    } else if items.get(i).kind == SBind
+                  && items.get(i).name.index_of(".") > 0 {
+        true
+    } else {
+        writes_an_option(items, i + 1)
+    }
+}
+
+config_refusals(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else {
+        config_refusals(items, i + 1, acc ++ config_refusal(items.get(i)))
+    }
+}
+
+config_refusal(s: Stmt) -> str[] {
+    if s.kind == SFn {
+        s.body.length() == 0 && is_io_builtin(s.name)
+            ? [impure_config(s.name)]
+            : []
+    } else if s.kind != SBind {
+        []
+    } else {
+        impure_value(s.value) ++ misspelt_option(s.name)
+    }
+}
+
+impure_value(e: Expr) -> str[] {
+    called = effectful_call(e)
+
+    called == "" ? [] : [impure_config(called)]
+}
+
+impure_config(name: str) -> str =>
+    "config must be pure, and `{name}` performs io: a NixOS module is data,"
+        ++ " so there is no moment at which it could run"
+
+effectful_call(e: Expr) -> str {
+    if (e.kind == ECall || e.kind == EMethod) && is_io_builtin(e.text) {
+        e.text
+    } else {
+        effectful_in(e.children, 0)
+    }
+}
+
+effectful_in(xs: Expr[], i: int) -> str {
+    if i >= xs.length() {
+        ""
+    } else {
+        found = effectful_call(xs.get(i))
+
+        found == "" ? effectful_in(xs, i + 1) : found
+    }
+}
+
+/// A namespace no module declares is refused only when it is a misspelling of one, because NixOS options are an open set.
+misspelt_option(name: str) -> str[] {
+    root = option_root(name)
+    near = root == "" || known_root(root)
+        ? ""
+        : nearest_ctor(root, nixos_roots(), 0, "", hint_span(root))
+
+    near == ""
+        ? []
+        : ["unknown NixOS option namespace `{root}`: did you mean `{near}`?"]
+}
+
+option_root(name: str) -> str {
+    cut = name.index_of(".")
+
+    cut < 0 ? "" : name.slice(0, cut)
+}
+
+known_root(root: str) -> bool =>
+    NixosRoots.index_of(" {root} ") >= 0
+
+nixos_roots() -> str[] =>
+    NixosRoots.trim().split(" ")
 
 /// Imports flatten into one module, so two packages defining one name is a clash, not a shadow.
 clashing_names(items: Stmt[], i: int, seen: str[], acc: str[]) -> str[] {
