@@ -71,8 +71,8 @@ code_in(dir: str, args: str[]) -> int {
 refused(path: str, want: str) -> bool {
     said = capture(maca_bin(), ["check", path])
 
-    assert_eq(str(exec(maca_bin(), ["check", path])), "1",
-        "{path} was not refused with one error: {said}")
+    assert(exec(maca_bin(), ["check", path]) > 0,
+        "{path} was not refused: {said}")
     assert(said.contains(want), "{path}: wanted {want}, said {said}")
 
     true

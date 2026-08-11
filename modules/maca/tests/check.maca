@@ -136,6 +136,47 @@ test_a_record_update_field_is_checked_against_the_declared_type() {
               "1", "a str does not, and `with` knows the record from its base")
 }
 
+Two = "Pair = {{ a: int b: int }} "
+
+test_a_record_literal_names_every_field_the_record_declares() {
+    assert_eq(count_of(Two ++ "ok() -> Pair => Pair {{ a = 1, b = 2 }}"),
+              "0", "both fields are named")
+    bad = errors_of(Two ++ "no() -> Pair => Pair {{ a = 1 }}")
+
+    assert_eq(str(bad.length()), "1", "the field left out is one error")
+    assert_eq(bad.get(0), "`Pair` is missing field(s): b",
+              "and it is named, because the C it emits will not name it")
+    assert_eq(count_of(Two ++ "up(p: Pair) -> Pair => p with {{ a = 9 }}"),
+              "0", "`with` names the fields it changes, so it owes no others")
+}
+
+test_a_record_literal_names_no_field_the_record_does_not_declare() {
+    bad = errors_of(Two ++ "no() -> Pair => Pair {{ a = 1, b = 2, c = 3 }}")
+
+    assert_eq(str(bad.length()), "1", "the field that is not there is one error")
+    assert_eq(bad.get(0), "`Pair` has no field `c`", "and it is named")
+}
+
+Hues = "Color = Red | Green | Blue "
+
+test_a_match_on_a_sum_covers_every_variant_or_says_underscore() {
+    bad = errors_of(Hues
+                    ++ "a(c: Color) -> int => match c {{ Red => 1 Green => 2 }}")
+
+    assert_eq(str(bad.length()), "1", "the variant with no arm is one error")
+    assert_eq(bad.get(0), "match on `Color` is not exhaustive; missing: Blue",
+              "and the message names what has no arm")
+    assert_eq(count_of(Hues
+                       ++ "b(c: Color) -> int => match c {{ Red => 1 _ => 0 }}"),
+              "0", "`_` is everything else, forever")
+    assert_eq(count_of(Hues
+                       ++ "d(c: Color) -> int => match c {{ Red => 1 e => 0 }}"),
+              "0", "and so is a name the sum does not declare")
+    assert_eq(count_of(Hues ++ "e(c: Color) -> int => match c {{"
+                       ++ " Red | Green => 1 Blue => 0 }}"),
+              "0", "one arm may name two variants")
+}
+
 test_a_field_binding_is_not_an_arithmetic_operator() {
     assert_eq(count_of("Tag = {{ s: str }} ok() -> Tag => Tag {{ s = \"a\" }}"),
               "0", "`=` names a field, so a str field is not a number")

@@ -207,7 +207,9 @@ type_in(env: Env, e: Expr) -> Typed =>
         ETernary => ternary_type(env, e)
         EIf      => ternary_type(env, e)
         EUnary   => unary_type(env, e)
-        ERecord  => typed(check_fields(env, e.text, e.children, 0),
+        ERecord  => typed(check_literal(check_fields(env, e.text,
+                                                     e.children, 0),
+                                        e.text, e.children),
                           t_con(e.text, []))
         EWith    => with_type(env, e)
         EField   => field_type(env, e)
@@ -774,6 +776,65 @@ field_set(env: Env, rec: str, f: Expr) -> Env {
     }
 }
 
+/// A record literal names every field the record declares, and no field it does not.
+check_literal(env: Env, rec: str, fs: Expr[]) -> Env {
+    if !declares_field(env, rec, 0) {
+        env
+    } else {
+        unknown_fields(missing_fields(env, rec, fs), rec, fs, 0)
+    }
+}
+
+missing_fields(env: Env, rec: str, fs: Expr[]) -> Env {
+    absent = absent_fields(env, rec, fs, 0, [])
+    named = absent.sort().join(", ")
+
+    if absent.length() == 0 {
+        env
+    } else {
+        complain(env, "`{rec}` is missing field(s): {named}")
+    }
+}
+
+absent_fields(env: Env, rec: str, fs: Expr[], i: int, acc: str[]) -> str[] {
+    if i >= env.fields.length() {
+        acc
+    } else if env.fields.get(i).index_of(rec ++ ".") != 0
+            || names_field(fs, field_tail(env.fields.get(i), rec), 0) {
+        absent_fields(env, rec, fs, i + 1, acc)
+    } else {
+        absent_fields(env, rec, fs, i + 1,
+                      acc ++ [field_tail(env.fields.get(i), rec)])
+    }
+}
+
+field_tail(key: str, rec: str) -> str =>
+    key.slice(rec.length() + 1, key.length())
+
+names_field(fs: Expr[], name: str, i: int) -> bool {
+    if i >= fs.length() {
+        false
+    } else {
+        lit_field_name(fs.get(i)) == name || names_field(fs, name, i + 1)
+    }
+}
+
+lit_field_name(f: Expr) -> str =>
+    f.children.get(0).text
+
+unknown_fields(env: Env, rec: str, fs: Expr[], i: int) -> Env {
+    if i >= fs.length() {
+        env
+    } else if env.fields.index_of(rec ++ "." ++ lit_field_name(fs.get(i))) >= 0 {
+        unknown_fields(env, rec, fs, i + 1)
+    } else {
+        told = lit_field_name(fs.get(i))
+
+        unknown_fields(complain(env, "`{rec}` has no field `{told}`"),
+                       rec, fs, i + 1)
+    }
+}
+
 field_type(env: Env, e: Expr) -> Typed {
     base = type_in(env, e.children.get(0))
     owner = resolve(base.env.infer, base.ty)
@@ -800,8 +861,76 @@ match_type(env: Env, e: Expr) -> Typed {
         seen = type_in(env, e.children.get(0))
         first = type_in(bound_arm(seen.env, e.children.get(1)),
                         e.children.get(2))
+        whole = unify_arms(first.env, e.children, first.ty, 3)
 
-        typed(unify_arms(first.env, e.children, first.ty, 3), first.ty)
+        typed(check_arms(whole, e, resolve(whole.infer, seen.ty)), first.ty)
+    }
+}
+
+/// A match on a sum names every variant of it, unless an arm catches everything.
+check_arms(env: Env, e: Expr, scrut: Ty) -> Env {
+    if scrut.kind != KCon || env.owners.index_of(scrut.name) < 0
+            || catches_all(env, e, 1) {
+        env
+    } else {
+        left = uncovered(env, e, scrut.name, 0, [])
+        named = left.join(", ")
+
+        if left.length() == 0 {
+            env
+        } else {
+            complain(env,
+                "match on `{scrut.name}` is not exhaustive; missing: {named}")
+        }
+    }
+}
+
+catches_all(env: Env, e: Expr, i: int) -> bool {
+    if i + 1 >= e.children.length() {
+        false
+    } else {
+        wide_arm(env, e.children.get(i)) || catches_all(env, e, i + 2)
+    }
+}
+
+/// `_` catches everything, and so does a name the sum does not declare.
+wide_arm(env: Env, p: Expr) -> bool {
+    if p.kind == EGuard {
+        false
+    } else if p.kind == EBinary && p.text == "|" {
+        wide_arm(env, p.children.get(0)) || wide_arm(env, p.children.get(1))
+    } else if p.kind != EIdent || p.children.length() > 0 {
+        false
+    } else {
+        p.text == "_" || (starts_lower(p.text) && env.ctors.index_of(p.text) < 0)
+    }
+}
+
+uncovered(env: Env, e: Expr, sum: str, i: int, acc: str[]) -> str[] {
+    if i >= env.ctors.length() {
+        acc
+    } else if env.owners.get(i) != sum || arm_names(e, env.ctors.get(i), 1) {
+        uncovered(env, e, sum, i + 1, acc)
+    } else {
+        uncovered(env, e, sum, i + 1, acc ++ [env.ctors.get(i)])
+    }
+}
+
+arm_names(e: Expr, ctor: str, i: int) -> bool {
+    if i + 1 >= e.children.length() {
+        false
+    } else {
+        pat_names(e.children.get(i), ctor) || arm_names(e, ctor, i + 2)
+    }
+}
+
+pat_names(p: Expr, ctor: str) -> bool {
+    if p.kind == EGuard {
+        false
+    } else if p.kind == EBinary && p.text == "|" {
+        pat_names(p.children.get(0), ctor) || pat_names(p.children.get(1), ctor)
+    } else {
+        p.kind == EIdent && p.text == ctor
     }
 }
 
