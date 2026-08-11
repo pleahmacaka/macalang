@@ -13,8 +13,8 @@ implementor's view.
 | `--target rust` | `maca-backend-rust` | Rust source | crates.io |
 | `--target embedded` | `modules/maca/emit_embedded.maca` | freestanding C + a linker script, linked by clang/lld | Cortex-M, RISC-V |
 
-`maca-backend-llvm` emits LLVM IR for the SIMD span only. Both native paths
-link over the C ABI, so choosing between them is a flag rather than a rewrite.
+SIMD is not a second native path: `f32x8` is an `ext_vector_type` the C backend
+lowers, and `-mavx2` is what makes the eight lanes one `%ymm` register.
 
 ## What a target can carry
 

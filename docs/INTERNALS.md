@@ -37,7 +37,7 @@ emitted in `order()` so a variant beats the utility it modifies. Documented in
 handbook ch. 15 (`apps/tomo/book/{en,ko}/15-ui.md`); gated by
 `crates/driver/tests/native_ui.rs` + `crates/backend_js/tests/tailwind.rs`.
 
-Backends: native C (default), LLVM (SIMD span), Nix (config mode), JS
+Backends: native C (default, SIMD included), Nix (config mode), JS
 (reactive UI), JVM (Java source / Minecraft-Fabric interop), and embedded
 (freestanding C for Cortex-M / RISC-V). Driver: `build` (`--target
 nix|js|jvm|rust|embedded|tauri`, `--mcu`, `--cp`), `run`, `-m` (run a function

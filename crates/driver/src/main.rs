@@ -2016,8 +2016,7 @@ fn compile_inner(src: &Path, module: maca_parser::Module, out: &Path) -> Result<
         )
     })?;
     let use_async = maca_backend_c::needs_async(&c_src);
-    let llvm = maca_backend_llvm::emit(&module);
-    let use_simd = !llvm.simd_fns.is_empty();
+    let use_simd = maca_backend_c::needs_simd(&c_src);
     let dir = build_dir(src);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     std::fs::write(dir.join("main.c"), &c_src).map_err(|e| e.to_string())?;
@@ -2130,10 +2129,6 @@ fn compile_inner(src: &Path, module: maca_parser::Module, out: &Path) -> Result<
     if use_async {
         maca_runtime::write_async(&dir).map_err(|e| e.to_string())?;
     }
-    if use_simd {
-        std::fs::write(dir.join("simd.ll"), &llvm.ir).map_err(|e| e.to_string())?;
-    }
-
     if !have_wsl() {
         return link_native(&dir, out, use_async, &glue, use_simd);
     }
@@ -2160,7 +2155,6 @@ fn compile_inner(src: &Path, module: maca_parser::Module, out: &Path) -> Result<
     extras.push("-pthread".into());
     let _ = use_async;
     if use_simd {
-        extras.push(to_wsl(&dir.join("simd.ll")));
         extras.push("-mavx2".into());
     }
     let target = ["-target", "x86_64-linux-musl"].map(String::from);
@@ -2400,7 +2394,7 @@ fn link_native(
     }
     cmd.arg("-pthread");
     if use_simd {
-        cmd.arg(dir.join("simd.ll")).arg("-mavx2");
+        cmd.arg("-mavx2");
     }
     cmd.arg("-I")
         .arg(dir)

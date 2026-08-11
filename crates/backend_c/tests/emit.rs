@@ -766,6 +766,30 @@ fn higher_order_param_and_fn_value_lower_to_closures() {
 }
 
 #[test]
+fn a_vector_kernel_is_defined_out_of_line_and_reduces_its_lanes() {
+    let src = "dot8(a: f32x8, b: f32x8) -> f32 => (a * b).sum()\n\n\
+        main() -> int {\n    v = f32x8.splat(2.0)\n    info(str(dot8(v, v)))\n    0\n}\n";
+    let out = c(src);
+    assert!(
+        out.contains("typedef float f32x8 __attribute__((ext_vector_type(8)));"),
+        "no vector typedef:\n{out}"
+    );
+    assert!(
+        out.contains("\nfloat dot8(f32x8 a, f32x8 b) {"),
+        "the kernel is static, so it folds into its caller and the vectors go with it:\n{out}"
+    );
+    assert!(
+        maca_backend_c::needs_simd(&out),
+        "the vector ISA is never asked for:\n{out}"
+    );
+    let body = func(src, "dot8");
+    assert!(
+        body.contains("(a * b)") && body.contains("_a += _v[_vi]"),
+        "lanes not multiplied and summed:\n{body}"
+    );
+}
+
+#[test]
 fn empty_list_argument_takes_its_element_type_from_the_callee() {
     let body = func(
         "seed(xs: str[]) -> int => xs.length()\n\nmain() -> int {\n    seed([])\n}\n",

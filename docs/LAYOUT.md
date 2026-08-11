@@ -10,7 +10,6 @@ Virtual workspace; members are `crates/*`.
 | `maca-parser` | tokens → AST (hand-written recursive descent + Pratt); also `modules`/`imports`, which decides which file an `import` names, and inlines it |
 | `maca-core` | typed core IR + HM/gradual/row type & effect checker |
 | `maca-backend-c` | core IR → C (default native path) |
-| `maca-backend-llvm` | core IR → LLVM IR (**SIMD only**) |
 | `maca-backend-nix` | config mode → `.nix` |
 | `maca-backend-js` | core IR → JS + reactive UI + Tailwind |
 | `maca-runtime` | Perceus RC + colorblind async (C runtime sources) |

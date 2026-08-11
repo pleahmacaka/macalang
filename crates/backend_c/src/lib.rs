@@ -32,6 +32,11 @@ pub fn needs_async(c_src: &str) -> bool {
         || c_src.contains("maca_sleep_ms")
 }
 
+/// Whether the generated C carries vector types, so the driver turns the vector ISA on.
+pub fn needs_simd(c_src: &str) -> bool {
+    c_src.contains("ext_vector_type")
+}
+
 /// Header names from `import c "header.h"` (FFI).
 pub fn c_imports(m: &Module) -> Vec<String> {
     m.items
@@ -1429,7 +1434,6 @@ impl<'a> Cx<'a> {
         for item in self.m.items.clone() {
             if let Stmt::Fn(f) = &item
                 && f.body.is_some()
-                && !self.is_simd_fn(&f.name)
                 && !self.generics.contains_key(&f.name)
             {
                 self.emit_fn(f);
@@ -1675,7 +1679,12 @@ impl<'a> Cx<'a> {
             return;
         }
 
-        self.push(&format!("static {} {{", self.fn_sig(f)));
+        let linkage = if self.is_simd_fn(&f.name) {
+            ""
+        } else {
+            "static "
+        };
+        self.push(&format!("{linkage}{} {{", self.fn_sig(f)));
         self.move_params_into_cells(&env);
         match &f.body {
             Some(FnBody::Block(stmts)) => {
@@ -4212,6 +4221,23 @@ impl<'a> Cx<'a> {
                     CTy::Int,
                 )
             }
+            (
+                CTy::Vec {
+                    name,
+                    scalar_c,
+                    lanes,
+                },
+                "sum",
+            ) => (
+                format!(
+                    "({{ {name} _v = {rc}; {scalar_c} _a = 0; for (int _vi = 0; _vi < {lanes}; _vi++) _a += _v[_vi]; _a; }})"
+                ),
+                match scalar_c.as_str() {
+                    "float" => CTy::F32,
+                    "double" => CTy::Float,
+                    _ => CTy::Int,
+                },
+            ),
             (CTy::Arr(e), "sum") if matches!(**e, CTy::Int | CTy::Float | CTy::F32) => {
                 let an = arr_name(e);
                 let z = if matches!(**e, CTy::Float) {

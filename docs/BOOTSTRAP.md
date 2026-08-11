@@ -281,7 +281,9 @@ What the remaining failures are, in the order they block deletion:
   `apps/maca1` serves its target whole. `maca-backend-embedded` was the first
   out: `emit_embedded.maca` already emitted the firmware C byte for byte, and
   the memory map plus the clang call were the rest of it. What the driver still
-  has to itself is `fix` and the LLVM path, which exists only for the SIMD span.
+  has to itself is `fix`. `maca-backend-llvm` went second and nothing was ported
+  in its place: the C back end already had the vector type and was leaving only
+  the kernel body to the IR file, which is a loop over the lanes.
   `crates/wasm` is not a back end: it is the
   compiler built for the browser, so its Maca answer is building `apps/maca1`
   for a wasm target rather than writing an emitter.

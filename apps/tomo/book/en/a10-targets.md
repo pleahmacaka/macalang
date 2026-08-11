@@ -153,8 +153,8 @@ would quietly lose the write.
 
 ## ABI and linking
 
-Everything native converges on the **C ABI**. The C backend and the LLVM SIMD
-span emit objects that link together; an FFI declaration is an ordinary extern;
+Everything native converges on the **C ABI**. The C backend emits every object,
+SIMD included; an FFI declaration is an ordinary extern;
 and an async function is an ordinary function: `spawn`/`await` change what the
 body does, never how it is called.
 

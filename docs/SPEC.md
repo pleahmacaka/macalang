@@ -10,7 +10,7 @@ decision changes, this file and the code change together; the spec wins ties.
 ## Architecture
 
 ```
-                          ┌─▶ C/LLVM ─▶ binary    CLI (C-tier), the default
+                          ┌─▶ C      ─▶ binary    CLI (C-tier), the default
 .maca ─▶ maca-compiler ───┼─▶ js     ─▶ browser   web / UI
                           ├─▶ java   ─▶ JVM       Minecraft / Maven interop
                           ├─▶ rust   ─▶ crate     crates.io interop
@@ -20,9 +20,9 @@ decision changes, this file and the code change together; the spec wins ties.
 
 - **Shared:** frontend, type checker, effect checker, core IR
 - **Split:** codegen, runtime
-- **Native = hybrid:** default `Maca → C → zig cc` (static musl); only clear-win
-  spans (SIMD) take `Maca → LLVM IR`. Both converge on objects, linked over the
-  C ABI. LLVM is tapped only for the IR span (feature-gated).
+- **Native = C:** `Maca → C → zig cc` (static musl) for every span, SIMD
+  included: `f32x8` is an `ext_vector_type` the C backend lowers, built with
+  `-mavx2`. There is no second native compiler to keep in step.
 
 ## Modes
 
@@ -473,7 +473,7 @@ compiler is built and
 
 The compiler is complete and `cargo test` is green across the workspace.
 Front-end (lexer → parser → gradual type/effect checker → core IR) plus
-backends: native **C** (default), **LLVM** (SIMD span), **Nix** (config mode),
+backends: native **C** (default, SIMD included), **Nix** (config mode),
 **JS** (reactive UI + Tailwind), **JVM** (Java source), **Rust** source, and
 **embedded** (freestanding C for Cortex-M / RISC-V). Driver: `init` / `build`
 (`--target nix|js|jvm|rust|embedded|tauri`) / `run` / `dev` / `watch` / `fmt` /

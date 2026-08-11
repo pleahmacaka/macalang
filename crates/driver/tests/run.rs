@@ -97,17 +97,13 @@ fn build_unstripped(name: &str) -> PathBuf {
     assert!(parsed.errors.is_empty(), "{name}: {:?}", parsed.errors);
     let c = maca_backend_c::emit(&parsed.module);
     let use_async = maca_backend_c::needs_async(&c);
-    let llvm = maca_backend_llvm::emit(&parsed.module);
-    let use_simd = !llvm.simd_fns.is_empty();
+    let use_simd = maca_backend_c::needs_simd(&c);
     let dir = std::env::temp_dir().join(format!("maca-nm-{}", name.replace('.', "_")));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("main.c"), &c).unwrap();
     maca_runtime::write_to(&dir).unwrap();
     if use_async {
         maca_runtime::write_async(&dir).unwrap();
-    }
-    if use_simd {
-        std::fs::write(dir.join("simd.ll"), &llvm.ir).unwrap();
     }
     let out: PathBuf = dir.join("prog");
     let mut args: Vec<String> = ["nix", "shell", "nixpkgs#zig", "-c", "zig", "cc"]
@@ -121,7 +117,6 @@ fn build_unstripped(name: &str) -> PathBuf {
         args.push("-pthread".into());
     }
     if use_simd {
-        args.push(to_wsl(&dir.join("simd.ll")));
         args.push("-mavx2".into());
     }
     args.push("-I".into());
@@ -205,15 +200,15 @@ fn simd_hybrid_correct() {
 }
 
 #[test]
-fn simd_uses_llvm_vector_instructions() {
+fn simd_uses_avx_vector_instructions() {
     if !have_wsl() {
-        eprintln!("skipping simd_uses_llvm_vector_instructions: wsl not available");
+        eprintln!("skipping simd_uses_avx_vector_instructions: wsl not available");
         return;
     }
     let dis = objdump("simd.maca");
     assert!(
         dis.contains("vmulps") || dis.contains("vfmadd") || dis.contains("%ymm"),
-        "expected AVX vector instructions from the LLVM SIMD path"
+        "expected AVX vector instructions from the vector types the C back end lowered"
     );
     let hello = objdump("hello.maca");
     assert!(

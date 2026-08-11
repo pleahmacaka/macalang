@@ -4,6 +4,14 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* **The LLVM back end is deleted**, `crates/backend_llvm`, and nothing was ported in its place. The
+  C back end already had the vector type and was declaring the kernel `extern` for the IR file to
+  define; now it defines it, because `a * b` on an `ext_vector_type` is the operator and `.sum()` is
+  a loop over the lanes, which is exactly what `llvm.vector.reduce.fadd` with a zero start means.
+  Built with `-mavx2`, `dot8` disassembles to the instructions the IR path produced and in the same
+  order, `vmulps %ymm1,%ymm0,%ymm0` and a sequential `vaddss` reduction. The kernel keeps external
+  linkage: a `static` one is inlined into a caller that splats constants, and the vectors are folded
+  away with it. 342 lines out, fifteen in.
 * **`spec`, `profile` and `dev`** are the driver commands `apps/maca1` gained this round.
 * **The JVM back end is written in Maca**, `modules/maca/emit_jvm.maca`: a class per module, a
   static method per function, records as classes and sums as enums, and a **refusal channel** beside
