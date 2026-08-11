@@ -1,6 +1,8 @@
 // maca/print: the module written back as Maca, which is what `maca fmt` hands to a file.
 
 import maca/token
+import maca/lexer
+import maca/parser
 import maca/ast
 
 Indent = "    "
@@ -11,6 +13,55 @@ print_module(m: Module) -> str =>
 /// The module as Maca, with every comment back on the item it was written above.
 print_marked(m: Module, marks: Token[]) -> str =>
     print_items(m.items, marks, 0, 0, "")
+
+/// The file as Maca, imports included, which the tree alone cannot answer with.
+print_source(src: str) -> str {
+    ts = lex(src)
+    marks = lex_marked(src)
+
+    print_marked(parse_module(ts, 0, []),
+                 in_order(marks, imports_of(src, ts, marks, 0, []), 0, 0, []))
+}
+
+/// An import is written back verbatim, where it stood, since no item carries it.
+imports_of(src: str, ts: Token[], marks: Token[], i: int,
+           acc: Token[]) -> Token[] {
+    if ts.get(i).kind == Eof {
+        acc
+    } else if ts.get(i).kind != KwImport {
+        imports_of(src, ts, marks, i + 1, acc)
+    } else {
+        imports_of(src, ts, marks, import_end(ts, i + 1),
+                   acc ++ [one_import(src, ts, marks, i)])
+    }
+}
+
+one_import(src: str, ts: Token[], marks: Token[], i: int) -> Token {
+    from = ts.get(i).pos
+    upto = import_text_end(src, ts, marks, import_end(ts, i + 1), from)
+
+    mk_token(KwImport, src.slice(from, upto).trim(), from)
+}
+
+/// A raw import runs over many lines, so its text ends where the next thing starts.
+import_text_end(src: str, ts: Token[], marks: Token[], shut: int,
+                from: int) -> int {
+    tail = ts.get(shut).pos > from ? ts.get(shut).pos : src.length()
+    m = past(marks, 0, from)
+
+    m < marks.length() && marks.get(m).pos < tail ? marks.get(m).pos : tail
+}
+
+in_order(a: Token[], b: Token[], i: int, j: int, acc: Token[]) -> Token[] {
+    if i >= a.length() && j >= b.length() {
+        acc
+    } else if j >= b.length()
+            || (i < a.length() && a.get(i).pos < b.get(j).pos) {
+        in_order(a, b, i + 1, j, acc ++ [a.get(i)])
+    } else {
+        in_order(a, b, i, j + 1, acc ++ [b.get(j)])
+    }
+}
 
 print_items(items: Stmt[], marks: Token[], i: int, seen: int,
             acc: str) -> str {
@@ -30,7 +81,7 @@ marks_before(marks: Token[], from: int, upto: int, acc: str) -> str {
     if from >= marks.length() || marks.get(from).pos >= upto {
         acc
     } else {
-        marks_before(marks, from + 1, upto, acc + marks.get(from).text + "\n")
+        marks_before(marks, from + 1, upto, acc + written(marks, from, true))
     }
 }
 
@@ -38,8 +89,18 @@ trailing_marks(marks: Token[], from: int, acc: str) -> str {
     if from >= marks.length() {
         acc
     } else {
-        trailing_marks(marks, from + 1, acc + marks.get(from).text + "\n")
+        trailing_marks(marks, from + 1, acc + written(marks, from, false))
     }
+}
+
+/// A comment belongs to what follows it; an import wants its blank line back.
+written(marks: Token[], from: int, more: bool) -> str {
+    kept = marks.get(from).kind == KwImport
+    runs_on = !kept || (from + 1 < marks.length()
+                            && marks.get(from + 1).kind == KwImport)
+    lead = kept && from > 0 && marks.get(from - 1).kind != KwImport ? "\n" : ""
+
+    lead + marks.get(from).text + (runs_on || !more ? "\n" : "\n\n")
 }
 
 past(marks: Token[], from: int, upto: int) -> int {
@@ -56,7 +117,7 @@ print_item(s: Stmt) -> str {
     } else if s.kind == SSum {
         "{s.name} = " + print_variants(s.params, 0, "")
     } else if s.kind == SBind {
-        "{s.name} = " + print_expr(s.value)
+        "{s.name} = " + print_expr(s.value, 0)
     } else {
         print_fn(s)
     }
@@ -103,10 +164,12 @@ print_payloads(ps: Expr[], i: int, acc: str) -> str {
 print_fn(s: Stmt) -> str {
     head = "{s.name}(" + print_params(s.params, 0, "") + ")" + print_ret(s.ret)
 
-    if s.body.length() == 1 && s.body.get(0).kind == SExpr {
-        head + " =>\n" + Indent + print_expr(s.body.get(0).value)
+    if s.body.length() == 0 {
+        head
+    } else if s.body.length() == 1 && s.body.get(0).kind == SExpr {
+        head + " =>\n" + Indent + print_expr(s.body.get(0).value, 1)
     } else {
-        head + " \{\n" + print_body(s.body, 0, "") + "\}"
+        head + " \{\n" + print_body(s.body, 0, "", 1) + "\}"
     }
 }
 
@@ -136,56 +199,242 @@ print_param(p: Expr) -> str {
     }
 }
 
-print_body(body: Stmt[], i: int, acc: str) -> str {
+indent_of(d: int) -> str {
+    if d <= 0 {
+        ""
+    } else {
+        Indent + indent_of(d - 1)
+    }
+}
+
+print_body(body: Stmt[], i: int, acc: str, d: int) -> str {
     if i >= body.length() {
         acc
     } else {
-        print_body(body, i + 1, acc + Indent + print_stmt(body.get(i)) + "\n")
+        print_body(body, i + 1,
+                   acc + indent_of(d) + print_stmt(body.get(i), d) + "\n", d)
     }
 }
 
-print_stmt(s: Stmt) -> str {
-    if s.kind == SBind && s.ret != "" {
-        "{s.name}: {s.ret} = " + print_expr(s.value)
+print_stmt(s: Stmt, d: int) -> str {
+    if s.kind == SBind && s.value.kind == ELambda
+            && lambda_body(s.value).kind == EBlock {
+        "{s.name}(" + print_params(lambda_params(s.value), 0, "") + ") " +
+            print_wrapped(lambda_body(s.value), d)
+    } else if s.kind == SBind && s.ret != "" {
+        "{s.name}: {s.ret} = " + print_expr(s.value, d)
     } else if s.kind == SBind || s.kind == SSet {
-        "{s.name} = " + print_expr(s.value)
+        "{s.name} = " + print_expr(s.value, d)
     } else {
-        print_expr(s.value)
+        print_expr(s.value, d)
     }
 }
 
-print_expr(e: Expr) -> str =>
+print_expr(e: Expr, d: int) -> str =>
     match e.kind {
         EInt     => str(e.ival)
         EFloat   => e.text
-        EStr     => "\"" + e.text + "\""
+        EStr     => print_str(e.text)
         EBool    => e.text
         EIdent   => e.text
-        ECall    => "{e.text}(" + print_args(e.children, 0, "") + ")"
-        EAttr    => "{e.text}=" + print_expr(e.children.get(0))
-        EBinary  => print_binary(e)
-        ETernary => print_ternary(e)
-        EIf      => print_ternary(e)
-        EUnary   => e.text + print_expr(e.children.get(0))
-        EField   => print_expr(e.children.get(0)) + ".{e.text}"
-        EMethod  => print_method(e)
-        EList    => "[" + print_args(e.children, 0, "") + "]"
-        ERecord  => "{e.text} \{ " + print_args(e.children, 0, "") + " \}"
-        EJump    => print_jump(e)
-        _        => "?"
+        ECall    => "{e.text}(" + print_args(e.children, 0, "", d) + ")"
+        EAttr    => "{e.text}=" + print_expr(e.children.get(0), d)
+        EBinary  => print_binary(e, d)
+        ETernary => print_ternary(e, d)
+        EIf      => print_if(e, d)
+        EUnary   => print_unary(e, d)
+        EField   => held(e.children.get(0), d) + ".{e.text}"
+        EMethod  => print_method(e, d)
+        EList    => "[" + print_args(e.children, 0, "", d) + "]"
+        ERecord  => "{e.text} \{ " + print_args(e.children, 0, "", d) + " \}"
+        EWith    => print_with(e, d)
+        EMatch   => print_match(e, d)
+        ELambda  => print_lambda(e, d)
+        EBlock   => print_wrapped(e, d)
+        EWhile   => print_while(e, d)
+        EFor     => print_for(e, d)
+        EGuard   => print_pattern(e, d)
+        EJump    => print_jump(e, d)
+        _        => e.text
     }
 
-print_jump(e: Expr) -> str {
-    if e.children.length() == 0 {
-        e.text
+/// A brace the parser read as one of a pair is written back as the pair.
+print_str(s: str) -> str =>
+    "\"" + doubled_braces(s.chars(), 0, "") + "\""
+
+doubled_braces(cs: str[], i: int, acc: str) -> str {
+    if i >= cs.length() {
+        acc
+    } else if cs.get(i) == "\{" || cs.get(i) == "\}" {
+        doubled_braces(cs, i + 1, acc + cs.get(i) + cs.get(i))
     } else {
-        e.text + " " + print_expr(e.children.get(0))
+        doubled_braces(cs, i + 1, acc + cs.get(i))
     }
 }
 
-print_method(e: Expr) -> str =>
-    print_expr(e.children.get(0)) + ".{e.text}(" +
-        print_args(e.children, 1, "") + ")"
+print_jump(e: Expr, d: int) -> str {
+    if e.children.length() == 0 {
+        e.text
+    } else {
+        e.text + " " + print_expr(e.children.get(0), d)
+    }
+}
+
+print_method(e: Expr, d: int) -> str =>
+    held(e.children.get(0), d) + ".{e.text}(" +
+        print_args(e.children, 1, "", d) + ")"
+
+/// A ternary, an `if` and a lambda bind looser than anything that can hold one.
+loose(e: Expr) -> bool =>
+    e.kind == ETernary || e.kind == EIf || e.kind == ELambda
+
+held(e: Expr, d: int) -> str {
+    inner = print_expr(e, d)
+
+    loose(e) ? "(" + inner + ")" : inner
+}
+
+print_unary(e: Expr, d: int) -> str {
+    c = e.children.get(0)
+    inner = print_expr(c, d)
+
+    c.kind == EBinary || loose(c) ? e.text + "(" + inner + ")" : e.text + inner
+}
+
+print_with(e: Expr, d: int) -> str =>
+    print_expr(e.children.get(0), d) + " with \{ " +
+        print_args(e.children, 1, "", d) + " \}"
+
+print_lambda(e: Expr, d: int) -> str {
+    ps = lambda_params(e)
+    body = print_expr(lambda_body(e), d)
+
+    if ps.length() == 1 && ps.get(0).ty == "" {
+        ps.get(0).text + " => " + body
+    } else {
+        "(" + print_params(ps, 0, "") + ") => " + body
+    }
+}
+
+/// The lines inside a block, each carrying its own indent and its newline.
+print_inner(e: Expr, d: int) -> str {
+    if e.kind == EBlock {
+        print_body(e.stmts, 0, "", d) +
+            indent_of(d) + print_expr(e.children.get(0), d) + "\n"
+    } else {
+        indent_of(d) + print_expr(e, d) + "\n"
+    }
+}
+
+print_wrapped(e: Expr, d: int) -> str =>
+    "\{\n" + print_inner(e, d + 1) + indent_of(d) + "\}"
+
+/// A ternary is one binary choice, so a branch that is a block needs the words.
+needs_block(e: Expr) -> bool {
+    els = e.children.get(2)
+
+    if e.children.get(1).kind == EBlock || els.kind == EBlock {
+        true
+    } else if els.kind == EIdent && els.text == "?" {
+        true
+    } else if els.kind == EIf {
+        needs_block(els)
+    } else {
+        false
+    }
+}
+
+print_if(e: Expr, d: int) -> str {
+    if needs_block(e) {
+        print_guards(e, d)
+    } else {
+        print_ternary(e, d)
+    }
+}
+
+print_guards(e: Expr, d: int) -> str =>
+    "if " + held(e.children.get(0), d) + " " +
+        print_wrapped(e.children.get(1), d) +
+        print_otherwise(e.children.get(2), d)
+
+print_otherwise(e: Expr, d: int) -> str {
+    if e.kind == EIdent && e.text == "?" {
+        ""
+    } else if e.kind == EIf {
+        " else " + print_guards(e, d)
+    } else {
+        " else " + print_wrapped(e, d)
+    }
+}
+
+print_while(e: Expr, d: int) -> str =>
+    "while " + held(e.children.get(0), d) + " \{\n" +
+        print_body(e.stmts, 0, "", d + 1) + indent_of(d) + "\}"
+
+print_for(e: Expr, d: int) -> str =>
+    "for {e.text} in " + print_expr(e.children.get(0), d) + " \{\n" +
+        print_body(e.stmts, 0, "", d + 1) + indent_of(d) + "\}"
+
+print_match(e: Expr, d: int) -> str =>
+    "match " + print_expr(e.children.get(0), d) + " \{\n" +
+        print_arms(e.children, 1, "", d + 1) + indent_of(d) + "\}"
+
+print_arms(xs: Expr[], i: int, acc: str, d: int) -> str {
+    if i + 1 >= xs.length() {
+        acc
+    } else {
+        print_arms(xs, i + 2,
+                   acc + indent_of(d) + print_pattern(xs.get(i), d) + " => " +
+                       print_arm(xs.get(i + 1), d) + "\n", d)
+    }
+}
+
+print_arm(e: Expr, d: int) -> str {
+    if e.kind == EBlock {
+        print_wrapped(e, d)
+    } else {
+        print_expr(e, d)
+    }
+}
+
+print_pattern(p: Expr, d: int) -> str {
+    if p.kind == EGuard {
+        print_pattern(p.children.get(0), d) + " if " +
+            print_expr(p.children.get(1), d)
+    } else if p.kind == EBinary && p.text == "|" {
+        print_pattern(p.children.get(0), d) + " | " +
+            print_pattern(p.children.get(1), d)
+    } else if p.kind != EIdent || p.children.length() == 0 {
+        print_expr(p, d)
+    } else if p.text == "[..]" {
+        print_rest(p.children, d)
+    } else if p.text == "[]" && p.children.length() == 1 {
+        "[" + print_pattern(p.children.get(0), d) + "]"
+    } else if p.text == "[]" {
+        print_pieces(p.children, 0, "", d)
+    } else if p.text == "\{\}" {
+        "\{ " + print_pieces(p.children, 0, "", d) + " \}"
+    } else {
+        "{p.text}(" + print_pieces(p.children, 0, "", d) + ")"
+    }
+}
+
+print_rest(xs: Expr[], d: int) -> str {
+    last = xs.get(xs.length() - 1)
+    head = print_pieces(xs.slice(0, xs.length() - 1), 0, "", d)
+
+    xs.length() == 1 ? "..{last.text}" : head + ", ..{last.text}"
+}
+
+print_pieces(xs: Expr[], i: int, acc: str, d: int) -> str {
+    if i >= xs.length() {
+        acc
+    } else if i == xs.length() - 1 {
+        acc + print_pattern(xs.get(i), d)
+    } else {
+        print_pieces(xs, i + 1, acc + print_pattern(xs.get(i), d) + ", ", d)
+    }
+}
 
 /// Binding power, so a child only wears brackets when dropping them would rebind it.
 op_power(op: str) -> int {
@@ -209,10 +458,10 @@ op_power(op: str) -> int {
     }
 }
 
-print_binary(e: Expr) -> str {
+print_binary(e: Expr, d: int) -> str {
     mine = op_power(e.text)
-    l = print_operand(e.children.get(0), mine, 0)
-    r = print_operand(e.children.get(1), mine, 1)
+    l = print_operand(e.children.get(0), mine, 0, d)
+    r = print_operand(e.children.get(1), mine, 1, d)
 
     if e.text == "=" {
         l + " = " + r
@@ -221,10 +470,12 @@ print_binary(e: Expr) -> str {
     }
 }
 
-print_operand(c: Expr, mine: int, side: int) -> str {
-    inner = print_expr(c)
+print_operand(c: Expr, mine: int, side: int, d: int) -> str {
+    inner = print_expr(c, d)
 
-    if c.kind != EBinary || c.text == "=" {
+    if loose(c) {
+        "(" + inner + ")"
+    } else if c.kind != EBinary || c.text == "=" {
         inner
     } else if op_power(c.text) < mine || (op_power(c.text) == mine
                                               && side == 1) {
@@ -234,17 +485,17 @@ print_operand(c: Expr, mine: int, side: int) -> str {
     }
 }
 
-print_ternary(e: Expr) -> str =>
-    print_expr(e.children.get(0)) + " ? " +
-        print_expr(e.children.get(1)) + " : " +
-        print_expr(e.children.get(2))
+print_ternary(e: Expr, d: int) -> str =>
+    held(e.children.get(0), d) + " ? " +
+        print_expr(e.children.get(1), d) + " : " +
+        print_expr(e.children.get(2), d)
 
-print_args(xs: Expr[], i: int, acc: str) -> str {
+print_args(xs: Expr[], i: int, acc: str, d: int) -> str {
     if i >= xs.length() {
         acc
     } else if i == xs.length() - 1 {
-        acc + print_expr(xs.get(i))
+        acc + print_expr(xs.get(i), d)
     } else {
-        print_args(xs, i + 1, acc + print_expr(xs.get(i)) + ", ")
+        print_args(xs, i + 1, acc + print_expr(xs.get(i), d) + ", ", d)
     }
 }

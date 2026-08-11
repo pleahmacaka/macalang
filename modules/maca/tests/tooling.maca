@@ -104,6 +104,21 @@ test_lint_resolves_imports_before_calling_a_name_undefined() {
     assert(!said.contains("UndefinedName"), "join comes from std/path: {said}")
 }
 
+test_fmt_settles_on_the_second_run_and_keeps_what_it_read() {
+    at = fixture("shape.maca", read_file("apps/examples/taskr.maca"))
+
+    exec(maca_bin(), ["fmt", at])
+    once = read_file(at)
+    exec(maca_bin(), ["fmt", at])
+
+    assert_eq(read_file(at), once,
+              "a formatter that moves on the second run is a bug")
+    assert(once.contains("\n    "), "a block body is written one indent in")
+    assert(once.contains(" {{\n"), "and the brace that opens it ends a line")
+    assert(once.contains("import std/json"), "an import is not a thing to drop")
+    assert(once.contains("match t.status {{"), "and neither is a match")
+}
+
 fixed(name: str, src: str) -> str {
     at = fixture(name, src)
     exec(maca_bin(), ["fix", at])

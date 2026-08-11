@@ -1,0 +1,144 @@
+import std/text
+
+Quote = "\""
+
+Reserved = "const as if else for in while break continue return match import"
+    ++ " with fail try alias await spawn"
+
+Phantoms = "let type var fn def"
+
+grammar(rel: str) -> str {
+    src = read_file(rel)
+    assert(src != "", "{rel} is missing, so this suite is checking nothing")
+
+    src
+}
+
+textmate() -> str => grammar("apps/editor/maca.tmLanguage.json")
+
+monarch() -> str => grammar("apps/playground/playground.maca")
+
+zed(query: str) -> str =>
+    grammar("apps/editor/zed-maca/languages/maca/{query}.scm")
+
+/// A grammar names a word when it sits in an alternation or is quoted whole.
+names_word(src: str, w: str) -> bool =>
+    src.contains("({w}|") || src.contains("|{w}|") || src.contains("|{w})")
+        || src.contains(Quote ++ w ++ Quote)
+
+is_lower(c: str) -> bool =>
+    ord(c) >= 97 && ord(c) <= 122
+
+is_name_char(c: str) -> bool =>
+    is_lower(c) || c.is_ascii_digit() || c == "_"
+
+name_end(s: str, i: int) -> int {
+    if i < s.length() && is_name_char(s.get(i)) {
+        name_end(s, i + 1)
+    } else {
+        i
+    }
+}
+
+head_name(s: str) -> str =>
+    s.length() > 0 && is_lower(s.get(0)) ? s.slice(0, name_end(s, 0)) : ""
+
+heads(ps: str[], i: int, acc: str[]) -> str[] {
+    if i >= ps.length() {
+        acc
+    } else {
+        w = head_name(ps.get(i))
+        heads(ps, i + 1, w == "" ? acc : acc.push(w))
+    }
+}
+
+opened_in(s: str) -> str[] =>
+    heads(s.split("("), 1, [])
+
+outside(ps: str[], i: int, acc: str[]) -> str[] {
+    if i >= ps.length() {
+        acc
+    } else if i % 2 == 0 {
+        outside(ps, i + 1, acc.push(ps.get(i)))
+    } else {
+        outside(ps, i + 1, acc)
+    }
+}
+
+unquoted(line: str) -> str =>
+    outside(line.split(Quote), 0, []).join(" ")
+
+from_lines(ls: str[], i: int, acc: str[]) -> str[] {
+    if i >= ls.length() {
+        acc
+    } else if ls.get(i).trim().starts_with(";") {
+        from_lines(ls, i + 1, acc)
+    } else {
+        from_lines(ls, i + 1, acc ++ opened_in(unquoted(ls.get(i))))
+    }
+}
+
+node_types(scm: str) -> str[] =>
+    from_lines(lines(scm), 0, [])
+
+test_every_reserved_word_is_coloured_by_every_grammar() {
+    for w in Reserved.split(" ") {
+        assert(names_word(textmate(), w),
+               "the TextMate grammar does not colour `{w}`")
+        assert(names_word(monarch(), w),
+               "the playground's Monarch grammar does not colour `{w}`")
+        assert(names_word(zed("highlights"), w),
+               "the Zed highlight query does not colour `{w}`")
+    }
+}
+
+test_a_word_maca_does_not_have_is_coloured_by_nobody() {
+    for w in Phantoms.split(" ") {
+        assert(!names_word(textmate(), w),
+               "TextMate colours `{w}`, and Maca has no such keyword")
+        assert(!names_word(zed("highlights"), w),
+               "the Zed query colours `{w}`, and Maca has no such keyword")
+    }
+}
+
+test_the_word_scan_reads_an_alternation_and_a_quoted_list() {
+    assert(names_word("(if|else|for)", "if"), "the first of an alternation")
+    assert(names_word("(if|else|for)", "else"), "one in the middle")
+    assert(names_word("(if|else|for)", "for"), "and the last")
+    assert(names_word("keywords: [" ++ Quote ++ "as" ++ Quote ++ "]", "as"),
+           "a quoted word in a list")
+    assert(!names_word("(if|else|for)", "spawn"),
+           "a word nobody named is not found")
+    assert(!names_word("(if|else|for)", "els"),
+           "and half of one is not a word")
+}
+
+test_a_zed_query_names_only_rules_the_grammar_still_has() {
+    js = grammar("apps/editor/tree-sitter-maca/grammar.js")
+
+    for query in ["outline", "indents", "highlights"] {
+        for node in node_types(zed(query)) {
+            assert(js.contains("{node}:"),
+                   "{query}.scm names `{node}`, which grammar.js dropped")
+        }
+    }
+}
+
+test_the_outline_still_lists_functions_and_type_declarations() {
+    scm = zed("outline")
+
+    assert(scm.contains("(function"), "the outline lost function definitions")
+    assert(scm.contains("(type_decl"), "and record and sum declarations")
+    assert(scm.contains("@name") && scm.contains("@item"),
+           "an outline entry is a name and the item it stands for")
+}
+
+test_the_node_scan_skips_a_comment_and_a_pattern_string() {
+    assert_eq(node_types("(function (ident) @name)").join(","),
+              "function,ident", "both nodes, in the order they are written")
+    assert_eq(node_types("; (block) is only prose here").join(","), "",
+              "a comment line names no node")
+    assert_eq(node_types("(#match? @x " ++ Quote ++ "^(int|float)$"
+                             ++ Quote ++ ")").join(","), "",
+              "and neither does a regex inside a string")
+}

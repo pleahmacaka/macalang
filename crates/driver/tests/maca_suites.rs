@@ -7,7 +7,7 @@ use std::process::Command;
 ///
 /// These are named rather than globbed, because a suite that imports `maca/*` recompiles the
 /// whole compiler and a run of every suite costs more CI time than the job has. Each one here
-/// imports only `std/*`, so the seven together take about fifteen seconds. The compiler's own
+/// imports only `std/*`, so the ten together take about forty-five seconds. The compiler's own
 /// suites are gated one at a time by `selfhost.rs`, which is where an expensive one belongs.
 const TWINS: &[&str] = &[
     "tests/version.maca",
@@ -17,6 +17,10 @@ const TWINS: &[&str] = &[
     "modules/maca/tests/handbook.maca",
     "modules/maca/tests/proc.maca",
     "modules/maca/tests/tooling.maca",
+    "modules/maca/tests/examples.maca",
+    "modules/maca/tests/suites.maca",
+    "modules/std/tests/readme.maca",
+    "tests/editor_grammar.maca",
 ];
 
 /// Run under stage-1, not stage-0: these suites use `capture_err`, which the frozen bootstrap
