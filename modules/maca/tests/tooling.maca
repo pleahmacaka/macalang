@@ -321,3 +321,118 @@ test_a_member_may_not_declare_a_workspace_of_its_own() {
 
     assert(said.contains("[workspace]"), "one workspace per tree: {said}")
 }
+
+declared_build(tag: str, build: str) -> str {
+    dir = package_dir(tag)
+    write_file(dir ++ "/main.maca", "main() -> int => 0\n")
+    write_file(dir ++ "/maca.toml",
+        "[package]\nname = \"hello\"\n\n[[bin]]\nname = \"hello\"\n"
+            ++ "path = \"main.maca\"\n\n[build]\n" ++ build)
+
+    dir
+}
+
+test_the_target_a_package_builds_for_can_be_declared() {
+    dir = declared_build("build-target", "target = \"js\"\n")
+
+    assert_eq(str(rc_in(dir, ["build"])), "0", "a declared target needs no flag")
+    assert(read_file(dir ++ "/main").contains("function"),
+           "what landed is the JavaScript the manifest asked for")
+}
+
+test_where_a_build_lands_can_be_declared() {
+    dir = declared_build("build-out", "out = \"app\"\n")
+
+    assert_eq(str(rc_in(dir, ["build"])), "0", "a declared out needs no flag")
+    assert(file_exists(dir ++ "/app"), "the build landed where [build] out said")
+    assert(!file_exists(dir ++ "/main"), "and not under the file's own stem")
+}
+
+test_a_flag_on_the_line_beats_what_the_manifest_declared() {
+    dir = declared_build("build-flag", "out = \"app\"\n")
+
+    assert_eq(str(rc_in(dir, ["build", "-o", "other"])), "0", "the flag ran")
+    assert(file_exists(dir ++ "/other"), "the flag chose where it landed")
+    assert(!file_exists(dir ++ "/app"), "so the declared name was not used")
+}
+
+test_a_misspelled_build_key_is_named_rather_than_ignored() {
+    dir = declared_build("build-stray", "targt = \"js\"\n")
+
+    said = err_in(dir, ["build"])
+    assert(said.contains("targt"), "the message names the key: {said}")
+    assert(said.contains("target"), "and the ones it knows: {said}")
+    assert_eq(str(rc_in(dir, ["build"])), "2",
+              "a key that does nothing is a typo")
+}
+
+package_of_suites(tag: str, second: str) -> str {
+    dir = package_dir(tag)
+    make_dir(dir ++ "/tests")
+    write_file(dir ++ "/maca.toml", "[package]\nname = \"suited\"\n")
+    write_file(dir ++ "/tests/a.maca",
+               "test_one() \{\n    assert_eq(1, 1, \"one\")\n\}\n")
+    write_file(dir ++ "/tests/b.maca", second)
+
+    dir
+}
+
+passing_suite() -> str =>
+    "test_two() \{\n    assert_eq(2, 2, \"two\")\n\}\n"
+
+failing_suite() -> str =>
+    "test_two() \{\n    assert_eq(2, 3, \"two\")\n\}\n"
+
+test_every_suite_the_package_holds_runs_when_no_file_is_named() {
+    dir = package_of_suites("suites-pass", passing_suite())
+
+    said = out_in(dir, ["test"])
+    assert(said.contains("2 of 2 suites passed"), "both suites ran: {said}")
+    assert_eq(str(rc_in(dir, ["test"])), "0", "and both passed")
+}
+
+test_a_failing_suite_is_counted_among_the_ones_that_ran() {
+    dir = package_of_suites("suites-fail", failing_suite())
+
+    said = out_in(dir, ["test"])
+    assert(said.contains("1 of 2 suites passed"),
+           "one of the two failed: {said}")
+    assert_eq(str(rc_in(dir, ["test"])), "1",
+              "and the count is the exit status")
+}
+
+test_a_package_with_no_test_directory_is_told_so() {
+    dir = package_dir("suites-none")
+    write_file(dir ++ "/maca.toml", "[package]\nname = \"bare\"\n")
+
+    said = err_in(dir, ["test"])
+    assert(said.contains("no .maca suite"), "there is nothing to run: {said}")
+    assert(said.contains("[package] tests"),
+           "and where to say otherwise: {said}")
+}
+
+unformatted(dir: str, name: str) -> str {
+    at = dir ++ "/" ++ name
+    write_file(at, "main() -> int \{\n  info(\"x\")\n  0\n\}\n")
+
+    at
+}
+
+test_fmt_reads_the_flag_wherever_it_is_on_the_line() {
+    dir = package_dir("fmt-flag")
+    at = unformatted(dir, "one.maca")
+
+    assert_eq(str(rc_in(dir, ["fmt", "--check", "one.maca"])), "1",
+              "the file after the flag is the one checked")
+    assert(read_file(at).contains("\n  info"), "and --check wrote nothing")
+}
+
+test_fmt_formats_every_file_it_is_given() {
+    dir = package_dir("fmt-many")
+    one = unformatted(dir, "one.maca")
+    two = unformatted(dir, "two.maca")
+
+    assert_eq(str(rc_in(dir, ["fmt", "one.maca", "two.maca"])), "0", "both ran")
+    assert(read_file(one).contains("\n    info"), "the first was formatted")
+    assert(read_file(two).contains("\n    info"), "and so was the second")
+}

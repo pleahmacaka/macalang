@@ -11,8 +11,6 @@ import maca/emit_jvm
 import maca/print
 import { Span, trace } from profile/trace
 import { flame_svg_in, percent } from profile/flame
-import { Span, trace } from profile/trace
-import { flame_svg_in, percent } from profile/flame
 import std/json
 
 Unit = {
@@ -38,14 +36,10 @@ main(args: str[]) -> int {
         fix_cmd(args)
     } else if args.length() >= 1 && args.get(0) == "spec" {
         spec_cmd(args)
-    } else if args.length() >= 2 && args.get(0) == "fmt" {
-        format_file(args.get(1), args.length() >= 3 && args.get(2) == "--check")
+    } else if args.length() >= 1 && args.get(0) == "fmt" {
+        fmt_cmd(args)
     } else if args.length() >= 1 && args.get(0) == "watch" {
         watch_cmd(args)
-    } else if args.length() >= 1 && args.get(0) == "profile" {
-        profile_cmd(args)
-    } else if args.length() >= 1 && args.get(0) == "dev" {
-        dev_cmd(args)
     } else if args.length() >= 1 && args.get(0) == "profile" {
         profile_cmd(args)
     } else if args.length() >= 1 && args.get(0) == "dev" {
@@ -91,16 +85,14 @@ usage() -> int {
          ++ "\nusage: maca <command> [args]\n"
          ++ "\ncommands:\n"
          ++ "  init  [dir]                  scaffold a new project (maca.toml, main.maca)\n"
-         ++ "  build [file.maca] [-o out]   compile (native | --target nix|js|rust)\n"
+         ++ "  build [file.maca] [-o out]   compile (native | --target nix|js|rust|wasm)\n"
          ++ "  run   [file.maca] [args..]   compile and run\n"
          ++ "  -m <module>[.<fn>] [args..]  run one function out of a module\n"
          ++ "  watch <file.maca> [args..]   rebuild and rerun it on every change\n"
-         ++ "  fmt   <file.maca> [--check]  format in place\n"
+         ++ "  fmt   <file.maca>... [--check]  format in place\n"
          ++ "  lint  [path...]              Maca style rules, over a file or a tree\n"
          ++ "  doc   <dir> <file.maca>...   an API reference, rendered from /// lines\n"
-         ++ "  test  [file.maca]            run every `test_...` function in the file\n"
-         ++ "  profile <file.maca> [-o s]   where the run spent its instructions\n"
-         ++ "  dev   [dev.maca] [-o out]    the flake `nix develop` enters\n"
+         ++ "  test  [file.maca]            every `test_...` in the file, or every suite\n"
          ++ "  profile <file.maca> [-o s]   where the run spent its instructions\n"
          ++ "  dev   [dev.maca] [-o out]    the flake `nix develop` enters\n"
          ++ "  add   <spec>...              add a dependency, and fetch it\n"
@@ -112,14 +104,14 @@ usage() -> int {
          ++ "  fix   <file.maca>...         delete the keywords Maca has "
          ++ "no word for\n"
          ++ "  spec  [--package <name>]     the language, as one document\n"
-         ++ "  spec  [--package <name>]     the language, as one document\n"
          ++ "  --version                    print the toolchain version\n"
          ++ "  --help                       this\n"
          ++ "\nwith no file, build/run/test/check are about the package the directory holds:\n"
          ++ "  its [[bin]], chosen with --bin <name> or [build] bin\n"
          ++ "\nbuild targets: native (default), --target nix | js | rust "
-         ++ "| jvm | embedded\n"
-         ++ "\n[build] in maca.toml declares bin and cflags, so a project builds by\n"
+         ++ "| jvm | wasm | embedded\n"
+         ++ "\n[build] in maca.toml declares target, out, mcu, classpath, cflags and\n"
+         ++ "  bin, so a project builds by\n"
          ++ "  saying `maca build`; a flag on the line still wins\n"
          ++ "\na [scripts] name in maca.toml is a command of its own, so `maca <name>`\n"
          ++ "  runs the line that table gives it")
@@ -213,6 +205,28 @@ format_file(src: str, only_check: bool) -> int {
         write_file(src, after)
 
         0
+    }
+}
+
+/// `fmt` formats every file it is given, and `--check` reports instead.
+fmt_cmd(args: str[]) -> int {
+    files = fix_files(args, 1, [])
+
+    if files.length() == 0 {
+        err("usage: maca fmt <file.maca>... [--check]")
+
+        2
+    } else {
+        fmt_each(files, 0, args.index_of("--check") >= 0, 0)
+    }
+}
+
+fmt_each(files: str[], i: int, only_check: bool, acc: int) -> int {
+    if i >= files.length() {
+        acc
+    } else {
+        fmt_each(files, i + 1, only_check,
+                 acc + format_file(files.get(i), only_check))
     }
 }
 
@@ -589,14 +603,45 @@ build_out(src: str, out: str, target: str, mcu: str) -> int {
         build_binary(src, out)
     } else if target == "embedded" {
         build_firmware(src, out, mcu)
+    } else if target == "wasm" {
+        build_wasm(src, out)
     } else if target == "rust" || target == "js" || target == "nix"
             || target == "jvm" {
         compile_file([src, out, target])
     } else {
         err("maca: no target `{target}`. Try native, rust, js, nix, "
-            ++ "embedded or jvm.")
+            ++ "wasm, embedded or jvm.")
 
         2
+    }
+}
+
+/// The wasm target is the C back end linked by `zig cc` against wasi-libc.
+build_wasm(src: str, out: str) -> int {
+    wasm = out.ends_with(".wasm") ? out : out ++ ".wasm"
+    cfile = wasm ++ ".c"
+    errs = compile_file([src, cfile])
+
+    if errs > 0 {
+        errs
+    } else if read_file(cfile).index_of("#include <setjmp.h>") >= 0 {
+        err("maca: the wasm target cannot carry `try` yet, because "
+            ++ "wasi-libc has no setjmp; {cfile} is written")
+
+        1
+    } else {
+        built = exec("zig", ["cc", "-target", "wasm32-wasi", "-Os",
+                             cfile, "-o", wasm])
+
+        if built != 0 {
+            err("maca: zig did not link the wasm; {cfile} is written")
+
+            built
+        } else {
+            info("built {wasm}")
+
+            0
+        }
     }
 }
 
@@ -666,17 +711,73 @@ cc_flags() -> str[] =>
 build_cmd(args: str[]) -> int {
     named = build_src(args, 1, "")
     src = named != "" ? named : declared_bin("build", flag_after(args, "--bin"))
+    chain = src == "" ? [] : chain_of(src)
+    stray = stray_build_key(chain, 0)
 
     if src == "" {
         2
-    } else if named != "" && !workspace_ok(chain_of(src)) {
+    } else if stray != "" {
+        err("maca.toml [build]: unknown key `{stray}` (known: "
+            ++ build_keys().join(", ") ++ ")")
+
+        2
+    } else if named != "" && !workspace_ok(chain) {
         1
     } else {
-        out = flag_after(args, "-o")
-        named_out = out == "" ? stem_of(src) : out
+        out = build_setting(args, chain, "-o", "out")
 
-        build_out(src, named_out, flag_after(args, "--target"),
-                  flag_after(args, "--mcu"))
+        build_out(src, out == "" ? stem_of(src) : out,
+                  build_setting(args, chain, "--target", "target"),
+                  build_setting(args, chain, "--mcu", "mcu"))
+    }
+}
+
+/// A flag on the line wins, and `[build]` is what the project declares without one.
+build_setting(args: str[], chain: str[], flag: str, key: str) -> str {
+    given = flag_after(args, flag)
+
+    if given != "" {
+        given
+    } else if key == "out" {
+        declared_out(chain, 0)
+    } else {
+        chain_value(chain, 0, "[build]", key)
+    }
+}
+
+/// `out` names a path the manifest that declared it is the root of, not the directory the command was typed in.
+declared_out(chain: str[], i: int) -> str {
+    if i >= chain.length() {
+        ""
+    } else {
+        got = toml_value(read_file(chain.get(i) ++ Manifest), "[build]", "out")
+
+        got != "" ? chain.get(i) ++ got : declared_out(chain, i + 1)
+    }
+}
+
+build_keys() -> str[] =>
+    ["target", "out", "mcu", "classpath", "cflags", "bin"]
+
+/// A misspelled `[build]` key is silently nothing, so it is named instead.
+stray_build_key(chain: str[], i: int) -> str {
+    if i >= chain.length() {
+        ""
+    } else {
+        here = stray_of(table_keys(read_file(chain.get(i) ++ Manifest),
+                                   "[build]"), 0)
+
+        here != "" ? here : stray_build_key(chain, i + 1)
+    }
+}
+
+stray_of(keys: str[], i: int) -> str {
+    if i >= keys.length() {
+        ""
+    } else if build_keys().index_of(keys.get(i)) >= 0 {
+        stray_of(keys, i + 1)
+    } else {
+        keys.get(i)
     }
 }
 
@@ -710,9 +811,64 @@ run_cmd(args: str[]) -> int {
 }
 
 test_cmd(args: str[]) -> int {
-    src = entry_of("test", args)
+    named = first_named(args)
 
-    src == "" ? 2 : test_file(src)
+    named != "" ? test_file(named) : test_package(here_chain())
+}
+
+/// `maca test` with no file is every suite the package's test directory holds.
+test_package(chain: str[]) -> int {
+    if chain.length() == 0 {
+        err("test: no maca.toml here, so there is no package to test; "
+            ++ "name a .maca file")
+
+        2
+    } else {
+        dir = chain.get(0) ++ tests_dir(chain)
+        suites = suite_files(dir, list_dir(dir), 0, [])
+
+        suites.length() == 0 ? no_suites(dir) : ran_suites(suites, 0, 0)
+    }
+}
+
+/// `[package] tests` renames the directory the suites live in.
+tests_dir(chain: str[]) -> str {
+    named = chain_value(chain, 0, "[package]", "tests")
+
+    named == "" ? "tests" : named
+}
+
+suite_files(dir: str, names: str[], i: int, acc: str[]) -> str[] {
+    if i >= names.length() {
+        acc
+    } else if names.get(i).ends_with(".maca") {
+        suite_files(dir, names, i + 1, acc ++ [dir ++ "/" ++ names.get(i)])
+    } else {
+        suite_files(dir, names, i + 1, acc)
+    }
+}
+
+no_suites(dir: str) -> int {
+    err("test: {dir} holds no .maca suite; name a file, or set "
+        ++ "[package] tests")
+
+    2
+}
+
+ran_suites(suites: str[], i: int, failed: int) -> int {
+    n = suites.length()
+
+    if i >= n {
+        ok = n - failed
+        info("{ok} of {n} suites passed")
+
+        failed
+    } else {
+        one = suites.get(i)
+        info("== {one}")
+
+        ran_suites(suites, i + 1, failed + (test_file(one) == 0 ? 0 : 1))
+    }
 }
 
 check_cmd(args: str[]) -> int {
@@ -1227,6 +1383,21 @@ block_value(lines: str[], i: int, key: str) -> str {
         toml_val(lines.get(i))
     } else {
         block_value(lines, i + 1, key)
+    }
+}
+
+table_keys(toml: str, table: str) -> str[] =>
+    keys_in(toml.split("\n"), 0, "", table, [])
+
+keys_in(lines: str[], i: int, at: str, table: str, acc: str[]) -> str[] {
+    if i >= lines.length() {
+        acc
+    } else if toml_head(lines.get(i)) != "" {
+        keys_in(lines, i + 1, toml_head(lines.get(i)), table, acc)
+    } else if at == table && toml_key(lines.get(i)) != "" {
+        keys_in(lines, i + 1, at, table, acc ++ [toml_key(lines.get(i))])
+    } else {
+        keys_in(lines, i + 1, at, table, acc)
     }
 }
 

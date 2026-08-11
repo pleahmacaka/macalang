@@ -30,6 +30,20 @@ test_a_program_carries_only_the_runtime_blocks_it_calls() {
            "running another program brings the process block and nothing else")
 }
 
+test_setjmp_arrives_only_with_the_try_that_asked_for_it() {
+    plain = whole_c("main() -> int => 0")
+    caught = whole_c("boom() -> int {{ fail \"kaboom\"\n 0 }}\n"
+                     ++ "main() -> int {{ try boom()\n 0 }}")
+
+    assert(plain.index_of("setjmp") < 0 && plain.index_of("jmp_buf") < 0,
+           "a program that catches nothing carries no setjmp, which wasi-libc refuses")
+    assert(plain.index_of("static int maca_fail(") >= 0,
+           "`fail` still ends the program either way")
+    assert(caught.index_of("#include <setjmp.h>") >= 0
+               && caught.index_of("longjmp(maca_handlers") >= 0,
+           "and a program that catches one carries the handler stack it jumps through")
+}
+
 test_a_choice_in_value_position_is_a_ternary() {
     made = gate_c("pick(c: bool) -> int {{ b = if c {{ 100 }} else {{ 200 }} b }}")
 

@@ -1233,14 +1233,9 @@ c_zero(ty: str) -> str {
 }
 
 c_preamble() -> str =>
-    "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <stdarg.h>\n#include <ctype.h>\n#include <unistd.h>\n#include <sys/stat.h>\n#include <dirent.h>\n#include <time.h>\n#include <setjmp.h>\n#include <stdint.h>\n#include <strings.h>\n#include <sys/time.h>\n" ++
+    "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <stdarg.h>\n#include <ctype.h>\n#include <unistd.h>\n#include <sys/stat.h>\n#include <dirent.h>\n#include <time.h>\n#include <stdint.h>\n#include <strings.h>\n#include <sys/time.h>\n" ++
     "typedef float f32x4 __attribute__((vector_size(16)));\ntypedef float f32x8 __attribute__((vector_size(32)));\ntypedef double f64x2 __attribute__((vector_size(16)));\ntypedef double f64x4 __attribute__((vector_size(32)));\ntypedef int i32x4 __attribute__((vector_size(16)));\ntypedef int i32x8 __attribute__((vector_size(32)));\n" ++
-    "static jmp_buf maca_handlers[256];\nstatic int maca_handler_top = 0;\nstatic const char* maca_caught = \"\";\n" ++
-    "static jmp_buf* maca_try_push(void) {{ return &maca_handlers[maca_handler_top++]; }}\n" ++
-    "static void maca_try_pop(void) {{ if (maca_handler_top > 0) maca_handler_top--; }}\n" ++
     "static char* maca_cat(const char* a, const char* b) {{ char* r = malloc(strlen(a) + strlen(b) + 1); strcpy(r, a); strcat(r, b); return r; }}\n" ++
-    "static char* maca_last_fail(void) {{ return maca_cat(maca_caught, \"\"); }}\n" ++
-    "static int maca_fail(const char* s) {{ if (maca_handler_top > 0) {{ maca_caught = s ? s : \"\"; longjmp(maca_handlers[--maca_handler_top], 1); }} fprintf(stderr, \"error: %s\\n\", s ? s : \"\"); exit(1); return 0; }}\n" ++
     "static char* maca_int_to_str(long n) {{ char* r = malloc(24); snprintf(r, 24, \"%ld\", n); return r; }}\n" ++
     "static char* maca_float_to_str(double x) {{ char* r = malloc(32); if (x == (double)(long long)x && x < 1e15 && x > -1e15) snprintf(r, 32, \"%.1f\", x); else snprintf(r, 32, \"%g\", x); return r; }}\n" ++
     "static char* maca_fixed(double x, int n) {{ if (n < 0) n = 0; if (n > 17) n = 17; int need = snprintf(NULL, 0, \"%.*f\", n, x); char* r = malloc((size_t)need + 1); snprintf(r, (size_t)need + 1, \"%.*f\", n, x); return r; }}\n" ++
@@ -1313,6 +1308,19 @@ c_preamble() -> str =>
     "static char* maca_flag(const char* name, int on) {{ if (!on || !name || !*name) return maca_cat(\"\", \"\"); return maca_cat(\" \", name); }}\n" ++
     "static int maca_void_tag(const char* t) {{ const char* v[] = {{\"area\", \"base\", \"br\", \"col\", \"embed\", \"hr\", \"img\", \"input\", \"link\", \"meta\", \"source\", \"track\", \"wbr\", 0}}; for (int i = 0; v[i]; i++) if (strcmp(t, v[i]) == 0) return 1; return 0; }}\n" ++
     "static char* maca_element(const char* tag, const char* attrs, const char* kids) {{ size_t t = strlen(tag), a = strlen(attrs), k = strlen(kids); char* r = malloc(t * 2 + a + k + 6); char* w = r; *w++ = '<'; memcpy(w, tag, t); w += t; memcpy(w, attrs, a); w += a; *w++ = '>'; if (!maca_void_tag(tag)) {{ memcpy(w, kids, k); w += k; *w++ = '<'; *w++ = '/'; memcpy(w, tag, t); w += t; *w++ = '>'; }} *w = 0; return r; }}\n"
+
+c_errors(code: str) -> str {
+    if c_uses(code, "maca_try_push") {
+        "#include <setjmp.h>\n" ++
+        "static jmp_buf maca_handlers[256];\nstatic int maca_handler_top = 0;\nstatic const char* maca_caught = \"\";\n" ++
+        "static jmp_buf* maca_try_push(void) {{ return &maca_handlers[maca_handler_top++]; }}\n" ++
+        "static void maca_try_pop(void) {{ if (maca_handler_top > 0) maca_handler_top--; }}\n" ++
+        "static char* maca_last_fail(void) {{ return maca_cat(maca_caught, \"\"); }}\n" ++
+        "static int maca_fail(const char* s) {{ if (maca_handler_top > 0) {{ maca_caught = s ? s : \"\"; longjmp(maca_handlers[--maca_handler_top], 1); }} fprintf(stderr, \"error: %s\\n\", s ? s : \"\"); exit(1); return 0; }}\n"
+    } else {
+        "static int maca_fail(const char* s) {{ fprintf(stderr, \"error: %s\\n\", s ? s : \"\"); exit(1); return 0; }}\n"
+    }
+}
 
 c_uses(code: str, name: str) -> bool =>
     code.index_of(name) >= 0
@@ -1407,7 +1415,8 @@ emit_module(m: Module) -> str {
     protos = emit_protos(m.items, 0)
     code = protos ++ emit_starts(m.items) ++ emit_bodies(m.items, 0)
 
-    c_preamble() ++ c_process(code) ++ c_threads(code) ++ c_sockets(code)
+    c_preamble() ++ c_errors(code) ++ c_process(code) ++ c_threads(code)
+        ++ c_sockets(code)
         ++ emit_types(m.items, 0) ++ emit_consts(m.items, 0) ++ code
         ++ c_mqtt(protos)
 }
