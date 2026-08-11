@@ -94,7 +94,11 @@ fn maca1_checks_without_building() {
         .args(["check", &good.to_string_lossy()])
         .output()
         .expect("spawn maca1 check");
-    assert_eq!(ok.status.code(), Some(0), "nothing to say about a clean file");
+    assert_eq!(
+        ok.status.code(),
+        Some(0),
+        "nothing to say about a clean file"
+    );
 
     let no = Command::new(&bin)
         .args(["check", &bad.to_string_lossy()])
@@ -153,7 +157,6 @@ fn maca1_prints_the_specification_within_its_budget() {
     );
 }
 
-
 /// `fmt` rewrites in place and settles: running it twice must not move the file again.
 #[test]
 fn maca1_formats_in_place_and_settles() {
@@ -166,7 +169,11 @@ fn maca1_formats_in_place_and_settles() {
         .args(["fmt", &file.to_string_lossy(), "--check"])
         .output()
         .expect("spawn maca1 fmt --check");
-    assert_eq!(flagged.status.code(), Some(1), "--check writes nothing, it reports");
+    assert_eq!(
+        flagged.status.code(),
+        Some(1),
+        "--check writes nothing, it reports"
+    );
     assert_eq!(
         std::fs::read_to_string(&file).unwrap(),
         "add(a: int,b: int)->int=>a+b\n",
@@ -207,7 +214,10 @@ fn maca1_scaffolds_a_project_that_runs() {
     assert_eq!(made.status.code(), Some(0));
 
     let toml = std::fs::read_to_string(project.join("maca.toml")).unwrap();
-    assert!(toml.contains("name = \"fresh\""), "named for its directory: {toml}");
+    assert!(
+        toml.contains("name = \"fresh\""),
+        "named for its directory: {toml}"
+    );
 
     let ran = Command::new(&bin)
         .current_dir(&project)
@@ -245,7 +255,9 @@ fn maca1_builds_for_the_target_it_is_given() {
         .expect("spawn maca1 build --target rust");
     assert_eq!(made.status.code(), Some(0));
     assert!(
-        std::fs::read_to_string(&rs).unwrap().starts_with("use std::rc::Rc;"),
+        std::fs::read_to_string(&rs)
+            .unwrap()
+            .starts_with("use std::rc::Rc;"),
         "the Rust target writes Rust"
     );
 
@@ -260,7 +272,11 @@ fn maca1_builds_for_the_target_it_is_given() {
         ])
         .output()
         .expect("spawn maca1 build --target nowhere");
-    assert_eq!(no.status.code(), Some(2), "a target nobody serves is a usage error");
+    assert_eq!(
+        no.status.code(),
+        Some(2),
+        "a target nobody serves is a usage error"
+    );
 }
 
 /// Two packages may each name a function `count`: a name a file defines is that file's, whoever else claimed it.
@@ -387,7 +403,10 @@ fn maca1_takes_its_entry_from_the_manifest() {
         "two binaries and no --bin is a usage error"
     );
     let said = String::from_utf8_lossy(&two.stderr);
-    assert!(said.contains("one of a, b"), "the message names them: {said}");
+    assert!(
+        said.contains("one of a, b"),
+        "the message names them: {said}"
+    );
 
     let chosen = Command::new(&bin)
         .current_dir(&pair)
@@ -442,7 +461,11 @@ fn maca1_prints_its_usage_and_names_an_unknown_command() {
             .output()
             .expect("spawn maca1 help");
         let said = String::from_utf8_lossy(&out.stdout).into_owned();
-        assert_eq!(out.status.code(), Some(0), "asking for help is not an error");
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "asking for help is not an error"
+        );
         assert!(
             said.contains("usage: maca <command> [args]") && said.contains("  build "),
             "`{spelling}` prints the command list: {said}"
@@ -560,8 +583,6 @@ fn maca1_profiles_a_run_under_callgrind() {
         "the flame graph must be an svg counted in instructions"
     );
 }
-
-
 
 /// A `[scripts]` name in maca.toml is a command of its own, and its exit code is the caller's.
 #[test]

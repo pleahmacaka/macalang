@@ -47,7 +47,8 @@ fn a_line_is_read_by_a_name_no_element_takes() {
         .expect("spawn maca run");
 
     assert!(
-        out.status.code() != Some(101) && !String::from_utf8_lossy(&out.stderr).contains("void element"),
+        out.status.code() != Some(101)
+            && !String::from_utf8_lossy(&out.stderr).contains("void element"),
         "`input` lowered to the tag instead of the reader:\n{}",
         String::from_utf8_lossy(&out.stderr),
     );

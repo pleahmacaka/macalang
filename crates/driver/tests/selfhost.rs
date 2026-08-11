@@ -255,7 +255,9 @@ fn selfhost_frontend_compiles_and_runs() {
         "C int-to-string lowering wrong: {stdout}"
     );
     assert!(
-        stdout.contains("str Rust: fn numbered(n: i64) -> String { (\"#\".to_string() + &format!(\"{}\", n))"),
+        stdout.contains(
+            "str Rust: fn numbered(n: i64) -> String { (\"#\".to_string() + &format!(\"{}\", n))"
+        ),
         "Rust int-to-string lowering wrong: {stdout}"
     );
 
@@ -428,7 +430,8 @@ fn selfhost_frontend_compiles_and_runs() {
         "emitted Rust missing record/sum/functions:\n{rs_src}"
     );
     assert!(
-        rs_src.contains("Point { x: 40i64, y: 9i64 }") && rs_src.contains("match c.clone() { Red =>"),
+        rs_src.contains("Point { x: 40i64, y: 9i64 }")
+            && rs_src.contains("match c.clone() { Red =>"),
         "Rust record literal / match wrong:\n{rs_src}"
     );
     let rsfile = dir.join("emitted.rs");

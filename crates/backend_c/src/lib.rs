@@ -3258,7 +3258,7 @@ impl<'a> Cx<'a> {
                     | "env"
                     | "cwd"
                     | "chdir"
-                    | "read_line"
+                    | "capture_err"
                     | "at_eof"
                     | "read_stdin"
                     | "now_ms"
@@ -3826,7 +3826,6 @@ impl<'a> Cx<'a> {
                 "env" => return (format!("maca_env({})", a.join(", ")), CTy::Str),
                 "cwd" => return ("maca_cwd()".into(), CTy::Str),
                 "chdir" => return (format!("maca_chdir({})", a.join(", ")), CTy::Bool),
-                "read_line" => return ("maca_read_line()".into(), CTy::Str),
                 "at_eof" => return ("maca_at_eof()".into(), CTy::Bool),
                 "read_stdin" => return ("maca_read_stdin()".into(), CTy::Str),
                 "now_ms" => return ("maca_now_ms()".into(), CTy::Int),
@@ -4557,10 +4556,9 @@ impl<'a> Cx<'a> {
                 }
             }
             // Two `char*` compared with `<` compares addresses, which is not an order anybody meant.
-            Lt | Gt | Le | Ge if matches!(lt, CTy::Str) || matches!(rt, CTy::Str) => (
-                format!("(strcmp({lc}, {rc}) {} 0)", bin_op(op)),
-                CTy::Bool,
-            ),
+            Lt | Gt | Le | Ge if matches!(lt, CTy::Str) || matches!(rt, CTy::Str) => {
+                (format!("(strcmp({lc}, {rc}) {} 0)", bin_op(op)), CTy::Bool)
+            }
             Lt | Gt | Le | Ge => (format!("({lc} {} {rc})", bin_op(op)), CTy::Bool),
             And | Or => (format!("({lc} {} {rc})", bin_op(op)), CTy::Bool),
             Union | Pipe => (lc, lt),

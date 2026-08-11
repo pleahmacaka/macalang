@@ -37,7 +37,11 @@ fn an_unknown_command_writes_nothing() {
         .output()
         .expect("spawn maca1");
 
-    assert_eq!(out.status.code(), Some(2), "an unknown command is a usage error");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "an unknown command is a usage error"
+    );
     assert_eq!(
         std::fs::read_to_string(&victim).unwrap(),
         before,

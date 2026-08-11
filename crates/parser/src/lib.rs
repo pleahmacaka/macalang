@@ -139,7 +139,7 @@ pub fn is_backend_intrinsic(name: &str) -> bool {
                 | "env"
                 | "cwd"
                 | "chdir"
-                | "read_line"
+                | "capture_err"
                 | "at_eof"
                 | "read_stdin"
                 | "now_ms"
