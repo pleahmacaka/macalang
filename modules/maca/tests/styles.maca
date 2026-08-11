@@ -1,0 +1,144 @@
+import maca/lexer
+import maca/parser
+import maca/styles
+
+sheet(src: str) -> str =>
+    style_sheet(parse_module(lex(src), 0, []).items)
+
+rules(src: str) -> str {
+    whole = sheet(src)
+
+    whole.slice(TwReset.length(), whole.length())
+}
+
+says(class: str) -> str =>
+    rules("main() -> str => \"{class}\"")
+
+test_a_fixed_utility_is_the_declaration_it_stands_for() {
+    assert_eq(tw_rule("flex"), ".flex {{ display:flex; }}",
+              "one word, one rule")
+    assert_eq(tw_rule("font-bold"), ".font-bold {{ font-weight:700; }}",
+              "a weight is a number, not a word")
+    assert_eq(tw_rule("border-t"),
+              ".border-t {{ border-top-width:1px;border-top-style:solid; }}",
+              "an edge is drawn with a width and a style")
+}
+
+test_a_name_no_utility_takes_writes_no_rule() {
+    assert_eq(tw_rule("prose"), "", "a class of someone else's")
+    assert_eq(tw_rule("mt-huge"), "", "a scale step that is not a number")
+    assert_eq(tw_rule("sideways:flex"), "", "a variant nobody defines")
+}
+
+test_the_spacing_scale_is_a_quarter_rem_a_step() {
+    assert_eq(tw_rule("mt-4"), ".mt-4 {{ margin-top:1rem; }}",
+              "four is one rem")
+    assert_eq(tw_rule("gap-0.5"), ".gap-0\\.5 {{ gap:0.125rem; }}",
+              "a half step is an eighth of a rem")
+    assert_eq(tw_rule("p-0"), ".p-0 {{ padding:0; }}", "zero carries no unit")
+    assert_eq(tw_rule("gap-px"), ".gap-px {{ gap:1px; }}", "px is one pixel")
+    assert_eq(tw_rule("mx-auto"),
+              ".mx-auto {{ margin-left:auto;margin-right:auto; }}",
+              "an axis sets both sides")
+}
+
+test_a_size_takes_the_named_widths_and_the_fractions() {
+    assert_eq(tw_rule("w-full"), ".w-full {{ width:100%; }}",
+              "full is all of it")
+    assert_eq(tw_rule("w-1/2"), ".w-1\\/2 {{ width:50.0000%; }}",
+              "a fraction is a percentage to four places")
+    assert_eq(tw_rule("max-w-3xl"), ".max-w-3xl {{ max-width:48rem; }}",
+              "a container width is named, not counted")
+    assert_eq(tw_rule("h-min"), ".h-min {{ height:min-content; }}",
+              "the content decides")
+}
+
+test_a_bracket_holds_what_css_takes_and_an_underscore_is_a_space() {
+    assert_eq(tw_rule("text-[0.9rem]"),
+              ".text-\\[0\\.9rem\\] {{ font-size:0.9rem; }}",
+              "the brackets and the dot are escaped in the selector")
+    assert_eq(tw_rule("grid-cols-[11rem_1fr]"),
+              ".grid-cols-\\[11rem_1fr\\] "
+                  ++ "{{ grid-template-columns:11rem 1fr; }}",
+              "an underscore stands in for the space a class cannot hold")
+    assert_eq(tw_rule("border-b-[3px]"),
+              ".border-b-\\[3px\\] "
+                  ++ "{{ border-bottom-width:3px;border-bottom-style:solid; }}",
+              "an edge takes a bracket too")
+}
+
+test_a_grid_cell_says_how_many_tracks_it_covers() {
+    assert_eq(tw_rule("grid-cols-3"),
+              ".grid-cols-3 "
+                  ++ "{{ grid-template-columns:repeat(3,minmax(0,1fr)); }}",
+              "three even columns")
+    assert_eq(tw_rule("col-span-4"),
+              ".col-span-4 {{ grid-column:span 4 / span 4; }}", "four across")
+    assert_eq(tw_rule("row-span-full"),
+              ".row-span-full {{ grid-row:1 / -1; }}", "the whole way down")
+}
+
+test_a_variant_becomes_a_selector_or_a_query() {
+    assert_eq(tw_rule("hover:underline"),
+              ".hover\\:underline:hover {{ text-decoration-line:underline; }}",
+              "a pseudo class hangs off the selector")
+    assert_eq(tw_rule("dark:text-white"),
+              "@media(prefers-color-scheme:dark) "
+                  ++ "{{ .dark\\:text-white {{ color:#ffffff; }} }}",
+              "a scheme is a query around the rule")
+    assert_eq(tw_rule("md:px-8"),
+              "@media(min-width:48rem) {{ .md\\:px-8 "
+                  ++ "{{ padding-left:2rem;padding-right:2rem; }} }}",
+              "a breakpoint is a width")
+    assert_eq(tw_rule("dark:hover:bg-zinc-900"),
+              "@media(prefers-color-scheme:dark) {{ "
+                  ++ ".dark\\:hover\\:bg-zinc-900:hover "
+                  ++ "{{ background-color:#18181b; }} }}",
+              "two variants stack, each in its own place")
+}
+
+test_the_later_rule_wins_so_the_narrower_one_is_written_last() {
+    assert_eq(tw_order("flex"), 0, "a plain utility comes first")
+    assert_eq(tw_order("hover:flex"), 1, "then a pseudo class")
+    assert_eq(tw_order("dark:flex"), 2, "then the dark scheme")
+    assert_eq(tw_order("sm:flex"), 3, "then the breakpoints, narrowest first")
+    assert_eq(tw_order("md:flex"), 4, "the wider one after")
+    assert_eq(tw_order("max-sm:flex"), 9, "and the ceilings last")
+    assert(tw_order("md:dark:flex") == tw_order("dark:md:flex"),
+        "the order the variants are written in does not move the rule")
+}
+
+test_the_sheet_holds_the_reset_and_then_every_class_once() {
+    whole = sheet("main() -> str => \"flex flex mt-4\"")
+
+    assert(whole.starts_with(TwReset), "the reset opens the sheet")
+    assert_eq(rules("main() -> str => \"flex flex mt-4\""),
+              ".flex {{ display:flex; }}\\n.mt-4 {{ margin-top:1rem; }}\\n",
+              "sorted by name, and a class named twice is written once")
+}
+
+test_the_sheet_writes_the_narrower_rules_after_the_plain_ones() {
+    assert_eq(says("md:flex hover:underline flex"),
+              ".flex {{ display:flex; }}\\n"
+                  ++ ".hover\\\\:underline:hover "
+                  ++ "{{ text-decoration-line:underline; }}\\n"
+                  ++ "@media(min-width:48rem) {{ .md\\\\:flex "
+                  ++ "{{ display:flex; }} }}\\n",
+              "plain, then pseudo, then the breakpoint, whatever the order")
+}
+
+test_a_word_that_is_no_utility_is_left_out_of_the_sheet() {
+    assert_eq(says("hello world flex"), ".flex {{ display:flex; }}\\n",
+              "prose in a string is not a stylesheet")
+    assert_eq(says("nothing here at all"), "",
+              "a program that names no utility gets no rules")
+}
+
+test_a_tag_and_an_attribute_name_are_not_classes() {
+    lowered = "main() -> str => maca_element(\"table\", "
+        ++ "maca_attr(\"hidden\", \"flex\"), \"\")"
+
+    assert_eq(rules(lowered), ".flex {{ display:flex; }}\\n",
+        "`table` and `hidden` name the element and its attribute, and only "
+            ++ "the attribute's value carries classes")
+}

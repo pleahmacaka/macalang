@@ -1,5 +1,6 @@
 import maca/token
 import maca/ast
+import maca/styles
 
 quoted(s: str) -> str =>
     "\"" ++ s ++ "\""
@@ -534,6 +535,8 @@ emit_call(e: Expr) -> str {
         c_assert_eq(e.children)
     } else if e.text == "failures" {
         "maca_failures()"
+    } else if e.text == "styles" && e.children.length() == 0 {
+        "MACA_STYLES"
     } else {
         emit_prelude(e, args)
     }
@@ -706,13 +709,22 @@ emit_binary(e: Expr) -> str {
             && (is_list_type(l.ty) || is_list_type(r.ty)) {
         "maca_list_cat({emit_expr(l)}, {emit_expr(r)})"
     } else if c_joins(e.text, l, r) {
-        "maca_cat({emit_expr(l)}, {emit_expr(r)})"
+        "maca_cat({c_joined(l)}, {c_joined(r)})"
     } else if is_str_eq {
         "(strcmp({emit_expr(l)}, {emit_expr(r)}) {e.text} 0)"
     } else if e.text == "/" && c_is_str(l) {
         "maca_path_join({emit_expr(l)}, {emit_expr(r)})"
     } else {
         "({emit_expr(l)} {e.text} {emit_expr(r)})"
+    }
+}
+
+/// Only text joins to text, so a number or a flag beside `++` is spelled first.
+c_joined(e: Expr) -> str {
+    if c_is_str(e) || (e.ty != "int" && e.ty != "float" && e.ty != "bool") {
+        emit_expr(e)
+    } else {
+        c_str_of(e.ty, emit_expr(e))
     }
 }
 
@@ -1463,10 +1475,19 @@ emit_module(m: Module) -> str {
     code = protos ++ emit_starts(m.items) ++ emit_bodies(m.items, 0)
     bare = c_bare(code)
 
-    c_preamble() ++ c_errors(bare) ++ c_process(bare) ++ c_threads(bare)
-        ++ c_sockets(bare)
+    c_preamble() ++ c_styles(m, code) ++ c_errors(bare)
+        ++ c_process(bare) ++ c_threads(bare) ++ c_sockets(bare)
         ++ emit_types(m.items, 0) ++ emit_consts(m.items, 0) ++ code
         ++ c_mqtt(c_bare(protos)) ++ c_ffi(protos)
+}
+
+/// The stylesheet a program asks for by calling `styles`, and only then.
+c_styles(m: Module, code: str) -> str {
+    if code.index_of("MACA_STYLES") < 0 {
+        ""
+    } else {
+        "#define MACA_STYLES \"{style_sheet(m.items)}\"\n"
+    }
 }
 
 c_ffi(protos: str) -> str =>

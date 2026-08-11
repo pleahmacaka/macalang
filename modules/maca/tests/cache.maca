@@ -34,6 +34,34 @@ built(src: str, out: str) -> int {
     now_ms() - at
 }
 
+racing(src: str, prefix: str) -> str {
+    line = "rm -f '{scratch()}'/race.*; for i in 1 2 3 4; do "
+               ++ "{prefix}'{maca_bin()}' run '{src}' "
+               ++ "> '{scratch()}'/race.$i 2>&1 & done; wait; "
+               ++ "cat '{scratch()}'/race.*"
+
+    output("sh", ["-c", line])
+}
+
+test_four_runs_of_one_program_do_not_collide() {
+    src = fixture("racer.maca", "racer")
+    cold = racing(src, "MACA_NO_CACHE=1 ")
+
+    exec(maca_bin(), ["run", src])
+
+    warm = racing(src, "")
+
+    assert_eq(cold.split("racer ").length() - 1, 4,
+              "a cold run was raced by three others: {cold}")
+    assert_eq(warm.split("racer ").length() - 1, 4,
+              "a warm run was raced by three others: {warm}")
+    assert(!cold.contains("Text file busy")
+               && !warm.contains("Text file busy"),
+           "one run wrote the binary another was executing")
+    assert(!cold.contains("cache copy failed"),
+           "two runs wrote the cache at once: {cold}")
+}
+
 test_the_second_build_of_a_program_is_a_copy_and_not_a_compile() {
     src = fixture("cost.maca", "cost")
     cold = built(src, "cost1")

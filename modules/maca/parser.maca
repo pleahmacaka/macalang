@@ -700,30 +700,34 @@ escaped_brace(cs: str[], i: int) -> bool {
 }
 
 interp_node(raw: str) -> Expr =>
-    join_parts(split_interp(raw.chars(), 0, false, "", []), 0, e_str(""))
+    join_parts(split_interp(raw.chars(), 0, 0, "", []), 0, e_str(""))
 
-split_interp(cs: str[], i: int, inside: bool, cur: str,
+split_interp(cs: str[], i: int, depth: int, cur: str,
              acc: str[]) -> str[] {
     if i >= cs.length() {
         acc ++ [cur]
     } else {
-        interp_step(cs, i, inside, cur, acc)
+        interp_step(cs, i, depth, cur, acc)
     }
 }
 
-interp_step(cs: str[], i: int, inside: bool, cur: str, acc: str[]) -> str[] {
+interp_step(cs: str[], i: int, depth: int, cur: str, acc: str[]) -> str[] {
     c = cs.get(i)
-    opens = c == "\{" && !inside
-    closes = c == "\}" && inside
+    opens = c == "\{" && depth == 0
+    closes = c == "\}" && depth == 1
 
     if escaped_brace(cs, i) {
-        split_interp(cs, i + 2, inside, cur ++ cs.get(i + 1), acc)
-    } else if !inside && (pair_at(cs, i, "\{") || pair_at(cs, i, "\}")) {
-        split_interp(cs, i + 2, inside, cur ++ c, acc)
+        split_interp(cs, i + 2, depth, cur ++ cs.get(i + 1), acc)
+    } else if depth == 0 && (pair_at(cs, i, "\{") || pair_at(cs, i, "\}")) {
+        split_interp(cs, i + 2, depth, cur ++ c, acc)
     } else if opens || closes {
-        split_interp(cs, i + 1, !inside, "", acc ++ [cur])
+        split_interp(cs, i + 1, opens ? 1 : 0, "", acc ++ [cur])
+    } else if c == "\{" && depth > 0 {
+        split_interp(cs, i + 1, depth + 1, cur ++ c, acc)
+    } else if c == "\}" && depth > 1 {
+        split_interp(cs, i + 1, depth - 1, cur ++ c, acc)
     } else {
-        split_interp(cs, i + 1, inside, cur ++ c, acc)
+        split_interp(cs, i + 1, depth, cur ++ c, acc)
     }
 }
 

@@ -295,3 +295,35 @@ test_a_program_is_refused_by_the_effect_its_target_cannot_carry() {
         "--target", "beam"])), "2",
         "there is no BEAM back end, and naming one is a usage error")
 }
+
+refused_by_every_target(name: str, src: str, said: str, why: str) {
+    make_dir(scratch())
+    at = scratch() ++ "/" ++ name
+
+    write_file(at, src)
+
+    for target in ["c", "js", "jvm", "rust"] {
+        built = ["build", at, "-o", scratch() ++ "/out-{target}", "--target",
+                 target]
+
+        assert(exec(maca_bin(), built) != 0, "{target} accepted {why}")
+        assert(capture(maca_bin(), built).contains(said),
+               "{target} refused {why} without saying so")
+    }
+}
+
+test_every_back_end_refuses_a_match_that_misses_a_variant() {
+    refused_by_every_target("kinds.maca",
+        "Color = Red | Green | Blue\n\nname(c: Color) -> str => match c {{\n"
+            ++ "    Red => \"red\"\n    Green => \"green\"\n}}\n\n"
+            ++ "main() -> int {{\n    info(name(Red))\n    0\n}}\n",
+        "match on `Color` is not exhaustive; missing: Blue",
+        "a match that misses a variant")
+}
+
+test_every_back_end_refuses_a_write_to_a_constant() {
+    refused_by_every_target("written.maca",
+        "main() -> int {{\n    const limit = 3\n    limit = 4\n    limit\n}}\n",
+        "cannot reassign constant `limit`",
+        "a write to a constant")
+}

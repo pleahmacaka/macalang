@@ -68,6 +68,12 @@ test_the_language_server_rules_hold() {
             ++ "checked the way every other suite is")
 }
 
+test_the_reference_pages_are_what_they_claim() {
+    assert_eq(suite_code("crates/driver/tests/programs/macadoc.maca"), 0,
+        "the reference is generated from the `///` lines, so the pages and "
+            ++ "those lines are held to each other")
+}
+
 test_the_figures_the_front_page_states_are_read_off_a_file() {
     assert_eq(suite_code("crates/driver/tests/programs/site_data.maca"), 0,
         "every number the site prints is read off a committed file, so the "
@@ -101,6 +107,58 @@ test_a_suite_drops_the_main_it_writes_for_itself() {
         "the test did not run:\n{said}")
     assert(!said.contains("main must not run"),
         "the suite's own main ran:\n{said}")
+}
+
+runner_said(src: str) -> str =>
+    output("sh", ["-c", "'{maca_bin()}' test '{src}' 2>&1"])
+
+test_a_failed_assertion_is_counted_and_the_rest_still_run() {
+    src = scratch() ++ "/failing.maca"
+
+    write_file(src, "test_a_failure_shows_both_sides() {{\n"
+        ++ "    assert_eq(\"got\", \"want\", \"the two disagree\")\n}}\n\n"
+        ++ "test_a_bare_assertion_shows_its_message() {{\n"
+        ++ "    assert(1 > 2, \"one is not greater than two\")\n}}\n\n"
+        ++ "test_a_passing_one_still_runs() {{\n"
+        ++ "    assert(true, \"and is reported separately\")\n}}\n")
+
+    said = runner_said(src)
+
+    assert_eq(exec(maca_bin(), ["test", src]), 2,
+        "the exit code is the number of assertions that failed")
+    assert(said.contains("got:  got") && said.contains("want: want"),
+        "a failed assert_eq shows both sides:\n{said}")
+    assert(said.contains("one is not greater than two"),
+        "a bare assert shows the message it was given:\n{said}")
+    assert(said.contains("test_a_passing_one_still_runs"),
+        "a failure does not stop the suite:\n{said}")
+}
+
+test_a_test_that_aborts_stops_the_suite_where_it_failed() {
+    src = scratch() ++ "/aborting.maca"
+
+    write_file(src, "test_ok() {{\n    assert(true, \"this one is fine\")"
+        ++ "\n}}\n\ntest_broken() -> int =>\n    fail \"deliberate\"\n\n"
+        ++ "test_after() {{\n    assert(true, \"never reached\")\n}}\n")
+
+    said = runner_said(src)
+
+    assert(exec(maca_bin(), ["test", src]) != 0, "`fail` is not a pass")
+    assert(said.contains("deliberate"),
+        "the message `fail` was given reaches the report:\n{said}")
+    assert(said.contains("test_broken") && !said.contains("test_after"),
+        "the run stops at the test that aborted:\n{said}")
+}
+
+test_a_suite_holding_no_test_is_not_a_failure() {
+    src = scratch() ++ "/no_tests.maca"
+
+    write_file(src, "main() -> int => 0\n")
+
+    assert_eq(exec(maca_bin(), ["test", src]), 0,
+        "a file holding no test is nothing to report")
+    assert(runner_said(src).contains("no test"),
+        "and the runner says so rather than passing in silence")
 }
 
 test_the_config_reader_reads_what_it_claims() {

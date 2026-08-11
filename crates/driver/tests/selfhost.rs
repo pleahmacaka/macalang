@@ -11,6 +11,7 @@ const COMPILER_FILES: &[&str] = &[
     "ty.maca",
     "token.maca",
     "ast.maca",
+    "styles.maca",
     "lexer.maca",
     "parser.maca",
     "check.maca",

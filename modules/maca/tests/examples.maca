@@ -55,6 +55,8 @@ test_a_pattern_example_chooses_the_arm_it_named() {
     assert_eq(ran_example("payload_sum"),
         ["100", "12"].join("\n"),
         "a variant carries its payload into the arm that matched")
+    assert_eq(ran_example("sum_record"), ["12", "0"].join("\n"),
+        "and the payload may be a whole record, read field by field")
 }
 
 test_a_data_example_prints_the_values_it_holds() {
@@ -390,6 +392,17 @@ test_the_task_list_keeps_what_it_was_told_between_runs() {
         "the two-cell arm still binds its second cell")
     assert(taskr_said(store, "list").contains("[x] #1  buy milk"),
         "the store the last run wrote is the store this one reads")
+}
+
+test_a_c_library_the_system_provides_is_called_through() {
+    if file_exists("/usr/include/sqlite3.h") {
+        said = ran_example("ffi_sqlite")
+
+        assert(said.contains("ada is 36"),
+            "the first row came back over the C ABI: {said}")
+        assert(said.contains("alan is 41"),
+            "and the second, in the order asked for: {said}")
+    }
 }
 
 test_a_nix_file_is_a_value_the_program_reads_at_build_time() {

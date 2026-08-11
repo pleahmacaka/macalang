@@ -36,6 +36,14 @@ test_the_eval_harness_compiles() {
     }
 }
 
+test_the_front_page_and_the_reference_compile() {
+    for script in ["apps/site/home.maca", "apps/macadoc/macadoc.maca"] {
+        assert_eq(builds(script), 0,
+            "{script} asks for the stylesheet builtin, so it compiles only "
+                ++ "when that builtin does")
+    }
+}
+
 test_the_linter_and_bindgen_compile() {
     for script in ["apps/lint/lint.maca", "apps/bindgen/bindgen.maca"] {
         assert_eq(builds(script), 0, "{script} does not compile")

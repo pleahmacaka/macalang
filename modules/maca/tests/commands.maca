@@ -1,0 +1,328 @@
+import std/proc
+import std/text
+
+scratch() -> str =>
+    env_or("TMPDIR", "/tmp") ++ "/maca-cli-commands"
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+fixture(name: str, src: str) -> str {
+    make_dir(scratch())
+    at = scratch() ++ "/" ++ name
+    write_file(at, src)
+
+    at
+}
+
+project(tag: str) -> str {
+    make_dir(scratch())
+    dir = scratch() ++ "/" ++ tag
+    remove_dir(dir)
+    make_dir(dir)
+
+    dir
+}
+
+out_in(dir: str, args: str[]) -> str {
+    bin = maca_bin()
+    back = cwd()
+    chdir(dir)
+    got = capture(bin, args)
+    chdir(back)
+
+    got
+}
+
+err_in(dir: str, args: str[]) -> str {
+    bin = maca_bin()
+    back = cwd()
+    chdir(dir)
+    got = capture_err(bin, args)
+    chdir(back)
+
+    got
+}
+
+rc_in(dir: str, args: str[]) -> int {
+    bin = maca_bin()
+    back = cwd()
+    chdir(dir)
+    rc = exec(bin, args)
+    chdir(back)
+
+    rc
+}
+
+test_run_hands_back_the_programs_own_exit_code() {
+    at = fixture("r.maca", "main() -> int {{\n    info(\"ran\")\n    7\n}}\n")
+
+    assert_eq(str(exec(maca_bin(), ["run", at])), "7",
+              "run answers with the program's code, not with zero")
+    assert(capture(maca_bin(), ["run", at]).contains("ran"),
+           "and what the program said reaches the caller")
+}
+
+test_test_runs_every_function_and_counts_the_failures() {
+    at = fixture("t.maca",
+        "test_one_holds() {{\n    assert_eq(\"a\", \"a\", \"same\")\n}}\n\n"
+            ++ "test_one_does_not() {{\n"
+            ++ "    assert_eq(\"a\", \"b\", \"different\")\n}}\n")
+
+    assert_eq(str(exec(maca_bin(), ["test", at])), "1",
+              "one of the two failed, so the count is one")
+    assert(capture(maca_bin(), ["test", at]).contains("test_one_holds"),
+           "and each test names itself as it runs")
+}
+
+test_check_reports_the_count_of_what_it_found() {
+    good = fixture("good.maca", "f(n: int) -> int => n + 1\n")
+    bad = fixture("bad.maca", "f() -> int => \"x\"\n")
+
+    assert_eq(str(exec(maca_bin(), ["check", good])), "0",
+              "there is nothing to say about a clean file")
+    assert_eq(str(exec(maca_bin(), ["check", bad])), "1",
+              "one mismatch is one error")
+    assert(capture(maca_bin(), ["check", bad])
+               .contains("expected int, found str"),
+           "and the message names both types")
+    assert(!file_exists(scratch() ++ "/bad"),
+           "check reports, it does not build")
+}
+
+test_spec_prints_the_language_within_its_budget() {
+    said = capture(maca_bin(), ["spec"])
+
+    assert_eq(str(exec(maca_bin(), ["spec"])), "0", "spec succeeds")
+    assert(said.contains("## The language"), "the language section is in it")
+    assert(said.contains("no `fn` keyword"), "and the mistakes table")
+    assert(said.contains("`std/text`"),
+           "and the standard library indexed out of the tree")
+    tokens = said.length() / 3
+    assert(tokens > 5000 && tokens <= 15000,
+           "{str(tokens)} tokens is outside the budget it is written to")
+}
+
+test_fmt_check_reports_without_writing_and_then_settles() {
+    at = fixture("f.maca", "add(a: int,b: int)->int=>a+b\n")
+
+    assert_eq(str(exec(maca_bin(), ["fmt", at, "--check"])), "1",
+              "--check writes nothing, it reports")
+    assert_eq(read_file(at), "add(a: int,b: int)->int=>a+b\n",
+              "and leaves the file exactly as it found it")
+    assert_eq(str(exec(maca_bin(), ["fmt", at])), "0", "formatting succeeds")
+    assert(read_file(at).contains("add(a: int, b: int) -> int"),
+           "the written file is the formatted one: {read_file(at)}")
+    assert_eq(str(exec(maca_bin(), ["fmt", at, "--check"])), "0",
+              "a formatter that moves on the second run is not canonical")
+}
+
+test_init_scaffolds_a_project_that_runs() {
+    root = project("init")
+    at = root ++ "/fresh"
+
+    assert_eq(str(exec(maca_bin(), ["init", at])), "0", "init succeeds")
+    assert(read_file(at ++ "/maca.toml").contains("name = \"fresh\""),
+           "the project is named for its own directory")
+    assert_eq(str(rc_in(at, ["run", "main.maca"])), "0",
+              "a scaffold that does not run is not a scaffold")
+    assert(out_in(at, ["run", "main.maca"]).contains("hello"),
+           "and what it scaffolds greets")
+}
+
+test_the_target_flag_picks_the_back_end() {
+    at = fixture("tg.maca", "main() -> int {{\n    info(\"hi\")\n    0\n}}\n")
+    rs = scratch() ++ "/tg.rs"
+
+    assert_eq(str(exec(maca_bin(), ["build", at, "-o", rs, "--target",
+                                    "rust"])), "0", "the rust target builds")
+    assert(read_file(rs).starts_with("use std::rc::Rc;"),
+           "the rust target writes rust")
+    assert_eq(str(exec(maca_bin(), ["build", at, "-o", scratch() ++ "/tg.x",
+                                    "--target", "nowhere"])), "2",
+              "a target nobody serves is a usage error")
+}
+
+test_two_packages_may_each_name_one_function() {
+    dir = project("scope")
+
+    make_dir(dir ++ "/pa")
+    make_dir(dir ++ "/pb")
+    write_file(dir ++ "/pa/one.maca", "count(s: str) -> int => s.length()\n")
+    write_file(dir ++ "/pb/two.maca",
+        "count(n: int) -> int => n + 1\n"
+            ++ "twice(n: int) -> int => count(n) + count(n)\n")
+    write_file(dir ++ "/main.maca",
+        "import pa/one\nimport pb/two\n\nmain() -> int {{\n"
+            ++ "    info(str(count(\"abc\")))\n"
+            ++ "    info(str(twice(1)))\n    0\n}}\n")
+
+    said = out_in(dir, ["run", "main.maca"])
+    assert_eq(str(rc_in(dir, ["run", "main.maca"])), "0",
+              "two packages naming one function is not a clash")
+    assert(said.contains("3") && said.contains("4"),
+           "each call reached its own package's function: {said}")
+}
+
+test_a_suite_resolves_its_imports_from_its_own_directory() {
+    assert_eq(str(exec(maca_bin(), ["test", "modules/std/tests/json.maca"])),
+              "0", "the import graph is walked from the suite's own directory")
+}
+
+test_a_lone_binary_is_the_entry_the_manifest_gives() {
+    dir = project("solo")
+
+    write_file(dir ++ "/maca.toml",
+        "[package]\nname = \"solo\"\n\n[[bin]]\n"
+            ++ "name = \"solo\"\npath = \"app.maca\"\n")
+    write_file(dir ++ "/app.maca",
+        "main() -> int {{\n    info(\"from the manifest\")\n    0\n}}\n")
+
+    assert_eq(str(rc_in(dir, ["run"])), "0", "the single [[bin]] is the entry")
+    assert(out_in(dir, ["run"]).contains("from the manifest"),
+           "and it is the file that ran")
+}
+
+test_no_manifest_and_no_file_is_a_usage_error_that_says_so() {
+    dir = project("bare")
+
+    assert_eq(str(rc_in(dir, ["run"])), "2", "there is nothing here to run")
+    assert(err_in(dir, ["run"]).contains("no maca.toml here"),
+           "and the message says what is missing")
+}
+
+test_a_declared_cflag_reaches_the_c_compiler() {
+    dir = project("cflags")
+
+    write_file(dir ++ "/maca.toml",
+        "[package]\nname = \"solo\"\n\n[build]\n"
+            ++ "cflags = \"-lnosuchlibrary\"\n\n[[bin]]\n"
+            ++ "name = \"solo\"\npath = \"app.maca\"\n")
+    write_file(dir ++ "/app.maca", "main() -> int => 0\n")
+
+    assert(rc_in(dir, ["run"]) != 0,
+           "[build] cflags reach the linker, so a library nobody has fails")
+}
+
+test_every_spelling_of_the_question_prints_the_same_page() {
+    for spelling in ["--help", "-h", "help"] {
+        said = capture(maca_bin(), [spelling])
+
+        assert_eq(str(exec(maca_bin(), [spelling])), "0",
+                  "asking for help is not an error")
+        assert(said.contains("usage: maca <command> [args]"),
+               "`{spelling}` prints the usage line: {said}")
+        assert(said.contains("  build "),
+               "`{spelling}` lists the commands: {said}")
+    }
+
+    for spelling in ["--version", "-V", "version"] {
+        assert(capture(maca_bin(), [spelling]).starts_with("maca "),
+               "`{spelling}` asks the same question as --version")
+    }
+}
+
+test_an_unknown_command_is_named_and_the_usage_follows() {
+    dir = project("unknown")
+
+    assert_eq(str(rc_in(dir, ["nosuchcommand"])), "2",
+              "a command nobody serves is a usage error")
+    assert(err_in(dir, ["nosuchcommand"])
+               .contains("unknown command `nosuchcommand`"),
+           "it names what it did not understand")
+    assert(out_in(dir, ["nosuchcommand"]).contains("usage: maca"),
+           "and prints the page that would have told them")
+}
+
+starter_of(said: str) -> str {
+    found = ""
+
+    for line in lines(said) {
+        if line.starts_with("    ") {
+            found = found ++ line.trim() ++ "\n"
+        }
+    }
+
+    found
+}
+
+test_dev_writes_the_flake_its_own_starter_describes() {
+    dir = project("dev")
+    said = err_in(dir, ["dev"]) ++ out_in(dir, ["dev"])
+    starter = starter_of(said)
+
+    assert(rc_in(dir, ["dev"]) != 0, "there is no dev.maca here yet")
+    assert(starter.contains("dev.packages"),
+           "the message carries a starter the reader can paste: {said}")
+    write_file(dir ++ "/dev.maca", starter)
+    code = rc_in(dir, ["dev"])
+    why = err_in(dir, ["dev"])
+    assert_eq(str(code), "0", "the printed starter must compile: {why}")
+    flake = read_file(dir ++ "/flake.nix")
+    assert(flake.contains("pkgs.mkShell"), "the flake carries a shell")
+    assert(flake.contains("pkgs.rustc"),
+           "and the packages the config declared: {flake}")
+}
+
+test_a_script_alias_hands_back_the_code_the_line_exits_with() {
+    dir = project("scripts")
+
+    write_file(dir ++ "/maca.toml",
+        "[package]\nname = \"scripted\"\n\n[scripts]\n"
+            ++ "greet = \"echo hi-from-scripts\"\nboom = \"exit 3\"\n")
+
+    assert_eq(out_in(dir, ["greet"]).trim(), "hi-from-scripts",
+              "the table names a command, and the command runs")
+    assert_eq(str(rc_in(dir, ["boom"])), "3",
+              "a script that fails fails the caller, so a chain of them stops")
+}
+
+test_a_module_function_is_run_by_the_name_an_import_would_find() {
+    dir = project("moduled")
+
+    make_dir(dir ++ "/src")
+    write_file(dir ++ "/src/greeter.maca",
+        "greet(args: str[]) -> int {{\n"
+            ++ "    info(\"greeted {{str(args.length())}}\")\n    7\n}}\n\n"
+            ++ "greeter() -> int => 3\n")
+
+    assert_eq(str(rc_in(dir, ["-m", "greeter.greet", "a", "b"])), "7",
+              "the function's own answer is the exit code")
+    assert(out_in(dir, ["-m", "greeter.greet", "a", "b"])
+               .contains("greeted 2"),
+           "and what is left of the command line reaches it")
+    assert_eq(str(rc_in(dir, ["-m", "greeter"])), "3",
+              "a module with no main is run by the function named after it")
+    assert_eq(str(rc_in(dir, ["-m", "greeter.nope"])), "2",
+              "a function that is not there is a usage error")
+    assert(err_in(dir, ["-m", "greeter.nope"]).contains("no function `nope`"),
+           "and it is named rather than guessed at")
+}
+
+test_profile_counts_a_run_and_draws_where_its_instructions_went() {
+    if exec("sh", ["-c", "command -v valgrind >/dev/null 2>&1"]) != 0 {
+        assert(true, "profile needs valgrind, which this host has not got")
+    } else {
+        dir = project("profile")
+        at = dir ++ "/hot.maca"
+        svg = dir ++ "/hot.svg"
+
+        write_file(at,
+            "spin(n: int, acc: int) -> int {{\n"
+                ++ "    n <= 0 ? acc : spin(n - 1, acc + n)\n}}\n\n"
+                ++ "main() -> int {{\n    info(\"{{str(spin(20000, 0))}}\")\n"
+                ++ "    0\n}}\n")
+
+        table = out_in(dir, ["profile", at, "-o", svg])
+        assert_eq(str(rc_in(dir, ["profile", at, "-o", svg])), "0",
+                  "profile should succeed: {table}")
+        assert(table.contains("self%") && table.contains("spin"),
+               "the hot function must show in the table: {table}")
+        flame = read_file(svg)
+        assert(flame.starts_with("<svg"), "the flame graph must be an svg")
+        assert(flame.contains("Ir"), "counted in instructions")
+    }
+}

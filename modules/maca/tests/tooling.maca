@@ -489,3 +489,54 @@ test_every_member_this_repository_lists_is_a_package() {
         }
     }
 }
+
+declared_web(tag: str, build: str) -> str {
+    dir = monorepo(tag)
+    write_file(dir ++ "/apps/hello/maca.toml",
+        "[package]\nname = \"hello\"\n\n[build]\n" ++ build
+            ++ "\n[[bin]]\nname = \"hello\"\npath = \"main.maca\"\n")
+
+    dir
+}
+
+test_a_member_key_beats_the_root_key_it_repeats() {
+    dir = monorepo("ws-format")
+
+    write_file(dir ++ "/maca.toml",
+        "[package]\nname = \"repo\"\n\n[workspace]\n"
+            ++ "members = [\"modules/greet\", \"apps/hello\"]\n\n"
+            ++ "[format]\nindent_style = \"space\"\nindent_size = 8\n")
+    write_file(dir ++ "/apps/hello/maca.toml",
+        "[package]\nname = \"hello\"\n\n[format]\nindent_size = 2\n\n"
+            ++ "[[bin]]\nname = \"hello\"\npath = \"main.maca\"\n")
+    write_file(dir ++ "/apps/hello/wide.maca",
+               "main() -> int {{\n        0\n}}\n")
+
+    assert_eq(str(rc_in(dir, ["fmt", "apps/hello/wide.maca"])), "0", "fmt ran")
+    assert(read_file(dir ++ "/apps/hello/wide.maca").contains("\n  0\n"),
+           "the member's indent_size beats the eight the root declared")
+}
+
+test_a_declared_output_directory_is_relative_to_its_own_manifest() {
+    dir = declared_web("ws-out-rel", "target = \"js\"\nout = \"build\"\n")
+
+    assert_eq(str(rc_in(dir, ["build", "apps/hello/main.maca"])), "0",
+              "a build run from the root of the workspace")
+    assert(file_exists(dir ++ "/apps/hello/build/index.html"),
+           "the page belongs beside the manifest that named the directory")
+    assert(!file_exists(dir ++ "/build"),
+           "and not beside the directory the command was run in")
+}
+
+test_a_flag_beats_the_target_the_manifest_declared() {
+    at = declared_web("ws-target-flag", "target = \"js\"\n") ++ "/apps/hello"
+
+    assert_eq(str(rc_in(at, ["build", "--target", "rust"])), "0",
+              "the flag on the line ran")
+    emitted = file_exists(at ++ "/main.rs") ? read_file(at ++ "/main.rs")
+        : read_file(at ++ "/main")
+    assert(emitted.starts_with("use std::rc::Rc;"),
+           "the back end the flag named is the one that wrote the source")
+    assert(!file_exists(at ++ "/main-web"),
+           "and the declared one did not run at all")
+}

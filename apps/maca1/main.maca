@@ -2106,14 +2106,14 @@ nonempty(xs: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
+shell_pid() -> str =>
+    capture("sh", ["-c", "echo $$"]).trim()
+
 scratch_path(kind: str) -> str {
     root = env("TMPDIR")
+    dir = root == "" ? "/tmp" : root
 
-    if root == "" {
-        "/tmp/maca1-{kind}-{str(now_ms())}"
-    } else {
-        "{root}/maca1-{kind}-{str(now_ms())}"
-    }
+    "{dir}/maca1-{kind}-{str(now_ms())}-{shell_pid()}"
 }
 
 run_file(src: str, rest: str[]) -> int {
