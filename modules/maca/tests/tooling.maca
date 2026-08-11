@@ -196,3 +196,18 @@ test_the_version_the_binary_reports_is_the_one_the_manifest_declares() {
     assert_eq(capture(maca_bin(), ["--version"]).trim(), "maca {declared}",
               "the binary reports the version its own manifest states")
 }
+
+test_dev_without_a_dev_file_shows_the_starter_it_wants() {
+    dir = scratch() ++ "/starter"
+
+    make_dir(dir)
+    here = cwd()
+    chdir(dir)
+    said = capture_err(maca_bin(), ["dev"]) ++ capture(maca_bin(), ["dev"])
+    code = exec(maca_bin(), ["dev"])
+
+    chdir(here)
+    assert(code != 0, "there is no dev.maca here, so it cannot succeed")
+    assert(said.contains("dev.packages"),
+           "the message carries a starter the reader can paste: {said}")
+}
