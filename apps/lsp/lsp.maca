@@ -1,11 +1,13 @@
 import std/json
-import { lines } from std/text
 import { env_or } from std/proc
+import { print_source } from maca/print
 
 Header = "Content-Length: "
 
 capabilities() -> str =>
-    "\{\"capabilities\":\{\"textDocumentSync\":1\},\"serverInfo\":"
+    "\{\"capabilities\":\{\"textDocumentSync\":1,\"hoverProvider\":true,"
+        ++ "\"definitionProvider\":true,\"documentSymbolProvider\":true,"
+        ++ "\"documentFormattingProvider\":true\},\"serverInfo\":"
         ++ "\{\"name\":\"maca-lsp\",\"version\":\"0.1.0\"\}\}"
 
 reply_of(id: str, body: str) -> str =>
@@ -15,11 +17,26 @@ unserved(id: str) -> str =>
     "\{\"jsonrpc\":\"2.0\",\"id\":{id},\"error\":\{\"code\":-32601,"
         ++ "\"message\":\"method not found\"\}\}"
 
-/// A diagnostic sits on line one, because the checker answers in sentences.
-diagnostic_of(said: str) -> str =>
-    "\{\"range\":\{\"start\":\{\"line\":0,\"character\":0\},\"end\":"
-        ++ "\{\"line\":0,\"character\":0\}\},\"severity\":1,"
-        ++ "\"source\":\"maca\",\"message\":{quote(said)}\}"
+/// A range the editor can draw, whose lines and characters count from zero.
+range_of(sl: int, sc: int, el: int, ec: int) -> str =>
+    "\{\"start\":\{\"line\":{sl},\"character\":{sc}\},\"end\":"
+        ++ "\{\"line\":{el},\"character\":{ec}\}\}"
+
+/// The checker counts lines from one, and an editor counts them from zero.
+diagnostic_of(d: str) -> str {
+    at = range_of(get_int(d, "start_line", 1) - 1,
+                  get_int(d, "start_column", 1) - 1,
+                  get_int(d, "end_line", 1) - 1,
+                  get_int(d, "end_column", 1) - 1)
+
+    "\{\"range\":" ++ at ++ ",\"severity\":"
+        ++ str(severity_of(get(d, "severity")))
+        ++ ",\"source\":\"maca\",\"message\":"
+        ++ quote(get(d, "message")) ++ "\}"
+}
+
+severity_of(said: str) -> int =>
+    said == "warning" ? 2 : 1
 
 each_diagnostic(said: str[], i: int, acc: str[]) -> str[] {
     if i >= said.length() {
@@ -44,28 +61,236 @@ complaints(src: str) -> str[] {
     path = scratch_file()
 
     write_file(path, src)
-    said = capture(env_or("MACA", "maca"), ["check", path])
+    said = capture(env_or("MACA", "maca"), ["check", path, "--json"])
     remove_file(path)
 
-    lines(said)
+    items(get(said, "diagnostics"))
 }
 
 carries_a_buffer(method: str) -> bool =>
     method == "textDocument/didOpen" || method == "textDocument/didChange"
 
-answer(msg: str) -> str {
+/// The open buffers, held as a uri and its text side by side.
+remembered(msg: str, docs: str[]) -> str[] {
+    method = get(msg, "method")
+    uri = get(msg, "uri")
+
+    if carries_a_buffer(method) {
+        forgotten(docs, uri, 0, []) ++ [uri, get(msg, "text")]
+    } else if method == "textDocument/didClose" {
+        forgotten(docs, uri, 0, [])
+    } else {
+        docs
+    }
+}
+
+forgotten(docs: str[], uri: str, i: int, acc: str[]) -> str[] {
+    if i + 1 >= docs.length() {
+        acc
+    } else if docs.get(i) == uri {
+        forgotten(docs, uri, i + 2, acc)
+    } else {
+        forgotten(docs, uri, i + 2, acc.push(docs.get(i)).push(docs.get(i + 1)))
+    }
+}
+
+recalled(docs: str[], uri: str, i: int) -> str {
+    if i + 1 >= docs.length() {
+        ""
+    } else if docs.get(i) == uri {
+        docs.get(i + 1)
+    } else {
+        recalled(docs, uri, i + 2)
+    }
+}
+
+is_word_char(c: str) -> bool =>
+    c.is_alpha() || c.is_ascii_digit() || c == "_"
+
+starts_upper(w: str) -> bool =>
+    w.length() > 0 && w.at(0).is_alpha() && w.at(0).upper() == w.at(0)
+
+word_start(cs: str[], i: int) -> int =>
+    i > 0 && is_word_char(cs.get(i - 1)) ? word_start(cs, i - 1) : i
+
+word_end(cs: str[], i: int) -> int =>
+    i < cs.length() && is_word_char(cs.get(i)) ? word_end(cs, i + 1) : i
+
+/// The whole name the cursor is standing anywhere inside, or nothing.
+word_at(text: str, at: int) -> str {
+    cs = text.chars()
+
+    if at < 0 || at > cs.length() {
+        ""
+    } else {
+        text.slice(word_start(cs, at), word_end(cs, at))
+    }
+}
+
+/// A line and a character, back into the offset the whole file counts by.
+offset_of(text: str, line: int, character: int) -> int =>
+    line_start(text.split("\n"), line, 0, 0) + character
+
+line_start(ls: str[], line: int, i: int, at: int) -> int {
+    if i >= line || i >= ls.length() {
+        at
+    } else {
+        line_start(ls, line, i + 1, at + ls.get(i).length() + 1)
+    }
+}
+
+line_of(text: str, at: int) -> int =>
+    text.slice(0, at).split("\n").length() - 1
+
+char_of(text: str, at: int) -> int {
+    before = text.slice(0, at).split("\n")
+
+    before.get(before.length() - 1).length()
+}
+
+cursor_at(text: str, msg: str) -> int {
+    pos = get(msg, "position")
+
+    offset_of(text, get_int(pos, "line", 0), get_int(pos, "character", 0))
+}
+
+/// A declaration is what a line starts in the first column, and nothing else.
+name_on(line: str) -> str =>
+    line.slice(0, word_end(line.chars(), 0))
+
+/// A bracket after the name makes it a function, and a brace or a bar a type.
+kind_on(line: str) -> int {
+    name = name_on(line)
+    rest = line.slice(name.length(), line.length())
+
+    if name == "" {
+        0
+    } else if rest.starts_with("(") {
+        12
+    } else if !rest.trim().starts_with("=") {
+        0
+    } else if starts_upper(name) && (rest.contains("\{") || rest.contains("|")) {
+        23
+    } else {
+        13
+    }
+}
+
+defining_line(ls: str[], word: str, i: int) -> int {
+    if word == "" || i >= ls.length() {
+        -1
+    } else if kind_on(ls.get(i)) > 0 && name_on(ls.get(i)) == word {
+        i
+    } else {
+        defining_line(ls, word, i + 1)
+    }
+}
+
+symbol_json(line: str, at: int) -> str {
+    name = name_on(line)
+    span = range_of(at, 0, at, name.length())
+
+    "\{\"name\":" ++ quote(name) ++ ",\"kind\":" ++ str(kind_on(line))
+        ++ ",\"range\":" ++ span ++ ",\"selectionRange\":" ++ span ++ "\}"
+}
+
+each_symbol(ls: str[], i: int, acc: str[]) -> str[] {
+    if i >= ls.length() {
+        acc
+    } else if kind_on(ls.get(i)) == 0 {
+        each_symbol(ls, i + 1, acc)
+    } else {
+        each_symbol(ls, i + 1, acc.push(symbol_json(ls.get(i), i)))
+    }
+}
+
+symbols_json(text: str) -> str =>
+    "[" ++ each_symbol(text.split("\n"), 0, []).join(",") ++ "]"
+
+definition_json(text: str, uri: str, msg: str) -> str {
+    ls = text.split("\n")
+    at = defining_line(ls, word_at(text, cursor_at(text, msg)), 0)
+
+    if at < 0 {
+        "null"
+    } else {
+        span = range_of(at, 0, at, name_on(ls.get(at)).length())
+
+        "\{\"uri\":" ++ quote(uri) ++ ",\"range\":" ++ span ++ "\}"
+    }
+}
+
+/// The head of a declaration is the line it opens on, without its body.
+signature_of(line: str) -> str {
+    fat = line.index_of(" =>")
+    brace = line.index_of(" \{")
+    cut = fat >= 0 ? fat : brace
+
+    cut < 0 ? line.trim() : line.slice(0, cut).trim()
+}
+
+is_builtin_type(word: str) -> bool =>
+    word == "int" || word == "float" || word == "str" || word == "bool"
+        || word == "bytes"
+
+described(ls: str[], word: str) -> str {
+    at = defining_line(ls, word, 0)
+
+    if at >= 0 {
+        signature_of(ls.get(at))
+    } else if is_builtin_type(word) {
+        "builtin type `{word}`"
+    } else {
+        "`{word}`"
+    }
+}
+
+hover_json(text: str, msg: str) -> str {
+    word = word_at(text, cursor_at(text, msg))
+
+    if word == "" {
+        "null"
+    } else {
+        "\{\"contents\":\{\"kind\":\"plaintext\",\"value\":"
+            ++ quote(described(text.split("\n"), word)) ++ "\}\}"
+    }
+}
+
+/// A file the checker refuses is left alone, because its text is not its tree.
+formatting_json(text: str) -> str {
+    tidy = print_source(text)
+
+    if tidy == text || complaints(text).length() > 0 {
+        "[]"
+    } else {
+        whole = range_of(0, 0, line_of(text, text.length()),
+                         char_of(text, text.length()))
+
+        "[\{\"range\":" ++ whole ++ ",\"newText\":" ++ quote(tidy) ++ "\}]"
+    }
+}
+
+answer(msg: str, docs: str[]) -> str {
     id = get(msg, "id")
-    method = unwrap(get(msg, "method"))
+    method = get(msg, "method")
+    uri = get(msg, "uri")
 
     if method == "initialize" {
         reply_of(id, capabilities())
     } else if method == "shutdown" {
         reply_of(id, "null")
     } else if carries_a_buffer(method) {
-        published(unwrap(get(msg, "uri")),
-                  complaints(unwrap(get(msg, "text"))))
+        published(uri, complaints(get(msg, "text")))
     } else if method == "textDocument/didClose" {
-        published(unwrap(get(msg, "uri")), [])
+        published(uri, [])
+    } else if method == "textDocument/documentSymbol" {
+        reply_of(id, symbols_json(recalled(docs, uri, 0)))
+    } else if method == "textDocument/definition" {
+        reply_of(id, definition_json(recalled(docs, uri, 0), uri, msg))
+    } else if method == "textDocument/hover" {
+        reply_of(id, hover_json(recalled(docs, uri, 0), msg))
+    } else if method == "textDocument/formatting" {
+        reply_of(id, formatting_json(recalled(docs, uri, 0)))
     } else if id == "" {
         ""
     } else {
@@ -94,7 +319,7 @@ wanted(first: str, len: int) -> int {
     }
 }
 
-serve(pending: str) -> int {
+serve(pending: str, docs: str[]) -> int {
     want = wanted(pending, 0)
 
     if want <= 0 {
@@ -102,22 +327,22 @@ serve(pending: str) -> int {
     } else {
         chunk = read_line()
         body = body_in(chunk, want)
-        said = answer(body)
+        said = answer(body, docs)
 
         if said != "" {
             print(framed(said))
         }
 
-        if unwrap(get(body, "method")) == "exit" {
+        if get(body, "method") == "exit" {
             0
         } else {
-            serve(after_body(chunk, want))
+            serve(after_body(chunk, want), remembered(body, docs))
         }
     }
 }
 
 main() -> int {
-    serve("")
+    serve("", [])
 
     0
 }

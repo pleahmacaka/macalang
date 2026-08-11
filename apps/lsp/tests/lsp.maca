@@ -6,8 +6,26 @@ opened(src: str) -> str =>
         ++ "\{\"textDocument\":\{\"uri\":\"file:///t.maca\",\"languageId\":"
         ++ "\"maca\",\"version\":1,\"text\":" ++ quote(src) ++ "\}\}\}"
 
+changed(src: str) -> str =>
+    "\{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":"
+        ++ "\{\"textDocument\":\{\"uri\":\"file:///t.maca\",\"version\":2\},"
+        ++ "\"contentChanges\":[\{\"text\":" ++ quote(src) ++ "\}]\}\}"
+
+holding(src: str) -> str[] =>
+    remembered(opened(src), [])
+
+asked(id: str, method: str) -> str =>
+    "\{\"id\":{id},\"method\":\"{method}\",\"params\":\{\"textDocument\":"
+        ++ "\{\"uri\":\"file:///t.maca\"\}\}\}"
+
+pointed(id: str, method: str, line: int, ch: int) -> str =>
+    "\{\"id\":{id},\"method\":\"{method}\",\"params\":\{\"textDocument\":"
+        ++ "\{\"uri\":\"file:///t.maca\"\},\"position\":\{\"line\":{str(line)}"
+        ++ ",\"character\":{str(ch)}\}\}\}"
+
 test_initialize_names_the_server_and_asks_for_whole_documents() {
-    said = answer("\{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"\}")
+    said = answer("\{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"\}",
+                  [])
 
     assert(said.contains("\"id\":1"), "the reply carries the request's id")
     assert(said.contains("\"textDocumentSync\":1"),
@@ -16,36 +34,60 @@ test_initialize_names_the_server_and_asks_for_whole_documents() {
     assert(said.contains("maca-lsp"), "and who is answering")
 }
 
+test_initialize_offers_only_what_this_server_can_answer() {
+    said = answer("\{\"id\":1,\"method\":\"initialize\"\}", [])
+
+    assert(said.contains("\"documentFormattingProvider\":true"),
+           "a capability nobody advertises is a request nobody sends")
+    assert(said.contains("\"documentSymbolProvider\":true"), "the outline")
+    assert(said.contains("\"definitionProvider\":true"), "the jump")
+    assert(said.contains("\"hoverProvider\":true"), "the tooltip")
+    assert(!said.contains("renameProvider"),
+           "and rename is not offered, because it is not served")
+}
+
 test_a_notification_carrying_no_id_is_answered_with_nothing() {
-    assert_eq(answer("\{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"\}"), "",
+    assert_eq(answer("\{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"\}", []),
+              "",
               "a notification wants no reply, and writing one is a protocol "
                   ++ "error")
 }
 
 test_a_request_nobody_serves_is_an_error_not_a_silence() {
-    said = answer("\{\"id\":7,\"method\":\"textDocument/hover\"\}")
+    said = answer("\{\"id\":7,\"method\":\"textDocument/rename\"\}", [])
 
     assert(said.contains("-32601"), "the code JSON-RPC reserves for it")
     assert(said.contains("method not found"), "and the words for a reader")
 }
 
 test_shutdown_is_answered_so_the_client_may_stop_waiting() {
-    said = answer("\{\"id\":9,\"method\":\"shutdown\"\}")
+    said = answer("\{\"id\":9,\"method\":\"shutdown\"\}", [])
 
     assert(said.contains("\"result\":null"), "nothing is the whole answer")
 }
 
-test_every_line_the_checker_said_becomes_one_diagnostic() {
-    said = published("file:///t.maca",
-                     ["check error: call to undefined function `nope`",
-                      "parse error: no expression starts at `)`"])
+test_a_diagnostic_is_moved_off_the_first_line_onto_its_own() {
+    d = "\{\"code\":\"M0006\",\"severity\":\"error\",\"message\":\"call to"
+            ++ " undefined function `nope`\",\"file\":\"t.maca\",\"span\":"
+            ++ "\{\"start\":24,\"end\":28,\"start_line\":2,\"start_column\":9,"
+            ++ "\"end_line\":2,\"end_column\":13\}\}"
+    said = published("file:///t.maca", [d])
 
-    assert(said.contains("textDocument/publishDiagnostics"),
-           "the notification is the one the client listens for")
-    assert(said.contains("file:///t.maca"), "against the buffer it was about")
-    assert(said.contains("\"severity\":1"), "the checker only refuses")
-    assert(said.contains("undefined function"), "the first line is carried")
-    assert(said.contains("no expression starts"), "and so is the second")
+    assert(said.contains("\"start\":\{\"line\":1,\"character\":8\}"),
+           "the checker counts from one and the editor from zero, so the "
+               ++ "squiggle would sit a line and a column late")
+    assert(said.contains("\"end\":\{\"line\":1,\"character\":12\}"),
+           "and it ends where the name ends")
+    assert(said.contains("undefined function"), "carrying the words as well")
+    assert(said.contains("\"severity\":1"), "an error is severity one")
+}
+
+test_a_warning_is_not_drawn_as_an_error() {
+    said = published("file:///t.maca", ["\{\"severity\":\"warning\","
+                                            ++ "\"message\":\"hm\"\}"])
+
+    assert(said.contains("\"severity\":2"),
+           "the two the protocol keeps for a warning")
 }
 
 test_nothing_to_say_is_published_as_an_empty_list() {
@@ -58,7 +100,8 @@ test_nothing_to_say_is_published_as_an_empty_list() {
 
 test_a_closed_buffer_has_its_diagnostics_taken_back() {
     said = answer("\{\"method\":\"textDocument/didClose\",\"params\":"
-                      ++ "\{\"textDocument\":\{\"uri\":\"file:///t.maca\"\}\}\}")
+                      ++ "\{\"textDocument\":\{\"uri\":\"file:///t.maca\"\}\}\}",
+                  [])
 
     assert(said.contains("\"diagnostics\":[]"),
            "a file nobody is looking at keeps no problems")
@@ -79,17 +122,144 @@ test_the_next_header_riding_on_the_body_line_is_kept_for_the_next_message() {
                   ++ "without a newline")
 }
 
-test_a_broken_buffer_is_published_as_the_checkers_own_words() {
-    said = answer(opened("main() -> int \{\n    nope(1)\n\n    0\n\}\n"))
+test_a_broken_buffer_is_published_where_the_break_is() {
+    said = answer(opened("main() -> int \{\n    x = nope(1)\n\n    0\n\}\n"),
+                  [])
 
     assert(said.contains("textDocument/publishDiagnostics"),
            "an open buffer is checked without being asked")
     assert(said.contains("nope"), "and the checker's sentence is the message")
+    assert(said.contains("\"start\":\{\"line\":1,\"character\":8\}"),
+           "on the line and column the call was written, which is the whole "
+               ++ "point of asking the checker for JSON")
 }
 
 test_a_clean_buffer_is_published_with_nothing_to_say() {
-    said = answer(opened("main() -> int => 0\n"))
+    said = answer(opened("main() -> int => 0\n"), [])
 
     assert(said.contains("\"diagnostics\":[]"),
            "the same path has to answer nothing for a file that checks")
+}
+
+test_an_open_buffer_is_remembered_and_a_closed_one_is_not() {
+    kept = holding("main() -> int => 0\n")
+
+    assert_eq(recalled(kept, "file:///t.maca", 0), "main() -> int => 0\n",
+              "a request that names no text can only answer from what didOpen "
+                  ++ "left behind")
+    assert_eq(recalled(remembered(changed("main() -> int => 1\n"), kept),
+                       "file:///t.maca", 0),
+              "main() -> int => 1\n", "and a keystroke replaces it")
+    shut = remembered("\{\"method\":\"textDocument/didClose\",\"params\":"
+                          ++ "\{\"textDocument\":\{\"uri\":"
+                          ++ "\"file:///t.maca\"\}\}\}", kept)
+
+    assert_eq(recalled(shut, "file:///t.maca", 0), "",
+              "while a close drops it")
+}
+
+test_the_outline_lists_every_declaration_with_the_line_it_is_on() {
+    src = "helper() -> int => 1\nPoint = \{\n    x: int\n\}\n"
+              ++ "main() -> int => 0\n"
+    said = answer(asked("9", "textDocument/documentSymbol"), holding(src))
+
+    assert(said.contains("\"name\":\"helper\",\"kind\":12"),
+           "a function is kind twelve")
+    assert(said.contains("\"name\":\"Point\",\"kind\":23"),
+           "and a record is a struct, kind twenty-three")
+    assert(said.contains("\"name\":\"main\""), "nothing is skipped")
+    assert(said.contains("\"start\":\{\"line\":4,\"character\":0\}"),
+           "main is on the fifth line, and an outline that puts everything on "
+               ++ "the first is no outline")
+}
+
+test_the_outline_leaves_out_what_is_not_a_declaration() {
+    said = answer(asked("9", "textDocument/documentSymbol"),
+                  holding("import std/text\n\nmain() -> int \{\n"
+                              ++ "    inner = 1\n\n    inner\n\}\n"))
+
+    assert(!said.contains("\"name\":\"import\""), "an import declares nothing")
+    assert(!said.contains("inner"),
+           "and a local is not top level, so the first column is the whole "
+               ++ "rule")
+    assert(said.contains("\"name\":\"main\""), "which still finds main")
+}
+
+test_definition_jumps_to_the_line_the_name_was_written_on() {
+    src = "main() -> int \{\n    helper()\n    0\n\}\nhelper() -> int => 1\n"
+    said = answer(pointed("10", "textDocument/definition", 1, 5), holding(src))
+
+    assert(said.contains("\"uri\":\"file:///t.maca\""), "in this same file")
+    assert(said.contains("\"start\":\{\"line\":4,\"character\":0\}"),
+           "helper is declared on the fifth line, and the cursor was on the "
+               ++ "call on the second")
+}
+
+test_definition_of_a_name_nobody_declared_is_nothing_at_all() {
+    said = answer(pointed("10", "textDocument/definition", 0, 1),
+                  holding("nowhere() -> int => 1\n"))
+
+    assert(said.contains("\"result\":\{"), "its own declaration is a jump")
+
+    lost = answer(pointed("10", "textDocument/definition", 0, 20),
+                  holding("main() -> int => somewhere_else\n"))
+
+    assert(lost.contains("\"result\":null"),
+           "and an imported name is not in this file, so the honest answer is "
+               ++ "nothing")
+}
+
+test_hover_over_a_function_is_its_signature_without_its_body() {
+    said = answer(pointed("2", "textDocument/hover", 0, 1),
+                  holding("add(a: int, b: int) -> int => a + b\n"))
+
+    assert(said.contains("add(a: int, b: int) -> int"),
+           "the parameters and what comes back")
+    assert(!said.contains("a + b"), "and not the body, which the reader can "
+                                        ++ "already see")
+}
+
+test_hover_over_a_builtin_says_so_and_over_nothing_says_nothing() {
+    said = answer(pointed("2", "textDocument/hover", 0, 24),
+                  holding("add(a: int, b: int) -> int => a + b\n"))
+
+    assert(said.contains("builtin type `int`"), "int declares itself")
+
+    empty = answer(pointed("2", "textDocument/hover", 1, 2),
+                   holding("main() -> int \{\n    0\n\}\n"))
+
+    assert(empty.contains("\"result\":null"),
+           "a cursor in the indent names nothing, and hovering nothing is not "
+               ++ "an empty tooltip")
+}
+
+test_formatting_rewrites_the_whole_document_in_one_edit() {
+    said = answer(asked("11", "textDocument/formatting"),
+                  holding("main( )   ->int=>0\n"))
+
+    assert(said.contains("main() -> int =>"),
+           "the printer answers in this process, with no compiler to spawn")
+    assert(said.contains("\"start\":\{\"line\":0,\"character\":0\}"),
+           "an edit over the whole file starts at its start")
+    assert(said.contains("\"end\":\{\"line\":1,\"character\":0\}"),
+           "and ends past its last line, or the tail of the file survives the "
+               ++ "rewrite")
+}
+
+test_a_file_already_formatted_is_answered_with_no_edit_at_all() {
+    said = answer(asked("11", "textDocument/formatting"),
+                  holding("main() -> int =>\n    0\n"))
+
+    assert(said.contains("\"result\":[]"),
+           "an edit that changes nothing still moves the cursor, so it is "
+               ++ "worse than silence")
+}
+
+test_a_file_the_checker_refuses_is_never_rewritten() {
+    said = answer(asked("11", "textDocument/formatting"),
+                  holding("main() -> int \{\n    x = \n\}\n"))
+
+    assert(said.contains("\"result\":[]"),
+           "the printer writes back the tree it read, so formatting what does "
+               ++ "not check would move what it could not read")
 }
