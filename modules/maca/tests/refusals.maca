@@ -90,10 +90,16 @@ test_the_bad_corpus_is_refused_and_told_why() {
     refused("apps/examples/bad/misspelt_variant.maca",
         "`Busi` is capitalized, so it is a constructor, and nothing declares"
             ++ " one by that name: did you mean `Busy`?")
+    refused("apps/examples/bad/reassign_const.maca",
+        "cannot reassign constant `count`; declare it mutable with"
+            ++ " `count = …` (no `const`)")
 }
 
 test_the_golden_examples_are_still_accepted() {
-    for name in ["hello", "tour", "loops", "sum_record", "recursive_record", "async"] {
+    for name in ["hello", "tour", "loops", "sum_record", "recursive_record",
+                 "async", "taskr", "counter", "dot", "system", "operators",
+                 "generic", "keywords", "indexing", "record_update", "tree",
+                 "payload_sum", "range", "collections", "math"] {
         assert_eq(str(exec(maca_bin(), ["check", "apps/examples/{name}.maca"])), "0",
             "{name} is a golden example and has to check clean")
     }
@@ -188,4 +194,30 @@ test_no_manifest_and_no_file_is_refused_by_name() {
         "no manifest and no file is a usage error")
     assert(said.contains("no maca.toml here"),
         "the message says what is missing: {said}")
+}
+
+test_a_record_and_a_match_are_refused_by_the_shape_they_left_out() {
+    refused("apps/examples/bad/nonexhaustive.maca",
+        "match on `Status` is not exhaustive; missing: Done")
+    refused("apps/examples/bad/missing_field.maca",
+        "`Config` is missing field(s): port, title")
+    refused("apps/examples/bad/unknown_field.maca",
+        "`Config` has no field `titel`")
+}
+
+test_a_rest_parameter_is_lowered_and_its_misuse_is_refused() {
+    assert_eq(str(exec(maca_bin(),
+        ["check", "crates/driver/tests/programs/variadic.maca"])), "0",
+        "a rest parameter is a declaration the checker lowers, not one it refuses")
+
+    refused("crates/driver/tests/programs/bad_variadic_value.maca",
+        "type mismatch")
+    refused("crates/driver/tests/programs/bad_variadic_arity.maca",
+        "`tag` takes 2 argument(s), given 0")
+    refused("crates/driver/tests/programs/bad_variadic_not_last.maca",
+        "type mismatch")
+    refused("crates/driver/tests/programs/bad_variadic_unannotated.maca",
+        "rest parameter with no type")
+    refused("crates/driver/tests/programs/bad_variadic_main.maca",
+        "`main` takes no rest parameter")
 }

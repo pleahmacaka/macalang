@@ -27,6 +27,7 @@ Stmt = {
     pos:    int
     params: Expr[]
     body:   Stmt[]
+    frozen: bool
 }
 
 Module = {
@@ -114,27 +115,27 @@ e_list(elems: Expr[]) -> Expr =>
 
 s_expr(value: Expr) -> Stmt =>
     Stmt { kind = SExpr, name = "", value, ret = "", pos = 0,
-           params = [], body = [] }
+           params = [], body = [], frozen = false }
 
 s_bind(name: str, value: Expr) -> Stmt =>
     Stmt { kind = SBind, name, value, ret = "", pos = 0, params = [],
-           body = [] }
+           body = [], frozen = false }
 
 s_bind_typed(name: str, ty: str, value: Expr) -> Stmt =>
     Stmt { kind = SBind, name, value, ret = ty, pos = 0, params = [],
-           body = [] }
+           body = [], frozen = false }
 
 s_fn(name: str, ret: str, params: Expr[], body: Stmt[]) -> Stmt =>
     Stmt { kind = SFn, name, value = e_ident(name), ret, pos = 0, params,
-           body }
+           body, frozen = false }
 
 s_record(name: str, fields: Expr[]) -> Stmt =>
     Stmt { kind = SRecord, name, value = e_ident(name), ret = "", pos = 0,
-           params = fields, body = [] }
+           params = fields, body = [], frozen = false }
 
 s_sum(name: str, variants: Expr[]) -> Stmt =>
     Stmt { kind = SSum, name, value = e_ident(name), ret = "", pos = 0,
-           params = variants, body = [] }
+           params = variants, body = [], frozen = false }
 
 show(e: Expr) -> str =>
     match e.kind {

@@ -507,3 +507,77 @@ test_a_shift_counts_bits_so_neither_side_may_be_a_float() {
     assert_eq(count_of("g(s: str) -> int => s >> 1"), "1", "text has none either")
     assert_eq(count_of("h(n: int) -> int => n << 1"), "0", "two integers are fine")
 }
+
+test_a_constant_refuses_the_second_write() {
+    bad = errors_of("use() -> int {{ const n = 1 n = 2 n }}")
+    assert_eq(str(bad.length()), "1", "`const` froze n")
+    assert_eq(bad.get(0), "cannot reassign constant `n`; declare it mutable"
+                              ++ " with `n = …` (no `const`)",
+              "the message names the binding and the way out")
+}
+
+test_only_const_freezes_a_lowercase_binding() {
+    assert_eq(count_of("use() -> int {{ n = 1 n = 2 n }}"), "0",
+              "a bare lowercase name is a variable")
+    assert_eq(count_of("use() -> int {{ n = 1 as const n = 2 n }}"), "1",
+              "`as const` freezes the binding it trails")
+    assert_eq(count_of("use() -> int {{ const n: int = 1 n = 2 n }}"), "1",
+              "an annotated constant is a constant too")
+}
+
+test_a_capitalized_binding_is_a_constant_without_the_word() {
+    assert_eq(count_of("use() -> int {{ N = 1 N = 2 N }}"), "1",
+              "a capital says constant on its own")
+}
+
+test_a_constant_is_frozen_only_inside_the_body_that_declared_it() {
+    assert_eq(count_of("one() -> int {{ const n = 1 n }}"
+                       ++ " two() -> int {{ n = 1 n = 2 n }}"),
+              "0", "the freeze does not outlive its function")
+    assert_eq(count_of("use(n: int) -> int {{ n = 2 n }}"), "0",
+              "and a parameter is a mutable local")
+}
+
+test_a_tag_nobody_declared_is_markup_and_not_a_missing_function() {
+    assert_eq(count_of("main() -> Element => div(button(\"ok\"),"
+                       ++ " input(placeholder=\"name\"))"),
+              "0", "a nested tag and an attribute are markup, not calls to write")
+}
+
+test_a_name_the_module_declares_is_a_name_and_not_a_word_maca_lacks() {
+    assert_eq(count_of("type(n: int) -> int => n + 1"
+                       ++ " main() -> int => type(41)"),
+              "0", "`type` is declared here, so it is the function it declares")
+    assert_eq(count_of("f() -> int {{ return 1 }}"), "0",
+              "and `return` is a word Maca has, so it is not hinted at")
+}
+
+test_two_anonymous_record_literals_meet_on_their_fields() {
+    assert_eq(count_of("pick(c: bool) -> int {{ p = c ? {{ x = 1 }}"
+                       ++ " : {{ x = 2 }} p.x }}"),
+              "0", "neither literal names a record, so the field is what they share")
+}
+
+test_the_message_names_the_annotation_and_then_the_value() {
+    bad = errors_of("Point = {{ x: int }} f() -> int {{ p: Point = 3 p.x }}")
+    assert_eq(str(bad.length()), "1", "3 is not a Point")
+    assert_eq(bad.get(0), "type mismatch: expected Point, found int",
+              "the annotation is what the value answers to")
+    over = errors_of("f() -> int {{ for i in \"a\"..\"b\" {{ info(\"{{i}}\") }} 0 }}")
+    assert(over.length() > 0, "a range between two strings counts nothing")
+    assert_eq(over.get(0), "type mismatch: expected int, found str",
+              "and a range end is read against the int it has to be")
+}
+
+test_a_rest_parameter_says_what_its_list_holds() {
+    assert_eq(count_of("total(...rest: int) -> int => rest.length()"), "0",
+              "an annotated rest parameter is one list of that type")
+    bad = errors_of("firstf(...rest) -> int => rest.length()")
+    assert_eq(str(bad.length()), "1", "an unannotated one says nothing")
+    assert(bad.get(0).contains("rest parameter with no type"),
+           "and the message says what is missing: {bad.get(0)}")
+    told = errors_of("main(...args: str) -> int => args.length()")
+    assert_eq(str(told.length()), "1", "the command line is not a caller")
+    assert(told.get(0).contains("`main` takes no rest parameter"),
+           "and `main` is told so by name: {told.get(0)}")
+}

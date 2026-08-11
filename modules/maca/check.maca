@@ -13,6 +13,7 @@ Env = {
     owners: str[]
     slots:  str[]
     varargs: str[]
+    frozen: str[]
     errors: str[]
     infer:  Infer
 }
@@ -20,7 +21,7 @@ Env = {
 empty_env() -> Env =>
     Env { names = [], types = [], fns = [], sigs = [],
           fields = [], ftypes = [], ctors = [], owners = [], slots = [],
-          varargs = [], errors = [], infer = new_infer() }
+          varargs = [], frozen = [], infer = new_infer(), errors = [] }
 
 Typed = {
     env: Env
@@ -1106,7 +1107,8 @@ check_fn_in(env: Env, s: Stmt) -> Env {
     body = check_body(inner, s.body, 0, t_any())
     checked = return_check(body.env, s.ret, body.ty)
 
-    checked with { names = env.names, types = env.types }
+    checked with { names = env.names, types = env.types,
+                   frozen = env.frozen }
 }
 
 signature_params(env: Env, name: str) -> Ty[] {
@@ -1186,10 +1188,23 @@ effect_arms(env: Env, cs: Expr[], i: int) -> Env {
 extend(env: Env, s: Stmt, ty: Ty) -> Env {
     if s.kind != SBind {
         env
+    } else if env.frozen.index_of(s.name) >= 0 {
+        complain(env, "cannot reassign constant `{s.name}`; declare it"
+                          ++ " mutable with `{s.name} = …` (no `const`)")
     } else if s.ret != "" {
-        bind(joined(env, ty_named(s.ret), ty), s.name, ty_named(s.ret))
+        sealed(bind(joined(env, ty_named(s.ret), ty), s.name,
+                    ty_named(s.ret)), s)
     } else {
-        bind(env, s.name, ty)
+        sealed(bind(env, s.name, ty), s)
+    }
+}
+
+/// A binding written `const`, `as const`, or with a capital is one nothing writes twice.
+sealed(env: Env, s: Stmt) -> Env {
+    if s.frozen || starts_upper(s.name) {
+        env with { frozen = env.frozen ++ [s.name] }
+    } else {
+        env
     }
 }
 
@@ -1229,6 +1244,7 @@ check_item(env: Env, s: Stmt) -> Env {
 
 check_errors(m: Module) -> str[] =>
     checked_module(m).errors ++ clashing_names(m.items, 0, [], [])
+        ++ variadic_errors(m.items, 0, [])
 
 /// Imports flatten into one module, so two packages defining one name is a clash, not a shadow.
 clashing_names(items: Stmt[], i: int, seen: str[], acc: str[]) -> str[] {
@@ -1977,5 +1993,28 @@ matched_var(declared: str, concrete: str, v: str) -> str {
                     concrete.slice(0, concrete.length() - 2), v)
     } else {
         ""
+    }
+}
+
+/// A rest parameter says what its list holds, and `main` is filled from the command line rather than by a caller.
+variadic_errors(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else {
+        variadic_errors(items, i + 1, acc ++ rest_misuse(items.get(i)))
+    }
+}
+
+rest_misuse(s: Stmt) -> str[] {
+    if s.kind != SFn || rest_taker(s).length() == 0 {
+        []
+    } else if s.name == "main" {
+        ["type mismatch: `main` takes no rest parameter, because the"
+             ++ " command line fills one `str[]`"]
+    } else if s.params.get(s.params.length() - 1).ty == "[]" {
+        ["type mismatch: `{s.name}` has a rest parameter with no type, so"
+             ++ " nothing says what the list it gathers holds"]
+    } else {
+        []
     }
 }
