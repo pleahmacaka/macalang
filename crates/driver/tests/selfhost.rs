@@ -17,6 +17,9 @@ const COMPILER_FILES: &[&str] = &[
     "emit_c.maca",
     "emit_rust.maca",
     "emit_js.maca",
+    "emit_nix.maca",
+    "emit_embedded.maca",
+    "emit_jvm.maca",
     "print.maca",
 ];
 
@@ -1125,6 +1128,126 @@ fn the_type_system_written_in_maca_holds() {
     assert!(
         out.status.success(),
         "modules/maca/tests/ty.maca:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
+/// What the Maca-written Nix back end emits for a config module, asserted in Maca.
+#[test]
+fn the_nix_backend_written_in_maca_emits_a_module() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping selfhost nix suite: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .current_dir(repo())
+        .env("NO_COLOR", "1")
+        .args(["test", "modules/maca/tests/nix.maca"])
+        .output()
+        .expect("spawn maca test");
+
+    assert!(
+        out.status.success(),
+        "modules/maca/tests/nix.maca:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
+/// What the Maca-written embedded back end emits for firmware, and what it refuses, asserted in Maca.
+#[test]
+fn the_embedded_backend_written_in_maca_emits_firmware() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping selfhost embedded suite: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .current_dir(repo())
+        .env("NO_COLOR", "1")
+        .args(["test", "modules/maca/tests/embedded.maca"])
+        .output()
+        .expect("spawn maca test");
+
+    assert!(
+        out.status.success(),
+        "modules/maca/tests/embedded.maca:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
+/// What the Maca-written C back end emits, asserted in Maca.
+#[test]
+fn the_c_backend_written_in_maca_emits_c() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping selfhost c suite: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .current_dir(repo())
+        .env("NO_COLOR", "1")
+        .args(["test", "modules/maca/tests/c.maca"])
+        .output()
+        .expect("spawn maca test");
+
+    assert!(
+        out.status.success(),
+        "modules/maca/tests/c.maca:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
+/// What the Maca-written Rust back end emits, asserted in Maca.
+#[test]
+fn the_rust_backend_written_in_maca_emits_rust() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping selfhost rust suite: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .current_dir(repo())
+        .env("NO_COLOR", "1")
+        .args(["test", "modules/maca/tests/rust.maca"])
+        .output()
+        .expect("spawn maca test");
+
+    assert!(
+        out.status.success(),
+        "modules/maca/tests/rust.maca:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
+/// What the Maca-written JVM back end emits, asserted in Maca.
+#[test]
+fn the_jvm_backend_written_in_maca_emits_java() {
+    if have_wsl() || !have("cc") {
+        eprintln!("skipping selfhost jvm suite: needs a host cc and no wsl");
+        return;
+    }
+    let _lock = BuildLock::acquire();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_maca"))
+        .current_dir(repo())
+        .env("NO_COLOR", "1")
+        .args(["test", "modules/maca/tests/jvm.maca"])
+        .output()
+        .expect("spawn maca test");
+
+    assert!(
+        out.status.success(),
+        "modules/maca/tests/jvm.maca:\n{}\n{}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr),
     );

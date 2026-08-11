@@ -149,14 +149,18 @@ sgr(i: int) -> str {
 }
 
 /// The same chart as a self-contained SVG `px` pixels wide.
-flame_svg(t: Trace, px: int) -> str {
+flame_svg(t: Trace, px: int) -> str => flame_svg_in(t, px, "ms")
+
+/// The same SVG over a run counted in `unit` rather than in milliseconds.
+flame_svg_in(t: Trace, px: int, unit: str) -> str {
     inset = 8
     rows = levels(t)
     high = svg_head_h() + rows * svg_row() + inset
     sc = scale_of(t, px - inset * 2)
-    body = svg_frames(t, sc, inset, 0, "")
+    body = svg_frames(t, sc, inset, 0, "", unit)
 
-    svg_open(px, high) ++ svg_backdrop(t, px, high, inset) ++ body ++ "</svg>\n"
+    svg_open(px, high) ++ svg_backdrop(t, px, high, inset, unit) ++ body
+        ++ "</svg>\n"
 }
 
 svg_head_h() -> int => 38
@@ -171,31 +175,34 @@ svg_open(px: int, high: int) -> str {
     "<svg {ns} width=\"{px}\" height=\"{high}\" {box} {face}>\n"
 }
 
-svg_backdrop(t: Trace, px: int, high: int, inset: int) -> str {
+svg_backdrop(t: Trace, px: int, high: int, inset: int,
+             unit: str) -> str {
     back = "<rect width=\"{px}\" height=\"{high}\" fill=\"#12121a\"/>\n"
     name = escape_html(t.label)
     seen = plural(span_count(t), "span") ++ ", " ++ plural(levels(t), "level")
-    counts = "{wall(t)}ms, " ++ seen
+    counts = "{wall(t)}{unit}, " ++ seen
     top = "<text x=\"{inset}\" y=\"17\" fill=\"#f2f1f8\" font-weight=\"600\">"
     sub = "<text x=\"{inset}\" y=\"31\" fill=\"#8d8c9b\">"
 
     back ++ top ++ name ++ "</text>\n" ++ sub ++ counts ++ "</text>\n"
 }
 
-svg_frames(t: Trace, sc: Scale, inset: int, i: int, acc: str) -> str {
+svg_frames(t: Trace, sc: Scale, inset: int, i: int, acc: str,
+           unit: str) -> str {
     if i >= span_count(t) {
         acc
     } else {
-        svg_frames(t, sc, inset, i + 1, acc ++ svg_frame(t, sc, inset, i))
+        svg_frames(t, sc, inset, i + 1,
+                   acc ++ svg_frame(t, sc, inset, i, unit), unit)
     }
 }
 
-svg_frame(t: Trace, sc: Scale, inset: int, i: int) -> str {
+svg_frame(t: Trace, sc: Scale, inset: int, i: int, unit: str) -> str {
     s = t.spans.get(i)
     left = inset + column(sc, s.start)
     w = frame_width(sc, s, inset, left)
     y = svg_head_h() + s.depth * svg_row()
-    tip = "<title>" ++ svg_tip(t, i) ++ "</title>"
+    tip = "<title>" ++ svg_tip(t, i, unit) ++ "</title>"
     box = svg_rect(left, y, w, i)
 
     "<g>" ++ tip ++ box ++ svg_label(s, left, y, w) ++ "</g>\n"
@@ -227,12 +234,12 @@ svg_label(s: Span, x: int, y: int, w: int) -> str {
     }
 }
 
-svg_tip(t: Trace, i: int) -> str {
+svg_tip(t: Trace, i: int, unit: str) -> str {
     s = t.spans.get(i)
     share = percent(duration(s), wall(t))
-    own = "self {self_time(t, i)}ms"
+    own = "self {self_time(t, i)}{unit}"
 
-    escape_html(s.name) ++ ": {duration(s)}ms ({share:.1}%), " ++ own
+    escape_html(s.name) ++ ": {duration(s)}{unit} ({share:.1}%), " ++ own
 }
 
 /// `part` as a percentage of `whole`, and zero rather than a division by zero when nothing was measured.

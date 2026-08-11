@@ -17,8 +17,10 @@ rid(name: str) -> str {
     }
 }
 
+/// A future is the one value Rust will not copy, because a join handle is used once.
 rcopy(ty: str) -> bool =>
     ty == "" || ty == "int" || ty == "float" || ty == "bool" || r_is_fn(ty)
+        || ty == "Future"
 
 rowned(ty: str) -> str {
     if rcopy(ty) {
@@ -92,6 +94,10 @@ remit_unary(e: Expr) -> str {
         "panic!(\"{{}}\", {remit_expr(e.children.get(0))})"
     } else if e.text == "try" {
         "maca_try(|| {{ let _ = {remit_expr(e.children.get(0))}; }})"
+    } else if e.text == "spawn" {
+        "std::thread::spawn(move || {remit_expr(e.children.get(0))})"
+    } else if e.text == "await" {
+        "({remit_expr(e.children.get(0))}).join().unwrap()"
     } else {
         "({e.text}{remit_expr(e.children.get(0))})"
     }
@@ -206,7 +212,9 @@ remit_str_method(e: Expr, recv: str) -> str {
 }
 
 rmap_method_of(e: Expr, recv: str) -> str {
-    if e.text == "get" {
+    if e.text == "get" && e.children.length() > 2 {
+        "({recv}).get(&{rarg(e, 1)}).cloned().unwrap_or({rarg(e, 2)})"
+    } else if e.text == "get" {
         "({recv}).get(&{rarg(e, 1)}).cloned().unwrap_or_default()"
     } else if e.text == "has" || e.text == "contains" {
         "({recv}).contains_key(&{rarg(e, 1)})"
@@ -622,35 +630,11 @@ rclone(ty: str) -> str {
     }
 }
 
-rmap_key(ty: str) -> str {
-    rest = rmap_rest(ty)
-    cut = rest.index_of(" ")
+rmap_key(ty: str) -> str =>
+    map_type_key(ty)
 
-    if cut < 0 {
-        ""
-    } else {
-        rest.slice(0, cut)
-    }
-}
-
-rmap_val(ty: str) -> str {
-    rest = rmap_rest(ty)
-    cut = rest.index_of(" ")
-
-    if cut < 0 {
-        ""
-    } else {
-        rest.slice(cut + 1, rest.length())
-    }
-}
-
-rmap_rest(ty: str) -> str {
-    if ty.length() > 4 && ty.slice(0, 4) == "Map " {
-        ty.slice(4, ty.length())
-    } else {
-        ""
-    }
-}
+rmap_val(ty: str) -> str =>
+    map_type_val(ty)
 
 r_is_fn(ty: str) -> bool =>
     ty.index_of(") -> ") >= 0
@@ -692,6 +676,8 @@ rtype(ty: str) -> str {
         "bool"
     } else if ty == "" || ty == "int" {
         "i64"
+    } else if ty == "Future" {
+        "std::thread::JoinHandle<i64>"
     } else {
         ty
     }

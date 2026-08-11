@@ -92,9 +92,13 @@ is_tyvar_name(w: str) -> bool =>
 type_post(ts: Token[], t: PType) -> PType {
     listed = ts.get(t.tnext).kind == LBracket
         && ts.get(t.tnext + 1).kind == RBracket
+    dotted = ts.get(t.tnext).kind == Dot && ts.get(t.tnext + 1).kind == TIdent
 
     if listed {
         type_post(ts, mk_ptype(t.tname ++ "[]", t.tnext + 2))
+    } else if dotted {
+        type_post(ts, mk_ptype("{t.tname}.{ts.get(t.tnext + 1).text}",
+                               t.tnext + 2))
     } else {
         t
     }
@@ -181,13 +185,17 @@ parse_local_fn(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
                                e_lambda(held.params, body_expr(held.body)))])
 }
 
+/// A block answers with its last expression, or with the name its last statement set.
 body_expr(stmts: Stmt[]) -> Expr {
     n = stmts.length()
+    last = stmts.get(n - 1)
 
-    if n == 1 && stmts.get(0).kind == SExpr {
-        stmts.get(0).value
+    if n == 1 && last.kind == SExpr {
+        last.value
+    } else if last.kind == SExpr {
+        e_block(stmts.slice(0, n - 1), last.value)
     } else {
-        e_block(stmts.slice(0, n - 1), stmts.get(n - 1).value)
+        e_block(stmts, e_ident(last.name))
     }
 }
 
@@ -223,7 +231,9 @@ parse_items(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
         Module { items = acc, errors = bad }
     } else if ts.get(i).kind == KwImport {
         parse_items(ts, import_end(ts, i + 1), acc, bad)
-    } else if ts.get(i).kind == KwAlias || is_const_word(ts, i) {
+    } else if ts.get(i).kind == KwAlias {
+        parse_items(ts, parse_expr(ts, i + 3).next, acc, bad)
+    } else if is_const_word(ts, i) {
         parse_items(ts, i + 1, acc, bad)
     } else if is_record_decl(ts, i) {
         stamped(parse_record_decl(ts, i, acc, bad), acc.length(), ts.get(i).pos)
@@ -233,6 +243,8 @@ parse_items(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
         stamped(parse_fn_item(ts, i, acc, bad), acc.length(), ts.get(i).pos)
     } else if binds_a_name(ts, i) {
         stamped(parse_const_item(ts, i, acc, bad), acc.length(), ts.get(i).pos)
+    } else if binds_a_path(ts, i) {
+        stamped(parse_path_item(ts, i, acc, bad), acc.length(), ts.get(i).pos)
     } else {
         parse_items(ts, i + 1, acc, bad ++ [skipped(ts, i)])
     }
@@ -252,6 +264,39 @@ parse_const_item(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
     made = s_bind_typed(ts.get(i).text, bind_type(ts, i + 1), got.node)
 
     parse_items(ts, past_as_const(ts, got.next), acc ++ [made], bad)
+}
+
+/// Config mode writes a whole dotted path on the left of `=`, and it is one name.
+parse_path_item(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
+    end = path_end(ts, i + 1)
+    got = parse_list_expr(ts, bind_eq_at(ts, end) + 1)
+    made = s_bind_typed(dotted_name(ts, i, end, ""), bind_type(ts, end),
+                        got.node)
+
+    parse_items(ts, got.next, acc ++ [made], bad)
+}
+
+binds_a_path(ts: Token[], i: int) -> bool {
+    end = path_end(ts, i + 1)
+
+    ts.get(i).kind == TIdent && end > i + 1
+        && ts.get(bind_eq_at(ts, end)).kind == Eq
+}
+
+path_end(ts: Token[], i: int) -> int {
+    if ts.get(i).kind == Dot && ts.get(i + 1).kind == TIdent {
+        path_end(ts, i + 2)
+    } else {
+        i
+    }
+}
+
+dotted_name(ts: Token[], i: int, end: int, acc: str) -> str {
+    if i >= end {
+        acc
+    } else {
+        dotted_name(ts, i + 1, end, acc ++ ts.get(i).text)
+    }
 }
 
 bind_type(ts: Token[], i: int) -> str {
@@ -291,8 +336,17 @@ past_as_const(ts: Token[], i: int) -> int {
     }
 }
 
-is_record_decl(ts: Token[], i: int) -> bool =>
-    binds_a_name(ts, i) && ts.get(bind_eq_at(ts, i + 1) + 1).kind == LBrace
+is_record_decl(ts: Token[], i: int) -> bool {
+    at = bind_eq_at(ts, i + 1)
+
+    binds_a_name(ts, i) && ts.get(at + 1).kind == LBrace
+        && typed_fields(ts, at + 2)
+}
+
+/// A `:` in the braces gives a field its type; an `=` gives it a value, and that is a literal.
+typed_fields(ts: Token[], i: int) -> bool =>
+    ts.get(i).kind == RBrace
+        || (ts.get(i).kind == TIdent && ts.get(i + 1).kind == Colon)
 
 is_sum_decl(ts: Token[], i: int) -> bool {
     at = bind_eq_at(ts, i + 1)
@@ -453,8 +507,10 @@ prec_of(k: Kind) -> int {
     is_cmp = k == EqEq || k == NotEq || k == Lt || k == Gt || k == Le || k == Ge
 
     if k == Star || k == Slash || k == Percent {
-        6
+        7
     } else if k == Plus || k == Minus || k == PlusPlus {
+        6
+    } else if k == Shl || k == Shr {
         5
     } else if k == DotDot {
         4
@@ -509,6 +565,8 @@ parse_primary(ts: Token[], i: int) -> PExpr =>
 parse_postfix(ts: Token[], e: PExpr) -> PExpr {
     if ts.get(e.next).kind == LBracket && ts.get(e.next).fresh {
         e
+    } else if ts.get(e.next).kind == QuestionPost {
+        parse_postfix(ts, mk_pexpr(e.node, e.next + 1))
     } else if ts.get(e.next).kind == Dot {
         parse_dot(ts, e)
     } else if ts.get(e.next).kind == LBracket {
@@ -634,7 +692,7 @@ add_part(acc: Expr, piece: str, i: int) -> Expr {
     if i == 0 {
         e_str(piece)
     } else if i % 2 == 1 {
-        e_binary("++", acc, e_call("str", [parse_fragment(piece)]))
+        e_binary("++", acc, formatted(piece))
     } else if piece == "" {
         acc
     } else {
@@ -644,6 +702,70 @@ add_part(acc: Expr, piece: str, i: int) -> Expr {
 
 parse_fragment(src: str) -> Expr =>
     parse_expr(lex(src), 0).node
+
+formatted(piece: str) -> Expr {
+    cs = piece.chars()
+    at = spec_start(cs, cs.length() - 1)
+
+    if at < 0 {
+        e_call("str", [parse_fragment(piece)])
+    } else {
+        spec_applied(parse_fragment(piece.slice(0, at)),
+                     piece.slice(at + 1, piece.length()))
+    }
+}
+
+/// The `:` opening a trailing format spec, or -1 when the colon is a ternary's.
+spec_start(cs: str[], i: int) -> int {
+    if i >= 0 && is_spec_char(cs.get(i)) {
+        spec_start(cs, i - 1)
+    } else if i < 1 || i == cs.length() - 1 || cs.get(i) != ":" {
+        -1
+    } else if cs.get(i - 1) == " " || cs.get(i - 1) == "\t" {
+        -1
+    } else {
+        i
+    }
+}
+
+is_spec_char(c: str) -> bool =>
+    is_align(c) || c == "." || c.is_ascii_digit()
+
+is_align(c: str) -> bool =>
+    c == "<" || c == ">" || c == "^"
+
+spec_applied(e: Expr, spec: str) -> Expr {
+    rest = is_align(spec.at(0)) ? spec.slice(1, spec.length()) : spec
+    dot = rest.index_of(".")
+    width = dot < 0 ? rest : rest.slice(0, dot)
+    prec = dot < 0 ? "" : rest.slice(dot + 1, rest.length())
+    shown = shown_part(e, prec)
+    fill = rest.length() > 1 && rest.at(0) == "0" ? "0" : " "
+
+    if width == "" {
+        shown
+    } else {
+        e_method(shown, pad_how(spec.at(0)), [e_int(int(width)), e_str(fill)])
+    }
+}
+
+shown_part(e: Expr, prec: str) -> Expr {
+    if prec == "" {
+        e_call("str", [e])
+    } else {
+        e_method(e, "fixed", [e_int(int(prec))])
+    }
+}
+
+pad_how(align: str) -> str {
+    if align == "<" {
+        "pad_end"
+    } else if align == "^" {
+        "pad_center"
+    } else {
+        "pad_start"
+    }
+}
 
 parse_atom(ts: Token[], i: int) -> PExpr {
     t = ts.get(i)
@@ -665,6 +787,7 @@ parse_atom(ts: Token[], i: int) -> PExpr {
         KwFail   => parse_fail(ts, i)
         KwTry    => parse_try(ts, i)
         LBracket => parse_list(ts, i)
+        LBrace   => parse_anon_record(ts, i)
         TIdent   => parse_call_or_ident(ts, i)
         LParen   => parse_paren(ts, i)
         _        => mk_pexpr(e_bad(ts.get(i).text), i + 1)
@@ -763,17 +886,7 @@ parse_if(ts: Token[], i: int) -> PExpr {
 parse_branch(ts: Token[], brace: int) -> PExpr {
     pb = parse_block(ts, brace + 1, [])
 
-    mk_pexpr(branch_value(pb.bstmts), pb.bnext)
-}
-
-branch_value(ss: Stmt[]) -> Expr {
-    last = ss.get(ss.length() - 1)
-
-    if ss.length() == 1 && last.kind == SExpr {
-        last.value
-    } else {
-        e_block(ss.slice(0, ss.length() - 1), last.value)
-    }
+    mk_pexpr(body_expr(pb.bstmts), pb.bnext)
 }
 
 parse_else(ts: Token[], i: int) -> PExpr {
@@ -924,6 +1037,11 @@ parse_not(ts: Token[], i: int) -> PExpr {
     mk_pexpr(e_unary("!", operand.node), operand.next)
 }
 
+parse_task(ts: Token[], i: int, word: str) -> PExpr {
+    operand = parse_primary(ts, i + 1)
+    mk_pexpr(e_unary(word, operand.node), operand.next)
+}
+
 paren_end(ts: Token[], i: int, depth: int) -> int {
     k = ts.get(i).kind
 
@@ -958,7 +1076,9 @@ parse_lambda(ts: Token[], i: int) -> PExpr {
 parse_call_or_ident(ts: Token[], i: int) -> PExpr {
     name = ts.get(i).text
 
-    if ts.get(i + 1).kind == FatArrow {
+    if name == "spawn" || name == "await" {
+        parse_task(ts, i, name)
+    } else if ts.get(i + 1).kind == FatArrow {
         parse_one_lambda(ts, i, name)
     } else if ts.get(i + 1).kind == LParen {
         parse_call(ts, i, name)
@@ -981,53 +1101,32 @@ opens_record_lit(ts: Token[], i: int) -> bool {
     after = ts.get(i + 3).kind
 
     opens && named && (after == Eq || after == Comma)
-        && !block_shaped(ts, i + 2, 0)
+        && !block_head(ts, i)
 }
 
-ends_value(k: Kind) -> bool =>
-    k == TIdent || k == TInt || k == TFloat || k == TStr
-        || k == RParen || k == RBracket || k == KwTrue || k == KwFalse
-
-starts_value(k: Kind) -> bool =>
-    k == TIdent || k == TInt || k == TFloat || k == TStr
-        || k == KwIf || k == KwMatch || k == KwTrue || k == KwFalse
-        || k == Bang || k == KwWhile || k == KwFor || k == KwBreak
-        || k == KwContinue || k == KwFail
-
-block_shaped(ts: Token[], i: int, depth: int) -> bool {
+block_head(ts: Token[], i: int) -> bool {
     kind = ts.get(i).kind
 
-    if kind == Eof {
-        false
-    } else if kind == RBrace && depth == 0 {
-        false
-    } else if kind == LBrace || kind == LParen || kind == LBracket {
-        block_shaped(ts, i + 1, depth + 1)
-    } else {
-        block_after(ts, i, closes(kind, depth))
-    }
-}
-
-closes(kind: Kind, depth: int) -> int {
-    if kind == RBrace || kind == RParen || kind == RBracket {
-        depth - 1
-    } else {
-        depth
-    }
-}
-
-block_after(ts: Token[], i: int, depth: int) -> bool {
-    if depth == 0 && ends_value(ts.get(i).kind)
-            && starts_value(ts.get(i + 1).kind) {
+    if kind == KwIf || kind == KwElse || kind == KwWhile
+            || kind == KwFor || kind == KwMatch {
         true
+    } else if i == 0 || ts.get(i).fresh
+            || kind == LBrace || kind == RBrace {
+        false
     } else {
-        block_shaped(ts, i + 1, depth)
+        block_head(ts, i - 1)
     }
 }
 
 parse_record_lit(ts: Token[], i: int, name: str) -> PExpr {
     rf = parse_lit_fields(ts, i + 2, [])
     mk_pexpr(e_record(name, rf.aitems), rf.anext)
+}
+
+/// A value written as bare braces names no record, which is what a config's nesting is.
+parse_anon_record(ts: Token[], i: int) -> PExpr {
+    rf = parse_lit_fields(ts, i + 1, [])
+    mk_pexpr(e_record("", rf.aitems), rf.anext)
 }
 
 parse_lit_fields(ts: Token[], i: int, acc: Expr[]) -> PArgs {
@@ -1045,11 +1144,41 @@ parse_one_lit_field(ts: Token[], i: int, acc: Expr[]) -> PArgs {
         parse_lit_fields(ts, skip_comma(ts, i + 1),
                          acc ++ [e_binary("=", e_ident(fname), e_ident(fname))])
     } else {
-        v = parse_expr(ts, i + 2)
+        v = lit_value(ts, i + 2)
 
         parse_lit_fields(ts, skip_comma(ts, v.next),
                          acc ++ [e_binary("=", e_ident(fname), v.node)])
     }
+}
+
+/// `xs = a, b` in braces is one field holding a list, because a field of its own would say `=`.
+lit_value(ts: Token[], i: int) -> PExpr {
+    v = parse_expr(ts, i)
+
+    if ts.get(v.next).kind != Comma || ends_lit_value(ts, v.next + 1) {
+        v
+    } else {
+        more_lit_elems(ts, v.next + 1, [v.node])
+    }
+}
+
+more_lit_elems(ts: Token[], i: int, acc: Expr[]) -> PExpr {
+    e = parse_expr(ts, i)
+    seen = acc ++ [e.node]
+
+    if ts.get(e.next).kind == Comma && !ends_lit_value(ts, e.next + 1) {
+        more_lit_elems(ts, e.next + 1, seen)
+    } else {
+        mk_pexpr(e_list(seen), e.next)
+    }
+}
+
+ends_lit_value(ts: Token[], i: int) -> bool {
+    k = ts.get(i).kind
+    after = ts.get(i + 1).kind
+
+    k == RBrace || k == Eof
+        || (k == TIdent && (after == Eq || after == Comma || after == RBrace))
 }
 
 parse_call(ts: Token[], i: int, name: str) -> PExpr {

@@ -124,6 +124,36 @@ fn maca1_names_its_own_version() {
     );
 }
 
+/// `spec` is the whole language as one document, useful only if it fits a context window.
+#[test]
+fn maca1_prints_the_specification_within_its_budget() {
+    let dir = std::env::temp_dir().join("maca1-cli-spec");
+    let Some(bin) = maca1(&dir) else { return };
+
+    let out = Command::new(&bin)
+        .current_dir(repo())
+        .arg("spec")
+        .output()
+        .expect("spawn maca1 spec");
+
+    assert_eq!(out.status.code(), Some(0));
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("## The language") && text.contains("no `fn` keyword"),
+        "the language section and the mistakes table are both in it"
+    );
+    assert!(
+        text.contains("`std/text`"),
+        "and the standard library is indexed out of the tree"
+    );
+    let tokens = text.len() / 3;
+    assert!(
+        tokens > 5_000 && tokens <= 15_000,
+        "{tokens} tokens is outside the budget the document is written to"
+    );
+}
+
+
 /// `fmt` rewrites in place and settles: running it twice must not move the file again.
 #[test]
 fn maca1_formats_in_place_and_settles() {
@@ -295,5 +325,329 @@ fn maca1_runs_a_suite_that_imports_a_module() {
         Some(0),
         "the import graph is walked from the suite's own directory:\n{}",
         String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// With no file named, a command is about the package here: its one `[[bin]]`, or a message naming the choice.
+#[test]
+fn maca1_takes_its_entry_from_the_manifest() {
+    let dir = std::env::temp_dir().join("maca1-cli-manifest");
+    let Some(bin) = maca1(&dir) else { return };
+    let solo = dir.join("solo");
+    let pair = dir.join("pair");
+    let bare = dir.join("bare");
+    for d in [&solo, &pair, &bare] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::write(
+        solo.join("maca.toml"),
+        "[package]\nname = \"solo\"\n\n[[bin]]\nname = \"solo\"\npath = \"app.maca\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        solo.join("app.maca"),
+        "main() -> int {\n    info(\"from the manifest\")\n    0\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        pair.join("maca.toml"),
+        "[package]\nname = \"pair\"\n\n[[bin]]\nname = \"a\"\npath = \"a.maca\"\n\n\
+         [[bin]]\nname = \"b\"\npath = \"b.maca\"\n",
+    )
+    .unwrap();
+    for (file, word) in [("a.maca", "A"), ("b.maca", "B")] {
+        std::fs::write(
+            pair.join(file),
+            format!("main() -> int {{\n    info(\"{word}\")\n    0\n}}\n"),
+        )
+        .unwrap();
+    }
+
+    let one = Command::new(&bin)
+        .current_dir(&solo)
+        .arg("run")
+        .output()
+        .expect("spawn maca1 run");
+    assert_eq!(
+        one.status.code(),
+        Some(0),
+        "the single [[bin]] is the entry:\n{}",
+        String::from_utf8_lossy(&one.stderr)
+    );
+    assert!(String::from_utf8_lossy(&one.stdout).contains("from the manifest"));
+
+    let two = Command::new(&bin)
+        .current_dir(&pair)
+        .arg("run")
+        .output()
+        .expect("spawn maca1 run");
+    assert_eq!(
+        two.status.code(),
+        Some(2),
+        "two binaries and no --bin is a usage error"
+    );
+    let said = String::from_utf8_lossy(&two.stderr);
+    assert!(said.contains("one of a, b"), "the message names them: {said}");
+
+    let chosen = Command::new(&bin)
+        .current_dir(&pair)
+        .args(["run", "--bin", "b"])
+        .output()
+        .expect("spawn maca1 run --bin");
+    assert_eq!(chosen.status.code(), Some(0), "--bin names one of them");
+    assert!(String::from_utf8_lossy(&chosen.stdout).contains('B'));
+
+    let none = Command::new(&bin)
+        .current_dir(&bare)
+        .arg("run")
+        .output()
+        .expect("spawn maca1 run");
+    assert_eq!(
+        none.status.code(),
+        Some(2),
+        "no manifest and no file is a usage error"
+    );
+    assert!(
+        String::from_utf8_lossy(&none.stderr).contains("no maca.toml here"),
+        "and the message says what is missing"
+    );
+
+    std::fs::write(
+        solo.join("maca.toml"),
+        "[package]\nname = \"solo\"\n\n[build]\ncflags = \"-lnosuchlibrary\"\n\n\
+         [[bin]]\nname = \"solo\"\npath = \"app.maca\"\n",
+    )
+    .unwrap();
+    let linked = Command::new(&bin)
+        .current_dir(&solo)
+        .arg("run")
+        .output()
+        .expect("spawn maca1 run");
+    assert_ne!(
+        linked.status.code(),
+        Some(0),
+        "[build] cflags reach the C compiler, so a library nobody has fails the link"
+    );
+}
+
+/// Help is what a user reads first, so every spelling of the question prints the same page.
+#[test]
+fn maca1_prints_its_usage_and_names_an_unknown_command() {
+    let dir = std::env::temp_dir().join("maca1-cli-help");
+    let Some(bin) = maca1(&dir) else { return };
+
+    for spelling in ["--help", "-h", "help"] {
+        let out = Command::new(&bin)
+            .arg(spelling)
+            .output()
+            .expect("spawn maca1 help");
+        let said = String::from_utf8_lossy(&out.stdout).into_owned();
+        assert_eq!(out.status.code(), Some(0), "asking for help is not an error");
+        assert!(
+            said.contains("usage: maca <command> [args]") && said.contains("  build "),
+            "`{spelling}` prints the command list: {said}"
+        );
+    }
+
+    for spelling in ["--version", "-V", "version"] {
+        let out = Command::new(&bin)
+            .arg(spelling)
+            .output()
+            .expect("spawn maca1 version");
+        assert!(
+            String::from_utf8_lossy(&out.stdout).starts_with("maca "),
+            "`{spelling}` asks the same question as --version"
+        );
+    }
+
+    let no = Command::new(&bin)
+        .current_dir(&dir)
+        .arg("nosuchcommand")
+        .output()
+        .expect("spawn maca1 nosuchcommand");
+    assert_eq!(
+        no.status.code(),
+        Some(2),
+        "a command nobody serves is a usage error"
+    );
+    assert!(
+        String::from_utf8_lossy(&no.stderr).contains("unknown command `nosuchcommand`"),
+        "it names what it did not understand"
+    );
+    assert!(
+        String::from_utf8_lossy(&no.stdout).contains("usage: maca"),
+        "and prints the page that would have told them"
+    );
+}
+
+/// `dev` writes the flake its own starter describes, so the message and the emitter agree.
+#[test]
+fn maca1_writes_the_flake_its_own_starter_describes() {
+    let dir = std::env::temp_dir().join("maca1-cli-dev");
+    let Some(bin) = maca1(&dir) else { return };
+    let _ = std::fs::remove_file(dir.join("dev.maca"));
+    let _ = std::fs::remove_file(dir.join("flake.nix"));
+
+    let out = Command::new(&bin)
+        .current_dir(&dir)
+        .arg("dev")
+        .output()
+        .expect("spawn maca1 dev");
+    assert!(!out.status.success(), "no dev.maca here is a failure");
+
+    let text =
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
+    let starter: String = text
+        .lines()
+        .filter(|l| l.starts_with("    "))
+        .map(|l| format!("{}\n", l.trim_start()))
+        .collect();
+    assert!(starter.contains("dev.packages"), "no starter in:\n{text}");
+    std::fs::write(dir.join("dev.maca"), &starter).unwrap();
+
+    let out = Command::new(&bin)
+        .current_dir(&dir)
+        .arg("dev")
+        .output()
+        .expect("spawn maca1 dev");
+    assert!(
+        out.status.success(),
+        "the printed starter must compile:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let flake = std::fs::read_to_string(dir.join("flake.nix")).expect("no flake.nix");
+    assert!(
+        flake.contains("pkgs.mkShell") && flake.contains("pkgs.rustc"),
+        "the flake must carry the shell the config declared:\n{flake}"
+    );
+}
+
+/// `profile` runs the program under callgrind and answers with where its instructions went.
+#[test]
+fn maca1_profiles_a_run_under_callgrind() {
+    if !have("valgrind") {
+        eprintln!("skipping maca1 profile: needs valgrind");
+        return;
+    }
+    let dir = std::env::temp_dir().join("maca1-cli-profile");
+    let Some(bin) = maca1(&dir) else { return };
+    let file = dir.join("hot.maca");
+    std::fs::write(
+        &file,
+        "spin(n: int, acc: int) -> int {\n    n <= 0 ? acc : spin(n - 1, acc + n)\n}\n\nmain() -> int {\n    info(\"{spin(20000, 0)}\")\n    0\n}\n",
+    )
+    .unwrap();
+    let svg = dir.join("hot.svg");
+    let _ = std::fs::remove_file(&svg);
+    let src = file.to_string_lossy().to_string();
+    let out_svg = svg.to_string_lossy().to_string();
+
+    let out = Command::new(&bin)
+        .current_dir(&dir)
+        .args(["profile", &src, "-o", &out_svg])
+        .output()
+        .expect("spawn maca1 profile");
+
+    let table = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(out.status.success(), "profile should succeed:\n{table}");
+    assert!(
+        table.contains("self%") && table.contains("spin"),
+        "the hot function must show in the table:\n{table}"
+    );
+    let flame = std::fs::read_to_string(&svg).expect("no flame graph was written");
+    assert!(
+        flame.starts_with("<svg") && flame.contains("Ir"),
+        "the flame graph must be an svg counted in instructions"
+    );
+}
+
+
+
+/// A `[scripts]` name in maca.toml is a command of its own, and its exit code is the caller's.
+#[test]
+fn maca1_runs_a_scripts_alias_from_the_manifest() {
+    let dir = std::env::temp_dir().join("maca1-cli-scripts");
+    let Some(bin) = maca1(&dir) else { return };
+    let project = dir.join("scripted");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(
+        project.join("maca.toml"),
+        "[package]\nname = \"scripted\"\n\n[scripts]\n\
+         greet = \"echo hi-from-scripts\"\nboom = \"exit 3\"\n",
+    )
+    .unwrap();
+
+    let ran = Command::new(&bin)
+        .current_dir(&project)
+        .arg("greet")
+        .output()
+        .expect("spawn maca1 greet");
+    assert_eq!(ran.status.code(), Some(0));
+    assert!(
+        String::from_utf8_lossy(&ran.stdout).contains("hi-from-scripts"),
+        "the table names a command, and the command runs"
+    );
+
+    let failed = Command::new(&bin)
+        .current_dir(&project)
+        .arg("boom")
+        .output()
+        .expect("spawn maca1 boom");
+    assert_eq!(
+        failed.status.code(),
+        Some(3),
+        "a script that fails fails the caller, so a chain of them stops"
+    );
+}
+
+/// `-m` runs one function of a module, found the way an import finds it, and answers with its result.
+#[test]
+fn maca1_runs_one_function_out_of_a_module() {
+    let dir = std::env::temp_dir().join("maca1-cli-module");
+    let Some(bin) = maca1(&dir) else { return };
+    let project = dir.join("moduled");
+    std::fs::create_dir_all(project.join("src")).unwrap();
+    std::fs::write(
+        project.join("src/greeter.maca"),
+        "greet(args: str[]) -> int {\n    info(\"greeted {str(args.length())}\")\n    7\n}\n\
+         \ngreeter() -> int => 3\n",
+    )
+    .unwrap();
+
+    let ran = Command::new(&bin)
+        .current_dir(&project)
+        .args(["-m", "greeter.greet", "a", "b"])
+        .output()
+        .expect("spawn maca1 -m");
+    assert_eq!(
+        ran.status.code(),
+        Some(7),
+        "the function's own answer is the exit code"
+    );
+    assert!(
+        String::from_utf8_lossy(&ran.stdout).contains("greeted 2"),
+        "and what is left of the command line reaches it"
+    );
+
+    let bare = Command::new(&bin)
+        .current_dir(&project)
+        .args(["-m", "greeter"])
+        .output()
+        .expect("spawn maca1 -m greeter");
+    assert_eq!(
+        bare.status.code(),
+        Some(3),
+        "a module with no `main` is run by the function named after it"
+    );
+
+    let missing = Command::new(&bin)
+        .current_dir(&project)
+        .args(["-m", "greeter.nope"])
+        .output()
+        .expect("spawn maca1 -m greeter.nope");
+    assert_eq!(missing.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&missing.stderr).contains("no function `nope`"),
+        "and a function that is not there is named rather than guessed at"
     );
 }

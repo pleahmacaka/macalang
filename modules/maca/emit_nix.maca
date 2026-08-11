@@ -1,0 +1,268 @@
+import maca/ast
+
+NixUser = "alice"
+
+/// The NixOS module a config-mode file describes, as Nix source.
+nemit_module(m: Module) -> str =>
+    "{{ config, pkgs, lib, ... }}:\n{{\n"
+        ++ nix_block(nix_binds(m.items, 0, false, []), 1, 0, "")
+        ++ nix_home(nix_binds(m.items, 0, true, []), NixUser)
+        ++ "}}\n"
+
+/// What a user owns rides under home-manager, keyed by the name the manifest gives.
+nix_home(ls: str[], user: str) -> str {
+    if ls.length() == 0 {
+        ""
+    } else {
+        "  home-manager.users.{user} = {{\n" ++ nix_block(ls, 2, 0, "")
+            ++ "  }};\n"
+    }
+}
+
+nix_binds(items: Stmt[], i: int, home: bool, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind != SBind {
+        nix_binds(items, i + 1, home, acc)
+    } else if nix_at_home(items.get(i)) == home {
+        nix_binds(items, i + 1, home, acc ++ [nemit_bind(items.get(i))])
+    } else {
+        nix_binds(items, i + 1, home, acc)
+    }
+}
+
+nix_block(ls: str[], n: int, i: int, acc: str) -> str {
+    if i >= ls.length() {
+        acc
+    } else {
+        nix_block(ls, n, i + 1, acc ++ nix_indent(ls.get(i), n))
+    }
+}
+
+nix_indent(s: str, n: int) -> str =>
+    nix_padded(s.split("\n"), nix_pad(n, ""), 0, "")
+
+nix_pad(n: int, acc: str) -> str {
+    if n <= 0 {
+        acc
+    } else {
+        nix_pad(n - 1, acc ++ "  ")
+    }
+}
+
+nix_padded(ls: str[], pad: str, i: int, acc: str) -> str {
+    if i >= ls.length() {
+        acc
+    } else {
+        nix_padded(ls, pad, i + 1, acc ++ pad ++ ls.get(i) ++ "\n")
+    }
+}
+
+nix_at_home(s: Stmt) -> bool {
+    p = s.name.split(".")
+
+    nix_program(s) || nix_path2(p, "user", "packages")
+        || nix_path3(p, "user", "home", "dirs")
+}
+
+/// A binding that declares a type names a program, and a program is the user's.
+nix_program(s: Stmt) -> bool =>
+    s.ret != "" && s.name.split(".").length() == 1
+
+nemit_bind(s: Stmt) -> str {
+    p = s.name.split(".")
+
+    if nix_program(s) {
+        "programs.{p.get(0)} = {nix_enabled(s.value)};"
+    } else if nix_path2(p, "system", "packages") {
+        "environment.systemPackages = {nix_pkg_list(s.value)};"
+    } else if nix_path2(p, "system", "fonts") {
+        "fonts.packages = {nix_pkg_list(s.value)};"
+    } else if nix_path2(p, "user", "packages") {
+        "home.packages = {nix_pkg_list(s.value)};"
+    } else if nix_path3(p, "user", "home", "dirs") {
+        nix_xdg_dirs(s.value)
+    } else if p.length() == 2 && p.get(0) == "services" {
+        "services.{p.get(1)} = {nix_enabled(s.value)};"
+    } else {
+        "{s.name} = {nvalue(s.value)};"
+    }
+}
+
+nix_path2(p: str[], a: str, b: str) -> bool =>
+    p.length() == 2 && p.get(0) == a && p.get(1) == b
+
+nix_path3(p: str[], a: str, b: str, c: str) -> bool =>
+    p.length() == 3 && p.get(0) == a && p.get(1) == b && p.get(2) == c
+
+/// A service or a program is on because it was written down, so `enable` is implied.
+nix_enabled(v: Expr) -> str {
+    if v.kind != ERecord {
+        nvalue(v)
+    } else {
+        "{{\n  enable = true;\n"
+            ++ nix_body(nix_fields(v.children, 0, []), 0, "") ++ "}}"
+    }
+}
+
+nix_body(ls: str[], i: int, acc: str) -> str {
+    if i >= ls.length() {
+        acc
+    } else {
+        nix_body(ls, i + 1, acc ++ "  " ++ ls.get(i) ++ "\n")
+    }
+}
+
+nix_pkg_list(v: Expr) -> str =>
+    "[ {nix_elems(v).map(nix_pkg_ref).join(" ")} ]"
+
+nix_elems(v: Expr) -> Expr[] {
+    if v.kind == EList {
+        v.children
+    } else {
+        [v]
+    }
+}
+
+nix_pkg_ref(e: Expr) -> str {
+    if e.kind == EIdent || e.kind == EField {
+        "pkgs.{e.text}"
+    } else if e.kind == EStr {
+        nix_string(e.text)
+    } else {
+        "pkgs.unknown"
+    }
+}
+
+nvalue(e: Expr) -> str =>
+    match e.kind {
+        EStr     => nix_string(e.text)
+        EInt     => str(e.ival)
+        EFloat   => e.text
+        EBool    => e.text
+        EIdent   => "pkgs.{e.text}"
+        EField   => "pkgs.{e.text}"
+        EList    => "[ {e.children.map(nvalue).join(" ")} ]"
+        ERecord  => nix_attrs(e.children)
+        EUnary   => nix_unary(e)
+        EBinary  => nix_binary(e)
+        ETernary => nix_cond(e)
+        _        => "null"
+    }
+
+nix_attrs(fs: Expr[]) -> str {
+    ls = nix_fields(fs, 0, [])
+
+    if ls.length() == 0 {
+        "{{ }}"
+    } else {
+        "{{\n  " ++ ls.join("\n  ") ++ "\n}}"
+    }
+}
+
+nix_fields(fs: Expr[], i: int, acc: str[]) -> str[] {
+    if i >= fs.length() {
+        acc
+    } else {
+        nix_fields(fs, i + 1, acc ++ [nix_field(fs.get(i))])
+    }
+}
+
+nix_field(f: Expr) -> str {
+    name = f.children.get(0).text
+    v = f.children.get(1)
+
+    if v.kind == EIdent && v.text == name {
+        "{name} = {name};"
+    } else {
+        "{name} = {nvalue(v)};"
+    }
+}
+
+nix_unary(e: Expr) -> str {
+    if e.text == "-" || e.text == "!" {
+        "({e.text}{nvalue(e.children.get(0))})"
+    } else {
+        "null"
+    }
+}
+
+nix_cond(e: Expr) -> str =>
+    "(if {nvalue(e.children.get(0))} then {nvalue(e.children.get(1))}"
+        ++ " else {nvalue(e.children.get(2))})"
+
+/// Nix has no integer division and no remainder, so both are built from `builtins.div`.
+nix_binary(e: Expr) -> str {
+    l = nvalue(e.children.get(0))
+    r = nvalue(e.children.get(1))
+
+    if e.text == "/" {
+        "(builtins.div {l} {r})"
+    } else if e.text == "%" {
+        "({l} - (builtins.div {l} {r}) * {r})"
+    } else if e.text == "++" {
+        "({l} + {r})"
+    } else if nix_infix(e.text) {
+        "({l} {e.text} {r})"
+    } else {
+        "null"
+    }
+}
+
+nix_infix(op: str) -> bool =>
+    op == "+" || op == "-" || op == "*" || op == "==" || op == "!="
+        || op == "<" || op == ">" || op == "<=" || op == ">="
+        || op == "&&" || op == "||"
+
+/// `user.home.dirs` names directories to keep, and keeping them destroys nothing.
+nix_xdg_dirs(v: Expr) -> str =>
+    "xdg.userDirs = {{\n  enable = true;\n  createDirectories = true;\n"
+        ++ nix_dir_lines(nix_elems(v), 0, "") ++ "};"
+
+nix_dir_lines(xs: Expr[], i: int, acc: str) -> str {
+    if i >= xs.length() {
+        acc
+    } else if xs.get(i).kind != EStr {
+        nix_dir_lines(xs, i + 1, acc)
+    } else {
+        nix_dir_lines(xs, i + 1, acc ++ nix_dir_line(xs.get(i).text))
+    }
+}
+
+nix_dir_line(name: str) -> str =>
+    "  {nix_xdg_key(name)} = \"$HOME/{name}\";\n"
+
+nix_xdg_key(name: str) -> str {
+    low = name.lower()
+
+    if low == "downloads" {
+        "download"
+    } else if low == "public" {
+        "publicShare"
+    } else {
+        low
+    }
+}
+
+nix_string(s: str) -> str =>
+    "\"{nix_escaped(s.chars(), 0, "")}\""
+
+nix_escaped(cs: str[], i: int, acc: str) -> str {
+    if i >= cs.length() {
+        acc
+    } else {
+        nix_escaped(cs, i + 1, acc ++ nix_escape(cs.get(i)))
+    }
+}
+
+nix_escape(c: str) -> str {
+    if c == "\"" {
+        "\\\""
+    } else if c == "\\" {
+        "\\\\"
+    } else if c == "\n" {
+        "\\n"
+    } else {
+        c
+    }
+}

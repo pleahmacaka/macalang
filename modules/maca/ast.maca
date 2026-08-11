@@ -200,3 +200,35 @@ e_block(stmts: Stmt[], last: Expr) -> Expr =>
 
 at_pos(s: Stmt, p: int) -> Stmt =>
     s with { pos = p }
+
+/// A map type is written `Map key value`, so its key is the word after the head.
+map_type_key(ty: str) -> str {
+    rest = map_type_rest(ty)
+    cut = rest.index_of(" ")
+
+    if cut < 0 {
+        ""
+    } else {
+        rest.slice(0, cut)
+    }
+}
+
+/// The type a lookup in this map answers with, empty when the type is not a map.
+map_type_val(ty: str) -> str {
+    rest = map_type_rest(ty)
+    cut = rest.index_of(" ")
+
+    if cut < 0 {
+        ""
+    } else {
+        rest.slice(cut + 1, rest.length())
+    }
+}
+
+map_type_rest(ty: str) -> str {
+    if ty.length() > 4 && ty.slice(0, 4) == "Map " {
+        ty.slice(4, ty.length())
+    } else {
+        ""
+    }
+}

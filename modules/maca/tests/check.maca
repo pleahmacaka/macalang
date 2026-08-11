@@ -313,6 +313,75 @@ test_a_typed_binding_is_the_type_it_declares() {
               "so returning it as an int is refused")
 }
 
+test_a_typed_binding_holds_its_value_to_the_type_it_declares() {
+    assert_eq(count_of("f() -> int {{ n: str = 1 0 }}"), "1",
+              "a declared type the value cannot be is a clash, not a cast")
+    assert_eq(param_surface("apply(f, xs: str[]) -> str {{"
+                            ++ " got: str = f(xs) got }}", 0, 0),
+              "(str[]) -> str",
+              "and it flows back, so what f returns is solved by the binding")
+}
+
+test_a_method_no_receiver_answers_to_is_the_function_of_that_name() {
+    assert_eq(count_of("C = {{ n: int }} wide(c: C, by: int) -> C => c\n"
+                       ++ "f(c: C) -> C => c.wide(2)"),
+              "0", "`c.wide(2)` is `wide(c, 2)`, so it is a C and not an any")
+    assert_eq(count_of("C = {{ n: int }} wide(c: C, by: int) -> C => c\n"
+                       ++ "f(c: C) -> int => c.wide(2)"),
+              "1", "which means handing it back as an int is refused")
+    assert_eq(count_of("C = {{ n: int }} wide(c: C, by: int) -> C => c\n"
+                       ++ "f(c: C) -> C => c.wide(\"2\")"),
+              "1", "and the argument is checked against what wide declared")
+}
+
+test_a_constant_at_file_scope_carries_the_type_of_its_value() {
+    assert_eq(count_of("C = {{ n: int }} mk() -> C => C {{ n = 1 }}\n"
+                       ++ "Spec = mk()\n"
+                       ++ "f(c: C) -> int => c.n\n"
+                       ++ "g() -> int => f(Spec)"),
+              "0", "a constant is what its value is, which is what f asks for")
+    assert_eq(count_of("C = {{ n: int }} mk() -> C => C {{ n = 1 }}\n"
+                       ++ "Spec = mk()\n"
+                       ++ "g() -> int => Spec"),
+              "1", "so handing it back as an int is refused")
+}
+
+test_a_branch_run_for_its_effect_need_not_agree() {
+    assert_eq(count_of("step(n: int) {{\n"
+                       ++ "    p = false\n"
+                       ++ "    at = 0\n"
+                       ++ "    while !p {{\n"
+                       ++ "        if at < n {{\n"
+                       ++ "            if at > 0 {{ p = true }} else {{ at = at + 1 }}\n"
+                       ++ "        }} else if at > n {{\n"
+                       ++ "            p = true\n"
+                       ++ "        }} else {{\n"
+                       ++ "            at = 0\n"
+                       ++ "        }}\n"
+                       ++ "    }}\n"
+                       ++ "}}"),
+              "0", "a nested if and an else-if run for their effect answer nothing")
+    assert_eq(count_of("run(tag: int, xs: int[]) -> int {{\n"
+                       ++ "    match tag {{\n"
+                       ++ "        1 => {{ info(\"a\") }}\n"
+                       ++ "        _ => {{ xs[0] = 2 }}\n"
+                       ++ "    }}\n"
+                       ++ "    0\n"
+                       ++ "}}"),
+              "0", "and a match run for its effect answers nothing either")
+    assert_eq(count_of("pick(n: int) -> int => if n > 0 {{ 1 }} else {{ \"x\" }}"),
+              "1", "while an if that is read for its value still has to agree")
+}
+
+test_a_local_shadows_a_function_of_the_same_name() {
+    assert_eq(count_of("body(a: int, b: int, c: int, d: int) -> int => a\n"
+                       ++ "span(r: int, body) -> int => body(r)"),
+              "0", "`body(r)` calls the parameter, not the four-argument function")
+    assert_eq(count_of("body(a: int) -> int => a\n"
+                       ++ "span(r: int, body: int) -> int => body(r)"),
+              "0", "a local that cannot be called leaves the function it shadows")
+}
+
 test_input_no_production_reads_is_reported_not_swallowed() {
     bad = errors_of("f() -> int => :")
     assert_eq(str(bad.length()), "1", "an unreadable token is not nothing")
@@ -363,4 +432,14 @@ test_a_declared_name_beats_the_tag_it_is_spelled_like() {
 test_a_swallowed_argument_does_not_pass_for_a_clean_module() {
     assert_eq(count_of("g(n: int) -> int => n use() -> int => g(:)"),
               "1", "silence here emitted `?` into the C and still exited zero")
+}
+
+test_a_shift_counts_bits_so_neither_side_may_be_a_float() {
+    assert_eq(type_named_in("1 << 2"), "int", "a shift answers a whole number")
+    assert_eq(type_named_in("1.5 << 2.5"), "int",
+              "and a float pair does not make one, because a bit is not a fraction")
+    assert_eq(count_of("f() -> int => 1.5 << 2.5"), "2",
+              "each side that has no bits to move is reported")
+    assert_eq(count_of("g(s: str) -> int => s >> 1"), "1", "text has none either")
+    assert_eq(count_of("h(n: int) -> int => n << 1"), "0", "two integers are fine")
 }

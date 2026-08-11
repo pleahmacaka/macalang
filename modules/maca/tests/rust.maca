@@ -1,0 +1,128 @@
+import maca/lexer
+import maca/parser
+import maca/check
+import maca/emit_rust
+
+gate_rust(src: str) -> str =>
+    remit_module(annotated(parse_module(lex(src), 0, [])))
+
+test_main_exits_with_the_code_it_answered() {
+    made = gate_rust("main() -> int {{ info(\"hi\") 0 }}")
+
+    assert(made.index_of("fn __maca_main() -> i64") >= 0,
+           "the author's main answers a number, so it is not Rust's main")
+    assert(made.index_of("std::process::exit(__maca_main() as i32)") >= 0,
+           "and the number it answered is the exit code")
+    assert(made.index_of("println!") >= 0, "info writes a line")
+}
+
+test_a_signature_threads_through_a_recursive_function() {
+    made = gate_rust("fib(n: int) -> int => n < 2 ? n : fib(n - 1) + fib(n - 2)")
+
+    assert(made.index_of("fn fib(n: i64) -> i64") >= 0,
+           "int is i64 in both directions")
+    assert(made.index_of("if (n < 2i64)") >= 0,
+           "a ternary is Rust's if, and the literal carries the parameter's type")
+}
+
+test_a_record_is_a_struct_and_a_sum_is_an_enum() {
+    made = gate_rust("Color = Red | Green | Blue\nPoint = {{ x: int y: int }}")
+
+    assert(made.index_of("enum Color {{ Red, Green, Blue }}") >= 0, "the sum")
+    assert(made.index_of("struct Point {{ x: i64, y: i64 }}") >= 0, "the record")
+    assert(made.index_of("#[derive(Clone, PartialEq)]") >= 0,
+           "a value a match compares must be comparable, and one it reuses cloneable")
+}
+
+test_a_variant_with_a_payload_is_a_data_enum() {
+    made = gate_rust("Shape = Circle(int) | Rect(int, int)\n"
+                     ++ "area(s: Shape) -> int => match s {{"
+                     ++ " Circle(r) => r * r Rect(w, h) => w * h }}\n"
+                     ++ "main() -> int {{ area(Circle(5)) }}")
+
+    assert(made.index_of("enum Shape {{ Circle(i64), Rect(i64, i64) }}") >= 0,
+           "each variant carries the types it declared")
+    assert(made.index_of("static SHAPE") < 0,
+           "a type declaration is not a constant")
+    assert(made.index_of("use Shape::*;") >= 0,
+           "the variants are in scope, so the source spelling is the Rust spelling")
+    assert(made.index_of("Circle(5i64)") >= 0, "a construction")
+    assert(made.index_of("Rect(w, h) =>") >= 0, "and a pattern")
+}
+
+test_a_value_read_twice_is_cloned_rather_than_moved() {
+    made = gate_rust("Grid = {{ rows: int }}\n"
+                     ++ "Outcome = Rows(Grid) | Affected(int)\n"
+                     ++ "rows_of(o: Outcome) -> int => match o {{"
+                     ++ " Rows(g) => g.rows Affected(n) => n }}\n"
+                     ++ "main() -> int {{ r = Rows(Grid {{ rows = 7 }})"
+                     ++ " info(\"{{rows_of(r)}}\") rows_of(r) }}")
+
+    assert(made.index_of("rows_of(r.clone())") >= 0,
+           "the second read would be a use after move")
+}
+
+test_a_reassignment_is_not_a_new_binding() {
+    made = gate_rust("sum_to(n: int) -> int {{ acc = 0 i = 1"
+                     ++ " while i <= n {{ acc = acc + i i = i + 1 }} acc }}")
+
+    assert(made.index_of("let mut acc = 0i64;") >= 0, "the first write declares")
+    assert(made.index_of("acc = (acc + i);") >= 0
+               && made.index_of("let mut acc = (acc + i)") < 0,
+           "and every later one assigns, or the loop shadows what it is summing")
+}
+
+test_a_list_is_a_vec_and_its_length_is_a_number() {
+    made = gate_rust("main() -> int {{ xs = [1, 2, 3] xs.length() }}")
+
+    assert(made.index_of("vec![1i64, 2i64, 3i64]") >= 0, "the elements carry their type")
+    assert(made.index_of(".len() as i64") >= 0,
+           "a Rust length is a usize, and every Maca int is an i64")
+    assert(made.index_of("xs::") < 0,
+           "a receiver is a value, so its method is reached with a dot")
+}
+
+test_break_and_continue_are_lowered_rather_than_defaulted() {
+    made = gate_rust("count_to(n: int) -> int {{ i = 0"
+                     ++ " while true {{ i = i + 1 if i >= n {{ break }} }} i }}\n"
+                     ++ "evens_below(n: int) -> int {{ total = 0"
+                     ++ " for i in 1..n {{ if i % 2 == 1 {{ continue }} total = total + i }}"
+                     ++ " total }}")
+
+    assert(made.index_of("break") >= 0, "a break is a break")
+    assert(made.index_of("continue") >= 0, "and a continue is a continue")
+    assert(made.index_of("Default::default()") < 0,
+           "a jump is not a value, and standing one in for it silently changes the answer")
+}
+
+test_a_record_update_copies_the_base_it_was_given() {
+    made = gate_rust("Point = {{ x: int y: int }}\n"
+                     ++ "moved(p: Point) -> int {{ q = p with {{ x = 9 }} q.x + q.y }}")
+
+    assert(made.index_of("Default::default()") < 0,
+           "the untouched fields come from the base, not from a zero value")
+    assert(made.index_of("let mut _w = p.clone(); _w.x = 9i64; _w") >= 0,
+           "the copy is taken first, and only the named field is written")
+}
+
+test_an_anonymous_literal_takes_the_name_of_the_record_it_fits() {
+    made = gate_rust("Point = {{ x: int y: int }}\ncorner() -> Point {{ {{ x = 1, y = 2 }} }}")
+
+    assert(made.index_of("Point {{") >= 0,
+           "Rust has no anonymous struct, so the declared one is the answer")
+    assert(made.index_of("MacaAnon") < 0, "and nothing is synthesised beside it")
+}
+
+test_a_closure_is_a_closure() {
+    made = gate_rust("main() -> int {{ f = (n) => n + 1 0 }}")
+
+    assert(made.index_of("|n| (n + 1i64)") >= 0,
+           "one parameter, one body, no wrapper")
+}
+
+test_a_shift_lowers_to_the_rust_shift() {
+    made = gate_rust("mask(n: int) -> int => 1 << n\nhalf(n: int) -> int => n >> 1")
+
+    assert(made.index_of("<< n") >= 0, "Rust moves the bits of an i64 the same way")
+    assert(made.index_of(">> 1") >= 0, "and moves them back")
+}

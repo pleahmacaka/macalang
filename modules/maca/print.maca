@@ -190,8 +190,10 @@ print_method(e: Expr) -> str =>
 /// Binding power, so a child only wears brackets when dropping them would rebind it.
 op_power(op: str) -> int {
     if op == "*" || op == "/" || op == "%" {
-        6
+        7
     } else if op == "+" || op == "-" || op == "++" {
+        6
+    } else if op == "<<" || op == ">>" {
         5
     } else if op == ".." {
         4

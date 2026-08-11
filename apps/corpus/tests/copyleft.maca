@@ -1,0 +1,12 @@
+import { permits, allowed } from apps/corpus/licence
+
+copyleft_families() -> str[] => ["GPL", "AGPL", "LGPL", "SSPL", "CC-BY-SA"]
+
+test_no_copyleft_family_reaches_the_allowed_list() {
+    for family in copyleft_families() {
+        assert(allowed().filter(a => a.contains(family)).length() == 0,
+               "{family} is on the allowed list, and a corpus is redistributed")
+        assert(!permits(family ++ "-3.0"),
+               "and {family}-3.0 does not pass the gate")
+    }
+}

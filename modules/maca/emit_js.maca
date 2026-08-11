@@ -13,6 +13,30 @@ jid(name: str) -> str {
 js_str(s: str) -> str =>
     "\"{s}\""
 
+js_list(ty: str) -> bool =>
+    ty.length() > 2 && ty.slice(ty.length() - 2, ty.length()) == "[]"
+
+js_scalar_ty(ty: str) -> bool =>
+    ty == "int" || ty == "float" || ty == "bool" || ty == "str"
+
+/// A value JavaScript already compares by value, so no deep walk is needed.
+js_scalar(e: Expr) -> bool =>
+    e.kind == EInt || e.kind == EFloat || e.kind == EBool || e.kind == EStr
+        || js_scalar_ty(e.ty)
+
+/// A type of the program's own answers to no builtin method, so `x.f(y)` is `f(x, y)`.
+js_own_type(ty: str) -> bool =>
+    ty != "" && ty != "Element" && !js_scalar_ty(ty) && !js_list(ty)
+        && map_type_key(ty) == "" && ty.index_of(") -> ") < 0
+
+js_upper(name: str) -> bool =>
+    name != "" && name.at(0).lower() != name.at(0)
+
+/// A lowercase word in a pattern names the value rather than testing it.
+js_binder(name: str) -> bool =>
+    name != "" && name != "true" && name != "false" && !js_upper(name)
+        && !name.at(0).is_ascii_digit()
+
 jemit_expr(e: Expr) -> str =>
     match e.kind {
         EInt     => str(e.ival)
@@ -24,7 +48,7 @@ jemit_expr(e: Expr) -> str =>
         EBinary  => jemit_binary(e)
         ETernary => jemit_ternary(e)
         EIf      => jemit_ternary(e)
-        EUnary   => "({e.text}{jemit_expr(e.children.get(0))})"
+        EUnary   => jemit_unary(e)
         ERecord  => "{{ {jemit_fields(e.children, 0)} }}"
         EWith    => jemit_with(e)
         EBlock   => jemit_block(e)
@@ -35,42 +59,182 @@ jemit_expr(e: Expr) -> str =>
         EMatch   => jemit_match(e)
         EWhile   => jemit_while(e)
         EFor     => jemit_for(e)
-        EJump    => e.text
+        EJump    => jemit_jump(e)
         _        => "undefined"
     }
+
+jemit_jump(e: Expr) -> str {
+    if e.children.length() == 0 {
+        e.text
+    } else {
+        "{e.text} {jemit_expr(e.children.get(0))}"
+    }
+}
+
+jemit_unary(e: Expr) -> str {
+    inner = jemit_expr(e.children.get(0))
+
+    if e.text == "fail" {
+        "_mfail({inner})"
+    } else if e.text == "try" {
+        "_mtry(() => {inner})"
+    } else if e.text == "spawn" {
+        "Promise.resolve().then(() => {inner})"
+    } else if e.text == "await" {
+        "(await {inner})"
+    } else {
+        "({e.text}{inner})"
+    }
+}
 
 jemit_while(e: Expr) -> str =>
     "while ({jemit_expr(e.children.get(0))}) {{ {jemit_stmts(e.stmts, 0)} }}"
 
+/// The binder is a local the body may write, so it is `let` and not `const`.
 jemit_for(e: Expr) -> str =>
-    "for (const {jid(e.text)} of {jemit_expr(e.children.get(0))})"
+    "for (let {jid(e.text)} of {jemit_expr(e.children.get(0))})"
         ++ " {{ {jemit_stmts(e.stmts, 0)} }}"
 
+/// Arms are pattern and answer in turn, and the first whose test holds answers.
 jemit_match(e: Expr) -> str =>
-    jemit_arms(e.children, 1, jemit_expr(e.children.get(0)))
+    "(() => {{ const _s = {jemit_expr(e.children.get(0))};"
+        ++ " {jemit_arms(e.children, 1)}"
+        ++ "throw new Error(\"no match\"); }})()"
 
-/// Arms are pattern and answer in turn, and `_` is the one that always matches.
-jemit_arms(cs: Expr[], i: int, scrut: str) -> str {
+jemit_arms(cs: Expr[], i: int) -> str {
     if i + 1 >= cs.length() {
-        "undefined"
-    } else if cs.get(i).text == "_" {
-        jemit_expr(cs.get(i + 1))
+        ""
     } else {
-        "({scrut} === {jemit_expr(cs.get(i))} ? {jemit_expr(cs.get(i + 1))}"
-            ++ " : {jemit_arms(cs, i + 2, scrut)})"
+        jemit_arm(cs.get(i), cs.get(i + 1)) ++ jemit_arms(cs, i + 2)
+    }
+}
+
+jemit_arm(p: Expr, body: Expr) -> str =>
+    "if ({jpat_test(p, "_s")}) {{ {jpat_binds(p, "_s")}"
+        ++ "return {jemit_expr(body)}; }} "
+
+jpat_test(p: Expr, sv: str) -> str {
+    if p.kind == EGuard {
+        jguard_test(p, sv)
+    } else if p.kind == EBinary && p.text == "|" {
+        "({jpat_test(p.children.get(0), sv)}"
+            ++ " || {jpat_test(p.children.get(1), sv)})"
+    } else if p.kind == EStr {
+        "{sv} === {js_str(p.text)}"
+    } else if p.text == "_" || p.text == "{{}}" {
+        "true"
+    } else if p.text == "[]" || p.text == "[..]" {
+        jcells_test(p, sv)
+    } else if p.children.length() > 0 {
+        "{sv}.$ === {js_str(p.text)}"
+    } else if js_binder(p.text) {
+        "true"
+    } else {
+        "{sv} === {jid(p.text)}"
+    }
+}
+
+/// A guard reads the arm's own names, so the binds run again inside its test.
+jguard_test(p: Expr, sv: str) -> str =>
+    "{jpat_test(p.children.get(0), sv)} && (() => {{"
+        ++ " {jpat_binds(p.children.get(0), sv)}"
+        ++ "return {jemit_expr(p.children.get(1))}; }})()"
+
+jcells_test(p: Expr, sv: str) -> str {
+    n = js_cell_count(p)
+    how = p.text == "[..]" ? ">=" : "==="
+
+    "Array.isArray({sv}) && {sv}.length {how} {str(n)}"
+        ++ jcell_tests(p, sv, 0, n)
+}
+
+js_cell_count(p: Expr) -> int =>
+    p.text == "[..]" ? p.children.length() - 1 : p.children.length()
+
+jcell_tests(p: Expr, sv: str, i: int, n: int) -> str {
+    if i >= n {
+        ""
+    } else {
+        one = jpat_test(p.children.get(i), "{sv}[{str(i)}]")
+        here = one == "true" ? "" : " && ({one})"
+
+        here ++ jcell_tests(p, sv, i + 1, n)
+    }
+}
+
+jpat_binds(p: Expr, sv: str) -> str {
+    if p.kind == EGuard {
+        jpat_binds(p.children.get(0), sv)
+    } else if p.kind == EStr || (p.kind == EBinary && p.text == "|") {
+        ""
+    } else if p.text == "{{}}" {
+        jfield_binds(p.children, sv, 0)
+    } else if p.text == "[]" || p.text == "[..]" {
+        jcell_binds(p, sv, 0, js_cell_count(p))
+    } else if p.children.length() > 0 {
+        jpayload_binds(p.children, sv, 0)
+    } else if p.text != "_" && js_binder(p.text) {
+        "var {jid(p.text)} = {sv}; "
+    } else {
+        ""
+    }
+}
+
+jfield_binds(fs: Expr[], sv: str, i: int) -> str {
+    if i >= fs.length() {
+        ""
+    } else {
+        "var {jid(fs.get(i).text)} = {sv}.{jid(fs.get(i).text)}; "
+            ++ jfield_binds(fs, sv, i + 1)
+    }
+}
+
+jpayload_binds(cs: Expr[], sv: str, i: int) -> str {
+    if i >= cs.length() {
+        ""
+    } else {
+        "var {jid(cs.get(i).text)} = {sv}._{str(i)}; "
+            ++ jpayload_binds(cs, sv, i + 1)
+    }
+}
+
+jcell_binds(p: Expr, sv: str, i: int, n: int) -> str {
+    if i >= p.children.length() {
+        ""
+    } else if i >= n {
+        "var {jid(p.children.get(i).text)} = {sv}.slice({str(n)}); "
+    } else {
+        jpat_binds(p.children.get(i), "{sv}[{str(i)}]")
+            ++ jcell_binds(p, sv, i + 1, n)
     }
 }
 
 jemit_ternary(e: Expr) -> str =>
     "({jemit_expr(e.children.get(0))} ? {jemit_expr(e.children.get(1))}"
-        ++ " : {jemit_expr(e.children.get(2))})"
+        ++ " : {jemit_else(e.children.get(2))})"
+
+/// A branch with no else has no value, so what it answers with is never read.
+jemit_else(e: Expr) -> str {
+    if e.kind == EIdent && e.text == "?" {
+        "undefined"
+    } else {
+        jemit_expr(e)
+    }
+}
 
 jemit_binary(e: Expr) -> str {
-    l = jemit_expr(e.children.get(0))
+    lhs = e.children.get(0)
+    l = jemit_expr(lhs)
     r = jemit_expr(e.children.get(1))
 
-    if e.text == "++" {
-        "({l} + {r})"
+    if e.text == "=" && lhs.kind == EMethod && lhs.text == "get" {
+        jstore(lhs, r)
+    } else if e.text == ".." {
+        "_mrange({l}, {r})"
+    } else if js_joins(e) {
+        "({l}).concat({r})"
+    } else if js_deep(e) {
+        "{js_not(e.text)}_meq({l}, {r})"
     } else if e.text == "==" || e.text == "!=" {
         "({l} {e.text}= {r})"
     } else {
@@ -78,39 +242,240 @@ jemit_binary(e: Expr) -> str {
     }
 }
 
-jemit_call(e: Expr) -> str =>
-    "{jid(e.text)}({jemit_args(e.children, 0)})"
+js_not(op: str) -> str =>
+    op == "!=" ? "!" : ""
+
+/// One operator joins strings and lists alike, and only one method does both.
+js_joins(e: Expr) -> bool =>
+    e.text == "++" || (e.text == "+" && js_list(e.children.get(0).ty)
+                          && js_list(e.children.get(1).ty))
+
+/// Two records are equal when their fields are, which `===` does not ask.
+js_deep(e: Expr) -> bool =>
+    (e.text == "==" || e.text == "!=") && !js_scalar(e.children.get(0))
+        && !js_scalar(e.children.get(1))
+
+jstore(l: Expr, value: str) -> str =>
+    "{jemit_expr(l.children.get(0))}[{jemit_expr(l.children.get(1))}]"
+        ++ " = {value}"
+
+jarg(e: Expr, i: int) -> str {
+    if i >= e.children.length() {
+        "undefined"
+    } else {
+        jemit_expr(e.children.get(i))
+    }
+}
+
+js_math(name: str) -> str {
+    if name == "signum" || name == "sign" {
+        "sign"
+    } else if name == "abs" || name == "sqrt" || name == "floor"
+            || name == "ceil" || name == "round" || name == "sin"
+            || name == "cos" || name == "tan" || name == "exp"
+            || name == "log" || name == "pow" || name == "min"
+            || name == "max" {
+        name
+    } else {
+        ""
+    }
+}
+
+jemit_call(e: Expr) -> str {
+    args = jemit_args(e.children, 0)
+    one = jarg(e, 0)
+
+    if e.text == "str" {
+        "_mstr({one})"
+    } else if e.text == "int" {
+        "_mint({one})"
+    } else if e.text == "float" {
+        "Number({one})"
+    } else if e.text == "len" {
+        "({one}).length"
+    } else if e.text == "chr" {
+        "_mchr({one})"
+    } else if e.text == "ord" {
+        "_mord({one})"
+    } else if e.text == "info" {
+        "_minfo({one})"
+    } else if e.text == "print" {
+        "_mprint({one})"
+    } else if e.text == "err" || e.text == "warn" {
+        "_merr({one})"
+    } else if e.text == "assert" {
+        "_massert({args})"
+    } else if e.text == "assert_eq" {
+        "_massert_eq({args})"
+    } else if e.text == "failures" {
+        "_mfailures()"
+    } else if e.text == "now_ms" {
+        "Date.now()"
+    } else if e.text == "sleep_ms" {
+        "_msleep({one})"
+    } else if e.text == "panic" {
+        "_mfail({one})"
+    } else if e.text == "map" && e.children.length() == 0 {
+        "new Map()"
+    } else if e.text == "clamp" {
+        "Math.min(Math.max({one}, {jarg(e, 1)}), {jarg(e, 2)})"
+    } else if js_math(e.text) != "" {
+        "Math.{js_math(e.text)}({args})"
+    } else {
+        "{jid(e.text)}({args})"
+    }
+}
+
+js_map_method(name: str) -> bool =>
+    name == "get" || name == "set" || name == "has" || name == "keys"
+        || name == "values" || name == "remove" || name == "contains"
+        || name == "length" || name == "count"
+
+/// A map is a `Map`, so a write answers with a copy the way the language does.
+jemit_map_method(e: Expr, recv: str) -> str {
+    key = jarg(e, 1)
+
+    if e.text == "keys" {
+        "_msort([...({recv}).keys()])"
+    } else if e.text == "values" {
+        "[...({recv}).values()]"
+    } else if e.text == "length" || e.text == "count" {
+        "({recv}).size"
+    } else if e.text == "has" || e.text == "contains" {
+        "({recv}).has({key})"
+    } else if e.text == "set" {
+        "new Map({recv}).set({key}, {jarg(e, 2)})"
+    } else if e.text == "remove" {
+        "_mdel({recv}, {key})"
+    } else if e.children.length() > 2 {
+        "_mor({recv}, {key}, {jarg(e, 2)})"
+    } else {
+        "_mor({recv}, {key}, {js_zero(map_type_val(e.children.get(0).ty))})"
+    }
+}
+
+js_zero(ty: str) -> str {
+    if ty == "int" || ty == "float" {
+        "0"
+    } else if ty == "bool" {
+        "false"
+    } else if ty == "str" {
+        "\"\""
+    } else {
+        "undefined"
+    }
+}
 
 jemit_method(e: Expr) -> str {
     recv = jemit_expr(e.children.get(0))
+    rty = e.children.get(0).ty
 
-    if e.text == "length" {
-        "{recv}.length"
+    if js_own_type(rty) {
+        "{jid(e.text)}({jemit_args(e.children, 0)})"
+    } else if map_type_key(rty) != "" && js_map_method(e.text) {
+        jemit_map_method(e, recv)
+    } else {
+        jtext_method(e, recv)
+    }
+}
+
+jtext_method(e: Expr, recv: str) -> str {
+    a0 = jarg(e, 1)
+    a1 = jarg(e, 2)
+
+    if e.text == "length" || e.text == "count" {
+        "({recv}).length"
     } else if e.text == "get" || e.text == "at" {
-        "{recv}[{jemit_expr(e.children.get(1))}]"
+        "({recv})[{a0}]"
+    } else if e.text == "slice" {
+        "({recv}).slice({a0}, {a1})"
+    } else if e.text == "index_of" {
+        "({recv}).indexOf({a0})"
+    } else if e.text == "contains" || e.text == "has" {
+        "_mhas({recv}, {a0})"
     } else if e.text == "chars" {
         "Array.from({recv})"
     } else if e.text == "upper" {
-        "{recv}.toUpperCase()"
+        "({recv}).toUpperCase()"
     } else if e.text == "lower" {
-        "{recv}.toLowerCase()"
-    } else if e.text == "index_of" {
-        "{recv}.indexOf({jemit_args(e.children, 1)})"
-    } else if e.text == "push" {
-        "[...{recv}, {jemit_args(e.children, 1)}]"
-    } else if e.text == "set" {
-        "{recv}.map((v, i) => i === {jemit_expr(e.children.get(1))}"
-            ++ " ? {jemit_expr(e.children.get(2))} : v)"
-    } else if e.text == "contains" {
-        "{recv}.includes({jemit_args(e.children, 1)})"
+        "({recv}).toLowerCase()"
+    } else if e.text == "trim" {
+        "({recv}).trim()"
+    } else if e.text == "starts_with" {
+        "({recv}).startsWith({a0})"
+    } else if e.text == "ends_with" {
+        "({recv}).endsWith({a0})"
+    } else if e.text == "replace" {
+        "({recv}).split({a0}).join({a1})"
+    } else if e.text == "repeat" {
+        "({recv}).repeat({a0})"
+    } else if e.text == "substr" {
+        "_msubstr({recv}, {a0}, {a1})"
+    } else if e.text == "split" {
+        "({recv}).split({a0})"
+    } else if e.text == "join" {
+        "({recv}).join({a0})"
+    } else if e.text == "fixed" {
+        "Number({recv}).toFixed({a0})"
+    } else if e.text == "pad_start" {
+        "_mpad({recv}, {a0}, {a1}, 0)"
+    } else if e.text == "pad_end" {
+        "_mpad({recv}, {a0}, {a1}, 1)"
+    } else if e.text == "pad_center" {
+        "_mpad({recv}, {a0}, {a1}, 2)"
     } else if e.text == "is_whitespace" {
-        "/\\s/.test({recv})"
+        "_mclass({recv}, 0)"
     } else if e.text == "is_ascii_digit" {
-        "/[0-9]/.test({recv})"
+        "_mclass({recv}, 1)"
     } else if e.text == "is_alpha" {
-        "/[A-Za-z]/.test({recv})"
+        "_mclass({recv}, 2)"
     } else {
-        "{recv}.{jid(e.text)}({jemit_args(e.children, 1)})"
+        jlist_method(e, recv)
+    }
+}
+
+jlist_method(e: Expr, recv: str) -> str {
+    a0 = jarg(e, 1)
+    a1 = jarg(e, 2)
+
+    if e.text == "map" || e.text == "parallel" {
+        "({recv}).map({a0})"
+    } else if e.text == "filter" {
+        "({recv}).filter({a0})"
+    } else if e.text == "reduce" || e.text == "fold" {
+        "_mfold({recv}, {a0}, {a1})"
+    } else if e.text == "index_of_by" {
+        "({recv}).findIndex({a0})"
+    } else if e.text == "sort" {
+        "_msort({recv})"
+    } else if e.text == "sort_by" {
+        "_msortby({recv}, {a0})"
+    } else if e.text == "reverse" {
+        "[...({recv})].reverse()"
+    } else if e.text == "push" {
+        "[...({recv}), {a0}]"
+    } else if e.text == "pop" {
+        "({recv}).slice(0, -1)"
+    } else if e.text == "set" {
+        "_mset({recv}, {a0}, {a1})"
+    } else if e.text == "insert" {
+        "_mins({recv}, {a0}, {a1})"
+    } else if e.text == "remove" {
+        "_mrem({recv}, {a0})"
+    } else if e.text == "enumerate" {
+        "({recv}).map((v, i) => ({{ index: i, value: v }}))"
+    } else if e.text == "sum" {
+        "({recv}).reduce((_a, _b) => _a + _b, 0)"
+    } else if e.text == "min" {
+        "_mpick({recv}, -1)"
+    } else if e.text == "max" {
+        "_mpick({recv}, 1)"
+    } else if e.text == "first" {
+        "({recv})[0]"
+    } else if e.text == "last" {
+        "_mlast({recv})"
+    } else {
+        "{jid(e.text)}({jemit_args(e.children, 0)})"
     }
 }
 
@@ -118,39 +483,23 @@ jemit_lambda(e: Expr) -> str =>
     "(({jemit_params(lambda_params(e), 0)}) => {jemit_expr(lambda_body(e))})"
 
 jemit_with(e: Expr) -> str =>
-    "Object.assign({{}}, {jemit_expr(e.children.get(0))},"
-        ++ " {{ {jemit_fields(e.children.slice(1, e.children.length()), 0)} }})"
+    "{{ ...{jemit_expr(e.children.get(0))},"
+        ++ " {jemit_fields(e.children, 1)} }}"
 
-jemit_fields(fs: Expr[], i: int) -> str {
-    if i >= fs.length() {
-        ""
-    } else if i == fs.length() - 1 {
-        "{jid(fs.get(i).text)}: {jemit_expr(fs.get(i).children.get(0))}"
-    } else {
-        "{jid(fs.get(i).text)}: {jemit_expr(fs.get(i).children.get(0))}, "
-            ++ jemit_fields(fs, i + 1)
-    }
-}
+jemit_fields(fs: Expr[], i: int) -> str =>
+    fs.slice(i, fs.length()).map(jemit_field).join(", ")
 
-jemit_args(xs: Expr[], i: int) -> str {
-    if i >= xs.length() {
-        ""
-    } else if i == xs.length() - 1 {
-        jemit_expr(xs.get(i))
-    } else {
-        "{jemit_expr(xs.get(i))}, " ++ jemit_args(xs, i + 1)
-    }
-}
+jemit_field(f: Expr) -> str =>
+    "{jid(f.children.get(0).text)}: {jemit_expr(f.children.get(1))}"
 
-jemit_params(ps: Expr[], i: int) -> str {
-    if i >= ps.length() {
-        ""
-    } else if i == ps.length() - 1 {
-        jid(ps.get(i).text)
-    } else {
-        "{jid(ps.get(i).text)}, " ++ jemit_params(ps, i + 1)
-    }
-}
+jemit_args(xs: Expr[], i: int) -> str =>
+    xs.slice(i, xs.length()).map(jemit_expr).join(", ")
+
+jemit_params(ps: Expr[], i: int) -> str =>
+    ps.slice(i, ps.length()).map(js_binder_name).join(", ")
+
+js_binder_name(p: Expr) -> str =>
+    jid(p.text)
 
 jemit_block(e: Expr) -> str =>
     "(() => {{ {jemit_stmts(e.stmts, 0)} return"
@@ -171,10 +520,62 @@ jemit_stmt(s: Stmt) -> str {
         "let {jid(s.name)} = {jemit_expr(s.value)};"
     } else if s.kind == SSet {
         "{jid(s.name)} = {jemit_expr(s.value)};"
-    } else if js_loop(s.value) {
-        jemit_expr(s.value)
     } else {
-        "{jemit_expr(s.value)};"
+        jstmt_of(s.value)
+    }
+}
+
+jstmt_of(e: Expr) -> str {
+    if e.kind == EIf {
+        jif_stmt(e)
+    } else if e.kind == EMatch {
+        jmatch_stmt(e)
+    } else if e.kind == EBlock {
+        "{{ {jemit_stmts(e.stmts, 0)} {jstmt_of(e.children.get(0))} }}"
+    } else if js_loop(e) {
+        jemit_expr(e)
+    } else {
+        "{jemit_expr(e)};"
+    }
+}
+
+/// An arrow function cannot `break` the loop around it, so a match in statement position is a chain.
+jmatch_stmt(e: Expr) -> str =>
+    "{{ const _s = {jemit_expr(e.children.get(0))};"
+        ++ " {jarms_stmt(e.children, 1)} }}"
+
+jarms_stmt(cs: Expr[], i: int) -> str {
+    if i + 1 >= cs.length() {
+        ""
+    } else {
+        rest = jarms_stmt(cs, i + 2)
+        here = "if ({jpat_test(cs.get(i), "_s")}) {{"
+            ++ " {jpat_binds(cs.get(i), "_s")}{jstmt_of(cs.get(i + 1))} }}"
+
+        rest == "" ? here : "{here} else {rest}"
+    }
+}
+
+/// `break` is a statement and no ternary holds one, so a branch stays a branch.
+jif_stmt(e: Expr) -> str {
+    cond = jemit_expr(e.children.get(0))
+    then = jbranch(e.children.get(1))
+    els = e.children.get(2)
+
+    if els.kind == EIdent && els.text == "?" {
+        "if ({cond}) {then}"
+    } else {
+        "if ({cond}) {then} else {jbranch(els)}"
+    }
+}
+
+jbranch(e: Expr) -> str {
+    if e.kind == EIf {
+        jif_stmt(e)
+    } else if e.kind == EBlock {
+        jstmt_of(e)
+    } else {
+        "{{ {jstmt_of(e)} }}"
     }
 }
 
@@ -182,13 +583,38 @@ js_loop(e: Expr) -> bool =>
     e.kind == EWhile || e.kind == EFor
 
 jemit_fn(s: Stmt) -> str =>
-    "function {jid(s.name)}({jemit_params(s.params, 0)}) {{ "
-        ++ "{jemit_body(s.body, 0)} }}"
+    "{js_waiting(s.body)}function {jid(s.name)}({jemit_params(s.params, 0)})"
+        ++ " {{ {jemit_body(s.body, 0)} }}"
+
+/// Only an async function may wait, and every `await` is written inside one.
+js_waiting(body: Stmt[]) -> str =>
+    js_waits_in(body, 0) ? "async " : ""
+
+js_waits_in(body: Stmt[], i: int) -> bool {
+    if i >= body.length() {
+        false
+    } else {
+        js_waits(body.get(i).value) || js_waits_in(body, i + 1)
+    }
+}
+
+js_waits(e: Expr) -> bool =>
+    (e.kind == EUnary && e.text == "await") || js_waits_in(e.stmts, 0)
+        || js_waits_any(e.children, 0)
+
+js_waits_any(cs: Expr[], i: int) -> bool {
+    if i >= cs.length() {
+        false
+    } else {
+        js_waits(cs.get(i)) || js_waits_any(cs, i + 1)
+    }
+}
 
 jemit_body(body: Stmt[], i: int) -> str {
     if i >= body.length() {
         ""
-    } else if i == body.length() - 1 && body.get(i).kind == SExpr {
+    } else if i == body.length() - 1 && body.get(i).kind == SExpr
+            && !js_loop(body.get(i).value) {
         "return {jemit_expr(body.get(i).value)};"
     } else {
         "{jemit_stmt(body.get(i))} {jemit_body(body, i + 1)}"
@@ -196,17 +622,147 @@ jemit_body(body: Stmt[], i: int) -> str {
 }
 
 JsPreamble = """
-const str = x => String(x);
-const info = x => console.log(x);
-const int = x => Math.trunc(Number(x));
-const float = x => Number(x);
-const len = x => x.length;
-const abs = Math.abs, min = Math.min, max = Math.max;
+function _mstr(v) {
+  if (v === null || v === undefined) return "";
+  if (Array.isArray(v)) return "[" + v.map(_mstr).join(", ") + "]";
+  if (typeof v === "object") return typeof v.$ === "string" ? v.$ : JSON.stringify(v);
+  return String(v);
+}
+function _meq(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  return ka.every((k) => _meq(a[k], b[k]));
+}
+function _mhas(x, v) { return typeof x === "string" ? x.includes(v) : x.some((e) => _meq(e, v)); }
+function _msubstr(s, a, n) { return s.slice(a, a + n); }
+function _mpad(s, w, p, mode) {
+  const n = w - s.length;
+  if (n <= 0) return s;
+  const fill = (c) => (p || " ").repeat(c).slice(0, c);
+  if (mode === 0) return fill(n) + s;
+  if (mode === 1) return s + fill(n);
+  const l = Math.floor(n / 2);
+  return fill(l) + s + fill(n - l);
+}
+function _mclass(s, kind) {
+  const c = s[0] || "";
+  if (kind === 0) return /\s/.test(c);
+  if (kind === 1) return c >= "0" && c <= "9";
+  return /[A-Za-z]/.test(c);
+}
+function _mfold(xs, init, f) { let a = init; for (const x of xs) a = f(a, x); return a; }
+function _mcmp(a, b) { return typeof a === "number" ? a - b : a < b ? -1 : a > b ? 1 : 0; }
+function _msort(xs) { return [...xs].sort(_mcmp); }
+function _msortby(xs, key) { return [...xs].sort((a, b) => _mcmp(key(a), key(b))); }
+function _mpick(xs, dir) { return xs.reduce((a, b) => (_mcmp(b, a) * dir > 0 ? b : a)); }
+function _mlast(xs) { return xs[xs.length - 1]; }
+function _mset(xs, i, v) { const r = xs.slice(); if (i >= 0 && i < r.length) r[i] = v; return r; }
+function _mins(xs, i, v) { const r = xs.slice(); r.splice(Math.max(0, Math.min(i, r.length)), 0, v); return r; }
+function _mrem(xs, i) { const r = xs.slice(); if (i >= 0 && i < r.length) r.splice(i, 1); return r; }
+function _mrange(a, b) { const r = []; for (let i = a; i < b; i++) r.push(i); return r; }
+function _mor(m, k, d) { return m.has(k) ? m.get(k) : d; }
+function _mdel(m, k) { const r = new Map(m); r.delete(k); return r; }
+function _mchr(b) { return b > 0 && b < 1114112 ? String.fromCharCode(b) : ""; }
+function _mord(s) { return s && s.length ? s.charCodeAt(0) : -1; }
+function _mint(x) { return typeof x === "string" ? Math.trunc(parseFloat(x.trim())) || 0 : Math.trunc(Number(x)); }
+function _msleep(ms) { const t = Date.now() + ms; while (Date.now() < t); return 0; }
+function _mfail(m) { throw new Error(_mstr(m)); }
+function _mtry(f) { try { f(); return ""; } catch (e) { return _mstr(e && e.message ? e.message : e); } }
+function _minfo(x) { console.log(_mstr(x)); return 0; }
+function _merr(x) { console.error(_mstr(x)); return 0; }
+function _mprint(x) { const s = _mstr(x); if (typeof process !== "undefined" && process.stdout) process.stdout.write(s); else console.log(s); return 0; }
+let _mfailed = 0;
+function _mfailures() { return _mfailed; }
+function _massert(c, m) { if (c) return true; _mfailed++; console.error("assertion failed: " + _mstr(m)); return false; }
+function _massert_eq(a, b, m) { if (_meq(a, b)) return true; _mfailed++; console.error("assertion failed: " + _mstr(m) + "\n  got:  " + _mstr(a) + "\n  want: " + _mstr(b)); return false; }
 """
 
-/// Every function of the module, in source order, with the shims its calls need.
+/// Every item of the module, in the order a name must exist before it is read.
 jemit_module(m: Module) -> str =>
-    JsPreamble ++ jemit_items(m.items, 0) ++ jemit_entry(m.items, 0)
+    JsPreamble ++ jemit_variants(m.items, 0) ++ jemit_consts(m.items, 0)
+        ++ jemit_items(m.items, 0) ++ jemit_exports(m.items)
+        ++ jemit_entry(m.items, 0)
+
+jemit_variants(items: Stmt[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else if items.get(i).kind != SSum {
+        jemit_variants(items, i + 1)
+    } else {
+        items.get(i).params.map(jemit_variant).join("")
+            ++ jemit_variants(items, i + 1)
+    }
+}
+
+/// A variant carrying nothing is its own name, and one carrying values is tagged.
+jemit_variant(v: Expr) -> str {
+    if v.children.length() == 0 {
+        "const {jid(v.text)} = {js_str(v.text)};\n"
+    } else {
+        ps = js_payload_names(v.children, 0)
+
+        "function {jid(v.text)}({ps})"
+            ++ " {{ return {{ $: {js_str(v.text)}, {ps} }}; }}\n"
+    }
+}
+
+js_payload_names(cs: Expr[], i: int) -> str {
+    if i >= cs.length() {
+        ""
+    } else if i == cs.length() - 1 {
+        "_{str(i)}"
+    } else {
+        "_{str(i)}, " ++ js_payload_names(cs, i + 1)
+    }
+}
+
+jemit_consts(items: Stmt[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else if items.get(i).kind != SBind
+            || items.get(i).name.index_of(".") >= 0 {
+        jemit_consts(items, i + 1)
+    } else {
+        "let {jid(items.get(i).name)} = {jemit_expr(items.get(i).value)};\n"
+            ++ jemit_consts(items, i + 1)
+    }
+}
+
+/// The names a JavaScript caller imports: every function and every variant.
+jemit_exports(items: Stmt[]) -> str {
+    names = js_exported(items, 0)
+
+    if names == "" {
+        ""
+    } else {
+        "if (typeof module !== \"undefined\")"
+            ++ " Object.assign(module.exports, {{ {names}}});\n"
+    }
+}
+
+js_exported(items: Stmt[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else {
+        js_export_of(items.get(i)) ++ js_exported(items, i + 1)
+    }
+}
+
+js_export_of(s: Stmt) -> str {
+    if s.kind == SFn && s.body.length() > 0 {
+        "{jid(s.name)}, "
+    } else if s.kind == SSum {
+        s.params.map(js_variant_ref).join("")
+    } else {
+        ""
+    }
+}
+
+js_variant_ref(v: Expr) -> str =>
+    "{jid(v.text)}, "
 
 jemit_entry(items: Stmt[], i: int) -> str {
     if i >= items.length() {

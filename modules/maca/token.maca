@@ -7,7 +7,7 @@ Kind =
     | LParen | RParen | LBracket | RBracket | LBrace | RBrace
     | Comma | Colon | Dot | DotDot | Ellipsis | Arrow | FatArrow
     | Eq | EqEq | NotEq | Lt | Gt | Le | Ge | AmpAmp | PipePipe
-    | Plus | Minus | Star | Slash | Percent | PlusPlus | Bar
+    | Plus | Minus | Star | Slash | Percent | PlusPlus | Bar | Shl | Shr
     | Question | QuestionPost | Bang
     | Comment | Newline | Eof
 

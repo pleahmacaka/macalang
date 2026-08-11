@@ -1,0 +1,816 @@
+import maca/ast
+
+JavaReserved = " abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try var void volatile while "
+
+jv_id(name: str) -> str {
+    if JavaReserved.index_of(" {name} ") >= 0 {
+        "{name}_mc"
+    } else {
+        name
+    }
+}
+
+/// One Java compilation unit: the module's types, then the class its functions live in.
+jvmemit_module(m: Module) -> str =>
+    jv_types(m.items, 0, "") ++ "final class Main {{\n" ++ jvm_helpers()
+        ++ jv_members(m.items, 0, "") ++ "}}\n"
+
+/// The class is not public, so the file it is written to may carry any name.
+jvm_helpers() -> str =>
+    "    static <T> java.util.List<T> _cat(java.util.List<T> a,"
+        ++ " java.util.List<T> b) {{ var o = new java.util.ArrayList<T>(a);"
+        ++ " o.addAll(b); return java.util.List.copyOf(o); }}\n"
+        ++ "    static <T> java.util.List<T> _push(java.util.List<T> a, T v)"
+        ++ " {{ var o = new java.util.ArrayList<T>(a); o.add(v);"
+        ++ " return java.util.List.copyOf(o); }}\n"
+        ++ "    static String _at(String s, long i)"
+        ++ " {{ return s.substring((int) i, (int) i + 1); }}\n"
+        ++ "    static boolean _alpha(String s)"
+        ++ " {{ return !s.isEmpty() && Character.isLetter(s.charAt(0)); }}\n"
+        ++ "    static boolean _digit(String s)"
+        ++ " {{ return !s.isEmpty() && Character.isDigit(s.charAt(0)); }}\n"
+        ++ "    static boolean _space(String s)"
+        ++ " {{ return !s.isEmpty() && Character.isWhitespace(s.charAt(0)); }}\n\n"
+
+jv_types(items: Stmt[], i: int, acc: str) -> str {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind == SRecord {
+        jv_types(items, i + 1, acc ++ jv_class(items.get(i)))
+    } else if items.get(i).kind == SSum {
+        jv_types(items, i + 1, acc ++ jv_enum(items.get(i)))
+    } else {
+        jv_types(items, i + 1, acc)
+    }
+}
+
+jv_enum(s: Stmt) -> str =>
+    "enum {s.name} {{ {s.params.map(jv_variant_name).join(", ")} }}\n\n"
+
+jv_variant_name(v: Expr) -> str =>
+    v.text
+
+/// A field is written by name, because Java has no named argument and a literal may write them in any order.
+jv_class(s: Stmt) -> str =>
+    "final class {s.name} {{\n" ++ jv_fields(s.params, 0, "")
+        ++ jv_setters(s.name, s.params, 0, "") ++ "}}\n\n"
+
+jv_fields(fs: Expr[], i: int, acc: str) -> str {
+    if i >= fs.length() {
+        acc
+    } else {
+        jv_fields(fs, i + 1,
+                  acc ++ "    {jv_type(fs.get(i).ty)}"
+                      ++ " {jv_id(fs.get(i).text)};\n")
+    }
+}
+
+jv_setters(owner: str, fs: Expr[], i: int, acc: str) -> str {
+    if i >= fs.length() {
+        acc
+    } else {
+        name = jv_id(fs.get(i).text)
+        one = "    {owner} {name}({jv_type(fs.get(i).ty)} v)"
+            ++ " {{ this.{name} = v; return this; }}\n"
+
+        jv_setters(owner, fs, i + 1, acc ++ one)
+    }
+}
+
+jv_members(items: Stmt[], i: int, acc: str) -> str {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind == SBind {
+        jv_members(items, i + 1, acc ++ jv_const(items.get(i)))
+    } else if items.get(i).kind != SFn || items.get(i).body.length() == 0 {
+        jv_members(items, i + 1, acc)
+    } else if items.get(i).name == "main" {
+        jv_members(items, i + 1, acc ++ jv_main(items.get(i)))
+    } else {
+        jv_members(items, i + 1, acc ++ jv_method(items.get(i)))
+    }
+}
+
+jv_const(s: Stmt) -> str =>
+    "    static final {jv_const_type(s)} {jv_id(s.name)}"
+        ++ " = {jv_expr(s.value)};\n\n"
+
+jv_const_type(s: Stmt) -> str =>
+    s.ret != "" ? jv_type(s.ret) : jv_type(s.value.ty)
+
+jv_method(s: Stmt) -> str =>
+    "    static {jv_ret(s)} {jv_id(s.name)}({jv_params(s.params, 0, "")})"
+        ++ " {{\n" ++ jv_body(s.body, s.ret, 2) ++ "    }}\n\n"
+
+jv_ret(s: Stmt) -> str =>
+    s.ret == "" ? "void" : jv_type(s.ret)
+
+jv_params(ps: Expr[], i: int, acc: str) -> str {
+    if i >= ps.length() {
+        acc
+    } else {
+        one = "{jv_type(ps.get(i).ty)} {jv_id(ps.get(i).text)}"
+
+        jv_params(ps, i + 1, acc == "" ? one : acc ++ ", " ++ one)
+    }
+}
+
+/// Java hands the arguments over as an array, and Maca reads a list.
+jv_main(s: Stmt) -> str =>
+    "    public static void main(String[] _argv) {{\n" ++ jv_argv(s.params)
+        ++ jv_body(s.body, "", 2) ++ "    }}\n\n"
+
+jv_argv(ps: Expr[]) -> str {
+    if ps.length() == 0 {
+        ""
+    } else {
+        "        java.util.List<String> {jv_id(ps.get(0).text)}"
+            ++ " = java.util.List.of(_argv);\n"
+    }
+}
+
+jv_body(body: Stmt[], ret: str, ind: int) -> str =>
+    jv_stmts(body, 0, ret, ind, "")
+
+jv_stmts(body: Stmt[], i: int, ret: str, ind: int, acc: str) -> str {
+    if i >= body.length() {
+        acc
+    } else {
+        jv_stmts(body, i + 1, ret, ind,
+                 acc ++ jv_stmt(body.get(i), i + 1 == body.length(), ret, ind))
+    }
+}
+
+jv_stmt(s: Stmt, last: bool, ret: str, ind: int) -> str {
+    pad = jv_pad(ind, "")
+    wants = last && ret != ""
+
+    if s.kind == SBind {
+        "{pad}{jv_local(s)} {jv_id(s.name)} = {jv_expr(s.value)};\n"
+    } else if s.kind == SSet {
+        "{pad}{jv_id(s.name)} = {jv_expr(s.value)};\n"
+    } else if s.value.kind == EWhile {
+        jv_while(s.value, ind)
+    } else if s.value.kind == EFor {
+        jv_for(s.value, ind)
+    } else if s.value.kind == EJump {
+        jv_jump(s.value, pad)
+    } else if s.value.kind == EIf && jv_no_else(s.value.children.get(2)) {
+        jv_if_stmt(s.value, ind) ++ jv_fallback(wants, ret, pad)
+    } else if s.value.kind == EIf && !wants {
+        jv_if_stmt(s.value, ind)
+    } else if s.value.kind == EMatch && !wants {
+        jv_match_stmt(s.value, ind)
+    } else if wants {
+        "{pad}return {jv_expr(s.value)};\n"
+    } else if jv_pure(s.value) {
+        ""
+    } else {
+        "{pad}{jv_expr(s.value)};\n"
+    }
+}
+
+/// A branch with no `else` answers with nothing, and a Java method still owes its caller a value.
+jv_fallback(wants: bool, ret: str, pad: str) -> str {
+    if wants {
+        "{pad}return {jv_zero(ret)};\n"
+    } else {
+        ""
+    }
+}
+
+jv_local(s: Stmt) -> str =>
+    s.ret == "" ? "var" : jv_type(s.ret)
+
+jv_while(e: Expr, ind: int) -> str {
+    pad = jv_pad(ind, "")
+
+    "{pad}while ({jv_expr(e.children.get(0))}) {{\n"
+        ++ jv_body(e.stmts, "", ind + 1) ++ "{pad}}}\n"
+}
+
+/// A range is a counted loop rather than a list, because that is what a loop over one costs in Java.
+jv_for(e: Expr, ind: int) -> str {
+    pad = jv_pad(ind, "")
+    over = e.children.get(0)
+    name = jv_id(e.text)
+
+    if over.kind == EBinary && over.text == ".." {
+        "{pad}for (long {name} = {jv_expr(over.children.get(0))};"
+            ++ " {name} < {jv_expr(over.children.get(1))}; {name}++) {{\n"
+            ++ jv_body(e.stmts, "", ind + 1) ++ "{pad}}}\n"
+    } else {
+        "{pad}for (var {name} : {jv_expr(over)}) {{\n"
+            ++ jv_body(e.stmts, "", ind + 1) ++ "{pad}}}\n"
+    }
+}
+
+jv_jump(e: Expr, pad: str) -> str {
+    if e.text != "return" {
+        "{pad}{e.text};\n"
+    } else if e.children.length() == 0 {
+        "{pad}return;\n"
+    } else {
+        "{pad}return {jv_expr(e.children.get(0))};\n"
+    }
+}
+
+jv_if_stmt(e: Expr, ind: int) -> str {
+    pad = jv_pad(ind, "")
+    head = "{pad}if ({jv_expr(e.children.get(0))}) {{\n"
+        ++ jv_branch(e.children.get(1), ind + 1) ++ "{pad}}}"
+    els = e.children.get(2)
+
+    if jv_no_else(els) {
+        head ++ "\n"
+    } else {
+        head ++ " else {{\n" ++ jv_branch(els, ind + 1) ++ "{pad}}}\n"
+    }
+}
+
+jv_no_else(e: Expr) -> bool =>
+    e.kind == EIdent && e.text == "?"
+
+jv_branch(e: Expr, ind: int) -> str {
+    if e.kind == EBlock {
+        jv_body(e.stmts ++ [s_expr(e.children.get(0))], "", ind)
+    } else {
+        jv_body([s_expr(e)], "", ind)
+    }
+}
+
+jv_pad(n: int, acc: str) -> str {
+    if n <= 0 {
+        acc
+    } else {
+        jv_pad(n - 1, acc ++ "    ")
+    }
+}
+
+/// A statement that only names a value does nothing, and Java refuses to write it down.
+jv_pure(e: Expr) -> bool =>
+    e.kind == EInt || e.kind == EFloat || e.kind == EBool || e.kind == EStr
+        || e.kind == EIdent
+
+jv_zero(ret: str) -> str {
+    t = jv_type(ret)
+
+    if t == "long" {
+        "0L"
+    } else if t == "double" {
+        "0.0"
+    } else if t == "boolean" {
+        "false"
+    } else if t == "String" {
+        "\"\""
+    } else {
+        "null"
+    }
+}
+
+jv_expr(e: Expr) -> str =>
+    match e.kind {
+        EInt     => "{str(e.ival)}L"
+        EFloat   => e.text
+        EStr     => jv_string(e.text)
+        EBool    => e.text
+        EIdent   => jv_name(e)
+        ECall    => jv_call(e)
+        EBinary  => jv_binary(e)
+        EUnary   => jv_unary(e)
+        ETernary => jv_ternary(e)
+        EIf      => jv_ternary(e)
+        EField   => "{jv_expr(e.children.get(0))}.{jv_id(e.text)}"
+        ERecord  => jv_new(e)
+        EList    => "java.util.List.of({jv_args(e.children, 0, "")})"
+        EMethod  => jv_method_call(e)
+        EMatch   => jv_match(e)
+        EJump    => jv_jump_value(e)
+        _        => "null"
+    }
+
+jv_string(s: str) -> str =>
+    "\"" ++ s ++ "\""
+
+/// A variant is a Java enum constant, which is only named through the enum that holds it.
+jv_name(e: Expr) -> str {
+    if jv_upper(e.text) && jv_user_type(e.ty) && e.ty != e.text {
+        "{e.ty}.{e.text}"
+    } else {
+        jv_id(e.text)
+    }
+}
+
+jv_upper(w: str) -> bool =>
+    w.length() > 0 && w.at(0).is_alpha() && w.at(0).upper() == w.at(0)
+
+jv_user_type(ty: str) -> bool =>
+    ty != "" && jv_type(ty) == ty
+
+jv_jump_value(e: Expr) -> str {
+    if e.children.length() == 0 {
+        e.text
+    } else {
+        "{e.text} {jv_expr(e.children.get(0))}"
+    }
+}
+
+jv_ternary(e: Expr) -> str =>
+    "({jv_expr(e.children.get(0))} ? {jv_expr(e.children.get(1))}"
+        ++ " : {jv_else(e.children.get(2))})"
+
+jv_else(e: Expr) -> str {
+    if jv_no_else(e) {
+        "null"
+    } else {
+        jv_expr(e)
+    }
+}
+
+jv_unary(e: Expr) -> str {
+    if e.text == "-" || e.text == "!" {
+        "({e.text}{jv_expr(e.children.get(0))})"
+    } else {
+        "null"
+    }
+}
+
+/// Text and lists are compared by value, and Java compares those two by address.
+jv_binary(e: Expr) -> str {
+    l = e.children.get(0)
+    r = e.children.get(1)
+    lhs = jv_expr(l)
+    rhs = jv_expr(r)
+
+    if e.text == ".." {
+        "java.util.stream.LongStream.range({lhs}, {rhs}).boxed().toList()"
+    } else if e.text == "++" && (jv_listy(l.ty) || jv_listy(r.ty)) {
+        "_cat({lhs}, {rhs})"
+    } else if e.text == "++" {
+        "({lhs} + {rhs})"
+    } else if e.text == "==" && jv_by_value(l, r) {
+        "java.util.Objects.equals({lhs}, {rhs})"
+    } else if e.text == "!=" && jv_by_value(l, r) {
+        "!java.util.Objects.equals({lhs}, {rhs})"
+    } else {
+        "({lhs} {e.text} {rhs})"
+    }
+}
+
+jv_by_value(l: Expr, r: Expr) -> bool =>
+    l.ty == "str" || r.ty == "str" || jv_listy(l.ty) || jv_listy(r.ty)
+
+jv_listy(ty: str) -> bool =>
+    ty.ends_with("[]")
+
+jv_new(e: Expr) -> str {
+    if e.text == "" {
+        "null"
+    } else {
+        "new {e.text}(){jv_writes(e.children, 0, "")}"
+    }
+}
+
+jv_writes(fs: Expr[], i: int, acc: str) -> str {
+    if i >= fs.length() {
+        acc
+    } else {
+        f = fs.get(i)
+        one = ".{jv_id(f.children.get(0).text)}({jv_expr(f.children.get(1))})"
+
+        jv_writes(fs, i + 1, acc ++ one)
+    }
+}
+
+jv_args(xs: Expr[], i: int, acc: str) -> str {
+    if i >= xs.length() {
+        acc
+    } else if i == 0 {
+        jv_args(xs, i + 1, jv_expr(xs.get(i)))
+    } else {
+        jv_args(xs, i + 1, acc ++ ", " ++ jv_expr(xs.get(i)))
+    }
+}
+
+jv_arg(e: Expr, i: int) -> str {
+    if i >= e.children.length() {
+        "null"
+    } else {
+        jv_expr(e.children.get(i))
+    }
+}
+
+jv_arg_ty(e: Expr) -> str {
+    if e.children.length() == 0 {
+        ""
+    } else {
+        e.children.get(0).ty
+    }
+}
+
+jv_call(e: Expr) -> str {
+    a = jv_args(e.children, 0, "")
+
+    if e.text == "info" || e.text == "err" || e.text == "warn" {
+        "System.{jv_stream(e.text)}.println({a})"
+    } else if e.text == "print" {
+        "System.out.print({a})"
+    } else if e.text == "str" {
+        "String.valueOf({a})"
+    } else if e.text == "int" {
+        jv_to_int(e, a)
+    } else if e.text == "float" {
+        "(double)({a})"
+    } else if e.text == "len" {
+        jv_size(a, jv_arg_ty(e))
+    } else if e.text == "abs" {
+        "Math.abs({a})"
+    } else if e.text == "min" || e.text == "max" {
+        "Math.{e.text}({jv_arg(e, 0)}, {jv_arg(e, 1)})"
+    } else if e.text == "pow" {
+        "Math.pow({jv_arg(e, 0)}, {jv_arg(e, 1)})"
+    } else if e.text == "log" {
+        "Math.log({a})"
+    } else if jv_math_call(e.text) {
+        "Math.{e.text}({a})"
+    } else if jv_upper(e.text) {
+        "new {e.text}({a})"
+    } else {
+        "{jv_id(e.text)}({a})"
+    }
+}
+
+jv_stream(name: str) -> str =>
+    name == "info" ? "out" : "err"
+
+jv_math_call(name: str) -> bool =>
+    name == "sqrt" || name == "floor" || name == "ceil" || name == "round"
+        || name == "sin" || name == "cos" || name == "tan" || name == "exp"
+
+jv_to_int(e: Expr, a: str) -> str {
+    if jv_arg_ty(e) == "str" {
+        "Long.parseLong(({a}).trim())"
+    } else {
+        "(long)({a})"
+    }
+}
+
+jv_size(recv: str, ty: str) -> str {
+    if jv_listy(ty) {
+        "((long) {recv}.size())"
+    } else {
+        "((long) {recv}.length())"
+    }
+}
+
+jv_method_call(e: Expr) -> str {
+    recv = jv_expr(e.children.get(0))
+    ty = e.children.get(0).ty
+
+    if e.text == "length" || e.text == "count" {
+        jv_size(recv, ty)
+    } else if e.text == "push" {
+        "_push({recv}, {jv_arg(e, 1)})"
+    } else if (e.text == "get" || e.text == "at") && !jv_listy(ty) {
+        "_at({recv}, {jv_arg(e, 1)})"
+    } else if e.text == "get" {
+        "{recv}.get((int)({jv_arg(e, 1)}))"
+    } else if e.text == "slice" && jv_listy(ty) {
+        "{recv}.subList((int)({jv_arg(e, 1)}), (int)({jv_arg(e, 2)}))"
+    } else if e.text == "slice" {
+        "{recv}.substring((int)({jv_arg(e, 1)}), (int)({jv_arg(e, 2)}))"
+    } else if e.text == "index_of" {
+        "((long) {recv}.indexOf({jv_arg(e, 1)}))"
+    } else if e.text == "chars" {
+        "{recv}.chars().mapToObj(Character::toString).toList()"
+    } else if e.text == "split" {
+        "java.util.List.of({recv}.split(java.util.regex.Pattern"
+            ++ ".quote({jv_arg(e, 1)}), -1))"
+    } else if e.text == "join" {
+        "String.join({jv_arg(e, 1)}, {recv})"
+    } else if e.text == "upper" {
+        "{recv}.toUpperCase()"
+    } else if e.text == "lower" {
+        "{recv}.toLowerCase()"
+    } else if e.text == "trim" {
+        "{recv}.trim()"
+    } else if e.text == "repeat" {
+        "{recv}.repeat((int)({jv_arg(e, 1)}))"
+    } else if e.text == "starts_with" {
+        "{recv}.startsWith({jv_arg(e, 1)})"
+    } else if e.text == "ends_with" {
+        "{recv}.endsWith({jv_arg(e, 1)})"
+    } else if e.text == "contains" {
+        "{recv}.contains({jv_arg(e, 1)})"
+    } else if jv_char_test(e.text) != "" {
+        "{jv_char_test(e.text)}({recv})"
+    } else {
+        "{recv}.{jv_id(e.text)}({jv_args(e.children, 1, "")})"
+    }
+}
+
+jv_char_test(name: str) -> str {
+    if name == "is_alpha" {
+        "_alpha"
+    } else if name == "is_ascii_digit" {
+        "_digit"
+    } else if name == "is_whitespace" {
+        "_space"
+    } else {
+        ""
+    }
+}
+
+/// A `switch` takes an int, a string or an enum, so an int scrutinee is narrowed to one.
+jv_scrutinee(e: Expr) -> str {
+    on = e.children.get(0)
+
+    if on.ty == "int" {
+        "(int)({jv_expr(on)})"
+    } else {
+        jv_expr(on)
+    }
+}
+
+jv_match(e: Expr) -> str =>
+    "switch ({jv_scrutinee(e)}) {{ " ++ jv_arms(e.children, 1) ++ "}}"
+
+jv_arms(cs: Expr[], i: int) -> str {
+    if i + 1 >= cs.length() {
+        "default -> throw new IllegalStateException(\"no match\"); "
+    } else if cs.get(i).text == "_" {
+        "default -> {jv_expr(cs.get(i + 1))}; "
+    } else {
+        "case {jv_label(cs.get(i))} -> {jv_expr(cs.get(i + 1))}; "
+            ++ jv_arms(cs, i + 2)
+    }
+}
+
+jv_match_stmt(e: Expr, ind: int) -> str =>
+    "{jv_pad(ind, "")}switch ({jv_scrutinee(e)}) {{ "
+        ++ jv_stmt_arms(e.children, 1) ++ "}}\n"
+
+jv_stmt_arms(cs: Expr[], i: int) -> str {
+    if i + 1 >= cs.length() {
+        "default -> {{}} "
+    } else if cs.get(i).text == "_" {
+        "default -> {jv_action(cs.get(i + 1))} "
+    } else {
+        "case {jv_label(cs.get(i))} -> {jv_action(cs.get(i + 1))} "
+            ++ jv_stmt_arms(cs, i + 2)
+    }
+}
+
+jv_action(e: Expr) -> str {
+    if jv_pure(e) {
+        "{{}}"
+    } else {
+        "{jv_expr(e)};"
+    }
+}
+
+/// `Red | Green` is one arm over two constants, which Java writes as two labels.
+jv_label(p: Expr) -> str {
+    if p.kind == EBinary && p.text == "|" {
+        "{jv_label(p.children.get(0))}, {jv_label(p.children.get(1))}"
+    } else if p.kind == EStr {
+        jv_string(p.text)
+    } else {
+        p.text
+    }
+}
+
+jv_type(ty: str) -> str {
+    if ty.ends_with("[]") {
+        "java.util.List<{jv_boxed(ty.slice(0, ty.length() - 2))}>"
+    } else if map_type_key(ty) != "" {
+        "java.util.Map<{jv_boxed(map_type_key(ty))},"
+            ++ " {jv_boxed(map_type_val(ty))}>"
+    } else if ty == "" || ty == "int" {
+        "long"
+    } else if ty == "float" {
+        "double"
+    } else if ty == "bool" {
+        "boolean"
+    } else if ty == "str" {
+        "String"
+    } else if ty.index_of(") -> ") >= 0 {
+        "Object"
+    } else {
+        ty
+    }
+}
+
+/// Java holds nothing but a reference in a list, so a number in one is the boxed number.
+jv_boxed(ty: str) -> str {
+    named = jv_type(ty)
+
+    if named == "long" {
+        "Long"
+    } else if named == "double" {
+        "Double"
+    } else if named == "boolean" {
+        "Boolean"
+    } else {
+        named
+    }
+}
+
+/// Every construct this target cannot honour, named the way the author wrote it.
+jvmemit_errors(m: Module) -> str[] =>
+    jv_item_errors(m.items, jv_fn_names(m.items, 0, []), 0, [])
+
+jv_fn_names(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind == SFn {
+        jv_fn_names(items, i + 1, acc ++ [items.get(i).name])
+    } else {
+        jv_fn_names(items, i + 1, acc)
+    }
+}
+
+jv_item_errors(items: Stmt[], fns: str[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else {
+        jv_item_errors(items, fns, i + 1,
+                       jv_one_item(items.get(i), fns, acc))
+    }
+}
+
+jv_one_item(s: Stmt, fns: str[], acc: str[]) -> str[] {
+    if s.kind == SSum && jv_carries(s.params, 0) {
+        acc ++ [jv_payload_refusal(s.name)]
+    } else if s.kind == SSum || s.kind == SRecord {
+        acc
+    } else if s.kind == SFn {
+        jv_body_errors(s.body, fns, 0, acc)
+    } else {
+        jv_value_errors(s.value, fns, acc)
+    }
+}
+
+jv_carries(vs: Expr[], i: int) -> bool {
+    if i >= vs.length() {
+        false
+    } else if vs.get(i).children.length() > 0 {
+        true
+    } else {
+        jv_carries(vs, i + 1)
+    }
+}
+
+jv_payload_refusal(name: str) -> str =>
+    "`{name}` is a sum whose variants carry a payload; a Java enum carries"
+        ++ " none, so the payload has nowhere to live"
+
+jv_body_errors(body: Stmt[], fns: str[], i: int, acc: str[]) -> str[] {
+    if i >= body.length() {
+        acc
+    } else {
+        jv_body_errors(body, fns, i + 1,
+                       jv_value_errors(body.get(i).value, fns, acc))
+    }
+}
+
+jv_value_errors(e: Expr, fns: str[], acc: str[]) -> str[] {
+    bad = jv_refusal(e, fns)
+
+    if bad != "" {
+        acc ++ [bad]
+    } else if e.kind == EIf {
+        jv_if_errors(e, fns, acc)
+    } else {
+        jv_body_errors(e.stmts, fns, 0,
+                       jv_kid_errors(e.children, fns, 0, acc))
+    }
+}
+
+jv_if_errors(e: Expr, fns: str[], acc: str[]) -> str[] =>
+    jv_branch_errors(e.children.get(2), fns,
+                     jv_branch_errors(e.children.get(1), fns,
+                                      jv_value_errors(e.children.get(0), fns,
+                                                      acc)))
+
+jv_branch_errors(e: Expr, fns: str[], acc: str[]) -> str[] {
+    if jv_no_else(e) {
+        acc
+    } else if e.kind == EBlock {
+        jv_value_errors(e.children.get(0), fns,
+                        jv_body_errors(e.stmts, fns, 0, acc))
+    } else {
+        jv_value_errors(e, fns, acc)
+    }
+}
+
+jv_kid_errors(xs: Expr[], fns: str[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        jv_kid_errors(xs, fns, i + 1, jv_value_errors(xs.get(i), fns, acc))
+    }
+}
+
+jv_refusal(e: Expr, fns: str[]) -> str {
+    if e.kind == ELambda {
+        "a lambda has no interface to be on the jvm target; name a function"
+    } else if e.kind == EIdent && fns.index_of(e.text) >= 0 {
+        "`{e.text}` is a function used as a value, and Java has no such value"
+            ++ " without an interface to put it on"
+    } else if e.kind == EWith {
+        "a record update (`with`) is not lowered by the jvm target"
+    } else if e.kind == EBlock {
+        "a block in value position is not lowered by the jvm target"
+    } else if e.kind == EUnary {
+        jv_effect_refusal(e.text)
+    } else if e.kind == EMatch {
+        jv_match_refusal(e)
+    } else if e.kind == ERecord && e.text == "" {
+        "this `{{ ... }}` names no record, and a Java `new` needs a type"
+    } else if e.kind == EBinary && e.text == "=" {
+        jv_store_refusal(e.children.get(0))
+    } else if e.kind == EMethod {
+        jv_method_refusal(e)
+    } else if e.kind == ECall && !jv_known_call(e.text, fns) {
+        "`{e.text}` is a builtin the jvm target does not lower"
+    } else {
+        ""
+    }
+}
+
+jv_effect_refusal(op: str) -> str {
+    if op == "-" || op == "!" {
+        ""
+    } else if op == "spawn" || op == "await" {
+        "`{op}` needs a scheduler, which the jvm target does not emit"
+    } else {
+        "the error operators (`?`, `fail`) are not lowered by the jvm target"
+    }
+}
+
+jv_store_refusal(target: Expr) -> str {
+    if target.kind == EMethod {
+        "a write into a list; a list is immutable on the jvm target"
+    } else {
+        ""
+    }
+}
+
+jv_method_refusal(e: Expr) -> str {
+    ty = e.children.get(0).ty
+
+    if map_type_key(ty) != "" {
+        "`Map` is not lowered by the jvm target"
+    } else if e.text == "map" || e.text == "filter" || e.text == "reduce" {
+        "`{e.text}` takes a function, which the jvm target does not pass"
+    } else {
+        ""
+    }
+}
+
+jv_match_refusal(e: Expr) -> str {
+    on = e.children.get(0)
+
+    if on.ty == "bool" || on.ty == "float" {
+        "a `match` on a {on.ty} is not a Java `switch`, which takes an int,"
+            ++ " a string or an enum"
+    } else {
+        jv_arm_refusal(e.children, 1)
+    }
+}
+
+jv_arm_refusal(cs: Expr[], i: int) -> str {
+    if i + 1 >= cs.length() {
+        ""
+    } else if cs.get(i).kind == EGuard {
+        "an arm guarded by `if` is not a `case` label on the jvm target"
+    } else if jv_shape_pat(cs.get(i)) != "" {
+        "{jv_shape_pat(cs.get(i))} is not a `case` label on the jvm target"
+    } else {
+        jv_arm_refusal(cs, i + 2)
+    }
+}
+
+jv_shape_pat(p: Expr) -> str {
+    if p.text == "[]" || p.text == "[..]" {
+        "a list pattern"
+    } else if p.text == "{{}}" {
+        "a record pattern"
+    } else if p.kind == EBinary && p.text == "|" {
+        ""
+    } else if p.children.length() > 0 {
+        "`{p.text}(...)`, which binds a payload,"
+    } else {
+        ""
+    }
+}
+
+jv_known_call(name: str, fns: str[]) -> bool =>
+    fns.index_of(name) >= 0 || jv_upper(name) || jv_builtin(name)
+
+jv_builtin(name: str) -> bool =>
+    name == "info" || name == "print" || name == "err" || name == "warn"
+        || name == "str" || name == "int" || name == "float" || name == "len"
+        || name == "abs" || name == "min" || name == "max" || name == "pow"
+        || name == "log" || jv_math_call(name)

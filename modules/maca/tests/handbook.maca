@@ -1,0 +1,87 @@
+import std/text
+import maca/token
+import maca/lexer
+
+Appendix = "apps/tomo/book/en/a1-keywords.md"
+Diagnostics = "apps/tomo/book/en/a4-diagnostics.md"
+
+candidate_words() -> str[] => [
+    "const", "as", "if", "else", "for", "in", "while", "break", "continue",
+    "match", "import", "from", "with", "fail", "try", "alias", "await",
+    "spawn", "true", "false", "fn", "let", "var", "return", "type", "struct",
+    "enum", "class", "async", "null", "nil", "pub", "mut", "impl", "trait",
+    "self", "new", "def", "func"
+]
+
+diagnostic_kinds() -> str[] => [
+    "TypeMismatch", "NonExhaustive", "Immutable", "UndefinedName",
+    "UnknownOption", "EffectInConfig"
+]
+
+reserved_word(w: str) -> bool => lex(w).get(0).kind != TIdent
+
+reserved_words() -> str[] => candidate_words().filter(w => reserved_word(w))
+
+table_terms(md: str) -> str[] =>
+    collect_terms(lines(md), 0, [])
+
+collect_terms(ls: str[], i: int, acc: str[]) -> str[] {
+    if i >= ls.length() {
+        acc
+    } else {
+        collect_terms(ls, i + 1, acc ++ row_terms(ls.get(i)))
+    }
+}
+
+row_terms(line: str) -> str[] {
+    cells = line.trim().split("|")
+
+    if !line.trim().starts_with("|") || cells.length() < 2 {
+        []
+    } else if !cells.get(1).trim().starts_with("`") {
+        []
+    } else {
+        cells.get(1).split(",").map(t => unbacktick(t))
+    }
+}
+
+unbacktick(t: str) -> str =>
+    strip_suffix(strip_prefix(t.trim(), "`"), "`")
+
+test_appendix_a_names_every_word_the_lexer_reserves() {
+    listed = table_terms(read_file(Appendix))
+    assert(listed.length() > 20,
+           "the table stopped being parsed: {listed.length()} terms")
+
+    for w in reserved_words() {
+        assert(listed.filter(t => t == w).length() > 0,
+               "appendix A does not document the keyword {w}")
+    }
+}
+
+test_the_lexer_reserves_the_words_a_program_is_written_with() {
+    assert(reserved_word("if"), "if opens a conditional")
+    assert(reserved_word("match"), "match destructures")
+    assert(reserved_word("import"), "import names a module")
+    assert(!reserved_word("counter"), "an ordinary name is an identifier")
+    assert(!reserved_word("new"), "a record literal needs no `new`")
+}
+
+test_appendix_d_covers_every_diagnostic_kind() {
+    md = read_file(Diagnostics)
+
+    for kind in diagnostic_kinds() {
+        assert(md.contains("## " ++ kind), "appendix D has no section for {kind}")
+    }
+}
+
+test_the_table_reader_reads_a_table() {
+    md = "| `const` | declare a constant |\n"
+             ++ "|---|---|\n"
+             ++ "| `fn`, `func` | there is no fn |\n"
+             ++ "not a row\n"
+             ++ "| plain | no term here |\n"
+
+    assert_eq(table_terms(md).join(" "), "const fn func",
+              "a grouped cell is as many terms as it names")
+}

@@ -1,0 +1,154 @@
+import maca/ast
+import maca/emit_embedded
+
+emb_c_of(items: Stmt[]) -> str =>
+    eemit_module(Module { items, errors = [] })
+
+emb_refusals_of(items: Stmt[]) -> str =>
+    eemit_errors(Module { items, errors = [] }).join("\n")
+
+emb_blink() -> Stmt[] =>
+    [s_bind_typed("odr", "int", e_int(1073875988)),
+     s_fn("blink", "", [],
+          [s_expr(e_for("_", e_call("forever", []),
+                        [s_expr(e_call("set_bits",
+                                       [e_ident("odr"),
+                                        e_call("bit", [e_int(12)])])),
+                         s_expr(e_call("delay", [e_int(800000)]))]))])]
+
+test_a_register_is_reached_through_a_volatile_pointer() {
+    c = emb_c_of(emb_blink())
+
+    assert(c.index_of("static const uint32_t odr = 1073875988u;") >= 0,
+           "a top-level binding is an address, and an address is a constant")
+    assert(c.index_of("while (1) {{") >= 0,
+           "`forever` is the loop a microcontroller never leaves")
+    assert(c.index_of("(*(volatile uint32_t *)(uintptr_t)(odr))") >= 0,
+           "a register is not a variable, so the read is not optimised away")
+    assert(c.index_of("|= (uint32_t)((1u << (12u)))") >= 0,
+           "`set_bits` sets the bit `bit` names")
+    assert(c.index_of("maca_delay(800000u)") >= 0,
+           "a delay is a spin, because there is no timer and no OS")
+}
+
+test_the_entry_point_is_the_reset_vector() {
+    c = emb_c_of(emb_blink())
+
+    assert(c.index_of("#include <stdint.h>") >= 0,
+           "the only header a freestanding unit may reach for")
+    assert(c.index_of("void Reset_Handler(void)") >= 0,
+           "the core starts at the reset handler, not at libc")
+    assert(c.index_of(".isr_vector") >= 0,
+           "the vector table is placed by section name, or nothing runs")
+}
+
+test_a_signature_is_a_word_in_and_a_word_out() {
+    c = emb_c_of([s_fn("cfg", "", [e_param("a", "int"), e_param("v", "int")],
+                       [s_expr(e_call("mmio_write",
+                                      [e_ident("a"), e_ident("v")]))]),
+                  s_fn("get", "int", [e_param("a", "int")],
+                       [s_expr(e_call("mmio_read", [e_ident("a")]))])])
+
+    assert(c.index_of("void cfg(uint32_t a, uint32_t v)") >= 0,
+           "a function with nothing to answer with answers with nothing")
+    assert(c.index_of("uint32_t get(uint32_t a)") >= 0,
+           "every value on this target is one machine word")
+    assert(c.index_of("return (*(volatile uint32_t *)(uintptr_t)(a));") >= 0,
+           "the last expression of a body is what it answers with")
+}
+
+test_a_field_store_is_emitted_rather_than_dropped() {
+    c = emb_c_of([s_fn("set_reg", "", [e_param("p", "int"),
+                                       e_param("v", "int")],
+                       [s_expr(e_binary("=", e_field(e_ident("p"), "reg"),
+                                        e_ident("v")))])])
+
+    assert(c.index_of("(p.reg = v);") >= 0,
+           "a store is the whole statement, not an expression thrown away")
+}
+
+test_a_store_is_a_whole_statement_rather_than_a_value_dropped() {
+    c = emb_c_of([s_fn("set_reg", "", [e_param("p", "int"), e_param("v", "int")],
+                       [s_expr(e_binary("=", e_field(e_ident("p"), "reg"),
+                                        e_binary("+", e_ident("v"), e_int(1))))])])
+
+    assert(c.index_of("(p.reg = (v + 1u));") >= 0,
+           "the whole assignment is emitted, so a computed right-hand side is not lost")
+}
+
+test_a_counted_loop_counts() {
+    c = emb_c_of([s_fn("spin", "", [e_param("n", "int")],
+                       [s_expr(e_for("i", e_ident("n"),
+                                     [s_expr(e_call("nop", []))]))])])
+
+    assert(c.index_of("for (uint32_t i = 0; i < (n); i++)") >= 0,
+           "a loop over a count is a C counting loop, with no iterator")
+    assert(c.index_of("__asm__ volatile(\"nop\")") >= 0,
+           "`nop` is an instruction, not a call")
+}
+
+test_what_needs_a_heap_is_refused_rather_than_guessed() {
+    joined = emb_refusals_of([s_fn("f", "int", [e_param("a", "int"),
+                                                e_param("b", "int")],
+                                   [s_expr(e_binary("++", e_ident("a"),
+                                                    e_ident("b")))])])
+
+    assert(joined.index_of("++") >= 0, "the refusal names the operator")
+    assert(joined.index_of("heap") >= 0, "and says why this target cannot")
+}
+
+emb_bound(name: str, v: Expr) -> str =>
+    emb_refusals_of([s_fn("f", "int", [], [s_bind(name, v),
+                                           s_expr(e_int(0))])])
+
+test_a_construct_with_no_machine_meaning_is_named() {
+    assert(emb_bound("x", e_float("1.5")).index_of("float") >= 0,
+           "the target is integer-only, and says so")
+    assert(emb_bound("s", e_str("hi")).index_of("string") >= 0,
+           "a string would need somewhere to live")
+    assert(emb_bound("xs", e_list([e_int(1)])).index_of("list") >= 0,
+           "and so would a list")
+
+    matched = emb_refusals_of([s_fn("f", "int", [e_param("n", "int")],
+                                    [s_expr(e_match([e_ident("n"),
+                                                     e_ident("_"),
+                                                     e_int(3)]))])])
+
+    assert(matched.index_of("`match`") >= 0,
+           "a tagged value needs a tag, and there is nowhere to put one")
+}
+
+test_a_type_declaration_is_refused_rather_than_becoming_a_constant() {
+    sum = emb_refusals_of([s_sum("Color", [e_ident("Red"), e_ident("Green")])])
+    rec = emb_refusals_of([s_record("Reg", [e_param("addr", "int")])])
+
+    assert(sum.index_of("sum type") >= 0 && sum.index_of("Color") >= 0,
+           "the refusal names the declaration the author wrote")
+    assert(rec.index_of("record type") >= 0 && rec.index_of("Reg") >= 0,
+           "a struct is a layout, and this target lays out nothing")
+}
+
+test_a_refusal_names_the_source_rather_than_the_output() {
+    joined = emb_bound("xs", e_list([e_int(1)]))
+
+    assert(joined.index_of("0u") < 0 && joined.index_of("uint32_t") < 0,
+           "a refusal is about the program, not about the C it did not get")
+}
+
+test_a_program_the_target_can_carry_is_refused_of_nothing() {
+    assert(emb_refusals_of(emb_blink()).length() == 0,
+           "blink is what this back end exists for")
+}
+
+test_a_shift_is_the_bit_move_a_register_mask_is_written_with() {
+    c = emb_c_of([s_fn("mask", "int", [e_param("n", "int")],
+                       [s_expr(e_binary("<<", e_int(1), e_ident("n")))]),
+                  s_fn("half", "int", [e_param("n", "int")],
+                       [s_expr(e_binary(">>", e_ident("n"), e_int(1)))])])
+
+    assert(c.index_of("(1u << n)") >= 0,
+           "a mask is a bit moved into place, and this target is all masks")
+    assert(c.index_of("(n >> 1u)") >= 0, "and reading one back moves it down")
+    assert(c.index_of("return 0u;") < 0,
+           "an operator this target has is not quietly answered with zero")
+}

@@ -19,7 +19,7 @@ test_a_record_element_is_read_back_as_a_record() {
 
     assert(out.index_of("(*(R*)xs.data[0]).n") >= 0,
            "the cell is a boxed R, so the field reads through the pointer")
-    assert(out.index_of("((int)xs.data[0]).n") < 0,
+    assert(out.index_of("((long)xs.data[0]).n") < 0,
            "and never as an int, which is not a structure or union")
 }
 
@@ -81,14 +81,14 @@ test_a_string_element_is_read_back_as_a_string() {
 
     assert(out.index_of("(const char*)xs.data[0]") >= 0,
            "a str cell is a pointer, not an int")
-    assert(out.index_of("((int)xs.data[0])") < 0,
+    assert(out.index_of("((long)xs.data[0])") < 0,
            "reading it as an int is what strlen refused")
 }
 
 test_an_int_list_is_left_exactly_as_it_was() {
     out = c_for("f(xs: int[], v: int) -> int[] => xs.push(xs.get(0) + v)")
 
-    assert(out.index_of("((int)xs.data[0])") >= 0,
+    assert(out.index_of("((long)xs.data[0])") >= 0,
            "an int fits a cell, so it is read straight out")
     assert(out.index_of("maca_listv(1, (long)(") >= 0,
            "and written straight in, with no box in sight")
@@ -105,10 +105,19 @@ test_a_list_whose_element_is_unknown_is_still_a_list() {
            "it is certainly not a string")
 }
 
+test_an_int_is_the_width_stage_zero_gives_it() {
+    assert(c_for("f(n: int) -> int => n").index_of("long f(long n)") >= 0,
+           "a Maca int is 64 bits, which C spells long, not int")
+    assert(c_for("f(t: str) -> int => int(t)").index_of("atol(t)") >= 0,
+           "and reading one out of text is atol, because atoi wraps at 2^31")
+    assert(c_for("main() -> int => 0").index_of("int main(") >= 0,
+           "while C still wants the main it starts with to answer an int")
+}
+
 test_a_function_is_declared_before_any_body() {
     out = c_for("f() -> int => g() g() -> int => 1")
-    proto = out.index_of("int g();")
-    body = out.index_of("int f() {{")
+    proto = out.index_of("long g();")
+    body = out.index_of("long f() {{")
 
     assert(proto >= 0,
            "C wants a declaration before the call, so every function gets one")
@@ -119,7 +128,7 @@ test_a_function_is_declared_before_any_body() {
 test_a_prototype_carries_the_definitions_parameter_types() {
     out = c_for("f(a: str, b: int[]) -> int => 0")
 
-    assert(out.index_of("int f(const char* a, MacaList b);") >= 0,
+    assert(out.index_of("long f(const char* a, MacaList b);") >= 0,
            "a prototype that disagreed with the definition is a conflict")
 }
 
@@ -215,9 +224,9 @@ test_a_fold_reads_the_cell_at_a_type_wider_than_a_cell() {
 test_a_main_that_takes_arguments_gets_a_c_shim() {
     out = c_for("main(args: str[]) -> int => args.length()")
 
-    assert(out.index_of("int maca_main(MacaList args)") >= 0,
+    assert(out.index_of("long maca_main(MacaList args)") >= 0,
            "the Maca body keeps its list parameter, under another name")
-    assert(out.index_of("int maca_main(MacaList args);") >= 0,
+    assert(out.index_of("long maca_main(MacaList args);") >= 0,
            "and the prototype is renamed with it, or the two would conflict")
     assert(out.index_of("int main(int argc, char** argv)"
                         ++ " {{ return maca_main(maca_args(argc, argv)); }}")
@@ -240,7 +249,7 @@ test_int_reads_a_string_and_leaves_a_number_alone() {
     from_str = c_for("f(t: str) -> int => int(t)")
     from_int = c_for("f(v: int) -> int => int(v)")
 
-    assert(from_str.index_of("return atoi(t);") >= 0,
+    assert(from_str.index_of("return atol(t);") >= 0,
            "a string becomes a number by being read, not by being cast")
     assert(from_str.index_of("int(t)") < 0,
            "int is a C keyword, so a call spelled that way is not an expression")
@@ -284,24 +293,24 @@ test_upper_copies_a_string_and_folds_a_single_character() {
 test_a_called_parameter_is_declared_as_a_function_pointer() {
     out = c_for(Higher)
 
-    assert(out.index_of("int run(MacaList xs, int (*f)(const char*))") >= 0,
+    assert(out.index_of("long run(MacaList xs, long (*f)(const char*))") >= 0,
            "the parameter carries the type the call site proved it has")
-    assert(out.index_of("int run(MacaList xs, int (*f)(const char*));") >= 0,
+    assert(out.index_of("long run(MacaList xs, long (*f)(const char*));") >= 0,
            "and the prototype says the same, or the two would conflict")
-    assert(out.index_of("MacaList xs, int f") < 0,
+    assert(out.index_of("MacaList xs, long f") < 0,
            "an int is not callable, which is what C said before")
-    assert(out.index_of("int p(const char* c)") >= 0,
+    assert(out.index_of("long p(const char* c)") >= 0,
            "the callee keeps its own signature, so the pointer is not a lie")
 }
 
 test_a_function_type_in_type_position_is_an_abstract_declarator() {
-    assert_eq(type_c("(int) -> str"), "const char* (*)(int)",
+    assert_eq(type_c("(int) -> str"), "const char* (*)(long)",
               "the name's place is left empty where there is no name")
-    assert_eq(type_c("() -> int"), "int (*)(void)",
+    assert_eq(type_c("() -> int"), "long (*)(void)",
               "no parameters is void, not an unspecified list")
-    assert_eq(type_c("(int, str) -> bool"), "int (*)(int, const char*)",
+    assert_eq(type_c("(int, str) -> bool"), "long (*)(long, const char*)",
               "every parameter is converted in turn")
-    assert_eq(type_c("(int) -> str[]"), "MacaList (*)(int)",
+    assert_eq(type_c("(int) -> str[]"), "MacaList (*)(long)",
               "a function is spotted before the list its result ends with")
 }
 
@@ -474,9 +483,12 @@ test_the_last_str_methods_lower_to_the_c_library() {
 test_a_constant_is_emitted_once_at_file_scope() {
     out = c_for("Seed = 1000 f() -> int => Seed")
 
-    assert(out.index_of("static const int Seed = 1000;") >= 0,
+    assert(out.index_of("static const long Seed = 1000;") >= 0,
            "a top-level binding is a definition, not a statement")
-    assert(out.index_of("Seed = 1000") < out.index_of("int f("),
+    assert(c_for("seed = 1000 f() -> int => seed")
+               .index_of("static long seed = 1000;") >= 0,
+           "and a lowercase one is module state, which a body is allowed to assign")
+    assert(out.index_of("Seed = 1000") < out.index_of("long f("),
            "and stands before the function that reads it")
 }
 
@@ -524,9 +536,9 @@ test_a_fold_over_a_list_reads_the_cell_at_the_elements_type() {
     total = c_for("f(xs: int[]) -> int => xs.sum()")
     least = c_for("f(xs: int[]) -> int => xs.min()")
 
-    assert(total.index_of("_a += ((int)_q.data[_qi])") >= 0,
+    assert(total.index_of("_a += ((long)_q.data[_qi])") >= 0,
            "a sum accumulates the cell read as its own type")
-    assert(least.index_of("if (((int)_q.data[_qi]) < _a)") >= 0,
+    assert(least.index_of("if (((long)_q.data[_qi]) < _a)") >= 0,
            "and min compares the same reading, not the raw cell")
 }
 
@@ -534,9 +546,9 @@ test_a_lambda_is_inlined_where_the_loop_needs_it() {
     kept = c_for("f(xs: int[]) -> int[] => xs.filter(v => v > 1)")
     folded = c_for("f(xs: int[]) -> int => xs.reduce(0, (a, b) => a + b)")
 
-    assert(kept.index_of("if (({{ int v = ((int)_m.data[_i]); (v > 1); }}))") >= 0,
+    assert(kept.index_of("if (({{ long v = ((long)_m.data[_i]); (v > 1); }}))") >= 0,
            "the predicate becomes a statement expression, not a call")
-    assert(folded.index_of("_acc = ({{ int a = _acc;") >= 0,
+    assert(folded.index_of("_acc = ({{ long a = _acc;") >= 0,
            "and the reducer takes the accumulator as its first binder")
 }
 
@@ -555,7 +567,7 @@ test_a_for_binds_the_element_and_a_break_leaves() {
     each = c_for("f(xs: int[]) -> int {{ t = 0 for v in xs {{ t = t + v }} t }}")
     out = c_for("f(n: int) -> int {{ i = 0 while i < n {{ break }} i }}")
 
-    assert(each.index_of("int v = ((int)_f.data[_fi]);") >= 0,
+    assert(each.index_of("long v = ((long)_f.data[_fi]);") >= 0,
            "the binder is the element, read at the element's type")
     assert(out.index_of("break;") >= 0, "and a jump is the C keyword")
 }

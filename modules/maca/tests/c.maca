@@ -1,0 +1,230 @@
+import maca/ast
+import maca/lexer
+import maca/parser
+import maca/check
+import maca/emit_c
+
+GateRuntime = emit_module(Module { items = [], errors = [] })
+
+gate_c(src: str) -> str =>
+    emit_module(annotated(parse_module(lex(src), 0, [])))
+        .slice(GateRuntime.length(), 1000000)
+
+test_a_choice_in_value_position_is_a_ternary() {
+    made = gate_c("pick(c: bool) -> int {{ b = if c {{ 100 }} else {{ 200 }} b }}")
+
+    assert(made.index_of("long b = (c ? 100 : 200);") >= 0,
+           "a branch that answers is one expression, not a temporary and two stores")
+    assert(gate_c("f(c: bool) -> int {{ a = c ? 10 : 20 a }}")
+               .index_of("long a = (c ? 10 : 20);") >= 0,
+           "and the ternary the author wrote is the same ternary")
+}
+
+test_a_variant_is_compared_by_tag_rather_than_bound() {
+    made = gate_c("Color = Red | Green | Blue\n"
+                  ++ "score(x: Color) -> int {{ match x {{"
+                  ++ " Red => 1 Green => 2 Blue => 3 }} }}")
+
+    assert(made.index_of("typedef enum {{ Red, Green, Blue }} Color;") >= 0,
+           "a sum with no payload is a C enum")
+    assert(made.index_of("(x == Red ?") >= 0 && made.index_of("x == Green") >= 0
+               && made.index_of("x == Blue") >= 0,
+           "every arm asks the tag")
+    assert(made.index_of("Color Red =") < 0,
+           "a variant in a pattern is a tag, not a name the arm binds")
+}
+
+test_a_record_is_a_struct_of_the_fields_it_declared() {
+    made = gate_c("Status = Todo | Done\nPoint = {{ x: int y: int }}")
+
+    assert(made.index_of("typedef enum {{ Todo, Done }} Status;") >= 0,
+           "the sum is an enum")
+    assert(made.index_of("typedef struct {{ long x; long y; }} Point;") >= 0,
+           "and the record is a struct in the order it was written")
+}
+
+test_an_interpolation_builds_a_string() {
+    made = gate_c("main() -> int {{ n = 5 info(\"n is {{n}}\") 0 }}")
+
+    assert(made.index_of("maca_cat") >= 0 && made.index_of("n is") >= 0,
+           "the literal text survives and the pieces are joined")
+    assert(made.index_of("maca_int_to_str(n)") >= 0,
+           "a number is rendered on the way in")
+}
+
+test_a_reassignment_is_not_a_second_declaration() {
+    made = gate_c("sum_to(n: int) -> int {{ acc = 0 i = 1"
+                  ++ " while i <= n {{ acc = acc + i i = i + 1 }} acc }}")
+
+    assert(made.index_of("while ((i <= n))") >= 0, "the loop is a while")
+    assert(made.index_of("acc = (acc + i);") >= 0
+               && made.index_of("long acc = (acc + i)") < 0,
+           "the accumulator is written, not shadowed")
+    assert(made.index_of("i = (i + 1);") >= 0, "and so is the counter")
+}
+
+test_break_and_continue_reach_the_loop() {
+    made = gate_c("f() -> int {{ i = 0"
+                  ++ " while i < 10 {{ i = i + 1 if i < 3 {{ continue }} break }} i }}")
+
+    assert(made.index_of("break;") >= 0, "a break is a break")
+    assert(made.index_of("continue;") >= 0, "and a continue is a continue")
+}
+
+test_a_remainder_is_the_operator_c_already_has() {
+    assert(gate_c("f(n: int) -> int {{ a = n % 3 a }}").index_of("(n % 3)") >= 0,
+           "there is nothing to lower")
+}
+
+test_a_failure_calls_the_runtime_rather_than_aborting() {
+    made = gate_c("g(n: int) -> int {{ if n < 0 {{ fail \"bad\" }} n }}")
+
+    assert(made.index_of("maca_fail(") >= 0,
+           "a failure is caught by a handler, so it goes through the runtime")
+    assert(made.index_of("abort()") < 0, "an abort would take the handler with it")
+}
+
+test_a_literal_pattern_is_compared_by_value() {
+    assert(gate_c("route(cmd: str) -> int {{ match cmd {{ \"add\" => 1 _ => 0 }} }}")
+               .index_of("(strcmp(cmd, \"add\") == 0)") >= 0,
+           "two strings are equal when their contents are")
+    assert(gate_c("f(n: int) -> int {{ match n {{ 0 => 1 _ => 0 }} }}")
+               .index_of("n == 0") >= 0,
+           "and a number when the numbers are")
+    assert(gate_c("f(x: float) -> int {{ match x {{ 1.5 => 1 _ => 0 }} }}")
+               .index_of("x == 1.5") >= 0,
+           "a float pattern is a comparison, not a wildcard")
+}
+
+test_a_variant_carrying_a_payload_is_a_tagged_struct() {
+    made = gate_c("Shape = Circle(int) | Rect(int, int)\n"
+                  ++ "area(s: Shape) -> int {{ match s {{"
+                  ++ " Circle(r) => r * r Rect(w, h) => w * h }} }}")
+
+    assert(made.index_of("Shape_tag tag;") >= 0, "the value carries which variant it is")
+    assert(made.index_of("static inline Shape Circle(long _0)") >= 0,
+           "a variant with a payload is built by a constructor")
+    assert(made.index_of("s.tag == Circle_tag") >= 0, "an arm asks the tag")
+    assert(made.index_of("r = s._0;") >= 0, "and then reads the payload it named")
+}
+
+test_an_element_and_a_field_are_both_places_to_write() {
+    made = gate_c("P = {{ x: int }}\n"
+                  ++ "f(xs: int[], p: P) -> int {{ xs[0] = 9 p.x = 5 0 }}")
+
+    assert(made.index_of("xs.data[0] = (long)(9);") >= 0,
+           "an element assignment reaches the backing buffer")
+    assert(made.index_of("(p.x = 5);") >= 0,
+           "and a field assignment is the whole statement, not a value thrown away")
+}
+
+test_a_string_index_is_not_a_list_index() {
+    assert(gate_c("f(xs: int[]) -> int => xs[1]").index_of("xs.data[1]") >= 0,
+           "a list reads its buffer")
+    assert(gate_c("f(s: str) -> str => s[0]").index_of("maca_str_at(s, 0)") >= 0,
+           "a string reads one character, which is a string of its own")
+}
+
+test_a_length_is_the_length_of_what_it_is_given() {
+    assert(gate_c("f(xs: int[]) -> int => xs.length()").index_of("xs.len") >= 0,
+           "a list carries its own length")
+    assert(gate_c("g(s: str) -> int => s.length()").index_of("strlen(s)") >= 0,
+           "a string does not, so it is counted")
+}
+
+test_a_coercion_is_a_cast_rather_than_a_call() {
+    made = gate_c("f(px: int, n: int) -> float => float(px) / float(n)")
+
+    assert(made.index_of("(double)") >= 0, "float() is the C cast")
+    assert(made.index_of("float_mc") < 0, "and not a function of that name")
+    assert(gate_c("g(x: float) -> int => int(x)").index_of("(long)") >= 0,
+           "int() is the cast the other way")
+}
+
+test_the_string_library_lowers_to_runtime_calls() {
+    made = gate_c("main() -> int {{ s = \"a,b\" parts = s.split(\",\")"
+                  ++ " x = s.trim().upper() y = s.contains(\"a\")"
+                  ++ " z = s.replace(\"a\", \"b\") i = s.index_of(\"b\") 0 }}")
+
+    assert(made.index_of("maca_split(s, \",\")") >= 0, "split")
+    assert(made.index_of("maca_trim(s)") >= 0 && made.index_of("maca_upper(") >= 0,
+           "trim and upper")
+    assert(made.index_of("(strstr(s, \"a\") != NULL)") >= 0, "contains")
+    assert(made.index_of("maca_replace(s, \"a\", \"b\")") >= 0, "replace")
+    assert(made.index_of("maca_str_index_of(s, \"b\")") >= 0, "index_of")
+}
+
+test_the_scan_primitives_lower() {
+    made = gate_c("scan(s: str) -> int {{ cs = s.chars() n = cs.length()"
+                  ++ " c = cs.get(0) ws = c.is_whitespace() d = c.is_ascii_digit()"
+                  ++ " a = c.is_alpha() l = s.length() sub = cs.slice(0, 2) n + l }}")
+
+    assert(made.index_of("maca_chars(s)") >= 0, "chars")
+    assert(made.index_of("isspace((unsigned char)(c)[0])") >= 0, "is_whitespace")
+    assert(made.index_of("isdigit((unsigned char)(c)[0])") >= 0, "is_ascii_digit")
+    assert(made.index_of("isalpha((unsigned char)(c)[0])") >= 0, "is_alpha")
+    assert(made.index_of("maca_list_slice(cs, 0, 2)") >= 0, "slice")
+}
+
+test_a_name_c_has_taken_is_escaped() {
+    made = gate_c("Config = {{ default: int }}\ndouble(n: int) -> int => n * 2\n"
+                  ++ "main() -> int {{ new = 5 c = Config {{ default = double(new) }}"
+                  ++ " info(\"{{c.default}}\") 0 }}")
+
+    assert(made.index_of("double_mc(") >= 0 && made.index_of("long double(") < 0,
+           "a function named after a C keyword would not compile")
+    assert(made.index_of("default_mc") >= 0, "nor would a field")
+    assert(made.index_of("new_mc") >= 0, "nor a local")
+    assert(made.index_of("Config") >= 0,
+           "a type name is not a keyword, so it is left as it was written")
+}
+
+test_a_reified_failure_installs_a_handler() {
+    made = gate_c("boom() -> int {{ fail \"x\" 0 }}\nmain() -> int {{ try boom() 0 }}")
+
+    assert(made.index_of("maca_try_push(") >= 0, "the handler is pushed before the call")
+    assert(made.index_of("setjmp(") >= 0, "a failure unwinds to here")
+    assert(made.index_of("maca_last_fail()") >= 0, "and the message it carried is read back")
+}
+
+test_a_type_is_defined_before_the_type_that_holds_it() {
+    holder = gate_c("Shape = Dot | At(P)\nP = {{ x: int y: int }}\n"
+                    ++ "f(s: Shape) -> int {{ match s {{ At(p) => p.x Dot => 0 }} }}")
+
+    assert(holder.index_of("}} P;") < holder.index_of("}} Shape;"),
+           "a record a variant carries is defined first, whatever order it was written in")
+    assert(holder.index_of("P _0;") >= 0, "and the payload is typed as that record")
+
+    other = gate_c("Holder = {{ shape: Shape }}\nShape = Dot | At(int)")
+
+    assert(other.index_of("}} Shape;") < other.index_of("}} Holder;"),
+           "and so is a sum a record holds")
+    assert(other.index_of("Shape shape;") >= 0, "the field is typed as that sum")
+}
+
+test_a_negation_and_a_forward_reference_both_resolve() {
+    made = gate_c("A = {{ b: B }}\nB = {{ v: int }}\nf(x: bool) -> bool => !x\n"
+                  ++ "main() -> int {{ a = A {{ b = B {{ v = 1 }} }} 0 }}")
+
+    assert(made.index_of("(!x)") >= 0, "a not is a not")
+    assert(made.index_of("B b;") >= 0,
+           "a field naming a record declared later is still that record")
+}
+
+test_a_record_that_holds_a_list_of_itself_still_defines() {
+    made = gate_c("Node = {{ name: str kids: Node[] }}\nmain() -> int {{ 0 }}")
+
+    assert(made.index_of("typedef struct {{ const char* name; MacaList kids; }} Node;") >= 0,
+           "one list type for every element type is what keeps the definitions acyclic")
+}
+
+test_a_shift_lowers_to_the_c_shift() {
+    made = gate_c("mask(n: int) -> int => 1 << n\nhalf(n: int) -> int => n >> 1")
+
+    assert(made.index_of("(1 << n)") >= 0,
+           "a register mask is bit work, and C does bit work")
+    assert(made.index_of("(n >> 1)") >= 0,
+           "and the other direction is the other operator")
+    assert(made.index_of("(1 < 0)") < 0,
+           "not a comparison against nothing and a number thrown away")
+}

@@ -1,9 +1,13 @@
 import maca/lexer
 import maca/parser
+import maca/check
 import maca/emit_js
 
 js_of(src: str) -> str =>
     jemit_fn(parse_fn(lex(src), 0).snode)
+
+js_module(src: str) -> str =>
+    jemit_module(annotated(parse_module(lex(src), 0, [])))
 
 test_a_function_becomes_a_function() {
     assert_eq(js_of("add(a: int, b: int) -> int => a + b"),
@@ -17,13 +21,22 @@ test_a_name_javascript_has_taken_is_renamed() {
               "a parameter cannot be spelled like a keyword")
 }
 
-test_a_join_is_a_plus_and_equality_is_strict() {
+test_a_join_is_one_method_for_strings_and_lists() {
     assert_eq(js_of("f(a: str, b: str) -> str => a ++ b"),
-              "function f(a, b) {{ return (a + b); }}",
-              "one operator joins strings on this target")
+              "function f(a, b) {{ return (a).concat(b); }}",
+              "the one method that joins both, where `+` joins only one")
     assert_eq(js_of("f(a: int) -> bool => a == 1"),
               "function f(a) {{ return (a === 1); }}",
               "loose equality is never what the source meant")
+}
+
+test_two_records_are_equal_when_their_fields_are() {
+    assert_eq(js_of("f(a: Point, b: Point) -> bool => a == b"),
+              "function f(a, b) {{ return _meq(a, b); }}",
+              "`===` on two objects asks which allocation, not which value")
+    assert_eq(js_of("f(a: Point, b: Point) -> bool => a != b"),
+              "function f(a, b) {{ return !_meq(a, b); }}",
+              "and the negation is the same question")
 }
 
 test_a_binding_precedes_the_answer_it_feeds() {
@@ -38,12 +51,24 @@ test_a_field_reads_the_same_on_this_target() {
               "a field is a dot either way")
 }
 
+test_a_record_literal_carries_its_field_names() {
+    assert_eq(js_of("f() -> Point => Point {{ x = 1, y = 2 }}"),
+              "function f() {{ return {{ x: 1, y: 2 }}; }}",
+              "a field is a name and a value, and the name is left of the `=`")
+}
+
+test_a_with_copies_the_base_before_it_overrides() {
+    assert_eq(js_of("f(p: Point) -> Point => p with {{ x = 3 }}"),
+              "function f(p) {{ return {{ ...p, x: 3 }}; }}",
+              "the spread copies, so the value it was written from keeps its own")
+}
+
 test_a_list_is_an_array_and_length_is_a_property() {
     assert_eq(js_of("f(xs: int[]) -> int => xs.length()"),
-              "function f(xs) {{ return xs.length; }}",
+              "function f(xs) {{ return (xs).length; }}",
               "length is not called on this target")
     assert_eq(js_of("f(xs: int[]) -> int => xs.get(0)"),
-              "function f(xs) {{ return xs[0]; }}",
+              "function f(xs) {{ return (xs)[0]; }}",
               "and an index is brackets rather than a method")
 }
 
@@ -53,36 +78,278 @@ test_a_lambda_is_an_arrow() {
               "the one form both languages share")
 }
 
-test_a_match_is_a_chain_of_questions() {
+test_a_match_asks_each_arm_in_turn() {
     assert_eq(js_of("f(n: int) -> str => match n {{ 1 => \"one\" _ => \"more\" }}"),
-              "function f(n) {{ return (n === 1 ? \"one\" : \"more\"); }}",
-              "each arm asks once, and the underscore answers the rest")
+              "function f(n) {{ return (() => {{ const _s = n;"
+                  ++ " if (_s === 1) {{ return \"one\"; }}"
+                  ++ " if (true) {{ return \"more\"; }}"
+                  ++ " throw new Error(\"no match\"); }})(); }}",
+              "a test and an answer per arm, and the underscore always holds")
+}
+
+test_a_lowercase_pattern_names_the_value_it_matched() {
+    assert(js_of("f(n: int) -> int => match n {{ k => k }}")
+               .index_of("if (true) {{ var k = _s; return k; }}") >= 0,
+           "a word that is no variant is a name for the value, not a test")
+}
+
+test_a_variant_carrying_values_is_matched_by_its_tag() {
+    out = js_of("f(t: Tree) -> int => match t {{ Node(a, b) => a Leaf => 0 }}")
+
+    assert(out.index_of("if (_s.$ === \"Node\") {{ var a = _s._0; var b = _s._1;")
+               >= 0,
+           "the tag decides the arm and the payload binds by position")
+    assert(out.index_of("if (_s === Leaf)") >= 0,
+           "a variant carrying nothing is one name, compared as it stands")
+}
+
+test_a_guard_is_asked_after_the_shape_holds() {
+    assert(js_of("f(n: int) -> str => match n {{ k if k > 2 => \"big\" _ => \"\" }}")
+               .index_of("(() => {{ var k = _s; return (k > 2); }})()") >= 0,
+           "a guard reads the names the pattern bound, so the binds run first")
+}
+
+test_an_alternative_matches_either_side() {
+    assert(js_of("f(n: int) -> str => match n {{ 0 | 1 => \"low\" _ => \"\" }}")
+               .index_of("if ((_s === 0 || _s === 1))") >= 0,
+           "one arm, two tests, and neither of them binds")
+}
+
+test_a_field_pattern_binds_every_name_it_lists() {
+    assert(js_of("f(b: Box) -> int => match b {{ {{ w, h }} => w * h }}")
+               .index_of("var w = _s.w; var h = _s.h;") >= 0,
+           "the fields it names are read off the value it matched")
+}
+
+test_a_list_pattern_measures_before_it_binds() {
+    out = js_of("f(xs: str[]) -> str => match xs {{ \"go\", rest => rest _ => \"\" }}")
+
+    assert(out.index_of("Array.isArray(_s) && _s.length === 2") >= 0,
+           "a list pattern with no rest asks for exactly that many cells")
+    assert(out.index_of("(_s[0] === \"go\")") >= 0,
+           "a cell written as a literal is a test rather than a name")
+    assert(out.index_of("var rest = _s[1];") >= 0,
+           "and a cell written as a word is a name")
+}
+
+test_a_rest_pattern_takes_the_tail() {
+    out = js_of("f(xs: str[]) -> str[] => match xs {{ [x, ..more] => more _ => xs }}")
+
+    assert(out.index_of("_s.length >= 1") >= 0,
+           "a rest makes the length a floor rather than a count")
+    assert(out.index_of("var more = _s.slice(1);") >= 0,
+           "and the tail is whatever the counted cells leave")
 }
 
 test_a_loop_is_the_loop_javascript_writes() {
     assert_eq(js_of("f(xs: int[]) -> int {{ n = 0 for x in xs {{ seen(x) }} n }}"),
-              "function f(xs) {{ let n = 0; for (const x of xs)"
+              "function f(xs) {{ let n = 0; for (let x of xs)"
                   ++ " {{ seen(x); }} return n; }}",
               "a for over a list needs no index, and no semicolon behind it")
 }
 
 test_a_method_javascript_spells_differently_is_translated() {
     assert_eq(js_of("f(s: str) -> str => s.upper()"),
-              "function f(s) {{ return s.toUpperCase(); }}",
+              "function f(s) {{ return (s).toUpperCase(); }}",
               "the same idea under another name")
     assert_eq(js_of("f(xs: int[], v: int) -> int => xs.index_of(v)"),
-              "function f(xs, v) {{ return xs.indexOf(v); }}",
+              "function f(xs, v) {{ return (xs).indexOf(v); }}",
               "and the one method both languages have on both types")
+}
+
+test_a_method_the_target_lacks_becomes_a_helper() {
+    assert_eq(js_of("f(s: str) -> str => s.substr(1, 2)"),
+              "function f(s) {{ return _msubstr(s, 1, 2); }}",
+              "a length is not an end, so `slice` cannot be used as it stands")
+    assert_eq(js_of("f(s: str) -> str => s.pad_start(5, \".\")"),
+              "function f(s) {{ return _mpad(s, 5, \".\", 0); }}",
+              "padding carries the character it pads with")
+    assert_eq(js_of("f(xs: int[]) -> int[] => xs.sort()"),
+              "function f(xs) {{ return _msort(xs); }}",
+              "the builtin sort compares as text, which sorts no numbers")
+}
+
+test_a_membership_test_looks_inside_the_element() {
+    assert_eq(js_of("f(xs: Point[], p: Point) -> bool => xs.contains(p)"),
+              "function f(xs, p) {{ return _mhas(xs, p); }}",
+              "`includes` on records asks which allocation all over again")
 }
 
 test_an_append_copies_rather_than_mutating() {
     assert_eq(js_of("f(xs: int[], v: int) -> int[] => xs.push(v)"),
-              "function f(xs, v) {{ return [...xs, v]; }}",
+              "function f(xs, v) {{ return [...(xs), v]; }}",
               "push answers a new list, so the spread is the honest reading")
+}
+
+test_a_cell_can_be_written_through_its_reader() {
+    assert_eq(js_of("f(xs: int[]) -> int[] {{ xs.get(0) = 9 xs }}"),
+              "function f(xs) {{ xs[0] = 9; return xs; }}",
+              "a write through `get` is an index on the left")
+}
+
+test_a_range_is_the_list_it_stands_for() {
+    assert_eq(js_of("f(n: int) -> int[] => 0..n"),
+              "function f(n) {{ return _mrange(0, n); }}",
+              "javascript has no range, so the list is built")
 }
 
 test_a_character_test_is_a_pattern() {
     assert_eq(js_of("f(c: str) -> bool => c.is_ascii_digit()"),
-              "function f(c) {{ return /[0-9]/.test(c); }}",
-              "a one-character class, not a range comparison")
+              "function f(c) {{ return _mclass(c, 1); }}",
+              "one helper for the three classes the language asks about")
+}
+
+test_a_branch_that_is_a_statement_stays_a_statement() {
+    assert_eq(js_of("f(c: bool) -> int {{ if c {{ return 1 }} 2 }}"),
+              "function f(c) {{ if (c) {{ return 1; }} return 2; }}",
+              "no ternary holds a `return`, so the branch is not one")
+    assert_eq(js_of("f(c: bool) -> int {{ if c {{ g() }} else {{ h() }} 0 }}"),
+              "function f(c) {{ if (c) {{ g(); }} else {{ h(); }} return 0; }}",
+              "and the other side is the other half of the same statement")
+}
+
+test_a_jump_out_of_a_loop_is_a_statement_too() {
+    assert(js_of("f(n: int) -> int {{ while n > 0 {{ n = n - 1"
+                     ++ " if n > 2 {{ continue }} g() }} n }}")
+               .index_of("if ((n > 2)) {{ continue; }}") >= 0,
+           "`continue` in a ternary is a syntax error rather than a loop")
+}
+
+test_a_function_that_waits_says_so() {
+    assert_eq(js_of("f(t: Future) -> int => await t"),
+              "async function f(t) {{ return (await t); }}",
+              "only an async function may wait, and the word is not inferred")
+    assert_eq(js_of("f(n: int) -> int => n"),
+              "function f(n) {{ return n; }}",
+              "and one that does not wait is left alone")
+    assert_eq(js_of("f(n: int) -> Future => spawn g(n)"),
+              "function f(n) {{ return Promise.resolve().then(() => g(n)); }}",
+              "and what it waits for is what a promise already is")
+}
+
+test_a_branch_with_no_else_answers_with_nothing() {
+    assert(js_of("f(c: bool) -> int {{ n = 0 if c {{ n = 2 if c {{ n = 1 }} }} n }}")
+               .index_of(": ?)") < 0,
+           "a missing else emitted a bare `?`, which is not JavaScript either")
+}
+
+test_a_failure_is_thrown_and_a_try_catches_it() {
+    assert_eq(js_of("f() -> int {{ fail \"no\" 0 }}"),
+              "function f() {{ _mfail(\"no\"); return 0; }}",
+              "there is no `fail` statement, so it is a call that throws")
+    assert_eq(js_of("f() -> str => try g()"),
+              "function f() {{ return _mtry(() => g()); }}",
+              "and what it answers with is the message, or nothing")
+}
+
+test_a_builtin_is_out_of_a_programs_reach() {
+    assert_eq(js_of("f(n: int) -> str => str(n)"),
+              "function f(n) {{ return _mstr(n); }}",
+              "a program may define `str` itself, so the shim is spelled apart")
+    assert_eq(js_of("f(n: int) -> int => info(n)"),
+              "function f(n) {{ return _minfo(n); }}",
+              "the same for the one call every program makes")
+    assert_eq(js_of("f(a: int, b: int) -> int => min(a, b)"),
+              "function f(a, b) {{ return Math.min(a, b); }}",
+              "and the arithmetic the target already carries stays its own")
+}
+
+test_a_method_on_a_type_of_the_program_is_a_call() {
+    out = js_module("P = {{ n: int }}\nbig(p: P) -> bool => p.n > 1\n"
+                        ++ "use(p: P) -> bool => p.big()")
+
+    assert(out.index_of("function use(p) {{ return big(p); }}") >= 0,
+           "no object carries the program's own methods, so the receiver leads")
+    assert_eq(js_of("f(n: int) -> int => n.double()"),
+              "function f(n) {{ return double(n); }}",
+              "a number is no object either, and the language has no methods")
+}
+
+test_a_map_is_the_map_javascript_carries() {
+    out = js_module("f(m: Map str int) -> int => m.get(\"a\")\n"
+                        ++ "g(m: Map str int) -> Map str int => m.set(\"a\", 1)\n"
+                        ++ "h(m: Map str int) -> int => m.length()")
+
+    assert(out.index_of("return _mor(m, \"a\", 0);") >= 0,
+           "a missing key answers with the zero of the type it was declared over")
+    assert(out.index_of("return new Map(m).set(\"a\", 1);") >= 0,
+           "a write answers with a copy, the way the language does")
+    assert(out.index_of("return (m).size;") >= 0,
+           "and the count is the same idea under a property")
+}
+
+test_a_sum_becomes_names_javascript_can_hold() {
+    out = js_module("Tree = Leaf | Node(int, int)")
+
+    assert(out.index_of("const Leaf = \"Leaf\";") >= 0,
+           "a variant carrying nothing is a value, so one name is enough")
+    assert(out.index_of("function Node(_0, _1) {{ return {{ $: \"Node\", _0, _1 }}; }}")
+               >= 0,
+           "and one carrying values is tagged, so a match can read the tag")
+}
+
+test_a_module_level_binding_stands_before_it_is_read() {
+    out = js_module("Limit = 3\nf() -> int => Limit")
+
+    assert(out.index_of("let Limit = 3;\nfunction f()") >= 0,
+           "a constant of the module is a binding of the file, and it comes first")
+}
+
+test_the_functions_are_what_a_javascript_caller_imports() {
+    out = js_module("Tree = Leaf | Node\nadd(a: int, b: int) -> int => a + b")
+
+    assert(out.index_of("Object.assign(module.exports, {{ Leaf, Node, add, }})") >= 0,
+           "every function and every variant, which is what the package loads")
+    assert(out.index_of("typeof module !== \"undefined\"") >= 0,
+           "and a browser carries no module object, so the write is guarded")
+}
+
+test_a_main_still_runs_itself() {
+    assert(js_module("main() -> int => 0").index_of("\nmain();\n") >= 0,
+           "a program is a program, and the file it becomes is its entry")
+}
+
+test_a_jump_from_a_match_arm_reaches_the_loop() {
+    out = js_module("scan(n: int) -> int {{ i = 0"
+                    ++ " while i < n {{ i = i + 1"
+                    ++ " match i {{ 1 => {{ continue }} _ => {{ i = i }} }} }} i }}")
+
+    assert(out.index_of("if (_s === 1) {{ continue; }}") >= 0,
+           "the arm is a branch of the loop it is written in")
+    assert(out.index_of("return continue") < 0,
+           "an arrow function cannot leave the loop around it, and `return continue` is not a program")
+}
+
+test_an_if_without_an_else_in_tail_position_is_not_a_ternary() {
+    arm = js_module("scan(n: int) -> int {{ i = 0"
+                    ++ " while i < n {{ i = i + 1"
+                    ++ " match i {{ 1 => {{ if i < 2 {{ continue }} }}"
+                    ++ " _ => {{ i = i }} }} }} i }}")
+    block = js_module("scan(n: int) -> int {{ i = 0"
+                      ++ " while i < n {{ if i > 0 {{ i = i + 1"
+                      ++ " if i < 2 {{ continue }} }} }} i }}")
+
+    assert(arm.index_of("if ((i < 2)) {{ continue; }}") >= 0,
+           "the guard that ends an arm stays a branch")
+    assert(block.index_of("if ((i < 2)) {{ continue; }}") >= 0,
+           "and so does the one that ends a branch's own block")
+    assert(arm.index_of("? continue") < 0 && block.index_of("? continue") < 0,
+           "`continue` is a statement, and no ternary arm holds one")
+}
+
+test_the_binder_of_a_for_loop_is_writable() {
+    out = js_module("bump(xs: int[]) -> int {{ total = 0"
+                    ++ " for v in xs {{ v = v + 1 total = total + v }} total }}")
+
+    assert(out.index_of("for (let v of xs)") >= 0,
+           "the body writes the binder, and a const refuses the write at run time")
+}
+
+test_a_shift_lowers_to_the_javascript_shift() {
+    assert_eq(js_of("mask(n: int) -> int => 1 << n"),
+              "function mask(n) {{ return (1 << n); }}",
+              "the operator survives the trip to JavaScript")
+    assert_eq(js_of("half(n: int) -> int => n >> 1"),
+              "function half(n) {{ return (n >> 1); }}",
+              "and so does the other direction")
 }

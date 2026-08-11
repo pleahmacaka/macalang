@@ -232,10 +232,19 @@ quoted_end(cs: str[], i: int) -> int {
 }
 
 lex_word(cs: str[], i: int, out: Lexed) -> Lexed {
-    j = run_end(cs, i, is_alnum)
+    j = word_end(cs, run_end(cs, i, is_alnum))
     text = span(cs, i, j)
 
     moved(keep(out, mk_token(keyword_kind(text), text, i)), j)
+}
+
+/// An attached `-` is part of the name, and a spaced one subtracts.
+word_end(cs: str[], j: int) -> int {
+    if j + 1 < cs.length() && cs.get(j) == "-" && is_alpha(cs.get(j + 1)) {
+        word_end(cs, run_end(cs, j + 1, is_alnum))
+    } else {
+        j
+    }
 }
 
 lex_number(cs: str[], i: int, out: Lexed) -> Lexed {
@@ -319,14 +328,24 @@ lex_punct(cs: str[], i: int, out: Lexed, c: str) -> Lexed {
     } else if is_two_char(two) {
         moved(keep(out, mk_token(two_char_kind(two), two, i)), i + 2)
     } else {
-        moved(keep(unknown(out, c, i), mk_token(punct_kind(c), c, i)), i + 1)
+        moved(keep(unknown(out, c, i), mk_token(one_char_kind(cs, i, c), c, i)),
+              i + 1)
+    }
+}
+
+/// A `?` written tight against the value before it propagates; a spaced one opens a ternary.
+one_char_kind(cs: str[], i: int, c: str) -> Kind {
+    if c == "?" && i > 0 && !is_space(cs.get(i - 1)) {
+        QuestionPost
+    } else {
+        punct_kind(c)
     }
 }
 
 is_two_char(s: str) -> bool =>
     s == "->" || s == "=>" || s == "==" || s == "!=" ||
     s == "<=" || s == ">=" || s == "++" || s == "&&" || s == "||" ||
-    s == ".."
+    s == "<<" || s == ">>" || s == ".."
 
 two_char_kind(s: str) -> Kind =>
     match s {
@@ -337,6 +356,8 @@ two_char_kind(s: str) -> Kind =>
         "!=" => NotEq
         "<=" => Le
         ">=" => Ge
+        "<<" => Shl
+        ">>" => Shr
         "++" => PlusPlus
         "&&" => AmpAmp
         "||" => PipePipe

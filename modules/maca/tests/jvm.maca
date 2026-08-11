@@ -1,0 +1,107 @@
+import maca/lexer
+import maca/parser
+import maca/check
+import maca/emit_jvm
+
+gate_jvm(src: str) -> str =>
+    jvmemit_module(annotated(parse_module(lex(src), 0, [])))
+
+test_a_record_is_a_class_of_the_fields_it_declared() {
+    made = gate_jvm("Point = {{ x: int y: int }}\n"
+                    ++ "flipped() -> Point => Point {{ y = 2, x = 1 }}\n"
+                    ++ "main() -> int {{ p = flipped() info(\"x={{p.x}} y={{p.y}}\") 0 }}")
+
+    assert(made.index_of("final class Point {{") >= 0, "the record is a class")
+    assert(made.index_of("long x;") >= 0 && made.index_of("long y;") >= 0,
+           "with the fields it declared, at the types it declared")
+    assert(made.index_of("new Point().y(2L).x(1L)") >= 0,
+           "each field is written by the name it was given, so the literal's order cannot scramble it")
+    assert(made.index_of("String.valueOf(p.x)") >= 0, "and a field is read back by name")
+}
+
+test_a_string_pattern_is_a_case_label_not_a_second_default() {
+    made = gate_jvm("grade(s: str) -> int {{ match s {{"
+                    ++ " \"a\" => 1 \"b\" => 2 _ => 0 }} }}")
+
+    assert(made.index_of("case \"b\" -> 2L;") >= 0,
+           "Java switches on a string, so an arm is a label rather than a chain of ifs")
+    assert(made.index_of("default -> 0L;") >= 0, "and the catch-all is the default")
+    assert(made.slice(made.index_of("default ->") + 1, made.length())
+               .index_of("default ->") < 0,
+           "one default, because two will not compile")
+}
+
+test_a_sum_is_an_enum_and_its_match_is_a_switch() {
+    made = gate_jvm("Status = Todo | Done\n"
+                    ++ "label(s: Status) -> str {{ match s {{"
+                    ++ " Todo => \"todo\" Done => \"done\" }} }}")
+
+    assert(made.index_of("enum Status {{ Todo, Done }}") >= 0, "the sum is an enum")
+    assert(made.index_of("case Todo -> \"todo\";") >= 0
+               && made.index_of("case Done -> \"done\";") >= 0,
+           "and each variant is a label")
+    assert(made.index_of("throw new IllegalStateException") >= 0,
+           "a switch over an enum still needs somewhere to go, even where nothing reaches it")
+}
+
+test_break_reaches_the_loop_it_is_written_in() {
+    made = gate_jvm("count_to(n: int) -> int {{ i = 0"
+                    ++ " while true {{ i = i + 1 if i >= n {{ break }} }} i }}")
+
+    assert(made.index_of("while (true) {{") >= 0, "the loop")
+    assert(made.index_of("break;") >= 0, "and the jump out of it")
+    assert(made.index_of("i = (i + 1L);") >= 0,
+           "the counter is assigned rather than redeclared")
+}
+
+test_the_entry_point_is_the_one_the_jvm_looks_for() {
+    made = gate_jvm("main() -> int {{ info(str(6 * 7)) 0 }}")
+
+    assert(made.index_of("public static void main(String[] _argv)") >= 0,
+           "the JVM starts at a signature it recognises, not at one that answers a number")
+    assert(made.index_of("System.out.println") >= 0, "info writes a line")
+    assert(made.index_of("(6L * 7L)") >= 0, "and an int literal is a long")
+}
+
+test_a_function_is_a_static_method_of_the_module_class() {
+    made = gate_jvm("twice(n: int) -> int => n * 2\ngreet(s: str) -> str => s")
+
+    assert(made.index_of("final class Main {{") >= 0,
+           "Java has no free function, so the module is a class")
+    assert(made.index_of("static long twice(long n) {{") >= 0, "int is long")
+    assert(made.index_of("static String greet(String s) {{") >= 0, "and str is String")
+}
+
+gate_jvm_lifted(src: str) -> str =>
+    jvmemit_module(lifted_module(src))
+
+lifted_module(src: str) -> Module =>
+    annotated(lifted(annotated(parse_module(lex(src), 0, []))))
+
+test_a_lifted_lambda_answers_what_its_body_answers() {
+    made = gate_jvm_lifted("main() -> int {{ g = v => v + 1 info(str(g(1))) 0 }}")
+
+    assert(made.index_of("static long maca_lambda_0(long v) {{") >= 0,
+           "the lifted lambda answers a long, because a method that declares nothing answers void")
+    assert(made.index_of("return (v + 1L);") >= 0,
+           "and it returns, because Java has no statement that is a bare expression")
+    assert(made.index_of("static void maca_lambda_0") < 0,
+           "so nothing is left declaring void over a body that answers a number")
+}
+
+test_a_function_used_as_a_value_is_refused() {
+    said = jvmemit_errors(lifted_module(
+        "main() -> int {{ g = v => v + 1 info(\"ok\") 0 }}")).join(" ")
+
+    assert(said.index_of("`g` is a builtin") < 0,
+           "the lift already named the lambda, so the complaint is about the name, not the call")
+    assert(said.index_of("used as a value") >= 0,
+           "a bare method name is not a Java value, so the target says so rather than writing one")
+}
+
+test_a_shift_lowers_to_the_java_shift() {
+    made = gate_jvm("mask(n: int) -> int => 1 << n\nhalf(n: int) -> int => n >> 1")
+
+    assert(made.index_of("<< n") >= 0, "a long shifts in Java too")
+    assert(made.index_of(">> 1") >= 0, "in both directions")
+}

@@ -268,6 +268,13 @@ range_type(env: Env, a: Ty, b: Ty) -> Typed {
     typed(joined(lo, t_int(), b), t_array(t_int()))
 }
 
+/// A shift moves bits, so both sides count them and neither may be a float.
+shift_type(env: Env, a: Ty, b: Ty) -> Typed {
+    value = joined(env, t_int(), a)
+
+    typed(joined(value, t_int(), b), t_int())
+}
+
 unary_type(env: Env, e: Expr) -> Typed {
     inner = type_in(env, e.children.get(0))
 
@@ -275,6 +282,10 @@ unary_type(env: Env, e: Expr) -> Typed {
         typed(inner.env, t_any())
     } else if e.text == "try" {
         typed(inner.env, t_str())
+    } else if e.text == "spawn" {
+        typed(inner.env, t_con("Future", []))
+    } else if e.text == "await" {
+        typed(inner.env, t_int())
     } else {
         inner
     }
@@ -309,6 +320,8 @@ call_type(env: Env, e: Expr) -> Typed {
 
     if declared >= 0 && tag_wins(env, e, declared) {
         typed(walk_args(env, e.children, 0), builtin_type(e.text))
+    } else if local >= 0 && callable(env, env.types.get(local)) {
+        call_local(env, e, env.types.get(local))
     } else if declared >= 0 {
         call_declared(env, e, env.sigs.get(declared))
     } else if variant >= 0 {
@@ -319,6 +332,9 @@ call_type(env: Env, e: Expr) -> Typed {
         typed(walk_args(env, e.children, 0), builtin_type(e.text))
     }
 }
+
+callable(env: Env, held: Ty) -> bool =>
+    resolve(env.infer, held).kind == KFn || resolve(env.infer, held).kind == KVar
 
 call_local(env: Env, e: Expr, held: Ty) -> Typed {
     made = arg_types(env, e.children, 0, [])
@@ -399,8 +415,9 @@ builtin_type(name: str) -> Ty {
 
 ElementTags = " html head title meta link style script body div span p pre code a button input textarea select option label form header footer main section article nav aside ul ol li table thead tbody tr td th h1 h2 h3 h4 h5 h6 img svg canvas small strong em b i hr br blockquote figure figcaption details summary dialog progress meter video audio "
 
+/// `element` names its tag with its first argument; every other tag is its own name.
 is_element_tag(name: str) -> bool =>
-    ElementTags.index_of(" {name} ") >= 0
+    name == "element" || ElementTags.index_of(" {name} ") >= 0
 
 is_prelude_call(name: str) -> bool =>
     is_str_builtin(name) || is_float_builtin(name) || is_int_builtin(name)
@@ -408,8 +425,10 @@ is_prelude_call(name: str) -> bool =>
 
 is_str_builtin(name: str) -> bool =>
     name == "str" || name == "chr" || name == "read_line" || name == "capture"
+        || name == "capture_err"
         || name == "read_file" || name == "env" || name == "cwd"
-        || name == "real_path" || name == "maca_attr" || name == "maca_flag"
+        || name == "real_path" || name == "now_iso" || name == "format_time"
+        || name == "maca_attr" || name == "maca_flag"
         || name == "maca_element"
 
 is_float_builtin(name: str) -> bool =>
@@ -441,6 +460,9 @@ is_compare(op: str) -> bool =>
 is_logic(op: str) -> bool =>
     op == "&&" || op == "||"
 
+is_shift(op: str) -> bool =>
+    op == "<<" || op == ">>"
+
 binop_type(env: Env, e: Expr) -> Typed {
     if e.text == "=" {
         type_in(env, e.children.get(1))
@@ -457,6 +479,8 @@ operator_type(env: Env, e: Expr) -> Typed {
         typed(rhs.env, concat_type(rhs.env, lhs.ty, rhs.ty))
     } else if e.text == ".." {
         range_type(rhs.env, lhs.ty, rhs.ty)
+    } else if is_shift(e.text) {
+        shift_type(rhs.env, lhs.ty, rhs.ty)
     } else if is_compare(e.text) {
         typed(joined(rhs.env, lhs.ty, rhs.ty), t_bool())
     } else if is_logic(e.text) {
@@ -534,6 +558,8 @@ arith_type(env: Env, op: str, a: Ty, b: Ty) -> Typed {
 
     if at >= 0 {
         typed(env, fn_ret(env.sigs.get(at)))
+    } else if op == "/" && resolve(env.infer, a).kind == KStr {
+        typed(env, t_str())
     } else {
         numeric_type(env, a, b)
     }
@@ -575,18 +601,30 @@ block_type(env: Env, e: Expr) -> Typed {
 
 method_type(env: Env, e: Expr) -> Typed {
     recv = type_in(env, e.children.get(0))
-    walked = walk_args(recv.env, e.children, 1)
 
-    if e.text == "map" && e.children.length() == 2 {
+    if (e.text == "map" || e.text == "parallel") && e.children.length() == 2 {
         mapped_type(recv.env, resolve(recv.env.infer, recv.ty),
                     e.children.get(1))
     } else if e.text == "filter" && e.children.length() == 2 {
         sifted_type(recv.env, resolve(recv.env.infer, recv.ty),
                     e.children.get(1))
+    } else if is_ufcs_call(env, e, resolve(recv.env.infer, recv.ty)) {
+        call_type(env, e_call(e.text, e.children))
     } else {
+        walked = walk_args(recv.env, e.children, 1)
+
         typed(walked, method_result(e.text, resolve(walked.infer, recv.ty)))
     }
 }
+
+/// `x.f(y)` is `f(x, y)` when no method answers to the name and the module declares one.
+is_ufcs_call(env: Env, e: Expr, recv: Ty) -> bool =>
+    env.fns.index_of(e.text) >= 0
+        && (method_result(e.text, recv).kind == KAny || own_method(recv))
+
+/// A named type of the module's own answers to its functions, not to list methods.
+own_method(t: Ty) -> bool =>
+    t.kind == KRec || (t.kind == KCon && t.name != "Array" && !is_map_ty(t))
 
 mapped_type(env: Env, recv: Ty, f: Expr) -> Typed {
     got = type_in(env, f)
@@ -605,7 +643,9 @@ sifted_type(env: Env, recv: Ty, f: Expr) -> Typed {
 }
 
 method_result(name: str, recv: Ty) -> Ty {
-    if name == "length" || name == "count" || name == "index_of" {
+    if is_map_ty(recv) {
+        map_method_result(name, recv)
+    } else if name == "length" || name == "count" || name == "index_of" {
         t_int()
     } else if name == "at" {
         element_of(recv)
@@ -632,6 +672,26 @@ method_result(name: str, recv: Ty) -> Ty {
     }
 }
 
+is_map_ty(t: Ty) -> bool =>
+    t.kind == KCon && map_type_val(t.name) != ""
+
+/// A map answers with the types it was declared over, not with its own.
+map_method_result(name: str, recv: Ty) -> Ty {
+    if name == "get" {
+        ty_named(map_type_val(recv.name))
+    } else if name == "keys" {
+        t_array(ty_named(map_type_key(recv.name)))
+    } else if name == "values" {
+        t_array(ty_named(map_type_val(recv.name)))
+    } else if name == "has" || name == "contains" {
+        t_bool()
+    } else if name == "length" || name == "count" {
+        t_int()
+    } else {
+        recv
+    }
+}
+
 is_reshaping_method(name: str) -> bool =>
     name == "pop" || name == "reverse" || name == "sort" || name == "set"
         || name == "insert" || name == "remove"
@@ -643,7 +703,8 @@ is_picking_method(name: str) -> bool =>
 is_text_method(name: str) -> bool =>
     name == "trim" || name == "lower" || name == "upper"
         || name == "replace" || name == "repeat" || name == "substr"
-        || name == "pad_start" || name == "pad_end"
+        || name == "pad_start" || name == "pad_end" || name == "fixed"
+        || name == "pad_center"
 
 is_asking_method(name: str) -> bool =>
     name == "starts_with" || name == "ends_with" || name == "contains"
@@ -744,6 +805,30 @@ bound_arm(env: Env, pat: Expr) -> Env {
     }
 }
 
+/// A comma pattern matches a list by position, so a named cell holds an element.
+bound_cells(env: Env, pat: Expr, el: Ty) -> Env {
+    if pat.kind == EGuard {
+        bound_cells(env, pat.children.get(0), el)
+    } else if pat.kind == EIdent && (pat.text == "[]" || pat.text == "[..]") {
+        bind_cell_names(env, pat, el, 0)
+    } else {
+        env
+    }
+}
+
+bind_cell_names(env: Env, pat: Expr, el: Ty, i: int) -> Env {
+    if i >= pat.children.length() {
+        env
+    } else if pat.children.get(i).kind != EIdent {
+        bind_cell_names(env, pat, el, i + 1)
+    } else if pat.text == "[..]" && i == pat.children.length() - 1 {
+        bind(env, pat.children.get(i).text, t_array(el))
+    } else {
+        bind_cell_names(bind(env, pat.children.get(i).text, el),
+                        pat, el, i + 1)
+    }
+}
+
 bind_slots_of(env: Env, bs: Expr[], tys: str[], i: int) -> Env {
     if i >= bs.length() || i >= tys.length() {
         env
@@ -816,10 +901,43 @@ check_body(env: Env, stmts: Stmt[], i: int, last: Ty) -> Typed {
 }
 
 stmt_type(env: Env, s: Stmt, is_last: bool) -> Typed {
-    if is_last || s.kind != SExpr || s.value.kind != EIf {
+    if is_last || s.kind != SExpr || !branches_for_effect(s.value) {
         type_in(env, s.value)
     } else {
-        typed(walk_args(env, s.value.children, 0), t_unit())
+        typed(effect_walk(env, s.value), t_unit())
+    }
+}
+
+branches_for_effect(e: Expr) -> bool =>
+    e.kind == EIf || e.kind == EMatch
+
+/// A branch run for its effect answers nothing, so its branches need not agree.
+effect_walk(env: Env, e: Expr) -> Env {
+    if e.kind == EIf {
+        cond = type_in(env, e.children.get(0))
+
+        effect_walk(effect_walk(cond.env, e.children.get(1)),
+                    e.children.get(2))
+    } else if e.kind == EMatch && e.children.length() >= 3 {
+        seen = type_in(env, e.children.get(0))
+
+        effect_arms(seen.env, e.children, 1)
+    } else if e.kind == EBlock {
+        inner = check_body(env, e.stmts, 0, t_any())
+        after = effect_walk(inner.env, e.children.get(0))
+
+        after with { names = env.names, types = env.types }
+    } else {
+        type_in(env, e).env
+    }
+}
+
+effect_arms(env: Env, cs: Expr[], i: int) -> Env {
+    if i + 1 >= cs.length() {
+        env
+    } else {
+        effect_arms(effect_walk(bound_arm(env, cs.get(i)), cs.get(i + 1)),
+                    cs, i + 2)
     }
 }
 
@@ -827,7 +945,7 @@ extend(env: Env, s: Stmt, ty: Ty) -> Env {
     if s.kind != SBind {
         env
     } else if s.ret != "" {
-        bind(env, s.name, ty_named(s.ret))
+        bind(joined(env, ty_named(s.ret), ty), s.name, ty_named(s.ret))
     } else {
         bind(env, s.name, ty)
     }
@@ -936,37 +1054,44 @@ annotate_items(env: Env, items: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
 }
 
 annotate_item(env: Env, s: Stmt) -> Stmt {
-    if s.kind != SFn {
+    if s.kind == SBind {
+        s with { value = annotate_expr(env, s.value) }
+    } else if s.kind != SFn {
         s
     } else {
         tys = signature_params(env, s.name)
         inner = bind_params(env, s.params, tys, 0)
 
-        s with { ret = erased_ret(s.ret),
-                 params = annotate_params(env.infer, s.params, tys, 0),
+        keep = s.body.length() > 0
+
+        s with { ret = erased_ret(s.ret, keep),
+                 params = annotate_params(env.infer, s.params, tys, 0, keep),
                  body = annotate_body(inner, s.body, 0, []) }
     }
 }
 
-erased_ret(ret: str) -> str {
-    if ty_named(ret).kind == KAny {
+erased_ret(ret: str, keep: bool) -> str {
+    if keep && has_type_var(ret) {
+        ret
+    } else if ty_named(ret).kind == KAny {
         ""
     } else {
         ret
     }
 }
 
-annotate_params(inf: Infer, ps: Expr[], tys: Ty[], i: int) -> Expr[] {
+annotate_params(inf: Infer, ps: Expr[], tys: Ty[], i: int,
+                keep: bool) -> Expr[] {
     if i >= ps.length() {
         []
     } else {
-        [annotate_param(inf, ps.get(i), tys, i)]
-            ++ annotate_params(inf, ps, tys, i + 1)
+        [annotate_param(inf, ps.get(i), tys, i, keep)]
+            ++ annotate_params(inf, ps, tys, i + 1, keep)
     }
 }
 
-annotate_param(inf: Infer, p: Expr, tys: Ty[], i: int) -> Expr {
-    if i >= tys.length() {
+annotate_param(inf: Infer, p: Expr, tys: Ty[], i: int, keep: bool) -> Expr {
+    if i >= tys.length() || (keep && has_type_var(p.ty)) {
         p
     } else {
         p with { ty = surface_of(grounded(inf, tys.get(i))) }
@@ -1037,7 +1162,7 @@ annotated_node(env: Env, e: Expr) -> Expr {
 
     e with { ty = surface_of(type_in(env, e).ty),
              stmts = annotate_body(looped(env, e), e.stmts, 0, []),
-             children = annotate_children(inner.env, e.children, 0, []) }
+             children = annotate_children(inner.env, e, 0, []) }
 }
 
 is_element_call(env: Env, e: Expr) -> bool =>
@@ -1053,10 +1178,15 @@ tag_wins(env: Env, e: Expr, declared: int) -> bool =>
         && env.varargs.index_of(e.text) < 0
         && fn_params(env.sigs.get(declared)).length() != e.children.length()
 
-lowered_element(env: Env, e: Expr) -> Expr =>
+lowered_element(env: Env, e: Expr) -> Expr {
+    named = e.text == "element" && e.children.length() > 0
+    from = named ? 1 : 0
+    tag = named ? e.children.get(0) : e_str(e.text)
+
     e_call("maca_element",
-           [e_str(e.text), element_attrs(env, e.children, 0, e_str("")),
-            element_kids(env, e.children, 0, e_str(""))])
+           [tag, element_attrs(env, e.children, from, e_str("")),
+            element_kids(env, e.children, from, e_str(""))])
+}
 
 element_attrs(env: Env, cs: Expr[], i: int, acc: Expr) -> Expr {
     if i >= cs.length() {
@@ -1116,12 +1246,52 @@ looped(env: Env, e: Expr) -> Env {
     }
 }
 
-annotate_children(env: Env, cs: Expr[], i: int, acc: Expr[]) -> Expr[] {
-    if i >= cs.length() {
+annotate_children(env: Env, e: Expr, i: int, acc: Expr[]) -> Expr[] {
+    if i >= e.children.length() {
         acc
     } else {
-        annotate_children(env, cs, i + 1,
-                          acc ++ [annotate_expr(env, cs.get(i))])
+        annotate_children(env, e, i + 1,
+                          acc ++ [annotate_expr(child_scope(env, e, i),
+                                                e.children.get(i))])
+    }
+}
+
+/// An arm and a lambda name their own bindings, and only that child reads them.
+child_scope(env: Env, e: Expr, i: int) -> Env {
+    if e.kind == EMatch && i >= 2 && i % 2 == 0 {
+        arm_scope(env, e.children.get(0), e.children.get(i - 1))
+    } else if e.kind == EMethod && i > 0 && e.children.get(i).kind == ELambda {
+        lambda_scope(env, e, i)
+    } else {
+        env
+    }
+}
+
+arm_scope(env: Env, scrut: Expr, pat: Expr) -> Env {
+    seen = type_in(env, scrut)
+
+    bound_cells(bound_arm(seen.env, pat), pat,
+                element_of(resolve(seen.env.infer, seen.ty)))
+}
+
+lambda_scope(env: Env, e: Expr, i: int) -> Env {
+    ps = lambda_params(e.children.get(i))
+    recv = type_in(env, e.children.get(0))
+    el = element_of(resolve(recv.env.infer, recv.ty))
+
+    if i == 2 && ps.length() == 2 {
+        bind(bind(env, ps.get(0).text, type_in(env, e.children.get(1)).ty),
+             ps.get(1).text, el)
+    } else {
+        bind_each(env, ps, el, 0)
+    }
+}
+
+bind_each(env: Env, ps: Expr[], t: Ty, i: int) -> Env {
+    if i >= ps.length() {
+        env
+    } else {
+        bind_each(bind(env, ps.get(i).text, t), ps, t, i + 1)
     }
 }
 
@@ -1130,3 +1300,440 @@ type_of(e: Expr) -> str =>
 
 count_errors(e: Expr) -> int =>
     type_in(empty_env(), e).env.errors.length()
+
+Lift = {
+    items: Stmt[]
+    tops:  str[]
+    n:     int
+}
+
+Lifted = {
+    node: Expr
+    at:   Lift
+}
+
+LiftedAll = {
+    nodes: Expr[]
+    at:    Lift
+}
+
+LiftedBody = {
+    stmts: Stmt[]
+    at:    Lift
+}
+
+/// A lambda used as a value becomes a function of its own, which every back end already passes by name.
+lifted(m: Module) -> Module {
+    got = lift_items(m.items, 0,
+                     Lift { items = [], tops = top_names(m.items, 0, []),
+                            n = 0 })
+
+    Module { items = got.items, errors = m.errors }
+}
+
+top_names(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind == SFn || items.get(i).kind == SBind {
+        top_names(items, i + 1, acc ++ [items.get(i).name])
+    } else {
+        top_names(items, i + 1, acc)
+    }
+}
+
+lift_items(items: Stmt[], i: int, at: Lift) -> Lift {
+    if i >= items.length() {
+        at
+    } else {
+        one = lift_stmt(items.get(i), at)
+
+        lift_items(items, i + 1,
+                   one.at with { items = one.at.items ++ one.stmts })
+    }
+}
+
+lift_stmt(s: Stmt, at: Lift) -> LiftedBody {
+    if s.kind == SFn {
+        body = lift_body(s.body, 0, [], at)
+
+        LiftedBody { stmts = [s with { body = body.stmts }], at = body.at }
+    } else if s.kind == SRecord || s.kind == SSum {
+        LiftedBody { stmts = [s], at }
+    } else {
+        got = lift_expr(s.value, at)
+
+        LiftedBody { stmts = [s with { value = got.node }], at = got.at }
+    }
+}
+
+lift_body(stmts: Stmt[], i: int, acc: Stmt[], at: Lift) -> LiftedBody {
+    if i >= stmts.length() {
+        LiftedBody { stmts = acc, at }
+    } else {
+        one = lift_stmt(stmts.get(i), at)
+
+        lift_body(stmts, i + 1, acc ++ one.stmts, one.at)
+    }
+}
+
+lift_expr(e: Expr, at: Lift) -> Lifted {
+    if e.kind == ELambda && free_of_capture(e, at.tops) {
+        lift_one(e, at)
+    } else {
+        kids = lift_all(e.children, 0, [], at, e)
+        body = lift_body(e.stmts, 0, [], kids.at)
+
+        Lifted { node = e with { children = kids.nodes, stmts = body.stmts },
+                 at = body.at }
+    }
+}
+
+lift_all(cs: Expr[], i: int, acc: Expr[], at: Lift, owner: Expr) -> LiftedAll {
+    if i >= cs.length() {
+        LiftedAll { nodes = acc, at }
+    } else if held_inline(owner, cs.get(i)) {
+        lift_all(cs, i + 1, acc ++ [cs.get(i)], at, owner)
+    } else {
+        one = lift_expr(cs.get(i), at)
+
+        lift_all(cs, i + 1, acc ++ [one.node], one.at, owner)
+    }
+}
+
+/// `map` and its neighbours read the lambda's own body, and an attribute holds a handler, not a name.
+held_inline(owner: Expr, kid: Expr) -> bool =>
+    kid.kind == ELambda
+        && (owner.kind == EAttr || is_attribute_call(owner)
+            || (owner.kind == EMethod && inlines_lambda(owner.text)))
+
+is_attribute_call(owner: Expr) -> bool =>
+    owner.kind == ECall
+        && (owner.text == "str" || owner.text == "maca_attr"
+            || owner.text == "maca_flag")
+
+inlines_lambda(name: str) -> bool =>
+    name == "map" || name == "filter" || name == "reduce" || name == "fold"
+        || name == "parallel"
+
+/// The lifted function answers what the lambda's body answers, which a typed target must be told.
+lift_one(e: Expr, at: Lift) -> Lifted {
+    name = "maca_lambda_{str(at.n)}"
+    made = s_fn(name, lambda_body(e).ty, lambda_params(e),
+                [s_expr(lambda_body(e))])
+    inner = lift_stmt(made, at with { n = at.n + 1 })
+
+    Lifted { node = e_ident(name),
+             at = inner.at with { items = inner.at.items ++ inner.stmts } }
+}
+
+/// A lambda that reads a name from around it needs an environment, which a bare function has not.
+free_of_capture(e: Expr, tops: str[]) -> bool =>
+    reads_only(lambda_body(e),
+               lambda_names(lambda_params(e), 0, []) ++ tops)
+
+lambda_names(ps: Expr[], i: int, acc: str[]) -> str[] {
+    if i >= ps.length() {
+        acc
+    } else {
+        lambda_names(ps, i + 1, acc ++ [ps.get(i).text])
+    }
+}
+
+reads_only(e: Expr, bound: str[]) -> bool {
+    if e.kind == EIdent {
+        bound.index_of(e.text) >= 0 || !starts_lower(e.text)
+    } else if e.kind == ELambda {
+        reads_only(lambda_body(e),
+                   bound ++ lambda_names(lambda_params(e), 0, []))
+    } else {
+        reads_all(e.children, 0, bound) && reads_all_stmts(e.stmts, 0, bound)
+    }
+}
+
+reads_all(cs: Expr[], i: int, bound: str[]) -> bool {
+    if i >= cs.length() {
+        true
+    } else if !reads_only(cs.get(i), bound) {
+        false
+    } else {
+        reads_all(cs, i + 1, bound)
+    }
+}
+
+reads_all_stmts(ss: Stmt[], i: int, bound: str[]) -> bool {
+    if i >= ss.length() {
+        true
+    } else if !reads_only(ss.get(i).value, bound) {
+        false
+    } else {
+        reads_all_stmts(ss, i + 1, bound ++ [ss.get(i).name])
+    }
+}
+
+Want = {
+    name: str
+    tys:  str[]
+}
+
+Poly = {
+    gens:  Stmt[]
+    wants: Want[]
+    done:  str[]
+}
+
+PolyNode = {
+    node: Expr
+    at:   Poly
+}
+
+PolyAll = {
+    nodes: Expr[]
+    at:    Poly
+}
+
+PolyBody = {
+    stmts: Stmt[]
+    at:    Poly
+}
+
+/// A function declared over a type variable is compiled once per concrete argument tuple, so no back end meets one.
+monomorphic(m: Module) -> Module {
+    gens = generic_items(m.items, 0, [])
+
+    if gens.length() == 0 {
+        m
+    } else {
+        first = mono_items(m.items, 0, [],
+                           Poly { gens, wants = [], done = [] })
+        grown = expanded(first.at, 0, [])
+
+        Module { items = first.stmts ++ grown.stmts, errors = m.errors }
+    }
+}
+
+generic_items(items: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
+    if i >= items.length() {
+        acc
+    } else if is_generic_fn(items.get(i)) {
+        generic_items(items, i + 1, acc ++ [items.get(i)])
+    } else {
+        generic_items(items, i + 1, acc)
+    }
+}
+
+/// A declaration without a body is what a foreign block or a back end writes, so it keeps its type variable.
+is_generic_fn(s: Stmt) -> bool =>
+    s.kind == SFn && s.body.length() > 0
+        && (has_type_var(s.ret) || any_type_var(s.params, 0))
+
+any_type_var(ps: Expr[], i: int) -> bool {
+    if i >= ps.length() {
+        false
+    } else if has_type_var(ps.get(i).ty) {
+        true
+    } else {
+        any_type_var(ps, i + 1)
+    }
+}
+
+/// A name the type table answers nothing for is the one thing left that it can be.
+has_type_var(name: str) -> bool {
+    if is_array_name(name) {
+        has_type_var(name.slice(0, name.length() - 2))
+    } else {
+        name != "" && ty_named(name).kind == KAny
+    }
+}
+
+mono_items(items: Stmt[], i: int, acc: Stmt[], at: Poly) -> PolyBody {
+    if i >= items.length() {
+        PolyBody { stmts = acc, at }
+    } else if is_generic_fn(items.get(i)) {
+        mono_items(items, i + 1, acc, at)
+    } else {
+        one = mono_stmt(items.get(i), at)
+
+        mono_items(items, i + 1, acc ++ one.stmts, one.at)
+    }
+}
+
+mono_stmt(s: Stmt, at: Poly) -> PolyBody {
+    if s.kind == SRecord || s.kind == SSum {
+        PolyBody { stmts = [s], at }
+    } else if s.kind == SFn {
+        body = mono_body(s.body, 0, [], at)
+
+        PolyBody { stmts = [s with { body = body.stmts }], at = body.at }
+    } else {
+        got = mono_expr(s.value, at)
+
+        PolyBody { stmts = [s with { value = got.node }], at = got.at }
+    }
+}
+
+mono_body(stmts: Stmt[], i: int, acc: Stmt[], at: Poly) -> PolyBody {
+    if i >= stmts.length() {
+        PolyBody { stmts = acc, at }
+    } else {
+        one = mono_stmt(stmts.get(i), at)
+
+        mono_body(stmts, i + 1, acc ++ one.stmts, one.at)
+    }
+}
+
+mono_expr(e: Expr, at: Poly) -> PolyNode {
+    kids = mono_all(e.children, 0, [], at)
+    body = mono_body(e.stmts, 0, [], kids.at)
+    node = e with { children = kids.nodes, stmts = body.stmts }
+
+    if e.kind != ECall {
+        PolyNode { node, at = body.at }
+    } else {
+        mono_named(node, body.at)
+    }
+}
+
+mono_all(cs: Expr[], i: int, acc: Expr[], at: Poly) -> PolyAll {
+    if i >= cs.length() {
+        PolyAll { nodes = acc, at }
+    } else {
+        one = mono_expr(cs.get(i), at)
+
+        mono_all(cs, i + 1, acc ++ [one.node], one.at)
+    }
+}
+
+mono_named(e: Expr, at: Poly) -> PolyNode {
+    found = generic_at(at.gens, e.text, 0)
+
+    if found >= at.gens.length() {
+        PolyNode { node = e, at }
+    } else {
+        mono_call(e, at.gens.get(found), at)
+    }
+}
+
+/// The rewritten call carries its specialisation's return type, so a call around it reads a concrete argument.
+mono_call(e: Expr, g: Stmt, at: Poly) -> PolyNode {
+    want = Want { name = e.text, tys = arg_type_names(e.children, 0, []) }
+
+    PolyNode { node = e with { text = mangled(want),
+                               ty = specialised_ty(g, want.tys, g.ret) },
+               at = at with { wants = at.wants ++ [want] } }
+}
+
+generic_at(gens: Stmt[], name: str, i: int) -> int {
+    if i >= gens.length() || gens.get(i).name == name {
+        i
+    } else {
+        generic_at(gens, name, i + 1)
+    }
+}
+
+arg_type_names(cs: Expr[], i: int, acc: str[]) -> str[] {
+    if i >= cs.length() {
+        acc
+    } else {
+        arg_type_names(cs, i + 1, acc ++ [cs.get(i).ty])
+    }
+}
+
+mangled(w: Want) -> str {
+    tags = w.tys.map(type_tag).join("_")
+
+    "{w.name}__{tags}"
+}
+
+/// A mangled name has to be a C identifier, so a bracket, a space and an arrow each become a word.
+type_tag(ty: str) -> str {
+    if ty == "" {
+        "any"
+    } else if ty.length() >= 2
+            && ty.slice(ty.length() - 2, ty.length()) == "[]" {
+        "arr" ++ type_tag(ty.slice(0, ty.length() - 2))
+    } else if map_type_val(ty) != "" {
+        type_tag(map_type_val(ty)) ++ "map"
+    } else if ty.index_of(") -> ") >= 0 {
+        "fn" ++ type_tag(ty.slice(ty.index_of(") -> ") + 5, ty.length()))
+    } else if ty == "float" {
+        "f64"
+    } else {
+        ty
+    }
+}
+
+expanded(at: Poly, i: int, acc: Stmt[]) -> PolyBody {
+    if i >= at.wants.length() {
+        PolyBody { stmts = acc, at }
+    } else {
+        w = at.wants.get(i)
+        name = mangled(w)
+
+        if at.done.index_of(name) >= 0 {
+            expanded(at, i + 1, acc)
+        } else {
+            g = at.gens.get(generic_at(at.gens, w.name, 0))
+            one = mono_stmt(specialised(g, w, name),
+                            at with { done = at.done ++ [name] })
+
+            expanded(one.at, i + 1, acc ++ one.stmts)
+        }
+    }
+}
+
+specialised(g: Stmt, w: Want, name: str) -> Stmt =>
+    g with { name,
+             ret = specialised_ty(g, w.tys, g.ret),
+             params = specialised_params(g.params, w.tys, 0) }
+
+specialised_params(ps: Expr[], tys: str[], i: int) -> Expr[] {
+    if i >= ps.length() {
+        []
+    } else {
+        [specialised_param(ps.get(i), tys, i)]
+            ++ specialised_params(ps, tys, i + 1)
+    }
+}
+
+specialised_param(p: Expr, tys: str[], i: int) -> Expr {
+    if i >= tys.length() {
+        p
+    } else {
+        p with { ty = tys.get(i) }
+    }
+}
+
+specialised_ty(g: Stmt, tys: str[], ty: str) -> str {
+    if is_array_name(ty) {
+        specialised_ty(g, tys, ty.slice(0, ty.length() - 2)) ++ "[]"
+    } else if !has_type_var(ty) {
+        ty
+    } else {
+        var_type(g.params, tys, 0, ty)
+    }
+}
+
+var_type(ps: Expr[], tys: str[], i: int, v: str) -> str {
+    if i >= ps.length() || i >= tys.length() {
+        ""
+    } else {
+        here = matched_var(ps.get(i).ty, tys.get(i), v)
+
+        if here != "" {
+            here
+        } else {
+            var_type(ps, tys, i + 1, v)
+        }
+    }
+}
+
+matched_var(declared: str, concrete: str, v: str) -> str {
+    if declared == v {
+        concrete
+    } else if is_array_name(declared) && is_array_name(concrete) {
+        matched_var(declared.slice(0, declared.length() - 2),
+                    concrete.slice(0, concrete.length() - 2), v)
+    } else {
+        ""
+    }
+}

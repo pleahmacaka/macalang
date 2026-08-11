@@ -4,6 +4,184 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* **`spec`, `profile` and `dev`** are the driver commands `apps/maca1` gained this round.
+* **The JVM back end is written in Maca**, `modules/maca/emit_jvm.maca`: a class per module, a
+  static method per function, records as classes and sums as enums, and a **refusal channel** beside
+  the emitter, so a construct it cannot lower is named rather than emitted as Java that pretends.
+  Eight refusals are listed by name today, `apps/mcmod` among them. What it does emit was compiled
+  by `javac` 21 and run, and answers what the Maca source computes. With it, every back end stage-0
+  carries has a Maca twin except the LLVM path, which exists only for the SIMD span.
+* **`crates/wasm` is not a back end**, which is worth writing down because the name says otherwise:
+  it is the compiler itself built for the browser playground. Its Maca answer is building
+  `apps/maca1` for a wasm target, not writing an emitter, so no emitter was written.
+* **`maca -m` runs a function in a module** through the same search roots an `import` walks, which
+  is the last of the driver's small commands. `[scripts]` aliases from `maca.toml` come with it.
+* **Config mode is read by the compiler written in Maca.** `emit_nix.maca` was ported with nothing
+  feeding it: the parser could not read a dotted binding, so `apps/examples/system.maca` was
+  eighteen parse errors. A top-level `a.b.c = value` is one binding whose name is the whole path,
+  which is exactly what the Nix emitter splits on; bare braces are a value, so `{` is an atom; a
+  record declaration is told from a record literal by whether its fields carry a `:` or an `=`; and
+  `alias x = y` renames rather than declaring, which had been leaving a stray option in the emitted
+  module. One lexer line came with it: an attached `-` belongs to the name, so `noto-fonts` is a
+  package and not a subtraction, which is what stage-0 and the handbook both say. `system.maca`
+  goes from 18 errors to none, and the Nix it emits carries every line the Rust back end's own test
+  asserts.
+* **The embedded back end is written in Maca**, `modules/maca/emit_embedded.maca`, the freestanding
+  C target that `apps/blink` exists for. Four of the five back ends stage-0 carries now have a Maca
+  twin: C, Rust, JavaScript, Nix and embedded, leaving the JVM, wasm and LLVM paths.
+* **A task is a thread on the Rust target too.** `spawn` and `await` landed in the C back end and
+  nowhere else, so the same program compiled one way and not the other, which is the divergence the
+  differential gate exists to catch. Rust already owns the primitive: `spawn f(x)` is
+  `std::thread::spawn(move || f(x))` and `await` is `join().unwrap()`, with a future the one value
+  the emitter must not copy, because a join handle is used once. The emitted Rust compiles under
+  `rustc` and answers what the C does.
+* **The Nix back end is written in Maca.** `modules/maca/emit_nix.maca` is `crates/backend_nix`
+  ported: the `{ config, pkgs, lib, ... }:` module shape, the split between what the system owns and
+  what rides under home-manager, the path table that turns `system.packages` into
+  `environment.systemPackages`, the `enable = true` a service implies by being written down, and a
+  value printer over the tree. `maca build --target nix` reaches it. The parser does not read
+  config-mode surface syntax yet, so nothing feeds it from a real file; the suite drives it from a
+  tree built by hand, which is honest about what does and does not work.
+* **MQTT is a builtin with a body again.** `mqtt_connect` and `mqtt_broker_run` were emitted as
+  calls to symbols nothing defined, so both programs compiled and then failed to link. Stage-0
+  keeps them in a runtime it compiles beside the output; stage-1 emits one translation unit, so
+  they live in its preamble now, at the width a 64-bit `int` requires. `sqlite_open` and `py_call`
+  are still open, and deliberately not faked: they need `-lsqlite3` and `-lpython3`, and nothing
+  passes a link flag yet.
+* **`maca build` with no path reads the manifest.** `maca.toml` names the entry through `[[bin]]`,
+  which is what the Rust driver has always done and stage-1 could not: one binary is the default,
+  more than one without `--bin` is an error that names them, and no manifest and no path is an error
+  that says so.
+* **A Maca `int` is 64 bits, as it always was in stage-0.** Stage-1 emitted it as a C `int`, which
+  is not a narrowing but a divergence between the two compilers: `state * 1103515245` wrapped at
+  2^32, so `modules/bench` answered `-51042` where it should answer `32606`, and the compiler itself
+  wrote `2147483648` into the C it emits as `-2147483648`, because `int(str)` was `atoi`. A list
+  cell, a map value, a guessed local and every emitted signature carry the full width now, and the
+  foreign declarations the preamble makes (`http_listen`, `http_fetch`, `http_accept_loop`) were
+  widened with them, because a prototype that disagrees with its definition is a C error rather than
+  a rounding. `main` still answers a C `int` where it declares one, and a `main() -> Element`
+  answers the text it renders. Thirty test expectations that spelled the old width were rewritten,
+  which is what makes this one change rather than thirty.
+* **Generics are monomorphised, the way stage-0 does it.** A type variable was erased before any
+  back end saw it, so `id(x: a) -> a` was emitted `int id(int x)` and every call handed C the wrong
+  type. A pass over the annotated module now clones a generic function once per concrete argument
+  tuple, mangles the name, rewrites the calls, and drops the un-specialised original, so no back end
+  ever meets a type variable and all three get generics at once.
+* **An import that renames a definition tells the files that import it.** The driver renames a
+  function when two packages define one name and then forgot the rename, so a file importing the
+  renamed definition still called the old name and bound to whichever definition won. Three of the
+  four files stage-1 refused were that, and the fourth went with them.
+* **The C prelude answers what the frozen runtime answers.** Four divergences, found by running the
+  standard library's own suites rather than by reading: `read_file` had no `S_ISREG` guard, so
+  reading a directory succeeded, reported a nonsense length and **segfaulted**; `remove_dir` was
+  `rmdir`, which fails on a non-empty directory, so a fixture survived between runs and seven
+  assertions in `modules/std/tests/fs.maca` failed on counts that grew; `keys()` came back in
+  insertion order where stage-0 sorts, which is what "iteration order is deterministic" rests on;
+  and the epoch-millisecond builtins were 32-bit, so `modified_ms` was negative. `{x:>6}`, `{x:.1}`
+  and `{x:^8}` are desugared in the parser as stage-0 desugars them, instead of the format spec
+  being parsed and thrown away.
+* **A lambda handed to a function is a function, not a null pointer.** `emit_expr` had no
+  `ELambda` case, so a lambda anywhere except inlined into `map`/`filter` fell through to the `_`
+  arm and emitted `0`: `any_of(xs, v => v > 8)` compiled without a word of complaint and called
+  through a null function pointer. That is why `modules/std/tests/list.maca`, the most-used module
+  in the repository, **segfaulted**. A lambda that reads nothing from around it is now lifted to a
+  function of its own, which every back end already knows how to pass by name, and the module is
+  annotated a second time so the checker types the lifted function from the call site rather than
+  the pass having to guess. A lambda that does capture is left where it is, because a bare function
+  has nowhere to put an environment; that one waits for a closure. `map` keeps its own lambda
+  because it reads the body, and so does an attribute, which holds a handler rather than a name.
+  Module suites run by stage-1: 18 green, now 19, and `modules/bench` moved from a segfault to an
+  ordinary failing assertion.
+* **The annotate pass hands every child the env it is written against.** It handed each child the
+  *parent's* env, so every binder a construct owns (a match arm's payload, a comma pattern's
+  cells, a lambda's parameter) was an unknown name while its own body was annotated, typed `any`,
+  and reached C as `maca_int_to_str(<a pointer>)`. The checker already had `bound_arm`; the annotate
+  pass just never called it.
+* **A branch that raises borrows the other branch's type.** `c ? fail "x" : <a record>` put an `int`
+  beside a struct, because `maca_fail` returns `int`; stage-0 threads an expected type and emits
+  `(maca_fail(msg), <zero>)`, which stage-1 can now do by reading the sibling arm's type. A `match`
+  run for its effect is emitted as C `if`/`else` statements, the escape `if` already had, so its
+  arms need not agree once they stop being ternary arms.
+* **`x?`, `a / b` over paths, and a block guessed from the wrong end.** The postfix `?` is a token
+  the scanner tells apart by the whitespace before it; `/` between two strings is the path join
+  `maca_path_join`, not a division the checker rejects; and a `{` opens a block by the backward
+  line-head scan stage-0 uses rather than a forward guess. Sized numbers (`f32`, `i32`, `u8`) reach
+  C as the widths they name.
+* **`spawn` and `await`, with no `async` keyword, in the compiler written in Maca.** `spawn f(x)`
+  yields a future and `await` joins it, lowered exactly as stage-0 does it: `maca_spawn` over a
+  POSIX thread, one arity for one argument and one for two, with the future runtime in the C
+  preamble beside `maca_cat` because stage-1 emits a single self-contained translation unit. Both
+  words bind at unary precedence, which is where stage-0 parses them, so `await a + b` is
+  `(await a) + b`. `xs.parallel(f)` is the same type rule as `xs.map(f)` and goes through the loop
+  `map` already emits. `apps/examples/async.maca` now prints `20 + 40 = 60` in 52ms wall against two
+  50ms sleeps, so the two really do overlap.
+* **A branch run for its effect need not agree, and a local shadows a function of its name.** Two
+  checker bugs, eight files. The statement-position escape that lets `if c { … }` be run for its
+  effect was one level deep and `if`-only, so a nested `if`, an `else if` (child 2 is itself an
+  `if`) and any `match` fell back to joining their branches: `{ placed = true }` answers `bool` and
+  `{ at = at + 1 }` answers `int`, hence 4 files reading `expected bool, found int`. The escape now
+  walks the whole tree it is skipping. Separately `call_type` resolved a name against the module's
+  functions before its own locals, so `span(r, name, body)` calling its `body` parameter got the
+  four-argument `body` from another package. Locals win, which is the rule `tag_wins` already wrote
+  down; a local that is not callable still leaves the function alone.
+* **A pattern matches what it says.** A record-typed payload was stored in a `long` slot, so
+  `At(p) => p.x` read a struct through an integer; the slot and the constructor take the declared
+  type now. Records and tagged sums are emitted in dependency order, so a field holding another
+  record by value never names a type C has not seen. And a lowercase name in a pattern is a
+  **binder**, not a value to compare against, which is what `match n { x if x < 0 => … }` needs:
+  Maca capitalises variants (`docs/SPEC.md`), so the case of the first letter is the whole rule, and
+  it holds on an unannotated tree as well.
+* **The gaps a repository-wide sweep found.** `a + b` on a record is `add(a, b)`, which the spec
+  asked for and only stage-0 did. `clamp` and `gcd` are lowered like `min` and `max` instead of
+  reaching C as undeclared names. A method on a user record goes straight to the function of that
+  name rather than being claimed by a list or map lowering. A record mapped back into a list is
+  boxed rather than cast to `long`. And a lowercase top-level binding is module state a body may
+  assign to, so it is emitted without `const`; a Capitalized one is a constant and keeps it, which
+  is `docs/SPEC.md` on bindings, spelled in C.
+* **A branch that ends in an assignment keeps it.** `if c { ys = ys.push(v) }` compiled to
+  `maca_list_cat(ys, …)` with the `ys =` gone: the append ran and its answer was thrown away.
+  `body_expr` took the last statement's *value* as the block's value, which is right for an
+  expression and drops the target of an assignment, and `branch_value` was a second copy of the same
+  four lines with the same hole. One function now, and a block whose last statement is a binding
+  keeps that statement and answers with the name it set. This is the worst kind of bug the sweep can
+  find, because the C compiled: nothing said the line had gone missing. Beside it, an `if` with no
+  `else` in value position emitted a bare `?` for the branch it does not have, which is not C; it is
+  a zero of the branch's own type now.
+* **A method no receiver answers to is the function of that name.** `command("lint", …).rest("path",
+  …)` is `rest(command(…), …)`, which the C back end already emitted correctly and the checker typed
+  as `any`, so `Spec` was declared `static int` and every use of it was a type error. A method whose
+  name is not a method and *is* a declared function is checked as the call it is, receiver first, so
+  it gets that function's return type and its arguments are checked against what the function
+  declared. A constant at file scope is annotated now as well, so it is emitted as the type its
+  value has rather than the type its shape suggested.
+* **A typed local binding holds its value to the type it declares.** `got: str = f(xs)` bound `got`
+  to `str` and threw the value's type away, so an unannotated parameter that is called kept an
+  unsolved return and reached C as `int (*f)(MacaList)` inside a function that assigns the result to
+  a `const char*`. Unifying the declared type with the value fixes the signature and reports the
+  clash the annotation was there to catch: `n: str = 1` is one error rather than none.
+* **A map answers with the type it was declared over.** `Map str int` read a value back through a
+  `(const char*)` cast, because the lowering knew the runtime call and not the map's value type. The
+  cast follows the declaration now, `.get(k, fallback)` is a call of its own rather than a silently
+  dropped second argument, and `.remove`/`.values` exist in C as they already did in Rust. The
+  checker types all of them from the declaration, so `.keys()` is a list of the key type instead of
+  `any`. `element(tag, …)` names its tag with its first argument, which is the one tag call the
+  repository writes that is not spelled like the element it renders.
+* **A named argument is an attribute, and a tag call is the HTML it renders.**
+  `docs/SPEC.md` writes UI as functions (`div(class=…, …children)`), and stage-1 read
+  the `=` as a token no production wanted: 17 files stopped at ``no expression starts
+  at `=` ``. `parse_one_arg` now reads a name run closed by `=` as one `EAttr`
+  argument. The run is hyphenated because the platform spells `aria-label` that way,
+  and it names an attribute only when `=` closes it, so `f(a - b, c)` is still a
+  subtraction. The checker types a tag call nobody declared as `str` and lowers it in
+  the annotate pass, which is the one place that knows what the module declares:
+  `div(class="wrap", body)` becomes `maca_element("div", "" ++ maca_attr("class",
+  "wrap"), "" ++ body)`. Lowering there is what keeps `code(…)` a call when the module
+  declares `code` and `input(…)` a read because the prelude owns the name, and it is
+  why neither back end carries a tag list. The tag is a value rather than a static
+  choice, so the void-element rule lives once inside `maca_element` instead of twice,
+  and both back ends carry the three helpers, C in its preamble and Rust in a new one.
+  Repo-wide, stage-1 accepts 137 files and now 147, and 107 emitted 109 that compile;
+  `Map` is the largest class left, at 17.
 * **The compiler needs a C compiler and nothing else.** `apps/maca1` follows its own
   `import` graph and builds an executable, so the loop that produces the compiler no
   longer passes through Rust. `unit_of` walks the graph depth first, resolving a path

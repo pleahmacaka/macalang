@@ -81,3 +81,12 @@ test_two_items_are_separated_by_a_blank_line() {
               "a() -> int =>\n    1\n\nb() -> int =>\n    2\n",
               "a reader needs the gap, and the file ends with one newline")
 }
+
+test_a_shift_is_bracketed_by_the_power_it_carries() {
+    assert_eq(printed("f(n: int) -> int => 1 << n + 2"),
+              "f(n: int) -> int =>\n    1 << n + 2\n",
+              "plus already binds tighter, so brackets round the sum would be noise")
+    assert_eq(printed("g(a: int, b: int) -> int => (a == b) << 1"),
+              "g(a: int, b: int) -> int =>\n    (a == b) << 1\n",
+              "a comparison binds looser, so dropping its brackets would rebind the shift")
+}

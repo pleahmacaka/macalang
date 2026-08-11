@@ -251,6 +251,39 @@ arrived.
 
 So the boundary moves by writing Maca, not by planning.
 
+## Where the boundary is, measured
+
+Three sweeps say how far stage-1 has got, and they are worth re-running rather
+than reasoning about. Build stage-1, then over every `.maca` file under `apps/`
+and `modules/` (excluding `bad/`):
+
+| sweep | what it runs | as of 2026-08-11 |
+|---|---|---|
+| accept | `maca <file> out.c` exits 0 | 196 of 197 |
+| compile | the emitted C compiles | 182 of 197 |
+| link | `maca build <file> -o bin` produces an executable | 59 of 73 programs with a `main()` |
+| run | `maca test` on each `modules/*/tests/*.maca` | 23 of 26 suites green |
+
+The last two are the ones that matter, because the first two are satisfied by C
+that is wrong. Two bugs found this way had both compiled cleanly: a branch
+ending in an assignment dropped the assignment, and a lambda used as a value
+emitted `0`, so `modules/std/tests/list.maca` called through a null pointer.
+
+What the remaining failures are, in the order they block deletion:
+
+- **a library a link flag names.** `sqlite_open` and `py_call` are the two
+  builtins left with no stage-1 body, and unlike the http and mqtt ones they
+  cannot simply be carried in the preamble: they need `-lsqlite3` and
+  `-lpython3`, and `build_binary` runs `cc` with no flags at all. The manifest
+  has to name them before the runtime can.
+- **the driver itself.** Every crate is reachable from `maca-driver`, so nothing
+  under `crates/` can go until `apps/maca1` covers what the driver does:
+  `watch`, `dev`, `add`/`install`/`update`/`upgrade`, `spec`, `fix`, the
+  manifest chain and `[[bin]]` resolution, link flags, and the LLVM path, which
+  exists only for the SIMD span. `crates/wasm` is not a back end: it is the
+  compiler built for the browser, so its Maca answer is building `apps/maca1`
+  for a wasm target rather than writing an emitter.
+
 The two stages own different halves of the type system, and the line between
 them has moved. The **type representation and unification are Maca now**:
 `ty.maca` is `crates/core/src/ty.rs` rewritten, variables and all, so

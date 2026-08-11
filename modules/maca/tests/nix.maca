@@ -1,0 +1,176 @@
+import maca/ast
+import maca/lexer
+import maca/parser
+import maca/emit_nix
+
+nix_of(items: Stmt[]) -> str =>
+    nemit_module(Module { items, errors = [] })
+
+nix_src(src: str) -> str =>
+    nemit_module(parse_module(lex(src), 0, []))
+
+nix_field_of(name: str, v: Expr) -> Expr =>
+    e_binary("=", e_ident(name), v)
+
+test_a_config_file_reaches_the_emitter_as_it_was_written() {
+    assert_eq(nix_src("networking.hostName = \"rigel\"\n"
+                          ++ "services.openssh = {{\n"
+                          ++ "    passwordAuthentication = false\n}}\n"),
+              "{{ config, pkgs, lib, ... }}:\n{{\n"
+                  ++ "  networking.hostName = \"rigel\";\n"
+                  ++ "  services.openssh = {{\n    enable = true;\n"
+                  ++ "    passwordAuthentication = false;\n  }};\n}}\n",
+              "a dotted path and a braced value are the whole of config mode")
+}
+
+test_a_config_is_a_nixos_module() {
+    assert_eq(nix_of([s_bind("networking.hostName", e_str("rigel"))]),
+              "{{ config, pkgs, lib, ... }}:\n{{\n"
+                  ++ "  networking.hostName = \"rigel\";\n}}\n",
+              "a dotted path is the attribute it names")
+}
+
+test_a_package_list_reaches_into_pkgs() {
+    assert_eq(nix_of([s_bind("system.packages",
+                             e_list([e_ident("git"),
+                                     e_field(e_ident("nixpkgs"), "curl")]))]),
+              "{{ config, pkgs, lib, ... }}:\n{{\n"
+                  ++ "  environment.systemPackages = [ pkgs.git pkgs.curl ];\n"
+                  ++ "}}\n",
+              "a bare name and a qualified one both name a package")
+}
+
+test_a_service_is_on_because_it_was_written_down() {
+    assert_eq(nix_of([s_bind("services.openssh",
+                             e_record("",
+                                      [nix_field_of("passwordAuthentication",
+                                                    e_bool("false"))]))]),
+              "{{ config, pkgs, lib, ... }}:\n{{\n  services.openssh = {{\n"
+                  ++ "    enable = true;\n"
+                  ++ "    passwordAuthentication = false;\n  }};\n}}\n",
+              "no one configures a service they want off")
+}
+
+test_what_a_user_owns_rides_under_home_manager() {
+    assert_eq(nix_of([s_bind("user.packages", e_list([e_ident("fish")]))]),
+              "{{ config, pkgs, lib, ... }}:\n{{\n"
+                  ++ "  home-manager.users.alice = {{\n"
+                  ++ "    home.packages = [ pkgs.fish ];\n  }};\n}}\n",
+              "a user's packages are not the system's")
+}
+
+test_a_home_directory_is_created_not_replaced() {
+    assert_eq(nix_of([s_bind("user.home.dirs",
+                             e_list([e_str("Downloads"), e_str("Public")]))]),
+              "{{ config, pkgs, lib, ... }}:\n{{\n"
+                  ++ "  home-manager.users.alice = {{\n"
+                  ++ "    xdg.userDirs = {{\n      enable = true;\n"
+                  ++ "      createDirectories = true;\n"
+                  ++ "      download = \"$HOME/Downloads\";\n"
+                  ++ "      publicShare = \"$HOME/Public\";\n    }};\n"
+                  ++ "  }};\n}}\n",
+              "the key Nix knows is not always the word the user wrote")
+}
+
+test_a_typed_binding_is_a_program() {
+    assert_eq(nix_of([s_bind_typed("zed", "Program",
+                                   e_record("", [nix_field_of("extensions",
+                                                              e_str("nix"))]))]),
+              "{{ config, pkgs, lib, ... }}:\n{{\n"
+                  ++ "  home-manager.users.alice = {{\n    programs.zed = {{\n"
+                  ++ "      enable = true;\n      extensions = \"nix\";\n"
+                  ++ "    }};\n  }};\n}}\n",
+              "the type a binding declares is what makes it a program")
+}
+
+test_a_record_is_a_nested_attribute_set() {
+    assert_eq(nvalue(e_record("", [nix_field_of("a", e_int(1)),
+                                   nix_field_of("b", e_record("", []))])),
+              "{{\n  a = 1;\n  b = {{ }};\n}}",
+              "a record nests, and one with no fields is an empty set")
+}
+
+test_nix_has_no_division_and_no_remainder() {
+    assert_eq(nvalue(e_binary("/", e_int(9), e_int(2))), "(builtins.div 9 2)",
+              "division is a builtin rather than an operator")
+    assert_eq(nvalue(e_binary("%", e_int(9), e_int(2))),
+              "(9 - (builtins.div 9 2) * 2)",
+              "a remainder is what the division leaves")
+}
+
+test_a_construct_config_mode_cannot_express_is_dropped() {
+    assert_eq(nvalue(e_binary("<<", e_int(1), e_int(2))), "null",
+              "a shift has no Nix equivalent")
+    assert_eq(nvalue(e_call("f", [])), "null",
+              "a config is data, so nothing in it is called")
+}
+
+test_a_choice_is_an_if_expression() {
+    assert_eq(nvalue(e_ternary(e_bool("true"), e_int(1), e_int(2))),
+              "(if true then 1 else 2)",
+              "Nix chooses with a word where Maca chooses with a mark")
+}
+
+test_arithmetic_is_lowered_rather_than_nulled() {
+    assert(nix_src("services.ssh.port = 8000 + 22\n").index_of("(8000 + 22)") >= 0,
+           "a sum is a sum on this target too")
+    assert(nix_src("services.ssh.port = (100 - 1) * 2\n")
+               .index_of("((100 - 1) * 2)") >= 0,
+           "and the grouping the author wrote is the grouping Nix reads")
+    assert(nix_src("services.ssh.port = -1\n").index_of("(-1)") >= 0,
+           "a negation is a prefix, and Nix needs it parenthesised")
+}
+
+test_a_comparison_and_a_conjunction_are_lowered() {
+    assert(nix_src("services.ssh.enable = 1 < 2 && true\n")
+               .index_of("((1 < 2) && true)") >= 0,
+           "both operators exist in Nix, so neither is dropped")
+}
+
+test_a_join_is_addition_rather_than_a_list_append() {
+    made = nix_src("services.ssh.banner = \"a\" ++ \"b\"\n")
+
+    assert(made.index_of("(\"a\" + \"b\")") >= 0,
+           "Nix joins strings with the sign it adds numbers with")
+    assert(made.index_of("++") < 0,
+           "where `++` is the list append, and would be a type error here")
+}
+
+NixSystem = "import nixpkgs\nalias user = system.user\n\n"
+    ++ "networking.hostName = \"rigel\"\n"
+    ++ "system.stateVersion = \"24.11\"\n\n"
+    ++ "system.packages = git, curl, htop, ripgrep\n"
+    ++ "system.fonts    = nixpkgs.d2coding, nixpkgs.noto-fonts\n\n"
+    ++ "services.openssh = {{\n    passwordAuthentication = false\n}}\n\n"
+    ++ "user.packages = nixpkgs.fish, nixpkgs.eza, nixpkgs.bat\n\n"
+    ++ "zed: Program : nixpkgs.zed = {{\n    settings = {{\n"
+    ++ "        buffer_font_family = nixpkgs.d2coding\n"
+    ++ "        buffer_font_size   = 15\n    }}\n"
+    ++ "    extensions = \"nix\", \"rust\"\n}}\n\n"
+    ++ "user.home.dirs = \"Downloads\", \"Documents\", \"Desktop\"\n"
+
+test_a_whole_config_routes_every_binding_to_the_key_nix_knows() {
+    made = nix_src(NixSystem)
+
+    assert(made.index_of("networking.hostName = \"rigel\";") >= 0, "a plain path")
+    assert(made.index_of("system.stateVersion = \"24.11\";") >= 0, "and another")
+    assert(made.index_of("environment.systemPackages = [ pkgs.git") >= 0,
+           "`system.packages` is not the key Nix reads")
+    assert(made.index_of("fonts.packages = [ pkgs.d2coding pkgs.noto-fonts ]") >= 0,
+           "nor is `system.fonts`")
+    assert(made.index_of("services.openssh = {{") >= 0
+               && made.index_of("enable = true;") >= 0,
+           "a service is on because it was written down")
+    assert(made.index_of("home-manager.users.alice = {{") >= 0,
+           "what a user owns rides under home-manager")
+    assert(made.index_of("home.packages = [ pkgs.fish") >= 0, "their packages")
+    assert(made.index_of("programs.zed = {{") >= 0,
+           "and a typed binding is a program of theirs")
+    assert(made.index_of("extensions = [ \"nix\" \"rust\" ]") >= 0,
+           "a bracketless list is a Nix list")
+    assert(made.index_of("xdg.userDirs = {{") >= 0
+               && made.index_of("createDirectories = true;") >= 0,
+           "a home directory is created rather than replaced")
+    assert(made.index_of("download = \"$HOME/Downloads\";") >= 0,
+           "under the key Nix has for it")
+}

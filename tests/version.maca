@@ -1,0 +1,97 @@
+import std/text
+
+Stated = { file: str, key: str }
+
+stated_files() -> Stated[] => [
+    Stated { file = "Cargo.toml", key = "version" },
+    Stated { file = "apps/npm/package.json", key = "\"version\"" },
+    Stated { file = "apps/editor/zed-maca/extension.toml", key = "version" },
+    Stated { file = "apps/editor/zed-maca/Cargo.toml", key = "version" },
+    Stated { file = "apps/maca1/main.maca", key = "Version" }
+]
+
+field(src: str, key: str) -> str =>
+    scan_field(lines(src), 0, key)
+
+scan_field(ls: str[], i: int, key: str) -> str {
+    if i >= ls.length() {
+        ""
+    } else if !ls.get(i).trim().starts_with(key) {
+        scan_field(ls, i + 1, key)
+    } else {
+        rest = strip_prefix(ls.get(i).trim(), key).trim()
+
+        if rest.starts_with("=") || rest.starts_with(":") {
+            unquoted(strip_prefix(strip_prefix(rest, "="), ":").trim())
+        } else {
+            scan_field(ls, i + 1, key)
+        }
+    }
+}
+
+unquoted(v: str) -> str {
+    bare = strip_suffix(v.trim(), ",").trim()
+
+    strip_suffix(strip_prefix(bare, "\""), "\"")
+}
+
+newest_release(changelog: str) -> str =>
+    scan_release(lines(changelog), 0)
+
+scan_release(ls: str[], i: int) -> str {
+    if i >= ls.length() {
+        ""
+    } else {
+        rest = strip_prefix(ls.get(i), "## ").trim()
+
+        if ls.get(i).starts_with("## ") && rest.length() > 0
+               && rest.at(0).is_ascii_digit() {
+            rest
+        } else {
+            scan_release(ls, i + 1)
+        }
+    }
+}
+
+declared() -> str => field(read_file("maca.toml"), "version")
+
+test_the_declared_version_is_a_bare_semver() {
+    v = declared()
+    assert_eq(str(v.split(".").length()), "3", "maca.toml states x.y.z, got {v}")
+    assert(v.at(0).is_ascii_digit(), "and it starts with a digit, got {v}")
+}
+
+test_every_file_that_states_the_version_agrees() {
+    want = declared()
+
+    for s in stated_files() {
+        assert_eq(field(read_file(s.file), s.key), want,
+                  "{s.file} disagrees with maca.toml")
+    }
+}
+
+test_the_changelog_leads_with_the_release_that_is_shipping() {
+    assert_eq(newest_release(read_file("docs/CHANGELOG.md")), declared(),
+              "the newest heading is the version being shipped")
+}
+
+test_the_zed_readme_shows_the_version_it_documents() {
+    want = field(read_file("apps/editor/zed-maca/extension.toml"), "version")
+
+    assert(read_file("apps/editor/zed-maca/README.md")
+               .contains("version = \"{want}\""),
+           "the Zed README does not show version = \"{want}\"")
+}
+
+test_the_field_reader_reads_the_field() {
+    assert_eq(field("version = \"1.2.3\"", "version"), "1.2.3", "a toml line")
+    assert_eq(field("  \"version\": \"1.2.3\",", "\"version\""), "1.2.3",
+              "a json line")
+    assert_eq(field("name = \"x\"\nversion = \"9.9.9\"", "version"), "9.9.9",
+              "the key is matched, not the first line")
+    assert_eq(field("Version = \"0.1.0\"", "Version"), "0.1.0", "a maca binding")
+    assert_eq(newest_release("# Changelog\n\n## 1.2.3\n\n## 1.2.2\n"), "1.2.3",
+              "the newest heading wins")
+    assert_eq(newest_release("# Changelog\n\n## Unreleased\n\n## 1.2.3\n"),
+              "1.2.3", "a heading that names no release is skipped")
+}

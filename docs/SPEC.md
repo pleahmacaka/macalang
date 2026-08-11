@@ -113,7 +113,10 @@ and which manifest answers.
 - **Running another program is `exec(cmd, args)`**, a prelude builtin whose
   result is the child's exit code (`127` when it could not be started, `128 +
   signal` when it was killed, `-1` when the fork itself failed);
-  `capture(cmd, args)` is the same call for its stdout instead. `args` is a
+  `capture(cmd, args)` is the same call for its stdout, and
+  `capture_err(cmd, args)` for its stderr. Each reads one stream and leaves the
+  other alone, so a failing build's diagnostics are readable on their own,
+  which is what a test that asserts on a diagnostic needs. `args` is a
   `str[]` and there is **no shell in between**, so an argument holding a space, a
   quote or a `$` is one argument rather than three, while `execvp` still searches
   `PATH`, which is the one shell behaviour a build step wants. `import std/proc`
@@ -121,7 +124,9 @@ and which manifest answers.
   reports it, `run_in` sets the working directory first. The C back end written
   in Maca lowers `exec` itself, which is what lets the self-hosted compiler
   drive a C compiler and hand back an executable rather than a `.c` file.
-  (`modules/std/proc.maca`, `apps/maca1/main.maca`.)
+  `capture_err` is that back end's alone, because the frozen Rust bootstrap
+  predates it. (`modules/std/proc.maca`, `apps/maca1/main.maca`,
+  `modules/maca/tests/proc.maca`.)
 - **Typed JSON (`import std/json`).** `encode(value)` and `decode(text)` are
   written by the compiler from the record and sum types the program declares:
   a record is an object with one member per field in declaration order, a list

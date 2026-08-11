@@ -1,0 +1,85 @@
+import std/proc
+
+scratch() -> str =>
+    env_or("TMPDIR", "/tmp") ++ "/maca-selfhost-proc"
+
+maca_bin() -> str =>
+    env_or("MACA", "target/release/maca")
+
+fixture(name: str, src: str) -> str {
+    dir = scratch()
+    make_dir(dir)
+    path = dir ++ "/" ++ name
+    write_file(path, src)
+
+    path
+}
+
+test_capture_err_returns_stderr() {
+    assert_eq(capture_err("sh", ["-c", "printf oops >&2"]), "oops",
+        "stderr is what came back")
+}
+
+test_capture_err_is_not_stdout() {
+    assert_eq(capture_err("sh", ["-c", "printf hello"]), "",
+        "a program that says nothing on stderr says nothing")
+}
+
+test_the_two_streams_stay_apart() {
+    mixed = ["-c", "printf out; printf err >&2"]
+
+    assert_eq(capture("sh", mixed), "out", "capture is stdout alone")
+    assert_eq(capture_err("sh", mixed), "err", "capture_err is stderr alone")
+}
+
+test_capture_err_grows_past_its_first_buffer() {
+    long = capture_err("sh", ["-c", "yes ERROR | head -c 20000 >&2"])
+
+    assert_eq(str(long.length()), "20000", "a diagnostic longer than one read")
+}
+
+test_capture_err_of_a_program_that_is_not_there() {
+    assert_eq(capture_err("maca-no-such-program", []), "",
+        "nothing ran, so nothing was said")
+}
+
+test_an_unbuilt_target_is_refused_with_the_list() {
+    src = fixture("beam.maca", "main() -> int {{\n    0\n}}\n")
+
+    said = capture_err(maca_bin(), ["build", "--target", "beam", src,
+        "-o", scratch() ++ "/beam.out"])
+
+    assert(said.contains("no target `beam`"), "names the target: {said}")
+    assert(said.contains("embedded"), "and lists the ones that exist: {said}")
+}
+
+test_an_unknown_command_is_a_usage_error() {
+    assert_eq(str(exec(maca_bin(), ["nosuchcommand"])), "2",
+        "a command nobody serves is a usage error")
+    assert(capture_err(maca_bin(), ["nosuchcommand"])
+        .contains("unknown command `nosuchcommand`"),
+        "it names what it did not understand")
+    assert(capture(maca_bin(), ["nosuchcommand"]).contains("usage: maca"),
+        "and prints the page that would have told them")
+}
+
+deliberate_source() -> str =>
+    ["main() -> int {{",
+     "    assert(false, \"deliberate\")",
+     "    assert_eq(\"got\", \"want\", \"also deliberate\")",
+     "    info(\"failures: {{failures()}}\")",
+     "    0",
+     "}}",
+     ""].join("\n")
+
+test_assertions_report_on_stderr_and_count_on_stdout() {
+    src = fixture("deliberate.maca", deliberate_source())
+
+    said = capture_err(maca_bin(), ["run", src])
+
+    assert(said.contains("assertion failed: deliberate"), "no report: {said}")
+    assert(said.contains("got:  got"), "assert_eq shows what it got: {said}")
+    assert(said.contains("want: want"), "and what it wanted: {said}")
+    assert(capture(maca_bin(), ["run", src]).contains("failures: 2"),
+        "the count is a value, so it is on stdout")
+}

@@ -1,0 +1,107 @@
+import std/path
+import std/text
+
+Banned = { seq: str, what: str }
+
+/// The three characters, written as their bytes, because a table of them would report itself.
+banned() -> Banned[] => [
+    Banned { seq = chr(226) ++ chr(128) ++ chr(148), what = "em dash" },
+    Banned { seq = chr(226) ++ chr(128) ++ chr(147), what = "en dash" },
+    Banned { seq = chr(194) ++ chr(183), what = "middle dot" }
+]
+
+skipped_dirs() -> str[] => [
+    ".git", "target", "node_modules", "site", "maca_modules", ".maca",
+    "fonts", "graphify-out"
+]
+
+binary_suffixes() -> str[] => [
+    ".png", ".jpg", ".jpeg", ".gif", ".ico", ".wasm", ".woff", ".woff2",
+    ".pdf", ".zip"
+]
+
+is_text(p: str) -> bool =>
+    binary_suffixes().filter(s => p.ends_with(s)).length() == 0
+
+is_skipped(name: str) -> bool =>
+    skipped_dirs().filter(d => d == name).length() > 0
+
+text_files(root: str) -> str[] =>
+    gather(root, list_dir(root), 0, [])
+
+gather(root: str, names: str[], i: int, acc: str[]) -> str[] {
+    if i >= names.length() {
+        acc
+    } else {
+        found = from_entry(names.get(i), join(root, names.get(i)))
+        gather(root, names, i + 1, acc ++ found)
+    }
+}
+
+from_entry(name: str, p: str) -> str[] {
+    if is_dir(p) && is_skipped(name) {
+        []
+    } else if is_dir(p) {
+        text_files(p)
+    } else if is_text(p) {
+        [p]
+    } else {
+        []
+    }
+}
+
+line_hits(path: str, no: int, line: str) -> str[] =>
+    banned().filter(b => line.contains(b.seq)).map(b => "{path}:{no}: {b.what}")
+
+hits(path: str, ls: str[]) -> str[] =>
+    scan_lines(path, ls, 0, [])
+
+scan_lines(path: str, ls: str[], i: int, acc: str[]) -> str[] {
+    if i >= ls.length() {
+        acc
+    } else {
+        scan_lines(path, ls, i + 1, acc ++ line_hits(path, i + 1, ls.get(i)))
+    }
+}
+
+sweep(paths: str[], i: int, acc: str[]) -> str[] {
+    if i >= paths.length() {
+        acc
+    } else {
+        found = hits(paths.get(i), lines(read_file(paths.get(i))))
+        sweep(paths, i + 1, acc ++ found)
+    }
+}
+
+test_no_em_dash_en_dash_or_middle_dot_anywhere() {
+    files = text_files(".")
+    assert(files.length() > 200,
+           "the walk found only {files.length()} files, so it is not reaching "
+               ++ "the tree")
+
+    found = sweep(files, 0, [])
+    assert_eq(found.join("\n"), "",
+              "write a colon, a comma pair or a full stop instead")
+}
+
+test_the_scan_would_notice_a_dash() {
+    em = hits("prose.md", ["a line with " ++ banned().get(0).seq ++ " in it"])
+    assert_eq(em.join("\n"), "prose.md:1: em dash", "the em dash is reported")
+
+    dot = hits("p.md", ["one", "two " ++ banned().get(2).seq])
+    assert_eq(dot.join("\n"), "p.md:2: middle dot",
+              "the line number is the line the character is on")
+
+    assert_eq(hits("p.md", ["a plain line", "a hyphen - is not a dash"])
+                  .join("\n"),
+              "", "an ordinary hyphen is not one of the three")
+}
+
+test_the_walk_skips_what_is_not_the_repositorys_own_text() {
+    assert(is_skipped("target"), "a build directory is not repository text")
+    assert(is_skipped(".git"), "neither is the object store")
+    assert(!is_skipped("docs"), "but the documentation is")
+
+    assert(!is_text("logo.png"), "an image holds no prose")
+    assert(is_text("docs/SPEC.md"), "the spec does")
+}
