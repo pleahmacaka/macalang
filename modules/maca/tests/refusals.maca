@@ -90,6 +90,8 @@ test_the_bad_corpus_is_refused_and_told_why() {
     refused("apps/examples/bad/misspelt_variant.maca",
         "`Busi` is capitalized, so it is a constructor, and nothing declares"
             ++ " one by that name: did you mean `Busy`?")
+    refused("apps/examples/bad/missing_asset.maca",
+        "data(\"nowhere.txt\"): apps/examples/bad/nowhere.txt: no such file")
     refused("apps/examples/bad/reassign_const.maca",
         "cannot reassign constant `count`; declare it mutable with"
             ++ " `count = …` (no `const`)")

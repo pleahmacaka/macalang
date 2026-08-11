@@ -284,9 +284,10 @@ What the remaining failures are, in the order they block deletion:
   has to itself is `fix`. `maca-backend-llvm` went second and nothing was ported
   in its place: the C back end already had the vector type and was leaving only
   the kernel body to the IR file, which is a loop over the lanes.
-  `crates/wasm` is not a back end: it is the
-  compiler built for the browser, so its Maca answer is building `apps/maca1`
-  for a wasm target rather than writing an emitter.
+  `crates/wasm` went third and was not a back end either: it was the compiler
+  built for the browser, and its Maca answer is `apps/npm/wasm.maca`, the same
+  `lex → parse → check → emit` chain plus `interp.maca`, built with
+  `--target wasm` and called as a wasi command rather than over a pointer ABI.
 
 The two stages own different halves of the type system, and the line between
 them has moved. The **type representation and unification are Maca now**:

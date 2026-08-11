@@ -39,10 +39,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust + wasm target
-        run: |
-          rustup toolchain install stable --profile minimal --no-self-update
-          rustup target add wasm32-unknown-unknown
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal --no-self-update
+
+      # The in-browser compiler is a Maca program linked by `zig cc -target
+      # wasm32-wasi`, so zig is the toolchain this job needs.
+      - uses: mlugg/setup-zig@v1
+        with:
+          version: 0.16.0
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -59,7 +63,7 @@ jobs:
       # `import wasm` in playground.maca embeds this, so it has to exist before
       # the playground is built.
       - name: Build the in-browser compiler
-        run: cargo build -p maca-wasm --target wasm32-unknown-unknown --release
+        run: PATH="$PWD/target/release:$PATH" ./target/release/maca run apps/npm/build.maca
 
       # One script builds and checks the site, and it is the same script a
       # human runs. Keeping these steps in the workflow meant "verified

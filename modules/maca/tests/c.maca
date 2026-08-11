@@ -30,6 +30,44 @@ test_a_program_carries_only_the_runtime_blocks_it_calls() {
            "running another program brings the process block and nothing else")
 }
 
+test_a_helper_named_only_in_a_string_is_not_read_as_a_call() {
+    quoting = whole_c("main() -> int {{\n"
+                      ++ "    info(\"maca_exec maca_capture maca_spawn"
+                      ++ " MacaFuture maca_try_push http_listen\")\n"
+                      ++ "    0\n}}")
+
+    assert(quoting.index_of("#include <sys/wait.h>") < 0,
+           "printing `maca_exec` is not running another program")
+    assert(quoting.index_of("#include <pthread.h>") < 0,
+           "printing `maca_spawn` is not spawning a thread")
+    assert(quoting.index_of("#include <setjmp.h>") < 0,
+           "printing `maca_try_push` is not catching a failure")
+
+    escaped = whole_c("main() -> int {{\n"
+                      ++ "    info(\"say \\\"maca_exec\\\" now\")\n"
+                      ++ "    0\n}}")
+
+    assert(escaped.index_of("#include <sys/wait.h>") < 0,
+           "an escaped quote does not end the string a name is hiding in")
+}
+
+test_the_foreign_glue_arrives_only_with_the_call_that_declared_it() {
+    plain = whole_c("main() -> int => 0")
+    db = whole_c("sqlite_open(path: str) -> int\n"
+                 ++ "main() -> int => sqlite_open(\":memory:\")")
+    py = whole_c("py_call(m: str, f: str) -> str\n"
+                 ++ "main() -> int => ord(py_call(\"os\", \"getcwd\"))")
+
+    assert(plain.index_of("sqlite3.h") < 0 && plain.index_of("Python.h") < 0,
+           "a program declaring no foreign call carries no foreign glue")
+    assert(db.index_of("#include <sqlite3.h>") >= 0
+               && db.index_of("sqlite3_prepare_v2") >= 0,
+           "a declared sqlite_open brings the C behind the whole binding")
+    assert(py.index_of("#include <Python.h>") >= 0
+               && py.index_of("PyObject_CallFunction") >= 0,
+           "a declared py_call brings the CPython glue it calls through")
+}
+
 test_setjmp_arrives_only_with_the_try_that_asked_for_it() {
     plain = whole_c("main() -> int => 0")
     caught = whole_c("boom() -> int {{ fail \"kaboom\"\n 0 }}\n"

@@ -13,11 +13,11 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 // What to run when the wasm is missing or older than the exports asked of it.
 // It is a build artifact and the repository does not carry one, so "no such
 // file" is the state of a fresh checkout rather than a broken install.
-const BUILD = "maca run packages/macalang/build.maca";
+const BUILD = "maca run apps/npm/build.maca";
 
-let _ex = null;
+let _mod = null;
 function wasm() {
-  if (_ex) return _ex;
+  if (_mod) return _mod;
   const at = join(__dir, "maca_wasm.wasm");
   let bytes;
   try {
@@ -25,51 +25,80 @@ function wasm() {
   } catch {
     throw new Error(`maca: no compiler at ${at}. Build one with \`${BUILD}\`.`);
   }
-  const instance = new WebAssembly.Instance(new WebAssembly.Module(bytes), {});
-  _ex = instance.exports;
-  return _ex;
+  _mod = new WebAssembly.Module(bytes);
+  return _mod;
 }
 
-// One export taking a source buffer, called over linear memory: copy the source
-// in, read the `(ptr << 32) | len` answer back out, free both.
-//
-// A wasm built before the export existed is the failure this names, because
-// nothing else can: `maca_wasm.wasm` is not in the repository and an old one
-// left over from a previous build answers every older call perfectly.
-function callWithSource(name, src, arg) {
-  const ex = wasm();
-  if (typeof ex[name] !== "function") {
-    throw new Error(
-      `maca: this maca_wasm.wasm has no "${name}" export, so it is older than` +
-        ` the compiler it came from. Rebuild it with \`${BUILD}\`.`,
-    );
+// The compiler is a wasi command: `_start`, an argv, and a JSON line on stdout.
+// So a call is one instance, and the seven imports below are the whole of the
+// host wasi-libc reaches for. Nothing survives a call, which is the point: the
+// old pointer ABI leaked a buffer per keystroke.
+const done = {};
+function ask(argv) {
+  let out = "";
+  let memory = null;
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  // argv[0] is the program name, which `args()` inside the wasm drops.
+  const args = ["maca"].concat(argv).map((a) => {
+    const b = enc.encode(a);
+    const z = new Uint8Array(b.length + 1);
+    z.set(b);
+    return z;
+  });
+  const view = () => new DataView(memory.buffer);
+  const wasi = {
+    args_sizes_get(np, sp) {
+      let n = 0;
+      for (const a of args) n += a.length;
+      view().setUint32(np, args.length, true);
+      view().setUint32(sp, n, true);
+      return 0;
+    },
+    args_get(pp, bp) {
+      let at = bp;
+      for (let i = 0; i < args.length; i++) {
+        view().setUint32(pp + i * 4, at, true);
+        new Uint8Array(memory.buffer).set(args[i], at);
+        at += args[i].length;
+      }
+      return 0;
+    },
+    fd_write(fd, iov, n, wrote) {
+      let sent = 0;
+      for (let i = 0; i < n; i++) {
+        const at = view().getUint32(iov + i * 8, true);
+        const len = view().getUint32(iov + i * 8 + 4, true);
+        if (fd === 1) out += dec.decode(new Uint8Array(memory.buffer, at, len));
+        sent += len;
+      }
+      view().setUint32(wrote, sent, true);
+      return 0;
+    },
+    fd_close: () => 0,
+    fd_seek: () => 0,
+    fd_fdstat_get: () => 0,
+    proc_exit() {
+      throw done;
+    },
+  };
+  const at = new WebAssembly.Instance(wasm(), { wasi_snapshot_preview1: wasi });
+  memory = at.exports.memory;
+  try {
+    at.exports._start();
+  } catch (e) {
+    if (e !== done) throw e;
   }
-  const mem = () => new Uint8Array(ex.memory.buffer);
-  const enc = new TextEncoder().encode(src);
-  const p = ex.alloc(enc.length);
-  mem().set(enc, p);
-  const packed = ex[name](p, enc.length, arg);
-  const ptr = Number(packed >> 32n);
-  const len = Number(packed & 0xffffffffn);
-  const out = new TextDecoder().decode(mem().slice(ptr, ptr + len));
-  ex.dealloc(ptr, len);
-  ex.dealloc(p, enc.length);
   return out;
 }
 
 function run(src, mode) {
-  return JSON.parse(callWithSource("run", src, mode));
+  return JSON.parse(ask(["compile", String(mode | 0), src]));
 }
 
 /** Compiler version string. */
 export function version() {
-  const ex = wasm();
-  const packed = ex.version();
-  const ptr = Number(packed >> 32n);
-  const len = Number(packed & 0xffffffffn);
-  const s = new TextDecoder().decode(new Uint8Array(ex.memory.buffer).slice(ptr, ptr + len));
-  ex.dealloc(ptr, len);
-  return s;
+  return JSON.parse(ask(["version"]));
 }
 
 /**
@@ -119,8 +148,8 @@ export function loadFile(path, opts) {
 
 /**
  * Every language-server answer for one caret, as
- * `{ hover, signature, definition, references }` (see `crates/wasm`'s
- * `lsp_json`). Positions are 1-based lines and UTF-16 columns, which is what an
+ * `{ hover, signature, definition, references }` (see `apps/npm/wasm.maca`'s
+ * `pg_lsp`). Positions are 1-based lines and UTF-16 columns, which is what an
  * editor wants; `signature` and `definition` are `null` when there is nothing
  * to say. One call rather than four because an editor asks all four questions
  * about the same caret and each of them would otherwise re-parse the file.
@@ -128,7 +157,7 @@ export function loadFile(path, opts) {
  * @param {number} [offset]  byte offset of the caret
  */
 export function lsp(src, offset = 0) {
-  return JSON.parse(callWithSource("lsp", src, offset));
+  return JSON.parse(ask(["lsp", String(offset | 0), src]));
 }
 
 export default { version, compile, toJS, toESM, loadModule, loadFile, lsp };

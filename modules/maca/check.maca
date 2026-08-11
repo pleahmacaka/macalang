@@ -1,6 +1,7 @@
 import maca/token
 import maca/ast
 import maca/ty
+import maca/lexer
 
 /// One defect: the code that names it forever, what is wrong here, and where.
 Diagnostic = {
@@ -43,6 +44,7 @@ diag_explain(code: str) -> str =>
         "M0005" => "a constant is assigned after it is bound"
         "M0006" => "this name is not defined anywhere in scope"
         "M0007" => "the target being built for cannot carry this effect"
+        "M0008" => "a file the program embeds is not beside it"
         _       => ""
     }
 
@@ -1782,6 +1784,206 @@ top_names(items: Stmt[], i: int, acc: str[]) -> str[] {
         top_names(items, i + 1, acc ++ [items.get(i).name])
     } else {
         top_names(items, i + 1, acc)
+    }
+}
+
+Assets = {
+    base:  str
+    names: str[]
+    texts: str[]
+}
+
+/// `data("f")` is the file's own text, spliced in while the program is built.
+desugared(m: Module, src: str) -> Module {
+    at = Assets { base = embed_dir(src),
+                  names = text_const_names(m.items, 0, []),
+                  texts = text_const_texts(m.items, 0, []) }
+
+    if top_names(m.items, 0, []).index_of("data") >= 0 {
+        Module { items = m.items, errors = [] }
+    } else {
+        Module { items = embed_items(m.items, at, 0, []),
+                 errors = embed_faults(m.items, at, 0, []) }
+    }
+}
+
+embed_dir(path: str) -> str =>
+    path.slice(0, embed_sep(path.chars(), path.length() - 1))
+
+embed_sep(cs: str[], i: int) -> int {
+    if i < 0 {
+        0
+    } else if cs.get(i) == "/" || cs.get(i) == "\\" {
+        i + 1
+    } else {
+        embed_sep(cs, i - 1)
+    }
+}
+
+is_text_const(s: Stmt) -> bool =>
+    s.kind == SBind && s.value.kind == EStr
+
+text_const_names(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if is_text_const(items.get(i)) {
+        text_const_names(items, i + 1, acc ++ [items.get(i).name])
+    } else {
+        text_const_names(items, i + 1, acc)
+    }
+}
+
+text_const_texts(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if is_text_const(items.get(i)) {
+        text_const_texts(items, i + 1, acc ++ [items.get(i).value.text])
+    } else {
+        text_const_texts(items, i + 1, acc)
+    }
+}
+
+is_data_call(e: Expr) -> bool =>
+    e.kind == ECall && e.text == "data"
+
+/// The path an argument names, written out or bound to a constant beside it.
+asset_spec(e: Expr, at: Assets) -> str {
+    if e.kind == EStr {
+        e.text
+    } else if e.kind == EIdent && at.names.index_of(e.text) >= 0 {
+        at.texts.get(at.names.index_of(e.text))
+    } else {
+        ""
+    }
+}
+
+/// The file `data("x")` reads: the `.local` copy when the tree holds one.
+data_file(base: str, spec: str) -> str {
+    local = base ++ local_spec(spec)
+
+    file_exists(local) ? local : base ++ spec
+}
+
+/// `config/links.json` is shadowed by `config/links.local.json` beside it.
+local_spec(spec: str) -> str {
+    cut = embed_sep(spec.chars(), spec.length() - 1)
+    tail = spec.slice(cut, spec.length())
+    dot = last_dot(tail.chars(), tail.length() - 1)
+
+    if dot > 0 {
+        spec.slice(0, cut + dot) ++ ".local"
+            ++ tail.slice(dot, tail.length())
+    } else {
+        spec ++ ".local"
+    }
+}
+
+last_dot(cs: str[], i: int) -> int {
+    if i < 0 {
+        -1
+    } else if cs.get(i) == "." {
+        i
+    } else {
+        last_dot(cs, i - 1)
+    }
+}
+
+asset_file(e: Expr, at: Assets) -> str =>
+    data_file(at.base, asset_spec(e.children.get(0), at))
+
+asset_ok(e: Expr, at: Assets) -> bool =>
+    e.children.length() == 1 && asset_spec(e.children.get(0), at) != ""
+        && file_exists(asset_file(e, at))
+
+/// The file's text as a literal a back end can print, its own escapes kept.
+asset_text(e: Expr, at: Assets) -> str =>
+    one_line_text(read_file(asset_file(e, at)))
+        .chars().map(embed_char).join("")
+
+one_line_text(text: str) -> str =>
+    text.replace("\r\n", "\n").replace("\r", "\n")
+
+/// A brace is its own character here, and the rest is the lexer's escape.
+embed_char(c: str) -> str =>
+    c == "\{" || c == "\}" ? c : raw_char(c)
+
+embed_items(items: Stmt[], at: Assets, i: int, acc: Stmt[]) -> Stmt[] {
+    if i >= items.length() {
+        acc
+    } else {
+        embed_items(items, at, i + 1,
+                    acc ++ [embed_stmt(items.get(i), at)])
+    }
+}
+
+embed_stmt(s: Stmt, at: Assets) -> Stmt =>
+    s with { value = embed_bound(s.value, s.ret, at),
+             body = embed_items(s.body, at, 0, []) }
+
+/// A `str` binding is the text itself, and any other type what `decode` reads.
+embed_bound(e: Expr, want: str, at: Assets) -> Expr {
+    if is_data_call(e) && asset_ok(e, at) && want == "str" {
+        e_str(asset_text(e, at))
+    } else {
+        embed_expr(e, at)
+    }
+}
+
+embed_expr(e: Expr, at: Assets) -> Expr {
+    if is_data_call(e) && asset_ok(e, at) {
+        e_call("decode", [e_str(asset_text(e, at))])
+    } else {
+        e with { children = embed_kids(e.children, at, 0, []),
+                 stmts = embed_items(e.stmts, at, 0, []) }
+    }
+}
+
+embed_kids(xs: Expr[], at: Assets, i: int, acc: Expr[]) -> Expr[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        embed_kids(xs, at, i + 1, acc ++ [embed_expr(xs.get(i), at)])
+    }
+}
+
+embed_faults(items: Stmt[], at: Assets, i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else {
+        embed_faults(items, at, i + 1,
+                     acc ++ expr_faults(items.get(i).value, at)
+                         ++ embed_faults(items.get(i).body, at, 0, []))
+    }
+}
+
+expr_faults(e: Expr, at: Assets) -> str[] {
+    if is_data_call(e) {
+        data_faults(e, at)
+    } else {
+        kid_faults(e.children, at, 0, [])
+            ++ embed_faults(e.stmts, at, 0, [])
+    }
+}
+
+kid_faults(xs: Expr[], at: Assets, i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        kid_faults(xs, at, i + 1, acc ++ expr_faults(xs.get(i), at))
+    }
+}
+
+data_faults(e: Expr, at: Assets) -> str[] {
+    if e.children.length() != 1 {
+        ["data(...) takes one path, as in `data(\"config/links.json\")`"]
+    } else if asset_spec(e.children.get(0), at) == "" {
+        ["data(...): the path is read while building, so write it out"
+             ++ " or bind it to a constant"]
+    } else if !file_exists(asset_file(e, at)) {
+        ["data(\"" ++ asset_spec(e.children.get(0), at) ++ "\"): "
+             ++ asset_file(e, at) ++ ": no such file"]
+    } else {
+        []
     }
 }
 

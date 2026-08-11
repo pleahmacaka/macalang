@@ -76,8 +76,8 @@ program to whoever opens it and to nobody else: no server, no paste service, no
 identifier to expire.
 
 The examples are Maca constants in `playground.maca` rather than strings in the
-bridge, which is what lets `crates/wasm/tests/playground.rs` compile every one
-of them and fail the build when one stops checking clean.
+bridge, so a suite can compile every one of them and fail the build when one
+stops checking clean.
 
 ## The editor
 
@@ -89,16 +89,14 @@ language mode wired to the in-browser compiler:
 - **Hover**: the signature or type of the identifier under the caret.
 - **Signature help** while a call is being typed, with the parameter under the
   caret picked out.
-- **Go to definition** (ctrl-click / F12) and **highlight all references**, both
-  scope-aware, so a parameter named `n` does not light up an `n` elsewhere.
+- **Go to definition** (ctrl-click / F12) and **highlight all references**,
+  matched on whole words, so `fib` does not light up the `fib` inside `fibs`.
 - **Autocomplete**: keywords, builtin types and functions, and the program's own
   top-level definitions.
 - **Diagnostics** as editor markers, plus the full text in the Diagnostics tab.
-- **A flame-graph profiler** with the wall-clock time, reusing the native
-  `maca profile` renderer (`maca-profile`) fed by the interpreter's step counts.
 
-All of the language-server answers come from `maca-lsp`, the same analysis the
-native language server runs, through one `lsp` wasm export.
+All of the language-server answers come from `apps/npm/wasm.maca`, the same
+program the page compiles with, through one `lsp` call.
 
 If the Monaco CDN can't be reached (offline, or a strict-CSP host like a
 claude.ai artifact), the editor falls back to a plain monospace textarea that
@@ -107,8 +105,8 @@ still recompiles on input and indents with Tab, so the page always works.
 ## Build and deploy
 
 ```sh
-# once: build the in-browser compiler
-cargo build -p maca-wasm --target wasm32-unknown-unknown --release
+# once: build the in-browser compiler (needs zig for the wasm link)
+maca run apps/npm/build.maca
 # then compile the playground into one self-contained index.html
 maca build --target js apps/playground/playground.maca -o out
 ```

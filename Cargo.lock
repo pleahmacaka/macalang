@@ -115,20 +115,6 @@ name = "maca-testsupport"
 version = "0.3.3"
 
 [[package]]
-name = "maca-wasm"
-version = "0.3.3"
-dependencies = [
- "maca-backend-c",
- "maca-backend-js",
- "maca-backend-nix",
- "maca-core",
- "maca-lexer",
- "maca-lsp",
- "maca-parser",
- "maca-profile",
-]
-
-[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

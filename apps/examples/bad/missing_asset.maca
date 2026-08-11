@@ -1,0 +1,6 @@
+note: str = data("nowhere.txt")
+
+main() -> int {
+    info(note)
+    0
+}

@@ -1,4 +1,4 @@
-import "../../target/wasm32-unknown-unknown/release/maca_wasm.wasm"
+import "../npm/maca_wasm.wasm"
 
 Sym = {
     kind:   str
@@ -91,27 +91,68 @@ import js """
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     return arr;
   }
-  function mem() { return new Uint8Array(ex.memory.buffer); }
-  function readPacked(packed) {
-    const ptr = Number(packed >> 32n), len = Number(packed & 0xffffffffn);
-    const out = new TextDecoder().decode(mem().slice(ptr, ptr + len));
-    ex.dealloc(ptr, len);
+  let mod = null;
+  const done = {};
+  function call(argv) {
+    let out = "";
+    let memory = null;
+    const enc = new TextEncoder();
+    const dec = new TextDecoder();
+    // argv[0] is the program name, which `args()` in the wasm drops.
+    const args = ["maca"].concat(argv).map(function (a) {
+      const b = enc.encode(a);
+      const z = new Uint8Array(b.length + 1);
+      z.set(b);
+      return z;
+    });
+    const view = function () { return new DataView(memory.buffer); };
+    const wasi = {
+      args_sizes_get: function (np, sp) {
+        let n = 0;
+        for (const a of args) n += a.length;
+        view().setUint32(np, args.length, true);
+        view().setUint32(sp, n, true);
+        return 0;
+      },
+      args_get: function (pp, bp) {
+        let at = bp;
+        for (let i = 0; i < args.length; i++) {
+          view().setUint32(pp + i * 4, at, true);
+          new Uint8Array(memory.buffer).set(args[i], at);
+          at += args[i].length;
+        }
+        return 0;
+      },
+      fd_write: function (fd, iov, n, wrote) {
+        let sent = 0;
+        for (let i = 0; i < n; i++) {
+          const at = view().getUint32(iov + i * 8, true);
+          const len = view().getUint32(iov + i * 8 + 4, true);
+          if (fd === 1) out += dec.decode(new Uint8Array(memory.buffer, at, len));
+          sent += len;
+        }
+        view().setUint32(wrote, sent, true);
+        return 0;
+      },
+      fd_close: function () { return 0; },
+      fd_seek: function () { return 0; },
+      fd_fdstat_get: function () { return 0; },
+      proc_exit: function () { throw done; },
+    };
+    const at = new WebAssembly.Instance(mod, { wasi_snapshot_preview1: wasi });
+    memory = at.exports.memory;
+    try {
+      at.exports._start();
+    } catch (e) {
+      if (e !== done) throw e;
+    }
     return out;
   }
-  function into(src) {
-    const b = new TextEncoder().encode(src);
-    const p = ex.alloc(b.length);
-    mem().set(b, p);
-    return [p, b.length];
-  }
   function ask(src, off) {
-    if (!ex || !ex.lsp) return null;
+    if (!mod) return null;
     try {
       const boff = new TextEncoder().encode(src.slice(0, off)).length;
-      const [p, n] = into(src);
-      const out = readPacked(ex.lsp(p, n, boff));
-      ex.dealloc(p, n);
-      return JSON.parse(out);
+      return JSON.parse(call(["lsp", String(boff), src]));
     } catch (e) {
       return null;
     }
@@ -179,12 +220,10 @@ import js """
 
   maca.provide({
     compile: function (src, mode) {
-      if (!ex) return "";
+      if (!mod) return "";
       const t0 = performance.now();
       try {
-        const [p, n] = into(src);
-        const json = readPacked(ex.run(p, n, mode | 0));
-        ex.dealloc(p, n);
+        const json = call(["compile", String(mode | 0), src]);
         spent = Math.round((performance.now() - t0) * 1000);
         return json;
       } catch (e) {
@@ -547,9 +586,8 @@ import js """
     await Promise.resolve();
     try {
       const b = bytesOf(document.getElementById("wasm-b64").textContent);
-      const { instance } = await WebAssembly.instantiate(b, {});
-      ex = instance.exports;
-      maca.set({ ready: true, version: readPacked(ex.version()) });
+      mod = await WebAssembly.compile(b);
+      maca.set({ ready: true, version: JSON.parse(call(["version"])) });
     } catch (e) {
       maca.set({ trouble: "the compiler did not load: " + e.message });
     }

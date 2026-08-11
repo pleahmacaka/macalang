@@ -1325,6 +1325,27 @@ c_errors(code: str) -> str {
 c_uses(code: str, name: str) -> bool =>
     code.index_of(name) >= 0
 
+/// The emitted C with its string literals dropped, so a runtime helper a program only names in its own text is not read as a call to it.
+c_bare(code: str) -> str =>
+    c_unquoted(code.split("\""), 0, true, []).join(" ")
+
+c_unquoted(parts: str[], i: int, live: bool, acc: str[]) -> str[] {
+    if i >= parts.length() {
+        acc
+    } else {
+        part = parts.get(i)
+        next = c_escaped(part) ? live : !live
+
+        c_unquoted(parts, i + 1, next, live ? acc.push(part) : acc)
+    }
+}
+
+c_escaped(part: str) -> bool =>
+    c_slashes(part, part.length() - 1, 0) % 2 == 1
+
+c_slashes(s: str, i: int, n: int) -> int =>
+    i >= 0 && s.at(i) == "\\" ? c_slashes(s, i - 1, n + 1) : n
+
 c_net_headers() -> str =>
     "#include <pthread.h>\n#include <sys/socket.h>\n" ++
     "#include <netinet/in.h>\n#include <netinet/tcp.h>\n" ++
@@ -1414,11 +1435,51 @@ c_mqtt(protos: str) -> str {
 emit_module(m: Module) -> str {
     protos = emit_protos(m.items, 0)
     code = protos ++ emit_starts(m.items) ++ emit_bodies(m.items, 0)
+    bare = c_bare(code)
 
-    c_preamble() ++ c_errors(code) ++ c_process(code) ++ c_threads(code)
-        ++ c_sockets(code)
+    c_preamble() ++ c_errors(bare) ++ c_process(bare) ++ c_threads(bare)
+        ++ c_sockets(bare)
         ++ emit_types(m.items, 0) ++ emit_consts(m.items, 0) ++ code
-        ++ c_mqtt(protos)
+        ++ c_mqtt(c_bare(protos)) ++ c_ffi(protos)
+}
+
+c_ffi(protos: str) -> str =>
+    c_sqlite(protos) ++ c_python(protos)
+
+c_sqlite(protos: str) -> str {
+    if protos.index_of("sqlite_open(") < 0 {
+        ""
+    } else {
+        "#include <sqlite3.h>\n" ++
+        "static long maca_sq_handle(void* p) {{ return (long)(intptr_t)p; }}\n" ++
+        "static sqlite3* maca_sq_db(long h) {{ return (sqlite3*)(intptr_t)h; }}\n" ++
+        "static sqlite3_stmt* maca_sq_stmt(long h) {{ return (sqlite3_stmt*)(intptr_t)h; }}\n" ++
+        "static const char* maca_sq_text(const unsigned char* t) {{ return t ? maca_cat((const char*)t, \"\") : \"\"; }}\n" ++
+        "long sqlite_open(const char* path) {{ sqlite3* db = 0; if (sqlite3_open(path, &db) != SQLITE_OK) {{ if (db) sqlite3_close(db); return 0; }} return maca_sq_handle(db); }}\n" ++
+        "long sqlite_close(long db) {{ return sqlite3_close(maca_sq_db(db)); }}\n" ++
+        "long sqlite_exec(long db, const char* sql) {{ char* err = 0; int rc = sqlite3_exec(maca_sq_db(db), sql, 0, 0, &err); if (err) sqlite3_free(err); return rc; }}\n" ++
+        "long sqlite_prepare(long db, const char* sql) {{ sqlite3_stmt* st = 0; if (sqlite3_prepare_v2(maca_sq_db(db), sql, -1, &st, 0) != SQLITE_OK) return 0; return maca_sq_handle(st); }}\n" ++
+        "long sqlite_step(long st) {{ return sqlite3_step(maca_sq_stmt(st)) == SQLITE_ROW; }}\n" ++
+        "long sqlite_column_count(long st) {{ return sqlite3_column_count(maca_sq_stmt(st)); }}\n" ++
+        "const char* sqlite_column_name(long st, long col) {{ return maca_sq_text((const unsigned char*)sqlite3_column_name(maca_sq_stmt(st), (int)col)); }}\n" ++
+        "const char* sqlite_column_text(long st, long col) {{ return maca_sq_text(sqlite3_column_text(maca_sq_stmt(st), (int)col)); }}\n" ++
+        "long sqlite_column_int(long st, long col) {{ return sqlite3_column_int64(maca_sq_stmt(st), (int)col); }}\n" ++
+        "double sqlite_column_float(long st, long col) {{ return sqlite3_column_double(maca_sq_stmt(st), (int)col); }}\n" ++
+        "long sqlite_finalize(long st) {{ return sqlite3_finalize(maca_sq_stmt(st)); }}\n"
+    }
+}
+
+c_python(protos: str) -> str {
+    if protos.index_of("py_call(") < 0 {
+        ""
+    } else {
+        "#define PY_SSIZE_T_CLEAN\n#include <Python.h>\n" ++
+        "static const char* maca_py_str(PyObject* r) {{ if (!r) return \"<py error>\"; const char* out = \"<py error>\"; PyObject* s = PyObject_Str(r); if (s) {{ const char* c = PyUnicode_AsUTF8(s); if (c) out = maca_cat(c, \"\"); Py_DECREF(s); }} return out; }}\n" ++
+        "static PyObject* maca_py_find(const char* module, const char* func) {{ PyObject* m = PyImport_ImportModule(module); if (!m) return 0; PyObject* f = PyObject_GetAttrString(m, func); Py_DECREF(m); if (f && PyCallable_Check(f)) return f; Py_XDECREF(f); return 0; }}\n" ++
+        "const char* py_call(const char* module, const char* func) {{ Py_Initialize(); const char* out = \"<py error>\"; PyObject* f = maca_py_find(module, func); if (f) {{ PyObject* r = PyObject_CallObject(f, 0); out = maca_py_str(r); Py_XDECREF(r); Py_DECREF(f); }} Py_Finalize(); return out; }}\n" ++
+        "const char* py_call_s(const char* module, const char* func, const char* arg) {{ Py_Initialize(); const char* out = \"<py error>\"; PyObject* f = maca_py_find(module, func); if (f) {{ PyObject* r = PyObject_CallFunction(f, \"s\", arg ? arg : \"\"); out = maca_py_str(r); Py_XDECREF(r); Py_DECREF(f); }} Py_Finalize(); return out; }}\n" ++
+        "const char* py_call_i(const char* module, const char* func, long n) {{ Py_Initialize(); const char* out = \"<py error>\"; PyObject* f = maca_py_find(module, func); if (f) {{ PyObject* r = PyObject_CallFunction(f, \"L\", (long long)n); out = maca_py_str(r); Py_XDECREF(r); Py_DECREF(f); }} Py_Finalize(); return out; }}\n"
+    }
 }
 
 emit_consts(items: Stmt[], i: int) -> str {

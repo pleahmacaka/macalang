@@ -241,7 +241,7 @@ site_dir() -> str {
 build_playground(into: str) -> bool {
     root = "/tmp/maca-sitegen/pg"
     src = join(root, "apps/playground/playground.maca")
-    stub = join(root, "target/wasm32-unknown-unknown/release/maca_wasm.wasm")
+    stub = join(root, "apps/npm/maca_wasm.wasm")
 
     copy_file("apps/playground/playground.maca", src)
     make_dir(dirname(stub))

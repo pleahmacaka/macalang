@@ -72,7 +72,7 @@
       "additionalProperties": false,
       "properties": {
         "code": {
-          "description": "The stable code. It names one defect forever and is never reused: retiring a kind retires its code with it, and the next kind takes the next number rather than the free one. M0001 type mismatch, M0002 non-exhaustive match, M0003 effect in config, M0004 unknown option, M0005 assignment to a constant, M0006 undefined name, M0007 an effect the target cannot carry.",
+          "description": "The stable code. It names one defect forever and is never reused: retiring a kind retires its code with it, and the next kind takes the next number rather than the free one. M0001 type mismatch, M0002 non-exhaustive match, M0003 effect in config, M0004 unknown option, M0005 assignment to a constant, M0006 undefined name, M0007 an effect the target cannot carry, M0008 a file the program embeds is not beside it.",
           "type": "string",
           "pattern": "^M[0-9]{4}$"
         },

@@ -480,7 +480,8 @@ backends: native **C** (default, SIMD included), **Nix** (config mode),
 `lint` / `test` / `profile` / `add` / `update` / `upgrade` / `bindgen`. Tooling:
 LSP, MCP server, and a browser playground authored in Maca itself
 (`apps/playground/playground.maca`, compiled by the JS backend) plus the wasm
-front-end (`crates/wasm`).
+front-end it loads (`apps/npm/wasm.maca`, compiled by the C backend and linked
+by `zig cc -target wasm32-wasi`).
 
 Every script in the repository is a Maca program: the site builder, the
 benchmark harness, the linter, `bindgen`, and the npm package's wasm build.

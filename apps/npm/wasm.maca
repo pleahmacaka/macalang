@@ -1,0 +1,253 @@
+import maca/lexer
+import maca/parser
+import maca/check
+import maca/emit_c
+import maca/emit_js
+import maca/emit_nix
+import maca/interp
+import std/json
+
+PgVersion = "0.3.3"
+
+/// The playground's whole answer for one source, as the JSON its glue reads.
+pg_compile(src: str, mode: int) -> str {
+    scanned = lex_all(src)
+    raw = parse_module(scanned.tokens, 0, [])
+    broke = scanned.errors ++ raw.errors
+    said = pg_checked(raw, broke)
+
+    "\{\"parseErrors\":" ++ array_of_str(broke)
+        ++ ",\"diagnostics\":[" ++ pg_diags(said, 0, []).join(",") ++ "]"
+        ++ ",\"markers\":[" ++ pg_marks(src, broke, said).join(",") ++ "]"
+        ++ ",\"outputs\":" ++ pg_outputs(raw, mode, broke.length() > 0)
+        ++ ",\"limits\":\{\}"
+        ++ ",\"jsExports\":"
+        ++ array_of_str(pg_exported(raw.items, 0, []))
+        ++ pg_ran(raw, mode, broke.length() > 0)
+        ++ "\}"
+}
+
+pg_checked(m: Module, broke: str[]) -> Diagnostic[] =>
+    broke.length() > 0 ? [] : check_diagnostics(m)
+
+pg_diags(ds: Diagnostic[], i: int, acc: str[]) -> str[] {
+    if i >= ds.length() {
+        acc
+    } else {
+        d = ds.get(i)
+        one = "\{\"kind\":" ++ quote(d.code) ++ ",\"msg\":"
+            ++ quote(d.message) ++ "\}"
+
+        pg_diags(ds, i + 1, acc.push(one))
+    }
+}
+
+pg_marks(src: str, broke: str[], ds: Diagnostic[]) -> str[] =>
+    pg_broken_marks(src, broke, 0, []) ++ pg_diag_marks(src, ds, 0, [])
+
+pg_broken_marks(src: str, xs: str[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        pg_broken_marks(src, xs, i + 1,
+                        acc.push(pg_marker(src, 0, 1, xs.get(i))))
+    }
+}
+
+pg_diag_marks(src: str, ds: Diagnostic[], i: int, acc: str[]) -> str[] {
+    if i >= ds.length() {
+        acc
+    } else {
+        d = ds.get(i)
+        name = pg_quoted_name(d.message)
+        lo = pg_anchor(src, name, d.pos)
+        hi = lo + (name == "" ? 1 : name.length())
+
+        pg_diag_marks(src, ds, i + 1,
+                      acc.push(pg_marker(src, lo, hi, d.message)))
+    }
+}
+
+pg_marker(src: str, lo: int, hi: int, msg: str) -> str =>
+    "\{\"severity\":\"error\"," ++ pg_at(src, lo, hi) ++ ",\"message\":"
+        ++ quote(msg) ++ "\}"
+
+pg_span(src: str, lo: int, hi: int) -> str =>
+    "\{" ++ pg_at(src, lo, hi) ++ "\}"
+
+pg_at(src: str, lo: int, hi: int) -> str =>
+    "\"line\":" ++ str(pg_line_at(src, lo))
+        ++ ",\"col\":" ++ str(pg_col_at(src, lo))
+        ++ ",\"endLine\":" ++ str(pg_line_at(src, hi))
+        ++ ",\"endCol\":" ++ str(pg_col_at(src, hi))
+
+pg_line_at(text: str, at: int) -> int =>
+    text.slice(0, at).split("\n").length()
+
+pg_col_at(text: str, at: int) -> int {
+    before = text.slice(0, at).split("\n")
+
+    before.get(before.length() - 1).length() + 1
+}
+
+/// The name a message is about, which is the first thing it puts in backticks.
+pg_quoted_name(msg: str) -> str {
+    open = msg.index_of("`")
+    rest = open < 0 ? "" : msg.slice(open + 1, msg.length())
+    shut = rest.index_of("`")
+
+    shut < 0 ? "" : rest.slice(0, shut)
+}
+
+pg_anchor(text: str, name: str, from: int) -> int {
+    at = from > 0 && from < text.length() ? from : 0
+    tail = text.slice(at, text.length())
+    hit = name == "" ? -1 : tail.index_of(name)
+
+    hit < 0 ? at : at + hit
+}
+
+pg_outputs(m: Module, mode: int, broke: bool) -> str {
+    if broke {
+        "\{\}"
+    } else if mode == 1 {
+        "\{\"Nix\":" ++ quote(nemit_module(m)) ++ "\}"
+    } else {
+        "\{\"C\":" ++ quote(emit_module(m)) ++ ",\"JS\":"
+            ++ quote(jemit_module(m)) ++ "\}"
+    }
+}
+
+pg_exported(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind == SFn && items.get(i).name != "" {
+        pg_exported(items, i + 1, acc.push(items.get(i).name))
+    } else {
+        pg_exported(items, i + 1, acc)
+    }
+}
+
+pg_ran(m: Module, mode: int, broke: bool) -> str {
+    if broke || mode == 1 {
+        ""
+    } else {
+        r = run_module(m)
+
+        ",\"run\":\{\"output\":" ++ quote(r.output) ++ ",\"error\":"
+            ++ (r.fault == "" ? "null" : quote(r.fault))
+            ++ ",\"exit\":" ++ str(r.exit) ++ "\}"
+    }
+}
+
+/// Every language-server answer for one caret, in the one call an editor asks.
+pg_lsp(src: str, off: int) -> str {
+    name = pg_word_at(src, off)
+    m = parse_module(lex_all(src).tokens, 0, [])
+    at = pg_def_at(m.items, name, 0)
+
+    "\{\"hover\":" ++ quote(pg_hover(m.items, at))
+        ++ ",\"signature\":" ++ pg_sig_json(m.items, at)
+        ++ ",\"definition\":" ++ pg_def_json(src, m.items, at, name)
+        ++ ",\"references\":[" ++ pg_refs(src, name, 0, []).join(",") ++ "]\}"
+}
+
+pg_def_at(items: Stmt[], name: str, i: int) -> int {
+    if name == "" || i >= items.length() {
+        -1
+    } else if items.get(i).name == name {
+        i
+    } else {
+        pg_def_at(items, name, i + 1)
+    }
+}
+
+pg_hover(items: Stmt[], at: int) -> str =>
+    at < 0 ? "" : pg_sig(items.get(at))
+
+pg_sig(s: Stmt) -> str =>
+    s.name ++ "(" ++ pg_params(s.params, 0, []).join(", ") ++ ")"
+        ++ (s.ret == "" ? "" : " -> " ++ s.ret)
+
+pg_params(ps: Expr[], i: int, acc: str[]) -> str[] {
+    if i >= ps.length() {
+        acc
+    } else {
+        p = ps.get(i)
+
+        pg_params(ps, i + 1,
+                  acc.push(p.ty == "" ? p.text : p.text ++ ": " ++ p.ty))
+    }
+}
+
+pg_sig_json(items: Stmt[], at: int) -> str =>
+    at < 0 ? "null"
+           : "\{\"label\":" ++ quote(pg_sig(items.get(at)))
+               ++ ",\"params\":"
+               ++ array_of_str(pg_params(items.get(at).params, 0, []))
+               ++ ",\"active\":0\}"
+
+pg_def_json(src: str, items: Stmt[], at: int, name: str) -> str {
+    if at < 0 {
+        "null"
+    } else {
+        lo = pg_anchor(src, name, items.get(at).pos)
+
+        pg_span(src, lo, lo + name.length())
+    }
+}
+
+pg_refs(src: str, name: str, from: int, acc: str[]) -> str[] {
+    hit = name == "" ? -1 : src.slice(from, src.length()).index_of(name)
+
+    if hit < 0 {
+        acc
+    } else {
+        lo = from + hit
+        hi = lo + name.length()
+
+        pg_refs(src, name, hi,
+                pg_whole(src, lo, hi) ? acc.push(pg_span(src, lo, hi)) : acc)
+    }
+}
+
+pg_whole(src: str, lo: int, hi: int) -> bool =>
+    (lo == 0 || !pg_wordly(src.at(lo - 1)))
+        && (hi >= src.length() || !pg_wordly(src.at(hi)))
+
+pg_word_at(src: str, off: int) -> str {
+    at = off < 0 ? 0 : (off > src.length() ? src.length() : off)
+    lo = pg_word_lo(src, at)
+
+    src.slice(lo, pg_word_hi(src, lo))
+}
+
+pg_word_lo(src: str, i: int) -> int =>
+    i > 0 && pg_wordly(src.at(i - 1)) ? pg_word_lo(src, i - 1) : i
+
+pg_word_hi(src: str, i: int) -> int =>
+    i < src.length() && pg_wordly(src.at(i)) ? pg_word_hi(src, i + 1) : i
+
+pg_wordly(c: str) -> bool =>
+    c.is_alpha() || c.is_ascii_digit() || c == "_"
+
+main(args: str[]) -> int {
+    cmd = args.length() > 0 ? args.get(0) : ""
+
+    if cmd == "version" {
+        print(quote(PgVersion))
+        0
+    } else if args.length() < 3 {
+        print("\{\"parseErrors\":[\"usage: compile|lsp <n> <source>\"]\}")
+        2
+    } else if cmd == "lsp" {
+        print(pg_lsp(args.get(2), int(args.get(1))))
+        0
+    } else if cmd == "compile" {
+        print(pg_compile(args.get(2), int(args.get(1))))
+        0
+    } else {
+        print("\{\"parseErrors\":[\"no such command `" ++ cmd ++ "`\"]\}")
+        2
+    }
+}

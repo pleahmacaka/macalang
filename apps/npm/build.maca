@@ -1,19 +1,18 @@
 import std/proc
 import std/path
 
-Wasm = "target/wasm32-unknown-unknown/release/maca_wasm.wasm"
+Entry = "apps/npm/wasm.maca"
 Package = "apps/npm"
 
 main() -> int {
-    run("cargo", ["build", "-p", "maca-wasm",
-                  "--target", "wasm32-unknown-unknown", "--release"])
-
     dest = join(Package, "maca_wasm.wasm")
 
-    if !copy_bytes(Wasm, dest) {
-        fail "no wasm at {Wasm}"
+    run("maca", ["build", Entry, "--target", "wasm", "-o", dest])
+
+    if file_size(dest) <= 0 {
+        fail "no wasm at {dest}"
     }
 
-    info("copied maca_wasm.wasm ({file_size(dest)} bytes) into {Package}")
+    info("built maca_wasm.wasm ({file_size(dest)} bytes) in {Package}")
     0
 }

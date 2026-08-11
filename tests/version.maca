@@ -7,7 +7,8 @@ stated_files() -> Stated[] => [
     Stated { file = "apps/npm/package.json", key = "\"version\"" },
     Stated { file = "apps/editor/zed-maca/extension.toml", key = "version" },
     Stated { file = "apps/editor/zed-maca/Cargo.toml", key = "version" },
-    Stated { file = "apps/maca1/main.maca", key = "Version" }
+    Stated { file = "apps/maca1/main.maca", key = "Version" },
+    Stated { file = "apps/npm/wasm.maca", key = "PgVersion" }
 ]
 
 field(src: str, key: str) -> str =>

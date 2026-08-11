@@ -1,0 +1,155 @@
+import maca/lexer
+import maca/parser
+import maca/check
+import std/proc
+
+scratch() -> str {
+    dir = env_or("TMPDIR", "/tmp") ++ "/maca-embed"
+
+    make_dir(dir)
+
+    dir
+}
+
+fixture(name: str, text: str) -> str {
+    path = scratch() ++ "/" ++ name
+
+    write_file(path, text)
+
+    path
+}
+
+module_of(src: str, at: str) -> Module =>
+    desugared(parse_module(lex(src), 0, []), at)
+
+bound(src: str, at: str) -> Expr =>
+    module_of(src, at).items.get(0).value
+
+faults(src: str, at: str) -> str[] =>
+    module_of(src, at).errors
+
+here() -> str =>
+    scratch() ++ "/page.maca"
+
+test_a_private_copy_is_the_name_with_local_before_the_extension() {
+    assert_eq(local_spec("config/links.json"), "config/links.local.json",
+        "the private copy sits beside the committed one")
+    assert_eq(local_spec("links"), "links.local",
+        "a name with no extension takes the suffix whole")
+    assert_eq(local_spec("a.b/links"), "a.b/links.local",
+        "a dot in a directory is not the file's extension")
+    assert_eq(local_spec("a.b/links.json"), "a.b/links.local.json",
+        "only the last segment is split")
+    assert_eq(local_spec(".hidden"), ".hidden.local",
+        "a leading dot is the whole name, not an empty stem")
+}
+
+test_a_str_binding_is_the_text_of_the_file_it_names() {
+    fixture("note.txt", "hello")
+
+    e = bound("note: str = data(\"note.txt\")", here())
+
+    assert_eq(str(e.kind == EStr), "true",
+        "the call is gone and the text stands in its place")
+    assert_eq(e.text, "hello", "which is what the file holds")
+}
+
+test_a_path_bound_to_a_constant_names_the_same_file() {
+    fixture("note.txt", "hello")
+
+    src = "Note = \"note.txt\"\n\nnote: str = data(Note)"
+    e = module_of(src, here()).items.get(1).value
+
+    assert_eq(e.text, "hello",
+        "a path written once is followed to the file it names")
+}
+
+test_the_local_copy_shadows_the_committed_one() {
+    fixture("links.json", "committed")
+    fixture("links.local.json", "private")
+
+    e = bound("links: str = data(\"links.json\")", here())
+
+    assert_eq(e.text, "private",
+        "the .local companion is what the build reads")
+    remove_file(scratch() ++ "/links.local.json")
+
+    again = bound("links: str = data(\"links.json\")", here())
+
+    assert_eq(again.text, "committed",
+        "and with it gone the committed name answers again")
+}
+
+test_a_file_that_is_not_there_is_named() {
+    said = faults("gone: str = data(\"nowhere.txt\")", here())
+
+    assert_eq(str(said.length()), "1", "one file could not be read")
+    assert(said.get(0).index_of("nowhere.txt") >= 0,
+        "the message names the file: {said.get(0)}")
+}
+
+test_a_path_that_is_not_written_out_is_refused() {
+    said = faults("f(p: str) -> str => data(p)", here())
+
+    assert_eq(str(said.length()), "1", "a run-time path cannot be read now")
+    assert(said.get(0).index_of("bind it to a constant") >= 0,
+        "and the message says what to do instead: {said.get(0)}")
+}
+
+test_data_takes_one_path() {
+    said = faults("f() -> str => data(\"a.txt\", \"b.txt\")", here())
+
+    assert_eq(str(said.length()), "1", "two paths is not a reading")
+    assert(said.get(0).index_of("one path") >= 0,
+        "and the message says so: {said.get(0)}")
+}
+
+test_a_program_that_defines_data_keeps_its_own() {
+    src = "data(p: str) -> str => p\n\nnote: str = data(\"nowhere.txt\")"
+
+    assert_eq(str(faults(src, here()).length()), "0",
+        "nothing is read when the name is the program's own")
+
+    kept = module_of(src, here()).items.get(1).value
+
+    assert_eq(kept.text, "data", "and the call is left as it was written")
+    assert_eq(kept.children.get(0).text, "nowhere.txt",
+        "with the path it was given")
+}
+
+test_a_type_other_than_str_is_what_decode_reads_the_text_into() {
+    fixture("site.json", "\{\}")
+
+    src = "Site = \{ title: str \}\n\nsite: Site = data(\"site.json\")"
+    e = module_of(src, here()).items.get(1).value
+
+    assert_eq(str(e.kind == ECall), "true", "the reading is still a call")
+    assert_eq(e.text, "decode", "and the reader is the one std/json names")
+}
+
+test_the_text_is_escaped_so_a_back_end_can_print_it() {
+    fixture("awkward.txt", "a\"b\nc")
+
+    e = bound("t: str = data(\"awkward.txt\")", here())
+
+    assert(e.text.index_of("\n") < 0,
+        "no line ends inside the literal: {e.text}")
+    assert_eq(str(e.text.length()), "7",
+        "the quote and the line end are each two characters now")
+}
+
+test_a_reading_inside_a_function_is_embedded_too() {
+    fixture("note.txt", "hello")
+
+    m = module_of("f() -> str \{\n    note: str = data(\"note.txt\")\n"
+                      ++ "\n    note\n\}", here())
+    inner = m.items.get(0).body.get(0).value
+
+    assert_eq(inner.text, "hello",
+        "a typed binding in a body is embedded like one at the top")
+
+    loose = module_of("f() -> str => data(\"note.txt\")", here())
+
+    assert_eq(loose.items.get(0).body.get(0).value.text, "decode",
+        "and a reading with no type beside it is left for `decode`")
+}

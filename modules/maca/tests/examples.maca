@@ -37,6 +37,11 @@ test_hello_is_the_program_the_first_page_shows() {
         "the shortest program in the book still greets")
 }
 
+test_a_program_carries_the_file_it_reads_beside_it() {
+    assert_eq(ran_example("asset"), "Hello from a file",
+        "`data` reads the file once, while the program is being built")
+}
+
 test_a_pattern_example_chooses_the_arm_it_named() {
     assert_eq(ran_example("match_guard"),
         ["negative", "zero", "small", "big", "two"].join("\n"),

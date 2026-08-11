@@ -146,11 +146,13 @@ Version = "0.3.3"
 check_only(src: str, target: str) -> int {
     unit = unit_of(src)
     scanned = end_run(lexed(unit.toks, unit.errs), 0, 0)
-    raw = parse_module(scanned.tokens, 0, [])
+    parsed = parse_module(scanned.tokens, 0, [])
+    raw = desugared(parsed, src)
 
     report_all("import", unit.unknown, 0) +
         report_all("scan", scanned.errors, 0) +
-        report_all("parse", raw.errors, 0) +
+        report_all("parse", parsed.errors, 0) +
+        report_all("embed", raw.errors, 0) +
         report_all("check", check_errors_on(raw, target), 0)
 }
 
@@ -624,7 +626,7 @@ build_wasm(src: str, out: str) -> int {
 
     if errs > 0 {
         errs
-    } else if read_file(cfile).index_of("#include <setjmp.h>") >= 0 {
+    } else if read_file(cfile).index_of("\n#include <setjmp.h>\n") >= 0 {
         err("maca: the wasm target cannot carry `try` yet, because "
             ++ "wasi-libc has no setjmp; {cfile} is written")
 
@@ -692,14 +694,127 @@ cross_compile(m: Mcu, dir: str) -> int {
     }
 }
 
+/// A program built before and unchanged since is copied out of the cache instead of compiled again.
 build_binary(src: str, out: str) -> int {
+    key = cache_key(src)
+    hit = key == "" ? "" : "{cache_dir()}/{key}"
+
+    if hit != "" && file_exists(hit) && cache_take(hit, out) {
+        0
+    } else {
+        built = build_fresh(src, out)
+
+        if built == 0 && key != "" {
+            cache_store(key, out)
+        }
+
+        built
+    }
+}
+
+/// The cache is `$MACA_CACHE`, else the XDG cache directory, else `~/.cache/maca`.
+cache_dir() -> str {
+    given = env("MACA_CACHE")
+    xdg = env("XDG_CACHE_HOME")
+    home = env("HOME")
+
+    if given != "" {
+        "{given}/build/bin"
+    } else if xdg != "" {
+        "{xdg}/maca/build/bin"
+    } else if home != "" {
+        "{home}/.cache/maca/build/bin"
+    } else {
+        "/tmp/maca/build/bin"
+    }
+}
+
+/// A digest of every file the program is made of, of the compiler about to build it and of the flags it will be linked with.
+cache_key(src: str) -> str {
+    off = env("MACA_NO_CACHE")
+
+    if off == "1" || off == "true" {
+        ""
+    } else {
+        capture("sh", ["-c", cache_probe(), "maca",
+                       "native " ++ cc_flags().join(" ")]
+                    ++ unit_of(src).seen).trim()
+    }
+}
+
+/// No digest without sha512sum and without the compiler's own timestamp, because a key that answers for neither would serve a stale binary.
+cache_probe() -> str =>
+    "command -v sha512sum >/dev/null || exit 0; "
+        ++ "exe=$(stat -Lc %Y /proc/$PPID/exe 2>/dev/null); "
+        ++ "[ -n \"$exe\" ] || exit 0; ( printf %s \"$exe $1\"; shift; "
+        ++ "sha512sum \"$@\" | cut -d\" \" -f1 ) | sha512sum | cut -d\" \" -f1"
+
+/// A cached binary is copied out with the executable bit a fresh build would have left on it.
+cache_take(from: str, out: str) -> bool =>
+    copy_bytes(from, out) && exec("chmod", ["755", out]) == 0
+
+/// A copy and then a rename, so a build interrupted half way cannot leave a truncated binary under a good key.
+cache_store(key: str, out: str) -> bool {
+    dir = cache_dir()
+    tmp = "{dir}/{key}.{str(now_ms())}.tmp"
+
+    make_dir(dir)
+
+    copy_bytes(out, tmp) && exec("mv", [tmp, "{dir}/{key}"]) == 0
+}
+
+/// Which foreign header the emitted C reaches for is which library the link is told about.
+link_flags(code: str) -> str[] {
+    sq = code.index_of("#include <sqlite3.h>") >= 0
+    py = code.index_of("#include <Python.h>") >= 0
+
+    if sq && py {
+        cc_flags() ++ sqlite_flags() ++ python_flags()
+    } else if sq {
+        cc_flags() ++ sqlite_flags()
+    } else if py {
+        cc_flags() ++ python_flags()
+    } else {
+        cc_flags()
+    }
+}
+
+/// `pkg-config` describes a library where there is one, and `nix` on a machine that keeps its libraries out of the compiler's path.
+sqlite_flags() -> str[] {
+    pkg = capture("pkg-config", ["--cflags", "--libs", "sqlite3"]).trim()
+    dev = pkg != "" ? "" : nix_path("nixpkgs#sqlite.dev")
+    lib = dev == "" ? "" : nix_path("nixpkgs#sqlite.out")
+
+    if pkg != "" {
+        nonempty(pkg.split(" "), 0, []) ++ ["-lpthread"]
+    } else if lib != "" {
+        ["-I{dev}/include", "-L{lib}/lib", "-lsqlite3",
+         "-Wl,-rpath,{lib}/lib", "-lpthread"]
+    } else {
+        ["-lsqlite3", "-lpthread"]
+    }
+}
+
+nix_path(attr: str) -> str =>
+    capture("nix", ["build", "--no-link", "--print-out-paths", attr]).trim()
+
+/// `python3-config` is what a Python installation says about its own headers and library.
+python_flags() -> str[] {
+    inc = capture("python3-config", ["--includes"]).trim()
+    embed = capture("python3-config", ["--ldflags", "--embed"]).trim()
+    ld = embed != "" ? embed : capture("python3-config", ["--ldflags"]).trim()
+
+    nonempty(inc.split(" ") ++ ld.split(" "), 0, [])
+}
+
+build_fresh(src: str, out: str) -> int {
     cfile = out ++ ".c"
     errs = compile_file([src, cfile])
 
     if errs > 0 {
         errs
     } else {
-        exec("cc", [cfile] ++ cc_flags() ++ ["-o", out])
+        exec("cc", [cfile] ++ link_flags(read_file(cfile)) ++ ["-o", out])
     }
 }
 
@@ -894,16 +1009,30 @@ check_cmd(args: str[]) -> int {
 check_json(path: str, target: str) -> int {
     unit = unit_of(path)
     scanned = end_run(lexed(unit.toks, unit.errs), 0, 0)
-    raw = parse_module(scanned.tokens, 0, [])
-    broke = unit.unknown ++ scanned.errors ++ raw.errors
+    parsed = parse_module(scanned.tokens, 0, [])
+    raw = desugared(parsed, path)
+    broke = unit.unknown ++ scanned.errors ++ parsed.errors
     said = broke.length() > 0
         ? unparsed(broke, 0, [])
-        : check_diagnostics_on(raw, target)
+        : unread(raw.errors, 0, []) ++ check_diagnostics_on(raw, target)
     body = diag_list(path, read_file(path), said, 0, [])
 
     info("\{\"format\":1,\"diagnostics\":[" ++ body.join(",") ++ "]\}")
 
     said.length() == 0 ? 0 : 1
+}
+
+/// A file the program embeds that the build could not read is its own defect.
+unread(xs: str[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        said = Diagnostic { code = "M0008", message = xs.get(i), pos = 0,
+                            note = "the file is read from beside the program"
+                                ++ " while it is being built" }
+
+        unread(xs, i + 1, acc.push(said))
+    }
 }
 
 /// Nothing after a scan or parse failure was checked, and the note says so.
@@ -1535,10 +1664,12 @@ test_main(names: str[], i: int, acc: str) -> str {
 compile_file(args: str[]) -> int {
     unit = unit_of(args.get(0))
     scanned = end_run(lexed(unit.toks, unit.errs), 0, 0)
-    raw = parse_module(scanned.tokens, 0, [])
+    parsed = parse_module(scanned.tokens, 0, [])
+    raw = desugared(parsed, args.get(0))
     bad = report_all("import", unit.unknown, 0) +
         report_all("scan", scanned.errors, 0) +
-        report_all("parse", raw.errors, 0)
+        report_all("parse", parsed.errors, 0) +
+        report_all("embed", raw.errors, 0)
     errs = bad + report_all("check", check_errors(raw), 0)
     m = annotated(monomorphic(lifted(annotated(raw))))
     asked = args.length() >= 3 ? args.get(2) : ""

@@ -73,22 +73,25 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust + wasm target
-        run: |
-          rustup toolchain install stable --profile minimal --no-self-update
-          rustup target add wasm32-unknown-unknown
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal --no-self-update
       - uses: Swatinem/rust-cache@v2
         with:
           key: wasm
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      # The package wasm is a Maca program linked by `zig cc -target
+      # wasm32-wasi`, so zig is the toolchain this job needs.
+      - uses: mlugg/setup-zig@v1
+        with:
+          version: 0.16.0
       # build the compiler wasm into the package, then exercise the JS API
       # (compile / loadModule / loadFile / toJS) so it can't silently break.
       # The build step is a Maca program, so the compiler is built first.
       - name: Build the compiler
         run: cargo build --release -p maca-driver
       - name: Build wasm into the package
-        run: ./target/release/maca run apps/npm/build.maca
+        run: PATH="$PWD/target/release:$PATH" ./target/release/maca run apps/npm/build.maca
       - name: Test the package
         run: node apps/npm/test.mjs

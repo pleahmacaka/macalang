@@ -1,0 +1,8 @@
+Note = "asset.txt"
+
+note: str = data(Note)
+
+main() -> int {
+    info(note.trim())
+    0
+}

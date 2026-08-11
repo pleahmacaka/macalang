@@ -78,7 +78,7 @@ fn the_playground_parses() {
     let root = std::env::temp_dir().join(format!("maca-js-check-{}-play", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let src = root.join("apps/playground/playground.maca");
-    let stub = root.join("target/wasm32-unknown-unknown/release/maca_wasm.wasm");
+    let stub = root.join("apps/npm/maca_wasm.wasm");
     std::fs::create_dir_all(src.parent().unwrap()).unwrap();
     std::fs::create_dir_all(stub.parent().unwrap()).unwrap();
     std::fs::copy(repo().join("apps/playground/playground.maca"), &src).unwrap();

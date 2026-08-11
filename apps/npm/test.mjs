@@ -11,33 +11,52 @@
 // It needs a `maca_wasm.wasm` beside it, which is a build artifact and is not in
 // the repository. Build one first:
 //
-//     maca run packages/macalang/build.maca
+//     maca run apps/npm/build.maca
 import assert from "node:assert";
 import { readFileSync, writeFileSync } from "node:fs";
 import { compile, toJS, loadModule, loadFile, lsp, version } from "./index.js";
 
-const BUILD = "maca run packages/macalang/build.maca";
+const BUILD = "maca run apps/npm/build.maca";
 
-// 0. the wasm is there, and is the one this package was written against.
+// 0. the wasm is there, is a wasm, and is the shape this package calls.
 //
 // A stale wasm is the failure worth naming here, because every other assertion
-// in this file passes against one: `alloc`, `run` and `version` have been
-// exported since the first version, so a compiler from six months ago compiles
-// these programs perfectly and answers nothing this package has learned to ask
-// since. The export list is the cheapest thing that dates it.
+// in this file passes against one: `maca_wasm.wasm` is not in the repository
+// and one left over from a previous build answers every older call perfectly.
+// The import list is the cheapest thing that dates it, and it is short because
+// the compiler is a wasi command rather than a library of exports.
 let bytes;
 try {
   bytes = readFileSync(new URL("./maca_wasm.wasm", import.meta.url));
 } catch {
   assert.fail(`no maca_wasm.wasm beside test.mjs: build one with \`${BUILD}\``);
 }
-const surface = WebAssembly.Module.exports(new WebAssembly.Module(bytes)).map((e) => e.name);
-for (const name of ["memory", "alloc", "dealloc", "run", "version", "hover", "lsp"]) {
+assert.deepEqual(
+  [...bytes.subarray(0, 4)],
+  [0x00, 0x61, 0x73, 0x6d],
+  "maca_wasm.wasm does not start with the wasm magic bytes",
+);
+const mod = new WebAssembly.Module(bytes);
+const surface = WebAssembly.Module.exports(mod).map((e) => e.name);
+for (const name of ["memory", "_start"]) {
   assert.ok(
     surface.includes(name),
-    `maca_wasm.wasm has no "${name}" export, so it is older than the compiler ` +
-      `it came from: rebuild it with \`${BUILD}\``,
+    `maca_wasm.wasm has no "${name}" export, so it is not the wasi command this ` +
+      `package calls: rebuild it with \`${BUILD}\``,
   );
+}
+const wanted = new Set([
+  "args_get",
+  "args_sizes_get",
+  "fd_close",
+  "fd_fdstat_get",
+  "fd_seek",
+  "fd_write",
+  "proc_exit",
+]);
+for (const i of WebAssembly.Module.imports(mod)) {
+  assert.equal(i.module, "wasi_snapshot_preview1", `unexpected import module ${i.module}`);
+  assert.ok(wanted.has(i.name), `the shim in index.js does not answer ${i.name}`);
 }
 
 console.log("maca version:", version());
@@ -48,7 +67,11 @@ assert.equal(bad.diagnostics.length, 0);
 
 // 2. type errors surface as diagnostics
 const typed = compile('bad() -> int => "nope"');
-assert.ok(typed.diagnostics.some((d) => d.kind === "TypeMismatch"), "expected TypeMismatch");
+assert.ok(
+  typed.diagnostics.some((d) => d.msg.includes("expected int, found str")),
+  "expected a type mismatch",
+);
+assert.equal(typed.markers.length, 1, "and one marker for the editor to draw");
 
 // 3. functions become callable
 const m = loadModule(
@@ -69,11 +92,18 @@ assert.equal(f.sq(9), 81);
 assert.ok(toJS("id(x: int) -> int => x").includes("function id"));
 
 // 6. the language server answers for a caret
-const src = "fib(n: int) -> int => n < 2 ? n : fib(n - 1) + fib(n - 2)\nmain() -> int => fib(3)\n";
+const src =
+  "fib(n: int) -> int => n < 2 ? n : fib(n - 1) + fib(n - 2)\n" +
+  "fibs() -> int => 0\n" +
+  "main() -> int => fib(3)\n";
 const at = lsp(src, src.indexOf("fib(3)"));
 assert.equal(at.hover, "fib(n: int) -> int", "hover at a call site is the signature");
 assert.equal(at.definition.line, 1, "the definition is the line fib is defined on");
-assert.equal(at.references.length, 4, "the definition and its three call sites");
+assert.equal(
+  at.references.length,
+  4,
+  "the definition and its three call sites, and not the fibs that starts with it",
+);
 // A caret on an operator names no binding, and the answer is empty rather than
 // absent: an editor asks about every caret it sees, including the ones between
 // two things.
