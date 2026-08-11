@@ -569,6 +569,38 @@ test_the_message_names_the_annotation_and_then_the_value() {
               "and a range end is read against the int it has to be")
 }
 
+test_a_rest_parameter_must_be_the_last_one() {
+    bad = errors_of("odd(...rest: int, tail: str) -> int => rest.length()")
+    assert_eq(str(bad.length()), "1", "nothing says where the gathering stops")
+    assert(bad.get(0).contains("must be last"),
+           "and the message says where it belongs: {bad.get(0)}")
+    assert_eq(count_of("odd(head: str, ...rest: int) -> int => rest.length()"),
+              "0", "behind a fixed parameter it is where it belongs")
+}
+
+test_a_variadic_call_counts_only_the_fixed_parameters() {
+    bad = errors_of("tag(label: str, ...rest: int) -> int => rest.length()"
+                    ++ " use() -> int => tag()")
+    assert_eq(str(bad.length()), "1", "the fixed parameter went unfilled")
+    assert_eq(bad.get(0), "`tag` takes at least 1 argument(s), given 0",
+              "the count owed is the fixed one, not every parameter")
+    assert_eq(count_of("tag(label: str, ...rest: int) -> int => rest.length()"
+                       ++ " use() -> int => tag(\"a\")"),
+              "0", "the fixed one alone fills the call")
+}
+
+test_a_variadic_is_callable_and_is_not_a_value() {
+    bad = errors_of("total(...rest: int) -> int => rest.length()"
+                    ++ " apply(f, v: int) -> int => f(v)"
+                    ++ " use() -> int => apply(total, 3)")
+    assert_eq(str(bad.length()), "1", "a variadic has no arity as a value")
+    assert(bad.get(0).contains("cannot be used as a function value"),
+           "and the message says to call it instead: {bad.get(0)}")
+    assert_eq(count_of("total(...rest: int) -> int => rest.length()"
+                       ++ " use() -> int => total(1, 2)"),
+              "0", "calling it is what it is for")
+}
+
 test_a_rest_parameter_says_what_its_list_holds() {
     assert_eq(count_of("total(...rest: int) -> int => rest.length()"), "0",
               "an annotated rest parameter is one list of that type")

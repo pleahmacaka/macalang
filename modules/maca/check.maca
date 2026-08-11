@@ -163,6 +163,16 @@ add_fn(env: Env, s: Stmt) -> Env {
                     varargs = made.env.varargs ++ rest_taker(s) }
 }
 
+rest_before_the_end(ps: Expr[], i: int) -> bool {
+    if i >= ps.length() - 1 {
+        false
+    } else if ps.get(i).ival == 1 {
+        true
+    } else {
+        rest_before_the_end(ps, i + 1)
+    }
+}
+
 rest_taker(s: Stmt) -> str[] {
     n = s.params.length()
 
@@ -303,6 +313,11 @@ ident_type(env: Env, e: Expr) -> Typed {
         typed(env, env.types.get(at))
     } else if variant >= 0 {
         typed(env, t_con(env.owners.get(variant), []))
+    } else if declared >= 0 && env.varargs.index_of(e.text) >= 0 {
+        typed(complain(env, "`{e.text}` is variadic, so it cannot be used as a"
+                            ++ " function value; call it, or declare it"
+                            ++ " `{e.text}(xs: T[])` and pass a list"),
+              t_error())
     } else if declared >= 0 {
         fn_value(env, env.sigs.get(declared))
     } else {
@@ -402,8 +417,14 @@ call_declared(env: Env, e: Expr, sig: Ty) -> Typed {
 takes_rest(env: Env, e: Expr, wanted: int) -> bool =>
     env.varargs.index_of(e.text) >= 0 && e.children.length() >= wanted - 1
 
-wrong_arity(env: Env, e: Expr, wanted: int) -> Env =>
-    complain(env, "`{e.text}` takes {wanted} argument(s), given {e.children.length()}")
+wrong_arity(env: Env, e: Expr, wanted: int) -> Env {
+    if env.varargs.index_of(e.text) >= 0 {
+        complain(env, "`{e.text}` takes at least {wanted - 1} argument(s), "
+                      ++ "given {e.children.length()}")
+    } else {
+        complain(env, "`{e.text}` takes {wanted} argument(s), given {e.children.length()}")
+    }
+}
 
 unify_args(env: Env, args: Expr[], params: Ty[], i: int) -> Env {
     if i >= args.length() {
@@ -1294,11 +1315,20 @@ impure_value(e: Expr) -> str[] {
 }
 
 impure_config(name: str) -> str =>
-    "config must be pure, and `{name}` performs io: a NixOS module is data,"
-        ++ " so there is no moment at which it could run"
+    "config must be pure, and `{name}` performs {effect_of(name)}: a NixOS"
+        ++ " module is data, so there is no moment at which it could run"
+
+/// An effect is named by the word that carries it, because config mode forces the empty effect row.
+effect_of(name: str) -> str =>
+    is_async_effect(name) ? "async" : "io"
+
+is_async_effect(word: str) -> bool =>
+    word == "spawn" || word == "await"
 
 effectful_call(e: Expr) -> str {
-    if (e.kind == ECall || e.kind == EMethod) && is_io_builtin(e.text) {
+    if e.kind == EUnary && is_async_effect(e.text) {
+        e.text
+    } else if (e.kind == ECall || e.kind == EMethod) && is_io_builtin(e.text) {
         e.text
     } else {
         effectful_in(e.children, 0)
@@ -2099,7 +2129,12 @@ variadic_errors(items: Stmt[], i: int, acc: str[]) -> str[] {
 }
 
 rest_misuse(s: Stmt) -> str[] {
-    if s.kind != SFn || rest_taker(s).length() == 0 {
+    if s.kind != SFn {
+        []
+    } else if rest_before_the_end(s.params, 0) {
+        ["type mismatch: `{s.name}`: a rest parameter must be last, so"
+             ++ " nothing says where the arguments it gathers stop"]
+    } else if rest_taker(s).length() == 0 {
         []
     } else if s.name == "main" {
         ["type mismatch: `main` takes no rest parameter, because the"

@@ -237,13 +237,31 @@ test_a_rest_parameter_is_lowered_and_its_misuse_is_refused() {
         "a rest parameter is a declaration the checker lowers, not one it refuses")
 
     refused("crates/driver/tests/programs/bad_variadic_value.maca",
-        "type mismatch")
+        "cannot be used as a function value")
     refused("crates/driver/tests/programs/bad_variadic_arity.maca",
-        "`tag` takes 2 argument(s), given 0")
+        "`tag` takes at least 1 argument(s), given 0")
     refused("crates/driver/tests/programs/bad_variadic_not_last.maca",
-        "type mismatch")
+        "a rest parameter must be last")
     refused("crates/driver/tests/programs/bad_variadic_unannotated.maca",
         "rest parameter with no type")
     refused("crates/driver/tests/programs/bad_variadic_main.maca",
         "`main` takes no rest parameter")
+}
+
+test_an_effect_in_config_is_refused_by_the_effect_it_carries() {
+    make_dir(scratch())
+    spawned = scratch() ++ "/spawned.maca"
+    awaited = scratch() ++ "/awaited.maca"
+
+    write_file(spawned, "svc.value = spawn work(1)\n")
+    write_file(awaited, "svc.value = await work(1)\n")
+
+    refused(spawned, "config must be pure, and `spawn` performs async")
+    refused(awaited, "config must be pure, and `await` performs async")
+
+    assert(capture(maca_bin(), ["check", spawned])
+        .contains("call to undefined function `work`"),
+        "a callee nothing declares is still an undefined call")
+    assert_eq(str(exec(maca_bin(), ["check", "apps/examples/async.maca"])), "0",
+        "a program spawns and awaits, and no effect rule reaches it")
 }
