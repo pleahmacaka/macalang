@@ -135,7 +135,7 @@ value_at(src: str, at: int) -> str {
     rest = src.slice(at, src.length()).trim()
 
     if rest.starts_with("\"") {
-        unescape(read_quoted(rest.chars(), 1, ""))
+        unescape(rest.slice(1, quote_end(rest.chars(), 1)))
     } else if rest.starts_with("[") || rest.starts_with("\{") {
         rest.slice(0, balanced_end(rest.chars(), 0, 0))
     } else {
@@ -168,24 +168,20 @@ balanced_step(cs: str[], i: int, depth: int) -> int {
 }
 
 skip_string(cs: str[], i: int) -> int {
-    if i >= cs.length() {
-        i
-    } else if cs.get(i) == "\\" {
-        skip_string(cs, i + 2)
-    } else if cs.get(i) == "\"" {
-        i + 1
-    } else {
-        skip_string(cs, i + 1)
-    }
+    end = quote_end(cs, i)
+
+    end >= cs.length() ? cs.length() : end + 1
 }
 
-read_quoted(cs: str[], i: int, acc: str) -> str {
-    if i >= cs.length() || cs.get(i) == "\"" {
-        acc
-    } else if cs.get(i) == "\\" && i + 1 < cs.length() {
-        read_quoted(cs, i + 2, acc ++ cs.get(i) ++ cs.get(i + 1))
+quote_end(cs: str[], i: int) -> int {
+    if i >= cs.length() {
+        cs.length()
+    } else if cs.get(i) == "\\" {
+        quote_end(cs, i + 2)
+    } else if cs.get(i) == "\"" {
+        i
     } else {
-        read_quoted(cs, i + 1, acc ++ cs.get(i))
+        quote_end(cs, i + 1)
     }
 }
 

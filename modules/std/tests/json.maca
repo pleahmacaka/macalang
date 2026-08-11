@@ -68,6 +68,26 @@ test_items_does_not_split_inside_a_nested_container() {
     assert_eq(nested.get(0), "[1,2]", "the first nested array, whole")
 }
 
+wide(s: str, n: int) -> str {
+    if s.length() >= n {
+        s
+    } else {
+        wide(s ++ s, n)
+    }
+}
+
+test_reading_a_long_string_value_costs_one_pass() {
+    big = wide("abcdefghij0123456789", 80000)
+    doc = "\{\"s\":" ++ quote(big) ++ ",\"n\":1\}"
+    began = now_ms()
+    got = get(doc, "s")
+    spent = now_ms() - began
+
+    assert_eq(str(got.length()), str(big.length()), "the whole value came back")
+    assert(spent < 500,
+           "a character-at-a-time accumulator is quadratic: {spent} ms")
+}
+
 test_items_rejects_a_value_that_is_not_an_array() {
     assert_eq(str(items("\{\"a\":1\}").length()), "0", "an object")
 }
