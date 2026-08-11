@@ -645,3 +645,83 @@ test_a_rest_parameter_says_what_its_list_holds() {
     assert(told.get(0).contains("`main` takes no rest parameter"),
            "and `main` is told so by name: {told.get(0)}")
 }
+
+on_target(src: str, target: str) -> str[] =>
+    check_diagnostics_on(parse_module(lex(src), 0, []), target)
+        .map(diag_message)
+
+named_on(src: str, target: str) -> str =>
+    on_target(src, target).join(" | ")
+
+test_a_target_names_every_function_performing_what_it_cannot_carry() {
+    src = "shout(m: str) -> int {{\n    info(m)\n    0\n}}\n"
+    assert_eq(str(on_target(src, "native").length()), "0",
+              "native carries io, so nothing is refused")
+    said = on_target(src, "embedded")
+    assert_eq(str(said.length()), "1", "embedded carries only exn")
+    assert_eq(said.get(0),
+              "`shout` performs io, which the `embedded` target cannot carry",
+              "and the message names the function, the effect and the target")
+}
+
+test_an_effect_reaches_the_caller_that_only_calls_the_thing_performing_it() {
+    src = "deep(n: int) -> int {{\n    info(\"x\")\n    n\n}}\n"
+        ++ "middle(n: int) -> int => deep(n)\n"
+        ++ "top(n: int) -> int => middle(n)\n"
+        ++ "aside(n: int) -> int => n + 1\n"
+    said = named_on(src, "embedded")
+    assert(said.contains("`top` performs io"),
+           "an effect propagates through two calls: {said}")
+    assert(said.contains("`middle` performs io"), "and through one: {said}")
+    assert(!said.contains("`aside`"),
+           "a function calling nothing effectful stays pure: {said}")
+}
+
+test_two_functions_that_call_each_other_settle_instead_of_spinning() {
+    src = "ping(n: int) -> int => n <= 0 ? 0 : pong(n - 1)\n"
+        ++ "pong(n: int) -> int {{\n    info(\"p\")\n    ping(n - 1)\n}}\n"
+    said = named_on(src, "embedded")
+    assert(said.contains("`ping` performs io"),
+           "the effect crosses the cycle: {said}")
+    assert(said.contains("`pong` performs io"), "both ways: {said}")
+}
+
+test_each_target_carries_what_that_back_end_can_actually_do() {
+    forked = "forked() -> int => os.run(\"ls\")\n"
+    fetched = "fetched() -> int => net.get(\"u\")\n"
+    napped = "napped() -> int {{\n    sleep_ms(1)\n    0\n}}\n"
+    raised = "raised() -> int => fail \"no\"\n"
+
+    assert_eq(str(on_target(fetched, "js").length()), "0",
+              "a browser can reach the network")
+    assert_eq(str(on_target(forked, "js").length()), "1",
+              "and cannot fork a process")
+    assert_eq(str(on_target(napped, "js").length()), "0",
+              "async is what a browser is made of")
+    assert_eq(str(on_target(raised, "embedded").length()), "0",
+              "exn is the one effect every target carries")
+    assert(named_on(forked ++ fetched ++ napped, "all")
+               .contains("every program target"),
+           "`all` is what the targets share, and is named as such")
+}
+
+test_a_target_nothing_builds_for_is_not_a_target() {
+    assert(is_known_target("embedded"), "embedded is built")
+    assert(is_known_target("all"), "`all` is what every program target shares")
+    assert(!is_known_target("beam"), "there is no BEAM back end, by design")
+    assert_eq(str(target_effects("nix").length()), "0",
+              "a NixOS module is data, so it carries nothing")
+    assert_eq(str(target_effects("native").length()), "5",
+              "and native carries every effect there is")
+}
+
+test_the_target_refusal_carries_its_code_and_says_how_to_fix_it() {
+    ds = check_diagnostics_on(
+        parse_module(lex("shout() -> int {{\n    info(\"x\")\n    0\n}}\n"),
+                     0, []), "embedded")
+    assert_eq(str(ds.length()), "1", "one function, one refusal")
+    assert_eq(ds.get(0).code, "M0007", "an off-target effect has its own code")
+    assert(ds.get(0).note.contains("build for a target that can"),
+           "and the note says what to do: {ds.get(0).note}")
+    assert(diag_explain("M0007") != "", "M0007 says what it means")
+}

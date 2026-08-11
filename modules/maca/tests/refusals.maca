@@ -265,3 +265,31 @@ test_an_effect_in_config_is_refused_by_the_effect_it_carries() {
     assert_eq(str(exec(maca_bin(), ["check", "apps/examples/async.maca"])), "0",
         "a program spawns and awaits, and no effect rule reaches it")
 }
+
+refused_on(path: str, target: str, want: str) -> bool {
+    args = ["check", path, "--target", target]
+    said = capture(maca_bin(), args)
+
+    assert(exec(maca_bin(), args) > 0,
+        "{path} was not refused for {target}: {said}")
+    assert(said.contains(want), "{path}: wanted {want}, said {said}")
+
+    true
+}
+
+test_a_program_is_refused_by_the_effect_its_target_cannot_carry() {
+    bad = "apps/examples/bad/effect_off_target.maca"
+
+    refused_on(bad, "embedded",
+        "`report` performs io, which the `embedded` target cannot carry")
+    refused_on(bad, "embedded",
+        "`blink` performs io, which the `embedded` target cannot carry")
+    assert_eq(str(exec(maca_bin(), ["check", bad])), "0",
+        "native carries io, so the same program is clean where it runs")
+    assert_eq(str(exec(maca_bin(),
+        ["check", "apps/examples/hello.maca", "--target", "js"])), "0",
+        "a browser prints, so hello builds for it")
+    assert_eq(str(exec(maca_bin(), ["check", "apps/examples/hello.maca",
+        "--target", "beam"])), "2",
+        "there is no BEAM back end, and naming one is a usage error")
+}

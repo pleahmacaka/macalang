@@ -151,7 +151,7 @@ run_script(cmd: str) -> int {
 
 Version = "0.3.3"
 
-check_only(src: str) -> int {
+check_only(src: str, target: str) -> int {
     unit = unit_of(src)
     scanned = end_run(lexed(unit.toks, unit.errs), 0, 0)
     raw = parse_module(scanned.tokens, 0, [])
@@ -159,7 +159,7 @@ check_only(src: str) -> int {
     report_all("import", unit.unknown, 0) +
         report_all("scan", scanned.errors, 0) +
         report_all("parse", raw.errors, 0) +
-        report_all("check", check_errors(raw), 0)
+        report_all("check", check_errors_on(raw, target), 0)
 }
 
 init_project(root: str) -> int {
@@ -717,25 +717,32 @@ test_cmd(args: str[]) -> int {
 
 check_cmd(args: str[]) -> int {
     src = entry_of("check", args)
+    asked = flag_after(args, "--target")
+    held = asked == "" ? "native" : asked
 
     if src == "" {
         2
+    } else if !is_known_target(held) {
+        err("maca check: no target `{held}`; built targets are"
+                ++ " native, c, js, jvm, rust, tauri, embedded, nix, or"
+                ++ " `all` for what every program target shares")
+        2
     } else if args.index_of("--json") >= 0 {
-        check_json(src)
+        check_json(src, held)
     } else {
-        check_only(src)
+        check_only(src, held)
     }
 }
 
 /// `maca check <file> --json`: the diagnostics, shaped as check-json.schema.json promises.
-check_json(path: str) -> int {
+check_json(path: str, target: str) -> int {
     unit = unit_of(path)
     scanned = end_run(lexed(unit.toks, unit.errs), 0, 0)
     raw = parse_module(scanned.tokens, 0, [])
     broke = unit.unknown ++ scanned.errors ++ raw.errors
     said = broke.length() > 0
         ? unparsed(broke, 0, [])
-        : check_diagnostics(raw)
+        : check_diagnostics_on(raw, target)
     body = diag_list(path, read_file(path), said, 0, [])
 
     info("\{\"format\":1,\"diagnostics\":[" ++ body.join(",") ++ "]\}")

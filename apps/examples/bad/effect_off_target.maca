@@ -1,0 +1,8 @@
+report(msg: str) -> int {
+    info(msg)
+    0
+}
+
+blink() -> int => report("on")
+
+main() -> int => blink()

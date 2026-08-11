@@ -42,6 +42,7 @@ diag_explain(code: str) -> str =>
         "M0004" => "the option this sets does not exist"
         "M0005" => "a constant is assigned after it is bound"
         "M0006" => "this name is not defined anywhere in scope"
+        "M0007" => "the target being built for cannot carry this effect"
         _       => ""
     }
 
@@ -2214,3 +2215,242 @@ rest_misuse_why(s: Stmt) -> str {
         ""
     }
 }
+
+AllEffects = " io net os async exn "
+
+/// Every effect a program can perform, in the order a diagnostic names them.
+effect_list() -> str[] =>
+    eff_words(AllEffects)
+
+eff_none() -> str =>
+    " "
+
+eff_words(set: str) -> str[] =>
+    set.trim() == "" ? [] : set.trim().split(" ")
+
+eff_has(set: str, name: str) -> bool =>
+    set.index_of(" {name} ") >= 0
+
+eff_add(set: str, name: str) -> str =>
+    eff_has(set, name) ? set : set ++ "{name} "
+
+eff_union(a: str, b: str) -> str =>
+    eff_merge(a, eff_words(b), 0)
+
+eff_merge(a: str, xs: str[], i: int) -> str =>
+    i >= xs.length() ? a : eff_merge(eff_add(a, xs.get(i)), xs, i + 1)
+
+KnownTargets = " native c js jvm rust tauri embedded nix all "
+
+/// A target nothing builds for cannot say what it carries, so naming one is a usage error.
+is_known_target(name: str) -> bool =>
+    KnownTargets.index_of(" {name} ") >= 0
+
+/// What a back end can carry, as the effects a program compiled for it may perform.
+target_effects(target: str) -> str[] {
+    if target == "js" {
+        ["io", "net", "async", "exn"]
+    } else if target == "embedded" || target == "all" {
+        ["exn"]
+    } else if target == "nix" {
+        eff_words("")
+    } else {
+        effect_list()
+    }
+}
+
+eff_outside(set: str, allowed: str[]) -> str[] =>
+    eff_refused(effect_list(), set, allowed, 0, [])
+
+eff_refused(all: str[], set: str, allowed: str[], i: int,
+            acc: str[]) -> str[] {
+    if i >= all.length() {
+        acc
+    } else if eff_has(set, all.get(i)) && allowed.index_of(all.get(i)) < 0 {
+        eff_refused(all, set, allowed, i + 1, acc.push(all.get(i)))
+    } else {
+        eff_refused(all, set, allowed, i + 1, acc)
+    }
+}
+
+/// A prelude call is where an effect enters a program, since nothing else performs one.
+eff_of_call(name: str) -> str {
+    if name == "sleep_ms" {
+        " async "
+    } else if is_io_builtin(name) || name == "input" {
+        " io "
+    } else {
+        eff_none()
+    }
+}
+
+eff_of_word(word: str) -> str {
+    if is_async_effect(word) {
+        " async "
+    } else if word == "try" || word == "fail" {
+        " exn "
+    } else {
+        eff_none()
+    }
+}
+
+eff_of_method(e: Expr) -> str {
+    named = e.children.length() > 0 && e.children.get(0).kind == EIdent
+    host = named ? e.children.get(0).text : ""
+
+    if host == "net" || host == "http" || host == "socket" {
+        " net "
+    } else if host == "os" || host == "process" {
+        " os "
+    } else if is_io_method(e.text) {
+        " io "
+    } else {
+        eff_none()
+    }
+}
+
+is_io_method(name: str) -> bool =>
+    name == "read" || name == "write" || name == "exists"
+        || name == "remove" || name == "append" || name == "create"
+
+node_effects(e: Expr, names: str[], sets: str[]) -> str {
+    at = e.kind == ECall ? names.index_of(e.text) : -1
+
+    if at >= 0 {
+        sets.get(at)
+    } else if e.kind == ECall {
+        eff_of_call(e.text)
+    } else if e.kind == EUnary {
+        eff_of_word(e.text)
+    } else if e.kind == EMethod {
+        eff_of_method(e)
+    } else {
+        eff_none()
+    }
+}
+
+expr_effects(e: Expr, names: str[], sets: str[]) -> str =>
+    body_effects(e.stmts, names, sets, 0,
+                 kids_effects(e.children, names, sets, 0,
+                              node_effects(e, names, sets)))
+
+kids_effects(xs: Expr[], names: str[], sets: str[], i: int,
+             acc: str) -> str =>
+    i >= xs.length()
+        ? acc
+        : kids_effects(xs, names, sets, i + 1,
+                       eff_union(acc, expr_effects(xs.get(i), names, sets)))
+
+body_effects(body: Stmt[], names: str[], sets: str[], i: int,
+             acc: str) -> str =>
+    i >= body.length()
+        ? acc
+        : body_effects(body, names, sets, i + 1,
+                       eff_union(acc, expr_effects(body.get(i).value, names,
+                                                   sets)))
+
+effect_fn_names(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind == SFn {
+        effect_fn_names(items, i + 1, acc.push(items.get(i).name))
+    } else {
+        effect_fn_names(items, i + 1, acc)
+    }
+}
+
+blank_effects(n: int, i: int, acc: str[]) -> str[] =>
+    i >= n ? acc : blank_effects(n, i + 1, acc.push(eff_none()))
+
+/// A function performs what it calls, so the answer is the fixed point of one pass repeated.
+settled_effects(items: Stmt[]) -> str[] {
+    names = effect_fn_names(items, 0, [])
+
+    settle_effects(items, names, blank_effects(names.length(), 0, []),
+                   names.length() + 1)
+}
+
+settle_effects(items: Stmt[], names: str[], sets: str[],
+               fuel: int) -> str[] {
+    next = effect_pass(items, names, sets, 0, [])
+
+    if fuel <= 0 || same_effects(sets, next, 0) {
+        next
+    } else {
+        settle_effects(items, names, next, fuel - 1)
+    }
+}
+
+same_effects(a: str[], b: str[], i: int) -> bool {
+    if i >= a.length() || i >= b.length() {
+        a.length() == b.length()
+    } else if a.get(i) != b.get(i) {
+        false
+    } else {
+        same_effects(a, b, i + 1)
+    }
+}
+
+effect_pass(items: Stmt[], names: str[], sets: str[], i: int,
+            acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind != SFn {
+        effect_pass(items, names, sets, i + 1, acc)
+    } else {
+        effect_pass(items, names, sets, i + 1,
+                    acc.push(body_effects(items.get(i).body, names, sets, 0,
+                                          eff_none())))
+    }
+}
+
+/// Every function whose effects the target being built for cannot carry.
+target_errors(m: Module, target: str) -> Diagnostic[] {
+    allowed = target_effects(target)
+
+    if allowed.length() >= effect_list().length() {
+        []
+    } else {
+        effect_refusals(m.items, settled_effects(m.items), allowed, target,
+                        0, 0, [])
+    }
+}
+
+effect_refusals(items: Stmt[], sets: str[], allowed: str[], target: str,
+                i: int, k: int, acc: Diagnostic[]) -> Diagnostic[] {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind != SFn {
+        effect_refusals(items, sets, allowed, target, i + 1, k, acc)
+    } else {
+        said = effect_refusal(items.get(i), sets.get(k), allowed, target)
+
+        effect_refusals(items, sets, allowed, target, i + 1, k + 1,
+                        acc ++ said)
+    }
+}
+
+effect_refusal(s: Stmt, set: str, allowed: str[],
+               target: str) -> Diagnostic[] {
+    over = eff_outside(set, allowed)
+
+    over.length() == 0 ? [] : [effect_diag(s, over.join(", "), target)]
+}
+
+effect_diag(s: Stmt, what: str, target: str) -> Diagnostic {
+    said = diag_at(s, "M0007", "`{s.name}` performs {what}, which"
+                                   ++ " {target_phrase(target)} cannot carry")
+
+    said with { note = "build for a target that can, or keep {what} out of"
+                           ++ " the code this target compiles" }
+}
+
+target_phrase(target: str) -> str =>
+    target == "all" ? "every program target" : "the `{target}` target"
+
+/// Every defect, and then whether the target being built for can carry what the program does.
+check_diagnostics_on(m: Module, target: str) -> Diagnostic[] =>
+    check_diagnostics(m) ++ target_errors(m, target)
+
+check_errors_on(m: Module, target: str) -> str[] =>
+    check_diagnostics_on(m, target).map(diag_message)
