@@ -1,0 +1,1532 @@
+import maca/ast
+
+StepLimit = 200000
+
+DepthLimit = 200
+
+ValKind = VUnit | VInt | VFloat | VBool | VStr | VList | VRec | VSum | VFun
+
+Value = {
+    kind:  ValKind
+    ival:  int
+    fval:  float
+    sval:  str
+    items: Value[]
+    keys:  str[]
+    code:  Expr[]
+}
+
+Interp = {
+    defs:   Stmt[]
+    ctors:  str[]
+    names:  str[]
+    slots:  Value[]
+    out:    str
+    steps:  int
+    depth:  int
+    signal: str
+    fault:  str
+}
+
+Ev = {
+    it: Interp
+    v:  Value
+}
+
+Bound = {
+    it:  Interp
+    hit: bool
+}
+
+/// What a run left behind: its output, why it stopped, and its exit code.
+RunOut = {
+    output: str
+    fault:  str
+    exit:   int
+}
+
+v_unit() -> Value =>
+    Value { kind = VUnit, ival = 0, fval = 0.0, sval = "", items = [],
+            keys = [], code = [] }
+
+v_int(n: int) -> Value =>
+    v_unit() with { kind = VInt, ival = n }
+
+v_float(x: float) -> Value =>
+    v_unit() with { kind = VFloat, fval = x }
+
+v_bool(b: bool) -> Value =>
+    v_unit() with { kind = VBool, ival = b ? 1 : 0 }
+
+v_str(s: str) -> Value =>
+    v_unit() with { kind = VStr, sval = s }
+
+v_list(xs: Value[]) -> Value =>
+    v_unit() with { kind = VList, items = xs }
+
+v_rec(fields: str[], vals: Value[]) -> Value =>
+    v_unit() with { kind = VRec, keys = fields, items = vals }
+
+v_sum(tag: str, payload: Value[]) -> Value =>
+    v_unit() with { kind = VSum, sval = tag, items = payload }
+
+v_fun(params: str[], body: Expr) -> Value =>
+    v_unit() with { kind = VFun, keys = params, code = [body] }
+
+ev(it: Interp, v: Value) -> Ev =>
+    Ev { it, v }
+
+halted(it: Interp) -> bool =>
+    it.signal != ""
+
+raise_fault(it: Interp, why: str) -> Interp =>
+    it with { signal = "fail", fault = why }
+
+tick(it: Interp) -> Interp {
+    if it.steps >= StepLimit {
+        raise_fault(it, "execution step limit reached: possible infinite loop")
+    } else {
+        it with { steps = it.steps + 1 }
+    }
+}
+
+seek_slot(ns: str[], name: str, i: int) -> int {
+    if i < 0 {
+        -1
+    } else if ns.get(i) == name {
+        i
+    } else {
+        seek_slot(ns, name, i - 1)
+    }
+}
+
+slot_of(it: Interp, name: str) -> int =>
+    seek_slot(it.names, name, it.names.length() - 1)
+
+push_var(it: Interp, name: str, v: Value) -> Interp =>
+    it with { names = it.names ++ [name], slots = it.slots ++ [v] }
+
+store_var(it: Interp, name: str, v: Value) -> Interp {
+    at = slot_of(it, name)
+
+    if at < 0 {
+        push_var(it, name, v)
+    } else {
+        it with { slots = it.slots.set(at, v) }
+    }
+}
+
+scope_cut(it: Interp, mark: int) -> Interp =>
+    it with { names = it.names.slice(0, mark),
+              slots = it.slots.slice(0, mark) }
+
+new_interp(m: Module) -> Interp =>
+    load_items(Interp { defs = [], ctors = [], names = [], slots = [],
+                        out = "", steps = 0, depth = 0, signal = "",
+                        fault = "" }, m.items, 0)
+
+load_items(it: Interp, items: Stmt[], i: int) -> Interp {
+    if i >= items.length() {
+        it
+    } else {
+        load_items(load_item(it, items.get(i)), items, i + 1)
+    }
+}
+
+load_item(it: Interp, s: Stmt) -> Interp {
+    if s.kind == SFn {
+        it with { defs = it.defs ++ [s] }
+    } else if s.kind == SSum {
+        it with { ctors = it.ctors ++ s.params.map(v => v.text) }
+    } else {
+        it
+    }
+}
+
+seek_def(ds: Stmt[], name: str, i: int) -> int {
+    if i >= ds.length() {
+        -1
+    } else if ds.get(i).name == name {
+        i
+    } else {
+        seek_def(ds, name, i + 1)
+    }
+}
+
+def_index(it: Interp, name: str) -> int =>
+    seek_def(it.defs, name, 0)
+
+is_ctor(it: Interp, name: str) -> bool =>
+    seek_slot(it.ctors, name, it.ctors.length() - 1) >= 0
+
+/// Run a parsed module's `main`, answering what it printed and how it ended.
+run_module(m: Module) -> RunOut {
+    it = new_interp(m)
+    at = def_index(it, "main")
+
+    if at < 0 {
+        RunOut { output = "", fault = "no `main` function to run", exit = 0 }
+    } else {
+        finished(call_def(it, it.defs.get(at), []))
+    }
+}
+
+finished(r: Ev) -> RunOut =>
+    RunOut { output = r.it.out, fault = r.it.fault,
+             exit = r.v.kind == VInt ? r.v.ival : 0 }
+
+call_def(it: Interp, f: Stmt, args: Value[]) -> Ev {
+    if it.depth >= DepthLimit {
+        ev(raise_fault(it, "maximum recursion depth reached"), v_unit())
+    } else {
+        entered(it, f, args)
+    }
+}
+
+entered(it: Interp, f: Stmt, args: Value[]) -> Ev {
+    held = it.names
+    kept = it.slots
+    fresh = it with { names = [], slots = [], depth = it.depth + 1 }
+    r = ev_stmts(fill_slots(fresh, f.params.map(p => p.text), args, 0),
+                 f.body, 0, v_unit())
+    back = r.it with { names = held, slots = kept, depth = it.depth }
+
+    ev(cleared(back), r.v)
+}
+
+cleared(it: Interp) -> Interp {
+    if it.signal == "return" {
+        it with { signal = "" }
+    } else {
+        it
+    }
+}
+
+fill_slots(it: Interp, ns: str[], vs: Value[], i: int) -> Interp {
+    if i >= ns.length() {
+        it
+    } else {
+        fill_slots(push_var(it, ns.get(i), cell_at(vs, i)), ns, vs, i + 1)
+    }
+}
+
+ev_stmts(it: Interp, ss: Stmt[], i: int, last: Value) -> Ev {
+    if i >= ss.length() || halted(it) {
+        ev(it, last)
+    } else {
+        one = ev_stmt(it, ss.get(i))
+        ev_stmts(one.it, ss, i + 1, one.v)
+    }
+}
+
+ev_stmt(it: Interp, s: Stmt) -> Ev {
+    if s.kind == SBind {
+        bound_stmt(it, s)
+    } else if s.kind == SExpr {
+        ev_expr(it, s.value)
+    } else {
+        ev(it, v_unit())
+    }
+}
+
+bound_stmt(it: Interp, s: Stmt) -> Ev {
+    r = ev_expr(it, s.value)
+
+    if halted(r.it) {
+        r
+    } else {
+        ev(store_var(r.it, s.name, r.v), v_unit())
+    }
+}
+
+ev_expr(it0: Interp, e: Expr) -> Ev {
+    it = tick(it0)
+
+    if halted(it) {
+        ev(it, v_unit())
+    } else {
+        ev_node(it, e)
+    }
+}
+
+ev_node(it: Interp, e: Expr) -> Ev {
+    if e.kind == EInt {
+        ev(it, v_int(e.ival))
+    } else if e.kind == EFloat {
+        ev(it, v_float(float_text(e.text)))
+    } else if e.kind == EStr {
+        ev(it, v_str(e.text))
+    } else if e.kind == EBool {
+        ev(it, v_bool(e.text == "true"))
+    } else if e.kind == EIdent {
+        ev_ident(it, e.text)
+    } else if e.kind == EList {
+        ev_cells(it, e)
+    } else if e.kind == ERecord {
+        ev_record(it, e)
+    } else if e.kind == EField {
+        ev_field(it, e)
+    } else if e.kind == EWith {
+        ev_with(it, e)
+    } else if e.kind == EBinary {
+        ev_binary(it, e)
+    } else if e.kind == EUnary {
+        ev_unary(it, e)
+    } else if e.kind == ETernary || e.kind == EIf {
+        ev_choice(it, e)
+    } else if e.kind == EBlock {
+        ev_block_expr(it, e)
+    } else if e.kind == EMatch {
+        ev_match(it, e)
+    } else if e.kind == EMethod {
+        ev_method(it, e)
+    } else if e.kind == ECall {
+        ev_call(it, e)
+    } else if e.kind == EWhile {
+        ev_while(it, e)
+    } else if e.kind == EFor {
+        ev_for(it, e)
+    } else if e.kind == EJump {
+        ev_jump(it, e)
+    } else if e.kind == ELambda {
+        ev(it, v_fun(lambda_params(e).map(p => p.text), lambda_body(e)))
+    } else {
+        ev(it, v_unit())
+    }
+}
+
+ev_ident(it: Interp, name: str) -> Ev {
+    at = slot_of(it, name)
+    fat = def_index(it, name)
+
+    if at >= 0 {
+        ev(it, it.slots.get(at))
+    } else if is_ctor(it, name) {
+        ev(it, v_sum(name, []))
+    } else if fat >= 0 {
+        ev(it, def_value(it.defs.get(fat)))
+    } else {
+        ev(it, v_unit())
+    }
+}
+
+def_value(f: Stmt) -> Value =>
+    v_fun(f.params.map(p => p.text), def_body(f))
+
+def_body(f: Stmt) -> Expr {
+    n = f.body.length()
+
+    if n > 0 && f.body.get(n - 1).kind == SExpr {
+        e_block(f.body.slice(0, n - 1), f.body.get(n - 1).value)
+    } else {
+        e_block(f.body, e_ident("?"))
+    }
+}
+
+ev_each(it: Interp, es: Expr[], i: int, acc: Value[]) -> Ev {
+    if i >= es.length() || halted(it) {
+        ev(it, v_list(acc))
+    } else {
+        one = ev_expr(it, es.get(i))
+        ev_each(one.it, es, i + 1, acc ++ [one.v])
+    }
+}
+
+ev_cells(it: Interp, e: Expr) -> Ev {
+    r = ev_each(it, e.children, 0, [])
+
+    ev(r.it, r.v)
+}
+
+is_named_field(f: Expr) -> bool =>
+    f.kind == EBinary && f.text == "=" && f.children.length() > 1
+
+field_name(f: Expr) -> str {
+    if is_named_field(f) {
+        f.children.get(0).text
+    } else {
+        f.text
+    }
+}
+
+field_value(f: Expr) -> Expr {
+    if is_named_field(f) {
+        f.children.get(1)
+    } else if f.children.length() > 0 {
+        f.children.get(0)
+    } else {
+        e_ident(f.text)
+    }
+}
+
+ev_record(it: Interp, e: Expr) -> Ev {
+    r = ev_each(it, e.children.map(field_value), 0, [])
+
+    ev(r.it, v_rec(e.children.map(field_name), r.v.items))
+}
+
+field_of(v: Value, name: str) -> Value {
+    at = seek_slot(v.keys, name, v.keys.length() - 1)
+
+    if v.kind == VRec && at >= 0 {
+        v.items.get(at)
+    } else {
+        v_unit()
+    }
+}
+
+ev_field(it: Interp, e: Expr) -> Ev {
+    b = ev_expr(it, e.children.get(0))
+
+    ev(b.it, field_of(b.v, e.text))
+}
+
+put_field(v: Value, name: str, x: Value) -> Value {
+    at = seek_slot(v.keys, name, v.keys.length() - 1)
+
+    if at >= 0 {
+        v with { items = v.items.set(at, x) }
+    } else {
+        v with { keys = v.keys ++ [name], items = v.items ++ [x] }
+    }
+}
+
+put_fields(v: Value, ks: str[], vs: Value[], i: int) -> Value {
+    if i >= ks.length() {
+        v
+    } else {
+        put_fields(put_field(v, ks.get(i), cell_at(vs, i)), ks, vs, i + 1)
+    }
+}
+
+ev_with(it: Interp, e: Expr) -> Ev {
+    fs = e.children.slice(1, e.children.length())
+    b = ev_expr(it, e.children.get(0))
+    r = ev_each(b.it, fs.map(field_value), 0, [])
+
+    ev(r.it, put_fields(b.v, fs.map(field_name), r.v.items, 0))
+}
+
+ev_binary(it: Interp, e: Expr) -> Ev {
+    if e.text == "=" {
+        ev_store(it, e)
+    } else if e.text == "&&" || e.text == "||" {
+        ev_logic(it, e)
+    } else {
+        ev_arith(it, e)
+    }
+}
+
+ev_logic(it: Interp, e: Expr) -> Ev {
+    l = ev_expr(it, e.children.get(0))
+    settled = e.text == "&&" ? !truth_of(l.v) : truth_of(l.v)
+
+    if halted(l.it) || settled {
+        ev(l.it, v_bool(e.text != "&&"))
+    } else {
+        r = ev_expr(l.it, e.children.get(1))
+        ev(r.it, v_bool(truth_of(r.v)))
+    }
+}
+
+ev_arith(it: Interp, e: Expr) -> Ev {
+    l = ev_expr(it, e.children.get(0))
+    r = ev_expr(l.it, e.children.get(1))
+
+    ev(r.it, binop(e.text, l.v, r.v))
+}
+
+binop(op: str, l: Value, r: Value) -> Value {
+    if op == ".." {
+        v_list(span_cells(int_of(l), int_of(r), []))
+    } else if op == "++" {
+        joined_val(l, r)
+    } else if op == "==" {
+        v_bool(same_val(l, r))
+    } else if op == "!=" {
+        v_bool(!same_val(l, r))
+    } else if op == "<" || op == ">" || op == "<=" || op == ">=" {
+        v_bool(rank_holds(op, cmp_val(l, r)))
+    } else {
+        num_op(op, l, r)
+    }
+}
+
+span_cells(a: int, b: int, acc: Value[]) -> Value[] {
+    if a > b {
+        acc
+    } else {
+        span_cells(a + 1, b, acc ++ [v_int(a)])
+    }
+}
+
+joined_val(l: Value, r: Value) -> Value {
+    if l.kind == VList && r.kind == VList {
+        v_list(l.items ++ r.items)
+    } else {
+        v_str(show_val(l) ++ show_val(r))
+    }
+}
+
+rank_holds(op: str, c: int) -> bool {
+    if op == "<" {
+        c < 0
+    } else if op == ">" {
+        c > 0
+    } else if op == "<=" {
+        c <= 0
+    } else {
+        c >= 0
+    }
+}
+
+num_op(op: str, l: Value, r: Value) -> Value {
+    if l.kind == VFloat || r.kind == VFloat {
+        v_float(float_math(op, float_of(l), float_of(r)))
+    } else {
+        v_int(int_math(op, int_of(l), int_of(r)))
+    }
+}
+
+int_math(op: str, a: int, b: int) -> int {
+    if op == "+" {
+        a + b
+    } else if op == "-" {
+        a - b
+    } else if op == "*" {
+        a * b
+    } else if op == "/" {
+        b == 0 ? 0 : a / b
+    } else if op == "%" {
+        b == 0 ? 0 : a % b
+    } else if op == "<<" {
+        a << b
+    } else if op == ">>" {
+        a >> b
+    } else {
+        a
+    }
+}
+
+float_math(op: str, a: float, b: float) -> float {
+    if op == "+" {
+        a + b
+    } else if op == "-" {
+        a - b
+    } else if op == "*" {
+        a * b
+    } else if op == "/" {
+        b == 0.0 ? 0.0 : a / b
+    } else {
+        a
+    }
+}
+
+cmp_int(a: int, b: int) -> int {
+    if a < b {
+        -1
+    } else if a > b {
+        1
+    } else {
+        0
+    }
+}
+
+cmp_float(a: float, b: float) -> int {
+    if a < b {
+        -1
+    } else if a > b {
+        1
+    } else {
+        0
+    }
+}
+
+cmp_chars(xs: str[], ys: str[], i: int) -> int {
+    if i >= xs.length() || i >= ys.length() {
+        cmp_int(xs.length(), ys.length())
+    } else if ord(xs.get(i)) != ord(ys.get(i)) {
+        cmp_int(ord(xs.get(i)), ord(ys.get(i)))
+    } else {
+        cmp_chars(xs, ys, i + 1)
+    }
+}
+
+cmp_val(l: Value, r: Value) -> int {
+    if l.kind == VStr && r.kind == VStr {
+        cmp_chars(l.sval.chars(), r.sval.chars(), 0)
+    } else if l.kind == VFloat || r.kind == VFloat {
+        cmp_float(float_of(l), float_of(r))
+    } else {
+        cmp_int(int_of(l), int_of(r))
+    }
+}
+
+same_items(xs: Value[], ys: Value[], i: int) -> bool {
+    if xs.length() != ys.length() {
+        false
+    } else if i >= xs.length() {
+        true
+    } else if !same_val(xs.get(i), ys.get(i)) {
+        false
+    } else {
+        same_items(xs, ys, i + 1)
+    }
+}
+
+same_val(l: Value, r: Value) -> bool {
+    if l.kind != r.kind {
+        false
+    } else if l.kind == VStr {
+        l.sval == r.sval
+    } else if l.kind == VFloat {
+        l.fval == r.fval
+    } else if l.kind == VList || l.kind == VRec {
+        same_items(l.items, r.items, 0)
+    } else if l.kind == VSum {
+        l.sval == r.sval && same_items(l.items, r.items, 0)
+    } else if l.kind == VUnit || l.kind == VFun {
+        l.kind == r.kind
+    } else {
+        l.ival == r.ival
+    }
+}
+
+truth_of(v: Value) -> bool =>
+    (v.kind == VBool || v.kind == VInt) && v.ival != 0
+
+int_of(v: Value) -> int {
+    if v.kind == VFloat {
+        int(v.fval)
+    } else if v.kind == VInt || v.kind == VBool {
+        v.ival
+    } else {
+        0
+    }
+}
+
+scaled(digits: int, places: int) -> float {
+    if places <= 0 {
+        float(digits)
+    } else {
+        scaled(digits, places - 1) / 10.0
+    }
+}
+
+float_text(s: str) -> float {
+    at = s.index_of(".")
+
+    if at < 0 {
+        float(int(s))
+    } else {
+        float(int(s.slice(0, at)))
+            + scaled(int(s.slice(at + 1, s.length())), s.length() - at - 1)
+    }
+}
+
+float_of(v: Value) -> float {
+    if v.kind == VFloat {
+        v.fval
+    } else if v.kind == VInt || v.kind == VBool {
+        float(v.ival)
+    } else {
+        0.0
+    }
+}
+
+shown_cells(xs: Value[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        shown_cells(xs, i + 1, acc ++ [show_val(xs.get(i))])
+    }
+}
+
+shown_fields(v: Value, i: int, acc: str[]) -> str[] {
+    if i >= v.keys.length() {
+        acc
+    } else {
+        said = "{v.keys.get(i)} = {show_val(v.items.get(i))}"
+        shown_fields(v, i + 1, acc ++ [said])
+    }
+}
+
+commas(xs: str[]) -> str =>
+    xs.join(", ")
+
+show_val(v: Value) -> str {
+    if v.kind == VInt {
+        str(v.ival)
+    } else if v.kind == VFloat {
+        str(v.fval)
+    } else if v.kind == VBool {
+        v.ival != 0 ? "true" : "false"
+    } else if v.kind == VStr {
+        v.sval
+    } else if v.kind == VList {
+        "[" ++ commas(shown_cells(v.items, 0, [])) ++ "]"
+    } else if v.kind == VRec {
+        "\{ " ++ commas(shown_fields(v, 0, [])) ++ " \}"
+    } else if v.kind == VSum && v.items.length() == 0 {
+        v.sval
+    } else if v.kind == VSum {
+        v.sval ++ "(" ++ commas(shown_cells(v.items, 0, [])) ++ ")"
+    } else if v.kind == VFun {
+        "<closure>"
+    } else {
+        ""
+    }
+}
+
+negated(op: str, v: Value) -> Value {
+    if op == "-" && v.kind == VFloat {
+        v_float(0.0 - v.fval)
+    } else if op == "-" {
+        v_int(0 - int_of(v))
+    } else if op == "!" {
+        v_bool(!truth_of(v))
+    } else {
+        v
+    }
+}
+
+ev_unary(it: Interp, e: Expr) -> Ev {
+    r = ev_expr(it, e.children.get(0))
+
+    ev(r.it, negated(e.text, r.v))
+}
+
+ev_choice(it: Interp, e: Expr) -> Ev {
+    c = ev_expr(it, e.children.get(0))
+
+    if halted(c.it) {
+        ev(c.it, v_unit())
+    } else if truth_of(c.v) {
+        ev_expr(c.it, e.children.get(1))
+    } else {
+        ev_expr(c.it, e.children.get(2))
+    }
+}
+
+ev_block_expr(it: Interp, e: Expr) -> Ev {
+    mark = it.names.length()
+    body = ev_stmts(it, e.stmts, 0, v_unit())
+
+    if halted(body.it) {
+        ev(scope_cut(body.it, mark), body.v)
+    } else {
+        tail = ev_expr(body.it, e.children.get(0))
+        ev(scope_cut(tail.it, mark), tail.v)
+    }
+}
+
+returned(r: Ev) -> Ev {
+    if halted(r.it) {
+        r
+    } else {
+        ev(r.it with { signal = "return" }, r.v)
+    }
+}
+
+ev_jump(it: Interp, e: Expr) -> Ev {
+    if e.text != "return" {
+        ev(it with { signal = e.text }, v_unit())
+    } else if e.children.length() == 0 {
+        ev(it with { signal = "return" }, v_unit())
+    } else {
+        returned(ev_expr(it, e.children.get(0)))
+    }
+}
+
+ev_body(it: Interp, ss: Stmt[]) -> Interp {
+    mark = it.names.length()
+    r = ev_stmts(it, ss, 0, v_unit())
+    back = scope_cut(r.it, mark)
+
+    if back.signal == "continue" {
+        back with { signal = "" }
+    } else {
+        back
+    }
+}
+
+cleared_break(it: Interp) -> Interp {
+    if it.signal == "break" {
+        it with { signal = "" }
+    } else {
+        it
+    }
+}
+
+ev_while(it: Interp, e: Expr) -> Ev {
+    cur = it
+    going = true
+
+    while going {
+        c = ev_expr(cur, e.children.get(0))
+        cur = c.it
+
+        if halted(cur) || !truth_of(c.v) {
+            going = false
+        } else {
+            after = ev_body(cur, e.stmts)
+            cur = cleared_break(after)
+            going = after.signal == ""
+        }
+    }
+
+    ev(cur, v_unit())
+}
+
+ev_for(it: Interp, e: Expr) -> Ev {
+    over = ev_expr(it, e.children.get(0))
+
+    if halted(over.it) {
+        ev(over.it, v_unit())
+    } else {
+        ev(each_cell(over.it, e, over.v.items), v_unit())
+    }
+}
+
+each_cell(it: Interp, e: Expr, xs: Value[]) -> Interp {
+    cur = it
+    i = 0
+
+    while i < xs.length() && !halted(cur) {
+        mark = cur.names.length()
+        after = ev_body(push_var(cur, e.text, xs.get(i)), e.stmts)
+        cur = scope_cut(cleared_break(after), mark)
+        i = after.signal == "break" ? xs.length() : i + 1
+    }
+
+    cur
+}
+
+pat_of(p: Expr) -> Expr =>
+    p.kind == EGuard ? p.children.get(0) : p
+
+guard_holds(b: Bound, p: Expr) -> Bound {
+    if !b.hit || p.kind != EGuard {
+        b
+    } else {
+        r = ev_expr(b.it, p.children.get(1))
+        Bound { it = r.it, hit = truth_of(r.v) }
+    }
+}
+
+ev_match(it: Interp, e: Expr) -> Ev {
+    s = ev_expr(it, e.children.get(0))
+
+    if halted(s.it) {
+        ev(s.it, v_unit())
+    } else {
+        ev_arms(s.it, e.children, 1, s.v)
+    }
+}
+
+ev_arms(it: Interp, cs: Expr[], i: int, x: Value) -> Ev {
+    if i + 1 >= cs.length() {
+        ev(it, v_unit())
+    } else {
+        try_arm(it, cs, i, x, it.names.length())
+    }
+}
+
+try_arm(it: Interp, cs: Expr[], i: int, x: Value, mark: int) -> Ev {
+    kept = guard_holds(bind_pat(it, pat_of(cs.get(i)), x), cs.get(i))
+
+    if kept.hit {
+        taken = ev_expr(kept.it, cs.get(i + 1))
+        ev(scope_cut(taken.it, mark), taken.v)
+    } else {
+        ev_arms(scope_cut(kept.it, mark), cs, i + 2, x)
+    }
+}
+
+is_binder(name: str) -> bool =>
+    name.length() > 0 && name.at(0).is_alpha()
+        && name.at(0).upper() != name.at(0)
+
+bind_pat(it: Interp, p: Expr, x: Value) -> Bound {
+    if p.kind == EBinary && p.text == "|" {
+        alt_pat(it, p, x)
+    } else if p.kind == EStr {
+        Bound { it, hit = x.kind == VStr && x.sval == p.text }
+    } else if p.kind != EIdent {
+        Bound { it, hit = false }
+    } else if p.text == "_" {
+        Bound { it, hit = true }
+    } else if p.text == "[]" || p.text == "[..]" {
+        cells_pat(it, p, x)
+    } else if p.text == "\{\}" {
+        fields_pat(it, p, x, 0)
+    } else if is_ctor(it, p.text) {
+        ctor_pat(it, p, x)
+    } else if is_binder(p.text) {
+        Bound { it = push_var(it, p.text, x), hit = true }
+    } else {
+        Bound { it, hit = show_val(x) == p.text }
+    }
+}
+
+alt_pat(it: Interp, p: Expr, x: Value) -> Bound {
+    left = bind_pat(it, p.children.get(0), x)
+
+    if left.hit {
+        left
+    } else {
+        bind_pat(left.it, p.children.get(1), x)
+    }
+}
+
+ctor_pat(it: Interp, p: Expr, x: Value) -> Bound {
+    if x.kind != VSum || x.sval != p.text {
+        Bound { it, hit = false }
+    } else {
+        Bound { it = fill_slots(it, p.children.map(c => c.text), x.items, 0),
+                hit = true }
+    }
+}
+
+fields_pat(it: Interp, p: Expr, x: Value, i: int) -> Bound {
+    if x.kind != VRec {
+        Bound { it, hit = false }
+    } else if i >= p.children.length() {
+        Bound { it, hit = true }
+    } else {
+        got = p.children.get(i).text
+        fields_pat(push_var(it, got, field_of(x, got)), p, x, i + 1)
+    }
+}
+
+cells_pat(it: Interp, p: Expr, x: Value) -> Bound {
+    n = p.children.length()
+    open = p.text == "[..]"
+
+    if x.kind != VList {
+        Bound { it, hit = false }
+    } else if open && x.items.length() < n - 1 {
+        Bound { it, hit = false }
+    } else if !open && x.items.length() != n {
+        Bound { it, hit = false }
+    } else {
+        cell_binds(it, p, x, 0)
+    }
+}
+
+cell_binds(it: Interp, p: Expr, x: Value, i: int) -> Bound {
+    n = p.children.length()
+
+    if i >= n {
+        Bound { it, hit = true }
+    } else if p.text == "[..]" && i == n - 1 {
+        rest = v_list(x.items.slice(i, x.items.length()))
+        Bound { it = push_var(it, p.children.get(i).text, rest), hit = true }
+    } else {
+        one = bind_pat(it, p.children.get(i), x.items.get(i))
+        kept_cell(one, p, x, i)
+    }
+}
+
+kept_cell(one: Bound, p: Expr, x: Value, i: int) -> Bound {
+    if one.hit {
+        cell_binds(one.it, p, x, i + 1)
+    } else {
+        one
+    }
+}
+
+ev_call(it: Interp, e: Expr) -> Ev {
+    r = ev_each(it, e.children, 0, [])
+
+    if halted(r.it) {
+        ev(r.it, v_unit())
+    } else {
+        dispatch(r.it, e.text, r.v.items)
+    }
+}
+
+dispatch(it: Interp, name: str, vals: Value[]) -> Ev {
+    at = slot_of(it, name)
+
+    if at >= 0 && it.slots.get(at).kind == VFun {
+        call_fun(it, it.slots.get(at), vals)
+    } else {
+        apply_named(it, name, vals)
+    }
+}
+
+ev_method(it: Interp, e: Expr) -> Ev {
+    r = ev_each(it, e.children, 0, [])
+
+    if halted(r.it) {
+        ev(r.it, v_unit())
+    } else {
+        apply_named(r.it, e.text, r.v.items)
+    }
+}
+
+call_fun(it: Interp, f: Value, args: Value[]) -> Ev {
+    if it.depth >= DepthLimit {
+        ev(raise_fault(it, "maximum recursion depth reached"), v_unit())
+    } else {
+        applied(it, f, args)
+    }
+}
+
+applied(it: Interp, f: Value, args: Value[]) -> Ev {
+    mark = it.names.length()
+    inner = fill_slots(it with { depth = it.depth + 1 }, f.keys, args, 0)
+    r = ev_expr(inner, f.code.get(0))
+    back = scope_cut(r.it, mark)
+
+    ev(cleared(back with { depth = it.depth }), r.v)
+}
+
+apply_named(it: Interp, name: str, vals: Value[]) -> Ev {
+    at = def_index(it, name)
+
+    if takes_list(name, vals) {
+        list_method(it, name, vals)
+    } else if is_builtin(name) {
+        builtin(it, name, vals)
+    } else if is_ctor(it, name) {
+        ev(it, v_sum(name, vals))
+    } else if at >= 0 {
+        call_def(it, it.defs.get(at), vals)
+    } else {
+        ev(raise_fault(it, "`{name}` is not a function the interpreter knows"),
+           v_unit())
+    }
+}
+
+takes_list(name: str, vals: Value[]) -> bool =>
+    vals.length() > 0 && vals.get(0).kind == VList && is_list_method(name)
+
+is_say(name: str) -> bool =>
+    name == "info" || name == "warn" || name == "err" || name == "notice"
+        || name == "debug" || name == "print"
+
+is_text_fn(name: str) -> bool =>
+    name == "len" || name == "str" || name == "chr" || name == "ord"
+        || name == "trim" || name == "upper" || name == "lower"
+        || name == "repeat" || name == "pad_start" || name == "pad_end"
+        || name == "pad_center" || name == "contains"
+        || name == "starts_with" || name == "ends_with"
+        || name == "index_of" || name == "replace" || name == "substr"
+        || name == "slice" || name == "split" || name == "length"
+        || name == "at" || name == "chars" || name == "is_whitespace"
+        || name == "is_ascii_digit" || name == "is_alpha"
+
+is_num_fn(name: str) -> bool =>
+    name == "int" || name == "float" || name == "abs" || name == "min"
+        || name == "max" || name == "clamp" || name == "gcd"
+        || name == "sign" || name == "sleep_ms"
+
+is_builtin(name: str) -> bool =>
+    is_say(name) || is_text_fn(name) || is_num_fn(name)
+
+arg_at(vals: Value[], i: int) -> Value =>
+    cell_at(vals, i)
+
+text_at(vals: Value[], i: int) -> str =>
+    show_val(cell_at(vals, i))
+
+int_at(vals: Value[], i: int) -> int =>
+    int_of(cell_at(vals, i))
+
+said_line(it: Interp, name: str, vals: Value[]) -> Interp {
+    line = text_at(vals, 0)
+
+    if name == "print" {
+        it with { out = it.out ++ line }
+    } else {
+        it with { out = it.out ++ line ++ "\n" }
+    }
+}
+
+builtin(it: Interp, name: str, vals: Value[]) -> Ev {
+    if is_say(name) {
+        ev(said_line(it, name, vals), v_unit())
+    } else if is_text_fn(name) {
+        ev(it, text_builtin(name, vals))
+    } else {
+        ev(it, num_builtin(name, vals))
+    }
+}
+
+pad_of(vals: Value[]) -> str {
+    p = text_at(vals, 2)
+
+    if p == "" {
+        " "
+    } else {
+        p
+    }
+}
+
+char_class(name: str, s: str) -> Value {
+    if s.length() == 0 {
+        v_bool(false)
+    } else if name == "is_whitespace" {
+        v_bool(s.at(0).is_whitespace())
+    } else if name == "is_ascii_digit" {
+        v_bool(s.at(0).is_ascii_digit())
+    } else {
+        v_bool(s.at(0).is_alpha())
+    }
+}
+
+text_builtin(name: str, vals: Value[]) -> Value {
+    s = text_at(vals, 0)
+    a = arg_at(vals, 0)
+
+    if name == "len" {
+        v_int(a.kind == VList ? a.items.length() : s.length())
+    } else if name == "str" {
+        v_str(s)
+    } else if name == "chr" {
+        v_str(int_at(vals, 0) > 0 && int_at(vals, 0) < 256
+                  ? chr(int_at(vals, 0)) : "")
+    } else if name == "ord" {
+        v_int(s.length() == 0 ? -1 : ord(s.at(0)))
+    } else if name == "length" {
+        v_int(s.length())
+    } else if name == "trim" {
+        v_str(s.trim())
+    } else if name == "upper" {
+        v_str(s.upper())
+    } else if name == "lower" {
+        v_str(s.lower())
+    } else if name == "repeat" {
+        v_str(s.repeat(int_at(vals, 1)))
+    } else if name == "pad_start" {
+        v_str(s.pad_start(int_at(vals, 1), pad_of(vals)))
+    } else if name == "pad_end" {
+        v_str(s.pad_end(int_at(vals, 1), pad_of(vals)))
+    } else if name == "pad_center" {
+        v_str(s.pad_center(int_at(vals, 1), pad_of(vals)))
+    } else if name == "contains" {
+        v_bool(s.contains(text_at(vals, 1)))
+    } else if name == "starts_with" {
+        v_bool(s.starts_with(text_at(vals, 1)))
+    } else if name == "ends_with" {
+        v_bool(s.ends_with(text_at(vals, 1)))
+    } else if name == "index_of" {
+        v_int(s.index_of(text_at(vals, 1)))
+    } else if name == "replace" {
+        v_str(s.replace(text_at(vals, 1), text_at(vals, 2)))
+    } else if name == "substr" {
+        v_str(s.substr(int_at(vals, 1), int_at(vals, 2)))
+    } else if name == "slice" {
+        v_str(s.slice(int_at(vals, 1), int_at(vals, 2)))
+    } else if name == "split" {
+        v_list(s.split(text_at(vals, 1)).map(v_str))
+    } else if name == "at" {
+        v_str(s.at(int_at(vals, 1)))
+    } else if name == "chars" {
+        v_list(s.chars().map(v_str))
+    } else {
+        char_class(name, s)
+    }
+}
+
+abs_int(n: int) -> int {
+    if n < 0 {
+        0 - n
+    } else {
+        n
+    }
+}
+
+abs_val(a: Value) -> Value {
+    if a.kind == VFloat {
+        v_float(a.fval < 0.0 ? 0.0 - a.fval : a.fval)
+    } else {
+        v_int(abs_int(int_of(a)))
+    }
+}
+
+clamped(x: Value, lo: Value, hi: Value) -> Value {
+    if cmp_val(x, lo) < 0 {
+        lo
+    } else if cmp_val(x, hi) > 0 {
+        hi
+    } else {
+        x
+    }
+}
+
+gcd_of(a: int, b: int) -> int {
+    if b == 0 {
+        a
+    } else {
+        gcd_of(b, a % b)
+    }
+}
+
+num_builtin(name: str, vals: Value[]) -> Value {
+    a = arg_at(vals, 0)
+    b = arg_at(vals, 1)
+
+    if name == "int" {
+        v_int(a.kind == VStr ? int(a.sval.trim()) : int_of(a))
+    } else if name == "float" {
+        v_float(a.kind == VStr ? float_text(a.sval.trim()) : float_of(a))
+    } else if name == "abs" {
+        abs_val(a)
+    } else if name == "min" {
+        cmp_val(a, b) > 0 ? b : a
+    } else if name == "max" {
+        cmp_val(a, b) < 0 ? b : a
+    } else if name == "clamp" {
+        clamped(a, b, arg_at(vals, 2))
+    } else if name == "gcd" {
+        v_int(gcd_of(abs_int(int_of(a)), abs_int(int_of(b))))
+    } else if name == "sign" {
+        v_int(cmp_val(a, v_int(0)))
+    } else {
+        v_unit()
+    }
+}
+
+is_walk_method(name: str) -> bool =>
+    name == "map" || name == "parallel" || name == "filter"
+        || name == "reduce" || name == "fold" || name == "sort_by"
+        || name == "index_of_by"
+
+is_cell_method(name: str) -> bool =>
+    name == "sort" || name == "reverse" || name == "push" || name == "pop"
+        || name == "set" || name == "insert" || name == "remove"
+        || name == "slice" || name == "contains" || name == "index_of"
+        || name == "enumerate" || name == "sum" || name == "min"
+        || name == "max" || name == "first" || name == "last"
+        || name == "get" || name == "length" || name == "join"
+
+is_list_method(name: str) -> bool =>
+    is_walk_method(name) || is_cell_method(name)
+
+cell_at(xs: Value[], i: int) -> Value {
+    if i >= 0 && i < xs.length() {
+        xs.get(i)
+    } else {
+        v_unit()
+    }
+}
+
+max_int(a: int, b: int) -> int {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+
+min_int(a: int, b: int) -> int {
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+
+cut_cells(xs: Value[], from: int, to: int) -> Value[] {
+    hi = min_int(max_int(to, 0), xs.length())
+
+    xs.slice(min_int(max_int(from, 0), hi), hi)
+}
+
+set_cell(xs: Value[], i: int, x: Value) -> Value {
+    if i >= 0 && i < xs.length() {
+        v_list(xs.set(i, x))
+    } else {
+        v_list(xs)
+    }
+}
+
+insert_cell(xs: Value[], i: int, x: Value) -> Value {
+    at = min_int(max_int(i, 0), xs.length())
+
+    v_list(xs.slice(0, at) ++ [x] ++ xs.slice(at, xs.length()))
+}
+
+remove_cell(xs: Value[], i: int) -> Value {
+    if i >= 0 && i < xs.length() {
+        v_list(xs.slice(0, i) ++ xs.slice(i + 1, xs.length()))
+    } else {
+        v_list(xs)
+    }
+}
+
+flipped(xs: Value[], i: int, acc: Value[]) -> Value[] {
+    if i < 0 {
+        acc
+    } else {
+        flipped(xs, i - 1, acc ++ [xs.get(i)])
+    }
+}
+
+where_val(xs: Value[], x: Value, i: int) -> int {
+    if i >= xs.length() {
+        -1
+    } else if same_val(xs.get(i), x) {
+        i
+    } else {
+        where_val(xs, x, i + 1)
+    }
+}
+
+numbered(xs: Value[], i: int, acc: Value[]) -> Value[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        cell = v_rec(["index", "value"], [v_int(i), xs.get(i)])
+        numbered(xs, i + 1, acc ++ [cell])
+    }
+}
+
+any_float(xs: Value[], i: int) -> bool {
+    if i >= xs.length() {
+        false
+    } else if xs.get(i).kind == VFloat {
+        true
+    } else {
+        any_float(xs, i + 1)
+    }
+}
+
+int_total(xs: Value[], i: int, acc: int) -> int {
+    if i >= xs.length() {
+        acc
+    } else {
+        int_total(xs, i + 1, acc + int_of(xs.get(i)))
+    }
+}
+
+float_total(xs: Value[], i: int, acc: float) -> float {
+    if i >= xs.length() {
+        acc
+    } else {
+        float_total(xs, i + 1, acc + float_of(xs.get(i)))
+    }
+}
+
+summed(xs: Value[]) -> Value {
+    if any_float(xs, 0) {
+        v_float(float_total(xs, 0, 0.0))
+    } else {
+        v_int(int_total(xs, 0, 0))
+    }
+}
+
+best_cell(xs: Value[], want: int, i: int, best: Value) -> Value {
+    if i >= xs.length() {
+        best
+    } else if i == 0 || cmp_val(xs.get(i), best) == want {
+        best_cell(xs, want, i + 1, xs.get(i))
+    } else {
+        best_cell(xs, want, i + 1, best)
+    }
+}
+
+placed(acc: Value[], x: Value, i: int) -> Value[] {
+    if i >= acc.length() {
+        acc ++ [x]
+    } else if cmp_val(x, acc.get(i)) < 0 {
+        acc.slice(0, i) ++ [x] ++ acc.slice(i, acc.length())
+    } else {
+        placed(acc, x, i + 1)
+    }
+}
+
+sorted_cells(xs: Value[], i: int, acc: Value[]) -> Value[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        sorted_cells(xs, i + 1, placed(acc, xs.get(i), 0))
+    }
+}
+
+cell_method(name: str, xs: Value[], vals: Value[]) -> Value {
+    if name == "length" {
+        v_int(xs.length())
+    } else if name == "get" {
+        cell_at(xs, int_at(vals, 1))
+    } else if name == "first" {
+        cell_at(xs, 0)
+    } else if name == "last" {
+        cell_at(xs, xs.length() - 1)
+    } else if name == "sort" {
+        v_list(sorted_cells(xs, 0, []))
+    } else if name == "reverse" {
+        v_list(flipped(xs, xs.length() - 1, []))
+    } else if name == "push" {
+        v_list(xs ++ [arg_at(vals, 1)])
+    } else if name == "pop" {
+        v_list(xs.slice(0, max_int(xs.length() - 1, 0)))
+    } else if name == "set" {
+        set_cell(xs, int_at(vals, 1), arg_at(vals, 2))
+    } else if name == "insert" {
+        insert_cell(xs, int_at(vals, 1), arg_at(vals, 2))
+    } else if name == "remove" {
+        remove_cell(xs, int_at(vals, 1))
+    } else if name == "slice" {
+        v_list(cut_cells(xs, int_at(vals, 1), int_at(vals, 2)))
+    } else if name == "contains" {
+        v_bool(where_val(xs, arg_at(vals, 1), 0) >= 0)
+    } else if name == "index_of" {
+        v_int(where_val(xs, arg_at(vals, 1), 0))
+    } else if name == "enumerate" {
+        v_list(numbered(xs, 0, []))
+    } else if name == "sum" {
+        summed(xs)
+    } else if name == "min" {
+        best_cell(xs, -1, 0, v_unit())
+    } else if name == "max" {
+        best_cell(xs, 1, 0, v_unit())
+    } else {
+        v_str(shown_cells(xs, 0, []).join(text_at(vals, 1)))
+    }
+}
+
+mapped(it: Interp, f: Value, xs: Value[], i: int, acc: Value[]) -> Ev {
+    if i >= xs.length() || halted(it) {
+        ev(it, v_list(acc))
+    } else {
+        r = call_fun(it, f, [xs.get(i)])
+        mapped(r.it, f, xs, i + 1, acc ++ [r.v])
+    }
+}
+
+kept_cells(it: Interp, f: Value, xs: Value[], i: int, acc: Value[]) -> Ev {
+    if i >= xs.length() || halted(it) {
+        ev(it, v_list(acc))
+    } else {
+        r = call_fun(it, f, [xs.get(i)])
+        next = if truth_of(r.v) {
+            acc ++ [xs.get(i)]
+        } else {
+            acc
+        }
+        kept_cells(r.it, f, xs, i + 1, next)
+    }
+}
+
+folded(it: Interp, f: Value, xs: Value[], i: int, acc: Value) -> Ev {
+    if i >= xs.length() || halted(it) {
+        ev(it, acc)
+    } else {
+        r = call_fun(it, f, [acc, xs.get(i)])
+        folded(r.it, f, xs, i + 1, r.v)
+    }
+}
+
+found_by(it: Interp, f: Value, xs: Value[], i: int) -> Ev {
+    if i >= xs.length() || halted(it) {
+        ev(it, v_int(-1))
+    } else {
+        r = call_fun(it, f, [xs.get(i)])
+        hit_at(r, f, xs, i)
+    }
+}
+
+hit_at(r: Ev, f: Value, xs: Value[], i: int) -> Ev {
+    if truth_of(r.v) {
+        ev(r.it, v_int(i))
+    } else {
+        found_by(r.it, f, xs, i + 1)
+    }
+}
+
+key_slot(sk: Value[], k: Value, i: int) -> int {
+    if i >= sk.length() {
+        i
+    } else if cmp_val(k, sk.get(i)) < 0 {
+        i
+    } else {
+        key_slot(sk, k, i + 1)
+    }
+}
+
+by_key(ks: Value[], xs: Value[], i: int, sk: Value[],
+       sv: Value[]) -> Value[] {
+    if i >= xs.length() {
+        sv
+    } else {
+        at = key_slot(sk, ks.get(i), 0)
+        by_key(ks, xs, i + 1,
+               sk.slice(0, at) ++ [ks.get(i)] ++ sk.slice(at, sk.length()),
+               sv.slice(0, at) ++ [xs.get(i)] ++ sv.slice(at, sv.length()))
+    }
+}
+
+keyed_sort(it: Interp, f: Value, xs: Value[]) -> Ev {
+    r = mapped(it, f, xs, 0, [])
+
+    ev(r.it, v_list(by_key(r.v.items, xs, 0, [], [])))
+}
+
+walk_method(it: Interp, name: str, xs: Value[], vals: Value[]) -> Ev {
+    if name == "map" || name == "parallel" {
+        mapped(it, arg_at(vals, 1), xs, 0, [])
+    } else if name == "filter" {
+        kept_cells(it, arg_at(vals, 1), xs, 0, [])
+    } else if name == "reduce" || name == "fold" {
+        folded(it, arg_at(vals, 2), xs, 0, arg_at(vals, 1))
+    } else if name == "sort_by" {
+        keyed_sort(it, arg_at(vals, 1), xs)
+    } else {
+        found_by(it, arg_at(vals, 1), xs, 0)
+    }
+}
+
+list_method(it: Interp, name: str, vals: Value[]) -> Ev {
+    xs = vals.get(0).items
+
+    if is_walk_method(name) {
+        walk_method(it, name, xs, vals)
+    } else {
+        ev(it, cell_method(name, xs, vals))
+    }
+}
+
+ev_store(it: Interp, e: Expr) -> Ev {
+    r = ev_expr(it, e.children.get(1))
+
+    if halted(r.it) {
+        r
+    } else {
+        ev(assign_to(r.it, e.children.get(0), r.v), r.v)
+    }
+}
+
+assign_to(it: Interp, target: Expr, x: Value) -> Interp {
+    if target.kind == EIdent {
+        store_var(it, target.text, x)
+    } else if target.kind == EField {
+        into_field(it, target, x)
+    } else if target.kind == EMethod && target.text == "get" {
+        into_cell(it, target, x)
+    } else {
+        it
+    }
+}
+
+into_field(it: Interp, target: Expr, x: Value) -> Interp {
+    base = ev_expr(it, target.children.get(0))
+
+    assign_to(base.it, target.children.get(0),
+              put_field(base.v, target.text, x))
+}
+
+into_cell(it: Interp, target: Expr, x: Value) -> Interp {
+    where = ev_expr(it, target.children.get(1))
+    base = ev_expr(where.it, target.children.get(0))
+
+    if base.v.kind != VList {
+        base.it
+    } else {
+        assign_to(base.it, target.children.get(0),
+                  set_cell(base.v.items, int_of(where.v), x))
+    }
+}
