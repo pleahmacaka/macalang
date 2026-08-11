@@ -227,6 +227,85 @@ test_dev_without_a_dev_file_shows_the_starter_it_wants() {
            "the message carries a starter the reader can paste: {said}")
 }
 
+jdk_here() -> bool =>
+    have("javac") && have("java")
+
+/// The interface a Fabric mod implements, compiled where a classpath can name it.
+jvm_stub(dir: str) -> bool {
+    make_dir(dir ++ "/net/fabricmc/api")
+    write_file(dir ++ "/net/fabricmc/api/ModInitializer.java",
+        "package net.fabricmc.api;\n"
+            ++ "public interface ModInitializer {{ void onInitialize(); }}\n")
+
+    exec("javac", [dir ++ "/net/fabricmc/api/ModInitializer.java",
+                   "-d", dir]) == 0
+}
+
+/// The Fabric mod this repository ships, which is what a JVM package looks like.
+mcmod_source() -> str =>
+    read_file(cwd() ++ "/apps/mcmod/mod.maca")
+
+test_the_jvm_target_compiles_the_java_it_emits() {
+    if jdk_here() {
+        dir = package_dir("jvm-classes")
+
+        write_file(dir ++ "/fibj.maca",
+            "fib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\n"
+                ++ "\nmain() -> int {{\n    info(\"{{fib(20)}}\")\n    0\n}}\n")
+
+        assert_eq(str(rc_in(dir, ["build", "--target", "jvm", "fibj.maca",
+                                  "-o", "out"])), "0", "the build ran")
+        assert(file_exists(dir ++ "/out/Fibj.class"),
+               "javac wrote the class the JVM loads, not only the Java")
+        assert(capture("java", ["-cp", dir ++ "/out", "Fibj"]).contains("6765"),
+               "and the class the source stem named is the one that runs")
+    }
+}
+
+/// The jars a JVM package compiles against belong to the package, not to whoever types the command.
+test_a_declared_classpath_reaches_the_java_compiler() {
+    if jdk_here() {
+        at = monorepo("ws-classpath") ++ "/apps/hello"
+
+        assert(jvm_stub(at ++ "/stub"), "the interface the mod implements")
+        write_file(at ++ "/maca.toml",
+            "[package]\nname = \"hello\"\n\n[build]\ntarget = \"jvm\"\n"
+                ++ "classpath = \"stub\"\nout = \"classes\"\n\n"
+                ++ "[[bin]]\nname = \"hello\"\npath = \"mod.maca\"\n")
+        write_file(at ++ "/mod.maca", mcmod_source())
+
+        assert_eq(str(rc_in(at, ["build"])), "0", "the declared build ran")
+        assert(file_exists(at ++ "/classes/Mod.class"),
+               "javac needs the declared jars to resolve the interface")
+    }
+}
+
+test_a_classpath_flag_names_the_jars_a_manifest_did_not() {
+    if jdk_here() {
+        dir = package_dir("jvm-cp-flag")
+
+        src = cwd() ++ "/apps/mcmod/mod.maca"
+
+        assert(jvm_stub(dir ++ "/stub"), "the interface the mod implements")
+        assert_eq(str(rc_in(dir, ["build", "--target", "jvm", src,
+                                  "-o", "out", "--cp", "stub"])), "0",
+                  "the flag carried the jars")
+        write_file(dir ++ "/out/Runner.java",
+            "public class Runner {{ public static void main(String[] a) {{\n"
+                ++ "  net.fabricmc.api.ModInitializer m ="
+                ++ " new Mod.ExampleMod();\n  m.onInitialize();\n}} }}\n")
+
+        cp = dir ++ "/stub:" ++ dir ++ "/out"
+
+        assert_eq(str(exec("javac", ["-cp", cp, "-d", dir ++ "/out",
+                                     dir ++ "/out/Runner.java"])), "0",
+                  "the emitted class is a ModInitializer to javac")
+        assert(capture("java", ["-cp", cp, "Runner"])
+                   .contains("Maca-authored Fabric mod"),
+               "and the interface method runs the body the mod wrote")
+    }
+}
+
 /// A root that gathers a library and an application, the way this repository does.
 monorepo(tag: str) -> str {
     dir = package_dir(tag)

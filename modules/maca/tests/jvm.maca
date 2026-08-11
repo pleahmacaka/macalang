@@ -4,7 +4,7 @@ import maca/check
 import maca/emit_jvm
 
 gate_jvm(src: str) -> str =>
-    jvmemit_module(annotated(parse_module(lex(src), 0, [])))
+    jvmemit_module(annotated(parse_module(lex(src), 0, [])), "Main")
 
 test_a_record_is_a_class_of_the_fields_it_declared() {
     made = gate_jvm("Point = {{ x: int y: int }}\n"
@@ -66,14 +66,14 @@ test_the_entry_point_is_the_one_the_jvm_looks_for() {
 test_a_function_is_a_static_method_of_the_module_class() {
     made = gate_jvm("twice(n: int) -> int => n * 2\ngreet(s: str) -> str => s")
 
-    assert(made.index_of("final class Main {{") >= 0,
-           "Java has no free function, so the module is a class")
+    assert(made.index_of("public final class Main {{") >= 0,
+           "Java has no free function, so the module is a public class")
     assert(made.index_of("static long twice(long n) {{") >= 0, "int is long")
     assert(made.index_of("static String greet(String s) {{") >= 0, "and str is String")
 }
 
 gate_jvm_lifted(src: str) -> str =>
-    jvmemit_module(lifted_module(src))
+    jvmemit_module(lifted_module(src), "Main")
 
 lifted_module(src: str) -> Module =>
     annotated(lifted(annotated(parse_module(lex(src), 0, []))))
@@ -97,6 +97,15 @@ test_a_function_used_as_a_value_is_refused() {
            "the lift already named the lambda, so the complaint is about the name, not the call")
     assert(said.index_of("used as a value") >= 0,
            "a bare method name is not a Java value, so the target says so rather than writing one")
+}
+
+test_the_public_class_carries_the_name_it_was_asked_for() {
+    m = annotated(parse_module(lex("main() -> int => 0"), 0, []))
+
+    assert(jvmemit_module(m, "Mod").index_of("public final class Mod {{") >= 0,
+           "javac writes Mod.class only for a file whose public class is Mod")
+    assert(jvmemit_module(m, "Mod").index_of("class Main") < 0,
+           "so nothing is left named after the back end rather than the source")
 }
 
 test_a_shift_lowers_to_the_java_shift() {

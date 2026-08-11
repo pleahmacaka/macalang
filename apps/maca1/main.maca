@@ -335,10 +335,11 @@ phantom_at(ts: Token[], i: int) -> bool =>
         && ts.get(i + 1).kind == TIdent && !ts.get(i + 1).fresh
 
 phantom_word(t: Token) -> bool =>
-    (t.kind == TIdent || t.kind == KwLet)
-        && (t.text == "let" || t.text == "var" || t.text == "fn"
-            || t.text == "func" || t.text == "def" || t.text == "type"
-            || t.text == "async")
+    (t.kind == TIdent || t.kind == KwLet) && phantom_spelling(t.text)
+
+phantom_spelling(w: str) -> bool =>
+    w == "let" || w == "var" || w == "fn" || w == "func" || w == "def"
+        || w == "type" || w == "async"
 
 phantom_count(ts: Token[], i: int, n: int) -> int {
     if i >= ts.length() {
@@ -625,6 +626,66 @@ flag_after(args: str[], name: str) -> str {
     }
 }
 
+/// The jvm target compiles what it emits, so `-o` names the directory the class files land in.
+build_classes(src: str, out: str, cp: str) -> int {
+    name = jvm_class(src)
+    java = "{out}/{name}.java"
+
+    make_dir(out)
+
+    errs = compile_file([src, java, "jvm", name])
+
+    if errs > 0 {
+        errs
+    } else if !javac_here() {
+        err("maca: no javac on PATH, so {java} was written but not compiled.")
+
+        2
+    } else {
+        write_file(java, java_imports(src) ++ read_file(java))
+
+        exec("javac", javac_line(java, out, cp))
+    }
+}
+
+/// The JVM looks a class up under the name of its file, so the public class carries the source's stem.
+jvm_class(src: str) -> str {
+    stem = stem_of(src)
+
+    stem == "" ? "Main" : stem.at(0).upper() ++ stem.slice(1, stem.length())
+}
+
+/// Java resolves no name by itself, so every class `import java` named is imported into the emitted unit.
+java_imports(src: str) -> str =>
+    java_named(unit_of(src).seen, 0, "")
+
+java_named(files: str[], i: int, acc: str) -> str {
+    if i >= files.length() {
+        acc == "" ? "" : acc ++ "\n"
+    } else {
+        got = lex_all(read_file(files.get(i))).tokens
+
+        java_named(files, i + 1, acc ++ java_in(got, 0, ""))
+    }
+}
+
+java_in(ts: Token[], i: int, acc: str) -> str {
+    if ts.get(i).kind == Eof {
+        acc
+    } else if ts.get(i).kind == KwImport && ts.get(i + 1).text == "java"
+            && ts.get(i + 2).kind == TStr {
+        java_in(ts, i + 3, acc ++ "import {ts.get(i + 2).text};\n")
+    } else {
+        java_in(ts, i + 1, acc)
+    }
+}
+
+javac_line(java: str, out: str, cp: str) -> str[] =>
+    cp == "" ? [java, "-d", out] : [java, "-d", out, "-cp", cp]
+
+javac_here() -> bool =>
+    capture("sh", ["-c", "command -v javac"]).trim() != ""
+
 /// `-o` names a binary for the native target and the emitted source for any other.
 tooled(name: str) -> bool =>
     name == "lint" || name == "doc" || name == "bindgen"
@@ -640,7 +701,7 @@ tool_path(name: str) -> str {
     }
 }
 
-build_out(src: str, out: str, target: str, mcu: str) -> int {
+build_out(src: str, out: str, target: str, mcu: str, cp: str) -> int {
     if target == "" || target == "native" || target == "c" {
         build_binary(src, out)
     } else if target == "embedded" {
@@ -649,8 +710,10 @@ build_out(src: str, out: str, target: str, mcu: str) -> int {
         build_wasm(src, out)
     } else if target == "js" {
         build_page(src, out)
-    } else if target == "rust" || target == "nix" || target == "jvm" {
+    } else if target == "rust" || target == "nix" {
         compile_file([src, out, target])
+    } else if target == "jvm" {
+        build_classes(src, out, cp)
     } else {
         err("maca: no target `{target}`. Try native, rust, js, nix, "
             ++ "wasm, embedded or jvm.")
@@ -1357,8 +1420,16 @@ build_cmd(args: str[]) -> int {
         target = build_setting(args, chain, "--target", "target")
 
         build_out(src, out == "" ? default_out(src, target) : out, target,
-                  build_setting(args, chain, "--mcu", "mcu"))
+                  build_setting(args, chain, "--mcu", "mcu"),
+                  declared_cp(args, chain))
     }
+}
+
+/// `--cp` names the same jars as `--classpath`, and either beats what `[build]` declared.
+declared_cp(args: str[], chain: str[]) -> str {
+    short = flag_after(args, "--cp")
+
+    short != "" ? short : build_setting(args, chain, "--classpath", "classpath")
 }
 
 /// A flag on the line wins, and `[build]` is what the project declares without one.
@@ -1598,11 +1669,27 @@ diag_json(path: str, text: str, d: Diagnostic) -> str {
         ++ ",\"note\":" ++ note_json(d.note)
         ++ ",\"file\":" ++ json_text(path)
         ++ ",\"span\":" ++ spot_json(text, lo, hi)
-        ++ ",\"suggestions\":[]\}"
+        ++ ",\"suggestions\":" ++ fix_suggestions(text, d, lo, hi)
+        ++ "\}"
 }
 
 note_json(note: str) -> str =>
     note == "" ? "null" : json_text(note)
+
+/// The one edit `maca fix` makes unread, so a reader of the JSON sees it too.
+fix_suggestions(text: str, d: Diagnostic, lo: int, hi: int) -> str {
+    name = quoted_name(d.message)
+
+    if !d.message.starts_with("no expression starts at ")
+           || !phantom_spelling(name) {
+        "[]"
+    } else {
+        "[\{\"message\":" ++ json_text("delete `" ++ name ++ "`")
+            ++ ",\"span\":" ++ spot_json(text, lo, hi)
+            ++ ",\"replacement\":\"\",\"applicability\":"
+            ++ "\"machine-applicable\"\}]"
+    }
+}
 
 spot_json(text: str, lo: int, hi: int) -> str =>
     "\{\"start\":" ++ str(lo) ++ ",\"end\":" ++ str(hi)
@@ -2238,7 +2325,7 @@ compile_file(args: str[]) -> int {
     } else if asked == "embedded" {
         eemit_module(m)
     } else if asked == "jvm" {
-        jvmemit_module(m)
+        jvmemit_module(m, args.length() >= 4 ? args.get(3) : "Main")
     } else {
         emit_module(m)
     }

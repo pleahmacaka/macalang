@@ -21,6 +21,8 @@ const TWINS: &[&str] = &[
     "modules/maca/tests/refusals.maca",
     "modules/maca/tests/examples.maca",
     "modules/maca/tests/suites.maca",
+    "modules/maca/tests/checkjson.maca",
+    "modules/maca/tests/imports.maca",
     "modules/std/tests/readme.maca",
     "tests/editor_grammar.maca",
 ];

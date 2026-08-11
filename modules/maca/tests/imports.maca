@@ -1,0 +1,193 @@
+import std/proc
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+project(name: str) -> str {
+    root = env_or("TMPDIR", "/tmp") ++ "/maca-imports/" ++ name
+
+    exec("rm", ["-rf", root])
+    make_dir(env_or("TMPDIR", "/tmp") ++ "/maca-imports")
+    make_dir(root)
+    make_dir(root ++ "/lib")
+
+    root
+}
+
+wrote(root: str, rel: str, src: str) -> str {
+    path = root ++ "/" ++ rel
+
+    write_file(path, src)
+
+    path
+}
+
+made(root: str, target: str, out: str) -> int =>
+    exec(maca_bin(), ["build", root ++ "/app.maca", "-o", root ++ "/" ++ out,
+                      "--target", target])
+
+built(root: str, target: str, out: str, file: str) -> str {
+    args = ["build", root ++ "/app.maca", "-o", root ++ "/" ++ out,
+            "--target", target]
+
+    assert_eq(str(exec(maca_bin(), args)), "0",
+              "{target} did not build: {capture(maca_bin(), args)}")
+
+    read_file(root ++ "/" ++ file)
+}
+
+ran(root: str) -> str =>
+    capture(maca_bin(), ["run", root ++ "/app.maca"]).trim()
+
+times_in(text: str, needle: str) -> int =>
+    text.split(needle).length() - 1
+
+two_files(name: str) -> str {
+    root = project(name)
+
+    wrote(root, "lib/greet.maca",
+          "greeting(name: str) -> str => \"hello \" ++ name\n")
+    wrote(root, "app.maca",
+          "import lib/greet\n\nhello() -> str => greeting(\"world\")\n\n"
+              ++ "main() -> int {{\n    info(hello())\n    0\n}}\n")
+
+    root
+}
+
+test_js_inlines_the_imported_module_and_the_answer_is_the_native_one() {
+    root = two_files("js")
+    src = built(root, "js", "out", "out/app.js")
+
+    assert(src.contains("function greeting"),
+           "the imported definition is not in the bundle: {src}")
+    assert_eq(ran(root), "hello world",
+              "and the same program computes that answer natively")
+}
+
+test_jvm_inlines_the_imported_module() {
+    if !have("javac") {
+        return
+    }
+
+    root = two_files("jvm")
+    java = built(root, "jvm", "out", "out/App.java")
+
+    assert(java.contains("greeting"),
+           "the imported definition is not in the class: {java}")
+    assert(file_exists(root ++ "/out/App.class"),
+           "and javac turned it into a class beside the source")
+}
+
+test_nix_reads_an_imported_config_fragment() {
+    root = project("nix")
+
+    wrote(root, "lib/ports.maca", "services.ssh.port = 2222\n")
+    wrote(root, "app.maca",
+          "import lib/ports\n\nservices.ssh.enable = true\n")
+
+    assert(built(root, "nix", "out.nix", "out.nix").contains("2222"),
+           "the imported setting is missing from the module")
+}
+
+test_a_transitive_import_is_inlined() {
+    root = project("transitive")
+
+    wrote(root, "lib/c.maca", "base() -> int => 7\n")
+    wrote(root, "lib/b.maca", "import lib/c\nmid() -> int => base() + 1\n")
+    wrote(root, "lib/a.maca", "import lib/b\ntop() -> int => mid() + 1\n")
+    wrote(root, "app.maca",
+          "import lib/a\n\nanswer() -> int => top()\n\n"
+              ++ "main() -> int {{\n    info(\"{{answer()}}\")\n    0\n}}\n")
+
+    assert_eq(ran(root), "9",
+              "a module the entry never names is still what it is built on")
+    assert(built(root, "js", "out", "out/app.js").contains("function base"),
+           "and the js bundle carries it too")
+}
+
+test_a_diamond_inlines_the_shared_module_once() {
+    root = project("diamond")
+
+    wrote(root, "lib/base.maca", "base_val() -> int => 7\n")
+    wrote(root, "lib/a.maca",
+          "import lib/base\nfrom_a() -> int => base_val() + 1\n")
+    wrote(root, "lib/b.maca",
+          "import lib/base\nfrom_b() -> int => base_val() + 2\n")
+    wrote(root, "app.maca",
+          "import lib/a\nimport lib/b\n\n"
+              ++ "total() -> int => from_a() + from_b()\n\n"
+              ++ "main() -> int {{\n    info(\"{{total()}}\")\n    0\n}}\n")
+
+    src = built(root, "js", "out", "out/app.js")
+
+    assert_eq(times_in(src, "function base_val"), 1,
+              "the shared module was inlined more than once")
+    assert_eq(ran(root), "17",
+              "and a definition written twice would not compile at all")
+}
+
+test_a_selective_import_brings_the_name_it_asked_for() {
+    root = project("selective")
+
+    wrote(root, "lib/many.maca",
+          "wanted() -> int => 1\n\nunwanted() -> int => 2\n")
+    wrote(root, "app.maca",
+          "import {{ wanted }} from lib/many\n\n"
+              ++ "use_it() -> int => wanted()\n\n"
+              ++ "main() -> int {{\n    info(\"{{use_it()}}\")\n    0\n}}\n")
+
+    src = built(root, "js", "out", "out/app.js")
+
+    assert(src.contains("function wanted"),
+           "the name the import asked for is missing from the bundle")
+    assert_eq(ran(root), "1",
+              "and it is the definition that file wrote, not another one")
+}
+
+test_an_import_that_names_no_file_is_an_error_on_every_target() {
+    root = project("missing")
+
+    wrote(root, "app.maca", "import lib/nope\n\nmain() -> int => 0\n")
+
+    for target in ["js", "jvm", "nix", "c"] {
+        assert(made(root, target, "out-{target}") != 0,
+               "{target} accepted an import that resolves to no file")
+        assert(capture(maca_bin(), ["build", root ++ "/app.maca", "-o",
+                                    root ++ "/out-{target}", "--target",
+                                    target]).contains("lib/nope"),
+               "{target} refused it without naming the module")
+    }
+}
+
+test_an_import_cycle_terminates_rather_than_hanging() {
+    root = project("cycle")
+
+    wrote(root, "lib/x.maca", "import lib/y\nfrom_x() -> int => 1\n")
+    wrote(root, "lib/y.maca", "import lib/x\nfrom_y() -> int => 2\n")
+    wrote(root, "app.maca", "import lib/x\n\nmain() -> int => 0\n")
+
+    assert(made(root, "js", "cyc") >= 0,
+           "two modules that import each other are read once each")
+}
+
+test_a_program_with_no_imports_still_builds_on_every_target() {
+    root = project("plain")
+
+    wrote(root, "app.maca", "main() -> int => 0\n")
+
+    every = have("javac") ? ["js", "jvm", "c"] : ["js", "c"]
+
+    for target in every {
+        assert_eq(str(made(root, target, "plain-{target}")), "0",
+                  "{target} regressed on a program with no imports")
+    }
+
+    conf = project("plainconf")
+
+    wrote(conf, "app.maca", "services.ssh.enable = true\n")
+    assert_eq(str(made(conf, "nix", "plain.nix")), "0",
+              "nix regressed on a config with no imports")
+}

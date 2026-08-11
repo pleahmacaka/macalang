@@ -1,0 +1,216 @@
+import std/proc
+import std/json
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+scratch() -> str {
+    dir = env_or("TMPDIR", "/tmp") ++ "/maca-check-json"
+
+    make_dir(dir)
+
+    dir
+}
+
+broken_source() -> str =>
+    "main() -> int {{\n    let x = 1\n    total = 0 as const\n"
+        ++ "    total = 5\n    nope()\n    x\n}}\n"
+
+written(name: str, src: str) -> str {
+    path = scratch() ++ "/" ++ name
+
+    write_file(path, src)
+
+    path
+}
+
+printed(args: str[]) -> str =>
+    capture(maca_bin(), args)
+
+reported(args: str[]) -> str[] =>
+    items(get(printed(args), "diagnostics"))
+
+named_let(ds: str[], i: int) -> str {
+    if i >= ds.length() {
+        ""
+    } else if unwrap(get(ds.get(i), "message")).contains("`let`") {
+        ds.get(i)
+    } else {
+        named_let(ds, i + 1)
+    }
+}
+
+schema_required() -> str[] {
+    one = get(get(read_file("docs/check-json.schema.json"), "$defs"),
+              "diagnostic")
+
+    items(get(one, "required"))
+}
+
+all_digits(cs: str[], i: int) -> bool {
+    if i >= cs.length() {
+        true
+    } else if !cs.get(i).is_ascii_digit() {
+        false
+    } else {
+        all_digits(cs, i + 1)
+    }
+}
+
+carries_every_field(d: str, want: str[], i: int) -> bool {
+    if i >= want.length() {
+        true
+    } else {
+        assert(get(d, want.get(i)) != "",
+               "the schema requires `{want.get(i)}` and the output has no "
+                   ++ "such key: {d}")
+
+        carries_every_field(d, want, i + 1)
+    }
+}
+
+legal_suggestions(ss: str[], i: int) -> bool {
+    if i >= ss.length() {
+        true
+    } else {
+        how = unwrap(get(ss.get(i), "applicability"))
+
+        assert(how == "machine-applicable" || how == "maybe-incorrect",
+               "unknown applicability: {ss.get(i)}")
+        assert(get(ss.get(i), "span") != "",
+               "a suggestion names the range it replaces: {ss.get(i)}")
+
+        legal_suggestions(ss, i + 1)
+    }
+}
+
+each_diagnostic_is_shaped(ds: str[], want: str[], i: int) -> bool {
+    if i >= ds.length() {
+        true
+    } else {
+        d = ds.get(i)
+        code = unwrap(get(d, "code"))
+
+        carries_every_field(d, want, 0)
+        assert(code.length() == 5 && code.starts_with("M")
+                   && all_digits(code.slice(1, 5).chars(), 0),
+               "`{code}` is not an M0000 code")
+        legal_suggestions(items(get(d, "suggestions")), 0)
+
+        each_diagnostic_is_shaped(ds, want, i + 1)
+    }
+}
+
+test_the_output_matches_the_committed_schema() {
+    path = written("schema.maca", broken_source())
+    said = printed(["check", path, "--json"])
+    ds = items(get(said, "diagnostics"))
+
+    assert_eq(get(said, "format"), "1", "the shape names its version")
+    assert(ds.length() > 0, "the broken file produced nothing: {said}")
+    each_diagnostic_is_shaped(ds, schema_required(), 0)
+}
+
+test_a_span_points_at_the_text_the_message_is_about() {
+    path = written("span.maca", broken_source())
+    src = read_file(path)
+    d = named_let(reported(["check", path, "--json"]), 0)
+
+    assert(d != "", "no diagnostic was about `let`")
+
+    at = get(d, "span")
+    lo = get_int(at, "start", 0)
+    hi = get_int(at, "end", 0)
+
+    assert_eq(src.slice(lo, hi), "let", "the span does not cover `let`")
+    assert_eq(str(get_int(at, "start_line", 0)), "2", "on the second line")
+    assert_eq(str(get_int(at, "start_column", 0)), "5", "at the fifth column")
+}
+
+test_the_edit_fix_would_make_is_offered_in_the_json() {
+    path = written("offered.maca", broken_source())
+    d = named_let(reported(["check", path, "--json"]), 0)
+    ss = items(get(d, "suggestions"))
+
+    assert_eq(str(ss.length()), "1",
+              "the one edit `maca fix` applies is what a reader is offered")
+    assert_eq(unwrap(get(ss.get(0), "applicability")), "machine-applicable",
+              "it is always correct, so it is applied without asking")
+    assert(ss.get(0).contains("\"replacement\":\"\""),
+           "the edit is a deletion: {ss.get(0)}")
+    assert_eq(str(get_int(get(ss.get(0), "span"), "start", 0)), "20",
+              "over the word itself and nothing beside it")
+}
+
+test_fix_applies_the_safe_edit_and_leaves_the_rest() {
+    path = written("fix.maca", broken_source())
+    before = reported(["check", path, "--json"]).length()
+
+    assert_eq(str(exec(maca_bin(), ["fix", path])), "0", "fix runs clean")
+
+    after_src = read_file(path)
+
+    assert(!after_src.contains("let x"),
+           "the machine-applicable edit did not land: {after_src}")
+    assert(after_src.contains("as const") && after_src.contains("nope()"),
+           "fix touched something it was not allowed to: {after_src}")
+    assert(reported(["check", path, "--json"]).length() < before,
+           "fixing removed no diagnostic, from {str(before)}")
+}
+
+test_a_clean_file_is_an_empty_list_and_a_zero_exit() {
+    path = written("clean.maca", "main() -> int {{\n    0\n}}\n")
+
+    assert_eq(str(exec(maca_bin(), ["check", path, "--json"])), "0",
+              "a clean file should exit zero")
+    assert_eq(str(reported(["check", path, "--json"]).length()), "0",
+              "and say nothing at all")
+}
+
+test_an_effect_the_target_cannot_carry_is_refused() {
+    path = written("target.maca",
+                   "main() -> int {{\n    info(\"hi\")\n    0\n}}\n")
+
+    assert_eq(str(exec(maca_bin(), ["check", path, "--target", "native"])),
+              "0", "native carries io")
+
+    ds = reported(["check", path, "--target", "embedded", "--json"])
+
+    assert(ds.length() > 0, "embedded carries no io and said nothing")
+
+    d = ds.get(0)
+    said = unwrap(get(d, "message"))
+
+    assert_eq(unwrap(get(d, "code")), "M0007", "the code for a lost effect")
+    assert(said.contains("io") && said.contains("embedded"),
+           "the message names the effect and the target: {said}")
+    assert(get(d, "note") != "null", "and says what to do instead: {d}")
+}
+
+test_no_target_means_native() {
+    path = written("default.maca",
+                   "main() -> int {{\n    info(\"hi\")\n    0\n}}\n")
+
+    assert_eq(str(exec(maca_bin(), ["check", path])), "0",
+              "a program that prints should pass an unqualified check")
+}
+
+test_target_all_is_stricter_than_native() {
+    path = written("all.maca",
+                   "main() -> int {{\n    info(\"hi\")\n    0\n}}\n")
+
+    assert(exec(maca_bin(), ["check", path, "--target", "all"]) != 0,
+           "io is not carried by every program target, so `all` refuses it")
+}
+
+test_an_unbuilt_target_is_refused_with_the_list() {
+    path = written("beam.maca", "main() -> int {{\n    0\n}}\n")
+    said = capture_err(maca_bin(), ["check", path, "--target", "beam"])
+
+    assert(said.contains("no target `beam`"), "names the target: {said}")
+    assert(said.contains("embedded"),
+           "and lists the ones that exist: {said}")
+}
