@@ -1,0 +1,88 @@
+import std/proc
+
+scratch() -> str {
+    dir = env_or("TMPDIR", "/tmp") ++ "/maca-cli-suites"
+    make_dir(dir)
+
+    dir
+}
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+suite_code(path: str) -> int {
+    assert(file_exists(path),
+        "{path} is not there, and a suite nobody can find passes by saying "
+            ++ "it holds no tests")
+
+    exec(maca_bin(), ["test", path])
+}
+
+package_suites() -> str[] =>
+    ["modules/std/tests/text.maca", "modules/std/tests/list.maca",
+     "modules/std/tests/path.maca", "modules/std/tests/json.maca",
+     "modules/std/tests/csv.maca", "modules/std/tests/fs.maca",
+     "modules/std/tests/proc.maca", "modules/std/tests/builtins.maca",
+     "modules/cli/tests/cli.maca", "modules/web/tests/format.maca"]
+
+scope_tests() -> str[] =>
+    ["test_each_module_keeps_its_own_private_helper",
+     "test_a_captured_parameter_beats_another_modules_top_level",
+     "test_the_shadowed_top_level_still_answers",
+     "test_a_third_module_reaches_the_published_definition"]
+
+test_every_package_answers_for_its_own_suite() {
+    for path in package_suites() {
+        assert_eq(suite_code(path), 0, "{path} is what its package claims")
+    }
+}
+
+test_the_installer_rules_hold() {
+    assert_eq(suite_code("apps/install/tests/install.maca"), 0,
+        "the installer is a Maca program, so the rules it decides an install "
+            ++ "by are checked the way every other suite is")
+}
+
+test_a_local_named_after_a_c_macro_is_renamed() {
+    src = scratch() ++ "/macro.maca"
+    write_file(src, "main() -> int {{\n    unix = 1\n    linux = 2\n"
+        ++ "    unix + linux - 3\n}}\n")
+
+    assert_eq(exec(maca_bin(), ["run", src]), 0,
+        "`unix` and `linux` are names every C compiler predefines, and the "
+            ++ "preprocessor wins that argument")
+}
+
+test_the_mcp_server_rules_hold() {
+    assert_eq(suite_code("apps/mcp/tests/mcp.maca"), 0,
+        "the protocol the server answers is checked the way every other "
+            ++ "suite is")
+}
+
+test_a_line_is_read_by_a_name_no_element_takes() {
+    src = scratch() ++ "/readline.maca"
+    write_file(src, "main() -> int {{\n    line = read_line()\n"
+        ++ "    line == \"hi\" ? 0 : 1\n}}\n")
+
+    assert_eq(exec("sh", ["-c", "echo hi | {maca_bin()} run {src}"]), 0,
+        "`input` is an HTML tag, so a program that reads a line needs a name "
+            ++ "no element already takes")
+}
+
+test_modules_do_not_answer_for_each_others_names() {
+    suite = "crates/driver/tests/programs/scopes/suite.maca"
+
+    assert_eq(suite_code(suite), 0,
+        "two modules with the same private helper, a lambda capturing a "
+            ++ "parameter another module defines, and a third module written "
+            ++ "against one of two same-named definitions it can reach")
+
+    said = capture(maca_bin(), ["test", suite])
+
+    for name in scope_tests() {
+        assert(said.contains(name), "{name} did not run:\n{said}")
+    }
+}

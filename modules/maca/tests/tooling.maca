@@ -104,6 +104,44 @@ test_lint_resolves_imports_before_calling_a_name_undefined() {
     assert(!said.contains("UndefinedName"), "join comes from std/path: {said}")
 }
 
+fixed(name: str, src: str) -> str {
+    at = fixture(name, src)
+    exec(maca_bin(), ["fix", at])
+
+    read_file(at)
+}
+
+test_fix_deletes_a_keyword_maca_has_no_word_for() {
+    got = fixed("phantom.maca",
+                "async fn main() -> int {{\n    let x = 1\n    x\n}}\n")
+
+    assert_eq(got, "main() -> int {{\n    x = 1\n    x\n}}\n",
+              "the phantom keyword goes and the binding stays")
+}
+
+test_fix_leaves_a_field_that_is_spelled_like_one_alone() {
+    src = "Row = {{ type: str }}\n\nname(r: Row) -> str {{\n"
+        ++ "    who = r.type\n    who\n}}\n"
+
+    assert_eq(fixed("field.maca", src), src,
+              "`type` after a dot is a field, not a keyword from elsewhere")
+}
+
+test_fix_reads_a_word_in_a_string_as_a_string() {
+    src = "main() -> int {{\n    info(\"let it be\")\n    0\n}}\n"
+
+    assert_eq(fixed("quoted.maca", src), src,
+              "the fixer edits tokens, so a literal is never one")
+}
+
+test_fix_says_what_it_would_do_without_doing_it() {
+    at = fixture("dry.maca", "main() -> int {{\n    let x = 1\n    x\n}}\n")
+    said = capture(maca_bin(), ["fix", "--dry-run", at])
+
+    assert(said.contains("would delete 1"), "it counts what it found: {said}")
+    assert(read_file(at).contains("let x"), "and left the file alone")
+}
+
 test_a_script_alias_runs_the_line_that_table_gives_it() {
     dir = package_dir("script")
     write_file(dir ++ "/maca.toml", "[scripts]\ngo = \"echo maca-script-ok\"\n")

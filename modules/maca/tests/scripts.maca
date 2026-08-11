@@ -1,0 +1,43 @@
+import std/proc
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+out_path() -> str {
+    dir = env_or("TMPDIR", "/tmp") ++ "/maca-cli-scripts"
+    make_dir(dir)
+
+    dir ++ "/out"
+}
+
+builds(script: str) -> int =>
+    exec(maca_bin(), ["build", script, "-o", out_path()])
+
+test_the_builders_compile() {
+    for script in ["apps/build_site/build_site.maca", "apps/npm/build.maca",
+                   "apps/bench/run.maca"] {
+        assert_eq(builds(script), 0, "{script} does not compile")
+    }
+}
+
+test_the_corpus_pipeline_compiles() {
+    for script in ["apps/corpus/build.maca", "apps/corpus/collect.maca"] {
+        assert_eq(builds(script), 0,
+            "{script} decides what may be redistributed, so it has to compile")
+    }
+}
+
+test_the_eval_harness_compiles() {
+    for script in ["apps/evals/run.maca", "apps/evals/port.maca"] {
+        assert_eq(builds(script), 0, "{script} does not compile")
+    }
+}
+
+test_the_linter_and_bindgen_compile() {
+    for script in ["apps/lint/lint.maca", "apps/bindgen/bindgen.maca"] {
+        assert_eq(builds(script), 0, "{script} does not compile")
+    }
+}

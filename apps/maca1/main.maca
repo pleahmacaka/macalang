@@ -34,6 +34,8 @@ main(args: str[]) -> int {
         test_cmd(args)
     } else if args.length() >= 1 && args.get(0) == "check" {
         check_cmd(args)
+    } else if args.length() >= 1 && args.get(0) == "fix" {
+        fix_cmd(args)
     } else if args.length() >= 1 && args.get(0) == "spec" {
         spec_cmd(args)
     } else if args.length() >= 2 && args.get(0) == "fmt" {
@@ -52,6 +54,14 @@ main(args: str[]) -> int {
         module_cmd(args)
     } else if args.length() >= 1 && tooled(args.get(0)) {
         run_file(tool_path(args.get(0)), args.slice(1, args.length()))
+    } else if args.length() >= 1 && args.get(0) == "add" {
+        add_cmd(args)
+    } else if args.length() >= 1 && args.get(0) == "install" {
+        install_cmd()
+    } else if args.length() >= 1 && args.get(0) == "update" {
+        update_cmd()
+    } else if args.length() >= 1 && args.get(0) == "upgrade" {
+        upgrade_cmd()
     } else if args.length() >= 1 && args.get(0) == "init" {
         init_project(args.length() >= 2 ? args.get(1) : ".")
     } else if args.length() >= 1 && version_asked(args.get(0)) {
@@ -93,8 +103,14 @@ usage() -> int {
          ++ "  dev   [dev.maca] [-o out]    the flake `nix develop` enters\n"
          ++ "  profile <file.maca> [-o s]   where the run spent its instructions\n"
          ++ "  dev   [dev.maca] [-o out]    the flake `nix develop` enters\n"
+         ++ "  add   <spec>...              add a dependency, and fetch it\n"
+         ++ "  install                      fetch what maca.toml names, at the locked version\n"
+         ++ "  update                       re-resolve every dependency to its newest match\n"
+         ++ "  upgrade                      replace this toolchain with the latest release\n"
          ++ "  bindgen <header.h> <out>     a C header, as Maca FFI declarations\n"
          ++ "  check [file.maca]            diagnostics, one line each\n"
+         ++ "  fix   <file.maca>...         delete the keywords Maca has "
+         ++ "no word for\n"
          ++ "  spec  [--package <name>]     the language, as one document\n"
          ++ "  spec  [--package <name>]     the language, as one document\n"
          ++ "  --version                    print the toolchain version\n"
@@ -196,6 +212,107 @@ format_file(src: str, only_check: bool) -> int {
     }
 }
 
+/// `fix` deletes a keyword Maca has no word for, the one edit safe unread.
+fix_cmd(args: str[]) -> int {
+    files = fix_files(args, 1, [])
+
+    if files.length() == 0 {
+        err("usage: maca fix <file.maca>... [--dry-run]")
+
+        2
+    } else {
+        fix_each(files, 0, args.index_of("--dry-run") >= 0, 0)
+    }
+}
+
+fix_files(args: str[], i: int, acc: str[]) -> str[] {
+    if i >= args.length() {
+        acc
+    } else if args.get(i).starts_with("--") {
+        fix_files(args, i + 1, acc)
+    } else {
+        fix_files(args, i + 1, acc ++ [args.get(i)])
+    }
+}
+
+fix_each(files: str[], i: int, dry: bool, bad: int) -> int {
+    if i >= files.length() {
+        bad
+    } else {
+        fix_each(files, i + 1, dry, bad + fix_one(files.get(i), dry))
+    }
+}
+
+fix_one(path: str, dry: bool) -> int {
+    if !file_exists(path) {
+        err("fix: cannot read {path}")
+
+        1
+    } else {
+        fix_lexed(path, read_file(path), dry)
+    }
+}
+
+fix_lexed(path: str, src: str, dry: bool) -> int {
+    ts = lex(src)
+    n = phantom_count(ts, 0, 0)
+
+    if n > 0 && !dry {
+        write_file(path, cut_all(src.chars(), ts, ts.length() - 1).join(""))
+    }
+
+    info("{path}: {fix_said(dry)} {n}, left the rest to be read")
+
+    0
+}
+
+fix_said(dry: bool) -> str =>
+    dry ? "would delete" : "deleted"
+
+/// A word from another language, with a name of its own on the line behind it.
+phantom_at(ts: Token[], i: int) -> bool =>
+    i + 1 < ts.length() && phantom_word(ts.get(i))
+        && ts.get(i + 1).kind == TIdent && !ts.get(i + 1).fresh
+
+phantom_word(t: Token) -> bool =>
+    (t.kind == TIdent || t.kind == KwLet)
+        && (t.text == "let" || t.text == "var" || t.text == "fn"
+            || t.text == "func" || t.text == "def" || t.text == "type"
+            || t.text == "async")
+
+phantom_count(ts: Token[], i: int, n: int) -> int {
+    if i >= ts.length() {
+        n
+    } else if phantom_at(ts, i) {
+        phantom_count(ts, i + 1, n + 1)
+    } else {
+        phantom_count(ts, i + 1, n)
+    }
+}
+
+/// Cutting from the back is what leaves every position ahead of it still true.
+cut_all(cs: str[], ts: Token[], i: int) -> str[] {
+    if i < 0 {
+        cs
+    } else if phantom_at(ts, i) {
+        cut_all(cut_one(cs, ts.get(i)), ts, i - 1)
+    } else {
+        cut_all(cs, ts, i - 1)
+    }
+}
+
+cut_one(cs: str[], t: Token) -> str[] =>
+    cs.slice(0, t.pos)
+        ++ cs.slice(space_end(cs, t.pos + t.text.length()), cs.length())
+
+space_end(cs: str[], i: int) -> int {
+    if i < cs.length() && cs.get(i) == " " {
+        space_end(cs, i + 1)
+    } else {
+        i
+    }
+}
+
 WatchPollMs = 300
 
 /// `watch` rebuilds and reruns a file every time it changes, until the shell stops it.
@@ -218,10 +335,11 @@ watch_cmd(args: str[]) -> int {
 }
 
 watched(src: str, rest: str[]) -> int {
+    files = unit_of(src).seen
     seen = 0
 
     while true {
-        now = modified_ms(src)
+        now = newest_ms(files, 0, 0)
 
         if now > seen {
             seen = now
@@ -234,6 +352,17 @@ watched(src: str, rest: str[]) -> int {
     }
 
     0
+}
+
+/// An imported file is part of the program, so a change there rebuilds too.
+newest_ms(files: str[], i: int, best: int) -> int {
+    if i >= files.length() {
+        best
+    } else {
+        at = modified_ms(files.get(i))
+
+        newest_ms(files, i + 1, at > best ? at : best)
+    }
 }
 
 module_asked(a: str) -> bool =>
@@ -290,7 +419,7 @@ empty_segment(ps: str[], i: int) -> bool {
 
 /// The last dot names a function, unless the whole spec is itself a module.
 module_entry(spec: str) -> Entry {
-    cut = last_dot(spec.chars(), spec.length() - 1)
+    cut = last_of(spec.chars(), ".", spec.length() - 1)
     head = cut <= 0 ? "" : spec.slice(0, cut).replace(".", "/")
     found = head == "" ? "" : module_path(head)
 
@@ -304,16 +433,6 @@ module_entry(spec: str) -> Entry {
 
 whole_entry(whole: str) -> Entry =>
     Entry { module = whole, named = "", path = module_path(whole) }
-
-last_dot(cs: str[], i: int) -> int {
-    if i < 0 {
-        -1
-    } else if cs.get(i) == "." {
-        i
-    } else {
-        last_dot(cs, i - 1)
-    }
-}
 
 module_path(name: str) -> str =>
     resolved("", name)
@@ -1107,13 +1226,16 @@ search_up(dir: str, want: str) -> str {
 in_base(dir: str, want: str) -> str {
     own = found(dir ++ want)
     mods = found(dir ++ "modules/" ++ want)
+    src = found(dir ++ "src/" ++ want)
 
     if own != "" {
         own
     } else if mods != "" {
         mods
+    } else if src != "" {
+        src
     } else {
-        found(dir ++ "src/" ++ want)
+        found(dir ++ DepsDir ++ "/" ++ want)
     }
 }
 
@@ -1921,6 +2043,895 @@ flake_text(name: str, shell: str) -> str =>
         ++ "    in \{\n      devShells = forAllSystems (pkgs: \{\n"
         ++ "        default = pkgs.mkShell \{\n" ++ shell
         ++ "        \};\n      \});\n    \};\n\}\n"
+
+DepsDir = "maca_modules"
+LockFile = "maca.lock"
+NpmRegistry = "https://registry.npmjs.org"
+MacaRegistry = "https://registry.maca.dev"
+Releases = "https://api.github.com/repos/pleahmacaka/macalang/releases/latest"
+ReleasePage = "https://github.com/pleahmacaka/macalang/releases/latest"
+
+Spec = {
+    name: str
+    kind: str
+    pkg:  str
+    req:  str
+}
+
+Pin = {
+    version:   str
+    tarball:   str
+    integrity: str
+    commit:    str
+    why:       str
+}
+
+Dep = {
+    name: str
+    spec: str
+}
+
+Pkg = {
+    name:  str
+    block: str
+}
+
+Ver = {
+    major: int
+    minor: int
+    patch: int
+    ok:    bool
+}
+
+/// `maca add <spec>…`: add one or more dependencies to the manifest and fetch them.
+add_cmd(args: str[]) -> int {
+    specs = nonflags(args, 1, [])
+
+    if specs.length() == 0 {
+        err("usage: maca add <spec>...\n  e.g. maca add npm:axios\n"
+            ++ "       maca add git+https://github.com/u/lib#main\n"
+            ++ "       maca add utils@^1.2.0")
+
+        2
+    } else {
+        write_absent(Manifest, "[package]\nname = \"app\"\n\n[dependencies]\n")
+
+        added(specs, 0, registry_url(), 0)
+    }
+}
+
+added(specs: str[], i: int, registry: str, bad: int) -> int {
+    if i >= specs.length() {
+        bad > 0 ? 1 : 0
+    } else {
+        added(specs, i + 1, registry, bad + add_one(specs.get(i), registry))
+    }
+}
+
+add_one(spec: str, registry: str) -> int {
+    s = parse_spec(spec)
+    p = bad_name(s.name) ? failed("`{spec}` names no package")
+                         : brought(s, spec, registry, unpinned())
+
+    if p.why != "" {
+        err("maca add {spec}: {p.why}")
+
+        1
+    } else {
+        manifest_put(s.name, spec)
+        info("added {s.name}@{p.version} -> {DepsDir}/{s.name}")
+
+        0
+    }
+}
+
+/// `maca install`: put every dependency the manifest names where the compiler looks for it, at the version the lock pinned.
+install_cmd() -> int {
+    deps = manifest_deps()
+
+    if deps.length() == 0 {
+        info("no dependencies in {Manifest}")
+
+        0
+    } else {
+        install_all(deps, 0, registry_url(), 0)
+    }
+}
+
+install_all(deps: Dep[], i: int, registry: str, bad: int) -> int {
+    if i >= deps.length() {
+        bad > 0 ? 1 : 0
+    } else {
+        install_all(deps, i + 1, registry,
+                    bad + install_one(deps.get(i), registry))
+    }
+}
+
+install_one(d: Dep, registry: str) -> int {
+    if is_dir("{DepsDir}/{d.name}") {
+        info("{d.name} is already there")
+
+        0
+    } else {
+        installed(d, brought(parse_spec(d.spec), d.spec, registry,
+                             pinned(lock_read(), d.name, d.spec)))
+    }
+}
+
+installed(d: Dep, p: Pin) -> int {
+    if p.why != "" {
+        err("maca install {d.name}: {p.why}")
+
+        1
+    } else {
+        info("installed {d.name}@{p.version} -> {DepsDir}/{d.name}")
+
+        0
+    }
+}
+
+/// `maca update`: re-resolve every dependency, ignoring what the lock pinned.
+update_cmd() -> int {
+    deps = manifest_deps()
+
+    if deps.length() == 0 {
+        info("no dependencies in {Manifest}")
+
+        0
+    } else {
+        update_all(deps, 0, registry_url(), 0)
+    }
+}
+
+update_all(deps: Dep[], i: int, registry: str, bad: int) -> int {
+    if i >= deps.length() {
+        bad > 0 ? 1 : 0
+    } else {
+        update_all(deps, i + 1, registry,
+                   bad + update_one(deps.get(i), registry))
+    }
+}
+
+update_one(d: Dep, registry: str) -> int {
+    p = brought(parse_spec(d.spec), d.spec, registry, unpinned())
+
+    if p.why != "" {
+        err("maca update {d.name}: {p.why}")
+
+        1
+    } else {
+        info("{d.name} -> {p.version}")
+
+        0
+    }
+}
+
+/// One dependency resolved, unpacked under `maca_modules`, and written back to the lock.
+brought(s: Spec, spec: str, registry: str, want: Pin) -> Pin {
+    p = want.version == "" ? resolve_dep(s, registry) : want
+
+    p.why != "" ? p : landed(s, spec, p)
+}
+
+landed(s: Spec, spec: str, p: Pin) -> Pin {
+    why = fetch(s, p)
+
+    if why != "" {
+        failed(why)
+    } else {
+        lock_put(s, spec, p)
+
+        p
+    }
+}
+
+/// `maca upgrade`: replace this toolchain with the newest published release.
+upgrade_cmd() -> int {
+    doc = http_get(Releases)
+    tag = json_str(doc, "tag_name")
+    want = tag.starts_with("v") ? tag.slice(1, tag.length()) : tag
+
+    if doc == "" {
+        err("maca upgrade: cannot reach GitHub releases\n  install by hand: "
+            ++ ReleasePage)
+
+        1
+    } else if want == "" {
+        err("maca upgrade: no published release yet\n  build from a checkout: "
+            ++ "maca build apps/maca1/main.maca -o maca")
+
+        1
+    } else if want == Version {
+        info("maca {Version} is already the latest release")
+
+        0
+    } else {
+        replaced(want, asset_url(doc, "maca-{host_triple()}"))
+    }
+}
+
+/// The download URL of the asset the platform asks for, found by name because a release asset URL ends in it.
+asset_url(doc: str, want: str) -> str {
+    key = "\"browser_download_url\""
+    at = doc.index_of(key)
+
+    at < 0 ? "" : asset_pick(doc.slice(at + key.length(), doc.length()), want)
+}
+
+asset_pick(rest: str, want: str) -> str {
+    url = quoted_at(rest.slice(0, JsonWindow).chars(), 0)
+
+    seg_after(url, "/").starts_with(want) ? url : asset_url(rest, want)
+}
+
+replaced(want: str, url: str) -> int {
+    exe = capture("sh", ["-c", "command -v maca"]).trim()
+
+    if url == "" {
+        err("maca upgrade: release v{want} has no asset for {host_triple()}\n"
+            ++ "  build from a checkout: maca build apps/maca1/main.maca -o maca")
+
+        1
+    } else if exe == "" {
+        err("maca upgrade: no `maca` on PATH to replace; take it by hand:\n  {url}")
+
+        1
+    } else {
+        swapped(exe, url, want)
+    }
+}
+
+swapped(exe: str, url: str, want: str) -> int {
+    tmp = "{exe}.new"
+
+    if exec("curl", ["-fsSL", "-o", tmp, url]) != 0 {
+        err("maca upgrade: download failed: {url}")
+
+        1
+    } else if exec("chmod", ["755", tmp]) != 0 || exec("mv", [tmp, exe]) != 0 {
+        err("maca upgrade: cannot replace {exe}")
+
+        1
+    } else {
+        info("upgraded maca {Version} -> {want}")
+
+        0
+    }
+}
+
+/// The platform a release asset is named after, read from `uname` rather than from how this binary was built.
+host_triple() -> str {
+    named = capture("uname", ["-sm"]).trim()
+    machine = named.index_of("arm64") >= 0 || named.index_of("aarch64") >= 0
+        ? "aarch64" : "x86_64"
+
+    if named.starts_with("Darwin") {
+        "{machine}-macos"
+    } else if named.starts_with("Linux") {
+        "{machine}-linux"
+    } else {
+        "x86_64-windows"
+    }
+}
+
+JsonWindow = 512
+
+/// The string `key` names in a registry or release answer, read without a parser because both documents are flat and every value wanted is short.
+json_str(src: str, key: str) -> str {
+    at = src.index_of("\"{key}\"")
+    from = at + key.length() + 2
+
+    at < 0 ? "" : quoted_at(src.slice(from, from + JsonWindow).chars(), 0)
+}
+
+quoted_at(cs: str[], i: int) -> str {
+    if i >= cs.length() || cs.get(i) == "," {
+        ""
+    } else if cs.get(i) == "\"" {
+        upto_quote(cs, i + 1, "")
+    } else {
+        quoted_at(cs, i + 1)
+    }
+}
+
+upto_quote(cs: str[], i: int, acc: str) -> str {
+    if i >= cs.length() || cs.get(i) == "\"" {
+        acc
+    } else {
+        upto_quote(cs, i + 1, acc ++ cs.get(i))
+    }
+}
+
+nonflags(args: str[], i: int, acc: str[]) -> str[] {
+    if i >= args.length() {
+        acc
+    } else if args.get(i).starts_with("-") {
+        nonflags(args, i + 1, acc)
+    } else {
+        nonflags(args, i + 1, acc ++ [args.get(i)])
+    }
+}
+
+/// `npm:<pkg>[@<req>]` is the npm registry, `git+<url>[#<ref>]` any git remote, and a bare `<name>[@<req>]` the maca registry.
+parse_spec(spec: str) -> Spec {
+    s = spec.trim()
+
+    if s.starts_with("npm:") {
+        npm_spec(s.slice(4, s.length()))
+    } else if s.starts_with("git+") {
+        git_spec(s.slice(4, s.length()))
+    } else {
+        reg_spec(s)
+    }
+}
+
+npm_spec(rest: str) -> Spec {
+    cut = version_cut(rest)
+    pkg = cut < 0 ? rest : rest.slice(0, cut)
+
+    Spec { name = seg_after(pkg, "/"), kind = "npm", pkg = pkg,
+           req = cut < 0 ? "latest" : rest.slice(cut + 1, rest.length()) }
+}
+
+git_spec(rest: str) -> Spec {
+    at = rest.index_of("#")
+    url = at < 0 ? rest : rest.slice(0, at)
+
+    Spec { name = git_name(url), kind = "git", pkg = url,
+           req = at < 0 ? "" : rest.slice(at + 1, rest.length()) }
+}
+
+reg_spec(s: str) -> Spec {
+    cut = version_cut(s)
+    name = cut < 0 ? s : s.slice(0, cut)
+
+    Spec { name = name, kind = "registry", pkg = name,
+           req = cut < 0 ? "latest" : s.slice(cut + 1, s.length()) }
+}
+
+/// The `@` that opens a version, which is never the `@` a scoped npm name starts with.
+version_cut(s: str) -> int {
+    at = last_of(s.chars(), "@", s.length() - 1)
+
+    at > 0 ? at : -1
+}
+
+last_of(cs: str[], want: str, i: int) -> int {
+    if i < 0 {
+        -1
+    } else if cs.get(i) == want {
+        i
+    } else {
+        last_of(cs, want, i - 1)
+    }
+}
+
+seg_after(s: str, sep: str) -> str =>
+    s.slice(last_of(s.chars(), sep, s.length() - 1) + 1, s.length())
+
+git_name(url: str) -> str {
+    whole = url.ends_with("/") ? url.slice(0, url.length() - 1) : url
+    tail = seg_after(seg_after(whole, "/"), ":")
+
+    tail.ends_with(".git") ? tail.slice(0, tail.length() - 4) : tail
+}
+
+/// A dependency is unpacked into a directory of its own, so its name has to be one path segment.
+bad_name(name: str) -> bool =>
+    name == "" || name == "." || name == ".." || name.index_of("/") >= 0
+
+ver_of(text: str) -> Ver {
+    t = text.trim()
+    s = t.starts_with("v") ? t.slice(1, t.length()) : t
+    parts = s.slice(0, core_end(s.chars(), 0)).split(".")
+
+    parts.length() > 3 ? bad_ver() : ver_parts(parts)
+}
+
+bad_ver() -> Ver =>
+    Ver { major = 0, minor = 0, patch = 0, ok = false }
+
+core_end(cs: str[], i: int) -> int {
+    if i >= cs.length() || cs.get(i) == "-" || cs.get(i) == "+" {
+        i
+    } else {
+        core_end(cs, i + 1)
+    }
+}
+
+ver_parts(parts: str[]) -> Ver {
+    a = parts.get(0)
+    b = parts.length() > 1 ? parts.get(1) : "0"
+    c = parts.length() > 2 ? parts.get(2) : "0"
+
+    if !digits(a) || !digits(b) || !digits(c) {
+        bad_ver()
+    } else {
+        Ver { major = int(a), minor = int(b), patch = int(c), ok = true }
+    }
+}
+
+digits(s: str) -> bool =>
+    s != "" && all_digits(s.chars(), 0)
+
+all_digits(cs: str[], i: int) -> bool {
+    if i >= cs.length() {
+        true
+    } else if !cs.get(i).is_ascii_digit() {
+        false
+    } else {
+        all_digits(cs, i + 1)
+    }
+}
+
+ver_cmp(a: Ver, b: Ver) -> int {
+    if a.major != b.major {
+        a.major < b.major ? -1 : 1
+    } else if a.minor != b.minor {
+        a.minor < b.minor ? -1 : 1
+    } else if a.patch != b.patch {
+        a.patch < b.patch ? -1 : 1
+    } else {
+        0
+    }
+}
+
+/// Does a published version answer the range the manifest wrote, in the dialect npm speaks?
+satisfies(version: str, range: str) -> bool {
+    v = ver_of(version)
+
+    v.ok && any_clause(v, range.split("||"), 0)
+}
+
+any_clause(v: Ver, clauses: str[], i: int) -> bool {
+    if i >= clauses.length() {
+        false
+    } else if clause_holds(v, clauses.get(i).trim()) {
+        true
+    } else {
+        any_clause(v, clauses, i + 1)
+    }
+}
+
+clause_holds(v: Ver, clause: str) -> bool =>
+    clause == "" || clause == "*"
+        || every_part(v, nonempty(clause.split(" "), 0, []), 0)
+
+every_part(v: Ver, parts: str[], i: int) -> bool {
+    if i >= parts.length() {
+        true
+    } else if !comparator(v, parts.get(i)) {
+        false
+    } else {
+        every_part(v, parts, i + 1)
+    }
+}
+
+comparator(v: Ver, part: str) -> bool {
+    c = part.trim()
+
+    if c.starts_with("^") {
+        caret(v, ver_of(c.slice(1, c.length())))
+    } else if c.starts_with("~") {
+        tilde(v, ver_of(c.slice(1, c.length())))
+    } else if c.starts_with(">=") || c.starts_with("<=") {
+        cmp_op(v, c.slice(2, c.length()), c.slice(0, 2))
+    } else if c.starts_with(">") || c.starts_with("<") || c.starts_with("=") {
+        cmp_op(v, c.slice(1, c.length()), c.slice(0, 1))
+    } else if c == "*" || c == "x" {
+        true
+    } else if c.index_of("x") >= 0 || c.index_of("*") >= 0 {
+        wild(v, c.split("."))
+    } else {
+        exact_ver(v, ver_of(c))
+    }
+}
+
+caret(v: Ver, lo: Ver) -> bool =>
+    lo.ok && ver_cmp(v, lo) >= 0 && ver_cmp(v, caret_hi(lo)) < 0
+
+/// `^0.9.1` allows 0.9.x and `^1.2.3` allows 1.x, because before 1.0.0 a minor is a breaking change.
+caret_hi(lo: Ver) -> Ver {
+    if lo.major > 0 {
+        Ver { major = lo.major + 1, minor = 0, patch = 0, ok = true }
+    } else if lo.minor > 0 {
+        Ver { major = 0, minor = lo.minor + 1, patch = 0, ok = true }
+    } else {
+        Ver { major = 0, minor = 0, patch = lo.patch + 1, ok = true }
+    }
+}
+
+tilde(v: Ver, lo: Ver) -> bool =>
+    lo.ok && ver_cmp(v, lo) >= 0
+        && ver_cmp(v, Ver { major = lo.major, minor = lo.minor + 1,
+                            patch = 0, ok = true }) < 0
+
+cmp_op(v: Ver, text: str, op: str) -> bool {
+    w = ver_of(text)
+
+    if !w.ok {
+        false
+    } else if op == ">=" {
+        ver_cmp(v, w) >= 0
+    } else if op == "<=" {
+        ver_cmp(v, w) <= 0
+    } else if op == ">" {
+        ver_cmp(v, w) > 0
+    } else if op == "<" {
+        ver_cmp(v, w) < 0
+    } else {
+        ver_cmp(v, w) == 0
+    }
+}
+
+exact_ver(v: Ver, w: Ver) -> bool =>
+    w.ok && ver_cmp(v, w) == 0
+
+wild(v: Ver, parts: str[]) -> bool =>
+    wild_part(parts.get(0), v.major)
+        && (parts.length() < 2 || wild_part(parts.get(1), v.minor))
+
+wild_part(part: str, have: int) -> bool =>
+    part == "x" || part == "*" || (digits(part) && int(part) == have)
+
+/// The maca registry, which `[registry] url` in the manifest replaces.
+registry_url() -> str {
+    named = toml_value(read_file(Manifest), "[registry]", "url")
+
+    named == "" ? MacaRegistry : named
+}
+
+resolve_dep(s: Spec, registry: str) -> Pin {
+    if s.kind == "git" {
+        git_pin(s)
+    } else if s.kind == "npm" {
+        registry_pin(NpmRegistry, s.pkg, s.req)
+    } else {
+        registry_pin(registry, s.pkg, s.req)
+    }
+}
+
+git_pin(s: Spec) -> Pin {
+    want = s.req == "" ? "HEAD" : s.req
+    sha = first_sha(capture("git", ["ls-remote", s.pkg, want]))
+
+    if sha == "" {
+        failed("no ref `{want}` in {s.pkg}")
+    } else {
+        Pin { version = s.req == "" ? sha.slice(0, 12) : s.req, tarball = "",
+              integrity = "", commit = sha, why = "" }
+    }
+}
+
+first_sha(out: str) -> str {
+    t = out.trim()
+    tab = t.index_of("\t")
+
+    tab < 0 ? t : t.slice(0, tab)
+}
+
+/// A tag or an exact version is one small document; a range is answered by `latest` alone, because the whole packument is more than this reads.
+registry_pin(base: str, pkg: str, req: str) -> Pin {
+    tag = req == "" ? "latest" : req
+    ranged = tag != "latest" && !ver_of(tag).ok
+    asked = ranged ? "latest" : tag
+    p = pin_of(http_get("{base}/{pkg}/{asked}"))
+
+    if p.version == "" {
+        failed("no `{tag}` of `{pkg}` at {base}")
+    } else if !ranged || satisfies(p.version, req) {
+        p
+    } else {
+        failed("the newest `{pkg}` is {p.version}, which does not satisfy "
+               ++ "`{req}`; name a version this registry publishes")
+    }
+}
+
+pin_of(doc: str) -> Pin =>
+    Pin { version = json_str(doc, "version"), tarball = json_str(doc, "tarball"),
+          integrity = json_str(doc, "integrity"), commit = "", why = "" }
+
+http_get(url: str) -> str =>
+    capture("curl", ["-fsSL", "-A", "maca-cli", url])
+
+failed(why: str) -> Pin =>
+    Pin { version = "", tarball = "", integrity = "", commit = "", why = why }
+
+unpinned() -> Pin =>
+    failed("")
+
+fetch(s: Spec, p: Pin) -> str {
+    dir = "{DepsDir}/{s.name}"
+
+    remove_dir(dir)
+    make_dir(dir)
+
+    if s.kind == "git" {
+        git_into(s.pkg, p.commit, dir)
+    } else if p.tarball == "" {
+        "the registry named no tarball for `{s.name}`"
+    } else {
+        tgz_into(p.tarball, p.integrity, dir)
+    }
+}
+
+git_into(url: str, sha: str, dir: str) -> str {
+    if exec("git", ["clone", "--quiet", url, dir]) != 0 {
+        "git clone {url} failed"
+    } else if sha != "" && exec("git", ["-C", dir, "checkout", "--quiet",
+                                        sha]) != 0 {
+        "git checkout {sha} failed"
+    } else {
+        remove_dir("{dir}/.git")
+
+        ""
+    }
+}
+
+/// An npm tarball wraps everything in `package/`, which is the directory level `--strip-components` drops.
+tgz_into(url: str, integrity: str, dir: str) -> str {
+    tgz = "{dir}/.pkg.tgz"
+
+    if exec("curl", ["-fsSL", "-o", tgz, url]) != 0 {
+        "download failed: {url}"
+    } else {
+        unpacked(tgz, integrity, dir)
+    }
+}
+
+unpacked(tgz: str, integrity: str, dir: str) -> str {
+    why = integrity == "" ? "" : mismatch(tgz, integrity)
+
+    if why != "" {
+        remove_file(tgz)
+
+        why
+    } else if exec("tar", ["-xzf", tgz, "-C", dir,
+                           "--strip-components=1"]) != 0 {
+        "cannot unpack {tgz}"
+    } else {
+        remove_file(tgz)
+
+        ""
+    }
+}
+
+/// What `integrity` in the lockfile promises about the bytes, checked before anything is unpacked.
+mismatch(file: str, want: str) -> str {
+    if !want.starts_with("sha512-") {
+        "integrity `{want}` is not a sha512 digest; delete {LockFile} to "
+            ++ "re-resolve"
+    } else {
+        digested(file, want.slice(7, want.length()))
+    }
+}
+
+digested(file: str, want: str) -> str {
+    got = digest_of(file)
+    hex = hex_of(want)
+
+    if got == "" {
+        "cannot take a sha512 of {file}; is sha512sum, shasum or openssl there?"
+    } else if hex == "" {
+        "the integrity `sha512-{want}` in {LockFile} is not base64"
+    } else if got == hex {
+        ""
+    } else {
+        "the download does not match what {LockFile} pinned\n"
+            ++ "  expected sha512 {hex}\n  got      sha512 {got}"
+    }
+}
+
+/// A sha512 in hex, out of whichever of the three tools this machine has.
+digest_of(file: str) -> str {
+    tools = "if command -v sha512sum >/dev/null; then sha512sum -b \"$0\";"
+        ++ " elif command -v shasum >/dev/null; then shasum -a 512 -b \"$0\";"
+        ++ " else openssl dgst -sha512 -r \"$0\"; fi"
+
+    capture("sh", ["-c", "{tools} | cut -d\" \" -f1", file]).trim()
+}
+
+/// The base64 digest the lock wrote, in the hex those tools print.
+hex_of(b64: str) -> str =>
+    capture("sh", ["-c", "printf %s \"$0\" | base64 -d 2>/dev/null"
+                             ++ " | od -An -tx1 | tr -d \"[:space:]\"",
+                   b64]).trim()
+
+/// Every `name = "spec"` under `[dependencies]`, which is what `install` and `update` are about.
+manifest_deps() -> Dep[] {
+    lines = read_file(Manifest).split("\n")
+    at = table_at(lines, 0, "[dependencies]")
+
+    at < 0 ? [] : deps_in(lines, at + 1, block_end(lines, at + 1), [])
+}
+
+deps_in(lines: str[], i: int, end: int, acc: Dep[]) -> Dep[] {
+    if i >= end {
+        acc
+    } else if toml_key(lines.get(i)) == "" || toml_val(lines.get(i)) == "" {
+        deps_in(lines, i + 1, end, acc)
+    } else {
+        deps_in(lines, i + 1, end,
+                acc ++ [Dep { name = toml_key(lines.get(i)),
+                              spec = toml_val(lines.get(i)) }])
+    }
+}
+
+/// Insert or replace one `name = "spec"` inside `[dependencies]`, writing the table when it is not there yet.
+manifest_put(name: str, spec: str) -> bool {
+    lines = read_file(Manifest).split("\n")
+
+    write_file(Manifest,
+               put_line(lines, name, "{name} = \"{spec}\"").join("\n"))
+}
+
+put_line(lines: str[], name: str, line: str) -> str[] {
+    at = table_at(lines, 0, "[dependencies]")
+
+    if at < 0 {
+        started(lines) ++ ["[dependencies]", line, ""]
+    } else {
+        replaced_line(lines, at + 1, name, line)
+    }
+}
+
+started(lines: str[]) -> str[] {
+    n = lines.length()
+
+    n > 0 && lines.get(n - 1).trim() == "" ? lines.slice(0, n - 1) : lines
+}
+
+replaced_line(lines: str[], from: int, name: str, line: str) -> str[] {
+    end = tight_end(lines, from, block_end(lines, from))
+    hit = key_at(lines, from, end, name)
+    cut = hit < 0 ? end : hit
+    past = hit < 0 ? end : hit + 1
+
+    lines.slice(0, cut) ++ [line] ++ lines.slice(past, lines.length())
+}
+
+table_at(lines: str[], i: int, table: str) -> int {
+    if i >= lines.length() {
+        -1
+    } else if toml_head(lines.get(i)) == table {
+        i
+    } else {
+        table_at(lines, i + 1, table)
+    }
+}
+
+block_end(lines: str[], i: int) -> int {
+    if i >= lines.length() {
+        lines.length()
+    } else if toml_head(lines.get(i)) != "" {
+        i
+    } else {
+        block_end(lines, i + 1)
+    }
+}
+
+/// A blank line before the next table belongs to the file rather than to the table, so a new key lands above it.
+tight_end(lines: str[], from: int, end: int) -> int {
+    if end <= from || lines.get(end - 1).trim() != "" {
+        end
+    } else {
+        tight_end(lines, from, end - 1)
+    }
+}
+
+key_at(lines: str[], i: int, end: int, name: str) -> int {
+    if i >= end {
+        -1
+    } else if toml_key(lines.get(i)) == name {
+        i
+    } else {
+        key_at(lines, i + 1, end, name)
+    }
+}
+
+lock_read() -> Pkg[] =>
+    lock_lines(read_file(LockFile).split("\n"), 0, "", "", [])
+
+lock_lines(lines: str[], i: int, name: str, block: str, acc: Pkg[]) -> Pkg[] {
+    if i >= lines.length() {
+        flushed(acc, name, block)
+    } else if toml_head(lines.get(i)) == "[[package]]" {
+        lock_lines(lines, i + 1, "", "", flushed(acc, name, block))
+    } else if noise(lines.get(i)) {
+        lock_lines(lines, i + 1, name, block, acc)
+    } else {
+        lock_lines(lines, i + 1, lock_name(lines.get(i), name),
+                   block ++ lines.get(i).trim() ++ "\n", acc)
+    }
+}
+
+flushed(acc: Pkg[], name: str, block: str) -> Pkg[] =>
+    name == "" ? acc : acc ++ [Pkg { name = name, block = block }]
+
+noise(line: str) -> bool {
+    t = line.trim()
+
+    t == "" || t.starts_with("#")
+}
+
+lock_name(line: str, held: str) -> str =>
+    toml_key(line) == "name" ? toml_val(line) : held
+
+/// What the lock pinned for one dependency, and only while it still answers the request the manifest makes.
+pinned(entries: Pkg[], name: str, spec: str) -> Pin {
+    at = pkg_at(entries, name, 0)
+    block = at < 0 ? "" : entries.get(at).block
+
+    if toml_value(block, "", "request") != spec {
+        unpinned()
+    } else {
+        Pin { version = toml_value(block, "", "version"),
+              tarball = toml_value(block, "", "resolved"),
+              integrity = toml_value(block, "", "integrity"),
+              commit = toml_value(block, "", "commit"), why = "" }
+    }
+}
+
+pkg_at(entries: Pkg[], name: str, i: int) -> int {
+    if i >= entries.length() {
+        -1
+    } else if entries.get(i).name == name {
+        i
+    } else {
+        pkg_at(entries, name, i + 1)
+    }
+}
+
+lock_put(s: Spec, spec: str, p: Pin) -> bool {
+    entry = Pkg { name = s.name, block = lock_block(s, spec, p) }
+
+    write_file(LockFile,
+               lock_text(inserted(lock_read(), entry, 0, []), 0,
+                         "# {LockFile}: generated by `maca add`/`maca update`;"
+                             ++ " do not edit.\n"))
+}
+
+lock_block(s: Spec, spec: str, p: Pin) -> str =>
+    "name = \"{s.name}\"\nversion = \"{p.version}\"\nrequest = \"{spec}\"\n"
+        ++ "source = \"{lock_source(s)}\"\n"
+        ++ lock_line("resolved", p.tarball)
+        ++ lock_line("integrity", p.integrity)
+        ++ lock_line("commit", p.commit)
+
+lock_source(s: Spec) -> str {
+    if s.kind == "npm" {
+        "npm:{s.name}"
+    } else if s.kind == "git" {
+        "git+{s.pkg}"
+    } else {
+        "registry"
+    }
+}
+
+lock_line(key: str, value: str) -> str =>
+    value == "" ? "" : "{key} = \"{value}\"\n"
+
+lock_text(entries: Pkg[], i: int, acc: str) -> str {
+    if i >= entries.length() {
+        acc
+    } else {
+        lock_text(entries, i + 1,
+                  acc ++ "\n[[package]]\n" ++ entries.get(i).block)
+    }
+}
+
+/// The lock stays sorted by name, so which dependency was added first is not a diff.
+inserted(xs: Pkg[], p: Pkg, i: int, acc: Pkg[]) -> Pkg[] {
+    if i >= xs.length() {
+        acc ++ [p]
+    } else if xs.get(i).name == p.name {
+        inserted(xs, p, i + 1, acc)
+    } else if xs.get(i).name > p.name {
+        acc ++ [p] ++ xs.slice(i, xs.length())
+    } else {
+        inserted(xs, p, i + 1, acc ++ [xs.get(i)])
+    }
+}
 
 demo() -> int {
     sample = "add(1) + 2 - 3"
