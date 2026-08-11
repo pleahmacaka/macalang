@@ -329,9 +329,36 @@ call_type(env: Env, e: Expr) -> Typed {
     } else if local >= 0 {
         call_local(env, e, env.types.get(local))
     } else {
-        typed(walk_args(env, e.children, 0), builtin_type(e.text))
+        typed(unknown_call(walk_args(env, e.children, 0), e.text),
+              builtin_type(e.text))
     }
 }
+
+/// A lowercase call name that resolves to nothing is a function nobody wrote, not a foreign one.
+unknown_call(env: Env, name: str) -> Env {
+    if !starts_lower(name) || is_prelude_call(name) || is_element_tag(name) {
+        env
+    } else if is_host_builtin(name) {
+        env
+    } else {
+        complain(env, "call to undefined function `{name}`")
+    }
+}
+
+is_host_builtin(name: str) -> bool =>
+    name == "abs" || name == "min" || name == "max" || name == "clamp"
+        || name == "input" || name == "read_stdin" || name == "at_eof"
+        || name == "failures" || name == "alloc_count" || name == "reuse_count"
+        || name == "map" || name == "data" || name == "stored"
+        || name == "styles" || name == "list_dir"
+        || is_register_builtin(name)
+
+is_register_builtin(name: str) -> bool =>
+    name == "mmio_write" || name == "mmio_read" || name == "set_bits"
+        || name == "clear_bits" || name == "toggle_bits" || name == "bit"
+        || name == "shl" || name == "shr" || name == "bit_or"
+        || name == "bit_and" || name == "delay" || name == "nop"
+        || name == "forever"
 
 callable(env: Env, held: Ty) -> bool =>
     resolve(env.infer, held).kind == KFn || resolve(env.infer, held).kind == KVar
@@ -792,8 +819,10 @@ unify_arms(env: Env, cs: Expr[], want: Ty, i: int) -> Env {
 bound_arm(env: Env, pat: Expr) -> Env {
     if pat.kind == EGuard {
         bound_arm(env, pat.children.get(0))
+    } else if pat.kind == EBinary && pat.text == "|" {
+        bound_arm(bound_arm(env, pat.children.get(0)), pat.children.get(1))
     } else if pat.children.length() == 0 {
-        env
+        named_pattern(env, pat)
     } else {
         at = env.ctors.index_of(pat.text)
 
@@ -803,6 +832,90 @@ bound_arm(env: Env, pat: Expr) -> Env {
             bind_slots_of(env, pat.children, env.slots.get(at).split(","), 0)
         }
     }
+}
+
+/// A capitalised pattern names a constructor, so one nothing declares is a misspelling and never a binder.
+named_pattern(env: Env, pat: Expr) -> Env {
+    if pat.kind != EIdent || !starts_upper(pat.text) {
+        env
+    } else if env.ctors.index_of(pat.text) >= 0 {
+        env
+    } else {
+        complain(env, "`{pat.text}` is capitalized, so it is a constructor,"
+                          ++ " and nothing declares one by that name:"
+                          ++ " {ctor_hint(env, pat.text)}")
+    }
+}
+
+starts_upper(name: str) -> bool =>
+    name.length() > 0 && name.at(0).is_alpha() && !starts_lower(name)
+
+ctor_hint(env: Env, name: str) -> str {
+    near = nearest_ctor(name, env.ctors, 0, "", hint_span(name))
+
+    near == ""
+        ? "a pattern that binds what it matched is lowercase"
+        : "did you mean `{near}`?"
+}
+
+hint_span(name: str) -> int {
+    if name.length() <= 3 {
+        2
+    } else if name.length() <= 7 {
+        3
+    } else {
+        4
+    }
+}
+
+nearest_ctor(want: str, names: str[], i: int, found: str, best: int) -> str {
+    if i >= names.length() {
+        found
+    } else {
+        apart = edits_apart(want, names.get(i), best)
+
+        apart < best
+            ? nearest_ctor(want, names, i + 1, names.get(i), apart)
+            : nearest_ctor(want, names, i + 1, found, best)
+    }
+}
+
+/// Levenshtein distance, stopped at `cap`, because a hint only needs the near ones.
+edits_apart(a: str, b: str, cap: int) -> int {
+    if a.length() > b.length() + cap || b.length() > a.length() + cap {
+        cap
+    } else {
+        edit_rows(a, b, edit_row(b.length() + 1, 0, []), 0)
+    }
+}
+
+edit_rows(a: str, b: str, prev: int[], i: int) -> int {
+    if i >= a.length() {
+        prev.get(b.length())
+    } else {
+        edit_rows(a, b, edit_cells(a, b, prev, [i + 1], i, 0), i + 1)
+    }
+}
+
+edit_cells(a: str, b: str, prev: int[], cur: int[], i: int, j: int) -> int[] {
+    if j >= b.length() {
+        cur
+    } else {
+        cost = a.at(i) == b.at(j) ? 0 : 1
+        best = least_of(prev.get(j) + cost, prev.get(j + 1) + 1,
+                        cur.get(j) + 1)
+
+        edit_cells(a, b, prev, cur ++ [best], i, j + 1)
+    }
+}
+
+edit_row(n: int, at: int, acc: int[]) -> int[] =>
+    at >= n ? acc : edit_row(n, at + 1, acc ++ [at])
+
+least_of(a: int, b: int, c: int) -> int {
+    m = a < b ? a : b
+
+    m < c ? m : c
 }
 
 /// A comma pattern matches a list by position, so a named cell holds an element.

@@ -85,6 +85,11 @@ test_the_bad_corpus_is_refused_and_told_why() {
     refused("apps/examples/bad/range_end.maca", "expected int, found str")
     refused("apps/examples/bad/while_cond.maca", "expected bool, found int")
     refused("apps/examples/bad/arity.maca", "`greet` takes 1 argument(s), given 2")
+    refused("apps/examples/bad/undefined_call.maca",
+        "call to undefined function `slugify`")
+    refused("apps/examples/bad/misspelt_variant.maca",
+        "`Busi` is capitalized, so it is a constructor, and nothing declares"
+            ++ " one by that name: did you mean `Busy`?")
 }
 
 test_the_golden_examples_are_still_accepted() {
