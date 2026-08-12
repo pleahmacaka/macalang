@@ -1123,15 +1123,27 @@ parse_paren(ts: Token[], i: int) -> PExpr {
 parse_lambda(ts: Token[], i: int) -> PExpr {
     pp = parse_params(ts, i + 1, [])
     body = parse_lambda_body(ts, after_return_type(ts, pp.pnext + 1) + 1)
+    made = e_lambda(pp.params, body.node)
 
-    mk_pexpr(e_lambda(pp.params, body.node), body.next)
+    mk_pexpr(made with { ty = return_type(ts, pp.pnext + 1) }, body.next)
 }
 
 parse_lambda_body(ts: Token[], at: int) -> PExpr {
     if ts.get(at).kind == LBrace {
         parse_branch(ts, at)
     } else {
-        parse_expr(ts, at)
+        lambda_setter(ts, parse_expr(ts, at))
+    }
+}
+
+/// A lambda body may be the setter form `x = e`, which is an assignment and not a binding.
+lambda_setter(ts: Token[], lhs: PExpr) -> PExpr {
+    if ts.get(lhs.next).kind != Eq {
+        lhs
+    } else {
+        v = parse_lambda_body(ts, lhs.next + 1)
+
+        mk_pexpr(e_binary("=", lhs.node, v.node), v.next)
     }
 }
 

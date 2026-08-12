@@ -47,6 +47,7 @@ diag_explain(code: str) -> str =>
         "M0006" => "this name is not defined anywhere in scope"
         "M0007" => "the target being built for cannot carry this effect"
         "M0008" => "a file the program embeds is not beside it"
+        "M0009" => "a method keeps a value the crate lent it for the call"
         _       => ""
     }
 
@@ -1592,7 +1593,9 @@ annotate_items(env: Env, items: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
 }
 
 annotate_item(env: Env, s: Stmt) -> Stmt {
-    if s.kind == SBind {
+    if is_impl_block(s) {
+        s with { value = annotated_methods(env, s.value) }
+    } else if s.kind == SBind {
         s with { value = annotate_expr(env, s.value) }
     } else if s.kind != SFn {
         s
@@ -1606,6 +1609,29 @@ annotate_item(env: Env, s: Stmt) -> Stmt {
                  params = annotate_params(env, s.params, tys, 0, keep),
                  body = annotate_body(inner, s.body, 0, []) }
     }
+}
+
+/// A method keeps the parameters and the return type it declared, so only its body is annotated.
+annotated_methods(env: Env, e: Expr) -> Expr =>
+    e with { children = annotated_each(env, e.children, 0, []) }
+
+annotated_each(env: Env, fs: Expr[], i: int, acc: Expr[]) -> Expr[] {
+    if i >= fs.length() {
+        acc
+    } else {
+        one = annotated_method(env, fs.get(i))
+
+        annotated_each(env, fs, i + 1, acc ++ [one])
+    }
+}
+
+annotated_method(env: Env, f: Expr) -> Expr {
+    lam = f.children.get(1)
+    kept = lam.children.slice(0, lam.children.length() - 1)
+    body = annotate_expr(env, lambda_body(lam))
+    made = lam with { children = kept ++ [body] }
+
+    f with { children = [f.children.get(0), made] }
 }
 
 item_ret(env: Env, s: Stmt) -> str {
@@ -2154,7 +2180,7 @@ lift_stmt(s: Stmt, at: Lift) -> LiftedBody {
         body = lift_body(s.body, 0, [], at)
 
         LiftedBody { stmts = [s with { body = body.stmts }], at = body.at }
-    } else if s.kind == SRecord || s.kind == SSum {
+    } else if s.kind == SRecord || s.kind == SSum || is_impl_block(s) {
         LiftedBody { stmts = [s], at }
     } else {
         got = lift_expr(s.value, at)
@@ -2338,8 +2364,17 @@ anon_stmts(ss: Stmt[], i: int) -> Stmt[] {
     }
 }
 
-anon_stmt(s: Stmt) -> Stmt =>
-    s with { value = anon_expr(s.value), body = anon_stmts(s.body, 0) }
+anon_stmt(s: Stmt) -> Stmt {
+    if is_impl_block(s) {
+        s with { value = anon_methods(s.value) }
+    } else {
+        s with { value = anon_expr(s.value), body = anon_stmts(s.body, 0) }
+    }
+}
+
+/// The methods are walked, but the record holding them is an implementation, not a value.
+anon_methods(e: Expr) -> Expr =>
+    e with { children = anon_kids(e.children, 0) }
 
 anon_expr(e: Expr) -> Expr =>
     e with { text = anon_text(e), stmts = anon_stmts(e.stmts, 0),
@@ -3009,8 +3044,142 @@ effect_pass(items: Stmt[], names: str[], sets: str[], i: int,
     }
 }
 
-/// Every function whose effects the target being built for cannot carry.
-target_errors(m: Module, target: str) -> Diagnostic[] {
+/// What the target being built for cannot carry, from this module.
+target_errors(m: Module, target: str) -> Diagnostic[] =>
+    effect_errors(m, target) ++ kept_borrow_errors(m, target)
+
+/// What the rust target refuses about the borrows a method keeps, as plain lines.
+kept_borrow_notes(m: Module) -> str[] =>
+    kept_borrow_errors(m, "rust").map(diag_message)
+
+kept_borrow_errors(m: Module, target: str) -> Diagnostic[] {
+    if target != "rust" {
+        []
+    } else {
+        borrow_errors(m.items, declared_types(m.items, 0, []), 0, [])
+    }
+}
+
+/// A method's foreign-typed parameter is lent by the crate for the call, so it may be read and passed on but not kept.
+borrow_errors(items: Stmt[], own: str[], i: int,
+              acc: Diagnostic[]) -> Diagnostic[] {
+    if i >= items.length() {
+        acc
+    } else if !is_impl_block(items.get(i)) {
+        borrow_errors(items, own, i + 1, acc)
+    } else {
+        kept = kept_borrows(items.get(i), items.get(i).value.children, own, 0,
+                            [])
+
+        borrow_errors(items, own, i + 1, acc ++ kept)
+    }
+}
+
+kept_borrows(s: Stmt, fs: Expr[], own: str[], i: int,
+             acc: Diagnostic[]) -> Diagnostic[] {
+    if i >= fs.length() {
+        acc
+    } else {
+        lam = fs.get(i).children.get(1)
+        ps = lam.children.slice(0, lam.children.length() - 1)
+        one = kept_params(s, fs.get(i).children.get(0).text, lam, ps, own, 0,
+                          [])
+
+        kept_borrows(s, fs, own, i + 1, acc ++ one)
+    }
+}
+
+kept_params(s: Stmt, method: str, lam: Expr, ps: Expr[], own: str[], i: int,
+            acc: Diagnostic[]) -> Diagnostic[] {
+    if i >= ps.length() {
+        acc
+    } else if foreign_type(ps.get(i).ty, own)
+            && escaping(lambda_body(lam), ps.get(i).text) {
+        kept_params(s, method, lam, ps, own, i + 1,
+                    acc ++ [diag_at(s, "M0009",
+                                    kept_message(ps.get(i).text, method))])
+    } else {
+        kept_params(s, method, lam, ps, own, i + 1, acc)
+    }
+}
+
+kept_message(p: str, method: str) -> str =>
+    "`{p}` in method `{method}` is a borrowed foreign value: it can be read"
+        ++ " and passed on, but not returned or stored, because it belongs to"
+        ++ " the caller"
+
+/// A borrow leaves the method as its answer, or inside a record or a list that outlives the call.
+escaping(body: Expr, name: str) -> bool =>
+    answered_by(body, name) || stored_away(body, name)
+
+answered_by(body: Expr, name: str) -> bool {
+    if body.kind == EBlock && body.children.length() > 0 {
+        answered_by(body.children.get(0), name)
+    } else {
+        body.kind == EIdent && body.text == name
+    }
+}
+
+stored_away(e: Expr, name: str) -> bool {
+    if e.kind == ERecord && field_holds(e.children, name, 0) {
+        true
+    } else if e.kind == EList && any_mentions(e.children, name, 0) {
+        true
+    } else {
+        any_stores(e.children, name, 0) || body_stores(e.stmts, name, 0)
+    }
+}
+
+field_holds(fs: Expr[], name: str, i: int) -> bool {
+    if i >= fs.length() {
+        false
+    } else if fs.get(i).children.length() > 1
+            && mentions(fs.get(i).children.get(1), name) {
+        true
+    } else {
+        field_holds(fs, name, i + 1)
+    }
+}
+
+any_mentions(cs: Expr[], name: str, i: int) -> bool {
+    if i >= cs.length() {
+        false
+    } else if mentions(cs.get(i), name) {
+        true
+    } else {
+        any_mentions(cs, name, i + 1)
+    }
+}
+
+any_stores(cs: Expr[], name: str, i: int) -> bool {
+    if i >= cs.length() {
+        false
+    } else if stored_away(cs.get(i), name) {
+        true
+    } else {
+        any_stores(cs, name, i + 1)
+    }
+}
+
+body_stores(ss: Stmt[], name: str, i: int) -> bool {
+    if i >= ss.length() {
+        false
+    } else if stored_away(ss.get(i).value, name) {
+        true
+    } else {
+        body_stores(ss, name, i + 1)
+    }
+}
+
+mentions(e: Expr, name: str) -> bool {
+    if e.kind == EIdent && e.text == name {
+        true
+    } else {
+        any_mentions(e.children, name, 0)
+    }
+}
+
+effect_errors(m: Module, target: str) -> Diagnostic[] {
     allowed = target_effects(target)
 
     if allowed.length() >= effect_list().length() {

@@ -684,9 +684,99 @@ javac_line(java: str, out: str, cp: str) -> str[] =>
     cp == "" ? [java, "-d", out] : [java, "-d", out, "-cp", cp]
 
 javac_here() -> bool =>
-    capture("sh", ["-c", "command -v javac"]).trim() != ""
+    on_path("javac")
 
-/// `-o` names a binary for the native target and the emitted source for any other.
+on_path(cmd: str) -> bool =>
+    capture("sh", ["-c", "command -v " ++ cmd]).trim() != ""
+
+CargoName = "maca_app"
+
+/// The rust target compiles what it emits, so `-o` names the binary and the source lands beside it.
+build_rust(src: str, out: str) -> int {
+    rs = out ++ ".rs"
+    errs = compile_file([src, rs, "rust"])
+    deps = manifest_keys(chain_of(src), "[rust-dependencies]", 0)
+
+    if errs > 0 {
+        errs
+    } else if deps.length() > 0 {
+        cargo_built(src, rs, out, deps)
+    } else if !on_path("rustc") {
+        err("maca: no rustc on PATH, so {rs} was written but not compiled.")
+
+        2
+    } else {
+        exec("rustc", [rs, "--edition", "2021", "-O", "-o", out])
+    }
+}
+
+/// A program that names a crate is built as a Cargo project beside the binary, because Cargo is what resolves a dependency.
+cargo_built(src: str, rs: str, out: str, deps: str[]) -> int {
+    chain = chain_of(src)
+    proj = out ++ "-cargo"
+
+    make_dir(proj ++ "/src")
+    write_file("{proj}/Cargo.toml",
+               cargo_toml(chain, deps, manifest_keys(chain, "[rust-patch]",
+                                                     0)))
+    write_file("{proj}/src/main.rs", read_file(rs))
+
+    if !on_path("cargo") {
+        err("maca: no cargo on PATH, so {rs} was written but its "
+            ++ "[rust-dependencies] could not be built.")
+
+        2
+    } else {
+        cargo_built_at(proj, out)
+    }
+}
+
+cargo_built_at(proj: str, out: str) -> int {
+    code = exec("cargo", ["build", "--release", "--quiet",
+                          "--manifest-path", "{proj}/Cargo.toml"])
+
+    code != 0 ? code : exec("cp", ["{proj}/target/release/{CargoName}", out])
+}
+
+cargo_toml(chain: str[], deps: str[], patch: str[]) -> str =>
+    "[package]\nname = \"{CargoName}\"\nversion = \"0.0.0\"\n"
+        ++ "edition = \"2021\"\n\n[[bin]]\nname = \"{CargoName}\"\n"
+        ++ "path = \"src/main.rs\"\n\n[dependencies]\n"
+        ++ cargo_entries(chain, "[rust-dependencies]", deps, 0, "")
+        ++ cargo_patch(chain, patch)
+
+cargo_patch(chain: str[], patch: str[]) -> str =>
+    patch.length() == 0
+        ? ""
+        : "\n[patch.crates-io]\n"
+              ++ cargo_entries(chain, "[rust-patch]", patch, 0, "")
+
+cargo_entries(chain: str[], table: str, ks: str[], i: int, acc: str) -> str {
+    if i >= ks.length() {
+        acc
+    } else {
+        rhs = cargo_value(chain_value(chain, 0, table, ks.get(i)))
+
+        cargo_entries(chain, table, ks, i + 1, acc ++ "{ks.get(i)} = {rhs}\n")
+    }
+}
+
+/// An inline table reaches Cargo as it was written, and anything else is a version string.
+cargo_value(v: str) -> str =>
+    v.starts_with("{{") ? v : "\"{v}\""
+
+/// The keys of one manifest table, off the nearest manifest on the chain that states it.
+manifest_keys(chain: str[], table: str, i: int) -> str[] {
+    if i >= chain.length() {
+        []
+    } else {
+        here = table_keys(read_file(chain.get(i) ++ Manifest), table)
+
+        here.length() > 0 ? here : manifest_keys(chain, table, i + 1)
+    }
+}
+
+/// `lint`, `doc` and `bindgen` are tools of the toolchain rather than targets.
 tooled(name: str) -> bool =>
     name == "lint" || name == "doc" || name == "bindgen"
 
@@ -712,7 +802,9 @@ build_out(src: str, out: str, target: str, mcu: str, cp: str) -> int {
         build_page(src, out)
     } else if target == "tauri" {
         build_tauri(src, out)
-    } else if target == "rust" || target == "nix" {
+    } else if target == "rust" {
+        build_rust(src, out)
+    } else if target == "nix" {
         compile_file([src, out, target])
     } else if target == "jvm" {
         build_classes(src, out, cp)
@@ -724,14 +816,12 @@ build_out(src: str, out: str, target: str, mcu: str, cp: str) -> int {
     }
 }
 
-/// The js target is a directory, the rust target a source file, the rest a name.
+/// The js and tauri targets are a directory, and every other target is a name.
 default_out(src: str, target: str) -> str {
     if target == "js" {
         stem_of(src) ++ "-web"
     } else if target == "tauri" {
         stem_of(src) ++ "-tauri"
-    } else if target == "rust" {
-        stem_of(src) ++ ".rs"
     } else {
         stem_of(src)
     }
@@ -2510,7 +2600,8 @@ compile_file(args: str[]) -> int {
     }
 
     write_file(args.get(1), emitted)
-    errs + refused_here(asked, m)
+    errs + refused_here(asked, m) +
+        report_all("import", foreign_errors(asked, args.get(0), unit), 0)
 }
 
 /// A target names what it cannot lower rather than emitting a file that pretends.
@@ -2521,7 +2612,8 @@ refused_here(asked: str, m: Module) -> int {
         report_all("jvm", jvmemit_errors(m), 0) +
             report_all("jvm", ported_errors(m.items, 0, "jvm", []), 0)
     } else if asked == "rust" {
-        report_all("rust", ported_errors(m.items, 0, "rust", []), 0)
+        report_all("rust", ported_errors(m.items, 0, "rust", []), 0) +
+            report_all("rust", kept_borrow_notes(m), 0)
     } else {
         0
     }
@@ -2561,6 +2653,141 @@ fn_fields(rec: str, fs: Expr[], i: int, target: str, acc: str[]) -> str[] {
         fn_fields(rec, fs, i + 1, target, acc)
     }
 }
+
+/// A foreign import the target cannot honour is named rather than emitted.
+foreign_errors(asked: str, src: str, u: Unit) -> str[] {
+    js = browser_errors(asked, u)
+
+    if asked != "rust" {
+        js
+    } else {
+        js ++ rust_import_errors(u.toks, 0,
+                                 manifest_keys(chain_of(src),
+                                               "[rust-dependencies]", 0),
+                                 [])
+    }
+}
+
+/// A module implemented by an `import js` block reaches a browser and nothing else, so every other target names it.
+browser_errors(asked: str, u: Unit) -> str[] {
+    if asked == "js" || !js_import_in(u.toks, 0) {
+        []
+    } else {
+        [browser_error(asked, browser_file(u.seen, 0))]
+    }
+}
+
+browser_error(asked: str, name: str) -> str =>
+    "`{name}` runs in a browser: what implements it is an `import js` block, "
+        ++ "and the {target_named(asked)} target has no JavaScript to run it "
+        ++ "in; build the page with `maca build --target js`"
+
+target_named(asked: str) -> str =>
+    asked == "" ? "native" : asked
+
+js_import_in(ts: Token[], i: int) -> bool {
+    if i + 2 >= ts.length() {
+        false
+    } else if foreign_at(ts, i, "js") {
+        true
+    } else {
+        js_import_in(ts, i + 1)
+    }
+}
+
+/// The three tokens a foreign import is written in, as in `import js "…"`.
+foreign_at(ts: Token[], i: int, lang: str) -> bool =>
+    ts.get(i).kind == KwImport && ts.get(i + 1).text == lang
+        && ts.get(i + 2).kind == TStr
+
+browser_file(files: str[], i: int) -> str {
+    if i >= files.length() {
+        ""
+    } else if js_import_in(lex_all(read_file(files.get(i))).tokens, 0) {
+        module_named(files.get(i))
+    } else {
+        browser_file(files, i + 1)
+    }
+}
+
+/// A module file as an import writes it: the path under the search root that answers for it.
+module_named(path: str) -> str {
+    stem = path.ends_with(".maca") ? path.slice(0, path.length() - 5) : path
+    parts = stem.split("/")
+
+    parts.slice(last_root(parts, 0, parts.length() - 1),
+                parts.length()).join("/")
+}
+
+last_root(ps: str[], i: int, acc: int) -> int {
+    if i >= ps.length() {
+        acc
+    } else if ps.get(i) == "modules" || ps.get(i) == "src"
+            || ps.get(i) == DepsDir {
+        last_root(ps, i + 1, i + 1)
+    } else {
+        last_root(ps, i + 1, acc)
+    }
+}
+
+/// A crate the rust target calls must be one the manifest declared, and no other language reaches that target at all.
+rust_import_errors(ts: Token[], i: int, deps: str[], acc: str[]) -> str[] {
+    if i + 2 >= ts.length() {
+        acc
+    } else if ts.get(i).kind == KwImport && ts.get(i + 2).kind == TStr {
+        rust_import_errors(ts, i + 3, deps,
+                           acc ++ rust_import_error(ts.get(i + 1).text,
+                                                    ts.get(i + 2).text, deps))
+    } else {
+        rust_import_errors(ts, i + 1, deps, acc)
+    }
+}
+
+rust_import_error(lang: str, spec: str, deps: str[]) -> str[] {
+    krate = crate_of(spec)
+
+    if lang != "rust" {
+        ["`import {lang} \"{spec}\"` is not supported with --target rust "
+             ++ "(there is no C ABI bridge on the Rust path); call a Rust "
+             ++ "crate via `import rust` and [rust-dependencies] instead"]
+    } else if krate == "" || rust_builtin(krate)
+            || deps.index_of(krate) >= 0 {
+        []
+    } else {
+        ["import rust \"{spec}\" refers to crate `{krate}`, which isn't "
+             ++ "declared; add `{krate} = \"…\"` under [rust-dependencies] "
+             ++ "in maca.toml"]
+    }
+}
+
+rust_builtin(name: str) -> bool =>
+    name == "std" || name == "core" || name == "alloc" || name == "crate"
+        || name == "self" || name == "super"
+
+/// A spec that is a path names a crate, where a block of Rust names none.
+crate_of(spec: str) -> str {
+    s = spec.trim()
+    cut = s.index_of("::")
+    head = cut < 0 ? s : s.slice(0, cut)
+
+    path_like(s.chars(), 0) ? unprefixed(head) : ""
+}
+
+unprefixed(name: str) -> str =>
+    name.starts_with("r#") ? name.slice(2, name.length()) : name
+
+path_like(cs: str[], i: int) -> bool {
+    if i >= cs.length() {
+        cs.length() > 0
+    } else if path_char(cs.get(i)) {
+        path_like(cs, i + 1)
+    } else {
+        false
+    }
+}
+
+path_char(c: str) -> bool =>
+    c.is_alpha() || c.is_ascii_digit() || c == "_" || c == ":" || c == "#"
 
 unit_of(entry: str) -> Unit =>
     load_unit(entry, Unit { seen = [], names = [], owners = [],

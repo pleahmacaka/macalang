@@ -6,6 +6,16 @@ import maca/emit_rust
 gate_rust(src: str) -> str =>
     remit_module(annotated(parse_module(lex(src), 0, [])))
 
+whole_rust(src: str) -> str =>
+    remit_module(annotated(monomorphic(lifted(
+        annotated(parse_module(lex(src), 0, []))))))
+
+borrows_of(src: str) -> str[] =>
+    kept_borrow_notes(annotated(parse_module(lex(src), 0, [])))
+
+impl_src(methods: str) -> str =>
+    "Counter = {{ count: int }}\nCounter : Greet = {{\n" ++ methods ++ "}}\n"
+
 test_main_exits_with_the_code_it_answered() {
     made = gate_rust("main() -> int {{ info(\"hi\") 0 }}")
 
@@ -135,4 +145,55 @@ test_a_binder_the_arm_writes_is_mutable() {
            "Maca reassigns the binder where Rust would shadow it")
     assert(made.index_of("v = (v + 1i64)") >= 0,
            "so the arm writes the name rather than declaring it again")
+}
+
+test_a_record_of_methods_is_that_type_implemented_for_the_record() {
+    made = gate_rust(impl_src("    value = (self) => self.count + 1\n"
+                                  ++ "    bump = (self) =>"
+                                  ++ " self.count = self.count + 100\n"))
+
+    assert(made.index_of("impl Greet for Counter {{") >= 0,
+           "the declared type is the trait, and the bound name is what it is for")
+    assert(made.index_of("fn value(&mut self) -> i64 {{") >= 0,
+           "the receiver is lent, and the answer is what the body came to")
+    assert(made.index_of("fn bump(&mut self) {{") >= 0,
+           "a method whose body only assigns answers nothing")
+    assert(made.index_of("self_mc") < 0,
+           "`self` is Rust's own word here, so it is not escaped away")
+    assert(made.index_of("MacaAnon") < 0,
+           "the record of methods is the implementation, not a value of a shape")
+    assert(made.index_of("fn Counter()") < 0,
+           "and it is not a constant either")
+    assert(whole_rust(impl_src("    value = (self) => self.count + 1\n"))
+               .index_of("impl Greet for Counter {{") >= 0,
+           "and a method is not lifted out into a function of its own")
+}
+
+test_a_method_borrows_every_type_its_module_never_declared() {
+    made = gate_rust(impl_src("    bump = (self, w: Window, n: int)"
+                                  ++ " -> AnyElement => self.count\n"))
+
+    assert(made.index_of("w: &mut Window") >= 0,
+           "a foreign value belongs to the caller, so it is lent for the call")
+    assert(made.index_of("mut n: i64") >= 0,
+           "a type the language owns is passed by value")
+    assert(made.index_of("-> AnyElement") >= 0,
+           "and the method answers what it declared, foreign or not")
+}
+
+test_a_borrowed_value_may_be_read_and_passed_on_but_not_kept() {
+    kept = borrows_of("Holder = {{ saved: Window }}\nHolder : Keep = {{\n"
+                          ++ "    keep = (self, w: Window) -> int =>"
+                          ++ " Holder {{ saved = w }}.saved\n}}\n")
+    given = borrows_of("Holder = {{ saved: int }}\nHolder : Keep = {{\n"
+                           ++ "    keep = (self, w: Window) -> int =>"
+                           ++ " peek(w)\n}}\n")
+    back = borrows_of("Holder = {{ saved: int }}\nHolder : Keep = {{\n"
+                          ++ "    keep = (self, w: Window) -> Window => w\n}}\n")
+
+    assert_eq(str(kept.length()), "1", "a borrow put in a record never comes back")
+    assert(kept.get(0).index_of("`w` in method `keep`") >= 0,
+           "and the refusal names the parameter and the method")
+    assert_eq(str(given.length()), "0", "reading it and passing it on is fine")
+    assert_eq(str(back.length()), "1", "answering with it is not")
 }

@@ -7,7 +7,7 @@ rust_int(n: int) -> str =>
 rust_str(s: str) -> str =>
     "\"" ++ s ++ "\".to_string()"
 
-RustReserved = " as async await become box break const continue crate do dyn else enum extern false final fn for if impl in let loop macro match mod move mut override priv pub ref return self Self static struct super trait true try type typeof union unsafe unsized use virtual where while yield "
+RustReserved = " as async await become box break const continue crate do dyn else enum extern false final fn for if impl in let loop macro match mod move mut override priv pub ref return Self static struct super trait true try type typeof union unsafe unsized use virtual where while yield "
 
 rid(name: str) -> str {
     if RustReserved.index_of(" {name} ") >= 0 {
@@ -789,19 +789,23 @@ rmut_word(movable: bool) -> str {
 
 remit_module(m: Module) -> str =>
     rust_preamble()
-        ++ remit_items(m.items, rlazy_names(m.items, 0, []), 0)
+        ++ remit_items(m.items, rlazy_names(m.items, 0, []),
+                       declared_types(m.items, 0, []), 0)
 
-remit_items(items: Stmt[], lz: str[], i: int) -> str {
+remit_items(items: Stmt[], lz: str[], own: str[], i: int) -> str {
     if i >= items.length() {
         ""
     } else {
-        "{remit_item(rlazy_stmt(items.get(i), lz))}\n{remit_items(items, lz, i + 1)}"
+        "{remit_item(rlazy_stmt(items.get(i), lz), own)}\n"
+            ++ remit_items(items, lz, own, i + 1)
     }
 }
 
 rlazy_names(items: Stmt[], i: int, acc: str[]) -> str[] {
     if i >= items.length() {
         acc
+    } else if is_impl_block(items.get(i)) {
+        rlazy_names(items, i + 1, acc)
     } else if items.get(i).kind == SBind && !rscalar(items.get(i).value) {
         rlazy_names(items, i + 1, acc ++ [items.get(i).name])
     } else {
@@ -875,15 +879,78 @@ rust_preamble() -> str =>
     "#[allow(dead_code)]\nfn maca_input(prompt: String) -> String {{ use std::io::Write; if !prompt.is_empty() {{ print!(\"{{}}\", prompt); let _ = std::io::stdout().flush(); }} let mut s = String::new(); let _ = std::io::stdin().read_line(&mut s); s.trim_end_matches('\\n').to_string() }}\n" ++
     "#[allow(dead_code)]\nfn maca_list_dir(p: String) -> Rc<Vec<String>> {{ let mut v: Vec<String> = std::fs::read_dir(p).map(|d| d.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().to_string()).collect()).unwrap_or_default(); v.sort(); Rc::new(v) }}\n"
 
-remit_item(s: Stmt) -> str {
+remit_item(s: Stmt, own: str[]) -> str {
     if s.kind == SRecord {
         remit_struct(s)
     } else if s.kind == SSum {
         remit_sum(s)
+    } else if is_impl_block(s) {
+        remit_impl(s, own)
     } else if s.kind == SBind {
         remit_const(s)
     } else {
         remit_fn(s)
+    }
+}
+
+/// A record of lambdas under a type name is that trait, implemented for the record.
+remit_impl(s: Stmt, own: str[]) -> str =>
+    "impl {rtype(s.ret)} for {s.name} {{\n"
+        ++ remit_methods(s.value.children, own, 0, "") ++ "}}"
+
+remit_methods(fs: Expr[], own: str[], i: int, acc: str) -> str {
+    if i >= fs.length() {
+        acc
+    } else {
+        remit_methods(fs, own, i + 1, acc ++ rimpl_method(fs.get(i), own))
+    }
+}
+
+rimpl_method(f: Expr, own: str[]) -> str {
+    lam = f.children.get(1)
+    ps = lam.children.slice(0, lam.children.length() - 1)
+    head = rmethod_params(ps, own, 0, []).join(", ")
+
+    "    fn {rid(f.children.get(0).text)}({head}){rmethod_ret(lam)}"
+        ++ " {{ {remit_expr(lambda_body(lam))} }}\n"
+}
+
+rmethod_params(ps: Expr[], own: str[], i: int, acc: str[]) -> str[] {
+    if i >= ps.length() {
+        acc
+    } else if i == 0 && ps.get(i).text == "self" {
+        rmethod_params(ps, own, i + 1, acc ++ ["&mut self"])
+    } else {
+        rmethod_params(ps, own, i + 1, acc ++ [rmethod_param(ps.get(i), own)])
+    }
+}
+
+rmethod_param(p: Expr, own: str[]) -> str {
+    if foreign_type(p.ty, own) {
+        "{rid(p.text)}: &mut {rtype(p.ty)}"
+    } else {
+        "mut {rid(p.text)}: {rtype(p.ty)}"
+    }
+}
+
+rmethod_ret(lam: Expr) -> str {
+    said = rmethod_answer(lam)
+
+    said == "" ? "" : " -> {rtype(said)}"
+}
+
+/// A method that assigns or loops answers nothing; otherwise it answers what it declared, or what its body came to.
+rmethod_answer(lam: Expr) -> str {
+    body = lambda_body(lam)
+
+    if body.kind == EWhile || body.kind == EFor {
+        ""
+    } else if body.kind == EBinary && body.text == "=" {
+        ""
+    } else if lam.ty != "" {
+        lam.ty
+    } else {
+        body.ty
     }
 }
 

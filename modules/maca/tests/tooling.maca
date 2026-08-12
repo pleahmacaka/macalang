@@ -503,7 +503,8 @@ test_the_target_a_package_builds_for_can_be_declared() {
 test_a_declared_rust_target_names_its_source_for_what_it_holds() {
     dir = declared_build("build-target-rust", "target = \"rust\"\n")
 
-    assert_eq(str(rc_in(dir, ["build"])), "0", "a declared target needs no flag")
+    assert_eq(str(rc_in(dir, ["build"])), have("rustc") ? "0" : "2",
+              "a declared target needs no flag")
     assert(read_file(dir ++ "/main.rs").starts_with("use std::rc::Rc;"),
            "the rust back end writes rust, under a name that says so")
 }
@@ -697,8 +698,8 @@ test_a_declared_output_directory_is_relative_to_its_own_manifest() {
 test_a_flag_beats_the_target_the_manifest_declared() {
     at = declared_web("ws-target-flag", "target = \"js\"\n") ++ "/apps/hello"
 
-    assert_eq(str(rc_in(at, ["build", "--target", "rust"])), "0",
-              "the flag on the line ran")
+    assert_eq(str(rc_in(at, ["build", "--target", "rust"])),
+              have("rustc") ? "0" : "2", "the flag on the line ran")
     assert(read_file(at ++ "/main.rs").starts_with("use std::rc::Rc;"),
            "the back end the flag named is the one that wrote the source")
     assert(!file_exists(at ++ "/main-web"),
@@ -788,4 +789,30 @@ test_what_bindgen_writes_typechecks_where_it_is_used() {
 
     assert_eq(str(exec(maca_bin(), ["check", at])), "0",
               "a header nobody wrote Maca for is still a program that checks")
+}
+
+Bindgen = "apps/bindgen/bindgen.maca"
+
+test_the_bindgen_written_in_maca_is_a_command_of_its_own() {
+    dir = package_dir("bindgen-cli")
+    at = "{dir}/api.h"
+    made = "{dir}/api.maca"
+    absent = "{dir}/absent.h"
+
+    write_file(at, "int api_open(const char *path);\n")
+
+    assert_eq(str(exec(maca_bin(), ["run", Bindgen, at, made])), "0",
+              "the port writes the module it was given a name for")
+
+    written = read_file(made)
+
+    assert(written.contains("api_open(path: str) -> int"),
+           "the declaration it read is in it: {written}")
+    assert(written.contains("import c \"api.h\""),
+           "and so is the header it came from: {written}")
+    assert(exec(maca_bin(), ["run", Bindgen, absent]) != 0,
+           "a header that is not there is a failure")
+    assert(capture_err(maca_bin(), ["run", Bindgen, absent])
+               .contains("cannot read"),
+           "and the message says it could not be read")
 }

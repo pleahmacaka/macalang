@@ -801,6 +801,15 @@ test_a_lambda_is_an_expression_with_parameters_and_a_body() {
               "a two-parameter lambda is one node")
 }
 
+test_a_lambda_body_may_set_a_field_rather_than_answer_one() {
+    assert_eq(str(bad_of("f() -> int {{ g(ev => c.count = c.count + 1) 0 }}")
+                      .length()), "0",
+              "the `=` after the arrow is the setter form, not a stray binding")
+    assert(annotated_rust("f(c: int) -> int {{ g(ev => c = c + 1) 0 }}")
+               .index_of("|ev| (c = (c + 1i64))") >= 0,
+           "and Rust assigns inside the closure")
+}
+
 test_a_lambda_argument_is_counted_as_one_argument() {
     assert_eq(errors_in("pick(xs: int[], f) -> int => 0"
                         ++ " use(xs: int[]) -> int => pick(xs, v => v > 2)"),

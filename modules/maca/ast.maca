@@ -133,6 +133,48 @@ s_record(name: str, fields: Expr[]) -> Stmt =>
     Stmt { kind = SRecord, name, value = e_ident(name), ret = "", pos = 0,
            params = fields, body = [], frozen = false }
 
+/// A record of lambdas bound under a declared type name implements that type for the record it names.
+is_impl_block(s: Stmt) -> bool =>
+    s.kind == SBind && upper_word(s.ret) && s.value.kind == ERecord
+        && s.value.children.length() > 0
+        && all_lambda_fields(s.value.children, 0)
+
+/// A capitalized type this module never declared belongs to whatever the program links against.
+foreign_type(ty: str, own: str[]) -> bool =>
+    ty.index_of("[]") < 0 && upper_word(ty) && own.index_of(head_type(ty)) < 0
+        && upper_word(head_type(ty))
+
+head_type(ty: str) -> str {
+    cut = ty.index_of(" ")
+
+    cut < 0 ? ty : ty.slice(0, cut)
+}
+
+/// Every type this module declares itself; anything else capitalized is foreign to it.
+declared_types(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind == SRecord || items.get(i).kind == SSum {
+        declared_types(items, i + 1, acc ++ [items.get(i).name])
+    } else {
+        declared_types(items, i + 1, acc)
+    }
+}
+
+upper_word(w: str) -> bool =>
+    w.length() > 0 && w.at(0).is_alpha() && w.at(0).upper() == w.at(0)
+
+all_lambda_fields(fs: Expr[], i: int) -> bool {
+    if i >= fs.length() {
+        true
+    } else if fs.get(i).children.length() < 2
+            || fs.get(i).children.get(1).kind != ELambda {
+        false
+    } else {
+        all_lambda_fields(fs, i + 1)
+    }
+}
+
 s_sum(name: str, variants: Expr[]) -> Stmt =>
     Stmt { kind = SSum, name, value = e_ident(name), ret = "", pos = 0,
            params = variants, body = [], frozen = false }

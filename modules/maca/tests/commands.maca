@@ -134,16 +134,129 @@ test_init_scaffolds_a_project_that_runs() {
 }
 
 test_the_target_flag_picks_the_back_end() {
-    at = fixture("tg.maca", "main() -> int {{\n    info(\"hi\")\n    0\n}}\n")
-    rs = scratch() ++ "/tg.rs"
+    at = fixture("tg.maca", "main() -> int {{\n    info(\"hi\")\n    7\n}}\n")
+    out = scratch() ++ "/tg"
 
-    assert_eq(str(exec(maca_bin(), ["build", at, "-o", rs, "--target",
-                                    "rust"])), "0", "the rust target builds")
-    assert(read_file(rs).starts_with("use std::rc::Rc;"),
-           "the rust target writes rust")
+    remove_file(out ++ ".rs")
+
+    code = exec(maca_bin(), ["build", at, "-o", out, "--target", "rust"])
+
+    assert(read_file(out ++ ".rs").starts_with("use std::rc::Rc;"),
+           "the rust target writes rust, beside the binary rather than at -o")
+    assert_eq(str(code), have("rustc") ? "0" : "2",
+              "a target that cannot compile says so rather than exiting clean")
     assert_eq(str(exec(maca_bin(), ["build", at, "-o", scratch() ++ "/tg.x",
                                     "--target", "nowhere"])), "2",
               "a target nobody serves is a usage error")
+}
+
+test_the_rust_target_compiles_what_it_emits() {
+    if !have("rustc") {
+        return
+    }
+
+    at = fixture("rc.maca",
+                 "main() -> int {{\n    info(\"rust drive\")\n    7\n}}\n")
+    out = scratch() ++ "/rc"
+
+    remove_file(out)
+
+    assert_eq(str(exec(maca_bin(), ["build", at, "-o", out, "--target",
+                                    "rust"])), "0", "rustc compiled it")
+    assert_eq(str(exec(out, [])), "7", "-o is the binary, and it runs")
+    assert(capture(out, []).contains("rust drive"),
+           "and what it prints is what the program printed")
+}
+
+test_a_browser_module_reaches_no_target_but_js() {
+    dir = project("browser")
+
+    make_dir(dir ++ "/modules")
+    write_file(dir ++ "/modules/glass.maca",
+        "kept(key: str) -> str\n\nimport js \"\"\"\n"
+            ++ "maca.provide({{ kept: k => k }})\n\"\"\"\n")
+    write_file(dir ++ "/main.maca",
+        "import glass\n\nmain() -> int {{\n    info(kept(\"x\"))\n    0\n}}\n")
+
+    said = out_in(dir, ["build", "main.maca"])
+
+    assert(rc_in(dir, ["build", "main.maca"]) != 0,
+           "a browser module has nothing to run natively")
+    assert(said.contains("`glass`"), "the refusal names the module")
+    assert(said.contains("--target js"), "and says where it does run")
+    assert_eq(str(rc_in(dir, ["build", "main.maca", "--target", "js"])), "0",
+              "and the browser it names is the one target that carries it")
+}
+
+rust_project(tag: str, src: str, deps: str) -> str {
+    dir = project(tag)
+
+    write_file(dir ++ "/maca.toml", "[package]\nname = \"p\"\n" ++ deps)
+    write_file(dir ++ "/main.maca", src)
+
+    dir
+}
+
+rust_built(tag: str, src: str, deps: str) -> str =>
+    out_in(rust_project(tag, src, deps),
+           ["build", "main.maca", "--target", "rust", "-o", "app"])
+
+test_the_rust_target_refuses_a_crate_no_manifest_declared() {
+    said = rust_built("rustdep",
+        "import rust \"itoa\"\n\nmain() -> int => 0\n", "")
+
+    assert(said.contains("`itoa`") && said.contains("[rust-dependencies]"),
+           "a crate nobody declared is named, with where to declare it")
+    assert(!rust_built("rustdep-std",
+               "import rust \"std::time::Duration\"\n\nmain() -> int => 0\n",
+               "").contains("[rust-dependencies]"),
+           "std is Rust's own, and no manifest declares it")
+}
+
+test_a_declared_crate_is_built_through_cargo() {
+    dir = rust_project("rustdep-ok",
+        "import rust \"tiny\"\n\nmain() -> int {{\n"
+            ++ "    info(\"cargo drive\")\n    7\n}}\n",
+        "\n[rust-dependencies]\ntiny = {{ path = \"../vendor/tiny\" }}\n")
+    built = ["build", "main.maca", "--target", "rust", "-o", "app"]
+
+    make_dir(dir ++ "/vendor/tiny/src")
+    write_file(dir ++ "/vendor/tiny/Cargo.toml",
+        "[package]\nname = \"tiny\"\nversion = \"0.1.0\"\n"
+            ++ "edition = \"2021\"\n")
+    write_file(dir ++ "/vendor/tiny/src/lib.rs",
+               "pub fn tiny() -> i64 {{ 7 }}\n")
+
+    assert(!out_in(dir, built).contains("[rust-dependencies]"),
+           "a crate the manifest declared is not refused")
+
+    toml = read_file(dir ++ "/app-cargo/Cargo.toml")
+
+    assert(toml.contains("tiny = {{ path = \"../vendor/tiny\" }}"),
+           "an inline table reaches Cargo as the manifest wrote it")
+    assert(toml.contains("path = \"src/main.rs\""),
+           "and the throwaway project holds the emitted rust")
+
+    if !have("cargo") {
+        assert(err_in(dir, built).contains("no cargo on PATH"),
+               "a build that cannot reach cargo says so, and does not exit"
+                   ++ " clean")
+
+        return
+    }
+
+    assert_eq(str(rc_in(dir, built)), "0", "cargo built it")
+    assert_eq(str(exec(dir ++ "/app", [])), "7",
+              "and -o is the binary cargo made")
+}
+
+test_the_rust_target_refuses_a_foreign_import_it_cannot_bridge() {
+    said = rust_built("rustffi",
+        "import c \"stdio.h\"\n\nmain() -> int => 0\n", "")
+
+    assert(said.contains("`import c \"stdio.h\"`"),
+           "the import that cannot be lowered is quoted back")
+    assert(said.contains("C ABI bridge"), "with why the rust target refuses it")
 }
 
 test_two_packages_may_each_name_one_function() {
