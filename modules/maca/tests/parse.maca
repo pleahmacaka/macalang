@@ -932,10 +932,10 @@ test_a_parameter_may_be_declared_a_function() {
               "2", "the inner `)` does not end the parameter list")
 }
 
-test_a_function_parameter_becomes_a_pointer_in_c() {
+test_a_function_parameter_becomes_a_closure_in_c() {
     assert_eq(c_of("call(f: (int) -> int, n: int) -> int => f(n)"),
-              "long call(long (*f)(long), long n) {{ return f(n);  }}",
-              "C spells a parameter holding a function as a pointer to one")
+              "long call(MacaFn f, long n) {{ return f(n);  }}",
+              "C spells a parameter holding a function as the closure struct")
 }
 
 test_a_lambda_may_declare_the_type_it_returns() {

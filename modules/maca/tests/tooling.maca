@@ -104,6 +104,55 @@ test_lint_resolves_imports_before_calling_a_name_undefined() {
     assert(!said.contains("UndefinedName"), "join comes from std/path: {said}")
 }
 
+test_lint_names_the_rule_and_the_line_of_everything_it_flags() {
+    src = "main() -> int {{\n    if x > 0 {{ x = 2 }}\n\ty = 3\n"
+        ++ "    z = 4   \n    w = "
+        ++ repeated("value", 20, []).join(" + ") ++ "\n    0\n}}\n"
+
+    said = lint_says("rules.maca", src)
+    assert(said.contains("rules.maca:2: single-line `if` block"),
+           "a body written on the line that opens it: {said}")
+    assert(said.contains("rules.maca:3: hard tab"),
+           "an indent is four spaces: {said}")
+    assert(said.contains("rules.maca:4: trailing whitespace"),
+           "a line does not end in a space: {said}")
+    assert(said.contains("rules.maca:5: line exceeds 80 columns"),
+           "and the width rule reads the fifth line: {said}")
+    assert(said.contains("4 issues"),
+           "four rules fired, so four is the count: {said}")
+}
+
+test_lint_calls_a_file_that_nothing_fires_on_clean() {
+    src = "main() -> int {{\n    0\n}}\n"
+
+    assert_eq(str(lint_rc("clean.maca", src)), "0",
+              "a file with nothing wrong is a passing exit status")
+    assert(lint_says("clean.maca", src).contains("clean"),
+           "and the word the reader looks for")
+}
+
+test_the_single_line_if_rule_reads_code_and_not_prose() {
+    src = "// a comment naming `if x {{ y }}` inline\n"
+        ++ "pick(c: bool) -> int => c ? 1 : 2\n"
+        ++ "has(s: str) -> bool => s.contains(\"if \")\n"
+
+    assert_eq(str(lint_rc("exempt.maca", src)), "0",
+              "a ternary, a comment and a string are none of them a block")
+}
+
+test_the_width_rule_measures_code_once_the_strings_are_gone() {
+    wide = "main() -> int {{\n    a = 1" ++ repeated(" ", 70, []).join("")
+        ++ "+ 2 + 3 + 4 + \"s\"\n    0\n}}\n"
+
+    assert_eq(str(lint_rc("widecode.maca", wide)), "1",
+              "the code alone is past eighty columns")
+}
+
+test_the_repository_passes_its_own_linter() {
+    assert_eq(exec(maca_bin(), ["run", "apps/lint/lint.maca"]), 0,
+              "Maca lints Maca, and this tree is what it lints")
+}
+
 test_fmt_settles_on_the_second_run_and_keeps_what_it_read() {
     at = fixture("shape.maca", read_file("apps/examples/taskr.maca"))
 

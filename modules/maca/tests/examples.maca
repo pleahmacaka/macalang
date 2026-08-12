@@ -188,6 +188,31 @@ test_a_package_demo_reaches_its_last_line() {
     }
 }
 
+handbook_claims() -> str[] => [
+    "record: 3 4 -> 5", "bindings: 1 100", "sides: 4", "list: 10 3 60",
+    "named fn: 2", "inferred: 42 42", "sum_to: 55", "ternary: pass",
+    "patterns: empty / one: 7 / head 1, then 2 more", "propagate: 42",
+    "try: [division by zero] []", "strings: ababab 007 2",
+    "braces: {{}} {{}}", "fmt: [3.14] [    42] [ok  ] [  ok  ] [007]",
+    "ui: <article class=\"prose\"><h1>Hi</h1><span>Body</span></article>",
+    "attrs: <div data-kind=\"note\">seen</div>",
+    "flag: <details open><summary>more</summary>text</details>",
+    "dyn: <h2 id=\"s\">Deep</h2>", "styles: true false"
+]
+
+test_the_handbook_program_still_states_every_claim_it_makes() {
+    said = ran_example("handbook")
+
+    for claim in handbook_claims() {
+        assert(said.contains(claim),
+            "the book claims `{claim}`, and the program no longer"
+                ++ " says it:\n{said}")
+    }
+
+    assert_eq(exit_of(example("handbook")), 0,
+        "and the chapter runs to its end rather than stopping partway")
+}
+
 test_the_microkernel_boots_schedules_and_halts() {
     said = ran("apps/microkernel/kernel.maca")
 

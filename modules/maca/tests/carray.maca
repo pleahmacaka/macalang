@@ -290,27 +290,30 @@ test_upper_copies_a_string_and_folds_a_single_character() {
                ++ " is spotted")
 }
 
-test_a_called_parameter_is_declared_as_a_function_pointer() {
+test_a_called_parameter_is_declared_as_a_closure() {
     out = c_for(Higher)
 
-    assert(out.index_of("long run(MacaList xs, long (*f)(const char*))") >= 0,
-           "the parameter carries the type the call site proved it has")
-    assert(out.index_of("long run(MacaList xs, long (*f)(const char*));") >= 0,
+    assert(out.index_of("long run(MacaList xs, MacaFn f)") >= 0,
+           "the parameter carries a function and what it captured")
+    assert(out.index_of("long run(MacaList xs, MacaFn f);") >= 0,
            "and the prototype says the same, or the two would conflict")
     assert(out.index_of("MacaList xs, long f") < 0,
            "an int is not callable, which is what C said before")
+    assert(out.index_of("run(xs, (MacaFn){{ (void*)p, (MacaList){{0, 0}} }})")
+               >= 0,
+           "a top-level name reaches it as a closure over nothing")
     assert(out.index_of("long p(const char* c)") >= 0,
-           "the callee keeps its own signature, so the pointer is not a lie")
+           "the callee keeps its own signature, so the cast is not a lie")
 }
 
-test_a_function_type_in_type_position_is_an_abstract_declarator() {
-    assert_eq(type_c("(int) -> str"), "const char* (*)(long)",
-              "the name's place is left empty where there is no name")
-    assert_eq(type_c("() -> int"), "long (*)(void)",
-              "no parameters is void, not an unspecified list")
-    assert_eq(type_c("(int, str) -> bool"), "long (*)(long, const char*)",
-              "every parameter is converted in turn")
-    assert_eq(type_c("(int) -> str[]"), "MacaList (*)(long)",
+test_a_function_type_in_type_position_is_the_closure_struct() {
+    assert_eq(type_c("(int) -> str"), "MacaFn",
+              "one type carries every function, whatever it takes")
+    assert_eq(type_c("() -> int"), "MacaFn",
+              "including one that takes nothing at all")
+    assert_eq(type_c("(int, str) -> bool"), "MacaFn",
+              "and one that takes more than a single argument")
+    assert_eq(type_c("(int) -> str[]"), "MacaFn",
               "a function is spotted before the list its result ends with")
 }
 

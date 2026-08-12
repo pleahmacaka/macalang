@@ -395,7 +395,11 @@ call_type(env: Env, e: Expr) -> Typed {
     variant = env.ctors.index_of(e.text)
     local = env.names.index_of(e.text)
 
-    if declared >= 0 && tag_wins(env, e, declared) {
+    if e.text == "maca_cap" && e.children.length() == 2 {
+        typed(env, ty_named(e.children.get(0).text))
+    } else if e.text == "maca_closure" && e.children.length() > 0 {
+        typed(walk_args(env, e.children, 0), closure_sig(env, e))
+    } else if declared >= 0 && tag_wins(env, e, declared) {
         typed(walk_args(env, e.children, 0), builtin_type(e.text))
     } else if local >= 0 && callable(env, env.types.get(local)) {
         call_local(env, e, env.types.get(local))
@@ -409,6 +413,13 @@ call_type(env: Env, e: Expr) -> Typed {
         typed(unknown_call(walk_args(env, e.children, 0), e.text),
               builtin_type(e.text))
     }
+}
+
+/// A closure is worth exactly what the function it was lifted out of is worth.
+closure_sig(env: Env, e: Expr) -> Ty {
+    at = env.fns.index_of(e.children.get(0).text)
+
+    at < 0 ? t_any() : env.sigs.get(at)
 }
 
 /// A lowercase call name that resolves to nothing is a function nobody wrote, not a foreign one.
@@ -1677,10 +1688,31 @@ annotate_expr(env: Env, e: Expr) -> Expr {
         annotated_node(env, gathered_rest(env, e))
     } else if is_field_call(env, e) {
         annotated_node(env, e with { ival = 1 })
+    } else if e.kind == ECall && holds_fn(env, e.text) {
+        annotated_node(env, e with { ival = 2 })
+    } else if e.kind == EIdent && holds_fn(env, e.text) {
+        annotated_node(env, e with { ival = 3 })
+    } else if e.kind == EIdent && env.names.index_of(e.text) >= 0 {
+        annotated_node(env, e with { ival = 4 })
     } else {
         annotated_node(env, e)
     }
 }
+
+/// A local holding a function is already a closure, where a top-level name is only a name.
+holds_fn(env: Env, name: str) -> bool {
+    at = env.names.index_of(name)
+
+    if at < 0 {
+        false
+    } else {
+        resolve(env.infer, env.types.get(at)).kind == KFn
+    }
+}
+
+/// A name the checker resolved to a binding is what a lambda has to carry with it.
+is_bound_name(e: Expr) -> bool =>
+    e.kind == EIdent && (e.ival == 3 || e.ival == 4)
 
 /// A record field holding a function is called through the field, not by name.
 is_field_call(env: Env, e: Expr) -> bool =>
@@ -1870,7 +1902,6 @@ count_errors(e: Expr) -> int =>
 
 Lift = {
     items: Stmt[]
-    tops:  str[]
     n:     int
 }
 
@@ -1892,10 +1923,7 @@ LiftedBody = {
 /// A lambda used as a value becomes a function of its own, which every back end already passes by name.
 lifted(m: Module) -> Module {
     named = named_anons(m)
-    got = lift_items(named.items, 0,
-                     Lift { items = [],
-                            tops = top_names(named.items, 0, []),
-                            n = 0 })
+    got = lift_items(named.items, 0, Lift { items = [], n = 0 })
 
     Module { items = got.items, errors = m.errors }
 }
@@ -2146,8 +2174,10 @@ lift_body(stmts: Stmt[], i: int, acc: Stmt[], at: Lift) -> LiftedBody {
 }
 
 lift_expr(e: Expr, at: Lift) -> Lifted {
-    if e.kind == ELambda && free_of_capture(e, at.tops) {
+    if e.kind == ELambda && captures_of(e).length() == 0 {
         lift_one(e, at)
+    } else if e.kind == ELambda {
+        lift_closure(e, at)
     } else {
         kids = lift_all(e.children, 0, [], at, e)
         body = lift_body(e.stmts, 0, [], kids.at)
@@ -2195,10 +2225,33 @@ lift_one(e: Expr, at: Lift) -> Lifted {
              at = inner.at with { items = inner.at.items ++ inner.stmts } }
 }
 
-/// A lambda that reads a name from around it needs an environment, which a bare function has not.
-free_of_capture(e: Expr, tops: str[]) -> bool =>
-    reads_only(lambda_body(e),
-               lambda_names(lambda_params(e), 0, []) ++ tops)
+/// A lambda that reads a name from around it becomes a function plus the values it read.
+lift_closure(e: Expr, at: Lift) -> Lifted {
+    name = "maca_closure_{str(at.n)}"
+    caps = captures_of(e)
+    made = s_fn(name, lambda_body(e).ty, lambda_params(e),
+                cap_binds(caps, 0) ++ [s_expr(lambda_body(e))])
+    inner = lift_stmt(made, at with { n = at.n + 1 })
+
+    Lifted { node = e_call("maca_closure", [e_ident(name)] ++ caps),
+             at = inner.at with { items = inner.at.items ++ inner.stmts } }
+}
+
+cap_binds(caps: Expr[], i: int) -> Stmt[] {
+    if i >= caps.length() {
+        []
+    } else {
+        one = s_bind_typed(caps.get(i).text, caps.get(i).ty,
+                           e_call("maca_cap",
+                                  [e_str(caps.get(i).ty), e_int(i)]))
+
+        [one] ++ cap_binds(caps, i + 1)
+    }
+}
+
+/// Every name the body reads from around it, once each, carrying the type it was given.
+captures_of(e: Expr) -> Expr[] =>
+    free_idents(lambda_body(e), lambda_names(lambda_params(e), 0, []), [])
 
 lambda_names(ps: Expr[], i: int, acc: str[]) -> str[] {
     if i >= ps.length() {
@@ -2208,34 +2261,53 @@ lambda_names(ps: Expr[], i: int, acc: str[]) -> str[] {
     }
 }
 
-reads_only(e: Expr, bound: str[]) -> bool {
+free_idents(e: Expr, bound: str[], acc: Expr[]) -> Expr[] {
     if e.kind == EIdent {
-        bound.index_of(e.text) >= 0 || !starts_lower(e.text)
+        free_added(e, bound, acc)
     } else if e.kind == ELambda {
-        reads_only(lambda_body(e),
-                   bound ++ lambda_names(lambda_params(e), 0, []))
+        free_idents(lambda_body(e),
+                    bound ++ lambda_names(lambda_params(e), 0, []), acc)
     } else {
-        reads_all(e.children, 0, bound) && reads_all_stmts(e.stmts, 0, bound)
+        free_stmts(e.stmts, 0, free_bound(e, bound),
+                   free_kids(e.children, 0, bound, acc))
     }
 }
 
-reads_all(cs: Expr[], i: int, bound: str[]) -> bool {
+free_bound(e: Expr, bound: str[]) -> str[] =>
+    e.kind == EFor ? bound ++ [e.text] : bound
+
+free_added(e: Expr, bound: str[], acc: Expr[]) -> Expr[] {
+    if !is_bound_name(e) || bound.index_of(e.text) >= 0 {
+        acc
+    } else if free_names(acc, 0, []).index_of(e.text) >= 0 {
+        acc
+    } else {
+        acc ++ [e]
+    }
+}
+
+free_names(acc: Expr[], i: int, out: str[]) -> str[] {
+    if i >= acc.length() {
+        out
+    } else {
+        free_names(acc, i + 1, out ++ [acc.get(i).text])
+    }
+}
+
+free_kids(cs: Expr[], i: int, bound: str[], acc: Expr[]) -> Expr[] {
     if i >= cs.length() {
-        true
-    } else if !reads_only(cs.get(i), bound) {
-        false
+        acc
     } else {
-        reads_all(cs, i + 1, bound)
+        free_kids(cs, i + 1, bound, free_idents(cs.get(i), bound, acc))
     }
 }
 
-reads_all_stmts(ss: Stmt[], i: int, bound: str[]) -> bool {
+free_stmts(ss: Stmt[], i: int, bound: str[], acc: Expr[]) -> Expr[] {
     if i >= ss.length() {
-        true
-    } else if !reads_only(ss.get(i).value, bound) {
-        false
+        acc
     } else {
-        reads_all_stmts(ss, i + 1, bound ++ [ss.get(i).name])
+        free_stmts(ss, i + 1, bound ++ [ss.get(i).name],
+                   free_idents(ss.get(i).value, bound, acc))
     }
 }
 

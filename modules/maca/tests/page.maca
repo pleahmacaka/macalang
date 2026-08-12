@@ -427,6 +427,20 @@ test_a_wasm_module_rides_in_the_page_as_base64() {
             "and they are the module's own bytes, base64 as written")
 }
 
+test_the_desktop_window_takes_the_page_title_too() {
+    dir = project("tauri")
+    put(dir, "maca.toml", "[page]\ntitle = \"tabpane\"\n")
+    app(dir, "")
+
+    said = capture("sh", ["-c", "cd \"$0\" && \"$1\" build --target tauri "
+                              ++ "home.maca -o out 2>&1", dir, maca_bin()])
+    conf = "{dir}/out/src-tauri/tauri.conf.json"
+
+    assert(file_exists(conf), "no scaffold was written: {said}")
+    carries(read_file(conf), "tabpane",
+            "the window title is what named the page")
+}
+
 said_by(dir: str, cmd: str) -> str =>
     capture("sh", ["-c", "cd \"$0\" && \"$1\" {cmd} 2>&1", dir, maca_bin()])
 

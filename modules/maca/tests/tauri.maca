@@ -1,0 +1,190 @@
+import std/proc
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+scratch(name: str) -> str {
+    dir = "{env_or("TMPDIR", "/tmp")}/maca-tauri/{name}"
+
+    exec("rm", ["-rf", dir])
+
+    dir
+}
+
+scaffolded(src: str, dir: str) -> str =>
+    capture("sh", ["-c", "\"$0\" build --target tauri \"$1\" -o \"$2\" 2>&1",
+                   maca_bin(), src, dir])
+
+holds(dir: str, rel: str) {
+    assert(file_exists("{dir}/{rel}"), "the scaffold has no {rel}")
+}
+
+carries(text: str, want: str, why: str) {
+    assert(text.contains(want), "{why}\nlooked for: {want}")
+}
+
+test_the_scaffold_is_every_file_a_tauri_build_reads() {
+    if !have("cc") {
+        return
+    }
+
+    dir = scratch("desktop")
+    said = scaffolded("apps/desktop/app.maca", dir)
+
+    assert(file_exists("{dir}/src-tauri/Cargo.toml"),
+           "nothing was scaffolded: {said}")
+
+    holds(dir, "dist/index.html")
+    holds(dir, "dist/app.js")
+    holds(dir, "dist/bridge.js")
+    holds(dir, "src-tauri/build.rs")
+    holds(dir, "src-tauri/src/main.rs")
+    holds(dir, "src-tauri/tauri.conf.json")
+}
+
+test_the_window_loads_the_page_the_js_target_built() {
+    if !have("cc") {
+        return
+    }
+
+    dir = scratch("frontend")
+
+    scaffolded("apps/desktop/app.maca", dir)
+
+    carries(read_file("{dir}/src-tauri/tauri.conf.json"),
+            "\"frontendDist\": \"../dist\"",
+            "the window is the page beside it")
+    carries(read_file("{dir}/dist/index.html"),
+            "<script src=\"bridge.js\"></script>",
+            "and the page loads the bridge that reaches the shell")
+    carries(read_file("{dir}/src-tauri/build.rs"), "tauri_build::build()",
+            "the crate builds through tauri's own build script")
+}
+
+test_the_shell_registers_the_command_the_bridge_names() {
+    if !have("cc") {
+        return
+    }
+
+    dir = scratch("command")
+
+    scaffolded("apps/desktop/app.maca", dir)
+
+    shell = read_file("{dir}/src-tauri/src/main.rs")
+
+    carries(shell, "#[tauri::command]", "the shell declares a command")
+    carries(shell, "fn maca_run(arg: String) -> String",
+            "and it takes the one argument the bridge sends")
+
+    bridge = read_file("{dir}/dist/bridge.js")
+
+    assert(bridge.split("invoke(").length()
+               == bridge.split("invoke('maca_run'").length(),
+           "every call the bridge makes names that command and no other")
+    carries(read_file("{dir}/src-tauri/Cargo.toml"),
+            "tauri = {{ version = \"2\", features = [] }}",
+            "and the crate depends on tauri itself")
+}
+
+test_the_backend_beside_the_page_is_a_binary_of_its_own() {
+    if !have("cc") {
+        return
+    }
+
+    dir = scratch("backend")
+
+    scaffolded("apps/desktop/app.maca", dir)
+
+    holds(dir, "src-tauri/bin/backend")
+    assert_eq(capture("{dir}/src-tauri/bin/backend", ["Ada"]).trim(),
+              "Hello, Ada!",
+              "the command the shell runs answers for itself")
+}
+
+test_a_page_with_no_backend_beside_it_is_said_so() {
+    dir = scratch("bare")
+
+    make_dir("{dir}/src")
+    write_file("{dir}/src/home.maca",
+               "main() -> Element =>\n    div(class=\"card\" \"hello\")\n")
+
+    said = scaffolded("{dir}/src/home.maca", "{dir}/out")
+
+    carries(said, "no backend.maca",
+            "a scaffold that cannot answer `maca_run` names what it lacks")
+    holds(dir, "out/src-tauri/tauri.conf.json")
+    assert(!file_exists("{dir}/out/src-tauri/bin/backend"),
+           "and it writes no binary it did not build")
+}
+
+test_the_window_is_named_after_the_file_when_nothing_else_names_it() {
+    dir = scratch("stem")
+
+    make_dir("{dir}/src")
+    write_file("{dir}/src/home.maca",
+               "main() -> Element =>\n    div(class=\"card\" \"hello\")\n")
+    scaffolded("{dir}/src/home.maca", "{dir}/out")
+
+    conf = read_file("{dir}/out/src-tauri/tauri.conf.json")
+
+    carries(conf, "\"productName\": \"home\"", "the file's stem names it")
+    carries(conf, "\"identifier\": \"dev.maca.home\"",
+            "and the crate is named the same, made safe for an identifier")
+}
+
+test_a_stem_no_crate_could_be_named_after_is_made_into_one() {
+    dir = scratch("odd")
+
+    make_dir("{dir}/src")
+    write_file("{dir}/src/1-My App.maca",
+               "main() -> Element =>\n    div(class=\"card\" \"hello\")\n")
+    scaffolded("{dir}/src/1-My App.maca", "{dir}/out")
+
+    carries(read_file("{dir}/out/src-tauri/Cargo.toml"),
+            "name = \"_1_my_app\"",
+            "cargo takes a lowercase identifier, so the stem is made into one")
+}
+
+test_the_bridge_calls_the_command_under_a_tauri_runtime() {
+    if !have("node") {
+        return
+    }
+
+    dir = scratch("bridge")
+
+    make_dir("{dir}/src")
+    write_file("{dir}/src/home.maca",
+               "main() -> Element =>\n    div(class=\"card\" \"hello\")\n")
+    scaffolded("{dir}/src/home.maca", "{dir}/out")
+    write_file("{dir}/probe.js",
+               "globalThis.__TAURI__ = {{ core: {{ invoke: (c, a) =>"
+                   ++ " c + \":\" + a.arg }} }};\n"
+                   ++ "require(\"{dir}/out/dist/bridge.js\");\n"
+                   ++ "macaInvoke(41).then(r => console.log(r));\n")
+
+    assert_eq(capture("node", ["{dir}/probe.js"]).trim(), "maca_run:41",
+              "the bridge names the command and hands it the argument, "
+                  ++ "as a string")
+}
+
+test_the_bridge_says_so_where_there_is_no_tauri_runtime() {
+    if !have("node") {
+        return
+    }
+
+    dir = scratch("nobridge")
+
+    make_dir("{dir}/src")
+    write_file("{dir}/src/home.maca",
+               "main() -> Element =>\n    div(class=\"card\" \"hello\")\n")
+    scaffolded("{dir}/src/home.maca", "{dir}/out")
+    write_file("{dir}/probe.js",
+               "require(\"{dir}/out/dist/bridge.js\");\n"
+                   ++ "macaInvoke(1).then(r => console.log(r));\n")
+
+    assert_eq(capture("node", ["{dir}/probe.js"]).trim(), "(no tauri runtime)",
+              "a page opened in a browser is told, not left hanging")
+}

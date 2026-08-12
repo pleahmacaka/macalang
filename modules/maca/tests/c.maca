@@ -318,15 +318,16 @@ test_a_shift_lowers_to_the_c_shift() {
            "not a comparison against nothing and a number thrown away")
 }
 
-test_a_local_that_holds_a_function_is_declared_as_a_pointer_to_one() {
+test_a_local_that_holds_a_function_is_declared_as_a_closure() {
     made = built_c("main() -> int {{\n    inc = n => n + 1\n"
                    ++ "    info(\"{{inc(41)}}\")\n    0\n}}")
 
-    assert(made.index_of("long (*inc)(long) = maca_lambda_0") >= 0,
-           "the name sits inside the parentheses, over the real parameter"
-               ++ " list: {made}")
-    assert(made.index_of("(*)(") < 0,
-           "a declarator with no name inside it is not C: {made}")
+    assert(made.index_of("MacaFn inc = (MacaFn){{ (void*)maca_lambda_0,"
+                             ++ " (MacaList){{0, 0}} }}") >= 0,
+           "the lifted function is wrapped with an empty"
+               ++ " environment: {made}")
+    assert(made.index_of("MacaFn _c = inc; long _a0 = 41;") >= 0,
+           "and the call binds the value and its argument once: {made}")
 }
 
 test_a_parameter_nothing_declared_is_what_its_callers_pass() {
@@ -361,9 +362,9 @@ test_a_function_kept_in_a_field_is_called_through_the_field() {
                    ++ "    r = Route {{ path = \"/\", handle = home }}\n"
                    ++ "    r.handle(\"x\") == \"x\" ? 0 : 1\n}}")
 
-    assert(made.index_of("const char* (*handle)(const char*); }} Route;") >= 0,
-           "the field is a pointer to a function: {made}")
-    assert(made.index_of("r.handle(\"x\")") >= 0,
+    assert(made.index_of("MacaFn handle; }} Route;") >= 0,
+           "the field is a function and what it captured: {made}")
+    assert(made.index_of("MacaFn _c = r.handle;") >= 0,
            "and the call reads the field it is stored in: {made}")
     assert(made.index_of(" handle(r,") < 0,
            "rather than a function of that name the module never declared")
@@ -395,7 +396,7 @@ test_a_generic_calling_a_generic_passes_on_its_element_type() {
                    ++ " == \"a\" ? 0 : 1\n}}")
 
     assert(made.index_of("Row at_of__arrRow_fnstr_int(MacaList xs,"
-                             ++ " const char* (*k)(Row), long i)") >= 0,
+                             ++ " MacaFn k, long i)") >= 0,
            "the inner call was specialised at the outer element type: {made}")
     assert(made.index_of("arrany") < 0,
            "not at the variable the generic body still spells: {made}")

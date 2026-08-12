@@ -109,7 +109,7 @@ usage() -> int {
          ++ "\nwith no file, build/run/test/check are about the package the directory holds:\n"
          ++ "  its [[bin]], chosen with --bin <name> or [build] bin\n"
          ++ "\nbuild targets: native (default), --target nix | js | rust "
-         ++ "| jvm | wasm | embedded\n"
+         ++ "| jvm | tauri | wasm | embedded\n"
          ++ "\n[build] in maca.toml declares target, out, mcu, classpath, cflags and\n"
          ++ "  bin, so a project builds by\n"
          ++ "  saying `maca build`; a flag on the line still wins\n"
@@ -710,13 +710,15 @@ build_out(src: str, out: str, target: str, mcu: str, cp: str) -> int {
         build_wasm(src, out)
     } else if target == "js" {
         build_page(src, out)
+    } else if target == "tauri" {
+        build_tauri(src, out)
     } else if target == "rust" || target == "nix" {
         compile_file([src, out, target])
     } else if target == "jvm" {
         build_classes(src, out, cp)
     } else {
         err("maca: no target `{target}`. Try native, rust, js, nix, "
-            ++ "wasm, embedded or jvm.")
+            ++ "tauri, wasm, embedded or jvm.")
 
         2
     }
@@ -726,6 +728,8 @@ build_out(src: str, out: str, target: str, mcu: str, cp: str) -> int {
 default_out(src: str, target: str) -> str {
     if target == "js" {
         stem_of(src) ++ "-web"
+    } else if target == "tauri" {
+        stem_of(src) ++ "-tauri"
     } else if target == "rust" {
         stem_of(src) ++ ".rs"
     } else {
@@ -1268,6 +1272,132 @@ cross_compile(m: Mcu, dir: str) -> int {
         info("built firmware for {m.name} → {dir}/firmware.elf")
 
         0
+    }
+}
+
+/// The tauri target is the built page beside the Rust shell that hosts it in a desktop window.
+build_tauri(src: str, dir: str) -> int {
+    built = build_page(src, "{dir}/dist")
+
+    built > 0 ? built : tauri_shell(src, dir)
+}
+
+/// The shell is a webview and a bridge, so the whole app is the Maca page it loads and the Maca binary it invokes.
+tauri_shell(src: str, dir: str) -> int {
+    st = "{dir}/src-tauri"
+    index = "{dir}/dist/index.html"
+    name = crate_ident(stem_of(src))
+
+    write_file("{dir}/dist/bridge.js", tauri_bridge())
+    write_file(index,
+               read_file(index)
+                   .replace("</body>",
+                            "<script src=\"bridge.js\"></script>\n</body>"))
+    make_dir("{st}/src")
+    write_file("{st}/Cargo.toml", tauri_cargo(name))
+    write_file("{st}/build.rs", "fn main() {{\n    tauri_build::build()\n}}\n")
+    write_file("{st}/tauri.conf.json",
+               tauri_conf(name, page_setting(chain_of(src), "title",
+                                             stem_of(src))))
+    write_file("{st}/src/main.rs", tauri_main_rs())
+
+    built = tauri_backend(src, st)
+
+    built > 0 ? built : tauri_scaffolded(src, dir, st)
+}
+
+/// The `backend.maca` beside the page is the native command the bridge invokes, so a desktop app's back end is Maca too.
+tauri_backend(src: str, st: str) -> int {
+    backend = dir_of(src) ++ "backend.maca"
+
+    if file_exists(backend) {
+        make_dir("{st}/bin")
+
+        build_binary(backend, "{st}/bin/backend")
+    } else {
+        0
+    }
+}
+
+/// This compiler writes the scaffold and stops there, because turning it into a desktop app is `cargo tauri build`, which needs the Tauri CLI and a system webview.
+tauri_scaffolded(src: str, dir: str, st: str) -> int {
+    note = file_exists(dir_of(src) ++ "backend.maca") ? ""
+        : " (no backend.maca beside it, so `maca_run` has nothing to run)"
+
+    info("scaffolded {dir}{note}\n  cd {st} && cargo tauri build   "
+         ++ "# needs the Tauri CLI and a system webview")
+
+    0
+}
+
+tauri_bridge() -> str =>
+    "globalThis.macaInvoke = async (arg) => {{\n"
+        ++ "  const t = globalThis.__TAURI__;\n"
+        ++ "  if (t && t.core && t.core.invoke) {{\n"
+        ++ "    return t.core.invoke('maca_run', {{ arg: String(arg) }});\n"
+        ++ "  }}\n"
+        ++ "  if (t && t.invoke) {{\n"
+        ++ "    return t.invoke('maca_run', {{ arg: String(arg) }});\n"
+        ++ "  }}\n"
+        ++ "  return '(no tauri runtime)';\n"
+        ++ "}};\n"
+
+tauri_cargo(name: str) -> str =>
+    "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n"
+        ++ "edition = \"2021\"\n\n[build-dependencies]\n"
+        ++ "tauri-build = {{ version = \"2\", features = [] }}\n\n"
+        ++ "[dependencies]\ntauri = {{ version = \"2\", features = [] }}\n\n"
+        ++ "[[bin]]\nname = \"{name}\"\npath = \"src/main.rs\"\n"
+
+tauri_conf(name: str, title: str) -> str =>
+    "{{\n  \"productName\": \"{title}\",\n  \"version\": \"0.1.0\",\n"
+        ++ "  \"identifier\": \"dev.maca.{name}\",\n"
+        ++ "  \"build\": {{ \"frontendDist\": \"../dist\" }},\n"
+        ++ "  \"app\": {{\n    \"windows\": [{{ \"title\": \"{title}\", "
+        ++ "\"width\": 900, \"height\": 640, \"resizable\": true }}],\n"
+        ++ "    \"security\": {{ \"csp\": null }}\n  }},\n"
+        ++ "  \"bundle\": {{ \"active\": true, \"targets\": \"all\" }}\n}}\n"
+
+tauri_main_rs() -> str =>
+    "#![cfg_attr(not(debug_assertions), windows_subsystem = \"windows\")]\n"
+        ++ "use std::process::Command;\n\n#[tauri::command]\n"
+        ++ "fn maca_run(arg: String) -> String {{\n"
+        ++ "    let exe = std::env::current_exe()\n"
+        ++ "        .ok()\n"
+        ++ "        .and_then(|p| p.parent()"
+        ++ ".map(|d| d.join(\"bin\").join(\"backend\")))\n"
+        ++ "        .unwrap_or_else(|| "
+        ++ "std::path::PathBuf::from(\"backend\"));\n"
+        ++ "    match Command::new(&exe).arg(&arg).output() {{\n"
+        ++ "        Ok(o) => "
+        ++ "String::from_utf8_lossy(&o.stdout).trim().to_string(),\n"
+        ++ "        Err(e) => format!(\"error: {{e}}\"),\n"
+        ++ "    }}\n}}\n\nfn main() {{\n"
+        ++ "    tauri::Builder::default()\n"
+        ++ "        .invoke_handler(tauri::generate_handler![maca_run])\n"
+        ++ "        .run(tauri::generate_context!())\n"
+        ++ "        .expect(\"error while running tauri application\");\n}}\n"
+
+/// A crate name is the file stem with every character but a letter or a digit turned into `_`.
+crate_ident(stem: str) -> str {
+    id = ident_chars(stem.chars(), 0, [])
+
+    if id == "" {
+        "app"
+    } else if id.at(0).is_ascii_digit() {
+        "_" ++ id
+    } else {
+        id
+    }
+}
+
+ident_chars(cs: str[], i: int, acc: str[]) -> str {
+    if i >= cs.length() {
+        acc.join("")
+    } else if cs.get(i).is_alpha() || cs.get(i).is_ascii_digit() {
+        ident_chars(cs, i + 1, acc ++ [cs.get(i).lower()])
+    } else {
+        ident_chars(cs, i + 1, acc ++ ["_"])
     }
 }
 

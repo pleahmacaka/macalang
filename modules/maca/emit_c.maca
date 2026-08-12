@@ -21,7 +21,7 @@ emit_expr(e: Expr) -> str =>
         EFloat   => e.text
         EStr     => quoted(e.text)
         EBool    => emit_bool(e)
-        EIdent   => c_id(e.text)
+        EIdent   => c_ident_value(e)
         ECall    => emit_call(e)
         EBinary  => emit_binary(e)
         ETernary => emit_ternary(e)
@@ -286,7 +286,8 @@ emit_method(e: Expr) -> str {
     el = c_elem_of(rty)
 
     if e.ival == 1 {
-        "{recv}.{c_id(e.text)}({emit_args(e.children, 1)})"
+        c_indirect("{recv}.{c_id(e.text)}", type_c(e.ty),
+                   e.children.slice(1, e.children.length()))
     } else if e.text == "splat" && is_vector_type(e.children.get(0).text) {
         c_vec_splat(e.children.get(0).text, emit_expr(e.children.get(1)))
     } else if e.text == "sum" && is_vector_type(rty) {
@@ -428,12 +429,16 @@ c_ufcs_args(recv: str, cs: Expr[]) -> str {
     }
 }
 
-c_apply(f: Expr, el: str, arg: str) -> str {
-    if f.kind != ELambda {
-        "{emit_expr(f)}({arg})"
-    } else {
+c_apply(f: Expr, el: str, arg: str, ret: str) -> str {
+    if f.kind == ELambda {
         "({{ {type_c(el)} {c_id(f.children.get(0).text)} = {arg};"
             ++ " {emit_expr(lambda_body(f))}; }})"
+    } else if f.ival == 3 {
+        c_call_value(c_id(f.text), ret, [type_c(el)], [arg])
+    } else if f.kind == EIdent {
+        "{c_id(f.text)}({arg})"
+    } else {
+        "{emit_expr(f)}({arg})"
     }
 }
 
@@ -442,7 +447,8 @@ emit_map(e: Expr) -> str {
     el = c_elem_of(e.children.get(0).ty)
     cell = c_cell_at("_m", el, "_i")
     f = e.children.get(1)
-    got = c_cell_of(c_elem_of(e.ty), c_apply(f, el, cell))
+    got = c_cell_of(c_elem_of(e.ty),
+                    c_apply(f, el, cell, type_c(c_elem_of(e.ty))))
 
     "({{ MacaList _m = {src}; MacaList _r; _r.len = _m.len;"
         ++ " _r.data = maca_cells((_r.len ? _r.len : 1) * sizeof(long));"
@@ -454,7 +460,7 @@ emit_filter(e: Expr) -> str {
     src = emit_expr(e.children.get(0))
     el = c_elem_of(e.children.get(0).ty)
     cell = c_cell_at("_m", el, "_i")
-    kept = c_apply(e.children.get(1), el, cell)
+    kept = c_apply(e.children.get(1), el, cell, "long")
 
     "({{ MacaList _m = {src}; MacaList _r; _r.len = 0;"
         ++ " _r.data = maca_cells((_m.len ? _m.len : 1) * sizeof(long));"
@@ -475,12 +481,16 @@ emit_reduce(e: Expr) -> str {
 }
 
 c_apply2(f: Expr, held: str, el: str, cur: str) -> str {
-    if f.kind != ELambda {
-        "{emit_expr(f)}(_acc, {cur})"
-    } else {
+    if f.kind == ELambda {
         "({{ {held} {c_id(f.children.get(0).text)} = _acc;"
             ++ " {type_c(el)} {c_id(f.children.get(1).text)} = {cur};"
             ++ " {emit_expr(lambda_body(f))}; }})"
+    } else if f.ival == 3 {
+        c_call_value(c_id(f.text), held, [held, type_c(el)], ["_acc", cur])
+    } else if f.kind == EIdent {
+        "{c_id(f.text)}(_acc, {cur})"
+    } else {
+        "{emit_expr(f)}(_acc, {cur})"
     }
 }
 
@@ -514,7 +524,14 @@ is_list_type(ty: str) -> bool =>
 emit_call(e: Expr) -> str {
     args = emit_args(e.children, 0)
 
-    if e.text == "map" && e.children.length() == 0 {
+    if e.ival == 2 {
+        c_indirect(c_id(e.text), type_c(e.ty), e.children)
+    } else if e.text == "maca_closure" {
+        c_closure(e)
+    } else if e.text == "maca_cap" {
+        c_cell_at("_maca_env", e.children.get(0).text,
+                  emit_expr(e.children.get(1)))
+    } else if e.text == "map" && e.children.length() == 0 {
         "maca_map_new()"
     } else if e.text == "info" {
         "printf(\"%s\\n\", {args})"
@@ -1007,34 +1024,87 @@ emit_unit(e: Expr) -> str =>
 is_fn_type(ty: str) -> bool =>
     ty.index_of(") -> ") >= 0
 
-fn_ret_of(ty: str) -> str =>
-    ty.slice(ty.index_of(") -> ") + 5, ty.length())
+c_decl(ty: str, name: str) -> str =>
+    "{type_c(ty)} {name}"
 
-fn_params_of(ty: str) -> str =>
-    ty.slice(1, ty.index_of(") -> "))
-
-c_decl(ty: str, name: str) -> str {
-    if !is_fn_type(ty) {
-        "{type_c(ty)} {name}"
+/// A function named where a value is wanted becomes a closure with nothing captured.
+c_ident_value(e: Expr) -> str {
+    if is_fn_type(e.ty) && e.ival != 3 {
+        "(MacaFn){{ (void*){c_id(e.text)}, (MacaList){{0, 0}} }}"
     } else {
-        rt = type_c(fn_ret_of(ty))
-        ps = c_fn_params(fn_params_of(ty))
-
-        "{rt} (*{name})({ps})"
+        c_id(e.text)
     }
 }
 
-c_fn_params(ps: str) -> str {
-    at = ps.index_of(", ")
+c_arg_type(a: Expr) -> str =>
+    type_c(a.ty)
 
-    if ps == "" {
-        "void"
-    } else if at < 0 {
-        type_c(ps)
+c_arg_names(n: int, i: int, acc: str[]) -> str[] {
+    if i >= n {
+        acc
     } else {
-        rest = c_fn_params(ps.slice(at + 2, ps.length()))
+        c_arg_names(n, i + 1, acc ++ ["_a{str(i)}"])
+    }
+}
 
-        "{type_c(ps.slice(0, at))}, {rest}"
+c_arg_binds(tys: str[], vals: str[], i: int) -> str {
+    if i >= tys.length() {
+        ""
+    } else {
+        "{tys.get(i)} _a{str(i)} = {vals.get(i)}; "
+            ++ c_arg_binds(tys, vals, i + 1)
+    }
+}
+
+/// A call through a function value casts to the exact shape the captured environment says it has.
+c_call_value(fnv: str, rt: str, tys: str[], vals: str[]) -> str {
+    names = c_arg_names(tys.length(), 0, [])
+    sep = ", "
+    thin_ps = tys.length() == 0 ? "void" : tys.join(sep)
+    fat_ps = (["MacaList"] ++ tys).join(sep)
+    fat = "(({rt}(*)({fat_ps}))_c.fn)({(["_c.env"] ++ names).join(sep)})"
+    thin = "(({rt}(*)({thin_ps}))_c.fn)({names.join(sep)})"
+
+    "({{ MacaFn _c = {fnv}; {c_arg_binds(tys, vals, 0)}"
+        ++ "_c.env.len ? {fat} : {thin}; }})"
+}
+
+c_indirect(fnv: str, rt: str, args: Expr[]) -> str =>
+    c_call_value(fnv, rt, args.map(c_arg_type), args.map(emit_expr))
+
+c_closure(e: Expr) -> str {
+    caps = e.children.slice(1, e.children.length())
+    env = if caps.length() == 0 {
+        "maca_listv(0)"
+    } else {
+        "maca_listv({str(caps.length())}, {c_cap_cells(caps, 0)})"
+    }
+
+    "(MacaFn){{ (void*){c_id(e.children.get(0).text)}, {env} }}"
+}
+
+c_cap_cells(caps: Expr[], i: int) -> str {
+    if i >= caps.length() - 1 {
+        c_cell_of(caps.get(i).ty, emit_expr(caps.get(i)))
+    } else {
+        "{c_cell_of(caps.get(i).ty, emit_expr(caps.get(i)))}, "
+            ++ c_cap_cells(caps, i + 1)
+    }
+}
+
+is_closure_fn(name: str) -> bool =>
+    name.length() > 13 && name.slice(0, 13) == "maca_closure_"
+
+/// A lifted closure reads what it captured from an environment its caller passes first.
+c_sig_params(s: Stmt) -> str {
+    ps = c_params(s.params, 0)
+
+    if !is_closure_fn(s.name) {
+        ps
+    } else if ps == "" {
+        "MacaList _maca_env"
+    } else {
+        "MacaList _maca_env, {ps}"
     }
 }
 
@@ -1043,7 +1113,7 @@ is_map_type(ty: str) -> bool =>
 
 type_c(ty: str) -> str {
     if is_fn_type(ty) {
-        c_decl(ty, "")
+        "MacaFn"
     } else if is_list_type(ty) {
         "MacaList"
     } else if is_map_type(ty) {
@@ -1064,7 +1134,7 @@ type_c(ty: str) -> str {
 }
 
 emit_fn(s: Stmt) -> str {
-    params = c_params(s.params, 0)
+    params = c_sig_params(s)
     made = "{c_ret(s)} {c_name(s)}({params}) "
         ++ "{{ {emit_stmts(s.body, 0, s.ret)} }}"
 
@@ -1287,6 +1357,7 @@ c_preamble() -> str =>
     "static const char* maca_bool_to_str(int b) {{ return b ? \"true\" : \"false\"; }}\n" ++
     "static char* maca_upper(const char* s) {{ size_t n = strlen(s); char* r = malloc(n + 1); for (size_t i = 0; i < n; i++) r[i] = toupper((unsigned char)s[i]); r[n] = 0; return r; }}\n" ++
     "typedef struct {{ long* data; int len; }} MacaList;\n" ++
+    "typedef struct {{ void* fn; MacaList env; }} MacaFn;\n" ++
     "typedef struct {{ MacaList keys; MacaList vals; }} MacaMap;\n" ++
     "static MacaMap maca_map_new(void) {{ MacaMap m; m.keys.data = NULL; m.keys.len = 0; m.vals.data = NULL; m.vals.len = 0; return m; }}\n" ++
     "static int maca_map_at(MacaMap m, const char* k) {{ for (int i = 0; i < m.keys.len; i++) if (strcmp((const char*)m.keys.data[i], k) == 0) return i; return -1; }}\n" ++
@@ -1435,7 +1506,8 @@ c_http() -> str =>
     "#define MACA_HTTP_MAX (1 << 20)\n" ++
     "#define MACA_HTTP_IDLE 30\n" ++
     "typedef const char* (*MacaHttpFn)(const char*);\n" ++
-    "typedef struct {{ int fd; MacaHttpFn fn; }} MacaHttpConn;\n" ++
+    "typedef const char* (*MacaHttpFat)(MacaList, const char*);\n" ++
+    "typedef struct {{ int fd; MacaFn fn; }} MacaHttpConn;\n" ++
     "typedef struct {{ char* buf; size_t cap, len; }} MacaHttpBuf;\n" ++
     "static int maca_http_write(int fd, const char* b, size_t n) {{ size_t off = 0; while (off < n) {{ ssize_t w = send(fd, b + off, n - off, MSG_NOSIGNAL); if (w <= 0) return -1; off += (size_t)w; }} return 0; }}\n" ++
     "static long maca_http_head_end(const char* b, size_t n) {{ for (size_t i = 0; i + 3 < n; i++) if (b[i] == '\\r' && b[i+1] == '\\n' && b[i+2] == '\\r' && b[i+3] == '\\n') return (long)(i + 4); for (size_t i = 0; i + 1 < n; i++) if (b[i] == '\\n' && b[i+1] == '\\n') return (long)(i + 2); return -1; }}\n" ++
@@ -1444,11 +1516,11 @@ c_http() -> str =>
     "static int maca_http_closing(const char* m) {{ for (const char* p = m; *p; p++) {{ if (p != m && p[-1] != '\\n') continue; if (p[0] == '\\r' || p[0] == '\\n') break; if (strncasecmp(p, \"connection:\", 11) != 0) continue; const char* v = p + 11; while (*v == ' ' || *v == '\\t') v++; return strncasecmp(v, \"close\", 5) == 0; }} return 0; }}\n" ++
     "static void maca_http_refuse(int fd, const char* line, const char* body) {{ char out[256]; int n = snprintf(out, sizeof(out), \"HTTP/1.1 %s\\r\\nContent-Type: text/plain; charset=utf-8\\r\\nContent-Length: %d\\r\\nConnection: close\\r\\n\\r\\n%s\", line, (int)strlen(body), body); if (n > 0) maca_http_write(fd, out, (size_t)n); }}\n" ++
     "static int maca_http_take(int fd, MacaHttpBuf* b, char** out) {{ for (;;) {{ long head = maca_http_head_end(b->buf, b->len); if (head >= 0) {{ if (maca_http_chunked(b->buf, (size_t)head)) return 3; long want = maca_http_length(b->buf, (size_t)head); if (want < 0) return 4; if (head + want > (long)MACA_HTTP_MAX) return 2; if ((long)b->len >= head + want) {{ size_t take = (size_t)(head + want); char* req = malloc(take + 1); if (!req) return 1; memcpy(req, b->buf, take); req[take] = 0; memmove(b->buf, b->buf + take, b->len - take); b->len -= take; *out = req; return 0; }} }} if (b->len >= MACA_HTTP_MAX) return 2; if (b->len + 1 >= b->cap) {{ size_t cap = b->cap ? b->cap * 2 : 8192; char* g = realloc(b->buf, cap); if (!g) return 1; b->buf = g; b->cap = cap; }} ssize_t r = recv(fd, b->buf + b->len, b->cap - b->len - 1, 0); if (r <= 0) return 1; b->len += (size_t)r; b->buf[b->len] = 0; }} }}\n" ++
-    "static void* maca_http_client(void* arg) {{ MacaHttpConn* c = (MacaHttpConn*)arg; int fd = c->fd; MacaHttpFn fn = c->fn; free(c); struct timeval tv; tv.tv_sec = MACA_HTTP_IDLE; tv.tv_usec = 0; setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)); setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)); MacaHttpBuf b; b.buf = NULL; b.cap = 0; b.len = 0; for (;;) {{ char* req = NULL; int st = maca_http_take(fd, &b, &req); if (st == 2) {{ maca_http_refuse(fd, \"413 Payload Too Large\", \"413 Payload Too Large\\n\"); break; }} if (st == 3) {{ maca_http_refuse(fd, \"501 Not Implemented\", \"501 Not Implemented\\n\"); break; }} if (st == 4) {{ maca_http_refuse(fd, \"400 Bad Request\", \"400 Bad Request\\n\"); break; }} if (st != 0) break; int done = maca_http_closing(req); const char* reply = fn(req); free(req); if (!reply) break; if (maca_http_write(fd, reply, strlen(reply))) break; if (done || maca_http_closing(reply)) break; }} free(b.buf); close(fd); return NULL; }}\n" ++
+    "static void* maca_http_client(void* arg) {{ MacaHttpConn* c = (MacaHttpConn*)arg; int fd = c->fd; MacaFn fn = c->fn; free(c); struct timeval tv; tv.tv_sec = MACA_HTTP_IDLE; tv.tv_usec = 0; setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)); setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)); MacaHttpBuf b; b.buf = NULL; b.cap = 0; b.len = 0; for (;;) {{ char* req = NULL; int st = maca_http_take(fd, &b, &req); if (st == 2) {{ maca_http_refuse(fd, \"413 Payload Too Large\", \"413 Payload Too Large\\n\"); break; }} if (st == 3) {{ maca_http_refuse(fd, \"501 Not Implemented\", \"501 Not Implemented\\n\"); break; }} if (st == 4) {{ maca_http_refuse(fd, \"400 Bad Request\", \"400 Bad Request\\n\"); break; }} if (st != 0) break; int done = maca_http_closing(req); const char* reply = fn.env.len ? ((MacaHttpFat)fn.fn)(fn.env, req) : ((MacaHttpFn)fn.fn)(req); free(req); if (!reply) break; if (maca_http_write(fd, reply, strlen(reply))) break; if (done || maca_http_closing(reply)) break; }} free(b.buf); close(fd); return NULL; }}\n" ++
     "long http_listen(long port) {{ int srv = socket(AF_INET, SOCK_STREAM, 0); if (srv < 0) return -1; int one = 1; setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)); struct sockaddr_in a; memset(&a, 0, sizeof(a)); a.sin_family = AF_INET; a.sin_addr.s_addr = INADDR_ANY; a.sin_port = htons((unsigned short)port); if (bind(srv, (struct sockaddr*)&a, sizeof(a)) < 0) {{ close(srv); return -2; }} if (listen(srv, 512) < 0) {{ close(srv); return -3; }} return srv; }}\n" ++
-    "static int maca_http_serve(int srv, MacaHttpFn fn) {{ if (!fn) return -1; for (;;) {{ int fd = accept(srv, 0, 0); if (fd < 0) continue; int one = 1; setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)); MacaHttpConn* c = malloc(sizeof(MacaHttpConn)); if (!c) {{ close(fd); continue; }} c->fd = fd; c->fn = fn; pthread_t th; if (pthread_create(&th, 0, maca_http_client, c) != 0) {{ free(c); close(fd); continue; }} pthread_detach(th); }} return 0; }}\n" ++
+    "static int maca_http_serve(int srv, MacaFn fn) {{ if (!fn.fn) return -1; for (;;) {{ int fd = accept(srv, 0, 0); if (fd < 0) continue; int one = 1; setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)); MacaHttpConn* c = malloc(sizeof(MacaHttpConn)); if (!c) {{ close(fd); continue; }} c->fd = fd; c->fn = fn; pthread_t th; if (pthread_create(&th, 0, maca_http_client, c) != 0) {{ free(c); close(fd); continue; }} pthread_detach(th); }} return 0; }}\n" ++
     "const char* http_fetch(const char* host, long port, const char* request) {{ int fd = socket(AF_INET, SOCK_STREAM, 0); if (fd < 0) return \"\"; struct sockaddr_in a; memset(&a, 0, sizeof(a)); a.sin_family = AF_INET; a.sin_port = htons((unsigned short)port); inet_pton(AF_INET, host && *host ? host : \"127.0.0.1\", &a.sin_addr); if (connect(fd, (struct sockaddr*)&a, sizeof(a)) < 0) {{ close(fd); return \"\"; }} if (maca_http_write(fd, request, strlen(request))) {{ close(fd); return \"\"; }} shutdown(fd, SHUT_WR); size_t cap = 8192, n = 0; char* buf = malloc(cap); if (!buf) {{ close(fd); return \"\"; }} for (;;) {{ if (n + 1 >= cap) {{ cap *= 2; char* g = realloc(buf, cap); if (!g) {{ free(buf); close(fd); return \"\"; }} buf = g; }} ssize_t r = recv(fd, buf + n, cap - n - 1, 0); if (r <= 0) break; n += (size_t)r; }} buf[n] = 0; close(fd); return buf; }}\n" ++
-    "long http_accept_loop(long srv, long handler) {{ return maca_http_serve(srv, (MacaHttpFn)(intptr_t)handler); }}\n"
+    "long http_accept_loop(long srv, MacaFn handler) {{ return maca_http_serve(srv, handler); }}\n"
 
 c_mqtt(protos: str) -> str {
     if protos.index_of("mqtt_") < 0 {
@@ -1674,7 +1746,7 @@ emit_bodies(items: Stmt[], i: int) -> str {
 }
 
 emit_proto(s: Stmt) -> str =>
-    "{c_ret(s)} {c_name(s)}({c_params(s.params, 0)});"
+    "{c_ret(s)} {c_name(s)}({c_sig_params(s)});"
 
 emit_item(s: Stmt) -> str {
     if s.kind == SRecord {

@@ -166,6 +166,13 @@ test_a_generic_names_its_own_element_type() {
         "a type variable bound inside a parameter reaches the call it makes")
 }
 
+test_a_function_can_be_kept_in_a_record_field() {
+    assert_eq(suite_code("crates/driver/tests/programs/function_fields.maca"),
+        0,
+        "a route table, a reducer and a builder, each called through the "
+            ++ "field that holds it, and a lambda that carried a capture in")
+}
+
 test_the_native_back_end_regressions_still_hold() {
     assert_eq(suite_code("crates/driver/tests/programs/regressions.maca"), 0,
         "list patterns, pipes and a record literal nothing declared")

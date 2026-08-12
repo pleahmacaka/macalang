@@ -20,6 +20,24 @@ page(q: str) -> Res => Res { code = 200, body = "<h1>{q}</h1>" }
 
 answer(handler, q: str) -> Res => handler(q)
 
+count_if(xs: int[], pred) -> int => xs.filter(pred).length()
+
+mapped_by(xs: int[], f) -> int[] => xs.map(f)
+
+folded_by(xs: int[], f, seed: int) -> int => xs.reduce(seed, f)
+
+big(n: int) -> bool => n > 2
+
+twice(n: int) -> int => n * 2
+
+plus(a: int, b: int) -> int => a + b
+
+shown(xs: int[], f) -> str {
+    f(xs)
+
+    "ran"
+}
+
 pick(rs: Route[], path: str, q: str, i: int) -> str {
     if i >= rs.length() {
         "404"
@@ -109,7 +127,25 @@ test_the_caller_decides_what_an_inferred_closure_returns() {
     assert_eq(r.body, "<h1>Title</h1>", "with its fields intact")
 }
 
+test_a_function_parameter_reaches_a_list_method() {
+    assert_eq(str(count_if([1, 2, 3, 4], big)), "2", "filter called through")
+    assert_eq(mapped_by([1, 2], twice).map(v => str(v)).join(","), "2,4",
+              "and map, which takes what the element is")
+    assert_eq(str(folded_by([1, 2, 3], plus, 0)), "6",
+              "and reduce, which takes the answer so far as well")
+}
+
+test_a_stored_lambda_may_loop_inside_itself() {
+    floor = 2
+    step = xs => (for x in xs { info("floor+{x}: {x + floor}") })
+
+    assert_eq(shown([1], step), "ran",
+              "the loop names its own element, so that is not a capture")
+}
+
 main() -> int {
+    test_a_function_parameter_reaches_a_list_method()
+    test_a_stored_lambda_may_loop_inside_itself()
     test_a_stored_lambda_gets_all_its_parameter_types()
     test_the_caller_decides_what_an_inferred_closure_returns()
     test_a_field_holds_a_named_function()
