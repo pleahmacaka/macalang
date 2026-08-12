@@ -2557,7 +2557,7 @@ item_start(items: Stmt[], i: int) -> int =>
 
 cut_out(src: str, from: int, upto: int) -> str {
     cs = src.chars()
-    tail = upto < 0 ? [] : cs.slice(upto, cs.length())
+    tail: str[] = upto < 0 ? [] : cs.slice(upto, cs.length())
 
     cs.slice(0, from).join("") ++ tail.join("")
 }
