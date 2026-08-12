@@ -320,3 +320,134 @@ also implement to self-host. That is the whole argument for keeping stage-0
 small: type-system work that would otherwise grow `maca-core` (full HM over
 inferred bindings, row unification, generic monomorphization) belongs in
 `modules/maca/check.maca`, where it is written once, in Maca, instead of twice.
+
+## The seed: what compiles the compiler once there is no Rust
+
+Everything above assumes a working `maca` on PATH. Deleting `crates/` takes
+that assumption away, and the question left is the only one that matters:
+**on a clean checkout, with no Maca and no Rust, what produces the first
+binary?**
+
+The bootstrap itself is already closed. `modules/maca/tests/bootstrap.maca`
+proves the compiler, given any working `maca`, rebuilds itself byte for byte.
+So the seed is not a compiler problem. It is a distribution problem: put one
+artefact in reach of a stranger's machine, and the fixed point does the rest.
+
+### The three candidates, measured
+
+| | what is committed | what a fresh machine needs | how a reviewer verifies it |
+|---|---|---|---|
+| **committed C** | one `.c` file, 734,123 bytes (147,689 gzipped) | a C compiler | regenerate it and `cmp` |
+| a released tarball | nothing | a network, and trust in the release | download and diff against a local build |
+| a committed binary | one ELF/Mach-O/PE per platform, ~1.1 MB each | nothing, per platform | it cannot be read; only rebuilt and compared |
+
+**Committed C wins, and not narrowly.** Three reasons, in order of weight.
+
+1. **A C compiler is a far weaker requirement than a Rust toolchain.** Every
+   platform this repository targets already has one, and the C is
+   freestanding: `emit_c.maca` emits a single translation unit whose only
+   dependency is libc. No build system, no package manager, no network.
+2. **It is auditable.** A binary blob in a repository is a thing a reviewer
+   takes on faith. A `.c` file is text: it diffs, it reviews, and, decisively,
+   **a reviewer regenerates it and compares.** That is the trusting-trust
+   answer this project can actually give.
+3. **It is one file.** No per-platform matrix, no release infrastructure, no
+   asset that can 404.
+
+The cost is honest and small: 734 KB of generated text in the tree, and a
+regeneration step on every change to `modules/maca/*.maca`. In exchange the
+repository builds from nothing but `cc`.
+
+### Measured, not proposed
+
+The whole path was run end to end before it was written down:
+
+```sh
+maca apps/maca1/main.maca bootstrap/maca.c   # 734,123 bytes
+cc -O1 -o maca bootstrap/maca.c              # 4.2 s, no flags, no libraries
+mkdir one two
+(cd one && ../maca build ../apps/maca1/main.maca -o maca)
+(cd two && ../one/maca build ../apps/maca1/main.maca -o maca)
+cmp one/maca two/maca                        # identical
+```
+
+A compiler built from the committed C reaches the same fixed point as one
+built by stage-0. The seed is a real seed, not a plausible one.
+
+(The 136152-byte figure quoted earlier in this file is stale by roughly five
+times; the compiler has grown since it was written. 734,123 is the measurement
+as of 2026-08-12.)
+
+### What the tree gains and loses
+
+- `bootstrap/maca.c` is committed, and a suite asserts it is **current**:
+  regenerate it with the compiler in the tree and require a byte-identical
+  result. A stale seed is then a red test rather than a surprise on someone
+  else's machine.
+- A stale seed is also *recoverable* without ceremony, because regenerating it
+  is one command that any already-working `maca` can run.
+- Nothing else in the tree changes. `apps/maca1` already is the compiler.
+
+### What CI does on a clean checkout
+
+Four steps, no Rust, no cargo cache:
+
+```sh
+cc -O1 -o /tmp/maca0 bootstrap/maca.c            # the seed
+/tmp/maca0 build apps/maca1/main.maca -o /tmp/maca1   # the compiler
+/tmp/maca1 apps/maca1/main.maca /tmp/round2.c
+cmp bootstrap/maca.c /tmp/round2.c               # the seed is current
+```
+
+and then the suites, run by `/tmp/maca1`. The `lint` job (`cargo fmt`,
+`cargo clippy`) goes away with the crates it lints; `apps/lint/lint.maca`
+already is its replacement and already runs.
+
+### What happens to `selfhost.rs`, and what is genuinely lost
+
+`crates/driver/tests/selfhost.rs` is a **differential** gate: it compiles one
+source with stage-0 and with stage-1 and requires the two programs to agree.
+Once stage-0 is gone there is no second implementation, so differential
+testing is not weakened, it is **impossible**. Saying otherwise would be the
+one dishonest sentence in this file.
+
+What is lost, precisely: an independent oracle. Today a bug that stage-1's
+checker and stage-1's emitter *share* is caught, because stage-0 disagrees.
+After the deletion, a compiler that is consistently wrong is consistently
+wrong in both rounds of the fixed point, and `cmp` says nothing.
+
+What replaces it is weaker, and worth naming honestly:
+
+1. **The fixed point** (`bootstrap.maca`) catches a compiler that is
+   *unstable*, which is the failure mode most miscompilations actually have.
+   It says nothing about one that is stably wrong.
+2. **Golden output.** `apps/examples` is 39 programs whose answers are
+   asserted; `apps/examples/bad/` is the diagnostics that must be refused.
+   These are an oracle written by hand instead of by a second compiler, and
+   they are the real replacement.
+3. **The seed as a frozen second implementation.** This is the part worth
+   noticing. The committed C *is* the previous compiler, in a form that still
+   runs. Building today's source with the seed and with the current compiler
+   and comparing the output is a differential test against the compiler of
+   the last regeneration. It is not independent, but it is not nothing: it
+   catches a change that alters behaviour without anyone meaning to, which is
+   most of what the stage-0 diff catches in practice.
+
+Point 3 is the honest answer to "what replaces the differential gate", and it
+costs nothing extra, because the seed has to be committed anyway.
+
+### What is not settled
+
+- **How often the seed is regenerated.** Every commit that touches
+  `modules/maca/` makes it stale, which is a 734 KB diff each time and would
+  dominate the history. Regenerating on release only keeps history readable
+  but lets the seed drift far from `main`, so a clean checkout would build an
+  old compiler and then bootstrap forward. Both are workable; the second is
+  probably right, and it is a judgement about repository hygiene rather than
+  about correctness.
+- **Cross-platform C.** The emitted C is POSIX: `fork`/`execvp`, `dirent.h`,
+  `unistd.h`. It has not been built with MSVC. Windows almost certainly needs
+  either a POSIX shim or mingw, and that is untested.
+- **Where the fixtures under `crates/driver/tests/programs/` go.** Several
+  Maca suites read them by path, so they outlive the crate that named them and
+  need a home that is not inside `crates/`.

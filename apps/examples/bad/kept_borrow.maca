@@ -1,0 +1,15 @@
+import rust "gpui::Window"
+
+Holder = {
+    saved: int
+}
+
+Holder : Keep = {
+    keep = (self, w: Window) -> Window => w
+}
+
+main() -> int {
+    h = Holder { saved = 0 }
+    info("{h.saved}")
+    0
+}

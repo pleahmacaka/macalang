@@ -545,8 +545,8 @@ emit_call(e: Expr) -> str {
         "maca_read_file({args})"
     } else if e.text == "write_file" {
         "maca_write_file({args})"
-    } else if e.text == "read_line" {
-        "maca_input(\"\")"
+    } else if e.text == "read_line" || e.text == "at_eof" {
+        e.text == "at_eof" ? "maca_at_eof()" : "maca_input(\"\")"
     } else if e.text == "exec" {
         "maca_exec({args})"
     } else if e.text == "assert" {
@@ -1069,8 +1069,12 @@ c_call_value(fnv: str, rt: str, tys: str[], vals: str[]) -> str {
         ++ "_c.env.len ? {fat} : {thin}; }})"
 }
 
-c_indirect(fnv: str, rt: str, args: Expr[]) -> str =>
-    c_call_value(fnv, rt, args.map(c_arg_type), args.map(emit_expr))
+c_indirect(fnv: str, rt: str, args: Expr[]) -> str {
+    tys: str[] = args.map(c_arg_type)
+    vals: str[] = args.map(emit_expr)
+
+    c_call_value(fnv, rt, tys, vals)
+}
 
 c_closure(e: Expr) -> str {
     caps = e.children.slice(1, e.children.length())
@@ -1420,7 +1424,7 @@ c_preamble() -> str =>
     "static char* maca_now_iso(void) {{ time_t t = time(NULL); struct tm g; gmtime_r(&t, &g); char* r = malloc(32); strftime(r, 32, \"%Y-%m-%dT%H:%M:%SZ\", &g); return r; }}\n" ++
     "static char* maca_format_time(long ms, const char* fmt) {{ time_t t = (time_t)(ms / 1000); struct tm g; gmtime_r(&t, &g); char* r = malloc(128); if (!strftime(r, 128, fmt, &g)) r[0] = 0; return r; }}\n" ++
     "static void maca_sleep_ms(int ms) {{ if (ms > 0) usleep((unsigned)ms * 1000); }}\n" ++
-    "static char* maca_input(const char* prompt) {{ if (prompt && *prompt) {{ printf(\"%s\", prompt); fflush(stdout); }} size_t cap = 128, n = 0; char* b = malloc(cap); int c; while ((c = fgetc(stdin)) != EOF && c != '\\n') {{ if (n + 1 >= cap) {{ cap *= 2; char* g = malloc(cap); memcpy(g, b, n); b = g; }} b[n++] = (char)c; }} b[n] = 0; return b; }}\n" ++
+    "static char* maca_input(const char* prompt) {{ if (prompt && *prompt) {{ printf(\"%s\", prompt); fflush(stdout); }} size_t cap = 128, n = 0; char* b = malloc(cap); int c; while ((c = fgetc(stdin)) != EOF && c != '\\n') {{ if (n + 1 >= cap) {{ cap *= 2; char* g = malloc(cap); memcpy(g, b, n); b = g; }} b[n++] = (char)c; }} b[n] = 0; return b; }}\nstatic int maca_at_eof(void) {{ int c = fgetc(stdin); if (c == EOF) return 1; ungetc(c, stdin); return 0; }}\n" ++
     "static char* maca_attr(const char* name, const char* value) {{ if (!name || !*name) return maca_cat(\"\", \"\"); size_t n = strlen(name), v = strlen(value); char* r = malloc(n + v * 6 + 5); char* w = r; *w++ = ' '; memcpy(w, name, n); w += n; *w++ = '='; *w++ = '\"'; for (size_t i = 0; i < v; i++) {{ char c = value[i]; if (c == '&') {{ memcpy(w, \"&amp;\", 5); w += 5; }} else if (c == '<') {{ memcpy(w, \"&lt;\", 4); w += 4; }} else if (c == '>') {{ memcpy(w, \"&gt;\", 4); w += 4; }} else if (c == '\"') {{ memcpy(w, \"&quot;\", 6); w += 6; }} else {{ *w++ = c; }} }} *w++ = '\"'; *w = 0; return r; }}\n" ++
     "static char* maca_flag(const char* name, int on) {{ if (!on || !name || !*name) return maca_cat(\"\", \"\"); return maca_cat(\" \", name); }}\n" ++
     "static int maca_void_tag(const char* t) {{ const char* v[] = {{\"area\", \"base\", \"br\", \"col\", \"embed\", \"hr\", \"img\", \"input\", \"link\", \"meta\", \"source\", \"track\", \"wbr\", 0}}; for (int i = 0; v[i]; i++) if (strcmp(t, v[i]) == 0) return 1; return 0; }}\n" ++

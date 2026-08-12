@@ -1,0 +1,130 @@
+import std/proc
+import std/fs
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+scratch() -> str {
+    dir = env_or("TMPDIR", "/tmp") ++ "/maca-evals-twin"
+
+    exec("rm", ["-rf", dir])
+    make_dir(dir)
+
+    dir
+}
+
+/// A model that solves one problem, so the count is the harness's own.
+stand_in(dir: str) -> str {
+    at = dir ++ "/model.sh"
+
+    write_file(at, "#!/bin/sh\nif grep -q below_zero \"$1\"; then\n"
+        ++ "  printf '%s\\n' 'below_zero(operations: int[]) -> bool \{' \\\n"
+        ++ "    '    balance = 0' \\\n"
+        ++ "    '    for i in 0..operations.length() \{' \\\n"
+        ++ "    '        balance = balance + operations[i]' \\\n"
+        ++ "    '        if balance < 0 \{ return true \}' \\\n"
+        ++ "    '    \}' \\\n    '    false' \\\n    '\}'\nelse\n"
+        ++ "  echo 'nothing()'\nfi\n")
+    exec("chmod", ["+x", at])
+
+    at
+}
+
+graded(dir: str, model: str, into: str) -> int =>
+    exec("sh", ["-c", "MACA_EVAL_MODEL='{model}' MACA='{maca_bin()}' "
+                          ++ "TMPDIR='{dir}' '{maca_bin()}' run "
+                          ++ "apps/evals/run.maca '{into}'"])
+
+problems() -> str[] =>
+    find("apps/evals/problems", ".maca")
+
+test_every_ported_problem_compiles_as_a_stub() {
+    for at in problems() {
+        assert_eq(str(exec(maca_bin(), ["check", at])), "0",
+                  "{at} does not check")
+    }
+
+    assert(problems().length() >= 20,
+           "only {problems().length()} problems: the port shrank")
+}
+
+test_a_stub_fails_the_test_it_ships_with() {
+    assert(exec(maca_bin(),
+                ["test", "apps/evals/problems/below_zero.maca"]) != 0,
+           "the stub passed, so the harness cannot tell a written answer "
+               ++ "from an empty one")
+}
+
+test_the_harness_counts_what_the_model_solved_and_grades_apart_each_run() {
+    dir = scratch()
+    model = stand_in(dir)
+
+    assert_eq(str(graded(dir, model, dir ++ "/BASELINE-0.md")), "0",
+              "the first run of the harness")
+    assert_eq(str(graded(dir, model, dir ++ "/BASELINE-1.md")), "0",
+              "the second run of the harness")
+
+    first = read_file(dir ++ "/BASELINE-0.md")
+
+    assert_eq(read_file(dir ++ "/BASELINE-1.md"), first,
+              "the same model scored differently twice")
+
+    for condition in ["no spec", "spec", "spec + one check retry"] {
+        assert(first.contains(condition),
+               "`{condition}` is missing from the baseline:\n{first}")
+    }
+
+    assert(first.contains("| 1 |"),
+           "the stand-in solves exactly one problem and the baseline does "
+               ++ "not say so:\n{first}")
+    assert(!first.contains("| 0 |"),
+           "a condition scored zero, so grading is matching prose again:"
+               ++ "\n{first}")
+    assert(walk_dirs(dir).length() >= 2,
+           "both runs graded in one directory, so whichever wrote last "
+               ++ "graded both")
+}
+
+/// The path after `maca run` on one line of prose.
+named_run(line: str) -> str {
+    rest = line.split("maca run ").get(1)
+    word = rest.split(" ").get(0).split("\r").get(0)
+
+    word.split("`").get(0).split(")").get(0)
+}
+
+runs_named(text: str) -> str[] {
+    found: str[] = []
+
+    for line in text.split("\n") {
+        if line.contains("maca run ") {
+            found = found.push(named_run(line))
+        }
+    }
+
+    found
+}
+
+test_the_prose_names_a_command_that_resolves() {
+    for pair in [["apps/evals/README.md", "2"],
+                 ["apps/evals/BASELINE.md", "1"]] {
+        at = pair.get(0)
+        text = read_file(at)
+        named = runs_named(text)
+
+        for path in named {
+            assert(file_exists(path), "{at} runs `{path}`, which is not there")
+        }
+
+        assert(named.length() >= int(pair.get(1)),
+               "{at} stopped naming how to run it")
+        assert(!text.contains("maca -m evals"),
+               "{at} names `-m evals`, which does not resolve")
+    }
+
+    assert(exec(maca_bin(), ["-m", "evals"]) != 0,
+           "`-m evals` resolves after all, so the reason for a path is gone")
+}

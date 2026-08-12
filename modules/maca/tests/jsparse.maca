@@ -1,0 +1,75 @@
+import std/proc
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+scratch(name: str) -> str {
+    dir = "{env_or("TMPDIR", "/tmp")}/maca-js-parse/{name}"
+
+    exec("rm", ["-rf", dir])
+    make_dir(dir)
+
+    dir
+}
+
+js_apps() -> str[] =>
+    ["apps/site/home.maca", "apps/desktop/app.maca",
+     "apps/signal_demo/signal_demo.maca", "apps/bench_demo/bench_demo.maca",
+     "apps/profile_demo/profile_demo.maca", "apps/cli_tool/cli_tool.maca",
+     "apps/tambo_demo/tambo_demo.maca"]
+
+/// Build one source to JS and hand back the directory `app.js` landed in.
+emitted(src: str, name: str) -> str {
+    out = scratch(name)
+    said = capture_err(maca_bin(), ["build", "--target", "js", src, "-o", out])
+
+    assert(file_exists(out ++ "/app.js"), "{src} did not build to JS: {said}")
+
+    out
+}
+
+parses(src: str, name: str) {
+    at = emitted(src, name) ++ "/app.js"
+
+    assert_eq(str(exec("node", ["--check", at])), "0",
+              "node refused the JS emitted for {src}:\n"
+                  ++ capture_err("node", ["--check", at]))
+}
+
+test_every_page_this_repository_ships_is_javascript_node_accepts() {
+    if !have("node") {
+        return
+    }
+
+    for src in js_apps() {
+        parses(src, basename(src))
+    }
+}
+
+test_the_playground_parses_where_the_module_it_carries_can_be_found() {
+    if !have("node") {
+        return
+    }
+
+    root = scratch("play")
+
+    make_dir(root ++ "/apps/playground")
+    make_dir(root ++ "/apps/npm")
+    write_file(root ++ "/apps/playground/playground.maca",
+               read_file("apps/playground/playground.maca"))
+    write_file(root ++ "/apps/npm/maca_wasm.wasm", "not the compiler")
+
+    parses(root ++ "/apps/playground/playground.maca", "playground")
+}
+
+test_the_control_flow_fixture_computes_the_same_thing_natively() {
+    assert_eq(str(exec(maca_bin(),
+                       ["test",
+                        "crates/driver/tests/programs/js_control_flow.maca"])),
+              "0",
+              "the file the JS backend has its own run of answers the same "
+                  ++ "way when it is compiled natively")
+}

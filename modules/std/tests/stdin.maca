@@ -1,0 +1,81 @@
+import std/proc
+
+scratch() -> str {
+    dir = "{env_or("TMPDIR", "/tmp")}/maca-stdin"
+    make_dir(dir)
+
+    dir
+}
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : "{cwd()}/{named}"
+}
+
+fixture(name: str, src: str) -> str {
+    path = "{scratch()}/{name}.maca"
+    write_file(path, src)
+
+    path
+}
+
+fed(src: str, name: str, stdin: str) -> str {
+    path = fixture(name, src)
+    input = "{scratch()}/{name}.in"
+
+    write_file(input, stdin)
+
+    capture("sh", ["-c", "\"$0\" run \"$1\" <\"$2\" 2>&1", maca_bin(), path,
+                   input])
+}
+
+counter() -> str =>
+    "main() -> int {{\n    n = 0\n    while !at_eof() {{\n"
+        ++ "        line = read_line()\n        n = n + 1\n"
+        ++ "        info(\"{{n}}: {{line.upper()}}\")\n    }}\n"
+        ++ "    info(\"lines: {{n}}\")\n    0\n}}\n"
+
+test_standard_input_is_read_line_by_line_until_it_runs_out() {
+    said = fed(counter(), "lines", "alpha\nbeta\ngamma\n")
+
+    assert(said.contains("1: ALPHA"), "the first line was read:\n{said}")
+    assert(said.contains("3: GAMMA"), "and the last one too:\n{said}")
+    assert(said.contains("lines: 3"), "three lines, not two or four:\n{said}")
+}
+
+test_empty_standard_input_is_at_eof_from_the_start() {
+    said = fed(counter(), "empty", "")
+
+    assert(said.contains("lines: 0"),
+           "nothing on stdin is no lines, not a hang:\n{said}")
+}
+
+test_a_last_line_with_no_newline_is_still_a_line() {
+    said = fed(counter(), "unterminated", "only")
+
+    assert(said.contains("lines: 1"),
+           "a file that does not end in a newline still ends in a line:"
+               ++ "\n{said}")
+}
+
+test_assertions_report_and_keep_going() {
+    said = fed("test_arithmetic() -> int {{\n"
+                   ++ "    assert(1 + 1 == 2, \"one plus one\")\n"
+                   ++ "    assert_eq(\"{{2 * 21}}\", \"42\", \"the answer\")\n"
+                   ++ "    failures()\n}}\n\n"
+                   ++ "main() -> int {{\n"
+                   ++ "    info(\"clean: {{test_arithmetic()}}\")\n"
+                   ++ "    assert(false, \"deliberate\")\n"
+                   ++ "    assert_eq(\"got\", \"want\", \"also deliberate\")\n"
+                   ++ "    info(\"failures: {{failures()}}\")\n    0\n}}\n",
+               "assertions", "")
+
+    assert(said.contains("clean: 0"), "a passing test counts none:\n{said}")
+    assert(said.contains("assertion failed: deliberate"),
+           "a failure is said out loud rather than swallowed:\n{said}")
+    assert(said.contains("got:  got") && said.contains("want: want"),
+           "assert_eq shows both sides:\n{said}")
+    assert(said.contains("failures: 2"),
+           "and the run carries on to the second one:\n{said}")
+}
