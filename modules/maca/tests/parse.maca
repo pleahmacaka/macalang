@@ -1010,3 +1010,26 @@ test_a_real_local_function_is_still_read_as_one() {
                               ++ "info(str(double(2)))")), "2",
               "a block body, and the call that follows it")
 }
+
+lambda_body_kind(src: str) -> str {
+    body = lambda_body(parse_expr(lex(src), 0).node)
+
+    if body.kind == EBlock {
+        "block"
+    } else if body.kind == ERecord {
+        "record"
+    } else {
+        "expr"
+    }
+}
+
+test_a_lambda_body_in_braces_is_a_block_not_a_record() {
+    assert_eq(lambda_body_kind("(n) -> str => {{ d = n * 2\n d }}"), "block",
+              "a declared return type does not make the braces a record")
+    assert_eq(lambda_body_kind("n => {{ d = n * 2\n d }}"), "block",
+              "and neither does a bare parameter in front of them")
+    assert_eq(lambda_body_kind("(n) => ({{ x = n }})"), "record",
+              "parenthesised, so it is the record it looks like")
+    assert_eq(lambda_body_kind("(n) => n + 1"), "expr",
+              "and an ordinary body is still one expression")
+}

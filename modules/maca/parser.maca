@@ -1122,9 +1122,17 @@ parse_paren(ts: Token[], i: int) -> PExpr {
 
 parse_lambda(ts: Token[], i: int) -> PExpr {
     pp = parse_params(ts, i + 1, [])
-    body = parse_expr(ts, after_return_type(ts, pp.pnext + 1) + 1)
+    body = parse_lambda_body(ts, after_return_type(ts, pp.pnext + 1) + 1)
 
     mk_pexpr(e_lambda(pp.params, body.node), body.next)
+}
+
+parse_lambda_body(ts: Token[], at: int) -> PExpr {
+    if ts.get(at).kind == LBrace {
+        parse_branch(ts, at)
+    } else {
+        parse_expr(ts, at)
+    }
 }
 
 parse_call_or_ident(ts: Token[], i: int) -> PExpr {
@@ -1144,7 +1152,7 @@ parse_call_or_ident(ts: Token[], i: int) -> PExpr {
 }
 
 parse_one_lambda(ts: Token[], i: int, name: str) -> PExpr {
-    body = parse_expr(ts, i + 2)
+    body = parse_lambda_body(ts, i + 2)
 
     mk_pexpr(e_lambda([e_param(name, "")], body.node), body.next)
 }

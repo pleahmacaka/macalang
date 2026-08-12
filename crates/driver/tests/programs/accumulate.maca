@@ -39,7 +39,7 @@ test_an_accumulator_does_not_rebuild_itself_every_round() {
     assert(spent < 40, "grew in place: {spent} allocations for 2000 elements")
 }
 
-test_a_second_holder_costs_a_copy_a_round() {
+test_a_second_holder_stays_where_it_was_while_the_tip_grows() {
     base: int[] = []
     keep = base
     before = alloc_count() + reuse_count()
@@ -50,7 +50,7 @@ test_a_second_holder_costs_a_copy_a_round() {
 
     assert_eq(str(base.length()), "200", "still correct")
     assert_eq(str(keep.length()), "0", "and the other name did not move")
-    assert(spent > 200, "copied every round: {spent} allocations for 200 elements")
+    assert(spent < 40, "the tip grew in place: {spent} for 200 elements")
 }
 
 test_an_accumulator_collects_every_value() {
@@ -163,7 +163,7 @@ test_a_list_of_lists_accumulates() {
 
 main() -> int {
     test_an_accumulator_does_not_rebuild_itself_every_round()
-    test_a_second_holder_costs_a_copy_a_round()
+    test_a_second_holder_stays_where_it_was_while_the_tip_grows()
     test_an_accumulator_collects_every_value()
     test_two_accumulators_do_not_mix()
     test_a_copy_is_kept_when_another_name_holds_the_list()

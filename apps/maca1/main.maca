@@ -1547,7 +1547,7 @@ build_cmd(args: str[]) -> int {
         1
     } else {
         out = build_setting(args, chain, "-o", "out")
-        target = build_setting(args, chain, "--target", "target")
+        target = sniffed(src, build_setting(args, chain, "--target", "target"))
 
         build_out(src, out == "" ? default_out(src, target) : out, target,
                   build_setting(args, chain, "--mcu", "mcu"),
@@ -1625,6 +1625,55 @@ build_src(args: str[], i: int, held: str) -> str {
 takes_value(a: str) -> bool =>
     a == "-o" || a == "--target" || a == "--bin"
         || a == "--mcu" || a == "--cp" || a == "--classpath"
+
+/// A target nobody named is read off the source, and the note says how to override that.
+sniffed(src: str, asked: str) -> str {
+    found = asked != "" ? "" : detected_target(src)
+
+    if found != "" {
+        err("note: {why_target(found)}; building --target {found} "
+            ++ "(pass --target to override)")
+    }
+
+    found != "" ? found : asked
+}
+
+/// A source that imports nixpkgs is config, and one whose view answers an Element is a page.
+detected_target(src: str) -> str {
+    ts = lex(read_file(src))
+
+    if imports_nixpkgs(imports_in(ts, 0, []), 0) {
+        "nix"
+    } else if answers_element(ts, 0) {
+        "js"
+    } else {
+        ""
+    }
+}
+
+why_target(found: str) -> str =>
+    found == "nix" ? "source imports nixpkgs (config mode)"
+                   : "a view returns Element (reactive-UI mode)"
+
+imports_nixpkgs(paths: str[], i: int) -> bool {
+    if i >= paths.length() {
+        false
+    } else if paths.get(i) == "nixpkgs" || paths.get(i).ends_with("/nixpkgs") {
+        true
+    } else {
+        imports_nixpkgs(paths, i + 1)
+    }
+}
+
+answers_element(ts: Token[], i: int) -> bool {
+    if ts.get(i).kind == Eof {
+        false
+    } else if ts.get(i).kind == Arrow && ts.get(i + 1).text == "Element" {
+        true
+    } else {
+        answers_element(ts, i + 1)
+    }
+}
 
 run_cmd(args: str[]) -> int {
     named = first_named(args)
@@ -2469,9 +2518,47 @@ refused_here(asked: str, m: Module) -> int {
     if asked == "embedded" {
         report_all("embedded", eemit_errors(m), 0)
     } else if asked == "jvm" {
-        report_all("jvm", jvmemit_errors(m), 0)
+        report_all("jvm", jvmemit_errors(m), 0) +
+            report_all("jvm", ported_errors(m.items, 0, "jvm", []), 0)
+    } else if asked == "rust" {
+        report_all("rust", ported_errors(m.items, 0, "rust", []), 0)
     } else {
         0
+    }
+}
+
+/// The rust and jvm targets have no C ABI bridge and no function pointer, so each is named here.
+ported_errors(items: Stmt[], i: int, target: str, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else {
+        ported_errors(items, i + 1, target,
+                      acc ++ ported_error(items.get(i), target))
+    }
+}
+
+ported_error(s: Stmt, target: str) -> str[] {
+    if s.kind == SFn && s.body.length() == 0 {
+        ["`{s.name}` is declared with no body, which is an FFI declaration, "
+             ++ "and --target {target} has no C ABI bridge to reach it; supply "
+             ++ "a body, or write the function in a raw block"]
+    } else if s.kind == SRecord {
+        fn_fields(s.name, s.params, 0, target, [])
+    } else {
+        []
+    }
+}
+
+fn_fields(rec: str, fs: Expr[], i: int, target: str, acc: str[]) -> str[] {
+    if i >= fs.length() {
+        acc
+    } else if is_fn_type(fs.get(i).ty) {
+        fn_fields(rec, fs, i + 1, target,
+                  acc ++ ["`{rec}.{fs.get(i).text}` holds a function, which "
+                              ++ "--target {target} cannot carry; the native "
+                              ++ "and js targets can"])
+    } else {
+        fn_fields(rec, fs, i + 1, target, acc)
     }
 }
 

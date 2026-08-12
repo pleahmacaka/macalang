@@ -26,7 +26,8 @@ package_suites() -> str[] =>
      "modules/std/tests/path.maca", "modules/std/tests/json.maca",
      "modules/std/tests/csv.maca", "modules/std/tests/fs.maca",
      "modules/std/tests/proc.maca", "modules/std/tests/builtins.maca",
-     "modules/cli/tests/cli.maca", "modules/web/tests/format.maca"]
+     "modules/cli/tests/cli.maca", "modules/web/tests/format.maca",
+     "modules/http/tests/server.maca"]
 
 scope_tests() -> str[] =>
     ["test_each_module_keeps_its_own_private_helper",
@@ -171,6 +172,30 @@ test_a_function_can_be_kept_in_a_record_field() {
         0,
         "a route table, a reducer and a builder, each called through the "
             ++ "field that holds it, and a lambda that carried a capture in")
+}
+
+test_a_lambda_holds_at_every_position_it_is_written() {
+    assert_eq(suite_code("crates/driver/tests/programs/lambdas.maca"), 0,
+        "a top level lambda is a function, a local one is a closure, both "
+            ++ "may declare their types, and a body may be a block")
+}
+
+test_a_list_grows_in_place_only_while_it_is_the_tip() {
+    assert_eq(suite_code("crates/driver/tests/programs/accumulate.maca"), 0,
+        "an accumulator appends without rebuilding itself, and every other "
+            ++ "holder reads what it was given")
+}
+
+test_a_binding_shadows_a_foreign_namespace_of_the_same_name() {
+    suite = "crates/driver/tests/programs/ffi_names.maca"
+
+    assert_eq(suite_code(suite), 0,
+        "a name spelled like a foreign namespace is the binding, and a call "
+            ++ "that does mean the library still reaches it")
+
+    assert(capture(maca_bin(), ["test", suite])
+        .contains("test_the_py_namespace_is_shadowed_the_same_way"),
+        "every shadowing the suite states is one that ran")
 }
 
 test_the_native_back_end_regressions_still_hold() {

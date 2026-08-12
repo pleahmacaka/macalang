@@ -2267,9 +2267,20 @@ free_idents(e: Expr, bound: str[], acc: Expr[]) -> Expr[] {
     } else if e.kind == ELambda {
         free_idents(lambda_body(e),
                     bound ++ lambda_names(lambda_params(e), 0, []), acc)
+    } else if e.kind == EBlock {
+        free_idents(e.children.get(0), bound ++ stmt_names(e.stmts, 0, []),
+                    free_stmts(e.stmts, 0, bound, acc))
     } else {
         free_stmts(e.stmts, 0, free_bound(e, bound),
                    free_kids(e.children, 0, bound, acc))
+    }
+}
+
+stmt_names(ss: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= ss.length() {
+        acc
+    } else {
+        stmt_names(ss, i + 1, acc ++ [ss.get(i).name])
     }
 }
 

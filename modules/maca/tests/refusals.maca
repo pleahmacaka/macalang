@@ -327,3 +327,33 @@ test_every_back_end_refuses_a_write_to_a_constant() {
         "cannot reassign constant `limit`",
         "a write to a constant")
 }
+
+refused_by_ported_targets(name: str, src: str, said: str, why: str) {
+    make_dir(scratch())
+    at = scratch() ++ "/" ++ name
+
+    write_file(at, src)
+
+    for target in ["jvm", "rust"] {
+        built = ["build", at, "-o", scratch() ++ "/port-{target}", "--target",
+                 target]
+
+        assert(exec(maca_bin(), built) != 0, "{target} accepted {why}")
+        assert(capture(maca_bin(), built).contains(said),
+               "{target} refused {why} without saying so")
+    }
+}
+
+test_a_bodyless_function_reaches_no_target_without_a_c_abi() {
+    refused_by_ported_targets("ffi_decl.maca",
+        "measure(n: int) -> int\n\nmain() -> int => measure(1)\n",
+        "is declared with no body",
+        "an FFI declaration")
+}
+
+test_a_field_holding_a_function_reaches_no_target_without_a_pointer() {
+    refused_by_ported_targets("held_fn.maca",
+        "Box = {{\n    run: (int) -> int\n}}\n\nmain() -> int => 0\n",
+        "holds a function",
+        "a record field holding a function")
+}

@@ -25,6 +25,6 @@ A command line has three, and only one of them is the happy path:
 | `--srot lines` | `unknown option --srot, did you mean --sort?`, exit 1 |
 | `modules/cli --top 3 --totals` | the table, a totals row, exit 0 |
 
-`crates/driver/tests/native_run.rs` builds this program and asserts all three,
+`modules/maca/tests/examples.maca` builds this program and asserts all three,
 because a help page that drifts from the options it documents is the failure
 this design exists to prevent.

@@ -704,3 +704,88 @@ test_a_flag_beats_the_target_the_manifest_declared() {
     assert(!file_exists(at ++ "/main-web"),
            "and the declared one did not run at all")
 }
+
+scaffolded(tag: str) -> str {
+    dir = package_dir("init-" ++ tag) ++ "/fresh"
+
+    assert_eq(str(exec(maca_bin(), ["init", dir])), "0", "init wrote a project")
+
+    dir
+}
+
+test_init_writes_what_the_project_builds_and_no_key_beyond_it() {
+    dir = scaffolded("shape")
+    toml = read_file(dir ++ "/maca.toml")
+
+    assert(toml.contains("[package]") && toml.contains("name = \"fresh\""),
+           "the project says what it is called:\n{toml}")
+    assert(toml.contains("[[bin]]") && toml.contains("path = \"main.maca\""),
+           "and what it builds:\n{toml}")
+
+    for key in ["[dependencies]", "[format]", "[scripts]", "[page]", "version"] {
+        assert(!toml.contains(key), "{key} is a key a fresh project does not "
+                                        ++ "need:\n{toml}")
+    }
+
+    assert(!file_exists(dir ++ "/.gitignore"),
+           "a scaffold writes the project, not an opinion about version control")
+    assert_eq(str(exec(maca_bin(), ["check", dir ++ "/main.maca"])), "0",
+              "and what it wrote typechecks")
+}
+
+test_what_init_writes_carries_no_commentary() {
+    dir = scaffolded("comments")
+
+    for rel in ["maca.toml", "main.maca"] {
+        for line in read_file(dir ++ "/" ++ rel).split("\n") {
+            head = line.trim()
+
+            assert(!head.starts_with("#") && !head.starts_with("//"),
+                   "{rel} explains itself by working, not by commenting: {line}")
+        }
+    }
+}
+
+test_a_scaffolded_project_builds_runs_and_tests_with_no_edits() {
+    dir = scaffolded("bare")
+
+    assert_eq(str(rc_in(dir, ["build"])), "0", "a bare build of a scaffold")
+    assert_eq(str(rc_in(dir, ["run"])), "0", "a bare run of a scaffold")
+    assert(out_in(dir, ["run"]).contains("hello"), "and what it wrote greets")
+    assert_eq(str(rc_in(dir, ["test", "main.maca"])), "0",
+              "a bare test of a scaffold")
+    assert(out_in(dir, ["test", "main.maca"]).contains("no test"),
+           "which says there is none yet rather than inventing one")
+}
+
+Header = "/* sample */\n#include <stddef.h>\nint mylib_open(const char* path);\n"
+    ++ "void mylib_close(int handle);\nconst char* mylib_version(void);\n"
+    ++ "double mylib_scale(double x, int factor);\n"
+    ++ "int mylib_exec(int db, const char* sql, size_t len);\n"
+    ++ "typedef struct mylib_ctx mylib_ctx;\nstruct mylib_ctx {{ int x; }};\n"
+
+bound(tag: str) -> str =>
+    capture(maca_bin(), ["bindgen", fixture("{tag}.h", Header)])
+
+test_bindgen_writes_the_declarations_the_header_states() {
+    made = bound("mylib")
+
+    for want in ["import c \"mylib.h\"", "mylib_open(path: str) -> int",
+                 "mylib_close(handle: int) -> int", "mylib_version() -> str",
+                 "mylib_scale(x: float, factor: int) -> float",
+                 "mylib_exec(db: int, sql: str, len: int) -> int"] {
+        assert(made.contains(want), "bindgen left out {want}:\n{made}")
+    }
+
+    assert(!made.contains("mylib_ctx("),
+           "a struct is a type, and not a function to call:\n{made}")
+}
+
+test_what_bindgen_writes_typechecks_where_it_is_used() {
+    at = fixture("bound.maca", bound("mylib") ++ "\nmain() -> int {{\n"
+                                   ++ "    info(mylib_version())\n"
+                                   ++ "    mylib_close(0)\n    0\n}}\n")
+
+    assert_eq(str(exec(maca_bin(), ["check", at])), "0",
+              "a header nobody wrote Maca for is still a program that checks")
+}

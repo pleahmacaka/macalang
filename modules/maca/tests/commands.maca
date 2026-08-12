@@ -326,3 +326,24 @@ test_profile_counts_a_run_and_draws_where_its_instructions_went() {
         assert(flame.contains("Ir"), "counted in instructions")
     }
 }
+
+test_a_build_with_no_target_named_reads_it_off_the_source() {
+    make_dir(scratch())
+    made = scratch() ++ "/detected"
+
+    assert(capture_err(maca_bin(), ["build", "apps/examples/system.maca",
+                                    "-o", made ++ ".nix"])
+               .contains("source imports nixpkgs"),
+           "a config file names nixpkgs, so config mode is the target")
+    assert(read_file(made ++ ".nix").contains("stateVersion"),
+           "and what it wrote is a NixOS module")
+    assert(capture_err(maca_bin(), ["build", "apps/examples/counter.maca",
+                                    "-o", made ++ "-web"])
+               .contains("a view returns Element"),
+           "a view answers an Element, so a page is the target")
+    assert(file_exists(made ++ "-web/index.html"),
+           "and a page is a directory a browser opens")
+    assert(!capture_err(maca_bin(), ["build", "apps/examples/hello.maca",
+                                     "-o", made]).contains("--target"),
+           "an ordinary program is native, and nothing is guessed at")
+}
