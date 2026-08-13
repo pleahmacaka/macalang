@@ -1536,6 +1536,15 @@ c_zero(ty: str) -> str {
 
 c_preamble() -> str =>
     "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <stdarg.h>\n#include <ctype.h>\n#include <unistd.h>\n#include <sys/stat.h>\n#include <dirent.h>\n#include <time.h>\n#include <stdint.h>\n#include <strings.h>\n#include <sys/time.h>\n" ++
+    "#ifdef _WIN32\n#include <direct.h>\n#include <process.h>\n#include <stdlib.h>\n"
+        ++ "#define maca_mkdir(p) _mkdir(p)\n"
+        ++ "#define maca_gmtime(t, g) gmtime_s(g, t)\n"
+        ++ "static char* maca_full_path(const char* p, char* r) {{ return"
+        ++ " _fullpath(r, p, 4096); }}\n#else\n"
+        ++ "#define maca_mkdir(p) mkdir(p, 0777)\n"
+        ++ "#define maca_gmtime(t, g) gmtime_r(t, g)\n"
+        ++ "static char* maca_full_path(const char* p, char* r) {{ return"
+        ++ " realpath(p, r); }}\n#endif\n" ++
     "typedef float f32x4 __attribute__((vector_size(16)));\ntypedef float f32x8 __attribute__((vector_size(32)));\ntypedef double f64x2 __attribute__((vector_size(16)));\ntypedef double f64x4 __attribute__((vector_size(32)));\ntypedef int i32x4 __attribute__((vector_size(16)));\ntypedef int i32x8 __attribute__((vector_size(32)));\n" ++
     "typedef struct maca_hdr {{ long size; long used; }} maca_hdr;\nstatic long maca_allocs = 0;\n" ++
     "static long* maca_cells(long bytes) {{ long n = bytes > 0 ? bytes : (long)sizeof(long); maca_hdr* h = (maca_hdr*)malloc(sizeof(maca_hdr) + (size_t)n); if (!h) {{ fputs(\"out of memory\\n\", stderr); exit(1); }} h->size = n; h->used = n / (long)sizeof(long); maca_allocs++; return (long*)(h + 1); }}\n" ++
@@ -1601,15 +1610,15 @@ c_preamble() -> str =>
     "static int maca_chdir(const char* p) {{ return chdir(p) == 0; }}\nstatic int maca_is_tty(void) {{ return isatty(1); }}\n" ++
     "static int maca_file_exists(const char* p) {{ struct stat st; return stat(p, &st) == 0; }}\nstatic int maca_is_dir(const char* p) {{ struct stat st; return stat(p, &st) == 0 && S_ISDIR(st.st_mode); }}\n" ++
     "static long maca_file_size(const char* p) {{ struct stat st; return stat(p, &st) == 0 ? (long)st.st_size : -1; }}\nstatic long maca_modified_ms(const char* p) {{ struct stat st; return stat(p, &st) == 0 ? (long)(st.st_mtime * 1000) : -1; }}\n" ++
-    "static int maca_make_dir(const char* p) {{ char* d = maca_cat(p, \"\"); for (char* q = d + 1; *q; q++) if (*q == '/') {{ *q = 0; mkdir(d, 0777); *q = '/'; }} mkdir(d, 0777); return maca_is_dir(d); }}\n" ++
+    "static int maca_make_dir(const char* p) {{ char* d = maca_cat(p, \"\"); for (char* q = d + 1; *q; q++) if (*q == '/') {{ *q = 0; maca_mkdir(d); *q = '/'; }} maca_mkdir(d); return maca_is_dir(d); }}\n" ++
     "static int maca_remove_file(const char* p) {{ return unlink(p) == 0; }}\nstatic int maca_remove_dir(const char* p) {{ DIR* d = opendir(p); if (!d) return 0; struct dirent* it; while ((it = readdir(d))) {{ if (strcmp(it->d_name, \".\") == 0 || strcmp(it->d_name, \"..\") == 0) continue; char* c = maca_cat(p, maca_cat(\"/\", it->d_name)); if (maca_is_dir(c)) maca_remove_dir(c); else maca_remove_file(c); }} closedir(d); return rmdir(p) == 0; }}\n" ++
     "static int maca_copy_bytes(const char* src, const char* dst) {{ FILE* a = fopen(src, \"rb\"); if (!a) return 0; FILE* b = fopen(dst, \"wb\"); if (!b) {{ fclose(a); return 0; }} char buf[8192]; size_t n; while ((n = fread(buf, 1, sizeof buf, a)) > 0) fwrite(buf, 1, n, b); fclose(a); fclose(b); return 1; }}\n" ++
     "static MacaList maca_list_dir(const char* p) {{ MacaList l; l.len = 0; int cap = 16; l.data = maca_cells((size_t)cap * sizeof(long)); DIR* d = opendir(p); if (!d) return l; struct dirent* it; while ((it = readdir(d))) {{ if (strcmp(it->d_name, \".\") == 0 || strcmp(it->d_name, \"..\") == 0) continue; if (l.len == cap) {{ cap *= 2; long* g = maca_cells((size_t)cap * sizeof(long)); memcpy(g, l.data, (size_t)l.len * sizeof(long)); l.data = g; }} l.data[l.len++] = (long)maca_cat(it->d_name, \"\"); }} closedir(d); if (l.len > 1) qsort(l.data, (size_t)l.len, sizeof(long), maca_cmp_cell_str); return l; }}\n" ++
-    "static char* maca_real_path(const char* p) {{ char* r = malloc(4096); if (!realpath(p, r)) return maca_cat(p, \"\"); return r; }}\n" ++
+    "static char* maca_real_path(const char* p) {{ char* r = malloc(4096); if (!maca_full_path(p, r)) return maca_cat(p, \"\"); return r; }}\n" ++
     "static char* maca_path_join(const char* a, const char* b) {{ if (!*a) return maca_cat(b, \"\"); if (!*b) return maca_cat(a, \"\"); return a[strlen(a) - 1] == '/' ? maca_cat(a, b) : maca_cat(a, maca_cat(\"/\", b)); }}\n" ++
     "static long maca_now_ms(void) {{ struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); return (long)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000); }}\n" ++
-    "static char* maca_now_iso(void) {{ time_t t = time(NULL); struct tm g; gmtime_r(&t, &g); char* r = malloc(32); strftime(r, 32, \"%Y-%m-%dT%H:%M:%SZ\", &g); return r; }}\n" ++
-    "static char* maca_format_time(long ms, const char* fmt) {{ time_t t = (time_t)(ms / 1000); struct tm g; gmtime_r(&t, &g); char* r = malloc(128); if (!strftime(r, 128, fmt, &g)) r[0] = 0; return r; }}\n" ++
+    "static char* maca_now_iso(void) {{ time_t t = time(NULL); struct tm g; maca_gmtime(&t, &g); char* r = malloc(32); strftime(r, 32, \"%Y-%m-%dT%H:%M:%SZ\", &g); return r; }}\n" ++
+    "static char* maca_format_time(long ms, const char* fmt) {{ time_t t = (time_t)(ms / 1000); struct tm g; maca_gmtime(&t, &g); char* r = malloc(128); if (!strftime(r, 128, fmt, &g)) r[0] = 0; return r; }}\n" ++
     "static void maca_sleep_ms(int ms) {{ if (ms > 0) usleep((unsigned)ms * 1000); }}\n" ++
     "static char* maca_input(const char* prompt) {{ if (prompt && *prompt) {{ printf(\"%s\", prompt); fflush(stdout); }} size_t cap = 128, n = 0; char* b = malloc(cap); int c; while ((c = fgetc(stdin)) != EOF && c != '\\n') {{ if (n + 1 >= cap) {{ cap *= 2; char* g = malloc(cap); memcpy(g, b, n); b = g; }} b[n++] = (char)c; }} b[n] = 0; return b; }}\nstatic int maca_at_eof(void) {{ int c = fgetc(stdin); if (c == EOF) return 1; ungetc(c, stdin); return 0; }}\n" ++
     "static char* maca_attr(const char* name, const char* value) {{ if (!name || !*name) return maca_cat(\"\", \"\"); size_t n = strlen(name), v = strlen(value); char* r = malloc(n + v * 6 + 5); char* w = r; *w++ = ' '; memcpy(w, name, n); w += n; *w++ = '='; *w++ = '\"'; for (size_t i = 0; i < v; i++) {{ char c = value[i]; if (c == '&') {{ memcpy(w, \"&amp;\", 5); w += 5; }} else if (c == '<') {{ memcpy(w, \"&lt;\", 4); w += 4; }} else if (c == '>') {{ memcpy(w, \"&gt;\", 4); w += 4; }} else if (c == '\"') {{ memcpy(w, \"&quot;\", 6); w += 6; }} else {{ *w++ = c; }} }} *w++ = '\"'; *w = 0; return r; }}\n" ++
@@ -1661,15 +1670,27 @@ c_net_headers() -> str =>
 
 c_process(code: str) -> str {
     if c_uses(code, "maca_exec") || c_uses(code, "maca_capture") {
-        "#include <sys/wait.h>\n" ++
-        "static int maca_exec(const char* cmd, MacaList args) {{ char** argv = malloc((args.len + 2) * sizeof(char*)); argv[0] = (char*)cmd; for (int i = 0; i < args.len; i++) argv[i + 1] = (char*)args.data[i]; argv[args.len + 1] = NULL; pid_t pid = fork(); if (pid < 0) return -1; if (pid == 0) {{ execvp(cmd, argv); _exit(127); }} int st = 0; if (waitpid(pid, &st, 0) < 0) return -1; if (WIFEXITED(st)) return WEXITSTATUS(st); if (WIFSIGNALED(st)) return 128 + WTERMSIG(st); return -1; }}\n" ++
-        "static char* maca_capture_fd(const char* cmd, MacaList args, int child_fd) {{ int fd[2]; if (pipe(fd) < 0) return maca_cat(\"\", \"\"); char** argv = malloc((size_t)(args.len + 2) * sizeof(char*)); argv[0] = (char*)cmd; for (int i = 0; i < args.len; i++) argv[i + 1] = (char*)args.data[i]; argv[args.len + 1] = NULL; pid_t pid = fork(); if (pid < 0) {{ close(fd[0]); close(fd[1]); return maca_cat(\"\", \"\"); }} if (pid == 0) {{ close(fd[0]); dup2(fd[1], child_fd); close(fd[1]); execvp(cmd, argv); _exit(127); }} close(fd[1]); size_t cap = 4096, n = 0; char* b = malloc(cap); ssize_t got; while ((got = read(fd[0], b + n, cap - n - 1)) > 0) {{ n += (size_t)got; if (n + 1 >= cap) {{ cap *= 2; char* g = malloc(cap); memcpy(g, b, n); b = g; }} }} close(fd[0]); int st = 0; waitpid(pid, &st, 0); b[n] = 0; return b; }}\n" ++
-        "static char* maca_capture(const char* cmd, MacaList args) {{ return maca_capture_fd(cmd, args, 1); }}\n" ++
-        "static char* maca_capture_err(const char* cmd, MacaList args) {{ return maca_capture_fd(cmd, args, 2); }}\n"
+        "#ifdef _WIN32\n" ++ c_process_win() ++ "#else\n"
+            ++ c_process_posix() ++ "#endif\n"
     } else {
         ""
     }
 }
+
+/// Windows has no `fork`, so a run is a spawn and a capture is a pipe the shell opens.
+c_process_win() -> str =>
+    "static char* maca_quoted(const char* s) {{ char* r = malloc(strlen(s) * 2 + 3); char* w = r; *w++ = 34; for (const char* p = s; *p; p++) {{ if (*p == 34) *w++ = 92; *w++ = *p; }} *w++ = 34; *w = 0; return r; }}\n"
+        ++ "static int maca_exec(const char* cmd, MacaList args) {{ const char** argv = malloc((args.len + 2) * sizeof(char*)); argv[0] = cmd; for (int i = 0; i < args.len; i++) argv[i + 1] = (const char*)args.data[i]; argv[args.len + 1] = NULL; intptr_t r = _spawnvp(_P_WAIT, cmd, argv); return r < 0 ? -1 : (int)r; }}\n"
+        ++ "static char* maca_capture_fd(const char* cmd, MacaList args, int child_fd) {{ char* line = maca_quoted(cmd); for (int i = 0; i < args.len; i++) line = maca_cat(maca_cat(line, \" \"), maca_quoted((const char*)args.data[i])); line = maca_cat(line, child_fd == 2 ? \" 2>&1 1>NUL\" : \"\"); FILE* p = _popen(line, \"r\"); if (!p) return maca_cat(\"\", \"\"); char* out = malloc(1); out[0] = 0; size_t n = 0; char buf[4096]; size_t got; while ((got = fread(buf, 1, sizeof(buf), p)) > 0) {{ out = realloc(out, n + got + 1); memcpy(out + n, buf, got); n += got; out[n] = 0; }} _pclose(p); return out; }}\n"
+        ++ "static char* maca_capture(const char* cmd, MacaList args) {{ return maca_capture_fd(cmd, args, 1); }}\n"
+        ++ "static char* maca_capture_err(const char* cmd, MacaList args) {{ return maca_capture_fd(cmd, args, 2); }}\n"
+
+c_process_posix() -> str =>
+    "#include <sys/wait.h>\n"
+        ++ "static int maca_exec(const char* cmd, MacaList args) {{ char** argv = malloc((args.len + 2) * sizeof(char*)); argv[0] = (char*)cmd; for (int i = 0; i < args.len; i++) argv[i + 1] = (char*)args.data[i]; argv[args.len + 1] = NULL; pid_t pid = fork(); if (pid < 0) return -1; if (pid == 0) {{ execvp(cmd, argv); _exit(127); }} int st = 0; if (waitpid(pid, &st, 0) < 0) return -1; if (WIFEXITED(st)) return WEXITSTATUS(st); if (WIFSIGNALED(st)) return 128 + WTERMSIG(st); return -1; }}\n"
+        ++ "static char* maca_capture_fd(const char* cmd, MacaList args, int child_fd) {{ int fd[2]; if (pipe(fd) < 0) return maca_cat(\"\", \"\"); char** argv = malloc((size_t)(args.len + 2) * sizeof(char*)); argv[0] = (char*)cmd; for (int i = 0; i < args.len; i++) argv[i + 1] = (char*)args.data[i]; argv[args.len + 1] = NULL; pid_t pid = fork(); if (pid < 0) {{ close(fd[0]); close(fd[1]); return maca_cat(\"\", \"\"); }} if (pid == 0) {{ close(fd[0]); dup2(fd[1], child_fd); close(fd[1]); execvp(cmd, argv); _exit(127); }} close(fd[1]); size_t cap = 4096, n = 0; char* b = malloc(cap); ssize_t got; while ((got = read(fd[0], b + n, cap - n - 1)) > 0) {{ n += (size_t)got; if (n + 1 >= cap) {{ cap *= 2; char* g = malloc(cap); memcpy(g, b, n); b = g; }} }} close(fd[0]); int st = 0; waitpid(pid, &st, 0); b[n] = 0; return b; }}\n"
+        ++ "static char* maca_capture(const char* cmd, MacaList args) {{ return maca_capture_fd(cmd, args, 1); }}\n"
+        ++ "static char* maca_capture_err(const char* cmd, MacaList args) {{ return maca_capture_fd(cmd, args, 2); }}\n"
 
 c_threads(code: str) -> str {
     if c_uses(code, "maca_spawn") || c_uses(code, "MacaFuture") {
