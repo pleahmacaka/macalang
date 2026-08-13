@@ -369,17 +369,17 @@ cells(parts: str[], i: int, tag: str) -> str {
 }
 
 render_quote(lines: str[], i: int, acc: str) -> str {
-    stop = quote_end(lines, i)
+    stop = quote_block_end(lines, i)
     text = join_quote(lines, i, stop)
     quoted = blockquote(class=md_class("quote"), inline(escape_html(text)))
     render_lines(lines, stop, acc ++ quoted ++ "\n")
 }
 
-quote_end(lines: str[], i: int) -> int {
+quote_block_end(lines: str[], i: int) -> int {
     if i >= lines.length() || !lines.get(i).starts_with("> ") {
         i
     } else {
-        quote_end(lines, i + 1)
+        quote_block_end(lines, i + 1)
     }
 }
 

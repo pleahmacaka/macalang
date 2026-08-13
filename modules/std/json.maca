@@ -135,7 +135,7 @@ value_at(src: str, at: int) -> str {
     rest = src.slice(at, src.length()).trim()
 
     if rest.starts_with("\"") {
-        unescape(rest.slice(1, quote_end(rest.chars(), 1)))
+        unescape(rest.slice(1, json_quote_end(rest.chars(), 1)))
     } else if rest.starts_with("[") || rest.starts_with("\{") {
         rest.slice(0, balanced_end(rest.chars(), 0, 0))
     } else {
@@ -168,20 +168,20 @@ balanced_step(cs: str[], i: int, depth: int) -> int {
 }
 
 skip_string(cs: str[], i: int) -> int {
-    end = quote_end(cs, i)
+    end = json_quote_end(cs, i)
 
     end >= cs.length() ? cs.length() : end + 1
 }
 
-quote_end(cs: str[], i: int) -> int {
+json_quote_end(cs: str[], i: int) -> int {
     if i >= cs.length() {
         cs.length()
     } else if cs.get(i) == "\\" {
-        quote_end(cs, i + 2)
+        json_quote_end(cs, i + 2)
     } else if cs.get(i) == "\"" {
         i
     } else {
-        quote_end(cs, i + 1)
+        json_quote_end(cs, i + 1)
     }
 }
 
