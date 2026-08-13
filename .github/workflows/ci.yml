@@ -62,17 +62,10 @@ jobs:
         run: mkdir -p bin && cc -O1 -o bootstrap/maca bootstrap/maca.c
       - name: Build the compiler with the seed
         run: MACA=$PWD/bootstrap/maca ./bootstrap/maca build apps/maca1/main.maca -o bin/maca
-      # Three suites do not hold on a runner yet and each is its own piece of
-      # work: examples wants nix for `import nix`, proc reads a diagnostic in
-      # one go, and tooling reaches the JDK the runner ships, where the jvm
-      # back end refuses an anonymous record. They run locally meanwhile.
       - name: Run the suites
         run: |
           fail=0
           for t in modules/maca/tests/*.maca tests/*.maca modules/std/tests/*.maca apps/lsp/tests/lsp.maca; do
-            case "$t" in
-              */examples.maca|*/proc.maca|*/tooling.maca) continue ;;
-            esac
             MACA=$PWD/bin/maca ./bin/maca test "$t" > /tmp/suite.log 2>&1 || { fail=1; echo "FAIL $t"; cat /tmp/suite.log; }
           done
           rm -f modules/maca/tests/maca1-test-*.maca

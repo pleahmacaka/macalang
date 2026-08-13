@@ -368,3 +368,51 @@ test_a_field_holding_a_function_reaches_no_target_without_a_pointer() {
         "holds a function",
         "a record field holding a function")
 }
+
+/// A page that reaches the two forms the driver rewrites before it compiles.
+host_forms_page() -> str =>
+    "import \{ decode \} from std/json\n"
+        ++ "import \{ local_start, local_store \} from web/storage\n\n"
+        ++ "Site = \{ title: str \}\n\nLinks = \"links.json\"\n\n"
+        ++ "site: Site = data(Links)\n"
+        ++ "locked = stored(\"page.locked\", true)\n\n"
+        ++ "main() -> str => site.title\n"
+
+host_forms_dir(name: str) -> str {
+    dir = "{scratch()}/{name}"
+
+    make_dir(scratch())
+    exec("rm", ["-rf", dir])
+    make_dir(dir)
+    write_file(dir ++ "/page.maca", host_forms_page())
+
+    dir
+}
+
+checked(dir: str) -> str =>
+    output("sh", ["-c", "'{maca_bin()}' check '{dir}/page.maca' 2>&1"])
+
+test_check_accepts_the_two_forms_the_driver_rewrites() {
+    dir = host_forms_dir("forms-clean")
+
+    write_file(dir ++ "/links.json", "\{\"title\": \"home\"\}\n")
+
+    said = checked(dir)
+
+    assert_eq(exec(maca_bin(), ["check", dir ++ "/page.maca"]), 0,
+        "the call that builds is no defect to the call that checks: {said}")
+    assert(!said.contains("M0006"), "no name is undefined here: {said}")
+}
+
+test_check_names_the_file_data_cannot_read() {
+    dir = host_forms_dir("forms-missing")
+    said = checked(dir)
+
+    assert(exec(maca_bin(), ["check", dir ++ "/page.maca"]) > 0,
+        "the file is read while checking, so a path that is not there is "
+            ++ "named rather than believed: {said}")
+    assert(said.contains("links.json"),
+        "the message names the file it could not read: {said}")
+    assert(!said.contains("M0006"),
+        "and an editor holding no filesystem still knows both names: {said}")
+}
