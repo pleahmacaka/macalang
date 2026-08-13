@@ -530,3 +530,32 @@ test_a_nested_definition_that_writes_the_scope_around_it_is_named() {
         "a browser closure writes the name it closed over, so the refusal is "
             ++ "the C back end's and not the language's")
 }
+
+test_a_handler_has_nowhere_to_attach_in_markup() {
+    dir = scratch() ++ "/handlers"
+    make_dir(scratch())
+    make_dir(dir)
+
+    for attr in ["onclick=go", "onclick=(e => 0)", "value=(v => 0)"] {
+        at = dir ++ "/h{str(["onclick=go", "onclick=(e => 0)",
+                             "value=(v => 0)"].index_of(attr))}.maca"
+
+        write_file(at, "go() -> int => 0\n\nmain() -> int {{\n"
+            ++ "    info(button({attr}, \"press\"))\n    0\n}}\n")
+
+        refused(at, "build this with `--target js`")
+    }
+}
+
+test_a_quoted_handler_is_an_ordinary_attribute() {
+    dir = scratch() ++ "/handlers"
+    make_dir(scratch())
+    make_dir(dir)
+    at = dir ++ "/quoted.maca"
+
+    write_file(at, "main() -> int {{\n"
+        ++ "    info(button(onclick=\"alert(1)\", \"press\"))\n    0\n}}\n")
+
+    assert(capture(maca_bin(), ["run", at]).contains("onclick=\"alert(1)\""),
+        "a string belongs in the markup, and only a handler has nowhere to go")
+}

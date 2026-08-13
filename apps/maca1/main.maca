@@ -1978,10 +1978,23 @@ ran_suites(suites: str[], i: int, failed: int) -> int {
     }
 }
 
+/// A file nobody named a target for is checked as what building it would pick.
+checked_target(src: str, asked: str) -> str {
+    found = asked != "" || src == "" ? "" : detected_target(src)
+
+    if asked != "" {
+        asked
+    } else if found != "" {
+        found
+    } else {
+        "native"
+    }
+}
+
 check_cmd(args: str[]) -> int {
     src = entry_of("check", args)
     asked = flag_after(args, "--target")
-    held = asked == "" ? "native" : asked
+    held = checked_target(src, asked)
 
     if src == "" {
         2
@@ -2708,11 +2721,12 @@ compile_file(args: str[]) -> int {
         report_all("parse", parsed.errors, 0) +
         report_all("embed", raw.errors, 0)
     stubbed = raw with { items = raw.items ++ tag_stubs(unit.toks, 0, []) }
-    errs = bad + report_all("check",
-                            checked_with_foreign(stubbed, unit.toks), 0)
+    asked = args.length() >= 3 ? args.get(2) : ""
+    errs = bad +
+        report_all("check", checked_with_foreign(stubbed, unit.toks), 0) +
+        report_all("check", target_notes(stubbed, asked), 0)
     m = unstubbed(annotated(monomorphic(lifted(annotated(stubbed)))),
                   unit.toks)
-    asked = args.length() >= 3 ? args.get(2) : ""
     emitted = if asked == "rust" {
         rust_prelude(unit.toks, 0, "") ++ remit_module(rust_borrows(m))
     } else if asked == "js" {
@@ -2751,6 +2765,9 @@ refused_here(asked: str, m: Module) -> int {
         0
     }
 }
+
+target_notes(m: Module, asked: str) -> str[] =>
+    target_errors(m, asked == "" ? "native" : asked).map(diag_message)
 
 /// The rust and jvm targets have no C ABI bridge and no function pointer, so each is named here.
 ported_errors(items: Stmt[], i: int, target: str, acc: str[]) -> str[] {

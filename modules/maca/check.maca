@@ -3700,7 +3700,81 @@ effect_pass(items: Stmt[], names: str[], sets: str[], i: int,
 /// What the target being built for cannot carry, from this module.
 target_errors(m: Module, target: str) -> Diagnostic[] =>
     effect_errors(m, target) ++ kept_borrow_errors(m, target)
-        ++ nested_write_errors(m, target)
+        ++ nested_write_errors(m, target) ++ handler_errors(m, target)
+
+/// A handler is attached to a node, and a target that answers with markup has no node to attach it to.
+handler_errors(m: Module, target: str) -> Diagnostic[] {
+    if target == "js" || target == "wasm" {
+        []
+    } else {
+        handler_faults(m.items, 0, [])
+    }
+}
+
+handler_faults(items: Stmt[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
+    if i >= items.length() {
+        acc
+    } else {
+        s = items.get(i)
+
+        handler_faults(items, i + 1,
+                       acc ++ handler_in(s, s.value, [])
+                           ++ handler_body(s, s.body, 0, []))
+    }
+}
+
+handler_body(s: Stmt, ss: Stmt[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
+    if i >= ss.length() {
+        acc
+    } else {
+        handler_body(s, ss, i + 1,
+                     acc ++ handler_in(s, ss.get(i).value, [])
+                         ++ handler_body(s, ss.get(i).body, 0, []))
+    }
+}
+
+handler_in(s: Stmt, e: Expr, acc: Diagnostic[]) -> Diagnostic[] {
+    here = e.kind == EAttr && is_dom_handler(e) ? [handler_said(s, e.text)] : []
+
+    handler_kids(s, e.children, 0, handler_body(s, e.stmts, 0, acc ++ here))
+}
+
+handler_kids(s: Stmt, xs: Expr[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        handler_kids(s, xs, i + 1, handler_in(s, xs.get(i), acc))
+    }
+}
+
+/// A quoted value is what HTML has always had, and it is text like any other attribute.
+is_dom_handler(a: Expr) -> bool {
+    v = a.children.get(0)
+
+    if v.kind == EStr {
+        false
+    } else if v.kind == ELambda {
+        true
+    } else {
+        is_event_name(a.text)
+    }
+}
+
+is_event_name(name: str) -> bool {
+    if name.index_of("on:") == 0 {
+        return true
+    }
+
+    rest = name.length() > 2 ? name.slice(2, name.length()) : ""
+
+    name.slice(0, 2) == "on" && rest != "" && rest.lower() == rest
+}
+
+handler_said(s: Stmt, name: str) -> Diagnostic =>
+    Diagnostic { code = "M0022", pos = s.pos, note = "",
+                 message = "`{name}` is a handler, and markup is a string with"
+                     ++ " nowhere to attach one; build this with"
+                     ++ " `--target js`" }
 
 /// A nested definition reads the scope that holds it, and the C back end has no way to carry a write back out.
 nested_write_errors(m: Module, target: str) -> Diagnostic[] {
