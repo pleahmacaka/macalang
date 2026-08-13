@@ -49,7 +49,7 @@ test_a_second_holder_costs_a_copy_a_round() {
 
     assert_eq("{base.length()}", "200", "the one written to grew")
     assert_eq("{keep.length()}", "0", "and the other name did not move")
-    assert(spent > 200, "copied every round: {spent} for 200 elements")
+    assert(spent >= 200, "copied every round: {spent} for 200 elements")
 }
 
 test_an_edit_of_a_list_someone_else_holds_leaves_theirs_alone() {

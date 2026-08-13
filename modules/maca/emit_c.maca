@@ -50,10 +50,24 @@ emit_for(e: Expr) -> str {
     el = c_elem_of(over.ty)
     cell = c_cell_at("_f", el, "_fi")
 
-    "{{ MacaList _f = {emit_expr(over)};"
-        ++ " for (int _fi = 0; _fi < _f.len; _fi++) {{ {type_c(el)}"
-        ++ " {c_id(e.text)}"
-        ++ " = {cell}; {block_stmts(e.stmts, 0)}}} }}"
+    if over.kind == EBinary && over.text == ".." {
+        emit_for_range(e, over)
+    } else {
+        "{{ MacaList _f = {emit_expr(over)};"
+            ++ " for (int _fi = 0; _fi < _f.len; _fi++) {{ {type_c(el)}"
+            ++ " {c_id(e.text)}"
+            ++ " = {cell}; {block_stmts(e.stmts, 0)}}} }}"
+    }
+}
+
+/// A counted loop needs no list, so `for i in 0..n` allocates nothing.
+emit_for_range(e: Expr, over: Expr) -> str {
+    lo = emit_expr(over.children.get(0))
+    hi = emit_expr(over.children.get(1))
+
+    "{{ long _fl = {lo}; long _fh = {hi};"
+        ++ " for (long _fi = _fl; _fi < _fh; _fi++) {{ long"
+        ++ " {c_id(e.text)} = _fi; {block_stmts(e.stmts, 0)}}} }}"
 }
 
 is_loop(e: Expr) -> bool =>
@@ -1458,7 +1472,7 @@ c_preamble() -> str =>
     "static long maca_map_get(MacaMap m, const char* k) {{ return maca_map_or(m, k, 0); }}\n" ++
     "static MacaMap maca_map_remove(MacaMap m, const char* k) {{ int at = maca_map_at(m, k); if (at < 0) return m; MacaMap r; r.keys.len = m.keys.len - 1; r.vals.len = r.keys.len; r.keys.data = maca_cells((r.keys.len ? r.keys.len : 1) * sizeof(long)); r.vals.data = maca_cells((r.vals.len ? r.vals.len : 1) * sizeof(long)); int w = 0; for (int i = 0; i < m.keys.len; i++) {{ if (i == at) continue; r.keys.data[w] = m.keys.data[i]; r.vals.data[w] = m.vals.data[i]; w++; }} return r; }}\n" ++
     "static MacaMap maca_map_set(MacaMap m, const char* k, long v) {{ int i = maca_map_at(m, k); MacaMap r; if (i >= 0) {{ r = m; r.vals.data = maca_cells((m.vals.len ? m.vals.len : 1) * sizeof(long)); memcpy(r.vals.data, m.vals.data, m.vals.len * sizeof(long)); r.vals.data[i] = v; return r; }} r.keys.len = m.keys.len + 1; r.vals.len = m.vals.len + 1; r.keys.data = maca_cells(r.keys.len * sizeof(long)); r.vals.data = maca_cells(r.vals.len * sizeof(long)); memcpy(r.keys.data, m.keys.data, m.keys.len * sizeof(long)); memcpy(r.vals.data, m.vals.data, m.vals.len * sizeof(long)); r.keys.data[m.keys.len] = (long)k; r.vals.data[m.vals.len] = v; return r; }}\n" ++
-    "static MacaList maca_listv(int n, ...) {{ MacaList l; l.data = maca_cells(n * sizeof(long)); l.len = n; va_list ap; va_start(ap, n); for (int i = 0; i < n; i++) l.data[i] = va_arg(ap, long); va_end(ap); return l; }}\n" ++
+    "static MacaList maca_listv(int n, ...) {{ MacaList l; l.data = n > 0 ? maca_cells(n * sizeof(long)) : 0; l.len = n; va_list ap; va_start(ap, n); for (int i = 0; i < n; i++) l.data[i] = va_arg(ap, long); va_end(ap); return l; }}\n" ++
     "static MacaList maca_list_cat(MacaList a, MacaList b) {{ MacaList l; l.len = a.len + b.len; l.data = maca_cells((l.len ? l.len : 1) * sizeof(long)); memcpy(l.data, a.data, a.len * sizeof(long)); memcpy(l.data + a.len, b.data, b.len * sizeof(long)); return l; }}\n" ++
     "static MacaList maca_list_pushed(MacaList a, long v) {{ maca_hdr* h = a.data ? ((maca_hdr*)a.data) - 1 : 0; long room = h ? h->size / (long)sizeof(long) : 0; if (!h || a.len != h->used || a.len >= room) {{ long want = a.len * 2 > 8 ? a.len * 2 : 8; long* g = maca_cells(want * (long)sizeof(long)); if (a.len > 0) memcpy(g, a.data, (size_t)a.len * sizeof(long)); a.data = g; h = ((maca_hdr*)g) - 1; }} a.data[a.len] = v; a.len++; h->used = a.len; return a; }}\n" ++
     "static MacaList maca_list_slice(MacaList a, int lo, int hi) {{ if (lo < 0) lo = 0; if (hi > a.len) hi = a.len; if (hi < lo) hi = lo; MacaList l; l.len = hi - lo; l.data = maca_cells((l.len ? l.len : 1) * sizeof(long)); memcpy(l.data, a.data + lo, l.len * sizeof(long)); return l; }}\n" ++

@@ -1871,6 +1871,8 @@ annotate_expr(env: Env, e: Expr) -> Expr {
         annotated_node(env, gathered_rest(env, e))
     } else if is_field_call(env, e) {
         annotated_node(env, e with { ival = 1 })
+    } else if is_rest_method(env, e) {
+        annotate_expr(env, e_call(e.text, e.children))
     } else if e.kind == ECall && holds_fn(env, e.text) {
         annotated_node(env, e with { ival = 2 })
     } else if e.kind == EIdent && holds_fn(env, e.text) {
@@ -1906,14 +1908,30 @@ is_field_call(env: Env, e: Expr) -> bool =>
                        e.text).kind == KFn
 
 is_rest_call(env: Env, e: Expr) -> bool =>
-    e.kind == ECall && env.varargs.index_of(e.text) >= 0
+    e.kind == ECall && env.varargs.index_of(e.text) >= 0 && !has_rest(e)
+
+/// A UFCS call into a variadic is that call, so the receiver is an argument.
+is_rest_method(env: Env, e: Expr) -> bool =>
+    e.kind == EMethod && env.varargs.index_of(e.text) >= 0
+        && is_ufcs_call(env, e,
+                        resolve(env.infer,
+                                type_in(env, e.children.get(0)).ty))
+
+/// The gathered list marks itself, so annotating a module twice gathers once.
+has_rest(e: Expr) -> bool {
+    n = e.children.length()
+    last = n > 0 ? e.children.get(n - 1) : e_list([])
+
+    last.kind == EList && last.ival == 1
+}
 
 /// Every argument past the fixed ones becomes the one list the callee declared.
 gathered_rest(env: Env, e: Expr) -> Expr {
     at = fixed_arity(env, e.text)
+    gathered = e.children.slice(at, e.children.length())
 
     e with { children = e.children.slice(0, at)
-                        ++ [e_list(e.children.slice(at, e.children.length()))] }
+                        ++ [e_list(gathered) with { ival = 1 }] }
 }
 
 fixed_arity(env: Env, name: str) -> int =>

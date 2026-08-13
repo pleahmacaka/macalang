@@ -1,0 +1,144 @@
+Point = {
+    x: int
+    y: int
+}
+
+Bag = {
+    n: int
+}
+
+total(...rest: int) -> int {
+    n = 0
+    for v in rest {
+        n = n + v
+    }
+    n
+}
+
+joined(sep: str, ...parts: str) -> str => parts.join(sep)
+
+span(...ps: Point) -> int {
+    n = 0
+    for p in ps {
+        n = n + p.x + p.y
+    }
+    n
+}
+
+tally(b: Bag, ...more: int) -> int {
+    t = b.n
+    for v in more {
+        t = t + v
+    }
+    t
+}
+
+counted(...xs: int) -> int => xs.length()
+
+first_of(...xs: a) -> a => xs.first()
+
+countdown(n: int, ...seen: int) -> int =>
+    n == 0 ? seen.length() : countdown(n - 1, n, n)
+
+sumf(...xs: float) -> float {
+    t = 0.0
+    for v in xs {
+        t = t + v
+    }
+    t
+}
+
+rows(...rs: str[]) -> int {
+    n = 0
+    for r in rs {
+        n = n + r.length()
+    }
+    n
+}
+
+applied(f, ...xs: int) -> int {
+    n = 0
+    for v in xs {
+        n = n + f(v)
+    }
+    n
+}
+
+test_the_arguments_arrive_as_values_and_never_as_a_pointer() {
+    assert_eq(str(total()), "0", "nothing to add")
+    assert_eq(str(total(7)), "7", "the only value")
+    assert_eq(str(total(1, 2, 3)), "6", "all three, in order")
+    assert_eq(str(counted()), "0", "and nothing in the list")
+    assert_eq(str(counted(1, 2, 3, 4, 5)), "5", "five elements")
+}
+
+test_a_fixed_parameter_takes_the_first_argument() {
+    assert_eq(joined("-", "a", "b", "c"), "a-b-c", "three parts, one sep")
+    assert_eq(joined("-"), "", "no parts at all")
+    assert_eq(joined("+", "solo"), "solo", "one part needs no separator")
+}
+
+test_a_variadic_of_records_reads_its_fields() {
+    a = Point { x = 1, y = 2 }
+    b = Point { x = 3, y = 4 }
+
+    assert_eq(str(span(a, b)), "10", "both points")
+    assert_eq(str(span(a)), "3", "one point")
+    assert_eq(str(span()), "0", "none")
+}
+
+test_a_generic_variadic_specializes_per_element_type() {
+    assert_eq(str(first_of(9, 1, 1)), "9", "the first, not the smallest")
+    assert_eq(first_of("a", "b"), "a", "and a str list, from one signature")
+}
+
+test_a_ufcs_call_gathers_the_arguments_past_the_receiver() {
+    bag = Bag { n = 10 }
+
+    assert_eq(str(bag.tally(1, 2)), "13", "receiver plus the collected two")
+    assert_eq(str(bag.tally()), "10", "receiver alone")
+}
+
+test_a_ufcs_receiver_is_the_first_collected_element() {
+    n = 10
+
+    assert_eq(str(n.counted(1, 2)), "3", "receiver counts as an element")
+}
+
+test_a_lambda_can_pass_its_parameter_to_a_variadic() {
+    f = v => total(v, 1)
+
+    assert_eq(str(f(2)), "3", "the lambda parameter is one element")
+}
+
+test_a_variadic_can_recurse() {
+    assert_eq(str(countdown(3)), "2", "the last call collected two")
+    assert_eq(str(countdown(0, 5, 6, 7)), "3", "or three, on the first")
+}
+
+test_a_float_variadic_keeps_its_element_type() {
+    assert_eq(str(sumf(1.5, 2.25)), "3.75", "doubles, not truncated ints")
+    assert_eq(str(sumf()), "0.0", "and an empty float list")
+}
+
+test_a_variadic_of_lists_takes_an_empty_list() {
+    assert_eq(str(rows([])), "0", "one element, holding nothing")
+    assert_eq(str(rows([], ["a", "b"], ["c"])), "3", "empty ones count too")
+}
+
+test_a_closure_parameter_can_precede_a_variadic() {
+    assert_eq(str(applied(v => v * 2, 1, 2, 3)), "12", "each element doubled")
+    assert_eq(str(applied(v => v * 2)), "0", "and nothing to apply it to")
+}
+
+test_a_variadic_call_with_no_arguments_allocates_nothing() {
+    before = alloc_count() + reuse_count()
+    seen = 0
+    for i in 1..201 {
+        seen = seen + total()
+    }
+    spent = alloc_count() + reuse_count() - before
+
+    assert_eq(str(seen), "0", "still the right answer")
+    assert_eq(str(spent), "0", "an empty list allocated {spent} buffers")
+}
