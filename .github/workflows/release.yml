@@ -38,82 +38,75 @@ jobs:
   build:
     name: build ${{ matrix.target }}
     needs: create
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+          - target: x86_64-linux-gnu
             asset: maca-linux-x86_64.tar.gz
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
+          - target: aarch64-linux-gnu
             asset: maca-linux-aarch64.tar.gz
-          # Cross-compiled from the arm64 runner rather than built on an Intel
-          # one. `macos-13` was the last Intel image and it is gone, so that leg
-          # sat queued with no runner while the other four published: a release
-          # that looked successful and was missing a binary. Apple's toolchain
-          # emits both slices, so this does not need a machine of its own.
-          - os: macos-latest
-            target: x86_64-apple-darwin
+          - target: x86_64-macos
             asset: maca-macos-x86_64.tar.gz
-          - os: macos-latest
-            target: aarch64-apple-darwin
+          - target: aarch64-macos
             asset: maca-macos-aarch64.tar.gz
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
+          - target: x86_64-windows-gnu
             asset: maca-windows-x86_64.zip
+            ext: .exe
     steps:
       - uses: actions/checkout@v4
 
-      # `matrix.target` used to name the target and nothing passed it to cargo,
-      # so every leg built for whatever the runner happened to be and the field
-      # was decoration. It is the build's actual target now, which is what lets
-      # a leg be cross-compiled instead of needing its own machine.
-      - name: Install Rust
+      # Every leg runs on one Linux machine. `zig cc` is the cross compiler, so
+      # the five assets come from one seed and one C file each rather than from
+      # five runners, and the Windows leg no longer needs a `cc` of its own on
+      # a runner that ships none. Taken from ziglang.org rather than an action,
+      # whose community mirrors 404.
+      - name: Install zig
         run: |
-          rustup toolchain install stable --profile minimal --no-self-update
-          rustup target add ${{ matrix.target }}
+          curl -fsSL https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz -o /tmp/zig.tar.xz
+          echo "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00  /tmp/zig.tar.xz" | sha256sum -c -
+          mkdir -p /opt/zig
+          tar -xJf /tmp/zig.tar.xz -C /opt/zig --strip-components=1
+          echo /opt/zig >> "$GITHUB_PATH"
 
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }} -p maca-driver -p maca-lsp
+      - name: Build the seed compiler
+        run: cc -O1 -o bootstrap/maca bootstrap/maca.c
 
-      # The two steps below are the only inline scripts left in this
-      # repository's CI, and they stay scripts. Packaging a Maca program would
-      # mean `maca run apps/package/package.maca`, which compiles that program through
-      # the C backend and so needs a C compiler on the runner. Four of the five
-      # legs have one; `windows-latest` does not ship a `cc`. Writing it in Maca
-      # anyway would either leave a second implementation behind for Windows,
-      # exactly the drift this file's siblings exist to avoid, or make cutting
-      # a release depend on the compiler being able to build a program on the
-      # host whose binaries the release is being cut for.
-      - name: Package (unix)
-        if: runner.os != 'Windows'
-        shell: bash
+      # The compiler and the language server are Maca programs, so the seed
+      # writes each one out as C and zig links that C for the target. The seed
+      # stays native: what is cross-compiled is the program it emits.
+      - name: Emit the C
         run: |
-          mkdir -p dist
-          tar -czf "dist/${{ matrix.asset }}" -C "target/${{ matrix.target }}/release" maca maca-lsp
+          mkdir -p build dist
+          MACA=$PWD/bootstrap/maca ./bootstrap/maca apps/maca1/main.maca build/maca.c
+          MACA=$PWD/bootstrap/maca ./bootstrap/maca apps/lsp/lsp.maca build/maca-lsp.c
 
-      - name: Package (windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
+      - name: Cross-compile
         run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path target\${{ matrix.target }}\release\maca.exe, target\${{ matrix.target }}\release\maca-lsp.exe -DestinationPath "dist\${{ matrix.asset }}" -Force
+          zig cc -target ${{ matrix.target }} -O1 -o "dist/maca${{ matrix.ext }}" build/maca.c
+          zig cc -target ${{ matrix.target }} -O1 -o "dist/maca-lsp${{ matrix.ext }}" build/maca-lsp.c
+
+      - name: Package (tar)
+        if: matrix.ext == ''
+        run: tar -czf "dist/${{ matrix.asset }}" -C dist maca maca-lsp
+
+      - name: Package (zip)
+        if: matrix.ext != ''
+        run: cd dist && zip -q "${{ matrix.asset }}" maca.exe maca-lsp.exe
 
       # The standard library rides inside the binary, so packaging cannot forget
-      # it and the tarball stays two files. What packaging can still lose is the
+      # it and the archive stays two files. What packaging can still lose is the
       # copy itself, and the only way to see that is from outside the checkout:
       # a program in a temp directory that imports `std/text` has nothing but
-      # the binary to resolve it with. The Linux legs are the native ones with a
-      # `cc`, which is what makes them the ones that can run it.
+      # the binary to resolve it with. Only the leg whose binaries this machine
+      # can run is in a position to try it.
       - name: Verify the released binary carries the standard library
-        if: runner.os == 'Linux'
-        shell: bash
+        if: matrix.target == 'x86_64-linux-gnu'
         run: |
           probe="$(mktemp -d)"
-          printf 'import { lines } from std/text\n\nmain() -> int {\n    n = lines("a\\nb").length()\n    n == 2 ? 0 : 1\n}\n' > "$probe/probe.maca"
-          "$PWD/target/${{ matrix.target }}/release/maca" run "$probe/probe.maca"
+          printf 'import { lines } from std/text\n\nmain() -> int {\n    n = lines("a").length()\n    n == 1 ? 0 : 1\n}\n' > "$probe/probe.maca"
+          (cd "$probe" && "$GITHUB_WORKSPACE/dist/maca" run probe.maca)
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
@@ -126,37 +119,42 @@ jobs:
   installer:
     name: build maca-install ${{ matrix.target }}
     needs: create
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - target: x86_64-linux-gnu
             asset: maca-install-linux-x86_64
-          - os: ubuntu-24.04-arm
+          - target: aarch64-linux-gnu
             asset: maca-install-linux-aarch64
-          - os: macos-13
+          - target: x86_64-macos
             asset: maca-install-macos-x86_64
-          - os: macos-latest
+          - target: aarch64-macos
             asset: maca-install-macos-aarch64
-          - os: windows-latest
+          - target: x86_64-windows-gnu
             asset: maca-install-windows-x86_64.exe
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal --no-self-update
 
-      # The installer is a Maca program, so building it needs the compiler
-      # first. It reads its own platform from `uname` at run time, so each leg
-      # only has to run on the machine the asset is named for.
-      - name: Build the compiler
-        run: cargo build --release -p maca-driver
-      - name: Build
-        shell: bash
+      - name: Install zig
         run: |
-          mkdir -p dist
-          ./target/release/maca build apps/install/install.maca \
-            -o "dist/${{ matrix.asset }}"
+          curl -fsSL https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz -o /tmp/zig.tar.xz
+          echo "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00  /tmp/zig.tar.xz" | sha256sum -c -
+          mkdir -p /opt/zig
+          tar -xJf /tmp/zig.tar.xz -C /opt/zig --strip-components=1
+          echo /opt/zig >> "$GITHUB_PATH"
+
+      # The installer is a Maca program too, and it reads its own platform from
+      # `uname` at run time, so one source becomes every asset.
+      - name: Build the seed compiler
+        run: cc -O1 -o bootstrap/maca bootstrap/maca.c
+
+      - name: Build
+        run: |
+          mkdir -p build dist
+          MACA=$PWD/bootstrap/maca ./bootstrap/maca apps/install/install.maca build/install.c
+          zig cc -target ${{ matrix.target }} -O1 -o "dist/${{ matrix.asset }}" build/install.c
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
