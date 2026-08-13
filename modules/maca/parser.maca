@@ -351,54 +351,73 @@ parse_store_stmt(ts: Token[], target: PExpr, acc: Stmt[]) -> PBlock {
 parse_module(ts: Token[], i: int, acc: Stmt[]) -> Module =>
     parse_items(ts, i, acc, [])
 
+POne = {
+    made:  Stmt[]
+    onext: int
+    obad:  str[]
+}
+
+mk_pone(made: Stmt[], onext: int, obad: str[]) -> POne =>
+    POne { made, onext, obad }
+
 parse_items(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
-    if ts.get(i).kind == Eof {
-        Module { items = acc, errors = bad }
-    } else if ts.get(i).kind == KwImport {
-        parse_items(ts, import_end(ts, i + 1), acc, bad)
+    out = acc
+    errs = bad
+    at = i
+
+    while ts.get(at).kind != Eof {
+        one = parse_one_item(ts, at)
+
+        if one.made.length() > 0 {
+            out = out.push(at_pos(one.made.get(0), ts.get(at).pos))
+        }
+
+        errs = errs ++ one.obad
+        at = one.onext
+    }
+
+    Module { items = out, errors = errs }
+}
+
+/// One item and where the next one starts, so the file is read by a loop and not by a stack.
+parse_one_item(ts: Token[], i: int) -> POne {
+    if ts.get(i).kind == KwImport {
+        mk_pone([], import_end(ts, i + 1), [])
     } else if ts.get(i).kind == KwAlias {
-        parse_items(ts, parse_expr(ts, i + 3).next, acc, bad)
+        mk_pone([], parse_expr(ts, i + 3).next, [])
     } else if is_const_word(ts, i) {
-        parse_items(ts, i + 1, acc, bad)
+        mk_pone([], i + 1, [])
     } else if is_record_decl(ts, i) {
-        stamped(parse_record_decl(ts, i, acc, bad), acc.length(), ts.get(i).pos)
+        parse_record_decl(ts, i)
     } else if is_sum_decl(ts, i) {
-        stamped(parse_sum_decl(ts, i, acc, bad), acc.length(), ts.get(i).pos)
+        parse_sum_decl(ts, i)
     } else if starts_fn(ts, i) {
-        stamped(parse_fn_item(ts, i, acc, bad), acc.length(), ts.get(i).pos)
+        parse_fn_item(ts, i)
     } else if binds_a_name(ts, i) {
-        stamped(parse_const_item(ts, i, acc, bad), acc.length(), ts.get(i).pos)
+        parse_const_item(ts, i)
     } else if binds_a_path(ts, i) {
-        stamped(parse_path_item(ts, i, acc, bad), acc.length(), ts.get(i).pos)
+        parse_path_item(ts, i)
     } else {
-        parse_items(ts, i + 1, acc, bad ++ [skipped(ts, i)])
+        mk_pone([], i + 1, [skipped(ts, i)])
     }
 }
 
-stamped(m: Module, at: int, p: int) -> Module {
-    if at >= m.items.length() {
-        m
-    } else {
-        m with { items = m.items.set(at, at_pos(m.items.get(at), p)) }
-    }
-}
-
-parse_const_item(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
+parse_const_item(ts: Token[], i: int) -> POne {
     at = bind_eq_at(ts, i + 1)
     got = parse_list_expr(ts, at + 1)
     made = s_bind_typed(ts.get(i).text, bind_type(ts, i + 1), got.node)
 
-    parse_items(ts, past_as_const(ts, got.next), acc ++ [made], bad)
+    mk_pone([made], past_as_const(ts, got.next), [])
 }
 
 /// Config mode writes a whole dotted path on the left of `=`, and it is one name.
-parse_path_item(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
+parse_path_item(ts: Token[], i: int) -> POne {
     end = path_end(ts, i + 1)
     got = parse_list_expr(ts, bind_eq_at(ts, end) + 1)
     made = s_bind_typed(dotted_name(ts, i, end, ""), bind_type(ts, end),
                         got.node)
 
-    parse_items(ts, got.next, acc ++ [made], bad)
+    mk_pone([made], got.next, [])
 }
 
 binds_a_path(ts: Token[], i: int) -> bool {
@@ -513,10 +532,11 @@ selection_end(ts: Token[], i: int) -> int {
     }
 }
 
-parse_sum_decl(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
+parse_sum_decl(ts: Token[], i: int) -> POne {
     name = ts.get(i).text
     sv = parse_variants(ts, bind_eq_at(ts, i + 1) + 1, [])
-    parse_items(ts, sv.pnext, acc ++ [s_sum(name, sv.params)], bad)
+
+    mk_pone([s_sum(name, sv.params)], sv.pnext, [])
 }
 
 parse_variants(ts: Token[], i: int, acc: Expr[]) -> PParams {
@@ -559,9 +579,10 @@ parse_payload(ts: Token[], i: int, v: Expr) -> PExpr {
     }
 }
 
-parse_fn_item(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
+parse_fn_item(ts: Token[], i: int) -> POne {
     ps = parse_fn(ts, i)
-    parse_items(ts, ps.snext, acc ++ [ps.snode], bad ++ arrow_doubt(ts, i))
+
+    mk_pone([ps.snode], ps.snext, arrow_doubt(ts, i))
 }
 
 /// Both readings hold, so neither is taken, and the two spellings are named.
@@ -579,10 +600,11 @@ arrow_doubt(ts: Token[], i: int) -> str[] {
     }
 }
 
-parse_record_decl(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
+parse_record_decl(ts: Token[], i: int) -> POne {
     name = ts.get(i).text
     rf = parse_fields(ts, bind_eq_at(ts, i + 1) + 2, [])
-    parse_items(ts, rf.pnext + 1, acc ++ [s_record(name, rf.params)], bad)
+
+    mk_pone([s_record(name, rf.params)], rf.pnext + 1, [])
 }
 
 parse_fields(ts: Token[], i: int, acc: Expr[]) -> PParams {

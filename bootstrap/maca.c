@@ -125,6 +125,7 @@ typedef struct { MacaList bstmts; long bnext; } PBlock;
 typedef struct { MacaList aitems; long anext; } PArgs;
 typedef struct { const char* tname; long tnext; } PType;
 typedef enum { ABlock, ARecord, ABoth } ArrowRead;
+typedef struct { MacaList made; long onext; MacaList obad; } POne;
 typedef enum { KInt, KFloat, KStr, KBool, KBytes, KUnit, KAny, KError, KVar, KCon, KFn, KRec, KOpt } TyKind;
 typedef struct { MacaList subst; } Infer;
 typedef struct { const char* code; const char* message; const char* note; long pos; } Diagnostic;
@@ -365,10 +366,11 @@ PBlock parse_bind_stmt(MacaList ts, long at, MacaList acc);
 PBlock parse_expr_stmt(MacaList ts, long i, MacaList acc);
 PBlock parse_store_stmt(MacaList ts, PExpr target, MacaList acc);
 Module parse_module(MacaList ts, long i, MacaList acc);
+POne mk_pone(MacaList made, long onext, MacaList obad);
 Module parse_items(MacaList ts, long i, MacaList acc, MacaList bad);
-Module stamped(Module m, long at, long p);
-Module parse_const_item(MacaList ts, long i, MacaList acc, MacaList bad);
-Module parse_path_item(MacaList ts, long i, MacaList acc, MacaList bad);
+POne parse_one_item(MacaList ts, long i);
+POne parse_const_item(MacaList ts, long i);
+POne parse_path_item(MacaList ts, long i);
 long binds_a_path(MacaList ts, long i);
 long path_end(MacaList ts, long i);
 const char* dotted_name(MacaList ts, long i, long end, const char* acc);
@@ -386,14 +388,14 @@ long is_sum_decl(MacaList ts, long i);
 long is_upper(const char* w);
 long import_end(MacaList ts, long i);
 long selection_end(MacaList ts, long i);
-Module parse_sum_decl(MacaList ts, long i, MacaList acc, MacaList bad);
+POne parse_sum_decl(MacaList ts, long i);
 PParams parse_variants(MacaList ts, long i, MacaList acc);
 PParams one_variant(MacaList ts, long i, MacaList acc);
 PExpr parse_variant(MacaList ts, long i);
 PExpr parse_payload(MacaList ts, long i, Expr v);
-Module parse_fn_item(MacaList ts, long i, MacaList acc, MacaList bad);
+POne parse_fn_item(MacaList ts, long i);
 MacaList arrow_doubt(MacaList ts, long i);
-Module parse_record_decl(MacaList ts, long i, MacaList acc, MacaList bad);
+POne parse_record_decl(MacaList ts, long i);
 PParams parse_fields(MacaList ts, long i, MacaList acc);
 PParams parse_one_field(MacaList ts, long i, MacaList acc);
 long skip_comma(MacaList ts, long i);
@@ -2466,10 +2468,11 @@ PBlock parse_bind_stmt(MacaList ts, long at, MacaList acc) { long i = (is_const_
 PBlock parse_expr_stmt(MacaList ts, long i, MacaList acc) { PExpr e = parse_expr(ts, i); return (((*(Token*)ts.data[e.next]).kind == Eq) ? parse_store_stmt(ts, e, acc) : parse_block(ts, e.next, maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ s_expr(e.node) })))));  }
 PBlock parse_store_stmt(MacaList ts, PExpr target, MacaList acc) { PExpr v = parse_expr(ts, (target.next + 1)); Stmt set = s_expr(e_binary("=", target.node, v.node)); return parse_block(ts, v.next, maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ set }))));  }
 Module parse_module(MacaList ts, long i, MacaList acc) { return parse_items(ts, i, acc, maca_listv(0));  }
-Module parse_items(MacaList ts, long i, MacaList acc, MacaList bad) { return (((*(Token*)ts.data[i]).kind == Eof) ? (Module){ .items = acc, .errors = bad } : (((*(Token*)ts.data[i]).kind == KwImport) ? parse_items(ts, import_end(ts, (i + 1)), acc, bad) : (((*(Token*)ts.data[i]).kind == KwAlias) ? parse_items(ts, parse_expr(ts, (i + 3)).next, acc, bad) : (is_const_word(ts, i) ? parse_items(ts, (i + 1), acc, bad) : (is_record_decl(ts, i) ? stamped(parse_record_decl(ts, i, acc, bad), (acc.len), (*(Token*)ts.data[i]).pos) : (is_sum_decl(ts, i) ? stamped(parse_sum_decl(ts, i, acc, bad), (acc.len), (*(Token*)ts.data[i]).pos) : (starts_fn(ts, i) ? stamped(parse_fn_item(ts, i, acc, bad), (acc.len), (*(Token*)ts.data[i]).pos) : (binds_a_name(ts, i) ? stamped(parse_const_item(ts, i, acc, bad), (acc.len), (*(Token*)ts.data[i]).pos) : (binds_a_path(ts, i) ? stamped(parse_path_item(ts, i, acc, bad), (acc.len), (*(Token*)ts.data[i]).pos) : parse_items(ts, (i + 1), acc, maca_list_cat(bad, maca_listv(1, (long)(skipped(ts, i))))))))))))));  }
-Module stamped(Module m, long at, long p) { return ((at >= (m.items.len)) ? m : ({ __typeof__(m) _w = m; _w.items = maca_list_set(m.items, at, maca_box(sizeof(Stmt), (Stmt[]){ at_pos((*(Stmt*)m.items.data[at]), p) })); _w; }));  }
-Module parse_const_item(MacaList ts, long i, MacaList acc, MacaList bad) { long at = bind_eq_at(ts, (i + 1)); PExpr got = parse_list_expr(ts, (at + 1)); Stmt made = s_bind_typed((*(Token*)ts.data[i]).text, bind_type(ts, (i + 1)), got.node); return parse_items(ts, past_as_const(ts, got.next), maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ made }))), bad);  }
-Module parse_path_item(MacaList ts, long i, MacaList acc, MacaList bad) { long end = path_end(ts, (i + 1)); PExpr got = parse_list_expr(ts, (bind_eq_at(ts, end) + 1)); Stmt made = s_bind_typed(dotted_name(ts, i, end, ""), bind_type(ts, end), got.node); return parse_items(ts, got.next, maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ made }))), bad);  }
+POne mk_pone(MacaList made, long onext, MacaList obad) { return (POne){ .made = made, .onext = onext, .obad = obad };  }
+Module parse_items(MacaList ts, long i, MacaList acc, MacaList bad) { MacaList out = acc; MacaList errs = bad; long at = i; while (((*(Token*)ts.data[at]).kind != Eof)) { POne one = parse_one_item(ts, at); if (((one.made.len) > 0)) { out = maca_list_pushed(out, maca_box(sizeof(Stmt), (Stmt[]){ at_pos((*(Stmt*)one.made.data[0]), (*(Token*)ts.data[at]).pos) })); out; } errs = maca_list_cat(errs, one.obad); at = one.onext; } return (Module){ .items = out, .errors = errs };  }
+POne parse_one_item(MacaList ts, long i) { return (((*(Token*)ts.data[i]).kind == KwImport) ? mk_pone(maca_listv(0), import_end(ts, (i + 1)), maca_listv(0)) : (((*(Token*)ts.data[i]).kind == KwAlias) ? mk_pone(maca_listv(0), parse_expr(ts, (i + 3)).next, maca_listv(0)) : (is_const_word(ts, i) ? mk_pone(maca_listv(0), (i + 1), maca_listv(0)) : (is_record_decl(ts, i) ? parse_record_decl(ts, i) : (is_sum_decl(ts, i) ? parse_sum_decl(ts, i) : (starts_fn(ts, i) ? parse_fn_item(ts, i) : (binds_a_name(ts, i) ? parse_const_item(ts, i) : (binds_a_path(ts, i) ? parse_path_item(ts, i) : mk_pone(maca_listv(0), (i + 1), maca_listv(1, (long)(skipped(ts, i))))))))))));  }
+POne parse_const_item(MacaList ts, long i) { long at = bind_eq_at(ts, (i + 1)); PExpr got = parse_list_expr(ts, (at + 1)); Stmt made = s_bind_typed((*(Token*)ts.data[i]).text, bind_type(ts, (i + 1)), got.node); return mk_pone(maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ made })), past_as_const(ts, got.next), maca_listv(0));  }
+POne parse_path_item(MacaList ts, long i) { long end = path_end(ts, (i + 1)); PExpr got = parse_list_expr(ts, (bind_eq_at(ts, end) + 1)); Stmt made = s_bind_typed(dotted_name(ts, i, end, ""), bind_type(ts, end), got.node); return mk_pone(maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ made })), got.next, maca_listv(0));  }
 long binds_a_path(MacaList ts, long i) { long end = path_end(ts, (i + 1)); return ((((*(Token*)ts.data[i]).kind == TIdent) && (end > (i + 1))) && ((*(Token*)ts.data[bind_eq_at(ts, end)]).kind == Eq));  }
 long path_end(MacaList ts, long i) { return ((((*(Token*)ts.data[i]).kind == Dot) && ((*(Token*)ts.data[(i + 1)]).kind == TIdent)) ? path_end(ts, (i + 2)) : i);  }
 const char* dotted_name(MacaList ts, long i, long end, const char* acc) { return ((i >= end) ? acc : dotted_name(ts, (i + 1), end, maca_cat(acc, (*(Token*)ts.data[i]).text)));  }
@@ -2487,14 +2490,14 @@ long is_sum_decl(MacaList ts, long i) { long at = bind_eq_at(ts, (i + 1)); retur
 long is_upper(const char* w) { return (((((int)strlen(w)) > 0) && (isalpha((unsigned char)(maca_str_at(w, 0))[0]) != 0)) && (strcmp(maca_upper(maca_str_at(w, 0)), maca_str_at(w, 0)) == 0));  }
 long import_end(MacaList ts, long i) { return (((*(Token*)ts.data[i]).kind == LBrace) ? import_end(ts, (selection_end(ts, (i + 1)) + 2)) : (((*(Token*)ts.data[i]).kind == TStr) ? (i + 1) : (((*(Token*)ts.data[(i + 1)]).kind == TStr) ? (i + 2) : (((*(Token*)ts.data[(i + 1)]).kind == Slash) ? import_end(ts, (i + 2)) : (i + 1)))));  }
 long selection_end(MacaList ts, long i) { return ((((*(Token*)ts.data[i]).kind == Eof) || ((*(Token*)ts.data[i]).kind == RBrace)) ? i : selection_end(ts, (i + 1)));  }
-Module parse_sum_decl(MacaList ts, long i, MacaList acc, MacaList bad) { const char* name = (*(Token*)ts.data[i]).text; PParams sv = parse_variants(ts, (bind_eq_at(ts, (i + 1)) + 1), maca_listv(0)); return parse_items(ts, sv.pnext, maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ s_sum(name, sv.params) }))), bad);  }
+POne parse_sum_decl(MacaList ts, long i) { const char* name = (*(Token*)ts.data[i]).text; PParams sv = parse_variants(ts, (bind_eq_at(ts, (i + 1)) + 1), maca_listv(0)); return mk_pone(maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ s_sum(name, sv.params) })), sv.pnext, maca_listv(0));  }
 PParams parse_variants(MacaList ts, long i, MacaList acc) { return (((*(Token*)ts.data[i]).kind != TIdent) ? mk_pparams(acc, i) : one_variant(ts, i, acc));  }
 PParams one_variant(MacaList ts, long i, MacaList acc) { PExpr v = parse_variant(ts, i); MacaList seen = maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Expr), (Expr[]){ v.node }))); return (((*(Token*)ts.data[v.next]).kind == Bar) ? parse_variants(ts, (v.next + 1), seen) : mk_pparams(seen, v.next));  }
 PExpr parse_variant(MacaList ts, long i) { Expr named = e_ident((*(Token*)ts.data[i]).text); return (((*(Token*)ts.data[(i + 1)]).kind == LParen) ? parse_payload(ts, (i + 2), named) : mk_pexpr(named, (i + 1)));  }
 PExpr parse_payload(MacaList ts, long i, Expr v) { return ((((*(Token*)ts.data[i]).kind == Eof) || ((*(Token*)ts.data[i]).kind == RParen)) ? mk_pexpr(v, (i + 1)) : (((*(Token*)ts.data[i]).kind == Comma) ? parse_payload(ts, (i + 1), v) : ({ Expr ty = e_typed((*(Token*)ts.data[i]).text, (*(Token*)ts.data[i]).text); parse_payload(ts, (i + 1), with_child(v, ty)); })));  }
-Module parse_fn_item(MacaList ts, long i, MacaList acc, MacaList bad) { PStmt ps = parse_fn(ts, i); return parse_items(ts, ps.snext, maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ ps.snode }))), maca_list_cat(bad, arrow_doubt(ts, i)));  }
+POne parse_fn_item(MacaList ts, long i) { PStmt ps = parse_fn(ts, i); return mk_pone(maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ ps.snode })), ps.snext, arrow_doubt(ts, i));  }
 MacaList arrow_doubt(MacaList ts, long i) { PParams pp = parse_params(ts, (i + 2), maca_listv(0)); long at = after_return_type(ts, (pp.pnext + 1)); return (((((*(Token*)ts.data[at]).kind != FatArrow) || ((*(Token*)ts.data[(at + 1)]).kind != LBrace)) || (arrow_read(ts, (at + 1)) != ABoth)) ? maca_listv(0) : maca_listv(1, (long)(maca_cat(maca_cat(maca_cat(maca_cat("`", (*(Token*)ts.data[i]).text), "`: this `=> { … }` reads as a record literal and"), " as a block. Write `Name { … }` for the record, or drop the"), " `=>` for the block"))));  }
-Module parse_record_decl(MacaList ts, long i, MacaList acc, MacaList bad) { const char* name = (*(Token*)ts.data[i]).text; PParams rf = parse_fields(ts, (bind_eq_at(ts, (i + 1)) + 2), maca_listv(0)); return parse_items(ts, (rf.pnext + 1), maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ s_record(name, rf.params) }))), bad);  }
+POne parse_record_decl(MacaList ts, long i) { const char* name = (*(Token*)ts.data[i]).text; PParams rf = parse_fields(ts, (bind_eq_at(ts, (i + 1)) + 2), maca_listv(0)); return mk_pone(maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ s_record(name, rf.params) })), (rf.pnext + 1), maca_listv(0));  }
 PParams parse_fields(MacaList ts, long i, MacaList acc) { return ((((*(Token*)ts.data[i]).kind == Eof) || ((*(Token*)ts.data[i]).kind == RBrace)) ? mk_pparams(acc, i) : parse_one_field(ts, i, acc));  }
 PParams parse_one_field(MacaList ts, long i, MacaList acc) { PType t = scan_type(ts, (i + 2)); MacaList seen = maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Expr), (Expr[]){ e_param((*(Token*)ts.data[i]).text, t.tname) }))); return parse_fields(ts, skip_comma(ts, t.tnext), seen);  }
 long skip_comma(MacaList ts, long i) { return (((*(Token*)ts.data[i]).kind == Comma) ? (i + 1) : i);  }
