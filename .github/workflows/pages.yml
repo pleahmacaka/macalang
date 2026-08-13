@@ -39,31 +39,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal --no-self-update
-
       # The in-browser compiler is a Maca program linked by `zig cc -target
-      # wasm32-wasi`, so zig is the toolchain this job needs.
-      - uses: mlugg/setup-zig@v1
-        with:
-          version: 0.16.0
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: pages
+      # wasm32-wasi`, so zig is the toolchain this job needs. Taken from
+      # ziglang.org rather than an action, whose community mirrors 404.
+      - name: Install zig
+        run: |
+          curl -fsSL https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz -o /tmp/zig.tar.xz
+          echo "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00  /tmp/zig.tar.xz" | sha256sum -c -
+          mkdir -p /opt/zig
+          tar -xJf /tmp/zig.tar.xz -C /opt/zig --strip-components=1
+          echo /opt/zig >> "$GITHUB_PATH"
 
       # The book builder compiles to a native binary through the C backend, so
       # the host needs a C compiler exactly as `cargo test` does.
       - name: Install C toolchain
         run: sudo apt-get update && sudo apt-get install -y clang lld
 
-      - name: Build the compiler
-        run: cargo build --release -p maca-driver
+      - name: Build the seed compiler
+        run: mkdir -p bin && cc -O1 -o bootstrap/maca bootstrap/maca.c
+
+      - name: Build the compiler with the seed
+        run: MACA=$PWD/bootstrap/maca ./bootstrap/maca build apps/maca1/main.maca -o bin/maca
 
       # `import wasm` in playground.maca embeds this, so it has to exist before
       # the playground is built.
       - name: Build the in-browser compiler
-        run: PATH="$PWD/target/release:$PATH" ./target/release/maca run apps/npm/build.maca
+        run: PATH="$PWD/bin:$PATH" MACA=$PWD/bin/maca ./bin/maca run apps/npm/build.maca
 
       # One script builds and checks the site, and it is the same script a
       # human runs. Keeping these steps in the workflow meant "verified
@@ -74,7 +75,7 @@ jobs:
       # The script is a Maca program, built by the compiler it is publishing
       # the documentation for.
       - name: Build and check the site
-        run: ./target/release/maca run apps/build_site/build_site.maca _site
+        run: MACA=$PWD/bin/maca ./bin/maca run apps/build_site/build_site.maca _site
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

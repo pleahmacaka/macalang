@@ -1,1 +1,2 @@
 *.maca text eol=lf
+bootstrap/maca.c -text

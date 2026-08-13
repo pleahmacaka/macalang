@@ -1,36 +1,36 @@
 # Bootstrapping Maca in Maca
 
-Maca compiles itself, in stages. The Rust workspace is the **stage-0
-bootstrap**, frozen in scope, kept only as capable as it must be to compile
-the stage-1 compiler. Compiler work goes into `modules/maca/`, written in Maca.
+Maca compiles itself. The seed it grows from is `bootstrap/maca.c`: the
+compiler as the compiler emitted it, one file, libc and nothing else.
 
 ```
-stage-0 (Rust, crates/*)  ──compiles──▶  stage-1 (Maca, modules/maca/*.maca)
-                                              │
-                                              └──compiles──▶ stage-2
-                                                             (emits the same C)
+bootstrap/maca.c  ──cc──▶  a compiler  ──compiles──▶  stage-1 (modules/maca/*.maca)
+                                                           │
+                                                           └──compiles──▶ stage-2
+                                                                          (identical)
 ```
-
-The bootstrap closes when the compiler, compiled by itself, emits what it emitted
-before. Point each stage in turn at the compiler's own entry file:
 
 ```sh
-maca build apps/maca1/main.maca -o maca1     # stage-0 (Rust) builds stage-1
+cc -O1 -o maca bootstrap/maca.c              # 4 seconds, no flags, no libraries
 mkdir one two
-(cd one && ../maca1 build ../apps/maca1/main.maca -o maca)   # stage-1 builds itself
+(cd one && ../maca build ../apps/maca1/main.maca -o maca)
 (cd two && ../one/maca build ../apps/maca1/main.maca -o maca)
 cmp one/maca two/maca                        # fixed point ⇒ self-hosted
 ```
 
-**This closes.** Two tests in `crates/driver/tests/selfhost.rs` keep it closed.
-`the_compiler_resolves_its_own_imports` says that the compiler reads
-`apps/maca1/main.maca`, follows the `import` graph to the eight
-`modules/maca/*.maca` files, and emits one 136152-byte C file that emits itself
-again byte for byte. `stage1_builds_the_binary_that_builds_it` says the stronger
-thing: stage-1 turns that C into an **executable**, and the executable builds a
-byte-identical executable from the same source. That last step adds what `cmp`
-on the C cannot: the host C compiler is deterministic, and the compiler is
-self-sufficient, needing a C compiler and nothing else.
+**This closes**, and it is what the `maca suites` CI job runs on every push.
+
+The seed replaces the Rust workspace, which used to hold this position and can
+no longer fill it: a compiler that `crates/*` builds from today's
+`modules/maca/*.maca` cannot lex a forty-byte program. Stage-0 was frozen while
+the language it compiles kept moving, and the two finally parted. Regenerate the
+seed with `maca apps/maca1/main.maca bootstrap/maca.c` and check that the file it
+writes still reaches the fixed point above.
+
+A reviewer verifies the seed by regenerating it and diffing, which is the whole
+reason it is C and not a binary: a committed executable cannot be checked at all,
+and *Reflections on Trusting Trust* is about exactly the gap between what a seed
+claims and what a reader can confirm.
 
 The two rounds run in **different directories with the same output name**,
 because `cc` records the name of the file it was handed in the binary's symbol
@@ -48,8 +48,7 @@ program of one source. Three rounds rather than two, because comparing the first
 round to the second only says anything when the compiler that ran the suite was
 already the current one. Every build it runs is a `MACA_NO_CACHE=1` build, since
 a cache hit would answer for a compiler that is not the one under test. Three
-compiler builds is about fifty seconds, which is why it is not in the named list
-in `crates/driver/tests/maca_suites.rs`; running it is
+compiler builds is about fifty seconds; running it is
 `maca test modules/maca/tests/bootstrap.maca` and nothing else.
 
 Comparing the emitted C is still the half that catches a divergence early, and

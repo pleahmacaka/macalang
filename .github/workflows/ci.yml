@@ -47,6 +47,31 @@ jobs:
       - name: Clippy (warnings are errors)
         run: cargo clippy --workspace --locked -- -D warnings
 
+  # The Maca suites are the compiler's own tests, so they need a working
+  # compiler and the frozen stage-0 can no longer build one. bootstrap/maca.c is
+  # the compiler emitted by itself; any cc turns it back into a compiler.
+  suites:
+    name: maca suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install C toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang lld llvm libsqlite3-dev python3-dev
+      - name: Build the seed compiler
+        run: mkdir -p bin && cc -O1 -o bootstrap/maca bootstrap/maca.c
+      - name: Build the compiler with the seed
+        run: MACA=$PWD/bootstrap/maca ./bootstrap/maca build apps/maca1/main.maca -o bin/maca
+      - name: Run the suites
+        run: |
+          fail=0
+          for t in modules/maca/tests/*.maca tests/*.maca modules/std/tests/*.maca apps/lsp/tests/lsp.maca; do
+            MACA=$PWD/bin/maca ./bin/maca test "$t" > /tmp/suite.log 2>&1 || { fail=1; echo "FAIL $t"; tail -20 /tmp/suite.log; }
+          done
+          rm -f modules/maca/tests/maca1-test-*.maca
+          MACA=$PWD/bin/maca ./bin/maca run apps/lint/lint.maca
+          exit $fail
+
   test:
     name: cargo test
     runs-on: ubuntu-latest
@@ -73,25 +98,28 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal --no-self-update
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: wasm
       - uses: actions/setup-node@v4
         with:
           node-version: 20
       # The package wasm is a Maca program linked by `zig cc -target
-      # wasm32-wasi`, so zig is the toolchain this job needs.
-      - uses: mlugg/setup-zig@v1
-        with:
-          version: 0.16.0
+      # wasm32-wasi`, so zig is the toolchain this job needs. Taken from
+      # ziglang.org rather than an action, whose community mirrors 404.
+      - name: Install zig
+        run: |
+          curl -fsSL https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz -o /tmp/zig.tar.xz
+          echo "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00  /tmp/zig.tar.xz" | sha256sum -c -
+          mkdir -p /opt/zig
+          tar -xJf /tmp/zig.tar.xz -C /opt/zig --strip-components=1
+          echo /opt/zig >> "$GITHUB_PATH"
       # build the compiler wasm into the package, then exercise the JS API
       # (compile / loadModule / loadFile / toJS) so it can't silently break.
-      # The build step is a Maca program, so the compiler is built first.
-      - name: Build the compiler
-        run: cargo build --release -p maca-driver
+      # The build step is a Maca program, so the compiler is built first, and
+      # `--target wasm` is a compiler the seed grows rather than a Rust one.
+      - name: Build the seed compiler
+        run: mkdir -p bin && cc -O1 -o bootstrap/maca bootstrap/maca.c
+      - name: Build the compiler with the seed
+        run: MACA=$PWD/bootstrap/maca ./bootstrap/maca build apps/maca1/main.maca -o bin/maca
       - name: Build wasm into the package
-        run: PATH="$PWD/target/release:$PATH" ./target/release/maca run apps/npm/build.maca
+        run: PATH="$PWD/bin:$PATH" MACA=$PWD/bin/maca ./bin/maca run apps/npm/build.maca
       - name: Test the package
         run: node apps/npm/test.mjs

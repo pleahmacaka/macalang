@@ -32,7 +32,7 @@ main(argv: str[]) -> int {
                 ++ where.join(", ")))
         1
     } else if !file_exists(maca()) {
-        err(bad("no maca at {maca()}: cargo build --release -p maca-driver"))
+        err(bad("no maca at {maca()}: cc -O1 -o bootstrap/maca bootstrap/maca.c"))
         1
     } else {
         build(where.length() == 0 ? OutDefault : where.get(0))
@@ -114,9 +114,13 @@ build_api_reference() -> bool {
               ++ std_modules())
 }
 
+/// The compiler as `apps/playground` reaches it, which an absolute path already is.
+from_playground(bin: str) -> str =>
+    bin.starts_with("/") ? bin : "../../" ++ bin
+
 build_playground() -> bool {
     announce("playground")
-    run_in("apps/playground", "../../" ++ maca(),
+    run_in("apps/playground", from_playground(maca()),
            ["build", "--target", "js", "playground.maca", "-o", "out"])
 }
 
