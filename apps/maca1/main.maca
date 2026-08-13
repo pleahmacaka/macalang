@@ -1765,8 +1765,16 @@ build_fresh(src: str, out: str) -> int {
     if errs > 0 {
         errs
     } else {
-        exec("cc", [cfile] ++ link_flags(read_file(cfile)) ++ ["-o", out])
+        cc_run([cfile] ++ link_flags(read_file(cfile)) ++ ["-o", out])
     }
+}
+
+/// The C compiler is `$MACA_CC`, else `cc`, which is what lets one machine build for another.
+cc_run(args: str[]) -> int {
+    named = env("MACA_CC")
+    argv = named == "" ? ["cc"] : nonempty(named.split(" "), 0, [])
+
+    exec(argv.get(0), argv.slice(1, argv.length()) ++ args)
 }
 
 /// `[build] cflags` in the manifest here, the flags a program needs to link.
