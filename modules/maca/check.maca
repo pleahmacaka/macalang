@@ -2487,8 +2487,11 @@ desugared(m: Module, src: str) -> Module {
 /// `stored(key, default)` is the whole surface: the name starts at what the browser saved, and assigning it saves again.
 kept_stored(m: Module, at: Assets) -> Module {
     slots = stored_slots(m.items, at, 0, [])
+    loose = loose_keys(m.items, at, 0, [])
 
-    if slots.length() == 0 {
+    if loose.length() > 0 {
+        m with { errors = m.errors ++ loose }
+    } else if slots.length() == 0 {
         m
     } else {
         Module { items = saved_items(started_items(m.items, at, 0, []), slots,
@@ -2508,6 +2511,26 @@ stored_slots(items: Stmt[], at: Assets, i: int, acc: str[]) -> str[] {
         stored_slots(items, at, i + 1, key == "" ? acc : acc ++ ["{s.name} {key}"])
     }
 }
+
+/// A slot names a place in the browser, and a name a build cannot read is not one.
+loose_keys(items: Stmt[], at: Assets, i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else {
+        s = items.get(i)
+        bad = is_stored_call(s) && asset_spec(s.value.children.get(0), at) == ""
+
+        loose_keys(items, at, i + 1,
+                   bad ? acc ++ ["stored(…): the key names a slot in the"
+                                     ++ " browser, so write it out or bind it"
+                                     ++ " to a constant"]
+                       : acc)
+    }
+}
+
+is_stored_call(s: Stmt) -> bool =>
+    s.kind == SBind && s.value.kind == ECall && s.value.text == "stored"
+        && s.value.children.length() == 2
 
 stored_key(s: Stmt, at: Assets) -> str {
     if s.kind != SBind || s.value.kind != ECall || s.value.text != "stored"

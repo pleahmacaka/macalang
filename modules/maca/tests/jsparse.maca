@@ -119,6 +119,16 @@ test_an_arrow_block_body_is_a_block_on_the_js_target() {
                   ++ capture_err("node", ["-e", probe]))
 }
 
+Store = """
+const _seeded = typeof _seed === "undefined" ? [] : _seed;
+const store = new Map(_seeded);
+globalThis.localStorage = {
+  getItem: (k) => (store.has(k) ? store.get(k) : null),
+  setItem: (k, v) => { store.set(k, String(v)); },
+  removeItem: (k) => { store.delete(k); },
+};
+"""
+
 PageWithStorage = "import web/storage\n\nnote = stored(\"page.note\", \"hello\")"
     ++ "\n\nrename(v: str) -> int {{\n    note = v\n    0\n}}\n\n"
     ++ "main() -> Element => div(span(note))\n"
@@ -156,21 +166,30 @@ test_a_module_that_supplies_a_function_reaches_the_page_that_uses_it() {
 
     assert(file_exists(dir ++ "/out/index.html"),
            "the page did not build: {said}")
+    assert(!read_file(src).contains("local_start"),
+           "the program writes no read of its own")
+    assert(read_file(dir ++ "/out/app.js").contains("local_start("),
+           "and the page it becomes is written in terms of one")
 
-    write_file(dir ++ "/page.js",
-        FakeDom
-            ++ "const store = new Map([[\"page.note\", JSON.stringify(\"kept\")]]);\n"
-            ++ "globalThis.localStorage = {{ getItem: k => store.has(k) ? "
-            ++ "store.get(k) : null, setItem: (k, v) => store.set(k, "
-            ++ "String(v)), removeItem: k => store.delete(k) }};\n"
-            ++ page_scripts(dir ++ "/out/index.html")
-            ++ "\nrename(\"written\");\n"
-            ++ "console.log(store.get(\"page.note\"));\n")
+    fresh = dir ++ "/fresh.js"
+    kept = dir ++ "/kept.js"
 
-    assert_eq(capture("node", [dir ++ "/page.js"]).trim(), "\"written\"",
-              "a name the browser keeps is read back through the block the "
-                  ++ "module supplies, and assigning it saves again: "
-                  ++ capture_err("node", [dir ++ "/page.js"]))
+    write_file(fresh, FakeDom ++ Store ++ page_scripts(dir ++ "/out/index.html")
+        ++ "\nconsole.log(_root.text);\n")
+    write_file(kept, FakeDom
+        ++ "const _seed = [[\"page.note\", JSON.stringify("
+        ++ "\"kept\")]];\n" ++ Store
+        ++ page_scripts(dir ++ "/out/index.html")
+        ++ "\nrename(\"written\");\n"
+        ++ "console.log(_root.text + \" \" + store.get("
+        ++ "\"page.note\"));\n")
+
+    assert_eq(capture("node", [fresh]).trim(), "hello",
+              "a slot the browser has nothing under starts at what the "
+                  ++ "program declared: " ++ capture_err("node", [fresh]))
+    assert_eq(capture("node", [kept]).trim(), "kept " ++ "\"written\"",
+              "a slot starts at what was saved, and assigning it saves again: "
+                  ++ capture_err("node", [kept]))
 }
 
 test_a_view_is_put_on_the_page_rather_than_computed_and_dropped() {

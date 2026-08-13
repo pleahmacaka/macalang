@@ -558,3 +558,33 @@ test_a_nested_definition_is_named_by_the_targets_that_cannot_carry_it() {
         refused_on(at, target, "`add` is defined inside another function")
     }
 }
+
+test_a_slot_the_browser_keeps_is_refused_when_it_cannot_be_named() {
+    dir = scratch() ++ "/storage"
+    make_dir(scratch())
+    make_dir(dir)
+
+    write_file(dir ++ "/computed.maca",
+        "import web/storage\n\nlocked = stored(\"a\" ++ \"b\", true)\n\n"
+            ++ "main() -> Element =>\n    div(span(\"{{locked}}\"))\n")
+    write_file(dir ++ "/noimport.maca",
+        "locked = stored(\"page.locked\", true)\n\n"
+            ++ "main() -> Element =>\n    div(span(\"{{locked}}\"))\n")
+    write_file(dir ++ "/constant.maca",
+        "import web/storage\n\nconst locked = stored(\"page.locked\", true)\n\n"
+            ++ "main() -> Element =>\n    div(span(\"{{locked}}\"))\n")
+    write_file(dir ++ "/native.maca",
+        "import {{ local_forget }} from web/storage\n\n"
+            ++ "main() -> int {{\n    local_forget(\"x\")\n    0\n}}\n")
+
+    refused_on(dir ++ "/computed.maca", "js", "stored(…): the key names a slot")
+    refused_on(dir ++ "/noimport.maca", "js", "add `import web/storage`")
+    refused_on(dir ++ "/constant.maca", "js", "is a constant")
+
+    said = output("sh", ["-c", "'{maca_bin()}' run '{dir}/native.maca' 2>&1"])
+
+    assert(exec(maca_bin(), ["run", dir ++ "/native.maca"]) != 0,
+        "a browser module has nothing to run natively")
+    assert(said.contains("web/storage") && said.contains("--target js"),
+        "and the message names the module and where it does run: {said}")
+}
