@@ -171,3 +171,34 @@ test_a_module_that_supplies_a_function_reaches_the_page_that_uses_it() {
                   ++ "module supplies, and assigning it saves again: "
                   ++ capture_err("node", [dir ++ "/page.js"]))
 }
+
+test_a_view_is_put_on_the_page_rather_than_computed_and_dropped() {
+    if !have("node") {
+        return
+    }
+
+    dir = scratch("mount")
+    src = dir ++ "/home.maca"
+
+    write_file(src, "main() -> Element =>\n"
+        ++ "    div(span(\"hello\"))\n")
+
+    said = capture_err(maca_bin(), ["build", "--target", "js", src, "-o",
+                                    dir ++ "/out"])
+
+    assert(file_exists(dir ++ "/out/index.html"),
+           "the page did not build: {said}")
+
+    write_file(dir ++ "/paint.js",
+        "let painted = null;\n"
+            ++ "const node = {{ set innerHTML(v) {{ painted = v; }} }};\n"
+            ++ "globalThis.document = {{ getElementById: id => id === "
+            ++ "\"app\" ? node : null }};\n"
+            ++ page_scripts(dir ++ "/out/index.html")
+            ++ "\nconsole.log(painted);\n")
+
+    assert_eq(capture("node", [dir ++ "/paint.js"]).trim(),
+              "<div><span>hello</span></div>",
+              "a view nobody puts on screen is a blank page: "
+                  ++ capture_err("node", [dir ++ "/paint.js"]))
+}

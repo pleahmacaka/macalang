@@ -1459,6 +1459,8 @@ const char* jemit_exports(MacaList items);
 const char* js_exported(MacaList items, long i);
 const char* js_export_of(Stmt s);
 const char* js_variant_ref(Expr v);
+const char* js_mount();
+const char* js_exit();
 const char* jemit_entry(MacaList items, long i);
 const char* jemit_items(MacaList items, long i);
 const char* jemit_host(Stmt s);
@@ -3561,7 +3563,9 @@ const char* jemit_exports(MacaList items) { const char* names = js_exported(item
 const char* js_exported(MacaList items, long i) { return ((i >= (items.len)) ? "" : maca_cat(js_export_of((*(Stmt*)items.data[i])), js_exported(items, (i + 1))));  }
 const char* js_export_of(Stmt s) { return (((s.kind == SFn) && ((s.body.len) > 0)) ? maca_cat(maca_cat("", jid(s.name)), ", ") : ((s.kind == SSum) ? maca_list_join(({ MacaList _m = s.params; MacaList _r; _r.len = _m.len; _r.data = maca_cells((_r.len ? _r.len : 1) * sizeof(long)); for (int _i = 0; _i < _m.len; _i++) _r.data[_i] = (long)(js_variant_ref((*(Expr*)_m.data[_i]))); _r; }), "") : ""));  }
 const char* js_variant_ref(Expr v) { return maca_cat(maca_cat("", jid(v.text)), ", ");  }
-const char* jemit_entry(MacaList items, long i) { return ((i >= (items.len)) ? "" : ((((*(Stmt*)items.data[i]).kind == SFn) && (strcmp((*(Stmt*)items.data[i]).name, "main") == 0)) ? maca_cat(maca_cat("\nconst _mexit = main();\nif (typeof process !== \"undefined\"", " && typeof _mexit === \"number\" && _mexit > 0)"), " process.exit(_mexit);\n") : jemit_entry(items, (i + 1))));  }
+const char* js_mount() { return maca_cat(maca_cat("\nconst _mview = main();\nif (typeof document !== \"undefined\" && ", "document.getElementById(\"app\")) "), "document.getElementById(\"app\").innerHTML = _mview;\n");  }
+const char* js_exit() { return maca_cat(maca_cat("\nconst _mexit = main();\nif (typeof process !== \"undefined\" && ", "typeof _mexit === \"number\" && _mexit > 0) "), "process.exit(_mexit);\n");  }
+const char* jemit_entry(MacaList items, long i) { return ((i >= (items.len)) ? "" : ((((*(Stmt*)items.data[i]).kind == SFn) && (strcmp((*(Stmt*)items.data[i]).name, "main") == 0)) ? ((strcmp((*(Stmt*)items.data[i]).ret, "Element") == 0) ? js_mount() : js_exit()) : jemit_entry(items, (i + 1))));  }
 const char* jemit_items(MacaList items, long i) { return ((i >= (items.len)) ? "" : (((*(Stmt*)items.data[i]).kind != SFn) ? jemit_items(items, (i + 1)) : ((((*(Stmt*)items.data[i]).body.len) == 0) ? maca_cat(maca_cat(maca_cat("", jemit_host((*(Stmt*)items.data[i]))), "\n"), jemit_items(items, (i + 1))) : maca_cat(maca_cat(maca_cat("", jemit_fn((*(Stmt*)items.data[i]))), "\n"), jemit_items(items, (i + 1))))));  }
 const char* jemit_host(Stmt s) { const char* ps = js_param_names(s.params, 0); return maca_cat(maca_cat(maca_cat(maca_cat(maca_cat("function ", jid(s.name)), "("), ps), ")"), maca_cat(maca_cat(maca_cat(maca_cat(" { return _host(", js_str(s.name)), ")("), ps), "); }"));  }
 const char* js_param_names(MacaList ps, long i) { return ((i >= (ps.len)) ? "" : ((i == ((ps.len) - 1)) ? jid((*(Expr*)ps.data[i]).text) : maca_cat(maca_cat(maca_cat("", jid((*(Expr*)ps.data[i]).text)), ", "), js_param_names(ps, (i + 1)))));  }

@@ -854,13 +854,23 @@ js_export_of(s: Stmt) -> str {
 js_variant_ref(v: Expr) -> str =>
     "{jid(v.text)}, "
 
+/// A view answers with a page, and a page nobody puts on screen is a page nobody sees.
+js_mount() -> str =>
+    "\nconst _mview = main();\nif (typeof document !== \"undefined\" && "
+        ++ "document.getElementById(\"app\")) "
+        ++ "document.getElementById(\"app\").innerHTML = _mview;\n"
+
+/// A program answers with a code, and the process answers with the same one.
+js_exit() -> str =>
+    "\nconst _mexit = main();\nif (typeof process !== \"undefined\" && "
+        ++ "typeof _mexit === \"number\" && _mexit > 0) "
+        ++ "process.exit(_mexit);\n"
+
 jemit_entry(items: Stmt[], i: int) -> str {
     if i >= items.length() {
         ""
     } else if items.get(i).kind == SFn && items.get(i).name == "main" {
-        "\nconst _mexit = main();\nif (typeof process !== \"undefined\""
-            ++ " && typeof _mexit === \"number\" && _mexit > 0)"
-            ++ " process.exit(_mexit);\n"
+        items.get(i).ret == "Element" ? js_mount() : js_exit()
     } else {
         jemit_entry(items, i + 1)
     }
