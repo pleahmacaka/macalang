@@ -1590,6 +1590,22 @@ build_binary(src: str, out: str) -> int {
     }
 }
 
+cache_home() -> str {
+    given = env("MACA_CACHE")
+    xdg = env("XDG_CACHE_HOME")
+    home = env("HOME")
+
+    if given != "" {
+        given
+    } else if xdg != "" {
+        "{xdg}/maca"
+    } else if home != "" {
+        "{home}/.cache/maca"
+    } else {
+        "/tmp/maca"
+    }
+}
+
 /// The cache is `$MACA_CACHE`, else the XDG cache directory, else `~/.cache/maca`.
 cache_dir() -> str {
     given = env("MACA_CACHE")
@@ -3627,12 +3643,126 @@ resolved(by: str, want: str) -> str {
     here != "" ? here : carried(want ++ ".maca")
 }
 
-/// The last place asked is the library the compiler was told it travels with.
+/// The last place asked is what `MACA_STDLIB` names, else the library the compiler carries.
 carried(want: str) -> str {
     root = env("MACA_STDLIB")
 
-    root == "" ? "" : found(root ++ "/" ++ want)
+    if root != "" {
+        return found(root ++ "/" ++ want)
+    }
+
+    found(carried_root() ++ "/" ++ want)
 }
+
+CarriedPackages = ["std", "cli", "web", "http", "signal", "profile"]
+
+/// The library the compiler travels with, written out once so an import finds a file like any other.
+carried_root() -> str {
+    root = "{cache_home()}/stdlib/{Version}"
+
+    if read_file(root ++ "/.stamp") == "" {
+        write_carried(root)
+        write_file(root ++ "/.stamp", Version)
+    }
+
+    root
+}
+
+write_carried(root: str) {
+    make_dir(root)
+
+    for pkg in CarriedPackages {
+        make_dir("{root}/{pkg}")
+    }
+
+    std_csv: str = data("../../modules/std/csv.maca")
+    write_file("{root}/std/csv.maca", std_csv)
+
+    std_fs: str = data("../../modules/std/fs.maca")
+    write_file("{root}/std/fs.maca", std_fs)
+
+    std_json: str = data("../../modules/std/json.maca")
+    write_file("{root}/std/json.maca", std_json)
+
+    std_list: str = data("../../modules/std/list.maca")
+    write_file("{root}/std/list.maca", std_list)
+
+    std_path: str = data("../../modules/std/path.maca")
+    write_file("{root}/std/path.maca", std_path)
+
+    std_proc: str = data("../../modules/std/proc.maca")
+    write_file("{root}/std/proc.maca", std_proc)
+
+    std_text: str = data("../../modules/std/text.maca")
+    write_file("{root}/std/text.maca", std_text)
+
+    cli_help: str = data("../../modules/cli/help.maca")
+    write_file("{root}/cli/help.maca", cli_help)
+
+    cli_parse: str = data("../../modules/cli/parse.maca")
+    write_file("{root}/cli/parse.maca", cli_parse)
+
+    cli_show: str = data("../../modules/cli/show.maca")
+    write_file("{root}/cli/show.maca", cli_show)
+
+    cli_spec: str = data("../../modules/cli/spec.maca")
+    write_file("{root}/cli/spec.maca", cli_spec)
+
+    cli_style: str = data("../../modules/cli/style.maca")
+    write_file("{root}/cli/style.maca", cli_style)
+
+    web_file: str = data("../../modules/web/file.maca")
+    write_file("{root}/web/file.maca", web_file)
+
+    web_format: str = data("../../modules/web/format.maca")
+    write_file("{root}/web/format.maca", web_format)
+
+    web_storage: str = data("../../modules/web/storage.maca")
+    write_file("{root}/web/storage.maca", web_storage)
+
+    web_time: str = data("../../modules/web/time.maca")
+    write_file("{root}/web/time.maca", web_time)
+
+    http_dev: str = data("../../modules/http/dev.maca")
+    write_file("{root}/http/dev.maca", http_dev)
+
+    http_request: str = data("../../modules/http/request.maca")
+    write_file("{root}/http/request.maca", http_request)
+
+    http_response: str = data("../../modules/http/response.maca")
+    write_file("{root}/http/response.maca", http_response)
+
+    http_serve: str = data("../../modules/http/serve.maca")
+    write_file("{root}/http/serve.maca", http_serve)
+
+    http_server: str = data("../../modules/http/server.maca")
+    write_file("{root}/http/server.maca", http_server)
+
+    http_status: str = data("../../modules/http/status.maca")
+    write_file("{root}/http/status.maca", http_status)
+
+    signal_dom: str = data("../../modules/signal/dom.maca")
+    write_file("{root}/signal/dom.maca", signal_dom)
+
+    signal_store: str = data("../../modules/signal/store.maca")
+    write_file("{root}/signal/store.maca", signal_store)
+
+    profile_flame: str = data("../../modules/profile/flame.maca")
+    write_file("{root}/profile/flame.maca", profile_flame)
+
+    profile_play: str = data("../../modules/profile/play.maca")
+    write_file("{root}/profile/play.maca", profile_play)
+
+    profile_record: str = data("../../modules/profile/record.maca")
+    write_file("{root}/profile/record.maca", profile_record)
+
+    profile_report: str = data("../../modules/profile/report.maca")
+    write_file("{root}/profile/report.maca", profile_report)
+
+    profile_trace: str = data("../../modules/profile/trace.maca")
+    write_file("{root}/profile/trace.maca", profile_trace)
+}
+
 
 search_up(dir: str, want: str) -> str {
     here = in_base(dir, want)
