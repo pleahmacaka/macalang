@@ -66,7 +66,7 @@ jobs:
         run: |
           fail=0
           for t in modules/maca/tests/*.maca tests/*.maca modules/std/tests/*.maca apps/lsp/tests/lsp.maca; do
-            MACA=$PWD/bin/maca ./bin/maca test "$t" > /tmp/suite.log 2>&1 || { fail=1; echo "FAIL $t"; tail -20 /tmp/suite.log; }
+            MACA=$PWD/bin/maca ./bin/maca test "$t" > /tmp/suite.log 2>&1 || { fail=1; echo "FAIL $t"; cat /tmp/suite.log; }
           done
           rm -f modules/maca/tests/maca1-test-*.maca
           MACA=$PWD/bin/maca ./bin/maca run apps/lint/lint.maca

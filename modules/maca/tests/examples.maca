@@ -447,8 +447,10 @@ test_a_machine_description_compiles_to_a_nixos_module() {
         "and the font list is hoisted where NixOS keeps it")
     assert(made.contains("xdg.userDirs"),
         "the home directories reach home-manager")
-    assert_eq(quiet_exit("nix-instantiate", "--parse '{out}'"), 0,
-        "and nix itself parses what was written")
+    if have("nix-instantiate") {
+        assert_eq(quiet_exit("nix-instantiate", "--parse '{out}'"), 0,
+            "and nix itself parses what was written")
+    }
 }
 
 test_a_constant_two_files_both_name_still_compiles() {
