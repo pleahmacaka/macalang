@@ -1218,9 +1218,16 @@ page_html(src: str, chain: str[], assets: PageAsset[], found: Found[],
         ++ "initial-scale=1\">\n{meta}<title>{title}</title>\n"
         ++ inlined(assets, found, 0, [], true)
         ++ "<style>\n\n</style>\n</head>\n<body>\n<div id=\"app\"></div>\n"
+        ++ MacaBridge
         ++ inlined(assets, found, 0, [], false)
         ++ "<script>\n{js}\n</script>\n</body>\n</html>\n"
 }
+
+/// A block a module supplies runs before the program, so the registry it writes to has to exist first.
+MacaBridge = "<script>\nglobalThis.maca = globalThis.maca || {{\n"
+    ++ "  _hosts: Object.create(null),\n"
+    ++ "  provide(fns) {{ for (const k of Object.keys(fns))"
+    ++ " this._hosts[k] = fns[k]; }},\n}};\n</script>\n"
 
 /// A stylesheet belongs in the head, and a script after the element it mounts into.
 inlined(assets: PageAsset[], found: Found[], i: int, acc: str[],

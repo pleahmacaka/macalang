@@ -687,6 +687,15 @@ function maca_flag(n, on) { return on && n ? " " + n : ""; }
 const _mvoid = "area base br col embed hr img input link meta source track wbr".split(" ");
 function maca_element(t, a, k) { return _mvoid.includes(t) ? "<" + t + a + ">" : "<" + t + a + ">" + k + "</" + t + ">"; }
 let _mfailed = 0;
+globalThis.maca = globalThis.maca || {
+  _hosts: Object.create(null),
+  provide(fns) { for (const k of Object.keys(fns)) this._hosts[k] = fns[k]; },
+};
+function _host(name) {
+  const f = globalThis.maca._hosts[name];
+  if (f) return f;
+  throw new Error("maca: nothing provided `" + name + "`, so the `import js` block that supplies it never ran");
+}
 function _mfailures() { return _mfailed; }
 function _massert(c, m) { if (c) return true; _mfailed++; console.error("assertion failed: " + _mstr(m)); return false; }
 function _massert_eq(a, b, m) { if (_meq(a, b)) return true; _mfailed++; console.error("assertion failed: " + _mstr(m) + "\n  got:  " + _mstr(a) + "\n  want: " + _mstr(b)); return false; }
@@ -863,9 +872,27 @@ jemit_items(items: Stmt[], i: int) -> str {
     } else if items.get(i).kind != SFn {
         jemit_items(items, i + 1)
     } else if items.get(i).body.length() == 0 {
-        jemit_items(items, i + 1)
+        "{jemit_host(items.get(i))}\n{jemit_items(items, i + 1)}"
     } else {
         "{jemit_fn(items.get(i))}\n{jemit_items(items, i + 1)}"
+    }
+}
+
+/// A function the program declares and does not write is one an `import js` block supplies.
+jemit_host(s: Stmt) -> str {
+    ps = js_param_names(s.params, 0)
+
+    "function {jid(s.name)}({ps})"
+        ++ " {{ return _host({js_str(s.name)})({ps}); }}"
+}
+
+js_param_names(ps: Expr[], i: int) -> str {
+    if i >= ps.length() {
+        ""
+    } else if i == ps.length() - 1 {
+        jid(ps.get(i).text)
+    } else {
+        "{jid(ps.get(i).text)}, " ++ js_param_names(ps, i + 1)
     }
 }
 

@@ -118,3 +118,56 @@ test_an_arrow_block_body_is_a_block_on_the_js_target() {
               "the arrow block came out as a record: "
                   ++ capture_err("node", ["-e", probe]))
 }
+
+PageWithStorage = "import web/storage\n\nnote = stored(\"page.note\", \"hello\")"
+    ++ "\n\nrename(v: str) -> int {{\n    note = v\n    0\n}}\n\n"
+    ++ "main() -> Element => div(span(note))\n"
+
+/// Every `<script>` the page holds, in the order a browser would run them.
+page_scripts(at: str) -> str {
+    html = read_file(at)
+    out = ""
+    rest = html
+    i = 0
+
+    while rest.index_of("<script>") >= 0 {
+        opened = rest.slice(rest.index_of("<script>") + 8, rest.length())
+        shut = opened.index_of("</script>")
+        out = out ++ opened.slice(0, shut) ++ "\n"
+        rest = opened.slice(shut + 9, opened.length())
+        i = i + 1
+    }
+
+    out
+}
+
+test_a_module_that_supplies_a_function_reaches_the_page_that_uses_it() {
+    if !have("node") {
+        return
+    }
+
+    dir = scratch("storage")
+    src = dir ++ "/home.maca"
+
+    write_file(src, PageWithStorage)
+
+    said = capture_err(maca_bin(), ["build", "--target", "js", src, "-o",
+                                    dir ++ "/out"])
+
+    assert(file_exists(dir ++ "/out/index.html"),
+           "the page did not build: {said}")
+
+    write_file(dir ++ "/page.js",
+        "const store = new Map([[\"page.note\", JSON.stringify(\"kept\")]]);\n"
+            ++ "globalThis.localStorage = {{ getItem: k => store.has(k) ? "
+            ++ "store.get(k) : null, setItem: (k, v) => store.set(k, "
+            ++ "String(v)), removeItem: k => store.delete(k) }};\n"
+            ++ page_scripts(dir ++ "/out/index.html")
+            ++ "\nrename(\"written\");\n"
+            ++ "console.log(store.get(\"page.note\"));\n")
+
+    assert_eq(capture("node", [dir ++ "/page.js"]).trim(), "\"written\"",
+              "a name the browser keeps is read back through the block the "
+                  ++ "module supplies, and assigning it saves again: "
+                  ++ capture_err("node", [dir ++ "/page.js"]))
+}

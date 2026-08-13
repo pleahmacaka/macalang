@@ -2444,9 +2444,155 @@ desugared(m: Module, src: str) -> Module {
     if top_names(m.items, 0, []).index_of("data") >= 0 {
         Module { items = m.items, errors = [] }
     } else {
-        Module { items = embed_items(m.items, at, 0, []),
-                 errors = embed_faults(m.items, at, 0, [])
-                     ++ decode_faults(m.items, 0, []) }
+        held = Module { items = embed_items(m.items, at, 0, []),
+                        errors = embed_faults(m.items, at, 0, [])
+                            ++ decode_faults(m.items, 0, []) }
+
+        kept_stored(held, at)
+    }
+}
+
+/// `stored(key, default)` is the whole surface: the name starts at what the browser saved, and assigning it saves again.
+kept_stored(m: Module, at: Assets) -> Module {
+    slots = stored_slots(m.items, at, 0, [])
+
+    if slots.length() == 0 {
+        m
+    } else {
+        Module { items = saved_items(started_items(m.items, at, 0, []), slots,
+                                     [], 0, []),
+                 errors = m.errors ++ stored_faults(m.items, slots) }
+    }
+}
+
+/// Each slot is written `name key`, because a name and the key it saves under are one pair.
+stored_slots(items: Stmt[], at: Assets, i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else {
+        s = items.get(i)
+        key = stored_key(s, at)
+
+        stored_slots(items, at, i + 1, key == "" ? acc : acc ++ ["{s.name} {key}"])
+    }
+}
+
+stored_key(s: Stmt, at: Assets) -> str {
+    if s.kind != SBind || s.value.kind != ECall || s.value.text != "stored"
+            || s.value.children.length() != 2 {
+        ""
+    } else {
+        asset_spec(s.value.children.get(0), at)
+    }
+}
+
+stored_faults(items: Stmt[], slots: str[]) -> str[] {
+    if top_names(items, 0, []).index_of("local_start") >= 0 {
+        stored_const_faults(items, slots, 0, [])
+    } else {
+        ["stored(…) keeps its value in the browser; add `import web/storage`"]
+    }
+}
+
+stored_const_faults(items: Stmt[], slots: str[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else {
+        s = items.get(i)
+        bad = s.frozen && slot_key(slots, s.name) != ""
+
+        stored_const_faults(items, slots, i + 1,
+                            bad ? acc ++ ["`{s.name}` is a constant, and a"
+                                              ++ " stored name is written back"
+                                              ++ " whenever it is assigned"]
+                                : acc)
+    }
+}
+
+slot_key(slots: str[], name: str) -> str {
+    at = slot_at(slots, name, 0)
+
+    at < 0 ? "" : slots.get(at).slice(name.length() + 1, slots.get(at).length())
+}
+
+slot_at(slots: str[], name: str, i: int) -> int {
+    if i >= slots.length() {
+        0 - 1
+    } else if slots.get(i).index_of("{name} ") == 0 {
+        i
+    } else {
+        slot_at(slots, name, i + 1)
+    }
+}
+
+/// Assigning a stored name is the save, so every write outside the declaration becomes one.
+saved_items(items: Stmt[], slots: str[], bound: str[], i: int,
+            acc: Stmt[]) -> Stmt[] {
+    if i >= items.length() {
+        acc
+    } else {
+        s = items.get(i)
+        made = declares_slot(s, slots) ? s : saved_stmt(s, slots, bound)
+
+        saved_items(items, slots, bound, i + 1, acc ++ [made])
+    }
+}
+
+declares_slot(s: Stmt, slots: str[]) -> bool =>
+    s.kind == SBind && slot_key(slots, s.name) != ""
+
+saved_stmt(s: Stmt, slots: str[], bound: str[]) -> Stmt {
+    inner = bound ++ lambda_names(s.params, 0, [])
+    made = s with { body = saved_body(s.body, slots, inner, 0, []),
+                    value = saved_expr(s.value, slots, inner) }
+    key = bound.index_of(s.name) >= 0 || s.kind != SBind
+        ? ""
+        : slot_key(slots, s.name)
+
+    if key == "" {
+        made
+    } else {
+        made with { value = e_call("local_store", [e_str(key), made.value]) }
+    }
+}
+
+saved_body(ss: Stmt[], slots: str[], bound: str[], i: int,
+           acc: Stmt[]) -> Stmt[] {
+    if i >= ss.length() {
+        acc
+    } else {
+        saved_body(ss, slots, bound, i + 1,
+                   acc ++ [saved_stmt(ss.get(i), slots, bound)])
+    }
+}
+
+saved_expr(e: Expr, slots: str[], bound: str[]) -> Expr =>
+    e with { children = saved_kids(e.children, slots, bound, 0, []),
+             stmts = saved_body(e.stmts, slots, bound, 0, []) }
+
+saved_kids(xs: Expr[], slots: str[], bound: str[], i: int,
+           acc: Expr[]) -> Expr[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        saved_kids(xs, slots, bound, i + 1,
+                   acc ++ [saved_expr(xs.get(i), slots, bound)])
+    }
+}
+
+/// The declaring binding starts from what the browser saved, its written value standing in as the default.
+started_items(items: Stmt[], at: Assets, i: int, acc: Stmt[]) -> Stmt[] {
+    if i >= items.length() {
+        acc
+    } else {
+        s = items.get(i)
+        key = stored_key(s, at)
+        made = key == "" ? s
+                         : s with { value = e_call("local_start",
+                                                   [e_str(key),
+                                                    s.value.children.get(1)]) }
+
+        started_items(items, at, i + 1, acc ++ [made])
     }
 }
 
