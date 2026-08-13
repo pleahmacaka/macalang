@@ -859,6 +859,12 @@ method_type(env: Env, e: Expr) -> Typed {
     } else if e.text == "filter" && e.children.length() == 2 {
         sifted_type(recv.env, resolve(recv.env.infer, recv.ty),
                     e.children.get(1))
+    } else if e.text == "sort_by" && e.children.length() == 2 {
+        keyed_type(recv.env, resolve(recv.env.infer, recv.ty),
+                   e.children.get(1))
+    } else if e.text == "index_of_by" && e.children.length() == 2 {
+        found_type(recv.env, resolve(recv.env.infer, recv.ty),
+                   e.children.get(1))
     } else if field_fn_ty(env, resolve(recv.env.infer, recv.ty),
                           e.text).kind == KFn {
         typed(walk_args(recv.env, e.children, 1),
@@ -963,11 +969,32 @@ sifted_type(env: Env, recv: Ty, f: Expr) -> Typed {
     typed(ready, recv)
 }
 
+/// `sort_by` reads a key off the element and answers with the list it was given.
+keyed_type(env: Env, recv: Ty, f: Expr) -> Typed {
+    got = type_in(env, f)
+    res = fresh(got.env.infer)
+    ready = joined(with_infer(got.env, res.infer), got.ty,
+                   t_fn([element_of(recv)], res.ty))
+
+    typed(ready, recv)
+}
+
+/// `index_of_by` asks the element a question and answers with where it first held.
+found_type(env: Env, recv: Ty, f: Expr) -> Typed {
+    got = type_in(env, f)
+    ready = joined(got.env, got.ty, t_fn([element_of(recv)], t_bool()))
+
+    typed(ready, t_int())
+}
+
 method_result(name: str, recv: Ty) -> Ty {
     if is_map_ty(recv) {
         map_method_result(name, recv)
-    } else if name == "length" || name == "count" || name == "index_of" {
+    } else if name == "length" || name == "count" || name == "index_of"
+            || name == "index_of_by" {
         t_int()
+    } else if name == "enumerate" {
+        t_array(ty_named("Entry {surface_of(element_of(recv))}"))
     } else if name == "at" {
         element_of(recv)
     } else if name == "join" {
@@ -1015,7 +1042,7 @@ map_method_result(name: str, recv: Ty) -> Ty {
 
 is_reshaping_method(name: str) -> bool =>
     name == "pop" || name == "reverse" || name == "sort" || name == "set"
-        || name == "insert" || name == "remove"
+        || name == "insert" || name == "remove" || name == "sort_by"
 
 is_picking_method(name: str) -> bool =>
     name == "sum" || name == "min" || name == "max" || name == "first"
@@ -1132,10 +1159,23 @@ field_type(env: Env, e: Expr) -> Typed {
     owner = resolve(base.env.infer, base.ty)
     at = env.fields.index_of(owner.name ++ "." ++ e.text)
 
-    if at < 0 {
+    if is_entry_type(owner.name) {
+        typed(base.env, entry_field_ty(owner.name, e.text))
+    } else if at < 0 {
         typed(base.env, t_any())
     } else {
         typed(base.env, env.ftypes.get(at))
+    }
+}
+
+/// An entry pairs where the element was with what it was.
+entry_field_ty(owner: str, field: str) -> Ty {
+    if field == "index" {
+        t_int()
+    } else if field == "value" {
+        ty_named(entry_value_type(owner))
+    } else {
+        t_any()
     }
 }
 

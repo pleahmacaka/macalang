@@ -244,6 +244,13 @@ e_block(stmts: Stmt[], last: Expr) -> Expr =>
 at_pos(s: Stmt, p: int) -> Stmt =>
     s with { pos = p }
 
+/// An entry type is written `Entry element`, which is what `enumerate` answers with.
+is_entry_type(ty: str) -> bool =>
+    ty.length() > 6 && ty.slice(0, 6) == "Entry "
+
+entry_value_type(ty: str) -> str =>
+    is_entry_type(ty) ? ty.slice(6, ty.length()) : ""
+
 /// A map type is written `Map key value`, so its key is the word after the head.
 map_type_key(ty: str) -> str {
     rest = map_type_rest(ty)

@@ -267,11 +267,15 @@ font_resolves(dir: str, page: str) -> bool {
     href != "" && file_exists(normalize(join(dirname(at), href)))
 }
 
+/// A back end may write a JavaScript string in either quote, so the href is read inside it.
+unquoted(lit: str) -> str =>
+    lit.length() < 2 ? "" : lit.slice(1, lit.length() - 1)
+
 stylesheet_href(page: str) -> str {
     if page.contains("rel=\"stylesheet\"") {
         between(split_once(page, "rel=\"stylesheet\"").get(1), "href=\"", "\"")
     } else {
-        between(page, "\"href\", `", "`")
+        unquoted(between(page, "\"href\", ", ")"))
     }
 }
 

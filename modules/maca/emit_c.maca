@@ -30,7 +30,7 @@ emit_expr(e: Expr) -> str =>
         ERecord  => "({e.text}){{ {emit_lit_fields(e.children, 0)} }}"
         EWith    => emit_with(e)
         EBlock   => emit_block(e)
-        EField   => "{emit_expr(e.children.get(0))}.{c_id(e.text)}"
+        EField   => emit_field(e)
         EMatch   => emit_match(e)
         EMethod  => emit_method(e)
         EList    => emit_list(e)
@@ -183,6 +183,26 @@ c_cell_of(el: str, code: str) -> str {
         "maca_box(sizeof({ct}), ({ct}[]){{ {code} }})"
     } else {
         "(long)({code})"
+    }
+}
+
+emit_field(e: Expr) -> str {
+    owner = e.children.get(0)
+
+    if is_entry_type(owner.ty) && e.text == "value" {
+        c_uncell(e.ty, "{emit_expr(owner)}.value")
+    } else {
+        "{emit_expr(owner)}.{c_id(e.text)}"
+    }
+}
+
+c_uncell(el: str, code: str) -> str {
+    if c_boxed(el) {
+        "(*({type_c(el)}*)({code}))"
+    } else if el == "str" {
+        "((const char*)({code}))"
+    } else {
+        "((long)({code}))"
     }
 }
 
@@ -372,7 +392,8 @@ c_list_method(name: str) -> bool =>
     name == "sum" || name == "min" || name == "max" || name == "first"
         || name == "last" || name == "pop" || name == "reverse"
         || name == "sort" || name == "set" || name == "insert"
-        || name == "remove"
+        || name == "remove" || name == "sort_by" || name == "index_of_by"
+        || name == "enumerate"
 
 emit_list_method(e: Expr, recv: str, el: str) -> str {
     held = type_c(el)
@@ -399,10 +420,48 @@ emit_list_method(e: Expr, recv: str, el: str) -> str {
         "maca_list_sorted({recv}, {c_cell_kind(el)})"
     } else if e.text == "remove" {
         "maca_list_remove({recv}, {arg1})"
+    } else if e.text == "enumerate" {
+        c_over(recv, "MacaList _r; _r.len = _q.len;"
+            ++ " _r.data = maca_cells((_r.len ? _r.len : 1) * sizeof(long));"
+            ++ " {over} _r.data[_qi] = maca_box(sizeof(MacaEntry),"
+            ++ " (MacaEntry[]){{ (MacaEntry){{ _qi, _q.data[_qi] }} }});"
+            ++ " _r;")
+    } else if e.text == "index_of_by" {
+        c_over(recv, "int _a = -1; {over}"
+            ++ " if ({c_apply(e.children.get(1), el, cell, "long")})"
+            ++ " {{ _a = _qi; break; }} _a;")
+    } else if e.text == "sort_by" {
+        emit_sort_by(e, recv, el)
     } else {
         "maca_list_{e.text}({recv}, {emit_expr(e.children.get(1))},"
             ++ " {c_cell(el, e.children.get(2))})"
     }
+}
+
+/// A stable insertion sort, because the key an element sorts by is computed once.
+emit_sort_by(e: Expr, recv: str, el: str) -> str {
+    f = e.children.get(1)
+    key = c_fn_ret(f.ty)
+    kt = type_c(key)
+    got = c_apply(f, el, c_cell_at("_r", el, "_i"), kt)
+    ahead = key == "str" ? "strcmp(_k[_j], _kv) > 0" : "_k[_j] > _kv"
+
+    "({{ MacaList _s = {recv};"
+        ++ " MacaList _r = maca_list_slice(_s, 0, _s.len);"
+        ++ " {kt}* _k = ({kt}*)maca_cells((_r.len ? _r.len : 1)"
+        ++ " * (long)sizeof({kt}));"
+        ++ " for (int _i = 0; _i < _r.len; _i++) _k[_i] = {got};"
+        ++ " for (int _i = 1; _i < _r.len; _i++) {{"
+        ++ " long _v = _r.data[_i]; {kt} _kv = _k[_i]; int _j = _i - 1;"
+        ++ " while (_j >= 0 && {ahead}) {{ _r.data[_j + 1] = _r.data[_j];"
+        ++ " _k[_j + 1] = _k[_j]; _j--; }}"
+        ++ " _r.data[_j + 1] = _v; _k[_j + 1] = _kv; }} _r; }})"
+}
+
+c_fn_ret(ty: str) -> str {
+    at = ty.index_of(") -> ")
+
+    at < 0 ? "" : ty.slice(at + 5, ty.length())
 }
 
 c_over(recv: str, body: str) -> str =>
@@ -1220,6 +1279,8 @@ type_c(ty: str) -> str {
         "MacaList"
     } else if is_map_type(ty) {
         "MacaMap"
+    } else if is_entry_type(ty) {
+        "MacaEntry"
     } else if ty == "float" {
         "double"
     } else if ty == "Future" {
@@ -1461,6 +1522,7 @@ c_preamble() -> str =>
     "static const char* maca_bool_to_str(int b) {{ return b ? \"true\" : \"false\"; }}\n" ++
     "static char* maca_upper(const char* s) {{ size_t n = strlen(s); char* r = malloc(n + 1); for (size_t i = 0; i < n; i++) r[i] = toupper((unsigned char)s[i]); r[n] = 0; return r; }}\n" ++
     "typedef struct {{ long* data; int len; }} MacaList;\n" ++
+    "typedef struct {{ long index_mc; long value; }} MacaEntry;\n" ++
     "typedef struct {{ void* fn; MacaList env; }} MacaFn;\n" ++
     "typedef struct {{ MacaList keys; MacaList vals; }} MacaMap;\n" ++
     "static MacaMap maca_map_new(void) {{ MacaMap m; m.keys.data = NULL; m.keys.len = 0; m.vals.data = NULL; m.vals.len = 0; return m; }}\n" ++

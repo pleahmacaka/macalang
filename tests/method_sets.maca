@@ -35,6 +35,9 @@ test_every_list_method_the_c_back_end_emits_actually_works() {
     assert_eq(str(xs.reduce(0, (a, b) => a + b)), "6", "reduce")
     assert_eq(str(xs.fold(0, (a, b) => a + b)), "6", "fold")
     assert_eq(str(xs.sort().get(0)), "1", "sort")
+    assert_eq(str(xs.sort_by(v => 0 - v).get(0)), "3", "sort_by")
+    assert_eq(str(xs.index_of_by(v => v > 1)), "0", "index_of_by")
+    assert_eq(str(xs.enumerate().get(1).value), "1", "enumerate")
     assert_eq(str(xs.reverse().get(0)), "2", "reverse")
     assert_eq(str(xs.push(9).length()), "4", "push")
     assert_eq(str(xs.pop().length()), "2", "pop")
@@ -53,6 +56,18 @@ test_every_list_method_the_c_back_end_emits_actually_works() {
     assert_eq(str(xs.length()), "3", "length")
     assert_eq(str(xs.parallel(v => v * 2).get(0)), "6", "parallel")
     assert_eq(["a", "b"].join("-"), "a-b", "join")
+}
+
+test_the_three_closure_list_methods_carry_the_types_they_promise() {
+    ws = ["bbb", "a", "cc"]
+
+    assert_eq(ws.sort_by(w => w.length()).join("|"), "a|cc|bbb", "int key")
+    assert_eq(ws.sort_by(w => w).join("|"), "a|bbb|cc", "str key")
+    assert_eq(ws.join("|"), "bbb|a|cc", "sort_by leaves the receiver alone")
+    assert_eq(str(ws.index_of_by(w => w.length() == 2)), "2", "a str answer")
+    assert_eq(str([4, 7].index_of_by(v => v > 90)), "-1", "no answer is -1")
+    assert_eq(ws.enumerate().get(2).value, "cc", "an entry holds a str")
+    assert_eq(str(ws.enumerate().get(2).index), "2", "and where it was")
 }
 
 test_every_map_method_the_checker_allows_actually_works() {
