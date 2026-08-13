@@ -401,3 +401,13 @@ test_a_generic_calling_a_generic_passes_on_its_element_type() {
     assert(made.index_of("arrany") < 0,
            "not at the variable the generic body still spells: {made}")
 }
+
+test_a_named_argument_carries_its_value_to_a_plain_function() {
+    made = gate_c("tagged(class: str, inner: str) -> str => class ++ inner\n"
+        ++ "main() -> int {{ info(tagged(class=\"a\", inner=\"b\")) 0 }}")
+
+    assert(made.index_of("tagged(\"a\", \"b\")") >= 0,
+           "a named argument is the value it names: {made}")
+    assert(made.index_of("tagged(0") < 0,
+           "so nothing reaches the callee as a null string")
+}

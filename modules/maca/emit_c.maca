@@ -37,6 +37,7 @@ emit_expr(e: Expr) -> str =>
         EJump    => emit_jump(e, "")
         EWhile   => "({{ {emit_while(e)} 0; }})"
         EFor     => "({{ {emit_for(e)} 0; }})"
+        EAttr    => emit_expr(e.children.get(0))
         _        => "0"
     }
 
