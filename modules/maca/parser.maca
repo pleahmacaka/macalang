@@ -649,7 +649,7 @@ parse_dot(ts: Token[], e: PExpr) -> PExpr {
     name = ts.get(e.next + 1).text
     after = e.next + 2
 
-    if ts.get(after).kind == LParen {
+    if ts.get(after).kind == LParen && !ts.get(after).fresh {
         parse_method(ts, e.node, name, after)
     } else {
         parse_postfix(ts, mk_pexpr(e_field(e.node, name), after))
@@ -1176,7 +1176,7 @@ parse_call_or_ident(ts: Token[], i: int) -> PExpr {
         parse_task(ts, i, name)
     } else if ts.get(i + 1).kind == FatArrow {
         parse_one_lambda(ts, i, name)
-    } else if ts.get(i + 1).kind == LParen {
+    } else if ts.get(i + 1).kind == LParen && !ts.get(i + 1).fresh {
         parse_call(ts, i, name)
     } else if opens_record_lit(ts, i) {
         parse_record_lit(ts, i, name)
