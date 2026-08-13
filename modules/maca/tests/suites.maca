@@ -81,6 +81,11 @@ test_the_figures_the_front_page_states_are_read_off_a_file() {
             ++ "readers are held to those files")
 }
 
+test_return_leaves_early_and_the_tail_is_still_the_value() {
+    assert_eq(suite_code("crates/driver/tests/programs/early_return.maca"), 0,
+        "`return` is a statement, and the last expression is still the value")
+}
+
 test_an_arrow_block_is_a_block_and_a_literal_meets_its_record_type() {
     assert_eq(suite_code("crates/driver/tests/programs/arrow_records.maca"), 0,
         "a `{{ … }}` with no name is the record its context wants, and a "

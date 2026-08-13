@@ -117,6 +117,11 @@ s_expr(value: Expr) -> Stmt =>
     Stmt { kind = SExpr, name = "", value, ret = "", pos = 0,
            params = [], body = [], frozen = false }
 
+/// A `=>` body is one expression, so a `return` in it stands where no statement does.
+s_arrow(value: Expr) -> Stmt =>
+    Stmt { kind = SExpr, name = "", value, ret = "", pos = 0,
+           params = [], body = [], frozen = true }
+
 s_bind(name: str, value: Expr) -> Stmt =>
     Stmt { kind = SBind, name, value, ret = "", pos = 0, params = [],
            body = [], frozen = false }

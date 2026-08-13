@@ -159,7 +159,7 @@ mk_arrow_fn(ts: Token[], name: str, ret: str, params: Expr[],
     } else {
         be = parse_list_expr(ts, at + 1)
 
-        mk_pstmt(s_fn(name, ret, params, [s_expr(be.node)]), be.next)
+        mk_pstmt(s_fn(name, ret, params, [s_arrow(be.node)]), be.next)
     }
 }
 

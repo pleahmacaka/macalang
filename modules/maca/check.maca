@@ -1464,10 +1464,95 @@ check_fn_in(env: Env, s: Stmt) -> Env {
     told = s.ret == "" && s.body.length() > 0
         ? joined(body.env, signature_ret(env, s.name), body.ty)
         : body.env
-    checked = return_check(told, s.ret, body.ty)
+    checked = jump_errors(return_check(told, s.ret, body.ty), s)
 
     checked with { names = env.names, types = env.types,
                    frozen = env.frozen, hidden = env.hidden }
+}
+
+/// `return` is a statement, and what it carries is what the function said it gives back.
+jump_errors(env: Env, s: Stmt) -> Env =>
+    jump_stmts(env, s, s.body, 0)
+
+jump_stmts(env: Env, s: Stmt, ss: Stmt[], i: int) -> Env {
+    if i >= ss.length() {
+        env
+    } else if ss.get(i).kind == SFn {
+        jump_stmts(jump_errors(env, ss.get(i)), s, ss, i + 1)
+    } else {
+        held = ss.get(i).kind == SExpr && !ss.get(i).frozen
+
+        jump_stmts(jump_walk(env, s, ss.get(i).value, held), s, ss, i + 1)
+    }
+}
+
+jump_walk(env: Env, s: Stmt, e: Expr, held: bool) -> Env {
+    if e.kind == EJump && e.text == "return" {
+        jump_kids(jump_stands(env, s, e, held), s, e.children, 0, false)
+    } else if e.kind == EBlock {
+        jump_walk(jump_stmts(env, s, e.stmts, 0), s, e.children.get(0), held)
+    } else if e.kind == EIf || e.kind == ETernary {
+        jump_arms(jump_walk(env, s, e.children.get(0), false), s, e, 1, held)
+    } else if e.kind == EMatch {
+        jump_match(jump_walk(env, s, e.children.get(0), false), s, e, 1, held)
+    } else if e.kind == ELambda {
+        jump_kids(env, s_expr(e), e.children,
+                  e.children.length() - 1, lambda_block(e))
+    } else {
+        jump_kids(jump_stmts(env, s, e.stmts, 0), s, e.children, 0, false)
+    }
+}
+
+jump_arms(env: Env, s: Stmt, e: Expr, i: int, held: bool) -> Env {
+    if i >= e.children.length() {
+        env
+    } else {
+        jump_arms(jump_walk(env, s, e.children.get(i), held), s, e, i + 1,
+                  held)
+    }
+}
+
+jump_match(env: Env, s: Stmt, e: Expr, i: int, held: bool) -> Env {
+    if i + 1 >= e.children.length() {
+        env
+    } else {
+        jump_match(jump_walk(env, s, e.children.get(i + 1), held), s, e,
+                   i + 2, held)
+    }
+}
+
+/// A lambda written with a block is a function body, where one written with `=>` is an expression.
+lambda_block(e: Expr) -> bool {
+    n = e.children.length()
+
+    n > 0 && e.children.get(n - 1).kind == EBlock
+}
+
+jump_kids(env: Env, s: Stmt, xs: Expr[], i: int, held: bool) -> Env {
+    if i >= xs.length() {
+        env
+    } else {
+        jump_kids(jump_walk(env, s, xs.get(i), held), s, xs, i + 1, held)
+    }
+}
+
+jump_stands(env: Env, s: Stmt, e: Expr, held: bool) -> Env {
+    if !held {
+        complain(env, "this `return` stands inside an expression, and"
+                          ++ " `return` is a statement")
+    } else if s.name == "" {
+        env
+    } else if s.ret == "" && e.children.length() > 0 {
+        complain(env, "`{s.name}` declares no result, so this `return` has"
+                          ++ " nothing to carry")
+    } else if s.ret != "" && e.children.length() == 0 {
+        complain(env, "`{s.name}` gives back a `{s.ret}`, and a bare `return`"
+                          ++ " leaves without one")
+    } else if e.children.length() == 0 {
+        env
+    } else {
+        joined(env, ty_named(s.ret), type_in(env, e.children.get(0)).ty)
+    }
 }
 
 signature_ret(env: Env, name: str) -> Ty {
