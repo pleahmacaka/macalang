@@ -403,13 +403,15 @@ phantom_spelling(w: str) -> bool =>
         || w == "type" || w == "async"
 
 phantom_count(ts: Token[], i: int, n: int) -> int {
-    if i >= ts.length() {
-        n
-    } else if phantom_at(ts, i) {
-        phantom_count(ts, i + 1, n + 1)
-    } else {
-        phantom_count(ts, i + 1, n)
+    seen = n
+    at = i
+
+    while at < ts.length() {
+        seen = phantom_at(ts, at) ? seen + 1 : seen
+        at = at + 1
     }
+
+    seen
 }
 
 /// Cutting from the back is what leaves every position ahead of it still true.
@@ -731,14 +733,20 @@ java_named(files: str[], i: int, acc: str) -> str {
 }
 
 java_in(ts: Token[], i: int, acc: str) -> str {
-    if ts.get(i).kind == Eof {
-        acc
-    } else if ts.get(i).kind == KwImport && ts.get(i + 1).text == "java"
-            && ts.get(i + 2).kind == TStr {
-        java_in(ts, i + 3, acc ++ "import {ts.get(i + 2).text};\n")
-    } else {
-        java_in(ts, i + 1, acc)
+    out = acc
+    at = i
+
+    while ts.get(at).kind != Eof {
+        if ts.get(at).kind == KwImport && ts.get(at + 1).text == "java"
+                && ts.get(at + 2).kind == TStr {
+            out = out ++ "import {ts.get(at + 2).text};\n"
+            at = at + 3
+        } else {
+            at = at + 1
+        }
     }
+
+    out
 }
 
 javac_line(java: str, out: str, cp: str) -> str[] =>
@@ -975,14 +983,19 @@ page_assets(files: str[], i: int, acc: PageAsset[]) -> PageAsset[] {
 }
 
 assets_in(src: str, ts: Token[], i: int, acc: PageAsset[]) -> PageAsset[] {
-    if ts.get(i).kind == Eof {
-        acc
-    } else if ts.get(i).kind == KwImport {
-        assets_in(src, ts, import_end(ts, i + 1), acc ++ asset_at(src, ts,
-                                                                 i + 1))
-    } else {
-        assets_in(src, ts, i + 1, acc)
+    out = acc
+    at = i
+
+    while ts.get(at).kind != Eof {
+        if ts.get(at).kind == KwImport {
+            out = out ++ asset_at(src, ts, at + 1)
+            at = import_end(ts, at + 1)
+        } else {
+            at = at + 1
+        }
     }
+
+    out
 }
 
 /// A quoted import is a file the page carries, a tagged block is source the page carries as written, and a selective one from a script binds the names it asked that script for.
@@ -1881,13 +1894,17 @@ imports_nixpkgs(paths: str[], i: int) -> bool {
 }
 
 answers_element(ts: Token[], i: int) -> bool {
-    if ts.get(i).kind == Eof {
-        false
-    } else if ts.get(i).kind == Arrow && ts.get(i + 1).text == "Element" {
-        true
-    } else {
-        answers_element(ts, i + 1)
+    at = i
+
+    while ts.get(at).kind != Eof {
+        if ts.get(at).kind == Arrow && ts.get(at + 1).text == "Element" {
+            return true
+        }
+
+        at = at + 1
     }
+
+    false
 }
 
 run_cmd(args: str[]) -> int {
@@ -2837,14 +2854,22 @@ browser_error(asked: str, name: str) -> str =>
 target_named(asked: str) -> str =>
     asked == "" ? "native" : asked
 
-js_import_in(ts: Token[], i: int) -> bool {
-    if i + 2 >= ts.length() {
-        false
-    } else if foreign_at(ts, i, "js") {
-        true
-    } else {
-        js_import_in(ts, i + 1)
+js_import_in(ts: Token[], i: int) -> bool =>
+    foreign_first(ts, i, "js") >= 0
+
+/// Where the first `import <lang>` block is, or -1 when the file carries none.
+foreign_first(ts: Token[], i: int, lang: str) -> int {
+    at = i
+
+    while at + 2 < ts.length() {
+        if foreign_at(ts, at, lang) {
+            return at
+        }
+
+        at = at + 1
     }
+
+    0 - 1
 }
 
 /// The three tokens a foreign import is written in, as in `import js "…"`.
@@ -3084,15 +3109,8 @@ written_names(ds: Diagnostic[], i: int, acc: str[]) -> str[] {
     }
 }
 
-rust_import_in(ts: Token[], i: int) -> bool {
-    if i + 2 >= ts.length() {
-        false
-    } else if foreign_at(ts, i, "rust") {
-        true
-    } else {
-        rust_import_in(ts, i + 1)
-    }
-}
+rust_import_in(ts: Token[], i: int) -> bool =>
+    foreign_first(ts, i, "rust") >= 0
 
 /// Rust resolves no name by itself, so every `import rust` is written into the emitted unit.
 rust_prelude(ts: Token[], i: int, acc: str) -> str {
