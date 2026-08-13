@@ -1,0 +1,7 @@
+main() -> int {
+    xs = [1, 2, 3]
+    ys = xs.set(7, 9).insert(-4, 8).remove(99).set(-1, 7)
+    assert_eq("{ys.length()}", "4", "only the insertion was in range")
+
+    failures()
+}

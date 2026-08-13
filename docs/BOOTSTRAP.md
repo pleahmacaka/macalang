@@ -88,7 +88,9 @@ through the package, or runs the demo the gate reads.
 
 The stage-1 **front-end compiles and runs as a native binary, and emits
 through two back ends written in Maca** (`emit_c.maca` and `emit_rust.maca`).
-The gate, `crates/driver/tests/selfhost.rs`, requires that
+The gate, `modules/maca/tests/selfhost.maca`, requires the first two of
+these, and the suites beside it (`bootstrap.maca`, `c.maca`, `rust.maca`)
+the third:
 
 1. every `modules/maca/*.maca` **parses** with no errors,
 2. the concatenated module **type-/effect-checks clean**, and
@@ -132,7 +134,7 @@ feature since is added in Maca and gated by this dual-backend compile+run.
 
 ## What stage-1 compiles
 
-Each entry below is exercised by `crates/driver/tests/selfhost.rs`, which
+Each entry below is exercised by the suites in `modules/maca/tests/`, which
 compiles the emitted program with both `cc` and `rustc` and runs it.
 
 - **the lexer and parser**, `token.maca`, `lexer.maca`, `parser.maca`: the
@@ -434,6 +436,37 @@ What replaces it is weaker, and worth naming honestly:
 
 Point 3 is the honest answer to "what replaces the differential gate", and it
 costs nothing extra, because the seed has to be committed anyway.
+
+### What the memory tests checked, and what stage-1 delivers
+
+`memory.rs` and `list_edits.rs` are gone, and the honest accounting is that
+they ran stage-0, which is being deleted. What replaces them is
+`tests/memory.maca`: it builds a program with the shipping compiler and runs
+it under `valgrind -q`, so a block used after it was released is a failure
+wherever valgrind is installed. Two mutations prove it bites. Drop the bounds
+check in `maca_list_set` and the out-of-range edit reports an invalid write;
+free the old buffer when a list grows and the name still holding it reports an
+invalid read.
+
+What is *not* checked, because stage-1 does not do it yet:
+
+- **Nothing is ever freed.** `emit_c.maca` has no ownership pass, so
+  `valgrind --leak-check=full` is loud and `reuse_count()` is 0 where the
+  stage-0 test asserted over 90%. The measured patch frees only the results of
+  the runtime helpers that always allocate (hello world: 127 bytes in 6 blocks
+  becomes 40 in 1). `tests/memory.maca` is the guard it needs before it lands,
+  because a wrong drop is far worse than a leak.
+- **`set`, `insert` and `remove` copy the whole list every time**, so an
+  accumulator that inserts is quadratic: 2002 allocations for 2000 elements.
+- **`index_of_by`, `enumerate` and `sort_by` have no C body**, though
+  `emit_js.maca` and `interp.maca` implement them and the handbook documents
+  them. Ten of the sixteen tests in the old `list_edits.maca` were left behind
+  for those two reasons.
+- **`str(v)` of a nullary sum variant emits its tag number**, not its name,
+  which is why `tests/json_typed.maca` asserts on `encode(back.layout)`.
+- **`MACA_POISON` is stage-0's**, implemented in `crates/runtime`. Nothing in
+  the emitted runtime reads it, so a poison run proves nothing once stage-0 is
+  gone. `valgrind -q` replaces it, and is stronger.
 
 ### What is not settled
 

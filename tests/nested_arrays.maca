@@ -1,0 +1,23 @@
+grid_of_products(n: int) -> int[][] {
+    grid: int[][] = []
+    for i in 1..n + 1 {
+        row = []
+        for j in 1..n + 1 {
+            row = row.push(i * j)
+        }
+        grid = grid.push(row)
+    }
+    grid
+}
+
+test_a_nested_array_holds_every_row() {
+    assert_eq(str(grid_of_products(3).length()), "3", "three rows")
+}
+
+test_a_nested_array_indexes_through_both_levels() {
+    assert_eq(str(grid_of_products(3).get(2).get(2)), "9", "last cell, last row")
+}
+
+test_a_nested_array_of_one_row_still_nests() {
+    assert_eq(str(grid_of_products(1).get(0).get(0)), "1", "the only cell")
+}

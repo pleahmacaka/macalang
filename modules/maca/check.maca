@@ -656,6 +656,7 @@ ElementTags = " html head title meta link style script body div span p pre code 
 /// `element` names its tag with its first argument; every other tag is its own name.
 is_element_tag(name: str) -> bool =>
     name == "element" || ElementTags.index_of(" {name} ") >= 0
+        || (starts_lower(name) && name.index_of("-") > 0)
 
 is_prelude_call(name: str) -> bool =>
     is_str_builtin(name) || is_float_builtin(name) || is_int_builtin(name)

@@ -338,15 +338,29 @@ remit_method(e: Expr) -> str {
         "{{ let mut _v = {recv};"
             ++ " Rc::make_mut(&mut _v).push({remit_expr(e.children.get(1))});"
             ++ " _v }}"
+    } else if rforeign_recv(e.children.get(0)) {
+        "{e.children.get(0).text}::{e.text}({rbare_args(e.children, 1)})"
     } else {
         "{recv}.{e.text}({remit_args(e.children, 1)})"
     }
 }
 
+/// A capitalised receiver with no type of its own is a type an `import rust` brought in, so its method is an associated function.
+rforeign_recv(r: Expr) -> bool =>
+    r.kind == EIdent && r.ty == "" && upper_word(r.text)
+
+rbare_args(xs: Expr[], i: int) -> str =>
+    xs.slice(i, xs.length()).map(rbare_arg).join(", ")
+
+rbare_arg(e: Expr) -> str =>
+    e.kind == EInt ? str(e.ival) : remit_expr(e)
+
 remit_call(e: Expr) -> str {
     args = remit_args(e.children, 0)
 
-    if e.text == "info" {
+    if e.text == "maca_borrow" {
+        "&mut {args}"
+    } else if e.text == "info" {
         "println!(\"{{}}\", {rstr_of(rarg_ty(e.children), args)})"
     } else if e.text == "print" {
         "print!(\"{{}}\", {rstr_of(rarg_ty(e.children), args)})"
@@ -445,10 +459,10 @@ rarg_ty(cs: Expr[]) -> str {
 rint_of(ty: str, args: str) -> str {
     if ty == "int" {
         args
-    } else if ty == "float" || ty == "bool" {
-        "(({args}) as i64)"
-    } else {
+    } else if ty == "str" {
         "({args}).trim().parse::<i64>().unwrap_or(0)"
+    } else {
+        "(({args}) as i64)"
     }
 }
 

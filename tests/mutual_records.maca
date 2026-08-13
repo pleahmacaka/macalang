@@ -1,0 +1,51 @@
+Block = {
+    value:   int
+    entries: Entry[]
+}
+
+Entry = {
+    name:  str
+    child: Block
+}
+
+leaf(v: int) -> Block =>
+    Block { value = v, entries = [] }
+
+holding(v: int, es: Entry[]) -> Block =>
+    Block { value = v, entries = es }
+
+total(b: Block) -> int =>
+    b.value + sum_entries(b.entries, 0)
+
+sum_entries(es: Entry[], i: int) -> int {
+    if i >= es.length() {
+        0
+    } else {
+        total(es.get(i).child) + sum_entries(es, i + 1)
+    }
+}
+
+names(es: Entry[], i: int) -> str {
+    if i >= es.length() {
+        ""
+    } else {
+        es.get(i).name ++ names(es, i + 1)
+    }
+}
+
+test_a_record_pair_that_names_each_other_compiles() {
+    one = holding(41, [Entry { name = "x", child = leaf(1) }])
+    assert_eq(str(total(one)), "42", "its own value and the entry's")
+}
+
+test_the_cycle_survives_a_nested_block() {
+    inner = holding(3, [Entry { name = "a", child = leaf(2) }])
+    outer = holding(4, [Entry { name = "b", child = inner }])
+    assert_eq(str(total(outer)), "9", "4 outside, 3 and 2 within")
+    assert_eq(names(outer.entries, 0), "b", "the outer entry keeps its name")
+}
+
+test_a_leaf_holds_no_entries() {
+    assert_eq(str(leaf(7).entries.length()), "0", "nothing held")
+    assert_eq(str(total(leaf(7))), "7", "and its own value")
+}

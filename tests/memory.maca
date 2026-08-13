@@ -1,0 +1,54 @@
+import std/proc
+
+scratch() -> str {
+    dir = env_or("TMPDIR", "/tmp") ++ "/maca-memory"
+    make_dir(dir)
+
+    dir
+}
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+built(name: str) -> str {
+    bin = scratch() ++ "/" ++ name
+    src = "tests/fixtures/memory/{name}.maca"
+    assert_eq(str(exec(maca_bin(), ["build", src, "-o", bin])), "0",
+              "{src} has to build before it can be watched")
+
+    bin
+}
+
+watched(name: str) {
+    bin = built(name)
+
+    assert_eq(str(exec(bin, [])), "0", "{name} answers what it was built to")
+
+    if !have("valgrind") {
+        assert(true, "valgrind is not on this host, so only the answers ran")
+    } else {
+        said = capture_err("valgrind", ["--error-exitcode=9", "-q", bin])
+
+        assert_eq(said.trim(), "",
+                  "valgrind saw a block used after it was released: {said}")
+    }
+}
+
+test_a_value_something_still_holds_is_never_released() {
+    if !have("cc") {
+        assert(true, "the program under test needs a C compiler to build")
+    } else {
+        watched("live")
+    }
+}
+
+test_an_edit_out_of_range_writes_nothing() {
+    if !have("cc") {
+        assert(true, "the program under test needs a C compiler to build")
+    } else {
+        watched("range_edits")
+    }
+}

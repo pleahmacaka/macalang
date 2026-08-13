@@ -1,0 +1,85 @@
+import std/text
+import maca/lexer
+import maca/parser
+import maca/check
+
+/// The compiler and the driver, in the order a definition has to come first.
+compiler_files() -> str[] => [
+    "modules/maca/ty.maca", "modules/maca/token.maca",
+    "modules/maca/ast.maca", "modules/maca/styles.maca",
+    "modules/maca/lexer.maca", "modules/maca/parser.maca",
+    "modules/maca/check.maca", "modules/maca/emit_c.maca",
+    "modules/maca/emit_rust.maca", "modules/maca/emit_js.maca",
+    "modules/maca/emit_nix.maca", "modules/maca/emit_embedded.maca",
+    "modules/maca/emit_jvm.maca", "modules/maca/print.maca",
+    "apps/maca1/main.maca"
+]
+
+read_all(fs: str[], i: int, acc: str[]) -> str[] {
+    if i >= fs.length() {
+        acc
+    } else {
+        read_all(fs, i + 1, acc.push(read_file(fs.get(i))))
+    }
+}
+
+whole() -> str =>
+    read_all(compiler_files(), 0, []).join("\n")
+
+selected(l: str) -> str[] {
+    lbrace = l.index_of("{{")
+    rbrace = l.index_of("}}")
+
+    if !l.trim().starts_with("import ") || lbrace < 0 || rbrace < lbrace {
+        []
+    } else {
+        l.slice(lbrace + 1, rbrace).split(",").map(n => n.trim())
+    }
+}
+
+names_brought_in(src: str) -> str[] =>
+    lines(src).map(l => selected(l)).reduce([], (a, b) => a ++ b)
+
+is_declared_elsewhere(e: str, brought: str[]) -> bool =>
+    brought.filter(n => e == "call to undefined function `{n}`").length() > 0
+
+unresolved(src: str) -> str[] {
+    brought = names_brought_in(src)
+
+    check_errors(parse_module(lex(src), 0, []))
+        .filter(e => !is_declared_elsewhere(e, brought))
+}
+
+first_of(es: str[]) -> str =>
+    es.length() == 0 ? "" : es.get(0)
+
+test_every_file_the_compiler_is_made_of_parses() {
+    for f in compiler_files() {
+        assert_eq(str(parse_module(lex(read_file(f)), 0, []).errors.length()),
+                  "0", "{f} does not parse")
+    }
+}
+
+test_the_compiler_and_its_driver_typecheck_as_one_program() {
+    src = whole()
+
+    assert_eq(str(parse_module(lex(src), 0, []).errors.length()), "0",
+              "the compiler and its driver, read as one file, do not parse")
+
+    es = unresolved(src)
+    assert_eq(str(es.length()), "0",
+              "nothing is resolved across files here, so a call to a helper "
+                  ++ "no import names is undefined: {first_of(es)}")
+}
+
+test_a_name_no_import_brings_in_is_not_excused() {
+    src = "import {{ trim }} from std/text\n"
+              ++ "main() -> int {{\n    info(trim(\" x \"))\n"
+              ++ "    info(json_str(\"x\"))\n    0\n}}\n"
+
+    assert_eq(str(unresolved(src).length()), "1",
+              "the imported name is fine and the other one is not")
+    assert_eq(first_of(unresolved(src)),
+              "call to undefined function `json_str`",
+              "and it is the one nothing brought in")
+}

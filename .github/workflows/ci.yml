@@ -62,6 +62,8 @@ jobs:
         run: mkdir -p bin && cc -O1 -o bootstrap/maca bootstrap/maca.c
       - name: Build the compiler with the seed
         run: MACA=$PWD/bootstrap/maca ./bootstrap/maca build apps/maca1/main.maca -o bin/maca
+      - name: Install valgrind
+        run: sudo apt-get install -y valgrind
       - name: Run the suites
         run: |
           fail=0

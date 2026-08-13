@@ -1,0 +1,94 @@
+keep(xs: int[]) -> int[] => xs
+
+sum_of(xs: int[]) -> int => xs.reduce(0, (a, b) => a + b)
+
+check_an_alias_keeps_both_names_alive() {
+    a = [1, 2, 3]
+    b = a
+
+    assert_eq(str(a.length()), "3", "the original")
+    assert_eq(str(b.length()), "3", "the alias")
+    assert_eq(str(sum_of(a)), "6", "reading through the original")
+    assert_eq(str(sum_of(b)), "6", "reading through the alias")
+}
+
+check_a_value_lifted_out_of_a_loop_survives() {
+    kept = []
+    for i in 1..51 {
+        tmp = []
+        for j in 1..21 {
+            tmp = tmp.push(i * j)
+        }
+        if i == 25 {
+            kept = tmp
+        }
+    }
+
+    assert_eq(str(kept.length()), "20", "the kept row is intact")
+    assert_eq(str(kept.get(0)), "25", "its first element")
+    assert_eq(str(kept.get(19)), "500", "its last element")
+}
+
+check_a_map_lifted_out_of_a_loop_survives() {
+    held: Map str int = map()
+    for i in 1..101 {
+        m: Map str int = map()
+        m = m.set("x", i).set("y", i * 2)
+        if i == 50 {
+            held = m
+        }
+    }
+
+    assert_eq(str(held.get("x", 0)), "50", "the kept map's first key")
+    assert_eq(str(held.get("y", 0)), "100", "and its second")
+    assert_eq(str(held.length()), "2", "with nothing else in it")
+}
+
+check_a_value_returned_from_a_function_survives() {
+    c = keep([9, 8, 7])
+
+    assert_eq(str(c.length()), "3", "the returned buffer is intact")
+    assert_eq(str(c.get(0)), "9", "and holds what it was given")
+}
+
+check_inner_buffers_outlive_their_block() {
+    rows: int[][] = []
+    for i in 1..31 {
+        row = []
+        for j in 1..6 {
+            row = row.push(i + j)
+        }
+        rows = rows.push(row)
+    }
+
+    assert_eq(str(rows.length()), "30", "every row was kept")
+    assert_eq(str(rows.get(0).length()), "5", "and each is whole")
+    assert_eq(str(rows.get(29).get(4)), "35", "including the last element")
+}
+
+check_a_grown_list_does_not_release_what_another_name_holds() {
+    a = []
+    for i in 1..9 {
+        a = a.push(i)
+    }
+    b = a
+    for i in 9..41 {
+        a = a.push(i)
+    }
+
+    assert_eq(str(a.length()), "40", "the name that grew has all of them")
+    assert_eq(str(b.length()), "8", "the other name kept the length it had")
+    assert_eq(str(b.get(0)), "1", "its first element is still readable")
+    assert_eq(str(b.get(7)), "8", "and so is its last")
+}
+
+main() -> int {
+    check_an_alias_keeps_both_names_alive()
+    check_a_value_lifted_out_of_a_loop_survives()
+    check_a_map_lifted_out_of_a_loop_survives()
+    check_a_value_returned_from_a_function_survives()
+    check_inner_buffers_outlive_their_block()
+    check_a_grown_list_does_not_release_what_another_name_holds()
+
+    failures()
+}

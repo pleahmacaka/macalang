@@ -2582,11 +2582,14 @@ compile_file(args: str[]) -> int {
         report_all("scan", scanned.errors, 0) +
         report_all("parse", parsed.errors, 0) +
         report_all("embed", raw.errors, 0)
-    errs = bad + report_all("check", checked_with_foreign(raw, unit.toks), 0)
-    m = annotated(monomorphic(lifted(annotated(raw))))
+    stubbed = raw with { items = raw.items ++ tag_stubs(unit.toks, 0, []) }
+    errs = bad + report_all("check",
+                            checked_with_foreign(stubbed, unit.toks), 0)
+    m = unstubbed(annotated(monomorphic(lifted(annotated(stubbed)))),
+                  unit.toks)
     asked = args.length() >= 3 ? args.get(2) : ""
     emitted = if asked == "rust" {
-        rust_prelude(unit.toks, 0, "") ++ remit_module(m)
+        rust_prelude(unit.toks, 0, "") ++ remit_module(rust_borrows(m))
     } else if asked == "js" {
         jemit_module(m)
     } else if asked == "nix" {
@@ -2732,6 +2735,186 @@ last_root(ps: str[], i: int, acc: int) -> int {
         last_root(ps, i + 1, i + 1)
     } else {
         last_root(ps, i + 1, acc)
+    }
+}
+
+/// A foreign value a method takes belongs to its caller, so the call site lends it rather than handing it over.
+rust_borrows(m: Module) -> Module {
+    own = declared_types(m.items, 0, [])
+
+    m with { items = borrow_stmts(m.items, borrow_marks(m.items, own, 0, []),
+                                  0, []) }
+}
+
+borrow_marks(items: Stmt[], own: str[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if is_impl_block(items.get(i)) {
+        borrow_marks(items, own, i + 1,
+                     acc ++ method_marks(items.get(i).value.children, own, 0,
+                                         []))
+    } else {
+        borrow_marks(items, own, i + 1, acc)
+    }
+}
+
+method_marks(fs: Expr[], own: str[], i: int, acc: str[]) -> str[] {
+    if i >= fs.length() {
+        acc
+    } else {
+        method_marks(fs, own, i + 1, acc ++ param_marks(fs.get(i), own))
+    }
+}
+
+param_marks(f: Expr, own: str[]) -> str[] {
+    lam = f.children.get(1)
+    ps = lam.children.slice(0, lam.children.length() - 1)
+
+    mark_at(f.children.get(0).text, ps, own, 0, [])
+}
+
+mark_at(name: str, ps: Expr[], own: str[], i: int, acc: str[]) -> str[] {
+    if i >= ps.length() {
+        acc
+    } else if foreign_type(ps.get(i).ty, own) {
+        mark_at(name, ps, own, i + 1, acc ++ ["{name}#{str(i)}"])
+    } else {
+        mark_at(name, ps, own, i + 1, acc)
+    }
+}
+
+borrow_stmts(xs: Stmt[], marks: str[], i: int, acc: Stmt[]) -> Stmt[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        borrow_stmts(xs, marks, i + 1, acc ++ [borrow_stmt(xs.get(i), marks)])
+    }
+}
+
+borrow_stmt(s: Stmt, marks: str[]) -> Stmt =>
+    s with { value = borrow_expr(s.value, marks),
+             body = borrow_stmts(s.body, marks, 0, []) }
+
+borrow_expr(e: Expr, marks: str[]) -> Expr {
+    kids = borrow_kids(e.children, marks, 0, [])
+
+    e with { children = e.kind == EMethod
+                            ? borrowed_args(e.text, kids, marks, 0, [])
+                            : kids,
+             stmts = borrow_stmts(e.stmts, marks, 0, []) }
+}
+
+borrow_kids(cs: Expr[], marks: str[], i: int, acc: Expr[]) -> Expr[] {
+    if i >= cs.length() {
+        acc
+    } else {
+        borrow_kids(cs, marks, i + 1, acc ++ [borrow_expr(cs.get(i), marks)])
+    }
+}
+
+borrowed_args(name: str, cs: Expr[], marks: str[], i: int,
+              acc: Expr[]) -> Expr[] {
+    if i >= cs.length() {
+        acc
+    } else if marks.index_of("{name}#{str(i)}") >= 0 {
+        borrowed_args(name, cs, marks, i + 1,
+                      acc ++ [e_call("maca_borrow", [cs.get(i)])])
+    } else {
+        borrowed_args(name, cs, marks, i + 1, acc ++ [cs.get(i)])
+    }
+}
+
+/// A tag a raw `import rust` block declares as a function is that function, so check sees the declaration and no back end does.
+tag_stubs(ts: Token[], i: int, acc: Stmt[]) -> Stmt[] {
+    if i + 2 >= ts.length() {
+        acc
+    } else if foreign_at(ts, i, "rust") {
+        tag_stubs(ts, i + 3,
+                  acc ++ block_stubs(rust_source(ts.get(i + 2).text)))
+    } else {
+        tag_stubs(ts, i + 1, acc)
+    }
+}
+
+unstubbed(m: Module, ts: Token[]) -> Module =>
+    m with { items = kept_items(m.items, tag_stubs(ts, 0, []), 0, []) }
+
+kept_items(xs: Stmt[], stubs: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
+    if i >= xs.length() {
+        acc
+    } else if xs.get(i).body.length() == 0
+            && stub_named(stubs, xs.get(i).name, 0) {
+        kept_items(xs, stubs, i + 1, acc)
+    } else {
+        kept_items(xs, stubs, i + 1, acc ++ [xs.get(i)])
+    }
+}
+
+stub_named(stubs: Stmt[], name: str, i: int) -> bool {
+    if i >= stubs.length() {
+        false
+    } else if stubs.get(i).name == name {
+        true
+    } else {
+        stub_named(stubs, name, i + 1)
+    }
+}
+
+block_stubs(text: str) -> Stmt[] =>
+    stub_parts(text.split("fn "), 1, [])
+
+stub_parts(ps: str[], i: int, acc: Stmt[]) -> Stmt[] {
+    if i >= ps.length() {
+        acc
+    } else {
+        stub_parts(ps, i + 1, acc ++ stub_of(ps.get(i)))
+    }
+}
+
+stub_of(part: str) -> Stmt[] {
+    open = part.index_of("(")
+    name = open < 0 ? "" : part.slice(0, open).trim()
+    said = open < 0 ? "" : stub_ret(part)
+
+    if open < 0 || said == "" || !is_element_tag(name) {
+        []
+    } else {
+        [s_fn(name, said,
+              stub_params(stub_arity(part.chars(), open + 1, 1, 0), 0, []), [])]
+    }
+}
+
+/// What a Rust signature answers, which is the only thing a caller of it can be told.
+stub_ret(part: str) -> str {
+    body = part.index_of("{{")
+    head = body < 0 ? part : part.slice(0, body)
+    arrow = head.index_of("->")
+
+    arrow < 0 ? "" : head.slice(arrow + 2, head.length()).trim()
+}
+
+stub_params(n: int, i: int, acc: Expr[]) -> Expr[] {
+    if i >= n {
+        acc
+    } else {
+        stub_params(n, i + 1, acc ++ [e_param("a{str(i)}", "")])
+    }
+}
+
+/// How many parameters a Rust signature declares, counting the commas no nesting hides.
+stub_arity(cs: str[], i: int, depth: int, seen: int) -> int {
+    if i >= cs.length() || (cs.get(i) == ")" && depth == 1) {
+        seen
+    } else if cs.get(i) == "(" || cs.get(i) == "[" {
+        stub_arity(cs, i + 1, depth + 1, seen)
+    } else if cs.get(i) == ")" || cs.get(i) == "]" {
+        stub_arity(cs, i + 1, depth - 1, seen)
+    } else if cs.get(i) == "," && depth == 1 {
+        stub_arity(cs, i + 1, depth, seen + 1)
+    } else if cs.get(i) == " " {
+        stub_arity(cs, i + 1, depth, seen)
+    } else {
+        stub_arity(cs, i + 1, depth, seen == 0 ? 1 : seen)
     }
 }
 

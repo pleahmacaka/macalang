@@ -240,6 +240,151 @@ TraitSrc = "import rust \"\"\"\ntrait Greet {{ fn value(&mut self) -> i64; }}"
 rustc_here() -> bool =>
     exec("sh", ["-c", "command -v rustc >/dev/null 2>&1"]) == 0
 
+CoreSrc = "Color = Red | Green | Blue\n"
+    ++ "Point = {{ x: int y: int }}\n"
+    ++ "Grid = {{ rows: int }}\n"
+    ++ "Outcome = Rows(Grid) | Affected(int)\n"
+    ++ "fib(n: int) -> int => n < 2 ? n : fib(n - 1) + fib(n - 2)\n"
+    ++ "warmth(c: Color) -> int => match c {{"
+    ++ " Red => 2 Green => 1 Blue => 0 }}\n"
+    ++ "sum_to(n: int) -> int {{ acc = 0 i = 1"
+    ++ " while i <= n {{ acc = acc + i i = i + 1 }} acc }}\n"
+    ++ "describe(o: Outcome) -> int => match o {{"
+    ++ " Rows(g) => g.rows Affected(n) => n }}\n"
+    ++ "main() -> int {{\n    p = Point {{ x = 3, y = 4 }}\n"
+    ++ "    r = Rows(Grid {{ rows = 7 }})\n"
+    ++ "    info(\"fib={{fib(10)}} warmth={{warmth(Green)}}"
+    ++ " sum={{sum_to(5)}} px={{p.x}} rows={{describe(r)}}"
+    ++ " affected={{describe(Affected(42))}}\")\n    sum_to(5)\n}}\n"
+
+ForeignSrc = "import rust \"std::time::Duration\"\n\n"
+    ++ "main() -> int {{\n    d = Duration.from_secs(5)\n"
+    ++ "    total = d.as_secs()\n"
+    ++ "    info(\"duration = {{total}} secs\")\n    int(total)\n}}\n"
+
+AsyncSrc = "work(n: int) -> int => n * 2\n\nmain() -> int {{\n"
+    ++ "    a = spawn work(21)\n    b = spawn work(10)\n"
+    ++ "    info(\"{{await a}} {{await b}}\")\n    0\n}}\n"
+
+AnonSrc = "main() -> int {{\n"
+    ++ "    c = {{ host = \"localhost\", port = 8080 }}\n"
+    ++ "    info(\"{{c.host}}:{{c.port}}\")\n"
+    ++ "    d = {{ port = 80, host = \"example.com\" }}\n"
+    ++ "    info(\"{{d.host}}:{{d.port}}\")\n    0\n}}\n"
+
+DeclaredRetSrc = "import rust \"\"\"\n"
+    ++ "pub struct Div {{ pub s: String }}\n"
+    ++ "pub struct AnyElement {{ pub s: String }}\n"
+    ++ "impl Div {{ pub fn into_any_element(self) -> AnyElement"
+    ++ " {{ AnyElement {{ s: self.s }} }} }}\n"
+    ++ "pub fn div() -> Div {{ Div {{ s: \"count \".to_string()"
+    ++ " }} }}\n"
+    ++ "pub trait Render {{ fn render(&mut self) -> AnyElement; }}\n"
+    ++ "\"\"\"\n\nCounter = {{ count: int }}\n\n"
+    ++ "Counter : Render = {{\n"
+    ++ "    render = (self) -> AnyElement => div().into_any_element()\n}}\n\n"
+    ++ "main() -> int {{\n    c = Counter {{ count = 41 }}\n"
+    ++ "    info(\"{{c.render().s}}{{c.count}}\")\n    0\n}}\n"
+
+BorrowSrc = "import rust \"\"\"\n"
+    ++ "pub struct Window {{ pub n: i64 }}\n"
+    ++ "pub trait Bump {{ fn bump(&mut self, w: &mut Window) -> i64;"
+    ++ " }}\n"
+    ++ "pub fn peek(w: &mut Window) -> i64 {{ w.n }}\n\"\"\"\n\n"
+    ++ "Counter = {{ count: int }}\n\nCounter : Bump = {{\n"
+    ++ "    bump = (self, w: Window) -> int => peek(w) + self.count\n}}\n\n"
+    ++ "main() -> int {{\n    c = Counter {{ count = 40 }}\n"
+    ++ "    info(\"{{c.bump(Window {{ n = 2 }})}}\")\n    0\n}}\n"
+
+ran_rust(name: str, src: str, said: str, code: str) -> bool {
+    at = "{scratch()}/{name}"
+
+    assert_eq(str(built_rust(name, src)), "0",
+              "{name} did not build through rustc")
+
+    got = capture(at, [])
+
+    assert(got.contains(said), "{name} printed {got}, wanted {said}")
+    assert_eq(str(exec(at, [])), code,
+              "{name} left an exit code that is not what main answered")
+
+    true
+}
+
+test_the_core_language_computes_the_same_answers_through_rustc() {
+    if !rustc_here() {
+        assert(true, "running what was emitted needs rustc, which this host "
+                         ++ "has not got")
+    } else {
+        ran_rust("core_run", CoreSrc,
+                 "fib=55 warmth=1 sum=15 px=3 rows=7 affected=42", "15")
+    }
+}
+
+test_a_foreign_type_is_reached_by_its_own_path() {
+    if !rustc_here() {
+        assert(true, "running what was emitted needs rustc, which this host "
+                         ++ "has not got")
+    } else {
+        made = emitted_rust("foreign_std", ForeignSrc)
+
+        assert(made.index_of("Duration::from_secs(5)") >= 0,
+               "an associated function is reached with `::`, and a foreign"
+                   ++ " call takes the literal Rust would type for itself")
+        ran_rust("foreign_std", ForeignSrc, "duration = 5 secs", "5")
+    }
+}
+
+test_spawn_and_await_reach_this_target_too() {
+    if !rustc_here() {
+        assert(true, "running what was emitted needs rustc, which this host "
+                         ++ "has not got")
+    } else {
+        ran_rust("async_run", AsyncSrc, "42 20", "0")
+    }
+}
+
+test_a_literal_of_no_named_type_still_gets_one() {
+    if !rustc_here() {
+        assert(true, "running what was emitted needs rustc, which this host "
+                         ++ "has not got")
+    } else {
+        ran_rust("anon_run", AnonSrc, "localhost:8080", "0")
+        assert(capture("{scratch()}/anon_run", []).contains("example.com:80"),
+               "the same shape written in another order is the same type")
+    }
+}
+
+test_a_tag_a_raw_block_declares_is_that_function_and_not_an_element() {
+    made = emitted_rust("declared_ret", DeclaredRetSrc)
+
+    assert(made.index_of("maca_element(\"div\"") < 0,
+           "`div` is a function the block declares, so it is not an element")
+    assert(made.index_of("div().into_any_element()") >= 0,
+           "and the method a trait declared answers what it said it would")
+
+    if !rustc_here() {
+        assert(true, "running what was emitted needs rustc, which this host "
+                         ++ "has not got")
+    } else {
+        ran_rust("declared_ret", DeclaredRetSrc, "count 41", "0")
+    }
+}
+
+test_a_foreign_argument_is_lent_at_the_call_site_as_well() {
+    made = emitted_rust("borrowed_param", BorrowSrc)
+
+    assert(made.index_of("bump(&mut Window") >= 0,
+           "the method borrows it, so the caller has to lend it")
+
+    if !rustc_here() {
+        assert(true, "running what was emitted needs rustc, which this host "
+                         ++ "has not got")
+    } else {
+        ran_rust("borrowed_param", BorrowSrc, "42", "0")
+    }
+}
+
 test_a_crate_path_import_is_written_back_as_a_use_item() {
     made = emitted_rust("use_item",
                         "import rust \"std::time::Duration\"\n\n"

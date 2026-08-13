@@ -1,0 +1,47 @@
+test_a_range_stops_before_its_end() {
+    assert_eq(len(0..5), 5, "0..5 holds five values")
+    assert_eq((0..5)[0], 0, "and starts at the low end")
+    assert_eq((0..5)[4], 4, "and its last value is one before the high end")
+}
+
+test_an_empty_range_is_the_one_whose_ends_meet() {
+    assert_eq(len(5..5), 0, "5..5 holds nothing")
+    assert_eq(len(5..4), 0, "and a backwards range is empty rather than negative")
+    assert_eq(len(0..1), 1, "while 0..1 holds exactly the low end")
+}
+
+test_a_range_over_a_lists_length_is_its_indices() {
+    xs = "a", "b", "c"
+    seen = ""
+
+    for i in 0..xs.length() {
+        seen = seen ++ xs[i]
+    }
+
+    assert_eq(seen, "abc", "0..length() reaches every index and no more")
+    assert_eq(len(0..xs.length()), xs.length(), "and there are exactly length() of them")
+}
+
+sum_over(lo: int, hi: int) -> int {
+    total = 0
+
+    for i in lo..hi {
+        total = total + i
+    }
+
+    total
+}
+
+test_a_for_header_counts_the_same_values_the_list_would_hold() {
+    assert_eq(sum_over(1, 101), 5050, "1 through 100, because 101 is excluded")
+    assert_eq(sum_over(0, 0), 0, "an empty range runs its body no times")
+    assert_eq(sum_over(3, 4), 3, "and a one-value range runs it once")
+}
+
+test_a_range_is_a_list_and_answers_like_one() {
+    xs = 2..6
+
+    assert_eq(xs.length(), 4, "2..6 is four values")
+    assert_eq(xs.get(0), 2, "starting at the low end")
+    assert_eq(xs.sum(), 14, "and 2 + 3 + 4 + 5 is 14")
+}

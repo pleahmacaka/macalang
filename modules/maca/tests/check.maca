@@ -593,6 +593,12 @@ test_a_tag_nobody_declared_is_markup_and_not_a_missing_function() {
               "0", "a nested tag and an attribute are markup, not calls to write")
 }
 
+test_a_hyphenated_tag_is_a_custom_element_not_a_missing_function() {
+    assert_eq(count_of("main() -> Element =>"
+                       ++ " iconify-icon(icon=\"lucide:lock\", my-card())"),
+              "0", "the platform spells a custom element with a hyphen")
+}
+
 test_a_name_the_module_declares_is_a_name_and_not_a_word_maca_lacks() {
     assert_eq(count_of("type(n: int) -> int => n + 1"
                        ++ " main() -> int => type(41)"),
