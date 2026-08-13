@@ -153,3 +153,102 @@ test_a_reading_inside_a_function_is_embedded_too() {
     assert_eq(loose.items.get(0).body.get(0).value.text, "decode",
         "and a reading with no type beside it is left for `decode`")
 }
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+Reader = "import {{ decode }} from std/json\n\n"
+    ++ "Entry = {{ title: str, count: int }}\n\nmain() -> int {{\n"
+    ++ "    e: Entry = data(\"conf/app.json\")\n"
+    ++ "    info(\"{{e.title}}/{{e.count}}\")\n    0\n}}\n"
+
+reader_dir() -> str {
+    dir = scratch() ++ "/reads"
+
+    remove_dir(dir)
+    make_dir(dir)
+    make_dir(dir ++ "/conf")
+    write_file(dir ++ "/app.maca", Reader)
+
+    dir
+}
+
+said_running(at: str) -> str =>
+    output("sh", ["-c", "'{maca_bin()}' run '{at}' 2>&1"])
+
+test_a_file_read_while_building_is_read_again_when_it_changes() {
+    dir = reader_dir()
+
+    write_file(dir ++ "/conf/app.json", "{{\"title\": \"first\", \"count\": 1}}")
+
+    assert(said_running(dir ++ "/app.maca").contains("first/1"),
+           "the file as it was: {said_running(dir ++ "/app.maca")}")
+
+    write_file(dir ++ "/conf/app.json", "{{\"title\": \"second\", \"count\": 2}}")
+
+    assert(said_running(dir ++ "/app.maca").contains("second/2"),
+           "a cache keyed only on the source text would answer `first/1`: "
+               ++ said_running(dir ++ "/app.maca"))
+}
+
+test_a_local_copy_beside_a_file_takes_over_and_gives_it_back() {
+    dir = reader_dir()
+
+    write_file(dir ++ "/conf/app.json", "{{\"title\": \"public\", \"count\": 1}}")
+
+    assert(said_running(dir ++ "/app.maca").contains("public/1"),
+           "the committed copy is what a build with no private one reads")
+
+    write_file(dir ++ "/conf/app.local.json",
+               "{{\"title\": \"private\", \"count\": 9}}")
+
+    assert(said_running(dir ++ "/app.maca").contains("private/9"),
+           "the `.local` copy shadows it without the source naming it")
+
+    remove_file(dir ++ "/conf/app.local.json")
+
+    assert(said_running(dir ++ "/app.maca").contains("public/1"),
+           "and removing it hands the file back")
+}
+
+test_reading_a_file_with_no_reader_names_the_import_to_add() {
+    dir = reader_dir()
+
+    write_file(dir ++ "/conf/app.json", "{{\"title\": \"a\", \"count\": 1}}")
+    write_file(dir ++ "/app.maca",
+        "Entry = {{ title: str, count: int }}\n\nmain() -> int {{\n"
+            ++ "    e: Entry = data(\"conf/app.json\")\n    info(e.title)\n"
+            ++ "    0\n}}\n")
+
+    said = said_running(dir ++ "/app.maca")
+
+    assert(said.contains("std/json") && said.contains("decode"),
+           "nothing types the text without a reader, and the message says "
+               ++ "which import brings one: {said}")
+}
+
+test_a_missing_file_and_a_computed_path_both_fail_the_build() {
+    dir = reader_dir()
+
+    write_file(dir ++ "/conf/app.json", "{{\"title\": \"a\", \"count\": 1}}")
+    write_file(dir ++ "/gone.maca",
+        Reader.replace("conf/app.json", "conf/nope.json"))
+    write_file(dir ++ "/made.maca",
+        "import {{ decode }} from std/json\n\n"
+            ++ "Entry = {{ title: str, count: int }}\n\nmain() -> int {{\n"
+            ++ "    name = \"conf/\" ++ \"app.json\"\n"
+            ++ "    e: Entry = data(name)\n    info(e.title)\n    0\n}}\n")
+
+    gone = said_running(dir ++ "/gone.maca")
+    made = said_running(dir ++ "/made.maca")
+
+    assert(exec(maca_bin(), ["run", dir ++ "/gone.maca"]) != 0,
+           "a file that is not there is not a build")
+    assert(gone.contains("conf/nope.json"), "and it is named: {gone}")
+    assert(exec(maca_bin(), ["run", dir ++ "/made.maca"]) != 0,
+           "a build-time read needs a build-time path")
+    assert(made.contains("data"), "and the call is named: {made}")
+}

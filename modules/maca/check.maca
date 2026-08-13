@@ -501,6 +501,26 @@ closure_sig(env: Env, e: Expr) -> Ty {
     at < 0 ? t_any() : env.sigs.get(at)
 }
 
+StdExports = " decode std/json encode std/json"
+    ++ " output std/proc have std/proc env_or std/proc"
+    ++ " join std/path basename std/path dirname std/path"
+    ++ " between std/text split_once std/text indent std/text "
+
+/// A name the standard library exports is a missing import, not a missing function.
+carried_by(name: str) -> str {
+    at = StdExports.index_of(" {name} ")
+
+    if at < 0 {
+        return ""
+    }
+
+    rest = StdExports.slice(at + name.length() + 2, StdExports.length())
+    upto = rest.index_of(" ")
+    where = upto < 0 ? rest : rest.slice(0, upto)
+
+    "; `import {{ {name} }} from {where}`"
+}
+
 /// A lowercase call name that resolves to nothing is a function nobody wrote, not a foreign one.
 unknown_call(env: Env, name: str) -> Env {
     if !starts_lower(name) || is_prelude_call(name) || is_element_tag(name) {
@@ -508,7 +528,8 @@ unknown_call(env: Env, name: str) -> Env {
     } else if is_host_builtin(name) {
         env
     } else {
-        complain_as(env, "M0006", "call to undefined function `{name}`")
+        complain_as(env, "M0006", "call to undefined function `{name}`"
+                                      ++ carried_by(name))
     }
 }
 
