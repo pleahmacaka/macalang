@@ -2,7 +2,7 @@
 
 Where everything is, and why it is there rather than somewhere else.
 
-Virtual workspace; members are `crates/*`.
+One package; the compiler is `apps/maca1`.
 
 | crate | role |
 |---|---|
@@ -25,23 +25,23 @@ Virtual workspace; members are `crates/*`.
 **The toolchain's own programs are applications, because that is what they
 are.** A runnable program lives under `apps/` whoever wrote it and whoever runs
 it, so `apps/bindgen/` is kept equivalent to its
-stage-0 Rust twin by `crates/driver/tests/bindgen_port.rs`; `apps/lint/` is a
+stage-0 Rust twin by `modules/maca/tests/tooling.maca`; `apps/lint/` is a
 style linter that walks the tree recursively and checks line width /
 single-line `if` / trailing whitespace / hard tabs (width is measured with
 string literals collapsed, so a long C template or URL is exempt exactly as a
-long comment is, and `crates/driver/tests/lint_port.rs` requires the whole
+long comment is, and `modules/maca/tests/tooling.maca` requires the whole
 repository to pass it); `apps/macadoc/` is the API-doc generator (rustdoc's job
 for Maca: a `///` block above an item is what makes it API, and the leading
 `//` block of a `modules/std` file is that module's own blurb on the generated
 index; the Reference's tooling chapter documents the marker, and
-`crates/driver/tests/programs/sitegen.maca` fails if what it lists ever differs
+`tests/programs/sitegen.maca` fails if what it lists ever differs
 from what `modules/std/README.md` advertises); and `apps/build_site/` builds
 and checks the published site for both CI and a human, including a check that
 every class on every emitted page produced a CSS rule.
 **Every script in the repository is a Maca program**: `apps/bench/run.maca` is
 the cross-language benchmark harness, `apps/npm/build.maca` builds the
 wasm into the npm package. All seven are compiled by
-`crates/driver/tests/scripts.rs`, because a script only run at release time
+`modules/maca/tests/tooling.maca`, because a script only run at release time
 rots quietly. There are no shell scripts left to be an exception, and no Rust
 ones either: installing is `apps/install/`, a Maca program shipped as a binary
 in the release, which reads its own platform from `uname` at run time rather
@@ -59,7 +59,7 @@ by its written path (`import apps/tomo/conf`). `[layout]` in `maca.toml`
 renames any of them.
 
 **The standard library travels inside the binary.** All eight `modules/*`
-packages are compiled into `maca` by `crates/stdlib` (a `build.rs` that reads
+packages are compiled into `maca` by the carried table in `apps/maca1/main.maca` (which reads
 the tree, the way `maca-runtime` carries the C runtime), so `import std/json`
 resolves in a project that has never seen this repository. It is **the last
 thing asked**: the walk from the importing file up to the workspace root runs
@@ -72,7 +72,7 @@ whole or not at all) and a file the compiler carries resolves *its* imports
 against the project that asked for it, so a replaced file is replaced for the
 carried packages that read it too. `MACA_STDLIB=<dir>` replaces the carried
 copy outright. The snapshot cannot go stale: it is read out of `modules/` at
-build time and `crates/driver/tests/stdlib_ships.rs` compares the two file by
+build time and `modules/maca/tests/imports.maca` compares the two file by
 file, builds a program in a temp directory outside the repository, and checks
 each precedence step. Documented in `docs/SPEC.md` and handbook ch. a9/a14.
 
@@ -93,7 +93,7 @@ the walk stops: at the workspace root, not at the first `maca.toml`, or
 `import std/list`. With no file named, `maca build`/`run`/`test` are about the
 package the working directory holds: its `[[bin]]` (`--bin` picks one of
 several) and the suites under its `tests/`. Documented in `docs/SPEC.md` and
-handbook ch. a14; gated by `crates/driver/tests/workspace.rs`.
+handbook ch. a14; gated by `modules/maca/tests/tooling.maca`.
 
 **Building is declared, not flagged.** `[build]` carries the five things
 `maca build` would otherwise learn only from a flag, each a property of the
@@ -106,7 +106,7 @@ manifest says `target = "js"`, `out = "build"` is built by `maca build`, with
 no wrapper script. `maca init` writes exactly two files to match: a `maca.toml`
 stating `[package] name` and the `[[bin]]` it builds, and that `main.maca`. No
 comments, no `.gitignore`, no table the project has not needed yet
-(`crates/driver/tests/scaffold.rs`).
+(`modules/maca/tests/commands.maca`).
 
 **A directory that shares a package's name shadows the package**, silently. The
 written path is tried before the search roots, so a top-level `bench/` beside
@@ -142,7 +142,7 @@ package is laid out and how its `///` summaries are worded.
 
 | package | what it is | tests |
 |---|---|---|
-| `std` | `text`, `list`, `path`, `json`, `csv`, `fs`, `proc`: the layer above the prelude builtins (`modules/std/README.md` is the reference, and `crates/driver/tests/programs/sitegen.maca` fails if it and the generated API pages disagree) | 106 |
+| `std` | `text`, `list`, `path`, `json`, `csv`, `fs`, `proc`: the layer above the prelude builtins (`modules/std/README.md` is the reference, and `tests/programs/sitegen.maca` fails if it and the generated API pages disagree) | 106 |
 | `http` | the server: `server`/`request`/`response`/`status`, plus `serve`, which `maca -m http.serve` runs | 16 |
 | `cli` | argument parsing and terminal output in one: `spec` (a command as a value), `parse`, `help` (the page rendered from the spec), `show` (tables, rules), `style` (colour, and UTF-8 *column* widths, so a Hangul or emoji cell still lines up) | 36 |
 | `bench` | `time` (calibrating measurement loop), `stat`, `store` (JSON round-trip), `compare` (two runs, with a verdict), `cases/*` (a corpus from primitives to advanced algorithms) | 141 |
@@ -150,9 +150,9 @@ package is laid out and how its `///` summaries are worded.
 | `signal` | nanostore-style reactive state: `store` (signals, computed, effects) and `dom`, so a native web page updates the nodes that changed rather than re-rendering | 58 |
 | `tambo` | the web framework over `http`: `app`, `route`, `ctx`, `dispatch`, `reply` | 87 |
 
-**The tree is four directories: `apps/`, `crates/`, `docs/`, `modules/`.**
-`modules/` is what a program imports and `crates/` is the frozen stage-0
-bootstrap, so everything else the repository *makes* is an application and lives
+**The tree is four directories: `apps/`, `bootstrap/`, `docs/`, `modules/`.**
+`modules/` is what a program imports and `bootstrap/` is the compiler as it
+emitted itself, so everything else the repository *makes* is an application and lives
 under `apps/`. There is no `tools/`, no `selfhost/`, no `editor/`, no
 `packages/` and no top-level `examples/`; each was a fifth kind of thing that
 had to be explained, and none of them was.
@@ -191,7 +191,7 @@ page you need. A chapter belongs to exactly one of them, and a teaching chapter
 with a stricter twin links to it by name. The `a`-prefixed files are the
 Reference: they grew out of the appendices and kept the prefix so no published
 URL had to move. Maca in a fenced block is highlighted by
-`apps/tomo/highlight.maca`, a scanner that follows `crates/lexer/src/lib.rs`
+`apps/tomo/highlight.maca`, a scanner that follows `modules/maca/lexer.maca`
 rather than guessing; an unknown language tag falls through to escaped plain
 text.
 

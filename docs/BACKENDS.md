@@ -54,10 +54,10 @@ the table.
 **The checker runs first, on every target.** Each path calls it from its own
 site, which is exactly why one that stops asking is wrong on that target alone
 and silent everywhere else. That has happened twice.
-`crates/driver/tests/target_checks.rs` builds the same rejected program on all
+`modules/maca/tests/refusals.maca` builds the same rejected program on all
 five program targets and names the one that accepted it.
 
-**Imports resolve on every target.** `crates/driver/tests/target_imports.rs`
+**Imports resolve on every target.** `modules/maca/tests/imports.maca`
 holds each of them to inlining a sibling module, a transitive chain, a diamond
 inlined once, and a selective import that brings only what it names.
 
@@ -148,4 +148,4 @@ RISC-V: no libc, no allocator by default, `--mcu` picks the core.
 
 Every back end has a hermetic emit suite in its own crate, and a
 compile-and-run suite in the driver where a toolchain exists on the runner.
-The cross-target guarantees above are in `crates/driver/tests/target_*.rs`.
+The cross-target guarantees above are in `modules/maca/tests/refusals.maca`.

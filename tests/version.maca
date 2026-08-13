@@ -3,7 +3,6 @@ import std/text
 Stated = { file: str, key: str }
 
 stated_files() -> Stated[] => [
-    Stated { file = "Cargo.toml", key = "version" },
     Stated { file = "apps/npm/package.json", key = "\"version\"" },
     Stated { file = "apps/editor/zed-maca/extension.toml", key = "version" },
     Stated { file = "apps/editor/zed-maca/Cargo.toml", key = "version" },

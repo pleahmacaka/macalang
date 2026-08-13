@@ -4,6 +4,17 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* **The Rust workspace is deleted.** `crates/` held the frozen stage-0 compiler; every
+  guarantee it stood for is now a `.maca` suite, and `bootstrap/maca.c` is what produces
+  the first binary on a machine with neither Maca nor Rust. The `cargo test` and
+  `fmt + clippy` CI jobs went with it, and the release is cut by `zig cc` from that seed
+  for all five targets from one Linux runner. Getting there needed the compiler to be
+  honest about things it had been quiet about: a formatter that rewrote `(a * b).sum()`
+  into a different program, a `return` nobody type-checked, a nested definition whose
+  writes went to a global, a handler rendered dead into markup, a self-build that
+  overflowed the default 8 MB stack with no diagnostic. The emitted C also learned to
+  run where there is no `fork`, which is what lets the Windows binary come from the seed.
+
 * **The LLVM back end is deleted**, `crates/backend_llvm`, and nothing was ported in its place. The
   C back end already had the vector type and was declaring the kernel `extern` for the IR file to
   define; now it defines it, because `a * b` on an `ext_vector_type` is the operator and `.sum()` is
@@ -442,7 +453,7 @@ Newest first. Versions are bare semver; the tag is the version.
   `.gitattributes` keeps `.maca` at LF, so a CRLF checkout no longer makes
   `maca fmt --check` call every golden example unformatted.
 
-* The type system is Maca. `modules/maca/ty.maca` is `crates/core/src/ty.rs`
+* The type system is Maca. `modules/maca/ty.maca` is `modules/maca/ty.maca`
   rewritten in the language it type-checks: `Ty` with type variables, the
   substitution and the occurs check, unification over constructors, functions,
   optionals and **rows** (an open record tolerates the fields it does not name,

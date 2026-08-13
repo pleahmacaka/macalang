@@ -35,7 +35,7 @@ seen to be missing: inside a checkout the source tree answers instead.
 ## Bumping the version
 
 Five files carry it, and
-[`crates/driver/tests/version.rs`](../crates/driver/tests/version.rs) fails
+[`tests/version.maca`](../tests/version.maca) fails
 when they disagree:
 
 * `Cargo.toml`, which every crate inherits and `maca --version` prints
@@ -46,7 +46,7 @@ when they disagree:
   Zed refuses the extension
 
 The newest `## x.y.z` heading in [CHANGELOG.md](CHANGELOG.md) has to agree too,
-and a sixth test refuses a version literal anywhere else in `crates/`, because
+and a further test refuses a version literal anywhere else, because
 a copy nobody compares is a copy that goes stale.
 
 The installer carries no version of its own. It asks the binary it just

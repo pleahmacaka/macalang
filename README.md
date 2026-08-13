@@ -58,14 +58,17 @@ builds need [Nix](https://nixos.org), and nothing else does.
 | [`docs/`](docs/) | for working on Maca: bootstrap, back ends, releasing |
 | [`modules/`](modules/) | the standard library, which rides inside the binary |
 | [`apps/`](apps/) | everything this repository builds, including the compiler written in Maca |
-| [`crates/`](crates/) | the Rust bootstrap compiler |
+| [`bootstrap/`](bootstrap/) | `maca.c`, the compiler as it emitted itself: how a machine with no Maca gets one |
 
 ## Build it
 
+Maca is written in Maca. `bootstrap/maca.c` is the compiler as the compiler
+emitted it, so any C compiler turns it back into a working one:
+
 ```sh
-cargo build
-cargo test              # add -- --test-threads=1 for the full native suite
-cargo run -p maca-driver -- --version
+cc -O1 -o bootstrap/maca bootstrap/maca.c
+MACA=$PWD/bootstrap/maca ./bootstrap/maca build apps/maca1/main.maca -o bin/maca
+MACA=$PWD/bin/maca ./bin/maca --version
 ```
 
 ## Licence

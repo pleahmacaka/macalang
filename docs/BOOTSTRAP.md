@@ -21,7 +21,7 @@ cmp one/maca two/maca                        # fixed point ⇒ self-hosted
 **This closes**, and it is what the `maca suites` CI job runs on every push.
 
 The seed replaces the Rust workspace, which used to hold this position and can
-no longer fill it: a compiler that `crates/*` builds from today's
+no longer fill it: a compiler that the Rust workspace built from today's
 `modules/maca/*.maca` cannot lex a forty-byte program. Stage-0 was frozen while
 the language it compiles kept moving, and the two finally parted. Regenerate the
 seed with `maca apps/maca1/main.maca bootstrap/maca.c` and check that the file it
@@ -39,7 +39,7 @@ one byte, the digit. `strip` makes them equal; building both as `maca` makes the
 equal without stripping.
 
 `modules/maca/tests/bootstrap.maca` is the same argument written in Maca, and it
-is the half that survives the deletion of `crates/`. It runs three rounds, each
+is the half that survived the deletion of the workspace. It runs three rounds, each
 in a directory of its own under the one output name, and asserts four things: the
 unit the compiler resolves out of its own `import` graph carries a marker from
 every file it reaches; the C is a fixed point; the binary is one too; and the
@@ -250,7 +250,7 @@ and the only one that can catch a divergence, is the step before it: compile
 one source with stage-0 and with stage-1, and require the two programs to
 behave identically.
 
-`crates/driver/tests/selfhost.rs` does exactly that. stage-0 builds stage-1;
+`modules/maca/tests/selfhost.maca` does exactly that. stage-0 builds stage-1;
 stage-1 compiles a program covering the slice above; the emitted C is compiled
 with `cc` and the emitted Rust with `rustc`; and all three runs must print the
 same thing and exit the same way. A difference there is a difference between
@@ -299,14 +299,14 @@ What the remaining failures are, in the order they block deletion:
   has to itself is `fix`. `maca-backend-llvm` went second and nothing was ported
   in its place: the C back end already had the vector type and was leaving only
   the kernel body to the IR file, which is a loop over the lanes.
-  `crates/wasm` went third and was not a back end either: it was the compiler
+  The wasm crate went third and was not a back end either: it was the compiler
   built for the browser, and its Maca answer is `apps/npm/wasm.maca`, the same
   `lex → parse → check → emit` chain plus `interp.maca`, built with
   `--target wasm` and called as a wasi command rather than over a pointer ABI.
 
 The two stages own different halves of the type system, and the line between
 them has moved. The **type representation and unification are Maca now**:
-`ty.maca` is `crates/core/src/ty.rs` rewritten, variables and all, so
+`ty.maca` is `modules/maca/ty.maca` rewritten, variables and all, so
 substitution, the occurs check, row unification over open and closed records,
 and `generalize`/`instantiate` are gated by `modules/maca/tests/ty.maca` rather
 than by Rust. What is still only in `maca-core` is the checker over the *whole*
@@ -324,7 +324,7 @@ inferred bindings, row unification, generic monomorphization) belongs in
 
 ## The seed: what compiles the compiler once there is no Rust
 
-Everything above assumes a working `maca` on PATH. Deleting `crates/` takes
+Everything above assumes a working `maca` on PATH. Deleting the workspace took
 that assumption away, and the question left is the only one that matters:
 **on a clean checkout, with no Maca and no Rust, what produces the first
 binary?**
@@ -406,7 +406,7 @@ already is its replacement and already runs.
 
 ### What happens to `selfhost.rs`, and what is genuinely lost
 
-`crates/driver/tests/selfhost.rs` is a **differential** gate: it compiles one
+`modules/maca/tests/selfhost.maca` is a **differential** gate: it compiles one
 source with stage-0 and with stage-1 and requires the two programs to agree.
 Once stage-0 is gone there is no second implementation, so differential
 testing is not weakened, it is **impossible**. Saying otherwise would be the
@@ -464,9 +464,9 @@ What is *not* checked, because stage-1 does not do it yet:
   for those two reasons.
 - **`str(v)` of a nullary sum variant emits its tag number**, not its name,
   which is why `tests/json_typed.maca` asserts on `encode(back.layout)`.
-- **`MACA_POISON` is stage-0's**, implemented in `crates/runtime`. Nothing in
-  the emitted runtime reads it, so a poison run proves nothing once stage-0 is
-  gone. `valgrind -q` replaces it, and is stronger.
+- **`MACA_POISON` was stage-0's**, and nothing in the emitted runtime reads it,
+  so a poison run proves nothing now that stage-0 is gone. `valgrind -q`
+  replaces it, and is stronger.
 
 ### What is not settled
 
@@ -480,6 +480,6 @@ What is *not* checked, because stage-1 does not do it yet:
 - **Cross-platform C.** The emitted C is POSIX: `fork`/`execvp`, `dirent.h`,
   `unistd.h`. It has not been built with MSVC. Windows almost certainly needs
   either a POSIX shim or mingw, and that is untested.
-- **Where the fixtures under `crates/driver/tests/programs/` go.** Several
+- **Where the fixtures under `tests/programs/` go.** Several
   Maca suites read them by path, so they outlive the crate that named them and
-  need a home that is not inside `crates/`.
+  needed a home outside the workspace, and moved to `tests/programs/` before it went.

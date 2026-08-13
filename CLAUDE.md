@@ -11,19 +11,19 @@ language; when it and the code disagree, it wins, and they change together.
 ## Commands
 
 ```
-cargo build            # build the whole workspace
-cargo test             # run all tests
-cargo run -p maca-driver -- --version    # the maca CLI
-cargo test -p maca-lexer                 # test one crate
+cc -O1 -o bootstrap/maca bootstrap/maca.c            # a compiler, from the seed
+MACA=$PWD/bootstrap/maca ./bootstrap/maca build apps/maca1/main.maca -o bin/maca
+MACA=$PWD/bin/maca ./bin/maca test modules/maca/tests/lex.maca   # one suite
+MACA=$PWD/bin/maca ./bin/maca run apps/lint/lint.maca            # the linter
 ```
 
-The CLI binary is `maca`, in `crates/driver`.
+The CLI binary is `maca`, written in Maca at `apps/maca1/main.maca`.
 
-**Testing gotcha:** the integration tests that build natively (through `zig` or
-`nix` under WSL) contend under heavy parallelism, because neither takes a dozen
-concurrent invocations. A cross-process build lock serialises the compiles, but
-for a fully reliable full run use `cargo test -- --test-threads=1`, or run
-per-crate. The pure unit tests are unaffected and fast.
+**Testing gotcha:** a suite that builds natively shells out to a C compiler, so
+running the whole bar at once contends under WSL. Run the suites in sequence, as
+CI does. The compiler needs a stack the default 8 MB only just covers, so a
+segfault with no message during a self-build is a stack question before it is
+anything else: try `ulimit -s 16384` before blaming a change.
 
 ## Where things are
 
@@ -33,7 +33,7 @@ The tree is four directories, and each answers one question:
 |---|---|
 | `modules/` | what a program imports. Nine packages, all ordinary Maca, all with a suite under `<pkg>/tests/`. They ride **inside** the `maca` binary. `modules/maca` is the compiler itself, so a Maca program can lex and parse Maca. |
 | `apps/` | everything this repository builds: the capstones, the demos, the toolchain's own programs, the handbook builder, the playground, `apps/maca1` which drives the compiler package, and `apps/examples`, which is the regression corpus. |
-| `crates/` | the frozen Rust stage-0 bootstrap, plus `crates/install`, the installer. Keep it minimal. Every line of it is due to go: a Maca program compiles to a native binary, so nothing here needs to be Rust, the installer included. |
+| `bootstrap/` | `maca.c`, the compiler as the compiler emitted it. `cc -O1` on it gives a working compiler in four seconds, and that one rebuilds itself to a fixed point. It is how a machine with no Maca gets one. |
 | `docs/` | the spec, the changelog, and how this thing is built. |
 
 `modules/*` and `src/*` are import search roots, so `modules/std/text.maca` is
@@ -64,12 +64,12 @@ they are the ones that get broken from the inside:
 
 ## Self-hosting
 
-Rust (`crates/*`) is the **frozen stage-0 bootstrap**, so keep it minimal. New
-compiler work is written in Maca under `modules/maca/` and gated by the stage-0
-front-end (`crates/driver/tests/selfhost.rs`). See `docs/BOOTSTRAP.md`. When a
-change is needed, prefer adding it to `modules/maca/*.maca` over growing the Rust
-crates; only touch stage-0 for genuine bootstrap bugs (e.g. a parser that hangs
-or mis-parses valid surface syntax).
+There is no Rust left. The compiler is `apps/maca1/main.maca` plus
+`modules/maca/*`, and `bootstrap/maca.c` is the compiler as it emitted itself:
+`cc -O1` on that file gives a working compiler, which rebuilds the tree to a
+fixed point. Regenerate it with `maca apps/maca1/main.maca bootstrap/maca.c`
+whenever the compiler changes, and check the fixed point before committing.
+See `docs/BOOTSTRAP.md`.
 
 The stage-1 **compiler pipeline already runs natively**: the Maca-written lexer
 → recursive-descent parser → recursive-`Expr` AST + pretty-printer → type
@@ -82,7 +82,7 @@ the whole `lex → parse → check → emit` chain (the `selfhost.rs` run gate
 builds it with the host `cc`, then compiles the *emitted* program two ways: the
 C capstone with `cc` and the Rust capstone with `rustc`, checking both exit
 `42`). New backend
-work belongs here in Maca, not in the stage-0 crates. The parsed slice has grown
+work belongs here in Maca. The parsed slice has grown
 well past a toy: the full primitive expression language (`int`/`float`/`str`/
 `bool` literals; `+ - * / %`, comparison, `&& ||`, unary `- !`; ternary;
 multi-arg + nested calls with precedence), **type-threaded signatures** (a
@@ -102,8 +102,8 @@ definition cycle resolves, with `MACA_ARRAY_STRUCT` before the body and
 
 ## How to work here
 
-- **Test-gated.** Nothing lands until `cargo test` is green across the
-  workspace. A change that can be observed at run time gets a test that runs it;
+- **Test-gated.** Nothing lands until every `.maca` suite is green and
+  `apps/lint/lint.maca` is quiet. A change that can be observed at run time gets a test that runs it;
   documentation that makes a runnable claim gets one too (`apps/examples/handbook.maca`
   is the book's claims as an executable program).
 - **Assert in Maca, not in Rust.** A behaviour test is a file of `test_…`
@@ -112,7 +112,7 @@ definition cycle resolves, with `MACA_ARRAY_STRUCT` before the body and
   the exit code. Do *not* write a Maca program that `info(…)`s its results and
   a Rust test that greps stdout for them, and do not embed the Maca source in a
   Rust string literal. The suites live in `modules/<pkg>/tests/` and
-  `crates/driver/tests/programs/`. What stays in Rust is what is about the
+  `tests/programs/`. What used to stay in Rust is about the
   *process* rather than the values: piping stdin, running under valgrind, and a
   program that must fail to compile.
 - **Break it to prove the test works.** A test written after the fix usually
@@ -121,7 +121,7 @@ definition cycle resolves, with `MACA_ARRAY_STRUCT` before the body and
   test goes red. Ten mutations against the append analysis left six green,
   including deleting the whole optimisation.
 - **The code carries no comments.** No `//` line comment, no `//!` inner doc,
-  no `/* … */` block, in `crates/**/*.rs` or in any `.maca` file. A name, a
+  no `/* … */` block, in any `.maca` file. A name, a
   signature or a test says what a comment used to. When you want to explain
   something, the options in order are: rename it, split it, or write a test
   whose name is the sentence you were about to write. Prose about the design
@@ -129,7 +129,7 @@ definition cycle resolves, with `MACA_ARRAY_STRUCT` before the body and
   documentation and are not covered by this rule.
 - **`///` is the exception, and it is one line.** `///` is what marks an item
   as API: `apps/macadoc/macadoc.maca` builds the reference pages from it, and
-  `crates/driver/tests/programs/sitegen.maca` fails when those pages and
+  `tests/programs/sitegen.maca` fails when those pages and
   `modules/std/README.md` disagree, so deleting a `///` deletes a feature.
   Write exactly one line, a complete English sentence summarising the item. No
   second line and no second paragraph. Two things are allowed past that because
@@ -138,7 +138,7 @@ definition cycle resolves, with `MACA_ARRAY_STRUCT` before the body and
   line is what the generated index prints on that module's card.
 - **One surviving line, where absence would mislead.** A single `//` line may
   stay only where deleting it would leave the code actively misleading, and
-  `crates/driver/tests/programs/docfixture.maca` is exempt outright because its
+  `tests/programs/docfixture.maca` is exempt outright because its
   comments are the test data `sitegen.maca` asserts on. Neither is an opening
   to keep prose you are fond of.
 - **Readable over clever.** `if`/`else if`/`else` works in value position on

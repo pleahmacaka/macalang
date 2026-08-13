@@ -1,9 +1,0 @@
-[package]
-name = "maca-parser"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-
-[dependencies]
-maca-lexer = { path = "../lexer" }
-maca-stdlib = { path = "../stdlib" }

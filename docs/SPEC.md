@@ -57,7 +57,7 @@ and which manifest answers.
   against `f(xs: T[])` lower to the same list. A variadic is callable and
   nothing else: it has no arity as a value, so it cannot be passed to a
   higher-order parameter or stored in a `(T, U) -> R` field.
-  (`crates/driver/tests/programs/variadic.maca`.)
+  (`tests/programs/variadic.maca`.)
 - Errors are the inferred `exn` effect; propagate with `x?`, raise with `fail e`.
 - Effects (Koka-style, inferred): `io`, `net`, `os`, `async`, `exn`. Config mode
   forces `<>`.
@@ -83,7 +83,7 @@ and which manifest answers.
   `TypeMismatch` naming the function, before any backend sees it. Lowered to the
   host language's own `return` on native C, JS, Rust, JVM and embedded C; config
   mode has no function to leave and says so.
-  (`crates/driver/tests/programs/early_return.maca`.)
+  (`tests/programs/early_return.maca`.)
 - **A named function nested in a function.** A block may define a function, and
   that function reads and **writes** the scope enclosing it, so a view can own
   its state and define its handlers beside it. It is a closure value, so it is
@@ -96,7 +96,7 @@ and which manifest answers.
   gives it a heap cell both reach); one that none assigns is copied, as a
   lambda's captures always were. Native C and JS lower it; `rust`, `jvm`,
   `embedded` and the playground interpreter refuse it by name.
-  (`crates/driver/tests/programs/nested_fns.maca`.)
+  (`tests/programs/nested_fns.maca`.)
 - **List stdlib (UFCS on `T[]`):** `map`/`filter`/`reduce`/`fold` (closures
   typed by the element), `sort`/`reverse`/`push`/`pop`/`contains`/`index_of`/
   `sum`/`min`/`max`/`first`/`last`, plus the editing and searching pair:
@@ -109,7 +109,7 @@ and which manifest answers.
   edits in place, `ys = xs.insert(0, v)` copies. String stdlib on `str`
   (`split`/`trim`/`upper`/…). Math prelude (`sqrt`/`pow`/`abs`/`min`/`max`/
   `clamp`/`gcd`/…), always available. (`apps/examples/{collections,strings,math}.maca`,
-  `crates/driver/tests/programs/list_edits.maca`.)
+  `tests/programs/list_edits.maca`.)
 - **Running another program is `exec(cmd, args)`**, a prelude builtin whose
   result is the child's exit code (`127` when it could not be started, `128 +
   signal` when it was killed, `-1` when the fork itself failed);
@@ -138,7 +138,7 @@ and which manifest answers.
   JSON form beyond its name. Text that does not match the type `fail`s with a
   message naming the field (`field `columns`: expected a number, got a
   string`), so `try` catches it like any other failure. The rest of `std/json`
-  stays the untyped text layer. (`crates/driver/tests/programs/json_typed.maca`.)
+  stays the untyped text layer. (`tests/programs/json_typed.maca`.)
 - Ternary is spaced `c ? x : y`; error-propagation is attached `x?`.
 - Operator overloading (no new syntax): on a user type, an operator resolves to
   a same-named function: `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
@@ -167,7 +167,7 @@ and which manifest answers.
   order follows a field held **by value**; a `T[]` field is a heap pointer the
   forward declaration already covers, so two records may name each other as long
   as one side reaches the other only through an array
-  (`crates/driver/tests/programs/mutual_records.maca`). Sums may be
+  (`tests/programs/mutual_records.maca`). Sums may be
   **recursive** (`Tree = Leaf(int) | Node(Tree, Tree)`, `List = Nil | Cons(int,
   List)`): a self-referential payload is boxed (a heap pointer) so the tagged
   union stays finite; the native backend emits a named, forward-declared struct,
@@ -228,7 +228,7 @@ and which manifest answers.
   would be silently zero, so a literal written into a named record has to name
   every field the record declares and no field it doesn't. With no such context a
   literal stays structural, and the native and Rust back ends synthesize one
-  struct per distinct shape. (`crates/driver/tests/programs/arrow_records.maca`.)
+  struct per distinct shape. (`tests/programs/arrow_records.maca`.)
 - **The arrow-brace rule.** `=>` then `{` is a record literal and a block at the
   same time, and the shape of the body decides which, because a record literal's
   fields are `name = value` with commas between them and a block's statements are
@@ -271,8 +271,8 @@ and which manifest answers.
   replaces a `class="hidden"` ternary. A function says so in its signature
   (`-> Element` / `-> Element[]`), which is what tells the compiler the call
   hands back nodes rather than text.
-  (`crates/driver/tests/programs/ui.maca`,
-  `crates/backend_js/tests/element_lists.rs`.) The browser
+  (`tests/programs/ui.maca`,
+  `modules/maca/tests/js.maca`.) The browser
   playground itself is a single Maca file (`apps/playground/playground.maca`)
   compiled by this backend, carrying its styles and the WebAssembly-bridge
   runtime inline via `import css`/`import js` raw-string blocks. An **asset**
@@ -306,7 +306,7 @@ and which manifest answers.
   to ask for a kind the package does not lead with. A package that is not installed is an error naming it and saying to
   `maca add` it, never a silent fall-through, and a scoped `npm:@scope/pkg` is
   reached under the bare name `maca add` installed it as
-  (`crates/driver/tests/assets.rs`).
+  (`modules/maca/tests/page.maca`).
   The page's title is `[page] title` in the `maca.toml` nearest the source
   (`lang` and `description` too), falling back to the source file's stem, so a
   page is named by what it is rather than by what its file is called; the same
@@ -467,11 +467,11 @@ under the workspace root and the walk finds it long before the fallback: the
 tree stays the source of truth and is what the suites exercise. The carried
 copy cannot drift from it either, since it is read out of `modules/` when the
 compiler is built and
-`crates/driver/tests/stdlib_ships.rs` compares the two file by file.
+`modules/maca/tests/imports.maca` compares the two file by file.
 
 ## Status
 
-The compiler is complete and `cargo test` is green across the workspace.
+The compiler is complete and every `.maca` suite is green.
 Front-end (lexer → parser → gradual type/effect checker → core IR) plus
 backends: native **C** (default, SIMD included), **Nix** (config mode),
 **JS** (reactive UI + Tailwind), **JVM** (Java source), **Rust** source, and
@@ -486,7 +486,7 @@ by `zig cc -target wasm32-wasi`).
 Every script in the repository is a Maca program: the site builder, the
 benchmark harness, the linter, `bindgen`, and the npm package's wasm build.
 There are no shell scripts left. Installing is a binary in the release,
-`maca-install-<os>-<arch>`, built from `crates/install` by the same matrix that
+`maca-install-<os>-<arch>`, built from `apps/install` by the same matrix that
 builds the toolchain, because it runs where there is no `maca` yet and on a
 Windows runner that has no C compiler to build one with.
 

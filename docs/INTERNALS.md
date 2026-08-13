@@ -3,7 +3,7 @@
 What the compiler does, and the invariants that are easy to break
 from inside it. The back ends have a page of their own, [BACKENDS.md](BACKENDS.md).
 
-The compiler is complete and `cargo test` is green across the workspace. Whole
+The compiler is complete and every `.maca` suite is green. Whole
 programs (non-`main` functions, records→structs, sum types→tagged enums, lists,
 string interpolation, `match` lowering incl. list patterns (bracketless `x, ..rest` or bracketed
 `[]`/`[x]`/`[x, ..rest]`), UFCS) compile and
@@ -35,7 +35,7 @@ combinable; arbitrary values `[…]` with `_`→space; selectors are `css_escape
 (an unescaped `.max-w-[42rem]` is dropped by browsers *silently*) and rules are
 emitted in `order()` so a variant beats the utility it modifies. Documented in
 handbook ch. 15 (`apps/tomo/book/{en,ko}/15-ui.md`); gated by
-`crates/driver/tests/native_ui.rs` + `crates/backend_js/tests/tailwind.rs`.
+`modules/maca/tests/refusals.maca` + `modules/maca/tests/styles.maca`.
 
 Backends: native C (default, SIMD included), Nix (config mode), JS
 (reactive UI), JVM (Java source / Minecraft-Fabric interop), and embedded
@@ -56,7 +56,7 @@ self-hosted front-end from its imports). **Selective import**,
 `import { foo, bar } from a/b`, inlines only the named top-level definitions
 plus the transitive closure of same-module definitions they reference (dead-code
 elimination at the module boundary); a name the module doesn't define is a clean
-error, not a dangling reference (`crates/parser/src/imports.rs`).
+error, not a dangling reference (`apps/maca1/main.maca`).
 
 **A page's identity and its assets (JS/Tauri targets).** `[page]` in the
 `maca.toml` nearest the source gives the page its `title` (falling back to the
@@ -72,7 +72,7 @@ written in the language word, because `Import::Foreign` has no room for a flag
 and every backend pattern-matches its fields: the file forms are `stylesheet`
 and `script`, which `print.rs` writes back as `css`/`js`, so `maca fmt` and the
 module inliner do not turn an inline block into a path. Gated by
-`crates/driver/tests/page.rs`.
+`modules/maca/tests/page.maca`.
 
 **Processes, no shell:** `exec(cmd, args) -> int` (the exit code) and
 `capture(cmd, args) -> str` (its stdout) are `fork` + `execvp`. `args` is a
@@ -109,7 +109,7 @@ Maca does instead) and a **misspelt UFCS method on a known receiver**: the
 method sets of `str` and `T[]` are closed (`maca_core::STR_METHODS` /
 `LIST_METHODS`), so `s.slice(…)` is a diagnostic with a `did you mean` rather
 than an `undefined reference` from the linker. `any` receivers stay gradual.
-The two lists are executed, not trusted: `crates/driver/tests/method_sets.rs`
+The two lists are executed, not trusted: `tests/method_sets.maca`
 compiles and runs every name in them. Function
 signatures generalize into `Scheme`s (lowercase names are type vars) and
 instantiate per call; the C backend monomorphizes generics (one specialized fn
@@ -165,7 +165,7 @@ parens are required, and this is the only place a function type is written
 down, because a field is declared before anything calls it. A function *passed*
 still needs no annotation: an unannotated parameter that is called in the body
 is one. That is what makes a route table, a reducer, or a builder expressible
-(`crates/driver/tests/programs/function_fields.maca`). The `rust` and `jvm`
+(`tests/programs/function_fields.maca`). The `rust` and `jvm`
 emitters reject a function field with a clean diagnostic rather than emitting
 something that will not compile.
 
@@ -174,7 +174,7 @@ something that will not compile.
 the argument's type, not only at a parameter written as a bare variable, and
 the body is lowered knowing what `a` turned out to be, so a local declared
 `a[]` inside a generic gets the concrete element type instead of the fallback
-array (`crates/driver/tests/programs/generics.maca`).
+array (`tests/programs/generics.maca`).
 
 `is_tty()` answers whether stdout is a terminal, which is how `cli/style`
 decides to emit colour.
@@ -195,7 +195,7 @@ it: `float.fixed(n) -> str` (int receiver widened) and `str.pad_center(w, p)`.
 
 **Memory (Perceus RC, C backend).** Two invariants hold the string and list
 handling together, and both are easy to break from inside `maca-runtime` or
-`crates/backend_c/src/ownership.rs`.
+`modules/maca/emit_c.maca`.
 
 *Every `maca_str`-returning runtime function returns a fresh block or a static
 literal, never one of its arguments.* `maca_str_copy` exists for the cases that
@@ -214,7 +214,7 @@ still holds), `for` pattern variables, and anything aliased.
 `emit_specialization` and
 `emit_closure` save and restore it, or a specialization bypasses the analysis
 entirely. Every one of those exclusions was a wrong answer before it was a rule;
-`crates/driver/tests/programs/accumulate.maca` is one test per shape.
+`tests/programs/accumulate.maca` is one test per shape.
 
 **A test that asserts only answers cannot detect this.** An answer is identical
 whether the list was copied or appended to, and `assert_eq(str(xs.length()), …)`
@@ -251,9 +251,9 @@ pattern binding are declared **`var`**, because a body that reassigns the name
 emits `var x = …` and a lexical binding of that name in an enclosing block
 makes it a SyntaxError; and the statement form's scrutinee temporary is `_s$`,
 which no Maca identifier can spell. `node --check` over every app that builds
-to JS is `crates/driver/tests/js_target.rs`, and what those constructs
-*compute* is `crates/driver/tests/programs/js_control_flow.maca`, run natively
-there and under node by `crates/backend_js/tests/control_flow_run.rs`. Still
+to JS is `modules/maca/tests/jsparse.maca`, and what those constructs
+*compute* is `tests/programs/js_control_flow.maca`, run natively
+there and under node by `modules/maca/tests/jsparse.maca`. Still
 divergent, and left: `int / int` truncates natively and does not in JS, and a
 `break` buried inside a *nested* value expression (`total + (if c { break }
 else { 1 })`) still needs the IIFE, so it is a build-time failure the
