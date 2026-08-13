@@ -2782,7 +2782,14 @@ rust_item(spec: str) -> str {
 
 /// A raw block is held as a Maca literal, so what it stood for is written back.
 rust_source(spec: str) -> str =>
-    unescape(spec).replace("{{{{", "{{").replace("}}}}", "}}").trim()
+    raw_text(spec).replace("{{{{", "{{").replace("}}}}", "}}").trim()
+
+raw_text(s: str) -> str =>
+    s.replace("\\n", "\n")
+     .replace("\\r", "\r")
+     .replace("\\t", "\t")
+     .replace("\\\"", "\"")
+     .replace("\\\\", "\\")
 
 /// A crate the rust target calls must be one the manifest declared, and no other language reaches that target at all.
 rust_import_errors(ts: Token[], i: int, deps: str[], acc: str[]) -> str[] {
