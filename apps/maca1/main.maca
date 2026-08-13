@@ -2968,14 +2968,19 @@ borrowed_args(name: str, cs: Expr[], marks: str[], i: int,
 
 /// A tag a raw `import rust` block declares as a function is that function, so check sees the declaration and no back end does.
 tag_stubs(ts: Token[], i: int, acc: Stmt[]) -> Stmt[] {
-    if i + 2 >= ts.length() {
-        acc
-    } else if foreign_at(ts, i, "rust") {
-        tag_stubs(ts, i + 3,
-                  acc ++ block_stubs(rust_source(ts.get(i + 2).text)))
-    } else {
-        tag_stubs(ts, i + 1, acc)
+    out = acc
+    at = i
+
+    while at + 2 < ts.length() {
+        if foreign_at(ts, at, "rust") {
+            out = out ++ block_stubs(rust_source(ts.get(at + 2).text))
+            at = at + 3
+        } else {
+            at = at + 1
+        }
     }
+
+    out
 }
 
 unstubbed(m: Module, ts: Token[]) -> Module =>
@@ -3200,13 +3205,19 @@ walk_asks(path: str, a: Asked) -> Asked {
 }
 
 asks_in(by: str, ts: Token[], i: int, a: Asked) -> Asked {
-    if ts.get(i).kind == Eof {
-        a
-    } else if ts.get(i).kind == KwImport {
-        asks_in(by, ts, import_end(ts, i + 1), asks_at(by, ts, i + 1, a))
-    } else {
-        asks_in(by, ts, i + 1, a)
+    held = a
+    at = i
+
+    while ts.get(at).kind != Eof {
+        if ts.get(at).kind == KwImport {
+            held = asks_at(by, ts, at + 1, held)
+            at = import_end(ts, at + 1)
+        } else {
+            at = at + 1
+        }
     }
+
+    held
 }
 
 asks_at(by: str, ts: Token[], i: int, a: Asked) -> Asked {
@@ -3556,14 +3567,19 @@ one_dep(by: str, want: str, u: Unit) -> Unit {
 }
 
 imports_in(ts: Token[], i: int, acc: str[]) -> str[] {
-    if ts.get(i).kind == Eof {
-        acc
-    } else if ts.get(i).kind == KwImport {
-        imports_in(ts, import_end(ts, i + 1),
-                   acc ++ import_names(ts, i + 1))
-    } else {
-        imports_in(ts, i + 1, acc)
+    out = acc
+    at = i
+
+    while ts.get(at).kind != Eof {
+        if ts.get(at).kind == KwImport {
+            out = out ++ import_names(ts, at + 1)
+            at = import_end(ts, at + 1)
+        } else {
+            at = at + 1
+        }
     }
+
+    out
 }
 
 import_names(ts: Token[], i: int) -> str[] {

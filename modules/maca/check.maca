@@ -1706,11 +1706,15 @@ check_module(m: Module) -> int =>
     checked_module(m).errors.length()
 
 check_items(env: Env, items: Stmt[], i: int) -> Env {
-    if i >= items.length() {
-        env
-    } else {
-        check_items(check_item(env, items.get(i)), items, i + 1)
+    held = env
+    at = i
+
+    while at < items.length() {
+        held = check_item(held, items.get(at))
+        at = at + 1
     }
+
+    held
 }
 
 check_item(env: Env, s: Stmt) -> Env {
@@ -1893,12 +1897,15 @@ annotated(raw: Module) -> Module {
 }
 
 annotate_items(env: Env, items: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
-    if i >= items.length() {
-        acc
-    } else {
-        annotate_items(env, items, i + 1,
-                       acc ++ [annotate_item(env, items.get(i))])
+    out = acc
+    at = i
+
+    while at < items.length() {
+        out = out.push(annotate_item(env, items.get(at)))
+        at = at + 1
     }
+
+    out
 }
 
 annotate_item(env: Env, s: Stmt) -> Stmt {
@@ -2123,12 +2130,15 @@ named_module(m: Module) -> Module {
 }
 
 named_stmts(env: Env, ss: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
-    if i >= ss.length() {
-        acc
-    } else {
-        named_stmts(env, ss, i + 1,
-                    acc ++ [named_stmt(env, t_any(), ss.get(i))])
+    out = acc
+    at = i
+
+    while at < ss.length() {
+        out = out.push(named_stmt(env, t_any(), ss.get(at)))
+        at = at + 1
     }
+
+    out
 }
 
 named_stmt(env: Env, want: Ty, s: Stmt) -> Stmt {
@@ -2420,13 +2430,18 @@ lifted(m: Module) -> Module {
 }
 
 top_names(items: Stmt[], i: int, acc: str[]) -> str[] {
-    if i >= items.length() {
-        acc
-    } else if items.get(i).kind == SFn || items.get(i).kind == SBind {
-        top_names(items, i + 1, acc ++ [items.get(i).name])
-    } else {
-        top_names(items, i + 1, acc)
+    out = acc
+    at = i
+
+    while at < items.length() {
+        if items.get(at).kind == SFn || items.get(at).kind == SBind {
+            out = out.push(items.get(at).name)
+        }
+
+        at = at + 1
     }
+
+    out
 }
 
 Assets = {

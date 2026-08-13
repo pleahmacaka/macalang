@@ -2109,13 +2109,18 @@ c_python(protos: str) -> str {
 }
 
 emit_consts(items: Stmt[], i: int) -> str {
-    if i >= items.length() {
-        ""
-    } else if items.get(i).kind == SBind {
-        "{emit_const(items.get(i))}\n{emit_consts(items, i + 1)}"
-    } else {
-        emit_consts(items, i + 1)
+    parts: str[] = []
+    at = i
+
+    while at < items.length() {
+        if items.get(at).kind == SBind {
+            parts = parts.push("{emit_const(items.get(at))}\n")
+        }
+
+        at = at + 1
     }
+
+    parts.join("")
 }
 
 emit_const(s: Stmt) -> str {
@@ -2171,11 +2176,15 @@ emit_types(items: Stmt[], i: int) -> str =>
 
 /// A field holds its record by value, so a type is emitted after every type it names.
 emit_ranked(items: Stmt[], i: int, r: int) -> str {
-    if r > items.length() {
-        ""
-    } else {
-        emit_rank(items, i, r) ++ emit_ranked(items, i, r + 1)
+    parts: str[] = []
+    rank = r
+
+    while rank <= items.length() {
+        parts = parts.push(emit_rank(items, i, rank))
+        rank = rank + 1
     }
+
+    parts.join("")
 }
 
 emit_rank(items: Stmt[], i: int, r: int) -> str {
@@ -2225,23 +2234,35 @@ is_declared_only(s: Stmt) -> bool =>
     s.kind == SFn && s.body.length() == 0
 
 emit_protos(items: Stmt[], i: int) -> str {
-    if i >= items.length() {
-        ""
-    } else if items.get(i).kind != SFn {
-        emit_protos(items, i + 1)
-    } else {
-        "{emit_proto(items.get(i))}\n{emit_protos(items, i + 1)}"
+    parts: str[] = []
+    at = i
+
+    while at < items.length() {
+        if items.get(at).kind == SFn {
+            parts = parts.push("{emit_proto(items.get(at))}\n")
+        }
+
+        at = at + 1
     }
+
+    parts.join("")
 }
 
 emit_bodies(items: Stmt[], i: int) -> str {
-    if i >= items.length() {
-        ""
-    } else if items.get(i).kind != SFn || is_declared_only(items.get(i)) {
-        emit_bodies(items, i + 1)
-    } else {
-        "{emit_fn(items.get(i))}\n{emit_bodies(items, i + 1)}"
+    parts: str[] = []
+    at = i
+
+    while at < items.length() {
+        held = items.get(at)
+
+        if held.kind == SFn && !is_declared_only(held) {
+            parts = parts.push("{emit_fn(held)}\n")
+        }
+
+        at = at + 1
     }
+
+    parts.join("")
 }
 
 emit_proto(s: Stmt) -> str =>
