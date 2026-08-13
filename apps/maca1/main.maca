@@ -2725,7 +2725,9 @@ compile_file(args: str[]) -> int {
     errs = bad +
         report_all("check", checked_with_foreign(stubbed, unit.toks), 0) +
         report_all("check", target_notes(stubbed, asked), 0)
-    m = unstubbed(annotated(monomorphic(lifted(annotated(stubbed)))),
+    m = unstubbed(annotated_on(monomorphic(lifted(annotated_on(stubbed,
+                                                               asked))),
+                               asked),
                   unit.toks)
     emitted = if asked == "rust" {
         rust_prelude(unit.toks, 0, "") ++ remit_module(rust_borrows(m))

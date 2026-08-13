@@ -29,13 +29,14 @@ Env = {
     fills:  Ty[]
     here:   int
     hidden: str[]
+    target: str
 }
 
 empty_env() -> Env =>
     Env { names = [], types = [], fns = [], sigs = [],
           fields = [], ftypes = [], ctors = [], owners = [], slots = [],
           varargs = [], frozen = [], infer = new_infer(), errors = [],
-          holes = [], fills = [], here = 0, hidden = [] }
+          holes = [], fills = [], here = 0, hidden = [], target = "" }
 
 /// What a code means in general, apart from the occurrence that raised it.
 diag_explain(code: str) -> str =>
@@ -1889,11 +1890,15 @@ surface_joined(ts: Ty[], i: int) -> str {
     }
 }
 
-annotated(raw: Module) -> Module {
-    m = named_module(raw)
+annotated(raw: Module) -> Module =>
+    annotated_on(raw, "")
 
-    Module { items = annotate_items(checked_module(m), m.items, 0, []),
-             errors = m.errors }
+/// The back end a program is being built for decides how a view is lowered, and only it knows.
+annotated_on(raw: Module, target: str) -> Module {
+    m = named_module(raw)
+    env = checked_module(m) with { target = target }
+
+    Module { items = annotate_items(env, m.items, 0, []), errors = m.errors }
 }
 
 annotate_items(env: Env, items: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
