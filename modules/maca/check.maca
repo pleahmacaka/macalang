@@ -2859,7 +2859,7 @@ lift_items(items: Stmt[], i: int, at: Lift) -> Lift {
 
 lift_stmt(s: Stmt, at: Lift) -> LiftedBody {
     if s.kind == SFn {
-        body = lift_body(s.body, 0, [], at)
+        body = lift_body(celled_body(s.body), 0, [], at)
 
         LiftedBody { stmts = [s with { body = body.stmts }], at = body.at }
     } else if s.kind == SRecord || s.kind == SSum || is_impl_block(s) {
@@ -2937,23 +2937,174 @@ lift_one(e: Expr, at: Lift) -> Lifted {
 lift_closure(e: Expr, at: Lift) -> Lifted {
     name = "maca_closure_{str(at.n)}"
     caps = captures_of(e)
+    held = ref_names(lambda_body(e), [])
     made = s_fn(name, lambda_body(e).ty, lambda_params(e),
-                cap_binds(caps, 0) ++ [s_expr(lambda_body(e))])
+                cap_binds(caps, held, 0) ++ [s_expr(lambda_body(e))])
     inner = lift_stmt(made, at with { n = at.n + 1 })
 
     Lifted { node = e_call("maca_closure", [e_ident(name)] ++ caps),
              at = inner.at with { items = inner.at.items ++ inner.stmts } }
 }
 
-cap_binds(caps: Expr[], i: int) -> Stmt[] {
+/// A name the body reaches through a cell, which is what the enclosing scope gave it.
+ref_names(e: Expr, acc: str[]) -> str[] {
+    seen = e.kind == ECall
+        && (e.text == "maca_deref" || e.text == "maca_setref")
+        && e.children.length() > 0
+        && acc.index_of(e.children.get(0).text) < 0
+        ? acc ++ [e.children.get(0).text]
+        : acc
+
+    ref_stmts(e.stmts, 0, ref_kids(e.children, 0, seen))
+}
+
+ref_stmts(ss: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= ss.length() {
+        acc
+    } else {
+        ref_stmts(ss, i + 1, ref_names(ss.get(i).value, acc))
+    }
+}
+
+ref_kids(xs: Expr[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        ref_kids(xs, i + 1, ref_names(xs.get(i), acc))
+    }
+}
+
+/// A local a nested definition writes lives in a cell, so the write outlives the call that made the definition.
+celled_body(ss: Stmt[]) -> Stmt[] {
+    wrote = inner_writes(ss, 0, [])
+
+    wrote.length() == 0 ? ss : cell_stmts(ss, wrote, 0, [])
+}
+
+inner_writes(ss: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= ss.length() {
+        acc
+    } else {
+        inner_writes(ss, i + 1, lambda_writes(ss.get(i).value, acc))
+    }
+}
+
+lambda_writes(e: Expr, acc: str[]) -> str[] {
+    if e.kind == ELambda {
+        writes_of(lambda_body(e), 0, acc)
+    } else {
+        lambda_write_stmts(e.stmts, 0, lambda_write_kids(e.children, 0, acc))
+    }
+}
+
+lambda_write_stmts(ss: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= ss.length() {
+        acc
+    } else {
+        lambda_write_stmts(ss, i + 1, lambda_writes(ss.get(i).value, acc))
+    }
+}
+
+lambda_write_kids(xs: Expr[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        lambda_write_kids(xs, i + 1, lambda_writes(xs.get(i), acc))
+    }
+}
+
+cell_stmts(ss: Stmt[], wrote: str[], i: int, acc: Stmt[]) -> Stmt[] {
+    if i >= ss.length() {
+        acc
+    } else {
+        acc ++ [cell_stmt(ss.get(i), wrote)] ++ cell_stmts(ss, wrote, i + 1, [])
+    }
+}
+
+cell_stmt(s: Stmt, wrote: str[]) -> Stmt {
+    held = deref_expr(s.value, wrote)
+
+    if s.kind == SBind && wrote.index_of(s.name) >= 0 {
+        s with { value = e_call("maca_cell", [e_str(cell_type(s)), held]) }
+    } else if s.kind == SSet && wrote.index_of(s.name) >= 0 {
+        s_expr(e_call("maca_setref", [set_target(s), held]))
+    } else {
+        s with { value = held, body = cell_stmts(s.body, wrote, 0, []) }
+    }
+}
+
+cell_type(s: Stmt) -> str =>
+    s.ret != "" ? s.ret : s.value.ty
+
+cap_binds(caps: Expr[], wrote: str[], i: int) -> Stmt[] {
     if i >= caps.length() {
         []
     } else {
+        held = wrote.index_of(caps.get(i).text) >= 0 ? "maca_cap_ref"
+                                                     : "maca_cap"
         one = s_bind_typed(caps.get(i).text, caps.get(i).ty,
-                           e_call("maca_cap",
-                                  [e_str(caps.get(i).ty), e_int(i)]))
+                           e_call(held, [e_str(caps.get(i).ty), e_int(i)]))
 
-        [one] ++ cap_binds(caps, i + 1)
+        [one] ++ cap_binds(caps, wrote, i + 1)
+    }
+}
+
+writes_of(e: Expr, i: int, acc: str[]) -> str[] =>
+    writes_of_stmts(e.stmts, 0, writes_of_kids(e.children, 0, acc))
+
+writes_of_stmts(ss: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= ss.length() {
+        acc
+    } else {
+        seen = ss.get(i).kind == SSet && acc.index_of(ss.get(i).name) < 0
+            ? acc ++ [ss.get(i).name]
+            : acc
+
+        writes_of_stmts(ss, i + 1, writes_of(ss.get(i).value, 0, seen))
+    }
+}
+
+writes_of_kids(xs: Expr[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        writes_of_kids(xs, i + 1, writes_of(xs.get(i), 0, acc))
+    }
+}
+
+/// Inside the lifted body the name holds an address, so every read goes through it and every write lands where it points.
+deref_expr(e: Expr, wrote: str[]) -> Expr {
+    if e.kind == EIdent && wrote.index_of(e.text) >= 0 {
+        e_call("maca_deref", [e])
+    } else {
+        e with { children = deref_kids(e.children, wrote, 0, []),
+                 stmts = deref_stmts(e.stmts, wrote, 0, []) }
+    }
+}
+
+deref_kids(xs: Expr[], wrote: str[], i: int, acc: Expr[]) -> Expr[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        deref_kids(xs, wrote, i + 1, acc ++ [deref_expr(xs.get(i), wrote)])
+    }
+}
+
+deref_stmts(ss: Stmt[], wrote: str[], i: int, acc: Stmt[]) -> Stmt[] {
+    if i >= ss.length() {
+        acc
+    } else {
+        deref_stmts(ss, wrote, i + 1, acc ++ [deref_stmt(ss.get(i), wrote)])
+    }
+}
+
+deref_stmt(s: Stmt, wrote: str[]) -> Stmt {
+    held = deref_expr(s.value, wrote)
+
+    if s.kind == SSet && wrote.index_of(s.name) >= 0 {
+        s_expr(e_call("maca_setref", [set_target(s), held]))
+    } else {
+        s with { value = held }
     }
 }
 
@@ -2987,10 +3138,16 @@ free_idents(e: Expr, bound: str[], acc: Expr[]) -> Expr[] {
 stmt_names(ss: Stmt[], i: int, acc: str[]) -> str[] {
     if i >= ss.length() {
         acc
+    } else if ss.get(i).kind == SSet {
+        stmt_names(ss, i + 1, acc)
     } else {
         stmt_names(ss, i + 1, acc ++ [ss.get(i).name])
     }
 }
+
+/// The name a `=` writes, carrying the type of what it was given, which is the only type it has here.
+set_target(s: Stmt) -> Expr =>
+    e_ident(s.name) with { ival = 4, ty = s.value.ty }
 
 free_bound(e: Expr, bound: str[]) -> str[] =>
     e.kind == EFor ? bound ++ [e.text] : bound
@@ -3021,9 +3178,14 @@ free_kids(cs: Expr[], i: int, bound: str[], acc: Expr[]) -> Expr[] {
     }
 }
 
+/// A `=` to a name the scope around it declared is a write, not a new local, so the name is one the body reads from outside.
 free_stmts(ss: Stmt[], i: int, bound: str[], acc: Expr[]) -> Expr[] {
     if i >= ss.length() {
         acc
+    } else if ss.get(i).kind == SSet {
+        free_stmts(ss, i + 1, bound,
+                   free_idents(ss.get(i).value, bound,
+                               free_added(set_target(ss.get(i)), bound, acc)))
     } else {
         free_stmts(ss, i + 1, bound ++ [ss.get(i).name],
                    free_idents(ss.get(i).value, bound, acc))
@@ -3732,7 +3894,47 @@ effect_pass(items: Stmt[], names: str[], sets: str[], i: int,
 /// What the target being built for cannot carry, from this module.
 target_errors(m: Module, target: str) -> Diagnostic[] =>
     effect_errors(m, target) ++ kept_borrow_errors(m, target)
-        ++ nested_write_errors(m, target) ++ handler_errors(m, target)
+        ++ handler_errors(m, target) ++ nested_errors(m, target)
+
+/// A nested definition is a closure over the scope that holds it, and these targets carry no such thing.
+nested_errors(m: Module, target: str) -> Diagnostic[] {
+    if target != "rust" && target != "jvm" {
+        []
+    } else {
+        nested_faults(m.items, target, 0, [])
+    }
+}
+
+nested_faults(items: Stmt[], target: str, i: int,
+              acc: Diagnostic[]) -> Diagnostic[] {
+    if i >= items.length() {
+        acc
+    } else {
+        nested_faults(items, target, i + 1,
+                      acc ++ nested_in(items.get(i), items.get(i).body, target,
+                                       0, []))
+    }
+}
+
+nested_in(s: Stmt, ss: Stmt[], target: str, i: int,
+          acc: Diagnostic[]) -> Diagnostic[] {
+    if i >= ss.length() {
+        acc
+    } else {
+        here = ss.get(i).kind == SBind && ss.get(i).value.kind == ELambda
+            ? [nested_said(s, ss.get(i).name, target)]
+            : []
+
+        nested_in(s, ss, target, i + 1,
+                  acc ++ here ++ nested_in(s, ss.get(i).body, target, 0, []))
+    }
+}
+
+nested_said(s: Stmt, name: str, target: str) -> Diagnostic =>
+    Diagnostic { code = "M0023", pos = s.pos, note = "",
+                 message = "`{name}` is defined inside another function, and"
+                     ++ " --target {target} has no closure to carry what it"
+                     ++ " reads from around it" }
 
 /// A handler is attached to a node, and a target that answers with markup has no node to attach it to.
 handler_errors(m: Module, target: str) -> Diagnostic[] {

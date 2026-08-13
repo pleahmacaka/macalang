@@ -605,6 +605,16 @@ emit_call(e: Expr) -> str {
     } else if e.text == "maca_cap" {
         c_cell_at("_maca_env", e.children.get(0).text,
                   emit_expr(e.children.get(1)))
+    } else if e.text == "maca_cap_ref" {
+        "({type_c(e.children.get(0).text)}*)_maca_env.data"
+            ++ "[{emit_expr(e.children.get(1))}]"
+    } else if e.text == "maca_cell" {
+        c_cell_made(type_c(e.children.get(0).text),
+                    emit_expr(e.children.get(1)))
+    } else if e.text == "maca_deref" {
+        "(*{emit_expr(e.children.get(0))})"
+    } else if e.text == "maca_setref" {
+        "((*{emit_expr(e.children.get(0))}) = {emit_expr(e.children.get(1))})"
     } else if e.text == "map" && e.children.length() == 0 {
         "maca_map_new()"
     } else if e.text == "info" {
@@ -1359,12 +1369,27 @@ emit_stmts(body: Stmt[], i: int, ret: str) -> str {
 bind_c_decl(s: Stmt) -> str {
     held = s.ret != "" ? s.ret : s.value.ty
 
-    if is_fn_type(held) {
+    if is_captured_ref(s) {
+        "{cell_c_type(s)}* {c_id(s.name)}"
+    } else if is_fn_type(held) {
         c_decl(held, c_id(s.name))
     } else {
         "{bind_c_type(s)} {c_id(s.name)}"
     }
 }
+
+/// A capture the body writes is held as the address of the caller's own local.
+is_captured_ref(s: Stmt) -> bool =>
+    s.value.kind == ECall
+        && (s.value.text == "maca_cap_ref" || s.value.text == "maca_cell")
+
+
+/// A cell is a block of its own, so what a nested definition writes outlives the call that opened it.
+c_cell_made(ty: str, init: str) -> str =>
+    "({{ {ty}* _mc = ({ty}*)maca_cells(sizeof({ty})); *_mc = {init}; _mc; }})"
+
+cell_c_type(s: Stmt) -> str =>
+    type_c(s.value.children.get(0).text)
 
 bind_c_type(s: Stmt) -> str {
     if s.ret != "" {

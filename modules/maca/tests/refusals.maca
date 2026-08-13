@@ -512,25 +512,6 @@ test_what_a_return_carries_is_what_the_function_declared() {
     refused(dir ++ "/wrong.maca", "expected int, found str")
 }
 
-test_a_nested_definition_that_writes_the_scope_around_it_is_named() {
-    dir = scratch() ++ "/nested"
-    make_dir(scratch())
-    make_dir(dir)
-
-    write_file(dir ++ "/board.maca",
-        "board() -> str {{\n    held = 0\n\n    grab(section: int) {{\n"
-            ++ "        held = section\n    }}\n\n    grab(4)\n\n"
-            ++ "    \"{{held}}\"\n}}\n\nmain() -> int => board().length()\n")
-
-    refused(dir ++ "/board.maca",
-        "`grab` writes `held`, which the function around it declared")
-
-    assert_eq(exec(maca_bin(),
-                   ["check", dir ++ "/board.maca", "--target", "js"]), 0,
-        "a browser closure writes the name it closed over, so the refusal is "
-            ++ "the C back end's and not the language's")
-}
-
 test_a_handler_has_nowhere_to_attach_in_markup() {
     dir = scratch() ++ "/handlers"
     make_dir(scratch())
@@ -558,4 +539,22 @@ test_a_quoted_handler_is_an_ordinary_attribute() {
 
     assert(capture(maca_bin(), ["run", at]).contains("onclick=\"alert(1)\""),
         "a string belongs in the markup, and only a handler has nowhere to go")
+}
+
+test_a_nested_definition_is_named_by_the_targets_that_cannot_carry_it() {
+    dir = scratch() ++ "/nested"
+    make_dir(scratch())
+    make_dir(dir)
+    at = dir ++ "/counted.maca"
+
+    write_file(at, "main() -> int {{\n    total = 0\n\n"
+        ++ "    add(n: int) {{\n        total = total + n\n    }}\n\n"
+        ++ "    add(42)\n\n    total\n}}\n")
+
+    assert_eq(exec(maca_bin(), ["run", at]), 42,
+        "the native back end holds the local in a cell, so the write lands")
+
+    for target in ["rust", "jvm"] {
+        refused_on(at, target, "`add` is defined inside another function")
+    }
 }

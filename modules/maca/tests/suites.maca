@@ -81,6 +81,22 @@ test_the_figures_the_front_page_states_are_read_off_a_file() {
             ++ "readers are held to those files")
 }
 
+test_a_nested_definition_reads_and_writes_the_scope_that_holds_it() {
+    path = "crates/driver/tests/programs/nested_fns.maca"
+
+    assert_eq(suite_code(path), 0,
+        "a local a nested definition writes lives in a cell, so the write "
+            ++ "outlives the call that opened it")
+    assert_eq(exec("sh", ["-c", "MACA_POISON=1 {maca_bin()} test {path}"]), 0,
+        "and a cell read after its release would read the poison")
+}
+
+test_the_view_helpers_render_what_they_claim() {
+    assert_eq(suite_code("crates/driver/tests/programs/ui.maca"), 0,
+        "elements, escaping, styles, attributes and a view local a nested "
+            ++ "definition writes, all rendered natively")
+}
+
 test_return_leaves_early_and_the_tail_is_still_the_value() {
     assert_eq(suite_code("crates/driver/tests/programs/early_return.maca"), 0,
         "`return` is a statement, and the last expression is still the value")
