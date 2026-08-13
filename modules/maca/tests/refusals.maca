@@ -254,6 +254,17 @@ test_a_record_and_a_match_are_refused_by_the_shape_they_left_out() {
         "`Config` has no field `titel`")
 }
 
+test_a_method_the_receivers_shape_does_not_answer_to_is_refused() {
+    refused("apps/examples/bad/method_name.maca",
+        "`str` has no method `lenght`; did you mean `length`?")
+    refused("apps/examples/bad/list_method_name.maca",
+        "`list` has no method `mapp`; did you mean `map`?")
+    refused("apps/examples/bad/map_method_name.maca",
+        "`map` has no method `lenght`; did you mean `length`?")
+    assert_eq(str(exec(maca_bin(), ["check", "tests/method_sets.maca"])), "0",
+        "and every name the sets do hold is left alone")
+}
+
 test_a_rest_parameter_is_lowered_and_its_misuse_is_refused() {
     assert_eq(str(exec(maca_bin(),
         ["check", "crates/driver/tests/programs/variadic.maca"])), "0",
@@ -269,6 +280,10 @@ test_a_rest_parameter_is_lowered_and_its_misuse_is_refused() {
         "rest parameter with no type")
     refused("crates/driver/tests/programs/bad_variadic_main.maca",
         "`main` takes no rest parameter")
+    refused("crates/driver/tests/programs/bad_variadic_spawn.maca",
+        "`spawn grow` cannot take a variadic")
+    refused("crates/driver/tests/programs/bad_variadic_fn_type.maca",
+        "`apply_all` declares a variadic of function type")
 }
 
 test_an_effect_in_config_is_refused_by_the_effect_it_carries() {

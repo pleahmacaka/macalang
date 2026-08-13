@@ -421,11 +421,23 @@ unary_type(env: Env, e: Expr) -> Typed {
     } else if e.text == "try" {
         typed(inner.env, t_str())
     } else if e.text == "spawn" {
-        typed(inner.env, t_con("Future", []))
+        typed(spawn_checked(inner.env, e.children.get(0)),
+              t_con("Future", []))
     } else if e.text == "await" {
         typed(inner.env, t_int())
     } else {
         inner
+    }
+}
+
+/// A task carries whole numbers and strings, so it cannot gather a variadic's list.
+spawn_checked(env: Env, e: Expr) -> Env {
+    if e.kind == ECall && env.varargs.index_of(e.text) >= 0 {
+        complain(env, "`spawn {e.text}` cannot take a variadic: a task takes"
+                      ++ " whole numbers and strings, so wrap it in a"
+                      ++ " function that does")
+    } else {
+        env
     }
 }
 
@@ -856,9 +868,63 @@ method_type(env: Env, e: Expr) -> Typed {
         call_type(env, e_call(e.text, e.children))
     } else {
         walked = walk_args(recv.env, e.children, 1)
+        seen = resolve(walked.infer, recv.ty)
 
-        typed(walked, method_result(e.text, resolve(walked.infer, recv.ty)))
+        typed(method_missing(walked, e.text, seen), method_result(e.text, seen))
     }
+}
+
+StrMethods = " length split trim upper lower contains starts_with ends_with"
+    ++ " replace substr slice index_of repeat pad_start pad_end pad_center"
+    ++ " chars at get is_whitespace is_ascii_digit is_alpha "
+
+ListMethods = " map filter reduce fold sort sort_by reverse push pop set"
+    ++ " insert remove slice contains index_of index_of_by enumerate sum min"
+    ++ " max first last get length parallel join "
+
+MapMethods = " set get has remove keys length "
+
+/// Every method name a receiver of this shape answers to, or nothing when the shape is unknown.
+method_names(recv: Ty) -> str {
+    if recv.kind == KStr {
+        StrMethods
+    } else if is_map_ty(recv) {
+        MapMethods
+    } else if recv.kind == KCon && recv.name == "Array" {
+        ListMethods
+    } else {
+        ""
+    }
+}
+
+method_what(recv: Ty) -> str {
+    if recv.kind == KStr {
+        "str"
+    } else if is_map_ty(recv) {
+        "map"
+    } else {
+        "list"
+    }
+}
+
+/// A `str`, list or map receiver takes the names its shape declares and no other.
+method_missing(env: Env, name: str, recv: Ty) -> Env {
+    known = method_names(recv)
+
+    if known == "" || known.index_of(" {name} ") >= 0
+            || env.fns.index_of(name) >= 0 {
+        env
+    } else {
+        complain_as(env, "M0006", method_gap(known, name, method_what(recv)))
+    }
+}
+
+method_gap(known: str, name: str, what: str) -> str {
+    near = nearest_ctor(name, known.trim().split(" "), 0, "", hint_span(name))
+
+    near == ""
+        ? "`{what}` has no method `{name}`"
+        : "`{what}` has no method `{name}`; did you mean `{near}`?"
 }
 
 /// The type of a record's field, when the receiver is a record that names one.
@@ -2981,6 +3047,9 @@ rest_misuse_why(s: Stmt) -> str {
     } else if s.params.get(s.params.length() - 1).ty == "[]" {
         "type mismatch: `{s.name}` has a rest parameter with no type, so"
             ++ " nothing says what the list it gathers holds"
+    } else if s.params.get(s.params.length() - 1).ty.index_of(") -> ") >= 0 {
+        "type mismatch: `{s.name}` declares a variadic of function type,"
+            ++ " so take a record with a function field instead"
     } else {
         ""
     }

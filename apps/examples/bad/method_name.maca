@@ -1,0 +1,5 @@
+main() -> int {
+    word = "abcdef"
+    info("{word.lenght()}")
+    0
+}

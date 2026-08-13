@@ -1,0 +1,5 @@
+main() -> int {
+    ages: Map str int = map()
+    info("{ages.lenght()}")
+    0
+}

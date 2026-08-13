@@ -1,0 +1,72 @@
+shout(s: str) -> str => s.upper() ++ "!"
+
+test_every_str_method_the_checker_allows_actually_works() {
+    s = "abcdef"
+
+    assert_eq(str(s.length()), "6", "length")
+    assert_eq(str(s.split("c").length()), "2", "split")
+    assert_eq("  ab  ".trim(), "ab", "trim")
+    assert_eq(s.upper(), "ABCDEF", "upper")
+    assert_eq("ABC".lower(), "abc", "lower")
+    assert(s.contains("cd"), "contains")
+    assert(s.starts_with("ab"), "starts_with")
+    assert(s.ends_with("ef"), "ends_with")
+    assert_eq(s.replace("cd", "-"), "ab-ef", "replace")
+    assert_eq(s.substr(0, 2), "ab", "substr")
+    assert_eq(s.slice(1, 3), "bc", "slice")
+    assert_eq(str(s.index_of("c")), "2", "index_of")
+    assert_eq("ab".repeat(2), "abab", "repeat")
+    assert_eq("ab".pad_start(4, "."), "..ab", "pad_start")
+    assert_eq("ab".pad_end(4, "."), "ab..", "pad_end")
+    assert_eq("ab".pad_center(4, "."), ".ab.", "pad_center")
+    assert_eq(str(s.chars().length()), "6", "chars")
+    assert_eq(s.at(0), "a", "at")
+    assert_eq(s.get(1), "b", "get")
+    assert(" ".is_whitespace(), "is_whitespace")
+    assert("7".is_ascii_digit(), "is_ascii_digit")
+    assert("z".is_alpha(), "is_alpha")
+}
+
+test_every_list_method_the_c_back_end_emits_actually_works() {
+    xs = [3, 1, 2]
+
+    assert_eq(str(xs.map(v => v * 2).get(0)), "6", "map")
+    assert_eq(str(xs.filter(v => v > 1).length()), "2", "filter")
+    assert_eq(str(xs.reduce(0, (a, b) => a + b)), "6", "reduce")
+    assert_eq(str(xs.fold(0, (a, b) => a + b)), "6", "fold")
+    assert_eq(str(xs.sort().get(0)), "1", "sort")
+    assert_eq(str(xs.reverse().get(0)), "2", "reverse")
+    assert_eq(str(xs.push(9).length()), "4", "push")
+    assert_eq(str(xs.pop().length()), "2", "pop")
+    assert_eq(str(xs.set(0, 9).get(0)), "9", "set")
+    assert_eq(str(xs.insert(0, 9).get(0)), "9", "insert")
+    assert_eq(str(xs.remove(0).get(0)), "1", "remove")
+    assert_eq(str(xs.slice(0, 2).length()), "2", "slice")
+    assert(xs.contains(2), "contains")
+    assert_eq(str(xs.index_of(1)), "1", "index_of")
+    assert_eq(str(xs.sum()), "6", "sum")
+    assert_eq(str(xs.min()), "1", "min")
+    assert_eq(str(xs.max()), "3", "max")
+    assert_eq(str(xs.first()), "3", "first")
+    assert_eq(str(xs.last()), "2", "last")
+    assert_eq(str(xs.get(1)), "1", "get")
+    assert_eq(str(xs.length()), "3", "length")
+    assert_eq(str(xs.parallel(v => v * 2).get(0)), "6", "parallel")
+    assert_eq(["a", "b"].join("-"), "a-b", "join")
+}
+
+test_every_map_method_the_checker_allows_actually_works() {
+    m: Map str int = map()
+    m = m.set("a", 1).set("b", 2)
+
+    assert_eq(str(m.set("c", 3).length()), "3", "set")
+    assert_eq(str(m.get("a", 0)), "1", "get")
+    assert(m.has("a"), "has")
+    assert_eq(str(m.remove("a").length()), "1", "remove")
+    assert_eq(str(m.keys().length()), "2", "keys")
+    assert_eq(str(m.length()), "2", "length")
+}
+
+test_a_method_that_is_a_top_level_function_is_not_measured_by_the_sets() {
+    assert_eq("hi".shout(), "HI!", "a receiver-first function answers to a dot")
+}

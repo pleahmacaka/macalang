@@ -1,0 +1,5 @@
+main() -> int {
+    xs = [1, 2, 3]
+    info("{xs.mapp(v => v * 2).length()}")
+    0
+}
