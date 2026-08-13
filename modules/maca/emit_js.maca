@@ -309,6 +309,8 @@ jemit_call(e: Expr) -> str {
         "_massert_eq({args})"
     } else if e.text == "failures" {
         "_mfailures()"
+    } else if e.text == "encode" && e.children.length() == 1 {
+        "JSON.stringify(_jenc({one}, {js_json_ty(e.children.get(0).ty)}))"
     } else if e.text == "now_ms" {
         "Date.now()"
     } else if e.text == "sleep_ms" {
@@ -518,7 +520,9 @@ jemit_stmts(body: Stmt[], i: int) -> str {
 }
 
 jemit_stmt(s: Stmt) -> str {
-    if s.kind == SBind {
+    if s.kind == SBind && js_typed_decode(s) {
+        "let {jid(s.name)} = {js_decoded(s)};"
+    } else if s.kind == SBind {
         "let {jid(s.name)} = {jemit_expr(s.value)};"
     } else if s.kind == SSet {
         "{jid(s.name)} = {jemit_expr(s.value)};"
@@ -689,10 +693,79 @@ function _massert_eq(a, b, m) { if (_meq(a, b)) return true; _mfailed++; console
 """
 
 /// Every item of the module, in the order a name must exist before it is read.
-jemit_module(m: Module) -> str =>
-    JsPreamble ++ jemit_variants(m.items, 0) ++ jemit_consts(m.items, 0)
-        ++ jemit_items(m.items, 0) ++ jemit_exports(m.items)
-        ++ jemit_entry(m.items, 0)
+jemit_module(m: Module) -> str {
+    heads = jemit_variants(m.items, 0)
+    rest = jemit_consts(m.items, 0) ++ jemit_items(m.items, 0)
+        ++ jemit_exports(m.items) ++ jemit_entry(m.items, 0)
+
+    JsPreamble ++ heads ++ js_json_defs(m.items, rest) ++ rest
+}
+
+/// `decode` reads into the type the binding declares, which is the only thing that says what the text is.
+js_typed_decode(s: Stmt) -> bool =>
+    s.ret != "" && s.value.kind == ECall && s.value.text == "decode"
+        && s.value.children.length() == 1
+
+js_decoded(s: Stmt) -> str =>
+    "_jdec(JSON.parse({jemit_expr(s.value.children.get(0))}),"
+        ++ " {js_json_ty(s.ret)}, \"\")"
+
+js_json_ty(ty: str) -> str =>
+    js_list(ty) ? "[{js_json_ty(ty.slice(0, ty.length() - 2))}]" : js_str(ty)
+
+/// The tables name what a record holds and what a sum accepts, and nothing else can say it.
+js_json_defs(items: Stmt[], body: str) -> str {
+    if !body.contains("_jenc(") && !body.contains("_jdec(") {
+        ""
+    } else {
+        "const _jrecs = {{{js_json_recs(items, 0)}}};\n"
+            ++ "const _jsums = {{{js_json_sums(items, 0)}}};\n" ++ JsonJs
+    }
+}
+
+js_json_recs(items: Stmt[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else if items.get(i).kind != SRecord {
+        js_json_recs(items, i + 1)
+    } else {
+        fields = js_json_fields(items.get(i).params, 0)
+
+        "{js_str(items.get(i).name)}: {{{fields}}}, "
+            ++ js_json_recs(items, i + 1)
+    }
+}
+
+js_json_fields(fs: Expr[], i: int) -> str {
+    if i >= fs.length() {
+        ""
+    } else {
+        "{js_str(fs.get(i).text)}: {js_json_ty(fs.get(i).ty)}, "
+            ++ js_json_fields(fs, i + 1)
+    }
+}
+
+js_json_sums(items: Stmt[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else if items.get(i).kind != SSum {
+        js_json_sums(items, i + 1)
+    } else {
+        named = js_json_variants(items.get(i).params, 0)
+
+        "{js_str(items.get(i).name)}: {{{named}}}, "
+            ++ js_json_sums(items, i + 1)
+    }
+}
+
+js_json_variants(vs: Expr[], i: int) -> str {
+    if i >= vs.length() {
+        ""
+    } else {
+        "{js_str(vs.get(i).text.lower())}: {jid(vs.get(i).text)}, "
+            ++ js_json_variants(vs, i + 1)
+    }
+}
 
 jemit_variants(items: Stmt[], i: int) -> str {
     if i >= items.length() {
@@ -776,7 +849,9 @@ jemit_entry(items: Stmt[], i: int) -> str {
     if i >= items.length() {
         ""
     } else if items.get(i).kind == SFn && items.get(i).name == "main" {
-        "\nmain();\n"
+        "\nconst _mexit = main();\nif (typeof process !== \"undefined\""
+            ++ " && typeof _mexit === \"number\" && _mexit > 0)"
+            ++ " process.exit(_mexit);\n"
     } else {
         jemit_entry(items, i + 1)
     }
@@ -793,3 +868,65 @@ jemit_items(items: Stmt[], i: int) -> str {
         "{jemit_fn(items.get(i))}\n{jemit_items(items, i + 1)}"
     }
 }
+
+JsonJs = """
+function _jenc(v, ty) {
+  if (v === null || v === undefined) return null;
+  if (Array.isArray(ty)) return v.map((x) => _jenc(x, ty[0]));
+  const rec = _jrecs[ty];
+  if (rec) {
+    const out = {};
+    for (const k of Object.keys(rec)) out[k] = _jenc(v[k], rec[k]);
+    return out;
+  }
+  if (_jsums[ty]) return typeof v === "string" ? v.toLowerCase() : v;
+  if (Array.isArray(v)) return v.map((x) => _jenc(x, ""));
+  if (v && typeof v === "object") {
+    const out = {};
+    for (const k of Object.keys(v)) out[k] = _jenc(v[k], "");
+    return out;
+  }
+  return v;
+}
+function _jkind(v) {
+  if (v === undefined) return "nothing";
+  if (v === null) return "null";
+  if (Array.isArray(v)) return "a list";
+  if (typeof v === "boolean") return "a boolean";
+  if (typeof v === "number") return "a number";
+  if (typeof v === "string") return "a string";
+  return "an object";
+}
+function _jwant(v, field, kind) {
+  if (_jkind(v) === kind) return v;
+  const head = "field `" + field + "`: expected " + kind;
+  if (v === undefined) throw new Error(head + ", and the object has no such field");
+  throw new Error(head + ", got " + _jkind(v));
+}
+function _jdec(v, ty, field) {
+  if (Array.isArray(ty)) return _jwant(v, field, "a list").map((x) => _jdec(x, ty[0], field));
+  if (ty === "int" || ty === "float") return _jwant(v, field, "a number");
+  if (ty === "bool") return _jwant(v, field, "a boolean");
+  if (ty === "str") return _jwant(v, field, "a string");
+  const sum = _jsums[ty];
+  if (sum) {
+    const name = _jwant(v, field, "a string");
+    const hit = sum[name.toLowerCase()];
+    if (hit !== undefined) return hit;
+    throw new Error(
+      "field `" + field + '`: "' + name + '" is not one of ' + Object.keys(sum).join(", ")
+    );
+  }
+  const rec = _jrecs[ty];
+  if (rec) {
+    if (field === "" && _jkind(v) !== "an object") {
+      throw new Error("`" + ty + "`: expected an object, got " + _jkind(v));
+    }
+    if (field !== "") _jwant(v, field, "an object");
+    const out = {};
+    for (const k of Object.keys(rec)) out[k] = _jdec(v[k], rec[k], k);
+    return out;
+  }
+  return v;
+}
+"""

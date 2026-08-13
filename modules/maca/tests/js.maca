@@ -305,8 +305,12 @@ test_the_functions_are_what_a_javascript_caller_imports() {
 }
 
 test_a_main_still_runs_itself() {
-    assert(js_module("main() -> int => 0").index_of("\nmain();\n") >= 0,
+    out = js_module("main() -> int => 0")
+
+    assert(out.index_of("\nconst _mexit = main();\n") >= 0,
            "a program is a program, and the file it becomes is its entry")
+    assert(out.index_of("_mexit > 0) process.exit(_mexit)") >= 0,
+           "and what it answers with is what the process answers with")
 }
 
 test_a_jump_from_a_match_arm_reaches_the_loop() {

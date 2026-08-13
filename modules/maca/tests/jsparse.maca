@@ -74,40 +74,22 @@ test_the_control_flow_fixture_computes_the_same_thing_natively() {
                   ++ "way when it is compiled natively")
 }
 
-Shims = """
-globalThis.assert = function (c, m) {
-  if (!c) throw new Error("assert failed: " + m);
-};
-globalThis.assert_eq = function (got, want, m) {
-  if (String(got) !== String(want)) {
-    throw new Error(m + " | got: " + String(got) + " | want: " + String(want));
-  }
-};
-globalThis.failures = () => 0;
-const m = require("./app.js");
-const tests = Object.keys(m).filter((k) => k.startsWith("test_"));
-let failed = 0;
-for (const name of tests) {
-  try {
-    m[name]();
-  } catch (e) {
-    failed += 1;
-    console.log("FAILED " + name + ": " + e.message);
-  }
-}
-console.log("ran " + tests.length + " tests");
-if (tests.length === 0) process.exit(2);
-if (failed > 0) process.exit(1);
-"""
-
-/// Run a suite's `test_` functions on the JS target, since `assert` has no JS lowering of its own.
+/// A suite on the JS target runs the way a native one does: the entry answers with its failure count.
 holds_on_the_js_target(src: str, name: str) {
-    runner = emitted(src, name) ++ "/run.js"
-    write_file(runner, Shims)
-    said = capture("node", [runner])
+    at = emitted(src, name) ++ "/app.js"
+    said = capture_err("node", [at])
 
-    assert_eq(str(exec("node", [runner])), "0",
+    assert_eq(str(exec("node", [at])), "0",
               "{src} did not hold on the JS target:\n{said}")
+}
+
+test_the_typed_json_suite_holds_on_the_js_target() {
+    if !have("node") {
+        return
+    }
+
+    holds_on_the_js_target("crates/driver/tests/programs/json_typed.maca",
+                           "json_typed")
 }
 
 test_the_module_state_suite_holds_on_the_js_target() {
