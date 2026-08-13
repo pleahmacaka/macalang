@@ -207,3 +207,47 @@ test_a_name_a_module_and_its_own_dependency_define_moves_twice() {
                   ++ "name each of them moves out of the way lands somewhere "
                   ++ "of its own")
 }
+
+test_a_project_outside_the_tree_reads_the_library_it_was_pointed_at() {
+    root = env_or("TMPDIR", "/tmp") ++ "/maca-carried"
+
+    exec("rm", ["-rf", root])
+    make_dir(root)
+    write_file(root ++ "/maca.toml", "[package]\nname = \"outside\"\n")
+    write_file(root ++ "/main.maca",
+        "import {{ lines }} from std/text\n\nmain() -> int {{\n"
+            ++ "    info(\"lines={{lines(\"one\").length()}}\")\n"
+            ++ "    0\n}}\n")
+
+    lib = cwd() ++ "/modules"
+
+    alone = output("sh",
+                   ["-c", "cd '{root}' && MACA_NO_CACHE=1 '{maca_bin()}'"
+                              ++ " run main.maca 2>&1"])
+
+    assert(alone.contains("import error"),
+        "nothing on disk answers `std/text` out there, and a compiler that "
+            ++ "guessed would be reading someone else's file: {alone}")
+
+    said = output("sh",
+                  ["-c", "cd '{root}' && MACA_NO_CACHE=1"
+                             ++ " MACA_STDLIB='{lib}' '{maca_bin()}'"
+                             ++ " run main.maca 2>&1"])
+
+    assert(said.contains("lines=1"),
+        "the library the compiler was pointed at is the one it read: {said}")
+
+    make_dir(root ++ "/modules")
+    make_dir(root ++ "/modules/std")
+    write_file(root ++ "/modules/std/text.maca",
+               "lines(s: str) -> str[] => [s, s]\n")
+
+    own = output("sh",
+                 ["-c", "cd '{root}' && MACA_NO_CACHE=1"
+                            ++ " MACA_STDLIB='{lib}' '{maca_bin()}'"
+                            ++ " run main.maca 2>&1"])
+
+    assert(own.contains("lines=2"),
+        "and a copy the project keeps beats it, or a vendored fix is no fix: "
+            ++ own)
+}

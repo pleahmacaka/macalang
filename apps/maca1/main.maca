@@ -3584,8 +3584,18 @@ import_path(ts: Token[], i: int, acc: str) -> str {
     }
 }
 
-resolved(by: str, want: str) -> str =>
-    search_up(dir_of(by), want ++ ".maca")
+resolved(by: str, want: str) -> str {
+    here = search_up(dir_of(by), want ++ ".maca")
+
+    here != "" ? here : carried(want ++ ".maca")
+}
+
+/// The last place asked is the library the compiler was told it travels with.
+carried(want: str) -> str {
+    root = env("MACA_STDLIB")
+
+    root == "" ? "" : found(root ++ "/" ++ want)
+}
 
 search_up(dir: str, want: str) -> str {
     here = in_base(dir, want)

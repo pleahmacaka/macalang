@@ -2154,6 +2154,7 @@ MacaList imports_in(MacaList ts, long i, MacaList acc);
 MacaList import_names(MacaList ts, long i);
 const char* import_path(MacaList ts, long i, const char* acc);
 const char* resolved(const char* by, const char* want);
+const char* carried(const char* want);
 const char* search_up(const char* dir, const char* want);
 const char* in_base(const char* dir, const char* want);
 const char* found(const char* cand);
@@ -4252,7 +4253,8 @@ Unit one_dep(const char* by, const char* want, Unit u) { const char* at = resolv
 MacaList imports_in(MacaList ts, long i, MacaList acc) { return (((*(Token*)ts.data[i]).kind == Eof) ? acc : (((*(Token*)ts.data[i]).kind == KwImport) ? imports_in(ts, import_end(ts, (i + 1)), maca_list_cat(acc, import_names(ts, (i + 1)))) : imports_in(ts, (i + 1), acc)));  }
 MacaList import_names(MacaList ts, long i) { return (((*(Token*)ts.data[i]).kind == LBrace) ? import_names(ts, (selection_end(ts, (i + 1)) + 2)) : ((((*(Token*)ts.data[i]).kind == TStr) || ((*(Token*)ts.data[(i + 1)]).kind == TStr)) ? maca_listv(0) : maca_listv(1, (long)(import_path(ts, i, "")))));  }
 const char* import_path(MacaList ts, long i, const char* acc) { return (((*(Token*)ts.data[(i + 1)]).kind == Slash) ? import_path(ts, (i + 2), maca_cat(maca_cat(acc, (*(Token*)ts.data[i]).text), "/")) : maca_cat(acc, (*(Token*)ts.data[i]).text));  }
-const char* resolved(const char* by, const char* want) { return search_up(dir_of(by), maca_cat(want, ".maca"));  }
+const char* resolved(const char* by, const char* want) { const char* here = search_up(dir_of(by), maca_cat(want, ".maca")); return ((strcmp(here, "") != 0) ? here : carried(maca_cat(want, ".maca")));  }
+const char* carried(const char* want) { const char* root = maca_env("MACA_STDLIB"); return ((strcmp(root, "") == 0) ? "" : found(maca_cat(maca_cat(root, "/"), want)));  }
 const char* search_up(const char* dir, const char* want) { const char* here = in_base(dir, want); return ((strcmp(here, "") != 0) ? here : ((strcmp(dir, "") == 0) ? "" : search_up(parent_of(dir), want)));  }
 const char* in_base(const char* dir, const char* want) { const char* own = found(maca_cat(dir, want)); const char* mods = found(maca_cat(maca_cat(dir, "modules/"), want)); const char* src = found(maca_cat(maca_cat(dir, "src/"), want)); return ((strcmp(own, "") != 0) ? own : ((strcmp(mods, "") != 0) ? mods : ((strcmp(src, "") != 0) ? src : found(maca_cat(maca_cat(maca_cat(dir, DepsDir), "/"), want)))));  }
 const char* found(const char* cand) { return ((strcmp(maca_read_file(cand), "") == 0) ? "" : cand);  }
