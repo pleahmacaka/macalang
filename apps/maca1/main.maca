@@ -2742,8 +2742,9 @@ compile_file(args: str[]) -> int {
     errs = bad +
         report_all("check", checked_with_foreign(stubbed, unit.toks), 0) +
         report_all("check", target_notes(stubbed, asked), 0)
-    m = unstubbed(annotated_on(monomorphic(lifted(annotated_on(stubbed,
-                                                               asked))),
+    m = unstubbed(annotated_on(monomorphic(lifted_on(annotated_on(stubbed,
+                                                                  asked),
+                                                     asked)),
                                asked),
                   unit.toks)
     emitted = if asked == "rust" {

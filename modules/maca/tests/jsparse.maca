@@ -245,3 +245,29 @@ function _mk(t) {
 const _root = _mk("div");
 globalThis.document = { createElement: _mk, getElementById: (id) => (id === "app" ? _root : null) };
 """
+
+test_a_nested_definition_writes_the_scope_it_was_written_in() {
+    if !have("node") {
+        return
+    }
+
+    dir = scratch("nested")
+    src = dir ++ "/board.maca"
+
+    write_file(src, "board() -> str {{\n    held = 0\n\n"
+        ++ "    grab(n: int) {{\n        held = n\n    }}\n\n"
+        ++ "    grab(7)\n\n    \"{{held}}\"\n}}\n\n"
+        ++ "main() -> Element => div(span(board()))\n")
+
+    said = capture_err(maca_bin(), ["build", "--target", "js", src, "-o",
+                                    dir ++ "/out"])
+
+    assert(file_exists(dir ++ "/out/app.js"), "the page did not build: {said}")
+
+    probe = "console.log(require(\"{dir}/out/app.js\").board())"
+
+    assert_eq(capture("node", ["-e", probe]).trim(), "7",
+              "a definition lifted out of the scope it was written in writes "
+                  ++ "a name of its own, and the answer is the old one: "
+                  ++ capture_err("node", ["-e", probe]))
+}

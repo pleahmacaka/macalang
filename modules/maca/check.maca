@@ -2442,6 +2442,10 @@ lifted(m: Module) -> Module {
     Module { items = got.items, errors = m.errors }
 }
 
+/// A lifted function is a top-level one, which is why it cannot hold what the scope around it declared; a browser closure can, so there it stays where it was written.
+lifted_on(m: Module, target: str) -> Module =>
+    target == "js" || target == "wasm" ? m : lifted(m)
+
 top_names(items: Stmt[], i: int, acc: str[]) -> str[] {
     out = acc
     at = i
