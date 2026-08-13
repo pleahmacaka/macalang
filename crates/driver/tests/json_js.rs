@@ -70,48 +70,6 @@ fn the_typed_json_suite_holds_on_the_js_target() {
     );
 }
 
-/// `decode` reads into a type, and the only thing that says which one is the binding.
-#[test]
-fn decode_with_nothing_to_read_into_says_so() {
-    let dir = std::env::temp_dir().join(format!("maca-json-bare-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let src = dir.join("bare.maca");
-    std::fs::write(
-        &src,
-        "import { decode } from std/json\n\n\
-         main() -> Element => div(str(decode(\"1\")))\n",
-    )
-    .unwrap();
-
-    let built = Command::new(maca())
-        .current_dir(repo())
-        .args([
-            "build",
-            "--target",
-            "js",
-            &src.display().to_string(),
-            "-o",
-            &dir.join("out").display().to_string(),
-        ])
-        .output()
-        .expect("spawn maca build");
-    let said = String::from_utf8_lossy(&built.stderr).to_string()
-        + &String::from_utf8_lossy(&built.stdout);
-    assert!(
-        !built.status.success(),
-        "the build should have failed: {said}"
-    );
-    assert!(
-        said.contains("say what it reads into"),
-        "the diagnostic should name the fix: {said}"
-    );
-    assert!(
-        !dir.join("out/app.js").exists(),
-        "a refused build must leave no page behind"
-    );
-}
-
 /// The same suite on the JS target, so what a page's state does and what a program's state does are one thing.
 #[test]
 fn module_state_holds_on_the_js_target() {

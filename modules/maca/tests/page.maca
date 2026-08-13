@@ -503,3 +503,117 @@ test_a_selective_import_keeps_every_declaration_its_block_provides() {
     carries(page, "clock_date: () =>",
             "and the one it did not, because one block provides both")
 }
+
+/// The checker runs on the way to a page, so what it refuses is refused here too.
+test_a_call_to_a_name_nothing_defines_is_refused() {
+    dir = project("undefined")
+    put(dir, "home.maca", "main() -> int => nowhere()\n")
+
+    assert(refused(dir).index_of("call to undefined function `nowhere`") >= 0,
+           "the name nothing defines is the one named")
+}
+
+/// A view's locals are that view instance's state, so a sibling that reads one hears about it here rather than as a `ReferenceError` in the browser.
+test_reading_another_function_s_local_is_refused_by_name() {
+    dir = project("sibling")
+    put(dir, "home.maca",
+        "paneClass() -> str => tab == \"Preview\" ? \"on\" : \"off\"\n\n"
+            ++ "main() -> Element \{\n    tab = \"Console\"\n\n"
+            ++ "    choose(which: str) \{\n        tab = which\n    \}\n\n"
+            ++ "    div(button(onclick=(e => choose(\"Preview\")), \"go\")"
+            ++ " span(tab))\n\}\n")
+
+    said = refused(dir)
+
+    assert(said.index_of("`tab` is a local of another function") >= 0,
+           "the diagnostic names it: {said}")
+    assert(said.index_of("written at the top level") >= 0,
+           "and says where state two functions share belongs: {said}")
+}
+
+/// A handler's own scratch local is the same mistake one level down, and gets the same answer.
+test_reading_a_nested_handler_s_own_local_is_refused_by_name() {
+    dir = project("nested-local")
+    put(dir, "home.maca",
+        "board() -> Element \{\n    grab() \{\n        held = 1\n    \}\n\n"
+            ++ "    div(button(onclick=grab, \"grab\") span(\"\{held\}\"))\n"
+            ++ "\}\n\nmain() -> Element => div(board())\n")
+
+    assert(refused(dir).index_of("`held` is a local of another function") >= 0,
+           "a name bound inside a nested function is one of its locals")
+}
+
+/// Calling another function's nested handler is one diagnostic, not the call check and the read check both.
+test_calling_another_function_s_nested_handler_is_named_once() {
+    dir = project("named-once")
+    put(dir, "home.maca",
+        "board() -> Element \{\n    grab() \{\n        held = 1\n    \}\n\n"
+            ++ "    div(button(onclick=grab, \"grab\"))\n\}\n\n"
+            ++ "main() -> Element \{\n    grab()\n    div(board())\n\}\n")
+
+    said = refused(dir)
+
+    assert_eq(str(said.split("`grab`").length() - 1), "1",
+              "one name, one complaint: {said}")
+}
+
+/// The same shape with the state left where both can see it is the fix, and has to keep building.
+test_top_level_state_two_functions_share_still_builds() {
+    dir = project("shared-state")
+    put(dir, "home.maca",
+        "tab = \"Console\"\n\n"
+            ++ "paneClass() -> str => tab == \"Preview\" ? \"on\" : \"off\"\n\n"
+            ++ "choose(which: str) \{\n    tab = which\n\}\n\n"
+            ++ "main() -> Element =>\n"
+            ++ "    div(button(onclick=(e => choose(\"Preview\")), \"go\")\n"
+            ++ "        span(class=paneClass(), tab))\n")
+
+    carries(page_of(dir), "<div id=\"app\">", "the page was written")
+}
+
+/// A name a view keeps to itself is still ordinary: nothing outside reads it, and it compiles.
+test_a_view_local_only_its_own_handler_writes_still_builds() {
+    dir = project("view-local")
+    put(dir, "home.maca",
+        "board() -> Element \{\n    grip = 0\n\n"
+            ++ "    grab() \{\n        grip = grip + 1\n    \}\n\n"
+            ++ "    div(button(onclick=grab, \"grab\") span(\"\{grip\}\"))\n"
+            ++ "\}\n\nmain() -> Element => div(board())\n")
+
+    carries(page_of(dir), "<div id=\"app\">", "the page was written")
+}
+
+test_a_match_that_misses_a_variant_is_refused() {
+    dir = project("nonexhaustive")
+    put(dir, "home.maca",
+        "Colour = Red | Green\n\nname(c: Colour) -> str =>\n"
+            ++ "    match c \{\n        Red => \"red\"\n    \}\n\n"
+            ++ "main() -> Element => div(name(Red))\n")
+
+    assert(refused(dir).index_of("not exhaustive; missing: Green") >= 0,
+           "the variant left unhandled is named")
+}
+
+test_writing_a_constant_is_refused() {
+    dir = project("immutable")
+    put(dir, "home.maca",
+        "main() -> Element \{\n    const n = 1\n    n = 2\n"
+            ++ "    div(\"\{n\}\")\n\}\n")
+
+    assert(refused(dir).index_of("cannot reassign constant `n`") >= 0,
+           "the constant written twice is named")
+}
+
+/// `--target tauri` reaches the same emitter, so it must not be a way around the checker.
+test_the_desktop_target_is_checked_too() {
+    dir = project("tauri-checked")
+    put(dir, "home.maca", "main() -> int => nowhere()\n")
+
+    said = capture("sh", ["-c", "cd \"$0\" && \"$1\" build --target tauri "
+                              ++ "home.maca -o out 2>&1", dir, maca_bin()])
+
+    assert(said.index_of("call to undefined function `nowhere`") >= 0,
+           "the desktop scaffold runs the checker too: {said}")
+    assert(!file_exists("{dir}/out/src-tauri/tauri.conf.json"),
+           "and a refused build leaves no scaffold: {said}")
+}

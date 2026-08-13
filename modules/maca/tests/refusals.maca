@@ -95,6 +95,27 @@ test_the_bad_corpus_is_refused_and_told_why() {
     refused("apps/examples/bad/reassign_const.maca",
         "cannot reassign constant `count`; declare it mutable with"
             ++ " `count = …` (no `const`)")
+    refused("apps/examples/bad/foreign_local.maca",
+        "`scale` is a local of another function, and a local is reachable"
+            ++ " only inside the one that declares it; state two functions"
+            ++ " share is written at the top level")
+    refused("apps/examples/bad/bare_decode.maca",
+        "`decode`: say what it reads into, as in `c: Config = decode(text)`")
+}
+
+test_a_refused_build_leaves_no_page_behind() {
+    out = scratch() ++ "/nopage"
+
+    make_dir(scratch())
+    remove_file(out ++ "/app.js")
+
+    said = capture(maca_bin(), ["build", "--target", "js",
+        "apps/examples/bad/bare_decode.maca", "-o", out])
+
+    assert(said.contains("say what it reads into"),
+        "the diagnostic should name the fix: {said}")
+    assert(!file_exists(out ++ "/app.js"),
+        "a refused build must leave no page behind: {said}")
 }
 
 test_a_config_file_is_refused_for_what_a_nixos_module_cannot_do() {

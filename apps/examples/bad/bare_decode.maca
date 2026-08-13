@@ -1,0 +1,6 @@
+import { decode } from std/json
+
+main() -> int {
+    info(str(decode("1")))
+    0
+}

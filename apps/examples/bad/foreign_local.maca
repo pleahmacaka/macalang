@@ -1,0 +1,7 @@
+sized(width: int) -> int {
+    scale = width * 2
+
+    scale
+}
+
+main() -> int => sized(3) + scale

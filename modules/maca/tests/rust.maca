@@ -2,6 +2,7 @@ import maca/lexer
 import maca/parser
 import maca/check
 import maca/emit_rust
+import std/proc
 
 gate_rust(src: str) -> str =>
     remit_module(annotated(parse_module(lex(src), 0, [])))
@@ -196,4 +197,88 @@ test_a_borrowed_value_may_be_read_and_passed_on_but_not_kept() {
            "and the refusal names the parameter and the method")
     assert_eq(str(given.length()), "0", "reading it and passing it on is fine")
     assert_eq(str(back.length()), "1", "answering with it is not")
+}
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+scratch() -> str {
+    dir = env_or("TMPDIR", "/tmp") ++ "/maca-rust-foreign"
+    make_dir(dir)
+
+    dir
+}
+
+built_rust(name: str, src: str) -> int {
+    at = "{scratch()}/{name}.maca"
+    write_file(at, src)
+
+    exec(maca_bin(), ["build", "--target", "rust", at, "-o",
+                      "{scratch()}/{name}"])
+}
+
+emitted_rust(name: str, src: str) -> str {
+    built_rust(name, src)
+
+    read_file("{scratch()}/{name}.rs")
+}
+
+ClosureSrc = "import rust \"\"\"\nfn apply(f: impl Fn(i64) -> i64, x: i64)"
+    ++ " -> i64 {{ f(x) }}\n\"\"\"\n\n"
+    ++ "main() -> int {{\n    r = apply(n => n + 1, 41)\n"
+    ++ "    info(\"apply = {{r}}\")\n    r\n}}\n"
+
+TraitSrc = "import rust \"\"\"\ntrait Greet {{ fn value(&mut self) -> i64; }}"
+    ++ "\n\"\"\"\n\nCounter = {{ count: int }}\n"
+    ++ "Counter : Greet = {{\n    value = (self) => self.count + 1\n}}\n\n"
+    ++ "main() -> int {{\n    c = Counter {{ count = 41 }}\n"
+    ++ "    v = c.value()\n    info(\"value = {{v}}\")\n    v\n}}\n"
+
+rustc_here() -> bool =>
+    exec("sh", ["-c", "command -v rustc >/dev/null 2>&1"]) == 0
+
+test_a_crate_path_import_is_written_back_as_a_use_item() {
+    made = emitted_rust("use_item",
+                        "import rust \"std::time::Duration\"\n\n"
+                            ++ "main() -> int => 0\n")
+
+    assert(made.index_of("use std::time::Duration;") >= 0,
+           "the path the program asked for is a use item, not a dropped line")
+}
+
+test_a_raw_block_is_pasted_as_the_rust_it_was_written_in() {
+    made = emitted_rust("raw_block", ClosureSrc)
+
+    assert(made.index_of("fn apply(f: impl Fn(i64) -> i64, x: i64) -> i64")
+               >= 0,
+           "the block reaches the unit as the source it was, braces and all")
+    assert(made.index_of("apply(maca_lambda") >= 0,
+           "and the call the program wrote reaches it")
+}
+
+test_a_call_into_a_raw_block_is_not_an_undefined_function() {
+    if !rustc_here() {
+        assert(true, "running what was emitted needs rustc, which this host "
+                         ++ "has not got")
+    } else {
+        assert_eq(str(built_rust("closure_run", ClosureSrc)), "0",
+                  "a name the block declares is declared, so the build is clean")
+        assert_eq(capture("{scratch()}/closure_run", []).trim(), "apply = 42",
+                  "and what it answered is what the Rust function computed")
+    }
+}
+
+test_a_trait_a_raw_block_declared_is_implemented_for_a_record() {
+    if !rustc_here() {
+        assert(true, "running what was emitted needs rustc, which this host "
+                         ++ "has not got")
+    } else {
+        assert_eq(str(built_rust("trait_run", TraitSrc)), "0",
+                  "the trait is declared by the block, and implemented here")
+        assert_eq(capture("{scratch()}/trait_run", []).trim(), "value = 42",
+                  "and the method runs")
+    }
 }

@@ -2582,11 +2582,11 @@ compile_file(args: str[]) -> int {
         report_all("scan", scanned.errors, 0) +
         report_all("parse", parsed.errors, 0) +
         report_all("embed", raw.errors, 0)
-    errs = bad + report_all("check", check_errors(raw), 0)
+    errs = bad + report_all("check", checked_with_foreign(raw, unit.toks), 0)
     m = annotated(monomorphic(lifted(annotated(raw))))
     asked = args.length() >= 3 ? args.get(2) : ""
     emitted = if asked == "rust" {
-        remit_module(m)
+        rust_prelude(unit.toks, 0, "") ++ remit_module(m)
     } else if asked == "js" {
         jemit_module(m)
     } else if asked == "nix" {
@@ -2599,9 +2599,14 @@ compile_file(args: str[]) -> int {
         emit_module(m)
     }
 
-    write_file(args.get(1), emitted)
-    errs + refused_here(asked, m) +
+    wrong = errs + refused_here(asked, m) +
         report_all("import", foreign_errors(asked, args.get(0), unit), 0)
+
+    if wrong == 0 {
+        write_file(args.get(1), emitted)
+    }
+
+    wrong
 }
 
 /// A target names what it cannot lower rather than emitting a file that pretends.
@@ -2729,6 +2734,55 @@ last_root(ps: str[], i: int, acc: int) -> int {
         last_root(ps, i + 1, acc)
     }
 }
+
+/// A name a raw `import rust` block declares is not a name this file forgot to write.
+checked_with_foreign(m: Module, ts: Token[]) -> str[] {
+    ds = check_diagnostics(m)
+
+    rust_import_in(ts, 0) ? written_names(ds, 0, []) : ds.map(diag_message)
+}
+
+written_names(ds: Diagnostic[], i: int, acc: str[]) -> str[] {
+    if i >= ds.length() {
+        acc
+    } else if ds.get(i).code == "M0006" {
+        written_names(ds, i + 1, acc)
+    } else {
+        written_names(ds, i + 1, acc ++ [diag_message(ds.get(i))])
+    }
+}
+
+rust_import_in(ts: Token[], i: int) -> bool {
+    if i + 2 >= ts.length() {
+        false
+    } else if foreign_at(ts, i, "rust") {
+        true
+    } else {
+        rust_import_in(ts, i + 1)
+    }
+}
+
+/// Rust resolves no name by itself, so every `import rust` is written into the emitted unit.
+rust_prelude(ts: Token[], i: int, acc: str) -> str {
+    if i + 2 >= ts.length() {
+        acc == "" ? "" : acc ++ "\n"
+    } else if foreign_at(ts, i, "rust") {
+        rust_prelude(ts, i + 3, acc ++ rust_item(ts.get(i + 2).text))
+    } else {
+        rust_prelude(ts, i + 1, acc)
+    }
+}
+
+/// A spec that is a path names a crate item to use, where a block is Rust as written.
+rust_item(spec: str) -> str {
+    text = rust_source(spec)
+
+    path_like(text.chars(), 0) ? "use {text};\n" : text ++ "\n"
+}
+
+/// A raw block is held as a Maca literal, so what it stood for is written back.
+rust_source(spec: str) -> str =>
+    unescape(spec).replace("{{{{", "{{").replace("}}}}", "}}").trim()
 
 /// A crate the rust target calls must be one the manifest declared, and no other language reaches that target at all.
 rust_import_errors(ts: Token[], i: int, deps: str[], acc: str[]) -> str[] {

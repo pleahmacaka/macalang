@@ -28,13 +28,14 @@ Env = {
     holes:  int[]
     fills:  Ty[]
     here:   int
+    hidden: str[]
 }
 
 empty_env() -> Env =>
     Env { names = [], types = [], fns = [], sigs = [],
           fields = [], ftypes = [], ctors = [], owners = [], slots = [],
           varargs = [], frozen = [], infer = new_infer(), errors = [],
-          holes = [], fills = [], here = 0 }
+          holes = [], fills = [], here = 0, hidden = [] }
 
 /// What a code means in general, apart from the occurrence that raised it.
 diag_explain(code: str) -> str =>
@@ -188,7 +189,57 @@ param_types(env: Env, ps: Expr[], i: int, acc: Ty[]) -> Signature {
 }
 
 env_of_module(m: Module) -> Env =>
-    collect_consts(collect_shapes(empty_env(), m.items, 0), m.items, 0)
+    collect_consts(collect_shapes(collect_hidden(empty_env(), m.items, 0),
+                                  m.items, 0),
+                   m.items, 0)
+
+/// Every name a function declares inside itself, so a read from outside it can say so.
+collect_hidden(env: Env, items: Stmt[], i: int) -> Env {
+    if i >= items.length() {
+        env
+    } else if items.get(i).kind == SFn {
+        collect_hidden(env with { hidden = env.hidden
+                                      ++ hidden_of(items.get(i)) },
+                       items, i + 1)
+    } else {
+        collect_hidden(env, items, i + 1)
+    }
+}
+
+hidden_of(s: Stmt) -> str[] =>
+    hidden_params(s.params, 0, []) ++ hidden_binds(s.body, 0, [])
+
+hidden_params(ps: Expr[], i: int, acc: str[]) -> str[] {
+    if i >= ps.length() {
+        acc
+    } else {
+        hidden_params(ps, i + 1, acc ++ [ps.get(i).text])
+    }
+}
+
+hidden_binds(stmts: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= stmts.length() {
+        acc
+    } else if stmts.get(i).kind == SBind {
+        hidden_binds(stmts, i + 1,
+                     acc ++ [stmts.get(i).name]
+                         ++ hidden_lambda(stmts.get(i).value))
+    } else {
+        hidden_binds(stmts, i + 1, acc)
+    }
+}
+
+/// A function written inside a body is a lambda bound to a name, and what it declares is hidden too.
+hidden_lambda(e: Expr) -> str[] {
+    if e.kind != ELambda {
+        []
+    } else if lambda_body(e).kind == EBlock {
+        hidden_params(lambda_params(e), 0, [])
+            ++ hidden_binds(lambda_body(e).stmts, 0, [])
+    } else {
+        hidden_params(lambda_params(e), 0, [])
+    }
+}
 
 collect_shapes(env: Env, items: Stmt[], i: int) -> Env {
     if i >= items.length() {
@@ -394,6 +445,13 @@ ident_type(env: Env, e: Expr) -> Typed {
               t_error())
     } else if declared >= 0 {
         typed(env, env.sigs.get(declared))
+    } else if env.hidden.index_of(e.text) >= 0 {
+        typed(complain_as(env, "M0006",
+                          "`{e.text}` is a local of another function, and a"
+                              ++ " local is reachable only inside the one that"
+                              ++ " declares it; state two functions share is"
+                              ++ " written at the top level"),
+              t_any())
     } else {
         typed(env, t_any())
     }
@@ -1118,15 +1176,39 @@ bound_arm(env: Env, pat: Expr) -> Env {
     } else if pat.kind == EBinary && pat.text == "|" {
         bound_arm(bound_arm(env, pat.children.get(0)), pat.children.get(1))
     } else if pat.children.length() == 0 {
-        named_pattern(env, pat)
+        arm_binder(named_pattern(env, pat), pat)
     } else {
         at = env.ctors.index_of(pat.text)
 
         if at < 0 {
-            env
+            arm_binders(env, pat.children, 0)
         } else {
             bind_slots_of(env, pat.children, env.slots.get(at).split(","), 0)
         }
+    }
+}
+
+/// A cell an arm names is that arm's own binding, whichever function elsewhere spells a local the same.
+arm_binder(env: Env, pat: Expr) -> Env =>
+    pat.kind == EIdent && starts_lower(pat.text)
+        ? env with { hidden = names_but(env.hidden, pat.text, 0, []) }
+        : env
+
+arm_binders(env: Env, ps: Expr[], i: int) -> Env {
+    if i >= ps.length() {
+        env
+    } else {
+        arm_binders(arm_binder(env, ps.get(i)), ps, i + 1)
+    }
+}
+
+names_but(xs: str[], name: str, i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else if xs.get(i) == name {
+        names_but(xs, name, i + 1, acc)
+    } else {
+        names_but(xs, name, i + 1, acc ++ [xs.get(i)])
     }
 }
 
@@ -1278,7 +1360,7 @@ check_fn_in(env: Env, s: Stmt) -> Env {
     checked = return_check(told, s.ret, body.ty)
 
     checked with { names = env.names, types = env.types,
-                   frozen = env.frozen }
+                   frozen = env.frozen, hidden = env.hidden }
 }
 
 signature_ret(env: Env, name: str) -> Ty {
@@ -1988,7 +2070,46 @@ desugared(m: Module, src: str) -> Module {
         Module { items = m.items, errors = [] }
     } else {
         Module { items = embed_items(m.items, at, 0, []),
-                 errors = embed_faults(m.items, at, 0, []) }
+                 errors = embed_faults(m.items, at, 0, [])
+                     ++ decode_faults(m.items, 0, []) }
+    }
+}
+
+/// `decode` reads into a type, and the binding that holds it says which one.
+decode_faults(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else {
+        s = items.get(i)
+        here = typed_decode(s)
+            ? decode_kid_faults(s.value.children, 0, [])
+            : decode_expr_faults(s.value, [])
+
+        decode_faults(items, i + 1,
+                      acc ++ here ++ decode_faults(s.body, 0, []))
+    }
+}
+
+typed_decode(s: Stmt) -> bool =>
+    s.kind == SBind && s.ret != "" && decode_call(s.value)
+
+decode_call(e: Expr) -> bool =>
+    e.kind == ECall && e.text == "decode" && e.children.length() == 1
+
+decode_expr_faults(e: Expr, acc: str[]) -> str[] {
+    if decode_call(e) {
+        acc ++ ["`decode`: say what it reads into, as in"
+                    ++ " `c: Config = decode(text)`"]
+    } else {
+        decode_faults(e.stmts, 0, decode_kid_faults(e.children, 0, acc))
+    }
+}
+
+decode_kid_faults(xs: Expr[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        decode_kid_faults(xs, i + 1, decode_expr_faults(xs.get(i), acc))
     }
 }
 

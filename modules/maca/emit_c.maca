@@ -558,6 +558,8 @@ emit_call(e: Expr) -> str {
         "maca_failures()"
     } else if e.text == "styles" && e.children.length() == 0 {
         "MACA_STYLES"
+    } else if e.text == "encode" && e.children.length() == 1 {
+        c_json_text(e.children.get(0).ty, args, 0)
     } else {
         emit_prelude(e, args)
     }
@@ -1289,7 +1291,7 @@ emit_stmt(s: Stmt, is_last: bool, ret: str) -> str {
     if s.kind == SSet {
         "{c_id(s.name)} = {emit_expr(s.value)};"
     } else if s.kind == SBind {
-        "{bind_c_decl(s)} = {emit_expr(s.value)};"
+        "{bind_c_decl(s)} = {c_bound(s)};"
     } else if is_loop(s.value) {
         emit_loop(s.value)
     } else if s.value.kind == EIf && !is_last {
@@ -1555,6 +1557,337 @@ c_mqtt(protos: str) -> str {
     }
 }
 
+c_json_runtime() -> str =>
+    "static const char* mj_ws(const char* p) {{ while (*p == ' ' || *p == '\\t' || *p == '\\n' || *p == '\\r') p++; return p; }}\n" ++
+    "static const char* mj_str_end(const char* p) {{ p++; while (*p && *p != '\"') {{ if (*p == '\\\\' && p[1]) p++; p++; }} return *p ? p + 1 : p; }}\n" ++
+    "static const char* mj_end(const char* p) {{ p = mj_ws(p); if (*p == '\"') return mj_str_end(p); if (*p == '[' || *p == '{{') {{ char open = *p, close = open == '[' ? ']' : '}}'; int d = 0; while (*p) {{ if (*p == '\"') {{ p = mj_str_end(p); continue; }} if (*p == open) d++; else if (*p == close) {{ d--; if (!d) return p + 1; }} p++; }} return p; }} while (*p && *p != ',' && *p != '}}' && *p != ']') p++; return p; }}\n" ++
+    "static char* mj_take(const char* a, const char* b) {{ size_t n = (size_t)(b - a); char* r = malloc(n + 1); memcpy(r, a, n); r[n] = 0; return r; }}\n" ++
+    "static const char* maca_json_kind(const char* p) {{ p = mj_ws(p); if (*p == '\"') return \"a string\"; if (*p == '{{') return \"an object\"; if (*p == '[') return \"a list\"; if (*p == 't' || *p == 'f') return \"a boolean\"; if (*p == 'n') return \"nothing\"; return \"a number\"; }}\n" ++
+    "static const char* mj_field(const char* t, const char* key) {{ const char* p = mj_ws(t); if (*p != '{{') return 0; p++; for (;;) {{ p = mj_ws(p); if (*p != '\"') return 0; const char* ke = mj_str_end(p); size_t n = strlen(key); int hit = (size_t)(ke - p) == n + 2 && memcmp(p + 1, key, n) == 0; p = mj_ws(ke); if (*p != ':') return 0; p = mj_ws(p + 1); if (hit) return p; p = mj_ws(mj_end(p)); if (*p != ',') return 0; p++; }} }}\n" ++
+    "static char* mj_named(const char* what, const char* said) {{ return maca_cat(\"`\", maca_cat(what, maca_cat(\"`: \", said))); }}\n" ++
+    "static const char* maca_json_want(const char* t, const char* key, const char* kind) {{ const char* v = mj_field(t, key); if (!v) {{ maca_fail(mj_named(key, \"no such field\")); return \"null\"; }} if (strcmp(maca_json_kind(v), kind) != 0) {{ maca_fail(mj_named(key, maca_cat(\"expected \", maca_cat(kind, maca_cat(\", got \", maca_json_kind(v)))))); return \"null\"; }} return v; }}\n" ++
+    "static const char* maca_json_object(const char* t, const char* what) {{ const char* p = mj_ws(t); if (*p != '{{') maca_fail(mj_named(what, maca_cat(\"expected an object, got \", maca_json_kind(p)))); return p; }}\n" ++
+    "static long maca_json_int(const char* v) {{ return (long)strtod(mj_ws(v), 0); }}\nstatic double maca_json_float(const char* v) {{ return strtod(mj_ws(v), 0); }}\nstatic long maca_json_bool(const char* v) {{ return *mj_ws(v) == 't'; }}\n" ++
+    "static char* maca_json_str(const char* v) {{ const char* p = mj_ws(v); if (*p != '\"') return mj_take(p, mj_end(p)); const char* e = mj_str_end(p); char* r = malloc((size_t)(e - p) + 1); char* w = r; for (const char* q = p + 1; q + 1 < e; q++) {{ if (*q != '\\\\') {{ *w++ = *q; continue; }} q++; char c = *q; *w++ = c == 'n' ? '\\n' : c == 't' ? '\\t' : c == 'r' ? '\\r' : c; }} *w = 0; return r; }}\n" ++
+    "static char* maca_json_quote(const char* s) {{ size_t n = strlen(s); char* r = malloc(n * 2 + 3); char* w = r; *w++ = '\"'; for (size_t i = 0; i < n; i++) {{ char c = s[i]; if (c == '\"' || c == '\\\\') {{ *w++ = '\\\\'; *w++ = c; }} else if (c == '\\n') {{ *w++ = '\\\\'; *w++ = 'n'; }} else if (c == '\\r') {{ *w++ = '\\\\'; *w++ = 'r'; }} else if (c == '\\t') {{ *w++ = '\\\\'; *w++ = 't'; }} else {{ *w++ = c; }} }} *w++ = '\"'; *w = 0; return r; }}\n" ++
+    "static MacaList maca_json_items(const char* v) {{ MacaList l = maca_listv(0); const char* p = mj_ws(v); if (*p != '[') return l; p = mj_ws(p + 1); while (*p && *p != ']') {{ const char* e = mj_end(p); l = maca_list_pushed(l, (long)mj_take(p, e)); p = mj_ws(e); if (*p == ',') p = mj_ws(p + 1); }} return l; }}\n"
+
+/// The JSON text for a value of this type, as one C expression.
+c_json_text(ty: str, code: str, d: int) -> str {
+    el = c_elem_of(ty)
+
+    if ty == "int" {
+        "maca_int_to_str({code})"
+    } else if ty == "float" {
+        "maca_float_to_str({code})"
+    } else if ty == "bool" {
+        "maca_bool_to_str({code})"
+    } else if ty == "str" {
+        "maca_json_quote({code})"
+    } else if el != "" {
+        c_json_arr(el, code, d)
+    } else {
+        "maca_json_of_{c_id(ty)}({code})"
+    }
+}
+
+c_json_arr(el: str, code: str, d: int) -> str {
+    xs = "_ja{str(d)}"
+    ix = "_jb{str(d)}"
+    acc = "_jc{str(d)}"
+
+    "({{ MacaList {xs} = {code}; char* {acc} = maca_cat(\"[\", \"\");"
+        ++ " for (int {ix} = 0; {ix} < {xs}.len; {ix}++) {{"
+        ++ " if ({ix}) {acc} = maca_cat({acc}, \",\");"
+        ++ " {acc} = maca_cat({acc},"
+        ++ " {c_json_text(el, c_cell_at(xs, el, ix), d + 1)}); }}"
+        ++ " maca_cat({acc}, \"]\"); }})"
+}
+
+/// The value of this type read out of the JSON text `code`, as one C expression.
+c_json_read(ty: str, code: str, field: str, d: int) -> str {
+    el = c_elem_of(ty)
+
+    if ty == "int" {
+        "maca_json_int({code})"
+    } else if ty == "float" {
+        "maca_json_float({code})"
+    } else if ty == "bool" {
+        "maca_json_bool({code})"
+    } else if ty == "str" {
+        "maca_json_str({code})"
+    } else if el != "" {
+        c_json_rows(el, code, field, d)
+    } else {
+        "maca_json_to_{c_id(ty)}({code}, \"{field}\")"
+    }
+}
+
+c_json_rows(el: str, code: str, field: str, d: int) -> str {
+    raw = "_jr{str(d)}"
+    out = "_jo{str(d)}"
+    ix = "_jk{str(d)}"
+    one = c_json_read(el, "((const char*){raw}.data[{ix}])", field, d + 1)
+
+    "({{ MacaList {raw} = maca_json_items({code});"
+        ++ " MacaList {out} = maca_listv(0);"
+        ++ " for (int {ix} = 0; {ix} < {raw}.len; {ix}++)"
+        ++ " {out} = maca_list_pushed({out}, {c_cell_of(el, one)});"
+        ++ " {out}; }})"
+}
+
+/// What JSON writes a value of this type as, named the way a diagnostic says it.
+c_json_kind(items: Stmt[], ty: str) -> str {
+    if ty == "int" || ty == "float" {
+        "a number"
+    } else if ty == "bool" {
+        "a boolean"
+    } else if ty == "str" || is_sum_name(items, ty) {
+        "a string"
+    } else if c_elem_of(ty) != "" {
+        "a list"
+    } else {
+        "an object"
+    }
+}
+
+is_sum_name(items: Stmt[], ty: str) -> bool {
+    if items.length() == 0 {
+        false
+    } else {
+        one = items.get(0)
+
+        one.kind == SSum && one.name == ty
+            ? true
+            : is_sum_name(items.slice(1, items.length()), ty)
+    }
+}
+
+c_json_of_rec(s: Stmt) -> str =>
+    "static char* maca_json_of_{c_id(s.name)}({type_c(s.name)} _v) {{"
+        ++ " char* _s = maca_cat(\"{{\", \"\");{c_json_puts(s.params, 0)}"
+        ++ " return maca_cat(_s, \"}}\"); }}\n"
+
+c_json_puts(fs: Expr[], i: int) -> str {
+    if i >= fs.length() {
+        ""
+    } else {
+        f = fs.get(i)
+        lead = i == 0 ? "" : ","
+
+        " _s = maca_cat(_s, \"{lead}\\\"{f.text}\\\":\");"
+            ++ " _s = maca_cat(_s, {c_json_text(f.ty, "_v.{c_id(f.text)}", 0)});"
+            ++ c_json_puts(fs, i + 1)
+    }
+}
+
+c_json_to_rec(items: Stmt[], s: Stmt) -> str =>
+    "static {type_c(s.name)} maca_json_to_{c_id(s.name)}(const char* _t,"
+        ++ " const char* _w) {{ const char* _o = maca_json_object(_t, _w);"
+        ++ " {type_c(s.name)} _v;{c_json_gets(items, s.params, 0)}"
+        ++ " return _v; }}\n"
+
+c_json_gets(items: Stmt[], fs: Expr[], i: int) -> str {
+    if i >= fs.length() {
+        ""
+    } else {
+        f = fs.get(i)
+        got = "maca_json_want(_o, \"{f.text}\", \"{c_json_kind(items, f.ty)}\")"
+
+        " _v.{c_id(f.text)} = {c_json_read(f.ty, got, f.text, 0)};"
+            ++ c_json_gets(items, fs, i + 1)
+    }
+}
+
+c_json_of_sum(s: Stmt) -> str =>
+    "static char* maca_json_of_{c_id(s.name)}({type_c(s.name)} _v) {{"
+        ++ " return maca_json_quote({c_json_names(s.params, 0)}); }}\n"
+
+c_json_names(vs: Expr[], i: int) -> str {
+    if i >= vs.length() {
+        "\"\""
+    } else {
+        "_v == {vs.get(i).text} ? \"{vs.get(i).text.lower()}\""
+            ++ " : {c_json_names(vs, i + 1)}"
+    }
+}
+
+c_json_to_sum(s: Stmt) -> str =>
+    "static {type_c(s.name)} maca_json_to_{c_id(s.name)}(const char* _t,"
+        ++ " const char* _w) {{ char* _s = maca_json_str(_t);"
+        ++ "{c_json_picks(s.params, 0)}"
+        ++ " maca_fail(maca_cat(\"`\", maca_cat(_w, maca_cat(\"`: \\\"\","
+        ++ " maca_cat(_s, \"\\\" is not one of {c_json_list(s.params, 0)}\""
+        ++ ")))));"
+        ++ " return {s.params.get(0).text}; }}\n"
+
+c_json_picks(vs: Expr[], i: int) -> str {
+    if i >= vs.length() {
+        ""
+    } else {
+        v = vs.get(i)
+
+        " if (strcmp(_s, \"{v.text.lower()}\") == 0) return {v.text};"
+            ++ c_json_picks(vs, i + 1)
+    }
+}
+
+c_json_list(vs: Expr[], i: int) -> str {
+    if i >= vs.length() {
+        ""
+    } else if i == vs.length() - 1 {
+        vs.get(i).text.lower()
+    } else {
+        "{vs.get(i).text.lower()}, {c_json_list(vs, i + 1)}"
+    }
+}
+
+/// Every record and sum a program's `encode` and `decode` reach, fields included.
+json_wanted(items: Stmt[]) -> str[] =>
+    json_closed(items, json_seeds(items, 0, []), items.length())
+
+json_seeds(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else {
+        s = items.get(i)
+        seen = is_typed_decode(s) ? json_add(acc, base_type(s.ret)) : acc
+
+        json_seeds(items, i + 1,
+                   json_seeds(s.body, 0, json_seeds_in(s.value, seen)))
+    }
+}
+
+json_seeds_in(e: Expr, acc: str[]) -> str[] {
+    seen = e.kind == ECall && e.text == "encode" && e.children.length() == 1
+        ? json_add(acc, base_type(e.children.get(0).ty))
+        : acc
+
+    json_seeds(e.stmts, 0, json_seed_kids(e.children, 0, seen))
+}
+
+json_seed_kids(xs: Expr[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        json_seed_kids(xs, i + 1, json_seeds_in(xs.get(i), acc))
+    }
+}
+
+json_closed(items: Stmt[], names: str[], fuel: int) -> str[] {
+    grown = json_grow(items, names, 0, names)
+
+    if fuel <= 0 || grown.length() == names.length() {
+        names
+    } else {
+        json_closed(items, grown, fuel - 1)
+    }
+}
+
+json_grow(items: Stmt[], names: str[], i: int, acc: str[]) -> str[] {
+    if i >= names.length() {
+        acc
+    } else {
+        json_grow(items, names, i + 1,
+                  json_field_types(json_fields_of(items, names.get(i), 0),
+                                   0, acc))
+    }
+}
+
+json_fields_of(items: Stmt[], name: str, i: int) -> Expr[] {
+    if i >= items.length() {
+        []
+    } else if items.get(i).kind == SRecord && items.get(i).name == name {
+        items.get(i).params
+    } else {
+        json_fields_of(items, name, i + 1)
+    }
+}
+
+json_field_types(fs: Expr[], i: int, acc: str[]) -> str[] {
+    if i >= fs.length() {
+        acc
+    } else {
+        json_field_types(fs, i + 1, json_add(acc, base_type(fs.get(i).ty)))
+    }
+}
+
+json_add(acc: str[], name: str) -> str[] =>
+    upper_word(name) && acc.index_of(name) < 0 ? acc.push(name) : acc
+
+base_type(ty: str) -> str =>
+    c_elem_of(ty) != "" ? base_type(c_elem_of(ty)) : ty
+
+is_typed_decode(s: Stmt) -> bool =>
+    s.kind == SBind && s.ret != "" && is_decode_call(s.value)
+
+is_decode_call(e: Expr) -> bool =>
+    e.kind == ECall && e.text == "decode" && e.children.length() == 1
+
+c_bound(s: Stmt) -> str {
+    if is_typed_decode(s) {
+        c_json_read(s.ret, emit_expr(s.value.children.get(0)),
+                    base_type(s.ret), 0)
+    } else {
+        emit_expr(s.value)
+    }
+}
+
+c_json(items: Stmt[], names: str[], bare: str) -> str {
+    defs = c_json_protos(items, names, 0) ++ c_json_bodies(items, names, 0)
+
+    if defs == "" && !c_uses(bare, "maca_json_") {
+        ""
+    } else {
+        c_json_runtime() ++ defs
+    }
+}
+
+c_json_protos(items: Stmt[], names: str[], i: int) -> str {
+    if i >= names.length() {
+        ""
+    } else {
+        s = json_type_item(items, names.get(i), 0)
+        here = s.name == "" ? "" :
+            "static char* maca_json_of_{c_id(s.name)}({type_c(s.name)} _v);\n"
+                ++ "static {type_c(s.name)} maca_json_to_{c_id(s.name)}("
+                ++ "const char* _t, const char* _w);\n"
+
+        here ++ c_json_protos(items, names, i + 1)
+    }
+}
+
+c_json_bodies(items: Stmt[], names: str[], i: int) -> str {
+    if i >= names.length() {
+        ""
+    } else {
+        s = json_type_item(items, names.get(i), 0)
+        here = if s.name == "" {
+            ""
+        } else if s.kind == SRecord {
+            c_json_of_rec(s) ++ c_json_to_rec(items, s)
+        } else {
+            c_json_of_sum(s) ++ c_json_to_sum(s)
+        }
+
+        here ++ c_json_bodies(items, names, i + 1)
+    }
+}
+
+/// The record or nullary sum this name declares, or a nameless one when it declares neither.
+json_type_item(items: Stmt[], name: str, i: int) -> Stmt {
+    if i >= items.length() {
+        s_record("", [])
+    } else if json_codable(items.get(i)) && items.get(i).name == name {
+        items.get(i)
+    } else {
+        json_type_item(items, name, i + 1)
+    }
+}
+
+json_codable(s: Stmt) -> bool =>
+    s.kind == SRecord || (s.kind == SSum && payload_arity(s.params, 0) == 0)
+
 emit_module(m: Module) -> str {
     protos = emit_protos(m.items, 0)
     code = protos ++ emit_starts(m.items) ++ emit_bodies(m.items, 0)
@@ -1562,7 +1895,9 @@ emit_module(m: Module) -> str {
 
     c_preamble() ++ c_styles(m, code) ++ c_errors(bare)
         ++ c_process(bare) ++ c_threads(bare) ++ c_sockets(bare)
-        ++ emit_types(m.items, 0) ++ emit_consts(m.items, 0) ++ code
+        ++ emit_types(m.items, 0)
+        ++ c_json(m.items, json_wanted(m.items), bare)
+        ++ emit_consts(m.items, 0) ++ code
         ++ c_mqtt(c_bare(protos)) ++ c_ffi(protos)
 }
 

@@ -1,0 +1,123 @@
+import std/json
+
+Layout = List | Grid
+
+Link = {
+    title: str
+    url: str
+    pinned: bool
+}
+
+Config = {
+    columns: int
+    layout: Layout
+    links: Link[]
+    scale: float
+}
+
+sample() -> Config =>
+    Config { columns = 3, layout = Grid, scale = 1.5,
+             links = [Link { title = "Docs", url = "/d", pinned = true },
+                      Link { title = "Mail", url = "/m", pinned = false }] }
+
+read_config(text: str) -> Config {
+    c: Config = decode(text)
+    c
+}
+
+test_a_record_encodes_field_by_field() {
+    assert_eq(encode(Link { title = "Docs", url = "/d", pinned = true }),
+              "\{\"title\":\"Docs\",\"url\":\"/d\",\"pinned\":true\}",
+              "every field, in the record's own order")
+}
+
+test_a_sum_is_its_variant_name_in_lower_case() {
+    assert(encode(sample()).contains("\"layout\":\"grid\""),
+           "`Grid` is written `grid`")
+}
+
+test_a_nested_list_of_records_round_trips() {
+    back = read_config(encode(sample()))
+
+    assert_eq("{back.columns}", "3", "a number")
+    assert_eq("{back.scale}", "1.5", "a float")
+    assert_eq(encode(back.layout), "\"grid\"", "the variant came back")
+    assert_eq("{back.links.length()}", "2", "both links")
+    assert_eq(back.links.get(0).title, "Docs", "the first one's text")
+    assert_eq(back.links.get(1).url, "/m", "the second one's url")
+    assert(back.links.get(0).pinned, "a true flag")
+    assert(!back.links.get(1).pinned, "and a false one")
+}
+
+test_encoding_what_was_decoded_gives_the_same_text() {
+    once = encode(sample())
+
+    assert_eq(encode(read_config(once)), once, "a fixed point")
+}
+
+test_text_a_quote_lives_inside_survives_the_round_trip() {
+    said = Link { title = "a \"b\" c", url = "/x", pinned = false }
+
+    assert_eq(read_config(encode(sample() with { links = [said] }))
+                  .links.get(0).title,
+              "a \"b\" c", "the escape came back as the character")
+}
+
+test_a_field_of_the_wrong_type_names_the_field() {
+    why = try read_config("\{\"columns\":\"three\",\"layout\":\"grid\","
+                              ++ "\"links\":[],\"scale\":1.0\}")
+
+    assert(why.contains("`columns`"), "names the field: {why}")
+    assert(why.contains("expected a number"), "says what it needed: {why}")
+    assert(why.contains("got a string"), "and what it found: {why}")
+}
+
+test_a_missing_field_names_the_field() {
+    why = try read_config("\{\"layout\":\"grid\",\"links\":[],\"scale\":1.0\}")
+
+    assert(why.contains("`columns`"), "names the field: {why}")
+    assert(why.contains("no such field"), "says it is absent: {why}")
+}
+
+test_a_variant_the_sum_does_not_have_names_the_field() {
+    why = try read_config("\{\"columns\":1,\"layout\":\"table\","
+                              ++ "\"links\":[],\"scale\":1.0\}")
+
+    assert(why.contains("`layout`"), "names the field: {why}")
+    assert(why.contains("\"table\""), "quotes what it was given: {why}")
+    assert(why.contains("list, grid"), "and lists what it accepts: {why}")
+}
+
+test_a_bad_field_inside_a_nested_record_names_that_field() {
+    why = try read_config("\{\"columns\":1,\"layout\":\"grid\",\"scale\":1.0,"
+                              ++ "\"links\":[\{\"title\":\"a\",\"url\":\"/a\"\}]\}")
+
+    assert(why.contains("`pinned`"), "the field the element is missing: {why}")
+}
+
+test_text_that_is_not_an_object_names_the_type() {
+    why = try read_config("[1, 2, 3]")
+
+    assert(why.contains("`Config`"), "names the type: {why}")
+    assert(why.contains("expected an object"), "and what it wanted: {why}")
+}
+
+test_a_decode_that_matches_raises_nothing() {
+    assert_eq(try read_config(encode(sample())), "", "no failure caught")
+}
+
+main() -> int {
+    test_a_record_encodes_field_by_field()
+    test_a_sum_is_its_variant_name_in_lower_case()
+    test_a_nested_list_of_records_round_trips()
+    test_encoding_what_was_decoded_gives_the_same_text()
+    test_text_a_quote_lives_inside_survives_the_round_trip()
+    test_a_field_of_the_wrong_type_names_the_field()
+    test_a_missing_field_names_the_field()
+    test_a_variant_the_sum_does_not_have_names_the_field()
+    test_a_bad_field_inside_a_nested_record_names_that_field()
+    test_text_that_is_not_an_object_names_the_type()
+    test_a_decode_that_matches_raises_nothing()
+
+    failures()
+}
