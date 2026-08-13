@@ -96,11 +96,12 @@ jv_members(items: Stmt[], fns: str[], i: int, acc: str) -> str {
 jv_bind(s: Stmt, items: Stmt[], fns: str[]) -> str =>
     jv_is_impl(s, fns) ? jv_impl(s, items) : jv_const(s)
 
-/// A declared type over a record of function names is an interface, and Java wants a class for it.
+/// A declared type over a record of functions or lambdas is an interface, and Java wants a class for it.
 jv_is_impl(s: Stmt, fns: str[]) -> bool =>
     jv_user_type(s.ret) && s.value.kind == ERecord
         && s.value.children.length() > 0
-        && jv_all_fns(s.value.children, fns, 0)
+        && (jv_all_fns(s.value.children, fns, 0)
+            || all_lambda_fields(s.value.children, 0))
 
 jv_all_fns(fs: Expr[], fns: str[], i: int) -> bool {
     if i >= fs.length() {
@@ -123,15 +124,28 @@ jv_impl_methods(fs: Expr[], items: Stmt[], i: int, acc: str) -> str {
     if i >= fs.length() {
         acc
     } else {
-        made = jv_named_fn(items, 0, fs.get(i).children.get(1).text)
-        one = "        public void {jv_id(fs.get(i).children.get(0).text)}"
-            ++ "({jv_params(made.params, 0, "")}) {{\n            "
-            ++ "{jv_id(made.name)}({jv_names(made.params, 0, "")});\n"
-            ++ "        }}\n"
-
-        jv_impl_methods(fs, items, i + 1, acc ++ one)
+        jv_impl_methods(fs, items, i + 1,
+                        acc ++ jv_impl_method(fs.get(i), items))
     }
 }
+
+/// A field either names a function or is a lambda, and Java wants a method body from both.
+jv_impl_method(f: Expr, items: Stmt[]) -> str {
+    if f.children.get(1).kind == ELambda {
+        jv_impl_shape(f.children.get(0).text,
+                      jv_params(lambda_params(f.children.get(1)), 0, ""),
+                      "{jv_expr(lambda_body(f.children.get(1)))};")
+    } else {
+        made = jv_named_fn(items, 0, f.children.get(1).text)
+
+        jv_impl_shape(f.children.get(0).text, jv_params(made.params, 0, ""),
+                      "{jv_id(made.name)}({jv_names(made.params, 0, "")});")
+    }
+}
+
+jv_impl_shape(name: str, params: str, body: str) -> str =>
+    "        public void {jv_id(name)}({params}) {{\n"
+        ++ "            {body}\n        }}\n"
 
 jv_named_fn(items: Stmt[], i: int, name: str) -> Stmt {
     if i >= items.length() {
