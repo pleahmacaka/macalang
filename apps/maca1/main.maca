@@ -1623,7 +1623,7 @@ cc_flags() -> str[] =>
 build_cmd(args: str[]) -> int {
     named = build_src(args, 1, "")
     src = named != "" ? named : declared_bin("build", flag_after(args, "--bin"))
-    chain = src == "" ? [] : chain_of(src)
+    chain: str[] = src == "" ? [] : chain_of(src)
     stray = stray_build_key(chain, 0)
 
     if src == "" {
@@ -3678,7 +3678,7 @@ frames_of(d: Dump) -> Span[] {
 
 frames_at(d: Dump, f: Call, at: Frame, path: str[], acc: Span[]) -> Span[] {
     mine = acc.length()
-    kids = at.depth + 1 >= ProfileDepth ? [] : calls_of(d, f.to)
+    kids: Call[] = at.depth + 1 >= ProfileDepth ? [] : calls_of(d, f.to)
     box = Span { name = f.to, start = at.x, end = at.x + f.ir,
                  depth = at.depth, parent = at.parent, closed = true }
 
