@@ -783,6 +783,87 @@ emit_match(e: Expr) -> str =>
     emit_arms(emit_expr(e.children.get(0)), e.children, 1,
               c_elem_of(e.children.get(0).ty), e.children.get(0).ty)
 
+/// A `return` is a statement, so an arm that holds one answers from a chain of them rather than from a ternary.
+emit_match_tail(e: Expr, ret: str) -> str =>
+    tail_arms(emit_expr(e.children.get(0)), e.children, 1,
+              any_bound(e.children, 1), c_elem_of(e.children.get(0).ty),
+              e.children.get(0).ty, ret)
+
+tail_arms(scrut: str, cs: Expr[], i: int, tagged: bool, el: str, sum: str,
+          ret: str) -> str {
+    if i + 1 >= cs.length() {
+        "return {c_zero(ret)};"
+    } else if cs.get(i).text == "_" && cs.get(i).kind != EGuard {
+        "{{ {tail_arm(scrut, cs.get(i), cs.get(i + 1), el, sum, ret)} }}"
+    } else {
+        "if ({test(scrut, cs.get(i), tagged, el)}) {{ "
+            ++ "{tail_arm(scrut, cs.get(i), cs.get(i + 1), el, sum, ret)} }}"
+            ++ " else {tail_arms(scrut, cs, i + 2, tagged, el, sum, ret)}"
+    }
+}
+
+tail_arm(scrut: str, pat: Expr, body: Expr, el: str, sum: str,
+         ret: str) -> str {
+    if pat.kind == EGuard {
+        tail_arm(scrut, pat.children.get(0), body, el, sum, ret)
+    } else if is_cells_pat(pat) && pat.children.length() > 0 {
+        "{bind_cells(scrut, pat, el, 0)}{tail_value(body, ret)}"
+    } else if is_bind_pat(pat) {
+        "{bind_one(scrut, pat)}{tail_value(body, ret)}"
+    } else if pat.children.length() == 0 || is_alt_pat(pat) {
+        tail_value(body, ret)
+    } else if is_fields_pat(pat) {
+        "{bind_fields(scrut, pat.children, 0)}{tail_value(body, ret)}"
+    } else {
+        "{bind_slots(scrut, pat.children, sum, 0)}{tail_value(body, ret)}"
+    }
+}
+
+/// The statement that leaves the function with what this expression answers.
+tail_value(e: Expr, ret: str) -> str {
+    if e.kind == EJump {
+        "{emit_jump(e, ret)};"
+    } else if e.kind == EBlock {
+        "{block_stmts(e.stmts, 0)}{tail_value(e.children.get(0), ret)}"
+    } else if e.kind == EIf && !is_missing_else(e.children.get(2)) {
+        emit_if_tail(e, ret)
+    } else if e.kind == EMatch {
+        emit_match_tail(e, ret)
+    } else {
+        "return {emit_expr(e)};"
+    }
+}
+
+emit_if_tail(e: Expr, ret: str) -> str =>
+    "if ({emit_expr(e.children.get(0))})"
+        ++ " {{ {tail_value(e.children.get(1), ret)} }}"
+        ++ " else {{ {tail_value(e.children.get(2), ret)} }}"
+
+/// A branch or an arm whose own answer is a `return`, which no ternary may hold.
+holds_return(e: Expr) -> bool {
+    if e.kind == EJump && e.text == "return" {
+        true
+    } else if e.kind == EBlock {
+        holds_return(e.children.get(0))
+    } else if e.kind == EIf && !is_missing_else(e.children.get(2)) {
+        holds_return(e.children.get(1)) || holds_return(e.children.get(2))
+    } else if e.kind == EMatch {
+        arm_returns(e.children, 1)
+    } else {
+        false
+    }
+}
+
+arm_returns(cs: Expr[], i: int) -> bool {
+    if i + 1 >= cs.length() {
+        false
+    } else if holds_return(cs.get(i + 1)) {
+        true
+    } else {
+        arm_returns(cs, i + 2)
+    }
+}
+
 /// A match run for its effect answers nothing, so its arms are statements.
 emit_match_stmt(e: Expr) -> str =>
     stmt_arms(emit_expr(e.children.get(0)), e.children, 1,
@@ -1302,6 +1383,8 @@ emit_stmt(s: Stmt, is_last: bool, ret: str) -> str {
         "{emit_if_stmt(s.value)} return {c_zero(ret)};"
     } else if s.value.kind == EJump {
         "{emit_jump(s.value, ret)};"
+    } else if is_last && holds_return(s.value) {
+        tail_value(s.value, ret)
     } else if is_last && is_raise(s.value) {
         "{emit_expr(s.value)}; return {c_zero(ret)};"
     } else if is_last {

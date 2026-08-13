@@ -78,6 +78,71 @@ test_the_second_build_of_a_program_is_a_copy_and_not_a_compile() {
            "MACA_NO_CACHE=1 was answered out of the cache anyway")
 }
 
+/// A program that embeds a file is made of that file too, so the cache has to answer for it.
+embedding(name: str, note: str) -> str {
+    src = "{scratch()}/{name}"
+
+    write_file(src, "note: str = data(\"{note}\")\n\nmain() -> int \{\n"
+                        ++ "    info(note)\n    0\n\}\n")
+
+    src
+}
+
+test_a_program_that_embeds_a_file_is_still_cached() {
+    write_file("{scratch()}/kept_note.txt", "kept {Stamp}")
+
+    src = embedding("keeper.maca", "kept_note.txt")
+    cold = built(src, "keeper1")
+    warm = built(src, "keeper2")
+
+    assert(warm * 2 < cold,
+           "a repeated build took {str(warm)}ms against {str(cold)}ms cold, "
+               ++ "so embedding a file turned the cache off")
+}
+
+test_one_character_of_an_embedded_file_is_a_binary_of_its_own() {
+    note = "{scratch()}/edited_note.txt"
+    src = embedding("edits_a_note.maca", "edited_note.txt")
+    out = "{scratch()}/edits_a_note"
+
+    remove_file(note ++ ".local")
+    remove_file("{scratch()}/edited_note.local.txt")
+    write_file(note, "one {Stamp}")
+    exec(maca_bin(), ["build", src, "-o", out])
+
+    first = capture(out, []).trim()
+
+    write_file(note, "two {Stamp}")
+    exec(maca_bin(), ["build", src, "-o", out])
+
+    assert_eq(first, "one {Stamp}", "the built program says what it embedded")
+    assert_eq(capture(out, []).trim(), "two {Stamp}",
+              "an edited embedded file is compiled again, not served from "
+                  ++ "the cache")
+}
+
+test_a_local_companion_appearing_beside_a_file_is_a_binary_of_its_own() {
+    note = "{scratch()}/shadowed_note.txt"
+    private = "{scratch()}/shadowed_note.local.txt"
+    src = embedding("reads_a_note.maca", "shadowed_note.txt")
+    out = "{scratch()}/reads_a_note"
+
+    remove_file(private)
+    write_file(note, "committed {Stamp}")
+    exec(maca_bin(), ["build", src, "-o", out])
+
+    first = capture(out, []).trim()
+
+    write_file(private, "private {Stamp}")
+    exec(maca_bin(), ["build", src, "-o", out])
+
+    assert_eq(first, "committed {Stamp}", "the committed file is what it read")
+    assert_eq(capture(out, []).trim(), "private {Stamp}",
+              "the .local companion appearing beside it is a build of its "
+                  ++ "own, not a cache hit")
+    remove_file(private)
+}
+
 test_one_character_of_the_source_is_a_binary_of_its_own() {
     src = fixture("edited.maca", "aa")
     out = "{scratch()}/edited"

@@ -1533,9 +1533,65 @@ cache_key(src: str) -> str {
     if off == "1" || off == "true" {
         ""
     } else {
+        unit = unit_of(src)
+
         capture("sh", ["-c", cache_probe(), "maca",
                        "native " ++ cc_flags().join(" ")]
-                    ++ unit_of(src).seen).trim()
+                    ++ unit.seen ++ embedded_files(src, unit.toks)).trim()
+    }
+}
+
+/// Every file `data(...)` reads while the program is built, and the `.local` name that would shadow it.
+embedded_files(src: str, ts: Token[]) -> str[] {
+    names: str[] = []
+    texts: str[] = []
+    out: str[] = []
+    i = 0
+
+    while i + 2 < ts.length() {
+        if ts.get(i).kind == TIdent && ts.get(i + 1).kind == Eq
+                && ts.get(i + 2).kind == TStr {
+            names = names.push(ts.get(i).text)
+            texts = texts.push(ts.get(i + 2).text)
+        }
+
+        i = i + 1
+    }
+
+    at = Assets { base = embed_dir(src), names, texts }
+    i = 0
+
+    while i + 2 < ts.length() {
+        spec = data_spec(ts, i, at)
+
+        if spec != "" {
+            out = out.push(at.base ++ spec)
+            out = out.push(at.base ++ local_spec(spec))
+        }
+
+        i = i + 1
+    }
+
+    out
+}
+
+data_spec(ts: Token[], i: int, at: Assets) -> str {
+    if ts.get(i).kind == TIdent && ts.get(i).text == "data"
+            && ts.get(i + 1).kind == LParen {
+        spec_token(ts.get(i + 2), at)
+    } else {
+        ""
+    }
+}
+
+/// The path a `data(...)` argument names, written out or bound to a constant beside it.
+spec_token(t: Token, at: Assets) -> str {
+    if t.kind == TStr {
+        t.text
+    } else if t.kind == TIdent && at.names.index_of(t.text) >= 0 {
+        at.texts.get(at.names.index_of(t.text))
+    } else {
+        ""
     }
 }
 
@@ -1544,7 +1600,8 @@ cache_probe() -> str =>
     "command -v sha512sum >/dev/null || exit 0; "
         ++ "exe=$(stat -Lc %Y /proc/$PPID/exe 2>/dev/null); "
         ++ "[ -n \"$exe\" ] || exit 0; ( printf %s \"$exe $1\"; shift; "
-        ++ "sha512sum \"$@\" | cut -d\" \" -f1 ) | sha512sum | cut -d\" \" -f1"
+        ++ "sha512sum \"$@\" 2>/dev/null | cut -d\" \" -f1 ) "
+        ++ "| sha512sum | cut -d\" \" -f1"
 
 /// A cached binary is copied out with the executable bit a fresh build would have left on it.
 cache_take(from: str, out: str) -> bool =>

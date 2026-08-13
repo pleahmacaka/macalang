@@ -307,6 +307,28 @@ test_a_record_that_holds_a_list_of_itself_still_defines() {
            "one list type for every element type is what keeps the definitions acyclic")
 }
 
+test_a_return_in_a_tail_position_is_a_statement_and_not_a_ternary() {
+    tail_if = gate_c("pick(n: int) -> str \{\n    if n == 1 \{\n"
+                     ++ "        return \"one\"\n    \} else \{\n"
+                     ++ "        \"many\"\n    \}\n\}")
+    tail_match = gate_c("pick(n: int) -> str \{\n    match n \{\n"
+                        ++ "        1 => \{\n            return \"one\"\n"
+                        ++ "        \}\n        _ => \"many\"\n    \}\n\}")
+
+    assert(tail_if.index_of("? return") < 0
+               && tail_match.index_of("? return") < 0,
+           "a `return` is a statement, and no ternary may hold one:\n"
+               ++ "{tail_if}{tail_match}")
+    assert(tail_if.index_of("if ((n == 1)) {{ return \"one\"; }}"
+                                ++ " else {{ return \"many\"; }}") >= 0,
+           "the branch that leaves and the branch that answers are both "
+               ++ "statements:\n{tail_if}")
+    assert(tail_match.index_of("if (n == 1) {{ return \"one\"; }}"
+                                   ++ " else {{ return \"many\"; }}") >= 0,
+           "and so are the arm that leaves and the arm that answers:\n"
+               ++ "{tail_match}")
+}
+
 test_a_shift_lowers_to_the_c_shift() {
     made = gate_c("mask(n: int) -> int => 1 << n\nhalf(n: int) -> int => n >> 1")
 
