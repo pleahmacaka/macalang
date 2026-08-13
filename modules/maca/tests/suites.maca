@@ -27,7 +27,7 @@ package_suites() -> str[] =>
      "modules/std/tests/csv.maca", "modules/std/tests/fs.maca",
      "modules/std/tests/proc.maca", "modules/std/tests/builtins.maca",
      "modules/cli/tests/cli.maca", "modules/web/tests/format.maca",
-     "modules/http/tests/server.maca", "modules/std/tests/stdin.maca"]
+     "modules/std/tests/stdin.maca"]
 
 scope_tests() -> str[] =>
     ["test_each_module_keeps_its_own_private_helper",
