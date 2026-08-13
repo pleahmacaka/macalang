@@ -682,10 +682,22 @@ function _minfo(x) { console.log(_mstr(x)); return 0; }
 function _merr(x) { console.error(_mstr(x)); return 0; }
 function _mprint(x) { const s = _mstr(x); if (typeof process !== "undefined" && process.stdout) process.stdout.write(s); else console.log(s); return 0; }
 function _mesc(v) { return String(v).split("&").join("&amp;").split("<").join("&lt;").split(">").join("&gt;").split('"').join("&quot;"); }
-function maca_attr(n, v) { return n ? " " + n + "=" + '"' + _mesc(v) + '"' : ""; }
-function maca_flag(n, on) { return on && n ? " " + n : ""; }
-const _mvoid = "area base br col embed hr img input link meta source track wbr".split(" ");
-function maca_element(t, a, k) { return _mvoid.includes(t) ? "<" + t + a + ">" : "<" + t + a + ">" + k + "</" + t + ">"; }
+function _mevent(n) { return n.startsWith("on:") ? n.slice(3) : (/^on[a-z]+$/.test(n) ? n.slice(2) : ""); }
+function maca_attr(n, v) {
+  return (node) => {
+    if (!n) return;
+    const ev = _mevent(n);
+    if (typeof v === "function") { if (ev) node.addEventListener(ev, v); return; }
+    node.setAttribute(n, String(v));
+  };
+}
+function maca_flag(n, on) { return (node) => { if (on && n) node.setAttribute(n, ""); }; }
+function maca_element(t, a, k) {
+  const node = document.createElement(t);
+  for (const set of a) set(node);
+  for (const kid of k) node.append(kid && kid.nodeType ? kid : String(kid));
+  return node;
+}
 let _mfailed = 0;
 globalThis.maca = globalThis.maca || {
   _hosts: Object.create(null),
@@ -856,9 +868,9 @@ js_variant_ref(v: Expr) -> str =>
 
 /// A view answers with a page, and a page nobody puts on screen is a page nobody sees.
 js_mount() -> str =>
-    "\nconst _mview = main();\nif (typeof document !== \"undefined\" && "
-        ++ "document.getElementById(\"app\")) "
-        ++ "document.getElementById(\"app\").innerHTML = _mview;\n"
+    "\nconst _mview = main();\nconst _mroot = typeof document === \"undefined\" "
+        ++ "? null : document.getElementById(\"app\");\n"
+        ++ "if (_mroot) {{ _mroot.replaceChildren(); _mroot.append(_mview); }}\n"
 
 /// A program answers with a code, and the process answers with the same one.
 js_exit() -> str =>

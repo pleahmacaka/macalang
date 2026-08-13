@@ -158,7 +158,8 @@ test_a_module_that_supplies_a_function_reaches_the_page_that_uses_it() {
            "the page did not build: {said}")
 
     write_file(dir ++ "/page.js",
-        "const store = new Map([[\"page.note\", JSON.stringify(\"kept\")]]);\n"
+        FakeDom
+            ++ "const store = new Map([[\"page.note\", JSON.stringify(\"kept\")]]);\n"
             ++ "globalThis.localStorage = {{ getItem: k => store.has(k) ? "
             ++ "store.get(k) : null, setItem: (k, v) => store.set(k, "
             ++ "String(v)), removeItem: k => store.delete(k) }};\n"
@@ -190,15 +191,55 @@ test_a_view_is_put_on_the_page_rather_than_computed_and_dropped() {
            "the page did not build: {said}")
 
     write_file(dir ++ "/paint.js",
-        "let painted = null;\n"
-            ++ "const node = {{ set innerHTML(v) {{ painted = v; }} }};\n"
-            ++ "globalThis.document = {{ getElementById: id => id === "
-            ++ "\"app\" ? node : null }};\n"
-            ++ page_scripts(dir ++ "/out/index.html")
-            ++ "\nconsole.log(painted);\n")
+        FakeDom ++ page_scripts(dir ++ "/out/index.html")
+            ++ "\nconsole.log(_root.kids.length + \":\" + "
+            ++ "_root.kids[0].tag + \":\" + _root.text);\n")
 
-    assert_eq(capture("node", [dir ++ "/paint.js"]).trim(),
-              "<div><span>hello</span></div>",
+    assert_eq(capture("node", [dir ++ "/paint.js"]).trim(), "1:div:hello",
               "a view nobody puts on screen is a blank page: "
                   ++ capture_err("node", [dir ++ "/paint.js"]))
 }
+
+test_a_handler_is_attached_to_the_node_and_runs_when_it_fires() {
+    if !have("node") {
+        return
+    }
+
+    dir = scratch("click")
+    src = dir ++ "/home.maca"
+
+    write_file(src, "hits = 0\n\nbump() -> int {{\n"
+        ++ "    hits = hits + 1\n    0\n}}\n\n"
+        ++ "main() -> Element =>\n"
+        ++ "    div(button(onclick=bump \"press\"))\n")
+
+    said = capture_err(maca_bin(), ["build", "--target", "js", src, "-o",
+                                    dir ++ "/out"])
+
+    assert(file_exists(dir ++ "/out/index.html"),
+           "the page did not build: {said}")
+
+    write_file(dir ++ "/click.js",
+        FakeDom ++ page_scripts(dir ++ "/out/index.html")
+            ++ "\nconst _btn = _root.kids[0].kids[0];\n"
+            ++ "_btn.on.click[0]();\n_btn.on.click[0]();\n"
+            ++ "console.log(_btn.tag + \":\" + hits);\n")
+
+    assert_eq(capture("node", [dir ++ "/click.js"]).trim(), "button:2",
+              "a handler belongs on the node, not in the markup: "
+                  ++ capture_err("node", [dir ++ "/click.js"]))
+}
+
+/// A page needs somewhere to put nodes, and this is the least of one that still tells them apart.
+FakeDom = """
+function _mk(t) {
+  return { tag: t, attrs: {}, kids: [], on: {}, nodeType: 1,
+    setAttribute(k, v) { this.attrs[k] = v; },
+    addEventListener(e, f) { (this.on[e] = this.on[e] || []).push(f); },
+    append(...xs) { this.kids.push(...xs); },
+    replaceChildren() { this.kids = []; },
+    get text() { return this.kids.map((k) => (k.nodeType ? k.text : String(k))).join(""); } };
+}
+const _root = _mk("div");
+globalThis.document = { createElement: _mk, getElementById: (id) => (id === "app" ? _root : null) };
+"""

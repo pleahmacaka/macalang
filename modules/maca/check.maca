@@ -2269,9 +2269,11 @@ lowered_element(env: Env, e: Expr) -> Expr {
     from = named ? 1 : 0
     tag = named ? e.children.get(0) : e_str(e.text)
 
+    empty = env.target == "js" ? e_list([]) : e_str("")
+
     e_call("maca_element",
-           [tag, element_attrs(env, e.children, from, e_str("")),
-            element_kids(env, e.children, from, e_str(""))])
+           [tag, element_attrs(env, e.children, from, empty),
+            element_kids(env, e.children, from, empty)])
 }
 
 element_attrs(env: Env, cs: Expr[], i: int, acc: Expr) -> Expr {
@@ -2287,13 +2289,16 @@ element_attrs(env: Env, cs: Expr[], i: int, acc: Expr) -> Expr {
 
 one_attribute(env: Env, a: Expr) -> Expr {
     value = a.children.get(0)
+    flag = resolve(env.infer, type_in(env, value).ty).kind == KBool
+    made = flag ? e_call("maca_flag", [e_str(a.text), value])
+                : e_call("maca_attr", [e_str(a.text), attr_value(env, value)])
 
-    if resolve(env.infer, type_in(env, value).ty).kind == KBool {
-        e_call("maca_flag", [e_str(a.text), value])
-    } else {
-        e_call("maca_attr", [e_str(a.text), as_html_text(env, value)])
-    }
+    env.target == "js" ? e_list([made]) : made
 }
+
+/// A browser attaches a handler to a node, so what the page holds is the value and not its text.
+attr_value(env: Env, v: Expr) -> Expr =>
+    env.target == "js" ? v : as_html_text(env, v)
 
 element_kids(env: Env, cs: Expr[], i: int, acc: Expr) -> Expr {
     if i >= cs.length() {
@@ -2302,9 +2307,12 @@ element_kids(env: Env, cs: Expr[], i: int, acc: Expr) -> Expr {
         element_kids(env, cs, i + 1, acc)
     } else {
         element_kids(env, cs, i + 1,
-                     e_binary("++", acc, as_html_text(env, cs.get(i))))
+                     e_binary("++", acc, one_kid(env, cs.get(i))))
     }
 }
+
+one_kid(env: Env, v: Expr) -> Expr =>
+    env.target == "js" ? e_list([v]) : as_html_text(env, v)
 
 as_html_text(env: Env, v: Expr) -> Expr {
     t = resolve(env.infer, type_in(env, v).ty)
