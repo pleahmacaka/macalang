@@ -683,11 +683,15 @@ function _merr(x) { console.error(_mstr(x)); return 0; }
 function _mprint(x) { const s = _mstr(x); if (typeof process !== "undefined" && process.stdout) process.stdout.write(s); else console.log(s); return 0; }
 function _mesc(v) { return String(v).split("&").join("&amp;").split("<").join("&lt;").split(">").join("&gt;").split('"').join("&quot;"); }
 function _mevent(n) { return n.startsWith("on:") ? n.slice(3) : (/^on[a-z]+$/.test(n) ? n.slice(2) : ""); }
+let _mpaint = () => {};
 function maca_attr(n, v) {
   return (node) => {
     if (!n) return;
     const ev = _mevent(n);
-    if (typeof v === "function") { if (ev) node.addEventListener(ev, v); return; }
+    if (typeof v === "function") {
+      if (ev) node.addEventListener(ev, (e) => { const out = v(e); _mpaint(); return out; });
+      return;
+    }
     node.setAttribute(n, String(v));
   };
 }
@@ -868,9 +872,10 @@ js_variant_ref(v: Expr) -> str =>
 
 /// A view answers with a page, and a page nobody puts on screen is a page nobody sees.
 js_mount() -> str =>
-    "\nconst _mview = main();\nconst _mroot = typeof document === \"undefined\" "
+    "\nconst _mroot = typeof document === \"undefined\" "
         ++ "? null : document.getElementById(\"app\");\n"
-        ++ "if (_mroot) {{ _mroot.replaceChildren(); _mroot.append(_mview); }}\n"
+        ++ "_mpaint = () => {{ if (_mroot) {{ _mroot.replaceChildren();"
+        ++ " _mroot.append(main()); }} }};\n_mpaint();\n"
 
 /// A program answers with a code, and the process answers with the same one.
 js_exit() -> str =>

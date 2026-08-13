@@ -211,7 +211,8 @@ test_a_handler_is_attached_to_the_node_and_runs_when_it_fires() {
     write_file(src, "hits = 0\n\nbump() -> int {{\n"
         ++ "    hits = hits + 1\n    0\n}}\n\n"
         ++ "main() -> Element =>\n"
-        ++ "    div(button(onclick=bump \"press\"))\n")
+        ++ "    div(button(onclick=bump \"press\") span("
+        ++ "\"{{hits}}\"))\n")
 
     said = capture_err(maca_bin(), ["build", "--target", "js", src, "-o",
                                     dir ++ "/out"])
@@ -221,13 +222,14 @@ test_a_handler_is_attached_to_the_node_and_runs_when_it_fires() {
 
     write_file(dir ++ "/click.js",
         FakeDom ++ page_scripts(dir ++ "/out/index.html")
-            ++ "\nconst _btn = _root.kids[0].kids[0];\n"
-            ++ "_btn.on.click[0]();\n_btn.on.click[0]();\n"
-            ++ "console.log(_btn.tag + \":\" + hits);\n")
+            ++ "\n_root.kids[0].kids[0].on.click[0]();\n"
+            ++ "_root.kids[0].kids[0].on.click[0]();\n"
+            ++ "console.log(_root.text);\n")
 
-    assert_eq(capture("node", [dir ++ "/click.js"]).trim(), "button:2",
-              "a handler belongs on the node, not in the markup: "
-                  ++ capture_err("node", [dir ++ "/click.js"]))
+    assert_eq(capture("node", [dir ++ "/click.js"]).trim(), "press2",
+              "a handler belongs on the node, and what it writes is on screen "
+                  ++ "when it returns: " ++ capture_err("node",
+                                                        [dir ++ "/click.js"]))
 }
 
 /// A page needs somewhere to put nodes, and this is the least of one that still tells them apart.
