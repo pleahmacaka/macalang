@@ -452,3 +452,28 @@ test_check_names_the_file_data_cannot_read() {
     assert(!said.contains("M0006"),
         "and an editor holding no filesystem still knows both names: {said}")
 }
+
+test_a_brace_after_an_arrow_that_reads_two_ways_is_refused() {
+    refused("crates/driver/tests/programs/bad_arrow_ambiguous.maca",
+        "reads as a record literal and as a block")
+    refused("crates/driver/tests/programs/bad_arrow_ambiguous.maca",
+        "Write `Name {{ … }}` for the record")
+    refused("crates/driver/tests/programs/bad_arrow_ambiguous.maca",
+        "drop the `=>` for the block")
+    refused("crates/driver/tests/programs/bad_arrow_one_field.maca",
+        "reads as a record literal and as a block")
+}
+
+test_a_literal_written_into_a_record_type_names_its_fields() {
+    refused("crates/driver/tests/programs/bad_record_missing_field.maca",
+        "`Point` is missing field(s): y")
+    refused("crates/driver/tests/programs/bad_record_extra_field.maca",
+        "`Point` has no field `z`")
+}
+
+test_a_literal_of_another_shape_beside_a_record_is_refused() {
+    refused("crates/driver/tests/programs/bad_record_shape_in_list.maca",
+        "`Point` has no field `host`")
+    refused("crates/driver/tests/programs/bad_record_missing_in_list.maca",
+        "`Point` is missing field(s): y")
+}

@@ -124,6 +124,7 @@ typedef struct { MacaList params; long pnext; } PParams;
 typedef struct { MacaList bstmts; long bnext; } PBlock;
 typedef struct { MacaList aitems; long anext; } PArgs;
 typedef struct { const char* tname; long tnext; } PType;
+typedef enum { ABlock, ARecord, ABoth } ArrowRead;
 typedef enum { KInt, KFloat, KStr, KBool, KBytes, KUnit, KAny, KError, KVar, KCon, KFn, KRec, KOpt } TyKind;
 typedef struct { MacaList subst; } Infer;
 typedef struct { const char* code; const char* message; const char* note; long pos; } Diagnostic;
@@ -346,6 +347,10 @@ PType type_post(MacaList ts, PType t);
 const char* return_type(MacaList ts, long at);
 long after_return_type(MacaList ts, long at);
 PStmt mk_arrow_fn(MacaList ts, const char* name, const char* ret, MacaList params, long at);
+ArrowRead arrow_read(MacaList ts, long open_mc);
+long brace_step(Kind kind, long j, long shut);
+const char* entry_field(MacaList ts, long from, long upto);
+long brace_end(MacaList ts, long i, long depth);
 PExpr parse_list_expr(MacaList ts, long i);
 PExpr more_elems(MacaList ts, long i, MacaList acc);
 PStmt mk_block_fn(MacaList ts, const char* name, const char* ret, MacaList params, long at);
@@ -384,6 +389,7 @@ PParams one_variant(MacaList ts, long i, MacaList acc);
 PExpr parse_variant(MacaList ts, long i);
 PExpr parse_payload(MacaList ts, long i, Expr v);
 Module parse_fn_item(MacaList ts, long i, MacaList acc, MacaList bad);
+MacaList arrow_doubt(MacaList ts, long i);
 Module parse_record_decl(MacaList ts, long i, MacaList acc, MacaList bad);
 PParams parse_fields(MacaList ts, long i, MacaList acc);
 PParams parse_one_field(MacaList ts, long i, MacaList acc);
@@ -685,7 +691,7 @@ Env effect_arms(Env env, MacaList cs, long i);
 Env extend(Env env, Stmt s, Ty ty);
 Env sealed(Env env, Stmt s);
 Env return_check(Env env, const char* declared, Ty actual);
-Env checked_module(Module m);
+Env checked_module(Module raw);
 long check_module(Module m);
 Env check_items(Env env, MacaList items, long i);
 Env check_item(Env env, Stmt s);
@@ -711,7 +717,7 @@ const char* surface_of(Ty t);
 const char* con_surface(Ty t);
 const char* fn_surface(Ty t);
 const char* surface_joined(MacaList ts, long i);
-Module annotated(Module m);
+Module annotated(Module raw);
 MacaList annotate_items(Env env, MacaList items, long i, MacaList acc);
 Stmt annotate_item(Env env, Stmt s);
 Expr annotated_methods(Env env, Expr e);
@@ -726,6 +732,20 @@ MacaList grounded_all(Infer inf, MacaList ts, long i);
 MacaList annotate_body(Env env, MacaList stmts, long i, MacaList acc);
 Stmt reassigned(Env env, Stmt s);
 Expr annotate_expr(Env env, Expr e);
+Expr named_lit(Env env, Ty want, Expr e);
+Ty elem_want(Env env, Ty want, Expr e);
+Ty list_want(Env env, MacaList xs, long i);
+Ty elem_named(Env env, Expr e);
+MacaList named_elems(Env env, Ty want, MacaList xs, long i, MacaList acc);
+MacaList named_lit_fields(Env env, const char* rec, MacaList fs, long i, MacaList acc);
+Expr named_lit_field(Env env, const char* rec, Expr f);
+Module named_module(Module m);
+MacaList named_stmts(Env env, MacaList ss, long i, MacaList acc);
+Stmt named_stmt(Env env, Ty want, Stmt s);
+MacaList named_body(Env env, Stmt s, long i, MacaList acc);
+Expr named_in(Env env, Ty want, Expr e);
+Expr named_kids(Env env, Expr e);
+MacaList named_children(Env env, MacaList tys, MacaList xs, long i, MacaList acc);
 long holds_fn(Env env, const char* name);
 long is_bound_name(Expr e);
 long is_field_call(Env env, Expr e);
@@ -2384,7 +2404,11 @@ long is_tyvar_name(const char* w) { return ((((int)strlen(w)) == 1) && (!is_uppe
 PType type_post(MacaList ts, PType t) { long listed = (((*(Token*)ts.data[t.tnext]).kind == LBracket) && ((*(Token*)ts.data[(t.tnext + 1)]).kind == RBracket)); long dotted = (((*(Token*)ts.data[t.tnext]).kind == Dot) && ((*(Token*)ts.data[(t.tnext + 1)]).kind == TIdent)); return (listed ? type_post(ts, mk_ptype(maca_cat(t.tname, "[]"), (t.tnext + 2))) : (dotted ? type_post(ts, mk_ptype(maca_cat(maca_cat(maca_cat("", t.tname), "."), (*(Token*)ts.data[(t.tnext + 1)]).text), (t.tnext + 2))) : t));  }
 const char* return_type(MacaList ts, long at) { return (((*(Token*)ts.data[at]).kind != Arrow) ? "" : scan_type(ts, (at + 1)).tname);  }
 long after_return_type(MacaList ts, long at) { return (((*(Token*)ts.data[at]).kind != Arrow) ? at : scan_type(ts, (at + 1)).tnext);  }
-PStmt mk_arrow_fn(MacaList ts, const char* name, const char* ret, MacaList params, long at) { PExpr be = parse_list_expr(ts, (at + 1)); return mk_pstmt(s_fn(name, ret, params, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ s_expr(be.node) }))), be.next);  }
+PStmt mk_arrow_fn(MacaList ts, const char* name, const char* ret, MacaList params, long at) { return ((((*(Token*)ts.data[(at + 1)]).kind == LBrace) && (arrow_read(ts, (at + 1)) != ARecord)) ? ({ PBlock pb = parse_block(ts, (at + 2), maca_listv(0)); mk_pstmt(s_fn(name, ret, params, pb.bstmts), pb.bnext); }) : ({ PExpr be = parse_list_expr(ts, (at + 1)); mk_pstmt(s_fn(name, ret, params, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ s_expr(be.node) }))), be.next); }));  }
+ArrowRead arrow_read(MacaList ts, long open_mc) { long shut = brace_end(ts, (open_mc + 1), 0); if ((shut >= (ts.len))) { return ABlock; } MacaList names = maca_listv(0); long depth = 0; long comma = 0; long start = (open_mc + 1); long j = (open_mc + 1); while ((j <= shut)) { Kind kind = (*(Token*)ts.data[j]).kind; long cut = (((j == shut) || ((depth == 0) && (kind == Comma))) || (((depth == 0) && (*(Token*)ts.data[j]).fresh) && (j > start))); if (cut) { const char* named = entry_field(ts, start, j); if (((j > start) && ((strcmp(named, "") == 0) || (maca_list_index_of_str(names, named) >= 0)))) { return ABlock; } if ((j > start)) { names = maca_list_pushed(names, (long)(named)); names; } comma = (comma || ((kind == Comma) && (depth == 0))); start = ((kind == Comma) ? (j + 1) : j); start; } depth = (depth + brace_step(kind, j, shut)); j = (j + 1); } return (((names.len) == 0) ? ABlock : (comma ? ARecord : ABoth));  }
+long brace_step(Kind kind, long j, long shut) { return ((j >= shut) ? 0 : ((((kind == LParen) || (kind == LBracket)) || (kind == LBrace)) ? 1 : ((((kind == RParen) || (kind == RBracket)) || (kind == RBrace)) ? (0 - 1) : 0)));  }
+const char* entry_field(MacaList ts, long from, long upto) { return (((((upto - from) > 2) && ((*(Token*)ts.data[from]).kind == TIdent)) && ((*(Token*)ts.data[(from + 1)]).kind == Eq)) ? (*(Token*)ts.data[from]).text : "");  }
+long brace_end(MacaList ts, long i, long depth) { Kind k = (*(Token*)ts.data[i]).kind; return (((k == Eof) || (i >= (ts.len))) ? (ts.len) : (((k == RBrace) && (depth == 0)) ? i : ((((k == LParen) || (k == LBracket)) || (k == LBrace)) ? brace_end(ts, (i + 1), (depth + 1)) : ((((k == RParen) || (k == RBracket)) || (k == RBrace)) ? brace_end(ts, (i + 1), (depth - 1)) : brace_end(ts, (i + 1), depth)))));  }
 PExpr parse_list_expr(MacaList ts, long i) { PExpr e = parse_expr(ts, i); return (((*(Token*)ts.data[e.next]).kind != Comma) ? e : more_elems(ts, (e.next + 1), maca_listv(1, maca_box(sizeof(Expr), (Expr[]){ e.node }))));  }
 PExpr more_elems(MacaList ts, long i, MacaList acc) { PExpr e = parse_expr(ts, i); MacaList seen = maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Expr), (Expr[]){ e.node }))); return (((*(Token*)ts.data[e.next]).kind == Comma) ? more_elems(ts, (e.next + 1), seen) : mk_pexpr(e_list(seen), e.next));  }
 PStmt mk_block_fn(MacaList ts, const char* name, const char* ret, MacaList params, long at) { PBlock pb = parse_block(ts, (at + 1), maca_listv(0)); return mk_pstmt(s_fn(name, ret, params, pb.bstmts), pb.bnext);  }
@@ -2422,7 +2446,8 @@ PParams parse_variants(MacaList ts, long i, MacaList acc) { return (((*(Token*)t
 PParams one_variant(MacaList ts, long i, MacaList acc) { PExpr v = parse_variant(ts, i); MacaList seen = maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Expr), (Expr[]){ v.node }))); return (((*(Token*)ts.data[v.next]).kind == Bar) ? parse_variants(ts, (v.next + 1), seen) : mk_pparams(seen, v.next));  }
 PExpr parse_variant(MacaList ts, long i) { Expr named = e_ident((*(Token*)ts.data[i]).text); return (((*(Token*)ts.data[(i + 1)]).kind == LParen) ? parse_payload(ts, (i + 2), named) : mk_pexpr(named, (i + 1)));  }
 PExpr parse_payload(MacaList ts, long i, Expr v) { return ((((*(Token*)ts.data[i]).kind == Eof) || ((*(Token*)ts.data[i]).kind == RParen)) ? mk_pexpr(v, (i + 1)) : (((*(Token*)ts.data[i]).kind == Comma) ? parse_payload(ts, (i + 1), v) : ({ Expr ty = e_typed((*(Token*)ts.data[i]).text, (*(Token*)ts.data[i]).text); parse_payload(ts, (i + 1), with_child(v, ty)); })));  }
-Module parse_fn_item(MacaList ts, long i, MacaList acc, MacaList bad) { PStmt ps = parse_fn(ts, i); return parse_items(ts, ps.snext, maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ ps.snode }))), bad);  }
+Module parse_fn_item(MacaList ts, long i, MacaList acc, MacaList bad) { PStmt ps = parse_fn(ts, i); return parse_items(ts, ps.snext, maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ ps.snode }))), maca_list_cat(bad, arrow_doubt(ts, i)));  }
+MacaList arrow_doubt(MacaList ts, long i) { PParams pp = parse_params(ts, (i + 2), maca_listv(0)); long at = after_return_type(ts, (pp.pnext + 1)); return (((((*(Token*)ts.data[at]).kind != FatArrow) || ((*(Token*)ts.data[(at + 1)]).kind != LBrace)) || (arrow_read(ts, (at + 1)) != ABoth)) ? maca_listv(0) : maca_listv(1, (long)(maca_cat(maca_cat(maca_cat(maca_cat("`", (*(Token*)ts.data[i]).text), "`: this `=> { … }` reads as a record literal and"), " as a block. Write `Name { … }` for the record, or drop the"), " `=>` for the block"))));  }
 Module parse_record_decl(MacaList ts, long i, MacaList acc, MacaList bad) { const char* name = (*(Token*)ts.data[i]).text; PParams rf = parse_fields(ts, (bind_eq_at(ts, (i + 1)) + 2), maca_listv(0)); return parse_items(ts, (rf.pnext + 1), maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ s_record(name, rf.params) }))), bad);  }
 PParams parse_fields(MacaList ts, long i, MacaList acc) { return ((((*(Token*)ts.data[i]).kind == Eof) || ((*(Token*)ts.data[i]).kind == RBrace)) ? mk_pparams(acc, i) : parse_one_field(ts, i, acc));  }
 PParams parse_one_field(MacaList ts, long i, MacaList acc) { PType t = scan_type(ts, (i + 2)); MacaList seen = maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Expr), (Expr[]){ e_param((*(Token*)ts.data[i]).text, t.tname) }))); return parse_fields(ts, skip_comma(ts, t.tnext), seen);  }
@@ -2724,7 +2749,7 @@ Env effect_arms(Env env, MacaList cs, long i) { return (((i + 1) >= (cs.len)) ? 
 Env extend(Env env, Stmt s, Ty ty) { return ((s.kind != SBind) ? env : ((maca_list_index_of_str(env.frozen, s.name) >= 0) ? complain_as(env, "M0005", maca_cat(maca_cat(maca_cat(maca_cat("cannot reassign constant `", s.name), "`;"), " declare it mutable with"), maca_cat(maca_cat(" `", s.name), " = …` (no `const`)"))) : ((strcmp(s.ret, "") != 0) ? sealed(bind_mc(joined(env, ty_named(s.ret), ty), s.name, ty_named(s.ret)), s) : sealed(bind_mc(env, s.name, ty), s))));  }
 Env sealed(Env env, Stmt s) { return ((s.frozen || starts_upper(s.name)) ? ({ __typeof__(env) _w = env; _w.frozen = maca_list_cat(env.frozen, maca_listv(1, (long)(s.name))); _w; }) : env);  }
 Env return_check(Env env, const char* declared, Ty actual) { return ((strcmp(declared, "") == 0) ? env : joined(env, ty_named(declared), actual));  }
-Env checked_module(Module m) { Env start = env_of_module(m); Env inferred = check_items(start, m.items, 0); return check_items(with_infer(start, inferred.infer), m.items, 0);  }
+Env checked_module(Module raw) { Module m = named_module(raw); Env start = env_of_module(m); Env inferred = check_items(start, m.items, 0); return check_items(with_infer(start, inferred.infer), m.items, 0);  }
 long check_module(Module m) { return (checked_module(m).errors.len);  }
 Env check_items(Env env, MacaList items, long i) { return ((i >= (items.len)) ? env : check_items(check_item(env, (*(Stmt*)items.data[i])), items, (i + 1)));  }
 Env check_item(Env env, Stmt s) { return ((s.kind == SFn) ? check_fn_in(({ __typeof__(env) _w = env; _w.here = s.pos; _w; }), s) : env);  }
@@ -2750,7 +2775,7 @@ const char* surface_of(Ty t) { return (t.kind == KInt ? "int" : (t.kind == KFloa
 const char* con_surface(Ty t) { return (((strcmp(t.name, "Array") == 0) && ((t.args.len) == 1)) ? maca_cat(surface_of((*(Ty*)t.args.data[0])), "[]") : t.name);  }
 const char* fn_surface(Ty t) { return maca_cat(maca_cat(maca_cat("(", surface_joined(fn_params(t), 0)), ") -> "), surface_of(fn_ret(t)));  }
 const char* surface_joined(MacaList ts, long i) { return ((i >= (ts.len)) ? "" : ((i == ((ts.len) - 1)) ? surface_of((*(Ty*)ts.data[i])) : maca_cat(maca_cat(surface_of((*(Ty*)ts.data[i])), ", "), surface_joined(ts, (i + 1)))));  }
-Module annotated(Module m) { return (Module){ .items = annotate_items(checked_module(m), m.items, 0, maca_listv(0)), .errors = m.errors };  }
+Module annotated(Module raw) { Module m = named_module(raw); return (Module){ .items = annotate_items(checked_module(m), m.items, 0, maca_listv(0)), .errors = m.errors };  }
 MacaList annotate_items(Env env, MacaList items, long i, MacaList acc) { return ((i >= (items.len)) ? acc : annotate_items(env, items, (i + 1), maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ annotate_item(env, (*(Stmt*)items.data[i])) })))));  }
 Stmt annotate_item(Env env, Stmt s) { return (is_impl_block(s) ? ({ __typeof__(s) _w = s; _w.value = annotated_methods(env, s.value); _w; }) : ((s.kind == SBind) ? ({ __typeof__(s) _w = s; _w.value = annotate_expr(env, s.value); _w; }) : ((s.kind != SFn) ? s : ({ MacaList tys = signature_params(env, s.name); Env inner = bind_params(env, s.params, tys, 0); long keep = ((s.body.len) > 0); ({ __typeof__(s) _w = s; _w.ret = erased_ret(item_ret(env, s), keep); _w.params = annotate_params(env, s.params, tys, 0, keep); _w.body = annotate_body(inner, s.body, 0, maca_listv(0)); _w; }); }))));  }
 Expr annotated_methods(Env env, Expr e) { return ({ __typeof__(e) _w = e; _w.children = annotated_each(env, e.children, 0, maca_listv(0)); _w; });  }
@@ -2765,6 +2790,20 @@ MacaList grounded_all(Infer inf, MacaList ts, long i) { return ((i >= (ts.len)) 
 MacaList annotate_body(Env env, MacaList stmts, long i, MacaList acc) { return ((i >= (stmts.len)) ? acc : ({ Stmt st = reassigned(env, (*(Stmt*)stmts.data[i])); Typed got = type_in(env, st.value); Stmt marked = ({ __typeof__(st) _w = st; _w.value = annotate_expr(env, st.value); _w; }); annotate_body(extend(got.env, st, got.ty), stmts, (i + 1), maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ marked })))); }));  }
 Stmt reassigned(Env env, Stmt s) { return (((s.kind == SBind) && (maca_list_index_of_str(env.names, s.name) >= 0)) ? ({ __typeof__(s) _w = s; _w.kind = SSet; _w; }) : s);  }
 Expr annotate_expr(Env env, Expr e) { return (is_element_call(env, e) ? annotate_expr(env, lowered_element(env, e)) : (is_rest_call(env, e) ? annotated_node(env, gathered_rest(env, e)) : (is_field_call(env, e) ? annotated_node(env, ({ __typeof__(e) _w = e; _w.ival = 1; _w; })) : (is_rest_method(env, e) ? annotate_expr(env, e_call(e.text, e.children)) : (((e.kind == ECall) && holds_fn(env, e.text)) ? annotated_node(env, ({ __typeof__(e) _w = e; _w.ival = 2; _w; })) : (((e.kind == EIdent) && holds_fn(env, e.text)) ? annotated_node(env, ({ __typeof__(e) _w = e; _w.ival = 3; _w; })) : (((e.kind == EIdent) && (maca_list_index_of_str(env.names, e.text) >= 0)) ? annotated_node(env, ({ __typeof__(e) _w = e; _w.ival = 4; _w; })) : annotated_node(env, e))))))));  }
+Expr named_lit(Env env, Ty want, Expr e) { Ty got = resolve(env.infer, want); return ((e.kind == EList) ? ({ __typeof__(e) _w = e; _w.children = named_elems(env, elem_want(env, got, e), e.children, 0, maca_listv(0)); _w; }) : (((((got.kind == KCon) && (e.kind == ERecord)) && (strcmp(e.text, "") == 0)) && declares_field(env, got.name, 0)) ? ({ __typeof__(e) _w = e; _w.text = got.name; _w.children = named_lit_fields(env, got.name, e.children, 0, maca_listv(0)); _w; }) : e));  }
+Ty elem_want(Env env, Ty want, Expr e) { return ((((want.kind == KCon) && (strcmp(want.name, "Array") == 0)) && ((want.args.len) == 1)) ? (*(Ty*)want.args.data[0]) : list_want(env, e.children, 0));  }
+Ty list_want(Env env, MacaList xs, long i) { return ((i >= (xs.len)) ? t_any() : ({ Ty got = elem_named(env, (*(Expr*)xs.data[i])); (((got.kind == KCon) && declares_field(env, got.name, 0)) ? got : list_want(env, xs, (i + 1))); }));  }
+Ty elem_named(Env env, Expr e) { return (((e.kind == ERecord) && (strcmp(e.text, "") != 0)) ? t_con(e.text, maca_listv(0)) : ((e.kind == ECall) ? resolve(env.infer, signature_ret(env, e.text)) : t_any()));  }
+MacaList named_elems(Env env, Ty want, MacaList xs, long i, MacaList acc) { return ((i >= (xs.len)) ? acc : named_elems(env, want, xs, (i + 1), maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Expr), (Expr[]){ named_lit(env, want, (*(Expr*)xs.data[i])) })))));  }
+MacaList named_lit_fields(Env env, const char* rec, MacaList fs, long i, MacaList acc) { return ((i >= (fs.len)) ? acc : named_lit_fields(env, rec, fs, (i + 1), maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Expr), (Expr[]){ named_lit_field(env, rec, (*(Expr*)fs.data[i])) })))));  }
+Expr named_lit_field(Env env, const char* rec, Expr f) { long at = maca_list_index_of_str(env.fields, maca_cat(maca_cat(rec, "."), (*(Expr*)f.children.data[0]).text)); return (((at < 0) || ((f.children.len) < 2)) ? f : ({ __typeof__(f) _w = f; _w.children = maca_listv(2, maca_box(sizeof(Expr), (Expr[]){ (*(Expr*)f.children.data[0]) }), maca_box(sizeof(Expr), (Expr[]){ named_lit(env, (*(Ty*)env.ftypes.data[at]), (*(Expr*)f.children.data[1])) })); _w; }));  }
+Module named_module(Module m) { Env env = env_of_module(m); return (Module){ .items = named_stmts(env, m.items, 0, maca_listv(0)), .errors = m.errors };  }
+MacaList named_stmts(Env env, MacaList ss, long i, MacaList acc) { return ((i >= (ss.len)) ? acc : named_stmts(env, ss, (i + 1), maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ named_stmt(env, t_any(), (*(Stmt*)ss.data[i])) })))));  }
+Stmt named_stmt(Env env, Ty want, Stmt s) { Ty wanted = (((s.kind == SBind) && (strcmp(s.ret, "") != 0)) ? ty_named(s.ret) : want); return ({ __typeof__(s) _w = s; _w.value = named_in(env, wanted, s.value); _w.body = named_body(env, s, 0, maca_listv(0)); _w; });  }
+MacaList named_body(Env env, Stmt s, long i, MacaList acc) { return ((i >= (s.body.len)) ? acc : ({ long tail = ((s.kind == SFn) && (i == ((s.body.len) - 1))); Ty want = (tail ? ty_named(s.ret) : t_any()); named_body(env, s, (i + 1), maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Stmt), (Stmt[]){ named_stmt(env, want, (*(Stmt*)s.body.data[i])) })))); }));  }
+Expr named_in(Env env, Ty want, Expr e) { return named_kids(env, named_lit(env, want, e));  }
+Expr named_kids(Env env, Expr e) { MacaList tys = ((e.kind == ECall) ? signature_params(env, e.text) : maca_listv(0)); return ({ __typeof__(e) _w = e; _w.children = named_children(env, tys, e.children, 0, maca_listv(0)); _w.stmts = named_stmts(env, e.stmts, 0, maca_listv(0)); _w; });  }
+MacaList named_children(Env env, MacaList tys, MacaList xs, long i, MacaList acc) { return ((i >= (xs.len)) ? acc : ({ Ty want = ((i < (tys.len)) ? (*(Ty*)tys.data[i]) : t_any()); named_children(env, tys, xs, (i + 1), maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Expr), (Expr[]){ named_in(env, want, (*(Expr*)xs.data[i])) })))); }));  }
 long holds_fn(Env env, const char* name) { long at = maca_list_index_of_str(env.names, name); return ((at < 0) ? 0 : (resolve(env.infer, (*(Ty*)env.types.data[at])).kind == KFn));  }
 long is_bound_name(Expr e) { return ((e.kind == EIdent) && ((e.ival == 3) || (e.ival == 4)));  }
 long is_field_call(Env env, Expr e) { return ((e.kind == EMethod) && (field_fn_ty(env, resolve(env.infer, type_in(env, (*(Expr*)e.children.data[0])).ty), e.text).kind == KFn));  }

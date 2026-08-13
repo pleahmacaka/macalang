@@ -152,8 +152,101 @@ after_return_type(ts: Token[], at: int) -> int {
 
 mk_arrow_fn(ts: Token[], name: str, ret: str, params: Expr[],
             at: int) -> PStmt {
-    be = parse_list_expr(ts, at + 1)
-    mk_pstmt(s_fn(name, ret, params, [s_expr(be.node)]), be.next)
+    if ts.get(at + 1).kind == LBrace && arrow_read(ts, at + 1) != ARecord {
+        pb = parse_block(ts, at + 2, [])
+
+        mk_pstmt(s_fn(name, ret, params, pb.bstmts), pb.bnext)
+    } else {
+        be = parse_list_expr(ts, at + 1)
+
+        mk_pstmt(s_fn(name, ret, params, [s_expr(be.node)]), be.next)
+    }
+}
+
+ArrowRead = ABlock | ARecord | ABoth
+
+/// A brace after `=>` holds fields when every entry is a distinct `name = value`, and a comma settles it.
+arrow_read(ts: Token[], open: int) -> ArrowRead {
+    shut = brace_end(ts, open + 1, 0)
+
+    if shut >= ts.length() {
+        return ABlock
+    }
+
+    names: str[] = []
+    depth = 0
+    comma = false
+    start = open + 1
+    j = open + 1
+
+    while j <= shut {
+        kind = ts.get(j).kind
+        cut = j == shut || (depth == 0 && kind == Comma)
+            || (depth == 0 && ts.get(j).fresh && j > start)
+
+        if cut {
+            named = entry_field(ts, start, j)
+
+            if j > start && (named == "" || names.index_of(named) >= 0) {
+                return ABlock
+            }
+            if j > start {
+                names = names.push(named)
+            }
+
+            comma = comma || (kind == Comma && depth == 0)
+            start = kind == Comma ? j + 1 : j
+        }
+
+        depth = depth + brace_step(kind, j, shut)
+        j = j + 1
+    }
+
+    if names.length() == 0 {
+        ABlock
+    } else if comma {
+        ARecord
+    } else {
+        ABoth
+    }
+}
+
+brace_step(kind: Kind, j: int, shut: int) -> int {
+    if j >= shut {
+        0
+    } else if kind == LParen || kind == LBracket || kind == LBrace {
+        1
+    } else if kind == RParen || kind == RBracket || kind == RBrace {
+        0 - 1
+    } else {
+        0
+    }
+}
+
+/// The field an entry names, which is a name, an `=`, and something after it.
+entry_field(ts: Token[], from: int, upto: int) -> str {
+    if upto - from > 2 && ts.get(from).kind == TIdent
+            && ts.get(from + 1).kind == Eq {
+        ts.get(from).text
+    } else {
+        ""
+    }
+}
+
+brace_end(ts: Token[], i: int, depth: int) -> int {
+    k = ts.get(i).kind
+
+    if k == Eof || i >= ts.length() {
+        ts.length()
+    } else if k == RBrace && depth == 0 {
+        i
+    } else if k == LParen || k == LBracket || k == LBrace {
+        brace_end(ts, i + 1, depth + 1)
+    } else if k == RParen || k == RBracket || k == RBrace {
+        brace_end(ts, i + 1, depth - 1)
+    } else {
+        brace_end(ts, i + 1, depth)
+    }
 }
 
 parse_list_expr(ts: Token[], i: int) -> PExpr {
@@ -468,7 +561,22 @@ parse_payload(ts: Token[], i: int, v: Expr) -> PExpr {
 
 parse_fn_item(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
     ps = parse_fn(ts, i)
-    parse_items(ts, ps.snext, acc ++ [ps.snode], bad)
+    parse_items(ts, ps.snext, acc ++ [ps.snode], bad ++ arrow_doubt(ts, i))
+}
+
+/// Both readings hold, so neither is taken, and the two spellings are named.
+arrow_doubt(ts: Token[], i: int) -> str[] {
+    pp = parse_params(ts, i + 2, [])
+    at = after_return_type(ts, pp.pnext + 1)
+
+    if ts.get(at).kind != FatArrow || ts.get(at + 1).kind != LBrace
+            || arrow_read(ts, at + 1) != ABoth {
+        []
+    } else {
+        ["`{ts.get(i).text}`: this `=> {{ … }}` reads as a record literal and"
+             ++ " as a block. Write `Name {{ … }}` for the record, or drop the"
+             ++ " `=>` for the block"]
+    }
 }
 
 parse_record_decl(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {

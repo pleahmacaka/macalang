@@ -100,3 +100,21 @@ test_the_module_state_suite_holds_on_the_js_target() {
     holds_on_the_js_target("crates/driver/tests/programs/module_state.maca",
                            "module_state")
 }
+
+test_an_arrow_block_body_is_a_block_on_the_js_target() {
+    if !have("node") {
+        return
+    }
+
+    at = emitted("crates/driver/tests/programs/arrow_records.maca",
+                 "arrow_records") ++ "/app.js"
+    probe = "const m = require(\"{at}\");"
+        ++ " if (m.several() !== 41) throw new Error(\"several: \" +"
+        ++ " m.several());"
+        ++ " if (m.one() !== 42) throw new Error(\"one: \" + m.one());"
+        ++ " console.log(\"ok\")"
+
+    assert_eq(capture("node", ["-e", probe]).trim(), "ok",
+              "the arrow block came out as a record: "
+                  ++ capture_err("node", ["-e", probe]))
+}

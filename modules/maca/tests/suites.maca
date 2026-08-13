@@ -81,6 +81,12 @@ test_the_figures_the_front_page_states_are_read_off_a_file() {
             ++ "readers are held to those files")
 }
 
+test_an_arrow_block_is_a_block_and_a_literal_meets_its_record_type() {
+    assert_eq(suite_code("crates/driver/tests/programs/arrow_records.maca"), 0,
+        "a `{{ … }}` with no name is the record its context wants, and a "
+            ++ "`=> {{ … }}` that is not fields is a block")
+}
+
 test_the_generated_pages_are_what_they_claim() {
     assert_eq(suite_code("crates/driver/tests/programs/sitegen.maca"), 0,
         "the site is generated, so the generator and the pages it writes are "

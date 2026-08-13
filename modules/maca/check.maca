@@ -1586,7 +1586,8 @@ return_check(env: Env, declared: str, actual: Ty) -> Env {
     }
 }
 
-checked_module(m: Module) -> Env {
+checked_module(raw: Module) -> Env {
+    m = named_module(raw)
     start = env_of_module(m)
     inferred = check_items(start, m.items, 0)
 
@@ -1776,9 +1777,12 @@ surface_joined(ts: Ty[], i: int) -> str {
     }
 }
 
-annotated(m: Module) -> Module =>
+annotated(raw: Module) -> Module {
+    m = named_module(raw)
+
     Module { items = annotate_items(checked_module(m), m.items, 0, []),
              errors = m.errors }
+}
 
 annotate_items(env: Env, items: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
     if i >= items.length() {
@@ -1921,6 +1925,144 @@ annotate_expr(env: Env, e: Expr) -> Expr {
         annotated_node(env, e with { ival = 4 })
     } else {
         annotated_node(env, e)
+    }
+}
+
+/// A `{ … }` with no name is the record the context wants, so the literal is a value of that type.
+named_lit(env: Env, want: Ty, e: Expr) -> Expr {
+    got = resolve(env.infer, want)
+
+    if e.kind == EList {
+        e with { children = named_elems(env, elem_want(env, got, e), e.children,
+                                        0, []) }
+    } else if got.kind == KCon && e.kind == ERecord && e.text == ""
+            && declares_field(env, got.name, 0) {
+        e with { text = got.name,
+                 children = named_lit_fields(env, got.name, e.children,
+                                             0, []) }
+    } else {
+        e
+    }
+}
+
+/// A list nobody typed is the type of the first element that names a record.
+elem_want(env: Env, want: Ty, e: Expr) -> Ty {
+    if want.kind == KCon && want.name == "Array" && want.args.length() == 1 {
+        want.args.get(0)
+    } else {
+        list_want(env, e.children, 0)
+    }
+}
+
+list_want(env: Env, xs: Expr[], i: int) -> Ty {
+    if i >= xs.length() {
+        t_any()
+    } else {
+        got = elem_named(env, xs.get(i))
+
+        got.kind == KCon && declares_field(env, got.name, 0)
+            ? got
+            : list_want(env, xs, i + 1)
+    }
+}
+
+elem_named(env: Env, e: Expr) -> Ty {
+    if e.kind == ERecord && e.text != "" {
+        t_con(e.text, [])
+    } else if e.kind == ECall {
+        resolve(env.infer, signature_ret(env, e.text))
+    } else {
+        t_any()
+    }
+}
+
+named_elems(env: Env, want: Ty, xs: Expr[], i: int, acc: Expr[]) -> Expr[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        named_elems(env, want, xs, i + 1,
+                    acc ++ [named_lit(env, want, xs.get(i))])
+    }
+}
+
+named_lit_fields(env: Env, rec: str, fs: Expr[], i: int,
+                 acc: Expr[]) -> Expr[] {
+    if i >= fs.length() {
+        acc
+    } else {
+        named_lit_fields(env, rec, fs, i + 1,
+                         acc ++ [named_lit_field(env, rec, fs.get(i))])
+    }
+}
+
+named_lit_field(env: Env, rec: str, f: Expr) -> Expr {
+    at = env.fields.index_of(rec ++ "." ++ f.children.get(0).text)
+
+    if at < 0 || f.children.length() < 2 {
+        f
+    } else {
+        f with { children = [f.children.get(0),
+                             named_lit(env, env.ftypes.get(at),
+                                       f.children.get(1))] }
+    }
+}
+
+/// Every literal in the module, named before anything reads it.
+named_module(m: Module) -> Module {
+    env = env_of_module(m)
+
+    Module { items = named_stmts(env, m.items, 0, []), errors = m.errors }
+}
+
+named_stmts(env: Env, ss: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
+    if i >= ss.length() {
+        acc
+    } else {
+        named_stmts(env, ss, i + 1,
+                    acc ++ [named_stmt(env, t_any(), ss.get(i))])
+    }
+}
+
+named_stmt(env: Env, want: Ty, s: Stmt) -> Stmt {
+    wanted = s.kind == SBind && s.ret != "" ? ty_named(s.ret) : want
+
+    s with { value = named_in(env, wanted, s.value),
+             body = named_body(env, s, 0, []) }
+}
+
+/// A function answers with the type it declares, so its last statement is that type's context.
+named_body(env: Env, s: Stmt, i: int, acc: Stmt[]) -> Stmt[] {
+    if i >= s.body.length() {
+        acc
+    } else {
+        tail = s.kind == SFn && i == s.body.length() - 1
+        want = tail ? ty_named(s.ret) : t_any()
+
+        named_body(env, s, i + 1,
+                   acc ++ [named_stmt(env, want, s.body.get(i))])
+    }
+}
+
+named_in(env: Env, want: Ty, e: Expr) -> Expr =>
+    named_kids(env, named_lit(env, want, e))
+
+/// An argument written as a bare literal is the record the parameter declares.
+named_kids(env: Env, e: Expr) -> Expr {
+    tys = e.kind == ECall ? signature_params(env, e.text) : []
+
+    e with { children = named_children(env, tys, e.children, 0, []),
+             stmts = named_stmts(env, e.stmts, 0, []) }
+}
+
+named_children(env: Env, tys: Ty[], xs: Expr[], i: int,
+               acc: Expr[]) -> Expr[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        want = i < tys.length() ? tys.get(i) : t_any()
+
+        named_children(env, tys, xs, i + 1,
+                       acc ++ [named_in(env, want, xs.get(i))])
     }
 }
 
