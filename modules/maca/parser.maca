@@ -579,14 +579,18 @@ parse_ternary(ts: Token[], cond: PExpr) -> PExpr {
 }
 
 parse_bin(ts: Token[], lhs: PExpr, min_prec: int) -> PExpr {
-    p = prec_of(ts.get(lhs.next).kind)
+    op = ts.get(lhs.next)
+    p = prec_of(op.kind)
 
-    if p < min_prec {
+    if p < min_prec || (op.fresh && !leads_a_line(op.kind)) {
         lhs
     } else {
         climb(ts, lhs, p, min_prec)
     }
 }
+
+leads_a_line(k: Kind) -> bool =>
+    k == PlusPlus || k == Bar || k == PipePipe || k == PipeGt || k == AmpAmp
 
 climb(ts: Token[], lhs: PExpr, p: int, min_prec: int) -> PExpr {
     op = ts.get(lhs.next).text

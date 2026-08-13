@@ -191,3 +191,19 @@ test_a_program_with_no_imports_still_builds_on_every_target() {
     assert_eq(str(made(conf, "nix", "plain.nix")), "0",
               "nix regressed on a config with no imports")
 }
+
+test_a_name_a_module_and_its_own_dependency_define_moves_twice() {
+    root = project("threeway")
+
+    wrote(root, "lib/deep.maca", "tag() -> str => \"deep\"\n")
+    wrote(root, "lib/mid.maca",
+          "import lib/deep\n\ntag() -> str => \"mid\"\n")
+    wrote(root, "app.maca",
+          "import lib/mid\n\ntag() -> str => \"app\"\n\n"
+              ++ "main() -> int {{\n    info(tag())\n    0\n}}\n")
+
+    assert_eq(ran(root), "app",
+              "a file and the last dependency it loads are two files, so the "
+                  ++ "name each of them moves out of the way lands somewhere "
+                  ++ "of its own")
+}

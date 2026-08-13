@@ -198,6 +198,14 @@ test_a_binding_shadows_a_foreign_namespace_of_the_same_name() {
         "every shadowing the suite states is one that ran")
 }
 
+test_a_module_value_is_computed_once_and_typed_by_its_initialiser() {
+    assert_eq(suite_code("crates/driver/tests/programs/module_values.maca"),
+        0,
+        "one value, computed once, carrying the type its initialiser "
+            ++ "answered, and an initialiser may name a function written "
+            ++ "further down the file")
+}
+
 test_the_native_back_end_regressions_still_hold() {
     assert_eq(suite_code("crates/driver/tests/programs/regressions.maca"), 0,
         "list patterns, pipes and a record literal nothing declared")

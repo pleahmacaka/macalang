@@ -22,15 +22,31 @@ Lexed = {
     errors: str[]
     pos: int
     broke: bool
+    depth: int
 }
 
 lexed(tokens: Token[], errors: str[]) -> Lexed =>
-    Lexed { tokens, marks = [], errors, pos = 0, broke = false }
+    Lexed { tokens, marks = [], errors, pos = 0, broke = false, depth = 0 }
+
+group_step(k: Kind) -> int {
+    if k == LParen || k == LBracket {
+        1
+    } else if k == RParen || k == RBracket {
+        -1
+    } else {
+        0
+    }
+}
 
 /// A token that opens a line is marked, so a postfix `[` or `.` cannot reach back across it.
-keep(acc: Lexed, t: Token) -> Lexed =>
-    acc with { tokens = acc.tokens.push(t with { fresh = acc.broke }),
+keep(acc: Lexed, t: Token) -> Lexed {
+    moved = acc.depth + group_step(t.kind)
+
+    acc with { tokens = acc.tokens.push(t with { fresh = acc.broke
+                                                     && acc.depth == 0 }),
+               depth = moved < 0 ? 0 : moved,
                broke = false }
+}
 
 mark(acc: Lexed, t: Token) -> Lexed =>
     acc with { marks = acc.marks.push(t) }
@@ -77,13 +93,13 @@ halves(cs: str[], out: Lexed, hi: int, mid: int) -> Lexed {
 
 emptied(acc: Lexed) -> Lexed =>
     Lexed { tokens = [], marks = [], errors = [], pos = acc.pos,
-            broke = acc.broke }
+            broke = acc.broke, depth = acc.depth }
 
 merged_runs(out: Lexed, left: Lexed, right: Lexed) -> Lexed =>
     Lexed { tokens = out.tokens ++ left.tokens ++ right.tokens,
             marks = out.marks ++ left.marks ++ right.marks,
             errors = out.errors ++ left.errors ++ right.errors,
-            pos = right.pos, broke = right.broke }
+            pos = right.pos, broke = right.broke, depth = right.depth }
 
 end_run(out: Lexed, i: int, n: int) -> Lexed {
     if n >= 4 {

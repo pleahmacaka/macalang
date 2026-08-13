@@ -2901,7 +2901,7 @@ spliced(deps: Unit, path: str, whole: Token[], errs: str[]) -> Unit {
     clash = clashing(mine, deps.names, 0, [])
     held = holding(deps, path, clash, 0, [])
     taken = without_names(clash, held, 0, [])
-    tag = str(deps.seen.length())
+    tag = str(deps.seen.index_of(path))
     toks = without_eof(whole)
     kept = taken.length() == 0 ? toks : renamed(toks, taken, tag, 0)
     base = held.length() == 0 ? deps.toks : renamed(deps.toks, held, tag, 0)

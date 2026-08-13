@@ -619,8 +619,8 @@ float_text(s: str) -> float {
     if at < 0 {
         float(int(s))
     } else {
-        float(int(s.slice(0, at)))
-            + scaled(int(s.slice(at + 1, s.length())), s.length() - at - 1)
+        float(int(s.slice(0, at))) +
+            scaled(int(s.slice(at + 1, s.length())), s.length() - at - 1)
     }
 }
 

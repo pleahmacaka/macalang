@@ -188,25 +188,33 @@ param_types(env: Env, ps: Expr[], i: int, acc: Ty[]) -> Signature {
 }
 
 env_of_module(m: Module) -> Env =>
-    collect_items(empty_env(), m.items, 0)
+    collect_consts(collect_shapes(empty_env(), m.items, 0), m.items, 0)
 
-collect_items(env: Env, items: Stmt[], i: int) -> Env {
+collect_shapes(env: Env, items: Stmt[], i: int) -> Env {
     if i >= items.length() {
         env
     } else {
-        collect_items(collect_item(env, items.get(i)), items, i + 1)
+        collect_shapes(shape_of(env, items.get(i)), items, i + 1)
     }
 }
 
-collect_item(env: Env, s: Stmt) -> Env {
+collect_consts(env: Env, items: Stmt[], i: int) -> Env {
+    if i >= items.length() {
+        env
+    } else if items.get(i).kind == SBind {
+        collect_consts(add_const(env, items.get(i)), items, i + 1)
+    } else {
+        collect_consts(env, items, i + 1)
+    }
+}
+
+shape_of(env: Env, s: Stmt) -> Env {
     if s.kind == SFn {
         add_fn(env, s)
     } else if s.kind == SRecord {
         add_fields(env, s.name, s.params, 0)
     } else if s.kind == SSum {
         add_ctors(env, s.name, s.params, 0)
-    } else if s.kind == SBind {
-        add_const(env, s)
     } else {
         env
     }

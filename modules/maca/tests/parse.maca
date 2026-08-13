@@ -143,6 +143,18 @@ test_a_bracket_that_opens_a_line_is_not_an_index() {
               "0", "while a `.` that opens a line still continues the chain")
 }
 
+test_an_operator_that_opens_a_line_does_not_reach_back() {
+    assert(c_of("f(n: int) -> int {{\n    info(\"y\")\n\n    -1\n}}")
+               .index_of("return (-1)") >= 0,
+           "a tail opening with `-` is the value, not a subtraction from "
+               ++ "the statement above it")
+    assert_eq(errors_in("f(a: str) -> str =>\n    a\n        ++ \"y\"\n"),
+              "0", "while `++` still continues the line it follows")
+    assert_eq(errors_in("f(a: int, b: int) -> bool =>\n    (a\n"
+                        ++ "        >= b)\n"),
+              "0", "and inside brackets every operator does")
+}
+
 test_a_comma_pattern_matches_a_list_without_brackets() {
     assert_eq(errors_in("f(xs: str[]) -> str => match xs {{\n"
                         ++ "\"done\", id => id\n"
