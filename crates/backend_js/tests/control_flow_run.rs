@@ -4,7 +4,7 @@ use std::process::Command;
 
 /// The shared fixture, which lives with the driver's other Maca test programs.
 fn fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../driver/tests/programs/js_control_flow.maca")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/programs/js_control_flow.maca")
 }
 
 /// `assert`/`assert_eq` are Maca builtins with no JS lowering.

@@ -4,7 +4,7 @@
 // and it has to arrive as code coloured by the same scanner a signature goes
 // through rather than as a sentence.
 //
-//     import crates/driver/tests/programs/docfixture
+//     import tests/programs/docfixture
 
 //// A slash rule. Four slashes are punctuation someone drew, not a doc
 //// comment, so the helper below it stays out of the reference.

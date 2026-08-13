@@ -68,7 +68,7 @@ test_the_playground_parses_where_the_module_it_carries_can_be_found() {
 test_the_control_flow_fixture_computes_the_same_thing_natively() {
     assert_eq(str(exec(maca_bin(),
                        ["test",
-                        "crates/driver/tests/programs/js_control_flow.maca"])),
+                        "tests/programs/js_control_flow.maca"])),
               "0",
               "the file the JS backend has its own run of answers the same "
                   ++ "way when it is compiled natively")
@@ -88,7 +88,7 @@ test_the_typed_json_suite_holds_on_the_js_target() {
         return
     }
 
-    holds_on_the_js_target("crates/driver/tests/programs/json_typed.maca",
+    holds_on_the_js_target("tests/programs/json_typed.maca",
                            "json_typed")
 }
 
@@ -97,7 +97,7 @@ test_the_module_state_suite_holds_on_the_js_target() {
         return
     }
 
-    holds_on_the_js_target("crates/driver/tests/programs/module_state.maca",
+    holds_on_the_js_target("tests/programs/module_state.maca",
                            "module_state")
 }
 
@@ -106,7 +106,7 @@ test_an_arrow_block_body_is_a_block_on_the_js_target() {
         return
     }
 
-    at = emitted("crates/driver/tests/programs/arrow_records.maca",
+    at = emitted("tests/programs/arrow_records.maca",
                  "arrow_records") ++ "/app.js"
     probe = "const m = require(\"{at}\");"
         ++ " if (m.several() !== 41) throw new Error(\"several: \" +"

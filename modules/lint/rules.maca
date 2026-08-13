@@ -111,7 +111,7 @@ lint_path(path: str) -> Issue[] {
 }
 
 default_paths() -> str[] =>
-    ["modules", "apps", "crates/driver/tests/programs", "dev.maca"]
+    ["modules", "apps", "tests/programs", "dev.maca"]
 
 lint(paths: str[]) -> int {
     if paths.length() == 0 {

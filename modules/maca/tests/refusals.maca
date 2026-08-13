@@ -267,22 +267,22 @@ test_a_method_the_receivers_shape_does_not_answer_to_is_refused() {
 
 test_a_rest_parameter_is_lowered_and_its_misuse_is_refused() {
     assert_eq(str(exec(maca_bin(),
-        ["check", "crates/driver/tests/programs/variadic.maca"])), "0",
+        ["check", "tests/programs/variadic.maca"])), "0",
         "a rest parameter is a declaration the checker lowers, not one it refuses")
 
-    refused("crates/driver/tests/programs/bad_variadic_value.maca",
+    refused("tests/programs/bad_variadic_value.maca",
         "cannot be used as a function value")
-    refused("crates/driver/tests/programs/bad_variadic_arity.maca",
+    refused("tests/programs/bad_variadic_arity.maca",
         "`tag` takes at least 1 argument(s), given 0")
-    refused("crates/driver/tests/programs/bad_variadic_not_last.maca",
+    refused("tests/programs/bad_variadic_not_last.maca",
         "a rest parameter must be last")
-    refused("crates/driver/tests/programs/bad_variadic_unannotated.maca",
+    refused("tests/programs/bad_variadic_unannotated.maca",
         "rest parameter with no type")
-    refused("crates/driver/tests/programs/bad_variadic_main.maca",
+    refused("tests/programs/bad_variadic_main.maca",
         "`main` takes no rest parameter")
-    refused("crates/driver/tests/programs/bad_variadic_spawn.maca",
+    refused("tests/programs/bad_variadic_spawn.maca",
         "`spawn grow` cannot take a variadic")
-    refused("crates/driver/tests/programs/bad_variadic_fn_type.maca",
+    refused("tests/programs/bad_variadic_fn_type.maca",
         "`apply_all` declares a variadic of function type")
 }
 
@@ -454,27 +454,27 @@ test_check_names_the_file_data_cannot_read() {
 }
 
 test_a_brace_after_an_arrow_that_reads_two_ways_is_refused() {
-    refused("crates/driver/tests/programs/bad_arrow_ambiguous.maca",
+    refused("tests/programs/bad_arrow_ambiguous.maca",
         "reads as a record literal and as a block")
-    refused("crates/driver/tests/programs/bad_arrow_ambiguous.maca",
+    refused("tests/programs/bad_arrow_ambiguous.maca",
         "Write `Name {{ … }}` for the record")
-    refused("crates/driver/tests/programs/bad_arrow_ambiguous.maca",
+    refused("tests/programs/bad_arrow_ambiguous.maca",
         "drop the `=>` for the block")
-    refused("crates/driver/tests/programs/bad_arrow_one_field.maca",
+    refused("tests/programs/bad_arrow_one_field.maca",
         "reads as a record literal and as a block")
 }
 
 test_a_literal_written_into_a_record_type_names_its_fields() {
-    refused("crates/driver/tests/programs/bad_record_missing_field.maca",
+    refused("tests/programs/bad_record_missing_field.maca",
         "`Point` is missing field(s): y")
-    refused("crates/driver/tests/programs/bad_record_extra_field.maca",
+    refused("tests/programs/bad_record_extra_field.maca",
         "`Point` has no field `z`")
 }
 
 test_a_literal_of_another_shape_beside_a_record_is_refused() {
-    refused("crates/driver/tests/programs/bad_record_shape_in_list.maca",
+    refused("tests/programs/bad_record_shape_in_list.maca",
         "`Point` has no field `host`")
-    refused("crates/driver/tests/programs/bad_record_missing_in_list.maca",
+    refused("tests/programs/bad_record_missing_in_list.maca",
         "`Point` is missing field(s): y")
 }
 

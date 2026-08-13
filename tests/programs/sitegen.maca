@@ -484,7 +484,7 @@ fixture_dir() -> str {
     dir = join(Out, "fixture")
     remove_dir(dir)
     run(maca(), ["run", "apps/macadoc/macadoc.maca", dir,
-                 "crates/driver/tests/programs/docfixture.maca"])
+                 "tests/programs/docfixture.maca"])
     dir
 }
 
