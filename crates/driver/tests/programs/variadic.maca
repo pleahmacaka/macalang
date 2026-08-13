@@ -212,22 +212,22 @@ test_a_variadic_parameter_grows_in_place() {
     assert(spent < 40, "copied instead of growing: {spent} for 2000 rounds")
 }
 
-test_an_ordinary_list_parameter_still_copies() {
+test_an_ordinary_list_parameter_leaves_the_callers_list_whole() {
     held = [1, 2]
     before = alloc_count() + reuse_count()
     got = grow_param(held)
     spent = alloc_count() + reuse_count() - before
 
     assert_eq(got, "2002:1:2:2000", "the same answer")
-    assert(spent > 2000, "grew in place: {spent} for 2000 rounds")
     assert_eq(str(held.length()), "2", "and the caller's list did not move")
+    assert(spent < 40, "a copy a round is quadratic: {spent} for 2000 rounds")
 }
 
-test_an_aliased_variadic_parameter_still_copies() {
+test_an_aliased_variadic_parameter_leaves_the_other_name_alone() {
     before = alloc_count() + reuse_count()
     got = grow_aliased(1, 2)
     spent = alloc_count() + reuse_count() - before
 
     assert_eq(got, "2:1:2002:2000", "keep stayed at two, seed grew")
-    assert(spent > 2000, "grew in place under an alias: {spent}")
+    assert(spent < 40, "a copy a round is quadratic: {spent} for 2000 rounds")
 }

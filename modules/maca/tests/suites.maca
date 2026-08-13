@@ -81,6 +81,27 @@ test_the_figures_the_front_page_states_are_read_off_a_file() {
             ++ "readers are held to those files")
 }
 
+test_the_generated_pages_are_what_they_claim() {
+    assert_eq(suite_code("crates/driver/tests/programs/sitegen.maca"), 0,
+        "the site is generated, so the generator and the pages it writes are "
+            ++ "held to each other")
+}
+
+test_the_benchmark_section_says_what_the_data_says() {
+    assert_eq(suite_code("crates/driver/tests/programs/site_home.maca"), 0,
+        "the front page states figures, and a figure nobody checks is a "
+            ++ "claim nobody keeps")
+}
+
+test_a_variadic_call_survives_a_poisoned_release() {
+    path = "crates/driver/tests/programs/variadic.maca"
+
+    assert_eq(suite_code(path), 0, "the collected list reads as it was passed")
+    assert_eq(exec("sh", ["-c", "MACA_POISON=1 {maca_bin()} test {path}"]), 0,
+        "a variadic that read its list after the release would read the "
+            ++ "poison, and only a poisoned run can tell")
+}
+
 test_a_line_is_read_by_a_name_no_element_takes() {
     src = scratch() ++ "/readline.maca"
     write_file(src, "main() -> int {{\n    line = read_line()\n"
