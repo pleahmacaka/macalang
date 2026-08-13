@@ -133,11 +133,11 @@ comments(cs: str[], i: int) -> bool =>
     cs.get(i) == "/" && i + 1 < cs.length() && cs.get(i + 1) == "/"
 
 line_end(cs: str[], i: int) -> int {
-    if i < cs.length() && cs.get(i) != "\n" {
-        line_end(cs, i + 1)
-    } else {
-        i
+    j = i
+    while j < cs.length() && cs.get(j) != "\n" {
+        j = j + 1
     }
+    j
 }
 
 triple(cs: str[], i: int) -> bool =>
@@ -145,13 +145,14 @@ triple(cs: str[], i: int) -> bool =>
         && at_or_blank(cs, i + 2) == "\""
 
 raw_end(cs: str[], i: int) -> int {
-    if i + 2 >= cs.length() {
-        cs.length()
-    } else if triple(cs, i) {
-        i
-    } else {
-        raw_end(cs, i + 1)
+    j = i
+    while j + 2 < cs.length() {
+        if triple(cs, j) {
+            return j
+        }
+        j = j + 1
     }
+    cs.length()
 }
 
 lex_raw(cs: str[], i: int, out: Lexed) -> Lexed {
@@ -163,11 +164,13 @@ lex_raw(cs: str[], i: int, out: Lexed) -> Lexed {
 }
 
 escape_raw(cs: str[], i: int, acc: str) -> str {
-    if i >= cs.length() {
-        acc
-    } else {
-        escape_raw(cs, i + 1, acc ++ raw_char(cs.get(i)))
+    parts = "".chars()
+    j = i
+    while j < cs.length() {
+        parts = parts.push(raw_char(cs.get(j)))
+        j = j + 1
     }
+    acc ++ parts.join("")
 }
 
 raw_char(c: str) -> str {
@@ -193,58 +196,95 @@ raw_char(c: str) -> str {
 lex_string(cs: str[], i: int, out: Lexed) -> Lexed {
     j = string_end(cs, i + 1)
     text = span(cs, i + 1, j)
-    held = keep(unterminated(out, cs, j), mk_token(TStr, text, i))
+    held = keep(unclosed(out, cs, i + 1, j), mk_token(TStr, text, i))
 
     moved(held, j + 1)
 }
 
-string_end(cs: str[], i: int) -> int {
-    if i >= cs.length() {
-        i
-    } else if cs.get(i) == "\\" {
-        string_end(cs, i + 2)
-    } else if doubled(cs, i, "{{") || doubled(cs, i, "}}") {
-        string_end(cs, i + 2)
-    } else if cs.get(i) == "{{" {
-        string_end(cs, interp_end(cs, i + 1, 1))
-    } else if cs.get(i) == "\"" {
-        i
+unclosed(out: Lexed, cs: str[], from: int, j: int) -> Lexed {
+    if j < cs.length() {
+        out
+    } else if opens_interp(cs, from, j) {
+        note_error(out, "unterminated interpolation: a literal `{{` in a"
+                        ++ " string is written `{{{{`")
     } else {
-        string_end(cs, i + 1)
+        note_error(out, "unterminated string")
     }
+}
+
+opens_interp(cs: str[], from: int, j: int) -> bool {
+    k = from
+    while k < j {
+        if cs.get(k) == "\\" {
+            k = k + 2
+        } else if doubled(cs, k, "{{") {
+            k = k + 2
+        } else if cs.get(k) == "{{" {
+            return true
+        } else {
+            k = k + 1
+        }
+    }
+    false
+}
+
+string_end(cs: str[], i: int) -> int {
+    j = i
+    while j < cs.length() {
+        if cs.get(j) == "\\" {
+            j = j + 2
+        } else if doubled(cs, j, "{{") || doubled(cs, j, "}}") {
+            j = j + 2
+        } else if cs.get(j) == "{{" {
+            j = interp_end(cs, j + 1, 1)
+        } else if cs.get(j) == "\"" {
+            return j
+        } else {
+            j = j + 1
+        }
+    }
+    j
 }
 
 doubled(cs: str[], i: int, c: str) -> bool =>
     cs.get(i) == c && i + 1 < cs.length() && cs.get(i + 1) == c
 
 interp_end(cs: str[], i: int, depth: int) -> int {
-    if i >= cs.length() {
-        i
-    } else if cs.get(i) == "\\" {
-        interp_end(cs, i + 2, depth)
-    } else if cs.get(i) == "\"" {
-        interp_end(cs, quoted_end(cs, i + 1) + 1, depth)
-    } else if cs.get(i) == "{{" {
-        interp_end(cs, i + 1, depth + 1)
-    } else if cs.get(i) == "}}" && depth == 1 {
-        i + 1
-    } else if cs.get(i) == "}}" {
-        interp_end(cs, i + 1, depth - 1)
-    } else {
-        interp_end(cs, i + 1, depth)
+    j = i
+    d = depth
+    while j < cs.length() {
+        c = cs.get(j)
+        if c == "\\" {
+            j = j + 2
+        } else if c == "\"" {
+            j = quoted_end(cs, j + 1) + 1
+        } else if c == "{{" {
+            j = j + 1
+            d = d + 1
+        } else if c == "}}" && d == 1 {
+            return j + 1
+        } else if c == "}}" {
+            j = j + 1
+            d = d - 1
+        } else {
+            j = j + 1
+        }
     }
+    j
 }
 
 quoted_end(cs: str[], i: int) -> int {
-    if i >= cs.length() {
-        i
-    } else if cs.get(i) == "\\" {
-        quoted_end(cs, i + 2)
-    } else if cs.get(i) == "\"" {
-        i
-    } else {
-        quoted_end(cs, i + 1)
+    j = i
+    while j < cs.length() {
+        if cs.get(j) == "\\" {
+            j = j + 2
+        } else if cs.get(j) == "\"" {
+            return j
+        } else {
+            j = j + 1
+        }
     }
+    j
 }
 
 lex_word(cs: str[], i: int, out: Lexed) -> Lexed {

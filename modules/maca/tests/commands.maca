@@ -1,6 +1,8 @@
 import std/proc
 import std/text
 
+Nl = "\n"
+
 scratch() -> str =>
     env_or("TMPDIR", "/tmp") ++ "/maca-cli-commands"
 
@@ -91,6 +93,20 @@ test_check_reports_the_count_of_what_it_found() {
            "and the message names both types")
     assert(!file_exists(scratch() ++ "/bad"),
            "check reports, it does not build")
+}
+
+test_a_file_that_does_not_scan_is_not_checked_as_well() {
+    torn = fixture("torn.maca", "main() -> int {{" ++ Nl
+                                    ++ "    info(\"a {{ b\")" ++ Nl
+                                    ++ "    0" ++ Nl ++ "}}" ++ Nl)
+    said = capture(maca_bin(), ["check", torn])
+
+    assert_eq(str(exec(maca_bin(), ["check", torn])), "1",
+              "the unclosed interpolation is the one thing wrong")
+    assert(said.contains("unterminated interpolation"),
+           "and it is what the file is told: {said}")
+    assert(!said.contains("check error"),
+           "nothing after a scan failure is checked: {said}")
 }
 
 test_spec_prints_the_language_within_its_budget() {

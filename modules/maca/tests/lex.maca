@@ -126,6 +126,23 @@ test_an_unterminated_string_is_reported() {
     assert_eq(bad.get(0), "unterminated string", "said plainly")
 }
 
+Unclosed = "unterminated interpolation: a literal `{{` in a" ++
+    " string is written `{{{{`"
+
+test_an_unclosed_interpolation_says_how_to_write_a_literal_brace() {
+    bad = errors_of("\"a {{ b")
+    assert_eq(str(bad.length()), "1", "the interpolation never closes")
+    assert_eq(bad.get(0), Unclosed, "and the message gives the spelling")
+}
+
+test_a_string_far_longer_than_a_stack_run_still_lexes() {
+    body = widened("ab", 16)
+    assert_eq(count_of("\"" ++ body ++ "\""), "5",
+              "131072 characters inside one literal, still one token")
+    assert_eq(count_of("\"{{n}}" ++ body ++ "\""), "5",
+              "and the same run behind an interpolation")
+}
+
 widened(s: str, n: int) -> str {
     if n <= 0 {
         s

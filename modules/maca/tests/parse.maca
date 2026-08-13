@@ -20,6 +20,16 @@ errors_in(src: str) -> str =>
 items_in(src: str) -> int =>
     parse_module(lex(src), 0, []).items.length()
 
+wide_run() -> str =>
+    "x".repeat(70000)
+
+test_a_string_literal_far_longer_than_a_stack_run_still_parses() {
+    assert_eq(str(parse_errors_in("s = \"" ++ wide_run() ++ "\"")), "0",
+              "70000 characters in one literal, and the parser walks it")
+    assert_eq(str(parse_errors_in("s = \"{{a}}" ++ wide_run() ++ "\"")), "0",
+              "and the same literal behind an interpolation")
+}
+
 parse_errors_in(src: str) -> int =>
     parse_module(lex(src), 0, []).errors.length()
 

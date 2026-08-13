@@ -149,11 +149,12 @@ check_only(src: str, target: str) -> int {
     parsed = parse_module(scanned.tokens, 0, [])
     raw = desugared(parsed, src)
 
-    report_all("import", unit.unknown, 0) +
+    early = report_all("import", unit.unknown, 0) +
         report_all("scan", scanned.errors, 0) +
         report_all("parse", parsed.errors, 0) +
-        report_all("embed", raw.errors, 0) +
-        report_all("check", check_errors_on(raw, target), 0)
+        report_all("embed", raw.errors, 0)
+
+    early > 0 ? early : report_all("check", check_errors_on(raw, target), 0)
 }
 
 init_project(root: str) -> int {
