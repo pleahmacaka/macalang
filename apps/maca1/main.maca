@@ -203,24 +203,84 @@ indent_unit(chain: str[]) -> str {
 space_run(n: int) -> str =>
     n <= 0 ? "" : " " ++ space_run(n - 1)
 
-/// The printer writes four spaces a level, so the declared unit replaces them.
-reindent(text: str, unit: str) -> str =>
-    unit == "    " ? text
-                   : reindent_lines(text.split("\n"), unit, 0, []).join("\n")
+/// The file states its own step by the narrowest indent it uses, and the declared unit replaces it.
+reindent(text: str, unit: str) -> str {
+    lines = text.split("\n")
+    step = indent_step(lines)
+    out: str[] = []
+    raw = false
+    i = 0
 
-reindent_lines(lines: str[], unit: str, i: int, acc: str[]) -> str[] {
-    if i >= lines.length() {
-        acc
+    while i < lines.length() {
+        line = lines.get(i)
+        fences = fence_count(line)
+
+        if raw {
+            out = out.push(line)
+            raw = fences % 2 == 0
+        } else {
+            raw = fences % 2 == 1
+            out = out.push(reindent_line(line, unit, step))
+        }
+
+        i = i + 1
+    }
+
+    out.join("\n")
+}
+
+indent_step(lines: str[]) -> int {
+    best = 0
+    raw = false
+    i = 0
+
+    while i < lines.length() {
+        line = lines.get(i)
+        fences = fence_count(line)
+
+        if raw {
+            raw = fences % 2 == 0
+        } else {
+            raw = fences % 2 == 1
+            lead = indent_width(line, 0)
+            narrow = line.trim() != "" && lead > 0 && (best == 0 || lead < best)
+            best = narrow ? lead : best
+        }
+
+        i = i + 1
+    }
+
+    best == 0 ? 4 : best
+}
+
+/// A line the step does not divide was aligned by hand, and stays where it was put.
+reindent_line(line: str, unit: str, step: int) -> str {
+    lead = indent_width(line, 0)
+
+    if line.trim() == "" {
+        ""
+    } else if lead % step != 0 {
+        line
     } else {
-        reindent_lines(lines, unit, i + 1,
-                       acc ++ [reindent_line(lines.get(i), unit)])
+        unit_times(unit, lead / step) ++ line.slice(lead, line.length())
     }
 }
 
-reindent_line(line: str, unit: str) -> str {
-    n = indent_width(line, 0)
+fence_count(line: str) -> int {
+    cs = line.chars()
+    hits = 0
+    j = 0
 
-    unit_times(unit, n / 4) ++ space_run(n % 4) ++ line.slice(n, line.length())
+    while j + 2 < cs.length() {
+        if cs.get(j) == "\"" && cs.get(j + 1) == "\"" && cs.get(j + 2) == "\"" {
+            hits = hits + 1
+            j = j + 3
+        } else {
+            j = j + 1
+        }
+    }
+
+    hits
 }
 
 unit_times(unit: str, n: int) -> str =>
@@ -232,9 +292,9 @@ indent_width(line: str, i: int) -> int =>
 format_file(src: str, only_check: bool) -> int {
     before = read_file(src)
     unit = indent_unit(chain_of(src))
-    after = reindent(print_source(before), unit)
+    after = reindent(before, unit)
 
-    if after != reindent(print_source(after), unit) {
+    if after != reindent(after, unit) {
         err("{src}: left as it is, the formatter cannot write it back")
 
         1

@@ -123,14 +123,14 @@ test_spec_prints_the_language_within_its_budget() {
 }
 
 test_fmt_check_reports_without_writing_and_then_settles() {
-    at = fixture("f.maca", "add(a: int,b: int)->int=>a+b\n")
+    at = fixture("f.maca", "main() -> int {{\n  0\n}}\n")
 
     assert_eq(str(exec(maca_bin(), ["fmt", at, "--check"])), "1",
               "--check writes nothing, it reports")
-    assert_eq(read_file(at), "add(a: int,b: int)->int=>a+b\n",
+    assert_eq(read_file(at), "main() -> int {{\n  0\n}}\n",
               "and leaves the file exactly as it found it")
     assert_eq(str(exec(maca_bin(), ["fmt", at])), "0", "formatting succeeds")
-    assert(read_file(at).contains("add(a: int, b: int) -> int"),
+    assert(read_file(at).contains("\n    0\n"),
            "the written file is the formatted one: {read_file(at)}")
     assert_eq(str(exec(maca_bin(), ["fmt", at, "--check"])), "0",
               "a formatter that moves on the second run is not canonical")

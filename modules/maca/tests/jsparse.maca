@@ -73,3 +73,48 @@ test_the_control_flow_fixture_computes_the_same_thing_natively() {
               "the file the JS backend has its own run of answers the same "
                   ++ "way when it is compiled natively")
 }
+
+Shims = """
+globalThis.assert = function (c, m) {
+  if (!c) throw new Error("assert failed: " + m);
+};
+globalThis.assert_eq = function (got, want, m) {
+  if (String(got) !== String(want)) {
+    throw new Error(m + " | got: " + String(got) + " | want: " + String(want));
+  }
+};
+globalThis.failures = () => 0;
+const m = require("./app.js");
+const tests = Object.keys(m).filter((k) => k.startsWith("test_"));
+let failed = 0;
+for (const name of tests) {
+  try {
+    m[name]();
+  } catch (e) {
+    failed += 1;
+    console.log("FAILED " + name + ": " + e.message);
+  }
+}
+console.log("ran " + tests.length + " tests");
+if (tests.length === 0) process.exit(2);
+if (failed > 0) process.exit(1);
+"""
+
+/// Run a suite's `test_` functions on the JS target, since `assert` has no JS lowering of its own.
+holds_on_the_js_target(src: str, name: str) {
+    runner = emitted(src, name) ++ "/run.js"
+    write_file(runner, Shims)
+    said = capture("node", [runner])
+
+    assert_eq(str(exec("node", [runner])), "0",
+              "{src} did not hold on the JS target:\n{said}")
+}
+
+test_the_module_state_suite_holds_on_the_js_target() {
+    if !have("node") {
+        return
+    }
+
+    holds_on_the_js_target("crates/driver/tests/programs/module_state.maca",
+                           "module_state")
+}

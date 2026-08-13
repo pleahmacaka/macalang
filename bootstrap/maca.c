@@ -1766,8 +1766,9 @@ const char* leaf_of(const char* root);
 const char* indent_unit(MacaList chain);
 const char* space_run(long n);
 const char* reindent(const char* text, const char* unit);
-MacaList reindent_lines(MacaList lines, const char* unit, long i, MacaList acc);
-const char* reindent_line(const char* line, const char* unit);
+long indent_step(MacaList lines);
+const char* reindent_line(const char* line, const char* unit, long step);
+long fence_count(const char* line);
 const char* unit_times(const char* unit, long n);
 long indent_width(const char* line, long i);
 long format_file(const char* src, long only_check);
@@ -3794,12 +3795,13 @@ long write_absent(const char* path, const char* text) { return (maca_file_exists
 const char* leaf_of(const char* root) { long cut = sep_after(maca_chars(root), (((int)strlen(root)) - 1)); const char* tail = maca_str_slice(root, cut, ((int)strlen(root))); return (((strcmp(tail, "") == 0) || (strcmp(tail, ".") == 0)) ? "app" : tail);  }
 const char* indent_unit(MacaList chain) { const char* size = chain_value(chain, 0, "[format]", "indent_size"); long wide = ((strcmp(size, "") == 0) ? 4 : atol(size)); return ((strcmp(chain_value(chain, 0, "[format]", "indent_style"), "tab") == 0) ? "\t" : space_run(wide));  }
 const char* space_run(long n) { return ((n <= 0) ? "" : maca_cat(" ", space_run((n - 1))));  }
-const char* reindent(const char* text, const char* unit) { return ((strcmp(unit, "    ") == 0) ? text : maca_list_join(reindent_lines(maca_split(text, "\n"), unit, 0, maca_listv(0)), "\n"));  }
-MacaList reindent_lines(MacaList lines, const char* unit, long i, MacaList acc) { return ((i >= (lines.len)) ? acc : reindent_lines(lines, unit, (i + 1), maca_list_cat(acc, maca_listv(1, (long)(reindent_line(((const char*)lines.data[i]), unit))))));  }
-const char* reindent_line(const char* line, const char* unit) { long n = indent_width(line, 0); return maca_cat(maca_cat(unit_times(unit, (n / 4)), space_run((n % 4))), maca_str_slice(line, n, ((int)strlen(line))));  }
+const char* reindent(const char* text, const char* unit) { MacaList lines = maca_split(text, "\n"); long step = indent_step(lines); MacaList out = maca_listv(0); long raw = 0; long i = 0; while ((i < (lines.len))) { const char* line = ((const char*)lines.data[i]); long fences = fence_count(line); if (raw) { out = maca_list_pushed(out, (long)(line)); raw = ((fences % 2) == 0); raw; } else { raw = ((fences % 2) == 1); out = maca_list_pushed(out, (long)(reindent_line(line, unit, step))); out; } i = (i + 1); } return maca_list_join(out, "\n");  }
+long indent_step(MacaList lines) { long best = 0; long raw = 0; long i = 0; while ((i < (lines.len))) { const char* line = ((const char*)lines.data[i]); long fences = fence_count(line); if (raw) { raw = ((fences % 2) == 0); raw; } else { raw = ((fences % 2) == 1); long lead = indent_width(line, 0); long narrow = (((strcmp(maca_trim(line), "") != 0) && (lead > 0)) && ((best == 0) || (lead < best))); best = (narrow ? lead : best); best; } i = (i + 1); } return ((best == 0) ? 4 : best);  }
+const char* reindent_line(const char* line, const char* unit, long step) { long lead = indent_width(line, 0); return ((strcmp(maca_trim(line), "") == 0) ? "" : (((lead % step) != 0) ? line : maca_cat(unit_times(unit, (lead / step)), maca_str_slice(line, lead, ((int)strlen(line))))));  }
+long fence_count(const char* line) { MacaList cs = maca_chars(line); long hits = 0; long j = 0; while (((j + 2) < (cs.len))) { if ((((strcmp(((const char*)cs.data[j]), "\"") == 0) && (strcmp(((const char*)cs.data[(j + 1)]), "\"") == 0)) && (strcmp(((const char*)cs.data[(j + 2)]), "\"") == 0))) { hits = (hits + 1); j = (j + 3); j; } else { j = (j + 1); j; } } return hits;  }
 const char* unit_times(const char* unit, long n) { return ((n <= 0) ? "" : maca_cat(unit, unit_times(unit, (n - 1))));  }
 long indent_width(const char* line, long i) { return (((i < ((int)strlen(line))) && (strcmp(maca_str_at(line, i), " ") == 0)) ? indent_width(line, (i + 1)) : i);  }
-long format_file(const char* src, long only_check) { const char* before = maca_read_file(src); const char* unit = indent_unit(chain_of(src)); const char* after = reindent(print_source(before), unit); return ((strcmp(after, reindent(print_source(after), unit)) != 0) ? ({ fprintf(stderr, "%s\n", maca_cat(maca_cat("", src), ": left as it is, the formatter cannot write it back")); 1; }) : ((strcmp(before, after) == 0) ? 0 : (only_check ? ({ printf("%s\n", maca_cat(maca_cat("", src), ": not formatted")); 1; }) : ({ maca_write_file(src, after); 0; }))));  }
+long format_file(const char* src, long only_check) { const char* before = maca_read_file(src); const char* unit = indent_unit(chain_of(src)); const char* after = reindent(before, unit); return ((strcmp(after, reindent(after, unit)) != 0) ? ({ fprintf(stderr, "%s\n", maca_cat(maca_cat("", src), ": left as it is, the formatter cannot write it back")); 1; }) : ((strcmp(before, after) == 0) ? 0 : (only_check ? ({ printf("%s\n", maca_cat(maca_cat("", src), ": not formatted")); 1; }) : ({ maca_write_file(src, after); 0; }))));  }
 long fmt_cmd(MacaList args) { MacaList files = fix_files(args, 1, maca_listv(0)); return (((files.len) == 0) ? ({ fprintf(stderr, "%s\n", "usage: maca fmt <file.maca>... [--check]"); 2; }) : fmt_each(files, 0, (maca_list_index_of_str(args, "--check") >= 0), 0));  }
 long fmt_each(MacaList files, long i, long only_check, long acc) { return ((i >= (files.len)) ? acc : fmt_each(files, (i + 1), only_check, (acc + format_file(((const char*)files.data[i]), only_check))));  }
 long fix_cmd(MacaList args) { MacaList files = fix_files(args, 1, maca_listv(0)); return (((files.len) == 0) ? ({ fprintf(stderr, "%s\n", "usage: maca fix <file.maca>... [--dry-run]"); 2; }) : fix_each(files, 0, (maca_list_index_of_str(args, "--dry-run") >= 0), 0));  }

@@ -816,3 +816,59 @@ test_the_bindgen_written_in_maca_is_a_command_of_its_own() {
                .contains("cannot read"),
            "and the message says it could not be read")
 }
+
+formatted(name: str, src: str) -> str {
+    at = fixture(name, src)
+    exec(maca_bin(), ["fmt", at])
+
+    read_file(at)
+}
+
+test_the_golden_examples_are_already_formatted() {
+    args = ["fmt", "--check"]
+
+    for name in ["hello", "taskr", "generic", "system", "counter", "dot"] {
+        args = args.push("apps/examples/{name}.maca")
+    }
+
+    assert_eq(exec(maca_bin(), args), 0,
+              "the examples the spec shows are what the formatter writes")
+}
+
+test_fmt_keeps_a_comment_where_the_writer_put_it() {
+    src = "// a leading comment\nfoo(x: int) -> int =>\n    x > 0\n"
+              ++ "        ? x   // inline note\n        : 0\n"
+    once = formatted("comments.maca", src)
+    at = fixture("comments.maca", once)
+
+    assert(once.contains("// a leading comment"), "the leading comment went")
+    assert(once.contains("// inline note"), "the inline one went")
+    assert(once.contains("        ? x"), "the continuation lost its indent")
+    assert_eq(exec(maca_bin(), ["fmt", "--check", at]), 0,
+              "and the second run moved what the first wrote")
+}
+
+test_an_aligned_continuation_does_not_double_the_indent() {
+    src = "f(t: int) -> str =>\n    pair([\"id\", \"name\"],\n"
+              ++ "         [str(t), \"x\"])\n\ng() -> int {{\n    n = 1\n"
+              ++ "    n + 1\n}}\n"
+
+    assert_eq(formatted("gcd.maca", src), src,
+              "the indent step is read off the file, and one line aligned "
+                  ++ "under an open paren is not a step")
+}
+
+test_an_aligned_argument_stays_under_the_paren_it_was_written_under() {
+    src = "f() -> str =>\n    pair(one,\n         two)\n"
+
+    assert_eq(formatted("align.maca", src), src, "the aligned argument moved")
+}
+
+test_a_raw_block_is_neither_measured_nor_reindented() {
+    src = "Css = \"\"\"\nbody {{\n  color: red;\n}}\n\"\"\"\n\n"
+              ++ "go() -> int {{\n    n = 1\n    n\n}}\n"
+    out = formatted("raw.maca", src)
+
+    assert_eq(out, src, "a raw block changed the file's indentation")
+    assert(out.contains("\n  color: red;"), "the foreign source was reindented")
+}
