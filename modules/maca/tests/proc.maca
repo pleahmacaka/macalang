@@ -33,7 +33,8 @@ test_the_two_streams_stay_apart() {
 }
 
 test_capture_err_grows_past_its_first_buffer() {
-    long = capture_err("sh", ["-c", "yes ERROR | head -c 20000 >&2"])
+    noisy = "yes ERROR 2>/dev/null | head -c 20000 >&2"
+    long = capture_err("sh", ["-c", noisy])
 
     assert_eq(str(long.length()), "20000", "a diagnostic longer than one read")
 }

@@ -2866,7 +2866,14 @@ nix_bound(dir: str, ts: Token[], i: int, acc: str) -> str {
 nix_binding(dir: str, spec: str) -> str {
     got = capture("nix-instantiate", ["--eval", dir ++ spec]).trim()
 
-    got == "" ? "" : "{nix_name(spec)} = {got}\n"
+    if got != "" {
+        "{nix_name(spec)} = {got}\n"
+    } else {
+        err("maca: `import nix` found no value in {spec}; is nix-instantiate"
+            ++ " on PATH?")
+
+        ""
+    }
 }
 
 nix_name(spec: str) -> str {
