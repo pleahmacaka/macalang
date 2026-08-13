@@ -914,6 +914,12 @@ MacaList settle_effects(MacaList items, MacaList names, MacaList sets, long fuel
 long same_effects(MacaList a, MacaList b, long i);
 MacaList effect_pass(MacaList items, MacaList names, MacaList sets, long i, MacaList acc);
 MacaList target_errors(Module m, const char* target);
+MacaList nested_write_errors(Module m, const char* target);
+MacaList write_faults(MacaList items, long i, MacaList acc);
+MacaList fn_write_faults(Stmt s, MacaList ss, long i, MacaList seen, MacaList acc);
+MacaList inner_write_faults(Stmt s, const char* who, Expr e, MacaList seen, long i, MacaList acc);
+MacaList body_write_faults(Stmt s, const char* who, MacaList ss, MacaList seen, MacaList bound, long i, MacaList acc);
+Diagnostic outer_write_said(Stmt s, const char* who, const char* name);
 MacaList kept_borrow_notes(Module m);
 MacaList kept_borrow_errors(Module m, const char* target);
 MacaList borrow_errors(MacaList items, MacaList own, long i, MacaList acc);
@@ -2981,7 +2987,13 @@ MacaList settled_effects(MacaList items) { MacaList names = effect_fn_names(item
 MacaList settle_effects(MacaList items, MacaList names, MacaList sets, long fuel) { MacaList next = effect_pass(items, names, sets, 0, maca_listv(0)); return (((fuel <= 0) || same_effects(sets, next, 0)) ? next : settle_effects(items, names, next, (fuel - 1)));  }
 long same_effects(MacaList a, MacaList b, long i) { return (((i >= (a.len)) || (i >= (b.len))) ? ((a.len) == (b.len)) : ((strcmp(((const char*)a.data[i]), ((const char*)b.data[i])) != 0) ? 0 : same_effects(a, b, (i + 1))));  }
 MacaList effect_pass(MacaList items, MacaList names, MacaList sets, long i, MacaList acc) { return ((i >= (items.len)) ? acc : (((*(Stmt*)items.data[i]).kind != SFn) ? effect_pass(items, names, sets, (i + 1), acc) : effect_pass(items, names, sets, (i + 1), maca_list_pushed(acc, (long)(body_effects((*(Stmt*)items.data[i]).body, names, sets, 0, eff_none()))))));  }
-MacaList target_errors(Module m, const char* target) { return maca_list_cat(effect_errors(m, target), kept_borrow_errors(m, target));  }
+MacaList target_errors(Module m, const char* target) { return maca_list_cat(maca_list_cat(effect_errors(m, target), kept_borrow_errors(m, target)), nested_write_errors(m, target));  }
+MacaList nested_write_errors(Module m, const char* target) { return (((strcmp(target, "js") == 0) || (strcmp(target, "wasm") == 0)) ? maca_listv(0) : write_faults(m.items, 0, maca_listv(0)));  }
+MacaList write_faults(MacaList items, long i, MacaList acc) { return ((i >= (items.len)) ? acc : write_faults(items, (i + 1), maca_list_cat(acc, fn_write_faults((*(Stmt*)items.data[i]), (*(Stmt*)items.data[i]).body, 0, maca_listv(0), maca_listv(0)))));  }
+MacaList fn_write_faults(Stmt s, MacaList ss, long i, MacaList seen, MacaList acc) { return ((i >= (ss.len)) ? acc : ({ Stmt st = (*(Stmt*)ss.data[i]); MacaList here = (((st.kind == SBind) && (st.value.kind == ELambda)) ? inner_write_faults(s, st.name, st.value, seen, 0, maca_listv(0)) : maca_listv(0)); fn_write_faults(s, ss, (i + 1), maca_list_cat(seen, maca_listv(1, (long)(st.name))), maca_list_cat(acc, here)); }));  }
+MacaList inner_write_faults(Stmt s, const char* who, Expr e, MacaList seen, long i, MacaList acc) { return body_write_faults(s, who, lambda_body(e).stmts, seen, lambda_names(lambda_params(e), 0, maca_listv(0)), 0, acc);  }
+MacaList body_write_faults(Stmt s, const char* who, MacaList ss, MacaList seen, MacaList bound, long i, MacaList acc) { return ((i >= (ss.len)) ? acc : ({ Stmt st = (*(Stmt*)ss.data[i]); long wrote = (((st.kind == SBind) && (maca_list_index_of_str(bound, st.name) < 0)) && (maca_list_index_of_str(seen, st.name) >= 0)); body_write_faults(s, who, ss, seen, maca_list_cat(bound, maca_listv(1, (long)(st.name))), (i + 1), (wrote ? maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Diagnostic), (Diagnostic[]){ outer_write_said(s, who, st.name) }))) : acc)); }));  }
+Diagnostic outer_write_said(Stmt s, const char* who, const char* name) { return (Diagnostic){ .code = "M0021", .pos = s.pos, .note = "", .message = maca_cat(maca_cat(maca_cat(maca_cat(maca_cat(maca_cat("`", who), "` writes `"), name), "`, which the function"), " around it declared, and a nested definition reads"), " that scope rather than writing it") };  }
 MacaList kept_borrow_notes(Module m) { return ({ MacaList _m = kept_borrow_errors(m, "rust"); MacaList _r; _r.len = _m.len; _r.data = maca_cells((_r.len ? _r.len : 1) * sizeof(long)); for (int _i = 0; _i < _m.len; _i++) _r.data[_i] = (long)(diag_message((*(Diagnostic*)_m.data[_i]))); _r; });  }
 MacaList kept_borrow_errors(Module m, const char* target) { return ((strcmp(target, "rust") != 0) ? maca_listv(0) : borrow_errors(m.items, declared_types(m.items, 0, maca_listv(0)), 0, maca_listv(0)));  }
 MacaList borrow_errors(MacaList items, MacaList own, long i, MacaList acc) { return ((i >= (items.len)) ? acc : ((!is_impl_block((*(Stmt*)items.data[i]))) ? borrow_errors(items, own, (i + 1), acc) : ({ MacaList kept = kept_borrows((*(Stmt*)items.data[i]), (*(Stmt*)items.data[i]).value.children, own, 0, maca_listv(0)); borrow_errors(items, own, (i + 1), maca_list_cat(acc, kept)); })));  }

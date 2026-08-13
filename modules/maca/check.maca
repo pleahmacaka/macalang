@@ -1619,6 +1619,8 @@ check_body(env: Env, stmts: Stmt[], i: int, last: Ty) -> Typed {
     }
 }
 
+
+
 stmt_type(env: Env, s: Stmt, is_last: bool) -> Typed {
     if is_last || s.kind != SExpr || !branches_for_effect(s.value) {
         type_in(env, s.value)
@@ -3552,6 +3554,66 @@ effect_pass(items: Stmt[], names: str[], sets: str[], i: int,
 /// What the target being built for cannot carry, from this module.
 target_errors(m: Module, target: str) -> Diagnostic[] =>
     effect_errors(m, target) ++ kept_borrow_errors(m, target)
+        ++ nested_write_errors(m, target)
+
+/// A nested definition reads the scope that holds it, and the C back end has no way to carry a write back out.
+nested_write_errors(m: Module, target: str) -> Diagnostic[] {
+    if target == "js" || target == "wasm" {
+        []
+    } else {
+        write_faults(m.items, 0, [])
+    }
+}
+
+write_faults(items: Stmt[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
+    if i >= items.length() {
+        acc
+    } else {
+        write_faults(items, i + 1,
+                     acc ++ fn_write_faults(items.get(i), items.get(i).body,
+                                            0, [], []))
+    }
+}
+
+fn_write_faults(s: Stmt, ss: Stmt[], i: int, seen: str[],
+                acc: Diagnostic[]) -> Diagnostic[] {
+    if i >= ss.length() {
+        acc
+    } else {
+        st = ss.get(i)
+        here = st.kind == SBind && st.value.kind == ELambda
+            ? inner_write_faults(s, st.name, st.value, seen, 0, [])
+            : []
+
+        fn_write_faults(s, ss, i + 1, seen ++ [st.name], acc ++ here)
+    }
+}
+
+inner_write_faults(s: Stmt, who: str, e: Expr, seen: str[], i: int,
+                   acc: Diagnostic[]) -> Diagnostic[] =>
+    body_write_faults(s, who, lambda_body(e).stmts, seen,
+                      lambda_names(lambda_params(e), 0, []), 0, acc)
+
+body_write_faults(s: Stmt, who: str, ss: Stmt[], seen: str[], bound: str[],
+                  i: int, acc: Diagnostic[]) -> Diagnostic[] {
+    if i >= ss.length() {
+        acc
+    } else {
+        st = ss.get(i)
+        wrote = st.kind == SBind && bound.index_of(st.name) < 0
+            && seen.index_of(st.name) >= 0
+
+        body_write_faults(s, who, ss, seen, bound ++ [st.name], i + 1,
+                          wrote ? acc ++ [outer_write_said(s, who, st.name)]
+                                : acc)
+    }
+}
+
+outer_write_said(s: Stmt, who: str, name: str) -> Diagnostic =>
+    Diagnostic { code = "M0021", pos = s.pos, note = "",
+                 message = "`{who}` writes `{name}`, which the function"
+                     ++ " around it declared, and a nested definition reads"
+                     ++ " that scope rather than writing it" }
 
 /// What the rust target refuses about the borrows a method keeps, as plain lines.
 kept_borrow_notes(m: Module) -> str[] =>

@@ -511,3 +511,22 @@ test_what_a_return_carries_is_what_the_function_declared() {
     refused(dir ++ "/bare.maca", "a bare `return` leaves without one")
     refused(dir ++ "/wrong.maca", "expected int, found str")
 }
+
+test_a_nested_definition_that_writes_the_scope_around_it_is_named() {
+    dir = scratch() ++ "/nested"
+    make_dir(scratch())
+    make_dir(dir)
+
+    write_file(dir ++ "/board.maca",
+        "board() -> str {{\n    held = 0\n\n    grab(section: int) {{\n"
+            ++ "        held = section\n    }}\n\n    grab(4)\n\n"
+            ++ "    \"{{held}}\"\n}}\n\nmain() -> int => board().length()\n")
+
+    refused(dir ++ "/board.maca",
+        "`grab` writes `held`, which the function around it declared")
+
+    assert_eq(exec(maca_bin(),
+                   ["check", dir ++ "/board.maca", "--target", "js"]), 0,
+        "a browser closure writes the name it closed over, so the refusal is "
+            ++ "the C back end's and not the language's")
+}
