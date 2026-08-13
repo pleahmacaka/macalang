@@ -1,0 +1,70 @@
+import std/proc
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+scratch() -> str {
+    dir = env_or("TMPDIR", "/tmp") ++ "/maca-mqtt"
+    make_dir(dir)
+
+    dir
+}
+
+built(app: str, name: str) -> str {
+    at = "{scratch()}/{name}"
+
+    assert_eq(exec(maca_bin(), ["build", "apps/mqtt/{app}.maca", "-o", at]), 0,
+              "apps/mqtt/{app}.maca is a program this repository builds")
+
+    at
+}
+
+/// A broker, a subscriber and a publisher, then a hundred subscribers on one message.
+script() -> str =>
+    "pkill -x maca-mqbroker 2>/dev/null || true\n"
+        ++ "sleep 0.5\n"
+        ++ "cd \"$2\" && rm -f mqc_*.out sub1.out\n"
+        ++ "\"$0\" >/dev/null 2>&1 & BR=$!\n"
+        ++ "sleep 0.8\n"
+        ++ "\"$1\" sub > sub1.out 2>&1 &\n"
+        ++ "sleep 0.4\n"
+        ++ "\"$1\" pub hello-roundtrip\n"
+        ++ "sleep 0.7\n"
+        ++ "echo \"ROUNDTRIP: $(cat sub1.out)\"\n"
+        ++ "i=1\n"
+        ++ "while [ $i -le 100 ]; do \"$1\" sub > mqc_$i.out 2>&1 & "
+        ++ "i=$((i+1)); done\n"
+        ++ "sleep 2.5\n"
+        ++ "\"$1\" pub concurrent-msg\n"
+        ++ "sleep 2.5\n"
+        ++ "echo \"CONCURRENT: $(grep -l concurrent-msg mqc_*.out "
+        ++ "2>/dev/null | wc -l)\"\n"
+        ++ "kill $BR 2>/dev/null || true\n"
+
+said_after(line: str, log: str) -> str {
+    at = log.index_of(line)
+
+    if at < 0 {
+        ""
+    } else {
+        rest = log.slice(at + line.length(), log.length())
+
+        rest.slice(0, rest.index_of("\n") < 0
+                          ? rest.length()
+                          : rest.index_of("\n"))
+    }
+}
+
+test_the_broker_carries_a_message_and_serves_a_hundred_clients() {
+    broker = built("broker", "maca-mqbroker")
+    client = built("client", "maca-mqclient")
+    log = capture("sh", ["-c", script(), broker, client, scratch()])
+
+    assert_eq(said_after("ROUNDTRIP: ", log).trim(), "hello-roundtrip",
+              "a publisher's message reaches the subscriber:\n{log}")
+    assert(int(said_after("CONCURRENT: ", log).trim()) >= 100,
+           "every one of a hundred subscribers is served:\n{log}")
+}

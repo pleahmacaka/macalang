@@ -1,5 +1,5 @@
 # A two-chapter book in two languages, for the dev-mode gate in
-# crates/driver/tests/hmr.rs.
+# tests/hmr.maca.
 #
 # Small on purpose: the test starts a server, edits a chapter and watches what
 # comes back, and none of that gets truer with forty chapters. Two languages

@@ -1,0 +1,233 @@
+import { serve } from apps/tomo/dev
+import { fetch } from http/server
+import { feed, publish } from http/dev
+import { copy_tree } from std/fs
+import { env_or, have } from std/proc
+
+Port = 34877
+
+Work = "{env_or("TMPDIR", "/tmp")}/maca-hmr"
+
+Book = "{Work}/book-copy"
+
+Site = "{Work}/run/site"
+
+Resumed = 7
+
+serving() -> int => serve(["{Port}", "{Work}/run", Book])
+
+start() -> bool {
+    remove_dir(Work)
+    copy_tree("tests/fixtures/hmr", Book)
+    publish(feed("{Work}/run/hmr"), Resumed, "[]")
+    spawn serving()
+
+    waited("{Site}/en/01-one.html", 600)
+}
+
+Started = start()
+
+waited(path: str, tries: int) -> bool {
+    if file_exists(path) {
+        true
+    } else if tries <= 0 {
+        false
+    } else {
+        sleep_ms(100)
+
+        waited(path, tries - 1)
+    }
+}
+
+fetched(path: str) -> str {
+    reply = fetch("127.0.0.1", Port,
+                  "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                      ++ "Connection: close\r\n\r\n")
+    at = reply.index_of("\r\n\r\n")
+
+    at < 0 ? "" : reply.slice(at + 4, reply.length())
+}
+
+polled(since: int) -> str {
+    body = fetched("/_maca/hmr?gen={since}")
+
+    assert(body.contains("\"ops\""), "the poll came back with no patch: {body}")
+
+    body
+}
+
+edited(path: str, from: str, to: str) {
+    before = read_file(path)
+    after = before.replace(from, to)
+
+    assert(before != after, "the edit changed nothing in {path}")
+    write_file(path, after)
+}
+
+keys_of(patch: str) -> str[] =>
+    key_values(patch.split("\"key\":\""), 1, [])
+
+key_values(parts: str[], i: int, acc: str[]) -> str[] {
+    if i >= parts.length() {
+        acc
+    } else {
+        one = parts.get(i)
+        end = one.index_of("\"")
+
+        key_values(parts, i + 1, end < 0 ? acc : acc ++ [one.slice(0, end)])
+    }
+}
+
+op_of(patch: str, key: str) -> str {
+    parts = patch.split("\"key\":\"{key}\"")
+
+    parts.length() < 2 ? "" : parts.get(1).split("\"key\":").get(0)
+}
+
+holds(patch: str, key: str) {
+    got = keys_of(patch).join(" ")
+
+    assert(got.contains(key), "the patch should carry {key}, got {got}")
+}
+
+built(rel: str) -> str => read_file("{Site}/{rel}")
+
+test_a_saved_chapter_reaches_the_browser_as_a_patch() {
+    assert(Started, "the dev server built the site")
+
+    served = fetched("/en/01-one.html")
+
+    assert(served.contains("data-signal=\"article:en/01-one\""),
+           "the served page has no article region:\n{served}")
+    assert(served.contains("window.macaDevPath"),
+           "the served page has no poller")
+
+    before = built("en/01-one.html")
+
+    edited("{Book}/book/en/01-one.md", "The paragraph the test edits.",
+           "The paragraph the test edited.")
+
+    prose = polled(Resumed)
+
+    assert_eq(keys_of(prose).join(", "), "article:en/01-one",
+              "a prose edit should patch the prose and nothing else: {prose}")
+    assert(prose.contains("\"gen\":{Resumed + 1}"),
+           "a server that finds a feed keeps its numbering: {prose}")
+    assert(built("en/01-one.html") != before, "the page file was not rewritten")
+    assert(prose.contains("The paragraph the test edited."),
+           "the edit did not reach the patch: {prose}")
+    assert(built("en/01-one.html").contains("The paragraph the test edited."),
+           "nor the rebuilt page")
+
+    assert(built("en/02-two.html").contains("Chapter One"),
+           "chapter two's sidebar should list chapter one by its heading")
+
+    edited("{Book}/book/en/01-one.md", "# Chapter One", "# Chapter The First")
+
+    heading = polled(Resumed + 1)
+
+    holds(heading, "article:en/01-one")
+    holds(heading, "toc:en/01-one")
+    holds(heading, "nav:en/01-one")
+    holds(heading, "nav:en/02-two")
+    assert(op_of(heading, "nav:en/02-two").contains("Chapter The First"),
+           "chapter two's chapter list was not renamed: {heading}")
+
+    for_each_page(["index.html", "en/index.html", "en/home.html",
+                   "en/search-index.js", "en/01-one.html", "en/02-two.html",
+                   "ko/index.html", "ko/home.html", "ko/search-index.js",
+                   "ko/01-one.html", "ko/02-two.html"], 0)
+
+    edited("{Book}/book/ko/01-one.md", "테스트가 고치는 문단.",
+           "테스트가 고친 문단.")
+
+    korean = polled(Resumed + 2)
+
+    assert_eq(keys_of(korean).join(", "), "article:ko/01-one",
+              "a Korean prose edit patches the Korean page alone: {korean}")
+    assert(op_of(korean, "article:ko/01-one").contains("테스트가 고친 문단."),
+           "the edit did not reach the patch: {korean}")
+
+    edited("{Book}/book/en/02-two.md", "more than one entry",
+           "more than one entry (edited)")
+
+    behind = polled(Resumed + 3)
+
+    holds(behind, "article:en/02-two")
+    holds(behind, "article:ko/02-two")
+    assert(built("ko/02-two.html").contains("more than one entry (edited)"),
+           "the Korean chapter two was not rebuilt from the English source")
+    assert(built("ko/01-one.html").contains("첫째 장"),
+           "the Korean chapter one should be its translation, not the fallback")
+}
+
+for_each_page(rels: str[], i: int) {
+    if i < rels.length() {
+        assert(file_exists("{Site}/{rels.get(i)}"),
+               "the dev site has no {rels.get(i)}")
+        for_each_page(rels, i + 1)
+    }
+}
+
+inline_scripts(page: str) -> str[] =>
+    script_bodies(page.split("<script>"), 1, [])
+
+script_bodies(parts: str[], i: int, acc: str[]) -> str[] {
+    if i >= parts.length() {
+        acc
+    } else {
+        one = parts.get(i)
+        end = one.index_of("</script>")
+
+        script_bodies(parts, i + 1,
+                      end < 0 ? acc : acc ++ [one.slice(0, end)])
+    }
+}
+
+test_the_pages_own_runtime_applies_an_op_under_node() {
+    if !have("node") {
+        return
+    }
+
+    runtime = inline_scripts(fetched("/en/01-one.html")).get(0)
+
+    assert(runtime.contains("window.macaSignal"),
+           "the first script on the page is not the patcher")
+
+    write_file("{Work}/apply.js",
+               read_file("tests/fixtures/hmr-apply.js")
+                   .replace("__RUNTIME__", runtime))
+
+    printed = capture("node", ["{Work}/apply.js"]).trim()
+
+    assert(printed.contains("\"ok\":true"),
+           "the patcher did not set innerHTML to the op's value: {printed}")
+    assert(printed.contains("\"text\":\"\""),
+           "a region must not be written as text: {printed}")
+}
+
+test_the_pages_own_poller_names_the_generation_it_was_told() {
+    if !have("node") {
+        return
+    }
+
+    poller = inline_scripts(fetched("/en/01-one.html")).get(1)
+
+    assert(poller.contains("macaDevPath"),
+           "the second script on the page is not the poller")
+
+    write_file("{Work}/poll.js",
+               read_file("tests/fixtures/hmr-poll.js")
+                   .replace("__POLLER__", poller))
+
+    printed = capture("node", ["{Work}/poll.js"]).trim()
+
+    assert(printed.contains(
+               "\"/_maca/hmr\",\"/_maca/hmr?gen=20\",\"/_maca/hmr?gen=21\""),
+           "the first poll must name no generation and every later one the"
+               ++ " last it was told: {printed}")
+    assert(printed.contains("\"key\":\"k\""),
+           "the poller did not hand its ops to the patcher: {printed}")
+    assert(printed.contains("\"reloaded\":true"),
+           "the poller ignored a reload: {printed}")
+}

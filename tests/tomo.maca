@@ -1,0 +1,409 @@
+import { render, toc, page, sidebar, side_items, published,
+         build_book } from apps/tomo/tomo
+import { conf_value } from apps/tomo/conf
+import { find } from std/fs
+import { dirname } from std/path
+import { count } from std/text
+import { env_or } from std/proc
+
+Root = "apps/tomo"
+
+Out = "{env_or("TMPDIR", "/tmp")}/maca-tomo-site"
+
+Sample = "# Title\n\nA **bold** word and `code`, see [docs](guide.md).\n\n"
+    ++ "An `int[]` is a list, and [two](a.md) [links](b.md) both work.\n\n"
+    ++ "## Is it fast?\n\n- one\n  - nested\n- two\n\n1. first\n2. second\n\n"
+    ++ "| target | flag |\n|--------|------|\n| native | `--target c` |\n\n"
+    ++ "> a quoted aside that\n> wraps across two source lines\n\n"
+    ++ "```maca\ngreet(n: int) -> str => \"hi \{n\}\"\n```\n"
+    ++ "```\nx = 1\n```\n"
+
+built() -> int {
+    remove_dir(Out)
+
+    build_book(Root, Out)
+}
+
+Pages = built()
+
+Toml = read_file("{Root}/book.toml")
+
+Entries = conf_value(Toml, "chapters").split(",").map(e => e.trim())
+
+Chapters = Entries.filter(e => !e.starts_with("#"))
+
+at(rel: str) -> str => read_file("{Out}/{rel}")
+
+carries(text: str, want: str, why: str) {
+    assert(text.contains(want), "{why}\nlooked for: {want}")
+}
+
+lacks(text: str, bad: str, why: str) {
+    assert(!text.contains(bad), "{why}\nfound: {bad}")
+}
+
+demo_page() -> str {
+    side = sidebar(published(), "", "Maca Handbook", "en,ko", "en",
+                   ["a", "b"], ["One", "Two"], "a",
+                   side_items(["a", "b"], ["One", "Two"], "a", 0),
+                   toc(Sample))
+
+    page("Maca Handbook", "en", "en,ko", side, article("hi"))
+}
+
+test_a_heading_becomes_an_anchored_heading() {
+    html = render(Sample)
+
+    carries(html, "id=\"title\"", "the h1 keeps an id")
+    carries(html, ">Title</h1>", "and stays an h1")
+    carries(html, "id=\"is-it-fast\"", "the h2's id is its slug")
+    carries(html, ">Is it fast?</h2>", "and stays an h2")
+}
+
+test_the_table_of_contents_links_every_heading() {
+    nav = toc(Sample)
+
+    carries(nav, "data-tomo=\"toc\"", "the toc is marked")
+    carries(nav, "href=\"#title\"", "and links the h1")
+    carries(nav, "href=\"#is-it-fast\"", "and the h2")
+}
+
+test_inline_markup_lists_and_tables_render() {
+    html = render(Sample)
+
+    carries(html, "<strong>bold</strong>", "bold is bold")
+    carries(html, ">one</li>", "an unordered item")
+    carries(html, ">two</li>", "and the one after it")
+    carries(html, ">first</li>", "an ordered item")
+    carries(html, ">second</li>", "and the one after it")
+    carries(html, "<ul><li>nested</li></ul>", "a nested item nests")
+    carries(html, ">target</th>", "a table header cell")
+    carries(html, ">flag</th>", "and the one beside it")
+    carries(html, ">native</td>", "a table body cell")
+    lacks(html, ">--------</td>", "the rule under the header is not a row")
+}
+
+test_a_blockquote_that_wraps_stays_one_quote() {
+    html = render(Sample)
+
+    carries(html,
+            ">a quoted aside that wraps across two source lines</blockquote>",
+            "the two source lines are one quote")
+    assert_eq(str(count(html, "<blockquote")), "1", "and only one")
+}
+
+test_a_link_beside_a_code_span_survives() {
+    html = render(Sample)
+
+    carries(html, "language-maca", "a fenced block names its language")
+    carries(html, "x = 1\n</code></pre>", "and an unnamed one still fences")
+    carries(html, "href=\"guide.html\">docs</a>",
+            "a link after a code span is still a link")
+    carries(html, "href=\"a.html\">two</a>", "the first of two on one line")
+    carries(html, "href=\"b.html\">links</a>", "and the second")
+    carries(html, "int[]</code>", "a bracket in prose is not a link")
+}
+
+test_the_page_offers_the_other_language() {
+    html = demo_page()
+
+    carries(html, "<details data-tomo=\"lang\">", "there is a language menu")
+    carries(html, "English ▾", "naming the one being read")
+    carries(html, "lang=\"ko\">한국어</a>", "and linking the other")
+}
+
+test_the_whole_book_is_built_in_every_language() {
+    assert(Chapters.length() >= 20,
+           "the handbook shrank to {str(Chapters.length())} chapters")
+    assert(Entries.filter(e => e.starts_with("# ")).length() >= 3,
+           "the book lost its sections")
+    assert_eq(str(Pages), str((Chapters.length() + 1) * 2 + 3),
+              "every chapter and index in two languages, plus the landings")
+}
+
+test_the_sidebar_names_the_sections_in_the_language_it_is_read_in() {
+    en = at("en/08-collections.html")
+
+    carries(en, ">The Language</li>", "a section names itself")
+    carries(en, "data-tomo=\"section\"", "and is marked as one")
+    carries(at("ko/08-collections.html"), ">언어</li>",
+            "and is translated")
+}
+
+test_the_root_page_picks_a_language_without_leaving_the_directory() {
+    root = at("index.html")
+
+    carries(root, "en/index.html", "the picker links the English book")
+    carries(root, "ko/index.html", "and the Korean one")
+    carries(root, "en/home.html", "and the English landing")
+    carries(root, "ko/home.html", "and the Korean landing")
+    lacks(root, "href=\"../", "the root page links above itself")
+    lacks(root, "href=\"en/\"", "a bare directory will not open from file://")
+    lacks(root, "href=\"ko/\"", "nor this one")
+    lacks(root, "href=\"play/\"", "nor this one")
+}
+
+test_a_landing_links_resolve_from_its_own_directory() {
+    carries(at("ko/home.html"), "../ko/index.html",
+            "the Korean landing reaches its own index")
+}
+
+test_a_translated_chapter_is_the_translation() {
+    ko = at("ko/00-introduction.html")
+
+    carries(ko, "Maca 핸드북", "the Korean chapter is Korean")
+    carries(ko, "한국어 ▾</summary>", "and says so in the switcher")
+    carries(ko, "href=\"../en/00-introduction.html\"",
+            "which reaches the same chapter in English")
+}
+
+test_each_index_titles_its_chapters_in_its_own_language() {
+    ko = at("ko/index.html")
+
+    carries(ko, "href=\"00-introduction.html\"", "the Korean index links it")
+    carries(ko, ">소개</a>", "under its Korean title")
+
+    en = at("en/index.html")
+
+    carries(en, "href=\"15-targets.html\"", "the English index links a chapter")
+    carries(en, "href=\"a1-keywords.html\"", "and an appendix")
+}
+
+test_a_page_carries_its_own_stylesheet_and_a_breakpoint() {
+    html = at("en/14-config-mode.html")
+
+    carries(html, "<strong>config mode</strong>",
+            "soft-wrapped bold was split across paragraphs")
+    carries(html, "prefers-color-scheme", "the page knows about dark mode")
+    carries(html, "<style>", "because it carries its own stylesheet")
+    carries(html, "name=\"viewport\"", "a phone is told the width")
+    carries(html, "width=device-width", "which is its own")
+    carries(html, "grid-template-columns", "the layout is a grid")
+    carries(html, "@media(max-width:48rem)", "with a breakpoint")
+}
+
+test_the_first_and_last_chapters_only_point_inwards() {
+    first = at("en/00-introduction.html")
+
+    carries(first, "href=\"01-installing.html\">next", "the first has a next")
+    lacks(first, "← previous", "and nothing before it")
+
+    last = at("en/a4-diagnostics.html")
+
+    carries(last, "href=\"a3-stdlib.html\">← previous</a>",
+            "the last has a previous")
+    lacks(last, "next →", "and nothing after it")
+    carries(last, "grid grid-cols-2", "the chapter nav is laid out")
+    lacks(last, "class=\"chapters\"", "by the class it names now")
+}
+
+test_every_page_carries_the_sidebar_and_nothing_else_does() {
+    mid = at("en/08-collections.html")
+
+    carries(mid, "data-tomo=\"side\"", "the chapter has a sidebar")
+
+    side = mid.slice(mid.index_of("data-tomo=\"side\""),
+                     mid.index_of("<main>"))
+    body = mid.slice(mid.index_of("<main>"), mid.length())
+
+    sidebar_holds(side, body, "data-tomo=\"head\"", "the header row")
+    sidebar_holds(side, body, "data-tomo=\"i18n\"", "the language switcher")
+    sidebar_holds(side, body, "id=\"q\"", "the search box")
+    sidebar_holds(side, body, "data-tomo=\"toc\"", "the page's own headings")
+
+    head = side.slice(side.index_of("data-tomo=\"head\""), side.length())
+
+    assert(head.index_of("index.html") < head.index_of("data-tomo=\"i18n\""),
+           "the switcher should follow the title in the header row")
+    carries(side, "<details data-tomo=\"nav\" open>",
+            "the sidebar nav is collapsible")
+    carries(side, "<summary", "by a summary it can be shut by")
+}
+
+sidebar_holds(side: str, body: str, probe: str, what: str) {
+    carries(side, probe, "the sidebar is missing {what}")
+    lacks(body, probe, "{what} leaked into main")
+}
+
+test_the_sidebar_lists_the_whole_book_and_marks_where_it_is() {
+    mid = at("en/08-collections.html")
+
+    carries(mid, "href=\"00-introduction.html\">Introduction</a>",
+            "the sidebar starts at the first chapter")
+    carries(mid, "href=\"a4-diagnostics.html\">", "and ends at the last")
+    carries(mid, "data-tomo=\"current\"", "and marks one")
+    carries(mid, "08-collections.html", "which is the one being read")
+
+    idx = at("en/index.html")
+
+    carries(idx, "data-tomo=\"side\"", "the index has a sidebar too")
+    lacks(idx, "data-tomo=\"current\"", "but marks no chapter as current")
+}
+
+test_the_search_index_is_a_script_of_one_line_rows_per_language() {
+    js = at("en/search-index.js")
+
+    assert(js.starts_with("window.TOMO_INDEX=["),
+           "the index is not a script: {js.slice(0, 80)}")
+    carries(js, "\"u\":\"03-common-concepts.html#format-specs\"",
+            "the index reaches a section anchor")
+    carries(js, "\"x\":\"", "and carries body text")
+    lacks(js, "\n\n", "an index row is one line")
+    assert(js != at("ko/search-index.js"),
+           "both languages got the same search index")
+    carries(at("en/08-collections.html"), "<script src=\"search-index.js\">",
+            "and a page loads it")
+}
+
+test_a_heading_anchors_in_every_language() {
+    ko = at("ko/06-sum-types.html")
+
+    carries(ko, "id=\"선언\"", "a Korean heading keeps its anchor")
+    carries(ko, ">선언</h2>", "and its own text")
+    lacks(ko, "id=\"\"", "no heading anchors to nothing")
+    lacks(ko, "id=\"-\"", "nor to a dash")
+    lacks(ko, "href=\"#\"", "and nothing links nowhere")
+    carries(ko, "href=\"#선언\"", "the Korean toc links its own headings")
+    carries(ko, ">선언</a>", "under their own text")
+    carries(at("en/06-sum-types.html"), "id=\"exhaustiveness\"",
+            "the English anchor is unchanged")
+}
+
+test_a_cross_page_link_keeps_its_anchor_and_gains_its_extension() {
+    html = at("en/a13-ffi.html")
+
+    carries(html, "a11-ui.html#assignment-is-the-update",
+            "the anchored cross-link was not rewritten")
+    lacks(html, "a11-ui.md#", "a `.md` href survived into the built page")
+}
+
+test_every_link_in_the_built_book_resolves() {
+    pages = find(Out, ".html")
+
+    assert(pages.length() > 40, "only {str(pages.length())} pages built")
+
+    checked = checked_in(pages, 0, 0)
+    broken = broken_in(pages, 0, [])
+
+    assert(checked > 500, "only {str(checked)} links checked")
+    assert_eq(broken.join("\n  "), "", "broken links")
+}
+
+checked_in(pages: str[], i: int, n: int) -> int {
+    if i >= pages.length() {
+        n
+    } else {
+        checked_in(pages, i + 1, n + local_hrefs(pages.get(i)).length())
+    }
+}
+
+broken_in(pages: str[], i: int, acc: str[]) -> str[] {
+    if i >= pages.length() {
+        acc
+    } else {
+        broken_in(pages, i + 1,
+                  acc ++ dangling(pages.get(i), local_hrefs(pages.get(i)), 0,
+                                  []))
+    }
+}
+
+dangling(page: str, links: str[], i: int, acc: str[]) -> str[] {
+    if i >= links.length() {
+        acc
+    } else {
+        href = links.get(i)
+        gone = !file_exists(resolved(page, href))
+            && !href.contains("play/")
+        dangling(page, links, i + 1,
+                 gone ? acc ++ ["{page}: {href}"] : acc)
+    }
+}
+
+resolved(page: str, href: str) -> str {
+    target = href.split("#").get(0)
+    dest = "{dirname(page)}/{target}"
+
+    is_dir(dest) ? "{dest}/index.html" : dest
+}
+
+local_hrefs(page: str) -> str[] =>
+    hrefs(strip_scripts(read_file(page)))
+        .filter(h => !h.starts_with("http") && !h.starts_with("#")
+                     && !h.starts_with("mailto:") && !h.starts_with("data:")
+                     && h.split("#").get(0) != "")
+
+hrefs(markup: str) -> str[] =>
+    anchor_hrefs(markup.split("<a "), 1, [])
+
+anchor_hrefs(parts: str[], i: int, acc: str[]) -> str[] {
+    if i >= parts.length() {
+        acc
+    } else {
+        anchor_hrefs(parts, i + 1, acc ++ href_in(tag_of(parts.get(i))))
+    }
+}
+
+tag_of(rest: str) -> str {
+    end = rest.index_of(">")
+
+    end < 0 ? "" : rest.slice(0, end)
+}
+
+href_in(tag: str) -> str[] {
+    k = tag.index_of("href=\"")
+
+    if k < 0 {
+        []
+    } else {
+        value = tag.slice(k + 6, tag.length())
+        q = value.index_of("\"")
+
+        q < 0 ? [] : [value.slice(0, q)]
+    }
+}
+
+strip_scripts(html: str) -> str {
+    open = html.index_of("<script")
+
+    if open < 0 {
+        html
+    } else {
+        rest = html.slice(open, html.length())
+        end = rest.index_of("</script>")
+
+        html.slice(0, open)
+            ++ (end < 0 ? "" : strip_scripts(rest.slice(end + 9,
+                                                        rest.length())))
+    }
+}
+
+test_an_untranslated_chapter_falls_back_to_the_default_language() {
+    dir = "{env_or("TMPDIR", "/tmp")}/maca-tomo-fallback"
+
+    remove_dir(dir)
+    make_dir("{dir}/book/en")
+    make_dir("{dir}/book/ko")
+    write_file("{dir}/book.toml",
+               "[book]\ntitle = \"Fixture\"\nlanguages = [\"en\", \"ko\"]\n"
+                   ++ "chapters = [\n    \"a\",\n    \"b\",\n]\n")
+    write_file("{dir}/book/en/a.md", "# Alpha\n\nenglish alpha\n")
+    write_file("{dir}/book/en/b.md", "# Beta\n\nenglish beta\n")
+    write_file("{dir}/book/ko/a.md", "# 알파\n\n한국어 알파\n")
+
+    assert_eq(str(build_book(dir, "{dir}/site")), "9",
+              "two chapters and an index in two languages, plus the landings")
+
+    ko_a = read_file("{dir}/site/ko/a.html")
+
+    carries(ko_a, "한국어 알파", "the translated chapter is the translation")
+
+    ko_b = read_file("{dir}/site/ko/b.html")
+
+    carries(ko_b, "english beta", "the untranslated one falls back")
+    carries(ko_b, "<html lang=\"ko\">", "without losing its language")
+
+    ko_index = read_file("{dir}/site/ko/index.html")
+
+    carries(ko_index, ">알파</a>", "the index titles what was translated")
+    carries(ko_index, ">Beta</a>", "and falls back for what was not")
+}

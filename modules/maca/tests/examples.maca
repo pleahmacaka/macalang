@@ -430,6 +430,26 @@ test_a_c_library_the_system_provides_is_called_through() {
     }
 }
 
+python_headers() -> bool {
+    probe = "echo '#include <Python.h>' | cc -x c -c -o /dev/null -"
+                ++ " $(python3-config --includes) 2>/dev/null"
+
+    have("python3-config") && exec("sh", ["-c", probe]) == 0
+}
+
+test_a_python_module_the_system_provides_is_called_through() {
+    if python_headers() {
+        said = ran_example("ffi_py")
+
+        assert(said.at(0).is_ascii_digit(),
+            "the interpreter answered with its own version first: {said}")
+        assert(said.contains("12.0"),
+            "an int went out to math.sqrt and a float came back: {said}")
+        assert(said.contains("c.txt"),
+            "and a string went out to os.path.basename: {said}")
+    }
+}
+
 test_a_nix_file_is_a_value_the_program_reads_at_build_time() {
     if have("nix-instantiate") {
         assert_eq(ran_example("ffi_nix"), "42",

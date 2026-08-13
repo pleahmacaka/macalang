@@ -481,3 +481,25 @@ test_the_source_never_names_the_directory_maca_add_chose() {
                && source.index_of("dist/full.css") < 0,
            "the program names the package, not where it was installed")
 }
+
+/// A bridge module's block provides every declaration it writes, so naming one of them in the import must not slice the rest out of the page.
+test_a_selective_import_keeps_every_declaration_its_block_provides() {
+    dir = project("bridge")
+
+    put(dir, "lib/clock.maca",
+        "/// The hour and minute.\nclock_time() -> str\n\n"
+            ++ "/// Today, written out.\nclock_date() -> str\n\n"
+            ++ "import js \"\"\"\nmaca.provide(\{\n"
+            ++ "  clock_time: () => \"12:00\",\n"
+            ++ "  clock_date: () => \"2026-08-04\",\n\});\n\"\"\"\n")
+    put(dir, "home.maca",
+        "import \{ clock_time \} from lib/clock\n\n"
+            ++ "main() -> Element =>\n"
+            ++ "    div(class=\"card\" span(clock_time()))\n")
+
+    page = page_of(dir)
+
+    carries(page, "clock_time: () =>", "the name the import asked for")
+    carries(page, "clock_date: () =>",
+            "and the one it did not, because one block provides both")
+}
