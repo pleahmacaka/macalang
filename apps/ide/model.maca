@@ -1,0 +1,200 @@
+// The editor's own state, and every question it asks the toolchain.
+//
+// Nothing here draws: `ide.maca` is the gpui half and this is the half a suite
+// can run. A view that cannot be tested without a window is a view nobody
+// tests, so the window holds no logic at all.
+
+import std/proc
+import std/text
+import { walk } from std/fs
+
+/// One open editor: the tree it was opened on, the buffer, and the panel beside it.
+Ide = {
+    root:   str,
+    files:  str[],
+    open:   str,
+    text:   str,
+    target: str,
+    panel:  str,
+    output: str,
+    breaks: int[],
+}
+
+Panels = ["rust", "c", "js", "flame", "checks"]
+
+maca_bin() -> str {
+    named = env_or("MACA", "maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
+
+/// Every `.maca` file under the tree, which is what the file list shows.
+sources(root: str) -> str[] {
+    out: str[] = []
+
+    for path in walk(root) {
+        if path.ends_with(".maca") {
+            out = out.push(path)
+        }
+    }
+
+    out
+}
+
+opened(root: str) -> Ide =>
+    Ide { root = root, files = sources(root), open = "", text = "",
+          target = "", panel = "rust", output = "", breaks = [] }
+
+/// Opening a file reads it and decides what building it would produce.
+opened_file(ide: Ide, path: str) -> Ide {
+    body = read_file(path)
+
+    ide with { open = path, text = body, target = target_of(body),
+               output = "", breaks = [] }
+}
+
+/// What `maca build` would pick with no `--target`: a config imports nixpkgs, a page answers with an Element.
+target_of(body: str) -> str {
+    if imports_nixpkgs(body) {
+        return "nix"
+    }
+
+    answers_element(body) ? "js" : "native"
+}
+
+imports_nixpkgs(body: str) -> bool {
+    for line in lines(body) {
+        trimmed = line.trim()
+
+        if trimmed.starts_with("import ") && trimmed.contains("nixpkgs") {
+            return true
+        }
+    }
+
+    false
+}
+
+answers_element(body: str) -> bool =>
+    body.contains("-> Element")
+
+/// The panel a target opens on, so a page shows its JavaScript and a config its Nix.
+panel_for(target: str) -> str {
+    if target == "js" {
+        "js"
+    } else if target == "nix" {
+        "nix"
+    } else {
+        "rust"
+    }
+}
+
+/// A breakpoint is a line, and toggling one is what the gutter does.
+toggled(ide: Ide, line: int) -> Ide {
+    if ide.breaks.index_of(line) >= 0 {
+        ide with { breaks = without_line(ide.breaks, line, 0, []) }
+    } else {
+        ide with { breaks = ide.breaks ++ [line] }
+    }
+}
+
+without_line(xs: int[], line: int, i: int, acc: int[]) -> int[] {
+    if i >= xs.length() {
+        acc
+    } else if xs.get(i) == line {
+        without_line(xs, line, i + 1, acc)
+    } else {
+        without_line(xs, line, i + 1, acc ++ [xs.get(i)])
+    }
+}
+
+/// What the gutter draws beside a line: a stop, or the line's own number.
+gutter(ide: Ide, line: int) -> str =>
+    ide.breaks.index_of(line) >= 0 ? "*" : str(line)
+
+/// A run that stops where the editor was told to: the lines, in order, as the runner wants them.
+stops(ide: Ide) -> str =>
+    sorted_lines(ide.breaks).map(str).join(",")
+
+sorted_lines(xs: int[]) -> int[] {
+    out = xs
+    i = 0
+
+    while i < out.length() {
+        j = i + 1
+
+        while j < out.length() {
+            if out.get(j) < out.get(i) {
+                held = out.get(i)
+                out = out.set(i, out.get(j))
+                out = out.set(j, held)
+            }
+
+            j = j + 1
+        }
+
+        i = i + 1
+    }
+
+    out
+}
+
+/// The panel's text, asked of the toolchain rather than guessed at.
+shown(ide: Ide) -> str {
+    if ide.open == "" {
+        return "open a file"
+    }
+
+    if ide.panel == "checks" {
+        return checked(ide.open, ide.target)
+    }
+
+    if ide.panel == "flame" {
+        return flamed(ide.open)
+    }
+
+    transpiled(ide.open, ide.panel)
+}
+
+/// The file as another target reads it, which is the point of watching it change.
+transpiled(path: str, panel: str) -> str {
+    out = "{scratch()}/{stem(path)}.{panel}"
+
+    remove_file(out)
+
+    said = panel == "c"
+        ? output("sh", ["-c", "'{maca_bin()}' '{path}' '{out}' 2>&1"])
+        : output("sh", ["-c", "'{maca_bin()}' build '{path}' --target {panel}"
+                                  ++ " -o '{out}' 2>&1"])
+    got = read_file(out)
+
+    got != "" ? got : said
+}
+
+/// Where the time went, under the counter that is exactly repeatable.
+flamed(path: str) -> str {
+    svg = "{scratch()}/{stem(path)}.svg"
+
+    output("sh", ["-c", "'{maca_bin()}' profile '{path}' -o '{svg}' 2>&1"])
+}
+
+checked(path: str, target: str) -> str {
+    said = output("sh", ["-c", "'{maca_bin()}' check '{path}' --target {target}"
+                                   ++ " 2>&1"])
+
+    said.trim() == "" ? "no diagnostics" : said
+}
+
+scratch() -> str {
+    dir = env_or("TMPDIR", "/tmp") ++ "/maca-ide"
+
+    make_dir(dir)
+
+    dir
+}
+
+stem(path: str) -> str {
+    cut = path.split("/")
+    last = cut.get(cut.length() - 1)
+
+    last.ends_with(".maca") ? last.slice(0, last.length() - 5) : last
+}

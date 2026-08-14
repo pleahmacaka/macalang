@@ -25,6 +25,7 @@ members = [
     "apps/corpus",
     "apps/desktop",
     "apps/evals",
+    "apps/ide",
     "apps/install",
     "apps/lint",
     "apps/lsp",

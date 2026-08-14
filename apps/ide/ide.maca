@@ -1,0 +1,58 @@
+// A Maca editor, drawn with gpui.
+//
+// The window holds no logic. Every question it asks is a function in
+// `model.maca`, which a suite runs without a window, so what is here is only
+// the tree: the file list, the buffer with its breakpoint gutter, and the panel
+// showing what the file becomes on the target the compiler would pick for it.
+
+import "gpui::div"
+import "gpui::Render"
+import "gpui::IntoElement"
+import "gpui::AnyElement"
+import "gpui::Context"
+import "gpui::Window"
+
+import { Ide, opened, panel_for, shown, stops } from apps/ide/model
+
+Shell = {
+    ide: Ide
+}
+
+Shell : Render = {
+    render = (self, window: Window, cx: Context Shell) -> AnyElement =>
+        view(self.ide).into_any_element()
+}
+
+/// Three columns: what there is to open, what is open, and what it becomes.
+view(ide: Ide) -> Element =>
+    div(class="flex flex-row size-full",
+        tree(ide),
+        buffer(ide),
+        panel(ide))
+
+tree(ide: Ide) -> Element =>
+    div(class="flex flex-col w-64 p-2 gap-1",
+        div(class="text-xs", "FILES"),
+        div(class="text-sm", ide.root),
+        div(class="text-xs", "{str(ide.files.length())} in the workspace"))
+
+/// The gutter carries the breakpoints, which is why `stops` answers text and not a widget.
+buffer(ide: Ide) -> Element =>
+    div(class="flex flex-col grow p-2 gap-1",
+        div(class="text-xs", ide.open),
+        div(class="text-sm", ide.text),
+        div(class="text-xs", stops(ide)))
+
+/// What the panel shows follows the target the source itself names, so nothing has to be chosen.
+panel(ide: Ide) -> Element =>
+    div(class="flex flex-col w-96 p-2 gap-1",
+        div(class="text-xs", panel_for(ide.target)),
+        div(class="text-sm", shown(ide)))
+
+main() -> int {
+    ide = opened(".")
+
+    info("{str(ide.files.length())} files under {ide.root}")
+    info("target: {ide.target}, panel: {panel_for(ide.target)}")
+    0
+}

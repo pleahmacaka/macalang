@@ -1,0 +1,13 @@
+[package]
+name = "ide"
+description = "A Maca editor: the buffer, what it becomes on every target, where the time went, and where it stops."
+
+[[bin]]
+name = "ide"
+path = "ide.maca"
+
+[build]
+target = "rust"
+
+[rust-dependencies]
+gpui = "0.2"
