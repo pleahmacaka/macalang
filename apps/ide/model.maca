@@ -4,6 +4,9 @@
 // can run. A view that cannot be tested without a window is a view nobody
 // tests, so the window holds no logic at all.
 
+import maca/lexer
+import maca/parser
+import maca/ast
 import std/proc
 import std/text
 import { walk } from std/fs
@@ -20,7 +23,7 @@ Ide = {
     breaks: int[],
 }
 
-Panels = ["rust", "c", "js", "flame", "checks"]
+Panels = ["rust", "c", "js", "flame", "checks", "names", "memory"]
 
 maca_bin() -> str {
     named = env_or("MACA", "maca")
@@ -152,6 +155,14 @@ shown(ide: Ide) -> str {
         return flamed(ide.open)
     }
 
+    if ide.panel == "names" {
+        return declared(ide.text)
+    }
+
+    if ide.panel == "memory" {
+        return footprint(ide.open)
+    }
+
     transpiled(ide.open, ide.panel)
 }
 
@@ -239,3 +250,47 @@ tab_row(ps: str[], i: int, on: str, acc: str) -> str {
 /// Which panel a click on the tab row selects, staying put when the name is not one.
 picked(ide: Ide, name: str) -> Ide =>
     Panels.index_of(name) < 0 ? ide : ide with { panel = name }
+
+/// What the open file declares, read by the compiler's own parser, so the list is exact rather than guessed at.
+declared(text: str) -> str =>
+    named_items(parse_module(lex(text), 0, []).items, 0, "")
+
+named_items(items: Stmt[], i: int, acc: str) -> str {
+    if i >= items.length() {
+        acc
+    } else {
+        here = one_declared(items.get(i))
+        held = here == "" ? acc : (acc == "" ? here : "{acc}\n{here}")
+
+        named_items(items, i + 1, held)
+    }
+}
+
+one_declared(s: Stmt) -> str {
+    if s.kind == SFn {
+        "{s.name}/{str(s.params.length())} -> {s.ret == "" ? "?" : s.ret}"
+    } else if s.kind == SRecord {
+        "{s.name} {{{str(s.params.length())} fields}}"
+    } else if s.kind == SSum {
+        "{s.name} | {str(s.params.length())} variants"
+    } else if s.kind == SBind {
+        "{s.name} = ."
+    } else {
+        ""
+    }
+}
+
+Timer = "/usr/bin/time"
+
+/// The peak the run actually held, which no reading of the source gives.
+footprint(path: str) -> str {
+    if !file_exists(Timer) {
+        return "no {Timer} on this host, so nothing measured the run"
+    }
+
+    said = output("sh", ["-c", "{Timer} -f '%M KB peak, %e s'"
+                                   ++ " '{maca_bin()}' run '{path}'"
+                                   ++ " 2>&1 >/dev/null"])
+
+    said.trim() == "" ? "the run said nothing" : said.trim()
+}
