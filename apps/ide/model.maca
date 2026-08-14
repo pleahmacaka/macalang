@@ -6,7 +6,7 @@
 
 import { Chat, compatible, with_model } from ai/openai/chat
 import { generate_text_as } from ai/generate
-import { Tag, tags } from maca/doc
+import { Tag, tags, prose } from maca/doc
 import maca/lexer
 import maca/parser
 import maca/ast
@@ -26,7 +26,7 @@ Ide = {
     breaks: int[],
 }
 
-Panels = ["rust", "c", "js", "flame", "checks", "names", "memory", "ask"]
+Panels = ["rust", "c", "js", "flame", "checks", "names", "memory", "ask", "read"]
 
 maca_bin() -> str {
     named = env_or("MACA", "maca")
@@ -168,6 +168,10 @@ shown(ide: Ide) -> str {
 
     if ide.panel == "ask" {
         return asked(ide)
+    }
+
+    if ide.panel == "read" {
+        return reading(ide.text)
     }
 
     transpiled(ide.open, ide.panel)
@@ -339,3 +343,33 @@ asked_body(ide: Ide) -> str =>
 /// The controls the open file asked for, which is every `@param` its doc comments carry.
 knobs(ide: Ide) -> Tag[] =>
     tags(ide.text)
+
+/// The file as prose: what its comments say, with the code between them left out.
+reading(text: str) -> str =>
+    said_lines(prose(text).split(chr(10)), 0, [])
+
+said_lines(ls: str[], i: int, acc: str[]) -> str {
+    if i >= ls.length() {
+        return acc.join(chr(10))
+    }
+
+    said = ls.get(i).trim()
+
+    said_lines(ls, i + 1, is_said(said) ? acc.push(unmarked(said)) : acc)
+}
+
+is_said(line: str) -> bool =>
+    line.starts_with("//") || line.starts_with("*")
+
+/// A comment reads as a sentence, so the marks that opened it go.
+unmarked(line: str) -> str {
+    if line.starts_with("///") {
+        return line.slice(3, line.length()).trim()
+    }
+
+    if line.starts_with("//") {
+        return line.slice(2, line.length()).trim()
+    }
+
+    line.slice(1, line.length()).trim()
+}
