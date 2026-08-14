@@ -1,0 +1,52 @@
+import maca/doc
+
+Sample = "/// Sum two numbers, which is what a doc line is for.\n/// @param a = slider(1..10)\n/// @param b = slider(1..10)\n/// @returns the total\n"
+
+test_a_tag_opens_its_line_and_a_sentence_never_does() {
+    ts = tags(Sample)
+
+    assert_eq(str(ts.length()), "3", "three tags, and the prose is not one")
+    assert_eq(ts.get(0).name, "param", "the name is what follows the `@`")
+    assert_eq(ts.get(0).rest, "a = slider(1..10)", "and the rest is the rest")
+    assert_eq(ts.get(2).name, "returns", "every tag is read, not just the first kind")
+}
+
+test_an_at_sign_inside_a_sentence_is_a_sentence() {
+    assert_eq(str(tags("/// write to a@b.com when it fails\n").length()), "0",
+              "a tag has to open its line")
+}
+
+test_the_prose_is_what_is_left_when_the_tags_go() {
+    said = prose(Sample)
+
+    assert(said.contains("Sum two numbers"), "the sentence stays: {said}")
+    assert(!said.contains("@param"), "and the tags do not: {said}")
+}
+
+test_a_param_tag_binds_a_name_to_a_control() {
+    t = tag_named(tags(Sample), "param")
+
+    assert_eq(bound_name(t), "a", "the name is left of the `=`")
+    assert_eq(bound_call(t), "slider(1..10)", "and the control is right of it")
+
+    plain = tag_named(tags("/// @param n\n"), "param")
+
+    assert_eq(bound_name(plain), "n", "a tag with no control still names one")
+    assert_eq(bound_call(plain), "", "and asks for no control at all")
+}
+
+test_a_tag_is_read_through_whichever_marks_opened_the_line() {
+    assert_eq(tags("// @param a = 1\n").get(0).rest, "a = 1",
+              "a plain comment carries a tag too")
+    assert_eq(tags(" * @param a = 1\n").get(0).rest, "a = 1",
+              "and so does a line inside a block")
+}
+
+main() -> int {
+    test_a_tag_opens_its_line_and_a_sentence_never_does()
+    test_an_at_sign_inside_a_sentence_is_a_sentence()
+    test_the_prose_is_what_is_left_when_the_tags_go()
+    test_a_param_tag_binds_a_name_to_a_control()
+    test_a_tag_is_read_through_whichever_marks_opened_the_line()
+    failures()
+}
