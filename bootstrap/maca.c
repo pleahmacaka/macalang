@@ -274,6 +274,9 @@ Lexed end_run(Lexed out, long i, long n);
 Lexed step(MacaList cs, Lexed out);
 Lexed lex_comment(MacaList cs, long i, Lexed out);
 long comments(MacaList cs, long i);
+long blocks(MacaList cs, long i);
+Lexed lex_block(MacaList cs, long i, Lexed out);
+long shut_block(MacaList cs, long i);
 long line_end(MacaList cs, long i);
 long triple(MacaList cs, long i);
 long raw_end(MacaList cs, long i);
@@ -2495,9 +2498,12 @@ Lexed halves(MacaList cs, Lexed out, long hi, long mid) { Lexed left = scan(cs, 
 Lexed emptied(Lexed acc) { return (Lexed){ .tokens = maca_listv(0), .marks = maca_listv(0), .errors = maca_listv(0), .pos = acc.pos, .broke = acc.broke, .depth = acc.depth };  }
 Lexed merged_runs(Lexed out, Lexed left, Lexed right) { return (Lexed){ .tokens = maca_list_cat(maca_list_cat(out.tokens, left.tokens), right.tokens), .marks = maca_list_cat(maca_list_cat(out.marks, left.marks), right.marks), .errors = maca_list_cat(maca_list_cat(out.errors, left.errors), right.errors), .pos = right.pos, .broke = right.broke, .depth = right.depth };  }
 Lexed end_run(Lexed out, long i, long n) { return ((n >= 4) ? out : end_run(keep(out, mk_token(Eof, "", i)), i, (n + 1)));  }
-Lexed step(MacaList cs, Lexed out) { long i = out.pos; const char* c = ((const char*)cs.data[i]); return (is_space(c) ? moved(crossed(out, c), (i + 1)) : (comments(cs, i) ? lex_comment(cs, i, out) : (triple(cs, i) ? lex_raw(cs, i, out) : ((strcmp(c, "\"") == 0) ? lex_string(cs, i, out) : (is_digit(c) ? lex_number(cs, i, out) : (is_alpha(c) ? lex_word(cs, i, out) : lex_punct(cs, i, out, c)))))));  }
+Lexed step(MacaList cs, Lexed out) { long i = out.pos; const char* c = ((const char*)cs.data[i]); return (is_space(c) ? moved(crossed(out, c), (i + 1)) : (blocks(cs, i) ? lex_block(cs, i, out) : (comments(cs, i) ? lex_comment(cs, i, out) : (triple(cs, i) ? lex_raw(cs, i, out) : ((strcmp(c, "\"") == 0) ? lex_string(cs, i, out) : (is_digit(c) ? lex_number(cs, i, out) : (is_alpha(c) ? lex_word(cs, i, out) : lex_punct(cs, i, out, c))))))));  }
 Lexed lex_comment(MacaList cs, long i, Lexed out) { long j = line_end(cs, i); return moved(mark(out, mk_token(Comment, span(cs, i, j), i)), j);  }
 long comments(MacaList cs, long i) { return (((strcmp(((const char*)cs.data[i]), "/") == 0) && ((i + 1) < (cs.len))) && (strcmp(((const char*)cs.data[(i + 1)]), "/") == 0));  }
+long blocks(MacaList cs, long i) { return (((strcmp(((const char*)cs.data[i]), "/") == 0) && ((i + 1) < (cs.len))) && (strcmp(((const char*)cs.data[(i + 1)]), "*") == 0));  }
+Lexed lex_block(MacaList cs, long i, Lexed out) { long j = shut_block(cs, i); return moved(mark(out, mk_token(Comment, span(cs, i, j), i)), j);  }
+long shut_block(MacaList cs, long i) { long j = (i + 2); while (((j + 1) < (cs.len))) { if (((strcmp(((const char*)cs.data[j]), "*") == 0) && (strcmp(((const char*)cs.data[(j + 1)]), "/") == 0))) { return (j + 2); } j = (j + 1); } return (cs.len);  }
 long line_end(MacaList cs, long i) { long j = i; while (((j < (cs.len)) && (strcmp(((const char*)cs.data[j]), "\n") != 0))) { j = (j + 1); } return j;  }
 long triple(MacaList cs, long i) { return (((strcmp(((const char*)cs.data[i]), "\"") == 0) && (strcmp(at_or_blank(cs, (i + 1)), "\"") == 0)) && (strcmp(at_or_blank(cs, (i + 2)), "\"") == 0));  }
 long raw_end(MacaList cs, long i) { long j = i; while (((j + 2) < (cs.len))) { if (triple(cs, j)) { return j; } j = (j + 1); } return (cs.len);  }

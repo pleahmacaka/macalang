@@ -114,6 +114,7 @@ step(cs: str[], out: Lexed) -> Lexed {
     c = cs.get(i)
     match true {
         _ if is_space(c)   => moved(crossed(out, c), i + 1)
+        _ if blocks(cs, i)   => lex_block(cs, i, out)
         _ if comments(cs, i) => lex_comment(cs, i, out)
         _ if triple(cs, i) => lex_raw(cs, i, out)
         _ if c == "\""     => lex_string(cs, i, out)
@@ -131,6 +132,30 @@ lex_comment(cs: str[], i: int, out: Lexed) -> Lexed {
 
 comments(cs: str[], i: int) -> bool =>
     cs.get(i) == "/" && i + 1 < cs.length() && cs.get(i + 1) == "/"
+
+blocks(cs: str[], i: int) -> bool =>
+    cs.get(i) == "/" && i + 1 < cs.length() && cs.get(i + 1) == "*"
+
+lex_block(cs: str[], i: int, out: Lexed) -> Lexed {
+    j = shut_block(cs, i)
+
+    moved(mark(out, mk_token(Comment, span(cs, i, j), i)), j)
+}
+
+/// A block ends at the first `*/`, and one nobody closed runs to the end of the file rather than eating the parser.
+shut_block(cs: str[], i: int) -> int {
+    j = i + 2
+
+    while j + 1 < cs.length() {
+        if cs.get(j) == "*" && cs.get(j + 1) == "/" {
+            return j + 2
+        }
+
+        j = j + 1
+    }
+
+    cs.length()
+}
 
 line_end(cs: str[], i: int) -> int {
     j = i

@@ -229,3 +229,12 @@ test_a_shift_is_one_token_and_not_two_comparisons() {
     assert(lex("a <= b").get(1).kind == Le,
            "a spelling one character apart is untouched")
 }
+
+test_a_block_comment_is_a_mark_and_never_a_token() {
+    ts = lex("/* a block */\n/** a doc block\n * over lines\n */\nmain() -> int => 1 /* inline */ + 2\n")
+
+    assert_eq(ts.get(0).text, "main",
+              "the parser sees the declaration and no comment")
+    assert_eq(str(lex_marked("/* a block */\n/** a doc block\n * over lines\n */\nmain() -> int => 1 /* inline */ + 2\n").length()), "3",
+              "a block, a doc block over lines, and one inside an expression")
+}
