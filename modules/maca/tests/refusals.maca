@@ -354,6 +354,21 @@ test_a_language_word_in_front_of_an_import_is_a_parse_error() {
               "an import carries no language word, and one is not ignored")
 }
 
+test_a_backslash_inside_an_interpolation_is_caught_before_a_back_end_sees_it() {
+    at = keyworded("escaped.maca",
+                   "main() -> int {{\n    xs = [\"a\", \"b\"]\n"
+                       ++ "    info(\"joined {{xs.join(\\\", \\\")}}\")\n"
+                       ++ "    0\n}}\n")
+    said = capture(maca_bin(), ["check", at])
+
+    assert(said.contains("not an escape"),
+           "the scan names what the backslash is not: {said}")
+    assert(said.contains("plainly"),
+           "and what to write instead: {said}")
+    assert_eq(str(exec(maca_bin(), ["check", at])), "1",
+              "check is where it is caught, rather than the C compiler")
+}
+
 test_an_import_is_classified_by_the_string_it_names() {
     at = keyworded("named.maca",
                    "import \"sqlite3.h\"\nimport \"itoa\"\n"
