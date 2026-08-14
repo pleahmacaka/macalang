@@ -191,8 +191,8 @@ typedef struct { Env env; MacaList tys; } Signature;
 typedef struct { Expr node; Lift at; } Lifted;
 typedef struct { Expr node; Poly at; } PolyNode;
 typedef struct { Stmt snode; long snext; } PStmt;
-static const char* StdExports;
 static const const char* ElementTags = " html head title meta link style script body div span p pre code a button input textarea select option label form header footer main section article nav aside ul ol li table thead tbody tr td th h1 h2 h3 h4 h5 h6 img svg canvas small strong em b i hr br blockquote figure figcaption details summary dialog progress meter video audio ";
+static const char* StdExports;
 static const char* StrMethods;
 static const char* ListMethods;
 static const const char* MapMethods = " set get has remove keys length ";
@@ -357,6 +357,8 @@ const char* entry_value_type(const char* ty);
 const char* map_type_key(const char* ty);
 const char* map_type_val(const char* ty);
 const char* map_type_rest(const char* ty);
+long is_element_tag(const char* name);
+long tag_lower(const char* w);
 PExpr mk_pexpr(Expr node, long next);
 PStmt mk_pstmt(Stmt snode, long snext);
 PParams mk_pparams(MacaList params, long pnext);
@@ -625,7 +627,6 @@ Env wrong_arity(Env env, Expr e, long wanted);
 Env unify_args(Env env, MacaList args, MacaList params, long i);
 Env walk_args(Env env, MacaList args, long i);
 Ty builtin_type(const char* name);
-long is_element_tag(const char* name);
 long is_prelude_call(const char* name);
 long is_str_builtin(const char* name);
 long is_float_builtin(const char* name);
@@ -2566,6 +2567,8 @@ const char* entry_value_type(const char* ty) { return (is_entry_type(ty) ? maca_
 const char* map_type_key(const char* ty) { const char* rest = map_type_rest(ty); long cut = maca_str_index_of(rest, " "); return ((cut < 0) ? "" : maca_str_slice(rest, 0, cut));  }
 const char* map_type_val(const char* ty) { const char* rest = map_type_rest(ty); long cut = maca_str_index_of(rest, " "); return ((cut < 0) ? "" : maca_str_slice(rest, (cut + 1), ((int)strlen(rest))));  }
 const char* map_type_rest(const char* ty) { return (((((int)strlen(ty)) > 4) && (strcmp(maca_str_slice(ty, 0, 4), "Map ") == 0)) ? maca_str_slice(ty, 4, ((int)strlen(ty))) : "");  }
+long is_element_tag(const char* name) { return (((strcmp(name, "element") == 0) || (maca_str_index_of(ElementTags, maca_cat(maca_cat(" ", name), " ")) >= 0)) || (tag_lower(name) && (maca_str_index_of(name, "-") > 0)));  }
+long tag_lower(const char* w) { return (((strcmp(w, "") != 0) && (maca_ord(maca_str_at(w, 0)) >= maca_ord("a"))) && (maca_ord(maca_str_at(w, 0)) <= maca_ord("z")));  }
 PExpr mk_pexpr(Expr node, long next) { return (PExpr){ .node = node, .next = next };  }
 PStmt mk_pstmt(Stmt snode, long snext) { return (PStmt){ .snode = snode, .snext = snext };  }
 PParams mk_pparams(MacaList params, long pnext) { return (PParams){ .params = params, .pnext = pnext };  }
@@ -2834,7 +2837,6 @@ Env wrong_arity(Env env, Expr e, long wanted) { return ((maca_list_index_of_str(
 Env unify_args(Env env, MacaList args, MacaList params, long i) { return ((i >= (args.len)) ? env : ({ Typed got = type_in(env, (*(Expr*)args.data[i])); unify_args(joined(got.env, (*(Ty*)params.data[i]), got.ty), args, params, (i + 1)); }));  }
 Env walk_args(Env env, MacaList args, long i) { return ((i >= (args.len)) ? env : walk_args(type_in(env, (*(Expr*)args.data[i])).env, args, (i + 1)));  }
 Ty builtin_type(const char* name) { return (is_str_builtin(name) ? t_str() : (is_float_builtin(name) ? t_float() : (is_int_builtin(name) ? t_int() : (is_bool_builtin(name) ? t_bool() : ((strcmp(name, "list_dir") == 0) ? t_array(t_str()) : (is_io_builtin(name) ? t_unit() : (is_element_tag(name) ? t_str() : t_any())))))));  }
-long is_element_tag(const char* name) { return (((strcmp(name, "element") == 0) || (maca_str_index_of(ElementTags, maca_cat(maca_cat(" ", name), " ")) >= 0)) || (starts_lower(name) && (maca_str_index_of(name, "-") > 0)));  }
 long is_prelude_call(const char* name) { return ((((is_str_builtin(name) || is_float_builtin(name)) || is_int_builtin(name)) || is_bool_builtin(name)) || is_io_builtin(name));  }
 long is_str_builtin(const char* name) { return (((((((((((((((strcmp(name, "str") == 0) || (strcmp(name, "chr") == 0)) || (strcmp(name, "read_line") == 0)) || (strcmp(name, "capture") == 0)) || (strcmp(name, "capture_err") == 0)) || (strcmp(name, "styles") == 0)) || (strcmp(name, "read_file") == 0)) || (strcmp(name, "env") == 0)) || (strcmp(name, "cwd") == 0)) || (strcmp(name, "real_path") == 0)) || (strcmp(name, "now_iso") == 0)) || (strcmp(name, "format_time") == 0)) || (strcmp(name, "maca_attr") == 0)) || (strcmp(name, "maca_flag") == 0)) || (strcmp(name, "maca_element") == 0));  }
 long is_float_builtin(const char* name) { return (((((((((((strcmp(name, "float") == 0) || (strcmp(name, "sqrt") == 0)) || (strcmp(name, "floor") == 0)) || (strcmp(name, "ceil") == 0)) || (strcmp(name, "round") == 0)) || (strcmp(name, "pow") == 0)) || (strcmp(name, "sin") == 0)) || (strcmp(name, "cos") == 0)) || (strcmp(name, "tan") == 0)) || (strcmp(name, "log") == 0)) || (strcmp(name, "exp") == 0));  }

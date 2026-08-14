@@ -287,3 +287,13 @@ map_type_rest(ty: str) -> str {
         ""
     }
 }
+
+ElementTags = " html head title meta link style script body div span p pre code a button input textarea select option label form header footer main section article nav aside ul ol li table thead tbody tr td th h1 h2 h3 h4 h5 h6 img svg canvas small strong em b i hr br blockquote figure figcaption details summary dialog progress meter video audio "
+
+/// `element` names its tag with its first argument; every other tag is its own name.
+is_element_tag(name: str) -> bool =>
+    name == "element" || ElementTags.index_of(" {name} ") >= 0
+        || (tag_lower(name) && name.index_of("-") > 0)
+
+tag_lower(w: str) -> bool =>
+    w != "" && ord(w.at(0)) >= ord("a") && ord(w.at(0)) <= ord("z")
