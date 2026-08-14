@@ -1,0 +1,44 @@
+Colour = Red | Green | Blue
+
+Point = {
+    x: int
+    y: int
+}
+
+named(c: Colour) -> str => match c {
+    Red   => "red"
+    Green => "green"
+    Blue  => "blue"
+}
+
+weight(c: Colour) -> int => match c {
+    Red   => 7
+    Green => 11
+    Blue  => 13
+}
+
+moved(p: Point, dx: int) -> Point =>
+    p with { x = p.x + dx }
+
+span(p: Point) -> int =>
+    p.x * p.y
+
+louder(s: str) -> str =>
+    s.upper() ++ "!"
+
+picked(xs: int[]) -> int =>
+    xs.filter(n => n % 2 == 1).sum()
+
+greeting(who: str, n: int) -> str =>
+    "{who} has {str(n)}"
+
+main() -> int {
+    p = moved(Point { x = 2, y = 3 }, 1)
+    odds = picked([1, 2, 3, 4, 5, 6, 7])
+    tone = weight(Green) + weight(Blue)
+
+    info(greeting(louder(named(Red)), span(p)))
+    info("odds {str(odds)}, tone {str(tone)}")
+
+    span(p) + odds + tone - (p.x > 2 ? weight(Red) : 0)
+}

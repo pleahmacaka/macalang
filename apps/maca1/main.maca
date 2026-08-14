@@ -8,6 +8,7 @@ import maca/emit_js
 import maca/emit_nix
 import maca/emit_embedded
 import maca/emit_jvm
+import maca/emit_elixir
 import maca/print
 import { Span, trace } from profile/trace
 import { flame_svg_in, percent } from profile/flame
@@ -872,12 +873,12 @@ build_out(src: str, out: str, target: str, mcu: str, cp: str) -> int {
         build_tauri(src, out)
     } else if target == "rust" {
         build_rust(src, out)
-    } else if target == "nix" {
+    } else if target == "nix" || target == "elixir" {
         compile_file([src, out, target])
     } else if target == "jvm" {
         build_classes(src, out, cp)
     } else {
-        err("maca: no target `{target}`. Try native, rust, js, nix, "
+        err("maca: no target `{target}`. Try native, rust, js, nix, elixir, "
             ++ "tauri, wasm, embedded or jvm.")
 
         2
@@ -890,6 +891,8 @@ default_out(src: str, target: str) -> str {
         stem_of(src) ++ "-web"
     } else if target == "tauri" {
         stem_of(src) ++ "-tauri"
+    } else if target == "elixir" {
+        stem_of(src) ++ ".exs"
     } else {
         stem_of(src)
     }
@@ -2771,6 +2774,8 @@ compile_file(args: str[]) -> int {
         eemit_module(m)
     } else if asked == "jvm" {
         jvmemit_module(m, args.length() >= 4 ? args.get(3) : "Main")
+    } else if asked == "elixir" {
+        exemit_module(m)
     } else {
         emit_module(m)
     }
@@ -2795,6 +2800,8 @@ refused_here(asked: str, m: Module) -> int {
     } else if asked == "rust" {
         report_all("rust", ported_errors(m.items, 0, "rust", []), 0) +
             report_all("rust", kept_borrow_notes(m), 0)
+    } else if asked == "elixir" {
+        report_all("elixir", exemit_errors(m), 0)
     } else {
         0
     }
@@ -4182,9 +4189,11 @@ targets_table() -> str =>
         ++ "| js | `--target js` | io, net, async, exn |\n"
         ++ "| jvm | `--target jvm` | io, net, os, async, exn |\n"
         ++ "| rust | `--target rust` | io, net, os, async, exn |\n"
+        ++ "| elixir | `--target elixir` | io, net, os, async, exn |\n"
         ++ "| embedded | `--target embedded` | exn |\n"
         ++ "| nix | `--target nix` | nothing: config mode is data |\n"
-        ++ "\nThere is no BEAM target, by design.\n\n"
+        ++ "\nThe BEAM is reached by naming Elixir, never the machine "
+        ++ "under it.\n\n"
         ++ "Two differences are not effects, and are the back end's own error: "
         ++ "`int / int` truncates natively and does not on `js`, and a "
         ++ "function-typed record field is refused on `rust` and `jvm`.\n"

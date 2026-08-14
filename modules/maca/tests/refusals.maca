@@ -329,7 +329,10 @@ test_a_program_is_refused_by_the_effect_its_target_cannot_carry() {
         "a browser prints, so hello builds for it")
     assert_eq(str(exec(maca_bin(), ["check", "apps/examples/hello.maca",
         "--target", "beam"])), "2",
-        "there is no BEAM back end, and naming one is a usage error")
+        "the BEAM is named by its language, so `beam` is a usage error")
+    assert_eq(str(exec(maca_bin(), ["check", "apps/examples/hello.maca",
+        "--target", "elixir"])), "0",
+        "and `elixir` is the name that reaches it")
 }
 
 keyworded(name: str, src: str) -> str {

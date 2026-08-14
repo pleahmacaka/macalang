@@ -2,7 +2,8 @@
 
 > One typed language for programs **and** infrastructure config, sharing one
 > syntax and one type system. General programs compile to native (C-tier
-> binary), JS, the JVM, Rust, or freestanding C; infra config compiles to Nix.
+> binary), JS, the JVM, Rust, Elixir, or freestanding C; infra config compiles
+> to Nix.
 
 This file is the authoritative description of the language. When a design
 decision changes, this file and the code change together; the spec wins ties.
@@ -14,6 +15,7 @@ decision changes, this file and the code change together; the spec wins ties.
 .maca ─▶ maca-compiler ───┼─▶ js     ─▶ browser   web / UI
                           ├─▶ java   ─▶ JVM       Minecraft / Maven interop
                           ├─▶ rust   ─▶ crate     crates.io interop
+                          ├─▶ elixir ─▶ BEAM      many small waits at once
                           ├─▶ C      ─▶ MCU       freestanding, Cortex-M / RISC-V
                           └─▶ nix    ─▶ .nix      config
 ```

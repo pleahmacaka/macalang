@@ -3750,7 +3750,7 @@ eff_union(a: str, b: str) -> str =>
 eff_merge(a: str, xs: str[], i: int) -> str =>
     i >= xs.length() ? a : eff_merge(eff_add(a, xs.get(i)), xs, i + 1)
 
-KnownTargets = " native c js jvm rust tauri embedded nix all "
+KnownTargets = " native c js jvm rust elixir tauri embedded nix all "
 
 /// A target nothing builds for cannot say what it carries, so naming one is a usage error.
 is_known_target(name: str) -> bool =>

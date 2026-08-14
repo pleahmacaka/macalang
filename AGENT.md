@@ -4,9 +4,8 @@ Instructions for any assistant working in this repository. `CLAUDE.md` imports
 this file, so Claude Code and the editor's own assistant read one set of rules.
 
 One typed language for **programs and infrastructure config**. Programs compile
-to native (C-tier binary), JS, JVM, Rust, or freestanding C; config compiles to
-Nix. There is no BEAM back end, by design. Everything a user writes is `.maca`
-or `maca.toml`.
+to native (C-tier binary), JS, JVM, Rust, Elixir, or freestanding C; config
+compiles to Nix. Everything a user writes is `.maca` or `maca.toml`.
 
 **Read `docs/SPEC.md` before starting work.** It is the authority on the
 language; when it and the code disagree, it wins, and they change together.

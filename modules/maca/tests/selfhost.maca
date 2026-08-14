@@ -11,7 +11,8 @@ compiler_files() -> str[] => [
     "modules/maca/check.maca", "modules/maca/emit_c.maca",
     "modules/maca/emit_rust.maca", "modules/maca/emit_js.maca",
     "modules/maca/emit_nix.maca", "modules/maca/emit_embedded.maca",
-    "modules/maca/emit_jvm.maca", "modules/maca/print.maca",
+    "modules/maca/emit_jvm.maca", "modules/maca/emit_elixir.maca",
+    "modules/maca/print.maca",
     "apps/maca1/main.maca"
 ]
 

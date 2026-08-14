@@ -4,6 +4,19 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* **The BEAM is a target, and it is named `elixir`.** `modules/maca/emit_elixir.maca`,
+  481 lines. The spec had said there would be no BEAM back end because it would be the
+  first one added for elegance rather than reach; what changed is that a program holding
+  thousands of slow network calls open at once wants a process each rather than a thread
+  each, and no other target gives that. Most of the lowering is not translation, because
+  both languages bind once and match on shape: a record is a struct, a nullary variant is
+  an atom, `match` is `case`. What differs is spelled out instead of faked (`++` on text
+  is `<>`, `int / int` is `div`, a `#` in a literal is escaped so Elixir does not invent an
+  interpolation), and what the BEAM has no shape for is refused by name: `while`, because
+  nothing there rebinds, and `return`, because a function's last expression is its value.
+  The gate is `apps/examples/elixir_capstone.maca` built twice and run twice: the two back
+  ends print the same text and leave the same exit status, or there is no language.
+
 * **An import is named by its string, and no import carries a language word.** `import c
   "sqlite3.h"` is now `import "sqlite3.h"`, which is the rule assets already followed. The
   string classifies itself: an extension (`.h` `.c` `.rs` `.js` `.css` `.nix` `.py` `.java`

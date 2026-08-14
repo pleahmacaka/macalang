@@ -1,0 +1,503 @@
+import maca/token
+import maca/ast
+
+ExReserved = " after and catch cond do else end false fn in nil not or rescue true when quote unquote alias require import use def defp defmodule defstruct case if unless receive try raise throw "
+
+exid(name: str) -> str {
+    if ExReserved.index_of(" {name} ") >= 0 {
+        "{name}_mc"
+    } else {
+        name
+    }
+}
+
+/// A variant is an atom, spelled as it was written so two of them never collide.
+exatom(name: str) -> str =>
+    ":{name}"
+
+exbinder(b: Expr) -> str =>
+    exid(b.text)
+
+exemit_expr(e: Expr) -> str =>
+    match e.kind {
+        EInt     => str(e.ival)
+        EFloat   => e.text
+        EStr     => exstr(e.text)
+        EBool    => e.text
+        EIdent   => exname(e)
+        ECall    => exemit_call(e)
+        EBinary  => exemit_binary(e)
+        ETernary => exemit_if(e)
+        EIf      => exemit_if(e)
+        EUnary   => exemit_unary(e)
+        ERecord  => exemit_record(e)
+        EWith    => exemit_with(e)
+        EBlock   => exemit_block(e)
+        EField   => "{exemit_expr(e.children.get(0))}.{exid(e.text)}"
+        EMatch   => exemit_match(e)
+        EMethod  => exemit_method(e)
+        EList    => "[{exemit_args(e.children, 0)}]"
+        EFor     => exemit_for(e)
+        ELambda  => exemit_lambda(e)
+        _        => "nil"
+    }
+
+/// A name that is a nullary variant is that atom, and every other name is a binding.
+exname(e: Expr) -> str {
+    if exvariant_ty(e.ty) && exupper(e.text) {
+        exatom(e.text)
+    } else {
+        exid(e.text)
+    }
+}
+
+exvariant_ty(ty: str) -> bool =>
+    ty != "" && exupper(ty)
+
+exupper(w: str) -> bool =>
+    w != "" && ord(w.at(0)) >= ord("A") && ord(w.at(0)) <= ord("Z")
+
+/// Maca flattened its own interpolation already, so a `#` here is text and Elixir must not read it as one.
+exstr(s: str) -> str =>
+    "\"" ++ s.replace("#", "\\#") ++ "\""
+
+exemit_args(xs: Expr[], i: int) -> str {
+    if i >= xs.length() {
+        ""
+    } else if i == xs.length() - 1 {
+        exemit_expr(xs.get(i))
+    } else {
+        "{exemit_expr(xs.get(i))}, " ++ exemit_args(xs, i + 1)
+    }
+}
+
+exemit_lambda(e: Expr) -> str =>
+    "fn {lambda_params(e).map(exbinder).join(", ")} -> "
+        ++ "{exemit_expr(lambda_body(e))} end"
+
+exemit_unary(e: Expr) -> str {
+    inner = exemit_expr(e.children.get(0))
+
+    if e.text == "fail" {
+        "raise({inner})"
+    } else if e.text == "!" {
+        "(not {inner})"
+    } else {
+        "({e.text}{inner})"
+    }
+}
+
+exmissing_else(e: Expr) -> bool =>
+    e.kind == EIdent && e.text == "?"
+
+exemit_if(e: Expr) -> str {
+    cond = exemit_expr(e.children.get(0))
+    then = exbranch(e.children.get(1))
+    els = e.children.get(2)
+
+    if exmissing_else(els) {
+        "if {cond} do\n{then}\nend"
+    } else {
+        "if {cond} do\n{then}\nelse\n{exbranch(els)}\nend"
+    }
+}
+
+exbranch(e: Expr) -> str {
+    if e.kind == EBlock {
+        exemit_stmts(e.stmts, 0) ++ exemit_expr(e.children.get(0))
+    } else {
+        exemit_expr(e)
+    }
+}
+
+exemit_block(e: Expr) -> str =>
+    "(\n" ++ exemit_stmts(e.stmts, 0) ++ exemit_expr(e.children.get(0))
+        ++ "\n)"
+
+exemit_match(e: Expr) -> str =>
+    "case {exemit_expr(e.children.get(0))} do\n"
+        ++ exemit_arms(e.children, 1) ++ "end"
+
+/// The arms lie flat, a pattern then the body it selects, so the walk steps by two.
+exemit_arms(cs: Expr[], i: int) -> str {
+    if i + 1 >= cs.length() {
+        ""
+    } else {
+        "{exemit_pat(cs.get(i))} -> {exbranch(cs.get(i + 1))}\n"
+            ++ exemit_arms(cs, i + 2)
+    }
+}
+
+exemit_pat(p: Expr) -> str {
+    if p.kind == EGuard {
+        "{exemit_pat(p.children.get(0))} when "
+            ++ "{exemit_expr(p.children.get(1))}"
+    } else if p.kind == EStr {
+        exstr(p.text)
+    } else if p.kind == EInt {
+        str(p.ival)
+    } else if p.children.length() > 0 {
+        bound = p.children.map(exbinder).join(", ")
+
+        "{{{exatom(p.text)}, {bound}}}"
+    } else if p.text == "_" {
+        "_"
+    } else if exupper(p.text) {
+        exatom(p.text)
+    } else {
+        exid(p.text)
+    }
+}
+
+exemit_record(e: Expr) -> str =>
+    "%{e.text}{{{exemit_lit_fields(e.children, 0)}}}"
+
+/// A written field is the `=` that binds it, so its name and its value are its children.
+exemit_lit_fields(fs: Expr[], i: int) -> str {
+    if i >= fs.length() {
+        ""
+    } else {
+        f = fs.get(i)
+        here = "{exid(f.children.get(0).text)}: {exemit_expr(f.children.get(1))}"
+
+        i == fs.length() - 1
+            ? here
+            : here ++ ", " ++ exemit_lit_fields(fs, i + 1)
+    }
+}
+
+/// `r with { f = v }` is what `%{r | f: v}` already means.
+exemit_with(e: Expr) -> str =>
+    "%{{{exemit_expr(e.children.get(0))} | "
+        ++ "{exemit_lit_fields(e.children.slice(1, e.children.length()), 0)}}}"
+
+exemit_for(e: Expr) -> str =>
+    "Enum.each({exemit_expr(e.children.get(0))}, fn {exid(e.text)} ->\n"
+        ++ exemit_stmts(e.stmts, 0) ++ "nil\nend)"
+
+/// Integer division and remainder are calls in Elixir, and `++` on text is `<>`.
+exemit_binary(e: Expr) -> str {
+    l = exemit_expr(e.children.get(0))
+    r = exemit_expr(e.children.get(1))
+    op = e.text
+
+    if op == "++" {
+        exjoins(e) ? "({l} <> {r})" : "({l} ++ {r})"
+    } else if op == "/" && exint_pair(e) {
+        "div({l}, {r})"
+    } else if op == "%" {
+        "rem({l}, {r})"
+    } else if op == "&&" {
+        "({l} and {r})"
+    } else if op == "||" {
+        "({l} or {r})"
+    } else if op == "!=" {
+        "({l} != {r})"
+    } else {
+        "({l} {op} {r})"
+    }
+}
+
+exjoins(e: Expr) -> bool =>
+    e.ty == "str" || e.children.get(0).ty == "str"
+        || e.children.get(1).ty == "str"
+
+exint_pair(e: Expr) -> bool =>
+    exinty(e.children.get(0).ty) && exinty(e.children.get(1).ty)
+
+exinty(ty: str) -> bool =>
+    ty == "int" || ty == ""
+
+exemit_call(e: Expr) -> str {
+    name = e.text
+    args = exemit_args(e.children, 0)
+
+    if name == "info" {
+        "IO.puts({args})"
+    } else if name == "err" {
+        "IO.puts(:stderr, {args})"
+    } else if name == "str" {
+        "to_string({args})"
+    } else if name == "int" {
+        "trunc({args})"
+    } else if name == "float" {
+        "(1.0 * {args})"
+    } else if exmath_call(name) {
+        exmath(name, args)
+    } else if exupper(name) && e.children.length() == 0 {
+        exatom(name)
+    } else if exupper(name) {
+        "{{{exatom(name)}, {args}}}"
+    } else {
+        "{exid(name)}({args})"
+    }
+}
+
+exmath_call(name: str) -> bool =>
+    name == "sqrt" || name == "abs" || name == "pow" || name == "min"
+        || name == "max" || name == "floor" || name == "ceil"
+
+exmath(name: str, args: str) -> str {
+    if name == "sqrt" {
+        ":math.sqrt({args})"
+    } else if name == "pow" {
+        ":math.pow({args})"
+    } else if name == "abs" {
+        "abs({args})"
+    } else if name == "floor" {
+        "floor({args})"
+    } else if name == "ceil" {
+        "ceil({args})"
+    } else {
+        "{name}({args})"
+    }
+}
+
+/// A method on a value is the module function the BEAM already has for that shape.
+exemit_method(e: Expr) -> str {
+    recv = exemit_expr(e.children.get(0))
+    name = e.text
+    rest = e.children.slice(1, e.children.length())
+    args = exemit_args(rest, 0)
+    ty = e.children.get(0).ty
+
+    if exlist_ty(ty) {
+        exlist_method(name, recv, args, rest)
+    } else {
+        exstr_method(name, recv, args)
+    }
+}
+
+exlist_ty(ty: str) -> bool =>
+    ty.ends_with("[]")
+
+exlist_method(name: str, recv: str, args: str, rest: Expr[]) -> str {
+    if name == "length" {
+        "length({recv})"
+    } else if name == "get" {
+        "Enum.at({recv}, {args})"
+    } else if name == "push" {
+        "({recv} ++ [{args}])"
+    } else if name == "map" {
+        "Enum.map({recv}, {args})"
+    } else if name == "filter" {
+        "Enum.filter({recv}, {args})"
+    } else if name == "join" {
+        "Enum.join({recv}, {args})"
+    } else if name == "reverse" {
+        "Enum.reverse({recv})"
+    } else if name == "contains" {
+        "Enum.member?({recv}, {args})"
+    } else if name == "index_of" {
+        "(Enum.find_index({recv}, fn v -> v == {args} end) || -1)"
+    } else if name == "sum" {
+        "Enum.sum({recv})"
+    } else if name == "first" {
+        "List.first({recv})"
+    } else if name == "last" {
+        "List.last({recv})"
+    } else if name == "slice" {
+        exslice(recv, rest)
+    } else if name == "sort" {
+        "Enum.sort({recv})"
+    } else {
+        "Enum.{name}({recv}, {args})"
+    }
+}
+
+exslice(recv: str, rest: Expr[]) -> str {
+    from = exemit_expr(rest.get(0))
+    upto = exemit_expr(rest.get(1))
+
+    "Enum.slice({recv}, {from}, {upto} - {from})"
+}
+
+exstr_method(name: str, recv: str, args: str) -> str {
+    if name == "length" {
+        "String.length({recv})"
+    } else if name == "split" {
+        "String.split({recv}, {args})"
+    } else if name == "trim" {
+        "String.trim({recv})"
+    } else if name == "upper" {
+        "String.upcase({recv})"
+    } else if name == "lower" {
+        "String.downcase({recv})"
+    } else if name == "contains" {
+        "String.contains?({recv}, {args})"
+    } else if name == "starts_with" {
+        "String.starts_with?({recv}, {args})"
+    } else if name == "ends_with" {
+        "String.ends_with?({recv}, {args})"
+    } else if name == "replace" {
+        "String.replace({recv}, {args})"
+    } else if name == "at" {
+        "String.at({recv}, {args})"
+    } else if name == "chars" {
+        "String.graphemes({recv})"
+    } else if name == "index_of" {
+        "exi_index_of({recv}, {args})"
+    } else if name == "slice" {
+        "String.slice({recv}, {args})"
+    } else {
+        "String.{name}({recv}, {args})"
+    }
+}
+
+exemit_stmts(body: Stmt[], i: int) -> str {
+    if i >= body.length() {
+        ""
+    } else {
+        exemit_stmt(body.get(i)) ++ "\n" ++ exemit_stmts(body, i + 1)
+    }
+}
+
+exemit_stmt(s: Stmt) -> str {
+    if s.kind == SBind || s.kind == SSet {
+        "{exid(s.name)} = {exemit_expr(s.value)}"
+    } else {
+        exemit_expr(s.value)
+    }
+}
+
+exemit_body(body: Stmt[]) -> str {
+    if body.length() == 0 {
+        "nil"
+    } else {
+        exemit_stmts(body.slice(0, body.length() - 1), 0)
+            ++ exemit_last(body.get(body.length() - 1))
+    }
+}
+
+exemit_last(s: Stmt) -> str {
+    if s.kind == SBind || s.kind == SSet {
+        "{exid(s.name)} = {exemit_expr(s.value)}"
+    } else {
+        exemit_expr(s.value)
+    }
+}
+
+/// The whole unit is one module, with a struct module ahead of it per record.
+exemit_module(m: Module) -> str =>
+    exstructs(m.items, 0) ++ "defmodule Maca do\n" ++ exhelpers()
+        ++ exemit_items(m.items, 0) ++ "end\n"
+        ++ exentry(m.items, 0)
+
+exhelpers() -> str =>
+    "def exi_index_of(s, p) do\n"
+        ++ "case :binary.match(s, p) do\n"
+        ++ "{{i, _}} -> i\n:nomatch -> -1\nend\nend\n"
+
+exstructs(items: Stmt[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else if items.get(i).kind == SRecord {
+        s = items.get(i)
+
+        "defmodule {s.name} do\n"
+            ++ "defstruct [{exfield_atoms(s.params, 0)}]\nend\n"
+            ++ exstructs(items, i + 1)
+    } else {
+        exstructs(items, i + 1)
+    }
+}
+
+exfield_atoms(fs: Expr[], i: int) -> str {
+    if i >= fs.length() {
+        ""
+    } else if i == fs.length() - 1 {
+        ":{exid(fs.get(i).text)}"
+    } else {
+        ":{exid(fs.get(i).text)}, " ++ exfield_atoms(fs, i + 1)
+    }
+}
+
+exemit_items(items: Stmt[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else if items.get(i).kind == SFn {
+        exemit_fn(items.get(i)) ++ exemit_items(items, i + 1)
+    } else if items.get(i).kind == SBind {
+        s = items.get(i)
+
+        "def {exid(s.name)} do\n{exemit_expr(s.value)}\nend\n"
+            ++ exemit_items(items, i + 1)
+    } else {
+        exemit_items(items, i + 1)
+    }
+}
+
+exemit_fn(s: Stmt) -> str =>
+    "def {exid(s.name)}({s.params.map(exbinder).join(", ")})"
+        ++ " do\n{exemit_body(s.body)}\nend\n"
+
+/// `main` is what the escript runs, and its result is the process's status.
+exentry(items: Stmt[], i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else if items.get(i).kind == SFn && items.get(i).name == "main" {
+        items.get(i).params.length() == 0
+            ? "System.halt(Maca.main())\n"
+            : "System.halt(Maca.main(System.argv()))\n"
+    } else {
+        exentry(items, i + 1)
+    }
+}
+
+/// What the BEAM has no shape for is named here rather than emitted as Elixir that pretends.
+exemit_errors(m: Module) -> str[] =>
+    exwalk_items(m.items, 0, [])
+
+exwalk_items(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else {
+        exwalk_items(items, i + 1,
+                     acc ++ exwalk_body(items.get(i).name, items.get(i).body,
+                                        0, []))
+    }
+}
+
+exwalk_body(fn_name: str, body: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= body.length() {
+        acc
+    } else {
+        exwalk_body(fn_name, body, i + 1,
+                    acc ++ exwalk_expr(fn_name, body.get(i).value))
+    }
+}
+
+exwalk_expr(fn_name: str, e: Expr) -> str[] {
+    here = exrefusal(fn_name, e)
+
+    here ++ exwalk_children(fn_name, e.children, 0, [])
+        ++ exwalk_body(fn_name, e.stmts, 0, [])
+}
+
+exwalk_children(fn_name: str, cs: Expr[], i: int, acc: str[]) -> str[] {
+    if i >= cs.length() {
+        acc
+    } else {
+        exwalk_children(fn_name, cs, i + 1, acc ++ exwalk_expr(fn_name,
+                                                               cs.get(i)))
+    }
+}
+
+exrefusal(fn_name: str, e: Expr) -> str[] {
+    if e.kind == EWhile {
+        ["`{fn_name}` loops with `while`, which the BEAM has no shape for: "
+             ++ "nothing on it rebinds, so write the loop as recursion or as "
+             ++ "a `for` over what it walks"]
+    } else if e.kind == EJump && e.text == "return" {
+        ["`{fn_name}` leaves early with `return`, which Elixir has no word "
+             ++ "for: a function's last expression is its value there too, so "
+             ++ "write the guard as an `if` whose branches are both values"]
+    } else if e.kind == EJump {
+        ["`{fn_name}` uses `{e.text}`, which the BEAM has no loop to carry it"]
+    } else if e.kind == EUnary && (e.text == "spawn" || e.text == "await") {
+        ["`{fn_name}` uses `{e.text}`; the BEAM spawns processes rather than "
+             ++ "threads, and the elixir target does not lower it yet"]
+    } else {
+        []
+    }
+}

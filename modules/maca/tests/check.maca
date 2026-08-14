@@ -731,7 +731,9 @@ test_each_target_carries_what_that_back_end_can_actually_do() {
 test_a_target_nothing_builds_for_is_not_a_target() {
     assert(is_known_target("embedded"), "embedded is built")
     assert(is_known_target("all"), "`all` is what every program target shares")
-    assert(!is_known_target("beam"), "there is no BEAM back end, by design")
+    assert(is_known_target("elixir"), "the BEAM is reached by naming Elixir")
+    assert(!is_known_target("beam"),
+           "and by naming the language, never the machine under it")
     assert_eq(str(target_effects("nix").length()), "0",
               "a NixOS module is data, so it carries nothing")
     assert_eq(str(target_effects("native").length()), "5",

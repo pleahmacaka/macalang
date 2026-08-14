@@ -138,6 +138,28 @@ Config mode, where the effect row is the point: a config that reaches for an
 effect is `EffectInConfig`, so a module cannot quietly do IO while pretending
 to be data. `dev.maca` and a NixOS `system.maca` go through the same emitter.
 
+## Elixir
+
+`modules/maca/emit_elixir.maca`. The unit is one `defmodule Maca`, a record is a
+struct module ahead of it, a nullary variant is an atom (`:Red`), one that
+carries a payload is a tagged tuple, and `match` is `case`. Most of the mapping
+is not a translation at all, because both languages bind once and match on
+shape: this is the target Maca is closest to. What differs is spelled out
+rather than faked. `++` on text is `<>`, `int / int` is `div`, `%` is `rem`, and
+a `#` inside a literal is escaped so Elixir does not read the brace after it as
+an interpolation Maca never wrote.
+
+The refusal channel carries what the BEAM has no shape for, and it is short:
+`while`, because nothing there rebinds; `return`, because a function's last
+expression is its value and there is no word for leaving early; `spawn` and
+`await`, until they lower to processes rather than pretending to be threads.
+Each refusal names the function it found and what to write instead.
+
+`apps/examples/elixir_capstone.maca` is the gate. `modules/maca/tests/elixir.maca`
+builds it twice, natively and for the BEAM, runs both, and asserts the two print
+the same text and leave the same exit status. Two back ends that disagree about
+one file mean there is no language, so that is the assertion that matters.
+
 ## JVM and embedded
 
 JVM emits Java source for Maven and Fabric interop, with the same foreign-type

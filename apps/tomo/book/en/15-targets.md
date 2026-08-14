@@ -24,13 +24,18 @@ maca build app.maca --target nix           # a machine's configuration
 | `js` | the browser, with the UI syntax as a live DOM |
 | `jvm` | Java's libraries; Minecraft mods are the worked example |
 | `rust` | crates.io, through emitted Rust source |
+| `elixir` | the BEAM, where ten thousand small waits cost ten thousand processes |
 | `embedded` | a bare-metal Cortex-M or RISC-V, with no libc under it |
 | `nix` | the machine the binary runs on |
 
 Each is on the list because it reaches an ecosystem Maca would otherwise have to
-reimplement. The one people ask for and don't get is BEAM: it would be the first
-backend added for elegance rather than reach, and
-[colorblind async](13-colorblind-async.md) already runs on real threads.
+reimplement. `elixir` was the one held back longest, on the grounds that
+[colorblind async](13-colorblind-async.md) already runs on real threads and a
+BEAM backend would be the first added for elegance rather than reach. What
+changed is the workload: a program holding thousands of slow network calls open
+at once wants a process each, not a thread each, and no other target on this
+list gives that. You name the language, never the machine under it, so the flag
+is `--target elixir` and `--target beam` is a usage error.
 
 ## Try it
 

@@ -162,6 +162,9 @@ body does, never how it is called.
 
 ## Where the list stops
 
-Every target here earns its place by reaching something. A BEAM target would be
-the first backend added for elegance rather than reach.
-[Colorblind async](a7-effects.md) already runs on pthreads in the C runtime.
+Every target here earns its place by reaching something, which is the whole
+test. `elixir` took the longest to pass it: [colorblind async](a7-effects.md)
+already runs on pthreads in the C runtime, so for years the BEAM would have been
+the first backend added for elegance rather than reach. It reaches something a
+thread cannot, though, and that is thousands of concurrent waits at a process
+each. The name is the language, not the machine: `--target elixir`.
