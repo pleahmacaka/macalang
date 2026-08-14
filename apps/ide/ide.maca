@@ -12,7 +12,8 @@ import "gpui::AnyElement"
 import "gpui::Context"
 import "gpui::Window"
 
-import { Ide, opened, panel_for, shown, stops } from apps/ide/model
+import { Ide, opened, panel_for, shown, stops, gutter_text,
+         tabs } from apps/ide/model
 
 Shell = {
     ide: Ide
@@ -36,17 +37,20 @@ tree(ide: Ide) -> Element =>
         div(class="text-sm", ide.root),
         div(class="text-xs", "{str(ide.files.length())} in the workspace"))
 
-/// The gutter carries the breakpoints, which is why `stops` answers text and not a widget.
+/// The gutter runs down the left, a mark a line, and a marked line is a stop the runner is told about.
 buffer(ide: Ide) -> Element =>
     div(class="flex flex-col grow p-2 gap-1",
         div(class="text-xs", ide.open),
-        div(class="text-sm", ide.text),
-        div(class="text-xs", stops(ide)))
+        div(class="flex flex-row gap-2",
+            div(class="text-sm w-8", gutter_text(ide)),
+            div(class="text-sm grow", ide.text)),
+        div(class="text-xs", "stops: {stops(ide)}"))
 
 /// What the panel shows follows the target the source itself names, so nothing has to be chosen.
 panel(ide: Ide) -> Element =>
     div(class="flex flex-col w-96 p-2 gap-1",
-        div(class="text-xs", panel_for(ide.target)),
+        div(class="text-xs", tabs(ide)),
+        div(class="text-xs", "{ide.target} via {panel_for(ide.target)}"),
         div(class="text-sm", shown(ide)))
 
 main() -> int {

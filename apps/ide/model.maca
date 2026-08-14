@@ -113,7 +113,7 @@ gutter(ide: Ide, line: int) -> str =>
 
 /// A run that stops where the editor was told to: the lines, in order, as the runner wants them.
 stops(ide: Ide) -> str =>
-    sorted_lines(ide.breaks).map(str).join(",")
+    sorted_lines(ide.breaks).map(n => str(n)).join(",")
 
 sorted_lines(xs: int[]) -> int[] {
     out = xs
@@ -198,3 +198,35 @@ stem(path: str) -> str {
 
     last.ends_with(".maca") ? last.slice(0, last.length() - 5) : last
 }
+
+/// The gutter as text, a mark a line, which is what the view draws down the left of the buffer.
+gutter_text(ide: Ide) -> str {
+    out = ""
+    lines = ide.text.split("\n").length()
+    i = 1
+
+    while i <= lines {
+        out = out == "" ? gutter(ide, i) : "{out}\n{gutter(ide, i)}"
+        i = i + 1
+    }
+
+    out
+}
+
+/// The panels with the one in view marked, so the tab row is a string the model owns and a suite can read.
+tabs(ide: Ide) -> str =>
+    tab_row(Panels, 0, ide.panel, "")
+
+tab_row(ps: str[], i: int, on: str, acc: str) -> str {
+    if i >= ps.length() {
+        acc
+    } else {
+        here = ps.get(i) == on ? "[{ps.get(i)}]" : " {ps.get(i)} "
+
+        tab_row(ps, i + 1, on, acc ++ here)
+    }
+}
+
+/// Which panel a click on the tab row selects, staying put when the name is not one.
+picked(ide: Ide, name: str) -> Ide =>
+    Panels.index_of(name) < 0 ? ide : ide with { panel = name }

@@ -1,0 +1,75 @@
+import { Ide, Panels, opened, opened_file, target_of, panel_for, toggled,
+         gutter, gutter_text, stops, tabs, picked } from apps/ide/model
+
+blank() -> Ide =>
+    Ide { root = ".", files = [], open = "", text = "", target = "native",
+          panel = "rust", output = "", breaks = [] }
+
+lined(text: str) -> Ide =>
+    blank() with { text = text }
+
+test_the_target_is_read_off_the_source_and_not_chosen() {
+    assert_eq(target_of("main() -> int => 0\n"), "native",
+              "a program that answers a number is a binary")
+    assert_eq(target_of("view() -> Element => div()\n"), "js",
+              "one that answers nodes belongs in a browser")
+    assert_eq(target_of("import nixpkgs\n\nservices.sshd = true\n"), "nix",
+              "and one that reaches for nixpkgs is config")
+}
+
+test_the_panel_follows_the_target_the_source_named() {
+    assert_eq(panel_for("js"), "js", "a browser program is shown as js")
+    assert_eq(panel_for("nix"), "nix", "a config as nix")
+    assert_eq(panel_for("native"), "rust",
+              "and a binary is shown as rust, which is the readable one")
+}
+
+test_a_tab_is_picked_only_when_it_names_a_panel() {
+    on_c = picked(blank(), "c")
+
+    assert_eq(on_c.panel, "c", "a name on the list selects it")
+    assert_eq(picked(on_c, "nonsense").panel, "c",
+              "and a name that is not stays where it was")
+}
+
+test_the_tab_row_marks_the_one_in_view() {
+    row = tabs(blank())
+
+    assert(row.contains("[rust]"), "the panel in view is bracketed: {row}")
+    assert(row.contains(" c "), "and the others are not: {row}")
+    assert_eq(str(Panels.length()), "5", "every panel is offered")
+}
+
+test_a_gutter_mark_toggles_and_the_stops_come_out_in_order() {
+    ide = toggled(toggled(toggled(lined("a\nb\nc\nd"), 3), 1), 2)
+
+    assert_eq(gutter(ide, 1), "*", "a marked line draws a stop")
+    assert_eq(gutter(ide, 4), "4", "and an unmarked one draws its number")
+    assert_eq(stops(ide), "1,2,3",
+              "the runner is told the lines in order, whatever order they "
+                  ++ "were clicked in")
+
+    off = toggled(ide, 2)
+
+    assert_eq(gutter(off, 2), "2", "clicking a stop again takes it away")
+    assert_eq(stops(off), "1,3", "and it leaves the others alone")
+}
+
+test_the_gutter_is_as_long_as_the_buffer() {
+    ide = toggled(lined("a\nb\nc"), 2)
+
+    assert_eq(gutter_text(ide), "1\n*\n3",
+              "a mark a line, in the order the lines are written")
+    assert_eq(gutter_text(lined("only")), "1",
+              "and one line is one mark")
+}
+
+main() -> int {
+    test_the_target_is_read_off_the_source_and_not_chosen()
+    test_the_panel_follows_the_target_the_source_named()
+    test_a_tab_is_picked_only_when_it_names_a_panel()
+    test_the_tab_row_marks_the_one_in_view()
+    test_a_gutter_mark_toggles_and_the_stops_come_out_in_order()
+    test_the_gutter_is_as_long_as_the_buffer()
+    failures()
+}
