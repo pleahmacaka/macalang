@@ -2264,9 +2264,35 @@ lowered_element(env: Env, e: Expr) -> Expr {
 
     empty = env.target == "js" ? e_list([]) : e_str("")
 
-    e_call("maca_element",
-           [tag, element_attrs(env, e.children, from, empty),
-            element_kids(env, e.children, from, empty)])
+    text = [tag, element_attrs(env, e.children, from, empty),
+            element_kids(env, e.children, from, empty)]
+
+    env.target == "rust"
+        ? e_call("maca_element",
+                 text ++ [e_list(kept_attrs(e.children, from, [])),
+                          e_list(kept_kids(e.children, from, []))])
+        : e_call("maca_element", text)
+}
+
+/// gpui builds a value rather than text, so the rust target carries what was written beside the text it would otherwise be, and the emitter picks by what the function said it returns.
+kept_attrs(cs: Expr[], i: int, acc: Expr[]) -> Expr[] {
+    if i >= cs.length() {
+        acc
+    } else if cs.get(i).kind != EAttr {
+        kept_attrs(cs, i + 1, acc)
+    } else {
+        kept_attrs(cs, i + 1, acc.push(cs.get(i)))
+    }
+}
+
+kept_kids(cs: Expr[], i: int, acc: Expr[]) -> Expr[] {
+    if i >= cs.length() {
+        acc
+    } else if cs.get(i).kind == EAttr {
+        kept_kids(cs, i + 1, acc)
+    } else {
+        kept_kids(cs, i + 1, acc.push(cs.get(i)))
+    }
 }
 
 element_attrs(env: Env, cs: Expr[], i: int, acc: Expr) -> Expr {

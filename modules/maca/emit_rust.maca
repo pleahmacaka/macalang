@@ -358,7 +358,9 @@ rbare_arg(e: Expr) -> str =>
 remit_call(e: Expr) -> str {
     args = remit_args(e.children, 0)
 
-    if e.text == "maca_borrow" {
+    if e.text == "maca_element" && e.children.length() == 5 {
+        gpui_element(e)
+    } else if e.text == "maca_borrow" {
         "&mut {args}"
     } else if e.text == "info" {
         "println!(\"{{}}\", {rstr_of(rarg_ty(e.children), args)})"
@@ -698,7 +700,9 @@ rtype(ty: str) -> str {
             ++ " {rtype(rmap_val(ty))}>>"
     } else if ty == "float" {
         "f64"
-    } else if ty == "str" || ty == "Element" {
+    } else if ty == "Element" {
+        "Div"
+    } else if ty == "str" {
         "String"
     } else if ty == "bool" {
         "bool"
@@ -712,7 +716,7 @@ rtype(ty: str) -> str {
 }
 
 remit_fn(s: Stmt) -> str {
-    body = remit_stmts(s.body, 0)
+    body = remit_stmts(gpui_ready(s.body, 0, s.ret == "Element"), 0)
 
     if s.body.length() == 0 {
         rforeign(s)
@@ -1026,3 +1030,90 @@ remit_variant(v: Expr) -> str {
 
 payload_type(p: Expr) -> str =>
     rtype(p.ty)
+
+/// A five-child element carries what it would be as text beside what it is as a box, and what the function declared picks between them.
+gpui_ready(body: Stmt[], i: int, want: bool) -> Stmt[] {
+    if want || i >= body.length() {
+        body
+    } else {
+        here = body.get(i)
+
+        gpui_ready(body.set(i, here with { value = gpui_text(here.value) }),
+                   i + 1, want)
+    }
+}
+
+gpui_text(e: Expr) -> Expr {
+    shrunk = e.text == "maca_element" && e.children.length() == 5
+        ? e with { children = e.children.slice(0, 3) }
+        : e
+
+    shrunk with { children = gpui_texts(shrunk.children, 0, []),
+                  stmts = gpui_ready(shrunk.stmts, 0, false) }
+}
+
+gpui_texts(cs: Expr[], i: int, acc: Expr[]) -> Expr[] {
+    if i >= cs.length() {
+        acc
+    } else {
+        gpui_texts(cs, i + 1, acc.push(gpui_text(cs.get(i))))
+    }
+}
+
+/// Maca's tag syntax is gpui's, because gpui names its style methods the way a class names Tailwind.
+gpui_element(e: Expr) -> str =>
+    gpui_box(e.children.get(0).text)
+        ++ gpui_attrs(e.children.get(3).children, 0)
+        ++ gpui_kids(e.children.get(4).children, 0)
+
+/// gpui builds one box, and keeps the names of the few tags it has of its own.
+gpui_box(tag: str) -> str {
+    if tag == "img" || tag == "svg" || tag == "canvas" {
+        "{tag}()"
+    } else {
+        "div()"
+    }
+}
+
+gpui_attrs(cs: Expr[], i: int) -> str {
+    if i >= cs.length() {
+        ""
+    } else {
+        gpui_attr(cs.get(i)) ++ gpui_attrs(cs, i + 1)
+    }
+}
+
+gpui_attr(a: Expr) -> str {
+    if a.text == "class" {
+        gpui_classes(gpui_words(a.children.get(0)), 0)
+    } else if a.text == "id" {
+        ".id({remit_expr(a.children.get(0))})"
+    } else {
+        ""
+    }
+}
+
+/// Only a written class list becomes methods, because a computed one has no names to read yet.
+gpui_words(e: Expr) -> str[] =>
+    e.kind == EStr ? e.text.split(" ") : []
+
+gpui_classes(ws: str[], i: int) -> str {
+    if i >= ws.length() {
+        ""
+    } else if ws.get(i) == "" {
+        gpui_classes(ws, i + 1)
+    } else {
+        ".{gpui_method(ws.get(i))}()" ++ gpui_classes(ws, i + 1)
+    }
+}
+
+gpui_method(w: str) -> str =>
+    w.replace("-", "_").replace("/", "_")
+
+gpui_kids(cs: Expr[], i: int) -> str {
+    if i >= cs.length() {
+        ""
+    } else {
+        ".child({remit_expr(cs.get(i))})" ++ gpui_kids(cs, i + 1)
+    }
+}

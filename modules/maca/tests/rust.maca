@@ -7,6 +7,9 @@ import std/proc
 gate_rust(src: str) -> str =>
     remit_module(annotated(parse_module(lex(src), 0, [])))
 
+gpui_rust(src: str) -> str =>
+    remit_module(annotated_on(parse_module(lex(src), 0, []), "rust"))
+
 whole_rust(src: str) -> str =>
     remit_module(annotated(monomorphic(lifted(
         annotated(parse_module(lex(src), 0, []))))))
@@ -426,4 +429,15 @@ test_a_trait_a_raw_block_declared_is_implemented_for_a_record() {
         assert_eq(capture("{scratch()}/trait_run", []).trim(), "value = 42",
                   "and the method runs")
     }
+}
+
+test_what_a_function_returns_picks_between_gpui_and_text() {
+    made = gpui_rust("view() -> Element =>\n    div(class=\"flex gap-2\", id=\"root\", span(\"hi\"))\n\nshell(body: str) -> str => div(class=\"wrap\", body)\n")
+
+    assert(made.index_of("fn view() -> Div {{ div().flex().gap_2()") >= 0,
+           "an Element is gpui's box, styled by the class it was written with: {made}")
+    assert(made.index_of(".child(div()") >= 0,
+           "and a child is a child, every tag gpui lacks being a div: {made}")
+    assert(made.index_of("fn shell(body: String) -> String {{ maca_element") >= 0,
+           "while a function that says it answers text still builds text, which is what the declared result is for: {made}")
 }
