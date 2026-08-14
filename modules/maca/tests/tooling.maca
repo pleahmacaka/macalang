@@ -469,6 +469,14 @@ test_a_package_the_workspace_does_not_list_is_named() {
            "the list and the tree must agree: {said}")
 }
 
+test_a_bare_filename_still_reaches_what_its_own_directory_reaches() {
+    at = monorepo("bare-name") ++ "/apps/hello"
+    said = err_in(at, ["check", "main.maca"])
+
+    assert_eq(str(rc_in(at, ["check", "main.maca"])), "0",
+              "a name written without a directory still sits in one: {said}")
+}
+
 test_a_write_into_a_directory_that_is_not_there_makes_it_first() {
     dir = package_dir("write-deep")
     write_file(dir ++ "/hello.maca", "main() -> int => 0\n")
