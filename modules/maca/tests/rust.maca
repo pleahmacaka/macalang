@@ -441,3 +441,10 @@ test_what_a_function_returns_picks_between_gpui_and_text() {
     assert(made.index_of("fn shell(body: String) -> String {{ maca_element") >= 0,
            "while a function that says it answers text still builds text, which is what the declared result is for: {made}")
 }
+
+test_a_gpui_method_reaches_a_box_the_way_it_reaches_any_foreign_value() {
+    made = gpui_rust("view() -> Element => div(class=\"flex\")\n\nboxed() -> AnyElement => view().into_any_element()\n")
+
+    assert(made.index_of("fn boxed() -> AnyElement {{ view().into_any_element()") >= 0,
+           "an Element carries gpui's own methods, because to the checker it is a foreign type and not a string: {made}")
+}

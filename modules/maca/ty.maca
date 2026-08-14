@@ -20,6 +20,11 @@ t_float() -> Ty => bare(KFloat)
 
 t_str() -> Ty => bare(KStr)
 
+/// An element is text to every back end, and the name is carried so the checker alone can tell it apart.
+t_element() -> Ty =>
+    Ty { kind = KStr, name = "Element", slot = 0, args = [], labels = [],
+         open = false }
+
 t_bool() -> Ty => bare(KBool)
 
 t_bytes() -> Ty => bare(KBytes)

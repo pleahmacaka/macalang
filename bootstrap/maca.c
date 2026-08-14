@@ -518,6 +518,7 @@ Ty bare(TyKind k);
 Ty t_int();
 Ty t_float();
 Ty t_str();
+Ty t_element();
 Ty t_bool();
 Ty t_bytes();
 Ty t_unit();
@@ -2741,6 +2742,7 @@ Ty bare(TyKind k) { return (Ty){ .kind = k, .name = "", .slot = 0, .args = maca_
 Ty t_int() { return bare(KInt);  }
 Ty t_float() { return bare(KFloat);  }
 Ty t_str() { return bare(KStr);  }
+Ty t_element() { return (Ty){ .kind = KStr, .name = "Element", .slot = 0, .args = maca_listv(0), .labels = maca_listv(0), .open_mc = 0 };  }
 Ty t_bool() { return bare(KBool);  }
 Ty t_bytes() { return bare(KBytes);  }
 Ty t_unit() { return bare(KUnit);  }
@@ -2798,7 +2800,7 @@ Env note(Env env, const char* why) { return ((strcmp(why, "") == 0) ? env : comp
 Env with_infer(Env env, Infer inf) { return ({ __typeof__(env) _w = env; _w.infer = inf; _w; });  }
 Env joined(Env env, Ty want, Ty got) { Unify step = unify(env.infer, want, got); return note(with_infer(env, step.infer), step.error);  }
 long is_array_name(const char* name) { return ((((int)strlen(name)) > 2) && (strcmp(maca_str_slice(name, (((int)strlen(name)) - 2), ((int)strlen(name))), "[]") == 0));  }
-Ty ty_named(const char* name) { return ((strcmp(name, "") == 0) ? t_any() : ((maca_str_index_of(name, ") -> ") >= 0) ? ty_fn_named(name) : (is_array_name(name) ? t_array(ty_named(maca_str_slice(name, 0, (((int)strlen(name)) - 2)))) : ((strcmp(name, "int") == 0) ? t_int() : ((strcmp(name, "float") == 0) ? t_float() : (((strcmp(name, "str") == 0) || (strcmp(name, "Element") == 0)) ? t_str() : ((strcmp(name, "bool") == 0) ? t_bool() : ((strcmp(name, "bytes") == 0) ? t_bytes() : (is_type_var(name) ? t_any() : t_con(name, maca_listv(0)))))))))));  }
+Ty ty_named(const char* name) { return ((strcmp(name, "") == 0) ? t_any() : ((maca_str_index_of(name, ") -> ") >= 0) ? ty_fn_named(name) : (is_array_name(name) ? t_array(ty_named(maca_str_slice(name, 0, (((int)strlen(name)) - 2)))) : ((strcmp(name, "int") == 0) ? t_int() : ((strcmp(name, "float") == 0) ? t_float() : ((strcmp(name, "Element") == 0) ? t_element() : ((strcmp(name, "str") == 0) ? t_str() : ((strcmp(name, "bool") == 0) ? t_bool() : ((strcmp(name, "bytes") == 0) ? t_bytes() : (is_type_var(name) ? t_any() : t_con(name, maca_listv(0))))))))))));  }
 Ty ty_fn_named(const char* name) { long cut = maca_str_index_of(name, ") -> "); return t_fn(fn_arg_tys(maca_str_slice(name, 1, cut), maca_listv(0)), ty_named(maca_str_slice(name, (cut + 5), ((int)strlen(name)))));  }
 MacaList fn_arg_tys(const char* list, MacaList acc) { long cut = maca_str_index_of(list, ", "); return ((strcmp(list, "") == 0) ? acc : ((cut < 0) ? maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Ty), (Ty[]){ ty_named(list) }))) : fn_arg_tys(maca_str_slice(list, (cut + 2), ((int)strlen(list))), maca_list_cat(acc, maca_listv(1, maca_box(sizeof(Ty), (Ty[]){ ty_named(maca_str_slice(list, 0, cut)) }))))));  }
 long is_type_var(const char* name) { return (((strcmp(name, "unit") == 0) || (maca_str_index_of(name, "__") >= 0)) ? 0 : ((!starts_lower(name)) ? 0 : (!sized_number(name))));  }
@@ -2876,7 +2878,7 @@ Typed block_type(Env env, Expr e) { Typed inner = check_body(env, e.stmts, 0, t_
 Typed method_type(Env env, Expr e) { Typed recv = type_in(env, (*(Expr*)e.children.data[0])); return ((((strcmp(e.text, "map") == 0) || (strcmp(e.text, "parallel") == 0)) && ((e.children.len) == 2)) ? mapped_type(recv.env, resolve(recv.env.infer, recv.ty), (*(Expr*)e.children.data[1])) : (((strcmp(e.text, "filter") == 0) && ((e.children.len) == 2)) ? sifted_type(recv.env, resolve(recv.env.infer, recv.ty), (*(Expr*)e.children.data[1])) : (((strcmp(e.text, "sort_by") == 0) && ((e.children.len) == 2)) ? keyed_type(recv.env, resolve(recv.env.infer, recv.ty), (*(Expr*)e.children.data[1])) : (((strcmp(e.text, "index_of_by") == 0) && ((e.children.len) == 2)) ? found_type(recv.env, resolve(recv.env.infer, recv.ty), (*(Expr*)e.children.data[1])) : ((field_fn_ty(env, resolve(recv.env.infer, recv.ty), e.text).kind == KFn) ? typed(walk_args(recv.env, e.children, 1), fn_ret(field_fn_ty(env, resolve(recv.env.infer, recv.ty), e.text))) : (is_ufcs_call(env, e, resolve(recv.env.infer, recv.ty)) ? call_type(env, e_call(e.text, e.children)) : ({ Env walked = walk_args(recv.env, e.children, 1); Ty seen = resolve(walked.infer, recv.ty); typed(method_missing(walked, e.text, seen), method_result(e.text, seen)); })))))));  }
 const char* method_names(Ty recv) { return ((recv.kind == KStr) ? StrMethods : (is_map_ty(recv) ? MapMethods : (((recv.kind == KCon) && (strcmp(recv.name, "Array") == 0)) ? ListMethods : "")));  }
 const char* method_what(Ty recv) { return ((recv.kind == KStr) ? "str" : (is_map_ty(recv) ? "map" : "list"));  }
-Env method_missing(Env env, const char* name, Ty recv) { const char* known = method_names(recv); return ((((strcmp(known, "") == 0) || (maca_str_index_of(known, maca_cat(maca_cat(" ", name), " ")) >= 0)) || (maca_list_index_of_str(env.fns, name) >= 0)) ? env : complain_as(env, "M0006", method_gap(known, name, method_what(recv))));  }
+Env method_missing(Env env, const char* name, Ty recv) { const char* known = method_names(recv); return (((((strcmp(known, "") == 0) || (maca_str_index_of(known, maca_cat(maca_cat(" ", name), " ")) >= 0)) || (maca_list_index_of_str(env.fns, name) >= 0)) || (strcmp(recv.name, "Element") == 0)) ? env : complain_as(env, "M0006", method_gap(known, name, method_what(recv))));  }
 const char* method_gap(const char* known, const char* name, const char* what) { const char* near = nearest_ctor(name, maca_split(maca_trim(known), " "), 0, "", hint_span(name)); return ((strcmp(near, "") == 0) ? maca_cat(maca_cat(maca_cat(maca_cat("`", what), "` has no method `"), name), "`") : maca_cat(maca_cat(maca_cat(maca_cat(maca_cat(maca_cat("`", what), "` has no method `"), name), "`; did you mean `"), near), "`?"));  }
 Ty field_fn_ty(Env env, Ty recv, const char* name) { long at = maca_list_index_of_str(env.fields, maca_cat(maca_cat(recv.name, "."), name)); return (((recv.kind != KCon) || (at < 0)) ? t_any() : (*(Ty*)env.ftypes.data[at]));  }
 long is_ufcs_call(Env env, Expr e, Ty recv) { return ((maca_list_index_of_str(env.fns, e.text) >= 0) && ((method_result(e.text, recv).kind == KAny) || own_method(recv)));  }

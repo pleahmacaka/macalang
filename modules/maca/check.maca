@@ -117,7 +117,9 @@ ty_named(name: str) -> Ty {
         t_int()
     } else if name == "float" {
         t_float()
-    } else if name == "str" || name == "Element" {
+    } else if name == "Element" {
+        t_element()
+    } else if name == "str" {
         t_str()
     } else if name == "bool" {
         t_bool()
@@ -933,7 +935,7 @@ method_missing(env: Env, name: str, recv: Ty) -> Env {
     known = method_names(recv)
 
     if known == "" || known.index_of(" {name} ") >= 0
-            || env.fns.index_of(name) >= 0 {
+            || env.fns.index_of(name) >= 0 || recv.name == "Element" {
         env
     } else {
         complain_as(env, "M0006", method_gap(known, name, method_what(recv)))
