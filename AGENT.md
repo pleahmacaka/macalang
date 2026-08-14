@@ -242,7 +242,14 @@ A path is the whole name. `modules/http/server.maca` is `http/server`, from
 anywhere in the tree. There is no entry file and no index, and a directory is
 not a module. `import { listen } from http/server` pulls in only what you name.
 The packages are `std` (`text`, `list`, `path`, `json`, `csv`, `fs`, `proc`),
-`http`, `tambo`, `cli`, `bench`, `profile` and `signal`.
+`http`, `chaski`, `ai` (`ai/openai`), `tambo`, `cli`, `bench`, `profile` and
+`signal`.
+
+**A package's `[build] target` is its own default, never a rule for whoever
+imports it.** What you import is Maca, not the language that package happens to
+be built as, so a `--target rust` program may import a package whose manifest
+says `elixir` and the module is emitted as Rust along with everything else.
+There is no bridge and no FFI in between, because there is nothing to bridge.
 
 ## The verify habit
 

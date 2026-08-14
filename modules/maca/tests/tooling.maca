@@ -469,6 +469,41 @@ test_a_package_the_workspace_does_not_list_is_named() {
            "the list and the tree must agree: {said}")
 }
 
+/// A library that names one target and an application that names another.
+cross_target(tag: str) -> str {
+    dir = package_dir(tag)
+
+    make_dir(dir ++ "/modules/beamy")
+    make_dir(dir ++ "/apps/tool")
+    write_file(dir ++ "/maca.toml",
+        "[package]\nname = \"repo\"\n\n[workspace]\n"
+            ++ "members = [\"modules/beamy\", \"apps/tool\"]\n")
+    write_file(dir ++ "/modules/beamy/maca.toml",
+        "[package]\nname = \"beamy\"\n\n[build]\ntarget = \"elixir\"\n")
+    write_file(dir ++ "/modules/beamy/num.maca",
+               "doubled(n: int) -> int => n * 2\n")
+    write_file(dir ++ "/apps/tool/maca.toml",
+        "[package]\nname = \"tool\"\n\n[[bin]]\nname = \"tool\"\n"
+            ++ "path = \"main.maca\"\n")
+    write_file(dir ++ "/apps/tool/main.maca",
+        "import beamy/num\n\nmain() -> int {{\n"
+            ++ "    info(str(doubled(21)))\n    doubled(21)\n}}\n")
+
+    dir
+}
+
+test_a_packages_target_is_its_own_default_and_not_a_rule_for_its_callers() {
+    at = cross_target("cross-target") ++ "/apps/tool"
+
+    assert_eq(str(rc_in(at, ["build", "main.maca", "-o", "t"])), "0",
+              "a module whose manifest names elixir still builds natively")
+    assert_eq(out_in(at, ["run", "main.maca"]).trim(), "42",
+              "and answers the same, because what was imported is Maca")
+    assert_eq(str(rc_in(at, ["build", "main.maca", "--target", "elixir",
+                             "-o", "t.exs"])), "0",
+              "the same file also reaches the target that module named")
+}
+
 test_a_bare_filename_still_reaches_what_its_own_directory_reaches() {
     at = monorepo("bare-name") ++ "/apps/hello"
     said = err_in(at, ["check", "main.maca"])
