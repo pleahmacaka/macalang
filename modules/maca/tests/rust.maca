@@ -226,12 +226,12 @@ emitted_rust(name: str, src: str) -> str {
     read_file("{scratch()}/{name}.rs")
 }
 
-ClosureSrc = "import rust \"\"\"\nfn apply(f: impl Fn(i64) -> i64, x: i64)"
+ClosureSrc = "import \"shim.rs\" \"\"\"\nfn apply(f: impl Fn(i64) -> i64, x: i64)"
     ++ " -> i64 {{ f(x) }}\n\"\"\"\n\n"
     ++ "main() -> int {{\n    r = apply(n => n + 1, 41)\n"
     ++ "    info(\"apply = {{r}}\")\n    r\n}}\n"
 
-TraitSrc = "import rust \"\"\"\ntrait Greet {{ fn value(&mut self) -> i64; }}"
+TraitSrc = "import \"shim.rs\" \"\"\"\ntrait Greet {{ fn value(&mut self) -> i64; }}"
     ++ "\n\"\"\"\n\nCounter = {{ count: int }}\n"
     ++ "Counter : Greet = {{\n    value = (self) => self.count + 1\n}}\n\n"
     ++ "main() -> int {{\n    c = Counter {{ count = 41 }}\n"
@@ -257,7 +257,7 @@ CoreSrc = "Color = Red | Green | Blue\n"
     ++ " sum={{sum_to(5)}} px={{p.x}} rows={{describe(r)}}"
     ++ " affected={{describe(Affected(42))}}\")\n    sum_to(5)\n}}\n"
 
-ForeignSrc = "import rust \"std::time::Duration\"\n\n"
+ForeignSrc = "import \"std::time::Duration\"\n\n"
     ++ "main() -> int {{\n    d = Duration.from_secs(5)\n"
     ++ "    total = d.as_secs()\n"
     ++ "    info(\"duration = {{total}} secs\")\n    int(total)\n}}\n"
@@ -272,7 +272,7 @@ AnonSrc = "main() -> int {{\n"
     ++ "    d = {{ port = 80, host = \"example.com\" }}\n"
     ++ "    info(\"{{d.host}}:{{d.port}}\")\n    0\n}}\n"
 
-DeclaredRetSrc = "import rust \"\"\"\n"
+DeclaredRetSrc = "import \"shim.rs\" \"\"\"\n"
     ++ "pub struct Div {{ pub s: String }}\n"
     ++ "pub struct AnyElement {{ pub s: String }}\n"
     ++ "impl Div {{ pub fn into_any_element(self) -> AnyElement"
@@ -286,7 +286,7 @@ DeclaredRetSrc = "import rust \"\"\"\n"
     ++ "main() -> int {{\n    c = Counter {{ count = 41 }}\n"
     ++ "    info(\"{{c.render().s}}{{c.count}}\")\n    0\n}}\n"
 
-BorrowSrc = "import rust \"\"\"\n"
+BorrowSrc = "import \"shim.rs\" \"\"\"\n"
     ++ "pub struct Window {{ pub n: i64 }}\n"
     ++ "pub trait Bump {{ fn bump(&mut self, w: &mut Window) -> i64;"
     ++ " }}\n"
@@ -387,7 +387,7 @@ test_a_foreign_argument_is_lent_at_the_call_site_as_well() {
 
 test_a_crate_path_import_is_written_back_as_a_use_item() {
     made = emitted_rust("use_item",
-                        "import rust \"std::time::Duration\"\n\n"
+                        "import \"std::time::Duration\"\n\n"
                             ++ "main() -> int => 0\n")
 
     assert(made.index_of("use std::time::Duration;") >= 0,
