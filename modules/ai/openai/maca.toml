@@ -1,0 +1,3 @@
+[package]
+name = "openai"
+description = "The chat-completions wire format, and every host that speaks it."

@@ -57,12 +57,18 @@ ask_again(c: Client, method: str, at: str, body: str, kind: str,
         return got
     }
 
+    sleep_ms(ask_backoff(tried))
+
     ask_again(c, method, at, body, kind, tried + 1)
 }
 
-/// A refused connection, a timeout or a 5xx is worth another go; a 4xx is the answer.
+/// Waiting longer each time, because a host that is busy is not less busy a millisecond later.
+ask_backoff(tried: int) -> int =>
+    500 * (tried + 1) * (tried + 1)
+
+/// A refused connection, a timeout, a 429 or a 5xx is worth another go; every other 4xx is the answer.
 ask_retryable(r: Reply) -> bool =>
-    r.error != "" || r.status >= 500
+    r.error != "" || r.status == 429 || r.status >= 500
 
 ask_tmp() -> str =>
     env_or("TMPDIR", env_or("TEMP", "/tmp"))

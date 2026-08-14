@@ -1,0 +1,144 @@
+// ai/openai/chat: chat completions, over any host that speaks OpenAI's wire format.
+
+import chaski/ask
+import std/json
+
+/// One turn of the conversation, as the wire format names it.
+Turn = {
+    role:    str
+    content: str
+}
+
+/// Where to ask, as whom, and with what.
+Chat = {
+    key:      str
+    base:     str
+    model:    str
+    warmth:   float
+    ceiling:  int
+    seconds:  int
+}
+
+/// What came back: the text, what it cost, and why it failed when it did.
+Answer = {
+    text:  str
+    model: str
+    sent:  int
+    got:   int
+    error: str
+}
+
+OpenAiBase = "https://api.openai.com/v1"
+
+/// Pointed at OpenAI itself.
+openai(key: str) -> Chat =>
+    compatible(key, OpenAiBase)
+
+/// Pointed anywhere else that answers the same wire format, OpenRouter and Ollama among them.
+compatible(key: str, base: str) -> Chat =>
+    Chat { key = key, base = base, model = "gpt-4o-mini", warmth = 0.0,
+           ceiling = 0, seconds = 120 }
+
+with_model(c: Chat, name: str) -> Chat =>
+    c with { model = name }
+
+/// How far the model may wander, where 0 is as little as it can manage.
+with_warmth(c: Chat, t: float) -> Chat =>
+    c with { warmth = t }
+
+/// The most tokens the answer may run to, where 0 leaves it to the host.
+with_ceiling(c: Chat, n: int) -> Chat =>
+    c with { ceiling = n }
+
+turn(role: str, text: str) -> Turn =>
+    Turn { role = role, content = text }
+
+system_turn(text: str) -> Turn =>
+    turn("system", text)
+
+user_turn(text: str) -> Turn =>
+    turn("user", text)
+
+assistant_turn(text: str) -> Turn =>
+    turn("assistant", text)
+
+/// One completion. The key never appears in a message, only in the header that carries it.
+complete(c: Chat, ts: Turn[]) -> Answer {
+    if c.key == "" {
+        return chat_failed("no API key: the caller has to supply one")
+    }
+
+    at = with_seconds(with_bearer(client(c.base), c.key), c.seconds)
+    got = ask_json(at, "/chat/completions", chat_body(c, ts))
+
+    if got.error != "" {
+        return chat_failed(got.error)
+    }
+
+    reply_ok(got) ? chat_read(got.body) : chat_failed(chat_refusal(got))
+}
+
+chat_failed(why: str) -> Answer =>
+    Answer { text = "", model = "", sent = 0, got = 0, error = why }
+
+/// A host that refuses says why in the body, and that sentence is worth more than the number.
+chat_refusal(r: Reply) -> str {
+    said = get(get(r.body, "error"), "message")
+
+    said == "" ? "the host answered {str(r.status)}"
+               : "the host answered {str(r.status)}: {said}"
+}
+
+chat_body(c: Chat, ts: Turn[]) -> str =>
+    "{{\"model\":{quote(c.model)},\"messages\":[{chat_turns(ts, 0)}]"
+        ++ chat_warmth(c) ++ chat_ceiling(c) ++ "}}"
+
+chat_warmth(c: Chat) -> str =>
+    c.warmth == 0.0 ? "" : ",\"temperature\":{str(c.warmth)}"
+
+chat_ceiling(c: Chat) -> str =>
+    c.ceiling == 0 ? "" : ",\"max_tokens\":{str(c.ceiling)}"
+
+chat_turns(ts: Turn[], i: int) -> str {
+    if i >= ts.length() {
+        ""
+    } else {
+        here = "{{\"role\":{quote(ts.get(i).role)},"
+            ++ "\"content\":{quote(ts.get(i).content)}}}"
+
+        i == ts.length() - 1 ? here : here ++ "," ++ chat_turns(ts, i + 1)
+    }
+}
+
+/// The answer is the first choice's message, and the usage beside it is what it cost.
+chat_read(body: str) -> Answer {
+    picks = items(get(body, "choices"))
+
+    if picks.length() == 0 {
+        return chat_failed("the host answered with no choices")
+    }
+
+    used = get(body, "usage")
+
+    Answer { text = get(get(picks.get(0), "message"), "content"),
+             model = get(body, "model"),
+             sent = get_int(used, "prompt_tokens", 0),
+             got = get_int(used, "completion_tokens", 0),
+             error = "" }
+}
+
+/// The models the host will answer for, by name.
+models(c: Chat) -> str[] {
+    at = with_seconds(with_bearer(client(c.base), c.key), c.seconds)
+    got = ask_get(at, "/models")
+
+    reply_ok(got) ? chat_names(items(get(got.body, "data")), 0, []) : []
+}
+
+chat_names(xs: str[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        chat_names(xs, i + 1, acc.push(get(xs.get(i), "id")))
+    }
+}

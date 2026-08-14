@@ -1,0 +1,119 @@
+import ai/openai/chat
+import std/proc
+import std/json
+
+test_a_host_is_named_once_and_every_other_setting_has_a_default() {
+    c = openai("k-1")
+
+    assert_eq(c.base, "https://api.openai.com/v1",
+              "OpenAI's own address is the one you get for free")
+    assert_eq(c.key, "k-1", "the key is what it was made with")
+    assert_eq(str(c.ceiling), "0",
+              "no ceiling means the host picks, so nothing is sent")
+
+    other = compatible("k-2", "https://openrouter.ai/api/v1")
+
+    assert_eq(other.base, "https://openrouter.ai/api/v1",
+              "and any host that speaks the format is named the same way")
+}
+
+test_the_body_carries_the_model_and_the_turns_in_order() {
+    c = with_model(openai("k"), "gpt-4o-mini")
+    body = chat_body(c, [system_turn("be brief"), user_turn("hi")])
+
+    assert_eq(get(body, "model"), "gpt-4o-mini", "the model is named")
+
+    ms = items(get(body, "messages"))
+
+    assert_eq(str(ms.length()), "2", "both turns are carried")
+    assert_eq(get(ms.get(0), "role"), "system", "the system turn leads")
+    assert_eq(get(ms.get(0), "content"), "be brief", "with its text")
+    assert_eq(get(ms.get(1), "role"), "user", "and the user's follows")
+}
+
+test_a_setting_left_alone_is_left_out_of_the_body() {
+    plain = chat_body(openai("k"), [user_turn("hi")])
+
+    assert(!plain.contains("temperature"),
+           "a warmth of zero is the host's default, so it is not sent")
+    assert(!plain.contains("max_tokens"), "and neither is an absent ceiling")
+
+    set = chat_body(with_ceiling(with_warmth(openai("k"), 0.7), 64),
+                    [user_turn("hi")])
+
+    assert(set.contains("\"temperature\""), "a warmth that was set is sent")
+    assert_eq(str(get_int(set, "max_tokens", 0)), "64",
+              "and so is a ceiling")
+}
+
+test_a_quote_in_a_prompt_does_not_break_the_body() {
+    body = chat_body(openai("k"), [user_turn("say \"hi\" and \\ that")])
+    ms = items(get(body, "messages"))
+
+    assert_eq(get(ms.get(0), "content"), "say \"hi\" and \\ that",
+              "what went in comes back out, so the quoting held")
+}
+
+test_the_answer_is_the_first_choice_and_the_usage_beside_it() {
+    said = "{{\"model\":\"m-1\",\"choices\":[{{\"message\":"
+        ++ "{{\"role\":\"assistant\",\"content\":\"Blue\"}}}}],"
+        ++ "\"usage\":{{\"prompt_tokens\":15,\"completion_tokens\":1}}}}"
+    a = chat_read(said)
+
+    assert_eq(a.text, "Blue", "the text is the first choice's content")
+    assert_eq(a.model, "m-1", "the model the host actually used")
+    assert_eq(str(a.sent), "15", "what the prompt cost")
+    assert_eq(str(a.got), "1", "and what the answer cost")
+    assert_eq(a.error, "", "nothing failed")
+}
+
+test_an_answer_with_no_choices_says_so_rather_than_reading_nothing() {
+    a = chat_read("{{\"choices\":[]}}")
+
+    assert_eq(a.text, "", "there is no text to report")
+    assert(a.error.contains("no choices"), "and the reason: {a.error}")
+}
+
+test_a_missing_key_never_becomes_a_request() {
+    a = complete(compatible("", "https://nowhere.invalid"), [user_turn("hi")])
+
+    assert(a.error.contains("API key"),
+           "the caller is told what is missing: {a.error}")
+    assert_eq(a.text, "", "and nothing was asked of anyone")
+}
+
+/// The key is read from the environment and never written down, so this is skipped without one.
+test_a_free_model_answers_when_a_key_is_in_the_environment() {
+    key = env_or("OPENROUTER_API_KEY", "")
+
+    if key == "" {
+        assert(true, "reaching a host is opt-in: set OPENROUTER_API_KEY")
+    } else {
+        c = with_model(compatible(key, "https://openrouter.ai/api/v1"),
+                       env_or("OPENROUTER_MODEL", "google/gemma-4-31b-it:free"))
+        a = complete(c, [system_turn("Answer with one word."),
+                         user_turn("What colour is a clear midday sky?")])
+
+        if a.error.contains("429") {
+            assert(true, "the free tier is throttling, which is its right "
+                             ++ "and not a fault of this tree")
+        } else {
+            assert_eq(a.error, "", "the host answered: {a.error}")
+            assert(a.text.lower().contains("blue"),
+                   "and the answer is the obvious one: {a.text}")
+            assert(a.sent > 0, "the prompt cost something")
+        }
+    }
+}
+
+main() -> int {
+    test_a_host_is_named_once_and_every_other_setting_has_a_default()
+    test_the_body_carries_the_model_and_the_turns_in_order()
+    test_a_setting_left_alone_is_left_out_of_the_body()
+    test_a_quote_in_a_prompt_does_not_break_the_body()
+    test_the_answer_is_the_first_choice_and_the_usage_beside_it()
+    test_an_answer_with_no_choices_says_so_rather_than_reading_nothing()
+    test_a_missing_key_never_becomes_a_request()
+    test_a_free_model_answers_when_a_key_is_in_the_environment()
+    failures()
+}

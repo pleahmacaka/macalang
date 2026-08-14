@@ -1,0 +1,6 @@
+[package]
+name = "ai"
+description = "Talking to a model: one shape over every host that speaks OpenAI's wire format."
+
+[workspace]
+members = ["openai"]

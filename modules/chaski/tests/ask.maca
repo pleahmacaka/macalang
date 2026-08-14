@@ -87,6 +87,10 @@ test_only_the_failures_another_attempt_could_fix_are_retried() {
            "and a success is not retried at all")
     assert(ask_retryable(ask_failed("could not connect")),
            "a transport failure never reached the server, so it is retried")
+    assert(ask_retryable(ask_read("HTTP/1.1 429 Too Many\r\n\r\n")),
+           "429 is the one 4xx that asks to be asked again, later")
+    assert(ask_backoff(1) > ask_backoff(0),
+           "and later means longer each time")
 }
 
 test_a_reply_says_plainly_whether_it_landed() {
