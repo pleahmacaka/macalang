@@ -2816,7 +2816,8 @@ refused_here(asked: str, m: Module) -> int {
         report_all("rust", ported_errors(m.items, 0, "rust", []), 0) +
             report_all("rust", kept_borrow_notes(m), 0)
     } else if asked == "elixir" {
-        report_all("elixir", exemit_errors(m), 0)
+        report_all("elixir", exemit_errors(m), 0) +
+            report_all("elixir", foreign_bodies(m.items, 0, []), 0)
     } else {
         0
     }
@@ -2824,6 +2825,22 @@ refused_here(asked: str, m: Module) -> int {
 
 target_notes(m: Module, asked: str) -> str[] =>
     target_errors(m, asked == "" ? "native" : asked).map(diag_message)
+
+/// A bodyless function is C the runtime supplies, and on the BEAM that is a NIF this compiler does not write, so it is named rather than emitted as a function answering nothing.
+foreign_bodies(items: Stmt[], i: int, acc: str[]) -> str[] {
+    if i >= items.length() {
+        acc
+    } else if items.get(i).kind == SFn && items.get(i).body.length() == 0 {
+        foreign_bodies(items, i + 1,
+                       acc ++ ["`{items.get(i).name}` is declared with no "
+                                   ++ "body, which is an FFI declaration; "
+                                   ++ "--target elixir reaches C through a "
+                                   ++ "NIF, which this compiler does not "
+                                   ++ "write, so give it a body in Maca"])
+    } else {
+        foreign_bodies(items, i + 1, acc)
+    }
+}
 
 /// The rust and jvm targets have no C ABI bridge and no function pointer, so each is named here.
 ported_errors(items: Stmt[], i: int, target: str, acc: str[]) -> str[] {
