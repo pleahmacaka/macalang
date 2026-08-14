@@ -2783,11 +2783,26 @@ compile_file(args: str[]) -> int {
     wrong = errs + refused_here(asked, m) +
         report_all("import", foreign_errors(asked, args.get(0), unit), 0)
 
-    if wrong == 0 {
-        write_file(args.get(1), emitted)
+    wrong == 0 ? written_to(args.get(1), emitted) : wrong
+}
+
+/// A write that went nowhere is a wrong answer, so the directory is made first and the file is looked for after.
+written_to(at: str, text: str) -> int {
+    dir = dir_of(at)
+
+    if dir != "" && !is_dir(dir) {
+        make_dir(dir)
     }
 
-    wrong
+    write_file(at, text)
+
+    if file_exists(at) {
+        0
+    } else {
+        err("maca: could not write {at}")
+
+        1
+    }
 }
 
 /// A target names what it cannot lower rather than emitting a file that pretends.
