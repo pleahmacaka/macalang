@@ -1,6 +1,13 @@
 import std/text
+import std/proc
 
 Quote = "\""
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+}
 
 Reserved = "const as if else for in while break continue return match import"
     ++ " with fail try alias await spawn"
@@ -141,4 +148,37 @@ test_the_node_scan_skips_a_comment_and_a_pattern_string() {
     assert_eq(node_types("(#match? @x " ++ Quote ++ "^(int|float)$"
                              ++ Quote ++ ")").join(","), "",
               "and neither does a regex inside a string")
+}
+
+Scanner = "apps/editor/tree-sitter-maca/scanner.maca"
+ScannerC = "apps/editor/tree-sitter-maca/src/scanner.c"
+
+/// `scanner.c` is `scanner.maca` as the compiler emits it, so the two are held to each other.
+test_the_committed_scanner_is_what_its_source_emits() {
+    out = env_or("TMPDIR", "/tmp") ++ "/maca-scanner.c"
+
+    remove_file(out)
+
+    assert_eq(exec(maca_bin(), [Scanner, out]), 0,
+              "the scanner did not compile: {capture_err(maca_bin(), [Scanner, out])}")
+    assert_eq(read_file(out), read_file(ScannerC),
+              "`{ScannerC}` is generated; regenerate it with "
+                  ++ "`maca {Scanner} {ScannerC}`")
+}
+
+test_the_scanner_and_the_lexer_agree_on_what_continues_a_line() {
+    src = read_file(Scanner)
+
+    for code in ["63", "58", "43", "45", "42", "37", "60", "62", "61", "38",
+                 "124", "46", "41", "93", "125", "44"] {
+        assert(src.contains("c == {code}"),
+               "a line opening with the character {code} carries on the one "
+                   ++ "before it, and the scanner no longer says so")
+    }
+
+    assert(!src.contains("c == 47"),
+           "`/` opens a comment, so a line starting with it is a new line")
+    assert(!src.contains("c == 40"),
+           "and `(` opens an expression, which is why the compiler's own "
+               ++ "lexer marks it fresh")
 }

@@ -2,8 +2,12 @@
 
 A tree-sitter grammar for Maca, for editor highlighting and structural editing.
 
-The significant-newline layout is handled by an external scanner
-(`src/scanner.c`): it emits a `_newline` between items and statements, but
+The significant-newline layout is handled by an external scanner written in
+Maca (`scanner.maca`); `src/scanner.c` is that file as the compiler emits it,
+regenerated with `maca apps/editor/tree-sitter-maca/scanner.maca
+apps/editor/tree-sitter-maca/src/scanner.c` and held to its source by
+`tests/editor_grammar.maca`. The scanner emits a `_newline` between items and
+statements, but
 suppresses it inside `(` / `[` groups and at line continuations (a line that
 starts with an operator, `.`, a closing bracket, or `,`), so a multi-line
 ternary or operator chain parses as one expression.

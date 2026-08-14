@@ -1020,8 +1020,12 @@ asset_at(src: str, ts: Token[], i: int) -> PageAsset[] {
 /// `import css """…"""` and `import js """…"""`: a block of source, not a path.
 tagged_block(src: str, ts: Token[], i: int) -> bool =>
     (ts.get(i).text == "css" || ts.get(i).text == "js")
-        && ts.get(i + 1).kind == TStr
-        && src.slice(ts.get(i + 1).pos, ts.get(i + 1).pos + 3) == "\"\"\""
+        && raw_block_at(src, ts, i + 1)
+
+/// A tagged import is a block when what follows the tag opens with `"""`.
+raw_block_at(src: str, ts: Token[], i: int) -> bool =>
+    ts.get(i).kind == TStr
+        && src.slice(ts.get(i).pos, ts.get(i).pos + 3) == "\"\"\""
 
 /// The block as it was written, taken off the source rather than the token, whose text is escaped for a string literal.
 raw_block(src: str, at: int) -> str {
@@ -2773,6 +2777,9 @@ compile_file(args: str[]) -> int {
                   unit.toks)
     emitted = if asked == "rust" {
         rust_prelude(unit.toks, 0, "") ++ remit_module(rust_borrows(m))
+    } else if asked == "" || asked == "native" || asked == "c" {
+        emit_module(m) ++ c_prelude_blocks(read_file(args.get(0)), unit.toks,
+                                           0, "")
     } else if asked == "js" {
         jemit_module(m)
     } else if asked == "nix" {
@@ -3146,6 +3153,23 @@ rust_prelude(ts: Token[], i: int, acc: str) -> str {
     } else {
         rust_prelude(ts, i + 1, acc)
     }
+}
+
+/// `import c """…"""` is C the emitted file carries as written, after everything Maca declared, which is how a foreign ABI is met.
+c_prelude_blocks(src: str, ts: Token[], i: int, acc: str) -> str {
+    out = acc
+    at = i
+
+    while at + 2 < ts.length() {
+        if foreign_at(ts, at, "c") && raw_block_at(src, ts, at + 2) {
+            out = out ++ rust_source(ts.get(at + 2).text) ++ "\n"
+            at = at + 3
+        } else {
+            at = at + 1
+        }
+    }
+
+    out == "" ? "" : out
 }
 
 /// A spec that is a path names a crate item to use, where a block is Rust as written.

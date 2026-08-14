@@ -1,0 +1,88 @@
+// The external scanner for Maca's significant newlines, as a Maca program.
+//
+// A newline separates statements and top-level items, except inside `(` / `[`
+// groups and string interpolation, where the real lexer suppresses it. Tree-
+// sitter drives this by validity: `_newline` is only marked valid where the
+// grammar expects a separator, so the scanner emits it when valid and otherwise
+// declines, letting `extras` swallow the whitespace.
+//
+// `src/scanner.c` is this file as the compiler emits it. Regenerate with
+//   maca apps/editor/tree-sitter-maca/scanner.maca //       apps/editor/tree-sitter-maca/src/scanner.c
+
+Space = 32
+Tab = 9
+Return = 13
+Feed = 10
+
+Newline = 0
+
+/// The character tree-sitter is about to read, or -1 at the end of the input.
+ts_look() -> int
+
+/// Take the character and drop it, which is what skips whitespace.
+ts_take()
+
+/// Whether the grammar accepts this token where the scan is standing.
+ts_ok(sym: int) -> bool
+
+/// Name the token the scan produced.
+ts_emit(sym: int)
+
+blank(c: int) -> bool =>
+    c == Space || c == Tab || c == Return || c == Feed
+
+/// A line opening with an operator, a method dot, a closing bracket or a comma
+/// carries on the line before it. `/` is not one: it opens a comment.
+continues_line(c: int) -> bool =>
+    c == 63 || c == 58 || c == 43 || c == 45 || c == 42 || c == 37
+        || c == 60 || c == 62 || c == 61 || c == 38 || c == 124 || c == 46
+        || c == 41 || c == 93 || c == 125 || c == 44
+
+/// One scan: skip the whitespace, then answer whether a separator stands here.
+scan_newline() -> int {
+    crossed = false
+
+    while blank(ts_look()) {
+        if ts_look() == Feed {
+            crossed = true
+        }
+
+        ts_take()
+    }
+
+    if !crossed || !ts_ok(Newline) {
+        return 0
+    }
+
+    if continues_line(ts_look()) {
+        return 0
+    }
+
+    ts_emit(Newline)
+
+    1
+}
+
+import c """
+#include "tree_sitter/parser.h"
+
+static TSLexer *maca_ts_lexer;
+static const bool *maca_ts_valid;
+
+long ts_look(void) { return (long)maca_ts_lexer->lookahead; }
+long ts_take(void) { maca_ts_lexer->advance(maca_ts_lexer, true); return 0; }
+long ts_ok(long sym) { return maca_ts_valid[sym] ? 1 : 0; }
+long ts_emit(long sym) { maca_ts_lexer->result_symbol = (TSSymbol)sym; return 0; }
+
+void *tree_sitter_maca_external_scanner_create(void) { return NULL; }
+void tree_sitter_maca_external_scanner_destroy(void *p) { (void)p; }
+unsigned tree_sitter_maca_external_scanner_serialize(void *p, char *b) { (void)p; (void)b; return 0; }
+void tree_sitter_maca_external_scanner_deserialize(void *p, const char *b, unsigned n) { (void)p; (void)b; (void)n; }
+
+bool tree_sitter_maca_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
+  (void)payload;
+  maca_ts_lexer = lexer;
+  maca_ts_valid = valid_symbols;
+  return scan_newline() != 0;
+}
+"""
