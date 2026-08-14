@@ -1,6 +1,8 @@
 import { Ide, Panels, opened, opened_file, target_of, panel_for, toggled,
          gutter, gutter_text, stops, tabs, picked,
-         flame_frames, declared } from apps/ide/model
+         flame_frames, declared, house_rules,
+         asked } from apps/ide/model
+import std/proc
 
 blank() -> Ide =>
     Ide { root = ".", files = [], open = "", text = "", target = "native",
@@ -38,7 +40,7 @@ test_the_tab_row_marks_the_one_in_view() {
 
     assert(row.contains("[rust]"), "the panel in view is bracketed: {row}")
     assert(row.contains(" c "), "and the others are not: {row}")
-    assert_eq(str(Panels.length()), "7", "every panel is offered")
+    assert_eq(str(Panels.length()), "8", "every panel is offered")
 }
 
 test_a_gutter_mark_toggles_and_the_stops_come_out_in_order() {
@@ -85,6 +87,24 @@ test_the_names_panel_reads_the_file_with_the_compilers_own_parser() {
            "as is a constant the file binds: {said}")
 }
 
+test_the_assistant_is_handed_the_rules_this_repository_keeps() {
+    assert(house_rules(".").contains("Maca"),
+           "the rules reach the model, read or fallen back to")
+    assert(house_rules("/nowhere").contains("no `fn`"),
+           "and a tree with no AGENT.md still says what the language is")
+}
+
+test_the_assistant_names_what_it_needs_rather_than_pretending() {
+    if env_or("OPENROUTER_API_KEY", "") != "" {
+        assert(true, "a key is set, so the offline answer is not the one to read")
+    } else {
+        said = asked(blank() with { output = "what is this?" })
+
+        assert(said.contains("OPENROUTER_API_KEY"),
+               "it names what is missing: {said}")
+    }
+}
+
 main() -> int {
     test_the_target_is_read_off_the_source_and_not_chosen()
     test_the_panel_follows_the_target_the_source_named()
@@ -94,5 +114,7 @@ main() -> int {
     test_the_gutter_is_as_long_as_the_buffer()
     test_a_flame_graph_is_counted_by_the_rectangles_it_draws()
     test_the_names_panel_reads_the_file_with_the_compilers_own_parser()
+    test_the_assistant_is_handed_the_rules_this_repository_keeps()
+    test_the_assistant_names_what_it_needs_rather_than_pretending()
     failures()
 }

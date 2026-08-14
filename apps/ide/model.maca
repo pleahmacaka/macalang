@@ -4,6 +4,8 @@
 // can run. A view that cannot be tested without a window is a view nobody
 // tests, so the window holds no logic at all.
 
+import { Chat, compatible, with_model } from ai/openai/chat
+import { generate_text_as } from ai/generate
 import maca/lexer
 import maca/parser
 import maca/ast
@@ -23,7 +25,7 @@ Ide = {
     breaks: int[],
 }
 
-Panels = ["rust", "c", "js", "flame", "checks", "names", "memory"]
+Panels = ["rust", "c", "js", "flame", "checks", "names", "memory", "ask"]
 
 maca_bin() -> str {
     named = env_or("MACA", "maca")
@@ -163,6 +165,10 @@ shown(ide: Ide) -> str {
         return footprint(ide.open)
     }
 
+    if ide.panel == "ask" {
+        return asked(ide)
+    }
+
     transpiled(ide.open, ide.panel)
 }
 
@@ -294,3 +300,37 @@ footprint(path: str) -> str {
 
     said.trim() == "" ? "the run said nothing" : said.trim()
 }
+
+/// The rules this repository keeps, handed to the model so it answers in this language and not another.
+house_rules(root: str) -> str {
+    said = read_file(root ++ "/AGENT.md")
+
+    said != "" ? said : "You are helping with Maca, a typed language whose"
+        ++ " syntax has no `fn`, no `let` and no `return` keyword for types."
+}
+
+/// Where the assistant asks, named by the environment so no key is ever written down.
+assistant() -> Chat =>
+    with_model(compatible(env_or("OPENROUTER_API_KEY", ""),
+                          env_or("MACA_AI_BASE",
+                                 "https://openrouter.ai/api/v1")),
+               env_or("MACA_AI_MODEL", "google/gemma-4-31b-it:free"))
+
+/// What the assistant says about the file in view, asked whatever the box holds.
+asked(ide: Ide) -> str {
+    if env_or("OPENROUTER_API_KEY", "") == "" {
+        return "no model reached: set OPENROUTER_API_KEY"
+    }
+
+    if ide.output.trim() == "" {
+        return "ask something first"
+    }
+
+    said = generate_text_as(assistant(), house_rules(ide.root),
+                            asked_body(ide))
+
+    said.error != "" ? said.error : said.text
+}
+
+asked_body(ide: Ide) -> str =>
+    "{ide.output}\n\nThe file is {ide.open}:\n{ide.text}"
