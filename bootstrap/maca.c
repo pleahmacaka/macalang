@@ -2087,7 +2087,7 @@ MacaList chain_of(const char* src);
 const char* chain_value(MacaList chain, long i, const char* table, const char* key);
 long workspace_ok(MacaList chain);
 const char* workspace_problem(MacaList chain);
-const char* nested_workspace(MacaList chain, const char* root, long i);
+const char* each_workspace(MacaList chain, long i);
 const char* members_problem(const char* root, MacaList ms);
 const char* member_refusal(const char* root, MacaList ms, long i);
 long named_package(const char* file);
@@ -4231,8 +4231,8 @@ MacaList here_chain() { return manifest_chain(".");  }
 MacaList chain_of(const char* src) { return manifest_chain(dir_of(src));  }
 const char* chain_value(MacaList chain, long i, const char* table, const char* key) { return ((i >= (chain.len)) ? "" : ({ const char* got = toml_value(maca_read_file(maca_cat(((const char*)chain.data[i]), Manifest)), table, key); ((strcmp(got, "") != 0) ? got : chain_value(chain, (i + 1), table, key)); }));  }
 long workspace_ok(MacaList chain) { const char* why = workspace_problem(chain); return ((strcmp(why, "") == 0) ? 1 : ({ fprintf(stderr, "%s\n", maca_cat("maca: ", why)); 0; }));  }
-const char* workspace_problem(MacaList chain) { return (((chain.len) == 0) ? "" : ({ const char* root = ((const char*)chain.data[((chain.len) - 1)]); const char* nested = nested_workspace(chain, root, 0); ((strcmp(nested, "") != 0) ? nested : members_problem(root, members_of(maca_read_file(maca_cat(root, Manifest))))); }));  }
-const char* nested_workspace(MacaList chain, const char* root, long i) { return ((i >= (chain.len)) ? "" : (((strcmp(((const char*)chain.data[i]), root) != 0) && declares_workspace(maca_read_file(maca_cat(((const char*)chain.data[i]), Manifest)))) ? maca_cat(maca_cat(maca_cat(maca_cat("", ((const char*)chain.data[i])), Manifest), ": [workspace] inside a workspace; only "), maca_cat(maca_cat(maca_cat("", root), Manifest), " declares one")) : nested_workspace(chain, root, (i + 1))));  }
+const char* workspace_problem(MacaList chain) { return each_workspace(chain, 0);  }
+const char* each_workspace(MacaList chain, long i) { return ((i >= (chain.len)) ? "" : ((!declares_workspace(maca_read_file(maca_cat(((const char*)chain.data[i]), Manifest)))) ? each_workspace(chain, (i + 1)) : ({ const char* at = ((const char*)chain.data[i]); const char* found = members_problem(at, members_of(maca_read_file(maca_cat(at, Manifest)))); ((strcmp(found, "") != 0) ? found : each_workspace(chain, (i + 1))); })));  }
 const char* members_problem(const char* root, MacaList ms) { const char* listed = member_refusal(root, ms, 0); return ((strcmp(listed, "") != 0) ? listed : stray_in(root, ms, parents_of(ms, 0, maca_listv(0)), 0));  }
 const char* member_refusal(const char* root, MacaList ms, long i) { return ((i >= (ms.len)) ? "" : ((strcmp(maca_read_file(maca_cat(maca_cat(maca_cat(maca_cat("", root), ((const char*)ms.data[i])), "/"), Manifest)), "") == 0) ? maca_cat(maca_cat(maca_cat(maca_cat(maca_cat(maca_cat("", root), Manifest), ": [workspace] member `"), ((const char*)ms.data[i])), "` has no "), Manifest) : (named_package(maca_cat(maca_cat(maca_cat(maca_cat("", root), ((const char*)ms.data[i])), "/"), Manifest)) ? member_refusal(root, ms, (i + 1)) : maca_cat(maca_cat(maca_cat(maca_cat(maca_cat(maca_cat("", root), ((const char*)ms.data[i])), "/"), Manifest), ": a workspace member states its own "), "[package] name"))));  }
 long named_package(const char* file) { return (strcmp(toml_value(maca_read_file(file), "[package]", "name"), "") != 0);  }

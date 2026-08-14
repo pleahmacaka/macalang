@@ -2329,30 +2329,20 @@ workspace_ok(chain: str[]) -> bool {
     }
 }
 
-workspace_problem(chain: str[]) -> str {
-    if chain.length() == 0 {
-        ""
-    } else {
-        root = chain.get(chain.length() - 1)
-        nested = nested_workspace(chain, root, 0)
+workspace_problem(chain: str[]) -> str =>
+    each_workspace(chain, 0)
 
-        if nested != "" {
-            nested
-        } else {
-            members_problem(root, members_of(read_file(root ++ Manifest)))
-        }
-    }
-}
-
-nested_workspace(chain: str[], root: str, i: int) -> str {
+/// Every workspace on the chain answers for its own members, so one may hold another.
+each_workspace(chain: str[], i: int) -> str {
     if i >= chain.length() {
         ""
-    } else if chain.get(i) != root
-            && declares_workspace(read_file(chain.get(i) ++ Manifest)) {
-        "{chain.get(i)}{Manifest}: [workspace] inside a workspace; only "
-            ++ "{root}{Manifest} declares one"
+    } else if !declares_workspace(read_file(chain.get(i) ++ Manifest)) {
+        each_workspace(chain, i + 1)
     } else {
-        nested_workspace(chain, root, i + 1)
+        at = chain.get(i)
+        found = members_problem(at, members_of(read_file(at ++ Manifest)))
+
+        found != "" ? found : each_workspace(chain, i + 1)
     }
 }
 

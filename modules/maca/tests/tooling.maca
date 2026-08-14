@@ -469,15 +469,41 @@ test_a_package_the_workspace_does_not_list_is_named() {
            "the list and the tree must agree: {said}")
 }
 
-test_a_member_may_not_declare_a_workspace_of_its_own() {
-    dir = monorepo("ws-nested")
+/// A monorepo holding a monorepo, which is what `modules/ai` is to this repository.
+nested_monorepo(tag: str) -> str {
+    dir = monorepo(tag)
 
-    write_file(dir ++ "/apps/hello/maca.toml",
-        "[package]\nname = \"hello\"\n\n[workspace]\nmembers = []\n\n"
-            ++ "[[bin]]\nname = \"hello\"\npath = \"main.maca\"\n")
-    said = err_in(dir ++ "/apps/hello", ["build"])
+    write_file(dir ++ "/modules/greet/maca.toml",
+        "[package]\nname = \"greet\"\n\n[workspace]\nmembers = [\"fmt\"]\n")
+    make_dir(dir ++ "/modules/greet/fmt")
+    write_file(dir ++ "/modules/greet/fmt/maca.toml",
+        "[package]\nname = \"fmt\"\n\n[[bin]]\nname = \"fmt\"\n"
+            ++ "path = \"main.maca\"\n")
+    write_file(dir ++ "/modules/greet/fmt/main.maca",
+        "import greet/say\n\nmain() -> int {{\n"
+            ++ "    info(greeting(\"ana\"))\n    0\n}}\n")
 
-    assert(said.contains("[workspace]"), "one workspace per tree: {said}")
+    dir
+}
+
+test_a_member_may_declare_a_workspace_of_its_own() {
+    at = nested_monorepo("ws-nested") ++ "/modules/greet/fmt"
+
+    assert_eq(str(rc_in(at, ["build"])), "0", "a monorepo may hold a monorepo")
+    assert_eq(out_in(at, ["run"]).trim(), "hi ana",
+              "and the inner package still reaches the roots above both")
+}
+
+test_the_workspace_nearest_the_fault_is_the_one_that_names_it() {
+    dir = nested_monorepo("ws-inner-member")
+
+    write_file(dir ++ "/modules/greet/maca.toml",
+        "[package]\nname = \"greet\"\n\n[workspace]\n"
+            ++ "members = [\"fmt\", \"absent\"]\n")
+    said = err_in(dir ++ "/modules/greet/fmt", ["build"])
+
+    assert(said.contains("absent"),
+           "an inner workspace answers for its own members: {said}")
 }
 
 declared_build(tag: str, build: str) -> str {
