@@ -268,13 +268,11 @@ string_end(cs: str[], i: int) -> int {
         } else if doubled(cs, j, "{{") || doubled(cs, j, "}}") {
             j = j + 2
         } else if cs.get(j) == "{{" {
-            shut = interp_end(cs, j + 1, 1)
+            j = interp_end(cs, j + 1, 1)
 
-            if shut < 0 {
+            if j < 0 {
                 return 0 - 1
             }
-
-            j = shut
         } else if cs.get(j) == "\"" {
             return j
         } else {
