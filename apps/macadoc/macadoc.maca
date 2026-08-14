@@ -102,6 +102,10 @@ scan(lines: str[], i: int, doc: str[], acc: Item[]) -> Item[] {
     if i >= lines.length() {
         warn_orphan(doc, i)
         acc
+    } else if opens_block(lines.get(i)) {
+        shut = block_shut(lines, i)
+
+        scan(lines, shut + 1, doc ++ block_body(lines, i, shut, []), acc)
     } else if is_doc(lines.get(i)) {
         scan(lines, i + 1, doc ++ [comment_body(lines.get(i))], acc)
     } else if doc.length() == 0 {
@@ -1042,4 +1046,51 @@ total_items(ms: Module[], i: int) -> int {
     } else {
         ms.get(i).items.length() + total_items(ms, i + 1)
     }
+}
+
+/// `/**` opens a doc block the way `///` opens a doc line; a bare `/*` is an ordinary comment.
+opens_block(line: str) -> bool =>
+    line.trim().starts_with("/**")
+
+block_shut(lines: str[], i: int) -> int {
+    j = i
+
+    while j < lines.length() {
+        if lines.get(j).contains("*/") {
+            return j
+        }
+
+        j = j + 1
+    }
+
+    lines.length() - 1
+}
+
+block_body(lines: str[], from: int, upto: int, acc: str[]) -> str[] {
+    i = from
+    out = acc
+
+    while i <= upto && i < lines.length() {
+        said = block_line(lines.get(i))
+
+        if said != "" {
+            out = out.push(said)
+        }
+
+        i = i + 1
+    }
+
+    out
+}
+
+/// A line inside a block sheds its opener, its closer, and the `*` that lines it up.
+block_line(line: str) -> str {
+    said = line.trim()
+    open_cut = said.starts_with("/**") ? said.slice(3, said.length()) : said
+    shut_cut = open_cut.ends_with("*/")
+        ? open_cut.slice(0, open_cut.length() - 2)
+        : open_cut
+    bare = shut_cut.trim()
+
+    bare.starts_with("*") ? bare.slice(1, bare.length()).trim() : bare
 }

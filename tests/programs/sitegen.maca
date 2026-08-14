@@ -392,6 +392,16 @@ test_a_module_blurbs_indented_run_is_code() {
     assert(page.contains("docfixture"), "and it kept its text")
 }
 
+test_a_block_doc_reaches_the_page_the_way_a_slash_doc_does() {
+    doc = article_of(read_file(join(fixture_dir(), "docfixture.html")),
+                     "blocked")
+
+    assert(doc.contains("what TypeScript writes"),
+           "a `/** */` block documents its item: {doc}")
+    assert(doc.contains("not part of the sentence"),
+           "and every line of it, past the `*` that lines it up: {doc}")
+}
+
 test_a_doc_body_code_block_is_highlighted() {
     doc = article_of(read_file(join(fixture_dir(), "docfixture.html")),
                      "exampled")
@@ -425,7 +435,7 @@ test_a_cross_linked_name_carries_its_card() {
 test_the_kind_badge_says_what_an_item_is() {
     page = read_file(join(fixture_dir(), "docfixture.html"))
 
-    assert_eq(kinds_of(page), "fn record record sum const fn fn fn fn",
+    assert_eq(kinds_of(page), "fn record record sum const fn fn fn fn fn",
               "each is labelled for what it is")
     assert_eq(badge_word(page, "Roomy"), "record", "a record says so")
     assert_eq(badge_word(page, "Choice"), "sum type", "and a sum type")

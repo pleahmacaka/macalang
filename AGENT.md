@@ -129,6 +129,11 @@ definition cycle resolves, with `MACA_ARRAY_STRUCT` before the body and
   whose name is the sentence you were about to write. Prose about the design
   belongs in the handbook (`apps/tomo/book/**`) or `docs/SPEC.md`, which are
   documentation and are not covered by this rule.
+- **A doc comment is `///` or a `/** … */` block, and MacaDoc reads both.**
+  A block sheds the `*` that lines it up, and a line inside either form that
+  opens with `@` is a tag rather than a sentence: `@param a = slider(1..10)`
+  is a control the editor draws, not prose the reference prints. `/* … */`
+  without the second star is an ordinary comment.
 - **`///` is the exception, and it is one line.** `///` is what marks an item
   as API: `apps/macadoc/macadoc.maca` builds the reference pages from it, and
   `tests/programs/sitegen.maca` fails when those pages and

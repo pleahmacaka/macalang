@@ -76,3 +76,10 @@ widen(r: Roomy) -> Compact =>
 /// ```
 exampled(x: int) -> int =>
     x
+
+/** A block doc, which is what TypeScript writes and MacaDoc now reads.
+ * The `*` that lines the block up is not part of the sentence.
+ * @param n the one it is handed
+ */
+blocked(n: int) -> int =>
+    n * 2
