@@ -6,6 +6,7 @@
 
 import { Chat, compatible, with_model } from ai/openai/chat
 import { generate_text_as } from ai/generate
+import { Tag, tags } from maca/doc
 import maca/lexer
 import maca/parser
 import maca/ast
@@ -334,3 +335,7 @@ asked(ide: Ide) -> str {
 
 asked_body(ide: Ide) -> str =>
     "{ide.output}\n\nThe file is {ide.open}:\n{ide.text}"
+
+/// The controls the open file asked for, which is every `@param` its doc comments carry.
+knobs(ide: Ide) -> Tag[] =>
+    tags(ide.text)

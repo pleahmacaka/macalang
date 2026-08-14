@@ -3,7 +3,10 @@
 // `ide.maca` is the gpui host and `web.maca` is the browser one; both import
 // this, so the editor is the same components either way.
 
-import { Ide, panel_for, shown, stops, gutter_text, tabs } from apps/ide/model
+import { Ide, panel_for, shown, stops, gutter_text, tabs,
+         knobs } from apps/ide/model
+import { Tag, bound_name, bound_call } from maca/doc
+import { between } from std/text
 
 Face = "JetBrains Mono Nerd Font"
 
@@ -27,7 +30,21 @@ buffer(ide: Ide) -> Element =>
         div(class="flex flex-row gap-2",
             div(class="text-sm w-8", gutter_text(ide)),
             div(class="text-sm grow", ide.text)),
-        div(class="text-xs", "stops: {stops(ide)}"))
+        div(class="text-xs", "stops: {stops(ide)}"),
+        asked_controls(ide))
+
+/// A `@param` in a doc comment is a control, drawn beside the buffer that asked for it.
+asked_controls(ide: Ide) -> Element {
+    got = knobs(ide)
+
+    if got.length() == 0 {
+        return div(class="text-xs", "no controls asked for")
+    }
+
+    div(class="flex flex-col gap-1",
+        div(class="text-xs", "{str(got.length())} asked for"),
+        control(got.get(0)))
+}
 
 /// What the panel shows follows the target the source itself names, so nothing has to be chosen.
 panel(ide: Ide) -> Element =>
@@ -35,3 +52,32 @@ panel(ide: Ide) -> Element =>
         div(class="text-xs", tabs(ide)),
         div(class="text-xs", "{ide.target} via {panel_for(ide.target)}"),
         div(class="text-sm", shown(ide)))
+
+/// A control a doc comment asked for, drawn the way the tag syntax draws anything else.
+control(t: Tag) -> Element =>
+    div(class="flex flex-row gap-2",
+        div(class="text-xs w-24", bound_name(t)),
+        knob(bound_call(t)))
+
+/// The control the comment named, or its own text when it named one nobody draws.
+knob(call: str) -> Element {
+    if call.starts_with("slider(") {
+        return div(class="flex flex-row gap-1 grow",
+                   div(class="text-xs", span_lo(call)),
+                   div(class="grow h-1"),
+                   div(class="text-xs", span_hi(call)))
+    }
+
+    if call.starts_with("toggle(") {
+        return div(class="text-sm", "[ ]")
+    }
+
+    div(class="text-xs", call == "" ? "no control" : call)
+}
+
+/// `slider(1..10)` names its ends with the range Maca already writes half-open.
+span_lo(call: str) -> str =>
+    between(call, "(", "..")
+
+span_hi(call: str) -> str =>
+    between(call, "..", ")")
