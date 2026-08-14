@@ -3673,7 +3673,7 @@ MacaList gpui_texts(MacaList cs, long i, MacaList acc) { return ((i >= (cs.len))
 const char* gpui_element(Expr e) { return maca_cat(maca_cat(gpui_box((*(Expr*)e.children.data[0]).text), gpui_attrs((*(Expr*)e.children.data[3]).children, 0)), gpui_kids((*(Expr*)e.children.data[4]).children, 0));  }
 const char* gpui_box(const char* tag) { return ((((strcmp(tag, "img") == 0) || (strcmp(tag, "svg") == 0)) || (strcmp(tag, "canvas") == 0)) ? maca_cat(maca_cat("", tag), "()") : "div()");  }
 const char* gpui_attrs(MacaList cs, long i) { return ((i >= (cs.len)) ? "" : maca_cat(gpui_attr((*(Expr*)cs.data[i])), gpui_attrs(cs, (i + 1))));  }
-const char* gpui_attr(Expr a) { return ((strcmp(a.text, "class") == 0) ? gpui_classes(gpui_words((*(Expr*)a.children.data[0])), 0) : ((strcmp(a.text, "id") == 0) ? maca_cat(maca_cat(".id(", remit_expr((*(Expr*)a.children.data[0]))), ")") : ""));  }
+const char* gpui_attr(Expr a) { return ((strcmp(a.text, "class") == 0) ? gpui_classes(gpui_words((*(Expr*)a.children.data[0])), 0) : ((strcmp(a.text, "id") == 0) ? maca_cat(maca_cat(".id(", remit_expr((*(Expr*)a.children.data[0]))), ")") : ((strcmp(a.text, "font") == 0) ? maca_cat(maca_cat(".font_family(", remit_expr((*(Expr*)a.children.data[0]))), ")") : "")));  }
 MacaList gpui_words(Expr e) { return ((e.kind == EStr) ? maca_split(e.text, " ") : maca_listv(0));  }
 const char* gpui_classes(MacaList ws, long i) { return ((i >= (ws.len)) ? "" : ((strcmp(((const char*)ws.data[i]), "") == 0) ? gpui_classes(ws, (i + 1)) : maca_cat(maca_cat(maca_cat(".", gpui_method(((const char*)ws.data[i]))), "()"), gpui_classes(ws, (i + 1)))));  }
 const char* gpui_method(const char* w) { return maca_replace(maca_replace(w, "-", "_"), "/", "_");  }

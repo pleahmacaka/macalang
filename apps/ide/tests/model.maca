@@ -1,5 +1,6 @@
 import { Ide, Panels, opened, opened_file, target_of, panel_for, toggled,
-         gutter, gutter_text, stops, tabs, picked } from apps/ide/model
+         gutter, gutter_text, stops, tabs, picked,
+         flame_frames } from apps/ide/model
 
 blank() -> Ide =>
     Ide { root = ".", files = [], open = "", text = "", target = "native",
@@ -64,6 +65,13 @@ test_the_gutter_is_as_long_as_the_buffer() {
               "and one line is one mark")
 }
 
+test_a_flame_graph_is_counted_by_the_rectangles_it_draws() {
+    assert_eq(str(flame_frames("<svg><rect x=1/><rect x=2/></svg>")), "2",
+              "a flame graph draws one rectangle a frame")
+    assert_eq(str(flame_frames("<svg></svg>")), "0",
+              "and a graph with nothing in it counts none")
+}
+
 main() -> int {
     test_the_target_is_read_off_the_source_and_not_chosen()
     test_the_panel_follows_the_target_the_source_named()
@@ -71,5 +79,6 @@ main() -> int {
     test_the_tab_row_marks_the_one_in_view()
     test_a_gutter_mark_toggles_and_the_stops_come_out_in_order()
     test_the_gutter_is_as_long_as_the_buffer()
+    test_a_flame_graph_is_counted_by_the_rectangles_it_draws()
     failures()
 }

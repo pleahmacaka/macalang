@@ -1088,6 +1088,8 @@ gpui_attr(a: Expr) -> str {
         gpui_classes(gpui_words(a.children.get(0)), 0)
     } else if a.text == "id" {
         ".id({remit_expr(a.children.get(0))})"
+    } else if a.text == "font" {
+        ".font_family({remit_expr(a.children.get(0))})"
     } else {
         ""
     }

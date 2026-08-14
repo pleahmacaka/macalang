@@ -174,8 +174,17 @@ transpiled(path: str, panel: str) -> str {
 flamed(path: str) -> str {
     svg = "{scratch()}/{stem(path)}.svg"
 
-    output("sh", ["-c", "'{maca_bin()}' profile '{path}' -o '{svg}' 2>&1"])
+    remove_file(svg)
+
+    said = output("sh",
+                  ["-c", "'{maca_bin()}' profile '{path}' -o '{svg}' 2>&1"])
+
+    file_exists(svg) ? "{svg}\n{flame_frames(read_file(svg))} frames" : said
 }
+
+/// A flame graph draws one rectangle a frame, so counting them says how deep the run went.
+flame_frames(svg: str) -> int =>
+    svg.split("<rect").length() - 1
 
 checked(path: str, target: str) -> str {
     said = output("sh", ["-c", "'{maca_bin()}' check '{path}' --target {target}"

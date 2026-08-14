@@ -24,9 +24,11 @@ Shell : Render = {
         view(self.ide).into_any_element()
 }
 
+Face = "JetBrains Mono Nerd Font"
+
 /// Three columns: what there is to open, what is open, and what it becomes.
 view(ide: Ide) -> Element =>
-    div(class="flex flex-row size-full",
+    div(class="flex flex-row size-full", font=Face,
         tree(ide),
         buffer(ide),
         panel(ide))
