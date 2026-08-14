@@ -433,3 +433,31 @@ test_a_named_argument_carries_its_value_to_a_plain_function() {
     assert(made.index_of("tagged(0") < 0,
            "so nothing reaches the callee as a null string")
 }
+
+test_a_return_ending_a_branch_is_a_statement_and_not_a_ternary() {
+    made = gate_c(""
+        ++ "scan(xs: int[]) -> int {{\n"
+        ++ "    j = 0\n"
+        ++ "\n"
+        ++ "    while j < xs.length() {{\n"
+        ++ "        if xs.get(j) == 1 {{\n"
+        ++ "            j = j + 2\n"
+        ++ "        }} else if xs.get(j) == 2 {{\n"
+        ++ "            j = j + 1\n"
+        ++ "\n"
+        ++ "            if j < 0 {{\n"
+        ++ "                return 0 - 1\n"
+        ++ "            }}\n"
+        ++ "        }} else {{\n"
+        ++ "            j = j + 1\n"
+        ++ "        }}\n"
+        ++ "    }}\n"
+        ++ "\n"
+        ++ "    j\n"
+        ++ "}}\n")
+
+    assert(made.index_of("? return") < 0,
+           "C has no ternary a `return` can sit inside: {made}")
+    assert(made.index_of("if ((j < 0)) {{ return") >= 0,
+           "so a branch ending in one is written as an `if`: {made}")
+}

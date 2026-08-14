@@ -1513,11 +1513,15 @@ c_branch(e: Expr) -> str {
     if e.kind == EIf {
         emit_if_stmt(e)
     } else if e.kind == EBlock {
-        "{{ {block_stmts(e.stmts, 0)}{emit_expr(e.children.get(0))}; }}"
+        "{{ {block_stmts(e.stmts, 0)}{c_tail(e.children.get(0))} }}"
     } else {
-        "{{ {emit_expr(e)}; }}"
+        "{{ {c_tail(e)} }}"
     }
 }
+
+/// The last thing in a branch stands where a statement does, so an `if` there is an `if` and never a ternary a `return` cannot sit inside.
+c_tail(e: Expr) -> str =>
+    e.kind == EIf ? emit_if_stmt(e) : "{emit_expr(e)};"
 
 is_raise(e: Expr) -> bool =>
     e.kind == EUnary && e.text == "fail"
