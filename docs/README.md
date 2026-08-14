@@ -17,4 +17,4 @@ at <https://pleahmacaka.github.io/macalang/>.
 | [check-json.schema.json](check-json.schema.json) | the shape `maca check --json` prints, for a tool that reads it. |
 
 The repository's own working rules, for a contributor or an agent, are in
-`CLAUDE.md` at the root and in `.claude/`.
+`AGENT.md` at the root, which `CLAUDE.md` imports.
