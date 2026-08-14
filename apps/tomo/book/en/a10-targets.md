@@ -65,7 +65,7 @@ A stylesheet or a script that is not Maca is an import:
 import "vendor/daisyui.css"       // a file, read at build time
 import "vendor/iconify-icon.js"    // a file, read at build time
 
-import css """
+import "app.css" """
 .card { border-radius: 8px }
 """                                   // the source itself, written inline
 ```
@@ -138,7 +138,7 @@ A target refuses what it cannot honour, at compile time and by name.
 | Target | Refuses |
 |---|---|
 | native | `on:click=` and its siblings; an event handler has nowhere to attach in a string |
-| `rust` | a bodyless (FFI) function; `import c` / `import py`; an `import rust` naming an undeclared crate; a borrowed foreign parameter that is returned or stored; a function defined inside another |
+| `rust` | a bodyless (FFI) function; a C or Python import; an import naming an undeclared crate; a borrowed foreign parameter that is returned or stored; a function defined inside another |
 | `jvm` | a function defined inside another |
 | `embedded` | `info` and the other console builtins; a `main` with a return type; a function defined inside another |
 | `nix` | any non-empty effect row; see [Effects and Async](a7-effects.md); `return`, since config mode has no function to leave |

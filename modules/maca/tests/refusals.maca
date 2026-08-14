@@ -332,6 +332,37 @@ test_a_program_is_refused_by_the_effect_its_target_cannot_carry() {
         "there is no BEAM back end, and naming one is a usage error")
 }
 
+keyworded(name: str, src: str) -> str {
+    make_dir(scratch())
+    at = scratch() ++ "/" ++ name
+    write_file(at, src)
+
+    at
+}
+
+test_a_language_word_in_front_of_an_import_is_a_parse_error() {
+    at = keyworded("worded.maca",
+                   "import c \"sqlite3.h\"\n\nmain() -> int => 0\n")
+    said = capture(maca_bin(), ["check", at])
+
+    assert(said.contains("sqlite3.h"),
+           "the error points at the string the word displaced: {said}")
+    assert_eq(str(exec(maca_bin(), ["check", at])), "1",
+              "an import carries no language word, and one is not ignored")
+}
+
+test_an_import_is_classified_by_the_string_it_names() {
+    at = keyworded("named.maca",
+                   "import \"sqlite3.h\"\nimport \"itoa\"\n"
+                       ++ "import \"std::time::Duration\"\n"
+                       ++ "import \"net.fabricmc.api.ModInitializer\"\n\n"
+                       ++ "main() -> int => 0\n")
+
+    assert_eq(str(exec(maca_bin(), ["check", at])), "0",
+              "an extension, a bare crate, a crate path and a class each "
+                  ++ "say what they are without a word in front")
+}
+
 test_the_rust_target_refuses_a_method_that_keeps_what_it_was_lent() {
     bad = "apps/examples/bad/kept_borrow.maca"
 

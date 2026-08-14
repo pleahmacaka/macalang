@@ -15,7 +15,7 @@ pick_text(accept: str) -> str
 /// Hand `text` to the browser under a name it has already been told is safe.
 browser_download(name: str, text: str) -> bool
 
-import js """
+import "file.js" """
 maca.provide({
   browser_download: (name, text) => {
     const blob = new Blob([text], { type: "text/plain;charset=utf-8" });

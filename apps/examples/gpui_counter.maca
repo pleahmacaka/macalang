@@ -1,9 +1,9 @@
-import rust "gpui::div"
-import rust "gpui::Render"
-import rust "gpui::IntoElement"
-import rust "gpui::AnyElement"
-import rust "gpui::Context"
-import rust "gpui::Window"
+import "gpui::div"
+import "gpui::Render"
+import "gpui::IntoElement"
+import "gpui::AnyElement"
+import "gpui::Context"
+import "gpui::Window"
 
 Counter = {
     count: int

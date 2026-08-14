@@ -523,9 +523,7 @@ import_end(ts: Token[], i: int) -> int {
     if ts.get(i).kind == LBrace {
         import_end(ts, selection_end(ts, i + 1) + 2)
     } else if ts.get(i).kind == TStr {
-        i + 1
-    } else if ts.get(i + 1).kind == TStr {
-        i + 2
+        ts.get(i + 1).kind == TStr && !ts.get(i + 1).fresh ? i + 2 : i + 1
     } else if ts.get(i + 1).kind == Slash {
         import_end(ts, i + 2)
     } else {

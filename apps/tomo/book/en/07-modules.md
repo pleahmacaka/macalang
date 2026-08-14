@@ -71,10 +71,10 @@ maca: import { centroid } from geometry: 'centroid' is not defined in that modul
 `import` with a language name in front reaches outside Maca entirely:
 
 ```maca
-import c "sqlite3.h"
-import py "json"
-import js """…"""
-import css """…"""
+import "sqlite3.h"
+import "json.py"
+import "app.js" """…"""
+import "app.css" """…"""
 ```
 
 The first two link a real library; see [the FFI reference](a13-ffi.md). The last

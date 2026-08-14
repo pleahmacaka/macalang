@@ -5,14 +5,14 @@ Maca는 C로 컴파일되므로 C ABI는 이미 딛고 선 땅입니다. FFI는 
 ## C
 
 ```maca
-import c "sqlite3.h"
+import "sqlite3.h"
 ```
 
 헤더를 선언하고 라이브러리를 링크합니다. 그 안의 함수는 다른 함수와 똑같이
 호출합니다.
 
 ```maca
-import c "sqlite3.h"
+import "sqlite3.h"
 
 main() -> int {
     info("sqlite {sqlite3_libversion()}")
@@ -62,7 +62,7 @@ bindgen은 컴파일러 안의 Rust 구현과 `apps/bindgen/bindgen.maca`의 Mac
 ## Python
 
 ```maca
-import py "json"
+import "json.py"
 ```
 
 Python 연동은 `python3-config`를 거칩니다. 인터프리터를 임베드하므로 둘 중
@@ -70,7 +70,7 @@ Python 연동은 `python3-config`를 거칩니다. 인터프리터를 임베드�
 
 ## JavaScript: `maca` 브리지
 
-`import js """…"""`는 블록을 그대로 `app.js`에 심습니다. 필요한 호스트
+`import "app.js" """…"""`는 블록을 그대로 `app.js`에 심습니다. 필요한 호스트
 글루(WebAssembly 인스턴스, 에디터, 브라우저 API)를 두 번째 파일 없이 들고 다니는
 방법입니다.
 
@@ -102,7 +102,7 @@ cfg_write(title: str, url: str, icon: str, section: str) -> bool
 
 form_title = ""
 
-import js """
+import "app.js" """
 maca.provide({
   cfg_sections: () => JSON.parse(localStorage.getItem("sections") || "[]"),
   cfg_write: (title, url, icon, section) => save(title, url, icon, section),
@@ -119,7 +119,7 @@ Maca에서 `cfg_sections()`는 평범한 호출이고, 백엔드가 그것을 �
 
 ```
 maca: `cfg_write` is declared in Maca but nothing implements it;
-call maca.provide({ cfg_write: … }) from the import js block
+call maca.provide({ cfg_write: … }) from the JavaScript block
 ```
 
 ### 순서
@@ -134,13 +134,13 @@ call maca.provide({ cfg_write: … }) from the import js block
 ### 그 위에 올린 프로그램 하나
 
 `apps/playground/playground.maca`가 본문 없는 함수 열다섯 개와 상태 이름 넷을
-선언하고, 그것이 `import js` 블록에 닿을 수 있는 표면의 전부입니다. 경계 너머에
+선언하고, 그것이 JavaScript 블록에 닿을 수 있는 표면의 전부입니다. 경계 너머에
 있는 것은 Maca로 적을 수 없는 브라우저의 능력뿐입니다.
 
 ## 모듈로서의 브라우저
 
 `modules/web`은 브라우저를 평범한 Maca로 내놓은 것입니다. 그중 셋은 필요한
-함수를 몸통 없이 선언하고 자기 `import js` 블록에서 구현하는 다리입니다.
+함수를 몸통 없이 선언하고 자기 JavaScript 블록에서 구현하는 다리입니다.
 
 | 모듈 | 무엇에 닿는가 |
 |---|---|
@@ -213,11 +213,11 @@ import_config() {
 
 ### 브라우저 밖에서
 
-구현이 `import js` 블록인 모듈을 다른 타깃으로 빌드하면 아무것도 하지 않는
+구현이 JavaScript 블록인 모듈을 다른 타깃으로 빌드하면 아무것도 하지 않는
 프로그램으로 컴파일되는 대신 **이름을 대며** 거절합니다.
 
 ```
-`web/storage` runs in a browser: what implements it is an `import js` block,
+`web/storage` runs in a browser: what implements it is a JavaScript block,
 and the native target has no JavaScript to run it in; build the page with
 `maca build --target js`
 ```

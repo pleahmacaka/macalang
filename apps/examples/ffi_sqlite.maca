@@ -1,4 +1,4 @@
-import c "sqlite3.h"
+import "sqlite3.h"
 
 sqlite_open(path: str) -> int
 sqlite_close(db: int) -> int

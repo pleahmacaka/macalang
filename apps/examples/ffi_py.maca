@@ -1,4 +1,4 @@
-import py "platform"
+import "platform.py"
 
 py_call(module: str, func: str) -> str
 py_call_s(module: str, func: str, arg: str) -> str

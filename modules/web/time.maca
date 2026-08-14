@@ -32,7 +32,7 @@ clock_date() -> str {
     stamp(p.get(0), p.get(1), p.get(2))
 }
 
-import js """
+import "time.js" """
 maca.provide({
   now_parts: () => {
     const d = new Date();

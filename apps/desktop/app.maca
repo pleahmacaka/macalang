@@ -1,4 +1,4 @@
-import js """
+import "app.js" """
 (function wire() {
     const go = document.getElementById('go');
     if (!go) return setTimeout(wire, 0);   // wait until the app has mounted

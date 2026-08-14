@@ -47,7 +47,7 @@ emitted(pane: str) -> str
 outcome() -> Outcome
 preview(js: str, css: str) -> bool
 
-import css """
+import "playground.css" """
 .ol-item { display: flex; align-items: baseline; gap: .45rem;
   padding: .25rem .5rem; border-radius: .35rem; cursor: pointer;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -69,7 +69,7 @@ import css """
 ::-webkit-scrollbar-corner, ::-webkit-scrollbar-track { background: transparent; }
 """
 
-import js """
+import "playground.js" """
 "use strict";
 (function () {
   const EMPTY = {

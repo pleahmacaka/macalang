@@ -905,7 +905,7 @@ jemit_items(items: Stmt[], i: int) -> str {
     }
 }
 
-/// A function the program declares and does not write is one an `import js` block supplies.
+/// A function the program declares and does not write is one a JavaScript block supplies.
 jemit_host(s: Stmt) -> str {
     ps = js_param_names(s.params, 0)
 

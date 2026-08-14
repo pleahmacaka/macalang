@@ -218,7 +218,7 @@ an event handler has nowhere to attach when elements render to a string
 | Target | Refuses |
 |---|---|
 | native | `on:click=` and its siblings |
-| `rust` | a bodyless (FFI) function; `import c`/`import py`; an `import rust` naming an undeclared crate; a borrowed foreign parameter that is returned or stored |
+| `rust` | a bodyless (FFI) function; a C or Python import; an import naming an undeclared crate; a borrowed foreign parameter that is returned or stored |
 | `embedded` | `info` and the other console builtins; a `main` with a return type |
 
 **C compiler errors** should not happen, and when they do it is a compiler bug

@@ -112,7 +112,7 @@ The point is that a crates.io library costs a line of configuration rather than
 a port. A Rust library's public API has no C ABI, so `import c` cannot reach
 it, and a hand-written shim does not scale past a few dozen flat functions.
 
-* `import rust "gpui::div"` becomes `use gpui::div;`, and an import naming an
+* `import "gpui::div"` becomes `use gpui::div;`, and an import naming an
   undeclared crate is an error rather than a silent drop.
 * Maca has no `::`, so a call on a foreign capitalized type is its constructor
   and `Type.assoc(a)` is an associated function.

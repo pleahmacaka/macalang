@@ -11,12 +11,12 @@ project's directories mean. The teaching version is [Modules](07-modules.md).
 | `import a` | the module `a`, or a builtin if no such file exists |
 | `import { f, g } from a/b` | only `f` and `g` from that module |
 | `import { f } from a` | the same; a single word here is still a file |
-| `import c "hdr.h"` | a C header and its library |
-| `import py "mod"` | a Python module |
+| `import "hdr.h"` | a C header and its library |
+| `import "mod.py"` | a Python module |
 | `import "x.css"` / `"x.js"` / `"x.wasm"` | an asset, named by its extension |
 | `import { a, b } from "npm:pkg"` | named bindings out of a package |
-| `import js """…"""` | raw JavaScript, for the JS backend |
-| `import css """…"""` | raw CSS, for the JS backend |
+| `import "app.js" """…"""` | raw JavaScript, for the JS backend |
+| `import "app.css" """…"""` | raw CSS, for the JS backend |
 
 ## An import that resolves to nothing is an error
 

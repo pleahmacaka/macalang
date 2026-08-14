@@ -195,7 +195,7 @@ URL had to move. Maca in a fenced block is highlighted by
 rather than guessing; an unknown language tag falls through to escaped plain
 text.
 
-FFI (`import c "sqlite3.h"` / `import py "…"`) links the real library: through
+FFI (`import "sqlite3.h"` / `import "….py"`) links the real library: through
 `wsl nix` when present, else the **host `cc`** with system headers/libs
 (`-lsqlite3`, `python3-config`), so FFI builds on a plain Linux dev machine
 (`apps/examples/ffi_sqlite.maca` iterates a real result set).

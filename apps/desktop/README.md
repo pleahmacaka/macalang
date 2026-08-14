@@ -27,7 +27,7 @@ dist-tauri/
 ## Round-trip
 
 `app.maca` renders a name field, a **Greet** button, and a result area, and
-carries its own glue in an `import js` block: clicking **Greet** calls
+carries its own glue in a JavaScript block: clicking **Greet** calls
 `macaInvoke(name)`, which the generated `bridge.js` routes to the Tauri command
 `maca_run`, which runs the bundled `backend` binary; its output
 (`Hello, <name>!`) is written back into the view. Verified headlessly in

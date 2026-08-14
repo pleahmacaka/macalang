@@ -1,4 +1,4 @@
-import rust "gpui::Window"
+import "gpui::Window"
 
 Holder = {
     saved: int

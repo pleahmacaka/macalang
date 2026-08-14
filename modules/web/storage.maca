@@ -14,7 +14,7 @@ local_store(key: str, value: a) -> a
 /// Forget whatever is saved under `key`, so the next visit starts from the default again.
 local_forget(key: str) -> bool
 
-import js """
+import "storage.js" """
 maca.provide({
   local_start: (key, fallback) => {
     const store = globalThis.localStorage;

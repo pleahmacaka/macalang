@@ -1,4 +1,4 @@
-import c "mqtt.h"
+import "mqtt.h"
 
 mqtt_connect(host: str, port: int) -> int
 mqtt_subscribe(fd: int, topic: str) -> int

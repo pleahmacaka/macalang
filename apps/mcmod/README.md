@@ -9,7 +9,7 @@ Write Minecraft mod logic in **Maca**, transpile it to Java with `maca build
 `mod.maca` declares a Fabric `ModInitializer` and some plain Maca logic:
 
 ```maca
-import java "net.fabricmc.api.ModInitializer"
+import "net.fabricmc.api.ModInitializer"
 
 greeting(name: str) -> str =>
     "Hello from a Maca-authored Fabric mod, {name}!"
@@ -19,7 +19,7 @@ ExampleMod : ModInitializer = {
 }
 ```
 
-- `import java "…"` → a Java `import`.
+- `import "…"` → a Java `import`.
 - `Name : Iface = { m = () => … }` → `class Name implements Iface` (each lambda
   field is a method). This is how you implement a Fabric entrypoint.
 - top-level functions → `static` helpers; `info(x)` → `System.out.println(x)`.

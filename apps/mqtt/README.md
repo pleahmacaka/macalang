@@ -1,7 +1,7 @@
 # mqtt: a broker and client, in Maca
 
 A working **MQTT 3.1.1 broker and client** written in Maca over a C FFI
-(`import c "mqtt.h"`, resolved by the binding glue in `maca-runtime`). Both
+(`import "mqtt.h"`, resolved by the binding glue in `maca-runtime`). Both
 compile to native binaries and link libc sockets + pthreads (no external
 dependency), so they build in the static-musl path like any other Maca program.
 

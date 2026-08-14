@@ -195,8 +195,13 @@ finishing.
 
 ## The rules models get wrong
 
-- **An asset is named by its extension, not by a keyword.** `import
-  "theme.css"`, not `import "theme.css"`. To take names out of a package,
+- **Every quoted import is named by its string, never by a keyword.** The
+  string says what it is: an extension (`import "theme.css"`, `import
+  "sqlite3.h"`, `import "json.py"`), a `::` path or bare crate name for Rust
+  (`import "gpui::div"`, `import "itoa"`), a dotted class for the JVM (`import
+  "net.fabricmc.api.ModInitializer"`). An inline block is named too, so the
+  extension still decides: `import "scanner.c" """…"""`. A language word in
+  front (`import c "…"`) is a parse error. To take names out of a package,
   `import { pick_text } from "npm:pkg"`; a snake_case name binds a camelCase
   export.
 

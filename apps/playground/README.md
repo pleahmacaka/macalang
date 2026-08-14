@@ -10,7 +10,7 @@ in with `import wasm`.
 
 ## The boundary
 
-The `import js` block is the host, and the whole of what it may be reached by
+The JavaScript block is the host, and the whole of what it may be reached by
 is the `maca` bridge ([the FFI chapter](../tomo/book/en/a13-ffi.md) documents
 it). The top of `playground.maca` declares fifteen functions with no body,
 which is the contract:
@@ -128,8 +128,8 @@ happens when it does not come back. That is the whole flow: `maca init`, write
 | UI, state, handlers, examples | `playground.maca` (Maca) |
 | styling | Tailwind utility classes to CSS by the JS backend (`crates/backend_js`) |
 | the panes, the status line, the outline markup | `playground.maca` (Maca), reading the declared accessors |
-| host (wasm bridge, editor, preview iframe, URL fragment, clipboard) | `import js """…"""` block inside `playground.maca`, reached only through `maca.provide` / `maca.set` |
-| token/outline colours | one `import css """…"""` block of scoped classes |
+| host (wasm bridge, editor, preview iframe, URL fragment, clipboard) | `import "app.js" """…"""` block inside `playground.maca`, reached only through `maca.provide` / `maca.set` |
+| token/outline colours | one `import "app.css" """…"""` block of scoped classes |
 | fonts | `<link>` to `../fonts/fonts.css`: Pretendard GOV Variable and JetBrainsMono Nerd Font, shared with the rest of the site |
 | compiler, analysis, interpreter | `import "…/maca_wasm.wasm"`: the `run`, `lsp` and `version` exports, embedded as base64 by `maca build` |
 

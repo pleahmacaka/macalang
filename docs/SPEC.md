@@ -275,16 +275,16 @@ and which manifest answers.
   `modules/maca/tests/js.maca`.) The browser
   playground itself is a single Maca file (`apps/playground/playground.maca`)
   compiled by this backend, carrying its styles and the WebAssembly-bridge
-  runtime inline via `import css`/`import js` raw-string blocks. An **asset**
+  runtime inline via named raw-string blocks. An **asset**
   is named by its extension rather than by a keyword: `import "theme.css"`,
   `import "vendor/x.js"`, `import "m.wasm"`. Naming what you want out of a
   package is `import { pick_text } from "npm:pkg"`, and a snake_case name binds
   a camelCase or kebab-case export, so Maca spells it Maca's way.
 - **A page's assets and its identity.** A quoted `"…"` *names* something and
   carries no language word: the extension says what a file is, and a package
-  says what it is itself. A raw `"""…"""` block keeps its word, because a block
-  of source has no name to read a kind off. So `import css """…"""` carries
-  inline CSS while
+  says what it is itself. A raw `"""…"""` block is named the same way, by the
+  string in front of it, so no import anywhere carries a language word. So
+  `import "page.css" """…"""` carries inline CSS while
   `import "vendor/daisyui.css"` embeds that file's bytes in a `<style>`
   ahead of the generated one, `import "vendor/x.js"` embeds a `<script>`
   ahead of the app, and `import "x.wasm"` embeds a base64 blob. Every asset
@@ -312,7 +312,7 @@ and which manifest answers.
   page is named by what it is rather than by what its file is called; the same
   title names the window under `--target tauri`. An unknown key under `[page]`
   is an error.
-- The **JS bridge** is what an `import js` block and the program say to each
+- The **JS bridge** is what a JavaScript block and the program say to each
   other, and the only thing either may assume about the other. `maca.get(name)`
   reads declared state, `maca.set(name, value)` (or `maca.set({…})`) writes it
   and refreshes the view, `maca.refresh()` re-syncs the bound nodes, and

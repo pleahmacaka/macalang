@@ -4,6 +4,21 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* **An import is named by its string, and no import carries a language word.** `import c
+  "sqlite3.h"` is now `import "sqlite3.h"`, which is the rule assets already followed. The
+  string classifies itself: an extension (`.h` `.c` `.rs` `.js` `.css` `.nix` `.py` `.java`
+  `.ex`), then a `::` path or a bare crate name for Rust, then a dotted class for the JVM. A
+  raw block is named the same way, `import "scanner.c" """…"""`, which is what removed the
+  last reason to keep the word: the spec had said a block "keeps its word, because a block of
+  source has no name to read a kind off", and now it has one. The old form is a parse error
+  pointing at the string the word displaced, never a quiet no-op.
+
+* **A workspace may hold a workspace.** A `[workspace]` inside a `[workspace]` was refused
+  outright; now every workspace on the manifest chain answers for its own members, and the
+  chain still runs to the outermost manifest so `[format]` and `[lint]` inherit as before. A
+  monorepo can therefore live inside a monorepo, which is what lets `modules/ai/openai` be
+  used on its own without leaving the tree that builds it.
+
 * **The Rust workspace is deleted.** `crates/` held the frozen stage-0 compiler; every
   guarantee it stood for is now a `.maca` suite, and `bootstrap/maca.c` is what produces
   the first binary on a machine with neither Maca nor Rust. The `cargo test` and

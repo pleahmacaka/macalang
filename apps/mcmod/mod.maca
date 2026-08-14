@@ -1,4 +1,4 @@
-import java "net.fabricmc.api.ModInitializer"
+import "net.fabricmc.api.ModInitializer"
 
 greeting(name: str) -> str =>
     "Hello from a Maca-authored Fabric mod, {name}!"

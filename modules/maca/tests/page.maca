@@ -365,8 +365,8 @@ test_a_package_at_the_project_root_is_found_from_a_source_below_it() {
 
 test_a_block_written_in_the_program_is_carried_as_written() {
     dir = project("inline")
-    app(dir, "import css \"\"\"\n.inline-marker \{ color: teal \}\n\"\"\"\n"
-                 ++ "import js \"\"\"\nglobalThis.inlineMarker = 1;\n\"\"\"\n")
+    app(dir, "import \"page.css\" \"\"\"\n.inline-marker \{ color: teal \}\n\"\"\"\n"
+                 ++ "import \"page.js\" \"\"\"\nglobalThis.inlineMarker = 1;\n\"\"\"\n")
 
     page = page_of(dir)
 
@@ -383,7 +383,7 @@ test_both_forms_survive_the_formatter_and_the_module_inliner() {
 
     vendor(dir)
     put(dir, "lib/style.maca",
-        "import css \"\"\"\n.module-marker \{ color: olive \}\n\"\"\"\n\n"
+        "import \"page.css\" \"\"\"\n.module-marker \{ color: olive \}\n\"\"\"\n\n"
             ++ "label_of(n: str) -> str => n\n")
     app(dir, "import \{ label_of \} from lib/style\n"
                  ++ "import \"vendor/daisyui.css\"\n")
@@ -404,7 +404,7 @@ test_both_forms_survive_the_formatter_and_the_module_inliner() {
 test_a_block_an_imported_module_writes_reaches_the_page_too() {
     dir = project("module-block")
     put(dir, "lib/style.maca",
-        "import css \"\"\"\n.module-marker \{ color: olive \}\n\"\"\"\n\n"
+        "import \"page.css\" \"\"\"\n.module-marker \{ color: olive \}\n\"\"\"\n\n"
             ++ "label_of(n: str) -> str => n\n")
     app(dir, "import \{ label_of \} from lib/style\n")
 
@@ -489,7 +489,7 @@ test_a_selective_import_keeps_every_declaration_its_block_provides() {
     put(dir, "lib/clock.maca",
         "/// The hour and minute.\nclock_time() -> str\n\n"
             ++ "/// Today, written out.\nclock_date() -> str\n\n"
-            ++ "import js \"\"\"\nmaca.provide(\{\n"
+            ++ "import \"page.js\" \"\"\"\nmaca.provide(\{\n"
             ++ "  clock_time: () => \"12:00\",\n"
             ++ "  clock_date: () => \"2026-08-04\",\n\});\n\"\"\"\n")
     put(dir, "home.maca",

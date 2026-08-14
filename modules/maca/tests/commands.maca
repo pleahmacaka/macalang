@@ -189,7 +189,7 @@ test_a_browser_module_reaches_no_target_but_js() {
 
     make_dir(dir ++ "/modules")
     write_file(dir ++ "/modules/glass.maca",
-        "kept(key: str) -> str\n\nimport js \"\"\"\n"
+        "kept(key: str) -> str\n\nimport \"kept.js\" \"\"\"\n"
             ++ "maca.provide({{ kept: k => k }})\n\"\"\"\n")
     write_file(dir ++ "/main.maca",
         "import glass\n\nmain() -> int {{\n    info(kept(\"x\"))\n    0\n}}\n")
@@ -219,19 +219,19 @@ rust_built(tag: str, src: str, deps: str) -> str =>
 
 test_the_rust_target_refuses_a_crate_no_manifest_declared() {
     said = rust_built("rustdep",
-        "import rust \"itoa\"\n\nmain() -> int => 0\n", "")
+        "import \"itoa\"\n\nmain() -> int => 0\n", "")
 
     assert(said.contains("`itoa`") && said.contains("[rust-dependencies]"),
            "a crate nobody declared is named, with where to declare it")
     assert(!rust_built("rustdep-std",
-               "import rust \"std::time::Duration\"\n\nmain() -> int => 0\n",
+               "import \"std::time::Duration\"\n\nmain() -> int => 0\n",
                "").contains("[rust-dependencies]"),
            "std is Rust's own, and no manifest declares it")
 }
 
 test_a_declared_crate_is_built_through_cargo() {
     dir = rust_project("rustdep-ok",
-        "import rust \"tiny\"\n\nmain() -> int {{\n"
+        "import \"tiny\"\n\nmain() -> int {{\n"
             ++ "    info(\"cargo drive\")\n    7\n}}\n",
         "\n[rust-dependencies]\ntiny = {{ path = \"../vendor/tiny\" }}\n")
     built = ["build", "main.maca", "--target", "rust", "-o", "app"]
@@ -268,9 +268,9 @@ test_a_declared_crate_is_built_through_cargo() {
 
 test_the_rust_target_refuses_a_foreign_import_it_cannot_bridge() {
     said = rust_built("rustffi",
-        "import c \"stdio.h\"\n\nmain() -> int => 0\n", "")
+        "import \"stdio.h\"\n\nmain() -> int => 0\n", "")
 
-    assert(said.contains("`import c \"stdio.h\"`"),
+    assert(said.contains("`import \"stdio.h\"`"),
            "the import that cannot be lowered is quoted back")
     assert(said.contains("C ABI bridge"), "with why the rust target refuses it")
 }

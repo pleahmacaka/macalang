@@ -6,14 +6,14 @@ function interface is an `import`.
 ## C
 
 ```maca
-import c "sqlite3.h"
+import "sqlite3.h"
 ```
 
 That declares the header and links the library. Functions from it are called
 like any other:
 
 ```maca
-import c "sqlite3.h"
+import "sqlite3.h"
 
 main() -> int {
     info("sqlite {sqlite3_libversion()}")
@@ -58,7 +58,7 @@ sqlite3_close(sqlite3: int) -> int
 ## Python
 
 ```maca
-import py "json"
+import "json.py"
 ```
 
 Python interop goes through `python3-config`. It embeds an interpreter, and
@@ -66,7 +66,7 @@ exists for libraries that only exist in Python.
 
 ## JavaScript: the `maca` bridge
 
-`import js """…"""` embeds a block verbatim into the emitted `app.js`. The block
+`import "app.js" """…"""` embeds a block verbatim into the emitted `app.js`. The block
 and the program meet on one object, `maca`, and nowhere else:
 
 | Call | Does |
@@ -95,7 +95,7 @@ cfg_write(title: str, url: str, icon: str, section: str) -> bool
 
 form_title = ""
 
-import js """
+import "app.js" """
 maca.provide({
   cfg_sections: () => JSON.parse(localStorage.getItem("sections") || "[]"),
   cfg_write: (title, url, icon, section) => save(title, url, icon, section),
@@ -112,7 +112,7 @@ Calling one that nothing implemented says so:
 
 ```
 maca: `cfg_write` is declared in Maca but nothing implements it;
-call maca.provide({ cfg_write: … }) from the import js block
+call maca.provide({ cfg_write: … }) from the JavaScript block
 ```
 
 ### Order
@@ -124,13 +124,13 @@ The emitted file is the bridge, then the block, then the app, so whatever
 ### A whole program built on it
 
 `apps/playground/playground.maca` declares fifteen bodyless functions and four
-state names, and that is the entire surface its `import js` block is reached by.
+state names, and that is the entire surface its JavaScript block is reached by.
 Everything on the other side is a browser capability with no Maca spelling.
 
 ## The browser, as modules
 
 `modules/web` is the browser as ordinary Maca. Three files are bridges, each
-declaring bodyless functions and implementing them in its own `import js` block;
+declaring bodyless functions and implementing them in its own JavaScript block;
 `web/format` is arithmetic and runs anywhere.
 
 | Module | What it reaches |
@@ -201,11 +201,11 @@ itself async, and neither does the button that calls it;
 
 ### Off the browser
 
-A module implemented by an `import js` block has nothing to run anywhere else,
+A module implemented by a JavaScript block has nothing to run anywhere else,
 so any other target refuses it **by name**:
 
 ```
-`web/storage` runs in a browser: what implements it is an `import js` block,
+`web/storage` runs in a browser: what implements it is a JavaScript block,
 and the native target has no JavaScript to run it in; build the page with
 `maca build --target js`
 ```

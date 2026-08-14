@@ -718,7 +718,7 @@ jvm_class(src: str) -> str {
     stem == "" ? "Main" : stem.at(0).upper() ++ stem.slice(1, stem.length())
 }
 
-/// Java resolves no name by itself, so every class `import java` named is imported into the emitted unit.
+/// Java resolves no name by itself, so every class a Java import named is imported into the emitted unit.
 java_imports(src: str) -> str =>
     java_named(unit_of(src).seen, 0, "")
 
@@ -737,10 +737,9 @@ java_in(ts: Token[], i: int, acc: str) -> str {
     at = i
 
     while ts.get(at).kind != Eof {
-        if ts.get(at).kind == KwImport && ts.get(at + 1).text == "java"
-                && ts.get(at + 2).kind == TStr {
-            out = out ++ "import {ts.get(at + 2).text};\n"
-            at = at + 3
+        if foreign_at(ts, at, "java") {
+            out = out ++ "import {ts.get(at + 1).text};\n"
+            at = at + 2
         } else {
             at = at + 1
         }
@@ -1002,27 +1001,21 @@ assets_in(src: str, ts: Token[], i: int, acc: PageAsset[]) -> PageAsset[] {
 asset_at(src: str, ts: Token[], i: int) -> PageAsset[] {
     at = ts.get(i).kind == LBrace ? selection_end(ts, i + 1) + 2 : i
 
-    if ts.get(i).kind == TStr {
+    if ts.get(i).kind == TStr && raw_block_at(src, ts, i + 1) {
+        [PageAsset { kind = asset_kind(ts.get(i).text), spec = "", names = "",
+                     text = raw_block(src, ts.get(i + 1).pos) }]
+    } else if ts.get(i).kind == TStr {
         [PageAsset { kind = asset_kind(ts.get(i).text),
                      spec = ts.get(i).text, names = "", text = "" }]
     } else if ts.get(i).kind == LBrace && ts.get(at).kind == TStr {
         [PageAsset { kind = "script", spec = ts.get(at).text,
                      names = asked_names(ts, i + 1, []).join(" "), text = "" }]
-    } else if tagged_block(src, ts, i) {
-        [PageAsset { kind = ts.get(i).text == "css" ? "stylesheet" : "script",
-                     spec = "", names = "",
-                     text = raw_block(src, ts.get(i + 1).pos) }]
     } else {
         []
     }
 }
 
-/// `import css """…"""` and `import js """…"""`: a block of source, not a path.
-tagged_block(src: str, ts: Token[], i: int) -> bool =>
-    (ts.get(i).text == "css" || ts.get(i).text == "js")
-        && raw_block_at(src, ts, i + 1)
-
-/// A tagged import is a block when what follows the tag opens with `"""`.
+/// A named import is a block when what follows the name opens with `"""`.
 raw_block_at(src: str, ts: Token[], i: int) -> bool =>
     ts.get(i).kind == TStr
         && src.slice(ts.get(i).pos, ts.get(i).pos + 3) == "\"\"\""
@@ -2859,7 +2852,7 @@ foreign_errors(asked: str, src: str, u: Unit) -> str[] {
     }
 }
 
-/// A module implemented by an `import js` block reaches a browser and nothing else, so every other target names it.
+/// A module implemented by a JavaScript block reaches a browser and nothing else, so every other target names it.
 browser_errors(asked: str, u: Unit) -> str[] {
     if asked == "js" || !js_import_in(u.toks, 0) {
         []
@@ -2869,7 +2862,7 @@ browser_errors(asked: str, u: Unit) -> str[] {
 }
 
 browser_error(asked: str, name: str) -> str =>
-    "`{name}` runs in a browser: what implements it is an `import js` block, "
+    "`{name}` runs in a browser: what implements it is a JavaScript block, "
         ++ "and the {target_named(asked)} target has no JavaScript to run it "
         ++ "in; build the page with `maca build --target js`"
 
@@ -2894,10 +2887,82 @@ foreign_first(ts: Token[], i: int, lang: str) -> int {
     0 - 1
 }
 
-/// The three tokens a foreign import is written in, as in `import js "…"`.
+/// The two tokens a foreign import is written in, as in `import "gpui::div"`.
 foreign_at(ts: Token[], i: int, lang: str) -> bool =>
-    ts.get(i).kind == KwImport && ts.get(i + 1).text == lang
-        && ts.get(i + 2).kind == TStr
+    ts.get(i).kind == KwImport && ts.get(i + 1).kind == TStr
+        && foreign_lang(ts.get(i + 1).text) == lang
+
+/// A body written where the name was quoted, as in `import "shim.c" """…"""`.
+foreign_body_at(ts: Token[], i: int) -> bool =>
+    i + 2 < ts.length() && ts.get(i + 2).kind == TStr
+        && !ts.get(i + 2).fresh
+
+/// How far past a foreign import the next one starts.
+foreign_step(ts: Token[], i: int) -> int =>
+    foreign_body_at(ts, i) ? 3 : 2
+
+/// The language a foreign import names, which its own string says and no keyword repeats.
+foreign_lang(spec: str) -> str {
+    ext = spec.split("?").get(0).split("#").get(0)
+
+    if ext.ends_with(".h") || ext.ends_with(".c") {
+        "c"
+    } else if ext.ends_with(".rs") {
+        "rust"
+    } else if ext.ends_with(".mjs") || ext.ends_with(".js") {
+        "js"
+    } else if ext.ends_with(".css") {
+        "css"
+    } else if ext.ends_with(".nix") {
+        "nix"
+    } else if ext.ends_with(".py") {
+        "py"
+    } else if ext.ends_with(".java") {
+        "java"
+    } else if ext.ends_with(".ex") || ext.ends_with(".exs") {
+        "elixir"
+    } else if spec.index_of("::") >= 0 || crate_named(spec) {
+        "rust"
+    } else if jvm_named(spec) {
+        "java"
+    } else {
+        ""
+    }
+}
+
+/// A dotted name ending in a capital is a JVM class, which no extension spells.
+jvm_named(spec: str) -> bool {
+    parts = spec.split(".")
+
+    parts.length() > 1 && spec.index_of("/") < 0
+        && leads_capital(parts.get(parts.length() - 1))
+}
+
+/// A crate is written as its bare name, and it is the only foreign import that is.
+crate_named(spec: str) -> bool =>
+    spec != "" && crate_chars(spec.chars(), 0)
+
+crate_chars(cs: str[], i: int) -> bool {
+    at = i
+
+    while at < cs.length() {
+        c = cs.get(at)
+
+        if !c.is_ascii_digit() && !is_lower(c) && c != "_" && c != "-" {
+            return false
+        }
+
+        at = at + 1
+    }
+
+    true
+}
+
+is_lower(c: str) -> bool =>
+    ord(c) >= ord("a") && ord(c) <= ord("z")
+
+leads_capital(w: str) -> bool =>
+    w != "" && ord(w.at(0)) >= ord("A") && ord(w.at(0)) <= ord("Z")
 
 browser_file(files: str[], i: int) -> str {
     if i >= files.length() {
@@ -3015,13 +3080,13 @@ borrowed_args(name: str, cs: Expr[], marks: str[], i: int,
     }
 }
 
-/// A tag a raw `import rust` block declares as a function is that function, so check sees the declaration and no back end does.
+/// A tag a raw Rust block declares as a function is that function, so check sees the declaration and no back end does.
 tag_stubs(ts: Token[], i: int, acc: Stmt[]) -> Stmt[] {
     out = acc
     at = i
 
     while at + 2 < ts.length() {
-        if foreign_at(ts, at, "rust") {
+        if foreign_at(ts, at, "rust") && foreign_body_at(ts, at) {
             out = out ++ block_stubs(rust_source(ts.get(at + 2).text))
             at = at + 3
         } else {
@@ -3114,7 +3179,7 @@ stub_arity(cs: str[], i: int, depth: int, seen: int) -> int {
     }
 }
 
-/// A name a raw `import rust` block declares is not a name this file forgot to write.
+/// A name a raw Rust block declares is not a name this file forgot to write.
 checked_with_foreign(m: Module, ts: Token[]) -> str[] {
     ds = check_diagnostics(m)
 
@@ -3134,18 +3199,20 @@ written_names(ds: Diagnostic[], i: int, acc: str[]) -> str[] {
 rust_import_in(ts: Token[], i: int) -> bool =>
     foreign_first(ts, i, "rust") >= 0
 
-/// Rust resolves no name by itself, so every `import rust` is written into the emitted unit.
+/// Rust resolves no name by itself, so every Rust import is written into the emitted unit.
 rust_prelude(ts: Token[], i: int, acc: str) -> str {
-    if i + 2 >= ts.length() {
+    if i + 1 >= ts.length() {
         acc == "" ? "" : acc ++ "\n"
     } else if foreign_at(ts, i, "rust") {
-        rust_prelude(ts, i + 3, acc ++ rust_item(ts.get(i + 2).text))
+        said = foreign_body_at(ts, i) ? ts.get(i + 2).text : ts.get(i + 1).text
+
+        rust_prelude(ts, i + foreign_step(ts, i), acc ++ rust_item(said))
     } else {
         rust_prelude(ts, i + 1, acc)
     }
 }
 
-/// `import c """…"""` is C the emitted file carries as written, after everything Maca declared, which is how a foreign ABI is met.
+/// `import "shim.c" """…"""` is C the emitted file carries as written, after everything Maca declared, which is how a foreign ABI is met.
 c_prelude_blocks(src: str, ts: Token[], i: int, acc: str) -> str {
     out = acc
     at = i
@@ -3184,10 +3251,13 @@ raw_text(s: str) -> str =>
 rust_import_errors(ts: Token[], i: int, deps: str[], acc: str[]) -> str[] {
     if i + 2 >= ts.length() {
         acc
-    } else if ts.get(i).kind == KwImport && ts.get(i + 2).kind == TStr {
-        rust_import_errors(ts, i + 3, deps,
-                           acc ++ rust_import_error(ts.get(i + 1).text,
-                                                    ts.get(i + 2).text, deps))
+    } else if ts.get(i).kind == KwImport && ts.get(i + 1).kind == TStr
+            && foreign_lang(ts.get(i + 1).text) != "" {
+        said = ts.get(i + 1).text
+
+        rust_import_errors(ts, i + foreign_step(ts, i), deps,
+                           acc ++ rust_import_error(foreign_lang(said), said,
+                                                    deps))
     } else {
         rust_import_errors(ts, i + 1, deps, acc)
     }
@@ -3197,14 +3267,15 @@ rust_import_error(lang: str, spec: str, deps: str[]) -> str[] {
     krate = crate_of(spec)
 
     if lang != "rust" {
-        ["`import {lang} \"{spec}\"` is not supported with --target rust "
-             ++ "(there is no C ABI bridge on the Rust path); call a Rust "
-             ++ "crate via `import rust` and [rust-dependencies] instead"]
+        ["`import \"{spec}\"` names {lang}, which --target rust cannot reach "
+             ++ "(there is no C ABI bridge on the Rust path); name a Rust "
+             ++ "path like \"krate::item\" and declare the crate under "
+             ++ "[rust-dependencies] instead"]
     } else if krate == "" || rust_builtin(krate)
             || deps.index_of(krate) >= 0 {
         []
     } else {
-        ["import rust \"{spec}\" refers to crate `{krate}`, which isn't "
+        ["import \"{spec}\" refers to crate `{krate}`, which isn't "
              ++ "declared; add `{krate} = \"…\"` under [rust-dependencies] "
              ++ "in maca.toml"]
     }
@@ -3302,18 +3373,17 @@ selected(ts: Token[], i: int, at: str, acc: str[]) -> str[] {
     }
 }
 
-/// `import nix "f.nix"` binds what that file evaluates to, under the name it is called.
+/// `import "f.nix"` binds what that file evaluates to, under the name it is called.
 nix_valued(path: str, src: str) -> str =>
-    src.index_of("import nix") < 0
+    src.index_of(".nix\"") < 0
         ? src
         : nix_bound(dir_of(path), lex_all(src).tokens, 0, "") ++ src
 
 nix_bound(dir: str, ts: Token[], i: int, acc: str) -> str {
     if ts.get(i).kind == Eof {
         acc
-    } else if ts.get(i).kind == KwImport && ts.get(i + 1).text == "nix"
-            && ts.get(i + 2).kind == TStr {
-        nix_bound(dir, ts, i + 3, acc ++ nix_binding(dir, ts.get(i + 2).text))
+    } else if foreign_at(ts, i, "nix") {
+        nix_bound(dir, ts, i + 2, acc ++ nix_binding(dir, ts.get(i + 1).text))
     } else {
         nix_bound(dir, ts, i + 1, acc)
     }
@@ -3325,7 +3395,7 @@ nix_binding(dir: str, spec: str) -> str {
     if got != "" {
         "{nix_name(spec)} = {got}\n"
     } else {
-        err("maca: `import nix` found no value in {spec}; is nix-instantiate"
+        err("maca: no Nix value in {spec}; is nix-instantiate"
             ++ " on PATH?")
 
         ""
@@ -3644,7 +3714,7 @@ imports_in(ts: Token[], i: int, acc: str[]) -> str[] {
 import_names(ts: Token[], i: int) -> str[] {
     if ts.get(i).kind == LBrace {
         import_names(ts, selection_end(ts, i + 1) + 2)
-    } else if ts.get(i).kind == TStr || ts.get(i + 1).kind == TStr {
+    } else if ts.get(i).kind == TStr {
         []
     } else {
         [import_path(ts, i, "")]

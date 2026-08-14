@@ -797,7 +797,7 @@ bound(tag: str) -> str =>
 test_bindgen_writes_the_declarations_the_header_states() {
     made = bound("mylib")
 
-    for want in ["import c \"mylib.h\"", "mylib_open(path: str) -> int",
+    for want in ["import \"mylib.h\"", "mylib_open(path: str) -> int",
                  "mylib_close(handle: int) -> int", "mylib_version() -> str",
                  "mylib_scale(x: float, factor: int) -> float",
                  "mylib_exec(db: int, sql: str, len: int) -> int"] {
@@ -834,7 +834,7 @@ test_the_bindgen_written_in_maca_is_a_command_of_its_own() {
 
     assert(written.contains("api_open(path: str) -> int"),
            "the declaration it read is in it: {written}")
-    assert(written.contains("import c \"api.h\""),
+    assert(written.contains("import \"api.h\""),
            "and so is the header it came from: {written}")
     assert(exec(maca_bin(), ["run", Bindgen, absent]) != 0,
            "a header that is not there is a failure")

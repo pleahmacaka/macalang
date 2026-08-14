@@ -1,4 +1,4 @@
-import nix "./answer.nix"
+import "./answer.nix"
 
 main() -> int {
     info(str(answer))

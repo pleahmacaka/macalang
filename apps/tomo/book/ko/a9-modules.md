@@ -11,10 +11,10 @@
 | `import a` | 모듈 `a`. 그런 파일이 없으면 빌트인 |
 | `import { f, g } from a/b` | 그 모듈에서 `f`와 `g`만 |
 | `import { f } from a` | 같음. 여기서는 한 단어도 파일 |
-| `import c "hdr.h"` | C 헤더와 그 라이브러리 |
-| `import py "mod"` | Python 모듈 |
-| `import js """…"""` | JS 백엔드용 원시 JavaScript |
-| `import css """…"""` | JS 백엔드용 원시 CSS |
+| `import "hdr.h"` | C 헤더와 그 라이브러리 |
+| `import "mod.py"` | Python 모듈 |
+| `import "app.js" """…"""` | JS 백엔드용 원시 JavaScript |
+| `import "app.css" """…"""` | JS 백엔드용 원시 CSS |
 
 ## 아무것도 가리키지 못하는 import는 에러입니다
 

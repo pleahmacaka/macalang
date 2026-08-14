@@ -219,7 +219,7 @@ block. Write `Name { … }` for the record, or drop the `=>` for the block
 | 타깃 | 거부하는 것 |
 |---|---|
 | native | `on:click=`와 그 형제들 |
-| `rust` | 본문 없는(FFI) 함수, `import c`/`import py`, 선언되지 않은 크레이트를 가리키는 `import rust`, 반환하거나 저장하는 빌린 외부 파라미터 |
+| `rust` | 본문 없는(FFI) 함수, C 또는 Python import, 선언되지 않은 크레이트를 가리키는 import, 반환하거나 저장하는 빌린 외부 파라미터 |
 | `embedded` | `info`와 나머지 콘솔 빌트인, 반환 타입이 있는 `main` |
 
 **C 컴파일러 에러**는 일어나면 안 되고, 일어난다면 보고할 만한 컴파일러

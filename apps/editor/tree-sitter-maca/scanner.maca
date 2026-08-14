@@ -63,7 +63,7 @@ scan_newline() -> int {
     1
 }
 
-import c """
+import "scanner.c" """
 #include "tree_sitter/parser.h"
 
 static TSLexer *maca_ts_lexer;

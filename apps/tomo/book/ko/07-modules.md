@@ -72,10 +72,10 @@ maca: import { centroid } from geometry: 'centroid' is not defined in that modul
 앞에 언어 이름을 붙인 `import`는 Maca 바깥으로 나갑니다.
 
 ```maca
-import c "sqlite3.h"
-import py "json"
-import js """…"""
-import css """…"""
+import "sqlite3.h"
+import "json.py"
+import "app.js" """…"""
+import "app.css" """…"""
 ```
 
 앞의 둘은 진짜 라이브러리를 링크하고([FFI](a13-ffi.md)), 뒤의 둘은 JavaScript

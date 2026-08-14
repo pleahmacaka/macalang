@@ -67,7 +67,7 @@ description = "a browser start page"
 import "vendor/daisyui.css"       // 파일. 빌드 시점에 읽습니다
 import "vendor/iconify-icon.js"    // 파일. 빌드 시점에 읽습니다
 
-import css """
+import "app.css" """
 .card { border-radius: 8px }
 """                                   // 인라인으로 쓴 소스 자체
 ```
@@ -141,7 +141,7 @@ JavaScript 백엔드로, 그 아래는 네이티브 바이너리로요.
 | 타깃 | 거부하는 것 |
 |---|---|
 | native | `on:click=`와 그 형제들: 문자열에는 이벤트 핸들러가 붙을 자리가 없음 |
-| `rust` | 본문 없는(FFI) 함수, `import c`/`import py`, 선언되지 않은 크레이트를 가리키는 `import rust`, 반환하거나 저장하는 빌린 외부 파라미터, 다른 함수 안에 정의된 함수 |
+| `rust` | 본문 없는(FFI) 함수, C 또는 Python import, 선언되지 않은 크레이트를 가리키는 import, 반환하거나 저장하는 빌린 외부 파라미터, 다른 함수 안에 정의된 함수 |
 | `jvm` | 다른 함수 안에 정의된 함수 |
 | `embedded` | `info`와 나머지 콘솔 빌트인, 반환 타입이 있는 `main`, 다른 함수 안에 정의된 함수 |
 | `nix` | 비어 있지 않은 이펙트 행 전부([이펙트와 async](a7-effects.md) 참조), 떠날 함수가 없는 설정 모드의 `return` |
