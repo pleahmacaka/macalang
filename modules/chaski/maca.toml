@@ -1,0 +1,3 @@
+[package]
+name = "chaski"
+description = "The client half of HTTP: a base address, headers, retries, and the reply it read."

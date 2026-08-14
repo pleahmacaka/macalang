@@ -4,6 +4,16 @@ Newest first. Versions are bare semver; the tag is the version.
 
 ## Unreleased
 
+* **`modules/chaski` is the client half of HTTP.** `modules/http` serves; chaski asks.
+  A base address, headers that ride on every request, a timeout, and retries that fire on a
+  transport failure or a 5xx and never on a 4xx, because asking twice does not change an
+  answer. The reply is read out of what curl wrote, so TLS is not a library this tree
+  maintains: `Expect:` is cleared so a large body cannot turn one header block into two,
+  redirects are not followed, and `HTTP/2 200` and `HTTP/1.1 200 OK` both put the number in
+  the same place. Query values are escaped a byte at a time, which is what UTF-8 needs and
+  what `chars()` already gives. Named for the relay runners of the Inca roads, which is the
+  road `modules/tambo`, the waystation, is already named after.
+
 * **The BEAM is a target, and it is named `elixir`.** `modules/maca/emit_elixir.maca`,
   481 lines. The spec had said there would be no BEAM back end because it would be the
   first one added for elegance rather than reach; what changed is that a program holding

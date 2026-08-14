@@ -1,0 +1,182 @@
+// chaski/ask: one request over the wire, and the client that carries what every request shares.
+
+import std/proc
+import chaski/url
+
+/// What came back: the status, the headers as written, the body, and why it failed when it did.
+Reply = {
+    status:  int
+    headers: str
+    body:    str
+    error:   str
+}
+
+/// What every request from this client carries with it.
+Client = {
+    base:    str
+    headers: str[]
+    seconds: int
+    retries: int
+}
+
+/// A client with nothing but a base address; the rest is added one call at a time.
+client(base: str) -> Client =>
+    Client { base = base, headers = [], seconds = 60, retries = 2 }
+
+/// The same client, with one more header on every request it sends.
+with_header(c: Client, name: str, value: str) -> Client =>
+    c with { headers = c.headers.push("{name}: {value}") }
+
+/// `Authorization: Bearer …`, which is how most of them ask who you are.
+with_bearer(c: Client, token: str) -> Client =>
+    with_header(c, "Authorization", "Bearer {token}")
+
+/// How long one attempt may take before it is given up on.
+with_seconds(c: Client, n: int) -> Client =>
+    c with { seconds = n }
+
+/// How many further attempts a retryable failure gets.
+with_retries(c: Client, n: int) -> Client =>
+    c with { retries = n }
+
+ask_get(c: Client, path: str) -> Reply =>
+    ask(c, "GET", path, "", "")
+
+ask_json(c: Client, path: str, body: str) -> Reply =>
+    ask(c, "POST", path, body, "application/json")
+
+/// One request, retried while the failure is the kind that another attempt could fix.
+ask(c: Client, method: str, path: str, body: str, kind: str) -> Reply =>
+    ask_again(c, method, url_join(c.base, path), body, kind, 0)
+
+ask_again(c: Client, method: str, at: str, body: str, kind: str,
+          tried: int) -> Reply {
+    got = ask_once(c, method, at, body, kind)
+
+    if !ask_retryable(got) || tried >= c.retries {
+        return got
+    }
+
+    ask_again(c, method, at, body, kind, tried + 1)
+}
+
+/// A refused connection, a timeout or a 5xx is worth another go; a 4xx is the answer.
+ask_retryable(r: Reply) -> bool =>
+    r.error != "" || r.status >= 500
+
+ask_tmp() -> str =>
+    env_or("TMPDIR", env_or("TEMP", "/tmp"))
+
+/// curl is what carries the TLS, so its absence is the reply rather than a crash.
+ask_once(c: Client, method: str, at: str, body: str, kind: str) -> Reply {
+    if !have("curl") {
+        return ask_failed("curl is not on PATH, and it is what chaski sends "
+                              ++ "with")
+    }
+
+    stamp = str(now_ms())
+    out = "{ask_tmp()}/chaski-{stamp}.out"
+    payload = "{ask_tmp()}/chaski-{stamp}.in"
+
+    if body != "" {
+        write_file(payload, body)
+    }
+
+    code = exec("curl", ask_args(c, method, at, body, kind, out, payload))
+
+    code != 0 ? ask_failed(ask_curl_said(code)) : ask_read(read_file(out))
+}
+
+ask_failed(why: str) -> Reply =>
+    Reply { status = 0, headers = "", body = "", error = why }
+
+/// `Expect:` is cleared so a large body cannot make the reply two header blocks instead of one.
+ask_args(c: Client, method: str, at: str, body: str, kind: str, out: str,
+         payload: str) -> str[] {
+    args = ["-sS", "-i", "-X", method, "--max-time", str(c.seconds),
+            "-H", "Expect:", "-o", out]
+    args = args ++ ask_header_flags(c.headers, 0, [])
+
+    if kind != "" {
+        args = args ++ ["-H", "Content-Type: {kind}"]
+    }
+
+    if body != "" {
+        args = args ++ ["--data-binary", "@{payload}"]
+    }
+
+    args ++ [at]
+}
+
+ask_header_flags(hs: str[], i: int, acc: str[]) -> str[] {
+    if i >= hs.length() {
+        acc
+    } else {
+        ask_header_flags(hs, i + 1, acc ++ ["-H", hs.get(i)])
+    }
+}
+
+ask_curl_said(code: int) -> str {
+    if code == 6 {
+        "could not resolve the host"
+    } else if code == 7 {
+        "could not connect"
+    } else if code == 28 {
+        "timed out"
+    } else if code == 35 || code == 60 {
+        "the TLS handshake failed"
+    } else {
+        "curl exited {str(code)}"
+    }
+}
+
+ask_read(raw: str) -> Reply {
+    cut = ask_head_end(raw)
+
+    if cut < 0 {
+        return Reply { status = 0, headers = "", body = raw,
+                       error = "the reply carried no header block" }
+    }
+
+    head = raw.slice(0, cut)
+
+    Reply { status = ask_status(head), headers = head,
+            body = raw.slice(cut, raw.length()), error = "" }
+}
+
+ask_head_end(raw: str) -> int {
+    at = raw.index_of("\r\n\r\n")
+
+    if at >= 0 {
+        return at + 4
+    }
+
+    n = raw.index_of("\n\n")
+
+    n < 0 ? 0 - 1 : n + 2
+}
+
+/// `HTTP/1.1 200 OK` and `HTTP/2 200` both put the number second.
+ask_status(head: str) -> int {
+    words = head.split("\n").get(0).trim().split(" ")
+
+    words.length() < 2 ? 0 : int(words.get(1))
+}
+
+/// One header's value, matched without regard to case, or "" when the reply carries none.
+reply_header(r: Reply, name: str) -> str =>
+    ask_scan(r.headers.split("\n"), 0, name.lower() ++ ":")
+
+ask_scan(lines: str[], i: int, want: str) -> str {
+    if i >= lines.length() {
+        ""
+    } else if lines.get(i).lower().starts_with(want) {
+        lines.get(i).slice(want.length(), lines.get(i).length()).trim()
+    } else {
+        ask_scan(lines, i + 1, want)
+    }
+}
+
+/// Did the request land in the 2xx range?
+reply_ok(r: Reply) -> bool =>
+    r.error == "" && r.status >= 200 && r.status < 300

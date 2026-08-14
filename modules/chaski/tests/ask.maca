@@ -1,0 +1,127 @@
+import chaski/url
+import chaski/ask
+import std/proc
+
+test_a_base_and_a_path_meet_at_exactly_one_slash() {
+    assert_eq(url_join("https://x.dev", "v1/chat"), "https://x.dev/v1/chat",
+              "neither side wrote the slash, so the join does")
+    assert_eq(url_join("https://x.dev/", "v1/chat"), "https://x.dev/v1/chat",
+              "the base wrote it, so the join does not write a second")
+    assert_eq(url_join("https://x.dev/", "/v1/chat"), "https://x.dev/v1/chat",
+              "both wrote it, and one is still enough")
+    assert_eq(url_join("https://x.dev", "https://y.dev/z"),
+              "https://y.dev/z", "an absolute path answers for itself")
+    assert_eq(url_join("", "/only"), "/only", "and a base of nothing adds none")
+}
+
+test_a_query_value_is_escaped_byte_by_byte() {
+    assert_eq(url_encode("a b"), "a%20b", "a space is not a character a URL has")
+    assert_eq(url_encode("a-b_c.d~e"), "a-b_c.d~e",
+              "the unreserved set travels as it was written")
+    assert_eq(url_encode("a&b=c"), "a%26b%3Dc",
+              "the two characters that would end the pair are escaped")
+    assert_eq(url_encode("é"), "%C3%A9",
+              "text is escaped a byte at a time, which is what UTF-8 needs")
+}
+
+test_a_query_is_pairs_and_it_knows_which_mark_attaches_it() {
+    assert_eq(url_query(["q", "n"], ["a b", "2"]), "q=a%20b&n=2",
+              "each pair joined by `&`, each side escaped")
+    assert_eq(url_with_query("https://x.dev/s", "q=1"), "https://x.dev/s?q=1",
+              "the first query is attached by `?`")
+    assert_eq(url_with_query("https://x.dev/s?a=1", "q=1"),
+              "https://x.dev/s?a=1&q=1", "and a later one by `&`")
+    assert_eq(url_with_query("https://x.dev/s", ""), "https://x.dev/s",
+              "an empty query attaches nothing at all")
+}
+
+test_a_client_carries_what_every_request_shares() {
+    c = with_seconds(with_bearer(client("https://x.dev"), "k-1"), 5)
+
+    assert_eq(c.base, "https://x.dev", "the base is what it was made with")
+    assert_eq(str(c.headers.length()), "1", "one header was added")
+    assert_eq(c.headers.get(0), "Authorization: Bearer k-1",
+              "and a bearer token is written the way the header wants it")
+    assert_eq(str(c.seconds), "5", "the timeout is the one that was set")
+    assert_eq(str(c.retries), "2", "and what was not set keeps its default")
+}
+
+test_a_reply_is_read_out_of_what_curl_wrote() {
+    raw = "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\n"
+        ++ "X-Rate-Limit: 9\r\n\r\n{{\"id\":\"a\"}}"
+    r = ask_read(raw)
+
+    assert_eq(str(r.status), "201", "the number is the second word of the line")
+    assert_eq(r.body, "{{\"id\":\"a\"}}",
+              "and the body is everything past the blank line")
+    assert_eq(r.error, "", "nothing failed, so nothing is named")
+    assert_eq(reply_header(r, "content-type"), "application/json",
+              "a header is found by name")
+    assert_eq(reply_header(r, "X-RATE-LIMIT"), "9",
+              "and the name is matched without regard to case")
+    assert_eq(reply_header(r, "absent"), "",
+              "a header the reply does not carry reads as nothing")
+}
+
+test_an_http_2_reply_puts_the_number_in_the_same_place() {
+    r = ask_read("HTTP/2 200\r\ncontent-length: 2\r\n\r\nok")
+
+    assert_eq(str(r.status), "200",
+              "HTTP/2 drops the reason phrase and keeps the number")
+    assert_eq(r.body, "ok", "and the body is still what follows the break")
+}
+
+test_a_reply_with_no_header_block_says_so_rather_than_guessing() {
+    r = ask_read("nothing that looks like a reply")
+
+    assert_eq(str(r.status), "0", "there is no status to report")
+    assert(r.error.contains("header block"), "and the reason is named: {r.error}")
+}
+
+test_only_the_failures_another_attempt_could_fix_are_retried() {
+    assert(ask_retryable(ask_read("HTTP/1.1 503 Busy\r\n\r\n")),
+           "a 5xx is the server asking to be asked again")
+    assert(!ask_retryable(ask_read("HTTP/1.1 404 Gone\r\n\r\n")),
+           "a 4xx is the answer, and asking twice does not change it")
+    assert(!ask_retryable(ask_read("HTTP/1.1 200 OK\r\n\r\nhi")),
+           "and a success is not retried at all")
+    assert(ask_retryable(ask_failed("could not connect")),
+           "a transport failure never reached the server, so it is retried")
+}
+
+test_a_reply_says_plainly_whether_it_landed() {
+    assert(reply_ok(ask_read("HTTP/1.1 204 No Content\r\n\r\n")),
+           "204 is in the 2xx range")
+    assert(!reply_ok(ask_read("HTTP/1.1 301 Moved\r\n\r\n")),
+           "a redirect is not a success, because chaski does not follow one")
+    assert(!reply_ok(ask_failed("timed out")),
+           "and a request that never arrived did not land")
+}
+
+/// The one test that needs the network, and it is skipped rather than failed when there is none.
+test_a_real_request_comes_back_when_the_network_is_there() {
+    if env_or("MACA_NET_TESTS", "") == "" {
+        assert(true, "reaching the network is opt-in: set MACA_NET_TESTS=1")
+    } else {
+        r = ask_get(client("https://example.com"), "/")
+
+        assert_eq(r.error, "", "the request reached the host")
+        assert(reply_ok(r), "and it answered {str(r.status)}")
+        assert(r.body.contains("Example Domain"),
+               "with the page that host is known for")
+    }
+}
+
+main() -> int {
+    test_a_base_and_a_path_meet_at_exactly_one_slash()
+    test_a_query_value_is_escaped_byte_by_byte()
+    test_a_query_is_pairs_and_it_knows_which_mark_attaches_it()
+    test_a_client_carries_what_every_request_shares()
+    test_a_reply_is_read_out_of_what_curl_wrote()
+    test_an_http_2_reply_puts_the_number_in_the_same_place()
+    test_a_reply_with_no_header_block_says_so_rather_than_guessing()
+    test_only_the_failures_another_attempt_could_fix_are_retried()
+    test_a_reply_says_plainly_whether_it_landed()
+    test_a_real_request_comes_back_when_the_network_is_there()
+    failures()
+}

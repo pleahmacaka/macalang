@@ -6,6 +6,7 @@ version = "0.3.3"
 [workspace]
 members = [
     "modules/bench",
+    "modules/chaski",
     "modules/cli",
     "modules/http",
     "modules/maca",

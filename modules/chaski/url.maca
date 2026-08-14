@@ -1,0 +1,66 @@
+// chaski/url: the address half of a request, and the escaping a query needs.
+
+UrlHex = "0123456789ABCDEF"
+
+/// `base` and `path` with exactly one slash between them; an absolute `path` wins outright.
+url_join(base: str, path: str) -> str {
+    if path.starts_with("http://") || path.starts_with("https://") {
+        return path
+    }
+
+    if base == "" {
+        return path
+    }
+
+    left = base.ends_with("/") ? base.slice(0, base.length() - 1) : base
+
+    path.starts_with("/") ? left ++ path : "{left}/{path}"
+}
+
+/// The percent-encoding a query value needs, over the bytes the text is made of.
+url_encode(s: str) -> str {
+    out = ""
+    cs = s.chars()
+    i = 0
+
+    while i < cs.length() {
+        c = cs.get(i)
+        out = out ++ (url_plain(c) ? c : url_escaped(c))
+        i = i + 1
+    }
+
+    out
+}
+
+url_plain(c: str) -> bool =>
+    c.is_ascii_digit() || c.is_alpha() || c == "-" || c == "_" || c == "."
+        || c == "~"
+
+url_escaped(c: str) -> str {
+    b = ord(c)
+
+    "%" ++ UrlHex.at(b / 16) ++ UrlHex.at(b % 16)
+}
+
+/// `a=1&b=2` from parallel key and value lists, each side escaped.
+url_query(keys: str[], values: str[]) -> str {
+    out = ""
+    i = 0
+
+    while i < keys.length() && i < values.length() {
+        pair = "{url_encode(keys.get(i))}={url_encode(values.get(i))}"
+        out = out == "" ? pair : "{out}&{pair}"
+        i = i + 1
+    }
+
+    out
+}
+
+/// `url` with `q` attached, by `?` when it carries no query yet and by `&` when it does.
+url_with_query(at: str, q: str) -> str {
+    if q == "" {
+        return at
+    }
+
+    at.contains("?") ? "{at}&{q}" : "{at}?{q}"
+}
