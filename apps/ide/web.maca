@@ -1,0 +1,19 @@
+// The editor in a browser, drawn from the same view as the desktop one.
+//
+// A page cannot read the disk, so the state it opens with is written here
+// rather than walked for. Everything past that is `view.maca`, unchanged: the
+// components are the same components, and only the back end differs.
+
+import { Ide } from apps/ide/model
+import { view } from apps/ide/view
+
+Sample = "greet(who: str) -> str => \"hi {{who}}\"\n\nmain() -> int {{\n    info(greet(\"web\"))\n    0\n}}\n"
+
+/// What the page opens with, since there is no directory to walk in a browser.
+shown_state() -> Ide =>
+    Ide { root = "maca.dev", files = ["greet.maca"], open = "greet.maca",
+          text = Sample, target = "native", panel = "names", output = "",
+          breaks = [2] }
+
+main() -> Element =>
+    view(shown_state())

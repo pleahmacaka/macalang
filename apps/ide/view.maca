@@ -1,0 +1,37 @@
+// The three columns, and nothing that says which window draws them.
+//
+// `ide.maca` is the gpui host and `web.maca` is the browser one; both import
+// this, so the editor is the same components either way.
+
+import { Ide, panel_for, shown, stops, gutter_text, tabs } from apps/ide/model
+
+Face = "JetBrains Mono Nerd Font"
+
+/// Three columns: what there is to open, what is open, and what it becomes.
+view(ide: Ide) -> Element =>
+    div(class="flex flex-row size-full", font=Face,
+        tree(ide),
+        buffer(ide),
+        panel(ide))
+
+tree(ide: Ide) -> Element =>
+    div(class="flex flex-col w-64 p-2 gap-1",
+        div(class="text-xs", "FILES"),
+        div(class="text-sm", ide.root),
+        div(class="text-xs", "{str(ide.files.length())} in the workspace"))
+
+/// The gutter runs down the left, a mark a line, and a marked line is a stop the runner is told about.
+buffer(ide: Ide) -> Element =>
+    div(class="flex flex-col grow p-2 gap-1",
+        div(class="text-xs", ide.open),
+        div(class="flex flex-row gap-2",
+            div(class="text-sm w-8", gutter_text(ide)),
+            div(class="text-sm grow", ide.text)),
+        div(class="text-xs", "stops: {stops(ide)}"))
+
+/// What the panel shows follows the target the source itself names, so nothing has to be chosen.
+panel(ide: Ide) -> Element =>
+    div(class="flex flex-col w-96 p-2 gap-1",
+        div(class="text-xs", tabs(ide)),
+        div(class="text-xs", "{ide.target} via {panel_for(ide.target)}"),
+        div(class="text-sm", shown(ide)))
