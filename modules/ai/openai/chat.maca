@@ -7,6 +7,7 @@ import std/json
 Turn = {
     role:    str
     content: str
+    call_id: str
 }
 
 /// Where to ask, as whom, and with what.
@@ -19,13 +20,21 @@ Chat = {
     seconds:  int
 }
 
-/// What came back: the text, what it cost, and why it failed when it did.
+/// A tool the model asked for, with the arguments it filled in, as JSON text.
+Call = {
+    id:        str
+    name:      str
+    arguments: str
+}
+
+/// What came back: the text, any tools it asked for, what it cost, and why it failed.
 Answer = {
     text:  str
     model: str
     sent:  int
     got:   int
     error: str
+    calls: Call[]
 }
 
 OpenAiBase = "https://api.openai.com/v1"
@@ -51,7 +60,7 @@ with_ceiling(c: Chat, n: int) -> Chat =>
     c with { ceiling = n }
 
 turn(role: str, text: str) -> Turn =>
-    Turn { role = role, content = text }
+    Turn { role = role, content = text, call_id = "" }
 
 system_turn(text: str) -> Turn =>
     turn("system", text)
@@ -63,13 +72,17 @@ assistant_turn(text: str) -> Turn =>
     turn("assistant", text)
 
 /// One completion. The key never appears in a message, only in the header that carries it.
-complete(c: Chat, ts: Turn[]) -> Answer {
+complete(c: Chat, ts: Turn[]) -> Answer =>
+    complete_with(c, ts, "")
+
+/// The same, with whatever else the wire format wants spliced into the body.
+complete_with(c: Chat, ts: Turn[], extra: str) -> Answer {
     if c.key == "" {
         return chat_failed("no API key: the caller has to supply one")
     }
 
     at = with_seconds(with_bearer(client(c.base), c.key), c.seconds)
-    got = ask_json(at, "/chat/completions", chat_body(c, ts))
+    got = ask_json(at, "/chat/completions", chat_body_with(c, ts, extra))
 
     if got.error != "" {
         return chat_failed(got.error)
@@ -79,7 +92,8 @@ complete(c: Chat, ts: Turn[]) -> Answer {
 }
 
 chat_failed(why: str) -> Answer =>
-    Answer { text = "", model = "", sent = 0, got = 0, error = why }
+    Answer { text = "", model = "", sent = 0, got = 0, error = why,
+             calls = [] }
 
 /// A host that refuses says why in the body, and that sentence is worth more than the number.
 chat_refusal(r: Reply) -> str {
@@ -90,8 +104,11 @@ chat_refusal(r: Reply) -> str {
 }
 
 chat_body(c: Chat, ts: Turn[]) -> str =>
+    chat_body_with(c, ts, "")
+
+chat_body_with(c: Chat, ts: Turn[], extra: str) -> str =>
     "{{\"model\":{quote(c.model)},\"messages\":[{chat_turns(ts, 0)}]"
-        ++ chat_warmth(c) ++ chat_ceiling(c) ++ "}}"
+        ++ chat_warmth(c) ++ chat_ceiling(c) ++ extra ++ "}}"
 
 chat_warmth(c: Chat) -> str =>
     c.warmth == 0.0 ? "" : ",\"temperature\":{str(c.warmth)}"
@@ -104,11 +121,16 @@ chat_turns(ts: Turn[], i: int) -> str {
         ""
     } else {
         here = "{{\"role\":{quote(ts.get(i).role)},"
-            ++ "\"content\":{quote(ts.get(i).content)}}}"
+            ++ "\"content\":{quote(ts.get(i).content)}"
+            ++ chat_answering(ts.get(i)) ++ "}}"
 
         i == ts.length() - 1 ? here : here ++ "," ++ chat_turns(ts, i + 1)
     }
 }
+
+/// A turn that answers a tool call has to say which one, or the model cannot pair them.
+chat_answering(t: Turn) -> str =>
+    t.call_id == "" ? "" : ",\"tool_call_id\":{quote(t.call_id)}"
 
 /// The answer is the first choice's message, and the usage beside it is what it cost.
 chat_read(body: str) -> Answer {
@@ -119,12 +141,28 @@ chat_read(body: str) -> Answer {
     }
 
     used = get(body, "usage")
+    said = get(picks.get(0), "message")
 
-    Answer { text = get(get(picks.get(0), "message"), "content"),
+    Answer { text = get(said, "content"),
              model = get(body, "model"),
              sent = get_int(used, "prompt_tokens", 0),
              got = get_int(used, "completion_tokens", 0),
-             error = "" }
+             error = "",
+             calls = chat_calls(items(get(said, "tool_calls")), 0, []) }
+}
+
+/// A tool the model asked for is a name and the arguments it filled in, still as JSON text.
+chat_calls(xs: str[], i: int, acc: Call[]) -> Call[] {
+    if i >= xs.length() {
+        acc
+    } else {
+        fn = get(xs.get(i), "function")
+
+        chat_calls(xs, i + 1,
+                   acc.push(Call { id = get(xs.get(i), "id"),
+                                   name = get(fn, "name"),
+                                   arguments = get(fn, "arguments") }))
+    }
 }
 
 /// The models the host will answer for, by name.

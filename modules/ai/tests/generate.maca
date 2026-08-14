@@ -1,0 +1,107 @@
+import ai/generate
+import ai/openai/chat
+import std/proc
+import std/json
+
+free_chat() -> Chat =>
+    with_model(compatible(env_or("OPENROUTER_API_KEY", ""),
+                          "https://openrouter.ai/api/v1"),
+               env_or("OPENROUTER_MODEL", "google/gemma-4-31b-it:free"))
+
+keyed() -> bool =>
+    env_or("OPENROUTER_API_KEY", "") != ""
+
+test_a_tool_is_offered_in_the_shape_the_format_wants() {
+    body = tools_json([Tool { name = "sky_colour",
+                              description = "Name the colour of the sky.",
+                              schema = "" }])
+
+    assert(body.starts_with(",\"tools\":["), "the key the format names")
+
+    one = items(get("{{" ++ body.slice(1, body.length()) ++ "}}", "tools"))
+
+    assert_eq(str(one.length()), "1", "one tool was offered")
+    assert_eq(get(one.get(0), "type"), "function",
+              "and a tool is a function to this format")
+
+    fn = get(one.get(0), "function")
+
+    assert_eq(get(fn, "name"), "sky_colour", "named as it was written")
+    assert_eq(get(get(fn, "parameters"), "type"), "object",
+              "a tool with no arguments still says it takes an object")
+}
+
+test_no_tools_offers_nothing_rather_than_an_empty_list() {
+    assert_eq(tools_json([]), "",
+              "a host that sees `tools: []` may refuse it, so it is left out")
+}
+
+test_a_tool_the_model_asked_for_is_found_by_name() {
+    s = Said { text = "", sent = 0, got = 0, error = "",
+               calls = [Call { id = "c1", name = "sky_colour",
+                               arguments = "{{\"when\":\"noon\"}}" }] }
+
+    assert_eq(called_with(s, "sky_colour"), "{{\"when\":\"noon\"}}",
+              "the arguments come back as the JSON text they were")
+    assert_eq(called_with(s, "absent"), "",
+              "and a tool that was not asked for reads as nothing")
+    assert(said_ok(s), "a tool call is something to show for the asking")
+}
+
+test_an_answer_with_neither_text_nor_a_call_did_not_land() {
+    assert(!said_ok(Said { text = "", calls = [], sent = 0, got = 0,
+                           error = "" }),
+           "nothing came back, so nothing landed")
+    assert(!said_ok(Said { text = "hi", calls = [], sent = 1, got = 1,
+                           error = "timed out" }),
+           "and text beside an error is not a success either")
+}
+
+test_a_turn_that_answers_a_tool_names_the_call_it_answers() {
+    t = tool_turn("c1", "blue")
+
+    assert_eq(t.role, "tool", "the role the format wants")
+    assert_eq(t.call_id, "c1", "and the call it pairs with")
+
+    body = chat_body(openai("k"), [t])
+
+    assert(body.contains("tool_call_id"),
+           "which reaches the wire, or the model cannot pair them: {body}")
+}
+
+test_a_plain_turn_carries_no_call_id_at_all() {
+    body = chat_body(openai("k"), [user_turn("hi")])
+
+    assert(!body.contains("tool_call_id"),
+           "a turn answering nothing says nothing about calls: {body}")
+}
+
+/// Reaching a host is opt-in, so this is skipped rather than failed without a key.
+test_a_model_answers_with_json_a_program_can_read() {
+    if !keyed() {
+        assert(true, "set OPENROUTER_API_KEY to reach a host")
+    } else {
+        s = generate_object(free_chat(),
+                            "Give the colour of a clear midday sky as "
+                                ++ "{{\"colour\": \"...\"}}")
+
+        if s.error.contains("429") {
+            assert(true, "the free tier is throttling, which is its right")
+        } else {
+            assert_eq(s.error, "", "the host answered: {s.error}")
+            assert_eq(get(s.text, "colour").lower(), "blue",
+                      "and the answer parsed as JSON: {s.text}")
+        }
+    }
+}
+
+main() -> int {
+    test_a_tool_is_offered_in_the_shape_the_format_wants()
+    test_no_tools_offers_nothing_rather_than_an_empty_list()
+    test_a_tool_the_model_asked_for_is_found_by_name()
+    test_an_answer_with_neither_text_nor_a_call_did_not_land()
+    test_a_turn_that_answers_a_tool_names_the_call_it_answers()
+    test_a_plain_turn_carries_no_call_id_at_all()
+    test_a_model_answers_with_json_a_program_can_read()
+    failures()
+}

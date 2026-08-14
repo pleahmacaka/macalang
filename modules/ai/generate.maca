@@ -1,0 +1,93 @@
+// ai/generate: one shape for asking a model, whoever answers underneath.
+
+import ai/openai/chat
+import std/json
+
+/// A tool the model may reach for: its name, what it does, and the JSON schema of its arguments.
+Tool = {
+    name:        str
+    description: str
+    schema:      str
+}
+
+/// What the asking produced: the text, any tools it asked for, and what it cost.
+Said = {
+    text:  str
+    calls: Call[]
+    sent:  int
+    got:   int
+    error: str
+}
+
+/// One prompt, one answer.
+generate_text(c: Chat, prompt: str) -> Said =>
+    said_of(complete(c, [user_turn(prompt)]))
+
+/// The same, with a system turn ahead of it saying how to answer.
+generate_text_as(c: Chat, how: str, prompt: str) -> Said =>
+    said_of(complete(c, [system_turn(how), user_turn(prompt)]))
+
+/// A whole conversation, for a caller that is keeping one.
+generate_from(c: Chat, ts: Turn[]) -> Said =>
+    said_of(complete(c, ts))
+
+JsonOnly = ",\"response_format\":{{\"type\":\"json_object\"}}"
+
+/// An answer that is one JSON object and nothing else, which is what a program can read.
+generate_object(c: Chat, prompt: str) -> Said =>
+    said_of(complete_with(c, [object_turn(), user_turn(prompt)], JsonOnly))
+
+object_turn() -> Turn =>
+    system_turn("Answer with one JSON object and nothing else.")
+
+/// The tools the model may reach for, offered alongside the conversation.
+generate_using(c: Chat, ts: Turn[], tools: Tool[]) -> Said =>
+    said_of(complete_with(c, ts, tools_json(tools)))
+
+tools_json(tools: Tool[]) -> str =>
+    tools.length() == 0 ? "" : ",\"tools\":[" ++ tool_list(tools, 0) ++ "]"
+
+tool_list(ts: Tool[], i: int) -> str {
+    if i >= ts.length() {
+        ""
+    } else {
+        here = one_tool(ts.get(i))
+
+        i == ts.length() - 1 ? here : here ++ "," ++ tool_list(ts, i + 1)
+    }
+}
+
+one_tool(t: Tool) -> str =>
+    "{{\"type\":\"function\",\"function\":{{\"name\":" ++ quote(t.name)
+        ++ ",\"description\":" ++ quote(t.description)
+        ++ ",\"parameters\":" ++ tool_schema(t) ++ "}}}}"
+
+/// A tool that names no arguments still has to say so, because the format has no word for absent.
+tool_schema(t: Tool) -> str =>
+    t.schema == "" ? "{{\"type\":\"object\",\"properties\":{{}}}}" : t.schema
+
+/// A tool the caller ran, handed back so the model can go on from its result.
+tool_turn(id: str, result: str) -> Turn =>
+    Turn { role = "tool", content = result, call_id = id }
+
+said_of(a: Answer) -> Said =>
+    Said { text = a.text, calls = a.calls, sent = a.sent, got = a.got,
+           error = a.error }
+
+/// Did the asking land, with something to show for it?
+said_ok(s: Said) -> bool =>
+    s.error == "" && (s.text != "" || s.calls.length() > 0)
+
+/// The arguments of the first tool by that name, or "" when the model asked for no such thing.
+called_with(s: Said, name: str) -> str =>
+    call_scan(s.calls, 0, name)
+
+call_scan(cs: Call[], i: int, name: str) -> str {
+    if i >= cs.length() {
+        ""
+    } else if cs.get(i).name == name {
+        cs.get(i).arguments
+    } else {
+        call_scan(cs, i + 1, name)
+    }
+}
