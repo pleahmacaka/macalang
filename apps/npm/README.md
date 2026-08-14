@@ -7,14 +7,14 @@ WebAssembly, so everything runs in-process, with no native toolchain needed.
 ## Install
 
 ```sh
-bun add macalang     # or: npm i macalang
+bun add @pleahmacaka/macalang     # or: npm i @pleahmacaka/macalang
 ```
 
 ## Import `.maca` files directly (Bun)
 
 ```toml
 # bunfig.toml
-preload = ["macalang/bun"]
+preload = ["@pleahmacaka/macalang/bun"]
 ```
 
 ```maca
@@ -34,7 +34,7 @@ Every top-level Maca function becomes a named export.
 ## Programmatic API
 
 ```js
-import { compile, toJS, loadModule, loadFile, lsp } from "macalang";
+import { compile, toJS, loadModule, loadFile, lsp } from "@pleahmacaka/macalang";
 
 // type-check + emit
 const { diagnostics, outputs } = compile('bad() -> int => "nope"');
@@ -79,3 +79,13 @@ lsp("fib(n: int) -> int => n\n", 0).hover; // "fib(n: int) -> int"
   Node's own `WebAssembly` is needed.
 - Node ≥ 18 or Bun. For Node, use the programmatic API (`loadFile`); the
   zero-config import plugin targets Bun.
+
+## Where it is published
+
+GitHub Packages, so a consumer points the scope at that registry once:
+
+```
+@pleahmacaka:registry=https://npm.pkg.github.com
+```
+
+in `.npmrc`, beside a token with `read:packages`.

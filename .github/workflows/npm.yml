@@ -1,0 +1,48 @@
+name: npm
+
+# Publishing the package to GitHub Packages. The wasm it ships is a Maca program
+# linked by `zig cc -target wasm32-wasi`, and the compiler that emits it is grown
+# from bootstrap/maca.c, so this job installs a C toolchain and zig and nothing
+# else. Run it by hand, or let a release tag run it.
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    name: publish to GitHub Packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://npm.pkg.github.com
+          scope: '@pleahmacaka'
+      - name: Install zig
+        run: |
+          curl -fsSL https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz -o /tmp/zig.tar.xz
+          echo "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00  /tmp/zig.tar.xz" | sha256sum -c -
+          mkdir -p /opt/zig
+          tar -xJf /tmp/zig.tar.xz -C /opt/zig --strip-components=1
+          echo /opt/zig >> "$GITHUB_PATH"
+      - name: Build the seed compiler
+        run: mkdir -p bin && cc -O1 -o bootstrap/maca bootstrap/maca.c
+      - name: Build the compiler with the seed
+        run: MACA=$PWD/bootstrap/maca ./bootstrap/maca build apps/maca1/main.maca -o bin/maca
+      - name: Build wasm into the package
+        run: PATH="$PWD/bin:$PATH" MACA=$PWD/bin/maca ./bin/maca run apps/npm/build.maca
+      - name: Test the package
+        run: node apps/npm/test.mjs
+      # npm refuses to republish a version that is already there, and that is the
+      # behaviour we want: the version in package.json is the release.
+      - name: Publish
+        run: npm publish
+        working-directory: apps/npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

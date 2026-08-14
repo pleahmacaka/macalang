@@ -1,5 +1,5 @@
 {
-  "name": "macalang",
+  "name": "@pleahmacaka/macalang",
   "version": "0.3.3",
   "description": "Compile and import Maca (.maca) from JavaScript: the Maca compiler front-end as WebAssembly.",
   "type": "module",
@@ -16,14 +16,24 @@
     "README.md"
   ],
   "scripts": {
-    "build": "cd ../.. && ./target/release/maca run packages/macalang/build.maca",
+    "build": "cd ../.. && MACA=$PWD/bin/maca ./bin/maca run apps/npm/build.maca",
     "test": "node ./test.mjs",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "node ./test.mjs"
   },
-  "keywords": ["maca", "macalang", "compiler", "wasm", "language", "bun"],
+  "keywords": [
+    "maca",
+    "macalang",
+    "compiler",
+    "wasm",
+    "language",
+    "bun"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pleahmacaka/macalang"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   }
 }
