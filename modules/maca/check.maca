@@ -460,6 +460,11 @@ ident_type(env: Env, e: Expr) -> Typed {
               t_error())
     } else if declared >= 0 {
         typed(env, env.sigs.get(declared))
+    } else if is_prelude_call(e.text) {
+        typed(complain(env, "`{e.text}` is a builtin, so it cannot be used as a"
+                            ++ " function value; wrap it, as in"
+                            ++ " `xs.map(x => {e.text}(x))`"),
+              t_error())
     } else if env.hidden.index_of(e.text) >= 0 {
         typed(complain_as(env, "M0006",
                           "`{e.text}` is a local of another function, and a"

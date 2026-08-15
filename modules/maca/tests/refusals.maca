@@ -368,6 +368,16 @@ test_the_beam_names_a_bodyless_function_rather_than_answering_nothing() {
            "and nothing was written that would answer nothing at run time")
 }
 
+test_a_builtin_used_as_a_value_is_named_before_a_back_end_sees_it() {
+    at = keyworded("asvalue.maca", "main() -> int {{\n    xs = [1, 2]\n    info(xs.map(str).join(\",\"))\n    0\n}}\n")
+    said = capture(maca_bin(), ["check", at])
+
+    assert(said.contains("is a builtin"),
+           "the name is one no back end can hand around: {said}")
+    assert(said.contains("x => str(x)"),
+           "and the wrapping that does work is shown: {said}")
+}
+
 test_a_backslash_inside_an_interpolation_is_caught_before_a_back_end_sees_it() {
     at = keyworded("escaped.maca",
                    "main() -> int {{\n    xs = [\"a\", \"b\"]\n"

@@ -1,10 +1,10 @@
 [package]
-name = "ide"
+name = "quipu"
 description = "A Maca editor: the buffer, what it becomes on every target, where the time went, and where it stops."
 
 [[bin]]
-name = "ide"
-path = "ide.maca"
+name = "quipu"
+path = "quipu.maca"
 
 [build]
 target = "rust"

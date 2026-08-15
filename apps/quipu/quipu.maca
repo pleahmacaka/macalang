@@ -1,4 +1,4 @@
-// A Maca editor, drawn with gpui.
+// Quipu, a Maca editor, drawn with gpui.
 //
 // The window holds no logic. Every question it asks is a function in
 // `model.maca`, which a suite runs without a window, so what is here is only
@@ -12,8 +12,8 @@ import "gpui::AnyElement"
 import "gpui::Context"
 import "gpui::Window"
 
-import { Ide, opened, panel_for } from apps/ide/model
-import { view } from apps/ide/view
+import { Ide, opened, panel_for } from apps/quipu/model
+import { view } from apps/quipu/view
 
 Shell = {
     ide: Ide

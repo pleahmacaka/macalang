@@ -4,8 +4,8 @@
 // rather than walked for. Everything past that is `view.maca`, unchanged: the
 // components are the same components, and only the back end differs.
 
-import { Ide } from apps/ide/model
-import { view } from apps/ide/view
+import { Ide } from apps/quipu/model
+import { view } from apps/quipu/view
 
 Sample = "greet(who: str) -> str => \"hi {{who}}\"\n\nmain() -> int {{\n    info(greet(\"web\"))\n    0\n}}\n"
 

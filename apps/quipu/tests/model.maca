@@ -1,7 +1,7 @@
 import { Ide, Panels, opened, opened_file, target_of, panel_for, toggled,
          gutter, gutter_text, stops, tabs, picked,
          flame_frames, declared, house_rules,
-         asked, knobs, reading } from apps/ide/model
+         asked, knobs, reading } from apps/quipu/model
 import { bound_name, bound_call } from maca/doc
 import std/proc
 
