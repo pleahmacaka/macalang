@@ -26,7 +26,7 @@ Ide = {
     breaks: int[],
 }
 
-Panels = ["rust", "c", "js", "flame", "checks", "names", "memory", "ask", "read"]
+Panels = ["rust", "c", "js", "flame", "checks", "names", "memory", "ask", "read", "open", "keys", "about"]
 
 maca_bin() -> str {
     named = env_or("MACA", "maca")
@@ -172,6 +172,18 @@ shown(ide: Ide) -> str {
 
     if ide.panel == "read" {
         return reading(ide.text)
+    }
+
+    if ide.panel == "open" {
+        return offered(matching(picks(ide), ide.output), 0, [])
+    }
+
+    if ide.panel == "keys" {
+        return listed_binds(keymap(), 0, [])
+    }
+
+    if ide.panel == "about" {
+        return about()
     }
 
     transpiled(ide.open, ide.panel)
@@ -372,4 +384,146 @@ unmarked(line: str) -> str {
     }
 
     line.slice(1, line.length()).trim()
+}
+
+/// One thing the quick menu can reach: what it is called and what kind of thing it is.
+Pick = {
+    label: str
+    kind:  str
+}
+
+Commands = ["open", "run", "check", "profile", "keymap", "about"]
+
+/// Everything Ctrl+P reaches: the files, the panels, the commands.
+picks(ide: Ide) -> Pick[] =>
+    named_picks(ide.files, 0, "file", [])
+        ++ named_picks(Panels, 0, "panel", [])
+        ++ named_picks(Commands, 0, "command", [])
+
+named_picks(xs: str[], i: int, kind: str, acc: Pick[]) -> Pick[] {
+    if i >= xs.length() {
+        return acc
+    }
+
+    named_picks(xs, i + 1, kind, acc.push(Pick { label = xs.get(i),
+                                                 kind = kind }))
+}
+
+/// What the box shows for a query: what starts with it first, then what merely holds it.
+matching(ps: Pick[], query: str) -> Pick[] {
+    said = query.trim().lower()
+
+    if said == "" {
+        return ps
+    }
+
+    leading(ps, 0, said, []) ++ holding(ps, 0, said, [])
+}
+
+leading(ps: Pick[], i: int, said: str, acc: Pick[]) -> Pick[] {
+    if i >= ps.length() {
+        return acc
+    }
+
+    hit = ps.get(i).label.lower().starts_with(said)
+
+    leading(ps, i + 1, said, hit ? acc.push(ps.get(i)) : acc)
+}
+
+holding(ps: Pick[], i: int, said: str, acc: Pick[]) -> Pick[] {
+    if i >= ps.length() {
+        return acc
+    }
+
+    label = ps.get(i).label.lower()
+    hit = label.contains(said) && !label.starts_with(said)
+
+    holding(ps, i + 1, said, hit ? acc.push(ps.get(i)) : acc)
+}
+
+/// One chord and what it runs.
+Bind = {
+    chord: str
+    does:  str
+}
+
+/// The bindings the editor starts with, which are data it can rewrite and not a table inside it.
+keymap() -> Bind[] => [
+    Bind { chord = "ctrl-p", does = "open" },
+    Bind { chord = "ctrl-r", does = "run" },
+    Bind { chord = "ctrl-k", does = "keymap" },
+    Bind { chord = "f5", does = "profile" },
+    Bind { chord = "f9", does = "toggle-stop" }
+]
+
+/// What a chord runs, or "" when nothing is bound to it.
+bound_to(ks: Bind[], chord: str) -> str =>
+    scan_binds(ks, 0, chord.trim().lower())
+
+scan_binds(ks: Bind[], i: int, chord: str) -> str {
+    if i >= ks.length() {
+        return ""
+    }
+
+    ks.get(i).chord == chord ? ks.get(i).does : scan_binds(ks, i + 1, chord)
+}
+
+/// A chord already taken stays where it is, and the caller is told what holds it.
+rebound(ks: Bind[], chord: str, does: str) -> Bind[] {
+    said = chord.trim().lower()
+    held = bound_to(ks, said)
+
+    if held != "" && held != does {
+        return ks
+    }
+
+    dropped(ks, 0, does, []).push(Bind { chord = said, does = does })
+}
+
+dropped(ks: Bind[], i: int, does: str, acc: Bind[]) -> Bind[] {
+    if i >= ks.length() {
+        return acc
+    }
+
+    dropped(ks, i + 1, does, ks.get(i).does == does ? acc : acc.push(ks.get(i)))
+}
+
+/// Why a rebinding did not take, or "" when it did.
+clash(ks: Bind[], chord: str, does: str) -> str {
+    held = bound_to(ks, chord.trim().lower())
+
+    held == "" || held == does
+        ? ""
+        : "{chord} already runs {held}"
+}
+
+Name = "Quipu"
+
+/// What this is, what version, and what it was built with, asked of the toolchain rather than typed twice.
+about() -> str =>
+    "{Name}, an editor for Maca\n{version_said()}\nthe editor is Maca too:"
+        ++ " apps/quipu"
+
+version_said() -> str {
+    said = output(maca_bin(), ["--version"]).trim()
+
+    said == "" ? "no compiler on PATH" : said
+}
+
+/// The quick menu as the box draws it, one line a pick, the kind beside the name.
+offered(ps: Pick[], i: int, acc: str[]) -> str {
+    if i >= ps.length() {
+        return acc.length() == 0 ? "nothing matches" : acc.join(chr(10))
+    }
+
+    offered(ps, i + 1, acc.push("{ps.get(i).kind}  {ps.get(i).label}"))
+}
+
+/// The keymap as the editor shows it, one line a binding.
+listed_binds(ks: Bind[], i: int, acc: str[]) -> str {
+    if i >= ks.length() {
+        return acc.join(chr(10))
+    }
+
+    listed_binds(ks, i + 1, acc.push("{ks.get(i).chord}  {ks.get(i).does}"))
 }

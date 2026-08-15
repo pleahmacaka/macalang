@@ -1,7 +1,9 @@
 import { Ide, Panels, opened, opened_file, target_of, panel_for, toggled,
          gutter, gutter_text, stops, tabs, picked,
          flame_frames, declared, house_rules,
-         asked, knobs, reading } from apps/quipu/model
+         asked, knobs, reading, Pick, picks, matching,
+         Bind, keymap, bound_to, rebound, clash,
+         about } from apps/quipu/model
 import { bound_name, bound_call } from maca/doc
 import std/proc
 
@@ -41,7 +43,7 @@ test_the_tab_row_marks_the_one_in_view() {
 
     assert(row.contains("[rust]"), "the panel in view is bracketed: {row}")
     assert(row.contains(" c "), "and the others are not: {row}")
-    assert_eq(str(Panels.length()), "9", "every panel is offered")
+    assert_eq(str(Panels.length()), "12", "every panel is offered")
 }
 
 test_a_gutter_mark_toggles_and_the_stops_come_out_in_order() {
@@ -134,6 +136,67 @@ test_reader_mode_keeps_what_was_said_and_drops_what_was_typed() {
            "the marks that opened the comment go with it: {said}")
 }
 
+test_the_quick_menu_reaches_files_panels_and_commands() {
+    got = picks(blank() with { files = ["a.maca", "b.maca"] })
+
+    assert(got.length() > 10, "everything reachable is offered")
+    assert_eq(got.get(0).kind, "file", "the files lead, because that is what is opened most")
+    assert_eq(got.get(0).label, "a.maca", "and in the order the workspace holds them")
+}
+
+test_what_starts_with_the_query_comes_before_what_merely_holds_it() {
+    got = matching(picks(blank() with { files = ["read.maca", "unread.maca"] }),
+                   "read")
+
+    assert_eq(got.get(0).label, "read.maca", "a leading match leads")
+    assert_eq(got.get(got.length() - 1).label, "unread.maca",
+              "and one that merely holds it comes after every leading match")
+    assert_eq(str(matching(picks(blank()), "nothing-like-this").length()), "0",
+              "a query nothing matches offers nothing")
+}
+
+test_an_empty_query_offers_everything() {
+    all = picks(blank())
+
+    assert_eq(str(matching(all, "  ").length()), str(all.length()),
+              "a blank box is not a filter")
+}
+
+test_a_chord_runs_what_the_keymap_says() {
+    assert_eq(bound_to(keymap(), "ctrl-p"), "open",
+              "the quick menu opens on ctrl-p")
+    assert_eq(bound_to(keymap(), "CTRL-P"), "open",
+              "and a chord is read whatever case it was typed in")
+    assert_eq(bound_to(keymap(), "ctrl-z"), "",
+              "a chord nothing is bound to runs nothing")
+}
+
+test_a_chord_already_taken_is_refused_by_naming_what_holds_it() {
+    said = clash(keymap(), "ctrl-p", "profile")
+
+    assert(said.contains("open"), "the command holding it is named: {said}")
+    assert_eq(bound_to(rebound(keymap(), "ctrl-p", "profile"), "ctrl-p"),
+              "open", "and the binding does not move")
+}
+
+test_rebinding_a_command_moves_it_rather_than_leaving_two() {
+    moved = rebound(keymap(), "ctrl-o", "open")
+
+    assert_eq(bound_to(moved, "ctrl-o"), "open", "the new chord runs it")
+    assert_eq(bound_to(moved, "ctrl-p"), "",
+              "and the old one runs nothing, or a command would answer twice")
+    assert_eq(clash(keymap(), "ctrl-o", "open"), "",
+              "a free chord is no clash at all")
+}
+
+test_the_about_page_names_what_this_is() {
+    said = about()
+
+    assert(said.contains("Quipu"), "the editor names itself: {said}")
+    assert(said.contains("Maca"), "and what it edits: {said}")
+    assert(said.contains("apps/quipu"), "and that it is Maca too: {said}")
+}
+
 main() -> int {
     test_the_target_is_read_off_the_source_and_not_chosen()
     test_the_panel_follows_the_target_the_source_named()
@@ -147,5 +210,12 @@ main() -> int {
     test_the_assistant_names_what_it_needs_rather_than_pretending()
     test_a_param_in_a_doc_comment_is_a_control_the_editor_offers()
     test_reader_mode_keeps_what_was_said_and_drops_what_was_typed()
+    test_the_quick_menu_reaches_files_panels_and_commands()
+    test_what_starts_with_the_query_comes_before_what_merely_holds_it()
+    test_an_empty_query_offers_everything()
+    test_a_chord_runs_what_the_keymap_says()
+    test_a_chord_already_taken_is_refused_by_naming_what_holds_it()
+    test_rebinding_a_command_moves_it_rather_than_leaving_two()
+    test_the_about_page_names_what_this_is()
     failures()
 }
