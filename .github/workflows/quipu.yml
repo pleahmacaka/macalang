@@ -1,0 +1,67 @@
+name: quipu
+
+# The editor, cut for each desktop it draws on. The compiler ships from one
+# Linux runner because `zig cc` cross-compiles C; the editor cannot, because
+# gpui is a crate and cargo builds it for the host it runs on. So this is three
+# legs, one per operating system, and each one grows the compiler from the seed
+# before it builds anything.
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: quipu on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: quipu-x86_64-linux
+            ext: ""
+          - os: macos-latest
+            asset: quipu-aarch64-macos
+            ext: ""
+          - os: windows-latest
+            asset: quipu-x86_64-windows
+            ext: ".exe"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # Linux needs the X and Wayland headers gpui links against; the other two
+      # hosts carry their window system with the OS.
+      - name: Install what gpui links against
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev libxcb1-dev \
+            libasound2-dev libfontconfig-dev libgbm-dev libvulkan-dev
+      - name: Build the seed compiler
+        run: mkdir -p bin && cc -O1 -o bootstrap/maca bootstrap/maca.c
+        shell: bash
+      - name: Build the compiler with the seed
+        run: MACA=$PWD/bootstrap/maca ./bootstrap/maca build apps/maca1/main.maca -o bin/maca
+        shell: bash
+      # The editor is Maca, so this emits Rust and lets cargo link gpui to it.
+      - name: Build the editor
+        run: MACA=$PWD/bin/maca ./bin/maca build apps/quipu/quipu.maca --target rust -o quipu
+        shell: bash
+      - name: Name it for the platform it was built on
+        run: mv "quipu${{ matrix.ext }}" "${{ matrix.asset }}${{ matrix.ext }}"
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}${{ matrix.ext }}
+      - name: Attach it to the release
+        if: github.event_name == 'release'
+        run: gh release upload "${{ github.event.release.tag_name }}" "${{ matrix.asset }}${{ matrix.ext }}" --clobber
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

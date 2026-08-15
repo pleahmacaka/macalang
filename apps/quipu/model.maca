@@ -4,6 +4,8 @@
 // can run. A view that cannot be tested without a window is a view nobody
 // tests, so the window holds no logic at all.
 
+import { client, with_seconds, ask_get, reply_ok } from chaski/ask
+import { get } from std/json
 import { Chat, compatible, with_model } from ai/openai/chat
 import { generate_text_as } from ai/generate
 import { Tag, tags, prose } from maca/doc
@@ -183,7 +185,7 @@ shown(ide: Ide) -> str {
     }
 
     if ide.panel == "about" {
-        return about()
+        return "{about()}\n{update_said(version_said(), latest())}"
     }
 
     transpiled(ide.open, ide.panel)
@@ -526,4 +528,65 @@ listed_binds(ks: Bind[], i: int, acc: str[]) -> str {
     }
 
     listed_binds(ks, i + 1, acc.push("{ks.get(i).chord}  {ks.get(i).does}"))
+}
+
+Repo = "pleahmacaka/macalang"
+
+/// A version, split so `0.10.0` is read as later than `0.9.0` rather than earlier.
+parts_of(v: str) -> int[] =>
+    numbered(v.trim().replace("v", "").split("."), 0, [])
+
+numbered(xs: str[], i: int, acc: int[]) -> int[] {
+    if i >= xs.length() {
+        return acc
+    }
+
+    numbered(xs, i + 1, acc.push(int(digits_of(xs.get(i)))))
+}
+
+/// A part may carry a suffix, and what comes before the first non-digit is the number.
+digits_of(s: str) -> str {
+    cs = s.chars()
+    out = ""
+    i = 0
+
+    while i < cs.length() && cs.get(i).is_ascii_digit() {
+        out = out ++ cs.get(i)
+        i = i + 1
+    }
+
+    out == "" ? "0" : out
+}
+
+/// Is `there` a later version than `here`?
+newer(here: str, there: str) -> bool =>
+    ahead(parts_of(here), parts_of(there), 0)
+
+ahead(a: int[], b: int[], i: int) -> bool {
+    if i >= a.length() && i >= b.length() {
+        return false
+    }
+
+    x = i < a.length() ? a.get(i) : 0
+    y = i < b.length() ? b.get(i) : 0
+
+    x != y ? y > x : ahead(a, b, i + 1)
+}
+
+/// The latest release the project published, or "" when nobody could be asked.
+latest() -> str {
+    got = ask_get(with_seconds(client("https://api.github.com"), 10),
+                  "/repos/{Repo}/releases/latest")
+
+    reply_ok(got) ? get(got.body, "tag_name") : ""
+}
+
+/// What the editor says about updating itself, which is the truth in every case.
+update_said(here: str, there: str) -> str {
+    if there == "" {
+        return "could not reach the releases, so nothing is known"
+    }
+
+    newer(here, there) ? "{there} is out, and this is {here}"
+                       : "{here} is the latest"
 }

@@ -3,7 +3,7 @@ import { Ide, Panels, opened, opened_file, target_of, panel_for, toggled,
          flame_frames, declared, house_rules,
          asked, knobs, reading, Pick, picks, matching,
          Bind, keymap, bound_to, rebound, clash,
-         about } from apps/quipu/model
+         about, newer, parts_of, update_said } from apps/quipu/model
 import { bound_name, bound_call } from maca/doc
 import std/proc
 
@@ -197,6 +197,26 @@ test_the_about_page_names_what_this_is() {
     assert(said.contains("apps/quipu"), "and that it is Maca too: {said}")
 }
 
+test_a_version_is_compared_by_its_numbers_and_not_its_letters() {
+    assert(newer("0.9.0", "0.10.0"),
+           "ten is later than nine, which reading them as text gets wrong")
+    assert(!newer("0.10.0", "0.9.0"), "and the other way round it is not")
+    assert(newer("1.0.0", "1.0.1"), "a patch counts")
+    assert(!newer("1.2.3", "1.2.3"), "and the same version is not newer")
+    assert(newer("v0.3.3", "v0.4.0"), "a leading `v` is not part of the number")
+    assert(newer("1.0", "1.0.1"), "a version written short still compares")
+}
+
+test_the_editor_says_the_truth_about_updating_in_every_case() {
+    assert(update_said("0.3.3", "0.4.0").contains("0.4.0 is out"),
+           "a later release is offered")
+    assert(update_said("0.4.0", "0.4.0").contains("is the latest"),
+           "and nothing is offered when there is nothing")
+    assert(update_said("0.4.0", "").contains("could not reach"),
+           "a release nobody could ask about is said to be unknown, never "
+               ++ "reported as up to date")
+}
+
 main() -> int {
     test_the_target_is_read_off_the_source_and_not_chosen()
     test_the_panel_follows_the_target_the_source_named()
@@ -217,5 +237,7 @@ main() -> int {
     test_a_chord_already_taken_is_refused_by_naming_what_holds_it()
     test_rebinding_a_command_moves_it_rather_than_leaving_two()
     test_the_about_page_names_what_this_is()
+    test_a_version_is_compared_by_its_numbers_and_not_its_letters()
+    test_the_editor_says_the_truth_about_updating_in_every_case()
     failures()
 }
