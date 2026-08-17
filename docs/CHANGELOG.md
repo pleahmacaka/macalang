@@ -2,7 +2,7 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
-## Unreleased
+## 0.4.0
 
 * **`modules/chaski` is the client half of HTTP.** `modules/http` serves; chaski asks.
   A base address, headers that ride on every request, a timeout, and retries that fire on a
