@@ -777,8 +777,14 @@ javac_line(java: str, out: str, cp: str) -> str[] =>
 javac_here() -> bool =>
     on_path("javac")
 
-on_path(cmd: str) -> bool =>
+/** Windows has no `sh` to ask, and `where` is what it answers with. */
+on_path(cmd: str) -> bool {
+    if env("OS") == "Windows_NT" {
+        return capture("where", [cmd]).trim() != ""
+    }
+
     capture("sh", ["-c", "command -v " ++ cmd]).trim() != ""
+}
 
 CargoName = "maca_app"
 
@@ -830,7 +836,20 @@ cargo_built_at(proj: str, out: str) -> int {
     code = exec("cargo", ["build", "--release", "--quiet",
                           "--manifest-path", "{proj}/Cargo.toml"])
 
-    code != 0 ? code : exec("cp", ["{proj}/target/release/{CargoName}", out])
+    code != 0 ? code : placed(proj, out) ? 0 : 1
+}
+
+/** Windows names the binary `.exe`, and what is copied out is named the
+ * same way.
+ */
+placed(proj: str, out: str) -> bool {
+    if env("OS") == "Windows_NT" {
+        to = out.ends_with(".exe") ? out : out ++ ".exe"
+
+        return copy_bytes("{proj}/target/release/{CargoName}.exe", to)
+    }
+
+    exec("cp", ["{proj}/target/release/{CargoName}", out]) == 0
 }
 
 cargo_toml(chain: str[], deps: str[], patch: str[]) -> str =>
