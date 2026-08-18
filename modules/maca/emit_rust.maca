@@ -449,6 +449,8 @@ rruntime_call(name: str) -> bool =>
         || name == "cwd" || name == "panic" || name == "is_tty"
         || name == "now_ms" || name == "list_dir" || name == "file_size"
         || name == "chr" || name == "ord" || name == "chdir"
+        || name == "capture" || name == "capture_err"
+        || name == "copy_bytes"
 
 rarg_ty(cs: Expr[]) -> str {
     if cs.length() == 0 {
@@ -710,9 +712,18 @@ rtype(ty: str) -> str {
         "i64"
     } else if ty == "Future" {
         "std::thread::JoinHandle<i64>"
+    } else if ty.index_of(" ") > 0 {
+        rapplied(ty)
     } else {
         ty
     }
+}
+
+/// Maca applies a generic by juxtaposition, `Context Shell`, and Rust writes the same thing in brackets.
+rapplied(ty: str) -> str {
+    cut = ty.index_of(" ")
+
+    "{ty.slice(0, cut)}<{rtype(ty.slice(cut + 1, ty.length()).trim())}>"
 }
 
 remit_fn(s: Stmt) -> str {
@@ -871,6 +882,9 @@ rust_preamble() -> str =>
     "#[allow(dead_code)]\nfn maca_read_file(path: String) -> String {{ std::fs::read_to_string(path).unwrap_or_default() }}\n" ++
     "#[allow(dead_code)]\nfn maca_write_file(path: String, text: String) -> bool {{ std::fs::write(path, text).is_ok() }}\n" ++
     "#[allow(dead_code)]\nfn maca_exec(cmd: String, args: Rc<Vec<String>>) -> i64 {{ match std::process::Command::new(cmd).args(args.iter()).status() {{ Ok(s) => s.code().unwrap_or(-1) as i64, Err(_) => -1 }} }}\n" ++
+    "#[allow(dead_code)]\nfn maca_capture(cmd: String, args: Rc<Vec<String>>) -> String {{ match std::process::Command::new(cmd).args(args.iter()).output() {{ Ok(o) => String::from_utf8_lossy(&o.stdout).into_owned(), Err(_) => String::new() }} }}\n" ++
+    "#[allow(dead_code)]\nfn maca_capture_err(cmd: String, args: Rc<Vec<String>>) -> String {{ match std::process::Command::new(cmd).args(args.iter()).output() {{ Ok(o) => String::from_utf8_lossy(&o.stderr).into_owned(), Err(_) => String::new() }} }}\n" ++
+    "#[allow(dead_code)]\nfn maca_copy_bytes(from: String, to: String) -> bool {{ std::fs::copy(from, to).is_ok() }}\n" ++
     "use std::cell::Cell;\nthread_local!(static MACA_FAILED: Cell<i64> = Cell::new(0));\n" ++
     "#[allow(dead_code)]\nfn maca_failures() -> i64 {{ MACA_FAILED.with(|c| c.get()) }}\n" ++
     "#[allow(dead_code)]\nfn maca_assert(cond: bool, msg: String) -> bool {{ if cond {{ return true; }} MACA_FAILED.with(|c| c.set(c.get() + 1)); eprintln!(\"assertion failed: {{}}\", if msg.is_empty() {{ \"(no message)\".to_string() }} else {{ msg }}); false }}\n" ++

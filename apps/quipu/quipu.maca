@@ -6,6 +6,7 @@
 // showing what the file becomes on the target the compiler would pick for it.
 
 import "gpui::div"
+import "gpui::Div"
 import "gpui::Render"
 import "gpui::IntoElement"
 import "gpui::AnyElement"
