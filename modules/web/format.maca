@@ -1,7 +1,8 @@
-// web/format: the half of the browser modules that is arithmetic.
-//
-// Nothing here asks the host anything, so it reads the same on every target
-// and its answers are the ones `web/time` and `web/file` present.
+/* web/format: the half of the browser modules that is arithmetic.
+ *
+ * Nothing here asks the host anything, so it reads the same on every target
+ * and its answers are the ones `web/time` and `web/file` present.
+ */
 
 /** `n` written with at least two digits, which is what a clock reads. */
 two(n: int) -> str => n < 10 && n >= 0 ? "0{n}" : "{n}"

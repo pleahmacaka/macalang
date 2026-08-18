@@ -1,5 +1,6 @@
-// HumanEval/11: Input are two strings a and b consisting only of 1s and 0s.
-// Write it, and leave the test below alone.
+/* HumanEval/11: Input are two strings a and b consisting only of 1s and 0s.
+ * Write it, and leave the test below alone.
+ */
 
 string_xor(a: str, b: str) -> str {
     fail "not written yet"

@@ -1,5 +1,6 @@
-// HumanEval/0: Check if in given list of numbers, are any two numbers closer to each other than
-// Write it, and leave the test below alone.
+/* HumanEval/0: Check if in given list of numbers, are any two numbers closer to each other than
+ * Write it, and leave the test below alone.
+ */
 
 has_close_elements(numbers: float[], threshold: float) -> bool {
     fail "not written yet"

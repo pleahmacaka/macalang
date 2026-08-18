@@ -1,5 +1,6 @@
-// HumanEval/21: Given list of numbers (of at least two elements), apply a linear transform to that list,
-// Write it, and leave the test below alone.
+/* HumanEval/21: Given list of numbers (of at least two elements), apply a linear transform to that list,
+ * Write it, and leave the test below alone.
+ */
 
 rescale_to_unit(numbers: float[]) -> float[] {
     fail "not written yet"

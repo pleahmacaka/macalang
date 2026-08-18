@@ -1,5 +1,6 @@
-// HumanEval/10: Test if given string is a palindrome
-// Write it, and leave the test below alone.
+/* HumanEval/10: Test if given string is a palindrome
+ * Write it, and leave the test below alone.
+ */
 
 make_palindrome(string: str) -> str {
     fail "not written yet"

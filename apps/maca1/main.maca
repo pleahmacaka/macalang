@@ -4484,6 +4484,8 @@ blurb(src: str) -> str {
 
     if head.starts_with("//") && !head.starts_with("/**") {
         head.slice(2, head.length()).trim()
+    } else if head.starts_with("/*") && !head.starts_with("/**") {
+        head.slice(2, head.length()).trim()
     } else {
         Carried
     }

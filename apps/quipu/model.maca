@@ -1,8 +1,9 @@
-// The editor's own state, and every question it asks the toolchain.
-//
-// Nothing here draws: `ide.maca` is the gpui half and this is the half a suite
-// can run. A view that cannot be tested without a window is a view nobody
-// tests, so the window holds no logic at all.
+/* The editor's own state, and every question it asks the toolchain.
+ *
+ * Nothing here draws: `ide.maca` is the gpui half and this is the half a suite
+ * can run. A view that cannot be tested without a window is a view nobody
+ * tests, so the window holds no logic at all.
+ */
 
 import { client, with_seconds, ask_get, reply_ok } from chaski/ask
 import { get } from std/json
@@ -404,7 +405,7 @@ said_lines(ls: str[], i: int, acc: str[]) -> str {
 
 is_said(line: str) -> bool =>
     line.starts_with("//") || line.starts_with("*")
-        || line.starts_with("/**")
+        || line.starts_with("/*")
 
 /** A comment reads as a sentence, so the marks that opened it go. */
 unmarked(line: str) -> str {
@@ -416,7 +417,7 @@ unmarked(line: str) -> str {
         return said.slice(3, said.length()).trim()
     }
 
-    if said.starts_with("//") {
+    if said.starts_with("/*") || said.starts_with("//") {
         return said.slice(2, said.length()).trim()
     }
 

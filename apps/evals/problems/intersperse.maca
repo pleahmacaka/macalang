@@ -1,5 +1,6 @@
-// HumanEval/5: Insert a number 'delimeter' between every two consecutive elements of input list `numbers'
-// Write it, and leave the test below alone.
+/* HumanEval/5: Insert a number 'delimeter' between every two consecutive elements of input list `numbers'
+ * Write it, and leave the test below alone.
+ */
 
 intersperse(numbers: int[], delimeter: int) -> int[] {
     fail "not written yet"

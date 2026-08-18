@@ -1,5 +1,6 @@
-// HumanEval/3: You're given a list of deposit and withdrawal operations on a bank account that starts with
-// Write it, and leave the test below alone.
+/* HumanEval/3: You're given a list of deposit and withdrawal operations on a bank account that starts with
+ * Write it, and leave the test below alone.
+ */
 
 below_zero(operations: int[]) -> bool {
     fail "not written yet"

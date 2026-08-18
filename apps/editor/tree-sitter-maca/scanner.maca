@@ -1,13 +1,14 @@
-// The external scanner for Maca's significant newlines, as a Maca program.
-//
-// A newline separates statements and top-level items, except inside `(` / `[`
-// groups and string interpolation, where the real lexer suppresses it. Tree-
-// sitter drives this by validity: `_newline` is only marked valid where the
-// grammar expects a separator, so the scanner emits it when valid and otherwise
-// declines, letting `extras` swallow the whitespace.
-//
-// `src/scanner.c` is this file as the compiler emits it. Regenerate with
-//   maca apps/editor/tree-sitter-maca/scanner.maca //       apps/editor/tree-sitter-maca/src/scanner.c
+/* The external scanner for Maca's significant newlines, as a Maca program.
+ *
+ * A newline separates statements and top-level items, except inside `(` / `[`
+ * groups and string interpolation, where the real lexer suppresses it. Tree-
+ * sitter drives this by validity: `_newline` is only marked valid where the
+ * grammar expects a separator, so the scanner emits it when valid and otherwise
+ * declines, letting `extras` swallow the whitespace.
+ *
+ * `src/scanner.c` is this file as the compiler emits it. Regenerate with
+ *   maca apps/editor/tree-sitter-maca/scanner.maca //       apps/editor/tree-sitter-maca/src/scanner.c
+ */
 
 Space = 32
 Tab = 9

@@ -1,9 +1,10 @@
-// web/storage: what the browser remembers between visits.
-//
-// `stored(key, default)` is the whole surface a program needs: the name starts
-// as whatever is saved under `key`, and assigning the name saves it again. The
-// three functions below are what that is written in terms of, and a program
-// that only wants the sugar never calls them.
+/* web/storage: what the browser remembers between visits.
+ *
+ * `stored(key, default)` is the whole surface a program needs: the name starts
+ * as whatever is saved under `key`, and assigning the name saves it again. The
+ * three functions below are what that is written in terms of, and a program
+ * that only wants the sugar never calls them.
+ */
 
 /** The value saved under `key`, or `fallback` when the browser has nothing
  * there.

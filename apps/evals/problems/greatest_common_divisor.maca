@@ -1,5 +1,6 @@
-// HumanEval/13: Return a greatest common divisor of two integers a and b
-// Write it, and leave the test below alone.
+/* HumanEval/13: Return a greatest common divisor of two integers a and b
+ * Write it, and leave the test below alone.
+ */
 
 greatest_common_divisor(a: int, b: int) -> int {
     fail "not written yet"

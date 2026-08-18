@@ -1,5 +1,6 @@
-// HumanEval/17: Input to this function is a string representing musical notes in a special ASCII format.
-// Write it, and leave the test below alone.
+/* HumanEval/17: Input to this function is a string representing musical notes in a special ASCII format.
+ * Write it, and leave the test below alone.
+ */
 
 parse_music(music_string: str) -> int[] {
     fail "not written yet"

@@ -1,5 +1,6 @@
-// HumanEval/15: Return a string containing space-delimited numbers starting from 0 upto n inclusive.
-// Write it, and leave the test below alone.
+/* HumanEval/15: Return a string containing space-delimited numbers starting from 0 upto n inclusive.
+ * Write it, and leave the test below alone.
+ */
 
 string_sequence(n: int) -> str {
     fail "not written yet"

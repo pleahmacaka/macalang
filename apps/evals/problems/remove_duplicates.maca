@@ -1,5 +1,6 @@
-// HumanEval/26: From a list of integers, remove all elements that occur more than once.
-// Write it, and leave the test below alone.
+/* HumanEval/26: From a list of integers, remove all elements that occur more than once.
+ * Write it, and leave the test below alone.
+ */
 
 remove_duplicates(numbers: int[]) -> int[] {
     fail "not written yet"

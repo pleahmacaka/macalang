@@ -1,8 +1,9 @@
-// The editor in a browser, drawn from the same view as the desktop one.
-//
-// A page cannot read the disk, so the state it opens with is written here
-// rather than walked for. Everything past that is `view.maca`, unchanged: the
-// components are the same components, and only the back end differs.
+/* The editor in a browser, drawn from the same view as the desktop one.
+ *
+ * A page cannot read the disk, so the state it opens with is written here
+ * rather than walked for. Everything past that is `view.maca`, unchanged: the
+ * components are the same components, and only the back end differs.
+ */
 
 import { Ide } from apps/quipu/model
 import { view } from apps/quipu/view

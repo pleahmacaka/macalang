@@ -14,7 +14,9 @@ single_line_if(line: str) -> bool {
 }
 
 too_wide(line: str) -> bool =>
-    !line.trim().starts_with("//") && collapse_strings(line).length() > 80
+    !line.trim().starts_with("//") && !line.trim().starts_with("/*")
+        && !line.trim().starts_with("*")
+        && collapse_strings(line).length() > 80
 
 collapse_strings(line: str) -> str =>
     collapse(line.chars(), 0, false, "")

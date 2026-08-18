@@ -1,5 +1,6 @@
-// HumanEval/28: Concatenate list of strings into a single string
-// Write it, and leave the test below alone.
+/* HumanEval/28: Concatenate list of strings into a single string
+ * Write it, and leave the test below alone.
+ */
 
 concatenate(strings: str[]) -> str {
     fail "not written yet"

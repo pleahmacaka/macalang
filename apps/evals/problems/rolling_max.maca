@@ -1,5 +1,6 @@
-// HumanEval/9: From a given list of integers, generate a list of rolling maximum element found until given moment
-// Write it, and leave the test below alone.
+/* HumanEval/9: From a given list of integers, generate a list of rolling maximum element found until given moment
+ * Write it, and leave the test below alone.
+ */
 
 rolling_max(numbers: int[]) -> int[] {
     fail "not written yet"

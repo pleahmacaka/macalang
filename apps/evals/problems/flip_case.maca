@@ -1,5 +1,6 @@
-// HumanEval/27: For a given string, flip lowercase characters to uppercase and uppercase to lowercase.
-// Write it, and leave the test below alone.
+/* HumanEval/27: For a given string, flip lowercase characters to uppercase and uppercase to lowercase.
+ * Write it, and leave the test below alone.
+ */
 
 flip_case(string: str) -> str {
     fail "not written yet"

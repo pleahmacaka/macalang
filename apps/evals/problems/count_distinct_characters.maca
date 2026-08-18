@@ -1,5 +1,6 @@
-// HumanEval/16: Given a string, find out how many distinct characters (regardless of case) does it consist of
-// Write it, and leave the test below alone.
+/* HumanEval/16: Given a string, find out how many distinct characters (regardless of case) does it consist of
+ * Write it, and leave the test below alone.
+ */
 
 count_distinct_characters(string: str) -> int {
     fail "not written yet"

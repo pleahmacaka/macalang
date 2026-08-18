@@ -1,5 +1,6 @@
-// HumanEval/24: For a given number n, find the largest number that divides n evenly, smaller than n
-// Write it, and leave the test below alone.
+/* HumanEval/24: For a given number n, find the largest number that divides n evenly, smaller than n
+ * Write it, and leave the test below alone.
+ */
 
 largest_divisor(n: int) -> int {
     fail "not written yet"

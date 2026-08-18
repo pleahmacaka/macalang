@@ -1,5 +1,6 @@
-// HumanEval/23: Return length of given string
-// Write it, and leave the test below alone.
+/* HumanEval/23: Return length of given string
+ * Write it, and leave the test below alone.
+ */
 
 strlen(string: str) -> int {
     fail "not written yet"

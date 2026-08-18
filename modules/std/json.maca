@@ -1,9 +1,10 @@
-// std/json: JSON, written in Maca.
-//
-// Two halves. `encode` and `decode` are the typed pair: the compiler writes
-// them from the record and sum types the program declares, so a page never
-// spells a field twice. Everything else here reads and writes JSON as text,
-// for the shapes no type describes.
+/* std/json: JSON, written in Maca.
+ *
+ * Two halves. `encode` and `decode` are the typed pair: the compiler writes
+ * them from the record and sum types the program declares, so a page never
+ * spells a field twice. Everything else here reads and writes JSON as text,
+ * for the shapes no type describes.
+ */
 
 import std/text
 

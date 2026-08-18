@@ -1,7 +1,8 @@
-// web/time: the clock on the wall the page is hanging on.
-//
-// The host answers with the parts of the local time and nothing else; what
-// those parts read as is `web/format`, which every target can run.
+/* web/time: the clock on the wall the page is hanging on.
+ *
+ * The host answers with the parts of the local time and nothing else; what
+ * those parts read as is `web/format`, which every target can run.
+ */
 
 import { clock, clock12, stamp } from web/format
 

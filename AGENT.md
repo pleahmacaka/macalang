@@ -145,6 +145,9 @@ definition cycle resolves, with `MACA_ARRAY_STRUCT` before the body and
   demands one: a `# Safety` section on a public `unsafe fn`, and the leading
   `//` blurb of a `modules/std` file, whose first line is what the generated
   index prints on that module's card.
+- **A surviving ordinary comment is `//` for one line, `/* … */` past that.**
+  The doc form `/** … */` is not an ordinary comment; a file's own leading
+  blurb takes the same one-line/`//`, multi-line/`/* … */` shape.
 - **One surviving line, where absence would mislead.** A single `//` line may
   stay only where deleting it would leave the code actively misleading, and
   `tests/programs/docfixture.maca` is exempt outright because its

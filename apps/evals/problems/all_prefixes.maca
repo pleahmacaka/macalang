@@ -1,5 +1,6 @@
-// HumanEval/14: Return list of all prefixes from shortest to longest of the input string
-// Write it, and leave the test below alone.
+/* HumanEval/14: Return list of all prefixes from shortest to longest of the input string
+ * Write it, and leave the test below alone.
+ */
 
 all_prefixes(string: str) -> str[] {
     fail "not written yet"

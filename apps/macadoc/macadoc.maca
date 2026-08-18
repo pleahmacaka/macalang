@@ -66,12 +66,25 @@ item_taken(items: Item[], i: int, before: int) -> bool {
     }
 }
 
+/** The module's own description: a leading run of `//` lines, or the
+ * `/* … * /` block that a run of two or more is written as.
+ */
 module_blurb(lines: str[], i: int, acc: str[]) -> str[] {
+    if i < lines.length() && opens_plain_block(lines.get(i)) {
+        return block_body(lines, i, block_shut(lines, i), [])
+    }
+
     if i >= lines.length() || !is_plain_comment(lines.get(i)) {
         acc
     } else {
         module_blurb(lines, i + 1, acc + [comment_body(lines.get(i))])
     }
+}
+
+opens_plain_block(line: str) -> bool {
+    said = line.trim()
+
+    said.starts_with("/*") && !said.starts_with("/**")
 }
 
 is_plain_comment(line: str) -> bool =>
@@ -1093,7 +1106,8 @@ block_line(line: str) -> str {
  * indent past them stays, because an indented run is a code block.
  */
 shed_marks(said: str) -> str {
-    opened = said.starts_with("/**") ? said.slice(3, said.length()) : said
+    opened = said.starts_with("/**") ? said.slice(3, said.length())
+        : said.starts_with("/*") ? said.slice(2, said.length()) : said
     starred = opened.starts_with("*") && !opened.starts_with("*/")
         ? opened.slice(1, opened.length())
         : opened

@@ -1,5 +1,6 @@
-// HumanEval/19: Input is a space-delimited string of numberals from 'zero' to 'nine'.
-// Write it, and leave the test below alone.
+/* HumanEval/19: Input is a space-delimited string of numberals from 'zero' to 'nine'.
+ * Write it, and leave the test below alone.
+ */
 
 sort_numbers(numbers: str) -> str {
     fail "not written yet"

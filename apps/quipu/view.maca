@@ -1,7 +1,8 @@
-// The three columns, and nothing that says which window draws them.
-//
-// `quipu.maca` is the gpui host and `web.maca` is the browser one; both import
-// this, so the editor is the same components either way.
+/* The three columns, and nothing that says which window draws them.
+ *
+ * `quipu.maca` is the gpui host and `web.maca` is the browser one; both import
+ * this, so the editor is the same components either way.
+ */
 
 import { Ide, panel_for, shown, stops, gutter_text, tabs,
          knobs } from apps/quipu/model

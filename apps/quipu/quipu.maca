@@ -1,9 +1,10 @@
-// Quipu, a Maca editor, drawn with gpui.
-//
-// The window holds no logic. Every question it asks is a function in
-// `model.maca`, which a suite runs without a window, so what is here is only
-// the tree: the file list, the buffer with its breakpoint gutter, and the panel
-// showing what the file becomes on the target the compiler would pick for it.
+/* Quipu, a Maca editor, drawn with gpui.
+ *
+ * The window holds no logic. Every question it asks is a function in
+ * `model.maca`, which a suite runs without a window, so what is here is only
+ * the tree: the file list, the buffer with its breakpoint gutter, and the panel
+ * showing what the file becomes on the target the compiler would pick for it.
+ */
 
 import "gpui::div"
 import "gpui::Div"

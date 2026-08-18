@@ -1,7 +1,8 @@
-// web/file: handing a file to the reader, and taking one back.
-//
-// The name a download is offered under is decided here rather than by the
-// host, so `web/format`'s rule for it is the one every target agrees on.
+/* web/file: handing a file to the reader, and taking one back.
+ *
+ * The name a download is offered under is decided here rather than by the
+ * host, so `web/format`'s rule for it is the one every target agrees on.
+ */
 
 import { safe_name } from web/format
 

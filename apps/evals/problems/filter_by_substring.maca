@@ -1,5 +1,6 @@
-// HumanEval/7: Filter an input list of strings only for ones that contain given substring
-// Write it, and leave the test below alone.
+/* HumanEval/7: Filter an input list of strings only for ones that contain given substring
+ * Write it, and leave the test below alone.
+ */
 
 filter_by_substring(strings: str[], substring: str) -> str[] {
     fail "not written yet"

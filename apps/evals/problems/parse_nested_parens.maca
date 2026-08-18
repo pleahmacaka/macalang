@@ -1,5 +1,6 @@
-// HumanEval/6: Input to this function is a string represented multiple groups for nested parentheses separated by spaces.
-// Write it, and leave the test below alone.
+/* HumanEval/6: Input to this function is a string represented multiple groups for nested parentheses separated by spaces.
+ * Write it, and leave the test below alone.
+ */
 
 parse_nested_parens(paren_string: str) -> int[] {
     fail "not written yet"
