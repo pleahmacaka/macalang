@@ -7,6 +7,9 @@
 
 import "gpui::div"
 import "gpui::Div"
+import "gpui::Styled"
+import "gpui::ParentElement"
+import "gpui::InteractiveElement"
 import "gpui::Render"
 import "gpui::IntoElement"
 import "gpui::AnyElement"

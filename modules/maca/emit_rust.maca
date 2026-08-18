@@ -58,8 +58,17 @@ remit_expr(e: Expr) -> str =>
         _        => "0i64"
     }
 
-rfield(e: Expr) -> str =>
-    "{rplace(e.children.get(0))}.{rid(e.text)}{rowned(e.ty)}"
+/** A field read off `self` in a trait method is cloned even untyped:
+ * `self` is borrowed there, and `.clone()` is harmless on a copied value.
+ */
+rfield(e: Expr) -> str {
+    kept = e.ty == "" && e.children.get(0).kind == EIdent
+        && e.children.get(0).text == "self"
+        ? ".clone()"
+        : rowned(e.ty)
+
+    "{rplace(e.children.get(0))}.{rid(e.text)}{kept}"
+}
 
 rplace(e: Expr) -> str {
     if e.kind == EIdent {
@@ -1142,8 +1151,11 @@ gpui_classes(ws: str[], i: int) -> str {
     }
 }
 
+/** Tailwind's `grow` is gpui's `flex_grow`; every other class is its
+ * own method, `-` written `_`.
+ */
 gpui_method(w: str) -> str =>
-    w.replace("-", "_").replace("/", "_")
+    w == "grow" ? "flex_grow" : w.replace("-", "_").replace("/", "_")
 
 gpui_kids(cs: Expr[], i: int) -> str {
     if i >= cs.length() {
