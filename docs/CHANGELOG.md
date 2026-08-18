@@ -2,6 +2,35 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.5.0
+
+* **Joining is `+`, and `++` is only the bump.** `"a" + b` and `xs + ys` concatenate;
+  either side already being text or a list is enough, and the other side is unified toward
+  it, which is what types a lambda's bare parameter. A number beside a string stays a
+  mistake, written `str(n)` or `"{n}"`, so `+` never silently stringifies the way the old
+  `++` did. Binary `++` is refused by a diagnostic naming `+`, and the statements `n++` and
+  `++n` are the `++` that remains, each `n = n + 1` written small. Every back end and the
+  playground interpreter carry the same rule, and the embedded target refuses a join by
+  name, because joining needs an allocator it does not have.
+
+* **A doc comment is a `/** … */` block, and three slashes are just a comment.** All 1,364
+  `///` lines across 115 files became blocks; MacaDoc, the spec index, the highlighter and
+  the editor's reader all read the block form, and `///` now means what TypeScript would
+  take it for: an ordinary comment that attaches nothing.
+
+* **The editor ships on three desktops.** What it took is the measure of what was broken
+  underneath: a Maca `int` is now C `long long`, because Windows makes `long` 32 bits and
+  every pointer handle was being truncated on that desktop; a library is linked for a real
+  `#include` line, never for the string literal of it the compiler carries; a captured
+  command survives `cmd`'s quote stripping; `where` answers for `sh` where there is no sh;
+  and the binary cargo made is copied out by bytes on Windows, with `cp` kept on POSIX
+  because the execute bit lives there.
+
+* **Quipu knows Ctrl+P, its keymap and its own age.** The quick menu reaches every file,
+  panel and command, prefix matches first; the keymap is data the editor rewrites, refusing
+  a taken chord by naming what holds it; the about page asks the toolchain for its version
+  and the releases for the latest, comparing by number so 0.10.0 is later than 0.9.0.
+
 ## 0.4.0
 
 * **`modules/chaski` is the client half of HTTP.** `modules/http` serves; chaski asks.
