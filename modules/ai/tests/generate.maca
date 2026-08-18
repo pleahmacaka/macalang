@@ -12,13 +12,9 @@ keyed() -> bool =>
     env_or("OPENROUTER_API_KEY", "") != ""
 
 test_a_tool_is_offered_in_the_shape_the_format_wants() {
-    body = tools_json([Tool { name = "sky_colour",
-                              description = "Name the colour of the sky.",
-                              schema = "" }])
-
-    assert(body.starts_with(",\"tools\":["), "the key the format names")
-
-    one = items(get("{{" ++ body.slice(1, body.length()) ++ "}}", "tools"))
+    one = items(tools_json([Tool { name = "sky_colour",
+                                   description = "Name the colour of the sky.",
+                                   schema = "" }]))
 
     assert_eq(str(one.length()), "1", "one tool was offered")
     assert_eq(get(one.get(0), "type"), "function",
@@ -32,8 +28,8 @@ test_a_tool_is_offered_in_the_shape_the_format_wants() {
 }
 
 test_no_tools_offers_nothing_rather_than_an_empty_list() {
-    assert_eq(tools_json([]), "",
-              "a host that sees `tools: []` may refuse it, so it is left out")
+    assert_eq(tools_json([]), "[]",
+              "no tools is an empty array, and generate_using never sends it")
 }
 
 test_a_tool_the_model_asked_for_is_found_by_name() {

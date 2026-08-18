@@ -1,4 +1,5 @@
 import { Request, query_value } from http/request
+import { object_of } from std/json
 import { Response, json } from http/response
 import { runtime_script } from signal/dom
 
@@ -89,11 +90,11 @@ waited(f: Feed, since: int, budget_ms: int) -> str {
 /// One poll's answer, as the JSON the client reads.
 message(f: Feed, since: int, gen: int) -> str {
     if since == Fresh || gen <= since {
-        "\{\"gen\":{gen}\}"
+        object_of(["gen"], [str(gen)])
     } else if !have_all(f, since, gen) {
-        "\{\"gen\":{gen},\"reload\":true\}"
+        object_of(["gen", "reload"], [str(gen), "true"])
     } else {
-        "\{\"gen\":{gen},\"ops\":" ++ ops_since(f, since, gen) ++ "\}"
+        object_of(["gen", "ops"], [str(gen), ops_since(f, since, gen)])
     }
 }
 

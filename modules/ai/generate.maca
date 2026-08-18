@@ -31,40 +31,40 @@ generate_text_as(c: Chat, how: str, prompt: str) -> Said =>
 generate_from(c: Chat, ts: Turn[]) -> Said =>
     said_of(complete(c, ts))
 
-JsonOnly = ",\"response_format\":{{\"type\":\"json_object\"}}"
-
 /// An answer that is one JSON object and nothing else, which is what a program can read.
 generate_object(c: Chat, prompt: str) -> Said =>
-    said_of(complete_with(c, [object_turn(), user_turn(prompt)], JsonOnly))
+    said_of(complete_with(c, [object_turn(), user_turn(prompt)],
+                          ["response_format"],
+                          [object_of(["type"], [quote("json_object")])]))
 
 object_turn() -> Turn =>
     system_turn("Answer with one JSON object and nothing else.")
 
-/// The tools the model may reach for, offered alongside the conversation.
-generate_using(c: Chat, ts: Turn[], tools: Tool[]) -> Said =>
-    said_of(complete_with(c, ts, tools_json(tools)))
-
-tools_json(tools: Tool[]) -> str =>
-    tools.length() == 0 ? "" : ",\"tools\":[" ++ tool_list(tools, 0) ++ "]"
-
-tool_list(ts: Tool[], i: int) -> str {
-    if i >= ts.length() {
-        ""
-    } else {
-        here = one_tool(ts.get(i))
-
-        i == ts.length() - 1 ? here : here ++ "," ++ tool_list(ts, i + 1)
+/// The tools the model may reach for, offered alongside the conversation; none offered is a pair never sent, because a host that sees an empty list may refuse it.
+generate_using(c: Chat, ts: Turn[], tools: Tool[]) -> Said {
+    if tools.length() == 0 {
+        return said_of(complete(c, ts))
     }
+
+    said_of(complete_with(c, ts, ["tools"], [tools_json(tools)]))
 }
 
+/// The tools as the JSON array the wire format wants.
+tools_json(tools: Tool[]) -> str =>
+    "[" ++ tools.map(t => one_tool(t)).join(",") ++ "]"
+
 one_tool(t: Tool) -> str =>
-    "{{\"type\":\"function\",\"function\":{{\"name\":" ++ quote(t.name)
-        ++ ",\"description\":" ++ quote(t.description)
-        ++ ",\"parameters\":" ++ tool_schema(t) ++ "}}}}"
+    object_of(["type", "function"],
+              [quote("function"),
+               object_of(["name", "description", "parameters"],
+                         [quote(t.name), quote(t.description),
+                          tool_schema(t)])])
 
 /// A tool that names no arguments still has to say so, because the format has no word for absent.
 tool_schema(t: Tool) -> str =>
-    t.schema == "" ? "{{\"type\":\"object\",\"properties\":{{}}}}" : t.schema
+    t.schema == "" ? object_of(["type", "properties"],
+                               [quote("object"), object_of([], [])])
+                   : t.schema
 
 /// A tool the caller ran, handed back so the model can go on from its result.
 tool_turn(id: str, result: str) -> Turn =>

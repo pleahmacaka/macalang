@@ -73,16 +73,18 @@ assistant_turn(text: str) -> Turn =>
 
 /// One completion. The key never appears in a message, only in the header that carries it.
 complete(c: Chat, ts: Turn[]) -> Answer =>
-    complete_with(c, ts, "")
+    complete_with(c, ts, [], [])
 
-/// The same, with whatever else the wire format wants spliced into the body.
-complete_with(c: Chat, ts: Turn[], extra: str) -> Answer {
+/// The same, with whatever else the wire format wants, as pairs beside the standing ones.
+complete_with(c: Chat, ts: Turn[], more_keys: str[],
+              more_values: str[]) -> Answer {
     if c.key == "" {
         return chat_failed("no API key: the caller has to supply one")
     }
 
     at = with_seconds(with_bearer(client(c.base), c.key), c.seconds)
-    got = ask_json(at, "/chat/completions", chat_body_with(c, ts, extra))
+    got = ask_json(at, "/chat/completions",
+                   chat_body_with(c, ts, more_keys, more_values))
 
     if got.error != "" {
         return chat_failed(got.error)
@@ -104,33 +106,39 @@ chat_refusal(r: Reply) -> str {
 }
 
 chat_body(c: Chat, ts: Turn[]) -> str =>
-    chat_body_with(c, ts, "")
+    chat_body_with(c, ts, [], [])
 
-chat_body_with(c: Chat, ts: Turn[], extra: str) -> str =>
-    "{{\"model\":{quote(c.model)},\"messages\":[{chat_turns(ts, 0)}]"
-        ++ chat_warmth(c) ++ chat_ceiling(c) ++ extra ++ "}}"
+/// The body is pairs handed to `object_of`, so no field is ever spelled as escaped braces, and a setting left alone is a pair never pushed.
+chat_body_with(c: Chat, ts: Turn[], more_keys: str[],
+               more_values: str[]) -> str {
+    ks = ["model", "messages"]
+    vs = [quote(c.model), turns_json(ts)]
 
-chat_warmth(c: Chat) -> str =>
-    c.warmth == 0.0 ? "" : ",\"temperature\":{str(c.warmth)}"
-
-chat_ceiling(c: Chat) -> str =>
-    c.ceiling == 0 ? "" : ",\"max_tokens\":{str(c.ceiling)}"
-
-chat_turns(ts: Turn[], i: int) -> str {
-    if i >= ts.length() {
-        ""
-    } else {
-        here = "{{\"role\":{quote(ts.get(i).role)},"
-            ++ "\"content\":{quote(ts.get(i).content)}"
-            ++ chat_answering(ts.get(i)) ++ "}}"
-
-        i == ts.length() - 1 ? here : here ++ "," ++ chat_turns(ts, i + 1)
+    if c.warmth != 0.0 {
+        ks = ks.push("temperature")
+        vs = vs.push(str(c.warmth))
     }
+
+    if c.ceiling != 0 {
+        ks = ks.push("max_tokens")
+        vs = vs.push(str(c.ceiling))
+    }
+
+    object_of(ks ++ more_keys, vs ++ more_values)
 }
 
-/// A turn that answers a tool call has to say which one, or the model cannot pair them.
-chat_answering(t: Turn) -> str =>
-    t.call_id == "" ? "" : ",\"tool_call_id\":{quote(t.call_id)}"
+turns_json(ts: Turn[]) -> str =>
+    "[" ++ ts.map(t => turn_json(t)).join(",") ++ "]"
+
+/// A turn that answers a tool call says which one, or the model cannot pair them.
+turn_json(t: Turn) -> str {
+    ks = ["role", "content"]
+    vs = [quote(t.role), quote(t.content)]
+
+    t.call_id == ""
+        ? object_of(ks, vs)
+        : object_of(ks.push("tool_call_id"), vs.push(quote(t.call_id)))
+}
 
 /// The answer is the first choice's message, and the usage beside it is what it cost.
 chat_read(body: str) -> Answer {
