@@ -145,11 +145,17 @@ rbranch(e: Expr) -> str {
     if e.kind == EIf {
         rif_stmt(e)
     } else if e.kind == EBlock {
-        "{{ {rblock_stmts(e.stmts, 0)}{remit_expr(e.children.get(0))}; }}"
+        "{{ {rblock_stmts(e.stmts, 0)}{r_tail(e.children.get(0))} }}"
     } else {
-        "{{ {remit_expr(e)}; }}"
+        "{{ {r_tail(e)} }}"
     }
 }
+
+/** The last thing in a branch stands where a statement does, so an `if`
+ * there is an `if` and never an expression a `return` cannot sit inside.
+ */
+r_tail(e: Expr) -> str =>
+    e.kind == EIf ? rif_stmt(e) : "{remit_expr(e)};"
 
 remit_match(e: Expr) -> str =>
     "match {remit_match_on(e)} {{"
@@ -281,6 +287,9 @@ rlist_method_of(e: Expr, recv: str) -> str {
         "{{ let mut _v = {recv}; let _i = ({rarg(e, 1)}) as usize;"
             ++ " if _i < _v.len() {{ Rc::make_mut(&mut _v)[_i] = {rarg(e, 2)}; }}"
             ++ " _v }}"
+    } else if e.text == "filter" && el != "" {
+        "Rc::new(({recv}).iter().cloned().filter(|_x: &{rtype(el)}|"
+            ++ " ({rarg(e, 1)})(_x.clone())).collect::<Vec<_>>())"
     } else if e.text == "filter" {
         "Rc::new(({recv}).iter().cloned().filter(|_x|"
             ++ " ({rarg(e, 1)})(_x.clone())).collect::<Vec<_>>())"
@@ -811,7 +820,9 @@ remit_stmts(body: Stmt[], i: int) -> str {
 remit_stmt(s: Stmt, is_last: bool, movable: bool) -> str {
     if s.kind == SSet {
         "{rid(s.name)} = {remit_expr(s.value)};"
-    } else if s.value.kind == EIf && rmissing_else(s.value.children.get(2)) {
+    } else if s.value.kind == EIf
+            && (rmissing_else(s.value.children.get(2))
+                || (s.kind == SExpr && !is_last)) {
         rif_stmt(s.value)
     } else if s.kind == SBind && s.ret != "" {
         "let {rmut_word(movable)}{rid(s.name)}: {rtype(s.ret)}"
